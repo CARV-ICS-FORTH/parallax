@@ -1,0 +1,61 @@
+#include "testhdr.h"
+
+#test simtest_5
+	fputs("Simple test 5: Insertion, finds and deletes (at the same time) of random unsigned keys and values.\n", stderr);
+	
+	unsigned int key[2];
+	key[0] = sizeof(unsigned int);
+	key[1] = 1025;
+	const int32_t key_len = sizeof(int);
+	unsigned int val[2];
+	val[0] = sizeof(unsigned int);
+	val[1] = 9000;
+	const int32_t val_len = sizeof(int);
+	unsigned int a[2], b[2];
+	a[0] = sizeof(unsigned int);
+	b[0] = sizeof(unsigned int);
+
+	prepareVolume();
+	
+	db_handle *db = newDb(DBNAME, PATHNAME, SIZE);
+	
+	puts("\n\n");
+
+	srand(time(NULL));
+
+	while (key[1] > 1024) {
+		key[1] = (rand() % 1024) + 1024;
+		val[1] = (rand() % 4294967296);
+
+		/* fprintf(stderr, "%d %d\n", key[1], val[1]); */
+
+		a[1] = key[1];
+		b[1] = val[1];
+		
+		if ((key[1] > 1024)) {
+			insertKeyValue(db, a, b, 0);
+			fprintf(stderr, "insert %d w/ key %d\n", b[1], a[1]);
+			fail_unless(findKey(db, a) != NULL, "Search function bugged.");
+			fprintf(stderr, "find %d\n", a[1]);
+			fail_unless(deleteKey(db, a) == 10, "Delete function bugged.");
+			fprintf(stderr, "delete %d\n", a[1]);
+		}
+
+		/* Parathrhseis:
+		 * Den mporei na balei kapou opou yparxei hdh kapoio key (doubtful). 1) 
+		 * Fainetai oti den mporei na balei proshmasmena keys/values (crash) 2) 
+		 * Oi findKey kai deleteKey crasharoun an paroun NULL key 3) 
+		 * H insertKeyValue crasharei epishs an parei NULL key/value 4) 
+		 * Fainetai oti h insertKeyValue den mporei na parei ws keys h values poly megalous
+		 * aplous akeraious (p.x 4294967370) 5) */
+	}
+
+	// snapshot
+	snapshot(db->volume_desc);
+	
+	puts("\n\n");
+	
+	/*fprintf(stderr, "%sPASS = %llu%s\n", TEXT_GREEN, pass, TEXT_NORMAL);
+	fprintf(stderr, "%sFAIL = %llu%s\n", TEXT_RED, fail, TEXT_NORMAL); */
+	
+	puts("Tests done.");

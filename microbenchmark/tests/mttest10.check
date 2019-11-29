@@ -1,0 +1,57 @@
+#include "testhdr.h"
+
+#test mttest_10
+	  /* Ki edw kati trexei... */
+
+	  const int CUT = 1;
+	  
+	  fputs("Multi-thread test 10: Insertions, finds and deletes at the same time on a single db with 2 data sets\n", stderr);
+	  
+	  prepareVolume();
+	  
+	  db_handle *db = newDb("dat0.dat", PATHNAME, (SIZE/CUT));
+	  
+	  pthread_t t1, t2, t3;
+	  struct dbcont cont1, cont2;
+	  
+	  srand(time(NULL));
+	  
+	  int i;
+	  
+	  fputs("Generating keys and values...\n", stderr);
+	  
+	  for (i = 0; i < INS_NUM; i++) {
+		cont1.key[i][0] = sizeof(int);
+		cont1.key[i][1] = (rand() % 4294967296);
+		
+		cont1.value[i][0] = sizeof(int);
+		cont1.value[i][1] = (rand() % 4294967296);
+		
+		cont2.key[i][0] = sizeof(int);
+		cont2.key[i][1] = (rand() % 4294967296);
+		
+		cont2.value[i][0] = sizeof(int);
+		cont2.value[i][1] = (rand() % 4294967296);
+	  }
+	  
+	  cont1.db = db;
+	  cont2.db = db;
+	  
+	  cont2.no = 2;
+	  cont1.no = 1;
+	  
+	  fputs("Pre-inserting keys-values (set 1)...\n", stderr);
+	  
+	  insertKeysValues(&cont1);
+	  
+	  fputs("Inserting set 2, finding and deleting set 1 values and keys...\n", stderr);
+	  
+	  fail_unless(pthread_create(&t1, NULL, insertKeysValues, &cont2) == 0, "Thread 1 Error");
+	  fail_unless(pthread_create(&t2, NULL, findKeys, &cont1) == 0, "Thread 2 Error");
+	  fail_unless(pthread_create(&t3, NULL, deleteKeys, &cont1) == 0, "Thread 3 Error");
+	  
+	  fail_unless(pthread_join(t1, NULL) == 0, "Cannot join thread 1");
+	  fail_unless(pthread_join(t2, NULL) == 0, "Cannot join thread 2");
+	  fail_unless(pthread_join(t3, NULL) == 0, "Cannot join thread 3");
+	  
+	  fputs("Multi-thread test 10 done.\n", stderr);

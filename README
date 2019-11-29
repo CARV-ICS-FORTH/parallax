@@ -1,0 +1,9 @@
+To build kreon 
+cd  kreon
+make
+
+split_leaf
+__find_key_addr_in_leaf
+__update_leaf_index
+_get_next_KV
+_seek_scanner

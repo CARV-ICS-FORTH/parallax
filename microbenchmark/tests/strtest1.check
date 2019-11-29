@@ -1,0 +1,58 @@
+#include "testhdr.h"
+
+#test simtest_1
+	fputs("Simple test 1: Pre-defined key-value insertion and search.\n", stderr);
+
+	char *ret = NULL;
+	char key[32];
+	char value[32];
+
+	srand(time(NULL));
+
+	prepareVolume();
+
+	db_handle *db = newDb(DBNAME, PATHNAME, SIZE);
+
+	puts("\n\n");
+
+	*((int *)key) = 4;
+	key[4] = 'a';
+	key[5] = 'a';
+	key[6] = 'a';
+	key[6] = '\0';
+
+	*((int *)value) = 3;
+	value[4] = 'b';
+	value[5] = 'b';
+	value[6] = 'b';
+
+	printf("insert\n");
+	insertKeyValue(db, key, value, 0);
+	
+	// snapshot
+	snapshot(db->volume_desc);
+	
+	*((int *)key) = 4;
+	key[4] = 'a';
+	key[5] = 'a';
+	key[6] = 'a';
+	key[6] = '\0';
+
+	ret = (char *) findKey(db, key);
+	if(ret == NULL){
+		puts("ERROR!");
+	}else{
+		puts("OK!");
+
+		if( *(int *)ret != 3 ){
+			puts("ERROR!");
+		}
+
+		if( ret[4] != 'b' || ret[5] != 'b' || ret[6] != 'b' ){
+			puts("ERROR!");
+		}
+	}
+	
+	puts("\n\n");
+	
+	puts("Tests done.");

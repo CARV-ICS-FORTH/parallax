@@ -1,0 +1,57 @@
+#include "testhdr.h"
+
+#test simtest_6
+	fputs("Simple test 6: Insertion of a pre-defined number of random keys and values.\n", stderr);
+	
+	int key = 343;
+	const int32_t key_len = sizeof(int);
+	int val = 978543;
+	const int32_t val_len = sizeof(int);
+
+	int32_t data[INS_NUM][2];
+
+	prepareVolume();
+	
+	db_handle *db = newDb(DBNAME, PATHNAME, SIZE);
+	
+	puts("\n\n");
+
+	srand(time(NULL));
+	
+	puts("\n\n");
+
+	char *tmp = (char *)malloc(sizeof(int32_t) + sizeof(int) + sizeof(int32_t) + sizeof(int));
+	char *g_key = (char *) malloc(sizeof(int32_t) + sizeof(int));
+	char *ret;
+	/*uint64_t pass = 0;
+	uint64_t fail = 0;*/
+
+	int a;
+
+	for(int i = 0; i < INS_NUM; i++){
+		key = rand() % INS_NUM;
+		data[key][0] = key;
+		val = rand();
+		data[key][1] = val;
+
+		memcpy(tmp,                                                   &key_len, sizeof(int32_t));
+		memcpy(tmp + sizeof(int32_t),                                 &key,     sizeof(int));
+		memcpy(tmp + sizeof(int32_t) + sizeof(int),                   &val_len, sizeof(int32_t));
+		memcpy(tmp + sizeof(int32_t) + sizeof(int) + sizeof(int32_t), &val,     sizeof(int));
+
+		printf("insert %d, %d\n", key, val);
+		insertKeyValue(db, tmp, tmp + sizeof(int32_t) + sizeof(int), 0);
+	}
+
+	free(tmp);
+
+	// snapshot
+	snapshot(db->volume_desc);
+	
+	puts("\n\n");
+	
+	/*fprintf(stderr, "%sPASS = %llu%s\n", TEXT_GREEN, pass, TEXT_NORMAL);
+	fprintf(stderr, "%sFAIL = %llu%s\n", TEXT_RED, fail, TEXT_NORMAL); */
+	
+	printf("Inserted %d keys-values.\n", INS_NUM);
+	puts("Tests done.");

@@ -1,0 +1,46 @@
+#include "testhdr.h"
+
+#test simtest_2
+	fputs("Simple test 2: Random key-value insertions.\n", stderr);
+
+	int key[2];
+	key[0] = sizeof(int);
+	key[1] = 10000;
+	const int32_t key_len = sizeof(int);
+	int val[2];
+	val[0] = sizeof(int);
+	val[1] = 10000;
+	const int32_t val_len = sizeof(int);
+
+	prepareVolume();
+	
+	db_handle *db = newDb(DBNAME, PATHNAME, SIZE);
+	
+	puts("\n\n");
+
+	srand(time(NULL));
+
+	while (key[1] > 1024) {
+		key[1] = (rand() % 1025) + 1024;
+		val[1] = (rand() % 1025) + 1024;
+		if ((key[1] > 1024) && (val[1] > 1024)) {
+			insertKeyValue(db, key, val, 0);
+			fprintf(stderr, "insert %d w/ key %d\n", val[1], key[1]);
+			fail_unless(findKey(db, key) != NULL, "Search function bugged.");
+			fail_unless(deleteKey(db, key) == 10, "Delete function bugged.");
+		}
+
+		/* Parathrhseis:
+		 * Den mporei na balei kapou opou yparxei hdh kapoio key. 1) 
+		 * Fainetai oti den mporei na balei proshmasmena keys/values 2) */
+	}
+
+	// snapshot
+	snapshot(db->volume_desc);
+	
+	puts("\n\n");
+	
+	/*fprintf(stderr, "%sPASS = %llu%s\n", TEXT_GREEN, pass, TEXT_NORMAL);
+	fprintf(stderr, "%sFAIL = %llu%s\n", TEXT_RED, fail, TEXT_NORMAL); */
+	
+	puts("Tests done.");

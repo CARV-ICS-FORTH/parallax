@@ -1,0 +1,31 @@
+#include "testhdr.h"
+
+#test test_1
+	const int CUT = 4;
+	
+	fputs("Multi-thread test 1: Insertions by multiple threads on multiple databases\n", stderr);
+	
+	prepareVolume();
+
+        db_handle *db1 = newDb("dat0.dat", PATHNAME, (SIZE/CUT));
+        db_handle *db2 = newDb("dat1.dat", PATHNAME, (SIZE/CUT));
+	db_handle *db3 = newDb("dat2.dat", PATHNAME, (SIZE/CUT));
+	db_handle *db4 = newDb("dat3.dat", PATHNAME, (SIZE/CUT));
+
+        pthread_t t1, t2, t3, t4;
+
+	fputs("Adding random keys and values to databases...\n", stderr);
+
+        fail_unless(pthread_create(&t1, NULL, randInsert, db1) == 0, "Thread 1 Error");
+        fail_unless(pthread_create(&t2, NULL, randInsert, db2) == 0, "Thread 2 Error");
+	fail_unless(pthread_create(&t3, NULL, randInsert, db3) == 0, "Thread 3 Error");
+	fail_unless(pthread_create(&t4, NULL, randInsert, db4) == 0, "Thread 4 Error");
+
+	fputs("Joining threads...\n", stderr);
+
+        fail_unless(pthread_join(t1, NULL) == 0, "Could not join thread 1");
+        fail_unless(pthread_join(t2, NULL) == 0, "Could not join thread 2");
+	fail_unless(pthread_join(t3, NULL) == 0, "Could not join thread 3");
+	fail_unless(pthread_join(t4, NULL) == 0, "Could not join thread 4");
+
+	fputs("Multi-thread test 1 done.\n", stderr);

@@ -1,0 +1,32 @@
+#include "testhdr.h"
+
+#test test_3
+	  const int CUT = 1;
+	  
+	  fputs("Multi-thread test 3: Insertions by a single thread and finds by multiple threads\n", stderr);
+	  
+	  prepareVolume();
+	  
+	  db_handle *db = newDb("dat0.dat", PATHNAME, (SIZE/CUT));
+	  
+	  pthread_t t1, t2, t3, t4;
+	  
+	  fputs("Adding random keys and values to database...\n", stderr);
+	  
+	  randInsert(db);
+	  
+	  fputs("Searching for random keys...\n", stderr);
+	  
+	  fail_unless(pthread_create(&t1, NULL, randFind, db) == 0, "Thread 1 Error");
+          fail_unless(pthread_create(&t2, NULL, randFind, db) == 0, "Thread 2 Error");
+	  fail_unless(pthread_create(&t3, NULL, randFind, db) == 0, "Thread 3 Error");
+          fail_unless(pthread_create(&t4, NULL, randFind, db) == 0, "Thread 4 Error");
+	  
+	  fputs("Joining threads...\n", stderr);
+	  
+	  fail_unless(pthread_join(t1, NULL) == 0, "Could not join thread 1");
+	  fail_unless(pthread_join(t2, NULL) == 0, "Could not join thread 2");
+	  fail_unless(pthread_join(t3, NULL) == 0, "Could not join thread 1");
+	  fail_unless(pthread_join(t4, NULL) == 0, "Could not join thread 2");
+	  
+	  fputs("Multi-thread test 3 done.\n", stderr);
