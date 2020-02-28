@@ -1,0 +1,35 @@
+Ansible documentation: https://docs.ansible.com/
+
+Ansible Hosts
+===============================================================================
+Add hosts in /etc/ansible/hosts
+Format:
+# This line is a comment
+[group]
+host1
+host2
+host[03:07] # Means host03, host04, ..., host07
+
+You can use ansible_ssh_host with aliased host names in ansible to have several
+rules, with different variable values for the same physical host.
+eg.:
+sith5-primary ansible_ssh_host=sith5 listen_port=5050 device=/tmp/mvard/disk0.dat device_size=4294967296
+sith5-backup  ansible_ssh_host=sith5 listen_port=5051 device=/tmp/mvard/disk1.dat device_size=4294967296
+
+An example hosts file is included in this folder
+
+SSH Configuration
+===============================================================================
+By adding the following snippet you can directly connect to a server in Carv's
+cluster without needing to connect to shark first. This is needed to use
+ansible outside of shark's sub network.
+
+Copy-paste the following snippet to ~/.ssh/config
+
+Host sith4 sith5 sith6 jedi4
+	ProxyJump user@shark %h
+
+Example command
+===============================================================================
+ansible-playbook -i ansible_hosts tucana.yml
+ansible-playbook -i ansible_hosts ycsb.yml

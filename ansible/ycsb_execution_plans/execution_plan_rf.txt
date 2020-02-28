@@ -1,0 +1,1 @@
+run_f run ycsb_execution_plans/workloadf

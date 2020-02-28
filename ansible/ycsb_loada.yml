@@ -1,0 +1,89 @@
+- hosts: kreon ycsb
+  remote_user: "{{ username }}"
+  gather_facts: False
+  tasks:
+    - name: 'Cleanup failed tasks'
+      command: 'pkill --signal SIGKILL iostat && pkill --signal SIGKILL mpstat'
+      failed_when: False
+      ignore_errors: True
+
+- hosts: ycsb
+  remote_user: "{{ username }}"
+  gather_facts: False
+  tasks:
+    - name: 'Cleanup previous results'
+      command: 'rm -rf {{ results_folder }}'
+      ignore_errors: True
+
+- hosts: kreon ycsb
+  remote_user: "{{ username }}"
+  gather_facts: False
+  tasks:
+    - name: 'Create experiment results folder'
+      file:
+        path: '{{ results_folder }}/{{ item }}/{{ ansible_ssh_host }}-{{ listen_port }}'
+        state: directory
+      with_items:
+        - "load_a"
+
+- hosts: localhost
+  gather_facts: False
+  tasks:
+    - name: 'Upload ycsb_execution_plans folder'
+      command: "rsync -r ycsb_execution_plans {{ username }}@thegates:{{ exe_path }}"
+
+# LOAD A
+- hosts: kreon ycsb
+  remote_user: "{{ username }}"
+  gather_facts: False
+  tasks:
+    - name: 'Start monitoring tools'
+      async: 10000
+      poll: 0
+      command: "./start_statistics.sh {{ results_folder }}/load_a/{{ ansible_ssh_host }}-{{ listen_port }}"
+      args:
+        chdir: '{{ repo_path }}/YCSB-CXX'
+
+- hosts: perf
+  gather_facts: False
+  tasks:
+    - name: "Run perf for profiling"
+      async: 10000
+      poll: 0
+      command: "perf record -a -g -F 999 -o {{ results_folder }}/perf.raw"
+
+- hosts: ycsb
+  remote_user: "{{ username }}"
+  gather_facts: False
+  tasks:
+    - name: 'YCSB Load A'
+      shell: "taskset -c {{ taskset }} {{jemalloc}} YCSB-CXX/ycsb-kreon -dbnum {{ db_num }}
+                  -threads {{ threads }}
+                  -e ycsb_execution_plans/execution_plan_la.txt
+                  -o {{ results_folder }}
+                  -outFile ops-{{ inventory_hostname }}-{{ listen_port }}.txt
+                  -insertStart {{ insert_start }}"
+      environment:
+        LD_LIBRARY_PATH: "{{ LD_LIBRARY_PATH }}"
+      args:
+        chdir: '{{ exe_path }}'
+
+- hosts: perf
+  gather_facts: False
+  tasks:
+    - name: "Stop perf"
+      command: "pkill --signal SIGTERM perf"
+
+- hosts: kreon ycsb
+  gather_facts: False
+  tasks:
+    - name: 'Stop monitoring tools'
+      command: "./stop_statistics.sh {{ results_folder }}/load_a/{{ ansible_ssh_host }}-{{ listen_port }}"
+      args:
+        chdir: '{{ repo_path }}/YCSB-CXX'
+
+- hosts: kreon
+  gather_facts: False
+  tasks:
+    - name: 'Stop servers'
+      command: "pkill --signal SIGINT tucanaserver"

@@ -1,0 +1,1 @@
+run_a run ycsb_execution_plans/workloada

@@ -1,0 +1,32 @@
+# Yahoo! Cloud System Benchmark
+# Workload A: Update heavy workload
+#   Application example: Session store recording recent actions
+#
+#   Read/update ratio: 50/50
+#   Default data size: 1 KB records (10 fields, 100 bytes each, plus key)
+#   Request distribution: zipfian
+#
+recordcount=100000
+operationcount=100000
+
+workload=com.yahoo.ycsb.workloads.CoreWorkload
+
+readallfields=true
+
+readproportion=0.5
+updateproportion=0.5
+scanproportion=0
+insertproportion=0
+maxexecutiontime=1000000
+#requestdistribution=zipfian
+insertorder=hashed
+fieldcount=10
+status.interval=1
+
+#to enable parallel clients set distributedsetup to true.
+#At each stage of the execution plan there is a barrier between the clients, to force them to
+#start concurrently. zookeeper host:port is the address of the zookeeper server
+#if distributedsetup is set to false it is a normal local ycsb
+distributedsetup=false
+numofclients=7
+zookeeper=127.0.0.1:2181
