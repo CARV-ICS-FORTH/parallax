@@ -1,0 +1,3 @@
+To build kreon 
+cd  kreon
+make
