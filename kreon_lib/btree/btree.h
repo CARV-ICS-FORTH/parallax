@@ -9,8 +9,10 @@
 
 
 #include "../allocator/allocator.h"
-#include "uthash.h"
-//#include "../CLHT/include/clht.h"
+//#include "uthash.h"
+#include "../../external-deps/src/uthash/src/uthash.h"
+
+
 
 typedef struct volume_descriptor volume_descriptor;
 #include <pthread.h>
