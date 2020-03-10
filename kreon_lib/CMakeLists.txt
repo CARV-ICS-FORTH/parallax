@@ -2,34 +2,31 @@
 # Author: Michalis Vardoulakis <mvard@ics.forth.gr>
 
 set_source_files_properties(allocator/list.c PROPERTIES
-  COMPILE_FLAGS "-O3"
+  COMPILE_FLAGS "-O3 -fPIC"
 )
 set_source_files_properties(allocator/recovery.c PROPERTIES
-  COMPILE_FLAGS "-O3 -DKREONR"
+  COMPILE_FLAGS "-O3 -fPIC -DKREONR"
 )
 set_source_files_properties(allocator/allocator.c PROPERTIES
-  COMPILE_FLAGS "-O3 -DKREONR"
+  COMPILE_FLAGS "-O3 -fPIC -DKREONR"
 )
 set_source_files_properties(btree/btree.c PROPERTIES
-  COMPILE_FLAGS "-O3 -DKREONR"
+  COMPILE_FLAGS "-O3 -fPIC -DKREONR"
 )
 set_source_files_properties(btree/replica.c PROPERTIES
-  COMPILE_FLAGS "-O0 -ggdb3 -g -DKREONR"
+  COMPILE_FLAGS "-O0 -ggdb3 -g -fPIC -DKREONR"
 )
 set_source_files_properties(scanner/stack.c PROPERTIES
-  COMPILE_FLAGS "-O3"
+  COMPILE_FLAGS "-O3 -fPIC"
 )
 set_source_files_properties(scanner/min_max_heap.c PROPERTIES
-  COMPILE_FLAGS "-O3"
+  COMPILE_FLAGS "-O3 -fPIC"
 )
 set_source_files_properties(scanner/scanner.c PROPERTIES
-  COMPILE_FLAGS "-O3"
+  COMPILE_FLAGS "-O3 -fPIC"
 )
-#set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -O3")
-#set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -O3")
 
-set(CMAKE_EXE_LINKER_FLAGS "-lrt -lm -pthread -lnuma")
-
+set(CMAKE_EXE_LINKER_FLAGS "-Wl,-no-as-needed -lrt -lm -pthread -lnuma")
 
 # Kreon with replication enabled
 add_library(kreon_server_lib  STATIC  allocator/recovery.c
@@ -37,7 +34,6 @@ add_library(kreon_server_lib  STATIC  allocator/recovery.c
   btree/replica.c ../utilities/stack.c ../utilities/min_max_heap.c
   scanner/scanner.c ../utilities/list.c
 )
-
 
 set_target_properties(kreon_server_lib PROPERTIES COMPILE_DEFINITIONS "KREONR")
 
@@ -48,15 +44,16 @@ add_library(kreon_local STATIC  allocator/recovery.c
   scanner/scanner.c
 )
 
-
 set_source_files_properties(allocator/spin_loop.c PROPERTIES
-  COMPILE_FLAGS "-O0"
+  COMPILE_FLAGS "-O0 -fPIC"
 )
+
 set_source_files_properties(allocator/list.c PROPERTIES
-  COMPILE_FLAGS "-O3"
+  COMPILE_FLAGS "-O3 -fPIC"
 )
+
 set_source_files_properties(allocator/allocator.c PROPERTIES
-  COMPILE_FLAGS "-O3"
+  COMPILE_FLAGS "-O3 -fPIC"
 )
 
 # mkfs for kreon volumes

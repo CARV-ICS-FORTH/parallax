@@ -1,7 +1,7 @@
 # File: TucanaServer/CMakeLists.txt
 # Author: Michalis Vardoulakis <mvard@ics.forth.gr>
 
-set(CMAKE_EXE_LINKER_FLAGS "-lm -pthread -lnuma -libverbs -lrdmacm -lzookeeper_mt")
+set(CMAKE_EXE_LINKER_FLAGS "-Wl,--no-as-needed -lm -pthread -lnuma -libverbs -lrdmacm -lzookeeper_mt")
 add_definitions(-DKREONR)
 
 add_library(client STATIC zk_client.c zk_string_vector.c
