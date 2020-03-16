@@ -14,12 +14,8 @@ ExternalProject_Add(uthash
   INSTALL_COMMAND ""
 )
 
-# Paths
-set(ZK_C_LIB "/home1/public/mvard/zookeeper_c")
 include_directories(
-  ${ZK_C_LIB}/include ${ZK_C_LIB}/generated
-  $ENV{JAVA_HOME}/include $ENV{JAVA_HOME}/include/linux
-  external-deps/src/uthash/include
+  /usr/include/zookeeper
 )
 
 # Compiler configuration

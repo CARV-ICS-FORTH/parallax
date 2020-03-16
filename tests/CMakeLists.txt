@@ -5,15 +5,13 @@ set_source_files_properties(test_streaming_btree.c PROPERTIES
   COMPILE_FLAGS "-O3"
 )
 
-
 set_source_files_properties(test_circular_buffer.c PROPERTIES
   COMPILE_FLAGS "-O3"
 )
 
-set(CMAKE_EXE_LINKER_FLAGS "-lm -lrt -pthread -lnuma -libverbs -lrdmacm -lzookeeper_mt")
+set(CMAKE_EXE_LINKER_FLAGS "-Wl,--no-as-needed -lm -lrt -pthread -lnuma -libverbs -lrdmacm -lzookeeper_mt")
+
 add_definitions(-DKREONR -DTESTS)
-
-
 
 add_library(runtime   STATIC ../kreon_lib/allocator/recovery.c
   ../utilities/spin_loop.c ../kreon_lib/allocator/allocator.c ../kreon_lib/btree/btree.c
@@ -27,16 +25,12 @@ add_library(runtime   STATIC ../kreon_lib/allocator/recovery.c
 
 add_executable(streaming_btree_test test_streaming_btree.c
 )
-target_link_libraries(streaming_btree_test runtime)
 
+target_link_libraries(streaming_btree_test runtime)
 
 add_executable(test_circular_buffer test_circular_buffer.c ../utilities/circular_buffer.c
 )
 
 add_executable(throughput_bench throughput_bench.c ../kreon_server/globals.c)
+
 target_link_libraries(throughput_bench client kreon_rdma_lib)
-
-
-
-
-
