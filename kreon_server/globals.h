@@ -1,5 +1,5 @@
 #include <pthread.h>
-#include "../kreon_server/zk_server.h"
+#include "zk_server.h"
 
 typedef struct globals{
     char *zk_host_port;

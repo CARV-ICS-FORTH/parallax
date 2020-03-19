@@ -11,6 +11,7 @@
 #include <signal.h>
 #include "min_max_heap.h"
 #include "../kreon_lib/allocator/allocator.h"
+#include "../kreon_lib/btree/btree.h"
 #define LCHILD(x) 2 * x + 1
 #define RCHILD(x) 2 * x + 2
 #define PARENT(x) (x - 1) / 2

@@ -1,4 +1,4 @@
-/*  
+/*
  *          File: stack.h
  *        Author: Robert I. Pitts <rip@cs.bu.edu>
  * Last Modified: March 7, 2000
@@ -7,12 +7,12 @@
  *
  * This is the interface for a stack of characters.
  */
+#pragma once
 #include <stdint.h>
 
 #include "../btree/conf.h"
+#include "../btree/btree.h"
 
-#ifndef _STACK_H
-#define _STACK_H
 /*
  * Type: stackElementT
  * -------------------
@@ -21,7 +21,13 @@
  * the stack.
  */
 
-typedef uint64_t stackElementT;
+typedef struct stackElementT {
+	node_header *node;
+	uint32_t idx;
+	uint8_t leftmost;
+	uint8_t rightmost;
+	uint8_t guard;
+} stackElementT;
 
 /*
  * Type: stackT
@@ -37,9 +43,9 @@ typedef uint64_t stackElementT;
  */
 
 typedef struct {
-  stackElementT contents[MAX_SIZE];
-  int maxSize;
-  int top;
+	stackElementT contents[MAX_SIZE];
+	int maxSize;
+	int top;
 } stackT;
 /*
  * Function: StackInit
@@ -88,5 +94,3 @@ void stack_reset(stackT *stackP);
 
 int stack_is_empty(stackT *stackP);
 int stack_is_full(stackT *stackP);
-
-#endif  /* not defined _STACK_H */

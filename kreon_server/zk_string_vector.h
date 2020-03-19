@@ -6,8 +6,7 @@
 //  Copyright (c) 2016 Pilar Gonzalez Ferez <pilar@ics.forth.gr>.
 //
 
-#ifndef __ZK_STRING_VECTOR_H
-#define __TUCANA_PROTOTYPE_H
+#pragma once
 #include <stdint.h>
 
 #include "conf.h"
@@ -27,4 +26,4 @@ char * Convert_ULong_Long_To_Str( uint64_t s);
 
 
 
-#endif
+

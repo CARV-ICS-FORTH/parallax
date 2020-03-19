@@ -5,8 +5,8 @@
  * Copyright (c) 2016 Pilar Gonzalez Ferez <pilar@ics.forth.gr>.
 */
 
-#ifndef _TUCANA_MESSAGES_H
-#define _TUCANA_MESSAGES_H
+
+#pragma once
 
 #include <inttypes.h>
 #include <semaphore.h>
@@ -91,4 +91,4 @@ static inline void set_tail_value_data_message( struct tu_data_message *data_mes
 	data_message->receive = 7;
 }
 
-#endif
+

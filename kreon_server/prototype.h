@@ -5,9 +5,7 @@
 //  Created by Pilar Gonzalez-Ferez on 28/07/16.
 //  Copyright (c) 2016 Pilar Gonzalez Ferez <pilar@ics.forth.gr>.
 //
-
-#ifndef __TUCANA_PROTOTYPE_H_
-#define __TUCANA_PROTOTYPE_H_
+#pragma once
 #include <stdint.h>
 
 #include "conf.h"
@@ -51,4 +49,4 @@ unsigned long hash(unsigned char *str);
 
 void Server_Waiting_DBs_are_Open( _RegionsSe *aux_regions_S );
 
-#endif
+

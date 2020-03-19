@@ -1,12 +1,6 @@
 
-#ifndef _TU_NETWORK_DATA_SERVER_H
-#define _TU_NETWORK_DATA_SERVER_H
+#pragma once
  
-//#ifndef _GNU_SOURCE
-//#define _GNU_SOURCE     /* To get defns of NI_MAXSERV and NI_MAXHOST */
-//#endif
-
-
 #include <arpa/inet.h>
 #include <sys/socket.h>
 #include <netdb.h>
@@ -55,4 +49,4 @@ void Free_Server_Network_Data(_server_tu_network_data *net);
 void Init_Array_Server_Tu_Network_Data( _array_server_tu_network_data *net_list );
 void Set_And_Alloc_Tu_Server_Network_Data( const struct String_vector *zk_servers, _array_server_tu_network_data *net_list, void *net_private );
 _server_tu_network_data *Server_FindHostname_Servers( char *hostname,  _array_server_tu_network_data *net_list );
-#endif
+

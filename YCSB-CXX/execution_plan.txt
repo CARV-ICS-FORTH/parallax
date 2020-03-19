@@ -1,0 +1,1 @@
+load_a load /home1/private/gesalous/carvgit/HEutropia/YCSB-CXX/workloads/workloada

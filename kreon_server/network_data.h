@@ -1,7 +1,4 @@
-
-#ifndef _TU_NETWORK_DATA_H
-#define _TU_NETWORK_DATA_H
- 
+#pragma once
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE     /* To get defns of NI_MAXSERV and NI_MAXHOST */
 #endif
@@ -48,4 +45,4 @@ void Free_Network_Data(_tu_network_data *net);
 void Init_Array_Tu_Network_Data( _array_tu_network_data *net_list );
 void Set_And_Alloc_Tu_Network_Data( const struct String_vector *zk_servers, _array_tu_network_data *net_list, void *net_private );
 
-#endif
+

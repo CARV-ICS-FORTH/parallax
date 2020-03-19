@@ -4,11 +4,7 @@
 //  Created by Pilar Gonzalez-Ferez on 28/07/16.
 //  Copyright (c) 2016 Pilar Gonzalez Ferez <pilar@ics.forth.gr>.
 //
-
-#ifndef __ZK_SERVER_H_
-#define __ZK_SERVER_H_
-
-
+#pragma once
 #include <assert.h>
 #include <errno.h>
 #include <string.h>
@@ -219,4 +215,4 @@ void server_aexist_servers_watcher( zhandle_t *zh, int type, int state, const ch
 //Added to fix warning
 void server_get_IP_server(_server_tu_network_data *net_data);
 
-#endif
+

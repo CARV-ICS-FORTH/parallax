@@ -4,10 +4,7 @@
  * Created by Pilar Gonzalez-Ferez on 28/07/16.
  * Copyright (c) 2016 Pilar Gonzalez Ferez <pilar@ics.forth.gr>.
 */
-
-#ifndef _TUCANA_STORAGE_DEVICES_H
-#define _TUCANA_STORAGE_DEVICES_H
-
+#pragma once
 #include "conf.h"
 #include <inttypes.h>
 
@@ -44,4 +41,4 @@ void Free_Storage_Device( tu_storage_device  *storage_device );
 uint64_t Get_Volumen_Storage_Device_ByName( tu_storage_device *storage_device, char *path, uint64_t size );
 
 
-#endif
+

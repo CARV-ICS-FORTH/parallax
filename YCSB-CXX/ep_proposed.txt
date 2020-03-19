@@ -1,0 +1,8 @@
+# this is a comment
+# <execution name (same in results directory)>' '<load|run>' '<workload file>
+load_a load workloads/workloada
+run_a run workloads/workloada
+run_b run workloads/workloadb
+run_c run workloads/workloadc
+run_f run workloads/workloadf
+run_d run workloads/workloadd

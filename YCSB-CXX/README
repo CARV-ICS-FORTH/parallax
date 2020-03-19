@@ -1,0 +1,7 @@
+XFS
+
+mkfs.xfs -K /dev/sdx 
+
+EXT4
+
+mkfs.ext4 -E nodiscard /dev/sdx

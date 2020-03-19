@@ -1,6 +1,8 @@
 #include <assert.h>
-
-#include "../../utilities/stack.h"
+#include <stdlib.h>
+#include <signal.h>
+#include "stack.h"
+#include "../../build/external-deps/log/src/log.h"
 #include "scanner.h"
 #include "../btree/btree.h"
 #include "../btree/conf.h"
@@ -11,55 +13,59 @@ extern unsigned long long scan_prefix_miss;
 extern int32_t index_order;
 extern int32_t leaf_order;
 
-int32_t _get_next_KV(level_scanner * sc);
-int _init_level_scanner(level_scanner *level_sc, db_handle * handle, void * start_key, uint32_t level_id, char seek_mode);
-
+int32_t _get_next_KV(level_scanner *sc);
+int _init_level_scanner(level_scanner *level_sc, db_handle *handle, void *start_key, uint32_t level_id, char seek_mode);
 
 /**
- * Spill buffer operation will use this scanner. Traversal begins from root_w and
- * free all index nodes (leaves and index) during traversal.However, since we have also
- * root_r we need to rescan root_r to free possible staff. Free operations will be written in a matrix
- * which later is gonna be sorted to eliminate the duplicates and apply the free operations (applying twice a 	* free operation for the same address may result in CORRUPTION :-S
+ * Spill buffer operation will use this scanner. Traversal begins from root_w
+ * and
+ * free all index nodes (leaves and index) during traversal.However, since we
+ * have also
+ * root_r we need to rescan root_r to free possible staff. Free operations will
+ * be written in a matrix
+ * which later is gonna be sorted to eliminate the duplicates and apply the free
+ * operations (applying twice a 	* free operation for the same address
+ * may
+ * result in CORRUPTION :-S
  */
-level_scanner * _init_spill_buffer_scanner(db_handle *handle, node_header * node,void * start_key)
+level_scanner *_init_spill_buffer_scanner(db_handle *handle, node_header *node, void *start_key)
 {
-	level_scanner * level_sc;
+	level_scanner *level_sc;
 	level_sc = malloc(sizeof(level_scanner));
 	stack_init(&level_sc->stack);
 	level_sc->db = handle;
 	level_sc->root = node;
 
 	level_sc->type = SPILL_BUFFER_SCANNER;
-	level_sc->keyValue = (void *)malloc(PREFIX_SIZE+sizeof(uint64_t));/*typicall 20 bytes 8 prefix, 4 hash, and 8 the address to the KV log*/
+	level_sc->keyValue = (void *)malloc(PREFIX_SIZE + sizeof(uint64_t)); /*typicall 20 bytes 8
+                                                         prefix 
+                                                         the address to the KV
+                                                         log*/
 	/*position scanner now to the appropriate row*/
-	if(_seek_scanner(level_sc, start_key, GREATER_OR_EQUAL) == END_OF_DATABASE){
-
-		DPRINT("empty internal buffer during spill operation, is that possible?\n");
-		//will happen in close_spill_buffer_scanner stack_destroy(&(sc->stack));
-		//free(sc);
+	if (_seek_scanner(level_sc, start_key, GREATER_OR_EQUAL) == END_OF_DATABASE) {
+		log_info("empty internal buffer during spill operation, is that possible?");
+		// will happen in close_spill_buffer_scanner stack_destroy(&(sc->stack));
+		// free(sc);
 		return NULL;
 	}
 	return level_sc;
 }
 
-void _close_spill_buffer_scanner(level_scanner * level_sc, node_header * root)
+void _close_spill_buffer_scanner(level_scanner *level_sc, node_header *root)
 {
 	free(level_sc->keyValue);
 	stack_destroy(&(level_sc->stack));
 	free(level_sc);
 }
 
-
-scannerHandle *initScanner(scannerHandle *sc, db_handle *handle, void *start_key, char seek_flag){
+scannerHandle *initScanner(scannerHandle *sc, db_handle *handle, void *start_key, char seek_flag)
+{
 	heap_node nd;
-
-#ifdef SCAN_REORGANIZATION
-	int32_t j;
-#endif
-	int32_t i;
+	uint8_t level_id;
+	uint8_t active_tree;
 	int retval;
 
-	if(sc == NULL){ // this is for mongodb
+	if (sc == NULL) { // this is for mongodb
 		sc = malloc(sizeof(scannerHandle));
 		sc->malloced = 1;
 		snapshot(handle->volume_desc);
@@ -67,102 +73,52 @@ scannerHandle *initScanner(scannerHandle *sc, db_handle *handle, void *start_key
 		sc->malloced = 0;
 	}
 
+	active_tree = handle->db_desc->levels[0].active_tree;
 	sc->db = handle;
-	initMinHeap(&sc->heap, handle->db_desc->active_tree);
+	initMinHeap(&sc->heap, active_tree);
 
 	/*XXX TODO XXX*/
-	//future call
-	//register my epoch to prevent cleaner from recycling entries I might be working on
-	for(i=0;i<TOTAL_TREES;i++)
-	{
-		if(handle->db_desc->root_r[i] != NULL){
-
-			retval = _init_level_scanner(&sc->LEVEL_SCANNERS[i], handle,start_key,i, seek_flag);
-			if(retval == 0){
-				sc->LEVEL_SCANNERS[i].valid = 1;
-				nd.data = sc->LEVEL_SCANNERS[i].keyValue;
-				nd.level_id = i;
+	// future call
+	// register my epoch to prevent cleaner from recycling entries I might be
+	// working on
+	for (level_id = 0; level_id < MAX_LEVELS; level_id++) {
+		active_tree = handle->db_desc->levels[level_id].active_tree;
+		if (handle->db_desc->levels[level_id].root_r[active_tree] != NULL) {
+			retval = _init_level_scanner(&sc->LEVEL_SCANNERS[level_id], handle, start_key, level_id,
+						     seek_flag);
+			if (retval == 0) {
+				sc->LEVEL_SCANNERS[level_id].valid = 1;
+				nd.data = sc->LEVEL_SCANNERS[level_id].keyValue;
+				nd.level_id = level_id;
 				insertheap_node(&sc->heap, &nd);
-#ifdef SCAN_REORGANIZATION
-				uint8_t inc= 0;
-				uint8_t counter = 0;
-				if(i == NUM_OF_TREES_PER_LEVEL) {//keeps scan stats only for level 1
-					//assert
-					if( sc->LEVEL_SCANNERS[i].leaf->leaf_id/2 > (COUNTER_SIZE-1)) {
-						printf("[%s:%s:%d] FATAL scan counter stats overflow, increase COUNTER_SIZE\n",__FILE__,__func__,__LINE__);
-						exit(EXIT_FAILURE);
-					}
 
-					counter = handle->db_desc->scan_access_counter[sc->LEVEL_SCANNERS[i].leaf->leaf_id/2];
-					if(sc->LEVEL_SCANNERS[i].leaf->leaf_id % 2 == 0){
-						counter = (counter & 0x0F);
-						if(counter < COUNTER_THREASHOLD) {
-							inc = 1;
-							//printf("[%s:%s:%d] counter is %d for leaf with id %llu\n",__FILE__,__func__,__LINE__,counter,(LLU)sc->LEVEL_SCANNERS[i].leaf->leaf_id);
-							__sync_fetch_and_add(&handle->db_desc->scan_access_counter[sc->LEVEL_SCANNERS[i].leaf->leaf_id/2],inc);
-							counter = handle->db_desc->scan_access_counter[sc->LEVEL_SCANNERS[i].leaf->leaf_id/2] & 0x0F;
-						}
-					} else {
-						counter = counter >> 4;
-						if(counter < COUNTER_THREASHOLD) {
-							inc = 16;
-							//printf("[%s:%s:%d] counter is %d for leaf with id %llu\n",__FILE__,__func__,__LINE__,counter,(LLU)sc->LEVEL_SCANNERS[i].leaf->leaf_id/2);
-							__sync_fetch_and_add(&handle->db_desc->scan_access_counter[sc->LEVEL_SCANNERS[i].leaf->leaf_id/2],inc);
-							counter = handle->db_desc->scan_access_counter[sc->LEVEL_SCANNERS[i].leaf->leaf_id/2] >> 4;
-						}
-					}
-				}
-
-				if(i == NUM_OF_TREES_PER_LEVEL &&
-				   counter == COUNTER_THREASHOLD) {
-					//printf("[%s:%s:%d] reached threashold time to reorganize leaf with id %llu\n",__FILE__,__func__,__LINE__,(LLU)sc->LEVEL_SCANNERS[i].leaf->leaf_id);
-					__sync_fetch_and_add(&(handle->db_desc->scan_access_counter[sc->LEVEL_SCANNERS[i].leaf->leaf_id/2]),inc);
-					void * key_addresses[256];
-					void *addr = (void *)((uint64_t)sc->LEVEL_SCANNERS[i].leaf)+sizeof(node_header);
-					for(j=0;j<sc->LEVEL_SCANNERS[i].leaf->numberOfEntriesInNode;j++){
-						key_addresses[j] = (void *) MAPPED + *(uint64_t *)addr;
-						/*let the 4KB page fault happen without locking the db, for level-0*/
-						data_addresses[j] =  key_addresses[j]+sizeof(uint32_t)+*(uint32_t *)key_addresses[j];
-						addr += sizeof(uint64_t);
-					}
-					/*acquire db lock for the log*/
-					//	pthread_mutex_lock(&sc->db->db_desc->write_lock);
-					/*acquire spiller lock for LEVEL-1*/
-					//pthread_mutex_lock(&sc->db->db_desc->spiller_lock);
-					/*insert in the DB*/
-					for(j=0;j<sc->LEVEL_SCANNERS[i].leaf->numberOfEntriesInNode;j++){
-						_insert_key_value(sc->db, key_addresses[j],data_addresses[j],SCAN_REORGANIZE);
-					}
-					//pthread_mutex_unlock(&sc->db->db_desc->write_lock);
-					//pthread_mutex_unlock(&sc->db->db_desc->spiller_lock);
-				}
-
-#endif
 			} else
-				sc->LEVEL_SCANNERS[i].valid = 0;
-		}
-		else
-			sc->LEVEL_SCANNERS[i].valid = 0;
+				sc->LEVEL_SCANNERS[level_id].valid = 0;
+		} else
+			sc->LEVEL_SCANNERS[level_id].valid = 0;
 	}
 
 	sc->type = FULL_SCANNER;
-	//fill sc->keyValue field
-	if(getNext(sc) == END_OF_DATABASE){
-		/*printf("[%s:%s:%d] reached end of database\n",__FILE__,__func__,__LINE__);*/
+	// fill sc->keyValue field
+	if (getNext(sc) == END_OF_DATABASE) {
+		log_warn("Reached end of database");
+		raise(SIGINT);
 		sc->keyValue = NULL;
 	}
 	return sc;
 }
 
-int _init_level_scanner(level_scanner *level_sc, db_handle * handle, void * start_key, uint32_t level_id, char seek_mode){
+int _init_level_scanner(level_scanner *level_sc, db_handle *handle, void *start_key, uint32_t level_id, char seek_mode)
+{
+	uint8_t active_tree = handle->db_desc->levels[level_id].active_tree;
+
 	level_sc->db = handle;
 	level_sc->level_id = level_id;
-	level_sc->root = handle->db_desc->root_r[level_id];/*related to CPAAS-188*/
+	level_sc->root = handle->db_desc->levels[level_id].root_r[active_tree]; /*related to CPAAS-188*/
 	stack_init(&level_sc->stack);
 	/* position scanner now to the appropriate row */
-	if(_seek_scanner(level_sc, start_key, seek_mode) == END_OF_DATABASE)
-	{
-		//printf("[%s:%s:%d] EMPTY DATABASE!\n",__FILE__,__func__,__LINE__);
+	if (_seek_scanner(level_sc, start_key, seek_mode) == END_OF_DATABASE) {
+		// printf("[%s:%s:%d] EMPTY DATABASE!\n",__FILE__,__func__,__LINE__);
 		stack_destroy(&(level_sc->stack));
 		return -1;
 	}
@@ -170,25 +126,24 @@ int _init_level_scanner(level_scanner *level_sc, db_handle * handle, void * star
 	return 0;
 }
 
-
-
-void closeScanner(scannerHandle *sc){
+void closeScanner(scannerHandle *sc)
+{
 	int32_t i;
 
-	for(i=0;i<TOTAL_TREES;i++){
-		if(sc->LEVEL_SCANNERS[i].valid){
+	for (i = 0; i < MAX_LEVELS; i++) {
+		if (sc->LEVEL_SCANNERS[i].valid) {
 			stack_destroy(&(sc->LEVEL_SCANNERS[i].stack));
 		}
 	}
 
-	if(sc->malloced)
+	if (sc->malloced)
 		free(sc);
 }
 
 /*XXX TODO XXX, please check if this is legal*/
 int isValid(scannerHandle *sc)
 {
-	if(sc->keyValue != NULL)
+	if (sc->keyValue != NULL)
 		return 1;
 	return 0;
 }
@@ -217,227 +172,228 @@ void *getValuePtr(scannerHandle *sc)
 	return val_ptr + sizeof(int32_t);
 }
 
-
-node_header * get_addr_of_leaf(db_handle * handle,void *key, int32_t tree_id)
+int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER_MODE mode)
 {
-	//printf("[%s:%s:%d] tree id is %d\n",__FILE__,__func__,__LINE__,tree_id);
-	node_header * node;
-	void * addr;
-	char exit = 0x00;;
-
-	//if(handle->db_desc->root_w[tree_id]!=NULL)
-	//node = handle->db_desc->root_w[tree_id];
-	if(handle->db_desc->root_r[tree_id] != NULL)
-		node = handle->db_desc->root_r[tree_id];
-	else
-		return NULL;
-
-	while(node->height > 0)
-	{
-		if(node->height == 1)
-			exit = 0x01;
-		addr = _index_node_binary_search(node, key, KV_PREFIX);
-		node = (node_header *)(MAPPED + *(uint64_t *)addr);
-		if(exit == 0x01)
-			break;
-	}
-	//printf("[%s:%s:%d] node addr %llu type %d\n\n",__FILE__,__func__,__LINE__,(LLU)node,node->type);
-	return node;
-}
-
-int32_t _seek_scanner(level_scanner *level_sc, void * start_key_buf, char MODE){
 	char key_buf_prefix[PREFIX_SIZE];
-	void * addr = NULL;
-	node_header * tempNode;
-	void * index_key_buf;
+	stackElementT element;
+	void *full_pivot_key;
+	void *addr = NULL;
+	char *index_key_prefix;
+	index_node *inode;
+	leaf_node *lnode;
+	node_header *node;
 	int64_t ret;
 	int32_t start_idx = 0;
 	int32_t end_idx = 0;
 	int32_t middle;
-#ifndef FIXED_SIZE_KEYS
-	uint64_t *index_key_prefix;
-#endif
 	char level_key_format;
 
-	stack_reset(&(level_sc->stack));/*drop all paths*/
-	tempNode = level_sc->root;//CPAAS-118 related
+	/*drop all paths*/
+	stack_reset(&(level_sc->stack));
+	node = level_sc->root; // CPAAS-118 related
 
-
-	/*special case howevers it happens*/
-	if(tempNode->type == leafRootNode)
-		stack_push(&(level_sc->stack), 0x0000000000000000);/*guard the stack*/
-
-	if(tempNode->numberOfEntriesInNode == 0)
-		return END_OF_DATABASE; /*happens only when we seek in an empty tree*/
-
-	while(tempNode->type != leafNode && tempNode->type != leafRootNode){
-
-		addr = _index_node_binary_search(tempNode, start_key_buf, KV_FORMAT);
-		/* check if we have followed the last path */
-		if((uint64_t)addr == ((uint64_t)tempNode + (uint64_t)sizeof(node_header)+(uint64_t)((tempNode->numberOfEntriesInNode)*16)))
-		{
-			if(tempNode->type == rootNode){
-				stack_push(&(level_sc->stack), 0x0000000000000000);
-			}
-			tempNode = (node_header *)(MAPPED + *(uint64_t *)addr);
-			continue;
-		}
-		stack_push(&(level_sc->stack), (stackElementT)addr);
-		tempNode = (node_header *)(MAPPED + *(uint64_t *)addr);
+	if (node->type == leafRootNode && node->numberOfEntriesInNode == 0) {
+		/*we seek in an empty tree*/
+		return END_OF_DATABASE;
 	}
 
-	if(start_key_buf == NULL)
+	while (node->type != leafNode && node->type != leafRootNode) {
+		inode = (index_node *)node;
+		start_idx = 0;
+		end_idx = inode->header.numberOfEntriesInNode - 1;
+		middle = (start_idx + end_idx) / 2;
+
+		while (1) {
+			middle = (start_idx + end_idx) / 2;
+			/*reconstruct full key*/
+			addr = &(inode->p[middle].pivot);
+			full_pivot_key = (void *)(MAPPED + *(uint64_t *)addr);
+			ret = _tucana_key_cmp(full_pivot_key, start_key_buf, KV_FORMAT, KV_FORMAT);
+			//log_info("pivot %s app %s ret %lld",full_pivot_key+4,start_key_buf+4,ret);
+
+			if (ret == 0) {
+				addr = &(inode->p[middle].right[0]);
+				break;
+			} else if (ret > 0) {
+				end_idx = middle - 1;
+				if (start_idx > end_idx) {
+					addr = &(inode->p[middle].left[0]);
+					middle--;
+					break;
+				}
+			} else {
+				start_idx = middle + 1;
+				if (start_idx > end_idx) {
+					addr = &(inode->p[middle].right[0]);
+					//middle++;
+					break;
+				}
+			}
+		}
+
+		assert(middle < (int64_t)node->numberOfEntriesInNode);
+		element.node = node;
+		element.guard = 0;
+		if (middle < 0) {
+			element.leftmost = 1;
+			element.rightmost = 0;
+			element.idx = 0;
+			node = (node_header *)(MAPPED + inode->p[0].left[0]);
+		} else if (middle == (int64_t)node->numberOfEntriesInNode - 1) {
+			/*last path of node*/
+			element.leftmost = 0;
+			element.rightmost = 1;
+			element.idx = middle;
+			node = (node_header *)(MAPPED + inode->p[middle].right[0]);
+		} else {
+			element.leftmost = 0;
+			element.rightmost = 0;
+			element.idx = middle;
+			node = (node_header *)(MAPPED + inode->p[middle].right[0]);
+		}
+		stack_push(&(level_sc->stack), element);
+	}
+
+	/*reached leaf node, setup prefixes*/
+	if (start_key_buf == NULL)
 		memset(key_buf_prefix, 0, PREFIX_SIZE * sizeof(char));
-	else{
-		memcpy(key_buf_prefix, (void *)((uint64_t)start_key_buf + sizeof(int32_t) + OFFSET_IN_KEY), PREFIX_SIZE);
+	else {
+		memcpy(key_buf_prefix, (void *)((uint64_t)start_key_buf + sizeof(int32_t)), PREFIX_SIZE);
 	}
 
 	/*now perform binary search inside the leaf*/
+	lnode = (leaf_node *)node;
 	start_idx = 0;
-	end_idx = tempNode->numberOfEntriesInNode - 1;
+	end_idx = lnode->header.numberOfEntriesInNode - 1;
 	middle = 0;
 
-	while(start_idx <= end_idx){
+	while (start_idx <= end_idx) {
+		middle = (start_idx + end_idx) / 2;
 
-		middle = (start_idx + end_idx)/2;
-		addr = (void *)((uint64_t)tempNode + (uint64_t)sizeof(node_header) + (uint64_t)(middle*sizeof(uint64_t)));
-#ifndef FIXED_SIZE_KEYS
-		index_key_prefix = (uint64_t *)( (uint64_t)tempNode + (uint64_t)sizeof(node_header) + (uint64_t)(leaf_order * sizeof(uint64_t)) + (middle * PREFIX_SIZE) );
-		ret = prefix_compare((char *)index_key_prefix, key_buf_prefix, PREFIX_SIZE);
-#else
-		if(key_buf_prefix == NULL)
-			ret = 1;
-		else
-			ret = memcmp(addr,key_buf_prefix,PREFIX_SIZE);
-#endif
-		if(ret < 0)
+		index_key_prefix = &lnode->prefix[middle][0];
+		ret = prefix_compare(index_key_prefix, key_buf_prefix, PREFIX_SIZE);
+
+		if (ret < 0)
 			start_idx = middle + 1;
-		else if(ret > 0)
+		else if (ret > 0)
 			end_idx = middle - 1;
 
-		else{ //prefix is the same, unreachable segment for fixed size keys
+		else {
+			/*prefix is the same*/
+			addr = (void *)(MAPPED + lnode->pointer[middle]);
+			ret = _tucana_key_cmp(addr, start_key_buf, KV_FORMAT, KV_FORMAT);
 
-			addr = (void *)((uint64_t)tempNode+(uint64_t)sizeof(node_header)+(uint64_t)(middle*sizeof(uint64_t)));
-			index_key_buf = (void *)(MAPPED + *(uint64_t *)addr);
-			ret = _tucana_key_cmp(index_key_buf, start_key_buf, KV_FORMAT, KV_FORMAT);
-
-			if(ret == 0){
+			if (ret == 0) {
 				break;
-			}else if(ret < 0){
-				start_idx = middle+1;
-				if(start_idx > end_idx){
+			} else if (ret < 0) {
+				start_idx = middle + 1;
+				if (start_idx > end_idx) {
 					middle++;
 					break;
 				}
-			}else if(ret > 0){
-				end_idx = middle-1;
-				if(start_idx > end_idx)
+			} else if (ret > 0) {
+				end_idx = middle - 1;
+				if (start_idx > end_idx)
 					break;
 			}
 		}
 	}
 
-/*further checks*/
-	if(middle < 0)
+	/*further checks*/
+	if (middle <= 0) {
+		element.node = node;
+		element.idx = 0;
+		element.leftmost = 1;
+		element.rightmost = 0;
+		element.guard = 0;
+		//log_debug("Leftmost boom");
+		stack_push(&(level_sc->stack), element);
 		middle = 0;
-	else if (middle >= tempNode->numberOfEntriesInNode)
-		middle = tempNode->numberOfEntriesInNode - 1;
+	} else if (middle >= (int64_t)lnode->header.numberOfEntriesInNode) {
+		element.node = node;
+		element.idx = 0;
+		element.leftmost = 0;
+		element.rightmost = 1;
+		element.guard = 0;
+		stack_push(&(level_sc->stack), element);
+		//log_info("rightmost");
+		middle = lnode->header.numberOfEntriesInNode - 1;
+	} else {
+		//log_info("middle is %d", middle);
+		element.node = node;
+		element.idx = middle;
+		element.leftmost = 0;
+		element.rightmost = 0;
+		element.guard = 0;
+		stack_push(&(level_sc->stack), element);
+	}
 
-	addr = (void *)((uint64_t)tempNode + (uint64_t)sizeof(node_header) + (uint64_t)(middle*sizeof(uint64_t)));
-	if(middle < (tempNode->numberOfEntriesInNode -1))
-		stack_push(&(level_sc->stack), (stackElementT)addr+sizeof(uint64_t));
-	else
-		stack_push(&(level_sc->stack), (stackElementT)addr);
-
-	if(level_sc->type == SPILL_BUFFER_SCANNER){
+	if (level_sc->type == SPILL_BUFFER_SCANNER) {
 		level_key_format = KV_PREFIX;
-		void * node = (void *)addr - ((uint64_t)addr%NODE_SIZE);
-#ifdef DEBUG_TUCANA_2
-		printf("[%s:%s:%d] stack_top %llu node %llu leaf_order %llu and sizeof(node_header) %d\n",__FILE__,__func__,__LINE__, (LLU)addr,     (LLU)node, leaf_order, sizeof(node_header));
-#endif
-		uint64_t position = ((uint64_t)addr-((uint64_t)node +sizeof(node_header)))/sizeof(uint64_t);
-
-#ifdef DEBUG_TUCANA_2
-		printf("[%s:%s:%d] position is %llu\n",__FILE__, __func__, __LINE__,(LLU)position);
-#endif
-		/*we assume that sc->keyValue has been allocated at tucana_2 init 20 bytes*/
-		memcpy(level_sc->keyValue, (void *)(uint64_t)node+sizeof(node_header)+(leaf_order*sizeof(uint64_t))+(position*PREFIX_SIZE), PREFIX_SIZE);/*prefix*/
-#ifdef ENABLE_HASH
-		memcpy((void *)((uint64_t)level_sc->keyValue+PREFIX_SIZE),(void *)(uint64_t)node+sizeof(node_header)+(leaf_order*sizeof(uint64_t))+(leaf_order*PREFIX_SIZE)+(position*HASH_SIZE), HASH_SIZE);/*hash*/
-#endif
-		*(uint64_t *)(level_sc->keyValue+PREFIX_SIZE+HASH_SIZE) = MAPPED + *(uint64_t *)((uint64_t)node+sizeof(node_header)+(position*sizeof(uint64_t)));
-#ifdef DEBUG_TUCANA_2
-		printf("[%s:%s:%d] key is %s\n",__FILE__,__func__,__LINE__,(MAPPED + *(uint64_t *)addr)+sizeof(int32_t));
-#endif
-
-	} else {/*normal scanner*/
+		// log_info("stack_top %llu node %llu leaf_order %llu and
+		// sizeof(node_header) %d", (LLU)addr, (LLU)node,
+		//	 leaf_order, sizeof(node_header));
+		/*we assume that sc->keyValue has size of PREFIX_SIZE + sizeof(uint64_t)*/
+		/*prefix first*/
+		memcpy(level_sc->keyValue, &lnode->prefix[middle][0], PREFIX_SIZE);
+		/*pointer second*/
+		*(uint64_t *)(level_sc->keyValue + PREFIX_SIZE) = MAPPED + lnode->pointer[middle];
+		// log_info("key is %s\n", (MAPPED + *(uint64_t *)addr) + sizeof(int32_t));
+	} else { /*normal scanner*/
 		level_key_format = KV_FORMAT;
-		level_sc->keyValue = (void *)(MAPPED + *(uint64_t *)addr);
-#ifdef SCAN_REORGANIZATION
-		if(level_sc->level_id == NUM_OF_TREES_PER_LEVEL){/*level-1 scanner*/
-			level_sc->leaf = tempNode;
-		}
-#endif
+		level_sc->keyValue = (void *)MAPPED + lnode->pointer[middle];
+		//log_info("full key is %s", level_sc->keyValue + 4);
 	}
 
-	//Added new cmp function, please check again
-	if(MODE == GREATER){
-#ifndef FIXED_SIZE_KEYS
-		while(_tucana_key_cmp(level_sc->keyValue,start_key_buf, level_key_format, KV_FORMAT)<= 0){
-#else
-			while(memcmp(sc->keyValue+sizeof(uint32_t),start_key_buf+sizeof(uint32_t),sizeof(uint64_t)) <= 0){
-#endif
-				if(_get_next_KV(level_sc) == END_OF_DATABASE)
+	if (start_key_buf != NULL) {
+		if (mode == GREATER) {
+			while (_tucana_key_cmp(level_sc->keyValue, start_key_buf, level_key_format, KV_FORMAT) <= 0) {
+				if (_get_next_KV(level_sc) == END_OF_DATABASE)
+					return END_OF_DATABASE;
+			}
+		} else if (mode == GREATER_OR_EQUAL) {
+			//log_info("key is %s", level_sc->keyValue + 4);
+			while (_tucana_key_cmp(level_sc->keyValue, start_key_buf, level_key_format, KV_FORMAT) < 0) {
+				if (_get_next_KV(level_sc) == END_OF_DATABASE)
 					return END_OF_DATABASE;
 			}
 		}
-		else if(MODE == GREATER_OR_EQUAL){
-#ifndef  FIXED_SIZE_KEYS
-			while( _tucana_key_cmp(level_sc->keyValue,start_key_buf, level_key_format, KV_FORMAT)< 0){
-				if(_get_next_KV(level_sc) == END_OF_DATABASE)
-					return END_OF_DATABASE;
-			}
-#else
-			while(start_key_buf != NULL &&  memcmp(sc->keyValue+sizeof(uint32_t),start_key_buf+sizeof(uint32_t),sizeof(uint64_t) < 0)){
-				if(_get_next_KV(sc) == END_OF_DATABASE)
-					return END_OF_DATABASE;
-			}
-#endif
-		}
+	}
 #ifdef DEBUG_SCAN
-		if(start_key_buf != NULL)
-			printf("[%s:%s:%d] start_key_buf = %s sc->keyValue = %s\n",__FILE__,__func__,__LINE__,start_key_buf+4, level_sc->keyValue);
-		else
-			printf("[%s:%s:%d] start_key_buf NULL sc->keyValue = %s\n",__FILE__,__func__,__LINE__, level_sc->keyValue);
+	if (start_key_buf != NULL)
+		log_info("start_key_buf = %s sc->keyValue = %s\n", start_key_buf + 4, level_sc->keyValue);
+	else
+		log_info("start_key_buf NULL sc->keyValue = %s\n", level_sc->keyValue);
 #endif
-		return SUCCESS;
-	}
+	return SUCCESS;
+}
 
-
-int32_t getNext(scannerHandle * sc){
-
+int32_t getNext(scannerHandle *sc)
+{
 	uint8_t stat;
 	heap_node nd;
 	heap_node next_nd;
 
-	while(1){
+	while (1) {
 		stat = getMinAndRemove(&sc->heap, &nd);
-		if(stat != EMPTY_MIN_HEAP){
+		if (stat != EMPTY_MIN_HEAP) {
 			sc->keyValue = nd.data;
-			//refill
-			if(_get_next_KV(&sc->LEVEL_SCANNERS[nd.level_id]) != END_OF_DATABASE){
-				//printf("[%s:%s:%d] refilling from level_id %d\n",__FILE__,__func__,__LINE__, nd.level_id);
+			// refill
+			if (_get_next_KV(&sc->LEVEL_SCANNERS[nd.level_id]) != END_OF_DATABASE) {
+				// printf("[%s:%s:%d] refilling from level_id
+				// %d\n",__FILE__,__func__,__LINE__, nd.level_id);
 				next_nd.level_id = nd.level_id;
 				next_nd.data = sc->LEVEL_SCANNERS[nd.level_id].keyValue;
 				insertheap_node(&sc->heap, &next_nd);
 			}
-			if(nd.duplicate == 1){
-				//printf("[%s:%s:%d] ommiting duplicate %s\n",__FILE__,__func__,__LINE__, (char *)nd.data+4);
+			if (nd.duplicate == 1) {
+				assert(0);
+				// printf("[%s:%s:%d] ommiting duplicate
+				// %s\n",__FILE__,__func__,__LINE__, (char *)nd.data+4);
 				continue;
 			}
 			return KREON_OK;
-		}
-		else
+		} else
 			return END_OF_DATABASE;
 	}
 }
@@ -451,142 +407,138 @@ int32_t getNext(scannerHandle * sc){
  * update: 09/03/2017 14:15: for SPILL_BUFFER_SCANNER only we ll return codes
  * when a leaf search is exhausted
  **/
-int32_t _get_next_KV(level_scanner * sc){
+int32_t _get_next_KV(level_scanner *sc)
+{
+	stackElementT stack_top;
+	node_header *node;
+	index_node *inode;
+	leaf_node *lnode;
+	uint32_t idx;
+	uint32_t up = 1;
 
-	uint64_t stack_top;
-	node_header * curr_node;
-	node_header * child_node;
-	uint64_t position;
-	int16_t direction = 0;/*direction upwards the tree, 1 going downwards the tree*/
-
-	while(1)
-	{
-		stack_top = stack_pop(&(sc->stack));/*get the element*/
-		if(stack_top == 0x0000000000000000)
-		{
-			sc->keyValue = NULL;
-			return END_OF_DATABASE;
-		}
-		curr_node = (node_header *)(stack_top - (stack_top%DEVICE_BLOCK_SIZE));
-		position  = stack_top - ((uint64_t)curr_node+(uint64_t)sizeof(node_header));
-		/* TODO: Log Direct Write */
-		if(curr_node->type == leafNode || curr_node->type == leafRootNode)
-		{
-#ifdef DEBUG_SCAN
-			if(position%8 != 0){
-				printf("%s: FATAL misaligned addr 8 %llu\n", __func__,(LLU)position%8);
-				exit(-1);
-			}
-#endif
-			/*Finds the position of the node inside the log*/
-			if((position/8) < curr_node->numberOfEntriesInNode-1)
-			{
-#ifdef DEBUG_SCAN
-				printf("%s, advancing to next pointer in leaf position %llu entries %d\n",__func__,(LLU)position, curr_node->numberOfEntriesInNode);
-#endif
-				stack_push(&sc->stack, (stack_top+sizeof(uint64_t)));
-			}
-			/*we have exceed leaf or leafRoot node children. Continue either to End or to proceed*/
-			else if(sc->type == SPILL_BUFFER_SCANNER)
-			{
-				//printf("[%s:%s:%d] releasing dram frame of leaf\n",__FILE__,__func__,__LINE__);
-				free_buffered(sc->db,curr_node,NODE_SIZE,-1);
-			}
-			break;
-		}
-		else/*index node*/
-		{
-			if(direction == 0){
-				stack_top += (2*sizeof(uint64_t));
-#ifdef DEBUG_SCAN
-				if(position%16 != 0)
-				{
-					printf("%s: FATAL misaligned addr 16: %llu\n",__func__, (LLU)position%16);
-					exit(-1);
+	stack_top = stack_pop(&(sc->stack)); /*get the element*/
+	if (stack_top.guard) {
+		sc->keyValue = NULL;
+		return END_OF_DATABASE;
+	}
+	if (stack_top.node->type != leafNode && stack_top.node->type != leafRootNode) {
+		log_fatal("Corrupted scanner stack, top element should be a leaf node");
+		raise(SIGINT);
+		exit(EXIT_FAILURE);
+	}
+	node = stack_top.node;
+	while (1) {
+		if (up) {
+			/*check if we can advance in the current node*/
+			if (stack_top.rightmost) {
+				stack_top = stack_pop(&(sc->stack));
+				if (!stack_top.guard) {
+					//log_debug("rightmost in stack throw and continue type %s",
+					//	  node_type(stack_top.node->type));
+					continue;
+				} else {
+					return END_OF_DATABASE;
 				}
-#endif
-				if((position/16) < curr_node->numberOfEntriesInNode-1)
+			} else if (stack_top.leftmost) {
+				//log_debug("leftmost? %s", node_type(stack_top.node->type));
+				stack_top.leftmost = 0;
+
+				if (stack_top.node->type == leafNode || stack_top.node->type == leafRootNode) {
+					idx = 1;
+					stack_top.idx = 1;
 					stack_push(&sc->stack, stack_top);
-				else
-				{
-					if(curr_node->type == rootNode)
-						stack_push(&sc->stack, 0x0000000000000000);/*mark End Of Database*/
-					/*release dram frame for spills*/
-					if(sc->type == SPILL_BUFFER_SCANNER)
-					{
-						IN_log_header * curr = (IN_log_header *) (MAPPED + (uint64_t)curr_node->first_IN_log_header);
-						IN_log_header *last = (IN_log_header *)(MAPPED + (uint64_t)curr_node->last_IN_log_header);
-						IN_log_header * to_free;
-						while((uint64_t)curr != (uint64_t)last)
-						{
-							to_free = curr;
-							curr = (IN_log_header *) ((uint64_t)MAPPED + (uint64_t)curr->next);
-							free_buffered(sc->db,to_free,KEY_BLOCK_SIZE,-1);
-						}
-						free_buffered(sc->db,last,KEY_BLOCK_SIZE,-1);
-						/*finally node_header*/
-						free_buffered(sc->db,curr_node,NODE_SIZE,-1);
-					}
+					node = stack_top.node;
+					break;
+				} else {
+					//log_debug("Calculate and push type %s", node_type(stack_top.node->type));
+					stack_top.idx = 0;
+					stack_push(&sc->stack, stack_top);
+					inode = (index_node *)stack_top.node;
+					node = (node_header *)(MAPPED + inode->p[0].right[0]);
+					//stack_top.node = node;
+					//log_debug("Calculate and push type %s", node_type(stack_top.node->type));
+					//stack_push(&sc->stack, stack_top);
+					up = 0;
+					continue;
 				}
-				child_node = (node_header *)(MAPPED + *(uint64_t *)stack_top + (uint64_t)sizeof(node_header));
-				stack_push(&sc->stack, (stackElementT)child_node);
-				direction = 1;/*going downwards now*/
+			} else {
+				//log_debug("Advancing, %s idx = %d entries %d", node_type(stack_top.node->type),
+				//	  stack_top.idx, stack_top.node->numberOfEntriesInNode);
+				if (++stack_top.idx >= stack_top.node->numberOfEntriesInNode - 1)
+					stack_top.rightmost = 1;
+			}
+			stack_push(&sc->stack, stack_top);
+
+			if (stack_top.node->type == leafNode || stack_top.node->type == leafRootNode) {
+				idx = stack_top.idx;
+				node = stack_top.node;
+				break;
+			} else {
+				inode = (index_node *)stack_top.node;
+				node = (node_header *)(MAPPED + (uint64_t)inode->p[stack_top.idx].right[0]);
+				up = 0;
 				continue;
-			}else{
-				stack_push(&sc->stack, stack_top);
-				child_node = (node_header *)(MAPPED + *(uint64_t *)stack_top + (uint64_t)sizeof(node_header));
-				stack_push(&sc->stack, (stackElementT)child_node);
-				continue;
+			}
+		} else {
+			/*push yourself, update node and continue*/
+
+			stack_top.node = node;
+			//log_debug("Saved type %s", node_type(stack_top.node->type));
+			stack_top.idx = 0;
+			stack_top.leftmost = 1;
+			stack_top.rightmost = 0;
+			stack_top.guard = 0;
+			stack_push(&sc->stack, stack_top);
+			if (node->type == leafNode || node->type == leafRootNode) {
+				idx = 0;
+				break;
+			} else {
+				inode = (index_node *)node;
+				node = (node_header *)(MAPPED + (uint64_t)inode->p[0].left[0]);
 			}
 		}
 	}
-	/*<tucana_2>*/
-	//Please check if position is correct
-	if(sc->type == SPILL_BUFFER_SCANNER)
-	{
-		void * node = (void *)stack_top - (stack_top%NODE_SIZE);
-		position = (stack_top - ((uint64_t)node  + sizeof(node_header)))/sizeof(uint64_t);
-
-#ifdef DEBUG_TUCANA_2
-		printf("[%s:%s:%d] stack_top %llu node %llu leaf_order %d and sizeof(node_header) %d\n",__FILE__,__func__,__LINE__, (LLU)stack_top, node, leaf_order, sizeof(node_header));
-		printf("[%s:%s:%d] position is %llu\n",__FILE__, __func__, __LINE__,(LLU)position);
-#endif
-		/*we assume that sc->keyValue has been allocated at tucana_2 init 20 bytes*/
-		memcpy(sc->keyValue, (void *) (uint64_t)node+sizeof(node_header)+(leaf_order*sizeof(uint64_t))+(position*PREFIX_SIZE), PREFIX_SIZE);/*prefix*/
-#ifdef ENABLE_HASH
-		memcpy((void *)((uint64_t)sc->keyValue+PREFIX_SIZE),(void *)(uint64_t)node+sizeof(node_header)+(leaf_order*sizeof(uint64_t))+(leaf_order*PREFIX_SIZE)+(position*HASH_SIZE), HASH_SIZE);
-#endif
-		*(uint64_t *)(sc->keyValue+PREFIX_SIZE+HASH_SIZE) = MAPPED + *(uint64_t *)((uint64_t)node+sizeof(node_header)+(position*sizeof(uint64_t)));
-
-#ifdef DEBUG_TUCANA_2
-		printf("[%s:%s:%d] key is %s\n",__FILE__,__func__,__LINE__,(MAPPED + *(uint64_t *)stack_top)+sizeof(int32_t));
-#endif
+	lnode = (leaf_node *)node;
+	//log_warn("Key %lu:%s idx is %d", *(uint32_t *)(MAPPED + (uint64_t)lnode->pointer[idx]),
+	//MAPPED + lnode->pointer[idx] + 4, idx);
+	/*fill buffer and return*/
+	if (sc->type == SPILL_BUFFER_SCANNER) {
+		/*prefix first*/
+		memcpy(sc->keyValue, &lnode->prefix[idx][0], PREFIX_SIZE);
+		/*pointer second*/
+		*(uint64_t *)(sc->keyValue + PREFIX_SIZE) = MAPPED + lnode->pointer[idx];
+	} else {
+		/*normal scanner*/
+		sc->keyValue = (void *)MAPPED + lnode->pointer[idx];
+		//log_info("consuming idx %d key %s num entries %lu",idx,sc->keyValue+4,lnode->header.numberOfEntriesInNode);
 	}
-
-	else if(sc->type != CLOSE_SPILL_BUFFER_SCANNER)/*Do nothing for close_buffer_Scanner*/
-		sc->keyValue = (void *) MAPPED + *(uint64_t *)stack_top;
-
+	// else if (sc->type != CLOSE_SPILL_BUFFER_SCANNER) /*Do nothing for
+	// close_buffer_Scanner*/
+	//	sc->keyValue = (void *)MAPPED + *(uint64_t *)stack_top;
 	return SUCCESS;
 }
 
-uint32_t multiget_calc_kv_size(db_handle* handle, void* start_key, void* stop_key, uint32_t number_of_keys, long extension) {
-	// FIXME Instead of closing the scanner handle rewind it to start_key and reuse it for the call to multi_get
+uint32_t multiget_calc_kv_size(db_handle *handle, void *start_key, void *stop_key, uint32_t number_of_keys,
+			       long extension)
+{
+	// FIXME Instead of closing the scanner handle rewind it to start_key and
+	// reuse it for the call to multi_get
 	scannerHandle sc;
 	uint32_t i;
-	char seek_mode = (extension)?extension:GREATER_OR_EQUAL;
+	char seek_mode = (extension) ? extension : GREATER_OR_EQUAL;
 	uint32_t transfer_size = 0;
-	// FIXME 
+	// FIXME
 	/*snapshot(handle->volume_desc);*/
 	initScanner(&sc, handle, start_key, seek_mode);
-	if(sc.keyValue == NULL){
+	if (sc.keyValue == NULL) {
 		closeScanner(&sc);
 		return END_OF_DATABASE;
 	}
 
-	for(i=0; i < number_of_keys; i++){
+	for (i = 0; i < number_of_keys; i++) {
 		transfer_size = sizeof(uint32_t) + *(uint32_t *)sc.keyValue;
-		transfer_size += sizeof(uint32_t) + *(uint32_t *)((char*)sc.keyValue + transfer_size);
-		if(getNext(&sc) == END_OF_DATABASE){
+		transfer_size += sizeof(uint32_t) + *(uint32_t *)((char *)sc.keyValue + transfer_size);
+		if (getNext(&sc) == END_OF_DATABASE) {
 			break;
 		}
 	}
@@ -594,34 +546,35 @@ uint32_t multiget_calc_kv_size(db_handle* handle, void* start_key, void* stop_ke
 	return transfer_size;
 }
 
-uint32_t multi_get(db_handle *handle, void *start_key, void *end_key, void *buffer, uint32_t buffer_length, uint32_t number_of_keys, long extension)
+uint32_t multi_get(db_handle *handle, void *start_key, void *end_key, void *buffer, uint32_t buffer_length,
+		   uint32_t number_of_keys, long extension)
 {
 	scannerHandle sc;
 	uint32_t i;
 	uint32_t buffer_position = sizeof(uint32_t);
 	uint32_t keys_retrieved = 0;
 	int rc = KREON_OK;
-	char seek_mode = (extension)?extension:GREATER_OR_EQUAL;
-	// FIXME 
+	char seek_mode = (extension) ? extension : GREATER_OR_EQUAL;
+	// FIXME
 	/*snapshot(handle->volume_desc);*/
 	initScanner(&sc, handle, start_key, seek_mode);
-	if(sc.keyValue == NULL){
+	if (sc.keyValue == NULL) {
 		closeScanner(&sc);
 		return END_OF_DATABASE;
 	}
 
-	for(i=0; i < number_of_keys; i++){
+	for (i = 0; i < number_of_keys; i++) {
 		uint32_t transfer_size = sizeof(uint32_t) + *(uint32_t *)sc.keyValue;
-		transfer_size += sizeof(uint32_t) + *(uint32_t *)((char*)sc.keyValue + transfer_size);
-		if(buffer_position + transfer_size <= buffer_length){
-			memcpy((char*)buffer + buffer_position, sc.keyValue, transfer_size);
+		transfer_size += sizeof(uint32_t) + *(uint32_t *)((char *)sc.keyValue + transfer_size);
+		if (buffer_position + transfer_size <= buffer_length) {
+			memcpy((char *)buffer + buffer_position, sc.keyValue, transfer_size);
 			buffer_position += transfer_size;
 			++keys_retrieved;
-		} else{
+		} else {
 			rc = KREON_BUFFER_OVERFLOW;
 			break;
 		}
-		if(getNext(&sc) == END_OF_DATABASE){
+		if (getNext(&sc) == END_OF_DATABASE) {
 			rc = END_OF_DATABASE;
 			break;
 		}
@@ -630,4 +583,3 @@ uint32_t multi_get(db_handle *handle, void *start_key, void *end_key, void *buff
 	*(uint32_t *)buffer = keys_retrieved;
 	return rc;
 }
-

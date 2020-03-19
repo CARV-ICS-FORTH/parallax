@@ -1,0 +1,1 @@
+run_c run workloads/workloadc

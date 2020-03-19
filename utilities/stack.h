@@ -7,12 +7,12 @@
  *
  * This is the interface for a stack of characters.
  */
+#pragma once
 #include <stdint.h>
 
 #include "../kreon_lib/btree/conf.h"
 
-#ifndef _STACK_H
-#define _STACK_H
+
 /*
  * Type: stackElementT
  * -------------------
@@ -89,4 +89,4 @@ void stack_reset(stackT *stackP);
 int stack_is_empty(stackT *stackP);
 int stack_is_full(stackT *stackP);
 
-#endif  /* not defined _STACK_H */
+

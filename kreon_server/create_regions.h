@@ -1,6 +1,4 @@
-#ifndef _CREATE_REGIONS_H
-#define _CREATE_REGIONS_H
-
+#pragma once
 #include "conf.h"
 #include "regions.h"
 
@@ -85,4 +83,4 @@ void Assign_Tail_To_Region( struct test_regions *a_region );
 void create_tail_node_on_region( const char *value, const void *data );
 void create_tail_node_on_region_completion(int rc, const char *value, const void *data);
 
-#endif
+

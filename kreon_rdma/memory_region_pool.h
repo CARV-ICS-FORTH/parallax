@@ -40,8 +40,10 @@ typedef struct memory_region {
 }memory_region;
 
 memory_region_pool* mrpool_create(struct ibv_pd* pd, size_t max_allocated_memory, pool_type type, size_t allocation_size);
-memory_region* mrpool_allocate_memory_region(memory_region_pool* pool);
+memory_region* mrpool_allocate_memory_region(memory_region_pool* pool, struct rdma_cm_id* id);
 void mrpool_free_memory_region(memory_region** mr);
+/*MASTER-TO-REPLICA and REPLICA-TO-MASTER */
+memory_region* mrpool_get_static_buffer(struct rdma_cm_id *id,uint32_t size); 
 
 /*for client connections*/
 extern const size_t MEM_REGION_BASE_SIZE;

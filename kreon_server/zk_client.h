@@ -4,11 +4,7 @@
 // Created by Pilar Gonzalez-Ferez on 28/07/16.
 // Copyright (c) 2016 Pilar Gonzalez Ferez <pilar@ics.forth.gr>.
 // 
-
-#ifndef __ZK_CLIENT_H_
-#define __ZK_CLIENT_H_
-
-
+#pragma once
 #include <assert.h>
 #include <errno.h>
 #include <string.h>
@@ -122,5 +118,5 @@ void client_aexist_head_node_on_regions( client_region *cli_tu_region );
 void client_aexist_head_node_on_regions_completion(int rc, const struct Stat *stat, const void *data);
 void client_aexist_head_node_on_regions_watcher (zhandle_t *zh, int type, int state, const char *path, void *watcherCtx);
 
-#endif
+
 

@@ -1,14 +1,4 @@
-//
-//  tucana_regions.h
-//  Tucana Regions
-//
-//  Created by Pilar Gonzalez-Ferez on 28/07/16.
-//  Copyright (c) 2016 Pilar Gonzalez Ferez <pilar@ics.forth.gr>.
-//
-
-#ifndef __TUCANA_REGIONS_H_
-#define __TUCANA_REGIONS_H_
-
+#pragma once
 #include "conf.h"
 #include "network_data.h"
 
@@ -55,4 +45,4 @@ static inline uint64_t Get_Size_Region( _ID_region *id_region )
 }
 
 
-#endif
+

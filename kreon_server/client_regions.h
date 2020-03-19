@@ -6,9 +6,7 @@
 //  Copyright (c) 2016 Pilar Gonzalez Ferez <pilar@ics.forth.gr>.
 //
 
-#ifndef __CLIENT_REGIONS_H_
-#define __CLIENT_REGIONS_H_
-
+#pragma once
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE     
 #endif
@@ -193,5 +191,5 @@ void Client_Create_Receiving_Threads( _Client_Regions *client_regions );
 
 void Tu_Client_Create_RMDA_Connection( void *aux_client_regions );
 void Client_Flush_Volume_MultipleServers( _Client_Regions *client_regions );
-#endif
+
 
