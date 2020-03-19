@@ -1,0 +1,24 @@
+# See https://pre-commit.com for more information
+# See https://pre-commit.com/hooks.html for more hooks
+repos:
+
+-   repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v2.5.0
+    hooks:
+    -   id: trailing-whitespace
+    -   id: end-of-file-fixer
+    -   id: check-yaml
+    -   id: check-added-large-files
+    -   id: check-executables-have-shebangs
+    -   id: check-merge-conflict
+    #-   id: name-tests-test I will add it later because it is worth using it but I need to make some changes first
+
+-   repo: https://github.com/cheshirekow/cmake-format-precommit
+    rev: v0.6.9
+    hooks:
+    - id: cmake-format
+    # - id: cmake-lint CMakeLists needs fixing before using it.
+-   repo: git://github.com/doublify/pre-commit-clang-format
+    rev: master
+    hooks:
+    -   id: clang-format
