@@ -5,7 +5,6 @@
  * Copyright (c) 2016 Pilar Gonzalez Ferez <pilar@ics.forth.gr>.
 */
 
-
 #pragma once
 
 #include <inttypes.h>
@@ -15,12 +14,10 @@
 #include "../kreon_rdma/rdma.h"
 #include "conf.h"
 
-
 #define TDM_FIRST_MRQ_ELEMENT_SIZE (MRQ_ELEMENT_SIZE - sizeof(struct tu_data_message))
 
-enum tucana_message_types
-{
-    // FIXME Remove TU prefix from message types
+enum tucana_message_types {
+	// FIXME Remove TU prefix from message types
 	PUT_REQUEST = 1, // PUT operation: client -> server
 	MULTI_PUT, // FIXME Remove this message type
 	PUT_REPLY,
@@ -33,7 +30,7 @@ enum tucana_message_types
 	SCAN_REPLY, // SCAN reply: server -> client
 	SPILL_INIT,
 	SPILL_INIT_ACK,
-	SPILL_BUFFER_REQUEST,//message with sorted kv pairs from primary's L0 level
+	SPILL_BUFFER_REQUEST, //message with sorted kv pairs from primary's L0 level
 	SPILL_COMPLETE,
 	SPILL_COMPLETE_ACK,
 	FLUSH_SEGMENT_AND_RESET,
@@ -62,33 +59,30 @@ enum tucana_message_types
 	SERVER_I_AM_READY,
 	CLIENT_RECEIVED_READY
 };
-// Set by send_rdma_message and async_send_rdma_message
-#define SYNC_REQUEST 98 //0x0062
-#define ASYNC_REQUEST 33 //0x0021
+
+typedef enum receive_options { SYNC_REQUEST = 2, ASYNC_REQUEST, BUSY_WAIT } receive_options;
 // Set in allocate_rdma_message
 #define SERVER_CATEGORY 26368 //0x6700
 #define CLIENT_CATEGORY 21760 //0x5500
 
-typedef struct set_connection_property_req{
+typedef struct set_connection_property_req {
 	int desired_priority_level;
 	int desired_RDMA_memory_size;
 } set_connection_property_req;
 
-
-typedef struct set_connection_property_reply{
+typedef struct set_connection_property_reply {
 	int assigned_ppriority_level;
 	int assigned_RDMA_memory_size;
 } set_connection_property_reply;
 
 int push_buffer_in_tu_data_message(struct tu_data_message *data_message, char *buffer, uint32_t buffer_length);
 
-static inline void set_tail_value_data_message( struct tu_data_message *data_message)
+static inline void set_tail_value_data_message(struct tu_data_message *data_message)
 {
 	uint8_t *tail;
-	data_message->tail = (void*)((uint64_t)data_message + TU_HEADER_SIZE + data_message->pay_len); 
-	tail = (uint8_t*)data_message->tail;
+	data_message->tail = (void *)((uint64_t)data_message + TU_HEADER_SIZE + data_message->pay_len);
+	tail = (uint8_t *)data_message->tail;
 	*tail = 245;
 	data_message->receive = 7;
 }
-
 

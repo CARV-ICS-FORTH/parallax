@@ -126,7 +126,7 @@ client_region * client_find_region(void *key, int key_size);
 int client_add_region(client_region* region);
 int client_delete_region(client_region * region);
 
-struct connection_rdma* get_connection_from_region(client_region* region, int seed);
+struct connection_rdma* get_connection_from_region(client_region* region, uint64_t seed);
 
 
 _Client_Regions *Allocate_Init_Client_Regions( void );

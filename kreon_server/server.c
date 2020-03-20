@@ -632,7 +632,7 @@ int _init_replica_rdma_connections(struct _tucana_region_S *S_tu_region)
 		tmp->local_offset = 0;
 		tmp->remote_offset = 0;
 
-		tmp->ack_arrived = REPLY_PENDING;
+		tmp->ack_arrived = KR_REP_PENDING;
 		tmp->callback_function = NULL;
 		tmp->request_message_local_addr = NULL;
 		__sync_fetch_and_add(&S_tu_region->replica_next_data_con->pending_sent_messages, 1);
@@ -1208,7 +1208,7 @@ void handle_task(void *__task)
 			task->reply_msg->remote_offset = (uint64_t)task->msg->reply;
 
 			//DPRINT("\t Sending to remote offset %llu\n", msg->remote_offset);
-			task->reply_msg->ack_arrived = REPLY_PENDING;
+			task->reply_msg->ack_arrived = KR_REP_PENDING;
 			task->reply_msg->callback_function = NULL;
 			task->reply_msg->request_message_local_addr = NULL;
 
@@ -1320,7 +1320,7 @@ void handle_task(void *__task)
 			task->reply_msg->local_offset = (uint64_t)task->msg->reply;
 			task->reply_msg->remote_offset = (uint64_t)task->msg->reply;
 
-			task->reply_msg->ack_arrived = REPLY_PENDING;
+			task->reply_msg->ack_arrived = KR_REP_PENDING;
 			task->reply_msg->callback_function = NULL;
 			task->reply_msg->request_message_local_addr = NULL;
 			task->overall_status = TASK_COMPLETED;
@@ -1403,7 +1403,7 @@ void handle_task(void *__task)
 
 		task->reply_msg->local_offset = task->conn->offset;
 		task->reply_msg->remote_offset = task->conn->offset;
-		task->reply_msg->ack_arrived = REPLY_PENDING;
+		task->reply_msg->ack_arrived = KR_REP_PENDING;
 		task->reply_msg->callback_function = NULL;
 		task->reply_msg->request_message_local_addr = NULL;
 

@@ -1,5 +1,4 @@
-#ifndef __PIRDMA_H
-#define __PIRDMA_H
+#pragma once
 
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
@@ -29,9 +28,6 @@
 #include "../utilities/circular_buffer.h"
 #include "memory_region_pool.h"
 
-#define TU_SUCCESS (0)
-#define TU_FAILURE (1)
-
 #define MAX_USEC_BEFORE_SLEEPING 5000000
 
 #define RECORTADO 0
@@ -59,7 +55,6 @@
 #define SPINNING_THREAD 1
 #define SPINNING_PER_CHANNEL 1
 #define SPINNING_NO_LIST 1
-//#endif
 
 #if (TU_FAKE_SEND || TU_FAKE_RECV || TU_FAKE_YCSB)
 #define SPINNING_NUM_TH 1
@@ -80,12 +75,8 @@
 
 #define TU_RDMA_MEMORY_REGIONS 1 //We use memory regions, 0 we allocate space for  void *rdma_local_region
 
-#if TU_RDMA_MEMORY_REGIONS
-//#include "memory_regions.h"
-#endif
 #define MESSAGE_SEGMENT_SIZE 1024
-#define REPLY_ARRIVED 430
-#define REPLY_PENDING 345
+typedef enum kr_reply_status { KR_REP_ARRIVED = 430, KR_REP_PENDING = 345 } kr_reply_status;
 
 #define TU_CONTROL_MSG_BY_RDMA 0 //1 the control messages such as TU_RDMA_MRED_MSG will be sent by RDMA messages,
 // 0  These control messages will be sent by SEND/RECEIVE messages
@@ -462,7 +453,7 @@ static inline void Set_OnConnection_Create_Function(struct channel_rdma *channel
 
 void crdma_put_message_from_MR(struct connection_rdma *conn, void **mr);
 void *crdma_receive_rdma_message(struct connection_rdma *conn, void **payload);
-int crdma_send_rdma_message(struct connection_rdma *conn, uint32_t length, void *mr);
+
 
 void crdma_init_generic_create_channel(struct channel_rdma *channel);
 void crdma_init_client_connection(struct connection_rdma *conn, const char *host, const char *port,
@@ -478,8 +469,7 @@ struct connection_rdma *crdma_client_create_connection_list_hosts(struct channel
 void crdma_init_client_connection_list_hosts(struct connection_rdma *conn, char **hosts, const int num_hosts,
 					     struct channel_rdma *channel, connection_type type);
 
-int crdma_send_rdma_tucana_message(struct connection_rdma *conn, uint32_t length, struct tu_data_message *data_message,
-				   int re_send);
+
 
 void crdma_put_message_from_remote_MR(struct connection_rdma *conn, uint64_t ooffset, int32_t N);
 int64_t crdma_get_message_consecutive_from_remote_MR(struct connection_rdma *conn, uint32_t length);
@@ -518,4 +508,4 @@ uint32_t crdma_get_channel_connection_number(struct channel_rdma *channel);
 
 /*gesalous, signature here implementation in tu_rdma.c*/
 void disconnect_and_close_connection(connection_rdma *conn);
-#endif
+

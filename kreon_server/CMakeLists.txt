@@ -47,7 +47,7 @@ add_executable(
   ../utilities/simple_concurrent_list.c
   ../utilities/spin_loop.c
   ../utilities/circular_buffer.c)
-target_link_libraries(create_regions kreon_rdma)
+target_link_libraries(create_regions kreon_rdma kreonr)
 
 # FIXME put_get_test and scan_test don't compile add_executable(put_get_test
 # tests/put_get.c zk_string_vector.c network_data.c zk_server.c

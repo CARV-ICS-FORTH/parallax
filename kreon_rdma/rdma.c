@@ -164,7 +164,7 @@ void init_rdma_message(connection_rdma *conn, tu_data_message_s *msg, uint32_t m
 	msg->remote_offset = (uint64_t)msg - (uint64_t)conn->send_circular_buf->memory_region;
 
 	//DPRINT("\t Sending to remote offset %llu\n", msg->remote_offset);
-	msg->ack_arrived = REPLY_PENDING;
+	msg->ack_arrived = KR_REP_PENDING;
 	msg->callback_function = NULL;
 	msg->request_message_local_addr = NULL;
 	//conn->offset += message_size;
@@ -245,7 +245,7 @@ static tu_data_message_s *_client_allocate_rdma_message(connection_rdma *conn, i
 			msg->local_offset = addr - conn->send_circular_buf->memory_region;
 			msg->remote_offset = addr - conn->send_circular_buf->memory_region;
 			//DPRINT("\t Sending to remote offset %llu\n", msg->remote_offset);
-			msg->ack_arrived = REPLY_PENDING;
+			msg->ack_arrived = KR_REP_PENDING;
 			msg->callback_function = NULL;
 			msg->request_message_local_addr = NULL;
 			msg->reply = NULL;
@@ -564,7 +564,7 @@ allocate:
 	msg->local_offset = local_offset; /*local offset taken from mr*/
 	msg->remote_offset = local_offset;
 	//DPRINT("\t Sending to remote offset %llu\n", msg->remote_offset);
-	msg->ack_arrived = REPLY_PENDING;
+	msg->ack_arrived = KR_REP_PENDING;
 	msg->callback_function = NULL;
 	msg->request_message_local_addr = NULL;
 
@@ -583,6 +583,8 @@ allocate:
 	return msg;
 }
 
+
+//int send_rdma_message(connection_rdma *conn, tu_data_message_s *msg, receive_options opt)
 int send_rdma_message(connection_rdma *conn, tu_data_message_s *msg)
 {
 	sem_init(&msg->sem, 0, 0);
@@ -2079,7 +2081,7 @@ static void __stop_client(connection_rdma *conn)
 	msg->tail = NULL; /*to be deleted field*/
 	msg->local_offset = (uint64_t)conn->control_location;
 	msg->remote_offset = (uint64_t)conn->control_location;
-	msg->ack_arrived = REPLY_PENDING;
+	msg->ack_arrived = KR_REP_PENDING;
 	msg->callback_function = NULL;
 	msg->request_message_local_addr = NULL;
 
@@ -2326,13 +2328,13 @@ static void *client_spinning_thread_kernel(void *args)
 					tu_data_message_s *request =
 						(tu_data_message_s *)hdr->request_message_local_addr;
 					request->reply_message = hdr;
-					request->ack_arrived = REPLY_ARRIVED;
+					request->ack_arrived = KR_REP_ARRIVED;
 					if ((request->flags & 0x000000FF) == SYNC_REQUEST) {
 						/*wake him up*/
 						sem_post(&((tu_data_message_s *)hdr->request_message_local_addr)->sem);
 					} else if ((request->flags & 0x000000FF) == ASYNC_REQUEST) {
 						//DPRINT("REPLY FOR ASYNC REQ for request %llu value %d\n", request->reply, request->ack_arrived);
-						request->ack_arrived = REPLY_ARRIVED;
+						request->ack_arrived = KR_REP_ARRIVED;
 						request->flags = 0;
 						(*request->callback_function)(request->callback_function_args);
 						//free_rdma_local_message(conn);
@@ -2340,9 +2342,10 @@ static void *client_spinning_thread_kernel(void *args)
 						_zero_rendezvous_locations(hdr);
 						client_free_rpc_pair(conn, hdr);
 					} else {
-						DPRINT("\t FATAL unknown flags request addr: %llu of type %d reply is %d flags %d recv is %d\n",
-						       (LLU)request, request->type, hdr->type, request->flags,
-						       hdr->receive);
+						log_fatal(
+							"unknown flags request addr: %llu of type %d reply is %d flags %d recv is %d\n",
+							(LLU)request, request->type, hdr->type, request->flags,
+							hdr->receive);
 						raise(SIGINT);
 						exit(EXIT_FAILURE);
 					}
@@ -2477,7 +2480,7 @@ static void *server_spinning_thread_kernel(void *args)
 						tu_data_message_s *request =
 							(tu_data_message_s *)hdr->request_message_local_addr;
 						request->reply_message = hdr;
-						request->ack_arrived = REPLY_ARRIVED;
+						request->ack_arrived = KR_REP_ARRIVED;
 						/*wake him up*/
 						sem_post(&((tu_data_message_s *)hdr->request_message_local_addr)->sem);
 					}
@@ -2485,7 +2488,7 @@ static void *server_spinning_thread_kernel(void *args)
 					tu_data_message_s *request =
 						(tu_data_message_s *)hdr->request_message_local_addr;
 					request->reply_message = hdr;
-					request->ack_arrived = REPLY_ARRIVED;
+					request->ack_arrived = KR_REP_ARRIVED;
 					/*No more waking ups, spill thread will poll (with yield) to see the message*/
 					//sem_post(&((tu_data_message_s *)hdr->request_message_local_addr)->sem);
 				} else {
@@ -2582,7 +2585,7 @@ static void *server_spinning_thread_kernel(void *args)
 				} else if (hdr->type == CHANGE_CONNECTION_PROPERTIES_REPLY) {
 					assert(0);
 					((tu_data_message_s *)hdr->request_message_local_addr)->ack_arrived =
-						REPLY_ARRIVED;
+						KR_REP_ARRIVED;
 					/*do nothing for now*/
 					_zero_rendezvous_locations(hdr);
 					_update_rendezvous_location(conn, message_size);
@@ -2640,7 +2643,7 @@ static void *server_spinning_thread_kernel(void *args)
 				msg->tail = NULL; /*to be deleted field*/
 				msg->local_offset = (uint64_t)conn->control_location;
 				msg->remote_offset = (uint64_t)conn->control_location;
-				msg->ack_arrived = REPLY_PENDING;
+				msg->ack_arrived = KR_REP_PENDING;
 				msg->callback_function = NULL;
 				msg->request_message_local_addr = NULL;
 				__send_rdma_message(conn, msg);
