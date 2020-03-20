@@ -1,18 +1,22 @@
 # File: kreon/CMakeLists.txt Author: Michalis Vardoulakis <mvard@ics.forth.gr>
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-set(CMAKE_C_FLAGS
-    "-Wstrict-prototypes -Wall -Wextra -std=gnu11 -fPIC ${CMAKE_C_FLAGS}"
-)# -Werror
-set(CMAKE_C_FLAGS_DEBUG "-ggdb3 -Og ${CMAKE_C_FLAG_DEBUG}")
+if("${CMAKE_BUILD_TYPE}" STREQUAL "Debug")
+  set(CMAKE_C_FLAGS
+      "-Wstrict-prototypes -Wall -Wextra -std=gnu11 -fPIC ${CMAKE_C_FLAGS}"
+  )# -Werror
+  set(CMAKE_C_FLAGS_DEBUG "-ggdb3 -Og ${CMAKE_C_FLAG_DEBUG}")
+endif()
 
 if(CMAKE_BUILD_TYPE EQUAL "Release")
   set(CMAKE_C_FLAGS_RELEASE "-O2 -finline-functions -DNDEBUG") # -Werror
 endif()
 
 set(LOG ${CMAKE_BINARY_DIR}/external-deps/log/src/log.c)
-file(GLOB_RECURSE KREON_C_SOURCE_FILES ${CMAKE_SOURCE_DIR}/kreon_lib/allocator/*.c
-     ${CMAKE_SOURCE_DIR}/kreon_lib/btree/*.c ${CMAKE_SOURCE_DIR}/kreon_lib/scanner/*.c)
+file(
+  GLOB_RECURSE KREON_C_SOURCE_FILES ${CMAKE_SOURCE_DIR}/kreon_lib/allocator/*.c
+  ${CMAKE_SOURCE_DIR}/kreon_lib/btree/*.c
+  ${CMAKE_SOURCE_DIR}/kreon_lib/scanner/*.c)
 
 # list(REMOVE_ITEM KREON_C_SOURCE_FILES
 # "${CMAKE_SOURCE_DIR}/kreon/btree/replica.c")
