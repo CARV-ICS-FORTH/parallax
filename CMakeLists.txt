@@ -19,17 +19,17 @@ file(GLOB_RECURSE ALL_C_SOURCE_FILES ${CMAKE_SOURCE_DIR}/kreon/*.c
      ${CMAKE_SOURCE_DIR}/kreon/*.h ${CMAKE_SOURCE_DIR}/tests/*.c
      ${CMAKE_SOURCE_DIR}/tests/*.h)
 
-file(COPY ${CMAKE_SOURCE_DIR}/YCSB-CXX/mkfs.eutropia.single.sh
+file(COPY ${CMAKE_SOURCE_DIR}/scripts/mkfs.eutropia.single.sh
      DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/YCSB-CXX/)
+
+file(COPY ${CMAKE_SOURCE_DIR}/scripts/mkfs.eutropia.single.sh
+     DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tests/)
 
 file(COPY ${CMAKE_SOURCE_DIR}/YCSB-CXX/workloads
      DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/YCSB-CXX/)
 
 file(COPY ${CMAKE_SOURCE_DIR}/YCSB-CXX/execution_plan.txt
      DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/YCSB-CXX/)
-
-file(COPY ${CMAKE_SOURCE_DIR}/YCSB-CXX/mkfs.eutropia.single.sh
-     DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tests/)
 
 find_program(CLANG_FORMAT "clang-format")
 if(CLANG_FORMAT)
