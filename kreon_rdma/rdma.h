@@ -193,11 +193,11 @@ typedef enum rdma_allocation_type {
 typedef struct work_task {
 	struct channel_rdma *channel;
 	struct connection_rdma *conn;
-	tu_data_message_s *msg;
+	tu_data_message *msg;
 	void *region; /*sorry, circular dependency was created so I patched it quickly*/
 	void *notification_addr;
-	tu_data_message_s *reply_msg;
-	tu_data_message_s *flush_segment_request;
+	tu_data_message *reply_msg;
+	tu_data_message *flush_segment_request;
 	/*used for two puproses (keeping state)
 	 * 1. For get it keeps the get result if the  server cannot allocate immediately memory to respond to the client.
 	 * This save CPU cycles at the server  because it voids entering kreon each time a stall happens.
@@ -238,7 +238,7 @@ typedef struct worker_group {
 } worker_group;
 
 void _send_reset_buffer_ack(struct connection_rdma *conn);
-void _zero_rendezvous_locations(tu_data_message_s *msg);
+void _zero_rendezvous_locations(tu_data_message *msg);
 void _update_rendezvous_location(struct connection_rdma *conn, int message_size);
 
 typedef void (*on_connection_created)(void *vconn);
@@ -246,7 +246,7 @@ typedef void (*on_connection_created)(void *vconn);
 #if TU_CONNECTION_RC_CONTROL
 // To control the pending messages, a be able to: 1) re-sent in case something is missing, 2) compute the RTT
 struct rdma_sent_queue {
-	struct tu_data_message_s *message; // Message sent
+	struct tu_data_message *message; // Message sent
 	struct timespec sent_time; // Time in which the message was sent
 	struct timespec recv_time; // Time the reply was received.
 	int recv_flag; // 1 : The reply message has been received, 0: message sent, but reply not received
@@ -474,22 +474,22 @@ void crdma_init_client_connection_list_hosts(struct connection_rdma *conn, char 
 void crdma_put_message_from_remote_MR(struct connection_rdma *conn, uint64_t ooffset, int32_t N);
 int64_t crdma_get_message_consecutive_from_remote_MR(struct connection_rdma *conn, uint32_t length);
 
-tu_data_message_s *allocate_rdma_message(connection_rdma *conn, int message_payload_size, int message_type);
-void init_rdma_message(connection_rdma *conn, tu_data_message_s *msg, uint32_t message_type, uint32_t message_size,
+tu_data_message *allocate_rdma_message(connection_rdma *conn, int message_payload_size, int message_type);
+void init_rdma_message(connection_rdma *conn, tu_data_message *msg, uint32_t message_type, uint32_t message_size,
 		       uint32_t message_payload_size, uint32_t padding);
-tu_data_message_s *__allocate_rdma_message(connection_rdma *conn, int message_payload_size, int message_type,
+tu_data_message *__allocate_rdma_message(connection_rdma *conn, int message_payload_size, int message_type,
 					   int rdma_allocation_type, int priority, work_task *task);
 
-int send_rdma_message(connection_rdma *conn, tu_data_message_s *msg);
-void async_send_rdma_message(connection_rdma *conn, tu_data_message_s *msg, void (*callback_function)(void *args),
+int send_rdma_message(connection_rdma *conn, tu_data_message *msg);
+void async_send_rdma_message(connection_rdma *conn, tu_data_message *msg, void (*callback_function)(void *args),
 			     void *args);
-tu_data_message_s *get_message_reply(connection_rdma *conn, tu_data_message_s *msg);
+tu_data_message *get_message_reply(connection_rdma *conn, tu_data_message *msg);
 void free_rdma_local_message(connection_rdma *conn);
-void free_rdma_received_message(connection_rdma *conn, tu_data_message_s *msg);
+void free_rdma_received_message(connection_rdma *conn, tu_data_message *msg);
 /*replica specific functions*/
-int rdma_kv_entry_to_replica(connection_rdma *conn, tu_data_message_s *data_message, uint64_t segment_log_offset,
+int rdma_kv_entry_to_replica(connection_rdma *conn, tu_data_message *data_message, uint64_t segment_log_offset,
 			     void *source, uint32_t kv_length, uint32_t client_buffer_key);
-int wake_up_replica_to_flush_segment(connection_rdma *conn, tu_data_message_s *msg, int wait);
+int wake_up_replica_to_flush_segment(connection_rdma *conn, tu_data_message *msg, int wait);
 
 static inline uint32_t cdrma_IsDisconnecting_Connection(struct connection_rdma *conn)
 {

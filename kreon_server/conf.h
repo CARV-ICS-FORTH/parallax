@@ -134,7 +134,7 @@ typedef struct tu_data_message {
 	void *next; /*Pointer to the "current" element of the payload. Initially equal to data*/
 	void *tail; /*Pointer to the tail that will be an integer to indicate that the data has been received*/
 	uint32_t receive;
-} tu_data_message_s;
+} tu_data_message;
 
 #define TU_HEADER_SIZE (sizeof(struct tu_data_message))
 #define TU_TAIL_SIZE (sizeof(uint32_t))

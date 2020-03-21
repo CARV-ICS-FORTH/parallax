@@ -72,7 +72,7 @@ void tiering_compaction_worker(void *);
 #endif
 
 /*inserts to Kreon and implements the replication logic*/
-void insert_kv_pair(_tucana_region_S *S_tu_region, tu_data_message_s *data_message, connection_rdma *rdma_conn,
+void insert_kv_pair(_tucana_region_S *S_tu_region, tu_data_message *data_message, connection_rdma *rdma_conn,
 		    kv_location *location, work_task *task, int wait);
 
 /*functions for building index at replicas*/
@@ -133,7 +133,7 @@ static inline char __EXIT_REGION(_tucana_region_S *region)
 struct tu_data_message *handle_scan_request(struct tu_data_message *data_message, void *connection);
 struct tu_data_message *Server_Handling_Received_Message(struct tu_data_message *data_message, int reg_num,
 							 int next_mail);
-int handle_put_request(tu_data_message_s *data_message, connection_rdma *rdma_conn);
+int handle_put_request(tu_data_message *data_message, connection_rdma *rdma_conn);
 // struct tu_data_message *Server_FlushVolume_RDMA( struct tu_data_message *data_message, struct connection_rdma *rdma_conn ); // FIXME Never used
 
 _tucana_region_S *get_region(void *key, int key_len)
@@ -154,11 +154,11 @@ static void kreonR_spill_worker(void *_spill_task_desc)
 	kv_location location;
 	spill_task_descriptor *spill_task_desc = (spill_task_descriptor *)_spill_task_desc;
 	bt_spill_request *spill_req = spill_task_desc->spill_req;
-	tu_data_message_s *msg = NULL;
-	tu_data_message_s *spill_buffer_msg = NULL;
+	tu_data_message *msg = NULL;
+	tu_data_message *spill_buffer_msg = NULL;
 	void *spill_buffer;
 	uint64_t log_addr;
-	tu_data_message_s *reply = NULL;
+	tu_data_message *reply = NULL;
 	level_scanner *level_sc = NULL;
 
 	void *free_addr;
@@ -234,7 +234,7 @@ static void kreonR_spill_worker(void *_spill_task_desc)
 				}
 				break;
 			}
-			reply = (tu_data_message_s *)msg->reply_message;
+			reply = (tu_data_message *)msg->reply_message;
 
 			if (reply->error_code == KREON_OK) {
 				log_info("MASTER: Replica ready to participate in spill :-)\n");
@@ -411,7 +411,7 @@ static void kreonR_spill_worker(void *_spill_task_desc)
 				}
 				break;
 			}
-			reply = (tu_data_message_s *)msg->reply_message;
+			reply = (tu_data_message *)msg->reply_message;
 
 			if (reply == NULL) {
 				DPRINT("FATAL reply to spill buffer request is NULL\n");
@@ -612,8 +612,8 @@ int _init_replica_rdma_connections(struct _tucana_region_S *S_tu_region)
 		//S_tu_region->db->db_desc->log_buffer =
 		//	S_tu_region->replica_next_data_con->rdma_memory_regions->local_memory_buffer;
 
-		tu_data_message_s *tmp =
-			(tu_data_message_s *)
+		tu_data_message *tmp =
+			(tu_data_message *)
 				S_tu_region->replica_next_data_con->rdma_memory_regions->local_memory_buffer;
 
 		/*init message*/
@@ -643,7 +643,7 @@ int _init_replica_rdma_connections(struct _tucana_region_S *S_tu_region)
 		/*
 			 DPRINT("Setting connection properties with the Replica");
 			 set_connection_property_req * req;
-			 tu_data_message_s * data_conn_req = allocate_rdma_message(*S_tu_region->db->db_desc->data_conn, sizeof(set_connection_property_req),CHANGE_CONNECTION_PROPERTIES_REQUEST); 
+			 tu_data_message * data_conn_req = allocate_rdma_message(*S_tu_region->db->db_desc->data_conn, sizeof(set_connection_property_req),CHANGE_CONNECTION_PROPERTIES_REQUEST); 
 			 req = (set_connection_property_req *)data_conn_req->data;
 			 req->desired_priority_level = HIGH_PRIORITY;
 			 req->desired_RDMA_memory_size = DEFAULT_MEMORY_SIZE_OPTION;
@@ -656,7 +656,7 @@ int _init_replica_rdma_connections(struct _tucana_region_S *S_tu_region)
 			 }
 			 }
 
-			 tu_data_message_s * control_conn_req = allocate_rdma_message(*S_tu_region->db->db_desc->data_conn, sizeof(set_connection_property_req),CHANGE_CONNECTION_PROPERTIES_REQUEST); 
+			 tu_data_message * control_conn_req = allocate_rdma_message(*S_tu_region->db->db_desc->data_conn, sizeof(set_connection_property_req),CHANGE_CONNECTION_PROPERTIES_REQUEST); 
 			 req = (set_connection_property_req *)control_conn_req->data;
 			 req->desired_priority_level = HIGH_PRIORITY;
 			 req->desired_RDMA_memory_size = CONTROL_CONNECTION_MEMORY_SIZE;
@@ -685,7 +685,7 @@ int _init_replica_rdma_connections(struct _tucana_region_S *S_tu_region)
  CHECK_FOR_REPLICA_RESET_BUFFER_ACK
  APPEND_SUCCESS
  */
-void insert_kv_pair(_tucana_region_S *S_tu_region, tu_data_message_s *data_message, connection_rdma *rdma_conn,
+void insert_kv_pair(_tucana_region_S *S_tu_region, tu_data_message *data_message, connection_rdma *rdma_conn,
 		    kv_location *location, work_task *task, int wait)
 {
 	char *key;
@@ -870,7 +870,7 @@ void insert_kv_pair(_tucana_region_S *S_tu_region, tu_data_message_s *data_messa
 }
 
 //<<<<<<< HEAD
-struct tu_data_message *Server_Scan_MulipleRegions_RDMA(tu_data_message_s *data_message, void *connection)
+struct tu_data_message *Server_Scan_MulipleRegions_RDMA(tu_data_message *data_message, void *connection)
 //=======
 //struct tu_data_message* handle_scan_request(struct tu_data_message* data_message, void* connection)
 //>>>>>>> 24a32ec7ad53b7a8345c33120e1034aa734c8b79
@@ -1391,7 +1391,7 @@ void handle_task(void *__task)
 
 		/*Since reply message is of fixed size we allocate it first*/
 
-		task->reply_msg = (tu_data_message_s *)(task->conn->rdma_memory_regions->local_memory_buffer +
+		task->reply_msg = (tu_data_message *)(task->conn->rdma_memory_regions->local_memory_buffer +
 							task->conn->offset);
 		/*init message*/
 		task->reply_msg->pay_len = 0;

@@ -997,7 +997,7 @@ int Push_Length_Tu_Data_Message_with_length( struct tu_data_message *data_messag
 
 
 
-int push_buffer_in_tu_data_message(tu_data_message_s *data_message, char *buffer, uint32_t buffer_length)
+int push_buffer_in_tu_data_message(tu_data_message *data_message, char *buffer, uint32_t buffer_length)
 {
 	uint32_t current_len = data_message->next - data_message->data;
 	if(current_len + buffer_length > data_message->pay_len){
@@ -1009,7 +1009,7 @@ int push_buffer_in_tu_data_message(tu_data_message_s *data_message, char *buffer
 	return KREON_SUCCESS;
 }
 
-int pop_buffer_from_tu_data_message(tu_data_message_s* msg, char* buffer, uint32_t buff_len) {
+int pop_buffer_from_tu_data_message(tu_data_message* msg, char* buffer, uint32_t buff_len) {
 	uint32_t current_len = msg->next - msg->data;
 	if(current_len + buff_len > msg->pay_len){
 		DPRINT("pop failed message payload length %d  current_len %d buffer_length %d\n",msg->pay_len,current_len,buff_len);

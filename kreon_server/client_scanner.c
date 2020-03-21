@@ -56,7 +56,7 @@ scanner_s* client_scan_init(
 	int mailbox;
 
 	cli_tu_region = Client_Get_Tu_Region_and_Mailbox(regions, start_key, start_key_len, 0, &mailbox );
-	struct connection_rdma* conn = get_connection_from_region(cli_tu_region, djb2_hash((unsigned char*)&scan_query, sizeof(tu_data_message_s*)));
+	struct connection_rdma* conn = get_connection_from_region(cli_tu_region, djb2_hash((unsigned char*)&scan_query, sizeof(tu_data_message*)));
 	scan_query = _create_scan_query_message(conn, start_key, start_key_len, stop_key, stop_key_len);
 	ret->scan_reply_connection = conn;
 	scan_query->value = 1;
@@ -101,7 +101,7 @@ kv_pair_s client_scan_get_next_kv(scanner_s* scanner)
 		int mailbox;
 
 		cli_tu_region = Client_Get_Tu_Region_and_Mailbox(scanner->regions, scanner->last_key, scanner->last_key_len, 0, &mailbox );
-		struct connection_rdma* conn = get_connection_from_region(cli_tu_region, djb2_hash((unsigned char*)&scan_query, sizeof(tu_data_message_s*)));
+		struct connection_rdma* conn = get_connection_from_region(cli_tu_region, djb2_hash((unsigned char*)&scan_query, sizeof(tu_data_message*)));
 		free_rdma_received_message(scanner->scan_reply_connection, scanner->scan_reply);
 		scan_query = _create_scan_query_message(conn, scanner->last_key, scanner->last_key_len, scanner->stop_key, scanner->stop_key_len);
 		scan_query->reply_message = NULL;

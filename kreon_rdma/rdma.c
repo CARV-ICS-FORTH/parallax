@@ -40,12 +40,12 @@
 #define WORKER_THREAD_NORMAL_PRIORITY_TASKS_PER_TURN 1
 
 int LIBRARY_MODE = SERVER_MODE; /*two modes for the communication rdma library SERVER and CLIENT*/
-int assign_job_to_worker(struct channel_rdma *channel, struct connection_rdma *conn, tu_data_message_s *msg,
+int assign_job_to_worker(struct channel_rdma *channel, struct connection_rdma *conn, tu_data_message *msg,
 			 int spinning_thread_id, int sockfd);
 uint64_t wake_up_workers_operations = 0;
 
 /*gesalous, helper functions for spinning thread*/
-uint32_t _wait_for_payload_arrival(tu_data_message_s *hdr);
+uint32_t _wait_for_payload_arrival(tu_data_message *hdr);
 void _update_connection_score(int spinning_list_type, connection_rdma *conn);
 /*one port for waiitng client connections, another for waiting connections from other servers*/
 
@@ -64,8 +64,8 @@ static void *poll_cq(void *arg);
 void on_completion_server(struct ibv_wc *wc, struct connection_rdma *conn);
 
 /*gesalous new stuff*/
-static int __send_rdma_message(connection_rdma *conn, tu_data_message_s *msg);
-static tu_data_message_s *_client_allocate_rdma_message(connection_rdma *conn, int message_payload_size,
+static int __send_rdma_message(connection_rdma *conn, tu_data_message *msg);
+static tu_data_message *_client_allocate_rdma_message(connection_rdma *conn, int message_payload_size,
 							int message_type);
 
 #if SPINNING_THREAD
@@ -81,8 +81,8 @@ static void _wait_for_reset_buffer_ack(connection_rdma *conn)
 	int dummy = 1;
 	size_t payload_end = conn->rdma_memory_regions->memory_region_length - MESSAGE_SEGMENT_SIZE;
 	/*wait for RESET_BUFER_ACK*/
-	tu_data_message_s *reset_buffer_ack =
-		(tu_data_message_s *)((uint64_t)conn->rdma_memory_regions->remote_memory_buffer + payload_end);
+	tu_data_message *reset_buffer_ack =
+		(tu_data_message *)((uint64_t)conn->rdma_memory_regions->remote_memory_buffer + payload_end);
 	while (reset_buffer_ack->receive != RESET_BUFFER_ACK) {
 		++dummy;
 		if (dummy % 1000000000 == 0) {
@@ -98,7 +98,7 @@ void _send_reset_buffer_ack(connection_rdma *conn)
 	struct ibv_send_wr *bad_wr_header;
 	struct ibv_send_wr wr_header;
 	struct ibv_sge sge_header;
-	tu_data_message_s *msg;
+	tu_data_message *msg;
 	size_t payload_end = conn->rdma_memory_regions->memory_region_length - MESSAGE_SEGMENT_SIZE;
 	//while(conn->pending_received_messages != 0){
 	//	if(++a%1000000000 == 0){
@@ -106,8 +106,8 @@ void _send_reset_buffer_ack(connection_rdma *conn)
 	//	}
 	//}
 
-	msg = (tu_data_message_s *)((uint64_t)conn->rdma_memory_regions->local_memory_buffer + payload_end);
-	memset(msg, 0, sizeof(tu_data_message_s));
+	msg = (tu_data_message *)((uint64_t)conn->rdma_memory_regions->local_memory_buffer + payload_end);
+	memset(msg, 0, sizeof(tu_data_message));
 	msg->type = RESET_BUFFER_ACK;
 	msg->receive = RESET_BUFFER_ACK;
 	msg->pay_len = 0;
@@ -138,7 +138,7 @@ void _send_reset_buffer_ack(connection_rdma *conn)
 	return;
 }
 
-void init_rdma_message(connection_rdma *conn, tu_data_message_s *msg, uint32_t message_type, uint32_t message_size,
+void init_rdma_message(connection_rdma *conn, tu_data_message *msg, uint32_t message_type, uint32_t message_size,
 		       uint32_t message_payload_size, uint32_t padding)
 {
 	if (message_payload_size > 0) {
@@ -170,9 +170,9 @@ void init_rdma_message(connection_rdma *conn, tu_data_message_s *msg, uint32_t m
 	//conn->offset += message_size;
 }
 
-tu_data_message_s *allocate_rdma_message(connection_rdma *conn, int message_payload_size, int message_type)
+tu_data_message *allocate_rdma_message(connection_rdma *conn, int message_payload_size, int message_type)
 {
-	tu_data_message_s *msg;
+	tu_data_message *msg;
 #ifdef CONNECTION_BUFFER_WITH_MUTEX_LOCK
 	pthread_mutex_lock(&conn->buffer_lock);
 #else
@@ -189,7 +189,7 @@ tu_data_message_s *allocate_rdma_message(connection_rdma *conn, int message_payl
 	return msg;
 }
 
-static tu_data_message_s *_client_allocate_rdma_message(connection_rdma *conn, int message_payload_size,
+static tu_data_message *_client_allocate_rdma_message(connection_rdma *conn, int message_payload_size,
 							int message_type)
 {
 	uint32_t message_size;
@@ -197,7 +197,7 @@ static tu_data_message_s *_client_allocate_rdma_message(connection_rdma *conn, i
 	uint32_t padding = 0;
 	uint32_t i = 0;
 	char *addr = NULL;
-	tu_data_message_s *msg;
+	tu_data_message *msg;
 	circular_buffer_op_status stat;
 
 	if (message_payload_size > 0) {
@@ -231,7 +231,7 @@ static tu_data_message_s *_client_allocate_rdma_message(connection_rdma *conn, i
 				DPRINT("FATAL cannot send reset rendezvous\n");
 				exit(EXIT_FAILURE);
 			}
-			msg = (tu_data_message_s *)addr;
+			msg = (tu_data_message *)addr;
 			msg->pay_len = 0;
 			msg->padding_and_tail = 0;
 			msg->data = NULL;
@@ -269,7 +269,7 @@ static tu_data_message_s *_client_allocate_rdma_message(connection_rdma *conn, i
 	}
 
 init_message:
-	msg = (tu_data_message_s *)addr;
+	msg = (tu_data_message *)addr;
 	init_rdma_message(conn, msg, message_type, message_size, message_payload_size, padding);
 	//DPRINT("Message size %"PRIu32" payload %"PRIu32" padding %"PRIu32"\n", message_size, message_payload_size, padding);
 	/*now the reply*/
@@ -339,11 +339,11 @@ exit:
  * allocated message has its header's recv flag to a random value rather than 0.
  * 
  * priority argument is dead please remover it*/
-tu_data_message_s *__allocate_rdma_message(connection_rdma *conn, int message_payload_size, int message_type,
+tu_data_message *__allocate_rdma_message(connection_rdma *conn, int message_payload_size, int message_type,
 					   int allocation_type, int priority, work_task *task)
 {
-	tu_data_message_s *msg;
-	tu_data_message_s *reset_buffer_ack;
+	tu_data_message *msg;
+	tu_data_message *reset_buffer_ack;
 	uint64_t local_offset = 0;
 	uint32_t message_size;
 	uint32_t padding = 0;
@@ -461,7 +461,7 @@ tu_data_message_s *__allocate_rdma_message(connection_rdma *conn, int message_pa
 				/*reset protocol follows, first wait every pending message to finish*/
 				local_offset = conn->offset;
 				/*fits exactly one header*/
-				msg = (tu_data_message_s *)((uint64_t)conn->rdma_memory_regions->local_memory_buffer +
+				msg = (tu_data_message *)((uint64_t)conn->rdma_memory_regions->local_memory_buffer +
 							    local_offset);
 
 				msg->pay_len = 0;
@@ -490,7 +490,7 @@ tu_data_message_s *__allocate_rdma_message(connection_rdma *conn, int message_pa
 			tries = 0;
 			payload_end = conn->rdma_memory_regions->memory_region_length - MESSAGE_SEGMENT_SIZE;
 			reset_buffer_ack =
-				(tu_data_message_s *)((uint64_t)conn->rdma_memory_regions->remote_memory_buffer +
+				(tu_data_message *)((uint64_t)conn->rdma_memory_regions->remote_memory_buffer +
 						      payload_end);
 			while (reset_buffer_ack->receive != RESET_BUFFER_ACK) {
 				++tries;
@@ -540,7 +540,7 @@ tu_data_message_s *__allocate_rdma_message(connection_rdma *conn, int message_pa
 	}
 
 allocate:
-	msg = (tu_data_message_s *)((uint64_t)conn->rdma_memory_regions->local_memory_buffer + local_offset);
+	msg = (tu_data_message *)((uint64_t)conn->rdma_memory_regions->local_memory_buffer + local_offset);
 
 	if (message_payload_size > 0) {
 		msg->pay_len = message_payload_size;
@@ -584,8 +584,8 @@ allocate:
 }
 
 
-//int send_rdma_message(connection_rdma *conn, tu_data_message_s *msg, receive_options opt)
-int send_rdma_message(connection_rdma *conn, tu_data_message_s *msg)
+//int send_rdma_message(connection_rdma *conn, tu_data_message *msg, receive_options opt)
+int send_rdma_message(connection_rdma *conn, tu_data_message *msg)
 {
 	sem_init(&msg->sem, 0, 0);
 	msg->callback_function = NULL;
@@ -594,7 +594,7 @@ int send_rdma_message(connection_rdma *conn, tu_data_message_s *msg)
 	return __send_rdma_message(conn, msg);
 }
 
-void async_send_rdma_message(connection_rdma *conn, tu_data_message_s *msg, void (*callback_function)(void *args),
+void async_send_rdma_message(connection_rdma *conn, tu_data_message *msg, void (*callback_function)(void *args),
 			     void *args)
 {
 	msg->callback_function = callback_function;
@@ -603,7 +603,7 @@ void async_send_rdma_message(connection_rdma *conn, tu_data_message_s *msg, void
 	__send_rdma_message(conn, msg);
 }
 
-static int __send_rdma_message(connection_rdma *conn, tu_data_message_s *msg)
+static int __send_rdma_message(connection_rdma *conn, tu_data_message *msg)
 {
 	int i = 0;
 	while (conn->pending_sent_messages >= MAX_WR) {
@@ -643,7 +643,7 @@ static int __send_rdma_message(connection_rdma *conn, tu_data_message_s *msg)
 	return KREON_SUCCESS;
 }
 
-tu_data_message_s *get_message_reply(connection_rdma *conn, tu_data_message_s *msg)
+tu_data_message *get_message_reply(connection_rdma *conn, tu_data_message *msg)
 {
 	if (!msg->reply_message)
 		sem_wait(&msg->sem);
@@ -652,10 +652,10 @@ tu_data_message_s *get_message_reply(connection_rdma *conn, tu_data_message_s *m
 	return msg->reply_message;
 }
 
-void client_free_rpc_pair(connection_rdma *conn, tu_data_message_s *msg)
+void client_free_rpc_pair(connection_rdma *conn, tu_data_message *msg)
 {
 	uint32_t size;
-	tu_data_message_s *request;
+	tu_data_message *request;
 
 	if (msg->pay_len == 0) {
 		size = MESSAGE_SEGMENT_SIZE;
@@ -666,7 +666,7 @@ void client_free_rpc_pair(connection_rdma *conn, tu_data_message_s *msg)
 
 	free_space_from_circular_buffer(conn->recv_circular_buf, (char *)msg, size);
 
-	request = (tu_data_message_s *)msg->request_message_local_addr;
+	request = (tu_data_message *)msg->request_message_local_addr;
 
 	if (request->pay_len == 0) {
 		size = MESSAGE_SEGMENT_SIZE;
@@ -678,7 +678,7 @@ void client_free_rpc_pair(connection_rdma *conn, tu_data_message_s *msg)
 	return;
 }
 
-void free_rdma_received_message(connection_rdma *conn, tu_data_message_s *msg)
+void free_rdma_received_message(connection_rdma *conn, tu_data_message *msg)
 {
 	assert(conn->pending_received_messages > 0);
 	_zero_rendezvous_locations(msg);
@@ -698,7 +698,7 @@ void free_rdma_local_message(connection_rdma *conn)
 /*gesalous, disconnect*/
 void disconnect_and_close_connection(connection_rdma *conn)
 {
-	tu_data_message_s *disconnect_request = allocate_rdma_message(conn, 0, DISCONNECT);
+	tu_data_message *disconnect_request = allocate_rdma_message(conn, 0, DISCONNECT);
 	send_rdma_message(conn, disconnect_request);
 	DPRINT("Successfully sent disconnect message, bye bye Caution! Missing deallocation of resources follows...\n");
 	close_and_free_RDMA_connection(conn->channel, conn);
@@ -706,7 +706,7 @@ void disconnect_and_close_connection(connection_rdma *conn)
 }
 
 /*Caution not a thread safe function, Kreon handles this*/
-int rdma_kv_entry_to_replica(connection_rdma *conn, tu_data_message_s *data_message, uint64_t segment_log_offset,
+int rdma_kv_entry_to_replica(connection_rdma *conn, tu_data_message *data_message, uint64_t segment_log_offset,
 			     void *source, uint32_t kv_length, uint32_t client_buffer_key)
 {
 	struct ibv_send_wr wr;
@@ -740,7 +740,7 @@ int rdma_kv_entry_to_replica(connection_rdma *conn, tu_data_message_s *data_mess
 	return KREON_SUCCESS;
 }
 
-int wake_up_replica_to_flush_segment(connection_rdma *conn, tu_data_message_s *msg, int wait)
+int wake_up_replica_to_flush_segment(connection_rdma *conn, tu_data_message *msg, int wait)
 {
 	struct ibv_send_wr wr_segment_metadata;
 	struct ibv_sge sge_segment_metadata;
@@ -1246,7 +1246,7 @@ static void *socket_thread(void *args)
 
 			// TODO replace assign_job_to_worker with __stop_client. Add new mr info in the
 			// stop client message's payload
-			// assign_job_to_worker(candidate->channel, candidate, (tu_data_message_s*)577, 0, -1);
+			// assign_job_to_worker(candidate->channel, candidate, (tu_data_message*)577, 0, -1);
 			__stop_client(candidate);
 			candidate = NULL;
 		} /*}}}*/
@@ -1384,7 +1384,7 @@ void crdma_init_client_connection_list_hosts(connection_rdma *conn, char **hosts
 					     struct channel_rdma *channel, connection_type type)
 {
 	struct ibv_qp_init_attr qp_init_attr;
-	tu_data_message_s *msg;
+	tu_data_message *msg;
 	if (!strcmp(hosts[0], "127.0.0.1")) {
 		log_warn("Connection with local host?");
 		return;
@@ -1872,7 +1872,7 @@ static void ec_sig_handler(int signo)
 	sigaction(SIGINT, &sa, 0);
 }
 
-int assign_job_to_worker(struct channel_rdma *channel, struct connection_rdma *conn, tu_data_message_s *msg,
+int assign_job_to_worker(struct channel_rdma *channel, struct connection_rdma *conn, tu_data_message *msg,
 			 int spinning_thread_id, int sockfd)
 {
 	work_task *job = NULL;
@@ -2003,7 +2003,7 @@ int assign_job_to_worker(struct channel_rdma *channel, struct connection_rdma *c
 
 /************************************************************
  ***************** spinning thread helper functions ********/
-void _zero_rendezvous_locations(tu_data_message_s *msg)
+void _zero_rendezvous_locations(tu_data_message *msg)
 {
 	void *start_memory;
 	void *end_memory;
@@ -2023,15 +2023,15 @@ void _zero_rendezvous_locations(tu_data_message_s *msg)
 	}
 
 	while (start_memory < end_memory) {
-		((tu_data_message_s *)start_memory)->receive = 0;
-		//((tu_data_message_s *)start_memory)->reply = (void *)0xF40F2;
-		//((tu_data_message_s *)start_memory)->reply_length = 0;
+		((tu_data_message *)start_memory)->receive = 0;
+		//((tu_data_message *)start_memory)->reply = (void *)0xF40F2;
+		//((tu_data_message *)start_memory)->reply_length = 0;
 		*(uint32_t *)((start_memory + MESSAGE_SEGMENT_SIZE) - TU_TAIL_SIZE) = 999;
 		start_memory = start_memory + MESSAGE_SEGMENT_SIZE;
 	}
 }
 
-uint32_t _wait_for_payload_arrival(tu_data_message_s *hdr)
+uint32_t _wait_for_payload_arrival(tu_data_message *hdr)
 {
 	int message_size;
 	uint32_t *tail;
@@ -2069,7 +2069,7 @@ static void __stop_client(connection_rdma *conn)
 
 	conn->status = STOPPED_BY_THE_SERVER;
 	DPRINT("SERVER: Sending stop at offset %llu\n", (LLU)conn->control_location);
-	tu_data_message_s *msg = (tu_data_message_s *)((uint64_t)conn->rdma_memory_regions->local_memory_buffer +
+	tu_data_message *msg = (tu_data_message *)((uint64_t)conn->rdma_memory_regions->local_memory_buffer +
 						       (uint64_t)conn->control_location);
 	msg->pay_len = sizeof(struct ibv_mr);
 	msg->padding_and_tail = 0;
@@ -2225,7 +2225,7 @@ static void *client_spinning_thread_kernel(void *args)
 				if (all_requests_completed == 1) {
 					// TODO insert code to switch from current peer_mr to next_peer_mr
 
-					tu_data_message_s *reset =
+					tu_data_message *reset =
 						_client_allocate_rdma_message(conn, 0, SERVER_I_AM_READY);
 					DPRINT("CLIENT: offset of I AM READY at %llu\n", (LLU)reset->local_offset);
 					reset->receive = SERVER_I_AM_READY;
@@ -2245,7 +2245,7 @@ static void *client_spinning_thread_kernel(void *args)
 				//}
 			} else {
 				/*Do we have any control message?*/
-				hdr = (tu_data_message_s *)((uint64_t)conn->rdma_memory_regions->remote_memory_buffer +
+				hdr = (tu_data_message *)((uint64_t)conn->rdma_memory_regions->remote_memory_buffer +
 							    (uint64_t)conn->control_location);
 				recv = hdr->receive;
 				int stat;
@@ -2264,7 +2264,7 @@ static void *client_spinning_thread_kernel(void *args)
 							       conn->peer_mr->rkey);
 							conn->next_peer_mr = malloc(sizeof(struct ibv_mr));
 							memcpy(conn->next_peer_mr,
-							       (char *)hdr + sizeof(tu_data_message_s),
+							       (char *)hdr + sizeof(tu_data_message),
 							       sizeof(struct ibv_mr));
 							DPRINT("new_mr: addr = %p. length = %lu, rkey = %u\n",
 							       conn->next_peer_mr->addr, conn->next_peer_mr->length,
@@ -2310,7 +2310,7 @@ static void *client_spinning_thread_kernel(void *args)
 
 			/*regular messages, regular path*/
 			//DPRINT("CLIENT: Checking at %llu for conn %x\n",(LLU)(uint64_t)conn->rendezvous - (uint64_t)conn->rdma_memory_regions->remote_memory_buffer,conn);
-			hdr = (tu_data_message_s *)conn->rendezvous;
+			hdr = (tu_data_message *)conn->rendezvous;
 			recv = hdr->receive;
 			/*messages belonging to data path category*/
 			if (recv == TU_RDMA_REGULAR_MSG) {
@@ -2325,13 +2325,13 @@ static void *client_spinning_thread_kernel(void *args)
 				 **/
 				if (hdr->request_message_local_addr != NULL) {
 					/*tell him where the reply is*/
-					tu_data_message_s *request =
-						(tu_data_message_s *)hdr->request_message_local_addr;
+					tu_data_message *request =
+						(tu_data_message *)hdr->request_message_local_addr;
 					request->reply_message = hdr;
 					request->ack_arrived = KR_REP_ARRIVED;
 					if ((request->flags & 0x000000FF) == SYNC_REQUEST) {
 						/*wake him up*/
-						sem_post(&((tu_data_message_s *)hdr->request_message_local_addr)->sem);
+						sem_post(&((tu_data_message *)hdr->request_message_local_addr)->sem);
 					} else if ((request->flags & 0x000000FF) == ASYNC_REQUEST) {
 						//DPRINT("REPLY FOR ASYNC REQ for request %llu value %d\n", request->reply, request->ack_arrived);
 						request->ack_arrived = KR_REP_ARRIVED;
@@ -2448,7 +2448,7 @@ static void *server_spinning_thread_kernel(void *args)
 			if (conn->connected != 1)
 				goto iterate_next_element;
 
-			hdr = (tu_data_message_s *)conn->rendezvous;
+			hdr = (tu_data_message *)conn->rendezvous;
 			recv = hdr->receive;
 
 			/*messages belonging to data path category*/
@@ -2477,20 +2477,20 @@ static void *server_spinning_thread_kernel(void *args)
 						/*calculate here the new rendezous with replica since we do not use RESET_BUFFER for FLUSH*/
 					} else {
 						DPRINT("wake up thread FLUSH_SEGMENT_ACK arrived\n");
-						tu_data_message_s *request =
-							(tu_data_message_s *)hdr->request_message_local_addr;
+						tu_data_message *request =
+							(tu_data_message *)hdr->request_message_local_addr;
 						request->reply_message = hdr;
 						request->ack_arrived = KR_REP_ARRIVED;
 						/*wake him up*/
-						sem_post(&((tu_data_message_s *)hdr->request_message_local_addr)->sem);
+						sem_post(&((tu_data_message *)hdr->request_message_local_addr)->sem);
 					}
 				} else if (hdr->type == SPILL_INIT_ACK || hdr->type == SPILL_COMPLETE_ACK) {
-					tu_data_message_s *request =
-						(tu_data_message_s *)hdr->request_message_local_addr;
+					tu_data_message *request =
+						(tu_data_message *)hdr->request_message_local_addr;
 					request->reply_message = hdr;
 					request->ack_arrived = KR_REP_ARRIVED;
 					/*No more waking ups, spill thread will poll (with yield) to see the message*/
-					//sem_post(&((tu_data_message_s *)hdr->request_message_local_addr)->sem);
+					//sem_post(&((tu_data_message *)hdr->request_message_local_addr)->sem);
 				} else {
 					/*normal messages*/
 					hdr->receive = 0;
@@ -2567,7 +2567,7 @@ static void *server_spinning_thread_kernel(void *args)
 						DPRINT("Remote side wants to pin its connection\n");
 						/*pin this conn bitches!*/
 						conn->priority = HIGH_PRIORITY;
-						tu_data_message_s *reply = allocate_rdma_message(
+						tu_data_message *reply = allocate_rdma_message(
 							conn, 0, CHANGE_CONNECTION_PROPERTIES_REPLY);
 						reply->request_message_local_addr = hdr->request_message_local_addr;
 						send_rdma_message(conn, reply);
@@ -2584,7 +2584,7 @@ static void *server_spinning_thread_kernel(void *args)
 					}
 				} else if (hdr->type == CHANGE_CONNECTION_PROPERTIES_REPLY) {
 					assert(0);
-					((tu_data_message_s *)hdr->request_message_local_addr)->ack_arrived =
+					((tu_data_message *)hdr->request_message_local_addr)->ack_arrived =
 						KR_REP_ARRIVED;
 					/*do nothing for now*/
 					_zero_rendezvous_locations(hdr);
@@ -2630,8 +2630,8 @@ static void *server_spinning_thread_kernel(void *args)
 				conn->next_rdma_memory_regions = NULL;
 				conn->rendezvous = conn->rdma_memory_regions->remote_memory_buffer;
 
-				tu_data_message_s *msg =
-					(tu_data_message_s *)((uint64_t)conn->rdma_memory_regions->local_memory_buffer +
+				tu_data_message *msg =
+					(tu_data_message *)((uint64_t)conn->rdma_memory_regions->local_memory_buffer +
 							      (uint64_t)conn->control_location);
 				msg->pay_len = 0;
 				msg->padding_and_tail = 0;
@@ -2904,7 +2904,7 @@ static void *poll_cq(void *arg)
 
 void on_completion_server(struct ibv_wc *wc, struct connection_rdma *conn)
 {
-	tu_data_message_s *msg;
+	tu_data_message *msg;
 	if (wc->status == IBV_WC_SUCCESS) {
 		switch (wc->opcode) {
 		case IBV_WC_SEND:
@@ -2915,7 +2915,7 @@ void on_completion_server(struct ibv_wc *wc, struct connection_rdma *conn)
 			break;
 		case IBV_WC_RDMA_WRITE:
 			if (wc->wr_id != 0) {
-				msg = (tu_data_message_s *)wc->wr_id;
+				msg = (tu_data_message *)wc->wr_id;
 				switch (msg->type) {
 				/*server to client messages*/
 				case PUT_REPLY:
