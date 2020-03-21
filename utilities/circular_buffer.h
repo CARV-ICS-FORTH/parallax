@@ -1,6 +1,6 @@
+#pragma once
 #include <stdint.h>
-#ifndef __CIRCULAR_BUFFER_H__
-#define __CIRCULAR_BUFFER_H__
+
 #define BITS_PER_BITMAP_WORD 32
 typedef enum circular_buffer_op_status{
 	BITMAP_RESET = 0x00,
@@ -33,4 +33,4 @@ circular_buffer *create_and_init_circular_buffer(char * memory_region, uint32_t 
 circular_buffer_op_status allocate_space_from_circular_buffer(circular_buffer * c, uint32_t size, char ** addr);
 void free_space_from_circular_buffer(circular_buffer * c, char * address, uint32_t size);
 void reset_circular_buffer(circular_buffer *c);
-#endif
+

@@ -486,6 +486,8 @@ void async_send_rdma_message(connection_rdma *conn, tu_data_message *msg, void (
 tu_data_message *get_message_reply(connection_rdma *conn, tu_data_message *msg);
 void free_rdma_local_message(connection_rdma *conn);
 void free_rdma_received_message(connection_rdma *conn, tu_data_message *msg);
+
+void client_free_rpc_pair(connection_rdma *conn, tu_data_message *msg);
 /*replica specific functions*/
 int rdma_kv_entry_to_replica(connection_rdma *conn, tu_data_message *data_message, uint64_t segment_log_offset,
 			     void *source, uint32_t kv_length, uint32_t client_buffer_key);

@@ -60,7 +60,7 @@ enum tucana_message_types {
 	CLIENT_RECEIVED_READY
 };
 
-typedef enum receive_options { SYNC_REQUEST = 2, ASYNC_REQUEST, BUSY_WAIT } receive_options;
+typedef enum send_options { SYNC_REQUEST = 2, ASYNC_REQUEST, BUSY_WAIT } receive_options;
 // Set in allocate_rdma_message
 #define SERVER_CATEGORY 26368 //0x6700
 #define CLIENT_CATEGORY 21760 //0x5500
