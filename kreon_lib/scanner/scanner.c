@@ -102,7 +102,6 @@ scannerHandle *initScanner(scannerHandle *sc, db_handle *handle, void *start_key
 	// fill sc->keyValue field
 	if (getNext(sc) == END_OF_DATABASE) {
 		log_warn("Reached end of database");
-		raise(SIGINT);
 		sc->keyValue = NULL;
 	}
 	return sc;

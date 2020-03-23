@@ -1,6 +1,5 @@
 /**
- * tucana_server.h
- *  Tucana server
+*  Tucana server
  * Created by Pilar Gonzalez-Ferez on 28/07/16.
  * Copyright (c) 2016 Pilar Gonzalez-Ferez <pilar@ics.forth.gr>.
  **/
@@ -24,9 +23,11 @@
 #include "messages.h"
 #include "prototype.h"
 #include "storage_devices.h"
+#include "messages.h"
 #include "globals.h"
 #include "../kreon_lib/btree/btree.h"
 #include "../kreon_lib/btree/segment_allocator.h"
+#include "../kreon_lib/scanner/scanner.h"
 #include "zk_server.h"
 #include "replica_utilities.h"
 #include "../kreon_rdma/rdma.h"
@@ -613,8 +614,7 @@ int _init_replica_rdma_connections(struct _tucana_region_S *S_tu_region)
 		//	S_tu_region->replica_next_data_con->rdma_memory_regions->local_memory_buffer;
 
 		tu_data_message *tmp =
-			(tu_data_message *)
-				S_tu_region->replica_next_data_con->rdma_memory_regions->local_memory_buffer;
+			(tu_data_message *)S_tu_region->replica_next_data_con->rdma_memory_regions->local_memory_buffer;
 
 		/*init message*/
 		tmp->pay_len = 4096 + BUFFER_SEGMENT_SIZE;
@@ -946,19 +946,19 @@ void handle_task(void *__task)
 	work_task *task = (work_task *)__task;
 	kv_location location;
 	struct connection_rdma *rdma_conn;
-
 	_tucana_region_S *S_tu_region;
-	int tries;
 	void *region_key;
 	//leave it for later
 	void *addr;
 	uint64_t log_address;
 	void *master_segment;
 	void *local_log_addr;
-	int32_t num_entries;
-
 	void *key = NULL;
 	void *value;
+	scannerHandle *sc;
+	msg_multi_get_req *multi_get;
+	int tries;
+	int32_t num_entries;
 	uint32_t key_length = 0;
 
 	/*unboxing the arguments*/
@@ -1303,6 +1303,37 @@ void handle_task(void *__task)
 		free_rdma_received_message(task->conn, task->msg);
 		task->overall_status = TASK_COMPLETED;
 		break;
+	case MULTI_GET_REQUEST:
+		multi_get = (msg_multi_get_req *)task->msg->data;
+		multi_get->seek_key = (msg_key *)((uint64_t)multi_get + sizeof(msg_multi_get_req));
+		S_tu_region = find_region(multi_get->seek_key->key, multi_get->seek_key->size);
+		if (S_tu_region == NULL) {
+			log_fatal("Region not found for key size %u:%s", multi_get->seek_key->size,
+				  multi_get->seek_key->key);
+			exit(EXIT_FAILURE);
+		}
+		/*create an internal scanner object*/
+		sc = (scannerHandle *)malloc(sizeof(scannerHandle));
+		if (multi_get->seek_mode != FETCH_FIRST)
+			initScanner(sc, S_tu_region->db, multi_get->seek_key, multi_get->seek_mode);
+		else
+			initScanner(sc, S_tu_region->db, NULL, GREATER_OR_EQUAL);
+
+		if (sc->keyValue != NULL) {
+			/*put the data in the buffer*/
+			msg_multi_get_rep* multi_get_rep = task->msg->reply;
+			msg_key *key = sc->keyValue;
+			msg_value *value = (msg_value *)((uint64_t)key + sizeof(msg_key) + key->size);
+			memcpy(multi_get_rep->buffer, key, key->size+value->size + sizeof(msg_key)+sizeof(msg_value));
+			num_entries = 1;
+			while (num_entries < multi_get->max_num_entries) {
+				if (getNext(sc) == END_OF_DATABASE)
+					break;
+			}
+		}
+
+		free(sc);
+		break;
 	case TEST_REQUEST:
 		task->reply_msg = (void *)((uint64_t)task->conn->rdma_memory_regions->local_memory_buffer +
 					   (uint64_t)task->msg->reply);
@@ -1391,8 +1422,8 @@ void handle_task(void *__task)
 
 		/*Since reply message is of fixed size we allocate it first*/
 
-		task->reply_msg = (tu_data_message *)(task->conn->rdma_memory_regions->local_memory_buffer +
-							task->conn->offset);
+		task->reply_msg =
+			(tu_data_message *)(task->conn->rdma_memory_regions->local_memory_buffer + task->conn->offset);
 		/*init message*/
 		task->reply_msg->pay_len = 0;
 		task->reply_msg->padding_and_tail = 0;
@@ -1555,23 +1586,23 @@ int main(int argc, char *argv[])
 	//	exit(EXIT_FAILURE);
 	//}
 
-	DPRINT("initializing storage device:%s\n", Device_name);
+	log_info("initializing storage device:%s", Device_name);
 	Init_Storage_Device(&storage_dev, Device_name, (uint64_t)Device_size);
-	DPRINT("initializing zookeeper server\n");
+	log_info("initializing zookeeper server");
 	Init_tuzk_server(&tuzk_S);
-	DPRINT("initializing regionse?\n");
+	log_info("initializing regionse?\n");
 	Init_RegionsSe();
 #if TU_RDMA
 	Set_OnConnection_Create_Function(regions_S.channel, handle_task);
-	DPRINT("initialized RDMA\n");
+	log_info("initialized RDMA");
 #endif
-	DPRINT("initializing data server\n");
+	log_info("initializing data server");
 	Init_Data_Server_from_ZK();
 	stats_init(num_of_worker_threads);
 	sem_init(&exit_main, 0, 0);
 	sem_wait(&exit_main);
 
-	DPRINT("kreonR server exiting\n");
+	log_info("kreonR server exiting\n");
 	Free_RegionsSe();
 	return 0;
 }

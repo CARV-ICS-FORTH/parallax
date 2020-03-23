@@ -29,7 +29,7 @@
 
 #define SCAN_REORGANIZE 0xAF
 
-typedef enum SEEK_SCANNER_MODE { GREATER = 5, GREATER_OR_EQUAL = 6 } SEEK_SCANNER_MODE;
+typedef enum SEEK_SCANNER_MODE { GREATER = 5, GREATER_OR_EQUAL = 6, FETCH_FIRST } SEEK_SCANNER_MODE;
 
 typedef struct level_scanner {
 	db_handle *db;

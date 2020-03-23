@@ -1,6 +1,4 @@
-#ifndef __TUCANAS_CONVF_H_
-#define __TUCANAS_CONVF_H_
-
+#pragma once
 #include <inttypes.h>
 #include <semaphore.h>
 
@@ -16,7 +14,7 @@
 #define DEFAULT_MEMORY_SIZE_OPTION 0xFA
 #define CONTROL_CONNECTION_MEMORY_SIZE 1048576
 
-//#if REGULAR_FAKE 0
+
 #define TUCANA_DEBUG 0
 #define MAX_MAILBOX 1
 #define MAX_MAILBOX_LESS_1 (MAX_MAILBOX - 1)
@@ -29,14 +27,6 @@
 #define MAX_ID_LENGTH 256
 #define MAX_KEY_LENGTH 64
 #define HASH 0
-
-#define TU_LITTLE_ENDIAN 1 // This affect when a  number is stored between pages. See tucana_messages.c
-
-/*Client side*/
-#define CLI_RECV_THREADS                                                                                               \
-	0 /*1 receiving is done with threads gesalous 0 --> receive is perfromed with spinning threads*/
-#define CLI_RECV_WHILE                                                                                                 \
-	0 /*1 receiving is done by the YCSB threads, but a single threads is receiving until it gets its own message*/
 
 //#define HostPort "127.0.0.1:2181"
 //#define HostPort "10.10.10.4:2181"
@@ -82,64 +72,13 @@
 #define SIZEUINT32_T (sizeof(uint32_t))
 #define SIZEUINT32_T_2 (sizeof(uint32_t) << 1)
 
-#define KREON_KEY_NOT_FOUND 2
+
 
 //#define WORKER_THREADS_PER_SPINNING_THREAD 4
 
-typedef struct tu_data_message {
-#if TU_SEMAPHORE
-	sem_t sem;
-#endif
-	/*Inform server where we expect the reply*/
-	void *reply;
-	volatile uint32_t reply_length;
 
-	uint32_t pay_len; //Size of the payload
-	uint32_t padding_and_tail; //padding so as MESSAGE total size is a multiple of MESSAGE_SEGMENT_SIZE
-	uint16_t type; // Type of the message: PUT_REQUEST, PUT_REPLY, GET_QUERY, GET_REPLY, etc.
-	uint8_t error_code;
-
-	uint32_t value; //Number of operations included in the payload
-	volatile uint64_t local_offset; //Offset regarding the local Memory region
-	volatile uint64_t remote_offset; //Offset regarding the remote Memory region
-	//From Client to head, local_offset == remote_offset
-	//From head to replica1, it could be that local_offset != remote_offset
-	//(real CHAIN implementation should be equal, since head only puts and tail only gets)
-	//From replica-i to replica-i+1, local_offset == remote_offset
-	/*<gesalous>*/
-	/*for asynchronous requests*/
-	void *callback_function_args;
-	void (*callback_function)(void *args);
-	/*</gesalous>*/
-
-	void *reply_message; /* Filled by the receiving side on arrival of a message. If request_message_local_addr of
-													 a received message is not NULL the receiving side uses the request_message_local_addr to
-													 find the initial message and fill its reply_message field with the address of the new message*/
-
-	void *request_message_local_addr; /* This field contains the local memory address of this message.
-																			 * It is piggybacked by the remote side to its
-																			 *  corresponding reply message. In this way
-																			 *  incoming messages can be associated with
-																			 *  the initial request messages*/
-
-	/*gesalous staff also*/
-	volatile int32_t ack_arrived;
-	/*from most significant byte to less: <FUTURE_EXTENSION>, <FUTURE_EXTENSION>, 
-	 * <FUTUTE_EXTENSION>, SYNC/ASYNC(indicates if this is  a synchronous or asynchronous request*/
-	volatile int32_t flags;
-#ifdef CHECKSUM_DATA_MESSAGES
-	unsigned long hash; // [mvard] hash of data buffer
-#endif
-	void *data; /*Pointer to the first element of the Payload*/
-	void *next; /*Pointer to the "current" element of the payload. Initially equal to data*/
-	void *tail; /*Pointer to the tail that will be an integer to indicate that the data has been received*/
-	uint32_t receive;
-} tu_data_message;
 
 #define TU_HEADER_SIZE (sizeof(struct tu_data_message))
 #define TU_TAIL_SIZE (sizeof(uint32_t))
 #define TU_HEADER_TAIL_SIZE (TU_HEADER_SIZE + TU_TAIL_SIZE)
 
-#define MAX_PAY_LEN_SINGLE_PACKET (MRQ_ELEMENT_SIZE - TU_HEADER_TAIL_SIZE)
-
-#endif

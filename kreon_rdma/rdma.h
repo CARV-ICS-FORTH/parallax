@@ -447,13 +447,11 @@ typedef struct connection_rdma {
 
 static inline void Set_OnConnection_Create_Function(struct channel_rdma *channel, on_connection_created function)
 {
-	DPRINT("\n\tregistered application function for handling server messages\n");
 	channel->connection_created = function;
 }
 
 void crdma_put_message_from_MR(struct connection_rdma *conn, void **mr);
 void *crdma_receive_rdma_message(struct connection_rdma *conn, void **payload);
-
 
 void crdma_init_generic_create_channel(struct channel_rdma *channel);
 void crdma_init_client_connection(struct connection_rdma *conn, const char *host, const char *port,
@@ -469,8 +467,6 @@ struct connection_rdma *crdma_client_create_connection_list_hosts(struct channel
 void crdma_init_client_connection_list_hosts(struct connection_rdma *conn, char **hosts, const int num_hosts,
 					     struct channel_rdma *channel, connection_type type);
 
-
-
 void crdma_put_message_from_remote_MR(struct connection_rdma *conn, uint64_t ooffset, int32_t N);
 int64_t crdma_get_message_consecutive_from_remote_MR(struct connection_rdma *conn, uint32_t length);
 
@@ -478,7 +474,7 @@ tu_data_message *allocate_rdma_message(connection_rdma *conn, int message_payloa
 void init_rdma_message(connection_rdma *conn, tu_data_message *msg, uint32_t message_type, uint32_t message_size,
 		       uint32_t message_payload_size, uint32_t padding);
 tu_data_message *__allocate_rdma_message(connection_rdma *conn, int message_payload_size, int message_type,
-					   int rdma_allocation_type, int priority, work_task *task);
+					 int rdma_allocation_type, int priority, work_task *task);
 
 int send_rdma_message(connection_rdma *conn, tu_data_message *msg);
 void async_send_rdma_message(connection_rdma *conn, tu_data_message *msg, void (*callback_function)(void *args),

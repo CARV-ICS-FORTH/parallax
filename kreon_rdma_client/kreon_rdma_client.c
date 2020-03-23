@@ -7,7 +7,7 @@
 #include "../kreon_server/globals.h"
 #include "../build/external-deps/log/src/log.h"
 
-typedef enum krc_scan_state { KRC_UNITIALIZED = 2, KRC_FETCH_NEXT_BATCH, KRC_END_OF_DB } krc_scan_state;
+
 
 krc_handle *krc_init(char *zookeeper_ip, int zk_port, uint32_t *error_code)
 {
