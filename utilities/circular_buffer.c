@@ -81,7 +81,7 @@ static circular_buffer_op_status __allocate_space_from_send_circular_buffer(circ
 		 */
 		if(check_if_space_is_free(c, c->last_addr, c->remaining_space)){
 			*addr = NULL;
-			DPRINT("bitmap[0] = %x\n",c->bitmap[0]);
+			// DPRINT("bitmap[0] = %x\n",c->bitmap[0]);
 			return NOT_ENOUGH_SPACE_AT_THE_END;
 		}
 		else{
@@ -117,7 +117,7 @@ static circular_buffer_op_status __allocate_space_from_recv_circular_buffer(circ
 			return ALLOCATION_IS_SUCCESSFULL;
 		} else {
 			/*space not freed yet*/
-			DPRINT("Space not ready size requested %d remaining %d\n", size, c->remaining_space);
+			// DPRINT("Space not ready size requested %d remaining %d\n", size, c->remaining_space);
 			return SPACE_NOT_READY_YET;
 		}
 	}else{
@@ -127,7 +127,7 @@ static circular_buffer_op_status __allocate_space_from_recv_circular_buffer(circ
 		 */
 		if(check_if_space_is_free(c, c->last_addr, c->remaining_space-c->memory_size_represented_per_bit)){
 			*addr = c->last_addr;
-			DPRINT("bitmap[0] = %x\n",c->bitmap[0]);
+			// DPRINT("bitmap[0] = %x\n",c->bitmap[0]);
 			return NOT_ENOUGH_SPACE_AT_THE_END;
 		} else{
 			return SPACE_NOT_READY_YET;

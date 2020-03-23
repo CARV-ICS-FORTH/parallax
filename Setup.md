@@ -1,34 +1,10 @@
 # Kreon
 
-## Build Dependencies
-To build Kreon, the following libraries have to be installed on your system:
-* `libnuma` - 
-* `libibverbs` - Infiniband verbs
-* `librdmacm` - RDMA Connection Manager 
-* `libzookeeper_mt` Zookeeper client bindings for C
+This document focuses on setting up a development environment for the
+distributed of Kreon on a local machine.
 
-Additionally, Kreon uses cmake for its build system and the gcc and g++
-compilers for its compilation.
+## Set up Development Environment
 
-### Installing Dependencies on Ubuntu 18.04 LTS
-Run the following command with superuser privileges:
-```
-# apt install libnuma-dev libibverbs-dev librdmacm-dev libzookeeper-mt-dev
-```
-
-For the build tools and compiler:
-```
-# apt install cmake build-essential
-```
-
-## Building Kreon
-From the project's root folder, run the following commands:
-```
-cmake .
-make
-```
-
-## Running Kreon
 Kreon uses RDMA for all network communication, which requires support from the
 network interface to run. A software implementation (soft-RoCE) exists and can
 run on all network interfaces.
@@ -38,17 +14,17 @@ soft-RoCE is part of the mainline Linux kernel versions since version 4.9
 through the `rdma_rxe` kernel module. To enable it for a network adapter the
 following steps are required:
 
-#### 1. Install dependencies
+#### Install dependencies
 The `ibverbs-utils` and `rdma-core` packages are required to enable soft-RoCE.
 These packages should be in most distirbutions' repositories
 
 ##### Installing Dependencies on Ubuntu 18.04 LTS
-Run the following command form a terminal with root access (or use sudo):
+Run the following command with superuser privileges:
 ```
-# apt install ibverbs-utils rdma-core perftest
+apt install ibverbs-utils rdma-core perftest
 ```
 
-##### Enable soft-RoCE
+#### Enable soft-RoCE
 To enable soft-RoCE on a network command run the following commands with
 superuser privileges:
 ```
@@ -58,9 +34,9 @@ rxe_cfg add eth_interface
 where `eth_interface` is the name of an ethernet network adapter interface. To
 view available network adapters run `ip a`.
 
-The command `rxe_cfg start` has to be run at every boot to use RDMA features.
+*Warning: The command `rxe_cfg start` has to be run at every boot to use RDMA.*
 
-##### Verify soft-RoCE is working
+#### Verify soft-RoCE is working
 To verify that soft-RoCE is working, we can run a simple RDMA Write throuhgput
 benchmark.
 
@@ -124,3 +100,58 @@ Example output:
  65536      5000             847.44             827.84 		   0.013245
 ---------------------------------------------------------------------------------------
 ```
+
+## Running Kreon
+
+### Start a Zookeeper Server
+
+1. Download and untar Zookeeper 3.6.0 using the following command
+    ````
+    wget https://downloads.apache.org/zookeeper/zookeeper-3.6.0/apache-zookeeper-3.6.0-bin.tar.gz
+    tar xf apache-zookeeper-3.6.0-bin.tar.gz
+    ````
+2. `cd apache-zookeeper-3.6.0-bin`
+
+3. Use the sample configuration by running the following commands through
+    Zookeeper's root directory
+    ````
+    cp conf/zoo_sample.cfg conf/zoo.cfg
+    ````
+
+4. Start the Zookeeper Server
+    ````
+    ./bin/zkServer.sh start
+    ````
+
+### Start a Kreon Server
+<!-- FIXME Mention kreon_server/conf.h:RDMA_IP_FILTER and zookeeper_host_port -->
+
+Follow these steps, while in project's root directory:
+
+1. Set the define RDMA_IP_FILTER in kreon_server/conf.h to the prefix of your
+   RDMA device (eg. "192.168.122." for the device 192.168.122.105). Recompile
+   for the change to take effect.
+
+2. Initialize a file device
+    ````
+    fallocate --length 4G /tmp/kreon-disk.dat
+    ./scripts/mkfs.eutropia.single.sh /tmp/kreon-disk.dat 1 1
+    ````
+
+3. Start the server
+    ````
+    ./build/kreon_server/kreon_server 6060 /tmp/kreon-disk.dat 4 0 1
+    ````
+
+4. Create a Kreon region (will include all possible keys)
+    ````
+    ./scripts/create_region.sh
+    ````
+
+### Test Functionality Using YCSB
+
+````
+cd build/YCSB-CXX
+cp -r ../../ansible/ycsb_execution_plans .
+./ycsb-kreon -threads 1 -e ycsb_execution_plans/execution_plan_la.txt
+````

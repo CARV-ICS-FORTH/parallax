@@ -10,7 +10,7 @@ set_source_files_properties(test_circular_buffer.c PROPERTIES COMPILE_FLAGS
 
 set_source_files_properties(test_scans.c PROPERTIES COMPILE_FLAGS "-O3")
 
-set(CMAKE_EXE_LINKER_FLAGS "-lm -lrt -pthread -lnuma") # -libverbs -lrdmacm
+set(CMAKE_EXE_LINKER_FLAGS "-Wl,-no-as-needed -lm -lrt -pthread -lnuma") # -libverbs -lrdmacm
                                                        # -lzookeeper_mt
 # add_definitions(-DKREONR -DTESTS)
 
