@@ -26,7 +26,7 @@ list(APPEND KREON_C_SOURCE_FILES "${CMAKE_SOURCE_DIR}/utilities/list.c")
 set_source_files_properties(
   KREON_C_SOURCE_FILES PROPERTIES COMPILE_FLAGS
                                   "${CMAKE_C_FLAGS_RELEASE} ${CMAKE_C_FLAGS}")
-set(CMAKE_EXE_LINKER_FLAGS "-lrt -lm -pthread -lnuma")
+set(CMAKE_EXE_LINKER_FLAGS "-Wl,--no-as-needed -lrt -lm -pthread -lnuma")
 
 # Kreon with replication enabled
 add_library(

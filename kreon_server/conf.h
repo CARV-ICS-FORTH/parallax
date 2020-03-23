@@ -45,7 +45,8 @@
 //#define HostPort "192.168.1.244:2181" //Server jedi4
 //#define HostPort "192.168.1.124:2181" //Server sith4
 //#define HostPort "192.168.1.125:2181" //Server sith5
-#define zookeeper_host_port "192.168.1.134:2181" //Server tie4
+// #define zookeeper_host_port "192.168.1.134:2181" //Server tie4
+#define zookeeper_host_port "127.0.0.1:2181" //localhost
 
 //TODO move properties to a configuration file
 #define RDMA_IP_FILTER "192.168.4."

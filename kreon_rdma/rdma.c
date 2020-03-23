@@ -225,7 +225,7 @@ static tu_data_message_s *_client_allocate_rdma_message(connection_rdma *conn, i
 		case NOT_ENOUGH_SPACE_AT_THE_END:
 			/*inform remote side that to reset the rendezvous*/
 
-			DPRINT("bitmap[%d] = 0x%x\n", i, conn->send_circular_buf->bitmap[i]);
+			// DPRINT("bitmap[%d] = 0x%x\n", i, conn->send_circular_buf->bitmap[i]);
 			if (allocate_space_from_circular_buffer(conn->send_circular_buf, MESSAGE_SEGMENT_SIZE, &addr) !=
 			    ALLOCATION_IS_SUCCESSFULL) {
 				DPRINT("FATAL cannot send reset rendezvous\n");
@@ -314,7 +314,7 @@ init_message:
 
 			case SPACE_NOT_READY_YET:
 				if (++i % 10000000) {
-					DPRINT("CLIENT: Waiting for space to become available for the reply part\n");
+					// DPRINT("CLIENT: Waiting for space to become available for the reply part\n");
 				}
 				break;
 			}
