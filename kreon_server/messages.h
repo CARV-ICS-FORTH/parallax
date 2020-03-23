@@ -14,8 +14,6 @@
 #include "../kreon_rdma/rdma.h"
 #include "conf.h"
 
-#define TDM_FIRST_MRQ_ELEMENT_SIZE (MRQ_ELEMENT_SIZE - sizeof(struct tu_data_message))
-
 enum tucana_message_types {
 	// FIXME Remove TU prefix from message types
 	PUT_REQUEST = 1, // PUT operation: client -> server
@@ -23,8 +21,9 @@ enum tucana_message_types {
 	PUT_REPLY,
 	TU_GET_QUERY, // GET operation: client -> server
 	TU_GET_REPLY, // GET reply: server -> client
-	TU_PEER_MR, // Send the peer MR to the server, to be able to connect mailbox and struct connection_rdma
-	TU_FLUSH_VOLUME_QUERY, // Flush the volume
+	MULTI_GET_REQUEST,
+	MULTI_GET_REPLY,
+	TU_FLUSH_VOLUME_QUERY, // Flush volume
 	TU_FLUSH_VOLUME_REPLY,
 	SCAN_REQUEST, // SCAN operation: client -> server
 	SCAN_REPLY, // SCAN reply: server -> client

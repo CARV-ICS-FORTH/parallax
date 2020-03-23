@@ -7,6 +7,8 @@
 #include "../kreon_server/globals.h"
 #include "../build/external-deps/log/src/log.h"
 
+typedef enum krc_scan_state { KRC_UNITIALIZED = 2, KRC_FETCH_NEXT_BATCH, KRC_END_OF_DB } krc_scan_state;
+
 krc_handle *krc_init(char *zookeeper_ip, int zk_port, uint32_t *error_code)
 {
 	krc_handle *hd = (krc_handle *)malloc(sizeof(krc_handle));
@@ -36,7 +38,7 @@ uint32_t krc_put(krc_handle *hd, uint32_t key_size, void *key, uint32_t val_size
 		Client_Get_Tu_Region_and_Mailbox(hd->client_regions, (char *)key, key_size, 0, &mailbox);
 	connection_rdma *conn = get_connection_from_region(region, (uint64_t)key);
 
-	req_msg = allocate_rdma_message(conn, key_size + val_size + (2 * sizeof(uint32_t)), TU_GET_QUERY);
+	req_msg = allocate_rdma_message(conn, key_size + val_size + (2 * sizeof(uint32_t)), PUT_REQUEST);
 	/*fill in the key payload part the data*/
 	*(uint32_t *)req_msg->next = key_size;
 	req_msg->next += sizeof(uint32_t);
@@ -128,8 +130,21 @@ krc_scanner *krc_scan_init(krc_handle *hd, uint32_t prefetch_num_entries, uint32
 	scanner->start_infinite = 1;
 	scanner->stop_infinite = 1;
 	scanner->prefix_filter_enable = 0;
+	scanner->state = KRC_UNITIALIZED;
 	scanner->scan_buffer = (krc_scan_entry *)((uint64_t)scanner + sizeof(krc_scanner));
 	return scanner;
+}
+
+void krc_scan_get_next(krc_scanner *sc)
+{
+	switch (sc->state) {
+	case KRC_UNITIALIZED:
+		break;
+	case KRC_FETCH_NEXT_BATCH:
+		break;
+	case KRC_END_OF_DB:
+		break;
+	}
 }
 
 void krc_scan_set_start(krc_scanner *sc, uint32_t start_key_size, void *start_key)

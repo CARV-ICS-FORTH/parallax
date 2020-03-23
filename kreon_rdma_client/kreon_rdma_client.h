@@ -2,6 +2,8 @@
 #include <stdint.h>
 #include "../kreon_server/client_regions.h"
 
+typedef enum krc_scan_state { KRC_UNITIALIZED = 2, KRC_FETCH_NEXT_BATCH, KRC_END_OF_DB } krc_scan_state;
+
 typedef struct krc_key {
 	uint32_t key_size;
 	uint8_t *key_buf;
@@ -16,8 +18,6 @@ typedef struct krc_scan_entry {
 	krc_key *key;
 	krc_value *val;
 } krc_scan_entry;
-
-
 
 typedef struct krc_handle {
 	_Client_Regions *client_regions;
@@ -34,9 +34,10 @@ typedef struct krc_scanner {
 	uint8_t start_infinite : 2;
 	uint8_t stop_infinite : 2;
 	uint8_t prefix_filter_enable : 2;
+	uint8_t is_valid : 2;
+	krc_scan_state state;
 	krc_scan_entry *scan_buffer;
 } krc_scanner;
-
 
 typedef enum krc_error_codes { KRC_SUCCESS = 0, KRC_ZK_FAILURE_CONNECT, KRC_PUT_FAILURE } krc_error_codes;
 
