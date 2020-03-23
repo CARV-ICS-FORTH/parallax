@@ -1,23 +1,58 @@
-Build Configuration
---------------------------------------------------------------------------------
-CMake version 3.0.2 or greater is required to build this project.
-On CentOS 7, you can install it from the epel repository with the command:
+# Building Kreon
 
-	sudo yum -y install cmake3
+## Build Dependencies
 
-It can then be invoked with the cmake3 command.
+To build Kreon, the following libraries have to be installed on your system:
+* `libnuma` - 
+* `libibverbs` - Infiniband verbs
+* `librdmacm` - RDMA Connection Manager 
+* `libzookeeper_mt` Zookeeper client bindings for C
+
+Additionally, Kreon uses cmake for its build system and the gcc and g++
+compilers for its compilation.
+
+### Installing Dependencies on Ubuntu 18.04 LTS
+
+Kreon requires CMake version >= 3.11.0. On Ubuntu, you need to add the
+following repository to get the latest stable version of CMake:
+
+	wget -O - https://apt.kitware.com/keys/kitware-archive-latest.asc 2>/dev/null | sudo apt-key add -
+	sudo apt-add-repository 'deb https://apt.kitware.com/ubuntu/ bionic main'
+	sudo apt update
+
+Run the following command with superuser privileges:
+
+	sudo apt install libnuma-dev libibverbs-dev librdmacm-dev libzookeeper-mt-dev
+
+For the build tools and compiler:
+
+	sudo apt install cmake build-essential
+
+### Installing Depedencies on Centos/RHEL 7
+
+Kreon requires CMake version >= 3.11.0. On Centos/RHEL this is supplied from the
+EPEL repository and can be installed with:
+    
+	sudo yum install cmake3
+
+<!-- TODO: add command for installing the rest of the dependencies -->
+
+## Build Configuration
 
 Compilation is done using the clang compiler, provided by the clang package in
-most Linux distributions.
-To configure the build and compile on Centos 7 use :
+most Linux distributions. To configure Kreon's build systems and build it run
+the commands:
 
 	mkdir build
 	cd build
-	cmake3 ..
+	cmake ..
 	make
 
-Build Configuration Parameters
---------------------------------------------------------------------------------
+On Centos/RHEL 7, replace the `cmake` command with the `cmake3` command supplied
+from the EPEL package of the same name.
+
+## Build Configuration Parameters
+
 The CMake scripts provided support two build configurations; "Release" and
 "Debug". The Debug configuration enables the "-g" option during compilation to
 allow debugging. The build configuration can be defined as a parameter to the
@@ -29,8 +64,8 @@ The default build configuration is "Debug".
 
 The "Release" build disables warnings and enables optimizations.
 
-Build Targets
---------------------------------------------------------------------------------
+## Build Targets
+
 * build/kreon/libkreon.a - Kreon library (standalone version)
 * build/kreon/libkreonr.a - Kreon library with replication enabled
 	(distributed version)
@@ -42,8 +77,8 @@ Build Targets
 * build/YCSB-CXX/ycsb-edb - Standalone kreon ycsb benchmark
 * build/YCSB-CXX/ycsb-kreon - Distributed kreon ycsb benchmark
 
-Static Analyzer
---------------------------------------------------------------------------------
+# Static Analyzer
+
 Install the clang static analyzer with the command:
 
 	sudo pip install scan-build
@@ -67,17 +102,17 @@ To view the report you can run the above command, assuming you have a graphical
 environment or just copy the folder mentioned to a computer that does and open
 the index.html file in that folder.
 
-Clang Format
---------------------------------------------------------------------------------
+# Clang Format
+
 Install the clang-format for Centos with the commands below:
 
 Install CentOS SCLo RH repository:
 
-	yum install centos-release-scl-rh
+	sudo yum install centos-release-scl-rh
 
 Install llvm-toolset-7-git-clang-format rpm package:
 
-	yum install llvm-toolset-7-git-clang-format
+	sudo yum install llvm-toolset-7-git-clang-format
 
 After successfully running the commands above clang-format should be installed at:
 
@@ -87,8 +122,8 @@ To format your code run in the build directory:
 
 	make format
 
-Generating compile_commands.json for Single Node Kreon
---------------------------------------------------------------------------------
+# Generating compile_commands.json for Single Node Kreon
+
 Install compdb for header awareness in compile_commands.json:
 
 	pip install --user git+https://github.com/Sarcasm/compdb.git#egg=compdb
@@ -101,8 +136,8 @@ After running cmake .. in the build directory run:
 	cd kreon
 	ln -sf ../build/compile_commands.json
 
-Pre commit hooks using pre-commit
---------------------------------------------------------------------------------
+# Pre commit hooks using pre-commit
+
 To install pre-commit:
 
 	pip install pre-commit --user

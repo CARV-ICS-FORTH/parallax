@@ -1,6 +1,6 @@
 # File: CMakeLists.txt Author: Michalis Vardoulakis <mvard@ics.forth.gr>
 
-cmake_minimum_required(VERSION 3.0.2)
+cmake_minimum_required(VERSION 3.11.0)
 include(FetchContent)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -51,11 +51,11 @@ FetchContent_Populate(
   SOURCE_DIR external-deps/log # (Relative) path within in the build directory.
 )
 
-set(Zookeeper_LIB_PATHS /usr/local/lib /opt/local/lib)
-find_path(Zookeeper_INCLUDE_DIR zookeeper/zookeeper.h /usr/local/include)
+set(Zookeeper_LIB_PATHS /usr/local/lib /opt/local/lib /usr/lib/x86_64-linux-gnu)
+find_path(Zookeeper_INCLUDE_DIR zookeeper/zookeeper.h /usr/local/include /usr/include)
 find_library(
   Zookeeper_LIBRARY
-  NAMES zookeeper_st
+  NAMES zookeeper_mt
   PATHS ${Zookeeper_LIB_PATHS})
 
 if(NOT Zookeeper_INCLUDE_DIR)
@@ -71,9 +71,7 @@ else()
   include_directories(${Zookeeper_INCLUDE_DIR}/zookeeper)
 endif()
 
-# Paths set(ZK_C_LIB "/home1/public/mvard/zookeeper_c")
-
-include_directories(${CMAKE_BINARY_DIR}/external-deps/log/src/)
+include_directories(${CMAKE_BINARY_DIR}/external-deps/log/src/ ${Zookeeper_INCLUDE_DIR})
 # Compiler configuration
 if(NOT CMAKE_C_COMPILER)
   set(CMAKE_C_COMPILER "gcc")
