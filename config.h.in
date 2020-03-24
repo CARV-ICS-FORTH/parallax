@@ -1,0 +1,2 @@
+#cmakedefine LEAF_NODE_SIZE @LEAF_NODE_SIZE@
+#cmakedefine INDEX_NODE_SIZE @INDEX_NODE_SIZE@
