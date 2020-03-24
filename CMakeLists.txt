@@ -52,7 +52,8 @@ FetchContent_Populate(
 )
 
 set(Zookeeper_LIB_PATHS /usr/local/lib /opt/local/lib /usr/lib/x86_64-linux-gnu)
-find_path(Zookeeper_INCLUDE_DIR zookeeper.h /usr/local/include /usr/include /usr/include/zookeeper)
+find_path(Zookeeper_INCLUDE_DIR zookeeper.h /usr/local/include /usr/include
+          /usr/include/zookeeper)
 find_library(
   Zookeeper_LIBRARY
   NAMES zookeeper_mt
@@ -62,15 +63,19 @@ if(NOT Zookeeper_INCLUDE_DIR)
   message("Could not find zookeeper header")
 else()
   message("Zookeeper headers at ${Zookeeper_INCLUDE_DIR}")
+  include_directories(${Zookeeper_INCLUDE_DIR})
 endif()
 
 if(NOT Zookeeper_LIBRARY)
   message("Could not find zookeeper lib needs >= 3.4.5")
 else()
   message("Zookeeper headers at ${Zookeeper_LIBRARY}")
-  include_directories(${Zookeeper_INCLUDE_DIR})
 endif()
-  
+
+# Paths set(ZK_C_LIB "/home1/public/mvard/zookeeper_c")
+include(CMakeconfig.txt)
+configure_file(config.h.in config.h @ONLY)
+
 include_directories(${CMAKE_BINARY_DIR}/external-deps/log/src/)
 # Compiler configuration
 if(NOT CMAKE_C_COMPILER)
@@ -81,8 +86,9 @@ if(NOT CMAKE_CXX_COMPILER)
   set(CMAKE_CXX_COMPILER "g++")
 endif()
 
-set(CMAKE_C_FLAGS_RELEASE "-std=gnu99 -Wall -I${CMAKE_BINARY_DIR}")
-set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_RELEASE} -g -I${CMAKE_BINARY_DIR}")
+include_directories(${CMAKE_BINARY_DIR})
+set(CMAKE_C_FLAGS_RELEASE "-std=gnu99 -Wall")
+set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_RELEASE} -g ")
 set(CMAKE_CXX_FLAGS_RELEASE "-std=gnu++11 -Wall")
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_RELEASE} -g")
 
@@ -105,8 +111,14 @@ set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "RDMA-based distributed key-value store")
 set(CPACK_GENERATOR "RPM")
 set(CPACK_RPM_PACKAGE_LICENSE "ASL v2.0")
 set(CPACK_RPM_PACKAGE_GROUP "Applications/Databases")
-set(CPACK_RPM_PACKAGE_REQUIRES "numactl-libs >= 2, libibverbs, librdmacm, glibc, libgcc, libnl3, zookeeper-native >= 3")
-set(CPACK_RPM_PACKAGE_DESCRIPTION "Kreon is a high-speed and high-efficiency distributed key-value store functioning on top of an RDMA-capable network.")
+set(CPACK_RPM_PACKAGE_REQUIRES
+    "numactl-libs >= 2, libibverbs, librdmacm, glibc, libgcc, libnl3, zookeeper-native >= 3"
+)
+set(CPACK_RPM_PACKAGE_DESCRIPTION
+    "Kreon is a high-speed and high-efficiency distributed key-value store functioning on top of an RDMA-capable network."
+)
 set(CPACK_PACKAGING_INSTALL_PREFIX /usr)
-set(CPACK_PACKAGE_FILE_NAME "${CPACK_PACKAGE_NAME}-${CPACK_PACKAGE_VERSION}-${CPACK_PACKAGE_RELEASE}.${CMAKE_SYSTEM_PROCESSOR}")
+set(CPACK_PACKAGE_FILE_NAME
+    "${CPACK_PACKAGE_NAME}-${CPACK_PACKAGE_VERSION}-${CPACK_PACKAGE_RELEASE}.${CMAKE_SYSTEM_PROCESSOR}"
+)
 include(CPack)

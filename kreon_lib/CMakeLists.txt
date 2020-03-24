@@ -1,5 +1,7 @@
 # File: kreon/CMakeLists.txt Author: Michalis Vardoulakis <mvard@ics.forth.gr>
 
+include_directories(${CMAKE_CURRENT_BINARY_DIR})
+
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 if("${CMAKE_BUILD_TYPE}" STREQUAL "Debug")
   set(CMAKE_C_FLAGS
