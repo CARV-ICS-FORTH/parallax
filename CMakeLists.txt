@@ -52,7 +52,7 @@ FetchContent_Populate(
 )
 
 set(Zookeeper_LIB_PATHS /usr/local/lib /opt/local/lib /usr/lib/x86_64-linux-gnu)
-find_path(Zookeeper_INCLUDE_DIR zookeeper/zookeeper.h /usr/local/include /usr/include)
+find_path(Zookeeper_INCLUDE_DIR zookeeper.h /usr/local/include /usr/include /usr/include/zookeeper)
 find_library(
   Zookeeper_LIBRARY
   NAMES zookeeper_mt
@@ -68,10 +68,10 @@ if(NOT Zookeeper_LIBRARY)
   message("Could not find zookeeper lib needs >= 3.4.5")
 else()
   message("Zookeeper headers at ${Zookeeper_LIBRARY}")
-  include_directories(${Zookeeper_INCLUDE_DIR}/zookeeper)
+  include_directories(${Zookeeper_INCLUDE_DIR})
 endif()
-
-include_directories(${CMAKE_BINARY_DIR}/external-deps/log/src/ ${Zookeeper_INCLUDE_DIR})
+  
+include_directories(${CMAKE_BINARY_DIR}/external-deps/log/src/)
 # Compiler configuration
 if(NOT CMAKE_C_COMPILER)
   set(CMAKE_C_COMPILER "gcc")
@@ -86,9 +86,13 @@ set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_RELEASE} -g -I${CMAKE_BINARY_DIR}")
 set(CMAKE_CXX_FLAGS_RELEASE "-std=gnu++11 -Wall")
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_RELEASE} -g")
 
-add_subdirectory(kreon_rdma)
+if(Zookeeper_LIBRARY)
+  add_subdirectory(kreon_rdma)
+endif()
 add_subdirectory(kreon_lib)
-add_subdirectory(kreon_server)
+if(Zookeeper_LIBRARY)
+  add_subdirectory(kreon_server)
+endif()
 add_subdirectory(YCSB-CXX)
 add_subdirectory(utilities)
 add_subdirectory(tests)
