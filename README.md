@@ -3,13 +3,13 @@
 ## Build Dependencies
 
 To build Kreon, the following libraries have to be installed on your system:
-* `libnuma` - 
+* `libnuma` - Allocations with NUMA policy
 * `libibverbs` - Infiniband verbs
-* `librdmacm` - RDMA Connection Manager 
-* `libzookeeper_mt` Zookeeper client bindings for C
+* `librdmacm` - RDMA Connection Manager
+* `libzookeeper_mt` - Zookeeper client bindings for C
 
-Additionally, Kreon uses cmake for its build system and the gcc and g++
-compilers for its compilation.
+For Mellanox cards, the Infiniband and RDMA libraries are included in the software package provided by the vendor.
+Additionally, Kreon uses cmake for its build system and the gcc and g++ compilers for its compilation.
 
 ### Installing Dependencies on Ubuntu 18.04 LTS
 
@@ -32,8 +32,11 @@ For the build tools and compiler:
 
 Kreon requires CMake version >= 3.11.0. On Centos/RHEL this is supplied from the
 EPEL repository and can be installed with:
-    
+
 	sudo yum install cmake3
+
+You also need to install ZooKeeper. Ready-made packages are available from Cloudera.
+Install the repository as described [here](https://docs.cloudera.com/documentation/enterprise/5-14-x/topics/cdh_ig_cdh5_install.html) and then `yum install zookeeper-native`.
 
 <!-- TODO: add command for installing the rest of the dependencies -->
 
@@ -76,6 +79,10 @@ The "Release" build disables warnings and enables optimizations.
 * build/TucanaServer/tucanaserver - Server
 * build/YCSB-CXX/ycsb-edb - Standalone kreon ycsb benchmark
 * build/YCSB-CXX/ycsb-kreon - Distributed kreon ycsb benchmark
+
+## Build Package
+
+Run `make package` inside the `build` folder to create an RPM file.
 
 # Static Analyzer
 

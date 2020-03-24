@@ -67,3 +67,5 @@ target_link_libraries(create_regions kreon_rdma)
 # zk_client.c zk_string_vector.c network_data.c network_data.client.c
 # regions.c messages.c client_regions.c client_scanner.c
 # ../TuRDMA/rdma.c ) target_link_libraries(fake_client kreon_rdma)
+
+install(TARGETS kreon_client kreon_server create_regions)

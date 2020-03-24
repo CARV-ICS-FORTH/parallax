@@ -15,3 +15,5 @@ add_library(
 # add_executable(test_rdma test_rdma.c) set_target_properties(test_rdma
 # PROPERTIES LINK_FLAGS "-libverbs -pthread -D_GNU_SOURCE" )
 # target_link_libraries(test_rdma turdma)
+
+install(TARGETS kreon_rdma)
