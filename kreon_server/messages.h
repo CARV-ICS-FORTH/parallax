@@ -72,7 +72,7 @@ typedef struct msg_value {
 #define SERVER_CATEGORY 26368 //0x6700
 #define CLIENT_CATEGORY 21760 //0x5500
 
-typedef struct tu_data_message {
+typedef struct msg_header {
 #if TU_SEMAPHORE
 	sem_t sem;
 #endif
@@ -120,7 +120,18 @@ typedef struct tu_data_message {
 	void *next; /*Pointer to the "current" element of the payload. Initially equal to data*/
 	void *tail; /*Pointer to the tail that will be an integer to indicate that the data has been received*/
 	uint32_t receive;
-} tu_data_message;
+} msg_header;
+
+typedef struct msg_get_req {
+	uint32_t key_size;
+	void *key[0];
+} msg_get_req;
+
+typedef struct msg_get_rep {
+	uint32_t found;
+	uint32_t value_size;
+	void *value[0];
+} msg_get_rep;
 
 typedef struct msg_multi_get_req {
 	uint32_t max_num_entries;
@@ -132,6 +143,7 @@ typedef struct msg_multi_get_rep {
 	uint32_t num_entries;
 	uint8_t end_of_database;
 	uint32_t pos;
+	uint32_t remaining;
 	void *kv_buffer[0];
 } msg_multi_get_rep;
 
@@ -145,5 +157,6 @@ typedef struct set_connection_property_reply {
 	int assigned_RDMA_memory_size;
 } set_connection_property_reply;
 
-int push_buffer_in_tu_data_message(struct tu_data_message *data_message, char *buffer, uint32_t buffer_length);
+int push_buffer_in_msg_header(struct msg_header *data_message, char *buffer, uint32_t buffer_length);
+int msg_push_to_multiget_buf(msg_key *key, msg_value *val, msg_multi_get_rep *buf);
 

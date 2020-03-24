@@ -125,7 +125,7 @@ class kreonRClientDB : public YCSBDB {
 	{
 		client_region *cli_tu_region;
 		struct connection_rdma *connection;
-		struct tu_data_message *mr_message;
+		struct msg_header *mr_message;
 		int total_length, mailbox;
 		int i;
 		int cnt = 1;
@@ -144,7 +144,7 @@ class kreonRClientDB : public YCSBDB {
 				std::string server(cli_tu_region->head);
 				ops_per_server[server] += num_of_batch_operations_per_thread[i];
 				mr_message = allocate_rdma_message(connection, client_buffers[i].pos, PUT_REQUEST);
-				if (!push_buffer_in_tu_data_message(mr_message, client_buffers[i].buffer,
+				if (!push_buffer_in_msg_header(mr_message, client_buffers[i].buffer,
 								    client_buffers[i].pos)) {
 					DPRINT("push_buffer for key FAILED\n");
 					exit(EXIT_FAILURE);
@@ -196,8 +196,8 @@ class kreonRClientDB : public YCSBDB {
 	{
 		uint32_t lenKey;
 		int length = 0;
-		struct tu_data_message *mr_message;
-		struct tu_data_message *reply_data_message;
+		struct msg_header *mr_message;
+		struct msg_header *reply_data_message;
 		client_region *cli_tu_region;
 		int mailbox = 0;
 		std::map<std::string, std::string> vmap;
@@ -225,7 +225,7 @@ class kreonRClientDB : public YCSBDB {
 		mr_message = allocate_rdma_message(connection, length, TU_GET_QUERY);
 		*(uint32_t *)mr_message->next = key.length();
 		mr_message->next = (void *)((uint64_t)mr_message->next + 4);
-		if (!push_buffer_in_tu_data_message(mr_message, (char *)key.c_str(), key.length())) {
+		if (!push_buffer_in_msg_header(mr_message, (char *)key.c_str(), key.length())) {
 			DPRINT("FATAL push FAILED\n");
 			exit(EXIT_FAILURE);
 		}
@@ -314,8 +314,8 @@ class kreonRClientDB : public YCSBDB {
 		char buffer[1512];
 		int pos;
 		int total_length = 0;
-		struct tu_data_message *mr_message;
-		struct tu_data_message *reply_data_message;
+		struct msg_header *mr_message;
+		struct msg_header *reply_data_message;
 		client_region *cli_tu_region;
 		int mailbox;
 
@@ -358,13 +358,13 @@ class kreonRClientDB : public YCSBDB {
 		mr_message = allocate_rdma_message(connection, total_length, TU_UPDATE);
 		*(uint32_t *)mr_message->next = (uint32_t)key.length();
 		mr_message->next = (void *)((uint64_t)mr_message->next + sizeof(uint32_t)); // XXX TEST THIS
-		if (!push_buffer_in_tu_data_message(mr_message, (char *)key.c_str(), key.length())) {
+		if (!push_buffer_in_msg_header(mr_message, (char *)key.c_str(), key.length())) {
 			DPRINT("push_buffer for key FAILED\n");
 			exit(EXIT_FAILURE);
 		}
 		*(uint32_t *)mr_message->next = (uint32_t)pos;
 		mr_message->next = (void *)((uint64_t)mr_message->next + sizeof(uint32_t)); // XXX TEST THIS
-		if (!push_buffer_in_tu_data_message(mr_message, buffer, pos)) {
+		if (!push_buffer_in_msg_header(mr_message, buffer, pos)) {
 			DPRINT("push_buffer for value FAILED\n");
 			exit(EXIT_FAILURE);
 		}
@@ -379,7 +379,7 @@ class kreonRClientDB : public YCSBDB {
 		//reply_data_message = get_message_reply(connection, mr_message);
 
 #ifdef CHECKSUM_DATA_MESSAGES
-		// Set hash field in tu_data_message
+		// Set hash field in msg_header
 		mr_message->hash = hash;
 #endif
 		//if(reply_data_message == NULL){
@@ -398,8 +398,8 @@ class kreonRClientDB : public YCSBDB {
 		int i;
 		int type;
 		int total_length = 0;
-		struct tu_data_message *mr_message;
-		struct tu_data_message *reply_data_message;
+		struct msg_header *mr_message;
+		struct msg_header *reply_data_message;
 		client_region *cli_tu_region;
 		int ops = 0;
 		int mailbox;
@@ -473,19 +473,19 @@ class kreonRClientDB : public YCSBDB {
 		if (type == PUT_REQUEST) {
 			*(uint32_t *)mr_message->next = key.length();
 			mr_message->next += sizeof(uint32_t);
-			if (!push_buffer_in_tu_data_message(mr_message, (char *)key.c_str(), key.length())) {
+			if (!push_buffer_in_msg_header(mr_message, (char *)key.c_str(), key.length())) {
 				DPRINT("push_buffer for key FAILED\n");
 				exit(EXIT_FAILURE);
 			}
 
 			*(uint32_t *)mr_message->next = pos;
 			mr_message->next += sizeof(uint32_t);
-			if (!push_buffer_in_tu_data_message(mr_message, buffer, pos)) {
+			if (!push_buffer_in_msg_header(mr_message, buffer, pos)) {
 				DPRINT("push_buffer for value FAILED\n");
 				exit(EXIT_FAILURE);
 			}
 		} else {
-			if (!push_buffer_in_tu_data_message(mr_message, client_buffers[id].buffer,
+			if (!push_buffer_in_msg_header(mr_message, client_buffers[id].buffer,
 							    client_buffers[id].pos)) {
 				DPRINT("push_buffer for key FAILED\n");
 				exit(EXIT_FAILURE);

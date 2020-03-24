@@ -6,8 +6,23 @@
 #include "../build/external-deps/log/src/log.h"
 #include "messages.h"
 
-/*gesalous*/
-int push_buffer(struct tu_data_message *data_message, void *buffer, uint32_t buffer_length)
+int msg_push_to_multiget_buf(msg_key *key, msg_value *val, msg_multi_get_rep *buf)
+{
+	uint32_t total_size = key->size + val->size + sizeof(key) + sizeof(val);
+	if (buf->remaining < total_size) {
+		return KREON_FAILURE;
+	}
+	memcpy(buf->kv_buffer + buf->pos, key, sizeof(msg_key) + key->size);
+	buf->pos += (sizeof(msg_key) + key->size);
+	buf->remaining -= (sizeof(msg_key) + key->size);
+	memcpy(buf->kv_buffer + buf->pos, val, sizeof(msg_value) + val->size);
+	buf->pos += (sizeof(msg_key) + val->size);
+	buf->remaining -= (sizeof(msg_value) + val->size);
+	++buf->num_entries;
+	return KREON_SUCCESS;
+}
+
+int push_buffer(struct msg_header *data_message, void *buffer, uint32_t buffer_length)
 {
 	uint32_t current_len;
 	current_len = data_message->next - data_message->data;
@@ -23,7 +38,7 @@ int push_buffer(struct tu_data_message *data_message, void *buffer, uint32_t buf
 	return KREON_SUCCESS;
 }
 
-int push_buffer_in_tu_data_message(tu_data_message *data_message, char *buffer, uint32_t buffer_length)
+int push_buffer_in_msg_header(msg_header *data_message, char *buffer, uint32_t buffer_length)
 {
 	uint32_t current_len = data_message->next - data_message->data;
 	if (current_len + buffer_length > data_message->pay_len) {
@@ -36,12 +51,12 @@ int push_buffer_in_tu_data_message(tu_data_message *data_message, char *buffer, 
 	return KREON_SUCCESS;
 }
 
-int pop_buffer_from_tu_data_message(tu_data_message *msg, char *buffer, uint32_t buff_len)
+int pop_buffer_from_msg_header(msg_header *msg, char *buffer, uint32_t buff_len)
 {
 	uint32_t current_len = msg->next - msg->data;
 	if (current_len + buff_len > msg->pay_len) {
 		log_fatal("pop failed message payload length %d  current_len %d buffer_length %d\n", msg->pay_len,
-		       current_len, buff_len);
+			  current_len, buff_len);
 		return KREON_FAILURE;
 	}
 	memcpy(buffer, msg->next, buff_len);

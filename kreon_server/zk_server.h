@@ -17,9 +17,9 @@
 
 
 
-#include <zookeeper.h>
-#include <zookeeper_log.h>
-#include <zookeeper.jute.h>
+#include <zookeeper/zookeeper.h>
+//#include <zookeeper_log.h>
+#include <zookeeper/zookeeper.jute.h>
 
 #include "conf.h"
 #include "zk_string_vector.h"

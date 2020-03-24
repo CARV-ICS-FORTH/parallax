@@ -76,10 +76,7 @@
 
 
 //#define WORKER_THREADS_PER_SPINNING_THREAD 4
-
-
-
-#define TU_HEADER_SIZE (sizeof(struct tu_data_message))
+#define TU_HEADER_SIZE (sizeof(struct msg_header))
 #define TU_TAIL_SIZE (sizeof(uint32_t))
 #define TU_HEADER_TAIL_SIZE (TU_HEADER_SIZE + TU_TAIL_SIZE)
 

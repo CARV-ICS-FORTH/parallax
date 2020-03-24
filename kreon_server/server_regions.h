@@ -7,7 +7,7 @@
 //
 #pragma once
 #include <semaphore.h>
-#include <zookeeper.jute.h> //For struct String_vector
+#include <zookeeper/zookeeper.jute.h> //For struct String_vector
 
 #include "../kreon_lib/allocator/allocator.h"
 #include "../kreon_lib/btree/btree.h"
@@ -55,7 +55,7 @@ typedef struct se_seg_metadata {
 } se_seg_metadata;
 
 typedef struct se_rdma_buffer {
-	struct tu_data_message msg;
+	struct msg_header msg;
 	se_seg_metadata metadata;
 	char padding[4096 - sizeof(se_seg_metadata)];
 	uint8_t seg[SEGMENT_SIZE];

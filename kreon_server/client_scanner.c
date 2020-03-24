@@ -19,20 +19,20 @@ uint32_t kv_pairs_per_message = 100;
 //     Define a flag to [not] return the stop key in client_scan_get_next_kv.
 //     Make ret a function argument and stop allocating memory in the init function.
 
-struct tu_data_message* _create_scan_query_message(struct connection_rdma* conn, char* start_key, uint32_t start_key_len,
+struct msg_header* _create_scan_query_message(struct connection_rdma* conn, char* start_key, uint32_t start_key_len,
 		char* stop_key, uint32_t stop_key_len)
 {
-	struct tu_data_message* scan_query;
+	struct msg_header* scan_query;
 	uint32_t total_length = 3*sizeof(uint32_t) + start_key_len + stop_key_len;
 
 	/*DPRINT("Start Key = %s:%u | Stop Key = %s:%u\n", start_key, start_key_len, stop_key, stop_key_len);*/
 
 	scan_query = allocate_rdma_message(conn, total_length, SCAN_REQUEST);
-	push_buffer_in_tu_data_message(scan_query, &kv_pairs_per_message, sizeof(kv_pairs_per_message));
-	push_buffer_in_tu_data_message(scan_query, &start_key_len, sizeof(start_key_len));
-	push_buffer_in_tu_data_message(scan_query, start_key, start_key_len);
-	push_buffer_in_tu_data_message(scan_query, &stop_key_len, sizeof(stop_key_len));
-	push_buffer_in_tu_data_message(scan_query, stop_key, stop_key_len);
+	push_buffer_in_msg_header(scan_query, &kv_pairs_per_message, sizeof(kv_pairs_per_message));
+	push_buffer_in_msg_header(scan_query, &start_key_len, sizeof(start_key_len));
+	push_buffer_in_msg_header(scan_query, start_key, start_key_len);
+	push_buffer_in_msg_header(scan_query, &stop_key_len, sizeof(stop_key_len));
+	push_buffer_in_msg_header(scan_query, stop_key, stop_key_len);
 
 	assert((scan_query->flags & 0x0000FF00) == CLIENT_CATEGORY);
 
@@ -52,11 +52,11 @@ scanner_s* client_scan_init(
 {
 	scanner_s *ret = malloc(sizeof(scanner_s));
 	client_region* cli_tu_region;
-	struct tu_data_message* scan_query;
+	struct msg_header* scan_query;
 	int mailbox;
 
 	cli_tu_region = Client_Get_Tu_Region_and_Mailbox(regions, start_key, start_key_len, 0, &mailbox );
-	struct connection_rdma* conn = get_connection_from_region(cli_tu_region, djb2_hash((unsigned char*)&scan_query, sizeof(tu_data_message*)));
+	struct connection_rdma* conn = get_connection_from_region(cli_tu_region, djb2_hash((unsigned char*)&scan_query, sizeof(msg_header*)));
 	scan_query = _create_scan_query_message(conn, start_key, start_key_len, stop_key, stop_key_len);
 	ret->scan_reply_connection = conn;
 	scan_query->value = 1;
@@ -64,7 +64,7 @@ scanner_s* client_scan_init(
 	scan_query->reply_message = NULL;
 	send_rdma_message(conn, scan_query);
 	/*DPRINT("Waiting for reply\n");*/
-	struct tu_data_message* scan_reply = get_message_reply(conn, scan_query);
+	struct msg_header* scan_reply = get_message_reply(conn, scan_query);
 	/*DPRINT("Got scan reply\n");*/
 	assert(scan_reply);
 	scan_reply->next += sizeof(uint32_t);
@@ -96,12 +96,12 @@ kv_pair_s client_scan_get_next_kv(scanner_s* scanner)
 	kv_pair_s kv = {0, 0, 0, 0};
 
 	if (scanner->scan_reply->value != END_OF_DATABASE && scanner->kv_pairs_used >= *(uint32_t*)scanner->scan_reply->data) {
-		struct tu_data_message* scan_query;
+		struct msg_header* scan_query;
 		client_region* cli_tu_region;
 		int mailbox;
 
 		cli_tu_region = Client_Get_Tu_Region_and_Mailbox(scanner->regions, scanner->last_key, scanner->last_key_len, 0, &mailbox );
-		struct connection_rdma* conn = get_connection_from_region(cli_tu_region, djb2_hash((unsigned char*)&scan_query, sizeof(tu_data_message*)));
+		struct connection_rdma* conn = get_connection_from_region(cli_tu_region, djb2_hash((unsigned char*)&scan_query, sizeof(msg_header*)));
 		free_rdma_received_message(scanner->scan_reply_connection, scanner->scan_reply);
 		scan_query = _create_scan_query_message(conn, scanner->last_key, scanner->last_key_len, scanner->stop_key, scanner->stop_key_len);
 		scan_query->reply_message = NULL;

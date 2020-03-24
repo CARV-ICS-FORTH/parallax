@@ -13,9 +13,9 @@
 
 
 // For ZooKeeper
-#include <zookeeper.h>
-#include <zookeeper_log.h>
-#include <zookeeper.jute.h> //For struct String_vector
+#include <zookeeper/zookeeper.h>
+//#include <zookeeper/zookeeper_log.h>
+#include <zookeeper/zookeeper.jute.h> //For struct String_vector
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -171,16 +171,16 @@ client_region *Find_Client_Sorted_Regions_By_ID( _Client_Regions *client_regions
 
 
 
-struct tu_data_message *Client_Generic_Receive_Message( client_region* cli_tu_region, struct tu_data_message *data_message , int next_mail );
+struct msg_header *Client_Generic_Receive_Message( client_region* cli_tu_region, struct msg_header *data_message , int next_mail );
 
 void *client_thread_receiving_messages( void *args );
 int Get_NextMailbox_Cli_Tu_Region( client_region* cli_tu_region );
 client_region* Client_Get_Tu_Region_and_Mailbox( _Client_Regions *client_regions, char *key, int key_len, uint32_t idregion, int *next_mail );
 
 
-void Client_Free_Data_Message( struct tu_data_message **data_message, client_region* cli_tu_region, int next_mail );
-struct tu_data_message * Client_Create_N_Messages_Put_KeyValue_Pairs_WithMR( int length, client_region* cli_tu_region, int next_mail );
-struct tu_data_message * Client_Send_RDMA_N_Messages( client_region* cli_tu_region, struct tu_data_message *data_message, int next_mail );
+void Client_Free_Data_Message( struct msg_header **data_message, client_region* cli_tu_region, int next_mail );
+struct msg_header * Client_Create_N_Messages_Put_KeyValue_Pairs_WithMR( int length, client_region* cli_tu_region, int next_mail );
+struct msg_header * Client_Send_RDMA_N_Messages( client_region* cli_tu_region, struct msg_header *data_message, int next_mail );
 
 
 void Client_Flush_Volume( _Client_Regions *client_regions );

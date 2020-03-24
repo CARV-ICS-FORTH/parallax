@@ -24,14 +24,14 @@
 void get_server_rdma_conn(client_region *region, void *channel);
 void put_server_rdma_conn(_cli_tu_network_data *net, int n_conn);
 
-struct tu_data_message *Client_Receive_N_Messages_Semaphore_Blocking_NotReceiving(client_region *cli_tu_region,
-										  struct tu_data_message *data_message,
+struct msg_header *Client_Receive_N_Messages_Semaphore_Blocking_NotReceiving(client_region *cli_tu_region,
+										  struct msg_header *data_message,
 										  int next_mail);
 
 
 #if TU_SEMAPHORE
-static struct tu_data_message *client_blocking_receive(client_region *cli_tu_region,
-						       struct tu_data_message *data_message, int next_mail);
+static struct msg_header *client_blocking_receive(client_region *cli_tu_region,
+						       struct msg_header *data_message, int next_mail);
 #endif
 
 void sighand_term(int signo);
@@ -688,8 +688,8 @@ client_region *Find_Client_Sorted_Regions_By_ID(_Client_Regions *client_regions,
 	return NULL;
 }
 
-struct tu_data_message *Client_Generic_Receive_Message(client_region *cli_tu_region,
-						       struct tu_data_message *data_message, int next_mail)
+struct msg_header *Client_Generic_Receive_Message(client_region *cli_tu_region,
+						       struct msg_header *data_message, int next_mail)
 {
 #if TU_SEMAPHORE //TRUE
 	return (client_blocking_receive(cli_tu_region, data_message, next_mail));
@@ -769,7 +769,7 @@ client_region *Client_Get_Tu_Region_and_Mailbox(_Client_Regions *client_regions,
 	return cli_tu_region;
 }
 
-struct tu_data_message *Client_Send_RDMA_N_Messages(client_region *cli_tu_region, struct tu_data_message *data_message,
+struct msg_header *Client_Send_RDMA_N_Messages(client_region *cli_tu_region, struct msg_header *data_message,
 						    int next_mail)
 {
 	DPRINT("gesalous --> dead function!");
@@ -789,9 +789,9 @@ void generic_thread_receiving_messages_RDMA(struct connection_rdma **aux_rdma_co
 	while (1) {
 		aux = crdma_receive_rdma_message(rdma_conn, &payload);
 		if (aux != NULL) {
-			struct tu_data_message *reply_data_message;
-			struct tu_data_message *original_data_message;
-			reply_data_message = (struct tu_data_message *)aux;
+			struct msg_header *reply_data_message;
+			struct msg_header *original_data_message;
+			reply_data_message = (struct msg_header *)aux;
 			Set_Payload_Tu_Data_Message_Two(reply_data_message, payload);
 			original_data_message = reply_data_message->reply_message;
 
@@ -834,10 +834,10 @@ void *client_thread_receiving_messages_RDMA(void *args)
 }
 
 #if TU_SEMAPHORE
-struct tu_data_message *client_blocking_receive(client_region *cli_tu_region, struct tu_data_message *data_message,
+struct msg_header *client_blocking_receive(client_region *cli_tu_region, struct msg_header *data_message,
 						int next_mail)
 {
-	struct tu_data_message *reply_data_message;
+	struct msg_header *reply_data_message;
 	while (1) {
 		if (data_message->reply_message != NULL) {
 			return data_message->reply_message;
@@ -851,17 +851,17 @@ struct tu_data_message *client_blocking_receive(client_region *cli_tu_region, st
 	}
 }
 
-struct tu_data_message *Client_Receive_N_Messages_Semaphore_Blocking_NotReceiving(client_region *cli_tu_region,
-										  struct tu_data_message *data_message,
+struct msg_header *Client_Receive_N_Messages_Semaphore_Blocking_NotReceiving(client_region *cli_tu_region,
+										  struct msg_header *data_message,
 										  int next_mail)
 {
 	DPRINT("gesalous DEAD function\n");
 	exit(EXIT_FAILURE);
 	return NULL;
 #if 0
-	struct tu_data_message *next_data_message;
-	struct tu_data_message *reply_data_message;
-	struct tu_data_message *aux_reply_data_message;
+	struct msg_header *next_data_message;
+	struct msg_header *reply_data_message;
+	struct msg_header *aux_reply_data_message;
 	int i = 0;
 	int how = 0;
 
@@ -887,7 +887,7 @@ struct tu_data_message *Client_Receive_N_Messages_Semaphore_Blocking_NotReceivin
 			{
 				void *aux_next;
 				aux_next = (void*)next_data_message + MRQ_ELEMENT_SIZE;
-				next_data_message = (struct tu_data_message *)aux_next;
+				next_data_message = (struct msg_header *)aux_next;
 			}
 //printf("PASS %d %p\n",i, (void*)next_data_message);fflush(stdout);
 		}
@@ -934,7 +934,7 @@ void Client_Flush_Volume(_Client_Regions *client_regions)
 	int i, j;
 	client_region *cli_tu_region;
 	struct connection_rdma *rdma_conn;
-	struct tu_data_message *data_message, *reply_data_message;
+	struct msg_header *data_message, *reply_data_message;
 	int mailbox;
 	ERRPRINT("gesalous usefull function fix it!\n");
 	exit(EXIT_FAILURE);

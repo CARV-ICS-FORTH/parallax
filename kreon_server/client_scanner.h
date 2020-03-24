@@ -8,7 +8,7 @@
 #include "client_regions.h"
 
 typedef struct {
-	struct tu_data_message* scan_reply;
+	struct msg_header* scan_reply;
 	struct connection_rdma* scan_reply_connection;
 	uint32_t start_key_len;
 	char* start_key;
@@ -42,7 +42,7 @@ void client_scan_close(scanner_s* scanner);
 kv_pair_s client_scan_get_next_kv(scanner_s* scanner);
 
 
-struct tu_data_message* _create_scan_query_message(struct connection_rdma* conn, char* start_key, uint32_t start_key_len,
+struct msg_header* _create_scan_query_message(struct connection_rdma* conn, char* start_key, uint32_t start_key_len,
 		char* stop_key, uint32_t stop_key_len);
 
 #endif /*_CLIENT_SCANNER_H*/
