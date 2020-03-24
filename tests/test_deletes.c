@@ -25,7 +25,6 @@
 #define RSOTE 4
 #define RSETO 5
 #define PERSIST persist
-
 uint64_t num_keys;
 int persist = 1;
 
@@ -388,12 +387,14 @@ void reverse_delete_serially_allkeys(db_handle *hd)
 {
 	int64_t i;
 	key *k = (key *)alloca(KV_SIZE);
+	int ret;
 
-	for (i = TOTAL_KEYS + NUM_KEYS; i > TOTAL_KEYS; --i) {
+	for (i = (TOTAL_KEYS + NUM_KEYS - 1); i > TOTAL_KEYS; --i) {
 		strncpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
 		sprintf(k->key_buf + strlen(KEY_PREFIX), "%llu", (long long unsigned)i);
 		k->key_size = strlen(k->key_buf) + 1;
-		assert(delete_key(hd, k->key_buf, k->key_size) == SUCCESS);
+		ret = delete_key(hd, k->key_buf, k->key_size);
+		assert(ret == SUCCESS);
 	}
 
 	assert(hd->db_desc->levels[0].root_w[0]->type == leafRootNode);
@@ -412,6 +413,7 @@ void count_missing_keys(db_handle *hd)
 		sprintf(k->key_buf + strlen(KEY_PREFIX), "%llu", (long long unsigned)i);
 		k->key_size = strlen(k->key_buf) + 1;
 		void *value = find_key(hd, k->key_buf, k->key_size);
+
 		if (!value)
 			++cnt;
 	}

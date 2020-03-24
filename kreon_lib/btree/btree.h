@@ -4,7 +4,7 @@
  *
  */
 #pragma once
-
+#include <config.h>
 #include "../allocator/allocator.h"
 #include "uthash.h"
 //#include "../CLHT/include/clht.h"
@@ -21,8 +21,6 @@
 #define DYNAMIC_KEYS 0
 
 #define SEGMENT_SIZE 2097152
-#define INDEX_NODE_SIZE 4096
-#define LEAF_NODE_SIZE 4096
 
 #define MAX_TS 0xFFFFFFFFFFFFFFFF
 
