@@ -129,3 +129,8 @@ If you want to run a specific hook with a specific file run:
 
 	pre-commit run hook-id --files filename
 	pre-commit run cmake-format --files CMakeLists.txt
+
+Git commit message template
+--------------------------------------------------------------------------------
+
+	git config commit.template .git-commit-template
