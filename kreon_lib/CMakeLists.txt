@@ -64,3 +64,5 @@ add_executable(
   ../utilities/spin_loop.c
   ../utilities/list.c
   ${LOG})
+
+install(TARGETS kreonr kreon mkfs.kreon)
