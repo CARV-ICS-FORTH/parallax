@@ -14,37 +14,6 @@ set(CMAKE_EXE_LINKER_FLAGS "-Wl,-no-as-needed -lm -lrt -pthread -lnuma") # -libv
                                                        # -lzookeeper_mt
 # add_definitions(-DKREONR -DTESTS)
 
-add_library(
-  runtime STATIC
-  ../kreon_lib/allocator/recovery.c
-  ../utilities/spin_loop.c
-  ../kreon_lib/allocator/persistent_operations.c
-  ../kreon_lib/allocator/allocator.c
-  ../kreon_lib/btree/segment_allocator.c
-  ../kreon_lib/btree/btree.c
-	../utilities/stack.c
-  ../utilities/min_max_heap.c
-  ../utilities/simple_concurrent_list.c
-  ../utilities/queue.c
-  ../kreon_lib/scanner/scanner.c
-  ../utilities/list.c
-  ../utilities/circular_buffer.c
-  ../kreon_rdma/rdma.c
-  ../kreon_rdma/memory_region_pool.c
-  ../kreon_server/server.c
-  ../kreon_server/stats.c
-  ../kreon_server/globals.c
-  ../kreon_server/zk_string_vector.c
-  ../kreon_server/regions_manager.c
-  ../kreon_server/network_data.c
-  ../kreon_server/zk_server.c
-  ../kreon_server/network_data_server.c
-  ../kreon_server/server_regions.c
-  ../kreon_server/replica_utilities.c
-  ../kreon_server/regions.c
-  ../kreon_server/messages.c
-  ../kreon_server/storage_devices.c)
-
 #add_executable(streaming_btree_test test_streaming_btree.c)
 #target_link_libraries(streaming_btree_test runtime)
 
