@@ -251,7 +251,7 @@ static tu_data_message_s *_client_allocate_rdma_message(connection_rdma *conn, i
 			msg->reply_length = 0;
 			__send_rdma_message(conn, msg);
 			addr = NULL;
-			DPRINT("CLIENT: Informing server to reset the rendezvous\n");
+			// DPRINT("CLIENT: Informing server to reset the rendezvous\n");
 			reset_circular_buffer(conn->send_circular_buf);
 			break;
 		case SPACE_NOT_READY_YET:
@@ -312,9 +312,6 @@ init_message:
 				break;
 
 			case SPACE_NOT_READY_YET:
-				if (++i % 10000000) {
-					// DPRINT("CLIENT: Waiting for space to become available for the reply part\n");
-				}
 				break;
 			}
 		}
@@ -1945,7 +1942,7 @@ int assign_job_to_worker(struct channel_rdma *channel, struct connection_rdma *c
 	pthread_spin_lock(&channel->spinning_thread_group[spinning_thread_id]->group[worker_id].work_queue_lock);
 	if (channel->spinning_thread_group[spinning_thread_id]->group[worker_id].status == IDLE_SLEEPING) {
 		/*wake him up */
-		DPRINT("Boom\n");
+		// DPRINT("Boom\n");
 		++wake_up_workers_operations;
 		sem_post(&channel->spinning_thread_group[spinning_thread_id]->group[worker_id].sem);
 	}
