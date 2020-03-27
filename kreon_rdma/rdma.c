@@ -51,7 +51,6 @@ void _update_connection_score(int spinning_list_type, connection_rdma *conn);
 
 void crdma_server_create_connection_inuse(struct connection_rdma *connection, struct channel_rdma *channel,
 					  connection_type type);
-void set_up_connection(struct connection_rdma *conn);
 
 void crdma_add_connection_channel(struct channel_rdma *channel, struct connection_rdma *conn);
 
@@ -337,7 +336,7 @@ exit:
  * aligned to MEMORY_REGION_SEGMENT_SIZE. When a message is freed we zero the
  * HEADERS of each memory region segment to avoid the case where a newly
  * allocated message has its header's recv flag to a random value rather than 0.
- * 
+ *
  * priority argument is dead please remover it*/
 tu_data_message_s *__allocate_rdma_message(connection_rdma *conn, int message_payload_size, int message_type,
 					   int allocation_type, int priority, work_task *task)
@@ -429,7 +428,7 @@ tu_data_message_s *__allocate_rdma_message(connection_rdma *conn, int message_pa
 		return NULL;
 	}
 	/**
-	 * new logic to avoid two messages per requests: 
+	 * new logic to avoid two messages per requests:
 	 * all messages must be multiples of MESSAGE_SEGMENT_SIZE
 	 **/
 
@@ -1319,63 +1318,18 @@ static inline int ipv6_addr_v4mapped(const struct in6_addr *a)
 		((a->s6_addr32[1] | (a->s6_addr32[2] ^ htonl(0x0000ffff))) == 0UL));
 }
 
-void set_up_connection(struct connection_rdma *conn)
-{
-	int ib_port = 1;
-	struct ibv_context *context;
-	union ibv_gid temp_gid;
-	int i;
-	int is_ipv4;
-	struct ibv_port_attr attr;
-	struct channel_rdma *channel;
-
-	channel = (struct channel_rdma *)conn->channel;
-	context = channel->context;
-	conn->my_dest->lid = ctx_get_local_lid(context, 1, &attr);
-	conn->my_dest->qpn = conn->qp->qp_num;
-	conn->my_dest->psn = lrand48() & 0xffffff;
-
-	for (i = 0; i < attr.gid_tbl_len; i++) {
-		if (ibv_query_gid(context, ib_port, i, &temp_gid)) {
-			perror("set_up_connection: ibv_query_gid\n");
-			exit(-1);
-		}
-		is_ipv4 = ipv6_addr_v4mapped((struct in6_addr *)temp_gid.raw);
-		if (is_ipv4) {
-			conn->my_dest->gid_index = i;
-			break;
-		}
-	}
-	memcpy(conn->my_dest->gid.raw, temp_gid.raw, 16);
-}
-
 void tu_rdma_init_connection(struct connection_rdma *conn)
 {
 	memset(conn, 0, sizeof(struct connection_rdma));
 
-	conn->my_dest = (struct pingpong_dest *)malloc(sizeof(struct pingpong_dest));
-	conn->rem_dest = (struct pingpong_dest *)malloc(sizeof(struct pingpong_dest));
-	memset(conn->my_dest, 0, sizeof(struct pingpong_dest));
-	memset(conn->rem_dest, 0, sizeof(struct pingpong_dest));
 	conn->server = 0;
 	conn->index = 0;
-
-	pthread_mutex_init(&conn->signaled_lock, NULL);
-	pthread_mutex_init(&conn->polling_lock, NULL);
-	conn->n_polling = 0;
 
 	/*gesalous staff initialization*/
 	conn->idle_iterations = 0;
 	sem_init(&conn->sem_disconnect, 0, 0);
-	sem_init(&conn->sem_check_state, 0, 1);
-	conn->recover_state = 0;
 	conn->FLUSH_SEGMENT_requests_sent = 0;
 	conn->FLUSH_SEGMENT_acks_received = 0;
-
-#if SPINNING_PER_CHANNEL
-	/*gesalous, garbage delete them*/
-	pthread_mutex_init(&conn->spinning_lock, NULL);
-#endif
 }
 
 void crdma_init_client_connection_list_hosts(connection_rdma *conn, char **hosts, const int num_hosts,
@@ -2006,7 +1960,7 @@ void _zero_rendezvous_locations(tu_data_message_s *msg)
 	void *start_memory;
 	void *end_memory;
 	/*for acks that fit entirely in a header pay_len and padding_and_tail could be 0.
-	 * This is ok because we want to ommit sending extra useless bytes. However we need to 
+	 * This is ok because we want to ommit sending extra useless bytes. However we need to
 	 * zero their virtual tail which the initiator has allocated for safety
 	 */
 
@@ -2352,12 +2306,12 @@ static void *client_spinning_thread_kernel(void *args)
 				}
 
 				/**
-				 * Set the new rendezvous point, be careful for the case that the rendezvous is 
+				 * Set the new rendezvous point, be careful for the case that the rendezvous is
 				 * outsize of the rdma_memory_regions->remote_memory_buffer
 				 * */
 				_update_client_rendezvous_location(conn, message_size);
 			}
-#if 0	
+#if 0
 			else if(recv == RESET_BUFFER ){
 				/*
 				 * send RESET_BUFFER_ACK properties are
@@ -2512,7 +2466,7 @@ static void *server_spinning_thread_kernel(void *args)
 				}
 
 				/**
-				 * Set the new rendezvous point, be careful for the case that the rendezvous is 
+				 * Set the new rendezvous point, be careful for the case that the rendezvous is
 				 * outsize of the rdma_memory_regions->remote_memory_buffer
 				 * */
 				_update_rendezvous_location(conn, message_size);
@@ -2674,7 +2628,7 @@ static void *server_spinning_thread_kernel(void *args)
 			}
 
 			else if (0
-				 /*spinning_list_type == HIGH_PRIORITY && 
+				 /*spinning_list_type == HIGH_PRIORITY &&
 						conn->priority != HIGH_PRIORITY &&//we don't touch high priority connections
 						conn->idle_iterations > MAX_IDLE_ITERATIONS*/) {
 				DPRINT("***** Downgrading connection...*****\n");
@@ -2728,11 +2682,6 @@ void close_and_free_RDMA_connection(struct channel_rdma *channel, struct connect
 	channel->nused--;
 	pthread_mutex_unlock(&channel->spin_list_conn_lock[conn->responsible_spinning_thread_id]);
 	conn->channel = NULL;
-#if RD_SEMAPHORE
-	sem_post(&conn->sem_recv);
-#else
-	pthread_cond_broadcast(&conn->condition);
-#endif
 	sem_post(&conn->sem_disconnect);
 
 	ibv_destroy_cq(conn->rdma_cm_id->qp->send_cq);
@@ -2998,4 +2947,3 @@ void on_completion_server(struct ibv_wc *wc, struct connection_rdma *conn)
 		exit(KREON_FAILURE);
 	}
 }
-
