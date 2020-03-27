@@ -1,11 +1,12 @@
-#include "../TucanaServer/client_regions.h"
+#include "../kreon_server/client_regions.h"
 
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
 #include <unistd.h>
-#include "../TucanaServer/globals.h"
+#include "../kreon_server/globals.h"
+#include "../utilities/latency_monitor.h"
 #define MAX_THREADS 32
 #define THREADS 16
 
@@ -26,9 +27,23 @@ volatile char Thread_exit = 0;
 
 extern client_region **kreon_regions;
 
-void increment_completed(void *int_thread_id)
+struct bench_callback_args {
+	int tid;
+#if LATENCY_MONITOR_ENABLED
+	lat_t start_time;
+#endif
+};
+
+void bench_callback(void *args)
 {
-	++Completed_requests[(int)int_thread_id];
+#if LATENCY_MONITOR_ENABLED
+	struct bench_callback_args *ca_args = (struct callback_args *)args;
+	lat_t end_time;
+	latmon_end(&ca_args->start_time);
+	++Completed_requests[ca_args->tid];
+#else
+	++Completed_requests[(int)args];
+#endif
 }
 
 void *bench(void *int_thread_id)
@@ -37,7 +52,6 @@ void *bench(void *int_thread_id)
 	int current_connection = 0;
 	const size_t tid = (int)int_thread_id;
 	connection_rdma *connection;
-	//int i = 1;
 	while (!Thread_exit) {
 		connection =
 			Client_regions[0].sorted_tu_regions[0]->head_net[0].rdma_conn[(tid * connections_per_thread) +
@@ -45,8 +59,20 @@ void *bench(void *int_thread_id)
 		tu_data_message_s *msg = allocate_rdma_message(connection, MSG_SIZE, TEST_REQUEST);
 		msg->request_message_local_addr = msg;
 		msg->ack_arrived = 1;
+#if LATENCY_MONITOR_ENABLED
+		struct bench_callback_args *args =
+			(struct bench_callback_args *)malloc(sizeof(struct bench_callback_args));
+		args->tid = tid;
+		latmon_start(&args->start_time);
+#endif
 		//DPRINT("Sending will be at %llu  reply at %llu actual msg addr %x\n",(uint64_t)msg - (uint64_t)connection->rdma_local_region,msg->reply,msg);
-		async_send_rdma_message(connection, msg, increment_completed, (void *)tid);
+		async_send_rdma_message(connection, msg, bench_callback,
+#if LATENCY_MONITOR_ENABLED
+					(void *)args
+#else
+					(void *)tid
+#endif
+		);
 		++Sent_requests[tid];
 		if (++current_connection >= connections_per_thread) {
 			current_connection = 0;
@@ -62,7 +88,7 @@ void *bench(void *int_thread_id)
 void *stats(void *_ignored)
 {
 	while (!Thread_exit) {
-		printf("Completed requests: ");
+		printf("In Transit requests / sec: ");
 		for (int i = 0; i < THREADS; ++i) {
 			printf("%d ", Sent_requests[i] - Completed_requests[i]);
 		}
@@ -81,6 +107,15 @@ int main(void)
 	// Write configuration to a file
 	FILE *conf_file = fopen(conf_file_name, "w");
 
+#if LATENCY_MONITOR_ENABLED
+	latmon_init();
+	FILE *lat_out_file = fopen("lat.csv", "w");
+	if (!lat_out_file) {
+		ERRPRINT("fopen: %s\n", strerror(errno));
+		exit(EXIT_FAILURE);
+	}
+#endif
+
 	fprintf(conf_file, "Queue Pairs\t%d\n", NUM_OF_CONNECTIONS_PER_SERVER);
 	fprintf(conf_file, "Client Threads\t%d\n", THREADS);
 	fprintf(conf_file, "Message Size\t%d\n", MSG_SIZE);
@@ -97,7 +132,7 @@ int main(void)
 		pthread_create(&Threads[i], NULL, bench, (void *)i);
 	}
 
-	pthread_create(&stats_thread, NULL, stats, NULL);
+	// pthread_create(&stats_thread, NULL, stats, NULL);
 
 	printf("Total time: %d\n", TIME);
 	sleep(TIME);
@@ -107,6 +142,21 @@ int main(void)
 	for (int i = 0; i < THREADS; ++i) {
 		pthread_join(Threads[i], NULL);
 	}
-
 	Free_Client_Regions(&Client_regions);
+
+#if LATENCY_MONITOR_ENABLED
+	latmon_stats stats;
+	latmon_calc_stats(&stats);
+
+	printf("Total samples = %lu\n", stats.samples);
+	printf("Out of bounds samples = %lu\n", stats.out_of_bounds);
+	printf("min = %lu, avg = %lu, max = %lu\n", stats.min, stats.avg, stats.max);
+	printf("lat90 = %lu, lat99 = %lu, lat999 = %lu\n", stats.lat90, stats.lat90, stats.lat999);
+
+	fprintf(lat_out_file, "samples,out_of_bounds,less_equal_zero,min,avg,max,lat90,lat99,lat999\n");
+	fprintf(lat_out_file, "%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu\n", stats.samples, stats.out_of_bounds,
+		stats.less_equal_zero, stats.min, stats.avg, stats.max, stats.lat90, stats.lat99, stats.lat999);
+	fclose(lat_out_file);
+#endif
+	return 0;
 }
