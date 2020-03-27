@@ -76,7 +76,7 @@
 #define TU_RDMA_MEMORY_REGIONS 1 //We use memory regions, 0 we allocate space for  void *rdma_local_region
 
 #define MESSAGE_SEGMENT_SIZE 1024
-typedef enum kr_reply_status { KR_REP_ARRIVED = 430, KR_REP_PENDING = 345 } kr_reply_status;
+typedef enum kr_reply_status { KR_REP_ARRIVED = 430, KR_REP_PENDING = 345, KR_REP_DONT_CARE } kr_reply_status;
 
 #define TU_CONTROL_MSG_BY_RDMA 0 //1 the control messages such as TU_RDMA_MRED_MSG will be sent by RDMA messages,
 // 0  These control messages will be sent by SEND/RECEIVE messages
@@ -477,6 +477,7 @@ msg_header *__allocate_rdma_message(connection_rdma *conn, int message_payload_s
 					 int rdma_allocation_type, int priority, work_task *task);
 
 int send_rdma_message(connection_rdma *conn, msg_header *msg);
+int send_rdma_message_busy_wait(connection_rdma *conn, msg_header *msg);
 void async_send_rdma_message(connection_rdma *conn, msg_header *msg, void (*callback_function)(void *args),
 			     void *args);
 msg_header *get_message_reply(connection_rdma *conn, msg_header *msg);

@@ -132,8 +132,7 @@ static inline char __EXIT_REGION(_tucana_region_S *region)
 }
 
 struct msg_header *handle_scan_request(struct msg_header *data_message, void *connection);
-struct msg_header *Server_Handling_Received_Message(struct msg_header *data_message, int reg_num,
-							 int next_mail);
+struct msg_header *Server_Handling_Received_Message(struct msg_header *data_message, int reg_num, int next_mail);
 int handle_put_request(msg_header *data_message, connection_rdma *rdma_conn);
 // struct msg_header *Server_FlushVolume_RDMA( struct msg_header *data_message, struct connection_rdma *rdma_conn ); // FIXME Never used
 
@@ -1196,7 +1195,6 @@ void handle_task(void *__task)
 			task->reply_msg->type = PUT_REPLY;
 			task->reply_msg->flags = CLIENT_CATEGORY;
 			task->reply_msg->receive = TU_RDMA_REGULAR_MSG;
-			task->reply_msg->tail = NULL; /*to be deleted field*/
 			task->reply_msg->local_offset = (uint64_t)task->msg->reply;
 			task->reply_msg->remote_offset = (uint64_t)task->msg->reply;
 
@@ -1276,16 +1274,15 @@ void handle_task(void *__task)
 
 		if (task->intermediate_buffer == NULL) {
 			*(uint32_t *)task->reply_msg->data = *(uint32_t *)value;
-			if (push_buffer_in_msg_header(task->reply_msg, value + sizeof(uint32_t),
-							   *(uint32_t *)value) != KREON_SUCCESS) {
+			if (push_buffer_in_msg_header(task->reply_msg, value + sizeof(uint32_t), *(uint32_t *)value) !=
+			    KREON_SUCCESS) {
 				DPRINT("FATAL push buffer failed\n");
 				exit(EXIT_FAILURE);
 			}
 		} else {
 			*(uint32_t *)task->reply_msg->data = *(uint32_t *)task->intermediate_buffer;
-			if (push_buffer_in_msg_header(task->reply_msg,
-							   task->intermediate_buffer + sizeof(uint32_t),
-							   *(uint32_t *)task->intermediate_buffer) != KREON_SUCCESS) {
+			if (push_buffer_in_msg_header(task->reply_msg, task->intermediate_buffer + sizeof(uint32_t),
+						      *(uint32_t *)task->intermediate_buffer) != KREON_SUCCESS) {
 				DPRINT("FATAL push buffer failed\n");
 				exit(EXIT_FAILURE);
 			}
@@ -1296,13 +1293,13 @@ void handle_task(void *__task)
 		free_rdma_received_message(task->conn, task->msg);
 		task->overall_status = TASK_COMPLETED;
 		break;
+
 	case MULTI_GET_REQUEST:
 		multi_get = (msg_multi_get_req *)task->msg->data;
-		multi_get->seek_key = (msg_key *)((uint64_t)multi_get + sizeof(msg_multi_get_req));
-		S_tu_region = find_region(multi_get->seek_key->key, multi_get->seek_key->size);
+		S_tu_region = find_region(multi_get->seek_key[0], multi_get->seek_key_size);
 		if (S_tu_region == NULL) {
-			log_fatal("Region not found for key size %u:%s", multi_get->seek_key->size,
-				  multi_get->seek_key->key);
+			log_fatal("Region not found for key size %u:%s", multi_get->seek_key_size,
+				  multi_get->seek_key[0]);
 			exit(EXIT_FAILURE);
 		}
 		/*create an internal scanner object*/
@@ -1323,7 +1320,7 @@ void handle_task(void *__task)
 			if (msg_push_to_multiget_buf(key, value, buf) == KREON_SUCCESS) {
 				while (buf->num_entries < multi_get->max_num_entries) {
 					if (getNext(sc) == END_OF_DATABASE) {
-						buf->end_of_database = 1;
+						buf->end_of_region = 1;
 						break;
 					}
 					if (msg_push_to_multiget_buf(key, value, buf) == KREON_FAILURE)
@@ -1331,22 +1328,28 @@ void handle_task(void *__task)
 				}
 			}
 		} else
-			buf->end_of_database = 1;
+			buf->end_of_region = 1;
 		free(sc);
 		/*finally fix the header*/
+		task->reply_msg = (void *)((uint64_t)task->conn->rdma_memory_regions->local_memory_buffer +
+					   (uint64_t)task->msg->reply);
+
 		task->reply_msg->type = MULTI_GET_REPLY;
-		task->reply_msg->receive = TU_RDMA_REGULAR_MSG;
 		task->reply_msg->pay_len = task->msg->reply_length - sizeof(msg_header);
 		task->reply_msg->padding_and_tail = 0;
-		/*receiver will take care of these fields*/
+		/*target will fix this*/
 		task->reply_msg->data = NULL;
 		task->reply_msg->next = NULL;
+
 		task->reply_msg->local_offset = (uint64_t)task->msg->reply;
 		task->reply_msg->remote_offset = (uint64_t)task->msg->reply;
 		task->reply_msg->callback_function = NULL;
 		task->reply_msg->request_message_local_addr = task->msg->request_message_local_addr;
+		task->reply_msg->receive = TU_RDMA_REGULAR_MSG;
+		task->reply_msg->request_message_local_addr = NULL;
 		task->overall_status = TASK_COMPLETED;
 		break;
+
 	case TEST_REQUEST:
 		task->reply_msg = (void *)((uint64_t)task->conn->rdma_memory_regions->local_memory_buffer +
 					   (uint64_t)task->msg->reply);
@@ -1360,7 +1363,6 @@ void handle_task(void *__task)
 			task->reply_msg->type = TEST_REPLY;
 			task->reply_msg->flags = CLIENT_CATEGORY;
 			task->reply_msg->receive = TU_RDMA_REGULAR_MSG;
-			task->reply_msg->tail = NULL; /*to be deleted field*/
 			task->reply_msg->local_offset = (uint64_t)task->msg->reply;
 			task->reply_msg->remote_offset = (uint64_t)task->msg->reply;
 

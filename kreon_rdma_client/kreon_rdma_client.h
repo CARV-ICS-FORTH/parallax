@@ -2,11 +2,18 @@
 #include <stdint.h>
 #include "../kreon_server/client_regions.h"
 
-typedef enum krc_scan_state { KRC_UNITIALIZED = 2, KRC_FETCH_NEXT_BATCH, KRC_END_OF_DB } krc_scan_state;
+typedef enum krc_scan_state {
+	KRC_UNITIALIZED = 2,
+	KRC_FETCH_NEXT_BATCH,
+	KRC_ISSUE_MGET_REQ,
+	KRC_ADVANCE,
+	KRC_END_OF_DB,
+	KRC_BUFFER_OVERFLOW
+} krc_scan_state;
 
 typedef struct krc_key {
 	uint32_t key_size;
-	uint8_t *key_buf;
+	char *key_buf;
 } krc_key;
 
 typedef struct krc_value {
@@ -14,20 +21,18 @@ typedef struct krc_value {
 	uint8_t *val_buf;
 } krc_value;
 
-typedef struct krc_scan_entry {
-	krc_key *key;
-	krc_value *val;
-} krc_scan_entry;
-
 typedef struct krc_handle {
 	_Client_Regions *client_regions;
 } krc_handle;
 
 typedef struct krc_scanner {
 	krc_handle *hd;
+	client_region *region;
 	krc_key *prefix_key;
 	krc_key *start_key;
 	krc_key *stop_key;
+	krc_key *curr_key;
+	krc_value *curr_value;
 	uint32_t prefetch_num_entries;
 	uint32_t prefetch_mem_size;
 	uint32_t pos;
@@ -36,7 +41,8 @@ typedef struct krc_scanner {
 	uint8_t prefix_filter_enable : 2;
 	uint8_t is_valid : 2;
 	krc_scan_state state;
-	krc_scan_entry *scan_buffer;
+	/*copy of the server's reply*/
+	msg_multi_get_rep *multi_kv_buf;
 } krc_scanner;
 
 typedef enum krc_error_codes { KRC_SUCCESS = 0, KRC_ZK_FAILURE_CONNECT, KRC_PUT_FAILURE } krc_error_codes;

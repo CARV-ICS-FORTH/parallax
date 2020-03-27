@@ -118,7 +118,6 @@ typedef struct msg_header {
 #endif
 	void *data; /*Pointer to the first element of the Payload*/
 	void *next; /*Pointer to the "current" element of the payload. Initially equal to data*/
-	void *tail; /*Pointer to the tail that will be an integer to indicate that the data has been received*/
 	uint32_t receive;
 } msg_header;
 
@@ -136,14 +135,18 @@ typedef struct msg_get_rep {
 typedef struct msg_multi_get_req {
 	uint32_t max_num_entries;
 	uint32_t seek_mode;
-	msg_key *seek_key;
+	uint32_t seek_key_size;
+	char *seek_key[0];
 } msg_multi_get_req;
 
 typedef struct msg_multi_get_rep {
 	uint32_t num_entries;
-	uint8_t end_of_database;
+	uint32_t curr_entry;
+	uint32_t end_of_region : 16;
+	uint32_t buffer_overflow : 16;
 	uint32_t pos;
 	uint32_t remaining;
+	uint32_t capacity;
 	void *kv_buffer[0];
 } msg_multi_get_rep;
 

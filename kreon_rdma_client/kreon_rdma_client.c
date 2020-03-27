@@ -7,7 +7,7 @@
 #include "../kreon_server/globals.h"
 #include "../build/external-deps/log/src/log.h"
 
-
+static char *neg_infinity = "-oo";
 
 krc_handle *krc_init(char *zookeeper_ip, int zk_port, uint32_t *error_code)
 {
@@ -30,8 +30,8 @@ krc_handle *krc_init(char *zookeeper_ip, int zk_port, uint32_t *error_code)
 
 uint32_t krc_put(krc_handle *hd, uint32_t key_size, void *key, uint32_t val_size, void *value)
 {
-	tu_data_message *req_msg;
-	tu_data_message *rep_msg;
+	msg_header *req_msg;
+	msg_header *rep_msg;
 	int mailbox; //note this is useless needs refactoring
 
 	client_region *region =
@@ -42,14 +42,14 @@ uint32_t krc_put(krc_handle *hd, uint32_t key_size, void *key, uint32_t val_size
 	/*fill in the key payload part the data*/
 	*(uint32_t *)req_msg->next = key_size;
 	req_msg->next += sizeof(uint32_t);
-	if (!push_buffer_in_tu_data_message(req_msg, key, key_size)) {
+	if (!push_buffer_in_msg_header(req_msg, key, key_size)) {
 		log_fatal("Failed to fill rdma buffer");
 		exit(EXIT_FAILURE);
 	}
 
 	*(uint32_t *)req_msg->next = val_size;
 	req_msg->next += sizeof(uint32_t);
-	if (!push_buffer_in_tu_data_message(req_msg, value, val_size)) {
+	if (!push_buffer_in_msg_header(req_msg, value, val_size)) {
 		log_fatal("Failed to fill rdma buffer");
 		exit(EXIT_FAILURE);
 	}
@@ -73,8 +73,8 @@ uint32_t krc_put(krc_handle *hd, uint32_t key_size, void *key, uint32_t val_size
 
 krc_value *get(krc_handle *hd, uint32_t key_size, void *key, uint32_t *error_code)
 {
-	tu_data_message *req_msg;
-	tu_data_message *rep_msg;
+	msg_header *req_msg;
+	msg_header *rep_msg;
 	int mailbox; //note this is useless needs refactoring
 
 	client_region *region =
@@ -85,7 +85,7 @@ krc_value *get(krc_handle *hd, uint32_t key_size, void *key, uint32_t *error_cod
 	/*fill in the key payload part the data*/
 	*(uint32_t *)req_msg->next = key_size;
 	req_msg->next += sizeof(uint32_t);
-	if (!push_buffer_in_tu_data_message(req_msg, key, key_size)) {
+	if (!push_buffer_in_msg_header(req_msg, key, key_size)) {
 		log_fatal("Failed to fill rdma buffer");
 		exit(EXIT_FAILURE);
 	}
@@ -131,19 +131,113 @@ krc_scanner *krc_scan_init(krc_handle *hd, uint32_t prefetch_num_entries, uint32
 	scanner->stop_infinite = 1;
 	scanner->prefix_filter_enable = 0;
 	scanner->state = KRC_UNITIALIZED;
-	scanner->scan_buffer = (krc_scan_entry *)((uint64_t)scanner + sizeof(krc_scanner));
+	scanner->multi_kv_buf = (msg_multi_get_rep *)malloc(sizeof(msg_multi_get_rep) + scanner->prefetch_mem_size);
 	return scanner;
 }
 
 void krc_scan_get_next(krc_scanner *sc)
 {
-	switch (sc->state) {
-	case KRC_UNITIALIZED:
-		break;
-	case KRC_FETCH_NEXT_BATCH:
-		break;
-	case KRC_END_OF_DB:
-		break;
+	msg_header *req_header;
+	msg_multi_get_req *m_get;
+	msg_header *rep_header;
+	msg_multi_get_rep *m_get_rep;
+	connection_rdma *conn;
+	char *seek_key;
+	uint32_t seek_key_size;
+	uint32_t seek_mode;
+	int mailbox; //note this is useless needs refactoring
+
+	while (1) {
+		switch (sc->state) {
+		case KRC_UNITIALIZED:
+			if (!sc->start_infinite) {
+				seek_key = sc->start_key->key_buf;
+				seek_key_size = sc->start_key->key_size;
+			} else {
+				seek_key = neg_infinity;
+				seek_key_size = 4;
+			}
+			seek_mode = GREATER_OR_EQUAL;
+			sc->state = KRC_ISSUE_MGET_REQ;
+			break;
+
+		case KRC_FETCH_NEXT_BATCH:
+			/*seek key will be the last of the batch*/
+			seek_key = sc->curr_key->key_buf;
+			seek_key_size = sc->curr_key->key_size;
+			seek_mode = GREATER;
+			sc->state = KRC_ISSUE_MGET_REQ;
+			break;
+
+		case KRC_ISSUE_MGET_REQ:
+			sc->region = Client_Get_Tu_Region_and_Mailbox(sc->hd->client_regions, seek_key, seek_key_size,
+								      0, &mailbox);
+			conn = get_connection_from_region(sc->region, (uint64_t)sc->start_key);
+			/*the request part*/
+			req_header = allocate_rdma_message(conn, sizeof(msg_multi_get_req) + seek_key_size,
+							   MULTI_GET_REQUEST);
+			m_get = (msg_multi_get_req *)((uint64_t)req_header + sizeof(msg_header));
+			m_get->max_num_entries = sc->prefetch_num_entries;
+			m_get->seek_mode = seek_mode;
+			m_get->seek_key_size = seek_key_size;
+			memcpy(m_get->seek_key, seek_key, seek_key_size);
+			/*the reply part*/
+			rep_header = allocate_rdma_message(conn, sizeof(msg_multi_get_rep) + sc->prefetch_mem_size,
+							   MULTI_GET_REPLY);
+			req_header->reply =
+				(char *)((uint64_t)rep_header - (uint64_t)conn->recv_circular_buf->memory_region);
+			rep_header->reply_length =
+				sizeof(msg_header) + sizeof(msg_multi_get_rep) + sc->prefetch_mem_size;
+			rep_header->receive = 0;
+			/*sent the request*/
+			if (send_rdma_message_busy_wait(conn, req_header) != KREON_SUCCESS) {
+				log_warn("failed to send message");
+				exit(EXIT_FAILURE);
+			}
+			/*Spin until reply*/
+			while (req_header->ack_arrived == KR_REP_PENDING)
+				_mm_pause();
+
+			m_get_rep = (msg_multi_get_rep *)((uint64_t)rep_header + sizeof(msg_header));
+
+			if (m_get_rep->buffer_overflow) {
+				sc->state = KRC_BUFFER_OVERFLOW;
+				break;
+			}
+			/*copy to local buffer to free rdma communication buffer*/
+			memcpy(sc->multi_kv_buf, m_get_rep, sizeof(msg_multi_get_rep) + sc->prefetch_mem_size);
+			client_free_rpc_pair(conn, rep_header);
+			sc->state = KRC_ADVANCE;
+			break;
+		case KRC_ADVANCE:
+			/*point to the next element*/
+			if (sc->multi_kv_buf->curr_entry < sc->multi_kv_buf->num_entries) {
+				sc->curr_key = (krc_key *)sc->multi_kv_buf->kv_buffer + sc->multi_kv_buf->pos;
+				sc->multi_kv_buf->pos += (sizeof(krc_key) + sc->curr_key->key_size);
+				sc->curr_value = (krc_value *)sc->multi_kv_buf->kv_buffer + sc->multi_kv_buf->pos;
+				sc->multi_kv_buf->pos += (sizeof(krc_value) + sc->curr_value->val_size);
+				++sc->multi_kv_buf->curr_entry;
+				return;
+			} else {
+				if (sc->multi_kv_buf->end_of_region &&
+				    !strcmp(sc->region->ID_region.maximum_range, "+oo")) {
+					seek_key = sc->region->ID_region.maximum_range;
+					seek_key_size = strlen(seek_key) + 1;
+					sc->state = KRC_FETCH_NEXT_BATCH;
+				} else
+					sc->state = KRC_END_OF_DB;
+			}
+			break;
+		case KRC_BUFFER_OVERFLOW:
+		case KRC_END_OF_DB:
+			sc->curr_key = NULL;
+			sc->curr_value = NULL;
+			sc->is_valid = 0;
+			return;
+		default:
+			log_fatal("faulty scanner state");
+			exit(EXIT_FAILURE);
+		}
 	}
 }
 
