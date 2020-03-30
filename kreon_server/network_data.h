@@ -14,7 +14,7 @@
 #include <sys/types.h>
 
 
-#include <zookeeper.jute.h> //For struct String_vector
+#include <zookeeper/zookeeper.jute.h> //For struct String_vector
 #include "conf.h"
 
 typedef struct _tu_network_data {

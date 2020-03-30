@@ -11,8 +11,8 @@
 #define KV_SIZE 1024
 #define VOLUME_NAME "/dev/nvme0n1"
 #define NUM_KEYS 1000000
-#define SCAN_SIZE 50
-
+#define SCAN_SIZE 16
+#define BASE 1000000
 typedef struct key {
 	uint32_t key_size;
 	char key_buf[0];
@@ -34,7 +34,7 @@ int main()
 	uint64_t j = 0;
 	key *k = (key *)malloc(KV_SIZE);
 	log_info("Starting population for %lu keys...", NUM_KEYS);
-	for (i = 100000000; i < (100000000 + NUM_KEYS); i++) {
+	for (i = BASE; i < (BASE + NUM_KEYS); i++) {
 		strncpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
 		sprintf(k->key_buf + strlen(KEY_PREFIX), "%llu", (long long unsigned)i);
 		k->key_size = strlen(k->key_buf) + 1;
@@ -56,7 +56,38 @@ int main()
 	log_info("Population ended, snapshot and testing scan");
 	snapshot(hd->volume_desc);
 
-	for (i = 100000000; i < (100000000 + (NUM_KEYS - SCAN_SIZE)); i++) {
+	log_info("Cornercase scenario...");
+	strncpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
+	sprintf(k->key_buf + strlen(KEY_PREFIX), "%llu", (long long unsigned)BASE + 99);
+	k->key_size = strlen(k->key_buf) + 1;
+	initScanner(sc, hd, (key *)k, GREATER);
+	assert(sc->keyValue != NULL);
+	strncpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
+	sprintf(k->key_buf + strlen(KEY_PREFIX), "%llu", (long long unsigned)BASE + 100);
+	k->key_size = strlen(k->key_buf) + 1;
+	if (memcmp(k->key_buf, sc->keyValue + sizeof(uint32_t), k->key_size) != 0) {
+		log_fatal("Test failed key %s not found scanner instead returned %d:%s", k->key_buf,
+			  *(uint32_t *)sc->keyValue, sc->keyValue + sizeof(uint32_t));
+		exit(EXIT_FAILURE);
+	}
+	log_info("milestone 1");
+	getNext(sc);
+	strncpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
+	sprintf(k->key_buf + strlen(KEY_PREFIX), "%llu", (long long unsigned)BASE + 101);
+	k->key_size = strlen(k->key_buf) + 1;
+	if (memcmp(k->key_buf, sc->keyValue + sizeof(uint32_t), k->key_size) != 0) {
+		log_fatal("Test failed key %s not found scanner instead returned %d:%s", k->key_buf,
+			  *(uint32_t *)sc->keyValue, sc->keyValue + sizeof(uint32_t));
+		exit(EXIT_FAILURE);
+	}
+	closeScanner(sc);
+	log_info("milestone 2");
+	log_info("Cornercase scenario...DONE");
+
+
+
+
+	for (i = BASE; i < (BASE + (NUM_KEYS - SCAN_SIZE)); i++) {
 		if (i % 100000 == 0)
 			log_info("<Scan no %llu>", i);
 		strncpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));

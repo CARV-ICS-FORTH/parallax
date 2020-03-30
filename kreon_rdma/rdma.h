@@ -1,5 +1,4 @@
-#ifndef __PIRDMA_H
-#define __PIRDMA_H
+#pragma once
 
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
@@ -29,9 +28,6 @@
 #include "../utilities/circular_buffer.h"
 #include "memory_region_pool.h"
 
-#define TU_SUCCESS (0)
-#define TU_FAILURE (1)
-
 #define MAX_USEC_BEFORE_SLEEPING 5000000
 
 #define RECORTADO 0
@@ -57,7 +53,6 @@
 #define SPINNING_THREAD 1
 #define SPINNING_PER_CHANNEL 1
 #define SPINNING_NO_LIST 1
-//#endif
 
 #if (TU_FAKE_SEND || TU_FAKE_RECV || TU_FAKE_YCSB)
 #define SPINNING_NUM_TH 1
@@ -78,12 +73,8 @@
 
 #define TU_RDMA_MEMORY_REGIONS 1 //We use memory regions, 0 we allocate space for  void *rdma_local_region
 
-#if TU_RDMA_MEMORY_REGIONS
-//#include "memory_regions.h"
-#endif
 #define MESSAGE_SEGMENT_SIZE 1024
-#define REPLY_ARRIVED 430
-#define REPLY_PENDING 345
+typedef enum kr_reply_status { KR_REP_ARRIVED = 430, KR_REP_PENDING = 345, KR_REP_DONT_CARE } kr_reply_status;
 
 #define TU_CONTROL_MSG_BY_RDMA 0 //1 the control messages such as TU_RDMA_MRED_MSG will be sent by RDMA messages,
 // 0  These control messages will be sent by SEND/RECEIVE messages
@@ -194,11 +185,11 @@ typedef enum rdma_allocation_type {
 typedef struct work_task {
 	struct channel_rdma *channel;
 	struct connection_rdma *conn;
-	tu_data_message_s *msg;
+	msg_header *msg;
 	void *region; /*sorry, circular dependency was created so I patched it quickly*/
 	void *notification_addr;
-	tu_data_message_s *reply_msg;
-	tu_data_message_s *flush_segment_request;
+	msg_header *reply_msg;
+	msg_header *flush_segment_request;
 	/*used for two puproses (keeping state)
 	 * 1. For get it keeps the get result if the  server cannot allocate immediately memory to respond to the client.
 	 * This save CPU cycles at the server  because it voids entering kreon each time a stall happens.
@@ -241,7 +232,7 @@ typedef struct worker_group {
 } worker_group;
 
 void _send_reset_buffer_ack(struct connection_rdma *conn);
-void _zero_rendezvous_locations(tu_data_message_s *msg);
+void _zero_rendezvous_locations(msg_header *msg);
 void _update_rendezvous_location(struct connection_rdma *conn, int message_size);
 
 typedef void (*on_connection_created)(void *vconn);
@@ -249,7 +240,7 @@ typedef void (*on_connection_created)(void *vconn);
 #if TU_CONNECTION_RC_CONTROL
 // To control the pending messages, a be able to: 1) re-sent in case something is missing, 2) compute the RTT
 struct rdma_sent_queue {
-	struct tu_data_message_s *message; // Message sent
+	struct msg_header *message; // Message sent
 	struct timespec sent_time; // Time in which the message was sent
 	struct timespec recv_time; // Time the reply was received.
 	int recv_flag; // 1 : The reply message has been received, 0: message sent, but reply not received
@@ -417,13 +408,11 @@ typedef struct connection_rdma {
 
 static inline void Set_OnConnection_Create_Function(struct channel_rdma *channel, on_connection_created function)
 {
-	DPRINT("\n\tregistered application function for handling server messages\n");
 	channel->connection_created = function;
 }
 
 void crdma_put_message_from_MR(struct connection_rdma *conn, void **mr);
 void *crdma_receive_rdma_message(struct connection_rdma *conn, void **payload);
-int crdma_send_rdma_message(struct connection_rdma *conn, uint32_t length, void *mr);
 
 void crdma_init_generic_create_channel(struct channel_rdma *channel);
 void crdma_init_client_connection(struct connection_rdma *conn, const char *host, const char *port,
@@ -439,28 +428,28 @@ struct connection_rdma *crdma_client_create_connection_list_hosts(struct channel
 void crdma_init_client_connection_list_hosts(struct connection_rdma *conn, char **hosts, const int num_hosts,
 					     struct channel_rdma *channel, connection_type type);
 
-int crdma_send_rdma_tucana_message(struct connection_rdma *conn, uint32_t length, struct tu_data_message *data_message,
-				   int re_send);
-
 void crdma_put_message_from_remote_MR(struct connection_rdma *conn, uint64_t ooffset, int32_t N);
 int64_t crdma_get_message_consecutive_from_remote_MR(struct connection_rdma *conn, uint32_t length);
 
-tu_data_message_s *allocate_rdma_message(connection_rdma *conn, int message_payload_size, int message_type);
-void init_rdma_message(connection_rdma *conn, tu_data_message_s *msg, uint32_t message_type, uint32_t message_size,
+msg_header *allocate_rdma_message(connection_rdma *conn, int message_payload_size, int message_type);
+void init_rdma_message(connection_rdma *conn, msg_header *msg, uint32_t message_type, uint32_t message_size,
 		       uint32_t message_payload_size, uint32_t padding);
-tu_data_message_s *__allocate_rdma_message(connection_rdma *conn, int message_payload_size, int message_type,
-					   int rdma_allocation_type, int priority, work_task *task);
+msg_header *__allocate_rdma_message(connection_rdma *conn, int message_payload_size, int message_type,
+					 int rdma_allocation_type, int priority, work_task *task);
 
-int send_rdma_message(connection_rdma *conn, tu_data_message_s *msg);
-void async_send_rdma_message(connection_rdma *conn, tu_data_message_s *msg, void (*callback_function)(void *args),
+int send_rdma_message(connection_rdma *conn, msg_header *msg);
+int send_rdma_message_busy_wait(connection_rdma *conn, msg_header *msg);
+void async_send_rdma_message(connection_rdma *conn, msg_header *msg, void (*callback_function)(void *args),
 			     void *args);
-tu_data_message_s *get_message_reply(connection_rdma *conn, tu_data_message_s *msg);
+msg_header *get_message_reply(connection_rdma *conn, msg_header *msg);
 void free_rdma_local_message(connection_rdma *conn);
-void free_rdma_received_message(connection_rdma *conn, tu_data_message_s *msg);
+void free_rdma_received_message(connection_rdma *conn, msg_header *msg);
+
+void client_free_rpc_pair(connection_rdma *conn, msg_header *msg);
 /*replica specific functions*/
-int rdma_kv_entry_to_replica(connection_rdma *conn, tu_data_message_s *data_message, uint64_t segment_log_offset,
+int rdma_kv_entry_to_replica(connection_rdma *conn, msg_header *data_message, uint64_t segment_log_offset,
 			     void *source, uint32_t kv_length, uint32_t client_buffer_key);
-int wake_up_replica_to_flush_segment(connection_rdma *conn, tu_data_message_s *msg, int wait);
+int wake_up_replica_to_flush_segment(connection_rdma *conn, msg_header *msg, int wait);
 
 static inline uint32_t cdrma_IsDisconnecting_Connection(struct connection_rdma *conn)
 {
@@ -479,4 +468,4 @@ uint32_t crdma_get_channel_connection_number(struct channel_rdma *channel);
 
 /*gesalous, signature here implementation in tu_rdma.c*/
 void disconnect_and_close_connection(connection_rdma *conn);
-#endif
+

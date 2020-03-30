@@ -1,6 +1,5 @@
 /**
- * tucana_server.h
- *  Tucana server
+*  Tucana server
  * Created by Pilar Gonzalez-Ferez on 28/07/16.
  * Copyright (c) 2016 Pilar Gonzalez-Ferez <pilar@ics.forth.gr>.
  **/
@@ -24,9 +23,11 @@
 #include "messages.h"
 #include "prototype.h"
 #include "storage_devices.h"
+#include "messages.h"
 #include "globals.h"
 #include "../kreon_lib/btree/btree.h"
 #include "../kreon_lib/btree/segment_allocator.h"
+#include "../kreon_lib/scanner/scanner.h"
 #include "zk_server.h"
 #include "replica_utilities.h"
 #include "../kreon_rdma/rdma.h"
@@ -72,7 +73,7 @@ void tiering_compaction_worker(void *);
 #endif
 
 /*inserts to Kreon and implements the replication logic*/
-void insert_kv_pair(_tucana_region_S *S_tu_region, tu_data_message_s *data_message, connection_rdma *rdma_conn,
+void insert_kv_pair(_tucana_region_S *S_tu_region, msg_header *data_message, connection_rdma *rdma_conn,
 		    kv_location *location, work_task *task, int wait);
 
 /*functions for building index at replicas*/
@@ -130,11 +131,10 @@ static inline char __EXIT_REGION(_tucana_region_S *region)
 	return EXITED_REGION;
 }
 
-struct tu_data_message *handle_scan_request(struct tu_data_message *data_message, void *connection);
-struct tu_data_message *Server_Handling_Received_Message(struct tu_data_message *data_message, int reg_num,
-							 int next_mail);
-int handle_put_request(tu_data_message_s *data_message, connection_rdma *rdma_conn);
-// struct tu_data_message *Server_FlushVolume_RDMA( struct tu_data_message *data_message, struct connection_rdma *rdma_conn ); // FIXME Never used
+struct msg_header *handle_scan_request(struct msg_header *data_message, void *connection);
+struct msg_header *Server_Handling_Received_Message(struct msg_header *data_message, int reg_num, int next_mail);
+int handle_put_request(msg_header *data_message, connection_rdma *rdma_conn);
+// struct msg_header *Server_FlushVolume_RDMA( struct msg_header *data_message, struct connection_rdma *rdma_conn ); // FIXME Never used
 
 _tucana_region_S *get_region(void *key, int key_len)
 {
@@ -154,11 +154,11 @@ static void kreonR_spill_worker(void *_spill_task_desc)
 	kv_location location;
 	spill_task_descriptor *spill_task_desc = (spill_task_descriptor *)_spill_task_desc;
 	bt_spill_request *spill_req = spill_task_desc->spill_req;
-	tu_data_message_s *msg = NULL;
-	tu_data_message_s *spill_buffer_msg = NULL;
+	msg_header *msg = NULL;
+	msg_header *spill_buffer_msg = NULL;
 	void *spill_buffer;
 	uint64_t log_addr;
-	tu_data_message_s *reply = NULL;
+	msg_header *reply = NULL;
 	level_scanner *level_sc = NULL;
 
 	void *free_addr;
@@ -234,7 +234,7 @@ static void kreonR_spill_worker(void *_spill_task_desc)
 				}
 				break;
 			}
-			reply = (tu_data_message_s *)msg->reply_message;
+			reply = (msg_header *)msg->reply_message;
 
 			if (reply->error_code == KREON_OK) {
 				log_info("MASTER: Replica ready to participate in spill :-)\n");
@@ -411,7 +411,7 @@ static void kreonR_spill_worker(void *_spill_task_desc)
 				}
 				break;
 			}
-			reply = (tu_data_message_s *)msg->reply_message;
+			reply = (msg_header *)msg->reply_message;
 
 			if (reply == NULL) {
 				DPRINT("FATAL reply to spill buffer request is NULL\n");
@@ -612,9 +612,8 @@ int _init_replica_rdma_connections(struct _tucana_region_S *S_tu_region)
 		//S_tu_region->db->db_desc->log_buffer =
 		//	S_tu_region->replica_next_data_con->rdma_memory_regions->local_memory_buffer;
 
-		tu_data_message_s *tmp =
-			(tu_data_message_s *)
-				S_tu_region->replica_next_data_con->rdma_memory_regions->local_memory_buffer;
+		msg_header *tmp =
+			(msg_header *)S_tu_region->replica_next_data_con->rdma_memory_regions->local_memory_buffer;
 
 		/*init message*/
 		tmp->pay_len = 4096 + BUFFER_SEGMENT_SIZE;
@@ -627,12 +626,10 @@ int _init_replica_rdma_connections(struct _tucana_region_S *S_tu_region)
 		*(uint32_t *)((uint64_t)tmp + TU_HEADER_SIZE + 4096 + BUFFER_SEGMENT_SIZE + RDMA_LOG_BUFFER_PADDING) =
 			TU_RDMA_REGULAR_MSG;
 		tmp->type = FLUSH_SEGMENT;
-		tmp->flags = SERVER_CATEGORY;
-
 		tmp->local_offset = 0;
 		tmp->remote_offset = 0;
 
-		tmp->ack_arrived = REPLY_PENDING;
+		tmp->ack_arrived = KR_REP_PENDING;
 		tmp->callback_function = NULL;
 		tmp->request_message_local_addr = NULL;
 		__sync_fetch_and_add(&S_tu_region->replica_next_data_con->pending_sent_messages, 1);
@@ -643,7 +640,7 @@ int _init_replica_rdma_connections(struct _tucana_region_S *S_tu_region)
 		/*
 			 DPRINT("Setting connection properties with the Replica");
 			 set_connection_property_req * req;
-			 tu_data_message_s * data_conn_req = allocate_rdma_message(*S_tu_region->db->db_desc->data_conn, sizeof(set_connection_property_req),CHANGE_CONNECTION_PROPERTIES_REQUEST); 
+			 msg_header * data_conn_req = allocate_rdma_message(*S_tu_region->db->db_desc->data_conn, sizeof(set_connection_property_req),CHANGE_CONNECTION_PROPERTIES_REQUEST); 
 			 req = (set_connection_property_req *)data_conn_req->data;
 			 req->desired_priority_level = HIGH_PRIORITY;
 			 req->desired_RDMA_memory_size = DEFAULT_MEMORY_SIZE_OPTION;
@@ -656,7 +653,7 @@ int _init_replica_rdma_connections(struct _tucana_region_S *S_tu_region)
 			 }
 			 }
 
-			 tu_data_message_s * control_conn_req = allocate_rdma_message(*S_tu_region->db->db_desc->data_conn, sizeof(set_connection_property_req),CHANGE_CONNECTION_PROPERTIES_REQUEST); 
+			 msg_header * control_conn_req = allocate_rdma_message(*S_tu_region->db->db_desc->data_conn, sizeof(set_connection_property_req),CHANGE_CONNECTION_PROPERTIES_REQUEST); 
 			 req = (set_connection_property_req *)control_conn_req->data;
 			 req->desired_priority_level = HIGH_PRIORITY;
 			 req->desired_RDMA_memory_size = CONTROL_CONNECTION_MEMORY_SIZE;
@@ -685,7 +682,7 @@ int _init_replica_rdma_connections(struct _tucana_region_S *S_tu_region)
  CHECK_FOR_REPLICA_RESET_BUFFER_ACK
  APPEND_SUCCESS
  */
-void insert_kv_pair(_tucana_region_S *S_tu_region, tu_data_message_s *data_message, connection_rdma *rdma_conn,
+void insert_kv_pair(_tucana_region_S *S_tu_region, msg_header *data_message, connection_rdma *rdma_conn,
 		    kv_location *location, work_task *task, int wait)
 {
 	char *key;
@@ -795,7 +792,7 @@ void insert_kv_pair(_tucana_region_S *S_tu_region, tu_data_message_s *data_messa
 					rdma_src = (void *)&curr_seg->rdma_local_buf->msg;
 					rdma_dst = (void *)&curr_seg->rdma_remote_buf->msg;
 					if (rdma_post_write(S_tu_region->replica_next_data_con->rdma_cm_id, rdma_src,
-							    rdma_src, sizeof(struct tu_data_message),
+							    rdma_src, sizeof(struct msg_header),
 							    S_tu_region->replica_next_data_con->rdma_memory_regions
 								    ->local_memory_region,
 							    IBV_SEND_SIGNALED, (uint64_t)rdma_dst,
@@ -870,9 +867,9 @@ void insert_kv_pair(_tucana_region_S *S_tu_region, tu_data_message_s *data_messa
 }
 
 //<<<<<<< HEAD
-struct tu_data_message *Server_Scan_MulipleRegions_RDMA(tu_data_message_s *data_message, void *connection)
+struct msg_header *Server_Scan_MulipleRegions_RDMA(msg_header *data_message, void *connection)
 //=======
-//struct tu_data_message* handle_scan_request(struct tu_data_message* data_message, void* connection)
+//struct msg_header* handle_scan_request(struct msg_header* data_message, void* connection)
 //>>>>>>> 24a32ec7ad53b7a8345c33120e1034aa734c8b79
 {
 	/* TODO implement scans
@@ -892,7 +889,7 @@ struct tu_data_message *Server_Scan_MulipleRegions_RDMA(tu_data_message_s *data_
 	void *start_key_buff = data_message->data + sizeof(uint32_t);
 	void *stop_key_buff = start_key_buff + sizeof(uint32_t) + *(uint32_t *)start_key_buff;
 	_tucana_region_S *S_tu_region;
-	struct tu_data_message *reply_data_message;
+	struct msg_header *reply_data_message;
 	void *kv_buffer;
 	uint32_t kv_buffer_len;
 	char seek_mode = (data_message->value) ? GREATER_OR_EQUAL : GREATER;
@@ -921,9 +918,9 @@ struct tu_data_message *Server_Scan_MulipleRegions_RDMA(tu_data_message_s *data_
 }
 
 #if 0 // FIXME never used
-struct tu_data_message *Server_FlushVolume_RDMA( struct tu_data_message *data_message, struct connection_rdma *rdma_conn )
+struct msg_header *Server_FlushVolume_RDMA( struct msg_header *data_message, struct connection_rdma *rdma_conn )
 {
-	struct tu_data_message *reply_data_message;
+	struct msg_header *reply_data_message;
 	_tucana_region_S *S_tu_region;
 
 	S_tu_region = get_first_region();
@@ -946,31 +943,29 @@ void handle_task(void *__task)
 	work_task *task = (work_task *)__task;
 	kv_location location;
 	struct connection_rdma *rdma_conn;
-
 	_tucana_region_S *S_tu_region;
-	int tries;
 	void *region_key;
 	//leave it for later
 	void *addr;
 	uint64_t log_address;
 	void *master_segment;
 	void *local_log_addr;
-	int32_t num_entries;
-
 	void *key = NULL;
 	void *value;
+	scannerHandle *sc;
+	msg_put_key *K;
+	msg_put_value *V;
+	msg_multi_get_req *multi_get;
+	msg_get_req *get_req;
+	msg_get_rep *get_rep;
+	int tries;
 	uint32_t key_length = 0;
+	uint32_t actual_reply_size = 0;
 
 	/*unboxing the arguments*/
 	S_tu_region = NULL;
 	task->reply_msg = NULL;
 	rdma_conn = task->conn;
-
-	if (task->msg == NULL) {
-		DPRINT("FATAL NULL msg in request\n");
-		exit(EXIT_FAILURE);
-	}
-
 	stats_update(task->thread_id);
 	switch (task->msg->type) {
 	//gesalous leave it for later
@@ -1169,12 +1164,13 @@ void handle_task(void *__task)
 			 * initiates internally rdma connections if needed
 			 * */
 
-		key = task->msg->data;
-		key_length = *(uint32_t *)key;
+		K = (msg_put_key *)(task->msg->data);
+		V = (msg_put_value *)((uint64_t)K + sizeof(msg_put_key) + K->key_size);
+		key_length = K->key_size;
 		assert(key_length != 0);
-		S_tu_region = find_region(key + sizeof(uint32_t), *(uint32_t *)key);
+		S_tu_region = find_region(K->key, K->key_size);
 		if (S_tu_region == NULL) {
-			DPRINT("FATAL:  Region not found for key size %u:%s\n", key_length, key + sizeof(uint32_t));
+			log_fatal("Region not found for key size %u:%s", K->key_size, K->key);
 			exit(EXIT_FAILURE);
 		}
 		task->region = (void *)S_tu_region;
@@ -1194,115 +1190,184 @@ void handle_task(void *__task)
 		task->reply_msg = (void *)((uint64_t)task->conn->rdma_memory_regions->local_memory_buffer +
 					   (uint64_t)task->msg->reply);
 		/*initialize message*/
-		if (task->msg->reply_length >= TU_HEADER_SIZE) {
-			task->reply_msg->pay_len = 0;
-			task->reply_msg->padding_and_tail = 0;
-			task->reply_msg->data = NULL;
-			task->reply_msg->next = NULL;
+		actual_reply_size = sizeof(msg_header) + sizeof(msg_put_rep) + TU_TAIL_SIZE;
+		if (task->msg->reply_length >= actual_reply_size) {
+			task->reply_msg->pay_len = sizeof(msg_put_rep);
+
+			task->reply_msg->padding_and_tail =
+				MESSAGE_SEGMENT_SIZE - (actual_reply_size % MESSAGE_SEGMENT_SIZE);
+
+			/*set tail to the proper value*/
+			*(uint32_t *)((uint64_t)task->reply_msg + sizeof(msg_header) + task->reply_msg->pay_len +
+				      task->reply_msg->padding_and_tail) = TU_RDMA_REGULAR_MSG;
+			task->reply_msg->padding_and_tail += TU_TAIL_SIZE;
+			//log_info("msg header %d put_rep %d padding_and_tail %d", sizeof(msg_header),
+			//	 sizeof(msg_put_rep), task->reply_msg->padding_and_tail);
+
+			task->reply_msg->data = (void *)((uint64_t)task->reply_msg + sizeof(msg_header));
+			task->reply_msg->next = task->reply_msg->data;
 
 			task->reply_msg->type = PUT_REPLY;
-			task->reply_msg->flags = CLIENT_CATEGORY;
+
+			task->reply_msg->ack_arrived = KR_REP_PENDING;
 			task->reply_msg->receive = TU_RDMA_REGULAR_MSG;
-			task->reply_msg->tail = NULL; /*to be deleted field*/
 			task->reply_msg->local_offset = (uint64_t)task->msg->reply;
 			task->reply_msg->remote_offset = (uint64_t)task->msg->reply;
-
-			//DPRINT("\t Sending to remote offset %llu\n", msg->remote_offset);
-			task->reply_msg->ack_arrived = REPLY_PENDING;
 			task->reply_msg->callback_function = NULL;
-			task->reply_msg->request_message_local_addr = NULL;
-
+			msg_put_rep *put_rep = (msg_put_rep *)((uint64_t)task->reply_msg + sizeof(msg_header));
+			put_rep->status = KREON_SUCCESS;
 		} else {
-			DPRINT("SERVER: FATAL mr CLIENT reply space not enough  size %" PRIu32 " FIX XXX TODO XXX\n",
-			       task->msg->reply_length);
+			log_fatal("SERVER: mr CLIENT reply space not enough  size %" PRIu32 " FIX XXX TODO XXX\n",
+				  task->msg->reply_length);
 			exit(EXIT_FAILURE);
 		}
 
 		/*piggyback info for use with the client*/
-		task->reply_msg->request_message_local_addr = task->notification_addr;
+		task->reply_msg->request_message_local_addr = task->msg->request_message_local_addr;
+		assert(task->reply_msg->request_message_local_addr != NULL);
 		task->overall_status = TASK_COMPLETED;
-		//DPRINT("\t reply to msg data_message->request_message_local_addr %llu pending received %d\n",
-		//	data_message->request_message_local_addr,rdma_conn->pending_received_messages);
 		return;
 
 	case MULTI_PUT:
-		DPRINT("FATAL MULTI_PUT request is deprecated\n");
+		log_fatal("MULTI_PUT request is deprecated");
 		exit(EXIT_FAILURE);
 		break;
 
 	case TU_GET_QUERY:
 		value = NULL;
 		/*kreon phase*/
-		if (task->kreon_operation_status == GET_START) {
-			key = (char *)task->msg->data;
-			key_length = *(uint32_t *)key;
-			S_tu_region = find_region(key + sizeof(uint32_t), key_length);
+		//if (task->kreon_operation_status == GET_START) {
+		get_req = (msg_get_req *)task->msg->data;
 
-			if (S_tu_region == NULL) {
-				DPRINT("ERROR: Region not found for key %s\n", key);
-				assert(0);
-				return;
-			}
-			//#if !OMMIT_IO_IN_THE_INSERT_PATH
-			//value  = find_key(S_tu_region->db, key+sizeof(uint32_t), key_length);
-			//#else
-			value = (void *)alloca(1024);
-			*(uint32_t *)value = 1020;
-			//#endif
+		S_tu_region = find_region(get_req->key, get_req->key_size);
 
-			if (value == NULL) {
-				DPRINT(" FATAL key not found key %s : length %u region min_key %s max key %s\n",
-				       key + sizeof(uint32_t), key_length,
-				       S_tu_region->ID_region.minimum_range + sizeof(int),
-				       S_tu_region->ID_region.maximum_range + sizeof(int));
-				exit(EXIT_FAILURE);
-			}
-			//task->kreon_operation_status = GET_COMPLETE;
-			task->intermediate_buffer = NULL;
-		}
-		/*allocate rdma message and reply to client phase*/
-		if (task->intermediate_buffer == NULL) {
-			task->reply_msg = __allocate_rdma_message(task->conn, *(uint32_t *)value + sizeof(uint32_t),
-								  TU_GET_REPLY, ASYNCHRONOUS, 0, task);
-		} else {
-			task->reply_msg =
-				__allocate_rdma_message(task->conn,
-							*(uint32_t *)task->intermediate_buffer + sizeof(uint32_t),
-							TU_GET_REPLY, ASYNCHRONOUS, 0, task);
-		}
-
-		if (task->allocation_status != ALLOCATION_SUCCESS) {
-			//DPRINT("Retry allocating RDMA buffer for GET reply\n");
-			if (task->intermediate_buffer == NULL) {
-				/*store intermediate result*/
-				//task->intermediate_buffer = malloc(*(uint32_t *)value+sizeof(uint32_t));
-				//memcpy(task->intermediate_buffer,value,*(uint32_t *)value+sizeof(uint32_t));
-			}
+		if (S_tu_region == NULL) {
+			log_fatal("ERROR: Region not found for key %s\n", get_req->key);
+			assert(0);
 			return;
 		}
 
-		if (task->intermediate_buffer == NULL) {
-			*(uint32_t *)task->reply_msg->data = *(uint32_t *)value;
-			if (push_buffer_in_tu_data_message(task->reply_msg, value + sizeof(uint32_t),
-							   *(uint32_t *)value) != KREON_SUCCESS) {
-				DPRINT("FATAL push buffer failed\n");
-				exit(EXIT_FAILURE);
-			}
+		task->reply_msg = (void *)((uint64_t)task->conn->rdma_memory_regions->local_memory_buffer +
+					   (uint64_t)task->msg->reply);
+		get_rep = (msg_get_rep *)((uint64_t)task->reply_msg + sizeof(msg_header));
+		value = find_key(S_tu_region->db, get_req->key, get_req->key_size);
+		get_rep->key_found = 1;
+		if (value == NULL) {
+			log_warn("key not found key %s : length %u region min_key %s max key %s\n",
+				 key + sizeof(uint32_t), key_length, S_tu_region->ID_region.minimum_range + sizeof(int),
+				 S_tu_region->ID_region.maximum_range + sizeof(int));
+			get_rep->key_found = 0;
+			get_rep->buffer_overflow = 0;
+			get_rep->value_size = 0;
 		} else {
-			*(uint32_t *)task->reply_msg->data = *(uint32_t *)task->intermediate_buffer;
-			if (push_buffer_in_tu_data_message(task->reply_msg,
-							   task->intermediate_buffer + sizeof(uint32_t),
-							   *(uint32_t *)task->intermediate_buffer) != KREON_SUCCESS) {
-				DPRINT("FATAL push buffer failed\n");
-				exit(EXIT_FAILURE);
+			actual_reply_size =
+				sizeof(msg_header) + sizeof(msg_get_rep) + *(uint32_t *)value + TU_TAIL_SIZE;
+			if (task->msg->reply_length < actual_reply_size) {
+				log_warn("Buffer overflow for key %s", get_req->key);
+				get_rep->key_found = 1;
+				get_rep->buffer_overflow = 1;
+				get_rep->value_size = 0;
+			} else {
+				get_rep->key_found = 1;
+				get_rep->buffer_overflow = 0;
+				memcpy(&get_rep->value_size, value, sizeof(uint32_t) + *(uint32_t *)value);
+				//log_info("val size %u get_rep size %u",*(uint32_t *)value, get_rep->value_size);
 			}
-			free(task->intermediate_buffer);
 		}
+
 		/*piggyback info for use with the client*/
+		/*finally fix the header*/
+		task->reply_msg->type = TU_GET_REPLY;
+		task->reply_msg->receive = TU_RDMA_REGULAR_MSG;
+		task->reply_msg->pay_len = sizeof(msg_get_rep) + get_rep->value_size;
+
+		actual_reply_size = sizeof(msg_header) + task->reply_msg->pay_len + TU_TAIL_SIZE;
+
+		task->reply_msg->padding_and_tail = MESSAGE_SEGMENT_SIZE - (actual_reply_size % MESSAGE_SEGMENT_SIZE);
+		/*set tail to the proper value*/
+		*(uint32_t *)((uint64_t)task->reply_msg + sizeof(msg_header) + task->reply_msg->pay_len +
+			      task->reply_msg->padding_and_tail) = TU_RDMA_REGULAR_MSG;
+		task->reply_msg->padding_and_tail += TU_TAIL_SIZE;
+
+		task->reply_msg->local_offset = (uint64_t)task->msg->reply;
+		task->reply_msg->remote_offset = (uint64_t)task->msg->reply;
+		task->reply_msg->callback_function = NULL;
 		task->reply_msg->request_message_local_addr = task->msg->request_message_local_addr;
-		free_rdma_received_message(task->conn, task->msg);
 		task->overall_status = TASK_COMPLETED;
 		break;
+
+	case MULTI_GET_REQUEST:
+		multi_get = (msg_multi_get_req *)task->msg->data;
+		S_tu_region = find_region(multi_get->seek_key, multi_get->seek_key_size);
+		if (S_tu_region == NULL) {
+			log_fatal("Region not found for key size %u:%s", multi_get->seek_key_size, multi_get->seek_key);
+			exit(EXIT_FAILURE);
+		}
+		/*create an internal scanner object*/
+		sc = (scannerHandle *)malloc(sizeof(scannerHandle));
+
+		if (multi_get->seek_mode != FETCH_FIRST) {
+			//log_info("seeking at key %s", multi_get->seek_key);
+			initScanner(sc, S_tu_region->db, &multi_get->seek_key_size, multi_get->seek_mode);
+		} else {
+			//log_info("seeking at key first key of region");
+			initScanner(sc, S_tu_region->db, NULL, GREATER_OR_EQUAL);
+		}
+
+		/*put the data in the buffer*/
+		task->reply_msg = (void *)((uint64_t)task->conn->rdma_memory_regions->local_memory_buffer +
+					   (uint64_t)task->msg->reply);
+		msg_multi_get_rep *buf = (msg_multi_get_rep *)((uint64_t)task->reply_msg + sizeof(msg_header));
+		buf->curr_entry = 0;
+		buf->end_of_region = 0;
+		buf->buffer_overflow = 0;
+
+		buf->remaining = task->msg->reply_length - (sizeof(msg_header) + sizeof(msg_multi_get_rep));
+		buf->capacity = buf->remaining;
+		buf->pos = 0;
+		buf->num_entries = 0;
+		if (sc->keyValue != NULL) {
+			msg_key *key = sc->keyValue;
+			msg_value *value = (msg_value *)((uint64_t)key + sizeof(msg_key) + key->size);
+			if (msg_push_to_multiget_buf(key, value, buf) == KREON_SUCCESS) {
+				while (buf->num_entries < multi_get->max_num_entries) {
+					if (getNext(sc) == END_OF_DATABASE) {
+						buf->end_of_region = 1;
+						break;
+					}
+					key = sc->keyValue;
+					value = (msg_value *)((uint64_t)key + sizeof(msg_key) + key->size);
+					if (msg_push_to_multiget_buf(key, value, buf) == KREON_FAILURE)
+						break;
+				}
+			}
+		} else
+			buf->end_of_region = 1;
+
+		closeScanner(sc);
+		free(sc);
+
+		/*finally fix the header*/
+		task->reply_msg->type = MULTI_GET_REPLY;
+		task->reply_msg->receive = TU_RDMA_REGULAR_MSG;
+		task->reply_msg->pay_len = sizeof(msg_put_rep) + (buf->capacity - buf->remaining);
+
+		actual_reply_size = sizeof(msg_header) + task->reply_msg->pay_len + TU_TAIL_SIZE;
+
+		task->reply_msg->padding_and_tail = MESSAGE_SEGMENT_SIZE - (actual_reply_size % MESSAGE_SEGMENT_SIZE);
+		/*set tail to the proper value*/
+		*(uint32_t *)((uint64_t)task->reply_msg + sizeof(msg_header) + task->reply_msg->pay_len +
+			      task->reply_msg->padding_and_tail) = TU_RDMA_REGULAR_MSG;
+		task->reply_msg->padding_and_tail += TU_TAIL_SIZE;
+
+		task->reply_msg->local_offset = (uint64_t)task->msg->reply;
+		task->reply_msg->remote_offset = (uint64_t)task->msg->reply;
+		task->reply_msg->callback_function = NULL;
+		task->reply_msg->request_message_local_addr = task->msg->request_message_local_addr;
+		assert(task->reply_msg->request_message_local_addr != NULL);
+		task->overall_status = TASK_COMPLETED;
+		break;
+
 	case TEST_REQUEST:
 		task->reply_msg = (void *)((uint64_t)task->conn->rdma_memory_regions->local_memory_buffer +
 					   (uint64_t)task->msg->reply);
@@ -1314,19 +1379,17 @@ void handle_task(void *__task)
 			task->reply_msg->next = NULL;
 
 			task->reply_msg->type = TEST_REPLY;
-			task->reply_msg->flags = CLIENT_CATEGORY;
 			task->reply_msg->receive = TU_RDMA_REGULAR_MSG;
-			task->reply_msg->tail = NULL; /*to be deleted field*/
 			task->reply_msg->local_offset = (uint64_t)task->msg->reply;
 			task->reply_msg->remote_offset = (uint64_t)task->msg->reply;
 
-			task->reply_msg->ack_arrived = REPLY_PENDING;
+			task->reply_msg->ack_arrived = KR_REP_PENDING;
 			task->reply_msg->callback_function = NULL;
 			task->reply_msg->request_message_local_addr = NULL;
 			task->overall_status = TASK_COMPLETED;
 		} else {
-			DPRINT("SERVER: FATAL mr CLIENT reply space not enough  size %" PRIu32 " FIX XXX TODO XXX\n",
-			       task->msg->reply_length);
+			log_fatal("CLIENT reply space not enough  size %" PRIu32 " FIX XXX TODO XXX\n",
+				  task->msg->reply_length);
 			exit(EXIT_FAILURE);
 		}
 		/*piggyback info for use with the client*/
@@ -1391,19 +1454,18 @@ void handle_task(void *__task)
 
 		/*Since reply message is of fixed size we allocate it first*/
 
-		task->reply_msg = (tu_data_message_s *)(task->conn->rdma_memory_regions->local_memory_buffer +
-							task->conn->offset);
+		task->reply_msg =
+			(msg_header *)(task->conn->rdma_memory_regions->local_memory_buffer + task->conn->offset);
 		/*init message*/
 		task->reply_msg->pay_len = 0;
 		task->reply_msg->padding_and_tail = 0;
 		task->reply_msg->data = NULL;
 		task->reply_msg->next = task->reply_msg->data;
 		task->reply_msg->receive = TU_RDMA_REGULAR_MSG;
-		task->reply_msg->flags = SERVER_CATEGORY;
 
 		task->reply_msg->local_offset = task->conn->offset;
 		task->reply_msg->remote_offset = task->conn->offset;
-		task->reply_msg->ack_arrived = REPLY_PENDING;
+		task->reply_msg->ack_arrived = KR_REP_PENDING;
 		task->reply_msg->callback_function = NULL;
 		task->reply_msg->request_message_local_addr = NULL;
 
@@ -1429,6 +1491,7 @@ void handle_task(void *__task)
 	}
 	//free_rdma_received_message(rdma_conn, data_message);
 	//assert(reply_data_message->request_message_local_addr);
+
 	return;
 }
 
@@ -1555,23 +1618,23 @@ int main(int argc, char *argv[])
 	//	exit(EXIT_FAILURE);
 	//}
 
-	DPRINT("initializing storage device:%s\n", Device_name);
+	log_info("initializing storage device:%s", Device_name);
 	Init_Storage_Device(&storage_dev, Device_name, (uint64_t)Device_size);
-	DPRINT("initializing zookeeper server\n");
+	log_info("initializing zookeeper server");
 	Init_tuzk_server(&tuzk_S);
-	DPRINT("initializing regionse?\n");
+	log_info("initializing regionse?\n");
 	Init_RegionsSe();
 #if TU_RDMA
 	Set_OnConnection_Create_Function(regions_S.channel, handle_task);
-	DPRINT("initialized RDMA\n");
+	log_info("initialized RDMA");
 #endif
-	DPRINT("initializing data server\n");
+	log_info("initializing data server");
 	Init_Data_Server_from_ZK();
 	stats_init(num_of_worker_threads);
 	sem_init(&exit_main, 0, 0);
 	sem_wait(&exit_main);
 
-	DPRINT("kreonR server exiting\n");
+	log_info("kreonR server exiting\n");
 	Free_RegionsSe();
 	return 0;
 }

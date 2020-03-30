@@ -40,19 +40,20 @@ void commit_db_log(db_descriptor *db_desc)
 void commit_db_logs_per_volume(volume_descriptor *volume_desc)
 {
 	NODE *node;
+	db_descriptor *db_desc;
 	node = get_first(volume_desc->open_databases);
-	db_descriptor *db_desc = (db_descriptor *)(node->data);
 
-	while (db_desc != NULL) {
+	while (node != NULL) {
 #if LOG_WITH_MUTEX
 		MUTEX_LOCK(&db_desc->lock_log);
 #else
 		SPIN_LOCK(&db_desc->lock_log);
 #endif
+		db_desc = (db_descriptor *)(node->data);
 		if (db_desc->commit_log->kv_log_size != db_desc->KV_log_size)
 			commit_db_log(db_desc);
 		node = node->next;
-		db_desc = node->data;
+
 #if LOG_WITH_MUTEX
 		MUTEX_UNLOCK(&db_desc->lock_log);
 #else

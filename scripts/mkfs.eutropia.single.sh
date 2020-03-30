@@ -34,6 +34,6 @@ echo 'Allocator size:' ${ALLOCATOR_SIZE}
 for i in `seq 0 $(($DB_NUM - 1))`;
 do
 	OFFSET=`expr ${i} \* ${ALLOCATOR_SIZE}`
-	../kreon_lib/mkfs.kreon ${DEV_NAME} ${OFFSET} ${ALLOCATOR_SIZE} > /dev/null
+	../build/kreon_lib/mkfs.kreon ${DEV_NAME} ${OFFSET} ${ALLOCATOR_SIZE} > /dev/null
 done
 exit 0

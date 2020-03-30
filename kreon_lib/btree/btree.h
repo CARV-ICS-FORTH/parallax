@@ -4,7 +4,8 @@
  *
  */
 #pragma once
-#include <config.h>
+
+#include "../../build/config.h"
 #include "../allocator/allocator.h"
 #include "uthash.h"
 //#include "../CLHT/include/clht.h"

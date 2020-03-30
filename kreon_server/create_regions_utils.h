@@ -1,4 +1,5 @@
 #pragma once
+#include <zookeeper/zookeeper.h>
 #include "conf.h"
 #include "regions.h"
 
@@ -13,7 +14,7 @@
 #define PARA_TAIL "--tail"
 #define PARA_REPLICAS "--replicas"
 #define PARA_CHAIN "--chain" //To set a hosts and ists position on the chain 
-
+#define PARA_ZOOKEEPER "--zookeeper"
 #define OP_CREATE 1
 #define OP_DELETE 2
 #define OP_REASSIGN 3
@@ -38,6 +39,7 @@ struct test_regions
 
 
 
+int create_region(int argc, char *argv[]);
 void free_test_regions( struct test_regions *region );
 void Connecting_with_Zookeeper_creating_regions_node( void );
 void create_parent_node_completion (int rc, const char * value, const void * data );

@@ -16,6 +16,10 @@ add_library(
   client_regions.c
   client_scanner.c
   client_regions_manager.c
+	../kreon_rdma_client/kreon_rdma_client.c
+	../kreon_server/globals.c
+	../kreon_server/client_regions.c
+	../kreon_rdma_client/kreon_rdma_client.c
   djb2.c)
 
 add_executable(
@@ -39,7 +43,8 @@ target_link_libraries(kreon_server kreon_rdma kreonr)
 add_executable(
   create_regions
   create_regions.c
-  zk_string_vector.c
+  create_regions_utils.c
+	zk_string_vector.c
   network_data.c
   regions.c
   globals.c
@@ -47,7 +52,7 @@ add_executable(
   ../utilities/simple_concurrent_list.c
   ../utilities/spin_loop.c
   ../utilities/circular_buffer.c)
-target_link_libraries(create_regions kreon_rdma)
+target_link_libraries(create_regions kreon_rdma kreonr)
 
 # FIXME put_get_test and scan_test don't compile add_executable(put_get_test
 # tests/put_get.c zk_string_vector.c network_data.c zk_server.c

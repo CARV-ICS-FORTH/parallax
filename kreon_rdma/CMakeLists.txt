@@ -6,6 +6,7 @@ add_library(
   kreon_rdma STATIC
   memory_region_pool.c
   rdma.c
+	../kreon_rdma_client/kreon_rdma_client.c
   ../utilities/queue.c
   ../utilities/simple_concurrent_list.c
   ../utilities/spin_loop.c
