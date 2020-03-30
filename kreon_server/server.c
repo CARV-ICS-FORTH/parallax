@@ -1566,8 +1566,8 @@ static void tu_ec_sig_handler(int signo)
 
 int main(int argc, char *argv[])
 {
-	int i;
-	globals_set_zk_host(zookeeper_host_port);
+	uint32_t i;
+	//globals_set_zk_host(zookeeper_host_port);
 	RDMA_LOG_BUFFER_PADDING = 0;
 	RDMA_TOTAL_LOG_BUFFER_SIZE = TU_HEADER_SIZE + BUFFER_SEGMENT_SIZE + 4096 + TU_TAIL_SIZE;
 
@@ -1578,24 +1578,25 @@ int main(int argc, char *argv[])
 		assert(RDMA_TOTAL_LOG_BUFFER_SIZE % MESSAGE_SEGMENT_SIZE == 0);
 	}
 
-	if (argc == 6) {
+	if (argc == 8) {
 		int rdma_port = strtol(argv[1], NULL, 10);
 		globals_set_RDMA_connection_port(rdma_port);
 		Device_name = argv[2];
 		Device_size = strtol(argv[3], NULL, 10) * 1024 * 1024 * 1024;
-
-		_str_split(argv[4], ',', &spinning_threads_core_ids, &num_of_spinning_threads);
-		_str_split(argv[5], ',', &worker_threads_core_ids, &num_of_worker_threads);
+		globals_set_zk_host(argv[4]);
+		globals_set_RDMA_IP_filter(argv[5]);
+			_str_split(argv[6], ',', &spinning_threads_core_ids, &num_of_spinning_threads);
+		_str_split(argv[7], ',', &worker_threads_core_ids, &num_of_worker_threads);
 	} else {
-		DPRINT("Error: usage: ./tucanaserver <port number> <device name> <device size in GB> <spinning thread core ids>  <working thread core ids>\n");
+		DPRINT("Error: usage: ./tucanaserver <port number> <device name> <device size in GB> <zookeeper_host_port> <RDMA_IP_prefix> <spinning thread core ids>  <working thread core ids>\n");
 		exit(EXIT_FAILURE);
 	}
 
 	for (i = 0; i < num_of_spinning_threads; i++) {
-		DPRINT(" spinning thread core[%d] = %llu\n", i, (LLU)spinning_threads_core_ids[i]);
+		log_info(" spinning thread core[%d] = %llu\n", i, (LLU)spinning_threads_core_ids[i]);
 	}
 	for (i = 0; i < num_of_worker_threads; i++) {
-		DPRINT(" worker thread core[%d] = %llu\n", i, (LLU)worker_threads_core_ids[i]);
+		log_info(" worker thread core[%d] = %llu\n", i, (LLU)worker_threads_core_ids[i]);
 	}
 	assert(num_of_worker_threads % num_of_spinning_threads == 0);
 	WORKER_THREADS_PER_SPINNING_THREAD = (num_of_worker_threads / num_of_spinning_threads);

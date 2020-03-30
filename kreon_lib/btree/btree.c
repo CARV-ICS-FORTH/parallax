@@ -569,7 +569,7 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 					if (db_group->db_entries[j].valid) {
 						/*hosts a database*/
 						db_entry = &db_group->db_entries[j];
-						log_info("entry at %llu", (uint64_t)db_entry - MAPPED);
+						//log_info("entry at %llu", (uint64_t)db_entry - MAPPED);
 						if (strcmp((const char *)db_entry->db_name, (const char *)db_name) ==
 						    0) {
 							/*found it database found, restore state, recover state if needed

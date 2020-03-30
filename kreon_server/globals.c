@@ -5,8 +5,35 @@
 #include "globals.h"
 #include "../build/external-deps/log/src/log.h"
 
-static globals global_vars = { NULL, -1, 1 };
+static globals global_vars = { NULL, NULL, -1, 1 };
 static pthread_mutex_t g_lock = PTHREAD_MUTEX_INITIALIZER;
+
+char *globals_get_RDMA_IP_filter()
+{
+	if (global_vars.RDMA_IP_filter == NULL) {
+		log_fatal("RDMA_IP_filter host,port not set!\n");
+		exit(EXIT_FAILURE);
+	}
+	return global_vars.RDMA_IP_filter;
+}
+
+void globals_set_RDMA_IP_filter(char *RDMA_IP_filter)
+{
+	if (pthread_mutex_lock(&g_lock) != 0) {
+		log_fatal("Failed to acquire lock");
+		exit(EXIT_FAILURE);
+	}
+	if (global_vars.RDMA_IP_filter == NULL) {
+		global_vars.RDMA_IP_filter = (char *)malloc(strlen(RDMA_IP_filter) + 1);
+		strcpy(global_vars.RDMA_IP_filter, RDMA_IP_filter);
+	} else {
+		log_warn("RDMA_IP_filter already set at %s", global_vars.RDMA_IP_filter);
+	}
+	if (pthread_mutex_unlock(&g_lock) != 0) {
+		log_fatal("Failed to acquire lock");
+		exit(EXIT_FAILURE);
+	}
+}
 
 char *globals_get_zk_host(void)
 {
@@ -53,7 +80,6 @@ void globals_enable_client_spinning_thread()
 {
 	global_vars.client_spinning_thread = 1;
 }
-
 
 int globals_spawn_client_spinning_thread()
 {
