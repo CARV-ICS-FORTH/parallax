@@ -48,8 +48,6 @@
 #define KEY_PRINT_FMT_GID                                                                                              \
 	"%04x:%06x:%06x:%08x:%016Lx:%016Lx:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:"
 
-#define RD_SEMAPHORE 1
-
 #define CONNECTION_BUFFER_WITH_MUTEX_LOCK
 
 #define SPINNING_THREAD 1
@@ -108,12 +106,6 @@ uint64_t *worker_threads_core_ids;
 uint32_t num_of_spinning_threads;
 uint32_t num_of_worker_threads;
 uint32_t WORKER_THREADS_PER_SPINNING_THREAD;
-
-/*worker status list*/
-#define IDLE_SPINNING 0
-#define IDLE_SLEEPING 1
-#define BUSY 2
-#define WORKER_NOT_RUNNING 3
 
 typedef struct spinning_thread_parameters {
 	struct channel_rdma *channel;
@@ -211,6 +203,8 @@ typedef struct work_task {
 	work_task_status overall_status;
 } work_task;
 
+typedef enum worker_status { IDLE_SPINNING, IDLE_SLEEPING, BUSY, WORKER_NOT_RUNNING } worker_status;
+
 typedef struct worker_thread {
 	work_task job_buffers[UTILS_QUEUE_CAPACITY];
 	work_task high_priority_job_buffers[UTILS_QUEUE_CAPACITY];
@@ -226,7 +220,7 @@ typedef struct worker_thread {
 	pthread_t thread;
 	pthread_spinlock_t work_queue_lock;
 	struct channel_rdma *channel;
-	uint64_t status;
+	worker_status status;
 	struct worker_group *my_group;
 	int32_t worker_id;
 } worker_thread;
@@ -386,29 +380,19 @@ typedef struct connection_rdma {
 	struct ibv_cq *cq;
 	struct ibv_cq *cq_recv;
 	struct ibv_comp_channel *comp_channel;
-	// struct ibv_mr *ibv_mr_rdma_local;	//This are for sending RDMA messages. Its memory is rmda_local_region
-	// struct ibv_mr *ibv_mr_rdma_remote;	//This are for sending RDMA messages. Its memory is rmda_local_region
 	struct ibv_mr *peer_mr; // Info of the remote peer: addr y rkey, needed for sending the RRMA messages
 
 	uint32_t connected;
 	uint32_t disconnecting;
 
-	/*<gesalous>*/
 	volatile void *rendezvous;
 	volatile connection_status status; /*normal or resetting?*/
 	memory_region *rdma_memory_regions;
 	memory_region *next_rdma_memory_regions;
 	struct ibv_mr *next_peer_mr;
 
-	struct ibv_mr *recv_mr; //This are for sending regular messages through the RDMA connection.
-	struct ibv_mr *send_mr;
 	int server; //1 is the server, 0 is not
-	int sockfd;
-	struct pingpong_dest *my_dest;
-	struct pingpong_dest *rem_dest;
 	int index;
-
-	//struct polling_msg re_msg[MRQ_N_SECTIONS];
 
 	SIMPLE_CONCURRENT_LIST *responsible_spin_list;
 	int32_t responsible_spinning_thread_id;
@@ -417,32 +401,9 @@ typedef struct connection_rdma {
 	 * rdma memory, so that it will wait in for a RESET_BUFFER message
 	 * */
 	uint32_t remaining_bytes_in_remote_rdma_region;
-	pthread_mutex_t spinning_lock; // Lock for the conn_list
-#if RD_SEMAPHORE
-	sem_t sem_recv; //leave it for now, remove it later
-#endif
-	//PILAR: Do we need?
 	int idconn;
 
 	sem_t sem_disconnect; // To coordinate the reception of messages
-	pthread_mutex_t signaled_lock; // Lock for the  send path
-	pthread_mutex_t polling_lock; // Lock for the conn_list
-	int n_polling;
-
-	//int64_t last_id_msg_seen[MRQ_N_SECTIONS]; //Last value of id_msg seen in a MSG received. Update by spinning thread
-	//int64_t last_id_msg_seen_tail[MRQ_N_SECTIONS]; //Last value of id_msg seen in a MSG received. Update by received thread
-	//int nlast[MRQ_N_SECTIONS];
-
-	sem_t sem_check_state; // To coordinate the reception of messages
-	int recover_state; //To indicate that the QP has been recover. 1 from ERROR to RTR state. 0, no recovery has been done
-#if !TU_CONTROL_MSG_BY_RDMA
-	//int64_t id_msg_mr_end[MRQ_N_SECTIONS]; //ID of the message that will be the last received
-	//int64_t id_msg_mr_end_tail[MRQ_N_SECTIONS]; //ID of the message that will be the last received
-	//uint32_t pos_mr_end[MRQ_N_SECTIONS];
-	//uint32_t nele_mr_end[MRQ_N_SECTIONS];
-	//int mr_end_received; // 0 not received, set to 2 when MR_END is received , it will be decremented by update_pos_spinning and update_tail_spinning
-	//pthread_mutex_t id_msg_mr_end_lock[MRQ_N_SECTIONS];
-#endif
 } connection_rdma;
 
 static inline void Set_OnConnection_Create_Function(struct channel_rdma *channel, on_connection_created function)
