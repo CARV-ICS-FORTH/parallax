@@ -8,17 +8,17 @@ typedef enum krc_scan_state {
 	KRC_ISSUE_MGET_REQ,
 	KRC_ADVANCE,
 	KRC_END_OF_DB,
-	KRC_BUFFER_OVERFLOW
+	KRC_BUFFER_OVERFLOW,
 } krc_scan_state;
 
 typedef struct krc_key {
 	uint32_t key_size;
-	char *key_buf;
+	char key_buf[];
 } krc_key;
 
 typedef struct krc_value {
 	uint32_t val_size;
-	uint8_t *val_buf;
+	char val_buf[];
 } krc_value;
 
 typedef struct krc_handle {
@@ -27,6 +27,7 @@ typedef struct krc_handle {
 
 typedef struct krc_scanner {
 	krc_handle *hd;
+	connection_rdma *conn;
 	client_region *region;
 	krc_key *prefix_key;
 	krc_key *start_key;
@@ -45,13 +46,18 @@ typedef struct krc_scanner {
 	msg_multi_get_rep *multi_kv_buf;
 } krc_scanner;
 
-typedef enum krc_error_codes { KRC_SUCCESS = 0, KRC_ZK_FAILURE_CONNECT, KRC_PUT_FAILURE } krc_error_codes;
+typedef enum krc_error_codes {
+	KRC_SUCCESS = 0,
+	KRC_ZK_FAILURE_CONNECT,
+	KRC_PUT_FAILURE,
+	KRC_KEY_NOT_FOUND
+} krc_error_codes;
 
 krc_handle *krc_init(char *zookeeper_ip, int zk_port, uint32_t *error_code);
-
 uint32_t krc_close(krc_handle *handle);
+
 uint32_t krc_put(krc_handle *hd, uint32_t key_size, void *key, uint32_t val_size, void *value);
-krc_value *get(krc_handle *hd, uint32_t key_size, void *key, uint32_t *error_code);
+krc_value *krc_get(krc_handle *hd, uint32_t key_size, void *key, uint32_t reply_length, uint32_t *error_code);
 
 /*scanner API*/
 krc_scanner *krc_scan_init(krc_handle *hd, uint32_t prefetch_entries, uint32_t prefetch_mem_size_hint);

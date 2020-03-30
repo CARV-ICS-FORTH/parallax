@@ -19,6 +19,7 @@ int msg_push_to_multiget_buf(msg_key *key, msg_value *val, msg_multi_get_rep *bu
 	buf->pos += (sizeof(msg_key) + val->size);
 	buf->remaining -= (sizeof(msg_value) + val->size);
 	++buf->num_entries;
+	//log_info("added key %u:%s and val size %u",key->size, key->key,val->size);
 	return KREON_SUCCESS;
 }
 

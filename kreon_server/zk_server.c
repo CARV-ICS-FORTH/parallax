@@ -688,7 +688,7 @@ void set_alive(void)
  */
 void get_regions_watcher(zhandle_t *zh, int type, int state, const char *path, void *watcherCtx)
 {
-	log_debug(("get_regions watcher triggered %s %d", path, state));
+	log_info("triggered %s %d", path, state);
 	if ((type == ZOO_CHANGED_EVENT) || (type == ZOO_CHILD_EVENT) || (type == ZOO_DELETED_EVENT) ||
 	    (type == ZOO_SESSION_EVENT)) {
 		log_info(("get_regions watched event: %s", type2string(type)));

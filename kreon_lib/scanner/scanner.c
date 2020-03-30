@@ -72,6 +72,8 @@ scannerHandle *initScanner(scannerHandle *sc, db_handle *handle, void *start_key
 	} else {
 		sc->malloced = 0;
 	}
+	if (handle->db_desc->dirty)
+		snapshot(handle->volume_desc);
 
 	active_tree = handle->db_desc->levels[0].active_tree;
 	sc->db = handle;
@@ -233,12 +235,12 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 		assert(middle < (int64_t)node->numberOfEntriesInNode);
 		element.node = node;
 		element.guard = 0;
-		if (middle < 0) {
+		if (middle <= 0) {
 			element.leftmost = 1;
 			element.rightmost = 0;
 			element.idx = 0;
 			node = (node_header *)(MAPPED + inode->p[0].left[0]);
-		} else if (middle == (int64_t)node->numberOfEntriesInNode - 1) {
+		} else if (middle >= (int64_t)node->numberOfEntriesInNode - 1) {
 			/*last path of node*/
 			element.leftmost = 0;
 			element.rightmost = 1;
@@ -308,7 +310,7 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 		//log_debug("Leftmost boom");
 		stack_push(&(level_sc->stack), element);
 		middle = 0;
-	} else if (middle >= (int64_t)lnode->header.numberOfEntriesInNode) {
+	} else if (middle >= (int64_t)lnode->header.numberOfEntriesInNode-1) {
 		element.node = node;
 		element.idx = 0;
 		element.leftmost = 0;
@@ -443,10 +445,11 @@ int32_t _get_next_KV(level_scanner *sc)
 				stack_top.leftmost = 0;
 
 				if (stack_top.node->type == leafNode || stack_top.node->type == leafRootNode) {
+					//log_info("got a leftmost leaf advance");
 					idx = 1;
 					stack_top.idx = 1;
-					stack_push(&sc->stack, stack_top);
 					node = stack_top.node;
+					stack_push(&sc->stack, stack_top);
 					break;
 				} else {
 					//log_debug("Calculate and push type %s", node_type(stack_top.node->type));
@@ -463,7 +466,8 @@ int32_t _get_next_KV(level_scanner *sc)
 			} else {
 				//log_debug("Advancing, %s idx = %d entries %d", node_type(stack_top.node->type),
 				//	  stack_top.idx, stack_top.node->numberOfEntriesInNode);
-				if (++stack_top.idx >= stack_top.node->numberOfEntriesInNode - 1)
+				++stack_top.idx;
+				if (stack_top.idx >= stack_top.node->numberOfEntriesInNode - 1)
 					stack_top.rightmost = 1;
 			}
 			stack_push(&sc->stack, stack_top);
@@ -489,6 +493,7 @@ int32_t _get_next_KV(level_scanner *sc)
 			stack_top.guard = 0;
 			stack_push(&sc->stack, stack_top);
 			if (node->type == leafNode || node->type == leafRootNode) {
+				//log_info("consumed first entry of leaf");
 				idx = 0;
 				break;
 			} else {

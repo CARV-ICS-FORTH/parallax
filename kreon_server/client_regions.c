@@ -10,7 +10,7 @@
 #include "client_regions.h"
 //#include "zk_server.h"
 #include "zk_client.h"
-
+#include "../build/external-deps/log/src/log.h"
 #ifdef CHCKSUM_DATA_MESSAGES
 #include "djb2.h"
 #endif
@@ -25,13 +25,12 @@ void get_server_rdma_conn(client_region *region, void *channel);
 void put_server_rdma_conn(_cli_tu_network_data *net, int n_conn);
 
 struct msg_header *Client_Receive_N_Messages_Semaphore_Blocking_NotReceiving(client_region *cli_tu_region,
-										  struct msg_header *data_message,
-										  int next_mail);
-
+									     struct msg_header *data_message,
+									     int next_mail);
 
 #if TU_SEMAPHORE
-static struct msg_header *client_blocking_receive(client_region *cli_tu_region,
-						       struct msg_header *data_message, int next_mail);
+static struct msg_header *client_blocking_receive(client_region *cli_tu_region, struct msg_header *data_message,
+						  int next_mail);
 #endif
 
 void sighand_term(int signo);
@@ -143,10 +142,11 @@ void Tu_Client_Create_RMDA_Connection(void *aux_client_regions)
 				}
 				DPRINT("Creating one connection per region... S U C C E S S\n");
 #else
-				DPRINT("Region %s Responsible server %s creating %d connections\n",
-				       client_regions->tu_regions[i]->ID_region.minimum_range,
-				       client_regions->tu_regions[i]->head_net->hostname,
-				       NUM_OF_CONNECTIONS_PER_SERVER);
+				log_info(
+					"Region %s Responsible server %s creating (if not already present) %d connections",
+					client_regions->tu_regions[i]->ID_region.minimum_range,
+					client_regions->tu_regions[i]->head_net->hostname,
+					NUM_OF_CONNECTIONS_PER_SERVER);
 
 				get_server_rdma_conn(client_regions->tu_regions[i], (void *)client_regions->channel);
 				client_regions->tu_regions[i]->connected = 1;
@@ -179,16 +179,18 @@ void get_server_rdma_conn(client_region *region, void *channel)
 	if (region->head_net->number_of_mapped_regions == 0) {
 		/*we don't have any connection with the server, yet*/
 		for (i = 0; i < NUM_OF_CONNECTIONS_PER_SERVER; i++) {
-			DPRINT("Creating number (%d) of a total of %d connection(s) with server %s\n", i,
+			log_info("Creating number (%d) of a total of %d connection(s) with server %s\n", i,
 			       NUM_OF_CONNECTIONS_PER_SERVER, region->head_net->hostname);
 			region->head_net->rdma_conn[i] =
 				crdma_client_create_connection_list_hosts(channel, region->head_net->IPs,
 									  region->head_net->num_NICs,
 									  CLIENT_TO_SERVER_CONNECTION);
 		}
-	}
+	} else
+		log_info("Nothing to do already established %d connections with server %s",
+			 NUM_OF_CONNECTIONS_PER_SERVER, region->head_net->hostname);
 	++region->head_net->number_of_mapped_regions;
-	DPRINT("Number of mapped regions %d with server %s for region %llu\n",
+	log_info("Number of mapped regions %d with server %s for region %llu\n",
 	       region->head_net->number_of_mapped_regions, region->head_net->hostname, (LLU)region);
 	pthread_mutex_unlock(&region->head_net->mutex_rdma_conn[0]);
 }
@@ -688,8 +690,8 @@ client_region *Find_Client_Sorted_Regions_By_ID(_Client_Regions *client_regions,
 	return NULL;
 }
 
-struct msg_header *Client_Generic_Receive_Message(client_region *cli_tu_region,
-						       struct msg_header *data_message, int next_mail)
+struct msg_header *Client_Generic_Receive_Message(client_region *cli_tu_region, struct msg_header *data_message,
+						  int next_mail)
 {
 #if TU_SEMAPHORE //TRUE
 	return (client_blocking_receive(cli_tu_region, data_message, next_mail));
@@ -699,32 +701,6 @@ struct msg_header *Client_Generic_Receive_Message(client_region *cli_tu_region,
 #endif
 }
 
-void Client_Create_Receiving_Threads(_Client_Regions *client_regions)
-{
-	
-
-	int num_threads = 1;
-	int num_regions = 0;
-
-
-
-
-		char **servers_name;
-		int n_servers, count_servers;
-		int i;
-		num_regions = client_regions->num_regions;
-		n_servers = client_regions->servers.count;
-		num_threads = 2;
-		count_servers = 0;
-		servers_name = (char **)malloc(num_regions * sizeof(char *));
-
-
-		for (i = 0; i < count_servers; i++) {
-			servers_name[i] = NULL;
-		}
-		free(servers_name);
-
-}
 
 int Get_NextMailbox_Cli_Tu_Region(client_region *cli_tu_region)
 {
@@ -770,7 +746,7 @@ client_region *Client_Get_Tu_Region_and_Mailbox(_Client_Regions *client_regions,
 }
 
 struct msg_header *Client_Send_RDMA_N_Messages(client_region *cli_tu_region, struct msg_header *data_message,
-						    int next_mail)
+					       int next_mail)
 {
 	DPRINT("gesalous --> dead function!");
 	exit(EXIT_FAILURE);
@@ -816,26 +792,9 @@ void generic_thread_receiving_messages_RDMA(struct connection_rdma **aux_rdma_co
 	return;
 }
 
-void *client_thread_receiving_messages_RDMA(void *args)
-{
-	client_region *cli_tu_region;
-	int next_mail;
-
-	pthread_setname_np(pthread_self(), "client_receiving_thread");
-	cli_tu_region = ((client_region *)args);
-	next_mail = Get_NextMailbox_Cli_Tu_Region(cli_tu_region);
-
-	while (cli_tu_region->head_net->rdma_conn[next_mail] == NULL) {
-		int i = 0;
-		i = 3 * 4 + 4;
-	}
-	generic_thread_receiving_messages_RDMA(&cli_tu_region->head_net->rdma_conn[next_mail]);
-	return NULL;
-}
 
 #if TU_SEMAPHORE
-struct msg_header *client_blocking_receive(client_region *cli_tu_region, struct msg_header *data_message,
-						int next_mail)
+struct msg_header *client_blocking_receive(client_region *cli_tu_region, struct msg_header *data_message, int next_mail)
 {
 	struct msg_header *reply_data_message;
 	while (1) {
@@ -852,8 +811,8 @@ struct msg_header *client_blocking_receive(client_region *cli_tu_region, struct 
 }
 
 struct msg_header *Client_Receive_N_Messages_Semaphore_Blocking_NotReceiving(client_region *cli_tu_region,
-										  struct msg_header *data_message,
-										  int next_mail)
+									     struct msg_header *data_message,
+									     int next_mail)
 {
 	DPRINT("gesalous DEAD function\n");
 	exit(EXIT_FAILURE);

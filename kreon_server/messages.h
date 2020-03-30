@@ -57,20 +57,20 @@ enum tucana_message_types {
 	CLIENT_RECEIVED_READY
 };
 
-typedef enum send_options { SYNC_REQUEST = 2, ASYNC_REQUEST, BUSY_WAIT } receive_options;
+typedef enum receive_options { SYNC_REQUEST = 2, ASYNC_REQUEST, BUSY_WAIT } receive_options;
 typedef struct msg_key {
 	uint32_t size;
-	void *key[0];
+	char key[];
 } msg_key;
 
 typedef struct msg_value {
 	uint32_t size;
-	void *value[0];
+	char value[];
 } msg_value;
 
 // Set in allocate_rdma_message
-#define SERVER_CATEGORY 26368 //0x6700
-#define CLIENT_CATEGORY 21760 //0x5500
+#define SERVER_CATEGORY 0 //0x6700
+#define CLIENT_CATEGORY 1 //0x5500
 
 typedef struct msg_header {
 #if TU_SEMAPHORE
@@ -102,7 +102,7 @@ typedef struct msg_header {
 													 a received message is not NULL the receiving side uses the request_message_local_addr to
 													 find the initial message and fill its reply_message field with the address of the new message*/
 
-	void *request_message_local_addr; /* This field contains the local memory address of this message.
+	volatile void *request_message_local_addr; /* This field contains the local memory address of this message.
 																			 * It is piggybacked by the remote side to its
 																			 *  corresponding reply message. In this way
 																			 *  incoming messages can be associated with
@@ -112,7 +112,10 @@ typedef struct msg_header {
 	volatile int32_t ack_arrived;
 	/*from most significant byte to less: <FUTURE_EXTENSION>, <FUTURE_EXTENSION>, 
 	 * <FUTUTE_EXTENSION>, SYNC/ASYNC(indicates if this is  a synchronous or asynchronous request*/
-	volatile int32_t flags;
+	volatile uint32_t future_extension_1 : 8;
+	volatile uint32_t future_extension_2 : 8;
+	volatile uint32_t future_extension_3 : 8;
+	volatile uint32_t receive_options : 8;
 #ifdef CHECKSUM_DATA_MESSAGES
 	unsigned long hash; // [mvard] hash of data buffer
 #endif
@@ -121,22 +124,37 @@ typedef struct msg_header {
 	uint32_t receive;
 } msg_header;
 
+typedef struct msg_put_key {
+	uint32_t key_size;
+	char key[];
+} msg_put_key;
+
+typedef struct msg_put_value {
+	uint32_t value_size;
+	char value[];
+} msg_put_value;
+
+typedef struct msg_put_rep {
+	volatile uint32_t status;
+} msg_put_rep;
+
 typedef struct msg_get_req {
 	uint32_t key_size;
-	void *key[0];
+	char key[];
 } msg_get_req;
 
 typedef struct msg_get_rep {
-	uint32_t found;
+	uint16_t buffer_overflow;
+	uint16_t key_found;
 	uint32_t value_size;
-	void *value[0];
+	char value[];
 } msg_get_rep;
 
 typedef struct msg_multi_get_req {
 	uint32_t max_num_entries;
 	uint32_t seek_mode;
 	uint32_t seek_key_size;
-	char *seek_key[0];
+	char seek_key[];
 } msg_multi_get_req;
 
 typedef struct msg_multi_get_rep {
@@ -147,7 +165,7 @@ typedef struct msg_multi_get_rep {
 	uint32_t pos;
 	uint32_t remaining;
 	uint32_t capacity;
-	void *kv_buffer[0];
+	char kv_buffer[];
 } msg_multi_get_rep;
 
 typedef struct set_connection_property_req {

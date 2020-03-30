@@ -98,7 +98,7 @@ class kreonRClientDB : public YCSBDB {
 			     << endl;
 			sleep(1);
 		}
-		Client_Create_Receiving_Threads(client_regions);
+
 		gettimeofday(&start, NULL);
 		tinit = start.tv_sec + (start.tv_usec / 1000000.0);
 	}
@@ -151,7 +151,7 @@ class kreonRClientDB : public YCSBDB {
 				}
 				mr_message->request_message_local_addr = mr_message;
 				mr_message->ack_arrived = 1;
-				mr_message->flags |= ASYNC_REQUEST;
+				mr_message->receive_options = ASYNC_REQUEST;
 				++pending_requests[i];
 				async_send_rdma_message(connection, mr_message, &callback_function,
 							&served_requests[i]);
@@ -232,7 +232,7 @@ class kreonRClientDB : public YCSBDB {
 		mr_message->next = (void *)((uint64_t)mr_message->next + key.length());
 		mr_message->reply_message = NULL;
 		mr_message->request_message_local_addr = mr_message;
-		mr_message->flags |= ASYNC_REQUEST;
+		mr_message->receive_options = ASYNC_REQUEST;
 		async_send_rdma_message(connection, mr_message, &callback_function, &served_requests[id]);
 		++pending_requests[id];
 
@@ -371,7 +371,7 @@ class kreonRClientDB : public YCSBDB {
 
 		mr_message->reply_message = NULL;
 		mr_message->request_message_local_addr = mr_message;
-		mr_message->flags |= ASYNC_REQUEST;
+		mr_message->receive_options = ASYNC_REQUEST;
 
 		//send_rdma_message(connection, mr_message);
 		async_send_rdma_message(connection, mr_message, &callback_function, &served_requests[id]);
@@ -497,9 +497,9 @@ class kreonRClientDB : public YCSBDB {
 		mr_message->ack_arrived = 1;
 
 #ifdef BLOCKING_INSERT
-		mr_message->flags |= SYNC_REQUEST;
+		mr_message->receive_options = SYNC_REQUEST;
 #else
-		mr_message->flags |= ASYNC_REQUEST;
+		mr_message->receive_options = ASYNC_REQUEST;
 #endif
 
 		__sync_fetch_and_add(&pending_requests[id], 1);

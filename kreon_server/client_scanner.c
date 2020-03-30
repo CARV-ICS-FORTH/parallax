@@ -34,7 +34,7 @@ struct msg_header* _create_scan_query_message(struct connection_rdma* conn, char
 	push_buffer_in_msg_header(scan_query, &stop_key_len, sizeof(stop_key_len));
 	push_buffer_in_msg_header(scan_query, stop_key, stop_key_len);
 
-	assert((scan_query->flags & 0x0000FF00) == CLIENT_CATEGORY);
+	//assert((scan_query->flags & 0x0000FF00) == CLIENT_CATEGORY);
 
 	scan_query->request_message_local_addr = scan_query;
 	return scan_query;

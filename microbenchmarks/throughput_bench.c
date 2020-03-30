@@ -56,7 +56,7 @@ void *bench(void *int_thread_id)
 		connection =
 			Client_regions[0].sorted_tu_regions[0]->head_net[0].rdma_conn[(tid * connections_per_thread) +
 										      current_connection];
-		tu_data_message_s *msg = allocate_rdma_message(connection, MSG_SIZE, TEST_REQUEST);
+		msg_header *msg = allocate_rdma_message(connection, MSG_SIZE, TEST_REQUEST);
 		msg->request_message_local_addr = msg;
 		msg->ack_arrived = 1;
 #if LATENCY_MONITOR_ENABLED
@@ -124,8 +124,6 @@ int main(void)
 
 	globals_set_zk_host(zookeeper_host_port);
 	Client_regions = Allocate_Init_Client_Regions();
-
-	Client_Create_Receiving_Threads(Client_regions);
 	srand(time(NULL));
 
 	for (size_t i = 0; i < THREADS; ++i) {

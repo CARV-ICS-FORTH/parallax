@@ -5,13 +5,13 @@
 #include "globals.h"
 #include "../build/external-deps/log/src/log.h"
 
-static globals global_vars = { NULL, -1 };
+static globals global_vars = { NULL, -1, 1 };
 static pthread_mutex_t g_lock = PTHREAD_MUTEX_INITIALIZER;
 
 char *globals_get_zk_host(void)
 {
 	if (global_vars.zk_host_port == NULL) {
-		ERRPRINT("Zookeeper host,port not set!\n");
+		log_fatal("Zookeeper host,port not set!\n");
 		exit(EXIT_FAILURE);
 	}
 	return global_vars.zk_host_port;
@@ -42,5 +42,21 @@ int globals_get_RDMA_connection_port(void)
 void globals_set_RDMA_connection_port(int port)
 {
 	global_vars.RDMA_connection_port = port;
+}
+
+void globals_disable_client_spinning_thread()
+{
+	global_vars.client_spinning_thread = 0;
+}
+
+void globals_enable_client_spinning_thread()
+{
+	global_vars.client_spinning_thread = 1;
+}
+
+
+int globals_spawn_client_spinning_thread()
+{
+	return global_vars.client_spinning_thread;
 }
 

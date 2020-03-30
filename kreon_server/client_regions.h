@@ -56,8 +56,8 @@ typedef struct client_region
 #if TU_RDMA_CONN_PER_REGION
   struct connection_rdma *rdma_conn[MAX_MAILBOX];
 #endif
-  pthread_t mail_th[MAX_MAILBOX];	//Threads receiving from the mailbox
-	int next_mail; //from 0 to 4
+ pthread_t mail_th[MAX_MAILBOX];	//Threads receiving from the mailbox
+int next_mail; //from 0 to 4
 
 	pthread_mutex_t mutex_mailbox;	// mutex for receive messages, a single thread should wait for messages
 	_client_mailbox data_mailbox;	// Mailboxes for sending request
@@ -100,24 +100,6 @@ struct _Client_Regions
 };
 
 
-//.... To easily integrate with C++
-typedef struct cli_keyvalue_pairs
-{
-	int num; //Num of KV that have been inserted
-	int pos; 	// To insert KV pairs
-	int length; 	// Length of the keys and values: calculated while inserting them
-	char **keys;	// Pointers to the keys	
-	char **values;	// Pointers to the values
-} cli_keyvalue_pairs ;
-
-typedef struct cli_keys_list
-{
-	int num; //Num of KV that have been inserted
-	int pos; 	// To insert KV pairs
-	int length; 	// Length of the keys and values: calculated while inserting them
-	char **keys;	// Pointers to the keys	
-} cli_keys_list ;
-
 
 //gesalous regions manager functions
 void client_init_regions_manager();
@@ -125,8 +107,7 @@ int client_compare(void *key_1, void * key_2, int size_2);
 client_region * client_find_region(void *key, int key_size);
 int client_add_region(client_region* region);
 int client_delete_region(client_region * region);
-
-struct connection_rdma* get_connection_from_region(client_region* region, uint64_t seed);
+connection_rdma* get_connection_from_region(client_region* region, uint64_t seed);
 
 
 _Client_Regions *Allocate_Init_Client_Regions( void );
@@ -173,7 +154,7 @@ client_region *Find_Client_Sorted_Regions_By_ID( _Client_Regions *client_regions
 
 struct msg_header *Client_Generic_Receive_Message( client_region* cli_tu_region, struct msg_header *data_message , int next_mail );
 
-void *client_thread_receiving_messages( void *args );
+
 int Get_NextMailbox_Cli_Tu_Region( client_region* cli_tu_region );
 client_region* Client_Get_Tu_Region_and_Mailbox( _Client_Regions *client_regions, char *key, int key_len, uint32_t idregion, int *next_mail );
 
@@ -184,10 +165,6 @@ struct msg_header * Client_Send_RDMA_N_Messages( client_region* cli_tu_region, s
 
 
 void Client_Flush_Volume( _Client_Regions *client_regions );
-/* 
- * Function to create the receive threads from the client application
- */
-void Client_Create_Receiving_Threads( _Client_Regions *client_regions );
 
 void Tu_Client_Create_RMDA_Connection( void *aux_client_regions );
 void Client_Flush_Volume_MultipleServers( _Client_Regions *client_regions );
