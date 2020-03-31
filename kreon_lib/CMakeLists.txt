@@ -67,4 +67,6 @@ add_executable(
   ../utilities/list.c
   ${LOG})
 
-install(TARGETS kreonr kreon mkfs.kreon)
+if(KREON_BUILD_CPACK)
+  install(TARGETS kreonr kreon mkfs.kreon)
+endif()

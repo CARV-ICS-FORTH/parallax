@@ -6,7 +6,7 @@ add_library(
   kreon_rdma STATIC
   memory_region_pool.c
   rdma.c
-	../kreon_rdma_client/kreon_rdma_client.c
+  ../kreon_rdma_client/kreon_rdma_client.c
   ../utilities/queue.c
   ../utilities/simple_concurrent_list.c
   ../utilities/spin_loop.c
@@ -16,5 +16,6 @@ add_library(
 # add_executable(test_rdma test_rdma.c) set_target_properties(test_rdma
 # PROPERTIES LINK_FLAGS "-libverbs -pthread -D_GNU_SOURCE" )
 # target_link_libraries(test_rdma turdma)
-
-install(TARGETS kreon_rdma)
+if(KREON_BUILD_CPACK)
+  install(TARGETS kreon_rdma)
+endif()

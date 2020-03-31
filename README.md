@@ -33,12 +33,26 @@ For the build tools and compiler:
 Kreon requires CMake version >= 3.11.0. On Centos/RHEL this is supplied from the
 EPEL repository and can be installed with:
 
-	sudo yum install cmake3
+	sudo yum install cmake3 kernel-devel gcc-c++ 
 
-You also need to install ZooKeeper. Ready-made packages are available from Cloudera.
-Install the repository as described [here](https://docs.cloudera.com/documentation/enterprise/5-14-x/topics/cdh_ig_cdh5_install.html) and then `yum install zookeeper-native`.
 
-<!-- TODO: add command for installing the rest of the dependencies -->
+#### Dependencies for Single Node Kreon
+
+	sudo yum install numactl-devel boost-devel
+
+#### Additional Dependencies for Distributed Kreon
+
+For RDMA:
+
+	sudo yum install libibverbs-devel librdmacm-devel
+
+You also need to install ZooKeeper. Ready-made packages are available from
+Cloudera. 
+1. Add Cloudera's Centos 7 repository as described 
+[here](https://docs.cloudera.com/documentation/enterprise/5-14-x/topics/cdh_ig_cdh5_install.html)
+2. Install the Zookeeper C binding for clients:
+
+	    yum install zookeeper-native
 
 ## Build Configuration
 
@@ -171,23 +185,6 @@ If you want to run a specific hook with a specific file run:
 
 	pre-commit run hook-id --files filename
 	pre-commit run cmake-format --files CMakeLists.txt
-
-<<<<<<< HEAD
-
-
-
-### Installing Dependencies on Ubuntu 18.04 LTS
-Run the following command with superuser privileges:
-```
-# apt install libnuma-dev libibverbs-dev librdmacm-dev libzookeeper-mt-dev
-```
-
-For the build tools and compiler:
-```
-# apt install cmake build-essential
-```
-
-
 
 ## Running Kreon
 Kreon uses RDMA for all network communication, which requires support from the
