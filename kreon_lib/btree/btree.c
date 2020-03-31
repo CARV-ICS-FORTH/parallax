@@ -963,9 +963,9 @@ char db_close(db_handle *handle)
 		exit(EXIT_FAILURE);
 	}
 
-	log_info("closing region/db, prior call to DB_CLOSE_NOTIFY needed! XXX "
-		 "TODO XXX");
+	log_info("closing region/db %s snapshotting volume\n",handle->db_desc->db_name);
 	handle->db_desc->db_mode = DB_IS_CLOSING;
+	snapshot(handle->volume_desc);
 /*stop log appenders*/
 #if LOG_WITH_MUTEX
 	MUTEX_LOCK(&handle->db_desc->lock_log);
@@ -978,7 +978,7 @@ char db_close(db_handle *handle)
 		RWLOCK_WRLOCK(&handle->db_desc->levels[level_id].guard_of_level.rx_lock);
 		spin_loop(&(handle->db_desc->levels[level_id].active_writers), 0);
 	}
-	commit_db_log(handle->db_desc);
+
 	destroy_level_locktable(handle->db_desc, 0);
 
 	if (remove_element(handle->volume_desc->open_databases, handle->db_desc) != 1) {
@@ -986,8 +986,7 @@ char db_close(db_handle *handle)
 		MUTEX_UNLOCK(&init_lock);
 		return COULD_NOT_FIND_DB;
 	}
-	free(handle->db_desc);
-	return KREON_OK;
+return KREON_OK;
 }
 
 void destroy_spill_request(NODE *node)
