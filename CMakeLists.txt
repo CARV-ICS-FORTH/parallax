@@ -106,22 +106,25 @@ if(Zookeeper_LIBRARY)
   add_subdirectory(microbenchmarks)
 endif()
 
-set(CPACK_PACKAGE_NAME ${PROJECT_NAME})
-set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
-set(CPACK_PACKAGE_RELEASE 1)
-set(CPACK_PACKAGE_VENDOR "FORTH-ICS")
-set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "RDMA-based distributed key-value store")
-set(CPACK_GENERATOR "RPM")
-set(CPACK_RPM_PACKAGE_LICENSE "ASL v2.0")
-set(CPACK_RPM_PACKAGE_GROUP "Applications/Databases")
-set(CPACK_RPM_PACKAGE_REQUIRES
-    "numactl-libs >= 2, libibverbs, librdmacm, glibc, libgcc, libnl3, zookeeper-native >= 3"
-)
-set(CPACK_RPM_PACKAGE_DESCRIPTION
-    "Kreon is a high-speed and high-efficiency distributed key-value store functioning on top of an RDMA-capable network."
-)
-set(CPACK_PACKAGING_INSTALL_PREFIX /usr)
-set(CPACK_PACKAGE_FILE_NAME
-    "${CPACK_PACKAGE_NAME}-${CPACK_PACKAGE_VERSION}-${CPACK_PACKAGE_RELEASE}.${CMAKE_SYSTEM_PROCESSOR}"
-)
-include(CPack)
+if(KREON_BUILD_CPACK)
+  set(CPACK_PACKAGE_NAME ${PROJECT_NAME})
+  set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
+  set(CPACK_PACKAGE_RELEASE 1)
+  set(CPACK_PACKAGE_VENDOR "FORTH-ICS")
+  set(CPACK_PACKAGE_DESCRIPTION_SUMMARY
+      "RDMA-based distributed key-value store")
+  set(CPACK_GENERATOR "RPM")
+  set(CPACK_RPM_PACKAGE_LICENSE "ASL v2.0")
+  set(CPACK_RPM_PACKAGE_GROUP "Applications/Databases")
+  set(CPACK_RPM_PACKAGE_REQUIRES
+      "numactl-libs >= 2, libibverbs, librdmacm, glibc, libgcc, libnl3, zookeeper-native >= 3"
+  )
+  set(CPACK_RPM_PACKAGE_DESCRIPTION
+      "Kreon is a high-speed and high-efficiency distributed key-value store functioning on top of an RDMA-capable network."
+  )
+  set(CPACK_PACKAGING_INSTALL_PREFIX /usr)
+  set(CPACK_PACKAGE_FILE_NAME
+      "${CPACK_PACKAGE_NAME}-${CPACK_PACKAGE_VERSION}-${CPACK_PACKAGE_RELEASE}.${CMAKE_SYSTEM_PROCESSOR}"
+  )
+  include(CPack)
+endif()
