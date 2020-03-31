@@ -4,7 +4,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include "../build/external-deps/log/src/log.h"
-#include "../kreon_lib/btree/btree.h"
+//#include "../kreon_lib/btree/btree.h"
 #include "../kreon_rdma_client/kreon_rdma_client.h"
 #include "../kreon_server/create_regions_utils.h"
 
@@ -79,9 +79,8 @@ int main(int argc, char *argv[])
 	}
 	logLevel = ZOO_LOG_LEVEL_INFO;
 	uint32_t error_code;
-	krc_handle *hd = krc_init(ZOOKEEPER, 2181, &error_code);
-	if (error_code != KRC_SUCCESS) {
-		log_fatal("failed to init");
+	if (krc_init(ZOOKEEPER, 2181, &error_code) != KRC_SUCCESS) {
+		log_fatal("Failed to init library");
 		exit(EXIT_FAILURE);
 	}
 
@@ -100,7 +99,7 @@ int main(int argc, char *argv[])
 		value *v = (value *)((uint64_t)k + sizeof(key) + k->key_size);
 		v->value_size = KV_SIZE - ((2 * sizeof(key)) + k->key_size);
 		memset(v->value_buf, 0xDD, v->value_size);
-		krc_put(hd, k->key_size, k->key_buf, v->value_size, v->value_buf);
+		krc_put(k->key_size, k->key_buf, v->value_size, v->value_buf);
 	}
 	log_info("Population ended, testing gets");
 	for (i = BASE; i < (BASE + NUM_KEYS); i++) {
@@ -113,7 +112,7 @@ int main(int argc, char *argv[])
 		value *v = (value *)((uint64_t)k + sizeof(key) + k->key_size);
 		v->value_size = KV_SIZE - ((2 * sizeof(key)) + k->key_size);
 		memset(v->value_buf, 0xDD, v->value_size);
-		krc_value *val = krc_get(hd, k->key_size, k->key_buf, 2*MESSAGE_SEGMENT_SIZE, &error_code);
+		krc_value *val = krc_get(k->key_size, k->key_buf, 2 * 1024, &error_code);
 		if (error_code != KREON_SUCCESS) {
 			log_fatal("key %s not found test failed!");
 			exit(EXIT_FAILURE);
@@ -121,7 +120,7 @@ int main(int argc, char *argv[])
 		free(val);
 	}
 
-	log_info("Gets successful ended, testing small scans");
+	log_info("Gets successful ended, testing small scans....");
 
 	for (i = BASE; i < (BASE + (NUM_KEYS - SCAN_SIZE)); i++) {
 		if (i % 10000 == 0)
@@ -132,7 +131,7 @@ int main(int argc, char *argv[])
 		sprintf(k->key_buf + strlen(KEY_PREFIX), "%llu", (long long unsigned)i);
 		k->key_size = strlen(k->key_buf) + 1;
 
-		sc = krc_scan_init(hd, PREFETCH_ENTRIES, PREFETCH_MEM_SIZE);
+		sc = krc_scan_init(PREFETCH_ENTRIES, PREFETCH_MEM_SIZE);
 		krc_scan_set_start(sc, k->key_size, k->key_buf);
 		krc_scan_get_next(sc);
 		if (!krc_scan_is_valid(sc)) {
@@ -176,7 +175,7 @@ int main(int argc, char *argv[])
 
 	log_info("Running a full scan");
 
-	sc = krc_scan_init(hd, PREFETCH_ENTRIES, PREFETCH_MEM_SIZE);
+	sc = krc_scan_init(PREFETCH_ENTRIES, PREFETCH_MEM_SIZE);
 	krc_scan_set_start(sc, 7, "0000000");
 	for (i = BASE; i < (BASE + NUM_KEYS); i++) {
 		strncpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));

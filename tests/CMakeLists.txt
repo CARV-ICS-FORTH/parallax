@@ -31,6 +31,14 @@ target_link_libraries(test_deletes kreon)
 add_executable(test_spills test_spills.c)
 target_link_libraries(test_spills kreon)
 
+add_executable(test_region_watchers test_region_watchers.c ../kreon_server/create_regions_utils.c)
+target_link_libraries(test_region_watchers kreon_client kreon_rdma kreonr)
+  set_target_properties(
+    test_region_watchers
+    PROPERTIES LINK_FLAGS "-Wl,-no-as-needed -pthread -lm -lzookeeper_mt -lnuma -lrdmacm -libverbs"
+              COMPILE_DEFINITIONS "KREON_DISTRIBUTED")
+
+
 add_executable(test_krc_api test_krc_api.c ../kreon_server/create_regions_utils.c)
 target_link_libraries(test_krc_api kreon_client kreon_rdma kreonr)
   set_target_properties(
