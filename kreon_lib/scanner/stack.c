@@ -37,6 +37,7 @@ void stack_push(stackT *stackP, stackElementT element)
 {
 	if (stack_is_full(stackP)) {
 		log_fatal("Can't push element on stack: stack is full");
+		assert(0);
 		exit(EXIT_FAILURE); /* Exit, returning error code. */
 	}
 

@@ -16,7 +16,7 @@
  using ycsbc::DBFactory;
 
 YCSBDB* DBFactory::CreateDB(int num, utils::Properties& props){
-   return new kreonRClientDB(num, props);
+   return new kreonRBlockingClientDB(num, props);
 }
 
 
