@@ -278,7 +278,7 @@ static msg_header *_client_allocate_rdma_message(connection_rdma *conn, int mess
 				msg->reply = NULL;
 				msg->reply_length = 0;
 				__send_rdma_message(conn, msg);
-				log_info("CLIENT: Informing server to reset the rendezvous");
+				//log_info("CLIENT: Informing server to reset the rendezvous");
 			}
 			addr = NULL;
 			reset_circular_buffer(c_buf);

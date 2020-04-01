@@ -191,6 +191,13 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 
 	/*drop all paths*/
 	stack_reset(&(level_sc->stack));
+	/*put guard*/
+	element.guard = 1;
+	element.leftmost = 0;
+	element.rightmost = 0;
+	element.idx = 0;
+	element.node = NULL;
+	stack_push(&(level_sc->stack), element);
 	node = level_sc->root; // CPAAS-118 related
 
 	if (node->type == leafRootNode && node->numberOfEntriesInNode == 0) {
@@ -310,7 +317,7 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 		//log_debug("Leftmost boom");
 		stack_push(&(level_sc->stack), element);
 		middle = 0;
-	} else if (middle >= (int64_t)lnode->header.numberOfEntriesInNode-1) {
+	} else if (middle >= (int64_t)lnode->header.numberOfEntriesInNode - 1) {
 		element.node = node;
 		element.idx = 0;
 		element.leftmost = 0;
@@ -442,7 +449,7 @@ int32_t _get_next_KV(level_scanner *sc)
 				}
 			} else if (stack_top.leftmost) {
 				//log_debug("leftmost? %s", node_type(stack_top.node->type));
-				stack_top.leftmost = 0;
+				stack_top.leftmost = 0;	
 
 				if (stack_top.node->type == leafNode || stack_top.node->type == leafRootNode) {
 					//log_info("got a leftmost leaf advance");
@@ -451,17 +458,25 @@ int32_t _get_next_KV(level_scanner *sc)
 					node = stack_top.node;
 					stack_push(&sc->stack, stack_top);
 					break;
-				} else {
+				} else if (stack_top.node->type == internalNode || stack_top.node->type == rootNode) {
 					//log_debug("Calculate and push type %s", node_type(stack_top.node->type));
+					/*special case applies only for the root*/
+					if(stack_top.node->numberOfEntriesInNode == 1)
+						stack_top.rightmost = 1;
 					stack_top.idx = 0;
 					stack_push(&sc->stack, stack_top);
 					inode = (index_node *)stack_top.node;
 					node = (node_header *)(MAPPED + inode->p[0].right[0]);
+					assert(node->type == rootNode || node->type == leafRootNode ||
+					       node->type == internalNode || node->type == leafNode);
 					//stack_top.node = node;
 					//log_debug("Calculate and push type %s", node_type(stack_top.node->type));
 					//stack_push(&sc->stack, stack_top);
 					up = 0;
 					continue;
+				} else {
+					log_fatal("Corrupted node");
+					assert(0);
 				}
 			} else {
 				//log_debug("Advancing, %s idx = %d entries %d", node_type(stack_top.node->type),
@@ -476,11 +491,17 @@ int32_t _get_next_KV(level_scanner *sc)
 				idx = stack_top.idx;
 				node = stack_top.node;
 				break;
-			} else {
+			} else if (stack_top.node->type == internalNode || stack_top.node->type == rootNode) {
 				inode = (index_node *)stack_top.node;
 				node = (node_header *)(MAPPED + (uint64_t)inode->p[stack_top.idx].right[0]);
 				up = 0;
+				assert(node->type == rootNode || node->type == leafRootNode ||
+				       node->type == internalNode || node->type == leafNode);
 				continue;
+			} else {
+				log_fatal("Corrupted node");
+				assert(0);
+				exit(EXIT_FAILURE);
 			}
 		} else {
 			/*push yourself, update node and continue*/
@@ -496,9 +517,12 @@ int32_t _get_next_KV(level_scanner *sc)
 				//log_info("consumed first entry of leaf");
 				idx = 0;
 				break;
-			} else {
+			} else if (node->type == internalNode || node->type == rootNode) {
 				inode = (index_node *)node;
 				node = (node_header *)(MAPPED + (uint64_t)inode->p[0].left[0]);
+			} else {
+				log_fatal("Reached corrupted node");
+				assert(0);
 			}
 		}
 	}

@@ -14,7 +14,7 @@ ZooLogLevel logLevel = ZOO_LOG_LEVEL_INFO;
 
 static _Client_Regions *client_regions = NULL;
 
-krc_ret_code krc_init(char *zookeeper_ip, int zk_port, uint32_t *error_code)
+krc_ret_code krc_init(char *zookeeper_ip, int zk_port)
 {
 	globals_disable_client_spinning_thread();
 	char *zk_host_port = malloc(strlen(zookeeper_ip) + 16);
@@ -22,14 +22,13 @@ krc_ret_code krc_init(char *zookeeper_ip, int zk_port, uint32_t *error_code)
 	*(char *)(zk_host_port + strlen(zookeeper_ip)) = ':';
 	sprintf(zk_host_port + strlen(zookeeper_ip) + 1, "%d", zk_port);
 	log_info("Initializing, connectiong to zookeeper at %s", zk_host_port);
-	globals_set_zk_host(zookeeper_host_port);
+	globals_set_zk_host(zk_host_port);
 	free(zk_host_port);
 	client_regions = Allocate_Init_Client_Regions();
 	while (client_regions->num_regions_connected < 1) {
 		log_warn("No regions yet");
 		sleep(1);
 	}
-	*error_code = KRC_SUCCESS;
 	return KRC_SUCCESS;
 }
 
@@ -41,6 +40,12 @@ uint32_t krc_put(uint32_t key_size, void *key, uint32_t val_size, void *value)
 	msg_header *rep_header;
 	msg_put_rep *put_rep;
 
+	if (key_size + val_size + (2 * sizeof(uint32_t)) > SEGMENT_SIZE - sizeof(segment_header)) {
+		log_fatal("KV size too large currently for Kreon, current max value size supported = %u bytes",
+			  SEGMENT_SIZE - sizeof(segment_header));
+		log_fatal("Contact gesalous@ics.forth.gr");
+		exit(EXIT_FAILURE);
+	}
 	client_region *region = client_find_region(key, key_size);
 	connection_rdma *conn = get_connection_from_region(region, (uint64_t)key);
 
@@ -143,7 +148,7 @@ krc_value *krc_get(uint32_t key_size, void *key, uint32_t reply_length, uint32_t
 	val = (krc_value *)malloc(sizeof(krc_value) + get_rep->value_size);
 	val->val_size = get_rep->value_size;
 	memcpy(val->val_buf, get_rep->value, val->val_size);
-	*error_code = KREON_SUCCESS;
+	*error_code = KRC_SUCCESS;
 exit:
 	_zero_rendezvous_locations(rep_header);
 	client_free_rpc_pair(conn, rep_header);
@@ -153,7 +158,8 @@ exit:
 /*scanner staff*/
 krc_scanner *krc_scan_init(uint32_t prefetch_num_entries, uint32_t prefetch_mem_size)
 {
-	krc_scanner *scanner = (krc_scanner *)malloc(sizeof(krc_scanner) + prefetch_mem_size);
+	krc_scanner *scanner =
+		(krc_scanner *)malloc(sizeof(krc_scanner) + sizeof(msg_multi_get_rep) + prefetch_mem_size);
 	scanner->prefix_key = NULL;
 	scanner->start_key = NULL;
 	scanner->stop_key = NULL;
@@ -165,7 +171,7 @@ krc_scanner *krc_scan_init(uint32_t prefetch_num_entries, uint32_t prefetch_mem_
 	scanner->is_valid = 1;
 	scanner->prefix_filter_enable = 0;
 	scanner->state = KRC_UNITIALIZED;
-	scanner->multi_kv_buf = (msg_multi_get_rep *)malloc(sizeof(msg_multi_get_rep) + scanner->prefetch_mem_size);
+	scanner->multi_kv_buf = (msg_multi_get_rep *)((uint64_t)scanner + sizeof(krc_scanner));
 	return scanner;
 }
 
@@ -193,11 +199,17 @@ void krc_scan_get_next(krc_scanner *sc)
 			if (!sc->start_infinite) {
 				seek_key = sc->start_key->key_buf;
 				seek_key_size = sc->start_key->key_size;
+				if (sc->seek_mode == KRC_GREATER_OR_EQUAL)
+					seek_mode = GREATER_OR_EQUAL;
+				else
+					seek_mode = GREATER;
+
 			} else {
 				seek_key = neg_infinity;
 				seek_key_size = 4;
+				seek_mode = GREATER_OR_EQUAL;
 			}
-			seek_mode = GREATER_OR_EQUAL;
+
 			sc->state = KRC_ISSUE_MGET_REQ;
 			break;
 
@@ -283,7 +295,7 @@ void krc_scan_get_next(krc_scanner *sc)
 					sc->state = KRC_ISSUE_MGET_REQ;
 					//log_info("Time for next batch, within region, seek key %s", seek_key);
 				} else if (multi_kv_buf->end_of_region &&
-					   strncmp(curr_region->ID_region.maximum_range, "+oo", 3) != 0) {
+					   strncmp(curr_region->ID_region.maximum_range+sizeof(uint32_t), "+oo", 3) != 0) {
 					seek_key = curr_region->ID_region.maximum_range + sizeof(uint32_t);
 					seek_key_size = *(uint32_t *)curr_region->ID_region.maximum_range;
 					sc->state = KRC_ISSUE_MGET_REQ;
@@ -310,12 +322,21 @@ void krc_scan_get_next(krc_scanner *sc)
 	}
 }
 
-void krc_scan_set_start(krc_scanner *sc, uint32_t start_key_size, void *start_key)
+void krc_scan_set_start(krc_scanner *sc, uint32_t start_key_size, void *start_key, krc_seek_mode seek_mode)
 {
 	if (!sc->start_infinite) {
 		log_warn("Nothing to do already set start key for this scanner");
 		return;
 	}
+	switch (seek_mode) {
+	case KRC_GREATER_OR_EQUAL:
+	case KRC_GREATER:
+		break;
+	default:
+		log_fatal("unknown seek_mode");
+		exit(EXIT_FAILURE);
+	}
+	sc->seek_mode = seek_mode;
 	sc->start_infinite = 0;
 	sc->start_key = (krc_key *)malloc(sizeof(krc_key) + start_key_size);
 	sc->start_key->key_size = start_key_size;
@@ -361,13 +382,14 @@ void krc_scan_close(krc_scanner *sc)
 		free(sc->start_key);
 	if (!sc->stop_infinite)
 		free(sc->stop_key);
+	free(sc);
 	return;
 }
 
 krc_ret_code krc_close()
 {
 	log_fatal("Unimplemented contact gesalous@ics.forth.gr");
-	exit(EXIT_FAILURE);
+	//exit(EXIT_FAILURE);
 	return KRC_FAILURE;
 }
 

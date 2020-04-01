@@ -165,14 +165,16 @@ void re_main_watcher(zhandle_t *zkh, int type, int state, const char *path, void
 
 int Connect_Zookeeper(char *hostPort)
 {
-	zoo_set_debug_level(ZOO_LOG_LEVEL_DEBUG);
+	zoo_set_debug_level(ZOO_LOG_LEVEL_INFO);
 
 	zh = zookeeper_init(hostPort, re_main_watcher, 15000, 0, 0, 0);
 	return errno;
 }
 void Connecting_with_Zookeeper_creating_regions_node(void)
 {
-	globals_set_zk_host(zookeeper_host_port);
+	if (globals_get_zk_host() == NULL) {
+		log_fatal("Sorry zookeper_host:zookeeper_port not confiigured!");
+	}
 	if (Connect_Zookeeper(globals_get_zk_host())) {
 		log_fatal("Error while initializing the master: ", errno);
 	}
@@ -335,12 +337,11 @@ void create_region_node_on_server(const char *value, const void *data)
 	struct test_regions *a_region;
 	a_region = (struct test_regions *)data;
 	int rc;
-	log_info("value is %s region str %s",value,a_region->ID_region.IDstr);
+	log_info("value is %s region str %s", value, a_region->ID_region.IDstr);
 	rc = zoo_create(zh, value, a_region->ID_region.IDstr, strlen(a_region->ID_region.IDstr) + 1,
 			&ZOO_OPEN_ACL_UNSAFE, 0, NULL, 0);
 	//zoo_acreate(zh, value, a_region->ID_region.IDstr, strlen(a_region->ID_region.IDstr) + 1, &ZOO_OPEN_ACL_UNSAFE,
 	//	    0, create_region_node_on_server_completion, data);
-
 
 	switch (rc) {
 	case ZCONNECTIONLOSS:
@@ -353,7 +354,7 @@ void create_region_node_on_server(const char *value, const void *data)
 		break;
 
 	default:
-		log_fatal("Something went wrong when running for master code is %s",rc2string(rc));
+		log_fatal("Something went wrong when running for master code is %s", rc2string(rc));
 		exit(EXIT_FAILURE);
 	}
 }
