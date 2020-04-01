@@ -174,9 +174,8 @@ segment_header *seg_get_raw_log_segment(volume_descriptor *volume_desc)
 
 void free_raw_segment(volume_descriptor *volume_desc, segment_header *segment)
 {
-	log_fatal("not implemented!");
+	free_block(volume_desc, segment, SEGMENT_SIZE, -1);
 	return;
-	exit(EXIT_FAILURE);
 }
 
 void *get_space_for_system(volume_descriptor *volume_desc, uint32_t size)
