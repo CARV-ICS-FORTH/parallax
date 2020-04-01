@@ -7,6 +7,7 @@
 #include <unistd.h>
 #include "../kreon_server/globals.h"
 #include "../utilities/latency_monitor.h"
+#define zookeeper_host_port "192.168.1.134:2181"
 #define MAX_THREADS 32
 #define THREADS 16
 

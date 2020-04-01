@@ -32,12 +32,15 @@ extern "C" {
 #include "client_regions.h"
 #include "client_scanner.h"
 #include "../../kreon_server/globals.h"
+#include "../../build/external-deps/log/src/log.h"
 }
 #ifdef CHECKSUM_DATA_MESSAGES
 extern "C" {
 #include "djb2.h"
 }
 #endif
+
+#define ZK_HOST_1 "192.168.1.134:2181"
 
 #define FIELD_COUNT 10
 #define MAX_THREADS 128
@@ -81,7 +84,8 @@ class kreonRClientDB : public YCSBDB {
 		  dbs()
 	{
 		struct timeval start;
-		globals_set_zk_host(zookeeper_host_port);
+
+		globals_set_zk_host(ZK_HOST_1);
 		client_regions = Allocate_Init_Client_Regions();
 		memset(pending_requests, 0x00, MAX_THREADS * sizeof(int));
 		memset(served_requests, 0x00, MAX_THREADS * sizeof(int));

@@ -423,7 +423,8 @@ void region_group_membership_watcher(zhandle_t *zh, int type, int state, const c
 	zoo_wget_children(tuzk_S.zh, path, region_group_membership_watcher, region, &group_children);
 	log_info("got event for path: %s, something changed! max group size %d group size %d children count %d\n", path,
 		 region->gmt.max_group_size, region->gmt.current_group_size, group_children.count);
-
+	log_info("igoring for now...");
+	return;
 	if (strstr(path, "group") != NULL && type == ZOO_CHILD_EVENT) {
 		if (group_children.count >= region->gmt.max_group_size) {
 			log_info("all servers joined :-)\n");

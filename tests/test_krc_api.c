@@ -36,6 +36,7 @@ int main(int argc, char *argv[])
 	uint32_t region_id = 0;
 	uint64_t range = NUM_KEYS / NUM_REGIONS;
 	uint64_t min_key, max_key;
+	uint32_t error_code;
 	if (argc > 1 && strcmp(argv[1], "--create_regions") == 0) {
 		log_info("Creating %d regions", NUM_REGIONS);
 
@@ -78,8 +79,8 @@ int main(int argc, char *argv[])
 		log_info("Created region id %s minkey %s maxkey %s", args_buf[2], args_buf[4], args_buf[6]);
 	}
 	logLevel = ZOO_LOG_LEVEL_INFO;
-	uint32_t error_code;
-	if (krc_init(ZOOKEEPER, 2181, &error_code) != KRC_SUCCESS) {
+
+	if (krc_init(ZOOKEEPER, 2181) != KRC_SUCCESS) {
 		log_fatal("Failed to init library");
 		exit(EXIT_FAILURE);
 	}
@@ -113,7 +114,7 @@ int main(int argc, char *argv[])
 		v->value_size = KV_SIZE - ((2 * sizeof(key)) + k->key_size);
 		memset(v->value_buf, 0xDD, v->value_size);
 		krc_value *val = krc_get(k->key_size, k->key_buf, 2 * 1024, &error_code);
-		if (error_code != KREON_SUCCESS) {
+		if (error_code != KRC_SUCCESS) {
 			log_fatal("key %s not found test failed!");
 			exit(EXIT_FAILURE);
 		}
@@ -132,7 +133,7 @@ int main(int argc, char *argv[])
 		k->key_size = strlen(k->key_buf) + 1;
 
 		sc = krc_scan_init(PREFETCH_ENTRIES, PREFETCH_MEM_SIZE);
-		krc_scan_set_start(sc, k->key_size, k->key_buf);
+		krc_scan_set_start(sc, k->key_size, k->key_buf,KRC_GREATER_OR_EQUAL);
 		krc_scan_get_next(sc);
 		if (!krc_scan_is_valid(sc)) {
 			log_fatal("Test failed key %s invalid scanner (it shoulddn't!)", k->key_buf);
@@ -176,7 +177,7 @@ int main(int argc, char *argv[])
 	log_info("Running a full scan");
 
 	sc = krc_scan_init(PREFETCH_ENTRIES, PREFETCH_MEM_SIZE);
-	krc_scan_set_start(sc, 7, "0000000");
+	krc_scan_set_start(sc, 7, "0000000",KRC_GREATER_OR_EQUAL);
 	for (i = BASE; i < (BASE + NUM_KEYS); i++) {
 		strncpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
 		sprintf(k->key_buf + strlen(KEY_PREFIX), "%llu", (long long unsigned)i);
