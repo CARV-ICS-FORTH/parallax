@@ -21,8 +21,9 @@ struct globals {
 	uint64_t volume_size;
 	struct channel_rdma *channel;
 	int connections_per_server;
+	int job_scheduling_max_queue_depth;
 };
-static struct globals global_vars = { NULL, NULL, NULL, -1, 1, 0, NULL, NUM_OF_CONNECTIONS_PER_SERVER };
+static struct globals global_vars = { NULL, NULL, NULL, -1, 1, 0, NULL, NUM_OF_CONNECTIONS_PER_SERVER, 64 };
 static pthread_mutex_t g_lock = PTHREAD_MUTEX_INITIALIZER;
 
 char *globals_get_RDMA_IP_filter()
@@ -96,6 +97,18 @@ int globals_get_connections_per_server(void)
 void globals_set_connections_per_server(int connections_per_server)
 {
 	global_vars.connections_per_server = connections_per_server;
+}
+
+int globals_get_job_scheduling_max_queue_depth(void)
+{
+	return global_vars.job_scheduling_max_queue_depth;
+}
+
+void globals_set_job_scheduling_max_queue_depth(int job_scheduling_max_queue_depth)
+{
+	log_warn("Parameter job_scheduling_max_queue_depth changed from %d to %d",
+		 global_vars.job_scheduling_max_queue_depth, job_scheduling_max_queue_depth);
+	global_vars.job_scheduling_max_queue_depth = job_scheduling_max_queue_depth;
 }
 
 void globals_disable_client_spinning_thread()
