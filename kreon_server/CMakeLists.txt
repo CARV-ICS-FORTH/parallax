@@ -22,6 +22,23 @@ add_library(
   ../kreon_rdma_client/kreon_rdma_client.c
   djb2.c)
 
+add_library(
+  kreon_client-shared SHARED
+  zk_client.c
+  zk_string_vector.c
+  network_data.c
+  network_data_client.c
+  regions.c
+  messages.c
+  client_regions.c
+  client_scanner.c
+  client_regions_manager.c
+  ../kreon_rdma_client/kreon_rdma_client.c
+  ../kreon_server/globals.c
+  ../kreon_server/client_regions.c
+  ../kreon_rdma_client/kreon_rdma_client.c
+  djb2.c)
+
 add_executable(
   kreon_server
   server.c
@@ -72,5 +89,8 @@ target_link_libraries(create_regions kreon_rdma kreonr)
 # messages.c client_regions.c client_scanner.c ../TuRDMA/rdma.c )
 # target_link_libraries(fake_client kreon_rdma)
 if(KREON_BUILD_CPACK)
-  install(TARGETS kreon_client kreon_server create_regions)
+  install(
+    TARGETS kreon_client-shared kreon_server create_regions
+    LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+    RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
 endif()
