@@ -93,4 +93,7 @@ if(KREON_BUILD_CPACK)
     TARGETS kreon_client-shared kreon_server create_regions
     LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
     RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
+  set_target_properties(
+    kreon_client PROPERTIES PUBLIC_HEADER
+                            "../kreon_rdma_client/kreon_rdma_client.h")
 endif()
