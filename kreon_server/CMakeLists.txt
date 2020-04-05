@@ -88,12 +88,13 @@ target_link_libraries(create_regions kreon_rdma kreonr)
 # zk_client.c zk_string_vector.c network_data.c network_data.client.c regions.c
 # messages.c client_regions.c client_scanner.c ../TuRDMA/rdma.c )
 # target_link_libraries(fake_client kreon_rdma)
+set_target_properties(kreon_client-shared PROPERTIES
+  PUBLIC_HEADER "../kreon_rdma_client/kreon_rdma_client.h")
 if(KREON_BUILD_CPACK)
   install(
     TARGETS kreon_client-shared kreon_server create_regions
     LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
-    RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
-  set_target_properties(
-    kreon_client PROPERTIES PUBLIC_HEADER
-                            "../kreon_rdma_client/kreon_rdma_client.h")
+    RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
+    PUBLIC_HEADER DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/${PROJECT_NAME}")
+  set_target_properties(kreon_client-shared PROPERTIES OUTPUT_NAME kreon_client)
 endif()

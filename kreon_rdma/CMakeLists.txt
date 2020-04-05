@@ -30,4 +30,5 @@ add_library(
 if(KREON_BUILD_CPACK)
   install(TARGETS kreon_rdma-shared
           LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}")
+  set_target_properties(kreon_rdma-shared PROPERTIES OUTPUT_NAME kreon_rdma)
 endif()

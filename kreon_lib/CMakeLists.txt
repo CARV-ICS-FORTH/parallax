@@ -86,4 +86,6 @@ if(KREON_BUILD_CPACK)
     TARGETS kreonr-shared kreon-shared mkfs.kreon
     LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
     RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
+  set_target_properties(kreonr-shared PROPERTIES OUTPUT_NAME kreonr)
+  set_target_properties(kreon-shared PROPERTIES OUTPUT_NAME kreon)
 endif()
