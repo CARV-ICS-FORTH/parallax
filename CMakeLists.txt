@@ -2,6 +2,7 @@
 
 cmake_minimum_required(VERSION 3.11.0)
 include(FetchContent)
+include(GNUInstallDirs)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 project(kreon VERSION 1.0)
@@ -106,7 +107,9 @@ if(Zookeeper_LIBRARY)
   add_subdirectory(microbenchmarks)
 endif()
 
-if(KREON_BUILD_CPACK)
+if(KREON_BUILD_CPACK
+   AND Zookeeper_INCLUDE_DIR
+   AND Zookeeper_LIBRARY)
   set(CPACK_PACKAGE_NAME ${PROJECT_NAME})
   set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
   set(CPACK_PACKAGE_RELEASE 1)
