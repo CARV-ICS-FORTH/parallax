@@ -31,7 +31,7 @@ extern "C" {
 #include "../../build/external-deps/log/src/log.h"
 }
 
-#define ZK_HOST "192.168.1.134"
+#define ZK_HOST "192.168.1.133"
 #define ZK_PORT 2181
 #define FIELD_COUNT 10
 #define MAX_THREADS 128
@@ -164,7 +164,7 @@ class kreonRBlockingClientDB : public YCSBDB {
 	int Scan(int id /*ignore*/, const std::string &table /*ignore*/, const std::string &key, int record_count,
 		 const std::vector<std::string> *fields /*ignore*/, std::vector<KVPair> &result)
 	{
-		krc_scanner *sc = krc_scan_init(32, (40 * 1024));
+		krc_scanner *sc = krc_scan_init(32, (16 * 1024));
 
 		krc_scan_set_start(sc, key.length(), (void *)key.c_str(), KRC_GREATER_OR_EQUAL);
 		int i = 0;

@@ -100,13 +100,18 @@ void snapshot(volume_descriptor *volume_desc)
 		/*all levels locked*/
 		dirty += db_desc->dirty;
 		/*update the catalogue if db is dirty*/
+		log_info("dirty is %u\n", db_desc->dirty);
 		if (db_desc->dirty > 0) {
+			db_desc->dirty = 0x00;
 			/*cow check*/
 			db_group =
 				(pr_db_group *)(MAPPED +
 						(uint64_t)volume_desc->mem_catalogue->db_group_index[db_desc->group_id]);
-			//printf("[%s:%s:%d] check for cow on db_group %llu\n",__FILE__,__func__,__LINE__,(LLU)db_group);
+
+			log_info("group epoch %llu  dev_catalogue %llu", (LLU)db_group->epoch,
+				 volume_desc->dev_catalogue->epoch);
 			if (db_group->epoch <= volume_desc->dev_catalogue->epoch) {
+				log_info("cow for db_group %llu", (LLU)db_group);
 				/*do cow*/
 				//superindex_db_group * new_group = (superindex_db_group *)allocate(volume_desc,DEVICE_BLOCK_SIZE,-1,GROUP_COW);
 				pr_db_group *new_group =
@@ -120,31 +125,32 @@ void snapshot(volume_descriptor *volume_desc)
 					(pr_db_group *)((uint64_t)db_group - MAPPED);
 			}
 
-			db_entry = &db_group->db_entries[db_desc->group_index];
+			db_entry = &(db_group->db_entries[db_desc->group_index]);
+			log_info("pr db entry name %s db name %s", db_entry->db_name, db_desc->db_name);
 
 			for (i = 0; i < MAX_LEVELS; i++) {
 				for (j = 0; j < NUM_TREES_PER_LEVEL; j++) {
 					/*Serialize and persist space allocation info for all levels*/
 					if (db_desc->levels[i].last_segment[j] != NULL) {
-						db_entry->first_segment[(i * MAX_LEVELS) + j] =
+						db_entry->first_segment[(i * NUM_TREES_PER_LEVEL) + j] =
 							(uint64_t)db_desc->levels[i].first_segment[j] - MAPPED;
 
-						db_entry->last_segment[(i * MAX_LEVELS) + j] =
+						db_entry->last_segment[(i * NUM_TREES_PER_LEVEL) + j] =
 							(uint64_t)db_desc->levels[i].last_segment[j] - MAPPED;
 
-						db_entry->offset[(i * MAX_LEVELS) + j] =
-							(uint64_t)db_desc->levels[i].offset[j] - MAPPED;
+						db_entry->offset[(i * NUM_TREES_PER_LEVEL) + j] =
+							(uint64_t)db_desc->levels[i].offset[j];
 					} else {
-						db_entry->first_segment[(i * MAX_LEVELS) + j] = 0;
+						db_entry->first_segment[(i * NUM_TREES_PER_LEVEL) + j] = 0;
 
-						db_entry->last_segment[(i * MAX_LEVELS) + j] = 0;
+						db_entry->last_segment[(i * NUM_TREES_PER_LEVEL) + j] = 0;
 
-						db_entry->offset[(i * MAX_LEVELS) + j] = 0;
+						db_entry->offset[(i * NUM_TREES_PER_LEVEL) + j] = 0;
 					}
 
 					/*now mark new roots*/
 					if (db_desc->levels[i].root_w[j] != NULL) {
-						db_entry->root_r[i * j] =
+						db_entry->root_r[(i *NUM_TREES_PER_LEVEL) * j] =
 							((uint64_t)db_desc->levels[i].root_w[j]) - MAPPED;
 
 						/*mark old root to free it later*/
@@ -162,7 +168,7 @@ void snapshot(volume_descriptor *volume_desc)
 					} else if (db_desc->levels[i].root_r[j] == NULL) {
 						//log_warn("set %lu to %llu of db_entry %llu", i * j,
 						//	 db_entry->root_r[(i * MAX_LEVELS) + j], (uint64_t)db_entry - MAPPED);
-						db_entry->root_r[(i * MAX_LEVELS) + j] = 0;
+						db_entry->root_r[(i * NUM_TREES_PER_LEVEL) + j] = 0;
 					}
 
 					db_entry->total_keys[i] = db_desc->levels[i].total_keys[j];
@@ -229,12 +235,11 @@ void snapshot(volume_descriptor *volume_desc)
 	node = get_first(volume_desc->open_databases);
 	while (node != NULL) {
 		db_desc = (db_descriptor *)node->data;
-		db_desc->dirty = 0x00;
-#if LOG_WITH_MUTEX
-		MUTEX_UNLOCK(&db_desc->lock_log);
-#else
-		SPIN_UNLOCK(&db_desc->lock_log);
-#endif
+		//#if LOG_WITH_MUTEX
+		//		MUTEX_UNLOCK(&db_desc->lock_log);
+		//#else
+		//		SPIN_UNLOCK(&db_desc->lock_log);
+		//#endif
 		for (i = 0; i < MAX_LEVELS; i++)
 			RWLOCK_UNLOCK(&db_desc->levels[i].guard_of_level.rx_lock);
 

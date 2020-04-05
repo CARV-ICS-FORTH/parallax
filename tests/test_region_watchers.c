@@ -17,8 +17,8 @@
 #define SCAN_SIZE 50
 #define PREFETCH_ENTRIES 16
 #define PREFETCH_MEM_SIZE (32 * 1024)
-#define ZOOKEEPER "192.168.1.134:2181"
-#define HOST "tie4.cluster.ics.forth.gr-8080"
+#define ZOOKEEPER "192.168.1.131:2181"
+#define HOST "tie1.cluster.ics.forth.gr-8080"
 
 extern ZooLogLevel logLevel;
 typedef struct key {
@@ -79,8 +79,7 @@ int main(int argc, char *argv[])
 		sprintf(args_buf[7], "+oo");
 		create_region(13, args_buf);
 		log_info("Created region id %s minkey %s maxkey %s", args_buf[2], args_buf[4], args_buf[6]);
-		log_info("round %d proceeding to %d",i,i+1);
+		log_info("round %d proceeding to %d", i, i + 1);
 		sleep(4);
 	}
 }
-

@@ -1,6 +1,8 @@
 # File: TucanaServer/CMakeLists.txt Author: Michalis Vardoulakis
 # <mvard@ics.forth.gr>
 
+set_source_files_properties(../utilities/spin_loop.c PROPERTIES COMPILE_FLAGS "-O0")
+
 set(CMAKE_EXE_LINKER_FLAGS
     "-Wl,-no-as-needed -lm -pthread -lnuma -libverbs -lrdmacm -lzookeeper_mt")
 add_definitions(-DKREONR)

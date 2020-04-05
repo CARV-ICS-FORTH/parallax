@@ -950,6 +950,7 @@ void allocator_init(volume_descriptor *volume_desc)
 	       (LLU)MAPPED + (uint64_t)volume_desc->volume_superblock->system_catalogue);
 	printf("\tBitmap starts: %llu,ends: %llu\n", (LLU)volume_desc->bitmap_start, (LLU)volume_desc->bitmap_end);
 	printf("######### </Volume state> ###################\n");
+
 	//#endif
 	/*XXX TODO XXX remove later*
     printf("[%s:%s:%d] Heating Up write page faults\n",__FILE__,__func__,__LINE__);
