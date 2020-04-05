@@ -955,13 +955,15 @@ void handle_task(void *__task)
 	scannerHandle *sc;
 	msg_put_key *K;
 	msg_put_value *V;
+	msg_update_req *update_req;
+	msg_update_rep *update_rep;
 	msg_multi_get_req *multi_get;
 	msg_get_req *get_req;
 	msg_get_rep *get_rep;
 	int tries;
 	uint32_t key_length = 0;
 	uint32_t actual_reply_size = 0;
-
+	uint32_t padding;
 	/*unboxing the arguments*/
 	S_tu_region = NULL;
 	task->reply_msg = NULL;
@@ -1157,8 +1159,68 @@ void handle_task(void *__task)
 		_update_rendezvous_location(task->conn, 0); /*"0" indicates RESET*/
 		task->overall_status = TASK_COMPLETED;
 		break;
+
+	case UPDATE_REQUEST:
+
+		update_req = (msg_update_req *)task->msg->data;
+
+		K = (msg_put_key *)((uint64_t)update_req + sizeof(msg_update_req));
+		V = (msg_put_value *)((uint64_t)K + sizeof(msg_put_key) + K->key_size);
+		S_tu_region = find_region(K->key, K->key_size);
+		if (S_tu_region == NULL) {
+			log_fatal("Region not found for key size %u:%s", K->key_size, K->key);
+			exit(EXIT_FAILURE);
+		}
+		task->region = (void *)S_tu_region;
+		value = find_key(S_tu_region->db, K->key, K->key_size);
+		if (value != NULL) {
+		} else {
+			/*key not found*/
+		}
+		/*reply part*/
+		task->reply_msg = (void *)((uint64_t)task->conn->rdma_memory_regions->local_memory_buffer +
+					   (uint64_t)task->msg->reply);
+		/*initialize message*/
+
+		if (task->msg->reply_length >= actual_reply_size) {
+			task->reply_msg->pay_len = sizeof(msg_put_rep);
+			actual_reply_size = sizeof(msg_header) + sizeof(msg_put_rep) + TU_TAIL_SIZE;
+			padding = MESSAGE_SEGMENT_SIZE - (actual_reply_size % MESSAGE_SEGMENT_SIZE);
+
+			/*set tail to the proper value*/
+			*(uint32_t *)((uint64_t)task->reply_msg + actual_reply_size - (TU_TAIL_SIZE) + padding) =
+				2; //TU_RDMA_REGULAR_MSG;
+			task->reply_msg->padding_and_tail = padding + TU_TAIL_SIZE;
+			//log_info("msg header %d put_rep %d padding_and_tail %d", sizeof(msg_header),
+			//	 sizeof(msg_put_rep), task->reply_msg->padding_and_tail);
+
+			task->reply_msg->data = (void *)((uint64_t)task->reply_msg + sizeof(msg_header));
+			task->reply_msg->next = task->reply_msg->data;
+
+			task->reply_msg->type = PUT_REPLY;
+
+			task->reply_msg->ack_arrived = KR_REP_PENDING;
+			task->reply_msg->receive = 2; //TU_RDMA_REGULAR_MSG;
+			task->reply_msg->local_offset = (uint64_t)task->msg->reply;
+			task->reply_msg->remote_offset = (uint64_t)task->msg->reply;
+			task->reply_msg->callback_function = NULL;
+			msg_put_rep *put_rep = (msg_put_rep *)((uint64_t)task->reply_msg + sizeof(msg_header));
+			put_rep->status = KREON_SUCCESS;
+		} else {
+			log_fatal("SERVER: mr CLIENT reply space not enough  size %" PRIu32 " FIX XXX TODO XXX\n",
+				  task->msg->reply_length);
+			exit(EXIT_FAILURE);
+		}
+
+		/*piggyback info for use with the client*/
+		task->reply_msg->request_message_local_addr = task->msg->request_message_local_addr;
+		assert(task->reply_msg->request_message_local_addr != NULL);
+		task->overall_status = TASK_COMPLETED;
+		return;
+
+		break;
 	case PUT_REQUEST:
-	case TU_UPDATE:
+
 		/* *
 			 * retrieve region handle for the corresponding key, find_region
 			 * initiates internally rdma connections if needed
@@ -1190,20 +1252,19 @@ void handle_task(void *__task)
 		task->reply_msg = (void *)((uint64_t)task->conn->rdma_memory_regions->local_memory_buffer +
 					   (uint64_t)task->msg->reply);
 		/*initialize message*/
-		actual_reply_size = sizeof(msg_header) + sizeof(msg_put_rep) + TU_TAIL_SIZE;
+
 		if (task->msg->reply_length >= actual_reply_size) {
 			task->reply_msg->pay_len = sizeof(msg_put_rep);
 
-			task->reply_msg->padding_and_tail =
-				MESSAGE_SEGMENT_SIZE - (actual_reply_size % MESSAGE_SEGMENT_SIZE);
-
+			actual_reply_size = sizeof(msg_header) + sizeof(msg_put_rep) + TU_TAIL_SIZE;
+			padding = MESSAGE_SEGMENT_SIZE - (actual_reply_size % MESSAGE_SEGMENT_SIZE);
 			/*set tail to the proper value*/
-			*(uint32_t *)((uint64_t)task->reply_msg + sizeof(msg_header) + task->reply_msg->pay_len +
-				      task->reply_msg->padding_and_tail) = TU_RDMA_REGULAR_MSG;
-			task->reply_msg->padding_and_tail += TU_TAIL_SIZE;
+			*(uint32_t *)((uint64_t)task->reply_msg + actual_reply_size + (padding - TU_TAIL_SIZE)) =
+				TU_RDMA_REGULAR_MSG;
+			task->reply_msg->padding_and_tail = padding + TU_TAIL_SIZE;
+
 			//log_info("msg header %d put_rep %d padding_and_tail %d", sizeof(msg_header),
 			//	 sizeof(msg_put_rep), task->reply_msg->padding_and_tail);
-
 			task->reply_msg->data = (void *)((uint64_t)task->reply_msg + sizeof(msg_header));
 			task->reply_msg->next = task->reply_msg->data;
 
@@ -1243,7 +1304,6 @@ void handle_task(void *__task)
 
 		if (S_tu_region == NULL) {
 			log_fatal("ERROR: Region not found for key %s\n", get_req->key);
-			assert(0);
 			return;
 		}
 
@@ -1282,12 +1342,11 @@ void handle_task(void *__task)
 		task->reply_msg->pay_len = sizeof(msg_get_rep) + get_rep->value_size;
 
 		actual_reply_size = sizeof(msg_header) + task->reply_msg->pay_len + TU_TAIL_SIZE;
-
-		task->reply_msg->padding_and_tail = MESSAGE_SEGMENT_SIZE - (actual_reply_size % MESSAGE_SEGMENT_SIZE);
+		padding = MESSAGE_SEGMENT_SIZE - (actual_reply_size % MESSAGE_SEGMENT_SIZE);
 		/*set tail to the proper value*/
-		*(uint32_t *)((uint64_t)task->reply_msg + sizeof(msg_header) + task->reply_msg->pay_len +
-			      task->reply_msg->padding_and_tail) = TU_RDMA_REGULAR_MSG;
-		task->reply_msg->padding_and_tail += TU_TAIL_SIZE;
+		*(uint32_t *)((uint64_t)task->reply_msg + actual_reply_size + (padding - TU_TAIL_SIZE)) =
+			TU_RDMA_REGULAR_MSG;
+		task->reply_msg->padding_and_tail = padding + TU_TAIL_SIZE;
 
 		task->reply_msg->local_offset = (uint64_t)task->msg->reply;
 		task->reply_msg->remote_offset = (uint64_t)task->msg->reply;
@@ -1322,23 +1381,25 @@ void handle_task(void *__task)
 		buf->end_of_region = 0;
 		buf->buffer_overflow = 0;
 
-		buf->remaining = task->msg->reply_length - (sizeof(msg_header) + sizeof(msg_multi_get_rep));
-		buf->capacity = buf->remaining;
+		buf->capacity =
+			task->msg->reply_length - (sizeof(msg_header) + sizeof(msg_multi_get_rep) + TU_TAIL_SIZE);
+		buf->remaining = buf->capacity;
 		buf->pos = 0;
 		buf->num_entries = 0;
 		if (sc->keyValue != NULL) {
 			msg_key *key = sc->keyValue;
 			msg_value *value = (msg_value *)((uint64_t)key + sizeof(msg_key) + key->size);
 			if (msg_push_to_multiget_buf(key, value, buf) == KREON_SUCCESS) {
-				while (buf->num_entries < multi_get->max_num_entries) {
+				while (buf->num_entries <= multi_get->max_num_entries) {
 					if (getNext(sc) == END_OF_DATABASE) {
 						buf->end_of_region = 1;
 						break;
 					}
 					key = sc->keyValue;
 					value = (msg_value *)((uint64_t)key + sizeof(msg_key) + key->size);
-					if (msg_push_to_multiget_buf(key, value, buf) == KREON_FAILURE)
+					if (msg_push_to_multiget_buf(key, value, buf) == KREON_FAILURE) {
 						break;
+					}
 				}
 			}
 		} else
@@ -1350,16 +1411,28 @@ void handle_task(void *__task)
 		/*finally fix the header*/
 		task->reply_msg->type = MULTI_GET_REPLY;
 		task->reply_msg->receive = TU_RDMA_REGULAR_MSG;
-		task->reply_msg->pay_len = sizeof(msg_put_rep) + (buf->capacity - buf->remaining);
+		task->reply_msg->pay_len = sizeof(msg_multi_get_rep) + (buf->capacity - buf->remaining);
+		/*set now the actual capacity*/
+		buf->capacity = buf->capacity - buf->remaining;
+		buf->remaining = buf->capacity;
 
 		actual_reply_size = sizeof(msg_header) + task->reply_msg->pay_len + TU_TAIL_SIZE;
+		if (actual_reply_size % MESSAGE_SEGMENT_SIZE == 0)
+			padding = 0;
+		else
+			padding = MESSAGE_SEGMENT_SIZE - (actual_reply_size % MESSAGE_SEGMENT_SIZE);
 
-		task->reply_msg->padding_and_tail = MESSAGE_SEGMENT_SIZE - (actual_reply_size % MESSAGE_SEGMENT_SIZE);
 		/*set tail to the proper value*/
-		*(uint32_t *)((uint64_t)task->reply_msg + sizeof(msg_header) + task->reply_msg->pay_len +
-			      task->reply_msg->padding_and_tail) = TU_RDMA_REGULAR_MSG;
-		task->reply_msg->padding_and_tail += TU_TAIL_SIZE;
+		*(uint32_t *)((uint64_t)task->reply_msg + (actual_reply_size - TU_TAIL_SIZE) + padding) =
+			TU_RDMA_REGULAR_MSG;
+		task->reply_msg->padding_and_tail = padding + TU_TAIL_SIZE;
 
+		//assert((actual_reply_size + padding) % MESSAGE_SEGMENT_SIZE == 0);
+		//assert((actual_reply_size + padding) <= task->msg->reply_length);
+
+		//log_info("actual size %u padding and tail %u pay_len %u buf capacity %u buf remaining %u",
+		//	 actual_reply_size, task->reply_msg->padding_and_tail, task->reply_msg->pay_len, buf->capacity,
+		//	 buf->remaining);
 		task->reply_msg->local_offset = (uint64_t)task->msg->reply;
 		task->reply_msg->remote_offset = (uint64_t)task->msg->reply;
 		task->reply_msg->callback_function = NULL;
@@ -1408,14 +1481,6 @@ void handle_task(void *__task)
 #if 0	
 		case TU_FLUSH_VOLUME_QUERY:
 			reply_data_message = Server_FlushVolume_RDMA( data_message, rdma_conn);	
-			break;
-		case TU_UPDATE:
-			if(handle_update_request(data_message, rdma_conn)!= KREON_SUCCESS){
-				DPRINT("Warning update failed :-(\n");
-			}
-			reply_data_message = allocate_rdma_message(rdma_conn, 0, TU_UPDATE_REPLY);
-			/*piggyback info for use with the client*/
-			reply_data_message->request_message_local_addr = data_message->request_message_local_addr;
 			break;
 #endif
 	case FLUSH_SEGMENT:
@@ -1585,7 +1650,7 @@ int main(int argc, char *argv[])
 		Device_size = strtol(argv[3], NULL, 10) * 1024 * 1024 * 1024;
 		globals_set_zk_host(argv[4]);
 		globals_set_RDMA_IP_filter(argv[5]);
-			_str_split(argv[6], ',', &spinning_threads_core_ids, &num_of_spinning_threads);
+		_str_split(argv[6], ',', &spinning_threads_core_ids, &num_of_spinning_threads);
 		_str_split(argv[7], ',', &worker_threads_core_ids, &num_of_worker_threads);
 	} else {
 		DPRINT("Error: usage: ./tucanaserver <port number> <device name> <device size in GB> <zookeeper_host_port> <RDMA_IP_prefix> <spinning thread core ids>  <working thread core ids>\n");

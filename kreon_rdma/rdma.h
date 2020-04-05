@@ -68,7 +68,7 @@
 #define DEFAULT_HOST "192.168.1.126"
 #define DEFAULT_DEV_IBV "mlx4_0"
 
-#define MAX_WR 10000
+#define MAX_WR 4096
 #define MAX_WR_LESS_ONE (MAX_WR - 1)
 
 #define TU_RDMA_MEMORY_REGIONS 1 //We use memory regions, 0 we allocate space for  void *rdma_local_region
@@ -171,10 +171,13 @@ typedef enum work_task_status {
 typedef enum region_status { REGION_OK = 1000, REGION_IN_TRANSITION } region_status;
 
 typedef enum connection_status {
-	CONNECTION_OK,
+	CONNECTION_OK = 5,
 	CONNECTION_RESETTING,
+	CONNECTION_CLOSING,
 	STOPPED_BY_THE_SERVER,
-	WAIT_FOR_SERVER_ACK
+	WAIT_FOR_SERVER_ACK,
+	CONNECTION_PENDING_ESTABLISHMENT,
+	CONNECTION_ERROR
 } connection_status;
 
 typedef enum rdma_allocation_type {
@@ -222,7 +225,7 @@ typedef struct worker_thread {
 	struct channel_rdma *channel;
 	worker_status status;
 	struct worker_group *my_group;
-	int32_t worker_id;
+	int worker_id;
 } worker_thread;
 
 typedef struct worker_group {
@@ -232,6 +235,7 @@ typedef struct worker_group {
 } worker_group;
 
 void _send_reset_buffer_ack(struct connection_rdma *conn);
+void _zero_rendezvous_locations_l(msg_header *msg, uint32_t length);
 void _zero_rendezvous_locations(msg_header *msg);
 void _update_rendezvous_location(struct connection_rdma *conn, int message_size);
 
@@ -382,18 +386,11 @@ typedef struct connection_rdma {
 	struct ibv_comp_channel *comp_channel;
 	struct ibv_mr *peer_mr; // Info of the remote peer: addr y rkey, needed for sending the RRMA messages
 
-	uint32_t connected;
-	uint32_t disconnecting;
-
 	volatile void *rendezvous;
 	volatile connection_status status; /*normal or resetting?*/
 	memory_region *rdma_memory_regions;
 	memory_region *next_rdma_memory_regions;
 	struct ibv_mr *next_peer_mr;
-
-	int server; //1 is the server, 0 is not
-	int index;
-
 	SIMPLE_CONCURRENT_LIST *responsible_spin_list;
 	int32_t responsible_spinning_thread_id;
 	/* *
@@ -402,8 +399,6 @@ typedef struct connection_rdma {
 	 * */
 	uint32_t remaining_bytes_in_remote_rdma_region;
 	int idconn;
-
-	sem_t sem_disconnect; // To coordinate the reception of messages
 } connection_rdma;
 
 static inline void Set_OnConnection_Create_Function(struct channel_rdma *channel, on_connection_created function)
@@ -435,31 +430,20 @@ msg_header *allocate_rdma_message(connection_rdma *conn, int message_payload_siz
 void init_rdma_message(connection_rdma *conn, msg_header *msg, uint32_t message_type, uint32_t message_size,
 		       uint32_t message_payload_size, uint32_t padding);
 msg_header *__allocate_rdma_message(connection_rdma *conn, int message_payload_size, int message_type,
-					 int rdma_allocation_type, int priority, work_task *task);
+				    int rdma_allocation_type, int priority, work_task *task);
 
 int send_rdma_message(connection_rdma *conn, msg_header *msg);
 int send_rdma_message_busy_wait(connection_rdma *conn, msg_header *msg);
-void async_send_rdma_message(connection_rdma *conn, msg_header *msg, void (*callback_function)(void *args),
-			     void *args);
+void async_send_rdma_message(connection_rdma *conn, msg_header *msg, void (*callback_function)(void *args), void *args);
 msg_header *get_message_reply(connection_rdma *conn, msg_header *msg);
 void free_rdma_local_message(connection_rdma *conn);
 void free_rdma_received_message(connection_rdma *conn, msg_header *msg);
 
 void client_free_rpc_pair(connection_rdma *conn, msg_header *msg);
 /*replica specific functions*/
-int rdma_kv_entry_to_replica(connection_rdma *conn, msg_header *data_message, uint64_t segment_log_offset,
-			     void *source, uint32_t kv_length, uint32_t client_buffer_key);
+int rdma_kv_entry_to_replica(connection_rdma *conn, msg_header *data_message, uint64_t segment_log_offset, void *source,
+			     uint32_t kv_length, uint32_t client_buffer_key);
 int wake_up_replica_to_flush_segment(connection_rdma *conn, msg_header *msg, int wait);
-
-static inline uint32_t cdrma_IsDisconnecting_Connection(struct connection_rdma *conn)
-{
-	return conn->disconnecting;
-}
-
-static inline uint32_t cdrma_IsConnected_Connection(struct connection_rdma *conn)
-{
-	return conn->connected;
-}
 
 struct connection_rdma *crdma_client_create_connection(struct channel_rdma *channel);
 void close_and_free_RDMA_connection(struct channel_rdma *channel, struct connection_rdma *conn);

@@ -1,7 +1,5 @@
 /*
- * tucana_messages.h
- * To define the network messages for Tucana Network
- * Created by Pilar Gonzalez-Ferez on 28/07/16.
+* Created by Pilar Gonzalez-Ferez on 28/07/16.
  * Copyright (c) 2016 Pilar Gonzalez Ferez <pilar@ics.forth.gr>.
 */
 
@@ -17,6 +15,8 @@ enum tucana_message_types {
 	PUT_REQUEST = 1, // PUT operation: client -> server
 	MULTI_PUT, // FIXME Remove this message type
 	PUT_REPLY,
+	UPDATE_REQUEST,
+	UPDATE_REPLY,
 	TU_GET_QUERY, // GET operation: client -> server
 	TU_GET_REPLY, // GET reply: server -> client
 	MULTI_GET_REQUEST,
@@ -37,8 +37,6 @@ enum tucana_message_types {
 	FLUSH_SEGMENT_TEST,
 	SYNC_SEGMENT,
 	SYNC_SEGMENT_ACK,
-	TU_UPDATE,
-	TU_UPDATE_REPLY,
 	/*control stuff*/
 	RESET_BUFFER,
 	RESET_BUFFER_ACK,
@@ -112,18 +110,17 @@ typedef struct msg_header {
 	volatile int32_t ack_arrived;
 	/*from most significant byte to less: <FUTURE_EXTENSION>, <FUTURE_EXTENSION>, 
 	 * <FUTUTE_EXTENSION>, SYNC/ASYNC(indicates if this is  a synchronous or asynchronous request*/
-	volatile uint32_t future_extension_1 : 8;
-	volatile uint32_t future_extension_2 : 8;
-	volatile uint32_t future_extension_3 : 8;
-	volatile uint32_t receive_options : 8;
+	volatile uint8_t got_send_completion;
+	volatile uint8_t receive_options;
 #ifdef CHECKSUM_DATA_MESSAGES
 	unsigned long hash; // [mvard] hash of data buffer
 #endif
 	void *data; /*Pointer to the first element of the Payload*/
 	void *next; /*Pointer to the "current" element of the payload. Initially equal to data*/
-	uint32_t receive;
+	volatile uint32_t receive;
 } msg_header;
 
+/*put related*/
 typedef struct msg_put_key {
 	uint32_t key_size;
 	char key[];
@@ -137,6 +134,18 @@ typedef struct msg_put_value {
 typedef struct msg_put_rep {
 	volatile uint32_t status;
 } msg_put_rep;
+
+/*update related*/
+typedef struct msg_update_req {
+	uint64_t offset;
+} msg_update_req;
+
+typedef struct msg_update_rep {
+	volatile uint32_t status;
+	uint64_t new_value_size;
+} msg_update_rep;
+
+
 
 typedef struct msg_get_req {
 	uint32_t key_size;

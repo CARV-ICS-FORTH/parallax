@@ -435,7 +435,7 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 	int i;
 	int digits;
 	uint8_t level_id, tree_id;
-
+	assert(strlen(db_name) <= 2);
 	i = 0;
 	fprintf(stderr, "%s[%s:%s:%d](\"%s\", %" PRIu64 ", %" PRIu64 ", %s);%s\n", "\033[0;32m", __FILE__, __func__,
 		__LINE__, volumeName, start, size, db_name, "\033[0m");
@@ -569,12 +569,11 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 					if (db_group->db_entries[j].valid) {
 						/*hosts a database*/
 						db_entry = &db_group->db_entries[j];
-						//log_info("entry at %llu", (uint64_t)db_entry - MAPPED);
+						//log_info("entry at %s looking for %s offset %llu", (uint64_t)db_entry->db_name,
+						//	 db_name, db_entry->offset[0]);
 						if (strcmp((const char *)db_entry->db_name, (const char *)db_name) ==
 						    0) {
-							/*found it database found, restore state, recover state if needed
-* and create the appropriate handle and store it in the open_db's
-* list*/
+							/*found database, recover state and create the appropriate handle and store it in the open_db's list*/
 							log_info("database: %s found at index [%d,%d]",
 								 db_entry->db_name, i, j);
 							handle = malloc(sizeof(db_handle));
@@ -651,7 +650,7 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 													      NUM_TREES_PER_LEVEL) +
 													     tree_id]);
 										log_warn(
-											"Recovered root r of [%lu][%lu] = ",
+											"Recovered root r of [%lu][%lu] = %llu ",
 											level_id, tree_id,
 											db_desc->levels[level_id]
 												.root_r[tree_id]);
@@ -761,18 +760,16 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 			exit(EXIT_FAILURE);
 		}
 
-		log_info("mem epoch %llu", volume_desc->mem_catalogue->epoch);
+		//log_info("mem epoch %llu", volume_desc->mem_catalogue->epoch);
 		if (empty_index == -1) {
 			/*space found in empty group*/
-
 			pr_db_group *new_group = get_space_for_system(volume_desc, sizeof(pr_db_group));
 			memset(new_group, 0x00, sizeof(pr_db_group));
 			new_group->epoch = volume_desc->mem_catalogue->epoch;
 			volume_desc->mem_catalogue->db_group_index[empty_group] =
 				(pr_db_group *)((uint64_t)new_group - MAPPED);
 			empty_index = 0;
-
-			log_info("allocating new pr_db_group epoch at %llu volume epoch %llu", new_group->epoch,
+			log_info("allocated new pr_db_group epoch at %llu volume epoch %llu", new_group->epoch,
 				 volume_desc->mem_catalogue->epoch);
 		}
 		log_info("database %s not found, allocating slot [%d,%d] for it", (const char *)db_name, empty_group,
@@ -781,7 +778,6 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 			(pr_db_group *)(MAPPED + (uint64_t)volume_desc->mem_catalogue->db_group_index[empty_group]);
 		db_entry = &cur_group->db_entries[empty_index];
 		db_entry->valid = 1;
-		log_info("group %llu db_entry %llu empty index %d", cur_group, db_entry, empty_index);
 		// db_entry = (pr_db_entry *)(MAPPED +
 		// (uint64_t)volume_desc->mem_catalogue->db_group_index[empty_group] +
 		//			   (uint64_t)DB_ENTRY_SIZE + (uint64_t)(empty_index *
@@ -800,12 +796,7 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 		db_desc->group_id = empty_group;
 		db_desc->group_index = empty_index;
 
-		log_info("mem epoch %llu", volume_desc->mem_catalogue->epoch);
-		// if (mprotect(volume_desc->mem_catalogue, 4096, PROT_READ) != 0) {
-		//	log_error("failed");
-		//	exit(EXIT_FAILURE);
-		//}
-
+		//log_info("mem epoch %llu", volume_desc->mem_catalogue->epoch);
 		/*stored db name, in memory*/
 		memset(db_entry->db_name, 0x00, MAX_DB_NAME_SIZE);
 		strcpy(db_entry->db_name, db_name);
@@ -950,8 +941,6 @@ finish_init:
 		log_fatal("FATAL Corrupted state detected");
 		exit(EXIT_FAILURE);
 	}
-
-	log_info("mem epoch %llu", volume_desc->mem_catalogue->epoch);
 	return handle;
 }
 
@@ -963,7 +952,7 @@ char db_close(db_handle *handle)
 		exit(EXIT_FAILURE);
 	}
 
-	log_info("closing region/db %s snapshotting volume\n",handle->db_desc->db_name);
+	log_info("closing region/db %s snapshotting volume\n", handle->db_desc->db_name);
 	handle->db_desc->db_mode = DB_IS_CLOSING;
 	snapshot(handle->volume_desc);
 /*stop log appenders*/
@@ -986,7 +975,7 @@ char db_close(db_handle *handle)
 		MUTEX_UNLOCK(&init_lock);
 		return COULD_NOT_FIND_DB;
 	}
-return KREON_OK;
+	return KREON_OK;
 }
 
 void destroy_spill_request(NODE *node)

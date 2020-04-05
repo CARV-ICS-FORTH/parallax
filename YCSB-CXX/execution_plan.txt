@@ -1,1 +1,2 @@
-load_a load /home1/private/gesalous/carvgit/HEutropia/YCSB-CXX/workloads/workloada
+load_a load /home1/private/gesalous/carvgit/kreon/build/YCSB-CXX/workloads/workloada
+run_a run /home1/private/gesalous/carvgit/kreon/build/YCSB-CXX/workloads/workloada

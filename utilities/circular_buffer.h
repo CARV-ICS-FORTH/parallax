@@ -23,7 +23,7 @@ typedef struct circular_buffer{
 	circular_buffer_type type; /*send or receive*/
 	char * last_addr;
 	char * memory_region;
-	int *bitmap;
+	volatile int *bitmap;
 }circular_buffer;
 
 

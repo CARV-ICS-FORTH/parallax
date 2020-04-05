@@ -6,6 +6,7 @@
 #include "../build/external-deps/log/src/log.h"
 //#include "../kreon_lib/btree/btree.h"
 #include "../kreon_rdma_client/kreon_rdma_client.h"
+#include "../kreon_server/globals.h"
 #include "../kreon_server/create_regions_utils.h"
 
 #define NUM_KEYS 1000000
@@ -17,8 +18,8 @@
 #define SCAN_SIZE 50
 #define PREFETCH_ENTRIES 16
 #define PREFETCH_MEM_SIZE (32 * 1024)
-#define ZOOKEEPER "192.168.1.134:2181"
-#define HOST "tie4.cluster.ics.forth.gr-8080"
+#define ZOOKEEPER "192.168.1.133:2181"
+#define HOST "tie3.cluster.ics.forth.gr-8080"
 
 extern ZooLogLevel logLevel;
 typedef struct key {
@@ -38,6 +39,7 @@ int main(int argc, char *argv[])
 	uint64_t min_key, max_key;
 	uint32_t error_code;
 	if (argc > 1 && strcmp(argv[1], "--create_regions") == 0) {
+		globals_set_zk_host(ZOOKEEPER);
 		log_info("Creating %d regions", NUM_REGIONS);
 
 		char *args_buf[14];
@@ -133,7 +135,7 @@ int main(int argc, char *argv[])
 		k->key_size = strlen(k->key_buf) + 1;
 
 		sc = krc_scan_init(PREFETCH_ENTRIES, PREFETCH_MEM_SIZE);
-		krc_scan_set_start(sc, k->key_size, k->key_buf,KRC_GREATER_OR_EQUAL);
+		krc_scan_set_start(sc, k->key_size, k->key_buf, KRC_GREATER_OR_EQUAL);
 		krc_scan_get_next(sc);
 		if (!krc_scan_is_valid(sc)) {
 			log_fatal("Test failed key %s invalid scanner (it shoulddn't!)", k->key_buf);
@@ -177,7 +179,7 @@ int main(int argc, char *argv[])
 	log_info("Running a full scan");
 
 	sc = krc_scan_init(PREFETCH_ENTRIES, PREFETCH_MEM_SIZE);
-	krc_scan_set_start(sc, 7, "0000000",KRC_GREATER_OR_EQUAL);
+	krc_scan_set_start(sc, 7, "0000000", KRC_GREATER_OR_EQUAL);
 	for (i = BASE; i < (BASE + NUM_KEYS); i++) {
 		strncpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
 		sprintf(k->key_buf + strlen(KEY_PREFIX), "%llu", (long long unsigned)i);
@@ -199,4 +201,3 @@ int main(int argc, char *argv[])
 	log_info("full scan test Successfull");
 	return 1;
 }
-
