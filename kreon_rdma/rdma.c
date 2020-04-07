@@ -201,6 +201,9 @@ static msg_header *_client_allocate_rdma_message(connection_rdma *conn, int mess
 	case PUT_REQUEST:
 	case TU_GET_QUERY:
 	case MULTI_GET_REQUEST:
+	case PUT_OFFT_REQUEST:
+	case GET_OFFT_REQUEST:
+	case DELETE_REQUEST:
 		c_buf = conn->send_circular_buf;
 		ack_arrived = KR_REP_PENDING;
 		receive_type = TU_RDMA_REGULAR_MSG;
@@ -209,6 +212,9 @@ static msg_header *_client_allocate_rdma_message(connection_rdma *conn, int mess
 	case PUT_REPLY:
 	case TU_GET_REPLY:
 	case MULTI_GET_REPLY:
+	case PUT_OFFT_REPLY:
+	case GET_OFFT_REPLY:
+	case DELETE_REPLY:
 		c_buf = conn->recv_circular_buf;
 		ack_arrived = KR_REP_DONT_CARE;
 		receive_type = 0;
@@ -359,8 +365,6 @@ msg_header *__allocate_rdma_message(connection_rdma *conn, int message_payload_s
 	case MULTI_PUT:
 	case TU_GET_QUERY:
 	case TU_GET_REPLY:
-	case UPDATE_REQUEST:
-	case UPDATE_REPLY:
 	case TEST_REQUEST:
 	case TEST_REQUEST_FETCH_PAYLOAD:
 	case TEST_REPLY:
@@ -627,15 +631,19 @@ static int __send_rdma_message(connection_rdma *conn, msg_header *msg)
 	/*for client*/
 	case PUT_REQUEST:
 	case TU_GET_QUERY:
-	case UPDATE_REQUEST:
 	case MULTI_GET_REQUEST:
+	case PUT_OFFT_REQUEST:
+	case GET_OFFT_REQUEST:
+	case DELETE_REQUEST:
 	case TEST_REQUEST:
 	case TEST_REQUEST_FETCH_PAYLOAD:
 		/*server does not care*/
 	case PUT_REPLY:
 	case TU_GET_REPLY:
 	case MULTI_GET_REPLY:
-	case UPDATE_REPLY:
+	case PUT_OFFT_REPLY:
+	case GET_OFFT_REPLY:
+	case DELETE_REPLY:
 	case TEST_REPLY:
 	case TEST_REPLY_FETCH_PAYLOAD:
 		context = NULL;
@@ -650,8 +658,7 @@ static int __send_rdma_message(connection_rdma *conn, msg_header *msg)
 
 	while (1) {
 		ret = rdma_post_write(conn->rdma_cm_id, context, msg, msg_len,
-				      conn->rdma_memory_regions->local_memory_region,
-				      IBV_SEND_SIGNALED,
+				      conn->rdma_memory_regions->local_memory_region, IBV_SEND_SIGNALED,
 				      ((uint64_t)conn->peer_mr->addr + msg->remote_offset), conn->peer_mr->rkey);
 		if (!ret) {
 			break;
@@ -1893,10 +1900,11 @@ int assign_job_to_worker(struct channel_rdma *channel, struct connection_rdma *c
 	job->allocation_status = ALLOCATION_START;
 	switch (job->msg->type) {
 	case PUT_REQUEST:
-	case UPDATE_REQUEST:
+	case PUT_OFFT_REQUEST:
 		job->kreon_operation_status = APPEND_START;
 		break;
 	case TU_GET_QUERY:
+	case GET_OFFT_REQUEST:
 	case MULTI_GET_REQUEST:
 		job->kreon_operation_status = GET_START;
 		break;

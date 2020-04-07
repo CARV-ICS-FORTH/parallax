@@ -14,12 +14,12 @@
 #define NUM_REGIONS 16
 #define KEY_PREFIX "userakias"
 #define KV_SIZE 1024
-
+#define UPDATES 100
 #define SCAN_SIZE 50
 #define PREFETCH_ENTRIES 16
 #define PREFETCH_MEM_SIZE (32 * 1024)
-#define ZOOKEEPER "192.168.1.133:2181"
-#define HOST "tie3.cluster.ics.forth.gr-8080"
+char ZOOKEEPER[256];
+char HOST[256]; //"tie3.cluster.ics.forth.gr-8080"
 
 extern ZooLogLevel logLevel;
 typedef struct key {
@@ -34,11 +34,19 @@ typedef struct value {
 
 int main(int argc, char *argv[])
 {
+	krc_value *val;
 	uint32_t region_id = 0;
 	uint64_t range = NUM_KEYS / NUM_REGIONS;
 	uint64_t min_key, max_key;
 	uint32_t error_code;
-	if (argc > 1 && strcmp(argv[1], "--create_regions") == 0) {
+	if (argc == 1) {
+		log_fatal("Wrong format test_krc_api <zookeeper_host:port>");
+		exit(EXIT_FAILURE);
+	} else if (argc == 2) {
+		strcpy(ZOOKEEPER, argv[1]);
+	} else if (argc > 2 && strcmp(argv[3], "--create_regions") == 0) {
+		strcpy(ZOOKEEPER, argv[1]);
+		strcpy(HOST, argv[2]);
 		globals_set_zk_host(ZOOKEEPER);
 		log_info("Creating %d regions", NUM_REGIONS);
 
@@ -112,10 +120,7 @@ int main(int argc, char *argv[])
 
 		sprintf(k->key_buf + strlen(KEY_PREFIX), "%llu", (long long unsigned)i);
 		k->key_size = strlen(k->key_buf) + 1;
-		value *v = (value *)((uint64_t)k + sizeof(key) + k->key_size);
-		v->value_size = KV_SIZE - ((2 * sizeof(key)) + k->key_size);
-		memset(v->value_buf, 0xDD, v->value_size);
-		krc_value *val = krc_get(k->key_size, k->key_buf, 2 * 1024, &error_code);
+		val = krc_get(k->key_size, k->key_buf, 2 * 1024, &error_code);
 		if (error_code != KRC_SUCCESS) {
 			log_fatal("key %s not found test failed!");
 			exit(EXIT_FAILURE);
@@ -123,7 +128,41 @@ int main(int argc, char *argv[])
 		free(val);
 	}
 
-	log_info("Gets successful ended, testing small scans....");
+	log_info("Gets successful ended, testing small put/get with offset....");
+	uint64_t offset = 0;
+	uint32_t sum = 0;
+	uint32_t sum_g = 0;
+	strncpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
+	sprintf(k->key_buf + strlen(KEY_PREFIX), "%d", 40000000);
+	k->key_size = strlen(k->key_buf) + 1;
+	value *v = (value *)((uint64_t)k + sizeof(key) + k->key_size);
+	v->value_size = sizeof(uint32_t);
+
+	for (i = 0; i < UPDATES; i++) {
+		*(uint32_t *)(v->value_buf) = i;
+		krc_put_with_offset(k->key_size, k->key_buf, offset, v->value_size, v->value_buf);
+		sum += i;
+		offset += sizeof(uint32_t);
+	}
+	/*perform get with offset to verify it is correct*/
+
+	offset = 0;
+	for (i = 0; i < UPDATES; i++) {
+		val = krc_get_with_offset(k->key_size, k->key_buf, offset, sizeof(uint32_t), &error_code);
+		if (val == NULL) {
+			log_fatal("key not found");
+			exit(EXIT_FAILURE);
+		}
+		sum_g += (*(uint32_t *)val->val_buf);
+		free(val);
+		offset += sizeof(uint32_t);
+	}
+	if (sum_g != sum) {
+		log_fatal("Sums differ expected %sum got %u", sum, sum_g);
+		exit(EXIT_FAILURE);
+	}
+
+	log_info("Put/get with offset successful, testing small scans....");
 
 	for (i = BASE; i < (BASE + (NUM_KEYS - SCAN_SIZE)); i++) {
 		if (i % 10000 == 0)
@@ -199,5 +238,41 @@ int main(int argc, char *argv[])
 	}
 	krc_scan_close(sc);
 	log_info("full scan test Successfull");
+
+	log_info("Deleting half keys");
+	for (i = BASE; i < (BASE + NUM_KEYS) / 2; i++) {
+		strncpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
+		if (i % 100000 == 0)
+			log_info("deleted up to %llu th key", i);
+
+		sprintf(k->key_buf + strlen(KEY_PREFIX), "%llu", (long long unsigned)i);
+		k->key_size = strlen(k->key_buf) + 1;
+		if (krc_delete(k->key_size, k->key_buf) != KRC_SUCCESS) {
+			log_fatal("key %s not found failed to delete test failed!");
+			exit(EXIT_FAILURE);
+		}
+	}
+	log_info("Verifying delete outcome");
+	for (i = BASE; i < (BASE + NUM_KEYS); i++) {
+		strncpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
+		if (i % 100000 == 0)
+			log_info("looked up to %llu th key", i);
+
+		sprintf(k->key_buf + strlen(KEY_PREFIX), "%llu", (long long unsigned)i);
+		k->key_size = strlen(k->key_buf) + 1;
+		val = NULL;
+		val = krc_get(k->key_size, k->key_buf, 2 * 1024, &error_code);
+		if (i < (BASE + NUM_KEYS) / 2 && error_code == KRC_SUCCESS) {
+			log_fatal("key %s shouldn't be there previous deleted test failed!");
+			exit(EXIT_FAILURE);
+		}
+		if (i >= (BASE + NUM_KEYS) / 2 && error_code != KRC_SUCCESS) {
+			log_fatal("key %s should be there test failed!");
+			exit(EXIT_FAILURE);
+		}
+		if (val)
+			free(val);
+	}
+	log_info("Delete test success! :-)");
 	return 1;
 }
