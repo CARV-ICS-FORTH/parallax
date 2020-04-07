@@ -18,6 +18,39 @@ static _Client_Regions *client_regions = NULL;
 static int krc_lib_init = 0;
 static pthread_mutex_t lib_lock = PTHREAD_MUTEX_INITIALIZER;
 
+static int64_t krc_compare_keys(krc_key *key1, krc_key *key2)
+{
+	int64_t ret;
+	uint32_t size;
+	if (key1->key_size > key2->key_size)
+		size = key2->key_size;
+	else
+		size = key1->key_size;
+
+	ret = memcmp(key2->key_buf, key1->key_buf, size);
+	if (ret != 0)
+		return ret;
+	else if (ret == 0 && key1->key_size == key2->key_size)
+		return 0;
+	else {
+		/*larger key wins*/
+		if (key2->key_size > key1->key_size)
+			return 1;
+		else
+			return -1;
+	}
+}
+
+static int64_t krc_prefix_match(krc_key *prefix, krc_key *key)
+{
+	if (key->key_size < prefix->key_size)
+		return 0;
+	if (memcmp(prefix->key_buf, key->key_buf, prefix->key_size) == 0)
+		return 1;
+	else
+		return 0;
+}
+
 static void kreon_op_stat2string(kreon_op_status stat)
 {
 	switch (stat) {
@@ -379,6 +412,7 @@ krc_scanner *krc_scan_init(uint32_t prefetch_num_entries, uint32_t prefetch_mem_
 	scanner->prefix_key = NULL;
 	scanner->start_key = NULL;
 	scanner->stop_key = NULL;
+	scanner->stop_key_seek_mode = KRC_GREATER;
 	scanner->prefetch_num_entries = prefetch_num_entries;
 	scanner->pos = 0;
 	scanner->start_infinite = 1;
@@ -436,7 +470,34 @@ void krc_scan_get_next(krc_scanner *sc)
 			seek_mode = GREATER;
 			sc->state = KRC_ISSUE_MGET_REQ;
 			break;
-
+		case KRC_STOP_FILTER: {
+			int ret;
+			if (sc->stop_key != NULL) {
+				ret = krc_compare_keys(sc->curr_key, sc->stop_key);
+				if (ret < 0 || (ret == 0 && sc->stop_key_seek_mode == KRC_GREATER)) {
+					log_info("stop key reached curr key %s stop key %s", sc->curr_key->key_buf,
+						 sc->stop_key->key_buf);
+					sc->is_valid = 0;
+					sc->state = KRC_INVALID;
+					sc->curr_key = NULL;
+					sc->curr_value = NULL;
+					return;
+				}
+			}
+			sc->state = KRC_PREFIX_FILTER;
+			break;
+		}
+		case KRC_PREFIX_FILTER:
+			if (sc->prefix_key == NULL) {
+				sc->state = KRC_ADVANCE;
+				return;
+			} else if (sc->prefix_key != NULL && krc_prefix_match(sc->prefix_key, sc->curr_key)) {
+				sc->state = KRC_ADVANCE;
+				return;
+			} else {
+				sc->state = KRC_ADVANCE;
+				break;
+			}
 		case KRC_ISSUE_MGET_REQ:
 
 			curr_region = client_find_region(seek_key, seek_key_size);
@@ -520,7 +581,8 @@ void krc_scan_get_next(krc_scanner *sc)
 				sc->curr_value = (krc_value *)((uint64_t)multi_kv_buf->kv_buffer + multi_kv_buf->pos);
 				multi_kv_buf->pos += (sizeof(krc_value) + sc->curr_value->val_size);
 				++multi_kv_buf->curr_entry;
-				return;
+				sc->state = KRC_STOP_FILTER;
+				break;
 			} else {
 				if (!multi_kv_buf->end_of_region) {
 					seek_key = sc->curr_key->key_buf;
@@ -579,18 +641,18 @@ void krc_scan_set_start(krc_scanner *sc, uint32_t start_key_size, void *start_ke
 	return;
 }
 
-void krc_scan_set_stop(krc_scanner *sc, uint32_t stop_key_size, void *stop_key)
+void krc_scan_set_stop(krc_scanner *sc, uint32_t stop_key_size, void *stop_key, krc_seek_mode seek_mode)
 {
 	if (!sc->stop_infinite) {
 		log_warn("Nothing to do already set stop key for this scanner");
 		return;
 	}
 	sc->stop_infinite = 0;
+	sc->seek_mode = seek_mode;
 	sc->stop_key = (krc_key *)malloc(sizeof(krc_key) + stop_key_size);
 	sc->stop_key->key_size = stop_key_size;
 	memcpy(sc->stop_key->key_buf, stop_key, stop_key_size);
-	log_fatal("Not fully implemneted yet contact gesalous@ics.forth.gr");
-	exit(EXIT_FAILURE);
+	log_info("stop key set to %s", sc->stop_key->key_buf);
 	return;
 }
 
@@ -604,8 +666,6 @@ void krc_scan_set_prefix_filter(krc_scanner *sc, uint32_t prefix_size, void *pre
 	sc->prefix_key = (krc_key *)malloc(sizeof(krc_key) + prefix_size);
 	sc->prefix_key->key_size = prefix_size;
 	memcpy(sc->prefix_key->key_buf, prefix, prefix_size);
-	log_fatal("Not fully implemneted yet contact gesalous@ics.forth.gr");
-	exit(EXIT_FAILURE);
 	return;
 }
 
@@ -623,7 +683,7 @@ void krc_scan_close(krc_scanner *sc)
 
 krc_ret_code krc_close()
 {
-	log_fatal("Unimplemented contact gesalous@ics.forth.gr");
+	log_warn("Unimplemented contact gesalous@ics.forth.gr");
 	//exit(EXIT_FAILURE);
 	return KRC_FAILURE;
 }

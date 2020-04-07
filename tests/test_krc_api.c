@@ -239,6 +239,52 @@ int main(int argc, char *argv[])
 	krc_scan_close(sc);
 	log_info("full scan test Successfull");
 
+	int tuples = 0;
+	log_info("Testing stop key");
+	sc = krc_scan_init(PREFETCH_ENTRIES, PREFETCH_MEM_SIZE);
+	krc_scan_set_start(sc, 7, "0000000", KRC_GREATER_OR_EQUAL);
+	sprintf(k->key_buf + strlen(KEY_PREFIX), "%llu", (long long unsigned)BASE + (NUM_KEYS / 2));
+	krc_scan_set_stop(sc, strlen(k->key_buf), k->key_buf, KRC_GREATER);
+	for (i = BASE; i < (BASE + NUM_KEYS); i++) {
+		strncpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
+		sprintf(k->key_buf + strlen(KEY_PREFIX), "%llu", (long long unsigned)i);
+		k->key_size = strlen(k->key_buf) + 1;
+		krc_scan_get_next(sc);
+		if (!krc_scan_is_valid(sc))
+			break;
+		if (k->key_size != sc->curr_key->key_size ||
+		    memcmp(k->key_buf, sc->curr_key->key_buf, k->key_size) != 0) {
+			log_fatal("Test failed key %s not found scanner instead returned %d:%s", k->key_buf,
+				  sc->curr_key->key_size, sc->curr_key->key_buf);
+			exit(EXIT_FAILURE);
+		}
+		++tuples;
+	}
+	if (tuples != NUM_KEYS / 2) {
+		log_fatal("Error tuples got %d expected %d", tuples, NUM_KEYS / 2);
+		exit(EXIT_FAILURE);
+	}
+
+	krc_scan_close(sc);
+	log_info("Stop key test successful");
+	log_info("Testing prefix key");
+	tuples = 0;
+	sc = krc_scan_init(PREFETCH_ENTRIES, PREFETCH_MEM_SIZE);
+	krc_scan_set_start(sc, 7, "0000000", KRC_GREATER_OR_EQUAL);
+	sprintf(k->key_buf + strlen(KEY_PREFIX), "%llu", (long long unsigned)BASE + 111);
+	krc_scan_set_prefix_filter(sc, strlen(k->key_buf), k->key_buf);
+	for (i = BASE; i < (BASE + NUM_KEYS); i++) {
+		krc_scan_get_next(sc);
+		if (!krc_scan_is_valid(sc))
+			break;
+		++tuples;
+	}
+	if (tuples != 1) {
+		log_fatal("Error tuples got %d expected %d", tuples, 1);
+		exit(EXIT_FAILURE);
+	}
+	log_info("Prefix key test successful");
+	krc_scan_close(sc);
 	log_info("Deleting half keys");
 	for (i = BASE; i < (BASE + NUM_KEYS) / 2; i++) {
 		strncpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
