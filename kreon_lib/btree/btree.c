@@ -1905,7 +1905,7 @@ int __update_leaf_index(bt_insert_req *req, leaf_node *leaf, void *key_buf)
 		index_key_buf = (void *)(MAPPED + *(uint64_t *)addr);
 		ret = _tucana_key_cmp(index_key_buf, key_buf, KV_FORMAT, req->key_format);
 		if (ret == 0) {
-			if (req->gc_request == 1 && pointer_to_kv_in_log != index_key_buf)
+			if (req->gc_request && pointer_to_kv_in_log != index_key_buf)
 				return ret;
 			break;
 		} else if (ret < 0) {
