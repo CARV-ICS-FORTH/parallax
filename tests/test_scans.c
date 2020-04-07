@@ -84,9 +84,6 @@ int main()
 	log_info("milestone 2");
 	log_info("Cornercase scenario...DONE");
 
-
-
-
 	for (i = BASE; i < (BASE + (NUM_KEYS - SCAN_SIZE)); i++) {
 		if (i % 100000 == 0)
 			log_info("<Scan no %llu>", i);

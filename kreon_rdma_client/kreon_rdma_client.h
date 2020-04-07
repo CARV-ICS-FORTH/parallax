@@ -45,6 +45,7 @@ typedef struct krc_scanner {
 	krc_value *curr_value;
 	uint32_t prefetch_num_entries;
 	uint32_t prefetch_mem_size;
+	uint32_t actual_mem_size;
 	uint32_t pos;
 	uint8_t start_infinite : 2;
 	krc_seek_mode seek_mode;
@@ -61,6 +62,7 @@ krc_ret_code krc_init(char *zookeeper_ip, int zk_port);
 krc_ret_code krc_close();
 
 uint32_t krc_put(uint32_t key_size, void *key, uint32_t val_size, void *value);
+uint32_t krc_put_with_offset(uint32_t key_size, void *key, uint32_t offset, uint32_t val_size, void *value);
 krc_value *krc_get(uint32_t key_size, void *key, uint32_t reply_length, uint32_t *error_code);
 
 /*scanner API*/

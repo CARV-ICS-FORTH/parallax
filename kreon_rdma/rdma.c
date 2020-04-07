@@ -211,7 +211,7 @@ static msg_header *_client_allocate_rdma_message(connection_rdma *conn, int mess
 	case MULTI_GET_REPLY:
 		c_buf = conn->recv_circular_buf;
 		ack_arrived = KR_REP_DONT_CARE;
-		receive_type = TU_RDMA_REGULAR_MSG;
+		receive_type = 0;
 		break;
 	case DISCONNECT:
 		c_buf = conn->send_circular_buf;
@@ -235,10 +235,11 @@ static msg_header *_client_allocate_rdma_message(connection_rdma *conn, int mess
 		message_size = TU_HEADER_SIZE + message_payload_size + TU_TAIL_SIZE;
 		if (message_size % MESSAGE_SEGMENT_SIZE != 0) {
 			/*need to pad */
-			padding += (MESSAGE_SEGMENT_SIZE - (message_size % MESSAGE_SEGMENT_SIZE));
+			padding = (MESSAGE_SEGMENT_SIZE - (message_size % MESSAGE_SEGMENT_SIZE));
 			message_size += padding;
 			assert(message_size % MESSAGE_SEGMENT_SIZE == 0);
-		}
+		} else
+			padding = 0;
 	} else {
 		message_size = MESSAGE_SEGMENT_SIZE;
 		padding = 0;
@@ -256,8 +257,8 @@ static msg_header *_client_allocate_rdma_message(connection_rdma *conn, int mess
 		case NOT_ENOUGH_SPACE_AT_THE_END:
 			if (reset_rendezvous) {
 				/*inform remote side that to reset the rendezvous*/
-				if (allocate_space_from_circular_buffer(c_buf, MESSAGE_SEGMENT_SIZE,
-									&addr) != ALLOCATION_IS_SUCCESSFULL) {
+				if (allocate_space_from_circular_buffer(c_buf, MESSAGE_SEGMENT_SIZE, &addr) !=
+				    ALLOCATION_IS_SUCCESSFULL) {
 					log_fatal("cannot send reset rendezvous");
 					exit(EXIT_FAILURE);
 				}
@@ -306,7 +307,7 @@ init_message:
 		msg->next = msg->data;
 		/*set the tail to the proper value*/
 		*(uint32_t *)(((uint64_t)msg + TU_HEADER_SIZE + msg->pay_len + msg->padding_and_tail) -
-			      sizeof(uint32_t)) = TU_RDMA_REGULAR_MSG;
+			      sizeof(uint32_t)) = receive_type;
 	} else {
 		msg->pay_len = 0;
 		msg->padding_and_tail = 0;
@@ -318,7 +319,6 @@ init_message:
 	msg->receive = receive_type;
 	msg->local_offset = (uint64_t)msg - (uint64_t)c_buf->memory_region;
 	msg->remote_offset = (uint64_t)msg - (uint64_t)c_buf->memory_region;
-
 
 	//log_info("\t Sending to remote offset %llu\n", msg->remote_offset);
 	msg->ack_arrived = ack_arrived;
@@ -359,8 +359,8 @@ msg_header *__allocate_rdma_message(connection_rdma *conn, int message_payload_s
 	case MULTI_PUT:
 	case TU_GET_QUERY:
 	case TU_GET_REPLY:
-	case TU_UPDATE:
-	case TU_UPDATE_REPLY:
+	case UPDATE_REQUEST:
+	case UPDATE_REPLY:
 	case TEST_REQUEST:
 	case TEST_REQUEST_FETCH_PAYLOAD:
 	case TEST_REPLY:
@@ -429,7 +429,7 @@ msg_header *__allocate_rdma_message(connection_rdma *conn, int message_payload_s
 	 **/
 
 	if (message_payload_size > 0) {
-	message_size = TU_HEADER_SIZE + message_payload_size + TU_TAIL_SIZE;
+		message_size = TU_HEADER_SIZE + message_payload_size + TU_TAIL_SIZE;
 		if (message_size % MESSAGE_SEGMENT_SIZE != 0) {
 			/*need to pad */
 			padding += (MESSAGE_SEGMENT_SIZE - (message_size % MESSAGE_SEGMENT_SIZE));
@@ -604,33 +604,61 @@ static int __send_rdma_message(connection_rdma *conn, msg_header *msg)
 	int i = 0;
 	while (conn->pending_sent_messages >= MAX_WR) {
 		__sync_fetch_and_add(&conn->sleeping_workers, 1);
-		DPRINT("Congestion in the write path throttling... %llu\n", (LLU)conn->pending_sent_messages);
+		log_warn("Congestion in the write path throttling... %llu\n", (LLU)conn->pending_sent_messages);
 		sem_wait(&conn->congestion_control);
 		__sync_fetch_and_sub(&conn->sleeping_workers, 1);
 		if (++i % 100000 == 0) {
-			DPRINT("Congestion in the write path throttling... %llu\n", (LLU)conn->pending_sent_messages);
+			log_warn("Congestion in the write path throttling... %llu\n", (LLU)conn->pending_sent_messages);
 		}
 	}
 
-	// FIXME Is the while loop needed at all?
 	size_t msg_len;
 	if (msg->pay_len) // FIXME This if shouldn't be necessary
 		msg_len = TU_HEADER_SIZE + msg->pay_len + msg->padding_and_tail;
 	else
 		msg_len = TU_HEADER_SIZE;
 
+	/* *
+	 * do we want to associate any context with the message aka let the completion thread perform any operation 
+	 * for us? For client PUT,GET,MULTI_GET,UPDATE,DELETE we don't
+	 * */
+	void *context;
+	switch (msg->type) {
+	/*for client*/
+	case PUT_REQUEST:
+	case TU_GET_QUERY:
+	case UPDATE_REQUEST:
+	case MULTI_GET_REQUEST:
+	case TEST_REQUEST:
+	case TEST_REQUEST_FETCH_PAYLOAD:
+		/*server does not care*/
+	case PUT_REPLY:
+	case TU_GET_REPLY:
+	case MULTI_GET_REPLY:
+	case UPDATE_REPLY:
+	case TEST_REPLY:
+	case TEST_REPLY_FETCH_PAYLOAD:
+		context = NULL;
+		break;
+	default:
+		/*rest I care*/
+		context = msg;
+		break;
+	}
+
 	int ret;
-	int tries = 0;
-	while (tries < 100) {
-		ret = rdma_post_write(conn->rdma_cm_id, msg, msg, msg_len,
-				      conn->rdma_memory_regions->local_memory_region, IBV_SEND_SIGNALED,
+
+	while (1) {
+		ret = rdma_post_write(conn->rdma_cm_id, context, msg, msg_len,
+				      conn->rdma_memory_regions->local_memory_region,
+				      IBV_SEND_SIGNALED,
 				      ((uint64_t)conn->peer_mr->addr + msg->remote_offset), conn->peer_mr->rkey);
 		if (!ret) {
 			break;
 		}
-		++tries;
-		if (++tries == 100) {
-			ERRPRINT("rdma_post_write: %s\n", strerror(errno));
+
+		if (conn->status == CONNECTION_ERROR) {
+			log_fatal("connection failed !: %s\n", strerror(errno));
 			raise(SIGINT);
 			exit(EXIT_FAILURE);
 		}
@@ -1266,7 +1294,7 @@ static void *socket_thread(void *args)
 		rdma_dereg_mr(send_mr);
 		rdma_dereg_mr(recv_mr);
 
-		conn->connected = 1;
+		conn->status = CONNECTION_OK;
 		conn->qp = conn->rdma_cm_id->qp;
 		conn->rendezvous = conn->rdma_memory_regions->remote_memory_buffer;
 		/*zerop all rdma memory*/
@@ -1312,13 +1340,8 @@ static inline int ipv6_addr_v4mapped(const struct in6_addr *a)
 void tu_rdma_init_connection(struct connection_rdma *conn)
 {
 	memset(conn, 0, sizeof(struct connection_rdma));
-
-	conn->server = 0;
-	conn->index = 0;
-
 	/*gesalous staff initialization*/
 	conn->idle_iterations = 0;
-	sem_init(&conn->sem_disconnect, 0, 0);
 	conn->FLUSH_SEGMENT_requests_sent = 0;
 	conn->FLUSH_SEGMENT_acks_received = 0;
 }
@@ -1444,7 +1467,7 @@ void crdma_init_client_connection_list_hosts(connection_rdma *conn, char **hosts
 		exit(EXIT_FAILURE);
 	}
 
-	conn->connected = 1;
+	conn->status = CONNECTION_OK;
 	/*zero all memory*/
 	memset(conn->rdma_memory_regions->local_memory_buffer, 0x00, conn->rdma_memory_regions->memory_region_length);
 	if (sem_init(&conn->congestion_control, 0, 0) != 0) {
@@ -1778,7 +1801,6 @@ void crdma_server_create_connection_inuse(struct connection_rdma *conn, struct c
 	/*gesalous, This is the path where it creates the useless memory queues*/
 	tu_rdma_init_connection(conn);
 	conn->type = type;
-	conn->server = 1;
 	conn->channel = channel;
 }
 
@@ -1871,7 +1893,7 @@ int assign_job_to_worker(struct channel_rdma *channel, struct connection_rdma *c
 	job->allocation_status = ALLOCATION_START;
 	switch (job->msg->type) {
 	case PUT_REQUEST:
-	case TU_UPDATE:
+	case UPDATE_REQUEST:
 		job->kreon_operation_status = APPEND_START;
 		break;
 	case TU_GET_QUERY:
@@ -1901,8 +1923,9 @@ int assign_job_to_worker(struct channel_rdma *channel, struct connection_rdma *c
 		job->kreon_operation_status = TEST_START;
 		break;
 	default:
-		DPRINT("FATAL unhandled type\n");
+		log_fatal("unhandled type");
 		assert(0);
+		exit(EXIT_FAILURE);
 	}
 
 	if (msg->type == FLUSH_SEGMENT_AND_RESET || msg->type == FLUSH_SEGMENT || msg->type == SPILL_INIT ||
@@ -1948,6 +1971,23 @@ int assign_job_to_worker(struct channel_rdma *channel, struct connection_rdma *c
 
 /************************************************************
  ***************** spinning thread helper functions ********/
+void _zero_rendezvous_locations_l(msg_header *msg, uint32_t length)
+{
+	void *start_memory;
+	void *end_memory;
+	assert(length % MESSAGE_SEGMENT_SIZE == 0);
+	start_memory = (void *)msg;
+	end_memory = start_memory + length;
+
+	while (start_memory < end_memory) {
+		((msg_header *)start_memory)->receive = 0;
+		//((msg_header *)start_memory)->reply = (void *)0xF40F2;
+		//((msg_header *)start_memory)->reply_length = 0;
+		*(uint32_t *)(start_memory + (MESSAGE_SEGMENT_SIZE - TU_TAIL_SIZE)) = 0;
+		start_memory = start_memory + MESSAGE_SEGMENT_SIZE;
+	}
+}
+
 void _zero_rendezvous_locations(msg_header *msg)
 {
 	void *start_memory;
@@ -2113,7 +2153,7 @@ static void *client_spinning_thread_kernel(void *args)
 	volatile uint32_t recv;
 
 	int spinning_thread_id = params->spinning_thread_id;
-	int i;
+	uint32_t i;
 	int all_requests_completed = 0;
 	sigemptyset(&sa.sa_mask);
 	sa.sa_flags = 0;
@@ -2134,7 +2174,7 @@ static void *client_spinning_thread_kernel(void *args)
 
 		while (node != NULL) {
 			conn = (connection_rdma *)node->data;
-			if (conn->connected != 1) {
+			if (conn->status != CONNECTION_OK) {
 				prev_node = node;
 				node = node->next;
 				continue;
@@ -2145,14 +2185,14 @@ static void *client_spinning_thread_kernel(void *args)
 				__sync_synchronize();
 				/*check send buffer first*/
 				for (i = 0; i < conn->send_circular_buf->bitmap_size; i++) {
-					if (conn->send_circular_buf->bitmap[i] != 0xFFFFFFFF) {
+					if (conn->send_circular_buf->bitmap[i] != (int)0xFFFFFFFF) {
 						//DPRINT("Ooops bitmap[0] = %x rendezvous at %llu\n",conn->send_circular_buf->bitmap[0], conn->rendezvous - conn->rdma_memory_regions->remote_memory_buffer);
 						goto check_done;
 					}
 				}
 				/*check receive now*/
 				for (i = 0; i < conn->recv_circular_buf->bitmap_size - 1; i++) {
-					if (conn->recv_circular_buf->bitmap[i] != 0xFFFFFFFF) {
+					if (conn->recv_circular_buf->bitmap[i] != (int)0xFFFFFFFF) {
 						goto check_done;
 					}
 				}
@@ -2169,7 +2209,7 @@ static void *client_spinning_thread_kernel(void *args)
 					// TODO insert code to switch from current peer_mr to next_peer_mr
 
 					msg_header *reset = _client_allocate_rdma_message(conn, 0, SERVER_I_AM_READY);
-					DPRINT("CLIENT: offset of I AM READY at %llu\n", (LLU)reset->local_offset);
+					log_warn("CLIENT: offset of I AM READY at %llu", (LLU)reset->local_offset);
 					reset->receive = SERVER_I_AM_READY;
 					// FIXME reset->data = new control location
 					int bitmap_size = conn->next_peer_mr->length / MESSAGE_SEGMENT_SIZE /
@@ -2179,7 +2219,7 @@ static void *client_spinning_thread_kernel(void *args)
 					conn->control_location = reset->data;
 					__send_rdma_message(conn, reset);
 
-					DPRINT("CLIENT: waiting for server ack!\n");
+					log_warn("CLIENT: waiting for server ack!");
 					conn->status = WAIT_FOR_SERVER_ACK;
 				}
 				//else{
@@ -2393,7 +2433,7 @@ static void *server_spinning_thread_kernel(void *args)
 		while (node != NULL) {
 			conn = (connection_rdma *)node->data;
 
-			if (conn->connected != 1)
+			if (conn->status != CONNECTION_OK)
 				goto iterate_next_element;
 
 			hdr = (msg_header *)conn->rendezvous;
@@ -2662,7 +2702,7 @@ static void *server_spinning_thread_kernel(void *args)
 
 void close_and_free_RDMA_connection(struct channel_rdma *channel, struct connection_rdma *conn)
 {
-	conn->connected = 0;
+	conn->status = CONNECTION_CLOSING;
 
 	mrpool_free_memory_region(&conn->rdma_memory_regions);
 
@@ -2674,8 +2714,6 @@ void close_and_free_RDMA_connection(struct channel_rdma *channel, struct connect
 	channel->nused--;
 	pthread_mutex_unlock(&channel->spin_list_conn_lock[conn->responsible_spinning_thread_id]);
 	conn->channel = NULL;
-	sem_post(&conn->sem_disconnect);
-
 	ibv_destroy_cq(conn->rdma_cm_id->qp->send_cq);
 	rdma_destroy_qp(conn->rdma_cm_id);
 	rdma_destroy_id(conn->rdma_cm_id);
@@ -2855,13 +2893,7 @@ void on_completion_server(struct ibv_wc *wc, struct connection_rdma *conn)
 			if (wc->wr_id != 0) {
 				msg = (msg_header *)wc->wr_id;
 				switch (msg->type) {
-				/*server to client messages*/
-				case PUT_REPLY:
-				case TU_UPDATE_REPLY:
-				case TU_GET_REPLY:
-				case MULTI_GET_REPLY:
-				case TEST_REPLY:
-				case TEST_REPLY_FETCH_PAYLOAD:
+					/*server to client messages*/
 				case SCAN_REQUEST:
 				case CLIENT_STOP_NOW:
 				case CLIENT_RECEIVED_READY:
@@ -2881,15 +2913,8 @@ void on_completion_server(struct ibv_wc *wc, struct connection_rdma *conn)
 				case FLUSH_SEGMENT_TEST:
 					free_rdma_local_message(conn);
 					break;
-				/*client to server RPCs*/
-				case PUT_REQUEST:
-				case MULTI_PUT:
-				case TU_GET_QUERY:
-				case TU_UPDATE:
-				case MULTI_GET_REQUEST:
+					/*client to server RPCs*/
 				case SCAN_REPLY:
-				case TEST_REQUEST:
-				case TEST_REQUEST_FETCH_PAYLOAD:
 				case SERVER_I_AM_READY:
 					break;
 				case I_AM_CLIENT:
@@ -2936,7 +2961,8 @@ void on_completion_server(struct ibv_wc *wc, struct connection_rdma *conn)
 			exit(EXIT_FAILURE);
 		}
 	} else { /*error handling*/
-		ERRPRINT("%s\n", ibv_wc_status_str(wc->status));
+		log_fatal("%s\n", ibv_wc_status_str(wc->status));
+		conn->status = CONNECTION_ERROR;
 		raise(SIGINT);
 		exit(KREON_FAILURE);
 	}

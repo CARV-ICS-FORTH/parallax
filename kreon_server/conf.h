@@ -3,9 +3,12 @@
 #include <semaphore.h>
 
 /*mvard added defines for return when function succeded or failed*/
-#define KREON_SUCCESS 1
-#define KREON_FAILURE 0
-#define KREON_KEY_NOT_FOUND 2
+typedef enum kreon_op_status {
+	KREON_SUCCESS = 1,
+	KREON_FAILURE,
+	KREON_KEY_NOT_FOUND,
+	KREON_VALUE_TOO_LARGE
+} kreon_op_status;
 
 /*gesalous, priorities and properties regarding the conections*/
 #define HIGH_PRIORITY 1203
@@ -13,7 +16,6 @@
 /*connection properties for memory sizes of the connections*/
 #define DEFAULT_MEMORY_SIZE_OPTION 0xFA
 #define CONTROL_CONNECTION_MEMORY_SIZE 1048576
-
 
 #define TUCANA_DEBUG 0
 #define MAX_MAILBOX 1
@@ -26,7 +28,6 @@
 
 #define MAX_ID_LENGTH 256
 #define MAX_KEY_LENGTH 64
-
 
 //TODO move properties to a configuration file
 #define RDMA_IP_FILTER "192.168.4."
@@ -62,8 +63,6 @@
 
 #define SIZEUINT32_T (sizeof(uint32_t))
 #define SIZEUINT32_T_2 (sizeof(uint32_t) << 1)
-
-
 
 //#define WORKER_THREADS_PER_SPINNING_THREAD 4
 #define TU_HEADER_SIZE (sizeof(struct msg_header))

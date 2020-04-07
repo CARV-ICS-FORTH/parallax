@@ -54,7 +54,7 @@ _Client_Regions *Allocate_Init_Client_Regions(void)
 	client_regions = (_Client_Regions *)malloc(sizeof(_Client_Regions));
 
 	if (client_regions == NULL) {
-		DPRINT("FATAL: allocate client regions failed -- memory problem\n");
+		log_fatal("allocate client regions failed -- memory problem\n");
 		exit(EXIT_FAILURE);
 	}
 

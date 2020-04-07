@@ -359,7 +359,7 @@ class kreonRClientDB : public YCSBDB {
 		ops_per_server[server] += 1;
 		total_length = key.length() + pos + 8;
 
-		mr_message = allocate_rdma_message(connection, total_length, TU_UPDATE);
+		mr_message = allocate_rdma_message(connection, total_length, PUT_REQUEST);
 		*(uint32_t *)mr_message->next = (uint32_t)key.length();
 		mr_message->next = (void *)((uint64_t)mr_message->next + sizeof(uint32_t)); // XXX TEST THIS
 		if (!push_buffer_in_msg_header(mr_message, (char *)key.c_str(), key.length())) {

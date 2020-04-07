@@ -21,9 +21,7 @@ file(
   ${CMAKE_SOURCE_DIR}/kreon_lib/scanner/*.c)
 
 # list(REMOVE_ITEM KREON_C_SOURCE_FILES
-# "${CMAKE_SOURCE_DIR}/kreon/btree/replica.c")
 list(APPEND KREON_C_SOURCE_FILES "${CMAKE_SOURCE_DIR}/utilities/spin_loop.c")
-list(APPEND KREON_C_SOURCE_FILES "${CMAKE_SOURCE_DIR}/utilities/min_max_heap.c")
 list(APPEND KREON_C_SOURCE_FILES "${CMAKE_SOURCE_DIR}/utilities/list.c")
 set_source_files_properties(
   KREON_C_SOURCE_FILES PROPERTIES COMPILE_FLAGS
@@ -48,10 +46,26 @@ add_library(
   ../utilities/min_max_heap.c
   ${LOG})
 
+add_library(
+  kreonr-shared SHARED
+  allocator/recovery.c
+  allocator/allocator.c
+  allocator/persistent_operations.c
+  btree/segment_allocator.c
+  btree/btree.c
+  btree/delete.c
+  btree/gc.c
+  scanner/stack.c
+  scanner/scanner.c
+  ../utilities/spin_loop.c
+  ../utilities/list.c
+  ${LOG})
+
 set_target_properties(kreonr PROPERTIES COMPILE_DEFINITIONS "KREONR")
 
 # Kreon with replication disabled
 add_library(kreon STATIC ${KREON_C_SOURCE_FILES} ${LOG})
+add_library(kreon-shared SHARED ${KREON_C_SOURCE_FILES} ${LOG})
 
 set_source_files_properties(allocator/spin_loop.c PROPERTIES COMPILE_FLAGS
                                                              "-O0")
@@ -67,4 +81,11 @@ add_executable(
   ../utilities/list.c
   ${LOG})
 
-install(TARGETS kreonr kreon mkfs.kreon)
+if(KREON_BUILD_CPACK)
+  install(
+    TARGETS kreonr-shared kreon-shared mkfs.kreon
+    LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+    RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
+  set_target_properties(kreonr-shared PROPERTIES OUTPUT_NAME kreonr)
+  set_target_properties(kreon-shared PROPERTIES OUTPUT_NAME kreon)
+endif()
