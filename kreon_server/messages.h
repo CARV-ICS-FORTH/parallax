@@ -12,15 +12,19 @@
 
 enum tucana_message_types {
 
-	PUT_REQUEST = 1, // PUT operation: client -> server
+	PUT_REQUEST = 1,
 	MULTI_PUT, // FIXME Remove this message type
 	PUT_REPLY,
-	UPDATE_REQUEST,
-	UPDATE_REPLY,
-	TU_GET_QUERY, // GET operation: client -> server
-	TU_GET_REPLY, // GET reply: server -> client
+	PUT_OFFT_REQUEST,
+	PUT_OFFT_REPLY,
+	TU_GET_QUERY,
+	TU_GET_REPLY,
 	MULTI_GET_REQUEST,
 	MULTI_GET_REPLY,
+	GET_OFFT_REQUEST,
+	GET_OFFT_REPLY,
+	DELETE_REQUEST,
+	DELETE_REPLY,
 	TU_FLUSH_VOLUME_QUERY, // Flush volume
 	TU_FLUSH_VOLUME_REPLY,
 	SCAN_REQUEST, // SCAN operation: client -> server
@@ -136,16 +140,24 @@ typedef struct msg_put_rep {
 } msg_put_rep;
 
 /*update related*/
-typedef struct msg_update_req {
+typedef struct msg_put_offt_req {
 	uint64_t offset;
-} msg_update_req;
+	char kv[];
+} msg_put_offt_req;
 
-typedef struct msg_update_rep {
-	volatile uint32_t status;
+typedef struct msg_put_offt_rep {
+	uint32_t status;
 	uint64_t new_value_size;
-} msg_update_rep;
+} msg_put_offt_rep;
 
+typedef struct msg_delete_req {
+	uint32_t key_size;
+	char key[];
+} msg_delete_req;
 
+typedef struct msg_delete_rep {
+	uint32_t status;
+} msg_delete_rep;
 
 typedef struct msg_get_req {
 	uint32_t key_size;
@@ -176,6 +188,21 @@ typedef struct msg_multi_get_rep {
 	uint32_t capacity;
 	char kv_buffer[];
 } msg_multi_get_rep;
+
+typedef struct msg_get_offt_req {
+	uint32_t offset;
+	uint32_t size;
+	uint32_t key_size;
+	char key_buf[];
+} msg_get_offt_req;
+
+typedef struct msg_get_offt_rep {
+	uint8_t key_found;
+	uint8_t offset_invalid;
+	uint32_t full_value_size;
+	uint32_t value_bytes_read;
+	char value[];
+} msg_get_offt_rep;
 
 typedef struct set_connection_property_req {
 	int desired_priority_level;
