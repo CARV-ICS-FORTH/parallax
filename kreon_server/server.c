@@ -1176,16 +1176,14 @@ void handle_task(void *__task)
 				    V->value_size;
 		if (new_size <= SEGMENT_SIZE - sizeof(segment_header)) {
 			value = __find_key(S_tu_region->db, put_offt_req->kv, SEARCH_DIRTY_TREE);
+
+			void *new_value =
+				malloc(SEGMENT_SIZE - sizeof(segment_header)); /*remove this later when test passes*/
+			memset(new_value, 0x00, SEGMENT_SIZE - sizeof(segment_header));
+			/*copy key*/
+			memcpy(new_value, put_offt_req->kv, sizeof(msg_put_key) + K->key_size);
+			/*old value, if it exists*/
 			if (value != NULL) {
-				void *new_value = malloc(SEGMENT_SIZE -
-							 sizeof(segment_header)); /*remove this later when test passes*/
-				memset(new_value, 0x00, SEGMENT_SIZE - sizeof(segment_header));
-				/*copy key*/
-				uint32_t kv_size =
-					sizeof(msg_put_key) + sizeof(msg_put_value) + K->key_size + *(uint32_t *)value;
-				/*old key*/
-				memcpy(new_value, put_offt_req->kv, sizeof(msg_put_key) + K->key_size);
-				/*old value*/
 				memcpy(new_value + sizeof(msg_put_key) + K->key_size, value,
 				       sizeof(msg_put_value) + *(uint32_t *)value);
 				/*update the value size field if needed*/
@@ -1195,18 +1193,21 @@ void handle_task(void *__task)
 				//log_info("New val size is %u offset %u client value %u old val %u kv_size %u",
 				//	 *(uint32_t *)(new_value + sizeof(msg_put_key) + K->key_size),
 				//	 put_offt_req->offset, V->value_size, *(uint32_t *)value, kv_size);
-				/*now the value patch*/
-				memcpy(new_value + sizeof(msg_put_key) + K->key_size + sizeof(msg_put_value) +
-					       put_offt_req->offset,
-				       V->value, V->value_size);
-				//log_info("new val key %u val size %u", *(uint32_t *)new_value,
-				//	 *(uint32_t *)(new_value + sizeof(msg_put_key) + K->key_size));
-				insert_kv_pair(S_tu_region, new_value, task->conn, &location, task,
-					       DO_NOT_WAIT_REPLICA_TO_COMMIT);
-				free(new_value);
-			} else
-				insert_kv_pair(S_tu_region, put_offt_req->kv, task->conn, &location, task,
-					       DO_NOT_WAIT_REPLICA_TO_COMMIT);
+			}else {
+					*(uint32_t *)(new_value + sizeof(msg_put_key) + K->key_size) =
+						put_offt_req->offset + V->value_size;
+			}
+
+			/*now the value patch*/
+			memcpy(new_value + sizeof(msg_put_key) + K->key_size + sizeof(msg_put_value) +
+				       put_offt_req->offset,
+			       V->value, V->value_size);
+			//log_info("new val key %u val size %u", *(uint32_t *)new_value,
+			//	 *(uint32_t *)(new_value + sizeof(msg_put_key) + K->key_size));
+
+			insert_kv_pair(S_tu_region, new_value, task->conn, &location, task,
+				       DO_NOT_WAIT_REPLICA_TO_COMMIT);
+			free(new_value);
 		}
 
 		task->reply_msg = (void *)((uint64_t)task->conn->rdma_memory_regions->local_memory_buffer +
