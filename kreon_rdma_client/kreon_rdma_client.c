@@ -95,7 +95,7 @@ krc_ret_code krc_init(char *zookeeper_ip, int zk_port)
 	return KRC_SUCCESS;
 }
 
-uint32_t krc_put_with_offset(uint32_t key_size, void *key, uint32_t offset, uint32_t val_size, void *value)
+krc_ret_code krc_put_with_offset(uint32_t key_size, void *key, uint32_t offset, uint32_t val_size, void *value)
 {
 	msg_header *req_header;
 	msg_put_offt_req *put_offt_req;
@@ -171,7 +171,7 @@ uint32_t krc_put_with_offset(uint32_t key_size, void *key, uint32_t offset, uint
 	return KRC_SUCCESS;
 }
 
-uint32_t krc_put(uint32_t key_size, void *key, uint32_t val_size, void *value)
+krc_ret_code krc_put(uint32_t key_size, void *key, uint32_t val_size, void *value)
 {
 	msg_header *req_header;
 	msg_put_key *put_key;
@@ -372,7 +372,7 @@ exit:
 	return val;
 }
 
-uint32_t krc_delete(uint32_t key_size, void *key)
+krc_ret_code krc_delete(uint32_t key_size, void *key)
 {
 	uint32_t error_code;
 	client_region *region = client_find_region(key, key_size);
