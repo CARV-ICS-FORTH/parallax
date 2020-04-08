@@ -281,12 +281,17 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 		index_key_prefix = &lnode->prefix[middle][0];
 		ret = prefix_compare(index_key_prefix, key_buf_prefix, PREFIX_SIZE);
 
-		if (ret < 0)
+		if (ret < 0) {
 			start_idx = middle + 1;
-		else if (ret > 0)
+			//if (start_idx > end_idx) {
+			//	middle++;
+			//	break;
+			//}
+		} else if (ret > 0) {
 			end_idx = middle - 1;
-
-		else {
+			//if (start_idx > end_idx)
+			//	break;
+		} else {
 			/*prefix is the same*/
 			addr = (void *)(MAPPED + lnode->pointer[middle]);
 			ret = _tucana_key_cmp(addr, start_key_buf, KV_FORMAT, KV_FORMAT);
@@ -308,7 +313,7 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 	}
 
 	/*further checks*/
-	if (middle <= 0) {
+	if (middle <= 0 && lnode->header.numberOfEntriesInNode > 1) {
 		element.node = node;
 		element.idx = 0;
 		element.leftmost = 1;
@@ -318,13 +323,14 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 		stack_push(&(level_sc->stack), element);
 		middle = 0;
 	} else if (middle >= (int64_t)lnode->header.numberOfEntriesInNode - 1) {
+		//log_info("rightmost");
+		middle = lnode->header.numberOfEntriesInNode - 1;
 		element.node = node;
 		element.idx = 0;
 		element.leftmost = 0;
 		element.rightmost = 1;
 		element.guard = 0;
 		stack_push(&(level_sc->stack), element);
-		//log_info("rightmost");
 		middle = lnode->header.numberOfEntriesInNode - 1;
 	} else {
 		//log_info("middle is %d", middle);
@@ -449,7 +455,7 @@ int32_t _get_next_KV(level_scanner *sc)
 				}
 			} else if (stack_top.leftmost) {
 				//log_debug("leftmost? %s", node_type(stack_top.node->type));
-				stack_top.leftmost = 0;	
+				stack_top.leftmost = 0;
 
 				if (stack_top.node->type == leafNode || stack_top.node->type == leafRootNode) {
 					//log_info("got a leftmost leaf advance");
@@ -461,7 +467,7 @@ int32_t _get_next_KV(level_scanner *sc)
 				} else if (stack_top.node->type == internalNode || stack_top.node->type == rootNode) {
 					//log_debug("Calculate and push type %s", node_type(stack_top.node->type));
 					/*special case applies only for the root*/
-					if(stack_top.node->numberOfEntriesInNode == 1)
+					if (stack_top.node->numberOfEntriesInNode == 1)
 						stack_top.rightmost = 1;
 					stack_top.idx = 0;
 					stack_push(&sc->stack, stack_top);

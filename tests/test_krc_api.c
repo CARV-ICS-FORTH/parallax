@@ -138,6 +138,7 @@ int main(int argc, char *argv[])
 	value *v = (value *)((uint64_t)k + sizeof(key) + k->key_size);
 	v->value_size = sizeof(uint32_t);
 
+	krc_put_with_offset(k->key_size, k->key_buf, 0, sizeof(uint32_t)*UPDATES, v->value_buf);
 	for (i = 0; i < UPDATES; i++) {
 		*(uint32_t *)(v->value_buf) = i;
 		krc_put_with_offset(k->key_size, k->key_buf, offset, v->value_size, v->value_buf);
