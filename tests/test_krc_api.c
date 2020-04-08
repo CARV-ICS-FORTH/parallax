@@ -162,7 +162,7 @@ int main(int argc, char *argv[])
 		exit(EXIT_FAILURE);
 	}
 
-	log_info("Put/get with offset successful, testing small scans....");
+	log_info("Put/get with offset successful expected %u got %u, testing small scans....", sum, sum_g);
 
 	for (i = BASE; i < (BASE + (NUM_KEYS - SCAN_SIZE)); i++) {
 		if (i % 10000 == 0)
@@ -286,7 +286,7 @@ int main(int argc, char *argv[])
 	log_info("Prefix key test successful");
 	krc_scan_close(sc);
 	log_info("Deleting half keys");
-	for (i = BASE; i < (BASE + NUM_KEYS) / 2; i++) {
+	for (i = BASE; i < BASE + (NUM_KEYS / 2); i++) {
 		strncpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
 		if (i % 100000 == 0)
 			log_info("deleted up to %llu th key", i);
@@ -299,25 +299,19 @@ int main(int argc, char *argv[])
 		}
 	}
 	log_info("Verifying delete outcome");
+	tuples = 0;
 	for (i = BASE; i < (BASE + NUM_KEYS); i++) {
-		strncpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
 		if (i % 100000 == 0)
 			log_info("looked up to %llu th key", i);
 
 		sprintf(k->key_buf + strlen(KEY_PREFIX), "%llu", (long long unsigned)i);
 		k->key_size = strlen(k->key_buf) + 1;
-		val = NULL;
-		val = krc_get(k->key_size, k->key_buf, 2 * 1024, &error_code);
-		if (i < (BASE + NUM_KEYS) / 2 && error_code == KRC_SUCCESS) {
-			log_fatal("key %s shouldn't be there previous deleted test failed!");
-			exit(EXIT_FAILURE);
-		}
-		if (i >= (BASE + NUM_KEYS) / 2 && error_code != KRC_SUCCESS) {
-			log_fatal("key %s should be there test failed!");
-			exit(EXIT_FAILURE);
-		}
-		if (val)
-			free(val);
+		if (krc_exists(k->key_size, k->key_buf))
+			++tuples;
+	}
+	if (tuples != NUM_KEYS / 2) {
+		log_fatal("Test failed found %u keys should find %u", tuples, NUM_KEYS / 2);
+		exit(EXIT_FAILURE);
 	}
 	log_info("Delete test success! :-)");
 	return 1;

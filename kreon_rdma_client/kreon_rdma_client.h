@@ -1,6 +1,7 @@
 #pragma once
 #include <stdint.h>
-#define GET_OFFT_DEFAULT_SIZE 2048
+#include <limits.h>
+#define KRC_GET_OFFT_DEFAULT_SIZE 2048
 typedef enum krc_ret_code {
 	KRC_SUCCESS = 0,
 	KRC_FAILURE,
@@ -9,6 +10,7 @@ typedef enum krc_ret_code {
 	KRC_KEY_NOT_FOUND,
 	KRC_VALUE_TOO_LARGE
 } krc_ret_code;
+
 
 typedef enum krc_scan_state {
 	KRC_UNITIALIZED = 2,
@@ -69,6 +71,7 @@ uint32_t krc_put(uint32_t key_size, void *key, uint32_t val_size, void *value);
 uint32_t krc_put_with_offset(uint32_t key_size, void *key, uint32_t offset, uint32_t val_size, void *value);
 krc_value *krc_get(uint32_t key_size, void *key, uint32_t reply_length, uint32_t *error_code);
 krc_value * krc_get_with_offset(uint32_t key_size, void *key, uint32_t offset, uint32_t size, uint32_t *error_code);
+uint8_t krc_exists(uint32_t key_size,void*key);
 uint32_t krc_delete(uint32_t key_size, void *key);
 
 /*scanner API*/

@@ -100,7 +100,7 @@ void snapshot(volume_descriptor *volume_desc)
 		/*all levels locked*/
 		dirty += db_desc->dirty;
 		/*update the catalogue if db is dirty*/
-		log_info("dirty is %u\n", db_desc->dirty);
+
 		if (db_desc->dirty > 0) {
 			db_desc->dirty = 0x00;
 			/*cow check*/
@@ -108,10 +108,10 @@ void snapshot(volume_descriptor *volume_desc)
 				(pr_db_group *)(MAPPED +
 						(uint64_t)volume_desc->mem_catalogue->db_group_index[db_desc->group_id]);
 
-			log_info("group epoch %llu  dev_catalogue %llu", (LLU)db_group->epoch,
-				 volume_desc->dev_catalogue->epoch);
+			//log_info("group epoch %llu  dev_catalogue %llu", (LLU)db_group->epoch,
+				// volume_desc->dev_catalogue->epoch);
 			if (db_group->epoch <= volume_desc->dev_catalogue->epoch) {
-				log_info("cow for db_group %llu", (LLU)db_group);
+				//log_info("cow for db_group %llu", (LLU)db_group);
 				/*do cow*/
 				//superindex_db_group * new_group = (superindex_db_group *)allocate(volume_desc,DEVICE_BLOCK_SIZE,-1,GROUP_COW);
 				pr_db_group *new_group =
@@ -126,7 +126,7 @@ void snapshot(volume_descriptor *volume_desc)
 			}
 
 			db_entry = &(db_group->db_entries[db_desc->group_index]);
-			log_info("pr db entry name %s db name %s", db_entry->db_name, db_desc->db_name);
+			//log_info("pr db entry name %s db name %s", db_entry->db_name, db_desc->db_name);
 
 			for (i = 0; i < MAX_LEVELS; i++) {
 				for (j = 0; j < NUM_TREES_PER_LEVEL; j++) {

@@ -1901,6 +1901,7 @@ int assign_job_to_worker(struct channel_rdma *channel, struct connection_rdma *c
 	switch (job->msg->type) {
 	case PUT_REQUEST:
 	case PUT_OFFT_REQUEST:
+	case DELETE_REQUEST:
 		job->kreon_operation_status = APPEND_START;
 		break;
 	case TU_GET_QUERY:

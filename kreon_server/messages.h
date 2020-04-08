@@ -121,7 +121,7 @@ typedef struct msg_header {
 #endif
 	void *data; /*Pointer to the first element of the Payload*/
 	void *next; /*Pointer to the "current" element of the payload. Initially equal to data*/
-	volatile uint32_t receive;
+	uint32_t receive;
 } msg_header;
 
 /*put related*/

@@ -160,7 +160,7 @@ uint32_t krc_put_with_offset(uint32_t key_size, void *key, uint32_t offset, uint
 				      TU_TAIL_SIZE);
 	wait_for_value(tail, TU_RDMA_REGULAR_MSG);
 
-	put_offt_rep = (msg_put_rep *)((uint64_t)rep_header + sizeof(msg_header));
+	put_offt_rep = (msg_put_offt_rep *)((uint64_t)rep_header + sizeof(msg_header));
 	/*check ret code*/
 	if (put_offt_rep->status != KREON_SUCCESS) {
 		log_fatal("put operation failed for key %s with status %u", key, put_offt_rep->status);
@@ -253,8 +253,10 @@ krc_value *krc_get_with_offset(uint32_t key_size, void *key, uint32_t offset, ui
 	get_offt_req->key_size = key_size;
 	memcpy(get_offt_req->key_buf, key, key_size);
 	/*the reply part*/
-	if (size == 0)
-		rep_header = allocate_rdma_message(conn, sizeof(msg_get_req) + GET_OFFT_DEFAULT_SIZE, GET_OFFT_REPLY);
+	if (size == UINT_MAX)
+		rep_header = allocate_rdma_message(conn, sizeof(msg_get_req) + KRC_GET_OFFT_DEFAULT_SIZE, GET_OFFT_REPLY);
+	else if (size == 0)
+		rep_header = allocate_rdma_message(conn, sizeof(msg_get_req), GET_OFFT_REPLY);
 	else
 		rep_header = allocate_rdma_message(conn, sizeof(msg_get_req) + size, GET_OFFT_REPLY);
 
@@ -281,18 +283,37 @@ krc_value *krc_get_with_offset(uint32_t key_size, void *key, uint32_t offset, ui
 	msg_get_offt_rep *get_offt_rep = (msg_get_offt_rep *)((uint64_t)rep_header + sizeof(msg_header));
 
 	if (!get_offt_rep->key_found) {
-		log_warn("Key %s not found!", key);
+		//log_warn("Key %s not found!", key);
 		*error_code = KRC_KEY_NOT_FOUND;
 		goto exit;
 	}
-	val = (krc_value *)malloc(sizeof(krc_value) + get_offt_rep->value_bytes_read);
-	val->val_size = get_offt_rep->value_bytes_read;
-	memcpy(val->val_buf, get_offt_rep->value, val->val_size);
+
+	if (size > 0) {
+		val = (krc_value *)malloc(sizeof(krc_value) + get_offt_rep->value_bytes_read);
+		val->val_size = get_offt_rep->value_bytes_read;
+		memcpy(val->val_buf, get_offt_rep->value, val->val_size);
+	}
 	*error_code = KRC_SUCCESS;
 exit:
 	_zero_rendezvous_locations_l(rep_header, req_header->reply_length);
 	client_free_rpc_pair(conn, rep_header);
 	return val;
+}
+
+
+uint8_t krc_exists(uint32_t key_size, void *key)
+{
+	uint32_t error_code;
+	krc_get_with_offset(key_size, key, 0, 0, &error_code);
+	switch (error_code) {
+	case KRC_SUCCESS:
+		return 1;
+	case KRC_KEY_NOT_FOUND:
+		return 0;
+	default:
+		log_warn("unknown code");
+		return 0;
+	}
 }
 
 krc_value *krc_get(uint32_t key_size, void *key, uint32_t reply_length, uint32_t *error_code)

@@ -2080,7 +2080,7 @@ int insert_KV_at_leaf(bt_insert_req *ins_req, node_header *leaf)
 	}
 
 	if (__update_leaf_index(ins_req, (leaf_node *)leaf, key_addr) != 0) {
-		leaf->numberOfEntriesInNode++;
+		++leaf->numberOfEntriesInNode;
 		__sync_fetch_and_add(&(ins_req->handle->db_desc->levels[level_id].total_keys[active_tree]), 1);
 		ret = 1;
 	} else {
