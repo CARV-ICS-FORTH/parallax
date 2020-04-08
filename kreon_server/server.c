@@ -1,12 +1,14 @@
 /**
-*  Tucana server
+*  kreon server
  * Created by Pilar Gonzalez-Ferez on 28/07/16.
+ * Edited by Giorgos Saloustros <gesalous@ics.forth.gr>, Michalis Vardoulakis <mvard@ics.forth.gr>
  * Copyright (c) 2016 Pilar Gonzalez-Ferez <pilar@ics.forth.gr>.
  **/
 
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
 #endif
+#include <limits.h>
 #include <stdio.h>
 #include <pthread.h>
 #include <semaphore.h>
@@ -1169,7 +1171,7 @@ void handle_task(void *__task)
 		}
 		task->region = (void *)S_tu_region;
 		/*inside kreon now*/
-		log_info("offset %llu key %s", put_offt_req->offset, K->key);
+		//log_info("offset %llu key %s", put_offt_req->offset, K->key);
 		uint32_t new_size = put_offt_req->offset + sizeof(msg_put_key) + K->key_size + sizeof(msg_put_value) +
 				    V->value_size;
 		if (new_size <= SEGMENT_SIZE - sizeof(segment_header)) {
@@ -1324,7 +1326,29 @@ void handle_task(void *__task)
 		}
 		task->reply_msg = (void *)((uint64_t)task->conn->rdma_memory_regions->local_memory_buffer +
 					   (uint64_t)task->msg->reply);
+
+		/*piggyback info for use with the client*/
+		task->reply_msg->pay_len = sizeof(msg_delete_rep);
+
+		actual_reply_size = sizeof(msg_header) + sizeof(msg_delete_rep) + TU_TAIL_SIZE;
+		padding = MESSAGE_SEGMENT_SIZE - (actual_reply_size % MESSAGE_SEGMENT_SIZE);
+		/*set tail to the proper value*/
+		*(uint32_t *)((uint64_t)task->reply_msg + actual_reply_size + (padding - TU_TAIL_SIZE)) =
+			TU_RDMA_REGULAR_MSG;
+		task->reply_msg->padding_and_tail = padding + TU_TAIL_SIZE;
+		task->reply_msg->data = (void *)((uint64_t)task->reply_msg + sizeof(msg_header));
+		task->reply_msg->next = task->reply_msg->data;
+
+		task->reply_msg->type = DELETE_REPLY;
+
+		task->reply_msg->ack_arrived = KR_REP_PENDING;
+		task->reply_msg->receive = TU_RDMA_REGULAR_MSG;
+		task->reply_msg->local_offset = (uint64_t)task->msg->reply;
+		task->reply_msg->remote_offset = (uint64_t)task->msg->reply;
+		task->reply_msg->callback_function = NULL;
 		msg_delete_rep *del_rep = (msg_delete_rep *)((uint64_t)task->reply_msg + sizeof(msg_header));
+		task->reply_msg->request_message_local_addr = task->msg->request_message_local_addr;
+		task->overall_status = TASK_COMPLETED;
 
 		if (delete_key(S_tu_region->db, del_req->key, del_req->key_size) == SUCCESS)
 			del_rep->status = KREON_SUCCESS;
@@ -1410,13 +1434,14 @@ void handle_task(void *__task)
 		get_offt_rep->key_found = 1;
 		uint32_t value_bytes_read = 0;
 		if (value == NULL) {
-			log_warn("key not found key %s : length %u region min_key %s max key %s\n",
-				 get_offt_req->key_buf + sizeof(uint32_t), key_length,
-				 S_tu_region->ID_region.minimum_range + sizeof(int),
-				 S_tu_region->ID_region.maximum_range + sizeof(int));
+			//log_warn("key not found key %s : length %u region min_key %s max key %s\n",
+			//	 get_offt_req->key_buf + sizeof(uint32_t), key_length,
+			//	 S_tu_region->ID_region.minimum_range + sizeof(int),
+			//	 S_tu_region->ID_region.maximum_range + sizeof(int));
 			get_offt_rep->key_found = 0;
 			get_offt_rep->full_value_size = 0;
 			get_offt_rep->value_bytes_read = 0;
+
 		} else if (get_offt_req->offset >= *(uint32_t *)value) {
 			log_warn("offset larger than value size offset %u value %u", get_offt_req->offset,
 				 *(uint32_t *)value);
@@ -1424,12 +1449,12 @@ void handle_task(void *__task)
 		} else {
 			/*everything ok reply now, calculate bytes to read*/
 
-			if (get_offt_req->size > 0) {
+			if (get_offt_req->size > 0 && get_offt_req->size != UINT_MAX) {
 				if (*(uint32_t *)value >= get_offt_req->offset + get_offt_req->size)
 					value_bytes_read = get_offt_req->size;
 				else
 					value_bytes_read = *(uint32_t *)value - get_offt_req->offset;
-			} else {
+			} else if (get_offt_req->size == UINT_MAX) {
 				value_bytes_read = *(uint32_t *)value - get_offt_req->offset;
 				if (value_bytes_read >
 				    task->msg->reply_length -
@@ -1437,7 +1462,10 @@ void handle_task(void *__task)
 					value_bytes_read =
 						(sizeof(msg_header) + sizeof(msg_get_offt_rep) + TU_TAIL_SIZE);
 				}
-			}
+
+			} else
+				//it is an exists query
+				value_bytes_read = 0;
 
 			actual_reply_size = sizeof(msg_header) + sizeof(msg_get_rep) + value_bytes_read + TU_TAIL_SIZE;
 
