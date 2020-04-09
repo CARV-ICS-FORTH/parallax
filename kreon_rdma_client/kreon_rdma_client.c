@@ -11,6 +11,7 @@
 #include "../build/external-deps/log/src/log.h"
 
 static char *neg_infinity = "00000000";
+static char *pos_infinity = "+oo";
 
 ZooLogLevel logLevel = ZOO_LOG_LEVEL_INFO;
 
@@ -22,6 +23,7 @@ static int64_t krc_compare_keys(krc_key *key1, krc_key *key2)
 {
 	int64_t ret;
 	uint32_t size;
+
 	if (key1->key_size > key2->key_size)
 		size = key2->key_size;
 	else
@@ -254,7 +256,8 @@ krc_value *krc_get_with_offset(uint32_t key_size, void *key, uint32_t offset, ui
 	memcpy(get_offt_req->key_buf, key, key_size);
 	/*the reply part*/
 	if (size == UINT_MAX)
-		rep_header = allocate_rdma_message(conn, sizeof(msg_get_req) + KRC_GET_OFFT_DEFAULT_SIZE, GET_OFFT_REPLY);
+		rep_header =
+			allocate_rdma_message(conn, sizeof(msg_get_req) + KRC_GET_OFFT_DEFAULT_SIZE, GET_OFFT_REPLY);
 	else if (size == 0)
 		rep_header = allocate_rdma_message(conn, sizeof(msg_get_req), GET_OFFT_REPLY);
 	else
@@ -299,7 +302,6 @@ exit:
 	client_free_rpc_pair(conn, rep_header);
 	return val;
 }
-
 
 uint8_t krc_exists(uint32_t key_size, void *key)
 {
@@ -659,11 +661,17 @@ void krc_scan_set_start(krc_scanner *sc, uint32_t start_key_size, void *start_ke
 	sc->start_key = (krc_key *)malloc(sizeof(krc_key) + start_key_size);
 	sc->start_key->key_size = start_key_size;
 	memcpy(sc->start_key->key_buf, start_key, start_key_size);
+	//log_info("start key set to %s", sc->start_key->key_buf);
 	return;
 }
 
 void krc_scan_set_stop(krc_scanner *sc, uint32_t stop_key_size, void *stop_key, krc_seek_mode seek_mode)
 {
+	if (stop_key_size >= 3 && memcmp(stop_key, pos_infinity, stop_key_size) == 0) {
+		sc->stop_infinite = 1;
+		return;
+	}
+
 	if (!sc->stop_infinite) {
 		log_warn("Nothing to do already set stop key for this scanner");
 		return;
