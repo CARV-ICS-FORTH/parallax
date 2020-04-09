@@ -9,7 +9,12 @@
 #include "../kreon_server/globals.h"
 #include "../kreon_server/create_regions_utils.h"
 
-#define NUM_KEYS 1000000
+#define PREFIX_TEST_KEYS 300
+#define PREFIX_1 "userakiaslala"
+#define PREFIX_2 "userakiaslalb"
+#define PREFIX_3 "userakiaslalc"
+#define infinity "+oo"
+#define NUM_KEYS 1000 //1000000
 #define BASE 1000000
 #define NUM_REGIONS 16
 #define KEY_PREFIX "userakias"
@@ -138,7 +143,7 @@ int main(int argc, char *argv[])
 	value *v = (value *)((uint64_t)k + sizeof(key) + k->key_size);
 	v->value_size = sizeof(uint32_t);
 
-	krc_put_with_offset(k->key_size, k->key_buf, 0, sizeof(uint32_t)*UPDATES, v->value_buf);
+	krc_put_with_offset(k->key_size, k->key_buf, 0, sizeof(uint32_t) * UPDATES, v->value_buf);
 	for (i = 0; i < UPDATES; i++) {
 		*(uint32_t *)(v->value_buf) = i;
 		krc_put_with_offset(k->key_size, k->key_buf, offset, v->value_size, v->value_buf);
@@ -315,5 +320,79 @@ int main(int argc, char *argv[])
 		exit(EXIT_FAILURE);
 	}
 	log_info("Delete test success! :-)");
+	log_info("Testing prefix match scans");
+	log_info("loading keys %u keys with prefix %s", PREFIX_TEST_KEYS, PREFIX_1);
+	strncpy(k->key_buf, PREFIX_1, strlen(PREFIX_1));
+	for (i = 0; i < PREFIX_TEST_KEYS; i++) {
+		sprintf(k->key_buf + strlen(PREFIX_1), "%llu", (long long unsigned)i);
+		k->key_size = strlen(k->key_buf) + 1;
+		value *v = (value *)((uint64_t)k + sizeof(key) + k->key_size);
+		v->value_size = KV_SIZE - ((2 * sizeof(key)) + k->key_size);
+		memset(v->value_buf, 0xDD, v->value_size);
+		krc_put(k->key_size, k->key_buf, v->value_size, v->value_buf);
+	}
+	log_info("Done loading keys %u keys with prefix %s", PREFIX_TEST_KEYS, PREFIX_1);
+	log_info("loading keys %u keys with prefix %s", PREFIX_TEST_KEYS, PREFIX_2);
+	strncpy(k->key_buf, PREFIX_2, strlen(PREFIX_2));
+	for (i = 0; i < PREFIX_TEST_KEYS; i++) {
+		sprintf(k->key_buf + strlen(PREFIX_2), "%llu", (long long unsigned)i);
+		k->key_size = strlen(k->key_buf) + 1;
+		value *v = (value *)((uint64_t)k + sizeof(key) + k->key_size);
+		v->value_size = KV_SIZE - ((2 * sizeof(key)) + k->key_size);
+		memset(v->value_buf, 0xDD, v->value_size);
+		krc_put(k->key_size, k->key_buf, v->value_size, v->value_buf);
+	}
+	log_info("Done loading keys %u keys with prefix %s", PREFIX_TEST_KEYS, PREFIX_2);
+	log_info("loading keys %u keys with prefix %s", PREFIX_TEST_KEYS, PREFIX_3);
+	strncpy(k->key_buf, PREFIX_3, strlen(PREFIX_3));
+	for (i = 0; i < PREFIX_TEST_KEYS; i++) {
+		sprintf(k->key_buf + strlen(PREFIX_1), "%llu", (long long unsigned)i);
+		k->key_size = strlen(k->key_buf) + 1;
+		value *v = (value *)((uint64_t)k + sizeof(key) + k->key_size);
+		v->value_size = KV_SIZE - ((2 * sizeof(key)) + k->key_size);
+		memset(v->value_buf, 0xDD, v->value_size);
+		krc_put(k->key_size, k->key_buf, v->value_size, v->value_buf);
+	}
+	log_info("Done loading keys %u keys with prefix %s", PREFIX_TEST_KEYS, PREFIX_3);
+	char *prefix_start;
+	char *prefix_stop;
+
+	for (j = 0; j < 3; j++) {
+		switch (j) {
+		case 0:
+			prefix_start = PREFIX_1;
+			prefix_stop = PREFIX_2;
+			break;
+		case 1:
+			prefix_start = PREFIX_2;
+			prefix_stop = PREFIX_3;
+			break;
+		case 2:
+			prefix_start = PREFIX_3;
+			prefix_stop = infinity;
+			break;
+		}
+		sc = krc_scan_init(PREFETCH_ENTRIES, PREFETCH_MEM_SIZE);
+		strcpy(k->key_buf, prefix_start);
+		k->key_size = strlen(k->key_buf) + 1;
+		krc_scan_set_start(sc, k->key_size, k->key_buf, KRC_GREATER_OR_EQUAL);
+		strcpy(k->key_buf, prefix_stop);
+		k->key_size = strlen(k->key_buf) + 1;
+		krc_scan_set_stop(sc, k->key_size, k->key_buf, KRC_GREATER_OR_EQUAL);
+		krc_scan_get_next(sc);
+		tuples = 0;
+		while (krc_scan_is_valid(sc)) {
+			//log_info("Got key %s", sc->curr_key->key_buf);
+			krc_scan_get_next(sc);
+			++tuples;
+		}
+		if (tuples != PREFIX_TEST_KEYS) {
+			log_fatal("Test failed got %u expected %u", tuples, PREFIX_TEST_KEYS);
+			exit(EXIT_FAILURE);
+		}
+		log_info("Ok for start %s stop %s", prefix_start, prefix_stop);
+	}
+	log_info("prefix test scans successfull");
+	krc_scan_close(sc);
 	return 1;
 }
