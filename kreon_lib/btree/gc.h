@@ -1,7 +1,7 @@
 #pragma once
 #include "btree.h"
 #include <assert.h>
-#include "../../build/external-deps/log/src/log.h"
+#include <log.h>
 
 typedef struct log_segment {
 	segment_header metadata;

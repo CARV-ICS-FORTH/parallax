@@ -28,7 +28,7 @@
 #include "../btree/stats.h"
 #include "../btree/assertions.h"
 #include "../btree/conf.h"
-#include "../../build/external-deps/log/src/log.h"
+#include <log.h>
 
 #define PREFIX_STATISTICS_NO
 #define MIN(x, y) ((x > y) ? (y) : (x))

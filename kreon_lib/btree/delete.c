@@ -10,7 +10,7 @@
 #include <sys/syscall.h>
 
 #include "../scanner/scanner.h"
-#include "../../build/external-deps/log/src/log.h"
+#include <log.h>
 #include "stats.h"
 #include "assertions.h"
 #include "conf.h"

@@ -5,7 +5,7 @@
 #include "allocator.h"
 #include "../btree/btree.h"
 #include "dmap-ioctl.h"
-#include "../../build/external-deps/log/src/log.h"
+#include <log.h>
 
 void recovery_worker(void *args)
 {

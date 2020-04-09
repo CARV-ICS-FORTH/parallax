@@ -9,7 +9,7 @@
 #include "server_regions.h"
 #include "../kreon_lib/btree/btree.h"
 #include "../utilities/macros.h"
-#include "../build/external-deps/log/src/log.h"
+#include <log.h>
 
 static inline char _DB_CLOSE_NOTIFY(_tucana_region_S *region)
 {
@@ -361,7 +361,7 @@ void Server_Assign_StorageDevice_Region(_tucana_region_S *S_tu_region, const cha
 }
 
 /* Server_Set_New_StorageDevice_Region
- * The region has been assigned to the server, therefore, 
+ * The region has been assigned to the server, therefore,
  * there is no storage device assigned to the region.
  * We have to lookup for a device with enough space, and assign the space in
  * the storage device and its size.
@@ -868,7 +868,7 @@ _tucana_region_S *Server_Get_Region_ByID(const unsigned int ID)
 
 /*
  * Server_Insert_Tucana_Region_Tree
- * Function to insert a new region on the rb_tree. 
+ * Function to insert a new region on the rb_tree.
  * This rbtree is used for ordering the regions. This will make easy to look for a region of a key
  */
 void Server_Insert_Tucana_Region_Tree(_tucana_region_S *S_tu_region)
@@ -885,7 +885,7 @@ void Server_Insert_Tucana_Region_Tree(_tucana_region_S *S_tu_region)
 
 /*
  * Server_Delete_Tucana_Region_Tree
- * Function to delete a region on the rb_tree. 
+ * Function to delete a region on the rb_tree.
  * Maybe the range of the region has changed, and we have to insert the region again
  * Maybe the region has been deleted.
  */
@@ -996,4 +996,3 @@ void Server_Waiting_DBs_are_Open(_RegionsSe *aux_regions_S)
 	} while (n_open_dbs != open_regions_num);
 	printf("[%s:%s:%d] DB(s) are open\n", __FILE__, __func__, __LINE__);
 }
-

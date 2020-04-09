@@ -4,7 +4,7 @@
 #include "globals.h"
 #include "messages.h"
 #include "conf.h"
-#include "../build/external-deps/log/src/log.h"
+#include <log.h>
 void client_get_regions_num(_Client_Regions *client_regions);
 
 /*
@@ -153,7 +153,7 @@ void client_get_regions(_Client_Regions *client_regions)
  * client_aexist_regions_watcher
  * client_aexist_regions
  * gesalous: unsused
- 
+
 void client_aexist_regions_watcher (zhandle_t *zh, int type, int state, const char *path, void *watcherCtx)
 {
 	_Client_Regions *client_regions;
@@ -170,14 +170,14 @@ void client_aexist_regions_watcher (zhandle_t *zh, int type, int state, const ch
 	else{
 		LOG_DEBUG(("Watched event: ", type2string(type)));
 	}
-	client_aexist_regions( client_regions ); 
+	client_aexist_regions( client_regions );
 }
 void client_aexist_regions_completion(int rc, const struct Stat *stat, const void *data)
 {
 	_Client_Regions * client_regions;
 	client_regions = (_Client_Regions *)data;
 
-	switch (rc) 
+	switch (rc)
 	{
 		case ZCONNECTIONLOSS:
 		case ZOPERATIONTIMEOUT:
@@ -562,7 +562,7 @@ void client_set_check_alive_server_of_region_completion(int rc, const struct Sta
 /*
  * client_get_IP_head_region_completion
  * client_get_IP_head_region_children
- * client_get_IP_head_region_watcher 
+ * client_get_IP_head_region_watcher
  * client_get_IP_head_region
  */
 
@@ -601,7 +601,6 @@ void client_get_IP_head_region_watcher(zhandle_t *zh, int type, int state, const
 	client_region *cli_tu_region;
 	cli_tu_region = (client_region *)watcherCtx;
 
-
 	if ((type == ZOO_CHANGED_EVENT) || (type == ZOO_CHILD_EVENT) || (type == ZOO_DELETED_EVENT) ||
 	    (type == ZOO_SESSION_EVENT)) {
 		log_info(("client_get_IP_head_region watched event: %s", type2string(type)));
@@ -613,7 +612,7 @@ void client_get_IP_head_region_watcher(zhandle_t *zh, int type, int state, const
 
 /*
  * Function to get the IPs of the head of a region already created.
- * It only gets the name of the IPS, since it consults the children 
+ * It only gets the name of the IPS, since it consults the children
  * nodes of /server/hostname/nics/
  */
 void client_get_IP_head_region(client_region *cli_tu_region)
@@ -652,7 +651,7 @@ void client_get_IP_head_region(client_region *cli_tu_region)
 
 /*
  * Function to check the regions already created.
- * It only gets the name of the regions, since it consults the children 
+ * It only gets the name of the regions, since it consults the children
  * nodes of /servers
  */
 void client_get_servers(_Client_Regions *client_regions)
@@ -704,7 +703,7 @@ void client_aexist_servers_watcher(zhandle_t *zh, int type, int state, const cha
 		fflush(stdout);
 		client_get_servers(client_regions);
 		return;
-	} 
+	}
 	client_aexist_servers(client_regions);
 }
 void client_aexist_servers_completion(int rc, const struct Stat *stat, const void *data)
@@ -736,18 +735,18 @@ void client_aexist_servers(_Client_Regions *client_regions)
 /*
  * client_get_IP_server_completion
  * client_get_IP_server_children
- * client_get_IP_server_watcher 
+ * client_get_IP_server_watcher
  * client_get_IP_server
  */
 
 /*
  * Completion function invoked when the call to get the IP of a server
- void client_get_IP_server_completion ( int rc, const struct String_vector *strings, const void *data )  
+ void client_get_IP_server_completion ( int rc, const struct String_vector *strings, const void *data )
 {
 	_cli_tu_network_data *net_data;
 	net_data = (_cli_tu_network_data *)data ;
 
-	switch (rc) 
+	switch (rc)
 	{
 		case ZCONNECTIONLOSS:
 		case ZOPERATIONTIMEOUT:
@@ -782,7 +781,6 @@ void client_get_IP_server_watcher(zhandle_t *zh, int type, int state, const char
 	_cli_tu_network_data *net_data;
 	net_data = (_cli_tu_network_data *)watcherCtx;
 
-
 	if ((type == ZOO_CHANGED_EVENT) || (type == ZOO_CHILD_EVENT) || (type == ZOO_DELETED_EVENT) ||
 	    (type == ZOO_SESSION_EVENT)) {
 		log_info(("client_get_IP_server watched event: %s", type2string(type)));
@@ -794,7 +792,7 @@ void client_get_IP_server_watcher(zhandle_t *zh, int type, int state, const char
 
 /*
  * Function to get the IPs of the head of a region already created.
- * It only gets the name of the IPS, since it consults the children 
+ * It only gets the name of the IPS, since it consults the children
  * nodes of /server/hostname/nics/
  */
 void client_get_IP_server(_cli_tu_network_data *net_data)
@@ -882,7 +880,7 @@ void client_get_root_watcher(zhandle_t *zh, int type, int state, const char *pat
 
 /*
  * Function to check the regions already created.
- * It only gets the name of the regions, since it consults the children 
+ * It only gets the name of the regions, since it consults the children
  * nodes of /
  */
 void client_get_root(_Client_Regions *client_regions)
@@ -893,4 +891,3 @@ void client_get_root(_Client_Regions *client_regions)
 	/*zoo_awget_children( client_regions->zh,"/",client_get_root_watcher,(void *) client_regions,client_get_root_completion,(void *)client_regions);*/
 	zoo_awget_children(client_regions->zh, "/", NULL, NULL, client_get_root_completion, (void *)client_regions);
 }
-

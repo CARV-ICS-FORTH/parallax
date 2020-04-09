@@ -3,7 +3,7 @@
 #include <alloca.h>
 #include <string.h>
 #include <stdlib.h>
-#include "../build/external-deps/log/src/log.h"
+#include <log.h>
 #include "../kreon_lib/btree/btree.h"
 #include "../kreon_lib/scanner/scanner.h"
 #define TOTAL_KEYS 1000000

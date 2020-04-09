@@ -23,7 +23,7 @@
 #include "allocator.h"
 #include "../btree/conf.h"
 #include "../btree/segment_allocator.h"
-#include "../../build/external-deps/log/src/log.h"
+#include <log.h>
 
 #define _FILE_OFFSET_BITS 64
 //#define USE_MLOCK
@@ -722,7 +722,7 @@ void *allocate(void *_volume_desc, uint64_t num_bytes, int unused, char allocati
 				printf("Shifting bits %d\n", shift_bits);
 #endif
 			}
-				/*did we find size or WORD_SIZE bits?*/
+			/*did we find size or WORD_SIZE bits?*/
 #ifdef DEBUG_ALLOCATOR
 			printf("#### round[%d] = %llu####\n", i, (LLU)round[i]);
 #endif
@@ -757,7 +757,7 @@ void *allocate(void *_volume_desc, uint64_t num_bytes, int unused, char allocati
 	}
 	/*mark the bitmap now, we have surely find something */
 	for (i = 0; i < idx; i++) {
-	/*look up block state */
+		/*look up block state */
 #ifdef DEBUG_ALLOCATOR
 		printf("DEBUG contents of words[%d] = %llu word addr %llu \n", i, (LLU) * (uint64_t *)words[i],
 		       (LLU)words[i]);
@@ -857,7 +857,7 @@ void *allocate(void *_volume_desc, uint64_t num_bytes, int unused, char allocati
 #endif
 		*(uint64_t *)words[i] &= mask; //fix
 	}
-		/*finally, let's return the address */
+	/*finally, let's return the address */
 #ifdef DEBUG_ALLOCATOR
 	printf("Words[0] addr = %llu\n", (LLU)words[0]);
 #endif
@@ -1111,8 +1111,8 @@ void __add_log_entry(volume_descriptor *volume_desc, void *address, uint32_t len
 		log_warn("CAUTION unknown entry in __add_log_entry");
 		return;
 	}
-		//log_info("log pos %llu log_last_free %llu", volume_desc->mem_catalogue->free_log_position,
-		//	 volume_desc->mem_catalogue->free_log_last_free);
+	//log_info("log pos %llu log_last_free %llu", volume_desc->mem_catalogue->free_log_position,
+	//	 volume_desc->mem_catalogue->free_log_last_free);
 #ifdef DEBUG_ALLOCATOR
 	if (((uint64_t)address < (uint64_t)volume_desc->bitmap_end)) {
 		printf("%s: FATAL address inside bitmap range? block address %llu bitmap_end %llu, stack trace follows\n",

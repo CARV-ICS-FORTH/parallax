@@ -14,7 +14,7 @@
 #include "../utilities/list.h"
 #include "../utilities/macros.h"
 #include "../kreon_server/conf.h" // FIXME only included for the priority macros
-#include "../build/external-deps/log/src/log.h"
+#include <log.h>
 
 #define ALLOC_LOCAL 1 // if true use numa_alloc_local, otherwise use posix_memalign
 
@@ -34,7 +34,7 @@ memory_region *mrpool_get_static_buffer(struct rdma_cm_id *id, uint32_t size)
 }
 
 /**
- * Initialize a memory region pool. The mrpool struct is allocated by the caller 
+ * Initialize a memory region pool. The mrpool struct is allocated by the caller
  * and not in this function
  * @param pd The protection domain where the allocated memory buffers will be registered
  * @return Returns the newly allocated memory region pool or NULL if the allocation failed
@@ -68,19 +68,19 @@ memory_region_pool *mrpool_create(struct ibv_pd *pd, size_t max_allocated_memory
 }
 
 /**
- * Allocate a new memory pool with a given priority. The memory region is 
- * retrieved from the free list if it's not empty, otherwise a new one is 
+ * Allocate a new memory pool with a given priority. The memory region is
+ * retrieved from the free list if it's not empty, otherwise a new one is
  * created.
  * @param pool The memory region pool to use for this allocation
- * @param priority The priority level desired for the memory region to be 
+ * @param priority The priority level desired for the memory region to be
  *                 allocated
  * @return The newly allocated memory region
  */
 memory_region *mrpool_allocate_memory_region(memory_region_pool *pool, struct rdma_cm_id *id)
 {
-	/* TODO We could have a preallocation policy for cases where the free list is 
-	 * empty. Properly implementing it is tricky since we wouldn't want this 
-	 * allocate call to take too long and we wouldn't want to allocate 
+	/* TODO We could have a preallocation policy for cases where the free list is
+	 * empty. Properly implementing it is tricky since we wouldn't want this
+	 * allocate call to take too long and we wouldn't want to allocate
 	 * significantly more memory than we'll be using.
 	 *
 	 * Perhaps we could asign the preallocation as a task to a worker
@@ -111,7 +111,7 @@ memory_region *mrpool_allocate_memory_region(memory_region_pool *pool, struct rd
 }
 
 /**
- * Free an allocated memory region. This means that it's added to the 
+ * Free an allocated memory region. This means that it's added to the
  * corresponding free list of its memory pool for future use.
  * @param mr The memory region to be freed
  */
@@ -144,7 +144,7 @@ void mrpool_free_memory_region(memory_region **mr)
 }
 
 /**
- * Allocate memory regions for a given priority level and add them to the free 
+ * Allocate memory regions for a given priority level and add them to the free
  * list of memory region pool
  * @param pool The memory region pool where the new memory regions will be added
  * @param max_allocated_memory The amount of memory the memory region pool is
@@ -173,7 +173,7 @@ static int _mrpool_preallocate_mr(memory_region_pool *pool)
 }
 
 /**
- * Initialize a new memory region. The memory_region_s is allocated by the 
+ * Initialize a new memory region. The memory_region_s is allocated by the
  * caller. A memory buffer is created for the local and remote memory regions and
  * both are registered by calling ibv_reg_mr.
  * @param mr The memory region struct to be initialized
@@ -229,4 +229,3 @@ static void _mrpool_destroy_mr(struct NODE *node)
 	numa_free(mr->remote_memory_buffer, mr->memory_region_length);
 	free(mr);
 }
-

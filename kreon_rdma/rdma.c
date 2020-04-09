@@ -29,7 +29,7 @@
 #include "../utilities/simple_concurrent_list.h"
 #include "../utilities/spin_loop.h"
 #include "../utilities/circular_buffer.h"
-#include "../build/external-deps/log/src/log.h"
+#include <log.h>
 
 #define CTX_HANDSHAKE_SUCCESS 0
 #define CTX_HANDSHAKE_FAILURE 1
@@ -417,7 +417,7 @@ msg_header *__allocate_rdma_message(connection_rdma *conn, int message_payload_s
 #endif
 
 	if (task->allocation_status == ALLOCATION_START && conn->status == CONNECTION_RESETTING) {
-	//DPRINT("Backoff at allocate for message %d\n",message_type);
+		//DPRINT("Backoff at allocate for message %d\n",message_type);
 
 #ifdef CONNECTION_BUFFER_WITH_MUTEX_LOCK
 		pthread_mutex_unlock(&conn->buffer_lock);
@@ -623,7 +623,7 @@ static int __send_rdma_message(connection_rdma *conn, msg_header *msg)
 		msg_len = TU_HEADER_SIZE;
 
 	/* *
-	 * do we want to associate any context with the message aka let the completion thread perform any operation 
+	 * do we want to associate any context with the message aka let the completion thread perform any operation
 	 * for us? For client PUT,GET,MULTI_GET,UPDATE,DELETE we don't
 	 * */
 	void *context;

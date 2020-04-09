@@ -3,7 +3,7 @@
 #include "allocator.h"
 #include "../btree/btree.h"
 #include "../btree/segment_allocator.h"
-#include "../../build/external-deps/log/src/log.h"
+#include <log.h>
 
 /*persists the KV-log of a DB, not thread safe!*/
 void commit_db_log(db_descriptor *db_desc)
@@ -150,7 +150,7 @@ void snapshot(volume_descriptor *volume_desc)
 
 					/*now mark new roots*/
 					if (db_desc->levels[i].root_w[j] != NULL) {
-						db_entry->root_r[(i *NUM_TREES_PER_LEVEL) * j] =
+						db_entry->root_r[(i * NUM_TREES_PER_LEVEL) * j] =
 							((uint64_t)db_desc->levels[i].root_w[j]) - MAPPED;
 
 						/*mark old root to free it later*/

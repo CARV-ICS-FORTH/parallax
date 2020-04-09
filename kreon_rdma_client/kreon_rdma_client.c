@@ -8,7 +8,7 @@
 #include "../kreon_rdma/rdma.h"
 #include "../kreon_server/globals.h"
 #include "../utilities/spin_loop.h"
-#include "../build/external-deps/log/src/log.h"
+#include <log.h>
 
 static char *neg_infinity = "00000000";
 static char *pos_infinity = "+oo";
@@ -716,4 +716,3 @@ krc_ret_code krc_close()
 	//exit(EXIT_FAILURE);
 	return KRC_FAILURE;
 }
-

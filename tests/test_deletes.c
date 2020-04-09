@@ -9,7 +9,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <unistd.h>
-#include "external-deps/log/src/log.h"
+#include <log.h>
 #include "../kreon_lib/btree/btree.h"
 #include "../kreon_lib/btree/delete.h"
 #define KEY_PREFIX "userakias_computerakias"
