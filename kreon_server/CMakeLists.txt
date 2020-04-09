@@ -1,7 +1,8 @@
 # File: TucanaServer/CMakeLists.txt Author: Michalis Vardoulakis
 # <mvard@ics.forth.gr>
 
-set_source_files_properties(../utilities/spin_loop.c PROPERTIES COMPILE_FLAGS "-O0")
+set_source_files_properties(../utilities/spin_loop.c PROPERTIES COMPILE_FLAGS
+                                                                "-O0")
 
 set(CMAKE_EXE_LINKER_FLAGS
     "-Wl,-no-as-needed -lm -pthread -lnuma -libverbs -lrdmacm -lzookeeper_mt")
@@ -57,7 +58,7 @@ add_executable(
   storage_devices.c
   ../kreon_rdma/rdma.c
   stats.c)
-target_link_libraries(kreon_server kreon_rdma kreonr)
+target_link_libraries(kreon_server kreon_rdma kreonr log)
 
 add_executable(
   create_regions
@@ -71,7 +72,7 @@ add_executable(
   ../utilities/simple_concurrent_list.c
   ../utilities/spin_loop.c
   ../utilities/circular_buffer.c)
-target_link_libraries(create_regions kreon_rdma kreonr)
+target_link_libraries(create_regions kreon_rdma kreonr log)
 
 # FIXME put_get_test and scan_test don't compile add_executable(put_get_test
 # tests/put_get.c zk_string_vector.c network_data.c zk_server.c
@@ -90,8 +91,9 @@ target_link_libraries(create_regions kreon_rdma kreonr)
 # zk_client.c zk_string_vector.c network_data.c network_data.client.c regions.c
 # messages.c client_regions.c client_scanner.c ../TuRDMA/rdma.c )
 # target_link_libraries(fake_client kreon_rdma)
-set_target_properties(kreon_client-shared PROPERTIES
-  PUBLIC_HEADER "../kreon_rdma_client/kreon_rdma_client.h")
+set_target_properties(
+  kreon_client-shared PROPERTIES PUBLIC_HEADER
+                                 "../kreon_rdma_client/kreon_rdma_client.h")
 if(KREON_BUILD_CPACK)
   install(
     TARGETS kreon_client-shared kreon_server create_regions

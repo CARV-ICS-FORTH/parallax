@@ -2,7 +2,7 @@
 
 #include <assert.h>
 #include <pthread.h>
-#include "../build/external-deps/log/src/log.h"
+#include <log.h>
 #include "../utilities/macros.h"
 #include "client_regions.h"
 
@@ -195,4 +195,3 @@ int client_delete_region(client_region *region)
 	}
 	return rc;
 }
-

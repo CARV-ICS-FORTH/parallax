@@ -32,7 +32,7 @@ extern "C" {
 #include "client_regions.h"
 #include "client_scanner.h"
 #include "../../kreon_server/globals.h"
-#include "../../build/external-deps/log/src/log.h"
+#include <log.h>
 }
 #ifdef CHECKSUM_DATA_MESSAGES
 extern "C" {
@@ -149,7 +149,7 @@ class kreonRClientDB : public YCSBDB {
 				ops_per_server[server] += num_of_batch_operations_per_thread[i];
 				mr_message = allocate_rdma_message(connection, client_buffers[i].pos, PUT_REQUEST);
 				if (!push_buffer_in_msg_header(mr_message, client_buffers[i].buffer,
-								    client_buffers[i].pos)) {
+							       client_buffers[i].pos)) {
 					DPRINT("push_buffer for key FAILED\n");
 					exit(EXIT_FAILURE);
 				}
@@ -489,8 +489,7 @@ class kreonRClientDB : public YCSBDB {
 				exit(EXIT_FAILURE);
 			}
 		} else {
-			if (!push_buffer_in_msg_header(mr_message, client_buffers[id].buffer,
-							    client_buffers[id].pos)) {
+			if (!push_buffer_in_msg_header(mr_message, client_buffers[id].buffer, client_buffers[id].pos)) {
 				DPRINT("push_buffer for key FAILED\n");
 				exit(EXIT_FAILURE);
 			}
@@ -535,5 +534,4 @@ class kreonRClientDB : public YCSBDB {
 		return 0;
 	}
 };
-} // ycsbc
-
+} // namespace ycsbc

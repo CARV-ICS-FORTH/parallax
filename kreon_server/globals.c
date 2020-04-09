@@ -3,7 +3,7 @@
 #include <pthread.h>
 #include "../utilities/macros.h"
 #include "globals.h"
-#include "../build/external-deps/log/src/log.h"
+#include <log.h>
 
 static globals global_vars = { NULL, NULL, -1, 1 };
 static pthread_mutex_t g_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -85,4 +85,3 @@ int globals_spawn_client_spinning_thread()
 {
 	return global_vars.client_spinning_thread;
 }
-

@@ -4,7 +4,7 @@
 #include "conf.h"
 #include "globals.h"
 #include "../utilities/macros.h"
-#include "../build/external-deps/log/src/log.h"
+#include <log.h>
 _tuzk_server tuzk_S;
 
 //Added to fix warning
@@ -258,7 +258,6 @@ void child_node_server_exists_watcher(zhandle_t *zh, int type, int state, const 
 	}
 }
 
-
 void child_node_server_exists(const char *value, void *data)
 {
 	struct Stat stat;
@@ -473,7 +472,7 @@ void aliveservers_exists_watcher(zhandle_t *zh, int type, int state, const char 
 		fflush(stdout);
 		set_node_aliveserver(path, watcherCtx);
 	} else
-		log_info("watched event: %s",type2string(type));
+		log_info("watched event: %s", type2string(type));
 }
 
 void aliveservers_exists(const char *value, void *data)
@@ -699,7 +698,7 @@ void get_regions_watcher(zhandle_t *zh, int type, int state, const char *path, v
 }
 
 /*
- * Function to check the regions of the current node. 
+ * Function to check the regions of the current node.
  * It only gets the name of the regions, since it consults t
  * the node /server/hostname/regions/
  */
@@ -780,7 +779,7 @@ void zoo_create_server_regions(const char *value, const void *data)
 		break;
 	}
 }
-/*void create_server_regions_completion(int rc, const char *value, const void *data) 
+/*void create_server_regions_completion(int rc, const char *value, const void *data)
 	{
 	switch (rc) {
 	case ZCONNECTIONLOSS:
@@ -849,7 +848,7 @@ void get_replicas_watcher(zhandle_t *zh, int type, int state, const char *path, 
 }
 
 /*
- * Function to check the replicas of the current node. 
+ * Function to check the replicas of the current node.
  * It only gets the name of the replicas, since it consults t
  * the node /server/hostname/replicas/
  */
@@ -933,7 +932,7 @@ void zoo_create_server_replicas(const char *value, const void *data)
 	}
 }
 
-/*void create_server_replicas_completion(int rc, const char *value, const void *data) 
+/*void create_server_replicas_completion(int rc, const char *value, const void *data)
 	{
 	switch (rc) {
 	case ZCONNECTIONLOSS:
@@ -994,7 +993,7 @@ void zoo_create_server_NICs(const char *value, const void *data)
 	}
 }
 
-/*void create_server_NICs_completion(int rc, const char *value, const void *data) 
+/*void create_server_NICs_completion(int rc, const char *value, const void *data)
 	{
 	switch (rc) {
 	case ZCONNECTIONLOSS:
@@ -1031,10 +1030,10 @@ void Create_IPs_on_NICs_node_server(void)
 }
 //..............................................................................
 
-/* 
+/*
  * Functions to create the info of this server
  */
-/*void create_parent_server_completion (int rc, const char * value, const void * data) 
+/*void create_parent_server_completion (int rc, const char * value, const void * data)
 	{
 	switch (rc) {
 	case ZCONNECTIONLOSS:
@@ -1085,10 +1084,10 @@ void create_parent_server(void)
 }
 //.............................................................................
 //
-/* 
+/*
  * Functions to create the alive info of this server
  */
-/*void create_parent_aliveserver_completion( int rc, const char * value, const void * data ) 
+/*void create_parent_aliveserver_completion( int rc, const char * value, const void * data )
 	{
 	switch (rc) {
 	case ZCONNECTIONLOSS:
@@ -1139,7 +1138,7 @@ void create_parent_aliveserver(void)
 /*
  * Functions to create the /regions node
  */
-/*void create_parent_regions_completion( int rc, const char * value, const void * data ) 
+/*void create_parent_regions_completion( int rc, const char * value, const void * data )
 	{
 	switch (rc) {
 	case ZCONNECTIONLOSS:
@@ -1307,7 +1306,7 @@ void server_aexist_min_key_regions_watcher(zhandle_t *zh, int type, int state, c
 /*void server_aexist_min_key_regions_completion(int rc, const struct Stat *stat, const void *data){
 	_tucana_region_S *server_tu_region;
 	server_tu_region = (_tucana_region_S *)data ;
-	switch (rc) 
+	switch (rc)
 	{
 	case ZCONNECTIONLOSS:
 	case ZOPERATIONTIMEOUT:
@@ -1472,7 +1471,7 @@ void server_aexist_max_key_regions_watcher(zhandle_t *zh, int type, int state, c
 	{
 	_tucana_region_S *server_tu_region;
 	server_tu_region = (_tucana_region_S *)data ;
-	switch (rc) 
+	switch (rc)
 	{
 	case ZCONNECTIONLOSS:
 	case ZOPERATIONTIMEOUT:
@@ -1636,7 +1635,7 @@ void server_aexist_size_regions_watcher(zhandle_t *zh, int type, int state, cons
 /*void server_aexist_size_regions_completion(int rc, const struct Stat *stat, const void *data){
 	_tucana_region_S *server_tu_region;
 	server_tu_region = (_tucana_region_S *)data ;
-	switch (rc) 
+	switch (rc)
 	{
 	case ZCONNECTIONLOSS:
 	case ZOPERATIONTIMEOUT:
@@ -1728,8 +1727,8 @@ void server_get_storage_device_node_on_region_watcher(zhandle_t *zh, int type, i
 	server_get_StorageDevice_region(server_tu_region);
 }
 
-/*void server_get_storage_device_node_on_region_completion(int rc, const char *value, int value_len, const struct Stat *stat, const void *data) 
-	{       
+/*void server_get_storage_device_node_on_region_completion(int rc, const char *value, int value_len, const struct Stat *stat, const void *data)
+	{
 	_tucana_region_S *server_tu_region;
 	server_tu_region = (_tucana_region_S *)data ;
 	switch (rc) {
@@ -1817,7 +1816,7 @@ void server_aexist_storage_device_regions_watcher(zhandle_t *zh, int type, int s
 	{
 	_tucana_region_S *server_tu_region;
 	server_tu_region = (_tucana_region_S *)data ;
-	switch (rc) 
+	switch (rc)
 	{
 	case ZCONNECTIONLOSS:
 	case ZOPERATIONTIMEOUT:
@@ -1908,8 +1907,8 @@ void server_create_StorageDevice_region(_tucana_region_S *server_tu_region)
 	free(path);
 }
 
-/*void server_create_storage_device_node_on_region_completion(int rc, const char *value, const void *data) 
-	{       
+/*void server_create_storage_device_node_on_region_completion(int rc, const char *value, const void *data)
+	{
 	_tucana_region_S *server_tu_region;
 	server_tu_region = (_tucana_region_S *)data ;
 	switch (rc) {
@@ -1937,7 +1936,7 @@ retry:
 
 	/*zoo_acreate(tuzk_S.zh,
 		value,
-		server_tu_region->device, 
+		server_tu_region->device,
 		strlen( server_tu_region->device ) + 1,
 		&ZOO_READ_ACL_UNSAFE,
 		0,
@@ -2015,8 +2014,8 @@ void server_get_offset_device_node_on_region_watcher(zhandle_t *zh, int type, in
 	server_get_Offset_Device_region(server_tu_region);
 }
 
-/*void server_get_offset_device_node_on_region_completion(int rc, const char *value, int value_len, const struct Stat *stat, const void *data) 
-	{       
+/*void server_get_offset_device_node_on_region_completion(int rc, const char *value, int value_len, const struct Stat *stat, const void *data)
+	{
 	_tucana_region_S *server_tu_region;
 	server_tu_region = (_tucana_region_S *)data ;
 	switch (rc) {
@@ -2100,7 +2099,7 @@ void server_aexist_offset_device_regions_watcher(zhandle_t *zh, int type, int st
 	{
 	_tucana_region_S *server_tu_region;
 	server_tu_region = (_tucana_region_S *)data ;
-	switch (rc) 
+	switch (rc)
 	{
 	case ZCONNECTIONLOSS:
 	case ZOPERATIONTIMEOUT:
@@ -2171,8 +2170,8 @@ void server_create_OffsetDevice_region(_tucana_region_S *server_tu_region)
 	free(path);
 }
 
-/*void server_create_offset_device_node_on_region_completion(int rc, const char *value, const void *data) 
-	{       
+/*void server_create_offset_device_node_on_region_completion(int rc, const char *value, const void *data)
+	{
 	_tucana_region_S *server_tu_region;
 	server_tu_region = (_tucana_region_S *)data ;
 	switch (rc) {
@@ -2201,7 +2200,7 @@ void server_create_offset_device_node_on_region(const char *value, const void *d
 
 	/*zoo_acreate(tuzk_S.zh,
 		value,
-		str_offset, 
+		str_offset,
 		strlen( str_offset ) + 1,
 		&ZOO_READ_ACL_UNSAFE,
 		0,
@@ -2268,8 +2267,8 @@ void server_get_chain_node_on_region_watcher(zhandle_t *zh, int type, int state,
 	server_get_Chain_region(server_tu_region);
 }
 
-/*void server_get_chain_node_on_region_completion(int rc, const char *value, int value_len, const struct Stat *stat, const void *data) 
-	{       
+/*void server_get_chain_node_on_region_completion(int rc, const char *value, int value_len, const struct Stat *stat, const void *data)
+	{
 	_tucana_region_S *server_tu_region;
 	server_tu_region = (_tucana_region_S *)data ;
 	switch (rc) {
@@ -2353,7 +2352,7 @@ void server_aexist_chain_regions_watcher(zhandle_t *zh, int type, int state, con
 	{
 	_tucana_region_S *server_tu_region;
 	server_tu_region = (_tucana_region_S *)data ;
-	switch (rc) 
+	switch (rc)
 	{
 	case ZCONNECTIONLOSS:
 	case ZOPERATIONTIMEOUT:
@@ -2446,8 +2445,8 @@ void server_get_replica_node_on_region_watcher(zhandle_t *zh, int type, int stat
 struct _replica_region *aux_replica;
 //	server_tu_region = (_tucana_region_S *)data ;
 
-//a_aux_replica = (struct _replica_region **)data; 
-aux_replica = (struct _replica_region *)data; 
+//a_aux_replica = (struct _replica_region **)data;
+aux_replica = (struct _replica_region *)data;
 //aux_replica = *a_aux_replica;
 printf("[%s:%s:%d] %s DATA %d\n",__FILE__,__func__,__LINE__, value,aux_replica->n_replica);
 switch (rc) {
@@ -2569,7 +2568,7 @@ void get_replicas_of_regions_watcher(zhandle_t *zh, int type, int state, const c
 	}
 	if(strings->count){
 	printf("[%s:%s:%d] ************* ****************** cleaning ***************************************...\n",__FILE__,__func__,__LINE__);
-	deallocate_String_vector(strings);	
+	deallocate_String_vector(strings);
 	}
 	}*/
 
@@ -2592,7 +2591,7 @@ void server_get_servers_watcher(zhandle_t *zh, int type, int state, const char *
 
 /*
  * Function to check the regions already created.
- * It only gets the name of the regions, since it consults the children 
+ * It only gets the name of the regions, since it consults the children
  * nodes of /servers
  */
 void server_get_servers(_tuzk_server *server_regions)
@@ -2659,7 +2658,7 @@ void server_aexist_servers_watcher(zhandle_t *zh, int type, int state, const cha
 	_tuzk_server * server_regions;
 	server_regions = (_tuzk_server *)data;
 
-	switch (rc) 
+	switch (rc)
 	{
 	case ZCONNECTIONLOSS:
 	case ZOPERATIONTIMEOUT:
@@ -2705,14 +2704,14 @@ void server_aexist_servers(_tuzk_server *server_regions)
 /*****************************************************************************
  * server_get_IP_server_completion
  * server_get_IP_server_children
- * server_get_IP_server_watcher 
+ * server_get_IP_server_watcher
  * server_get_IP_server
  */
 
 /*
  * Completion function invoked when the call to get the IP of a server
  */
-/*void server_get_IP_server_completion ( int rc, const struct String_vector *strings, const void *data )  
+/*void server_get_IP_server_completion ( int rc, const struct String_vector *strings, const void *data )
 	{
 	_server_tu_network_data *net_data;
 	net_data = (_server_tu_network_data *)data ;
@@ -2760,7 +2759,7 @@ void server_get_IP_server_watcher(zhandle_t *zh, int type, int state, const char
 
 /*
  * Function to get the IPs of the head of a region already created.
- * It only gets the name of the IPS, since it consults the children 
+ * It only gets the name of the IPS, since it consults the children
  * nodes of /server/hostname/nics/
  */
 void server_get_IP_server(_server_tu_network_data *net_data)

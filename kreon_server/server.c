@@ -38,7 +38,7 @@
 #include "../kreon_lib/btree/conf.h"
 #include "../utilities/queue.h"
 #include "../utilities/min_max_heap.h"
-#include "../build/external-deps/log/src/log.h"
+#include <log.h>
 #include "stats.h"
 
 #ifdef CHECKSUM_DATA_MESSAGES
@@ -642,11 +642,11 @@ int _init_replica_rdma_connections(struct _tucana_region_S *S_tu_region)
 		/*
 			 DPRINT("Setting connection properties with the Replica");
 			 set_connection_property_req * req;
-			 msg_header * data_conn_req = allocate_rdma_message(*S_tu_region->db->db_desc->data_conn, sizeof(set_connection_property_req),CHANGE_CONNECTION_PROPERTIES_REQUEST); 
+			 msg_header * data_conn_req = allocate_rdma_message(*S_tu_region->db->db_desc->data_conn, sizeof(set_connection_property_req),CHANGE_CONNECTION_PROPERTIES_REQUEST);
 			 req = (set_connection_property_req *)data_conn_req->data;
 			 req->desired_priority_level = HIGH_PRIORITY;
 			 req->desired_RDMA_memory_size = DEFAULT_MEMORY_SIZE_OPTION;
-			 data_conn_req->request_message_local_addr = (void *)data_conn_req;	
+			 data_conn_req->request_message_local_addr = (void *)data_conn_req;
 			 send_rdma_message(*S_tu_region->db->db_desc->data_conn, data_conn_req);
 			 int i = 0;
 			 while(data_conn_req->ack_arrived != REPLY_ARRIVED){
@@ -655,12 +655,12 @@ int _init_replica_rdma_connections(struct _tucana_region_S *S_tu_region)
 			 }
 			 }
 
-			 msg_header * control_conn_req = allocate_rdma_message(*S_tu_region->db->db_desc->data_conn, sizeof(set_connection_property_req),CHANGE_CONNECTION_PROPERTIES_REQUEST); 
+			 msg_header * control_conn_req = allocate_rdma_message(*S_tu_region->db->db_desc->data_conn, sizeof(set_connection_property_req),CHANGE_CONNECTION_PROPERTIES_REQUEST);
 			 req = (set_connection_property_req *)control_conn_req->data;
 			 req->desired_priority_level = HIGH_PRIORITY;
 			 req->desired_RDMA_memory_size = CONTROL_CONNECTION_MEMORY_SIZE;
 
-			 control_conn_req->request_message_local_addr = (void *)control_conn_req;	
+			 control_conn_req->request_message_local_addr = (void *)control_conn_req;
 			 send_rdma_message(*S_tu_region->db->db_desc->data_conn, control_conn_req);
 			 i = 0;
 			 while(control_conn_req->ack_arrived != REPLY_ARRIVED){
@@ -874,7 +874,7 @@ struct msg_header *Server_Scan_MulipleRegions_RDMA(msg_header *data_message, voi
 	 * Use the current GET implentation as a baseline on how to get data from kreon.
 	 * The client will always send a start key, stop key and the max number of kv pairs
 	 * they want to receive from the server.
-	 * Subsequent scan messages for the same scan will just have a different start key(the 
+	 * Subsequent scan messages for the same scan will just have a different start key(the
 	 * last key they received from the server)
 	 * Scanner API for the btree is in ../kreon/scanner/scanner.h
 	 * XXX What about scans across regions???
@@ -932,9 +932,9 @@ struct msg_header *Server_FlushVolume_RDMA( struct msg_header *data_message, str
 
 /*
  * KreonR main processing function of networkrequests.
- * Each network processing request must be resumable. For each message type KreonR process it via 
- * a specific data path. We treat all taks related to network  as paths that may fail, that we can resume later. The idea 
- * behind this 
+ * Each network processing request must be resumable. For each message type KreonR process it via
+ * a specific data path. We treat all taks related to network  as paths that may fail, that we can resume later. The idea
+ * behind this
  * */
 void handle_task(void *__task)
 {
@@ -968,7 +968,7 @@ void handle_task(void *__task)
 	rdma_conn = task->conn;
 	stats_update(task->thread_id);
 	switch (task->msg->type) {
-	//gesalous leave it for later
+		//gesalous leave it for later
 #if 0
 	case SPILL_INIT:
 
@@ -1126,14 +1126,14 @@ void handle_task(void *__task)
 		task->overall_status = TASK_COMPLETED;
 		break;
 
-#if 0	
+#if 0
 		case SCAN_REQUEST:
 			task->reply_msg = Server_Scan_MulipleRegions_RDMA(task->msg, rdma_conn);
 			task->reply_msg->request_message_local_addr = task->msg->request_message_local_addr;
 			break;
 
 			/*
-			 * Kind reminder, SPILL_INIT, SPILL_BUFFER_REQUEST, and SPILL_COMPLETE are handled by the server 
+			 * Kind reminder, SPILL_INIT, SPILL_BUFFER_REQUEST, and SPILL_COMPLETE are handled by the server
 			 * which has backup role for the given region
 			 */
 
@@ -1620,9 +1620,9 @@ void handle_task(void *__task)
 		task->reply_msg->request_message_local_addr = task->msg->request_message_local_addr;
 		task->overall_status = TASK_COMPLETED;
 		break;
-#if 0	
+#if 0
 		case TU_FLUSH_VOLUME_QUERY:
-			reply_data_message = Server_FlushVolume_RDMA( data_message, rdma_conn);	
+			reply_data_message = Server_FlushVolume_RDMA( data_message, rdma_conn);
 			break;
 #endif
 	case FLUSH_SEGMENT:
