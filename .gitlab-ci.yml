@@ -23,3 +23,15 @@ build_clang-tidy:
     - mkdir -p build;cd build
     - cmake .. "-DCMAKE_C_CLANG_TIDY=/bin/clang-tidy;-checks=*"
     - make mkfs.kreon;make kreon;make ycsb-edb;make test_scans;make test_spills;make test_spillscans;make test_deletes;
+
+pre-commit:
+  stage: build
+  script:
+    - ./scripts/pre-commit-CI.sh
+
+pre-merge:
+  stage: build
+  script:
+    - ./scripts/pre-merge-CI.sh
+  only:
+    - merge_requests
