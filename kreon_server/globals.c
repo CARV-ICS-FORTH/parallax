@@ -108,5 +108,3 @@ char *globals_get_dev(void)
 {
 	return global_vars.dev;
 }
-
-
