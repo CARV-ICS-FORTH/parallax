@@ -14,7 +14,7 @@
 #define PREFIX_2 "userakiaslalb"
 #define PREFIX_3 "userakiaslalc"
 #define infinity "+oo"
-#define NUM_KEYS 1000 //1000000
+#define NUM_KEYS 1000000
 #define BASE 1000000
 #define NUM_REGIONS 16
 #define KEY_PREFIX "userakias"
@@ -39,6 +39,10 @@ typedef struct value {
 
 int main(int argc, char *argv[])
 {
+	size_t s_key_size = 0;
+	char *s_key = NULL;
+	size_t s_value_size = 0;
+	char *s_value = NULL;
 	krc_value *val;
 	uint32_t region_id = 0;
 	uint64_t range = NUM_KEYS / NUM_REGIONS;
@@ -102,7 +106,7 @@ int main(int argc, char *argv[])
 
 	uint64_t i = 0;
 	uint64_t j = 0;
-	krc_scanner *sc;
+	krc_scannerp sc = NULL;
 	key *k = (key *)malloc(KV_SIZE);
 	log_info("Starting population for %lu keys...", NUM_KEYS);
 	for (i = BASE; i < (BASE + NUM_KEYS); i++) {
@@ -168,7 +172,8 @@ int main(int argc, char *argv[])
 		exit(EXIT_FAILURE);
 	}
 
-	log_info("Put/get with offset successful expected %u got %u, testing small scans....", sum, sum_g);
+	log_info("Put/get with offset successful expected %u got %u", sum, sum_g);
+	log_info("testing small scans....");
 
 	for (i = BASE; i < (BASE + (NUM_KEYS - SCAN_SIZE)); i++) {
 		if (i % 10000 == 0)
@@ -181,15 +186,14 @@ int main(int argc, char *argv[])
 
 		sc = krc_scan_init(PREFETCH_ENTRIES, PREFETCH_MEM_SIZE);
 		krc_scan_set_start(sc, k->key_size, k->key_buf, KRC_GREATER_OR_EQUAL);
-		krc_scan_get_next(sc);
-		if (!krc_scan_is_valid(sc)) {
+		if (!krc_scan_get_next(sc, &s_key, &s_key_size, &s_value, &s_value_size)) {
 			log_fatal("Test failed key %s invalid scanner (it shoulddn't!)", k->key_buf);
 			exit(EXIT_FAILURE);
 		}
-		if (k->key_size != sc->curr_key->key_size ||
-		    memcmp(k->key_buf, sc->curr_key->key_buf, k->key_size) != 0) {
-			log_fatal("Test failed key %s not found scanner instead returned %d:%s", k->key_buf,
-				  sc->curr_key->key_size, sc->curr_key->key_buf);
+
+		if (k->key_size != s_key_size || memcmp(k->key_buf, s_key, k->key_size) != 0) {
+			log_fatal("Test failed key %s not found scanner instead returned %d:%s", k->key_buf, s_key_size,
+				  s_key);
 			assert(0);
 			exit(EXIT_FAILURE);
 		}
@@ -199,24 +203,21 @@ int main(int argc, char *argv[])
 			strncpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
 			sprintf(k->key_buf + strlen(KEY_PREFIX), "%llu", (long long unsigned)i + j);
 			k->key_size = strlen(k->key_buf) + 1;
-			//log_info("Expecting key %s",k->key_buf);
-			krc_scan_get_next(sc);
-			if (!krc_scan_is_valid(sc)) {
+
+			if (!krc_scan_get_next(sc, &s_key, &s_key_size, &s_value, &s_value_size)) {
 				log_fatal("Test failed key %s not found scanner reason scan invalid!(it shouldn't)",
 					  k->key_buf);
-				assert(0);
 				exit(EXIT_FAILURE);
 			}
-			if (k->key_size != sc->curr_key->key_size ||
-			    memcmp(k->key_buf, sc->curr_key->key_buf, k->key_size) != 0) {
+			if (k->key_size != s_key_size || memcmp(k->key_buf, s_key, k->key_size) != 0) {
 				log_fatal("Test failed key %s not found scanner instead returned %d:%s", k->key_buf,
-					  sc->curr_key->key_size, sc->curr_key->key_buf);
+					  s_key_size, s_key);
 				exit(EXIT_FAILURE);
 			}
-		}
 
-		if (i % 10000 == 0)
-			log_info("</Scan no %llu>", i);
+			if (i % 10000 == 0)
+				log_info("</Scan no %llu>", i);
+		}
 		krc_scan_close(sc);
 	}
 	log_info("small scan test Successfull");
@@ -230,15 +231,13 @@ int main(int argc, char *argv[])
 		sprintf(k->key_buf + strlen(KEY_PREFIX), "%llu", (long long unsigned)i);
 		k->key_size = strlen(k->key_buf) + 1;
 
-		krc_scan_get_next(sc);
-		if (!krc_scan_is_valid(sc)) {
+		if (!krc_scan_get_next(sc, &s_key, &s_key_size, &s_value, &s_value_size)) {
 			log_fatal("Test failed key %s invalid scanner (it shoulddn't!)", k->key_buf);
 			exit(EXIT_FAILURE);
 		}
-		if (k->key_size != sc->curr_key->key_size ||
-		    memcmp(k->key_buf, sc->curr_key->key_buf, k->key_size) != 0) {
-			log_fatal("Test failed key %s not found scanner instead returned %d:%s", k->key_buf,
-				  sc->curr_key->key_size, sc->curr_key->key_buf);
+		if (k->key_size != s_key_size || memcmp(k->key_buf, s_key, k->key_size) != 0) {
+			log_fatal("Test failed key %s not found scanner instead returned %d:%s", k->key_buf, s_key_size,
+				  s_key);
 			exit(EXIT_FAILURE);
 		}
 	}
@@ -255,13 +254,12 @@ int main(int argc, char *argv[])
 		strncpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
 		sprintf(k->key_buf + strlen(KEY_PREFIX), "%llu", (long long unsigned)i);
 		k->key_size = strlen(k->key_buf) + 1;
-		krc_scan_get_next(sc);
-		if (!krc_scan_is_valid(sc))
+		if (!krc_scan_get_next(sc, &s_key, &s_key_size, &s_value, &s_value_size))
 			break;
-		if (k->key_size != sc->curr_key->key_size ||
-		    memcmp(k->key_buf, sc->curr_key->key_buf, k->key_size) != 0) {
-			log_fatal("Test failed key %s not found scanner instead returned %d:%s", k->key_buf,
-				  sc->curr_key->key_size, sc->curr_key->key_buf);
+
+		if (k->key_size != s_key_size || memcmp(k->key_buf, s_key, k->key_size) != 0) {
+			log_fatal("Test failed key %s not found scanner instead returned %d:%s", k->key_buf, s_key_size,
+				  s_key);
 			exit(EXIT_FAILURE);
 		}
 		++tuples;
@@ -280,8 +278,7 @@ int main(int argc, char *argv[])
 	sprintf(k->key_buf + strlen(KEY_PREFIX), "%llu", (long long unsigned)BASE + 111);
 	krc_scan_set_prefix_filter(sc, strlen(k->key_buf), k->key_buf);
 	for (i = BASE; i < (BASE + NUM_KEYS); i++) {
-		krc_scan_get_next(sc);
-		if (!krc_scan_is_valid(sc))
+		if (!krc_scan_get_next(sc, &s_key, &s_key_size, &s_value, &s_value_size))
 			break;
 		++tuples;
 	}
@@ -379,11 +376,9 @@ int main(int argc, char *argv[])
 		strcpy(k->key_buf, prefix_stop);
 		k->key_size = strlen(k->key_buf) + 1;
 		krc_scan_set_stop(sc, k->key_size, k->key_buf, KRC_GREATER_OR_EQUAL);
-		krc_scan_get_next(sc);
 		tuples = 0;
-		while (krc_scan_is_valid(sc)) {
+		while (krc_scan_get_next(sc, &s_key, &s_key_size, &s_value, &s_value_size)) {
 			//log_info("Got key %s", sc->curr_key->key_buf);
-			krc_scan_get_next(sc);
 			++tuples;
 		}
 		if (tuples != PREFIX_TEST_KEYS) {
@@ -394,5 +389,7 @@ int main(int argc, char *argv[])
 	}
 	log_info("prefix test scans successfull");
 	krc_scan_close(sc);
+
+	log_info("************ ALL TESTS SUCCESSFULL! ************");
 	return 1;
 }

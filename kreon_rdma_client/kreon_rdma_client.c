@@ -10,6 +10,27 @@
 #include "../utilities/spin_loop.h"
 #include <log.h>
 
+typedef struct krc_scanner {
+	krc_key *prefix_key;
+	krc_key *start_key;
+	krc_key *stop_key;
+	krc_key *curr_key;
+	krc_value *curr_value;
+	uint32_t prefetch_num_entries;
+	uint32_t prefetch_mem_size;
+	uint32_t actual_mem_size;
+	uint32_t pos;
+	uint8_t start_infinite : 2;
+	krc_seek_mode seek_mode;
+	krc_seek_mode stop_key_seek_mode;
+	uint8_t stop_infinite : 2;
+	uint8_t prefix_filter_enable : 2;
+	uint8_t is_valid : 2;
+	krc_scan_state state;
+	/*copy of the server's reply*/
+	msg_multi_get_rep *multi_kv_buf;
+	client_region *curr_region;
+} krc_scanner;
 static char *neg_infinity = "00000000";
 static char *pos_infinity = "+oo";
 
@@ -452,7 +473,7 @@ uint8_t krc_scan_is_valid(krc_scanner *sc)
 	return sc->is_valid;
 }
 
-void krc_scan_get_next(krc_scanner *sc)
+uint8_t krc_scan_get_next(krc_scannerp sc, char **key, size_t *keySize, char **value, size_t *valueSize)
 {
 	msg_header *req_header;
 	msg_multi_get_req *m_get;
@@ -504,7 +525,7 @@ void krc_scan_get_next(krc_scanner *sc)
 					sc->state = KRC_INVALID;
 					sc->curr_key = NULL;
 					sc->curr_value = NULL;
-					return;
+					goto exit;
 				}
 			}
 			sc->state = KRC_PREFIX_FILTER;
@@ -513,10 +534,10 @@ void krc_scan_get_next(krc_scanner *sc)
 		case KRC_PREFIX_FILTER:
 			if (sc->prefix_key == NULL) {
 				sc->state = KRC_ADVANCE;
-				return;
+				goto exit;
 			} else if (sc->prefix_key != NULL && krc_prefix_match(sc->prefix_key, sc->curr_key)) {
 				sc->state = KRC_ADVANCE;
-				return;
+				goto exit;
 			} else {
 				sc->state = KRC_ADVANCE;
 				break;
@@ -634,12 +655,25 @@ void krc_scan_get_next(krc_scanner *sc)
 			sc->curr_key = NULL;
 			sc->curr_value = NULL;
 			sc->is_valid = 0;
-			return;
+			goto exit;
 		default:
 			log_fatal("faulty scanner state");
 			exit(EXIT_FAILURE);
 		}
 	}
+exit:
+	if (sc->is_valid) {
+		*keySize = sc->curr_key->key_size;
+		*key = sc->curr_key->key_buf;
+		*valueSize = sc->curr_value->val_size;
+		*value = sc->curr_value->val_buf;
+	} else {
+		*keySize = 0;
+		*key = NULL;
+		*valueSize = 0;
+		*value = NULL;
+	}
+	return sc->is_valid;
 }
 
 void krc_scan_set_start(krc_scanner *sc, uint32_t start_key_size, void *start_key, krc_seek_mode seek_mode)

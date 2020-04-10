@@ -31,7 +31,7 @@ extern "C" {
 #include <log.h>
 }
 
-#define ZK_HOST "192.168.1.133"
+#define ZK_HOST "192.168.1.134"
 #define ZK_PORT 2181
 #define FIELD_COUNT 10
 #define MAX_THREADS 128
@@ -164,17 +164,19 @@ class kreonRBlockingClientDB : public YCSBDB {
 	int Scan(int id /*ignore*/, const std::string &table /*ignore*/, const std::string &key, int record_count,
 		 const std::vector<std::string> *fields /*ignore*/, std::vector<KVPair> &result)
 	{
-		krc_scanner *sc = krc_scan_init(32, (16 * 1024));
+		size_t s_key_size = 0;
+		char *s_key = NULL;
+		size_t s_value_size = 0;
+		char *s_value = NULL;
+		krc_scannerp sc = krc_scan_init(32, (16 * 1024));
 
 		krc_scan_set_start(sc, key.length(), (void *)key.c_str(), KRC_GREATER_OR_EQUAL);
 		int i = 0;
-		krc_scan_get_next(sc);
-		while (i < record_count && krc_scan_is_valid(sc)) {
-			KVPair k = std::make_pair(std::string(sc->curr_key->key_buf, sc->curr_key->key_size),
-						  std::string(sc->curr_value->val_buf, sc->curr_value->val_size));
+
+		while (i < record_count && krc_scan_get_next(sc, &s_key, &s_key_size, &s_value, &s_value_size)) {
+			KVPair k = std::make_pair(std::string(s_key, s_key_size), std::string(s_value, s_value_size));
 			result.push_back(k);
 			++i;
-			krc_scan_get_next(sc);
 		}
 		krc_scan_close(sc);
 		return 0;
