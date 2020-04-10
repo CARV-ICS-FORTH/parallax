@@ -5,7 +5,7 @@
 #include "globals.h"
 #include <log.h>
 
-static globals global_vars = { NULL, NULL, -1, 1 };
+static globals global_vars = { NULL, NULL, NULL, -1, 1 };
 static pthread_mutex_t g_lock = PTHREAD_MUTEX_INITIALIZER;
 
 char *globals_get_RDMA_IP_filter()
@@ -85,3 +85,28 @@ int globals_spawn_client_spinning_thread()
 {
 	return global_vars.client_spinning_thread;
 }
+
+void globals_set_dev(char *dev)
+{
+	if (pthread_mutex_lock(&g_lock) != 0) {
+		log_fatal("Failed to acquire lock");
+		exit(EXIT_FAILURE);
+	}
+	if (global_vars.dev == NULL) {
+		global_vars.zk_host_port = (char *)malloc(strlen(dev) + 1);
+		strcpy(global_vars.dev, dev);
+	} else {
+		log_warn("dev already set to %s", global_vars.dev);
+	}
+	if (pthread_mutex_unlock(&g_lock) != 0) {
+		log_fatal("Failed to acquire lock");
+		exit(EXIT_FAILURE);
+	}
+}
+
+char *globals_get_dev(void)
+{
+	return global_vars.dev;
+}
+
+
