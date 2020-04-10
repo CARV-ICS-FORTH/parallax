@@ -3,6 +3,7 @@
  * Created by Pilar Gonzalez-Ferez on 28/07/16.
  * Edited by Giorgos Saloustros <gesalous@ics.forth.gr>, Michalis Vardoulakis <mvard@ics.forth.gr>
  * Copyright (c) 2016 Pilar Gonzalez-Ferez <pilar@ics.forth.gr>.
+*
  **/
 
 #ifndef _GNU_SOURCE
@@ -968,7 +969,7 @@ void handle_task(void *__task)
 	rdma_conn = task->conn;
 	stats_update(task->thread_id);
 	switch (task->msg->type) {
-		//gesalous leave it for later
+	//gesalous leave it for later
 #if 0
 	case SPILL_INIT:
 
@@ -1193,9 +1194,9 @@ void handle_task(void *__task)
 				//log_info("New val size is %u offset %u client value %u old val %u kv_size %u",
 				//	 *(uint32_t *)(new_value + sizeof(msg_put_key) + K->key_size),
 				//	 put_offt_req->offset, V->value_size, *(uint32_t *)value, kv_size);
-			}else {
-					*(uint32_t *)(new_value + sizeof(msg_put_key) + K->key_size) =
-						put_offt_req->offset + V->value_size;
+			} else {
+				*(uint32_t *)(new_value + sizeof(msg_put_key) + K->key_size) =
+					put_offt_req->offset + V->value_size;
 			}
 
 			/*now the value patch*/
