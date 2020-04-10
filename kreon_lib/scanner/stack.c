@@ -12,7 +12,7 @@
 #include <stdio.h>
 #include <stdlib.h> /* for dynamic allocation */
 #include <assert.h>
-#include "../../build/external-deps/log/src/log.h"
+#include <log.h>
 #include "stack.h"
 
 /************************ Function Definitions **********************/

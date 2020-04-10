@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <signal.h>
 #include "stack.h"
-#include "../../build/external-deps/log/src/log.h"
+#include <log.h>
 #include "scanner.h"
 #include "../btree/btree.h"
 #include "../btree/conf.h"
@@ -38,7 +38,7 @@ level_scanner *_init_spill_buffer_scanner(db_handle *handle, node_header *node, 
 
 	level_sc->type = SPILL_BUFFER_SCANNER;
 	level_sc->keyValue = (void *)malloc(PREFIX_SIZE + sizeof(uint64_t)); /*typicall 20 bytes 8
-                                                         prefix 
+                                                         prefix
                                                          the address to the KV
                                                          log*/
 	/*position scanner now to the appropriate row*/

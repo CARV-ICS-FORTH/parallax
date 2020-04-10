@@ -3,7 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <assert.h>
-#include "../build/external-deps/log/src/log.h"
+#include <log.h>
 #include "messages.h"
 
 int msg_push_to_multiget_buf(msg_key *key, msg_value *val, msg_multi_get_rep *buf)
@@ -68,4 +68,3 @@ int pop_buffer_from_msg_header(msg_header *msg, char *buffer, uint32_t buff_len)
 	msg->next += buff_len;
 	return KREON_SUCCESS;
 }
-

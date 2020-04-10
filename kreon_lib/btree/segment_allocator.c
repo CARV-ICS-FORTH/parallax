@@ -1,7 +1,7 @@
 #include <assert.h>
 #include <signal.h>
 #include "segment_allocator.h"
-#include "../../build/external-deps/log/src/log.h"
+#include <log.h>
 extern uint64_t MAPPED;
 
 static void *_get_space(volume_descriptor *volume_desc, level_descriptor *level_desc, uint32_t size, char reason)

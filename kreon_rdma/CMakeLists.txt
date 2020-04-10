@@ -2,6 +2,8 @@
 
 # add_library(turdma STATIC memory_regions.c tu_rdma.c
 # ../kreon/allocator/list.c)
+set(CMAKE_SHARED_LINKER_FLAGS
+    "-Wl,-no-as-needed -lm -pthread -lnuma -libverbs -lrdmacm -lzookeeper_mt")
 
 add_library(
   kreon_rdma STATIC

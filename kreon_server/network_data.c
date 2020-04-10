@@ -22,7 +22,7 @@
 #include "prototype.h"
 #include "network_data.h"
 #include "globals.h"
-#include "../build/external-deps/log/src/log.h"
+#include <log.h>
 
 void Init_Tu_Network_Data(_tu_network_data *net)
 {
@@ -33,12 +33,12 @@ void Init_Tu_Network_Data(_tu_network_data *net)
 }
 
 /*
-* Set the hostname of the server. 
+* Set the hostname of the server.
  * It will alloc space if needed (because it has not been allocated before
  * or because there is not enought memory)
  */
 /* [mvard] deprecated by Get_My_Hostname. To be removed
-void Set_and_Alloc_Hostname( const char *buf, _tu_network_data *net ) 
+void Set_and_Alloc_Hostname( const char *buf, _tu_network_data *net )
 {
 	if ( net-> hostname == NULL)
 		net->hostname = (char *)malloc(sizeof(char) * strlen( buf ) + 1 );
@@ -51,11 +51,11 @@ void Set_and_Alloc_Hostname( const char *buf, _tu_network_data *net )
 		printf("ERROR Hostname NULL\n");
 		exit(1);
 	}
-	strncpy( net->hostname , buf, strlen( buf ) + 1 ); 
+	strncpy( net->hostname , buf, strlen( buf ) + 1 );
 }
 */
 /*
- * Get the hostname of the server. 
+ * Get the hostname of the server.
  * To create the /servers/hostname node at zookeeper
  */
 
@@ -108,7 +108,8 @@ void Get_My_IP_Addresses(_tu_network_data *net)
 			addr = inet_ntoa(sa->sin_addr);
 			char *ip_filter = globals_get_RDMA_IP_filter();
 			if (strncmp(addr, ip_filter, strlen(ip_filter)) == 0) {
-				log_info("RDMA IP prefix accepted %s Interface: %s Full IP Address: %s",globals_get_RDMA_IP_filter(), ifa->ifa_name, addr);
+				log_info("RDMA IP prefix accepted %s Interface: %s Full IP Address: %s",
+					 globals_get_RDMA_IP_filter(), ifa->ifa_name, addr);
 				n++;
 			}
 			/*</gesalous>*/
@@ -142,7 +143,7 @@ void Get_My_IP_Addresses(_tu_network_data *net)
 			addr = inet_ntoa(sa->sin_addr);
 			char *ip_filter = globals_get_RDMA_IP_filter();
 			if (strncmp(addr, ip_filter, strlen(ip_filter)) != 0) {
-				log_info("Interface: %s Address: %s",ifa->ifa_name, addr);
+				log_info("Interface: %s Address: %s", ifa->ifa_name, addr);
 				continue;
 			}
 			/*</gesalous>*/
@@ -159,7 +160,7 @@ void Get_My_IP_Addresses(_tu_network_data *net)
 			i++;
 		}
 	}
-#if 0 
+#if 0
 	for ( i = 0; i < n ; i++)
 	{
 		printf("DIP2 %d %s\n", i,net->IPs[i]);fflush(stdout);

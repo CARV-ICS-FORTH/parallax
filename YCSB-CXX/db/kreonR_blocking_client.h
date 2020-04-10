@@ -28,7 +28,7 @@
 extern "C" {
 #include "../../kreon_rdma_client/kreon_rdma_client.h"
 #include "../../kreon_lib/btree/btree.h"
-#include "../../build/external-deps/log/src/log.h"
+#include <log.h>
 }
 
 #define ZK_HOST "192.168.1.133"
@@ -265,5 +265,4 @@ class kreonRBlockingClientDB : public YCSBDB {
 		return 0;
 	}
 };
-} // ycsbc
-
+} // namespace ycsbc

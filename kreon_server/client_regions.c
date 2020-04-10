@@ -10,7 +10,7 @@
 #include "client_regions.h"
 //#include "zk_server.h"
 #include "zk_client.h"
-#include "../build/external-deps/log/src/log.h"
+#include <log.h>
 #ifdef CHCKSUM_DATA_MESSAGES
 #include "djb2.h"
 #endif
@@ -180,7 +180,7 @@ void get_server_rdma_conn(client_region *region, void *channel)
 		/*we don't have any connection with the server, yet*/
 		for (i = 0; i < NUM_OF_CONNECTIONS_PER_SERVER; i++) {
 			log_info("Creating number (%d) of a total of %d connection(s) with server %s\n", i,
-			       NUM_OF_CONNECTIONS_PER_SERVER, region->head_net->hostname);
+				 NUM_OF_CONNECTIONS_PER_SERVER, region->head_net->hostname);
 			region->head_net->rdma_conn[i] =
 				crdma_client_create_connection_list_hosts(channel, region->head_net->IPs,
 									  region->head_net->num_NICs,
@@ -191,7 +191,7 @@ void get_server_rdma_conn(client_region *region, void *channel)
 			 NUM_OF_CONNECTIONS_PER_SERVER, region->head_net->hostname);
 	++region->head_net->number_of_mapped_regions;
 	log_info("Number of mapped regions %d with server %s for region %llu\n",
-	       region->head_net->number_of_mapped_regions, region->head_net->hostname, (LLU)region);
+		 region->head_net->number_of_mapped_regions, region->head_net->hostname, (LLU)region);
 	pthread_mutex_unlock(&region->head_net->mutex_rdma_conn[0]);
 }
 
@@ -247,9 +247,9 @@ client_region *allocateclient_regions(char *ID, _Client_Regions *client_regions)
 			fflush(stdout);
 		}
 #if TU_RDMA
-			//tmp_tu_client_region->rdma_conn[i] = NULL;
-			//tmp_tu_client_region->rdma_conn[i] = crdma_client_create_connection( (void*)client_regions->channel );
-			//tmp_tu_client_region->rdma_conn[i]->idconn = i;
+		//tmp_tu_client_region->rdma_conn[i] = NULL;
+		//tmp_tu_client_region->rdma_conn[i] = crdma_client_create_connection( (void*)client_regions->channel );
+		//tmp_tu_client_region->rdma_conn[i]->idconn = i;
 #endif
 	}
 	pthread_mutex_init(&tmp_tu_client_region->mutex_mailbox, NULL);
@@ -403,7 +403,7 @@ void Update_Client_Regions(_Client_Regions *client_regions, const struct String_
 }
 //..................................
 /*
- * Set the hostname of the server. 
+ * Set the hostname of the server.
  * It will alloc space if needed (because it has not been allocated before
  * or because there is not enought memory)
  */
@@ -474,7 +474,7 @@ void Assign_Region_Max_Range(client_region *cli_tu_region, const char *max_range
 
 /*
  * Insert_Tucana_Region_Tree
- * Function to insert a new region on the rb_tree. 
+ * Function to insert a new region on the rb_tree.
  * This rbtree is used for ordering the regions. This will make easy to look for a region of a key
  */
 void Insert_Tucana_Region_Tree(_Client_Regions *client_regions, client_region *cli_tu_region)
@@ -527,7 +527,7 @@ void Free_Client_Data_Mailbox(client_region *cli_tu_region)
 #endif
 }
 /*
- * Client_Update_Open_Head_Data_Mailboxes: 
+ * Client_Update_Open_Head_Data_Mailboxes:
  * Called when the /server/head/mbdata node changes.
  * zm_mb is a list with the children of this node.
  * PILAR: For each mailbox, it has to read its features (IP address and port) and it has to "open" a mailbox
@@ -587,13 +587,13 @@ void Client_New_Data_On_Root(const struct String_vector *zk_root, _Client_Region
 	if ( client_regions->flag_regions == 0 )
 	{
 		for( i = 0; i < zk_root->count; i++ )
-		{	
+		{
 			if ( strcmp(zk_root->data[i], REGIONS) == 0 )
-			{	
+			{
 				client_get_regions( client_regions );
 				break;
 			}
-		
+
 		}
 	}
 #endif
@@ -701,7 +701,6 @@ struct msg_header *Client_Generic_Receive_Message(client_region *cli_tu_region, 
 #endif
 }
 
-
 int Get_NextMailbox_Cli_Tu_Region(client_region *cli_tu_region)
 {
 #if MAX_MAILBOX_LESS_1
@@ -792,7 +791,6 @@ void generic_thread_receiving_messages_RDMA(struct connection_rdma **aux_rdma_co
 	return;
 }
 
-
 #if TU_SEMAPHORE
 struct msg_header *client_blocking_receive(client_region *cli_tu_region, struct msg_header *data_message, int next_mail)
 {
@@ -827,7 +825,7 @@ struct msg_header *Client_Receive_N_Messages_Semaphore_Blocking_NotReceiving(cli
 //	pid_t tid = syscall(__NR_gettid);
 
 	next_data_message = data_message;
-	while( 1 ) 
+	while( 1 )
 	{
 		if (next_data_message->reply_message){
 
@@ -898,4 +896,3 @@ void Client_Flush_Volume(_Client_Regions *client_regions)
 	ERRPRINT("gesalous usefull function fix it!\n");
 	exit(EXIT_FAILURE);
 }
-

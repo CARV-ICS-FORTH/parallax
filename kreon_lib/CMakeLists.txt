@@ -14,7 +14,6 @@ if(CMAKE_BUILD_TYPE EQUAL "Release")
   set(CMAKE_C_FLAGS_RELEASE "-O2 -finline-functions -DNDEBUG") # -Werror
 endif()
 
-set(LOG ${CMAKE_BINARY_DIR}/external-deps/log/src/log.c)
 file(
   GLOB_RECURSE KREON_C_SOURCE_FILES ${CMAKE_SOURCE_DIR}/kreon_lib/allocator/*.c
   ${CMAKE_SOURCE_DIR}/kreon_lib/btree/*.c
@@ -43,8 +42,7 @@ add_library(
   ../utilities/spin_loop.c
   ../utilities/min_max_heap.c
   ../utilities/list.c
-  ../utilities/min_max_heap.c
-  ${LOG})
+  ../utilities/min_max_heap.c)
 
 add_library(
   kreonr-shared SHARED
@@ -58,14 +56,16 @@ add_library(
   scanner/stack.c
   scanner/scanner.c
   ../utilities/spin_loop.c
-  ../utilities/list.c
-  ${LOG})
+  ../utilities/list.c)
 
 set_target_properties(kreonr PROPERTIES COMPILE_DEFINITIONS "KREONR")
 
 # Kreon with replication disabled
-add_library(kreon STATIC ${KREON_C_SOURCE_FILES} ${LOG})
-add_library(kreon-shared SHARED ${KREON_C_SOURCE_FILES} ${LOG})
+add_library(kreon STATIC ${KREON_C_SOURCE_FILES} ${log_SOURCE_DIR})
+add_library(kreon-shared SHARED ${KREON_C_SOURCE_FILES} ${log_SOURCE_DIR})
+
+target_link_libraries(kreon log)
+target_link_libraries(kreon-shared log)
 
 set_source_files_properties(allocator/spin_loop.c PROPERTIES COMPILE_FLAGS
                                                              "-O0")
@@ -73,13 +73,11 @@ set_source_files_properties(allocator/spin_loop.c PROPERTIES COMPILE_FLAGS
 # mkfs for kreon volumes
 add_executable(
   mkfs.kreon
-  allocator/mkfs_Eutropia.c
-  allocator/allocator.c
-  allocator/persistent_operations.c
-  btree/segment_allocator.c
-  ../utilities/spin_loop.c
-  ../utilities/list.c
-  ${LOG})
+  allocator/mkfs_Eutropia.c allocator/allocator.c
+  allocator/persistent_operations.c btree/segment_allocator.c
+  ../utilities/spin_loop.c ../utilities/list.c)
+
+target_link_libraries(mkfs.kreon log)
 
 if(KREON_BUILD_CPACK)
   install(

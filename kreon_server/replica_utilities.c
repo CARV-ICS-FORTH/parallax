@@ -1,7 +1,7 @@
 #include <assert.h>
 #include "server_regions.h"
 #include "../kreon_lib/btree/segment_allocator.h"
-#include "../build/external-deps/log/src/log.h"
+#include <log.h>
 
 #define NUM_BUCKETS 1024
 #define SIZE(x) *(uint32_t *)x
@@ -501,4 +501,3 @@ int flush_replica_log_buffer(db_handle *handle, segment_header *master_log_segme
 
 	return KREON_OK;
 }
-

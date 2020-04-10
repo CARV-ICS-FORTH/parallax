@@ -15,7 +15,7 @@
 //#include <zookeeper_log.h>
 #include <zookeeper/zookeeper.jute.h>
 
-#include "../build/external-deps/log/src/log.h"
+#include <log.h>
 #include "zk_string_vector.h"
 #include "zk.h"
 #include "prototype.h"
@@ -23,7 +23,6 @@
 
 #include "conf.h"
 #include "globals.h"
-#include "../build/external-deps/log/src/log.h"
 
 #define MAX_REGIONS 16
 
@@ -1080,4 +1079,3 @@ int create_region(int argc, char *argv[])
 	free_test_regions(&region);
 	return 0;
 }
-
