@@ -31,6 +31,7 @@ typedef struct krc_scanner {
 	msg_multi_get_rep *multi_kv_buf;
 	client_region *curr_region;
 } krc_scanner;
+
 static char *neg_infinity = "00000000";
 static char *pos_infinity = "+oo";
 
@@ -441,7 +442,7 @@ krc_ret_code krc_delete(uint32_t key_size, void *key)
 }
 
 /*scanner staff*/
-krc_scanner *krc_scan_init(uint32_t prefetch_num_entries, uint32_t prefetch_mem_size)
+krc_scannerp krc_scan_init(uint32_t prefetch_num_entries, uint32_t prefetch_mem_size)
 {
 	/*roundity as the rdma allocator will*/
 	uint32_t padding;
@@ -465,16 +466,18 @@ krc_scanner *krc_scan_init(uint32_t prefetch_num_entries, uint32_t prefetch_mem_
 	scanner->prefix_filter_enable = 0;
 	scanner->state = KRC_UNITIALIZED;
 	scanner->multi_kv_buf = (msg_multi_get_rep *)((uint64_t)scanner + sizeof(krc_scanner));
-	return scanner;
+	return (krc_scannerp)scanner;
 }
 
-uint8_t krc_scan_is_valid(krc_scanner *sc)
+uint8_t krc_scan_is_valid(krc_scannerp sp)
 {
+	krc_scanner *sc = (krc_scanner *)sp;
 	return sc->is_valid;
 }
 
-uint8_t krc_scan_get_next(krc_scannerp sc, char **key, size_t *keySize, char **value, size_t *valueSize)
+uint8_t krc_scan_get_next(krc_scannerp sp, char **key, size_t *keySize, char **value, size_t *valueSize)
 {
+	krc_scanner *sc = (krc_scanner *)sp;
 	msg_header *req_header;
 	msg_multi_get_req *m_get;
 	msg_header *rep_header;
@@ -676,8 +679,9 @@ exit:
 	return sc->is_valid;
 }
 
-void krc_scan_set_start(krc_scanner *sc, uint32_t start_key_size, void *start_key, krc_seek_mode seek_mode)
+void krc_scan_set_start(krc_scannerp sp, uint32_t start_key_size, void *start_key, krc_seek_mode seek_mode)
 {
+	krc_scanner *sc = (krc_scanner *)sp;
 	if (!sc->start_infinite) {
 		log_warn("Nothing to do already set start key for this scanner");
 		return;
@@ -699,8 +703,9 @@ void krc_scan_set_start(krc_scanner *sc, uint32_t start_key_size, void *start_ke
 	return;
 }
 
-void krc_scan_set_stop(krc_scanner *sc, uint32_t stop_key_size, void *stop_key, krc_seek_mode seek_mode)
+void krc_scan_set_stop(krc_scannerp sp, uint32_t stop_key_size, void *stop_key, krc_seek_mode seek_mode)
 {
+	krc_scanner *sc = (krc_scanner *)sp;
 	if (stop_key_size >= 3 && memcmp(stop_key, pos_infinity, stop_key_size) == 0) {
 		sc->stop_infinite = 1;
 		return;
@@ -719,8 +724,9 @@ void krc_scan_set_stop(krc_scanner *sc, uint32_t stop_key_size, void *stop_key, 
 	return;
 }
 
-void krc_scan_set_prefix_filter(krc_scanner *sc, uint32_t prefix_size, void *prefix)
+void krc_scan_set_prefix_filter(krc_scannerp sp, uint32_t prefix_size, void *prefix)
 {
+	krc_scanner *sc = (krc_scanner *)sp;
 	if (sc->prefix_filter_enable) {
 		log_warn("Nothing to do already set prefix key for this scanner");
 		return;
@@ -732,8 +738,9 @@ void krc_scan_set_prefix_filter(krc_scanner *sc, uint32_t prefix_size, void *pre
 	return;
 }
 
-void krc_scan_close(krc_scanner *sc)
+void krc_scan_close(krc_scannerp sp)
 {
+	krc_scanner *sc = (krc_scanner *)sp;
 	if (sc->prefix_filter_enable)
 		free(sc->prefix_key);
 	if (!sc->start_infinite)

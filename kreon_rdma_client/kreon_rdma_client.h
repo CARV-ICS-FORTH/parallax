@@ -4,8 +4,8 @@
 #include <stddef.h>
 #include <stdlib.h>
 #define KRC_GET_OFFT_DEFAULT_SIZE 2048
-struct krc_scanner;
-typedef struct krc_scanner *krc_scannerp;
+
+typedef void *krc_scannerp;
 typedef enum krc_ret_code {
 	KRC_SUCCESS = 0,
 	KRC_FAILURE,
