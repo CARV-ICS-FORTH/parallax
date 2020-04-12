@@ -1,10 +1,9 @@
-#ifndef _TUCANASERVER_STATS_H_
-#define _TUCANASERVER_STATS_H_
+#pragma once
 
 #include <inttypes.h>
 
-extern volatile uint32_t* sum_scan_length;
-extern volatile uint32_t* operations;
+extern volatile uint32_t *sum_scan_length;
+extern volatile uint32_t *operations;
 extern volatile char stat_reporter_thread_exit;
 
 /* Initialize stastistics module and starts the reporter thread
@@ -19,5 +18,3 @@ void stats_update(int thread_id);
 
 /* Stop the reporter thread */
 void stats_notify_stop_reporter_thread(void);
-
-#endif //_TUCANASERVER_STATS_H_
