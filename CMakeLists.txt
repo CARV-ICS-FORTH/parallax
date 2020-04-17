@@ -17,18 +17,8 @@ else()
 endif()
 
 include(GNUInstallDirs)
-
-file(COPY ${CMAKE_SOURCE_DIR}/scripts/mkfs.eutropia.single.sh
-     DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/YCSB-CXX/)
-
-file(COPY ${CMAKE_SOURCE_DIR}/scripts/mkfs.eutropia.single.sh
-     DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tests/)
-
-file(COPY ${CMAKE_SOURCE_DIR}/YCSB-CXX/workloads
-     DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/YCSB-CXX/)
-
-file(COPY ${CMAKE_SOURCE_DIR}/YCSB-CXX/execution_plan.txt
-     DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/YCSB-CXX/)
+include(cmake_utils/mkfs.cmake.in)
+include(cmake_utils/ycsb.cmake.in)
 
 FetchContent_Declare(
   uthash # Recommendation: Stick close to the original name.

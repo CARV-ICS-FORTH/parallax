@@ -6,6 +6,21 @@ if [ $# -ne 3 ]; then
 	exit 1
 fi
 
+INSIDE_BUILD_DIR=../kreon_lib/mkfs.kreon
+BUILD_PATH=../build/kreon_lib/mkfs.kreon
+SYSTEM_PATH=/usr/local/bin/mkfs.kreon
+
+if [ -f "$INSIDE_BUILD_DIR" ]; then
+    echo "Executable chosen $INSIDE_BUILD_DIR"
+    MKFS_KREON=$INSIDE_BUILD_DIR
+elif [ -f "$BUILD_PATH" ]; then
+    echo "Executable chosen $BUILD_PATH"
+    MKFS_KREON=$BUILD_PATH
+else
+    echo "System Path $SYSTEM_PATH executable chosen"
+    MKFS_KREON=$SYSTEM_PATH
+fi
+
 DEV_NAME=$1
 DB_NUM=$2
 TYPE_OF_VOLUME=$3
@@ -34,6 +49,6 @@ echo 'Allocator size:' ${ALLOCATOR_SIZE}
 for i in `seq 0 $(($DB_NUM - 1))`;
 do
 	OFFSET=`expr ${i} \* ${ALLOCATOR_SIZE}`
-	../build/kreon_lib/mkfs.kreon ${DEV_NAME} ${OFFSET} ${ALLOCATOR_SIZE} > /dev/null
+	${MKFS_KREON} ${DEV_NAME} ${OFFSET} ${ALLOCATOR_SIZE} > /dev/null
 done
 exit 0
