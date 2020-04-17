@@ -1,0 +1,17 @@
+file(COPY ${CMAKE_SOURCE_DIR}/YCSB-CXX/workloads
+     DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/YCSB-CXX/)
+
+file(COPY ${CMAKE_SOURCE_DIR}/YCSB-CXX/execution_plan.txt
+     DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/YCSB-CXX/)
+
+file(COPY ${CMAKE_SOURCE_DIR}/scripts/ycsb/extract-data.sh
+     DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/YCSB-CXX/)
+
+file(COPY ${CMAKE_SOURCE_DIR}/scripts/ycsb/get_total_volume.sh
+     DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/YCSB-CXX/)
+
+file(COPY ${CMAKE_SOURCE_DIR}/scripts/ycsb/start_statistics.sh
+     DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/YCSB-CXX/)
+
+file(COPY ${CMAKE_SOURCE_DIR}/scripts/ycsb/stop_statistics.sh
+     DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/YCSB-CXX/)
