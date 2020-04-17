@@ -133,23 +133,12 @@ the index.html file in that folder.
 
 # Clang Format
 
-Install the clang-format for Centos with the commands below:
+For development in the cluster append the path below in your PATH environment variable:
 
-Install CentOS SCLo RH repository:
+    	PATH=/archive/users/gxanth/llvm-project/build/bin:$PATH
 
-	sudo yum install centos-release-scl-rh
-
-Install llvm-toolset-7-git-clang-format rpm package:
-
-	sudo yum install llvm-toolset-7-git-clang-format
-
-After successfully running the commands above clang-format should be installed at:
-
-	/opt/rh/llvm-toolset-7/root/usr/bin
-
-To format your code run in the build directory:
-
-	make format
+Install the clang-format for Archlinux with the commands below:
+	sudo pacman -S clang
 
 # Generating compile_commands.json for Single Node Kreon
 
@@ -166,6 +155,10 @@ After running cmake .. in the build directory run:
 	ln -sf ../build/compile_commands.json
 
 # Pre commit hooks using pre-commit
+
+Add the path below to your PATH environment variable:
+
+    	PATH=/archive/users/gxanth/git/bin:$PATH
 
 To install pre-commit:
 
