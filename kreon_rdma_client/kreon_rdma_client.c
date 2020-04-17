@@ -546,7 +546,6 @@ uint8_t krc_scan_get_next(krc_scannerp sp, char **key, size_t *keySize, char **v
 				break;
 			}
 		case KRC_ISSUE_MGET_REQ:
-
 			curr_region = client_find_region(seek_key, seek_key_size);
 			sc->curr_region = (void *)curr_region;
 			conn = get_connection_from_region(curr_region, (uint64_t)seek_key);
@@ -643,6 +642,7 @@ uint8_t krc_scan_get_next(krc_scannerp sp, char **key, size_t *keySize, char **v
 					seek_key = curr_region->ID_region.maximum_range + sizeof(uint32_t);
 					seek_key_size = *(uint32_t *)curr_region->ID_region.maximum_range;
 					sc->state = KRC_ISSUE_MGET_REQ;
+					seek_mode = GREATER_OR_EQUAL;
 					//log_info("Time for next batch, crossing regions, seek key %s", seek_key);
 				} else {
 					sc->state = KRC_END_OF_DB;

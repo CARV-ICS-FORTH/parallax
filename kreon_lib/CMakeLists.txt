@@ -41,8 +41,7 @@ add_library(
   scanner/scanner.c
   ../utilities/spin_loop.c
   ../utilities/min_max_heap.c
-  ../utilities/list.c
-  ../utilities/min_max_heap.c)
+  ../utilities/list.c)
 
 add_library(
   kreonr-shared SHARED
@@ -56,7 +55,8 @@ add_library(
   scanner/stack.c
   scanner/scanner.c
   ../utilities/spin_loop.c
-  ../utilities/list.c)
+  ../utilities/list.c
+  ../utilities/min_max_heap.c)
 
 set_target_properties(kreonr PROPERTIES COMPILE_DEFINITIONS "KREONR")
 

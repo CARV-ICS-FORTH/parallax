@@ -172,7 +172,8 @@ int Connect_Zookeeper(char *hostPort)
 void Connecting_with_Zookeeper_creating_regions_node(void)
 {
 	if (globals_get_zk_host() == NULL) {
-		log_fatal("Sorry zookeper_host:zookeeper_port not confiigured!");
+		log_fatal("Sorry zookeper_host:zookeeper_port not configured!");
+		exit(EXIT_FAILURE);
 	}
 	if (Connect_Zookeeper(globals_get_zk_host())) {
 		log_fatal("Error while initializing the master: ", errno);
@@ -961,10 +962,13 @@ int getting_args(int argc, char *argv[], struct test_regions *region)
 		} else if (strcmp(argv[i], PARA_MINKEY) == 0) {
 			i++;
 			region->ID_region.minimum_range = malloc(MAX_KEY_LENGTH);
-			*(int *)region->ID_region.minimum_range = strlen(argv[i]);
-			memcpy(region->ID_region.minimum_range + sizeof(int), argv[i], strlen(argv[i]));
-			printf("[%s:%s:%d] argument %s %s\n", __FILE__, __func__, __LINE__, argv[i - 1],
-			       region->ID_region.minimum_range + sizeof(int));
+			if (strcmp("-oo", argv[i]) == 0) {
+				memset(region->ID_region.minimum_range, 0x00, MAX_KEY_LENGTH);
+				*(uint32_t *)region->ID_region.minimum_range = MAX_KEY_LENGTH - sizeof(uint32_t);
+			} else {
+				*(int *)region->ID_region.minimum_range = strlen(argv[i]);
+				memcpy(region->ID_region.minimum_range + sizeof(int), argv[i], strlen(argv[i]));
+			}
 		} else if (strcmp(argv[i], PARA_MAXKEY) == 0) {
 			i++;
 			region->ID_region.maximum_range = malloc(MAX_KEY_LENGTH);

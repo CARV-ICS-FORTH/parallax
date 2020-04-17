@@ -75,7 +75,7 @@ echo "Starting kreon server, listening for RDMA connections at port $RDMA_PORT"
 ../build/kreon_server/kreon_server $RDMA_PORT $DEV_NAME 256 $ZOOKEEPER_IP:2181 192.168.4 0 "1,2" &> /tmp/$user/kreon_server_log.txt &
 sleep 2
 echo "Creating region"
-../build/kreon_server/create_regions -c --region 0 --minkey 00000 --maxkey +oo --size 4294967296 --host $HOSTNAME-$RDMA_PORT --zookeeper $ZOOKEEPER_IP:2181
+../build/kreon_server/create_regions -c --region 0 --minkey -oo --maxkey +oo --size 4294967296 --host $HOSTNAME-$RDMA_PORT --zookeeper $ZOOKEEPER_IP:2181
 echo ""
 echo "*************Server ready! Client can connect to Zookeeper IP $ZOOKEEPER_IP Zookeeper port 2181 log output follows"
 sleep 4

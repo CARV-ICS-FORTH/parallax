@@ -33,7 +33,7 @@ For the build tools and compiler:
 Kreon requires CMake version >= 3.11.0. On Centos/RHEL this is supplied from the
 EPEL repository and can be installed with:
 
-	sudo yum install cmake3 kernel-devel gcc-c++ 
+	sudo yum install cmake3 kernel-devel gcc-c++
 
 
 #### Dependencies for Single Node Kreon
@@ -47,8 +47,8 @@ For RDMA:
 	sudo yum install libibverbs-devel librdmacm-devel
 
 You also need to install ZooKeeper. Ready-made packages are available from
-Cloudera. 
-1. Add Cloudera's Centos 7 repository as described 
+Cloudera.
+1. Add Cloudera's Centos 7 repository as described
 [here](https://docs.cloudera.com/documentation/enterprise/5-14-x/topics/cdh_ig_cdh5_install.html)
 2. Install the Zookeeper C binding for clients:
 
@@ -96,7 +96,15 @@ The "Release" build disables warnings and enables optimizations.
 
 ## Build Package
 
+You can install Kreon in your standard path using cmake.
+
+To enable packaging and installation support you need to define KREON_BUILD_CPACK when invoking cmake.
+
 Run `make package` inside the `build` folder to create an RPM file.
+
+Run `make install` inside the `build` folder to install the RPM file.
+
+Run `make uninstall` inside the `build` folder to remove files installed by `make install`. (Directories are not deleted)
 
 # Static Analyzer
 
@@ -287,4 +295,3 @@ Git commit message template
 --------------------------------------------------------------------------------
 
 	git config commit.template .git-commit-template
-

@@ -10,14 +10,14 @@
 #include "../kreon_server/create_regions_utils.h"
 
 #define PREFIX_TEST_KEYS 300
-#define PREFIX_1 "userakiaslala"
-#define PREFIX_2 "userakiaslalb"
-#define PREFIX_3 "userakiaslalc"
+#define PREFIX_1 "@0lala" //userakiaslala"
+#define PREFIX_2 "@0lalb" //userakiaslalb"
+#define PREFIX_3 "@0lalc" //userakiaslalc"
 #define infinity "+oo"
 #define NUM_KEYS 1000000
 #define BASE 1000000
 #define NUM_REGIONS 16
-#define KEY_PREFIX "userakias"
+#define KEY_PREFIX "#b"
 #define KV_SIZE 1024
 #define UPDATES 100
 #define SCAN_SIZE 50
@@ -82,20 +82,21 @@ int main(int argc, char *argv[])
 			args_buf[3] = (char *)malloc(16);
 			sprintf(args_buf[3], "%u", region_id);
 			if (region_id == 0)
-				sprintf(args_buf[5], "%s", "0000000");
+				sprintf(args_buf[5], "%s", "-oo");
 			else
-				sprintf(args_buf[5], "userakias%lu", min_key);
-			sprintf(args_buf[7], "userakias%lu", max_key);
+				sprintf(args_buf[5], "%s%lu", KEY_PREFIX, min_key);
+			sprintf(args_buf[7], "%s%lu", KEY_PREFIX, max_key);
 			create_region(13, args_buf);
 			log_info("Created region id %s minkey %s maxkey %s", args_buf[2], args_buf[4], args_buf[6]);
 		}
 		/*last region*/
 		min_key = BASE + (region_id * range);
 		sprintf(args_buf[3], "%u", region_id);
-		sprintf(args_buf[5], "userakias%lu", min_key);
+		sprintf(args_buf[5], "%s%lu", KEY_PREFIX, min_key);
 		sprintf(args_buf[7], "+oo");
 		create_region(13, args_buf);
 		log_info("Created region id %s minkey %s maxkey %s", args_buf[2], args_buf[4], args_buf[6]);
+		return EXIT_SUCCESS;
 	}
 	logLevel = ZOO_LOG_LEVEL_INFO;
 
@@ -107,6 +108,7 @@ int main(int argc, char *argv[])
 	uint64_t i = 0;
 	uint64_t j = 0;
 	krc_scannerp sc = NULL;
+
 	key *k = (key *)malloc(KV_SIZE);
 	log_info("Starting population for %lu keys...", NUM_KEYS);
 	for (i = BASE; i < (BASE + NUM_KEYS); i++) {
@@ -115,7 +117,7 @@ int main(int argc, char *argv[])
 			log_info("inserted up to %llu th key", i);
 
 		sprintf(k->key_buf + strlen(KEY_PREFIX), "%llu", (long long unsigned)i);
-		k->key_size = strlen(k->key_buf) + 1;
+		k->key_size = strlen(k->key_buf);
 		value *v = (value *)((uint64_t)k + sizeof(key) + k->key_size);
 		v->value_size = KV_SIZE - ((2 * sizeof(key)) + k->key_size);
 		memset(v->value_buf, 0xDD, v->value_size);
@@ -128,7 +130,7 @@ int main(int argc, char *argv[])
 			log_info("looked up to %llu th key", i);
 
 		sprintf(k->key_buf + strlen(KEY_PREFIX), "%llu", (long long unsigned)i);
-		k->key_size = strlen(k->key_buf) + 1;
+		k->key_size = strlen(k->key_buf);
 		val = krc_get(k->key_size, k->key_buf, 2 * 1024, &error_code);
 		if (error_code != KRC_SUCCESS) {
 			log_fatal("key %s not found test failed!");
@@ -143,7 +145,7 @@ int main(int argc, char *argv[])
 	uint32_t sum_g = 0;
 	strncpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
 	sprintf(k->key_buf + strlen(KEY_PREFIX), "%d", 40000000);
-	k->key_size = strlen(k->key_buf) + 1;
+	k->key_size = strlen(k->key_buf);
 	value *v = (value *)((uint64_t)k + sizeof(key) + k->key_size);
 	v->value_size = sizeof(uint32_t);
 
@@ -173,6 +175,7 @@ int main(int argc, char *argv[])
 	}
 
 	log_info("Put/get with offset successful expected %u got %u", sum, sum_g);
+
 	log_info("testing small scans....");
 
 	for (i = BASE; i < (BASE + (NUM_KEYS - SCAN_SIZE)); i++) {
@@ -182,7 +185,7 @@ int main(int argc, char *argv[])
 		sprintf(k->key_buf + strlen(KEY_PREFIX), "%llu", (long long unsigned)i);
 		strncpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
 		sprintf(k->key_buf + strlen(KEY_PREFIX), "%llu", (long long unsigned)i);
-		k->key_size = strlen(k->key_buf) + 1;
+		k->key_size = strlen(k->key_buf);
 
 		sc = krc_scan_init(PREFETCH_ENTRIES, PREFETCH_MEM_SIZE);
 		krc_scan_set_start(sc, k->key_size, k->key_buf, KRC_GREATER_OR_EQUAL);
@@ -202,7 +205,7 @@ int main(int argc, char *argv[])
 			/*construct the key we expect*/
 			strncpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
 			sprintf(k->key_buf + strlen(KEY_PREFIX), "%llu", (long long unsigned)i + j);
-			k->key_size = strlen(k->key_buf) + 1;
+			k->key_size = strlen(k->key_buf);
 
 			if (!krc_scan_get_next(sc, &s_key, &s_key_size, &s_value, &s_value_size)) {
 				log_fatal("Test failed key %s not found scanner reason scan invalid!(it shouldn't)",
@@ -210,8 +213,8 @@ int main(int argc, char *argv[])
 				exit(EXIT_FAILURE);
 			}
 			if (k->key_size != s_key_size || memcmp(k->key_buf, s_key, k->key_size) != 0) {
-				log_fatal("Test failed key %s not found scanner instead returned %d:%s", k->key_buf,
-					  s_key_size, s_key);
+				log_fatal("Test failed key %s not found scanner instead returned %d:%s j was %d",
+					  k->key_buf, s_key_size, s_key, j);
 				exit(EXIT_FAILURE);
 			}
 
@@ -225,14 +228,15 @@ int main(int argc, char *argv[])
 	log_info("Running a full scan");
 
 	sc = krc_scan_init(PREFETCH_ENTRIES, PREFETCH_MEM_SIZE);
-	krc_scan_set_start(sc, 7, "0000000", KRC_GREATER_OR_EQUAL);
+	char minus_inf[7] = { '\0' };
+	krc_scan_set_start(sc, 7, minus_inf, KRC_GREATER_OR_EQUAL);
 	for (i = BASE; i < (BASE + NUM_KEYS); i++) {
 		strncpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
 		sprintf(k->key_buf + strlen(KEY_PREFIX), "%llu", (long long unsigned)i);
-		k->key_size = strlen(k->key_buf) + 1;
+		k->key_size = strlen(k->key_buf);
 
 		if (!krc_scan_get_next(sc, &s_key, &s_key_size, &s_value, &s_value_size)) {
-			log_fatal("Test failed key %s invalid scanner (it shoulddn't!)", k->key_buf);
+			log_fatal("Test failed key %s invalid scanner (it shoulddn't!)", s_key);
 			exit(EXIT_FAILURE);
 		}
 		if (k->key_size != s_key_size || memcmp(k->key_buf, s_key, k->key_size) != 0) {
@@ -247,13 +251,13 @@ int main(int argc, char *argv[])
 	int tuples = 0;
 	log_info("Testing stop key");
 	sc = krc_scan_init(PREFETCH_ENTRIES, PREFETCH_MEM_SIZE);
-	krc_scan_set_start(sc, 7, "0000000", KRC_GREATER_OR_EQUAL);
+	krc_scan_set_start(sc, 7, minus_inf, KRC_GREATER_OR_EQUAL);
 	sprintf(k->key_buf + strlen(KEY_PREFIX), "%llu", (long long unsigned)BASE + (NUM_KEYS / 2));
 	krc_scan_set_stop(sc, strlen(k->key_buf), k->key_buf, KRC_GREATER);
 	for (i = BASE; i < (BASE + NUM_KEYS); i++) {
 		strncpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
 		sprintf(k->key_buf + strlen(KEY_PREFIX), "%llu", (long long unsigned)i);
-		k->key_size = strlen(k->key_buf) + 1;
+		k->key_size = strlen(k->key_buf);
 		if (!krc_scan_get_next(sc, &s_key, &s_key_size, &s_value, &s_value_size))
 			break;
 
@@ -274,7 +278,8 @@ int main(int argc, char *argv[])
 	log_info("Testing prefix key");
 	tuples = 0;
 	sc = krc_scan_init(PREFETCH_ENTRIES, PREFETCH_MEM_SIZE);
-	krc_scan_set_start(sc, 7, "0000000", KRC_GREATER_OR_EQUAL);
+
+	krc_scan_set_start(sc, 7, minus_inf, KRC_GREATER_OR_EQUAL);
 	sprintf(k->key_buf + strlen(KEY_PREFIX), "%llu", (long long unsigned)BASE + 111);
 	krc_scan_set_prefix_filter(sc, strlen(k->key_buf), k->key_buf);
 	for (i = BASE; i < (BASE + NUM_KEYS); i++) {
@@ -295,7 +300,7 @@ int main(int argc, char *argv[])
 			log_info("deleted up to %llu th key", i);
 
 		sprintf(k->key_buf + strlen(KEY_PREFIX), "%llu", (long long unsigned)i);
-		k->key_size = strlen(k->key_buf) + 1;
+		k->key_size = strlen(k->key_buf);
 		if (krc_delete(k->key_size, k->key_buf) != KRC_SUCCESS) {
 			log_fatal("key %s not found failed to delete test failed!");
 			exit(EXIT_FAILURE);
@@ -308,7 +313,7 @@ int main(int argc, char *argv[])
 			log_info("looked up to %llu th key", i);
 
 		sprintf(k->key_buf + strlen(KEY_PREFIX), "%llu", (long long unsigned)i);
-		k->key_size = strlen(k->key_buf) + 1;
+		k->key_size = strlen(k->key_buf);
 		if (krc_exists(k->key_size, k->key_buf))
 			++tuples;
 	}
@@ -322,7 +327,7 @@ int main(int argc, char *argv[])
 	strncpy(k->key_buf, PREFIX_1, strlen(PREFIX_1));
 	for (i = 0; i < PREFIX_TEST_KEYS; i++) {
 		sprintf(k->key_buf + strlen(PREFIX_1), "%llu", (long long unsigned)i);
-		k->key_size = strlen(k->key_buf) + 1;
+		k->key_size = strlen(k->key_buf);
 		value *v = (value *)((uint64_t)k + sizeof(key) + k->key_size);
 		v->value_size = KV_SIZE - ((2 * sizeof(key)) + k->key_size);
 		memset(v->value_buf, 0xDD, v->value_size);
@@ -333,7 +338,7 @@ int main(int argc, char *argv[])
 	strncpy(k->key_buf, PREFIX_2, strlen(PREFIX_2));
 	for (i = 0; i < PREFIX_TEST_KEYS; i++) {
 		sprintf(k->key_buf + strlen(PREFIX_2), "%llu", (long long unsigned)i);
-		k->key_size = strlen(k->key_buf) + 1;
+		k->key_size = strlen(k->key_buf);
 		value *v = (value *)((uint64_t)k + sizeof(key) + k->key_size);
 		v->value_size = KV_SIZE - ((2 * sizeof(key)) + k->key_size);
 		memset(v->value_buf, 0xDD, v->value_size);
@@ -344,7 +349,7 @@ int main(int argc, char *argv[])
 	strncpy(k->key_buf, PREFIX_3, strlen(PREFIX_3));
 	for (i = 0; i < PREFIX_TEST_KEYS; i++) {
 		sprintf(k->key_buf + strlen(PREFIX_1), "%llu", (long long unsigned)i);
-		k->key_size = strlen(k->key_buf) + 1;
+		k->key_size = strlen(k->key_buf);
 		value *v = (value *)((uint64_t)k + sizeof(key) + k->key_size);
 		v->value_size = KV_SIZE - ((2 * sizeof(key)) + k->key_size);
 		memset(v->value_buf, 0xDD, v->value_size);
@@ -371,10 +376,10 @@ int main(int argc, char *argv[])
 		}
 		sc = krc_scan_init(PREFETCH_ENTRIES, PREFETCH_MEM_SIZE);
 		strcpy(k->key_buf, prefix_start);
-		k->key_size = strlen(k->key_buf) + 1;
+		k->key_size = strlen(k->key_buf);
 		krc_scan_set_start(sc, k->key_size, k->key_buf, KRC_GREATER_OR_EQUAL);
 		strcpy(k->key_buf, prefix_stop);
-		k->key_size = strlen(k->key_buf) + 1;
+		k->key_size = strlen(k->key_buf);
 		krc_scan_set_stop(sc, k->key_size, k->key_buf, KRC_GREATER_OR_EQUAL);
 		tuples = 0;
 		while (krc_scan_get_next(sc, &s_key, &s_key_size, &s_value, &s_value_size)) {
