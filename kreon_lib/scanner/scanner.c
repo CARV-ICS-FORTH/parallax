@@ -119,7 +119,8 @@ int _init_level_scanner(level_scanner *level_sc, db_handle *handle, void *start_
 	stack_init(&level_sc->stack);
 	/* position scanner now to the appropriate row */
 	if (_seek_scanner(level_sc, start_key, seek_mode) == END_OF_DATABASE) {
-		// printf("[%s:%s:%d] EMPTY DATABASE!\n",__FILE__,__func__,__LINE__);
+		//log_info("EMPTY DATABASE after seek for key %u:%s!", *(uint32_t *)start_key,
+		//	 start_key + sizeof(uint32_t));
 		stack_destroy(&(level_sc->stack));
 		return -1;
 	}
@@ -198,7 +199,7 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 	element.idx = 0;
 	element.node = NULL;
 	stack_push(&(level_sc->stack), element);
-	node = level_sc->root; // CPAAS-118 related
+	node = level_sc->root;
 
 	if (node->type == leafRootNode && node->numberOfEntriesInNode == 0) {
 		/*we seek in an empty tree*/
@@ -217,7 +218,8 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 			addr = &(inode->p[middle].pivot);
 			full_pivot_key = (void *)(MAPPED + *(uint64_t *)addr);
 			ret = _tucana_key_cmp(full_pivot_key, start_key_buf, KV_FORMAT, KV_FORMAT);
-			//log_info("pivot %s app %s ret %lld",full_pivot_key+4,start_key_buf+4,ret);
+			//log_info("pivot %u:%s app %u:%s ret %lld", *(uint32_t *)(full_pivot_key), full_pivot_key + 4,
+			//	 *(uint32_t *)start_key_buf, start_key_buf + 4, ret);
 
 			if (ret == 0) {
 				addr = &(inode->p[middle].right[0]);
@@ -266,7 +268,14 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 	if (start_key_buf == NULL)
 		memset(key_buf_prefix, 0, PREFIX_SIZE * sizeof(char));
 	else {
-		memcpy(key_buf_prefix, (void *)((uint64_t)start_key_buf + sizeof(int32_t)), PREFIX_SIZE);
+		uint32_t s_key_size = *(uint32_t *)start_key_buf;
+		if (s_key_size >= PREFIX_SIZE)
+			memcpy(key_buf_prefix, (void *)((uint64_t)start_key_buf + sizeof(int32_t)), PREFIX_SIZE);
+		else {
+			uint32_t s_key_size = *(uint32_t *)start_key_buf;
+			memcpy(key_buf_prefix, (void *)((uint64_t)start_key_buf + sizeof(int32_t)), s_key_size);
+			memset(key_buf_prefix + s_key_size, 0x00, PREFIX_SIZE - s_key_size);
+		}
 	}
 
 	/*now perform binary search inside the leaf*/
@@ -280,7 +289,7 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 
 		index_key_prefix = &lnode->prefix[middle][0];
 		ret = prefix_compare(index_key_prefix, key_buf_prefix, PREFIX_SIZE);
-
+		//log_info("index prefix %s key pref %s ret %d", index_key_prefix, key_buf_prefix, ret);
 		if (ret < 0) {
 			start_idx = middle + 1;
 			//if (start_idx > end_idx) {
@@ -392,7 +401,7 @@ int32_t getNext(scannerHandle *sc)
 		stat = getMinAndRemove(&sc->heap, &nd);
 		if (stat != EMPTY_MIN_HEAP) {
 			sc->keyValue = nd.data;
-			// refill
+			//log_info("setting key %s refilling", sc->keyValue + 4);
 			if (_get_next_KV(&sc->LEVEL_SCANNERS[nd.level_id]) != END_OF_DATABASE) {
 				// printf("[%s:%s:%d] refilling from level_id
 				// %d\n",__FILE__,__func__,__LINE__, nd.level_id);

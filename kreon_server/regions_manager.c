@@ -52,7 +52,7 @@ int _rb_tree_compare(void *key_1, void *key_2, int size_2)
 	else if (ret < 0)
 		return -1;
 	else
-		return size_1-size_2;
+		return size_1 - size_2;
 }
 
 _tucana_region_S *find_region(void *key, int key_size)
@@ -70,6 +70,7 @@ retry:
 	end_idx = kreon_regions_size - 1;
 	region = NULL;
 	counter_2 = regions_lamport_counter_2;
+
 	while (start_idx <= end_idx) {
 		middle = (start_idx + end_idx) / 2;
 		ret = _rb_tree_compare(kreon_regions[middle]->ID_region.minimum_range, key, key_size);
@@ -83,6 +84,7 @@ retry:
 		} else
 			end_idx = middle - 1;
 	}
+
 	counter_1 = regions_lamport_counter_1;
 	if (counter_2 != counter_1)
 		goto retry;

@@ -969,7 +969,7 @@ void handle_task(void *__task)
 	rdma_conn = task->conn;
 	stats_update(task->thread_id);
 	switch (task->msg->type) {
-	//gesalous leave it for later
+		//gesalous leave it for later
 #if 0
 	case SPILL_INIT:
 
@@ -1796,7 +1796,8 @@ int main(int argc, char *argv[])
 		_str_split(argv[6], ',', &spinning_threads_core_ids, &num_of_spinning_threads);
 		_str_split(argv[7], ',', &worker_threads_core_ids, &num_of_worker_threads);
 	} else {
-		DPRINT("Error: usage: ./tucanaserver <port number> <device name> <device size in GB> <zookeeper_host_port> <RDMA_IP_prefix> <spinning thread core ids>  <working thread core ids>\n");
+		log_fatal(
+			"Error: usage: ./kreon_server <port number> <device name> <device size in GB> <zk_host:zk_port> <RDMA_IP_prefix> <spinning thread core ids>  <working thread core ids>\n");
 		exit(EXIT_FAILURE);
 	}
 
@@ -1809,7 +1810,7 @@ int main(int argc, char *argv[])
 	assert(num_of_worker_threads % num_of_spinning_threads == 0);
 	WORKER_THREADS_PER_SPINNING_THREAD = (num_of_worker_threads / num_of_spinning_threads);
 
-	DPRINT("Set pool size for each spinning thread to %u\n", WORKER_THREADS_PER_SPINNING_THREAD);
+	log_info("Set pool size for each spinning thread to %u\n", WORKER_THREADS_PER_SPINNING_THREAD);
 	struct sigaction sa;
 	sa.sa_handler = tu_ec_sig_handler;
 	sigemptyset(&sa.sa_mask);

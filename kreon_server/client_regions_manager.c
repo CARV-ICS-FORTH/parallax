@@ -68,7 +68,8 @@ retry:
 	while (start_idx <= end_idx) {
 		middle = (start_idx + end_idx) / 2;
 		ret = client_compare(kreon_regions[middle]->ID_region.minimum_range, key, key_size);
-
+		//log_info("Comparing region min %s with key %s ret %ld",
+		//	 kreon_regions[middle]->ID_region.minimum_range + 4, key, ret);
 		if (ret < 0 || ret == 0) {
 			start_idx = middle + 1;
 			if (client_compare(kreon_regions[middle]->ID_region.maximum_range, key, key_size) > 0) {
@@ -78,6 +79,7 @@ retry:
 		} else
 			end_idx = middle - 1;
 	}
+
 	lamport_counter_1 = kreon_regions_lamport_counter_1;
 
 	if (lamport_counter_2 != lamport_counter_1)
