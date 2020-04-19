@@ -11,9 +11,9 @@ Please note we have a code of conduct, please follow it in all your interactions
 
 2. Create a branch deriving as base from master branch.
 
-3. Install pre-commit hooks as described in the README.md.
+3. Install [pre-commit](https://carvgit.ics.forth.gr/evolve/kreon/tree/fix-contribmd#pre-commit-hooks-using-pre-commit) hooks as described in the README.md.
 
-4. Install the git commit template as described in the README.md.
+4. Install the [git commit template](https://carvgit.ics.forth.gr/evolve/kreon/tree/fix-contribmd#git-commit-message-template) as described in the README.md.
 
 5. It is your responsibility to merge your branch with master branch whenever master is updated.
 
