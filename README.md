@@ -176,7 +176,7 @@ Then try upgrading pre-commit:
 
 To install pre-commit hooks:
 
-	cd HEutropia
+	cd kreon
 	pre-commit install
 
 If everything worked as it should then the following message should be printed:
