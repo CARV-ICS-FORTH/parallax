@@ -1,8 +1,10 @@
 # File: kreon/CMakeLists.txt Author: Michalis Vardoulakis <mvard@ics.forth.gr>
 
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
-
+set(KREON_LIB "kreon")
+set(KREON_LIB_SHARED "kreon-shared")
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 if("${CMAKE_BUILD_TYPE}" STREQUAL "Debug")
   set(CMAKE_C_FLAGS
       "-Wstrict-prototypes -Wall -Wextra -std=gnu11 -fPIC ${CMAKE_C_FLAGS}"
@@ -61,11 +63,15 @@ add_library(
 set_target_properties(kreonr PROPERTIES COMPILE_DEFINITIONS "KREONR")
 
 # Kreon with replication disabled
-add_library(kreon STATIC ${KREON_C_SOURCE_FILES} ${log_SOURCE_DIR})
-add_library(kreon-shared SHARED ${KREON_C_SOURCE_FILES} ${log_SOURCE_DIR})
+add_library(${KREON_LIB} STATIC ${KREON_C_SOURCE_FILES} ${log_SOURCE_DIR})
+add_library(${KREON_LIB_SHARED} SHARED ${KREON_C_SOURCE_FILES}
+                                       ${log_SOURCE_DIR})
 
-target_link_libraries(kreon log)
-target_link_libraries(kreon-shared log)
+set_property(TARGET ${KREON_LIB} PROPERTY POSITION_INDEPENDENT_CODE ON)
+set_property(TARGET ${KREON_LIB_SHARED} PROPERTY POSITION_INDEPENDENT_CODE ON)
+
+target_link_libraries(${KREON_LIB} log)
+target_link_libraries(${KREON_LIB_SHARED} log)
 
 set_source_files_properties(allocator/spin_loop.c PROPERTIES COMPILE_FLAGS
                                                              "-O0")
@@ -81,9 +87,9 @@ target_link_libraries(mkfs.kreon log)
 
 if(KREON_BUILD_CPACK)
   install(
-    TARGETS kreonr-shared kreon-shared mkfs.kreon
+    TARGETS kreonr-shared ${KREON_LIB_SHARED} mkfs.kreon
     LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
     RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
   set_target_properties(kreonr-shared PROPERTIES OUTPUT_NAME kreonr)
-  set_target_properties(kreon-shared PROPERTIES OUTPUT_NAME kreon)
+  set_target_properties(${KREON_LIB_SHARED} PROPERTIES OUTPUT_NAME kreon)
 endif()

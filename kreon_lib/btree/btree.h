@@ -350,33 +350,6 @@ typedef struct rotate_data {
 	int pos_right;
 } rotate_data;
 
-typedef struct ancestors {
-	rotate_data neighbors[MAX_HEIGHT];
-	node_header *parent[MAX_HEIGHT];
-	int8_t node_has_key[MAX_HEIGHT];
-	int size;
-} ancestors;
-
-typedef struct delete_request {
-	db_handle *handle;
-	ancestors *ancs;
-	index_node *parent;
-	leaf_node *self;
-	uint64_t offset; /*offset in my parent*/
-	int active_tree;
-	int level_id;
-	void *key_buf;
-	char key_format;
-} delete_request;
-
-typedef struct delete_reply {
-	node_header *new_self; /*in case of COW*/
-	node_header *new_left_brother; /*in case of COW*/
-	node_header *new_right_brother; /*in case of COW*/
-	void *key;
-	int status;
-} delete_reply;
-
 typedef struct bt_spill_request {
 	db_descriptor *db_desc;
 	volume_descriptor *volume_desc;
@@ -399,9 +372,9 @@ void flush_volume(volume_descriptor *volume_desc, char force_spill);
 void spill_database(db_handle *handle);
 bt_spill_request *bt_spill_check(db_handle *handle, uint8_t level_id);
 
-typedef struct bt_insert_req {
+typedef struct bt_mutate_req {
 	db_handle *handle;
-	void *key_value_buf;
+
 	/*offset in log where the kv was written*/
 	uint64_t log_offset;
 	/*info for cases of segment_full_event*/
@@ -410,9 +383,9 @@ typedef struct bt_insert_req {
 	uint64_t segment_id;
 	uint64_t end_of_log;
 	uint32_t log_padding;
-
 	uint32_t kv_size;
 	uint8_t level_id;
+	uint32_t active_tree;
 	/*only for inserts >= level_1*/
 	uint8_t tree_id;
 	char key_format;
@@ -421,7 +394,44 @@ typedef struct bt_insert_req {
 	uint8_t recovery_request : 1;
 	/*needed for distributed version of Kreon*/
 	uint8_t segment_full_event : 1;
+} bt_mutate_req;
+
+typedef struct bt_insert_req {
+	bt_mutate_req metadata;
+	void *key_value_buf;
 } bt_insert_req;
+
+typedef struct ancestors {
+	rotate_data neighbors[MAX_HEIGHT];
+	node_header *parent[MAX_HEIGHT];
+	int8_t node_has_key[MAX_HEIGHT];
+	int size;
+} ancestors;
+
+typedef struct delete_request {
+	bt_mutate_req metadata;
+	ancestors *ancs; /* This field is redundant and should be removed */
+	index_node *parent;
+	leaf_node *self;
+	uint64_t offset; /*offset in my parent*/
+	void *key_buf;
+} delete_request;
+
+/* In case more operations are tracked in the log in the future such as transactions
+  you will need to change the request_type enumerator and the log_operation struct.
+  In the request_type you will add the name of the operation i.e. transactionOp and
+  in the log_operation you will add a pointer in the union with the new operation i.e. transaction_request.
+*/
+typedef enum { insertOp, deleteOp, unknownOp } request_type;
+
+typedef struct log_operation {
+	bt_mutate_req *metadata;
+	request_type optype_tolog;
+	union {
+		bt_insert_req *ins_req;
+		delete_request *del_req;
+	};
+} log_operation;
 
 typedef struct bt_split_result {
 	union {
@@ -440,6 +450,12 @@ typedef struct bt_split_result {
 	uint8_t stat;
 } bt_split_result;
 
+typedef struct metadata_tologop {
+	uint32_t key_len;
+	uint32_t value_len;
+	uint32_t kv_size;
+} metadata_tologop;
+
 typedef struct split_data {
 	node_header *father;
 	node_header *son;
@@ -456,6 +472,7 @@ typedef struct spill_data_totrigger {
 
 uint8_t insert_key_value(db_handle *handle, void *key, void *value, uint32_t key_size, uint32_t value_size);
 uint8_t _insert_key_value(bt_insert_req *ins_req);
+void *append_key_value_to_log(log_operation *req);
 
 uint8_t _insert_index_entry(db_handle *db, kv_location *location, int INSERT_FLAGS);
 char *node_type(nodeType_t type);

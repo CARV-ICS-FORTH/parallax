@@ -20,6 +20,7 @@
 #include <sys/syscall.h>
 #include <pthread.h>
 
+#include "btree.h"
 #include "gc.h"
 #include "segment_allocator.h"
 #include "../../utilities/macros.h"
@@ -432,13 +433,15 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 	db_descriptor *db_desc;
 	char *key;
 	uint64_t val;
-	int i;
+	int i = 0;
 	int digits;
 	uint8_t level_id, tree_id;
 
-	i = 0;
-	fprintf(stderr, "%s[%s:%s:%d](\"%s\", %" PRIu64 ", %" PRIu64 ", %s);%s\n", "\033[0;32m", __FILE__, __func__,
+	assert(strlen(db_name) >= 2);
+
+	fprintf(stderr, "\n%s[%s:%s:%d](\"%s\", %" PRIu64 ", %" PRIu64 ", %s);%s\n", "\033[0;32m", __FILE__, __func__,
 		__LINE__, volumeName, start, size, db_name, "\033[0m");
+
 	MUTEX_LOCK(&init_lock);
 
 	if (mappedVolumes == NULL) {
@@ -467,7 +470,7 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 			 index_order, leaf_order, sizeof(node_header));
 	}
 	/*Is requested volume already mapped?, construct key which will be
-* volumeName|start*/
+	 * volumeName|start*/
 	val = start;
 	digits = 0;
 	while (val > 0) {
@@ -1125,31 +1128,65 @@ uint8_t insert_key_value(db_handle *handle, void *key, void *value, uint32_t key
 	memcpy((void *)(uint64_t)key_buf + sizeof(uint32_t), key, key_size);
 	*(uint32_t *)((uint64_t)key_buf + sizeof(uint32_t) + key_size) = value_size;
 	memcpy((void *)(uint64_t)key_buf + sizeof(uint32_t) + key_size + sizeof(uint32_t), value, value_size);
-	ins_req.handle = handle;
+	ins_req.metadata.handle = handle;
 	ins_req.key_value_buf = key_buf;
-	ins_req.level_id = 0;
-	ins_req.key_format = KV_FORMAT;
-	ins_req.append_to_log = 1;
-	ins_req.gc_request = 0;
+	ins_req.metadata.level_id = 0;
+	ins_req.metadata.key_format = KV_FORMAT;
+	ins_req.metadata.append_to_log = 1;
+	ins_req.metadata.gc_request = 0;
 
 	return _insert_key_value(&ins_req);
 }
 
-void *append_key_value_to_log(bt_insert_req *ins_req)
+void extract_keyvalue_size(log_operation *req, metadata_tologop *data_size)
+{
+	switch (req->optype_tolog) {
+	case insertOp:
+		data_size->key_len = *(uint32_t *)req->ins_req->key_value_buf;
+		data_size->value_len =
+			*(uint32_t *)(req->ins_req->key_value_buf + sizeof(uint32_t) + (data_size->key_len));
+		data_size->kv_size = req->metadata->kv_size;
+		break;
+	case deleteOp:
+		data_size->key_len = *(uint32_t *)req->del_req->key_buf;
+		data_size->value_len = 0;
+		data_size->kv_size = data_size->key_len + (sizeof(uint32_t) * 2);
+		break;
+	default:
+		log_fatal("Trying to append unknown operation in log! ");
+		exit(EXIT_FAILURE);
+	}
+}
+
+void write_keyvalue_inlog(log_operation *req, metadata_tologop *data_size, char *addr_inlog)
+{
+	switch (req->optype_tolog) {
+	case insertOp:
+		memcpy(addr_inlog, req->ins_req->key_value_buf,
+		       sizeof(data_size->key_len) + data_size->key_len + sizeof(data_size->value_len) +
+			       data_size->value_len);
+		break;
+	case deleteOp:
+		memcpy(addr_inlog, req->del_req->key_buf, sizeof(data_size->key_len) + data_size->key_len);
+		addr_inlog += (sizeof(data_size->key_len) + data_size->key_len);
+		memcpy(addr_inlog, &data_size->value_len, sizeof(data_size->value_len));
+		break;
+	default:
+		log_fatal("Trying to append unknown operation in log! ");
+		exit(EXIT_FAILURE);
+	}
+}
+
+void *append_key_value_to_log(log_operation *req)
 {
 	segment_header *d_header;
-	void *key_addr; /*address at the device*/
-	void *data_addr; /*address at the device*/
-	uint32_t key_len;
-	uint32_t value_len;
+	void *addr_inlog; /*address at the device*/
+	metadata_tologop data_size;
 	uint32_t available_space_in_log;
-	uint32_t kv_size;
 	uint32_t allocated_space;
-	db_handle *handle = ins_req->handle;
-	key_len = *(uint32_t *)ins_req->key_value_buf;
-	value_len = *(uint32_t *)(ins_req->key_value_buf + sizeof(uint32_t) + key_len);
+	db_handle *handle = req->metadata->handle;
+	extract_keyvalue_size(req, &data_size);
 
-	kv_size = ins_req->kv_size;
 #ifdef LOG_WITH_MUTEX
 	MUTEX_LOCK(&handle->db_desc->lock_log);
 #elif SPINLOCK
@@ -1161,21 +1198,21 @@ void *append_key_value_to_log(bt_insert_req *ins_req)
 	else
 		available_space_in_log = 0;
 
-	if (available_space_in_log < kv_size) {
+	if (available_space_in_log < data_size.kv_size) {
 		/*fill info for kreon master here*/
-		ins_req->log_segment_addr = (uint64_t)handle->db_desc->KV_log_last_segment - MAPPED;
-		ins_req->log_offset_full_event = handle->db_desc->KV_log_size;
-		ins_req->segment_id = handle->db_desc->KV_log_last_segment->segment_id;
-		ins_req->log_padding = available_space_in_log;
-		ins_req->end_of_log = handle->db_desc->KV_log_size + available_space_in_log;
-		ins_req->segment_full_event = 1;
+		req->metadata->log_segment_addr = (uint64_t)handle->db_desc->KV_log_last_segment - MAPPED;
+		req->metadata->log_offset_full_event = handle->db_desc->KV_log_size;
+		req->metadata->segment_id = handle->db_desc->KV_log_last_segment->segment_id;
+		req->metadata->log_padding = available_space_in_log;
+		req->metadata->end_of_log = handle->db_desc->KV_log_size + available_space_in_log;
+		req->metadata->segment_full_event = 1;
 
 		/*pad with zeroes remaining bytes in segment*/
-		key_addr = (void *)((uint64_t)handle->db_desc->KV_log_last_segment +
-				    (handle->db_desc->KV_log_size % BUFFER_SEGMENT_SIZE));
-		memset(key_addr, 0x00, available_space_in_log);
+		addr_inlog = (void *)((uint64_t)handle->db_desc->KV_log_last_segment +
+				      (handle->db_desc->KV_log_size % BUFFER_SEGMENT_SIZE));
+		memset(addr_inlog, 0x00, available_space_in_log);
 
-		allocated_space = kv_size + sizeof(segment_header);
+		allocated_space = data_size.kv_size + sizeof(segment_header);
 		allocated_space += BUFFER_SEGMENT_SIZE - (allocated_space % BUFFER_SEGMENT_SIZE);
 
 		d_header = seg_get_raw_log_segment(handle->volume_desc);
@@ -1186,10 +1223,9 @@ void *append_key_value_to_log(bt_insert_req *ins_req)
 		/* position the log to the newly added block*/
 		handle->db_desc->KV_log_size += (available_space_in_log + sizeof(segment_header));
 	}
-	key_addr = (void *)((uint64_t)handle->db_desc->KV_log_last_segment +
-			    (handle->db_desc->KV_log_size % BUFFER_SEGMENT_SIZE));
-	data_addr = (void *)((uint64_t)key_addr + sizeof(int32_t) + key_len);
-	handle->db_desc->KV_log_size += kv_size;
+	addr_inlog = (void *)((uint64_t)handle->db_desc->KV_log_last_segment +
+			      (handle->db_desc->KV_log_size % BUFFER_SEGMENT_SIZE));
+	handle->db_desc->KV_log_size += data_size.kv_size;
 
 #ifdef LOG_WITH_MUTEX
 	MUTEX_UNLOCK(&handle->db_desc->lock_log);
@@ -1197,13 +1233,9 @@ void *append_key_value_to_log(bt_insert_req *ins_req)
 	pthread_spin_unlock(&handle->db_desc->lock_log);
 #endif
 
-	*(uint32_t *)key_addr = key_len;
-	memcpy(key_addr + sizeof(uint32_t), ins_req->key_value_buf + sizeof(uint32_t), key_len);
-	*(uint32_t *)data_addr = value_len;
-	memcpy(data_addr + sizeof(uint32_t), ins_req->key_value_buf + sizeof(uint32_t) + key_len + sizeof(uint32_t),
-	       value_len);
+	write_keyvalue_inlog(req, &data_size, addr_inlog);
 
-	return key_addr;
+	return addr_inlog;
 }
 
 static void spill_trigger(bt_spill_request *req)
@@ -1366,15 +1398,15 @@ uint8_t _insert_key_value(bt_insert_req *ins_req)
 	unsigned val_size;
 	uint8_t rc;
 
-	db_desc = ins_req->handle->db_desc;
+	db_desc = ins_req->metadata.handle->db_desc;
 	db_desc->dirty = 0x01;
 
-	if (ins_req->key_format == KV_FORMAT) {
+	if (ins_req->metadata.key_format == KV_FORMAT) {
 		key_size = *(uint32_t *)ins_req->key_value_buf;
 		val_size = *(uint32_t *)(ins_req->key_value_buf + 4 + key_size);
-		ins_req->kv_size = sizeof(uint32_t) + key_size + sizeof(uint32_t) + val_size;
+		ins_req->metadata.kv_size = sizeof(uint32_t) + key_size + sizeof(uint32_t) + val_size;
 	} else
-		ins_req->kv_size = -1;
+		ins_req->metadata.kv_size = -1;
 	rc = SUCCESS;
 	if (_writers_join_as_readers(ins_req) == SUCCESS)
 		rc = SUCCESS;
@@ -1382,7 +1414,7 @@ uint8_t _insert_key_value(bt_insert_req *ins_req)
 		log_warn("insert failed!");
 		rc = FAILED;
 	}
-	bt_spill_request *spill = bt_spill_check(ins_req->handle, 0);
+	bt_spill_request *spill = bt_spill_check(ins_req->metadata.handle, 0);
 	if (spill != NULL)
 		spill_trigger(spill);
 	return rc;
@@ -1875,7 +1907,7 @@ int __update_leaf_index(bt_insert_req *req, leaf_node *leaf, void *key_buf)
 	end_idx = leaf->header.numberOfEntriesInNode - 1;
 	addr = &(leaf->pointer[0]);
 
-	if (req->key_format == KV_FORMAT) {
+	if (req->metadata.key_format == KV_FORMAT) {
 		int32_t row_len = *(int32_t *)key_buf;
 		memcpy(key_buf_prefix, (void *)((uint64_t)key_buf + sizeof(int32_t)), MIN(row_len, PREFIX_SIZE));
 	} else { /* operation coming from spill request (i.e. KV_PREFIX) */
@@ -1903,9 +1935,9 @@ int __update_leaf_index(bt_insert_req *req, leaf_node *leaf, void *key_buf)
 		//update_leaf_index_stats(req->key_format);
 
 		index_key_buf = (void *)(MAPPED + *(uint64_t *)addr);
-		ret = _tucana_key_cmp(index_key_buf, key_buf, KV_FORMAT, req->key_format);
+		ret = _tucana_key_cmp(index_key_buf, key_buf, KV_FORMAT, req->metadata.key_format);
 		if (ret == 0) {
-			if (req->gc_request && pointer_to_kv_in_log != index_key_buf)
+			if (req->metadata.gc_request && pointer_to_kv_in_log != index_key_buf)
 				return ret;
 			break;
 		} else if (ret < 0) {
@@ -1927,7 +1959,7 @@ int __update_leaf_index(bt_insert_req *req, leaf_node *leaf, void *key_buf)
 	}
 
 	/*setup the pointer*/
-	if (req->key_format == KV_FORMAT)
+	if (req->metadata.key_format == KV_FORMAT)
 		pointer = (uint64_t)key_buf - MAPPED;
 	else /* KV_PREFIX */
 		pointer = (*(uint64_t *)(key_buf + PREFIX_SIZE)) - MAPPED;
@@ -2009,9 +2041,11 @@ static bt_split_result split_index(node_header *node, bt_insert_req *ins_req)
 	uint32_t i = 0;
 	//assert_index_node(node);
 	result.left_child = (node_header *)seg_get_index_node(
-		ins_req->handle->volume_desc, &ins_req->handle->db_desc->levels[ins_req->level_id], INDEX_SPLIT);
+		ins_req->metadata.handle->volume_desc,
+		&ins_req->metadata.handle->db_desc->levels[ins_req->metadata.level_id], INDEX_SPLIT);
 	result.right_child = (node_header *)seg_get_index_node(
-		ins_req->handle->volume_desc, &ins_req->handle->db_desc->levels[ins_req->level_id], INDEX_SPLIT);
+		ins_req->metadata.handle->volume_desc,
+		&ins_req->metadata.handle->db_desc->levels[ins_req->metadata.level_id], INDEX_SPLIT);
 
 	// result.left_child->v1++; /*lamport counter*/
 	// result.right_child->v1++; /*lamport counter*/
@@ -2042,8 +2076,8 @@ static bt_split_result split_index(node_header *node, bt_insert_req *ins_req)
 			continue; /*middle key not needed, is going to the upper level*/
 		}
 
-		insert_key_at_index(ins_req->handle, ins_req->level_id, (index_node *)tmp_index, left_child,
-				    right_child, key_buf, KEY_LOG_SPLIT);
+		insert_key_at_index(ins_req->metadata.handle, ins_req->metadata.level_id, (index_node *)tmp_index,
+				    left_child, right_child, key_buf, KEY_LOG_SPLIT);
 	}
 
 	// result.left_child->v2++; /*lamport counter*/
@@ -2065,13 +2099,15 @@ int insert_KV_at_leaf(bt_insert_req *ins_req, node_header *leaf)
 	uint8_t level_id;
 	uint8_t active_tree;
 
-	level_id = ins_req->level_id;
-	active_tree = ins_req->handle->db_desc->levels[level_id].active_tree;
+	level_id = ins_req->metadata.level_id;
+	active_tree = ins_req->metadata.handle->db_desc->levels[level_id].active_tree;
 
-	if (ins_req->append_to_log && ins_req->key_format == KV_FORMAT)
-		key_addr = append_key_value_to_log(ins_req);
-
-	else if (!ins_req->append_to_log && ins_req->key_format == KV_PREFIX)
+	if (ins_req->metadata.append_to_log && ins_req->metadata.key_format == KV_FORMAT) {
+		log_operation append_op = { .metadata = &ins_req->metadata,
+					    .optype_tolog = insertOp,
+					    .ins_req = ins_req };
+		key_addr = append_key_value_to_log(&append_op);
+	} else if (!ins_req->metadata.append_to_log && ins_req->metadata.key_format == KV_PREFIX)
 		key_addr = ins_req->key_value_buf;
 
 	else {
@@ -2081,7 +2117,7 @@ int insert_KV_at_leaf(bt_insert_req *ins_req, node_header *leaf)
 
 	if (__update_leaf_index(ins_req, (leaf_node *)leaf, key_addr) != 0) {
 		++leaf->numberOfEntriesInNode;
-		__sync_fetch_and_add(&(ins_req->handle->db_desc->levels[level_id].total_keys[active_tree]), 1);
+		__sync_fetch_and_add(&(ins_req->metadata.handle->db_desc->levels[level_id].total_keys[active_tree]), 1);
 		ret = 1;
 	} else {
 		/*if key already present at the leaf, must be an update or an append*/
@@ -2096,23 +2132,23 @@ bt_split_result split_leaf(bt_insert_req *req, leaf_node *node)
 {
 	leaf_node *node_copy;
 	bt_split_result rep;
-	uint8_t level_id = req->level_id;
+	uint8_t level_id = req->metadata.level_id;
 	/*cow check*/
-	if (node->header.epoch <= req->handle->volume_desc->dev_catalogue->epoch) {
-		level_id = req->level_id;
-		node_copy = seg_get_leaf_node_header(req->handle->volume_desc, &req->handle->db_desc->levels[level_id],
-						     COW_FOR_LEAF);
+	if (node->header.epoch <= req->metadata.handle->volume_desc->dev_catalogue->epoch) {
+		level_id = req->metadata.level_id;
+		node_copy = seg_get_leaf_node_header(req->metadata.handle->volume_desc,
+						     &req->metadata.handle->db_desc->levels[level_id], COW_FOR_LEAF);
 
 		memcpy(node_copy, node, LEAF_NODE_SIZE);
-		node_copy->header.epoch = req->handle->volume_desc->mem_catalogue->epoch;
+		node_copy->header.epoch = req->metadata.handle->volume_desc->mem_catalogue->epoch;
 		node = node_copy;
 	}
 
 	rep.left_lchild = node;
 	// rep.left_lchild->header.v1++;
 	/*right leaf*/
-	rep.right_lchild =
-		seg_get_leaf_node(req->handle->volume_desc, &req->handle->db_desc->levels[level_id], LEAF_SPLIT);
+	rep.right_lchild = seg_get_leaf_node(req->metadata.handle->volume_desc,
+					     &req->metadata.handle->db_desc->levels[level_id], LEAF_SPLIT);
 #ifdef USE_SYNC
 	__sync_synchronize();
 #endif
@@ -2252,12 +2288,12 @@ void spill_buffer(void *_spill_req)
 			return;
 		}
 
-		ins_req.handle = &handle;
-		ins_req.level_id = spill_req->src_level + 1;
-		ins_req.key_format = KV_PREFIX;
-		ins_req.append_to_log = 0;
-		ins_req.gc_request = 0;
-		ins_req.recovery_request = 0;
+		ins_req.metadata.handle = &handle;
+		ins_req.metadata.level_id = spill_req->src_level + 1;
+		ins_req.metadata.key_format = KV_PREFIX;
+		ins_req.metadata.append_to_log = 0;
+		ins_req.metadata.gc_request = 0;
+		ins_req.metadata.recovery_request = 0;
 
 		for (i = 0; i < num_of_keys; i++) {
 			ins_req.key_value_buf = level_sc->keyValue;
@@ -2352,8 +2388,6 @@ finish_spill: /*Unused label*/
 	}
 	log_info("spill finished for level %u", spill_req->src_level);
 
-	for (i = 0; i < MAX_LEVELS; i++)
-		log_info("Level %d outstandng %u", i, db_desc->levels[i].outstanding_spill_ops);
 	free(spill_req);
 }
 
@@ -2607,9 +2641,9 @@ uint8_t _concurrent_insert(bt_insert_req *ins_req)
 	uint32_t level_id;
 	uint32_t active_tree;
 
-	volume_desc = ins_req->handle->volume_desc;
-	db_desc = ins_req->handle->db_desc;
-	level_id = ins_req->level_id;
+	volume_desc = ins_req->metadata.handle->volume_desc;
+	db_desc = ins_req->metadata.handle->db_desc;
+	level_id = ins_req->metadata.level_id;
 	guard_of_level = &(db_desc->levels[level_id].guard_of_level);
 	num_level_writers = &db_desc->levels[level_id].active_writers;
 
@@ -2635,12 +2669,12 @@ release_and_retry:
 	upper_level_nodes[size++] = guard_of_level;
 	/*mark your presence*/
 	__sync_fetch_and_add(num_level_writers, 1);
-	if (ins_req->level_id == 0)
+	if (ins_req->metadata.level_id == 0)
 		active_tree = db_desc->levels[level_id].active_tree;
 	else
-		active_tree = ins_req->tree_id;
+		active_tree = ins_req->metadata.tree_id;
 
-	mem_catalogue = ins_req->handle->volume_desc->mem_catalogue;
+	mem_catalogue = ins_req->metadata.handle->volume_desc->mem_catalogue;
 
 	father = NULL;
 
@@ -2648,14 +2682,14 @@ release_and_retry:
 	if (db_desc->levels[level_id].root_w[active_tree] == NULL) {
 		if (db_desc->levels[level_id].root_r[active_tree] != NULL) {
 			if (db_desc->levels[level_id].root_r[active_tree]->type == rootNode) {
-				index_node *t = seg_get_index_node_header(ins_req->handle->volume_desc,
+				index_node *t = seg_get_index_node_header(ins_req->metadata.handle->volume_desc,
 									  &db_desc->levels[level_id], NEW_ROOT);
 				memcpy(t, db_desc->levels[level_id].root_r[active_tree], INDEX_NODE_SIZE);
 				t->header.epoch = mem_catalogue->epoch;
 				db_desc->levels[level_id].root_w[active_tree] = (node_header *)t;
 			} else {
 				/*Tree too small consists only of 1 leafRootNode*/
-				leaf_node *t = seg_get_leaf_node_header(ins_req->handle->volume_desc,
+				leaf_node *t = seg_get_leaf_node_header(ins_req->metadata.handle->volume_desc,
 									&db_desc->levels[level_id], COW_FOR_LEAF);
 				memcpy(t, db_desc->levels[level_id].root_r[active_tree], LEAF_NODE_SIZE);
 				t->header.epoch = mem_catalogue->epoch;
@@ -2667,8 +2701,8 @@ release_and_retry:
 			log_info("Allocating new active tree %d for level id %d epoch is at %llu", active_tree,
 				 level_id, (LLU)mem_catalogue->epoch);
 
-			leaf_node *t =
-				seg_get_leaf_node(ins_req->handle->volume_desc, &db_desc->levels[level_id], NEW_ROOT);
+			leaf_node *t = seg_get_leaf_node(ins_req->metadata.handle->volume_desc,
+							 &db_desc->levels[level_id], NEW_ROOT);
 			init_leaf_node(t);
 			t->header.type = leafRootNode;
 			t->header.epoch = mem_catalogue->epoch;
@@ -2706,7 +2740,7 @@ release_and_retry:
 				son->v1++;
 				split_res = split_index(son, ins_req);
 				/*node has splitted, free it*/
-				seg_free_index_node(ins_req->handle->volume_desc, &db_desc->levels[level_id],
+				seg_free_index_node(ins_req->metadata.handle->volume_desc, &db_desc->levels[level_id],
 						    (index_node *)son);
 				// free_logical_node(&(req->allocator_desc), son);
 				son->v2++;
@@ -2715,8 +2749,8 @@ release_and_retry:
 				split_res = split_leaf(ins_req, (leaf_node *)son);
 				if ((uint64_t)son != (uint64_t)split_res.left_child) {
 					/*cow happened*/
-					seg_free_leaf_node(ins_req->handle->volume_desc,
-							   &ins_req->handle->db_desc->levels[level_id],
+					seg_free_leaf_node(ins_req->metadata.handle->volume_desc,
+							   &ins_req->metadata.handle->db_desc->levels[level_id],
 							   (leaf_node *)son);
 					/*fix the dangling lamport*/
 					split_res.left_child->v2++;
@@ -2727,7 +2761,7 @@ release_and_retry:
 			if (father != NULL) {
 				/*lamport counter*/
 				father->v1++;
-				insert_key_at_index(ins_req->handle, level_id, (index_node *)father,
+				insert_key_at_index(ins_req->metadata.handle, level_id, (index_node *)father,
 						    split_res.left_child, split_res.right_child,
 						    split_res.middle_key_buf, KEY_LOG_EXPANSION);
 
@@ -2748,14 +2782,15 @@ release_and_retry:
 			} else {
 				/*Root was splitted*/
 				// log_info("new root");
-				new_index_node = seg_get_index_node(ins_req->handle->volume_desc,
+				new_index_node = seg_get_index_node(ins_req->metadata.handle->volume_desc,
 								    &db_desc->levels[level_id], NEW_ROOT);
 				init_index_node(new_index_node);
 				new_index_node->header.type = rootNode;
 				new_index_node->header.v1++; /*lamport counter*/
 				son->v1++;
-				insert_key_at_index(ins_req->handle, level_id, new_index_node, split_res.left_child,
-						    split_res.right_child, split_res.middle_key_buf, KEY_LOG_EXPANSION);
+				insert_key_at_index(ins_req->metadata.handle, level_id, new_index_node,
+						    split_res.left_child, split_res.right_child,
+						    split_res.middle_key_buf, KEY_LOG_EXPANSION);
 
 				new_index_node->header.v2++; /*lamport counter*/
 				son->v2++;
@@ -2766,17 +2801,21 @@ release_and_retry:
 		} else if (son->epoch <= volume_desc->dev_catalogue->epoch) {
 			/*Cow*/
 			if (son->height > 0) {
-				node_copy = (node_header *)seg_get_index_node_header(
-					ins_req->handle->volume_desc, &db_desc->levels[level_id], COW_FOR_INDEX);
+				node_copy =
+					(node_header *)seg_get_index_node_header(ins_req->metadata.handle->volume_desc,
+										 &db_desc->levels[level_id],
+										 COW_FOR_INDEX);
 				memcpy(node_copy, son, INDEX_NODE_SIZE);
-				seg_free_index_node_header(ins_req->handle->volume_desc, &db_desc->levels[level_id],
-							   son);
+				seg_free_index_node_header(ins_req->metadata.handle->volume_desc,
+							   &db_desc->levels[level_id], son);
 
 			} else {
-				node_copy = (node_header *)seg_get_leaf_node_header(
-					ins_req->handle->volume_desc, &db_desc->levels[level_id], COW_FOR_LEAF);
+				node_copy =
+					(node_header *)seg_get_leaf_node_header(ins_req->metadata.handle->volume_desc,
+										&db_desc->levels[level_id],
+										COW_FOR_LEAF);
 				memcpy(node_copy, son, LEAF_NODE_SIZE);
-				seg_free_leaf_node(ins_req->handle->volume_desc, &db_desc->levels[level_id],
+				seg_free_leaf_node(ins_req->metadata.handle->volume_desc, &db_desc->levels[level_id],
 						   (leaf_node *)son);
 			}
 			node_copy->epoch = mem_catalogue->epoch;
@@ -2800,10 +2839,11 @@ release_and_retry:
 		if (son->height == 0)
 			break;
 		/*Finding the next node to traverse*/
-		next_addr = _index_node_binary_search((index_node *)son, ins_req->key_value_buf, ins_req->key_format);
+		next_addr = _index_node_binary_search((index_node *)son, ins_req->key_value_buf,
+						      ins_req->metadata.key_format);
 		father = son;
 		/*Taking the lock of the next node before its traversal*/
-		lock = _find_position(ins_req->handle->db_desc->levels[level_id].level_lock_table,
+		lock = _find_position(ins_req->metadata.handle->db_desc->levels[level_id].level_lock_table,
 				      (node_header *)(MAPPED + *(uint64_t *)next_addr));
 		upper_level_nodes[size++] = lock;
 		if (RWLOCK_WRLOCK(&lock->rx_lock) != 0) {
@@ -2866,9 +2906,9 @@ static uint8_t _writers_join_as_readers(bt_insert_req *ins_req)
 	lock_table *guard_of_level;
 	int64_t *num_level_writers;
 
-	volume_desc = ins_req->handle->volume_desc;
-	db_desc = ins_req->handle->db_desc;
-	level_id = ins_req->level_id;
+	volume_desc = ins_req->metadata.handle->volume_desc;
+	db_desc = ins_req->metadata.handle->db_desc;
+	level_id = ins_req->metadata.level_id;
 	guard_of_level = &db_desc->levels[level_id].guard_of_level;
 	num_level_writers = &db_desc->levels[level_id].active_writers;
 
@@ -2888,10 +2928,10 @@ static uint8_t _writers_join_as_readers(bt_insert_req *ins_req)
 	__sync_fetch_and_add(num_level_writers, 1);
 	upper_level_nodes[size++] = guard_of_level;
 	/*now check which is the current active tree, within the level*/
-	if (ins_req->level_id == 0)
+	if (ins_req->metadata.level_id == 0)
 		active_tree = db_desc->levels[level_id].active_tree;
 	else
-		active_tree = ins_req->tree_id;
+		active_tree = ins_req->metadata.tree_id;
 
 	if (db_desc->levels[level_id].root_w[active_tree] == NULL ||
 	    db_desc->levels[level_id].root_w[active_tree]->type == leafRootNode) {
@@ -2927,7 +2967,8 @@ static uint8_t _writers_join_as_readers(bt_insert_req *ins_req)
 		}
 
 		/*Find the next node to traverse*/
-		next_addr = _index_node_binary_search((index_node *)son, ins_req->key_value_buf, ins_req->key_format);
+		next_addr = _index_node_binary_search((index_node *)son, ins_req->key_value_buf,
+						      ins_req->metadata.key_format);
 		son = (node_header *)(MAPPED + *(uint64_t *)next_addr);
 		if (son->height == 0)
 			break;

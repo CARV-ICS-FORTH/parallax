@@ -120,9 +120,9 @@ int8_t __delete_key(delete_request *req)
 	int8_t ret;
 
 	req->ancs = &prev_nodes;
-	db_desc = req->handle->db_desc;
-	volume_desc = req->handle->volume_desc;
-	mem_catalogue = req->handle->volume_desc->mem_catalogue;
+	db_desc = req->metadata.handle->db_desc;
+	volume_desc = req->metadata.handle->volume_desc;
+	mem_catalogue = req->metadata.handle->volume_desc->mem_catalogue;
 
 retry:
 
@@ -134,9 +134,9 @@ retry:
 	}
 
 	parent = flag = NULL;
-	req->active_tree = db_desc->levels[req->level_id].active_tree;
+	req->metadata.active_tree = db_desc->levels[req->metadata.level_id].active_tree;
 
-	son = db_desc->levels[req->level_id].root_w[req->active_tree];
+	son = db_desc->levels[req->metadata.level_id].root_w[req->metadata.active_tree];
 
 	if (son->height != 0) {
 		while (1) {
@@ -167,15 +167,16 @@ retry:
 			} else if (son->epoch <= volume_desc->dev_catalogue->epoch) {
 				if (son->height > 0) {
 					node_copy = (node_header *)seg_get_index_node_header(
-						volume_desc, &db_desc->levels[req->level_id], COW_FOR_INDEX);
+						volume_desc, &db_desc->levels[req->metadata.level_id], COW_FOR_INDEX);
 					memcpy(node_copy, son, INDEX_NODE_SIZE);
-					seg_free_index_node_header(volume_desc, &db_desc->levels[req->level_id], son);
+					seg_free_index_node_header(volume_desc,
+								   &db_desc->levels[req->metadata.level_id], son);
 
 				} else {
 					node_copy = (node_header *)seg_get_leaf_node_header(
-						volume_desc, &db_desc->levels[req->level_id], COW_FOR_LEAF);
+						volume_desc, &db_desc->levels[req->metadata.level_id], COW_FOR_LEAF);
 					memcpy(node_copy, son, LEAF_NODE_SIZE);
-					seg_free_leaf_node(volume_desc, &db_desc->levels[req->level_id],
+					seg_free_leaf_node(volume_desc, &db_desc->levels[req->metadata.level_id],
 							   (leaf_node *)son);
 				}
 				node_copy->epoch = mem_catalogue->epoch;
@@ -186,14 +187,15 @@ retry:
 					*(uint64_t *)next_addr = (uint64_t)node_copy - MAPPED;
 					parent->v2++; /*lamport counter*/
 				} else { /*We COWED the root*/
-					db_desc->levels[req->level_id].root_w[req->active_tree] = node_copy;
+					db_desc->levels[req->metadata.level_id].root_w[req->metadata.active_tree] =
+						node_copy;
 				}
 
 				goto retry;
 			}
 
 			next_addr = _index_node_binary_search_and_fill_metadata((index_node *)son, req->key_buf,
-										req->key_format, &prev_nodes);
+										req->metadata.key_format, &prev_nodes);
 			parent = son;
 			temp = (node_header *)(MAPPED + *(uint64_t *)next_addr);
 			son = temp;
@@ -213,10 +215,10 @@ retry:
 
 uint8_t __delete_from_leaf(delete_request *req, index_node *parent, leaf_node *leaf, struct splice *key)
 {
-	void *key_addr_in_leaf;
 	/* We need these variables to find the neighboring nodes
-       in case we delete a kv pair from the first or the last node.  */
+	   in case we delete a kv pair from the first or the last node.  */
 	rotate_data siblings = { .left = NULL, .right = NULL, .pivot = NULL };
+	void *key_addr_in_leaf;
 	int pos;
 	int8_t ret;
 
@@ -235,7 +237,14 @@ uint8_t __delete_from_leaf(delete_request *req, index_node *parent, leaf_node *l
 	pos = __find_position_in_leaf(leaf, key);
 	if (key_addr_in_leaf) {
 		if (pos != -1) {
-			delete_key_value(req->handle->db_desc, leaf, pos);
+			if (req->metadata.level_id == 0) {
+				log_operation append_op = { .metadata = &req->metadata,
+							    .optype_tolog = deleteOp,
+							    .del_req = req };
+				append_key_value_to_log(&append_op);
+			}
+
+			delete_key_value(req->metadata.handle->db_desc, leaf, pos);
 
 			if (leaf->header.type == leafRootNode)
 				return SUCCESS;
@@ -431,8 +440,8 @@ void underflow_borrow_from_right_neighbor(leaf_node *curr, leaf_node *right, del
 	}
 
 	/* Fix the pivot in the parent node */
-	__update_index_pivot_in_place(req->handle, parent, (&neighbor_metadata.right_entry->pivot), key_addr,
-				      req->level_id);
+	__update_index_pivot_in_place(req->metadata.handle, parent, (&neighbor_metadata.right_entry->pivot), key_addr,
+				      req->metadata.level_id);
 }
 
 void underflow_borrow_from_left_neighbor(leaf_node *curr, leaf_node *left, delete_request *req)
@@ -458,8 +467,8 @@ void underflow_borrow_from_left_neighbor(leaf_node *curr, leaf_node *left, delet
 	assert(neighbor_metadata.left_entry);
 
 	/* A pivot change should happen in the parent index node */
-	__update_index_pivot_in_place(req->handle, req->ancs->parent[req->ancs->size - 1],
-				      &neighbor_metadata.left_entry->pivot, key_addr, req->level_id);
+	__update_index_pivot_in_place(req->metadata.handle, req->ancs->parent[req->ancs->size - 1],
+				      &neighbor_metadata.left_entry->pivot, key_addr, req->metadata.level_id);
 }
 
 void merge_with_right_neighbor(leaf_node *curr, leaf_node *right, delete_request *req)
@@ -483,7 +492,8 @@ void merge_with_right_neighbor(leaf_node *curr, leaf_node *right, delete_request
 		if (parent->header.type == rootNode) {
 			curr->header.type = leafRootNode;
 			curr->header.height = 0;
-			req->handle->db_desc->levels[req->level_id].root_w[req->active_tree] = (node_header *)curr;
+			req->metadata.handle->db_desc->levels[req->metadata.level_id].root_w[req->metadata.active_tree] =
+				(node_header *)curr;
 			return;
 		}
 		assert(0);
@@ -527,7 +537,8 @@ void merge_with_left_neighbor(leaf_node *curr, leaf_node *left, delete_request *
 	if (parent->header.numberOfEntriesInNode == 1) {
 		if (parent->header.type == rootNode) {
 			curr->header.type = leafRootNode;
-			req->handle->db_desc->levels[req->level_id].root_w[req->active_tree] = (node_header *)curr;
+			req->metadata.handle->db_desc->levels[req->metadata.level_id].root_w[req->metadata.active_tree] =
+				(node_header *)curr;
 			return;
 		}
 		assert(0);
@@ -777,13 +788,13 @@ int8_t delete_key(db_handle *handle, void *key, uint32_t size)
 	req.key_buf = __tmp;
 	*(uint32_t *)req.key_buf = size;
 	memcpy((void *)(uint64_t)req.key_buf + sizeof(uint32_t), key, size);
-	req.handle = handle;
-	req.key_format = KV_FORMAT;
+	req.metadata.handle = handle;
+	req.metadata.key_format = KV_FORMAT;
 
 	for (i = 0; i < MAX_LEVELS; ++i) {
 		RWLOCK_WRLOCK(&handle->db_desc->levels[i].guard_of_level.rx_lock);
 		spin_loop(&handle->db_desc->levels[i].active_writers, 0);
-		req.level_id = i;
+		req.metadata.level_id = i;
 
 		if (handle->db_desc->levels[i].root_w[handle->db_desc->levels[i].active_tree] == NULL) {
 			if (handle->db_desc->levels[i].root_r[handle->db_desc->levels[i].active_tree] != NULL) {
@@ -846,7 +857,8 @@ void transfer_node_from_right_neighbor(index_node *curr, index_node *right, inde
        Also take the leftmost node from the right neighbor
        and place it as the last node in the current node.*/
 
-	__update_index_pivot_in_place(req->handle, (node_header *)curr, pivot, key_addr, req->level_id);
+	__update_index_pivot_in_place(req->metadata.handle, (node_header *)curr, pivot, key_addr,
+				      req->metadata.level_id);
 	curr->p[curr->header.numberOfEntriesInNode].right[0] = right->p[0].left[0];
 	++curr->header.numberOfEntriesInNode;
 
@@ -854,7 +866,8 @@ void transfer_node_from_right_neighbor(index_node *curr, index_node *right, inde
        with the leftmost pivot of the right neighbor. */
 	key_addr = (void *)(MAPPED + right->p[0].pivot);
 	pivot = &parent->p[pos].pivot;
-	__update_index_pivot_in_place(req->handle, (node_header *)parent, pivot, key_addr, req->level_id);
+	__update_index_pivot_in_place(req->metadata.handle, (node_header *)parent, pivot, key_addr,
+				      req->metadata.level_id);
 
 	/* Finally shift every entry of the right neighbor to the left
 	   to delete the transferred node from it.*/
@@ -878,7 +891,8 @@ void transfer_node_from_left_neighbor(index_node *curr, index_node *left, index_
 		(sizeof(index_entry) * curr->header.numberOfEntriesInNode) + sizeof(uint64_t));
 	pivot = &curr->p[0].pivot;
 
-	__update_index_pivot_in_place(req->handle, (node_header *)curr, pivot, key_addr, req->level_id);
+	__update_index_pivot_in_place(req->metadata.handle, (node_header *)curr, pivot, key_addr,
+				      req->metadata.level_id);
 	curr->p[0].left[0] = left->p[left->header.numberOfEntriesInNode - 1].right[0];
 	++curr->header.numberOfEntriesInNode;
 
@@ -886,7 +900,8 @@ void transfer_node_from_left_neighbor(index_node *curr, index_node *left, index_
        with the leftmost pivot of the right neighbor. */
 	key_addr = (void *)(MAPPED + left->p[left->header.numberOfEntriesInNode - 1].pivot);
 	pivot = &parent->p[pos].pivot;
-	__update_index_pivot_in_place(req->handle, (node_header *)parent, pivot, key_addr, req->level_id);
+	__update_index_pivot_in_place(req->metadata.handle, (node_header *)parent, pivot, key_addr,
+				      req->metadata.level_id);
 
 	/* finally remove the entry that was moved to the left.*/
 	--left->header.numberOfEntriesInNode;
@@ -928,14 +943,16 @@ void merge_with_right_index_node(index_node *curr, index_node *right, index_node
 	/* Take the pivot of the parent node
        and place it as the rightmost pivot
        in the current node. */
-	__update_index_pivot_in_place(req->handle, (node_header *)curr, pivot, key_addr, req->level_id);
+	__update_index_pivot_in_place(req->metadata.handle, (node_header *)curr, pivot, key_addr,
+				      req->metadata.level_id);
 	++curr->header.numberOfEntriesInNode;
 	/* Copy the nodes of the right neighbor to the current node. */
 	for (i = curr->header.numberOfEntriesInNode, j = 0; j < right->header.numberOfEntriesInNode; ++i, ++j) {
 		curr->p[i].left[0] = right->p[j].left[0];
 		pivot = &curr->p[i].pivot;
 		key_addr = (void *)(MAPPED + right->p[j].pivot);
-		__update_index_pivot_in_place(req->handle, (node_header *)curr, pivot, key_addr, req->level_id);
+		__update_index_pivot_in_place(req->metadata.handle, (node_header *)curr, pivot, key_addr,
+					      req->metadata.level_id);
 	}
 
 	curr->header.numberOfEntriesInNode += right->header.numberOfEntriesInNode;
@@ -945,7 +962,8 @@ void merge_with_right_index_node(index_node *curr, index_node *right, index_node
 	if (parent->header.numberOfEntriesInNode == 1) {
 		if (parent->header.type == rootNode) {
 			curr->header.type = rootNode;
-			req->handle->db_desc->levels[req->level_id].root_w[req->active_tree] = (node_header *)curr;
+			req->metadata.handle->db_desc->levels[req->metadata.level_id].root_w[req->metadata.active_tree] =
+				(node_header *)curr;
 			return;
 		}
 		assert(0);
@@ -974,7 +992,8 @@ void merge_with_left_index_node(index_node *curr, index_node *left, index_node *
 	/* Take the pivot of the parent node
        and place it as the rightmost pivot
        in the left node. */
-	__update_index_pivot_in_place(req->handle, (node_header *)left, pivot, key_addr, req->level_id);
+	__update_index_pivot_in_place(req->metadata.handle, (node_header *)left, pivot, key_addr,
+				      req->metadata.level_id);
 	++left->header.numberOfEntriesInNode;
 
 	/* Copy the nodes of the current node to the left neighbor. */
@@ -982,7 +1001,8 @@ void merge_with_left_index_node(index_node *curr, index_node *left, index_node *
 		left->p[i].left[0] = curr->p[j].left[0];
 		pivot = &left->p[i].pivot;
 		key_addr = (void *)(MAPPED + curr->p[j].pivot);
-		__update_index_pivot_in_place(req->handle, (node_header *)left, pivot, key_addr, req->level_id);
+		__update_index_pivot_in_place(req->metadata.handle, (node_header *)left, pivot, key_addr,
+					      req->metadata.level_id);
 	}
 	left->header.numberOfEntriesInNode += curr->header.numberOfEntriesInNode;
 	left->p[left->header.numberOfEntriesInNode - 1].right[0] =
@@ -993,7 +1013,8 @@ void merge_with_left_index_node(index_node *curr, index_node *left, index_node *
 	if (parent->header.numberOfEntriesInNode == 1) {
 		if (parent->header.type == rootNode) {
 			left->header.type = rootNode;
-			req->handle->db_desc->levels[req->level_id].root_w[req->active_tree] = (node_header *)left;
+			req->metadata.handle->db_desc->levels[req->metadata.level_id].root_w[req->metadata.active_tree] =
+				(node_header *)left;
 			return;
 		}
 		assert(0);

@@ -713,26 +713,26 @@ void insert_kv_pair(_tucana_region_S *S_tu_region, void *kv, connection_rdma *rd
 		switch (task->kreon_operation_status) {
 		case APPEND_START:
 
-			req.handle = S_tu_region->db;
-			req.kv_size = kv_size;
+			req.metadata.handle = S_tu_region->db;
+			req.metadata.kv_size = kv_size;
 			req.key_value_buf = kv;
-			req.level_id = 0;
-			req.key_format = KV_FORMAT;
-			req.append_to_log = 1;
-			req.gc_request = 0;
-			req.recovery_request = 0;
-			req.segment_full_event = 0;
+			req.metadata.level_id = 0;
+			req.metadata.key_format = KV_FORMAT;
+			req.metadata.append_to_log = 1;
+			req.metadata.gc_request = 0;
+			req.metadata.recovery_request = 0;
+			req.metadata.segment_full_event = 0;
 			_insert_key_value(&req);
 			if (S_tu_region->replica_next_data_con != NULL) {
 				/*We have a replica to feed*/
-				if (req.segment_full_event) {
+				if (req.metadata.segment_full_event) {
 					/*find the log segment that corresponds to this full event*/
 					seg_id = -1;
 					for (i = 0; i < SE_REPLICA_NUM_SEGMENTS; i++) {
 						if (S_tu_region->master_rep_buf->bounds[i].start <=
-							    req.log_offset_full_event &&
+							    req.metadata.log_offset_full_event &&
 						    S_tu_region->master_rep_buf->bounds[i].end >
-							    req.log_offset_full_event) {
+							    req.metadata.log_offset_full_event) {
 							seg_id = i;
 							break;
 						}
@@ -758,21 +758,22 @@ void insert_kv_pair(_tucana_region_S *S_tu_region, void *kv, connection_rdma *rd
 					curr_seg->buffer_free = 0;
 					/*fix its new boundaries*/
 					S_tu_region->master_rep_buf->bounds[next_buffer].start =
-						req.segment_id * SEGMENT_SIZE;
+						req.metadata.segment_id * SEGMENT_SIZE;
 					S_tu_region->master_rep_buf->bounds[next_buffer].end =
 						S_tu_region->master_rep_buf->bounds[next_buffer].start + SEGMENT_SIZE;
 
 					/*ok others are ready to proceed, now let's wake up replica*/
 					curr_seg = &S_tu_region->master_rep_buf->seg_bufs[seg_id];
 					uint32_t bytes_threashold =
-						SEGMENT_SIZE - (sizeof(segment_header) + req.log_padding);
+						SEGMENT_SIZE - (sizeof(segment_header) + req.metadata.log_padding);
 					/*wait until all bytes of segment are written*/
 					spin_loop(&curr_seg->bytes_wr_per_seg, bytes_threashold);
 					/*prepare segment metadata for replica*/
-					curr_seg->rdma_local_buf->metadata.master_segment = req.log_segment_addr;
-					curr_seg->rdma_local_buf->metadata.end_of_log = req.end_of_log;
-					curr_seg->rdma_local_buf->metadata.log_padding = req.log_padding;
-					curr_seg->rdma_local_buf->metadata.segment_id = req.segment_id;
+					curr_seg->rdma_local_buf->metadata.master_segment =
+						req.metadata.log_segment_addr;
+					curr_seg->rdma_local_buf->metadata.end_of_log = req.metadata.end_of_log;
+					curr_seg->rdma_local_buf->metadata.log_padding = req.metadata.log_padding;
+					curr_seg->rdma_local_buf->metadata.segment_id = req.metadata.segment_id;
 					strcpy(curr_seg->rdma_local_buf->metadata.region_key,
 					       S_tu_region->ID_region.minimum_range);
 
@@ -809,8 +810,8 @@ void insert_kv_pair(_tucana_region_S *S_tu_region, void *kv, connection_rdma *rd
 				seg_id = -1;
 				i = 0;
 				while (1) {
-					if (S_tu_region->master_rep_buf->bounds[i].start <= req.log_offset &&
-					    S_tu_region->master_rep_buf->bounds[i].end > req.log_offset) {
+					if (S_tu_region->master_rep_buf->bounds[i].start <= req.metadata.log_offset &&
+					    S_tu_region->master_rep_buf->bounds[i].end > req.metadata.log_offset) {
 						seg_id = i;
 						break;
 					}
@@ -819,14 +820,16 @@ void insert_kv_pair(_tucana_region_S *S_tu_region, void *kv, connection_rdma *rd
 				}
 
 				curr_seg = &S_tu_region->master_rep_buf->seg_bufs[seg_id];
-				rdma_src = (void *)&curr_seg->rdma_local_buf->seg[req.log_offset % SEGMENT_SIZE];
+				rdma_src =
+					(void *)&curr_seg->rdma_local_buf->seg[req.metadata.log_offset % SEGMENT_SIZE];
 
-				rdma_dst = (void *)&curr_seg->rdma_remote_buf->seg[req.log_offset % SEGMENT_SIZE];
-				memcpy(rdma_src, req.key_value_buf, req.kv_size);
+				rdma_dst =
+					(void *)&curr_seg->rdma_remote_buf->seg[req.metadata.log_offset % SEGMENT_SIZE];
+				memcpy(rdma_src, req.key_value_buf, req.metadata.kv_size);
 				/*now next step to the remote*/
 				if (rdma_post_write(
 					    S_tu_region->replica_next_data_con->rdma_cm_id, rdma_src, rdma_src,
-					    req.kv_size,
+					    req.metadata.kv_size,
 					    S_tu_region->replica_next_data_con->rdma_memory_regions->local_memory_region,
 					    IBV_SEND_SIGNALED, (uint64_t)rdma_dst,
 					    S_tu_region->replica_next_data_con->peer_mr->rkey) != 0) {
@@ -834,7 +837,7 @@ void insert_kv_pair(_tucana_region_S *S_tu_region, void *kv, connection_rdma *rd
 					exit(EXIT_FAILURE);
 				}
 				/* ok add the bytes*/
-				__sync_fetch_and_add(&curr_seg->bytes_wr_per_seg, req.kv_size);
+				__sync_fetch_and_add(&curr_seg->bytes_wr_per_seg, req.metadata.kv_size);
 			}
 			task->kreon_operation_status = APPEND_COMPLETE;
 			return;

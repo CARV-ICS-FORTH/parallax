@@ -27,26 +27,26 @@ void serially_insert_keys(db_handle *hd)
 {
 	bt_insert_req req;
 	uint64_t i;
-	key *k = (key *)malloc(KV_SIZE);
+	key *k = (key *)malloc(KV_SIZE + 1);
 
 	log_info("Starting population for %lu keys...", NUM_KEYS);
 	for (i = TOTAL_KEYS; i < (TOTAL_KEYS + NUM_KEYS); i++) {
-		strncpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
+		memcpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
 		sprintf(k->key_buf + strlen(KEY_PREFIX), "%llu", (long long unsigned)i);
 		k->key_size = strlen(k->key_buf) + 1;
 		value *v = (value *)((uint64_t)k + sizeof(key) + k->key_size);
 		v->value_size = KV_SIZE - ((2 * sizeof(key)) + k->key_size);
 		memset(v->value_buf, 0x00, v->value_size);
 
-		req.handle = hd;
-		req.kv_size = k->key_size + v->value_size + (2 * sizeof(uint32_t));
-		assert(req.kv_size == KV_SIZE);
+		req.metadata.handle = hd;
+		req.metadata.kv_size = k->key_size + v->value_size + (2 * sizeof(uint32_t));
+		assert(req.metadata.kv_size == KV_SIZE);
 		req.key_value_buf = k;
-		req.level_id = 0;
-		req.key_format = KV_FORMAT;
-		req.append_to_log = 1;
-		req.gc_request = 0;
-		req.recovery_request = 0;
+		req.metadata.level_id = 0;
+		req.metadata.key_format = KV_FORMAT;
+		req.metadata.append_to_log = 1;
+		req.metadata.gc_request = 0;
+		req.metadata.recovery_request = 0;
 		_insert_key_value(&req);
 	}
 	free(k);
@@ -60,7 +60,7 @@ void validate_serially_allkeys_exist(db_handle *hd)
 	int cnt = 0;
 
 	for (i = TOTAL_KEYS; i < (TOTAL_KEYS + NUM_KEYS); i++) {
-		strncpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
+		memcpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
 		sprintf(k->key_buf + strlen(KEY_PREFIX), "%llu", (long long unsigned)i);
 		k->key_size = strlen(k->key_buf) + 1;
 
@@ -98,7 +98,7 @@ void scankeys_with_spill_scanner(db_handle *hd)
 
 	j = 0;
 	do {
-		strncpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
+		memcpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
 		sprintf(k->key_buf + strlen(KEY_PREFIX), "%llu", (long long unsigned)i);
 		k->key_size = strlen(k->key_buf) + 1;
 		char *key = (char *)(*(uint64_t *)(level_sc->keyValue + PREFIX_SIZE));

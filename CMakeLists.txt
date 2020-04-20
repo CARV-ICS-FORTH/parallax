@@ -4,16 +4,25 @@ cmake_minimum_required(VERSION 3.11.0)
 include(FetchContent)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-set(CMAKEPOSITION_INDEPENDENT_CODE ON)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 project(kreon VERSION 1.0)
 
-if("${CMAKE_BUILD_TYPE}" STREQUAL "Debug")
-  message("Debug build")
-elseif("${CMAKE_BUILD_TYPE}" STREQUAL "Release")
-  message("Release build")
-else()
-  message(WARNING "No build type specified defaults to Debug build!")
-  set(CMAKE_BUILD_TYPE "Debug")
+# Set a default build type if none was specified
+set(default_build_type "Release")
+if(EXISTS "${CMAKE_SOURCE_DIR}/.git")
+  set(default_build_type "Debug")
+endif()
+
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+  message(
+    STATUS
+      "Setting build type to '${default_build_type}' as none was specified.")
+  set(CMAKE_BUILD_TYPE
+      "${default_build_type}"
+      CACHE STRING "Choose the type of build." FORCE)
+  # Set the possible values of build type for cmake-gui
+  set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "Debug" "Release"
+                                               "MinSizeRel" "RelWithDebInfo")
 endif()
 
 include(GNUInstallDirs)
@@ -41,7 +50,6 @@ endif()
 if(NOT log_POPULATED)
   FetchContent_Populate(log)
   add_subdirectory(${log_SOURCE_DIR} ${log_BINARY_DIR})
-  message(${log_SOURCE_DIR})
   include_directories(${log_SOURCE_DIR}/include)
   FetchContent_MakeAvailable(log)
 endif()
