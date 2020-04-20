@@ -437,8 +437,6 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 	int digits;
 	uint8_t level_id, tree_id;
 
-	assert(strlen(db_name) >= 2);
-
 	fprintf(stderr, "\n%s[%s:%s:%d](\"%s\", %" PRIu64 ", %" PRIu64 ", %s);%s\n", "\033[0;32m", __FILE__, __func__,
 		__LINE__, volumeName, start, size, db_name, "\033[0m");
 

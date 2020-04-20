@@ -131,14 +131,27 @@ To view the report you can run the above command, assuming you have a graphical
 environment or just copy the folder mentioned to a computer that does and open
 the index.html file in that folder.
 
-# Clang Format
+# Development in cluster
 
-For development in the cluster append the path below in your PATH environment variable:
+For development in the cluster append the paths below in your PATH environment variable:
 
-    	PATH=/archive/users/gxanth/llvm-project/build/bin:$PATH
+	export PATH=/archive/users/gxanth/llvm-project/build/bin:$PATH
+	export PATH=/archive/users/gxanth/git/bin:$PATH
+	export PATH=/archive/users/gxanth/gcc-9.1/bin:$PATH
+	export LD_LIBRARY_PATH=/archive/users/gxanth/gcc-9.1/lib64:$LD_LIBRARY_PATH
+	export PATH=$PATH:/archive/users/gxanth/go/bin
+	export PATH=/archive/users/gxanth/shellcheck-stable:$PATH
+	export PATH=$PATH:/archive/users/gxanth/go/bin
+	export PATH=$PATH:$HOME/go/bin
+	export CC=gcc-9.1
+	export CXX=g++-9.1
 
-Install the clang-format for Archlinux with the commands below:
-	sudo pacman -S clang
+# Install shfmt
+
+To install shfmt run the command below in your shell:
+
+	GO111MODULE=on go get mvdan.cc/sh/v3/cmd/shfmt
+
 
 # Generating compile_commands.json for Single Node Kreon
 
