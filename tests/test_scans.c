@@ -35,34 +35,34 @@ int main()
 	key *k = (key *)malloc(KV_SIZE);
 	log_info("Starting population for %lu keys...", NUM_KEYS);
 	for (i = BASE; i < (BASE + NUM_KEYS); i++) {
-		strncpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
+		memcpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
 		sprintf(k->key_buf + strlen(KEY_PREFIX), "%llu", (long long unsigned)i);
 		k->key_size = strlen(k->key_buf) + 1;
 		value *v = (value *)((uint64_t)k + sizeof(key) + k->key_size);
 		v->value_size = KV_SIZE - ((2 * sizeof(key)) + k->key_size);
 		memset(v->value_buf, 0xDD, v->value_size);
 
-		req.handle = hd;
-		req.kv_size = k->key_size + v->value_size + (2 * sizeof(uint32_t));
-		assert(req.kv_size == KV_SIZE);
+		req.metadata.handle = hd;
+		req.metadata.kv_size = k->key_size + v->value_size + (2 * sizeof(uint32_t));
+		assert(req.metadata.kv_size == KV_SIZE);
 		req.key_value_buf = k;
-		req.level_id = 0;
-		req.key_format = KV_FORMAT;
-		req.append_to_log = 1;
-		req.gc_request = 0;
-		req.recovery_request = 0;
+		req.metadata.level_id = 0;
+		req.metadata.key_format = KV_FORMAT;
+		req.metadata.append_to_log = 1;
+		req.metadata.gc_request = 0;
+		req.metadata.recovery_request = 0;
 		_insert_key_value(&req);
 	}
 	log_info("Population ended, snapshot and testing scan");
 	snapshot(hd->volume_desc);
 
 	log_info("Cornercase scenario...");
-	strncpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
+	memcpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
 	sprintf(k->key_buf + strlen(KEY_PREFIX), "%llu", (long long unsigned)BASE + 99);
 	k->key_size = strlen(k->key_buf) + 1;
 	initScanner(sc, hd, (key *)k, GREATER);
 	assert(sc->keyValue != NULL);
-	strncpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
+	memcpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
 	sprintf(k->key_buf + strlen(KEY_PREFIX), "%llu", (long long unsigned)BASE + 100);
 	k->key_size = strlen(k->key_buf) + 1;
 	if (memcmp(k->key_buf, sc->keyValue + sizeof(uint32_t), k->key_size) != 0) {
@@ -72,7 +72,7 @@ int main()
 	}
 	log_info("milestone 1");
 	getNext(sc);
-	strncpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
+	memcpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
 	sprintf(k->key_buf + strlen(KEY_PREFIX), "%llu", (long long unsigned)BASE + 101);
 	k->key_size = strlen(k->key_buf) + 1;
 	if (memcmp(k->key_buf, sc->keyValue + sizeof(uint32_t), k->key_size) != 0) {
@@ -87,7 +87,7 @@ int main()
 	for (i = BASE; i < (BASE + (NUM_KEYS - SCAN_SIZE)); i++) {
 		if (i % 100000 == 0)
 			log_info("<Scan no %llu>", i);
-		strncpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
+		memcpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
 		sprintf(k->key_buf + strlen(KEY_PREFIX), "%llu", (long long unsigned)i);
 		k->key_size = strlen(k->key_buf) + 1;
 
@@ -106,7 +106,7 @@ int main()
 
 		for (j = 1; j <= SCAN_SIZE; j++) {
 			/*construct the key we expect*/
-			strncpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
+			memcpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
 			sprintf(k->key_buf + strlen(KEY_PREFIX), "%llu", (long long unsigned)i + j);
 			k->key_size = strlen(k->key_buf) + 1;
 			//log_info("Expecting key %s",k->key_buf);

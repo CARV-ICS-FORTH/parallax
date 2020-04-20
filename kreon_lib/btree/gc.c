@@ -25,11 +25,11 @@ void move_kv_pairs_to_new_segment(volume_descriptor *volume_desc, db_descriptor 
 		//struct splice *value = (struct splice *)(kv_address + VALUE_SIZE_OFFSET(key->size));
 		handle.volume_desc = volume_desc;
 		handle.db_desc = db_desc;
-		ins_req.handle = &handle;
+		ins_req.metadata.handle = &handle;
 		ins_req.key_value_buf = kv_address;
-		ins_req.append_to_log = 1;
-		ins_req.gc_request = 1;
-		ins_req.recovery_request = 0;
+		ins_req.metadata.append_to_log = 1;
+		ins_req.metadata.gc_request = 1;
+		ins_req.metadata.recovery_request = 0;
 		_insert_key_value(&ins_req);
 		//update_key_value_pointer(&handle, key->data, value->data, key->size, value->size);
 	}

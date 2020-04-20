@@ -86,13 +86,13 @@ void recovery_worker(void *args)
 			//printf("[%s:%s:%d] value size %lu\n",__FILE__,__func__,__LINE__, *(uint32_t*)(kv_addr + sizeof(uint32_t)+*(uint32_t *)kv_addr));
 			assert(KEY_SIZE(kv_addr) < 23);
 			assert(*(uint32_t *)(kv_addr + sizeof(uint32_t) + KEY_SIZE(kv_addr)) < 1120);
-			ins_req.handle = &handle;
 			ins_req.key_value_buf = kv_addr;
-			ins_req.level_id = 0;
-			ins_req.key_format = KV_FORMAT;
-			ins_req.append_to_log = 0;
-			ins_req.gc_request = 0;
-			ins_req.recovery_request = 1;
+			ins_req.metadata.handle = &handle;
+			ins_req.metadata.level_id = 0;
+			ins_req.metadata.key_format = KV_FORMAT;
+			ins_req.metadata.append_to_log = 0;
+			ins_req.metadata.gc_request = 0;
+			ins_req.metadata.recovery_request = 1;
 			_insert_key_value(&ins_req);
 
 			log_offset += sizeof(uint32_t) + KEY_SIZE(kv_addr);
