@@ -12,7 +12,8 @@ typedef enum krc_ret_code {
 	KRC_ZK_FAILURE_CONNECT,
 	KRC_PUT_FAILURE,
 	KRC_KEY_NOT_FOUND,
-	KRC_VALUE_TOO_LARGE
+	KRC_KEY_EXISTS,
+	KRC_OFFSET_TOO_LARGE
 } krc_ret_code;
 
 typedef enum krc_scan_state {
@@ -43,8 +44,9 @@ krc_ret_code krc_close();
 
 krc_ret_code krc_put(uint32_t key_size, void *key, uint32_t val_size, void *value);
 krc_ret_code krc_put_with_offset(uint32_t key_size, void *key, uint32_t offset, uint32_t val_size, void *value);
-krc_value *krc_get(uint32_t key_size, void *key, uint32_t reply_length, uint32_t *error_code);
-krc_value *krc_get_with_offset(uint32_t key_size, void *key, uint32_t offset, uint32_t size, uint32_t *error_code);
+//krc_value *krc_get(uint32_t key_size, void *key, uint32_t reply_length, uint32_t *error_code);
+//krc_value *krc_get_with_offset(uint32_t key_size, void *key, uint32_t offset, uint32_t size, uint32_t *error_code);
+krc_ret_code krc_get(uint32_t key_size, char *key, char **buffer, uint32_t *size, uint32_t offset);
 uint8_t krc_exists(uint32_t key_size, void *key);
 krc_ret_code krc_delete(uint32_t key_size, void *key);
 
@@ -53,6 +55,7 @@ krc_scannerp krc_scan_init(uint32_t prefetch_entries, uint32_t prefetch_mem_size
 void krc_scan_set_start(krc_scannerp sc, uint32_t start_key_size, void *start_key, krc_seek_mode seek_mode);
 void krc_scan_set_stop(krc_scannerp sc, uint32_t stop_key_size, void *stop_key, krc_seek_mode seek_mode);
 void krc_scan_set_prefix_filter(krc_scannerp sc, uint32_t prefix_size, void *prefix);
+void krc_scan_fetch_keys_only(krc_scannerp sc);
 uint8_t krc_scan_get_next(krc_scannerp sc, char **key, size_t *keySize, char **value, size_t *valueSize);
 uint8_t krc_scan_is_valid(krc_scannerp sc);
 void krc_scan_close(krc_scannerp sc);

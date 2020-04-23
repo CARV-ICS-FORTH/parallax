@@ -119,8 +119,12 @@ class kreonRBlockingClientDB : public YCSBDB {
 	int __read(int id, const std::string &table, const std::string &key, const std::vector<std::string> *fields,
 		   std::vector<KVPair> &result)
 	{
+		char buffer[2048];
+		char *get_buf = buffer;
+		uint32_t size;
 		uint32_t code;
-		krc_value *val = krc_get(key.length(), (char *)key.c_str(), 2048, &code);
+
+		code = krc_get(key.length(), (char *)key.c_str(), &get_buf, &size, 0);
 		if (code != KRC_SUCCESS) {
 			log_fatal("problem with key %s", key.c_str());
 			exit(EXIT_FAILURE);
@@ -157,7 +161,6 @@ class kreonRBlockingClientDB : public YCSBDB {
 			result.push_back(k);
 		}
 #endif
-		free(val);
 		return 0;
 	}
 

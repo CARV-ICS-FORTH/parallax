@@ -4,7 +4,6 @@
 #include <string.h>
 #include <stdlib.h>
 #include <log.h>
-//#include "../kreon_lib/btree/btree.h"
 #include "../kreon_rdma_client/kreon_rdma_client.h"
 #include "../kreon_server/globals.h"
 #include "../kreon_server/create_regions_utils.h"
@@ -14,7 +13,7 @@
 #define PREFIX_2 "@0lalb" //userakiaslalb"
 #define PREFIX_3 "@0lalc" //userakiaslalc"
 #define infinity "+oo"
-#define NUM_KEYS 1000000
+#define NUM_KEYS 100000
 #define BASE 1000000
 #define NUM_REGIONS 16
 #define KEY_PREFIX "#b"
@@ -41,13 +40,15 @@ int main(int argc, char *argv[])
 {
 	size_t s_key_size = 0;
 	char *s_key = NULL;
+	char *get_buffer = NULL;
+	uint32_t get_size;
 	size_t s_value_size = 0;
 	char *s_value = NULL;
-	krc_value *val;
 	uint32_t region_id = 0;
 	uint64_t range = NUM_KEYS / NUM_REGIONS;
 	uint64_t min_key, max_key;
 	uint32_t error_code;
+
 	if (argc == 1) {
 		log_fatal("Wrong format test_krc_api <zookeeper_host:port>");
 		exit(EXIT_FAILURE);
@@ -124,6 +125,7 @@ int main(int argc, char *argv[])
 		krc_put(k->key_size, k->key_buf, v->value_size, v->value_buf);
 	}
 	log_info("Population ended, testing gets");
+	get_buffer = NULL;
 	for (i = BASE; i < (BASE + NUM_KEYS); i++) {
 		strncpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
 		if (i % 100000 == 0)
@@ -131,12 +133,19 @@ int main(int argc, char *argv[])
 
 		sprintf(k->key_buf + strlen(KEY_PREFIX), "%llu", (long long unsigned)i);
 		k->key_size = strlen(k->key_buf);
-		val = krc_get(k->key_size, k->key_buf, 2 * 1024, &error_code);
+		error_code = krc_get(k->key_size, k->key_buf, &get_buffer, &get_size, 0);
+
 		if (error_code != KRC_SUCCESS) {
 			log_fatal("key %s not found test failed!");
 			exit(EXIT_FAILURE);
 		}
-		free(val);
+		if (get_size != KV_SIZE - ((2 * sizeof(key)) + k->key_size)) {
+			log_fatal("Corrupted value size got %u expected %u", get_size,
+				  KV_SIZE - ((2 * sizeof(key)) + k->key_size));
+			exit(EXIT_FAILURE);
+		}
+		free(get_buffer);
+		get_buffer = NULL;
 	}
 
 	log_info("Gets successful ended, testing small put/get with offset....");
@@ -159,18 +168,27 @@ int main(int argc, char *argv[])
 	/*perform get with offset to verify it is correct*/
 
 	offset = 0;
+	get_buffer = malloc(sizeof(uint32_t));
+
 	for (i = 0; i < UPDATES; i++) {
-		val = krc_get_with_offset(k->key_size, k->key_buf, offset, sizeof(uint32_t), &error_code);
-		if (val == NULL) {
+		get_size = 4;
+		error_code = krc_get(k->key_size, k->key_buf, &get_buffer, &get_size, offset);
+		if (error_code != KRC_SUCCESS) {
 			log_fatal("key not found");
 			exit(EXIT_FAILURE);
 		}
-		sum_g += (*(uint32_t *)val->val_buf);
-		free(val);
+		if (get_size != sizeof(uint32_t)) {
+			log_fatal("Corrupted value got %u expected %u", get_size, sizeof(uint32_t));
+			exit(EXIT_FAILURE);
+		}
+		log_info("Num got is %u", *(uint32_t *)get_buffer);
+		sum_g += (*(uint32_t *)get_buffer);
 		offset += sizeof(uint32_t);
 	}
+	free(get_buffer);
+
 	if (sum_g != sum) {
-		log_fatal("Sums differ expected %sum got %u", sum, sum_g);
+		log_fatal("Sums differ expected %u sum got %u", sum, sum_g);
 		exit(EXIT_FAILURE);
 	}
 
@@ -394,7 +412,48 @@ int main(int argc, char *argv[])
 	}
 	log_info("prefix test scans successfull");
 	krc_scan_close(sc);
+	log_info("Testing reading large objects");
+	log_info("inserting value of 1MB");
+	free(k);
+	k = (key *)malloc(2 * 1024 * 1024);
+	strcpy(k->key_buf, "large_key_1MB");
+	k->key_size = strlen(k->key_buf);
+	v = (value *)((uint64_t)k + sizeof(key) + k->key_size);
+	v->value_size = 1024 * 1024;
+	uint32_t bytes_written = 0;
+	i = 0;
+	while (bytes_written < v->value_size) {
+		memcpy(v->value_buf + bytes_written, &i, sizeof(uint64_t));
+		bytes_written += sizeof(uint64_t);
+		++i;
+	}
 
+	for (i = 0; i < (1024 * 1024); i += 1024) {
+		krc_put_with_offset(k->key_size, k->key_buf, i, 1024, v->value_buf + i);
+	}
+	log_info("Uploaded to kreon value of 1 MB now read it");
+	get_buffer = NULL;
+	error_code = krc_get(k->key_size, k->key_buf, &get_buffer, &get_size, 0);
+	if (error_code != KRC_SUCCESS) {
+		log_fatal("Could not retrieve large key");
+		exit(EXIT_FAILURE);
+	}
+	if (get_size != (1024 * 1024)) {
+		log_fatal("corrupted size got %u expected %u", get_size, (1024 * 1024));
+		exit(EXIT_FAILURE);
+	}
+	i = 0;
+	bytes_written = 0;
+	while (bytes_written < get_size) {
+		if (i != *(uint64_t *)(get_buffer + bytes_written)) {
+			log_fatal("Corrupted value got %lu expected %lu", *(uint64_t *)(get_buffer + bytes_written), i);
+			exit(EXIT_FAILURE);
+		}
+		++i;
+		bytes_written += sizeof(uint64_t);
+	}
+
+	free(get_buffer);
 	log_info("************ ALL TESTS SUCCESSFULL! ************");
 	return 1;
 }

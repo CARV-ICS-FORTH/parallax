@@ -1361,48 +1361,61 @@ void handle_task(void *__task)
 			del_rep->status = KREON_FAILURE;
 		break;
 	}
+
 	case TU_GET_QUERY:
 		value = NULL;
 		/*kreon phase*/
-		//if (task->kreon_operation_status == GET_START) {
 		get_req = (msg_get_req *)task->msg->data;
-
 		S_tu_region = find_region(get_req->key, get_req->key_size);
 
 		if (S_tu_region == NULL) {
-			log_fatal("ERROR: Region not found for key %s\n", get_req->key);
-			return;
+			log_fatal("Region not found for key %s", get_req->key);
+			exit(EXIT_FAILURE);
 		}
 
 		task->reply_msg = (void *)((uint64_t)task->conn->rdma_memory_regions->local_memory_buffer +
 					   (uint64_t)task->msg->reply);
 		get_rep = (msg_get_rep *)((uint64_t)task->reply_msg + sizeof(msg_header));
 		value = __find_key(S_tu_region->db, &get_req->key_size, SEARCH_DIRTY_TREE);
-		get_rep->key_found = 1;
+
 		if (value == NULL) {
-			log_warn("key not found key %s : length %u region min_key %s max key %s\n",
-				 get_req->key + sizeof(uint32_t), key_length,
-				 S_tu_region->ID_region.minimum_range + sizeof(int),
-				 S_tu_region->ID_region.maximum_range + sizeof(int));
+			//log_warn("key not found key %s : length %u region min_key %s max key %s\n",
+			//	 get_req->key + sizeof(uint32_t), key_length,
+			//	 S_tu_region->ID_region.minimum_range + sizeof(int),
+			//	 S_tu_region->ID_region.maximum_range + sizeof(int));
 			get_rep->key_found = 0;
-			get_rep->buffer_overflow = 0;
+			get_rep->bytes_remaining = 0;
 			get_rep->value_size = 0;
+			get_rep->offset_too_large = 0;
+			goto exit;
 		} else {
-			actual_reply_size =
-				sizeof(msg_header) + sizeof(msg_get_rep) + *(uint32_t *)value + TU_TAIL_SIZE;
-			if (task->msg->reply_length < actual_reply_size) {
-				log_warn("Buffer overflow for key %s", get_req->key);
-				get_rep->key_found = 1;
-				get_rep->buffer_overflow = 1;
+			get_rep->key_found = 1;
+			if (get_req->offset > *(uint32_t *)value) {
+				get_rep->offset_too_large = 1;
 				get_rep->value_size = 0;
-			} else {
-				get_rep->key_found = 1;
-				get_rep->buffer_overflow = 0;
-				memcpy(&get_rep->value_size, value, sizeof(uint32_t) + *(uint32_t *)value);
-				//log_info("val size %u get_rep size %u",*(uint32_t *)value, get_rep->value_size);
+				get_rep->bytes_remaining = *(uint32_t *)value;
+				goto exit;
+			} else
+				get_rep->offset_too_large = 0;
+			if (!get_req->fetch_value) {
+				get_rep->bytes_remaining = *(uint32_t *)value - get_req->offset;
+				goto exit;
 			}
+			uint32_t value_bytes_remaining = *(uint32_t *)value - get_req->offset;
+			uint32_t bytes_to_read;
+			if (get_req->bytes_to_read <= value_bytes_remaining) {
+				bytes_to_read = get_req->bytes_to_read;
+				get_rep->bytes_remaining = *(uint32_t *)value - (get_req->offset + bytes_to_read);
+			} else {
+				bytes_to_read = value_bytes_remaining;
+				get_rep->bytes_remaining = 0;
+			}
+			get_rep->value_size = bytes_to_read;
+			//log_info("Client wants to read %u will read %u",get_req->bytes_to_read,bytes_to_read);
+			memcpy(get_rep->value, value + sizeof(uint32_t) + get_req->offset, bytes_to_read);
 		}
 
+	exit:
 		/*piggyback info for use with the client*/
 		/*finally fix the header*/
 		task->reply_msg->type = TU_GET_REPLY;
@@ -1423,84 +1436,6 @@ void handle_task(void *__task)
 		task->overall_status = TASK_COMPLETED;
 		break;
 
-	case GET_OFFT_REQUEST:
-		value = NULL;
-		msg_get_offt_req *get_offt_req = (msg_get_offt_req *)task->msg->data;
-		S_tu_region = find_region(get_offt_req->key_buf, get_offt_req->key_size);
-		if (S_tu_region == NULL) {
-			log_fatal("ERROR: Region not found for key %s\n", get_offt_req->key_buf);
-			return;
-		}
-
-		task->reply_msg = (void *)((uint64_t)task->conn->rdma_memory_regions->local_memory_buffer +
-					   (uint64_t)task->msg->reply);
-		msg_get_offt_rep *get_offt_rep = (msg_get_offt_rep *)((uint64_t)task->reply_msg + sizeof(msg_header));
-		value = __find_key(S_tu_region->db, &get_offt_req->key_size, SEARCH_DIRTY_TREE);
-		get_offt_rep->key_found = 1;
-		uint32_t value_bytes_read = 0;
-		if (value == NULL) {
-			//log_warn("key not found key %s : length %u region min_key %s max key %s\n",
-			//	 get_offt_req->key_buf + sizeof(uint32_t), key_length,
-			//	 S_tu_region->ID_region.minimum_range + sizeof(int),
-			//	 S_tu_region->ID_region.maximum_range + sizeof(int));
-			get_offt_rep->key_found = 0;
-			get_offt_rep->full_value_size = 0;
-			get_offt_rep->value_bytes_read = 0;
-
-		} else if (get_offt_req->offset >= *(uint32_t *)value) {
-			log_warn("offset larger than value size offset %u value %u", get_offt_req->offset,
-				 *(uint32_t *)value);
-			assert(0);
-		} else {
-			/*everything ok reply now, calculate bytes to read*/
-
-			if (get_offt_req->size > 0 && get_offt_req->size != UINT_MAX) {
-				if (*(uint32_t *)value >= get_offt_req->offset + get_offt_req->size)
-					value_bytes_read = get_offt_req->size;
-				else
-					value_bytes_read = *(uint32_t *)value - get_offt_req->offset;
-			} else if (get_offt_req->size == UINT_MAX) {
-				value_bytes_read = *(uint32_t *)value - get_offt_req->offset;
-				if (value_bytes_read >
-				    task->msg->reply_length -
-					    (sizeof(msg_header) + sizeof(msg_get_offt_rep) + TU_TAIL_SIZE)) {
-					value_bytes_read =
-						(sizeof(msg_header) + sizeof(msg_get_offt_rep) + TU_TAIL_SIZE);
-				}
-
-			} else
-				//it is an exists query
-				value_bytes_read = 0;
-
-			actual_reply_size = sizeof(msg_header) + sizeof(msg_get_rep) + value_bytes_read + TU_TAIL_SIZE;
-
-			get_offt_rep->key_found = 1;
-			get_offt_rep->full_value_size = *(uint32_t *)value;
-			get_offt_rep->value_bytes_read = value_bytes_read;
-			memcpy(get_offt_rep->value, value + sizeof(msg_put_value) + get_offt_req->offset,
-			       value_bytes_read);
-			//log_info("bytes read %u value content %u offset %u full value %u", value_bytes_read,
-			//	 *(uint32_t *)get_offt_rep->value, get_offt_req->offset, *(uint32_t *)value);
-		}
-		/*piggyback info for use with the client*/
-		/*finally fix the header*/
-		task->reply_msg->type = GET_OFFT_REPLY;
-		task->reply_msg->receive = TU_RDMA_REGULAR_MSG;
-		task->reply_msg->pay_len = sizeof(msg_get_rep) + value_bytes_read;
-
-		actual_reply_size = sizeof(msg_header) + task->reply_msg->pay_len + TU_TAIL_SIZE;
-		padding = MESSAGE_SEGMENT_SIZE - (actual_reply_size % MESSAGE_SEGMENT_SIZE);
-		/*set tail to the proper value*/
-		*(uint32_t *)((uint64_t)task->reply_msg + actual_reply_size + (padding - TU_TAIL_SIZE)) =
-			TU_RDMA_REGULAR_MSG;
-		task->reply_msg->padding_and_tail = padding + TU_TAIL_SIZE;
-
-		task->reply_msg->local_offset = (uint64_t)task->msg->reply;
-		task->reply_msg->remote_offset = (uint64_t)task->msg->reply;
-		task->reply_msg->callback_function = NULL;
-		task->reply_msg->request_message_local_addr = task->msg->request_message_local_addr;
-		task->overall_status = TASK_COMPLETED;
-		break;
 	case MULTI_GET_REQUEST:
 		multi_get = (msg_multi_get_req *)task->msg->data;
 		S_tu_region = find_region(multi_get->seek_key, multi_get->seek_key_size);
