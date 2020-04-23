@@ -202,7 +202,6 @@ static msg_header *_client_allocate_rdma_message(connection_rdma *conn, int mess
 	case TU_GET_QUERY:
 	case MULTI_GET_REQUEST:
 	case PUT_OFFT_REQUEST:
-	case GET_OFFT_REQUEST:
 	case DELETE_REQUEST:
 		c_buf = conn->send_circular_buf;
 		ack_arrived = KR_REP_PENDING;
@@ -213,7 +212,6 @@ static msg_header *_client_allocate_rdma_message(connection_rdma *conn, int mess
 	case TU_GET_REPLY:
 	case MULTI_GET_REPLY:
 	case PUT_OFFT_REPLY:
-	case GET_OFFT_REPLY:
 	case DELETE_REPLY:
 		c_buf = conn->recv_circular_buf;
 		ack_arrived = KR_REP_DONT_CARE;
@@ -633,7 +631,7 @@ static int __send_rdma_message(connection_rdma *conn, msg_header *msg)
 	case TU_GET_QUERY:
 	case MULTI_GET_REQUEST:
 	case PUT_OFFT_REQUEST:
-	case GET_OFFT_REQUEST:
+
 	case DELETE_REQUEST:
 	case TEST_REQUEST:
 	case TEST_REQUEST_FETCH_PAYLOAD:
@@ -642,7 +640,6 @@ static int __send_rdma_message(connection_rdma *conn, msg_header *msg)
 	case TU_GET_REPLY:
 	case MULTI_GET_REPLY:
 	case PUT_OFFT_REPLY:
-	case GET_OFFT_REPLY:
 	case DELETE_REPLY:
 	case TEST_REPLY:
 	case TEST_REPLY_FETCH_PAYLOAD:
@@ -1905,7 +1902,6 @@ int assign_job_to_worker(struct channel_rdma *channel, struct connection_rdma *c
 		job->kreon_operation_status = APPEND_START;
 		break;
 	case TU_GET_QUERY:
-	case GET_OFFT_REQUEST:
 	case MULTI_GET_REQUEST:
 		job->kreon_operation_status = GET_START;
 		break;

@@ -21,8 +21,6 @@ enum tucana_message_types {
 	TU_GET_REPLY,
 	MULTI_GET_REQUEST,
 	MULTI_GET_REPLY,
-	GET_OFFT_REQUEST,
-	GET_OFFT_REPLY,
 	DELETE_REQUEST,
 	DELETE_REPLY,
 	TU_FLUSH_VOLUME_QUERY, // Flush volume
@@ -112,7 +110,7 @@ typedef struct msg_header {
 
 	/*gesalous staff also*/
 	volatile int32_t ack_arrived;
-	/*from most significant byte to less: <FUTURE_EXTENSION>, <FUTURE_EXTENSION>, 
+	/*from most significant byte to less: <FUTURE_EXTENSION>, <FUTURE_EXTENSION>,
 	 * <FUTUTE_EXTENSION>, SYNC/ASYNC(indicates if this is  a synchronous or asynchronous request*/
 	volatile uint8_t got_send_completion;
 	volatile uint8_t receive_options;
@@ -160,13 +158,17 @@ typedef struct msg_delete_rep {
 } msg_delete_rep;
 
 typedef struct msg_get_req {
+	uint32_t offset;
+	uint32_t bytes_to_read;
+	uint32_t fetch_value;
 	uint32_t key_size;
 	char key[];
 } msg_get_req;
 
 typedef struct msg_get_rep {
-	uint16_t buffer_overflow;
-	uint16_t key_found;
+	uint32_t bytes_remaining;
+	uint8_t key_found : 4;
+	uint8_t offset_too_large : 4;
 	uint32_t value_size;
 	char value[];
 } msg_get_rep;
@@ -189,21 +191,6 @@ typedef struct msg_multi_get_rep {
 	char kv_buffer[];
 } msg_multi_get_rep;
 
-typedef struct msg_get_offt_req {
-	uint32_t offset;
-	uint32_t size;
-	uint32_t key_size;
-	char key_buf[];
-} msg_get_offt_req;
-
-typedef struct msg_get_offt_rep {
-	uint8_t key_found;
-	uint8_t offset_invalid;
-	uint32_t full_value_size;
-	uint32_t value_bytes_read;
-	char value[];
-} msg_get_offt_rep;
-
 typedef struct set_connection_property_req {
 	int desired_priority_level;
 	int desired_RDMA_memory_size;
@@ -216,4 +203,3 @@ typedef struct set_connection_property_reply {
 
 int push_buffer_in_msg_header(struct msg_header *data_message, char *buffer, uint32_t buffer_length);
 int msg_push_to_multiget_buf(msg_key *key, msg_value *val, msg_multi_get_rep *buf);
-
