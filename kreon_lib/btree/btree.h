@@ -386,14 +386,14 @@ typedef struct ancestors {
 	int size;
 } ancestors;
 
-typedef struct delete_request {
+typedef struct bt_delete_request {
 	bt_mutate_req metadata;
 	ancestors *ancs; /* This field is redundant and should be removed */
 	index_node *parent;
 	leaf_node *self;
 	uint64_t offset; /*offset in my parent*/
 	void *key_buf;
-} delete_request;
+} bt_delete_request;
 
 /* In case more operations are tracked in the log in the future such as transactions
   you will need to change the request_type enumerator and the log_operation struct.
@@ -407,7 +407,7 @@ typedef struct log_operation {
 	request_type optype_tolog;
 	union {
 		bt_insert_req *ins_req;
-		delete_request *del_req;
+		bt_delete_request *del_req;
 	};
 } log_operation;
 
