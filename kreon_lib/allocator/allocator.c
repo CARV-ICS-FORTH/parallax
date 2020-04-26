@@ -891,6 +891,11 @@ void allocator_init(volume_descriptor *volume_desc)
 	int ret;
 
 	mount_volume(volume_desc->volume_name, 0, 0 /* unused */); /*if not mounted */
+	log_info("Bitmap Entries %u", BITMAP_ENTRIES * 8);
+	log_info("Num entries for offsets in L0 leaf node %u", NUM_ENTRIES);
+	log_info("Entries in L0 leaf node %u", KV_ENTRIES);
+	static_assert(sizeof(l0_leaf_node) <= LEAF_NODE_SIZE);
+	static_assert(sizeof(index_node) <= INDEX_NODE_SIZE);
 
 	ret = ioctl(FD, FAKE_BLK_IOC_TEST_CAP);
 	if (ret == 0) {
