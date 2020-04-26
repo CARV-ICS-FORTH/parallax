@@ -76,7 +76,7 @@ else()
 endif()
 
 # Paths set(ZK_C_LIB "/home1/public/mvard/zookeeper_c")
-include(CMakeconfig.txt)
+include(cmake_utils/cmakeconfig.cmake.in)
 configure_file(config.h.in config.h @ONLY)
 
 # Compiler configuration
