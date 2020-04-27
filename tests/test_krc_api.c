@@ -17,6 +17,8 @@
 #define BASE 1000000
 #define NUM_REGIONS 16
 #define KEY_PREFIX "#b"
+#define ZERO_VALUE_PREFIX "b/dummy"
+#define TOMBSTONE "b/dummz"
 #define KV_SIZE 1024
 #define UPDATES 100
 #define SCAN_SIZE 50
@@ -111,6 +113,7 @@ int main(int argc, char *argv[])
 	krc_scannerp sc = NULL;
 
 	key *k = (key *)malloc(KV_SIZE);
+
 	log_info("Starting population for %lu keys...", NUM_KEYS);
 	for (i = BASE; i < (BASE + NUM_KEYS); i++) {
 		strncpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
@@ -454,6 +457,49 @@ int main(int argc, char *argv[])
 	}
 
 	free(get_buffer);
+
+	log_info("Testing zero sided value keys populating");
+	for (i = BASE; i < (BASE + NUM_KEYS); i++) {
+		strncpy(k->key_buf, ZERO_VALUE_PREFIX, strlen(ZERO_VALUE_PREFIX));
+		if (i % 100000 == 0)
+			log_info("inserted up to %llu th key", i);
+
+		sprintf(k->key_buf + strlen(ZERO_VALUE_PREFIX), "%llu", (long long unsigned)i);
+		k->key_size = strlen(k->key_buf);
+		value *v = (value *)((uint64_t)k + sizeof(key) + k->key_size);
+		v->value_size = KV_SIZE - ((2 * sizeof(key)) + k->key_size);
+		memset(v->value_buf, 0xDD, v->value_size);
+		krc_put_with_offset(k->key_size, k->key_buf, 0, 0, NULL);
+	}
+	k->key_size = strlen(TOMBSTONE);
+	sprintf(k->key_buf, "%s", TOMBSTONE);
+	krc_put_with_offset(k->key_size, k->key_buf, 0, 0, NULL);
+	sprintf(k->key_buf, "%s", ZERO_VALUE_PREFIX);
+
+	log_info("Scanning now zero sided value keys");
+	krc_scannerp zero_sc = krc_scan_init(16, 64 * 1024);
+	krc_scan_set_prefix_filter(zero_sc, strlen(ZERO_VALUE_PREFIX), ZERO_VALUE_PREFIX);
+	i = BASE;
+	int zeroed_value_keys = 0;
+	while (krc_scan_get_next(zero_sc, &s_key, &s_key_size, &s_value, &s_value_size)) {
+		sprintf(k->key_buf + strlen(ZERO_VALUE_PREFIX), "%llu", (long long unsigned)i);
+		if (s_key_size != strlen(k->key_buf)) {
+			log_fatal("Corrupted len expected %u got %u", strlen(k->key_buf), s_key_size);
+			exit(EXIT_FAILURE);
+		}
+		if (memcmp(s_key, k->key_buf, s_key_size) != 0) {
+			log_fatal("Corrupted key got %s expected %s", s_key, k->key_buf);
+			exit(EXIT_FAILURE);
+		}
+		assert(s_value_size == 0);
+		++zeroed_value_keys;
+		++i;
+	}
+	if (zeroed_value_keys != NUM_KEYS) {
+		log_fatal("Failed did not retrieve all keys got %u expected %u", zeroed_value_keys, NUM_KEYS);
+		exit(EXIT_FAILURE);
+	}
+	log_info("Zeroed value keys success");
 	log_info("************ ALL TESTS SUCCESSFULL! ************");
 	return 1;
 }

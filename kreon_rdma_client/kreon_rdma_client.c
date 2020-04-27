@@ -69,7 +69,7 @@ static int64_t krc_compare_keys(krc_key *key1, krc_key *key2)
 static int64_t krc_prefix_match(krc_key *prefix, krc_key *key)
 {
 	if (key->key_size < prefix->key_size)
-		return 0;
+		return -1;
 	if (memcmp(prefix->key_buf, key->key_buf, prefix->key_size) == 0)
 		return 1;
 	else
@@ -670,6 +670,7 @@ uint8_t krc_scan_get_next(krc_scannerp sp, char **key, size_t *keySize, char **v
 			break;
 		}
 		case KRC_PREFIX_FILTER:
+
 			if (sc->prefix_key == NULL) {
 				sc->state = KRC_ADVANCE;
 				goto exit;
@@ -677,8 +678,9 @@ uint8_t krc_scan_get_next(krc_scannerp sp, char **key, size_t *keySize, char **v
 				sc->state = KRC_ADVANCE;
 				goto exit;
 			} else {
-				sc->state = KRC_ADVANCE;
-				break;
+				sc->state = KRC_INVALID;
+				sc->is_valid = 0;
+				goto exit;
 			}
 		case KRC_ISSUE_MGET_REQ:
 			curr_region = client_find_region(seek_key, seek_key_size);
@@ -866,7 +868,12 @@ void krc_scan_set_prefix_filter(krc_scannerp sp, uint32_t prefix_size, void *pre
 		log_warn("Nothing to do already set prefix key for this scanner");
 		return;
 	}
-	sc->prefix_filter_enable = 0;
+	sc->seek_mode = KRC_GREATER_OR_EQUAL;
+	sc->start_infinite = 0;
+	sc->start_key = (krc_key *)malloc(sizeof(krc_key) + prefix_size);
+	sc->start_key->key_size = prefix_size;
+	memcpy(sc->start_key->key_buf, prefix, prefix_size);
+	sc->prefix_filter_enable = 1;
 	sc->prefix_key = (krc_key *)malloc(sizeof(krc_key) + prefix_size);
 	sc->prefix_key->key_size = prefix_size;
 	memcpy(sc->prefix_key->key_buf, prefix, prefix_size);
