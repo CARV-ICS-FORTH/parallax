@@ -500,6 +500,21 @@ int main(int argc, char *argv[])
 		exit(EXIT_FAILURE);
 	}
 	log_info("Zeroed value keys success");
+	for (i = BASE; i < BASE + 20; i++) {
+		log_info("Testing scan after delete scenario");
+		sprintf(k->key_buf + strlen(ZERO_VALUE_PREFIX), "%llu", (long long unsigned)i);
+		k->key_size = strlen(k->key_buf);
+		assert(krc_delete(k->key_size, k->key_buf) == KRC_SUCCESS);
+		sc = krc_scan_init(PREFETCH_ENTRIES, PREFETCH_MEM_SIZE);
+		krc_scan_set_prefix_filter(sc, k->key_size, k->key_buf);
+		if (krc_scan_get_next(sc, &s_key, &s_key_size, &s_value, &s_value_size)) {
+			log_fatal("Test failed key %s invalid scanner should have returned zero instead got key %s",
+				  s_key);
+			exit(EXIT_FAILURE);
+		}
+		krc_scan_close(sc);
+	}
+
 	log_info("************ ALL TESTS SUCCESSFULL! ************");
 	return 1;
 }

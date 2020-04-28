@@ -245,6 +245,7 @@ uint8_t __delete_from_leaf(delete_request *req, index_node *parent, leaf_node *l
 			}
 
 			delete_key_value(req->metadata.handle->db_desc, leaf, pos);
+			req->metadata.handle->db_desc->dirty = 1;
 
 			if (leaf->header.type == leafRootNode)
 				return SUCCESS;
