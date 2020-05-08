@@ -65,6 +65,9 @@ pthread_mutex_t init_lock = PTHREAD_MUTEX_INITIALIZER;
 pthread_spinlock_t log_buffer_lock;
 /*number of locks per level*/
 uint32_t size_per_height[MAX_HEIGHT] = { 8192, 4096, 2048, 1024, 512, 256, 128, 64, 32 };
+uint32_t leaf_size_per_level[MAX_LEVELS] = { LEVEL0_LEAF_SIZE, LEVEL1_LEAF_SIZE, LEVEL2_LEAF_SIZE, LEVEL3_LEAF_SIZE,
+					     LEVEL4_LEAF_SIZE, LEVEL5_LEAF_SIZE, LEVEL6_LEAF_SIZE, LEVEL7_LEAF_SIZE };
+level_offsets_todata leaf_node_offsets[MAX_LEVELS];
 
 #define PAGE_SIZE 4096
 #define LEAF_ROOT_NODE_SPLITTED 0xFC
@@ -434,6 +437,54 @@ static void init_level_locktable(db_descriptor *database, uint8_t level_id)
 				exit(EXIT_FAILURE);
 			}
 		}
+	}
+}
+
+/* uint32_t leaf_size_per_level[MAX_LEVELS] = { LEVEL0_LEAF_SIZE, LEVEL1_LEAF_SIZE, LEVEL2_LEAF_SIZE, LEVEL3_LEAF_SIZE, */
+/* 					     LEVEL4_LEAF_SIZE, LEVEL5_LEAF_SIZE, LEVEL6_LEAF_SIZE, LEVEL7_LEAF_SIZE }; */
+/* level_offsets_todata leaf_node_offsets[MAX_LEVELS]; */
+
+/* #define LN_ITEM_SIZE (sizeof(uint64_t) + (PREFIX_SIZE * sizeof(char))) */
+/* #define KV_LEAF_ENTRY (sizeof(bt_leaf_entry) + sizeof(bt_leaf_entry_index) + (1 / CHAR_BIT)) */
+/* #define LN_LENGTH ((LEAF_NODE_REMAIN) / (KV_LEAF_ENTRY)) */
+
+/* #define BITMAP_ENTRIES ((LN_LENGTH / CHAR_BIT) + 1) */
+/* #define NUM_ENTRIES (LN_LENGTH) */
+/* #define NUM_ENTRIES_SIZE (LN_LENGTH * sizeof(bt_leaf_entry_index)) */
+/* #define KV_ENTRIES ((LEAF_NODE_REMAIN - BITMAP_ENTRIES - NUM_ENTRIES_SIZE) / sizeof(bt_leaf_entry)) */
+/* #define KV_ENTRIES_SIZE (KV_ENTRIES * sizeof(bt_leaf_entry)) */
+static void calculate_metadata_offsets(uint32_t bitmap_entries, uint32_t slot_array_entries, uint32_t kv_entries,
+				       level_offsets_todata *leaf_node_offsets)
+{
+	leaf_node_offsets->bitmap_entries = bitmap_entries;
+	leaf_node_offsets->bitmap_offset = sizeof(node_header);
+	leaf_node_offsets->slot_array_entries = slot_array_entries;
+	leaf_node_offsets->slot_array_offset =
+		leaf_node_offsets->bitmap_offset + bitmap_entries * sizeof(bt_leaf_bitmap);
+	leaf_node_offsets->kv_entries = kv_entries;
+	leaf_node_offsets->kv_entries_offset = leaf_node_offsets->bitmap_offset +
+					       bitmap_entries * sizeof(bt_leaf_bitmap) +
+					       slot_array_entries * sizeof(bt_leaf_slot_array);
+}
+
+static void init_leaf_sizes_perlevel(void)
+{
+	double kv_leaf_entry = sizeof(bt_leaf_entry) + sizeof(bt_leaf_slot_array) + (1 / CHAR_BIT);
+	double numentries_without_metadata;
+	uint32_t leaf_size;
+	uint32_t bitmap_entries;
+	uint32_t slot_array_entries;
+	uint32_t kv_entries;
+
+	for (int i = 0; i < MAX_LEVELS; ++i) {
+		leaf_size = leaf_size_per_level[i];
+		numentries_without_metadata = (leaf_size - sizeof(node_header)) / kv_leaf_entry;
+		bitmap_entries = (numentries_without_metadata / CHAR_BIT) + 1;
+		slot_array_entries = numentries_without_metadata;
+		kv_entries = leaf_size - sizeof(node_header) - bitmap_entries -
+			     (slot_array_entries * sizeof(bt_leaf_slot_array)) / sizeof(bt_leaf_entry);
+
+		calculate_metadata_offsets(bitmap_entries, slot_array_entries, kv_entries, &leaf_node_offsets[i]);
 	}
 }
 
@@ -901,6 +952,8 @@ finish_init:
 			db_desc->levels[level_id].tree_status[tree_id] = NO_SPILLING;
 		}
 	}
+	init_leaf_sizes_perlevel();
+
 #if LOG_WITH_MUTEX
 	MUTEX_INIT(&db_desc->lock_log, NULL);
 #else

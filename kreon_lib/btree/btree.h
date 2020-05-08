@@ -12,7 +12,8 @@
 
 #include <pthread.h>
 #include <stdlib.h>
-
+#include <limits.h>
+#include <unistd.h>
 #include "stats.h"
 
 #define SUCCESS 4
@@ -160,14 +161,18 @@ typedef struct index_entry {
 	uint64_t right[0];
 } __attribute__((packed)) index_entry;
 
-typedef struct l0_leaf_entry_pos {
-	unsigned short pos;
-} l0_leaf_entry_pos;
-
-typedef struct l0_leaf_entry {
+typedef struct bt_leaf_entry {
 	uint64_t pointer;
 	char prefix[PREFIX_SIZE];
-} l0_leaf_entry;
+} bt_leaf_entry;
+
+typedef struct bt_leaf_entry_bitmap {
+	unsigned char bitmap;
+} bt_leaf_bitmap;
+
+typedef struct bt_leaf_slot_array {
+	unsigned short index;
+} bt_leaf_slot_array;
 
 #define INDEX_NODE_REMAIN (INDEX_NODE_SIZE - sizeof(struct node_header))
 #define LEAF_NODE_REMAIN (LEAF_NODE_SIZE - sizeof(struct node_header))
@@ -175,14 +180,14 @@ typedef struct l0_leaf_entry {
 #define IN_LENGTH ((INDEX_NODE_REMAIN - sizeof(uint64_t)) / sizeof(struct index_entry) - 1)
 
 #define LN_ITEM_SIZE (sizeof(uint64_t) + (PREFIX_SIZE * sizeof(char)))
-#define KV_LEAF_ENTRY (sizeof(l0_leaf_entry) + sizeof(l0_leaf_entry_pos) + (1 / 8))
+#define KV_LEAF_ENTRY (sizeof(bt_leaf_entry) + sizeof(bt_leaf_slot_array) + (1 / CHAR_BIT))
 #define LN_LENGTH ((LEAF_NODE_REMAIN) / (KV_LEAF_ENTRY))
 
-#define BITMAP_ENTRIES ((LN_LENGTH / 8) + 1)
+#define BITMAP_ENTRIES ((LN_LENGTH / CHAR_BIT) + 1)
 #define NUM_ENTRIES (LN_LENGTH)
-#define NUM_ENTRIES_SIZE (LN_LENGTH * sizeof(l0_leaf_entry_pos))
-#define KV_ENTRIES ((LEAF_NODE_REMAIN - BITMAP_ENTRIES - NUM_ENTRIES_SIZE) / sizeof(l0_leaf_entry))
-#define KV_ENTRIES_SIZE (KV_ENTRIES * sizeof(l0_leaf_entry))
+#define NUM_ENTRIES_SIZE (LN_LENGTH * sizeof(bt_leaf_slot_array))
+#define KV_ENTRIES ((LEAF_NODE_REMAIN - BITMAP_ENTRIES - NUM_ENTRIES_SIZE) / sizeof(bt_leaf_entry))
+#define KV_ENTRIES_SIZE (KV_ENTRIES * sizeof(bt_leaf_entry))
 
 /* this is the same as root_node */
 typedef struct index_node {
@@ -193,16 +198,35 @@ typedef struct index_node {
 		   (IN_LENGTH * sizeof(struct index_entry))];
 } __attribute__((packed)) index_node;
 
-typedef struct l0_leaf_node {
+typedef struct bt_leaf_node {
 	struct node_header header;
-	union {
-		unsigned char reuse_entry_bitmap[BITMAP_ENTRIES];
-		unsigned char kv_type_bitmap[BITMAP_ENTRIES];
-	};
-	l0_leaf_entry_pos kvpair_index[KV_ENTRIES];
-	l0_leaf_entry kvpairs[KV_ENTRIES];
-	char __pad[LEAF_NODE_REMAIN - BITMAP_ENTRIES - NUM_ENTRIES_SIZE - KV_ENTRIES_SIZE];
-} __attribute__((packed)) l0_leaf_node;
+
+} __attribute__((packed)) bt_leaf_node;
+
+typedef struct leaf_node {
+	struct node_header header;
+	uint64_t pointer[LN_LENGTH];
+	char prefix[LN_LENGTH][PREFIX_SIZE];
+	char __pad[LEAF_NODE_SIZE - sizeof(struct node_header) - (LN_LENGTH * LN_ITEM_SIZE)];
+} __attribute__((packed)) leaf_node;
+
+typedef struct level_offsets_todata {
+	uint32_t bitmap_entries;
+	uint32_t bitmap_offset;
+	uint32_t slot_array_entries;
+	uint32_t slot_array_offset;
+	uint32_t kv_entries;
+	uint32_t kv_entries_offset;
+} level_offsets_todata;
+
+#define LEVEL0_LEAF_SIZE 4096
+#define LEVEL1_LEAF_SIZE 8192
+#define LEVEL2_LEAF_SIZE 16384
+#define LEVEL3_LEAF_SIZE 32768
+#define LEVEL4_LEAF_SIZE 4096
+#define LEVEL5_LEAF_SIZE 4096
+#define LEVEL6_LEAF_SIZE 4096
+#define LEVEL7_LEAF_SIZE 4096
 
 /* this is the same as leaf_root_node */
 //__attribute__((packed))
@@ -411,7 +435,7 @@ typedef struct bt_delete_request {
 	bt_mutate_req metadata;
 	ancestors *ancs; /* This field is redundant and should be removed */
 	index_node *parent;
-	leaf_node *self;
+	struct leaf_node *self;
 	uint64_t offset; /*offset in my parent*/
 	void *key_buf;
 } bt_delete_request;
