@@ -1,4 +1,4 @@
-image: arch_carv
+image: carvicsforth/arch_carv:latest
 
 stages:
   - build
