@@ -1108,7 +1108,8 @@ uint8_t insert_key_value(db_handle *handle, void *key, void *value, uint32_t key
 	uint32_t kv_size;
 
 	/*throttle control check*/
-	while (handle->db_desc->levels[0].level_size > ZERO_LEVEL_MEMORY_UPPER_BOUND) {
+	while (handle->db_desc->levels[0].level_size > ZERO_LEVEL_MEMORY_UPPER_BOUND &&
+	       handle->db_desc->levels[0].outstanding_spill_ops) {
 		usleep(THROTTLE_SLEEP_TIME);
 	}
 
