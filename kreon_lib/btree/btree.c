@@ -440,24 +440,11 @@ static void init_level_locktable(db_descriptor *database, uint8_t level_id)
 	}
 }
 
-/* uint32_t leaf_size_per_level[MAX_LEVELS] = { LEVEL0_LEAF_SIZE, LEVEL1_LEAF_SIZE, LEVEL2_LEAF_SIZE, LEVEL3_LEAF_SIZE, */
-/* 					     LEVEL4_LEAF_SIZE, LEVEL5_LEAF_SIZE, LEVEL6_LEAF_SIZE, LEVEL7_LEAF_SIZE }; */
-/* level_offsets_todata leaf_node_offsets[MAX_LEVELS]; */
-
-/* #define LN_ITEM_SIZE (sizeof(uint64_t) + (PREFIX_SIZE * sizeof(char))) */
-/* #define KV_LEAF_ENTRY (sizeof(bt_leaf_entry) + sizeof(bt_leaf_entry_index) + (1 / CHAR_BIT)) */
-/* #define LN_LENGTH ((LEAF_NODE_REMAIN) / (KV_LEAF_ENTRY)) */
-
-/* #define BITMAP_ENTRIES ((LN_LENGTH / CHAR_BIT) + 1) */
-/* #define NUM_ENTRIES (LN_LENGTH) */
-/* #define NUM_ENTRIES_SIZE (LN_LENGTH * sizeof(bt_leaf_entry_index)) */
-/* #define KV_ENTRIES ((LEAF_NODE_REMAIN - BITMAP_ENTRIES - NUM_ENTRIES_SIZE) / sizeof(bt_leaf_entry)) */
-/* #define KV_ENTRIES_SIZE (KV_ENTRIES * sizeof(bt_leaf_entry)) */
 static void calculate_metadata_offsets(uint32_t bitmap_entries, uint32_t slot_array_entries, uint32_t kv_entries,
 				       level_offsets_todata *leaf_node_offsets)
 {
 	leaf_node_offsets->bitmap_entries = bitmap_entries;
-	leaf_node_offsets->bitmap_offset = sizeof(node_header);
+	leaf_node_offsets->bitmap_offset = sizeof(bt_static_leaf_node);
 	leaf_node_offsets->slot_array_entries = slot_array_entries;
 	leaf_node_offsets->slot_array_offset =
 		leaf_node_offsets->bitmap_offset + bitmap_entries * sizeof(bt_leaf_bitmap);
@@ -478,10 +465,10 @@ static void init_leaf_sizes_perlevel(void)
 
 	for (int i = 0; i < MAX_LEVELS; ++i) {
 		leaf_size = leaf_size_per_level[i];
-		numentries_without_metadata = (leaf_size - sizeof(node_header)) / kv_leaf_entry;
+		numentries_without_metadata = (leaf_size - sizeof(bt_static_leaf_node)) / kv_leaf_entry;
 		bitmap_entries = (numentries_without_metadata / CHAR_BIT) + 1;
 		slot_array_entries = numentries_without_metadata;
-		kv_entries = leaf_size - sizeof(node_header) - bitmap_entries -
+		kv_entries = leaf_size - sizeof(bt_static_leaf_node) - bitmap_entries -
 			     (slot_array_entries * sizeof(bt_leaf_slot_array)) / sizeof(bt_leaf_entry);
 
 		calculate_metadata_offsets(bitmap_entries, slot_array_entries, kv_entries, &leaf_node_offsets[i]);
@@ -947,7 +934,7 @@ finish_init:
 		db_desc->levels[level_id].active_writers = 0;
 		/*check again which tree should be active*/
 		db_desc->levels[level_id].active_tree = 0;
-
+		db_desc->levels[level_id].level_id = level_id;
 		for (tree_id = 0; tree_id < NUM_TREES_PER_LEVEL; tree_id++) {
 			db_desc->levels[level_id].tree_status[tree_id] = NO_SPILLING;
 		}
