@@ -171,7 +171,7 @@ typedef struct bt_leaf_entry_bitmap {
 } bt_leaf_bitmap;
 
 typedef struct bt_leaf_slot_array {
-	unsigned short index;
+	uint16_t index;
 } bt_leaf_slot_array;
 
 #define INDEX_NODE_REMAIN (INDEX_NODE_SIZE - sizeof(struct node_header))
