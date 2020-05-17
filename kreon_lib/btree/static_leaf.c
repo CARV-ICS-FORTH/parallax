@@ -12,6 +12,8 @@ void init_static_leaf_metadata(bt_static_leaf_node *leaf, uint8_t level_id)
 	char *bitmap_address = leaf_base_address + leaf_node_offsets[level_id].bitmap_offset;
 	char *slot_array_address = leaf_base_address + leaf_node_offsets[level_id].slot_array_offset;
 	char *kv_entries_address = leaf_base_address + leaf_node_offsets[level_id].kv_entries_offset;
+	/* If the bt_leaf_bitmap struct becomes a different type than an unsigned char,
+	   the UCHAR_MAX should be replaced with the maximum value the type can hold  */
 	memset(bitmap_address, UCHAR_MAX, sizeof(bt_leaf_bitmap) * leaf_node_offsets[level_id].bitmap_entries);
 	memset(slot_array_address, 0, sizeof(bt_leaf_slot_array) * leaf_node_offsets[level_id].slot_array_entries);
 	memset(kv_entries_address, 0, sizeof(bt_leaf_entry) * leaf_node_offsets[level_id].kv_entries);

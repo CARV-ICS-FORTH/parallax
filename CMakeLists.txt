@@ -39,12 +39,23 @@ FetchContent_Declare(
 FetchContent_Declare(log # Recommendation: Stick close to the original name.
                      GIT_REPOSITORY https://github.com/innerout/log.c.git)
 
+FetchContent_Declare(libmba # Recommendation: Stick close to the original name.
+                     GIT_REPOSITORY https://github.com/innerout/libmba.git)
+
 FetchContent_GetProperties(uthash)
 FetchContent_GetProperties(log)
+FetchContent_GetProperties(libmba)
 
 if(NOT uthash_POPULATED)
   FetchContent_Populate(uthash)
   FetchContent_MakeAvailable(uthash)
+endif()
+
+if(NOT libmba_POPULATED)
+  FetchContent_Populate(libmba)
+  add_subdirectory(${libmba_SOURCE_DIR} ${libmba_BINARY_DIR})
+  include_directories(${libmba_SOURCE_DIR}/include)
+  FetchContent_MakeAvailable(libmba)
 endif()
 
 if(NOT log_POPULATED)

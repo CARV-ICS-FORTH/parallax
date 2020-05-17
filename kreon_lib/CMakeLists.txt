@@ -73,8 +73,8 @@ add_library(${KREON_LIB_SHARED} SHARED ${KREON_C_SOURCE_FILES})
 set_property(TARGET ${KREON_LIB} PROPERTY POSITION_INDEPENDENT_CODE ON)
 set_property(TARGET ${KREON_LIB_SHARED} PROPERTY POSITION_INDEPENDENT_CODE ON)
 
-target_link_libraries(${KREON_LIB} log)
-target_link_libraries(${KREON_LIB_SHARED} log)
+target_link_libraries(${KREON_LIB} log mba)
+target_link_libraries(${KREON_LIB_SHARED} log-shared mba-shared)
 
 set_source_files_properties(allocator/spin_loop.c PROPERTIES COMPILE_FLAGS
                                                              "-O0")
