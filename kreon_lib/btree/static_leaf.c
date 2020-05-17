@@ -93,3 +93,15 @@ uint32_t binary_search_static_leaf(bt_static_leaf_node const *leaf, struct splic
 
 	return EQUAL_TO_ZERO;
 }
+
+void shift_slot_array(bt_static_leaf_node *leaf, uint32_t middle)
+{
+	struct bt_static_leaf_structs src;
+	const size_t num_items = leaf->header.numberOfEntriesInNode - middle;
+	retrieve_static_leaf_structures(leaf, &src);
+
+	if (num_items == 0)
+		return;
+
+	memmove(&src.slot_array[middle + 1], &src.slot_array[middle], num_items * sizeof(bt_leaf_slot_array));
+}
