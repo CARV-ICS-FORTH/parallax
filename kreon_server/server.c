@@ -1488,7 +1488,7 @@ void handle_task(void *__task)
 				log_fatal("FATAL region with min key %s not found\n", region_key);
 				exit(EXIT_FAILURE);
 			}
-			if (r_desc->db->db_desc->db_mode == PRIMARY_DB) {
+			if (r_desc->role == KRM_PRIMARY) {
 				log_fatal("FATAL flushing primary db?\n");
 				raise(SIGINT);
 				exit(EXIT_FAILURE);

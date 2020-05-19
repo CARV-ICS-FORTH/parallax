@@ -882,13 +882,9 @@ finish_init:
 	MUTEX_UNLOCK(&init_lock);
 	free(key);
 
-	if (CREATE_FLAG == CREATE_DB) {
-		log_info("opened primary db");
-		db_desc->db_mode = PRIMARY_DB;
-	} else {
-		log_info("opened replica db");
-		db_desc->db_mode = BACKUP_DB_NO_PENDING_SPILL;
-	}
+	db_desc->stat = DB_OPEN;
+	log_info("opened DB %s", db_name);
+
 #if 0
 		else{
 		log_info("opened replica db");
@@ -950,12 +946,12 @@ char db_close(db_handle *handle)
 {
 	/*verify that this is a valid db*/
 	if (find_element(handle->volume_desc->open_databases, handle->db_desc->db_name) == NULL) {
-		log_fatal("FATAL received close for db: %s that is not listed as open", handle->db_desc->db_name);
+		log_fatal("received close for db: %s that is not listed as open", handle->db_desc->db_name);
 		exit(EXIT_FAILURE);
 	}
 
 	log_info("closing region/db %s snapshotting volume\n", handle->db_desc->db_name);
-	handle->db_desc->db_mode = DB_IS_CLOSING;
+	handle->db_desc->stat = DB_IS_CLOSING;
 	snapshot(handle->volume_desc);
 /*stop log appenders*/
 #if LOG_WITH_MUTEX
@@ -2282,7 +2278,7 @@ void spill_buffer(void *_spill_req)
 			usleep(50000);
 
 		db_desc->dirty = 0x01;
-		if (handle.db_desc->db_mode == DB_IS_CLOSING) {
+		if (handle.db_desc->stat == DB_IS_CLOSING) {
 			log_info("db is closing bye bye from spiller");
 			__sync_fetch_and_sub(&db_desc->levels[spill_req->src_level].outstanding_spill_ops, 1);
 			return;

@@ -56,13 +56,7 @@ typedef enum volume_state { VOLUME_IS_OPEN = 0x00, VOLUME_IS_CLOSING = 0x01, VOL
 #define SNAP_INTERRUPT_ENABLE 0x0A
 #define SNAP_INTERRUPT_DISABLE 0x0B
 
-typedef enum db_status {
-	PRIMARY_DB = 0x05,
-	BACKUP_DB_NO_PENDING_SPILL,
-	BACKUP_DB_PENDING_SPILL,
-	BACKUP_DB_TIERING_COMPACTION,
-	DB_IS_CLOSING
-} db_status;
+typedef enum db_status { DB_OPEN, DB_IS_CLOSING } db_status;
 
 extern LIST *mappedVolumes;
 
