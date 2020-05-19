@@ -23,9 +23,10 @@
 #include <immintrin.h>
 
 #include "get_clock.h"
+#include "../kreon_server/metadata.h"
 #include "../kreon_server/messages.h"
 #include "../kreon_server/globals.h"
-#include "../kreon_server/server_regions.h"
+
 #include "../utilities/simple_concurrent_list.h"
 #include "../utilities/spin_loop.h"
 #include "../utilities/circular_buffer.h"
@@ -39,6 +40,7 @@
 #define WORKER_THREAD_HIGH_PRIORITY_TASKS_PER_TURN 1
 #define WORKER_THREAD_NORMAL_PRIORITY_TASKS_PER_TURN 1
 
+uint32_t RDMA_TOTAL_LOG_BUFFER_SIZE;
 int LIBRARY_MODE = SERVER_MODE; /*two modes for the communication rdma library SERVER and CLIENT*/
 int assign_job_to_worker(struct channel_rdma *channel, struct connection_rdma *conn, msg_header *msg,
 			 int spinning_thread_id, int sockfd);
@@ -360,15 +362,12 @@ msg_header *__allocate_rdma_message(connection_rdma *conn, int message_payload_s
 	switch (message_type) {
 	case PUT_REQUEST:
 	case PUT_REPLY:
-	case MULTI_PUT:
 	case TU_GET_QUERY:
 	case TU_GET_REPLY:
 	case TEST_REQUEST:
 	case TEST_REQUEST_FETCH_PAYLOAD:
 	case TEST_REPLY:
 	case TEST_REPLY_FETCH_PAYLOAD:
-	case SCAN_REQUEST:
-	case SCAN_REPLY:
 		receive = TU_RDMA_REGULAR_MSG;
 		break;
 	case DISCONNECT:
@@ -631,7 +630,6 @@ static int __send_rdma_message(connection_rdma *conn, msg_header *msg)
 	case TU_GET_QUERY:
 	case MULTI_GET_REQUEST:
 	case PUT_OFFT_REQUEST:
-
 	case DELETE_REQUEST:
 	case TEST_REQUEST:
 	case TEST_REQUEST_FETCH_PAYLOAD:
@@ -1029,7 +1027,7 @@ void *worker_thread_kernel(void *args)
 		}
 		job = NULL;
 	}
-	DPRINT("worker thread exited ended per connection thread\n");
+	log_warn("worker thread exited");
 	return NULL;
 }
 
@@ -1077,7 +1075,7 @@ static void __stop_client(connection_rdma *conn);
 
 /*This is the main entry poinf of the kreonR server. Here it waits for new
  * incoming connections*/
-static void *socket_thread(void *args)
+void *socket_thread(void *args)
 {
 	struct channel_rdma *channel;
 	connection_rdma *conn;
@@ -1435,12 +1433,12 @@ void crdma_init_client_connection_list_hosts(connection_rdma *conn, char **hosts
 		DPRINT("Remote side accepted created a new MASTER_TO_REPLICA_CONNECTION\n");
 		conn->type = MASTER_TO_REPLICA_DATA_CONNECTION;
 		conn->rdma_memory_regions =
-			mrpool_get_static_buffer(rdma_cm_id, sizeof(se_rdma_buffer) * SE_REPLICA_NUM_SEGMENTS);
+			mrpool_get_static_buffer(rdma_cm_id, sizeof(struct ru_rdma_buffer) * RU_REPLICA_NUM_SEGMENTS);
 		break;
 	case MASTER_TO_REPLICA_CONTROL_CONNECTION:
 		assert(0);
 	case CLIENT_TO_SERVER_CONNECTION:
-		log_info("Remote side accepted created a new CLIENT_TO_SERVER_CONNECTION");
+		//log_info("Remote side accepted created a new CLIENT_TO_SERVER_CONNECTION");
 		conn->type = CLIENT_TO_SERVER_CONNECTION;
 		conn->rdma_memory_regions = mrpool_allocate_memory_region(channel->dynamic_pool, rdma_cm_id);
 		break;
@@ -1489,9 +1487,9 @@ void crdma_init_client_connection_list_hosts(connection_rdma *conn, char **hosts
 #else
 	pthread_spin_init(&conn->buffer_lock, PTHREAD_PROCESS_PRIVATE);
 #endif
-	if (LIBRARY_MODE == CLIENT_MODE) {
-		log_info("CLIENT: Initializing client circular buffer *** NEW feature ****\n");
 
+	if (LIBRARY_MODE == CLIENT_MODE) {
+		//log_info("CLIENT: Initializing client circular buffer *** NEW feature ****");
 		conn->send_circular_buf =
 			create_and_init_circular_buffer(conn->rdma_memory_regions->local_memory_buffer,
 							conn->peer_mr->length, MESSAGE_SEGMENT_SIZE, SEND_BUFFER);
@@ -1500,7 +1498,7 @@ void crdma_init_client_connection_list_hosts(connection_rdma *conn, char **hosts
 							conn->peer_mr->length, MESSAGE_SEGMENT_SIZE, RECEIVE_BUFFER);
 		conn->reset_point = 0;
 		/*Inform the server that you are a client, patch but now I am in a hurry*/
-		DPRINT("CLIENT: Informing server that I am a clienti and about my control location\n");
+		//log_info("CLIENT: Informing server that I am a client and about my control location\n");
 		msg = allocate_rdma_message(conn, 0, I_AM_CLIENT);
 		/*control info*/
 		msg->reply =
@@ -1510,7 +1508,6 @@ void crdma_init_client_connection_list_hosts(connection_rdma *conn, char **hosts
 		conn->control_location = (char *)msg->reply;
 		conn->control_location_length = msg->reply_length;
 		msg->receive = I_AM_CLIENT;
-
 		__send_rdma_message(conn, msg);
 	} else {
 		conn->send_circular_buf = NULL;
@@ -1519,8 +1516,8 @@ void crdma_init_client_connection_list_hosts(connection_rdma *conn, char **hosts
 	}
 
 	crdma_add_connection_channel(channel, conn);
-	log_info("Client Connection build successfully");
-	log_info("*** Added connection successfully ***");
+	//log_info("Client Connection build successfully");
+	//log_info("*** Added connection successfully ***");
 	__sync_fetch_and_add(&channel->nused, 1);
 }
 
@@ -1577,16 +1574,17 @@ void crdma_init_generic_create_channel(struct channel_rdma *channel)
 	channel->spinning_conn = 0;
 
 	if (LIBRARY_MODE == CLIENT_MODE) {
-		DPRINT("\t *** Client: setting spinning threads number to 1 ***\n");
+		log_info("Client: setting spinning threads number to 1");
 		channel->spinning_num_th = 1;
 	} else {
-		DPRINT("\t *** Server: setting spinning threads number to %d ***\n", num_of_spinning_threads);
+		log_info("Server: setting spinning threads number to %d", num_of_spinning_threads);
 		channel->spinning_num_th = num_of_spinning_threads;
 	}
 
 	assert(channel->spinning_num_th <= SPINNING_NUM_TH);
 
-	DPRINT("\t **** Initializing connection lists per spinning thread **** \n");
+	log_info("**** Initializing connection lists per spinning thread ****");
+
 	for (i = 0; i < channel->spinning_num_th; i++) {
 		pthread_mutex_init(&channel->spin_list_conn_lock[i], NULL);
 		channel->spin_list[i] = init_simple_concurrent_list();
@@ -1729,7 +1727,7 @@ struct channel_rdma *crdma_client_create_channel(void)
 	channel = malloc(sizeof(*channel));
 	if (channel == NULL) {
 		perror("ERROR crdma_alloc_init_channel_rdma: memory problem, malloc failed\n");
-		exit(-1);
+		exit(EXIT_FAILURE);
 	}
 #if (SPINNING_THREAD & SPINNING_PER_CHANNEL)
 	if (SPINNING_NUM_TH_CLI > SPINNING_NUM_TH)
@@ -1826,8 +1824,8 @@ void crdma_add_connection_channel(struct channel_rdma *channel, struct connectio
 
 	pthread_mutex_unlock(&channel->spin_list_conn_lock[idx]);
 	sem_post(&channel->sem_spinning[idx]);
-	DPRINT(" *** Added connection with ID %d to spinning thread %d of total spinning threads %d ***\n",
-	       conn->idconn, idx, channel->spinning_num_th);
+	//log_info(" *** Added connection with ID %d to spinning thread %d of total spinning threads %d ***",
+	//	 conn->idconn, idx, channel->spinning_num_th);
 #endif
 }
 
@@ -2166,7 +2164,7 @@ static void *client_spinning_thread_kernel(void *args)
 
 	pthread_t self;
 	self = pthread_self();
-	pthread_setname_np(self, "CLIENT_SPINNING_THREAD");
+	pthread_setname_np(self, "client_spinning_thread");
 	channel = params->channel;
 
 	while (1) {
@@ -2854,7 +2852,7 @@ static void *poll_cq(void *arg)
 
 	while (1) {
 		if (ibv_get_cq_event(channel->comp_channel, &cq, &ev_ctx) != 0) {
-			DPRINT("polling cq failure reason follows-->\n");
+			log_fatal("polling cq failure reason follows");
 			perror("Reason: \n");
 			exit(EXIT_FAILURE);
 		}
@@ -2868,7 +2866,7 @@ static void *poll_cq(void *arg)
 		while (1) {
 			rc = ibv_poll_cq(cq, MAX_COMPLETION_ENTRIES, wc);
 			if (rc < 0) {
-				DPRINT("FATAL poll of completion queue failed!\n");
+				log_fatal("FATAL poll of completion queue failed!");
 				exit(EXIT_FAILURE);
 			} else if (rc > 0) {
 				conn = (connection_rdma *)cq->cq_context;
@@ -2889,17 +2887,16 @@ void on_completion_server(struct ibv_wc *wc, struct connection_rdma *conn)
 	if (wc->status == IBV_WC_SUCCESS) {
 		switch (wc->opcode) {
 		case IBV_WC_SEND:
-			log_info("IBV_WC_SEND code id of connection %d", conn->idconn);
+			//log_info("IBV_WC_SEND code id of connection %d", conn->idconn);
 			break;
 		case IBV_WC_RECV:
-			log_info("IBV_WC_RECV code id of connection %d", conn->idconn);
+			//log_info("IBV_WC_RECV code id of connection %d", conn->idconn);
 			break;
 		case IBV_WC_RDMA_WRITE:
 			if (wc->wr_id != 0) {
 				msg = (msg_header *)wc->wr_id;
 				switch (msg->type) {
 					/*server to client messages*/
-				case SCAN_REQUEST:
 				case CLIENT_STOP_NOW:
 				case CLIENT_RECEIVED_READY:
 					/*do nothing, client handles them*/
@@ -2919,12 +2916,13 @@ void on_completion_server(struct ibv_wc *wc, struct connection_rdma *conn)
 					free_rdma_local_message(conn);
 					break;
 					/*client to server RPCs*/
-				case SCAN_REPLY:
+				case DISCONNECT:
+					msg->got_send_completion = 1;
+					break;
 				case SERVER_I_AM_READY:
 					break;
 				case I_AM_CLIENT:
 				case RESET_RENDEZVOUS:
-				case DISCONNECT:
 					/*client staff, app will decide when staff arrives*/
 					free_space_from_circular_buffer(conn->send_circular_buf, (char *)msg,
 									MESSAGE_SEGMENT_SIZE);

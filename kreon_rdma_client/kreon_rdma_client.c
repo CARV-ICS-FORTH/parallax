@@ -4,10 +4,12 @@
 #include <pthread.h>
 #include <immintrin.h>
 #include "kreon_rdma_client.h"
-#include "../kreon_server/client_regions.h"
+#include "client_utils.h"
+//#include "../kreon_server/client_regions.h"
 #include "../kreon_rdma/rdma.h"
 #include "../kreon_server/globals.h"
 #include "../utilities/spin_loop.h"
+#include "../kreon_lib/scanner/scanner.h"
 #include <log.h>
 #define KRC_GET_SIZE 4096
 
@@ -30,7 +32,7 @@ typedef struct krc_scanner {
 	krc_scan_state state;
 	/*copy of the server's reply*/
 	msg_multi_get_rep *multi_kv_buf;
-	client_region *curr_region;
+	struct cu_region_desc *curr_region;
 } krc_scanner;
 
 static char *neg_infinity = "00000000";
@@ -38,7 +40,6 @@ static char *pos_infinity = "+oo";
 
 ZooLogLevel logLevel = ZOO_LOG_LEVEL_INFO;
 
-static _Client_Regions *client_regions = NULL;
 static int krc_lib_init = 0;
 static pthread_mutex_t lib_lock = PTHREAD_MUTEX_INITIALIZER;
 
@@ -101,18 +102,21 @@ krc_ret_code krc_init(char *zookeeper_ip, int zk_port)
 		pthread_mutex_lock(&lib_lock);
 		if (!krc_lib_init) {
 			globals_disable_client_spinning_thread();
-			char *zk_host_port = malloc(strlen(zookeeper_ip) + 16);
-			strcpy(zk_host_port, zookeeper_ip);
-			*(char *)(zk_host_port + strlen(zookeeper_ip)) = ':';
-			sprintf(zk_host_port + strlen(zookeeper_ip) + 1, "%d", zk_port);
-			log_info("Initializing, connectiong to zookeeper at %s", zk_host_port);
-			globals_set_zk_host(zk_host_port);
-			free(zk_host_port);
-			client_regions = Allocate_Init_Client_Regions();
-			while (client_regions->num_regions_connected < 1) {
-				log_warn("No regions yet");
-				sleep(1);
-			}
+			cu_init(zookeeper_ip, zk_port);
+			//char *zk_host_port = malloc(strlen(zookeeper_ip) + 16);
+			//strcpy(zk_host_port, zookeeper_ip);
+			//*(char *)(zk_host_port + strlen(zookeeper_ip)) = ':';
+			//sprintf(zk_host_port + strlen(zookeeper_ip) + 1, "%d", zk_port);
+			//log_info("Initializing, connectiong to zookeeper at %s", zk_host_port);
+			//globals_set_zk_host(zk_host_port);
+			//free(zk_host_port);
+			//old school
+			//client_regions = Allocate_Init_Client_Regions();
+			//while (client_regions->num_regions_connected < 1) {
+			//	log_warn("No regions yet");
+			//	sleep(1);
+			//}
+
 			krc_lib_init = 1;
 		}
 		pthread_mutex_unlock(&lib_lock);
@@ -142,8 +146,11 @@ krc_ret_code krc_put_with_offset(uint32_t key_size, void *key, uint32_t offset, 
 		log_fatal("Contact <gesalous@ics.forth.gr>");
 		exit(EXIT_FAILURE);
 	}
-	client_region *region = client_find_region(key, key_size);
-	connection_rdma *conn = get_connection_from_region(region, (uint64_t)key);
+	//old school
+	//client_region *region = client_find_region(key, key_size);
+	//connection_rdma *conn = get_connection_from_region(region, (uint64_t)key);
+	struct cu_region_desc *r_desc = cu_get_region(key, key_size);
+	connection_rdma *conn = cu_get_conn_for_region(r_desc, (uint64_t)key);
 
 	req_header = allocate_rdma_message(
 		conn, sizeof(msg_put_offt_req) + key_size + val_size + (2 * sizeof(uint32_t)), PUT_OFFT_REQUEST);
@@ -210,9 +217,11 @@ krc_ret_code krc_put(uint32_t key_size, void *key, uint32_t val_size, void *valu
 		log_fatal("Contact gesalous@ics.forth.gr");
 		exit(EXIT_FAILURE);
 	}
-
-	client_region *region = client_find_region(key, key_size);
-	connection_rdma *conn = get_connection_from_region(region, (uint64_t)key);
+	//old school
+	//client_region *region = client_find_region(key, key_size);
+	//connection_rdma *conn = get_connection_from_region(region, (uint64_t)key);
+	struct cu_region_desc *r_desc = cu_get_region(key, key_size);
+	connection_rdma *conn = cu_get_conn_for_region(r_desc, (uint64_t)key);
 
 	req_header = allocate_rdma_message(conn, key_size + val_size + (2 * sizeof(uint32_t)), PUT_REQUEST);
 	put_key = (msg_put_key *)((uint64_t)req_header + sizeof(msg_header));
@@ -394,8 +403,11 @@ krc_ret_code krc_get(uint32_t key_size, char *key, char **buffer, uint32_t *size
 	uint32_t reply_size;
 	uint32_t local_offset = offset;
 	uint32_t local_buf_offset = 0;
-	client_region *region = client_find_region(key, key_size);
-	connection_rdma *conn = get_connection_from_region(region, (uint64_t)key);
+	//old school
+	//client_region *region = client_find_region(key, key_size);
+	//connection_rdma *conn = get_connection_from_region(region, (uint64_t)key);
+	struct cu_region_desc *r_desc = cu_get_region(key, key_size);
+	connection_rdma *conn = cu_get_conn_for_region(r_desc, (uint64_t)key);
 	krc_ret_code code = KRC_FAILURE;
 	uint8_t read_whole_value;
 
@@ -486,9 +498,11 @@ uint8_t krc_exists(uint32_t key_size, void *key)
 	msg_header *rep_header = NULL;
 	msg_get_req *get_req = NULL;
 	msg_get_rep *get_rep = NULL;
-
-	client_region *region = client_find_region(key, key_size);
-	connection_rdma *conn = get_connection_from_region(region, (uint64_t)key);
+	//old school
+	//client_region *region = client_find_region(key, key_size);
+	//connection_rdma *conn = get_connection_from_region(region, (uint64_t)key);
+	struct cu_region_desc *r_desc = cu_get_region(key, key_size);
+	connection_rdma *conn = cu_get_conn_for_region(r_desc, (uint64_t)key);
 	uint8_t ret;
 
 	req_header = allocate_rdma_message(conn, sizeof(msg_get_req) + key_size, TU_GET_QUERY);
@@ -534,8 +548,11 @@ uint8_t krc_exists(uint32_t key_size, void *key)
 krc_ret_code krc_delete(uint32_t key_size, void *key)
 {
 	uint32_t error_code;
-	client_region *region = client_find_region(key, key_size);
-	connection_rdma *conn = get_connection_from_region(region, (uint64_t)key);
+	//old school
+	//client_region *region = client_find_region(key, key_size);
+	//connection_rdma *conn = get_connection_from_region(region, (uint64_t)key);
+	struct cu_region_desc *r_desc = cu_get_region(key, key_size);
+	connection_rdma *conn = cu_get_conn_for_region(r_desc, (uint64_t)key);
 	/*the request part*/
 	msg_header *req_header = allocate_rdma_message(conn, sizeof(msg_get_req) + key_size, DELETE_REQUEST);
 
@@ -618,7 +635,10 @@ uint8_t krc_scan_get_next(krc_scannerp sp, char **key, size_t *keySize, char **v
 	msg_header *rep_header;
 	msg_multi_get_rep *m_get_rep;
 	char *seek_key;
-	client_region *curr_region = (client_region *)sc->curr_region;
+	//old school
+	//client_region *curr_region = (client_region *)sc->curr_region;
+	struct cu_region_desc *r_desc = (struct cu_region_desc *)sc->curr_region;
+
 	msg_multi_get_rep *multi_kv_buf = (msg_multi_get_rep *)sc->multi_kv_buf;
 	connection_rdma *conn;
 
@@ -682,10 +702,14 @@ uint8_t krc_scan_get_next(krc_scannerp sp, char **key, size_t *keySize, char **v
 				sc->is_valid = 0;
 				goto exit;
 			}
-		case KRC_ISSUE_MGET_REQ:
-			curr_region = client_find_region(seek_key, seek_key_size);
-			sc->curr_region = (void *)curr_region;
-			conn = get_connection_from_region(curr_region, (uint64_t)seek_key);
+		case KRC_ISSUE_MGET_REQ: {
+			//old school
+			//curr_region = client_find_region(seek_key, seek_key_size);
+			//sc->curr_region = (void *)curr_region;
+			//conn = get_connection_from_region(curr_region, (uint64_t)seek_key);
+			struct cu_region_desc *r_desc = cu_get_region(seek_key, seek_key_size);
+			sc->curr_region = (void *)r_desc;
+			conn = cu_get_conn_for_region(r_desc, (uint64_t)key);
 			/*the request part*/
 			req_header = allocate_rdma_message(conn, sizeof(msg_multi_get_req) + seek_key_size,
 							   MULTI_GET_REQUEST);
@@ -754,6 +778,7 @@ uint8_t krc_scan_get_next(krc_scannerp sp, char **key, size_t *keySize, char **v
 			multi_kv_buf->curr_entry = 0;
 			sc->state = KRC_ADVANCE;
 			break;
+		}
 		case KRC_ADVANCE:
 			/*point to the next element*/
 
@@ -774,19 +799,17 @@ uint8_t krc_scan_get_next(krc_scannerp sp, char **key, size_t *keySize, char **v
 					sc->state = KRC_ISSUE_MGET_REQ;
 					//log_info("Time for next batch, within region, seek key %s", seek_key);
 				} else if (multi_kv_buf->end_of_region &&
-					   strncmp(curr_region->ID_region.maximum_range + sizeof(uint32_t), "+oo", 3) !=
-						   0) {
-					seek_key = curr_region->ID_region.maximum_range + sizeof(uint32_t);
-					seek_key_size = *(uint32_t *)curr_region->ID_region.maximum_range;
+					   strncmp(r_desc->region.max_key, "+oo", 3) != 0) {
+					seek_key = r_desc->region.max_key;
+					seek_key_size = r_desc->region.max_key_size;
 					sc->state = KRC_ISSUE_MGET_REQ;
 					seek_mode = GREATER_OR_EQUAL;
 					//log_info("Time for next batch, crossing regions, seek key %s", seek_key);
 				} else {
 					sc->state = KRC_END_OF_DB;
 					log_info("sorry end of db end of region = %d maximum_range %s minimum range %s",
-						 multi_kv_buf->end_of_region,
-						 curr_region->ID_region.maximum_range + sizeof(uint32_t),
-						 curr_region->ID_region.minimum_range + sizeof(uint32_t));
+						 multi_kv_buf->end_of_region, r_desc->region.max_key,
+						 r_desc->region.min_key);
 				}
 			}
 			break;
@@ -895,7 +918,6 @@ void krc_scan_close(krc_scannerp sp)
 
 krc_ret_code krc_close()
 {
-	log_warn("Unimplemented contact gesalous@ics.forth.gr");
-	//exit(EXIT_FAILURE);
-	return KRC_FAILURE;
+	cu_close_open_connections();
+	return KRC_SUCCESS;
 }

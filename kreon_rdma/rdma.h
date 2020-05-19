@@ -241,6 +241,7 @@ void _update_rendezvous_location(struct connection_rdma *conn, int message_size)
 
 typedef void (*on_connection_created)(void *vconn);
 
+void *socket_thread(void *args);
 #if TU_CONNECTION_RC_CONTROL
 // To control the pending messages, a be able to: 1) re-sent in case something is missing, 2) compute the RTT
 struct rdma_sent_queue {
@@ -452,4 +453,3 @@ uint32_t crdma_get_channel_connection_number(struct channel_rdma *channel);
 
 /*gesalous, signature here implementation in tu_rdma.c*/
 void disconnect_and_close_connection(connection_rdma *conn);
-

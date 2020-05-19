@@ -1,6 +1,3 @@
-# File: TucanaServer/CMakeLists.txt Author: Michalis Vardoulakis
-# <mvard@ics.forth.gr>
-
 set_source_files_properties(../utilities/spin_loop.c PROPERTIES COMPILE_FLAGS
                                                                 "-O0")
 
@@ -9,70 +6,80 @@ set(CMAKE_EXE_LINKER_FLAGS
 add_definitions(-DKREONR)
 
 add_library(
-  kreon_client STATIC
-  zk_client.c
-  zk_string_vector.c
-  network_data.c
-  network_data_client.c
-  regions.c
+  kreon_client
+  STATIC
+  # zk_client.c
+  # zk_string_vector.c
+  # network_data.c
+  # network_data_client.c
+  # regions.c
   messages.c
-  client_regions.c
-  client_scanner.c
-  client_regions_manager.c
+  # client_regions.c
+  # client_scanner.c
+  # client_regions_manager.c
+  ../kreon_rdma_client/client_utils.c
   ../kreon_rdma_client/kreon_rdma_client.c
   ../kreon_server/globals.c
-  ../kreon_server/client_regions.c
+  # ../kreon_server/client_regions.c
   ../kreon_rdma_client/kreon_rdma_client.c
+  zk_utils.c
   djb2.c)
 
 add_library(
-  kreon_client-shared SHARED
-  zk_client.c
-  zk_string_vector.c
-  network_data.c
-  network_data_client.c
-  regions.c
+  kreon_client-shared
+  SHARED
+  # zk_client.c
+  # zk_string_vector.c
+  # network_data.c
+  # network_data_client.c
+  # regions.c
   messages.c
-  client_regions.c
-  client_scanner.c
-  client_regions_manager.c
+  # client_regions.c
+  # client_scanner.c
+  # client_regions_manager.c
+  ../kreon_rdma_client/client_utils.c
   ../kreon_rdma_client/kreon_rdma_client.c
   ../kreon_server/globals.c
-  ../kreon_server/client_regions.c
+  # ../kreon_server/client_regions.c
   ../kreon_rdma_client/kreon_rdma_client.c
+  zk_utils.c
   djb2.c)
 
 add_executable(
   kreon_server
   server.c
+  metadata_server.c
+  zk_utils.c
+  djb2.c
   replica_utilities.c
   globals.c
-  zk_string_vector.c
-  regions_manager.c
-  network_data.c
-  zk_server.c
-  network_data_server.c
-  server_regions.c
-  regions.c
+  # zk_string_vector.c
+  # regions_manager.c
+  # network_data.c
+  # zk_server.c
+  # network_data_server.c
+  # server_regions.c
+  # regions.c
   messages.c
-  storage_devices.c
+  # storage_devices.c
+  metadata_server.c
   ../kreon_rdma/rdma.c
   stats.c)
 target_link_libraries(kreon_server kreon_rdma kreonr log)
 
-add_executable(
-  create_regions
-  create_regions.c
-  create_regions_utils.c
-  zk_string_vector.c
-  network_data.c
-  regions.c
-  globals.c
-  ../utilities/queue.c
-  ../utilities/simple_concurrent_list.c
-  ../utilities/spin_loop.c
-  ../utilities/circular_buffer.c)
-target_link_libraries(create_regions kreon_rdma kreonr log)
+add_executable(create_region create_region.c zk_utils.c
+                             ../utilities/spin_loop.c)
+target_link_libraries(create_region log)
+
+add_executable(create_server_node create_server_node.c zk_utils.c
+                                  ../utilities/spin_loop.c)
+target_link_libraries(create_server_node log)
+
+# add_executable( create_regions create_regions.c create_regions_utils.c
+# zk_string_vector.c network_data.c regions.c globals.c ../utilities/queue.c
+# ../utilities/simple_concurrent_list.c ../utilities/spin_loop.c
+# ../utilities/circular_buffer.c) target_link_libraries(create_regions
+# kreon_rdma kreonr log)
 
 # FIXME put_get_test and scan_test don't compile add_executable(put_get_test
 # tests/put_get.c zk_string_vector.c network_data.c zk_server.c

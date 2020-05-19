@@ -43,7 +43,8 @@
 #define COULD_NOT_FIND_DB 0x02
 
 #define LOG_SEGMENT_CHUNK 262144
-
+int32_t leaf_order;
+int32_t index_order;
 /*stats counters*/
 extern uint64_t internal_tree_cow_for_leaf;
 extern uint64_t internal_tree_cow_for_index;

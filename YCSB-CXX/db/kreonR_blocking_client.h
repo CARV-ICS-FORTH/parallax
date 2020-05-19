@@ -121,7 +121,7 @@ class kreonRBlockingClientDB : public YCSBDB {
 	{
 		char buffer[2048];
 		char *get_buf = buffer;
-		uint32_t size;
+		uint32_t size = 2048;
 		uint32_t code;
 
 		code = krc_get(key.length(), (char *)key.c_str(), &get_buf, &size, 0);

@@ -83,8 +83,8 @@ extern unsigned long long ins_prefix_hit_l1;
 extern unsigned long long ins_prefix_miss_l0;
 extern unsigned long long ins_prefix_miss_l1;
 
-int32_t leaf_order;
-int32_t index_order;
+extern int32_t leaf_order;
+extern int32_t index_order;
 
 /*gxanth staff structures*/
 typedef struct thread_dest {
