@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 #include "stats.h"
 
 #include <stdio.h>
@@ -51,6 +52,7 @@ static uint32_t sum_uint_array(uint32_t *array, size_t length)
 
 static void *stats_reporter_thread(void *args)
 {
+	pthread_setname_np(pthread_self(), "stats_reporter");
 	uint32_t ops_at_last_second = sum_uint_array((uint32_t *)operations, THREADS);
 	uint32_t ops_at_curr_second;
 	struct timespec rem;

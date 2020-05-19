@@ -1,11 +1,26 @@
 #include <stdlib.h>
 #include <string.h>
 #include <pthread.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <linux/hdreg.h>
+#include <linux/fs.h>
+
 #include "../utilities/macros.h"
 #include "globals.h"
+#include "../kreon_rdma/rdma.h"
 #include <log.h>
-
-static globals global_vars = { NULL, NULL, NULL, -1, 1 };
+struct globals {
+	char *zk_host_port;
+	char *RDMA_IP_filter;
+	char *dev;
+	int RDMA_connection_port;
+	int client_spinning_thread;
+	uint64_t volume_size;
+	struct channel_rdma *channel;
+};
+static struct globals global_vars = { NULL, NULL, NULL, -1, 1, 0, NULL };
 static pthread_mutex_t g_lock = PTHREAD_MUTEX_INITIALIZER;
 
 char *globals_get_RDMA_IP_filter()
@@ -92,12 +107,41 @@ void globals_set_dev(char *dev)
 		log_fatal("Failed to acquire lock");
 		exit(EXIT_FAILURE);
 	}
-	if (global_vars.dev == NULL) {
-		global_vars.zk_host_port = (char *)malloc(strlen(dev) + 1);
-		strcpy(global_vars.dev, dev);
-	} else {
+	if (global_vars.dev == NULL)
+		global_vars.dev = strdup(dev);
+	else
 		log_warn("dev already set to %s", global_vars.dev);
+
+	int FD = open(dev, O_RDWR);
+	if (FD == -1) {
+		log_fatal("failed to open %s reason follows");
+		perror("Reason");
+		exit(EXIT_FAILURE);
 	}
+	if (strncmp(dev, "/dev/", 5) == 0) {
+		if (ioctl(FD, BLKGETSIZE64, &global_vars.volume_size) == -1) {
+			log_fatal("failed to determine volume's size", dev);
+			exit(EXIT_FAILURE);
+		}
+		log_info("%s is a block device of size %llu", dev, global_vars.volume_size);
+	} else {
+		int64_t end_of_file;
+		end_of_file = lseek(FD, 0, SEEK_END);
+		if (end_of_file == -1) {
+			log_fatal("failed to determine file's %s size exiting...", dev);
+			perror("ioctl");
+			exit(EXIT_FAILURE);
+		}
+		global_vars.volume_size = (uint64_t)end_of_file;
+		log_info("%s is a file of size %llu", dev, global_vars.volume_size);
+	}
+	FD = close(FD);
+	if (FD == -1) {
+		log_fatal("failed to open %s reason follows");
+		perror("Reason");
+		exit(EXIT_FAILURE);
+	}
+
 	if (pthread_mutex_unlock(&g_lock) != 0) {
 		log_fatal("Failed to acquire lock");
 		exit(EXIT_FAILURE);
@@ -107,4 +151,30 @@ void globals_set_dev(char *dev)
 char *globals_get_dev(void)
 {
 	return global_vars.dev;
+}
+
+uint64_t globals_get_dev_size()
+{
+	return global_vars.volume_size;
+}
+
+void globals_create_rdma_channel(void)
+{
+	if (pthread_mutex_lock(&g_lock) != 0) {
+		log_fatal("Failed to acquire lock");
+		exit(EXIT_FAILURE);
+	}
+	if (global_vars.channel == NULL)
+		global_vars.channel = crdma_client_create_channel();
+	else
+		log_warn("rdma channel alredy set");
+	if (pthread_mutex_unlock(&g_lock) != 0) {
+		log_fatal("Failed to acquire lock");
+		exit(EXIT_FAILURE);
+	}
+}
+
+struct channel_rdma *globals_get_rdma_channel(void)
+{
+	return global_vars.channel;
 }

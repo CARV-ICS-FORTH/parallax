@@ -13,7 +13,6 @@
 enum tucana_message_types {
 
 	PUT_REQUEST = 1,
-	MULTI_PUT, // FIXME Remove this message type
 	PUT_REPLY,
 	PUT_OFFT_REQUEST,
 	PUT_OFFT_REPLY,
@@ -25,8 +24,6 @@ enum tucana_message_types {
 	DELETE_REPLY,
 	TU_FLUSH_VOLUME_QUERY, // Flush volume
 	TU_FLUSH_VOLUME_REPLY,
-	SCAN_REQUEST, // SCAN operation: client -> server
-	SCAN_REPLY, // SCAN reply: server -> client
 	SPILL_INIT,
 	SPILL_INIT_ACK,
 	SPILL_BUFFER_REQUEST, //message with sorted kv pairs from primary's L0 level
@@ -112,7 +109,7 @@ typedef struct msg_header {
 	volatile int32_t ack_arrived;
 	/*from most significant byte to less: <FUTURE_EXTENSION>, <FUTURE_EXTENSION>,
 	 * <FUTUTE_EXTENSION>, SYNC/ASYNC(indicates if this is  a synchronous or asynchronous request*/
-	volatile uint8_t got_send_completion;
+	volatile uint32_t got_send_completion;
 	volatile uint8_t receive_options;
 #ifdef CHECKSUM_DATA_MESSAGES
 	unsigned long hash; // [mvard] hash of data buffer

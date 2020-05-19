@@ -56,7 +56,7 @@ typedef enum kreon_op_status {
 
 #ifdef TU_RDMA_CONN_PER_SERVER
 /*in case of CONN_PER_SERVER*/
-#define NUM_OF_CONNECTIONS_PER_SERVER 64
+#define NUM_OF_CONNECTIONS_PER_SERVER 4
 #else
 #define NUM_OF_CONNECTIONS_PER_SERVER 1
 #endif
@@ -68,4 +68,3 @@ typedef enum kreon_op_status {
 #define TU_HEADER_SIZE (sizeof(struct msg_header))
 #define TU_TAIL_SIZE (sizeof(uint32_t))
 #define TU_HEADER_TAIL_SIZE (TU_HEADER_SIZE + TU_TAIL_SIZE)
-

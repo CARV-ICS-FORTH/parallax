@@ -6,7 +6,6 @@
 #include <log.h>
 #include "../kreon_rdma_client/kreon_rdma_client.h"
 #include "../kreon_server/globals.h"
-#include "../kreon_server/create_regions_utils.h"
 
 #define PREFIX_TEST_KEYS 300
 #define PREFIX_1 "@0lala" //userakiaslala"
@@ -27,7 +26,6 @@
 char ZOOKEEPER[256];
 char HOST[256]; //"tie3.cluster.ics.forth.gr-8080"
 
-extern ZooLogLevel logLevel;
 typedef struct key {
 	uint32_t key_size;
 	char key_buf[];
@@ -51,10 +49,13 @@ int main(int argc, char *argv[])
 	uint64_t min_key, max_key;
 	uint32_t error_code;
 
-	if (argc == 1) {
+	if (argc != 2) {
 		log_fatal("Wrong format test_krc_api <zookeeper_host:port>");
 		exit(EXIT_FAILURE);
-	} else if (argc == 2) {
+	}
+	strcpy(ZOOKEEPER, argv[1]);
+#if 0
+	else if (argc == 2) {
 		strcpy(ZOOKEEPER, argv[1]);
 	} else if (argc > 2 && strcmp(argv[3], "--create_regions") == 0) {
 		strcpy(ZOOKEEPER, argv[1]);
@@ -101,7 +102,7 @@ int main(int argc, char *argv[])
 		log_info("Created region id %s minkey %s maxkey %s", args_buf[2], args_buf[4], args_buf[6]);
 		return EXIT_SUCCESS;
 	}
-	logLevel = ZOO_LOG_LEVEL_INFO;
+#endif
 
 	if (krc_init(ZOOKEEPER, 2181) != KRC_SUCCESS) {
 		log_fatal("Failed to init library");
@@ -369,7 +370,7 @@ int main(int argc, char *argv[])
 	log_info("loading keys %u keys with prefix %s", PREFIX_TEST_KEYS, PREFIX_3);
 	strncpy(k->key_buf, PREFIX_3, strlen(PREFIX_3));
 	for (i = 0; i < PREFIX_TEST_KEYS; i++) {
-		sprintf(k->key_buf + strlen(PREFIX_1), "%llu", (long long unsigned)i);
+		sprintf(k->key_buf + strlen(PREFIX_3), "%llu", (long long unsigned)i);
 		k->key_size = strlen(k->key_buf);
 		value *v = (value *)((uint64_t)k + sizeof(key) + k->key_size);
 		v->value_size = KV_SIZE - ((2 * sizeof(key)) + k->key_size);
@@ -381,6 +382,7 @@ int main(int argc, char *argv[])
 	char *prefix_stop;
 
 	for (j = 0; j < 3; j++) {
+		log_info("Testing j = %d", j);
 		switch (j) {
 		case 0:
 			prefix_start = PREFIX_1;
@@ -404,7 +406,7 @@ int main(int argc, char *argv[])
 		krc_scan_set_stop(sc, k->key_size, k->key_buf, KRC_GREATER_OR_EQUAL);
 		tuples = 0;
 		while (krc_scan_get_next(sc, &s_key, &s_key_size, &s_value, &s_value_size)) {
-			//log_info("Got key %s", sc->curr_key->key_buf);
+			log_info("Got key %s", s_key);
 			++tuples;
 		}
 		if (tuples != PREFIX_TEST_KEYS) {
@@ -514,7 +516,7 @@ int main(int argc, char *argv[])
 		}
 		krc_scan_close(sc);
 	}
-
+	krc_close();
 	log_info("************ ALL TESTS SUCCESSFULL! ************");
 	return 1;
 }

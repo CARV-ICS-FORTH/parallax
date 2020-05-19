@@ -22,17 +22,16 @@
 #include <rdma/rdma_cma.h>
 #include <rdma/rdma_verbs.h>
 
-#include "regions.h"
-#include "messages.h"
-#include "prototype.h"
-#include "storage_devices.h"
+//#include "regions.h"
+//#include "prototype.h"
+//#include "storage_devices.h"
 #include "messages.h"
 #include "globals.h"
+#include "metadata.h"
 #include "../kreon_lib/btree/btree.h"
 #include "../kreon_lib/btree/segment_allocator.h"
 #include "../kreon_lib/scanner/scanner.h"
-#include "zk_server.h"
-#include "replica_utilities.h"
+//#include "zk_server.h"
 #include "../kreon_rdma/rdma.h"
 
 #include "../kreon_lib/scanner/scanner.h"
@@ -49,6 +48,9 @@
 #define TIERING_MAX_CAPACITY 8
 #define LOG_SEGMENT_CHUNK 32 * 1024
 #define MY_MAX_THREADS 2048
+
+uint32_t RDMA_LOG_BUFFER_PADDING;
+extern uint32_t RDMA_TOTAL_LOG_BUFFER_SIZE;
 
 extern char *DB_NO_SPILLING;
 
@@ -76,24 +78,24 @@ void tiering_compaction_worker(void *);
 #endif
 
 /*inserts to Kreon and implements the replication logic*/
-void insert_kv_pair(_tucana_region_S *S_tu_region, void *kv, connection_rdma *rdma_conn, kv_location *location,
+void insert_kv_pair(struct krm_region_desc *r_desc, void *kv, connection_rdma *rdma_conn, kv_location *location,
 		    work_task *task, int wait);
 
+#if 0
 /*functions for building index at replicas*/
 void _calculate_btree_index_nodes(_tucana_region_S *region, uint64_t num_of_keys);
 void append_entry_to_leaf_node(_tucana_region_S *region, void *pointer_to_kv_pair, void *prefix, int32_t tree_id);
 struct node_header *_create_tree_node(struct _tucana_region_S *region, int tree_id, int node_height, int type);
 void _append_pivot_to_index(_tucana_region_S *region, node_header *left_brother, void *pivot,
 			    node_header *right_brother, int tree_id, int node_height);
-
+#endif
 pthread_mutex_t reg_lock; /*Lock for the conn_list*/
 
-extern _tuzk_server tuzk_S;
-extern _RegionsSe regions_S;
-extern tu_storage_device storage_dev;
-
-char *Device_name = NULL;
-uint64_t Device_size = 0;
+//extern _tuzk_server tuzk_S;
+//extern _RegionsSe regions_S;
+//extern tu_storage_device storage_dev;
+//char *Device_name = NULL;
+//uint64_t Device_size = 0;
 
 /*
  * protocol that threads use to inform the system that they perform
@@ -104,41 +106,12 @@ uint64_t Device_size = 0;
 #define ENTERED_REGION 0x02
 #define EXITED_REGION 0x03
 #define THROTTLE 2048
-static inline char __ENTER_REGION(_tucana_region_S *region)
-{
-	return ENTERED_REGION;
-	long ret_value;
-	long value;
-	do {
-		value = region->active_region_threads;
-		//printf("[%s:%s:%d] trying to enter region active %llu\n",__FILE__,__func__,__LINE__,value);
-		if (value > THROTTLE)
-			return DB_IS_CLOSING;
-		ret_value = __sync_val_compare_and_swap(&region->active_region_threads, value, value + 1);
-		if (ret_value > THROTTLE)
-			return DB_IS_CLOSING;
-	} while (ret_value != value);
-	return ENTERED_REGION;
-}
-
-static inline char __EXIT_REGION(_tucana_region_S *region)
-{
-	return ENTERED_REGION;
-	long ret_value;
-	long value;
-	do {
-		value = region->active_region_threads;
-		//printf("[%s:%s:%d] trying to exit region active %llu\n",__FILE__,__func__,__LINE__,value);
-		ret_value = __sync_val_compare_and_swap(&region->active_region_threads, value, value - 1);
-	} while (ret_value != value);
-	return EXITED_REGION;
-}
 
 struct msg_header *handle_scan_request(struct msg_header *data_message, void *connection);
 struct msg_header *Server_Handling_Received_Message(struct msg_header *data_message, int reg_num, int next_mail);
 int handle_put_request(msg_header *data_message, connection_rdma *rdma_conn);
-// struct msg_header *Server_FlushVolume_RDMA( struct msg_header *data_message, struct connection_rdma *rdma_conn ); // FIXME Never used
 
+#if 0
 _tucana_region_S *get_region(void *key, int key_len)
 {
 	//_tucana_region_S * region = (_tucana_region_S *)find_region_min_key_on_rbtree( &regions_S.tree, key, key_len);
@@ -149,6 +122,7 @@ _tucana_region_S *get_region(void *key, int key_len)
 	}
 	return region;
 }
+#endif
 
 static void kreonR_spill_worker(void *_spill_task_desc)
 {
@@ -540,83 +514,72 @@ void tiering_compaction_worker(void *_tiering_request)
 }
 #endif
 
-int _init_replica_rdma_connections(struct _tucana_region_S *S_tu_region)
+int _ks_init_replica_rdma_connections(struct krm_region_desc *r_desc)
 {
-	if (S_tu_region->n_replicas > 1 && S_tu_region->replica_next_data_con == NULL) {
-		if (S_tu_region->db->db_desc->db_mode != PRIMARY_DB) {
-			//Not the primary let the primary init the connections;
-			return KREON_SUCCESS;
-		}
-		if (!S_tu_region->replica_next_net) {
-			log_fatal("uninitialized network structure for region %u\n", S_tu_region->ID_region.ID);
-			exit(EXIT_FAILURE);
-		}
+	char *host;
+	int i;
+	if (r_desc->role == KRM_BACKUP || r_desc->region->num_of_backup == 0) {
+		r_desc->init_rdma_conn = 0;
+		r_desc->r_state = NULL;
+		return KREON_SUCCESS;
+	}
+	r_desc->r_state = (struct ru_replication_state *)malloc(sizeof(struct ru_replication_state));
+	r_desc->r_state->data_conn =
+		(struct connection_rdma **)malloc(sizeof(struct connection_rdma *) * r_desc->region->num_of_backup);
+	r_desc->r_state->control_conn =
+		(struct connection_rdma **)malloc(sizeof(struct connection_rdma *) * r_desc->region->num_of_backup);
+	log_info("Primary: Creating replica connections for region range %s", r_desc->region->max_key);
 
-		if (!S_tu_region->replica_next_net->IPs) {
-			log_info("Uninitialized replica_next_net->IPs field");
-		}
-
-		log_info("MASTER: Creating replica connections for region range %s",
-			 S_tu_region->ID_region.minimum_range + 4);
-
-		if (SE_REPLICA_NUM_SEGMENTS <= 0) {
-			log_fatal("Cannot set SE_REPLICA_NUM_SEGMENTS to a value less than 1!");
-			exit(EXIT_FAILURE);
-		}
-		S_tu_region->replica_next_data_con =
-			crdma_client_create_connection_list_hosts(regions_S.channel, S_tu_region->replica_next_net->IPs,
-								  S_tu_region->replica_next_net->num_NICs,
-								  MASTER_TO_REPLICA_DATA_CONNECTION);
+	for (i = 0; i < r_desc->region->num_of_backup; i++) {
+		host = r_desc->region->backups[i].RDMA_IP_addr;
+		r_desc->r_state->data_conn[i] = crdma_client_create_connection_list_hosts(
+			globals_get_rdma_channel(), &host, 1, MASTER_TO_REPLICA_DATA_CONNECTION);
 
 		/*fix replica buffer staff*/
-		S_tu_region->master_rep_buf = (se_replica_log_buffer *)malloc(sizeof(se_replica_log_buffer));
+		r_desc->r_state->master_rep_buf =
+			(struct ru_replica_log_buffer *)malloc(sizeof(struct ru_replica_log_buffer));
 		/*valid range for start-end log offset this segment covers*/
-		S_tu_region->master_rep_buf->bounds[0].start =
-			S_tu_region->db->db_desc->KV_log_size - (S_tu_region->db->db_desc->KV_log_size % SEGMENT_SIZE);
-		S_tu_region->master_rep_buf->bounds[0].end =
-			S_tu_region->master_rep_buf->bounds[0].start + SEGMENT_SIZE;
+		r_desc->r_state->master_rep_buf->bounds[0].start =
+			r_desc->db->db_desc->KV_log_size - (r_desc->db->db_desc->KV_log_size % SEGMENT_SIZE);
+		r_desc->r_state->master_rep_buf->bounds[0].end =
+			r_desc->r_state->master_rep_buf->bounds[0].start + SEGMENT_SIZE;
 		/*bytes written in this segment*/
-		S_tu_region->master_rep_buf->seg_bufs[0].bytes_wr_per_seg = 0;
+		r_desc->r_state->master_rep_buf->seg_bufs[0].bytes_wr_per_seg = 0;
 
-		S_tu_region->master_rep_buf->seg_bufs[0].rdma_local_buf =
-			(se_rdma_buffer *)S_tu_region->replica_next_data_con->rdma_memory_regions->local_memory_buffer;
-		S_tu_region->master_rep_buf->seg_bufs[0].rdma_local_buf =
-			(se_rdma_buffer *)S_tu_region->replica_next_data_con->rdma_memory_regions->remote_memory_buffer;
+		r_desc->r_state->master_rep_buf->seg_bufs[0].rdma_local_buf =
+			(struct ru_rdma_buffer *)r_desc->r_state->data_conn[i]->rdma_memory_regions->local_memory_buffer;
+		r_desc->r_state->master_rep_buf->seg_bufs[0].rdma_local_buf =
+			(struct ru_rdma_buffer *)r_desc->r_state->data_conn[i]
+				->rdma_memory_regions->remote_memory_buffer;
+	}
 
-		int32_t i;
-		for (i = 1; i < SE_REPLICA_NUM_SEGMENTS; i++) {
-			S_tu_region->master_rep_buf->bounds[i].start = 0;
-			S_tu_region->master_rep_buf->bounds[i].end = 0;
-			S_tu_region->master_rep_buf->seg_bufs[i].bytes_wr_per_seg = 0;
-			S_tu_region->master_rep_buf->seg_bufs[i].rdma_local_buf =
-				(se_rdma_buffer *)((uint64_t)S_tu_region->master_rep_buf->seg_bufs[i - 1].rdma_local_buf +
-						   sizeof(se_rdma_buffer));
-			S_tu_region->master_rep_buf->seg_bufs[i].rdma_remote_buf =
-				(se_rdma_buffer *)((uint64_t)S_tu_region->master_rep_buf->seg_bufs[i - 1].rdma_local_buf +
-						   sizeof(se_rdma_buffer));
-		}
-		S_tu_region->replica_next_data_con->priority = HIGH_PRIORITY;
+	for (i = 1; i < RU_REPLICA_NUM_SEGMENTS; i++) {
+		r_desc->r_state->master_rep_buf->bounds[i].start = 0;
+		r_desc->r_state->master_rep_buf->bounds[i].end = 0;
+		r_desc->r_state->master_rep_buf->seg_bufs[i].bytes_wr_per_seg = 0;
+		r_desc->r_state->master_rep_buf->seg_bufs[i].rdma_local_buf =
+			(struct ru_rdma_buffer *)((uint64_t)r_desc->r_state->master_rep_buf->seg_bufs[i - 1]
+							  .rdma_local_buf +
+						  sizeof(struct ru_rdma_buffer));
+		r_desc->r_state->master_rep_buf->seg_bufs[i].rdma_remote_buf =
+			(struct ru_rdma_buffer *)((uint64_t)r_desc->r_state->master_rep_buf->seg_bufs[i - 1]
+							  .rdma_local_buf +
+						  sizeof(struct ru_rdma_buffer));
+		r_desc->r_state->data_conn[i]->priority = HIGH_PRIORITY;
+	}
 
-		log_info("MASTER: replica data connection created successfuly = %llu\n",
-			 (LLU)S_tu_region->replica_next_data_con);
+	for (i = 0; i < r_desc->region->num_of_backup; i++) {
+		log_info("MASTER: Creating control connection for region range %s\n", r_desc->region->min_key);
+		r_desc->r_state->control_conn[i] = r_desc->r_state->data_conn[i] =
+			crdma_client_create_connection_list_hosts(globals_get_rdma_channel(), &host, 1,
+								  MASTER_TO_REPLICA_CONTROL_CONNECTION);
 
-		log_info("MASTER: Creating control connection for region range %s\n",
-			 S_tu_region->ID_region.minimum_range + 4);
-		S_tu_region->replica_next_control_con =
-			crdma_client_create_connection_list_hosts(regions_S.channel, S_tu_region->replica_next_net->IPs,
-								  S_tu_region->replica_next_net->num_NICs,
-								  MASTER_TO_REPLICA_DATA_CONNECTION);
-		S_tu_region->replica_next_control_con->priority = HIGH_PRIORITY;
-		log_info("MASTER: replica control connection created successfuly = %llu",
-			 (LLU)S_tu_region->replica_next_control_con);
+		r_desc->r_state->control_conn[i]->priority = HIGH_PRIORITY;
+		log_info("MASTER: replica data and control connection created successfuly");
 		/*allocate remote log buffer*/
 		log_info("MASTER: Allocating and initializing remote log buffer");
 
-		//S_tu_region->db->db_desc->log_buffer =
-		//	S_tu_region->replica_next_data_con->rdma_memory_regions->local_memory_buffer;
-
-		msg_header *tmp =
-			(msg_header *)S_tu_region->replica_next_data_con->rdma_memory_regions->local_memory_buffer;
+		msg_header *tmp = (msg_header *)r_desc->r_state->data_conn[0]->rdma_memory_regions->local_memory_buffer;
 
 		/*init message*/
 		tmp->pay_len = 4096 + BUFFER_SEGMENT_SIZE;
@@ -635,7 +598,7 @@ int _init_replica_rdma_connections(struct _tucana_region_S *S_tu_region)
 		tmp->ack_arrived = KR_REP_PENDING;
 		tmp->callback_function = NULL;
 		tmp->request_message_local_addr = NULL;
-		__sync_fetch_and_add(&S_tu_region->replica_next_data_con->pending_sent_messages, 1);
+		__sync_fetch_and_add(&r_desc->r_state->data_conn[0]->pending_sent_messages, 1);
 		/*set connection propeties with the replica
 		 *	1. pin data and control conn to high priority
 		 *	2. Reduce memory for control conn
@@ -685,11 +648,11 @@ int _init_replica_rdma_connections(struct _tucana_region_S *S_tu_region)
  CHECK_FOR_REPLICA_RESET_BUFFER_ACK
  APPEND_SUCCESS
  */
-void insert_kv_pair(_tucana_region_S *S_tu_region, void *kv, connection_rdma *rdma_conn, kv_location *location,
+void insert_kv_pair(struct krm_region_desc *r_desc, void *kv, connection_rdma *rdma_conn, kv_location *location,
 		    work_task *task, int wait)
 {
 	char *key;
-	se_replica_log_segment *curr_seg;
+	struct ru_replica_log_segment *curr_seg;
 	uint32_t key_length;
 	uint32_t value_length;
 	uint32_t kv_size;
@@ -713,7 +676,7 @@ void insert_kv_pair(_tucana_region_S *S_tu_region, void *kv, connection_rdma *rd
 		switch (task->kreon_operation_status) {
 		case APPEND_START:
 
-			req.metadata.handle = S_tu_region->db;
+			req.metadata.handle = r_desc->db;
 			req.metadata.kv_size = kv_size;
 			req.key_value_buf = kv;
 			req.metadata.level_id = 0;
@@ -723,15 +686,15 @@ void insert_kv_pair(_tucana_region_S *S_tu_region, void *kv, connection_rdma *rd
 			req.metadata.recovery_request = 0;
 			req.metadata.segment_full_event = 0;
 			_insert_key_value(&req);
-			if (S_tu_region->replica_next_data_con != NULL) {
+			if (r_desc->region->num_of_backup > 0) {
 				/*We have a replica to feed*/
 				if (req.metadata.segment_full_event) {
 					/*find the log segment that corresponds to this full event*/
 					seg_id = -1;
-					for (i = 0; i < SE_REPLICA_NUM_SEGMENTS; i++) {
-						if (S_tu_region->master_rep_buf->bounds[i].start <=
+					for (i = 0; i < RU_REPLICA_NUM_SEGMENTS; i++) {
+						if (r_desc->r_state->master_rep_buf->bounds[i].start <=
 							    req.metadata.log_offset_full_event &&
-						    S_tu_region->master_rep_buf->bounds[i].end >
+						    r_desc->r_state->master_rep_buf->bounds[i].end >
 							    req.metadata.log_offset_full_event) {
 							seg_id = i;
 							break;
@@ -743,7 +706,7 @@ void insert_kv_pair(_tucana_region_S *S_tu_region, void *kv, connection_rdma *rd
 					}
 					uint32_t next_buffer;
 					uint8_t msg_type;
-					if (seg_id == SE_REPLICA_NUM_SEGMENTS - 1) {
+					if (seg_id == RU_REPLICA_NUM_SEGMENTS - 1) {
 						next_buffer = 0;
 						msg_type = FLUSH_SEGMENT_AND_RESET;
 					} else {
@@ -752,18 +715,19 @@ void insert_kv_pair(_tucana_region_S *S_tu_region, void *kv, connection_rdma *rd
 					}
 
 					/*Now,wait until next buffer is available, server spinning thread updates this field*/
-					curr_seg = &S_tu_region->master_rep_buf->seg_bufs[next_buffer];
+					curr_seg = &r_desc->r_state->master_rep_buf->seg_bufs[next_buffer];
 					spin_loop(&curr_seg->buffer_free, 1);
 					/*mark it now as in use*/
 					curr_seg->buffer_free = 0;
 					/*fix its new boundaries*/
-					S_tu_region->master_rep_buf->bounds[next_buffer].start =
+					r_desc->r_state->master_rep_buf->bounds[next_buffer].start =
 						req.metadata.segment_id * SEGMENT_SIZE;
-					S_tu_region->master_rep_buf->bounds[next_buffer].end =
-						S_tu_region->master_rep_buf->bounds[next_buffer].start + SEGMENT_SIZE;
+					r_desc->r_state->master_rep_buf->bounds[next_buffer].end =
+						r_desc->r_state->master_rep_buf->bounds[next_buffer].start +
+						SEGMENT_SIZE;
 
 					/*ok others are ready to proceed, now let's wake up replica*/
-					curr_seg = &S_tu_region->master_rep_buf->seg_bufs[seg_id];
+					curr_seg = &r_desc->r_state->master_rep_buf->seg_bufs[seg_id];
 					uint32_t bytes_threashold =
 						SEGMENT_SIZE - (sizeof(segment_header) + req.metadata.log_padding);
 					/*wait until all bytes of segment are written*/
@@ -774,8 +738,7 @@ void insert_kv_pair(_tucana_region_S *S_tu_region, void *kv, connection_rdma *rd
 					curr_seg->rdma_local_buf->metadata.end_of_log = req.metadata.end_of_log;
 					curr_seg->rdma_local_buf->metadata.log_padding = req.metadata.log_padding;
 					curr_seg->rdma_local_buf->metadata.segment_id = req.metadata.segment_id;
-					strcpy(curr_seg->rdma_local_buf->metadata.region_key,
-					       S_tu_region->ID_region.minimum_range);
+					strcpy(curr_seg->rdma_local_buf->metadata.region_key, r_desc->region->min_key);
 
 					curr_seg->rdma_local_buf->msg.type = msg_type;
 					curr_seg->rdma_local_buf->msg.receive = TU_RDMA_REGULAR_MSG;
@@ -783,24 +746,24 @@ void insert_kv_pair(_tucana_region_S *S_tu_region, void *kv, connection_rdma *rd
 					rdma_src = (void *)&curr_seg->rdma_local_buf->metadata;
 					rdma_dst = (void *)&curr_seg->rdma_remote_buf->metadata;
 					/*send metadata to replica*/
-					if (rdma_post_write(S_tu_region->replica_next_data_con->rdma_cm_id, rdma_src,
-							    rdma_src, sizeof(se_seg_metadata),
-							    S_tu_region->replica_next_data_con->rdma_memory_regions
-								    ->local_memory_region,
+					if (rdma_post_write(r_desc->r_state->data_conn[0]->rdma_cm_id, rdma_src,
+							    rdma_src, sizeof(struct ru_seg_metadata),
+							    r_desc->r_state->data_conn[i]
+								    ->rdma_memory_regions->local_memory_region,
 							    IBV_SEND_SIGNALED, (uint64_t)rdma_dst,
-							    S_tu_region->replica_next_data_con->peer_mr->rkey) != 0) {
+							    r_desc->r_state->data_conn[i]->peer_mr->rkey) != 0) {
 						log_fatal("Writing metadata of segment to replica failed!");
 						exit(EXIT_FAILURE);
 					}
 					/*finally wake up replica*/
 					rdma_src = (void *)&curr_seg->rdma_local_buf->msg;
 					rdma_dst = (void *)&curr_seg->rdma_remote_buf->msg;
-					if (rdma_post_write(S_tu_region->replica_next_data_con->rdma_cm_id, rdma_src,
+					if (rdma_post_write(r_desc->r_state->data_conn[0]->rdma_cm_id, rdma_src,
 							    rdma_src, sizeof(struct msg_header),
-							    S_tu_region->replica_next_data_con->rdma_memory_regions
-								    ->local_memory_region,
+							    r_desc->r_state->data_conn[0]
+								    ->rdma_memory_regions->local_memory_region,
 							    IBV_SEND_SIGNALED, (uint64_t)rdma_dst,
-							    S_tu_region->replica_next_data_con->peer_mr->rkey) != 0) {
+							    r_desc->r_state->data_conn[0]->peer_mr->rkey) != 0) {
 						log_fatal("Waking up replica failed!");
 						exit(EXIT_FAILURE);
 					}
@@ -810,16 +773,17 @@ void insert_kv_pair(_tucana_region_S *S_tu_region, void *kv, connection_rdma *rd
 				seg_id = -1;
 				i = 0;
 				while (1) {
-					if (S_tu_region->master_rep_buf->bounds[i].start <= req.metadata.log_offset &&
-					    S_tu_region->master_rep_buf->bounds[i].end > req.metadata.log_offset) {
+					if (r_desc->r_state->master_rep_buf->bounds[i].start <=
+						    req.metadata.log_offset &&
+					    r_desc->r_state->master_rep_buf->bounds[i].end > req.metadata.log_offset) {
 						seg_id = i;
 						break;
 					}
-					if (++i == SE_REPLICA_NUM_SEGMENTS)
+					if (++i == RU_REPLICA_NUM_SEGMENTS)
 						i = 0;
 				}
 
-				curr_seg = &S_tu_region->master_rep_buf->seg_bufs[seg_id];
+				curr_seg = &r_desc->r_state->master_rep_buf->seg_bufs[seg_id];
 				rdma_src =
 					(void *)&curr_seg->rdma_local_buf->seg[req.metadata.log_offset % SEGMENT_SIZE];
 
@@ -828,11 +792,11 @@ void insert_kv_pair(_tucana_region_S *S_tu_region, void *kv, connection_rdma *rd
 				memcpy(rdma_src, req.key_value_buf, req.metadata.kv_size);
 				/*now next step to the remote*/
 				if (rdma_post_write(
-					    S_tu_region->replica_next_data_con->rdma_cm_id, rdma_src, rdma_src,
+					    r_desc->r_state->data_conn[0]->rdma_cm_id, rdma_src, rdma_src,
 					    req.metadata.kv_size,
-					    S_tu_region->replica_next_data_con->rdma_memory_regions->local_memory_region,
+					    r_desc->r_state->data_conn[0]->rdma_memory_regions->local_memory_region,
 					    IBV_SEND_SIGNALED, (uint64_t)rdma_dst,
-					    S_tu_region->replica_next_data_con->peer_mr->rkey) != 0) {
+					    r_desc->r_state->data_conn[0]->peer_mr->rkey) != 0) {
 					log_fatal("Writing to replica failed!");
 					exit(EXIT_FAILURE);
 				}
@@ -872,53 +836,6 @@ void insert_kv_pair(_tucana_region_S *S_tu_region, void *kv, connection_rdma *rd
 	}
 }
 
-struct msg_header *Server_Scan_MulipleRegions_RDMA(msg_header *data_message, void *connection)
-{
-	/* TODO implement scans
-	 * Use the current GET implentation as a baseline on how to get data from kreon.
-	 * The client will always send a start key, stop key and the max number of kv pairs
-	 * they want to receive from the server.
-	 * Subsequent scan messages for the same scan will just have a different start key(the
-	 * last key they received from the server)
-	 * Scanner API for the btree is in ../kreon/scanner/scanner.h
-	 * XXX What about scans across regions???
-	 * XXX Need to fix consistency model; the server should inform the client of the persistent tree
-	 *     branch it used to answer its first query for this scan and the client will add that
-	 *     info in each subsequent request for the same scan.
-	 */
-	/*Buffer format: <get_count, start_key_len, start_key, stop_key_len, stop_key>*/
-	uint32_t kv_get_count = *(uint32_t *)data_message->data;
-	void *start_key_buff = data_message->data + sizeof(uint32_t);
-	void *stop_key_buff = start_key_buff + sizeof(uint32_t) + *(uint32_t *)start_key_buff;
-	_tucana_region_S *S_tu_region;
-	struct msg_header *reply_data_message;
-	void *kv_buffer;
-	uint32_t kv_buffer_len;
-	char seek_mode = (data_message->value) ? GREATER_OR_EQUAL : GREATER;
-
-	/*DPRINT("Requested %"PRId32" kv pairs\n", kv_get_count);*/
-	/*DPRINT("Start Key %s:%"PRId32"\n", (char*)(start_key_buff + sizeof(uint32_t)), *(uint32_t*)start_key_buff);*/
-	/*DPRINT("Stop Key %s:%"PRId32"\n", (char*)(stop_key_buff + sizeof(uint32_t)), *(uint32_t*)stop_key_buff);*/
-	/*fflush(stdout);*/
-
-	S_tu_region = find_region(start_key_buff + sizeof(uint32_t), *(uint32_t *)start_key_buff);
-	if (S_tu_region == NULL) {
-		DPRINT("ERROR: Region not found for key %s\n", start_key_buff + sizeof(uint32_t));
-		return NULL;
-	}
-
-	//Buffer format: kv_buffer = [total_kv_pairs, (key_length, key, value_length, value)*]
-	//FIXME there should be an upper limit to the kv_buffer_len
-	kv_buffer_len = multiget_calc_kv_size(S_tu_region->db, start_key_buff, stop_key_buff, kv_get_count, seek_mode);
-	reply_data_message = allocate_rdma_message((struct connection_rdma *)connection, kv_buffer_len, SCAN_REQUEST);
-	kv_buffer = reply_data_message->data;
-	int rc = multi_get(S_tu_region->db, start_key_buff, stop_key_buff, kv_buffer, kv_buffer_len, kv_get_count,
-			   seek_mode);
-	reply_data_message->value = rc;
-	/*DPRINT("Keys Retrieved = %u\n", *(uint32_t*)kv_buffer);*/
-	return reply_data_message;
-}
-
 #if 0 // FIXME never used
 struct msg_header *Server_FlushVolume_RDMA( struct msg_header *data_message, struct connection_rdma *rdma_conn )
 {
@@ -945,7 +862,7 @@ void handle_task(void *__task)
 	work_task *task = (work_task *)__task;
 	kv_location location;
 	struct connection_rdma *rdma_conn;
-	_tucana_region_S *S_tu_region;
+	struct krm_region_desc *r_desc;
 	void *region_key;
 	//leave it for later
 	void *addr;
@@ -967,7 +884,7 @@ void handle_task(void *__task)
 	uint32_t actual_reply_size = 0;
 	uint32_t padding;
 	/*unboxing the arguments*/
-	S_tu_region = NULL;
+	r_desc = NULL;
 	task->reply_msg = NULL;
 	rdma_conn = task->conn;
 	stats_update(task->thread_id);
@@ -1168,18 +1085,18 @@ void handle_task(void *__task)
 
 		K = (msg_put_key *)((uint64_t)put_offt_req + sizeof(msg_put_offt_req));
 		V = (msg_put_value *)((uint64_t)K + sizeof(msg_put_key) + K->key_size);
-		S_tu_region = find_region(K->key, K->key_size);
-		if (S_tu_region == NULL) {
+		r_desc = krm_get_region(K->key, K->key_size);
+		if (r_desc == NULL) {
 			log_fatal("Region not found for key size %u:%s", K->key_size, K->key);
 			exit(EXIT_FAILURE);
 		}
-		task->region = (void *)S_tu_region;
+		task->region = (void *)r_desc;
 		/*inside kreon now*/
 		//log_info("offset %llu key %s", put_offt_req->offset, K->key);
 		uint32_t new_size = put_offt_req->offset + sizeof(msg_put_key) + K->key_size + sizeof(msg_put_value) +
 				    V->value_size;
 		if (new_size <= SEGMENT_SIZE - sizeof(segment_header)) {
-			value = __find_key(S_tu_region->db, put_offt_req->kv, SEARCH_DIRTY_TREE);
+			value = __find_key(r_desc->db, put_offt_req->kv, SEARCH_DIRTY_TREE);
 
 			void *new_value =
 				malloc(SEGMENT_SIZE - sizeof(segment_header)); /*remove this later when test passes*/
@@ -1209,8 +1126,7 @@ void handle_task(void *__task)
 			//log_info("new val key %u val size %u", *(uint32_t *)new_value,
 			//	 *(uint32_t *)(new_value + sizeof(msg_put_key) + K->key_size));
 
-			insert_kv_pair(S_tu_region, new_value, task->conn, &location, task,
-				       DO_NOT_WAIT_REPLICA_TO_COMMIT);
+			insert_kv_pair(r_desc, new_value, task->conn, &location, task, DO_NOT_WAIT_REPLICA_TO_COMMIT);
 			free(new_value);
 		}
 
@@ -1262,15 +1178,15 @@ void handle_task(void *__task)
 		V = (msg_put_value *)((uint64_t)K + sizeof(msg_put_key) + K->key_size);
 		key_length = K->key_size;
 		assert(key_length != 0);
-		S_tu_region = find_region(K->key, K->key_size);
-		if (S_tu_region == NULL) {
+		r_desc = krm_get_region(K->key, K->key_size);
+		if (r_desc == NULL) {
 			log_fatal("Region not found for key size %u:%s", K->key_size, K->key);
 			exit(EXIT_FAILURE);
 		}
-		task->region = (void *)S_tu_region;
+		task->region = (void *)r_desc;
 
 		if (task->kreon_operation_status != APPEND_COMPLETE) {
-			insert_kv_pair(S_tu_region, task->msg->data, task->conn, &location, task,
+			insert_kv_pair(r_desc, task->msg->data, task->conn, &location, task,
 				       DO_NOT_WAIT_REPLICA_TO_COMMIT);
 
 			if (task->kreon_operation_status == APPEND_COMPLETE) {
@@ -1318,14 +1234,10 @@ void handle_task(void *__task)
 		task->overall_status = TASK_COMPLETED;
 		return;
 
-	case MULTI_PUT:
-		log_fatal("MULTI_PUT request is deprecated");
-		exit(EXIT_FAILURE);
-		break;
 	case DELETE_REQUEST: {
 		msg_delete_req *del_req = (msg_delete_req *)task->msg->data;
-		S_tu_region = find_region(del_req->key, del_req->key_size);
-		if (S_tu_region == NULL) {
+		r_desc = krm_get_region(del_req->key, del_req->key_size);
+		if (r_desc == NULL) {
 			log_fatal("ERROR: Region not found for key %s\n", del_req->key);
 			return;
 		}
@@ -1355,7 +1267,7 @@ void handle_task(void *__task)
 		task->reply_msg->request_message_local_addr = task->msg->request_message_local_addr;
 		task->overall_status = TASK_COMPLETED;
 
-		if (delete_key(S_tu_region->db, del_req->key, del_req->key_size) == SUCCESS)
+		if (delete_key(r_desc->db, del_req->key, del_req->key_size) == SUCCESS)
 			del_rep->status = KREON_SUCCESS;
 		else
 			del_rep->status = KREON_FAILURE;
@@ -1366,9 +1278,9 @@ void handle_task(void *__task)
 		value = NULL;
 		/*kreon phase*/
 		get_req = (msg_get_req *)task->msg->data;
-		S_tu_region = find_region(get_req->key, get_req->key_size);
+		r_desc = krm_get_region(get_req->key, get_req->key_size);
 
-		if (S_tu_region == NULL) {
+		if (r_desc == NULL) {
 			log_fatal("Region not found for key %s", get_req->key);
 			exit(EXIT_FAILURE);
 		}
@@ -1376,7 +1288,7 @@ void handle_task(void *__task)
 		task->reply_msg = (void *)((uint64_t)task->conn->rdma_memory_regions->local_memory_buffer +
 					   (uint64_t)task->msg->reply);
 		get_rep = (msg_get_rep *)((uint64_t)task->reply_msg + sizeof(msg_header));
-		value = __find_key(S_tu_region->db, &get_req->key_size, SEARCH_DIRTY_TREE);
+		value = __find_key(r_desc->db, &get_req->key_size, SEARCH_DIRTY_TREE);
 
 		if (value == NULL) {
 			//log_warn("key not found key %s : length %u region min_key %s max key %s\n",
@@ -1438,8 +1350,8 @@ void handle_task(void *__task)
 
 	case MULTI_GET_REQUEST:
 		multi_get = (msg_multi_get_req *)task->msg->data;
-		S_tu_region = find_region(multi_get->seek_key, multi_get->seek_key_size);
-		if (S_tu_region == NULL) {
+		r_desc = krm_get_region(multi_get->seek_key, multi_get->seek_key_size);
+		if (r_desc == NULL) {
 			log_fatal("Region not found for key size %u:%s", multi_get->seek_key_size, multi_get->seek_key);
 			exit(EXIT_FAILURE);
 		}
@@ -1448,10 +1360,10 @@ void handle_task(void *__task)
 
 		if (multi_get->seek_mode != FETCH_FIRST) {
 			//log_info("seeking at key %s", multi_get->seek_key);
-			initScanner(sc, S_tu_region->db, &multi_get->seek_key_size, multi_get->seek_mode);
+			initScanner(sc, r_desc->db, &multi_get->seek_key_size, multi_get->seek_mode);
 		} else {
 			//log_info("seeking at key first key of region");
-			initScanner(sc, S_tu_region->db, NULL, GREATER_OR_EQUAL);
+			initScanner(sc, r_desc->db, NULL, GREATER_OR_EQUAL);
 		}
 
 		/*put the data in the buffer*/
@@ -1570,15 +1482,14 @@ void handle_task(void *__task)
 			//DPRINT("**** Ordered from master to perform a flush ****\n");
 			/*ommit header find the corresponding region*/
 			region_key = (void *)(task->msg->data + 32);
-			_tucana_region_S *s_tu_region =
-				find_region(region_key + sizeof(uint32_t), *(uint32_t *)region_key);
+			r_desc = krm_get_region(region_key + sizeof(uint32_t), *(uint32_t *)region_key);
 
-			if (s_tu_region == NULL) {
-				DPRINT("FATAL region with min key %s not found\n", region_key);
+			if (r_desc == NULL) {
+				log_fatal("FATAL region with min key %s not found\n", region_key);
 				exit(EXIT_FAILURE);
 			}
-			if (s_tu_region->db->db_desc->db_mode == PRIMARY_DB) {
-				DPRINT("FATAL flushing primary db?\n");
+			if (r_desc->db->db_desc->db_mode == PRIMARY_DB) {
+				log_fatal("FATAL flushing primary db?\n");
 				raise(SIGINT);
 				exit(EXIT_FAILURE);
 			}
@@ -1591,8 +1502,8 @@ void handle_task(void *__task)
 
 			void *buffer = task->msg->data + 4096;
 			//DPRINT("REPLICA: master segment %llu end of log %llu bytes to pad %llu segment_id %llu\n",(LLU)master_segment,(LLU)end_of_log,(LLU)bytes_to_pad,(LLU)segment_id);
-			flush_replica_log_buffer(s_tu_region->db, (segment_header *)master_segment, buffer, end_of_log,
-						 bytes_to_pad, segment_id);
+			ru_flush_replica_log_buffer(r_desc->db, (segment_header *)master_segment, buffer, end_of_log,
+						    bytes_to_pad, segment_id);
 #endif
 			free_rdma_received_message(task->conn, task->msg);
 			task->kreon_operation_status = FLUSH_SEGMENT_COMPLETE;
@@ -1712,6 +1623,8 @@ static void tu_ec_sig_handler(int signo)
 
 int main(int argc, char *argv[])
 {
+	char *device_name;
+	uint64_t device_size;
 	uint32_t i;
 	//globals_set_zk_host(zookeeper_host_port);
 	RDMA_LOG_BUFFER_PADDING = 0;
@@ -1727,8 +1640,9 @@ int main(int argc, char *argv[])
 	if (argc == 8) {
 		int rdma_port = strtol(argv[1], NULL, 10);
 		globals_set_RDMA_connection_port(rdma_port);
-		Device_name = argv[2];
-		Device_size = strtol(argv[3], NULL, 10) * 1024 * 1024 * 1024;
+		device_name = argv[2];
+		device_size = strtol(argv[3], NULL, 10) * 1024 * 1024 * 1024;
+		globals_set_dev(device_name);
 		globals_set_zk_host(argv[4]);
 		globals_set_RDMA_IP_filter(argv[5]);
 		_str_split(argv[6], ',', &spinning_threads_core_ids, &num_of_spinning_threads);
@@ -1749,41 +1663,51 @@ int main(int argc, char *argv[])
 	WORKER_THREADS_PER_SPINNING_THREAD = (num_of_worker_threads / num_of_spinning_threads);
 
 	log_info("Set pool size for each spinning thread to %u\n", WORKER_THREADS_PER_SPINNING_THREAD);
-	struct sigaction sa;
-	sa.sa_handler = tu_ec_sig_handler;
-	sigemptyset(&sa.sa_mask);
-	sa.sa_flags = 0;
-	int ret = sigaction(SIGINT, &sa, NULL);
-	assert(ret == 0);
+	//struct sigaction sa;
+	//sa.sa_handler = tu_ec_sig_handler;
+	//sigemptyset(&sa.sa_mask);
+	//sa.sa_flags = 0;
+	//int ret = sigaction(SIGINT, &sa, NULL);
+	//assert(ret == 0);
 
-	srand(time(NULL));
+	//srand(time(NULL));
 	pthread_mutex_init(&reg_lock, NULL);
 
-	//i = ibv_fork_init();
-	//if(i){
-	//	DPRINT("FATAL call failed reason follows-->\n");
-	//	perror("Reason: ");
-	//	exit(EXIT_FAILURE);
-	//}
+	log_info("Creating RDMA channel and starting server spinning thread");
+	globals_create_rdma_channel();
 
-	log_info("initializing storage device:%s", Device_name);
-	Init_Storage_Device(&storage_dev, Device_name, (uint64_t)Device_size);
-	log_info("initializing zookeeper server");
-	Init_tuzk_server(&tuzk_S);
-	log_info("initializing regionse?\n");
-	Init_RegionsSe();
-#if TU_RDMA
-	Set_OnConnection_Create_Function(regions_S.channel, handle_task);
-	log_info("initialized RDMA");
-#endif
-	log_info("initializing data server");
-	Init_Data_Server_from_ZK();
+	struct channel_rdma *channel = globals_get_rdma_channel();
+	channel->spinning_num_th = num_of_spinning_threads;
+	if (pthread_create(&channel->cmthread, NULL, socket_thread, channel) != 0) {
+		DPRINT("FATAL failed to spawn thread reason follows:\n");
+		perror("Reason: \n");
+		exit(EXIT_FAILURE);
+	}
+	pthread_t krm_server;
+
+	log_info("New era has arrived initializing kreonR metadata server");
+	if (pthread_create(&krm_server, NULL, krm_metadata_server, NULL)) {
+		log_fatal("Failed to start metadata_server");
+		exit(EXIT_FAILURE);
+	}
+	Set_OnConnection_Create_Function(globals_get_rdma_channel(), handle_task);
 	stats_init(num_of_worker_threads);
+	log_info("Server ready");
+
+	//log_info("initializing storage device:%s", Device_name);
+	//Init_Storage_Device(&storage_dev, Device_name, (uint64_t)Device_size);
+	//log_info("initializing zookeeper server");
+	//Init_tuzk_server(&tuzk_S);
+	//log_info("initializing regionse?\n");
+	//Init_RegionsSe();
+	//log_info("initializing data server");
+	//Init_Data_Server_from_ZK();
+
 	sem_init(&exit_main, 0, 0);
 	sem_wait(&exit_main);
 
 	log_info("kreonR server exiting\n");
-	Free_RegionsSe();
+	//Free_RegionsSe();
 	return 0;
 }
 #endif
