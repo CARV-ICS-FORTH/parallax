@@ -319,8 +319,7 @@ typedef struct db_descriptor {
 	int32_t group_index;
 	/*gxanth new staff*/
 	volatile char dirty;
-	/*primary or back_up db, instructed from zookeeper*/
-	char db_mode;
+	enum db_status stat;
 	// void *(*createEmptyNode)(allocator_descriptor *allocator_desc, db_handle
 	// *handle, nodeType_t type,
 	//			 char allocation_code);
