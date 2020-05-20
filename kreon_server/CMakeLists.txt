@@ -103,7 +103,7 @@ set_target_properties(
                                  "../kreon_rdma_client/kreon_rdma_client.h")
 if(KREON_BUILD_CPACK)
   install(
-    TARGETS kreon_client-shared kreon_server create_regions
+    TARGETS kreon_client-shared kreon_server
     LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
     RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
     PUBLIC_HEADER DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/${PROJECT_NAME}")
