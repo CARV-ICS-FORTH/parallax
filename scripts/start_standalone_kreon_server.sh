@@ -64,24 +64,16 @@ echo "Starting zookeeper"
 #clean everything
 cd kreonR || exit
 echo "$KREON_HOSTNAME leader" >hosts_tmp
-./mkfs_kreonR.sh hosts_tmp regions_krc_api_test
+echo "0 -oo +oo $KREON_HOSTNAME-$RDMA_PORT" >regions_tmp
+./mkfs_kreonR.sh hosts_tmp regions_tmp
+rm hosts_tmp
+rm regions_tmp
 cd .. || exit
 echo "Successfully formatted kreonR metadata"
-#echo "Cleaning previous state deleting /servers..."
-#"$ZOOKEEPER_CODE"/zkCli.sh rmr /servers
-#echo "removed /servers"
-#echo "Deleting /regions"
-#"$ZOOKEEPER_CODE"/zkCli.sh rmr /regions
-#echo "removed /regions"
-#echo "Deleting /aliveservers"
-#"$ZOOKEEPER_CODE"/zkCli.sh rmr /aliveservers
-#echo "removed /aliveservers"
 
 echo "Starting kreon server, listening for RDMA connections at port $RDMA_PORT"
 ../build/kreon_server/kreon_server $RDMA_PORT "$DEV_NAME" 256 "$ZOOKEEPER_IP":2181 192.168.4 0 "1,2" &>/tmp/"$user"/kreon_server_log.txt &
-#echo "Creating region"
-#../build/kreon_server/create_regions -c --region 0 --minkey -oo --maxkey +oo --size 4294967296 --host "$HOSTNAME"-$RDMA_PORT --zookeeper "$ZOOKEEPER_IP":2181
-#echo ""
+
 echo "*************Server ready! Client can connect to Zookeeper IP $ZOOKEEPER_IP Zookeeper port 2181 log output follows"
 sleep 4
 watch tail -40 /tmp/"$user"/kreon_server_log.txt
