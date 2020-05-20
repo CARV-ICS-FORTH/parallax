@@ -1,6 +1,8 @@
 #include <assert.h>
 #include <stdint.h>
 #include <limits.h>
+#include <mba/bitset.h>
+#include <log.h>
 #include "static_leaf.h"
 #include "conf.h"
 
@@ -115,4 +117,41 @@ void shift_slot_array(bt_static_leaf_node *leaf, uint32_t middle)
 		return;
 
 	memmove(&src.slot_array[middle + 1], &src.slot_array[middle], num_items * sizeof(bt_leaf_slot_array));
+}
+
+int8_t insert_in_static_leaf(bt_static_leaf_node *leaf, bt_insert_req *req)
+{
+	struct bt_static_leaf_structs src;
+	struct splice *key = req->key_value_buf;
+	bt_leaf_bitmap *end_of_bitmap;
+	struct bsearch_result bsearch = binary_search_static_leaf(leaf, key);
+	int kventry_slot = -1;
+
+	retrieve_static_leaf_structures(leaf, &src);
+	end_of_bitmap = src.bitmap + leaf_node_offsets[leaf->header.level_id].kv_entries;
+
+	++leaf->header.v1;
+	switch (bsearch.status) {
+	case INSERT:
+		shift_slot_array(leaf, bsearch.middle);
+		kventry_slot = bitset_find_first(&src.bitmap, end_of_bitmap, 0);
+		bitset_set(src.bitmap, kventry_slot);
+		src.slot_array[bsearch.middle].index = kventry_slot;
+		src.kv_entries[kventry_slot].pointer = (uint64_t)(req->key_value_buf - MAPPED);
+		memcpy(src.kv_entries[kventry_slot].prefix, key->data, MIN(key->size, PREFIX_SIZE));
+		leaf->header.numberOfEntriesInNode++;
+		break;
+	case UPDATE:
+		src.kv_entries[src.slot_array[bsearch.middle].index].pointer = (uint64_t)(req->key_value_buf - MAPPED);
+		memcpy(src.kv_entries[src.slot_array[bsearch.middle].index].prefix, key->data,
+		       MIN(key->size, PREFIX_SIZE));
+
+		break;
+	default:
+		log_info("ERROR");
+		exit(EXIT_FAILURE);
+	}
+	++leaf->header.v2;
+
+	return 1;
 }
