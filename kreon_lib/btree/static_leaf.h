@@ -11,7 +11,7 @@ struct bsearch_result {
 #define EQUAL_TO_ZERO 0
 
 struct bt_static_leaf_structs {
-	bt_leaf_bitmap *bitmap;
+	struct bt_leaf_entry_bitmap *bitmap;
 	bt_leaf_slot_array *slot_array;
 	bt_leaf_entry *kv_entries;
 };

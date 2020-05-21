@@ -895,7 +895,7 @@ void allocator_init(volume_descriptor *volume_desc)
 	log_info("Num entries for offsets in L0 leaf node %u", NUM_ENTRIES);
 	log_info("Entries in L0 leaf node %u", KV_ENTRIES);
 	log_info("Size of bt_leaf_node %u", sizeof(struct bt_static_leaf_node));
-	log_info("Size of bitmap %u", sizeof(bt_leaf_bitmap));
+	log_info("Size of bitmap %u", sizeof(struct bt_leaf_entry_bitmap));
 	log_info("Size of bt_leaf_node %u", sizeof(bt_leaf_slot_array));
 
 	ret = ioctl(FD, FAKE_BLK_IOC_TEST_CAP);

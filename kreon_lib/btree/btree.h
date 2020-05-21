@@ -166,9 +166,9 @@ typedef struct bt_leaf_entry {
 	char prefix[PREFIX_SIZE];
 } bt_leaf_entry;
 
-typedef struct bt_leaf_entry_bitmap {
+struct bt_leaf_entry_bitmap {
 	unsigned char bitmap;
-} bt_leaf_bitmap;
+};
 
 typedef struct bt_leaf_slot_array {
 	uint16_t index;

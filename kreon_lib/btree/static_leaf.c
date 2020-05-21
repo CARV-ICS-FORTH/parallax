@@ -13,14 +13,14 @@ static void retrieve_static_leaf_structures(struct bt_static_leaf_node const *le
 {
 	char *leaf_base_address = (char *)leaf;
 	uint8_t level_id = leaf->header.level_id;
-	src->bitmap = (bt_leaf_bitmap *)(leaf_base_address + leaf_node_offsets[level_id].bitmap_offset);
+	src->bitmap = (struct bt_leaf_entry_bitmap *)(leaf_base_address + leaf_node_offsets[level_id].bitmap_offset);
 	src->slot_array = (bt_leaf_slot_array *)(leaf_base_address + leaf_node_offsets[level_id].slot_array_offset);
 	src->kv_entries = (bt_leaf_entry *)(leaf_base_address + leaf_node_offsets[level_id].kv_entries_offset);
 }
 
 static uint32_t get_bitmap_size(uint8_t level_id)
 {
-	return sizeof(bt_leaf_bitmap) * leaf_node_offsets[level_id].bitmap_entries;
+	return sizeof(struct bt_leaf_entry_bitmap) * leaf_node_offsets[level_id].bitmap_entries;
 }
 
 static uint32_t get_slot_array_size(uint8_t level_id)
@@ -119,7 +119,8 @@ void shift_slot_array(struct bt_static_leaf_node *leaf, uint32_t middle)
 	memmove(&src.slot_array[middle + 1], &src.slot_array[middle], num_items * sizeof(bt_leaf_slot_array));
 }
 
-void validate_static_leaf(uint64_t num_entries, bt_leaf_bitmap *bitmap_base, bt_leaf_bitmap *bitmap_end)
+void validate_static_leaf(uint64_t num_entries, struct bt_leaf_entry_bitmap *bitmap_base,
+			  struct bt_leaf_entry_bitmap *bitmap_end)
 {
 	iter_t iter;
 	uint64_t count_set_bits = 0;
@@ -136,6 +137,7 @@ void validate_static_leaf(uint64_t num_entries, bt_leaf_bitmap *bitmap_base, bt_
 			break;
 		}
 	}
+
 	assert(num_entries == count_set_bits);
 }
 
@@ -143,7 +145,7 @@ int8_t insert_in_static_leaf(struct bt_static_leaf_node *leaf, bt_insert_req *re
 {
 	struct bt_static_leaf_structs src;
 	struct splice *key = req->key_value_buf;
-	bt_leaf_bitmap *bitmap_end;
+	struct bt_leaf_entry_bitmap *bitmap_end;
 	struct bsearch_result bsearch = binary_search_static_leaf(leaf, key);
 	int kventry_slot = -1;
 

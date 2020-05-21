@@ -447,10 +447,10 @@ static void calculate_metadata_offsets(uint32_t bitmap_entries, uint32_t slot_ar
 	leaf_node_offsets->bitmap_offset = sizeof(struct bt_static_leaf_node);
 	leaf_node_offsets->slot_array_entries = slot_array_entries;
 	leaf_node_offsets->slot_array_offset =
-		leaf_node_offsets->bitmap_offset + bitmap_entries * sizeof(bt_leaf_bitmap);
+		leaf_node_offsets->bitmap_offset + bitmap_entries * sizeof(struct bt_leaf_entry_bitmap);
 	leaf_node_offsets->kv_entries = kv_entries;
 	leaf_node_offsets->kv_entries_offset = leaf_node_offsets->bitmap_offset +
-					       bitmap_entries * sizeof(bt_leaf_bitmap) +
+					       bitmap_entries * sizeof(struct bt_leaf_entry_bitmap) +
 					       slot_array_entries * sizeof(bt_leaf_slot_array);
 }
 
