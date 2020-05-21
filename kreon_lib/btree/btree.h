@@ -198,9 +198,9 @@ typedef struct index_node {
 		   (IN_LENGTH * sizeof(struct index_entry))];
 } __attribute__((packed)) index_node;
 
-typedef struct bt_static_leaf_node {
+struct bt_static_leaf_node {
 	struct node_header header;
-} __attribute__((packed)) bt_static_leaf_node;
+} __attribute__((packed));
 
 typedef struct leaf_node {
 	struct node_header header;

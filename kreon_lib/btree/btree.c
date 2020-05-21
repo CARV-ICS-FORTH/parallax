@@ -444,7 +444,7 @@ static void calculate_metadata_offsets(uint32_t bitmap_entries, uint32_t slot_ar
 				       level_offsets_todata *leaf_node_offsets)
 {
 	leaf_node_offsets->bitmap_entries = bitmap_entries;
-	leaf_node_offsets->bitmap_offset = sizeof(bt_static_leaf_node);
+	leaf_node_offsets->bitmap_offset = sizeof(struct bt_static_leaf_node);
 	leaf_node_offsets->slot_array_entries = slot_array_entries;
 	leaf_node_offsets->slot_array_offset =
 		leaf_node_offsets->bitmap_offset + bitmap_entries * sizeof(bt_leaf_bitmap);
@@ -465,10 +465,10 @@ static void init_leaf_sizes_perlevel(void)
 
 	for (int i = 0; i < MAX_LEVELS; ++i) {
 		leaf_size = leaf_size_per_level[i];
-		numentries_without_metadata = (leaf_size - sizeof(bt_static_leaf_node)) / kv_leaf_entry;
+		numentries_without_metadata = (leaf_size - sizeof(struct bt_static_leaf_node)) / kv_leaf_entry;
 		bitmap_entries = (numentries_without_metadata / CHAR_BIT) + 1;
 		slot_array_entries = numentries_without_metadata;
-		kv_entries = leaf_size - sizeof(bt_static_leaf_node) - bitmap_entries -
+		kv_entries = leaf_size - sizeof(struct bt_static_leaf_node) - bitmap_entries -
 			     (slot_array_entries * sizeof(bt_leaf_slot_array)) / sizeof(bt_leaf_entry);
 
 		calculate_metadata_offsets(bitmap_entries, slot_array_entries, kv_entries, &leaf_node_offsets[i]);
