@@ -119,6 +119,26 @@ void shift_slot_array(struct bt_static_leaf_node *leaf, uint32_t middle)
 	memmove(&src.slot_array[middle + 1], &src.slot_array[middle], num_items * sizeof(bt_leaf_slot_array));
 }
 
+void validate_static_leaf(uint64_t num_entries, bt_leaf_bitmap *bitmap_base, bt_leaf_bitmap *bitmap_end)
+{
+	iter_t iter;
+	uint64_t count_set_bits = 0;
+	bitset_iterate(&iter);
+
+	while (1) {
+		switch (bitset_next(bitmap_base, bitmap_end, &iter)) {
+		case 1:
+			++count_set_bits;
+			continue;
+		case 0:
+			continue;
+		case -1:
+			break;
+		}
+	}
+	assert(num_entries == count_set_bits);
+}
+
 int8_t insert_in_static_leaf(struct bt_static_leaf_node *leaf, bt_insert_req *req)
 {
 	struct bt_static_leaf_structs src;
