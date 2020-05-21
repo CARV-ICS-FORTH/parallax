@@ -283,10 +283,13 @@ void snapshot(volume_descriptor *volume_desc)
 			switch (errno) {
 			case EBUSY:
 				log_error("msync returned EBUSY");
+				break;
 			case EINVAL:
 				log_error("msync returned EINVAL");
+				break;
 			case ENOMEM:
 				log_error("msync returned EBUSY");
+				break;
 			}
 			exit(EXIT_FAILURE);
 		}
