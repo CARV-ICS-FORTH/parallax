@@ -1,5 +1,7 @@
 #include "btree.h"
-enum bsearch_status { INSERT, UPDATE, ERROR };
+/* The FOUND status value should always match the UPDATE value.*/
+enum bsearch_status { INSERT = 0, UPDATE = 1, ERROR = 2 };
+enum bsearch_find_status {FOUND = 1, NOT_FOUND = 2};
 
 struct bsearch_result {
 	int middle;

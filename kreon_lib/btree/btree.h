@@ -524,9 +524,12 @@ void print_key(void *);
 lock_table *_find_position(lock_table **table, node_header *node);
 #define MIN(x, y) ((x > y) ? (y) : (x))
 #define KEY_SIZE(x) (*(uint32_t *)x)
-#define KV_MAX_SIZE (4096 + 8)
 #define ABSOLUTE_ADDRESS(X) (X - MAPPED)
-#define REAL_ADDRESS(X) (MAPPED + X)
-#define VALUE_SIZE_OFFSET(K) (sizeof(uint32_t) + K)
+#define REAL_ADDRESS(X) ((void *)(uint64_t)(MAPPED + X))
+#define VALUE_SIZE_OFFSET(KEY_SIZE,KEY) (sizeof(uint32_t) + KEY_SIZE + KEY)
+#define SERIALIZE_KEY(buf, key, key_size)				\
+	*(uint32_t *)buf = key_size;					\
+	memcpy(buf + 4, key, key_size)
+#define KV_MAX_SIZE (4096 + 8)
 #define likely(x) __builtin_expect((x), 1)
 #define unlikely(x) __builtin_expect((x), 0)

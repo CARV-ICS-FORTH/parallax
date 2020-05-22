@@ -57,8 +57,8 @@ int8_t find_deleted_kv_pairs_in_segment(volume_descriptor *volume_desc, db_descr
 
 	while (size_of_log_segment_checked < log_data_without_metadata && key->size != 0 && remaining_space >= 10) {
 		key = (struct splice *)log_segment;
-		value = (struct splice *)(log_segment + VALUE_SIZE_OFFSET(key->size));
-		value_as_pointer = (log_segment + VALUE_SIZE_OFFSET(key->size));
+		value = (struct splice *)(VALUE_SIZE_OFFSET(key->size, log_segment));
+		value_as_pointer = (VALUE_SIZE_OFFSET(key->size,log_segment));
 		find_value = find_key(&handle, key->data, key->size);
 
 		if (key->size != 0 && remaining_space >= 10 && (find_value == NULL || value_as_pointer != find_value)) {

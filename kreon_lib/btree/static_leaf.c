@@ -38,8 +38,6 @@ void init_static_leaf_metadata(struct bt_static_leaf_node *leaf)
 	struct bt_static_leaf_structs src;
 	uint8_t level_id = leaf->header.level_id;
 	retrieve_static_leaf_structures(leaf, &src);
-	/* If the bt_leaf_bitmap struct becomes a different type than an unsigned char,
-	   the UCHAR_MAX should be replaced with the maximum value the type can hold.  */
 	memset(src.bitmap, 0, get_bitmap_size(level_id));
 	memset(src.slot_array, 0, get_slot_array_size(level_id));
 	memset(src.kv_entries, 0, get_kv_entries_size(level_id));
@@ -105,6 +103,32 @@ struct bsearch_result binary_search_static_leaf(struct bt_static_leaf_node const
 	}
 
 	return result;
+}
+
+void *find_key_in_static_leaf(const struct bt_static_leaf_node *leaf, void *key, uint32_t key_size)
+{
+	bt_leaf_entry kv_entry;
+	struct bt_static_leaf_structs src;
+	struct bsearch_result result;
+	void *ret = NULL;
+	char *buf = malloc(sizeof(uint32_t) + key_size);
+	struct splice *key_buf = (struct splice *)buf;
+
+	assert(buf != NULL);
+	SERIALIZE_KEY(buf, key, key_size);
+
+	retrieve_static_leaf_structures(leaf, &src);
+	result = binary_search_static_leaf(leaf, key_buf);
+
+	if (result.status == FOUND) {
+		kv_entry = src.kv_entries[src.slot_array[result.middle].index];
+		void *kv_buf = REAL_ADDRESS(kv_entry.pointer);
+		uint32_t tmp_key_size = KEY_SIZE(kv_buf);
+		ret = VALUE_SIZE_OFFSET(tmp_key_size, kv_buf);
+	}
+
+	free(buf);
+	return ret;
 }
 
 void shift_slot_array(struct bt_static_leaf_node *leaf, uint32_t middle)
