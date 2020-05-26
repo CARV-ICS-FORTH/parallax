@@ -172,6 +172,7 @@ typedef struct msg_get_rep {
 
 typedef struct msg_multi_get_req {
 	uint32_t max_num_entries;
+	uint32_t fetch_keys_only;
 	uint32_t seek_mode;
 	uint32_t seek_key_size;
 	char seek_key[];

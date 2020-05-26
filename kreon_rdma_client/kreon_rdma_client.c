@@ -13,7 +13,7 @@
 #include <log.h>
 #define KRC_GET_SIZE 4096
 
-typedef struct krc_scanner {
+struct krc_scanner {
 	krc_key *prefix_key;
 	krc_key *start_key;
 	krc_key *stop_key;
@@ -23,17 +23,19 @@ typedef struct krc_scanner {
 	uint32_t prefetch_mem_size;
 	uint32_t actual_mem_size;
 	uint32_t pos;
-	uint8_t start_infinite : 2;
 	krc_seek_mode seek_mode;
 	krc_seek_mode stop_key_seek_mode;
-	uint8_t stop_infinite : 2;
-	uint8_t prefix_filter_enable : 2;
-	uint8_t is_valid : 2;
+	uint8_t start_infinite : 1;
+	uint8_t stop_infinite : 1;
+	uint8_t prefix_filter_enable : 1;
+	uint8_t is_valid : 1;
+	uint8_t fetch_keys_only : 1;
+
 	krc_scan_state state;
 	/*copy of the server's reply*/
 	msg_multi_get_rep *multi_kv_buf;
 	struct cu_region_desc *curr_region;
-} krc_scanner;
+};
 
 static char *neg_infinity = "00000000";
 static char *pos_infinity = "+oo";
@@ -42,6 +44,15 @@ ZooLogLevel logLevel = ZOO_LOG_LEVEL_INFO;
 
 static int krc_lib_init = 0;
 static pthread_mutex_t lib_lock = PTHREAD_MUTEX_INITIALIZER;
+
+static void _krc_get_rpc_pair(connection_rdma *conn, msg_header **req, int req_msg_type, int req_size, msg_header **rep,
+			      int rep_msg_type, uint32_t rep_size)
+{
+	pthread_mutex_lock(&conn->buffer_lock);
+	*req = client_allocate_rdma_message(conn, req_size, req_msg_type);
+	*rep = client_allocate_rdma_message(conn, rep_size, rep_msg_type);
+	pthread_mutex_unlock(&conn->buffer_lock);
+}
 
 static int64_t krc_compare_keys(krc_key *key1, krc_key *key2)
 {
@@ -146,14 +157,15 @@ krc_ret_code krc_put_with_offset(uint32_t key_size, void *key, uint32_t offset, 
 		log_fatal("Contact <gesalous@ics.forth.gr>");
 		exit(EXIT_FAILURE);
 	}
-	//old school
-	//client_region *region = client_find_region(key, key_size);
-	//connection_rdma *conn = get_connection_from_region(region, (uint64_t)key);
+
 	struct cu_region_desc *r_desc = cu_get_region(key, key_size);
 	connection_rdma *conn = cu_get_conn_for_region(r_desc, (uint64_t)key);
 
-	req_header = allocate_rdma_message(
-		conn, sizeof(msg_put_offt_req) + key_size + val_size + (2 * sizeof(uint32_t)), PUT_OFFT_REQUEST);
+	_krc_get_rpc_pair(conn, &req_header, PUT_OFFT_REQUEST,
+			  sizeof(msg_put_offt_req) + key_size + val_size + (2 * sizeof(uint32_t)), &rep_header,
+			  PUT_OFFT_REPLY, sizeof(msg_put_offt_rep));
+	//req_header = allocate_rdma_message(
+	//	conn, sizeof(msg_put_offt_req) + key_size + val_size + (2 * sizeof(uint32_t)), PUT_OFFT_REQUEST);
 
 	put_offt_req = (msg_put_offt_req *)((uint64_t)req_header + sizeof(msg_header));
 	put_offt_req->offset = offset;
@@ -165,8 +177,8 @@ krc_ret_code krc_put_with_offset(uint32_t key_size, void *key, uint32_t offset, 
 	update_value->value_size = val_size;
 	memcpy(update_value->value, value, val_size);
 
-	/*Now the reply part*/
-	rep_header = allocate_rdma_message(conn, sizeof(msg_put_offt_rep), PUT_OFFT_REPLY);
+	/*Now the reply*/
+	//rep_header = allocate_rdma_message(conn, sizeof(msg_put_offt_rep), PUT_OFFT_REPLY);
 	rep_header->receive = 0;
 	put_offt_rep = (msg_put_offt_rep *)((uint64_t)rep_header + sizeof(msg_header));
 
@@ -223,7 +235,9 @@ krc_ret_code krc_put(uint32_t key_size, void *key, uint32_t val_size, void *valu
 	struct cu_region_desc *r_desc = cu_get_region(key, key_size);
 	connection_rdma *conn = cu_get_conn_for_region(r_desc, (uint64_t)key);
 
-	req_header = allocate_rdma_message(conn, key_size + val_size + (2 * sizeof(uint32_t)), PUT_REQUEST);
+	_krc_get_rpc_pair(conn, &req_header, PUT_REQUEST, key_size + val_size + (2 * sizeof(uint32_t)), &rep_header,
+			  PUT_REPLY, sizeof(msg_put_rep));
+	//req_header = allocate_rdma_message(conn, key_size + val_size + (2 * sizeof(uint32_t)), PUT_REQUEST);
 	put_key = (msg_put_key *)((uint64_t)req_header + sizeof(msg_header));
 	/*fill in the key payload part the data, caution we are 100% sure that it fits :-)*/
 	put_key->key_size = key_size;
@@ -233,7 +247,7 @@ krc_ret_code krc_put(uint32_t key_size, void *key, uint32_t val_size, void *valu
 	memcpy(put_value->value, value, val_size);
 
 	/*Now the reply part*/
-	rep_header = allocate_rdma_message(conn, sizeof(msg_put_rep), PUT_REPLY);
+	//rep_header = allocate_rdma_message(conn, sizeof(msg_put_rep), PUT_REPLY);
 	rep_header->receive = 0;
 	put_rep = (msg_put_rep *)((uint64_t)rep_header + sizeof(msg_header));
 	put_rep->status = KR_REP_PENDING;
@@ -421,7 +435,9 @@ krc_ret_code krc_get(uint32_t key_size, char *key, char **buffer, uint32_t *size
 	}
 
 	while (1) {
-		req_header = allocate_rdma_message(conn, sizeof(msg_get_req) + key_size, TU_GET_QUERY);
+		_krc_get_rpc_pair(conn, &req_header, TU_GET_QUERY, sizeof(msg_get_req) + key_size, &rep_header,
+				  TU_GET_REPLY, sizeof(msg_get_rep) + reply_size);
+		//req_header = allocate_rdma_message(conn, sizeof(msg_get_req) + key_size, TU_GET_QUERY);
 		get_req = (msg_get_req *)((uint64_t)req_header + sizeof(msg_header));
 		get_req->key_size = key_size;
 		memcpy(get_req->key, key, key_size);
@@ -429,12 +445,13 @@ krc_ret_code krc_get(uint32_t key_size, char *key, char **buffer, uint32_t *size
 		get_req->fetch_value = 1;
 		get_req->bytes_to_read = reply_size;
 		/*the reply part*/
-		rep_header = allocate_rdma_message(conn, sizeof(msg_get_rep) + reply_size, TU_GET_REPLY);
+		//rep_header = allocate_rdma_message(conn, sizeof(msg_get_rep) + reply_size, TU_GET_REPLY);
 		req_header->reply = (char *)((uint64_t)rep_header - (uint64_t)conn->recv_circular_buf->memory_region);
 		req_header->reply_length = sizeof(msg_header) + rep_header->pay_len + rep_header->padding_and_tail;
 
 		req_header->request_message_local_addr = req_header;
 		rep_header->receive = 0;
+
 		/*send the request*/
 		if (send_rdma_message_busy_wait(conn, req_header) != KREON_SUCCESS) {
 			log_warn("failed to send message");
@@ -453,7 +470,7 @@ krc_ret_code krc_get(uint32_t key_size, char *key, char **buffer, uint32_t *size
 		get_rep = (msg_get_rep *)((uint64_t)rep_header + sizeof(msg_header));
 		/*various reply checks*/
 		if (!get_rep->key_found) {
-			log_warn("Key %s not found!", key);
+			//log_warn("Key %s not found!", key);
 			code = KRC_KEY_NOT_FOUND;
 			goto exit;
 		}
@@ -505,14 +522,16 @@ uint8_t krc_exists(uint32_t key_size, void *key)
 	connection_rdma *conn = cu_get_conn_for_region(r_desc, (uint64_t)key);
 	uint8_t ret;
 
-	req_header = allocate_rdma_message(conn, sizeof(msg_get_req) + key_size, TU_GET_QUERY);
+	_krc_get_rpc_pair(conn, &req_header, TU_GET_QUERY, sizeof(msg_get_req) + key_size, &rep_header, TU_GET_REPLY,
+			  sizeof(msg_get_rep));
+	//req_header = allocate_rdma_message(conn, sizeof(msg_get_req) + key_size, TU_GET_QUERY);
 	get_req = (msg_get_req *)((uint64_t)req_header + sizeof(msg_header));
 	get_req->key_size = key_size;
 	memcpy(get_req->key, key, key_size);
 	get_req->offset = 0;
 	get_req->fetch_value = 0;
 	/*the reply part*/
-	rep_header = allocate_rdma_message(conn, sizeof(msg_get_rep), TU_GET_REPLY);
+	//rep_header = allocate_rdma_message(conn, sizeof(msg_get_rep), TU_GET_REPLY);
 	req_header->reply = (char *)((uint64_t)rep_header - (uint64_t)conn->recv_circular_buf->memory_region);
 	req_header->reply_length = sizeof(msg_header) + rep_header->pay_len + rep_header->padding_and_tail;
 
@@ -547,20 +566,23 @@ uint8_t krc_exists(uint32_t key_size, void *key)
 
 krc_ret_code krc_delete(uint32_t key_size, void *key)
 {
+	msg_header *req_header;
+	msg_header *rep_header;
 	uint32_t error_code;
-	//old school
-	//client_region *region = client_find_region(key, key_size);
-	//connection_rdma *conn = get_connection_from_region(region, (uint64_t)key);
+
 	struct cu_region_desc *r_desc = cu_get_region(key, key_size);
 	connection_rdma *conn = cu_get_conn_for_region(r_desc, (uint64_t)key);
+
+	_krc_get_rpc_pair(conn, &req_header, DELETE_REQUEST, sizeof(msg_delete_req) + key_size, &rep_header,
+			  DELETE_REPLY, sizeof(msg_delete_rep));
 	/*the request part*/
-	msg_header *req_header = allocate_rdma_message(conn, sizeof(msg_get_req) + key_size, DELETE_REQUEST);
+	//	msg_header *req_header = allocate_rdma_message(conn, sizeof(msg_delete_req) + key_size, DELETE_REQUEST);
 
 	msg_delete_req *m_del = (msg_delete_req *)((uint64_t)req_header + sizeof(msg_header));
 	m_del->key_size = key_size;
 	memcpy(m_del->key, key, key_size);
 	/*the reply part*/
-	msg_header *rep_header = allocate_rdma_message(conn, sizeof(msg_delete_rep), DELETE_REPLY);
+	//msg_header *rep_header = allocate_rdma_message(conn, sizeof(msg_delete_rep), DELETE_REPLY);
 	req_header->reply = (char *)((uint64_t)rep_header - (uint64_t)conn->recv_circular_buf->memory_region);
 	req_header->reply_length = sizeof(msg_header) + rep_header->pay_len + rep_header->padding_and_tail;
 
@@ -603,7 +625,7 @@ krc_scannerp krc_scan_init(uint32_t prefetch_num_entries, uint32_t prefetch_mem_
 		padding = MESSAGE_SEGMENT_SIZE - (actual_size % MESSAGE_SEGMENT_SIZE);
 	else
 		padding = 0;
-	krc_scanner *scanner = (krc_scanner *)malloc(sizeof(krc_scanner) + actual_size + padding);
+	struct krc_scanner *scanner = (struct krc_scanner *)malloc(sizeof(struct krc_scanner) + actual_size + padding);
 	scanner->actual_mem_size = actual_size + padding;
 	scanner->prefetch_mem_size = prefetch_mem_size;
 	scanner->prefix_key = NULL;
@@ -617,19 +639,26 @@ krc_scannerp krc_scan_init(uint32_t prefetch_num_entries, uint32_t prefetch_mem_
 	scanner->is_valid = 1;
 	scanner->prefix_filter_enable = 0;
 	scanner->state = KRC_UNITIALIZED;
-	scanner->multi_kv_buf = (msg_multi_get_rep *)((uint64_t)scanner + sizeof(krc_scanner));
+	scanner->fetch_keys_only = 0;
+	scanner->multi_kv_buf = (msg_multi_get_rep *)((uint64_t)scanner + sizeof(struct krc_scanner));
 	return (krc_scannerp)scanner;
 }
 
 uint8_t krc_scan_is_valid(krc_scannerp sp)
 {
-	krc_scanner *sc = (krc_scanner *)sp;
+	struct krc_scanner *sc = (struct krc_scanner *)sp;
 	return sc->is_valid;
+}
+
+void krc_scan_fetch_keys_only(krc_scannerp sp)
+{
+	struct krc_scanner *sc = (struct krc_scanner *)sp;
+	sc->fetch_keys_only = 1;
 }
 
 uint8_t krc_scan_get_next(krc_scannerp sp, char **key, size_t *keySize, char **value, size_t *valueSize)
 {
-	krc_scanner *sc = (krc_scanner *)sp;
+	struct krc_scanner *sc = (struct krc_scanner *)sp;
 	msg_header *req_header;
 	msg_multi_get_req *m_get;
 	msg_header *rep_header;
@@ -703,23 +732,24 @@ uint8_t krc_scan_get_next(krc_scannerp sp, char **key, size_t *keySize, char **v
 				goto exit;
 			}
 		case KRC_ISSUE_MGET_REQ: {
-			//old school
-			//curr_region = client_find_region(seek_key, seek_key_size);
-			//sc->curr_region = (void *)curr_region;
-			//conn = get_connection_from_region(curr_region, (uint64_t)seek_key);
-			struct cu_region_desc *r_desc = cu_get_region(seek_key, seek_key_size);
+			r_desc = cu_get_region(seek_key, seek_key_size);
 			sc->curr_region = (void *)r_desc;
 			conn = cu_get_conn_for_region(r_desc, (uint64_t)key);
+
+			_krc_get_rpc_pair(conn, &req_header, MULTI_GET_REQUEST,
+					  sizeof(msg_multi_get_req) + seek_key_size, &rep_header, MULTI_GET_REPLY,
+					  sc->prefetch_mem_size);
 			/*the request part*/
-			req_header = allocate_rdma_message(conn, sizeof(msg_multi_get_req) + seek_key_size,
-							   MULTI_GET_REQUEST);
+			//req_header = allocate_rdma_message(conn, sizeof(msg_multi_get_req) + seek_key_size,
+			//				   MULTI_GET_REQUEST);
 			m_get = (msg_multi_get_req *)((uint64_t)req_header + sizeof(msg_header));
 			m_get->max_num_entries = sc->prefetch_num_entries;
 			m_get->seek_mode = seek_mode;
+			m_get->fetch_keys_only = sc->fetch_keys_only;
 			m_get->seek_key_size = seek_key_size;
 			memcpy(m_get->seek_key, seek_key, seek_key_size);
 			/*the reply part*/
-			rep_header = allocate_rdma_message(conn, sc->prefetch_mem_size, MULTI_GET_REPLY);
+			//rep_header = allocate_rdma_message(conn, sc->prefetch_mem_size, MULTI_GET_REPLY);
 			req_header->reply =
 				(char *)((uint64_t)rep_header - (uint64_t)conn->recv_circular_buf->memory_region);
 			req_header->reply_length =
@@ -807,9 +837,9 @@ uint8_t krc_scan_get_next(krc_scannerp sp, char **key, size_t *keySize, char **v
 					//log_info("Time for next batch, crossing regions, seek key %s", seek_key);
 				} else {
 					sc->state = KRC_END_OF_DB;
-					log_info("sorry end of db end of region = %d maximum_range %s minimum range %s",
-						 multi_kv_buf->end_of_region, r_desc->region.max_key,
-						 r_desc->region.min_key);
+					//log_info("sorry end of db end of region = %d maximum_range %s minimum range %s",
+					//	 multi_kv_buf->end_of_region, r_desc->region.max_key,
+					//		 r_desc->region.min_key);
 				}
 			}
 			break;
@@ -841,7 +871,7 @@ exit:
 
 void krc_scan_set_start(krc_scannerp sp, uint32_t start_key_size, void *start_key, krc_seek_mode seek_mode)
 {
-	krc_scanner *sc = (krc_scanner *)sp;
+	struct krc_scanner *sc = (struct krc_scanner *)sp;
 	if (!sc->start_infinite) {
 		log_warn("Nothing to do already set start key for this scanner");
 		return;
@@ -865,7 +895,7 @@ void krc_scan_set_start(krc_scannerp sp, uint32_t start_key_size, void *start_ke
 
 void krc_scan_set_stop(krc_scannerp sp, uint32_t stop_key_size, void *stop_key, krc_seek_mode seek_mode)
 {
-	krc_scanner *sc = (krc_scanner *)sp;
+	struct krc_scanner *sc = (struct krc_scanner *)sp;
 	if (stop_key_size >= 3 && memcmp(stop_key, pos_infinity, stop_key_size) == 0) {
 		sc->stop_infinite = 1;
 		return;
@@ -886,7 +916,7 @@ void krc_scan_set_stop(krc_scannerp sp, uint32_t stop_key_size, void *stop_key, 
 
 void krc_scan_set_prefix_filter(krc_scannerp sp, uint32_t prefix_size, void *prefix)
 {
-	krc_scanner *sc = (krc_scanner *)sp;
+	struct krc_scanner *sc = (struct krc_scanner *)sp;
 	if (sc->prefix_filter_enable) {
 		log_warn("Nothing to do already set prefix key for this scanner");
 		return;
@@ -905,7 +935,7 @@ void krc_scan_set_prefix_filter(krc_scannerp sp, uint32_t prefix_size, void *pre
 
 void krc_scan_close(krc_scannerp sp)
 {
-	krc_scanner *sc = (krc_scanner *)sp;
+	struct krc_scanner *sc = (struct krc_scanner *)sp;
 	if (sc->prefix_filter_enable)
 		free(sc->prefix_key);
 	if (!sc->start_infinite)

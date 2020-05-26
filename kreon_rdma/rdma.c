@@ -66,7 +66,6 @@ void on_completion_server(struct ibv_wc *wc, struct connection_rdma *conn);
 
 /*gesalous new stuff*/
 static int __send_rdma_message(connection_rdma *conn, msg_header *msg);
-static msg_header *_client_allocate_rdma_message(connection_rdma *conn, int message_payload_size, int message_type);
 
 #if SPINNING_THREAD
 #if SPINNING_PER_CHANNEL
@@ -170,24 +169,54 @@ void init_rdma_message(connection_rdma *conn, msg_header *msg, uint32_t message_
 
 msg_header *allocate_rdma_message(connection_rdma *conn, int message_payload_size, int message_type)
 {
+	log_fatal("dead function");
+	raise(SIGINT);
+	exit(EXIT_FAILURE);
+#if 0
 	msg_header *msg;
+	pthread_mutex_t *lock;
+	switch (message_type) {
+	case PUT_REQUEST:
+	case TU_GET_QUERY:
+	case MULTI_GET_REQUEST:
+	case PUT_OFFT_REQUEST:
+	case DELETE_REQUEST:
+	case I_AM_CLIENT:
+	case SERVER_I_AM_READY:
+	case DISCONNECT:
+	case RESET_RENDEZVOUS:
+		lock = &conn->send_buffer_lock;
+		break;
+	case PUT_REPLY:
+	case TU_GET_REPLY:
+	case MULTI_GET_REPLY:
+	case PUT_OFFT_REPLY:
+	case DELETE_REPLY:
+		lock = &conn->recv_buffer_lock;
+		break;
+	default:
+		log_fatal("faulty message type %d", message_type);
+		exit(EXIT_FAILURE);
+	}
 #ifdef CONNECTION_BUFFER_WITH_MUTEX_LOCK
-	pthread_mutex_lock(&conn->buffer_lock);
+	pthread_mutex_lock(lock);
 #else
-	pthread_spin_lock(&conn->buffer_lock);
+	pthread_spin_lock(lock);
 #endif
 
 	msg = _client_allocate_rdma_message(conn, message_payload_size, message_type);
 
 #ifdef CONNECTION_BUFFER_WITH_MUTEX_LOCK
-	pthread_mutex_unlock(&conn->buffer_lock);
+	pthread_mutex_unlock(lock);
 #else
-	pthread_spin_unlock(&conn->buffer_lock);
+	pthread_spin_unlock(lock);
 #endif
-	return msg;
+return msg;
+#endif
+	return NULL;
 }
 
-static msg_header *_client_allocate_rdma_message(connection_rdma *conn, int message_payload_size, int message_type)
+msg_header *client_allocate_rdma_message(connection_rdma *conn, int message_payload_size, int message_type)
 {
 	uint32_t message_size;
 	uint32_t padding = 0;
@@ -408,6 +437,7 @@ msg_header *__allocate_rdma_message(connection_rdma *conn, int message_payload_s
 	}
 
 #ifdef CONNECTION_BUFFER_WITH_MUTEX_LOCK
+	assert(0);
 	pthread_mutex_lock(&conn->buffer_lock);
 #else
 	pthread_spin_lock(&conn->buffer_lock);
@@ -417,6 +447,7 @@ msg_header *__allocate_rdma_message(connection_rdma *conn, int message_payload_s
 		//DPRINT("Backoff at allocate for message %d\n",message_type);
 
 #ifdef CONNECTION_BUFFER_WITH_MUTEX_LOCK
+		assert(0);
 		pthread_mutex_unlock(&conn->buffer_lock);
 #else
 		pthread_spin_unlock(&conn->buffer_lock);
@@ -490,9 +521,10 @@ msg_header *__allocate_rdma_message(connection_rdma *conn, int message_payload_s
 				++tries;
 				if (tries >= NUM_OF_TRIES) {
 #ifdef CONNECTION_BUFFER_WITH_MUTEX_LOCK
+					assert(0);
 					pthread_mutex_unlock(&conn->buffer_lock);
 #else
-					pthread_spin_unlock(&conn->buffer_lock);
+					pthread_spin_unlock(&conn->send_buffer_lock);
 #endif
 					return NULL;
 				}
@@ -507,9 +539,10 @@ msg_header *__allocate_rdma_message(connection_rdma *conn, int message_payload_s
 				local_offset = conn->offset;
 				if (++tries >= NUM_OF_TRIES) {
 #ifdef CONNECTION_BUFFER_WITH_MUTEX_LOCK
+					assert(0);
 					pthread_mutex_unlock(&conn->buffer_lock);
 #else
-					pthread_spin_unlock(&conn->buffer_lock);
+					pthread_spin_unlock(&conn->send_buffer_lock);
 #endif
 					return NULL;
 				}
@@ -565,6 +598,7 @@ allocate:
 	__sync_fetch_and_add(&conn->pending_sent_messages, 1);
 	assert(conn->offset % MESSAGE_SEGMENT_SIZE == 0);
 #ifdef CONNECTION_BUFFER_WITH_MUTEX_LOCK
+	assert(0);
 	pthread_mutex_unlock(&conn->buffer_lock);
 #else
 	pthread_spin_unlock(&conn->buffer_lock);
@@ -1319,7 +1353,7 @@ void *socket_thread(void *args)
 		pthread_spin_init(&conn->buffer_lock, PTHREAD_PROCESS_PRIVATE);
 #endif
 		crdma_add_connection_channel(channel, conn);
-		log_info("****** Built new connection successfully  ********");
+		log_info("Built new connection successfully");
 	}
 	return NULL;
 }
@@ -1499,7 +1533,9 @@ void crdma_init_client_connection_list_hosts(connection_rdma *conn, char **hosts
 		conn->reset_point = 0;
 		/*Inform the server that you are a client, patch but now I am in a hurry*/
 		//log_info("CLIENT: Informing server that I am a client and about my control location\n");
-		msg = allocate_rdma_message(conn, 0, I_AM_CLIENT);
+		pthread_mutex_lock(&conn->buffer_lock);
+		msg = client_allocate_rdma_message(conn, 0, I_AM_CLIENT);
+		pthread_mutex_unlock(&conn->buffer_lock);
 		/*control info*/
 		msg->reply =
 			(char *)(conn->recv_circular_buf->bitmap_size * BITS_PER_BITMAP_WORD * MESSAGE_SEGMENT_SIZE);
@@ -1983,7 +2019,7 @@ void _zero_rendezvous_locations_l(msg_header *msg, uint32_t length)
 	end_memory = start_memory + length;
 
 	while (start_memory < end_memory) {
-		((msg_header *)start_memory)->receive = 0;
+		((msg_header *)start_memory)->receive = 4;
 		//((msg_header *)start_memory)->reply = (void *)0xF40F2;
 		//((msg_header *)start_memory)->reply_length = 0;
 		*(uint32_t *)(start_memory + (MESSAGE_SEGMENT_SIZE - TU_TAIL_SIZE)) = 0;
@@ -2011,7 +2047,7 @@ void _zero_rendezvous_locations(msg_header *msg)
 	}
 
 	while (start_memory < end_memory) {
-		((msg_header *)start_memory)->receive = 0;
+		((msg_header *)start_memory)->receive = 999;
 		//((msg_header *)start_memory)->reply = (void *)0xF40F2;
 		//((msg_header *)start_memory)->reply_length = 0;
 		*(uint32_t *)((start_memory + MESSAGE_SEGMENT_SIZE) - TU_TAIL_SIZE) = 999;
@@ -2106,7 +2142,6 @@ void _update_rendezvous_location(connection_rdma *conn, int message_size)
 		    ((uint64_t)conn->rdma_memory_regions->remote_memory_buffer +
 		     conn->rdma_memory_regions->memory_region_length)) {
 			conn->rendezvous = (void *)conn->rdma_memory_regions->remote_memory_buffer;
-
 		} else {
 			conn->rendezvous = (void *)((uint64_t)conn->rendezvous + (uint32_t)message_size);
 		}
@@ -2211,7 +2246,7 @@ static void *client_spinning_thread_kernel(void *args)
 				if (all_requests_completed == 1) {
 					// TODO insert code to switch from current peer_mr to next_peer_mr
 
-					msg_header *reset = _client_allocate_rdma_message(conn, 0, SERVER_I_AM_READY);
+					msg_header *reset = client_allocate_rdma_message(conn, 0, SERVER_I_AM_READY);
 					log_warn("CLIENT: offset of I AM READY at %llu", (LLU)reset->local_offset);
 					reset->receive = SERVER_I_AM_READY;
 					// FIXME reset->data = new control location
@@ -2240,7 +2275,8 @@ static void *client_spinning_thread_kernel(void *args)
 					switch (hdr->type) {
 					case CLIENT_STOP_NOW:
 						if (++spin_counter % 1000000 == 0)
-							DPRINT("CLIENT: Trying to stop\n");
+							log_warn("CLIENT: Trying to stop\n");
+						assert(0);
 						stat = pthread_mutex_trylock(&conn->buffer_lock);
 						if (stat == 0) {
 							// TODO destroy and then recreate the circular buffer for the new peer_mr length
@@ -2277,6 +2313,7 @@ static void *client_spinning_thread_kernel(void *args)
 							conn->peer_mr->length, MESSAGE_SEGMENT_SIZE, RECEIVE_BUFFER);
 						conn->rendezvous = conn->rdma_memory_regions->remote_memory_buffer;
 #ifdef CONNECTION_BUFFER_WITH_MUTEX_LOCK
+						assert(0);
 						pthread_mutex_unlock(&conn->buffer_lock);
 #else
 						pthread_spin_unlock(&conn->buffer_lock);
@@ -2538,7 +2575,7 @@ static void *server_spinning_thread_kernel(void *args)
 					// the message's segments for possible future rendezvous points. This is done
 					// inside free_rdma_received_message function
 
-					DPRINT("\t * Disconnect operation bye bye mr Client garbage collection follows\n");
+					log_info("Disconnect operation bye bye mr Client garbage collection follows\n");
 					// FIXME these operations might need to be atomic with more than one spinning threads
 					struct channel_rdma *channel = conn->channel;
 					//Decrement spinning thread's connections and total connections

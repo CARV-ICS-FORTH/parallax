@@ -1284,7 +1284,6 @@ void handle_task(void *__task)
 			log_fatal("Region not found for key %s", get_req->key);
 			exit(EXIT_FAILURE);
 		}
-
 		task->reply_msg = (void *)((uint64_t)task->conn->rdma_memory_regions->local_memory_buffer +
 					   (uint64_t)task->msg->reply);
 		get_rep = (msg_get_rep *)((uint64_t)task->reply_msg + sizeof(msg_header));
@@ -1348,9 +1347,13 @@ void handle_task(void *__task)
 		task->overall_status = TASK_COMPLETED;
 		break;
 
-	case MULTI_GET_REQUEST:
+	case MULTI_GET_REQUEST: {
+		msg_value zero_value;
+		zero_value.size = 0;
+
 		multi_get = (msg_multi_get_req *)task->msg->data;
 		r_desc = krm_get_region(multi_get->seek_key, multi_get->seek_key_size);
+
 		if (r_desc == NULL) {
 			log_fatal("Region not found for key size %u:%s", multi_get->seek_key_size, multi_get->seek_key);
 			exit(EXIT_FAILURE);
@@ -1381,7 +1384,13 @@ void handle_task(void *__task)
 		buf->num_entries = 0;
 		if (sc->keyValue != NULL) {
 			msg_key *key = sc->keyValue;
+
 			msg_value *value = (msg_value *)((uint64_t)key + sizeof(msg_key) + key->size);
+			if (multi_get->fetch_keys_only)
+				value = (msg_value *)&zero_value;
+			else
+				value = (msg_value *)((uint64_t)key + sizeof(msg_key) + key->size);
+
 			if (msg_push_to_multiget_buf(key, value, buf) == KREON_SUCCESS) {
 				while (buf->num_entries <= multi_get->max_num_entries) {
 					if (getNext(sc) == END_OF_DATABASE) {
@@ -1389,7 +1398,11 @@ void handle_task(void *__task)
 						break;
 					}
 					key = sc->keyValue;
-					value = (msg_value *)((uint64_t)key + sizeof(msg_key) + key->size);
+					if (multi_get->fetch_keys_only)
+						value = (msg_value *)&zero_value;
+					else
+						value = (msg_value *)((uint64_t)key + sizeof(msg_key) + key->size);
+
 					if (msg_push_to_multiget_buf(key, value, buf) == KREON_FAILURE) {
 						break;
 					}
@@ -1433,6 +1446,7 @@ void handle_task(void *__task)
 		assert(task->reply_msg->request_message_local_addr != NULL);
 		task->overall_status = TASK_COMPLETED;
 		break;
+	}
 
 	case TEST_REQUEST:
 		task->reply_msg = (void *)((uint64_t)task->conn->rdma_memory_regions->local_memory_buffer +
