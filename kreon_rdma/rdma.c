@@ -1414,7 +1414,7 @@ void crdma_init_client_connection_list_hosts(connection_rdma *conn, char **hosts
 	ip = strtok_r(host_copy, ":", &strtok_state);
 	port = strtok_r(NULL, ":", &strtok_state);
 
-	log_info("Connecting to %s:%s\n", ip, port);
+	//log_info("Connecting to %s:%s\n", ip, port);
 
 	int ret = rdma_getaddrinfo(ip, port, &hints, &res);
 	if (ret) {
@@ -1610,7 +1610,7 @@ void crdma_init_generic_create_channel(struct channel_rdma *channel)
 	channel->spinning_conn = 0;
 
 	if (LIBRARY_MODE == CLIENT_MODE) {
-		log_info("Client: setting spinning threads number to 1");
+		//log_info("Client: setting spinning threads number to 1");
 		channel->spinning_num_th = 1;
 	} else {
 		log_info("Server: setting spinning threads number to %d", num_of_spinning_threads);
@@ -1618,8 +1618,8 @@ void crdma_init_generic_create_channel(struct channel_rdma *channel)
 	}
 
 	assert(channel->spinning_num_th <= SPINNING_NUM_TH);
-
-	log_info("**** Initializing connection lists per spinning thread ****");
+	if (LIBRARY_MODE == SERVER_MODE)
+		log_info("**** Initializing connection lists per spinning thread ****");
 
 	for (i = 0; i < channel->spinning_num_th; i++) {
 		pthread_mutex_init(&channel->spin_list_conn_lock[i], NULL);
@@ -1629,7 +1629,7 @@ void crdma_init_generic_create_channel(struct channel_rdma *channel)
 
 	for (i = 0; i < channel->spinning_num_th; i++) {
 		//INIT_LIST_HEAD( &channel->spin_list[i] );
-		DPRINT("\t initializing spin list per channel\n");
+
 		channel->spin_list[i] = init_simple_concurrent_list();
 		channel->spin_num[i] = 0;
 		sem_init(&channel->sem_spinning[i], 0, 0);
@@ -1747,11 +1747,12 @@ void crdma_init_generic_create_channel(struct channel_rdma *channel)
 				DPRINT("FATAL failed to pin spinning thread\n");
 				exit(EXIT_FAILURE);
 			}
-			DPRINT("***** opened channel in SERVER MODE -- successfully created %d spinning threads %d workers per spinner set affinity of poller\n",
-			       channel->spinning_num_th, WORKER_THREADS_PER_SPINNING_THREAD);
-		} else
-			DPRINT("***** opened channel in CLIENT MODE-- successfully created %d\n",
-			       channel->spinning_num_th);
+			log_info(
+				"***** opened channel in SERVER MODE -- successfully created %d spinning threads %d workers per spinner set affinity of poller\n",
+				channel->spinning_num_th, WORKER_THREADS_PER_SPINNING_THREAD);
+		} //else
+		//log_info("***** opened channel in CLIENT MODE-- successfully created %d\n",
+		//      channel->spinning_num_th);
 	}
 #endif
 }

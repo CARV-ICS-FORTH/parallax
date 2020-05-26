@@ -1310,6 +1310,7 @@ void handle_task(void *__task)
 				get_rep->offset_too_large = 0;
 			if (!get_req->fetch_value) {
 				get_rep->bytes_remaining = *(uint32_t *)value - get_req->offset;
+				get_rep->value_size = 0;
 				goto exit;
 			}
 			uint32_t value_bytes_remaining = *(uint32_t *)value - get_req->offset;
