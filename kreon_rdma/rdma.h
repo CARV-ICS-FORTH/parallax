@@ -430,6 +430,8 @@ int64_t crdma_get_message_consecutive_from_remote_MR(struct connection_rdma *con
 msg_header *allocate_rdma_message(connection_rdma *conn, int message_payload_size, int message_type);
 void init_rdma_message(connection_rdma *conn, msg_header *msg, uint32_t message_type, uint32_t message_size,
 		       uint32_t message_payload_size, uint32_t padding);
+
+msg_header *client_allocate_rdma_message(connection_rdma *conn, int message_payload_size, int message_type);
 msg_header *__allocate_rdma_message(connection_rdma *conn, int message_payload_size, int message_type,
 				    int rdma_allocation_type, int priority, work_task *task);
 

@@ -31,6 +31,7 @@ target_link_libraries(test_spills kreon)
 
 add_executable(test_circular_buffer test_circular_buffer.c
                                     ../utilities/circular_buffer.c)
+target_link_libraries(test_circular_buffer log)
 
 # Targets with dependencies to Zookeeper should be added in this if block
 if(Zookeeper_LIBRARY)

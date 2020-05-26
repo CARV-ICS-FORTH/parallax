@@ -270,6 +270,30 @@ int main(int argc, char *argv[])
 	krc_scan_close(sc);
 	log_info("full scan test Successfull");
 
+	log_info("Running a full scan fetching only keys");
+
+	sc = krc_scan_init(PREFETCH_ENTRIES, PREFETCH_MEM_SIZE);
+	krc_scan_set_start(sc, 7, minus_inf, KRC_GREATER_OR_EQUAL);
+	krc_scan_fetch_keys_only(sc);
+	for (i = BASE; i < (BASE + NUM_KEYS); i++) {
+		strncpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
+		sprintf(k->key_buf + strlen(KEY_PREFIX), "%llu", (long long unsigned)i);
+		k->key_size = strlen(k->key_buf);
+
+		if (!krc_scan_get_next(sc, &s_key, &s_key_size, &s_value, &s_value_size)) {
+			log_fatal("Test failed key %s invalid scanner (it shoulddn't!)", s_key);
+			exit(EXIT_FAILURE);
+		}
+		if (k->key_size != s_key_size || memcmp(k->key_buf, s_key, k->key_size) != 0) {
+			log_fatal("Test failed key %s not found scanner instead returned %d:%s", k->key_buf, s_key_size,
+				  s_key);
+			exit(EXIT_FAILURE);
+		}
+		//log_info("zero value key %s", k->key_buf);
+	}
+	krc_scan_close(sc);
+	log_info("full scan - only keys test Successfull");
+
 	int tuples = 0;
 	log_info("Testing stop key");
 	sc = krc_scan_init(PREFETCH_ENTRIES, PREFETCH_MEM_SIZE);

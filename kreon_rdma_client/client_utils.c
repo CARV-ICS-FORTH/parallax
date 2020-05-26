@@ -227,7 +227,7 @@ struct cu_region_desc *cu_get_first_region(void)
 static void _cu_add_conn_for_server(struct krm_server_name *server, uint64_t hash_key)
 {
 	char *host = server->RDMA_IP_addr;
-	log_info("Connection to RDMA IP %s", server->RDMA_IP_addr);
+	//log_info("Connection to RDMA IP %s", server->RDMA_IP_addr);
 	cu_conn_per_server *cps = (cu_conn_per_server *)malloc(sizeof(cu_conn_per_server));
 	int i;
 	for (i = 0; i < NUM_OF_CONNECTIONS_PER_SERVER; i++) {
@@ -271,7 +271,7 @@ retry:
 				pthread_mutex_unlock(&client_regions.conn_lock);
 				return NULL;
 			}
-			log_info("RDMA addr = %s", r_desc->region.primary.RDMA_IP_addr);
+			//log_info("RDMA addr = %s", r_desc->region.primary.RDMA_IP_addr);
 
 			++client_regions.lc_conn.c1;
 			_cu_add_conn_for_server(&r_desc->region.primary, hash_key);
@@ -292,10 +292,12 @@ void cu_close_open_connections()
 	/*iterate all open connections and send the disconnect message*/
 	HASH_ITER(hh, client_regions.root_cps, current, tmp)
 	{
-		log_info("Closing connections with server %s", current->server_id.kreon_ds_hostname);
+		//log_info("Closing connections with server %s", current->server_id.kreon_ds_hostname);
 		for (i = 0; i < NUM_OF_CONNECTIONS_PER_SERVER; i++) {
 			/*send disconnect msg*/
-			req_header = allocate_rdma_message(current->connections[i], 0, DISCONNECT);
+			pthread_mutex_lock(&current->connections[i]->buffer_lock);
+			req_header = client_allocate_rdma_message(current->connections[i], 0, DISCONNECT);
+			pthread_mutex_unlock(&current->connections[i]->buffer_lock);
 			req_header->reply = NULL;
 			req_header->reply_length = 0;
 			req_header->got_send_completion = 0;
@@ -307,7 +309,7 @@ void cu_close_open_connections()
 			/*wait until completion*/
 			wait_for_value((uint32_t *)&req_header->got_send_completion, 1);
 			free(current->connections[i]);
-			log_info("Closing connection number %d", i);
+			//log_info("Closing connection number %d", i);
 		}
 		HASH_DEL(client_regions.root_cps, current);
 		free(current); /* free it */

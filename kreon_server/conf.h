@@ -56,7 +56,7 @@ typedef enum kreon_op_status {
 
 #ifdef TU_RDMA_CONN_PER_SERVER
 /*in case of CONN_PER_SERVER*/
-#define NUM_OF_CONNECTIONS_PER_SERVER 4
+#define NUM_OF_CONNECTIONS_PER_SERVER 8
 #else
 #define NUM_OF_CONNECTIONS_PER_SERVER 1
 #endif
