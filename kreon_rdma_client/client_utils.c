@@ -162,7 +162,7 @@ uint8_t cu_init(char *zookeeper_ip, int zk_port)
 	strcpy(zk_host_port, zookeeper_ip);
 	*(char *)(zk_host_port + strlen(zookeeper_ip)) = ':';
 	sprintf(zk_host_port + strlen(zookeeper_ip) + 1, "%d", zk_port);
-	log_info("Initializing, connectiong to zookeeper at %s", zk_host_port);
+	//log_info("Initializing, connectiong to zookeeper at %s", zk_host_port);
 	globals_set_zk_host(zk_host_port);
 	free(zk_host_port);
 	cu_zh = zookeeper_init(globals_get_zk_host(), _cu_zk_watcher, 15000, 0, 0, 0);

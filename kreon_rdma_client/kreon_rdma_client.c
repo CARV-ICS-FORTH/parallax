@@ -40,7 +40,7 @@ struct krc_scanner {
 static char *neg_infinity = "00000000";
 static char *pos_infinity = "+oo";
 
-ZooLogLevel logLevel = ZOO_LOG_LEVEL_INFO;
+ZooLogLevel logLevel = ZOO_LOG_LEVEL_ERROR;
 
 static int krc_lib_init = 0;
 static pthread_mutex_t lib_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -515,9 +515,7 @@ uint8_t krc_exists(uint32_t key_size, void *key)
 	msg_header *rep_header = NULL;
 	msg_get_req *get_req = NULL;
 	msg_get_rep *get_rep = NULL;
-	//old school
-	//client_region *region = client_find_region(key, key_size);
-	//connection_rdma *conn = get_connection_from_region(region, (uint64_t)key);
+
 	struct cu_region_desc *r_desc = cu_get_region(key, key_size);
 	connection_rdma *conn = cu_get_conn_for_region(r_desc, (uint64_t)key);
 	uint8_t ret;

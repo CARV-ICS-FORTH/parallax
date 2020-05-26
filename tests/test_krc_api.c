@@ -8,9 +8,9 @@
 #include "../kreon_server/globals.h"
 
 #define PREFIX_TEST_KEYS 300
-#define PREFIX_1 "@0lala" //userakiaslala"
-#define PREFIX_2 "@0lalb" //userakiaslalb"
-#define PREFIX_3 "@0lalc" //userakiaslalc"
+#define PREFIX_1 "@0lala" // userakiaslala"
+#define PREFIX_2 "@0lalb" // userakiaslalb"
+#define PREFIX_3 "@0lalc" // userakiaslalc"
 #define infinity "+oo"
 #define NUM_KEYS 100000
 #define BASE 1000000
@@ -129,6 +129,7 @@ int main(int argc, char *argv[])
 		krc_put(k->key_size, k->key_buf, v->value_size, v->value_buf);
 	}
 	log_info("Population ended, testing gets");
+
 	get_buffer = NULL;
 	for (i = BASE; i < (BASE + NUM_KEYS); i++) {
 		strncpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
@@ -230,12 +231,14 @@ int main(int argc, char *argv[])
 			k->key_size = strlen(k->key_buf);
 
 			if (!krc_scan_get_next(sc, &s_key, &s_key_size, &s_value, &s_value_size)) {
-				log_fatal("Test failed key %s not found scanner reason scan invalid!(it shouldn't)",
+				log_fatal("Test failed key %s not found scanner reason scan "
+					  "invalid!(it shouldn't)",
 					  k->key_buf);
 				exit(EXIT_FAILURE);
 			}
 			if (k->key_size != s_key_size || memcmp(k->key_buf, s_key, k->key_size) != 0) {
-				log_fatal("Test failed key %s not found scanner instead returned %d:%s j was %d",
+				log_fatal("Test failed key %s not found scanner instead returned %d:%s "
+					  "j was %d",
 					  k->key_buf, s_key_size, s_key, j);
 				exit(EXIT_FAILURE);
 			}
@@ -289,7 +292,7 @@ int main(int argc, char *argv[])
 				  s_key);
 			exit(EXIT_FAILURE);
 		}
-		//log_info("zero value key %s", k->key_buf);
+		// log_info("zero value key %s", k->key_buf);
 	}
 	krc_scan_close(sc);
 	log_info("full scan - only keys test Successfull");
@@ -534,7 +537,8 @@ int main(int argc, char *argv[])
 		sc = krc_scan_init(PREFETCH_ENTRIES, PREFETCH_MEM_SIZE);
 		krc_scan_set_prefix_filter(sc, k->key_size, k->key_buf);
 		if (krc_scan_get_next(sc, &s_key, &s_key_size, &s_value, &s_value_size)) {
-			log_fatal("Test failed key %s invalid scanner should have returned zero instead got key %s",
+			log_fatal("Test failed key %s invalid scanner should have returned zero "
+				  "instead got key %s",
 				  s_key);
 			exit(EXIT_FAILURE);
 		}
