@@ -32,7 +32,7 @@ struct cu_regions {
 	pthread_mutex_t conn_lock;
 	struct channel_rdma *channel;
 	/*plus future other staff*/
-} cu_regions;
+};
 
 uint8_t cu_init(char *zookeeper_ip, int zk_port);
 struct cu_region_desc *cu_get_region(char *key, uint32_t key_size);
