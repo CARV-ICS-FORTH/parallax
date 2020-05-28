@@ -30,9 +30,6 @@
 
 #define MAX_USEC_BEFORE_SLEEPING 5000000
 
-#define RECORTADO 0
-
-#define RECV_NO_LOCKS 0 // 1 NO LOCKS, 0 LOCKS
 #define TU_CONNECTION_RC 1 // 1 -> RC, 0 -> UC
 
 // Allow to perform our own Reliable Connection. It can be used with TU_CONNECTION_RC 1 or 0
@@ -62,10 +59,6 @@
 #define SPINNING_NUM_TH_CLI 8 // 4
 #endif
 
-#define DEFAULT_PORT "5646"
-#define DEFAULT_PORT_NUM 5646
-//#define DEFAULT_HOST "192.168.2.106"
-#define DEFAULT_HOST "192.168.1.126"
 #define DEFAULT_DEV_IBV "mlx4_0"
 
 #define MAX_WR 4096
@@ -100,12 +93,12 @@ extern int LIBRARY_MODE; /*two modes for the communication rdma library SERVER a
 
 #define MAX_IDLE_ITERATIONS 1000000
 
-uint64_t *spinning_threads_core_ids;
-uint64_t *worker_threads_core_ids;
+extern uint64_t *spinning_threads_core_ids;
+extern uint64_t *worker_threads_core_ids;
 
-uint32_t num_of_spinning_threads;
-uint32_t num_of_worker_threads;
-uint32_t WORKER_THREADS_PER_SPINNING_THREAD;
+extern uint32_t num_of_spinning_threads;
+extern uint32_t num_of_worker_threads;
+extern uint32_t WORKER_THREADS_PER_SPINNING_THREAD;
 
 typedef struct spinning_thread_parameters {
 	struct channel_rdma *channel;

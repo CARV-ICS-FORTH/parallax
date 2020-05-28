@@ -46,6 +46,12 @@ int assign_job_to_worker(struct channel_rdma *channel, struct connection_rdma *c
 			 int spinning_thread_id, int sockfd);
 uint64_t wake_up_workers_operations = 0;
 
+uint64_t *spinning_threads_core_ids;
+uint64_t *worker_threads_core_ids;
+uint32_t num_of_spinning_threads;
+uint32_t num_of_worker_threads;
+uint32_t WORKER_THREADS_PER_SPINNING_THREAD;
+
 /*gesalous, helper functions for spinning thread*/
 uint32_t _wait_for_payload_arrival(msg_header *hdr);
 void _update_connection_score(int spinning_list_type, connection_rdma *conn);
