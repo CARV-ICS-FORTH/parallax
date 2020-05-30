@@ -11,13 +11,13 @@ Please note we have a code of conduct, please follow it in all your interactions
 
 2. Create a branch deriving as base from master branch.
 
-3. Install [pre-commit](https://carvgit.ics.forth.gr/evolve/kreon#pre-commit-hooks-using-pre-commit) hooks as described in the README.md.
+3. If you develop in the cluster append in your PATH the paths mentioned in the [README.md](https://carvgit.ics.forth.gr/evolve/kreon#development-in-cluster) and install [shfmt](https://carvgit.ics.forth.gr/evolve/kreon#install-shfmt).
 
-4. Install the [git commit template](https://carvgit.ics.forth.gr/evolve/kreon#git-commit-message-template) as described in the README.md.
+4. Install [pre-commit](https://pre-commit.com/) hooks as described in the [README.md](https://carvgit.ics.forth.gr/evolve/kreon#pre-commit-hooks-using-pre-commit).
 
-5. If you develop in the cluster append in your PATH the paths mentioned in the [README.md](https://carvgit.ics.forth.gr/evolve/kreon#development-in-cluster) and install [shfmt](https://carvgit.ics.forth.gr/evolve/kreon#install-shfmt).
+5. Install the [git commit template](https://carvgit.ics.forth.gr/evolve/kreon/blob/master/.git-commit-template) as described in the [README.md](https://carvgit.ics.forth.gr/evolve/kreon#git-commit-message-template).
 
-6. It is your responsibility to merge your branch with master branch whenever master is updated.
+6. It is your responsibility to synchronize your branch with master branch by rebasing/merging whenever master is updated.
 
 ## Pull Request Process
 
