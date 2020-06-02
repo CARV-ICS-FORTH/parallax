@@ -489,7 +489,7 @@ void merge_with_right_neighbor(leaf_node *curr, leaf_node *right, delete_request
 
 	assert(right == ((leaf_node *)(MAPPED + parent->p[parent_metadata.right_pos + 1].left[0])));
 
-	if (parent->header.numberOfEntriesInNode == 1) {
+	if (parent->header.numberOfEntriesInNode == 2) {
 		if (parent->header.type == rootNode) {
 			curr->header.type = leafRootNode;
 			curr->header.height = 0;
@@ -535,7 +535,7 @@ void merge_with_left_neighbor(leaf_node *curr, leaf_node *left, delete_request *
 	curr->header.numberOfEntriesInNode += left->header.numberOfEntriesInNode;
 	_index_node_binary_search_posret(parent, req->key_buf, KV_FORMAT, &parent_metadata);
 
-	if (parent->header.numberOfEntriesInNode == 1) {
+	if (parent->header.numberOfEntriesInNode == 2) {
 		if (parent->header.type == rootNode) {
 			curr->header.type = leafRootNode;
 			req->metadata.handle->db_desc->levels[req->metadata.level_id].root_w[req->metadata.active_tree] =
