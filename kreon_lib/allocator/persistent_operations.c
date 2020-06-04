@@ -6,32 +6,38 @@
 #include <log.h>
 
 /*persists the KV-log of a DB, not thread safe!*/
-void commit_db_log(db_descriptor *db_desc)
+void commit_db_log(db_descriptor *db_desc, commit_log_info *info)
 {
 	segment_header *current_segment;
+	segment_header *first;
+	segment_header *last;
 
 	/*sync data then metadata*/
-	current_segment = (segment_header *)(MAPPED + (uint64_t)db_desc->commit_log->last_kv_log);
-	while ((uint64_t)current_segment != MAPPED) {
+	first = (segment_header *)(MAPPED + (uint64_t)db_desc->commit_log->last_kv_log);
+	last = info->last_kv_log;
+	current_segment = first;
+
+	while (1) {
 		msync(current_segment, (size_t)SEGMENT_SIZE, MS_SYNC);
+		if (current_segment == last)
+			break;
 		current_segment = (segment_header *)(MAPPED + (uint64_t)current_segment->next_segment);
 	}
 	/*write log info*/
-	if (db_desc->KV_log_first_segment != NULL)
-		db_desc->commit_log->first_kv_log =
-			(segment_header *)((uint64_t)db_desc->KV_log_first_segment - MAPPED);
+	if (info->first_kv_log != NULL)
+		db_desc->commit_log->first_kv_log = (segment_header *)((uint64_t)info->first_kv_log - MAPPED);
 	else
 		db_desc->commit_log->first_kv_log = NULL;
 
-	if (db_desc->KV_log_last_segment != NULL)
-		db_desc->commit_log->last_kv_log = (segment_header *)((uint64_t)db_desc->KV_log_last_segment - MAPPED);
+	if (info->last_kv_log != NULL)
+		db_desc->commit_log->last_kv_log = (segment_header *)((uint64_t)info->last_kv_log - MAPPED);
 	else
 		db_desc->commit_log->last_kv_log = NULL;
 
-	db_desc->commit_log->kv_log_size = db_desc->KV_log_size;
+	db_desc->commit_log->kv_log_size = info->kv_log_size;
 
 	if (msync(db_desc->commit_log, sizeof(commit_log_info), MS_SYNC) == -1) {
-		log_info("FATAL msync failed");
+		log_fatal("msync failed");
 		exit(EXIT_FAILURE);
 	}
 	return;
@@ -39,39 +45,52 @@ void commit_db_log(db_descriptor *db_desc)
 
 void commit_db_logs_per_volume(volume_descriptor *volume_desc)
 {
+	struct commit_log_info info;
 	NODE *node;
 	db_descriptor *db_desc;
 	node = get_first(volume_desc->open_databases);
 
 	while (node != NULL) {
+		db_desc = (db_descriptor *)(node->data);
+		/*stop level 0 writers for this db*/
+		RWLOCK_WRLOCK(&db_desc->levels[0].guard_of_level.rx_lock);
+		/*spinning*/
+		spin_loop(&(db_desc->levels[0].active_writers), 0);
+
 #if LOG_WITH_MUTEX
 		MUTEX_LOCK(&db_desc->lock_log);
 #else
 		SPIN_LOCK(&db_desc->lock_log);
 #endif
-		db_desc = (db_descriptor *)(node->data);
-		if (db_desc->commit_log->kv_log_size != db_desc->KV_log_size)
-			commit_db_log(db_desc);
-		node = node->next;
+		info.first_kv_log = (segment_header *)db_desc->KV_log_first_segment;
+		info.last_kv_log = (segment_header *)db_desc->KV_log_last_segment;
+		info.kv_log_size = db_desc->KV_log_size;
 
 #if LOG_WITH_MUTEX
 		MUTEX_UNLOCK(&db_desc->lock_log);
 #else
 		SPIN_UNLOCK(&db_desc->lock_log);
 #endif
+		RWLOCK_UNLOCK(&db_desc->levels[0].guard_of_level.rx_lock);
+
+		if (db_desc->commit_log->kv_log_size != db_desc->KV_log_size)
+			commit_db_log(db_desc, &info);
+		node = node->next;
 	}
 }
 
 /*persists a consistent snapshot of the system*/
 void snapshot(volume_descriptor *volume_desc)
 {
+	struct commit_log_info log_info;
 	pr_db_group *db_group;
 	pr_db_entry *db_entry;
 	//forest *new_forest;
 	node_header *old_root;
 	uint64_t a, b;
 	uint64_t c;
-	uint32_t i, j;
+	uint32_t i;
+	uint32_t j;
 	int32_t dirty = 0;
 	uint8_t level_id;
 	int l;
@@ -109,7 +128,7 @@ void snapshot(volume_descriptor *volume_desc)
 						(uint64_t)volume_desc->mem_catalogue->db_group_index[db_desc->group_id]);
 
 			//log_info("group epoch %llu  dev_catalogue %llu", (LLU)db_group->epoch,
-				// volume_desc->dev_catalogue->epoch);
+			// volume_desc->dev_catalogue->epoch);
 			if (db_group->epoch <= volume_desc->dev_catalogue->epoch) {
 				//log_info("cow for db_group %llu", (LLU)db_group);
 				/*do cow*/
@@ -181,7 +200,10 @@ void snapshot(volume_descriptor *volume_desc)
 			db_entry->commit_log = (uint64_t)db_desc->commit_log - MAPPED;
 
 			/*L0 bounds*/
-			commit_db_log(db_desc);
+			log_info.first_kv_log = (segment_header *)db_desc->KV_log_first_segment;
+			log_info.last_kv_log = (segment_header *)db_desc->KV_log_last_segment;
+			log_info.kv_log_size = db_desc->KV_log_size;
+			commit_db_log(db_desc, &log_info);
 			db_desc->L0_start_log_offset = db_desc->KV_log_size;
 			db_desc->L0_end_log_offset = db_desc->KV_log_size;
 			db_entry->L0_start_log_offset = (uint64_t)db_desc->L0_start_log_offset;
@@ -219,7 +241,7 @@ void snapshot(volume_descriptor *volume_desc)
 				log_debug("sync_signal = %llu ", (LLU)b);
 				log_debug("Result = %llu \n", (LLU)c);
 #endif
-				*(uint64_t *)((uint64_t)(volume_desc->allocator_state) + i) = c;
+				*(uint64_t *)((uint64_t)(volume_desc->allocator_state) + l) = c;
 			}
 		}
 		memset(volume_desc->sync_signal, 0x00, volume_desc->allocator_size);

@@ -51,14 +51,6 @@
 #define MAX_HEIGHT 9
 #define MIN_ENTRIES_TO_SPILL NUM_OF_SPILL_THREADS_PER_DB - 1
 
-#define PRIMARY_L0_INSERT 0x000000AB
-#define RECOVERY_OPERATION 0x000000AC
-#define BACKUP_OPERATION 0x000000AF
-#define SPILL_OPERATION 0x000000AA
-
-#define KEYSIZE_BUF_DATASIZE_BUF 0x0A
-#define KEYSIZE_DATASIZE_BUF 0x0F
-
 /**
  * FLAGS used of during _insert
  */
@@ -94,6 +86,11 @@ typedef struct thread_dest {
 	volatile short ready;
 	char pad[40];
 } thread_dest;
+
+struct lookup_reply {
+	void *addr;
+	uint8_t lc_failed;
+};
 
 typedef enum {
 	leafNode = 590675399,
@@ -338,7 +335,7 @@ typedef struct recovery_request {
 void recovery_worker(void *);
 
 void snapshot(volume_descriptor *volume_desc);
-void commit_db_log(db_descriptor *db_desc);
+void commit_db_log(db_descriptor *db_desc, commit_log_info *info);
 void commit_db_logs_per_volume(volume_descriptor *volume_desc);
 
 typedef struct rotate_data {
