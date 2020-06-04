@@ -1581,24 +1581,16 @@ void free_logical_node(allocator_descriptor *allocator_desc, node_header *node_i
 }
 #endif
 
-static inline void *lookup_in_tree(void *key, node_header *node)
+static inline struct lookup_reply lookup_in_tree(void *key, node_header *root)
 {
+	struct lookup_reply rep;
 	node_header *curr_node;
 	void *key_addr_in_leaf;
 	void *next_addr;
 	uint64_t v1 = 0, v2 = 0;
-	uint32_t tries;
 	uint32_t index_key_len;
-	tries = 0;
-retry:
-	if (++tries > 10000000) {
-		log_fatal("possible deadlock detected failed to read after 100K tries v2 "
-			  "is %llu v1 is %llu",
-			  v2, v1);
-		raise(SIGINT);
-		exit(EXIT_FAILURE);
-	}
-	curr_node = node;
+
+	curr_node = root;
 
 	while (curr_node->type != leafNode && curr_node->type != leafRootNode) {
 		v2 = curr_node->v2;
@@ -1609,12 +1601,14 @@ retry:
 			// log_info("failed at node height %d v1 %llu v2 % llu\n",
 			// curr_node->height, (LLU)curr_node->v1,
 			//	 (LLU)curr_node->v2);
-			++tries;
-			goto retry;
+			rep.addr = NULL;
+			rep.lc_failed = 1;
+			return rep;
 		}
 
 		curr_node = (void *)(MAPPED + *(uint64_t *)next_addr);
 	}
+
 	v2 = curr_node->v2;
 	/* log_debug("curr node - MAPPEd %p",MAPPED-(uint64_t)curr_node); */
 	key_addr_in_leaf = __find_key_addr_in_leaf((leaf_node *)curr_node, (struct splice *)key);
@@ -1624,32 +1618,40 @@ retry:
 		// log_info("failed at node height %d v1 %llu v2 % llu\n",
 		// curr_node->height, (LLU)curr_node->v1,
 		//	 (LLU)curr_node->v2);
-		++tries;
-		goto retry;
+		rep.addr = NULL;
+		rep.lc_failed = 1;
+		return rep;
 	}
 
-	if (key_addr_in_leaf == NULL) /*snapshot and retry, only for outer tree case*/
-		return NULL;
+	if (key_addr_in_leaf == NULL) {
+		rep.addr = NULL;
+		rep.lc_failed = 0;
+	}
 
 	key_addr_in_leaf = (void *)MAPPED + *(uint64_t *)key_addr_in_leaf;
 	index_key_len = *(uint32_t *)key_addr_in_leaf;
-
-	return (void *)(uint64_t)key_addr_in_leaf + 4 + index_key_len;
+	rep.addr = (void *)(uint64_t)key_addr_in_leaf + 4 + index_key_len;
+	rep.lc_failed = 0;
+	return rep;
 }
 
 /*this function will be reused in various places such as deletes*/
 void *__find_key(db_handle *handle, void *key, char SEARCH_MODE)
 {
-	void *value;
+	struct lookup_reply rep;
 	node_header *root_w;
 	node_header *root_r;
 	uint32_t active_tree;
+	uint32_t tries;
 	uint8_t level_id;
 	uint8_t tree_id;
-	value = NULL;
 
 	for (level_id = 0; level_id < MAX_LEVELS; level_id++) {
 		/*first look the current active tree of the level*/
+		tries = 0;
+	retry_1:
+		if (tries % 1000000 == 9999999)
+			log_warn("possible deadlock detected lamport counters fail after 1M tries");
 		active_tree = handle->db_desc->levels[level_id].active_tree;
 		// log_warn("active tree of level %lu is %lu", level_id, active_tree);
 		root_w = handle->db_desc->levels[level_id].root_w[active_tree];
@@ -1658,33 +1660,54 @@ void *__find_key(db_handle *handle, void *key, char SEARCH_MODE)
 		if (root_w != NULL) {
 			/* if (level_id == 1) */
 			/* 	BREAKPOINT; */
-			value = lookup_in_tree(key, root_w);
-		} else if (root_r != NULL)
-			value = lookup_in_tree(key, root_r);
+			rep = lookup_in_tree(key, root_w);
+			if (rep.lc_failed) {
+				++tries;
+				goto retry_1;
+			}
+		} else if (root_r != NULL) {
+			rep = lookup_in_tree(key, root_r);
 
-		if (value != NULL)
+			if (rep.lc_failed) {
+				++tries;
+				goto retry_1;
+			}
+		}
+
+		if (rep.addr != NULL)
 			goto finish;
 
 		/*search the rest trees of the level*/
 		for (tree_id = 0; tree_id < NUM_TREES_PER_LEVEL; tree_id++) {
 			if (tree_id != active_tree) {
+				tries = 0;
+			retry_2:
+				if (tries % 1000000 == 9999999)
+					log_warn("possible deadlock detected lamport counters fail after 1M tries");
 				root_w = handle->db_desc->levels[level_id].root_w[tree_id];
 				root_r = handle->db_desc->levels[level_id].root_w[tree_id];
-				if (root_w != NULL)
-					value = lookup_in_tree(key, root_w);
-				else if (root_r != NULL) {
+				if (root_w != NULL) {
+					rep = lookup_in_tree(key, root_w);
+					if (rep.lc_failed) {
+						++tries;
+						goto retry_2;
+					}
+				} else if (root_r != NULL) {
 					root_r = handle->db_desc->levels[level_id].root_r[tree_id];
-					value = lookup_in_tree(key, root_r);
+					rep = lookup_in_tree(key, root_r);
+					if (rep.lc_failed) {
+						++tries;
+						goto retry_2;
+					}
 				}
-				if (value != NULL)
+				if (rep.addr != NULL)
 					goto finish;
 			}
 		}
 	}
 
 finish:
-
-	return value ? value : NULL;
+	return rep.addr;
 }
 
 /* returns the addr where the value of the KV pair resides */

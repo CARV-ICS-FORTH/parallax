@@ -9,7 +9,7 @@
 #include "../kreon_lib/btree/uthash.h"
 #include "../kreon_rdma/rdma.h"
 #define KRM_MAX_REGIONS 1024
-#define KRM_MAX_DS_REGIONS 256
+#define KRM_MAX_DS_REGIONS 512
 #define KRM_MAX_KEY_SIZE 64
 #define KRM_MAX_REGION_ID_SIZE 16
 #define KRM_MAX_BACKUPS 4

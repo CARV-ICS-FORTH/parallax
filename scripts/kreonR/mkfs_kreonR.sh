@@ -1,6 +1,6 @@
 #!/bin/bash
 ZOO_BIN=/home1/private/gesalous/zookeeper-3.4.10/bin
-CREATE_REGIONS=/home1/private/gesalous/carvgit/kreon/scripts/kreonR/create_regions.sh
+CREATE_REGIONS=./create_regions.sh
 ACL=ZOO_ACL_UNSAFE
 HOST_FILE=$1
 REGIONS_FILE=$2

@@ -96,6 +96,9 @@ static uint8_t krm_check_ld_regions_sorted(struct krm_leader_regions *ld_regions
 			if (zku_key_cmp(ld_regions->regions[i].max_key_size, ld_regions->regions[i + 1].min_key,
 					ld_regions->regions[i].max_key_size, ld_regions->regions[i].max_key) != 0) {
 				log_fatal("Gap left in key range for region %s", ld_regions->regions[i].id);
+				log_info("Compared key %s with key %s", ld_regions->regions[i + 1].min_key,
+					 ld_regions->regions[i].max_key);
+				raise(SIGINT);
 				exit(EXIT_FAILURE);
 			}
 		}
