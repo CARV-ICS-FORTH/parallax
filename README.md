@@ -136,18 +136,9 @@ the index.html file in that folder.
 
 # Development in cluster
 
-For development in the cluster append the paths below in your PATH environment variable:
+For development in the cluster source the script to get the latest tools:
 
-	export PATH=/archive/users/gxanth/llvm-project/build/bin:$PATH
-	export PATH=/archive/users/gxanth/git/bin:$PATH
-	export PATH=/archive/users/gxanth/gcc-9.1/bin:$PATH
-	export LD_LIBRARY_PATH=/archive/users/gxanth/gcc-9.1/lib64:$LD_LIBRARY_PATH
-	export PATH=$PATH:/archive/users/gxanth/go/bin
-	export PATH=/archive/users/gxanth/shellcheck-stable:$PATH
-	export PATH=$PATH:/archive/users/gxanth/go/bin
-	export PATH=$PATH:$HOME/go/bin
-	export CC=gcc-9.1
-	export CXX=g++-9.1
+	source kreon/scripts/devel-tools/env-vars.sh
 
 # Install shfmt
 
@@ -171,10 +162,6 @@ After running cmake .. in the build directory run:
 	ln -sf ../build/compile_commands.json
 
 # Pre commit hooks using pre-commit
-
-Add the path below to your PATH environment variable:
-
-    	PATH=/archive/users/gxanth/git/bin:$PATH
 
 To install pre-commit:
 
