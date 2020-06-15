@@ -1626,12 +1626,13 @@ static inline struct lookup_reply lookup_in_tree(void *key, node_header *root)
 	if (key_addr_in_leaf == NULL) {
 		rep.addr = NULL;
 		rep.lc_failed = 0;
+		return rep;
+	} else {
+		key_addr_in_leaf = (void *)MAPPED + *(uint64_t *)key_addr_in_leaf;
+		index_key_len = *(uint32_t *)key_addr_in_leaf;
+		rep.addr = (void *)(uint64_t)key_addr_in_leaf + 4 + index_key_len;
+		rep.lc_failed = 0;
 	}
-
-	key_addr_in_leaf = (void *)MAPPED + *(uint64_t *)key_addr_in_leaf;
-	index_key_len = *(uint32_t *)key_addr_in_leaf;
-	rep.addr = (void *)(uint64_t)key_addr_in_leaf + 4 + index_key_len;
-	rep.lc_failed = 0;
 	return rep;
 }
 
