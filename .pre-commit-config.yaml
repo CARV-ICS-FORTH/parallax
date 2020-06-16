@@ -17,14 +17,19 @@ repos:
     rev: v0.6.9
     hooks:
     - id: cmake-format
-    # - id: cmake-lint CMakeLists needs fixing before using it.
+
 -   repo: git://github.com/doublify/pre-commit-clang-format
     rev: master
     hooks:
-    -   id: clang-format
+    - id: clang-format
 
 -   repo: https://github.com/jumanjihouse/pre-commit-hooks
     rev: master
     hooks:
     - id: shellcheck
     - id: shfmt
+
+-   repo: https://github.com/psf/black
+    rev: stable
+    hooks:
+    - id: black
