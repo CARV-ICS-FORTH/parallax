@@ -2,6 +2,7 @@ image: carvicsforth/arch_carv:latest
 
 stages:
   - build
+  - deploy
 
 build_gcc:
   stage: build
@@ -42,6 +43,17 @@ build_clang-tidy:
     - cmake .. "-DCMAKE_C_CLANG_TIDY=/bin/clang-tidy;-checks=*"
     - make mkfs.kreon;make kreon;make kreon-shared
     - make ycsb-edb;make test_scans;make test_spills;make test_spillscans;make test_deletes;
+
+install_kreon:
+  image: carvicsforth/ubuntu_carv:latest
+  stage: deploy
+  variables:
+    KREON_INSTALL_PATH : "installtest"
+  script:
+    - mkdir -p build;cd build
+    - cmake .. -DKREON_BUILD_CPACK=True -DCMAKE_BUILD_TYPE=Debug -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_COMPILER=gcc-10 -DCMAKE_CXX_COMPILER=g++-10
+    - make install DESTDIR=$KREON_INSTALL_PATH;mv $KREON_INSTALL_PATH ../scripts/;cd ../scripts
+    - ./verify-installed-files.py $KREON_INSTALL_PATH
 
 pre-commit:
   stage: build
