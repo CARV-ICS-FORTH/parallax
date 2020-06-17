@@ -1,4 +1,3 @@
-#define _LARGEFILE64_SOURCE
 #include <stdio.h>
 #include <semaphore.h>
 #include <time.h>
@@ -83,8 +82,8 @@ void mount_volume(char *volume_name, int64_t start, int64_t size); /*Called once
 void clean_log_entries(void *volume_desc);
 void mark_block(volume_descriptor *volume_desc, void *block_address, uint32_t length, char free, uint64_t *bit_idx);
 
-int32_t lread(int32_t fd, off64_t offset, int whence, void *ptr, size_t size);
-int32_t lwrite(int32_t fd, off64_t offset, int whence, void *ptr, ssize_t size);
+int32_t lread(int32_t fd, off_t offset, int whence, void *ptr, size_t size);
+int32_t lwrite(int32_t fd, off_t offset, int whence, void *ptr, ssize_t size);
 
 void mount_volume(char *volume_name, int64_t start, int64_t unused_size)
 {
@@ -128,23 +127,23 @@ void mount_volume(char *volume_name, int64_t start, int64_t unused_size)
  *     number of bytes read on success.
  * Note: This reads absolute offsets in the disk.
  */
-int32_t lread(int32_t fd, off64_t offset, int whence, void *ptr, size_t size)
+int32_t lread(int32_t fd, off_t offset, int whence, void *ptr, size_t size)
 {
 	if (size % 4096 != 0) {
 		printf("FATAL read request size %d not a multiple of 4k, harmful\n", (int32_t)size);
 		exit(-1);
 	}
 	if (offset % 4096 != 0) {
-		printf("FATAL read-seek request size %lld not a multiple of 4k, harmful\n", (long long)offset);
+		printf("FATAL read-seek request size %ld not a multiple of 4k, harmful\n", offset);
 		exit(-1);
 	}
-	if (lseek64(fd, (off64_t)offset, whence) == -1) {
-		fprintf(stderr, "lseek: fd:%d, offset:%llu, whence:%d, size:%lu\n", fd, offset, whence, size);
+	if (lseek(fd, offset, whence) == -1) {
+		fprintf(stderr, "lseek: fd:%d, offset:%ld, whence:%d, size:%lu\n", fd, offset, whence, size);
 		perror("lread");
 		return -1;
 	}
 	if (read(fd, ptr, size) == -1) {
-		fprintf(stderr, "lread-!: fd:%d, offset:%llu, whence:%d, size:%lu\n", fd, offset, whence, size);
+		fprintf(stderr, "lread-!: fd:%d, offset:%ld, whence:%d, size:%lu\n", fd, offset, whence, size);
 		perror("lread");
 		return -1;
 	}
@@ -158,14 +157,14 @@ int32_t lread(int32_t fd, off64_t offset, int whence, void *ptr, size_t size)
  *     number of bytes written on success.
  * Note: This writes absolute offsets in the disk.
  */
-int32_t lwrite(int32_t fd, off64_t offset, int whence, void *ptr, ssize_t size)
+int32_t lwrite(int32_t fd, off_t offset, int whence, void *ptr, ssize_t size)
 {
 	ssize_t total_bytes_written = 0;
 	ssize_t bytes_written = 0;
 	assert(size > 0);
 	//log_info("Bytes to write %lld",size);
-	if (lseek64(fd, (off64_t)offset, whence) == -1) {
-		printf("lwrite: fd:%d, offset:%llu, whence:%d, size:%lu\n", fd, offset, whence, size);
+	if (lseek(fd, offset, whence) == -1) {
+		printf("lwrite: fd:%d, offset:%ld, whence:%d, size:%lu\n", fd, offset, whence, size);
 		perror("lwrite");
 		exit(EXIT_FAILURE);
 	}
@@ -281,7 +280,7 @@ int32_t volume_init(char *dev_name, int64_t start, int64_t size, int typeOfVolum
 	memset(buffer + sizeof(int64_t), 0xFF, DEVICE_BLOCK_SIZE - sizeof(int64_t));
 
 	for (i = 0; i < bitmap_size_in_blocks; i++) {
-		if (lwrite(fd, (off64_t)offset, SEEK_SET, buffer, (size_t)DEVICE_BLOCK_SIZE) == -1) {
+		if (lwrite(fd, offset, SEEK_SET, buffer, (size_t)DEVICE_BLOCK_SIZE) == -1) {
 			log_fatal("code = %d,  ERROR = %s\n", errno, strerror(errno));
 			printf("Writing at offset %llu\n", (LLU)offset);
 			return -1;
@@ -309,14 +308,14 @@ int32_t volume_init(char *dev_name, int64_t start, int64_t size, int typeOfVolum
 
 	/*write it now*/
 	offset = start + 4096 + (FREE_LOG_SIZE * 4096);
-	if (lwrite(fd, (off64_t)offset, SEEK_SET, buffer, (size_t)DEVICE_BLOCK_SIZE) == -1) {
+	if (lwrite(fd, offset, SEEK_SET, buffer, (size_t)DEVICE_BLOCK_SIZE) == -1) {
 		fprintf(stderr, "Function = %s, code = %d,  ERROR = %s\n", __func__, errno, strerror(errno));
 		return -1;
 	}
 
 	/*mark also it's buddy block */
 	offset += 4096;
-	if (lwrite(fd, (off64_t)offset, SEEK_SET, buffer, (size_t)DEVICE_BLOCK_SIZE) == -1) {
+	if (lwrite(fd, offset, SEEK_SET, buffer, (size_t)DEVICE_BLOCK_SIZE) == -1) {
 		fprintf(stderr, "Function = %s, code = %d,  ERROR = %s\n", __func__, errno, strerror(errno));
 	}
 
@@ -325,7 +324,7 @@ int32_t volume_init(char *dev_name, int64_t start, int64_t size, int typeOfVolum
 	memset(buffer, 0x00, DEVICE_BLOCK_SIZE);
 
 	for (i = 0; i < FREE_LOG_SIZE; i++) {
-		if (lwrite(fd, (off64_t)offset, SEEK_SET, buffer, DEVICE_BLOCK_SIZE) == -1) {
+		if (lwrite(fd, offset, SEEK_SET, buffer, DEVICE_BLOCK_SIZE) == -1) {
 			fprintf(stderr, "Function = %s, code = %d,  ERROR = %s\n", __func__, errno, strerror(errno));
 			return -1;
 		}
@@ -353,14 +352,14 @@ int32_t volume_init(char *dev_name, int64_t start, int64_t size, int typeOfVolum
 	/*zero metadata of system segment*/
 	char *zeroes = malloc(sizeof(segment_header));
 	memset(zeroes, 0x00, sizeof(segment_header));
-	if (lwrite(fd, (off64_t)offset, SEEK_SET, zeroes, sizeof(segment_header)) == -1) {
+	if (lwrite(fd, offset, SEEK_SET, zeroes, sizeof(segment_header)) == -1) {
 		log_fatal("code = %d,  ERROR = %s\n", errno, strerror(errno));
 		return -1;
 	}
 	free(zeroes);
 	offset += sizeof(segment_header);
 	log_info("Writing system catalogue at offset %llu\n", (LLU)offset);
-	if (lwrite(fd, (off64_t)offset, SEEK_SET, &sys_catalogue, (size_t)(sizeof(pr_system_catalogue))) == -1) {
+	if (lwrite(fd, offset, SEEK_SET, &sys_catalogue, (size_t)(sizeof(pr_system_catalogue))) == -1) {
 		log_fatal("code = %d,  ERROR = %s\n", errno, strerror(errno));
 		return -1;
 	}
@@ -373,7 +372,7 @@ int32_t volume_init(char *dev_name, int64_t start, int64_t size, int typeOfVolum
 	dev_superblock->unmapped_blocks = unmapped_blocks;
 	dev_superblock->system_catalogue = (pr_system_catalogue *)(offset);
 
-	if (lwrite(fd, (off64_t)start, SEEK_SET, dev_superblock, sizeof(superblock)) == -1) {
+	if (lwrite(fd, start, SEEK_SET, dev_superblock, sizeof(superblock)) == -1) {
 		log_fatal("code = %d,  ERROR = %s\n", errno, strerror(errno));
 		return -1;
 	}

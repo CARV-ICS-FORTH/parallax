@@ -9,8 +9,8 @@
 #include <ctype.h>
 #include "allocator.h"
 
-int32_t lread(int32_t fd, off64_t offset, int whence, void *ptr, size_t size);
-int32_t lwrite(int32_t fd, off64_t offset, int whence, void *ptr, size_t size);
+int32_t lread(int32_t fd, off_t offset, int whence, void *ptr, size_t size);
+int32_t lwrite(int32_t fd, off_t offset, int whence, void *ptr, size_t size);
 
 int main(int argc, char *argv[])
 {
@@ -33,7 +33,7 @@ int main(int argc, char *argv[])
 	fd = volume_init(argv[1], start, size, 0);
 	printf("\n\n----- Successfully initialized device -------\n\n");
 
-	bytes_read = lread(fd, (off64_t)0, SEEK_SET, &sp, DEVICE_BLOCK_SIZE);
+	bytes_read = lread(fd, 0, SEEK_SET, &sp, DEVICE_BLOCK_SIZE);
 	if (bytes_read == -1) {
 		fprintf(stderr, "(lread) Function = %s, code = %d,  ERROR = %s\n", __func__, errno, strerror(errno));
 		return -1;
@@ -48,7 +48,7 @@ int main(int argc, char *argv[])
 	printf("************* </Superblock> ***********\n");
 
 	bytes_read =
-		lread(fd, (off64_t)sp.system_catalogue, SEEK_SET, &dev_catalogue, (size_t)sizeof(pr_system_catalogue));
+		lread(fd, (off_t)sp.system_catalogue, SEEK_SET, &dev_catalogue, (size_t)sizeof(pr_system_catalogue));
 	if (bytes_read == -1) {
 		fprintf(stderr, "(lread) Function = %s, code = %d,  ERROR = %s\n", __func__, errno, strerror(errno));
 		return -1;

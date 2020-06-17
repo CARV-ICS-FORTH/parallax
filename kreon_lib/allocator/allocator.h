@@ -18,7 +18,6 @@
 #include "../../utilities/spin_loop.h"
 #include "../btree/conf.h"
 
-#define off64_t unsigned long long
 #define FREE_BLOCK 124
 
 typedef enum volume_state { VOLUME_IS_OPEN = 0x00, VOLUME_IS_CLOSING = 0x01, VOLUME_IS_CLOSED = 0x02 } volume_state;
