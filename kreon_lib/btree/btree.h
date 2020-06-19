@@ -38,7 +38,6 @@
 #define PREFIX_SIZE 12
 
 #define SPILL_BUFFER_SIZE 32 * 1024
-#define SIZEOF_SEGMENT_IN_LOG_BUFFER 2097152
 #define MAX_HEIGHT 9
 /**
  * FLAGS used of during _insert
@@ -81,14 +80,6 @@ typedef enum {
 	leafRootNode = 748939994, /*special case for a newly created tree*/
 	invalid
 } nodeType_t;
-
-typedef enum {
-	NOT_USED = 0,
-	IN_TRANSIT,
-	IN_TRANSIT_DIRTY,
-	READY_TO_PERSIST,
-	PERSISTED,
-} replica_tree_status;
 
 /*descriptor describing a spill operation and its current status*/
 typedef enum {
@@ -349,12 +340,8 @@ typedef struct db_descriptor {
 	int32_t reference_count;
 	int32_t group_id;
 	int32_t group_index;
-	/*gxanth new staff*/
 	volatile char dirty;
 	enum db_status stat;
-	// void *(*createEmptyNode)(allocator_descriptor *allocator_desc, db_handle
-	// *handle, nodeType_t type,
-	//			 char allocation_code);
 } __attribute__((packed)) __attribute__((aligned)) db_descriptor;
 
 typedef struct db_handle {
@@ -527,8 +514,8 @@ lock_table *_find_position(lock_table **table, node_header *node);
 #define ABSOLUTE_ADDRESS(X) ((uint64_t)X - MAPPED)
 #define REAL_ADDRESS(X) ((void *)(uint64_t)(MAPPED + X))
 #define VALUE_SIZE_OFFSET(KEY_SIZE, KEY) (sizeof(uint32_t) + KEY_SIZE + KEY)
-#define SERIALIZE_KEY(buf, key, key_size)                                                                              \
-	*(uint32_t *)buf = key_size;                                                                                   \
+#define SERIALIZE_KEY(buf, key, key_size) \
+	*(uint32_t *)buf = key_size;      \
 	memcpy(buf + 4, key, key_size)
 #define KV_MAX_SIZE (4096 + 8)
 #define likely(x) __builtin_expect((x), 1)

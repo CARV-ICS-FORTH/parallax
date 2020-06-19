@@ -35,7 +35,7 @@ circular_buffer *create_and_init_circular_buffer(char *memory_region, uint32_t m
 	c->last_addr = memory_region;
 
 	c->type = type;
-	memset(c->bitmap, 0xFF, c->bitmap_size * sizeof(uint64_t));
+	memset((void *)c->bitmap, 0xFF, c->bitmap_size * sizeof(uint64_t));
 	if (type == RECEIVE_BUFFER) {
 		c->bitmap[c->bitmap_size - 1] = 0x7FFFFFFFFFFFFFFF;
 	}

@@ -34,26 +34,11 @@
 #define PREFIX_STATISTICS_NO
 #define MIN(x, y) ((x > y) ? (y) : (x))
 
-#define SYSTEM_NAME "kreon"
-
 #define DEVICE_BLOCK_SIZE 4096
 #define COULD_NOT_FIND_DB 0x02
 
 int32_t index_order;
-/*stats counters*/
-extern uint64_t internal_tree_cow_for_leaf;
-extern uint64_t internal_tree_cow_for_index;
-extern uint64_t written_buffered_bytes;
 extern char *pointer_to_kv_in_log;
-extern volatile uint64_t snapshot_v1;
-extern volatile uint64_t snapshot_v2;
-
-extern unsigned long long ins_prefix_hit_l0;
-extern unsigned long long ins_prefix_hit_l1;
-extern unsigned long long ins_prefix_miss_l0;
-extern unsigned long long ins_prefix_miss_l1;
-extern unsigned long long ins_hack_hit;
-extern unsigned long long ins_hack_miss;
 
 uint64_t countgoto = 0;
 pthread_mutex_t init_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -1320,9 +1305,9 @@ static inline struct lookup_reply lookup_in_tree(db_descriptor *db_desc, void *k
 	curr_v2 = root->v2;
 	curr_node = root;
 	if (curr_node->type == leafRootNode) {
-		key_addr_in_leaf =
-			find_key_in_static_leaf((struct bt_static_leaf_node *)curr_node,
-						&db_desc->levels[curr_node->level_id], key + 4, *(uint32_t *)key);
+		key_addr_in_leaf = find_key_in_static_leaf((struct bt_static_leaf_node *)curr_node,
+							   &db_desc->levels[curr_node->level_id], key + 4,
+							   *(uint32_t *)key);
 
 		if (key_addr_in_leaf == NULL)
 			rep.addr = NULL;
@@ -1359,9 +1344,9 @@ static inline struct lookup_reply lookup_in_tree(db_descriptor *db_desc, void *k
 			curr_v2 = son_v2;
 		}
 
-		key_addr_in_leaf =
-			find_key_in_static_leaf((struct bt_static_leaf_node *)curr_node,
-						&db_desc->levels[curr_node->level_id], key + 4, *(uint32_t *)key);
+		key_addr_in_leaf = find_key_in_static_leaf((struct bt_static_leaf_node *)curr_node,
+							   &db_desc->levels[curr_node->level_id], key + 4,
+							   *(uint32_t *)key);
 		/* log_debug("curr node - MAPPEd %p",MAPPED-(uint64_t)curr_node); */
 		/* key_addr_in_leaf = __find_key_addr_in_leaf((leaf_node *)curr_node, (struct splice *)key); */
 
@@ -1614,9 +1599,9 @@ void insert_key_at_index(bt_insert_req *ins_req, index_node *node, node_header *
 			log_fatal("Cannot host index key larger than KEY_BLOCK_SIZE");
 			exit(EXIT_FAILURE);
 		}
-		d_header =
-			seg_get_IN_log_block(handle->volume_desc, &handle->db_desc->levels[ins_req->metadata.level_id],
-					     ins_req->metadata.tree_id, allocation_code);
+		d_header = seg_get_IN_log_block(handle->volume_desc,
+						&handle->db_desc->levels[ins_req->metadata.level_id],
+						ins_req->metadata.tree_id, allocation_code);
 
 		d_header->next = NULL;
 		last_d_header = (IN_log_header *)(MAPPED + (uint64_t)node->header.last_IN_log_header);
@@ -1998,9 +1983,9 @@ release_and_retry:
 			log_info("Allocating new active tree %d for level id %d epoch is at %llu",
 				 ins_req->metadata.tree_id, level_id, (LLU)mem_catalogue->epoch);
 
-			leaf_node *t =
-				seg_get_leaf_node(ins_req->metadata.handle->volume_desc, &db_desc->levels[level_id],
-						  ins_req->metadata.tree_id, NEW_ROOT);
+			leaf_node *t = seg_get_leaf_node(ins_req->metadata.handle->volume_desc,
+							 &db_desc->levels[level_id], ins_req->metadata.tree_id,
+							 NEW_ROOT);
 
 			t->header.type = leafRootNode;
 			t->header.epoch = mem_catalogue->epoch;

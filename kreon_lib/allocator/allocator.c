@@ -30,29 +30,7 @@
 
 LIST *mappedVolumes = NULL;
 int32_t DMAP_ACTIVATED = 1;
-/*stats counter*/
-uint64_t internal_tree_cow_for_leaf = 0;
-uint64_t internal_tree_cow_for_index = 0;
-uint64_t written_buffered_bytes = 0;
 
-unsigned long long ins_prefix_hit_l0 = 0;
-unsigned long long ins_prefix_hit_l1 = 0;
-unsigned long long ins_prefix_miss_l0 = 0;
-unsigned long long ins_prefix_miss_l1 = 0;
-unsigned long long ins_hack_hit = 0;
-unsigned long long ins_hack_miss = 0;
-
-unsigned long long ins_prefix_hit;
-unsigned long long ins_prefix_miss;
-unsigned long long hash_hit;
-unsigned long long hash_miss;
-unsigned long long find_prefix_hit;
-unsigned long long find_prefix_miss;
-unsigned long long scan_prefix_hit;
-unsigned long long scan_prefix_miss;
-
-uint64_t highest_bit_mask = 0x8000000000000000;
-extern db_handle *open_dbs;
 pthread_mutex_t EUTROPIA_LOCK = PTHREAD_MUTEX_INITIALIZER;
 //volatile uint64_t snapshot_v1;
 //volatile uint64_t snapshot_v2;
@@ -613,13 +591,15 @@ void *allocate(void *_volume_desc, uint64_t num_bytes, int unused, char allocati
 	void *base_addr;
 	void *src;
 	void *dest;
-	int64_t b = 1;
 	uint64_t start_bit_offset = 0;
+	uint64_t *words;
+	uint64_t highest_bit_mask = 0x8000000000000000;
 	int64_t end_bit_offset = 64;
+	int64_t b = 1;
 	int64_t suffix_size = 0;
 	int64_t mask;
 	int64_t size = num_bytes / DEVICE_BLOCK_SIZE; /*convert number of bytes in corresponding BLKSIZE blocks needed*/
-	uint64_t *words;
+
 	/*how many words will i need?*/
 	if (size == 1)
 		words = (uint64_t *)malloc(sizeof(uint64_t));
@@ -644,13 +624,13 @@ void *allocate(void *_volume_desc, uint64_t num_bytes, int unused, char allocati
 		if ((uint64_t)word_address == (uint64_t)0xFFFFFFFFFFFFFFFF) /*reached end of bitmap*/
 		{
 			if (wrap_around == MAX_ALLOCATION_TRIES) {
-				printf("[%s:%s:%d] device out of space allocation request size was %llu max_tries %d\n",
-				       __FILE__, __func__, __LINE__, (LLU)num_bytes, MAX_ALLOCATION_TRIES);
+				log_info("Device out of space allocation request size was %llu max_tries %d",
+					 (LLU)num_bytes, MAX_ALLOCATION_TRIES);
 				//pthread_mutex_unlock(&(volume_desc->allocator_lock));
 				raise(SIGINT);
 				return NULL;
 			} else {
-				printf("\n[%s:%s:%d] End Of Bitmap, wrap around\n", __FILE__, __func__, __LINE__);
+				log_info("End Of Bitmap, wrap around");
 				wrap_around++;
 				if (volume_desc->max_suffix < suffix_size) /*update max_suffix */
 					volume_desc->max_suffix = suffix_size;
@@ -735,8 +715,7 @@ void *allocate(void *_volume_desc, uint64_t num_bytes, int unused, char allocati
 				       (LLU)round[i], (LLU)word_address, (LLU)start_bit_offset);
 #endif
 				break;
-			} else /*requested size not found in current word find the largest suffix*/
-			{
+			} else { /*requested size not found in current word find the largest suffix*/
 				for (i = num_rounds; i >= 0; i--) {
 					if (highest_bit_mask & (round[i] << suffix_size)) {
 #ifdef DEBUG_ALLOCATOR
@@ -745,6 +724,7 @@ void *allocate(void *_volume_desc, uint64_t num_bytes, int unused, char allocati
 						suffix_size += (b << i);
 					}
 				}
+
 				if (suffix_size > 0) {
 					words[idx] = (uint64_t)word_address;
 					start_bit_offset = 64 - suffix_size;

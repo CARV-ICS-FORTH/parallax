@@ -11,14 +11,12 @@
 
 #include "../scanner/scanner.h"
 #include <log.h>
-#include "assertions.h"
 #include "conf.h"
 #include "segment_allocator.h"
 #include "delete.h"
 #include "static_leaf.h"
 
 extern int32_t index_order;
-extern uint64_t snapshot_v1, snapshot_v2;
 
 int8_t __delete_key(bt_delete_request *req)
 {
