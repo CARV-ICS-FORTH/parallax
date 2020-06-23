@@ -636,8 +636,7 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 		for (i = 0; i < NUM_OF_DB_GROUPS; i++) {
 			/*is group empty?*/
 			if (volume_desc->mem_catalogue->db_group_index[i] != 0) {
-				db_group = (pr_db_group *)(MAPPED +
-							   (uint64_t)volume_desc->mem_catalogue->db_group_index[i]);
+				db_group = (pr_db_group *)REAL_ADDRESS(volume_desc->mem_catalogue->db_group_index[i]);
 				for (j = 0; j < GROUP_SIZE; j++) {
 					/*empty slot keep in mind*/
 					if (db_group->db_entries[j].valid == 0 && empty_index == -1) {
@@ -835,14 +834,13 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 			exit(EXIT_FAILURE);
 		}
 
-		// log_info("mem epoch %llu", volume_desc->mem_catalogue->epoch);
 		if (empty_index == -1) {
 			/*space found in empty group*/
 			pr_db_group *new_group = get_space_for_system(volume_desc, sizeof(pr_db_group));
 			memset(new_group, 0x00, sizeof(pr_db_group));
 			new_group->epoch = volume_desc->mem_catalogue->epoch;
 			volume_desc->mem_catalogue->db_group_index[empty_group] =
-				(pr_db_group *)((uint64_t)new_group - MAPPED);
+				(pr_db_group *)ABSOLUTE_ADDRESS(new_group);
 			empty_index = 0;
 			log_info("allocated new pr_db_group epoch at %llu volume epoch %llu", new_group->epoch,
 				 volume_desc->mem_catalogue->epoch);
@@ -851,14 +849,10 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 		log_info("database %s not found, allocating slot [%d,%d] for it", (const char *)db_name, empty_group,
 			 empty_index);
 		pr_db_group *cur_group =
-			(pr_db_group *)(MAPPED + (uint64_t)volume_desc->mem_catalogue->db_group_index[empty_group]);
+			(pr_db_group *)REAL_ADDRESS(volume_desc->mem_catalogue->db_group_index[empty_group]);
+
 		db_entry = &cur_group->db_entries[empty_index];
 		db_entry->valid = 1;
-		// db_entry = (pr_db_entry *)(MAPPED +
-		// (uint64_t)volume_desc->mem_catalogue->db_group_index[empty_group] +
-		//			   (uint64_t)DB_ENTRY_SIZE + (uint64_t)(empty_index *
-		// DB_ENTRY_SIZE));
-		// db_entry->replica_forest = NULL;
 		handle = malloc(sizeof(db_handle));
 		memset(handle, 0x00, sizeof(db_handle));
 		db_desc = (db_descriptor *)malloc(sizeof(db_descriptor));
@@ -1302,6 +1296,7 @@ void *append_key_value_to_log(log_operation *req)
 #elif SPINLOCK
 	pthread_spin_lock(&handle->db_desc->lock_log);
 #endif
+
 	choose_log_toappend(handle->db_desc, &log_metadata, data_size.kv_size);
 	/*append data part in the data log*/
 	if (*log_metadata.log_size % BUFFER_SEGMENT_SIZE != 0)

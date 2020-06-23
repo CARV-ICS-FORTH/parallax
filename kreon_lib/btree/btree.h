@@ -533,7 +533,7 @@ lock_table *_find_position(lock_table **table, node_header *node);
 #define MIN(x, y) ((x > y) ? (y) : (x))
 #define KEY_SIZE(x) (*(uint32_t *)x)
 #define ABSOLUTE_ADDRESS(X) ((uint64_t)X - MAPPED)
-#define REAL_ADDRESS(X) ((void *)(uint64_t)(MAPPED + X))
+#define REAL_ADDRESS(X) ((void *)(uint64_t)(MAPPED + (uint64_t)X))
 #define KEY_OFFSET(KEY_SIZE, KV_BUF) (sizeof(uint32_t) + KV_BUF)
 #define VALUE_SIZE_OFFSET(KEY_SIZE, KEY) (sizeof(uint32_t) + KEY_SIZE + KEY)
 #define SERIALIZE_KEY(buf, key, key_size) \

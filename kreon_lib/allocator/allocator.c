@@ -187,6 +187,12 @@ int32_t volume_init(char *dev_name, int64_t start, int64_t size, int typeOfVolum
 			  sizeof(pr_db_group), sizeof(pr_db_entry));
 		exit(EXIT_FAILURE);
 	}
+
+	if (sizeof(commit_log_info) != 4096) {
+		log_fatal("commit_log_info size %lu not 4KB system!", sizeof(commit_log_info));
+		exit(EXIT_FAILURE);
+	}
+
 	if (sizeof(pr_system_catalogue) != 4096) {
 		log_fatal("pr_system_catalogue size %lu not 4KB system cannot operate!", sizeof(pr_system_catalogue));
 		exit(EXIT_FAILURE);

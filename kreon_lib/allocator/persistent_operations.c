@@ -279,9 +279,12 @@ void snapshot(volume_descriptor *volume_desc)
 			log_info.small_log_size = db_desc->small_log_size;
 
 			commit_db_log(db_desc, &log_info);
-			/* These fields are being overwritten so there is not point to even assign values to them. */
-			/* 	db_desc->big_log_head_offset = db_desc->big_log_size; */
-			/* db_desc->big_log_tail_offset = db_desc->big_log_size; */
+			db_desc->big_log_head_offset = db_desc->big_log_size;
+			db_desc->big_log_tail_offset = db_desc->big_log_size;
+			db_desc->medium_log_head_offset = db_desc->medium_log_size;
+			db_desc->medium_log_tail_offset = db_desc->medium_log_size;
+			db_desc->small_log_head_offset = db_desc->small_log_size;
+			db_desc->small_log_tail_offset = db_desc->small_log_size;
 
 			/* Recover log segments */
 			db_entry->big_log_head_offset = db_desc->big_log_head_offset;
@@ -293,6 +296,7 @@ void snapshot(volume_descriptor *volume_desc)
 		}
 		node = node->next;
 	}
+
 	if (dirty > 0) { /*At least one db is dirty proceed to snapshot()*/
 
 		free_block(volume_desc, volume_desc->dev_catalogue, sizeof(pr_system_catalogue), -1);
@@ -312,10 +316,12 @@ void snapshot(volume_descriptor *volume_desc)
 		/*protect this segment because cleaner may run in parallel */
 		MUTEX_LOCK(&volume_desc->allocator_lock);
 		/*update allocator state, soft state staff */
+
 		for (l = 0; l < volume_desc->allocator_size; l += 8) {
 			a = *(uint64_t *)((uint64_t)(volume_desc->allocator_state) + l);
 			b = *(uint64_t *)((uint64_t)(volume_desc->sync_signal) + l);
 			c = a ^ b;
+
 			if ((c - a) != 0) {
 #ifdef DEBUG_SNAPSHOT
 				log_debug("Updating automaton state");
@@ -326,6 +332,7 @@ void snapshot(volume_descriptor *volume_desc)
 				*(uint64_t *)((uint64_t)(volume_desc->allocator_state) + l) = c;
 			}
 		}
+
 		memset(volume_desc->sync_signal, 0x00, volume_desc->allocator_size);
 		MUTEX_UNLOCK(&volume_desc->allocator_lock);
 		//pthread_mutex_unlock(&(volume_desc->allocator_lock)); /*ok release allocator lock */
