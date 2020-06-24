@@ -49,8 +49,17 @@
 #define LOG_SEGMENT_CHUNK 32 * 1024
 #define MY_MAX_THREADS 2048
 
+#define WORKER_THREAD_PRIORITIES_NUM 4
+#define WORKER_THREAD_HIGH_PRIORITY_TASKS_PER_TURN 1
+#define WORKER_THREAD_NORMAL_PRIORITY_TASKS_PER_TURN 1
+
+static int32_t WORKER_THREADS_PER_SPINNING_THREAD;
 uint32_t RDMA_LOG_BUFFER_PADDING;
 extern uint32_t RDMA_TOTAL_LOG_BUFFER_SIZE;
+
+/*block the socket thread if there's no available memory to allocate to an incoming connection*/
+sem_t memory_steal_sem;
+volatile memory_region *backup_region = NULL;
 
 extern char *DB_NO_SPILLING;
 
@@ -58,14 +67,124 @@ typedef struct prefix_table {
 	char prefix[PREFIX_SIZE];
 } prefix_table;
 
+enum work_task_status {
+	/*put related*/
+	APPEND_START = 10000,
+	CHECK_FOR_REPLICA_FLUSH_SEGMENT_ACK,
+	ALLOCATE_NEW_LOG_BUFFER_WITH_REPLICA,
+	PERFORM_SPILL_CHECK,
+	WAIT_FOR_SPILL_START,
+	APPEND_COMPLETE,
+	/*allocation of reply msg related*/
+	ALLOCATION_START,
+	CHECK_FOR_RESET_BUFFER_ACK,
+	CHECK_FOR_PENDING_REQUESTS_TO_COMPLETE,
+	ALLOCATION_SUCCESS,
+	/*get related*/
+	GET_START,
+	GET_COMPLETE,
+	/*TEST RELATED*/
+	TEST_START,
+	TEST_COMPLETE,
+	/*reset buffer related*/
+	RESET_BUFFER_START,
+	RESET_BUFFER_COMPLETE,
+	/*FLUSH segment related*/
+	FLUSH_SEGMENT_START,
+	FLUSH_SEGMENT_COMPLETE,
+	/*overall_status*/
+	TASK_START,
+	TASK_COMPLETED,
+	/*spill staff codes used for master's spill worker*/
+	SEND_SPILL_INIT,
+	WAIT_FOR_SPILL_INIT_REPLY,
+	INIT_SPILL_BUFFER_SCANNER,
+	SPILL_BUFFER_REQ,
+	CLOSE_SPILL_BUFFER,
+	SEND_SPILL_COMPLETE,
+	WAIT_FOR_SPILL_COMPLETE_REPLY,
+	SPILL_FINISHED,
+	/*codes used for spill status at the replicas*/
+	SPILL_INIT_START,
+	SPILL_INIT_END,
+	SPILL_COMPLETE_START,
+	SPILL_COMPLETE_END,
+	SPILL_BUFFER_START
+};
+
+struct work_task {
+	struct channel_rdma *channel;
+	struct connection_rdma *conn;
+	msg_header *msg;
+	void *region; /*sorry, circular dependency was created so I patched it quickly*/
+	void *notification_addr;
+	msg_header *reply_msg;
+	msg_header *flush_segment_request;
+	/*used for two puproses (keeping state)
+	 * 1. For get it keeps the get result if the  server cannot allocate immediately memory to respond to the client.
+	 * This save CPU cycles at the server  because it voids entering kreon each time a stall happens.
+	 * 2. For puts it keeps the result of a spill task descriptor
+	 */
+	void *intermediate_buffer;
+	int sockfd; /*from accept() for building connections*/
+	int thread_id;
+	enum work_task_status kreon_operation_status;
+	enum work_task_status allocation_status;
+	enum work_task_status overall_status;
+};
+
+struct worker_thread {
+	struct work_task job_buffers[UTILS_QUEUE_CAPACITY];
+	struct work_task high_priority_job_buffers[UTILS_QUEUE_CAPACITY];
+	/*queue for empty work_task buffers*/
+	utils_queue_s empty_job_buffers_queue;
+	utils_queue_s empty_high_priority_job_buffers_queue;
+
+	/* queues for normal priority, high priority*/
+	utils_queue_s work_queue;
+	utils_queue_s high_priority_queue;
+
+	sem_t sem;
+	pthread_t context;
+	pthread_spinlock_t work_queue_lock;
+	struct channel_rdma *channel;
+	worker_status status;
+	//struct worker_group *my_group;
+	int worker_id;
+} worker_thread;
+
+//struct worker_group {
+//	int next_server_worker_to_submit_job;
+//	int next_client_worker_to_submit_job;
+//	struct worker_thread *group;
+//};
+
+struct ds_spinning_thread {
+	pthread_t spinner_context;
+	pthread_mutex_t conn_list_lock;
+	SIMPLE_CONCURRENT_LIST *conn_list;
+	SIMPLE_CONCURRENT_LIST *idle_conn_list;
+	int num_workers;
+	int next_server_worker_to_submit_job;
+	int next_client_worker_to_submit_job;
+	int id;
+	struct worker_thread worker[];
+};
+
+struct ds_server {
+	int num_of_spinning_threads;
+	struct ds_spinning_thread spinner[];
+};
+static struct ds_server *dataserver;
+
 typedef struct spill_task_descriptor {
 	pthread_t spill_worker_context;
 	bt_spill_request *spill_req;
 	/*XXX TODO XXX, add appropriate fields*/
-	work_task task;
+	struct work_task task;
 	struct _tucana_region_S *region;
 	int standalone;
-	volatile work_task_status spill_task_status;
+	volatile enum work_task_status spill_task_status;
 } spill_task_descriptor;
 
 #ifdef TIERING
@@ -79,7 +198,872 @@ void tiering_compaction_worker(void *);
 
 /*inserts to Kreon and implements the replication logic*/
 void insert_kv_pair(struct krm_region_desc *r_desc, void *kv, connection_rdma *rdma_conn, kv_location *location,
-		    work_task *task, int wait);
+		    struct work_task *task, int wait);
+
+static void crdma_server_create_connection_inuse(struct connection_rdma *conn, struct channel_rdma *channel,
+						 connection_type type)
+{
+	/*gesalous, This is the path where it creates the useless memory queues*/
+	tu_rdma_init_connection(conn);
+	conn->type = type;
+	conn->channel = channel;
+}
+
+void *socket_thread(void *args)
+{
+	int next_spinner_to_submit_conn = 0;
+	struct channel_rdma *channel;
+	connection_rdma *conn;
+
+	pthread_setname_np(pthread_self(), "connection_listener");
+
+	channel = (struct channel_rdma *)args;
+	log_info("Starting listener for new connections thread at port %d", globals_get_RDMA_connection_port());
+	sem_init(&memory_steal_sem, 0, 1); // sem_wait when using backup_region, spinning_thread will sem_post
+	/*backup_region = mrpool_allocate_memory_region(channel->static_pool);*/
+	/*assert(backup_region);*/
+
+	struct ibv_qp_init_attr qp_init_attr;
+	memset(&qp_init_attr, 0, sizeof(qp_init_attr));
+	qp_init_attr.cap.max_send_wr = qp_init_attr.cap.max_recv_wr = MAX_WR;
+	qp_init_attr.cap.max_send_sge = qp_init_attr.cap.max_recv_sge = 1;
+	qp_init_attr.cap.max_inline_data = 16;
+	qp_init_attr.sq_sig_all = 1;
+	qp_init_attr.qp_type = IBV_QPT_RC;
+
+	struct rdma_addrinfo hints, *res;
+	char port[16];
+	sprintf(port, "%d", globals_get_RDMA_connection_port());
+
+	memset(&hints, 0, sizeof hints);
+	hints.ai_flags = RAI_PASSIVE; // Passive side, awaiting incoming connections
+	hints.ai_port_space = RDMA_PS_TCP; // Supports Reliable Connections
+	int ret = rdma_getaddrinfo(NULL, port, &hints, &res);
+	if (ret) {
+		log_fatal("rdma_getaddrinfo: %s", strerror(errno));
+		exit(EXIT_FAILURE);
+	}
+
+	struct rdma_cm_id *rdma_cm_id;
+	ret = rdma_create_ep(&rdma_cm_id, res, NULL, NULL);
+	if (ret) {
+		log_fatal("rdma_create_ep: %s", strerror(errno));
+		exit(EXIT_FAILURE);
+	}
+
+	// Listen for incoming connections on available RDMA devices
+	ret = rdma_listen(rdma_cm_id, 0); // called with backlog = 0
+	if (ret) {
+		log_fatal("rdma_listen: %s", strerror(errno));
+		exit(EXIT_FAILURE);
+	}
+
+	while (1) {
+		/* Block until a new connection request arrives
+		 * Because pd and qp_init_attr were set in rdma_create_ep, a ap is
+		 * automatically created for the new rdma_cm_id
+		 */
+		struct rdma_cm_id *request_id, *new_conn_id;
+		ret = rdma_get_request(rdma_cm_id, &request_id);
+		if (ret) {
+			log_fatal("rdma_get_request: %s", strerror(errno));
+			exit(EXIT_FAILURE);
+		}
+		new_conn_id = request_id->event->id;
+		conn = (connection_rdma *)malloc(sizeof(connection_rdma));
+		qp_init_attr.send_cq = qp_init_attr.recv_cq =
+			ibv_create_cq(channel->context, MAX_WR, (void *)conn, channel->comp_channel, 0);
+		ibv_req_notify_cq(qp_init_attr.send_cq, 0);
+		assert(qp_init_attr.send_cq);
+
+		ret = rdma_create_qp(new_conn_id, NULL, &qp_init_attr);
+		if (ret) {
+			log_fatal("rdma_create_qp: %s", strerror(errno));
+			exit(EXIT_FAILURE);
+		}
+
+		connection_type incoming_connection_type = -1;
+		struct ibv_mr *recv_mr = rdma_reg_msgs(new_conn_id, &incoming_connection_type, sizeof(connection_type));
+		ret = rdma_post_recv(new_conn_id, &incoming_connection_type, &incoming_connection_type,
+				     sizeof(connection_type), recv_mr);
+		if (ret) {
+			log_fatal("rdma_post_recv: %s", strerror(errno));
+			exit(EXIT_FAILURE);
+		}
+
+		// Accept incomming connection TODO look into rdma_conn_param a bit more
+		ret = rdma_accept(new_conn_id, NULL);
+		if (ret) {
+			log_fatal("rdma_accept: %s", strerror(errno));
+			exit(EXIT_FAILURE);
+		}
+
+		while (incoming_connection_type == -1)
+			; // Wait for message to arrive
+		rdma_dereg_mr(recv_mr);
+
+		if (incoming_connection_type == CLIENT_TO_SERVER_CONNECTION) {
+			incoming_connection_type = SERVER_TO_CLIENT_CONNECTION;
+			log_info("We have a new client connection request\n");
+		} else if (incoming_connection_type == MASTER_TO_REPLICA_DATA_CONNECTION) {
+			incoming_connection_type = REPLICA_TO_MASTER_DATA_CONNECTION;
+			DPRINT("We have a new replica connection request\n");
+		} else {
+			DPRINT("FATAL bad connection type");
+			exit(EXIT_FAILURE);
+		}
+		/*
+		 * Important note to future self: klist.h used for keeping
+		 * channels and connections used by spinning thread is NOT thread
+		 * safe. Patch: all operations adding new connections and
+		 * removing connections take place from the context of the
+		 * spinning thread
+		 */
+
+		/* I assume global state for the connections is already kept in the system?*/
+		/*!!! follow this path to add this connection to the appropriate connection list !!!*/
+		crdma_server_create_connection_inuse(
+			conn, channel, incoming_connection_type); // TODO not sure if it's needed with rdma_cm
+		conn->rdma_cm_id = new_conn_id;
+
+		switch (conn->type) {
+		case SERVER_TO_CLIENT_CONNECTION:
+			conn->rdma_memory_regions = mrpool_allocate_memory_region(channel->dynamic_pool, new_conn_id);
+			break;
+		case MASTER_TO_REPLICA_DATA_CONNECTION:
+			assert(0);
+			break;
+		case MASTER_TO_REPLICA_CONTROL_CONNECTION:
+			assert(0);
+			break;
+		default:
+			log_fatal("bad connection type %d", conn->type);
+			exit(EXIT_FAILURE);
+		}
+#if 0
+		memory_region * mr, *other_half, *halved_mr;
+		connection_rdma *candidate = NULL;
+		if (conn->type == SERVER_TO_CLIENT_CONNECTION && !conn->rdma_memory_regions) { /*{{{*/
+			// Run out of memory, need to steal from a connection
+			// FIXME Need to figure out how destroying these half memory regions will work since
+			// calling free on the second half buffer will fail. I'm not sure ibv_dereg_mr will
+			// work either
+			DPRINT("Run out of memory regions!\n");
+			candidate = find_memory_steal_candidate(channel->spin_list[0]);
+			assert(candidate);
+
+			sem_wait(&memory_steal_sem);
+			// changed from NULL to something != NULL
+			assert(backup_region);
+			mr = (struct memory_region *)backup_region;
+			backup_region = NULL;
+
+			halved_mr = (memory_region *)malloc(sizeof(memory_region));
+			halved_mr->mrpool = mr->mrpool;
+			halved_mr->memory_region_length = mr->memory_region_length / 2;
+
+			halved_mr->local_memory_region = (struct ibv_mr *)malloc(sizeof(struct ibv_mr));
+			memcpy(halved_mr->local_memory_region, mr->local_memory_region, sizeof(memory_region));
+			halved_mr->local_memory_region->length = halved_mr->memory_region_length;
+			halved_mr->local_memory_buffer = mr->local_memory_buffer;
+			assert(halved_mr->local_memory_buffer == halved_mr->local_memory_region->addr);
+
+			halved_mr->remote_memory_region = (struct ibv_mr *)malloc(sizeof(struct ibv_mr));
+			memcpy(halved_mr->remote_memory_region, mr->remote_memory_region, sizeof(memory_region));
+			halved_mr->remote_memory_region->length = halved_mr->memory_region_length;
+			halved_mr->remote_memory_buffer = mr->remote_memory_buffer;
+			assert(halved_mr->remote_memory_buffer == halved_mr->remote_memory_region->addr);
+
+			candidate->next_rdma_memory_regions = halved_mr;
+
+			other_half = (memory_region *)malloc(sizeof(memory_region));
+			other_half->mrpool = mr->mrpool;
+			other_half->memory_region_length = mr->memory_region_length / 2;
+
+			other_half->local_memory_region = (struct ibv_mr *)malloc(sizeof(struct ibv_mr));
+			memcpy(other_half->local_memory_region, mr->local_memory_region, sizeof(memory_region));
+			other_half->local_memory_region->addr += other_half->memory_region_length;
+			other_half->local_memory_region->length = other_half->memory_region_length;
+			other_half->local_memory_buffer = mr->local_memory_buffer + other_half->memory_region_length;
+			assert(other_half->local_memory_buffer == other_half->local_memory_region->addr);
+
+			other_half->remote_memory_region = (struct ibv_mr *)malloc(sizeof(struct ibv_mr));
+			memcpy(other_half->remote_memory_region, mr->remote_memory_region, sizeof(memory_region));
+			other_half->remote_memory_region->addr += other_half->memory_region_length;
+			other_half->remote_memory_region->length = other_half->memory_region_length;
+			other_half->remote_memory_buffer = mr->remote_memory_buffer + other_half->memory_region_length;
+			assert(other_half->remote_memory_buffer == other_half->remote_memory_region->addr);
+			DPRINT("SERVER: length = %llu\n", (LLU)other_half->memory_region_length);
+
+			conn->rdma_memory_regions = other_half;
+
+			// TODO replace assign_job_to_worker with __stop_client. Add new mr info in the
+			// stop client message's payload
+			// assign_job_to_worker(candidate->channel, candidate, (msg_header*)577, 0, -1);
+			__stop_client(candidate);
+			candidate = NULL;
+		} /*}}}*/
+#endif
+		assert(conn->rdma_memory_regions);
+
+		struct ibv_mr *send_mr = rdma_reg_msgs(new_conn_id, conn->rdma_memory_regions->remote_memory_region,
+						       sizeof(struct ibv_mr));
+
+		// Receive memory region information
+		conn->peer_mr = (struct ibv_mr *)malloc(sizeof(struct ibv_mr));
+		memset(conn->peer_mr, 0, sizeof(struct ibv_mr));
+		recv_mr = rdma_reg_msgs(new_conn_id, conn->peer_mr, sizeof(struct ibv_mr));
+		ret = rdma_post_recv(new_conn_id, NULL, conn->peer_mr, sizeof(struct ibv_mr), recv_mr);
+		if (ret) {
+			log_fatal("rdma_post_recv: %s", strerror(errno));
+			exit(EXIT_FAILURE);
+		}
+
+		// Send memory region information
+		ret = rdma_post_send(new_conn_id, NULL, conn->rdma_memory_regions->remote_memory_region,
+				     sizeof(struct ibv_mr), send_mr, 0);
+		if (ret) {
+			log_fatal("rdma_post_send: %s", strerror(errno));
+			exit(EXIT_FAILURE);
+		}
+		while (!conn->peer_mr->rkey)
+			; // Wait for message to arrive
+		rdma_dereg_mr(send_mr);
+		rdma_dereg_mr(recv_mr);
+
+		conn->status = CONNECTION_OK;
+		conn->qp = conn->rdma_cm_id->qp;
+		conn->rendezvous = conn->rdma_memory_regions->remote_memory_buffer;
+		/*zerop all rdma memory*/
+		memset(conn->rdma_memory_regions->local_memory_buffer, 0x00,
+		       conn->rdma_memory_regions->memory_region_length);
+
+		if (sem_init(&conn->congestion_control, 0, 0) != 0) {
+			log_fatal("failed to initialize semaphore reason follows");
+			perror("Reason: ");
+		}
+		conn->sleeping_workers = 0;
+
+		conn->pending_sent_messages = 0;
+		conn->pending_received_messages = 0;
+		conn->offset = 0;
+		conn->worker_id = -1;
+#ifdef CONNECTION_BUFFER_WITH_MUTEX_LOCK
+		pthread_mutex_init(&conn->buffer_lock, NULL);
+#else
+		pthread_spin_init(&conn->buffer_lock, PTHREAD_PROCESS_PRIVATE);
+#endif
+		/*choose a spinner and add connection in its list*/
+		/**/
+
+		conn->idconn = -1; //what?
+		if (next_spinner_to_submit_conn >= dataserver->num_of_spinning_threads)
+			next_spinner_to_submit_conn = 0;
+		struct ds_spinning_thread *spinner = &dataserver->spinner[next_spinner_to_submit_conn];
+		pthread_mutex_lock(&spinner->conn_list_lock);
+		/*gesalous new policy*/
+		add_last_in_simple_concurrent_list(spinner->conn_list, conn);
+		conn->responsible_spin_list = spinner->conn_list;
+		conn->responsible_spinning_thread_id = next_spinner_to_submit_conn;
+
+		pthread_mutex_unlock(&spinner->conn_list_lock);
+		log_info("Built new connection successfully");
+	}
+	return NULL;
+}
+/*
+ * gesalous new staff
+ * each spin thread has a group of worker threads. Spin threads detects that a
+ * request has arrived and it assigns the task to one of its worker threads
+ * */
+void *worker_thread_kernel(void *args)
+{
+	int num_of_processed_requests_per_priority[WORKER_THREAD_PRIORITIES_NUM];
+
+	utils_queue_s pending_tasks_queue;
+	utils_queue_s pending_high_priority_tasks_queue;
+	//struct timeval t0,t1;
+	struct work_task *job = NULL;
+	struct worker_thread *worker_descriptor;
+	//uint64_t time_elapsed;
+
+	int turn = 0;
+
+	pthread_setname_np(pthread_self(), "worker_thread");
+	worker_descriptor = (struct worker_thread *)args;
+	worker_descriptor->status = BUSY;
+
+	utils_queue_init(&pending_high_priority_tasks_queue);
+	utils_queue_init(&pending_tasks_queue);
+
+	memset(num_of_processed_requests_per_priority, 0x00, sizeof(int) * WORKER_THREAD_PRIORITIES_NUM);
+	turn = 0;
+
+	while (1) {
+		//gettimeofday(&t0, 0);
+
+		while (job == NULL) {
+			if (turn == 0) {
+				/*pending tasks*/
+				if (++num_of_processed_requests_per_priority[turn] >=
+				    WORKER_THREAD_HIGH_PRIORITY_TASKS_PER_TURN) {
+					num_of_processed_requests_per_priority[turn] = 0;
+					++turn;
+				}
+				job = utils_queue_pop(&pending_high_priority_tasks_queue);
+				if (job != NULL) {
+					//DPRINT("Pending High priority job of type %d\n",job->msg->type);
+					break;
+				}
+			}
+
+			else if (turn == 1) {
+				/*high priority tasks*/
+				if (++num_of_processed_requests_per_priority[turn] >=
+				    WORKER_THREAD_HIGH_PRIORITY_TASKS_PER_TURN) {
+					num_of_processed_requests_per_priority[turn] = 0;
+					++turn;
+				}
+				job = utils_queue_pop(&worker_descriptor->high_priority_queue);
+				if (job != NULL) {
+					//DPRINT("High priority job of type %d\n",job->msg->type);
+					break;
+				}
+			} else if (turn == 2) {
+				if (++num_of_processed_requests_per_priority[turn] >=
+				    WORKER_THREAD_NORMAL_PRIORITY_TASKS_PER_TURN) {
+					num_of_processed_requests_per_priority[turn] = 0;
+					++turn;
+				}
+				job = utils_queue_pop(&pending_tasks_queue);
+				if (job != NULL) {
+					//DPRINT("Pending Low priority job of type %d\n",job->msg->type);
+					break;
+				}
+			}
+
+			else if (turn == 3) {
+				if (++num_of_processed_requests_per_priority[turn] >=
+				    WORKER_THREAD_NORMAL_PRIORITY_TASKS_PER_TURN) {
+					num_of_processed_requests_per_priority[turn] = 0;
+					turn = 0;
+				}
+				job = utils_queue_pop(&worker_descriptor->work_queue);
+				if (job != NULL) {
+					//DPRINT("Low priority job of type %d\n",job->msg->type);
+					break;
+				}
+			}
+			//gettimeofday(&t1, 0);
+			//time_elapsed = ((t1.tv_sec-t0.tv_sec)*1000000) + (t1.tv_usec-t0.tv_usec);
+			if (0 /*time_elapsed >= MAX_USEC_BEFORE_SLEEPING*/) {
+				/*go to sleep, no job*/
+
+				pthread_spin_lock(&worker_descriptor->work_queue_lock);
+				/*double check*/
+
+				job = utils_queue_pop(&pending_high_priority_tasks_queue);
+
+				if (job == NULL) {
+					job = utils_queue_pop(&worker_descriptor->high_priority_queue);
+				}
+
+				if (job == NULL) {
+					job = utils_queue_pop(&pending_tasks_queue);
+				}
+
+				if (job == NULL) {
+					job = utils_queue_pop(&worker_descriptor->work_queue);
+				}
+
+				if (job == NULL) {
+					worker_descriptor->status = IDLE_SLEEPING;
+					pthread_spin_unlock(&worker_descriptor->work_queue_lock);
+					DPRINT("Sleeping...\n");
+					sem_wait(&worker_descriptor->sem);
+					DPRINT("Woke up\n");
+					worker_descriptor->status = BUSY;
+					continue;
+				} else {
+					pthread_spin_unlock(&worker_descriptor->work_queue_lock);
+					continue;
+				}
+			}
+		}
+
+		//DPRINT("SERVER worker: new regular msg, reply will be send at %llu  length %d type %d\n",
+		//		(LLU)job->msg->reply,job->msg->reply_length, job->msg->type);
+		/*process task*/
+		job->channel->connection_created((void *)job);
+		if (job->overall_status == TASK_COMPLETED) {
+			if (job->msg->type != RESET_BUFFER && job->msg->type != SPILL_BUFFER_REQUEST) {
+				//free_rdma_received_message(job->conn, job->msg);
+				_zero_rendezvous_locations(job->msg);
+				__send_rdma_message(job->conn, job->reply_msg);
+			}
+
+			/*return the buffer to its appropriate pool*/
+			if (job->msg->type == FLUSH_SEGMENT_AND_RESET || job->msg->type == FLUSH_SEGMENT ||
+			    job->msg->type == SPILL_INIT || job->msg->type == SPILL_COMPLETE ||
+			    job->msg->type == SPILL_BUFFER_REQUEST) {
+				assert(utils_queue_push(&worker_descriptor->empty_high_priority_job_buffers_queue,
+							job) != NULL);
+			} else {
+				assert(utils_queue_push(&worker_descriptor->empty_job_buffers_queue, job) != NULL);
+			}
+		}
+
+		else {
+			if (job->msg->type == FLUSH_SEGMENT_AND_RESET || job->msg->type == FLUSH_SEGMENT ||
+			    job->kreon_operation_status == ALLOCATE_NEW_LOG_BUFFER_WITH_REPLICA ||
+			    job->msg->type == SPILL_INIT || job->msg->type == SPILL_COMPLETE ||
+			    job->msg->type == SPILL_BUFFER_REQUEST) {
+				//DPRINT("High priority Task interrupted allocation status %d\n",job->allocation_status);
+				assert(utils_queue_push(&pending_high_priority_tasks_queue, job) != NULL);
+			} else {
+				//DPRINT("Low priority Task interrupted allocation status %d\n",job->allocation_status);
+				assert(utils_queue_push(&pending_tasks_queue, job) != NULL);
+			}
+		}
+		job = NULL;
+	}
+	log_warn("worker thread exited");
+	return NULL;
+}
+
+static int assign_job_to_worker(struct ds_spinning_thread *spinner, struct connection_rdma *conn, msg_header *msg,
+				int sockfd)
+{
+	struct work_task *job = NULL;
+	int worker_id = 0;
+
+	if (conn->worker_id == -1) {
+		/*unassigned connection*/
+		if (++spinner->next_server_worker_to_submit_job >= spinner->num_workers) {
+			spinner->next_server_worker_to_submit_job = 0;
+		}
+		conn->worker_id = spinner->next_server_worker_to_submit_job;
+	}
+
+	if (msg->type == FLUSH_SEGMENT_AND_RESET || msg->type == FLUSH_SEGMENT || msg->type == SPILL_INIT ||
+	    msg->type == SPILL_COMPLETE || msg->type == SPILL_BUFFER_REQUEST) {
+		/*to ensure FIFO processing , vital for these protocol operations*/
+
+		worker_id = conn->worker_id;
+		job = (struct work_task *)utils_queue_pop(
+			&spinner->worker[worker_id].empty_high_priority_job_buffers_queue);
+		if (job == NULL) {
+			//assert(0);
+			return KREON_FAILURE;
+		}
+	} else {
+		/*just in case we want to perform different assignment policy based on the priority level*/
+		worker_id = conn->worker_id;
+		/*DPRINT("Adding job to thread id %d\n",worker_id);*/
+		job = (struct work_task *)utils_queue_pop(&spinner->worker[worker_id].empty_job_buffers_queue);
+		if (job == NULL) {
+			//assert(0);
+			return KREON_FAILURE;
+		}
+	}
+
+	memset(job, 0x0, sizeof(struct work_task));
+	job->channel = globals_get_rdma_channel();
+	job->conn = conn;
+	job->msg = msg;
+	job->sockfd = sockfd;
+
+	/*initialization of various fsm*/
+	job->thread_id = worker_id;
+	job->overall_status = TASK_START;
+	job->notification_addr = job->msg->request_message_local_addr;
+	job->allocation_status = ALLOCATION_START;
+	switch (job->msg->type) {
+	case PUT_REQUEST:
+	case PUT_OFFT_REQUEST:
+	case DELETE_REQUEST:
+		job->kreon_operation_status = APPEND_START;
+		break;
+	case TU_GET_QUERY:
+	case MULTI_GET_REQUEST:
+		job->kreon_operation_status = GET_START;
+		break;
+	case FLUSH_SEGMENT:
+	case FLUSH_SEGMENT_AND_RESET:
+		job->kreon_operation_status = FLUSH_SEGMENT_START;
+		break;
+
+	case RESET_BUFFER:
+		job->kreon_operation_status = RESET_BUFFER_START;
+		break;
+
+	case SPILL_INIT:
+		job->kreon_operation_status = SPILL_INIT_START;
+		break;
+	case SPILL_BUFFER_REQUEST:
+		job->kreon_operation_status = SPILL_BUFFER_START;
+		break;
+	case SPILL_COMPLETE:
+		job->kreon_operation_status = SPILL_COMPLETE_START;
+		break;
+	case TEST_REQUEST:
+	case TEST_REPLY_FETCH_PAYLOAD:
+		job->kreon_operation_status = TEST_START;
+		break;
+	default:
+		log_fatal("unhandled type");
+		assert(0);
+		exit(EXIT_FAILURE);
+	}
+
+	if (msg->type == FLUSH_SEGMENT_AND_RESET || msg->type == FLUSH_SEGMENT || msg->type == SPILL_INIT ||
+	    msg->type == SPILL_COMPLETE || msg->type == SPILL_BUFFER_REQUEST) {
+		if (utils_queue_push(&spinner->worker[worker_id].high_priority_queue, (void *)job) == NULL) {
+			log_warn(
+				"Failed to add CONTROL job of type: %d to queue tried worker %d its status is %llu retrying\n",
+				job->msg->type, worker_id, (LLU)spinner->worker[worker_id].status);
+			utils_queue_push(&spinner->worker[worker_id].empty_high_priority_job_buffers_queue,
+					 (void *)job);
+			assert(0);
+			return KREON_FAILURE;
+		}
+	} else {
+		/*normal priority*/
+		if (utils_queue_push(&spinner->worker[worker_id].work_queue, (void *)job) == NULL) {
+			log_warn("Failed to add job of type: %d to queue tried worker %d its status is %llu retrying\n",
+				 job->msg->type, worker_id, (LLU)spinner->worker[worker_id].status);
+			utils_queue_push(&spinner->worker[worker_id].empty_job_buffers_queue, (void *)job);
+			//assert(0);
+			return KREON_FAILURE;
+		}
+	}
+	pthread_spin_lock(&spinner->worker[worker_id].work_queue_lock);
+	if (spinner->worker[worker_id].status == IDLE_SLEEPING) {
+		/*wake him up */
+		// DPRINT("Boom\n");
+		++wake_up_workers_operations;
+		sem_post(&spinner->worker[worker_id].sem);
+	}
+	pthread_spin_unlock(&spinner->worker[worker_id].work_queue_lock);
+	return KREON_SUCCESS;
+}
+
+void _update_connection_score(int spinning_list_type, connection_rdma *conn)
+{
+	if (spinning_list_type == HIGH_PRIORITY)
+		conn->idle_iterations = 0;
+	else
+		++conn->idle_iterations;
+}
+
+static void *server_spinning_thread_kernel(void *args)
+{
+	struct msg_header *hdr;
+
+	SIMPLE_CONCURRENT_LIST_NODE *node;
+	SIMPLE_CONCURRENT_LIST_NODE *prev_node;
+	SIMPLE_CONCURRENT_LIST_NODE *next_node;
+
+	struct sigaction sa = {};
+	struct ds_spinning_thread *spinner = (struct ds_spinning_thread *)args;
+	struct connection_rdma *conn;
+
+	uint32_t message_size;
+	volatile uint32_t recv;
+
+	int spinning_thread_id = spinner->id;
+	int spinning_list_type;
+	int rc;
+
+	sigemptyset(&sa.sa_mask);
+	sa.sa_flags = 0;
+	sa.sa_handler = ec_sig_handler;
+
+	pthread_t self;
+	self = pthread_self();
+	pthread_setname_np(self, "SPINNING_THREAD");
+
+	int count = 0;
+
+	while (1) {
+		/*in cases where there are no connections stop spinning (optimization)*/
+		//if (!channel->spin_num[spinning_thread_id])
+		//	sem_wait(&channel->sem_spinning[spinning_thread_id]);
+
+		/*gesalous, iterate the connection list of this channel for new messages*/
+		if (count < 10) {
+			node = spinner->conn_list->first;
+			spinning_list_type = HIGH_PRIORITY;
+		} else {
+			node = spinner->idle_conn_list->first;
+			spinning_list_type = LOW_PRIORITY;
+			count = 0;
+		}
+
+		prev_node = NULL;
+
+		while (node != NULL) {
+			conn = (connection_rdma *)node->data;
+
+			if (conn->status != CONNECTION_OK)
+				goto iterate_next_element;
+
+			hdr = (msg_header *)conn->rendezvous;
+			recv = hdr->receive;
+
+			/*messages belonging to data path category*/
+			if (recv == TU_RDMA_REGULAR_MSG) {
+				_update_connection_score(spinning_list_type, conn);
+				message_size = wait_for_payload_arrival(hdr);
+				if (message_size == 0) {
+					/*payload have not arrived yet check next connection*/
+					goto iterate_next_element;
+				}
+				__sync_fetch_and_add(&conn->pending_received_messages, 1);
+
+				if (hdr->type == FLUSH_SEGMENT_ACK || hdr->type == FLUSH_SEGMENT_ACK_AND_RESET) {
+					if (hdr->request_message_local_addr == NULL) {
+						//DPRINT("Boom! Replica  - * A C K E D * -\n");
+						free_rdma_received_message(conn, hdr);
+						++conn->FLUSH_SEGMENT_acks_received;
+						if (hdr->type == FLUSH_SEGMENT_ACK_AND_RESET) {
+							conn->rendezvous =
+								conn->rdma_memory_regions->remote_memory_buffer;
+						} else {
+							conn->rendezvous += MESSAGE_SEGMENT_SIZE;
+						}
+						goto iterate_next_element;
+						/*calculate here the new rendezous with replica since we do not use RESET_BUFFER for FLUSH*/
+					} else {
+						log_info("wake up thread FLUSH_SEGMENT_ACK arrived");
+						msg_header *request = (msg_header *)hdr->request_message_local_addr;
+						request->reply_message = hdr;
+						request->ack_arrived = KR_REP_ARRIVED;
+						/*wake him up*/
+						sem_post(&((msg_header *)hdr->request_message_local_addr)->sem);
+					}
+				} else if (hdr->type == SPILL_INIT_ACK || hdr->type == SPILL_COMPLETE_ACK) {
+					msg_header *request = (msg_header *)hdr->request_message_local_addr;
+					request->reply_message = hdr;
+					request->ack_arrived = KR_REP_ARRIVED;
+					/*No more waking ups, spill thread will poll (with yield) to see the message*/
+					//sem_post(&((msg_header *)hdr->request_message_local_addr)->sem);
+				} else {
+					/*normal messages*/
+					hdr->receive = 0;
+					rc = assign_job_to_worker(spinner, conn, hdr, -1);
+					if (rc == KREON_FAILURE) {
+						/*all workers are busy let's see messages from other connections*/
+						__sync_fetch_and_sub(&conn->pending_received_messages, 1);
+						/*Caution! message not consumed leave the rendezvous points as is*/
+						hdr->receive = recv;
+						goto iterate_next_element;
+					}
+
+					if (hdr->type == FLUSH_SEGMENT_AND_RESET) {
+						//DPRINT("REPLICA: MASTER instructed me to FLUSH SEGMENT and reset setting rendevous to 0");
+						conn->rendezvous = conn->rdma_memory_regions->remote_memory_buffer;
+						goto iterate_next_element;
+					} else if (hdr->type == FLUSH_SEGMENT) {
+						conn->rendezvous = conn->rendezvous + RDMA_TOTAL_LOG_BUFFER_SIZE;
+						//DPRINT("REPLICA: Just a normal FLUSH_SEGMENT waiting at offset %llu\n", (LLU)(uint64_t)conn->rendezvous - (uint64_t)conn->rdma_memory_regions->remote_memory_buffer);
+						goto iterate_next_element;
+					}
+				}
+
+				/**
+				 * Set the new rendezvous point, be careful for the case that the rendezvous is
+				 * outsize of the rdma_memory_regions->remote_memory_buffer
+				 * */
+				_update_rendezvous_location(conn, message_size);
+			} else if (recv == RESET_BUFFER) {
+				_update_connection_score(spinning_list_type, conn);
+				/*
+				 * send RESET_BUFFER_ACK properties are
+				 * 1. Only one thread per connection initiates RESET_BUFFER operation
+				 * 2. RESET_BUFFER_ACK is sent at a special location (last_header of the header section in the memory region)
+				 * Why? To avoid deadlocks, spinning thread acknowledges.
+				 * Who sends it? A special worker thread because spinning thread should never block
+				 */
+
+				rc = assign_job_to_worker(spinner, conn, hdr, -1);
+				/*all workers are busy returns KREON_FAILURE*/
+				if (rc != KREON_FAILURE) {
+					hdr->receive =
+						0; /*responsible worker will zero and update rendevous locations*/
+				}
+				goto iterate_next_element;
+				/*rendezvous will by changed by the worker!*/
+			} else if (recv == CONNECTION_PROPERTIES) {
+				message_size = wait_for_payload_arrival(hdr);
+				if (message_size == 0) {
+					/*payload have not arrived yet check next connection*/
+					goto iterate_next_element;
+				}
+
+				if (hdr->type == DISCONNECT) {
+					// Warning! the guy that consumes/handles the message is responsible for zeroing
+					// the message's segments for possible future rendezvous points. This is done
+					// inside free_rdma_received_message function
+
+					log_info("Disconnect operation bye bye mr Client garbage collection follows\n");
+					// FIXME these operations might need to be atomic with more than one spinning threads
+					struct channel_rdma *channel = conn->channel;
+					//Decrement spinning thread's connections and total connections
+					--channel->spin_num[channel->spinning_conn % channel->spinning_num_th];
+					--channel->spinning_conn;
+					_zero_rendezvous_locations(hdr);
+					_update_rendezvous_location(conn, message_size);
+					close_and_free_RDMA_connection(channel, conn);
+					goto iterate_next_element;
+				} else if (hdr->type == CHANGE_CONNECTION_PROPERTIES_REQUEST) {
+					log_warn("Remote side wants to change its connection properties\n");
+					set_connection_property_req *req = (set_connection_property_req *)hdr->data;
+
+					if (req->desired_priority_level == HIGH_PRIORITY) {
+						log_warn("Remote side wants to pin its connection\n");
+						/*pin this conn bitches!*/
+						conn->priority = HIGH_PRIORITY;
+						msg_header *reply = allocate_rdma_message(
+							conn, 0, CHANGE_CONNECTION_PROPERTIES_REPLY);
+						reply->request_message_local_addr = hdr->request_message_local_addr;
+						send_rdma_message(conn, reply);
+
+						if (spinning_list_type == LOW_PRIORITY) {
+							log_warn("Upgrading its connection\n");
+							_zero_rendezvous_locations(hdr);
+							_update_rendezvous_location(conn, message_size);
+							goto upgrade_connection;
+						} else {
+							_zero_rendezvous_locations(hdr);
+							_update_rendezvous_location(conn, message_size);
+						}
+					}
+				} else if (hdr->type == CHANGE_CONNECTION_PROPERTIES_REPLY) {
+					assert(0);
+					((msg_header *)hdr->request_message_local_addr)->ack_arrived = KR_REP_ARRIVED;
+					/*do nothing for now*/
+					_zero_rendezvous_locations(hdr);
+					_update_rendezvous_location(conn, message_size);
+					goto iterate_next_element;
+				} else {
+					log_fatal("unknown message type for connetion properties unknown type is %d\n",
+						  hdr->type);
+					assert(0);
+					exit(EXIT_FAILURE);
+				}
+			} else if (recv == RESET_RENDEZVOUS) {
+				//DPRINT("SERVER: Clients wants a reset ... D O N E\n");
+				_zero_rendezvous_locations(hdr);
+				conn->rendezvous = conn->rdma_memory_regions->remote_memory_buffer;
+				goto iterate_next_element;
+			} else if (recv == I_AM_CLIENT) {
+				assert(conn->type == SERVER_TO_CLIENT_CONNECTION);
+				conn->control_location = hdr->reply;
+				conn->control_location_length = hdr->reply_length;
+				hdr->receive = 0;
+				log_info("SERVER: We have a new client control location %llu",
+					 (LLU)conn->control_location);
+				_zero_rendezvous_locations(hdr);
+				_update_rendezvous_location(conn, MESSAGE_SEGMENT_SIZE);
+				goto iterate_next_element;
+			} else if (recv == SERVER_I_AM_READY) {
+				conn->status = CONNECTION_OK;
+				hdr->receive = 0;
+				conn->control_location = hdr->data;
+
+				log_info("Received SERVER_I_AM_READY at %llu\n", (LLU)conn->rendezvous);
+				if (!backup_region) {
+					backup_region = conn->rdma_memory_regions;
+					conn->rdma_memory_regions = NULL;
+					sem_post(&memory_steal_sem);
+				} else {
+					mrpool_free_memory_region(&conn->rdma_memory_regions);
+				}
+				assert(backup_region);
+
+				conn->rdma_memory_regions = conn->next_rdma_memory_regions;
+				conn->next_rdma_memory_regions = NULL;
+				conn->rendezvous = conn->rdma_memory_regions->remote_memory_buffer;
+
+				msg_header *msg =
+					(msg_header *)((uint64_t)conn->rdma_memory_regions->local_memory_buffer +
+						       (uint64_t)conn->control_location);
+				msg->pay_len = 0;
+				msg->padding_and_tail = 0;
+				msg->data = NULL;
+				msg->next = NULL;
+				msg->type = CLIENT_RECEIVED_READY;
+				msg->receive = TU_RDMA_REGULAR_MSG;
+				msg->local_offset = (uint64_t)conn->control_location;
+				msg->remote_offset = (uint64_t)conn->control_location;
+				msg->ack_arrived = KR_REP_PENDING;
+				msg->callback_function = NULL;
+				msg->request_message_local_addr = NULL;
+				__send_rdma_message(conn, msg);
+
+				//DPRINT("SERVER: Client I AM READY reply will be send at %llu  length %d type %d message size %d id %llu\n",
+				//(LLU)hdr->reply,hdr->reply_length, hdr->type,message_size,hdr->MR);
+				goto iterate_next_element;
+			} else {
+				if (spinning_list_type == HIGH_PRIORITY)
+					++conn->idle_iterations;
+				else if (conn->idle_iterations > 0)
+					--conn->idle_iterations;
+				goto iterate_next_element;
+			}
+
+		iterate_next_element:
+			if (node->marked_for_deletion) {
+				log_warn("garbage collection");
+				pthread_mutex_lock(&spinner->conn_list_lock);
+				next_node = node->next; /*Caution prev_node remains intact*/
+				if (spinning_list_type == HIGH_PRIORITY)
+					delete_element_from_simple_concurrent_list(spinner->conn_list, prev_node, node);
+				else
+					delete_element_from_simple_concurrent_list(spinner->idle_conn_list, prev_node,
+										   node);
+				node = next_node;
+				pthread_mutex_unlock(&spinner->conn_list_lock);
+			}
+
+			else if (0
+				 /*spinning_list_type == HIGH_PRIORITY &&
+						conn->priority != HIGH_PRIORITY &&//we don't touch high priority connections
+						conn->idle_iterations > MAX_IDLE_ITERATIONS*/) {
+				log_warn("Downgrading connection...");
+				pthread_mutex_lock(&spinner->conn_list_lock);
+				next_node = node->next; /*Caution prev_node remains intact*/
+				remove_element_from_simple_concurrent_list(spinner->conn_list, prev_node, node);
+				add_node_in_simple_concurrent_list(spinner->idle_conn_list, node);
+				conn->responsible_spin_list = spinner->idle_conn_list;
+				conn->idle_iterations = 0;
+				node = next_node;
+				pthread_mutex_unlock(&spinner->conn_list_lock);
+				log_warn("Downgrading connection...D O N E ");
+			}
+
+			else if (spinning_list_type == LOW_PRIORITY && conn->idle_iterations > MAX_IDLE_ITERATIONS) {
+			upgrade_connection:
+				log_warn("Upgrading connection...");
+				pthread_mutex_lock(&spinner->conn_list_lock);
+				next_node = node->next; /*Caution prev_node remains intact*/
+				remove_element_from_simple_concurrent_list(spinner->idle_conn_list, prev_node, node);
+				add_node_in_simple_concurrent_list(spinner->conn_list, node);
+				conn->responsible_spin_list = spinner->conn_list;
+				conn->idle_iterations = 0;
+				node = next_node;
+				pthread_mutex_unlock(&spinner->conn_list_lock);
+				log_warn("Upgrading connection...D O N E");
+			} else {
+				prev_node = node;
+				node = node->next;
+			}
+		}
+	}
+	log_warn("Server Spinning thread %d exiting", spinning_thread_id);
+	return NULL;
+}
 
 #if 0
 /*functions for building index at replicas*/
@@ -649,7 +1633,7 @@ int _ks_init_replica_rdma_connections(struct krm_region_desc *r_desc)
  APPEND_SUCCESS
  */
 void insert_kv_pair(struct krm_region_desc *r_desc, void *kv, connection_rdma *rdma_conn, kv_location *location,
-		    work_task *task, int wait)
+		    struct work_task *task, int wait)
 {
 	char *key;
 	struct ru_replica_log_segment *curr_seg;
@@ -859,7 +1843,7 @@ struct msg_header *Server_FlushVolume_RDMA( struct msg_header *data_message, str
  * */
 void handle_task(void *__task)
 {
-	work_task *task = (work_task *)__task;
+	struct work_task *task = (struct work_task *)__task;
 	kv_location location;
 	struct connection_rdma *rdma_conn;
 	struct krm_region_desc *r_desc;
@@ -1478,14 +2462,8 @@ void handle_task(void *__task)
 		break;
 
 	case TEST_REQUEST_FETCH_PAYLOAD:
-		task->reply_msg =
-			__allocate_rdma_message(task->conn, 1024, TEST_REPLY_FETCH_PAYLOAD, ASYNCHRONOUS, 0, task);
-		if (task->allocation_status != ALLOCATION_SUCCESS) {
-			return;
-		}
-		task->reply_msg->request_message_local_addr = task->msg->request_message_local_addr;
-		task->overall_status = TASK_COMPLETED;
-		break;
+		log_fatal("Message not supported yet");
+		exit(EXIT_FAILURE);
 #if 0
 		case TU_FLUSH_VOLUME_QUERY:
 			reply_data_message = Server_FlushVolume_RDMA( data_message, rdma_conn);
@@ -1567,7 +2545,6 @@ void handle_task(void *__task)
 	return;
 }
 
-#ifndef TESTS
 /*helper functions*/
 void _str_split(char *a_str, const char a_delim, uint64_t **core_vector, uint32_t *num_of_cores)
 {
@@ -1640,7 +2617,6 @@ int main(int argc, char *argv[])
 {
 	char *device_name;
 	uint64_t device_size;
-	uint32_t i;
 	//globals_set_zk_host(zookeeper_host_port);
 	RDMA_LOG_BUFFER_PADDING = 0;
 	RDMA_TOTAL_LOG_BUFFER_SIZE = TU_HEADER_SIZE + BUFFER_SEGMENT_SIZE + 4096 + TU_TAIL_SIZE;
@@ -1652,52 +2628,145 @@ int main(int argc, char *argv[])
 		assert(RDMA_TOTAL_LOG_BUFFER_SIZE % MESSAGE_SEGMENT_SIZE == 0);
 	}
 
-	if (argc == 8) {
+	if (argc == 7) {
 		int rdma_port = strtol(argv[1], NULL, 10);
 		globals_set_RDMA_connection_port(rdma_port);
 		device_name = argv[2];
 		device_size = strtol(argv[3], NULL, 10) * 1024 * 1024 * 1024;
 		globals_set_dev(device_name);
-		globals_set_zk_host(argv[4]);
-		globals_set_RDMA_IP_filter(argv[5]);
-		_str_split(argv[6], ',', &spinning_threads_core_ids, &num_of_spinning_threads);
-		_str_split(argv[7], ',', &worker_threads_core_ids, &num_of_worker_threads);
+		globals_set_zk_host(argv[3]);
+		globals_set_RDMA_IP_filter(argv[4]);
+		_str_split(argv[5], ',', &spinning_threads_core_ids, &num_of_spinning_threads);
+		_str_split(argv[6], ',', &worker_threads_core_ids, &num_of_worker_threads);
 	} else {
 		log_fatal(
-			"Error: usage: ./kreon_server <port number> <device name> <device size in GB> <zk_host:zk_port> <RDMA_IP_prefix> <spinning thread core ids>  <working thread core ids>\n");
+			"Error: usage: ./kreon_server <port number> <device name> <zk_host:zk_port> <RDMA_IP_prefix> <spinning thread core ids>  <working thread core ids>\n");
 		exit(EXIT_FAILURE);
 	}
 
-	for (i = 0; i < num_of_spinning_threads; i++) {
-		log_info(" spinning thread core[%d] = %llu\n", i, (LLU)spinning_threads_core_ids[i]);
+	for (uint32_t i = 0; i < num_of_spinning_threads; i++)
+		log_info(" spinning thread core[%d] = %llu", i, (LLU)spinning_threads_core_ids[i]);
+
+	for (uint32_t i = 0; i < num_of_worker_threads; i++)
+		log_info(" worker thread core[%d] = %llu", i, (LLU)worker_threads_core_ids[i]);
+
+	if (num_of_worker_threads % num_of_spinning_threads != 0) {
+		log_fatal("total worker threads mod with total spinning threads must be 0!");
+		exit(EXIT_FAILURE);
 	}
-	for (i = 0; i < num_of_worker_threads; i++) {
-		log_info(" worker thread core[%d] = %llu\n", i, (LLU)worker_threads_core_ids[i]);
-	}
-	assert(num_of_worker_threads % num_of_spinning_threads == 0);
 	WORKER_THREADS_PER_SPINNING_THREAD = (num_of_worker_threads / num_of_spinning_threads);
 
 	log_info("Set pool size for each spinning thread to %u\n", WORKER_THREADS_PER_SPINNING_THREAD);
-	//struct sigaction sa;
-	//sa.sa_handler = tu_ec_sig_handler;
-	//sigemptyset(&sa.sa_mask);
-	//sa.sa_flags = 0;
-	//int ret = sigaction(SIGINT, &sa, NULL);
-	//assert(ret == 0);
 
-	//srand(time(NULL));
 	pthread_mutex_init(&reg_lock, NULL);
 
-	log_info("Creating RDMA channel and starting server spinning thread");
-	globals_create_rdma_channel();
+	log_info("Creating RDMA channel...");
 
-	struct channel_rdma *channel = globals_get_rdma_channel();
-	channel->spinning_num_th = num_of_spinning_threads;
+	struct channel_rdma *channel = (struct channel_rdma *)malloc(sizeof(*channel));
+	if (channel == NULL) {
+		log_fatal("malloc failed could do not get memory for channel");
+		exit(EXIT_FAILURE);
+	}
+	crdma_init_generic_create_channel(channel);
+	channel->dynamic_pool = mrpool_create(channel->pd, -1, DYNAMIC, MEM_REGION_BASE_SIZE);
+	channel->spinning_th = 0; //what?
+	channel->spinning_conn = 0; //what?
+	channel->spinning_num_th = num_of_spinning_threads; //what?
+	globals_set_rdma_channel(channel);
+	log_info("Created RDMA channel successfully");
+	log_info("Creating server spinning and worker threads...");
+
+	pthread_mutex_init(&channel->spin_conn_lock, NULL); // Lock for the conn_list
+
+	log_info("Setting spinning threads number to %d", num_of_spinning_threads);
+	dataserver = (struct ds_server *)malloc(
+		sizeof(struct ds_server) +
+		(num_of_spinning_threads * (sizeof(struct ds_spinning_thread) +
+					    (WORKER_THREADS_PER_SPINNING_THREAD * sizeof(struct worker_thread)))));
+	dataserver->num_of_spinning_threads = num_of_spinning_threads;
+
+	for (int i = 0; i < dataserver->num_of_spinning_threads; i++) {
+		//pthread_mutex_init(&channel->spin_list_conn_lock[i], NULL);
+		//channel->spin_list[i] = init_simple_concurrent_list();
+		//channel->idle_conn_list[i] = init_simple_concurrent_list();
+		pthread_mutex_init(&dataserver->spinner[i].conn_list_lock, NULL);
+		dataserver->spinner[i].conn_list = init_simple_concurrent_list();
+		dataserver->spinner[i].idle_conn_list = init_simple_concurrent_list();
+
+		dataserver->spinner[i].next_server_worker_to_submit_job = 0;
+		dataserver->spinner[i].next_client_worker_to_submit_job = WORKER_THREADS_PER_SPINNING_THREAD / 2;
+		/*Now init workers structures for this spinner*/
+		dataserver->spinner[i].num_workers = WORKER_THREADS_PER_SPINNING_THREAD;
+		struct ds_spinning_thread *spinner = &dataserver->spinner[i];
+		for (int j = 0; j < spinner->num_workers; j++) {
+			/*init worker group vars*/
+			pthread_spin_init(&spinner->worker[j].work_queue_lock, PTHREAD_PROCESS_PRIVATE);
+			spinner->worker[j].worker_id = j;
+			spinner->worker[j].status = WORKER_NOT_RUNNING;
+			sem_init(&spinner->worker[j].sem, 0, 0);
+			utils_queue_init(&spinner->worker[j].empty_job_buffers_queue);
+			utils_queue_init(&spinner->worker[j].empty_high_priority_job_buffers_queue);
+			utils_queue_init(&spinner->worker[j].work_queue);
+			utils_queue_init(&spinner->worker[j].high_priority_queue);
+
+			for (int k = 0; k < UTILS_QUEUE_CAPACITY; k++) {
+				utils_queue_push(&spinner->worker[j].empty_job_buffers_queue,
+						 &spinner->worker[j].job_buffers[k]);
+				utils_queue_push(&spinner->worker[j].empty_high_priority_job_buffers_queue,
+						 &spinner->worker[j].high_priority_job_buffers[k]);
+			}
+		}
+
+		if (pthread_create(&spinner->spinner_context, NULL, server_spinning_thread_kernel,
+				   &dataserver->spinner[i]) != 0) {
+			log_fatal("failed to spawn server spinning thread reason follows\n");
+			perror("Reason: \n");
+			exit(EXIT_FAILURE);
+		}
+
+		log_info("Pinning spinning thread %d...", i);
+		cpu_set_t spinning_thread_affinity_mask;
+		CPU_ZERO(&spinning_thread_affinity_mask);
+		CPU_SET(spinning_threads_core_ids[i], &spinning_thread_affinity_mask);
+		int status = pthread_setaffinity_np(spinner->spinner_context, sizeof(cpu_set_t),
+						    &spinning_thread_affinity_mask);
+		if (status != 0) {
+			log_fatal("failed to pin spinning thread");
+			exit(EXIT_FAILURE);
+		}
+		log_info("Pinned successfully spinning thread to core %llu", (LLU)spinning_threads_core_ids[i]);
+		log_info("Generating %d workers for spinning thread %d", spinner->num_workers, spinner->id);
+
+		cpu_set_t worker_threads_affinity_mask;
+		CPU_ZERO(&worker_threads_affinity_mask);
+		/*set the proper affinity for this worker group*/
+		uint32_t start = i * (num_of_worker_threads / num_of_spinning_threads);
+		for (uint32_t j = start; j < start + (num_of_worker_threads / num_of_spinning_threads); j++) {
+			CPU_SET(worker_threads_core_ids[j], &worker_threads_affinity_mask);
+			log_info("Pinning worker threads (belonging to spinning thread core id %llu) to core id %llu",
+				 (LLU)spinning_threads_core_ids[i], (LLU)worker_threads_core_ids[j]);
+		}
+
+		for (int j = 0; j < spinner->num_workers; j++) {
+			pthread_create(&spinner->worker[j].context, NULL, worker_thread_kernel, &spinner->worker[j]);
+			/*set affinity for this group*/
+			status = pthread_setaffinity_np(spinner->worker[j].context, sizeof(cpu_set_t),
+							&worker_threads_affinity_mask);
+			if (status != 0) {
+				log_fatal("failed to pin worker thread group %d", i);
+				exit(EXIT_FAILURE);
+			}
+		}
+		log_info("Pinned workers to spinning thread %d successfully", i);
+	}
+
+	log_info("Starting socket thread for listening to new connections...");
 	if (pthread_create(&channel->cmthread, NULL, socket_thread, channel) != 0) {
-		DPRINT("FATAL failed to spawn thread reason follows:\n");
+		log_fatal("failed to spawn socket thread reason follows:\n");
 		perror("Reason: \n");
 		exit(EXIT_FAILURE);
 	}
+	log_info("Started socket thread successfully");
 	pthread_t krm_server;
 
 	log_info("New era has arrived initializing kreonR metadata server");
@@ -1707,22 +2776,11 @@ int main(int argc, char *argv[])
 	}
 	Set_OnConnection_Create_Function(globals_get_rdma_channel(), handle_task);
 	stats_init(num_of_worker_threads);
-	log_info("Server ready");
-
-	//log_info("initializing storage device:%s", Device_name);
-	//Init_Storage_Device(&storage_dev, Device_name, (uint64_t)Device_size);
-	//log_info("initializing zookeeper server");
-	//Init_tuzk_server(&tuzk_S);
-	//log_info("initializing regionse?\n");
-	//Init_RegionsSe();
-	//log_info("initializing data server");
-	//Init_Data_Server_from_ZK();
+	log_info("Kreon server ready");
 
 	sem_init(&exit_main, 0, 0);
 	sem_wait(&exit_main);
 
 	log_info("kreonR server exiting\n");
-	//Free_RegionsSe();
 	return 0;
 }
-#endif
