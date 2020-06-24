@@ -167,7 +167,25 @@ void globals_create_rdma_channel(void)
 	if (global_vars.channel == NULL)
 		global_vars.channel = crdma_client_create_channel();
 	else
-		log_warn("rdma channel alredy set");
+		log_warn("rdma channel already set");
+	if (pthread_mutex_unlock(&g_lock) != 0) {
+		log_fatal("Failed to acquire lock");
+		exit(EXIT_FAILURE);
+	}
+}
+
+void globals_set_rdma_channel(struct channel_rdma *channel)
+{
+	if (pthread_mutex_lock(&g_lock) != 0) {
+		log_fatal("Failed to acquire lock");
+		exit(EXIT_FAILURE);
+	}
+
+	if (global_vars.channel == NULL)
+		global_vars.channel = channel;
+	else
+		log_warn("rdma channel already set");
+
 	if (pthread_mutex_unlock(&g_lock) != 0) {
 		log_fatal("Failed to acquire lock");
 		exit(EXIT_FAILURE);

@@ -37,9 +37,6 @@ typedef enum kreon_op_status {
 #define TU_RDMA_SINGLE_MESSAGE                                                                                         \
 	1 //1 puts as a single message, 0 puts with several messages, each of 1K, although all sent together
 
-#define TU_FAKE_YCSB 0 //Only YCSB and nothing else is run
-#define TU_FAKE_SEND 0 // Request is not send
-#define TU_FAKE_RECV 0 //We send but we dont process the received messages
 #define TU_FAKE_PAYLOAD 0
 #define FAKE_ONLY_HDR 1
 #define FAKE_ONLY_PAYLOAD 0
@@ -64,7 +61,6 @@ typedef enum kreon_op_status {
 #define SIZEUINT32_T (sizeof(uint32_t))
 #define SIZEUINT32_T_2 (sizeof(uint32_t) << 1)
 
-//#define WORKER_THREADS_PER_SPINNING_THREAD 4
 #define TU_HEADER_SIZE (sizeof(struct msg_header))
 #define TU_TAIL_SIZE (sizeof(uint32_t))
 #define TU_HEADER_TAIL_SIZE (TU_HEADER_SIZE + TU_TAIL_SIZE)

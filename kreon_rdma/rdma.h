@@ -51,13 +51,8 @@
 #define SPINNING_PER_CHANNEL 1
 #define SPINNING_NO_LIST 1
 
-#if (TU_FAKE_SEND || TU_FAKE_RECV || TU_FAKE_YCSB)
-#define SPINNING_NUM_TH 1
-#define SPINNING_NUM_TH_CLI 1
-#else
 #define SPINNING_NUM_TH 8 // was 1
 #define SPINNING_NUM_TH_CLI 8 // 4
-#endif
 
 #define DEFAULT_DEV_IBV "mlx4_0"
 
@@ -98,7 +93,6 @@ extern uint64_t *worker_threads_core_ids;
 
 extern uint32_t num_of_spinning_threads;
 extern uint32_t num_of_worker_threads;
-extern uint32_t WORKER_THREADS_PER_SPINNING_THREAD;
 
 typedef struct spinning_thread_parameters {
 	struct channel_rdma *channel;
@@ -115,51 +109,6 @@ typedef enum connection_type {
 	H3_CLIENT_TO_SERVER_CONNECTION,
 	H3_SERVER_TO_CLIENT_CONNECTION
 } connection_type;
-
-typedef enum work_task_status {
-	/*put related*/
-	APPEND_START = 10000,
-	CHECK_FOR_REPLICA_FLUSH_SEGMENT_ACK,
-	ALLOCATE_NEW_LOG_BUFFER_WITH_REPLICA,
-	PERFORM_SPILL_CHECK,
-	WAIT_FOR_SPILL_START,
-	APPEND_COMPLETE,
-	/*allocation of reply msg related*/
-	ALLOCATION_START,
-	CHECK_FOR_RESET_BUFFER_ACK,
-	CHECK_FOR_PENDING_REQUESTS_TO_COMPLETE,
-	ALLOCATION_SUCCESS,
-	/*get related*/
-	GET_START,
-	GET_COMPLETE,
-	/*TEST RELATED*/
-	TEST_START,
-	TEST_COMPLETE,
-	/*reset buffer related*/
-	RESET_BUFFER_START,
-	RESET_BUFFER_COMPLETE,
-	/*FLUSH segment related*/
-	FLUSH_SEGMENT_START,
-	FLUSH_SEGMENT_COMPLETE,
-	/*overall_status*/
-	TASK_START,
-	TASK_COMPLETED,
-	/*spill staff codes used for master's spill worker*/
-	SEND_SPILL_INIT,
-	WAIT_FOR_SPILL_INIT_REPLY,
-	INIT_SPILL_BUFFER_SCANNER,
-	SPILL_BUFFER_REQ,
-	CLOSE_SPILL_BUFFER,
-	SEND_SPILL_COMPLETE,
-	WAIT_FOR_SPILL_COMPLETE_REPLY,
-	SPILL_FINISHED,
-	/*codes used for spill status at the replicas*/
-	SPILL_INIT_START,
-	SPILL_INIT_END,
-	SPILL_COMPLETE_START,
-	SPILL_COMPLETE_END,
-	SPILL_BUFFER_START
-} work_task_status;
 
 typedef enum region_status { REGION_OK = 1000, REGION_IN_TRANSITION } region_status;
 
@@ -178,59 +127,7 @@ typedef enum rdma_allocation_type {
 	ASYNCHRONOUS,
 } rdma_allocation_type;
 
-typedef struct work_task {
-	struct channel_rdma *channel;
-	struct connection_rdma *conn;
-	msg_header *msg;
-	void *region; /*sorry, circular dependency was created so I patched it quickly*/
-	void *notification_addr;
-	msg_header *reply_msg;
-	msg_header *flush_segment_request;
-	/*used for two puproses (keeping state)
-	 * 1. For get it keeps the get result if the  server cannot allocate immediately memory to respond to the client.
-	 * This save CPU cycles at the server  because it voids entering kreon each time a stall happens.
-	 * 2. For puts it keeps the result of a spill task descriptor
-	 */
-	void *intermediate_buffer;
-	int sockfd; /*from accept() for building connections*/
-	int thread_id;
-	work_task_status kreon_operation_status;
-	work_task_status allocation_status;
-	work_task_status overall_status;
-} work_task;
-
 typedef enum worker_status { IDLE_SPINNING, IDLE_SLEEPING, BUSY, WORKER_NOT_RUNNING } worker_status;
-
-typedef struct worker_thread {
-	work_task job_buffers[UTILS_QUEUE_CAPACITY];
-	work_task high_priority_job_buffers[UTILS_QUEUE_CAPACITY];
-	/*queue for empty work_task buffers*/
-	utils_queue_s empty_job_buffers_queue;
-	utils_queue_s empty_high_priority_job_buffers_queue;
-
-	/* queues for normal priority, high priority*/
-	utils_queue_s work_queue;
-	utils_queue_s high_priority_queue;
-
-	sem_t sem;
-	pthread_t thread;
-	pthread_spinlock_t work_queue_lock;
-	struct channel_rdma *channel;
-	worker_status status;
-	struct worker_group *my_group;
-	int worker_id;
-} worker_thread;
-
-typedef struct worker_group {
-	int next_server_worker_to_submit_job;
-	int next_client_worker_to_submit_job;
-	worker_thread *group;
-} worker_group;
-
-void _send_reset_buffer_ack(struct connection_rdma *conn);
-void _zero_rendezvous_locations_l(msg_header *msg, uint32_t length);
-void _zero_rendezvous_locations(msg_header *msg);
-void _update_rendezvous_location(struct connection_rdma *conn, int message_size);
 
 typedef void (*on_connection_created)(void *vconn);
 
@@ -293,33 +190,28 @@ struct channel_rdma {
 	memory_region_pool *static_pool;
 
 	/*List of connections open*/
-	//SIMPLE_CONCURRENT_LIST * conn_list;
 	uint32_t nconn; // Num connections openned
 	uint32_t nused; // Num connections used
 
 	pthread_t cmthread; // Thread in charge of the socket for receiving the RDMA remote features (LID, GID, rkey, addr, etc.)
 	pthread_t cq_poller_thread; //Thread in charge of the comp_channel //completion channel
 
-#if (SPINNING_THREAD && SPINNING_PER_CHANNEL)
 	int spinning_num_th; //Number of spinning threads. Client and server can have a different number
+
 	sem_t sem_spinning[SPINNING_NUM_TH]; //Thread spinning will be waiting here until first connection is added
-
 	pthread_t spinning_thread[SPINNING_NUM_TH]; /* gesalous new staff, spining threads */
-	worker_group *spinning_thread_group
+	struct worker_group *spinning_thread_group
 		[SPINNING_NUM_TH]; /*gesalous new staff, references to worker threads per spinning thread*/
-
-	//struct klist_head spin_list[SPINNING_NUM_TH];	// List of connections open
 	SIMPLE_CONCURRENT_LIST *spin_list[SPINNING_NUM_TH];
 	SIMPLE_CONCURRENT_LIST *idle_conn_list[SPINNING_NUM_TH];
 	pthread_mutex_t spin_list_conn_lock[SPINNING_NUM_TH]; /*protectes the per spinnign thread connection list*/
 
 	int spin_num[SPINNING_NUM_TH]; // Number of connections open
-	long long n_req[SPINNING_NUM_TH]; // Number of connections open
 	int spinning_th; // For the id of the threads
 	int spinning_conn; // For the conections to figure out which spinning thread should be joined
 	pthread_mutex_t spin_th_lock; // Lock for the spin_th
 	pthread_mutex_t spin_conn_lock; // Lock for the spin_conn
-#endif
+
 	on_connection_created connection_created; //Callback function used for created a thread at
 };
 
@@ -366,7 +258,7 @@ typedef struct connection_rdma {
 
 	uint32_t priority;
 	/*to which worker this connection has been assigned to*/
-	uint32_t worker_id;
+	int worker_id;
 	/*</gesalous>*/
 	void *channel;
 
@@ -425,8 +317,6 @@ void init_rdma_message(connection_rdma *conn, msg_header *msg, uint32_t message_
 		       uint32_t message_payload_size, uint32_t padding);
 
 msg_header *client_allocate_rdma_message(connection_rdma *conn, int message_payload_size, int message_type);
-msg_header *__allocate_rdma_message(connection_rdma *conn, int message_payload_size, int message_type,
-				    int rdma_allocation_type, int priority, work_task *task);
 
 int send_rdma_message(connection_rdma *conn, msg_header *msg);
 int send_rdma_message_busy_wait(connection_rdma *conn, msg_header *msg);
@@ -444,7 +334,15 @@ int wake_up_replica_to_flush_segment(connection_rdma *conn, msg_header *msg, int
 struct connection_rdma *crdma_client_create_connection(struct channel_rdma *channel);
 void close_and_free_RDMA_connection(struct channel_rdma *channel, struct connection_rdma *conn);
 void crdma_generic_free_connection(struct connection_rdma **ardma_conn);
-uint32_t crdma_get_channel_connection_number(struct channel_rdma *channel);
 
 /*gesalous, signature here implementation in tu_rdma.c*/
 void disconnect_and_close_connection(connection_rdma *conn);
+void ec_sig_handler(int signo);
+uint32_t wait_for_payload_arrival(msg_header *hdr);
+int __send_rdma_message(connection_rdma *conn, msg_header *msg);
+void tu_rdma_init_connection(struct connection_rdma *conn);
+
+void _send_reset_buffer_ack(struct connection_rdma *conn);
+void _zero_rendezvous_locations_l(msg_header *msg, uint32_t length);
+void _zero_rendezvous_locations(msg_header *msg);
+void _update_rendezvous_location(struct connection_rdma *conn, int message_size);
