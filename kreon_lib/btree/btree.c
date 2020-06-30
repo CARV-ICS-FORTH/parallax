@@ -1683,10 +1683,10 @@ void *__find_key(db_handle *handle, void *key, char SEARCH_MODE)
 			if (tree_id != active_tree) {
 				tries = 0;
 			retry_2:
-				if (tries % 1000000 == 9999999)
+				if (tries % 1000000 == 999999)
 					log_warn("possible deadlock detected lamport counters fail after 1M tries");
 				root_w = handle->db_desc->levels[level_id].root_w[tree_id];
-				root_r = handle->db_desc->levels[level_id].root_w[tree_id];
+				root_r = handle->db_desc->levels[level_id].root_r[tree_id];
 				if (root_w != NULL) {
 					rep = lookup_in_tree(key, root_w);
 					if (rep.lc_failed) {
@@ -1694,7 +1694,6 @@ void *__find_key(db_handle *handle, void *key, char SEARCH_MODE)
 						goto retry_2;
 					}
 				} else if (root_r != NULL) {
-					root_r = handle->db_desc->levels[level_id].root_r[tree_id];
 					rep = lookup_in_tree(key, root_r);
 					if (rep.lc_failed) {
 						++tries;
