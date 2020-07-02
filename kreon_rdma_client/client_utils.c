@@ -12,7 +12,7 @@
 
 static int cu_is_connected = 0;
 static zhandle_t *cu_zh = NULL;
-static struct cu_regions client_regions;
+struct cu_regions client_regions;
 
 static void _cu_zk_watcher(zhandle_t *zkh, int type, int state, const char *path, void *context)
 {

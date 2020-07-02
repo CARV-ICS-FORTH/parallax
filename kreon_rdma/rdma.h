@@ -317,6 +317,7 @@ void init_rdma_message(connection_rdma *conn, msg_header *msg, uint32_t message_
 		       uint32_t message_payload_size, uint32_t padding);
 
 msg_header *client_allocate_rdma_message(connection_rdma *conn, int message_payload_size, int message_type);
+msg_header *client_try_allocate_rdma_message(connection_rdma *conn, int message_payload_size, int message_type);
 
 int send_rdma_message(connection_rdma *conn, msg_header *msg);
 int send_rdma_message_busy_wait(connection_rdma *conn, msg_header *msg);
