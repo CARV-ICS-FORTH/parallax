@@ -19,8 +19,9 @@ struct globals {
 	int client_spinning_thread;
 	uint64_t volume_size;
 	struct channel_rdma *channel;
+	int connections_per_server;
 };
-static struct globals global_vars = { NULL, NULL, NULL, -1, 1, 0, NULL };
+static struct globals global_vars = { NULL, NULL, NULL, -1, 1, 0, NULL, -1 };
 static pthread_mutex_t g_lock = PTHREAD_MUTEX_INITIALIZER;
 
 char *globals_get_RDMA_IP_filter()
@@ -84,6 +85,19 @@ int globals_get_RDMA_connection_port(void)
 void globals_set_RDMA_connection_port(int port)
 {
 	global_vars.RDMA_connection_port = port;
+}
+
+int globals_get_connections_per_server(void)
+{
+	return global_vars.connections_per_server;
+}
+
+void globals_set_connections_per_server(int connections_per_server)
+{
+	if (global_vars.connections_per_server != -1)
+		log_warn("Connections per server is already set to %d! New value is %d.",
+			 global_vars.connections_per_server, connections_per_server);
+	global_vars.connections_per_server = connections_per_server;
 }
 
 void globals_disable_client_spinning_thread()

@@ -229,8 +229,9 @@ static void _cu_add_conn_for_server(struct krm_server_name *server, uint64_t has
 	char *host = server->RDMA_IP_addr;
 	//log_info("Connection to RDMA IP %s", server->RDMA_IP_addr);
 	cu_conn_per_server *cps = (cu_conn_per_server *)malloc(sizeof(cu_conn_per_server));
-	int i;
-	for (i = 0; i < NUM_OF_CONNECTIONS_PER_SERVER; i++) {
+	cps->connections = (struct connection_rdma **)malloc(globals_get_connections_per_server() *
+							     sizeof(struct connection_rdma *));
+	for (int i = 0; i < globals_get_connections_per_server(); i++) {
 		cps->connections[i] = crdma_client_create_connection_list_hosts(globals_get_rdma_channel(), &host, 1,
 										CLIENT_TO_SERVER_CONNECTION);
 	}
@@ -280,7 +281,7 @@ retry:
 		pthread_mutex_unlock(&client_regions.conn_lock);
 		goto retry;
 	}
-	return cps->connections[seed % NUM_OF_CONNECTIONS_PER_SERVER];
+	return cps->connections[seed % globals_get_connections_per_server()];
 }
 
 void cu_close_open_connections()
@@ -293,7 +294,7 @@ void cu_close_open_connections()
 	HASH_ITER(hh, client_regions.root_cps, current, tmp)
 	{
 		//log_info("Closing connections with server %s", current->server_id.kreon_ds_hostname);
-		for (i = 0; i < NUM_OF_CONNECTIONS_PER_SERVER; i++) {
+		for (i = 0; i < globals_get_connections_per_server(); i++) {
 			/*send disconnect msg*/
 			pthread_mutex_lock(&current->connections[i]->buffer_lock);
 			req_header = client_allocate_rdma_message(current->connections[i], 0, DISCONNECT);

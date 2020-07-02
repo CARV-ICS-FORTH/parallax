@@ -1,4 +1,3 @@
-#include "../kreon_rdma_client/client_utils.h"
 #include <assert.h>
 #include <pthread.h>
 #include <stdio.h>
@@ -12,8 +11,6 @@
 #include "../kreon_server/globals.h"
 #include "../utilities/latency_monitor.h"
 #include <log.h>
-#define MAX_THREADS 32
-#define THREADS 1
 
 unsigned Threads = 1;
 int Time = 60;
@@ -119,7 +116,7 @@ extern struct cu_regions client_regions;
 
 void *bench(void *int_thread_id)
 {
-	uint32_t connections_per_thread = NUM_OF_CONNECTIONS_PER_SERVER / THREADS;
+	uint32_t connections_per_thread = globals_get_connections_per_server() / Threads;
 	int current_connection = 0;
 	const uint64_t tid = (uint64_t)int_thread_id;
 	connection_rdma *conn;
@@ -180,21 +177,6 @@ void *bench(void *int_thread_id)
 	return NULL;
 }
 
-void *stats(void *_ignored)
-{
-	while (!Thread_exit) {
-		printf("In Transit requests / sec: ");
-		for (int i = 0; i < THREADS; ++i) {
-			printf("%d ", Sent_messages[i] - Received_messages[i]);
-		}
-		printf("\n");
-		sleep(1);
-	}
-	return NULL;
-}
-
-pthread_t stats_thread;
-
 char *conf_file_name = "conf.txt";
 
 void print_usage(char *exe_name, FILE *out)
@@ -220,6 +202,9 @@ void parse_command_line_args(int argc, char **argv)
 			break;
 		case 'd':
 			Time = strtoul(optarg, NULL, 10);
+			break;
+		case 'c':
+			globals_set_connections_per_server(strtoul(optarg, NULL, 10));
 			break;
 		case 'm':
 			Message_size = strtol(optarg, NULL, 10);
@@ -253,7 +238,7 @@ void parse_command_line_args(int argc, char **argv)
 void print_parameters(FILE *out)
 {
 	fprintf(out, "Client Threads\t%d\n", Threads);
-	fprintf(out, "Queue Pairs\t%d\n", NUM_OF_CONNECTIONS_PER_SERVER);
+	fprintf(out, "Queue Pairs\t%d\n", globals_get_connections_per_server());
 	fprintf(out, "Message Size\t%d\n", Message_size);
 	fprintf(out, "Outstanding Requests\t%u\n", Outstanding_requests);
 	fprintf(out, "Memory Region Size\t%lu\n", MEM_REGION_BASE_SIZE);
@@ -327,7 +312,7 @@ int main(int argc, char **argv)
 	printf("Wake up!\n");
 	Thread_exit = 1;
 
-	for (int i = 0; i < THREADS; ++i) {
+	for (int i = 0; i < Threads; ++i) {
 		pthread_join(Pthreads[i], NULL);
 	}
 
