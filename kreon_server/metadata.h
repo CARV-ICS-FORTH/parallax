@@ -4,6 +4,8 @@
 #include <stdint.h>
 #include <semaphore.h>
 #include <zookeeper/zookeeper.h>
+#include <pthread.h>
+#include "server_communication.h"
 #include "../utilities/list.h"
 #include "../kreon_lib/btree/btree.h"
 #include "../kreon_lib/btree/uthash.h"
@@ -63,6 +65,48 @@ enum krm_msg_type {
 
 enum krm_error_code { KRM_SUCCESS = 0, KRM_BAD_EPOCH, KRM_DS_TABLE_FULL, KRM_REGION_EXISTS };
 
+enum krm_work_task_status {
+	/*overall_status*/
+	TASK_START,
+	TASK_COMPLETE,
+	TASK_RESUME,
+	/*mutation operations related*/
+	GET_RSTATE,
+	INS_TO_KREON,
+	INIT_LOG_BUFFERS,
+	REPLICATE,
+	REGION_HALTED,
+	TASK_SUSPENDED,
+};
+
+enum krm_work_task_type { KRM_CLIENT_POOL, KRM_SERVER_POOL };
+
+struct krm_work_task {
+	/*from client*/
+	struct channel_rdma *channel;
+	struct connection_rdma *conn;
+	msg_header *msg;
+	struct krm_region_desc *r_desc;
+	void *notification_addr;
+	msg_header *reply_msg;
+	msg_header *flush_segment_request;
+	/*used for two puproses (keeping state)
+	 * 1. For get it keeps the get result if the  server cannot allocate immediately memory to respond to the client.
+	 * This save CPU cycles at the server  because it voids entering kreon each time a stall happens.
+	 * 2. For puts it keeps the result of a spill task descriptor
+	 */
+	int spinner_id;
+	int thread_id;
+	int error_code;
+	int pool_id;
+	enum krm_work_task_status kreon_operation_status;
+	struct msg_put_key *key;
+	struct msg_put_value *value;
+	enum krm_work_task_type pool_type;
+	/*possible messages to other server generated from this task*/
+	struct sc_msg_pair communication_buf;
+};
+
 /*this staff are rdma registered*/
 struct ru_seg_metadata {
 	uint64_t master_segment;
@@ -81,27 +125,36 @@ struct ru_rdma_buffer {
 	uint8_t seg[SEGMENT_SIZE];
 };
 
-struct ru_replica_log_segment {
+struct ru_rmplica_log_segment {
 	struct ru_rdma_buffer *rdma_local_buf;
 	struct ru_rdma_buffer *rdma_remote_buf;
 	int64_t bytes_wr_per_seg;
 	int64_t buffer_free;
 };
 
-struct ru_seg_bound {
-	uint64_t start;
-	uint64_t end;
+enum ru_remote_buffer_status {
+	RU_BUFFER_UNINITIALIZED,
+	RU_BUFFER_REQUESTED,
+	RU_BUFFER_REPLIED,
+	RU_BUFFER_OK,
+	RU_REPLICA_BUFFER_OK
 };
 
-struct ru_replica_log_buffer {
-	/*put <start, end> for each segment here to fit in one cache line and search them faster :-)*/
-	struct ru_seg_bound bounds[RU_REPLICA_NUM_SEGMENTS];
-	struct ru_replica_log_segment seg_bufs[RU_REPLICA_NUM_SEGMENTS];
+struct ru_master_log_buffer_seg {
+	uint32_t start;
+	uint32_t end;
+	struct ibv_mr mr;
 };
 
-struct ru_replication_state {
-	connection_rdma **data_conn;
-	connection_rdma **control_conn;
+struct ru_master_log_buffer {
+	struct sc_msg_pair p;
+	enum ru_remote_buffer_status stat;
+	uint32_t segment_size;
+	int num_buffers;
+	struct ru_master_log_buffer_seg segment[];
+};
+
+struct ru_master_state {
 	/*parameters used for remote spills at replica with tiering*/
 	node_header *last_node_per_level[RU_MAX_TREE_HEIGHT];
 	uint64_t cur_nodes_per_level[RU_MAX_TREE_HEIGHT];
@@ -109,10 +162,18 @@ struct ru_replication_state {
 	uint64_t entries_in_semilast_node[RU_MAX_TREE_HEIGHT];
 	uint64_t entries_in_last_node[RU_MAX_TREE_HEIGHT];
 	uint32_t current_active_tree_in_the_forest;
-	union {
-		struct ru_replica_log_buffer *rep_master_buf;
-		struct ru_replica_log_buffer *master_rep_buf;
-	};
+	int num_backup;
+	struct ru_master_log_buffer r_buf[];
+};
+
+struct ru_replica_log_buffer_seg {
+	uint32_t segment_size;
+	struct ibv_mr *mr;
+};
+
+struct ru_replica_state {
+	int num_buffers;
+	struct ru_replica_log_buffer_seg seg[];
 };
 
 struct krm_server_name {
@@ -138,11 +199,17 @@ struct krm_region {
 };
 
 struct krm_region_desc {
+	pthread_mutex_t region_lock;
+	utils_queue_s halted_tasks;
 	struct krm_region *region;
 	enum krm_region_role role;
 	db_handle *db;
-	int init_rdma_conn;
-	struct ru_replication_state *r_state;
+	int replica_bufs_initialized;
+	int region_halted;
+	union {
+		struct ru_master_state *m_state;
+		struct ru_replica_state *r_state;
+	};
 };
 
 struct krm_ds_regions {
@@ -195,11 +262,26 @@ struct krm_msg {
 
 void *krm_metadata_server(void *args);
 struct krm_region_desc *krm_get_region(char *key, uint32_t key_size);
+int krm_get_server_info(char *hostname, struct krm_server_name *server);
 
 int ru_flush_replica_log_buffer(db_handle *handle, segment_header *master_log_segment, void *buffer,
 				uint64_t end_of_log, uint64_t bytes_to_pad, uint64_t segment_id);
 
-void ru_calculate_btree_index_nodes(struct ru_replication_state *r_state, uint64_t num_of_keys);
+void ru_calculate_btree_index_nodes(struct ru_replica_state *r_state, uint64_t num_of_keys);
 
 void ru_append_entry_to_leaf_node(struct krm_region_desc *r_desc, void *pointer_to_kv_pair, void *prefix,
 				  int32_t tree_id);
+
+
+
+
+
+
+
+
+
+
+
+
+
+

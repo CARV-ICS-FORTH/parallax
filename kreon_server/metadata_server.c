@@ -364,9 +364,10 @@ static void krm_send_open_command(struct krm_server_desc *desc, struct krm_regio
 	}
 	/*The same procedure for backups*/
 	for (i = 0; i < region->num_of_backup; i++) {
-		log_info("Sending open command (as backup) to %s", path);
 		/*check if I, aka the Leader, am a BackUp for this region*/
 		if (strcmp(region->backups[i].kreon_ds_hostname, desc->name.kreon_ds_hostname) == 0) {
+			log_info("Kreon master Sending open region as backup to myself %s for region %d",
+				 desc->name.kreon_ds_hostname, region->id);
 			/*added to the dataservers table, I ll open them later*/
 			hash_key = djb2_hash((unsigned char *)region->primary.kreon_ds_hostname,
 					     strlen(region->primary.kreon_ds_hostname));
@@ -384,16 +385,17 @@ static void krm_send_open_command(struct krm_server_desc *desc, struct krm_regio
 			continue;
 		}
 		path = zku_concat_strings(5, KRM_ROOT_PATH, KRM_MAILBOX_PATH, KRM_SLASH,
-					  region->primary.kreon_ds_hostname, KRM_MAIL_TITLE);
+					  region->backups[i].kreon_ds_hostname, KRM_MAIL_TITLE);
 
 		msg.type = KRM_OPEN_REGION_AS_BACKUP;
 		msg.region = *region;
+		strcpy(msg.sender, desc->name.kreon_ds_hostname);
 
 		hash_key = djb2_hash((unsigned char *)region->backups[i].kreon_ds_hostname,
 				     strlen(region->primary.kreon_ds_hostname));
 		HASH_FIND_PTR(desc->dataservers_table, &hash_key, rs);
 		if (rs == NULL) {
-			log_fatal("entry missing for DataServer %s", region->primary.kreon_ds_hostname);
+			log_fatal("entry missing for DataServer %s", region->backups[i].kreon_ds_hostname);
 			exit(EXIT_FAILURE);
 		}
 		msg.epoch = rs->server_id.epoch;
@@ -528,6 +530,7 @@ static void krm_process_msg(struct krm_server_desc *server, struct krm_msg *msg)
 	int rc;
 	switch (msg->type) {
 	case KRM_OPEN_REGION_AS_PRIMARY:
+	case KRM_OPEN_REGION_AS_BACKUP:
 		/*first check if the msg responds to the epoch I am currently in*/
 		if (msg->epoch != server->name.epoch) {
 			log_warn("Epochs mismatch I am at epoch %lu msg refers to epoch %lu", server->name.epoch,
@@ -543,10 +546,18 @@ static void krm_process_msg(struct krm_server_desc *server, struct krm_msg *msg)
 			struct krm_region *region = (struct krm_region *)malloc(sizeof(struct krm_region));
 			*region = msg->region;
 			r_desc->region = region;
-			r_desc->role = KRM_PRIMARY;
+			if (msg->type == KRM_OPEN_REGION_AS_PRIMARY) {
+				r_desc->role = KRM_PRIMARY;
+				r_desc->m_state = NULL;
+			} else {
+				r_desc->role = KRM_BACKUP;
+				r_desc->r_state = NULL;
+			}
 			/*open kreon db*/
-			r_desc->db =
-				db_open(globals_get_mount_point(), 0, globals_get_dev_size(), region->id, CREATE_DB);
+			r_desc->db = db_open(globals_get_dev(), 0, globals_get_dev_size(), region->id, CREATE_DB);
+			r_desc->replica_bufs_initialized = 0;
+			r_desc->region_halted = 0;
+			pthread_mutex_init(&r_desc->region_lock, NULL);
 			r_desc->region->status = KRM_OPEN;
 			krm_insert_ds_region(server, r_desc, server->ds_regions);
 			reply.type = KRM_ACK_OPEN_PRIMARY;
@@ -569,10 +580,11 @@ static void krm_process_msg(struct krm_server_desc *server, struct krm_msg *msg)
 		log_info("Just replied to %s", msg->sender);
 		free(zk_path);
 		break;
-	case KRM_OPEN_REGION_AS_BACKUP:
 	case KRM_CLOSE_REGION:
+		log_fatal("Unsupported types KRM_CLOSE_REGION");
+		exit(EXIT_FAILURE);
 	case KRM_BUILD_PRIMARY:
-		log_fatal("Unsupported types TODO");
+		log_fatal("Unsupported types KRM_BUILD_PRIMARY");
 		exit(EXIT_FAILURE);
 	case KRM_ACK_OPEN_PRIMARY: {
 		if (server->role != KRM_LEADER) {
@@ -987,8 +999,12 @@ void *krm_metadata_server(void *args)
 			for (i = 0; i < regions->size; i++) {
 				r_desc = (struct krm_region_desc *)(node->data);
 				log_info("Leader opening region %s", r_desc->region->id);
-				r_desc->db = db_open(globals_get_mount_point(), 0, globals_get_dev_size(),
+			r_desc->db = db_open(globals_get_mount_point(), 0, globals_get_dev_size(),
 						     r_desc->region->id, CREATE_DB);
+				r_desc->replica_bufs_initialized = 0;
+				r_desc->region_halted = 0;
+				r_desc->m_state = NULL;
+				pthread_mutex_init(&r_desc->region_lock, NULL);
 				node = node->next;
 				krm_insert_ds_region(&my_desc, r_desc, my_desc.ds_regions);
 			}
@@ -1111,13 +1127,14 @@ retry:
 	start_idx = 0;
 	end_idx = desc->ds_regions->num_ds_regions - 1;
 	r_desc = NULL;
-
+	log_info("start %d end %d", start_idx, end_idx);
 	while (start_idx <= end_idx) {
 		middle = (start_idx + end_idx) / 2;
 		ret = zku_key_cmp(desc->ds_regions->r_desc[middle].region->min_key_size,
 				  desc->ds_regions->r_desc[middle].region->min_key, key_size, key);
 
 		if (ret < 0 || ret == 0) {
+			log_info("got 0 checking with max key %s", desc->ds_regions->r_desc[middle].region->max_key);
 			start_idx = middle + 1;
 			if (zku_key_cmp(desc->ds_regions->r_desc[middle].region->max_key_size,
 					desc->ds_regions->r_desc[middle].region->max_key, key_size, key) > 0) {
@@ -1154,8 +1171,25 @@ retry:
 		goto retry;
 
 	if (r_desc == NULL) {
-		log_fatal("NULL region for key %s\n", key);
+		log_fatal("NULL region for key %s", key);
 		exit(EXIT_FAILURE);
 	}
 	return r_desc;
 }
+
+int krm_get_server_info(char *hostname, struct krm_server_name *server)
+{
+	struct Stat stat;
+	int ret;
+	char *path = zku_concat_strings(4, KRM_ROOT_PATH, KRM_SERVERS_PATH, KRM_SLASH, hostname);
+	int buffer_len = sizeof(struct krm_server_name);
+	int rc = zoo_get(my_desc.zh, path, 0, (char *)server, &buffer_len, &stat);
+	if (rc != ZOK) {
+		log_warn("Failed to refresh server info %s with code %s", hostname, zku_op2String(rc));
+		ret = KREON_FAILURE;
+	} else
+		ret = KREON_SUCCESS;
+	free(path);
+	return ret;
+}
+

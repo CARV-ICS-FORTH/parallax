@@ -888,10 +888,19 @@ void crdma_init_client_connection_list_hosts(connection_rdma *conn, char **hosts
 	strncpy(host_copy, hosts[0], 512);
 	memset(&hints, 0, sizeof hints);
 	hints.ai_port_space = RDMA_PS_TCP;
-	ip = strtok_r(host_copy, ":", &strtok_state);
-	port = strtok_r(NULL, ":", &strtok_state);
+	int idx = strlen(host_copy) - 1;
+	char special_character;
+	while (idx >= 0) {
+		if (host_copy[idx] == ':' || host_copy[idx] == '-') {
+			special_character = host_copy[idx];
+			break;
+		}
+		--idx;
+	}
+	ip = strtok_r(host_copy, &special_character, &strtok_state);
+	port = strtok_r(NULL, &special_character, &strtok_state);
 
-	//log_info("Connecting to %s:%s\n", ip, port);
+	log_info("Connecting to %s at port %s\n", ip, port);
 
 	int ret = rdma_getaddrinfo(ip, port, &hints, &res);
 	if (ret) {
@@ -940,24 +949,23 @@ void crdma_init_client_connection_list_hosts(connection_rdma *conn, char **hosts
 	}
 
 	switch (type) {
-	case MASTER_TO_REPLICA_DATA_CONNECTION:
-		DPRINT("Remote side accepted created a new MASTER_TO_REPLICA_CONNECTION\n");
-		conn->type = MASTER_TO_REPLICA_DATA_CONNECTION;
-		conn->rdma_memory_regions =
-			mrpool_get_static_buffer(rdma_cm_id, sizeof(struct ru_rdma_buffer) * RU_REPLICA_NUM_SEGMENTS);
+	case MASTER_TO_REPLICA_CONNECTION:
+		log_info("Remote side accepted created a new MASTER_TO_REPLICA_CONNECTION");
+		conn->type = MASTER_TO_REPLICA_CONNECTION;
+		//conn->rdma_memory_regions =
+		//	mrpool_get_static_buffer(rdma_cm_id, sizeof(struct ru_rdma_buffer) * RU_REPLICA_NUM_SEGMENTS);
+		conn->rdma_memory_regions = mrpool_allocate_memory_region(channel->dynamic_pool, rdma_cm_id);
 		break;
-	case MASTER_TO_REPLICA_CONTROL_CONNECTION:
-		assert(0);
 	case CLIENT_TO_SERVER_CONNECTION:
 		//log_info("Remote side accepted created a new CLIENT_TO_SERVER_CONNECTION");
 		conn->type = CLIENT_TO_SERVER_CONNECTION;
 		conn->rdma_memory_regions = mrpool_allocate_memory_region(channel->dynamic_pool, rdma_cm_id);
 		break;
-	case REPLICA_TO_MASTER_DATA_CONNECTION:
+	case REPLICA_TO_MASTER_CONNECTION:
 	case SERVER_TO_CLIENT_CONNECTION:
 		log_warn("Should not handle this kind of connection here");
 	default:
-		log_fatal("BAD connection type\n");
+		log_fatal("BAD connection type");
 		exit(EXIT_FAILURE);
 	}
 	conn->remaining_bytes_in_remote_rdma_region = conn->rdma_memory_regions->memory_region_length;
@@ -999,8 +1007,8 @@ void crdma_init_client_connection_list_hosts(connection_rdma *conn, char **hosts
 	pthread_spin_init(&conn->buffer_lock, PTHREAD_PROCESS_PRIVATE);
 #endif
 
-	if (LIBRARY_MODE == CLIENT_MODE) {
-		//log_info("CLIENT: Initializing client circular buffer *** NEW feature ****");
+	if (conn->type == CLIENT_TO_SERVER_CONNECTION || conn->type == MASTER_TO_REPLICA_CONNECTION) {
+		log_info("Initializing client circular buffer");
 		conn->send_circular_buf =
 			create_and_init_circular_buffer(conn->rdma_memory_regions->local_memory_buffer,
 							conn->peer_mr->length, MESSAGE_SEGMENT_SIZE, SEND_BUFFER);
@@ -1022,15 +1030,13 @@ void crdma_init_client_connection_list_hosts(connection_rdma *conn, char **hosts
 		conn->control_location_length = msg->reply_length;
 		msg->receive = I_AM_CLIENT;
 		__send_rdma_message(conn, msg);
+		log_info("Connection created successfully, no spinning thread will check it");
 	} else {
 		conn->send_circular_buf = NULL;
 		conn->recv_circular_buf = NULL;
 		conn->reset_point = 0;
+		crdma_add_connection_channel(channel, conn);
 	}
-
-	crdma_add_connection_channel(channel, conn);
-	//log_info("Client Connection build successfully");
-	//log_info("*** Added connection successfully ***");
 	__sync_fetch_and_add(&channel->nused, 1);
 }
 
@@ -1303,7 +1309,7 @@ void _update_rendezvous_location(connection_rdma *conn, int message_size)
 {
 	assert(message_size % MESSAGE_SEGMENT_SIZE == 0);
 
-	if (conn->type == SERVER_TO_CLIENT_CONNECTION) {
+	if (conn->type == SERVER_TO_CLIENT_CONNECTION || conn->type == REPLICA_TO_MASTER_CONNECTION) {
 		if (message_size < MESSAGE_SEGMENT_SIZE) {
 			message_size = MESSAGE_SEGMENT_SIZE;
 		}
@@ -1321,7 +1327,7 @@ void _update_rendezvous_location(connection_rdma *conn, int message_size)
 				conn->remaining_bytes_in_remote_rdma_region -= message_size;
 				conn->rendezvous = (void *)((uint64_t)conn->rendezvous + message_size);
 			} else {
-				DPRINT("Just waiting for a RESET_BUFFER\n");
+				log_info("Just waiting for a RESET_BUFFER");
 				/*the next message will surely be a RESET_BUFFER*/
 				conn->rendezvous =
 					conn->rdma_memory_regions->remote_memory_buffer +

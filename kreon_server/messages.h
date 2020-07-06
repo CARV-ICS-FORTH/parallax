@@ -4,13 +4,13 @@
 */
 
 #pragma once
-
+#include <infiniband/verbs.h>
 #include <inttypes.h>
 #include <semaphore.h>
 #include <time.h>
 #include "conf.h"
 
-enum tucana_message_types {
+enum message_type {
 
 	PUT_REQUEST = 1,
 	PUT_REPLY,
@@ -22,11 +22,10 @@ enum tucana_message_types {
 	MULTI_GET_REPLY,
 	DELETE_REQUEST,
 	DELETE_REPLY,
-	TU_FLUSH_VOLUME_QUERY, // Flush volume
-	TU_FLUSH_VOLUME_REPLY,
+	/*server2server*/
 	SPILL_INIT,
 	SPILL_INIT_ACK,
-	SPILL_BUFFER_REQUEST, //message with sorted kv pairs from primary's L0 level
+	SPILL_BUFFER_REQUEST,
 	SPILL_COMPLETE,
 	SPILL_COMPLETE_ACK,
 	FLUSH_SEGMENT_AND_RESET,
@@ -36,6 +35,8 @@ enum tucana_message_types {
 	FLUSH_SEGMENT_TEST,
 	SYNC_SEGMENT,
 	SYNC_SEGMENT_ACK,
+	GET_LOG_BUFFER_REQ,
+	GET_LOG_BUFFER_REP,
 	/*control stuff*/
 	RESET_BUFFER,
 	RESET_BUFFER_ACK,
@@ -198,6 +199,19 @@ typedef struct set_connection_property_reply {
 	int assigned_ppriority_level;
 	int assigned_RDMA_memory_size;
 } set_connection_property_reply;
+
+struct msg_get_log_buffer_req {
+	int num_buffers;
+	int buffer_size;
+	int region_key_size;
+	char region_key[];
+};
+
+struct msg_get_log_buffer_rep {
+	uint32_t status;
+	int num_buffers;
+	struct ibv_mr mr[];
+};
 
 int push_buffer_in_msg_header(struct msg_header *data_message, char *buffer, uint32_t buffer_length);
 int msg_push_to_multiget_buf(msg_key *key, msg_value *val, msg_multi_get_rep *buf);

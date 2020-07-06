@@ -22,43 +22,43 @@ void *_ru_get_space_for_tree(struct krm_region_desc *r_desc, int32_t tree_id, ui
 	exit(EXIT_FAILURE);
 	return NULL;
 #if 0
-	if (r_desc->r_state->db->db_desc->replica_forest.tree_segment_list[tree_id] == NULL) {
-		r_desc->r_state->db->db_desc->replica_forest.tree_segment_list[tree_id] =
-			allocate(r_desc->r_state->db->volume_desc, BUFFER_SEGMENT_SIZE, -1, NEW_REPLICA_FOREST_TREE);
-		r_desc->r_state->db->db_desc->replica_forest.end_of_log[tree_id] = sizeof(segment_header);
-		r_desc->r_state->db->db_desc->replica_forest.tree_segment_list[tree_id]->next_segment = NULL;
-		r_desc->r_state->db->db_desc->replica_forest.tree_segment_list[tree_id]->prev_segment = NULL;
+	if (r_desc->m_state->db->db_desc->replica_forest.tree_segment_list[tree_id] == NULL) {
+		r_desc->m_state->db->db_desc->replica_forest.tree_segment_list[tree_id] =
+			allocate(r_desc->m_state->db->volume_desc, BUFFER_SEGMENT_SIZE, -1, NEW_REPLICA_FOREST_TREE);
+		r_desc->m_state->db->db_desc->replica_forest.end_of_log[tree_id] = sizeof(segment_header);
+		r_desc->m_state->db->db_desc->replica_forest.tree_segment_list[tree_id]->next_segment = NULL;
+		r_desc->m_state->db->db_desc->replica_forest.tree_segment_list[tree_id]->prev_segment = NULL;
 		log_info("Initialized new tree in the forest with id %d\n", tree_id);
 	}
 
 	/*check if we have enough space within the current segment*/
-	if (r_desc->r_state->db->db_desc->replica_forest.end_of_log[tree_id] % BUFFER_SEGMENT_SIZE == 0) {
+	if (r_desc->m_state->db->db_desc->replica_forest.end_of_log[tree_id] % BUFFER_SEGMENT_SIZE == 0) {
 		available_space = 0;
 	} else {
 		available_space = BUFFER_SEGMENT_SIZE -
-				  (r_desc->r_state->db->db_desc->replica_forest.end_of_log[tree_id] % BUFFER_SEGMENT_SIZE);
+				  (r_desc->m_state->db->db_desc->replica_forest.end_of_log[tree_id] % BUFFER_SEGMENT_SIZE);
 	}
 
 	if (available_space >= size) {
-		addr = (void *)(uint64_t)r_desc->r_state->db->db_desc->replica_forest.tree_segment_list[tree_id] +
-		       (r_desc->r_state->db->db_desc->replica_forest.end_of_log[tree_id] % BUFFER_SEGMENT_SIZE);
-		r_desc->r_state->db->db_desc->replica_forest.end_of_log[tree_id] += size;
+		addr = (void *)(uint64_t)r_desc->m_state->db->db_desc->replica_forest.tree_segment_list[tree_id] +
+		       (r_desc->m_state->db->db_desc->replica_forest.end_of_log[tree_id] % BUFFER_SEGMENT_SIZE);
+		r_desc->m_state->db->db_desc->replica_forest.end_of_log[tree_id] += size;
 	} else {
 		//log_info("new segment needed for the tree\n");
 
 		/*pad remaining remaining space*/
-		r_desc->r_state->db->db_desc->replica_forest.end_of_log[tree_id] +=
+		r_desc->m_state->db->db_desc->replica_forest.end_of_log[tree_id] +=
 			(BUFFER_SEGMENT_SIZE -
-			 r_desc->r_state->db->db_desc->replica_forest.end_of_log[tree_id] % BUFFER_SEGMENT_SIZE);
-		new_segment = (segment_header *)allocate(r_desc->r_state->db->volume_desc, BUFFER_SEGMENT_SIZE, -1,
+			 r_desc->m_state->db->db_desc->replica_forest.end_of_log[tree_id] % BUFFER_SEGMENT_SIZE);
+		new_segment = (segment_header *)allocate(r_desc->m_state->db->volume_desc, BUFFER_SEGMENT_SIZE, -1,
 							 SPACE_FOR_FOREST_TREE);
-		r_desc->r_state->db->db_desc->replica_forest.end_of_log[tree_id] += sizeof(segment_header);
-		new_segment->next_segment = r_desc->r_state->db->db_desc->replica_forest.tree_segment_list[tree_id];
+		r_desc->m_state->db->db_desc->replica_forest.end_of_log[tree_id] += sizeof(segment_header);
+		new_segment->next_segment = r_desc->m_state->db->db_desc->replica_forest.tree_segment_list[tree_id];
 		new_segment->prev_segment = NULL;
-		r_desc->r_state->db->db_desc->replica_forest.tree_segment_list[tree_id] = new_segment;
-		addr = (void *)(uint64_t)r_desc->r_state->db->db_desc->replica_forest.tree_segment_list[tree_id] +
-		       (r_desc->r_state->db->db_desc->replica_forest.end_of_log[tree_id] % BUFFER_SEGMENT_SIZE);
-		r_desc->r_state->db->db_desc->replica_forest.end_of_log[tree_id] += size;
+		r_desc->m_state->db->db_desc->replica_forest.tree_segment_list[tree_id] = new_segment;
+		addr = (void *)(uint64_t)r_desc->m_state->db->db_desc->replica_forest.tree_segment_list[tree_id] +
+		       (r_desc->m_state->db->db_desc->replica_forest.end_of_log[tree_id] % BUFFER_SEGMENT_SIZE);
+		r_desc->m_state->db->db_desc->replica_forest.end_of_log[tree_id] += size;
 	}
 	return addr;
 #endif
@@ -110,48 +110,48 @@ void _ru_append_pivot_to_index(struct krm_region_desc *r_desc, node_header *left
 	int32_t req_space;
 	int32_t allocated_space;
 
-	if (r_desc->r_state->cur_nodes_per_level[node_height] == 0 &&
-	    r_desc->r_state->last_node_per_level[node_height] == NULL) {
-		r_desc->r_state->last_node_per_level[node_height] =
+	if (r_desc->m_state->cur_nodes_per_level[node_height] == 0 &&
+	    r_desc->m_state->last_node_per_level[node_height] == NULL) {
+		r_desc->m_state->last_node_per_level[node_height] =
 			_ru_create_tree_node(r_desc, tree_id, node_height, internalNode);
-		++r_desc->r_state->cur_nodes_per_level[node_height];
+		++r_desc->m_state->cur_nodes_per_level[node_height];
 	}
 
-	else if (r_desc->r_state->cur_nodes_per_level[node_height] ==
-		 r_desc->r_state->num_of_nodes_per_level[node_height] - 1) {
-		entries_limit = r_desc->r_state->entries_in_semilast_node[node_height];
+	else if (r_desc->m_state->cur_nodes_per_level[node_height] ==
+		 r_desc->m_state->num_of_nodes_per_level[node_height] - 1) {
+		entries_limit = r_desc->m_state->entries_in_semilast_node[node_height];
 	}
 
-	else if (r_desc->r_state->cur_nodes_per_level[node_height] ==
-		 r_desc->r_state->num_of_nodes_per_level[node_height]) {
-		entries_limit = r_desc->r_state->entries_in_last_node[node_height];
+	else if (r_desc->m_state->cur_nodes_per_level[node_height] ==
+		 r_desc->m_state->num_of_nodes_per_level[node_height]) {
+		entries_limit = r_desc->m_state->entries_in_last_node[node_height];
 	}
 
-	if (r_desc->r_state->last_node_per_level[node_height]->numberOfEntriesInNode == entries_limit) {
+	if (r_desc->m_state->last_node_per_level[node_height]->numberOfEntriesInNode == entries_limit) {
 		new_node = _ru_create_tree_node(r_desc, tree_id, node_height, internalNode);
 		/*add pivot to index node, right rotate*/
 		pivot_for_the_upper_level =
-			(void *)(uint64_t)r_desc->r_state->last_node_per_level[node_height] + sizeof(node_header) +
-			((r_desc->r_state->last_node_per_level[node_height]->numberOfEntriesInNode - 1) * 2 *
+			(void *)(uint64_t)r_desc->m_state->last_node_per_level[node_height] + sizeof(node_header) +
+			((r_desc->m_state->last_node_per_level[node_height]->numberOfEntriesInNode - 1) * 2 *
 			 sizeof(uint64_t)) +
 			sizeof(uint64_t);
 		pivot_for_the_upper_level = (void *)MAPPED + *(uint64_t *)pivot_for_the_upper_level;
 
-		_ru_append_pivot_to_index(r_desc, r_desc->r_state->last_node_per_level[node_height],
+		_ru_append_pivot_to_index(r_desc, r_desc->m_state->last_node_per_level[node_height],
 					  pivot_for_the_upper_level, new_node, tree_id, node_height + 1);
 
-		--r_desc->r_state->last_node_per_level[node_height]->numberOfEntriesInNode;
-		r_desc->r_state->last_node_per_level[node_height] = new_node;
+		--r_desc->m_state->last_node_per_level[node_height]->numberOfEntriesInNode;
+		r_desc->m_state->last_node_per_level[node_height] = new_node;
 	}
 
 	/*append the pivot  to the private key log and add the addr*/
 	key_len = *(uint32_t *)pivot;
-	if (r_desc->r_state->last_node_per_level[node_height]->key_log_size % KEY_BLOCK_SIZE == 0)
+	if (r_desc->m_state->last_node_per_level[node_height]->key_log_size % KEY_BLOCK_SIZE == 0)
 		avail_space = 0;
 	else
 		avail_space =
 			(int32_t)KEY_BLOCK_SIZE -
-			(r_desc->r_state->last_node_per_level[node_height]->key_log_size % (int32_t)KEY_BLOCK_SIZE);
+			(r_desc->m_state->last_node_per_level[node_height]->key_log_size % (int32_t)KEY_BLOCK_SIZE);
 
 	req_space = (key_len + sizeof(uint32_t));
 	if (avail_space < req_space) { /*room not sufficient*/
@@ -163,29 +163,29 @@ void _ru_append_pivot_to_index(struct krm_region_desc *r_desc, node_header *left
 
 		d_header = _ru_get_space_for_tree(r_desc, tree_id, allocated_space);
 		d_header->next = NULL;
-		last_d_header = (IN_log_header *)(MAPPED + (uint64_t)r_desc->r_state->last_node_per_level[node_height]
+		last_d_header = (IN_log_header *)(MAPPED + (uint64_t)r_desc->m_state->last_node_per_level[node_height]
 								   ->last_IN_log_header);
 		last_d_header->next = (void *)((uint64_t)d_header - MAPPED);
-		r_desc->r_state->last_node_per_level[node_height]->last_IN_log_header = last_d_header->next;
-		r_desc->r_state->last_node_per_level[node_height]->key_log_size +=
+		r_desc->m_state->last_node_per_level[node_height]->last_IN_log_header = last_d_header->next;
+		r_desc->m_state->last_node_per_level[node_height]->key_log_size +=
 			(avail_space + sizeof(uint64_t)); /* position the log to the newly added block*/
-		assert(r_desc->r_state->last_node_per_level[node_height]->key_log_size < 9000);
+		assert(r_desc->m_state->last_node_per_level[node_height]->key_log_size < 9000);
 	}
 	/* put the KV now */
-	key_addr = (void *)MAPPED + (uint64_t)r_desc->r_state->last_node_per_level[node_height]->last_IN_log_header +
-		   (uint64_t)(r_desc->r_state->last_node_per_level[node_height]->key_log_size % KEY_BLOCK_SIZE);
+	key_addr = (void *)MAPPED + (uint64_t)r_desc->m_state->last_node_per_level[node_height]->last_IN_log_header +
+		   (uint64_t)(r_desc->m_state->last_node_per_level[node_height]->key_log_size % KEY_BLOCK_SIZE);
 	memcpy(key_addr, pivot, sizeof(uint32_t) + key_len); /*key length */
-	r_desc->r_state->last_node_per_level[node_height]->key_log_size += sizeof(uint32_t) + key_len;
+	r_desc->m_state->last_node_per_level[node_height]->key_log_size += sizeof(uint32_t) + key_len;
 
 	/*finally add the pivot entry*/
-	void *addr = (void *)((uint64_t)r_desc->r_state->last_node_per_level[node_height] + sizeof(node_header) +
-			      r_desc->r_state->last_node_per_level[node_height]->numberOfEntriesInNode * 2 *
+	void *addr = (void *)((uint64_t)r_desc->m_state->last_node_per_level[node_height] + sizeof(node_header) +
+			      r_desc->m_state->last_node_per_level[node_height]->numberOfEntriesInNode * 2 *
 				      sizeof(uint64_t));
 	*(uint64_t *)addr = (uint64_t)left_brother - MAPPED;
 	*(uint64_t *)(addr + sizeof(uint64_t)) = (uint64_t)key_addr - MAPPED;
 	*(uint64_t *)(addr + (2 * sizeof(uint64_t))) = (uint64_t)right_brother - MAPPED;
 
-	++r_desc->r_state->last_node_per_level[node_height]->numberOfEntriesInNode;
+	++r_desc->m_state->last_node_per_level[node_height]->numberOfEntriesInNode;
 	return;
 }
 
@@ -204,38 +204,38 @@ void ru_append_entry_to_leaf_node(struct krm_region_desc *r_desc, void *pointer_
 	//	exit(EXIT_FAILURE);
 	//}
 
-	if (r_desc->r_state->cur_nodes_per_level[0] == 0 && r_desc->r_state->last_node_per_level[0] == NULL) {
-		r_desc->r_state->last_node_per_level[0] = _ru_create_tree_node(r_desc, tree_id, 0, leafNode);
-		++r_desc->r_state->cur_nodes_per_level[0];
+	if (r_desc->m_state->cur_nodes_per_level[0] == 0 && r_desc->m_state->last_node_per_level[0] == NULL) {
+		r_desc->m_state->last_node_per_level[0] = _ru_create_tree_node(r_desc, tree_id, 0, leafNode);
+		++r_desc->m_state->cur_nodes_per_level[0];
 	}
 
-	else if (r_desc->r_state->num_of_nodes_per_level[0] > 1 &&
-		 (r_desc->r_state->cur_nodes_per_level[0] == r_desc->r_state->num_of_nodes_per_level[0] - 1)) {
-		entries_limit = r_desc->r_state->entries_in_semilast_node[0];
+	else if (r_desc->m_state->num_of_nodes_per_level[0] > 1 &&
+		 (r_desc->m_state->cur_nodes_per_level[0] == r_desc->m_state->num_of_nodes_per_level[0] - 1)) {
+		entries_limit = r_desc->m_state->entries_in_semilast_node[0];
 	}
 
-	else if (r_desc->r_state->num_of_nodes_per_level[0] > 1 &&
-		 (r_desc->r_state->cur_nodes_per_level[0] == r_desc->r_state->num_of_nodes_per_level[0])) {
-		entries_limit = r_desc->r_state->entries_in_last_node[0];
+	else if (r_desc->m_state->num_of_nodes_per_level[0] > 1 &&
+		 (r_desc->m_state->cur_nodes_per_level[0] == r_desc->m_state->num_of_nodes_per_level[0])) {
+		entries_limit = r_desc->m_state->entries_in_last_node[0];
 	}
 
-	if (r_desc->r_state->last_node_per_level[0]->numberOfEntriesInNode == entries_limit) {
+	if (r_desc->m_state->last_node_per_level[0]->numberOfEntriesInNode == entries_limit) {
 		new_node = _ru_create_tree_node(r_desc, tree_id, 0, leafNode);
 		/*add pivot to index node*/
-		_ru_append_pivot_to_index(r_desc, r_desc->r_state->last_node_per_level[0], pointer_to_kv_pair, new_node,
+		_ru_append_pivot_to_index(r_desc, r_desc->m_state->last_node_per_level[0], pointer_to_kv_pair, new_node,
 					  tree_id, 1);
-		r_desc->r_state->last_node_per_level[0] = new_node;
+		r_desc->m_state->last_node_per_level[0] = new_node;
 	}
 
 	/*add_entry_to_btree_node*/
-	pointers_to_kv_pairs = (uint64_t *)((uint64_t)r_desc->r_state->last_node_per_level[0] + sizeof(node_header));
-	table = (prefix_table *)((uint64_t)r_desc->r_state->last_node_per_level[0] + sizeof(node_header) +
+	pointers_to_kv_pairs = (uint64_t *)((uint64_t)r_desc->m_state->last_node_per_level[0] + sizeof(node_header));
+	table = (prefix_table *)((uint64_t)r_desc->m_state->last_node_per_level[0] + sizeof(node_header) +
 				 (leaf_order * sizeof(uint64_t)));
 
-	pointers_to_kv_pairs[r_desc->r_state->last_node_per_level[0]->numberOfEntriesInNode] =
+	pointers_to_kv_pairs[r_desc->m_state->last_node_per_level[0]->numberOfEntriesInNode] =
 		(uint64_t)pointer_to_kv_pair - MAPPED;
-	table[r_desc->r_state->last_node_per_level[0]->numberOfEntriesInNode] = *(prefix_table *)prefix;
-	++r_desc->r_state->last_node_per_level[0]->numberOfEntriesInNode;
+	table[r_desc->m_state->last_node_per_level[0]->numberOfEntriesInNode] = *(prefix_table *)prefix;
+	++r_desc->m_state->last_node_per_level[0]->numberOfEntriesInNode;
 
 	return;
 }
@@ -243,70 +243,70 @@ void ru_append_entry_to_leaf_node(struct krm_region_desc *r_desc, void *pointer_
 void _ru_calculate_btree_index_nodes(struct krm_region_desc *r_desc, uint64_t num_of_keys)
 {
 	int level_id = 0;
-	memset(r_desc->r_state->num_of_nodes_per_level, 0x00, sizeof(r_desc->r_state->num_of_nodes_per_level));
-	memset(r_desc->r_state->cur_nodes_per_level, 0x00, sizeof(r_desc->r_state->cur_nodes_per_level));
-	memset(r_desc->r_state->entries_in_semilast_node, 0x00, sizeof(r_desc->r_state->entries_in_semilast_node));
-	memset(r_desc->r_state->entries_in_last_node, 0x00, sizeof(r_desc->r_state->entries_in_last_node));
-	memset(r_desc->r_state->last_node_per_level, 0x00, sizeof(r_desc->r_state->last_node_per_level));
+	memset(r_desc->m_state->num_of_nodes_per_level, 0x00, sizeof(r_desc->m_state->num_of_nodes_per_level));
+	memset(r_desc->m_state->cur_nodes_per_level, 0x00, sizeof(r_desc->m_state->cur_nodes_per_level));
+	memset(r_desc->m_state->entries_in_semilast_node, 0x00, sizeof(r_desc->m_state->entries_in_semilast_node));
+	memset(r_desc->m_state->entries_in_last_node, 0x00, sizeof(r_desc->m_state->entries_in_last_node));
+	memset(r_desc->m_state->last_node_per_level, 0x00, sizeof(r_desc->m_state->last_node_per_level));
 
 	/*first calculate leaves needed*/
-	r_desc->r_state->num_of_nodes_per_level[level_id] = num_of_keys / leaf_order;
-	if (r_desc->r_state->num_of_nodes_per_level[level_id] > 1 ||
-	    (r_desc->r_state->num_of_nodes_per_level[level_id] == 1 && num_of_keys % leaf_order > 0)) {
+	r_desc->m_state->num_of_nodes_per_level[level_id] = num_of_keys / leaf_order;
+	if (r_desc->m_state->num_of_nodes_per_level[level_id] > 1 ||
+	    (r_desc->m_state->num_of_nodes_per_level[level_id] == 1 && num_of_keys % leaf_order > 0)) {
 		if (num_of_keys % leaf_order != 0) {
 			/*borrow from left to have at least leaf_order/2 from left brother*/
-			++r_desc->r_state->num_of_nodes_per_level[level_id];
+			++r_desc->m_state->num_of_nodes_per_level[level_id];
 			if (num_of_keys % leaf_order < (leaf_order / 2)) {
-				r_desc->r_state->entries_in_semilast_node[level_id] =
+				r_desc->m_state->entries_in_semilast_node[level_id] =
 					leaf_order - ((leaf_order / 2) - (num_of_keys % leaf_order));
-				r_desc->r_state->entries_in_last_node[level_id] = leaf_order / 2;
+				r_desc->m_state->entries_in_last_node[level_id] = leaf_order / 2;
 			} else {
-				r_desc->r_state->entries_in_semilast_node[level_id] = leaf_order;
-				r_desc->r_state->entries_in_last_node[level_id] = num_of_keys % leaf_order;
+				r_desc->m_state->entries_in_semilast_node[level_id] = leaf_order;
+				r_desc->m_state->entries_in_last_node[level_id] = num_of_keys % leaf_order;
 			}
 		} else {
-			r_desc->r_state->entries_in_semilast_node[level_id] = leaf_order;
-			r_desc->r_state->entries_in_last_node[level_id] = leaf_order;
+			r_desc->m_state->entries_in_semilast_node[level_id] = leaf_order;
+			r_desc->m_state->entries_in_last_node[level_id] = leaf_order;
 		}
 	} else {
-		r_desc->r_state->entries_in_semilast_node[level_id] = 0;
-		r_desc->r_state->entries_in_last_node[level_id] = num_of_keys;
+		r_desc->m_state->entries_in_semilast_node[level_id] = 0;
+		r_desc->m_state->entries_in_last_node[level_id] = num_of_keys;
 		log_info("What ? num of nodes for level %d = %llu\n", level_id,
-			 (LLU)r_desc->r_state->num_of_nodes_per_level[level_id]);
+			 (LLU)r_desc->m_state->num_of_nodes_per_level[level_id]);
 		return;
 	}
 
 	level_id = 1;
 	while (level_id < RU_MAX_TREE_HEIGHT) {
-		if (r_desc->r_state->num_of_nodes_per_level[level_id - 1] % index_order != 0) {
-			r_desc->r_state->num_of_nodes_per_level[level_id] =
-				r_desc->r_state->num_of_nodes_per_level[level_id - 1] / index_order;
-			++r_desc->r_state->num_of_nodes_per_level[level_id];
+		if (r_desc->m_state->num_of_nodes_per_level[level_id - 1] % index_order != 0) {
+			r_desc->m_state->num_of_nodes_per_level[level_id] =
+				r_desc->m_state->num_of_nodes_per_level[level_id - 1] / index_order;
+			++r_desc->m_state->num_of_nodes_per_level[level_id];
 
-			r_desc->r_state->entries_in_last_node[level_id] =
-				r_desc->r_state->num_of_nodes_per_level[level_id - 1] % index_order;
+			r_desc->m_state->entries_in_last_node[level_id] =
+				r_desc->m_state->num_of_nodes_per_level[level_id - 1] % index_order;
 
-			if (r_desc->r_state->entries_in_last_node[level_id] < index_order / 2) {
-				r_desc->r_state->entries_in_semilast_node[level_id] =
+			if (r_desc->m_state->entries_in_last_node[level_id] < index_order / 2) {
+				r_desc->m_state->entries_in_semilast_node[level_id] =
 					index_order -
-					((index_order / 2) - r_desc->r_state->entries_in_last_node[level_id]);
-				r_desc->r_state->entries_in_last_node[level_id] = index_order / 2;
+					((index_order / 2) - r_desc->m_state->entries_in_last_node[level_id]);
+				r_desc->m_state->entries_in_last_node[level_id] = index_order / 2;
 			} else {
-				r_desc->r_state->entries_in_semilast_node[level_id] = index_order;
-				r_desc->r_state->entries_in_last_node[level_id] = num_of_keys % index_order;
+				r_desc->m_state->entries_in_semilast_node[level_id] = index_order;
+				r_desc->m_state->entries_in_last_node[level_id] = num_of_keys % index_order;
 			}
 
 		} else {
-			r_desc->r_state->num_of_nodes_per_level[level_id] =
-				r_desc->r_state->num_of_nodes_per_level[level_id - 1] / index_order;
-			r_desc->r_state->entries_in_semilast_node[level_id] = index_order;
-			r_desc->r_state->entries_in_last_node[level_id] = index_order;
+			r_desc->m_state->num_of_nodes_per_level[level_id] =
+				r_desc->m_state->num_of_nodes_per_level[level_id - 1] / index_order;
+			r_desc->m_state->entries_in_semilast_node[level_id] = index_order;
+			r_desc->m_state->entries_in_last_node[level_id] = index_order;
 		}
 
-		if (r_desc->r_state->num_of_nodes_per_level[level_id] == 1) {
-			r_desc->r_state->entries_in_semilast_node[level_id] = 0;
-			r_desc->r_state->entries_in_last_node[level_id] =
-				r_desc->r_state->num_of_nodes_per_level[level_id - 1];
+		if (r_desc->m_state->num_of_nodes_per_level[level_id] == 1) {
+			r_desc->m_state->entries_in_semilast_node[level_id] = 0;
+			r_desc->m_state->entries_in_last_node[level_id] =
+				r_desc->m_state->num_of_nodes_per_level[level_id - 1];
 			/*done we are ready*/
 			break;
 		}
@@ -318,12 +318,12 @@ void _ru_calculate_btree_index_nodes(struct krm_region_desc *r_desc, uint64_t nu
 	level_id = 0;
 	while(level_id < MAX_TREE_HEIGHT){
 
-		if(r_desc->r_state->num_of_nodes_per_level[level_id] == 0){
+		if(r_desc->m_state->num_of_nodes_per_level[level_id] == 0){
 			log_info("calculation end\n");
 			break;
 		}
-		log_info("\t\t Level %d num_of_nodes %llu semilast has %llu last has %llu index_order %d leaf_order %d\n",level_id,(LLU)r_desc->r_state->num_of_nodes_per_level[level_id],
-				(LLU)r_desc->r_state->entries_in_semilast_node[level_id], (LLU)r_desc->r_state->entries_in_last_node[level_id], index_order, leaf_order);
+		log_info("\t\t Level %d num_of_nodes %llu semilast has %llu last has %llu index_order %d leaf_order %d\n",level_id,(LLU)r_desc->m_state->num_of_nodes_per_level[level_id],
+				(LLU)r_desc->m_state->entries_in_semilast_node[level_id], (LLU)r_desc->m_state->entries_in_last_node[level_id], index_order, leaf_order);
 		++level_id;
 	}
 #endif

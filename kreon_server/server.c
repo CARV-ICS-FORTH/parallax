@@ -31,9 +31,8 @@
 #include "../kreon_lib/btree/btree.h"
 #include "../kreon_lib/btree/segment_allocator.h"
 #include "../kreon_lib/scanner/scanner.h"
-//#include "zk_server.h"
 #include "../kreon_rdma/rdma.h"
-
+#include "server_communication.h"
 #include "../kreon_lib/scanner/scanner.h"
 #include "../kreon_lib/btree/conf.h"
 #include "../utilities/queue.h"
@@ -67,83 +66,8 @@ typedef struct prefix_table {
 	char prefix[PREFIX_SIZE];
 } prefix_table;
 
-enum work_task_status {
-	/*put related*/
-	APPEND_START = 10000,
-	CHECK_FOR_REPLICA_FLUSH_SEGMENT_ACK,
-	ALLOCATE_NEW_LOG_BUFFER_WITH_REPLICA,
-	PERFORM_SPILL_CHECK,
-	WAIT_FOR_SPILL_START,
-	APPEND_COMPLETE,
-	/*allocation of reply msg related*/
-	ALLOCATION_START,
-	CHECK_FOR_RESET_BUFFER_ACK,
-	CHECK_FOR_PENDING_REQUESTS_TO_COMPLETE,
-	ALLOCATION_SUCCESS,
-	/*get related*/
-	GET_START,
-	GET_COMPLETE,
-	/*TEST RELATED*/
-	TEST_START,
-	TEST_COMPLETE,
-	/*reset buffer related*/
-	RESET_BUFFER_START,
-	RESET_BUFFER_COMPLETE,
-	/*FLUSH segment related*/
-	FLUSH_SEGMENT_START,
-	FLUSH_SEGMENT_COMPLETE,
-	/*overall_status*/
-	TASK_START,
-	TASK_COMPLETED,
-	/*spill staff codes used for master's spill worker*/
-	SEND_SPILL_INIT,
-	WAIT_FOR_SPILL_INIT_REPLY,
-	INIT_SPILL_BUFFER_SCANNER,
-	SPILL_BUFFER_REQ,
-	CLOSE_SPILL_BUFFER,
-	SEND_SPILL_COMPLETE,
-	WAIT_FOR_SPILL_COMPLETE_REPLY,
-	SPILL_FINISHED,
-	/*codes used for spill status at the replicas*/
-	SPILL_INIT_START,
-	SPILL_INIT_END,
-	SPILL_COMPLETE_START,
-	SPILL_COMPLETE_END,
-	SPILL_BUFFER_START
-};
-
-struct work_task {
-	struct channel_rdma *channel;
-	struct connection_rdma *conn;
-	msg_header *msg;
-	void *region; /*sorry, circular dependency was created so I patched it quickly*/
-	void *notification_addr;
-	msg_header *reply_msg;
-	msg_header *flush_segment_request;
-	/*used for two puproses (keeping state)
-	 * 1. For get it keeps the get result if the  server cannot allocate immediately memory to respond to the client.
-	 * This save CPU cycles at the server  because it voids entering kreon each time a stall happens.
-	 * 2. For puts it keeps the result of a spill task descriptor
-	 */
-	void *intermediate_buffer;
-	int sockfd; /*from accept() for building connections*/
-	int thread_id;
-	enum work_task_status kreon_operation_status;
-	enum work_task_status allocation_status;
-	enum work_task_status overall_status;
-};
-
-struct worker_thread {
-	struct work_task job_buffers[UTILS_QUEUE_CAPACITY];
-	struct work_task high_priority_job_buffers[UTILS_QUEUE_CAPACITY];
-	/*queue for empty work_task buffers*/
-	utils_queue_s empty_job_buffers_queue;
-	utils_queue_s empty_high_priority_job_buffers_queue;
-
-	/* queues for normal priority, high priority*/
+struct ds_worker_thread {
 	utils_queue_s work_queue;
-	utils_queue_s high_priority_queue;
-
 	sem_t sem;
 	pthread_t context;
 	pthread_spinlock_t work_queue_lock;
@@ -151,15 +75,21 @@ struct worker_thread {
 	worker_status status;
 	//struct worker_group *my_group;
 	int worker_id;
-} worker_thread;
+	int spinner_id;
+};
 
-//struct worker_group {
-//	int next_server_worker_to_submit_job;
-//	int next_client_worker_to_submit_job;
-//	struct worker_thread *group;
-//};
+#define DS_CLIENT_QUEUE_SIZE 1024
+#define DS_POOL_NUM 8
+
+struct ds_task_buffer_pool {
+	pthread_mutex_t tbp_lock;
+	utils_queue_s task_buffers;
+};
 
 struct ds_spinning_thread {
+	struct ds_task_buffer_pool ctb_pool[DS_POOL_NUM];
+	struct ds_task_buffer_pool stb_pool[DS_POOL_NUM];
+	struct ds_task_buffer_pool resume_task_pool[DS_POOL_NUM];
 	pthread_t spinner_context;
 	pthread_mutex_t conn_list_lock;
 	SIMPLE_CONCURRENT_LIST *conn_list;
@@ -167,8 +97,10 @@ struct ds_spinning_thread {
 	int num_workers;
 	int next_server_worker_to_submit_job;
 	int next_client_worker_to_submit_job;
+	int c_last_pool;
+	int s_last_pool;
 	int id;
-	struct worker_thread worker[];
+	struct ds_worker_thread worker[];
 };
 
 struct ds_server {
@@ -181,10 +113,10 @@ typedef struct spill_task_descriptor {
 	pthread_t spill_worker_context;
 	bt_spill_request *spill_req;
 	/*XXX TODO XXX, add appropriate fields*/
-	struct work_task task;
+	struct krm_work_task task;
 	struct _tucana_region_S *region;
 	int standalone;
-	volatile enum work_task_status spill_task_status;
+	volatile enum krm_work_task_status spill_task_status;
 } spill_task_descriptor;
 
 #ifdef TIERING
@@ -196,9 +128,12 @@ typedef struct replica_tiering_compaction_request {
 void tiering_compaction_worker(void *);
 #endif
 
+static void handle_task(struct krm_work_task *task);
+static void ds_put_server_task_buffer(struct ds_spinning_thread *spinner, struct krm_work_task *task);
+static void ds_put_client_task_buffer(struct ds_spinning_thread *spinner, struct krm_work_task *task);
+static void ds_put_resume_task(struct ds_spinning_thread *spinner, struct krm_work_task *task);
 /*inserts to Kreon and implements the replication logic*/
-void insert_kv_pair(struct krm_region_desc *r_desc, void *kv, connection_rdma *rdma_conn, kv_location *location,
-		    struct work_task *task, int wait);
+void insert_kv_pair(struct krm_work_task *task);
 
 static void crdma_server_create_connection_inuse(struct connection_rdma *conn, struct channel_rdma *channel,
 						 connection_type type)
@@ -304,12 +239,12 @@ void *socket_thread(void *args)
 
 		if (incoming_connection_type == CLIENT_TO_SERVER_CONNECTION) {
 			incoming_connection_type = SERVER_TO_CLIENT_CONNECTION;
-			log_info("We have a new client connection request\n");
-		} else if (incoming_connection_type == MASTER_TO_REPLICA_DATA_CONNECTION) {
-			incoming_connection_type = REPLICA_TO_MASTER_DATA_CONNECTION;
-			DPRINT("We have a new replica connection request\n");
+			log_info("We have a new client connection request");
+		} else if (incoming_connection_type == MASTER_TO_REPLICA_CONNECTION) {
+			incoming_connection_type = REPLICA_TO_MASTER_CONNECTION;
+			log_info("We have a new replica connection request");
 		} else {
-			DPRINT("FATAL bad connection type");
+			log_fatal("bad connection type");
 			exit(EXIT_FAILURE);
 		}
 		/*
@@ -328,12 +263,10 @@ void *socket_thread(void *args)
 
 		switch (conn->type) {
 		case SERVER_TO_CLIENT_CONNECTION:
+		case REPLICA_TO_MASTER_CONNECTION:
 			conn->rdma_memory_regions = mrpool_allocate_memory_region(channel->dynamic_pool, new_conn_id);
 			break;
-		case MASTER_TO_REPLICA_DATA_CONNECTION:
-			assert(0);
-			break;
-		case MASTER_TO_REPLICA_CONTROL_CONNECTION:
+		case MASTER_TO_REPLICA_CONNECTION:
 			assert(0);
 			break;
 		default:
@@ -492,161 +425,206 @@ static inline size_t diff_timespec_usec(struct timespec *start, struct timespec 
 
 void *worker_thread_kernel(void *args)
 {
-	utils_queue_s pending_tasks_queue;
-	utils_queue_s pending_high_priority_tasks_queue;
-	struct work_task *job = NULL;
-	struct worker_thread *worker_descriptor;
-	int turn = 0;
-	void *result;
+	struct krm_work_task *job = NULL;
+	struct ds_worker_thread *worker;
 	const int spin_time_usec = globals_get_worker_spin_time_usec();
 
-	pthread_setname_np(pthread_self(), "worker_thread");
-	worker_descriptor = (struct worker_thread *)args;
-	worker_descriptor->status = BUSY;
-
-	utils_queue_init(&pending_high_priority_tasks_queue);
-	utils_queue_init(&pending_tasks_queue);
-
-	utils_queue_s *queues_array[4] = { &pending_high_priority_tasks_queue, &worker_descriptor->high_priority_queue,
-					   &pending_tasks_queue, &worker_descriptor->work_queue };
+	pthread_setname_np(pthread_self(), "ds_worker");
+	worker = (struct ds_worker_thread *)args;
+	worker->status = BUSY;
 
 	while (1) {
 		// Get the next task from one of the task queues
 		// If there are tasks pending, rotate between all queues
-		if (utils_queue_used_slots(&pending_high_priority_tasks_queue) ||
-		    utils_queue_used_slots(&pending_tasks_queue)) {
-			while (!job) {
-				job = utils_queue_pop(queues_array[turn]);
-				turn = (turn < 3) ? turn + 1 : 0;
-			}
-		} else {
-			// Try to get a task
-			if (!((job = utils_queue_pop(&worker_descriptor->high_priority_queue)) ||
-			      (job = utils_queue_pop(&worker_descriptor->work_queue)))) {
-				// Try for a few more usecs
-				struct timespec start, end;
-				int time = 0;
-				clock_gettime(CLOCK_MONOTONIC, &start);
-				while (time < spin_time_usec) {
-					// I could have a for loop with a few iterations to avoid constantly calling clock_gettime
-					if ((job = utils_queue_pop(&worker_descriptor->high_priority_queue)) ||
-					    (job = utils_queue_pop(&worker_descriptor->work_queue)))
-						break;
-					clock_gettime(CLOCK_MONOTONIC, &end);
-					time = diff_timespec_usec(&start, &end);
-				}
+		// Try to get a task
+		if (!(job = utils_queue_pop(&worker->work_queue))) {
+			// Try for a few more usecs
+			struct timespec start, end;
+			int time = 0;
+			clock_gettime(CLOCK_MONOTONIC, &start);
+			while (time < spin_time_usec) {
+				// I could have a for loop with a few iterations to avoid constantly calling clock_gettime
+				if ((job = utils_queue_pop(&worker->work_queue)))
+					break;
+				clock_gettime(CLOCK_MONOTONIC, &end);
+				time = diff_timespec_usec(&start, &end);
 			}
 
 			if (!job) {
 				// Go to sleep
-				pthread_spin_lock(&worker_descriptor->work_queue_lock);
-
+				pthread_spin_lock(&worker->work_queue_lock);
 				// Double check
-				job = utils_queue_pop(&worker_descriptor->high_priority_queue);
-
+				job = utils_queue_pop(&worker->work_queue);
 				if (!job) {
-					job = utils_queue_pop(&worker_descriptor->work_queue);
-				}
-
-				if (!job) {
-#if 0
-					worker_descriptor->status = IDLE_SLEEPING;
-					pthread_spin_unlock(&worker_descriptor->work_queue_lock);
+					//#if 0
+					worker->status = IDLE_SLEEPING;
+					pthread_spin_unlock(&worker->work_queue_lock);
+					worker->status = IDLE_SLEEPING;
+					pthread_spin_unlock(&worker->work_queue_lock);
 					// DPRINT("Sleeping...\n");
-					sem_wait(&worker_descriptor->sem);
+					sem_wait(&worker->sem);
 					// DPRINT("Woke up\n");
-					worker_descriptor->status = BUSY;
-#endif
-
-					pthread_spin_unlock(&worker_descriptor->work_queue_lock);
+					worker->status = BUSY;
+					//#endif
+					//pthread_spin_unlock(&worker_descriptor->work_queue_lock);
+					worker->status = BUSY;
 					continue;
 				} else {
 					assert(job);
-					pthread_spin_unlock(&worker_descriptor->work_queue_lock);
+					pthread_spin_unlock(&worker->work_queue_lock);
 				}
 			}
 		}
 
-		//DPRINT("SERVER worker: new regular msg, reply will be send at %llu  length %d type %d\n",
-		//		(LLU)job->msg->reply,job->msg->reply_length, job->msg->type);
-
-		// Process the task
-		job->channel->connection_created((void *)job);
-		if (job->overall_status == TASK_COMPLETED) {
-			if (job->msg->type != RESET_BUFFER && job->msg->type != SPILL_BUFFER_REQUEST) {
-				_zero_rendezvous_locations(job->msg);
-				__send_rdma_message(job->conn, job->reply_msg);
+		/*process task*/
+		handle_task(job);
+		if (job->kreon_operation_status == TASK_COMPLETE) {
+			__send_rdma_message(job->conn, job->reply_msg);
+			_zero_rendezvous_locations(job->msg);
+			switch (job->pool_type) {
+			case KRM_CLIENT_POOL:
+				ds_put_client_task_buffer(&dataserver->spinner[worker->spinner_id], job);
+				break;
+			case KRM_SERVER_POOL:
+				ds_put_server_task_buffer(&dataserver->spinner[worker->spinner_id], job);
+				break;
 			}
-
-			/*return the buffer to its appropriate pool*/
-			if (job->msg->type == FLUSH_SEGMENT_AND_RESET || job->msg->type == FLUSH_SEGMENT ||
-			    job->msg->type == SPILL_INIT || job->msg->type == SPILL_COMPLETE ||
-			    job->msg->type == SPILL_BUFFER_REQUEST) {
-				result = utils_queue_push(&worker_descriptor->empty_high_priority_job_buffers_queue,
-							  job);
-				assert(result);
-			} else {
-				result = utils_queue_push(&worker_descriptor->empty_job_buffers_queue, job);
-				assert(result);
-			}
-		} else {
-			if (job->msg->type == FLUSH_SEGMENT_AND_RESET || job->msg->type == FLUSH_SEGMENT ||
-			    job->kreon_operation_status == ALLOCATE_NEW_LOG_BUFFER_WITH_REPLICA ||
-			    job->msg->type == SPILL_INIT || job->msg->type == SPILL_COMPLETE ||
-			    job->msg->type == SPILL_BUFFER_REQUEST) {
-				//DPRINT("High priority Task interrupted allocation status %d\n",job->allocation_status);
-				result = utils_queue_push(&pending_high_priority_tasks_queue, job);
-				assert(result);
-			} else {
-				//DPRINT("Low priority Task interrupted allocation status %d\n",job->allocation_status);
-				result = utils_queue_push(&pending_tasks_queue, job);
-				assert(result);
-			}
+		} else if (job->kreon_operation_status == TASK_RESUME) {
+			/*send it to spinning thread*/
+			ds_put_resume_task(&dataserver->spinner[worker->spinner_id], job);
+		} else if (job->kreon_operation_status == TASK_SUSPENDED) {
+			log_warn("Oops task is suspended");
 		}
 		job = NULL;
 	}
+
 	log_warn("worker thread exited");
 	return NULL;
 }
 
-static inline int worker_queued_jobs(struct worker_thread *worker)
+static inline int worker_queued_jobs(struct ds_worker_thread *worker)
 {
-	return utils_queue_used_slots(&worker->work_queue) + utils_queue_used_slots(&worker->high_priority_queue);
+	return utils_queue_used_slots(&worker->work_queue);
+}
+
+static struct krm_work_task *ds_get_server_task_buffer(struct ds_spinning_thread *spinner)
+{
+	struct krm_work_task *job = NULL;
+	int idx = spinner->s_last_pool + 1;
+	if (spinner->s_last_pool >= DS_POOL_NUM)
+		idx = 0;
+
+	int i = idx;
+	while (1) {
+		job = (struct krm_work_task *)utils_queue_pop(&spinner->stb_pool[i].task_buffers);
+		if (job != NULL)
+			break;
+		++i;
+		if (i == idx)
+			//nothing found after a full round
+			break;
+		if (i == DS_POOL_NUM)
+			i = 0;
+	}
+	spinner->s_last_pool = idx;
+	return job;
+}
+
+static void ds_put_server_task_buffer(struct ds_spinning_thread *spinner, struct krm_work_task *task)
+{
+	pthread_mutex_lock(&spinner->stb_pool[task->pool_id].tbp_lock);
+	if (utils_queue_push(&spinner->stb_pool[task->pool_id].task_buffers, task) == NULL) {
+		log_fatal("Failed to add task buffer in pool id %d, this should not happen", task->pool_id);
+		exit(EXIT_FAILURE);
+	}
+	pthread_mutex_unlock(&spinner->stb_pool[task->pool_id].tbp_lock);
+	return;
+}
+
+static void ds_put_resume_task(struct ds_spinning_thread *spinner, struct krm_work_task *task)
+{
+	int id = task->pool_id;
+	pthread_mutex_lock(&spinner->resume_task_pool[id].tbp_lock);
+	if (utils_queue_push(&spinner->resume_task_pool[id].task_buffers, task) == NULL) {
+		log_fatal("failed to add to resumed task queue");
+		exit(EXIT_FAILURE);
+	}
+	pthread_mutex_unlock(&spinner->resume_task_pool[id].tbp_lock);
+}
+
+static struct krm_work_task *ds_get_client_task_buffer(struct ds_spinning_thread *spinner)
+{
+	struct krm_work_task *job = NULL;
+	int idx = spinner->c_last_pool + 1;
+	if (spinner->c_last_pool >= DS_POOL_NUM)
+		idx = 0;
+
+	int i = idx;
+	while (1) {
+		job = (struct krm_work_task *)utils_queue_pop(&spinner->ctb_pool[i].task_buffers);
+		if (job != NULL)
+			break;
+		++i;
+		if (i == idx)
+			//nothing found after a full round
+			break;
+		if (i == DS_POOL_NUM)
+			i = 0;
+	}
+	spinner->c_last_pool = idx;
+	return job;
+}
+
+static void ds_put_client_task_buffer(struct ds_spinning_thread *spinner, struct krm_work_task *task)
+{
+	pthread_mutex_lock(&spinner->ctb_pool[task->pool_id].tbp_lock);
+	if (utils_queue_push(&spinner->ctb_pool[task->pool_id].task_buffers, task) == NULL) {
+		log_fatal("Failed to add task buffer in pool id %d, this should not happen", task->pool_id);
+		exit(EXIT_FAILURE);
+	}
+	pthread_mutex_unlock(&spinner->ctb_pool[task->pool_id].tbp_lock);
+	return;
 }
 
 static int assign_job_to_worker(struct ds_spinning_thread *spinner, struct connection_rdma *conn, msg_header *msg,
-				int sockfd)
+				struct krm_work_task *task)
 {
-	struct work_task *job = NULL;
-	int worker_id;
-	static __thread int worker_id_cnt = 0; // worker where new tasks are given currently
-
-	if (conn->worker_id == -1) {
-		/*unassigned connection*/
-		if (++spinner->next_server_worker_to_submit_job >= spinner->num_workers) {
-			spinner->next_server_worker_to_submit_job = 0;
+	struct krm_work_task *job = NULL;
+	if (task == NULL) {
+		switch (msg->type) {
+		case SPILL_INIT:
+		case SPILL_INIT_ACK:
+		case SPILL_BUFFER_REQUEST:
+		case SPILL_COMPLETE:
+		case SPILL_COMPLETE_ACK:
+		case FLUSH_SEGMENT_AND_RESET:
+		case FLUSH_SEGMENT:
+		case FLUSH_SEGMENT_ACK:
+		case FLUSH_SEGMENT_ACK_AND_RESET:
+		case FLUSH_SEGMENT_TEST:
+		case SYNC_SEGMENT:
+		case SYNC_SEGMENT_ACK:
+		case GET_LOG_BUFFER_REQ:
+		case GET_LOG_BUFFER_REP:
+			job = (struct krm_work_task *)ds_get_server_task_buffer(spinner);
+			break;
+		default:
+			job = (struct krm_work_task *)ds_get_client_task_buffer(spinner);
+			break;
 		}
-		conn->worker_id = spinner->next_server_worker_to_submit_job;
+	} else
+		job = task;
+	if (!job) {
+		//log_error("assign_job_to_worker failed!\n");
+		return KREON_FAILURE;
 	}
 
-	if (msg->type == FLUSH_SEGMENT_AND_RESET || msg->type == FLUSH_SEGMENT || msg->type == SPILL_INIT ||
-	    msg->type == SPILL_COMPLETE || msg->type == SPILL_BUFFER_REQUEST) {
-		/* High priority tasks/protocol operations scheduling
-		 * To ensure FIFO processing (vital for these protocol operations) a single connection's protocol
-		 * tasks are processed from one worker.
-		 */
-		worker_id = conn->worker_id;
-		job = (struct work_task *)utils_queue_pop(
-			&spinner->worker[worker_id].empty_high_priority_job_buffers_queue);
-		if (!job) {
-			//assert(0);
-			return KREON_FAILURE;
-		}
-	} else {
-		int max_queued_jobs = globals_get_job_scheduling_max_queue_depth(); // TODO [mvard] Tune this
-		struct worker_thread *worker_group = spinner->worker;
+	int worker_id = spinner->next_server_worker_to_submit_job;
 
-		/* Regular tasks scheduling policy
+	int max_queued_jobs = globals_get_job_scheduling_max_queue_depth(); // TODO [mvard] Tune this
+	struct ds_worker_thread *worker = &spinner->worker[worker_id];
+
+	/* Regular tasks scheduling policy
 		 * Assign tasks to one worker until he is swamped, then start assigning
 	 	 * to the next one. Once all workers are swamped it will essentially
 	 	 * become a round robin policy since the worker_id will be incremented
@@ -654,8 +632,12 @@ static int assign_job_to_worker(struct ds_spinning_thread *spinner, struct conne
 	 	 */
 #if 0
 		// 1. Round Robin with threshold
-		if (worker_queued_jobs(&worker_group[worker_id_cnt]) >= max_queued_jobs) {
-			/* Find an active worker with used_slots < max_queued_jobs
+		if (worker_queued_jobs(&worker_group[worker_id_cnt]) >= max_queued_jobs)
+	{
+		/* Find an active worker with used_slots < max_queued_jobs
+	// 1. Round Robin with threshold
+	if (worker_queued_jobs(worker) >= max_queued_jobs) {
+		/* Find an active worker with used_slots < max_queued_jobs
 			 * If there's none, wake up a sleeping worker
 			 * If all worker's are running, pick the one with least load
 			 * NOTE a worker's work can only increase through this function call, which is only called by the spinning
@@ -663,113 +645,46 @@ static int assign_job_to_worker(struct ds_spinning_thread *spinner, struct conne
 			 * work increased during the duration of a single call of this function
 			 */
 
-			// Find active worker with min worker_queued_jobs
-			int current_choice = worker_id_cnt; // worker with id worker_id_cnt is most likely not sleeping
-			int a_sleeping_worker_id = -1;
-			for (int i = 0; i < WORKER_THREADS_PER_SPINNING_THREAD; ++i) {
-				// Keep note of a sleeping worker in case we need to wake him up for this task
-				if (worker_group[i].status == IDLE_SLEEPING) {
-					if (a_sleeping_worker_id == -1)
-						a_sleeping_worker_id = i;
-					continue;
-				}
-				if (worker_queued_jobs(&worker_group[i]) <
-				    worker_queued_jobs(&worker_group[current_choice]))
-					current_choice = i;
+		// Find active worker with min worker_queued_jobs
+		int current_choice = worker_id; // worker with id worker_id_cnt is most likely not sleeping
+		int a_sleeping_worker_id = -1;
+		for (int i = 0; i < WORKER_THREADS_PER_SPINNING_THREAD; ++i) {
+			// Keep note of a sleeping worker in case we need to wake him up for this task
+			if (worker[i].status == IDLE_SLEEPING) {
+				if (a_sleeping_worker_id == -1)
+					a_sleeping_worker_id = i;
+				continue;
 			}
-
-			if (worker_queued_jobs(&worker_group[current_choice]) >= max_queued_jobs &&
-			    a_sleeping_worker_id != -1) {
-				// Wake up a sleeping worker
-				current_choice = a_sleeping_worker_id;
-			}
-
-			worker_id_cnt = current_choice;
+			if (worker_queued_jobs(&worker[i]) < worker_queued_jobs(&worker[current_choice]))
+				current_choice = i;
 		}
 
 		worker_id = worker_id_cnt;
 #endif
-		// 2.
-		worker_id = worker_id_cnt;
-		worker_id_cnt = (worker_id_cnt + 1 < spinner->num_workers) ? worker_id_cnt + 1 : 0;
 
-		job = (struct work_task *)utils_queue_pop(&spinner->worker[worker_id].empty_job_buffers_queue);
-		if (!job) {
-			log_error("assign_job_to_worker failed!\n");
-			return KREON_FAILURE;
-		}
-	}
+	// 2. Static assignment
+	//int worker_id = conn->worker_id;
+	//3. Round robin
+	worker_id = spinner->next_server_worker_to_submit_job++;
+	if (spinner->next_server_worker_to_submit_job == spinner->num_workers)
+		spinner->next_server_worker_to_submit_job = 0;
 
-	memset(job, 0x0, sizeof(struct work_task));
 	job->channel = globals_get_rdma_channel();
 	job->conn = conn;
 	job->msg = msg;
-	job->sockfd = sockfd;
-
+	job->kreon_operation_status = TASK_START;
 	/*initialization of various fsm*/
 	job->thread_id = worker_id;
-	job->overall_status = TASK_START;
 	job->notification_addr = job->msg->request_message_local_addr;
-	job->allocation_status = ALLOCATION_START;
-	switch (job->msg->type) {
-	case PUT_REQUEST:
-	case PUT_OFFT_REQUEST:
-	case DELETE_REQUEST:
-		job->kreon_operation_status = APPEND_START;
-		break;
-	case TU_GET_QUERY:
-	case MULTI_GET_REQUEST:
-		job->kreon_operation_status = GET_START;
-		break;
-	case FLUSH_SEGMENT:
-	case FLUSH_SEGMENT_AND_RESET:
-		job->kreon_operation_status = FLUSH_SEGMENT_START;
-		break;
 
-	case RESET_BUFFER:
-		job->kreon_operation_status = RESET_BUFFER_START;
-		break;
-
-	case SPILL_INIT:
-		job->kreon_operation_status = SPILL_INIT_START;
-		break;
-	case SPILL_BUFFER_REQUEST:
-		job->kreon_operation_status = SPILL_BUFFER_START;
-		break;
-	case SPILL_COMPLETE:
-		job->kreon_operation_status = SPILL_COMPLETE_START;
-		break;
-	case TEST_REQUEST:
-	case TEST_REPLY_FETCH_PAYLOAD:
-		job->kreon_operation_status = TEST_START;
-		break;
-	default:
-		log_fatal("unhandled type");
-		assert(0);
+	if (utils_queue_push(&spinner->worker[worker_id].work_queue, (void *)job) == NULL) {
+		log_fatal(
+			"Failed to add CONTROL job of type: %d to queue tried worker %d its status is %llu retrying\n",
+			job->msg->type, worker_id, (LLU)spinner->worker[worker_id].status);
+		utils_queue_push(&spinner->worker[worker_id].work_queue, (void *)job);
 		exit(EXIT_FAILURE);
 	}
 
-	if (msg->type == FLUSH_SEGMENT_AND_RESET || msg->type == FLUSH_SEGMENT || msg->type == SPILL_INIT ||
-	    msg->type == SPILL_COMPLETE || msg->type == SPILL_BUFFER_REQUEST) {
-		if (utils_queue_push(&spinner->worker[worker_id].high_priority_queue, (void *)job) == NULL) {
-			log_warn(
-				"Failed to add CONTROL job of type: %d to queue tried worker %d its status is %llu retrying\n",
-				job->msg->type, worker_id, (LLU)spinner->worker[worker_id].status);
-			utils_queue_push(&spinner->worker[worker_id].empty_high_priority_job_buffers_queue,
-					 (void *)job);
-			assert(0);
-			return KREON_FAILURE;
-		}
-	} else {
-		/*normal priority*/
-		if (utils_queue_push(&spinner->worker[worker_id].work_queue, (void *)job) == NULL) {
-			log_warn("Failed to add job of type: %d to queue tried worker %d its status is %llu retrying\n",
-				 job->msg->type, worker_id, (LLU)spinner->worker[worker_id].status);
-			utils_queue_push(&spinner->worker[worker_id].empty_job_buffers_queue, (void *)job);
-			//assert(0);
-			return KREON_FAILURE;
-		}
-	}
 	pthread_spin_lock(&spinner->worker[worker_id].work_queue_lock);
 	if (spinner->worker[worker_id].status == IDLE_SLEEPING) {
 		/*wake him up */
@@ -814,8 +729,60 @@ static void *server_spinning_thread_kernel(void *args)
 
 	pthread_t self;
 	self = pthread_self();
-	pthread_setname_np(self, "SPINNING_THREAD");
+	pthread_setname_np(self, "spinner");
+	log_info("Spinning thread %d initializing empty task buffers pool size %d, putting %d buffers per pool",
+		 spinner->id, DS_POOL_NUM, DS_CLIENT_QUEUE_SIZE / DS_POOL_NUM);
+	spinner->s_last_pool = DS_POOL_NUM;
+	spinner->c_last_pool = DS_POOL_NUM;
+	for (int i = 0; i < DS_POOL_NUM; i++) {
+		pthread_mutex_init(&spinner->ctb_pool[i].tbp_lock, NULL);
+		pthread_mutex_init(&spinner->stb_pool[i].tbp_lock, NULL);
+		utils_queue_init(&spinner->ctb_pool[i].task_buffers);
+		pthread_mutex_init(&spinner->stb_pool[i].tbp_lock, NULL);
+		int size = DS_CLIENT_QUEUE_SIZE / DS_POOL_NUM;
+		for (int j = 0; j < size; j++) {
+			/*adding buffer to the server/client pool*/
+			struct krm_work_task *work_task = (struct krm_work_task *)malloc(sizeof(struct krm_work_task));
+			memset(work_task, 0x00, sizeof(struct krm_work_task));
+			work_task->pool_id = i;
+			utils_queue_push(&spinner->ctb_pool[i].task_buffers, (void *)work_task);
+			work_task = (struct krm_work_task *)malloc(sizeof(struct krm_work_task));
+			memset(work_task, 0x00, sizeof(struct krm_work_task));
+			utils_queue_push(&spinner->stb_pool[i].task_buffers, (void *)work_task);
+			work_task->pool_id = i;
+		}
+	}
+	/*Init my worker threads*/
+	for (int j = 0; j < spinner->num_workers; j++) {
+		/*init worker group vars*/
+		pthread_spin_init(&spinner->worker[j].work_queue_lock, PTHREAD_PROCESS_PRIVATE);
+		spinner->worker[j].worker_id = j;
+		spinner->worker[j].status = WORKER_NOT_RUNNING;
+		sem_init(&spinner->worker[j].sem, 0, 0);
+		utils_queue_init(&spinner->worker[j].work_queue);
+	}
 
+	/*set the proper affinity for my workers*/
+	cpu_set_t worker_threads_affinity_mask;
+	CPU_ZERO(&worker_threads_affinity_mask);
+	uint32_t start = spinner->id * (num_of_worker_threads / num_of_spinning_threads);
+	for (uint32_t j = start; j < start + (num_of_worker_threads / num_of_spinning_threads); j++) {
+		CPU_SET(worker_threads_core_ids[j], &worker_threads_affinity_mask);
+		log_info("Pinning worker threads (belonging to spinning thread core id %llu) to core id %llu",
+			 (LLU)spinning_threads_core_ids[spinner->id], (LLU)worker_threads_core_ids[j]);
+	}
+	/*create my workers*/
+	for (int j = 0; j < spinner->num_workers; j++) {
+		pthread_create(&spinner->worker[j].context, NULL, worker_thread_kernel, &spinner->worker[j]);
+		/*set affinity for this group*/
+		int status = pthread_setaffinity_np(spinner->worker[j].context, sizeof(cpu_set_t),
+						    &worker_threads_affinity_mask);
+		if (status != 0) {
+			log_fatal("failed to pin workers for spinning thread %d", spinner->id);
+			exit(EXIT_FAILURE);
+		}
+		log_info("Spinning thread %d Started worker %d", spinner->id, j);
+	}
 	int count = 0;
 
 	while (1) {
@@ -836,6 +803,19 @@ static void *server_spinning_thread_kernel(void *args)
 		prev_node = NULL;
 
 		while (node != NULL) {
+			/*check for resumed tasks to be rescheduled*/
+			for (int i = 0; i < DS_POOL_NUM; i++) {
+				struct krm_work_task *task;
+				task = utils_queue_pop(&spinner->resume_task_pool[i].task_buffers);
+				if (task != NULL) {
+					log_info("Rescheduling task");
+					rc = assign_job_to_worker(spinner, task->conn, task->msg, task);
+					if (rc == KREON_FAILURE) {
+						log_warn("Failed to reschedule task");
+						utils_queue_push(&spinner->resume_task_pool[i].task_buffers, task);
+					}
+				}
+			}
 			conn = (connection_rdma *)node->data;
 
 			if (conn->status != CONNECTION_OK)
@@ -884,7 +864,7 @@ static void *server_spinning_thread_kernel(void *args)
 				} else {
 					/*normal messages*/
 					hdr->receive = 0;
-					rc = assign_job_to_worker(spinner, conn, hdr, -1);
+					rc = assign_job_to_worker(spinner, conn, hdr, NULL);
 					if (rc == KREON_FAILURE) {
 						/*all workers are busy let's see messages from other connections*/
 						__sync_fetch_and_sub(&conn->pending_received_messages, 1);
@@ -919,7 +899,7 @@ static void *server_spinning_thread_kernel(void *args)
 				 * Who sends it? A special worker thread because spinning thread should never block
 				 */
 
-				rc = assign_job_to_worker(spinner, conn, hdr, -1);
+				rc = assign_job_to_worker(spinner, conn, hdr, NULL);
 				/*all workers are busy returns KREON_FAILURE*/
 				if (rc != KREON_FAILURE) {
 					hdr->receive =
@@ -991,7 +971,8 @@ static void *server_spinning_thread_kernel(void *args)
 				conn->rendezvous = conn->rdma_memory_regions->remote_memory_buffer;
 				goto iterate_next_element;
 			} else if (recv == I_AM_CLIENT) {
-				assert(conn->type == SERVER_TO_CLIENT_CONNECTION);
+				assert(conn->type == SERVER_TO_CLIENT_CONNECTION ||
+				       conn->type == REPLICA_TO_MASTER_CONNECTION);
 				conn->control_location = hdr->reply;
 				conn->control_location_length = hdr->reply_length;
 				hdr->receive = 0;
@@ -1531,130 +1512,6 @@ void tiering_compaction_worker(void *_tiering_request)
 }
 #endif
 
-int _ks_init_replica_rdma_connections(struct krm_region_desc *r_desc)
-{
-	char *host;
-	int i;
-	if (r_desc->role == KRM_BACKUP || r_desc->region->num_of_backup == 0) {
-		r_desc->init_rdma_conn = 0;
-		r_desc->r_state = NULL;
-		return KREON_SUCCESS;
-	}
-	r_desc->r_state = (struct ru_replication_state *)malloc(sizeof(struct ru_replication_state));
-	r_desc->r_state->data_conn =
-		(struct connection_rdma **)malloc(sizeof(struct connection_rdma *) * r_desc->region->num_of_backup);
-	r_desc->r_state->control_conn =
-		(struct connection_rdma **)malloc(sizeof(struct connection_rdma *) * r_desc->region->num_of_backup);
-	log_info("Primary: Creating replica connections for region range %s", r_desc->region->max_key);
-
-	for (i = 0; i < r_desc->region->num_of_backup; i++) {
-		host = r_desc->region->backups[i].RDMA_IP_addr;
-		r_desc->r_state->data_conn[i] = crdma_client_create_connection_list_hosts(
-			globals_get_rdma_channel(), &host, 1, MASTER_TO_REPLICA_DATA_CONNECTION);
-
-		/*fix replica buffer staff*/
-		r_desc->r_state->master_rep_buf =
-			(struct ru_replica_log_buffer *)malloc(sizeof(struct ru_replica_log_buffer));
-		/*valid range for start-end log offset this segment covers*/
-		r_desc->r_state->master_rep_buf->bounds[0].start =
-			r_desc->db->db_desc->KV_log_size - (r_desc->db->db_desc->KV_log_size % SEGMENT_SIZE);
-		r_desc->r_state->master_rep_buf->bounds[0].end =
-			r_desc->r_state->master_rep_buf->bounds[0].start + SEGMENT_SIZE;
-		/*bytes written in this segment*/
-		r_desc->r_state->master_rep_buf->seg_bufs[0].bytes_wr_per_seg = 0;
-
-		r_desc->r_state->master_rep_buf->seg_bufs[0].rdma_local_buf =
-			(struct ru_rdma_buffer *)r_desc->r_state->data_conn[i]->rdma_memory_regions->local_memory_buffer;
-		r_desc->r_state->master_rep_buf->seg_bufs[0].rdma_local_buf =
-			(struct ru_rdma_buffer *)r_desc->r_state->data_conn[i]
-				->rdma_memory_regions->remote_memory_buffer;
-	}
-
-	for (i = 1; i < RU_REPLICA_NUM_SEGMENTS; i++) {
-		r_desc->r_state->master_rep_buf->bounds[i].start = 0;
-		r_desc->r_state->master_rep_buf->bounds[i].end = 0;
-		r_desc->r_state->master_rep_buf->seg_bufs[i].bytes_wr_per_seg = 0;
-		r_desc->r_state->master_rep_buf->seg_bufs[i].rdma_local_buf =
-			(struct ru_rdma_buffer *)((uint64_t)r_desc->r_state->master_rep_buf->seg_bufs[i - 1]
-							  .rdma_local_buf +
-						  sizeof(struct ru_rdma_buffer));
-		r_desc->r_state->master_rep_buf->seg_bufs[i].rdma_remote_buf =
-			(struct ru_rdma_buffer *)((uint64_t)r_desc->r_state->master_rep_buf->seg_bufs[i - 1]
-							  .rdma_local_buf +
-						  sizeof(struct ru_rdma_buffer));
-		r_desc->r_state->data_conn[i]->priority = HIGH_PRIORITY;
-	}
-
-	for (i = 0; i < r_desc->region->num_of_backup; i++) {
-		log_info("MASTER: Creating control connection for region range %s\n", r_desc->region->min_key);
-		r_desc->r_state->control_conn[i] = r_desc->r_state->data_conn[i] =
-			crdma_client_create_connection_list_hosts(globals_get_rdma_channel(), &host, 1,
-								  MASTER_TO_REPLICA_CONTROL_CONNECTION);
-
-		r_desc->r_state->control_conn[i]->priority = HIGH_PRIORITY;
-		log_info("MASTER: replica data and control connection created successfuly");
-		/*allocate remote log buffer*/
-		log_info("MASTER: Allocating and initializing remote log buffer");
-
-		msg_header *tmp = (msg_header *)r_desc->r_state->data_conn[0]->rdma_memory_regions->local_memory_buffer;
-
-		/*init message*/
-		tmp->pay_len = 4096 + BUFFER_SEGMENT_SIZE;
-		tmp->padding_and_tail = RDMA_LOG_BUFFER_PADDING + TU_TAIL_SIZE; //???
-		DPRINT("TOTAL LOG BUFFER SIZE %d Padding %d\n", RDMA_TOTAL_LOG_BUFFER_SIZE, RDMA_LOG_BUFFER_PADDING);
-		tmp->data = (void *)((uint64_t)tmp + TU_HEADER_SIZE);
-		tmp->next = tmp->data;
-		tmp->receive = TU_RDMA_REGULAR_MSG;
-		/*set the tail to the proper value*/
-		*(uint32_t *)((uint64_t)tmp + TU_HEADER_SIZE + 4096 + BUFFER_SEGMENT_SIZE + RDMA_LOG_BUFFER_PADDING) =
-			TU_RDMA_REGULAR_MSG;
-		tmp->type = FLUSH_SEGMENT;
-		tmp->local_offset = 0;
-		tmp->remote_offset = 0;
-
-		tmp->ack_arrived = KR_REP_PENDING;
-		tmp->callback_function = NULL;
-		tmp->request_message_local_addr = NULL;
-		__sync_fetch_and_add(&r_desc->r_state->data_conn[0]->pending_sent_messages, 1);
-		/*set connection propeties with the replica
-		 *	1. pin data and control conn to high priority
-		 *	2. Reduce memory for control conn
-		 */
-		/*
-			 DPRINT("Setting connection properties with the Replica");
-			 set_connection_property_req * req;
-			 msg_header * data_conn_req = allocate_rdma_message(*S_tu_region->db->db_desc->data_conn, sizeof(set_connection_property_req),CHANGE_CONNECTION_PROPERTIES_REQUEST);
-			 req = (set_connection_property_req *)data_conn_req->data;
-			 req->desired_priority_level = HIGH_PRIORITY;
-			 req->desired_RDMA_memory_size = DEFAULT_MEMORY_SIZE_OPTION;
-			 data_conn_req->request_message_local_addr = (void *)data_conn_req;
-			 send_rdma_message(*S_tu_region->db->db_desc->data_conn, data_conn_req);
-			 int i = 0;
-			 while(data_conn_req->ack_arrived != REPLY_ARRIVED){
-			 if(++i%100000 == 0){
-			 DPRINT("Waiting for the remote side to pin my connection\n");
-			 }
-			 }
-
-			 msg_header * control_conn_req = allocate_rdma_message(*S_tu_region->db->db_desc->data_conn, sizeof(set_connection_property_req),CHANGE_CONNECTION_PROPERTIES_REQUEST);
-			 req = (set_connection_property_req *)control_conn_req->data;
-			 req->desired_priority_level = HIGH_PRIORITY;
-			 req->desired_RDMA_memory_size = CONTROL_CONNECTION_MEMORY_SIZE;
-
-			 control_conn_req->request_message_local_addr = (void *)control_conn_req;
-			 send_rdma_message(*S_tu_region->db->db_desc->data_conn, control_conn_req);
-			 i = 0;
-			 while(control_conn_req->ack_arrived != REPLY_ARRIVED){
-			 if(++i%100000 == 0){
-			 DPRINT("Waiting for the remote side to pin my connection\n");
-			 }
-			 }
-			 DPRINT("Setting connection properties with the Replica ... DONE");
-			 */
-	}
-	return KREON_SUCCESS;
-}
-
 /*
  * This functions handle PUT_QUERY requests which contain a single key value
  * put operation task states that this function must handle
@@ -1665,37 +1522,163 @@ int _ks_init_replica_rdma_connections(struct krm_region_desc *r_desc)
  CHECK_FOR_REPLICA_RESET_BUFFER_ACK
  APPEND_SUCCESS
  */
-void insert_kv_pair(struct krm_region_desc *r_desc, void *kv, connection_rdma *rdma_conn, kv_location *location,
-		    struct work_task *task, int wait)
+void insert_kv_pair(struct krm_work_task *task)
 {
-	char *key;
-	struct ru_replica_log_segment *curr_seg;
-	uint32_t key_length;
-	uint32_t value_length;
 	uint32_t kv_size;
-
-	int32_t seg_id = -1;
-	int32_t i = 0;
-
-	void *rdma_src;
-	void *rdma_dst;
-	key = kv;
-	key_length = *(uint32_t *)key;
-
-	value_length = *(uint32_t *)(key + sizeof(uint32_t) + key_length);
-	kv_size = (2 * sizeof(uint32_t)) + key_length + value_length;
-	location->rdma_key = rdma_conn->rdma_memory_regions->remote_memory_region->lkey;
-
-	bt_insert_req req;
-
+	log_info("Gemise to portofoli apo ta penintarika");
 	/*############## fsm state logic follows ###################*/
 	while (1) {
 		switch (task->kreon_operation_status) {
-		case APPEND_START:
+		case TASK_START:
+		case TASK_SUSPENDED: {
+			task->kreon_operation_status = GET_RSTATE;
+			break;
+		}
 
-			req.metadata.handle = r_desc->db;
+		case GET_RSTATE: {
+			if (task->r_desc->region->num_of_backup) {
+				if (task->r_desc->replica_bufs_initialized)
+					task->kreon_operation_status = INS_TO_KREON;
+				else {
+					pthread_mutex_lock(&task->r_desc->region_lock);
+					if (task->r_desc->region_halted) {
+						/*suspend and return*/
+						log_info("Suspending task");
+						task->kreon_operation_status = TASK_SUSPENDED;
+						utils_queue_push(&task->r_desc->halted_tasks, task);
+						pthread_mutex_unlock(&task->r_desc->region_lock);
+						return;
+					} else if (!task->r_desc->replica_bufs_initialized) {
+						log_info("initializing log buffers with replicas");
+						task->r_desc->region_halted = 1;
+						task->kreon_operation_status = INIT_LOG_BUFFERS;
+
+					} else
+						task->kreon_operation_status = INS_TO_KREON;
+					pthread_mutex_unlock(&task->r_desc->region_lock);
+				}
+			} else {
+				log_info("No replicated region");
+				task->kreon_operation_status = INS_TO_KREON;
+			}
+			break;
+		}
+		case INIT_LOG_BUFFERS: {
+			struct krm_region_desc *r_desc = task->r_desc;
+
+			if (r_desc->m_state == NULL) {
+				r_desc->m_state = (struct ru_master_state *)malloc(
+					sizeof(struct ru_master_state) +
+					(r_desc->region->num_of_backup *
+					 (sizeof(struct ru_master_log_buffer) +
+					  (RU_REPLICA_NUM_SEGMENTS * sizeof(struct ru_master_log_buffer_seg)))));
+				/*we need to dive into Kreon to check what in the current end of log. 
+				 * Since for this region we are the first to do this there is surely no concurrent access*/
+				uint64_t range;
+				if (r_desc->db->db_desc->KV_log_size > 0) {
+					range = r_desc->db->db_desc->KV_log_size -
+						(r_desc->db->db_desc->KV_log_size % SEGMENT_SIZE);
+				} else
+					range = 0;
+				for (uint32_t i = 0; i < r_desc->region->num_of_backup; i++) {
+					r_desc->m_state->r_buf[i].stat = RU_BUFFER_UNINITIALIZED;
+					for (int j = 0; j < RU_REPLICA_NUM_SEGMENTS; j++) {
+						r_desc->m_state->r_buf[i].segment[j].start = range;
+						range += SEGMENT_SIZE;
+						r_desc->m_state->r_buf[i].segment[j].end = range;
+						memset(&r_desc->m_state->r_buf[i].segment[j].mr, 0x00,
+						       sizeof(struct ibv_mr));
+					}
+				}
+			}
+
+			for (uint32_t i = 0; i < r_desc->region->num_of_backup; i++) {
+				struct connection_rdma *conn =
+					sc_get_conn(r_desc->region->backups[i].kreon_ds_hostname);
+				log_info("Sending get_log_buffer req to %s",
+					 r_desc->region->backups[i].kreon_ds_hostname);
+				if (r_desc->m_state->r_buf[i].stat == RU_BUFFER_UNINITIALIZED) {
+					r_desc->m_state->r_buf[i].p = sc_allocate_rpc_pair(
+						conn,
+						sizeof(struct msg_get_log_buffer_req) + r_desc->region->min_key_size,
+						sizeof(struct msg_get_log_buffer_rep) +
+							(RU_REPLICA_NUM_SEGMENTS * sizeof(struct ibv_mr)),
+						GET_LOG_BUFFER_REQ);
+
+					if (r_desc->m_state->r_buf[i].p.stat != ALLOCATION_IS_SUCCESSFULL)
+						continue;
+					else {
+						/*inform the req about its buddy*/
+						msg_header *req_header = r_desc->m_state->r_buf[i].p.request;
+						msg_header *rep_header = r_desc->m_state->r_buf[i].p.reply;
+						req_header->request_message_local_addr = req_header;
+						req_header->ack_arrived = KR_REP_PENDING;
+						/*location where server should put the reply*/
+						req_header->reply =
+							(char *)((uint64_t)rep_header -
+								 (uint64_t)conn->recv_circular_buf->memory_region);
+						req_header->reply_length = sizeof(msg_header) + rep_header->pay_len +
+									   rep_header->padding_and_tail;
+						/*time to send the message*/
+						struct msg_get_log_buffer_req *g_req =
+							(struct msg_get_log_buffer_req *)((uint64_t)req_header +
+											  sizeof(struct msg_header));
+						g_req->num_buffers = RU_REPLICA_NUM_SEGMENTS;
+						g_req->buffer_size = SEGMENT_SIZE;
+						g_req->region_key_size = r_desc->region->min_key_size;
+						log_info("putting region key %s", r_desc->region->min_key);
+						strcpy(g_req->region_key, r_desc->region->min_key);
+
+						send_rdma_message_busy_wait(conn, req_header);
+						r_desc->m_state->r_buf[i].stat = RU_BUFFER_REQUESTED;
+					}
+				}
+			}
+
+			/*check possible replies*/
+			uint32_t ready_buffers = 0;
+			for (uint32_t i = 0; i < r_desc->region->num_of_backup; i++) {
+				if (r_desc->m_state->r_buf[i].stat == RU_BUFFER_REQUESTED) {
+					/*check reply and process*/
+					uint32_t *tail =
+						(uint32_t *)(((uint64_t)r_desc->m_state->r_buf[i].p.reply +
+							      sizeof(struct msg_header) +
+							      r_desc->m_state->r_buf[i].p.reply->pay_len +
+							      r_desc->m_state->r_buf[i].p.reply->padding_and_tail) -
+							     TU_TAIL_SIZE);
+					if (*tail == TU_RDMA_REGULAR_MSG) {
+						r_desc->m_state->r_buf[i].stat = RU_BUFFER_REPLIED;
+						/*unroll reply TODO*/
+					}
+				} else if (r_desc->m_state->r_buf[i].stat == RU_BUFFER_OK)
+					++ready_buffers;
+			}
+			if (ready_buffers == r_desc->region->num_of_backup) {
+				task->kreon_operation_status = INS_TO_KREON;
+				pthread_mutex_lock(&task->r_desc->region_lock);
+				log_info(" Remote buffers ready resuming halted tasks");
+				/*resume halted tasks*/
+				struct krm_work_task *halted_task = utils_queue_pop(&task->r_desc->halted_tasks);
+				while (halted_task != NULL) {
+					ds_put_resume_task(&dataserver->spinner[task->spinner_id], halted_task);
+					halted_task = utils_queue_pop(&task->r_desc->halted_tasks);
+				}
+				task->r_desc->region_halted = 0;
+				task->r_desc->replica_bufs_initialized = 1;
+				pthread_mutex_unlock(&task->r_desc->region_lock);
+				task->kreon_operation_status = INS_TO_KREON;
+			} else
+				return;
+
+			break;
+		}
+		case REGION_HALTED:
+			break;
+		case INS_TO_KREON: {
+			bt_insert_req req;
+			req.metadata.handle = task->r_desc->db;
 			req.metadata.kv_size = kv_size;
-			req.key_value_buf = kv;
+			req.key_value_buf = &task->key;
 			req.metadata.level_id = 0;
 			req.metadata.key_format = KV_FORMAT;
 			req.metadata.append_to_log = 1;
@@ -1703,170 +1686,28 @@ void insert_kv_pair(struct krm_region_desc *r_desc, void *kv, connection_rdma *r
 			req.metadata.recovery_request = 0;
 			req.metadata.segment_full_event = 0;
 			_insert_key_value(&req);
-			if (r_desc->region->num_of_backup > 0) {
-				/*We have a replica to feed*/
-				if (req.metadata.segment_full_event) {
-					/*find the log segment that corresponds to this full event*/
-					seg_id = -1;
-					for (i = 0; i < RU_REPLICA_NUM_SEGMENTS; i++) {
-						if (r_desc->r_state->master_rep_buf->bounds[i].start <=
-							    req.metadata.log_offset_full_event &&
-						    r_desc->r_state->master_rep_buf->bounds[i].end >
-							    req.metadata.log_offset_full_event) {
-							seg_id = i;
-							break;
-						}
-					}
-					if (seg_id == -1) {
-						log_fatal("Corrupted replica log buffer");
-						exit(EXIT_FAILURE);
-					}
-					uint32_t next_buffer;
-					uint8_t msg_type;
-					if (seg_id == RU_REPLICA_NUM_SEGMENTS - 1) {
-						next_buffer = 0;
-						msg_type = FLUSH_SEGMENT_AND_RESET;
-					} else {
-						next_buffer = seg_id + 1;
-						msg_type = FLUSH_SEGMENT;
-					}
-
-					/*Now,wait until next buffer is available, server spinning thread updates this field*/
-					curr_seg = &r_desc->r_state->master_rep_buf->seg_bufs[next_buffer];
-					spin_loop(&curr_seg->buffer_free, 1);
-					/*mark it now as in use*/
-					curr_seg->buffer_free = 0;
-					/*fix its new boundaries*/
-					r_desc->r_state->master_rep_buf->bounds[next_buffer].start =
-						req.metadata.segment_id * SEGMENT_SIZE;
-					r_desc->r_state->master_rep_buf->bounds[next_buffer].end =
-						r_desc->r_state->master_rep_buf->bounds[next_buffer].start +
-						SEGMENT_SIZE;
-
-					/*ok others are ready to proceed, now let's wake up replica*/
-					curr_seg = &r_desc->r_state->master_rep_buf->seg_bufs[seg_id];
-					uint32_t bytes_threashold =
-						SEGMENT_SIZE - (sizeof(segment_header) + req.metadata.log_padding);
-					/*wait until all bytes of segment are written*/
-					spin_loop(&curr_seg->bytes_wr_per_seg, bytes_threashold);
-					/*prepare segment metadata for replica*/
-					curr_seg->rdma_local_buf->metadata.master_segment =
-						req.metadata.log_segment_addr;
-					curr_seg->rdma_local_buf->metadata.end_of_log = req.metadata.end_of_log;
-					curr_seg->rdma_local_buf->metadata.log_padding = req.metadata.log_padding;
-					curr_seg->rdma_local_buf->metadata.segment_id = req.metadata.segment_id;
-					strcpy(curr_seg->rdma_local_buf->metadata.region_key, r_desc->region->min_key);
-
-					curr_seg->rdma_local_buf->msg.type = msg_type;
-					curr_seg->rdma_local_buf->msg.receive = TU_RDMA_REGULAR_MSG;
-
-					rdma_src = (void *)&curr_seg->rdma_local_buf->metadata;
-					rdma_dst = (void *)&curr_seg->rdma_remote_buf->metadata;
-					/*send metadata to replica*/
-					if (rdma_post_write(r_desc->r_state->data_conn[0]->rdma_cm_id, rdma_src,
-							    rdma_src, sizeof(struct ru_seg_metadata),
-							    r_desc->r_state->data_conn[i]
-								    ->rdma_memory_regions->local_memory_region,
-							    IBV_SEND_SIGNALED, (uint64_t)rdma_dst,
-							    r_desc->r_state->data_conn[i]->peer_mr->rkey) != 0) {
-						log_fatal("Writing metadata of segment to replica failed!");
-						exit(EXIT_FAILURE);
-					}
-					/*finally wake up replica*/
-					rdma_src = (void *)&curr_seg->rdma_local_buf->msg;
-					rdma_dst = (void *)&curr_seg->rdma_remote_buf->msg;
-					if (rdma_post_write(r_desc->r_state->data_conn[0]->rdma_cm_id, rdma_src,
-							    rdma_src, sizeof(struct msg_header),
-							    r_desc->r_state->data_conn[0]
-								    ->rdma_memory_regions->local_memory_region,
-							    IBV_SEND_SIGNALED, (uint64_t)rdma_dst,
-							    r_desc->r_state->data_conn[0]->peer_mr->rkey) != 0) {
-						log_fatal("Waking up replica failed!");
-						exit(EXIT_FAILURE);
-					}
-				}
-
-				/*Common ins path, find the log segment that corresponds to this full event*/
-				seg_id = -1;
-				i = 0;
-				while (1) {
-					if (r_desc->r_state->master_rep_buf->bounds[i].start <=
-						    req.metadata.log_offset &&
-					    r_desc->r_state->master_rep_buf->bounds[i].end > req.metadata.log_offset) {
-						seg_id = i;
-						break;
-					}
-					if (++i == RU_REPLICA_NUM_SEGMENTS)
-						i = 0;
-				}
-
-				curr_seg = &r_desc->r_state->master_rep_buf->seg_bufs[seg_id];
-				rdma_src =
-					(void *)&curr_seg->rdma_local_buf->seg[req.metadata.log_offset % SEGMENT_SIZE];
-
-				rdma_dst =
-					(void *)&curr_seg->rdma_remote_buf->seg[req.metadata.log_offset % SEGMENT_SIZE];
-				memcpy(rdma_src, req.key_value_buf, req.metadata.kv_size);
-				/*now next step to the remote*/
-				if (rdma_post_write(
-					    r_desc->r_state->data_conn[0]->rdma_cm_id, rdma_src, rdma_src,
-					    req.metadata.kv_size,
-					    r_desc->r_state->data_conn[0]->rdma_memory_regions->local_memory_region,
-					    IBV_SEND_SIGNALED, (uint64_t)rdma_dst,
-					    r_desc->r_state->data_conn[0]->peer_mr->rkey) != 0) {
-					log_fatal("Writing to replica failed!");
-					exit(EXIT_FAILURE);
-				}
-				/* ok add the bytes*/
-				__sync_fetch_and_add(&curr_seg->bytes_wr_per_seg, req.metadata.kv_size);
+			if (task->r_desc->region->num_of_backup > 0) {
+				task->kreon_operation_status = REPLICATE;
+				break;
+			} else {
+				task->kreon_operation_status = TASK_COMPLETE;
+				return;
 			}
-			task->kreon_operation_status = APPEND_COMPLETE;
-			return;
-		case CHECK_FOR_REPLICA_FLUSH_SEGMENT_ACK:
-			log_fatal("Not implemented!");
-			exit(EXIT_FAILURE);
+		}
+		case REPLICATE:
+			/*TODO nothing for now*/
+			task->kreon_operation_status = TASK_COMPLETE;
+			break;
+		case TASK_COMPLETE:
 			break;
 
-		case ALLOCATE_NEW_LOG_BUFFER_WITH_REPLICA:
-			log_fatal("Not implemented!");
-			exit(EXIT_FAILURE);
-			break;
-
-		case PERFORM_SPILL_CHECK:
-		case WAIT_FOR_SPILL_START:
-			log_warn("Not implemented!");
-			exit(EXIT_FAILURE);
-			break;
-
-		case APPEND_COMPLETE:
-		case ALLOCATION_START:
-		case CHECK_FOR_RESET_BUFFER_ACK:
-		case CHECK_FOR_PENDING_REQUESTS_TO_COMPLETE:
-		case ALLOCATION_SUCCESS:
-		case TASK_START:
-		case TASK_COMPLETED:
 		default:
-			DPRINT("FATAL Ended up in faulty state\n");
+			log_fatal("Ended up in faulty state");
 			assert(0);
 			return;
 		}
 	}
 }
-
-#if 0 // FIXME never used
-struct msg_header *Server_FlushVolume_RDMA( struct msg_header *data_message, struct connection_rdma *rdma_conn )
-{
-	struct msg_header *reply_data_message;
-	_tucana_region_S *S_tu_region;
-
-	S_tu_region = get_first_region();
-	DPRINT("flushing volume for region %s min_range %s max_range %s\n",S_tu_region->ID_region.IDstr,S_tu_region->ID_region.minimum_range+4,S_tu_region->ID_region.maximum_range+4);
-	flush_volume(S_tu_region->db->volume_desc, SPILL_ALL_DBS_IMMEDIATELY);
-	printf("\n******[%s:%s:%d] Flushed Volume successfully ******\n",__FILE__,__func__,__LINE__);
-	reply_data_message = tdm_Alloc_Flush_Volume_Reply_Message_WithMR( rdma_conn, data_message );
-	return reply_data_message;
-}
-#endif
 
 /*
  * KreonR main processing function of networkrequests.
@@ -1874,9 +1715,8 @@ struct msg_header *Server_FlushVolume_RDMA( struct msg_header *data_message, str
  * a specific data path. We treat all taks related to network  as paths that may fail, that we can resume later. The idea
  * behind this
  * */
-void handle_task(void *__task)
+static void handle_task(struct krm_work_task *task)
 {
-	struct work_task *task = (struct work_task *)__task;
 	kv_location location;
 	struct connection_rdma *rdma_conn;
 	struct krm_region_desc *r_desc;
@@ -1889,8 +1729,6 @@ void handle_task(void *__task)
 	void *key = NULL;
 	void *value;
 	scannerHandle *sc;
-	msg_put_key *K;
-	msg_put_value *V;
 	msg_put_offt_req *put_offt_req;
 	msg_put_offt_rep *put_offt_rep;
 	msg_multi_get_req *multi_get;
@@ -2064,7 +1902,7 @@ void handle_task(void *__task)
 		task->overall_status = TASK_COMPLETED;
 		break;
 
-#if 0
+
 		case SCAN_REQUEST:
 			task->reply_msg = Server_Scan_MulipleRegions_RDMA(task->msg, rdma_conn);
 			task->reply_msg->request_message_local_addr = task->msg->request_message_local_addr;
@@ -2075,8 +1913,8 @@ void handle_task(void *__task)
 			 * which has backup role for the given region
 			 */
 
-#endif
-#endif
+
+
 	case RESET_BUFFER:
 		//DPRINT("Got reset buffer request pending received messages are %llu\n", (LLU)task->conn->pending_received_messages);
 		if (task->kreon_operation_status == RESET_BUFFER_START) {
@@ -2096,159 +1934,224 @@ void handle_task(void *__task)
 		task->overall_status = TASK_COMPLETED;
 		break;
 
-	case PUT_OFFT_REQUEST:
-
-		put_offt_req = (msg_put_offt_req *)task->msg->data;
-
-		K = (msg_put_key *)((uint64_t)put_offt_req + sizeof(msg_put_offt_req));
-		V = (msg_put_value *)((uint64_t)K + sizeof(msg_put_key) + K->key_size);
-		r_desc = krm_get_region(K->key, K->key_size);
+#endif
+	case GET_LOG_BUFFER_REQ: {
+		void *addr;
+		struct msg_get_log_buffer_req *get_log = (struct msg_get_log_buffer_req *)task->msg->data;
+		log_info("Region master wants a log buffer for region %s key size %d", get_log->region_key,
+			 get_log->region_key_size);
+		struct krm_region_desc *r_desc = krm_get_region(get_log->region_key, get_log->region_key_size);
 		if (r_desc == NULL) {
-			log_fatal("Region not found for key size %u:%s", K->key_size, K->key);
+			log_fatal("no hosted region found for min key %s", r_desc->region->min_key);
 			exit(EXIT_FAILURE);
 		}
-		task->region = (void *)r_desc;
-		/*inside kreon now*/
-		//log_info("offset %llu key %s", put_offt_req->offset, K->key);
-		uint32_t new_size = put_offt_req->offset + sizeof(msg_put_key) + K->key_size + sizeof(msg_put_value) +
-				    V->value_size;
-		if (new_size <= SEGMENT_SIZE - sizeof(segment_header)) {
-			value = __find_key(r_desc->db, put_offt_req->kv, SEARCH_DIRTY_TREE);
-
-			void *new_value =
-				malloc(SEGMENT_SIZE - sizeof(segment_header)); /*remove this later when test passes*/
-			memset(new_value, 0x00, SEGMENT_SIZE - sizeof(segment_header));
-			/*copy key*/
-			memcpy(new_value, put_offt_req->kv, sizeof(msg_put_key) + K->key_size);
-			/*old value, if it exists*/
-			if (value != NULL) {
-				memcpy(new_value + sizeof(msg_put_key) + K->key_size, value,
-				       sizeof(msg_put_value) + *(uint32_t *)value);
-				/*update the value size field if needed*/
-				if ((put_offt_req->offset + V->value_size) > *(uint32_t *)value)
-					*(uint32_t *)(new_value + sizeof(msg_put_key) + K->key_size) =
-						put_offt_req->offset + V->value_size;
-				//log_info("New val size is %u offset %u client value %u old val %u kv_size %u",
-				//	 *(uint32_t *)(new_value + sizeof(msg_put_key) + K->key_size),
-				//	 put_offt_req->offset, V->value_size, *(uint32_t *)value, kv_size);
-			} else {
-				*(uint32_t *)(new_value + sizeof(msg_put_key) + K->key_size) =
-					put_offt_req->offset + V->value_size;
+		pthread_mutex_lock(&r_desc->region_lock);
+		if (r_desc->r_state == NULL) {
+			r_desc->r_state = (struct ru_replica_state *)malloc(
+				sizeof(struct ru_replica_state) +
+				(get_log->num_buffers * sizeof(struct ru_replica_log_buffer_seg)));
+			r_desc->r_state->num_buffers = get_log->num_buffers;
+			for (int i = 0; i < get_log->num_buffers; i++) {
+				addr = malloc(get_log->buffer_size);
+				r_desc->r_state->seg[i].segment_size = get_log->buffer_size;
+				r_desc->r_state->seg[i].mr =
+					rdma_reg_write(task->conn->rdma_cm_id, addr, get_log->buffer_size);
 			}
-
-			/*now the value patch*/
-			memcpy(new_value + sizeof(msg_put_key) + K->key_size + sizeof(msg_put_value) +
-				       put_offt_req->offset,
-			       V->value, V->value_size);
-			//log_info("Inserting key %s new val key %u val size %u", K->key, *(uint32_t *)new_value,
-			//	 *(uint32_t *)(new_value + sizeof(msg_put_key) + K->key_size));
-
-			insert_kv_pair(r_desc, new_value, task->conn, &location, task, DO_NOT_WAIT_REPLICA_TO_COMMIT);
-			free(new_value);
+		} else {
+			log_fatal("remote buffers already initialized, what?");
+			exit(EXIT_FAILURE);
 		}
+
+		pthread_mutex_unlock(&r_desc->region_lock);
 
 		task->reply_msg = (void *)((uint64_t)task->conn->rdma_memory_regions->local_memory_buffer +
 					   (uint64_t)task->msg->reply);
 		/*initialize message*/
-		actual_reply_size = sizeof(msg_header) + sizeof(msg_put_offt_rep) + TU_TAIL_SIZE;
-		if (task->msg->reply_length >= actual_reply_size) {
-			padding = MESSAGE_SEGMENT_SIZE - (actual_reply_size % MESSAGE_SEGMENT_SIZE);
-			/*set tail to the proper value*/
-			*(uint32_t *)((uint64_t)task->reply_msg + actual_reply_size - (TU_TAIL_SIZE) + padding) =
-				TU_RDMA_REGULAR_MSG;
+		task->reply_msg->pay_len =
+			sizeof(struct msg_get_log_buffer_rep) + (get_log->num_buffers * sizeof(struct ibv_mr *));
 
-			task->reply_msg->pay_len = sizeof(msg_put_offt_rep);
-			task->reply_msg->padding_and_tail = padding + TU_TAIL_SIZE;
-			//log_info("msg header %d put_rep %d padding_and_tail %d", sizeof(msg_header),
-			//	 sizeof(msg_put_rep), task->reply_msg->padding_and_tail);
+		actual_reply_size = sizeof(msg_header) + task->reply_msg->pay_len + TU_TAIL_SIZE;
+		padding = MESSAGE_SEGMENT_SIZE - (actual_reply_size % MESSAGE_SEGMENT_SIZE);
+		/*set tail to the proper value*/
+		*(uint32_t *)((uint64_t)task->reply_msg + actual_reply_size + (padding - TU_TAIL_SIZE)) =
+			TU_RDMA_REGULAR_MSG;
+		task->reply_msg->padding_and_tail = padding + TU_TAIL_SIZE;
+		task->reply_msg->data = (void *)((uint64_t)task->reply_msg + sizeof(msg_header));
+		task->reply_msg->next = task->reply_msg->data;
 
-			task->reply_msg->data = (void *)((uint64_t)task->reply_msg + sizeof(msg_header));
-			task->reply_msg->next = task->reply_msg->data;
-			task->reply_msg->type = PUT_OFFT_REPLY;
+		task->reply_msg->type = GET_LOG_BUFFER_REP;
 
-			task->reply_msg->ack_arrived = KR_REP_PENDING;
-			task->reply_msg->receive = TU_RDMA_REGULAR_MSG;
-			task->reply_msg->local_offset = (uint64_t)task->msg->reply;
-			task->reply_msg->remote_offset = (uint64_t)task->msg->reply;
-			task->reply_msg->callback_function = NULL;
-			put_offt_rep = (msg_put_offt_rep *)((uint64_t)task->reply_msg + sizeof(msg_header));
-			put_offt_rep->status = KREON_SUCCESS;
-		} else {
-			log_fatal("SERVER: mr CLIENT reply space not enough  size %" PRIu32 " FIX XXX TODO XXX\n",
-				  task->msg->reply_length);
-			exit(EXIT_FAILURE);
-		}
+		task->reply_msg->ack_arrived = KR_REP_PENDING;
+		task->reply_msg->receive = TU_RDMA_REGULAR_MSG;
+		task->reply_msg->local_offset = (uint64_t)task->msg->reply;
+		task->reply_msg->remote_offset = (uint64_t)task->msg->reply;
+		task->reply_msg->callback_function = NULL;
+
+		struct msg_get_log_buffer_rep *rep =
+			(struct msg_get_log_buffer_rep *)((uint64_t)task->reply_msg + sizeof(msg_header));
+		rep->status = KREON_SUCCESS;
+		rep->num_buffers = get_log->num_buffers;
+		for (int i = 0; i < rep->num_buffers; i++)
+			rep->mr[i] = *r_desc->r_state->seg[i].mr;
 
 		/*piggyback info for use with the client*/
 		task->reply_msg->request_message_local_addr = task->msg->request_message_local_addr;
 		assert(task->reply_msg->request_message_local_addr != NULL);
-		task->overall_status = TASK_COMPLETED;
+		log_info("Region master wants a log buffer...DONE");
+		task->kreon_operation_status = TASK_COMPLETE;
 		break;
+	}
+
+	case PUT_OFFT_REQUEST: {
+		if (task->key == NULL) {
+			put_offt_req = (msg_put_offt_req *)task->msg->data;
+			msg_put_key *K = (msg_put_key *)((uint64_t)put_offt_req + sizeof(msg_put_offt_req));
+			msg_put_value *V = (msg_put_value *)((uint64_t)K + sizeof(msg_put_key) + K->key_size);
+			r_desc = krm_get_region(K->key, K->key_size);
+			if (r_desc == NULL) {
+				log_fatal("Region not found for key size %u:%s", K->key_size, K->key);
+				exit(EXIT_FAILURE);
+			}
+			task->r_desc = (void *)r_desc;
+			/*inside kreon now*/
+			//log_info("offset %llu key %s", put_offt_req->offset, K->key);
+			uint32_t new_size = put_offt_req->offset + sizeof(msg_put_key) + K->key_size +
+					    sizeof(msg_put_value) + V->value_size;
+			if (new_size <= SEGMENT_SIZE - sizeof(segment_header)) {
+				value = __find_key(r_desc->db, put_offt_req->kv, SEARCH_DIRTY_TREE);
+
+				void *new_value = malloc(SEGMENT_SIZE -
+							 sizeof(segment_header)); /*remove this later when test passes*/
+				memset(new_value, 0x00, SEGMENT_SIZE - sizeof(segment_header));
+				/*copy key*/
+				memcpy(new_value, put_offt_req->kv, sizeof(msg_put_key) + K->key_size);
+				/*old value, if it exists*/
+				if (value != NULL) {
+					memcpy(new_value + sizeof(msg_put_key) + K->key_size, value,
+					       sizeof(msg_put_value) + *(uint32_t *)value);
+					/*update the value size field if needed*/
+					if ((put_offt_req->offset + V->value_size) > *(uint32_t *)value)
+						*(uint32_t *)(new_value + sizeof(msg_put_key) + K->key_size) =
+							put_offt_req->offset + V->value_size;
+					//log_info("New val size is %u offset %u client value %u old val %u kv_size %u",
+					//	 *(uint32_t *)(new_value + sizeof(msg_put_key) + K->key_size),
+					//	 put_offt_req->offset, V->value_size, *(uint32_t *)value, kv_size);
+				} else {
+					*(uint32_t *)(new_value + sizeof(msg_put_key) + K->key_size) =
+						put_offt_req->offset + V->value_size;
+				}
+
+				/*now the value patch*/
+				memcpy(new_value + sizeof(msg_put_key) + K->key_size + sizeof(msg_put_value) +
+					       put_offt_req->offset,
+				       V->value, V->value_size);
+				//log_info("new val key %u val size %u", *(uint32_t *)new_value,
+				//	 *(uint32_t *)(new_value + sizeof(msg_put_key) + K->key_size));
+				task->key = new_value;
+			}
+		}
+
+		insert_kv_pair(task);
+		if (task->kreon_operation_status == TASK_COMPLETE) {
+			free(task->key);
+
+			task->reply_msg = (void *)((uint64_t)task->conn->rdma_memory_regions->local_memory_buffer +
+						   (uint64_t)task->msg->reply);
+			/*initialize message*/
+			actual_reply_size = sizeof(msg_header) + sizeof(msg_put_offt_rep) + TU_TAIL_SIZE;
+			if (task->msg->reply_length >= actual_reply_size) {
+				padding = MESSAGE_SEGMENT_SIZE - (actual_reply_size % MESSAGE_SEGMENT_SIZE);
+				/*set tail to the proper value*/
+				*(uint32_t *)((uint64_t)task->reply_msg + actual_reply_size - (TU_TAIL_SIZE) +
+					      padding) = TU_RDMA_REGULAR_MSG;
+
+				task->reply_msg->pay_len = sizeof(msg_put_offt_rep);
+				task->reply_msg->padding_and_tail = padding + TU_TAIL_SIZE;
+				//log_info("msg header %d put_rep %d padding_and_tail %d", sizeof(msg_header),
+				//	 sizeof(msg_put_rep), task->reply_msg->padding_and_tail);
+
+				task->reply_msg->data = (void *)((uint64_t)task->reply_msg + sizeof(msg_header));
+				task->reply_msg->next = task->reply_msg->data;
+				task->reply_msg->type = PUT_OFFT_REPLY;
+
+				task->reply_msg->ack_arrived = KR_REP_PENDING;
+				task->reply_msg->receive = TU_RDMA_REGULAR_MSG;
+				task->reply_msg->local_offset = (uint64_t)task->msg->reply;
+				task->reply_msg->remote_offset = (uint64_t)task->msg->reply;
+				task->reply_msg->callback_function = NULL;
+				put_offt_rep = (msg_put_offt_rep *)((uint64_t)task->reply_msg + sizeof(msg_header));
+				put_offt_rep->status = KREON_SUCCESS;
+			} else {
+				log_fatal("SERVER: mr CLIENT reply space not enough  size %" PRIu32
+					  " FIX XXX TODO XXX\n",
+					  task->msg->reply_length);
+				exit(EXIT_FAILURE);
+			}
+
+			/*piggyback info for use with the client*/
+			task->reply_msg->request_message_local_addr = task->msg->request_message_local_addr;
+			assert(task->reply_msg->request_message_local_addr != NULL);
+		}
+		break;
+	}
 	case PUT_REQUEST:
 
 		/* *
 			 * retrieve region handle for the corresponding key, find_region
 			 * initiates internally rdma connections if needed
 			 * */
-
-		K = (msg_put_key *)(task->msg->data);
-		V = (msg_put_value *)((uint64_t)K + sizeof(msg_put_key) + K->key_size);
-		key_length = K->key_size;
-		assert(key_length != 0);
-		r_desc = krm_get_region(K->key, K->key_size);
-		if (r_desc == NULL) {
-			log_fatal("Region not found for key size %u:%s", K->key_size, K->key);
-			exit(EXIT_FAILURE);
-		}
-		task->region = (void *)r_desc;
-
-		if (task->kreon_operation_status != APPEND_COMPLETE) {
-			insert_kv_pair(r_desc, task->msg->data, task->conn, &location, task,
-				       DO_NOT_WAIT_REPLICA_TO_COMMIT);
-
-			if (task->kreon_operation_status == APPEND_COMPLETE) {
-				task->allocation_status = ALLOCATION_START;
-				//free_rdma_received_message(task->conn, task->msg);
-			} else {
-				return;
+		if (task->key == NULL) {
+			task->key = (msg_put_key *)(task->msg->data);
+			task->value =
+				(msg_put_value *)((uint64_t)task->key + sizeof(msg_put_key) + task->key->key_size);
+			key_length = task->key->key_size;
+			assert(key_length != 0);
+			r_desc = krm_get_region(task->key->key, task->key->key_size);
+			if (r_desc == NULL) {
+				log_fatal("Region not found for key size %u:%s", task->key->key_size, task->key->key);
+				exit(EXIT_FAILURE);
 			}
+
+			task->r_desc = (void *)r_desc;
+			log_info("min key is %s", r_desc->region->min_key);
 		}
+		insert_kv_pair(task);
+		if (task->kreon_operation_status == TASK_COMPLETE) {
+			/*prepare the reply*/
+			task->reply_msg = (void *)((uint64_t)task->conn->rdma_memory_regions->local_memory_buffer +
+						   (uint64_t)task->msg->reply);
 
-		task->reply_msg = (void *)((uint64_t)task->conn->rdma_memory_regions->local_memory_buffer +
-					   (uint64_t)task->msg->reply);
-		/*initialize message*/
+			if (task->msg->reply_length >= actual_reply_size) {
+				task->reply_msg->pay_len = sizeof(msg_put_rep);
 
-		if (task->msg->reply_length >= actual_reply_size) {
-			task->reply_msg->pay_len = sizeof(msg_put_rep);
+				actual_reply_size = sizeof(msg_header) + sizeof(msg_put_rep) + TU_TAIL_SIZE;
+				padding = MESSAGE_SEGMENT_SIZE - (actual_reply_size % MESSAGE_SEGMENT_SIZE);
+				/*set tail to the proper value*/
+				*(uint32_t *)((uint64_t)task->reply_msg + actual_reply_size +
+					      (padding - TU_TAIL_SIZE)) = TU_RDMA_REGULAR_MSG;
+				task->reply_msg->padding_and_tail = padding + TU_TAIL_SIZE;
+				task->reply_msg->data = (void *)((uint64_t)task->reply_msg + sizeof(msg_header));
+				task->reply_msg->next = task->reply_msg->data;
 
-			actual_reply_size = sizeof(msg_header) + sizeof(msg_put_rep) + TU_TAIL_SIZE;
-			padding = MESSAGE_SEGMENT_SIZE - (actual_reply_size % MESSAGE_SEGMENT_SIZE);
-			/*set tail to the proper value*/
-			*(uint32_t *)((uint64_t)task->reply_msg + actual_reply_size + (padding - TU_TAIL_SIZE)) =
-				TU_RDMA_REGULAR_MSG;
-			task->reply_msg->padding_and_tail = padding + TU_TAIL_SIZE;
-			task->reply_msg->data = (void *)((uint64_t)task->reply_msg + sizeof(msg_header));
-			task->reply_msg->next = task->reply_msg->data;
+				task->reply_msg->type = PUT_REPLY;
 
-			task->reply_msg->type = PUT_REPLY;
-
-			task->reply_msg->ack_arrived = KR_REP_PENDING;
-			task->reply_msg->receive = TU_RDMA_REGULAR_MSG;
-			task->reply_msg->local_offset = (uint64_t)task->msg->reply;
-			task->reply_msg->remote_offset = (uint64_t)task->msg->reply;
-			task->reply_msg->callback_function = NULL;
-			msg_put_rep *put_rep = (msg_put_rep *)((uint64_t)task->reply_msg + sizeof(msg_header));
-			put_rep->status = KREON_SUCCESS;
-		} else {
-			log_fatal("SERVER: mr CLIENT reply space not enough  size %" PRIu32 " FIX XXX TODO XXX\n",
-				  task->msg->reply_length);
-			exit(EXIT_FAILURE);
+				task->reply_msg->ack_arrived = KR_REP_PENDING;
+				task->reply_msg->receive = TU_RDMA_REGULAR_MSG;
+				task->reply_msg->local_offset = (uint64_t)task->msg->reply;
+				task->reply_msg->remote_offset = (uint64_t)task->msg->reply;
+				task->reply_msg->callback_function = NULL;
+				msg_put_rep *put_rep = (msg_put_rep *)((uint64_t)task->reply_msg + sizeof(msg_header));
+				put_rep->status = KREON_SUCCESS;
+			} else {
+				log_fatal("SERVER: mr CLIENT reply space not enough  size %" PRIu32
+					  " FIX XXX TODO XXX\n",
+					  task->msg->reply_length);
+				exit(EXIT_FAILURE);
+			}
+			/*piggyback info for use with the client*/
+			task->reply_msg->request_message_local_addr = task->msg->request_message_local_addr;
+			assert(task->reply_msg->request_message_local_addr != NULL);
 		}
-
-		/*piggyback info for use with the client*/
-		task->reply_msg->request_message_local_addr = task->msg->request_message_local_addr;
-		assert(task->reply_msg->request_message_local_addr != NULL);
-		task->overall_status = TASK_COMPLETED;
 		return;
 
 	case DELETE_REQUEST: {
@@ -2282,7 +2185,7 @@ void handle_task(void *__task)
 		task->reply_msg->callback_function = NULL;
 		msg_delete_rep *del_rep = (msg_delete_rep *)((uint64_t)task->reply_msg + sizeof(msg_header));
 		task->reply_msg->request_message_local_addr = task->msg->request_message_local_addr;
-		task->overall_status = TASK_COMPLETED;
+		task->kreon_operation_status = TASK_COMPLETE;
 
 		if (delete_key(r_desc->db, del_req->key, del_req->key_size) == SUCCESS) {
 			del_rep->status = KREON_SUCCESS;
@@ -2368,7 +2271,7 @@ void handle_task(void *__task)
 		task->reply_msg->remote_offset = (uint64_t)task->msg->reply;
 		task->reply_msg->callback_function = NULL;
 		task->reply_msg->request_message_local_addr = task->msg->request_message_local_addr;
-		task->overall_status = TASK_COMPLETED;
+		task->kreon_operation_status = TASK_COMPLETE;
 		break;
 
 	case MULTI_GET_REQUEST: {
@@ -2468,7 +2371,7 @@ void handle_task(void *__task)
 		task->reply_msg->callback_function = NULL;
 		task->reply_msg->request_message_local_addr = task->msg->request_message_local_addr;
 		assert(task->reply_msg->request_message_local_addr != NULL);
-		task->overall_status = TASK_COMPLETED;
+		task->kreon_operation_status = TASK_COMPLETE;
 		break;
 	}
 
@@ -2490,7 +2393,7 @@ void handle_task(void *__task)
 			task->reply_msg->ack_arrived = KR_REP_PENDING;
 			task->reply_msg->callback_function = NULL;
 			task->reply_msg->request_message_local_addr = NULL;
-			task->overall_status = TASK_COMPLETED;
+			task->kreon_operation_status = TASK_COMPLETE;
 		} else {
 			log_fatal("CLIENT reply space not enough  size %" PRIu32 " FIX XXX TODO XXX\n",
 				  task->msg->reply_length);
@@ -2510,36 +2413,33 @@ void handle_task(void *__task)
 #endif
 	case FLUSH_SEGMENT:
 	case FLUSH_SEGMENT_AND_RESET:
-		if (task->kreon_operation_status == FLUSH_SEGMENT_START) {
-			//DPRINT("**** Ordered from master to perform a flush ****\n");
-			/*ommit header find the corresponding region*/
-			region_key = (void *)(task->msg->data + 32);
-			r_desc = krm_get_region(region_key + sizeof(uint32_t), *(uint32_t *)region_key);
+		//DPRINT("**** Ordered from master to perform a flush ****\n");
+		/*ommit header find the corresponding region*/
+		region_key = (void *)(task->msg->data + 32);
+		r_desc = krm_get_region(region_key + sizeof(uint32_t), *(uint32_t *)region_key);
 
-			if (r_desc == NULL) {
-				log_fatal("FATAL region with min key %s not found\n", region_key);
-				exit(EXIT_FAILURE);
-			}
-			if (r_desc->role == KRM_PRIMARY) {
-				log_fatal("FATAL flushing primary db?\n");
-				raise(SIGINT);
-				exit(EXIT_FAILURE);
-			}
+		if (r_desc == NULL) {
+			log_fatal("FATAL region with min key %s not found\n", region_key);
+			exit(EXIT_FAILURE);
+		}
+		if (r_desc->role == KRM_PRIMARY) {
+			log_fatal("FATAL flushing primary db?\n");
+			raise(SIGINT);
+			exit(EXIT_FAILURE);
+		}
 
 #if !OMMIT_IO_IN_THE_INSERT_PATH
-			void *master_segment = (void *)*(uint64_t *)((uint64_t)task->msg->data);
-			uint64_t end_of_log = *(uint64_t *)((uint64_t)task->msg->data + (sizeof(uint64_t)));
-			uint64_t bytes_to_pad = *(uint64_t *)((uint64_t)task->msg->data + (2 * sizeof(uint64_t)));
-			uint64_t segment_id = *(uint64_t *)((uint64_t)task->msg->data + (3 * sizeof(uint64_t)));
+		void *master_segment = (void *)*(uint64_t *)((uint64_t)task->msg->data);
+		uint64_t end_of_log = *(uint64_t *)((uint64_t)task->msg->data + (sizeof(uint64_t)));
+		uint64_t bytes_to_pad = *(uint64_t *)((uint64_t)task->msg->data + (2 * sizeof(uint64_t)));
+		uint64_t segment_id = *(uint64_t *)((uint64_t)task->msg->data + (3 * sizeof(uint64_t)));
 
-			void *buffer = task->msg->data + 4096;
-			//DPRINT("REPLICA: master segment %llu end of log %llu bytes to pad %llu segment_id %llu\n",(LLU)master_segment,(LLU)end_of_log,(LLU)bytes_to_pad,(LLU)segment_id);
-			ru_flush_replica_log_buffer(r_desc->db, (segment_header *)master_segment, buffer, end_of_log,
-						    bytes_to_pad, segment_id);
+		void *buffer = task->msg->data + 4096;
+		ru_flush_replica_log_buffer(r_desc->db, (segment_header *)master_segment, buffer, end_of_log,
+					    bytes_to_pad, segment_id);
 #endif
-			free_rdma_received_message(task->conn, task->msg);
-			task->kreon_operation_status = FLUSH_SEGMENT_COMPLETE;
-		}
+		//free_rdma_received_message(task->conn, task->msg);
+		task->kreon_operation_status = TASK_COMPLETE;
 
 		/*Since reply message is of fixed size we allocate it first*/
 
@@ -2572,10 +2472,10 @@ void handle_task(void *__task)
 		task->reply_msg->request_message_local_addr = task->notification_addr;
 		__sync_fetch_and_add(&task->conn->pending_sent_messages, 1);
 		//DPRINT("* Everything ok sending FLUSH_SEGMENT_ACK pending sent for con are %llu\n",(LLU)task->conn->pending_sent_messages);
-		task->overall_status = TASK_COMPLETED;
+		task->kreon_operation_status = TASK_COMPLETE;
 		break;
 	default:
-		DPRINT("FATAL unknown operation %d\n", task->msg->type);
+		log_fatal("unknown operation %d", task->msg->type);
 		exit(EXIT_FAILURE);
 	}
 	//free_rdma_received_message(rdma_conn, data_message);
@@ -2722,7 +2622,7 @@ int main(int argc, char *argv[])
 	dataserver = (struct ds_server *)malloc(
 		sizeof(struct ds_server) +
 		(num_of_spinning_threads * (sizeof(struct ds_spinning_thread) +
-					    (WORKER_THREADS_PER_SPINNING_THREAD * sizeof(struct worker_thread)))));
+					    (WORKER_THREADS_PER_SPINNING_THREAD * sizeof(struct ds_worker_thread)))));
 	dataserver->num_of_spinning_threads = num_of_spinning_threads;
 
 	for (int i = 0; i < dataserver->num_of_spinning_threads; i++) {
@@ -2738,24 +2638,6 @@ int main(int argc, char *argv[])
 		/*Now init workers structures for this spinner*/
 		dataserver->spinner[i].num_workers = WORKER_THREADS_PER_SPINNING_THREAD;
 		struct ds_spinning_thread *spinner = &dataserver->spinner[i];
-		for (int j = 0; j < spinner->num_workers; j++) {
-			/*init worker group vars*/
-			pthread_spin_init(&spinner->worker[j].work_queue_lock, PTHREAD_PROCESS_PRIVATE);
-			spinner->worker[j].worker_id = j;
-			spinner->worker[j].status = WORKER_NOT_RUNNING;
-			sem_init(&spinner->worker[j].sem, 0, 0);
-			utils_queue_init(&spinner->worker[j].empty_job_buffers_queue);
-			utils_queue_init(&spinner->worker[j].empty_high_priority_job_buffers_queue);
-			utils_queue_init(&spinner->worker[j].work_queue);
-			utils_queue_init(&spinner->worker[j].high_priority_queue);
-
-			for (int k = 0; k < UTILS_QUEUE_CAPACITY; k++) {
-				utils_queue_push(&spinner->worker[j].empty_job_buffers_queue,
-						 &spinner->worker[j].job_buffers[k]);
-				utils_queue_push(&spinner->worker[j].empty_high_priority_job_buffers_queue,
-						 &spinner->worker[j].high_priority_job_buffers[k]);
-			}
-		}
 
 		if (pthread_create(&spinner->spinner_context, NULL, server_spinning_thread_kernel,
 				   &dataserver->spinner[i]) != 0) {
@@ -2775,29 +2657,6 @@ int main(int argc, char *argv[])
 			exit(EXIT_FAILURE);
 		}
 		log_info("Pinned successfully spinning thread to core %llu", (LLU)spinning_threads_core_ids[i]);
-		log_info("Generating %d workers for spinning thread %d", spinner->num_workers, spinner->id);
-
-		cpu_set_t worker_threads_affinity_mask;
-		CPU_ZERO(&worker_threads_affinity_mask);
-		/*set the proper affinity for this worker group*/
-		uint32_t start = i * (num_of_worker_threads / num_of_spinning_threads);
-		for (uint32_t j = start; j < start + (num_of_worker_threads / num_of_spinning_threads); j++) {
-			CPU_SET(worker_threads_core_ids[j], &worker_threads_affinity_mask);
-			log_info("Pinning worker threads (belonging to spinning thread core id %llu) to core id %llu",
-				 (LLU)spinning_threads_core_ids[i], (LLU)worker_threads_core_ids[j]);
-		}
-
-		for (int j = 0; j < spinner->num_workers; j++) {
-			pthread_create(&spinner->worker[j].context, NULL, worker_thread_kernel, &spinner->worker[j]);
-			/*set affinity for this group*/
-			status = pthread_setaffinity_np(spinner->worker[j].context, sizeof(cpu_set_t),
-							&worker_threads_affinity_mask);
-			if (status != 0) {
-				log_fatal("failed to pin worker thread group %d", i);
-				exit(EXIT_FAILURE);
-			}
-		}
-		log_info("Pinned workers to spinning thread %d successfully", i);
 	}
 
 	log_info("Starting socket thread for listening to new connections...");
@@ -2814,7 +2673,6 @@ int main(int argc, char *argv[])
 		log_fatal("Failed to start metadata_server");
 		exit(EXIT_FAILURE);
 	}
-	Set_OnConnection_Create_Function(globals_get_rdma_channel(), handle_task);
 	stats_init(num_of_worker_threads);
 	log_info("Kreon server ready");
 
@@ -2824,3 +2682,4 @@ int main(int argc, char *argv[])
 	log_info("kreonR server exiting\n");
 	return 0;
 }
+

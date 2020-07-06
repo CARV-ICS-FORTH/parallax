@@ -100,12 +100,10 @@ typedef struct spinning_thread_parameters {
 } spinning_thread_parameters;
 
 typedef enum connection_type {
-	CLIENT_TO_SERVER_CONNECTION = 100,
+	CLIENT_TO_SERVER_CONNECTION,
 	SERVER_TO_CLIENT_CONNECTION,
-	MASTER_TO_REPLICA_DATA_CONNECTION,
-	MASTER_TO_REPLICA_CONTROL_CONNECTION,
-	REPLICA_TO_MASTER_DATA_CONNECTION,
-	REPLICA_TO_MASTER_CONTROL_CONNECTION,
+	MASTER_TO_REPLICA_CONNECTION,
+	REPLICA_TO_MASTER_CONNECTION,
 	H3_CLIENT_TO_SERVER_CONNECTION,
 	H3_SERVER_TO_CLIENT_CONNECTION
 } connection_type;
@@ -215,10 +213,6 @@ struct channel_rdma {
 	on_connection_created connection_created; //Callback function used for created a thread at
 };
 
-struct channel_sock {
-	struct channel_rdma *channel;
-	int connfd;
-};
 
 struct pingpong_dest {
 	int lid;
@@ -287,13 +281,7 @@ typedef struct connection_rdma {
 	int idconn;
 } connection_rdma;
 
-static inline void Set_OnConnection_Create_Function(struct channel_rdma *channel, on_connection_created function)
-{
-	channel->connection_created = function;
-}
 
-void crdma_put_message_from_MR(struct connection_rdma *conn, void **mr);
-void *crdma_receive_rdma_message(struct connection_rdma *conn, void **payload);
 
 void crdma_init_generic_create_channel(struct channel_rdma *channel);
 void crdma_init_client_connection(struct connection_rdma *conn, const char *host, const char *port,
@@ -309,8 +297,6 @@ struct connection_rdma *crdma_client_create_connection_list_hosts(struct channel
 void crdma_init_client_connection_list_hosts(struct connection_rdma *conn, char **hosts, const int num_hosts,
 					     struct channel_rdma *channel, connection_type type);
 
-void crdma_put_message_from_remote_MR(struct connection_rdma *conn, uint64_t ooffset, int32_t N);
-int64_t crdma_get_message_consecutive_from_remote_MR(struct connection_rdma *conn, uint32_t length);
 
 msg_header *allocate_rdma_message(connection_rdma *conn, int message_payload_size, int message_type);
 void init_rdma_message(connection_rdma *conn, msg_header *msg, uint32_t message_type, uint32_t message_size,
@@ -322,7 +308,6 @@ msg_header *client_try_allocate_rdma_message(connection_rdma *conn, int message_
 int send_rdma_message(connection_rdma *conn, msg_header *msg);
 int send_rdma_message_busy_wait(connection_rdma *conn, msg_header *msg);
 void async_send_rdma_message(connection_rdma *conn, msg_header *msg, void (*callback_function)(void *args), void *args);
-msg_header *get_message_reply(connection_rdma *conn, msg_header *msg);
 void free_rdma_local_message(connection_rdma *conn);
 void free_rdma_received_message(connection_rdma *conn, msg_header *msg);
 

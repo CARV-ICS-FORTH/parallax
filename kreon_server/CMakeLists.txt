@@ -63,6 +63,7 @@ add_executable(
   messages.c
   # storage_devices.c
   metadata_server.c
+	server_communication.c
   ../kreon_rdma/rdma.c
   stats.c)
 target_link_libraries(kreon_server kreon_rdma kreonr log)
