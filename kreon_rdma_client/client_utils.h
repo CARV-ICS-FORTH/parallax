@@ -18,7 +18,7 @@ struct cu_region_desc {
 typedef struct cu_conn_per_server {
 	struct krm_server_name server_id;
 	uint64_t hash_key;
-	connection_rdma *connections[NUM_OF_CONNECTIONS_PER_SERVER];
+	connection_rdma **connections;
 	UT_hash_handle hh;
 } cu_conn_per_server;
 

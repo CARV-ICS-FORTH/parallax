@@ -9,49 +9,57 @@
 #include <string.h>
 #include <time.h>
 
-const unsigned latencies_length  = 1000000;
+const unsigned latencies_length = 1000000;
 // latencies[i] are the operations hat achieved i usec latency
-size_t* latencies;
+size_t *latencies;
 // operations with latency >= latencies_length
 size_t latencies_out_of_bounds;
 size_t latencies_less_equal_zero;
 
-void latmon_init(void) {
-	latencies = (size_t*) malloc(latencies_length*sizeof(size_t));
-	memset(latencies, 0, latencies_length*sizeof(size_t));
+void latmon_init(void)
+{
+	latencies = (size_t *)malloc(latencies_length * sizeof(size_t));
+	memset(latencies, 0, latencies_length * sizeof(size_t));
 }
 
-void latmon_destroy(void) {
+void latmon_destroy(void)
+{
 	free(latencies);
 }
 
-static inline void _lat_gettime(lat_t* time) {
+static inline void _lat_gettime(lat_t *time)
+{
 	clock_gettime(CLOCK_MONOTONIC, time);
 }
 
-void latmon_start(lat_t* start) {
+void latmon_start(lat_t *start)
+{
 	_lat_gettime(start);
 }
 
 static inline size_t _lat_diff_timespec(lat_t *start, lat_t *stop);
 
-int latmon_end(lat_t *start) {
+int latmon_end(lat_t *start)
+{
 	lat_t end;
+	int ret = 0;
 	_lat_gettime(&end);
 	size_t latency = _lat_diff_timespec(start, &end);
 
 	if (latency <= 0) {
 		++latencies_less_equal_zero;
+		ret = 1;
 	} else if (latency < latencies_length) {
 		++latencies[latency];
-		return 0;
 	} else {
 		++latencies_out_of_bounds;
-		return 1;
+		ret = 1;
 	}
+	return ret;
 }
 
-void latmon_calc_stats(latmon_stats* stats) {
+void latmon_calc_stats(latmon_stats *stats)
+{
 	memset(stats, 0, sizeof(latmon_stats));
 	stats->min = latencies_length;
 	for (unsigned i = 0; i < latencies_length; ++i) {
@@ -87,14 +95,14 @@ void latmon_calc_stats(latmon_stats* stats) {
 	stats->less_equal_zero = latencies_less_equal_zero;
 }
 
-void latmon_to_csv(FILE* out_file, latmon_stats* stats) {
+void latmon_to_csv(FILE *out_file, latmon_stats *stats)
+{
 	fprintf(out_file, "samples,out_of_bounds,less_equal_zero,min,avg,max,lat90,lat99,lat999\n");
-	fprintf(out_file, "%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu\n", 
-			stats->samples, stats->out_of_bounds, stats->less_equal_zero, stats->min ,stats->avg ,stats->max,
-			stats->lat90, stats->lat99, stats->lat999);
+	fprintf(out_file, "%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu\n", stats->samples, stats->out_of_bounds,
+		stats->less_equal_zero, stats->min, stats->avg, stats->max, stats->lat90, stats->lat99, stats->lat999);
 	fprintf(out_file, "latency,samples\n");
 	for (size_t i = 0; i < latencies_length; ++i) {
-		fprintf(out_file, "%lu,%lu\n", i,latencies[i]);
+		fprintf(out_file, "%lu,%lu\n", i, latencies[i]);
 	}
 }
 
@@ -112,7 +120,8 @@ static inline size_t _lat_diff_timeval(lat_t *start, lat_t *stop) {
 }
 #endif
 
-static inline size_t _lat_diff_timespec(lat_t *start, lat_t *stop) {
+static inline size_t _lat_diff_timespec(lat_t *start, lat_t *stop)
+{
 	lat_t result;
 	if ((stop->tv_nsec - start->tv_nsec) < 0) {
 		result.tv_sec = stop->tv_sec - start->tv_sec - 1;
@@ -121,5 +130,5 @@ static inline size_t _lat_diff_timespec(lat_t *start, lat_t *stop) {
 		result.tv_sec = stop->tv_sec - start->tv_sec;
 		result.tv_nsec = stop->tv_nsec - start->tv_nsec;
 	}
-	return result.tv_sec * 1000000 + (size_t)(result.tv_nsec / (double) 1000) + 1;
+	return result.tv_sec * 1000000 + (size_t)(result.tv_nsec / (double)1000) + 1;
 }

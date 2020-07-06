@@ -220,11 +220,13 @@ msg_header *client_allocate_rdma_message(connection_rdma *conn, int message_payl
 	case MULTI_GET_REQUEST:
 	case PUT_OFFT_REQUEST:
 	case DELETE_REQUEST:
+	case TEST_REQUEST:
 		c_buf = conn->send_circular_buf;
 		ack_arrived = KR_REP_PENDING;
 		receive_type = TU_RDMA_REGULAR_MSG;
 		reset_rendezvous = 1;
 		break;
+	case TEST_REPLY:
 	case PUT_REPLY:
 	case TU_GET_REPLY:
 	case MULTI_GET_REPLY:
@@ -319,6 +321,156 @@ msg_header *client_allocate_rdma_message(connection_rdma *conn, int message_payl
 		}
 	}
 
+init_message:
+	msg = (msg_header *)addr;
+	if (message_payload_size > 0) {
+		msg->pay_len = message_payload_size;
+		msg->padding_and_tail = padding + TU_TAIL_SIZE;
+		msg->data = (void *)((uint64_t)msg + TU_HEADER_SIZE);
+		msg->next = msg->data;
+		/*set the tail to the proper value*/
+		*(uint32_t *)(((uint64_t)msg + TU_HEADER_SIZE + msg->pay_len + msg->padding_and_tail) -
+			      sizeof(uint32_t)) = receive_type;
+	} else {
+		msg->pay_len = 0;
+		msg->padding_and_tail = 0;
+		msg->data = NULL;
+		msg->next = NULL;
+	}
+
+	msg->type = message_type;
+	msg->receive = receive_type;
+	msg->local_offset = (uint64_t)msg - (uint64_t)c_buf->memory_region;
+	msg->remote_offset = (uint64_t)msg - (uint64_t)c_buf->memory_region;
+
+	//log_info("\t Sending to remote offset %llu\n", msg->remote_offset);
+	msg->ack_arrived = ack_arrived;
+	msg->callback_function = NULL;
+	msg->request_message_local_addr = NULL;
+
+	return msg;
+}
+
+/* FIXME this function is mostly a copy of client_allocate_rdma_message.
+ * A possible fix would be to split into smaller functions, shared between both and use __attribute__((flatten)) to
+ * avoid the incurred performance overheads by inlining them.
+ * Useful link from gxanth: https://awesomekling.github.io/Smarter-C++-inlining-with-attribute-flatten/
+ */
+msg_header *client_try_allocate_rdma_message(connection_rdma *conn, int message_payload_size, int message_type)
+{
+	uint32_t message_size;
+	uint32_t padding = 0;
+	uint32_t ack_arrived;
+	uint32_t receive_type;
+	uint32_t i = 0;
+	char *addr = NULL;
+	msg_header *msg;
+	circular_buffer *c_buf;
+	circular_buffer_op_status stat;
+	uint8_t reset_rendezvous = 0;
+	switch (message_type) {
+	case PUT_REQUEST:
+	case TU_GET_QUERY:
+	case MULTI_GET_REQUEST:
+	case TEST_REQUEST:
+		c_buf = conn->send_circular_buf;
+		ack_arrived = KR_REP_PENDING;
+		receive_type = TU_RDMA_REGULAR_MSG;
+		reset_rendezvous = 1;
+		break;
+	case TEST_REPLY:
+	case PUT_REPLY:
+	case TU_GET_REPLY:
+	case MULTI_GET_REPLY:
+		c_buf = conn->recv_circular_buf;
+		ack_arrived = KR_REP_DONT_CARE;
+		receive_type = 0;
+		break;
+	case DISCONNECT:
+		c_buf = conn->send_circular_buf;
+		ack_arrived = KR_REP_DONT_CARE;
+		receive_type = CONNECTION_PROPERTIES;
+		break;
+	case I_AM_CLIENT:
+	case SERVER_I_AM_READY:
+	case RESET_RENDEZVOUS:
+		c_buf = conn->send_circular_buf;
+		ack_arrived = KR_REP_DONT_CARE;
+		receive_type = TU_RDMA_REGULAR_MSG;
+		receive_type = CONNECTION_PROPERTIES;
+		break;
+	default:
+		log_fatal("unknown message type %d", message_type);
+		exit(EXIT_FAILURE);
+	}
+
+	if (message_payload_size > 0) {
+		message_size = TU_HEADER_SIZE + message_payload_size + TU_TAIL_SIZE;
+		if (message_size % MESSAGE_SEGMENT_SIZE != 0) {
+			/*need to pad */
+			padding = (MESSAGE_SEGMENT_SIZE - (message_size % MESSAGE_SEGMENT_SIZE));
+			message_size += padding;
+			assert(message_size % MESSAGE_SEGMENT_SIZE == 0);
+		} else
+			padding = 0;
+	} else {
+		message_size = MESSAGE_SEGMENT_SIZE;
+		padding = 0;
+	}
+
+	addr = NULL;
+
+	// while (1) {
+	stat = allocate_space_from_circular_buffer(c_buf, message_size, &addr);
+	switch (stat) {
+	case ALLOCATION_IS_SUCCESSFULL:
+	case BITMAP_RESET:
+		goto init_message;
+
+	case NOT_ENOUGH_SPACE_AT_THE_END:
+		if (reset_rendezvous) {
+			/*inform remote side that to reset the rendezvous*/
+			if (allocate_space_from_circular_buffer(c_buf, MESSAGE_SEGMENT_SIZE, &addr) !=
+			    ALLOCATION_IS_SUCCESSFULL) {
+				log_fatal("cannot send reset rendezvous");
+				exit(EXIT_FAILURE);
+			}
+			msg = (msg_header *)addr;
+			msg->pay_len = 0;
+			msg->padding_and_tail = 0;
+			msg->data = NULL;
+			msg->next = NULL;
+
+			msg->receive = RESET_RENDEZVOUS;
+			msg->type = RESET_RENDEZVOUS;
+			msg->local_offset = addr - c_buf->memory_region;
+			msg->remote_offset = addr - c_buf->memory_region;
+			//log_info("Sending to remote offset %llu\n", msg->remote_offset);
+			msg->ack_arrived = ack_arrived;
+			msg->callback_function = NULL;
+			msg->request_message_local_addr = NULL;
+			msg->reply = NULL;
+			msg->reply_length = 0;
+			__send_rdma_message(conn, msg);
+			//log_info("CLIENT: Informing server to reset the rendezvous");
+		}
+		addr = NULL;
+		reset_circular_buffer(c_buf);
+
+		break;
+	case SPACE_NOT_READY_YET:
+		if (++i % 10000000 == 0) {
+			for (i = 0; i < c_buf->bitmap_size; i++) {
+				if (c_buf->bitmap[i] != (int)0xFFFFFFFF) {
+					// if (++k % 100000000 == 0)
+					// DPRINT("bitmap[%d] = 0x%x waiting for reply at %llu\n",i,conn->send_circular_buf->bitmap[i], (char*)conn->rendezvous - conn->rdma_memory_regions->remote_memory_buffer);
+				}
+			}
+		}
+		break;
+	}
+	// }
+	return NULL;
 init_message:
 	msg = (msg_header *)addr;
 	if (message_payload_size > 0) {
@@ -1084,11 +1236,11 @@ uint32_t wait_for_payload_arrival(msg_header *hdr)
 		if (hdr->type != FLUSH_SEGMENT && hdr->type != FLUSH_SEGMENT_AND_RESET) {
 			/*calculate the address of the tail*/
 			//blocking style
-			//wait_for_value(tail, TU_RDMA_REGULAR_MSG);
+			wait_for_value(tail, TU_RDMA_REGULAR_MSG);
 			//non-blocking style
-			if (*tail != TU_RDMA_REGULAR_MSG) {
-				return 0;
-			}
+			// if (*tail != TU_RDMA_REGULAR_MSG) {
+			// 	return 0;
+			// }
 		}
 		hdr->data = (void *)((uint64_t)hdr + TU_HEADER_SIZE);
 		hdr->next = hdr->data;
