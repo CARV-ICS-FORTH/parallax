@@ -366,10 +366,28 @@ typedef struct db_handle {
 typedef struct recovery_request {
 	volume_descriptor *volume_desc;
 	db_descriptor *db_desc;
-	uint64_t recovery_start_log_offset;
+	uint64_t big_log_start_offset;
+	uint64_t medium_log_start_offset;
+	uint64_t small_log_start_offset;
 } recovery_request;
-void recovery_worker(void *);
 
+struct log_recovery_metadata {
+	segment_header *log_curr_segment;
+	uint64_t log_size;
+	uint64_t log_offset;
+	uint64_t curr_lsn;
+	uint64_t segment_id;
+	uint64_t prev_segment_id;
+};
+
+struct recovery_operator {
+	struct log_recovery_metadata big;
+	struct log_recovery_metadata medium;
+	struct log_recovery_metadata small;
+};
+#define NUMBER_OF_LOGS 3
+
+void recovery_worker(recovery_request *rh);
 void snapshot(volume_descriptor *volume_desc);
 void commit_db_log(db_descriptor *db_desc, commit_log_info *info);
 void commit_db_logs_per_volume(volume_descriptor *volume_desc);
@@ -538,6 +556,7 @@ void *_index_node_binary_search(index_node *node, void *key_buf, char query_key_
 lock_table *_find_position(lock_table **table, node_header *node);
 #define MIN(x, y) ((x > y) ? (y) : (x))
 #define KEY_SIZE(x) (*(uint32_t *)x)
+#define VALUE_SIZE(x) KEY_SIZE(x)
 #define ABSOLUTE_ADDRESS(X) ((uint64_t)X - MAPPED)
 #define REAL_ADDRESS(X) ((void *)(uint64_t)(MAPPED + (uint64_t)X))
 #define KEY_OFFSET(KEY_SIZE, KV_BUF) (sizeof(uint32_t) + KV_BUF)

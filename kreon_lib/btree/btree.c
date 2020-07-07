@@ -991,28 +991,38 @@ finish_init:
 	log_info("performing recovery checks for db: %s", db_desc->db_name);
 
 	/*where is L0 located at the log?*/
-	if (db_desc->big_log_tail_offset > db_desc->big_log_head_offset) {
+	if (db_desc->big_log_tail_offset > db_desc->big_log_head_offset ||
+	    db_desc->medium_log_tail_offset > db_desc->medium_log_head_offset ||
+	    db_desc->small_log_tail_offset > db_desc->small_log_head_offset) {
 		log_info("L0 present performing recovery checks ...");
 
-		if (db_desc->big_log_tail_offset < db_desc->commit_log->big_log_size) {
+		if (db_desc->big_log_tail_offset < db_desc->commit_log->big_log_size ||
+		    db_desc->medium_log_tail_offset < db_desc->commit_log->medium_log_size ||
+		    db_desc->small_log_tail_offset < db_desc->commit_log->small_log_size) {
 			log_info("Commit log: %llu is ahead of L0: %llu replaying "
 				 "missing log parts",
 				 (LLU)db_desc->commit_log->big_log_size, (LLU)db_desc->big_log_tail_offset);
 			recovery_request rh;
 			rh.volume_desc = volume_desc;
 			rh.db_desc = db_desc;
-			rh.recovery_start_log_offset = db_desc->big_log_tail_offset;
+			rh.big_log_start_offset = db_desc->big_log_tail_offset;
+			rh.medium_log_start_offset = db_desc->medium_log_tail_offset;
+			rh.small_log_start_offset = db_desc->small_log_tail_offset;
 			recovery_worker(&rh);
 			log_info("recovery completed successfully");
-		} else if (db_desc->big_log_tail_offset == db_desc->commit_log->big_log_size)
+		} else if (db_desc->big_log_tail_offset == db_desc->commit_log->big_log_size &&
+			   db_desc->medium_log_tail_offset == db_desc->commit_log->medium_log_size &&
+			   db_desc->small_log_tail_offset == db_desc->commit_log->small_log_size) {
 			log_info("no recovery needed for db: %s ready :-)\n", db_desc->db_name);
-		else {
+		} else {
 			log_fatal("Boom! Corrupted state for db: %s :-(", db_desc->db_name);
 			raise(SIGINT);
 			exit(EXIT_FAILURE);
 		}
 
-	} else if (db_desc->big_log_tail_offset == db_desc->big_log_head_offset) {
+	} else if (db_desc->big_log_tail_offset == db_desc->big_log_head_offset ||
+		   db_desc->medium_log_tail_offset == db_desc->medium_log_head_offset ||
+		   db_desc->small_log_tail_offset == db_desc->small_log_head_offset) {
 		log_info("L0 is absent L1 ends at %llu replaying missing parts", (LLU)db_desc->big_log_tail_offset);
 
 		if (db_desc->big_log_tail_offset < db_desc->commit_log->big_log_size) {
@@ -1022,10 +1032,14 @@ finish_init:
 			recovery_request rh;
 			rh.volume_desc = volume_desc;
 			rh.db_desc = db_desc;
-			rh.recovery_start_log_offset = db_desc->big_log_tail_offset;
+			rh.big_log_start_offset = db_desc->big_log_tail_offset;
+			rh.medium_log_start_offset = db_desc->medium_log_tail_offset;
+			rh.small_log_start_offset = db_desc->small_log_tail_offset;
 			recovery_worker(&rh);
 			log_info("recovery completed successfully");
-		} else if (db_desc->big_log_tail_offset == db_desc->commit_log->big_log_size)
+		} else if (db_desc->big_log_tail_offset == db_desc->commit_log->big_log_size &&
+			   db_desc->medium_log_tail_offset == db_desc->commit_log->medium_log_size &&
+			   db_desc->small_log_tail_offset == db_desc->commit_log->small_log_size)
 			log_info("no recovery needed for db: %s ready :-)\n", db_desc->db_name);
 		else {
 			log_fatal("FATAL corrupted state for db: %s :-(", db_desc->db_name);
