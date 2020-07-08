@@ -490,7 +490,6 @@ static inline size_t diff_timespec_usec(struct timespec *start, struct timespec 
 	return result.tv_sec * 1000000 + (size_t)(result.tv_nsec / (double)1000) + 1;
 }
 
-static const int spin_time_usec = 100;
 void *worker_thread_kernel(void *args)
 {
 	utils_queue_s pending_tasks_queue;
@@ -499,6 +498,7 @@ void *worker_thread_kernel(void *args)
 	struct worker_thread *worker_descriptor;
 	int turn = 0;
 	void *result;
+	const int spin_time_usec = globals_get_worker_spin_time_usec();
 
 	pthread_setname_np(pthread_self(), "worker_thread");
 	worker_descriptor = (struct worker_thread *)args;
