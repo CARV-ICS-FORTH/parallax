@@ -477,8 +477,20 @@ void *socket_thread(void *args)
  * each spin thread has a group of worker threads. Spin threads detects that a
  * request has arrived and it assigns the task to one of its worker threads
  * */
-#define ITERATIONS_IN_USEC 1700 // Benchmarked on sith machines
-static const uint64_t spin_iterations = 100 * ITERATIONS_IN_USEC;
+static inline size_t diff_timespec_usec(struct timespec *start, struct timespec *stop)
+{
+	struct timespec result;
+	if ((stop->tv_nsec - start->tv_nsec) < 0) {
+		result.tv_sec = stop->tv_sec - start->tv_sec - 1;
+		result.tv_nsec = stop->tv_nsec - start->tv_nsec + 1000000000;
+	} else {
+		result.tv_sec = stop->tv_sec - start->tv_sec;
+		result.tv_nsec = stop->tv_nsec - start->tv_nsec;
+	}
+	return result.tv_sec * 1000000 + (size_t)(result.tv_nsec / (double)1000) + 1;
+}
+
+static const int spin_time_usec = 100;
 void *worker_thread_kernel(void *args)
 {
 	utils_queue_s pending_tasks_queue;
@@ -508,12 +520,21 @@ void *worker_thread_kernel(void *args)
 				turn = (turn < 3) ? turn + 1 : 0;
 			}
 		} else {
-			// Spin for a bit to wait for new tasks and then go to sleep
-			for (uint64_t i = 0; i < spin_iterations; ++i) {
-				if ((job = utils_queue_pop(&worker_descriptor->high_priority_queue)))
-					break;
-				if ((job = utils_queue_pop(&worker_descriptor->work_queue)))
-					break;
+			// Try to get a task
+			if (!((job = utils_queue_pop(&worker_descriptor->high_priority_queue)) ||
+			      (job = utils_queue_pop(&worker_descriptor->work_queue)))) {
+				// Try for a few more usecs
+				struct timespec start, end;
+				int time = 0;
+				clock_gettime(CLOCK_MONOTONIC, &start);
+				while (time < spin_time_usec) {
+					// I could have a for loop with a few iterations to avoid constantly calling clock_gettime
+					if ((job = utils_queue_pop(&worker_descriptor->high_priority_queue)) ||
+					    (job = utils_queue_pop(&worker_descriptor->work_queue)))
+						break;
+					clock_gettime(CLOCK_MONOTONIC, &end);
+					time = diff_timespec_usec(&start, &end);
+				}
 			}
 
 			if (!job) {
@@ -536,8 +557,8 @@ void *worker_thread_kernel(void *args)
 					worker_descriptor->status = BUSY;
 					continue;
 				} else {
+					assert(job);
 					pthread_spin_unlock(&worker_descriptor->work_queue_lock);
-					continue;
 				}
 			}
 		}
