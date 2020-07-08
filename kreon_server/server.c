@@ -471,23 +471,34 @@ void *socket_thread(void *args)
 	}
 	return NULL;
 }
+
 /*
  * gesalous new staff
  * each spin thread has a group of worker threads. Spin threads detects that a
  * request has arrived and it assigns the task to one of its worker threads
  * */
+static inline size_t diff_timespec_usec(struct timespec *start, struct timespec *stop)
+{
+	struct timespec result;
+	if ((stop->tv_nsec - start->tv_nsec) < 0) {
+		result.tv_sec = stop->tv_sec - start->tv_sec - 1;
+		result.tv_nsec = stop->tv_nsec - start->tv_nsec + 1000000000;
+	} else {
+		result.tv_sec = stop->tv_sec - start->tv_sec;
+		result.tv_nsec = stop->tv_nsec - start->tv_nsec;
+	}
+	return result.tv_sec * 1000000 + (size_t)(result.tv_nsec / (double)1000) + 1;
+}
+
 void *worker_thread_kernel(void *args)
 {
-	int num_of_processed_requests_per_priority[WORKER_THREAD_PRIORITIES_NUM];
-
 	utils_queue_s pending_tasks_queue;
 	utils_queue_s pending_high_priority_tasks_queue;
-	//struct timeval t0,t1;
 	struct work_task *job = NULL;
 	struct worker_thread *worker_descriptor;
-	//uint64_t time_elapsed;
-
 	int turn = 0;
+	void *result;
+	const int spin_time_usec = globals_get_worker_spin_time_usec();
 
 	pthread_setname_np(pthread_self(), "worker_thread");
 	worker_descriptor = (struct worker_thread *)args;
@@ -496,108 +507,69 @@ void *worker_thread_kernel(void *args)
 	utils_queue_init(&pending_high_priority_tasks_queue);
 	utils_queue_init(&pending_tasks_queue);
 
-	memset(num_of_processed_requests_per_priority, 0x00, sizeof(int) * WORKER_THREAD_PRIORITIES_NUM);
-	turn = 0;
+	utils_queue_s *queues_array[4] = { &pending_high_priority_tasks_queue, &worker_descriptor->high_priority_queue,
+					   &pending_tasks_queue, &worker_descriptor->work_queue };
 
 	while (1) {
-		//gettimeofday(&t0, 0);
-
-		while (job == NULL) {
-			if (turn == 0) {
-				/*pending tasks*/
-				if (++num_of_processed_requests_per_priority[turn] >=
-				    WORKER_THREAD_HIGH_PRIORITY_TASKS_PER_TURN) {
-					num_of_processed_requests_per_priority[turn] = 0;
-					++turn;
-				}
-				job = utils_queue_pop(&pending_high_priority_tasks_queue);
-				if (job != NULL) {
-					//DPRINT("Pending High priority job of type %d\n",job->msg->type);
-					break;
+		// Get the next task from one of the task queues
+		// If there are tasks pending, rotate between all queues
+		if (utils_queue_used_slots(&pending_high_priority_tasks_queue) ||
+		    utils_queue_used_slots(&pending_tasks_queue)) {
+			while (!job) {
+				job = utils_queue_pop(queues_array[turn]);
+				turn = (turn < 3) ? turn + 1 : 0;
+			}
+		} else {
+			// Try to get a task
+			if (!((job = utils_queue_pop(&worker_descriptor->high_priority_queue)) ||
+			      (job = utils_queue_pop(&worker_descriptor->work_queue)))) {
+				// Try for a few more usecs
+				struct timespec start, end;
+				int time = 0;
+				clock_gettime(CLOCK_MONOTONIC, &start);
+				while (time < spin_time_usec) {
+					// I could have a for loop with a few iterations to avoid constantly calling clock_gettime
+					if ((job = utils_queue_pop(&worker_descriptor->high_priority_queue)) ||
+					    (job = utils_queue_pop(&worker_descriptor->work_queue)))
+						break;
+					clock_gettime(CLOCK_MONOTONIC, &end);
+					time = diff_timespec_usec(&start, &end);
 				}
 			}
 
-			else if (turn == 1) {
-				/*high priority tasks*/
-				if (++num_of_processed_requests_per_priority[turn] >=
-				    WORKER_THREAD_HIGH_PRIORITY_TASKS_PER_TURN) {
-					num_of_processed_requests_per_priority[turn] = 0;
-					++turn;
-				}
-				job = utils_queue_pop(&worker_descriptor->high_priority_queue);
-				if (job != NULL) {
-					//DPRINT("High priority job of type %d\n",job->msg->type);
-					break;
-				}
-			} else if (turn == 2) {
-				if (++num_of_processed_requests_per_priority[turn] >=
-				    WORKER_THREAD_NORMAL_PRIORITY_TASKS_PER_TURN) {
-					num_of_processed_requests_per_priority[turn] = 0;
-					++turn;
-				}
-				job = utils_queue_pop(&pending_tasks_queue);
-				if (job != NULL) {
-					//DPRINT("Pending Low priority job of type %d\n",job->msg->type);
-					break;
-				}
-			}
-
-			else if (turn == 3) {
-				if (++num_of_processed_requests_per_priority[turn] >=
-				    WORKER_THREAD_NORMAL_PRIORITY_TASKS_PER_TURN) {
-					num_of_processed_requests_per_priority[turn] = 0;
-					turn = 0;
-				}
-				job = utils_queue_pop(&worker_descriptor->work_queue);
-				if (job != NULL) {
-					//DPRINT("Low priority job of type %d\n",job->msg->type);
-					break;
-				}
-			}
-			//gettimeofday(&t1, 0);
-			//time_elapsed = ((t1.tv_sec-t0.tv_sec)*1000000) + (t1.tv_usec-t0.tv_usec);
-			if (0 /*time_elapsed >= MAX_USEC_BEFORE_SLEEPING*/) {
-				/*go to sleep, no job*/
-
+			if (!job) {
+				// Go to sleep
 				pthread_spin_lock(&worker_descriptor->work_queue_lock);
-				/*double check*/
 
-				job = utils_queue_pop(&pending_high_priority_tasks_queue);
+				// Double check
+				job = utils_queue_pop(&worker_descriptor->high_priority_queue);
 
-				if (job == NULL) {
-					job = utils_queue_pop(&worker_descriptor->high_priority_queue);
-				}
-
-				if (job == NULL) {
-					job = utils_queue_pop(&pending_tasks_queue);
-				}
-
-				if (job == NULL) {
+				if (!job) {
 					job = utils_queue_pop(&worker_descriptor->work_queue);
 				}
 
-				if (job == NULL) {
+				if (!job) {
 					worker_descriptor->status = IDLE_SLEEPING;
 					pthread_spin_unlock(&worker_descriptor->work_queue_lock);
-					DPRINT("Sleeping...\n");
+					// DPRINT("Sleeping...\n");
 					sem_wait(&worker_descriptor->sem);
-					DPRINT("Woke up\n");
+					// DPRINT("Woke up\n");
 					worker_descriptor->status = BUSY;
 					continue;
 				} else {
+					assert(job);
 					pthread_spin_unlock(&worker_descriptor->work_queue_lock);
-					continue;
 				}
 			}
 		}
 
 		//DPRINT("SERVER worker: new regular msg, reply will be send at %llu  length %d type %d\n",
 		//		(LLU)job->msg->reply,job->msg->reply_length, job->msg->type);
-		/*process task*/
+
+		// Process the task
 		job->channel->connection_created((void *)job);
 		if (job->overall_status == TASK_COMPLETED) {
 			if (job->msg->type != RESET_BUFFER && job->msg->type != SPILL_BUFFER_REQUEST) {
-				//free_rdma_received_message(job->conn, job->msg);
 				_zero_rendezvous_locations(job->msg);
 				__send_rdma_message(job->conn, job->reply_msg);
 			}
@@ -606,23 +578,25 @@ void *worker_thread_kernel(void *args)
 			if (job->msg->type == FLUSH_SEGMENT_AND_RESET || job->msg->type == FLUSH_SEGMENT ||
 			    job->msg->type == SPILL_INIT || job->msg->type == SPILL_COMPLETE ||
 			    job->msg->type == SPILL_BUFFER_REQUEST) {
-				assert(utils_queue_push(&worker_descriptor->empty_high_priority_job_buffers_queue,
-							job) != NULL);
+				result = utils_queue_push(&worker_descriptor->empty_high_priority_job_buffers_queue,
+							  job);
+				assert(result);
 			} else {
-				assert(utils_queue_push(&worker_descriptor->empty_job_buffers_queue, job) != NULL);
+				result = utils_queue_push(&worker_descriptor->empty_job_buffers_queue, job);
+				assert(result);
 			}
-		}
-
-		else {
+		} else {
 			if (job->msg->type == FLUSH_SEGMENT_AND_RESET || job->msg->type == FLUSH_SEGMENT ||
 			    job->kreon_operation_status == ALLOCATE_NEW_LOG_BUFFER_WITH_REPLICA ||
 			    job->msg->type == SPILL_INIT || job->msg->type == SPILL_COMPLETE ||
 			    job->msg->type == SPILL_BUFFER_REQUEST) {
 				//DPRINT("High priority Task interrupted allocation status %d\n",job->allocation_status);
-				assert(utils_queue_push(&pending_high_priority_tasks_queue, job) != NULL);
+				result = utils_queue_push(&pending_high_priority_tasks_queue, job);
+				assert(result);
 			} else {
 				//DPRINT("Low priority Task interrupted allocation status %d\n",job->allocation_status);
-				assert(utils_queue_push(&pending_tasks_queue, job) != NULL);
+				result = utils_queue_push(&pending_tasks_queue, job);
+				assert(result);
 			}
 		}
 		job = NULL;
@@ -631,11 +605,17 @@ void *worker_thread_kernel(void *args)
 	return NULL;
 }
 
+static inline int worker_queued_jobs(struct worker_thread *worker)
+{
+	return utils_queue_used_slots(&worker->work_queue) + utils_queue_used_slots(&worker->high_priority_queue);
+}
+
 static int assign_job_to_worker(struct ds_spinning_thread *spinner, struct connection_rdma *conn, msg_header *msg,
 				int sockfd)
 {
 	struct work_task *job = NULL;
-	int worker_id = 0;
+	int worker_id;
+	static __thread int worker_id_cnt = 0; // worker where new tasks are given currently
 
 	if (conn->worker_id == -1) {
 		/*unassigned connection*/
@@ -647,22 +627,72 @@ static int assign_job_to_worker(struct ds_spinning_thread *spinner, struct conne
 
 	if (msg->type == FLUSH_SEGMENT_AND_RESET || msg->type == FLUSH_SEGMENT || msg->type == SPILL_INIT ||
 	    msg->type == SPILL_COMPLETE || msg->type == SPILL_BUFFER_REQUEST) {
-		/*to ensure FIFO processing , vital for these protocol operations*/
-
+		/* High priority tasks/protocol operations scheduling
+		 * To ensure FIFO processing (vital for these protocol operations) a single connection's protocol
+		 * tasks are processed from one worker.
+		 */
 		worker_id = conn->worker_id;
 		job = (struct work_task *)utils_queue_pop(
 			&spinner->worker[worker_id].empty_high_priority_job_buffers_queue);
-		if (job == NULL) {
+		if (!job) {
 			//assert(0);
 			return KREON_FAILURE;
 		}
 	} else {
-		/*just in case we want to perform different assignment policy based on the priority level*/
-		worker_id = conn->worker_id;
-		/*DPRINT("Adding job to thread id %d\n",worker_id);*/
+		int max_queued_jobs = globals_get_job_scheduling_max_queue_depth(); // TODO [mvard] Tune this
+		struct worker_thread *worker_group = spinner->worker;
+
+		/* Regular tasks scheduling policy
+		 * Assign tasks to one worker until he is swamped, then start assigning
+	 	 * to the next one. Once all workers are swamped it will essentially
+	 	 * become a round robin policy since the worker_id will be incremented
+	 	 * at for every task.
+	 	 */
+		// 1. Round Robin with threshold
+		if (worker_queued_jobs(&worker_group[worker_id_cnt]) >= max_queued_jobs) {
+			/* Find an active worker with used_slots < max_queued_jobs
+			 * If there's none, wake up a sleeping worker
+			 * If all worker's are running, pick the one with least load
+			 * NOTE a worker's work can only increase through this function call, which is only called by the spinning
+			 * thread. Each worker is assigned to one spinning thread, therefore a worker can't wake up or have its
+			 * work increased during the duration of a single call of this function
+			 */
+
+			// Find active worker with min worker_queued_jobs
+			int current_choice = worker_id_cnt; // worker with id worker_id_cnt is most likely not sleeping
+			int a_sleeping_worker_id = -1;
+			for (int i = 0; i < WORKER_THREADS_PER_SPINNING_THREAD; ++i) {
+				// Keep note of a sleeping worker in case we need to wake him up for this task
+				if (worker_group[i].status == IDLE_SLEEPING) {
+					if (a_sleeping_worker_id == -1)
+						a_sleeping_worker_id = i;
+					continue;
+				}
+				if (worker_queued_jobs(&worker_group[i]) <
+				    worker_queued_jobs(&worker_group[current_choice]))
+					current_choice = i;
+			}
+
+			if (worker_queued_jobs(&worker_group[current_choice]) >= max_queued_jobs &&
+			    a_sleeping_worker_id != -1) {
+				// Wake up a sleeping worker
+				current_choice = a_sleeping_worker_id;
+			}
+
+			worker_id_cnt = current_choice;
+		}
+
+		worker_id = worker_id_cnt;
+
+		// 2. Static assignment
+		// worker_id = conn->worker_id;
+		// 3.
+		// worker_id = worker_id_cnt;
+		// worker_id_cnt = (worker_id_cnt + 1 < spinner->num_workers) ? worker_id_cnt + 1 : 0;
+
 		job = (struct work_task *)utils_queue_pop(&spinner->worker[worker_id].empty_job_buffers_queue);
-		if (job == NULL) {
-			//assert(0);
+		if (!job) {
+			log_error("assign_job_to_worker failed!\n");
 			return KREON_FAILURE;
 		}
 	}

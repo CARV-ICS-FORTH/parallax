@@ -14,6 +14,12 @@ void globals_set_RDMA_connection_port(int port);
 int globals_get_connections_per_server(void);
 void globals_set_connections_per_server(int connections_per_server);
 
+int globals_get_job_scheduling_max_queue_depth(void);
+void globals_set_job_scheduling_max_queue_depth(int job_scheduling_max_queue_depth);
+
+int globals_get_worker_spin_time_usec(void);
+void globals_set_worker_spin_time_usec(int worker_spin_time_usec);
+
 void globals_disable_client_spinning_thread(void);
 void globals_enable_client_spinning_thread(void);
 int globals_spawn_client_spinning_thread(void);
