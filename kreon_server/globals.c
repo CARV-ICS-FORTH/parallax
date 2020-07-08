@@ -6,16 +6,19 @@
 #include <fcntl.h>
 #include <linux/hdreg.h>
 #include <linux/fs.h>
+#include <sys/ioctl.h>
 
 #include "../utilities/macros.h"
 #include "conf.h"
 #include "globals.h"
 #include "../kreon_rdma/rdma.h"
 #include <log.h>
+
 struct globals {
 	char *zk_host_port;
 	char *RDMA_IP_filter;
 	char *dev;
+	char *mount_point;
 	int RDMA_connection_port;
 	int client_spinning_thread;
 	uint64_t volume_size;
@@ -24,7 +27,8 @@ struct globals {
 	int job_scheduling_max_queue_depth;
 	int worker_spin_time_usec;
 };
-static struct globals global_vars = { NULL, NULL, NULL, -1, 1, 0, NULL, NUM_OF_CONNECTIONS_PER_SERVER, 64, 100 };
+static struct globals global_vars = { NULL, NULL, NULL, NULL, -1, 1, 0, NULL, NUM_OF_CONNECTIONS_PER_SERVER, 64, 100 };
+
 static pthread_mutex_t g_lock = PTHREAD_MUTEX_INITIALIZER;
 
 char *globals_get_RDMA_IP_filter()
@@ -85,6 +89,7 @@ int globals_get_RDMA_connection_port(void)
 {
 	return global_vars.RDMA_connection_port;
 }
+
 void globals_set_RDMA_connection_port(int port)
 {
 	global_vars.RDMA_connection_port = port;
@@ -97,7 +102,20 @@ int globals_get_connections_per_server(void)
 
 void globals_set_connections_per_server(int connections_per_server)
 {
+	if (pthread_mutex_lock(&g_lock) != 0) {
+		log_fatal("Failed to acquire lock");
+		exit(EXIT_FAILURE);
+	}
+
+	if (global_vars.connections_per_server != -1)
+		log_warn("Connections per server is already set to %d! New value is %d.",
+			 global_vars.connections_per_server, connections_per_server);
 	global_vars.connections_per_server = connections_per_server;
+
+	if (pthread_mutex_unlock(&g_lock) != 0) {
+		log_fatal("Failed to acquire lock");
+		exit(EXIT_FAILURE);
+	}
 }
 
 int globals_get_job_scheduling_max_queue_depth(void)
@@ -145,12 +163,14 @@ void globals_set_dev(char *dev)
 	}
 	if (global_vars.dev == NULL)
 		global_vars.dev = strdup(dev);
-	else
+	else {
 		log_warn("dev already set to %s", global_vars.dev);
+		return;
+	}
 
 	int FD = open(dev, O_RDWR);
 	if (FD == -1) {
-		log_fatal("failed to open %s reason follows");
+		log_fatal("failed to open %s reason follows", dev);
 		perror("Reason");
 		exit(EXIT_FAILURE);
 	}
@@ -160,6 +180,7 @@ void globals_set_dev(char *dev)
 			exit(EXIT_FAILURE);
 		}
 		log_info("%s is a block device of size %llu", dev, global_vars.volume_size);
+
 	} else {
 		int64_t end_of_file;
 		end_of_file = lseek(FD, 0, SEEK_END);
@@ -170,6 +191,7 @@ void globals_set_dev(char *dev)
 		}
 		global_vars.volume_size = (uint64_t)end_of_file;
 		log_info("%s is a file of size %llu", dev, global_vars.volume_size);
+		global_vars.mount_point = strdup(dev);
 	}
 	FD = close(FD);
 	if (FD == -1) {
@@ -187,6 +209,27 @@ void globals_set_dev(char *dev)
 char *globals_get_dev(void)
 {
 	return global_vars.dev;
+}
+
+char *globals_get_mount_point()
+{
+	return global_vars.mount_point;
+}
+
+void globals_set_mount_point(char *mount_point)
+{
+	if (pthread_mutex_lock(&g_lock) != 0) {
+		log_fatal("Failed to acquire lock");
+		exit(EXIT_FAILURE);
+	}
+	if (global_vars.mount_point == NULL)
+		global_vars.mount_point = strdup(mount_point);
+	else
+		log_warn("Mount point set already to %s", global_vars.mount_point);
+	if (pthread_mutex_unlock(&g_lock) != 0) {
+		log_fatal("Failed to acquire lock");
+		exit(EXIT_FAILURE);
+	}
 }
 
 uint64_t globals_get_dev_size()

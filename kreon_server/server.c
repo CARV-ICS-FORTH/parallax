@@ -2646,7 +2646,7 @@ static void tu_ec_sig_handler(int signo)
 int main(int argc, char *argv[])
 {
 	char *device_name;
-	uint64_t device_size;
+	char *mount_point;
 	//globals_set_zk_host(zookeeper_host_port);
 	RDMA_LOG_BUFFER_PADDING = 0;
 	RDMA_TOTAL_LOG_BUFFER_SIZE = TU_HEADER_SIZE + BUFFER_SEGMENT_SIZE + 4096 + TU_TAIL_SIZE;
@@ -2658,19 +2658,20 @@ int main(int argc, char *argv[])
 		assert(RDMA_TOTAL_LOG_BUFFER_SIZE % MESSAGE_SEGMENT_SIZE == 0);
 	}
 
-	if (argc == 7) {
+	if (argc == 8) {
 		int rdma_port = strtol(argv[1], NULL, 10);
 		globals_set_RDMA_connection_port(rdma_port);
 		device_name = argv[2];
-		device_size = strtol(argv[3], NULL, 10) * 1024 * 1024 * 1024;
 		globals_set_dev(device_name);
-		globals_set_zk_host(argv[3]);
-		globals_set_RDMA_IP_filter(argv[4]);
-		_str_split(argv[5], ',', &spinning_threads_core_ids, &num_of_spinning_threads);
-		_str_split(argv[6], ',', &worker_threads_core_ids, &num_of_worker_threads);
+		mount_point = argv[3];
+		globals_set_mount_point(mount_point);
+		globals_set_zk_host(argv[4]);
+		globals_set_RDMA_IP_filter(argv[5]);
+		_str_split(argv[6], ',', &spinning_threads_core_ids, &num_of_spinning_threads);
+		_str_split(argv[7], ',', &worker_threads_core_ids, &num_of_worker_threads);
 	} else {
 		log_fatal(
-			"Error: usage: ./kreon_server <port number> <device name> <zk_host:zk_port> <RDMA_IP_prefix> <spinning thread core ids>  <working thread core ids>\n");
+			"Error: usage: ./kreon_server <port number> <device name> <mount point> <zk_host:zk_port> <RDMA_IP_prefix> <spinning thread core ids>  <working thread core ids>\n");
 		exit(EXIT_FAILURE);
 	}
 

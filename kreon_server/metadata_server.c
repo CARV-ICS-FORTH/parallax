@@ -538,7 +538,8 @@ static void krm_process_msg(struct krm_server_desc *server, struct krm_msg *msg)
 			r_desc->region = region;
 			r_desc->role = KRM_PRIMARY;
 			/*open kreon db*/
-			r_desc->db = db_open(globals_get_dev(), 0, globals_get_dev_size(), region->id, CREATE_DB);
+			r_desc->db =
+				db_open(globals_get_mount_point(), 0, globals_get_dev_size(), region->id, CREATE_DB);
 			r_desc->region->status = KRM_OPEN;
 			krm_insert_ds_region(server, r_desc, server->ds_regions);
 			reply.type = KRM_ACK_OPEN_PRIMARY;
@@ -944,8 +945,8 @@ void *krm_metadata_server(void *args)
 			for (i = 0; i < regions->size; i++) {
 				r_desc = (struct krm_region_desc *)(node->data);
 				log_info("Leader opening region %s", r_desc->region->id);
-				r_desc->db = db_open(globals_get_dev(), 0, globals_get_dev_size(), r_desc->region->id,
-						     CREATE_DB);
+				r_desc->db = db_open(globals_get_mount_point(), 0, globals_get_dev_size(),
+						     r_desc->region->id, CREATE_DB);
 				node = node->next;
 				krm_insert_ds_region(&my_desc, r_desc, my_desc.ds_regions);
 			}
