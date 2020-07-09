@@ -1363,7 +1363,7 @@ void *append_key_value_to_log(log_operation *req)
 		allocated_space += BUFFER_SEGMENT_SIZE - (allocated_space % BUFFER_SEGMENT_SIZE);
 
 		d_header = seg_get_raw_log_segment(handle->volume_desc);
-		d_header->segment_id = handle->db_desc->big_log_tail->segment_id + 1;
+		d_header->segment_id = log_metadata.log_tail->segment_id + 1;
 		d_header->next_segment = NULL;
 		log_metadata.log_tail->next_segment = (void *)ABSOLUTE_ADDRESS(d_header);
 		log_metadata.log_tail = d_header;
