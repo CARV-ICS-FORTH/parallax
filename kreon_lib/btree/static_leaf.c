@@ -250,7 +250,7 @@ void underflow_borrow_from_left_static_leaf_neighbor(struct bt_static_leaf_node 
 	retrieve_static_leaf_structures(left, &left_leaf_src, level);
 	bitmap_end = curr_leaf_src.bitmap + level->leaf_offsets.bitmap_entries;
 	memmove(&curr_leaf_src.slot_array[1], &curr_leaf_src.slot_array[0],
-		sizeof(struct bt_leaf_slot_array) * curr->header.numberOfEntriesInNode);
+		sizeof(struct bt_static_leaf_slot_array) * curr->header.numberOfEntriesInNode);
 	curr_leaf_kventry_pos = bitset_find_first(curr_leaf_src.bitmap, bitmap_end, 0);
 	assert(curr_leaf_kventry_pos >= 0);
 	bitset_set(curr_leaf_src.bitmap, curr_leaf_kventry_pos);
@@ -434,13 +434,13 @@ void delete_key_value_from_static_leaf(struct bt_static_leaf_node *leaf, level_d
 
 	if (pos > 0 && pos < (leaf->header.numberOfEntriesInNode - 1)) {
 		memmove(&leaf_src.slot_array[pos], &leaf_src.slot_array[pos + 1],
-			(leaf->header.numberOfEntriesInNode - (pos + 1)) * sizeof(struct bt_leaf_slot_array));
+			(leaf->header.numberOfEntriesInNode - (pos + 1)) * sizeof(struct bt_static_leaf_slot_array));
 	} else if (pos == (leaf->header.numberOfEntriesInNode - 1)) {
 		/* Key is in the last position of the leaf */
 	} else if (pos == 0) {
 		/* Key in the first position of the leaf */
 		memmove(&leaf_src.slot_array[0], &leaf_src.slot_array[1],
-			(leaf->header.numberOfEntriesInNode - 1) * sizeof(struct bt_leaf_slot_array));
+			(leaf->header.numberOfEntriesInNode - 1) * sizeof(struct bt_static_leaf_slot_array));
 	} else {
 		log_debug("Error unknown case to delete a KV pair position = %d", pos);
 		assert(0);

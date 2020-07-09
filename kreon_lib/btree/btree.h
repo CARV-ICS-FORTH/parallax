@@ -140,12 +140,18 @@ typedef struct bt_leaf_entry {
 } bt_leaf_entry;
 
 struct bt_leaf_entry_bitmap {
-	unsigned char bitmap;
+	unsigned char bitmap; // This bitmap informs us which kv_entry is available to store data in the static leaf.
 };
 
-typedef struct bt_leaf_slot_array {
+typedef struct bt_static_leaf_slot_array {
 	uint16_t index;
 } bt_leaf_slot_array;
+
+struct bt_dynamic_leaf_slot_array {
+	uint32_t index : 31;
+	unsigned char
+		bitmap : 1; // This bitmap informs us if the index points to an in-place kv or to a pointer in the log.
+};
 
 #define INDEX_NODE_REMAIN (INDEX_NODE_SIZE - sizeof(struct node_header))
 #define LEAF_NODE_REMAIN (LEAF_NODE_SIZE - sizeof(struct node_header))
@@ -169,12 +175,18 @@ struct bt_static_leaf_node {
 	struct node_header header;
 } __attribute__((packed));
 
+struct bt_dynamic_leaf_node {
+	struct node_header header;
+} __attribute__((packed));
+
 typedef struct leaf_node {
 	struct node_header header;
 	uint64_t pointer[LN_LENGTH];
 	char prefix[LN_LENGTH][PREFIX_SIZE];
 	char __pad[LEAF_NODE_SIZE - sizeof(struct node_header) - (LN_LENGTH * LN_ITEM_SIZE)];
 } __attribute__((packed)) leaf_node;
+
+enum bsearch_status { INSERT = 0, FOUND = 1, ERROR = 2 };
 
 /* Possible options for these defines are multiples of 4KB but they should not be more than BUFFER_SEGMENT_SIZE*/
 #define PAGE_SIZE 4096
