@@ -7,6 +7,8 @@ set_source_files_properties(test_streaming_btree.c PROPERTIES COMPILE_FLAGS
 
 set_source_files_properties(test_circular_buffer.c PROPERTIES COMPILE_FLAGS
                                                               "-O3")
+set_source_files_properties(test_deletes.c PROPERTIES COMPILE_FLAGS "-O3")
+set_source_files_properties(test_recovery.c PROPERTIES COMPILE_FLAGS "-O3")
 
 set_source_files_properties(test_scans.c PROPERTIES COMPILE_FLAGS "-O3")
 set_source_files_properties(test_dirty_scans.c PROPERTIES COMPILE_FLAGS "-O3")
@@ -29,6 +31,9 @@ target_link_libraries(test_spillscans kreon)
 
 add_executable(test_deletes test_deletes.c)
 target_link_libraries(test_deletes kreon)
+
+add_executable(test_recovery test_recovery.c)
+target_link_libraries(test_recovery kreon)
 
 add_executable(test_spills test_spills.c)
 target_link_libraries(test_spills kreon)
