@@ -1213,6 +1213,7 @@ void *append_key_value_to_log(log_operation *req)
 
 		d_header = seg_get_raw_log_segment(handle->volume_desc);
 		memset(d_header->garbage_bytes, 0x00, 2 * MAX_COUNTER_VERSIONS * sizeof(uint64_t));
+		d_header->segment_id = handle->db_desc->KV_log_last_segment->segment_id + 1;
 		d_header->next_segment = NULL;
 		handle->db_desc->KV_log_last_segment->next_segment = (void *)((uint64_t)d_header - MAPPED);
 		handle->db_desc->KV_log_last_segment = d_header;
