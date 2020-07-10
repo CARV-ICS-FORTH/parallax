@@ -1572,7 +1572,7 @@ void insert_kv_pair(struct krm_work_task *task)
 					(r_desc->region->num_of_backup *
 					 (sizeof(struct ru_master_log_buffer) +
 					  (RU_REPLICA_NUM_SEGMENTS * sizeof(struct ru_master_log_buffer_seg)))));
-				/*we need to dive into Kreon to check what in the current end of log. 
+				/*we need to dive into Kreon to check what in the current end of log.
 				 * Since for this region we are the first to do this there is surely no concurrent access*/
 				uint64_t range;
 				if (r_desc->db->db_desc->KV_log_size > 0) {
@@ -2556,6 +2556,7 @@ int main(int argc, char *argv[])
 {
 	char *device_name;
 	char *mount_point;
+	//uint64_t device_size;
 	//globals_set_zk_host(zookeeper_host_port);
 	RDMA_LOG_BUFFER_PADDING = 0;
 	RDMA_TOTAL_LOG_BUFFER_SIZE = TU_HEADER_SIZE + BUFFER_SEGMENT_SIZE + 4096 + TU_TAIL_SIZE;
@@ -2682,4 +2683,3 @@ int main(int argc, char *argv[])
 	log_info("kreonR server exiting\n");
 	return 0;
 }
-

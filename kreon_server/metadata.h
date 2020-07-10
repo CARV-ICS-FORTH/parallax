@@ -195,7 +195,7 @@ struct krm_region {
 	char min_key[KRM_MAX_KEY_SIZE];
 	char max_key[KRM_MAX_KEY_SIZE];
 	uint32_t num_of_backup;
-	enum krm_region_status status;
+	enum krm_region_status stat;
 };
 
 struct krm_region_desc {
@@ -206,10 +206,12 @@ struct krm_region_desc {
 	db_handle *db;
 	int replica_bufs_initialized;
 	int region_halted;
+
 	union {
 		struct ru_master_state *m_state;
 		struct ru_replica_state *r_state;
 	};
+	enum krm_region_status status;
 };
 
 struct krm_ds_regions {
@@ -224,11 +226,25 @@ struct krm_leader_regions {
 	int num_regions;
 };
 
-struct krm_regions_per_server {
+struct krm_leader_region_state {
 	pthread_mutex_t region_list_lock;
 	struct krm_server_name server_id;
+	struct krm_region *region;
+	enum krm_region_role role;
+	enum krm_region_status status;
+};
+
+struct krm_leader_ds_region_map {
 	uint64_t hash_key;
-	LIST *regions;
+	struct krm_leader_region_state lr_state;
+	UT_hash_handle hh;
+};
+
+struct krm_leader_ds_map {
+	uint64_t hash_key;
+	struct krm_server_name server_id;
+	struct krm_leader_ds_region_map *region_map;
+	uint32_t num_regions;
 	UT_hash_handle hh;
 };
 
@@ -247,7 +263,7 @@ struct krm_server_desc {
 	volatile uint32_t zconn_state;
 	/*filled only by the leader server*/
 	struct krm_leader_regions *ld_regions;
-	struct krm_regions_per_server *dataservers_table;
+	struct krm_leader_ds_map *dataservers_map;
 	/*filled by the ds*/
 	struct krm_ds_regions *ds_regions;
 };
@@ -271,17 +287,3 @@ void ru_calculate_btree_index_nodes(struct ru_replica_state *r_state, uint64_t n
 
 void ru_append_entry_to_leaf_node(struct krm_region_desc *r_desc, void *pointer_to_kv_pair, void *prefix,
 				  int32_t tree_id);
-
-
-
-
-
-
-
-
-
-
-
-
-
-
