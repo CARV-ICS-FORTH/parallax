@@ -893,8 +893,8 @@ void allocator_init(volume_descriptor *volume_desc)
 	mount_volume(volume_desc->volume_name, 0, 0 /* unused */); /*if not mounted */
 
 	ret = ioctl(FD, FAKE_BLK_IOC_TEST_CAP);
-	if (ret == 0) /*success*/
-	{
+	if (ret == 0) {
+		/*success*/
 		fake_blk = 1;
 
 		struct fake_blk_page_range _r;

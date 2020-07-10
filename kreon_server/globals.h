@@ -31,3 +31,6 @@ uint64_t globals_get_dev_size(void);
 void globals_create_rdma_channel(void);
 void globals_set_rdma_channel(struct channel_rdma *channel);
 struct channel_rdma *globals_get_rdma_channel(void);
+
+void globals_set_mount_point(char *mount_point);
+char *globals_get_mount_point(void);

@@ -18,7 +18,7 @@
 
 #define ALLOC_LOCAL 1 // if true use numa_alloc_local, otherwise use posix_memalign
 
-const size_t MEM_REGION_BASE_SIZE = 2 * 1024 * 1024;
+const size_t MEM_REGION_BASE_SIZE = 32 * 1024 * 1024;
 const size_t MR_PREALLOCATE_COUNT = 128; //FIXME unused
 const size_t REPLICA_BUFFER_SIZE = 8 * 1024 * 1024;
 

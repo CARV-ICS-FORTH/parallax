@@ -127,7 +127,7 @@ class kreonRBlockingClientDB : public YCSBDB {
 		code = krc_get(key.length(), (char *)key.c_str(), &get_buf, &size, 0);
 		if (code != KRC_SUCCESS) {
 			log_fatal("problem with key %s", key.c_str());
-			exit(EXIT_FAILURE);
+			//exit(EXIT_FAILURE);
 		}
 
 #if VALUE_CHECK
