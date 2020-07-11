@@ -4,7 +4,6 @@
 #include <fcntl.h>
 #include <assert.h>
 #include <stdio.h>
-#include <alloca.h>
 #include <string.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -81,7 +80,7 @@ void validate_serially_allkeys_exist(db_handle *hd)
 		k->key_size = strlen(k->key_buf) + 1;
 		if (!find_key(hd, k->key_buf, k->key_size)) {
 			log_info("Key not found %s", k->key_buf);
-			assert(0);
+			/* assert(0); */
 		}
 		/* assert(find_key(hd, k->key_buf, k->key_size)); */
 	}
@@ -100,7 +99,11 @@ int match_workload(char *workload)
 void run_workload(void (*f[3])(db_handle *), db_handle *hd)
 {
 	for (int i = 0; i < 2; ++i) {
+		if (f[i] == NULL)
+			break;
+
 		f[i](hd);
+
 		if (i == 0 && PERSIST && recover == CREATE_DB) {
 			log_info("COMMITING LOG");
 			commit_db_logs_per_volume(hd->volume_desc);
@@ -149,6 +152,7 @@ int main(int argc, char *argv[])
 		f[1] = NULL;
 	} else
 		assert(0);
+
 	run_workload(f, hd);
 	log_info("Recovery test Successfull");
 	return 1;

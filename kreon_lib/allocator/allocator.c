@@ -1302,6 +1302,7 @@ void clean_log_entries(void *v_desc)
 
 void mark_block(volume_descriptor *volume_desc, void *block_address, uint32_t length, char free)
 {
+	log_info("MARKING A BLOCK");
 	void *base = (void *)0xFFFFFFFFFFFFFFFF;
 	base = (void *)((uint64_t)base << (WORD_SIZE - (length / 4096)));
 	base = (void *)((uint64_t)base >> (WORD_SIZE - (length / 4096)));

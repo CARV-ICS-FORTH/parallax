@@ -28,8 +28,9 @@ static void *get_space(volume_descriptor *volume_desc, level_descriptor *level_d
 		available_space = 0;
 		segment_id = level_desc->last_segment[tree_id]->segment_id;
 	}
-
 	if (available_space < size) {
+		log_info("GET SPACE FROM ALLOCATOR");
+
 		/*we need to go to the actual allocator to get space*/
 		MUTEX_LOCK(&volume_desc->allocator_lock);
 		new_segment = (segment_header *)allocate(volume_desc, SEGMENT_SIZE, -1, reason);
