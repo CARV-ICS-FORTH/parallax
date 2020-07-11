@@ -66,6 +66,8 @@ void commit_db_log(db_descriptor *db_desc, commit_log_info *info)
 	medium_log_current_segment = medium_log_first_segment;
 	small_log_current_segment = small_log_first_segment;
 
+	db_desc->commit_log->lsn = info->lsn;
+
 	while (1) {
 		++i;
 		all_logs_persisted = 0;
