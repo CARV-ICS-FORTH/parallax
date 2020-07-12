@@ -58,7 +58,7 @@ static void check(int test, const char *message, ...)
 void __add_log_entry(volume_descriptor *volume_desc, void *address, uint32_t length, char type_of_entry);
 void mount_volume(char *volume_name, int64_t start, int64_t size); /*Called once from a region server*/
 void clean_log_entries(void *volume_desc);
-void mark_block(volume_descriptor *volume_desc, void *block_address, uint32_t length, char free);
+void mark_block(volume_descriptor *volume_desc, void *block_address, uint32_t length, char free, uint64_t *bit_idx);
 
 int32_t lread(int32_t fd, off_t offset, int whence, void *ptr, size_t size);
 int32_t lwrite(int32_t fd, off_t offset, int whence, void *ptr, ssize_t size);
@@ -603,7 +603,7 @@ void *allocate(void *_volume_desc, uint64_t num_bytes, int unused, char allocati
 	int64_t end_bit_offset = 64;
 	int64_t b = 1;
 	int64_t suffix_size = 0;
-	int64_t mask;
+	uint64_t mask;
 	int64_t size = num_bytes / DEVICE_BLOCK_SIZE; /*convert number of bytes in corresponding BLKSIZE blocks needed*/
 
 	/*how many words will i need?*/
@@ -1246,7 +1246,7 @@ void clean_log_entries(void *v_desc)
 						free_length = free_end - free_start;
 						if (free_length > 4096)
 							free_length = 4096;
-						mark_block(v_desc, (void *)free_start, free_length, 0x1);
+						mark_block(v_desc, (void *)free_start, free_length, 0x1, &bit_idx);
 						/*if we use filter block device, update it with the mark block operation*/
 						if (fake_blk) {
 							uint32_t pagenum = free_length / 4096;
@@ -1300,7 +1300,7 @@ void clean_log_entries(void *v_desc)
 	}
 }
 
-void mark_block(volume_descriptor *volume_desc, void *block_address, uint32_t length, char free)
+void mark_block(volume_descriptor *volume_desc, void *block_address, uint32_t length, char free, uint64_t *bit_idx)
 {
 	log_info("MARKING A BLOCK");
 	void *base = (void *)0xFFFFFFFFFFFFFFFF;
@@ -1311,6 +1311,9 @@ void mark_block(volume_descriptor *volume_desc, void *block_address, uint32_t le
 #endif
 	/*normalize block address and divide with DEVICE_BLOCK_SIZE to discover bit */
 	uint64_t bitmap_bit = ((uint64_t)block_address - (uint64_t)volume_desc->bitmap_end) / DEVICE_BLOCK_SIZE;
+
+	if (bit_idx)
+		*bit_idx = ((uint64_t)block_address - MAPPED) / DEVICE_BLOCK_SIZE;
 
 	/*Divide with 8 to see in which bitmap byte is and mod will inform us about which bit in the byte */
 	uint64_t bitmap_byte = bitmap_bit / 8;

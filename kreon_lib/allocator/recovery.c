@@ -120,7 +120,7 @@ void ommit_log_segment_header(struct recovery_operator *replay)
 			iter_logs[i]->log_offset += sizeof(segment_header);
 }
 
-void ommit_padded_space(volume_descriptor *volume_desc, struct recovery_operator *replay)
+void ommit_padded_space(struct recovery_operator *replay)
 {
 	assert(NUMBER_OF_LOGS == 3);
 	struct log_recovery_metadata *iter_logs[NUMBER_OF_LOGS] = { &replay->big, &replay->medium, &replay->small };
@@ -150,8 +150,6 @@ void ommit_padded_space(volume_descriptor *volume_desc, struct recovery_operator
 					(LLU)iter_logs[i]->log_offset, (LLU)iter_logs[i]->log_size);
 				mprotect(iter_logs[i]->log_curr_segment, BUFFER_SEGMENT_SIZE, PROT_READ);
 				assert(segment_id + 1 == iter_logs[i]->log_curr_segment->segment_id);
-				/* mark_block(volume_desc, (void *)iter_logs[i]->log_curr_segment, BUFFER_SEGMENT_SIZE, */
-				/* 	   0x00); */
 				iter_logs[i]->log_offset += sizeof(segment_header);
 			}
 		}
@@ -173,7 +171,7 @@ void *find_next_kventry(struct recovery_operator *replay, uint64_t max_lsn, uint
 	assert(NUMBER_OF_LOGS == 3);
 
 	struct log_recovery_metadata *iter_logs[NUMBER_OF_LOGS] = { &replay->big, &replay->medium, &replay->small };
-	char *tmp_kv_addr, *kv_addr;
+	char *tmp_kv_addr, *kv_addr = NULL;
 	struct log_sequence_number tmp_lsn, lsn;
 	int pick_log = -1;
 	lsn.id = UINT64_MAX;
@@ -214,7 +212,7 @@ void mark_log_segments_before_replay(volume_descriptor *volume_desc, segment_hea
 	segment_header *curr_segment = first_segment;
 	log_info("----------------------------------------------------------------");
 	while (curr_segment) {
-		mark_block(volume_desc, curr_segment, BUFFER_SEGMENT_SIZE, 0x00);
+		mark_block(volume_desc, curr_segment, BUFFER_SEGMENT_SIZE, 0x00, NULL);
 		log_info("Segment id %llu", curr_segment->segment_id);
 		if (curr_segment->next_segment == NULL)
 			break;
@@ -268,7 +266,7 @@ void replay_log(recovery_request *rh, struct recovery_operator *replay)
 		if (prev_lsn == last_lsn)
 			break;
 
-		ommit_padded_space(handle.volume_desc, replay);
+		ommit_padded_space(replay);
 	}
 	/* exit(0); */
 }
