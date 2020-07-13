@@ -1640,7 +1640,7 @@ static inline struct lookup_reply lookup_in_tree(void *key, node_header *root)
 /*this function will be reused in various places such as deletes*/
 void *__find_key(db_handle *handle, void *key, char SEARCH_MODE)
 {
-	struct lookup_reply rep;
+	struct lookup_reply rep = { .addr = NULL };
 	node_header *root_w;
 	node_header *root_r;
 	uint32_t active_tree;
