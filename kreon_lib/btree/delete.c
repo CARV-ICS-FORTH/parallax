@@ -163,7 +163,6 @@ retry:
 
 				son->v2++;
 				goto retry;
-
 			} else if (son->epoch <= volume_desc->dev_catalogue->epoch) {
 				if (son->height > 0) {
 					node_copy = (node_header *)seg_get_index_node_header(
@@ -246,7 +245,6 @@ uint8_t __delete_from_leaf(delete_request *req, index_node *parent, leaf_node *l
 
 			delete_key_value(req->metadata.handle->db_desc, leaf, pos);
 			req->metadata.handle->db_desc->dirty = 1;
-
 			if (leaf->header.type == leafRootNode)
 				return SUCCESS;
 
@@ -259,6 +257,7 @@ uint8_t __delete_from_leaf(delete_request *req, index_node *parent, leaf_node *l
 				*/
 				merge_with_leaf_neighbor(leaf, &siblings, req);
 			}
+
 			return SUCCESS;
 		}
 	}
@@ -489,7 +488,7 @@ void merge_with_right_neighbor(leaf_node *curr, leaf_node *right, delete_request
 
 	assert(right == ((leaf_node *)(MAPPED + parent->p[parent_metadata.right_pos + 1].left[0])));
 
-	if (parent->header.numberOfEntriesInNode == 2) {
+	if (parent->header.numberOfEntriesInNode == 1) {
 		if (parent->header.type == rootNode) {
 			curr->header.type = leafRootNode;
 			curr->header.height = 0;
@@ -500,14 +499,12 @@ void merge_with_right_neighbor(leaf_node *curr, leaf_node *right, delete_request
 		assert(0);
 	}
 
+	uint32_t remaining_bytes = (parent->header.numberOfEntriesInNode * sizeof(index_entry)) + sizeof(uint64_t) -
+				   (parent_metadata.right_pos * sizeof(index_entry));
 	parent->p[parent_metadata.right_pos].pivot = parent->p[parent_metadata.right_pos + 1].pivot;
-
-	memmove(&parent->p[parent_metadata.right_pos + 1], &parent->p[parent_metadata.right_pos + 2],
-		(sizeof(index_entry) * (parent->header.numberOfEntriesInNode - (parent_metadata.right_pos + 2))) +
-			sizeof(uint64_t));
-
+	memmove(&parent->p[parent_metadata.right_pos + 1], &parent->p[parent_metadata.right_pos + 2], remaining_bytes);
 	--parent->header.numberOfEntriesInNode;
-
+	assert(parent->header.numberOfEntriesInNode >= 1);
 	//In this case we do not have to change anything to the right neighbor
 	//nor to change the pivots in our parent.Reclaim the node space here.
 }
@@ -535,7 +532,7 @@ void merge_with_left_neighbor(leaf_node *curr, leaf_node *left, delete_request *
 	curr->header.numberOfEntriesInNode += left->header.numberOfEntriesInNode;
 	_index_node_binary_search_posret(parent, req->key_buf, KV_FORMAT, &parent_metadata);
 
-	if (parent->header.numberOfEntriesInNode == 2) {
+	if (parent->header.numberOfEntriesInNode == 1) {
 		if (parent->header.type == rootNode) {
 			curr->header.type = leafRootNode;
 			req->metadata.handle->db_desc->levels[req->metadata.level_id].root_w[req->metadata.active_tree] =
@@ -550,6 +547,7 @@ void merge_with_left_neighbor(leaf_node *curr, leaf_node *left, delete_request *
 			sizeof(uint64_t));
 
 	--parent->header.numberOfEntriesInNode;
+	assert(parent->header.numberOfEntriesInNode >= 1);
 	/* Free the left leaf node */
 }
 
@@ -567,13 +565,13 @@ int8_t merge_with_leaf_neighbor(leaf_node *leaf, rotate_data *siblings, delete_r
 	if (right)
 		merge_with_right = leaf->header.numberOfEntriesInNode + right->header.numberOfEntriesInNode;
 
-	if (merge_with_left && merge_with_left < leaf_order) {
+	if (merge_with_left && merge_with_left <= leaf_order) {
 		/* We can merge with the right neighbor */
 		ret = 1;
 		left->header.v1++;
 		merge_with_left_neighbor(leaf, left, req);
 		left->header.v2++;
-	} else if (merge_with_right && merge_with_right < leaf_order) {
+	} else if (merge_with_right && merge_with_right <= leaf_order) {
 		/* We can merge with the left neighbor */
 		ret = 2;
 		right->header.v1++;
@@ -979,6 +977,7 @@ void merge_with_right_index_node(index_node *curr, index_node *right, index_node
 
 	assert(((index_node *)(MAPPED + parent->p[pos].left[0])) == curr);
 	--parent->header.numberOfEntriesInNode;
+	assert(parent->header.numberOfEntriesInNode >= 1);
 }
 
 void merge_with_left_index_node(index_node *curr, index_node *left, index_node *parent, delete_request *req, int pos)
@@ -1027,6 +1026,7 @@ void merge_with_left_index_node(index_node *curr, index_node *left, index_node *
 
 	assert(((index_node *)(MAPPED + parent->p[pos].left[0])) == left);
 	--parent->header.numberOfEntriesInNode;
+	assert(parent->header.numberOfEntriesInNode >= 1);
 }
 
 int8_t merge_with_index_neighbor(index_node *curr, index_node *parent, rotate_data *siblings, delete_request *req)
