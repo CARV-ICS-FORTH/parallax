@@ -1524,7 +1524,6 @@ void tiering_compaction_worker(void *_tiering_request)
  */
 void insert_kv_pair(struct krm_work_task *task)
 {
-	uint32_t kv_size;
 	log_info("Gemise to portofoli apo ta penintarika");
 	/*############## fsm state logic follows ###################*/
 	while (1) {
@@ -1677,8 +1676,8 @@ void insert_kv_pair(struct krm_work_task *task)
 		case INS_TO_KREON: {
 			bt_insert_req req;
 			req.metadata.handle = task->r_desc->db;
-			req.metadata.kv_size = kv_size;
-			req.key_value_buf = &task->key;
+			req.metadata.kv_size = 0;
+			req.key_value_buf = task->key;
 			req.metadata.level_id = 0;
 			req.metadata.key_format = KV_FORMAT;
 			req.metadata.append_to_log = 1;
