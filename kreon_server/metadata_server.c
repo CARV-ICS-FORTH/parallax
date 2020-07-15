@@ -1068,6 +1068,12 @@ void *krm_metadata_server(void *args)
 				r_desc->m_state = NULL;
 				r_desc->r_state = NULL;
 
+				// open Kreon db
+				r_desc->db = db_open(globals_get_dev(), 0, globals_get_dev_size(), r_desc->region->id,
+						     CREATE_DB);
+				assert(r_desc->status = KRM_OPENING);
+				r_desc->status = KRM_OPEN;
+
 				krm_insert_ds_region(&my_desc, r_desc, my_desc.ds_regions);
 			}
 			my_desc.state = KRM_WAITING_FOR_MSG;
