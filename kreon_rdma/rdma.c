@@ -1248,7 +1248,7 @@ void _update_rendezvous_location(connection_rdma *conn, int message_size)
 	} else {
 		log_fatal("Faulty connection type");
 		exit(EXIT_FAILURE);
-#if 0
+
 		if (message_size > 0) {
 			if (conn->remaining_bytes_in_remote_rdma_region >= message_size) {
 				conn->remaining_bytes_in_remote_rdma_region -= message_size;
@@ -1265,9 +1265,9 @@ void _update_rendezvous_location(connection_rdma *conn, int message_size)
 			conn->remaining_bytes_in_remote_rdma_region = conn->rdma_memory_regions->memory_region_length;
 			conn->rendezvous = conn->rdma_memory_regions->remote_memory_buffer;
 		}
-#endif
 	}
 }
+
 
 void close_and_free_RDMA_connection(struct channel_rdma *channel, struct connection_rdma *conn)
 {

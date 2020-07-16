@@ -702,34 +702,6 @@ static int assign_job_to_worker(struct ds_spinning_thread *spinner, struct conne
 			worker_id = a_sleeping_worker_id;
 	}
 
-#if 0
-	for (int i = 0; i < spinner->num_workers; i++) {
-		load = worker_queued_jobs(&spinner->worker[i]);
-		if (load < min_load) {
-			min_load = load;
-			min_loaded_worker = i;
-		}
-		if (worker_queued_jobs(&spinner->worker[i]) < max_queued_jobs) {
-			worker_id = i;
-		}
-	}
-	if (worker_id == -1) {
-		worker_id = min_loaded_worker;
-	}
-	// assertion
-	if (worker_id == -1) {
-		log_fatal("Failed to queue request");
-		exit(EXIT_FAILURE);
-	}
-
-
-	// 3. Round robin
-  int worker_id;
-	worker_id = spinner->next_server_worker_to_submit_job++;
-	if (spinner->next_server_worker_to_submit_job == spinner->num_workers)
-		spinner->next_server_worker_to_submit_job = 0;
-#endif
-
 	if (!is_task_resumed) {
 		job->channel = root_server->numa_servers[spinner->root_server_id]->channel;
 		job->conn = conn;
