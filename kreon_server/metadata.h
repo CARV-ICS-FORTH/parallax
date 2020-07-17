@@ -158,6 +158,7 @@ struct krm_leader_regions {
 };
 
 struct krm_regions_per_server {
+	pthread_mutex_t region_list_lock;
 	struct krm_server_name server_id;
 	uint64_t hash_key;
 	LIST *regions;

@@ -59,10 +59,18 @@ char *zku_op2String(int rc)
 int64_t zku_key_cmp(int key_size_1, char *key_1, int key_size_2, char *key_2)
 {
 	int ret;
+	char key_1_is_infinity = 0;
+	char key_2_is_infinity = 0;
 	if (key_size_1 == 3 && memcmp(key_1, "+oo", 3) == 0)
-		return 1;
+		key_1_is_infinity = 1;
 
 	if (key_size_2 == 3 && memcmp(key_2, "+oo", 3) == 0)
+		key_2_is_infinity = 1;
+
+	if (key_1_is_infinity && !key_2_is_infinity)
+		return 1;
+
+	if (!key_1_is_infinity && key_2_is_infinity)
 		return -1;
 
 	if (key_size_1 <= key_size_2)
