@@ -1585,20 +1585,29 @@ void free_logical_node(allocator_descriptor *allocator_desc, node_header *node_i
 static inline struct lookup_reply lookup_in_tree(void *key, node_header *root)
 {
 	struct lookup_reply rep;
-	node_header *curr_node;
+	node_header *curr_node, *son_node = NULL;
 	void *key_addr_in_leaf;
 	void *next_addr;
-	uint64_t v1 = 0, v2 = 0;
+	uint64_t curr_v1 = 0, curr_v2 = 0;
+	uint64_t son_v2 = 0;
+
 	uint32_t index_key_len;
 
+	curr_v2 = root->v2;
 	curr_node = root;
+	if (curr_node->type == leafRootNode) {
+		key_addr_in_leaf = __find_key_addr_in_leaf((leaf_node *)curr_node, (struct splice *)key);
 
-	while (curr_node->type != leafNode && curr_node->type != leafRootNode) {
-		v2 = curr_node->v2;
-		next_addr = _index_node_binary_search((index_node *)curr_node, key, KV_FORMAT);
-		v1 = curr_node->v1;
+		if (key_addr_in_leaf == NULL)
+			rep.addr = NULL;
+		else {
+			key_addr_in_leaf = (void *)MAPPED + *(uint64_t *)key_addr_in_leaf;
+			index_key_len = *(uint32_t *)key_addr_in_leaf;
+			rep.addr = (void *)(uint64_t)key_addr_in_leaf + 4 + index_key_len;
+		}
+		curr_v1 = curr_node->v1;
 
-		if (v1 != v2) {
+		if (curr_v1 != curr_v2) {
 			// log_info("failed at node height %d v1 %llu v2 % llu\n",
 			// curr_node->height, (LLU)curr_node->v1,
 			//	 (LLU)curr_node->v2);
@@ -1607,32 +1616,44 @@ static inline struct lookup_reply lookup_in_tree(void *key, node_header *root)
 			return rep;
 		}
 
-		curr_node = (void *)(MAPPED + *(uint64_t *)next_addr);
-	}
-
-	v2 = curr_node->v2;
-	/* log_debug("curr node - MAPPEd %p",MAPPED-(uint64_t)curr_node); */
-	key_addr_in_leaf = __find_key_addr_in_leaf((leaf_node *)curr_node, (struct splice *)key);
-	v1 = curr_node->v1;
-
-	if (v1 != v2) {
-		// log_info("failed at node height %d v1 %llu v2 % llu\n",
-		// curr_node->height, (LLU)curr_node->v1,
-		//	 (LLU)curr_node->v2);
-		rep.addr = NULL;
-		rep.lc_failed = 1;
-		return rep;
-	}
-
-	if (key_addr_in_leaf == NULL) {
-		rep.addr = NULL;
-		rep.lc_failed = 0;
-		return rep;
 	} else {
-		key_addr_in_leaf = (void *)MAPPED + *(uint64_t *)key_addr_in_leaf;
-		index_key_len = *(uint32_t *)key_addr_in_leaf;
-		rep.addr = (void *)(uint64_t)key_addr_in_leaf + 4 + index_key_len;
-		rep.lc_failed = 0;
+		while (curr_node->type != leafNode) {
+			next_addr = _index_node_binary_search((index_node *)curr_node, key, KV_FORMAT);
+			son_node = (void *)(MAPPED + *(uint64_t *)next_addr);
+			son_v2 = son_node->v2;
+			curr_v1 = curr_node->v1;
+
+			if (curr_v1 != curr_v2) {
+				rep.addr = NULL;
+				rep.lc_failed = 1;
+				return rep;
+			}
+
+			curr_node = son_node;
+			curr_v2 = son_v2;
+		}
+
+		/* log_debug("curr node - MAPPEd %p",MAPPED-(uint64_t)curr_node); */
+		key_addr_in_leaf = __find_key_addr_in_leaf((leaf_node *)curr_node, (struct splice *)key);
+
+		if (key_addr_in_leaf == NULL) {
+			//log_info("key not found %s v1 %llu v2 %llu",((struct splice *)key)->data,curr_v2, curr_node->v1);
+			rep.addr = NULL;
+		} else {
+			key_addr_in_leaf = (void *)MAPPED + *(uint64_t *)key_addr_in_leaf;
+			index_key_len = *(uint32_t *)key_addr_in_leaf;
+			rep.addr = (void *)(uint64_t)key_addr_in_leaf + 4 + index_key_len;
+		}
+		curr_v1 = curr_node->v1;
+
+		if (curr_v1 != curr_v2) {
+			// log_info("failed at node height %d v1 %llu v2 % llu\n",
+			// curr_node->height, (LLU)curr_node->v1,
+			//	 (LLU)curr_node->v2);
+			rep.addr = NULL;
+			rep.lc_failed = 1;
+			return rep;
+		}
 	}
 	return rep;
 }
@@ -1652,7 +1673,7 @@ void *__find_key(db_handle *handle, void *key, char SEARCH_MODE)
 		/*first look the current active tree of the level*/
 		tries = 0;
 	retry_1:
-		if (tries % 1000000 == 9999999)
+		if (tries % 1000000 == 999999)
 			log_warn("possible deadlock detected lamport counters fail after 1M tries");
 		active_tree = handle->db_desc->levels[level_id].active_tree;
 		// log_warn("active tree of level %lu is %lu", level_id, active_tree);

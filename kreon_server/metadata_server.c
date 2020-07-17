@@ -419,6 +419,7 @@ void zk_main_watcher(zhandle_t *zkh, int type, int state, const char *path, void
  	* zookeeper_init might not have returned, so we
  	* use zkh instead.
  	*/
+	log_info("MAIN watcher type %d state %d path %s", type, state, path);
 	if (type == ZOO_SESSION_EVENT) {
 		if (state == ZOO_CONNECTED_STATE) {
 			my_desc.zconn_state = KRM_CONNECTED;
@@ -429,6 +430,8 @@ void zk_main_watcher(zhandle_t *zkh, int type, int state, const char *path, void
 				exit(EXIT_FAILURE);
 			}
 		}
+	} else {
+		log_warn("Unhandled event");
 	}
 }
 
@@ -509,7 +512,7 @@ void mailbox_watcher(zhandle_t *zh, int type, int state, const char *path, void 
 			free(mail);
 		}
 	} else {
-		log_fatal("Unhandled type of event");
+		log_fatal("Unhandled type of event type is %d", type);
 		exit(EXIT_FAILURE);
 	}
 }
@@ -1085,6 +1088,27 @@ retry:
 		} else
 			end_idx = middle - 1;
 	}
+	/*cornercase*/
+	if (r_desc == NULL) {
+		int ret1;
+		int ret2;
+		end_idx = desc->ds_regions->num_ds_regions - 1;
+		ret1 = zku_key_cmp(desc->ds_regions->r_desc[end_idx].region->min_key_size,
+				   desc->ds_regions->r_desc[end_idx].region->min_key, key_size, key);
+		ret2 = zku_key_cmp(key_size, key, desc->ds_regions->r_desc[end_idx].region->max_key_size,
+				   desc->ds_regions->r_desc[end_idx].region->max_key);
+		log_info("region_min_key %d:%s   key %d:%s  end idx %d",
+			 desc->ds_regions->r_desc[end_idx].region->min_key_size,
+			 desc->ds_regions->r_desc[end_idx].region->min_key, key_size, key, end_idx);
+
+		log_info("region_max_key %d:%s   key %d:%s  end idx %d",
+			 desc->ds_regions->r_desc[end_idx].region->max_key_size,
+			 desc->ds_regions->r_desc[end_idx].region->max_key, key_size, key);
+		log_info("ret1 %d ret 2 %d ", ret1, ret2);
+		if (ret1 >= 0 && ret2 < 0)
+			r_desc = &desc->ds_regions->r_desc[end_idx];
+	}
+
 	lc1 = desc->ds_regions->lamport_counter_2;
 
 	if (lc1 != lc2)

@@ -549,12 +549,16 @@ void *worker_thread_kernel(void *args)
 				}
 
 				if (!job) {
+#if 0
 					worker_descriptor->status = IDLE_SLEEPING;
 					pthread_spin_unlock(&worker_descriptor->work_queue_lock);
 					// DPRINT("Sleeping...\n");
 					sem_wait(&worker_descriptor->sem);
 					// DPRINT("Woke up\n");
 					worker_descriptor->status = BUSY;
+#endif
+
+					pthread_spin_unlock(&worker_descriptor->work_queue_lock);
 					continue;
 				} else {
 					assert(job);
@@ -648,6 +652,7 @@ static int assign_job_to_worker(struct ds_spinning_thread *spinner, struct conne
 	 	 * become a round robin policy since the worker_id will be incremented
 	 	 * at for every task.
 	 	 */
+#if 0
 		// 1. Round Robin with threshold
 		if (worker_queued_jobs(&worker_group[worker_id_cnt]) >= max_queued_jobs) {
 			/* Find an active worker with used_slots < max_queued_jobs
@@ -683,12 +688,10 @@ static int assign_job_to_worker(struct ds_spinning_thread *spinner, struct conne
 		}
 
 		worker_id = worker_id_cnt;
-
-		// 2. Static assignment
-		// worker_id = conn->worker_id;
-		// 3.
-		// worker_id = worker_id_cnt;
-		// worker_id_cnt = (worker_id_cnt + 1 < spinner->num_workers) ? worker_id_cnt + 1 : 0;
+#endif
+		// 2.
+		worker_id = worker_id_cnt;
+		worker_id_cnt = (worker_id_cnt + 1 < spinner->num_workers) ? worker_id_cnt + 1 : 0;
 
 		job = (struct work_task *)utils_queue_pop(&spinner->worker[worker_id].empty_job_buffers_queue);
 		if (!job) {
@@ -2137,7 +2140,7 @@ void handle_task(void *__task)
 			memcpy(new_value + sizeof(msg_put_key) + K->key_size + sizeof(msg_put_value) +
 				       put_offt_req->offset,
 			       V->value, V->value_size);
-			//log_info("new val key %u val size %u", *(uint32_t *)new_value,
+			//log_info("Inserting key %s new val key %u val size %u", K->key, *(uint32_t *)new_value,
 			//	 *(uint32_t *)(new_value + sizeof(msg_put_key) + K->key_size));
 
 			insert_kv_pair(r_desc, new_value, task->conn, &location, task, DO_NOT_WAIT_REPLICA_TO_COMMIT);
@@ -2281,10 +2284,13 @@ void handle_task(void *__task)
 		task->reply_msg->request_message_local_addr = task->msg->request_message_local_addr;
 		task->overall_status = TASK_COMPLETED;
 
-		if (delete_key(r_desc->db, del_req->key, del_req->key_size) == SUCCESS)
+		if (delete_key(r_desc->db, del_req->key, del_req->key_size) == SUCCESS) {
 			del_rep->status = KREON_SUCCESS;
-		else
+			//log_info("Deleted key %s successfully", del_req->key);
+		} else {
 			del_rep->status = KREON_FAILURE;
+			//log_info("Deleted key %s not found!", del_req->key);
+		}
 		break;
 	}
 
@@ -2301,18 +2307,21 @@ void handle_task(void *__task)
 		task->reply_msg = (void *)((uint64_t)task->conn->rdma_memory_regions->local_memory_buffer +
 					   (uint64_t)task->msg->reply);
 		get_rep = (msg_get_rep *)((uint64_t)task->reply_msg + sizeof(msg_header));
+		//for (int k = 0; k < 10; k++) {
 		value = __find_key(r_desc->db, &get_req->key_size, SEARCH_DIRTY_TREE);
+		//if (value != NULL)
+		//	break;
+		//}
 
 		if (value == NULL) {
-			//log_warn("key not found key %s : length %u region min_key %s max key %s\n",
-			//	 get_req->key + sizeof(uint32_t), key_length,
-			//	 S_tu_region->ID_region.minimum_range + sizeof(int),
-			//	 S_tu_region->ID_region.maximum_range + sizeof(int));
+			//log_warn("key not found key %s : length %u", get_req->key, get_req->key_size);
+
 			get_rep->key_found = 0;
 			get_rep->bytes_remaining = 0;
 			get_rep->value_size = 0;
 			get_rep->offset_too_large = 0;
 			goto exit;
+
 		} else {
 			get_rep->key_found = 1;
 			if (get_req->offset > *(uint32_t *)value) {
