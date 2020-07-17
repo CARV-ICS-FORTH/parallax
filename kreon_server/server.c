@@ -78,7 +78,7 @@ struct ds_worker_thread {
 	int spinner_id;
 };
 
-#define DS_CLIENT_QUEUE_SIZE 1024
+#define DS_CLIENT_QUEUE_SIZE UTILS_QUEUE_CAPACITY
 #define DS_POOL_NUM 8
 
 struct ds_task_buffer_pool {
@@ -572,6 +572,9 @@ static struct krm_work_task *ds_get_client_task_buffer(struct ds_spinning_thread
 			i = 0;
 	}
 	spinner->c_last_pool = idx;
+	// reset task struct
+	memset(job, 0, sizeof(struct krm_work_task));
+	job->pool_id = idx;
 	return job;
 }
 
@@ -619,52 +622,43 @@ static int assign_job_to_worker(struct ds_spinning_thread *spinner, struct conne
 		return KREON_FAILURE;
 	}
 
+	struct ds_worker_thread *workers = spinner->worker;
 	int worker_id = spinner->next_server_worker_to_submit_job;
-
 	int max_queued_jobs = globals_get_job_scheduling_max_queue_depth(); // TODO [mvard] Tune this
-	struct ds_worker_thread *worker = &spinner->worker[worker_id];
 
-	/* Regular tasks scheduling policy
-		 * Assign tasks to one worker until he is swamped, then start assigning
-	 	 * to the next one. Once all workers are swamped it will essentially
-	 	 * become a round robin policy since the worker_id will be incremented
-	 	 * at for every task.
-	 	 */
 #if 0
-		// 1. Round Robin with threshold
-		if (worker_queued_jobs(&worker_group[worker_id_cnt]) >= max_queued_jobs)
-	{
+	/* Regular tasks scheduling policy
+	 * Assign tasks to one worker until he is swamped, then start assigning
+	 * to the next one. Once all workers are swamped it will essentially
+	 * become a round robin policy since the worker_id will be incremented
+	 * at for every task.
+	 */
+	// 1. Round robin with threshold
+	if (worker_queued_jobs(&workers[worker_id]) >= max_queued_jobs) {
 		/* Find an active worker with used_slots < max_queued_jobs
-	// 1. Round Robin with threshold
-	if (worker_queued_jobs(worker) >= max_queued_jobs) {
-		/* Find an active worker with used_slots < max_queued_jobs
-			 * If there's none, wake up a sleeping worker
-			 * If all worker's are running, pick the one with least load
-			 * NOTE a worker's work can only increase through this function call, which is only called by the spinning
-			 * thread. Each worker is assigned to one spinning thread, therefore a worker can't wake up or have its
-			 * work increased during the duration of a single call of this function
-			 */
+		 * If there's none, wake up a sleeping worker
+		 * If all worker's are running, pick the one with least load
+		 * NOTE a worker's work can only increase through this function call, which is only called by the spinning
+		 * thread. Each worker is assigned to one spinning thread, therefore a worker can't wake up or have its
+		 * work increased during the duration of a single call of this function
+		 */
 
 		// Find active worker with min worker_queued_jobs
-		int current_choice = worker_id; // worker with id worker_id_cnt is most likely not sleeping
+		int current_choice = worker_id; // worker_id is most likely not sleeping
 		int a_sleeping_worker_id = -1;
 		for (int i = 0; i < WORKER_THREADS_PER_SPINNING_THREAD; ++i) {
 			// Keep note of a sleeping worker in case we need to wake him up for this task
-			if (worker[i].status == IDLE_SLEEPING) {
+			if (workers[i].status == IDLE_SLEEPING) {
 				if (a_sleeping_worker_id == -1)
 					a_sleeping_worker_id = i;
 				continue;
 			}
-			if (worker_queued_jobs(&worker[i]) < worker_queued_jobs(&worker[current_choice]))
+			if (worker_queued_jobs(&workers[i]) < worker_queued_jobs(&workers[current_choice]))
 				current_choice = i;
 		}
-
-		worker_id = worker_id_cnt;
 #endif
 
-	// 2. Static assignment
-	//int worker_id = conn->worker_id;
-	//3. Round robin
+	// 3. Round robin
 	worker_id = spinner->next_server_worker_to_submit_job++;
 	if (spinner->next_server_worker_to_submit_job == spinner->num_workers)
 		spinner->next_server_worker_to_submit_job = 0;
@@ -677,22 +671,22 @@ static int assign_job_to_worker(struct ds_spinning_thread *spinner, struct conne
 	job->thread_id = worker_id;
 	job->notification_addr = job->msg->request_message_local_addr;
 
-	if (utils_queue_push(&spinner->worker[worker_id].work_queue, (void *)job) == NULL) {
+	if (utils_queue_push(&workers[worker_id].work_queue, (void *)job) == NULL) {
 		log_fatal(
 			"Failed to add CONTROL job of type: %d to queue tried worker %d its status is %llu retrying\n",
-			job->msg->type, worker_id, (LLU)spinner->worker[worker_id].status);
-		utils_queue_push(&spinner->worker[worker_id].work_queue, (void *)job);
+			job->msg->type, worker_id, (LLU)workers[worker_id].status);
+		utils_queue_push(&workers[worker_id].work_queue, (void *)job);
 		exit(EXIT_FAILURE);
 	}
 
-	pthread_spin_lock(&spinner->worker[worker_id].work_queue_lock);
-	if (spinner->worker[worker_id].status == IDLE_SLEEPING) {
+	pthread_spin_lock(&workers[worker_id].work_queue_lock);
+	if (workers[worker_id].status == IDLE_SLEEPING) {
 		/*wake him up */
 		// DPRINT("Boom\n");
 		++wake_up_workers_operations;
-		sem_post(&spinner->worker[worker_id].sem);
+		sem_post(&workers[worker_id].sem);
 	}
-	pthread_spin_unlock(&spinner->worker[worker_id].work_queue_lock);
+	pthread_spin_unlock(&workers[worker_id].work_queue_lock);
 	return KREON_SUCCESS;
 }
 
@@ -1524,7 +1518,7 @@ void tiering_compaction_worker(void *_tiering_request)
  */
 void insert_kv_pair(struct krm_work_task *task)
 {
-	log_info("Gemise to portofoli apo ta penintarika");
+	/*log_info("Gemise to portofoli apo ta penintarika");*/
 	/*############## fsm state logic follows ###################*/
 	while (1) {
 		switch (task->kreon_operation_status) {
@@ -1557,7 +1551,7 @@ void insert_kv_pair(struct krm_work_task *task)
 					pthread_mutex_unlock(&task->r_desc->region_lock);
 				}
 			} else {
-				log_info("No replicated region");
+				/*log_info("No replicated region");*/
 				task->kreon_operation_status = INS_TO_KREON;
 			}
 			break;
@@ -2095,10 +2089,9 @@ static void handle_task(struct krm_work_task *task)
 	}
 	case PUT_REQUEST:
 
-		/* *
-			 * retrieve region handle for the corresponding key, find_region
-			 * initiates internally rdma connections if needed
-			 * */
+		/* retrieve region handle for the corresponding key, find_region
+		 * initiates internally rdma connections if needed
+		 */
 		if (task->key == NULL) {
 			task->key = (msg_put_key *)(task->msg->data);
 			task->value =
@@ -2112,7 +2105,7 @@ static void handle_task(struct krm_work_task *task)
 			}
 
 			task->r_desc = (void *)r_desc;
-			log_info("min key is %s", r_desc->region->min_key);
+			/*log_info("min key is %s", r_desc->region->min_key);*/
 		}
 		insert_kv_pair(task);
 		if (task->kreon_operation_status == TASK_COMPLETE) {
