@@ -20,6 +20,40 @@
 struct krm_server_desc my_desc;
 uint64_t ds_hash_key;
 
+char *krm_server_state_tostring(enum krm_server_state state)
+{
+	static char *const tostring_array[KRM_WAITING_FOR_MSG + 1] = { NULL,
+								       "KRM_BOOTING",
+								       "KRM_CLEAN_MAILBOX",
+								       "KRM_SET_DS_WATCHERS",
+								       "KRM_SET_LD_WATCHERS",
+								       "KRM_BUILD_DATASERVERS_TABLE",
+								       "KRM_BUILD_REGION_TABLE",
+								       "KRM_ASSIGN_REGIONS",
+								       "KRM_OPEN_LD_REGIONS",
+								       "KRM_LD_ANNOUNCE_JOINED",
+								       "KRM_DS_ANNOUNCE_JOINED",
+								       "KRM_PROCESSING_MSG",
+								       "KRM_WAITING_FOR_MSG" };
+
+	return tostring_array[state];
+}
+
+char *krm_msg_type_tostring(enum krm_msg_type type)
+{
+	static char *const tostring_array[KRM_BUILD_PRIMARY + 1] = { NULL,
+								     "KRM_OPEN_REGION_AS_PRIMARY",
+								     "KRM_ACK_OPEN_PRIMARY",
+								     "KRM_NACK_OPEN_PRIMARY",
+								     "KRM_OPEN_REGION_AS_BACKUP",
+								     "KRM_ACK_OPEN_BACKUP",
+								     "KRM_NACK_OPEN_BACKUP",
+								     "KRM_CLOSE_REGION",
+								     "KRM_BUILD_PRIMARY" };
+
+	return tostring_array[type];
+}
+
 static void krm_get_IP_Addresses(struct krm_server_desc *server)
 {
 	char addr[KRM_MAX_RDMA_IP_SIZE] = { 0 };
@@ -300,8 +334,8 @@ exit:
 	return rc;
 }
 
-static void krm_send_open_command_to_replica_server(struct krm_server_desc *desc, struct krm_region *region,
-						    char *kreon_ds_hostname)
+static void krm_resend_open_command(struct krm_server_desc *desc, struct krm_region *region, char *kreon_ds_hostname,
+				    enum krm_msg_type type)
 {
 	int mail_id_len = 128;
 	char mail_id[128];
@@ -309,7 +343,8 @@ static void krm_send_open_command_to_replica_server(struct krm_server_desc *desc
 	char *path =
 		zku_concat_strings(5, KRM_ROOT_PATH, KRM_MAILBOX_PATH, KRM_SLASH, kreon_ds_hostname, KRM_MAIL_TITLE);
 
-	msg.type = KRM_OPEN_REGION_AS_BACKUP;
+	assert(type == KRM_OPEN_REGION_AS_PRIMARY || type == KRM_ACK_OPEN_BACKUP);
+	msg.type = type;
 	msg.region = *region;
 	strcpy(msg.sender, desc->name.kreon_ds_hostname);
 	msg.epoch = desc->name.epoch;
@@ -627,7 +662,6 @@ static void krm_process_msg(struct krm_server_desc *server, struct krm_msg *msg)
 			reply.error_code = KRM_SUCCESS;
 			strcpy(reply.sender, server->name.kreon_ds_hostname);
 			reply.region = msg->region;
-			reply.error_code = KRM_SUCCESS;
 		}
 		char mail_id[128];
 		int mail_id_len = 128;
@@ -640,7 +674,7 @@ static void krm_process_msg(struct krm_server_desc *server, struct krm_msg *msg)
 			log_fatal("Failed to respond path is %s code is %s", zk_path, zku_op2String(rc));
 			exit(EXIT_FAILURE);
 		}
-		log_info("Just replied to %s", msg->sender);
+		log_info("Sending ACK to %s for region %s", msg->sender, msg->region.id);
 		free(zk_path);
 		break;
 	case KRM_CLOSE_REGION:
@@ -654,56 +688,44 @@ static void krm_process_msg(struct krm_server_desc *server, struct krm_msg *msg)
 			log_fatal("Faulty type of msg I am not leader %s", server->name.kreon_ds_hostname);
 			exit(EXIT_FAILURE);
 		}
-		/*region find it in the region table and mark it as healthy*/
-		int start = 0;
-		int end = server->ld_regions->num_regions - 1;
-		int middle = 0;
-		int64_t ret = -1;
 
-		while (start <= end) {
-			middle = (start + end) / 2;
-			ret = zku_key_cmp(server->ld_regions->regions[middle].min_key_size,
-					  server->ld_regions->regions[middle].min_key, msg->region.min_key_size,
-					  msg->region.min_key);
-			log_info("compared region min key %s with %s got %lld",
-				 server->ld_regions->regions[middle].min_key, msg->region.min_key, ret);
-			if (ret > 0)
-				end = middle - 1;
-			else if (ret < 0)
-				start = middle + 1;
-			else
-				break;
-		}
-		//correctness check
-		if (server->ld_regions->num_regions > 0 && ret != 0) {
-			log_fatal(
-				"Region %s min key %s max key %s (mentioned in ACK_REGION_OPEN) not found! total regions %d",
-				msg->region.id, msg->region.min_key, msg->region.max_key,
-				server->ld_regions->num_regions);
-			krm_check_ld_regions_sorted(server->ld_regions);
+		log_info("Received message %s for region %s", krm_msg_type_tostring(KRM_ACK_OPEN_PRIMARY),
+			 msg->region.id);
 
-			exit(EXIT_FAILURE);
-		} else {
-			/*found it check for correctness the max key*/
-			if (zku_key_cmp(server->ld_regions->regions[middle].max_key_size,
-					server->ld_regions->regions[middle].max_key, msg->region.max_key_size,
-					msg->region.max_key) != 0) {
-				log_fatal("Mismatch for region");
-				log_info("max key expected %s got %s", server->ld_regions->regions[middle].max_key,
-					 msg->region.max_key);
-				log_info("min key expected %s got %s", server->ld_regions->regions[middle].min_key,
-					 msg->region.min_key);
-				log_info("region id expected %s got %s", server->ld_regions->regions[middle].id,
-					 msg->region.id);
-
+		// Find sender's info
+		struct krm_leader_ds_map *dataserver = NULL;
+		uint64_t hash_key = djb2_hash((unsigned char *)msg->sender, strlen(msg->sender));
+		HASH_FIND_PTR(server->dataservers_map, &hash_key, dataserver);
+		if (dataserver != NULL) {
+			struct Stat stat;
+			char *path = zku_concat_strings(4, KRM_ROOT_PATH, KRM_SERVERS_PATH, KRM_SLASH, msg->sender);
+			int buffer_len = sizeof(struct krm_server_name);
+			int rc = zoo_get(server->zh, path, 0, (char *)&dataserver->server_id, &buffer_len, &stat);
+			if (rc != ZOK) {
+				log_fatal("Failed to refresh info for host %s", path);
 				exit(EXIT_FAILURE);
 			}
+			free(path);
+			// Find the region he's talking about in his info
+			struct krm_leader_ds_region_map *region_map = NULL;
+			hash_key = djb2_hash((unsigned char *)msg->region.id, strlen(msg->region.id));
+			HASH_FIND_PTR(dataserver->region_map, &hash_key, region_map);
+			if (region_map) {
+				// Mark this region as open
+				assert(region_map->lr_state.status = KRM_OPENING);
+				region_map->lr_state.status = KRM_OPEN;
+			} else {
+				log_warn(
+					"Cannot locate region %s:%d for dataserver %s hash_key %x, what is he talking about?",
+					msg->region.id, strlen(msg->region.id), dataserver->server_id.kreon_ds_hostname,
+					hash_key);
+				assert(0);
+			}
+		} else {
+			log_fatal("No state for server %s", msg->sender);
+			exit(EXIT_FAILURE);
 		}
-		struct krm_region *region = &server->ld_regions->regions[middle];
 
-		struct krm_leader_region_state *l = krm_leader_get_region_status(region, msg->sender);
-		/*find dataserver and corresponding region info to set it to KRM_OPEN*/
-		l->status = KRM_OPEN;
 		break;
 	}
 	case KRM_NACK_OPEN_PRIMARY:
@@ -740,12 +762,14 @@ static void krm_process_msg(struct krm_server_desc *server, struct krm_msg *msg)
 					if (msg->type == KRM_NACK_OPEN_BACKUP) {
 						log_info("Resending open region as backup command to %s for region %s",
 							 msg->sender, msg->region.id);
-						krm_send_open_command_to_replica_server(server, &msg->region,
-											msg->sender);
+						krm_resend_open_command(server, &msg->region, msg->sender,
+									KRM_OPEN_REGION_AS_BACKUP);
 					} else {
-						log_fatal("Unsupported still TODO");
-						assert(0);
-						exit(EXIT_FAILURE);
+						assert(msg->type == KRM_NACK_OPEN_PRIMARY);
+						log_info("Resending open region as primary command to %s for region %s",
+							 msg->sender, msg->region.id);
+						krm_resend_open_command(server, &msg->region, msg->sender,
+									KRM_OPEN_REGION_AS_PRIMARY);
 					}
 					break;
 				} else {
@@ -1165,7 +1189,8 @@ void *krm_metadata_server(void *args)
 				/*go to sleep*/
 				sem_wait(&my_desc.wake_up);
 			else {
-				log_info("new message");
+				log_info("new message: %s",
+					 krm_msg_type_tostring(((struct krm_msg *)node->data)->type));
 				my_desc.state = KRM_PROCESSING_MSG;
 				krm_process_msg(&my_desc, (struct krm_msg *)node->data);
 				destroy_node(node);
@@ -1195,14 +1220,14 @@ retry:
 	start_idx = 0;
 	end_idx = desc->ds_regions->num_ds_regions - 1;
 	r_desc = NULL;
-	log_info("start %d end %d", start_idx, end_idx);
+	/*log_info("start %d end %d", start_idx, end_idx);*/
 	while (start_idx <= end_idx) {
 		middle = (start_idx + end_idx) / 2;
 		ret = zku_key_cmp(desc->ds_regions->r_desc[middle].region->min_key_size,
 				  desc->ds_regions->r_desc[middle].region->min_key, key_size, key);
 
 		if (ret < 0 || ret == 0) {
-			log_info("got 0 checking with max key %s", desc->ds_regions->r_desc[middle].region->max_key);
+			/*log_info("got 0 checking with max key %s", desc->ds_regions->r_desc[middle].region->max_key);*/
 			start_idx = middle + 1;
 			if (zku_key_cmp(desc->ds_regions->r_desc[middle].region->max_key_size,
 					desc->ds_regions->r_desc[middle].region->max_key, key_size, key) > 0) {
