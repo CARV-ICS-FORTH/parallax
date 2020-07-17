@@ -145,25 +145,7 @@ retry:
 			else
 				order = (index_order / 2) + 1;
 
-			if (son->numberOfEntriesInNode < order && son->type != rootNode) {
-				son->v1++;
-				rotate_data siblings = {
-					.left = NULL, .right = NULL, .pivot = NULL, .pos_left = -1, .pos_right = -1
-				};
-				__find_position_in_index((index_node *)parent, (struct splice *)req->key_buf,
-							 &siblings);
-				__find_left_and_right_siblings((index_node *)parent, req->key_buf, &siblings);
-				ret = transfer_node_to_neighbor_index_node((index_node *)son, (index_node *)parent,
-									   &siblings, req);
-
-				if (ret == 3) {
-					merge_with_index_neighbor((index_node *)son, (index_node *)parent, &siblings,
-								  req);
-				}
-
-				son->v2++;
-				goto retry;
-			} else if (son->epoch <= volume_desc->dev_catalogue->epoch) {
+			if (son->epoch <= volume_desc->dev_catalogue->epoch) {
 				if (son->height > 0) {
 					node_copy = (node_header *)seg_get_index_node_header(
 						volume_desc, &db_desc->levels[req->metadata.level_id], COW_FOR_INDEX);
@@ -191,6 +173,37 @@ retry:
 				}
 
 				goto retry;
+			} else if (son->numberOfEntriesInNode < order && son->type != rootNode) {
+				rotate_data siblings = {
+					.left = NULL, .right = NULL, .pivot = NULL, .pos_left = -1, .pos_right = -1
+				};
+				__find_position_in_index((index_node *)parent, (struct splice *)req->key_buf,
+							 &siblings);
+				__find_left_and_right_siblings((index_node *)parent, req->key_buf, &siblings);
+				parent->v1++;
+				son->v1++;
+				if (siblings.left)
+					siblings.left->v1++;
+
+				if (siblings.right)
+					siblings.right->v1++;
+
+				ret = transfer_node_to_neighbor_index_node((index_node *)son, (index_node *)parent,
+									   &siblings, req);
+
+				if (ret == 3) {
+					merge_with_index_neighbor((index_node *)son, (index_node *)parent, &siblings,
+								  req);
+				}
+				if (siblings.left)
+					siblings.left->v2++;
+
+				if (siblings.right)
+					siblings.right->v2++;
+
+				son->v2++;
+				parent->v2++;
+				goto retry;
 			}
 
 			next_addr = _index_node_binary_search_and_fill_metadata((index_node *)son, req->key_buf,
@@ -204,11 +217,13 @@ retry:
 		}
 	}
 	assert(!son->height);
-
+	if (parent)
+		parent->v1++;
 	son->v1++; /*lamport counter*/
 	ret = __delete_from_leaf(req, (index_node *)parent, (leaf_node *)son, (struct splice *)req->key_buf);
 	son->v2++; /*lamport counter*/
-
+	if (parent)
+		parent->v2++;
 	return ret;
 }
 
@@ -224,12 +239,14 @@ uint8_t __delete_from_leaf(delete_request *req, index_node *parent, leaf_node *l
 	if (parent)
 		__find_left_and_right_siblings(parent, key, &siblings);
 
-	if (siblings.left != NULL)
+	if (siblings.left != NULL) {
 		assert(siblings.left->type == leafNode);
-
-	if (siblings.right != NULL)
+		siblings.left->v1++;
+	}
+	if (siblings.right != NULL) {
 		assert(siblings.right->type == leafNode);
-
+		siblings.right->v1++;
+	}
 	key_addr_in_leaf = __find_key_addr_in_leaf(
 		leaf, key); /* XXX TODO XXX __find_key_addr_in_leaf should return the position in the leaf node
                                                              to avoid duplication of code.*/
@@ -256,6 +273,12 @@ uint8_t __delete_from_leaf(delete_request *req, index_node *parent, leaf_node *l
 				   If we cannot merge that's a fatal error!
 				*/
 				merge_with_leaf_neighbor(leaf, &siblings, req);
+			}
+			if (siblings.left != NULL) {
+				siblings.left->v2++;
+			}
+			if (siblings.right != NULL) {
+				siblings.right->v2++;
 			}
 
 			return SUCCESS;
