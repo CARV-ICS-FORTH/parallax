@@ -41,6 +41,7 @@ add_library(
   btree/btree.c
   btree/compaction_daemon.c
   btree/static_leaf.c
+  btree/dynamic_leaf.c
   btree/delete.c
   btree/gc.c
   scanner/stack.c
@@ -58,6 +59,7 @@ add_library(
   btree/btree.c
   btree/compaction_daemon.c
   btree/static_leaf.c
+  btree/dynamic_leaf.c
   btree/delete.c
   btree/gc.c
   scanner/stack.c
