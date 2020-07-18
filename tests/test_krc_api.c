@@ -5,6 +5,8 @@
 #include <stdlib.h>
 #include <log.h>
 #include "../kreon_rdma_client/kreon_rdma_client.h"
+#include "../kreon_rdma_client/client_utils.h"
+
 #include "../kreon_server/globals.h"
 
 #define PREFIX_TEST_KEYS 300
@@ -54,55 +56,6 @@ int main(int argc, char *argv[])
 		exit(EXIT_FAILURE);
 	}
 	strcpy(ZOOKEEPER, argv[1]);
-#if 0
-	else if (argc == 2) {
-		strcpy(ZOOKEEPER, argv[1]);
-	} else if (argc > 2 && strcmp(argv[3], "--create_regions") == 0) {
-		strcpy(ZOOKEEPER, argv[1]);
-		strcpy(HOST, argv[2]);
-		globals_set_zk_host(ZOOKEEPER);
-		log_info("Creating %d regions", NUM_REGIONS);
-
-		char *args_buf[14];
-		args_buf[1] = strdup("-c");
-		/*static fields*/
-		args_buf[8] = "--size";
-		args_buf[9] = "1000000";
-
-		args_buf[10] = "--host";
-		args_buf[11] = strdup(HOST);
-		args_buf[12] = "--zookeeper";
-		args_buf[13] = strdup(ZOOKEEPER);
-
-		args_buf[4] = strdup("--minkey");
-		args_buf[5] = malloc(16);
-		args_buf[6] = strdup("--maxkey");
-		args_buf[7] = malloc(16);
-		/*dynamic fields*/
-		for (region_id = 0; region_id < NUM_REGIONS - 1; region_id++) {
-			min_key = BASE + (region_id * range);
-			max_key = min_key + range;
-			args_buf[2] = strdup("--region");
-			args_buf[3] = (char *)malloc(16);
-			sprintf(args_buf[3], "%u", region_id);
-			if (region_id == 0)
-				sprintf(args_buf[5], "%s", "-oo");
-			else
-				sprintf(args_buf[5], "%s%lu", KEY_PREFIX, min_key);
-			sprintf(args_buf[7], "%s%lu", KEY_PREFIX, max_key);
-			create_region(13, args_buf);
-			log_info("Created region id %s minkey %s maxkey %s", args_buf[2], args_buf[4], args_buf[6]);
-		}
-		/*last region*/
-		min_key = BASE + (region_id * range);
-		sprintf(args_buf[3], "%u", region_id);
-		sprintf(args_buf[5], "%s%lu", KEY_PREFIX, min_key);
-		sprintf(args_buf[7], "+oo");
-		create_region(13, args_buf);
-		log_info("Created region id %s minkey %s maxkey %s", args_buf[2], args_buf[4], args_buf[6]);
-		return EXIT_SUCCESS;
-	}
-#endif
 
 	if (krc_init(ZOOKEEPER, 2181) != KRC_SUCCESS) {
 		log_fatal("Failed to init library");
@@ -111,6 +64,21 @@ int main(int argc, char *argv[])
 
 	uint64_t i = 0;
 	uint64_t j = 0;
+	log_info("Checking region health....");
+	char test_region_min_key[32] = { 0 };
+	struct cu_region_desc *c_desc = cu_get_region(test_region_min_key, 32);
+	krc_exists(c_desc->region.min_key_size, c_desc->region.min_key);
+	while (1) {
+		c_desc = cu_get_region(c_desc->region.max_key, c_desc->region.max_key_size);
+		log_info("Probing region with min key %s", c_desc->region.max_key);
+		krc_exists(c_desc->region.min_key_size, c_desc->region.min_key);
+		if (c_desc->region.max_key_size == 3 && memcmp(c_desc->region.max_key, "+oo", 3) == 0) {
+			log_info("Last region reached");
+			break;
+		}
+	}
+	log_info("regions healthy!");
+
 	krc_scannerp sc = NULL;
 
 	key *k = (key *)malloc(KV_SIZE);

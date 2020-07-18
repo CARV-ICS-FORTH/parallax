@@ -246,6 +246,7 @@ uint8_t krm_insert_ds_region(struct krm_server_desc *desc, struct krm_region_des
 	uint8_t rc = KRM_SUCCESS;
 
 	++reg_table->lamport_counter_1;
+	log_info("Adding region min key %s max key %s", r_desc->region->min_key, r_desc->region->max_key);
 
 	if (reg_table->num_ds_regions == KRM_MAX_DS_REGIONS) {
 		log_warn("Warning! Adding new region failed, max_regions %d reached", KRM_MAX_DS_REGIONS);
@@ -261,7 +262,7 @@ uint8_t krm_insert_ds_region(struct krm_server_desc *desc, struct krm_region_des
 					  r_desc->region->min_key_size, r_desc->region->min_key);
 
 			if (ret == 0) {
-				log_warn("Warning failed to add region, range already present\n");
+				log_warn("failed to add region, range already present");
 				rc = KRM_REGION_EXISTS;
 				break;
 			} else if (ret > 0) {
@@ -344,6 +345,7 @@ static void krm_send_open_command(struct krm_server_desc *desc, struct krm_regio
 			exit(EXIT_FAILURE);
 		}
 		msg.epoch = rs->server_id.epoch;
+		pthread_mutex_lock(&rs->region_list_lock);
 		log_info("Sending open command (as primary) to %s", path);
 		rc = zoo_create(desc->zh, path, (char *)&msg, sizeof(struct krm_msg), &ZOO_OPEN_ACL_UNSAFE,
 				ZOO_SEQUENCE, mail_id, mail_id_len);
@@ -357,8 +359,8 @@ static void krm_send_open_command(struct krm_server_desc *desc, struct krm_regio
 		r_desc->role = KRM_PRIMARY;
 		r_desc->region->status = KRM_OPENING;
 		add_last(rs->regions, r_desc, NULL);
-		log_info("rs regions size %u", rs->regions->size);
 		free(path);
+		pthread_mutex_unlock(&rs->region_list_lock);
 	}
 	/*The same procedure for backups*/
 	for (i = 0; i < region->num_of_backup; i++) {
@@ -492,13 +494,15 @@ void mailbox_watcher(zhandle_t *zh, int type, int state, const char *path, void 
 		for (i = 0; i < mails->count; i++) {
 			mail = zku_concat_strings(3, s_desc->mail_path, KRM_SLASH, mails->data[i]);
 			msg = (struct krm_msg *)malloc(sizeof(struct krm_msg));
-			log_info("fetching mail %s", mail);
+
 			buffer_len = sizeof(struct krm_msg);
 			rc = zoo_get(s_desc->zh, mail, 0, (char *)msg, &buffer_len, &stat);
 			if (rc != ZOK) {
 				log_fatal("Failed to fetch email %s", mail);
 				exit(EXIT_FAILURE);
 			}
+
+			log_info("fetched mail %s for region %s", mail, msg->region.id);
 			pthread_mutex_lock(&s_desc->msg_list_lock);
 			add_last(s_desc->msg_list, msg, NULL);
 			sem_post(&s_desc->wake_up);
@@ -578,27 +582,46 @@ static void krm_process_msg(struct krm_server_desc *server, struct krm_msg *msg)
 		/*region find it in the region table and mark it as healthy*/
 		int start = 0;
 		int end = server->ld_regions->num_regions - 1;
-		int middle;
-		int64_t ret;
+		int middle = 0;
+		int64_t ret = -1;
+
 		while (start <= end) {
 			middle = (start + end) / 2;
 			ret = zku_key_cmp(server->ld_regions->regions[middle].min_key_size,
 					  server->ld_regions->regions[middle].min_key, msg->region.min_key_size,
 					  msg->region.min_key);
+			log_info("compared region min key %s with %s got %lld",
+				 server->ld_regions->regions[middle].min_key, msg->region.min_key, ret);
 			if (ret > 0)
-				start = middle + 1;
-			else if (ret < 0)
 				end = middle - 1;
-			else {
-				/*found it check for correctness the max key*/
-				if (zku_key_cmp(server->ld_regions->regions[middle].max_key_size,
-						server->ld_regions->regions[middle].max_key, msg->region.max_key_size,
-						msg->region.max_key) != 0) {
-					log_fatal("Mismatch for region max key expected %s got %s",
-						  server->ld_regions->regions[middle].max_key, msg->region.max_key);
-					exit(EXIT_FAILURE);
-				}
+			else if (ret < 0)
+				start = middle + 1;
+			else
 				break;
+		}
+		//correctness check
+		if (server->ld_regions->num_regions > 0 && ret != 0) {
+			log_fatal(
+				"Region %s min key %s max key %s (mentioned in ACK_REGION_OPEN) not found! total regions %d",
+				msg->region.id, msg->region.min_key, msg->region.max_key,
+				server->ld_regions->num_regions);
+			krm_check_ld_regions_sorted(server->ld_regions);
+
+			exit(EXIT_FAILURE);
+		} else {
+			/*found it check for correctness the max key*/
+			if (zku_key_cmp(server->ld_regions->regions[middle].max_key_size,
+					server->ld_regions->regions[middle].max_key, msg->region.max_key_size,
+					msg->region.max_key) != 0) {
+				log_fatal("Mismatch for region");
+				log_info("max key expected %s got %s", server->ld_regions->regions[middle].max_key,
+					 msg->region.max_key);
+				log_info("min key expected %s got %s", server->ld_regions->regions[middle].min_key,
+					 msg->region.min_key);
+				log_info("region id expected %s got %s", server->ld_regions->regions[middle].id,
+					 msg->region.id);
+
+				exit(EXIT_FAILURE);
 			}
 		}
 		server->ld_regions->regions[middle].status = KRM_OPEN;
@@ -623,8 +646,15 @@ static void krm_process_msg(struct krm_server_desc *server, struct krm_msg *msg)
 			NODE *node;
 			LIST *regions = rps->regions;
 			struct krm_region_desc *r_desc;
+			pthread_mutex_lock(&rps->region_list_lock);
 
 			node = regions->first;
+			if (node == NULL) {
+				log_warn(
+					"Ignoring no regions held by ds server %s region id which nack_open_primary was sent %s",
+					msg->sender, msg->region.id);
+				assert(0);
+			}
 			while (node != NULL) {
 				r_desc = (struct krm_region_desc *)node->data;
 				if (strcmp(msg->region.id, r_desc->region->id) == 0) {
@@ -633,14 +663,22 @@ static void krm_process_msg(struct krm_server_desc *server, struct krm_msg *msg)
 						/*ok resend the open command*/
 						log_info("Resending open command to %s for region %s", msg->sender,
 							 r_desc->region->id);
+
+						pthread_mutex_unlock(&rps->region_list_lock);
 						krm_send_open_command(server, r_desc->region);
 						break;
-					} else
-						log_warn("Unhandled regions status %d ignoring for now(TODO)");
+					} else {
+						log_warn(
+							"Unhandled regions status %d for region id %s msg->region_id %s",
+							r_desc->region->status, r_desc->region->id, msg->region.id);
+						assert(0);
+					}
 				}
 				node = node->next;
 			}
-			log_warn("Ignoring no regions held by ds server %s", msg->sender);
+
+			pthread_mutex_unlock(&rps->region_list_lock);
+
 		} else {
 			log_fatal("No state for server %s", msg->sender);
 			exit(EXIT_FAILURE);
@@ -862,6 +900,7 @@ void *krm_metadata_server(void *args)
 
 				struct krm_regions_per_server *regions_per_server =
 					(struct krm_regions_per_server *)malloc(sizeof(struct krm_regions_per_server));
+				pthread_mutex_init(&regions_per_server->region_list_lock, NULL);
 				regions_per_server->server_id = ds;
 				regions_per_server->regions = init_list(krm_free_regions_per_server_entry);
 
