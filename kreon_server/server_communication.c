@@ -15,13 +15,13 @@ struct sc_conn_per_server {
 	struct connection_rdma *conn;
 	UT_hash_handle hh;
 };
-struct sc_conn_per_server *sc_root_cps = NULL;
+struct sc_conn_per_server *sc_root_cps;
 static pthread_mutex_t conn_map_lock = PTHREAD_MUTEX_INITIALIZER;
 struct sc_msg_pair sc_allocate_rpc_pair(struct connection_rdma *conn, uint32_t request_size, uint32_t reply_size,
 					enum message_type type)
 {
-	struct sc_msg_pair rep = { NULL, NULL, 0 };
-
+	struct sc_msg_pair rep = { .request = NULL, .reply = NULL, .stat = 0 };
+	rep.conn = conn;
 	char *addr;
 	uint32_t actual_request_size;
 	uint32_t actual_reply_size;
@@ -62,29 +62,68 @@ struct sc_msg_pair sc_allocate_rpc_pair(struct connection_rdma *conn, uint32_t r
 	case GET_LOG_BUFFER_REQ:
 		req_type = type;
 		rep_type = GET_LOG_BUFFER_REP;
-		/*The idea is the following, if we are not able to allocate both
-		 * buffers while acquiring the lock we should rollback. Also we need to 
-		 * allocate receive buffer first and then send buffer.
-		 */
-		/*first allocate the receive buffer, aka where we expect the reply*/
-		rep.stat = allocate_space_from_circular_buffer(conn->recv_circular_buf, actual_reply_size, &addr);
-		if (rep.stat != ALLOCATION_IS_SUCCESSFULL)
-			goto exit;
-		rep.reply = (struct msg_header *)addr;
-
-		rep.stat = allocate_space_from_circular_buffer(conn->send_circular_buf, actual_request_size, &addr);
-		if (rep.stat != ALLOCATION_IS_SUCCESSFULL) {
-			/*rollback previous allocation*/
-			free_space_from_circular_buffer(conn->recv_circular_buf, (char *)rep.reply, actual_reply_size);
-			goto exit;
-		}
-		rep.request = (struct msg_header *)addr;
-		/*init the headers*/
-		goto init_messages;
+		break;
+	case FLUSH_COMMAND_REQ:
+		req_type = type;
+		rep_type = FLUSH_COMMAND_REP;
+		break;
 	default:
 		log_fatal("Unsupported message type %d", type);
 		exit(EXIT_FAILURE);
 	}
+	/*The idea is the following, if we are not able to allocate both
+		 * buffers while acquiring the lock we should rollback. Also we need to
+		 * allocate receive buffer first and then send buffer.
+		 */
+	/*first allocate the receive buffer, aka where we expect the reply*/
+	rep.stat = allocate_space_from_circular_buffer(conn->recv_circular_buf, actual_reply_size, &addr);
+	switch (rep.stat) {
+	case NOT_ENOUGH_SPACE_AT_THE_END: {
+		log_info("Sending reset rendezvous message");
+		char *addr;
+		struct msg_header *msg;
+		/*inform remote side that to reset the rendezvous*/
+		if (allocate_space_from_circular_buffer(conn->recv_circular_buf, MESSAGE_SEGMENT_SIZE, &addr) !=
+		    ALLOCATION_IS_SUCCESSFULL) {
+			log_fatal("cannot send reset rendezvous");
+			exit(EXIT_FAILURE);
+		}
+		msg = (msg_header *)addr;
+		msg->pay_len = 0;
+		msg->padding_and_tail = 0;
+		msg->data = NULL;
+		msg->next = NULL;
+
+		msg->receive = RESET_RENDEZVOUS;
+		msg->type = RESET_RENDEZVOUS;
+		msg->local_offset = addr - conn->recv_circular_buf->memory_region;
+		msg->remote_offset = addr - conn->recv_circular_buf->memory_region;
+		//log_info("Sending to remote offset %llu\n", msg->remote_offset);
+		msg->ack_arrived = 0; //maybe?
+		msg->callback_function = NULL;
+		msg->request_message_local_addr = NULL;
+		msg->reply = NULL;
+		msg->reply_length = 0;
+		__send_rdma_message(conn, msg);
+		goto exit;
+	}
+	case ALLOCATION_IS_SUCCESSFULL:
+		break;
+	default:
+		goto exit;
+	}
+
+	rep.reply = (struct msg_header *)addr;
+
+	rep.stat = allocate_space_from_circular_buffer(conn->send_circular_buf, actual_request_size, &addr);
+	if (rep.stat != ALLOCATION_IS_SUCCESSFULL) {
+		/*rollback previous allocation*/
+		free_space_from_circular_buffer(conn->recv_circular_buf, (char *)rep.reply, actual_reply_size);
+		goto exit;
+	}
+	rep.request = (struct msg_header *)addr;
+	/*init the headers*/
+	goto init_messages;
 
 init_messages : {
 	struct msg_header *msg;
@@ -144,23 +183,40 @@ init_messages : {
 
 exit:
 	pthread_mutex_unlock(&conn->buffer_lock);
+
 	return rep;
 }
 
 void sc_free_rpc_pair(struct sc_msg_pair *p)
 {
+	uint32_t size;
+	msg_header *request;
+	msg_header *reply;
+	request = p->request;
+	reply = p->reply;
+	assert(request->reply_length != 0);
+	free_space_from_circular_buffer(p->conn->recv_circular_buf, (char *)reply, request->reply_length);
+
+	if (request->pay_len == 0) {
+		size = MESSAGE_SEGMENT_SIZE;
+	} else {
+		size = TU_HEADER_SIZE + request->pay_len + request->padding_and_tail;
+		assert(size % MESSAGE_SEGMENT_SIZE == 0);
+	}
+	free_space_from_circular_buffer(p->conn->send_circular_buf, (char *)request, size);
+	return;
 }
 
 struct connection_rdma *sc_get_conn(char *hostname)
 {
 	struct sc_conn_per_server *cps;
-	uint64_t hash_key;
-	log_info("Conn for %s", hostname);
-	hash_key = djb2_hash((unsigned char *)hostname, strlen(hostname));
-	HASH_FIND_PTR(sc_root_cps, &hash_key, cps);
+	uint64_t key;
+
+	key = djb2_hash((unsigned char *)hostname, strlen(hostname));
+	HASH_FIND_PTR(sc_root_cps, &key, cps);
 	if (cps == NULL) {
 		pthread_mutex_lock(&conn_map_lock);
-		HASH_FIND_PTR(sc_root_cps, &hash_key, cps);
+		HASH_FIND_PTR(sc_root_cps, &key, cps);
 		if (cps == NULL) {
 			/*ok update server info from zookeeper*/
 			cps = (struct sc_conn_per_server *)malloc(sizeof(struct sc_conn_per_server));
@@ -168,17 +224,16 @@ struct connection_rdma *sc_get_conn(char *hostname)
 				log_fatal("Failed to refresh info for server %s", hostname);
 				exit(EXIT_FAILURE);
 			}
-			char *IP =  cps->server.RDMA_IP_addr;
+			char *IP = cps->server.RDMA_IP_addr;
 			cps->conn = crdma_client_create_connection_list_hosts(globals_get_rdma_channel(), &IP, 1,
 									      MASTER_TO_REPLICA_CONNECTION);
+
 			/*init list here*/
-			cps->hash_key = hash_key;
+			cps->hash_key = key;
 			HASH_ADD_PTR(sc_root_cps, hash_key, cps);
-			log_info("Got connection with %s", hostname);
 		}
 		pthread_mutex_unlock(&conn_map_lock);
 	}
 
 	return cps->conn;
 }
-

@@ -100,15 +100,13 @@ typedef struct spinning_thread_parameters {
 } spinning_thread_parameters;
 
 typedef enum connection_type {
-	CLIENT_TO_SERVER_CONNECTION,
+	CLIENT_TO_SERVER_CONNECTION = 1,
 	SERVER_TO_CLIENT_CONNECTION,
 	MASTER_TO_REPLICA_CONNECTION,
 	REPLICA_TO_MASTER_CONNECTION,
-	H3_CLIENT_TO_SERVER_CONNECTION,
-	H3_SERVER_TO_CLIENT_CONNECTION
 } connection_type;
 
-typedef enum region_status { REGION_OK = 1000, REGION_IN_TRANSITION } region_status;
+//typedef enum region_status { REGION_OK = 1000, REGION_IN_TRANSITION } region_status;
 
 typedef enum connection_status {
 	CONNECTION_OK = 5,
@@ -213,7 +211,6 @@ struct channel_rdma {
 	on_connection_created connection_created; //Callback function used for created a thread at
 };
 
-
 struct pingpong_dest {
 	int lid;
 	int qpn;
@@ -281,8 +278,6 @@ typedef struct connection_rdma {
 	int idconn;
 } connection_rdma;
 
-
-
 void crdma_init_generic_create_channel(struct channel_rdma *channel);
 void crdma_init_client_connection(struct connection_rdma *conn, const char *host, const char *port,
 				  struct channel_rdma *channel);
@@ -296,7 +291,6 @@ struct connection_rdma *crdma_client_create_connection_list_hosts(struct channel
 
 void crdma_init_client_connection_list_hosts(struct connection_rdma *conn, char **hosts, const int num_hosts,
 					     struct channel_rdma *channel, connection_type type);
-
 
 msg_header *allocate_rdma_message(connection_rdma *conn, int message_payload_size, int message_type);
 void init_rdma_message(connection_rdma *conn, msg_header *msg, uint32_t message_type, uint32_t message_size,

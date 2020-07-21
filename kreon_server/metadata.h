@@ -29,7 +29,7 @@
 #define RU_REPLICA_NUM_SEGMENTS 4
 #define RU_REGION_KEY_SIZE 256
 #define RU_MAX_TREE_HEIGHT 12
-
+#define RU_MAX_NUM_REPLICAS 2
 enum krm_zk_conn_state { KRM_INIT, KRM_CONNECTED, KRM_DISCONNECTED, KRM_EXPIRED };
 
 enum krm_server_state {
@@ -74,6 +74,9 @@ enum krm_work_task_status {
 	INS_TO_KREON,
 	INIT_LOG_BUFFERS,
 	REPLICATE,
+	FLUSH_REPLICA_BUFFERS,
+	SEND_FLUSH_COMMANDS,
+	WAIT_FOR_FLUSH_REPLIES,
 	REGION_HALTED,
 	TASK_SUSPENDED,
 };
@@ -82,6 +85,8 @@ enum krm_work_task_type { KRM_CLIENT_POOL, KRM_SERVER_POOL };
 
 struct krm_work_task {
 	/*from client*/
+	bt_insert_req ins_req;
+	int seg_id_to_flush;
 	struct channel_rdma *channel;
 	struct connection_rdma *conn;
 	msg_header *msg;
@@ -98,6 +103,7 @@ struct krm_work_task {
 	int thread_id;
 	int error_code;
 	int pool_id;
+	int suspended;
 	enum krm_work_task_status kreon_operation_status;
 	struct msg_put_key *key;
 	struct msg_put_value *value;
@@ -140,8 +146,10 @@ enum ru_remote_buffer_status {
 };
 
 struct ru_master_log_buffer_seg {
-	uint32_t start;
-	uint32_t end;
+	struct sc_msg_pair flush_cmd;
+	enum ru_remote_buffer_status flush_cmd_stat;
+	uint64_t start;
+	uint64_t end;
 	struct ibv_mr mr;
 };
 
@@ -171,6 +179,7 @@ struct ru_replica_log_buffer_seg {
 };
 
 struct ru_replica_state {
+	uint64_t next_segment_id_to_flush;
 	int num_buffers;
 	struct ru_replica_log_buffer_seg seg[];
 };
@@ -203,6 +212,7 @@ struct krm_region_desc {
 	struct krm_region *region;
 	enum krm_region_role role;
 	db_handle *db;
+	uint64_t next_segment_to_flush;
 	int replica_bufs_initialized;
 	int region_halted;
 

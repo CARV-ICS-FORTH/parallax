@@ -820,7 +820,7 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 		db_desc->commit_log = (commit_log_info *)get_space_for_system(volume_desc, sizeof(commit_log_info));
 		/*get a page for commit_log info*/
 		if (CREATE_FLAG != CREATE_DB) {
-			DPRINT("replica db ommiting KV log initialization\n");
+			log_warn("replica db ommiting KV log initialization");
 			db_desc->KV_log_first_segment = NULL;
 			db_desc->KV_log_last_segment = NULL;
 			db_desc->KV_log_size = 0;

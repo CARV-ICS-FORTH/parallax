@@ -23,20 +23,15 @@ enum message_type {
 	DELETE_REQUEST,
 	DELETE_REPLY,
 	/*server2server*/
+	FLUSH_COMMAND_REP,
+	FLUSH_COMMAND_REQ,
+	GET_LOG_BUFFER_REQ,
+	GET_LOG_BUFFER_REP,
 	SPILL_INIT,
 	SPILL_INIT_ACK,
 	SPILL_BUFFER_REQUEST,
 	SPILL_COMPLETE,
 	SPILL_COMPLETE_ACK,
-	FLUSH_SEGMENT_AND_RESET,
-	FLUSH_SEGMENT,
-	FLUSH_SEGMENT_ACK,
-	FLUSH_SEGMENT_ACK_AND_RESET,
-	FLUSH_SEGMENT_TEST,
-	SYNC_SEGMENT,
-	SYNC_SEGMENT_ACK,
-	GET_LOG_BUFFER_REQ,
-	GET_LOG_BUFFER_REP,
 	/*control stuff*/
 	RESET_BUFFER,
 	RESET_BUFFER_ACK,
@@ -52,7 +47,9 @@ enum message_type {
 	TEST_REPLY_FETCH_PAYLOAD,
 	CLIENT_STOP_NOW,
 	SERVER_I_AM_READY,
-	CLIENT_RECEIVED_READY
+	CLIENT_RECEIVED_READY,
+	/*pseudo-messages*/
+	RECOVER_LOG_CONTEXT
 };
 
 typedef enum receive_options { SYNC_REQUEST = 2, ASYNC_REQUEST, BUSY_WAIT } receive_options;
@@ -190,6 +187,7 @@ typedef struct msg_multi_get_rep {
 	char kv_buffer[];
 } msg_multi_get_rep;
 
+/*somehow dead*/
 typedef struct set_connection_property_req {
 	int desired_priority_level;
 	int desired_RDMA_memory_size;
@@ -200,6 +198,8 @@ typedef struct set_connection_property_reply {
 	int assigned_RDMA_memory_size;
 } set_connection_property_reply;
 
+/*server2server used for replication*/
+/*msg pair for initializing remote log buffers*/
 struct msg_get_log_buffer_req {
 	int num_buffers;
 	int buffer_size;
@@ -211,6 +211,33 @@ struct msg_get_log_buffer_rep {
 	uint32_t status;
 	int num_buffers;
 	struct ibv_mr mr[];
+};
+
+/*flush command pair*/
+struct msg_flush_cmd_req {
+	/*where primary has stored its segment*/
+	uint64_t master_segment;
+	uint64_t segment_id;
+	uint64_t end_of_log;
+	uint64_t log_padding;
+
+	uint64_t tail;
+	uint32_t log_buffer_id;
+	uint32_t region_key_size;
+	char region_key[];
+};
+
+struct msg_flush_cmd_rep {
+	uint32_t status;
+};
+
+//caution pseudo message, it does not travel through the network
+struct msg_recover_log_context {
+	struct msg_header header;
+	uint32_t num_of_replies_needed;
+	uint32_t num_of_replies_received;
+	void *memory;
+	struct ibv_mr *mr;
 };
 
 int push_buffer_in_msg_header(struct msg_header *data_message, char *buffer, uint32_t buffer_length);

@@ -9,7 +9,12 @@ typedef enum circular_buffer_op_status {
 	SPACE_NOT_READY_YET
 } circular_buffer_op_status;
 
-typedef enum circular_buffer_type { SEND_BUFFER = 0x00, RECEIVE_BUFFER } circular_buffer_type;
+typedef enum circular_buffer_type {
+	SEND_BUFFER,
+	RECEIVE_BUFFER,
+	SC_SEND_BUFFER,
+	SC_RECEIVE_BUFFER
+} circular_buffer_type;
 
 typedef struct circular_buffer {
 	uint32_t total_memory_size;

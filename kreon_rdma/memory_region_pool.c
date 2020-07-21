@@ -18,9 +18,8 @@
 
 #define ALLOC_LOCAL 1 // if true use numa_alloc_local, otherwise use posix_memalign
 
-const size_t MEM_REGION_BASE_SIZE = 32 * 1024 * 1024;
+const size_t MEM_REGION_BASE_SIZE = 2 * 1024 * 1024;
 const size_t MR_PREALLOCATE_COUNT = 128; //FIXME unused
-const size_t REPLICA_BUFFER_SIZE = 8 * 1024 * 1024;
 
 static int _mrpool_preallocate_mr(memory_region_pool *);
 static void _mrpool_initialize_mem_region(memory_region *, struct ibv_pd *, size_t);
@@ -98,7 +97,7 @@ memory_region *mrpool_allocate_memory_region(memory_region_pool *pool, struct rd
 	} else if (pool->type == DYNAMIC) {
 		mr = (memory_region *)malloc(sizeof(memory_region));
 		if (!mr) {
-			ERRPRINT("Allocation of new memory region failed\n");
+			log_warn("Allocation of new memory region failed\n");
 			return NULL;
 		}
 		_mrpool_initialize_mem_region(mr, pool->pd, pool->default_allocation_size);

@@ -1006,9 +1006,9 @@ void crdma_init_client_connection_list_hosts(connection_rdma *conn, char **hosts
 #else
 	pthread_spin_init(&conn->buffer_lock, PTHREAD_PROCESS_PRIVATE);
 #endif
-
-	if (conn->type == CLIENT_TO_SERVER_CONNECTION || conn->type == MASTER_TO_REPLICA_CONNECTION) {
-		log_info("Initializing client circular buffer");
+	switch (conn->type) {
+	case CLIENT_TO_SERVER_CONNECTION:
+		log_info("Initializing client communication circular buffer");
 		conn->send_circular_buf =
 			create_and_init_circular_buffer(conn->rdma_memory_regions->local_memory_buffer,
 							conn->peer_mr->length, MESSAGE_SEGMENT_SIZE, SEND_BUFFER);
@@ -1030,8 +1030,25 @@ void crdma_init_client_connection_list_hosts(connection_rdma *conn, char **hosts
 		conn->control_location_length = msg->reply_length;
 		msg->receive = I_AM_CLIENT;
 		__send_rdma_message(conn, msg);
-		log_info("Connection created successfully, no spinning thread will check it");
-	} else {
+		log_info("Client Connection created successfully, no spinning thread will check it");
+		break;
+
+	case MASTER_TO_REPLICA_CONNECTION:
+		log_info("Initializing master to replica communication circular buffer");
+		conn->send_circular_buf =
+			create_and_init_circular_buffer(conn->rdma_memory_regions->local_memory_buffer,
+							conn->peer_mr->length, MESSAGE_SEGMENT_SIZE, SC_SEND_BUFFER);
+		conn->recv_circular_buf =
+			create_and_init_circular_buffer(conn->rdma_memory_regions->remote_memory_buffer,
+							conn->peer_mr->length, MESSAGE_SEGMENT_SIZE, SC_RECEIVE_BUFFER);
+		conn->reset_point = 0;
+		break;
+
+	default:
+		conn->send_circular_buf = NULL;
+		conn->recv_circular_buf = NULL;
+		conn->reset_point = 0;
+		crdma_add_connection_channel(channel, conn);
 		conn->send_circular_buf = NULL;
 		conn->recv_circular_buf = NULL;
 		conn->reset_point = 0;
@@ -1238,16 +1255,13 @@ uint32_t wait_for_payload_arrival(msg_header *hdr)
 		message_size = TU_HEADER_SIZE + hdr->pay_len + hdr->padding_and_tail;
 		tail = (uint32_t *)(((uint64_t)hdr + TU_HEADER_SIZE + hdr->pay_len + hdr->padding_and_tail) -
 				    sizeof(uint32_t));
-		/*Dont wait for FLUSH_SEGMENT data are already there*/
-		if (hdr->type != FLUSH_SEGMENT && hdr->type != FLUSH_SEGMENT_AND_RESET) {
-			/*calculate the address of the tail*/
-			//blocking style
-			wait_for_value(tail, TU_RDMA_REGULAR_MSG);
-			//non-blocking style
-			// if (*tail != TU_RDMA_REGULAR_MSG) {
-			// 	return 0;
-			// }
-		}
+		/*calculate the address of the tail*/
+		//blocking style
+		wait_for_value(tail, TU_RDMA_REGULAR_MSG);
+		//non-blocking style
+		// if (*tail != TU_RDMA_REGULAR_MSG) {
+		// 	return 0;
+		// }
 		hdr->data = (void *)((uint64_t)hdr + TU_HEADER_SIZE);
 		hdr->next = hdr->data;
 	} else {
@@ -1786,18 +1800,18 @@ void on_completion_server(struct ibv_wc *wc, struct connection_rdma *conn)
 				case CLIENT_RECEIVED_READY:
 					/*do nothing, client handles them*/
 					break;
-
-				/*server to server*/
+					/*server to server new school*/
+				case GET_LOG_BUFFER_REQ:
+				case GET_LOG_BUFFER_REP:
+				case FLUSH_COMMAND_REQ:
+				case FLUSH_COMMAND_REP:
+					break;
+				/*server to server old school*/
 				case SPILL_INIT_ACK:
 				case SPILL_COMPLETE_ACK:
-				case FLUSH_SEGMENT_ACK:
-				case FLUSH_SEGMENT_ACK_AND_RESET:
 				case SPILL_INIT:
 				case SPILL_BUFFER_REQUEST:
 				case SPILL_COMPLETE:
-				case FLUSH_SEGMENT:
-				case FLUSH_SEGMENT_AND_RESET:
-				case FLUSH_SEGMENT_TEST:
 					free_rdma_local_message(conn);
 					break;
 					/*client to server RPCs*/
@@ -1821,6 +1835,16 @@ void on_completion_server(struct ibv_wc *wc, struct connection_rdma *conn)
 				case RESET_BUFFER:
 				case RESET_BUFFER_ACK:
 					break;
+				case RECOVER_LOG_CONTEXT: {
+					struct msg_recover_log_context *c = (struct msg_recover_log_context *)wc->wr_id;
+					if (++c->num_of_replies_received >= c->num_of_replies_needed) {
+						rdma_dereg_mr(c->mr);
+						free(c->memory);
+						free(c);
+						log_info("Recovering log Done");
+					}
+					break;
+				}
 
 				default:
 					log_fatal("Entered unplanned state FATAL for message type %d", msg->type);
@@ -1849,7 +1873,7 @@ void on_completion_server(struct ibv_wc *wc, struct connection_rdma *conn)
 			exit(EXIT_FAILURE);
 		}
 	} else { /*error handling*/
-		log_fatal("%s\n", ibv_wc_status_str(wc->status));
+		log_fatal("conn type is %d %s\n", conn->type, ibv_wc_status_str(wc->status));
 		conn->status = CONNECTION_ERROR;
 		raise(SIGINT);
 		exit(KREON_FAILURE);

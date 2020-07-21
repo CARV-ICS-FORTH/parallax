@@ -3,12 +3,10 @@
 #include <stddef.h>
 #include <stdint.h>
 
-
 #define CONF_CACHE_LINE 64
 
 /*watch out this is the vanilla value*/
-#define UTILS_QUEUE_CAPACITY 512
-
+#define UTILS_QUEUE_CAPACITY 1024 //512
 
 #ifdef __cplusplus
 extern "C" {
@@ -19,14 +17,14 @@ extern "C" {
  */
 struct queue {
 	/** Push here  */
-	volatile uint16_t bottom __attribute__( ( aligned(CONF_CACHE_LINE) ) );
+	volatile uint16_t bottom __attribute__((aligned(CONF_CACHE_LINE)));
 
 	/** Pop here */
-	volatile uint16_t top __attribute__( ( aligned(CONF_CACHE_LINE) ) );
+	volatile uint16_t top __attribute__((aligned(CONF_CACHE_LINE)));
 
 	/** Pointers to data. */
-	void              *entries[UTILS_QUEUE_CAPACITY];
-} __attribute__( ( aligned(CONF_CACHE_LINE) ) );
+	void *entries[UTILS_QUEUE_CAPACITY];
+} __attribute__((aligned(CONF_CACHE_LINE)));
 
 typedef struct queue utils_queue_s;
 
@@ -36,7 +34,7 @@ typedef struct queue utils_queue_s;
  * @param buff Allocated buffer.
  * @return queue instance.NULL on failure.
  */
-utils_queue_s* utils_queue_init(void *buff);
+utils_queue_s *utils_queue_init(void *buff);
 
 /**
  * Return number of used slots in the queue.
@@ -56,7 +54,7 @@ unsigned int utils_queue_used_slots(utils_queue_s *q);
  * @param data Non NULL pointer to data.
  * @return Equal to data, NULL on failure.
  */
-void* utils_queue_push(utils_queue_s *q, void *data);
+void *utils_queue_push(utils_queue_s *q, void *data);
 
 /**
  * Pop data from queue.
@@ -64,7 +62,7 @@ void* utils_queue_push(utils_queue_s *q, void *data);
  * @param q Valid queue instance pointer.
  * @return Data pointer, NULL on failure.
  */
-void* utils_queue_pop(utils_queue_s *q);
+void *utils_queue_pop(utils_queue_s *q);
 
 /**
  * Peek first element from queue if any
@@ -72,7 +70,7 @@ void* utils_queue_pop(utils_queue_s *q);
  * @param q Valid queue instance pointer.
  * @return Data pointer, NULL on failure.
  */
-void* utils_queue_peek(utils_queue_s *q);
+void *utils_queue_peek(utils_queue_s *q);
 #ifdef __cplusplus
 }
 #endif /* ifdef __cplusplus */
