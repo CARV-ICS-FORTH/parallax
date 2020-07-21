@@ -1220,8 +1220,10 @@ void *append_key_value_to_log(log_operation *req)
 		/* position the log to the newly added block*/
 		handle->db_desc->KV_log_size += (available_space_in_log + sizeof(segment_header));
 	}
+
 	addr_inlog = (void *)((uint64_t)handle->db_desc->KV_log_last_segment +
 			      (handle->db_desc->KV_log_size % BUFFER_SEGMENT_SIZE));
+	req->metadata->log_offset = handle->db_desc->KV_log_size;
 	handle->db_desc->KV_log_size += data_size.kv_size;
 
 #ifdef LOG_WITH_MUTEX
