@@ -573,8 +573,10 @@ static struct krm_work_task *ds_get_client_task_buffer(struct ds_spinning_thread
 	}
 	spinner->c_last_pool = idx;
 	// reset task struct
-	memset(job, 0, sizeof(struct krm_work_task));
-	job->pool_id = idx;
+	if (job) {
+		memset(job, 0, sizeof(struct krm_work_task));
+		job->pool_id = idx;
+	}
 	return job;
 }
 
