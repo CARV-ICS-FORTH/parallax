@@ -671,14 +671,31 @@ static int assign_job_to_worker(struct ds_spinning_thread *spinner, struct conne
 	job->kreon_operation_status = TASK_START;
 	/*initialization of various fsm*/
 	job->thread_id = worker_id;
-	job->notification_addr = job->msg->request_message_local_addr;
+	job->notification_addr = (void *)job->msg->request_message_local_addr;
 
 	if (utils_queue_push(&workers[worker_id].work_queue, (void *)job) == NULL) {
-		log_fatal(
-			"Failed to add CONTROL job of type: %d to queue tried worker %d its status is %llu retrying\n",
-			job->msg->type, worker_id, (LLU)workers[worker_id].status);
-		utils_queue_push(&workers[worker_id].work_queue, (void *)job);
-		exit(EXIT_FAILURE);
+		// Give back the allocated job buffer
+		switch (msg->type) {
+		case SPILL_INIT:
+		case SPILL_INIT_ACK:
+		case SPILL_BUFFER_REQUEST:
+		case SPILL_COMPLETE:
+		case SPILL_COMPLETE_ACK:
+		case FLUSH_SEGMENT_AND_RESET:
+		case FLUSH_SEGMENT:
+		case FLUSH_SEGMENT_ACK:
+		case FLUSH_SEGMENT_ACK_AND_RESET:
+		case FLUSH_SEGMENT_TEST:
+		case SYNC_SEGMENT:
+		case SYNC_SEGMENT_ACK:
+		case GET_LOG_BUFFER_REQ:
+		case GET_LOG_BUFFER_REP:
+			ds_put_server_task_buffer(spinner, job);
+			break;
+		default:
+			ds_put_client_task_buffer(spinner, job);
+		}
+		return KREON_FAILURE;
 	}
 
 	pthread_spin_lock(&workers[worker_id].work_queue_lock);
