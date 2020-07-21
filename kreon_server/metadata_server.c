@@ -343,7 +343,7 @@ static void krm_resend_open_command(struct krm_server_desc *desc, struct krm_reg
 	char *path =
 		zku_concat_strings(5, KRM_ROOT_PATH, KRM_MAILBOX_PATH, KRM_SLASH, kreon_ds_hostname, KRM_MAIL_TITLE);
 
-	assert(type == KRM_OPEN_REGION_AS_PRIMARY || type == KRM_ACK_OPEN_BACKUP);
+	assert(type == KRM_OPEN_REGION_AS_PRIMARY || type == KRM_OPEN_REGION_AS_BACKUP);
 	msg.type = type;
 	msg.region = *region;
 	strcpy(msg.sender, desc->name.kreon_ds_hostname);
