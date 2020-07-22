@@ -26,7 +26,6 @@ char *krm_server_state_tostring(enum krm_server_state state)
 								       "KRM_BOOTING",
 								       "KRM_CLEAN_MAILBOX",
 								       "KRM_SET_DS_WATCHERS",
-								       "KRM_SET_LD_WATCHERS",
 								       "KRM_BUILD_DATASERVERS_TABLE",
 								       "KRM_BUILD_REGION_TABLE",
 								       "KRM_ASSIGN_REGIONS",
@@ -534,20 +533,23 @@ void leader_health_watcher(zhandle_t *zh, int type, int state, const char *path,
 
 void dataserver_health_watcher(zhandle_t *zh, int type, int state, const char *path, void *watcherCtx)
 {
-	struct Stat stat;
 	int rc;
+	struct Stat *stat = (struct Stat *)watcherCtx;
+	log_info("Leader: Something changed with the dataservers!");
 	if (type == ZOO_DELETED_EVENT) {
-		log_warn("Leader some dataserver %s died unhandled situation TODO");
+		log_warn("Leader: dataserver %s died! [TODO] Unhandled error, exiting...", path);
 		exit(EXIT_FAILURE);
-	} else if (type == ZOO_CHILD_EVENT) {
-		log_warn("Leader some dataserver %s joined");
+	} else if (type == ZOO_CREATED_EVENT) {
+		log_warn("Leader: dataserver %s joined!", path);
 	} else {
-		log_warn("Got unhandled type %d resetting watcher for path %s", type, path);
-		rc = zoo_wexists(my_desc.zh, path, leader_health_watcher, NULL, &stat);
-		if (rc != ZOK) {
-			log_fatal("failed to reset watcher for path %s", path);
-			exit(EXIT_FAILURE);
-		}
+		log_warn("Leader: unhandled event type %d", type);
+	}
+	// Reset the watcher
+	log_info("Leader: resetting dataserver health watcher (path = %s)", path);
+	rc = zoo_wexists(my_desc.zh, path, dataserver_health_watcher, stat, stat);
+	if (rc != ZOK) {
+		log_fatal("failed to reset watcher for path %s", path);
+		exit(EXIT_FAILURE);
 	}
 }
 
@@ -1005,6 +1007,17 @@ void *krm_metadata_server(void *args)
 				//hash_key = dataserver->hash_key;
 				/*added to hash table*/
 				HASH_ADD_PTR(my_desc.dataservers_map, hash_key, dataserver);
+				// Set a watcher to check dataserver's health
+				char *zk_alive_dataserver_path = zku_concat_strings(
+					4, KRM_ROOT_PATH, KRM_ALIVE_SERVERS_PATH, KRM_SLASH, ds.kreon_ds_hostname);
+				log_info("Leader: set watcher for %s", zk_alive_dataserver_path);
+				rc = zoo_wexists(my_desc.zh, zk_alive_dataserver_path, dataserver_health_watcher, &stat,
+						 &stat);
+				if (rc != ZOK && rc != ZNONODE) {
+					log_fatal("Failed to set watcher for path %s", zk_alive_dataserver_path);
+					exit(EXIT_FAILURE);
+				}
+				free(zk_alive_dataserver_path);
 			}
 			free(zk_path);
 
@@ -1101,19 +1114,6 @@ void *krm_metadata_server(void *args)
 				krm_insert_ds_region(&my_desc, r_desc, my_desc.ds_regions);
 			}
 			my_desc.state = KRM_WAITING_FOR_MSG;
-			break;
-		}
-		case KRM_SET_LD_WATCHERS: {
-			zk_path = zku_concat_strings(2, KRM_ROOT_PATH, KRM_ALIVE_SERVERS_PATH);
-			int rc;
-			/*leave a watcher when a ds fails*/
-			rc = zoo_wexists(my_desc.zh, zk_path, dataserver_health_watcher, NULL, &stat);
-			if (rc != ZOK) {
-				log_fatal("Failed to set watcher for path %s", zk_path);
-				exit(EXIT_FAILURE);
-			}
-			free(zk_path);
-			log_info("Leader set watcher for dataservers");
 			break;
 		}
 		case KRM_SET_DS_WATCHERS: {
