@@ -58,7 +58,6 @@ static void check(int test, const char *message, ...)
 void __add_log_entry(volume_descriptor *volume_desc, void *address, uint32_t length, char type_of_entry);
 void mount_volume(char *volume_name, int64_t start, int64_t size); /*Called once from a region server*/
 void clean_log_entries(void *volume_desc);
-void mark_block(volume_descriptor *volume_desc, void *block_address, uint32_t length, char free, uint64_t *bit_idx);
 
 int32_t lread(int32_t fd, off_t offset, int whence, void *ptr, size_t size);
 int32_t lwrite(int32_t fd, off_t offset, int whence, void *ptr, ssize_t size);
@@ -1246,7 +1245,7 @@ void clean_log_entries(void *v_desc)
 						free_length = free_end - free_start;
 						if (free_length > 4096)
 							free_length = 4096;
-						mark_block(v_desc, (void *)free_start, free_length, 0x1, &bit_idx);
+						mark_page(v_desc, (void *)free_start, 0x1, &bit_idx);
 						/*if we use filter block device, update it with the mark block operation*/
 						if (fake_blk) {
 							uint32_t pagenum = free_length / 4096;
@@ -1300,12 +1299,14 @@ void clean_log_entries(void *v_desc)
 	}
 }
 
-void mark_block(volume_descriptor *volume_desc, void *block_address, uint32_t length, char free, uint64_t *bit_idx)
+void mark_page(volume_descriptor *volume_desc, void *block_address, char free, uint64_t *bit_idx)
 {
-	log_info("MARKING A BLOCK");
 	void *base = (void *)0xFFFFFFFFFFFFFFFF;
-	base = (void *)((uint64_t)base << (WORD_SIZE - (length / 4096)));
-	base = (void *)((uint64_t)base >> (WORD_SIZE - (length / 4096)));
+	base = (void *)((uint64_t)base << (WORD_SIZE - 1));
+	base = (void *)((uint64_t)base >> (WORD_SIZE - 1));
+
+	/* base = (void *)((uint64_t)base << (WORD_SIZE - (length / 4096))); */
+	/* base = (void *)((uint64_t)base >> (WORD_SIZE - (length / 4096))); */
 #ifdef profile
 	uint64_t duration = get_timestamp();
 #endif
@@ -1359,7 +1360,7 @@ void mark_block(volume_descriptor *volume_desc, void *block_address, uint32_t le
 	printf("%s: Position in the cache(Byte) is %llu position, bit is %llu\n", __func__, (LLU)pos, (LLU)pos_bit);
 #endif
 	/*which to choose the left or the right? */
-	unsigned char state = (*(volume_desc->allocator_state + (uint64_t)pos) >> pos_bit) << 6;
+	unsigned char state = (*(volume_desc->allocator_state + pos) >> pos_bit) << 6;
 #ifdef MARK_BLOCK
 	printf("mark_block: State =  %d\n", state);
 	printf("mark:block: allocator_state %d pos: %d, pos_bit = %d and state = %d\n",

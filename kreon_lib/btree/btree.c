@@ -24,6 +24,7 @@
 #include "gc.h"
 #include "segment_allocator.h"
 #include "static_leaf.h"
+#include "dynamic_leaf.h"
 #include "../../utilities/macros.h"
 #include "../allocator/dmap-ioctl.h"
 #include "../scanner/scanner.h"
@@ -1229,6 +1230,7 @@ uint8_t insert_key_value(db_handle *handle, void *key, void *value, uint32_t key
 	memcpy((void *)(uint64_t)key_buf + sizeof(uint32_t) + key_size + sizeof(uint32_t), value, value_size);
 	ins_req.metadata.handle = handle;
 	ins_req.key_value_buf = key_buf;
+	ins_req.metadata.kv_size = kv_size;
 	ins_req.metadata.level_id = 0;
 	/*
 * Note for L0 inserts since active_tree changes dynamically we decide which
@@ -1831,6 +1833,8 @@ int insert_KV_at_leaf(bt_insert_req *ins_req, node_header *leaf)
 	db_descriptor *db_desc = ins_req->metadata.handle->db_desc;
 	void *key_addr = ins_req->key_value_buf;
 	int ret;
+	uint8_t level_id = ins_req->metadata.level_id;
+	uint8_t active_tree = ins_req->metadata.handle->db_desc->levels[level_id].tre_id;
 
 	if (ins_req->metadata.append_to_log && ins_req->metadata.key_format == KV_FORMAT) {
 		log_operation append_op = { .metadata = &ins_req->metadata,
@@ -1846,7 +1850,18 @@ int insert_KV_at_leaf(bt_insert_req *ins_req, node_header *leaf)
 		exit(EXIT_FAILURE);
 	}
 
-	ret = insert_in_static_leaf((struct bt_static_leaf_node *)leaf, ins_req, &db_desc->levels[leaf->level_id]);
+	switch (db_desc->levels[level_id].node_layout) {
+	case STATIC_LEAF:
+		ret = insert_in_static_leaf((struct bt_static_leaf_node *)leaf, ins_req,
+					    &db_desc->levels[leaf->level_id]);
+		break;
+	case DYNAMIC_LEAF:
+		ret = insert_in_dynamic_leaf((char *)leaf, ins_req, &db_desc->levels[leaf->level_id]);
+		break;
+	default:
+		assert(0);
+	}
+
 
 	return ret;
 }
@@ -2017,6 +2032,30 @@ void _unlock_upper_levels(lock_table *node[], unsigned size, unsigned release)
 		}
 }
 
+int is_split_needed(void *leaf, enum bt_layout node_layout, uint32_t leaf_size, uint32_t kv_size)
+{
+	switch (node_layout) {
+	case STATIC_LEAF:
+		return check_static_leaf_split(leaf, leaf_size);
+	case DYNAMIC_LEAF:
+		return check_dynamic_leaf_split(leaf, leaf_size, kv_size, KV_INPLACE);
+	default:
+		assert(0);
+	}
+}
+
+uint32_t get_leaf_size(uint32_t node_capacity, enum bt_layout node_layout, uint32_t leaf_size)
+{
+	switch (node_layout) {
+	case STATIC_LEAF:
+		return node_capacity;
+	case DYNAMIC_LEAF:
+		return leaf_size;
+	default:
+		assert(0);
+	}
+}
+
 static uint8_t concurrent_insert(bt_insert_req *ins_req)
 {
 	/*The array with the locks that belong to this thread from upper levels*/
@@ -2142,7 +2181,11 @@ release_and_retry:
 			assert(father->numberOfEntriesInNode < father_order);
 		}
 
-		if (son->numberOfEntriesInNode >= order) {
+		uint32_t temp_leaf_size = get_leaf_size(order, db_desc->levels[level_id].node_layout,
+							db_desc->levels[level_id].leaf_size);
+
+		if (is_split_needed(son, db_desc->levels[level_id].node_layout, temp_leaf_size,
+				    ins_req->metadata.kv_size)) {
 			/*Overflow split*/
 			if (son->height > 0) {
 				son->v1++;

@@ -78,12 +78,9 @@ void validate_serially_allkeys_exist(db_handle *hd)
 		memcpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
 		sprintf(k->key_buf + strlen(KEY_PREFIX), "%llu", (long long unsigned)i);
 		k->key_size = strlen(k->key_buf) + 1;
-		if (!find_key(hd, k->key_buf, k->key_size)) {
-			log_info("Key not found %s", k->key_buf);
-			/* assert(0); */
-		}
-		/* assert(find_key(hd, k->key_buf, k->key_size)); */
+		assert(find_key(hd, k->key_buf, k->key_size));
 	}
+
 	log_info("All keys were found");
 	free(k);
 }

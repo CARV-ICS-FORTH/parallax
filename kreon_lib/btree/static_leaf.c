@@ -157,7 +157,7 @@ void *find_key_in_static_leaf(const struct bt_static_leaf_node *leaf, level_desc
 	return NULL;
 }
 
-void shift_slot_array(struct bt_static_leaf_node *leaf, uint32_t middle, level_descriptor *level)
+void shift_right_slot_array(struct bt_static_leaf_node *leaf, uint32_t middle, level_descriptor *level)
 {
 	struct bt_static_leaf_structs src;
 	const size_t num_items = leaf->header.numberOfEntriesInNode - middle;
@@ -184,6 +184,11 @@ void print_static_leaf(const struct bt_static_leaf_node *leaf, level_descriptor 
 			 leaf_src.kv_entries[leaf_src.slot_array[i].index].prefix,
 			 leaf_src.kv_entries[leaf_src.slot_array[i].index].pointer);
 	}
+}
+
+int check_static_leaf_split(const struct bt_static_leaf_node *leaf, uint64_t node_capacity)
+{
+	return leaf->header.numberOfEntriesInNode >= node_capacity ? 1 : 0;
 }
 
 struct bt_rebalance_result split_static_leaf(struct bt_static_leaf_node *leaf, bt_insert_req *req)
@@ -470,7 +475,7 @@ int8_t insert_in_static_leaf(struct bt_static_leaf_node *leaf, bt_insert_req *re
 
 	switch (bsearch.status) {
 	case INSERT:
-		shift_slot_array(leaf, bsearch.middle, level);
+		shift_right_slot_array(leaf, bsearch.middle, level);
 		kventry_slot = bitset_find_first(src.bitmap, bitmap_end, 0);
 		assert(kventry_slot >= 0);
 		bitset_set(src.bitmap, kventry_slot);
@@ -480,7 +485,6 @@ int8_t insert_in_static_leaf(struct bt_static_leaf_node *leaf, bt_insert_req *re
 		++leaf->header.numberOfEntriesInNode;
 		break;
 	case FOUND:
-		assert(0);
 		src.kv_entries[src.slot_array[bsearch.middle].index].pointer = ABSOLUTE_ADDRESS(req->key_value_buf);
 		memcpy(src.kv_entries[src.slot_array[bsearch.middle].index].prefix, key->data,
 		       MIN(key->size, PREFIX_SIZE));

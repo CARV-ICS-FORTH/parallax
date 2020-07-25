@@ -1,12 +1,9 @@
+#pragma once
 #include "btree.h"
 #include "delete.h"
 #include "segment_allocator.h"
 
 enum bt_static_leaf_operation { STATIC_LEAF_INSERT = 0, STATIC_LEAF_FIND = 1 };
-
-#define LESS_THAN_ZERO -1
-#define GREATER_THAN_ZERO 1
-#define EQUAL_TO_ZERO 0
 
 struct bt_static_leaf_structs {
 	struct bt_leaf_entry_bitmap *bitmap;
@@ -26,7 +23,7 @@ void *find_key_in_static_leaf(const struct bt_static_leaf_node *leaf, level_desc
 			      uint32_t key_size);
 void binary_search_static_leaf(struct bt_static_leaf_node const *leaf, level_descriptor *level, struct splice *key_buf,
 			       struct bsearch_result *result);
-
+int check_static_leaf_split(const struct bt_static_leaf_node *leaf, uint64_t node_capacity);
 /* Rebalance Operations */
 struct bt_rebalance_result split_static_leaf(struct bt_static_leaf_node *leaf, bt_insert_req *req);
 void delete_key_value_from_static_leaf(struct bt_static_leaf_node *leaf, level_descriptor *level, uint32_t pos);

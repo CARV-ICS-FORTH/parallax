@@ -116,8 +116,13 @@ typedef struct node_header {
 	uint64_t fragmentation;
 	volatile uint64_t v1;
 	volatile uint64_t v2;
-	/*data log info, KV log for leaves private for index*/
-	uint64_t key_log_size;
+	union {
+		/*data log info, KV log for leaves private for index*/
+		/* Used by index nodes */
+		uint64_t key_log_size;
+		/* Used in dynamic leaves */
+		uint32_t leaf_log_size;
+	};
 	uint64_t numberOfEntriesInNode;
 	IN_log_header *first_IN_log_header;
 	IN_log_header *last_IN_log_header;
@@ -148,6 +153,7 @@ struct bt_static_leaf_slot_array {
 };
 
 struct bt_dynamic_leaf_slot_array {
+	// The index points to the location of the kv pair in the leaf.
 	uint32_t index : 31;
 	// This bitmap informs us if the index points to an in-place kv or to a pointer in the log.
 	unsigned char bitmap : 1;
@@ -213,7 +219,7 @@ enum bsearch_status { INSERT = 0, FOUND = 1, ERROR = 2 };
 //__attribute__((packed))
 /* this is KV_FORMAT */
 struct splice {
-	int32_t size;
+	uint32_t size;
 	char data[0];
 };
 
@@ -503,6 +509,7 @@ struct bt_rebalance_result {
 		index_node *left_ichild;
 		leaf_node *left_lchild;
 		struct bt_static_leaf_node *left_slchild;
+		struct bt_dynamic_leaf_node *left_dlchild;
 	};
 
 	union {
@@ -510,6 +517,7 @@ struct bt_rebalance_result {
 		index_node *right_ichild;
 		leaf_node *right_lchild;
 		struct bt_static_leaf_node *right_slchild;
+		struct bt_dynamic_leaf_node *right_dlchild;
 	};
 
 	void *middle_key_buf;
@@ -568,7 +576,7 @@ lock_table *_find_position(lock_table **table, node_header *node);
 #define MIN(x, y) ((x > y) ? (y) : (x))
 #define KEY_SIZE(x) (*(uint32_t *)(x))
 #define VALUE_SIZE(x) KEY_SIZE(x)
-#define ABSOLUTE_ADDRESS(X) (((uint64_t)X) - MAPPED)
+#define ABSOLUTE_ADDRESS(X) (((uint64_t)(X)) - MAPPED)
 #define REAL_ADDRESS(X) ((void *)(uint64_t)(MAPPED + (uint64_t)X))
 #define KEY_OFFSET(KEY_SIZE, KV_BUF) (sizeof(uint32_t) + KV_BUF)
 #define VALUE_SIZE_OFFSET(KEY_SIZE, KEY) (sizeof(uint32_t) + KEY_SIZE + KEY)
@@ -578,3 +586,6 @@ lock_table *_find_position(lock_table **table, node_header *node);
 #define KV_MAX_SIZE (4096 + 8)
 #define likely(x) __builtin_expect((x), 1)
 #define unlikely(x) __builtin_expect((x), 0)
+#define LESS_THAN_ZERO -1
+#define GREATER_THAN_ZERO 1
+#define EQUAL_TO_ZERO 0

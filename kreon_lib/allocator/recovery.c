@@ -2,6 +2,7 @@
 #include <assert.h>
 #include <sys/mman.h>
 #include "allocator.h"
+#include "../btree/segment_allocator.h"
 #include "../btree/btree.h"
 #include "dmap-ioctl.h"
 #include <log.h>
@@ -143,12 +144,9 @@ void ommit_padded_space(struct recovery_operator *replay)
 				uint64_t segment_id = iter_logs[i]->log_curr_segment->segment_id;
 				iter_logs[i]->log_curr_segment =
 					REAL_ADDRESS(iter_logs[i]->log_curr_segment->next_segment);
-				log_info(
-					"recovering segment = %llu padded space = %llu log offset %llu commit log offset %llu",
-					(LLU)iter_logs[i]->log_curr_segment->segment_id,
-					(LLU)(BUFFER_SEGMENT_SIZE - (iter_logs[i]->log_offset % BUFFER_SEGMENT_SIZE)),
-					(LLU)iter_logs[i]->log_offset, (LLU)iter_logs[i]->log_size);
-				mprotect(iter_logs[i]->log_curr_segment, BUFFER_SEGMENT_SIZE, PROT_READ);
+#if DEBUG_RECOVERY
+				log_info("recovering segment = %llu", (LLU)iter_logs[i]->log_curr_segment->segment_id);
+#endif
 				assert(segment_id + 1 == iter_logs[i]->log_curr_segment->segment_id);
 				iter_logs[i]->log_offset += sizeof(segment_header);
 			}
@@ -194,7 +192,7 @@ void *find_next_kventry(struct recovery_operator *replay, uint64_t max_lsn, uint
 	if (*prev_lsn == 0 && pick_log != -1) {
 		*prev_lsn = *(uint64_t *)kv_addr;
 	}
-	log_info("Picked prev %llu lsn.id %llu", *prev_lsn, lsn.id);
+
 	assert(lsn.id >= *prev_lsn);
 	assert(lsn.id < max_lsn);
 
@@ -210,10 +208,16 @@ void *find_next_kventry(struct recovery_operator *replay, uint64_t max_lsn, uint
 void mark_log_segments_before_replay(volume_descriptor *volume_desc, segment_header *first_segment)
 {
 	segment_header *curr_segment = first_segment;
-	log_info("----------------------------------------------------------------");
+	uint32_t num_pages = BUFFER_SEGMENT_SIZE / PAGE_SIZE;
 	while (curr_segment) {
-		mark_block(volume_desc, curr_segment, BUFFER_SEGMENT_SIZE, 0x00, NULL);
-		log_info("Segment id %llu", curr_segment->segment_id);
+		char *page_tomark = (char *)curr_segment;
+
+		for (uint32_t i = 0; i < num_pages; ++i, page_tomark += PAGE_SIZE) {
+			mark_page(volume_desc, page_tomark, 0x00, NULL);
+		}
+#ifdef DEBUG_RECOVERY
+		mprotect(curr_segment, BUFFER_SEGMENT_SIZE, PROT_READ);
+#endif
 		if (curr_segment->next_segment == NULL)
 			break;
 		curr_segment = REAL_ADDRESS(curr_segment->next_segment);
@@ -231,24 +235,14 @@ void replay_log(recovery_request *rh, struct recovery_operator *replay)
 	handle.volume_desc = rh->volume_desc;
 	handle.db_desc = rh->db_desc;
 	last_lsn = handle.db_desc->lsn;
-
 	mark_log_segments_before_replay(rh->volume_desc, replay->big.log_curr_segment);
 	mark_log_segments_before_replay(rh->volume_desc, replay->medium.log_curr_segment);
 	mark_log_segments_before_replay(rh->volume_desc, replay->small.log_curr_segment);
-
-	mprotect(replay->big.log_curr_segment, BUFFER_SEGMENT_SIZE, PROT_READ);
-	mprotect(replay->medium.log_curr_segment, BUFFER_SEGMENT_SIZE, PROT_READ);
-	mprotect(replay->small.log_curr_segment, BUFFER_SEGMENT_SIZE, PROT_READ);
 
 	while (replay->big.log_offset < replay->big.log_size || replay->medium.log_offset < replay->medium.log_size ||
 	       replay->small.log_offset < replay->small.log_size) {
 		ommit_log_segment_header(replay);
 		kv_addr = find_next_kventry(replay, rh->db_desc->lsn, &prev_lsn);
-
-		if (prev_lsn == 3855 || prev_lsn == 38532 || prev_lsn == 38533 || prev_lsn == 38537) {
-			log_info("POINTER IS %llu", kv_addr - MAPPED);
-			/* BREAKPOINT; */
-		}
 
 		if (kv_addr) {
 			ins_req.key_value_buf = kv_addr;
@@ -260,8 +254,6 @@ void replay_log(recovery_request *rh, struct recovery_operator *replay)
 			ins_req.metadata.recovery_request = 1;
 			_insert_key_value(&ins_req);
 		}
-		/* if(prev_lsn == 5) */
-		/* 	break; */
 
 		if (prev_lsn == last_lsn)
 			break;

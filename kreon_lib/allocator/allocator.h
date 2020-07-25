@@ -202,7 +202,7 @@ void destoy_db_list_node(NODE *node);
 void destroy_volume_node(NODE *node);
 
 void allocator_init(volume_descriptor *volume_desc);
-void mark_block(volume_descriptor *, void *, uint32_t, char, uint64_t *);
+void mark_page(volume_descriptor *, void *, char, uint64_t *);
 
 void set_priority(uint64_t pageno, char allocation_code, uint64_t num_bytes);
 void *allocate(void *_volume_desc, uint64_t num_bytes, int extensions, char allocation_code);

@@ -29,8 +29,6 @@ static void *get_space(volume_descriptor *volume_desc, level_descriptor *level_d
 		segment_id = level_desc->last_segment[tree_id]->segment_id;
 	}
 	if (available_space < size) {
-		log_info("GET SPACE FROM ALLOCATOR");
-
 		/*we need to go to the actual allocator to get space*/
 		MUTEX_LOCK(&volume_desc->allocator_lock);
 		new_segment = (segment_header *)allocate(volume_desc, SEGMENT_SIZE, -1, reason);
@@ -189,7 +187,7 @@ leaf_node *seg_get_leaf_node_header(volume_descriptor *volume_desc, level_descri
 	return leaf;
 }
 
-void seg_free_leaf_node(volume_descriptor *volume_desc, level_descriptor *level_desc, uint8_t tree_id, leaf_node *leaf)
+void seg_free_leaf_node(volume_descriptor *volume_desc, level_descriptor *level_desc, uint8_t tree_id,leaf_node *leaf)
 {
 	//leave for future use
 	(void)level_desc;
