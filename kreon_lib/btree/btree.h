@@ -442,6 +442,15 @@ typedef struct log_operation {
 	};
 } log_operation;
 
+enum log_category { BIG = 1000, MEDIUM = 500, SMALL = 200 };
+
+struct log_towrite {
+	volatile segment_header *log_head;
+	volatile segment_header *log_tail;
+	volatile uint64_t *log_size;
+	enum log_category status;
+};
+
 enum bt_rebalance_retcode {
 	NO_REBALANCE_NEEDED = 0,
 	/* Return codes for splits */

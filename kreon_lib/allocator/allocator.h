@@ -81,11 +81,16 @@ typedef struct pr_db_entry {
 	 * info to locate after a recovery which tail part
 	 * of the log is missing from the index
 	 */
-	uint64_t L0_start_log_offset;
-	uint64_t L0_end_log_offset;
+	uint64_t big_log_head_offset;
+	uint64_t big_log_tail_offset;
+	uint64_t medium_log_head_offset;
+	uint64_t medium_log_tail_offset;
+	uint64_t small_log_head_offset;
+	uint64_t small_log_tail_offset;
+
 	uint32_t valid;
 	//forest *replica_forest;
-	char pad[36];
+	char pad[4];
 } pr_db_entry; //768 bytes or 12 cache lines
 
 typedef struct pr_db_group {

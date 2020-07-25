@@ -224,15 +224,15 @@ int32_t volume_init(char *dev_name, int64_t start, int64_t size, int typeOfVolum
 
 	/*<gesalous>*/
 	/*
-   * Finally, we are going to initiate the bitmap of the device. The idea is the following:
-   * For each 16MB of storage we are going to have a 4KB bitmap.The first 8 bytes will represent the epoch that
-   * this block bitmap belongs to. Epoch will be kept in the sp of the device and will be increased after a
-   * snapshot of the system (Typically every 30 seconds just like btrfs). Each logical block bitmap will map to two
-   * physical. For example for storage space 0-16MB will have two physical block bitmaps 0-4KB and 4KB-8KB. In
-   * each epoch, we are going to update the bitmap that belongs to the older epoch. After a crash failure we are going to
-   * restore the most recent bitmap block
-   * 1. We are going to partition the device metadata - data
-   */
+	 * Finally, we are going to initiate the bitmap of the device. The idea is the following:
+	 * For each 16MB of storage we are going to have a 4KB bitmap.The first 8 bytes will represent the epoch that
+	 * this block bitmap belongs to. Epoch will be kept in the sp of the device and will be increased after a
+	 * snapshot of the system (Typically every 30 seconds just like btrfs). Each logical block bitmap will map to two
+	 * physical. For example for storage space 0-16MB will have two physical block bitmaps 0-4KB and 4KB-8KB. In
+	 * each epoch, we are going to update the bitmap that belongs to the older epoch. After a crash failure we are going to
+	 * restore the most recent bitmap block
+	 * 1. We are going to partition the device metadata - data
+	 */
 	bitmap_size_in_blocks = 0;
 	dev_addressed_in_blocks = 0;
 	while (1) {

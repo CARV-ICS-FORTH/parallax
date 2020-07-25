@@ -5,24 +5,8 @@
 #include "../btree/segment_allocator.h"
 #include <log.h>
 
-/*persists the KV-log of a DB, not thread safe!*/
-void commit_db_log(db_descriptor *db_desc, commit_log_info *info)
+void write_log_metadata(db_descriptor *db_desc, commit_log_info *info)
 {
-	segment_header *current_segment;
-	segment_header *first;
-	segment_header *last;
-
-	/*sync data then metadata*/
-	first = (segment_header *)REAL_ADDRESS(db_desc->commit_log->big_log_tail);
-	last = info->big_log_tail;
-	current_segment = first;
-
-	while (1) {
-		msync(current_segment, (size_t)SEGMENT_SIZE, MS_SYNC);
-		if (current_segment == last)
-			break;
-		current_segment = (segment_header *)REAL_ADDRESS(current_segment->next_segment);
-	}
 	/*write log info*/
 	if (info->big_log_head != NULL)
 		db_desc->commit_log->big_log_head = (segment_header *)ABSOLUTE_ADDRESS(info->big_log_head);
@@ -34,7 +18,83 @@ void commit_db_log(db_descriptor *db_desc, commit_log_info *info)
 	else
 		db_desc->commit_log->big_log_tail = NULL;
 
+	/*write log info*/
+	if (info->medium_log_head != NULL)
+		db_desc->commit_log->medium_log_head = (segment_header *)ABSOLUTE_ADDRESS(info->medium_log_head);
+	else
+		db_desc->commit_log->medium_log_head = NULL;
+
+	if (info->medium_log_tail != NULL)
+		db_desc->commit_log->medium_log_tail = (segment_header *)ABSOLUTE_ADDRESS(info->medium_log_tail);
+	else
+		db_desc->commit_log->medium_log_tail = NULL;
+
+	/*write log info*/
+	if (info->small_log_head != NULL)
+		db_desc->commit_log->small_log_head = (segment_header *)ABSOLUTE_ADDRESS(info->small_log_head);
+	else
+		db_desc->commit_log->small_log_head = NULL;
+
+	if (info->small_log_tail != NULL)
+		db_desc->commit_log->small_log_tail = (segment_header *)ABSOLUTE_ADDRESS(info->small_log_tail);
+	else
+		db_desc->commit_log->small_log_tail = NULL;
+
 	db_desc->commit_log->big_log_size = info->big_log_size;
+	db_desc->commit_log->medium_log_size = info->medium_log_size;
+	db_desc->commit_log->small_log_size = info->small_log_size;
+}
+
+/*persists the KV-log of a DB, not thread safe!*/
+void commit_db_log(db_descriptor *db_desc, commit_log_info *info)
+{
+	segment_header *big_log_current_segment, *big_log_first_segment, *big_log_last_segment;
+	segment_header *medium_log_current_segment, *medium_log_first_segment, *medium_log_last_segment;
+	segment_header *small_log_current_segment, *small_log_first_segment, *small_log_last_segment;
+	unsigned all_logs_persisted;
+
+	/*sync data then metadata*/
+	big_log_first_segment = (segment_header *)REAL_ADDRESS(db_desc->commit_log->big_log_tail);
+	medium_log_first_segment = (segment_header *)REAL_ADDRESS(db_desc->commit_log->medium_log_tail);
+	small_log_first_segment = (segment_header *)REAL_ADDRESS(db_desc->commit_log->small_log_tail);
+
+	big_log_last_segment = info->big_log_tail;
+	medium_log_last_segment = info->medium_log_tail;
+	small_log_last_segment = info->small_log_tail;
+
+	big_log_current_segment = big_log_first_segment;
+	medium_log_current_segment = medium_log_first_segment;
+	small_log_current_segment = small_log_first_segment;
+
+	while (1) {
+		all_logs_persisted = 0;
+
+		msync(big_log_current_segment, SEGMENT_SIZE, MS_SYNC);
+		msync(medium_log_current_segment, SEGMENT_SIZE, MS_SYNC);
+		msync(small_log_current_segment, SEGMENT_SIZE, MS_SYNC);
+
+		if (big_log_current_segment != big_log_last_segment) {
+			big_log_current_segment = (segment_header *)REAL_ADDRESS(big_log_current_segment->next_segment);
+			++all_logs_persisted;
+		}
+
+		if (medium_log_current_segment != medium_log_last_segment) {
+			medium_log_current_segment =
+				(segment_header *)REAL_ADDRESS(medium_log_current_segment->next_segment);
+			++all_logs_persisted;
+		}
+
+		if (small_log_current_segment != small_log_last_segment) {
+			small_log_current_segment =
+				(segment_header *)REAL_ADDRESS(small_log_current_segment->next_segment);
+			++all_logs_persisted;
+		}
+
+		if (!all_logs_persisted)
+			break;
+	}
+
+	write_log_metadata(db_desc, info);
 
 	if (msync(db_desc->commit_log, sizeof(commit_log_info), MS_SYNC) == -1) {
 		log_fatal("msync failed");
@@ -50,7 +110,6 @@ void commit_db_logs_per_volume(volume_descriptor *volume_desc)
 	NODE *node;
 	db_descriptor *db_desc;
 	node = get_first(volume_desc->open_databases);
-	db_desc = (db_descriptor *)node;
 
 	while (node != NULL) {
 		db_desc = (db_descriptor *)(node->data);
@@ -113,12 +172,7 @@ void snapshot(volume_descriptor *volume_desc)
 
 	while (node != NULL) {
 		db_desc = (db_descriptor *)(node->data);
-		/*stop log appenders*/
-		//#if LOG_WITH_MUTEX
-		//		MUTEX_LOCK(&db_desc->lock_log);
-		//#else
-		//		SPIN_LOCK(&db_desc->lock_log);
-		//#endif
+
 		/*stop all level writers*/
 		for (level_id = 0; level_id < MAX_LEVELS; level_id++) {
 			/*stop level 0 writers for this db*/
@@ -126,6 +180,7 @@ void snapshot(volume_descriptor *volume_desc)
 			/*spinning*/
 			spin_loop(&(db_desc->levels[level_id].active_writers), 0);
 		}
+
 		/*all levels locked*/
 		dirty += db_desc->dirty;
 		/*update the catalogue if db is dirty*/
@@ -138,6 +193,7 @@ void snapshot(volume_descriptor *volume_desc)
 
 			//log_info("group epoch %llu  dev_catalogue %llu", (LLU)db_group->epoch,
 			// volume_desc->dev_catalogue->epoch);
+
 			if (db_group->epoch <= volume_desc->dev_catalogue->epoch) {
 				//log_info("cow for db_group %llu", (LLU)db_group);
 				/*do cow*/
@@ -150,7 +206,7 @@ void snapshot(volume_descriptor *volume_desc)
 				free_block(volume_desc, db_group, sizeof(pr_db_group), -1);
 				db_group = new_group;
 				volume_desc->mem_catalogue->db_group_index[db_desc->group_id] =
-					(pr_db_group *)((uint64_t)db_group - MAPPED);
+					(pr_db_group *)ABSOLUTE_ADDRESS(db_group);
 			}
 
 			db_entry = &(db_group->db_entries[db_desc->group_index]);
@@ -167,7 +223,7 @@ void snapshot(volume_descriptor *volume_desc)
 							ABSOLUTE_ADDRESS(db_desc->levels[i].last_segment[j]);
 
 						db_entry->offset[(i * NUM_TREES_PER_LEVEL) + j] =
-							(uint64_t)db_desc->levels[i].offset[j];
+							db_desc->levels[i].offset[j];
 					} else {
 						db_entry->first_segment[(i * NUM_TREES_PER_LEVEL) + j] = 0;
 
@@ -213,11 +269,27 @@ void snapshot(volume_descriptor *volume_desc)
 			log_info.big_log_head = (segment_header *)db_desc->big_log_head;
 			log_info.big_log_tail = (segment_header *)db_desc->big_log_tail;
 			log_info.big_log_size = db_desc->big_log_size;
+
+			log_info.medium_log_head = (segment_header *)db_desc->medium_log_head;
+			log_info.medium_log_tail = (segment_header *)db_desc->medium_log_tail;
+			log_info.medium_log_size = db_desc->medium_log_size;
+
+			log_info.small_log_head = (segment_header *)db_desc->small_log_head;
+			log_info.small_log_tail = (segment_header *)db_desc->small_log_tail;
+			log_info.small_log_size = db_desc->small_log_size;
+
 			commit_db_log(db_desc, &log_info);
-			db_desc->big_log_head_offset = db_desc->big_log_size;
-			db_desc->big_log_tail_offset = db_desc->big_log_size;
-			db_entry->L0_start_log_offset = (uint64_t)db_desc->big_log_head_offset;
-			db_entry->L0_end_log_offset = (uint64_t)db_desc->big_log_tail_offset;
+			/* These fields are being overwritten so there is not point to even assign values to them. */
+			/* 	db_desc->big_log_head_offset = db_desc->big_log_size; */
+			/* db_desc->big_log_tail_offset = db_desc->big_log_size; */
+
+			/* Recover log segments */
+			db_entry->big_log_head_offset = db_desc->big_log_head_offset;
+			db_entry->big_log_tail_offset = db_desc->big_log_tail_offset;
+			db_entry->medium_log_head_offset = db_desc->medium_log_head_offset;
+			db_entry->medium_log_tail_offset = db_desc->medium_log_tail_offset;
+			db_entry->small_log_head_offset = db_desc->small_log_head_offset;
+			db_entry->small_log_tail_offset = db_desc->small_log_tail_offset;
 		}
 		node = node->next;
 	}
@@ -235,7 +307,7 @@ void snapshot(volume_descriptor *volume_desc)
 
 		/*XXX TODO XXX write superblock(!), caution! this command in future version should be executed after msync*/
 		volume_desc->volume_superblock->system_catalogue =
-			(pr_system_catalogue *)((uint64_t)volume_desc->dev_catalogue - MAPPED);
+			(pr_system_catalogue *)ABSOLUTE_ADDRESS(volume_desc->dev_catalogue);
 
 		/*protect this segment because cleaner may run in parallel */
 		MUTEX_LOCK(&volume_desc->allocator_lock);
@@ -265,18 +337,16 @@ void snapshot(volume_descriptor *volume_desc)
 
 	/*release locks*/
 	node = get_first(volume_desc->open_databases);
+
 	while (node != NULL) {
 		db_desc = (db_descriptor *)node->data;
-		//#if LOG_WITH_MUTEX
-		//		MUTEX_UNLOCK(&db_desc->lock_log);
-		//#else
-		//		SPIN_UNLOCK(&db_desc->lock_log);
-		//#endif
+
 		for (i = 0; i < MAX_LEVELS; i++)
 			RWLOCK_UNLOCK(&db_desc->levels[i].guard_of_level.rx_lock);
 
 		node = node->next;
 	}
+
 	volume_desc->snap_preemption = SNAP_INTERRUPT_DISABLE;
 
 	if (dirty > 0) { /*At least one db is dirty proceed to snapshot()*/
@@ -306,10 +376,4 @@ void snapshot(volume_descriptor *volume_desc)
 		//t2=tim.tv_sec+(tim.tv_usec/1000000.0);
 		//fprintf(stderr, "snap_time=[%lf]sec\n", (t2-t1));
 	}
-
-	/*stats counters*/
-	//printf("[%s:%s:%d] hit l0 %lld miss l0 %lld hit l1 %lld miss l1 %lld\n",__FILE__,__func__,__LINE__,ins_prefix_hit_l0,ins_prefix_miss_l0,ins_prefix_hit_l1, ins_prefix_miss_l1);
-	//printf("[%s:%s:%d] L-0 hit ratio %lf\n",__FILE__,__func__,__LINE__,(double)ins_prefix_hit_l0/(double)(ins_prefix_hit_l0+ins_prefix_miss_l0)*100);
-	//printf("[%s:%s:%d] L-1 hit ratio %lf\n",__FILE__,__func__,__LINE__,(double)ins_prefix_hit_l1/(double)(ins_prefix_hit_l1+ins_prefix_miss_l1)*100);
-	//printf("[%s:%s:%d] hack hit %llu hack miss %llu\n",__FILE__,__func__,__LINE__,ins_hack_hit,ins_hack_miss);
 }

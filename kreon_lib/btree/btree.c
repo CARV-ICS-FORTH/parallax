@@ -684,20 +684,18 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 										     tree_id] != 0) {
 										db_desc->levels[level_id]
 											.first_segment[tree_id] =
-											(segment_header
-												 *)(MAPPED +
-												    db_entry->first_segment
-													    [(level_id *
-													      NUM_TREES_PER_LEVEL) +
-													     tree_id]);
+											(segment_header *)REAL_ADDRESS(
+												db_entry->first_segment
+													[(level_id *
+													  NUM_TREES_PER_LEVEL) +
+													 tree_id]);
 										db_desc->levels[level_id]
 											.last_segment[tree_id] =
-											(segment_header
-												 *)(MAPPED +
-												    db_entry->last_segment
-													    [(level_id *
-													      NUM_TREES_PER_LEVEL) +
-													     tree_id]);
+											(segment_header *)REAL_ADDRESS(
+												db_entry->last_segment
+													[(level_id *
+													  NUM_TREES_PER_LEVEL) +
+													 tree_id]);
 										db_desc->levels[level_id]
 											.offset[tree_id] =
 											db_entry->offset
@@ -723,14 +721,12 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 									if (db_entry->root_r[(level_id *
 											      NUM_TREES_PER_LEVEL) +
 											     tree_id] != 0) {
-										db_desc->levels[level_id]
-											.root_r[tree_id] =
-											(node_header
-												 *)(MAPPED +
-												    db_entry->root_r
-													    [(level_id *
-													      NUM_TREES_PER_LEVEL) +
-													     tree_id]);
+										db_desc->levels[level_id].root_r
+											[tree_id] = (node_header *)REAL_ADDRESS(
+											db_entry->root_r
+												[(level_id *
+												  NUM_TREES_PER_LEVEL) +
+												 tree_id]);
 										log_warn(
 											"Recovered root r of [%lu][%lu] = %llu ",
 											level_id, tree_id,
@@ -796,27 +792,22 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 #endif
 							/*recover KV log for this database*/
 							db_desc->commit_log =
-								(commit_log_info *)(MAPPED +
-										    ((uint64_t)db_entry->commit_log));
+								(commit_log_info *)REAL_ADDRESS(db_entry->commit_log);
 							if (db_desc->commit_log->big_log_head != NULL)
-								db_desc->big_log_head =
-									(segment_header *)(MAPPED +
-											   (uint64_t)db_desc->commit_log
-												   ->big_log_head);
+								db_desc->big_log_head = (segment_header *)REAL_ADDRESS(
+									db_desc->commit_log->big_log_head);
 							else
 								db_desc->big_log_head = NULL;
 
 							if (db_desc->commit_log->big_log_tail != NULL)
-								db_desc->big_log_tail =
-									(segment_header *)(MAPPED +
-											   (uint64_t)db_desc->commit_log
-												   ->big_log_tail);
+								db_desc->big_log_tail = (segment_header *)REAL_ADDRESS(
+									db_desc->commit_log->big_log_tail);
 							else
 								db_desc->big_log_tail = NULL;
 
 							db_desc->big_log_size = db_desc->commit_log->big_log_size;
-							db_desc->big_log_head_offset = db_entry->L0_start_log_offset;
-							db_desc->big_log_tail_offset = db_entry->L0_end_log_offset;
+							db_desc->big_log_head_offset = db_entry->big_log_head_offset;
+							db_desc->big_log_tail_offset = db_entry->big_log_tail_offset;
 
 							log_info("KV log segments first: %llu last: %llu log_size %llu",
 								 (LLU)db_desc->big_log_head, (LLU)db_desc->big_log_tail,
@@ -1259,14 +1250,51 @@ void write_keyvalue_inlog(log_operation *req, metadata_tologop *data_size, char 
 	}
 }
 
+void choose_log_toappend(db_descriptor *db_desc, struct log_towrite *log_metadata, uint32_t kv_size)
+{
+	if (kv_size >= BIG) {
+		log_metadata->log_head = db_desc->big_log_head;
+		log_metadata->log_tail = db_desc->big_log_tail;
+		log_metadata->log_size = &db_desc->big_log_size;
+		log_metadata->status = BIG;
+	} else if (kv_size >= MEDIUM) {
+		log_metadata->log_head = db_desc->medium_log_head;
+		log_metadata->log_tail = db_desc->medium_log_tail;
+		log_metadata->log_size = &db_desc->medium_log_size;
+		log_metadata->status = MEDIUM;
+	} else {
+		log_metadata->log_head = db_desc->small_log_head;
+		log_metadata->log_tail = db_desc->small_log_tail;
+		log_metadata->log_size = &db_desc->small_log_size;
+		log_metadata->status = SMALL;
+	}
+}
+
+void update_log_metadata(db_descriptor *db_desc, struct log_towrite *log_metadata)
+{
+	switch (log_metadata->status) {
+	case BIG:
+		db_desc->big_log_tail = log_metadata->log_tail;
+		return;
+	case MEDIUM:
+		db_desc->medium_log_tail = log_metadata->log_tail;
+		return;
+	case SMALL:
+		db_desc->small_log_tail = log_metadata->log_tail;
+		return;
+	}
+}
+
 void *append_key_value_to_log(log_operation *req)
 {
 	segment_header *d_header;
+	struct log_towrite log_metadata;
 	void *addr_inlog; /*address at the device*/
 	metadata_tologop data_size;
 	uint32_t available_space_in_log;
 	uint32_t allocated_space;
 	db_handle *handle = req->metadata->handle;
+
 	extract_keyvalue_size(req, &data_size);
 
 #ifdef LOG_WITH_MUTEX
@@ -1274,24 +1302,24 @@ void *append_key_value_to_log(log_operation *req)
 #elif SPINLOCK
 	pthread_spin_lock(&handle->db_desc->lock_log);
 #endif
+	choose_log_toappend(handle->db_desc, &log_metadata, data_size.kv_size);
 	/*append data part in the data log*/
-	if (handle->db_desc->big_log_size % BUFFER_SEGMENT_SIZE != 0)
-		available_space_in_log = BUFFER_SEGMENT_SIZE - (handle->db_desc->big_log_size % BUFFER_SEGMENT_SIZE);
+	if (*log_metadata.log_size % BUFFER_SEGMENT_SIZE != 0)
+		available_space_in_log = BUFFER_SEGMENT_SIZE - (*log_metadata.log_size % BUFFER_SEGMENT_SIZE);
 	else
 		available_space_in_log = 0;
 
 	if (available_space_in_log < data_size.kv_size) {
 		/*fill info for kreon master here*/
-		req->metadata->log_segment_addr = ABSOLUTE_ADDRESS(handle->db_desc->big_log_tail);
-		req->metadata->log_offset_full_event = handle->db_desc->big_log_size;
-		req->metadata->segment_id = handle->db_desc->big_log_tail->segment_id;
+		req->metadata->log_segment_addr = ABSOLUTE_ADDRESS(log_metadata.log_tail);
+		req->metadata->log_offset_full_event = *log_metadata.log_size;
+		req->metadata->segment_id = log_metadata.log_tail->segment_id;
 		req->metadata->log_padding = available_space_in_log;
-		req->metadata->end_of_log = handle->db_desc->big_log_size + available_space_in_log;
+		req->metadata->end_of_log = *log_metadata.log_size + available_space_in_log;
 		req->metadata->segment_full_event = 1;
 
 		/*pad with zeroes remaining bytes in segment*/
-		addr_inlog = (void *)((uint64_t)handle->db_desc->big_log_tail +
-				      (handle->db_desc->big_log_size % BUFFER_SEGMENT_SIZE));
+		addr_inlog = (void *)((uint64_t)log_metadata.log_tail + (*log_metadata.log_size % BUFFER_SEGMENT_SIZE));
 		memset(addr_inlog, 0x00, available_space_in_log);
 
 		allocated_space = data_size.kv_size + sizeof(segment_header);
@@ -1300,17 +1328,16 @@ void *append_key_value_to_log(log_operation *req)
 		d_header = seg_get_raw_log_segment(handle->volume_desc);
 		d_header->segment_id = handle->db_desc->big_log_tail->segment_id + 1;
 		d_header->next_segment = NULL;
-		handle->db_desc->big_log_tail->next_segment = (void *)ABSOLUTE_ADDRESS(d_header);
-		handle->db_desc->big_log_tail = d_header;
+		log_metadata.log_tail->next_segment = (void *)ABSOLUTE_ADDRESS(d_header);
+		log_metadata.log_tail = d_header;
 		/* position the log to the newly added block*/
-		handle->db_desc->big_log_size += (available_space_in_log + sizeof(segment_header));
+		*log_metadata.log_size += (available_space_in_log + sizeof(segment_header));
+		update_log_metadata(handle->db_desc, &log_metadata);
 	}
 
-	addr_inlog = (void *)((uint64_t)handle->db_desc->big_log_tail +
-			      (handle->db_desc->big_log_size % BUFFER_SEGMENT_SIZE));
-	req->metadata->log_offset = handle->db_desc->big_log_size;
-
-	handle->db_desc->big_log_size += data_size.kv_size;
+	addr_inlog = (void *)((uint64_t)log_metadata.log_tail + (*log_metadata.log_size % BUFFER_SEGMENT_SIZE));
+	req->metadata->log_offset = *log_metadata.log_size;
+	*log_metadata.log_size += data_size.kv_size;
 
 #ifdef LOG_WITH_MUTEX
 	MUTEX_UNLOCK(&handle->db_desc->lock_log);
