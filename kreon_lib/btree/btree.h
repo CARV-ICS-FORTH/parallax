@@ -134,23 +134,23 @@ typedef struct index_entry {
 	uint64_t right[0];
 } __attribute__((packed)) index_entry;
 
-typedef struct bt_leaf_entry {
+struct bt_leaf_entry {
 	uint64_t pointer;
 	char prefix[PREFIX_SIZE];
-} bt_leaf_entry;
+};
 
 struct bt_leaf_entry_bitmap {
 	unsigned char bitmap; // This bitmap informs us which kv_entry is available to store data in the static leaf.
 };
 
-typedef struct bt_static_leaf_slot_array {
+struct bt_static_leaf_slot_array {
 	uint16_t index;
-} bt_leaf_slot_array;
+};
 
 struct bt_dynamic_leaf_slot_array {
 	uint32_t index : 31;
-	unsigned char
-		bitmap : 1; // This bitmap informs us if the index points to an in-place kv or to a pointer in the log.
+	// This bitmap informs us if the index points to an in-place kv or to a pointer in the log.
+	unsigned char bitmap : 1;
 };
 
 #define INDEX_NODE_REMAIN (INDEX_NODE_SIZE - sizeof(struct node_header))
@@ -159,7 +159,7 @@ struct bt_dynamic_leaf_slot_array {
 #define IN_LENGTH ((INDEX_NODE_REMAIN - sizeof(uint64_t)) / sizeof(struct index_entry) - 1)
 
 #define LN_ITEM_SIZE (sizeof(uint64_t) + (PREFIX_SIZE * sizeof(char)))
-#define KV_LEAF_ENTRY (sizeof(bt_leaf_entry) + sizeof(bt_leaf_slot_array) + (1 / CHAR_BIT))
+#define KV_LEAF_ENTRY (sizeof(struct bt_leaf_entry) + sizeof(struct bt_static_leaf_slot_array) + (1 / CHAR_BIT))
 #define LN_LENGTH ((LEAF_NODE_REMAIN) / (KV_LEAF_ENTRY))
 
 /* this is the same as root_node */
@@ -433,16 +433,15 @@ typedef struct bt_mutate_req {
 	uint32_t log_padding;
 	uint32_t kv_size;
 	uint8_t level_id;
-	//uint32_t active_tree;
 	/*only for inserts >= level_1*/
 	uint8_t tree_id;
-	char key_format;
 	uint8_t append_to_log : 1;
 	uint8_t gc_request : 1;
 	uint8_t recovery_request : 1;
 	/*needed for distributed version of Kreon*/
 	uint8_t segment_full_event : 1;
 	uint8_t special_split : 1;
+	char key_format;
 } bt_mutate_req;
 
 typedef struct bt_insert_req {
@@ -567,9 +566,9 @@ void *_index_node_binary_search(index_node *node, void *key_buf, char query_key_
 
 lock_table *_find_position(lock_table **table, node_header *node);
 #define MIN(x, y) ((x > y) ? (y) : (x))
-#define KEY_SIZE(x) (*(uint32_t *)x)
+#define KEY_SIZE(x) (*(uint32_t *)(x))
 #define VALUE_SIZE(x) KEY_SIZE(x)
-#define ABSOLUTE_ADDRESS(X) ((uint64_t)X - MAPPED)
+#define ABSOLUTE_ADDRESS(X) (((uint64_t)X) - MAPPED)
 #define REAL_ADDRESS(X) ((void *)(uint64_t)(MAPPED + (uint64_t)X))
 #define KEY_OFFSET(KEY_SIZE, KV_BUF) (sizeof(uint32_t) + KV_BUF)
 #define VALUE_SIZE_OFFSET(KEY_SIZE, KEY) (sizeof(uint32_t) + KEY_SIZE + KEY)

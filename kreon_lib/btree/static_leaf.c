@@ -13,8 +13,9 @@ static void retrieve_static_leaf_structures(const struct bt_static_leaf_node *le
 {
 	char *leaf_base_address = (char *)leaf;
 	src->bitmap = (struct bt_leaf_entry_bitmap *)(leaf_base_address + level->leaf_offsets.bitmap_offset);
-	src->slot_array = (bt_leaf_slot_array *)(leaf_base_address + level->leaf_offsets.slot_array_offset);
-	src->kv_entries = (bt_leaf_entry *)(leaf_base_address + level->leaf_offsets.kv_entries_offset);
+	src->slot_array =
+		(struct bt_static_leaf_slot_array *)(leaf_base_address + level->leaf_offsets.slot_array_offset);
+	src->kv_entries = (struct bt_leaf_entry *)(leaf_base_address + level->leaf_offsets.kv_entries_offset);
 }
 
 static uint32_t get_bitmap_size(level_descriptor *level)
@@ -24,12 +25,12 @@ static uint32_t get_bitmap_size(level_descriptor *level)
 
 static uint32_t get_slot_array_size(level_descriptor *level)
 {
-	return sizeof(bt_leaf_slot_array) * level->leaf_offsets.slot_array_entries;
+	return sizeof(struct bt_static_leaf_slot_array) * level->leaf_offsets.slot_array_entries;
 }
 
 static uint32_t get_kv_entries_size(level_descriptor *level)
 {
-	return sizeof(bt_leaf_entry) * level->leaf_offsets.kv_entries;
+	return sizeof(struct bt_leaf_entry) * level->leaf_offsets.kv_entries;
 }
 
 void init_static_leaf_metadata(struct bt_static_leaf_node *leaf, level_descriptor *level)
@@ -135,7 +136,10 @@ void *find_key_in_static_leaf(const struct bt_static_leaf_node *leaf, level_desc
 	binary_search_static_leaf(leaf, level, key_buf, &result);
 	if (result.status != FOUND) {
 		log_info("Key Search %*s", key_buf->size, key_buf->data);
-		print_static_leaf(leaf, level);
+		log_info("Key %llu", src.kv_entries[src.slot_array[result.middle].index].pointer);
+
+		/* BREAKPOINT; */
+		/* print_static_leaf(leaf, level); */
 	}
 
 	switch (result.status) {
@@ -162,7 +166,8 @@ void shift_slot_array(struct bt_static_leaf_node *leaf, uint32_t middle, level_d
 	if (num_items == 0)
 		return;
 
-	memmove(&src.slot_array[middle + 1], &src.slot_array[middle], num_items * sizeof(bt_leaf_slot_array));
+	memmove(&src.slot_array[middle + 1], &src.slot_array[middle],
+		num_items * sizeof(struct bt_static_leaf_slot_array));
 }
 
 void print_static_leaf(const struct bt_static_leaf_node *leaf, level_descriptor *level)
@@ -391,7 +396,7 @@ void merge_with_left_static_leaf_neighbor(struct bt_static_leaf_node *curr, stru
 	/* First shift the kv pointers + prefixes to make space
 	   for the kv pointers + prefixes of the left leaf */
 	memmove(&curr_leaf_src.slot_array[left->header.numberOfEntriesInNode], &curr_leaf_src.slot_array[0],
-		sizeof(bt_leaf_slot_array) * curr->header.numberOfEntriesInNode);
+		sizeof(struct bt_static_leaf_slot_array) * curr->header.numberOfEntriesInNode);
 
 	/* copy the kv pointers + prefixes from the left leaf */
 	for (i = 0; i < left->header.numberOfEntriesInNode; ++i) {
@@ -456,9 +461,9 @@ int8_t insert_in_static_leaf(struct bt_static_leaf_node *leaf, bt_insert_req *re
 	struct bt_leaf_entry_bitmap *bitmap_end;
 	int kventry_slot = -1;
 
-	if (unlikely(leaf->header.numberOfEntriesInNode == 0)) {
+	if (unlikely(leaf->header.numberOfEntriesInNode == 0))
 		init_static_leaf_metadata(leaf, level);
-	}
+
 	retrieve_static_leaf_structures(leaf, &src, level);
 	bitmap_end = src.bitmap + level->leaf_offsets.bitmap_entries;
 	binary_search_static_leaf(leaf, level, key, &bsearch);
@@ -475,6 +480,7 @@ int8_t insert_in_static_leaf(struct bt_static_leaf_node *leaf, bt_insert_req *re
 		++leaf->header.numberOfEntriesInNode;
 		break;
 	case FOUND:
+		assert(0);
 		src.kv_entries[src.slot_array[bsearch.middle].index].pointer = ABSOLUTE_ADDRESS(req->key_value_buf);
 		memcpy(src.kv_entries[src.slot_array[bsearch.middle].index].prefix, key->data,
 		       MIN(key->size, PREFIX_SIZE));

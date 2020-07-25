@@ -10,8 +10,8 @@ enum bt_static_leaf_operation { STATIC_LEAF_INSERT = 0, STATIC_LEAF_FIND = 1 };
 
 struct bt_static_leaf_structs {
 	struct bt_leaf_entry_bitmap *bitmap;
-	bt_leaf_slot_array *slot_array;
-	bt_leaf_entry *kv_entries;
+	struct bt_static_leaf_slot_array *slot_array;
+	struct bt_leaf_entry *kv_entries;
 };
 
 struct bsearch_result {

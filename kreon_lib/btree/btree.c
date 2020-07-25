@@ -398,7 +398,7 @@ static void calculate_metadata_offsets(uint32_t bitmap_entries, uint32_t slot_ar
 	leaf_level->kv_entries = kv_entries;
 	leaf_level->kv_entries_offset = leaf_level->bitmap_offset +
 					bitmap_entries * sizeof(struct bt_leaf_entry_bitmap) +
-					slot_array_entries * sizeof(bt_leaf_slot_array);
+					slot_array_entries * sizeof(struct bt_static_leaf_slot_array);
 }
 
 static void init_leaf_sizes_perlevel(level_descriptor *level, int level_id)
@@ -407,7 +407,7 @@ static void init_leaf_sizes_perlevel(level_descriptor *level, int level_id)
 							     LEVEL3_LEAF_LAYOUT, LEVEL4_LEAF_LAYOUT, LEVEL5_LEAF_LAYOUT,
 							     LEVEL6_LEAF_LAYOUT, LEVEL7_LEAF_LAYOUT };
 
-	double kv_leaf_entry = sizeof(bt_leaf_entry) + sizeof(bt_leaf_slot_array) + (1 / CHAR_BIT);
+	double kv_leaf_entry = sizeof(struct bt_leaf_entry) + sizeof(struct bt_static_leaf_slot_array) + (1 / CHAR_BIT);
 	double numentries_without_metadata;
 	uint32_t bitmap_entries;
 	uint32_t slot_array_entries;
@@ -417,8 +417,8 @@ static void init_leaf_sizes_perlevel(level_descriptor *level, int level_id)
 	bitmap_entries = (numentries_without_metadata / CHAR_BIT) + 1;
 	slot_array_entries = numentries_without_metadata;
 	kv_entries = (level->leaf_size - sizeof(struct bt_static_leaf_node) - bitmap_entries -
-		      (slot_array_entries * sizeof(bt_leaf_slot_array))) /
-		     sizeof(bt_leaf_entry);
+		      (slot_array_entries * sizeof(struct bt_static_leaf_slot_array))) /
+		     sizeof(struct bt_leaf_entry);
 	calculate_metadata_offsets(bitmap_entries, slot_array_entries, kv_entries, &level->leaf_offsets);
 	level->node_layout = leaf_layout_per_level[level_id];
 }
@@ -1361,7 +1361,6 @@ void *append_key_value_to_log(log_operation *req)
 
 		allocated_space = data_size.kv_size + sizeof(segment_header);
 		allocated_space += BUFFER_SEGMENT_SIZE - (allocated_space % BUFFER_SEGMENT_SIZE);
-
 		d_header = seg_get_raw_log_segment(handle->volume_desc);
 		d_header->segment_id = log_metadata.log_tail->segment_id + 1;
 		d_header->prev_segment = (void *)ABSOLUTE_ADDRESS(log_metadata.log_tail);
@@ -2092,10 +2091,11 @@ release_and_retry:
 			} else {
 				/*Tree too small consists only of 1 leafRootNode*/
 				leaf_node *t = seg_get_leaf_node_header(ins_req->metadata.handle->volume_desc,
-									&db_desc->levels[level_id],
-									ins_req->metadata.tree_id, COW_FOR_LEAF);
+									&db_desc->levels[level_id],ins_req->metadata.tree_id,COW_FOR_LEAF);
 
-				memcpy(t, db_desc->levels[level_id].root_r[ins_req->metadata.tree_id], LEAF_NODE_SIZE);
+				memcpy(t, db_desc->levels[level_id].root_r[ins_req->metadata.tree_id],
+				       db_desc->levels[level_id].leaf_size);
+
 				t->header.epoch = mem_catalogue->epoch;
 				db_desc->levels[level_id].root_w[ins_req->metadata.tree_id] = (node_header *)t;
 			}
@@ -2121,6 +2121,7 @@ release_and_retry:
 		log_fatal("ERROR locking");
 		exit(EXIT_FAILURE);
 	}
+
 	upper_level_nodes[size++] = lock;
 	son = db_desc->levels[level_id].root_w[ins_req->metadata.tree_id];
 
@@ -2230,11 +2231,6 @@ release_and_retry:
 			} else { /*We COWED the root*/
 				db_desc->levels[level_id].root_w[ins_req->metadata.tree_id] = node_copy;
 			}
-			// log_info("son->epoch = %llu volume_desc->dev_catalogue->epoch %llu mem
-			// "
-			//        "epoch %llu",
-			//         son->epoch, volume_desc->dev_catalogue->epoch,
-			//         volume_desc->mem_catalogue->epoch);
 			goto release_and_retry;
 		}
 
@@ -2259,7 +2255,7 @@ release_and_retry:
 		else
 			order = index_order;
 		/*if the node is not safe hold its ancestor's lock else release locks from
-* ancestors */
+		 * ancestors */
 		if (!(son->epoch <= volume_desc->dev_catalogue->epoch || son->numberOfEntriesInNode >= order)) {
 			_unlock_upper_levels(upper_level_nodes, size - 1, release);
 			release = size - 1;
@@ -2312,9 +2308,9 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 	release = 0;
 
 	/*
-* Caution no retry here, we just optimistically try to insert,
-* if we donot succeed we try with concurrent_insert
-*/
+	 * Caution no retry here, we just optimistically try to insert,
+	 * if we donot succeed we try with concurrent_insert
+	 */
 	/*Acquire read guard lock*/
 	ret = RWLOCK_RDLOCK(&guard_of_level->rx_lock);
 	if (ret) {
@@ -2340,10 +2336,12 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 	/*acquire read lock of the current root*/
 	lock = _find_position(db_desc->levels[level_id].level_lock_table,
 			      db_desc->levels[level_id].root_w[ins_req->metadata.tree_id]);
+
 	if (RWLOCK_RDLOCK(&lock->rx_lock) != 0) {
 		log_fatal("ERROR locking");
 		exit(EXIT_FAILURE);
 	}
+
 	upper_level_nodes[size++] = lock;
 	son = db_desc->levels[level_id].root_w[ins_req->metadata.tree_id];
 	while (1) {
@@ -2390,12 +2388,14 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 		log_fatal("ERROR unlocking");
 		exit(EXIT_FAILURE);
 	}
+
 	if (son->numberOfEntriesInNode >= (uint32_t)db_desc->levels[level_id].leaf_offsets.kv_entries ||
 	    son->epoch <= volume_desc->dev_catalogue->epoch) {
 		_unlock_upper_levels(upper_level_nodes, size, release);
 		__sync_fetch_and_sub(num_level_writers, 1);
 		return FAILURE;
 	}
+
 	/*Succesfully reached a bin (bottom internal node)*/
 	if (son->height != 0) {
 		log_fatal("FATAL son corrupted");
