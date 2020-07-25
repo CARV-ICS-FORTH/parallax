@@ -429,84 +429,53 @@ static void destroy_level_locktable(db_descriptor *database, uint8_t level_id)
 		free(&database->levels[level_id].level_lock_table[i]);
 }
 
-static void init_logs(db_descriptor *db_desc, pr_db_entry *db_entry, volume_descriptor *volume_desc, char CREATE_FLAG)
+static void pr_init_logs(db_descriptor *db_desc, pr_db_entry *db_entry, volume_descriptor *volume_desc)
 {
-	if (CREATE_FLAG != CREATE_DB) {
-		log_info("replica db ommiting KV log initialization\n");
+	log_info("Primary db initializing KV log");
 
-		db_desc->big_log_head = NULL;
-		db_desc->big_log_tail = NULL;
-		db_desc->big_log_size = 0;
-		db_desc->big_log_head_offset = 0;
-		db_desc->big_log_tail_offset = 0;
-		db_desc->medium_log_head = NULL;
-		db_desc->medium_log_tail = NULL;
-		db_desc->medium_log_size = 0;
-		db_desc->medium_log_head_offset = 0;
-		db_desc->medium_log_tail_offset = 0;
-		db_desc->small_log_head = NULL;
-		db_desc->small_log_tail = NULL;
-		db_desc->small_log_size = 0;
-		db_desc->small_log_head_offset = 0;
-		db_desc->small_log_tail_offset = 0;
+	db_desc->big_log_head = seg_get_raw_log_segment(volume_desc);
+	db_desc->big_log_tail = db_desc->big_log_head;
+	db_desc->big_log_tail->segment_id = 0;
+	db_desc->big_log_tail->next_segment = NULL;
+	db_desc->big_log_tail->prev_segment = NULL;
+	db_desc->big_log_size = sizeof(segment_header);
+	db_desc->big_log_head_offset = sizeof(segment_header);
+	db_desc->big_log_tail_offset = sizeof(segment_header);
+	/*get a page for commit_log info*/
+	db_desc->commit_log->big_log_head = (segment_header *)ABSOLUTE_ADDRESS(db_desc->big_log_head);
+	db_desc->commit_log->big_log_tail = (segment_header *)ABSOLUTE_ADDRESS(db_desc->big_log_tail);
+	db_desc->commit_log->big_log_size = db_desc->big_log_size;
 
-		db_desc->commit_log->big_log_head = NULL;
-		db_desc->commit_log->big_log_tail = NULL;
-		db_desc->commit_log->big_log_size = 0;
-		db_desc->commit_log->medium_log_head = NULL;
-		db_desc->commit_log->medium_log_tail = NULL;
-		db_desc->commit_log->medium_log_size = 0;
-		db_desc->commit_log->small_log_head = NULL;
-		db_desc->commit_log->small_log_tail = NULL;
-		db_desc->commit_log->small_log_size = 0;
-		db_desc->commit_log->lsn = db_desc->lsn = 0;
-	} else {
-		log_info("Primary db initializing KV log");
+	/* Medium log */
+	db_desc->medium_log_head = seg_get_raw_log_segment(volume_desc);
+	db_desc->medium_log_tail = db_desc->medium_log_head;
+	db_desc->medium_log_tail->segment_id = 0;
+	db_desc->medium_log_tail->next_segment = NULL;
+	db_desc->medium_log_tail->prev_segment = NULL;
+	db_desc->medium_log_size = sizeof(segment_header);
+	db_desc->medium_log_head_offset = sizeof(segment_header);
+	db_desc->medium_log_tail_offset = sizeof(segment_header);
+	db_desc->commit_log->medium_log_head = (segment_header *)ABSOLUTE_ADDRESS(db_desc->medium_log_head);
+	db_desc->commit_log->medium_log_tail = (segment_header *)ABSOLUTE_ADDRESS(db_desc->medium_log_tail);
+	db_desc->commit_log->medium_log_size = db_desc->medium_log_size;
 
-		db_desc->big_log_head = seg_get_raw_log_segment(volume_desc);
-		db_desc->big_log_tail = db_desc->big_log_head;
-		db_desc->big_log_tail->segment_id = 0;
-		db_desc->big_log_tail->next_segment = NULL;
-		db_desc->big_log_tail->prev_segment = NULL;
-		db_desc->big_log_size = sizeof(segment_header);
-		db_desc->big_log_head_offset = sizeof(segment_header);
-		db_desc->big_log_tail_offset = sizeof(segment_header);
-		/*get a page for commit_log info*/
-		db_desc->commit_log->big_log_head = (segment_header *)ABSOLUTE_ADDRESS(db_desc->big_log_head);
-		db_desc->commit_log->big_log_tail = (segment_header *)ABSOLUTE_ADDRESS(db_desc->big_log_tail);
-		db_desc->commit_log->big_log_size = db_desc->big_log_size;
+	/* Small log */
+	db_desc->small_log_head = seg_get_raw_log_segment(volume_desc);
+	db_desc->small_log_tail = db_desc->small_log_head;
+	db_desc->small_log_tail->segment_id = 0;
+	db_desc->small_log_tail->next_segment = NULL;
+	db_desc->small_log_tail->prev_segment = NULL;
+	db_desc->small_log_size = sizeof(segment_header);
+	db_desc->small_log_head_offset = sizeof(segment_header);
+	db_desc->small_log_tail_offset = sizeof(segment_header);
+	db_desc->commit_log->small_log_head = (segment_header *)ABSOLUTE_ADDRESS(db_desc->small_log_head);
+	db_desc->commit_log->small_log_tail = (segment_header *)ABSOLUTE_ADDRESS(db_desc->small_log_tail);
+	db_desc->commit_log->small_log_size = db_desc->small_log_size;
+	db_desc->lsn = db_desc->commit_log->lsn;
 
-		/* Medium log */
-		db_desc->medium_log_head = seg_get_raw_log_segment(volume_desc);
-		db_desc->medium_log_tail = db_desc->medium_log_head;
-		db_desc->medium_log_tail->segment_id = 0;
-		db_desc->medium_log_tail->next_segment = NULL;
-		db_desc->medium_log_tail->prev_segment = NULL;
-		db_desc->medium_log_size = sizeof(segment_header);
-		db_desc->medium_log_head_offset = sizeof(segment_header);
-		db_desc->medium_log_tail_offset = sizeof(segment_header);
-		db_desc->commit_log->medium_log_head = (segment_header *)ABSOLUTE_ADDRESS(db_desc->medium_log_head);
-		db_desc->commit_log->medium_log_tail = (segment_header *)ABSOLUTE_ADDRESS(db_desc->medium_log_tail);
-		db_desc->commit_log->medium_log_size = db_desc->medium_log_size;
-
-		/* Small log */
-		db_desc->small_log_head = seg_get_raw_log_segment(volume_desc);
-		db_desc->small_log_tail = db_desc->small_log_head;
-		db_desc->small_log_tail->segment_id = 0;
-		db_desc->small_log_tail->next_segment = NULL;
-		db_desc->small_log_tail->prev_segment = NULL;
-		db_desc->small_log_size = sizeof(segment_header);
-		db_desc->small_log_head_offset = sizeof(segment_header);
-		db_desc->small_log_tail_offset = sizeof(segment_header);
-		db_desc->commit_log->small_log_head = (segment_header *)ABSOLUTE_ADDRESS(db_desc->small_log_head);
-		db_desc->commit_log->small_log_tail = (segment_header *)ABSOLUTE_ADDRESS(db_desc->small_log_tail);
-		db_desc->commit_log->small_log_size = db_desc->small_log_size;
-		db_desc->lsn = db_desc->commit_log->lsn;
-
-		/*persist commit log information, this location stays permanent, there is no
+	/*persist commit log information, this location stays permanent, there is no
 		 * need to rewrite it during snapshot()*/
-		db_entry->commit_log = ABSOLUTE_ADDRESS(db_desc->commit_log);
-	}
+	db_entry->commit_log = ABSOLUTE_ADDRESS(db_desc->commit_log);
 }
 
 void recover_database_logs(db_descriptor *db_desc, pr_db_entry *db_entry)
@@ -930,7 +899,7 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 		/*initialize KV log for this db*/
 		db_desc->commit_log = (commit_log_info *)get_space_for_system(volume_desc, sizeof(commit_log_info));
 		/*get a page for commit_log info*/
-		init_logs(db_desc, db_entry, volume_desc, CREATE_FLAG);
+		pr_init_logs(db_desc, db_entry, volume_desc);
 	}
 
 finish_init:
@@ -1024,8 +993,17 @@ finish_init:
 		   db_desc->medium_log_tail_offset == db_desc->medium_log_head_offset ||
 		   db_desc->small_log_tail_offset == db_desc->small_log_head_offset) {
 		log_info("L0 is absent L1 ends at %llu replaying missing parts", (LLU)db_desc->big_log_tail_offset);
+		log_info("L0 is absent L1 ends at %llu replaying missing parts", (LLU)db_desc->medium_log_tail_offset);
+		log_info("L0 is absent L1 ends at %llu replaying missing parts", (LLU)db_desc->small_log_tail_offset);
 
-		if (db_desc->big_log_tail_offset < db_desc->commit_log->big_log_size) {
+		log_info("Condition part1 %d part2 %d part3 %d",
+			 db_desc->big_log_tail_offset < db_desc->commit_log->big_log_size,
+			 db_desc->medium_log_tail_offset < db_desc->commit_log->medium_log_size,
+			 db_desc->small_log_tail_offset < db_desc->commit_log->small_log_size);
+
+		if (db_desc->big_log_tail_offset < db_desc->commit_log->big_log_size ||
+		    db_desc->medium_log_tail_offset < db_desc->commit_log->medium_log_size ||
+		    db_desc->small_log_tail_offset < db_desc->commit_log->small_log_size) {
 			log_info("Commit log (%llu) is ahead of L0 end (%llu) replaying missing "
 				 "log parts",
 				 (LLU)db_desc->commit_log->big_log_size, (LLU)db_desc->big_log_tail_offset);
@@ -1039,9 +1017,9 @@ finish_init:
 			log_info("recovery completed successfully");
 		} else if (db_desc->big_log_tail_offset == db_desc->commit_log->big_log_size &&
 			   db_desc->medium_log_tail_offset == db_desc->commit_log->medium_log_size &&
-			   db_desc->small_log_tail_offset == db_desc->commit_log->small_log_size)
+			   db_desc->small_log_tail_offset == db_desc->commit_log->small_log_size) {
 			log_info("no recovery needed for db: %s ready :-)\n", db_desc->db_name);
-		else {
+		} else {
 			log_fatal("FATAL corrupted state for db: %s :-(", db_desc->db_name);
 			exit(EXIT_FAILURE);
 		}
@@ -1050,6 +1028,12 @@ finish_init:
 		log_fatal("FATAL Corrupted state detected");
 		exit(EXIT_FAILURE);
 	}
+	log_info("MAPPED = %llu", MAPPED);
+	log_info("big start %llu big end %llu diff %llu", handle->db_desc->big_log_head, handle->db_desc->big_log_tail,
+		 handle->db_desc->big_log_tail_offset - handle->db_desc->big_log_head_offset);
+	log_info("medium start %llu medium end %llu", handle->db_desc->medium_log_head,
+		 handle->db_desc->medium_log_tail);
+	log_info("small start %llu small end %llu", handle->db_desc->small_log_head, handle->db_desc->small_log_tail);
 
 	return handle;
 }
@@ -1855,7 +1839,8 @@ int insert_KV_at_leaf(bt_insert_req *ins_req, node_header *leaf)
 		ins_req->key_value_buf = append_key_value_to_log(&append_op);
 	} else if (!ins_req->metadata.append_to_log && ins_req->metadata.key_format == KV_PREFIX)
 		;
-	/* key_addr = ins_req->key_value_buf; */
+	else if (!ins_req->metadata.append_to_log && ins_req->metadata.recovery_request)
+		;
 	else {
 		log_fatal("Wrong combination of key format / append_to_log option");
 		exit(EXIT_FAILURE);
@@ -2228,9 +2213,9 @@ release_and_retry:
 			} else {
 				node_copy = (node_header *)seg_get_leaf_node_header(
 					ins_req->metadata.handle->volume_desc, &db_desc->levels[level_id],
-					ins_req->metadata.tree_id, COW_FOR_LEAF);
-
-				memcpy(node_copy, son, LEAF_NODE_SIZE);
+					ins_req->metadata.tree_id,COW_FOR_LEAF);
+				memcpy(node_copy, son, db_desc->levels[level_id].leaf_size);
+				/* Add static and dynamic layout free operations*/
 				seg_free_leaf_node(ins_req->metadata.handle->volume_desc, &db_desc->levels[level_id],
 						   ins_req->metadata.tree_id, (leaf_node *)son);
 			}

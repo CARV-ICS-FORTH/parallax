@@ -7,14 +7,24 @@
 
 void load_logs_torecover(recovery_request *recover_req, struct recovery_operator *replay)
 {
-	if (recover_req->db_desc->commit_log->big_log_size < recover_req->db_desc->big_log_size)
-		log_warn("warning commit log should be larger than g_kv_log");
+	unsigned replay_onelog_atleast = 0;
 
-	if (recover_req->db_desc->commit_log->medium_log_size < recover_req->db_desc->medium_log_size)
-		log_warn("warning commit log should be larger than g_kv_log");
+	if (recover_req->db_desc->commit_log->big_log_size < recover_req->db_desc->big_log_size) {
+		log_warn("warning commit log should be larger than in memory log");
+		++replay_onelog_atleast;
+	}
 
-	if (recover_req->db_desc->commit_log->small_log_size < recover_req->db_desc->small_log_size)
-		log_warn("warning commit log should be larger than g_kv_log");
+	if (recover_req->db_desc->commit_log->medium_log_size < recover_req->db_desc->medium_log_size) {
+		log_warn("warning commit log should be larger than in memory log");
+		++replay_onelog_atleast;
+	}
+
+	if (recover_req->db_desc->commit_log->small_log_size < recover_req->db_desc->small_log_size) {
+		log_warn("warning commit log should be larger than in memory log");
+		++replay_onelog_atleast;
+	}
+
+	assert(!replay_onelog_atleast);
 
 	log_info("starting recovery for db %s first big log segment %llu last big log last segment %llu",
 		 recover_req->db_desc->db_name, (LLU)recover_req->db_desc->big_log_head,
@@ -42,6 +52,14 @@ void load_logs_torecover(recovery_request *recover_req, struct recovery_operator
 	log_info("Small start offset %llu maps to segment id %llu", (LLU)recover_req->db_desc->small_log_head_offset,
 		 (LLU)replay->small.segment_id);
 
+	log_info("Commit log segment id %llu",
+		 ((segment_header *)REAL_ADDRESS(recover_req->db_desc->commit_log->big_log_tail))->segment_id);
+	segment_header *seg = (segment_header *)REAL_ADDRESS(recover_req->db_desc->commit_log->big_log_tail);
+	while (seg) {
+		log_info("Commit log segment id %llu", seg->segment_id);
+		seg = ((segment_header *)REAL_ADDRESS(seg))->next_segment;
+	}
+
 	replay->big.log_curr_segment = (segment_header *)REAL_ADDRESS(recover_req->db_desc->commit_log->big_log_tail);
 	replay->medium.log_curr_segment =
 		(segment_header *)REAL_ADDRESS(recover_req->db_desc->commit_log->medium_log_tail);
@@ -57,10 +75,10 @@ void load_logs_torecover(recovery_request *recover_req, struct recovery_operator
 	replay->small.log_size = recover_req->db_desc->commit_log->small_log_size;
 }
 
-segment_header *find_replay_offset(segment_header *current_log_segment)
+segment_header *find_replay_offset(segment_header *current_log_segment, uint64_t segment_id)
 {
-	uint64_t segment_id = current_log_segment->segment_id;
 	uint64_t previous_segment_id = 0;
+	log_info("Segment id %llu last segment_id %llu", segment_id, current_log_segment->segment_id);
 
 	while (current_log_segment->segment_id != segment_id) {
 		previous_segment_id = current_log_segment->segment_id;
@@ -80,14 +98,17 @@ segment_header *find_replay_offset(segment_header *current_log_segment)
 		}
 	}
 
+	log_info("Segment id %llu first segment_id %llu", segment_id, current_log_segment->segment_id);
+
 	return current_log_segment;
 }
 
 void set_replay_offset(struct recovery_operator *replay)
 {
-	replay->big.log_curr_segment = find_replay_offset(replay->big.log_curr_segment);
-	replay->medium.log_curr_segment = find_replay_offset(replay->medium.log_curr_segment);
-	replay->small.log_curr_segment = find_replay_offset(replay->small.log_curr_segment);
+	replay->big.log_curr_segment = find_replay_offset(replay->big.log_curr_segment, replay->big.segment_id);
+	replay->medium.log_curr_segment =
+		find_replay_offset(replay->medium.log_curr_segment, replay->medium.segment_id);
+	replay->small.log_curr_segment = find_replay_offset(replay->small.log_curr_segment, replay->small.segment_id);
 	log_info("starting segment of big log %llu medium log %llu small log %llu found starting recovery procedure",
 		 (LLU)replay->big.log_curr_segment->segment_id, (LLU)replay->medium.log_curr_segment->segment_id,
 		 (LLU)replay->small.log_curr_segment->segment_id);
@@ -187,7 +208,7 @@ void replay_log(recovery_request *rh, struct recovery_operator *replay)
 	       replay->small.log_offset < replay->small.log_size) {
 		ommit_log_segment_header(replay);
 		kv_addr = find_next_kventry(replay);
-
+		log_info("replaying Key %*s", *(uint32_t *)kv_addr, kv_addr + 4);
 		if (kv_addr) {
 			ins_req.key_value_buf = kv_addr;
 			ins_req.metadata.handle = &handle;

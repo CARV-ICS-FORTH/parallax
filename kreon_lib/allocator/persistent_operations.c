@@ -52,7 +52,7 @@ void commit_db_log(db_descriptor *db_desc, commit_log_info *info)
 	segment_header *medium_log_current_segment, *medium_log_first_segment, *medium_log_last_segment;
 	segment_header *small_log_current_segment, *small_log_first_segment, *small_log_last_segment;
 	unsigned all_logs_persisted;
-
+	int i = 0;
 	/*sync data then metadata*/
 	big_log_first_segment = (segment_header *)REAL_ADDRESS(db_desc->commit_log->big_log_tail);
 	medium_log_first_segment = (segment_header *)REAL_ADDRESS(db_desc->commit_log->medium_log_tail);
@@ -67,11 +67,13 @@ void commit_db_log(db_descriptor *db_desc, commit_log_info *info)
 	small_log_current_segment = small_log_first_segment;
 
 	while (1) {
+		++i;
 		all_logs_persisted = 0;
 
 		msync(big_log_current_segment, SEGMENT_SIZE, MS_SYNC);
 		msync(medium_log_current_segment, SEGMENT_SIZE, MS_SYNC);
 		msync(small_log_current_segment, SEGMENT_SIZE, MS_SYNC);
+		log_info("Committed Segment id %llu", big_log_current_segment->segment_id);
 
 		if (big_log_current_segment != big_log_last_segment) {
 			big_log_current_segment = (segment_header *)REAL_ADDRESS(big_log_current_segment->next_segment);
@@ -90,8 +92,10 @@ void commit_db_log(db_descriptor *db_desc, commit_log_info *info)
 			++all_logs_persisted;
 		}
 
-		if (!all_logs_persisted)
+		if (!all_logs_persisted) {
+			log_info("ITERATED %d", i);
 			break;
+		}
 	}
 
 	write_log_metadata(db_desc, info);
@@ -134,7 +138,7 @@ void commit_db_logs_per_volume(volume_descriptor *volume_desc)
 		info.small_log_head = (segment_header *)db_desc->small_log_head;
 		info.small_log_tail = (segment_header *)db_desc->small_log_tail;
 		info.small_log_size = db_desc->small_log_size;
-
+		info.lsn = db_desc->lsn;
 #if LOG_WITH_MUTEX
 		MUTEX_UNLOCK(&db_desc->lock_log);
 #else
@@ -142,8 +146,12 @@ void commit_db_logs_per_volume(volume_descriptor *volume_desc)
 #endif
 		RWLOCK_UNLOCK(&db_desc->levels[0].guard_of_level.rx_lock);
 
-		if (db_desc->commit_log->big_log_size != db_desc->big_log_size)
+		if (db_desc->commit_log->big_log_size != db_desc->big_log_size ||
+		    db_desc->commit_log->medium_log_size != db_desc->medium_log_size ||
+		    db_desc->commit_log->small_log_size != db_desc->small_log_size) {
+			log_info("WILL I COMMIT?");
 			commit_db_log(db_desc, &info);
+		}
 		node = node->next;
 	}
 }
