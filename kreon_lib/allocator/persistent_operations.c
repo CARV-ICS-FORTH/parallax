@@ -374,7 +374,7 @@ void snapshot(volume_descriptor *volume_desc)
 				log_error("msync returned EINVAL");
 				break;
 			case ENOMEM:
-				log_error("msync returned EBUSY");
+				log_error("msync returned ENOMEM");
 				break;
 			}
 			exit(EXIT_FAILURE);

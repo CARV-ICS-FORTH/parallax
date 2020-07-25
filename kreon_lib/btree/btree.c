@@ -459,6 +459,7 @@ static void init_logs(db_descriptor *db_desc, pr_db_entry *db_entry, volume_desc
 		db_desc->commit_log->small_log_head = NULL;
 		db_desc->commit_log->small_log_tail = NULL;
 		db_desc->commit_log->small_log_size = 0;
+		db_desc->commit_log->lsn = db_desc->lsn = 0;
 	} else {
 		log_info("Primary db initializing KV log");
 
@@ -500,11 +501,73 @@ static void init_logs(db_descriptor *db_desc, pr_db_entry *db_entry, volume_desc
 		db_desc->commit_log->small_log_head = (segment_header *)ABSOLUTE_ADDRESS(db_desc->small_log_head);
 		db_desc->commit_log->small_log_tail = (segment_header *)ABSOLUTE_ADDRESS(db_desc->small_log_tail);
 		db_desc->commit_log->small_log_size = db_desc->small_log_size;
+		db_desc->lsn = db_desc->commit_log->lsn;
 
 		/*persist commit log information, this location stays permanent, there is no
 		 * need to rewrite it during snapshot()*/
 		db_entry->commit_log = ABSOLUTE_ADDRESS(db_desc->commit_log);
 	}
+}
+
+void recover_database_logs(db_descriptor *db_desc, pr_db_entry *db_entry)
+{
+	db_desc->commit_log = (commit_log_info *)REAL_ADDRESS(db_entry->commit_log);
+
+	if (db_desc->commit_log->big_log_head != NULL)
+		db_desc->big_log_head = (segment_header *)REAL_ADDRESS(db_desc->commit_log->big_log_head);
+	else
+		db_desc->big_log_head = NULL;
+
+	if (db_desc->commit_log->big_log_tail != NULL)
+		db_desc->big_log_tail = (segment_header *)REAL_ADDRESS(db_desc->commit_log->big_log_tail);
+	else
+		db_desc->big_log_tail = NULL;
+
+	db_desc->big_log_size = db_desc->commit_log->big_log_size;
+	db_desc->big_log_head_offset = db_entry->big_log_head_offset;
+	db_desc->big_log_tail_offset = db_entry->big_log_tail_offset;
+
+	log_info("Big log segments first: %llu last: %llu log_size %llu", (LLU)db_desc->big_log_head,
+		 (LLU)db_desc->big_log_tail, (LLU)db_desc->big_log_size);
+	log_info("L0 start log offset %llu end %llu", db_desc->big_log_head_offset, db_desc->big_log_tail_offset);
+
+	if (db_desc->commit_log->medium_log_head != NULL)
+		db_desc->medium_log_head = (segment_header *)REAL_ADDRESS(db_desc->commit_log->medium_log_head);
+	else
+		db_desc->medium_log_head = NULL;
+
+	if (db_desc->commit_log->medium_log_tail != NULL)
+		db_desc->medium_log_tail = (segment_header *)REAL_ADDRESS(db_desc->commit_log->medium_log_tail);
+	else
+		db_desc->medium_log_tail = NULL;
+
+	db_desc->medium_log_size = db_desc->commit_log->medium_log_size;
+	db_desc->medium_log_head_offset = db_entry->medium_log_head_offset;
+	db_desc->medium_log_tail_offset = db_entry->medium_log_tail_offset;
+
+	log_info("Medium log segments first: %llu last: %llu log_size %llu", (LLU)db_desc->medium_log_head,
+		 (LLU)db_desc->medium_log_tail, (LLU)db_desc->medium_log_size);
+	log_info("Medium L0 start log offset %llu end %llu", db_desc->medium_log_head_offset,
+		 db_desc->medium_log_tail_offset);
+
+	if (db_desc->commit_log->small_log_head != NULL)
+		db_desc->small_log_head = (segment_header *)REAL_ADDRESS(db_desc->commit_log->small_log_head);
+	else
+		db_desc->small_log_head = NULL;
+
+	if (db_desc->commit_log->small_log_tail != NULL)
+		db_desc->small_log_tail = (segment_header *)REAL_ADDRESS(db_desc->commit_log->small_log_tail);
+	else
+		db_desc->small_log_tail = NULL;
+
+	db_desc->small_log_size = db_desc->commit_log->small_log_size;
+	db_desc->small_log_head_offset = db_entry->small_log_head_offset;
+	db_desc->small_log_tail_offset = db_entry->small_log_tail_offset;
+
+	log_info("Small log segments first: %llu last: %llu log_size %llu", (LLU)db_desc->small_log_head,
+		 (LLU)db_desc->small_log_tail, (LLU)db_desc->small_log_size);
+	log_info("Small L0 start log offset %llu end %llu", db_desc->small_log_head_offset,
+		 db_desc->small_log_tail_offset);
 }
 
 /**
@@ -790,30 +853,7 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 /*done with replica forest*/
 #endif
 							/*recover KV log for this database*/
-							db_desc->commit_log =
-								(commit_log_info *)REAL_ADDRESS(db_entry->commit_log);
-							if (db_desc->commit_log->big_log_head != NULL)
-								db_desc->big_log_head = (segment_header *)REAL_ADDRESS(
-									db_desc->commit_log->big_log_head);
-							else
-								db_desc->big_log_head = NULL;
-
-							if (db_desc->commit_log->big_log_tail != NULL)
-								db_desc->big_log_tail = (segment_header *)REAL_ADDRESS(
-									db_desc->commit_log->big_log_tail);
-							else
-								db_desc->big_log_tail = NULL;
-
-							db_desc->big_log_size = db_desc->commit_log->big_log_size;
-							db_desc->big_log_head_offset = db_entry->big_log_head_offset;
-							db_desc->big_log_tail_offset = db_entry->big_log_tail_offset;
-
-							log_info("KV log segments first: %llu last: %llu log_size %llu",
-								 (LLU)db_desc->big_log_head, (LLU)db_desc->big_log_tail,
-								 (LLU)db_desc->big_log_size);
-							log_info("L0 start log offset %llu end %llu",
-								 db_desc->big_log_head_offset,
-								 db_desc->big_log_tail_offset);
+							recover_database_logs(db_desc, db_entry);
 
 							goto finish_init;
 						}
@@ -1225,8 +1265,11 @@ void extract_keyvalue_size(log_operation *req, metadata_tologop *data_size)
 	}
 }
 
-void write_keyvalue_inlog(log_operation *req, metadata_tologop *data_size, char *addr_inlog)
+void write_keyvalue_inlog(log_operation *req, metadata_tologop *data_size, char *addr_inlog, uint64_t lsn)
 {
+	*(uint64_t *)addr_inlog = lsn;
+	addr_inlog += sizeof(struct log_sequence_number);
+
 	switch (req->optype_tolog) {
 	case insertOp:
 		memcpy(addr_inlog, req->ins_req->key_value_buf,
@@ -1281,10 +1324,11 @@ void update_log_metadata(db_descriptor *db_desc, struct log_towrite *log_metadat
 
 void *append_key_value_to_log(log_operation *req)
 {
-	segment_header *d_header;
 	struct log_towrite log_metadata;
+	segment_header *d_header;
 	void *addr_inlog; /*address at the device*/
 	metadata_tologop data_size;
+	uint64_t lsn;
 	uint32_t available_space_in_log;
 	uint32_t allocated_space;
 	db_handle *handle = req->metadata->handle;
@@ -1332,17 +1376,17 @@ void *append_key_value_to_log(log_operation *req)
 
 	addr_inlog = (void *)((uint64_t)log_metadata.log_tail + (*log_metadata.log_size % BUFFER_SEGMENT_SIZE));
 	req->metadata->log_offset = *log_metadata.log_size;
-	*log_metadata.log_size += data_size.kv_size;
-
+	*log_metadata.log_size += data_size.kv_size + sizeof(struct log_sequence_number);
+	lsn = __sync_fetch_and_add(&handle->db_desc->lsn, 1);
 #ifdef LOG_WITH_MUTEX
 	MUTEX_UNLOCK(&handle->db_desc->lock_log);
 #elif SPINLOCK
 	pthread_spin_unlock(&handle->db_desc->lock_log);
 #endif
 
-	write_keyvalue_inlog(req, &data_size, addr_inlog);
+	write_keyvalue_inlog(req, &data_size, addr_inlog, lsn);
 
-	return addr_inlog;
+	return addr_inlog + sizeof(struct log_sequence_number);
 }
 
 uint8_t _insert_key_value(bt_insert_req *ins_req)

@@ -231,7 +231,8 @@ typedef struct commit_log_info {
 	uint64_t big_log_size;
 	uint64_t medium_log_size;
 	uint64_t small_log_size;
-	char pad[4024];
+	uint64_t lsn;
+	char pad[4016];
 } commit_log_info;
 
 #if 0
@@ -338,6 +339,7 @@ typedef struct db_descriptor {
 	volatile segment_header *small_log_head;
 	volatile segment_header *small_log_tail;
 	volatile uint64_t small_log_size;
+	volatile uint64_t lsn;
 	/*coordinates of the latest persistent L0*/
 	/* Shouldn't this be in level_descriptor*/
 	uint64_t big_log_head_offset;
@@ -490,6 +492,10 @@ typedef struct metadata_tologop {
 	uint32_t value_len;
 	uint32_t kv_size;
 } metadata_tologop;
+
+struct log_sequence_number {
+	uint64_t id;
+};
 
 struct siblings_index_entries {
 	index_entry *left_entry;
