@@ -8,6 +8,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <zookeeper/zookeeper.h>
+#include <zookeeper/zookeeper.jute.h>
 #include <pthread.h>
 #include "metadata.h"
 #include "globals.h"
@@ -15,6 +16,7 @@
 #include "zk_utils.h"
 #include "../utilities/spin_loop.h"
 #include <log.h>
+#include <libgen.h>
 
 //struct krm_server_desc server;
 struct krm_server_desc my_desc;
@@ -531,23 +533,147 @@ void leader_health_watcher(zhandle_t *zh, int type, int state, const char *path,
 	}
 }
 
+static void zoo_rmr_folder(zhandle_t *zh, const char *path)
+{
+	struct String_vector children;
+	int rc = zoo_get_children(zh, path, 0, &children);
+	assert(rc == ZOK);
+	if (children.count != 0) {
+		for (int i = 0; i < children.count; ++i) {
+			char *child_path = children.data[i];
+			zoo_rmr_folder(zh, child_path);
+		}
+	}
+	rc = zoo_delete(zh, path, -1);
+	assert(rc == ZOK);
+}
+
+static int is_primary_of_region(struct krm_region *region, struct krm_server_name *dataserver_name)
+{
+	return !strncmp(region->primary.kreon_ds_hostname, dataserver_name->kreon_ds_hostname,
+			dataserver_name->kreon_ds_hostname_length);
+}
+
+static char is_backup_of_region(struct krm_region *region, struct krm_server_name *dataserver_name,
+				int *backup_array_index)
+{
+	struct krm_server_name *backups = region->backups;
+	int backups_length = region->num_of_backup;
+	int i;
+	for (i = 0; i < backups_length; ++i) {
+		if (!strncmp(backups[i].kreon_ds_hostname, dataserver_name->kreon_ds_hostname,
+			     backups[i].kreon_ds_hostname_length))
+			break;
+	}
+	if (backup_array_index)
+		*backup_array_index = (i < backups_length) ? i : -1;
+	return i < backups_length;
+}
+
 void dataserver_health_watcher(zhandle_t *zh, int type, int state, const char *path, void *watcherCtx)
 {
 	int rc;
 	struct Stat *stat = (struct Stat *)watcherCtx;
-	log_info("Leader: Something changed with the dataservers!");
+	char *dataserver_name = basename((char *)path);
+	static char *const krm_region_role_tostring[KRM_BACKUP + 1] = { "Primary", "Backup" };
 	if (type == ZOO_DELETED_EVENT) {
-		log_warn("Leader: dataserver %s died! [TODO] Unhandled error, exiting...", path);
-		exit(EXIT_FAILURE);
+		log_warn("Leader: dataserver %s died! [TODO] Unhandled error, exiting...", dataserver_name);
+		struct krm_leader_ds_map *dataserver = NULL;
+		// Find dataserver's region map
+		ds_hash_key = djb2_hash((unsigned char *)dataserver_name, strlen(dataserver_name));
+		HASH_FIND_PTR(my_desc.dataservers_map, &ds_hash_key, dataserver);
+		assert(dataserver);
+		// Remove the server from Zookeeper
+		char *dataserver_hosts_path =
+			zku_concat_strings(4, KRM_ROOT_PATH, KRM_SERVERS_PATH, KRM_SLASH, dataserver_name);
+		zoo_delete(my_desc.zh, dataserver_hosts_path, -1); // FIXME where do I find the version?
+		free(dataserver_hosts_path);
+		char *dataserver_mailbox_path =
+			zku_concat_strings(4, KRM_ROOT_PATH, KRM_MAILBOX_PATH, KRM_SLASH, dataserver_name);
+		zoo_rmr_folder(zh, dataserver_mailbox_path);
+		free(dataserver_mailbox_path);
+		// Remove the now dead dataserver from the dataservers map
+		HASH_DEL(my_desc.dataservers_map, dataserver);
+
+		// The next dataserver to assign a region to is picked in round-robin order
+		static struct krm_leader_ds_map *next_assignee = NULL;
+		// Iterate over the dataserver's regions
+		log_info("Listing %s's regions:", dataserver_name);
+		struct krm_leader_ds_region_map *current;
+		struct krm_leader_ds_region_map *tmp;
+		char *zk_regions_path = zku_concat_strings(3, KRM_ROOT_PATH, KRM_REGIONS_PATH, KRM_SLASH);
+		HASH_ITER(hh, dataserver->region_map, current, tmp)
+		{
+			if (!next_assignee)
+				next_assignee = my_desc.dataservers_map;
+
+			struct krm_region *current_region = current->lr_state.region;
+			// Make sure next_assignee does not play a role in this region
+			if (is_primary_of_region(current_region, &next_assignee->server_id) ||
+			    is_backup_of_region(current_region, &next_assignee->server_id, NULL)) {
+				int dataservers_map_size = HASH_COUNT(my_desc.dataservers_map);
+				int i;
+				for (i = 0; i < dataservers_map_size; ++i) {
+					next_assignee = (struct krm_leader_ds_map *)next_assignee->hh.next;
+					if (!next_assignee)
+						next_assignee = my_desc.dataservers_map;
+					if (!is_primary_of_region(current_region, &next_assignee->server_id) &&
+					    !is_backup_of_region(current_region, &next_assignee->server_id, NULL))
+						break;
+				}
+				if (i >= dataservers_map_size) {
+					log_fatal("Leader: No available dataserver for region %s. Exiting...",
+						  current_region->id);
+					exit(EXIT_FAILURE);
+				}
+			}
+
+			char *region_name = current_region->id;
+			log_info("\t%s [%s] -> %s", region_name, krm_region_role_tostring[current->lr_state.role],
+				 next_assignee->server_id.kreon_ds_hostname);
+			// Apply the new assignment to the leader's state
+			current->lr_state.server_id = next_assignee->server_id;
+			if (current->lr_state.role == KRM_PRIMARY) {
+				current_region->primary = next_assignee->server_id;
+			} else {
+				assert(current->lr_state.role == KRM_BACKUP);
+				int backups_array_index;
+				// Find the entry of the now dead dataserver in the backups array
+				if (is_backup_of_region(current_region, &dataserver->server_id, &backups_array_index))
+					current_region->backups[backups_array_index] = next_assignee->server_id;
+				else {
+					log_fatal(
+						"Leader: Cannot find %s in region's %s backups while he should be there. Exiting...",
+						dataserver_name, region_name);
+					exit(EXIT_FAILURE);
+				}
+			}
+			HASH_ADD_PTR(next_assignee->region_map, hash_key, current);
+			// Update Zookeeper region info
+			char *current_zk_region_path = zku_concat_strings(2, zk_regions_path, region_name);
+			rc = zoo_set(my_desc.zh, current_zk_region_path, (char *)current_region,
+				     sizeof(struct krm_region), -1);
+			assert(rc == ZOK);
+			enum krm_msg_type type = (current->lr_state.role == KRM_PRIMARY) ? KRM_OPEN_REGION_AS_PRIMARY :
+											   KRM_OPEN_REGION_AS_BACKUP;
+			// Send open command to new assignee
+			krm_resend_open_command(&my_desc, current_region, next_assignee->server_id.kreon_ds_hostname,
+						type);
+			free(current_zk_region_path);
+
+			// Advance to next dataserver
+			next_assignee = (struct krm_leader_ds_map *)next_assignee->hh.next;
+		}
+		free(zk_regions_path);
 	} else if (type == ZOO_CREATED_EVENT) {
-		log_warn("Leader: dataserver %s joined!", path);
+		log_warn("Leader: dataserver %s joined!", dataserver_name);
 	} else {
 		log_warn("Leader: unhandled event type %d", type);
 	}
 	// Reset the watcher
 	log_info("Leader: resetting dataserver health watcher (path = %s)", path);
 	rc = zoo_wexists(my_desc.zh, path, dataserver_health_watcher, stat, stat);
-	if (rc != ZOK) {
+	if (rc != ZOK && rc != ZNONODE) {
 		log_fatal("failed to reset watcher for path %s", path);
 		exit(EXIT_FAILURE);
 	}
