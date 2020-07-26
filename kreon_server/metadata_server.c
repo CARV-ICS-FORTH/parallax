@@ -601,10 +601,11 @@ void mailbox_watcher(zhandle_t *zh, int type, int state, const char *path, void 
 	}
 }
 
-static struct krm_leader_region_state *krm_leader_get_region_status(struct krm_region *region, char *ds_hostname)
+static struct krm_leader_ds_region_map *krm_leader_get_ds_region(struct krm_region *region, char *ds_hostname)
 {
 	struct krm_leader_ds_map *dataserver;
 	struct krm_leader_ds_region_map *ds_region_map;
+	// Find dataserver
 	ds_hash_key = djb2_hash((unsigned char *)ds_hostname, strlen(ds_hostname));
 	HASH_FIND_PTR(my_desc.dataservers_map, &ds_hash_key, dataserver);
 	if (dataserver == NULL) {
@@ -612,13 +613,24 @@ static struct krm_leader_region_state *krm_leader_get_region_status(struct krm_r
 		assert(0);
 		exit(EXIT_FAILURE);
 	}
+	// Refresh dataserver's info
+	struct Stat stat;
+	char *path = zku_concat_strings(4, KRM_ROOT_PATH, KRM_SERVERS_PATH, KRM_SLASH, ds_hostname);
+	int buffer_len = sizeof(struct krm_server_name);
+	int rc = zoo_get(my_desc.zh, path, 0, (char *)&dataserver->server_id, &buffer_len, &stat);
+	if (rc != ZOK) {
+		log_fatal("Failed to refresh info for host %s", path);
+		exit(EXIT_FAILURE);
+	}
+	free(path);
+	// Find dataserver's region
 	uint64_t hash_key = djb2_hash((unsigned char *)region->id, strlen(region->id));
 	HASH_FIND_PTR(dataserver->region_map, &hash_key, ds_region_map);
 	if (ds_region_map == NULL) {
 		log_fatal("Failed to locate region %s in dataserver %s", region->id, region->primary.kreon_ds_hostname);
 		return NULL;
 	}
-	return &ds_region_map->lr_state;
+	return ds_region_map;
 }
 
 static void krm_process_msg(struct krm_server_desc *server, struct krm_msg *msg)
@@ -633,10 +645,8 @@ static void krm_process_msg(struct krm_server_desc *server, struct krm_msg *msg)
 		if (msg->epoch != server->name.epoch) {
 			log_warn("Epochs mismatch I am at epoch %lu msg refers to epoch %lu", server->name.epoch,
 				 msg->epoch);
-			if (msg->type == KRM_OPEN_REGION_AS_PRIMARY)
-				reply.type = KRM_NACK_OPEN_PRIMARY;
-			else
-				reply.type = KRM_NACK_OPEN_BACKUP;
+			reply.type = (msg->type == KRM_OPEN_REGION_AS_PRIMARY) ? KRM_NACK_OPEN_PRIMARY :
+										 KRM_NACK_OPEN_BACKUP;
 			reply.error_code = KRM_BAD_EPOCH;
 			strcpy(reply.sender, server->name.kreon_ds_hostname);
 			reply.region = msg->region;
@@ -687,103 +697,36 @@ static void krm_process_msg(struct krm_server_desc *server, struct krm_msg *msg)
 	case KRM_BUILD_PRIMARY:
 		log_fatal("Unsupported types KRM_BUILD_PRIMARY");
 		exit(EXIT_FAILURE);
-	case KRM_ACK_OPEN_PRIMARY: {
-		if (server->role != KRM_LEADER) {
-			log_fatal("Faulty type of msg I am not leader %s", server->name.kreon_ds_hostname);
-			exit(EXIT_FAILURE);
+	case KRM_ACK_OPEN_PRIMARY:
+	case KRM_ACK_OPEN_BACKUP: {
+		assert(server->role == KRM_LEADER);
+		log_info("Received message %s for region %s", krm_msg_type_tostring(msg->type), msg->region.id);
+
+		// Find sender's region
+		struct krm_leader_ds_region_map *ds_region = krm_leader_get_ds_region(&msg->region, msg->sender);
+		assert(ds_region);
+		// The first time a region is opened, the status should be KRM_OPENING. If a failure has occured and a reopen
+		// command was sent to a new dataserver, the region's status will be KRM_OPEN
+		if (ds_region->lr_state.status != KRM_OPEN) {
+			assert(ds_region->lr_state.status == KRM_OPENING);
+			// Mark region as open
+			ds_region->lr_state.status = KRM_OPEN;
 		}
-
-		log_info("Received message %s for region %s", krm_msg_type_tostring(KRM_ACK_OPEN_PRIMARY),
-			 msg->region.id);
-
-		// Find sender's info
-		struct krm_leader_ds_map *dataserver = NULL;
-		uint64_t hash_key = djb2_hash((unsigned char *)msg->sender, strlen(msg->sender));
-		HASH_FIND_PTR(server->dataservers_map, &hash_key, dataserver);
-		if (dataserver != NULL) {
-			struct Stat stat;
-			char *path = zku_concat_strings(4, KRM_ROOT_PATH, KRM_SERVERS_PATH, KRM_SLASH, msg->sender);
-			int buffer_len = sizeof(struct krm_server_name);
-			int rc = zoo_get(server->zh, path, 0, (char *)&dataserver->server_id, &buffer_len, &stat);
-			if (rc != ZOK) {
-				log_fatal("Failed to refresh info for host %s", path);
-				exit(EXIT_FAILURE);
-			}
-			free(path);
-			// Find the region he's talking about in his info
-			struct krm_leader_ds_region_map *region_map = NULL;
-			hash_key = djb2_hash((unsigned char *)msg->region.id, strlen(msg->region.id));
-			HASH_FIND_PTR(dataserver->region_map, &hash_key, region_map);
-			if (region_map) {
-				// Mark this region as open
-				assert(region_map->lr_state.status = KRM_OPENING);
-				region_map->lr_state.status = KRM_OPEN;
-			} else {
-				log_warn(
-					"Cannot locate region %s:%d for dataserver %s hash_key %x, what is he talking about?",
-					msg->region.id, strlen(msg->region.id), dataserver->server_id.kreon_ds_hostname,
-					hash_key);
-				assert(0);
-			}
-		} else {
-			log_fatal("No state for server %s", msg->sender);
-			exit(EXIT_FAILURE);
-		}
-
 		break;
 	}
 	case KRM_NACK_OPEN_PRIMARY:
 	case KRM_NACK_OPEN_BACKUP: {
-		/*check the state of regions for this ds server*/
-
-		struct krm_leader_ds_map *dataserver = NULL;
-		uint64_t hash_key = djb2_hash((unsigned char *)msg->sender, strlen(msg->sender));
-		HASH_FIND_PTR(server->dataservers_map, &hash_key, dataserver);
-		if (dataserver != NULL) {
-			struct Stat stat;
-			char *path = zku_concat_strings(4, KRM_ROOT_PATH, KRM_SERVERS_PATH, KRM_SLASH, msg->sender);
-			int buffer_len = sizeof(struct krm_server_name);
-			int rc = zoo_get(server->zh, path, 0, (char *)&dataserver->server_id, &buffer_len, &stat);
-			if (rc != ZOK) {
-				log_fatal("Failed to refresh info for host %s", path);
-				exit(EXIT_FAILURE);
-			}
-			free(path);
-			/*ok now what is the status of this region with this guy?*/
-			struct krm_leader_ds_region_map *region_map = NULL;
-			hash_key = djb2_hash((unsigned char *)msg->region.id, strlen(msg->region.id));
-			HASH_FIND_PTR(dataserver->region_map, &hash_key, region_map);
-			if (region_map == NULL) {
-				log_warn(
-					"Cannot locate region %s:%d for dataserver %s hash_key %x, what is he talking about?",
-					msg->region.id, strlen(msg->region.id), dataserver->server_id.kreon_ds_hostname,
-					hash_key);
-				assert(0);
-			} else {
-				if (region_map->lr_state.status == KRM_OPENING) {
-					/*ok resend the open command*/
-
-					if (msg->type == KRM_NACK_OPEN_BACKUP) {
-						log_info("Resending open region as backup command to %s for region %s",
-							 msg->sender, msg->region.id);
-						krm_resend_open_command(server, &msg->region, msg->sender,
-									KRM_OPEN_REGION_AS_BACKUP);
-					} else {
-						assert(msg->type == KRM_NACK_OPEN_PRIMARY);
-						log_info("Resending open region as primary command to %s for region %s",
-							 msg->sender, msg->region.id);
-						krm_resend_open_command(server, &msg->region, msg->sender,
-									KRM_OPEN_REGION_AS_PRIMARY);
-					}
-					break;
-				} else {
-					log_fatal("No region id %s status found state for serverr %s", msg->region.id,
-						  msg->sender);
-					exit(EXIT_FAILURE);
-				}
-			}
-			break;
-		}
+		assert(server->role == KRM_LEADER);
+		// Find sender's region
+		struct krm_leader_ds_region_map *ds_region = krm_leader_get_ds_region(&msg->region, msg->sender);
+		assert(ds_region);
+		assert(ds_region->lr_state.status == KRM_OPENING || ds_region->lr_state.status == KRM_OPEN);
+		// Resend open command
+		log_info("Resend open command for region %s to dataserver %s", msg->region.id, msg->sender);
+		enum krm_msg_type open_command_type =
+			(msg->type == KRM_NACK_OPEN_PRIMARY) ? KRM_OPEN_REGION_AS_PRIMARY : KRM_OPEN_REGION_AS_BACKUP;
+		krm_resend_open_command(server, &msg->region, msg->sender, open_command_type);
+		break;
 	}
 	default:
 		log_fatal("wrong type %d", msg->type);
