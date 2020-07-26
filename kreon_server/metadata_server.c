@@ -661,7 +661,8 @@ static void krm_process_msg(struct krm_server_desc *server, struct krm_msg *msg)
 			utils_queue_init(&r_desc->halted_tasks);
 			r_desc->status = KRM_OPEN;
 			krm_insert_ds_region(server, r_desc, server->ds_regions);
-			reply.type = KRM_ACK_OPEN_PRIMARY;
+			reply.type =
+				(msg->type == KRM_OPEN_REGION_AS_PRIMARY) ? KRM_ACK_OPEN_PRIMARY : KRM_ACK_OPEN_BACKUP;
 			reply.error_code = KRM_SUCCESS;
 			strcpy(reply.sender, server->name.kreon_ds_hostname);
 			reply.region = msg->region;
