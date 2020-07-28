@@ -59,21 +59,8 @@ void init_dirty_scanner(scannerHandle *sc, db_handle *handle, void *start_key, c
 
 int32_t getNext(scannerHandle *sc);
 
-void getNextKV(scannerHandle *sc);
-void getPrevKV(scannerHandle *sc);
-void seekToFirst(scannerHandle *sc);
-void seekToLast(scannerHandle *sc);
-
 int isValid(scannerHandle *sc);
 int32_t getKeySize(scannerHandle *sc);
-void *getKeyPtr(scannerHandle *sc);
-
-int32_t getValueSize(scannerHandle *sc);
-void *getValuePtr(scannerHandle *sc);
-
-/*Functions added at 30/05/2016 to support transactional qualie and full scans*/
-scannerHandle *cursorInit(void); /*allocate only resources associated with the scanner*/
-void cursorSeek(db_handle *handle, void *key, long tsMax, int32_t type);
 
 /**
  * __seek_scanner: positions the cursor to the appropriate position
