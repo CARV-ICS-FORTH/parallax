@@ -37,7 +37,7 @@ struct krc_scanner {
 	struct cu_region_desc *curr_region;
 };
 
-static char *neg_infinity = "00000000";
+static char neg_infinity[1] = { 0 };
 static char *pos_infinity = "+oo";
 
 ZooLogLevel logLevel = ZOO_LOG_LEVEL_ERROR;
@@ -685,7 +685,7 @@ uint8_t krc_scan_get_next(krc_scannerp sp, char **key, size_t *keySize, char **v
 
 			} else {
 				seek_key = neg_infinity;
-				seek_key_size = 4;
+				seek_key_size = 1;
 				seek_mode = GREATER_OR_EQUAL;
 			}
 

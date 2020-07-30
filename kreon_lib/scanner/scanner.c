@@ -450,6 +450,7 @@ int32_t _get_next_KV(level_scanner *sc)
 		exit(EXIT_FAILURE);
 	}
 	node = stack_top.node;
+	//log_info("stack top rightmost %d leftmost %d", stack_top.rightmost, stack_top.leftmost);
 	while (1) {
 		if (up) {
 			/*check if we can advance in the current node*/
@@ -468,11 +469,23 @@ int32_t _get_next_KV(level_scanner *sc)
 
 				if (stack_top.node->type == leafNode || stack_top.node->type == leafRootNode) {
 					//log_info("got a leftmost leaf advance");
-					idx = 1;
-					stack_top.idx = 1;
-					node = stack_top.node;
-					stack_push(&sc->stack, stack_top);
-					break;
+					if (stack_top.node->numberOfEntriesInNode > 1) {
+						idx = 1;
+						stack_top.idx = 1;
+						if (node->numberOfEntriesInNode == 2)
+							stack_top.rightmost = 1;
+						node = stack_top.node;
+						stack_push(&sc->stack, stack_top);
+						break;
+					} else {
+						stack_top = stack_pop(&(sc->stack));
+						if (!stack_top.guard) {
+							//log_debug("rightmost in stack throw and continue type %s",
+							//	  node_type(stack_top.node->type));
+							continue;
+						} else
+							return END_OF_DATABASE;
+					}
 				} else if (stack_top.node->type == internalNode || stack_top.node->type == rootNode) {
 					//log_debug("Calculate and push type %s", node_type(stack_top.node->type));
 					/*special case applies only for the root*/

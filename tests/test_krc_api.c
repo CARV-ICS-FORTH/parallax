@@ -46,9 +46,6 @@ int main(int argc, char *argv[])
 	uint32_t get_size;
 	size_t s_value_size = 0;
 	char *s_value = NULL;
-	uint32_t region_id = 0;
-	uint64_t range = NUM_KEYS / NUM_REGIONS;
-	uint64_t min_key, max_key;
 	uint32_t error_code;
 
 	if (argc != 2) {
@@ -68,21 +65,55 @@ int main(int argc, char *argv[])
 	char test_region_min_key[32] = { 0 };
 	struct cu_region_desc *c_desc = cu_get_region(test_region_min_key, 32);
 	krc_exists(c_desc->region.min_key_size, c_desc->region.min_key);
+
 	while (1) {
-		c_desc = cu_get_region(c_desc->region.max_key, c_desc->region.max_key_size);
-		log_info("Probing region with min key %s", c_desc->region.max_key);
-		krc_exists(c_desc->region.min_key_size, c_desc->region.min_key);
 		if (c_desc->region.max_key_size == 3 && memcmp(c_desc->region.max_key, "+oo", 3) == 0) {
 			log_info("Last region reached");
 			break;
 		}
+		c_desc = cu_get_region(c_desc->region.max_key, c_desc->region.max_key_size);
+		log_info("Probing region with min key %s", c_desc->region.max_key);
+		krc_exists(c_desc->region.min_key_size, c_desc->region.min_key);
 	}
-	log_info("regions healthy!");
+	log_info("Regions healthy!");
 
-	krc_scannerp sc = NULL;
+	log_info("Testing scan in empty db");
+	krc_scannerp sc = krc_scan_init(16, 64 * 1024);
+	while (krc_scan_get_next(sc, &s_key, &s_key_size, &s_value, &s_value_size)) {
+		log_fatal("Test failed scanner returned something on empty db! %s", s_key);
+		exit(EXIT_FAILURE);
+	}
+	krc_scan_close(sc);
+	log_info("Scan in empty db scenario success!");
+
+	log_info("Testing scan in a single key value db");
 
 	key *k = (key *)malloc(KV_SIZE);
+	memcpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
+	sprintf(k->key_buf + strlen(KEY_PREFIX), "%llu", (long long unsigned)1234556);
+	k->key_size = strlen(k->key_buf);
+	value *v = (value *)((uint64_t)k + sizeof(key) + k->key_size);
+	v->value_size = KV_SIZE - ((2 * sizeof(key)) + k->key_size);
+	memset(v->value_buf, 0xDD, v->value_size);
+	log_info("inserting key %s", k->key_buf);
+	krc_put(k->key_size, k->key_buf, v->value_size, v->value_buf);
 
+	sc = krc_scan_init(16, 64 * 1024);
+	int entries = 0;
+	while (krc_scan_get_next(sc, &s_key, &s_key_size, &s_value, &s_value_size))
+		++entries;
+	if (entries != 1) {
+		log_info("Scan in single key value db scenario failed expected 1 got %d!", entries);
+		exit(EXIT_FAILURE);
+	}
+
+	if (krc_delete(k->key_size, k->key_buf) != KRC_SUCCESS) {
+		log_fatal("key %s not found failed to clean state from scan in single key value db scenario!");
+		exit(EXIT_FAILURE);
+	}
+	krc_scan_close(sc);
+	log_info("Scan in single key value db SUCCESS!", entries);
+	//exit(EXIT_SUCCESS);
 	log_info("Starting population for %lu keys...", NUM_KEYS);
 	for (i = BASE; i < (BASE + NUM_KEYS); i++) {
 		strncpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
@@ -128,7 +159,7 @@ int main(int argc, char *argv[])
 	strncpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
 	sprintf(k->key_buf + strlen(KEY_PREFIX), "%d", 40000000);
 	k->key_size = strlen(k->key_buf);
-	value *v = (value *)((uint64_t)k + sizeof(key) + k->key_size);
+	v = (value *)((uint64_t)k + sizeof(key) + k->key_size);
 	v->value_size = sizeof(uint32_t);
 
 	krc_put_with_offset(k->key_size, k->key_buf, 0, sizeof(uint32_t) * UPDATES, v->value_buf);
@@ -141,7 +172,7 @@ int main(int argc, char *argv[])
 	/*perform get with offset to verify it is correct*/
 
 	offset = 0;
-	get_buffer = malloc(sizeof(uint32_t));
+	get_buffer = (char *)malloc(sizeof(uint32_t));
 
 	for (i = 0; i < UPDATES; i++) {
 		get_size = 4;
