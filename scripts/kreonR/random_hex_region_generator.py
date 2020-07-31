@@ -1,3 +1,4 @@
+#!/bin/python
 import sys
 
 filename = str(sys.argv[1])
@@ -10,8 +11,8 @@ hosts = []
 for host in Lines:
     hosts += [host.split()[0]]
 
-print("Hosts are")
-print(hosts)
+# print("Hosts are")
+# print(hosts)
 host_file.close()
 
 hex_string = []
@@ -28,7 +29,7 @@ file1.close()
 
 
 hex_string.sort()
-print(hex_string)
+# print(hex_string)
 max_hosts = len(hosts)
 host_id = 0
 region_id = 0
@@ -38,7 +39,7 @@ region = str(region_id) + " -oo " + hex_string[0] + "  " + hosts[host_id]
 print(region)
 
 region_id = region_id + 1
-string_id = 1
+string_id = 0
 host_id = host_id + 1
 if host_id >= max_hosts:
     host_id = 0
