@@ -790,7 +790,8 @@ static void krm_process_msg(struct krm_server_desc *server, struct krm_msg *msg)
 				r_desc->r_state = NULL;
 			}
 			/*open kreon db*/
-			r_desc->db = db_open(globals_get_dev(), 0, globals_get_dev_size(), region->id, CREATE_DB);
+			r_desc->db =
+				db_open(globals_get_mount_point(), 0, globals_get_dev_size(), region->id, CREATE_DB);
 			r_desc->replica_bufs_initialized = 0;
 			r_desc->region_halted = 0;
 			pthread_mutex_init(&r_desc->region_lock, NULL);
@@ -1178,8 +1179,8 @@ void *krm_metadata_server(void *args)
 				r_desc->r_state = NULL;
 
 				// open Kreon db
-				r_desc->db = db_open(globals_get_dev(), 0, globals_get_dev_size(), r_desc->region->id,
-						     CREATE_DB);
+				r_desc->db = db_open(globals_get_mount_point(), 0, globals_get_dev_size(),
+						     r_desc->region->id, CREATE_DB);
 				assert(r_desc->status = KRM_OPENING);
 				r_desc->status = KRM_OPEN;
 
