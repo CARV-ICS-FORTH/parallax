@@ -19,6 +19,7 @@
 #include <sys/types.h>
 #include <netinet/in.h>
 #include <inttypes.h>
+#include <stdbool.h>
 
 #include "../utilities/macros.h"
 #include "../kreon_server/conf.h"
@@ -177,6 +178,9 @@ struct sr_message {
 	uint32_t message_written;
 };
 
+struct connection_rdma;
+typedef void (*on_completion_callback)(struct ibv_wc *wc, struct connection_rdma *conn);
+
 struct channel_rdma {
 	struct ibv_context *context;
 	struct ibv_pd *pd;
@@ -209,6 +213,7 @@ struct channel_rdma {
 	pthread_mutex_t spin_conn_lock; // Lock for the spin_conn
 
 	on_connection_created connection_created; //Callback function used for created a thread at
+	on_completion_callback on_completion;
 };
 
 struct pingpong_dest {
@@ -306,6 +311,20 @@ void free_rdma_local_message(connection_rdma *conn);
 void free_rdma_received_message(connection_rdma *conn, msg_header *msg);
 
 void client_free_rpc_pair(connection_rdma *conn, msg_header *msg);
+
+struct rdma_message_context {
+	struct msg_header *msg;
+	sem_t wait_for_completion;
+	struct ibv_wc wc;
+	void (*on_completion_callback)(void *args);
+	void *args;
+	uint8_t __is_initialized;
+};
+
+void client_rdma_init_message_context(struct rdma_message_context *msg_ctx, struct msg_header *msg);
+bool client_rdma_send_message_success(struct rdma_message_context *msg_ctx);
+int client_send_rdma_message(struct connection_rdma *conn, struct msg_header *msg);
+
 /*replica specific functions*/
 int rdma_kv_entry_to_replica(connection_rdma *conn, msg_header *data_message, uint64_t segment_log_offset, void *source,
 			     uint32_t kv_length, uint32_t client_buffer_key);
@@ -318,7 +337,7 @@ void crdma_generic_free_connection(struct connection_rdma **ardma_conn);
 void disconnect_and_close_connection(connection_rdma *conn);
 void ec_sig_handler(int signo);
 uint32_t wait_for_payload_arrival(msg_header *hdr);
-int __send_rdma_message(connection_rdma *conn, msg_header *msg);
+int __send_rdma_message(connection_rdma *conn, msg_header *msg, struct rdma_message_context *msg_ctx);
 void tu_rdma_init_connection(struct connection_rdma *conn);
 
 void _zero_rendezvous_locations_l(msg_header *msg, uint32_t length);

@@ -153,6 +153,37 @@ static void kreon_op_stat2string(kreon_op_status stat)
 	return;
 }
 
+/* Spin until an incoming message has been detected. For our RDMA network protocol implementation, this is
+ * detected by reading the value TU_RDMA_REGULAR_MSG in the last byte of the buffer where we expect the
+ * message.
+ */
+static int _krc_rdma_write_spin_wait(volatile uint32_t *tail, int expected_value)
+{
+	while (*tail != expected_value)
+		;
+	return 0;
+}
+
+static int _krc_wait_for_message_reply(struct msg_header *req, struct connection_rdma *conn)
+{
+	struct msg_header *rep_header =
+		(struct msg_header *)((uint64_t)conn->recv_circular_buf->memory_region + (uint64_t)req->reply);
+	//Spin until header arrives
+	if (_krc_rdma_write_spin_wait(&rep_header->receive, TU_RDMA_REGULAR_MSG) == -1)
+		return -1;
+
+	// Calculate the payload's "tail", its last 4 bytes
+	uint32_t *tail = (uint32_t *)(((uint64_t)rep_header + sizeof(msg_header) + rep_header->pay_len +
+				       rep_header->padding_and_tail) -
+				      TU_TAIL_SIZE);
+
+	//Spin until payload arrives
+	if (_krc_rdma_write_spin_wait(tail, TU_RDMA_REGULAR_MSG) == -1)
+		return -1;
+
+	return 0;
+}
+
 krc_ret_code krc_init(char *zookeeper_ip, int zk_port)
 {
 	if (!krc_lib_init) {
@@ -304,20 +335,17 @@ krc_ret_code krc_put(uint32_t key_size, void *key, uint32_t val_size, void *valu
 	req_header->reply = (char *)((uint64_t)rep_header - (uint64_t)conn->recv_circular_buf->memory_region);
 	req_header->reply_length = sizeof(msg_header) + rep_header->pay_len + rep_header->padding_and_tail;
 	//log_info("put rep length %lu", req_header->reply_length);
+
 	/*send the actual put*/
-	if (send_rdma_message_busy_wait(conn, req_header) != KREON_SUCCESS) {
+	if (client_send_rdma_message(conn, req_header) != KREON_SUCCESS) {
 		log_warn("failed to send message");
 		exit(EXIT_FAILURE);
 	}
 
-	/*Spin until header arrives*/
-	wait_for_value(&rep_header->receive, TU_RDMA_REGULAR_MSG);
-	rep_header->receive = 0;
-	/*Spin until payload arrives*/
-	uint32_t *tail = (uint32_t *)(((uint64_t)rep_header + sizeof(msg_header) + rep_header->pay_len +
-				       rep_header->padding_and_tail) -
-				      TU_TAIL_SIZE);
-	wait_for_value(tail, TU_RDMA_REGULAR_MSG);
+	if (_krc_wait_for_message_reply(req_header, conn) == -1) {
+		log_fatal("Kreon dataserver is down!");
+		exit(EXIT_FAILURE);
+	}
 
 	put_rep = (msg_put_rep *)((uint64_t)rep_header + sizeof(msg_header));
 	/*check ret code*/
@@ -498,19 +526,15 @@ krc_ret_code krc_get(uint32_t key_size, char *key, char **buffer, uint32_t *size
 		rep_header->receive = 0;
 
 		/*send the request*/
-		if (send_rdma_message_busy_wait(conn, req_header) != KREON_SUCCESS) {
+		if (client_send_rdma_message(conn, req_header) != KREON_SUCCESS) {
 			log_warn("failed to send message");
 			exit(EXIT_FAILURE);
 		}
-		/*Spin until header arrives*/
-		wait_for_value(&rep_header->receive, TU_RDMA_REGULAR_MSG);
-
-		/*Spin until payload arrives*/
-		uint32_t *tail = (uint32_t *)(((uint64_t)rep_header + sizeof(msg_header) + rep_header->pay_len +
-					       rep_header->padding_and_tail) -
-					      TU_TAIL_SIZE);
-
-		wait_for_value(tail, TU_RDMA_REGULAR_MSG);
+		// Wait for the reply
+		if (_krc_wait_for_message_reply(req_header, conn) == -1) {
+			log_fatal("Kreon dataserver is down!");
+			exit(EXIT_FAILURE);
+		}
 
 		get_rep = (msg_get_rep *)((uint64_t)rep_header + sizeof(msg_header));
 		/*various reply checks*/
@@ -563,7 +587,6 @@ uint8_t krc_exists(uint32_t key_size, void *key)
 
 	struct cu_region_desc *r_desc = cu_get_region(key, key_size);
 	connection_rdma *conn = cu_get_conn_for_region(r_desc, (uint64_t)key);
-	uint8_t ret;
 
 	_krc_get_rpc_pair(conn, &req_header, GET_REQUEST, sizeof(msg_get_req) + key_size, &rep_header, GET_REPLY,
 			  sizeof(msg_get_rep));
@@ -581,30 +604,21 @@ uint8_t krc_exists(uint32_t key_size, void *key)
 	req_header->request_message_local_addr = req_header;
 	rep_header->receive = 0;
 	/*send the request*/
-	if (send_rdma_message_busy_wait(conn, req_header) != KREON_SUCCESS) {
+	if (client_send_rdma_message(conn, req_header) != KREON_SUCCESS) {
 		log_warn("failed to send message");
 		exit(EXIT_FAILURE);
 	}
-	/*Spin until header arrives*/
-	wait_for_value(&rep_header->receive, TU_RDMA_REGULAR_MSG);
-
-	/*Spin until payload arrives*/
-	uint32_t *tail = (uint32_t *)(((uint64_t)rep_header + sizeof(msg_header) + rep_header->pay_len +
-				       rep_header->padding_and_tail) -
-				      TU_TAIL_SIZE);
-
-	wait_for_value(tail, TU_RDMA_REGULAR_MSG);
+	// Wait for the reply to arrive
+	if (_krc_wait_for_message_reply(req_header, conn) == -1) {
+		log_fatal("Kreon dataserver is down!");
+		exit(EXIT_FAILURE);
+	}
 
 	get_rep = (msg_get_rep *)((uint64_t)rep_header + sizeof(msg_header));
-	/*various reply checks*/
-	if (get_rep->key_found)
-		ret = 1;
-	else
-		ret = 0;
 
 	_zero_rendezvous_locations_l(rep_header, req_header->reply_length);
 	client_free_rpc_pair(conn, rep_header);
-	return ret;
+	return get_rep->key_found;
 }
 
 krc_ret_code krc_delete(uint32_t key_size, void *key)
@@ -661,9 +675,9 @@ krc_ret_code krc_delete(uint32_t key_size, void *key)
 /*scanner staff*/
 krc_scannerp krc_scan_init(uint32_t prefetch_num_entries, uint32_t prefetch_mem_size)
 {
-	/*roundity as the rdma allocator will*/
 	uint32_t padding;
 	uint32_t actual_size = sizeof(msg_header) + sizeof(msg_multi_get_rep) + prefetch_mem_size + TU_TAIL_SIZE;
+	/*round it as the rdma allocator will*/
 	if (actual_size % MESSAGE_SEGMENT_SIZE != 0)
 		padding = MESSAGE_SEGMENT_SIZE - (actual_size % MESSAGE_SEGMENT_SIZE);
 	else
@@ -801,19 +815,16 @@ uint8_t krc_scan_get_next(krc_scannerp sp, char **key, size_t *keySize, char **v
 			req_header->request_message_local_addr = req_header;
 			rep_header->receive = 0;
 
-			/*sent the request*/
-			if (send_rdma_message_busy_wait(conn, req_header) != KREON_SUCCESS) {
+			/*send the request*/
+			if (client_send_rdma_message(conn, req_header) != KREON_SUCCESS) {
 				log_warn("failed to send message");
 				exit(EXIT_FAILURE);
 			}
-			/*Spin until header arrives*/
-			wait_for_value(&rep_header->receive, TU_RDMA_REGULAR_MSG);
-			/*Spin until payload arrives*/
-			uint32_t *tail = (uint32_t *)((uint64_t)rep_header + sizeof(msg_header) + rep_header->pay_len +
-						      (rep_header->padding_and_tail));
-
-			tail = (uint32_t *)((uint64_t)tail - TU_TAIL_SIZE);
-			wait_for_value(tail, TU_RDMA_REGULAR_MSG);
+			// Wait for the reply to arrive
+			if (_krc_wait_for_message_reply(req_header, conn) == -1) {
+				log_fatal("Kreon dataserver is down!");
+				exit(EXIT_FAILURE);
+			}
 
 			//log_info("pay len %u padding_and_tail %u", rep_header->pay_len, rep_header->padding_and_tail);
 			m_get_rep = (msg_multi_get_rep *)((uint64_t)rep_header + sizeof(msg_header));

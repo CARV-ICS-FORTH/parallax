@@ -104,7 +104,7 @@ struct sc_msg_pair sc_allocate_rpc_pair(struct connection_rdma *conn, uint32_t r
 		msg->request_message_local_addr = NULL;
 		msg->reply = NULL;
 		msg->reply_length = 0;
-		__send_rdma_message(conn, msg);
+		__send_rdma_message(conn, msg, NULL);
 		goto exit;
 	}
 	case ALLOCATION_IS_SUCCESSFULL:

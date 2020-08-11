@@ -303,12 +303,13 @@ void cu_close_open_connections()
 			req_header->reply_length = 0;
 			req_header->got_send_completion = 0;
 
-			if (send_rdma_message_busy_wait(current->connections[i], req_header) != KREON_SUCCESS) {
+			if (client_send_rdma_message(current->connections[i], req_header) != KREON_SUCCESS) {
 				log_warn("failed to send message");
 				exit(EXIT_FAILURE);
 			}
-			/*wait until completion*/
-			wait_for_value((uint32_t *)&req_header->got_send_completion, 1);
+
+			// FIXME calling free for the connection_rdma* isn't enough. We need to free the rest
+			// of the resources allocated for the connection, like the memory region buffers
 			free(current->connections[i]);
 			//log_info("Closing connection number %d", i);
 		}

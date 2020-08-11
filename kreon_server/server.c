@@ -194,10 +194,7 @@ void *socket_thread(void *args)
 	}
 
 	while (1) {
-		/* Block until a new connection request arrives
-		 * Because pd and qp_init_attr were set in rdma_create_ep, a ap is
-		 * automatically created for the new rdma_cm_id
-		 */
+		// Block until a new connection request arrives
 		struct rdma_cm_id *request_id, *new_conn_id;
 		ret = rdma_get_request(rdma_cm_id, &request_id);
 		if (ret) {
@@ -219,8 +216,7 @@ void *socket_thread(void *args)
 
 		connection_type incoming_connection_type = -1;
 		struct ibv_mr *recv_mr = rdma_reg_msgs(new_conn_id, &incoming_connection_type, sizeof(connection_type));
-		ret = rdma_post_recv(new_conn_id, &incoming_connection_type, &incoming_connection_type,
-				     sizeof(connection_type), recv_mr);
+		ret = rdma_post_recv(new_conn_id, NULL, &incoming_connection_type, sizeof(connection_type), recv_mr);
 		if (ret) {
 			log_fatal("rdma_post_recv: %s", strerror(errno));
 			exit(EXIT_FAILURE);
@@ -487,7 +483,7 @@ void *worker_thread_kernel(void *args)
 			switch (job->kreon_operation_status) {
 			case TASK_COMPLETE:
 				_zero_rendezvous_locations(job->msg);
-				__send_rdma_message(job->conn, job->reply_msg);
+				__send_rdma_message(job->conn, job->reply_msg, NULL);
 				switch (job->pool_type) {
 				case KRM_CLIENT_POOL:
 					ds_put_client_task_buffer(&dataserver->spinner[worker->spinner_id], job);
@@ -1009,7 +1005,7 @@ static void *server_spinning_thread_kernel(void *args)
 				msg->ack_arrived = KR_REP_PENDING;
 				msg->callback_function = NULL;
 				msg->request_message_local_addr = NULL;
-				__send_rdma_message(conn, msg);
+				__send_rdma_message(conn, msg, NULL);
 
 				//DPRINT("SERVER: Client I AM READY reply will be send at %llu  length %d type %d message size %d id %llu\n",
 				//(LLU)hdr->reply,hdr->reply_length, hdr->type,message_size,hdr->MR);

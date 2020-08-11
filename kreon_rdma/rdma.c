@@ -237,7 +237,12 @@ msg_header *client_allocate_rdma_message(connection_rdma *conn, int message_payl
 				msg->request_message_local_addr = NULL;
 				msg->reply = NULL;
 				msg->reply_length = 0;
-				__send_rdma_message(conn, msg);
+				if (client_send_rdma_message(conn, msg) != KREON_SUCCESS) {
+					log_fatal("RDMA Write error");
+					exit(EXIT_FAILURE);
+				}
+				free_space_from_circular_buffer(conn->send_circular_buf, (char *)msg,
+								MESSAGE_SEGMENT_SIZE);
 				//log_info("CLIENT: Informing server to reset the rendezvous");
 			}
 			addr = NULL;
@@ -387,7 +392,11 @@ msg_header *client_try_allocate_rdma_message(connection_rdma *conn, int message_
 			msg->request_message_local_addr = NULL;
 			msg->reply = NULL;
 			msg->reply_length = 0;
-			__send_rdma_message(conn, msg);
+			if (client_send_rdma_message(conn, msg) != KREON_SUCCESS) {
+				log_fatal("RDMA Write error");
+				exit(EXIT_FAILURE);
+			}
+			free_space_from_circular_buffer(conn->send_circular_buf, (char *)msg, MESSAGE_SEGMENT_SIZE);
 			//log_info("CLIENT: Informing server to reset the rendezvous");
 		}
 		addr = NULL;
@@ -442,7 +451,7 @@ int send_rdma_message_busy_wait(connection_rdma *conn, msg_header *msg)
 	msg->callback_function = NULL;
 	msg->callback_function_args = NULL;
 	msg->receive_options = BUSY_WAIT;
-	return __send_rdma_message(conn, msg);
+	return __send_rdma_message(conn, msg, NULL);
 }
 
 int send_rdma_message(connection_rdma *conn, msg_header *msg)
@@ -451,7 +460,7 @@ int send_rdma_message(connection_rdma *conn, msg_header *msg)
 	msg->callback_function = NULL;
 	msg->callback_function_args = NULL;
 	msg->receive_options = SYNC_REQUEST;
-	return __send_rdma_message(conn, msg);
+	return __send_rdma_message(conn, msg, NULL);
 }
 
 void async_send_rdma_message(connection_rdma *conn, msg_header *msg, void (*callback_function)(void *args), void *args)
@@ -459,10 +468,22 @@ void async_send_rdma_message(connection_rdma *conn, msg_header *msg, void (*call
 	msg->callback_function = callback_function;
 	msg->callback_function_args = args;
 	msg->receive_options = ASYNC_REQUEST;
-	__send_rdma_message(conn, msg);
+	__send_rdma_message(conn, msg, NULL);
 }
 
-int __send_rdma_message(connection_rdma *conn, msg_header *msg)
+int client_send_rdma_message(struct connection_rdma *conn, struct msg_header *msg)
+{
+	struct rdma_message_context msg_ctx;
+	client_rdma_init_message_context(&msg_ctx, msg);
+	int ret = __send_rdma_message(conn, msg, &msg_ctx);
+	if (ret == KREON_SUCCESS) {
+		if (!client_rdma_send_message_success(&msg_ctx))
+			ret = KREON_FAILURE;
+	}
+	return ret;
+}
+
+int __send_rdma_message(connection_rdma *conn, msg_header *msg, struct rdma_message_context *msg_ctx)
 {
 	int i = 0;
 	while (conn->pending_sent_messages >= MAX_WR) {
@@ -486,29 +507,33 @@ int __send_rdma_message(connection_rdma *conn, msg_header *msg)
 	 * for us? For client PUT,GET,MULTI_GET,UPDATE,DELETE we don't
 	 * */
 	void *context;
-	switch (msg->type) {
-	/*for client*/
-	case PUT_REQUEST:
-	case GET_REQUEST:
-	case MULTI_GET_REQUEST:
-	case PUT_OFFT_REQUEST:
-	case DELETE_REQUEST:
-	case TEST_REQUEST:
-	case TEST_REQUEST_FETCH_PAYLOAD:
-		/*server does not care*/
-	case PUT_REPLY:
-	case GET_REPLY:
-	case MULTI_GET_REPLY:
-	case PUT_OFFT_REPLY:
-	case DELETE_REPLY:
-	case TEST_REPLY:
-	case TEST_REPLY_FETCH_PAYLOAD:
-		context = NULL;
-		break;
-	default:
-		/*rest I care*/
-		context = msg;
-		break;
+	if (LIBRARY_MODE == SERVER_MODE) {
+		switch (msg->type) {
+		/*for client*/
+		case PUT_REQUEST:
+		case GET_REQUEST:
+		case MULTI_GET_REQUEST:
+		case PUT_OFFT_REQUEST:
+		case DELETE_REQUEST:
+		case TEST_REQUEST:
+		case TEST_REQUEST_FETCH_PAYLOAD:
+			/*server does not care*/
+		case PUT_REPLY:
+		case GET_REPLY:
+		case MULTI_GET_REPLY:
+		case PUT_OFFT_REPLY:
+		case DELETE_REPLY:
+		case TEST_REPLY:
+		case TEST_REPLY_FETCH_PAYLOAD:
+			context = NULL;
+			break;
+		default:
+			/*rest I care*/
+			context = msg;
+			break;
+		}
+	} else {
+		context = (void *)msg_ctx;
 	}
 
 	int ret;
@@ -874,14 +899,18 @@ void crdma_init_client_connection_list_hosts(connection_rdma *conn, char **hosts
 		msg = client_allocate_rdma_message(conn, 0, I_AM_CLIENT);
 		pthread_mutex_unlock(&conn->buffer_lock);
 		/*control info*/
-		msg->reply =
-			(char *)(conn->recv_circular_buf->bitmap_size * BITS_PER_BITMAP_WORD * MESSAGE_SEGMENT_SIZE);
+		msg->reply = (char *)(conn->recv_circular_buf->bitmap_size * BITS_PER_BITMAP_WORD *
+				      (uint64_t)MESSAGE_SEGMENT_SIZE);
 		msg->reply -= MESSAGE_SEGMENT_SIZE;
 		msg->reply_length = MESSAGE_SEGMENT_SIZE;
 		conn->control_location = (char *)msg->reply;
 		conn->control_location_length = msg->reply_length;
 		msg->receive = I_AM_CLIENT;
-		__send_rdma_message(conn, msg);
+		if (client_send_rdma_message(conn, msg) != KREON_SUCCESS) {
+			log_fatal("RDMA Write error");
+			exit(EXIT_FAILURE);
+		}
+		free_space_from_circular_buffer(conn->send_circular_buf, (char *)msg, MESSAGE_SEGMENT_SIZE);
 		log_info("Client Connection created successfully, no spinning thread will check it");
 		break;
 
@@ -908,6 +937,8 @@ void crdma_init_client_connection_list_hosts(connection_rdma *conn, char **hosts
 	}
 	__sync_fetch_and_add(&channel->nused, 1);
 }
+
+void on_completion_client(struct ibv_wc *wc, struct connection_rdma *conn);
 
 void crdma_init_generic_create_channel(struct channel_rdma *channel)
 {
@@ -954,6 +985,9 @@ void crdma_init_generic_create_channel(struct channel_rdma *channel)
 			params->channel = channel;
 			params->spinning_thread_id = i;
 		}
+		channel->on_completion = on_completion_client;
+	} else {
+		channel->on_completion = on_completion_server;
 	}
 	/*Creating the thread in charge of the completion channel*/
 	if (pthread_create(&channel->cq_poller_thread, NULL, poll_cq, channel) != 0) {
@@ -1145,7 +1179,7 @@ static void __stop_client(connection_rdma *conn)
 	new_mr->length = conn->next_rdma_memory_regions->remote_memory_region->length;
 	new_mr->rkey = conn->next_rdma_memory_regions->remote_memory_region->rkey;
 	DPRINT("addr = %p, length = %lu KB, rkey = %u\n", new_mr->addr, new_mr->length / 1024, new_mr->rkey);
-	__send_rdma_message(conn, msg);
+	__send_rdma_message(conn, msg, NULL);
 }
 
 void _update_client_rendezvous_location(connection_rdma *conn, int message_size)
@@ -1330,6 +1364,26 @@ void rdma_thread_events_ctx(void *args)
 	return;
 }
 
+void client_rdma_init_message_context(struct rdma_message_context *msg_ctx, struct msg_header *msg)
+{
+	memset(msg_ctx, 0, sizeof(*msg_ctx));
+	msg_ctx->msg = msg;
+	sem_init(&msg_ctx->wait_for_completion, 0, 0);
+	msg_ctx->__is_initialized = 1;
+}
+
+bool client_rdma_send_message_success(struct rdma_message_context *msg_ctx)
+{
+	assert(msg_ctx->__is_initialized == 1);
+	// on_completion_client will post this semaphore once it gets to the CQE for this message
+	sem_wait(&msg_ctx->wait_for_completion);
+	assert((uint64_t)msg_ctx == msg_ctx->wc.wr_id);
+	if (msg_ctx->wc.status == IBV_WC_SUCCESS)
+		return true;
+	else
+		return false;
+}
+
 static void *poll_cq(void *arg)
 {
 	struct sigaction sa = {};
@@ -1369,8 +1423,12 @@ static void *poll_cq(void *arg)
 				exit(EXIT_FAILURE);
 			} else if (rc > 0) {
 				conn = (connection_rdma *)cq->cq_context;
+				assert(conn);
 				for (i = 0; i < rc; i++) {
-					on_completion_server(&wc[i], conn);
+					if (conn->status == CONNECTION_OK)
+						((struct channel_rdma *)conn->channel)->on_completion(&wc[i], conn);
+					else
+						log_warn("skipping work completion");
 					memset(&wc[i], 0x00, sizeof(struct ibv_wc));
 				}
 			} else
@@ -1382,6 +1440,7 @@ static void *poll_cq(void *arg)
 
 void on_completion_server(struct ibv_wc *wc, struct connection_rdma *conn)
 {
+	assert(LIBRARY_MODE == SERVER_MODE);
 	msg_header *msg;
 	if (wc->status == IBV_WC_SUCCESS) {
 		switch (wc->opcode) {
@@ -1478,4 +1537,19 @@ void on_completion_server(struct ibv_wc *wc, struct connection_rdma *conn)
 		raise(SIGINT);
 		exit(KREON_FAILURE);
 	}
+}
+
+/* Set as the on_completion_callback for channels in client library mode.
+ * It passes the work completion struct to the client through the message's context and posts the
+ * semaphore used to block until the message's completion has arrived
+ */
+void on_completion_client(struct ibv_wc *wc, struct connection_rdma *conn)
+{
+	assert(LIBRARY_MODE == CLIENT_MODE);
+	if (wc->wr_id) {
+		struct rdma_message_context *msg_ctx = (struct rdma_message_context *)wc->wr_id;
+		memcpy(&msg_ctx->wc, wc, sizeof(*wc));
+		sem_post(&msg_ctx->wait_for_completion);
+	}
+	return;
 }
