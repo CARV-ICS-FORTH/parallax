@@ -39,6 +39,7 @@
 #define COMMIT_KV_LOG_INTERVAL (500 * SEC)
 #define SNAPSHOT_INTERVAL (1500 * SEC)
 #define GC_INTERVAL (50 * SEC)
+#define COMPACTION_INTERVAL (2 * SEC)
 
 #define WORD_SIZE 64
 #define BREAKPOINT asm volatile("int3;");

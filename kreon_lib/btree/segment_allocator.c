@@ -302,12 +302,11 @@ void *get_space_for_system(volume_descriptor *volume_desc, uint32_t size)
 
 void seg_free_level(db_handle *handle, uint8_t level_id, uint8_t tree_id)
 {
-	segment_header *curr_segment;
+	segment_header *curr_segment = handle->db_desc->levels[level_id].first_segment[tree_id];
 	uint64_t space_freed = 0;
 	log_info("Freeing tree [%u][%u] for db %s", level_id, tree_id, handle->db_desc->db_name);
 
 	curr_segment = handle->db_desc->levels[level_id].first_segment[tree_id];
-	assert(curr_segment != NULL);
 	while (1) {
 #if 0
 		if (spill_task_desc->region->db->volume_desc->segment_utilization_vector[s_id] != 0 &&

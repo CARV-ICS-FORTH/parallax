@@ -305,6 +305,11 @@ struct leaf_node_metadata {
 	uint32_t kv_entries_offset;
 };
 
+struct compaction_pairs {
+	int16_t src_level;
+	int16_t dst_level;
+};
+
 enum bt_layout { STATIC_LEAF, DYNAMIC_LEAF };
 
 typedef struct level_descriptor {
@@ -328,7 +333,7 @@ typedef struct level_descriptor {
 	uint64_t actual_level_size;
 	int64_t active_writers;
 	/*spilling or not?*/
-	volatile char tree_status[NUM_TREES_PER_LEVEL];
+	char tree_status[NUM_TREES_PER_LEVEL];
 	uint32_t leaf_size;
 	enum bt_layout node_layout;
 	uint8_t active_tree;
@@ -339,7 +344,13 @@ typedef struct level_descriptor {
 typedef struct db_descriptor {
 	char db_name[MAX_DB_NAME_SIZE];
 	level_descriptor levels[MAX_LEVELS];
-	volatile int level_tospill[MAX_LEVELS];
+	struct compaction_pairs inprogress_compactions[MAX_LEVELS];
+	struct compaction_pairs pending_compactions[MAX_LEVELS];
+	pthread_t compaction_thread;
+	pthread_mutex_t compaction_structs_lock;
+	pthread_mutex_t compaction_lock;
+	pthread_cond_t compaction_cond;
+
 #if LOG_WITH_MUTEX
 	pthread_mutex_t lock_log;
 #else
@@ -370,7 +381,6 @@ typedef struct db_descriptor {
 	uint64_t small_log_tail_offset;
 
 	commit_log_info *commit_log;
-	pthread_mutex_t guard_delayed_spills;
 	// uint64_t spilled_keys;
 	int32_t reference_count;
 	int32_t group_id;
