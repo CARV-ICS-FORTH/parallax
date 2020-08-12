@@ -9,12 +9,13 @@ struct prefix {
 	uint32_t len;
 };
 
+#ifdef DEBUG_DYNAMIC_LEAF
 void validate_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, level_descriptor *level, uint32_t kv_size, int flag)
 {
 	struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(leaf);
 	assert(flag || leaf->header.leaf_log_size + kv_size <
 			       level->leaf_size - sizeof(struct bt_dynamic_leaf_node) -
-				       (sizeof(struct bt_dynamic_leaf_slot_array) * leaf->header.num_entries + 1));
+				       (sizeof(struct bt_dynamic_leaf_slot_array) * leaf->header.num_entries));
 
 	for (unsigned i = 0; i < leaf->header.num_entries; ++i) {
 		unsigned size = *(uint32_t *)get_kv_offset(leaf, level->leaf_size, slot_array[i].index);
@@ -24,6 +25,7 @@ void validate_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, level_descriptor *
 		assert(size < 100);
 	}
 }
+#endif
 
 struct bt_dynamic_leaf_slot_array *get_slot_array_offset(const struct bt_dynamic_leaf_node *leaf)
 {
@@ -277,8 +279,9 @@ struct bt_rebalance_result split_dynamic_leaf(struct bt_dynamic_leaf_node *leaf,
 	uint32_t key_buf_size;
 
 	/*cow check*/
+#ifdef DEBUG_DYNAMIC_LEAF
 	validate_dynamic_leaf(leaf, level, 0, 0);
-
+#endif
 	if (leaf->header.epoch <= volume_desc->dev_catalogue->epoch) {
 		leaf_copy = seg_get_dynamic_leaf_node(volume_desc, level);
 		memcpy(leaf_copy, leaf, level->leaf_size);
@@ -286,7 +289,10 @@ struct bt_rebalance_result split_dynamic_leaf(struct bt_dynamic_leaf_node *leaf,
 		leaf = leaf_copy;
 		seg_free_leaf_node(volume_desc, level, req->metadata.tree_id, (leaf_node *)old_leaf);
 	}
+
+#ifdef DEBUG_DYNAMIC_LEAF
 	validate_dynamic_leaf(leaf, level, 0, 0);
+#endif
 
 	slot_array = get_slot_array_offset(leaf);
 	rep.left_dlchild = seg_get_dynamic_leaf_node(volume_desc, level);
@@ -339,19 +345,10 @@ struct bt_rebalance_result split_dynamic_leaf(struct bt_dynamic_leaf_node *leaf,
 	rep.right_dlchild->header.num_entries = leaf->header.num_entries - (leaf->header.num_entries / 2);
 	rep.right_dlchild->header.type = leafNode;
 
-	/* for(i = 0;i<left_leaf->header.num_entries;++i){ */
-	/* 	unsigned size = *(uint32_t*)get_kv_offset(left_leaf, level->leaf_size, left_leaf_slot_array[i].index); */
-	/* 	assert(size < 100); */
-	/* } */
-
-	/* for(i = 0;i<right_leaf->header.num_entries;++i){ */
-	/* 	unsigned size = *(uint32_t*)get_kv_offset(right_leaf, level->leaf_size, right_leaf_slot_array[i].index); */
-	/* 	assert(size < 100); */
-	/* } */
-
-	/* print_all_keys(right_leaf, leaf_size); */
+#ifdef DEBUG_DYNAMIC_LEAF
 	validate_dynamic_leaf(left_leaf, level, 0, 0);
 	validate_dynamic_leaf(right_leaf, level, 0, 0);
+#endif
 
 	if (leaf->header.type == leafRootNode) {
 		rep.left_dlchild->header.type = leafNode;
@@ -399,8 +396,9 @@ int8_t insert_in_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, bt_insert_req *
 		leaf->header.leaf_log_size = 0;
 
 	binary_search_dynamic_leaf(leaf, level->leaf_size, key, &bsearch);
+#ifdef DEBUG_DYNAMIC_LEAF
 	validate_dynamic_leaf(leaf, level, req->metadata.kv_size, 0);
-
+#endif
 	switch (bsearch.status) {
 	case INSERT:
 		shift_right_slot_array(leaf, bsearch.middle);
@@ -418,7 +416,8 @@ int8_t insert_in_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, bt_insert_req *
 		exit(EXIT_FAILURE);
 	}
 
+#ifdef DEBUG_DYNAMIC_LEAF
 	validate_dynamic_leaf(leaf, level, 0, 1);
-
+#endif
 	return bsearch.status;
 }
