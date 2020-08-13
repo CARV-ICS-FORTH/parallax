@@ -32,12 +32,12 @@ struct bt_dynamic_leaf_slot_array *get_slot_array_offset(const struct bt_dynamic
 	return (struct bt_dynamic_leaf_slot_array *)(((char *)leaf) + sizeof(struct bt_dynamic_leaf_node));
 }
 
-char *get_leaf_log_offset(const struct bt_dynamic_leaf_node *leaf, uint32_t leaf_size)
+char *get_leaf_log_offset(const struct bt_dynamic_leaf_node *leaf, const uint32_t leaf_size)
 {
 	return (((char *)leaf) + leaf_size - leaf->header.leaf_log_size);
 }
 
-char *get_kv_offset(const struct bt_dynamic_leaf_node *leaf, uint32_t leaf_size, uint32_t kv_offset)
+char *get_kv_offset(const struct bt_dynamic_leaf_node *leaf, const uint32_t leaf_size, const uint32_t kv_offset)
 {
 	return (((char *)leaf) + leaf_size - kv_offset);
 }

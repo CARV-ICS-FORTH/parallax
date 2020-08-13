@@ -29,4 +29,4 @@ int check_dynamic_leaf_split(struct bt_dynamic_leaf_node *leaf, uint32_t leaf_si
 struct bt_rebalance_result split_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, uint32_t leaf_size,
 					      bt_insert_req *req);
 struct bt_dynamic_leaf_slot_array *get_slot_array_offset(const struct bt_dynamic_leaf_node *leaf);
-char *get_kv_offset(const struct bt_dynamic_leaf_node *leaf, uint32_t leaf_size, uint32_t kv_offset);
+char *get_kv_offset(const struct bt_dynamic_leaf_node *leaf, const uint32_t leaf_size, const uint32_t kv_offset);
