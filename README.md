@@ -98,13 +98,16 @@ The "Release" build disables warnings and enables optimizations.
 
 You can install Kreon in your standard path using cmake.
 
-To enable packaging and installation support you need to define KREON_BUILD_CPACK when invoking cmake.
+To enable packaging and installation support you need to define `KREON_BUILD_CPACK` when invoking cmake.
 
 Run `make package` inside the `build` folder to create an RPM file.
 
 Run `make install` inside the `build` folder to install the RPM file.
 
 Run `make uninstall` inside the `build` folder to remove files installed by `make install`. (Directories are not deleted)
+
+In case you want to link statically without using cmake check `scripts/pack-staticlib.py` to create a single binary called `libkreon2.a` and link with it.
+
 
 # Static Analyzer
 
