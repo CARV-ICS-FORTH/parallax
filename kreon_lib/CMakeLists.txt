@@ -9,11 +9,13 @@ if("${CMAKE_BUILD_TYPE}" STREQUAL "Debug")
   set(CMAKE_C_FLAGS
       "-Wstrict-prototypes -Wall -Wextra -std=gnu11 -fPIC ${CMAKE_C_FLAGS}"
   )# -Werror
-  set(CMAKE_C_FLAGS_DEBUG "-ggdb3 -Og ${CMAKE_C_FLAG_DEBUG}")
+  set(CMAKE_C_FLAGS_DEBUG "-ggdb3 -Og ${CMAKE_C_FLAGS_DEBUG}")
 endif()
 
 if(CMAKE_BUILD_TYPE EQUAL "Release")
-  set(CMAKE_C_FLAGS_RELEASE "-O2 -finline-functions -DNDEBUG") # -Werror
+  set(CMAKE_C_FLAGS_RELEASE
+      "-flto -fwhopr -funit-at-a-time -fprefetch-loop-arrays -fpeel-loops -O2 -finline-functions -DNDEBUG ${CMAKE_C_FLAGS_RELEASE}"
+  ) # -Werror
 endif()
 
 file(
@@ -63,9 +65,8 @@ add_library(
 set_target_properties(kreonr PROPERTIES COMPILE_DEFINITIONS "KREONR")
 
 # Kreon with replication disabled
-add_library(${KREON_LIB} STATIC ${KREON_C_SOURCE_FILES} ${log_SOURCE_DIR})
-add_library(${KREON_LIB_SHARED} SHARED ${KREON_C_SOURCE_FILES}
-                                       ${log_SOURCE_DIR})
+add_library(${KREON_LIB} STATIC ${KREON_C_SOURCE_FILES})
+add_library(${KREON_LIB_SHARED} SHARED ${KREON_C_SOURCE_FILES})
 
 set_property(TARGET ${KREON_LIB} PROPERTY POSITION_INDEPENDENT_CODE ON)
 set_property(TARGET ${KREON_LIB_SHARED} PROPERTY POSITION_INDEPENDENT_CODE ON)
@@ -87,9 +88,11 @@ target_link_libraries(mkfs.kreon log)
 
 if(KREON_BUILD_CPACK)
   install(
-    TARGETS kreonr-shared ${KREON_LIB_SHARED} mkfs.kreon
+    TARGETS ${KREON_LIB} ${KREON_LIB_SHARED} mkfs.kreon kreonr-shared
+    ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
     LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
     RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
-  set_target_properties(kreonr-shared PROPERTIES OUTPUT_NAME kreonr)
+  set_target_properties(${KREON_LIB} PROPERTIES OUTPUT_NAME kreon)
   set_target_properties(${KREON_LIB_SHARED} PROPERTIES OUTPUT_NAME kreon)
+  set_target_properties(kreonr-shared PROPERTIES OUTPUT_NAME kreonr)
 endif()
