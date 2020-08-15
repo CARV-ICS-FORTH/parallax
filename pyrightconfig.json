@@ -1,0 +1,23 @@
+{
+    "exclude": [
+        "**/node_modules",
+        "**/__pycache__",
+        "**/build"
+    ],
+    "typeCheckingMode": "basic",
+    "reportMissingImports": true,
+    "reportMissingTypeStubs": false,
+    "reportUnusedImport":true,
+    "reportDuplicateImports":true,
+    "reportImportCycles":true,
+    "reportOptionalCall":true,
+    "reportOptionalIterable":true,
+    "reportOptionalContextManager":true,
+    "reportOptionalOperand":true,
+    "reportUntypedFunctionDecorator":true,
+    "reportUntypedClassDecorator":true,
+    "reportInvalidStringEscapeSequence":true,
+    "reportCallInDefaultInitializer":true,
+    "reportUnnecessaryCast":true,
+    "pythonPlatform": "Linux"
+}
