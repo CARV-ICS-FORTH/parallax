@@ -6,7 +6,7 @@
 #define CONF_CACHE_LINE 64
 
 /*watch out this is the vanilla value*/
-#define UTILS_QUEUE_CAPACITY 1024 //512
+#define UTILS_QUEUE_CAPACITY 2048 //512
 
 #ifdef __cplusplus
 extern "C" {

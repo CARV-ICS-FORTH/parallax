@@ -1307,16 +1307,16 @@ static void __stop_client(connection_rdma *conn)
 
 void _update_client_rendezvous_location(connection_rdma *conn, int message_size)
 {
-	if (message_size < MESSAGE_SEGMENT_SIZE) {
+	if (message_size < MESSAGE_SEGMENT_SIZE)
 		message_size = MESSAGE_SEGMENT_SIZE;
-	}
+
 	assert(message_size % MESSAGE_SEGMENT_SIZE == 0);
 	if ((uint64_t)conn->rendezvous + message_size >= (uint64_t)conn->rdma_memory_regions->remote_memory_buffer +
 								 (conn->peer_mr->length - MESSAGE_SEGMENT_SIZE)) {
 		conn->rendezvous = conn->rdma_memory_regions->remote_memory_buffer;
-	} else {
+		log_info("Silent reset");
+	} else
 		conn->rendezvous = (void *)((uint64_t)conn->rendezvous + message_size);
-	}
 }
 
 void _update_rendezvous_location(connection_rdma *conn, int message_size)
@@ -1331,6 +1331,7 @@ void _update_rendezvous_location(connection_rdma *conn, int message_size)
 		    ((uint64_t)conn->rdma_memory_regions->remote_memory_buffer +
 		     conn->rdma_memory_regions->memory_region_length)) {
 			conn->rendezvous = (void *)conn->rdma_memory_regions->remote_memory_buffer;
+			//log_info("silent reset");
 		} else {
 			conn->rendezvous = (void *)((uint64_t)conn->rendezvous + (uint32_t)message_size);
 		}

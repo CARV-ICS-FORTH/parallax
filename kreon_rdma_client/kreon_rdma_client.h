@@ -59,3 +59,9 @@ void krc_scan_fetch_keys_only(krc_scannerp sc);
 uint8_t krc_scan_get_next(krc_scannerp sc, char **key, size_t *keySize, char **value, size_t *valueSize);
 uint8_t krc_scan_is_valid(krc_scannerp sc);
 void krc_scan_close(krc_scannerp sc);
+
+/*asynchronous staff*/
+uint8_t krc_start_async_thread(int num_queues, int bufs_per_queue);
+typedef void (*callback)(void *);
+krc_ret_code krc_aput(uint32_t key_size, void *key, uint32_t val_size, void *value, callback t, void *context);
+krc_ret_code krc_aget(uint32_t key_size, char *key, callback);

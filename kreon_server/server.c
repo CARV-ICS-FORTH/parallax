@@ -710,6 +710,7 @@ static int assign_job_to_worker(struct ds_spinning_thread *spinner, struct conne
 			break;
 		case KRM_CLIENT_POOL:
 			ds_put_client_task_buffer(spinner, job);
+			log_info("Boom");
 			break;
 		default:
 			log_fatal("Corrupted pool type of job");
@@ -978,7 +979,7 @@ static void *server_spinning_thread_kernel(void *args)
 					exit(EXIT_FAILURE);
 				}
 			} else if (recv == RESET_RENDEZVOUS) {
-				//DPRINT("SERVER: Clients wants a reset ... D O N E\n");
+				log_info("SERVER: Clients wants a reset ... D O N E");
 				_zero_rendezvous_locations(hdr);
 				conn->rendezvous = conn->rdma_memory_regions->remote_memory_buffer;
 				goto iterate_next_element;
