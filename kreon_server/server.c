@@ -530,11 +530,10 @@ static struct krm_work_task *ds_get_server_task_buffer(struct ds_spinning_thread
 		if (job != NULL)
 			break;
 
+		++i;
 		if (i == idx)
 			//nothing found after a full round
 			break;
-		++i;
-
 		if (i >= DS_POOL_NUM)
 			i = 0;
 	}
@@ -586,10 +585,10 @@ static struct krm_work_task *ds_get_client_task_buffer(struct ds_spinning_thread
 		job = (struct krm_work_task *)utils_queue_pop(&spinner->ctb_pool[i].task_buffers);
 		if (job != NULL)
 			break;
+		++i;
 		if (i == idx)
 			//nothing found after a full round
 			break;
-		++i;
 		if (i >= DS_POOL_NUM)
 			i = 0;
 	}
