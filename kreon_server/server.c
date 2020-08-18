@@ -531,7 +531,7 @@ static struct krm_work_task *ds_get_server_task_buffer(struct ds_spinning_thread
 			break;
 
 		++i;
-		if (i == idx)
+		if (i == idx || DS_POOL_NUM == 1)
 			//nothing found after a full round
 			break;
 		if (i >= DS_POOL_NUM)
@@ -586,7 +586,7 @@ static struct krm_work_task *ds_get_client_task_buffer(struct ds_spinning_thread
 		if (job != NULL)
 			break;
 		++i;
-		if (i == idx)
+		if (i == idx || DS_POOL_NUM == 1)
 			//nothing found after a full round
 			break;
 		if (i >= DS_POOL_NUM)
