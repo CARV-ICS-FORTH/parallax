@@ -486,8 +486,8 @@ void *worker_thread_kernel(void *args)
 		if (!job->suspended) {
 			switch (job->kreon_operation_status) {
 			case TASK_COMPLETE:
-				__send_rdma_message(job->conn, job->reply_msg);
 				_zero_rendezvous_locations(job->msg);
+				__send_rdma_message(job->conn, job->reply_msg);
 				switch (job->pool_type) {
 				case KRM_CLIENT_POOL:
 					ds_put_client_task_buffer(&dataserver->spinner[worker->spinner_id], job);
