@@ -20,14 +20,22 @@ struct globals {
 	char *dev;
 	char *mount_point;
 	int RDMA_connection_port;
-	int client_spinning_thread;
 	uint64_t volume_size;
 	struct channel_rdma *channel;
 	int connections_per_server;
 	int job_scheduling_max_queue_depth;
 	int worker_spin_time_usec;
 };
-static struct globals global_vars = { NULL, NULL, NULL, NULL, -1, 1, 0, NULL, NUM_OF_CONNECTIONS_PER_SERVER, 64, 100 };
+static struct globals global_vars = { .zk_host_port = NULL,
+				      .RDMA_IP_filter = NULL,
+				      .dev = NULL,
+				      .mount_point = NULL,
+				      .RDMA_connection_port = -1,
+				      .volume_size = 0,
+				      .channel = NULL,
+				      .connections_per_server = NUM_OF_CONNECTIONS_PER_SERVER,
+				      .job_scheduling_max_queue_depth = 64,
+				      .worker_spin_time_usec = 100 };
 
 static pthread_mutex_t g_lock = PTHREAD_MUTEX_INITIALIZER;
 
@@ -138,21 +146,6 @@ int globals_get_worker_spin_time_usec(void)
 void globals_set_worker_spin_time_usec(int worker_spin_time_usec)
 {
 	global_vars.worker_spin_time_usec = worker_spin_time_usec;
-}
-
-void globals_disable_client_spinning_thread()
-{
-	global_vars.client_spinning_thread = 0;
-}
-
-void globals_enable_client_spinning_thread()
-{
-	global_vars.client_spinning_thread = 1;
-}
-
-int globals_spawn_client_spinning_thread()
-{
-	return global_vars.client_spinning_thread;
 }
 
 void globals_set_dev(char *dev)

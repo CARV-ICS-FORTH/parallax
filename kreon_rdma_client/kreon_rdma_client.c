@@ -153,7 +153,6 @@ krc_ret_code krc_init(char *zookeeper_ip, int zk_port)
 	if (!krc_lib_init) {
 		pthread_mutex_lock(&lib_lock);
 		if (!krc_lib_init) {
-			globals_disable_client_spinning_thread();
 			cu_init(zookeeper_ip, zk_port);
 			//char *zk_host_port = malloc(strlen(zookeeper_ip) + 16);
 			//strcpy(zk_host_port, zookeeper_ip);

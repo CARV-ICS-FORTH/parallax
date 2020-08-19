@@ -20,10 +20,6 @@ void globals_set_job_scheduling_max_queue_depth(int job_scheduling_max_queue_dep
 int globals_get_worker_spin_time_usec(void);
 void globals_set_worker_spin_time_usec(int worker_spin_time_usec);
 
-void globals_disable_client_spinning_thread(void);
-void globals_enable_client_spinning_thread(void);
-int globals_spawn_client_spinning_thread(void);
-
 void globals_set_dev(char *dev);
 char *globals_get_dev(void);
 uint64_t globals_get_dev_size(void);
