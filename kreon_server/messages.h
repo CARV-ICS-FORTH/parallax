@@ -16,8 +16,8 @@ enum message_type {
 	PUT_REPLY,
 	PUT_OFFT_REQUEST,
 	PUT_OFFT_REPLY,
-	TU_GET_QUERY,
-	TU_GET_REPLY,
+	GET_REQUEST,
+	GET_REPLY,
 	MULTI_GET_REQUEST,
 	MULTI_GET_REPLY,
 	DELETE_REQUEST,
@@ -63,14 +63,7 @@ typedef struct msg_value {
 	char value[];
 } msg_value;
 
-// Set in allocate_rdma_message
-#define SERVER_CATEGORY 0 //0x6700
-#define CLIENT_CATEGORY 1 //0x5500
-
 typedef struct msg_header {
-#if TU_SEMAPHORE
-	sem_t sem;
-#endif
 	/*Inform server where we expect the reply*/
 	void *reply;
 	volatile uint32_t reply_length;
@@ -80,7 +73,7 @@ typedef struct msg_header {
 	uint16_t type; // Type of the message: PUT_REQUEST, PUT_REPLY, GET_QUERY, GET_REPLY, etc.
 	uint8_t error_code;
 
-	uint32_t value; //Number of operations included in the payload
+	//uint32_t value; //Number of operations included in the payload
 	volatile uint64_t local_offset; //Offset regarding the local Memory region
 	volatile uint64_t remote_offset; //Offset regarding the remote Memory region
 	//From Client to head, local_offset == remote_offset

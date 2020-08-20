@@ -64,4 +64,4 @@ void krc_scan_close(krc_scannerp sc);
 uint8_t krc_start_async_thread(int num_queues, int bufs_per_queue);
 typedef void (*callback)(void *);
 krc_ret_code krc_aput(uint32_t key_size, void *key, uint32_t val_size, void *value, callback t, void *context);
-krc_ret_code krc_aget(uint32_t key_size, char *key, callback);
+krc_ret_code krc_aget(uint32_t key_size, char *key, uint32_t *buf_size, char *buf, callback t, void *context);

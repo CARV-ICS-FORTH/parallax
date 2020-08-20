@@ -59,68 +59,6 @@ void rdma_thread_events_ctx(void *args);
 static void *poll_cq(void *arg);
 void on_completion_server(struct ibv_wc *wc, struct connection_rdma *conn);
 
-static void _wait_for_reset_buffer_ack(connection_rdma *conn)
-{
-	int dummy = 1;
-	size_t payload_end = conn->rdma_memory_regions->memory_region_length - MESSAGE_SEGMENT_SIZE;
-	/*wait for RESET_BUFER_ACK*/
-	msg_header *reset_buffer_ack =
-		(msg_header *)((uint64_t)conn->rdma_memory_regions->remote_memory_buffer + payload_end);
-	while (reset_buffer_ack->receive != RESET_BUFFER_ACK) {
-		++dummy;
-		if (dummy % 1000000000 == 0) {
-			DPRINT("\t Waiting for RESET_BUFFER_ACK\n");
-			dummy = 1;
-		}
-	}
-	reset_buffer_ack->receive = 0;
-}
-
-void _send_reset_buffer_ack(struct connection_rdma *conn)
-{
-	struct ibv_send_wr *bad_wr_header;
-	struct ibv_send_wr wr_header;
-	struct ibv_sge sge_header;
-	msg_header *msg;
-	size_t payload_end = conn->rdma_memory_regions->memory_region_length - MESSAGE_SEGMENT_SIZE;
-	//while(conn->pending_received_messages != 0){
-	//	if(++a%1000000000 == 0){
-	//		DPRINT("\tWaiting for processing of received messages to send RESET_BUFFER_ACK pending messages %llu\n",(LLU)conn->pending_received_messages);
-	//	}
-	//}
-
-	msg = (msg_header *)((uint64_t)conn->rdma_memory_regions->local_memory_buffer + payload_end);
-	memset(msg, 0, sizeof(msg_header));
-	msg->type = RESET_BUFFER_ACK;
-	msg->receive = RESET_BUFFER_ACK;
-	msg->pay_len = 0;
-	msg->padding_and_tail = 0;
-
-	memset(&wr_header, 0, sizeof(wr_header));
-	memset(&sge_header, 0, sizeof(sge_header));
-	wr_header.wr_id = (uint64_t)msg;
-	wr_header.opcode = IBV_WR_RDMA_WRITE;
-	wr_header.sg_list = &sge_header;
-	wr_header.num_sge = 1;
-	wr_header.send_flags = IBV_SEND_SIGNALED;
-	wr_header.wr.rdma.remote_addr = ((uint64_t)conn->peer_mr->addr + payload_end);
-	wr_header.wr.rdma.rkey = conn->peer_mr->rkey;
-
-	sge_header.addr = (uint64_t)msg;
-	sge_header.length = TU_HEADER_SIZE;
-	sge_header.lkey = conn->rdma_memory_regions->local_memory_region->lkey;
-
-	if (ibv_post_send(conn->qp, &wr_header, &bad_wr_header) != 0) {
-		DPRINT("FATAL RDMA write failed, reason follows-->\n");
-		perror("Reason: ");
-		DPRINT("payload length of failed wr is %d and local addr %llu msg len %d\n",
-		       bad_wr_header->sg_list->length, (LLU)bad_wr_header->sg_list->addr, msg->pay_len);
-		raise(SIGINT);
-		exit(EXIT_FAILURE);
-	}
-	return;
-}
-
 void init_rdma_message(connection_rdma *conn, msg_header *msg, uint32_t message_type, uint32_t message_size,
 		       uint32_t message_payload_size, uint32_t padding)
 {
@@ -161,7 +99,7 @@ msg_header *allocate_rdma_message(connection_rdma *conn, int message_payload_siz
 	pthread_mutex_t *lock;
 	switch (message_type) {
 	case PUT_REQUEST:
-	case TU_GET_QUERY:
+	case GET_REQUEST:
 	case MULTI_GET_REQUEST:
 	case PUT_OFFT_REQUEST:
 	case DELETE_REQUEST:
@@ -214,7 +152,7 @@ msg_header *client_allocate_rdma_message(connection_rdma *conn, int message_payl
 	uint8_t reset_rendezvous = 0;
 	switch (message_type) {
 	case PUT_REQUEST:
-	case TU_GET_QUERY:
+	case GET_REQUEST:
 	case MULTI_GET_REQUEST:
 	case PUT_OFFT_REQUEST:
 	case DELETE_REQUEST:
@@ -226,7 +164,7 @@ msg_header *client_allocate_rdma_message(connection_rdma *conn, int message_payl
 		break;
 	case TEST_REPLY:
 	case PUT_REPLY:
-	case TU_GET_REPLY:
+	case GET_REPLY:
 	case MULTI_GET_REPLY:
 	case PUT_OFFT_REPLY:
 	case DELETE_REPLY:
@@ -368,7 +306,7 @@ msg_header *client_try_allocate_rdma_message(connection_rdma *conn, int message_
 	uint8_t reset_rendezvous = 0;
 	switch (message_type) {
 	case PUT_REQUEST:
-	case TU_GET_QUERY:
+	case GET_REQUEST:
 	case MULTI_GET_REQUEST:
 	case TEST_REQUEST:
 		c_buf = conn->send_circular_buf;
@@ -378,7 +316,7 @@ msg_header *client_try_allocate_rdma_message(connection_rdma *conn, int message_
 		break;
 	case TEST_REPLY:
 	case PUT_REPLY:
-	case TU_GET_REPLY:
+	case GET_REPLY:
 	case MULTI_GET_REPLY:
 		c_buf = conn->recv_circular_buf;
 		ack_arrived = KR_REP_DONT_CARE;
@@ -509,7 +447,7 @@ int send_rdma_message_busy_wait(connection_rdma *conn, msg_header *msg)
 
 int send_rdma_message(connection_rdma *conn, msg_header *msg)
 {
-	sem_init(&msg->sem, 0, 0);
+	//sem_init(&msg->sem, 0, 0);
 	msg->callback_function = NULL;
 	msg->callback_function_args = NULL;
 	msg->receive_options = SYNC_REQUEST;
@@ -551,7 +489,7 @@ int __send_rdma_message(connection_rdma *conn, msg_header *msg)
 	switch (msg->type) {
 	/*for client*/
 	case PUT_REQUEST:
-	case TU_GET_QUERY:
+	case GET_REQUEST:
 	case MULTI_GET_REQUEST:
 	case PUT_OFFT_REQUEST:
 	case DELETE_REQUEST:
@@ -559,7 +497,7 @@ int __send_rdma_message(connection_rdma *conn, msg_header *msg)
 	case TEST_REQUEST_FETCH_PAYLOAD:
 		/*server does not care*/
 	case PUT_REPLY:
-	case TU_GET_REPLY:
+	case GET_REPLY:
 	case MULTI_GET_REPLY:
 	case PUT_OFFT_REPLY:
 	case DELETE_REPLY:
@@ -591,15 +529,6 @@ int __send_rdma_message(connection_rdma *conn, msg_header *msg)
 	}
 
 	return KREON_SUCCESS;
-}
-
-msg_header *get_message_reply(connection_rdma *conn, msg_header *msg)
-{
-	if (!msg->reply_message)
-		sem_wait(&msg->sem);
-
-	assert(msg->reply_message);
-	return msg->reply_message;
 }
 
 void client_free_rpc_pair(connection_rdma *conn, msg_header *reply)
@@ -677,81 +606,6 @@ int rdma_kv_entry_to_replica(connection_rdma *conn, msg_header *data_message, ui
 	if (ret != 0) {
 		DPRINT("ERROR rdma failed reason follows--->\n");
 		perror("Reason: \n");
-		exit(EXIT_FAILURE);
-	}
-	return KREON_SUCCESS;
-}
-
-int wake_up_replica_to_flush_segment(connection_rdma *conn, msg_header *msg, int wait)
-{
-	struct ibv_send_wr wr_segment_metadata;
-	struct ibv_sge sge_segment_metadata;
-	struct ibv_send_wr *bad_wr_segment_metadata = NULL;
-	struct ibv_send_wr wr_header;
-	struct ibv_sge sge_header;
-	struct ibv_send_wr *bad_wr_header = NULL;
-	int32_t length;
-	/*sent metadata of segment via an RDMA write operation*/
-	msg->callback_function = NULL;
-	msg->callback_function_args = NULL;
-	sem_init(&msg->sem, 0, 0);
-
-	/*calculate length of metadata*/
-	length = (4 * sizeof(uint64_t)) + sizeof(uint32_t) + *(uint32_t *)(msg->data + (4 * sizeof(uint64_t)));
-	memset(&wr_segment_metadata, 0, sizeof(wr_segment_metadata));
-	memset(&sge_segment_metadata, 0, sizeof(sge_segment_metadata));
-	wr_segment_metadata.wr_id = 0;
-	wr_segment_metadata.opcode = IBV_WR_RDMA_WRITE;
-	wr_segment_metadata.sg_list = &sge_segment_metadata;
-	wr_segment_metadata.num_sge = 1;
-	wr_segment_metadata.send_flags = IBV_SEND_SIGNALED;
-	wr_segment_metadata.wr.rdma.remote_addr = (uintptr_t)(conn->peer_mr->addr + msg->local_offset + TU_HEADER_SIZE);
-	wr_segment_metadata.wr.rdma.rkey = conn->peer_mr->rkey;
-
-	sge_segment_metadata.addr = (uint64_t)((uintptr_t)conn->rdma_memory_regions->local_memory_buffer +
-					       msg->local_offset + TU_HEADER_SIZE);
-	sge_segment_metadata.length = length;
-	sge_segment_metadata.lkey = conn->rdma_memory_regions->local_memory_region->lkey;
-	//DPRINT("Metadata of LOG Buffer length %d from offset %llu to offset %llu\n",length,(LLU)msg->local_offset+TU_HEADER_SIZE, (LLU)msg->local_offset+TU_HEADER_SIZE);
-	if (ibv_post_send(conn->qp, &wr_segment_metadata, &bad_wr_segment_metadata) != 0) {
-		DPRINT("FATAL RDMA write failed, reason follows-->\n");
-		perror("Reason: ");
-		DPRINT("payload length of failed wr is %d and local addr %llu msg len %d\n",
-		       bad_wr_segment_metadata->sg_list->length, (LLU)bad_wr_segment_metadata->sg_list->addr,
-		       msg->pay_len);
-		raise(SIGINT);
-		exit(EXIT_FAILURE);
-	}
-
-	/*then sent header*/
-	memset(&wr_header, 0, sizeof(wr_header));
-	memset(&sge_header, 0, sizeof(sge_header));
-	wr_header.wr_id = (uint64_t)msg;
-	wr_header.opcode = IBV_WR_RDMA_WRITE;
-	wr_header.sg_list = &sge_header;
-	wr_header.num_sge = 1;
-	wr_header.send_flags = IBV_SEND_SIGNALED;
-	wr_header.wr.rdma.remote_addr = ((uint64_t)conn->peer_mr->addr + msg->remote_offset);
-	wr_header.wr.rdma.rkey = conn->peer_mr->rkey;
-
-	sge_header.addr = (uint64_t)((uintptr_t)conn->rdma_memory_regions->local_memory_buffer + msg->local_offset);
-	sge_header.length = TU_HEADER_SIZE;
-	sge_header.lkey = conn->rdma_memory_regions->local_memory_region->lkey;
-
-	msg->reply_message = NULL;
-	if (wait == WAIT_REPLICA_TO_COMMIT) {
-		msg->request_message_local_addr = msg;
-	} else {
-		msg->request_message_local_addr = NULL;
-	}
-
-	//DPRINT("HEADER  of LOG Buffer length %d from offset %llu to offset %llu\n",TU_HEADER_SIZE,(LLU)msg->local_offset, (LLU)msg->remote_offset);
-	if (ibv_post_send(conn->qp, &wr_header, &bad_wr_header) != 0) {
-		DPRINT("FATAL RDMA write failed, reason follows-->\n");
-		perror("Reason: ");
-		DPRINT("payload length of failed wr is %d and local addr %llu msg len %d\n",
-		       bad_wr_header->sg_list->length, (LLU)bad_wr_header->sg_list->addr, msg->pay_len);
-		raise(SIGINT);
 		exit(EXIT_FAILURE);
 	}
 	return KREON_SUCCESS;
@@ -1325,7 +1179,9 @@ void _update_rendezvous_location(connection_rdma *conn, int message_size)
 			conn->rendezvous = (void *)((uint64_t)conn->rendezvous + (uint32_t)message_size);
 		}
 	} else {
-		//assert(0);
+		log_fatal("Faulty connection type");
+		exit(EXIT_FAILURE);
+#if 0
 		if (message_size > 0) {
 			if (conn->remaining_bytes_in_remote_rdma_region >= message_size) {
 				conn->remaining_bytes_in_remote_rdma_region -= message_size;
@@ -1342,6 +1198,7 @@ void _update_rendezvous_location(connection_rdma *conn, int message_size)
 			conn->remaining_bytes_in_remote_rdma_region = conn->rdma_memory_regions->memory_region_length;
 			conn->rendezvous = conn->rdma_memory_regions->remote_memory_buffer;
 		}
+#endif
 	}
 }
 

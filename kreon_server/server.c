@@ -902,24 +902,6 @@ static void *server_spinning_thread_kernel(void *args)
 				 * outsize of the rdma_memory_regions->remote_memory_buffer
 				 * */
 				_update_rendezvous_location(conn, message_size);
-			} else if (recv == RESET_BUFFER) {
-				_update_connection_score(spinning_list_type, conn);
-				/*
-				 * send RESET_BUFFER_ACK properties are
-				 * 1. Only one thread per connection initiates RESET_BUFFER operation
-				 * 2. RESET_BUFFER_ACK is sent at a special location (last_header of the header section in the memory region)
-				 * Why? To avoid deadlocks, spinning thread acknowledges.
-				 * Who sends it? A special worker thread because spinning thread should never block
-				 */
-
-				rc = assign_job_to_worker(spinner, conn, hdr, NULL);
-				/*all workers are busy returns KREON_FAILURE*/
-				if (rc != KREON_FAILURE) {
-					hdr->receive =
-						0; /*responsible worker will zero and update rendevous locations*/
-				}
-				goto iterate_next_element;
-				/*rendezvous will by changed by the worker!*/
 			} else if (recv == CONNECTION_PROPERTIES) {
 				message_size = wait_for_payload_arrival(hdr);
 				if (message_size == 0) {
@@ -1525,16 +1507,6 @@ void tiering_compaction_worker(void *_tiering_request)
 }
 #endif
 
-/*
- * This functions handle PUT_QUERY requests which contain a single key value
- * put operation task states that this function must handle
- INITIAL_STATE
- WAIT_FOR_REPLICA_TO_FLUSH_REGION
- WAIT_FOR_REPLICA_CONNECTION_TO_RESET
- CHECK_FOR_REPLICA_FLUSH_SEGMENT_ACK
- CHECK_FOR_REPLICA_RESET_BUFFER_ACK
- APPEND_SUCCESS
- */
 void insert_kv_pair(struct krm_work_task *task)
 {
 	/*############## fsm state logic follows ###################*/
@@ -2234,28 +2206,6 @@ static void handle_task(struct krm_work_task *task)
 			 * Kind reminder, SPILL_INIT, SPILL_BUFFER_REQUEST, and SPILL_COMPLETE are handled by the server
 			 * which has backup role for the given region
 			 */
-
-
-
-	case RESET_BUFFER:
-		//DPRINT("Got reset buffer request pending received messages are %llu\n", (LLU)task->conn->pending_received_messages);
-		if (task->kreon_operation_status == RESET_BUFFER_START) {
-			/*Have all requests been completed for this connection?*/
-			tries = 0;
-			while (task->conn->pending_received_messages != 0) {
-				if (++tries >= NUM_OF_TRIES) {
-					//DPRINT("\tWaiting for processing of received messages to send RESET_BUFFER_ACK pending messages %llu\n",(LLU)task->conn->pending_received_messages);
-					return;
-				}
-			}
-		}
-		_send_reset_buffer_ack(task->conn);
-		task->kreon_operation_status = RESET_BUFFER_COMPLETE;
-		_zero_rendezvous_locations(task->msg);
-		_update_rendezvous_location(task->conn, 0); /*"0" indicates RESET*/
-		task->overall_status = TASK_COMPLETED;
-		break;
-
 #endif
 	case GET_LOG_BUFFER_REQ: {
 		void *addr;
@@ -2601,7 +2551,7 @@ static void handle_task(struct krm_work_task *task)
 		break;
 	}
 
-	case TU_GET_QUERY:
+	case GET_REQUEST:
 		value = NULL;
 		/*kreon phase*/
 		get_req = (msg_get_req *)task->msg->data;
@@ -2660,7 +2610,7 @@ static void handle_task(struct krm_work_task *task)
 	exit:
 		/*piggyback info for use with the client*/
 		/*finally fix the header*/
-		task->reply_msg->type = TU_GET_REPLY;
+		task->reply_msg->type = GET_REPLY;
 		task->reply_msg->receive = TU_RDMA_REGULAR_MSG;
 		task->reply_msg->pay_len = sizeof(msg_get_rep) + get_rep->value_size;
 

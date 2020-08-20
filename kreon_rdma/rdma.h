@@ -309,7 +309,6 @@ void client_free_rpc_pair(connection_rdma *conn, msg_header *msg);
 /*replica specific functions*/
 int rdma_kv_entry_to_replica(connection_rdma *conn, msg_header *data_message, uint64_t segment_log_offset, void *source,
 			     uint32_t kv_length, uint32_t client_buffer_key);
-int wake_up_replica_to_flush_segment(connection_rdma *conn, msg_header *msg, int wait);
 
 struct connection_rdma *crdma_client_create_connection(struct channel_rdma *channel);
 void close_and_free_RDMA_connection(struct channel_rdma *channel, struct connection_rdma *conn);
@@ -322,7 +321,6 @@ uint32_t wait_for_payload_arrival(msg_header *hdr);
 int __send_rdma_message(connection_rdma *conn, msg_header *msg);
 void tu_rdma_init_connection(struct connection_rdma *conn);
 
-void _send_reset_buffer_ack(struct connection_rdma *conn);
 void _zero_rendezvous_locations_l(msg_header *msg, uint32_t length);
 void _zero_rendezvous_locations(msg_header *msg);
 void _update_rendezvous_location(struct connection_rdma *conn, int message_size);

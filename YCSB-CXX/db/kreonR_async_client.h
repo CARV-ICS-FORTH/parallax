@@ -35,6 +35,21 @@ void put_callback(void *cnxt)
 	uint64_t *counter = (uint64_t *)cnxt;
 	++(*counter);
 }
+
+struct get_cnxt {
+	uint64_t *counter;
+	uint32_t buf_size;
+	char buf[];
+};
+
+void get_callback(void *cnxt)
+{
+	struct get_cnxt *g = (struct get_cnxt *)cnxt;
+	++(*g->counter);
+	free(g);
+	//log_info("Done with get callback, counter %llu",*(g->counter));
+}
+
 static uint64_t reply_counter;
 }
 
@@ -80,7 +95,6 @@ class kreonRAsyncClientDB : public YCSBDB {
 		pthread_mutex_init(&mutex_num, NULL);
 		gettimeofday(&start, NULL);
 		tinit = start.tv_sec + (start.tv_usec / 1000000.0);
-		krc_start_async_thread(4, 2048);
 	}
 
 	virtual ~kreonRAsyncClientDB()
@@ -98,6 +112,7 @@ class kreonRAsyncClientDB : public YCSBDB {
     public:
 	void Init()
 	{
+		krc_start_async_thread(4, 2048);
 	}
 	void Close()
 	{
@@ -109,8 +124,6 @@ class kreonRAsyncClientDB : public YCSBDB {
 	int Read(int id, const std::string &table, const std::string &key, const std::vector<std::string> *fields,
 		 std::vector<KVPair> &result)
 	{
-		log_fatal("Sorry still unsupported");
-#if 0
 		if (fields) {
 			return __read(id, table, key, fields, result);
 		} else {
@@ -121,24 +134,23 @@ class kreonRAsyncClientDB : public YCSBDB {
 		}
 
 		return 0;
-#endif
 	}
 
 	int __read(int id, const std::string &table, const std::string &key, const std::vector<std::string> *fields,
 		   std::vector<KVPair> &result)
 	{
-		char buffer[2048];
-		char *get_buf = buffer;
-		uint32_t size = 2048;
-		uint32_t code;
+		struct get_cnxt *g = (struct get_cnxt *)malloc(sizeof(struct get_cnxt) + 1500);
+		g->counter = &reply_counter;
+		g->buf_size = 1500;
 
-		code = krc_get(key.length(), (char *)key.c_str(), &get_buf, &size, 0);
+		enum krc_ret_code code =
+			krc_aget(key.length(), (char *)key.c_str(), &g->buf_size, g->buf, get_callback, g);
 		if (code != KRC_SUCCESS) {
 			log_fatal("problem with key %s", key.c_str());
 			//exit(EXIT_FAILURE);
 		}
 
-#if VALUE_CHECK
+#if 0 //VALUE_CHECK
 		std::string value(val, len_val);
 		std::vector<std::string> tokens;
 		boost::split(tokens, value, boost::is_any_of(" "));
