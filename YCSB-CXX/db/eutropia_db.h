@@ -174,25 +174,24 @@ class EutropiaDB : public YCSBDB {
 	int Scan(int id, const std::string &table, const std::string &key, int len,
 		 const std::vector<std::string> *fields, std::vector<KVPair> &result)
 	{
-#if 0
-      char key_buf[512];
-      int items = 0;
-      std::hash<std::string> hash_fn;
-      bool done = false;
-      unsigned int iter = 0;
+		char key_buf[512];
+		int items = 0;
+		std::hash<std::string> hash_fn;
+		bool done = false;
+		unsigned int iter = 0;
 
-      int32_t klen = key.length();
-      memcpy(key_buf, &klen, sizeof(int32_t));
-      memcpy(key_buf + sizeof(int32_t), key.c_str(), key.length());
+		int32_t klen = key.length();
+		memcpy(key_buf, &klen, sizeof(int32_t));
+		memcpy(key_buf + sizeof(int32_t), key.c_str(), key.length());
 
-      scannerHandle sh;
-      initScanner(&sh, dbs[hash_fn(key) % db_num], key_buf);
-      if(!isValid(&sh)){
-        snapshot(dbs[0]->volume_desc);
-        initScanner(&sh, dbs[hash_fn(key) % db_num], key_buf);
-      }
+		scannerHandle sh;
+		initScanner(&sh, dbs[hash_fn(key) % db_num], key_buf, GREATER_OR_EQUAL);
+		if (!isValid(&sh)) {
+			snapshot(dbs[0]->volume_desc);
+			initScanner(&sh, dbs[hash_fn(key) % db_num], key_buf, GREATER_OR_EQUAL);
+		}
 
-      while(isValid(&sh)){
+		while (isValid(&sh)) {
 #if 0
         if(getKeySize(&sh) > 16000){
           std::cout << "TOO LARGE KEY SIZE! iter = " << iter << std::endl;
@@ -207,11 +206,11 @@ class EutropiaDB : public YCSBDB {
         }
 #endif
 
-        std::string k((char *)getKeyPtr(&sh), getKeySize(&sh));
-        std::string v((char *)getValuePtr(&sh), getValueSize(&sh));
+			std::string k((char *)getKeyPtr(&sh), getKeySize(&sh));
+			std::string v((char *)getValuePtr(&sh), getValueSize(&sh));
 
-        std::vector<std::string> tokens;
-        boost::split(tokens, v, boost::is_any_of(" "));
+			std::vector<std::string> tokens;
+			boost::split(tokens, v, boost::is_any_of(" "));
 #if 0
         if(tokens.size() % 2 != 0){
           std::cout << "TOKENS ARRAY NOT MULTIPLE OF 2!" << std::endl;
@@ -219,12 +218,12 @@ class EutropiaDB : public YCSBDB {
           exit(EXIT_FAILURE);
         }
 #endif
-        std::map<std::string, std::string> vmap;
-        int cnt = 0;
-        for(std::map<std::string, std::string>::size_type i = 0 ; i + 1 < tokens.size(); i += 2){
-          vmap.insert(std::pair<std::string, std::string>(tokens[i], tokens[i+1]));
-          ++cnt;
-        }
+			std::map<std::string, std::string> vmap;
+			int cnt = 0;
+			for (std::map<std::string, std::string>::size_type i = 0; i + 1 < tokens.size(); i += 2) {
+				vmap.insert(std::pair<std::string, std::string>(tokens[i], tokens[i + 1]));
+				++cnt;
+			}
 
 #if 0
         if(cnt != field_count){
@@ -234,26 +233,25 @@ class EutropiaDB : public YCSBDB {
         }
 #endif
 
-        for(std::map<std::string, std::string>::iterator it = vmap.begin(); it != vmap.end(); ++it){
-          KVPair kv = std::make_pair(k + it->first, it->second);
-          result.push_back(kv);
+			for (std::map<std::string, std::string>::iterator it = vmap.begin(); it != vmap.end(); ++it) {
+				KVPair kv = std::make_pair(k + it->first, it->second);
+				result.push_back(kv);
 
-          if(++items >= len){
-            done = true;
-            break;
-          }
-        }
+				if (++items >= len) {
+					done = true;
+					break;
+				}
+			}
 
-        if(done)
-          break;
+			if (done)
+				break;
 
-        if(getNext(&sh) == END_OF_DATABASE)
-          break;
+			if (getNext(&sh) == END_OF_DATABASE)
+				break;
 
-        ++iter;
-      }
-      closeScanner(&sh);
-#endif
+			++iter;
+		}
+		closeScanner(&sh);
 
 		return 0;
 	}
