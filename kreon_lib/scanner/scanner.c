@@ -262,6 +262,30 @@ inline int isValid(scannerHandle *sc)
 	return sc->keyValue != NULL;
 }
 
+int32_t getKeySize(scannerHandle *sc)
+{
+	return *(int32_t *)(sc->keyValue);
+}
+
+void *getKeyPtr(scannerHandle *sc)
+{
+	return (void *)((char *)(sc->keyValue) + sizeof(int32_t));
+}
+
+int32_t getValueSize(scannerHandle *sc)
+{
+	int32_t key_size = getKeySize(sc);
+	int32_t *val_ptr = (int32_t *)((char *)(sc->keyValue) + sizeof(int32_t) + key_size);
+	return *val_ptr;
+}
+
+void *getValuePtr(scannerHandle *sc)
+{
+	int32_t key_size = getKeySize(sc);
+	char *val_ptr = (char *)(sc->keyValue) + sizeof(int32_t) + key_size;
+	return val_ptr + sizeof(int32_t);
+}
+
 int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER_MODE mode)
 {
 	char key_buf_prefix[PREFIX_SIZE];

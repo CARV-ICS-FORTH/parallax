@@ -61,6 +61,9 @@ int32_t getNext(scannerHandle *sc);
 
 int isValid(scannerHandle *sc);
 int32_t getKeySize(scannerHandle *sc);
+void *getKeyPtr(scannerHandle *sc);
+int32_t getValueSize(scannerHandle *sc);
+void *getValuePtr(scannerHandle *sc);
 
 /**
  * __seek_scanner: positions the cursor to the appropriate position
