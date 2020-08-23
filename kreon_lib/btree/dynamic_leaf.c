@@ -272,6 +272,7 @@ struct bt_rebalance_result split_dynamic_leaf(struct bt_dynamic_leaf_node *leaf,
 	struct bt_rebalance_result rep;
 	struct bt_dynamic_leaf_node *leaf_copy, *left_leaf, *right_leaf, *old_leaf = leaf;
 	struct bt_dynamic_leaf_slot_array *slot_array, *right_leaf_slot_array, *left_leaf_slot_array;
+	char *split_buffer = req->metadata.handle->db_desc->levels[leaf->header.level_id].split_buffer;
 	char *key_buf, *leaf_log_tail;
 	level_descriptor *level = &req->metadata.handle->db_desc->levels[leaf->header.level_id];
 	volume_descriptor *volume_desc = req->metadata.handle->volume_desc;
@@ -293,15 +294,25 @@ struct bt_rebalance_result split_dynamic_leaf(struct bt_dynamic_leaf_node *leaf,
 #ifdef DEBUG_DYNAMIC_LEAF
 	validate_dynamic_leaf(leaf, level, 0, 0);
 #endif
-
-	slot_array = get_slot_array_offset(leaf);
-	rep.left_dlchild = seg_get_dynamic_leaf_node(volume_desc, level);
-
-	left_leaf = rep.left_dlchild;
+	memcpy(split_buffer, leaf, leaf_size);
+	slot_array = get_slot_array_offset((struct bt_dynamic_leaf_node *)split_buffer);
+	left_leaf = rep.left_dlchild = leaf;
+	leaf = (struct bt_dynamic_leaf_node *)split_buffer;
 	/*Fix left leaf metadata*/
+	left_leaf->header.type = leafNode;
+	left_leaf->header.epoch = volume_desc->mem_catalogue->epoch;
+	left_leaf->header.num_entries = 0;
+	left_leaf->header.fragmentation = 0;
+	left_leaf->header.v1 = 0;
+	left_leaf->header.v2 = 0;
+	left_leaf->header.first_IN_log_header = NULL; /*unused field in leaves*/
+	left_leaf->header.last_IN_log_header = NULL; /*unused field in leaves*/
+	left_leaf->header.leaf_log_size = 0;
+	left_leaf->header.height = 0;
+	left_leaf->header.level_id = leaf->header.level_id;
+
 	leaf_log_tail = get_leaf_log_offset(left_leaf, level->leaf_size);
 	left_leaf_slot_array = get_slot_array_offset(left_leaf);
-
 	for (i = 0, j = 0; i < leaf->header.num_entries / 2; ++i, ++j) {
 		key_buf = fill_keybuf(get_kv_offset(leaf, leaf_size, slot_array[i].index), slot_array[i].bitmap);
 		uint32_t key_size = KEY_SIZE(key_buf);

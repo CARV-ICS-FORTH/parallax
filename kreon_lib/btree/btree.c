@@ -1008,6 +1008,11 @@ finish_init:
 			db_desc->levels[level_id].tree_status[tree_id] = NO_SPILLING;
 		}
 		init_leaf_sizes_perlevel(&db_desc->levels[level_id], level_id);
+		db_desc->levels[level_id].split_buffer = malloc(sizeof(char) * db_desc->levels[level_id].leaf_size);
+		if (!db_desc->levels[level_id].split_buffer) {
+			log_fatal("Cannot allocate memory exiting...");
+			exit(EXIT_FAILURE);
+		}
 		db_desc->inprogress_compactions[level_id].src_level = -1;
 		db_desc->inprogress_compactions[level_id].dst_level = -1;
 		db_desc->pending_compactions[level_id].src_level = -1;
