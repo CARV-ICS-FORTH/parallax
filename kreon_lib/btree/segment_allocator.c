@@ -89,6 +89,7 @@ index_node *seg_get_index_node(volume_descriptor *volume_desc, level_descriptor 
 	ptr->header.first_IN_log_header = (IN_log_header *)((uint64_t)bh - MAPPED);
 	ptr->header.last_IN_log_header = ptr->header.first_IN_log_header;
 	ptr->header.key_log_size = sizeof(IN_log_header);
+
 	return ptr;
 }
 
@@ -160,7 +161,6 @@ leaf_node *seg_get_leaf_node(volume_descriptor *volume_desc, level_descriptor *l
 	leaf->header.last_IN_log_header = NULL; /*unused field in leaves*/
 	leaf->header.key_log_size = 0; /*unused also*/
 	leaf->header.height = 0;
-	leaf->header.level_id = level_desc->level_id;
 
 	return leaf;
 }
@@ -182,7 +182,6 @@ struct bt_dynamic_leaf_node *seg_get_dynamic_leaf_node(volume_descriptor *volume
 	leaf->header.last_IN_log_header = NULL; /*unused field in leaves*/
 	leaf->header.leaf_log_size = 0;
 	leaf->header.height = 0;
-	leaf->header.level_id = level_desc->level_id;
 
 	return leaf;
 }
@@ -202,7 +201,6 @@ leaf_node *seg_get_leaf_node_header(volume_descriptor *volume_desc, level_descri
 	leaf->header.last_IN_log_header = NULL; /*unused field in leaves*/
 	leaf->header.leaf_log_size = 0;
 	leaf->header.height = 0;
-	leaf->header.level_id = level_desc->level_id;
 
 	return (leaf_node *)leaf;
 }

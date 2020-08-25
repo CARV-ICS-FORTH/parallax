@@ -128,7 +128,6 @@ typedef struct node_header {
 	IN_log_header *last_IN_log_header;
 	int32_t height; /*0 are leaves, 1 are Bottom Internal nodes, and then we have
 			  INs and root*/
-	uint8_t level_id;
 	nodeType_t type; /*internal or leaf node*/
 	char pad[8];
 } __attribute__((packed)) node_header;

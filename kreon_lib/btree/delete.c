@@ -158,7 +158,7 @@ uint8_t delete_key_value_from_leaf(bt_delete_request *req, index_node *parent, l
 
 	rotate_data siblings = { .left = NULL, .right = NULL, .pivot = NULL };
 	struct sl_bsearch_result result = { .middle = 0, .status = INSERT, .op = STATIC_LEAF_FIND };
-	level_descriptor *level = &req->metadata.handle->db_desc->levels[leaf->header.level_id];
+	level_descriptor *level = &req->metadata.handle->db_desc->levels[req->metadata.level_id];
 	int pos;
 	int8_t ret;
 
@@ -504,9 +504,10 @@ int8_t merge_with_leaf_neighbor(leaf_node *leaf, rotate_data *siblings, bt_delet
 {
 	leaf_node *left = (leaf_node *)siblings->left;
 	leaf_node *right = (leaf_node *)siblings->right;
-	level_descriptor *level = &req->metadata.handle->db_desc->levels[leaf->header.level_id];
+	int level_id = req->metadata.level_id;
+	level_descriptor *level = &req->metadata.handle->db_desc->levels[level_id];
 	uint64_t merged_with_left_num_entries = 0, merged_with_right_num_entries = 0;
-	uint64_t max_len = req->metadata.handle->db_desc->levels[leaf->header.level_id].leaf_offsets.kv_entries;
+	uint64_t max_len = req->metadata.handle->db_desc->levels[level_id].leaf_offsets.kv_entries;
 	int8_t ret = NO_REBALANCE_NEEDED;
 
 	if (left)
@@ -556,8 +557,9 @@ int8_t check_for_underflow_in_leaf(leaf_node *leaf, rotate_data *siblings, bt_de
 {
 	leaf_node *left = (leaf_node *)siblings->left;
 	leaf_node *right = (leaf_node *)siblings->right;
-	level_descriptor *level = &req->metadata.handle->db_desc->levels[leaf->header.level_id];
-	uint64_t kv_entries = req->metadata.handle->db_desc->levels[leaf->header.level_id].leaf_offsets.kv_entries;
+	int level_id = req->metadata.level_id;
+	level_descriptor *level = &req->metadata.handle->db_desc->levels[level_id];
+	uint64_t kv_entries = req->metadata.handle->db_desc->levels[level_id].leaf_offsets.kv_entries;
 	uint64_t underflow_threshold = kv_entries / 2, borrow_threshold = underflow_threshold + 1;
 	int8_t ret = NO_REBALANCE_NEEDED;
 

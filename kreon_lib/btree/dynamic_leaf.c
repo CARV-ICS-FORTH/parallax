@@ -272,9 +272,10 @@ struct bt_rebalance_result split_dynamic_leaf(struct bt_dynamic_leaf_node *leaf,
 	struct bt_rebalance_result rep;
 	struct bt_dynamic_leaf_node *leaf_copy, *left_leaf, *right_leaf, *old_leaf = leaf;
 	struct bt_dynamic_leaf_slot_array *slot_array, *right_leaf_slot_array, *left_leaf_slot_array;
-	char *split_buffer = req->metadata.handle->db_desc->levels[leaf->header.level_id].split_buffer;
+	int level_id = req->metadata.level_id;
+	char *split_buffer = req->metadata.handle->db_desc->levels[level_id].split_buffer;
 	char *key_buf, *leaf_log_tail;
-	level_descriptor *level = &req->metadata.handle->db_desc->levels[leaf->header.level_id];
+	level_descriptor *level = &req->metadata.handle->db_desc->levels[level_id];
 	volume_descriptor *volume_desc = req->metadata.handle->volume_desc;
 	uint64_t i, j = 0;
 	uint32_t key_buf_size;
@@ -309,7 +310,6 @@ struct bt_rebalance_result split_dynamic_leaf(struct bt_dynamic_leaf_node *leaf,
 	left_leaf->header.last_IN_log_header = NULL; /*unused field in leaves*/
 	left_leaf->header.leaf_log_size = 0;
 	left_leaf->header.height = 0;
-	left_leaf->header.level_id = leaf->header.level_id;
 
 	leaf_log_tail = get_leaf_log_offset(left_leaf, level->leaf_size);
 	left_leaf_slot_array = get_slot_array_offset(left_leaf);

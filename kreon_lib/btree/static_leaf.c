@@ -203,7 +203,7 @@ struct bt_rebalance_result split_static_leaf(struct bt_static_leaf_node *leaf, b
 	struct bt_static_leaf_structs leaf_src, right_leaf_src;
 	struct bt_rebalance_result rep;
 	struct bt_static_leaf_node *leaf_copy;
-	level_descriptor *level = &req->metadata.handle->db_desc->levels[leaf->header.level_id];
+	level_descriptor *level = &req->metadata.handle->db_desc->levels[req->metadata.level_id];
 	volume_descriptor *volume_desc = req->metadata.handle->volume_desc;
 	uint64_t i, j = 0;
 	int kventry_slot = -1;

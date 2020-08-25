@@ -1519,8 +1519,7 @@ static inline struct lookup_reply lookup_in_tree(db_descriptor *db_desc, void *k
 	curr_node = root;
 	if (curr_node->type == leafRootNode) {
 		key_addr_in_leaf = find_key_in_static_leaf((struct bt_static_leaf_node *)curr_node,
-							   &db_desc->levels[curr_node->level_id], key + 4,
-							   *(uint32_t *)key);
+							   &db_desc->levels[level_id], key + 4, *(uint32_t *)key);
 
 		if (key_addr_in_leaf == NULL)
 			rep.addr = NULL;
@@ -1560,8 +1559,7 @@ static inline struct lookup_reply lookup_in_tree(db_descriptor *db_desc, void *k
 	switch (db_desc->levels[level_id].node_layout) {
 	case STATIC_LEAF:
 		key_addr_in_leaf = find_key_in_static_leaf((struct bt_static_leaf_node *)curr_node,
-							   &db_desc->levels[curr_node->level_id], key + 4,
-							   *(uint32_t *)key);
+							   &db_desc->levels[level_id], key + 4, *(uint32_t *)key);
 		break;
 	case DYNAMIC_LEAF:
 		ret_result = find_key_in_dynamic_leaf((struct bt_dynamic_leaf_node *)curr_node,
@@ -1974,12 +1972,10 @@ int insert_KV_at_leaf(bt_insert_req *ins_req, node_header *leaf)
 
 	switch (db_desc->levels[level_id].node_layout) {
 	case STATIC_LEAF:
-		ret = insert_in_static_leaf((struct bt_static_leaf_node *)leaf, ins_req,
-					    &db_desc->levels[leaf->level_id]);
+		ret = insert_in_static_leaf((struct bt_static_leaf_node *)leaf, ins_req, &db_desc->levels[level_id]);
 		break;
 	case DYNAMIC_LEAF:
-		ret = insert_in_dynamic_leaf((struct bt_dynamic_leaf_node *)leaf, ins_req,
-					     &db_desc->levels[leaf->level_id]);
+		ret = insert_in_dynamic_leaf((struct bt_dynamic_leaf_node *)leaf, ins_req, &db_desc->levels[level_id]);
 		break;
 	default:
 		assert(0);
@@ -1990,12 +1986,13 @@ int insert_KV_at_leaf(bt_insert_req *ins_req, node_header *leaf)
 
 struct bt_rebalance_result split_leaf(bt_insert_req *req, leaf_node *node)
 {
-	level_descriptor *level = &req->metadata.handle->db_desc->levels[node->header.level_id];
+	level_descriptor *level = &req->metadata.handle->db_desc->levels[req->metadata.level_id];
+	int level_id = req->metadata.level_id;
 	switch (level->node_layout) {
 	case STATIC_LEAF:
 		return split_static_leaf((struct bt_static_leaf_node *)node, req);
 	case DYNAMIC_LEAF:;
-		uint32_t leaf_size = req->metadata.handle->db_desc->levels[node->header.level_id].leaf_size;
+		uint32_t leaf_size = req->metadata.handle->db_desc->levels[level_id].leaf_size;
 		struct bt_rebalance_result res =
 			split_dynamic_leaf((struct bt_dynamic_leaf_node *)node, leaf_size, req);
 		res.left_dlchild->header.v1++;
@@ -2074,7 +2071,236 @@ void *_index_node_binary_search(index_node *node, void *key_buf, char query_key_
 	return addr;
 }
 
+<<<<<<< HEAD
+||||||| parent of 89bae29... [refactor] Remove level_id from btree nodes
+void spill_buffer(void *_spill_req)
+{
+	db_handle handle;
+	bt_spill_request *spill_req = (bt_spill_request *)_spill_req;
+	db_descriptor *db_desc;
+	level_scanner *level_sc;
+	bt_insert_req ins_req;
+	int32_t local_spilled_keys = 0;
+	int i, rc = 100;
+#ifndef NDEBUG
+	int printfirstkey = 0;
+#endif
+	log_info("starting spill worker...");
+	//assert(spill_req->dst_tree > 0 && spill_req->dst_tree < 255);
+	/*Initialize a scan object*/
+	db_desc = spill_req->db_desc;
+	log_info("Ops when %d joining function are %llu", spill_req->src_level,
+		 db_desc->levels[spill_req->src_level].outstanding_spill_ops);
+	handle.db_desc = spill_req->db_desc;
+	handle.volume_desc = spill_req->volume_desc;
 
+	level_sc = _init_spill_buffer_scanner(&handle, spill_req->src_root, NULL);
+	assert(level_sc != NULL);
+	int32_t num_of_keys = (SPILL_BUFFER_SIZE - (2 * sizeof(uint32_t))) / (PREFIX_SIZE + sizeof(uint64_t));
+
+	do {
+		while (handle.volume_desc->snap_preemption == SNAP_INTERRUPT_ENABLE)
+			usleep(50000);
+
+		db_desc->dirty = 0x01;
+		if (handle.db_desc->stat == DB_IS_CLOSING) {
+			log_info("db is closing bye bye from spiller");
+			__sync_fetch_and_sub(&db_desc->levels[spill_req->src_level].outstanding_spill_ops, 1);
+			return;
+		}
+
+		ins_req.metadata.handle = &handle;
+		ins_req.metadata.level_id = spill_req->src_level + 1;
+		//ins_req.metadata.key_format = KV_PREFIX;
+		ins_req.metadata.key_format = KV_FORMAT;
+		ins_req.metadata.append_to_log = 0;
+		ins_req.metadata.gc_request = 0;
+		ins_req.metadata.recovery_request = 0;
+		for (i = 0; i < num_of_keys; i++) {
+			ins_req.key_value_buf = level_sc->keyValue;
+#ifndef NDEBUG
+			if (i == 0 && printfirstkey == 0) {
+				log_info("First key_value %s", (char *)(((ins_req.key_value_buf)) + 4));
+				printfirstkey = 1;
+			}
+#endif
+			_insert_key_value(&ins_req);
+			rc = _get_next_KV(level_sc);
+			if (rc == END_OF_DATABASE)
+				break;
+
+			++local_spilled_keys;
+			//_sync_fetch_and_add(&db_desc->spilled_keys,1);
+			if (spill_req->end_key != NULL &&
+			    _tucana_key_cmp(level_sc->keyValue, spill_req->end_key, KV_FORMAT, KV_FORMAT) >= 0) {
+				log_info("STOP KEY REACHED %s", (char *)spill_req->end_key + 4);
+				goto finish_spill;
+			}
+		}
+	} while (rc != END_OF_DATABASE);
+finish_spill:
+
+	_close_spill_buffer_scanner(level_sc);
+	log_info("local spilled keys %d", local_spilled_keys);
+	/*Clean up code, Free the buffer tree was occupying. free_block() used
+	 * intentionally*/
+
+	__sync_fetch_and_sub(&db_desc->levels[spill_req->src_level].outstanding_spill_ops, 1);
+	if (db_desc->levels[spill_req->src_level].outstanding_spill_ops == 0) {
+		log_info("last spiller cleaning up level %u remains", spill_req->src_level);
+
+		segment_header *segment =
+			(void *)db_desc->levels[spill_req->src_level].first_segment[spill_req->src_tree];
+
+		while (segment->next_segment) {
+			/* uint64_t s_id = */
+			/* 	((uint64_t)segment - (uint64_t)handle.volume_desc->bitmap_end) / BUFFER_SEGMENT_SIZE; */
+
+			/* if (handle.volume_desc->segment_utilization_vector[s_id] != 0 && */
+			/*     handle.volume_desc->segment_utilization_vector[s_id] < SEGMENT_MEMORY_THREASHOLD) { */
+			/* 	handle.volume_desc->segment_utilization_vector[s_id] = 0; */
+			/* } */
+
+			free_raw_segment(handle.volume_desc, segment);
+
+			segment = (segment_header *)(MAPPED + (uint64_t)segment->next_segment);
+		}
+
+		free_raw_segment(handle.volume_desc, segment);
+
+		MUTEX_LOCK(&db_desc->compaction_structs_lock);
+		db_desc->levels[spill_req->src_level].first_segment[spill_req->src_tree] = NULL;
+		db_desc->levels[spill_req->src_level].last_segment[spill_req->src_tree] = NULL;
+		db_desc->levels[spill_req->src_level].offset[spill_req->src_tree] = 0;
+		db_desc->levels[spill_req->src_level].root_r[spill_req->src_tree] = NULL;
+		db_desc->levels[spill_req->src_level].root_w[spill_req->src_tree] = NULL;
+		db_desc->levels[spill_req->src_level].tree_status[spill_req->src_tree] = NO_SPILLING;
+		db_desc->levels[spill_req->dst_level].tree_status[spill_req->dst_tree] = NO_SPILLING;
+		dequeue_ongoing_compaction(db_desc->inprogress_compactions, spill_req->src_level);
+		MUTEX_UNLOCK(&db_desc->compaction_structs_lock);
+		/* if (spill_req->src_tree == 0) */
+		/* 	db_desc->big_log_head_offset = spill_req->l0_end; */
+	}
+	log_info("spill finished for level %u", spill_req->src_level);
+	snapshot(spill_req->volume_desc);
+	free(spill_req);
+}
+
+#if 0
+void spill_buffer(void *_spill_req)
+{
+	db_handle handle;
+	bt_spill_request *spill_req = (bt_spill_request *)_spill_req;
+	db_descriptor *db_desc;
+	level_scanner *level_sc;
+	bt_insert_req ins_req;
+	int32_t local_spilled_keys = 0;
+	int i, rc = 100;
+#ifndef NDEBUG
+	int printfirstkey = 0;
+#endif
+	log_info("starting spill worker...");
+	//assert(spill_req->dst_tree > 0 && spill_req->dst_tree < 255);
+	/*Initialize a scan object*/
+	db_desc = spill_req->db_desc;
+	log_info("Ops when %d joining function are %llu", spill_req->src_level,
+		 db_desc->levels[spill_req->src_level].outstanding_spill_ops);
+	handle.db_desc = spill_req->db_desc;
+	handle.volume_desc = spill_req->volume_desc;
+
+	level_sc = _init_spill_buffer_scanner(&handle, spill_req->src_root, NULL);
+	assert(level_sc != NULL);
+	int32_t num_of_keys = (SPILL_BUFFER_SIZE - (2 * sizeof(uint32_t))) / (PREFIX_SIZE + sizeof(uint64_t));
+	/* if (){ */
+
+	/* } */
+	do {
+		while (handle.volume_desc->snap_preemption == SNAP_INTERRUPT_ENABLE)
+			usleep(50000);
+
+		db_desc->dirty = 0x01;
+		if (handle.db_desc->stat == DB_IS_CLOSING) {
+			log_info("db is closing bye bye from spiller");
+			__sync_fetch_and_sub(&db_desc->levels[spill_req->src_level].outstanding_spill_ops, 1);
+			return;
+		}
+
+		ins_req.metadata.handle = &handle;
+		ins_req.metadata.level_id = spill_req->src_level + 1;
+		//ins_req.metadata.key_format = KV_PREFIX;
+		ins_req.metadata.key_format = KV_FORMAT;
+		ins_req.metadata.append_to_log = 0;
+		ins_req.metadata.gc_request = 0;
+		ins_req.metadata.recovery_request = 0;
+		for (i = 0; i < num_of_keys; i++) {
+			ins_req.key_value_buf = level_sc->keyValue;
+#ifndef NDEBUG
+			if (i == 0 && printfirstkey == 0) {
+				log_info("First key_value %s", (char *)(((ins_req.key_value_buf)) + 4));
+				printfirstkey = 1;
+			}
+#endif
+			_insert_key_value(&ins_req);
+			rc = _get_next_KV(level_sc);
+			if (rc == END_OF_DATABASE)
+				break;
+
+			++local_spilled_keys;
+			//_sync_fetch_and_add(&db_desc->spilled_keys,1);
+			if (spill_req->end_key != NULL &&
+			    _tucana_key_cmp(level_sc->keyValue, spill_req->end_key, KV_FORMAT, KV_FORMAT) >= 0) {
+				log_info("STOP KEY REACHED %s", (char *)spill_req->end_key + 4);
+				goto finish_spill;
+			}
+		}
+	} while (rc != END_OF_DATABASE);
+finish_spill:
+
+	_close_spill_buffer_scanner(level_sc);
+	log_info("local spilled keys %d", local_spilled_keys);
+	/*Clean up code, Free the buffer tree was occupying. free_block() used
+	 * intentionally*/
+
+	/* if (db_desc->levels[spill_req->src_level].outstanding_spill_ops == 0) { */
+	log_info("last spiller cleaning up level %u remains", spill_req->src_level);
+
+	segment_header *segment = (void *)db_desc->levels[spill_req->src_level].first_segment[spill_req->src_tree];
+
+	while (segment->next_segment) {
+		/* uint64_t s_id = */
+		/* 	((uint64_t)segment - (uint64_t)handle.volume_desc->bitmap_end) / BUFFER_SEGMENT_SIZE; */
+
+		/* if (handle.volume_desc->segment_utilization_vector[s_id] != 0 && */
+		/*     handle.volume_desc->segment_utilization_vector[s_id] < SEGMENT_MEMORY_THREASHOLD) { */
+		/* 	handle.volume_desc->segment_utilization_vector[s_id] = 0; */
+		/* } */
+
+		free_raw_segment(handle.volume_desc, segment);
+
+		segment = (segment_header *)(MAPPED + (uint64_t)segment->next_segment);
+	}
+
+	free_raw_segment(handle.volume_desc, segment);
+
+	MUTEX_LOCK(&db_desc->compaction_structs_lock);
+	db_desc->levels[spill_req->src_level].first_segment[spill_req->src_tree] = NULL;
+	db_desc->levels[spill_req->src_level].last_segment[spill_req->src_tree] = NULL;
+	db_desc->levels[spill_req->src_level].offset[spill_req->src_tree] = 0;
+	db_desc->levels[spill_req->src_level].root_r[spill_req->src_tree] = NULL;
+	db_desc->levels[spill_req->src_level].root_w[spill_req->src_tree] = NULL;
+	db_desc->levels[spill_req->src_level].tree_status[spill_req->src_tree] = NO_SPILLING;
+	db_desc->levels[spill_req->dst_level].tree_status[spill_req->dst_tree] = NO_SPILLING;
+	dequeue_ongoing_compaction(db_desc->inprogress_compactions, spill_req->src_level);
+	MUTEX_UNLOCK(&db_desc->compaction_structs_lock);
+	/* if (spill_req->src_tree == 0) */
+	/* 	db_desc->big_log_head_offset = spill_req->l0_end; */
+	/* } */
+	log_info("spill finished for level %u", spill_req->src_level);
+	snapshot(spill_req->volume_desc);
+	__sync_fetch_and_sub(&db_desc->levels[spill_req->src_level].outstanding_spill_ops, 1);
+	free(spill_req);
+}
+#endif
 /*functions used for debugging*/
 void assert_index_node(node_header *node)
 {
