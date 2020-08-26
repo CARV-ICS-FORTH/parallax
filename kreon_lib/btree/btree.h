@@ -438,6 +438,7 @@ typedef struct bt_spill_request {
 	node_header *src_root;
 	void *start_key;
 	void *end_key;
+	uint64_t level_size;
 	uint64_t l0_start;
 	uint64_t l0_end;
 	uint8_t src_level;
