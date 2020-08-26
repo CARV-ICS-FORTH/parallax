@@ -302,31 +302,14 @@ void seg_free_level(db_handle *handle, uint8_t level_id, uint8_t tree_id)
 {
 	segment_header *curr_segment = handle->db_desc->levels[level_id].first_segment[tree_id];
 	uint64_t space_freed = 0;
-	log_info("Freeing tree [%u][%u] for db %s", level_id, tree_id, handle->db_desc->db_name);
+	log_info("Freeing up level %u for db %s", level_id, handle->db_desc->db_name);
 
-	curr_segment = handle->db_desc->levels[level_id].first_segment[tree_id];
-	while (1) {
-#if 0
-		if (spill_task_desc->region->db->volume_desc->segment_utilization_vector[s_id] != 0 &&
-		    spill_task_desc->region->db->volume_desc->segment_utilization_vector[s_id] <
-			    SEGMENT_MEMORY_THREASHOLD) {
-			//printf("[%s:%s:%d] last segment remains\n",__FILE__,__func__,__LINE__);
-			/*dimap hook, release dram frame*/
-			/*if(dmap_dontneed(FD, ((uint64_t)free_addr-MAPPED)/PAGE_SIZE, BUFFER_SEGMENT_SIZE/PAGE_SIZE)!=0){
-								printf("[%s:%s:%d] fatal ioctl failed\n",__FILE__,__func__,__LINE__);
-								exit(-1);
-								}
-								__sync_fetch_and_sub(&(handle->db_desc->zero_level_memory_size), (unsigned long long)handle->volume_desc->segment_utilization_vector[s_id]*4096);
-								*/
-			spill_task_desc->region->db->volume_desc->segment_utilization_vector[s_id] = 0;
-		}
-#endif
-		free_block(handle->volume_desc, curr_segment, SEGMENT_SIZE, -1);
+	while (curr_segment->next_segment) {
 		space_freed += SEGMENT_SIZE;
-		if (curr_segment->next_segment == NULL)
-			break;
-		curr_segment = MAPPED + curr_segment->next_segment;
+		free_raw_segment(handle->volume_desc, curr_segment);
+		curr_segment = (segment_header *)REAL_ADDRESS(curr_segment->next_segment);
 	}
+
 	log_info("Freed space %llu MB from db:%s level tree [%u][%u]", space_freed / (1024 * 1024),
 		 handle->db_desc->db_name, level_id, tree_id);
 	/*assert check
@@ -341,4 +324,8 @@ void seg_free_level(db_handle *handle, uint8_t level_id, uint8_t tree_id)
 	handle->db_desc->levels[level_id].offset[tree_id] = 0;
 	handle->db_desc->levels[level_id].root_r[tree_id] = NULL;
 	handle->db_desc->levels[level_id].root_w[tree_id] = NULL;
+
+	free_raw_segment(handle->volume_desc, curr_segment);
+
+	log_info("Freed space %llu MB from db:%s level %u", space_freed / MB(1), handle->db_desc->db_name, level_id);
 }

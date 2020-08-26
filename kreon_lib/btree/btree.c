@@ -556,8 +556,6 @@ void *compaction_daemon(void *args)
 
 				level_is_full = db_desc->levels[level_id].actual_level_size >=
 						db_desc->levels[level_id].max_level_size;
-				/* if(level_is_full && level_id == 1) */
-				/* 	BREAKPOINT; */
 
 				if (!prev_level_compaction && !ongoing_compaction && level_is_full) {
 					bt_spill_request *spill_req = prepare_compaction_metadata(&handle, level_id);
@@ -2275,25 +2273,7 @@ finish_spill:
 	MUTEX_LOCK(&db_desc->compaction_structs_lock);
 
 	if (levelisempty == 0) {
-		segment_header *segment =
-			(void *)db_desc->levels[spill_req->src_level].first_segment[spill_req->src_tree];
-
-		while (segment->next_segment) {
-			/* uint64_t s_id = */
-			/* 	((uint64_t)segment - (uint64_t)handle.volume_desc->bitmap_end) / BUFFER_SEGMENT_SIZE; */
-
-			/* if (handle.volume_desc->segment_utilization_vector[s_id] != 0 && */
-			/*     handle.volume_desc->segment_utilization_vector[s_id] < SEGMENT_MEMORY_THREASHOLD) { */
-			/* 	handle.volume_desc->segment_utilization_vector[s_id] = 0; */
-			/* } */
-
-			free_raw_segment(handle.volume_desc, segment);
-
-			segment = (segment_header *)(MAPPED + (uint64_t)segment->next_segment);
-		}
-
-		free_raw_segment(handle.volume_desc, segment);
-
+		seg_free_level(&handle, spill_req->src_level, spill_req->src_tree);
 	} else {
 		db_desc->levels[spill_req->dst_level].first_segment[spill_req->dst_tree] =
 			db_desc->levels[spill_req->src_level].first_segment[spill_req->src_tree];
@@ -2313,6 +2293,7 @@ finish_spill:
 	db_desc->levels[spill_req->src_level].root_w[spill_req->src_tree] = NULL;
 	db_desc->levels[spill_req->src_level].tree_status[spill_req->src_tree] = NO_SPILLING;
 	db_desc->levels[spill_req->dst_level].tree_status[spill_req->dst_tree] = NO_SPILLING;
+	__sync_fetch_and_sub(&db_desc->levels[spill_req->src_level].outstanding_spill_ops, 1);
 	dequeue_ongoing_compaction(db_desc->inprogress_compactions, spill_req->src_level);
 	MUTEX_UNLOCK(&db_desc->compaction_structs_lock);
 
@@ -2320,7 +2301,6 @@ finish_spill:
 	snapshot(spill_req->volume_desc);
 	log_info("local spilled keys %d", local_spilled_keys);
 	log_info("last spiller cleaning up level %u remains", spill_req->src_level);
-	__sync_fetch_and_sub(&db_desc->levels[spill_req->src_level].outstanding_spill_ops, 1);
 	free(spill_req);
 }
 #endif
