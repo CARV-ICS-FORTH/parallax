@@ -6,6 +6,7 @@
 #include <pthread.h>
 #include <immintrin.h>
 #include <assert.h>
+#include <rdma/rdma_verbs.h>
 #include "kreon_rdma_client.h"
 #include "client_utils.h"
 //#include "../kreon_server/client_regions.h"
@@ -153,15 +154,48 @@ static void kreon_op_stat2string(kreon_op_status stat)
 	return;
 }
 
+static int _krc_send_heartbeat(struct rdma_cm_id *rdma_cm_id)
+{
+	struct rdma_message_context send_ctx;
+	log_info("Sending heartbeat!");
+	client_rdma_init_message_context(&send_ctx, NULL);
+	if (rdma_post_write(rdma_cm_id, &send_ctx, NULL, 0, NULL, IBV_SEND_SIGNALED, 0, 0)) {
+		log_warn("Failed to send heartbeat: %s", strerror(errno));
+		return KREON_FAILURE;
+	}
+
+	if (!client_rdma_send_message_success(&send_ctx)) {
+		log_warn("Remote side is down!");
+		return KREON_FAILURE;
+	}
+
+	return KREON_SUCCESS;
+}
+
 /* Spin until an incoming message has been detected. For our RDMA network protocol implementation, this is
  * detected by reading the value TU_RDMA_REGULAR_MSG in the last byte of the buffer where we expect the
  * message.
+ *
+ * \return KREON_SUCCESS if a message is successfully received
+ * \return KREON_FAILURE if the remote side is down
  */
-static int _krc_rdma_write_spin_wait(volatile uint32_t *tail, int expected_value)
+static int _krc_rdma_write_spin_wait(struct rdma_cm_id *rdma_cm_id, volatile uint32_t *tail, int expected_value)
 {
-	while (*tail != expected_value)
-		;
-	return 0;
+	const unsigned timeout = 170000; // 1 sec
+	int i, ret = KREON_SUCCESS;
+	while (1) {
+		for (i = 0; *tail != expected_value && i < timeout; ++i)
+			;
+
+		if (*tail == expected_value)
+			break;
+
+		if (_krc_send_heartbeat(rdma_cm_id) == KREON_FAILURE) {
+			ret = KREON_FAILURE;
+			break;
+		}
+	}
+	return ret;
 }
 
 static int _krc_wait_for_message_reply(struct msg_header *req, struct connection_rdma *conn)
@@ -169,8 +203,8 @@ static int _krc_wait_for_message_reply(struct msg_header *req, struct connection
 	struct msg_header *rep_header =
 		(struct msg_header *)((uint64_t)conn->recv_circular_buf->memory_region + (uint64_t)req->reply);
 	//Spin until header arrives
-	if (_krc_rdma_write_spin_wait(&rep_header->receive, TU_RDMA_REGULAR_MSG) == -1)
-		return -1;
+	if (_krc_rdma_write_spin_wait(conn->rdma_cm_id, &rep_header->receive, TU_RDMA_REGULAR_MSG) == KREON_FAILURE)
+		return KREON_FAILURE;
 
 	// Calculate the payload's "tail", its last 4 bytes
 	uint32_t *tail = (uint32_t *)(((uint64_t)rep_header + sizeof(msg_header) + rep_header->pay_len +
@@ -178,10 +212,10 @@ static int _krc_wait_for_message_reply(struct msg_header *req, struct connection
 				      TU_TAIL_SIZE);
 
 	//Spin until payload arrives
-	if (_krc_rdma_write_spin_wait(tail, TU_RDMA_REGULAR_MSG) == -1)
-		return -1;
+	if (_krc_rdma_write_spin_wait(conn->rdma_cm_id, tail, TU_RDMA_REGULAR_MSG) == KREON_FAILURE)
+		return KREON_FAILURE;
 
-	return 0;
+	return KREON_SUCCESS;
 }
 
 krc_ret_code krc_init(char *zookeeper_ip, int zk_port)
@@ -342,7 +376,7 @@ krc_ret_code krc_put(uint32_t key_size, void *key, uint32_t val_size, void *valu
 		exit(EXIT_FAILURE);
 	}
 
-	if (_krc_wait_for_message_reply(req_header, conn) == -1) {
+	if (_krc_wait_for_message_reply(req_header, conn) != KREON_SUCCESS) {
 		log_fatal("Kreon dataserver is down!");
 		exit(EXIT_FAILURE);
 	}
@@ -531,7 +565,7 @@ krc_ret_code krc_get(uint32_t key_size, char *key, char **buffer, uint32_t *size
 			exit(EXIT_FAILURE);
 		}
 		// Wait for the reply
-		if (_krc_wait_for_message_reply(req_header, conn) == -1) {
+		if (_krc_wait_for_message_reply(req_header, conn) != KREON_SUCCESS) {
 			log_fatal("Kreon dataserver is down!");
 			exit(EXIT_FAILURE);
 		}
@@ -609,7 +643,7 @@ uint8_t krc_exists(uint32_t key_size, void *key)
 		exit(EXIT_FAILURE);
 	}
 	// Wait for the reply to arrive
-	if (_krc_wait_for_message_reply(req_header, conn) == -1) {
+	if (_krc_wait_for_message_reply(req_header, conn) != KREON_SUCCESS) {
 		log_fatal("Kreon dataserver is down!");
 		exit(EXIT_FAILURE);
 	}
@@ -821,7 +855,7 @@ uint8_t krc_scan_get_next(krc_scannerp sp, char **key, size_t *keySize, char **v
 				exit(EXIT_FAILURE);
 			}
 			// Wait for the reply to arrive
-			if (_krc_wait_for_message_reply(req_header, conn) == -1) {
+			if (_krc_wait_for_message_reply(req_header, conn) != KREON_SUCCESS) {
 				log_fatal("Kreon dataserver is down!");
 				exit(EXIT_FAILURE);
 			}
