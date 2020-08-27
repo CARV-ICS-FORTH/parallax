@@ -34,26 +34,28 @@ void put_callback(void *cnxt)
 {
 	uint64_t *counter = (uint64_t *)cnxt;
 	++(*counter);
+	//log_info("Done with put callback, counter %llu", *counter);
 }
 
 struct get_cnxt {
 	uint64_t *counter;
 	uint32_t buf_size;
-	char buf[];
+	char *buf;
 };
 
 void get_callback(void *cnxt)
 {
 	struct get_cnxt *g = (struct get_cnxt *)cnxt;
 	++(*g->counter);
+	//log_info("Done with get callback, counter %llu", *(g->counter));
+	free(g->buf);
 	free(g);
-	//log_info("Done with get callback, counter %llu",*(g->counter));
 }
 
 static uint64_t reply_counter;
 }
 
-#define ZK_HOST "192.168.1.122"
+#define ZK_HOST "192.168.1.124"
 #define ZK_PORT 2181
 #define FIELD_COUNT 10
 #define MAX_THREADS 128
@@ -139,9 +141,10 @@ class kreonRAsyncClientDB : public YCSBDB {
 	int __read(int id, const std::string &table, const std::string &key, const std::vector<std::string> *fields,
 		   std::vector<KVPair> &result)
 	{
-		struct get_cnxt *g = (struct get_cnxt *)malloc(sizeof(struct get_cnxt) + 1500);
+		struct get_cnxt *g = (struct get_cnxt *)malloc(sizeof(struct get_cnxt));
 		g->counter = &reply_counter;
 		g->buf_size = 1500;
+		g->buf = (char *)malloc(g->buf_size);
 
 		enum krc_ret_code code =
 			krc_aget(key.length(), (char *)key.c_str(), &g->buf_size, g->buf, get_callback, g);

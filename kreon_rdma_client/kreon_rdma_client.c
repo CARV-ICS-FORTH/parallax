@@ -1199,6 +1199,7 @@ static uint8_t krc_has_reply_arrived(struct krc_async_req *req)
 void krc_free_rpc_buffers(connection_rdma *conn, struct msg_header *request, msg_header *reply)
 {
 	uint32_t size;
+	free_space_from_circular_buffer(conn->recv_circular_buf, (char *)reply, request->reply_length);
 	if (request->pay_len == 0) {
 		size = MESSAGE_SEGMENT_SIZE;
 	} else {
@@ -1206,14 +1207,6 @@ void krc_free_rpc_buffers(connection_rdma *conn, struct msg_header *request, msg
 		assert(size % MESSAGE_SEGMENT_SIZE == 0);
 	}
 	free_space_from_circular_buffer(conn->send_circular_buf, (char *)request, size);
-
-	if (reply->pay_len == 0) {
-		size = MESSAGE_SEGMENT_SIZE;
-	} else {
-		size = TU_HEADER_SIZE + reply->pay_len + reply->padding_and_tail;
-		assert(size % MESSAGE_SEGMENT_SIZE == 0);
-	}
-	free_space_from_circular_buffer(conn->recv_circular_buf, (char *)reply, size);
 	return;
 }
 
@@ -1267,17 +1260,20 @@ static void *krc_reply_checker(void *args)
 							//you should check ret code
 							break;
 						case GET_REPLY: {
+							uint32_t size = TU_HEADER_SIZE + req->reply->pay_len +
+									req->reply->padding_and_tail;
 							struct msg_get_rep *msg_rep =
 								(struct msg_get_rep *)((uint64_t)req->reply +
 										       sizeof(struct msg_header));
-							if (!msg_rep->key_found) {
-								log_fatal("Key not found!");
-								exit(EXIT_FAILURE);
-							}
 							//log_info(
 							//	"Value size is %lu offset_too_large? %lu bytes_remaining %lu",
 							//	msg_rep->value_size, msg_rep->offset_too_large,
 							//	msg_rep->bytes_remaining);
+							if (!msg_rep->key_found) {
+								log_fatal("Key not found!");
+								exit(EXIT_FAILURE);
+							}
+
 							if (msg_rep->value_size > *req->buf_size) {
 								log_fatal("Reply larger than buffer!");
 								exit(EXIT_FAILURE);
@@ -1295,15 +1291,7 @@ static void *krc_reply_checker(void *args)
 							//log_info("Calling callback for req");
 							req->callback(req->context);
 						}
-						uint32_t size;
-						if (req->reply->pay_len == 0) {
-							size = MESSAGE_SEGMENT_SIZE;
-						} else {
-							size = TU_HEADER_SIZE + req->reply->pay_len +
-							       req->reply->padding_and_tail;
-							assert(size % MESSAGE_SEGMENT_SIZE == 0);
-						}
-						_zero_rendezvous_locations_l(req->reply, size);
+						_zero_rendezvous_locations_l(req->reply, req->request->reply_length);
 						krc_free_rpc_buffers(req->conn, req->request, req->reply);
 						req->conn = NULL;
 						//memset(req, 0x00, sizeof(struct krc_async_req));
@@ -1343,7 +1331,7 @@ krc_ret_code krc_aget(uint32_t key_size, char *key, uint32_t *buf_size, char *bu
 	_krc_get_rpc_pair(conn, &req_header, GET_REQUEST, sizeof(msg_get_req) + key_size, &rep_header, GET_REPLY,
 			  sizeof(msg_get_rep) + reply_size);
 
-	struct msg_get_req *m_get = (struct msg_get_req *)((uint64_t)req_header + sizeof(msg_header));
+	struct msg_get_req *m_get = (struct msg_get_req *)((uint64_t)req_header + sizeof(struct msg_header));
 
 	m_get->key_size = key_size;
 	memcpy(m_get->key, key, key_size);
@@ -1352,7 +1340,7 @@ krc_ret_code krc_aget(uint32_t key_size, char *key, uint32_t *buf_size, char *bu
 	m_get->bytes_to_read = reply_size;
 	/*the reply part*/
 	req_header->reply = (char *)((uint64_t)rep_header - (uint64_t)conn->recv_circular_buf->memory_region);
-	req_header->reply_length = sizeof(msg_header) + rep_header->pay_len + rep_header->padding_and_tail;
+	req_header->reply_length = sizeof(struct msg_header) + rep_header->pay_len + rep_header->padding_and_tail;
 
 	req_header->request_message_local_addr = req_header;
 	rep_header->receive = 0;
