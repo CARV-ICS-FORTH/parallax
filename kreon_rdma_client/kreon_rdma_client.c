@@ -154,11 +154,14 @@ static void kreon_op_stat2string(kreon_op_status stat)
 	return;
 }
 
+extern void on_completion_client(struct rdma_message_context *);
+
 static int _krc_send_heartbeat(struct rdma_cm_id *rdma_cm_id)
 {
 	struct rdma_message_context send_ctx;
 	log_info("Sending heartbeat!");
 	client_rdma_init_message_context(&send_ctx, NULL);
+	send_ctx.on_completion_callback = on_completion_client;
 	if (rdma_post_write(rdma_cm_id, &send_ctx, NULL, 0, NULL, IBV_SEND_SIGNALED, 0, 0)) {
 		log_warn("Failed to send heartbeat: %s", strerror(errno));
 		return KREON_FAILURE;

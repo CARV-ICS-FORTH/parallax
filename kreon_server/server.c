@@ -1505,6 +1505,8 @@ void tiering_compaction_worker(void *_tiering_request)
 }
 #endif
 
+extern void on_completion_client(struct rdma_message_context *);
+
 void insert_kv_pair(struct krm_work_task *task)
 {
 	/*############## fsm state logic follows ###################*/
@@ -1934,18 +1936,25 @@ void insert_kv_pair(struct krm_work_task *task)
 
 						int ret;
 						while (1) {
+							struct rdma_message_context msg_ctx;
+							client_rdma_init_message_context(&msg_ctx, NULL);
+							msg_ctx.on_completion_callback = on_completion_client;
 							ret = rdma_post_write(
-								r_conn->rdma_cm_id, NULL, task->key, kv_size,
+								r_conn->rdma_cm_id, &msg_ctx, task->key, kv_size,
 								task->conn->rdma_memory_regions->remote_memory_region,
 								IBV_SEND_SIGNALED,
 								(uint64_t)r_desc->m_state->r_buf[i].segment[j].mr.addr +
 									remote_offset,
 								r_desc->m_state->r_buf[i].segment[j].mr.rkey);
-							if (!ret) {
+
+							sem_wait(&msg_ctx.wait_for_completion);
+							if (msg_ctx.wc.status == IBV_WC_SUCCESS)
 								break;
-							}
-							if (r_conn->status == CONNECTION_ERROR) {
-								log_fatal("connection failed !: %s\n", strerror(errno));
+							else if (msg_ctx.wc.status == IBV_WC_WR_FLUSH_ERR)
+								continue;
+							else {
+								log_fatal("Replication RDMA write error: %s",
+									  ibv_wc_status_str(msg_ctx.wc.status));
 								exit(EXIT_FAILURE);
 							}
 						}

@@ -57,7 +57,7 @@ void force_send_ack(struct connection_rdma *conn);
 void rdma_thread_events_ctx(void *args);
 
 static void *poll_cq(void *arg);
-void on_completion_server(struct ibv_wc *wc, struct connection_rdma *conn);
+void on_completion_server(struct rdma_message_context *msg_ctx);
 
 void init_rdma_message(connection_rdma *conn, msg_header *msg, uint32_t message_type, uint32_t message_size,
 		       uint32_t message_payload_size, uint32_t padding)
@@ -471,10 +471,13 @@ void async_send_rdma_message(connection_rdma *conn, msg_header *msg, void (*call
 	__send_rdma_message(conn, msg, NULL);
 }
 
+void on_completion_client(struct rdma_message_context *msg_ctx);
+
 int client_send_rdma_message(struct connection_rdma *conn, struct msg_header *msg)
 {
 	struct rdma_message_context msg_ctx;
 	client_rdma_init_message_context(&msg_ctx, msg);
+	msg_ctx.on_completion_callback = on_completion_client;
 	int ret = __send_rdma_message(conn, msg, &msg_ctx);
 	if (ret == KREON_SUCCESS) {
 		if (!client_rdma_send_message_success(&msg_ctx))
@@ -507,7 +510,7 @@ int __send_rdma_message(connection_rdma *conn, msg_header *msg, struct rdma_mess
 	 * for us? For client PUT,GET,MULTI_GET,UPDATE,DELETE we don't
 	 * */
 	void *context;
-	if (LIBRARY_MODE == SERVER_MODE) {
+	if (!msg_ctx && LIBRARY_MODE == SERVER_MODE) {
 		switch (msg->type) {
 		/*for client*/
 		case PUT_REQUEST:
@@ -527,10 +530,15 @@ int __send_rdma_message(connection_rdma *conn, msg_header *msg, struct rdma_mess
 		case TEST_REPLY_FETCH_PAYLOAD:
 			context = NULL;
 			break;
-		default:
+		default: {
 			/*rest I care*/
-			context = msg;
+			struct rdma_message_context *msg_ctx = malloc(sizeof(struct rdma_message_context));
+			client_rdma_init_message_context(msg_ctx, msg);
+			msg_ctx->on_completion_callback = on_completion_server;
+			msg_ctx->args = (void *)conn;
+			context = msg_ctx;
 			break;
+		}
 		}
 	} else {
 		context = (void *)msg_ctx;
@@ -938,8 +946,6 @@ void crdma_init_client_connection_list_hosts(connection_rdma *conn, char **hosts
 	__sync_fetch_and_add(&channel->nused, 1);
 }
 
-void on_completion_client(struct ibv_wc *wc, struct connection_rdma *conn);
-
 void crdma_init_generic_create_channel(struct channel_rdma *channel)
 {
 	int i;
@@ -985,9 +991,6 @@ void crdma_init_generic_create_channel(struct channel_rdma *channel)
 			params->channel = channel;
 			params->spinning_thread_id = i;
 		}
-		channel->on_completion = on_completion_client;
-	} else {
-		channel->on_completion = on_completion_server;
 	}
 	/*Creating the thread in charge of the completion channel*/
 	if (pthread_create(&channel->cq_poller_thread, NULL, poll_cq, channel) != 0) {
@@ -1425,10 +1428,13 @@ static void *poll_cq(void *arg)
 				conn = (connection_rdma *)cq->cq_context;
 				assert(conn);
 				for (i = 0; i < rc; i++) {
-					if (conn->status == CONNECTION_OK)
-						((struct channel_rdma *)conn->channel)->on_completion(&wc[i], conn);
-					else
-						log_warn("skipping work completion");
+					struct rdma_message_context *msg_ctx =
+						(struct rdma_message_context *)wc[i].wr_id;
+					if (msg_ctx) {
+						memcpy(&msg_ctx->wc, &wc[i], sizeof(struct ibv_wc));
+						if (msg_ctx->on_completion_callback)
+							msg_ctx->on_completion_callback(msg_ctx);
+					}
 					memset(&wc[i], 0x00, sizeof(struct ibv_wc));
 				}
 			} else
@@ -1438,8 +1444,10 @@ static void *poll_cq(void *arg)
 	return NULL;
 }
 
-void on_completion_server(struct ibv_wc *wc, struct connection_rdma *conn)
+void on_completion_server(struct rdma_message_context *msg_ctx)
 {
+	struct ibv_wc *wc = &msg_ctx->wc;
+	struct connection_rdma *conn = (struct connection_rdma *)msg_ctx->args;
 	assert(LIBRARY_MODE == SERVER_MODE);
 	msg_header *msg;
 	if (wc->status == IBV_WC_SUCCESS) {
@@ -1451,8 +1459,8 @@ void on_completion_server(struct ibv_wc *wc, struct connection_rdma *conn)
 			//log_info("IBV_WC_RECV code id of connection %d", conn->idconn);
 			break;
 		case IBV_WC_RDMA_WRITE:
-			if (wc->wr_id != 0) {
-				msg = (msg_header *)wc->wr_id;
+			msg = msg_ctx->msg;
+			if (msg) {
 				switch (msg->type) {
 					/*server to client messages*/
 				case CLIENT_STOP_NOW:
@@ -1537,19 +1545,16 @@ void on_completion_server(struct ibv_wc *wc, struct connection_rdma *conn)
 		raise(SIGINT);
 		exit(KREON_FAILURE);
 	}
+
+	free(msg_ctx);
 }
 
 /* Set as the on_completion_callback for channels in client library mode.
  * It passes the work completion struct to the client through the message's context and posts the
  * semaphore used to block until the message's completion has arrived
  */
-void on_completion_client(struct ibv_wc *wc, struct connection_rdma *conn)
+void on_completion_client(struct rdma_message_context *msg_ctx)
 {
-	assert(LIBRARY_MODE == CLIENT_MODE);
-	if (wc->wr_id) {
-		struct rdma_message_context *msg_ctx = (struct rdma_message_context *)wc->wr_id;
-		memcpy(&msg_ctx->wc, wc, sizeof(*wc));
-		sem_post(&msg_ctx->wait_for_completion);
-	}
+	sem_post(&msg_ctx->wait_for_completion);
 	return;
 }

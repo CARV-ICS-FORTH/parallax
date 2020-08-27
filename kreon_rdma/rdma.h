@@ -316,7 +316,7 @@ struct rdma_message_context {
 	struct msg_header *msg;
 	sem_t wait_for_completion;
 	struct ibv_wc wc;
-	void (*on_completion_callback)(void *args);
+	void (*on_completion_callback)(struct rdma_message_context *msg_ctx);
 	void *args;
 	uint8_t __is_initialized;
 };
