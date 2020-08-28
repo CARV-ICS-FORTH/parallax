@@ -40,7 +40,7 @@ build_clang-tidy:
   stage: build
   script:
     - mkdir -p build;cd build
-    - cmake .. "-DCMAKE_C_CLANG_TIDY=/bin/clang-tidy;-checks=*"
+    - cmake .. "-DCMAKE_C_CLANG_TIDY=/bin/clang-tidy;-checks=* --format-style=../.clang-format"
     - make mkfs.kreon;make kreon;make kreon-shared
     - make ycsb-edb;make test_scans;make test_spills;make test_spillscans;make test_deletes;
 
