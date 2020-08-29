@@ -72,10 +72,10 @@ struct ds_worker_thread {
 	pthread_t context;
 	pthread_spinlock_t work_queue_lock;
 	struct channel_rdma *channel;
-	worker_status status;
 	//struct worker_group *my_group;
 	int worker_id;
 	int spinner_id;
+	worker_status status;
 };
 
 #define DS_CLIENT_QUEUE_SIZE (UTILS_QUEUE_CAPACITY / 2)
@@ -549,12 +549,13 @@ static struct krm_work_task *ds_get_server_task_buffer(struct ds_spinning_thread
 
 static void ds_put_server_task_buffer(struct ds_spinning_thread *spinner, struct krm_work_task *task)
 {
-	pthread_mutex_lock(&spinner->stb_pool[task->pool_id].tbp_lock);
+	uint32_t pool_id = task->pool_id;
+	pthread_mutex_lock(&spinner->stb_pool[pool_id].tbp_lock);
 	if (utils_queue_push(&spinner->stb_pool[task->pool_id].task_buffers, task) == NULL) {
-		log_fatal("Failed to add task buffer in pool id %d, this should not happen", task->pool_id);
+		log_fatal("Failed to add task buffer in pool id %d, this should not happen", pool_id);
 		exit(EXIT_FAILURE);
 	}
-	pthread_mutex_unlock(&spinner->stb_pool[task->pool_id].tbp_lock);
+	pthread_mutex_unlock(&spinner->stb_pool[pool_id].tbp_lock);
 	return;
 }
 
@@ -605,12 +606,13 @@ static struct krm_work_task *ds_get_client_task_buffer(struct ds_spinning_thread
 
 static void ds_put_client_task_buffer(struct ds_spinning_thread *spinner, struct krm_work_task *task)
 {
-	pthread_mutex_lock(&spinner->ctb_pool[task->pool_id].tbp_lock);
-	if (utils_queue_push(&spinner->ctb_pool[task->pool_id].task_buffers, task) == NULL) {
-		log_fatal("Failed to add task buffer in pool id %d, this should not happen", task->pool_id);
+	uint32_t pool_id = task->pool_id;
+	pthread_mutex_lock(&spinner->ctb_pool[pool_id].tbp_lock);
+	if (utils_queue_push(&spinner->ctb_pool[pool_id].task_buffers, task) == NULL) {
+		log_fatal("Failed to add task buffer in pool id %d, this should not happen", pool_id);
 		exit(EXIT_FAILURE);
 	}
-	pthread_mutex_unlock(&spinner->ctb_pool[task->pool_id].tbp_lock);
+	pthread_mutex_unlock(&spinner->ctb_pool[pool_id].tbp_lock);
 	return;
 }
 
@@ -957,7 +959,7 @@ static void *server_spinning_thread_kernel(void *args)
 					exit(EXIT_FAILURE);
 				}
 			} else if (recv == RESET_RENDEZVOUS) {
-				log_info("SERVER: Clients wants a reset ... D O N E");
+				//log_info("SERVER: Clients wants a reset ... D O N E");
 				_zero_rendezvous_locations(hdr);
 				conn->rendezvous = conn->rdma_memory_regions->remote_memory_buffer;
 				goto iterate_next_element;

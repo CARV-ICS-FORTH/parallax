@@ -35,15 +35,18 @@ host_id = 0
 region_id = 0
 regions = []
 
-region = (
-    str(region_id)
-    + " -oo "
-    + hex_string[0]
-    + "  "
-    + hosts[host_id]
-    + " "
-    + hosts[host_id + 1]
-)
+if max_hosts > 1:
+    region = (
+        str(region_id)
+        + " -oo "
+        + hex_string[0]
+        + "  "
+        + hosts[host_id]
+        + " "
+        + hosts[host_id + 1]
+    )
+else:
+    region = str(region_id) + " -oo " + hex_string[0] + "  " + hosts[host_id]
 print(region)
 
 region_id = region_id + 1
