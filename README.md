@@ -194,6 +194,7 @@ To install pre-commit hooks:
 
 	cd kreon
 	pre-commit install
+    pre-commit install --hook-type commit-msg
 
 If everything worked as it should then the following message should be printed:
 	pre-commit installed at .git/hooks/pre-commit
