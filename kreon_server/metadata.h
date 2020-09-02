@@ -212,7 +212,7 @@ struct krm_region_desc {
 	struct krm_region *region;
 	enum krm_region_role role;
 	db_handle *db;
-	uint64_t next_segment_to_flush;
+	volatile uint64_t next_segment_to_flush;
 	int replica_bufs_initialized;
 	int region_halted;
 

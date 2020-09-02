@@ -551,7 +551,7 @@ static void ds_put_server_task_buffer(struct ds_spinning_thread *spinner, struct
 {
 	uint32_t pool_id = task->pool_id;
 	pthread_mutex_lock(&spinner->stb_pool[pool_id].tbp_lock);
-	if (utils_queue_push(&spinner->stb_pool[task->pool_id].task_buffers, task) == NULL) {
+	if (utils_queue_push(&spinner->stb_pool[pool_id].task_buffers, task) == NULL) {
 		log_fatal("Failed to add task buffer in pool id %d, this should not happen", pool_id);
 		exit(EXIT_FAILURE);
 	}
@@ -561,13 +561,13 @@ static void ds_put_server_task_buffer(struct ds_spinning_thread *spinner, struct
 
 static void ds_put_resume_task(struct ds_spinning_thread *spinner, struct krm_work_task *task)
 {
-	int id = task->pool_id;
-	pthread_mutex_lock(&spinner->resume_task_pool[id].tbp_lock);
-	if (utils_queue_push(&spinner->resume_task_pool[id].task_buffers, task) == NULL) {
+	int pool_id = task->pool_id;
+	pthread_mutex_lock(&spinner->resume_task_pool[pool_id].tbp_lock);
+	if (utils_queue_push(&spinner->resume_task_pool[pool_id].task_buffers, task) == NULL) {
 		log_fatal("failed to add to resumed task queue");
 		exit(EXIT_FAILURE);
 	}
-	pthread_mutex_unlock(&spinner->resume_task_pool[id].tbp_lock);
+	pthread_mutex_unlock(&spinner->resume_task_pool[pool_id].tbp_lock);
 }
 
 static struct krm_work_task *ds_get_client_task_buffer(struct ds_spinning_thread *spinner)
@@ -1718,13 +1718,12 @@ void insert_kv_pair(struct krm_work_task *task)
 				log_info("Successfully sent the last segment to all the group");
 
 				/*resume halted tasks*/
-				//log_info("Resuming halted tasks");
-				//log_info("*******************");
+				log_info("Resuming halted tasks");
 				struct krm_work_task *halted_task = utils_queue_pop(&r_desc->halted_tasks);
 				while (halted_task != NULL) {
 					halted_task->suspended = 0;
-					//log_info("Resuming task pool %d key is %s", halted_task->pool_id,
-					//	 halted_task->key->key);
+					log_info("Resuming task pool %d key is %s", halted_task->pool_id,
+						 halted_task->key->key);
 					ds_put_resume_task(&dataserver->spinner[task->spinner_id], halted_task);
 					halted_task = utils_queue_pop(&r_desc->halted_tasks);
 				}
@@ -1885,7 +1884,9 @@ void insert_kv_pair(struct krm_work_task *task)
 					return;
 			}
 			/*got all replies motherfuckers*/
+			pthread_mutex_lock(&task->r_desc->region_lock);
 			r_desc->next_segment_to_flush += SEGMENT_SIZE;
+			//pthread_mutex_unlock(&task->r_desc->region_lock);
 
 			for (int i = 0; i < r_desc->region->num_of_backup; i++) {
 				r_desc->m_state->r_buf[i].segment[task->seg_id_to_flush].start +=
@@ -1895,7 +1896,7 @@ void insert_kv_pair(struct krm_work_task *task)
 				sc_free_rpc_pair(&r_desc->m_state->r_buf[i].segment[task->seg_id_to_flush].flush_cmd);
 			}
 			//log_info("Resume possible halted tasks after flush");
-			pthread_mutex_lock(&r_desc->region_lock);
+			//pthread_mutex_lock(&r_desc->region_lock);
 			r_desc->region_halted = 0;
 			struct krm_work_task *halted_task = utils_queue_pop(&task->r_desc->halted_tasks);
 			while (halted_task != NULL) {
@@ -1983,7 +1984,8 @@ void insert_kv_pair(struct krm_work_task *task)
 					return;
 				} else {
 					pthread_mutex_unlock(&r_desc->region_lock);
-					goto retry;
+					//goto retry;
+					return;
 				}
 			}
 
@@ -2569,7 +2571,7 @@ static void handle_task(struct krm_work_task *task)
 		//}
 
 		if (value == NULL) {
-			//log_warn("key not found key %s : length %u", get_req->key, get_req->key_size);
+			log_warn("key not found key %s : length %u", get_req->key, get_req->key_size);
 
 			get_rep->key_found = 0;
 			get_rep->bytes_remaining = 0;
