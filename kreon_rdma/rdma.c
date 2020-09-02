@@ -1430,10 +1430,9 @@ static void *poll_cq(void *arg)
 				for (i = 0; i < rc; i++) {
 					struct rdma_message_context *msg_ctx =
 						(struct rdma_message_context *)wc[i].wr_id;
-					if (msg_ctx) {
+					if (msg_ctx && msg_ctx->on_completion_callback) {
 						memcpy(&msg_ctx->wc, &wc[i], sizeof(struct ibv_wc));
-						if (msg_ctx->on_completion_callback)
-							msg_ctx->on_completion_callback(msg_ctx);
+						msg_ctx->on_completion_callback(msg_ctx);
 					}
 					memset(&wc[i], 0x00, sizeof(struct ibv_wc));
 				}

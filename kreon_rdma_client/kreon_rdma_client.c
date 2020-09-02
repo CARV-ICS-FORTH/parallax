@@ -1,12 +1,16 @@
+#include <infiniband/verbs.h>
+#include <semaphore.h>
 #define _GNU_SOURCE
 
 #include <stdint.h>
 #include <stdio.h>
+#include <stdbool.h>
 #include <string.h>
 #include <pthread.h>
 #include <immintrin.h>
 #include <assert.h>
 #include <rdma/rdma_verbs.h>
+#include <time.h>
 #include "kreon_rdma_client.h"
 #include "client_utils.h"
 //#include "../kreon_server/client_regions.h"
@@ -73,6 +77,9 @@ struct krc_async_req {
 	char *buf;
 	void *context;
 	void (*callback)(void *);
+	struct rdma_message_context msg_ctx;
+	uint8_t wc_checked;
+	struct timespec start_time;
 	volatile uint32_t is_valid;
 };
 
@@ -184,7 +191,7 @@ static int _krc_send_heartbeat(struct rdma_cm_id *rdma_cm_id)
  */
 static int _krc_rdma_write_spin_wait(struct rdma_cm_id *rdma_cm_id, volatile uint32_t *tail, int expected_value)
 {
-	const unsigned timeout = 170000; // 1 sec
+	const unsigned timeout = 1700000; // 10 sec
 	int i, ret = KREON_SUCCESS;
 	while (1) {
 		for (i = 0; *tail != expected_value && i < timeout; ++i)
@@ -1068,11 +1075,11 @@ krc_ret_code krc_close()
 
 /*new functions for asynchronous client related to #57*/
 
-static uint8_t krc_async_send_request(struct connection_rdma *conn, struct msg_header *request,
-				      struct msg_header *reply, callback t, void *context)
+static inline void krc_send_async_request(struct connection_rdma *conn, struct msg_header *req_header,
+					  struct msg_header *rep_header, callback t, void *context, uint32_t *buf_size,
+					  char *buf)
 {
-	/*choose randomly, a spinner queue*/
-	uint32_t id = djb2_hash((unsigned char *)reply, sizeof(struct msg_header)) % spinner->num_queues;
+	uint32_t id = djb2_hash((unsigned char *)rep_header, sizeof(struct msg_header)) % spinner->num_queues;
 	//uint32_t id = (uint64_t)conn % spinner->num_queues;
 	pthread_mutex_lock(&spinner->queue[id]->queue_lock);
 	/*get an async req buffer*/
@@ -1082,28 +1089,25 @@ static uint8_t krc_async_send_request(struct connection_rdma *conn, struct msg_h
 		exit(EXIT_FAILURE);
 	}
 	req->conn = conn;
-	req->request = request;
-	req->reply = reply;
+	req->request = req_header;
+	req->reply = rep_header;
 	req->request->receive = TU_RDMA_REGULAR_MSG;
-	//uint32_t *req_tail = (uint32_t *)((uint64_t)req + sizeof(struct msg_header) + req->request->pay_len +
-	//		     (req->request->padding_and_tail - TU_TAIL_SIZE));
-	//*req_tail = TU_RDMA_REGULAR_MSG;
-	//log_info("rendezvous set to %lu",tmp);
 	req->callback = t;
 	req->context = context;
-	//++cnt;
-	//req->id = cnt;
-	//log_info("req id is %lu cnt is %lu", req->id, cnt);
-	if (send_rdma_message_busy_wait(req->conn, req->request) != KREON_SUCCESS) {
-		log_warn("failed to send message");
+	req->buf_size = buf_size;
+	req->buf = buf;
+	req->start_time.tv_sec = 0;
+	req->start_time.tv_nsec = 0;
+	req->wc_checked = false;
+	client_rdma_init_message_context(&req->msg_ctx, req->request);
+	req->msg_ctx.on_completion_callback = on_completion_client;
+	if (__send_rdma_message(req->conn, req->request, &req->msg_ctx) != KREON_SUCCESS) {
+		log_fatal("failed to send message");
 		exit(EXIT_FAILURE);
 	}
-
 	__sync_fetch_and_add(&spinner->queue[id]->outstanding_requests, 1);
 	req->is_valid = 1;
 	pthread_mutex_unlock(&spinner->queue[id]->queue_lock);
-
-	return 1;
 }
 
 krc_ret_code krc_aput(uint32_t key_size, void *key, uint32_t val_size, void *value, callback t, void *context)
@@ -1147,56 +1151,46 @@ krc_ret_code krc_aput(uint32_t key_size, void *key, uint32_t val_size, void *val
 	req_header->reply_length = sizeof(msg_header) + rep_header->pay_len + rep_header->padding_and_tail;
 	//log_info("put rep length %lu", req_header->reply_length);
 
-	uint32_t id = djb2_hash((unsigned char *)rep_header, sizeof(struct msg_header)) % spinner->num_queues;
-	//uint32_t id = (uint64_t)conn % spinner->num_queues;
-	pthread_mutex_lock(&spinner->queue[id]->queue_lock);
-	/*get an async req buffer*/
-	struct krc_async_req *req = utils_queue_pop(&spinner->queue[id]->avail_buffers);
-	if (req == NULL) {
-		log_fatal("Out of buffers, should you increase them");
-		exit(EXIT_FAILURE);
-	}
-	req->conn = conn;
-	req->request = req_header;
-	req->reply = rep_header;
-	req->request->receive = TU_RDMA_REGULAR_MSG;
-	req->callback = t;
-	req->context = context;
-	req->buf_size = 0;
-	req->buf = NULL;
-	if (send_rdma_message_busy_wait(req->conn, req->request) != KREON_SUCCESS) {
-		log_warn("failed to send message");
-		exit(EXIT_FAILURE);
-	}
-	__sync_fetch_and_add(&spinner->queue[id]->outstanding_requests, 1);
-	req->is_valid = 1;
-	pthread_mutex_unlock(&spinner->queue[id]->queue_lock);
-	/*now inform the spinner to check for the reply, and what to do with it.
-	 * The function internally will send the message in order not to violate order*/
+	krc_send_async_request(conn, req_header, rep_header, t, context, NULL, NULL);
 	return KRC_SUCCESS;
 }
 
 static uint8_t krc_has_reply_arrived(struct krc_async_req *req)
 {
-	if (req != NULL) {
-		if (req->reply != NULL) {
-			if (req->reply->receive == TU_RDMA_REGULAR_MSG) {
-				//log_info("header is here");
-				uint32_t *tail = (uint32_t *)(((uint64_t)req->reply + sizeof(struct msg_header) +
-							       req->reply->pay_len + req->reply->padding_and_tail) -
-							      TU_TAIL_SIZE);
-				if (*tail == TU_RDMA_REGULAR_MSG) {
-					//log_info("Payload is here");
-					return 1;
-				}
-			}
-		} else
-			return 0;
-	} else {
-		assert(0);
-		return 0;
+	assert(req);
+	assert(req->reply);
+	// Check WC
+	if (!req->wc_checked) {
+		if (!sem_trywait(&req->msg_ctx.wait_for_completion))
+			req->wc_checked = true;
+		else
+			return false;
 	}
-	return 0;
+
+	// Check header
+	if (req->reply->receive == TU_RDMA_REGULAR_MSG) {
+		// Header has arrived
+		uint32_t *tail = (uint32_t *)(((uint64_t)req->reply + sizeof(struct msg_header) + req->reply->pay_len +
+					       req->reply->padding_and_tail) -
+					      TU_TAIL_SIZE);
+		if (*tail == TU_RDMA_REGULAR_MSG)
+			return true;
+	}
+
+	struct timespec now;
+	int ret = clock_gettime(CLOCK_MONOTONIC, &now);
+	assert(!ret);
+	if (!req->start_time.tv_sec) {
+		req->start_time = now;
+	}
+	size_t elapsed_sec = now.tv_sec - req->start_time.tv_sec;
+	if (elapsed_sec > 10 && _krc_send_heartbeat(req->conn->rdma_cm_id) != KREON_SUCCESS) {
+		req->start_time = now;
+		log_fatal("Kreon dataserver has failed!");
+		exit(EXIT_FAILURE);
+	}
+
+	return false;
 }
 
 void krc_free_rpc_buffers(connection_rdma *conn, struct msg_header *request, msg_header *reply)
@@ -1254,63 +1248,57 @@ static void *krc_reply_checker(void *args)
 			for (uint32_t j = 0; j < spinner->queue[i]->num_requests; j++) {
 				struct krc_async_req *req = &spinner->queue[i]->requests[j];
 
-				if (req->is_valid) {
-					//log_info("Checking req for queue %d", i);
+				if (!req->is_valid || !krc_has_reply_arrived(req))
+					continue;
 
-					if (krc_has_reply_arrived(req)) {
-						switch (req->reply->type) {
-						case PUT_REPLY:
-							//you should check ret code
-							break;
-						case GET_REPLY: {
-							uint32_t size = TU_HEADER_SIZE + req->reply->pay_len +
-									req->reply->padding_and_tail;
-							struct msg_get_rep *msg_rep =
-								(struct msg_get_rep *)((uint64_t)req->reply +
-										       sizeof(struct msg_header));
-							//log_info(
-							//	"Value size is %lu offset_too_large? %lu bytes_remaining %lu",
-							//	msg_rep->value_size, msg_rep->offset_too_large,
-							//	msg_rep->bytes_remaining);
-							if (!msg_rep->key_found) {
-								log_fatal("Key not found!");
-								exit(EXIT_FAILURE);
-							}
-
-							if (msg_rep->value_size > *req->buf_size) {
-								log_fatal("Reply larger than buffer!");
-								exit(EXIT_FAILURE);
-							}
-							memcpy(req->buf, msg_rep->value, msg_rep->value_size);
-							*req->buf_size = msg_rep->value_size;
-							break;
-						}
-						default:
-							log_fatal("Unhandled reply type");
-							exit(EXIT_FAILURE);
-						}
-
-						if (req->callback != NULL) {
-							//log_info("Calling callback for req");
-							req->callback(req->context);
-						}
-						_zero_rendezvous_locations_l(req->reply, req->request->reply_length);
-						krc_free_rpc_buffers(req->conn, req->request, req->reply);
-						req->conn = NULL;
-						//memset(req, 0x00, sizeof(struct krc_async_req));
-						req->is_valid = 0;
-						__sync_fetch_and_sub(&spinner->queue[i]->outstanding_requests, 1);
-						if (utils_queue_push(&spinner->queue[i]->avail_buffers, req) == NULL) {
-							log_fatal("Failed to return buffer!");
-							exit(EXIT_FAILURE);
-						}
-						//assert(req->id == next_id);
-						//assert(req->id == next_id);
-						//++next_id;
+				switch (req->reply->type) {
+				case PUT_REPLY:
+					//you should check ret code
+					break;
+				case GET_REPLY: {
+					/*uint32_t size = TU_HEADER_SIZE + req->reply->pay_len +*/
+					/*req->reply->padding_and_tail;*/
+					struct msg_get_rep *msg_rep = (struct msg_get_rep *)((uint64_t)req->reply +
+											     sizeof(struct msg_header));
+					//log_info(
+					//	"Value size is %lu offset_too_large? %lu bytes_remaining %lu",
+					//	msg_rep->value_size, msg_rep->offset_too_large,
+					//	msg_rep->bytes_remaining);
+					if (!msg_rep->key_found) {
+						log_fatal("Key not found!");
+						exit(EXIT_FAILURE);
 					}
-				} //else {
-				//log_info("Reply has not arrived");
-				//}
+
+					if (msg_rep->value_size > *req->buf_size) {
+						log_fatal("Reply larger than buffer!");
+						exit(EXIT_FAILURE);
+					}
+					memcpy(req->buf, msg_rep->value, msg_rep->value_size);
+					*req->buf_size = msg_rep->value_size;
+					break;
+				}
+				default:
+					log_fatal("Unhandled reply type");
+					exit(EXIT_FAILURE);
+				}
+
+				if (req->callback != NULL) {
+					//log_info("Calling callback for req");
+					req->callback(req->context);
+				}
+				_zero_rendezvous_locations_l(req->reply, req->request->reply_length);
+				krc_free_rpc_buffers(req->conn, req->request, req->reply);
+				req->conn = NULL;
+				//memset(req, 0x00, sizeof(struct krc_async_req));
+				req->is_valid = 0;
+				__sync_fetch_and_sub(&spinner->queue[i]->outstanding_requests, 1);
+				if (utils_queue_push(&spinner->queue[i]->avail_buffers, req) == NULL) {
+					log_fatal("Failed to return buffer!");
+					exit(EXIT_FAILURE);
+				}
+				//assert(req->id == next_id);
+				//assert(req->id == next_id);
+				//++next_id;
 			}
 		}
 	}
@@ -1351,32 +1339,7 @@ krc_ret_code krc_aget(uint32_t key_size, char *key, uint32_t *buf_size, char *bu
 	req_header->reply = (char *)((uint64_t)rep_header - (uint64_t)conn->recv_circular_buf->memory_region);
 	req_header->reply_length = sizeof(msg_header) + rep_header->pay_len + rep_header->padding_and_tail;
 
-	/*choose randomly, a spinner queue*/
-	uint32_t id = djb2_hash((unsigned char *)rep_header, sizeof(struct msg_header)) % spinner->num_queues;
-	pthread_mutex_lock(&spinner->queue[id]->queue_lock);
-	/*get an async req buffer*/
-	struct krc_async_req *req = utils_queue_pop(&spinner->queue[id]->avail_buffers);
-	if (req == NULL) {
-		log_fatal("Out of buffers, should you increase them");
-		exit(EXIT_FAILURE);
-	}
-	req->conn = conn;
-	req->request = req_header;
-	req->reply = rep_header;
-	req->request->receive = TU_RDMA_REGULAR_MSG;
-	req->callback = t;
-	req->context = context;
-	req->buf_size = buf_size;
-	req->buf = buf;
-	if (send_rdma_message_busy_wait(req->conn, req->request) != KREON_SUCCESS) {
-		log_warn("failed to send message");
-		exit(EXIT_FAILURE);
-	}
-
-	__sync_fetch_and_add(&spinner->queue[id]->outstanding_requests, 1);
-	req->is_valid = 1;
-	pthread_mutex_unlock(&spinner->queue[id]->queue_lock);
-
+	krc_send_async_request(conn, req_header, rep_header, t, context, buf_size, buf);
 	return KRC_SUCCESS;
 }
 
