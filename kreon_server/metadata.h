@@ -74,6 +74,7 @@ enum krm_work_task_status {
 	INS_TO_KREON,
 	INIT_LOG_BUFFERS,
 	REPLICATE,
+	SEGMENT_BARRIER,
 	FLUSH_REPLICA_BUFFERS,
 	SEND_FLUSH_COMMANDS,
 	WAIT_FOR_FLUSH_REPLIES,
@@ -151,6 +152,7 @@ struct ru_master_log_buffer_seg {
 	uint64_t start;
 	uint64_t end;
 	struct ibv_mr mr;
+	uint64_t replicated_bytes;
 };
 
 struct ru_master_log_buffer {
