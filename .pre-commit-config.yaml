@@ -43,3 +43,11 @@ repos:
         pass_filenames: false
         types: [python]
         additional_dependencies: ['pyright@1.1.63']
+
+-   repo: https://github.com/jorisroovers/gitlint
+    rev: master
+    hooks:
+    -   id: gitlint
+        stages: [commit-msg]
+        entry: gitlint
+        args: [--msg-filename]

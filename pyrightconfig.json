@@ -2,7 +2,8 @@
     "exclude": [
         "**/node_modules",
         "**/__pycache__",
-        "**/build"
+        "**/build",
+        "scripts/gitlint"
     ],
     "typeCheckingMode": "basic",
     "reportMissingImports": true,
