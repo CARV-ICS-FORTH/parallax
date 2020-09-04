@@ -25,7 +25,7 @@ ignore-squash-commits=true
 
 # Fetch additional meta-data from the local repository when manually passing a
 # commit message to gitlint via stdin or --commit-msg. Disabled by default.
-staged=true
+staged=false
 
 # Enable debug mode (prints more output). Disabled by default.
 debug=true
