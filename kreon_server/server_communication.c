@@ -100,7 +100,6 @@ struct sc_msg_pair sc_allocate_rpc_pair(struct connection_rdma *conn, uint32_t r
 		msg->remote_offset = addr - conn->recv_circular_buf->memory_region;
 		//log_info("Sending to remote offset %llu\n", msg->remote_offset);
 		msg->ack_arrived = 0; //maybe?
-		msg->callback_function = NULL;
 		msg->request_message_local_addr = NULL;
 		msg->reply = NULL;
 		msg->reply_length = 0;
@@ -164,7 +163,6 @@ init_messages : {
 		msg->remote_offset = (uint64_t)msg - (uint64_t)c_buf->memory_region;
 
 		msg->ack_arrived = 0; //????? really?
-		msg->callback_function = NULL;
 		msg->request_message_local_addr = NULL;
 		rep.request->reply = NULL;
 		rep.request->reply_length = 0;

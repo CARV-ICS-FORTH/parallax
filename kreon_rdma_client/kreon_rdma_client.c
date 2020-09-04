@@ -178,7 +178,7 @@ static int _krc_send_heartbeat(struct rdma_cm_id *rdma_cm_id)
 		log_warn("Remote side is down!");
 		return KREON_FAILURE;
 	}
-
+	assert(0);
 	return KREON_SUCCESS;
 }
 

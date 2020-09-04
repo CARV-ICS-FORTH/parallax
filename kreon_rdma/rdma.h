@@ -244,8 +244,8 @@ typedef struct connection_rdma {
 	sem_t congestion_control; /*used for congestion control during send rdma operation*/
 	volatile uint64_t sleeping_workers;
 	volatile uint64_t offset;
-	volatile uint64_t pending_received_messages;
-	volatile uint64_t pending_sent_messages;
+	//volatile uint64_t pending_received_messages;
+	//volatile uint64_t pending_sent_messages;
 	uint64_t idle_iterations; /*handled only by the spinning thread, shows how many times
 														 this connection was idle. After a threashold it will be downgraded to
 														 IDLE connection list of the channel*/
@@ -306,7 +306,6 @@ msg_header *client_try_allocate_rdma_message(connection_rdma *conn, int message_
 
 int send_rdma_message(connection_rdma *conn, msg_header *msg);
 int send_rdma_message_busy_wait(connection_rdma *conn, msg_header *msg);
-void async_send_rdma_message(connection_rdma *conn, msg_header *msg, void (*callback_function)(void *args), void *args);
 void free_rdma_local_message(connection_rdma *conn);
 void free_rdma_received_message(connection_rdma *conn, msg_header *msg);
 

@@ -79,7 +79,7 @@ struct ds_worker_thread {
 };
 
 #define DS_CLIENT_QUEUE_SIZE (UTILS_QUEUE_CAPACITY / 2)
-#define DS_POOL_NUM 8
+#define DS_POOL_NUM 4
 
 struct ds_task_buffer_pool {
 	pthread_mutex_t tbp_lock;
@@ -373,8 +373,8 @@ void *socket_thread(void *args)
 		}
 		conn->sleeping_workers = 0;
 
-		conn->pending_sent_messages = 0;
-		conn->pending_received_messages = 0;
+		//conn->pending_sent_messages = 0;
+		//conn->pending_received_messages = 0;
 		conn->offset = 0;
 		conn->worker_id = -1;
 #ifdef CONNECTION_BUFFER_WITH_MUTEX_LOCK
@@ -525,13 +525,12 @@ static struct krm_work_task *ds_get_server_task_buffer(struct ds_spinning_thread
 		job = (struct krm_work_task *)utils_queue_pop(&spinner->stb_pool[i].task_buffers);
 		if (job != NULL)
 			break;
-
 		++i;
-		if (i == idx || DS_POOL_NUM == 1)
-			//nothing found after a full round
-			break;
 		if (i >= DS_POOL_NUM)
 			i = 0;
+		if (i == idx || (DS_POOL_NUM == 1))
+			//nothing found after a full round
+			break;
 	}
 	// reset task struct
 	if (job) {
@@ -563,6 +562,7 @@ static void ds_put_server_task_buffer(struct ds_spinning_thread *spinner, struct
 static void ds_put_resume_task(struct ds_spinning_thread *spinner, struct krm_work_task *task)
 {
 	int pool_id = task->pool_id;
+	assert(pool_id < DS_POOL_NUM);
 	pthread_mutex_lock(&spinner->resume_task_pool[pool_id].tbp_lock);
 	if (utils_queue_push(&spinner->resume_task_pool[pool_id].task_buffers, task) == NULL) {
 		log_fatal("failed to add to resumed task queue");
@@ -577,18 +577,17 @@ static struct krm_work_task *ds_get_client_task_buffer(struct ds_spinning_thread
 	int idx = spinner->c_last_pool + 1;
 	if (idx >= DS_POOL_NUM)
 		idx = 0;
-
 	int i = idx;
 	while (1) {
 		job = (struct krm_work_task *)utils_queue_pop(&spinner->ctb_pool[i].task_buffers);
 		if (job != NULL)
 			break;
 		++i;
-		if (i == idx || DS_POOL_NUM == 1)
-			//nothing found after a full round
-			break;
 		if (i >= DS_POOL_NUM)
 			i = 0;
+		if (i == idx || (DS_POOL_NUM == 1))
+			//nothing found after a full round
+			break;
 	}
 
 	// reset task struct
@@ -636,6 +635,8 @@ static int assign_job_to_worker(struct ds_spinning_thread *spinner, struct conne
 		case GET_LOG_BUFFER_REP:
 
 			job = (struct krm_work_task *)ds_get_server_task_buffer(spinner);
+			if (job == NULL)
+				assert(0);
 			break;
 		default:
 			job = (struct krm_work_task *)ds_get_client_task_buffer(spinner);
@@ -702,6 +703,7 @@ static int assign_job_to_worker(struct ds_spinning_thread *spinner, struct conne
 	}
 
 	if (utils_queue_push(&workers[worker_id].work_queue, (void *)job) == NULL) {
+		assert(0);
 		// Give back the allocated job buffer
 		switch (job->pool_type) {
 		case KRM_SERVER_POOL:
@@ -772,7 +774,10 @@ static void *server_spinning_thread_kernel(void *args)
 		utils_queue_init(&spinner->ctb_pool[i].task_buffers);
 
 		pthread_mutex_init(&spinner->stb_pool[i].tbp_lock, NULL);
-		pthread_mutex_init(&spinner->stb_pool[i].tbp_lock, NULL);
+		utils_queue_init(&spinner->stb_pool[i].task_buffers);
+
+		pthread_mutex_init(&spinner->resume_task_pool[i].tbp_lock, NULL);
+		utils_queue_init(&spinner->resume_task_pool[i].task_buffers);
 
 		int size = DS_CLIENT_QUEUE_SIZE / DS_POOL_NUM;
 		for (int j = 0; j < size; j++) {
@@ -838,26 +843,22 @@ static void *server_spinning_thread_kernel(void *args)
 		}
 
 		prev_node = NULL;
-		int check_pending_tasks = 1;
+
 		while (node != NULL) {
 			/*check for resumed tasks to be rescheduled*/
-
-			if (check_pending_tasks) {
-				for (int i = 0; i < DS_POOL_NUM; i++) {
-					struct krm_work_task *task;
-					task = utils_queue_pop(&spinner->resume_task_pool[i].task_buffers);
-					if (task != NULL) {
-						assert(task->r_desc != NULL);
-						//log_info("Rescheduling task");
-						rc = assign_job_to_worker(spinner, task->conn, task->msg, task);
-						if (rc == KREON_FAILURE) {
-							//log_warn("Failed to reschedule task");
-							utils_queue_push(&spinner->resume_task_pool[i].task_buffers,
-									 task);
-						}
+			for (int i = 0; i < DS_POOL_NUM; i++) {
+				struct krm_work_task *task;
+				task = utils_queue_pop(&spinner->resume_task_pool[i].task_buffers);
+				if (task != NULL) {
+					assert(task->r_desc != NULL);
+					//log_info("Rescheduling task");
+					rc = assign_job_to_worker(spinner, task->conn, task->msg, task);
+					if (rc == KREON_FAILURE) {
+						log_fatal("Failed to reschedule task");
+						assert(0);
+						exit(EXIT_FAILURE);
 					}
 				}
-				check_pending_tasks = 0;
 			}
 			conn = (connection_rdma *)node->data;
 
@@ -875,7 +876,7 @@ static void *server_spinning_thread_kernel(void *args)
 					/*payload have not arrived yet check next connection*/
 					goto iterate_next_element;
 				}
-				__sync_fetch_and_add(&conn->pending_received_messages, 1);
+				//__sync_fetch_and_add(&conn->pending_received_messages, 1);
 
 				if (hdr->type == SPILL_INIT_ACK || hdr->type == SPILL_COMPLETE_ACK) {
 					msg_header *request = (msg_header *)hdr->request_message_local_addr;
@@ -889,7 +890,7 @@ static void *server_spinning_thread_kernel(void *args)
 					rc = assign_job_to_worker(spinner, conn, hdr, NULL);
 					if (rc == KREON_FAILURE) {
 						/*all workers are busy let's see messages from other connections*/
-						__sync_fetch_and_sub(&conn->pending_received_messages, 1);
+						//__sync_fetch_and_sub(&conn->pending_received_messages, 1);
 						/*Caution! message not consumed leave the rendezvous points as is*/
 						hdr->receive = recv;
 						goto iterate_next_element;
@@ -1006,7 +1007,6 @@ static void *server_spinning_thread_kernel(void *args)
 				msg->local_offset = (uint64_t)conn->control_location;
 				msg->remote_offset = (uint64_t)conn->control_location;
 				msg->ack_arrived = KR_REP_PENDING;
-				msg->callback_function = NULL;
 				msg->request_message_local_addr = NULL;
 				__send_rdma_message(conn, msg, NULL);
 
@@ -1508,6 +1508,24 @@ void tiering_compaction_worker(void *_tiering_request)
 
 extern void on_completion_client(struct rdma_message_context *);
 
+struct recover_log_context {
+	struct msg_header header;
+	uint32_t num_of_replies_needed;
+	void *memory;
+	struct ibv_mr *mr;
+};
+
+void recover_log_context_completion(struct rdma_message_context *msg_ctx)
+{
+	struct recover_log_context *cnxt = (struct recover_log_context *)msg_ctx->args;
+	if (--cnxt->num_of_replies_needed == 0) {
+		rdma_dereg_mr(cnxt->mr);
+		free(cnxt->memory);
+		free(msg_ctx->args);
+		log_info("Recovering log Done");
+	}
+}
+
 void insert_kv_pair(struct krm_work_task *task)
 {
 	/*############## fsm state logic follows ###################*/
@@ -1570,6 +1588,8 @@ void insert_kv_pair(struct krm_work_task *task)
 						range += SEGMENT_SIZE;
 
 						r_desc->m_state->r_buf[i].segment[j].end = range;
+						r_desc->m_state->r_buf[i].segment[j].lc1 = 0;
+						r_desc->m_state->r_buf[i].segment[j].lc2 = 0;
 						r_desc->m_state->r_buf[i].segment[j].replicated_bytes =
 							sizeof(segment_header);
 
@@ -1617,8 +1637,8 @@ void insert_kv_pair(struct krm_work_task *task)
 						g_req->buffer_size = SEGMENT_SIZE;
 						g_req->region_key_size = r_desc->region->min_key_size;
 						strcpy(g_req->region_key, r_desc->region->min_key);
-
-						send_rdma_message_busy_wait(conn, req_header);
+						__send_rdma_message(conn, req_header, NULL);
+						//send_rdma_message_busy_wait(conn, req_header);
 
 						log_info("DONE Sending get_log_buffer req to %s",
 							 r_desc->region->backups[i].kreon_ds_hostname);
@@ -1683,12 +1703,14 @@ void insert_kv_pair(struct krm_work_task *task)
 				//log_info("Remote buffers ready initialize remote segments with current state");
 
 				//1.prepare the context for the poller to later free the staff needed*/
-				struct msg_recover_log_context *context = (struct msg_recover_log_context *)malloc(
-					sizeof(struct msg_recover_log_context));
-				context->header.type = RECOVER_LOG_CONTEXT;
+				struct recover_log_context *context =
+					(struct recover_log_context *)malloc(sizeof(struct recover_log_context));
 				context->num_of_replies_needed = r_desc->region->num_of_backup;
-				context->num_of_replies_received = 0;
 				context->memory = malloc(SEGMENT_SIZE);
+				task->msg_ctx[0].msg = NULL;
+				task->msg_ctx[0].on_completion_callback = recover_log_context_completion;
+				task->msg_ctx[0].args = (void *)context;
+
 				//2. copy last segment to a register buffer
 				struct segment_header *last_segment = (struct segment_header *)context->memory;
 				memcpy(last_segment, (const char *)r_desc->db->db_desc->KV_log_last_segment,
@@ -1700,14 +1722,14 @@ void insert_kv_pair(struct krm_work_task *task)
 					log_fatal("Failed to reg memory");
 					exit(EXIT_FAILURE);
 				}
-
-				for (int j = 0; j < r_desc->region->num_of_backup; j++) {
+				/*setup the context*/
+				for (uint32_t j = 0; j < r_desc->region->num_of_backup; j++) {
 					r_conn = sc_get_conn(r_desc->region->backups[j].kreon_ds_hostname);
 					//2. rdma it to the remote
 					while (1) {
 						int ret = rdma_post_write(
-							r_conn->rdma_cm_id, context, last_segment, SEGMENT_SIZE,
-							context->mr, IBV_SEND_SIGNALED,
+							r_conn->rdma_cm_id, &task->msg_ctx[0], last_segment,
+							SEGMENT_SIZE, context->mr, IBV_SEND_SIGNALED,
 							(uint64_t)r_desc->m_state->r_buf[j].segment[0].mr.addr,
 							r_desc->m_state->r_buf[j].segment[0].mr.rkey);
 						if (!ret) {
@@ -1774,44 +1796,45 @@ void insert_kv_pair(struct krm_work_task *task)
 
 		case FLUSH_REPLICA_BUFFERS: {
 			struct krm_region_desc *r_desc = task->r_desc;
-			pthread_mutex_lock(&task->r_desc->region_lock);
+			uint64_t next_segment_to_flush = r_desc->next_segment_to_flush;
+			//pthread_mutex_lock(&task->r_desc->region_lock);
 			/*Is it my turn to flush or can I resume?*/
-			if (task->ins_req.metadata.log_offset_full_event > r_desc->next_segment_to_flush &&
-			    task->ins_req.metadata.log_offset_full_event <=
-				    r_desc->next_segment_to_flush + SEGMENT_SIZE) {
+			if (task->ins_req.metadata.log_offset_full_event > next_segment_to_flush &&
+			    task->ins_req.metadata.log_offset_full_event <= next_segment_to_flush + SEGMENT_SIZE) {
 				//log_info("Ok my turn to flush proceeding");
 				//task->r_desc->region_halted = 1;
-				pthread_mutex_unlock(&task->r_desc->region_lock);
+				//pthread_mutex_unlock(&task->r_desc->region_lock);
 			} else {
-				//log_info("Not my turn my seg addr is %llu next to flush is %llu resuming later",
-				//	 task->ins_req.metadata.log_offset_full_event, r_desc->next_segment_to_flush);
-				pthread_mutex_unlock(&task->r_desc->region_lock);
+				//pthread_mutex_unlock(&task->r_desc->region_lock);
+				/*sorry not my turn*/
 				return;
 			}
 			/*find out the idx of the buffer that needs flush*/
+
+			uint64_t lc1;
+			uint64_t lc2;
+		retry:
 			task->seg_id_to_flush = -1;
 
 			for (int i = 0; i < RU_REPLICA_NUM_SEGMENTS; i++) {
+				lc1 = r_desc->m_state->r_buf[0].segment[i].lc1;
 				if (task->ins_req.metadata.log_offset_full_event >
 					    r_desc->m_state->r_buf[0].segment[i].start &&
 				    task->ins_req.metadata.log_offset_full_event <=
 					    r_desc->m_state->r_buf[0].segment[i].end) {
 					task->seg_id_to_flush = i;
+				}
+				lc2 = r_desc->m_state->r_buf[0].segment[i].lc2;
+				if (lc1 != lc2)
+					goto retry;
+				if (task->seg_id_to_flush != -1)
 					break;
-				} //else {
-				//log_info("not a good fit start %llu event %llu end %llu",
-				//	 r_desc->m_state->r_buf[0].segment[i].start,
-				//	 task->ins_req.metadata.log_offset_full_event,
-				//	 r_desc->m_state->r_buf[0].segment[i].end);
-				//}
 			}
 
 			if (task->seg_id_to_flush == -1) {
 				log_fatal("No appropriate remote segment id found for flush, what?");
 				exit(EXIT_FAILURE);
 			}
-			//log_info("Flushing id %d Kreon log was at %llu", task->seg_id_to_flush,
-			//	 task->ins_req.metadata.log_offset_full_event);
 			/*sent flush command to all motherfuckers*/
 			task->kreon_operation_status = SEGMENT_BARRIER;
 			break;
@@ -1827,9 +1850,9 @@ void insert_kv_pair(struct krm_work_task *task)
 					return;
 				}
 			}
-			pthread_mutex_lock(&task->r_desc->region_lock);
-			task->r_desc->region_halted = 1;
-			pthread_mutex_unlock(&task->r_desc->region_lock);
+			//pthread_mutex_lock(&task->r_desc->region_lock);
+			//task->r_desc->region_halted = 1;
+			//pthread_mutex_unlock(&task->r_desc->region_lock);
 			task->kreon_operation_status = SEND_FLUSH_COMMANDS;
 			break;
 		}
@@ -1878,7 +1901,7 @@ void insert_kv_pair(struct krm_work_task *task)
 					f_req->region_key_size = r_desc->region->min_key_size;
 					strcpy(f_req->region_key, r_desc->region->min_key);
 
-					send_rdma_message_busy_wait(r_conn, req_header);
+					__send_rdma_message(r_conn, req_header, NULL);
 					r_desc->m_state->r_buf[i].stat = RU_BUFFER_REQUESTED;
 					//log_info("Sent flush command req_header %llu", req_header);
 				}
@@ -1911,13 +1934,15 @@ void insert_kv_pair(struct krm_work_task *task)
 			//pthread_mutex_unlock(&task->r_desc->region_lock);
 
 			for (uint32_t i = 0; i < r_desc->region->num_of_backup; i++) {
-				r_desc->m_state->r_buf[i].segment[task->seg_id_to_flush].start +=
-					(RU_REPLICA_NUM_SEGMENTS * SEGMENT_SIZE);
+				++r_desc->m_state->r_buf[i].segment[task->seg_id_to_flush].lc2;
 				r_desc->m_state->r_buf[i].segment[task->seg_id_to_flush].end +=
+					(RU_REPLICA_NUM_SEGMENTS * SEGMENT_SIZE);
+				r_desc->m_state->r_buf[i].segment[task->seg_id_to_flush].start +=
 					(RU_REPLICA_NUM_SEGMENTS * SEGMENT_SIZE);
 				r_desc->m_state->r_buf[i].segment[task->seg_id_to_flush].replicated_bytes =
 					sizeof(segment_header);
 				sc_free_rpc_pair(&r_desc->m_state->r_buf[i].segment[task->seg_id_to_flush].flush_cmd);
+				++r_desc->m_state->r_buf[i].segment[task->seg_id_to_flush].lc1;
 			}
 			//log_info("Resume possible halted tasks after flush");
 			//pthread_mutex_lock(&r_desc->region_lock);
@@ -1935,9 +1960,8 @@ void insert_kv_pair(struct krm_work_task *task)
 
 		case REPLICATE: {
 			struct krm_region_desc *r_desc = task->r_desc;
-			uint32_t kv_size;
-			kv_size = task->key->key_size + sizeof(struct msg_put_key);
-			kv_size = kv_size + task->value->value_size + sizeof(struct msg_put_value);
+			task->kv_size = task->key->key_size + sizeof(struct msg_put_key);
+			task->kv_size = task->kv_size + task->value->value_size + sizeof(struct msg_put_value);
 			uint32_t remote_offset;
 			if (task->ins_req.metadata.log_offset > 0)
 				remote_offset = task->ins_req.metadata.log_offset % SEGMENT_SIZE;
@@ -1946,43 +1970,42 @@ void insert_kv_pair(struct krm_work_task *task)
 			uint32_t done = 0;
 			for (uint32_t i = 0; i < task->r_desc->region->num_of_backup; i++) {
 				/*find appropriate seg buffer to rdma the mutation*/
+
 				for (int j = 0; j < RU_REPLICA_NUM_SEGMENTS; j++) {
+					uint64_t lc1;
+					uint64_t lc2;
+				retry_1:
+					lc1 = r_desc->m_state->r_buf[i].segment[j].lc1;
 					if (task->ins_req.metadata.log_offset >=
 						    r_desc->m_state->r_buf[i].segment[j].start &&
 					    task->ins_req.metadata.log_offset <
 						    r_desc->m_state->r_buf[i].segment[j].end) {
-						/*rdma the fucking thing*/
+						lc2 = r_desc->m_state->r_buf[i].segment[j].lc2;
+						if (lc1 != lc2) {
+							j = 0;
+							goto retry_1;
+						}
+						/*Correct choice rdma the fucking thing*/
 						struct connection_rdma *r_conn =
 							sc_get_conn(r_desc->region->backups[i].kreon_ds_hostname);
 
 						int ret;
 						while (1) {
-							struct rdma_message_context msg_ctx;
-							client_rdma_init_message_context(&msg_ctx, NULL);
-							msg_ctx.on_completion_callback = on_completion_client;
+							client_rdma_init_message_context(&task->msg_ctx[i], NULL);
+							task->msg_ctx[i].on_completion_callback = on_completion_client;
 							ret = rdma_post_write(
-								r_conn->rdma_cm_id, &msg_ctx, task->key, kv_size,
+								r_conn->rdma_cm_id, &task->msg_ctx[i], task->key,
+								task->kv_size,
 								task->conn->rdma_memory_regions->remote_memory_region,
 								IBV_SEND_SIGNALED,
 								(uint64_t)r_desc->m_state->r_buf[i].segment[j].mr.addr +
 									remote_offset,
 								r_desc->m_state->r_buf[i].segment[j].mr.rkey);
-
-							sem_wait(&msg_ctx.wait_for_completion);
-							if (msg_ctx.wc.status == IBV_WC_SUCCESS)
+							task->replicated_bytes[i] =
+								&r_desc->m_state->r_buf[i].segment[j].replicated_bytes;
+							if (ret == 0)
 								break;
-							else if (msg_ctx.wc.status == IBV_WC_WR_FLUSH_ERR)
-								continue;
-							else {
-								log_fatal("Replication RDMA write error: %s",
-									  ibv_wc_status_str(msg_ctx.wc.status));
-								exit(EXIT_FAILURE);
-							}
 						}
-						/*count bytes replicated for this segment*/
-						__sync_fetch_and_add(
-							&r_desc->m_state->r_buf[i].segment[j].replicated_bytes,
-							kv_size);
 						done = 1;
 						break;
 					} else {
@@ -2018,11 +2041,29 @@ void insert_kv_pair(struct krm_work_task *task)
 					return;
 				} else {
 					pthread_mutex_unlock(&r_desc->region_lock);
-					//goto retry;
 					return;
 				}
 			}
+			task->last_replica_to_ack = 0;
+			task->kreon_operation_status = WAIT_FOR_REPLICATION_COMPLETION;
+			break;
+		}
+		case WAIT_FOR_REPLICATION_COMPLETION: {
+			for (uint32_t i = task->last_replica_to_ack; i < task->r_desc->region->num_of_backup; i++) {
+				if (sem_trywait(&task->msg_ctx[i].wait_for_completion) != 0) {
+					task->last_replica_to_ack = i;
+					return;
+				}
 
+				if (task->msg_ctx[i].wc.status != IBV_WC_SUCCESS &&
+				    task->msg_ctx[i].wc.status != IBV_WC_WR_FLUSH_ERR) {
+					log_fatal("Replication RDMA write error: %s",
+						  ibv_wc_status_str(task->msg_ctx[i].wc.status));
+					exit(EXIT_FAILURE);
+				}
+				/*count bytes replicated for this segment*/
+				__sync_fetch_and_add(task->replicated_bytes[i], task->kv_size);
+			}
 			task->kreon_operation_status = TASK_COMPLETE;
 			break;
 		}
@@ -2062,7 +2103,6 @@ static void handle_task(struct krm_work_task *task)
 	msg_multi_get_req *multi_get;
 	msg_get_req *get_req;
 	msg_get_rep *get_rep;
-	int tries;
 	uint32_t key_length = 0;
 	uint32_t actual_reply_size = 0;
 	uint32_t padding;
@@ -2071,6 +2111,7 @@ static void handle_task(struct krm_work_task *task)
 	task->reply_msg = NULL;
 	rdma_conn = task->conn;
 	stats_update(task->thread_id);
+
 	switch (task->msg->type) {
 		//gesalous leave it for later
 #if 0
@@ -2301,7 +2342,6 @@ static void handle_task(struct krm_work_task *task)
 		task->reply_msg->receive = TU_RDMA_REGULAR_MSG;
 		task->reply_msg->local_offset = (uint64_t)task->msg->reply;
 		task->reply_msg->remote_offset = (uint64_t)task->msg->reply;
-		task->reply_msg->callback_function = NULL;
 
 		struct msg_get_log_buffer_rep *rep =
 			(struct msg_get_log_buffer_rep *)((uint64_t)task->reply_msg + sizeof(msg_header));
@@ -2382,7 +2422,6 @@ static void handle_task(struct krm_work_task *task)
 		task->reply_msg->receive = TU_RDMA_REGULAR_MSG;
 		task->reply_msg->local_offset = (uint64_t)task->msg->reply;
 		task->reply_msg->remote_offset = (uint64_t)task->msg->reply;
-		task->reply_msg->callback_function = NULL;
 		struct msg_flush_cmd_rep *flush_rep =
 			(struct msg_flush_cmd_rep *)((uint64_t)task->reply_msg + sizeof(msg_header));
 		flush_rep->status = KREON_SUCCESS;
@@ -2468,7 +2507,6 @@ static void handle_task(struct krm_work_task *task)
 				task->reply_msg->receive = TU_RDMA_REGULAR_MSG;
 				task->reply_msg->local_offset = (uint64_t)task->msg->reply;
 				task->reply_msg->remote_offset = (uint64_t)task->msg->reply;
-				task->reply_msg->callback_function = NULL;
 				put_offt_rep = (msg_put_offt_rep *)((uint64_t)task->reply_msg + sizeof(msg_header));
 				put_offt_rep->status = KREON_SUCCESS;
 			} else {
@@ -2527,7 +2565,6 @@ static void handle_task(struct krm_work_task *task)
 				task->reply_msg->receive = TU_RDMA_REGULAR_MSG;
 				task->reply_msg->local_offset = (uint64_t)task->msg->reply;
 				task->reply_msg->remote_offset = (uint64_t)task->msg->reply;
-				task->reply_msg->callback_function = NULL;
 				msg_put_rep *put_rep = (msg_put_rep *)((uint64_t)task->reply_msg + sizeof(msg_header));
 				put_rep->status = KREON_SUCCESS;
 			} else {
@@ -2570,7 +2607,6 @@ static void handle_task(struct krm_work_task *task)
 		task->reply_msg->receive = TU_RDMA_REGULAR_MSG;
 		task->reply_msg->local_offset = (uint64_t)task->msg->reply;
 		task->reply_msg->remote_offset = (uint64_t)task->msg->reply;
-		task->reply_msg->callback_function = NULL;
 		msg_delete_rep *del_rep = (msg_delete_rep *)((uint64_t)task->reply_msg + sizeof(msg_header));
 		task->reply_msg->request_message_local_addr = task->msg->request_message_local_addr;
 		task->kreon_operation_status = TASK_COMPLETE;
@@ -2657,7 +2693,6 @@ static void handle_task(struct krm_work_task *task)
 
 		task->reply_msg->local_offset = (uint64_t)task->msg->reply;
 		task->reply_msg->remote_offset = (uint64_t)task->msg->reply;
-		task->reply_msg->callback_function = NULL;
 		task->reply_msg->request_message_local_addr = task->msg->request_message_local_addr;
 		task->kreon_operation_status = TASK_COMPLETE;
 		break;
@@ -2756,7 +2791,6 @@ static void handle_task(struct krm_work_task *task)
 		//	 buf->remaining);
 		task->reply_msg->local_offset = (uint64_t)task->msg->reply;
 		task->reply_msg->remote_offset = (uint64_t)task->msg->reply;
-		task->reply_msg->callback_function = NULL;
 		task->reply_msg->request_message_local_addr = task->msg->request_message_local_addr;
 		assert(task->reply_msg->request_message_local_addr != NULL);
 		task->kreon_operation_status = TASK_COMPLETE;
@@ -2779,7 +2813,6 @@ static void handle_task(struct krm_work_task *task)
 			task->reply_msg->remote_offset = (uint64_t)task->msg->reply;
 
 			task->reply_msg->ack_arrived = KR_REP_PENDING;
-			task->reply_msg->callback_function = NULL;
 			task->reply_msg->request_message_local_addr = NULL;
 			task->kreon_operation_status = TASK_COMPLETE;
 		} else {

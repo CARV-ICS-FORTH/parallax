@@ -49,7 +49,7 @@ enum message_type {
 	SERVER_I_AM_READY,
 	CLIENT_RECEIVED_READY,
 	/*pseudo-messages*/
-	RECOVER_LOG_CONTEXT
+	//RECOVER_LOG_CONTEXT
 };
 
 typedef enum receive_options { SYNC_REQUEST = 2, ASYNC_REQUEST, BUSY_WAIT } receive_options;
@@ -82,8 +82,8 @@ typedef struct msg_header {
 	//From replica-i to replica-i+1, local_offset == remote_offset
 	/*<gesalous>*/
 	/*for asynchronous requests*/
-	void *callback_function_args;
-	void (*callback_function)(void *args);
+	//void *callback_function_args;
+	//void (*callback_function)(void *args);
 	/*</gesalous>*/
 
 	void *reply_message; /* Filled by the receiving side on arrival of a message. If request_message_local_addr of
@@ -222,15 +222,6 @@ struct msg_flush_cmd_req {
 
 struct msg_flush_cmd_rep {
 	uint32_t status;
-};
-
-//caution pseudo message, it does not travel through the network
-struct msg_recover_log_context {
-	struct msg_header header;
-	uint32_t num_of_replies_needed;
-	uint32_t num_of_replies_received;
-	void *memory;
-	struct ibv_mr *mr;
 };
 
 int push_buffer_in_msg_header(struct msg_header *data_message, char *buffer, uint32_t buffer_length);

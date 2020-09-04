@@ -84,8 +84,6 @@ void init_rdma_message(connection_rdma *conn, msg_header *msg, uint32_t message_
 
 	//DPRINT("\t Sending to remote offset %llu\n", msg->remote_offset);
 	msg->ack_arrived = KR_REP_PENDING;
-	msg->callback_function = NULL;
-	msg->request_message_local_addr = NULL;
 	//conn->offset += message_size;
 }
 
@@ -233,7 +231,6 @@ msg_header *client_allocate_rdma_message(connection_rdma *conn, int message_payl
 				msg->remote_offset = addr - c_buf->memory_region;
 				//log_info("Sending to remote offset %llu\n", msg->remote_offset);
 				msg->ack_arrived = ack_arrived;
-				msg->callback_function = NULL;
 				msg->request_message_local_addr = NULL;
 				msg->reply = NULL;
 				msg->reply_length = 0;
@@ -286,7 +283,6 @@ init_message:
 
 	//log_info("\t Sending to remote offset %llu\n", msg->remote_offset);
 	msg->ack_arrived = ack_arrived;
-	msg->callback_function = NULL;
 	msg->request_message_local_addr = NULL;
 
 	return msg;
@@ -388,7 +384,6 @@ msg_header *client_try_allocate_rdma_message(connection_rdma *conn, int message_
 			msg->remote_offset = addr - c_buf->memory_region;
 			//log_info("Sending to remote offset %llu\n", msg->remote_offset);
 			msg->ack_arrived = ack_arrived;
-			msg->callback_function = NULL;
 			msg->request_message_local_addr = NULL;
 			msg->reply = NULL;
 			msg->reply_length = 0;
@@ -440,7 +435,6 @@ init_message:
 
 	//log_info("\t Sending to remote offset %llu\n", msg->remote_offset);
 	msg->ack_arrived = ack_arrived;
-	msg->callback_function = NULL;
 	msg->request_message_local_addr = NULL;
 
 	return msg;
@@ -448,8 +442,6 @@ init_message:
 
 int send_rdma_message_busy_wait(connection_rdma *conn, msg_header *msg)
 {
-	msg->callback_function = NULL;
-	msg->callback_function_args = NULL;
 	msg->receive_options = BUSY_WAIT;
 	return __send_rdma_message(conn, msg, NULL);
 }
@@ -457,18 +449,8 @@ int send_rdma_message_busy_wait(connection_rdma *conn, msg_header *msg)
 int send_rdma_message(connection_rdma *conn, msg_header *msg)
 {
 	//sem_init(&msg->sem, 0, 0);
-	msg->callback_function = NULL;
-	msg->callback_function_args = NULL;
 	msg->receive_options = SYNC_REQUEST;
 	return __send_rdma_message(conn, msg, NULL);
-}
-
-void async_send_rdma_message(connection_rdma *conn, msg_header *msg, void (*callback_function)(void *args), void *args)
-{
-	msg->callback_function = callback_function;
-	msg->callback_function_args = args;
-	msg->receive_options = ASYNC_REQUEST;
-	__send_rdma_message(conn, msg, NULL);
 }
 
 void on_completion_client(struct rdma_message_context *msg_ctx);
@@ -488,16 +470,16 @@ int client_send_rdma_message(struct connection_rdma *conn, struct msg_header *ms
 
 int __send_rdma_message(connection_rdma *conn, msg_header *msg, struct rdma_message_context *msg_ctx)
 {
-	int i = 0;
-	while (conn->pending_sent_messages >= MAX_WR) {
-		__sync_fetch_and_add(&conn->sleeping_workers, 1);
-		log_warn("Congestion in the write path throttling... %llu\n", (LLU)conn->pending_sent_messages);
-		sem_wait(&conn->congestion_control);
-		__sync_fetch_and_sub(&conn->sleeping_workers, 1);
-		if (++i % 100000 == 0) {
-			log_warn("Congestion in the write path throttling... %llu\n", (LLU)conn->pending_sent_messages);
-		}
-	}
+	//int i = 0;
+	//while (conn->pending_sent_messages >= MAX_WR) {
+	//	__sync_fetch_and_add(&conn->sleeping_workers, 1);
+	//	log_warn("Congestion in the write path throttling... %llu\n", (LLU)conn->pending_sent_messages);
+	//	sem_wait(&conn->congestion_control);
+	//	__sync_fetch_and_sub(&conn->sleeping_workers, 1);
+	//	if (++i % 100000 == 0) {
+	//		log_warn("Congestion in the write path throttling... %llu\n", (LLU)conn->pending_sent_messages);
+	//	}
+	//}
 
 	size_t msg_len;
 	if (msg->pay_len) // FIXME This if shouldn't be necessary
@@ -512,7 +494,6 @@ int __send_rdma_message(connection_rdma *conn, msg_header *msg, struct rdma_mess
 	void *context;
 	if (!msg_ctx && LIBRARY_MODE == SERVER_MODE) {
 		switch (msg->type) {
-		/*for client*/
 		case PUT_REQUEST:
 		case GET_REQUEST:
 		case MULTI_GET_REQUEST:
@@ -520,7 +501,10 @@ int __send_rdma_message(connection_rdma *conn, msg_header *msg, struct rdma_mess
 		case DELETE_REQUEST:
 		case TEST_REQUEST:
 		case TEST_REQUEST_FETCH_PAYLOAD:
-			/*server does not care*/
+		case GET_LOG_BUFFER_REQ:
+		case FLUSH_COMMAND_REQ:
+		case FLUSH_COMMAND_REP:
+		case GET_LOG_BUFFER_REP:
 		case PUT_REPLY:
 		case GET_REPLY:
 		case MULTI_GET_REPLY:
@@ -532,6 +516,7 @@ int __send_rdma_message(connection_rdma *conn, msg_header *msg, struct rdma_mess
 			break;
 		default: {
 			/*rest I care*/
+			assert(0);
 			struct rdma_message_context *msg_ctx = malloc(sizeof(struct rdma_message_context));
 			client_rdma_init_message_context(msg_ctx, msg);
 			msg_ctx->on_completion_callback = on_completion_server;
@@ -584,18 +569,18 @@ void client_free_rpc_pair(connection_rdma *conn, msg_header *reply)
 
 void free_rdma_received_message(connection_rdma *conn, msg_header *msg)
 {
-	assert(conn->pending_received_messages > 0);
+	//assert(conn->pending_received_messages > 0);
 	_zero_rendezvous_locations(msg);
-	__sync_fetch_and_sub(&conn->pending_received_messages, 1);
+	//__sync_fetch_and_sub(&conn->pending_received_messages, 1);
 }
 
 void free_rdma_local_message(connection_rdma *conn)
 {
-	assert(conn->pending_sent_messages > 0);
-	__sync_fetch_and_sub(&conn->pending_sent_messages, 1);
-	if (conn->sleeping_workers > 0) {
-		sem_post(&conn->congestion_control);
-	}
+	//assert(conn->pending_sent_messages > 0);
+	//__sync_fetch_and_sub(&conn->pending_sent_messages, 1);
+	//if (conn->sleeping_workers > 0) {
+	//	sem_post(&conn->congestion_control);
+	//}
 	return;
 }
 
@@ -881,8 +866,8 @@ void crdma_init_client_connection_list_hosts(connection_rdma *conn, char **hosts
 		perror("Reason: ");
 	}
 	conn->sleeping_workers = 0;
-	conn->pending_sent_messages = 0;
-	conn->pending_received_messages = 0;
+	//conn->pending_sent_messages = 0;
+	//conn->pending_received_messages = 0;
 	conn->offset = 0;
 	conn->qp = conn->rdma_cm_id->qp;
 
@@ -1173,7 +1158,6 @@ static void __stop_client(connection_rdma *conn)
 	msg->local_offset = (uint64_t)conn->control_location;
 	msg->remote_offset = (uint64_t)conn->control_location;
 	msg->ack_arrived = KR_REP_PENDING;
-	msg->callback_function = NULL;
 	msg->request_message_local_addr = NULL;
 
 	struct ibv_mr *new_mr = (struct ibv_mr *)msg->data;
@@ -1412,7 +1396,6 @@ static void *poll_cq(void *arg)
 			perror("Reason: \n");
 			exit(EXIT_FAILURE);
 		}
-		/*DPRINT("Got new competion event!\n");*/
 		ibv_ack_cq_events(cq, 1);
 		if (ibv_req_notify_cq(cq, 0) != 0) {
 			perror("ERROR poll_cq: ibv_req_notify_cq\n");
@@ -1422,7 +1405,7 @@ static void *poll_cq(void *arg)
 		while (1) {
 			rc = ibv_poll_cq(cq, MAX_COMPLETION_ENTRIES, wc);
 			if (rc < 0) {
-				log_fatal("FATAL poll of completion queue failed!");
+				log_fatal("poll of completion queue failed!");
 				exit(EXIT_FAILURE);
 			} else if (rc > 0) {
 				conn = (connection_rdma *)cq->cq_context;
@@ -1501,16 +1484,6 @@ void on_completion_server(struct rdma_message_context *msg_ctx)
 				case RESET_BUFFER:
 				case RESET_BUFFER_ACK:
 					break;
-				case RECOVER_LOG_CONTEXT: {
-					struct msg_recover_log_context *c = (struct msg_recover_log_context *)wc->wr_id;
-					if (++c->num_of_replies_received >= c->num_of_replies_needed) {
-						rdma_dereg_mr(c->mr);
-						free(c->memory);
-						free(c);
-						log_info("Recovering log Done");
-					}
-					break;
-				}
 
 				default:
 					log_fatal("Entered unplanned state FATAL for message type %d", msg->type);

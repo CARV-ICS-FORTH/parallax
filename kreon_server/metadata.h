@@ -26,7 +26,7 @@
 #define KRM_ALIVE_LEADER_PATH "/alive_leader"
 #define KRM_REGIONS_PATH "/regions"
 
-#define RU_REPLICA_NUM_SEGMENTS 4
+#define RU_REPLICA_NUM_SEGMENTS 1
 #define RU_REGION_KEY_SIZE 256
 #define RU_MAX_TREE_HEIGHT 12
 #define RU_MAX_NUM_REPLICAS 2
@@ -66,7 +66,7 @@ enum krm_error_code { KRM_SUCCESS = 0, KRM_BAD_EPOCH, KRM_DS_TABLE_FULL, KRM_REG
 
 enum krm_work_task_status {
 	/*overall_status*/
-	TASK_START,
+	TASK_START = 1,
 	TASK_COMPLETE,
 	TASK_RESUME,
 	/*mutation operations related*/
@@ -74,6 +74,7 @@ enum krm_work_task_status {
 	INS_TO_KREON,
 	INIT_LOG_BUFFERS,
 	REPLICATE,
+	WAIT_FOR_REPLICATION_COMPLETION,
 	SEGMENT_BARRIER,
 	FLUSH_REPLICA_BUFFERS,
 	SEND_FLUSH_COMMANDS,
@@ -83,34 +84,32 @@ enum krm_work_task_status {
 };
 
 enum krm_work_task_type { KRM_CLIENT_POOL, KRM_SERVER_POOL };
-
 struct krm_work_task {
 	/*from client*/
 	bt_insert_req ins_req;
-	int seg_id_to_flush;
+	struct rdma_message_context msg_ctx[RU_MAX_NUM_REPLICAS];
+	volatile uint64_t *replicated_bytes[RU_MAX_NUM_REPLICAS];
+	uint32_t last_replica_to_ack;
+	uint64_t kv_size;
+	/*possible messages to other server generated from this task*/
+	struct sc_msg_pair communication_buf;
 	struct channel_rdma *channel;
 	struct connection_rdma *conn;
 	msg_header *msg;
 	struct krm_region_desc *r_desc;
+	struct msg_put_key *key;
+	struct msg_put_value *value;
 	void *notification_addr;
 	msg_header *reply_msg;
 	msg_header *flush_segment_request;
-	/*used for two puproses (keeping state)
-	 * 1. For get it keeps the get result if the  server cannot allocate immediately memory to respond to the client.
-	 * This save CPU cycles at the server  because it voids entering kreon each time a stall happens.
-	 * 2. For puts it keeps the result of a spill task descriptor
-	 */
 	int spinner_id;
 	int thread_id;
 	int error_code;
 	int pool_id;
 	int suspended;
-	enum krm_work_task_status kreon_operation_status;
-	struct msg_put_key *key;
-	struct msg_put_value *value;
+	int seg_id_to_flush;
 	enum krm_work_task_type pool_type;
-	/*possible messages to other server generated from this task*/
-	struct sc_msg_pair communication_buf;
+	enum krm_work_task_status kreon_operation_status;
 };
 
 /*this staff are rdma registered*/
@@ -149,10 +148,12 @@ enum ru_remote_buffer_status {
 struct ru_master_log_buffer_seg {
 	struct sc_msg_pair flush_cmd;
 	enum ru_remote_buffer_status flush_cmd_stat;
-	uint64_t start;
-	uint64_t end;
+	volatile uint64_t start;
+	volatile uint64_t end;
 	struct ibv_mr mr;
-	uint64_t replicated_bytes;
+	volatile uint64_t lc1;
+	volatile uint64_t lc2;
+	volatile uint64_t replicated_bytes;
 };
 
 struct ru_master_log_buffer {
@@ -181,7 +182,7 @@ struct ru_replica_log_buffer_seg {
 };
 
 struct ru_replica_state {
-	uint64_t next_segment_id_to_flush;
+	volatile uint64_t next_segment_id_to_flush;
 	int num_buffers;
 	struct ru_replica_log_buffer_seg seg[];
 };
