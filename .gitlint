@@ -36,7 +36,7 @@ debug=true
 
 # Set the extra-path where gitlint will search for user defined rules
 # See http://jorisroovers.github.io/gitlint/user_defined_rules for details
-# extra-path=examples/
+extra-path=scripts/gitlint/
 
 # This is an example of how to configure the "title-max-length" rule and
 # set the line-length it enforces to 80

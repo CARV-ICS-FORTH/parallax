@@ -39,3 +39,6 @@ YCSB-CXX/*.sh
 tags
 compile_commands.json
 .clangd/
+__pycache__/
+*.py[cod]
+*$py.class
