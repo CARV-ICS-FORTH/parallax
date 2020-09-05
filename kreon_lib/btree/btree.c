@@ -517,7 +517,8 @@ void *compaction_daemon(void *args)
 {
 	db_handle handle = *(db_handle *)args;
 	db_descriptor *db_desc = handle.db_desc;
-	int i, level_is_free, level_is_full, level_compaction_ready, ongoing_compaction, prev_level_compaction;
+	int i, level_is_free, level_compaction_ready, ongoing_compaction, prev_level_compaction;
+	int dest_level_is_full, level_is_full;
 
 	while (1) {
 		for (int level_id = 0; level_id < MAX_LEVELS; ++level_id) {
@@ -557,7 +558,11 @@ void *compaction_daemon(void *args)
 				level_is_full = db_desc->levels[level_id].actual_level_size >=
 						db_desc->levels[level_id].max_level_size;
 
-				if (!prev_level_compaction && !ongoing_compaction && level_is_full) {
+				dest_level_is_full = db_desc->levels[level_id + 1].actual_level_size >=
+						     db_desc->levels[level_id + 1].max_level_size;
+
+				if (!prev_level_compaction && !ongoing_compaction && level_is_full &&
+				    !dest_level_is_full) {
 					bt_spill_request *spill_req = prepare_compaction_metadata(&handle, level_id);
 
 					if (spill_req) {
@@ -571,6 +576,7 @@ void *compaction_daemon(void *args)
 				}
 			}
 		}
+
 		int sleep_or_spin = 0; /* Sleep = 0 Spin = 1 */
 
 		for (int level_id = 0; level_id < MAX_LEVELS && !sleep_or_spin; ++level_id)
