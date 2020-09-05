@@ -51,9 +51,10 @@ class EutropiaDB : public YCSBDB {
 
     public:
 	EutropiaDB(int num, utils::Properties &props)
-		: db_num(num), field_count(std::stoi(props.GetProperty(CoreWorkload::FIELD_COUNT_PROPERTY,
-								       CoreWorkload::FIELD_COUNT_DEFAULT))),
-		  dbs()
+		: db_num(num)
+		, field_count(std::stoi(
+			  props.GetProperty(CoreWorkload::FIELD_COUNT_PROPERTY, CoreWorkload::FIELD_COUNT_DEFAULT)))
+		, dbs()
 	{
 		const char *pathname = "/dev/dmap/dmap1";
 		//const char *pathname = "/usr/local/gesalous/mounts/kreon.dat";
@@ -99,6 +100,11 @@ class EutropiaDB : public YCSBDB {
 	void Close()
 	{
 		snapshot(dbs[0]->volume_desc);
+#if MEASURE_SST_USED_SPACE
+		for (int i = 0; i < MAX_LEVELS; i++)
+			std::cerr << "Avg SST used capacity" << dbs[0]->db_desc->levels[i].avg_leaf_used_space
+				  << std::endl;
+#endif
 		//flush_volume(dbs[0]->volume_desc, SPILL_ALL_DBS_IMMEDIATELY);
 	}
 

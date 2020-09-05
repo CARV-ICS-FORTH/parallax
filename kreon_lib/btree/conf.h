@@ -56,8 +56,9 @@
 #define L0_SIZE 2000000
 /*Buffering related tunables*/
 
-#define GB(x) (x * 1024LU * 1024LU * 1024LU)
-#define MB(x) (x * 1024LU * 1024LU)
+#define GB(x) ((x)*1024LU * 1024LU * 1024LU)
+#define MB(x) ((x)*1024LU * 1024LU)
+#define KB(x) ((x)*1024LU)
 #define MAX_LEVEL0_TOTAL_SIZE MB(64)
 #define NUMBER_OF_DATABASES (1)
 #define GF (4)

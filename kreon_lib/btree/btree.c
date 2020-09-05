@@ -1010,6 +1010,12 @@ finish_init:
 		db_desc->levels[level_id].active_tree = 0;
 		db_desc->levels[level_id].level_id = level_id;
 		db_desc->levels[level_id].leaf_size = leaf_size_per_level[level_id];
+#if MEASURE_SST_USED_SPACE
+		db_desc->levels[level_id].avg_leaf_used_space = 0;
+		db_desc->levels[level_id].leaf_used_space = 0;
+		db_desc->levels[level_id].count_leaves = 0;
+		db_desc->levels[level_id].count_compactions = 0;
+#endif
 		for (tree_id = 0; tree_id < NUM_TREES_PER_LEVEL; tree_id++) {
 			db_desc->levels[level_id].tree_status[tree_id] = NO_SPILLING;
 		}
@@ -2299,12 +2305,24 @@ finish_spill:
 	db_desc->levels[spill_req->src_level].root_w[spill_req->src_tree] = NULL;
 	db_desc->levels[spill_req->src_level].tree_status[spill_req->src_tree] = NO_SPILLING;
 	db_desc->levels[spill_req->dst_level].tree_status[spill_req->dst_tree] = NO_SPILLING;
-	__sync_fetch_and_sub(&db_desc->levels[spill_req->src_level].outstanding_spill_ops, 1);
-	dequeue_ongoing_compaction(db_desc->inprogress_compactions, spill_req->src_level);
-	MUTEX_UNLOCK(&db_desc->compaction_structs_lock);
 
 	log_info("spill finished for level %u", spill_req->src_level);
 	snapshot(spill_req->volume_desc);
+#if MEASURE_SST_USED_SPACE
+	perf_measure_leaf_capacity(&handle, spill_req->dst_level);
+	db_desc->levels[spill_req->dst_level].avg_leaf_used_space +=
+		db_desc->levels[spill_req->dst_level].leaf_used_space /
+		db_desc->levels[spill_req->dst_level].count_leaves;
+	++db_desc->levels[spill_req->dst_level].count_compactions;
+	log_info("Number of leaves %f", db_desc->levels[spill_req->dst_level].count_leaves);
+	db_desc->levels[spill_req->dst_level].leaf_used_space = db_desc->levels[spill_req->dst_level].count_leaves = 0;
+	double cap = db_desc->levels[spill_req->dst_level].avg_leaf_used_space /
+		     db_desc->levels[spill_req->dst_level].count_compactions;
+	log_info("Average SST used capacity %f", cap);
+#endif
+	__sync_fetch_and_sub(&db_desc->levels[spill_req->src_level].outstanding_spill_ops, 1);
+	dequeue_ongoing_compaction(db_desc->inprogress_compactions, spill_req->src_level);
+	MUTEX_UNLOCK(&db_desc->compaction_structs_lock);
 	log_info("local spilled keys %d", local_spilled_keys);
 	log_info("last spiller cleaning up level %u remains", spill_req->src_level);
 	free(spill_req);

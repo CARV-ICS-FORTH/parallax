@@ -567,6 +567,36 @@ int32_t getNext(scannerHandle *sc)
 	}
 }
 
+#if MEASURE_SST_USED_SPACE
+void perf_preorder_count_leaf_capacity(level_descriptor *level, node_header *root)
+{
+	if (!root->height) {
+		level->leaf_used_space += 1.0 / (level->leaf_size / root->leaf_log_size);
+		++level->count_leaves;
+		return;
+	}
+
+	node_header *node;
+	index_node *inode = (index_node *)root;
+	for (uint64_t i = 0; i < root->num_entries; i++) {
+		node = REAL_ADDRESS(inode->p[i].left[0]);
+		perf_preorder_count_leaf_capacity(level, node);
+	}
+
+	/* node = REAL_ADDRESS(inode->p[root->num_entries].left); */
+	/* perf_preorder_count_leaf_capacity(level,node); */
+}
+
+void perf_measure_leaf_capacity(db_handle *hd, int level_id)
+{
+	node_header *root = hd->db_desc->levels[level_id].root_r[0];
+	assert(root);
+	level_descriptor *level = &hd->db_desc->levels[level_id];
+	log_info("level_id %d", level_id);
+	perf_preorder_count_leaf_capacity(level, root);
+}
+#endif
+
 /**
  * 05/01/2015 11:01 : Returns a serialized buffer in the following form:
  * Key_len|key|value_length|value

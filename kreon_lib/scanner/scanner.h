@@ -58,7 +58,6 @@ void closeScanner(scannerHandle *sc);
 void init_dirty_scanner(scannerHandle *sc, db_handle *handle, void *start_key, char seek_flag);
 
 int32_t getNext(scannerHandle *sc);
-
 int isValid(scannerHandle *sc);
 int32_t getKeySize(scannerHandle *sc);
 void *getKeyPtr(scannerHandle *sc);
@@ -84,3 +83,6 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
  **/
 int32_t _get_next_KV(level_scanner *sc);
 void _close_spill_buffer_scanner(level_scanner *sc, node_header *root);
+#if MEASURE_SST_USED_SPACE
+void perf_measure_leaf_capacity(db_handle *hd, int level_id);
+#endif

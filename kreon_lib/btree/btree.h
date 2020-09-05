@@ -214,9 +214,6 @@ enum bsearch_status { INSERT = 0, FOUND = 1, ERROR = 2 };
 #define LEVEL6_LEAF_LAYOUT DYNAMIC_LEAF
 #define LEVEL7_LEAF_LAYOUT DYNAMIC_LEAF
 
-/* this is the same as leaf_root_node */
-//__attribute__((packed))
-/* this is KV_FORMAT */
 struct splice {
 	uint32_t size;
 	char data[0];
@@ -318,7 +315,6 @@ typedef struct level_descriptor {
 	node_header *root_r[NUM_TREES_PER_LEVEL];
 	node_header *root_w[NUM_TREES_PER_LEVEL];
 	pthread_t spiller[NUM_TREES_PER_LEVEL];
-
 	pthread_mutex_t spill_trigger;
 	pthread_mutex_t level_allocation_lock;
 	segment_header *first_segment[NUM_TREES_PER_LEVEL];
@@ -331,6 +327,14 @@ typedef struct level_descriptor {
 	char *split_buffer;
 	struct leaf_node_metadata leaf_offsets;
 	uint64_t actual_level_size;
+	uint64_t max_level_size;
+	uint64_t max_level_size;
+#if MEASURE_SST_USED_SPACE
+	double avg_leaf_used_space;
+	double leaf_used_space;
+	double count_leaves;
+	double count_compactions;
+#endif
 	int64_t active_writers;
 	/*spilling or not?*/
 	char tree_status[NUM_TREES_PER_LEVEL];
