@@ -2641,7 +2641,7 @@ static void handle_task(struct krm_work_task *task)
 		//}
 
 		if (value == NULL) {
-			log_warn("key not found key %s : length %u", get_req->key, get_req->key_size);
+			//log_warn("key not found key %s : length %u", get_req->key, get_req->key_size);
 
 			get_rep->key_found = 0;
 			get_rep->bytes_remaining = 0;

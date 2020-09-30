@@ -135,7 +135,7 @@ static int64_t krc_compare_keys(krc_key *key1, krc_key *key2)
 static int64_t krc_prefix_match(krc_key *prefix, krc_key *key)
 {
 	if (key->key_size < prefix->key_size)
-		return -1;
+		return 0;
 	if (memcmp(prefix->key_buf, key->key_buf, prefix->key_size) == 0)
 		return 1;
 	else
