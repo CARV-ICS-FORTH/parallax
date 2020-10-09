@@ -178,7 +178,6 @@ static int _krc_send_heartbeat(struct rdma_cm_id *rdma_cm_id)
 		log_warn("Remote side is down!");
 		return KREON_FAILURE;
 	}
-	assert(0);
 	return KREON_SUCCESS;
 }
 
@@ -353,7 +352,7 @@ krc_ret_code krc_put(uint32_t key_size, void *key, uint32_t val_size, void *valu
 	//client_region *region = client_find_region(key, key_size);
 	//connection_rdma *conn = get_connection_from_region(region, (uint64_t)key);
 	struct cu_region_desc *r_desc = cu_get_region(key, key_size);
-	connection_rdma *conn = cu_get_conn_for_region(r_desc, (uint64_t)key);
+	connection_rdma *conn = cu_get_conn_for_region(r_desc, djb2_hash((unsigned char *)key, key_size));
 
 	_krc_get_rpc_pair(conn, &req_header, PUT_REQUEST, key_size + val_size + (2 * sizeof(uint32_t)), &rep_header,
 			  PUT_REPLY, sizeof(msg_put_rep));
@@ -538,7 +537,7 @@ krc_ret_code krc_get(uint32_t key_size, char *key, char **buffer, uint32_t *size
 	//client_region *region = client_find_region(key, key_size);
 	//connection_rdma *conn = get_connection_from_region(region, (uint64_t)key);
 	struct cu_region_desc *r_desc = cu_get_region(key, key_size);
-	connection_rdma *conn = cu_get_conn_for_region(r_desc, (uint64_t)key);
+	connection_rdma *conn = cu_get_conn_for_region(r_desc, djb2_hash((unsigned char *)key, key_size));
 	krc_ret_code code = KRC_FAILURE;
 	uint8_t read_whole_value;
 
@@ -1063,7 +1062,7 @@ krc_ret_code krc_close()
 		int a = 0;
 		while (rep_checker_stat == KRC_REPLY_CHECKER_RUNNING) {
 			if (++a % 10000) {
-				log_info("Waiting reply_checker to exit");
+				/*log_info("Waiting reply_checker to exit");*/
 			}
 		}
 		log_info("Reply checker exited!");
@@ -1126,7 +1125,7 @@ krc_ret_code krc_aput(uint32_t key_size, void *key, uint32_t val_size, void *val
 	}
 
 	struct cu_region_desc *r_desc = cu_get_region(key, key_size);
-	connection_rdma *conn = cu_get_conn_for_region(r_desc, (uint64_t)key);
+	connection_rdma *conn = cu_get_conn_for_region(r_desc, djb2_hash((unsigned char *)key, key_size));
 	_krc_get_rpc_pair(conn, &req_header, PUT_REQUEST, key_size + val_size + (2 * sizeof(uint32_t)), &rep_header,
 			  PUT_REPLY, sizeof(msg_put_rep));
 	put_key = (msg_put_key *)((uint64_t)req_header + sizeof(msg_header));
@@ -1266,7 +1265,7 @@ static void *krc_reply_checker(void *args)
 					//	msg_rep->bytes_remaining);
 					if (!msg_rep->key_found) {
 						log_fatal("Key not found!");
-						exit(EXIT_FAILURE);
+						/*exit(EXIT_FAILURE);*/
 					}
 
 					if (msg_rep->value_size > *req->buf_size) {
@@ -1315,7 +1314,7 @@ krc_ret_code krc_aget(uint32_t key_size, char *key, uint32_t *buf_size, char *bu
 {
 	uint32_t reply_size = *buf_size;
 	struct cu_region_desc *r_desc = cu_get_region(key, key_size);
-	struct connection_rdma *conn = cu_get_conn_for_region(r_desc, (uint64_t)key);
+	struct connection_rdma *conn = cu_get_conn_for_region(r_desc, djb2_hash((unsigned char *)key, key_size));
 	/*get the rdma communication buffers*/
 	struct msg_header *req_header = NULL;
 	struct msg_header *rep_header = NULL;
@@ -1356,7 +1355,7 @@ uint8_t krc_start_async_thread(int num_queues, int bufs_per_queue)
 	int a = 0;
 	while (rep_checker_stat == KRC_REPLY_CHECKER_NOT_RUNNING) {
 		if (++a % 10000) {
-			log_info("Waiting reply_checker to start");
+			/*log_info("Waiting reply_checker to start");*/
 		}
 	}
 	log_info("Successfully spawned async reply checker");
