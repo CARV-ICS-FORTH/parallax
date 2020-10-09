@@ -109,6 +109,9 @@ krc_post_status krc_ping(connection_rdma *conn, int message_size)
 	while (!krc_poll_ping_reply(&handle))
 		;
 
+#if LATENCY_MONITOR_ENABLED
+	latmon_end(&handle.start_time);
+#endif
 	return KRC_POST_SUCCESS;
 }
 
@@ -122,14 +125,18 @@ void *bench(void *int_thread_id)
 	connection_rdma *conn;
 	struct cu_region_desc *r_desc = cu_get_first_region();
 	// ping_handles is used as a circular buffer. head, tail & full are its state variables
+#if !LATENCY_MONITOR_ENABLED
 	krc_post_handle ping_handles[Outstanding_requests];
 	memset(ping_handles, 0, Outstanding_requests * sizeof(krc_post_handle));
 	int head = 0;
 	int tail = 0;
 	char full = 0;
+#endif
 	while (!Thread_exit) {
 		conn = cu_get_conn_for_region(r_desc, (uint64_t)(tid * connections_per_thread) + current_connection);
-
+#if LATENCY_MONITOR_ENABLED
+		krc_ping(conn, Message_size);
+#else
 		// Try to send a new message
 		if (!full) {
 			assert(ping_handles[head].conn == NULL && ping_handles[head].reply == NULL);
@@ -148,9 +155,6 @@ void *bench(void *int_thread_id)
 		// Check if a reply has arrived
 		if (head != tail || full) {
 			if (krc_poll_ping_reply(&ping_handles[tail]) == 1) {
-#if LATENCY_MONITOR_ENABLED
-				latmon_end(&ping_handles[tail].start_time);
-#endif
 				ping_handles[tail].conn = NULL;
 				ping_handles[tail].reply = NULL;
 				tail = (tail + 1) % Outstanding_requests;
@@ -158,8 +162,10 @@ void *bench(void *int_thread_id)
 				++Received_messages[tid];
 			}
 		}
+#endif
 	}
 
+#if !LATENCY_MONITOR_ENABLED
 	// Receive all outstanding messages
 	while (head != tail || full) {
 		while (krc_poll_ping_reply(&ping_handles[tail]) != 1)
@@ -168,6 +174,7 @@ void *bench(void *int_thread_id)
 		full = 0;
 		++Received_messages[tid];
 	}
+#endif
 	// Correction check: every request has a reply
 	if (Sent_messages[tid] != Received_messages[tid]) {
 		printf("sent = %d, received = %d\n", Sent_messages[tid], Received_messages[tid]);
@@ -325,9 +332,10 @@ int main(int argc, char **argv)
 	printf("min = %lu, avg = %lu, max = %lu\n", stats.min, stats.avg, stats.max);
 	printf("lat90 = %lu, lat99 = %lu, lat999 = %lu\n", stats.lat90, stats.lat90, stats.lat999);
 
-	fprintf(lat_out_file, "samples,out_of_bounds,less_equal_zero,min,avg,max,lat90,lat99,lat999\n");
-	fprintf(lat_out_file, "%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu\n", stats.samples, stats.out_of_bounds,
-		stats.less_equal_zero, stats.min, stats.avg, stats.max, stats.lat90, stats.lat99, stats.lat999);
+	fprintf(lat_out_file, "samples,out_of_bounds,less_equal_zero,min,avg,max,lat90,lat99,lat999,lat9999\n");
+	fprintf(lat_out_file, "%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu\n", stats.samples, stats.out_of_bounds,
+		stats.less_equal_zero, stats.min, stats.avg, stats.max, stats.lat90, stats.lat99, stats.lat999,
+		stats.lat9999);
 	fclose(lat_out_file);
 #endif
 	return 0;
