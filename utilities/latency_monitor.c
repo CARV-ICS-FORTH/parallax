@@ -74,6 +74,7 @@ void latmon_calc_stats(latmon_stats *stats)
 	size_t lat90_samples = stats->samples * 0.9;
 	size_t lat99_samples = stats->samples * 0.99;
 	size_t lat999_samples = stats->samples * 0.999;
+	size_t lat9999_samples = stats->samples * 0.9999;
 
 	unsigned current_samples = 0;
 	for (unsigned i = 0; i < latencies_length; ++i) {
@@ -84,8 +85,10 @@ void latmon_calc_stats(latmon_stats *stats)
 			stats->lat90 = i;
 		if (!stats->lat99 && lat99_samples <= current_samples)
 			stats->lat99 = i;
-		if (!stats->lat999 && lat999_samples <= current_samples) {
+		if (!stats->lat999 && lat999_samples <= current_samples)
 			stats->lat999 = i;
+		if (!stats->lat9999 && lat9999_samples <= current_samples) {
+			stats->lat9999 = i;
 			break;
 		}
 	}
@@ -97,9 +100,10 @@ void latmon_calc_stats(latmon_stats *stats)
 
 void latmon_to_csv(FILE *out_file, latmon_stats *stats)
 {
-	fprintf(out_file, "samples,out_of_bounds,less_equal_zero,min,avg,max,lat90,lat99,lat999\n");
-	fprintf(out_file, "%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu\n", stats->samples, stats->out_of_bounds,
-		stats->less_equal_zero, stats->min, stats->avg, stats->max, stats->lat90, stats->lat99, stats->lat999);
+	fprintf(out_file, "samples,out_of_bounds,less_equal_zero,min,avg,max,lat90,lat99,lat999,lat9999\n");
+	fprintf(out_file, "%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu\n", stats->samples, stats->out_of_bounds,
+		stats->less_equal_zero, stats->min, stats->avg, stats->max, stats->lat90, stats->lat99, stats->lat999,
+		stats->lat9999);
 	fprintf(out_file, "latency,samples\n");
 	for (size_t i = 0; i < latencies_length; ++i) {
 		fprintf(out_file, "%lu,%lu\n", i, latencies[i]);
