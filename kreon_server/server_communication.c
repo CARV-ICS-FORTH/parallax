@@ -1,7 +1,6 @@
 #include <infiniband/verbs.h>
 #include <rdma/rdma_cma.h>
 #include <rdma/rdma_verbs.h>
-#include "server_communication.h"
 #include "djb2.h"
 #include "globals.h"
 #include "metadata.h"
@@ -208,7 +207,7 @@ void sc_free_rpc_pair(struct sc_msg_pair *p)
 	return;
 }
 
-struct connection_rdma *sc_get_conn(char *hostname)
+struct connection_rdma *sc_get_conn(struct krm_server_desc *mydesc, char *hostname)
 {
 	struct sc_conn_per_server *cps;
 	uint64_t key;
@@ -221,7 +220,7 @@ struct connection_rdma *sc_get_conn(char *hostname)
 		if (cps == NULL) {
 			/*ok update server info from zookeeper*/
 			cps = (struct sc_conn_per_server *)malloc(sizeof(struct sc_conn_per_server));
-			if (krm_get_server_info(hostname, &cps->server) == KREON_FAILURE) {
+			if (krm_get_server_info(mydesc, hostname, &cps->server) == KREON_FAILURE) {
 				log_fatal("Failed to refresh info for server %s", hostname);
 				exit(EXIT_FAILURE);
 			}

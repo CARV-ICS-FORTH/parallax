@@ -18,8 +18,6 @@
 #include <log.h>
 #include <libgen.h>
 
-//struct krm_server_desc server;
-struct krm_server_desc my_desc;
 uint64_t ds_hash_key;
 
 char *krm_server_state_tostring(enum krm_server_state state)
@@ -83,7 +81,7 @@ static void krm_get_IP_Addresses(struct krm_server_desc *server)
 				int idx = strlen(addr);
 				addr[idx] = ':';
 				addr[idx + 1] = '\0';
-				sprintf(&addr[idx + 1], "%d", globals_get_RDMA_connection_port());
+				sprintf(&addr[idx + 1], "%d", server->RDMA_port);
 				strcpy(server->name.RDMA_IP_addr, addr);
 				log_info("Set my RDMA ip addr to %s", server->name.RDMA_IP_addr);
 				freeifaddrs(ifaddr);
@@ -167,43 +165,11 @@ static void krm_iterate_ld_regions(struct krm_server_desc *desc)
 
 	log_info("Leader's regions view");
 
-	for (i = 0; i < desc->ld_regions->num_regions; i++) {
+	for (i = 0; i < (desc->ld_regions->num_regions); i++) {
 		struct krm_region *r = &desc->ld_regions->regions[i];
-		log_info("Region id %s min key %s max key %s region overall status", r->id, r->min_key, r->max_key,
-			 r->stat);
+		//log_info("Region id %s min key %s max key %s region overall status", r->id, r->min_key, r->max_key,
+		//	 r->stat);
 	}
-}
-
-static uint64_t krm_init_volume(char *dev)
-{
-	int64_t size;
-	int fd = open(dev, O_RDWR);
-	if (fd == -1) {
-		perror("open");
-		exit(EXIT_FAILURE);
-	}
-	if (strlen(dev) >= 5 && strncmp(dev, "/dev/", 5) == 0) {
-		log_info("underyling volume is a device %s", dev);
-		if (ioctl(fd, BLKGETSIZE64, &size) == -1) {
-			log_fatal("Failed to determine underlying block device size %s", dev);
-			perror("ioctl");
-			exit(EXIT_FAILURE);
-		}
-		log_info("underyling volume is a block device %s of size %ld bytes", dev, size);
-		volume_init(dev, 0, size, 0);
-	} else {
-		log_info("querying size of file %s", dev);
-		size = lseek(fd, 0, SEEK_END);
-		if (size == -1) {
-			log_fatal("failed to determine file size exiting...");
-			perror("ioctl");
-			exit(EXIT_FAILURE);
-		}
-		log_info("underyling volume is a file %s of size %ld bytes", dev, size);
-		volume_init(dev, 0, size, 1);
-	}
-	close(fd);
-	return size;
 }
 
 static uint8_t krm_insert_ld_region(struct krm_server_desc *desc, struct krm_region *region)
@@ -496,6 +462,7 @@ static void krm_send_open_command(struct krm_server_desc *desc, struct krm_regio
  */
 void zk_main_watcher(zhandle_t *zkh, int type, int state, const char *path, void *context)
 {
+	struct krm_server_desc *my_desc = (struct krm_server_desc *)context;
 	/*
  	* zookeeper_init might not have returned, so we
  	* use zkh instead.
@@ -503,10 +470,10 @@ void zk_main_watcher(zhandle_t *zkh, int type, int state, const char *path, void
 	log_info("MAIN watcher type %d state %d path %s", type, state, path);
 	if (type == ZOO_SESSION_EVENT) {
 		if (state == ZOO_CONNECTED_STATE) {
-			my_desc.zconn_state = KRM_CONNECTED;
+			my_desc->zconn_state = KRM_CONNECTED;
 
 		} else if (state == ZOO_CONNECTING_STATE) {
-			if (my_desc.zconn_state == KRM_CONNECTED) {
+			if (my_desc->zconn_state == KRM_CONNECTED) {
 				log_fatal("Disconnected from zookeeper %s", globals_get_zk_host());
 				exit(EXIT_FAILURE);
 			}
@@ -518,6 +485,7 @@ void zk_main_watcher(zhandle_t *zkh, int type, int state, const char *path, void
 
 void leader_health_watcher(zhandle_t *zh, int type, int state, const char *path, void *watcherCtx)
 {
+	struct krm_server_desc *my_desc = (struct krm_server_desc *)watcherCtx;
 	struct Stat stat;
 	int rc;
 	if (type == ZOO_DELETED_EVENT) {
@@ -525,7 +493,7 @@ void leader_health_watcher(zhandle_t *zh, int type, int state, const char *path,
 		exit(EXIT_FAILURE);
 	} else {
 		log_warn("Got unhandled type %d resetting watcher for path %s", type, path);
-		rc = zoo_wexists(my_desc.zh, path, leader_health_watcher, NULL, &stat);
+		rc = zoo_wexists(my_desc->zh, path, leader_health_watcher, NULL, &stat);
 		if (rc != ZOK) {
 			log_fatal("failed to reset watcher for path %s", path);
 			exit(EXIT_FAILURE);
@@ -572,8 +540,9 @@ static char is_backup_of_region(struct krm_region *region, struct krm_server_nam
 
 void dataserver_health_watcher(zhandle_t *zh, int type, int state, const char *path, void *watcherCtx)
 {
+	struct Stat stat;
+	struct krm_server_desc *my_desc = (struct krm_server_desc *)watcherCtx;
 	int rc;
-	struct Stat *stat = (struct Stat *)watcherCtx;
 	char *dataserver_name = basename((char *)path);
 	static char *const krm_region_role_tostring[KRM_BACKUP + 1] = { "Primary", "Backup" };
 	if (type == ZOO_DELETED_EVENT) {
@@ -581,19 +550,19 @@ void dataserver_health_watcher(zhandle_t *zh, int type, int state, const char *p
 		struct krm_leader_ds_map *dataserver = NULL;
 		// Find dataserver's region map
 		ds_hash_key = djb2_hash((unsigned char *)dataserver_name, strlen(dataserver_name));
-		HASH_FIND_PTR(my_desc.dataservers_map, &ds_hash_key, dataserver);
+		HASH_FIND_PTR(my_desc->dataservers_map, &ds_hash_key, dataserver);
 		assert(dataserver);
 		// Remove the server from Zookeeper
 		char *dataserver_hosts_path =
 			zku_concat_strings(4, KRM_ROOT_PATH, KRM_SERVERS_PATH, KRM_SLASH, dataserver_name);
-		zoo_delete(my_desc.zh, dataserver_hosts_path, -1); // FIXME where do I find the version?
+		zoo_delete(my_desc->zh, dataserver_hosts_path, -1); // FIXME where do I find the version?
 		free(dataserver_hosts_path);
 		char *dataserver_mailbox_path =
 			zku_concat_strings(4, KRM_ROOT_PATH, KRM_MAILBOX_PATH, KRM_SLASH, dataserver_name);
 		zoo_rmr_folder(zh, dataserver_mailbox_path);
 		free(dataserver_mailbox_path);
 		// Remove the now dead dataserver from the dataservers map
-		HASH_DEL(my_desc.dataservers_map, dataserver);
+		HASH_DEL(my_desc->dataservers_map, dataserver);
 
 		// The next dataserver to assign a region to is picked in round-robin order
 		static struct krm_leader_ds_map *next_assignee = NULL;
@@ -605,18 +574,18 @@ void dataserver_health_watcher(zhandle_t *zh, int type, int state, const char *p
 		HASH_ITER(hh, dataserver->region_map, current, tmp)
 		{
 			if (!next_assignee)
-				next_assignee = my_desc.dataservers_map;
+				next_assignee = my_desc->dataservers_map;
 
 			struct krm_region *current_region = current->lr_state.region;
 			// Make sure next_assignee does not play a role in this region
 			if (is_primary_of_region(current_region, &next_assignee->server_id) ||
 			    is_backup_of_region(current_region, &next_assignee->server_id, NULL)) {
-				int dataservers_map_size = HASH_COUNT(my_desc.dataservers_map);
+				int dataservers_map_size = HASH_COUNT(my_desc->dataservers_map);
 				int i;
 				for (i = 0; i < dataservers_map_size; ++i) {
 					next_assignee = (struct krm_leader_ds_map *)next_assignee->hh.next;
 					if (!next_assignee)
-						next_assignee = my_desc.dataservers_map;
+						next_assignee = my_desc->dataservers_map;
 					if (!is_primary_of_region(current_region, &next_assignee->server_id) &&
 					    !is_backup_of_region(current_region, &next_assignee->server_id, NULL))
 						break;
@@ -651,13 +620,13 @@ void dataserver_health_watcher(zhandle_t *zh, int type, int state, const char *p
 			HASH_ADD_PTR(next_assignee->region_map, hash_key, current);
 			// Update Zookeeper region info
 			char *current_zk_region_path = zku_concat_strings(2, zk_regions_path, region_name);
-			rc = zoo_set(my_desc.zh, current_zk_region_path, (char *)current_region,
+			rc = zoo_set(my_desc->zh, current_zk_region_path, (char *)current_region,
 				     sizeof(struct krm_region), -1);
 			assert(rc == ZOK);
 			enum krm_msg_type type = (current->lr_state.role == KRM_PRIMARY) ? KRM_OPEN_REGION_AS_PRIMARY :
 											   KRM_OPEN_REGION_AS_BACKUP;
 			// Send open command to new assignee
-			krm_resend_open_command(&my_desc, current_region, next_assignee->server_id.kreon_ds_hostname,
+			krm_resend_open_command(my_desc, current_region, next_assignee->server_id.kreon_ds_hostname,
 						type);
 			free(current_zk_region_path);
 
@@ -672,7 +641,7 @@ void dataserver_health_watcher(zhandle_t *zh, int type, int state, const char *p
 	}
 	// Reset the watcher
 	log_info("Leader: resetting dataserver health watcher (path = %s)", path);
-	rc = zoo_wexists(my_desc.zh, path, dataserver_health_watcher, stat, stat);
+	rc = zoo_wexists(my_desc->zh, path, dataserver_health_watcher, my_desc, &stat);
 	if (rc != ZOK && rc != ZNONODE) {
 		log_fatal("failed to reset watcher for path %s", path);
 		exit(EXIT_FAILURE);
@@ -727,13 +696,14 @@ void mailbox_watcher(zhandle_t *zh, int type, int state, const char *path, void 
 	}
 }
 
-static struct krm_leader_ds_region_map *krm_leader_get_ds_region(struct krm_region *region, char *ds_hostname)
+static struct krm_leader_ds_region_map *krm_leader_get_ds_region(struct krm_server_desc *my_desc,
+								 struct krm_region *region, char *ds_hostname)
 {
 	struct krm_leader_ds_map *dataserver;
 	struct krm_leader_ds_region_map *ds_region_map;
 	// Find dataserver
 	ds_hash_key = djb2_hash((unsigned char *)ds_hostname, strlen(ds_hostname));
-	HASH_FIND_PTR(my_desc.dataservers_map, &ds_hash_key, dataserver);
+	HASH_FIND_PTR(my_desc->dataservers_map, &ds_hash_key, dataserver);
 	if (dataserver == NULL) {
 		log_fatal("No entry found for server %s", ds_hostname);
 		assert(0);
@@ -743,7 +713,7 @@ static struct krm_leader_ds_region_map *krm_leader_get_ds_region(struct krm_regi
 	struct Stat stat;
 	char *path = zku_concat_strings(4, KRM_ROOT_PATH, KRM_SERVERS_PATH, KRM_SLASH, ds_hostname);
 	int buffer_len = sizeof(struct krm_server_name);
-	int rc = zoo_get(my_desc.zh, path, 0, (char *)&dataserver->server_id, &buffer_len, &stat);
+	int rc = zoo_get(my_desc->zh, path, 0, (char *)&dataserver->server_id, &buffer_len, &stat);
 	if (rc != ZOK) {
 		log_fatal("Failed to refresh info for host %s", path);
 		exit(EXIT_FAILURE);
@@ -830,7 +800,8 @@ static void krm_process_msg(struct krm_server_desc *server, struct krm_msg *msg)
 		log_info("Received message %s for region %s", krm_msg_type_tostring(msg->type), msg->region.id);
 
 		// Find sender's region
-		struct krm_leader_ds_region_map *ds_region = krm_leader_get_ds_region(&msg->region, msg->sender);
+		struct krm_leader_ds_region_map *ds_region =
+			krm_leader_get_ds_region(server, &msg->region, msg->sender);
 		assert(ds_region);
 		// The first time a region is opened, the status should be KRM_OPENING. If a failure has occured and a reopen
 		// command was sent to a new dataserver, the region's status will be KRM_OPEN
@@ -845,7 +816,8 @@ static void krm_process_msg(struct krm_server_desc *server, struct krm_msg *msg)
 	case KRM_NACK_OPEN_BACKUP: {
 		assert(server->role == KRM_LEADER);
 		// Find sender's region
-		struct krm_leader_ds_region_map *ds_region = krm_leader_get_ds_region(&msg->region, msg->sender);
+		struct krm_leader_ds_region_map *ds_region =
+			krm_leader_get_ds_region(server, &msg->region, msg->sender);
 		assert(ds_region);
 		assert(ds_region->lr_state.status == KRM_OPENING || ds_region->lr_state.status == KRM_OPEN);
 		// Resend open command
@@ -864,56 +836,55 @@ static void krm_process_msg(struct krm_server_desc *server, struct krm_msg *msg)
 
 void *krm_metadata_server(void *args)
 {
-	pthread_setname_np(pthread_self(), "metadata_server");
+	struct krm_server_desc *my_desc = (struct krm_server_desc *)args;
+	pthread_setname_np(pthread_self(), "meta_server");
 	zoo_set_debug_level(ZOO_LOG_LEVEL_INFO);
 	struct String_vector *mail_msgs = malloc(sizeof(struct String_vector));
 	memset(mail_msgs, 0x00, sizeof(struct String_vector));
 	struct Stat stat;
 	int rc;
 	int buffer_len;
-
-	my_desc.state = KRM_BOOTING;
+	my_desc->state = KRM_BOOTING;
 	char *zk_path;
 
-	if (gethostname(my_desc.name.hostname, KRM_HOSTNAME_SIZE) != 0) {
+	if (gethostname(my_desc->name.hostname, KRM_HOSTNAME_SIZE) != 0) {
 		log_fatal("failed to get my hostname");
 		exit(EXIT_FAILURE);
 	}
 	/*now fix your kreon hostname*/
-	strcpy(my_desc.name.kreon_ds_hostname, my_desc.name.hostname);
-	sprintf(&my_desc.name.kreon_ds_hostname[strlen(my_desc.name.kreon_ds_hostname)], "%s", "-");
-	sprintf(&my_desc.name.kreon_ds_hostname[strlen(my_desc.name.kreon_ds_hostname)], "%d",
-		globals_get_RDMA_connection_port());
-	krm_get_IP_Addresses(&my_desc);
+	strcpy(my_desc->name.kreon_ds_hostname, my_desc->name.hostname);
+	sprintf(&my_desc->name.kreon_ds_hostname[strlen(my_desc->name.kreon_ds_hostname)], "%s", "-");
+	sprintf(&my_desc->name.kreon_ds_hostname[strlen(my_desc->name.kreon_ds_hostname)], "%d", my_desc->RDMA_port);
+	krm_get_IP_Addresses(my_desc);
 	char *mail_path =
-		zku_concat_strings(4, KRM_ROOT_PATH, KRM_MAILBOX_PATH, KRM_SLASH, my_desc.name.kreon_ds_hostname);
+		zku_concat_strings(4, KRM_ROOT_PATH, KRM_MAILBOX_PATH, KRM_SLASH, my_desc->name.kreon_ds_hostname);
 	assert(strlen(mail_path) <= KRM_HOSTNAME_SIZE - 1);
-	strcpy(my_desc.mail_path, mail_path);
-	log_info("mail path is %s", my_desc.mail_path);
+	strcpy(my_desc->mail_path, mail_path);
+	log_info("mail path is %s", my_desc->mail_path);
 	free(mail_path);
 	while (1) {
-		switch (my_desc.state) {
+		switch (my_desc->state) {
 		case KRM_BOOTING: {
-			sem_init(&my_desc.wake_up, 0, 0);
-			my_desc.msg_list = init_list(krm_free_msg);
+			sem_init(&my_desc->wake_up, 0, 0);
+			my_desc->msg_list = init_list(krm_free_msg);
 			log_info("Booting kreonR server, my hostname is %s checking my presence at zookeeper %s",
-				 my_desc.name.kreon_ds_hostname, globals_get_zk_host());
+				 my_desc->name.kreon_ds_hostname, globals_get_zk_host());
 			log_info("Initializing connection with zookeeper at %s", globals_get_zk_host());
-			my_desc.zh = zookeeper_init(globals_get_zk_host(), zk_main_watcher, 15000, 0, 0, 0);
-			if (my_desc.zh == NULL) {
+			my_desc->zh = zookeeper_init(globals_get_zk_host(), zk_main_watcher, 15000, 0, my_desc, 0);
+			if (my_desc->zh == NULL) {
 				log_fatal("failed to connect to zk %s", globals_get_zk_host());
 				perror("Reason");
 				exit(EXIT_FAILURE);
 			}
-			wait_for_value((uint32_t *)&my_desc.zconn_state, KRM_CONNECTED);
+			wait_for_value((uint32_t *)&my_desc->zconn_state, KRM_CONNECTED);
 			/*check if you are hostname-RDMA_port belongs to the project*/
 			zk_path = zku_concat_strings(4, KRM_ROOT_PATH, KRM_SERVERS_PATH, KRM_SLASH,
-						     my_desc.name.kreon_ds_hostname);
+						     my_desc->name.kreon_ds_hostname);
 			buffer_len = sizeof(struct krm_server_name);
-			rc = zoo_get(my_desc.zh, zk_path, 0, (char *)&my_desc.name, &buffer_len, &stat);
+			rc = zoo_get(my_desc->zh, zk_path, 0, (char *)&my_desc->name, &buffer_len, &stat);
 			if (rc != ZOK) {
 				log_fatal("Could not find my hostname %s (full %s) in the system reason %s",
-					  my_desc.name.kreon_ds_hostname, zk_path, zku_op2String(rc));
+					  my_desc->name.kreon_ds_hostname, zk_path, zku_op2String(rc));
 				exit(EXIT_FAILURE);
 			}
 			if (buffer_len == -1) {
@@ -921,35 +892,35 @@ void *krm_metadata_server(void *args)
 				exit(EXIT_FAILURE);
 			}
 			assert(buffer_len == sizeof(struct krm_server_name));
-			if (my_desc.name.epoch == 0) {
+			if (my_desc->name.epoch == 0) {
 				log_info("First time I join setting my epoch to 1 and initializing volume %s",
 					 globals_get_dev());
-				krm_init_volume(globals_get_dev());
+				globals_init_volume();
 				log_info("Volume %s formatted successfully", globals_get_dev());
-				my_desc.name.epoch = 1;
+				my_desc->name.epoch = 1;
 			} else {
-				log_info("Rebooted, my previous epoch was %lu setting to %lu", my_desc.name.epoch,
-					 my_desc.name.epoch + 1);
-				++my_desc.name.epoch;
+				log_info("Rebooted, my previous epoch was %lu setting to %lu", my_desc->name.epoch,
+					 my_desc->name.epoch + 1);
+				++my_desc->name.epoch;
 			}
 			/*update my info*/
-			krm_get_IP_Addresses(&my_desc);
+			krm_get_IP_Addresses(my_desc);
 			char *path = zku_concat_strings(4, KRM_ROOT_PATH, KRM_SERVERS_PATH, KRM_SLASH,
-							my_desc.name.kreon_ds_hostname);
+							my_desc->name.kreon_ds_hostname);
 
-			rc = zoo_set(my_desc.zh, path, (char *)&my_desc.name, sizeof(struct krm_server_name), -1);
+			rc = zoo_set(my_desc->zh, path, (char *)&my_desc->name, sizeof(struct krm_server_name), -1);
 			if (rc != ZOK) {
 				log_fatal("Failed to updated my server status for path %s with error code %s", path,
 					  zku_op2String(rc));
 				exit(EXIT_FAILURE);
 			} else
-				log_info("updated my status %s RDMA_IP_addr %s", path, my_desc.name.RDMA_IP_addr);
+				log_info("updated my status %s RDMA_IP_addr %s", path, my_desc->name.RDMA_IP_addr);
 
 			free(path);
 			struct String_vector *leader = (struct String_vector *)malloc(sizeof(struct String_vector));
 			log_info("Ok I am part of the team now what is my role, Am I the leader?");
 			char *leader_path = zku_concat_strings(2, KRM_ROOT_PATH, KRM_LEADER_PATH);
-			rc = zoo_get_children(my_desc.zh, leader_path, 0, leader);
+			rc = zoo_get_children(my_desc->zh, leader_path, 0, leader);
 			if (rc != ZOK) {
 				log_fatal("Can't find leader! error %s", zku_op2String(rc));
 				exit(EXIT_FAILURE);
@@ -958,20 +929,20 @@ void *krm_metadata_server(void *args)
 				log_fatal("leader hostname is missing!");
 				exit(EXIT_FAILURE);
 			}
-			strcpy(my_desc.name.kreon_leader, leader->data[0]);
+			strcpy(my_desc->name.kreon_leader, leader->data[0]);
 			free(leader);
 			free(leader_path);
 
-			if (strcmp(my_desc.name.kreon_leader, my_desc.name.kreon_ds_hostname) == 0) {
-				log_info("Hello I am the Leader %s", my_desc.name.kreon_ds_hostname);
-				my_desc.role = KRM_LEADER;
+			if (strcmp(my_desc->name.kreon_leader, my_desc->name.kreon_ds_hostname) == 0) {
+				log_info("Hello I am the Leader %s", my_desc->name.kreon_ds_hostname);
+				my_desc->role = KRM_LEADER;
 			} else {
-				log_info("Hello I am %s just a slave Leader is %s", my_desc.name.kreon_ds_hostname,
-					 my_desc.name.kreon_leader);
-				my_desc.role = KRM_DATASERVER;
+				log_info("Hello I am %s just a slave Leader is %s", my_desc->name.kreon_ds_hostname,
+					 my_desc->name.kreon_leader);
+				my_desc->role = KRM_DATASERVER;
 			}
 			/*updating my metadata*/
-			rc = zoo_set(my_desc.zh, zk_path, (const char *)&my_desc.name, sizeof(struct krm_server_name),
+			rc = zoo_set(my_desc->zh, zk_path, (const char *)&my_desc->name, sizeof(struct krm_server_name),
 				     -1);
 			if (rc != ZOK) {
 				log_fatal("Failed to update my zk metadata with error %s", zku_op2String(rc));
@@ -979,9 +950,9 @@ void *krm_metadata_server(void *args)
 			}
 			free(zk_path);
 			/*init ds_regions table*/
-			my_desc.ds_regions = (struct krm_ds_regions *)malloc(sizeof(struct krm_ds_regions));
-			memset(my_desc.ds_regions, 0x00, sizeof(struct krm_ds_regions));
-			my_desc.state = KRM_CLEAN_MAILBOX;
+			my_desc->ds_regions = (struct krm_ds_regions *)malloc(sizeof(struct krm_ds_regions));
+			memset(my_desc->ds_regions, 0x00, sizeof(struct krm_ds_regions));
+			my_desc->state = KRM_CLEAN_MAILBOX;
 			break;
 		}
 		case KRM_CLEAN_MAILBOX: {
@@ -989,8 +960,8 @@ void *krm_metadata_server(void *args)
 			int buffer_len;
 			log_info("Cleaning stale messages from my mailbox from previous epoch and leaving a watcher");
 			zk_path = zku_concat_strings(4, KRM_ROOT_PATH, KRM_MAILBOX_PATH, KRM_SLASH,
-						     my_desc.name.kreon_ds_hostname);
-			rc = zoo_get_children(my_desc.zh, zk_path, 0, mail_msgs);
+						     my_desc->name.kreon_ds_hostname);
+			rc = zoo_get_children(my_desc->zh, zk_path, 0, mail_msgs);
 			//rc = zoo_wget_children(my_desc.zh, zk_path, mailbox_watcher, &my_desc, mail_msgs);
 			if (rc != ZOK) {
 				log_fatal("failed to query zookeeper for path %s contents with code %s", zk_path,
@@ -1002,20 +973,20 @@ void *krm_metadata_server(void *args)
 			for (i = 0; i < mail_msgs->count; i++) {
 				/*iterate old mails and delete them*/
 				char *mail = zku_concat_strings(6, KRM_ROOT_PATH, KRM_MAILBOX_PATH, KRM_SLASH,
-								my_desc.name.kreon_ds_hostname, KRM_SLASH,
+								my_desc->name.kreon_ds_hostname, KRM_SLASH,
 								mail_msgs->data[i]);
 				/*get message first to reply*/
 				buffer_len = sizeof(struct krm_msg);
-				rc = zoo_get(my_desc.zh, mail, 0, (char *)&msg, &buffer_len, &stat);
+				rc = zoo_get(my_desc->zh, mail, 0, (char *)&msg, &buffer_len, &stat);
 				if (rc != ZOK) {
 					log_fatal("Failed to fetch email %s with code %s", mail, zku_op2String(rc));
 					exit(EXIT_FAILURE);
 				}
 				log_info("fetched mail %s", mail);
-				krm_process_msg(&my_desc, &msg);
+				krm_process_msg(my_desc, &msg);
 				/*now delete it*/
 				log_info("Deleting %s", mail);
-				rc = zoo_delete(my_desc.zh, mail, -1);
+				rc = zoo_delete(my_desc->zh, mail, -1);
 				if (rc != ZOK) {
 					log_fatal("failed to delete stale mail msg %s error %s", mail,
 						  zku_op2String(rc));
@@ -1023,8 +994,10 @@ void *krm_metadata_server(void *args)
 				}
 				free(mail);
 			}
-			log_info("Setting watcher for mailbox %s", zk_path);
-			rc = zoo_wget_children(my_desc.zh, zk_path, mailbox_watcher, &my_desc, mail_msgs);
+
+			strcpy(my_desc->mail_path, zk_path);
+			log_info("Setting watcher for mailbox %s", my_desc->mail_path);
+			rc = zoo_wget_children(my_desc->zh, my_desc->mail_path, mailbox_watcher, my_desc, mail_msgs);
 			if (rc != ZOK) {
 				log_fatal("failed to set watcher for my mailbox %s with error code %s", zk_path,
 					  zku_op2String(rc));
@@ -1032,10 +1005,10 @@ void *krm_metadata_server(void *args)
 			}
 			free(zk_path);
 
-			if (my_desc.role == KRM_LEADER)
-				my_desc.state = KRM_LD_ANNOUNCE_JOINED;
+			if (my_desc->role == KRM_LEADER)
+				my_desc->state = KRM_LD_ANNOUNCE_JOINED;
 			else
-				my_desc.state = KRM_SET_DS_WATCHERS;
+				my_desc->state = KRM_SET_DS_WATCHERS;
 			break;
 		}
 		case KRM_BUILD_DATASERVERS_TABLE: {
@@ -1045,7 +1018,7 @@ void *krm_metadata_server(void *args)
 			struct String_vector *dataservers =
 				(struct String_vector *)malloc(sizeof(struct String_vector));
 			zk_path = zku_concat_strings(2, KRM_ROOT_PATH, KRM_SERVERS_PATH);
-			rc = zoo_get_children(my_desc.zh, zk_path, 0, dataservers);
+			rc = zoo_get_children(my_desc->zh, zk_path, 0, dataservers);
 			if (rc != ZOK) {
 				log_fatal("Leader (path %s)failed to build dataservers table with code %s", zk_path,
 					  zku_op2String(rc));
@@ -1056,7 +1029,7 @@ void *krm_metadata_server(void *args)
 			for (i = 0; i < dataservers->count; i++) {
 				ds_name = zku_concat_strings(3, zk_path, KRM_SLASH, dataservers->data[i]);
 				buffer_len = sizeof(struct krm_server_name);
-				rc = zoo_get(my_desc.zh, ds_name, 0, (char *)&ds, &buffer_len, &stat);
+				rc = zoo_get(my_desc->zh, ds_name, 0, (char *)&ds, &buffer_len, &stat);
 				if (rc != ZOK) {
 					log_fatal("Failed to read region %s", ds_name);
 					exit(EXIT_FAILURE);
@@ -1078,13 +1051,13 @@ void *krm_metadata_server(void *args)
 				dataserver->num_regions = 0;
 				//hash_key = dataserver->hash_key;
 				/*added to hash table*/
-				HASH_ADD_PTR(my_desc.dataservers_map, hash_key, dataserver);
+				HASH_ADD_PTR(my_desc->dataservers_map, hash_key, dataserver);
 				// Set a watcher to check dataserver's health
 				char *zk_alive_dataserver_path = zku_concat_strings(
 					4, KRM_ROOT_PATH, KRM_ALIVE_SERVERS_PATH, KRM_SLASH, ds.kreon_ds_hostname);
 				log_info("Leader: set watcher for %s", zk_alive_dataserver_path);
-				rc = zoo_wexists(my_desc.zh, zk_alive_dataserver_path, dataserver_health_watcher, &stat,
-						 &stat);
+				rc = zoo_wexists(my_desc->zh, zk_alive_dataserver_path, dataserver_health_watcher,
+						 my_desc, &stat);
 				if (rc != ZOK && rc != ZNONODE) {
 					log_fatal("Failed to set watcher for path %s", zk_alive_dataserver_path);
 					exit(EXIT_FAILURE);
@@ -1093,12 +1066,12 @@ void *krm_metadata_server(void *args)
 			}
 			free(zk_path);
 
-			my_desc.state = KRM_BUILD_REGION_TABLE;
+			my_desc->state = KRM_BUILD_REGION_TABLE;
 			//krm_iterate_servers_state(&my_desc);
 			break;
 		}
 		case KRM_BUILD_REGION_TABLE: {
-			my_desc.ld_regions = (struct krm_leader_regions *)malloc(sizeof(struct krm_leader_regions));
+			my_desc->ld_regions = (struct krm_leader_regions *)malloc(sizeof(struct krm_leader_regions));
 			struct String_vector *regions = (struct String_vector *)malloc(sizeof(struct String_vector));
 			struct Stat stat;
 			char *region_path;
@@ -1106,7 +1079,7 @@ void *krm_metadata_server(void *args)
 			int i;
 			/*read all regions and construct table*/
 			zk_path = zku_concat_strings(2, KRM_ROOT_PATH, KRM_REGIONS_PATH);
-			rc = zoo_get_children(my_desc.zh, zk_path, 0, regions);
+			rc = zoo_get_children(my_desc->zh, zk_path, 0, regions);
 			if (rc != ZOK) {
 				log_fatal("Leader failed to read regions with code %s", zku_op2String(rc));
 				exit(EXIT_FAILURE);
@@ -1116,14 +1089,14 @@ void *krm_metadata_server(void *args)
 			for (i = 0; i < regions->count; i++) {
 				region_path = zku_concat_strings(3, zk_path, KRM_SLASH, regions->data[i]);
 				buffer_len = sizeof(struct krm_region);
-				rc = zoo_get(my_desc.zh, region_path, 0, (char *)&r, &buffer_len, &stat);
+				rc = zoo_get(my_desc->zh, region_path, 0, (char *)&r, &buffer_len, &stat);
 				if (rc != ZOK) {
 					log_fatal("Failed to read region %s", region_path);
 					exit(EXIT_FAILURE);
 				}
 				assert(buffer_len != -1 && buffer_len == sizeof(struct krm_region));
 
-				if (krm_insert_ld_region(&my_desc, &r) != KRM_SUCCESS) {
+				if (krm_insert_ld_region(my_desc, &r) != KRM_SUCCESS) {
 					log_fatal("Failed to add region %s", r.id);
 					exit(EXIT_FAILURE);
 				}
@@ -1132,32 +1105,32 @@ void *krm_metadata_server(void *args)
 			}
 			free(zk_path);
 
-			krm_iterate_ld_regions(&my_desc);
-			krm_check_ld_regions_sorted(my_desc.ld_regions);
+			krm_iterate_ld_regions(my_desc);
+			krm_check_ld_regions_sorted(my_desc->ld_regions);
 			//krm_iterate_servers_state(&my_desc);
-			my_desc.state = KRM_ASSIGN_REGIONS;
+			my_desc->state = KRM_ASSIGN_REGIONS;
 			break;
 		}
 		case KRM_ASSIGN_REGIONS: {
 			int i;
-			for (i = 0; i < my_desc.ld_regions->num_regions; i++) {
-				krm_send_open_command(&my_desc, &my_desc.ld_regions->regions[i]);
+			for (i = 0; i < my_desc->ld_regions->num_regions; i++) {
+				krm_send_open_command(my_desc, &my_desc->ld_regions->regions[i]);
 			}
 
-			krm_iterate_servers_state(&my_desc);
-			my_desc.state = KRM_OPEN_LD_REGIONS;
+			krm_iterate_servers_state(my_desc);
+			my_desc->state = KRM_OPEN_LD_REGIONS;
 			break;
 		}
 		case KRM_OPEN_LD_REGIONS: {
-			log_info("Leader opening my regions", my_desc.name.kreon_ds_hostname);
+			log_info("Leader opening my regions", my_desc->name.kreon_ds_hostname);
 
 			struct krm_leader_ds_map *ds_map;
-			uint64_t hash_key = djb2_hash((unsigned char *)my_desc.name.kreon_ds_hostname,
-						      strlen(my_desc.name.kreon_ds_hostname));
-			HASH_FIND_PTR(my_desc.dataservers_map, &hash_key, ds_map);
+			uint64_t hash_key = djb2_hash((unsigned char *)my_desc->name.kreon_ds_hostname,
+						      strlen(my_desc->name.kreon_ds_hostname));
+			HASH_FIND_PTR(my_desc->dataservers_map, &hash_key, ds_map);
 			if (ds_map == NULL) {
 				log_fatal("entry missing for DataServer (which is me?) %s",
-					  my_desc.name.kreon_ds_hostname);
+					  my_desc->name.kreon_ds_hostname);
 				exit(EXIT_FAILURE);
 			}
 
@@ -1184,44 +1157,44 @@ void *krm_metadata_server(void *args)
 				assert(r_desc->status = KRM_OPENING);
 				r_desc->status = KRM_OPEN;
 
-				krm_insert_ds_region(&my_desc, r_desc, my_desc.ds_regions);
+				krm_insert_ds_region(my_desc, r_desc, my_desc->ds_regions);
 			}
-			my_desc.state = KRM_WAITING_FOR_MSG;
+			my_desc->state = KRM_WAITING_FOR_MSG;
 			break;
 		}
 		case KRM_SET_DS_WATCHERS: {
 			struct Stat;
 			/*wait until leader is up*/
 			zk_path = zku_concat_strings(4, KRM_ROOT_PATH, KRM_ALIVE_LEADER_PATH, KRM_SLASH,
-						     my_desc.name.kreon_leader);
+						     my_desc->name.kreon_leader);
 			while (1) {
-				rc = zoo_exists(my_desc.zh, zk_path, 0, &stat);
+				rc = zoo_exists(my_desc->zh, zk_path, 0, &stat);
 				if (rc == ZOK)
 					break;
 				else {
 					log_warn("Waiting for leader %s to join where is he?",
-						 my_desc.name.kreon_leader);
+						 my_desc->name.kreon_leader);
 					sleep(2);
 				}
 			}
 			log_info("Leaving a watcher to detect possible leader failure of %s",
-				 my_desc.name.kreon_leader);
-			rc = zoo_wexists(my_desc.zh, zk_path, leader_health_watcher, NULL, &stat);
+				 my_desc->name.kreon_leader);
+			rc = zoo_wexists(my_desc->zh, zk_path, leader_health_watcher, my_desc, &stat);
 			if (rc != ZOK) {
 				log_fatal("Failed to set watcher for leader health path %s", zk_path);
 				exit(EXIT_FAILURE);
 			}
 			free(zk_path);
 			log_info("already Set mailbox watcher");
-			my_desc.state = KRM_DS_ANNOUNCE_JOINED;
+			my_desc->state = KRM_DS_ANNOUNCE_JOINED;
 			break;
 		}
 		case KRM_LD_ANNOUNCE_JOINED: {
 			char path[KRM_HOSTNAME_SIZE];
 			/*create an ephemeral node under /kreonR/aliveservers*/
 			zk_path = zku_concat_strings(4, KRM_ROOT_PATH, KRM_ALIVE_LEADER_PATH, KRM_SLASH,
-						     my_desc.name.kreon_ds_hostname);
-			rc = zoo_create(my_desc.zh, zk_path, (const char *)&my_desc.name,
+						     my_desc->name.kreon_ds_hostname);
+			rc = zoo_create(my_desc->zh, zk_path, (const char *)&my_desc->name,
 					sizeof(struct krm_server_name), &ZOO_OPEN_ACL_UNSAFE, ZOO_EPHEMERAL, path,
 					KRM_HOSTNAME_SIZE);
 			if (rc == ZOK) {
@@ -1231,15 +1204,15 @@ void *krm_metadata_server(void *args)
 				exit(EXIT_FAILURE);
 			}
 			free(zk_path);
-			my_desc.state = KRM_BUILD_DATASERVERS_TABLE;
+			my_desc->state = KRM_BUILD_DATASERVERS_TABLE;
 			break;
 		}
 		case KRM_DS_ANNOUNCE_JOINED: {
 			char path[KRM_HOSTNAME_SIZE];
 			/*create an ephemeral node under /kreonR/aliveservers*/
 			zk_path = zku_concat_strings(4, KRM_ROOT_PATH, KRM_ALIVE_SERVERS_PATH, KRM_SLASH,
-						     my_desc.name.kreon_ds_hostname);
-			rc = zoo_create(my_desc.zh, zk_path, (const char *)&my_desc.name,
+						     my_desc->name.kreon_ds_hostname);
+			rc = zoo_create(my_desc->zh, zk_path, (const char *)&my_desc->name,
 					sizeof(struct krm_server_name), &ZOO_OPEN_ACL_UNSAFE, ZOO_EPHEMERAL, path,
 					KRM_HOSTNAME_SIZE);
 			if (rc == ZOK) {
@@ -1249,25 +1222,25 @@ void *krm_metadata_server(void *args)
 				exit(EXIT_FAILURE);
 			}
 			free(zk_path);
-			my_desc.state = KRM_WAITING_FOR_MSG;
+			my_desc->state = KRM_WAITING_FOR_MSG;
 			break;
 		}
 		case KRM_WAITING_FOR_MSG: {
 			NODE *node;
 
-			pthread_mutex_lock(&my_desc.msg_list_lock);
-			node = (NODE *)remove_first(my_desc.msg_list);
-			pthread_mutex_unlock(&my_desc.msg_list_lock);
+			pthread_mutex_lock(&my_desc->msg_list_lock);
+			node = (NODE *)remove_first(my_desc->msg_list);
+			pthread_mutex_unlock(&my_desc->msg_list_lock);
 			if (!node)
 				/*go to sleep*/
-				sem_wait(&my_desc.wake_up);
+				sem_wait(&my_desc->wake_up);
 			else {
 				log_info("new message: %s",
 					 krm_msg_type_tostring(((struct krm_msg *)node->data)->type));
-				my_desc.state = KRM_PROCESSING_MSG;
-				krm_process_msg(&my_desc, (struct krm_msg *)node->data);
+				my_desc->state = KRM_PROCESSING_MSG;
+				krm_process_msg(my_desc, (struct krm_msg *)node->data);
 				destroy_node(node);
-				my_desc.state = KRM_WAITING_FOR_MSG;
+				my_desc->state = KRM_WAITING_FOR_MSG;
 			}
 			break;
 		}
@@ -1278,9 +1251,8 @@ void *krm_metadata_server(void *args)
 	return NULL;
 }
 
-struct krm_region_desc *krm_get_region(char *key, uint32_t key_size)
+struct krm_region_desc *krm_get_region(struct krm_server_desc *desc, char *key, uint32_t key_size)
 {
-	struct krm_server_desc *desc = &my_desc;
 	struct krm_region_desc *r_desc = NULL;
 	int start_idx;
 	int end_idx;
@@ -1337,18 +1309,19 @@ retry:
 
 	if (r_desc == NULL) {
 		log_fatal("NULL region for key %s", key);
+		raise(SIGINT);
 		exit(EXIT_FAILURE);
 	}
 	return r_desc;
 }
 
-int krm_get_server_info(char *hostname, struct krm_server_name *server)
+int krm_get_server_info(struct krm_server_desc *my_desc, char *hostname, struct krm_server_name *server)
 {
 	struct Stat stat;
 	int ret;
 	char *path = zku_concat_strings(4, KRM_ROOT_PATH, KRM_SERVERS_PATH, KRM_SLASH, hostname);
 	int buffer_len = sizeof(struct krm_server_name);
-	int rc = zoo_get(my_desc.zh, path, 0, (char *)server, &buffer_len, &stat);
+	int rc = zoo_get(my_desc->zh, path, 0, (char *)server, &buffer_len, &stat);
 	if (rc != ZOK) {
 		log_warn("Failed to refresh server info %s with code %s", hostname, zku_op2String(rc));
 		ret = KREON_FAILURE;

@@ -5,7 +5,6 @@
 #include <semaphore.h>
 #include <zookeeper/zookeeper.h>
 #include <pthread.h>
-#include "server_communication.h"
 #include "../utilities/list.h"
 #include "../kreon_lib/btree/btree.h"
 #include "../kreon_lib/btree/uthash.h"
@@ -83,7 +82,16 @@ enum krm_work_task_status {
 	TASK_SUSPENDED,
 };
 
+/*server to server communication related staff*/
+struct sc_msg_pair {
+	struct connection_rdma *conn;
+	struct msg_header *request;
+	struct msg_header *reply;
+	enum circular_buffer_op_status stat;
+};
+
 enum krm_work_task_type { KRM_CLIENT_POOL, KRM_SERVER_POOL };
+
 struct krm_work_task {
 	/*from client*/
 	bt_insert_req ins_req;
@@ -102,7 +110,7 @@ struct krm_work_task {
 	void *notification_addr;
 	msg_header *reply_msg;
 	msg_header *flush_segment_request;
-	int spinner_id;
+	int server_id;
 	int thread_id;
 	int error_code;
 	int pool_id;
@@ -269,10 +277,12 @@ struct krm_server_desc {
 	zhandle_t *zh;
 	uint8_t IP[IP_SIZE];
 	uint8_t RDMA_IP[IP_SIZE];
-	uint32_t RDMA_port;
 	enum krm_server_role role;
 	enum krm_server_state state;
 	volatile uint32_t zconn_state;
+	uint32_t RDMA_port;
+	/*entry in the root table of my dad (numa_server)*/
+	int root_server_id;
 	/*filled only by the leader server*/
 	struct krm_leader_regions *ld_regions;
 	struct krm_leader_ds_map *dataservers_map;
@@ -289,8 +299,8 @@ struct krm_msg {
 };
 
 void *krm_metadata_server(void *args);
-struct krm_region_desc *krm_get_region(char *key, uint32_t key_size);
-int krm_get_server_info(char *hostname, struct krm_server_name *server);
+struct krm_region_desc *krm_get_region(struct krm_server_desc *server_desc, char *key, uint32_t key_size);
+int krm_get_server_info(struct krm_server_desc *server_desc, char *hostname, struct krm_server_name *server);
 
 int ru_flush_replica_log_buffer(db_handle *handle, segment_header *master_log_segment, void *buffer,
 				uint64_t end_of_log, uint64_t bytes_to_pad, uint64_t segment_id);
@@ -299,3 +309,9 @@ void ru_calculate_btree_index_nodes(struct ru_replica_state *r_state, uint64_t n
 
 void ru_append_entry_to_leaf_node(struct krm_region_desc *r_desc, void *pointer_to_kv_pair, void *prefix,
 				  int32_t tree_id);
+
+/*server to server communication staff*/
+struct sc_msg_pair sc_allocate_rpc_pair(struct connection_rdma *conn, uint32_t request_size, uint32_t reply_size,
+					enum message_type type);
+struct connection_rdma *sc_get_conn(struct krm_server_desc *mydesc, char *hostname);
+void sc_free_rpc_pair(struct sc_msg_pair *p);
