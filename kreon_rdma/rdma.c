@@ -827,6 +827,7 @@ void crdma_init_client_connection_list_hosts(connection_rdma *conn, char **hosts
 	conn_param.retry_count = 7;
 	conn_param.rnr_retry_count = 7;
 	int tries = 0;
+
 	while (tries < 100) {
 		ret = rdma_connect(rdma_cm_id, &conn_param);
 		if (ret) {
@@ -839,6 +840,7 @@ void crdma_init_client_connection_list_hosts(connection_rdma *conn, char **hosts
 	if (ret) {
 		log_fatal("rdma_connect failed: %s", strerror(errno));
 		exit(EXIT_FAILURE);
+
 	}
 
 	conn->peer_mr = (struct ibv_mr *)malloc(sizeof(struct ibv_mr));
@@ -1169,11 +1171,11 @@ uint32_t wait_for_payload_arrival(msg_header *hdr)
 				    sizeof(uint32_t));
 		/*calculate the address of the tail*/
 		// blocking style
-		wait_for_value(tail, TU_RDMA_REGULAR_MSG);
+		//wait_for_value(tail, TU_RDMA_REGULAR_MSG);
 		// non-blocking style
-		// if (*tail != TU_RDMA_REGULAR_MSG) {
-		// 	return 0;
-		// }
+		if (*tail != TU_RDMA_REGULAR_MSG) {
+			return 0;
+		}
 		hdr->data = (void *)((uint64_t)hdr + TU_HEADER_SIZE);
 		hdr->next = hdr->data;
 	} else {

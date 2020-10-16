@@ -74,13 +74,15 @@ struct ds_worker_thread {
 	utils_queue_s work_queue;
 	sem_t sem;
 	pthread_t context;
-	pthread_spinlock_t work_queue_lock;
+	// pthread_spinlock_t work_queue_lock;
+	volatile uint64_t lc1;
+	volatile uint64_t lc2;
 	struct channel_rdma *channel;
 	/*for affinity purposes*/
 	/*my parent*/
 	int worker_id;
 	int root_server_id;
-	worker_status status;
+	volatile worker_status status;
 };
 
 struct ds_spinning_thread {
@@ -91,34 +93,33 @@ struct ds_spinning_thread {
 	SIMPLE_CONCURRENT_LIST *conn_list;
 	SIMPLE_CONCURRENT_LIST *idle_conn_list;
 	int num_workers;
-	int next_server_worker_to_submit_job;
-	int next_client_worker_to_submit_job;
+	int next_worker_to_submit_job;
 	int c_last_pool;
 	int s_last_pool;
 	/*for affinity purposes*/
 	int spinner_id;
 	/*entry in the root table of my dad (numa_server)*/
 	int root_server_id;
-	//my workers follow
+	// my workers follow
 	struct ds_worker_thread worker[];
 };
 
 struct ds_numa_server {
-	//position in the numa_servers table of root
+	// position in the numa_servers table of root
 	int server_id;
 	int rdma_port;
-	//context of the socket thread
+	// context of the socket thread
 	pthread_t socket_thread_cnxt;
-	//context of the poll_cq threwad
+	// context of the poll_cq threwad
 	pthread_t poll_cq_cnxt;
-	//context of spinning thread
+	// context of spinning thread
 	pthread_t spinner_cnxt;
-	//our rdma channel
+	// our rdma channel
 	struct channel_rdma *channel;
-	//context of the metadata thread
+	// context of the metadata thread
 	pthread_t meta_server_cnxt;
 	struct krm_server_desc meta_server;
-	//spinner manages its workers
+	// spinner manages its workers
 	struct ds_spinning_thread spinner;
 };
 
@@ -408,10 +409,11 @@ void *socket_thread(void *args)
 		pthread_spin_init(&conn->buffer_lock, PTHREAD_PROCESS_PRIVATE);
 #endif
 		/*add connection to its spinner*/
-		//conn->idconn = -1; // what?
-		//if (next_spinner_to_submit_conn >= my_server->spinner)
+		// conn->idconn = -1; // what?
+		// if (next_spinner_to_submit_conn >= my_server->spinner)
 		//	next_spinner_to_submit_conn = 0;
-		//struct ds_spinning_thread *spinner = &my_server->spinner[next_spinner_to_submit_conn];
+		// struct ds_spinning_thread *spinner =
+		// &my_server->spinner[next_spinner_to_submit_conn];
 		pthread_mutex_lock(&my_server->spinner.conn_list_lock);
 		/*gesalous new policy*/
 		add_last_in_simple_concurrent_list(my_server->spinner.conn_list, conn);
@@ -471,36 +473,29 @@ void *worker_thread_kernel(void *args)
 			}
 
 			if (!job) {
-#if 0
+				//#if 0
 				// Go to sleep
-				pthread_spin_lock(&worker->work_queue_lock);
-				// Double check
-				job = utils_queue_pop(&worker->work_queue);
-				if (!job) {
-					//#if 0
-					worker->status = IDLE_SLEEPING;
-					pthread_spin_unlock(&worker->work_queue_lock);
-					worker->status = IDLE_SLEEPING;
-					pthread_spin_unlock(&worker->work_queue_lock);
-					// DPRINT("Sleeping...\n");
-					sem_wait(&worker->sem);
-					// DPRINT("Woke up\n");
-					worker->status = BUSY;
-					//#endif
-					//pthread_spin_unlock(&worker_descriptor->work_queue_lock);
-					worker->status = BUSY;
-					continue;
-				} else {
-					assert(job);
-					pthread_spin_unlock(&worker->work_queue_lock);
+				++worker->lc2;
+				// pthread_spin_lock(&worker->work_queue_lock);
+				for (int i = 0; i < 10; i++) {
+					job = utils_queue_pop(&worker->work_queue);
+					if (job) {
+						++worker->lc1;
+						goto process_task;
+					}
 				}
-
-#endif
-
+				worker->status = IDLE_SLEEPING;
+				++worker->lc1;
+				//log_info("sleeping");
+				sem_wait(&worker->sem);
+				//log_info("woke_up");
+				++worker->lc2;
+				worker->status = BUSY;
+				++worker->lc1;
 				continue;
 			}
 		}
-
+	process_task:
 		/*process task*/
 		handle_task(&root_server->numa_servers[worker->root_server_id]->meta_server, job);
 		if (!job->suspended) {
@@ -678,12 +673,15 @@ static int assign_job_to_worker(struct ds_spinning_thread *spinner, struct conne
 		return KREON_FAILURE;
 	}
 
-	struct ds_worker_thread *workers = spinner->worker;
-
-	int worker_id = spinner->next_server_worker_to_submit_job;
 	int max_queued_jobs = globals_get_job_scheduling_max_queue_depth(); // TODO [mvard] Tune this
+	int worker_id = spinner->next_worker_to_submit_job;
 
-#if 0
+	/* Regular tasks scheduling policy
+   * Assign tasks to one worker until he is swamped, then start assigning
+   * to the next one. Once all workers are swamped it will essentially
+   * become a round robin policy since the worker_id will be incremented
+   * at for every task.
+   */
 
 	/* Regular tasks scheduling policy
 	 * Assign tasks to one worker until he is swamped, then start assigning
@@ -692,7 +690,7 @@ static int assign_job_to_worker(struct ds_spinning_thread *spinner, struct conne
 	 * at for every task.
 	 */
 	// 1. Round robin with threshold
-	if (worker_queued_jobs(&workers[worker_id]) >= max_queued_jobs) {
+	if (worker_queued_jobs(&spinner->worker[worker_id]) >= max_queued_jobs) {
 		/* Find an active worker with used_slots < max_queued_jobs
 		 * If there's none, wake up a sleeping worker
 		 * If all worker's are running, pick the one with least load
@@ -704,25 +702,52 @@ static int assign_job_to_worker(struct ds_spinning_thread *spinner, struct conne
 		// Find active worker with min worker_queued_jobs
 		int current_choice = worker_id; // worker_id is most likely not sleeping
 		int a_sleeping_worker_id = -1;
-		for (int i = 0; i < WORKER_THREADS_PER_SPINNING_THREAD; ++i) {
+		for (int i = 0; i < spinner->num_workers; ++i) {
 			// Keep note of a sleeping worker in case we need to wake him up for this task
-			if (workers[i].status == IDLE_SLEEPING) {
+			if (spinner->worker[i].status == IDLE_SLEEPING) {
 				if (a_sleeping_worker_id == -1)
 					a_sleeping_worker_id = i;
 				continue;
 			}
-			if (worker_queued_jobs(&workers[i]) < worker_queued_jobs(&workers[current_choice]))
+			if (worker_queued_jobs(&spinner->worker[i]) <
+			    worker_queued_jobs(&spinner->worker[current_choice]))
 				current_choice = i;
 		}
-#endif
+		worker_id = current_choice;
+		if (a_sleeping_worker_id != -1 && worker_queued_jobs(&spinner->worker[worker_id]) >= max_queued_jobs)
+			worker_id = a_sleeping_worker_id;
+	}
+
+#if 0
+	for (int i = 0; i < spinner->num_workers; i++) {
+		load = worker_queued_jobs(&spinner->worker[i]);
+		if (load < min_load) {
+			min_load = load;
+			min_loaded_worker = i;
+		}
+		if (worker_queued_jobs(&spinner->worker[i]) < max_queued_jobs) {
+			worker_id = i;
+		}
+	}
+	if (worker_id == -1) {
+		worker_id = min_loaded_worker;
+	}
+	// assertion
+	if (worker_id == -1) {
+		log_fatal("Failed to queue request");
+		exit(EXIT_FAILURE);
+	}
+
 
 	// 3. Round robin
+  int worker_id;
 	worker_id = spinner->next_server_worker_to_submit_job++;
 	if (spinner->next_server_worker_to_submit_job == spinner->num_workers)
 		spinner->next_server_worker_to_submit_job = 0;
+#endif
 
 	if (!is_task_resumed) {
-		job->channel = globals_get_rdma_channel();
+		job->channel = root_server->numa_servers[spinner->root_server_id]->channel;
 		job->conn = conn;
 		job->msg = msg;
 		job->kreon_operation_status = TASK_START;
@@ -731,7 +756,7 @@ static int assign_job_to_worker(struct ds_spinning_thread *spinner, struct conne
 		job->notification_addr = (void *)job->msg->request_message_local_addr;
 	}
 
-	if (utils_queue_push(&workers[worker_id].work_queue, (void *)job) == NULL) {
+	if (utils_queue_push(&spinner->worker[worker_id].work_queue, (void *)job) == NULL) {
 		assert(0);
 		// Give back the allocated job buffer
 		switch (job->pool_type) {
@@ -748,15 +773,21 @@ static int assign_job_to_worker(struct ds_spinning_thread *spinner, struct conne
 		}
 		return KREON_FAILURE;
 	}
-
-	pthread_spin_lock(&workers[worker_id].work_queue_lock);
-	if (workers[worker_id].status == IDLE_SLEEPING) {
+	uint64_t lc1, lc2;
+retry:
+	lc1 = spinner->worker[worker_id].lc1;
+	// pthread_spin_lock(&workers[worker_id].work_queue_lock);
+	if (spinner->worker[worker_id].status == IDLE_SLEEPING) {
 		/*wake him up */
-		// DPRINT("Boom\n");
-		++wake_up_workers_operations;
-		sem_post(&workers[worker_id].sem);
+		//++wake_up_workers_operations;
+		sem_post(&spinner->worker[worker_id].sem);
 	}
-	pthread_spin_unlock(&workers[worker_id].work_queue_lock);
+
+	lc2 = spinner->worker[worker_id].lc2;
+	if (lc1 != lc2) {
+		goto retry;
+	}
+	// pthread_spin_unlock(&workers[worker_id].work_queue_lock);
 	return KREON_SUCCESS;
 }
 
@@ -794,7 +825,8 @@ static void *server_spinning_thread_kernel(void *args)
 	pthread_t self;
 	self = pthread_self();
 	pthread_setname_np(self, "spinner");
-	log_info("Spinning thread %d initializing empty task buffers pool size %d, putting %d buffers per pool",
+	log_info("Spinning thread %d initializing empty task buffers pool size %d, "
+		 "putting %d buffers per pool",
 		 spinner->spinner_id, DS_POOL_NUM, DS_CLIENT_QUEUE_SIZE / DS_POOL_NUM);
 	spinner->s_last_pool = DS_POOL_NUM;
 	spinner->c_last_pool = DS_POOL_NUM;
@@ -826,7 +858,10 @@ static void *server_spinning_thread_kernel(void *args)
 	/*Init my worker threads*/
 	for (int i = 0; i < spinner->num_workers; i++) {
 		/*init worker group vars*/
-		pthread_spin_init(&spinner->worker[i].work_queue_lock, PTHREAD_PROCESS_PRIVATE);
+		spinner->worker[i].lc1 = 0;
+		spinner->worker[i].lc2 = 0;
+		//pthread_spin_init(&spinner->worker[i].work_queue_lock,
+		//                 PTHREAD_PROCESS_PRIVATE);
 		spinner->worker[i].status = WORKER_NOT_RUNNING;
 		sem_init(&spinner->worker[i].sem, 0, 0);
 		utils_queue_init(&spinner->worker[i].work_queue);
@@ -860,7 +895,8 @@ static void *server_spinning_thread_kernel(void *args)
 		// if (!channel->spin_num[spinning_thread_id])
 		//	sem_wait(&channel->sem_spinning[spinning_thread_id]);
 
-		/*gesalous, iterate the connection list of this channel for new messages*/
+		/*gesalous, iterate the connection list of this channel for new
+     * messages*/
 		if (count < 10) {
 			node = spinner->conn_list->first;
 			spinning_list_type = HIGH_PRIORITY;
@@ -910,17 +946,21 @@ static void *server_spinning_thread_kernel(void *args)
 					msg_header *request = (msg_header *)hdr->request_message_local_addr;
 					request->reply_message = hdr;
 					request->ack_arrived = KR_REP_ARRIVED;
-					/*No more waking ups, spill thread will poll (with yield) to see the
+					/*No more waking ups, spill thread will poll (with yield) to see
+* the
 * message*/
-					// sem_post(&((msg_header *)hdr->request_message_local_addr)->sem);
+					// sem_post(&((msg_header
+					// *)hdr->request_message_local_addr)->sem);
 				} else {
 					/*normal messages*/
 					hdr->receive = 0;
 					rc = assign_job_to_worker(spinner, conn, hdr, NULL);
 					if (rc == KREON_FAILURE) {
-						/*all workers are busy let's see messages from other connections*/
+						/*all workers are busy let's see messages from other
+             * connections*/
 						//__sync_fetch_and_sub(&conn->pending_received_messages, 1);
-						/*Caution! message not consumed leave the rendezvous points as is*/
+						/*Caution! message not consumed leave the rendezvous points as
+             * is*/
 						hdr->receive = recv;
 						goto iterate_next_element;
 					}
@@ -940,15 +980,18 @@ static void *server_spinning_thread_kernel(void *args)
 				}
 
 				if (hdr->type == DISCONNECT) {
-					// Warning! the guy that consumes/handles the message is responsible
+					// Warning! the guy that consumes/handles the message is
+					// responsible
 					// for zeroing
-					// the message's segments for possible future rendezvous points. This
+					// the message's segments for possible future rendezvous points.
+					// This
 					// is done
 					// inside free_rdma_received_message function
 
 					log_info("Disconnect operation bye bye mr Client garbage collection "
-						 "follows\n");
-					// FIXME these operations might need to be atomic with more than one
+						 "follows");
+					// FIXME these operations might need to be atomic with more than
+					// one
 					// spinning threads
 					struct channel_rdma *channel = conn->channel;
 					// Decrement spinning thread's connections and total connections
@@ -1045,9 +1088,11 @@ static void *server_spinning_thread_kernel(void *args)
 				msg->request_message_local_addr = NULL;
 				__send_rdma_message(conn, msg, NULL);
 
-				// DPRINT("SERVER: Client I AM READY reply will be send at %llu  length
+				// DPRINT("SERVER: Client I AM READY reply will be send at %llu
+				// length
 				// %d type %d message size %d id %llu\n",
-				//(LLU)hdr->reply,hdr->reply_length, hdr->type,message_size,hdr->MR);
+				//(LLU)hdr->reply,hdr->reply_length,
+				// hdr->type,message_size,hdr->MR);
 				goto iterate_next_element;
 			} else {
 				if (spinning_list_type == HIGH_PRIORITY)
@@ -1511,7 +1556,8 @@ void tiering_compaction_worker(void *_tiering_request)
 	}
 	assert(destination_tree_id != -1);
 
-	DPRINT("REPLICA: Tiering compaction from level %d to level %d number of keys "
+	DPRINT("REPLICA: Tiering compaction from level %d to level %d number of "
+	       "keys "
 	       "to compact = %" PRIu64 "\n",
 	       request->level_id, request->level_id + 1, total_keys_to_compact);
 	_calculate_btree_index_nodes(request->region, total_keys_to_compact);
@@ -1606,7 +1652,8 @@ void insert_kv_pair(struct krm_server_desc *server, struct krm_work_task *task)
 					(r_desc->region->num_of_backup *
 					 (sizeof(struct ru_master_log_buffer) +
 					  (RU_REPLICA_NUM_SEGMENTS * sizeof(struct ru_master_log_buffer_seg)))));
-				/*we need to dive into Kreon to check what in the current end of log.
+				/*we need to dive into Kreon to check what in the current end of
+* log.
 * Since for this region we are the first to do this there is surely no
 * concurrent access*/
 				uint64_t range;
@@ -1738,7 +1785,8 @@ void insert_kv_pair(struct krm_server_desc *server, struct krm_work_task *task)
 				// log_info("Remote buffers ready initialize remote segments with
 				// current state");
 
-				// 1.prepare the context for the poller to later free the staff needed*/
+				// 1.prepare the context for the poller to later free the staff
+				// needed*/
 				struct recover_log_context *context =
 					(struct recover_log_context *)malloc(sizeof(struct recover_log_context));
 				context->num_of_replies_needed = r_desc->region->num_of_backup;
@@ -2055,11 +2103,11 @@ follow");
 for (int i = 0; i < task->r_desc->region->num_of_backup; i++) {
 for (int j = 0; j < RU_REPLICA_NUM_SEGMENTS; j++) {
 log_info("replica[%d].seg[%d].start = %llu", i, j,
- r_desc->m_state->r_buf[i].segment[j].start);
+r_desc->m_state->r_buf[i].segment[j].start);
 log_info("log addr to replicate %llu",
- task->ins_req.metadata.log_offset);
+task->ins_req.metadata.log_offset);
 log_info("replica[%d].seg[%d].end = %llu", i, j,
- r_desc->m_state->r_buf[i].segment[j].end);
+r_desc->m_state->r_buf[i].segment[j].end);
 }
 }
 
@@ -2123,7 +2171,8 @@ log_info("replica[%d].seg[%d].end = %llu", i, j,
  * KreonR main processing function of networkrequests.
  * Each network processing request must be resumable. For each message type
  * KreonR process it via
- * a specific data path. We treat all taks related to network  as paths that may
+ * a specific data path. We treat all taks related to network  as paths that
+ * may
  * fail, that we can resume later. The idea
  * behind this
  * */
@@ -2489,7 +2538,7 @@ static void handle_task(struct krm_server_desc *mydesc, struct krm_work_task *ta
 				value = __find_key(r_desc->db, put_offt_req->kv, SEARCH_DIRTY_TREE);
 
 				void *new_value = malloc(SEGMENT_SIZE - sizeof(segment_header)); /*remove this later
-                        when test passes*/
+   when test passes*/
 				memset(new_value, 0x00, SEGMENT_SIZE - sizeof(segment_header));
 				/*copy key*/
 				memcpy(new_value, put_offt_req->kv, sizeof(msg_put_key) + K->key_size);
@@ -2501,10 +2550,13 @@ static void handle_task(struct krm_server_desc *mydesc, struct krm_work_task *ta
 					if ((put_offt_req->offset + V->value_size) > *(uint32_t *)value)
 						*(uint32_t *)(new_value + sizeof(msg_put_key) + K->key_size) =
 							put_offt_req->offset + V->value_size;
-					// log_info("New val size is %u offset %u client value %u old val %u
+					// log_info("New val size is %u offset %u client value %u old val
+					// %u
 					// kv_size %u",
-					//	 *(uint32_t *)(new_value + sizeof(msg_put_key) + K->key_size),
-					//	 put_offt_req->offset, V->value_size, *(uint32_t *)value,
+					//	 *(uint32_t *)(new_value + sizeof(msg_put_key) +
+					// K->key_size),
+					//	 put_offt_req->offset, V->value_size, *(uint32_t
+					//*)value,
 					// kv_size);
 				} else {
 					*(uint32_t *)(new_value + sizeof(msg_put_key) + K->key_size) =
@@ -2830,7 +2882,8 @@ static void handle_task(struct krm_server_desc *mydesc, struct krm_work_task *ta
 		// assert((actual_reply_size + padding) % MESSAGE_SEGMENT_SIZE == 0);
 		// assert((actual_reply_size + padding) <= task->msg->reply_length);
 
-		// log_info("actual size %u padding and tail %u pay_len %u buf capacity %u
+		// log_info("actual size %u padding and tail %u pay_len %u buf capacity
+		// %u
 		// buf remaining %u",
 		//	 actual_reply_size, task->reply_msg->padding_and_tail,
 		// task->reply_msg->pay_len, buf->capacity,
@@ -2928,7 +2981,7 @@ void _str_split(char *a_str, const char a_delim, uint64_t **core_vector, uint32_
 	count += last_comma < (a_str + strlen(a_str) - 1);
 	count++;
 	/* Add space for terminating null string so caller
-     knows where the list of returned strings ends. */
+knows where the list of returned strings ends. */
 
 	result = malloc(sizeof(char *) * count);
 
@@ -2961,8 +3014,8 @@ sem_t exit_main;
 static void sigint_handler(int signo)
 {
 	/*pid_t tid = syscall(__NR_gettid);*/
-	log_warn(
-		"caught signal closing server, sorry gracefull shutdown not yet supported. Contace <gesalous,mvard>@ics.forth.gr");
+	log_warn("caught signal closing server, sorry gracefull shutdown not yet "
+		 "supported. Contace <gesalous,mvard>@ics.forth.gr");
 	stats_notify_stop_reporter_thread();
 	sem_post(&exit_main);
 }
@@ -3050,13 +3103,13 @@ int main(int argc, char *argv[])
 				exit(EXIT_FAILURE);
 			}
 
-			//now we have all info to allocate ds_numa_server, pin,
-			//and inform the root server
+			// now we have all info to allocate ds_numa_server, pin,
+			// and inform the root server
 
 			struct ds_numa_server *server = (struct ds_numa_server *)malloc(
 				sizeof(struct ds_numa_server) + (num_workers * sizeof(struct ds_worker_thread)));
 
-			//But first let's build each numa server's RDMA channel*/
+			// But first let's build each numa server's RDMA channel*/
 			/*RDMA channel staff*/
 			server->channel = (struct channel_rdma *)malloc(sizeof(struct channel_rdma));
 			if (server->channel == NULL) {
@@ -3084,13 +3137,15 @@ int main(int argc, char *argv[])
 				perror("Reason: \n");
 				exit(EXIT_FAILURE);
 			}
-			//int status =
-			//	pthread_setaffinity_np(server->poll_cq_cnxt, sizeof(cpu_set_t), &numa_node_affinity);
-			//if (status != 0) {
+			// int status =
+			//	pthread_setaffinity_np(server->poll_cq_cnxt, sizeof(cpu_set_t),
+			//&numa_node_affinity);
+			// if (status != 0) {
 			//	log_fatal("failed to pin poll_cq thread");
 			//	exit(EXIT_FAILURE);
 			//}
-			log_info("Started and set affinity for poll_cq thread of server %d at port %d",
+			log_info("Started and set affinity for poll_cq thread of server %d "
+				 "at port %d",
 				 server->server_id, server->rdma_port);
 
 			server->channel->dynamic_pool =
@@ -3100,7 +3155,7 @@ int main(int argc, char *argv[])
 			server->channel->spinning_num_th = num_of_spinning_threads; // what?
 			// Lock for the conn_list what?
 			pthread_mutex_init(&server->channel->spin_conn_lock, NULL);
-			//channels done
+			// channels done
 
 			server->spinner.num_workers = num_workers;
 			server->spinner.spinner_id = spinning_thread_id;
@@ -3122,27 +3177,28 @@ int main(int argc, char *argv[])
 	}
 
 	/*
-   * list of chain reaction: main fires socket threads (one per server) and then
-   * spinners.
-   * Spinners finally fire up their workers
-   * */
+* list of chain reaction: main fires socket threads (one per server) and
+* then
+* spinners.
+* Spinners finally fire up their workers
+* */
 	for (int i = 0; i < root_server->num_of_numa_servers; i++) {
 		struct ds_numa_server *server = root_server->numa_servers[i];
 		pthread_mutex_init(&server->spinner.conn_list_lock, NULL);
 		server->spinner.conn_list = init_simple_concurrent_list();
-		//unused
+		// unused
 		server->spinner.idle_conn_list = init_simple_concurrent_list();
 
-		server->spinner.next_server_worker_to_submit_job = 0;
-		server->spinner.next_client_worker_to_submit_job = server->spinner.num_workers / 2;
+		server->spinner.next_worker_to_submit_job = 0;
 
 		if (pthread_create(&server->socket_thread_cnxt, NULL, socket_thread, (void *)server) != 0) {
 			log_fatal("failed to spawn socket thread  for Server: %d reason follows:", server->server_id);
 			perror("Reason: \n");
 			exit(EXIT_FAILURE);
 		}
-		//Now pin it in the numa node! Important step so allocations used by spinner and workers to be
-		//in the same numa node
+		// Now pin it in the numa node! Important step so allocations used by
+		// spinner and workers to be
+		// in the same numa node
 
 		cpu_set_t numa_node_affinity;
 		CPU_ZERO(&numa_node_affinity);
@@ -3165,7 +3221,7 @@ int main(int argc, char *argv[])
 			exit(EXIT_FAILURE);
 		}
 
-		//spinning thread pin staff
+		// spinning thread pin staff
 		log_info("Pinning spinning thread of Server: %d at port %d at core %d", server->server_id,
 			 server->rdma_port, server->spinner.spinner_id);
 		cpu_set_t spinning_thread_affinity_mask;
@@ -3177,8 +3233,9 @@ int main(int argc, char *argv[])
 			log_fatal("failed to pin spinning thread");
 			exit(EXIT_FAILURE);
 		}
-		log_info("Pinned successfully spinning thread of Server: %d at port %d at core %d", server->server_id,
-			 server->rdma_port, server->spinner.spinner_id);
+		log_info("Pinned successfully spinning thread of Server: %d at port %d at "
+			 "core %d",
+			 server->server_id, server->rdma_port, server->spinner.spinner_id);
 
 		root_server->numa_servers[i]->meta_server.root_server_id = i;
 		log_info("Initializing kreonR metadata server");

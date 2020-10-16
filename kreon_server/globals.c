@@ -34,7 +34,7 @@ static struct globals global_vars = { .zk_host_port = NULL,
 				      .is_volume_init = 0,
 				      .channel = NULL,
 				      .connections_per_server = NUM_OF_CONNECTIONS_PER_SERVER,
-				      .job_scheduling_max_queue_depth = 64,
+				      .job_scheduling_max_queue_depth = 128,
 				      .worker_spin_time_usec = 100 };
 
 static pthread_mutex_t g_lock = PTHREAD_MUTEX_INITIALIZER;
