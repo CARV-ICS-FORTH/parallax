@@ -118,6 +118,9 @@ struct sc_msg_pair sc_allocate_rpc_pair(struct connection_rdma *conn, uint32_t r
 	if (rep.stat != ALLOCATION_IS_SUCCESSFULL) {
 		/*rollback previous allocation*/
 		free_space_from_circular_buffer(conn->recv_circular_buf, (char *)rep.reply, actual_reply_size);
+		conn->recv_circular_buf->last_addr =
+			(char *)((uint64_t)conn->recv_circular_buf->last_addr - actual_reply_size);
+		conn->recv_circular_buf->remaining_space += actual_reply_size;
 		goto exit;
 	}
 	rep.request = (struct msg_header *)addr;

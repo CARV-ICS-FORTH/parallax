@@ -21,7 +21,7 @@
 #include "../kreon_lib/scanner/scanner.h"
 #include "../kreon_server/djb2.h"
 #include <log.h>
-#define KRC_GET_SIZE 4096
+#define KRC_GET_SIZE (256 * 1024)
 
 static volatile uint32_t reply_checker_exit = 0;
 enum reply_checker_status {

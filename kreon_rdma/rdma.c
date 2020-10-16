@@ -753,25 +753,30 @@ void crdma_init_client_connection_list_hosts(connection_rdma *conn, char **hosts
 	struct rdma_addrinfo hints, *res;
 	char *ip;
 	char *port;
-	char host_copy[512];
-	char *strtok_state;
-	strncpy(host_copy, hosts[0], 512);
+	int host_copy_size = 1024;
+	char *host_copy = (char *)malloc(host_copy_size);
+	if (host_copy_size < strlen(hosts[0])) {
+		log_fatal("Potential buffer overflow string len is %d allocated buffer is %d", strlen(hosts[0]),
+			  host_copy_size);
+		exit(EXIT_FAILURE);
+	}
+	char *strtok_state = NULL;
+	strcpy(host_copy, hosts[0]);
 	memset(&hints, 0, sizeof hints);
 	hints.ai_port_space = RDMA_PS_TCP;
 	int idx = strlen(host_copy) - 1;
-	char special_character;
+	char special_character[2] = { '\0', '\0' };
 	while (idx >= 0) {
 		if (host_copy[idx] == ':' || host_copy[idx] == '-') {
-			special_character = host_copy[idx];
+			special_character[0] = host_copy[idx];
 			break;
 		}
 		--idx;
 	}
-	ip = strtok_r(host_copy, &special_character, &strtok_state);
-	port = strtok_r(NULL, &special_character, &strtok_state);
+	ip = strtok_r(host_copy, special_character, &strtok_state);
+	port = strtok_r(NULL, special_character, &strtok_state);
 
 	log_info("Connecting to %s at port %s\n", ip, port);
-
 	int ret = rdma_getaddrinfo(ip, port, &hints, &res);
 	if (ret) {
 		log_fatal("rdma_getaddrinfo: %s, %s\n", hosts[0], strerror(errno));
@@ -796,9 +801,18 @@ void crdma_init_client_connection_list_hosts(connection_rdma *conn, char **hosts
 	conn_param.flow_control = 1;
 	conn_param.retry_count = 7;
 	conn_param.rnr_retry_count = 7;
-	ret = rdma_connect(rdma_cm_id, &conn_param);
+	int tries = 0;
+	while (tries < 100) {
+		ret = rdma_connect(rdma_cm_id, &conn_param);
+		if (ret) {
+			log_warn("rdma_connect failed reconnecting: %s", strerror(errno));
+			exit(EXIT_FAILURE);
+		}
+		usleep(50000);
+		++tries;
+	}
 	if (ret) {
-		log_fatal("rdma_connect: %s", strerror(errno));
+		log_fatal("rdma_connect failed: %s", strerror(errno));
 		exit(EXIT_FAILURE);
 	}
 
@@ -817,7 +831,7 @@ void crdma_init_client_connection_list_hosts(connection_rdma *conn, char **hosts
 		log_fatal("rdma_post_send: %s", strerror(errno));
 		exit(EXIT_FAILURE);
 	}
-
+	free(host_copy);
 	switch (type) {
 	case MASTER_TO_REPLICA_CONNECTION:
 		log_info("Remote side accepted created a new MASTER_TO_REPLICA_CONNECTION");

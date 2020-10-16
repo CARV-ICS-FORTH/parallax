@@ -30,7 +30,7 @@ typedef enum kreon_op_status {
 #define TU_RDMA_CONN_PER_REGION 0 // 1 RDMA connection per region, 0 RDMA connection per server
 #define TU_RDMA_CONN_PER_SERVER (!TU_RDMA_CONN_PER_REGION)
 
-#define NUM_OF_CONNECTIONS_PER_SERVER 1
+#define NUM_OF_CONNECTIONS_PER_SERVER 16
 
 #define SIZEUINT32_T (sizeof(uint32_t))
 #define SIZEUINT32_T_2 (sizeof(uint32_t) << 1)
