@@ -2801,25 +2801,35 @@ static void handle_task(struct krm_work_task *task)
 		task->reply_msg = (void *)((uint64_t)task->conn->rdma_memory_regions->local_memory_buffer +
 					   (uint64_t)task->msg->reply);
 		/*initialize message*/
-		if (task->msg->reply_length >= TU_HEADER_SIZE) {
-			task->reply_msg->pay_len = 0;
-			task->reply_msg->padding_and_tail = 0;
-			task->reply_msg->data = NULL;
-			task->reply_msg->next = NULL;
-
-			task->reply_msg->type = TEST_REPLY;
-			task->reply_msg->receive = TU_RDMA_REGULAR_MSG;
-			task->reply_msg->local_offset = (uint64_t)task->msg->reply;
-			task->reply_msg->remote_offset = (uint64_t)task->msg->reply;
-
-			task->reply_msg->ack_arrived = KR_REP_PENDING;
-			task->reply_msg->request_message_local_addr = NULL;
-			task->kreon_operation_status = TASK_COMPLETE;
-		} else {
+		if (task->msg->reply_length < TU_HEADER_SIZE) {
 			log_fatal("CLIENT reply space not enough  size %" PRIu32 " FIX XXX TODO XXX\n",
 				  task->msg->reply_length);
 			exit(EXIT_FAILURE);
 		}
+
+		/*assert(task->msg->reply_length == 1024);*/
+		task->reply_msg->pay_len = task->msg->pay_len;
+		task->reply_msg->padding_and_tail = task->msg->padding_and_tail;
+		assert(TU_HEADER_SIZE + task->reply_msg->pay_len + task->reply_msg->padding_and_tail ==
+		       task->msg->reply_length);
+		task->reply_msg->data = NULL;
+		task->reply_msg->next = NULL;
+
+		task->reply_msg->type = TEST_REPLY;
+		task->reply_msg->receive = TU_RDMA_REGULAR_MSG;
+		task->reply_msg->local_offset = (uint64_t)task->msg->reply;
+		task->reply_msg->remote_offset = (uint64_t)task->msg->reply;
+
+		task->reply_msg->ack_arrived = KR_REP_PENDING;
+		task->reply_msg->request_message_local_addr = NULL;
+		task->kreon_operation_status = TASK_COMPLETE;
+
+		uint32_t *tail = (uint32_t *)((uint64_t)task->reply_msg + task->reply_msg->pay_len +
+					      task->reply_msg->padding_and_tail - TU_TAIL_SIZE + sizeof(msg_header));
+		/*log_info("tail - reply = %"PRId64"\n", (uint64_t)tail - (uint64_t)task->reply_msg);*/
+		/*log_info("reply_msg = {.pay_len = %llu, padding_and_tail = %llu}", task->reply_msg->pay_len, task->reply_msg->padding_and_tail);*/
+		*tail = TU_RDMA_REGULAR_MSG;
+
 		/*piggyback info for use with the client*/
 		task->reply_msg->request_message_local_addr = task->notification_addr;
 		break;
