@@ -824,7 +824,6 @@ void crdma_init_client_connection_list_hosts(connection_rdma *conn, char **hosts
 			log_warn("rdma_connect failed reconnecting: %s", strerror(errno));
 			usleep(50000);
 			++tries;
-			exit(EXIT_FAILURE);
 		} else
 			break;
 	}

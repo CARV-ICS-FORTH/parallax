@@ -257,7 +257,7 @@ retry:
 		goto retry;
 	if (cps == NULL) {
 		pthread_mutex_lock(&client_regions.conn_lock);
-		++client_regions.lc_conn.c1;
+
 		HASH_FIND_PTR(client_regions.root_cps, &hash_key, cps);
 		if (cps == NULL) {
 			/*Refresh your knowledge about the server*/
@@ -270,11 +270,12 @@ retry:
 			if (rc != ZOK) {
 				log_warn("Failed to refresh server info %s with code %s", primary, zku_op2String(rc));
 				free(primary);
-				++client_regions.lc_conn.c2;
+				//++client_regions.lc_conn.c2;
 				pthread_mutex_unlock(&client_regions.conn_lock);
 				return NULL;
 			}
 			//log_info("RDMA addr = %s", r_desc->region.primary.RDMA_IP_addr);
+			++client_regions.lc_conn.c1;
 			_cu_add_conn_for_server(&r_desc->region.primary, hash_key);
 			++client_regions.lc_conn.c2;
 		}
