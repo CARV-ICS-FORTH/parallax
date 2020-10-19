@@ -64,6 +64,6 @@ pre-merge:
   stage: build
   script:
     - ./scripts/pre-merge-CI.sh
-    - ./scripts/commit-msg-lint.sh
+    - ./scripts/commit-msg-lint.py
   only:
     - merge_requests
