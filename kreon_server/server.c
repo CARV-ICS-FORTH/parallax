@@ -73,15 +73,13 @@ struct ds_task_buffer_pool {
 struct ds_worker_thread {
 	utils_queue_s work_queue;
 	sem_t sem;
-	pthread_t context;
-	// pthread_spinlock_t work_queue_lock;
-	volatile uint64_t lc1;
-	volatile uint64_t lc2;
 	struct channel_rdma *channel;
+	pthread_t context;
 	/*for affinity purposes*/
 	/*my parent*/
 	int worker_id;
 	int root_server_id;
+	volatile int idle_time;
 	volatile worker_status status;
 };
 
@@ -452,7 +450,6 @@ void *worker_thread_kernel(void *args)
 
 	pthread_setname_np(pthread_self(), "ds_worker");
 	worker = (struct ds_worker_thread *)args;
-	worker->status = BUSY;
 
 	while (1) {
 		// Get the next task from one of the task queues
@@ -461,39 +458,26 @@ void *worker_thread_kernel(void *args)
 		if (!(job = utils_queue_pop(&worker->work_queue))) {
 			// Try for a few more usecs
 			struct timespec start, end;
-			int time = 0;
+			int local_idle_time;
 			clock_gettime(CLOCK_MONOTONIC, &start);
-			while (time < spin_time_usec) {
+			while (1) {
 				// I could have a for loop with a few iterations to avoid constantly
 				// calling clock_gettime
 				if ((job = utils_queue_pop(&worker->work_queue)))
 					break;
 				clock_gettime(CLOCK_MONOTONIC, &end);
-				time = diff_timespec_usec(&start, &end);
-			}
-
-			if (!job) {
-				//#if 0
-				// Go to sleep
-				++worker->lc2;
-				// pthread_spin_lock(&worker->work_queue_lock);
-				for (int i = 0; i < 10; i++) {
+				local_idle_time = diff_timespec_usec(&start, &end);
+				if (local_idle_time > spin_time_usec)
+					worker->idle_time = local_idle_time;
+				if (worker->status == IDLE_SLEEPING) {
+					worker->idle_time = 0;
+					sem_wait(&worker->sem);
 					job = utils_queue_pop(&worker->work_queue);
-					if (job) {
-						++worker->lc1;
-						goto process_task;
-					}
+					break;
 				}
-				worker->status = IDLE_SLEEPING;
-				++worker->lc1;
-				//log_info("sleeping");
-				sem_wait(&worker->sem);
-				//log_info("woke_up");
-				++worker->lc2;
-				worker->status = BUSY;
-				++worker->lc1;
-				continue;
 			}
+			if (!job) // Which case would result here?
+				continue;
 		}
 	process_task:
 		/*process task*/
@@ -773,21 +757,12 @@ static int assign_job_to_worker(struct ds_spinning_thread *spinner, struct conne
 		}
 		return KREON_FAILURE;
 	}
-	uint64_t lc1, lc2;
-retry:
-	lc1 = spinner->worker[worker_id].lc1;
-	// pthread_spin_lock(&workers[worker_id].work_queue_lock);
+
 	if (spinner->worker[worker_id].status == IDLE_SLEEPING) {
-		/*wake him up */
-		//++wake_up_workers_operations;
+		spinner->worker[worker_id].status = BUSY;
 		sem_post(&spinner->worker[worker_id].sem);
 	}
 
-	lc2 = spinner->worker[worker_id].lc2;
-	if (lc1 != lc2) {
-		goto retry;
-	}
-	// pthread_spin_unlock(&workers[worker_id].work_queue_lock);
 	return KREON_SUCCESS;
 }
 
@@ -858,11 +833,8 @@ static void *server_spinning_thread_kernel(void *args)
 	/*Init my worker threads*/
 	for (int i = 0; i < spinner->num_workers; i++) {
 		/*init worker group vars*/
-		spinner->worker[i].lc1 = 0;
-		spinner->worker[i].lc2 = 0;
-		//pthread_spin_init(&spinner->worker[i].work_queue_lock,
-		//                 PTHREAD_PROCESS_PRIVATE);
-		spinner->worker[i].status = WORKER_NOT_RUNNING;
+		spinner->worker[i].idle_time = 0;
+		spinner->worker[i].status = IDLE_SLEEPING;
 		sem_init(&spinner->worker[i].sem, 0, 0);
 		utils_queue_init(&spinner->worker[i].work_queue);
 		spinner->worker[i].root_server_id = spinner->root_server_id;
@@ -889,6 +861,7 @@ static void *server_spinning_thread_kernel(void *args)
 	}
 
 	int count = 0;
+	int max_idle_time_usec = globals_get_worker_spin_time_usec();
 
 	while (1) {
 		/*in cases where there are no connections stop spinning (optimization)*/
@@ -896,7 +869,7 @@ static void *server_spinning_thread_kernel(void *args)
 		//	sem_wait(&channel->sem_spinning[spinning_thread_id]);
 
 		/*gesalous, iterate the connection list of this channel for new
-     * messages*/
+		* messages*/
 		if (count < 10) {
 			node = spinner->conn_list->first;
 			spinning_list_type = HIGH_PRIORITY;
@@ -924,6 +897,12 @@ static void *server_spinning_thread_kernel(void *args)
 					}
 				}
 			}
+			for (int i = 0; i < spinner->num_workers; ++i) {
+				if (spinner->worker[i].idle_time > max_idle_time_usec &&
+				    spinner->worker[i].status == BUSY)
+					spinner->worker[i].status = IDLE_SLEEPING;
+			}
+
 			conn = (connection_rdma *)node->data;
 
 			if (conn->status != CONNECTION_OK)
@@ -947,8 +926,8 @@ static void *server_spinning_thread_kernel(void *args)
 					request->reply_message = hdr;
 					request->ack_arrived = KR_REP_ARRIVED;
 					/*No more waking ups, spill thread will poll (with yield) to see
-* the
-* message*/
+					* the
+					* message*/
 					// sem_post(&((msg_header
 					// *)hdr->request_message_local_addr)->sem);
 				} else {
@@ -957,20 +936,20 @@ static void *server_spinning_thread_kernel(void *args)
 					rc = assign_job_to_worker(spinner, conn, hdr, NULL);
 					if (rc == KREON_FAILURE) {
 						/*all workers are busy let's see messages from other
-             * connections*/
+						 * connections*/
 						//__sync_fetch_and_sub(&conn->pending_received_messages, 1);
 						/*Caution! message not consumed leave the rendezvous points as
-             * is*/
+						 * is*/
 						hdr->receive = recv;
 						goto iterate_next_element;
 					}
 				}
 
 				/**
-* Set the new rendezvous point, be careful for the case that the
-* rendezvous is
-* outsize of the rdma_memory_regions->remote_memory_buffer
-* */
+				* Set the new rendezvous point, be careful for the case that the
+				* rendezvous is
+				* outsize of the rdma_memory_regions->remote_memory_buffer
+				* */
 				_update_rendezvous_location(conn, message_size);
 			} else if (recv == CONNECTION_PROPERTIES) {
 				message_size = wait_for_payload_arrival(hdr);

@@ -36,8 +36,6 @@
 #define CTX_HANDSHAKE_FAILURE 1
 #define MAX_COMPLETION_ENTRIES 32
 
-
-
 int LIBRARY_MODE = SERVER_MODE; /*two modes for the communication rdma library SERVER and CLIENT*/
 
 int assign_job_to_worker(struct channel_rdma *channel, struct connection_rdma *conn, msg_header *msg,
@@ -840,7 +838,6 @@ void crdma_init_client_connection_list_hosts(connection_rdma *conn, char **hosts
 	if (ret) {
 		log_fatal("rdma_connect failed: %s", strerror(errno));
 		exit(EXIT_FAILURE);
-
 	}
 
 	conn->peer_mr = (struct ibv_mr *)malloc(sizeof(struct ibv_mr));
