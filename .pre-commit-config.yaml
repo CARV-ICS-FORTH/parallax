@@ -42,7 +42,7 @@ repos:
         language: node
         pass_filenames: false
         types: [python]
-        additional_dependencies: ['pyright@1.1.63']
+        additional_dependencies: ['pyright@1.1.80']
 
 -   repo: https://github.com/jorisroovers/gitlint
     rev: master
