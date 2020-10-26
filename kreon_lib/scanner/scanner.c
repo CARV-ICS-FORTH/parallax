@@ -419,9 +419,13 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 	case DYNAMIC_LEAF:;
 		struct dl_bsearch_result dlresult = { .middle = 0, .status = INSERT, .op = DYNAMIC_LEAF_FIND };
 		{
+			bt_insert_req req;
+			req.key_value_buf = key_buf_prefix;
+			req.metadata.kv_size = PREFIX_SIZE;
+
+			/* req.key_value_buf =  */
 			binary_search_dynamic_leaf((struct bt_dynamic_leaf_node *)node,
-						   db_desc->levels[level_id].leaf_size, (struct splice *)key_buf_prefix,
-						   &dlresult);
+						   db_desc->levels[level_id].leaf_size, &req, &dlresult);
 			middle = dlresult.middle;
 			assert(dlresult.status != ERROR);
 			break;
@@ -495,8 +499,9 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 			case KV_INLOG: {
 				struct bt_leaf_entry *kv_entry = (struct bt_leaf_entry *)get_kv_offset(
 					dlnode, db_desc->levels[level_id].leaf_size, slot_array[middle].index);
-				kv_entry->pointer = REAL_ADDRESS(kv_entry->pointer);
-				level_sc->keyValue = kv_entry;
+				level_sc->kv_entry = *kv_entry;
+				level_sc->kv_entry.pointer = (uint64_t)REAL_ADDRESS(kv_entry->pointer);
+				level_sc->keyValue = &level_sc->kv_entry;
 				level_sc->kv_format = KV_PREFIX;
 
 				/* REAL_ADDRESS(*(uint64_t*)get_kv_offset( */
@@ -781,8 +786,11 @@ int32_t _get_next_KV(level_scanner *sc)
 			case KV_INLOG: {
 				struct bt_leaf_entry *kv_entry = (struct bt_leaf_entry *)get_kv_offset(
 					dlnode, db_desc->levels[level_id].leaf_size, slot_array[idx].index);
-				kv_entry->pointer = REAL_ADDRESS(kv_entry->pointer);
-				sc->keyValue = kv_entry;
+
+				/* kv_entry->pointer = (uint64_t) REAL_ADDRESS(kv_entry->pointer); */
+				sc->kv_entry = *kv_entry;
+				sc->kv_entry.pointer = (uint64_t)REAL_ADDRESS(kv_entry->pointer);
+				sc->keyValue = &sc->kv_entry;
 				sc->kv_format = KV_PREFIX;
 				/* REAL_ADDRESS(*(uint64_t*)get_kv_offset( */
 				/* dlnode, db_desc->levels[level_id].leaf_size, slot_array[idx].index)) */;

@@ -144,10 +144,6 @@ struct bt_leaf_entry {
 	uint64_t pointer;
 } __attribute__((packed));
 
-struct bt_leaf_entry2 {
-	uint64_t pointer;
-};
-
 struct bt_leaf_entry_bitmap {
 	unsigned char bitmap; // This bitmap informs us which kv_entry is available to store data in the static leaf.
 };

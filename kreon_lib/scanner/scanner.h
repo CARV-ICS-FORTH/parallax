@@ -15,6 +15,7 @@
 typedef enum SEEK_SCANNER_MODE { GREATER = 5, GREATER_OR_EQUAL = 6, FETCH_FIRST } SEEK_SCANNER_MODE;
 
 typedef struct level_scanner {
+	struct bt_leaf_entry kv_entry;
 	db_handle *db;
 	stackT stack;
 	node_header *root; /*root of the tree when the cursor was initialized/reset, related to CPAAS-188*/

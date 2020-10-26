@@ -1379,6 +1379,7 @@ uint8_t insert_key_value(db_handle *handle, void *key, void *value, uint32_t key
 
 	if (kv_size > KV_MAX_SIZE) {
 		log_fatal("Key buffer overflow");
+		BREAKPOINT;
 		exit(EXIT_FAILURE);
 	}
 	/*prepare the request*/
@@ -1438,9 +1439,16 @@ void write_keyvalue_inlog(log_operation *req, metadata_tologop *data_size, char 
 
 	switch (req->optype_tolog) {
 	case insertOp:
-		memcpy(addr_inlog, req->ins_req->key_value_buf,
-		       sizeof(data_size->key_len) + data_size->key_len + sizeof(data_size->value_len) +
-			       data_size->value_len);
+		if (req->metadata->key_format == KV_FORMAT) {
+			memcpy(addr_inlog, req->ins_req->key_value_buf,
+			       sizeof(data_size->key_len) + data_size->key_len + sizeof(data_size->value_len) +
+				       data_size->value_len);
+		} else {
+			memcpy(addr_inlog, (void *)*(uint64_t *)(req->ins_req->key_value_buf + PREFIX_SIZE),
+			       sizeof(data_size->key_len) + data_size->key_len + sizeof(data_size->value_len) +
+				       data_size->value_len);
+			req->metadata->key_format = KV_FORMAT;
+		}
 		break;
 	case deleteOp:
 		memcpy(addr_inlog, req->del_req->key_buf, sizeof(data_size->key_len) + data_size->key_len);
@@ -1519,7 +1527,8 @@ void update_log_metadata(db_descriptor *db_desc, struct log_towrite *log_metadat
 		if (log_metadata->level_id != 0) {
 			db_desc->medium_log_tail = log_metadata->log_tail;
 		} else
-			db_desc->inmem_medium_log_tail[db_desc->levels[0].active_tree] = log_metadata->log_tail;
+			db_desc->inmem_medium_log_tail[db_desc->levels[0].active_tree] =
+				(segment_header *)log_metadata->log_tail;
 		return;
 	case SMALL:
 		db_desc->small_log_tail = log_metadata->log_tail;
@@ -2116,10 +2125,13 @@ int insert_KV_at_leaf(bt_insert_req *ins_req, node_header *leaf)
 		;
 	} else if (!ins_req->metadata.append_to_log && ins_req->metadata.recovery_request) {
 		;
-	} /* else { */
-	/* 	log_fatal("Wrong combination of key format / append_to_log option"); */
-	/* 	exit(EXIT_FAILURE); */
-	/* } */
+	} else if (ins_req->metadata.key_format == KV_FORMAT)
+		;
+	else {
+		log_fatal("Wrong combination of key format / append_to_log option");
+		BREAKPOINT;
+		exit(EXIT_FAILURE);
+	}
 
 	switch (db_desc->levels[level_id].node_layout) {
 	case STATIC_LEAF:

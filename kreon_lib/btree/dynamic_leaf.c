@@ -71,6 +71,8 @@ char *fill_keybuf(char *key_loc, enum kv_entry_location key_type)
 		return key_loc;
 	case KV_INLOG: {
 		struct bt_leaf_entry *kv = (struct bt_leaf_entry *)key_loc;
+		if (*(uint32_t *)REAL_ADDRESS(kv->pointer) > 50)
+			BREAKPOINT;
 		return (char *)REAL_ADDRESS(kv->pointer); /* (char *) REAL_ADDRESS(kv->pointer); */ //;
 	}
 	default:
@@ -85,25 +87,12 @@ struct find_result find_key_in_dynamic_leaf(const struct bt_dynamic_leaf_node *l
 	struct dl_bsearch_result result = { .middle = 0, .status = INSERT, .op = DYNAMIC_LEAF_FIND };
 	struct find_result ret_result = { .kv = NULL, .key_type = KV_INPLACE };
 	struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(leaf);
-	struct splice *key_buf = (struct splice *)buf;
-	//	BREAKPOINT;
 	assert(buf != NULL);
-	static int x = 0;
-	x++;
-	/* log_info("%d",x); */
 	SERIALIZE_KEY(buf, key, key_size);
 	bt_insert_req req;
 	req.key_value_buf = buf;
 	req.metadata.key_format = KV_FORMAT;
 	binary_search_dynamic_leaf(leaf, leaf_size, &req, &result);
-	/* print_all_keys(leaf, leaf_size); */
-	/* if (result.status != FOUND) { */
-	/* log_info("Middle %d offset %d Numberofentries %d Key Search %*s", result.middle, */
-	/* 	 slot_array[result.middle].index, leaf->header.numberOfEntriesInNode, key_buf->size, */
-	/* 	 key_buf->data); */
-	/* 	raise(SIGINT); */
-	/* 	exit(EXIT_FAILURE); */
-	/* } */
 
 	switch (result.status) {
 	case FOUND:
@@ -172,14 +161,15 @@ void binary_search_dynamic_leaf(const struct bt_dynamic_leaf_node *leaf, uint32_
 		ret_case = ret < 0 ? LESS_THAN_ZERO : ret > 0 ? GREATER_THAN_ZERO : EQUAL_TO_ZERO;
 
 		if (ret_case == EQUAL_TO_ZERO) {
-			leaf_key_buf =
-				fill_keybuf(get_kv_offset(leaf, leaf_size, offset_in_leaf), slot_array[middle].bitmap);
+			char *kv_offset = get_kv_offset(leaf, leaf_size, offset_in_leaf);
+			leaf_key_buf = fill_keybuf(kv_offset, slot_array[middle].bitmap);
 			if (req->metadata.key_format == KV_PREFIX) {
 				/* log_info("TEST1"); */
-				ret = _tucana_key_cmp(leaf_key_buf, *(uint64_t *)(req->key_value_buf + PREFIX_SIZE),
-						      KV_FORMAT, KV_FORMAT);
+				struct bt_leaf_entry *kv_entry = (struct bt_leaf_entry *)req->key_value_buf;
+				ret = _tucana_key_cmp(leaf_key_buf, (void *)kv_entry->pointer, KV_FORMAT, KV_FORMAT);
 			} else {
 				/* log_info("TEST2 %*s %*s",*(uint32_t*)leaf_key_buf,leaf_key_buf + 4,*(uint32_t*)req->key_value_buf,req->key_value_buf + 4); */
+				unsigned key_size = *(uint32_t *)leaf_key_buf;
 				ret = _tucana_key_cmp(leaf_key_buf, req->key_value_buf, KV_FORMAT, KV_FORMAT);
 			}
 			/* log_info("prefix %*s full leaf key %*s user %*s",PREFIX_SIZE,leaf_key_prefix.prefix, */
@@ -425,7 +415,6 @@ void write_data_in_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, char *dest, c
 				uint32_t key_value_size, uint32_t middle, int level_id, int kv_format)
 {
 	struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(leaf);
-	uint32_t leaf_log_size = leaf->header.leaf_log_size;
 	int status = UNKNOWN_CATEGORY;
 
 	if (key_value_size >= BIG)
@@ -448,14 +437,15 @@ void write_data_in_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, char *dest, c
 		}
 	} else if (status == KV_INLOG) {
 		struct splice *key = (struct splice *)key_value_buf;
+		struct bt_leaf_entry *serialized = (struct bt_leaf_entry *)key_value_buf;
 		slot_array[middle].bitmap = KV_INLOG;
 		if (kv_format == KV_FORMAT) {
 			leaf->header.leaf_log_size += append_bt_leaf_entry_inplace(
 				dest, ABSOLUTE_ADDRESS(key_value_buf), key->data, PREFIX_SIZE /* MIN(key->size, ) */);
 		} else {
-			leaf->header.leaf_log_size += append_bt_leaf_entry_inplace(
-				dest, ABSOLUTE_ADDRESS(*(uint64_t *)(key_value_buf + PREFIX_SIZE)), key_value_buf,
-				PREFIX_SIZE /* MIN(key->size, ) */);
+			leaf->header.leaf_log_size +=
+				append_bt_leaf_entry_inplace(dest, ABSOLUTE_ADDRESS(serialized->pointer), key_value_buf,
+							     PREFIX_SIZE /* MIN(key->size, ) */);
 		}
 		//Note There is a case where YCSB generates 11 bytes keys and we read invalid bytes from stack.
 		//This should be fixed after Eurosys deadline.
@@ -523,7 +513,6 @@ int8_t insert_in_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, bt_insert_req *
 {
 	struct dl_bsearch_result bsearch = { .middle = 0, .status = INSERT, .op = DYNAMIC_LEAF_INSERT };
 	char *leaf_log_tail = get_leaf_log_offset(leaf, level->leaf_size);
-	struct splice *key = (struct splice *)req->key_value_buf;
 	uint32_t metadata_size = sizeof(struct bt_dynamic_leaf_node) +
 				 (sizeof(struct bt_dynamic_leaf_slot_array) * (leaf->header.num_entries - 1));
 	uint32_t upper_bound = level->leaf_size - metadata_size;
