@@ -259,6 +259,10 @@ int prefix_compare(char *l, char *r, size_t prefix_size)
 /*XXX TODO XXX REMOVE HEIGHT UNUSED VARIABLE*/
 void free_buffered(void *_handle, void *address, uint32_t num_bytes, int height)
 {
+	(void)_handle;
+	(void)address;
+	(void)num_bytes;
+	(void)height;
 	log_info("gesalous fix update free_buffered");
 #if 0
 	db_handle *handle = (db_handle *)_handle;
@@ -595,9 +599,10 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 
 							/*restore now persistent state of all levels*/
 							for (level_id = 0; level_id < MAX_LEVELS; level_id++) {
-								db_desc->levels[level_id].level_size = 0;
 								for (tree_id = 0; tree_id < NUM_TREES_PER_LEVEL;
 								     tree_id++) {
+									db_desc->levels[level_id].level_size[tree_id] =
+										0;
 									/*segments info per level*/
 									if (db_entry->first_segment
 										    [(level_id * NUM_TREES_PER_LEVEL) +
@@ -634,8 +639,8 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 											.offset[tree_id] = 0;
 									}
 									/*total keys*/
-									db_desc->levels[level_id].total_keys[tree_id] =
-										db_entry->total_keys
+									db_desc->levels[level_id].level_size[tree_id] =
+										db_entry->level_size
 											[(level_id *
 											  NUM_TREES_PER_LEVEL) +
 											 tree_id];
@@ -810,7 +815,7 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 			for (tree_id = 0; tree_id < NUM_TREES_PER_LEVEL; tree_id++) {
 				db_desc->levels[level_id].root_r[tree_id] = NULL;
 				db_desc->levels[level_id].root_w[tree_id] = NULL;
-				db_desc->levels[level_id].total_keys[tree_id] = 0;
+				db_desc->levels[level_id].level_size[tree_id] = 0;
 				db_desc->levels[level_id].first_segment[tree_id] = NULL;
 				db_desc->levels[level_id].last_segment[tree_id] = NULL;
 				db_desc->levels[level_id].offset[tree_id] = 0;
@@ -857,13 +862,17 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 finish_init:
 	/*init soft state for all levels*/
 	for (level_id = 0; level_id < MAX_LEVELS; level_id++) {
+		if (level_id == 0)
+			db_desc->levels[level_id].max_level_size = L0_SIZE;
+		else
+			db_desc->levels[level_id].max_level_size =
+				db_desc->levels[level_id - 1].max_level_size * GROWTH_FACTOR;
+
 		RWLOCK_INIT(&db_desc->levels[level_id].guard_of_level.rx_lock, NULL);
 		MUTEX_INIT(&db_desc->levels[level_id].spill_trigger, NULL);
 		MUTEX_INIT(&db_desc->levels[level_id].level_allocation_lock, NULL);
 		init_level_locktable(db_desc, level_id);
-		db_desc->levels[level_id].level_size = 0;
 		db_desc->levels[level_id].active_writers = 0;
-		db_desc->levels[level_id].outstanding_spill_ops = 0;
 		/*check again which tree should be active*/
 		db_desc->levels[level_id].active_tree = 0;
 
@@ -883,7 +892,14 @@ finish_init:
 	free(key);
 
 	db_desc->stat = DB_OPEN;
-	log_info("opened DB %s", db_name);
+	log_info("opened DB %s starting its compaction daemon", db_name);
+
+	sem_init(&db_desc->compaction_daemon_interrupts, PTHREAD_PROCESS_PRIVATE, 0);
+	if (pthread_create(&(handle->db_desc->compaction_daemon), NULL, (void *)compaction_daemon, (void *)handle) !=
+	    0) {
+		log_fatal("Failed to start compaction_daemon for db %s", db_name);
+		exit(EXIT_FAILURE);
+	}
 
 #if 0
 		else{
@@ -1049,6 +1065,8 @@ void spill_database(db_handle *handle)
 /*method for closing a database*/
 void flush_volume(volume_descriptor *volume_desc, char force_spill)
 {
+	(void)volume_desc;
+	(void)force_spill;
 #if 0
   db_descriptor *db_desc;
 	db_handle *handles;
@@ -1104,10 +1122,21 @@ uint8_t insert_key_value(db_handle *handle, void *key, void *value, uint32_t key
 	char *key_buf = __tmp;
 	uint32_t kv_size;
 
-	/*throttle control check*/
-	while (handle->db_desc->levels[0].level_size > ZERO_LEVEL_MEMORY_UPPER_BOUND &&
-	       handle->db_desc->levels[0].outstanding_spill_ops) {
-		usleep(THROTTLE_SLEEP_TIME);
+	int active_tree = handle->db_desc->levels[0].active_tree;
+	while (handle->db_desc->levels[0].level_size[active_tree] > handle->db_desc->levels[0].max_level_size) {
+		pthread_mutex_lock(&handle->db_desc->client_barrier_lock);
+		active_tree = handle->db_desc->levels[0].active_tree;
+
+		if (handle->db_desc->levels[0].level_size[active_tree] > handle->db_desc->levels[0].max_level_size) {
+			sem_post(&handle->db_desc->compaction_daemon_interrupts);
+			if (pthread_cond_wait(&handle->db_desc->client_barrier,
+					      &handle->db_desc->client_barrier_lock) != 0) {
+				log_fatal("failed to throttle");
+				exit(EXIT_FAILURE);
+			}
+		}
+		active_tree = handle->db_desc->levels[0].active_tree;
+		pthread_mutex_unlock(&handle->db_desc->client_barrier_lock);
 	}
 
 	kv_size = sizeof(uint32_t) + key_size + sizeof(uint32_t) + value_size + sizeof(uint64_t);
@@ -1237,159 +1266,6 @@ void *append_key_value_to_log(log_operation *req)
 	return addr_inlog;
 }
 
-static void spill_trigger(bt_spill_request *req)
-{
-	log_info("Trigerring spill for db %s and level %u", req->db_desc->db_name, req->src_level);
-	if (pthread_create(&(req->db_desc->levels[req->src_level].spiller[req->src_tree]), NULL, (void *)spill_buffer,
-			   (void *)req) != 0) {
-		log_fatal("FATAL: error creating spiller thread");
-		exit(EXIT_FAILURE);
-	}
-}
-
-static void prepare_dbdescriptor_forspill(spill_data_totrigger *data)
-{
-	data->db_desc->levels[data->level_id].tree_status[data->tree_to_spill] = SPILLING_IN_PROGRESS;
-	data->db_desc->levels[data->level_id].active_tree = data->active_tree;
-	data->db_desc->levels[data->level_id].level_size = 0;
-	__sync_fetch_and_add(&data->db_desc->levels[data->level_id].outstanding_spill_ops, 1);
-}
-
-static void rollback_dbdescriptor_before_spill(spill_data_totrigger *data)
-{
-	data->db_desc->levels[data->level_id].tree_status[data->tree_to_spill] = NO_SPILLING;
-	data->db_desc->levels[data->level_id].active_tree = data->prev_active_tree;
-	data->db_desc->levels[data->level_id].level_size = data->prev_level_size;
-	__sync_fetch_and_sub(&data->db_desc->levels[data->level_id].outstanding_spill_ops, 1);
-}
-
-bt_spill_request *bt_spill_check(db_handle *handle, uint8_t level_id)
-{
-	spill_data_totrigger data = { .db_desc = handle->db_desc, .level_id = level_id };
-	bt_spill_request *spill_req = NULL;
-	db_descriptor *db_desc = handle->db_desc;
-	int to_spill_tree_id;
-	int i, j;
-
-	if (level_id >= 1) {
-		log_warn("Spills not yet activated for levels >= 1 tell gesalous to fix "
-			 "them :-)");
-		return NULL;
-	}
-
-	if (db_desc->levels[level_id].in_recovery_mode) {
-		log_warn("no spills during recovery ");
-		return NULL;
-	}
-
-	/*do we need to trigger a spill, we allow only one pending spill per DB*/
-	if (db_desc->levels[level_id].level_size >= (uint64_t)ZERO_LEVEL_MEMORY_SPILL_THREASHOLD &&
-	    db_desc->levels[level_id].outstanding_spill_ops == 0) {
-		/*check again*/
-		MUTEX_LOCK(&db_desc->levels[level_id].spill_trigger);
-		if (db_desc->levels[level_id].level_size >= (uint64_t)ZERO_LEVEL_MEMORY_SPILL_THREASHOLD &&
-		    db_desc->levels[level_id].outstanding_spill_ops == 0) {
-			/*Close the door for L0, acquire read guard lock*/
-			if (RWLOCK_WRLOCK(&db_desc->levels[level_id].guard_of_level.rx_lock)) {
-				log_fatal("Failed to acquire guard lock of level %u", level_id);
-				exit(EXIT_FAILURE);
-			}
-
-			/* log_info("Initiating spill for db %s and level %u waiting for L0 to empty", db_desc->db_name, */
-			/* 	 level_id); */
-			spin_loop(&db_desc->levels[level_id].active_writers, 0);
-			/* log_info("DB %s: No active writers for level %u spawning spill thread", db_desc->db_name, */
-			/* 	 level_id); */
-
-			/*switch to another tree within the level, but which?*/
-			for (i = 0; i < NUM_TREES_PER_LEVEL; i++) {
-				if (i != db_desc->levels[level_id].active_tree) {
-					to_spill_tree_id = db_desc->levels[level_id].active_tree;
-					data.prev_active_tree = db_desc->levels[level_id].active_tree;
-					data.prev_level_size = db_desc->levels[level_id].level_size;
-					data.tree_to_spill = to_spill_tree_id;
-					data.active_tree = i;
-					prepare_dbdescriptor_forspill(&data);
-
-					spill_req = (bt_spill_request *)malloc(sizeof(bt_spill_request));
-					spill_req->db_desc = db_desc;
-					spill_req->volume_desc = handle->volume_desc;
-
-					/*set source*/
-					if (db_desc->levels[level_id].root_w[to_spill_tree_id] != NULL)
-						spill_req->src_root =
-							db_desc->levels[level_id].root_w[to_spill_tree_id];
-					else
-						spill_req->src_root =
-							handle->db_desc->levels[level_id].root_r[to_spill_tree_id];
-					level_descriptor *level;
-					uint8_t dst_level;
-					uint8_t dst_active_tree;
-					spill_req->src_level = level_id;
-					spill_req->src_tree = to_spill_tree_id;
-					dst_level = level_id + 1;
-					dst_active_tree = handle->db_desc->levels[dst_level].active_tree;
-					level = &handle->db_desc->levels[dst_level];
-
-					/*Set destination choose a tree of level i+1*/
-					spill_req->dst_level = dst_level;
-					if (level[dst_level].tree_status[dst_active_tree] == NO_SPILLING) {
-						spill_req->dst_tree = dst_active_tree;
-						level[dst_level].tree_status[dst_active_tree] = SPILLING_IN_PROGRESS;
-					} else {
-						for (j = 0; j < NUM_TREES_PER_LEVEL; j++) {
-							if (j != dst_active_tree &&
-							    level[dst_level].tree_status[j] == NO_SPILLING) {
-								spill_req->dst_tree = j;
-								level[dst_level].tree_status[j] = SPILLING_IN_PROGRESS;
-								break;
-							}
-						}
-						if (j == NUM_TREES_PER_LEVEL) {
-							/* log_warn( */
-							/* 	"[Should not happen] max spill operations at destination level %u aborting spill try", */
-							/* 	dst_level); */
-
-							rollback_dbdescriptor_before_spill(&data);
-							free(spill_req);
-							spill_req = NULL;
-							goto exit;
-						}
-					}
-					if (level_id == 0) {
-						spill_req->l0_start = handle->db_desc->L0_start_log_offset;
-						spill_req->l0_end = handle->db_desc->L0_end_log_offset;
-					} else {
-						spill_req->l0_start = 0;
-						spill_req->l0_end = 0;
-					}
-
-					spill_req->start_key = NULL;
-					spill_req->end_key = NULL;
-					spill_req->src_tree = to_spill_tree_id;
-					spill_req->dst_tree = NUM_TREES_PER_LEVEL;
-					spill_req->l0_start = db_desc->L0_start_log_offset;
-					spill_req->l0_end = db_desc->L0_end_log_offset;
-
-					spill_req->start_key = NULL;
-					spill_req->end_key = NULL;
-					spill_req->src_level = level_id;
-					break;
-				}
-			}
-
-		exit:
-			/*open the L0 door */
-			if (RWLOCK_UNLOCK(&db_desc->levels[level_id].guard_of_level.rx_lock)) {
-				log_fatal("Failed to acquire guard lock");
-				exit(EXIT_FAILURE);
-			}
-		}
-		pthread_mutex_unlock(&db_desc->levels[level_id].spill_trigger);
-	}
-	return spill_req;
-}
-
 uint8_t _insert_key_value(bt_insert_req *ins_req)
 {
 	db_descriptor *db_desc;
@@ -1413,176 +1289,8 @@ uint8_t _insert_key_value(bt_insert_req *ins_req)
 		log_warn("insert failed!");
 		rc = FAILED;
 	}
-	bt_spill_request *spill = bt_spill_check(ins_req->metadata.handle, 0);
-	if (spill != NULL)
-		spill_trigger(spill);
 	return rc;
 }
-
-#if 0
-/**
- * handle: handle of the db that the insert operation will take place
- * key_buf: the address at the device where the key value pair has been written
- * log_offset: The log offset where key_buf corresponds at the KV_log
- * INSERT_FLAGS: extra commands: 1st byte LEVEL (0,1,..,N) | 2nd byte APPEND or
- * DO_NOT_APPEND
- **/
-uint8_t _insert_index_entry(db_handle *handle, kv_location * location, int INSERT_FLAGS)
-{
-
-    insertKV_request req;
-    db_descriptor *db_desc;
-    lock_table * db_guard;
-    int64_t * num_of_level_writers;
-    int index_level = 2;/*0, 1, 2, ... N(future)*/
-    int tries = 0;
-    int primary_op = 0;
-    int rc;
-    /*inserts take place one of the trees in level 0*/
-    db_desc = handle->db_desc;
-    db_desc->dirty = 0x01;
-
-    req.handle = handle;
-    req.key_value_buf = location->kv_addr;
-    req.insert_flags = INSERT_FLAGS;/*Insert to L0 or not.Append to log or not.*/
-    req.allocator_desc.handle = handle;
-
-    /*allocator to use, depending on the level*/
-    if( (INSERT_FLAGS&0xFF000000) == INSERT_TO_L0_INDEX && (INSERT_FLAGS&0x00FF0000) == DONOT_APPEND_TO_LOG){
-        /*append or recovery*/
-        req.allocator_desc.allocate_space = &allocate_segment;
-        req.allocator_desc.free_space = &free_buffered;
-        /*active tree of level 0*/
-        req.allocator_desc.level_id = db_desc->active_tree;
-        req.level_id = db_desc->active_tree;
-        req.key_format = KV_FORMAT;
-        req.guard_of_level = &(db_desc->guard_level_0);
-        req.level_lock_table = db_desc->multiwrite_level_0;
-        index_level = 0;
-        num_of_level_writers = &db_desc->count_writers_level_0;
-        db_guard = &handle->db_desc->guard_level_0;
-        if((INSERT_FLAGS & 0x000000FF)==PRIMARY_L0_INSERT){
-            primary_op = 1;
-            if(location->log_offset > db_desc->L0_end_log_offset)
-                db_desc->L0_end_log_offset = location->log_offset;
-        }
-    }
-#ifdef SCAN_REORGANIZATION
-    else if (INSERT_FLAGS == SCAN_REORGANIZE){/*scan reorganization command, update directly to level-1*/
-        req.allocator_desc.level_id = NUM_OF_TREES_PER_LEVEL;
-        req.allocator_desc.allocate_space = &allocate_segment;
-        req.allocator_desc.free_space = &free_block;
-        req.level_id = NUM_OF_TREES_PER_LEVEL;
-        req.key_format = KV_FORMAT;
-    }
-#endif
-    /*Spill either local or remote */
-    else if ((INSERT_FLAGS & 0xFF000000) == INSERT_TO_L1_INDEX){
-        req.allocator_desc.allocate_space = &allocate_segment;
-        req.allocator_desc.free_space = &free_block;
-        req.allocator_desc.level_id = (INSERT_FLAGS&0x0000FF00) >> 8;
-        req.level_id = (INSERT_FLAGS&0x0000FF00) >> 8;
-        req.key_format = KV_PREFIX;
-        req.guard_of_level = &db_desc->guard_level_1;
-        req.level_lock_table = db_desc->multiwrite_level_1;
-        index_level = 1;
-        num_of_level_writers = &db_desc->count_writers_level_1;
-        db_guard = &handle->db_desc->guard_level_1;
-    }
-    else if((INSERT_FLAGS&0xFF000000) == INSERT_TO_L0_INDEX && (INSERT_FLAGS&0x00FF0000) == APPEND_TO_LOG){
-        DPRINT("FATAL insert mode not supported\n");
-        exit(EXIT_FAILURE);
-    } else {
-        DPRINT("FATAL UNKNOWN INSERT MODE\n");
-        exit(EXIT_FAILURE);
-    }
-
-    while(1){
-        if(RWLOCK_WRLOCK(&db_guard->rx_lock) !=0){
-            printf("[%s:%s:%d] ERROR locking guard\n",__func__,__FILE__,__LINE__);
-            exit(-1);
-        }
-        /*increase corresponding level's writers count*/
-        if(!primary_op)
-            __sync_fetch_and_add(num_of_level_writers,1);
-        /*which is the active tree?*/
-        if(index_level == 0){
-            req.level_id=db_desc->active_tree;
-            req.allocator_desc.level_id = db_desc->active_tree;
-        }
-        if(tries == 0){
-            if(_writers_join_as_readers(&req) == SUCCESS){
-                __sync_fetch_and_sub(num_of_level_writers,1);
-                rc = SUCCESS;
-                break;
-            } else {
-                if(!primary_op)
-                    __sync_fetch_and_sub(num_of_level_writers,1);
-                ++tries;
-                continue;
-            }
-        }
-        else if(tries == 1) {
-            if(_concurrent_insert(&req) != SUCCESS){
-                DPRINT("FATAL function failed\n!");
-                exit(EXIT_FAILURE);
-            }
-            __sync_fetch_and_sub(num_of_level_writers,1);
-            rc = SUCCESS;
-            break;
-        }
-        else{
-            DPRINT("FATAL insert failied\n");
-            exit(EXIT_FAILURE);
-        }
-    }
-    /*
-       if((INSERT_FLAGS & 0x000000FF) != RECOVERY_OPERATION)
-       _spill_check(req.handle,0);
-       else
-       _spill_check(req.handle,1);
-       */
-    return rc;
-}
-#endif
-
-#if 0
-/*
- * gesalous added at 01/07/2014 18:29 function that frees all the blocks of a
- * node
- * Note add equivalent function to segment_allocator
- * */
-void free_logical_node(allocator_descriptor *allocator_desc, node_header *node_index)
-{
-	if (node_index->type == leafNode || node_index->type == leafRootNode) {
-		(*allocator_desc->free_space)(allocator_desc->handle, node_index, NODE_SIZE, allocator_desc->level_id);
-		return;
-	} else if (node_index->type == internalNode || node_index->type == rootNode) {
-		/*for IN, BIN, root nodes free the key log as well*/
-		if (node_index->first_IN_log_header == NULL) {
-			log_fatal("NULL log for index?");
-			raise(SIGINT);
-			exit(EXIT_FAILURE);
-		}
-		IN_log_header *curr = (IN_log_header *)(MAPPED + (uint64_t)node_index->first_IN_log_header);
-		IN_log_header *last = (IN_log_header *)(MAPPED + (uint64_t)node_index->last_IN_log_header);
-		IN_log_header *to_free;
-		while ((uint64_t)curr != (uint64_t)last) {
-			to_free = curr;
-			curr = (IN_log_header *)((uint64_t)MAPPED + (uint64_t)curr->next);
-			(*allocator_desc->free_space)(allocator_desc->handle, to_free, KEY_BLOCK_SIZE,
-						      allocator_desc->level_id);
-		}
-		(*allocator_desc->free_space)(allocator_desc->handle, last, KEY_BLOCK_SIZE, allocator_desc->level_id);
-		/*finally node_header*/
-		(*allocator_desc->free_space)(allocator_desc->handle, node_index, NODE_SIZE, allocator_desc->level_id);
-	} else {
-		log_fatal("FATAL corrupted node!");
-		exit(EXIT_FAILURE);
-	}
-	return;
-}
-#endif
 
 static inline struct lookup_reply lookup_in_tree(void *key, node_header *root)
 {
@@ -1670,6 +1378,7 @@ void *__find_key(db_handle *handle, void *key, char SEARCH_MODE)
 	uint32_t tries;
 	uint8_t level_id;
 	uint8_t tree_id;
+	(void)SEARCH_MODE;
 
 	for (level_id = 0; level_id < MAX_LEVELS; level_id++) {
 		/*first look the current active tree of the level*/
@@ -2160,7 +1869,7 @@ int insert_KV_at_leaf(bt_insert_req *ins_req, node_header *leaf)
 
 	if (__update_leaf_index(ins_req, (leaf_node *)leaf, key_addr) != 0) {
 		++leaf->numberOfEntriesInNode;
-		__sync_fetch_and_add(&(ins_req->metadata.handle->db_desc->levels[level_id].total_keys[active_tree]), 1);
+		__sync_fetch_and_add(&(ins_req->metadata.handle->db_desc->levels[level_id].level_size[active_tree]), 1);
 		ret = 1;
 	} else {
 		/*if key already present at the leaf, must be an update or an append*/
@@ -2293,145 +2002,6 @@ void *_index_node_binary_search(index_node *node, void *key_buf, char query_key_
 	}
 	// log_debug("END");
 	return addr;
-}
-
-void spill_buffer(void *_spill_req)
-{
-	bt_spill_request *spill_req = (bt_spill_request *)_spill_req;
-	db_descriptor *db_desc;
-	level_scanner *level_sc;
-	bt_insert_req ins_req;
-	int32_t local_spilled_keys = 0;
-	int i, rc = 100;
-#ifndef NDEBUG
-	int printfirstkey = 0;
-#endif
-	log_info("starting spill worker...");
-	assert(spill_req->dst_tree > 0 && spill_req->dst_tree < 255);
-	/*Initialize a scan object*/
-	db_desc = spill_req->db_desc;
-	log_info("Ops when %d joining function are %d", spill_req->src_level,
-		 db_desc->levels[spill_req->src_level].outstanding_spill_ops);
-	db_handle handle;
-	handle.db_desc = spill_req->db_desc;
-	handle.volume_desc = spill_req->volume_desc;
-
-	level_sc = _init_spill_buffer_scanner(&handle, spill_req->src_root, NULL);
-	assert(level_sc != NULL);
-	int32_t num_of_keys = (SPILL_BUFFER_SIZE - (2 * sizeof(uint32_t))) / (PREFIX_SIZE + sizeof(uint64_t));
-
-	do {
-		while (handle.volume_desc->snap_preemption == SNAP_INTERRUPT_ENABLE)
-			usleep(50000);
-
-		db_desc->dirty = 0x01;
-		if (handle.db_desc->stat == DB_IS_CLOSING) {
-			log_info("db is closing bye bye from spiller");
-			__sync_fetch_and_sub(&db_desc->levels[spill_req->src_level].outstanding_spill_ops, 1);
-			return;
-		}
-
-		ins_req.metadata.handle = &handle;
-		ins_req.metadata.level_id = spill_req->src_level + 1;
-		ins_req.metadata.key_format = KV_PREFIX;
-		ins_req.metadata.append_to_log = 0;
-		ins_req.metadata.gc_request = 0;
-		ins_req.metadata.recovery_request = 0;
-
-		for (i = 0; i < num_of_keys; i++) {
-			ins_req.key_value_buf = level_sc->keyValue;
-#ifndef NDEBUG
-			if (i == 0 && printfirstkey == 0) {
-				log_info("First key_value %s",
-					 (char *)(*(uint64_t *)((ins_req.key_value_buf + PREFIX_SIZE)) + 4));
-				printfirstkey = 1;
-			}
-#endif
-			_insert_key_value(&ins_req);
-			rc = _get_next_KV(level_sc);
-			if (rc == END_OF_DATABASE)
-				break;
-
-			++local_spilled_keys;
-			//_sync_fetch_and_add(&db_desc->spilled_keys,1);
-			if (spill_req->end_key != NULL &&
-			    _tucana_key_cmp(level_sc->keyValue, spill_req->end_key, KV_PREFIX, KV_FORMAT) >= 0) {
-				log_info("STOP KEY REACHED %s", (char *)spill_req->end_key + 4);
-				goto finish_spill;
-			}
-		}
-	} while (rc != END_OF_DATABASE);
-finish_spill: /*Unused label*/
-
-	_close_spill_buffer_scanner(level_sc, spill_req->src_root);
-	log_info("local spilled keys %d", local_spilled_keys);
-	/*Clean up code, Free the buffer tree was occupying. free_block() used
-	 * intentionally*/
-
-	__sync_fetch_and_sub(&db_desc->levels[spill_req->src_level].outstanding_spill_ops, 1);
-	if (db_desc->levels[spill_req->src_tree].outstanding_spill_ops == 0) {
-		log_info("last spiller cleaning up level %u remains", spill_req->src_level);
-		level_scanner *sc = _init_spill_buffer_scanner(&handle, spill_req->src_root, NULL);
-
-		_close_spill_buffer_scanner(sc, spill_req->src_root);
-		segment_header *segment;
-
-		segment = (void *)db_desc->levels[spill_req->src_level].first_segment[spill_req->src_tree];
-		// size = db_desc->segments[(spill_req->src_tree_id * 3) + 1];
-		while (1) {
-			// if (size != BUFFER_SEGMENT_SIZE) {
-			//	log_fatal("FATAL corrupted segment size %llu should be %llu",
-			//(LLU)size,
-			//		  (LLU)BUFFER_SEGMENT_SIZE);
-			//	exit(EXIT_FAILURE);
-			//}
-			uint64_t s_id =
-				((uint64_t)segment - (uint64_t)handle.volume_desc->bitmap_end) / BUFFER_SEGMENT_SIZE;
-			// printf("[%s:%s:%d] freeing %llu size %llu s_id %llu freed pages
-			// %llu\n",__FILE__,__func__,__LINE__,(LLU)free_addr,(LLU)size,(LLU)s_id,(LLU)handle->volume_desc->segment_utilization_vector[s_id]);
-			if (handle.volume_desc->segment_utilization_vector[s_id] != 0 &&
-			    handle.volume_desc->segment_utilization_vector[s_id] < SEGMENT_MEMORY_THREASHOLD) {
-				// printf("[%s:%s:%d] last segment
-				// remains\n",__FILE__,__func__,__LINE__);
-				/*dimap hook, release dram frame*/
-				/*if(dmap_dontneed(FD, ((uint64_t)free_addr-MAPPED)/PAGE_SIZE,
-				  BUFFER_SEGMENT_SIZE/PAGE_SIZE)!=0){
-				  printf("[%s:%s:%d] fatal ioctl failed\n",__FILE__,__func__,__LINE__);
-				  exit(-1);
-				  }
-				  __sync_fetch_and_sub(&(handle->db_desc->zero_level_memory_size), (unsigned long
-				  long)handle->volume_desc->segment_utilization_vector[s_id]*4096);
-				*/
-				handle.volume_desc->segment_utilization_vector[s_id] = 0;
-			}
-			free_raw_segment(handle.volume_desc, segment);
-			if (segment->next_segment == NULL)
-				break;
-			segment = (segment_header *)(MAPPED + (uint64_t)segment->next_segment);
-		}
-
-		/*assert check
-		  if(db_desc->spilled_keys != db_desc->total_keys[spill_req->src_tree_id]){
-		  printf("[%s:%s:%d] FATAL keys missing --- spilled keys %llu actual %llu spiller
-		  id
-		  %d\n",__FILE__,__func__,__LINE__,(LLU)db_desc->spilled_keys,(LLU)db_desc->total_keys[spill_req->src_tree_id],
-		  spill_req->src_tree_id);
-		  exit(EXIT_FAILURE);
-		  }*/
-		/*buffered tree out*/
-		db_desc->levels[spill_req->src_level].total_keys[spill_req->src_tree] = 0;
-		db_desc->levels[spill_req->src_level].first_segment[spill_req->src_tree] = NULL;
-		db_desc->levels[spill_req->src_level].last_segment[spill_req->src_tree] = NULL;
-		db_desc->levels[spill_req->src_level].offset[spill_req->src_tree] = 0;
-		db_desc->levels[spill_req->src_level].root_r[spill_req->src_tree] = NULL;
-		db_desc->levels[spill_req->src_level].root_w[spill_req->src_tree] = NULL;
-		db_desc->levels[spill_req->src_level].tree_status[spill_req->src_tree] = NO_SPILLING;
-		if (spill_req->src_tree == 0)
-			db_desc->L0_start_log_offset = spill_req->l0_end;
-	}
-	log_info("spill finished for level %u", spill_req->src_level);
-
-	free(spill_req);
 }
 
 /*functions used for debugging*/

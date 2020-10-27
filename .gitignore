@@ -32,6 +32,7 @@ CMakeFiles/
 CMakeCache.txt
 cmake_install.cmake
 build/
+scripts/kreonR/hosts
 Makefile
 ansible/*.retry
 external-deps

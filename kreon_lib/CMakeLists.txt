@@ -39,12 +39,13 @@ add_library(
   allocator/persistent_operations.c
   btree/segment_allocator.c
   btree/btree.c
+  btree/compaction_daemon.c
   btree/delete.c
   btree/gc.c
   scanner/stack.c
   scanner/scanner.c
+  scanner/min_max_heap.c
   ../utilities/spin_loop.c
-  ../utilities/min_max_heap.c
   ../utilities/list.c)
 
 add_library(
@@ -54,13 +55,14 @@ add_library(
   allocator/persistent_operations.c
   btree/segment_allocator.c
   btree/btree.c
+  btree/compaction_daemon.c
   btree/delete.c
   btree/gc.c
   scanner/stack.c
+  scanner/min_max_heap.c
   scanner/scanner.c
   ../utilities/spin_loop.c
-  ../utilities/list.c
-  ../utilities/min_max_heap.c)
+  ../utilities/list.c)
 
 set_target_properties(kreonr PROPERTIES COMPILE_DEFINITIONS "KREONR")
 

@@ -70,7 +70,8 @@ typedef struct pr_db_entry {
 	uint64_t first_segment[TOTAL_TREES];
 	uint64_t last_segment[TOTAL_TREES];
 	uint64_t offset[TOTAL_TREES];
-	uint64_t total_keys[TOTAL_TREES];
+	//expressed in keys per level per tree
+	uint64_t level_size[TOTAL_TREES];
 
 	/*commit log is in a different location on the device for the following reason:*
 	 * In Kreon for persistence we have two persistence operations commit_log and snapshot()
