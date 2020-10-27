@@ -36,7 +36,6 @@
 #include "../kreon_lib/scanner/scanner.h"
 #include "../kreon_lib/btree/conf.h"
 #include "../utilities/queue.h"
-#include "../utilities/min_max_heap.h"
 #include <log.h>
 #include "stats.h"
 
@@ -111,7 +110,7 @@ static struct ds_server *dataserver;
 
 typedef struct spill_task_descriptor {
 	pthread_t spill_worker_context;
-	bt_spill_request *spill_req;
+	//bt_spill_request *spill_req;
 	/*XXX TODO XXX, add appropriate fields*/
 	struct krm_work_task task;
 	struct _tucana_region_S *region;
@@ -2713,10 +2712,10 @@ static void handle_task(struct krm_work_task *task)
 
 		if (multi_get->seek_mode != FETCH_FIRST) {
 			//log_info("seeking at key %s", multi_get->seek_key);
-			initScanner(sc, r_desc->db, &multi_get->seek_key_size, multi_get->seek_mode);
+			init_dirty_scanner(sc, r_desc->db, &multi_get->seek_key_size, multi_get->seek_mode);
 		} else {
 			//log_info("seeking at key first key of region");
-			initScanner(sc, r_desc->db, NULL, GREATER_OR_EQUAL);
+			init_dirty_scanner(sc, r_desc->db, NULL, GREATER_OR_EQUAL);
 		}
 
 		/*put the data in the buffer*/
@@ -2761,7 +2760,7 @@ static void handle_task(struct krm_work_task *task)
 		} else
 			buf->end_of_region = 1;
 
-		closeScanner(sc);
+		close_dirty_scanner(sc);
 		free(sc);
 
 		/*finally fix the header*/

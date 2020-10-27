@@ -56,7 +56,7 @@ class EutropiaDB : public YCSBDB {
 		  dbs()
 	{
 		//const char *pathname = "/dev/dmap/dmap1";
-		const char *pathname = "/dev/nvme0n1";
+		const char *pathname = "/usr/local/gesalous/mounts/kreon.dat";
 		int64_t size;
 
 		int fd = open(pathname, O_RDONLY);
@@ -116,7 +116,7 @@ class EutropiaDB : public YCSBDB {
 			exit(EXIT_FAILURE);
 		}
 		//     return 0;
-		//#if 0
+#if 0
 		if (*(int32_t *)val > 16000) {
 			std::cout << "TOO LARGE VALUE SIZE IN READ!" << std::endl;
 			std::cout << "[" << *(int32_t *)val << "]" << std::endl;
@@ -139,7 +139,7 @@ class EutropiaDB : public YCSBDB {
 			std::cout << "[" << value << "]" << std::endl;
 			exit(EXIT_FAILURE);
 		}
-		//#endif
+
 
 		for (auto f : *fields) {
 			std::map<std::string, std::string>::iterator it = vmap.find(f);
@@ -152,7 +152,7 @@ class EutropiaDB : public YCSBDB {
 			KVPair k = std::make_pair(f, it->second);
 			result.push_back(k);
 		}
-
+#endif
 		return 0;
 	}
 

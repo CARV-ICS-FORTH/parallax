@@ -106,10 +106,6 @@ int main(int argc, char *argv[])
 
 	serially_insert_keys(hd);
 
-	while (hd->db_desc->levels[0].outstanding_spill_ops) {
-		log_info("spill ops %d", hd->db_desc->levels[0].outstanding_spill_ops);
-		sleep(1);
-	}
 	if (PERSIST)
 		snapshot(hd->volume_desc);
 

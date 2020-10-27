@@ -1,6 +1,6 @@
 #pragma once
 #include "stack.h"
-#include "../../utilities/min_max_heap.h"
+#include "min_max_heap.h"
 #include "../allocator/allocator.h"
 #include "../btree/btree.h"
 #define FULL_SCANNER 1
@@ -12,20 +12,13 @@
 #define MAX_FREE_SPILL_BUFFER_SCANNER_SIZE 128
 #define MAX_PREFETCH_SIZE 511
 
-#define QUALIE_BUFFER_MAX_SIZE 256
 #define STOP_ROW_REACHED 1
 #define END_OF_DATABASE 2
 #define ROW_CHANGED 3
 #define KREON_BUFFER_OVERFLOW 0x0F
 
-#define OUT_OF_QUALIE_SPACE 123
-#define QUALIE_ADDITION_SUCCESS 134
 #define MAX_LONG 9223372036854775807L
-#define PRODUCE_NEXT_QUALIE 102
 #define PRODUCE_NEXT_ROW 45
-#define DISCOVER_NEXT_QUALIE 103
-
-#define SPILL_BUFFER_SCAN 130
 
 #define SCAN_REORGANIZE 0xAF
 
@@ -37,14 +30,15 @@ typedef struct level_scanner {
 	node_header *root; /*root of the tree when the cursor was initialized/reset, related to CPAAS-188*/
 	void *keyValue;
 	uint32_t level_id;
-	int32_t type; /* to be removed also */
-	uint8_t valid;
+	int32_t type;
+	uint8_t valid : 1;
+	uint8_t dirty : 1;
 } level_scanner;
 
 typedef struct scannerHandle {
-	level_scanner LEVEL_SCANNERS[MAX_LEVELS];
-	db_handle *db; /*In which db this scanner belongs to*/
-	minHeap heap;
+	level_scanner LEVEL_SCANNERS[MAX_LEVELS][NUM_TREES_PER_LEVEL];
+	struct sh_min_heap heap;
+	db_handle *db;
 	void *keyValue;
 	int32_t type; /*to be removed also*/
 	int32_t malloced;
@@ -70,6 +64,9 @@ typedef struct scannerHandle {
  */
 scannerHandle *initScanner(scannerHandle *sc, db_handle *handle, void *key, char seek_mode);
 void closeScanner(scannerHandle *sc);
+
+void init_dirty_scanner(scannerHandle *sc, db_handle *handle, void *start_key, char seek_flag);
+
 int32_t getNext(scannerHandle *sc);
 
 void getNextKV(scannerHandle *sc);
@@ -107,8 +104,3 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
  **/
 int32_t _get_next_KV(level_scanner *sc);
 void _close_spill_buffer_scanner(level_scanner *sc, node_header *root);
-
-uint32_t multiget_calc_kv_size(db_handle *handle, void *start_key, void *stop_key, uint32_t number_of_keys,
-			       long extension);
-uint32_t multi_get(db_handle *handle, void *start_key, void *end_key, void *buffer, uint32_t buffer_length,
-		   uint32_t number_of_keys, long extension);

@@ -57,7 +57,7 @@ static void *_get_space(volume_descriptor *volume_desc, level_descriptor *level_
 
 	node = (node_header *)((uint64_t)level_desc->last_segment[level_desc->active_tree] + offset_in_segment);
 	level_desc->offset[level_desc->active_tree] += size;
-	level_desc->level_size += size;
+	//level_desc->level_size += size;
 	MUTEX_UNLOCK(&level_desc->level_allocation_lock);
 	assert(node != NULL);
 	//log_info("prt %llu",node);
@@ -286,12 +286,10 @@ void seg_free_level(db_handle *handle, uint8_t level_id, uint8_t tree_id)
 						exit(EXIT_FAILURE);
 						}*/
 	/*buffered tree out*/
-	handle->db_desc->levels[level_id].total_keys[tree_id] = 0;
+	handle->db_desc->levels[level_id].level_size[tree_id] = 0;
 	handle->db_desc->levels[level_id].first_segment[tree_id] = NULL;
 	handle->db_desc->levels[level_id].last_segment[tree_id] = NULL;
 	handle->db_desc->levels[level_id].offset[tree_id] = 0;
 	handle->db_desc->levels[level_id].root_r[tree_id] = NULL;
 	handle->db_desc->levels[level_id].root_w[tree_id] = NULL;
-	handle->db_desc->levels[level_id].total_keys[tree_id] = 0;
-	handle->db_desc->levels[level_id].level_size = 0;
 }

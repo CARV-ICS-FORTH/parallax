@@ -4,7 +4,7 @@
  *
  */
 #pragma once
-
+#include <semaphore.h>
 #include "../../build/config.h"
 #include "../allocator/allocator.h"
 #include "uthash.h"
@@ -260,40 +260,29 @@ typedef struct kv_proposal {
 
 typedef struct level_descriptor {
 	lock_table guard_of_level;
+	pthread_t compaction_thread[NUM_TREES_PER_LEVEL];
 	lock_table *level_lock_table[MAX_HEIGHT];
 	node_header *root_r[NUM_TREES_PER_LEVEL];
 	node_header *root_w[NUM_TREES_PER_LEVEL];
 	pthread_t spiller[NUM_TREES_PER_LEVEL];
-	uint64_t total_keys[NUM_TREES_PER_LEVEL];
 
 	pthread_mutex_t spill_trigger;
 	pthread_mutex_t level_allocation_lock;
 	segment_header *first_segment[NUM_TREES_PER_LEVEL];
 	segment_header *last_segment[NUM_TREES_PER_LEVEL];
 	uint64_t offset[NUM_TREES_PER_LEVEL];
-	uint64_t level_size;
+	//Since we perform always KV separation we express it
+	//in number of keys
+	uint64_t level_size[NUM_TREES_PER_LEVEL];
+	uint64_t max_level_size;
 	int64_t active_writers;
 	/*spilling or not?*/
 	char tree_status[NUM_TREES_PER_LEVEL];
-	uint32_t outstanding_spill_ops;
 	uint8_t active_tree;
 	char in_recovery_mode;
 } level_descriptor;
 
 typedef struct db_descriptor {
-	//#ifdef KREONR
-	//forest replica_forest;
-	/*used in replicas*/
-	//void *log_buffer;
-	//struct connection_rdma **data_conn;
-	//char *region_min_key;
-	//uint64_t last_master_segment;
-	//uint64_t last_local_mapping;
-	/*segment mappings kept only by replica, soft state*/
-	//volatile map_entry *backup_segment_table; /*used at apply proposal*/
-	//volatile map_entry *spill_segment_table; /*used during remote spills*/
-	uint64_t latest_proposal_start_segment_offset;
-	//#endif
 	char db_name[MAX_DB_NAME_SIZE];
 	level_descriptor levels[MAX_LEVELS];
 #if LOG_WITH_MUTEX
@@ -301,10 +290,17 @@ typedef struct db_descriptor {
 #else
 	pthread_spinlock_t lock_log;
 #endif
+	//compaction daemon staff
+	pthread_t compaction_daemon;
+	sem_t compaction_daemon_interrupts;
+	pthread_cond_t client_barrier;
+	pthread_mutex_t client_barrier_lock;
+
 	pthread_spinlock_t back_up_segment_table_lock;
 	volatile segment_header *KV_log_first_segment;
 	volatile segment_header *KV_log_last_segment;
 	volatile uint64_t KV_log_size;
+	uint64_t latest_proposal_start_segment_offset;
 	/*coordinates of the latest persistent L0*/
 	uint64_t L0_start_log_offset;
 	uint64_t L0_end_log_offset;
@@ -346,27 +342,13 @@ typedef struct rotate_data {
 	int pos_right;
 } rotate_data;
 
-typedef struct bt_spill_request {
-	db_descriptor *db_desc;
-	volume_descriptor *volume_desc;
-	node_header *src_root;
-	void *start_key;
-	void *end_key;
-	uint64_t l0_start;
-	uint64_t l0_end;
-	uint8_t src_level;
-	uint8_t src_tree;
-	uint8_t dst_level;
-	uint8_t dst_tree;
-} bt_spill_request;
-
 /*client API*/
 /*management operations*/
 db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_name, char CREATE_FLAG);
 
+void *compaction_daemon(void *args);
 void flush_volume(volume_descriptor *volume_desc, char force_spill);
 void spill_database(db_handle *handle);
-bt_spill_request *bt_spill_check(db_handle *handle, uint8_t level_id);
 
 typedef struct bt_mutate_req {
 	db_handle *handle;
@@ -495,13 +477,6 @@ void print_node(node_header *node);
 void print_key(void *);
 
 lock_table *_find_position(lock_table **table, node_header *node);
-/*gxanth staff ticket server*/
-// thread_dest *__attribute__((noinline)) __dequeue_for_tickets(db_descriptor
-// *db_desc);
-// thread_dest *__attribute__((noinline)) __enqueue_for_ticket(insertKV_request
-// *req, thread_dest *new_node);
-
-// MACROS
 #define MIN(x, y) ((x > y) ? (y) : (x))
 #define KEY_SIZE(x) (*(uint32_t *)x)
 #define KV_MAX_SIZE (4096 + 8)
