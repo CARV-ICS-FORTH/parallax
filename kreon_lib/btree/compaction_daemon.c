@@ -1,6 +1,7 @@
 #define _GNU_SOURCE
 
 #include <pthread.h>
+#include <assert.h>
 #include "../scanner/scanner.h"
 #include "btree.h"
 #include "segment_allocator.h"
@@ -114,6 +115,18 @@ void *compaction_daemon(void *args)
 	}
 }
 
+static void swap_levels(struct level_descriptor *src, struct level_descriptor *dst, int src_active_tree,
+			int dst_active_tree)
+{
+	dst->root_r[dst_active_tree] = src->root_r[src_active_tree];
+	dst->root_w[dst_active_tree] = src->root_w[src_active_tree];
+	dst->first_segment[dst_active_tree] = src->first_segment[src_active_tree];
+	dst->last_segment[dst_active_tree] = src->last_segment[src_active_tree];
+	dst->offset[dst_active_tree] = src->offset[src_active_tree];
+	dst->level_size[dst_active_tree] = src->level_size[src_active_tree];
+	return;
+}
+
 void *spill_buffer(void *_comp_req)
 {
 	struct bt_insert_req ins_req;
@@ -150,37 +163,61 @@ void *spill_buffer(void *_comp_req)
 	}
 	int32_t num_of_keys = (SPILL_BUFFER_SIZE - (2 * sizeof(uint32_t))) / (PREFIX_SIZE + sizeof(uint64_t));
 
-	do {
-		while (handle.volume_desc->snap_preemption == SNAP_INTERRUPT_ENABLE)
-			usleep(50000);
+	/*optimization check if level below is empty than spill is a metadata operation*/
+	struct node_header *dst_root = NULL;
+	if (handle.db_desc->levels[comp_req->dst_level].root_w[0] != NULL)
+		dst_root = handle.db_desc->levels[comp_req->dst_level].root_w[0];
+	else if (handle.db_desc->levels[comp_req->dst_level].root_r[0] != NULL)
+		dst_root = handle.db_desc->levels[comp_req->dst_level].root_r[0];
+	else {
+		log_info("Empty level %d time for an optimization :-)");
+		dst_root = NULL;
+	}
 
-		db_desc->dirty = 0x01;
-		if (handle.db_desc->stat == DB_IS_CLOSING) {
-			log_info("db is closing bye bye from spiller");
-			return NULL;
-		}
+	if (dst_root) {
+		do {
+			while (handle.volume_desc->snap_preemption == SNAP_INTERRUPT_ENABLE)
+				usleep(50000);
 
-		ins_req.metadata.handle = &handle;
-		ins_req.metadata.level_id = comp_req->dst_level;
-		ins_req.metadata.tree_id = comp_req->dst_tree;
-		ins_req.metadata.key_format = KV_PREFIX;
-		ins_req.metadata.append_to_log = 0;
-		ins_req.metadata.gc_request = 0;
-		ins_req.metadata.recovery_request = 0;
+			db_desc->dirty = 0x01;
+			if (handle.db_desc->stat == DB_IS_CLOSING) {
+				log_info("db is closing bye bye from spiller");
+				return NULL;
+			}
 
-		for (i = 0; i < num_of_keys; i++) {
-			ins_req.key_value_buf = level_sc->keyValue;
-			_insert_key_value(&ins_req);
-			rc = _get_next_KV(level_sc);
-			if (rc == END_OF_DATABASE)
-				break;
+			ins_req.metadata.handle = &handle;
+			ins_req.metadata.level_id = comp_req->dst_level;
+			ins_req.metadata.tree_id = comp_req->dst_tree;
+			ins_req.metadata.key_format = KV_PREFIX;
+			ins_req.metadata.append_to_log = 0;
+			ins_req.metadata.gc_request = 0;
+			ins_req.metadata.recovery_request = 0;
 
-			++local_spilled_keys;
-		}
-	} while (rc != END_OF_DATABASE);
+			for (i = 0; i < num_of_keys; i++) {
+				ins_req.key_value_buf = level_sc->keyValue;
+				_insert_key_value(&ins_req);
+				rc = _get_next_KV(level_sc);
+				if (rc == END_OF_DATABASE)
+					break;
 
-	_close_spill_buffer_scanner(level_sc, src_root);
-	log_info("local spilled keys %d", local_spilled_keys);
+				++local_spilled_keys;
+			}
+		} while (rc != END_OF_DATABASE);
+
+		_close_spill_buffer_scanner(level_sc, src_root);
+
+		log_info("local spilled keys %d", local_spilled_keys);
+
+		struct db_handle hd = { .db_desc = comp_req->db_desc, .volume_desc = comp_req->volume_desc };
+		seg_free_level(&hd, comp_req->src_level, comp_req->src_tree);
+	} else {
+		struct level_descriptor *level_src = &comp_req->db_desc->levels[comp_req->src_level];
+		struct level_descriptor *level_dst = &comp_req->db_desc->levels[comp_req->dst_level];
+		swap_levels(level_src, level_dst, comp_req->src_tree, comp_req->dst_tree);
+
+		log_info("Swapped levels %d to %d successfully", comp_req->src_level, comp_req->dst_level);
+	}
+
 	/*Clean up code, Free the buffer tree was occupying. free_block() used
 	 * intentionally*/
 	log_info("DONE Compaction from level's tree [%u][%u] to level's tree[%u][%u] cleaning src level",
@@ -194,9 +231,7 @@ void *spill_buffer(void *_comp_req)
 		  comp_req->src_tree_id);
 		  exit(EXIT_FAILURE);
 		  }*/
-	/*buffered tree out*/
-	struct db_handle hd = { .db_desc = comp_req->db_desc, .volume_desc = comp_req->volume_desc };
-	seg_free_level(&hd, comp_req->src_level, comp_req->src_tree);
+
 	db_desc->levels[comp_req->src_level].tree_status[comp_req->src_tree] = NO_SPILLING;
 	db_desc->levels[comp_req->dst_level].tree_status[comp_req->dst_tree] = NO_SPILLING;
 	if (comp_req->src_tree == 0)
@@ -218,3 +253,4 @@ void *spill_buffer(void *_comp_req)
 	free(comp_req);
 	return NULL;
 }
+

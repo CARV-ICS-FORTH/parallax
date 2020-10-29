@@ -171,7 +171,7 @@ int main()
 	for (int i = 0; i < NUM_TESTERS; i++) {
 		if (i % 2 == 0) {
 			sprintf(db_name, "%s_%d", "scan_test", i);
-			hd = db_open(VOLUME_NAME, 0, (120 * 1024 * 1024 * 1024L), "scan_test", CREATE_DB);
+			hd = db_open(VOLUME_NAME, 0, (60 * 1024 * 1024 * 1024L), "scan_test", CREATE_DB);
 		}
 		s_args[i].handle = hd;
 		s_args[i].base = BASE + (i * NUM_OF_ROUNDS * NUM_KEYS);
