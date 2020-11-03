@@ -676,9 +676,19 @@ struct ibv_device *ctx_find_dev(const char *ib_devname)
 
 struct ibv_context *open_ibv_device(char *devname)
 {
-	struct ibv_context **dev_list = rdma_get_devices(NULL);
-	assert(dev_list[0]);
-	return dev_list[0];
+	int num_devices;
+	struct ibv_context **dev_list = rdma_get_devices(&num_devices);
+	struct ibv_context *rdma_dev = NULL;
+	for (int i = 0; i < num_devices; ++i)
+		if (!strncmp(dev_list[i]->device->name, DEFAULT_DEV_IBV, strlen(DEFAULT_DEV_IBV))) {
+			rdma_dev = dev_list[i];
+			break;
+		}
+	if (!rdma_dev) {
+		log_fatal("Cannot find RDMA device %s", DEFAULT_DEV_IBV);
+		exit(EXIT_FAILURE);
+	}
+	return rdma_dev;
 }
 
 /**
