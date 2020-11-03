@@ -19,24 +19,24 @@
 #include <assert.h>
 #include <limits.h>
 
-#define COMPILER_BARRIER() asm volatile ("" : : : "memory")
+#define COMPILER_BARRIER() asm volatile("" : : : "memory")
 
 #ifdef __GNUC__
 #define UNLIKELY(cond) __builtin_expect(cond, 0)
-#define LIKELY(cond)   __builtin_expect(cond, 1)
+#define LIKELY(cond) __builtin_expect(cond, 1)
 #else /* ifdef __GNUC__ */
 #define UNLIKELY(cond) (cond)
-#define LIKELY(cond)   (cond)
+#define LIKELY(cond) (cond)
 #endif /* ifdef __GNUC__ */
 
-utils_queue_s* utils_queue_init(void *buff)
+utils_queue_s *utils_queue_init(void *buff)
 {
-	assert( !( UTILS_QUEUE_CAPACITY & (UTILS_QUEUE_CAPACITY - 1) ) );
+	assert(!(UTILS_QUEUE_CAPACITY & (UTILS_QUEUE_CAPACITY - 1)));
 
 	/* Zero memory */
-	memset( buff, 0, sizeof(struct queue) );
+	memset(buff, 0, sizeof(struct queue));
 
-	return (utils_queue_s*)buff;
+	return (utils_queue_s *)buff;
 }
 
 unsigned int utils_queue_used_slots(utils_queue_s *q)
@@ -46,16 +46,16 @@ unsigned int utils_queue_used_slots(utils_queue_s *q)
 	used_slots = q->bottom - q->top;
 
 	if (used_slots < 0)
-		used_slots += UINT16_MAX+1;
+		used_slots += UINT16_MAX + 1;
 
 	return (unsigned int)used_slots;
 }
 
-void* utils_queue_pop(utils_queue_s *q)
+void *utils_queue_pop(utils_queue_s *q)
 {
 	register uint16_t t, b;
-	register int      i;
-	void              *ret_val = 0;
+	register int i;
+	void *ret_val = 0;
 
 	assert(q);
 
@@ -68,22 +68,22 @@ void* utils_queue_pop(utils_queue_s *q)
 		return 0;
 
 	/* Get the top element */
-	i       = t & (UTILS_QUEUE_CAPACITY - 1);
+	i = t & (UTILS_QUEUE_CAPACITY - 1);
 	ret_val = q->entries[i];
 #ifdef PARALLEL
-	if( __sync_bool_compare_and_swap(&q->top, t, t + 1))
+	if (__sync_bool_compare_and_swap(&q->top, t, t + 1))
 		return ret_val;
 	return 0;
 #else
-	q->top = t+1;
+	q->top = t + 1;
 	return ret_val;
 #endif
 }
 
-void* utils_queue_push(utils_queue_s *q, void *data)
+void *utils_queue_push(utils_queue_s *q, void *data)
 {
 	uint16_t b, t;
-	int      i;
+	int i;
 
 	assert(data);
 	assert(q);
@@ -94,15 +94,15 @@ void* utils_queue_push(utils_queue_s *q, void *data)
 	int used_slots = b - t;
 
 	if (used_slots < 0)
-		used_slots += UINT16_MAX+1;
+		used_slots += UINT16_MAX + 1;
 
 	/* If there is no more space */
 	if (used_slots == UTILS_QUEUE_CAPACITY)
 		return 0;
 
-	i             = b & (UTILS_QUEUE_CAPACITY - 1);
+	i = b & (UTILS_QUEUE_CAPACITY - 1);
 	q->entries[i] = data;
-	__sync_synchronize();
+	/*__sync_synchronize();*/
 	q->bottom = b + 1;
 	/* printf("b=%u t=%u\n", ++b, t);
 	 * assert(((b >> 7) == (t >> 7)) || ((b & (UTILS_QUEUE_CAPACITY-1)) <= (t & (UTILS_QUEUE_CAPACITY)))); */
@@ -110,10 +110,10 @@ void* utils_queue_push(utils_queue_s *q, void *data)
 	return data;
 }
 
-void* utils_queue_peek(utils_queue_s *q)
+void *utils_queue_peek(utils_queue_s *q)
 {
 	register uint16_t t, b;
-	register int      i;
+	register int i;
 
 	/* Only one thief can succeed in the following critical section */
 	t = q->top;
@@ -125,4 +125,3 @@ void* utils_queue_peek(utils_queue_s *q)
 	i = t & (UTILS_QUEUE_CAPACITY - 1);
 	return q->entries[i];
 }
-
