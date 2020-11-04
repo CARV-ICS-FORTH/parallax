@@ -13,8 +13,8 @@
 #define NUM_KEYS 10000000
 #define SCAN_SIZE 16
 #define BASE 100000000
-#define NUM_OF_ROUNDS 2
-#define NUM_TESTERS 2
+#define NUM_OF_ROUNDS 1
+#define NUM_TESTERS 1
 typedef struct key {
 	uint32_t key_size;
 	char key_buf[0];
@@ -56,34 +56,6 @@ void *scan_tester(void *args)
 		log_info("Population ended, snapshot and testing scan");
 		snapshot(my_args->handle->volume_desc);
 
-		log_info("Cornercase scenario...");
-		memcpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
-		sprintf(k->key_buf + strlen(KEY_PREFIX), "%llu", (long long unsigned)my_args->base + 99);
-		k->key_size = strlen(k->key_buf) + 1;
-		init_dirty_scanner(sc, my_args->handle, (key *)k, GREATER);
-		assert(sc->keyValue != NULL);
-		memcpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
-		sprintf(k->key_buf + strlen(KEY_PREFIX), "%llu", (long long unsigned)my_args->base + 100);
-		k->key_size = strlen(k->key_buf) + 1;
-		if (memcmp(k->key_buf, sc->keyValue + sizeof(uint32_t), k->key_size) != 0) {
-			log_fatal("seek failed key %s not found scanner instead returned %d:%s", k->key_buf,
-				  *(uint32_t *)sc->keyValue, sc->keyValue + sizeof(uint32_t));
-			exit(EXIT_FAILURE);
-		}
-		log_info("milestone 1");
-		getNext(sc);
-		memcpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
-		sprintf(k->key_buf + strlen(KEY_PREFIX), "%llu", (long long unsigned)my_args->base + 101);
-		k->key_size = strlen(k->key_buf) + 1;
-		if (memcmp(k->key_buf, sc->keyValue + sizeof(uint32_t), k->key_size) != 0) {
-			log_fatal("Test failed key %s not found scanner instead returned %d:%s", k->key_buf,
-				  *(uint32_t *)sc->keyValue, sc->keyValue + sizeof(uint32_t));
-			exit(EXIT_FAILURE);
-		}
-		closeScanner(sc);
-		log_info("milestone 2");
-		log_info("Cornercase scenario...DONE");
-
 		memcpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
 		for (i = local_base; i < local_base + my_args->num_keys; i++) {
 			if (i % 100000 == 0)
@@ -99,6 +71,19 @@ void *scan_tester(void *args)
 			if (memcmp(k->key_buf, sc->keyValue + sizeof(uint32_t), k->key_size) != 0) {
 				log_fatal("Test failed key %s not found scanner instead returned %d:%s", k->key_buf,
 					  *(uint32_t *)sc->keyValue, sc->keyValue + sizeof(uint32_t));
+				log_info("Min heap state is");
+				struct sh_heap_node nd;
+				while (sh_remove_min(&sc->heap, &nd) != EMPTY_MIN_HEAP) {
+					log_info("Key %s from Tree[%d][%d]", nd.KV + 4, nd.level_id, nd.active_tree);
+				}
+				log_info("Is it actually there? Let's search and report the stack");
+
+				struct scannerHandle *scd = (scannerHandle *)malloc(sizeof(scannerHandle));
+				init_dirty_scanner(scd, my_args->handle, (key *)k, GREATER_OR_EQUAL);
+				log_info("Scanner returned %s", scd->keyValue + 4);
+				while (sh_remove_min(&scd->heap, &nd) != EMPTY_MIN_HEAP) {
+					log_info("Key %s from Tree[%d][%d]", nd.KV + 4, nd.level_id, nd.active_tree);
+				}
 				exit(EXIT_FAILURE);
 			}
 			//element = stack_pop(&(sc->LEVEL_SCANNERS[0].stack));
@@ -127,7 +112,7 @@ void *scan_tester(void *args)
 					log_info("Min heap state is");
 					struct sh_heap_node nd;
 					while (sh_remove_min(&sc->heap, &nd) != EMPTY_MIN_HEAP) {
-						log_info("Key %s from Tree[%d][%d]", nd.data + 4, nd.level_id,
+						log_info("Key %s from Tree[%d][%d]", nd.KV + 4, nd.level_id,
 							 nd.active_tree);
 					}
 					log_info("Is it actually there? Let's search and report the stack");
@@ -136,7 +121,7 @@ void *scan_tester(void *args)
 					init_dirty_scanner(scd, my_args->handle, (key *)k, GREATER_OR_EQUAL);
 					log_info("Scanner returned %s", scd->keyValue + 4);
 					while (sh_remove_min(&scd->heap, &nd) != EMPTY_MIN_HEAP) {
-						log_info("Key %s from Tree[%d][%d]", nd.data + 4, nd.level_id,
+						log_info("Key %s from Tree[%d][%d]", nd.KV + 4, nd.level_id,
 							 nd.active_tree);
 					}
 					exit(EXIT_FAILURE);
@@ -164,7 +149,7 @@ int main()
 		(struct scan_tester_args *)malloc(sizeof(struct scan_tester_args) * NUM_TESTERS);
 
 	struct db_handle *hd = NULL;
-	if (NUM_TESTERS % 2 != 0) {
+	if (NUM_TESTERS > 1 && NUM_TESTERS % 2 != 0) {
 		log_fatal("Threads must be a multiple of 2");
 		exit(EXIT_FAILURE);
 	}

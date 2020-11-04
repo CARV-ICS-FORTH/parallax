@@ -61,8 +61,7 @@
  * KV_FORMAT: [key_len|key]
  * KV_PREFIX: [PREFIX|HASH|ADDR_TO_KV_LOG]
  */
-#define KV_FORMAT 19
-#define KV_PREFIX 20
+enum KV_type { KV_FORMAT = 19, KV_PREFIX = 20 };
 #define SYSTEM_ID 0
 #define KV_LOG_ID 5
 
@@ -363,7 +362,7 @@ typedef struct bt_mutate_req {
 	uint32_t log_padding;
 	uint32_t kv_size;
 	uint8_t level_id;
-	uint32_t active_tree;
+	//uint32_t active_tree;
 	/*only for inserts >= level_1*/
 	uint8_t tree_id;
 	char key_format;
@@ -372,6 +371,7 @@ typedef struct bt_mutate_req {
 	uint8_t recovery_request : 1;
 	/*needed for distributed version of Kreon*/
 	uint8_t segment_full_event : 1;
+	uint8_t special_split : 1;
 } bt_mutate_req;
 
 typedef struct bt_insert_req {

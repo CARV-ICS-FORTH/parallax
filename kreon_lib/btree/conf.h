@@ -82,8 +82,8 @@
 /*various*/
 #define LLU long long unsigned
 
-#define GROWTH_FACTOR 8
-#define L0_SIZE 100000
+#define GROWTH_FACTOR 4
+#define L0_SIZE 2000000
 /*Buffering related tunables*/
 #define AGGRESIVE_FREE_POLICY
 #define TO_SPILL_KEYS 16384

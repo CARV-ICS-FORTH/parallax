@@ -1,13 +1,14 @@
 #pragma once
 #include <stdint.h>
-
+#include "../btree/btree.h"
 enum sh_heap_status { EMPTY_MIN_HEAP = 4, GOT_MIN_HEAP = 5, HEAP_SIZE = 32 };
 
 struct sh_heap_node {
-	void *data;
+	void *KV;
 	uint8_t level_id;
 	uint8_t active_tree;
 	uint8_t duplicate;
+	enum KV_type type;
 };
 
 struct sh_min_heap {

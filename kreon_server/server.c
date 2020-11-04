@@ -1780,6 +1780,7 @@ void insert_kv_pair(struct krm_work_task *task)
 			task->ins_req.metadata.gc_request = 0;
 			task->ins_req.metadata.recovery_request = 0;
 			task->ins_req.metadata.segment_full_event = 0;
+			task->ins_req.metadata.special_split = 0;
 			_insert_key_value(&task->ins_req);
 			if (task->r_desc->region->num_of_backup > 0) {
 				if (task->ins_req.metadata.segment_full_event)
@@ -2760,7 +2761,7 @@ static void handle_task(struct krm_work_task *task)
 		} else
 			buf->end_of_region = 1;
 
-		close_dirty_scanner(sc);
+		closeScanner(sc);
 		free(sc);
 
 		/*finally fix the header*/
