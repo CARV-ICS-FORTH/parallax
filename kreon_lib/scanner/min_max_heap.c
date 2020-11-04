@@ -58,8 +58,7 @@ static inline void heapify(struct sh_min_heap *hp, int i)
 static int sh_cmp_heap_nodes(struct sh_min_heap *hp, struct sh_heap_node *nd_1, struct sh_heap_node *nd_2)
 {
 	int64_t ret;
-	assert(nd_1->level_id < 4 && nd_2->level_id < 4);
-	ret = _tucana_key_cmp(nd_1->data, nd_2->data, KV_FORMAT, KV_FORMAT);
+	ret = _tucana_key_cmp(nd_1->KV, nd_2->KV, nd_1->type, nd_2->type);
 	if (ret == 0) {
 		/* duplicatelicate detected smallest level_id wins, needs more thinking */
 		if (nd_1->level_id == hp->active_tree) {
@@ -79,7 +78,6 @@ static int sh_cmp_heap_nodes(struct sh_min_heap *hp, struct sh_heap_node *nd_1, 
 			log_fatal("cannot resolve tie active tree = %d nd_1 level_id = %d nd_2 "
 				  "level_id = %d",
 				  hp->active_tree, nd_1->level_id, nd_2->level_id);
-			log_fatal("key1 %s key2 %s", (char *)nd_1->data + 4, (char *)nd_2->data + 4);
 			exit(EXIT_FAILURE);
 		}
 	}

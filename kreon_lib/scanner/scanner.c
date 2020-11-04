@@ -71,6 +71,15 @@ static void init_generic_scanner(struct scannerHandle *sc, struct db_handle *han
 	if (!dirty && handle->db_desc->dirty)
 		snapshot(handle->volume_desc);
 
+	/*special care for level 0 due to double buffering*/
+	if (dirty) {
+		/*take read lock of all levels (Level-0 client writes, other for switching trees
+		*after compaction
+		*/
+		//for (int i = 0; i < MAX_LEVELS; i++)
+		RWLOCK_RDLOCK(&handle->db_desc->levels[0].guard_of_level.rx_lock);
+	}
+
 	for (int i = 0; i < MAX_LEVELS; i++) {
 		for (int j = 0; j < NUM_TREES_PER_LEVEL; j++) {
 			sc->LEVEL_SCANNERS[i][j].valid = 0;
@@ -83,13 +92,6 @@ static void init_generic_scanner(struct scannerHandle *sc, struct db_handle *han
 	active_tree = handle->db_desc->levels[0].active_tree;
 	sc->db = handle;
 	sh_init_heap(&sc->heap, active_tree);
-
-	/*special care for level 0 due to double buffering*/
-	if (dirty) {
-		//take read lock of level L0
-		RWLOCK_RDLOCK(&handle->db_desc->levels[0].guard_of_level.rx_lock);
-		//log_info("Took read lock of LEVEL-0");
-	}
 
 	for (int i = 0; i < NUM_TREES_PER_LEVEL; i++) {
 		struct node_header *root;
@@ -110,34 +112,38 @@ static void init_generic_scanner(struct scannerHandle *sc, struct db_handle *han
 			if (retval == 0) {
 				sc->LEVEL_SCANNERS[0][i].valid = 1;
 
-				nd.data = sc->LEVEL_SCANNERS[0][i].keyValue;
-				//log_info("Tree[%d][%d] gave us key %s", 0, i, nd.data + 4);
+				nd.KV = sc->LEVEL_SCANNERS[0][i].keyValue;
+				//log_info("Tree[%d][%d] gave us key %s", 0, i, nd.KV + 4);
 				nd.level_id = 0;
 				nd.active_tree = active_tree;
+				nd.type = KV_FORMAT;
 				sh_insert_heap_node(&sc->heap, &nd);
 			}
 		}
 	}
 
 	for (uint32_t level_id = 1; level_id < MAX_LEVELS; level_id++) {
-		struct node_header *root;
+		struct node_header *root = NULL;
 		/*for persistent levels it is always the 0*/
-		active_tree = 0;
-		root = handle->db_desc->levels[level_id].root_r[active_tree];
+		int tree_id = 0;
+		root = handle->db_desc->levels[level_id].root_w[tree_id];
+		if (!root)
+			root = handle->db_desc->levels[level_id].root_r[tree_id];
 
 		if (root != NULL) {
-			sc->LEVEL_SCANNERS[level_id][active_tree].db = handle;
-			sc->LEVEL_SCANNERS[level_id][active_tree].level_id = level_id;
-			sc->LEVEL_SCANNERS[level_id][active_tree].root = root;
-			retval = _init_level_scanner(&sc->LEVEL_SCANNERS[level_id][active_tree], start_key, seek_flag);
+			sc->LEVEL_SCANNERS[level_id][tree_id].db = handle;
+			sc->LEVEL_SCANNERS[level_id][tree_id].level_id = level_id;
+			sc->LEVEL_SCANNERS[level_id][tree_id].root = root;
+			retval = _init_level_scanner(&sc->LEVEL_SCANNERS[level_id][tree_id], start_key, seek_flag);
 			if (retval == 0) {
-				sc->LEVEL_SCANNERS[level_id][active_tree].valid = 1;
-				nd.data = sc->LEVEL_SCANNERS[level_id][active_tree].keyValue;
-				//log_info("Tree[%d][%d] gave us key %s", level_id, 0, nd.data + 4);
+				sc->LEVEL_SCANNERS[level_id][tree_id].valid = 1;
+				nd.KV = sc->LEVEL_SCANNERS[level_id][tree_id].keyValue;
+				nd.type = KV_FORMAT;
+				//log_info("Tree[%d][%d] gave us key %s", level_id, 0, nd.KV + 4);
 				nd.level_id = level_id;
-				nd.active_tree = active_tree;
+				nd.active_tree = tree_id;
 				sh_insert_heap_node(&sc->heap, &nd);
-				sc->LEVEL_SCANNERS[level_id][active_tree].valid = 1;
+				sc->LEVEL_SCANNERS[level_id][tree_id].valid = 1;
 			}
 		}
 	}
@@ -237,9 +243,8 @@ void closeScanner(scannerHandle *sc)
 	}
 	/*finally*/
 	if (sc->LEVEL_SCANNERS[0][0].dirty) {
-		//take read lock of level L0
+		//for (int i = 0; i < MAX_LEVELS; i++)
 		RWLOCK_UNLOCK(&sc->db->db_desc->levels[0].guard_of_level.rx_lock);
-		//log_info("Took read lock of LEVEL-0");
 	}
 	if (sc->malloced)
 		free(sc);
@@ -528,12 +533,13 @@ int32_t getNext(scannerHandle *sc)
 	while (1) {
 		stat = sh_remove_min(&sc->heap, &nd);
 		if (stat != EMPTY_MIN_HEAP) {
-			sc->keyValue = nd.data;
+			sc->keyValue = nd.KV;
 			if (_get_next_KV(&(sc->LEVEL_SCANNERS[nd.level_id][nd.active_tree])) != END_OF_DATABASE) {
 				//log_info("refilling from level_id %d\n", nd.level_id);
 				next_nd.level_id = nd.level_id;
 				next_nd.active_tree = nd.active_tree;
-				next_nd.data = sc->LEVEL_SCANNERS[nd.level_id][nd.active_tree].keyValue;
+				next_nd.type = nd.type;
+				next_nd.KV = sc->LEVEL_SCANNERS[nd.level_id][nd.active_tree].keyValue;
 				sh_insert_heap_node(&sc->heap, &next_nd);
 			}
 			if (nd.duplicate == 1) {
