@@ -54,7 +54,7 @@ words=""
 # commit-msg title must be matched to.
 # Note that the regex can contradict with other rules if not used correctly
 # (e.g. title-must-not-contain-word).
-regex=\[(feat|fix|refactor|cleanup|style|doc|test|version|dbg|license|hack|WIP|defaults)\] ([A-Z]|\#\d?)(\w| |\#)+
+regex=(\[(feat|fix|refactor|cleanup|style|doc|test|version|dbg|license|hack|WIP|defaults)\])+ ([A-Z]|\#\d?)(\w| |\#)+
 
 [body-max-line-length]
 line-length=72
