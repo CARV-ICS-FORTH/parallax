@@ -89,9 +89,6 @@ extern int LIBRARY_MODE; /*two modes for the communication rdma library SERVER a
 
 #define MAX_IDLE_ITERATIONS 1000000
 
-extern uint64_t *spinning_threads_core_ids;
-extern uint64_t *worker_threads_core_ids;
-
 extern uint32_t num_of_spinning_threads;
 extern uint32_t num_of_worker_threads;
 
@@ -342,3 +339,7 @@ void tu_rdma_init_connection(struct connection_rdma *conn);
 void _zero_rendezvous_locations_l(msg_header *msg, uint32_t length);
 void _zero_rendezvous_locations(msg_header *msg);
 void _update_rendezvous_location(struct connection_rdma *conn, int message_size);
+
+/*for starting a separate channel for each numa server*/
+struct ibv_context *open_ibv_device(char *devname);
+void *poll_cq(void *arg);

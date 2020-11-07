@@ -36,15 +36,13 @@
 #define CTX_HANDSHAKE_FAILURE 1
 #define MAX_COMPLETION_ENTRIES 32
 
-uint32_t RDMA_TOTAL_LOG_BUFFER_SIZE;
-int LIBRARY_MODE = SERVER_MODE; /*two modes for the communication rdma library
-                                   SERVER and CLIENT*/
+int LIBRARY_MODE = SERVER_MODE; /*two modes for the communication rdma library SERVER and CLIENT*/
+
 int assign_job_to_worker(struct channel_rdma *channel, struct connection_rdma *conn, msg_header *msg,
 			 int spinning_thread_id, int sockfd);
 uint64_t wake_up_workers_operations = 0;
 
 uint64_t *spinning_threads_core_ids;
-uint64_t *worker_threads_core_ids;
 uint32_t num_of_spinning_threads;
 uint32_t num_of_worker_threads;
 
@@ -58,7 +56,6 @@ void force_send_ack(struct connection_rdma *conn);
 
 void rdma_thread_events_ctx(void *args);
 
-static void *poll_cq(void *arg);
 void on_completion_server(struct rdma_message_context *msg_ctx);
 
 void init_rdma_message(connection_rdma *conn, msg_header *msg, uint32_t message_type, uint32_t message_size,
@@ -828,6 +825,7 @@ void crdma_init_client_connection_list_hosts(connection_rdma *conn, char **hosts
 	conn_param.retry_count = 7;
 	conn_param.rnr_retry_count = 7;
 	int tries = 0;
+
 	while (tries < 100) {
 		ret = rdma_connect(rdma_cm_id, &conn_param);
 		if (ret) {
@@ -1170,11 +1168,11 @@ uint32_t wait_for_payload_arrival(msg_header *hdr)
 				    sizeof(uint32_t));
 		/*calculate the address of the tail*/
 		// blocking style
-		wait_for_value(tail, TU_RDMA_REGULAR_MSG);
+		//wait_for_value(tail, TU_RDMA_REGULAR_MSG);
 		// non-blocking style
-		// if (*tail != TU_RDMA_REGULAR_MSG) {
-		// 	return 0;
-		// }
+		if (*tail != TU_RDMA_REGULAR_MSG) {
+			return 0;
+		}
 		hdr->data = (void *)((uint64_t)hdr + TU_HEADER_SIZE);
 		hdr->next = hdr->data;
 	} else {
@@ -1420,7 +1418,7 @@ bool client_rdma_send_message_success(struct rdma_message_context *msg_ctx)
 		return false;
 }
 
-static void *poll_cq(void *arg)
+void *poll_cq(void *arg)
 {
 	struct sigaction sa = {};
 	struct channel_rdma *channel;
@@ -1448,7 +1446,7 @@ static void *poll_cq(void *arg)
 		ibv_ack_cq_events(cq, 1);
 		if (ibv_req_notify_cq(cq, 0) != 0) {
 			perror("ERROR poll_cq: ibv_req_notify_cq\n");
-			exit(-1);
+			exit(EXIT_FAILURE);
 		}
 
 		while (1) {
