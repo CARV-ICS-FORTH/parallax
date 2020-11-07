@@ -9,6 +9,7 @@ set_source_files_properties(test_circular_buffer.c PROPERTIES COMPILE_FLAGS
                                                               "-O3")
 
 set_source_files_properties(test_scans.c PROPERTIES COMPILE_FLAGS "-O3")
+set_source_files_properties(test_dirty_scans.c PROPERTIES COMPILE_FLAGS "-O3")
 
 set_source_files_properties(test_krc_scans.c PROPERTIES COMPILE_FLAGS "-O3")
 
@@ -19,6 +20,9 @@ set(CMAKE_EXE_LINKER_FLAGS "-Wl,-no-as-needed -lm -lrt -pthread -lnuma")
 
 add_executable(test_scans test_scans.c)
 target_link_libraries(test_scans kreon)
+
+add_executable(test_dirty_scans test_dirty_scans.c)
+target_link_libraries(test_dirty_scans kreon)
 
 add_executable(test_spillscans test_spillscanner.c)
 target_link_libraries(test_spillscans kreon)

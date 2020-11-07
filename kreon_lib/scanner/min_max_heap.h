@@ -1,21 +1,22 @@
 #pragma once
-
 #include <stdint.h>
-#define EMPTY_MIN_HEAP 4
-#define GOT_MIN_HEAP 5
-#define HEAP_SIZE 8
+#include "../btree/btree.h"
+enum sh_heap_status { EMPTY_MIN_HEAP = 4, GOT_MIN_HEAP = 5, HEAP_SIZE = 32 };
 
-typedef struct heap_node {
-	void *data;
+struct sh_heap_node {
+	void *KV;
 	uint8_t level_id;
+	uint8_t active_tree;
 	uint8_t duplicate;
-} heap_node;
-typedef struct minHeap {
-	heap_node elem[HEAP_SIZE];
+	enum KV_type type;
+};
+
+struct sh_min_heap {
+	struct sh_heap_node elem[HEAP_SIZE];
 	int size;
 	int active_tree;
-} minHeap;
+};
 
-void initMinHeap(minHeap *heap, int active_tree);
-void insertheap_node(minHeap *hp, heap_node *nd);
-uint8_t getMinAndRemove(minHeap *hp, heap_node *node);
+void sh_init_heap(struct sh_min_heap *heap, int active_tree);
+void sh_insert_heap_node(struct sh_min_heap *hp, struct sh_heap_node *nd);
+enum sh_heap_status sh_remove_min(struct sh_min_heap *hp, struct sh_heap_node *heap_node);

@@ -82,6 +82,8 @@
 /*various*/
 #define LLU long long unsigned
 
+#define GROWTH_FACTOR 4
+#define L0_SIZE 2000000
 /*Buffering related tunables*/
 #define AGGRESIVE_FREE_POLICY
 #define TO_SPILL_KEYS 16384
@@ -96,7 +98,6 @@
 
 #define BUFFER_SEGMENT_SIZE (2 * 1024 * 1024)
 #define SEGMENT_MEMORY_THREASHOLD 511 /*Careful, in number of pages -1 used for chaining*/
-#define THROTTLE_SLEEP_TIME 200000
 #define MAX_ALLOCATION_TRIES 2
 
 #define INSERT_TO_INDEX 1

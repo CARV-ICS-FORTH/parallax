@@ -19,6 +19,7 @@
 #include <sys/types.h>
 #include <netinet/in.h>
 #include <inttypes.h>
+#include <stdbool.h>
 
 #include "../utilities/macros.h"
 #include "../kreon_server/conf.h"
@@ -88,9 +89,6 @@ extern int LIBRARY_MODE; /*two modes for the communication rdma library SERVER a
 
 #define MAX_IDLE_ITERATIONS 1000000
 
-extern uint64_t *spinning_threads_core_ids;
-extern uint64_t *worker_threads_core_ids;
-
 extern uint32_t num_of_spinning_threads;
 extern uint32_t num_of_worker_threads;
 
@@ -100,17 +98,13 @@ typedef struct spinning_thread_parameters {
 } spinning_thread_parameters;
 
 typedef enum connection_type {
-	CLIENT_TO_SERVER_CONNECTION = 100,
+	CLIENT_TO_SERVER_CONNECTION = 1,
 	SERVER_TO_CLIENT_CONNECTION,
-	MASTER_TO_REPLICA_DATA_CONNECTION,
-	MASTER_TO_REPLICA_CONTROL_CONNECTION,
-	REPLICA_TO_MASTER_DATA_CONNECTION,
-	REPLICA_TO_MASTER_CONTROL_CONNECTION,
-	H3_CLIENT_TO_SERVER_CONNECTION,
-	H3_SERVER_TO_CLIENT_CONNECTION
+	MASTER_TO_REPLICA_CONNECTION,
+	REPLICA_TO_MASTER_CONNECTION,
 } connection_type;
 
-typedef enum region_status { REGION_OK = 1000, REGION_IN_TRANSITION } region_status;
+//typedef enum region_status { REGION_OK = 1000, REGION_IN_TRANSITION } region_status;
 
 typedef enum connection_status {
 	CONNECTION_OK = 5,
@@ -181,6 +175,9 @@ struct sr_message {
 	uint32_t message_written;
 };
 
+struct connection_rdma;
+typedef void (*on_completion_callback)(struct ibv_wc *wc, struct connection_rdma *conn);
+
 struct channel_rdma {
 	struct ibv_context *context;
 	struct ibv_pd *pd;
@@ -213,11 +210,7 @@ struct channel_rdma {
 	pthread_mutex_t spin_conn_lock; // Lock for the spin_conn
 
 	on_connection_created connection_created; //Callback function used for created a thread at
-};
-
-struct channel_sock {
-	struct channel_rdma *channel;
-	int connfd;
+	on_completion_callback on_completion;
 };
 
 struct pingpong_dest {
@@ -248,8 +241,8 @@ typedef struct connection_rdma {
 	sem_t congestion_control; /*used for congestion control during send rdma operation*/
 	volatile uint64_t sleeping_workers;
 	volatile uint64_t offset;
-	volatile uint64_t pending_received_messages;
-	volatile uint64_t pending_sent_messages;
+	//volatile uint64_t pending_received_messages;
+	//volatile uint64_t pending_sent_messages;
 	uint64_t idle_iterations; /*handled only by the spinning thread, shows how many times
 														 this connection was idle. After a threashold it will be downgraded to
 														 IDLE connection list of the channel*/
@@ -287,14 +280,6 @@ typedef struct connection_rdma {
 	int idconn;
 } connection_rdma;
 
-static inline void Set_OnConnection_Create_Function(struct channel_rdma *channel, on_connection_created function)
-{
-	channel->connection_created = function;
-}
-
-void crdma_put_message_from_MR(struct connection_rdma *conn, void **mr);
-void *crdma_receive_rdma_message(struct connection_rdma *conn, void **payload);
-
 void crdma_init_generic_create_channel(struct channel_rdma *channel);
 void crdma_init_client_connection(struct connection_rdma *conn, const char *host, const char *port,
 				  struct channel_rdma *channel);
@@ -309,9 +294,6 @@ struct connection_rdma *crdma_client_create_connection_list_hosts(struct channel
 void crdma_init_client_connection_list_hosts(struct connection_rdma *conn, char **hosts, const int num_hosts,
 					     struct channel_rdma *channel, connection_type type);
 
-void crdma_put_message_from_remote_MR(struct connection_rdma *conn, uint64_t ooffset, int32_t N);
-int64_t crdma_get_message_consecutive_from_remote_MR(struct connection_rdma *conn, uint32_t length);
-
 msg_header *allocate_rdma_message(connection_rdma *conn, int message_payload_size, int message_type);
 void init_rdma_message(connection_rdma *conn, msg_header *msg, uint32_t message_type, uint32_t message_size,
 		       uint32_t message_payload_size, uint32_t padding);
@@ -321,16 +303,27 @@ msg_header *client_try_allocate_rdma_message(connection_rdma *conn, int message_
 
 int send_rdma_message(connection_rdma *conn, msg_header *msg);
 int send_rdma_message_busy_wait(connection_rdma *conn, msg_header *msg);
-void async_send_rdma_message(connection_rdma *conn, msg_header *msg, void (*callback_function)(void *args), void *args);
-msg_header *get_message_reply(connection_rdma *conn, msg_header *msg);
 void free_rdma_local_message(connection_rdma *conn);
 void free_rdma_received_message(connection_rdma *conn, msg_header *msg);
 
 void client_free_rpc_pair(connection_rdma *conn, msg_header *msg);
+
+struct rdma_message_context {
+	struct msg_header *msg;
+	sem_t wait_for_completion;
+	struct ibv_wc wc;
+	void (*on_completion_callback)(struct rdma_message_context *msg_ctx);
+	void *args;
+	uint8_t __is_initialized;
+};
+
+void client_rdma_init_message_context(struct rdma_message_context *msg_ctx, struct msg_header *msg);
+bool client_rdma_send_message_success(struct rdma_message_context *msg_ctx);
+int client_send_rdma_message(struct connection_rdma *conn, struct msg_header *msg);
+
 /*replica specific functions*/
 int rdma_kv_entry_to_replica(connection_rdma *conn, msg_header *data_message, uint64_t segment_log_offset, void *source,
 			     uint32_t kv_length, uint32_t client_buffer_key);
-int wake_up_replica_to_flush_segment(connection_rdma *conn, msg_header *msg, int wait);
 
 struct connection_rdma *crdma_client_create_connection(struct channel_rdma *channel);
 void close_and_free_RDMA_connection(struct channel_rdma *channel, struct connection_rdma *conn);
@@ -340,10 +333,13 @@ void crdma_generic_free_connection(struct connection_rdma **ardma_conn);
 void disconnect_and_close_connection(connection_rdma *conn);
 void ec_sig_handler(int signo);
 uint32_t wait_for_payload_arrival(msg_header *hdr);
-int __send_rdma_message(connection_rdma *conn, msg_header *msg);
+int __send_rdma_message(connection_rdma *conn, msg_header *msg, struct rdma_message_context *msg_ctx);
 void tu_rdma_init_connection(struct connection_rdma *conn);
 
-void _send_reset_buffer_ack(struct connection_rdma *conn);
 void _zero_rendezvous_locations_l(msg_header *msg, uint32_t length);
 void _zero_rendezvous_locations(msg_header *msg);
 void _update_rendezvous_location(struct connection_rdma *conn, int message_size);
+
+/*for starting a separate channel for each numa server*/
+struct ibv_context *open_ibv_device(char *devname);
+void *poll_cq(void *arg);

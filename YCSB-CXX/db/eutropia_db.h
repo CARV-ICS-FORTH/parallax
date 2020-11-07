@@ -55,8 +55,8 @@ class EutropiaDB : public YCSBDB {
 								       CoreWorkload::FIELD_COUNT_DEFAULT))),
 		  dbs()
 	{
-		//const char *pathname = "/dev/dmap/dmap1";
-		const char *pathname = "/dev/nvme0n1";
+		const char *pathname = "/dev/dmap/dmap1";
+		//const char *pathname = "/usr/local/gesalous/mounts/kreon.dat";
 		int64_t size;
 
 		int fd = open(pathname, O_RDONLY);
@@ -116,7 +116,7 @@ class EutropiaDB : public YCSBDB {
 			exit(EXIT_FAILURE);
 		}
 		//     return 0;
-		//#if 0
+#if 0
 		if (*(int32_t *)val > 16000) {
 			std::cout << "TOO LARGE VALUE SIZE IN READ!" << std::endl;
 			std::cout << "[" << *(int32_t *)val << "]" << std::endl;
@@ -139,7 +139,7 @@ class EutropiaDB : public YCSBDB {
 			std::cout << "[" << value << "]" << std::endl;
 			exit(EXIT_FAILURE);
 		}
-		//#endif
+
 
 		for (auto f : *fields) {
 			std::map<std::string, std::string>::iterator it = vmap.find(f);
@@ -152,7 +152,7 @@ class EutropiaDB : public YCSBDB {
 			KVPair k = std::make_pair(f, it->second);
 			result.push_back(k);
 		}
-
+#endif
 		return 0;
 	}
 
@@ -184,14 +184,14 @@ class EutropiaDB : public YCSBDB {
 		memcpy(key_buf, &klen, sizeof(int32_t));
 		memcpy(key_buf + sizeof(int32_t), key.c_str(), key.length());
 
-		scannerHandle sh;
-		initScanner(&sh, dbs[hash_fn(key) % db_num], key_buf, GREATER_OR_EQUAL);
-		if (!isValid(&sh)) {
-			snapshot(dbs[0]->volume_desc);
-			initScanner(&sh, dbs[hash_fn(key) % db_num], key_buf, GREATER_OR_EQUAL);
-		}
+		struct scannerHandle *sh = (struct scannerHandle *)malloc(sizeof(struct scannerHandle));
+		init_dirty_scanner(sh, dbs[hash_fn(key) % db_num], key_buf, GREATER_OR_EQUAL);
+		//if (!isValid(&sh)) {
+		//snapshot(dbs[0]->volume_desc);
+		//initScanner(&sh, dbs[hash_fn(key) % db_num], key_buf, GREATER_OR_EQUAL);
+		//}
 
-		while (isValid(&sh)) {
+		while (isValid(sh)) {
 #if 0
         if(getKeySize(&sh) > 16000){
           std::cout << "TOO LARGE KEY SIZE! iter = " << iter << std::endl;
@@ -204,20 +204,20 @@ class EutropiaDB : public YCSBDB {
           std::cout << "[" << getValueSize(&sh) << "]" << std::endl;
           exit(EXIT_FAILURE);
         }
-#endif
+
 
 			std::string k((char *)getKeyPtr(&sh), getKeySize(&sh));
 			std::string v((char *)getValuePtr(&sh), getValueSize(&sh));
 
 			std::vector<std::string> tokens;
 			boost::split(tokens, v, boost::is_any_of(" "));
-#if 0
+
         if(tokens.size() % 2 != 0){
           std::cout << "TOKENS ARRAY NOT MULTIPLE OF 2!" << std::endl;
           std::cout << "[" << v << "]" << std::endl;
           exit(EXIT_FAILURE);
         }
-#endif
+
 			std::map<std::string, std::string> vmap;
 			int cnt = 0;
 			for (std::map<std::string, std::string>::size_type i = 0; i + 1 < tokens.size(); i += 2) {
@@ -225,13 +225,13 @@ class EutropiaDB : public YCSBDB {
 				++cnt;
 			}
 
-#if 0
+
         if(cnt != field_count){
           std::cout << "ERROR IN VALUE!" << (void *)getKeyPtr(&sh) << std::endl;
           std::cout << "[" << v << "]" << std::endl;
           exit(EXIT_FAILURE);
         }
-#endif
+
 
 			for (std::map<std::string, std::string>::iterator it = vmap.begin(); it != vmap.end(); ++it) {
 				KVPair kv = std::make_pair(k + it->first, it->second);
@@ -246,13 +246,16 @@ class EutropiaDB : public YCSBDB {
 			if (done)
 				break;
 
-			if (getNext(&sh) == END_OF_DATABASE)
+#endif
+			if (getNext(sh) == END_OF_DATABASE)
 				break;
 
-			++iter;
+			if (++items >= len) {
+				break;
+			}
 		}
-		closeScanner(&sh);
-
+		closeScanner(sh);
+		free(sh);
 		return 0;
 	}
 

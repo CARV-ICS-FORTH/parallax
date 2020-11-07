@@ -257,6 +257,7 @@ retry:
 		goto retry;
 	if (cps == NULL) {
 		pthread_mutex_lock(&client_regions.conn_lock);
+
 		HASH_FIND_PTR(client_regions.root_cps, &hash_key, cps);
 		if (cps == NULL) {
 			/*Refresh your knowledge about the server*/
@@ -269,11 +270,11 @@ retry:
 			if (rc != ZOK) {
 				log_warn("Failed to refresh server info %s with code %s", primary, zku_op2String(rc));
 				free(primary);
+				//++client_regions.lc_conn.c2;
 				pthread_mutex_unlock(&client_regions.conn_lock);
 				return NULL;
 			}
 			//log_info("RDMA addr = %s", r_desc->region.primary.RDMA_IP_addr);
-
 			++client_regions.lc_conn.c1;
 			_cu_add_conn_for_server(&r_desc->region.primary, hash_key);
 			++client_regions.lc_conn.c2;
@@ -303,12 +304,13 @@ void cu_close_open_connections()
 			req_header->reply_length = 0;
 			req_header->got_send_completion = 0;
 
-			if (send_rdma_message_busy_wait(current->connections[i], req_header) != KREON_SUCCESS) {
+			if (client_send_rdma_message(current->connections[i], req_header) != KREON_SUCCESS) {
 				log_warn("failed to send message");
 				exit(EXIT_FAILURE);
 			}
-			/*wait until completion*/
-			wait_for_value((uint32_t *)&req_header->got_send_completion, 1);
+
+			// FIXME calling free for the connection_rdma* isn't enough. We need to free the rest
+			// of the resources allocated for the connection, like the memory region buffers
 			free(current->connections[i]);
 			//log_info("Closing connection number %d", i);
 		}

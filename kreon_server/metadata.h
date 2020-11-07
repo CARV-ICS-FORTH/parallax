@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <semaphore.h>
 #include <zookeeper/zookeeper.h>
+#include <pthread.h>
 #include "../utilities/list.h"
 #include "../kreon_lib/btree/btree.h"
 #include "../kreon_lib/btree/uthash.h"
@@ -24,17 +25,16 @@
 #define KRM_ALIVE_LEADER_PATH "/alive_leader"
 #define KRM_REGIONS_PATH "/regions"
 
-#define RU_REPLICA_NUM_SEGMENTS 4
+#define RU_REPLICA_NUM_SEGMENTS 1
 #define RU_REGION_KEY_SIZE 256
 #define RU_MAX_TREE_HEIGHT 12
-
+#define RU_MAX_NUM_REPLICAS 2
 enum krm_zk_conn_state { KRM_INIT, KRM_CONNECTED, KRM_DISCONNECTED, KRM_EXPIRED };
 
 enum krm_server_state {
 	KRM_BOOTING = 1,
 	KRM_CLEAN_MAILBOX,
 	KRM_SET_DS_WATCHERS,
-	KRM_SET_LD_WATCHERS,
 	KRM_BUILD_DATASERVERS_TABLE,
 	KRM_BUILD_REGION_TABLE,
 	KRM_ASSIGN_REGIONS,
@@ -63,6 +63,63 @@ enum krm_msg_type {
 
 enum krm_error_code { KRM_SUCCESS = 0, KRM_BAD_EPOCH, KRM_DS_TABLE_FULL, KRM_REGION_EXISTS };
 
+enum krm_work_task_status {
+	/*overall_status*/
+	TASK_START = 1,
+	TASK_COMPLETE,
+	TASK_RESUME,
+	/*mutation operations related*/
+	GET_RSTATE,
+	INS_TO_KREON,
+	INIT_LOG_BUFFERS,
+	REPLICATE,
+	WAIT_FOR_REPLICATION_COMPLETION,
+	SEGMENT_BARRIER,
+	FLUSH_REPLICA_BUFFERS,
+	SEND_FLUSH_COMMANDS,
+	WAIT_FOR_FLUSH_REPLIES,
+	REGION_HALTED,
+	TASK_SUSPENDED,
+};
+
+/*server to server communication related staff*/
+struct sc_msg_pair {
+	struct connection_rdma *conn;
+	struct msg_header *request;
+	struct msg_header *reply;
+	enum circular_buffer_op_status stat;
+};
+
+enum krm_work_task_type { KRM_CLIENT_POOL, KRM_SERVER_POOL };
+
+struct krm_work_task {
+	/*from client*/
+	bt_insert_req ins_req;
+	struct rdma_message_context msg_ctx[RU_MAX_NUM_REPLICAS];
+	volatile uint64_t *replicated_bytes[RU_MAX_NUM_REPLICAS];
+	uint32_t last_replica_to_ack;
+	uint64_t kv_size;
+	/*possible messages to other server generated from this task*/
+	struct sc_msg_pair communication_buf;
+	struct channel_rdma *channel;
+	struct connection_rdma *conn;
+	msg_header *msg;
+	struct krm_region_desc *r_desc;
+	struct msg_put_key *key;
+	struct msg_put_value *value;
+	void *notification_addr;
+	msg_header *reply_msg;
+	msg_header *flush_segment_request;
+	int server_id;
+	int thread_id;
+	int error_code;
+	int pool_id;
+	int suspended;
+	int seg_id_to_flush;
+	enum krm_work_task_type pool_type;
+	enum krm_work_task_status kreon_operation_status;
+};
+
 /*this staff are rdma registered*/
 struct ru_seg_metadata {
 	uint64_t master_segment;
@@ -81,27 +138,41 @@ struct ru_rdma_buffer {
 	uint8_t seg[SEGMENT_SIZE];
 };
 
-struct ru_replica_log_segment {
+struct ru_rmplica_log_segment {
 	struct ru_rdma_buffer *rdma_local_buf;
 	struct ru_rdma_buffer *rdma_remote_buf;
 	int64_t bytes_wr_per_seg;
 	int64_t buffer_free;
 };
 
-struct ru_seg_bound {
-	uint64_t start;
-	uint64_t end;
+enum ru_remote_buffer_status {
+	RU_BUFFER_UNINITIALIZED,
+	RU_BUFFER_REQUESTED,
+	RU_BUFFER_REPLIED,
+	RU_BUFFER_OK,
+	RU_REPLICA_BUFFER_OK
 };
 
-struct ru_replica_log_buffer {
-	/*put <start, end> for each segment here to fit in one cache line and search them faster :-)*/
-	struct ru_seg_bound bounds[RU_REPLICA_NUM_SEGMENTS];
-	struct ru_replica_log_segment seg_bufs[RU_REPLICA_NUM_SEGMENTS];
+struct ru_master_log_buffer_seg {
+	struct sc_msg_pair flush_cmd;
+	enum ru_remote_buffer_status flush_cmd_stat;
+	volatile uint64_t start;
+	volatile uint64_t end;
+	struct ibv_mr mr;
+	volatile uint64_t lc1;
+	volatile uint64_t lc2;
+	volatile uint64_t replicated_bytes;
 };
 
-struct ru_replication_state {
-	connection_rdma **data_conn;
-	connection_rdma **control_conn;
+struct ru_master_log_buffer {
+	struct sc_msg_pair p;
+	enum ru_remote_buffer_status stat;
+	uint32_t segment_size;
+	int num_buffers;
+	struct ru_master_log_buffer_seg segment[];
+};
+
+struct ru_master_state {
 	/*parameters used for remote spills at replica with tiering*/
 	node_header *last_node_per_level[RU_MAX_TREE_HEIGHT];
 	uint64_t cur_nodes_per_level[RU_MAX_TREE_HEIGHT];
@@ -109,10 +180,19 @@ struct ru_replication_state {
 	uint64_t entries_in_semilast_node[RU_MAX_TREE_HEIGHT];
 	uint64_t entries_in_last_node[RU_MAX_TREE_HEIGHT];
 	uint32_t current_active_tree_in_the_forest;
-	union {
-		struct ru_replica_log_buffer *rep_master_buf;
-		struct ru_replica_log_buffer *master_rep_buf;
-	};
+	int num_backup;
+	struct ru_master_log_buffer r_buf[];
+};
+
+struct ru_replica_log_buffer_seg {
+	uint32_t segment_size;
+	struct ibv_mr *mr;
+};
+
+struct ru_replica_state {
+	volatile uint64_t next_segment_id_to_flush;
+	int num_buffers;
+	struct ru_replica_log_buffer_seg seg[];
 };
 
 struct krm_server_name {
@@ -134,15 +214,24 @@ struct krm_region {
 	char min_key[KRM_MAX_KEY_SIZE];
 	char max_key[KRM_MAX_KEY_SIZE];
 	uint32_t num_of_backup;
-	enum krm_region_status status;
+	enum krm_region_status stat;
 };
 
 struct krm_region_desc {
+	pthread_mutex_t region_lock;
+	utils_queue_s halted_tasks;
 	struct krm_region *region;
 	enum krm_region_role role;
 	db_handle *db;
-	int init_rdma_conn;
-	struct ru_replication_state *r_state;
+	volatile uint64_t next_segment_to_flush;
+	int replica_bufs_initialized;
+	int region_halted;
+
+	union {
+		struct ru_master_state *m_state;
+		struct ru_replica_state *r_state;
+	};
+	enum krm_region_status status;
 };
 
 struct krm_ds_regions {
@@ -157,11 +246,25 @@ struct krm_leader_regions {
 	int num_regions;
 };
 
-struct krm_regions_per_server {
+struct krm_leader_region_state {
 	pthread_mutex_t region_list_lock;
 	struct krm_server_name server_id;
+	struct krm_region *region;
+	enum krm_region_role role;
+	enum krm_region_status status;
+};
+
+struct krm_leader_ds_region_map {
 	uint64_t hash_key;
-	LIST *regions;
+	struct krm_leader_region_state lr_state;
+	UT_hash_handle hh;
+};
+
+struct krm_leader_ds_map {
+	uint64_t hash_key;
+	struct krm_server_name server_id;
+	struct krm_leader_ds_region_map *region_map;
+	uint32_t num_regions;
 	UT_hash_handle hh;
 };
 
@@ -174,13 +277,15 @@ struct krm_server_desc {
 	zhandle_t *zh;
 	uint8_t IP[IP_SIZE];
 	uint8_t RDMA_IP[IP_SIZE];
-	uint32_t RDMA_port;
 	enum krm_server_role role;
 	enum krm_server_state state;
 	volatile uint32_t zconn_state;
+	uint32_t RDMA_port;
+	/*entry in the root table of my dad (numa_server)*/
+	int root_server_id;
 	/*filled only by the leader server*/
 	struct krm_leader_regions *ld_regions;
-	struct krm_regions_per_server *dataservers_table;
+	struct krm_leader_ds_map *dataservers_map;
 	/*filled by the ds*/
 	struct krm_ds_regions *ds_regions;
 };
@@ -194,12 +299,19 @@ struct krm_msg {
 };
 
 void *krm_metadata_server(void *args);
-struct krm_region_desc *krm_get_region(char *key, uint32_t key_size);
+struct krm_region_desc *krm_get_region(struct krm_server_desc *server_desc, char *key, uint32_t key_size);
+int krm_get_server_info(struct krm_server_desc *server_desc, char *hostname, struct krm_server_name *server);
 
 int ru_flush_replica_log_buffer(db_handle *handle, segment_header *master_log_segment, void *buffer,
 				uint64_t end_of_log, uint64_t bytes_to_pad, uint64_t segment_id);
 
-void ru_calculate_btree_index_nodes(struct ru_replication_state *r_state, uint64_t num_of_keys);
+void ru_calculate_btree_index_nodes(struct ru_replica_state *r_state, uint64_t num_of_keys);
 
 void ru_append_entry_to_leaf_node(struct krm_region_desc *r_desc, void *pointer_to_kv_pair, void *prefix,
 				  int32_t tree_id);
+
+/*server to server communication staff*/
+struct sc_msg_pair sc_allocate_rpc_pair(struct connection_rdma *conn, uint32_t request_size, uint32_t reply_size,
+					enum message_type type);
+struct connection_rdma *sc_get_conn(struct krm_server_desc *mydesc, char *hostname);
+void sc_free_rpc_pair(struct sc_msg_pair *p);

@@ -190,7 +190,8 @@ void snapshot(volume_descriptor *volume_desc)
 						db_entry->root_r[(i * NUM_TREES_PER_LEVEL) + j] = 0;
 					}
 
-					db_entry->total_keys[i] = db_desc->levels[i].total_keys[j];
+					db_entry->level_size[(i * NUM_TREES_PER_LEVEL) + j] =
+						db_desc->levels[i].level_size[j];
 				}
 			}
 			/*KV log status, not needed commit log is the truth*/

@@ -97,7 +97,7 @@ int main(int argc, char *argv[])
 	memset(v->value_buf, 0xDD, v->value_size);
 	log_info("inserting key %s", k->key_buf);
 	krc_put(k->key_size, k->key_buf, v->value_size, v->value_buf);
-
+	log_info("Initializing single value scan");
 	sc = krc_scan_init(16, 64 * 1024);
 	int entries = 0;
 	while (krc_scan_get_next(sc, &s_key, &s_key_size, &s_value, &s_value_size))
@@ -108,12 +108,13 @@ int main(int argc, char *argv[])
 	}
 
 	if (krc_delete(k->key_size, k->key_buf) != KRC_SUCCESS) {
-		log_fatal("key %s not found failed to clean state from scan in single key value db scenario!");
+		log_fatal("key %s not found failed to clean state from scan in single key "
+			  "value db scenario!");
 		exit(EXIT_FAILURE);
 	}
 	krc_scan_close(sc);
 	log_info("Scan in single key value db SUCCESS!", entries);
-	//exit(EXIT_SUCCESS);
+	// exit(EXIT_SUCCESS);
 	log_info("Starting population for %lu keys...", NUM_KEYS);
 	for (i = BASE; i < (BASE + NUM_KEYS); i++) {
 		strncpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));

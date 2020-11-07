@@ -18,6 +18,18 @@ if(Zookeeper_LIBRARY)
       "-Wl,-no-as-needed -pthread -lm -lzookeeper_mt -lnuma -lrdmacm -libverbs"
       COMPILE_DEFINITIONS "KREON_DISTRIBUTED")
 
+  add_executable(
+    ycsb-async-kreon db/db_factory_async_kreonR.cc core/core_workload.cc
+                     driver/ycsbc.cc ../kreon_server/globals.c)
+
+  target_link_libraries(ycsb-async-kreon kreon_client kreon_rdma kreonr log)
+  set_target_properties(
+    ycsb-async-kreon
+    PROPERTIES
+      LINK_FLAGS
+      "-Wl,-no-as-needed -pthread -lm -lzookeeper_mt -lnuma -lrdmacm -libverbs"
+      COMPILE_DEFINITIONS "KREON_DISTRIBUTED")
+
   # add_executable(ycsb-kreon db/db_factory_kreonR.cc core/core_workload.cc
   # driver/ycsbc.cc ../kreon_server/globals.c)
 

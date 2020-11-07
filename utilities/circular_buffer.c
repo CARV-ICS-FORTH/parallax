@@ -44,10 +44,16 @@ circular_buffer *create_and_init_circular_buffer(char *memory_region, uint32_t m
 
 circular_buffer_op_status allocate_space_from_circular_buffer(circular_buffer *c, uint32_t size, char **addr)
 {
-	if (c->type == SEND_BUFFER) {
+	switch (c->type) {
+	case SEND_BUFFER:
+	case SC_SEND_BUFFER:
 		return __allocate_space_from_send_circular_buffer(c, size, addr);
-	} else {
+	case RECEIVE_BUFFER:
+	case SC_RECEIVE_BUFFER:
 		return __allocate_space_from_recv_circular_buffer(c, size, addr);
+	default:
+		log_fatal("Unknown %d buffer type", c->type);
+		exit(EXIT_FAILURE);
 	}
 }
 
@@ -95,15 +101,27 @@ static circular_buffer_op_status __allocate_space_from_recv_circular_buffer(circ
 {
 	assert(size % c->memory_size_represented_per_bit == 0);
 	assert(size <= c->total_memory_size);
-
-	if (c->remaining_space == c->memory_size_represented_per_bit) {
+	int preallocated_control_space;
+	switch (c->type) {
+	case RECEIVE_BUFFER:
+		preallocated_control_space = c->memory_size_represented_per_bit;
+		break;
+	case SC_RECEIVE_BUFFER:
+		preallocated_control_space = 0;
+		break;
+	default:
+		log_fatal("Unknown buffer type: %d", c->type);
+		assert(0);
+		exit(EXIT_FAILURE);
+	}
+	if (c->remaining_space == preallocated_control_space) {
 		/*silently reset the buffer*/
 		c->remaining_space = c->total_memory_size;
 		c->last_addr = c->memory_region;
 		*addr = NULL;
 	}
 
-	if (c->remaining_space - c->memory_size_represented_per_bit >= size) {
+	if (c->remaining_space - preallocated_control_space >= size) {
 		if (check_if_space_is_free(c, c->last_addr, size)) {
 			mark_used_space_in_bitmap(c, c->last_addr, size);
 			*addr = c->last_addr;
@@ -121,7 +139,7 @@ static circular_buffer_op_status __allocate_space_from_recv_circular_buffer(circ
 		 * space not enough, however for correctness we need to check if remaining space
 		 * (although not sufficient) is free
 		 */
-		if (check_if_space_is_free(c, c->last_addr, c->remaining_space - c->memory_size_represented_per_bit)) {
+		if (check_if_space_is_free(c, c->last_addr, c->remaining_space - preallocated_control_space)) {
 			*addr = c->last_addr;
 			// DPRINT("bitmap[0] = %x\n",c->bitmap[0]);
 			return NOT_ENOUGH_SPACE_AT_THE_END;

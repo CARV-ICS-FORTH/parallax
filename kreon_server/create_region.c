@@ -48,7 +48,7 @@ int main(int argc, char *argv[])
 	strcpy(region.max_key, argv[4]);
 
 	strcpy(region.id, argv[2]);
-	region.status = KRM_FRESH;
+	region.stat = KRM_FRESH;
 	region.num_of_backup = argc - 6;
 	/*primary server*/
 	strcpy(region.primary.kreon_ds_hostname, argv[5]);

@@ -35,7 +35,7 @@ int main(int argc, char *argv[])
 	struct krm_server_name s_name;
 	strcpy(s_name.kreon_ds_hostname, argv[2]);
 	s_name.kreon_ds_hostname_length = strlen(s_name.kreon_ds_hostname);
-	char *hostname = strtok(argv[2], "-");
+	char *hostname = strtok(argv[2], ":");
 	strcpy(s_name.hostname, hostname);
 	s_name.epoch = 0;
 	char *zk_path = zku_concat_strings(4, KRM_ROOT_PATH, KRM_SERVERS_PATH, KRM_SLASH, s_name.kreon_ds_hostname);

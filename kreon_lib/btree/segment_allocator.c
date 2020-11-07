@@ -4,7 +4,8 @@
 #include <log.h>
 extern uint64_t MAPPED;
 
-static void *_get_space(volume_descriptor *volume_desc, level_descriptor *level_desc, uint32_t size, char reason)
+static void *get_space(volume_descriptor *volume_desc, level_descriptor *level_desc, uint8_t tree_id, uint32_t size,
+		       char reason)
 {
 	segment_header *new_segment = NULL;
 	node_header *node = NULL;
@@ -15,16 +16,16 @@ static void *_get_space(volume_descriptor *volume_desc, level_descriptor *level_
 	MUTEX_LOCK(&level_desc->level_allocation_lock);
 
 	/*check if we have enough space to satisfy the request*/
-	if (level_desc->offset[level_desc->active_tree] == 0) {
+	if (level_desc->offset[tree_id] == 0) {
 		available_space = 0;
 		segment_id = 0;
-	} else if (level_desc->offset[level_desc->active_tree] % SEGMENT_SIZE != 0) {
-		offset_in_segment = level_desc->offset[level_desc->active_tree] % SEGMENT_SIZE;
+	} else if (level_desc->offset[tree_id] % SEGMENT_SIZE != 0) {
+		offset_in_segment = level_desc->offset[tree_id] % SEGMENT_SIZE;
 		available_space = SEGMENT_SIZE - offset_in_segment;
-		segment_id = level_desc->last_segment[level_desc->active_tree]->segment_id;
+		segment_id = level_desc->last_segment[tree_id]->segment_id;
 	} else {
 		available_space = 0;
-		segment_id = level_desc->last_segment[level_desc->active_tree]->segment_id;
+		segment_id = level_desc->last_segment[tree_id]->segment_id;
 	}
 
 	if (available_space < size) {
@@ -36,40 +37,40 @@ static void *_get_space(volume_descriptor *volume_desc, level_descriptor *level_
 			/*chain segments*/
 			new_segment->next_segment = NULL;
 			new_segment->prev_segment =
-				(segment_header *)((uint64_t)level_desc->last_segment[level_desc->active_tree] -
-						   MAPPED);
-			level_desc->last_segment[level_desc->active_tree]->next_segment =
+				(segment_header *)((uint64_t)level_desc->last_segment[tree_id] - MAPPED);
+			level_desc->last_segment[tree_id]->next_segment =
 				(segment_header *)((uint64_t)new_segment - MAPPED);
-			level_desc->last_segment[level_desc->active_tree] = new_segment;
-			level_desc->last_segment[level_desc->active_tree]->segment_id = segment_id + 1;
-			level_desc->offset[level_desc->active_tree] += (available_space + sizeof(segment_header));
+			level_desc->last_segment[tree_id] = new_segment;
+			level_desc->last_segment[tree_id]->segment_id = segment_id + 1;
+			level_desc->offset[tree_id] += (available_space + sizeof(segment_header));
 		} else {
 			/*special case for the first segment for this level*/
 			new_segment->next_segment = NULL;
 			new_segment->prev_segment = NULL;
-			level_desc->first_segment[level_desc->active_tree] = new_segment;
-			level_desc->last_segment[level_desc->active_tree] = new_segment;
-			level_desc->last_segment[level_desc->active_tree]->segment_id = 1;
-			level_desc->offset[level_desc->active_tree] = sizeof(segment_header);
+			level_desc->first_segment[tree_id] = new_segment;
+			level_desc->last_segment[tree_id] = new_segment;
+			level_desc->last_segment[tree_id]->segment_id = 1;
+			level_desc->offset[tree_id] = sizeof(segment_header);
 		}
-		offset_in_segment = level_desc->offset[level_desc->active_tree] % SEGMENT_SIZE;
+		offset_in_segment = level_desc->offset[tree_id] % SEGMENT_SIZE;
 	}
 
-	node = (node_header *)((uint64_t)level_desc->last_segment[level_desc->active_tree] + offset_in_segment);
-	level_desc->offset[level_desc->active_tree] += size;
-	level_desc->level_size += size;
+	node = (node_header *)((uint64_t)level_desc->last_segment[tree_id] + offset_in_segment);
+	level_desc->offset[tree_id] += size;
+	//level_desc->level_size += size;
 	MUTEX_UNLOCK(&level_desc->level_allocation_lock);
 	assert(node != NULL);
 	//log_info("prt %llu",node);
 	return node;
 }
 
-index_node *seg_get_index_node(volume_descriptor *volume_desc, level_descriptor *level_desc, char reason)
+index_node *seg_get_index_node(volume_descriptor *volume_desc, level_descriptor *level_desc, uint8_t tree_id,
+			       char reason)
 {
 	index_node *ptr;
 	IN_log_header *bh;
 
-	ptr = (index_node *)_get_space(volume_desc, level_desc, INDEX_NODE_SIZE + KEY_BLOCK_SIZE, reason);
+	ptr = (index_node *)get_space(volume_desc, level_desc, tree_id, INDEX_NODE_SIZE + KEY_BLOCK_SIZE, reason);
 
 	if (reason == NEW_ROOT)
 		ptr->header.type = rootNode;
@@ -88,28 +89,38 @@ index_node *seg_get_index_node(volume_descriptor *volume_desc, level_descriptor 
 	ptr->header.first_IN_log_header = (IN_log_header *)((uint64_t)bh - MAPPED);
 	ptr->header.last_IN_log_header = ptr->header.first_IN_log_header;
 	ptr->header.key_log_size = sizeof(IN_log_header);
-	if (ptr->header.type == rootNode) /*increase node height by 1*/
-		ptr->header.height = level_desc->root_w[level_desc->active_tree]->height + 1;
+	//if (ptr->header.type == rootNode) /*increase node height by 1*/
+	//	ptr->header.height = level_desc->root_w[level_desc->active_tree]->height + 1;
 	return ptr;
 }
 
-index_node *seg_get_index_node_header(volume_descriptor *volume_desc, level_descriptor *level_desc, char reason)
+index_node *seg_get_index_node_header(volume_descriptor *volume_desc, level_descriptor *level_desc, uint8_t tree_id,
+				      char reason)
 {
-	return (index_node *)_get_space(volume_desc, level_desc, INDEX_NODE_SIZE, reason);
+	return (index_node *)get_space(volume_desc, level_desc, tree_id, INDEX_NODE_SIZE, reason);
 }
 
-IN_log_header *seg_get_IN_log_block(volume_descriptor *volume_desc, level_descriptor *level_desc, char reason)
+IN_log_header *seg_get_IN_log_block(volume_descriptor *volume_desc, level_descriptor *level_desc, uint8_t tree_id,
+				    char reason)
 {
-	return (IN_log_header *)_get_space(volume_desc, level_desc, KEY_BLOCK_SIZE, reason);
+	return (IN_log_header *)get_space(volume_desc, level_desc, tree_id, KEY_BLOCK_SIZE, reason);
 }
 
-void seg_free_index_node_header(volume_descriptor *volume_desc, level_descriptor *level_desc, node_header *node)
+void seg_free_index_node_header(volume_descriptor *volume_desc, level_descriptor *level_desc, uint8_t tree_id,
+				node_header *node)
 {
+	//leave for future use
+	(void)level_desc;
+	(void)tree_id;
 	free_block(volume_desc, node, INDEX_NODE_SIZE, -1);
 }
 
-void seg_free_index_node(volume_descriptor *volume_desc, level_descriptor *level_desc, index_node *inode)
+void seg_free_index_node(volume_descriptor *volume_desc, level_descriptor *level_desc, uint8_t tree_id,
+			 index_node *inode)
 {
+	//leave for future use
+	(void)level_desc;
+	(void)tree_id;
 	if (inode->header.type == leafNode || inode->header.type == leafRootNode) {
 		log_fatal("Faulty type of node!");
 		exit(EXIT_FAILURE);
@@ -134,9 +145,9 @@ void seg_free_index_node(volume_descriptor *volume_desc, level_descriptor *level
 	return;
 }
 
-leaf_node *seg_get_leaf_node(volume_descriptor *volume_desc, level_descriptor *level_desc, char reason)
+leaf_node *seg_get_leaf_node(volume_descriptor *volume_desc, level_descriptor *level_desc, uint8_t tree_id, char reason)
 {
-	leaf_node *leaf = (leaf_node *)_get_space(volume_desc, level_desc, LEAF_NODE_SIZE, reason);
+	leaf_node *leaf = (leaf_node *)get_space(volume_desc, level_desc, tree_id, LEAF_NODE_SIZE, reason);
 
 	leaf->header.type = leafNode;
 	leaf->header.epoch = volume_desc->mem_catalogue->epoch;
@@ -152,13 +163,17 @@ leaf_node *seg_get_leaf_node(volume_descriptor *volume_desc, level_descriptor *l
 	return leaf;
 }
 
-leaf_node *seg_get_leaf_node_header(volume_descriptor *volume_desc, level_descriptor *level_desc, char reason)
+leaf_node *seg_get_leaf_node_header(volume_descriptor *volume_desc, level_descriptor *level_desc, uint8_t tree_id,
+				    char reason)
 {
-	return (leaf_node *)_get_space(volume_desc, level_desc, LEAF_NODE_SIZE, reason);
+	return (leaf_node *)get_space(volume_desc, level_desc, tree_id, LEAF_NODE_SIZE, reason);
 }
 
-void seg_free_leaf_node(volume_descriptor *volume_desc, level_descriptor *level_desc, leaf_node *leaf)
+void seg_free_leaf_node(volume_descriptor *volume_desc, level_descriptor *level_desc, uint8_t tree_id, leaf_node *leaf)
 {
+	//leave for future use
+	(void)level_desc;
+	(void)tree_id;
 	free_block(volume_desc, leaf, LEAF_NODE_SIZE, -1);
 }
 
@@ -252,10 +267,10 @@ void seg_free_level(db_handle *handle, uint8_t level_id, uint8_t tree_id)
 {
 	segment_header *curr_segment;
 	uint64_t space_freed = 0;
-	log_info("Freeing up level %u for db %s", level_id, handle->db_desc->db_name);
+	log_info("Freeing tree [%u][%u] for db %s", level_id, tree_id, handle->db_desc->db_name);
 
 	curr_segment = handle->db_desc->levels[level_id].first_segment[tree_id];
-
+	assert(curr_segment != NULL);
 	while (1) {
 #if 0
 		if (spill_task_desc->region->db->volume_desc->segment_utilization_vector[s_id] != 0 &&
@@ -278,20 +293,18 @@ void seg_free_level(db_handle *handle, uint8_t level_id, uint8_t tree_id)
 			break;
 		curr_segment = MAPPED + curr_segment->next_segment;
 	}
-	log_info("Freed space %llu MB from db:%s level %u", space_freed / (1024 * 1024), handle->db_desc->db_name,
-		 level_id);
+	log_info("Freed space %llu MB from db:%s level tree [%u][%u]", space_freed / (1024 * 1024),
+		 handle->db_desc->db_name, level_id, tree_id);
 	/*assert check
 						if(db_desc->spilled_keys != db_desc->total_keys[spill_req->src_tree_id]){
 						printf("[%s:%s:%d] FATAL keys missing --- spilled keys %llu actual %llu spiller id %d\n",__FILE__,__func__,__LINE__,(LLU)db_desc->spilled_keys,(LLU)db_desc->total_keys[spill_req->src_tree_id], spill_req->src_tree_id);
 						exit(EXIT_FAILURE);
 						}*/
 	/*buffered tree out*/
-	handle->db_desc->levels[level_id].total_keys[tree_id] = 0;
+	handle->db_desc->levels[level_id].level_size[tree_id] = 0;
 	handle->db_desc->levels[level_id].first_segment[tree_id] = NULL;
 	handle->db_desc->levels[level_id].last_segment[tree_id] = NULL;
 	handle->db_desc->levels[level_id].offset[tree_id] = 0;
 	handle->db_desc->levels[level_id].root_r[tree_id] = NULL;
 	handle->db_desc->levels[level_id].root_w[tree_id] = NULL;
-	handle->db_desc->levels[level_id].total_keys[tree_id] = 0;
-	handle->db_desc->levels[level_id].level_size = 0;
 }
