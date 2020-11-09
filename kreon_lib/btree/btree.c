@@ -67,31 +67,10 @@ pthread_spinlock_t log_buffer_lock;
 /*number of locks per level*/
 uint32_t size_per_height[MAX_HEIGHT] = { 8192, 4096, 2048, 1024, 512, 256, 128, 64, 32 };
 
-#define MUTATION_LOG_SIZE 2048
-#define STATIC 0x01
-#define DYNAMIC 0x02
-#define MUTATION_BATCH_EXPANDED 0x03
-#define FAILURE 0
-
-static uint8_t _writers_join_as_readers(bt_insert_req *ins_req);
-static uint8_t _concurrent_insert(bt_insert_req *ins_req);
+static uint8_t writers_join_as_readers(bt_insert_req *ins_req);
+static uint8_t concurrent_insert(bt_insert_req *ins_req);
 
 void assert_index_node(node_header *node);
-static inline void move_leaf_data(leaf_node *leaf, int32_t middle)
-{
-	char *src_addr, *dst_addr;
-	const size_t nitems = leaf->header.numberOfEntriesInNode - middle;
-	if (nitems == 0)
-		return;
-
-	src_addr = (char *)(&(leaf->pointer[middle]));
-	dst_addr = src_addr + sizeof(uint64_t);
-	memmove(dst_addr, src_addr, nitems * sizeof(uint64_t));
-
-	src_addr = (char *)(&(leaf->prefix[middle]));
-	dst_addr = src_addr + PREFIX_SIZE;
-	memmove(dst_addr, src_addr, nitems * PREFIX_SIZE);
-}
 
 #ifdef PREFIX_STATISTICS
 static inline void update_leaf_index_stats(char key_format)
@@ -106,19 +85,13 @@ static inline void update_leaf_index_stats(char key_format)
 static struct bt_rebalance_result split_index(node_header *node, bt_insert_req *ins_req);
 void _sent_flush_command_to_replica(db_descriptor *db_desc, int padded_space, int SYNC);
 
-int __update_leaf_index(bt_insert_req *req, leaf_node *leaf, void *key_buf);
 struct bt_rebalance_result split_leaf(bt_insert_req *req, leaf_node *node);
 
 /*Buffering aware functions*/
 void *__find_key(db_handle *handle, void *key, char SEARCH_MODE);
-void *__find_key_addr_in_leaf(leaf_node *leaf, struct splice *key);
 void spill_buffer(void *_spill_req);
 
-void destroy_spill_request(NODE *node);
-
-void assert_leaf_node(node_header *leaf);
 /*functions used for debugging*/
-// static void print_node(node_header *node);
 
 #if 0
 thread_dest *__attribute__((noinline)) __dequeue_for_tickets(db_descriptor *db_desc)
@@ -450,11 +423,11 @@ static void calculate_metadata_offsets(uint32_t bitmap_entries, uint32_t slot_ar
 					slot_array_entries * sizeof(bt_leaf_slot_array);
 }
 
-static void init_leaf_sizes_perlevel(level_descriptor *level)
+static void init_leaf_sizes_perlevel(level_descriptor *level, int level_id)
 {
-	enum bt_layout leaf_type_per_level[MAX_LEVELS] = { LEVEL0_LEAF_SIZE, LEVEL1_LEAF_SIZE, LEVEL2_LEAF_SIZE,
-							   LEVEL3_LEAF_SIZE, LEVEL4_LEAF_SIZE, LEVEL5_LEAF_SIZE,
-							   LEVEL6_LEAF_SIZE, LEVEL7_LEAF_SIZE };
+	enum bt_layout leaf_layout_per_level[MAX_LEVELS] = { LEVEL0_LEAF_LAYOUT, LEVEL1_LEAF_LAYOUT, LEVEL2_LEAF_LAYOUT,
+							     LEVEL3_LEAF_LAYOUT, LEVEL4_LEAF_LAYOUT, LEVEL5_LEAF_LAYOUT,
+							     LEVEL6_LEAF_LAYOUT, LEVEL7_LEAF_LAYOUT };
 
 	double kv_leaf_entry = sizeof(bt_leaf_entry) + sizeof(bt_leaf_slot_array) + (1 / CHAR_BIT);
 	double numentries_without_metadata;
@@ -469,6 +442,7 @@ static void init_leaf_sizes_perlevel(level_descriptor *level)
 		      (slot_array_entries * sizeof(bt_leaf_slot_array))) /
 		     sizeof(bt_leaf_entry);
 	calculate_metadata_offsets(bitmap_entries, slot_array_entries, kv_entries, &level->leaf_offsets);
+	level->node_layout = leaf_layout_per_level[level_id];
 }
 
 static void destroy_level_locktable(db_descriptor *database, uint8_t level_id)
@@ -860,7 +834,7 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 				db_desc->levels[level_id].first_segment[tree_id] = NULL;
 				db_desc->levels[level_id].last_segment[tree_id] = NULL;
 				db_desc->levels[level_id].offset[tree_id] = 0;
-				init_leaf_sizes_perlevel(&db_desc->levels[level_id]);
+				init_leaf_sizes_perlevel(&db_desc->levels[level_id], level_id);
 			}
 		}
 		/*initialize KV log for this db*/
@@ -922,7 +896,7 @@ finish_init:
 		for (tree_id = 0; tree_id < NUM_TREES_PER_LEVEL; tree_id++) {
 			db_desc->levels[level_id].tree_status[tree_id] = NO_SPILLING;
 		}
-		init_leaf_sizes_perlevel(&db_desc->levels[level_id]);
+		init_leaf_sizes_perlevel(&db_desc->levels[level_id], level_id);
 	}
 
 #if LOG_WITH_MUTEX
@@ -1036,12 +1010,6 @@ char db_close(db_handle *handle)
 		return COULD_NOT_FIND_DB;
 	}
 	return KREON_OK;
-}
-
-void destroy_spill_request(NODE *node)
-{
-	free(node->data); /*the actual spill_request*/
-	free(node);
 }
 
 void spill_database(db_handle *handle)
@@ -1335,9 +1303,9 @@ uint8_t _insert_key_value(bt_insert_req *ins_req)
 	} else
 		ins_req->metadata.kv_size = -1;
 	rc = SUCCESS;
-	if (_writers_join_as_readers(ins_req) == SUCCESS)
+	if (writers_join_as_readers(ins_req) == SUCCESS)
 		rc = SUCCESS;
-	else if (_concurrent_insert(ins_req) != SUCCESS) {
+	else if (concurrent_insert(ins_req) != SUCCESS) {
 		log_warn("insert failed!");
 		rc = FAILED;
 	}
@@ -1507,35 +1475,6 @@ finish:
 /* returns the addr where the value of the KV pair resides */
 /* TODO: make this return the offset from MAPPED, not a pointer
  * to the offset */
-void *__find_key_addr_in_leaf(leaf_node *leaf, struct splice *key)
-{
-	int32_t start_idx = 0, end_idx = leaf->header.numberOfEntriesInNode - 1;
-	char key_buf_prefix[PREFIX_SIZE] = { '\0' };
-
-	memcpy(key_buf_prefix, key->data, MIN(key->size, PREFIX_SIZE));
-
-	while (start_idx <= end_idx) {
-		int32_t middle = (start_idx + end_idx) / 2;
-
-		int32_t ret = prefix_compare(leaf->prefix[middle], key_buf_prefix, PREFIX_SIZE);
-		if (ret < 0)
-			start_idx = middle + 1;
-		else if (ret > 0)
-			end_idx = middle - 1;
-		else {
-			void *index_key = (void *)(MAPPED + leaf->pointer[middle]);
-			ret = _tucana_key_cmp(index_key, key, KV_FORMAT, KV_FORMAT);
-			if (ret == 0)
-				return &(leaf->pointer[middle]);
-			else if (ret < 0)
-				start_idx = middle + 1;
-			else
-				end_idx = middle - 1;
-		}
-	}
-
-	return NULL;
-}
 
 void *find_key(db_handle *handle, void *key, uint32_t key_size)
 {
@@ -1704,87 +1643,6 @@ void insert_key_at_index(bt_insert_req *ins_req, index_node *node, node_header *
 	// assert_index_node(node);
 }
 
-/*
- * gesalous: Added at 13/06/2014 16:22. After the insertion of a leaf it's
- * corresponding index will be updated
- * for later use in efficient searching.
- */
-int __update_leaf_index(bt_insert_req *req, leaf_node *leaf, void *key_buf)
-{
-	void *index_key_buf, *addr;
-	int64_t ret = 1;
-	int32_t start_idx, end_idx, middle = 0;
-	char *index_key_prefix = NULL;
-	char key_buf_prefix[PREFIX_SIZE] = { '\0' };
-	uint64_t pointer = 0;
-
-	start_idx = 0;
-	end_idx = leaf->header.numberOfEntriesInNode - 1;
-	addr = &(leaf->pointer[0]);
-
-	if (req->metadata.key_format == KV_FORMAT) {
-		int32_t row_len = *(int32_t *)key_buf;
-		memcpy(key_buf_prefix, (void *)((uint64_t)key_buf + sizeof(int32_t)), MIN(row_len, PREFIX_SIZE));
-	} else { /* operation coming from spill request (i.e. KV_PREFIX) */
-		memcpy(key_buf_prefix, key_buf, PREFIX_SIZE);
-	}
-
-	while (leaf->header.numberOfEntriesInNode > 0) {
-		middle = (start_idx + end_idx) / 2;
-		addr = &(leaf->pointer[middle]);
-		index_key_prefix = leaf->prefix[middle];
-
-		ret = prefix_compare(index_key_prefix, key_buf_prefix, PREFIX_SIZE);
-		if (ret < 0) {
-			// update_leaf_index_stats(req->key_format);
-			goto up_leaf_1;
-		} else if (ret > 0) {
-			// update_leaf_index_stats(req->key_format);
-			goto up_leaf_2;
-		}
-
-#ifdef PREFIX_STATISTICS
-		if (key_format == KV_PREFIX)
-			__sync_fetch_and_add(&ins_hack_miss, 1);
-#endif
-		// update_leaf_index_stats(req->key_format);
-
-		index_key_buf = (void *)(MAPPED + *(uint64_t *)addr);
-		ret = _tucana_key_cmp(index_key_buf, key_buf, KV_FORMAT, req->metadata.key_format);
-		if (ret == 0) {
-			if (req->metadata.gc_request && pointer_to_kv_in_log != index_key_buf)
-				return ret;
-			break;
-		} else if (ret < 0) {
-		up_leaf_1:
-			start_idx = middle + 1;
-			if (start_idx > end_idx) {
-				middle++;
-				move_leaf_data(leaf, middle);
-				break;
-			}
-		} else if (ret > 0) {
-		up_leaf_2:
-			end_idx = middle - 1;
-			if (start_idx > end_idx) {
-				move_leaf_data(leaf, middle);
-				break;
-			}
-		}
-	}
-
-	/*setup the pointer*/
-	if (req->metadata.key_format == KV_FORMAT)
-		pointer = (uint64_t)key_buf - MAPPED;
-	else /* KV_PREFIX */
-		pointer = (*(uint64_t *)(key_buf + PREFIX_SIZE)) - MAPPED;
-	/*setup the prefix*/
-	leaf->pointer[middle] = pointer;
-	memcpy(&leaf->prefix[middle], key_buf_prefix, PREFIX_SIZE);
-
-	return ret;
-}
-
 char *node_type(nodeType_t type)
 {
 	switch (type) {
@@ -1799,43 +1657,6 @@ char *node_type(nodeType_t type)
 	default:
 		assert(0);
 	}
-}
-
-void assert_leaf_node(node_header *leaf)
-{
-	void *prev;
-	void *curr;
-	void *addr;
-	int64_t ret;
-	uint64_t i;
-	if (leaf->numberOfEntriesInNode == 1) {
-		return;
-	}
-	addr = (void *)(uint64_t)leaf + sizeof(node_header);
-	curr = (void *)*(uint64_t *)addr + MAPPED;
-
-	for (i = 1; i < leaf->numberOfEntriesInNode; i++) {
-		addr += 8;
-		prev = curr;
-		curr = (void *)*(uint64_t *)addr + MAPPED;
-		ret = _tucana_key_cmp(prev, curr, KV_FORMAT, KV_FORMAT);
-		if (ret > 0) {
-			log_fatal("corrupted leaf index at index %llu total entries %llu", (LLU)i,
-				  (LLU)leaf->numberOfEntriesInNode);
-			printf("previous key is: %s\n", (char *)prev + sizeof(int32_t));
-			printf("curr key is: %s\n", (char *)curr + sizeof(int32_t));
-			raise(SIGINT);
-			exit(EXIT_FAILURE);
-		}
-	}
-}
-
-void print_key(void *key)
-{
-	char tmp[32];
-	memset(tmp, 0, 32);
-	memcpy(tmp, ((char *)key) + sizeof(uint32_t), 16);
-	printf("|%s|\n", tmp);
 }
 
 /**
@@ -1940,7 +1761,16 @@ int insert_KV_at_leaf(bt_insert_req *ins_req, node_header *leaf)
 
 struct bt_rebalance_result split_leaf(bt_insert_req *req, leaf_node *node)
 {
-	return split_static_leaf((struct bt_static_leaf_node *)node, req);
+	level_descriptor *level = &req->metadata.handle->db_desc->levels[node->header.level_id];
+	switch (level->node_layout) {
+	case STATIC_LEAF:
+		return split_static_leaf((struct bt_static_leaf_node *)node, req);
+	case DYNAMIC_LEAF:
+		return split_static_leaf((struct bt_static_leaf_node *)node, req);
+	default:
+		log_fatal("INDEX IS CORRUPTED!");
+		exit(EXIT_FAILURE);
+	}
 }
 
 /**
@@ -2058,23 +1888,6 @@ void assert_index_node(node_header *node)
 	}
 	// printf("\t\tpointer to last child %llu\n", (LLU)(uint64_t)child-MAPPED);
 }
-#if 0
-#endif
-
-void print_node(node_header *node)
-{
-	printf("\n***Node synopsis***\n");
-	if (node == NULL) {
-		printf("NULL\n");
-		return;
-	}
-	// printf("DEVICE OFFSET = %llu\n", (uint64_t)node - MAPPED);
-	printf("type = %d\n", node->type);
-	printf("total entries = %llu\n", (LLU)node->numberOfEntriesInNode);
-	printf("epoch = %llu\n", (LLU)node->epoch);
-	printf("height = %llu\n", (LLU)node->height);
-	printf("fragmentation = %llu\n", (LLU)node->fragmentation);
-}
 
 uint64_t hash(uint64_t x)
 {
@@ -2112,7 +1925,7 @@ void _unlock_upper_levels(lock_table *node[], unsigned size, unsigned release)
 		}
 }
 
-uint8_t _concurrent_insert(bt_insert_req *ins_req)
+static uint8_t concurrent_insert(bt_insert_req *ins_req)
 {
 	/*The array with the locks that belong to this thread from upper levels*/
 	lock_table *upper_level_nodes[MAX_HEIGHT];
@@ -2376,7 +2189,7 @@ release_and_retry:
 	return SUCCESS;
 }
 
-static uint8_t _writers_join_as_readers(bt_insert_req *ins_req)
+static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 {
 	/*The array with the locks that belong to this thread from upper levels*/
 	lock_table *upper_level_nodes[MAX_HEIGHT];

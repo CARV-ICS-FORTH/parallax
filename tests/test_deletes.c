@@ -429,19 +429,19 @@ void count_missing_keys(db_handle *hd)
 	log_info("All keys were found");
 }
 
-int match_workload(char *s)
+int match_workload(char *workload)
 {
-	if (!strcmp("serial_deletes", s))
+	if (!strcmp("serial_deletes", workload))
 		return SD;
-	else if (!strcmp("reverse_deletes", s))
+	else if (!strcmp("reverse_deletes", workload))
 		return RD;
-	else if (!strcmp("serial_deletesote", s))
+	else if (!strcmp("serial_deletesote", workload))
 		return SOTE;
-	else if (!strcmp("serial_deleteseto", s))
+	else if (!strcmp("serial_deleteseto", workload))
 		return SETO;
-	else if (!strcmp("reverse_deletesote", s))
+	else if (!strcmp("reverse_deletesote", workload))
 		return RSOTE;
-	else if (!strcmp("reverse_deleteseto", s))
+	else if (!strcmp("reverse_deleteseto", workload))
 		return RSETO;
 
 	return -1;
@@ -451,7 +451,7 @@ void run_workload(void (*f[3])(db_handle *), db_handle *hd)
 {
 	int i;
 
-	for (i = 0; i < 2; ++i) {
+	for (i = 0; i < 3; ++i) {
 		f[i](hd);
 		if (i == 1 && PERSIST)
 			snapshot(hd->volume_desc);

@@ -9,7 +9,7 @@ void mark_deleted_key(db_handle *handle, void *deleted_key_addr);
 
 int8_t merge_with_leaf_neighbor(leaf_node *leaf, rotate_data *siblings, bt_delete_request *req);
 
-uint8_t __delete_from_leaf(bt_delete_request *req, index_node *parent, leaf_node *leaf, struct splice *key);
+uint8_t delete_key_value_from_leaf(bt_delete_request *req, index_node *parent, leaf_node *leaf, struct splice *key);
 
 void delete_key_value(leaf_node *leaf, int pos);
 

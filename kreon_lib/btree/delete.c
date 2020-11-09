@@ -17,6 +17,7 @@
 #include "segment_allocator.h"
 #include "delete.h"
 #include "btree.h"
+#include "static_leaf.h"
 
 extern int32_t index_order;
 extern uint64_t snapshot_v1, snapshot_v2;
@@ -32,7 +33,6 @@ int8_t __delete_key(bt_delete_request *req)
 	db_descriptor *db_desc;
 	node_header *parent;
 	node_header *son;
-	node_header *temp;
 	node_header *flag = NULL;
 	int i;
 	uint32_t order;
@@ -139,8 +139,8 @@ retry:
 			next_addr =
 				_index_node_binary_search((index_node *)son, req->key_buf, req->metadata.key_format);
 			parent = son;
-			temp = (node_header *)(MAPPED + *(uint64_t *)next_addr);
-			son = temp;
+
+			son = (node_header *)REAL_ADDRESS(*(uint64_t *)next_addr);
 
 			if (son->height == 0)
 				break;
@@ -150,19 +150,21 @@ retry:
 	if (parent)
 		parent->v1++;
 	son->v1++; /*lamport counter*/
-	ret = __delete_from_leaf(req, (index_node *)parent, (leaf_node *)son, (struct splice *)req->key_buf);
+	ret = delete_key_value_from_leaf(req, (index_node *)parent, (leaf_node *)son, (struct splice *)req->key_buf);
 	son->v2++; /*lamport counter*/
 	if (parent)
 		parent->v2++;
 	return ret;
 }
 
-uint8_t __delete_from_leaf(bt_delete_request *req, index_node *parent, leaf_node *leaf, struct splice *key)
+uint8_t delete_key_value_from_leaf(bt_delete_request *req, index_node *parent, leaf_node *leaf, struct splice *key)
 {
 	/* We need these variables to find the neighboring nodes
 	   in case we delete a kv pair from the first or the last node.  */
+
 	rotate_data siblings = { .left = NULL, .right = NULL, .pivot = NULL };
-	void *key_addr_in_leaf;
+	struct bsearch_result result = { .middle = 0, .status = INSERT, .op = STATIC_LEAF_FIND };
+	level_descriptor *level = &req->metadata.handle->db_desc->levels[leaf->header.level_id];
 	int pos;
 	int8_t ret;
 
@@ -173,70 +175,66 @@ uint8_t __delete_from_leaf(bt_delete_request *req, index_node *parent, leaf_node
 		assert(siblings.left->type == leafNode);
 		siblings.left->v1++;
 	}
+
 	if (siblings.right != NULL) {
 		assert(siblings.right->type == leafNode);
 		siblings.right->v1++;
 	}
 
-	key_addr_in_leaf = __find_key_addr_in_leaf(leaf, key);
-	pos = __find_position_in_leaf(leaf, key);
+	switch (level->node_layout) {
+	case STATIC_LEAF:
+		binary_search_static_leaf((struct bt_static_leaf_node *)leaf, level, key, &result);
+		break;
+	case DYNAMIC_LEAF:
+		break;
+	}
 
-	if (key_addr_in_leaf) {
-		if (pos != -1) {
-			if (req->metadata.level_id == 0) {
-				log_operation append_op = { .metadata = &req->metadata,
-							    .optype_tolog = deleteOp,
-							    .del_req = req };
-				append_key_value_to_log(&append_op);
-			}
+	if (result.status == FOUND) {
+		pos = result.middle;
 
-			delete_key_value(leaf, pos);
-			req->metadata.handle->db_desc->dirty = 1;
-			if (leaf->header.type == leafRootNode)
-				return SUCCESS;
+		if (req->metadata.level_id == 0) {
+			log_operation append_op = { .metadata = &req->metadata,
+						    .optype_tolog = deleteOp,
+						    .del_req = req };
+			append_key_value_to_log(&append_op);
+		}
 
-			ret = check_for_underflow_in_leaf(leaf, &siblings, req);
+		switch (level->node_layout) {
+		case STATIC_LEAF:
+			delete_key_value_from_static_leaf((struct bt_static_leaf_node *)leaf, level, pos);
+			break;
+		case DYNAMIC_LEAF:
+			log_fatal("NOT IMPLEMENTED");
+			break;
+		}
 
-			if (ret == ROTATE_IMPOSSIBLE_TRY_TO_MERGE) {
-				/* We could not borrow anything from the left and right neighbors.
+		req->metadata.handle->db_desc->dirty = 1;
+
+		if (leaf->header.type == leafRootNode)
+			return SUCCESS;
+
+		ret = check_for_underflow_in_leaf(leaf, &siblings, req);
+
+		if (ret == ROTATE_IMPOSSIBLE_TRY_TO_MERGE) {
+			/* We could not borrow anything from the left and right neighbors.
 				   We will try to merge with one of them.
 				   If we cannot merge that's a fatal error!
 				*/
-				merge_with_leaf_neighbor(leaf, &siblings, req);
-			}
-			if (siblings.left != NULL) {
-				siblings.left->v2++;
-			}
-			if (siblings.right != NULL) {
-				siblings.right->v2++;
-			}
-
-			return SUCCESS;
+			merge_with_leaf_neighbor(leaf, &siblings, req);
 		}
+
+		if (siblings.left != NULL) {
+			siblings.left->v2++;
+		}
+
+		if (siblings.right != NULL) {
+			siblings.right->v2++;
+		}
+
+		return SUCCESS;
 	}
 
 	return FAILED;
-}
-
-void delete_key_value(leaf_node *leaf, int pos)
-{
-	if (pos > 0 && pos < (leaf->header.numberOfEntriesInNode - 1)) {
-		memmove(&leaf->pointer[pos], &leaf->pointer[pos + 1],
-			(leaf->header.numberOfEntriesInNode - (pos + 1)) * sizeof(uint64_t));
-		memmove(&leaf->prefix[pos], &leaf->prefix[pos + 1],
-			PREFIX_SIZE * (leaf->header.numberOfEntriesInNode - (pos + 1)));
-	} else if (pos == (leaf->header.numberOfEntriesInNode - 1)) { /* Key is in the last position of the leaf */
-	} else if (pos == 0) { /* Key in the first position of the leaf */
-		memmove(&leaf->pointer[0], &leaf->pointer[1],
-			(leaf->header.numberOfEntriesInNode - 1) * sizeof(uint64_t));
-		memmove(&leaf->prefix[0], &leaf->prefix[1], PREFIX_SIZE * (leaf->header.numberOfEntriesInNode - 1));
-	} else {
-		log_debug("Error unknown case to delete a KV pair position = %d", pos);
-		assert(0);
-		exit(EXIT_FAILURE);
-	}
-
-	--leaf->header.numberOfEntriesInNode;
 }
 
 void __update_index_pivot_in_place(delete_request *del_req, node_header *node, void *node_index_addr, void *key_buf)
@@ -515,6 +513,7 @@ int8_t merge_with_leaf_neighbor(leaf_node *leaf, rotate_data *siblings, bt_delet
 {
 	leaf_node *left = (leaf_node *)siblings->left;
 	leaf_node *right = (leaf_node *)siblings->right;
+	level_descriptor *level = &req->metadata.handle->db_desc->levels[leaf->header.level_id];
 	uint64_t merged_with_left_num_entries = 0, merged_with_right_num_entries = 0;
 	uint64_t max_len = req->metadata.handle->db_desc->levels[leaf->header.level_id].leaf_offsets.kv_entries;
 	int8_t ret = NO_REBALANCE_NEEDED;
@@ -530,13 +529,29 @@ int8_t merge_with_leaf_neighbor(leaf_node *leaf, rotate_data *siblings, bt_delet
 		/* We can merge with the right neighbor */
 		ret = MERGE_WITH_LEFT;
 		left->header.v1++;
-		merge_with_left_neighbor(leaf, left, req);
+		switch (level->node_layout) {
+		case STATIC_LEAF:
+			merge_with_left_static_leaf_neighbor((struct bt_static_leaf_node *)leaf,
+							     (struct bt_static_leaf_node *)left, level, req);
+			break;
+		case DYNAMIC_LEAF:
+			log_fatal("NOT IMPLEMENTED");
+			break;
+		}
 		left->header.v2++;
 	} else if (merged_with_right_num_entries < max_len) {
 		/* We can merge with the left neighbor */
 		ret = MERGE_WITH_RIGHT;
 		right->header.v1++;
-		merge_with_right_neighbor(leaf, right, req);
+		switch (level->node_layout) {
+		case STATIC_LEAF:
+			merge_with_right_static_leaf_neighbor((struct bt_static_leaf_node *)leaf,
+							      (struct bt_static_leaf_node *)right, level, req);
+			break;
+		case DYNAMIC_LEAF:
+			log_fatal("NOT IMPLEMENTED");
+			break;
+		}
 		right->header.v2++;
 	} else {
 		ret = MERGE_IMPOSSIBLE_FATAL;
@@ -551,6 +566,7 @@ int8_t check_for_underflow_in_leaf(leaf_node *leaf, rotate_data *siblings, bt_de
 {
 	leaf_node *left = (leaf_node *)siblings->left;
 	leaf_node *right = (leaf_node *)siblings->right;
+	level_descriptor *level = &req->metadata.handle->db_desc->levels[leaf->header.level_id];
 	uint64_t kv_entries = req->metadata.handle->db_desc->levels[leaf->header.level_id].leaf_offsets.kv_entries;
 	uint64_t underflow_threshold = kv_entries / 2, borrow_threshold = underflow_threshold + 1;
 	int8_t ret = NO_REBALANCE_NEEDED;
@@ -562,13 +578,31 @@ int8_t check_for_underflow_in_leaf(leaf_node *leaf, rotate_data *siblings, bt_de
 			/* Steal the rightmost KV pair from the left sibling */
 			ret = ROTATE_WITH_LEFT;
 			left->header.v1++;
-			underflow_borrow_from_left_neighbor(leaf, left, req);
+			switch (level->node_layout) {
+			case STATIC_LEAF:
+				underflow_borrow_from_left_static_leaf_neighbor((struct bt_static_leaf_node *)leaf,
+										(struct bt_static_leaf_node *)left,
+										level, req);
+				break;
+			case DYNAMIC_LEAF:
+				log_fatal("NOT IMPLEMENTED");
+				break;
+			}
 			left->header.v2++;
 		} else if (right && (right->header.numberOfEntriesInNode >= borrow_threshold)) {
 			/* Steal the leftmost KV pair from the right sibling */
 			ret = ROTATE_WITH_RIGHT;
 			right->header.v1++;
-			underflow_borrow_from_right_neighbor(leaf, right, req);
+			switch (level->node_layout) {
+			case STATIC_LEAF:
+				underflow_borrow_from_right_static_leaf_neighbor((struct bt_static_leaf_node *)leaf,
+										 (struct bt_static_leaf_node *)right,
+										 level, req);
+				break;
+			case DYNAMIC_LEAF:
+				log_fatal("NOT IMPLEMENTED");
+				break;
+			}
 			right->header.v2++;
 		} else {
 			/* We could not borrow a KV pair from the siblings
@@ -640,37 +674,6 @@ void __find_left_and_right_siblings(index_node *parent, void *key, rotate_data *
 		addr = &(parent->p[parent->header.numberOfEntriesInNode - 1].right[0]);
 		siblings->left = (node_header *)(MAPPED + parent->p[parent->header.numberOfEntriesInNode - 1].left[0]);
 	}
-}
-
-//Retuns the position of the KV pair if it is present in the leaf node.
-int __find_position_in_leaf(leaf_node *leaf, struct splice *key)
-{
-	int32_t start_idx = 0, end_idx = leaf->header.numberOfEntriesInNode - 1;
-	char key_buf_prefix[PREFIX_SIZE] = { '\0' };
-	int32_t middle = 0;
-	memcpy(key_buf_prefix, key->data, MIN(key->size, PREFIX_SIZE));
-
-	while (start_idx <= end_idx) {
-		middle = (start_idx + end_idx) / 2;
-
-		int32_t ret = prefix_compare(leaf->prefix[middle], key_buf_prefix, PREFIX_SIZE);
-
-		if (ret < 0)
-			start_idx = middle + 1;
-		else if (ret > 0)
-			end_idx = middle - 1;
-		else {
-			void *index_key = (void *)(MAPPED + leaf->pointer[middle]);
-			ret = _tucana_key_cmp(index_key, key, KV_FORMAT, KV_FORMAT);
-			if (ret == 0)
-				return middle;
-			else if (ret < 0)
-				start_idx = middle + 1;
-			else
-				end_idx = middle - 1;
-		}
-	}
-	return -1;
 }
 
 void __find_position_in_index(index_node *node, struct splice *key, rotate_data *siblings)
@@ -749,8 +752,7 @@ int8_t delete_key(db_handle *handle, void *key, uint32_t size)
 	}
 
 	req.key_buf = __tmp;
-	*(uint32_t *)req.key_buf = size;
-	memcpy((void *)(uint64_t)req.key_buf + sizeof(uint32_t), key, size);
+	SERIALIZE_KEY(req.key_buf, key, size);
 	req.metadata.handle = handle;
 	req.metadata.key_format = KV_FORMAT;
 

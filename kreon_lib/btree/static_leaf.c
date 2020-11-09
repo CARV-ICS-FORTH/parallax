@@ -451,27 +451,6 @@ void delete_key_value_from_static_leaf(struct bt_static_leaf_node *leaf, level_d
 	}
 }
 
-void validate_static_leaf(uint64_t num_entries, struct bt_leaf_entry_bitmap *bitmap_base,
-			  struct bt_leaf_entry_bitmap *bitmap_end)
-{
-	iter_t iter;
-	uint64_t count_set_bits = 0;
-	bitset_iterate(&iter);
-
-	while (1)
-		switch (bitset_next(bitmap_base, bitmap_end, &iter)) {
-		case 1:
-			++count_set_bits;
-			continue;
-		case 0:
-			continue;
-		case -1:
-			return;
-		}
-
-	assert(num_entries == count_set_bits);
-}
-
 int8_t insert_in_static_leaf(struct bt_static_leaf_node *leaf, bt_insert_req *req, level_descriptor *level)
 {
 	struct bt_static_leaf_structs src;

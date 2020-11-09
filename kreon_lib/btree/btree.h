@@ -97,6 +97,8 @@ typedef enum {
 	SPILLING_IN_PROGRESS = 1,
 } level_0_tree_status;
 
+enum kreon_status { FAILURE = -1 };
+
 enum db_initializers { CREATE_DB = 4, DONOT_CREATE_DB = 5 };
 
 /*
@@ -310,11 +312,11 @@ typedef struct level_descriptor {
 	uint64_t level_size[NUM_TREES_PER_LEVEL];
 	uint64_t max_level_size;
 	leaf_node_metadata leaf_offsets;
-	leaf_node_metadata leaf_offsets;
 	int64_t active_writers;
 	/*spilling or not?*/
 	char tree_status[NUM_TREES_PER_LEVEL];
 	uint32_t leaf_size;
+	enum bt_layout node_layout;
 	uint8_t active_tree;
 	uint8_t level_id;
 	char in_recovery_mode;
@@ -519,10 +521,6 @@ void *_index_node_binary_search(index_node *node, void *key_buf, char query_key_
 
 // void free_logical_node(allocator_descriptor *allocator_desc, node_header
 // *node_index);
-
-void init_leaf_node(leaf_node *node);
-void print_node(node_header *node);
-void print_key(void *key);
 
 lock_table *_find_position(lock_table **table, node_header *node);
 #define MIN(x, y) ((x > y) ? (y) : (x))
