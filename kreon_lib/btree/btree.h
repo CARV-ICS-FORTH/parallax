@@ -209,15 +209,6 @@ typedef struct leaf_node {
 	char __pad[LEAF_NODE_SIZE - sizeof(struct node_header) - (LN_LENGTH * LN_ITEM_SIZE)];
 } __attribute__((packed)) leaf_node;
 
-typedef struct level_offsets_todata {
-	uint32_t bitmap_entries;
-	uint32_t bitmap_offset;
-	uint32_t slot_array_entries;
-	uint32_t slot_array_offset;
-	uint32_t kv_entries;
-	uint32_t kv_entries_offset;
-} level_offsets_todata;
-
 #define LEVEL0_LEAF_SIZE 4096
 #define LEVEL1_LEAF_SIZE 8192
 #define LEVEL2_LEAF_SIZE 16384
@@ -301,6 +292,15 @@ typedef struct kv_proposal {
 	uint64_t log_offset;
 } kv_proposal;
 
+typedef struct level_offsets_todata {
+	uint32_t bitmap_entries;
+	uint32_t bitmap_offset;
+	uint32_t slot_array_entries;
+	uint32_t slot_array_offset;
+	uint32_t kv_entries;
+	uint32_t kv_entries_offset;
+} leaf_node_metadata;
+
 typedef struct level_descriptor {
 	lock_table guard_of_level;
 	pthread_t compaction_thread[NUM_TREES_PER_LEVEL];
@@ -318,9 +318,11 @@ typedef struct level_descriptor {
 	//in number of keys
 	uint64_t level_size[NUM_TREES_PER_LEVEL];
 	uint64_t max_level_size;
+	leaf_node_metadata leaf_offsets;
 	int64_t active_writers;
 	/*spilling or not?*/
 	char tree_status[NUM_TREES_PER_LEVEL];
+	uint32_t leaf_size;
 	uint8_t active_tree;
 	uint8_t level_id;
 	char in_recovery_mode;
@@ -526,9 +528,9 @@ lock_table *_find_position(lock_table **table, node_header *node);
 #define KEY_SIZE(x) (*(uint32_t *)x)
 #define ABSOLUTE_ADDRESS(X) (X - MAPPED)
 #define REAL_ADDRESS(X) ((void *)(uint64_t)(MAPPED + X))
-#define VALUE_SIZE_OFFSET(KEY_SIZE,KEY) (sizeof(uint32_t) + KEY_SIZE + KEY)
-#define SERIALIZE_KEY(buf, key, key_size)				\
-	*(uint32_t *)buf = key_size;					\
+#define VALUE_SIZE_OFFSET(KEY_SIZE, KEY) (sizeof(uint32_t) + KEY_SIZE + KEY)
+#define SERIALIZE_KEY(buf, key, key_size)                                                                              \
+	*(uint32_t *)buf = key_size;                                                                                   \
 	memcpy(buf + 4, key, key_size)
 #define KV_MAX_SIZE (4096 + 8)
 #define likely(x) __builtin_expect((x), 1)

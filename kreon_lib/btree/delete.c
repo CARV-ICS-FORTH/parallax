@@ -250,10 +250,10 @@ uint8_t __delete_from_leaf(bt_delete_request *req, index_node *parent, leaf_node
 		assert(siblings.right->type == leafNode);
 		siblings.right->v1++;
 	}
-	key_addr_in_leaf = __find_key_addr_in_leaf(
-		leaf, key); /* XXX TODO XXX __find_key_addr_in_leaf should return the position in the leaf node
-                                                             to avoid duplication of code.*/
+
+	key_addr_in_leaf = __find_key_addr_in_leaf(leaf, key);
 	pos = __find_position_in_leaf(leaf, key);
+
 	if (key_addr_in_leaf) {
 		if (pos != -1) {
 			if (req->metadata.level_id == 0) {

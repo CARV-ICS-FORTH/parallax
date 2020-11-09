@@ -23,6 +23,7 @@
 #include "btree.h"
 #include "gc.h"
 #include "segment_allocator.h"
+#include "static_leaf.h"
 #include "../../utilities/macros.h"
 #include "../allocator/dmap-ioctl.h"
 #include "../scanner/scanner.h"
@@ -67,7 +68,6 @@ pthread_spinlock_t log_buffer_lock;
 uint32_t size_per_height[MAX_HEIGHT] = { 8192, 4096, 2048, 1024, 512, 256, 128, 64, 32 };
 uint32_t leaf_size_per_level[MAX_LEVELS] = { LEVEL0_LEAF_SIZE, LEVEL1_LEAF_SIZE, LEVEL2_LEAF_SIZE, LEVEL3_LEAF_SIZE,
 					     LEVEL4_LEAF_SIZE, LEVEL5_LEAF_SIZE, LEVEL6_LEAF_SIZE, LEVEL7_LEAF_SIZE };
-level_offsets_todata leaf_node_offsets[MAX_LEVELS];
 
 #define PAGE_SIZE 4096
 #define LEAF_ROOT_NODE_SPLITTED 0xFC
@@ -441,20 +441,20 @@ static void init_level_locktable(db_descriptor *database, uint8_t level_id)
 }
 
 static void calculate_metadata_offsets(uint32_t bitmap_entries, uint32_t slot_array_entries, uint32_t kv_entries,
-				       level_offsets_todata *leaf_node_offsets)
+				       leaf_node_metadata *leaf_level)
 {
-	leaf_node_offsets->bitmap_entries = bitmap_entries;
-	leaf_node_offsets->bitmap_offset = sizeof(struct bt_static_leaf_node);
-	leaf_node_offsets->slot_array_entries = slot_array_entries;
-	leaf_node_offsets->slot_array_offset =
-		leaf_node_offsets->bitmap_offset + bitmap_entries * sizeof(struct bt_leaf_entry_bitmap);
-	leaf_node_offsets->kv_entries = kv_entries;
-	leaf_node_offsets->kv_entries_offset = leaf_node_offsets->bitmap_offset +
-					       bitmap_entries * sizeof(struct bt_leaf_entry_bitmap) +
-					       slot_array_entries * sizeof(bt_leaf_slot_array);
+	leaf_level->bitmap_entries = bitmap_entries;
+	leaf_level->bitmap_offset = sizeof(struct bt_static_leaf_node);
+	leaf_level->slot_array_entries = slot_array_entries;
+	leaf_level->slot_array_offset =
+		leaf_level->bitmap_offset + bitmap_entries * sizeof(struct bt_leaf_entry_bitmap);
+	leaf_level->kv_entries = kv_entries;
+	leaf_level->kv_entries_offset = leaf_level->bitmap_offset +
+					bitmap_entries * sizeof(struct bt_leaf_entry_bitmap) +
+					slot_array_entries * sizeof(bt_leaf_slot_array);
 }
 
-static void init_leaf_sizes_perlevel(void)
+static void init_leaf_sizes_perlevel(uint8_t level_id, leaf_node_metadata *leaf_offsets)
 {
 	double kv_leaf_entry = sizeof(bt_leaf_entry) + sizeof(bt_leaf_slot_array) + (1 / CHAR_BIT);
 	double numentries_without_metadata;
@@ -463,16 +463,14 @@ static void init_leaf_sizes_perlevel(void)
 	uint32_t slot_array_entries;
 	uint32_t kv_entries;
 
-	for (int i = 0; i < MAX_LEVELS; ++i) {
-		leaf_size = leaf_size_per_level[i];
-		numentries_without_metadata = (leaf_size - sizeof(struct bt_static_leaf_node)) / kv_leaf_entry;
-		bitmap_entries = (numentries_without_metadata / CHAR_BIT) + 1;
-		slot_array_entries = numentries_without_metadata;
-		kv_entries = leaf_size - sizeof(struct bt_static_leaf_node) - bitmap_entries -
-			     (slot_array_entries * sizeof(bt_leaf_slot_array)) / sizeof(bt_leaf_entry);
-
-		calculate_metadata_offsets(bitmap_entries, slot_array_entries, kv_entries, &leaf_node_offsets[i]);
-	}
+	leaf_size = leaf_size_per_level[level_id];
+	numentries_without_metadata = (leaf_size - sizeof(struct bt_static_leaf_node)) / kv_leaf_entry;
+	bitmap_entries = (numentries_without_metadata / CHAR_BIT) + 1;
+	slot_array_entries = numentries_without_metadata;
+	kv_entries = (leaf_size - sizeof(struct bt_static_leaf_node) - bitmap_entries -
+		      (slot_array_entries * sizeof(bt_leaf_slot_array))) /
+		     sizeof(bt_leaf_entry);
+	calculate_metadata_offsets(bitmap_entries, slot_array_entries, kv_entries, leaf_offsets);
 }
 
 static void destroy_level_locktable(db_descriptor *database, uint8_t level_id)
@@ -515,16 +513,6 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 		while (index_order % 2 != 1)
 			--index_order;
 
-		if ((LEAF_NODE_SIZE - sizeof(node_header)) % 8 != 0) {
-			log_fatal("Misaligned node header for leaf nodes, scans will not work");
-			exit(EXIT_FAILURE);
-		}
-		if ((INDEX_NODE_SIZE - sizeof(node_header)) % 16 != 0) {
-			log_fatal("Misaligned node header for index nodes, scans will not work "
-				  "size of node_header %ld",
-				  sizeof(node_header));
-			exit(EXIT_FAILURE);
-		}
 		log_info("index order set to: %d leaf order is set to %d sizeof "
 			 "node_header = %lu",
 			 index_order, leaf_order, sizeof(node_header));
@@ -878,6 +866,7 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 				db_desc->levels[level_id].first_segment[tree_id] = NULL;
 				db_desc->levels[level_id].last_segment[tree_id] = NULL;
 				db_desc->levels[level_id].offset[tree_id] = 0;
+				init_leaf_sizes_perlevel(level_id, &db_desc->levels[level_id].leaf_offsets);
 			}
 		}
 		/*initialize KV log for this db*/
@@ -935,11 +924,12 @@ finish_init:
 		/*check again which tree should be active*/
 		db_desc->levels[level_id].active_tree = 0;
 		db_desc->levels[level_id].level_id = level_id;
+		db_desc->levels[level_id].leaf_size = leaf_size_per_level[level_id];
 		for (tree_id = 0; tree_id < NUM_TREES_PER_LEVEL; tree_id++) {
 			db_desc->levels[level_id].tree_status[tree_id] = NO_SPILLING;
 		}
+		init_leaf_sizes_perlevel(level_id, &db_desc->levels[level_id].leaf_offsets);
 	}
-	init_leaf_sizes_perlevel();
 
 #if LOG_WITH_MUTEX
 	MUTEX_INIT(&db_desc->lock_log, NULL);
@@ -951,7 +941,6 @@ finish_init:
 	add_first(volume_desc->open_databases, db_desc, db_name);
 	MUTEX_UNLOCK(&init_lock);
 	free(key);
-
 	db_desc->stat = DB_OPEN;
 	log_info("opened DB %s starting its compaction daemon", db_name);
 
@@ -963,7 +952,7 @@ finish_init:
 	}
 
 #if 0
-		else{
+	else{
 		log_info("opened replica db");
 		db_desc->db_mode = BACKUP_DB_NO_PENDING_SPILL;
 		log_info("Initializing  segment table");
@@ -972,6 +961,7 @@ finish_init:
 	db_desc->log_buffer = NULL;
 	db_desc->latest_proposal_start_segment_offset = 0;
 #endif
+
 	/*recovery checks*/
 	log_info("performing recovery checks for db: %s", db_desc->db_name);
 	/*where is L0 located at the log?*/
@@ -1016,6 +1006,7 @@ finish_init:
 		log_fatal("FATAL Corrupted state detected");
 		exit(EXIT_FAILURE);
 	}
+
 	return handle;
 }
 
@@ -1359,7 +1350,7 @@ uint8_t _insert_key_value(bt_insert_req *ins_req)
 	return rc;
 }
 
-static inline struct lookup_reply lookup_in_tree(void *key, node_header *root)
+static inline struct lookup_reply lookup_in_tree(db_descriptor *db_desc, void *key, node_header *root)
 {
 	struct lookup_reply rep = { .addr = NULL, .lc_failed = 0 };
 	node_header *curr_node, *son_node = NULL;
@@ -1373,7 +1364,9 @@ static inline struct lookup_reply lookup_in_tree(void *key, node_header *root)
 	curr_v2 = root->v2;
 	curr_node = root;
 	if (curr_node->type == leafRootNode) {
-		key_addr_in_leaf = __find_key_addr_in_leaf((leaf_node *)curr_node, (struct splice *)key);
+		key_addr_in_leaf =
+			find_key_in_static_leaf((struct bt_static_leaf_node *)curr_node,
+						&db_desc->levels[curr_node->level_id], key + 4, *(uint32_t *)key);
 
 		if (key_addr_in_leaf == NULL)
 			rep.addr = NULL;
@@ -1410,8 +1403,11 @@ static inline struct lookup_reply lookup_in_tree(void *key, node_header *root)
 			curr_v2 = son_v2;
 		}
 
+		key_addr_in_leaf =
+			find_key_in_static_leaf((struct bt_static_leaf_node *)curr_node,
+						&db_desc->levels[curr_node->level_id], key + 4, *(uint32_t *)key);
 		/* log_debug("curr node - MAPPEd %p",MAPPED-(uint64_t)curr_node); */
-		key_addr_in_leaf = __find_key_addr_in_leaf((leaf_node *)curr_node, (struct splice *)key);
+		/* key_addr_in_leaf = __find_key_addr_in_leaf((leaf_node *)curr_node, (struct splice *)key); */
 
 		if (key_addr_in_leaf == NULL) {
 			// log_info("key not found %s v1 %llu v2 %llu",((struct splice
@@ -1433,9 +1429,9 @@ static inline struct lookup_reply lookup_in_tree(void *key, node_header *root)
 			return rep;
 		}
 	}
+
 	return rep;
 }
-
 /*this function will be reused in various places such as deletes*/
 void *__find_key(db_handle *handle, void *key, char SEARCH_MODE)
 {
@@ -1461,13 +1457,13 @@ void *__find_key(db_handle *handle, void *key, char SEARCH_MODE)
 		if (root_w != NULL) {
 			/* if (level_id == 1) */
 			/* 	BREAKPOINT; */
-			rep = lookup_in_tree(key, root_w);
+			rep = lookup_in_tree(handle->db_desc, key, root_w);
 			if (rep.lc_failed) {
 				++tries;
 				goto retry_1;
 			}
 		} else if (root_r != NULL) {
-			rep = lookup_in_tree(key, root_r);
+			rep = lookup_in_tree(handle->db_desc, key, root_r);
 
 			if (rep.lc_failed) {
 				++tries;
@@ -1920,6 +1916,7 @@ static bt_split_result split_index(node_header *node, bt_insert_req *ins_req)
 /*Unused allocation_code XXX TODO XXX REMOVE */
 int insert_KV_at_leaf(bt_insert_req *ins_req, node_header *leaf)
 {
+	db_descriptor *db_desc = ins_req->metadata.handle->db_desc;
 	void *key_addr = NULL;
 	int ret;
 	uint8_t level_id;
@@ -1930,26 +1927,26 @@ int insert_KV_at_leaf(bt_insert_req *ins_req, node_header *leaf)
 		log_operation append_op = { .metadata = &ins_req->metadata,
 					    .optype_tolog = insertOp,
 					    .ins_req = ins_req };
-		key_addr = append_key_value_to_log(&append_op);
+		ins_req->key_value_buf = append_key_value_to_log(&append_op);
 	} else if (!ins_req->metadata.append_to_log && ins_req->metadata.key_format == KV_PREFIX)
 		key_addr = ins_req->key_value_buf;
-
 	else {
 		log_fatal("Wrong combination of key format / append_to_log option");
 		exit(EXIT_FAILURE);
 	}
 
-	if (__update_leaf_index(ins_req, (leaf_node *)leaf, key_addr) != 0) {
-		++leaf->numberOfEntriesInNode;
-		__sync_fetch_and_add(
-			&(ins_req->metadata.handle->db_desc->levels[level_id].level_size[ins_req->metadata.tree_id]),
-			1);
-		ret = 1;
-	} else {
-		/*if key already present at the leaf, must be an update or an append*/
-		leaf->fragmentation++;
-		ret = 0;
-	}
+	ret = insert_in_static_leaf((struct bt_static_leaf_node *)leaf, ins_req, &db_desc->levels[leaf->level_id]);
+	__sync_fetch_and_add(&(ins_req->metadata.handle->db_desc->levels[level_id].total_keys[active_tree]), 1);
+
+	/* if (__update_leaf_index(ins_req, (leaf_node *)leaf, key_addr) != 0) { */
+	/* 	++leaf->numberOfEntriesInNode; */
+	/* 	__sync_fetch_and_add(&(ins_req->metadata.handle->db_desc->levels[level_id].total_keys[active_tree]), 1); */
+	/* 	ret = 1; */
+	/* } else { */
+	/* 	/\*if key already present at the leaf, must be an update or an append*\/ */
+	/* 	leaf->fragmentation++; */
+	/* 	ret = 0; */
+	/* } */
 
 	return ret;
 }
@@ -2322,16 +2319,9 @@ uint8_t _concurrent_insert(bt_insert_req *ins_req)
 	node_header *node_copy;
 	node_header *father;
 	node_header *son;
-	uint64_t addr;
-	int64_t ret;
 	unsigned size; /*Size of upper_level_nodes*/
-	unsigned release; /*Counter to know the position that releasing should begin
-*/
+	unsigned release; /*Counter to know the position that releasing should begin*/
 	uint32_t order;
-
-	// remove some warnings here
-	(void)ret;
-	(void)addr;
 
 	lock_table *guard_of_level;
 	int64_t *num_level_writers;
@@ -2577,7 +2567,7 @@ release_and_retry:
 	}
 
 	son->v1++; /*lamport counter*/
-	ret = insert_KV_at_leaf(ins_req, son);
+	insert_KV_at_leaf(ins_req, son);
 	son->v2++; /*lamport counter*/
 	/*Unlock remaining locks*/
 	_unlock_upper_levels(upper_level_nodes, size, release);
@@ -2595,16 +2585,12 @@ static uint8_t _writers_join_as_readers(bt_insert_req *ins_req)
 	node_header *son;
 	lock_table *lock;
 
-	uint64_t addr;
 	int64_t ret;
 	unsigned size; /*Size of upper_level_nodes*/
-	unsigned release; /*Counter to know the position that releasing should begin
-*/
+	unsigned release; /*Counter to know the position that releasing should begin*/
 	uint32_t order;
 
 	// remove some warnings here
-	(void)ret;
-	(void)addr;
 	uint32_t level_id;
 	lock_table *guard_of_level;
 	int64_t *num_level_writers;
@@ -2708,7 +2694,7 @@ static uint8_t _writers_join_as_readers(bt_insert_req *ins_req)
 		exit(EXIT_FAILURE);
 	}
 	son->v1++; /*lamport counter*/
-	ret = insert_KV_at_leaf(ins_req, son);
+	insert_KV_at_leaf(ins_req, son);
 	son->v2++; /*lamport counter*/
 	/*Unlock remaining locks*/
 	_unlock_upper_levels(upper_level_nodes, size, release);

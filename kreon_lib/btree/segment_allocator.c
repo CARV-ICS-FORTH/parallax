@@ -2,6 +2,7 @@
 #include <signal.h>
 #include "segment_allocator.h"
 #include <log.h>
+
 extern uint64_t MAPPED;
 
 static void *get_space(volume_descriptor *volume_desc, level_descriptor *level_desc, uint8_t tree_id, uint32_t size,
@@ -145,7 +146,7 @@ void seg_free_index_node(volume_descriptor *volume_desc, level_descriptor *level
 
 leaf_node *seg_get_leaf_node(volume_descriptor *volume_desc, level_descriptor *level_desc, uint8_t tree_id, char reason)
 {
-	leaf_node *leaf = (leaf_node *)get_space(volume_desc, level_desc, tree_id, LEAF_NODE_SIZE, reason);
+	leaf_node *leaf = (leaf_node *)get_space(volume_desc, level_desc, tree_id, level_desc->leaf_size, reason);
 
 	leaf->header.type = leafNode;
 	leaf->header.epoch = volume_desc->mem_catalogue->epoch;
@@ -159,13 +160,14 @@ leaf_node *seg_get_leaf_node(volume_descriptor *volume_desc, level_descriptor *l
 	leaf->header.key_log_size = 0; /*unused also*/
 	leaf->header.height = 0;
 	leaf->header.level_id = level_desc->level_id;
+
 	return leaf;
 }
 
 leaf_node *seg_get_leaf_node_header(volume_descriptor *volume_desc, level_descriptor *level_desc, uint8_t tree_id,
 				    char reason)
 {
-	return (leaf_node *)get_space(volume_desc, level_desc, tree_id, LEAF_NODE_SIZE, reason);
+	return (leaf_node *)get_space(volume_desc, level_desc, tree_id, level_desc->leaf_size, reason);
 }
 
 void seg_free_leaf_node(volume_descriptor *volume_desc, level_descriptor *level_desc, uint8_t tree_id, leaf_node *leaf)
@@ -173,7 +175,7 @@ void seg_free_leaf_node(volume_descriptor *volume_desc, level_descriptor *level_
 	//leave for future use
 	(void)level_desc;
 	(void)tree_id;
-	free_block(volume_desc, leaf, LEAF_NODE_SIZE, -1);
+	free_block(volume_desc, leaf, level_desc->leaf_size, -1);
 }
 
 segment_header *seg_get_raw_log_segment(volume_descriptor *volume_desc)
