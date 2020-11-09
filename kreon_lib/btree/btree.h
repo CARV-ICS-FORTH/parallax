@@ -13,7 +13,6 @@
 #include <stdlib.h>
 #include <limits.h>
 #include <unistd.h>
-#include "stats.h"
 
 #define SUCCESS 4
 #define FAILED 5

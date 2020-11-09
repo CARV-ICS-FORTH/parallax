@@ -15,16 +15,6 @@
 #define RWLOCK_RDLOCK(L) pthread_rwlock_rdlock(L)
 #define RWLOCK_UNLOCK(L) pthread_rwlock_unlock(L)
 
-/*DEBUG operation FLAGS*/
-#define DEBUG_ALLOCATOR_NO
-#define DEBUG_CLEANER_NO
-#define DEBUG_SNAPSHOT_NO
-#define DEBUG_INSERT_NO
-#define DEBUG_READ_NO
-#define DEBUG_TUCANA_2_NO
-#define DEBUG_SCAN_NO
-#define DEBUG_DELETE_NO
-
 /*don't use for spin lock for log, critical section contains RDMA communication*/
 #define LOG_WITH_MUTEX 1
 
@@ -38,15 +28,9 @@
 #define DEVICE_BLOCK_SIZE 4096
 
 /*for allocator.c*/
-#define DEV_NAME_MAX 512 /* Length of the device name */
 #define DATA_PER_BITMAP_BLOCK ((DEVICE_BLOCK_SIZE - 8) * 8) /*Data blocks addressed per bitmap block*/
-#define BITSPERBYTE 8
-#define SETBITS64 0xFFFFFFFFFFFFFFFF
-#define ZEROBITS32 0x00000000
-#define SETBITS32 0xFFFFFFFF
 #define FREE_LOG_SIZE 512000 /*size in 4KB blocks of the log used for marking the free ops*/
 
-#define MAX_HANDLES 5090
 #define CLEAN_SIZE 500000
 
 #define SEC (1000000L)
@@ -56,27 +40,13 @@
 #define SNAPSHOT_INTERVAL (1500 * SEC)
 #define GC_INTERVAL (50 * SEC)
 
-#define debug
-#define nodemo
 #define WORD_SIZE 64
 #define BREAKPOINT asm volatile("int3;");
-
-#define MARK_BLOCK_NO
-#define SPINNING
-
-#define MAPPRIVATE_NO /*to use the MAP_PRIVATE OR NOT?*/
-#define MSYNC /* to issue msync or not?*/
-#define MMAP /* to mmap a device or use malloc?*/
-
-#define KB (1024)
-#define PG (4 * KB)
-#define MB (KB * KB)
 
 #define KEY_BLOCK_SIZE 8192 // 4KB
 
 /*from scan.c*/
 #define MAX_SIZE 64
-#define COUNTERS_no /*enables counter stats*/
 
 /*various*/
 #define LLU long long unsigned
@@ -84,8 +54,6 @@
 #define GROWTH_FACTOR 4
 #define L0_SIZE 2000000
 /*Buffering related tunables*/
-#define AGGRESIVE_FREE_POLICY
-#define TO_SPILL_KEYS 16384
 
 #define GB(x) (x * 1024LU * 1024LU * 1024LU)
 #define LEVEL0_TOTAL_SIZE GB(4)
@@ -100,4 +68,3 @@
 #define MAX_ALLOCATION_TRIES 2
 
 #define INSERT_TO_INDEX 1
-#define LOG_WITH_MUTEX 1

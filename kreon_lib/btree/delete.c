@@ -11,12 +11,10 @@
 
 #include "../scanner/scanner.h"
 #include <log.h>
-#include "stats.h"
 #include "assertions.h"
 #include "conf.h"
 #include "segment_allocator.h"
 #include "delete.h"
-#include "btree.h"
 #include "static_leaf.h"
 
 extern int32_t index_order;

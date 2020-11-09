@@ -27,7 +27,6 @@
 #include "../../utilities/macros.h"
 #include "../allocator/dmap-ioctl.h"
 #include "../scanner/scanner.h"
-#include "../btree/stats.h"
 #include "../btree/assertions.h"
 #include "../btree/conf.h"
 #include <log.h>
@@ -37,13 +36,8 @@
 
 #define SYSTEM_NAME "kreon"
 
-#define USE_SYNC
-#undef USE_SYNC
 #define DEVICE_BLOCK_SIZE 4096
-#define DB_STILL_ACTIVE 0x01
 #define COULD_NOT_FIND_DB 0x02
-
-#define LOG_SEGMENT_CHUNK 262144
 
 int32_t index_order;
 /*stats counters*/
@@ -1688,10 +1682,6 @@ static struct bt_rebalance_result split_index(node_header *node, bt_insert_req *
 	// result.left_child->v1++; /*lamport counter*/
 	// result.right_child->v1++; /*lamport counter*/
 
-#ifdef USE_SYNC
-	__sync_synchronize();
-#endif
-
 	/*initialize*/
 	full_addr = (void *)((uint64_t)node + (uint64_t)sizeof(node_header));
 	/*set node heights*/
@@ -1734,7 +1724,7 @@ static struct bt_rebalance_result split_index(node_header *node, bt_insert_req *
 int insert_KV_at_leaf(bt_insert_req *ins_req, node_header *leaf)
 {
 	db_descriptor *db_desc = ins_req->metadata.handle->db_desc;
-	void *key_addr;
+	void *key_addr = ins_req->key_value_buf;
 	int ret;
 
 	if (ins_req->metadata.append_to_log && ins_req->metadata.key_format == KV_FORMAT) {
@@ -1743,7 +1733,8 @@ int insert_KV_at_leaf(bt_insert_req *ins_req, node_header *leaf)
 					    .ins_req = ins_req };
 		ins_req->key_value_buf = append_key_value_to_log(&append_op);
 	} else if (!ins_req->metadata.append_to_log && ins_req->metadata.key_format == KV_PREFIX)
-		key_addr = ins_req->key_value_buf;
+		;
+	/* key_addr = ins_req->key_value_buf; */
 	else {
 		log_fatal("Wrong combination of key format / append_to_log option");
 		exit(EXIT_FAILURE);

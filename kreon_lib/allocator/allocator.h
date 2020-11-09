@@ -1,5 +1,4 @@
 #pragma once
-
 #include <stdio.h>
 #include <stdint.h>
 #include <inttypes.h>
@@ -21,7 +20,6 @@
 
 #define off64_t unsigned long long
 #define FREE_BLOCK 124
-#define DELETE_KEY 100
 
 typedef enum volume_state { VOLUME_IS_OPEN = 0x00, VOLUME_IS_CLOSING = 0x01, VOLUME_IS_CLOSED = 0x02 } volume_state;
 
@@ -32,6 +30,7 @@ typedef enum volume_state { VOLUME_IS_OPEN = 0x00, VOLUME_IS_CLOSING = 0x01, VOL
 	* Rest of bits(common for the two categories above denote the purpose of allocation
 **/
 
+/* TODO: gxanth convert these to enum*/
 #define COW_FOR_LEAF 0x00
 #define COW_FOR_INDEX 0x01
 #define KEY_LOG_EXPANSION 0x03
@@ -39,7 +38,6 @@ typedef enum volume_state { VOLUME_IS_OPEN = 0x00, VOLUME_IS_CLOSING = 0x01, VOL
 #define KEY_LOG_SPLIT 0x05
 #define INDEX_SPLIT 0x06
 #define LEAF_SPLIT 0x07
-#define NOT_IMPLEMENTED_YET 0x08
 #define NEW_ROOT 0x0A
 #define NEW_SUPERINDEX 0x0B
 #define GROUP_COW 0x0E
@@ -51,7 +49,6 @@ typedef enum volume_state { VOLUME_IS_OPEN = 0x00, VOLUME_IS_CLOSING = 0x01, VOL
 #define SPACE_FOR_FOREST_TREE 0x30 /* used for level-1 tree allocations */
 #define EXTEND_BUFFER 0x0D /* same as above */
 #define REORGANIZATION 0x02
-#define DELETE_LOG_EXPANSION 0xA3
 
 #define SNAP_INTERRUPT_ENABLE 0x0A
 #define SNAP_INTERRUPT_DISABLE 0x0B
