@@ -44,7 +44,7 @@
 #define COULD_NOT_FIND_DB 0x02
 
 #define LOG_SEGMENT_CHUNK 262144
-int32_t leaf_order;
+
 int32_t index_order;
 /*stats counters*/
 extern uint64_t internal_tree_cow_for_leaf;
@@ -66,10 +66,6 @@ pthread_mutex_t init_lock = PTHREAD_MUTEX_INITIALIZER;
 pthread_spinlock_t log_buffer_lock;
 /*number of locks per level*/
 uint32_t size_per_height[MAX_HEIGHT] = { 8192, 4096, 2048, 1024, 512, 256, 128, 64, 32 };
-uint32_t leaf_size_per_level[MAX_LEVELS] = { LEVEL0_LEAF_SIZE, LEVEL1_LEAF_SIZE, LEVEL2_LEAF_SIZE, LEVEL3_LEAF_SIZE,
-					     LEVEL4_LEAF_SIZE, LEVEL5_LEAF_SIZE, LEVEL6_LEAF_SIZE, LEVEL7_LEAF_SIZE };
-
-#define PAGE_SIZE 4096
 
 #define MUTATION_LOG_SIZE 2048
 #define STATIC 0x01
@@ -428,6 +424,7 @@ static void init_level_locktable(db_descriptor *database, uint8_t level_id)
 			log_fatal("memalign failed");
 			exit(EXIT_FAILURE);
 		}
+
 		init = database->levels[level_id].level_lock_table[i];
 
 		for (j = 0; j < size_per_height[i]; ++j) {
@@ -440,7 +437,7 @@ static void init_level_locktable(db_descriptor *database, uint8_t level_id)
 }
 
 static void calculate_metadata_offsets(uint32_t bitmap_entries, uint32_t slot_array_entries, uint32_t kv_entries,
-				       leaf_node_metadata *leaf_level)
+				       struct leaf_node_metadata *leaf_level)
 {
 	leaf_level->bitmap_entries = bitmap_entries;
 	leaf_level->bitmap_offset = sizeof(struct bt_static_leaf_node);
@@ -453,30 +450,30 @@ static void calculate_metadata_offsets(uint32_t bitmap_entries, uint32_t slot_ar
 					slot_array_entries * sizeof(bt_leaf_slot_array);
 }
 
-static void init_leaf_sizes_perlevel(uint8_t level_id, leaf_node_metadata *leaf_offsets)
+static void init_leaf_sizes_perlevel(level_descriptor *level)
 {
+	enum bt_layout leaf_type_per_level[MAX_LEVELS] = { LEVEL0_LEAF_SIZE, LEVEL1_LEAF_SIZE, LEVEL2_LEAF_SIZE,
+							   LEVEL3_LEAF_SIZE, LEVEL4_LEAF_SIZE, LEVEL5_LEAF_SIZE,
+							   LEVEL6_LEAF_SIZE, LEVEL7_LEAF_SIZE };
+
 	double kv_leaf_entry = sizeof(bt_leaf_entry) + sizeof(bt_leaf_slot_array) + (1 / CHAR_BIT);
 	double numentries_without_metadata;
-	uint32_t leaf_size;
 	uint32_t bitmap_entries;
 	uint32_t slot_array_entries;
 	uint32_t kv_entries;
 
-	leaf_size = leaf_size_per_level[level_id];
-	numentries_without_metadata = (leaf_size - sizeof(struct bt_static_leaf_node)) / kv_leaf_entry;
+	numentries_without_metadata = (level->leaf_size - sizeof(struct bt_static_leaf_node)) / kv_leaf_entry;
 	bitmap_entries = (numentries_without_metadata / CHAR_BIT) + 1;
 	slot_array_entries = numentries_without_metadata;
-	kv_entries = (leaf_size - sizeof(struct bt_static_leaf_node) - bitmap_entries -
+	kv_entries = (level->leaf_size - sizeof(struct bt_static_leaf_node) - bitmap_entries -
 		      (slot_array_entries * sizeof(bt_leaf_slot_array))) /
 		     sizeof(bt_leaf_entry);
-	calculate_metadata_offsets(bitmap_entries, slot_array_entries, kv_entries, leaf_offsets);
+	calculate_metadata_offsets(bitmap_entries, slot_array_entries, kv_entries, &level->leaf_offsets);
 }
 
 static void destroy_level_locktable(db_descriptor *database, uint8_t level_id)
 {
-	int i;
-
-	for (i = 0; i < MAX_HEIGHT; ++i)
+	for (int i = 0; i < MAX_HEIGHT; ++i)
 		free(&database->levels[level_id].level_lock_table[i]);
 }
 
@@ -487,6 +484,9 @@ static void destroy_level_locktable(db_descriptor *database, uint8_t level_id)
  **/
 db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_name, char CREATE_FLAG)
 {
+	uint32_t leaf_size_per_level[MAX_LEVELS] = { LEVEL0_LEAF_SIZE, LEVEL1_LEAF_SIZE, LEVEL2_LEAF_SIZE,
+						     LEVEL3_LEAF_SIZE, LEVEL4_LEAF_SIZE, LEVEL5_LEAF_SIZE,
+						     LEVEL6_LEAF_SIZE, LEVEL7_LEAF_SIZE };
 	db_handle *handle;
 	volume_descriptor *volume_desc;
 	db_descriptor *db_desc;
@@ -504,17 +504,12 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 	if (mappedVolumes == NULL) {
 		mappedVolumes = init_list(&destroy_volume_node);
 		/*calculate max leaf,index order*/
-		leaf_order = (LEAF_NODE_SIZE - sizeof(node_header)) / (sizeof(uint64_t) + PREFIX_SIZE);
-		while (leaf_order % 2 != 0)
-			--leaf_order;
 		index_order = (INDEX_NODE_SIZE - sizeof(node_header)) / (2 * sizeof(uint64_t));
 		index_order -= 2; /*more space for extra pointer, and for rebalacing (merge)*/
 		while (index_order % 2 != 1)
 			--index_order;
 
-		log_info("index order set to: %d leaf order is set to %d sizeof "
-			 "node_header = %lu",
-			 index_order, leaf_order, sizeof(node_header));
+		log_info("index order set to: %d sizeof node_header = %lu", index_order, sizeof(node_header));
 	}
 	/*Is requested volume already mapped?, construct key which will be
 * volumeName|start*/
@@ -865,7 +860,7 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 				db_desc->levels[level_id].first_segment[tree_id] = NULL;
 				db_desc->levels[level_id].last_segment[tree_id] = NULL;
 				db_desc->levels[level_id].offset[tree_id] = 0;
-				init_leaf_sizes_perlevel(level_id, &db_desc->levels[level_id].leaf_offsets);
+				init_leaf_sizes_perlevel(&db_desc->levels[level_id]);
 			}
 		}
 		/*initialize KV log for this db*/
@@ -927,7 +922,7 @@ finish_init:
 		for (tree_id = 0; tree_id < NUM_TREES_PER_LEVEL; tree_id++) {
 			db_desc->levels[level_id].tree_status[tree_id] = NO_SPILLING;
 		}
-		init_leaf_sizes_perlevel(level_id, &db_desc->levels[level_id].leaf_offsets);
+		init_leaf_sizes_perlevel(&db_desc->levels[level_id]);
 	}
 
 #if LOG_WITH_MUTEX
@@ -1888,11 +1883,12 @@ static struct bt_rebalance_result split_index(node_header *node, bt_insert_req *
 		else
 			tmp_index = result.right_child;
 
-		left_child = (node_header *)(MAPPED + *(uint64_t *)full_addr);
+		left_child = (node_header *)REAL_ADDRESS(*(uint64_t *)full_addr);
 		full_addr += sizeof(uint64_t);
-		key_buf = (void *)(MAPPED + *(uint64_t *)full_addr);
+		key_buf = (void *)REAL_ADDRESS(*(uint64_t *)full_addr);
 		full_addr += sizeof(uint64_t);
-		right_child = (node_header *)(MAPPED + *(uint64_t *)full_addr);
+		right_child = (node_header *)REAL_ADDRESS(*(uint64_t *)full_addr);
+
 		if (i == node->numberOfEntriesInNode / 2) {
 			result.middle_key_buf = key_buf;
 			continue; /*middle key not needed, is going to the upper level*/
@@ -1901,6 +1897,7 @@ static struct bt_rebalance_result split_index(node_header *node, bt_insert_req *
 		insert_key_at_index(ins_req, (index_node *)tmp_index, left_child, right_child, key_buf, KEY_LOG_SPLIT);
 	}
 
+	result.stat = INDEX_NODE_SPLITTED;
 	// result.left_child->v2++; /*lamport counter*/
 	// result.right_child->v2++; /*lamport counter*/
 	// assert_index_node(result.left_child);
@@ -1916,7 +1913,7 @@ static struct bt_rebalance_result split_index(node_header *node, bt_insert_req *
 int insert_KV_at_leaf(bt_insert_req *ins_req, node_header *leaf)
 {
 	db_descriptor *db_desc = ins_req->metadata.handle->db_desc;
-	void *key_addr = NULL;
+	void *key_addr = ins_req->key_value_buf;
 	int ret;
 	uint8_t level_id;
 
@@ -1935,85 +1932,15 @@ int insert_KV_at_leaf(bt_insert_req *ins_req, node_header *leaf)
 	}
 
 	ret = insert_in_static_leaf((struct bt_static_leaf_node *)leaf, ins_req, &db_desc->levels[leaf->level_id]);
-	__sync_fetch_and_add(&(ins_req->metadata.handle->db_desc->levels[level_id].total_keys[active_tree]), 1);
-
-	/* if (__update_leaf_index(ins_req, (leaf_node *)leaf, key_addr) != 0) { */
-	/* 	++leaf->numberOfEntriesInNode; */
-	/* 	__sync_fetch_and_add(&(ins_req->metadata.handle->db_desc->levels[level_id].total_keys[active_tree]), 1); */
-	/* 	ret = 1; */
-	/* } else { */
-	/* 	/\*if key already present at the leaf, must be an update or an append*\/ */
-	/* 	leaf->fragmentation++; */
-	/* 	ret = 0; */
-	/* } */
+	if (ret == INSERT)
+		__sync_fetch_and_add(&(ins_req->metadata.handle->db_desc->levels[level_id].total_keys[active_tree]), 1);
 
 	return ret;
 }
 
 struct bt_rebalance_result split_leaf(bt_insert_req *req, leaf_node *node)
 {
-	leaf_node *node_copy;
-	struct bt_rebalance_result rep;
-	uint8_t level_id = req->metadata.level_id;
-	/*cow check*/
-	if (node->header.epoch <= req->metadata.handle->volume_desc->dev_catalogue->epoch) {
-		level_id = req->metadata.level_id;
-		node_copy = seg_get_leaf_node_header(req->metadata.handle->volume_desc,
-						     &req->metadata.handle->db_desc->levels[level_id],
-						     req->metadata.tree_id, COW_FOR_LEAF);
-
-		memcpy(node_copy, node, LEAF_NODE_SIZE);
-		node_copy->header.epoch = req->metadata.handle->volume_desc->mem_catalogue->epoch;
-		node = node_copy;
-	}
-
-	rep.left_lchild = node;
-	// rep.left_lchild->header.v1++;
-	/*right leaf*/
-	rep.right_lchild =
-		seg_get_leaf_node(req->metadata.handle->volume_desc, &req->metadata.handle->db_desc->levels[level_id],
-				  req->metadata.tree_id, LEAF_SPLIT);
-#ifdef USE_SYNC
-	__sync_synchronize();
-#endif
-	int split_point;
-	int left_entries;
-	int right_entries;
-	if (req->metadata.special_split) {
-		split_point = node->header.numberOfEntriesInNode - 1;
-		left_entries = node->header.numberOfEntriesInNode - 1;
-		right_entries = 1;
-	} else {
-		split_point = node->header.numberOfEntriesInNode / 2;
-		left_entries = node->header.numberOfEntriesInNode / 2;
-		right_entries = node->header.numberOfEntriesInNode - (node->header.numberOfEntriesInNode / 2);
-	}
-
-	rep.middle_key_buf = (void *)(MAPPED + node->pointer[split_point]);
-	/* pointers */
-	memcpy(&(rep.right_lchild->pointer[0]), &(node->pointer[split_point]), right_entries * sizeof(uint64_t));
-
-	/* prefixes */
-	memcpy(&(rep.right_lchild->prefix[0]), &(node->prefix[split_point]), right_entries * PREFIX_SIZE);
-
-	rep.right_lchild->header.numberOfEntriesInNode = right_entries;
-	rep.right_lchild->header.type = leafNode;
-
-	rep.right_lchild->header.height = node->header.height;
-	/*left leaf*/
-	rep.left_lchild->header.height = node->header.height;
-	rep.left_lchild->header.numberOfEntriesInNode = left_entries;
-
-	if (node->header.type == leafRootNode) {
-		rep.left_lchild->header.type = leafNode;
-		// printf("[%s:%s:%d] leafRoot node splitted\n",__FILE__,__func__,__LINE__);
-		rep.stat = LEAF_ROOT_NODE_SPLITTED;
-	} else
-		rep.stat = KREON_OK;
-
-	// rep.left_lchild->header.v2++; /*lamport counter*/
-	// rep.right_lchild->header.v2++; /*lamport counter*/
-	return rep;
+	return split_static_leaf((struct bt_static_leaf_node *)node, req);
 }
 
 /**
@@ -2185,124 +2112,6 @@ void _unlock_upper_levels(lock_table *node[], unsigned size, unsigned release)
 		}
 }
 
-#if 0
-node_header *allocate_root(insertKV_request *req, node_header *son)
-{
-	node_header *node_copy = (*req->allocator_desc.allocate_space)((void *)req->allocator_desc.handle, NODE_SIZE,
-								       req->allocator_desc.level_id, NEW_ROOT);
-	memcpy(node_copy, son, NODE_SIZE);
-	node_copy->epoch = req->handle->volume_desc->soft_superindex->epoch;
-	node_copy->v1 = 0;
-	node_copy->v2 = 0;
-	return node_copy;
-}
-node_header *rcuLock(node_header *node, db_descriptor *db_desc, insertKV_request *req)
-{
-	if (node && (node->type == leafRootNode || node->type == rootNode)) {
-		MUTEX_LOCK(&db_desc->rcu_root);
-		__sync_fetch_and_add(&db_desc->rcu_root_v1, 1);
-		return (req->level_id != NUM_OF_TREES_PER_LEVEL) ? db_desc->root_w[db_desc->active_tree] :
-								   db_desc->root_w[NUM_OF_TREES_PER_LEVEL];
-	}
-
-	return NULL;
-}
-
-void rcuUnlock(node_header *node, db_descriptor *db_desc, insertKV_request *req)
-{
-	int i = (req->level_id != NUM_OF_TREES_PER_LEVEL) ? db_desc->active_tree : NUM_OF_TREES_PER_LEVEL;
-	if (node)
-		db_desc->root_w[i] = node;
-
-	__sync_fetch_and_add(&db_desc->rcu_root_v2, 1);
-	assert(db_desc->rcu_root_v1 == db_desc->rcu_root_v2);
-	MUTEX_UNLOCK(&db_desc->rcu_root);
-}
-
-int splitValidation(node_header *father, node_header *son, db_descriptor *db_desc, split_request *split_req,
-		    uint32_t order, split_data *data, insertKV_request *req)
-{
-	node_header *flag = NULL;
-	int flow_control = 0;
-	uint32_t temp_order;
-	data->son = data->father = NULL;
-
-	if (son->type == leafRootNode || son->type == rootNode || (father && father->type == rootNode)) {
-		flag = rcuLock(son, db_desc, req);
-		if (!flag) {
-			flag = rcuLock(father, db_desc, req);
-			if (flag)
-				flow_control = 1;
-		} else {
-			flow_control = 2;
-		}
-
-		if (flag->type == leafRootNode)
-			temp_order = leaf_order;
-		else
-			temp_order = index_order;
-		if (flow_control == 2) { // son = root
-			if (son->numberOfEntriesInNode != flag->numberOfEntriesInNode || son->height != flag->height ||
-			    flag->numberOfEntriesInNode < temp_order) {
-				rcuUnlock(NULL, db_desc, req);
-				data->son = data->father = NULL;
-				return -1;
-			}
-
-			if (flag->type == leafRootNode || flag->type == rootNode) {
-				data->son = flag;
-				return 1;
-			}
-			assert(0);
-
-		} else if (flow_control == 1) {
-			if (father->numberOfEntriesInNode != flag->numberOfEntriesInNode ||
-			    father->height != flag->height || flag->numberOfEntriesInNode >= index_order ||
-			    (flag->height - son->height) != 1) {
-				rcuUnlock(NULL, db_desc, req);
-				data->son = data->father = NULL;
-				return -1;
-			}
-
-			if (flag->type == rootNode) { // I am a root child and i should acquire
-				// its lock in order to insert the pivot
-				// after the split.
-				data->father = flag;
-				return 1;
-			}
-			assert(0);
-		}
-	}
-	if (son->type == leafRootNode || son->type == rootNode)
-		assert(0);
-	if (father && father->type == rootNode)
-		assert(0);
-	return 0;
-}
-#endif
-
-void init_leaf_node(leaf_node *node)
-{
-	node->header.fragmentation = 0;
-	node->header.v1 = 0;
-	node->header.v2 = 0;
-	node->header.first_IN_log_header = NULL;
-	node->header.last_IN_log_header = NULL;
-	node->header.key_log_size = 0;
-	node->header.height = 0;
-	node->header.type = leafNode;
-	node->header.numberOfEntriesInNode = 0;
-}
-
-static void init_index_node(index_node *node)
-{
-	node->header.fragmentation = 0;
-	node->header.v1 = 0;
-	node->header.v2 = 0;
-	node->header.type = internalNode;
-	node->header.numberOfEntriesInNode = 0;
-}
-
 uint8_t _concurrent_insert(bt_insert_req *ins_req)
 {
 	/*The array with the locks that belong to this thread from upper levels*/
@@ -2337,6 +2146,7 @@ uint8_t _concurrent_insert(bt_insert_req *ins_req)
 
 	int retry = 0;
 release_and_retry:
+
 	if (retry) {
 		retry = 0;
 		_unlock_upper_levels(upper_level_nodes, size, release);
@@ -2410,19 +2220,21 @@ release_and_retry:
 
 	while (1) {
 		if (son->type == leafNode || son->type == leafRootNode)
-			order = leaf_order;
+			order = db_desc->levels[level_id].leaf_offsets.kv_entries;
 		else
 			order = index_order;
+
 		/*Check if father is safe it should be*/
 		if (father) {
 			unsigned int father_order;
 			if (father->type == leafNode || father->type == leafRootNode)
-				father_order = leaf_order;
+				father_order = db_desc->levels[level_id].leaf_offsets.kv_entries;
 			else
 				father_order = index_order;
 			assert(father->epoch > volume_desc->dev_catalogue->epoch);
 			assert(father->numberOfEntriesInNode < father_order);
 		}
+
 		if (son->numberOfEntriesInNode >= order) {
 			/*Overflow split*/
 			if (son->height > 0) {
@@ -2436,6 +2248,7 @@ release_and_retry:
 			} else {
 				son->v1++;
 				split_res = split_leaf(ins_req, (leaf_node *)son);
+
 				if ((uint64_t)son != (uint64_t)split_res.left_child) {
 					/*cow happened*/
 					seg_free_leaf_node(ins_req->metadata.handle->volume_desc,
@@ -2446,24 +2259,13 @@ release_and_retry:
 				} else
 					son->v2++;
 			}
+
 			/*Insert pivot at father*/
 			if (father != NULL) {
 				/*lamport counter*/
 				father->v1++;
 				insert_key_at_index(ins_req, (index_node *)father, split_res.left_child,
 						    split_res.right_child, split_res.middle_key_buf, KEY_LOG_EXPANSION);
-
-				// log_info("pivot Key is %d:%s\n", *(uint32_t
-				// *)split_res.middle_key_buf,
-				//	 split_res.middle_key_buf + 4);
-				// log_info("key at root entries now %llu checking health now",
-				//	 father->numberOfEntriesInNode);
-				// if (split_res.left_child->type != leafNode) {
-				//	assert_index_node(split_res.left_child);
-				//	assert_index_node(split_res.right_child);
-				//}
-				// assert_index_node(father);
-				// log_info("node healthy!");
 
 				/*lamport counter*/
 				father->v2++;
@@ -2473,16 +2275,16 @@ release_and_retry:
 				new_index_node = seg_get_index_node(ins_req->metadata.handle->volume_desc,
 								    &db_desc->levels[level_id],
 								    ins_req->metadata.tree_id, NEW_ROOT);
-				new_index_node->header.height =
-					ins_req->metadata.handle->db_desc->levels[ins_req->metadata.level_id]
-						.root_w[ins_req->metadata.tree_id]
-						->height +
-					1;
+				new_index_node->header.height = db_desc->levels[ins_req->metadata.level_id]
+									.root_w[ins_req->metadata.tree_id]
+									->height +
+								1;
 
 				init_index_node(new_index_node);
 				new_index_node->header.type = rootNode;
 				new_index_node->header.v1++; /*lamport counter*/
 				son->v1++;
+
 				insert_key_at_index(ins_req, new_index_node, split_res.left_child,
 						    split_res.right_child, split_res.middle_key_buf, KEY_LOG_EXPANSION);
 
@@ -2546,7 +2348,7 @@ release_and_retry:
 		/*Node acquired */
 		son = (node_header *)(MAPPED + *(uint64_t *)next_addr);
 		if (son->type == leafNode || son->type == leafRootNode)
-			order = leaf_order;
+			order = db_desc->levels[level_id].leaf_offsets.kv_entries;
 		else
 			order = index_order;
 		/*if the node is not safe hold its ancestor's lock else release locks from
@@ -2639,7 +2441,7 @@ static uint8_t _writers_join_as_readers(bt_insert_req *ins_req)
 	son = db_desc->levels[level_id].root_w[ins_req->metadata.tree_id];
 	while (1) {
 		if (son->type == leafNode || son->type == leafRootNode)
-			order = leaf_order;
+			order = db_desc->levels[level_id].leaf_offsets.kv_entries;
 		else
 			order = index_order;
 		if (son->numberOfEntriesInNode >= order) {
@@ -2676,12 +2478,13 @@ static uint8_t _writers_join_as_readers(bt_insert_req *ins_req)
 	lock = _find_position(db_desc->levels[level_id].level_lock_table,
 			      (node_header *)(MAPPED + *(uint64_t *)next_addr));
 	upper_level_nodes[size++] = lock;
+
 	if (RWLOCK_WRLOCK(&lock->rx_lock) != 0) {
 		log_fatal("ERROR unlocking");
 		exit(EXIT_FAILURE);
 	}
-
-	if (son->numberOfEntriesInNode >= (uint32_t)leaf_order || son->epoch <= volume_desc->dev_catalogue->epoch) {
+	if (son->numberOfEntriesInNode >= (uint32_t)db_desc->levels[level_id].leaf_offsets.kv_entries ||
+	    son->epoch <= volume_desc->dev_catalogue->epoch) {
 		_unlock_upper_levels(upper_level_nodes, size, release);
 		__sync_fetch_and_sub(num_level_writers, 1);
 		return FAILURE;
@@ -2691,6 +2494,7 @@ static uint8_t _writers_join_as_readers(bt_insert_req *ins_req)
 		log_fatal("FATAL son corrupted");
 		exit(EXIT_FAILURE);
 	}
+
 	son->v1++; /*lamport counter*/
 	insert_KV_at_leaf(ins_req, son);
 	son->v2++; /*lamport counter*/

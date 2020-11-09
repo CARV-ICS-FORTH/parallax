@@ -188,7 +188,7 @@ void _ru_append_pivot_to_index(struct krm_region_desc *r_desc, node_header *left
 	++r_desc->m_state->last_node_per_level[node_height]->numberOfEntriesInNode;
 	return;
 }
-
+#if 0
 void ru_append_entry_to_leaf_node(struct krm_region_desc *r_desc, void *pointer_to_kv_pair, void *prefix,
 				  int32_t tree_id)
 {
@@ -239,7 +239,9 @@ void ru_append_entry_to_leaf_node(struct krm_region_desc *r_desc, void *pointer_
 
 	return;
 }
+#endif
 
+#if 0
 void _ru_calculate_btree_index_nodes(struct krm_region_desc *r_desc, uint64_t num_of_keys)
 {
 	int level_id = 0;
@@ -330,7 +332,7 @@ void _ru_calculate_btree_index_nodes(struct krm_region_desc *r_desc, uint64_t nu
 
 	return;
 }
-
+#endif
 /*####################################################*/
 
 void init_backup_db_segment_table(db_handle *handle)

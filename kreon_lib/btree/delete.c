@@ -19,7 +19,6 @@
 #include "btree.h"
 
 extern int32_t index_order;
-extern int32_t leaf_order;
 extern uint64_t snapshot_v1, snapshot_v2;
 
 int8_t __delete_key(bt_delete_request *req)
@@ -38,7 +37,6 @@ int8_t __delete_key(bt_delete_request *req)
 	int i;
 	uint32_t order;
 	int8_t ret;
-
 	db_desc = req->metadata.handle->db_desc;
 	volume_desc = req->metadata.handle->volume_desc;
 	mem_catalogue = req->metadata.handle->volume_desc->mem_catalogue;
@@ -52,11 +50,29 @@ retry:
 	if (son->height != 0) {
 		while (1) {
 			if (son->type == leafNode || son->type == leafRootNode)
-				order = (leaf_order / 2) + 1;
+				order = (db_desc->levels[req->metadata.level_id].leaf_offsets.kv_entries / 2) + 1;
 			else
 				order = (index_order / 2) + 1;
 
-			if (son->epoch <= volume_desc->dev_catalogue->epoch) {
+			if (son->numberOfEntriesInNode < order && son->type != rootNode) {
+				son->v1++;
+				rotate_data siblings = {
+					.left = NULL, .right = NULL, .pivot = NULL, .pos_left = -1, .pos_right = -1
+				};
+				__find_position_in_index((index_node *)parent, (struct splice *)req->key_buf,
+							 &siblings);
+				__find_left_and_right_siblings((index_node *)parent, req->key_buf, &siblings);
+				ret = transfer_node_to_neighbor_index_node((index_node *)son, (index_node *)parent,
+									   &siblings, req);
+
+				if (ret == ROTATE_IMPOSSIBLE_TRY_TO_MERGE)
+					merge_with_index_neighbor((index_node *)son, (index_node *)parent, &siblings,
+								  req);
+
+				son->v2++;
+				goto retry;
+
+			} else if (son->epoch <= volume_desc->dev_catalogue->epoch) {
 				if (son->height > 0) {
 					node_copy = (node_header *)seg_get_index_node_header(
 						volume_desc, &db_desc->levels[req->metadata.level_id],
@@ -500,7 +516,7 @@ int8_t merge_with_leaf_neighbor(leaf_node *leaf, rotate_data *siblings, bt_delet
 	leaf_node *left = (leaf_node *)siblings->left;
 	leaf_node *right = (leaf_node *)siblings->right;
 	uint64_t merged_with_left_num_entries = 0, merged_with_right_num_entries = 0;
-	uint64_t max_len = leaf_order;
+	uint64_t max_len = req->metadata.handle->db_desc->levels[leaf->header.level_id].leaf_offsets.kv_entries;
 	int8_t ret = NO_REBALANCE_NEEDED;
 
 	if (left)
@@ -535,7 +551,8 @@ int8_t check_for_underflow_in_leaf(leaf_node *leaf, rotate_data *siblings, bt_de
 {
 	leaf_node *left = (leaf_node *)siblings->left;
 	leaf_node *right = (leaf_node *)siblings->right;
-	uint64_t underflow_threshold = leaf_order / 2, borrow_threshold = underflow_threshold + 1;
+	uint64_t kv_entries = req->metadata.handle->db_desc->levels[leaf->header.level_id].leaf_offsets.kv_entries;
+	uint64_t underflow_threshold = kv_entries / 2, borrow_threshold = underflow_threshold + 1;
 	int8_t ret = NO_REBALANCE_NEEDED;
 
 	/* If underflow is detected pivots have to change also. */

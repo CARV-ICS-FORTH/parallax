@@ -8,7 +8,6 @@
 #include "../btree/conf.h"
 
 extern int32_t index_order;
-extern int32_t leaf_order;
 
 int32_t _get_next_KV(level_scanner *sc);
 int _init_level_scanner(level_scanner *level_sc, void *start_key, char seek_mode);

@@ -6,6 +6,8 @@
 #include "static_leaf.h"
 #include "conf.h"
 
+void print_static_leaf(const struct bt_static_leaf_node *leaf, level_descriptor *level);
+
 static void retrieve_static_leaf_structures(const struct bt_static_leaf_node *leaf, struct bt_static_leaf_structs *src,
 					    level_descriptor *level)
 {
@@ -27,7 +29,7 @@ static uint32_t get_slot_array_size(level_descriptor *level)
 
 static uint32_t get_kv_entries_size(level_descriptor *level)
 {
-	return sizeof(bt_leaf_entry) * level->leaf_offsets.kv_entries_offset;
+	return sizeof(bt_leaf_entry) * level->leaf_offsets.kv_entries;
 }
 
 void init_static_leaf_metadata(struct bt_static_leaf_node *leaf, level_descriptor *level)
@@ -39,25 +41,25 @@ void init_static_leaf_metadata(struct bt_static_leaf_node *leaf, level_descripto
 	memset(src.kv_entries, 0, get_kv_entries_size(level));
 }
 
-struct bsearch_result binary_search_static_leaf(struct bt_static_leaf_node const *leaf, level_descriptor *level,
-						struct splice *key_buf)
+void binary_search_static_leaf(struct bt_static_leaf_node const *leaf, level_descriptor *level, struct splice *key_buf,
+			       struct bsearch_result *result)
 {
 	struct bt_static_leaf_structs src;
 	char *leaf_key_prefix, *leaf_key_buf;
-	struct bsearch_result result = { 0, INSERT };
 	int32_t start = 0, middle = 0, end = leaf->header.numberOfEntriesInNode - 1;
 	const int32_t numberOfEntriesInNode = leaf->header.numberOfEntriesInNode;
 	const int32_t kv_entries = level->leaf_offsets.kv_entries;
 	uint32_t pos;
 	int ret, ret_case;
+
 	retrieve_static_leaf_structures(leaf, &src, level);
 
 	while (numberOfEntriesInNode > 0) {
 		middle = (start + end) / 2;
 
 		if (numberOfEntriesInNode > kv_entries || middle < 0 || middle >= numberOfEntriesInNode) {
-			result.status = ERROR;
-			return result;
+			result->status = ERROR;
+			return;
 		}
 
 		pos = src.slot_array[middle].index;
@@ -70,9 +72,9 @@ struct bsearch_result binary_search_static_leaf(struct bt_static_leaf_node const
 			ret = _tucana_key_cmp(leaf_key_buf, key_buf, KV_FORMAT, KV_FORMAT);
 
 			if (ret == 0) {
-				result.middle = middle;
-				result.status = FOUND;
-				return result;
+				result->middle = middle;
+				result->status = FOUND;
+				return;
 			}
 
 			ret_case = ret < 0 ? LESS_THAN_ZERO : GREATER_THAN_ZERO;
@@ -81,50 +83,75 @@ struct bsearch_result binary_search_static_leaf(struct bt_static_leaf_node const
 		switch (ret_case) {
 		case LESS_THAN_ZERO:
 			start = middle + 1;
+
 			if (start > end) {
-				middle++;
-				result.middle = middle;
-				result.status = INSERT;
-				return result;
+				if (result->op == STATIC_LEAF_INSERT)
+					++middle;
+
+				result->middle = middle;
+				result->status = INSERT;
+				goto CHECK_IFKV_FOUND;
 			}
-			continue;
+
+			break;
 		case GREATER_THAN_ZERO:
 			end = middle - 1;
+
 			if (start > end) {
-				result.middle = middle;
-				result.status = INSERT;
-				return result;
+				result->middle = middle;
+				result->status = INSERT;
+				goto CHECK_IFKV_FOUND;
 			}
-			continue;
+
+			break;
 		}
 	}
 
-	return result;
+	if (numberOfEntriesInNode) {
+	CHECK_IFKV_FOUND:
+		pos = src.slot_array[result->middle].index;
+		leaf_key_buf = REAL_ADDRESS(src.kv_entries[pos].pointer);
+		ret = _tucana_key_cmp(leaf_key_buf, key_buf, KV_FORMAT, KV_FORMAT);
+
+		if (ret == 0) {
+			result->status = FOUND;
+			return;
+		}
+	}
 }
 
 void *find_key_in_static_leaf(const struct bt_static_leaf_node *leaf, level_descriptor *level, void *key,
 			      uint32_t key_size)
 {
+	char *buf = malloc(key_size + sizeof(uint32_t));
 	struct bt_static_leaf_structs src;
-	struct bsearch_result result;
-	void *ret = NULL;
-	char buf[128];
+	struct bsearch_result result = { .middle = 0, .status = INSERT, .op = STATIC_LEAF_FIND };
 	struct splice *key_buf = (struct splice *)buf;
 
 	assert(buf != NULL);
-	assert((key_size + sizeof(uint32_t)) <= 128);
 	SERIALIZE_KEY(buf, key, key_size);
 	retrieve_static_leaf_structures(leaf, &src, level);
 
-	result = binary_search_static_leaf(leaf, level, key_buf);
-	switch (result.status) {
-	case FOUND:
-		return (void *)src.kv_entries[src.slot_array[result.middle].index].pointer;
-	default:
-		log_info("Key not found %s", key_buf->data);
+	binary_search_static_leaf(leaf, level, key_buf, &result);
+	if (result.status != FOUND) {
+		log_info("Key Search %*s", key_buf->size, key_buf->data);
+		print_static_leaf(leaf, level);
 	}
 
-	return ret;
+	/* exit(EXIT_FAILURE); */
+	switch (result.status) {
+	case FOUND:
+		free(buf);
+		return (void *)src.kv_entries[src.slot_array[result.middle].index].pointer;
+	default:
+		log_info("Key not found %*s Key Found %*s Middle %d Status %d", key_buf->size, key_buf->data,
+			 *(uint32_t *)REAL_ADDRESS(src.kv_entries[src.slot_array[result.middle].index].pointer),
+			 REAL_ADDRESS(src.kv_entries[src.slot_array[result.middle].index].pointer) + 4, result.middle,
+			 result.status);
+		free(buf);
+	}
+
+	return NULL;
 }
 
 void shift_slot_array(struct bt_static_leaf_node *leaf, uint32_t middle, level_descriptor *level)
@@ -139,6 +166,22 @@ void shift_slot_array(struct bt_static_leaf_node *leaf, uint32_t middle, level_d
 	memmove(&src.slot_array[middle + 1], &src.slot_array[middle], num_items * sizeof(bt_leaf_slot_array));
 }
 
+void print_static_leaf(const struct bt_static_leaf_node *leaf, level_descriptor *level)
+{
+	struct bt_static_leaf_structs leaf_src;
+	uint64_t i;
+
+	retrieve_static_leaf_structures(leaf, &leaf_src, level);
+
+	for (i = 0; i < leaf->header.numberOfEntriesInNode; ++i) {
+		log_info("key %*s prefix %s ADDRESS %llu",
+			 *(uint32_t *)REAL_ADDRESS(leaf_src.kv_entries[leaf_src.slot_array[i].index].pointer),
+			 REAL_ADDRESS(leaf_src.kv_entries[leaf_src.slot_array[i].index].pointer) + 4,
+			 leaf_src.kv_entries[leaf_src.slot_array[i].index].prefix,
+			 leaf_src.kv_entries[leaf_src.slot_array[i].index].pointer);
+	}
+}
+
 struct bt_rebalance_result split_static_leaf(struct bt_static_leaf_node *leaf, bt_insert_req *req)
 {
 	struct bt_static_leaf_structs leaf_src, right_leaf_src;
@@ -147,8 +190,10 @@ struct bt_rebalance_result split_static_leaf(struct bt_static_leaf_node *leaf, b
 	level_descriptor *level = &req->metadata.handle->db_desc->levels[leaf->header.level_id];
 	volume_descriptor *volume_desc = req->metadata.handle->volume_desc;
 	uint64_t i, j = 0;
+	int kventry_slot = -1;
 
 	retrieve_static_leaf_structures(leaf, &leaf_src, level);
+
 	/*cow check*/
 	if (leaf->header.epoch <= volume_desc->dev_catalogue->epoch) {
 		leaf_copy = seg_get_static_leaf_node(volume_desc, level, COW_FOR_LEAF);
@@ -167,29 +212,28 @@ struct bt_rebalance_result split_static_leaf(struct bt_static_leaf_node *leaf, b
 		leaf_src.kv_entries[leaf_src.slot_array[leaf->header.numberOfEntriesInNode / 2].index].pointer);
 
 	/*Copy pointers + prefixes*/
-	for (i = leaf->header.numberOfEntriesInNode / 2 + (leaf->header.numberOfEntriesInNode % 2);
-	     i < leaf->header.numberOfEntriesInNode; ++i, ++j) {
-		right_leaf_src.slot_array[j].index = j;
-		right_leaf_src.kv_entries[j] = leaf_src.kv_entries[leaf_src.slot_array[i].index];
-		bitset_set(right_leaf_src.bitmap, j);
+	for (i = leaf->header.numberOfEntriesInNode / 2, j = 0; i < leaf->header.numberOfEntriesInNode; ++i, ++j) {
+		kventry_slot = bitset_find_first(right_leaf_src.bitmap,
+						 right_leaf_src.bitmap + level->leaf_offsets.bitmap_entries, 0);
+		assert(kventry_slot >= 0);
+		right_leaf_src.slot_array[j].index = kventry_slot;
+		right_leaf_src.kv_entries[kventry_slot] = leaf_src.kv_entries[leaf_src.slot_array[i].index];
+		bitset_set(right_leaf_src.bitmap, kventry_slot);
+		bitset_unset(leaf_src.bitmap, leaf_src.slot_array[i].index);
 	}
 
-	rep.right_lchild->header.numberOfEntriesInNode =
-		(leaf->header.numberOfEntriesInNode / 2) + (leaf->header.numberOfEntriesInNode % 2);
-	rep.right_lchild->header.type = leafNode;
+	rep.right_slchild->header.numberOfEntriesInNode =
+		leaf->header.numberOfEntriesInNode - (leaf->header.numberOfEntriesInNode / 2);
+	rep.right_slchild->header.type = leafNode;
 
-	/* Fix Left leaf metadata */
-	for (i = leaf->header.numberOfEntriesInNode / 2 + (leaf->header.numberOfEntriesInNode % 2);
-	     i < leaf->header.numberOfEntriesInNode; ++i)
-		bitset_unset(leaf_src.bitmap, leaf_src.slot_array[i].index);
-	rep.left_lchild->header.height = leaf->header.height;
-	rep.left_lchild->header.numberOfEntriesInNode = leaf->header.numberOfEntriesInNode / 2;
+	rep.left_slchild->header.height = leaf->header.height;
+	rep.left_slchild->header.numberOfEntriesInNode = leaf->header.numberOfEntriesInNode / 2;
 
 	if (leaf->header.type == leafRootNode) {
-		rep.left_lchild->header.type = leafNode;
+		rep.left_slchild->header.type = leafNode;
 		rep.stat = LEAF_ROOT_NODE_SPLITTED;
 	} else
-		rep.stat = INDEX_NODE_SPLITTED;
+		rep.stat = LEAF_NODE_SPLITTED;
 
 	return rep;
 }
@@ -308,7 +352,7 @@ void merge_with_right_static_leaf_neighbor(struct bt_static_leaf_node *curr, str
 
 	assert(right == (struct bt_static_leaf_node *)REAL_ADDRESS(parent->p[parent_metadata.right_pos + 1].left[0]));
 
-	if (parent->header.numberOfEntriesInNode == 1) {
+	if (parent->header.numberOfEntriesInNode == 2) {
 		if (parent->header.type == rootNode) {
 			curr->header.type = leafRootNode;
 			curr->header.height = 0;
@@ -342,6 +386,7 @@ void merge_with_left_static_leaf_neighbor(struct bt_static_leaf_node *curr, stru
 	index_node *parent = req->parent;
 	uint64_t i, j;
 	int curr_kventry_pos = -1, left_kventry_pos = -1;
+
 	retrieve_static_leaf_structures(curr, &curr_leaf_src, level);
 	retrieve_static_leaf_structures(left, &left_leaf_src, level);
 	bitmap_end = curr_leaf_src.bitmap + level->leaf_offsets.bitmap_entries;
@@ -366,7 +411,7 @@ void merge_with_left_static_leaf_neighbor(struct bt_static_leaf_node *curr, stru
 	curr->header.numberOfEntriesInNode += left->header.numberOfEntriesInNode;
 	_index_node_binary_search_posret(parent, req->key_buf, KV_FORMAT, &parent_metadata);
 
-	if (parent->header.numberOfEntriesInNode == 1) {
+	if (parent->header.numberOfEntriesInNode == 2) {
 		if (parent->header.type == rootNode) {
 			curr->header.type = leafRootNode;
 			req->metadata.handle->db_desc->levels[req->metadata.level_id].root_w[req->metadata.active_tree] =
@@ -430,9 +475,9 @@ void validate_static_leaf(uint64_t num_entries, struct bt_leaf_entry_bitmap *bit
 int8_t insert_in_static_leaf(struct bt_static_leaf_node *leaf, bt_insert_req *req, level_descriptor *level)
 {
 	struct bt_static_leaf_structs src;
+	struct bsearch_result bsearch = { .middle = 0, .status = INSERT, .op = STATIC_LEAF_INSERT };
 	struct splice *key = req->key_value_buf;
 	struct bt_leaf_entry_bitmap *bitmap_end;
-	struct bsearch_result bsearch;
 	int kventry_slot = -1;
 
 	if (unlikely(leaf->header.numberOfEntriesInNode == 0)) {
@@ -441,7 +486,7 @@ int8_t insert_in_static_leaf(struct bt_static_leaf_node *leaf, bt_insert_req *re
 
 	retrieve_static_leaf_structures(leaf, &src, level);
 	bitmap_end = src.bitmap + level->leaf_offsets.bitmap_entries;
-	bsearch = binary_search_static_leaf(leaf, level, key);
+	binary_search_static_leaf(leaf, level, key, &bsearch);
 
 	switch (bsearch.status) {
 	case INSERT:
@@ -461,11 +506,9 @@ int8_t insert_in_static_leaf(struct bt_static_leaf_node *leaf, bt_insert_req *re
 		++leaf->header.fragmentation;
 		break;
 	default:
-		log_info("ERROR");
+		log_fatal("ERROR in insert path%d", bsearch.middle);
 		exit(EXIT_FAILURE);
 	}
 
-	validate_static_leaf(leaf->header.numberOfEntriesInNode, src.bitmap, bitmap_end);
-
-	return 1;
+	return bsearch.status;
 }

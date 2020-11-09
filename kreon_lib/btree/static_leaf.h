@@ -3,10 +3,12 @@
 #include "segment_allocator.h"
 
 enum bsearch_status { INSERT = 0, FOUND = 1, ERROR = 2 };
+enum bt_static_leaf_operation { STATIC_LEAF_INSERT = 0, STATIC_LEAF_FIND = 1 };
 
 struct bsearch_result {
 	int middle;
 	enum bsearch_status status;
+	enum bt_static_leaf_operation op;
 };
 
 #define LESS_THAN_ZERO -1

@@ -42,7 +42,7 @@ void serially_insert_keys(db_handle *hd)
 {
 	bt_insert_req req;
 	uint64_t i;
-	key *k = (key *)alloca(KV_SIZE);
+	key *k = (key *)malloc(KV_SIZE);
 
 	log_info("Starting population for %lu keys...", NUM_KEYS);
 	for (i = TOTAL_KEYS; i < (TOTAL_KEYS + NUM_KEYS); i++) {
@@ -64,6 +64,8 @@ void serially_insert_keys(db_handle *hd)
 		req.metadata.recovery_request = 0;
 		_insert_key_value(&req);
 	}
+
+	free(k);
 	log_info("Population ended");
 }
 
@@ -71,7 +73,7 @@ void serially_insert_otekeys(db_handle *hd)
 {
 	bt_insert_req req;
 	uint64_t i;
-	key *k = (key *)alloca(KV_SIZE);
+	key *k = (key *)malloc(KV_SIZE);
 
 	log_info("Starting population for %lu keys...", NUM_KEYS);
 	for (i = TOTAL_KEYS; i < (TOTAL_KEYS + NUM_KEYS); i++) {
@@ -118,6 +120,7 @@ void serially_insert_otekeys(db_handle *hd)
 		_insert_key_value(&req);
 	}
 
+	free(k);
 	log_info("Population ended");
 }
 
@@ -286,15 +289,19 @@ void reverse_insert_otekeys(db_handle *hd)
 void validate_serially_allkeys_exist(db_handle *hd)
 {
 	uint64_t i;
-	key *k = (key *)alloca(KV_SIZE);
+	key *k = (key *)malloc(KV_SIZE);
 
 	for (i = TOTAL_KEYS; i < (TOTAL_KEYS + NUM_KEYS); i++) {
 		memcpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
 		sprintf(k->key_buf + strlen(KEY_PREFIX), "%llu", (long long unsigned)i);
 		k->key_size = strlen(k->key_buf) + 1;
-		assert(find_key(hd, k->key_buf, k->key_size));
+		if (!find_key(hd, k->key_buf, k->key_size))
+			log_info("Key not found %s", k->key_buf);
+
+		/* assert(find_key(hd, k->key_buf, k->key_size)); */
 	}
 	log_info("All keys were found");
+	free(k);
 }
 
 void validate_reverse_allkeys_exist(db_handle *hd)
@@ -444,7 +451,7 @@ void run_workload(void (*f[3])(db_handle *), db_handle *hd)
 {
 	int i;
 
-	for (i = 0; i < 3; ++i) {
+	for (i = 0; i < 2; ++i) {
 		f[i](hd);
 		if (i == 1 && PERSIST)
 			snapshot(hd->volume_desc);

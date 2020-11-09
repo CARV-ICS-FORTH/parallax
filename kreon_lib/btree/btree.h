@@ -59,7 +59,6 @@ extern unsigned long long ins_prefix_hit_l1;
 extern unsigned long long ins_prefix_miss_l0;
 extern unsigned long long ins_prefix_miss_l1;
 
-extern int32_t leaf_order;
 extern int32_t index_order;
 
 /*gxanth staff structures*/
@@ -167,12 +166,6 @@ typedef struct bt_leaf_slot_array {
 #define KV_LEAF_ENTRY (sizeof(bt_leaf_entry) + sizeof(bt_leaf_slot_array) + (1 / CHAR_BIT))
 #define LN_LENGTH ((LEAF_NODE_REMAIN) / (KV_LEAF_ENTRY))
 
-#define BITMAP_ENTRIES ((LN_LENGTH / CHAR_BIT) + 1)
-#define NUM_ENTRIES (LN_LENGTH)
-#define NUM_ENTRIES_SIZE (LN_LENGTH * sizeof(bt_leaf_slot_array))
-#define KV_ENTRIES ((LEAF_NODE_REMAIN - BITMAP_ENTRIES - NUM_ENTRIES_SIZE) / sizeof(bt_leaf_entry))
-#define KV_ENTRIES_SIZE (KV_ENTRIES * sizeof(bt_leaf_entry))
-
 /* this is the same as root_node */
 typedef struct index_node {
 	node_header header;
@@ -193,14 +186,26 @@ typedef struct leaf_node {
 	char __pad[LEAF_NODE_SIZE - sizeof(struct node_header) - (LN_LENGTH * LN_ITEM_SIZE)];
 } __attribute__((packed)) leaf_node;
 
-#define LEVEL0_LEAF_SIZE 4096
-#define LEVEL1_LEAF_SIZE 8192
-#define LEVEL2_LEAF_SIZE 16384
-#define LEVEL3_LEAF_SIZE 32768
-#define LEVEL4_LEAF_SIZE 4096
-#define LEVEL5_LEAF_SIZE 4096
-#define LEVEL6_LEAF_SIZE 4096
-#define LEVEL7_LEAF_SIZE 4096
+/* Possible options for these defines are multiples of 4KB but they should not be more than BUFFER_SEGMENT_SIZE*/
+#define PAGE_SIZE 4096
+#define LEVEL0_LEAF_SIZE (PAGE_SIZE)
+#define LEVEL1_LEAF_SIZE (PAGE_SIZE * 2)
+#define LEVEL2_LEAF_SIZE (PAGE_SIZE * 3)
+#define LEVEL3_LEAF_SIZE (PAGE_SIZE * 4)
+#define LEVEL4_LEAF_SIZE (PAGE_SIZE)
+#define LEVEL5_LEAF_SIZE (PAGE_SIZE)
+#define LEVEL6_LEAF_SIZE (PAGE_SIZE)
+#define LEVEL7_LEAF_SIZE (PAGE_SIZE)
+
+/* Possible options for these defines are the values in enum bt_layout */
+#define LEVEL0_LEAF_LAYOUT STATIC_LEAF
+#define LEVEL1_LEAF_LAYOUT STATIC_LEAF
+#define LEVEL2_LEAF_LAYOUT STATIC_LEAF
+#define LEVEL3_LEAF_LAYOUT STATIC_LEAF
+#define LEVEL4_LEAF_LAYOUT STATIC_LEAF
+#define LEVEL5_LEAF_LAYOUT STATIC_LEAF
+#define LEVEL6_LEAF_LAYOUT STATIC_LEAF
+#define LEVEL7_LEAF_LAYOUT STATIC_LEAF
 
 /* this is the same as leaf_root_node */
 //__attribute__((packed))
@@ -276,14 +281,16 @@ typedef struct kv_proposal {
 	uint64_t log_offset;
 } kv_proposal;
 
-typedef struct level_offsets_todata {
+struct leaf_node_metadata {
 	uint32_t bitmap_entries;
 	uint32_t bitmap_offset;
 	uint32_t slot_array_entries;
 	uint32_t slot_array_offset;
 	uint32_t kv_entries;
 	uint32_t kv_entries_offset;
-} leaf_node_metadata;
+};
+
+enum bt_layout { STATIC_LEAF, DYNAMIC_LEAF };
 
 typedef struct level_descriptor {
 	lock_table guard_of_level;
@@ -302,6 +309,7 @@ typedef struct level_descriptor {
 	//in number of keys
 	uint64_t level_size[NUM_TREES_PER_LEVEL];
 	uint64_t max_level_size;
+	leaf_node_metadata leaf_offsets;
 	leaf_node_metadata leaf_offsets;
 	int64_t active_writers;
 	/*spilling or not?*/
@@ -419,9 +427,9 @@ typedef struct bt_delete_request {
 } bt_delete_request;
 
 /* In case more operations are tracked in the log in the future such as transactions
-  you will need to change the request_type enumerator and the log_operation struct.
-  In the request_type you will add the name of the operation i.e. transactionOp and
-  in the log_operation you will add a pointer in the union with the new operation i.e. transaction_request.
+   you will need to change the request_type enumerator and the log_operation struct.
+   In the request_type you will add the name of the operation i.e. transactionOp and
+   in the log_operation you will add a pointer in the union with the new operation i.e. transaction_request.
 */
 typedef enum { insertOp, deleteOp, unknownOp } request_type;
 
@@ -438,6 +446,7 @@ enum bt_rebalance_retcode {
 	NO_REBALANCE_NEEDED = 0,
 	/* Return codes for splits */
 	LEAF_ROOT_NODE_SPLITTED,
+	LEAF_NODE_SPLITTED,
 	INDEX_NODE_SPLITTED,
 	/* Return codes for deletes */
 	ROTATE_WITH_LEFT,
