@@ -1452,13 +1452,13 @@ void *__find_key(db_handle *handle, void *key, char SEARCH_MODE)
 		root_w = handle->db_desc->levels[level_id].root_w[0];
 		root_r = handle->db_desc->levels[level_id].root_r[0];
 		if (root_w != NULL) {
-			rep = lookup_in_tree(key, root_w);
+			rep = lookup_in_tree(handle->db_desc, key, root_w);
 			if (rep.lc_failed) {
 				++tries;
 				goto retry_2;
 			}
 		} else if (root_r != NULL) {
-			rep = lookup_in_tree(key, root_r);
+			rep = lookup_in_tree(handle->db_desc, key, root_r);
 			if (rep.lc_failed) {
 				++tries;
 				goto retry_2;
@@ -1734,11 +1734,8 @@ static struct bt_rebalance_result split_index(node_header *node, bt_insert_req *
 int insert_KV_at_leaf(bt_insert_req *ins_req, node_header *leaf)
 {
 	db_descriptor *db_desc = ins_req->metadata.handle->db_desc;
-	void *key_addr = ins_req->key_value_buf;
+	void *key_addr;
 	int ret;
-	uint8_t level_id;
-
-	level_id = ins_req->metadata.level_id;
 
 	if (ins_req->metadata.append_to_log && ins_req->metadata.key_format == KV_FORMAT) {
 		log_operation append_op = { .metadata = &ins_req->metadata,
@@ -1753,8 +1750,6 @@ int insert_KV_at_leaf(bt_insert_req *ins_req, node_header *leaf)
 	}
 
 	ret = insert_in_static_leaf((struct bt_static_leaf_node *)leaf, ins_req, &db_desc->levels[leaf->level_id]);
-	if (ret == INSERT)
-		__sync_fetch_and_add(&(ins_req->metadata.handle->db_desc->levels[level_id].total_keys[active_tree]), 1);
 
 	return ret;
 }
@@ -2015,7 +2010,7 @@ release_and_retry:
 			leaf_node *t =
 				seg_get_leaf_node(ins_req->metadata.handle->volume_desc, &db_desc->levels[level_id],
 						  ins_req->metadata.tree_id, NEW_ROOT);
-			init_leaf_node(t);
+
 			t->header.type = leafRootNode;
 			t->header.epoch = mem_catalogue->epoch;
 			db_desc->levels[level_id].root_w[ins_req->metadata.tree_id] = (node_header *)t;
@@ -2093,7 +2088,6 @@ release_and_retry:
 									->height +
 								1;
 
-				init_index_node(new_index_node);
 				new_index_node->header.type = rootNode;
 				new_index_node->header.v1++; /*lamport counter*/
 				son->v1++;
@@ -2207,7 +2201,7 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 	uint32_t level_id;
 	lock_table *guard_of_level;
 	int64_t *num_level_writers;
-
+	int ret = 0;
 	volume_desc = ins_req->metadata.handle->volume_desc;
 	db_desc = ins_req->metadata.handle->db_desc;
 	level_id = ins_req->metadata.level_id;

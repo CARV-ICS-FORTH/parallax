@@ -29,5 +29,4 @@ int8_t merge_with_index_neighbor(index_node *curr, index_node *parent, rotate_da
 void *_index_node_binary_search_posret(index_node *node, void *key_buf, char query_key_format,
 				       struct siblings_index_entries *neighbor);
 
-void __update_index_pivot_in_place(db_handle *handle, node_header *node, void *node_index_addr, void *key_buf,
-				   int level_id);
+void __update_index_pivot_in_place(bt_delete_request *del_req, node_header *node, void *node_index_addr, void *key_buf);

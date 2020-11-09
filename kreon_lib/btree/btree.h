@@ -311,7 +311,7 @@ typedef struct level_descriptor {
 	//in number of keys
 	uint64_t level_size[NUM_TREES_PER_LEVEL];
 	uint64_t max_level_size;
-	leaf_node_metadata leaf_offsets;
+	struct leaf_node_metadata leaf_offsets;
 	int64_t active_writers;
 	/*spilling or not?*/
 	char tree_status[NUM_TREES_PER_LEVEL];

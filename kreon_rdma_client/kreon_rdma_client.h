@@ -39,7 +39,7 @@ typedef struct krc_value {
 	char val_buf[];
 } krc_value;
 
-krc_ret_code krc_init(char *zookeeper_ip, int zk_port);
+krc_ret_code krc_init(const char *zookeeper_ip, int zk_port);
 krc_ret_code krc_close(void);
 
 krc_ret_code krc_put(uint32_t key_size, void *key, uint32_t val_size, void *value);

@@ -3,6 +3,7 @@
 #include <pthread.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/ioctl.h>
 #include <fcntl.h>
 #include <linux/hdreg.h>
 #include <linux/fs.h>

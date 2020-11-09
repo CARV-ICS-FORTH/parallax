@@ -24,8 +24,6 @@ extern uint64_t snapshot_v1, snapshot_v2;
 
 int8_t __delete_key(bt_delete_request *req)
 {
-	/*gxanth fix it*/
-	rotate_data init = { .left = NULL, .right = NULL, .pivot = NULL };
 	volume_descriptor *volume_desc;
 	node_header *node_copy;
 	pr_system_catalogue *mem_catalogue;
@@ -34,7 +32,6 @@ int8_t __delete_key(bt_delete_request *req)
 	node_header *parent;
 	node_header *son;
 	node_header *flag = NULL;
-	int i;
 	uint32_t order;
 	int8_t ret;
 	db_desc = req->metadata.handle->db_desc;
@@ -237,7 +234,7 @@ uint8_t delete_key_value_from_leaf(bt_delete_request *req, index_node *parent, l
 	return FAILED;
 }
 
-void __update_index_pivot_in_place(delete_request *del_req, node_header *node, void *node_index_addr, void *key_buf)
+void __update_index_pivot_in_place(bt_delete_request *del_req, node_header *node, void *node_index_addr, void *key_buf)
 {
 	void *key_addr;
 
@@ -307,13 +304,13 @@ void *_index_node_binary_search_posret(index_node *node, void *key_buf, char que
 			return NULL;
 
 		addr = &(node->p[middle].pivot);
-		index_key_buf = (void *)(MAPPED + *(uint64_t *)addr);
+		index_key_buf = REAL_ADDRESS(*(uint64_t *)addr);
 		ret = _tucana_key_cmp(index_key_buf, key_buf, KV_FORMAT, query_key_format);
 		if (ret == 0) {
 			addr = &(node->p[middle].right[0]);
 			neighbor->right_pos = neighbor->left_pos = middle;
 			neighbor->left_entry = &node->p[middle];
-			if ((middle + 1) < node->header.numberOfEntriesInNode) {
+			if ((middle + 1) < numberOfEntriesInNode) {
 				neighbor->right_entry = &node->p[middle + 1];
 			}
 			break;
@@ -339,7 +336,7 @@ void *_index_node_binary_search_posret(index_node *node, void *key_buf, char que
 				neighbor->left_entry = &node->p[middle];
 				neighbor->left_pos = neighbor->right_pos = middle;
 
-				if ((middle + 1) < node->header.numberOfEntriesInNode) {
+				if ((middle + 1) < numberOfEntriesInNode) {
 					neighbor->right_entry = &node->p[middle + 1];
 					neighbor->right_pos = middle + 1;
 				}
@@ -355,7 +352,7 @@ void *_index_node_binary_search_posret(index_node *node, void *key_buf, char que
 		neighbor->left_entry = NULL;
 		neighbor->right_entry = &node->p[0];
 		neighbor->right_pos = 0;
-	} else if (middle >= node->header.numberOfEntriesInNode) {
+	} else if (middle >= numberOfEntriesInNode) {
 		addr = &(node->p[node->header.numberOfEntriesInNode - 1].right[0]);
 		neighbor->left_entry = &node->p[node->header.numberOfEntriesInNode - 1];
 		neighbor->left_pos = node->header.numberOfEntriesInNode - 1;
@@ -419,8 +416,7 @@ void underflow_borrow_from_left_neighbor(leaf_node *curr, leaf_node *left, bt_de
 	assert(neighbor_metadata.left_entry);
 
 	/* A pivot change should happen in the parent index node */
-	__update_index_pivot_in_place(req->metadata.handle, req->parent, &neighbor_metadata.left_entry->pivot, key_addr,
-				      req->metadata.level_id);
+	__update_index_pivot_in_place(req, &neighbor_metadata.left_entry->pivot, key_addr, req->metadata.level_id);
 }
 
 void merge_with_right_neighbor(leaf_node *curr, leaf_node *right, bt_delete_request *req)
@@ -525,7 +521,7 @@ int8_t merge_with_leaf_neighbor(leaf_node *leaf, rotate_data *siblings, bt_delet
 		merged_with_right_num_entries =
 			leaf->header.numberOfEntriesInNode + right->header.numberOfEntriesInNode;
 
-	if (merged_with_left_num_entries < max_len) {
+	if (merged_with_left_num_entries && merged_with_left_num_entries < max_len) {
 		/* We can merge with the right neighbor */
 		ret = MERGE_WITH_LEFT;
 		left->header.v1++;
@@ -539,7 +535,7 @@ int8_t merge_with_leaf_neighbor(leaf_node *leaf, rotate_data *siblings, bt_delet
 			break;
 		}
 		left->header.v2++;
-	} else if (merged_with_right_num_entries < max_len) {
+	} else if (merged_with_right_num_entries && merged_with_right_num_entries < max_len) {
 		/* We can merge with the left neighbor */
 		ret = MERGE_WITH_RIGHT;
 		right->header.v1++;
@@ -630,15 +626,15 @@ void __find_left_and_right_siblings(index_node *parent, void *key, rotate_data *
 			return;
 
 		addr = &(parent->p[middle].pivot);
-		index_key_buf = (void *)(MAPPED + *(uint64_t *)addr);
+		index_key_buf = REAL_ADDRESS(*(uint64_t *)addr);
 		ret = _tucana_key_cmp(index_key_buf, key, KV_FORMAT, KV_FORMAT);
 		if (ret == 0) {
 			siblings->pivot = index_key_buf; //Saving the pivot in case we need to replace it.
 			addr = &(parent->p[middle].right[0]);
-			siblings->left = (node_header *)(MAPPED + parent->p[middle].left[0]);
+			siblings->left = (node_header *)REAL_ADDRESS(parent->p[middle].left[0]);
 
-			if ((middle + 1) < (parent->header.numberOfEntriesInNode - 1))
-				siblings->right = (node_header *)(MAPPED + parent->p[middle + 1].right[0]);
+			if ((middle + 1) < (numberOfEntriesInNode - 1))
+				siblings->right = (node_header *)REAL_ADDRESS(parent->p[middle + 1].right[0]);
 			break;
 		} else if (ret > 0) {
 			end_idx = middle - 1;
@@ -647,21 +643,21 @@ void __find_left_and_right_siblings(index_node *parent, void *key, rotate_data *
 				middle--;
 
 				if ((middle) > 0)
-					siblings->left = (node_header *)(MAPPED + parent->p[middle].left[0]);
+					siblings->left = (node_header *)REAL_ADDRESS(parent->p[middle].left[0]);
 
 				if ((middle + 1) < numberOfEntriesInNode)
-					siblings->right = (node_header *)(MAPPED + parent->p[middle + 1].right[0]);
+					siblings->right = (node_header *)REAL_ADDRESS(parent->p[middle + 1].right[0]);
 				break;
 			}
 		} else { /* ret < 0 */
 			start_idx = middle + 1;
 			if (start_idx > end_idx) {
 				addr = &(parent->p[middle].right[0]);
-				siblings->left = (node_header *)(MAPPED + parent->p[middle].left[0]);
+				siblings->left = (node_header *)REAL_ADDRESS(parent->p[middle].left[0]);
 				middle++;
 
 				if ((middle) < numberOfEntriesInNode)
-					siblings->right = (node_header *)(MAPPED + parent->p[middle].right[0]);
+					siblings->right = (node_header *)REAL_ADDRESS(parent->p[middle].right[0]);
 				break;
 			}
 		}
@@ -669,10 +665,11 @@ void __find_left_and_right_siblings(index_node *parent, void *key, rotate_data *
 
 	if (middle < 0) {
 		addr = &(parent->p[0].left[0]);
-		siblings->right = (node_header *)(MAPPED + parent->p[0].right[0]);
-	} else if (middle >= parent->header.numberOfEntriesInNode) {
+		siblings->right = (node_header *)REAL_ADDRESS(parent->p[0].right[0]);
+	} else if (middle >= numberOfEntriesInNode) {
 		addr = &(parent->p[parent->header.numberOfEntriesInNode - 1].right[0]);
-		siblings->left = (node_header *)(MAPPED + parent->p[parent->header.numberOfEntriesInNode - 1].left[0]);
+		siblings->left =
+			(node_header *)REAL_ADDRESS(parent->p[parent->header.numberOfEntriesInNode - 1].left[0]);
 	}
 }
 
@@ -693,7 +690,7 @@ void __find_position_in_index(index_node *node, struct splice *key, rotate_data 
 			return;
 
 		addr = &(node->p[middle].pivot);
-		index_key_buf = (void *)(MAPPED + *(uint64_t *)addr);
+		index_key_buf = REAL_ADDRESS(*(uint64_t *)addr);
 		ret = _tucana_key_cmp(index_key_buf, key, KV_FORMAT, KV_FORMAT);
 		if (ret == 0) {
 			addr = &(node->p[middle].right[0]);
@@ -719,7 +716,7 @@ void __find_position_in_index(index_node *node, struct splice *key, rotate_data 
 				addr = &(node->p[middle].right[0]);
 				siblings->pos_left = middle;
 
-				if ((middle + 1) < node->header.numberOfEntriesInNode)
+				if ((middle + 1) < numberOfEntriesInNode)
 					siblings->pos_right = middle + 1;
 
 				middle++;
@@ -793,7 +790,7 @@ int8_t delete_key(db_handle *handle, void *key, uint32_t size)
 
 				leaf_node *t = seg_get_leaf_node(handle->volume_desc, &handle->db_desc->levels[i], 0,
 								 NEW_ROOT);
-				init_leaf_node(t);
+
 				t->header.type = leafRootNode;
 				t->header.epoch = handle->volume_desc->mem_catalogue->epoch;
 				handle->db_desc->levels[i].root_w[handle->db_desc->levels[i].active_tree] =
@@ -874,22 +871,23 @@ uint8_t transfer_node_to_neighbor_index_node(index_node *curr, index_node *paren
 {
 	index_node *left = (index_node *)siblings->left;
 	index_node *right = (index_node *)siblings->right;
+	uint64_t borrow_threshold = (index_order / 2) + 1;
 	int8_t ret = 0;
 
 	parent->header.v1++;
 
-	if (right && (right->header.numberOfEntriesInNode >= ((index_order / 2) + 1))) {
-		ret = 1;
+	if (right && (right->header.numberOfEntriesInNode >= borrow_threshold)) {
+		ret = ROTATE_WITH_RIGHT;
 		right->header.v1++;
 		transfer_node_from_right_neighbor(curr, right, parent, req, siblings->pos_right);
 		right->header.v2++;
-	} else if (left && (left->header.numberOfEntriesInNode >= ((index_order / 2) + 1))) {
-		ret = 2;
+	} else if (left && (left->header.numberOfEntriesInNode >= borrow_threshold)) {
+		ret = ROTATE_WITH_LEFT;
 		left->header.v1++;
 		transfer_node_from_left_neighbor(curr, left, parent, req, siblings->pos_left);
 		left->header.v2++;
 	} else
-		ret = 3;
+		ret = ROTATE_IMPOSSIBLE_TRY_TO_MERGE;
 
 	parent->header.v2++;
 	return ret;
@@ -900,7 +898,7 @@ void merge_with_right_index_node(index_node *curr, index_node *right, index_node
 {
 	void *key_addr = (void *)(MAPPED + parent->p[pos].pivot);
 	void *pivot = &curr->p[curr->header.numberOfEntriesInNode].pivot;
-	int i, j;
+	int i, j, right_num_entries = right->header.numberOfEntriesInNode;
 
 	assert(((index_node *)(MAPPED + parent->p[pos].left[0])) == curr);
 	/* Take the pivot of the parent node
@@ -909,7 +907,7 @@ void merge_with_right_index_node(index_node *curr, index_node *right, index_node
 	__update_index_pivot_in_place(req, (node_header *)curr, pivot, key_addr);
 	++curr->header.numberOfEntriesInNode;
 	/* Copy the nodes of the right neighbor to the current node. */
-	for (i = curr->header.numberOfEntriesInNode, j = 0; j < right->header.numberOfEntriesInNode; ++i, ++j) {
+	for (i = curr->header.numberOfEntriesInNode, j = 0; j < right_num_entries; ++i, ++j) {
 		curr->p[i].left[0] = right->p[j].left[0];
 		pivot = &curr->p[i].pivot;
 		key_addr = (void *)(MAPPED + right->p[j].pivot);
@@ -947,7 +945,7 @@ void merge_with_left_index_node(index_node *curr, index_node *left, index_node *
 {
 	void *key_addr = (void *)(MAPPED + parent->p[pos].pivot);
 	void *pivot = &left->p[left->header.numberOfEntriesInNode].pivot;
-	int i, j;
+	int i, j, curr_num_entries = curr->header.numberOfEntriesInNode;
 
 	assert(((index_node *)(MAPPED + parent->p[pos + 1].left[0])) == curr);
 	assert(((index_node *)(MAPPED + parent->p[pos].left[0])) == left);
@@ -959,7 +957,7 @@ void merge_with_left_index_node(index_node *curr, index_node *left, index_node *
 	++left->header.numberOfEntriesInNode;
 
 	/* Copy the nodes of the current node to the left neighbor. */
-	for (i = left->header.numberOfEntriesInNode, j = 0; j < curr->header.numberOfEntriesInNode; ++i, ++j) {
+	for (i = left->header.numberOfEntriesInNode, j = 0; j < curr_num_entries; ++i, ++j) {
 		left->p[i].left[0] = curr->p[j].left[0];
 		pivot = &left->p[i].pivot;
 		key_addr = (void *)(MAPPED + curr->p[j].pivot);
@@ -995,8 +993,7 @@ int8_t merge_with_index_neighbor(index_node *curr, index_node *parent, rotate_da
 {
 	index_node *left = (index_node *)siblings->left;
 	index_node *right = (index_node *)siblings->right;
-	uint64_t merge_with_left = 0;
-	uint64_t merge_with_right = 0;
+	uint64_t overflow_threshold = index_order, merge_with_left = 0, merge_with_right = 0;
 	int8_t ret = 0;
 
 	assert(left != curr);
@@ -1009,17 +1006,18 @@ int8_t merge_with_index_neighbor(index_node *curr, index_node *parent, rotate_da
 	if (right)
 		merge_with_right = curr->header.numberOfEntriesInNode + right->header.numberOfEntriesInNode;
 
-	if (merge_with_right && merge_with_right < index_order) {
-		ret = 1;
+	if (merge_with_right && merge_with_right < overflow_threshold) {
+		ret = MERGE_WITH_RIGHT;
 		right->header.v1++;
 		merge_with_right_index_node(curr, right, parent, req, siblings->pos_right);
 		right->header.v2++;
-	} else if (merge_with_left && merge_with_left < index_order) {
-		ret = 2;
+	} else if (merge_with_left && merge_with_left < overflow_threshold) {
+		ret = MERGE_WITH_LEFT;
 		left->header.v1++;
 		merge_with_left_index_node(curr, left, parent, req, siblings->pos_left);
 		left->header.v2++;
 	} else {
+		ret = MERGE_IMPOSSIBLE_FATAL;
 		log_fatal("We should either transfer a node or merge.");
 		assert(0);
 	}

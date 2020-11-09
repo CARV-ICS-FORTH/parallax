@@ -196,7 +196,7 @@ struct bt_rebalance_result split_static_leaf(struct bt_static_leaf_node *leaf, b
 
 	/*cow check*/
 	if (leaf->header.epoch <= volume_desc->dev_catalogue->epoch) {
-		leaf_copy = seg_get_static_leaf_node(volume_desc, level, COW_FOR_LEAF);
+		leaf_copy = seg_get_leaf_node_header(volume_desc, level, req->metadata.tree_id, COW_FOR_LEAF);
 		memcpy(leaf_copy, leaf, level->leaf_size);
 		leaf_copy->header.epoch = volume_desc->mem_catalogue->epoch;
 		leaf = leaf_copy;
@@ -205,7 +205,7 @@ struct bt_rebalance_result split_static_leaf(struct bt_static_leaf_node *leaf, b
 	rep.left_slchild = leaf;
 
 	/*Fix Right leaf metadata*/
-	rep.right_slchild = seg_get_static_leaf_node(volume_desc, level, LEAF_SPLIT);
+	rep.right_slchild = seg_get_leaf_node_header(volume_desc, level, req->metadata.tree_id, LEAF_SPLIT);
 	init_static_leaf_metadata(rep.right_slchild, level);
 	retrieve_static_leaf_structures(rep.right_slchild, &right_leaf_src, level);
 	rep.middle_key_buf = REAL_ADDRESS(
@@ -271,8 +271,7 @@ void underflow_borrow_from_left_static_leaf_neighbor(struct bt_static_leaf_node 
 	assert(neighbor_metadata.left_entry);
 
 	/* A pivot change should happen in the parent index node */
-	__update_index_pivot_in_place(req->metadata.handle, (node_header *)req->parent,
-				      &neighbor_metadata.left_entry->pivot, key_addr, req->metadata.level_id);
+	__update_index_pivot_in_place(req, (node_header *)req->parent, &neighbor_metadata.left_entry->pivot, key_addr);
 }
 /* struct bt_static_leaf_node *curr, struct bt_static_leaf_node *left,level_descriptor *level, bt_delete_request *req */
 void underflow_borrow_from_right_static_leaf_neighbor(struct bt_static_leaf_node *curr,
@@ -315,8 +314,7 @@ void underflow_borrow_from_right_static_leaf_neighbor(struct bt_static_leaf_node
 	}
 
 	/* Fix the pivot in the parent node */
-	__update_index_pivot_in_place(req->metadata.handle, parent, (&neighbor_metadata.right_entry->pivot), key_addr,
-				      req->metadata.level_id);
+	__update_index_pivot_in_place(req, parent, (&neighbor_metadata.right_entry->pivot), key_addr);
 }
 
 /* struct bt_static_leaf_node *curr, struct bt_static_leaf_node *right,
@@ -356,7 +354,7 @@ void merge_with_right_static_leaf_neighbor(struct bt_static_leaf_node *curr, str
 		if (parent->header.type == rootNode) {
 			curr->header.type = leafRootNode;
 			curr->header.height = 0;
-			req->metadata.handle->db_desc->levels[req->metadata.level_id].root_w[req->metadata.active_tree] =
+			req->metadata.handle->db_desc->levels[req->metadata.level_id].root_w[req->metadata.tree_id] =
 				(node_header *)curr;
 			return;
 		}
@@ -384,7 +382,7 @@ void merge_with_left_static_leaf_neighbor(struct bt_static_leaf_node *curr, stru
 	};
 	struct bt_leaf_entry_bitmap *bitmap_end;
 	index_node *parent = req->parent;
-	uint64_t i, j;
+	uint64_t i;
 	int curr_kventry_pos = -1, left_kventry_pos = -1;
 
 	retrieve_static_leaf_structures(curr, &curr_leaf_src, level);
@@ -414,7 +412,7 @@ void merge_with_left_static_leaf_neighbor(struct bt_static_leaf_node *curr, stru
 	if (parent->header.numberOfEntriesInNode == 2) {
 		if (parent->header.type == rootNode) {
 			curr->header.type = leafRootNode;
-			req->metadata.handle->db_desc->levels[req->metadata.level_id].root_w[req->metadata.active_tree] =
+			req->metadata.handle->db_desc->levels[req->metadata.level_id].root_w[req->metadata.tree_id] =
 				(node_header *)curr;
 			return;
 		}

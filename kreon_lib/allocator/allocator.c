@@ -473,7 +473,7 @@ static inline void *next_word(volume_descriptor *volume_desc, unsigned char op_c
 	next_addr = (void *)((uint64_t)next_addr - (uint64_t)volume_desc->bitmap_start); /*normalize address*/
 	pos = (uint64_t)next_addr % 8192;
 
-	if (pos >= 0 && pos < 8) //reached end of right buddy give it another 8 - translate
+	if (pos < 8) //reached end of right buddy give it another 8 - translate
 		next_addr += 8;
 	else if (pos >= 4096 && pos < 4104) //crossed to the right buddy
 		next_addr += 4104;
@@ -882,7 +882,7 @@ void allocator_init(volume_descriptor *volume_desc)
 	uint64_t i;
 	void *addr;
 	/*epochs of the two "buddies"*/
-	int64_t epoch_l, epoch_r;
+	uint64_t epoch_l, epoch_r;
 	int32_t offset = 0;
 	int32_t inc = 2 * DEVICE_BLOCK_SIZE;
 	uint64_t page_offset = 0;
@@ -989,9 +989,9 @@ void allocator_init(volume_descriptor *volume_desc)
 	for (i = (uint64_t)volume_desc->bitmap_start, page_offset = 0; i < (uint64_t)volume_desc->bitmap_end;
 	     i += inc, page_offset += 4088) {
 		addr = (void *)i;
-		epoch_l = *(int64_t *)addr;
+		epoch_l = *(uint64_t *)addr;
 		addr = (void *)i + DEVICE_BLOCK_SIZE;
-		epoch_r = *(int64_t *)addr;
+		epoch_r = *(uint64_t *)addr;
 #ifdef DEBUG_ALLOCATOR
 		log_info("epoch left is %llu epoch right is %llu", (LLU)epoch_l, (LLU)epoch_r);
 #endif

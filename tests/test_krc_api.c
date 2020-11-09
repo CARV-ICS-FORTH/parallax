@@ -53,6 +53,55 @@ int main(int argc, char *argv[])
 		exit(EXIT_FAILURE);
 	}
 	strcpy(ZOOKEEPER, argv[1]);
+#if 0
+	else if (argc == 2) {
+		strcpy(ZOOKEEPER, argv[1]);
+	} else if (argc > 2 && strcmp(argv[3], "--create_regions") == 0) {
+		strcpy(ZOOKEEPER, argv[1]);
+		strcpy(HOST, argv[2]);
+		globals_set_zk_host(ZOOKEEPER);
+		log_info("Creating %d regions", NUM_REGIONS);
+
+		char *args_buf[14];
+		args_buf[1] = strdup("-c");
+		/*static fields*/
+		args_buf[8] = "--size";
+		args_buf[9] = "1000000";
+
+		args_buf[10] = "--host";
+		args_buf[11] = strdup(HOST);
+		args_buf[12] = "--zookeeper";
+		args_buf[13] = strdup(ZOOKEEPER);
+
+		args_buf[4] = strdup("--minkey");
+		args_buf[5] = malloc(16);
+		args_buf[6] = strdup("--maxkey");
+		args_buf[7] = malloc(16);
+		/*dynamic fields*/
+		for (region_id = 0; region_id < NUM_REGIONS - 1; region_id++) {
+			min_key = BASE + (region_id * range);
+			max_key = min_key + range;
+			args_buf[2] = strdup("--region");
+			args_buf[3] = (char *)malloc(16);
+			sprintf(args_buf[3], "%u", region_id);
+			if (region_id == 0)
+				sprintf(args_buf[5], "%s", "-oo");
+			else
+				sprintf(args_buf[5], "%s%lu", KEY_PREFIX, min_key);
+			sprintf(args_buf[7], "%s%lu", KEY_PREFIX, max_key);
+			create_region(13, args_buf);
+			log_info("Created region id %s minkey %s maxkey %s", args_buf[2], args_buf[4], args_buf[6]);
+		}
+		/*last region*/
+		min_key = BASE + (region_id * range);
+		sprintf(args_buf[3], "%u", region_id);
+		sprintf(args_buf[5], "%s%lu", KEY_PREFIX, min_key);
+		sprintf(args_buf[7], "+oo");
+		create_region(13, args_buf);
+		log_info("Created region id %s minkey %s maxkey %s", args_buf[2], args_buf[4], args_buf[6]);
+		return EXIT_SUCCESS;
+	}
+#endif
 
 	if (krc_init(ZOOKEEPER, 2181) != KRC_SUCCESS) {
 		log_fatal("Failed to init library");
@@ -117,7 +166,7 @@ int main(int argc, char *argv[])
 	// exit(EXIT_SUCCESS);
 	log_info("Starting population for %lu keys...", NUM_KEYS);
 	for (i = BASE; i < (BASE + NUM_KEYS); i++) {
-		strncpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
+		memcpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
 		if (i % 100000 == 0)
 			log_info("inserted up to %llu th key", i);
 
@@ -132,7 +181,7 @@ int main(int argc, char *argv[])
 
 	get_buffer = NULL;
 	for (i = BASE; i < (BASE + NUM_KEYS); i++) {
-		strncpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
+		memcpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
 		if (i % 100000 == 0)
 			log_info("looked up to %llu th key", i);
 
@@ -157,7 +206,7 @@ int main(int argc, char *argv[])
 	uint64_t offset = 0;
 	uint32_t sum = 0;
 	uint32_t sum_g = 0;
-	strncpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
+	memcpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
 	sprintf(k->key_buf + strlen(KEY_PREFIX), "%d", 40000000);
 	k->key_size = strlen(k->key_buf);
 	v = (value *)((uint64_t)k + sizeof(key) + k->key_size);
@@ -206,7 +255,7 @@ int main(int argc, char *argv[])
 			log_info("<Scan no %llu>", i);
 
 		sprintf(k->key_buf + strlen(KEY_PREFIX), "%llu", (long long unsigned)i);
-		strncpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
+		memcpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
 		sprintf(k->key_buf + strlen(KEY_PREFIX), "%llu", (long long unsigned)i);
 		k->key_size = strlen(k->key_buf);
 
@@ -226,7 +275,7 @@ int main(int argc, char *argv[])
 
 		for (j = 1; j <= SCAN_SIZE; j++) {
 			/*construct the key we expect*/
-			strncpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
+			memcpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
 			sprintf(k->key_buf + strlen(KEY_PREFIX), "%llu", (long long unsigned)i + j);
 			k->key_size = strlen(k->key_buf);
 
@@ -256,7 +305,7 @@ int main(int argc, char *argv[])
 	char minus_inf[7] = { '\0' };
 	krc_scan_set_start(sc, 7, minus_inf, KRC_GREATER_OR_EQUAL);
 	for (i = BASE; i < (BASE + NUM_KEYS); i++) {
-		strncpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
+		memcpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
 		sprintf(k->key_buf + strlen(KEY_PREFIX), "%llu", (long long unsigned)i);
 		k->key_size = strlen(k->key_buf);
 
@@ -279,7 +328,7 @@ int main(int argc, char *argv[])
 	krc_scan_set_start(sc, 7, minus_inf, KRC_GREATER_OR_EQUAL);
 	krc_scan_fetch_keys_only(sc);
 	for (i = BASE; i < (BASE + NUM_KEYS); i++) {
-		strncpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
+		memcpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
 		sprintf(k->key_buf + strlen(KEY_PREFIX), "%llu", (long long unsigned)i);
 		k->key_size = strlen(k->key_buf);
 
@@ -304,7 +353,7 @@ int main(int argc, char *argv[])
 	sprintf(k->key_buf + strlen(KEY_PREFIX), "%llu", (long long unsigned)BASE + (NUM_KEYS / 2));
 	krc_scan_set_stop(sc, strlen(k->key_buf), k->key_buf, KRC_GREATER);
 	for (i = BASE; i < (BASE + NUM_KEYS); i++) {
-		strncpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
+		memcpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
 		sprintf(k->key_buf + strlen(KEY_PREFIX), "%llu", (long long unsigned)i);
 		k->key_size = strlen(k->key_buf);
 		if (!krc_scan_get_next(sc, &s_key, &s_key_size, &s_value, &s_value_size))
@@ -344,7 +393,7 @@ int main(int argc, char *argv[])
 	krc_scan_close(sc);
 	log_info("Deleting half keys");
 	for (i = BASE; i < BASE + (NUM_KEYS / 2); i++) {
-		strncpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
+		memcpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
 		if (i % 100000 == 0)
 			log_info("deleted up to %llu th key", i);
 
@@ -373,7 +422,7 @@ int main(int argc, char *argv[])
 	log_info("Delete test success! :-)");
 	log_info("Testing prefix match scans");
 	log_info("loading keys %u keys with prefix %s", PREFIX_TEST_KEYS, PREFIX_1);
-	strncpy(k->key_buf, PREFIX_1, strlen(PREFIX_1));
+	memcpy(k->key_buf, PREFIX_1, strlen(PREFIX_1));
 	for (i = 0; i < PREFIX_TEST_KEYS; i++) {
 		sprintf(k->key_buf + strlen(PREFIX_1), "%llu", (long long unsigned)i);
 		k->key_size = strlen(k->key_buf);
@@ -384,7 +433,7 @@ int main(int argc, char *argv[])
 	}
 	log_info("Done loading keys %u keys with prefix %s", PREFIX_TEST_KEYS, PREFIX_1);
 	log_info("loading keys %u keys with prefix %s", PREFIX_TEST_KEYS, PREFIX_2);
-	strncpy(k->key_buf, PREFIX_2, strlen(PREFIX_2));
+	memcpy(k->key_buf, PREFIX_2, strlen(PREFIX_2));
 	for (i = 0; i < PREFIX_TEST_KEYS; i++) {
 		sprintf(k->key_buf + strlen(PREFIX_2), "%llu", (long long unsigned)i);
 		k->key_size = strlen(k->key_buf);
@@ -395,7 +444,7 @@ int main(int argc, char *argv[])
 	}
 	log_info("Done loading keys %u keys with prefix %s", PREFIX_TEST_KEYS, PREFIX_2);
 	log_info("loading keys %u keys with prefix %s", PREFIX_TEST_KEYS, PREFIX_3);
-	strncpy(k->key_buf, PREFIX_3, strlen(PREFIX_3));
+	memcpy(k->key_buf, PREFIX_3, strlen(PREFIX_3));
 	for (i = 0; i < PREFIX_TEST_KEYS; i++) {
 		sprintf(k->key_buf + strlen(PREFIX_3), "%llu", (long long unsigned)i);
 		k->key_size = strlen(k->key_buf);
@@ -489,7 +538,7 @@ int main(int argc, char *argv[])
 
 	log_info("Testing zero sided value keys populating");
 	for (i = BASE; i < (BASE + NUM_KEYS); i++) {
-		strncpy(k->key_buf, ZERO_VALUE_PREFIX, strlen(ZERO_VALUE_PREFIX));
+		memcpy(k->key_buf, ZERO_VALUE_PREFIX, strlen(ZERO_VALUE_PREFIX));
 		if (i % 100000 == 0)
 			log_info("inserted up to %llu th key", i);
 

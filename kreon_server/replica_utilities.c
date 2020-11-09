@@ -14,9 +14,9 @@ typedef struct prefix_table {
 /*functions for building efficiently index at replicas*/
 void *_ru_get_space_for_tree(struct krm_region_desc *r_desc, int32_t tree_id, uint32_t size)
 {
-	void *addr;
-	segment_header *new_segment;
-	uint64_t available_space;
+	//void *addr;
+	//segment_header *new_segment;
+	//uint64_t available_space;
 	assert(size % DEVICE_BLOCK_SIZE == 0 && size <= (BUFFER_SEGMENT_SIZE - sizeof(segment_header)));
 	log_fatal("gesalous fix it!");
 	exit(EXIT_FAILURE);

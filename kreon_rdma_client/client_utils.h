@@ -34,7 +34,7 @@ struct cu_regions {
 	/*plus future other staff*/
 };
 
-uint8_t cu_init(char *zookeeper_ip, int zk_port);
+uint8_t cu_init(const char *zookeeper_ip, int zk_port);
 struct cu_region_desc *cu_get_region(char *key, uint32_t key_size);
 struct cu_region_desc *cu_get_first_region(void);
 connection_rdma *cu_get_conn_for_region(struct cu_region_desc *r_desc, uint64_t seed);

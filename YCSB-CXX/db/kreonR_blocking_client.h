@@ -68,9 +68,10 @@ class kreonRBlockingClientDB : public YCSBDB {
 		  dbs()
 	{
 		struct timeval start;
+		const char *host = ZK_HOST;
 
-		if (krc_init(ZK_HOST, ZK_PORT) != KRC_SUCCESS) {
-			log_fatal("Failed to init client at zookeeper host %s port %d", ZK_HOST, ZK_PORT);
+		if (krc_init(host, ZK_PORT) != KRC_SUCCESS) {
+			log_fatal("Failed to init client at zookeeper host %s port %d", host, ZK_PORT);
 			exit(EXIT_FAILURE);
 		}
 		cu_num = 0;
@@ -197,7 +198,6 @@ class kreonRBlockingClientDB : public YCSBDB {
 	{
 		char buffer[1512];
 		int pos;
-		int total_length = 0;
 
 		pos = 0;
 		for (auto v : values) {
@@ -229,10 +229,6 @@ class kreonRBlockingClientDB : public YCSBDB {
 	{
 		char buffer[1512];
 		int pos;
-		int i;
-		int type;
-		int total_length = 0;
-		int ops = 0;
 
 		pos = 0;
 		for (auto v : values) {
@@ -252,7 +248,6 @@ class kreonRBlockingClientDB : public YCSBDB {
 		}
 		/*ommit last space*/
 		pos -= 2;
-		total_length = key.length() + pos + 8;
 
 		if (krc_put(key.length(), (void *)key.c_str(), pos, (void *)buffer) != KRC_SUCCESS) {
 			log_fatal("Put failed for key %s", key.c_str());

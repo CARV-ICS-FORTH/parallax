@@ -111,6 +111,7 @@ void seg_free_index_node_header(volume_descriptor *volume_desc, level_descriptor
 	//leave for future use
 	(void)level_desc;
 	(void)tree_id;
+
 	free_block(volume_desc, node, INDEX_NODE_SIZE, -1);
 }
 
@@ -120,6 +121,7 @@ void seg_free_index_node(volume_descriptor *volume_desc, level_descriptor *level
 	//leave for future use
 	(void)level_desc;
 	(void)tree_id;
+
 	if (inode->header.type == leafNode || inode->header.type == leafRootNode) {
 		log_fatal("Faulty type of node!");
 		exit(EXIT_FAILURE);
@@ -167,8 +169,8 @@ leaf_node *seg_get_leaf_node(volume_descriptor *volume_desc, level_descriptor *l
 leaf_node *seg_get_leaf_node_header(volume_descriptor *volume_desc, level_descriptor *level_desc, uint8_t tree_id,
 				    char reason)
 {
-	struct bt_static_leaf_node *leaf = (struct bt_static_leaf_node *)_get_space(volume_desc, level_desc, tree_id,
-										    level_desc->leaf_size, reason);
+	struct bt_static_leaf_node *leaf = (struct bt_static_leaf_node *)get_space(volume_desc, level_desc, tree_id,
+										   level_desc->leaf_size, reason);
 
 	leaf->header.type = leafNode;
 	leaf->header.epoch = volume_desc->mem_catalogue->epoch;

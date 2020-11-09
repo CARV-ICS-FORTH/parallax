@@ -142,7 +142,7 @@ exit:
 	return ret;
 }
 
-uint8_t cu_init(char *zookeeper_ip, int zk_port)
+uint8_t cu_init(const char *zookeeper_ip, int zk_port)
 {
 	LIBRARY_MODE = CLIENT_MODE;
 	pthread_mutex_init(&client_regions.r_lock, NULL);

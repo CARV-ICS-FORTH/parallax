@@ -2158,7 +2158,16 @@ r_desc->m_state->r_buf[i].segment[j].end);
 static void handle_task(struct krm_server_desc *mydesc, struct krm_work_task *task)
 {
 	struct connection_rdma *rdma_conn = NULL;
+	kv_location location;
+	//struct connection_rdma *rdma_conn;
 	struct krm_region_desc *r_desc;
+	void *region_key;
+	//leave it for later
+	//void *addr;
+	//uint64_t log_address;
+	//void *master_segment;
+	//void *local_log_addr;
+	//void *key = NULL;
 	void *value;
 	scannerHandle *sc;
 	msg_put_offt_req *put_offt_req;
@@ -2172,7 +2181,7 @@ static void handle_task(struct krm_server_desc *mydesc, struct krm_work_task *ta
 	/*unboxing the arguments*/
 	r_desc = NULL;
 	task->reply_msg = NULL;
-	rdma_conn = task->conn;
+	//rdma_conn = task->conn;
 	stats_update(task->thread_id);
 
 	switch (task->msg->type) {
@@ -3006,11 +3015,13 @@ int main(int argc, char *argv[])
 	char *mount_point;
 	int num_of_numa_servers = 0;
 	int next_argv;
+
 	if (argc >= 6) {
 		// argv[0] program name don't care
 		// dev name
 		next_argv = 1;
 		device_name = argv[next_argv];
+
 		globals_set_dev(device_name);
 		++next_argv;
 		// mount point

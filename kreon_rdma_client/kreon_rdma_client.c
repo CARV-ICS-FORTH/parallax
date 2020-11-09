@@ -227,7 +227,7 @@ static int _krc_wait_for_message_reply(struct msg_header *req, struct connection
 	return KREON_SUCCESS;
 }
 
-krc_ret_code krc_init(char *zookeeper_ip, int zk_port)
+krc_ret_code krc_init(const char *zookeeper_ip, int zk_port)
 {
 	if (!krc_lib_init) {
 		pthread_mutex_lock(&lib_lock);
