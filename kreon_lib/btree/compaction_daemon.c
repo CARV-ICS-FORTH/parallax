@@ -467,9 +467,6 @@ void *compaction(void *_comp_req)
 
 	db_desc->levels[comp_req->dst_level].tree_status[0] = NO_SPILLING;
 
-	if (comp_req->src_tree == 0)
-		db_desc->L0_start_log_offset = comp_req->l0_end;
-
 	// log_info("DONE Cleaning src level tree [%u][%u] snapshotting...",
 	// comp_req->src_level, comp_req->src_tree);
 	/*interrupt compaction daemon*/

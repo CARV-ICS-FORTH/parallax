@@ -1,18 +1,17 @@
 /** @file btree.h
  *  @brief
  *  @author Giorgos Saloustros (gesalous@ics.forth.gr)
- *
+ *  @author Giorgos Xanthakis  (gxanth@ics.forth.gr)
  */
 #pragma once
 #include <semaphore.h>
-#include "../../build/config.h"
-#include "../allocator/allocator.h"
-#include "uthash.h"
-
 #include <pthread.h>
 #include <stdlib.h>
 #include <limits.h>
 #include <unistd.h>
+#include <config.h>
+#include "uthash.h"
+#include "../allocator/allocator.h"
 
 #define SUCCESS 4
 #define FAILED 5
@@ -101,8 +100,7 @@ typedef struct segment_header {
 	void *next_segment;
 	void *prev_segment;
 	uint64_t segment_id;
-	uint64_t garbage_bytes[2 * MAX_COUNTER_VERSIONS];
-	char pad[4008];
+	char pad[4072];
 } segment_header;
 
 /*Note IN stands for Internal Node*/
@@ -224,10 +222,16 @@ struct splice {
  *      this operation are recoverable
  **/
 typedef struct commit_log_info {
-	segment_header *first_kv_log;
-	segment_header *last_kv_log;
-	uint64_t kv_log_size;
-	char pad[4072];
+	segment_header *big_log_head;
+	segment_header *big_log_tail;
+	segment_header *medium_log_head;
+	segment_header *medium_log_tail;
+	segment_header *small_log_head;
+	segment_header *small_log_tail;
+	uint64_t big_log_size;
+	uint64_t medium_log_size;
+	uint64_t small_log_size;
+	char pad[4024];
 } commit_log_info;
 
 #if 0
@@ -325,15 +329,23 @@ typedef struct db_descriptor {
 	sem_t compaction_daemon_interrupts;
 	pthread_cond_t client_barrier;
 	pthread_mutex_t client_barrier_lock;
-
-	pthread_spinlock_t back_up_segment_table_lock;
-	volatile segment_header *KV_log_first_segment;
-	volatile segment_header *KV_log_last_segment;
-	volatile uint64_t KV_log_size;
-	uint64_t latest_proposal_start_segment_offset;
+	volatile segment_header *big_log_head;
+	volatile segment_header *big_log_tail;
+	volatile uint64_t big_log_size;
+	volatile segment_header *medium_log_head;
+	volatile segment_header *medium_log_tail;
+	volatile uint64_t medium_log_size;
+	volatile segment_header *small_log_head;
+	volatile segment_header *small_log_tail;
+	volatile uint64_t small_log_size;
 	/*coordinates of the latest persistent L0*/
-	uint64_t L0_start_log_offset;
-	uint64_t L0_end_log_offset;
+	/* Shouldn't this be in level_descriptor*/
+	uint64_t big_log_head_offset;
+	uint64_t big_log_tail_offset;
+	uint64_t medium_log_head_offset;
+	uint64_t medium_log_tail_offset;
+	uint64_t small_log_head_offset;
+	uint64_t small_log_tail_offset;
 
 	commit_log_info *commit_log;
 	// uint64_t spilled_keys;
@@ -513,6 +525,7 @@ lock_table *_find_position(lock_table **table, node_header *node);
 #define KEY_SIZE(x) (*(uint32_t *)x)
 #define ABSOLUTE_ADDRESS(X) ((uint64_t)X - MAPPED)
 #define REAL_ADDRESS(X) ((void *)(uint64_t)(MAPPED + X))
+#define KEY_OFFSET(KEY_SIZE, KV_BUF) (sizeof(uint32_t) + KV_BUF)
 #define VALUE_SIZE_OFFSET(KEY_SIZE, KEY) (sizeof(uint32_t) + KEY_SIZE + KEY)
 #define SERIALIZE_KEY(buf, key, key_size) \
 	*(uint32_t *)buf = key_size;      \

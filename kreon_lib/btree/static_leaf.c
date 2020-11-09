@@ -138,11 +138,10 @@ void *find_key_in_static_leaf(const struct bt_static_leaf_node *leaf, level_desc
 		print_static_leaf(leaf, level);
 	}
 
-	/* exit(EXIT_FAILURE); */
 	switch (result.status) {
 	case FOUND:
 		free(buf);
-		return (void *)src.kv_entries[src.slot_array[result.middle].index].pointer;
+		return &src.kv_entries[src.slot_array[result.middle].index].pointer;
 	default:
 		log_info("Key not found %*s Key Found %*s Middle %d Status %d", key_buf->size, key_buf->data,
 			 *(uint32_t *)REAL_ADDRESS(src.kv_entries[src.slot_array[result.middle].index].pointer),
@@ -460,7 +459,6 @@ int8_t insert_in_static_leaf(struct bt_static_leaf_node *leaf, bt_insert_req *re
 	if (unlikely(leaf->header.numberOfEntriesInNode == 0)) {
 		init_static_leaf_metadata(leaf, level);
 	}
-
 	retrieve_static_leaf_structures(leaf, &src, level);
 	bitmap_end = src.bitmap + level->leaf_offsets.bitmap_entries;
 	binary_search_static_leaf(leaf, level, key, &bsearch);

@@ -58,7 +58,7 @@ int8_t find_deleted_kv_pairs_in_segment(volume_descriptor *volume_desc, db_descr
 	while (size_of_log_segment_checked < log_data_without_metadata && key->size != 0 && remaining_space >= 10) {
 		key = (struct splice *)log_segment;
 		value = (struct splice *)(VALUE_SIZE_OFFSET(key->size, log_segment));
-		value_as_pointer = (VALUE_SIZE_OFFSET(key->size,log_segment));
+		value_as_pointer = (VALUE_SIZE_OFFSET(key->size, log_segment));
 		find_value = find_key(&handle, key->data, key->size);
 
 		if (key->size != 0 && remaining_space >= 10 && (find_value == NULL || value_as_pointer != find_value)) {
@@ -91,14 +91,13 @@ void fix_nodes_in_log(volume_descriptor *volume_desc, db_descriptor *db_desc, lo
 		prev_node->metadata.next_segment = curr_node->metadata.next_segment;
 		free_block(volume_desc, curr_node, BUFFER_SEGMENT_SIZE, -1);
 	} else
-		db_desc->KV_log_first_segment =
-			(segment_header *)REAL_ADDRESS((uint64_t)curr_node->metadata.next_segment);
+		db_desc->big_log_head = (segment_header *)REAL_ADDRESS((uint64_t)curr_node->metadata.next_segment);
 }
 
 void iterate_log_segments(db_descriptor *db_desc, volume_descriptor *volume_desc, stack *marks)
 {
-	log_segment *last_segment = (log_segment *)db_desc->KV_log_last_segment;
-	log_segment *log_node = (log_segment *)db_desc->KV_log_first_segment;
+	log_segment *last_segment = (log_segment *)db_desc->big_log_tail;
+	log_segment *log_node = (log_segment *)db_desc->big_log_head;
 	log_segment *prev_node = NULL;
 
 	/* We are in the first segment of the log and is not yet full! */

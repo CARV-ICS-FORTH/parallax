@@ -1636,9 +1636,9 @@ void insert_kv_pair(struct krm_server_desc *server, struct krm_work_task *task)
 * Since for this region we are the first to do this there is surely no
 * concurrent access*/
 				uint64_t range;
-				if (r_desc->db->db_desc->KV_log_size > 0) {
-					range = r_desc->db->db_desc->KV_log_size -
-						(r_desc->db->db_desc->KV_log_size % SEGMENT_SIZE);
+				if (r_desc->db->db_desc->big_log_size > 0) {
+					range = r_desc->db->db_desc->big_log_size -
+						(r_desc->db->db_desc->big_log_size % SEGMENT_SIZE);
 				} else
 					range = 0;
 				for (uint32_t i = 0; i < r_desc->region->num_of_backup; i++) {
@@ -1736,8 +1736,8 @@ void insert_kv_pair(struct krm_server_desc *server, struct krm_work_task *task)
 						assert(rep->status == KREON_SUCCESS);
 						r_desc->m_state->r_buf[i].segment_size = SEGMENT_SIZE;
 						r_desc->m_state->r_buf[i].num_buffers = RU_REPLICA_NUM_SEGMENTS;
-						uint64_t seg_offt = r_desc->db->db_desc->KV_log_size -
-								    (r_desc->db->db_desc->KV_log_size % SEGMENT_SIZE);
+						uint64_t seg_offt = r_desc->db->db_desc->big_log_size -
+								    (r_desc->db->db_desc->big_log_size % SEGMENT_SIZE);
 						task->r_desc->next_segment_to_flush = seg_offt;
 						for (int j = 0; j < RU_REPLICA_NUM_SEGMENTS; j++) {
 							r_desc->m_state->r_buf[i].segment[j].start = seg_offt;
@@ -1776,8 +1776,7 @@ void insert_kv_pair(struct krm_server_desc *server, struct krm_work_task *task)
 
 				// 2. copy last segment to a register buffer
 				struct segment_header *last_segment = (struct segment_header *)context->memory;
-				memcpy(last_segment, (const char *)r_desc->db->db_desc->KV_log_last_segment,
-				       SEGMENT_SIZE);
+				memcpy(last_segment, (const char *)r_desc->db->db_desc->big_log_tail, SEGMENT_SIZE);
 				struct connection_rdma *r_conn =
 					sc_get_conn(server, r_desc->region->backups[0].kreon_ds_hostname);
 				context->mr = rdma_reg_write(r_conn->rdma_cm_id, last_segment, SEGMENT_SIZE);
@@ -1804,8 +1803,8 @@ void insert_kv_pair(struct krm_server_desc *server, struct krm_work_task *task)
 						}
 					}
 				}
-				r_desc->next_segment_to_flush = r_desc->db->db_desc->KV_log_size -
-								(r_desc->db->db_desc->KV_log_size % SEGMENT_SIZE);
+				r_desc->next_segment_to_flush = r_desc->db->db_desc->big_log_size -
+								(r_desc->db->db_desc->big_log_size % SEGMENT_SIZE);
 				log_info("Successfully sent the last segment to all the group");
 
 				/*resume halted tasks*/
@@ -2379,13 +2378,13 @@ static void handle_task(struct krm_server_desc *mydesc, struct krm_work_task *ta
 			}
 			/*what is the next segment id that we should expect (for correctness
 * reasons)*/
-			if (r_desc->db->db_desc->KV_log_size > 0 &&
-			    r_desc->db->db_desc->KV_log_size % SEGMENT_SIZE == 0)
+			if (r_desc->db->db_desc->big_log_size > 0 &&
+			    r_desc->db->db_desc->big_log_size % SEGMENT_SIZE == 0)
 				r_desc->r_state->next_segment_id_to_flush =
-					r_desc->db->db_desc->KV_log_last_segment->segment_id + 1;
+					r_desc->db->db_desc->big_log_tail->segment_id + 1;
 			else
 				r_desc->r_state->next_segment_id_to_flush =
-					r_desc->db->db_desc->KV_log_last_segment->segment_id;
+					r_desc->db->db_desc->big_log_tail->segment_id;
 		} else {
 			log_fatal("remote buffers already initialized, what?");
 			exit(EXIT_FAILURE);
@@ -2454,7 +2453,7 @@ static void handle_task(struct krm_server_desc *mydesc, struct krm_work_task *ta
 
 		pthread_mutex_lock(&r_desc->db->db_desc->lock_log);
 		/*Now take a segment from the allocator and copy the buffer*/
-		volatile segment_header *last_log_segment = r_desc->db->db_desc->KV_log_last_segment;
+		volatile segment_header *last_log_segment = r_desc->db->db_desc->big_log_tail;
 
 		if (r_desc->r_state->next_segment_id_to_flush != flush_req->segment_id) {
 			log_fatal("Corruption non-contiguous segment ids: expected %llu  got "
@@ -2468,11 +2467,11 @@ static void handle_task(struct krm_server_desc *mydesc, struct krm_work_task *ta
 		disk_segment->next_segment = NULL;
 		disk_segment->prev_segment = (segment_header *)((uint64_t)last_log_segment - MAPPED);
 
-		if (r_desc->db->db_desc->KV_log_first_segment == NULL)
-			r_desc->db->db_desc->KV_log_first_segment = disk_segment;
+		if (r_desc->db->db_desc->big_log_head == NULL)
+			r_desc->db->db_desc->big_log_head = disk_segment;
 
-		r_desc->db->db_desc->KV_log_last_segment = disk_segment;
-		r_desc->db->db_desc->KV_log_size += SEGMENT_SIZE;
+		r_desc->db->db_desc->big_log_tail = disk_segment;
+		r_desc->db->db_desc->big_log_size += SEGMENT_SIZE;
 
 		pthread_mutex_unlock(&r_desc->db->db_desc->lock_log);
 		/*time for reply :-)*/
@@ -3245,7 +3244,8 @@ int main(int argc, char *argv[])
 		log_fatal("can't catch SIGINT");
 		exit(EXIT_FAILURE);
 	}
+
 	sem_wait(&exit_main);
-	log_info("kreonR server exiting");
+
 	return 0;
 }

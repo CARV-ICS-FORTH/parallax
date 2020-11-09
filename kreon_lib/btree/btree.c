@@ -27,8 +27,7 @@
 #include "../../utilities/macros.h"
 #include "../allocator/dmap-ioctl.h"
 #include "../scanner/scanner.h"
-#include "../btree/assertions.h"
-#include "../btree/conf.h"
+#include "conf.h"
 #include <log.h>
 
 #define PREFIX_STATISTICS_NO
@@ -430,6 +429,84 @@ static void destroy_level_locktable(db_descriptor *database, uint8_t level_id)
 		free(&database->levels[level_id].level_lock_table[i]);
 }
 
+static void init_logs(db_descriptor *db_desc, pr_db_entry *db_entry, volume_descriptor *volume_desc, char CREATE_FLAG)
+{
+	if (CREATE_FLAG != CREATE_DB) {
+		log_info("replica db ommiting KV log initialization\n");
+
+		db_desc->big_log_head = NULL;
+		db_desc->big_log_tail = NULL;
+		db_desc->big_log_size = 0;
+		db_desc->big_log_head_offset = 0;
+		db_desc->big_log_tail_offset = 0;
+		db_desc->medium_log_head = NULL;
+		db_desc->medium_log_tail = NULL;
+		db_desc->medium_log_size = 0;
+		db_desc->medium_log_head_offset = 0;
+		db_desc->medium_log_tail_offset = 0;
+		db_desc->small_log_head = NULL;
+		db_desc->small_log_tail = NULL;
+		db_desc->small_log_size = 0;
+		db_desc->small_log_head_offset = 0;
+		db_desc->small_log_tail_offset = 0;
+
+		db_desc->commit_log->big_log_head = NULL;
+		db_desc->commit_log->big_log_tail = NULL;
+		db_desc->commit_log->big_log_size = 0;
+		db_desc->commit_log->medium_log_head = NULL;
+		db_desc->commit_log->medium_log_tail = NULL;
+		db_desc->commit_log->medium_log_size = 0;
+		db_desc->commit_log->small_log_head = NULL;
+		db_desc->commit_log->small_log_tail = NULL;
+		db_desc->commit_log->small_log_size = 0;
+	} else {
+		log_info("Primary db initializing KV log");
+
+		db_desc->big_log_head = seg_get_raw_log_segment(volume_desc);
+		db_desc->big_log_tail = db_desc->big_log_head;
+		db_desc->big_log_tail->segment_id = 0;
+		db_desc->big_log_tail->next_segment = NULL;
+		db_desc->big_log_tail->prev_segment = NULL;
+		db_desc->big_log_size = sizeof(segment_header);
+		db_desc->big_log_head_offset = sizeof(segment_header);
+		db_desc->big_log_tail_offset = sizeof(segment_header);
+		/*get a page for commit_log info*/
+		db_desc->commit_log->big_log_head = (segment_header *)ABSOLUTE_ADDRESS(db_desc->big_log_head);
+		db_desc->commit_log->big_log_tail = (segment_header *)ABSOLUTE_ADDRESS(db_desc->big_log_tail);
+		db_desc->commit_log->big_log_size = db_desc->big_log_size;
+
+		/* Medium log */
+		db_desc->medium_log_head = seg_get_raw_log_segment(volume_desc);
+		db_desc->medium_log_tail = db_desc->medium_log_head;
+		db_desc->medium_log_tail->segment_id = 0;
+		db_desc->medium_log_tail->next_segment = NULL;
+		db_desc->medium_log_tail->prev_segment = NULL;
+		db_desc->medium_log_size = sizeof(segment_header);
+		db_desc->medium_log_head_offset = sizeof(segment_header);
+		db_desc->medium_log_tail_offset = sizeof(segment_header);
+		db_desc->commit_log->medium_log_head = (segment_header *)ABSOLUTE_ADDRESS(db_desc->medium_log_head);
+		db_desc->commit_log->medium_log_tail = (segment_header *)ABSOLUTE_ADDRESS(db_desc->medium_log_tail);
+		db_desc->commit_log->medium_log_size = db_desc->medium_log_size;
+
+		/* Small log */
+		db_desc->small_log_head = seg_get_raw_log_segment(volume_desc);
+		db_desc->small_log_tail = db_desc->small_log_head;
+		db_desc->small_log_tail->segment_id = 0;
+		db_desc->small_log_tail->next_segment = NULL;
+		db_desc->small_log_tail->prev_segment = NULL;
+		db_desc->small_log_size = sizeof(segment_header);
+		db_desc->small_log_head_offset = sizeof(segment_header);
+		db_desc->small_log_tail_offset = sizeof(segment_header);
+		db_desc->commit_log->small_log_head = (segment_header *)ABSOLUTE_ADDRESS(db_desc->small_log_head);
+		db_desc->commit_log->small_log_tail = (segment_header *)ABSOLUTE_ADDRESS(db_desc->small_log_tail);
+		db_desc->commit_log->small_log_size = db_desc->small_log_size;
+
+		/*persist commit log information, this location stays permanent, there is no
+		 * need to rewrite it during snapshot()*/
+		db_entry->commit_log = ABSOLUTE_ADDRESS(db_desc->commit_log);
+	}
+}
+
 /**
  * @param   blockSize
  * @param   db_name
@@ -464,14 +541,17 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 
 		log_info("index order set to: %d sizeof node_header = %lu", index_order, sizeof(node_header));
 	}
+
 	/*Is requested volume already mapped?, construct key which will be
 * volumeName|start*/
 	val = start;
 	digits = 0;
+
 	while (val > 0) {
 		val = val / 10;
 		digits++;
 	}
+
 	if (digits == 0)
 		digits = 1;
 
@@ -513,12 +593,14 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 			2;
 		volume_desc->segment_utilization_vector =
 			(uint16_t *)malloc(volume_desc->segment_utilization_vector_size);
+
 		if (volume_desc->segment_utilization_vector == NULL) {
 			log_fatal("failed to allocate memory for segment utilization vector of "
 				  "size %lu",
 				  volume_desc->segment_utilization_vector_size);
 			exit(EXIT_FAILURE);
 		}
+
 		memset(volume_desc->segment_utilization_vector, 0x00, volume_desc->segment_utilization_vector_size);
 
 		log_info("volume %s state created max_tries %d", volume_desc->volume_name, MAX_ALLOCATION_TRIES);
@@ -526,9 +608,9 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 		log_info("Volume already mapped");
 		volume_desc->reference_count++;
 	}
-	/*Before searching the actual volume's catalogue take a look at the current
-* open databases*/
+	/*Before searching the actual volume's catalogue take a look at the current open databases*/
 	db_desc = find_element(volume_desc->open_databases, db_name);
+
 	if (db_desc != NULL) {
 		log_info("DB %s already open for volume %s", db_name, key);
 		handle = malloc(sizeof(db_handle));
@@ -564,16 +646,15 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 						empty_group = i;
 						empty_index = j;
 					}
+
 					if (db_group->db_entries[j].valid) {
 						/*hosts a database*/
 						db_entry = &db_group->db_entries[j];
 						// log_info("entry at %s looking for %s offset %llu",
 						// (uint64_t)db_entry->db_name,
 						//	 db_name, db_entry->offset[0]);
-						if (strcmp((const char *)db_entry->db_name, (const char *)db_name) ==
-						    0) {
-							/*found database, recover state and create the appropriate handle
-* and store it in the open_db's list*/
+						if (!strcmp((const char *)db_entry->db_name, (const char *)db_name)) {
+							/*found database, recover state and create the appropriate handle and store it in the open_db's list*/
 							log_info("database: %s found at index [%d,%d]",
 								 db_entry->db_name, i, j);
 							handle = malloc(sizeof(db_handle));
@@ -663,6 +744,7 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 										NULL;
 								}
 							}
+
 #if 0
 							/*recover replica L1 forest if needed*/
 							if (db_entry->replica_forest != NULL) {
@@ -716,33 +798,32 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 							db_desc->commit_log =
 								(commit_log_info *)(MAPPED +
 										    ((uint64_t)db_entry->commit_log));
-							if (db_desc->commit_log->first_kv_log != NULL)
-								db_desc->KV_log_first_segment =
+							if (db_desc->commit_log->big_log_head != NULL)
+								db_desc->big_log_head =
 									(segment_header *)(MAPPED +
 											   (uint64_t)db_desc->commit_log
-												   ->first_kv_log);
+												   ->big_log_head);
 							else
-								db_desc->KV_log_first_segment = NULL;
+								db_desc->big_log_head = NULL;
 
-							if (db_desc->commit_log->last_kv_log != NULL)
-								db_desc->KV_log_last_segment =
+							if (db_desc->commit_log->big_log_tail != NULL)
+								db_desc->big_log_tail =
 									(segment_header *)(MAPPED +
 											   (uint64_t)db_desc->commit_log
-												   ->last_kv_log);
+												   ->big_log_tail);
 							else
-								db_desc->KV_log_last_segment = NULL;
+								db_desc->big_log_tail = NULL;
 
-							db_desc->KV_log_size = db_desc->commit_log->kv_log_size;
-							db_desc->L0_start_log_offset = db_entry->L0_start_log_offset;
-							db_desc->L0_end_log_offset = db_entry->L0_end_log_offset;
+							db_desc->big_log_size = db_desc->commit_log->big_log_size;
+							db_desc->big_log_head_offset = db_entry->L0_start_log_offset;
+							db_desc->big_log_tail_offset = db_entry->L0_end_log_offset;
 
 							log_info("KV log segments first: %llu last: %llu log_size %llu",
-								 (LLU)db_desc->KV_log_first_segment,
-								 (LLU)db_desc->KV_log_last_segment,
-								 (LLU)db_desc->KV_log_size);
+								 (LLU)db_desc->big_log_head, (LLU)db_desc->big_log_tail,
+								 (LLU)db_desc->big_log_size);
 							log_info("L0 start log offset %llu end %llu",
-								 db_desc->L0_start_log_offset,
-								 db_desc->L0_end_log_offset);
+								 db_desc->big_log_head_offset,
+								 db_desc->big_log_tail_offset);
 
 							goto finish_init;
 						}
@@ -751,10 +832,12 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 			} else if (empty_group == -1)
 				empty_group = i;
 		}
+
 		if (CREATE_FLAG != CREATE_DB && CREATE_FLAG != O_CREATE_REPLICA_DB) {
 			DPRINT("DB not found instructed not to create one returning NULL\n");
 			return NULL;
 		}
+
 		/*db not found allocate a new slot for it*/
 		if (empty_group == -1 && empty_index == -1) {
 			log_info("FATAL MAX DBS %d reached", NUM_OF_DB_GROUPS * GROUP_SIZE);
@@ -773,6 +856,7 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 			log_info("allocated new pr_db_group epoch at %llu volume epoch %llu", new_group->epoch,
 				 volume_desc->mem_catalogue->epoch);
 		}
+
 		log_info("database %s not found, allocating slot [%d,%d] for it", (const char *)db_name, empty_group,
 			 empty_index);
 		pr_db_group *cur_group =
@@ -804,6 +888,7 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 		memset(db_desc->db_name, 0x00, MAX_DB_NAME_SIZE);
 		strcpy(db_desc->db_name, db_name);
 		db_desc->dirty = 0x01;
+
 		/*init all persistent fields levels*/
 		for (level_id = 0; level_id < MAX_LEVELS; level_id++) {
 			for (tree_id = 0; tree_id < NUM_TREES_PER_LEVEL; tree_id++) {
@@ -816,42 +901,11 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 				init_leaf_sizes_perlevel(&db_desc->levels[level_id], level_id);
 			}
 		}
+
 		/*initialize KV log for this db*/
 		db_desc->commit_log = (commit_log_info *)get_space_for_system(volume_desc, sizeof(commit_log_info));
 		/*get a page for commit_log info*/
-		if (CREATE_FLAG != CREATE_DB) {
-			log_warn("replica db ommiting KV log initialization");
-			db_desc->KV_log_first_segment = NULL;
-			db_desc->KV_log_last_segment = NULL;
-			db_desc->KV_log_size = 0;
-			db_desc->L0_start_log_offset = 0;
-			db_desc->L0_end_log_offset = 0;
-
-			db_desc->commit_log->first_kv_log = NULL;
-			db_desc->commit_log->last_kv_log = NULL;
-			db_desc->commit_log->kv_log_size = 0;
-		} else {
-			log_info("Primary db initializing KV log");
-			db_desc->KV_log_first_segment = seg_get_raw_log_segment(volume_desc);
-			memset((void *)db_desc->KV_log_first_segment->garbage_bytes, 0x00,
-			       2 * MAX_COUNTER_VERSIONS * sizeof(uint64_t));
-			db_desc->KV_log_last_segment = db_desc->KV_log_first_segment;
-			db_desc->KV_log_last_segment->segment_id = 0;
-			db_desc->KV_log_last_segment->next_segment = NULL;
-			db_desc->KV_log_last_segment->prev_segment = NULL;
-			db_desc->KV_log_size = sizeof(segment_header);
-			db_desc->L0_start_log_offset = sizeof(segment_header);
-			db_desc->L0_end_log_offset = sizeof(segment_header);
-			/*get a page for commit_log info*/
-			db_desc->commit_log->first_kv_log =
-				(segment_header *)((uint64_t)db_desc->KV_log_first_segment - MAPPED);
-			db_desc->commit_log->last_kv_log =
-				(segment_header *)((uint64_t)db_desc->KV_log_last_segment - MAPPED);
-			db_desc->commit_log->kv_log_size = (uint64_t)db_desc->KV_log_size;
-			/*persist commit log information, this location stays permanent, there no
-* need to rewrite it during snapshot()*/
-			db_entry->commit_log = (uint64_t)db_desc->commit_log - MAPPED;
-		}
+		init_logs(db_desc, db_entry, volume_desc, CREATE_FLAG);
 	}
 
 finish_init:
@@ -883,7 +937,6 @@ finish_init:
 #else
 	SPINLOCK_INIT(&db_desc->lock_log, PTHREAD_PROCESS_PRIVATE);
 #endif
-	SPINLOCK_INIT(&db_desc->back_up_segment_table_lock, PTHREAD_PROCESS_PRIVATE);
 
 	add_first(volume_desc->open_databases, db_desc, db_name);
 	MUTEX_UNLOCK(&init_lock);
@@ -911,44 +964,49 @@ finish_init:
 
 	/*recovery checks*/
 	log_info("performing recovery checks for db: %s", db_desc->db_name);
+
 	/*where is L0 located at the log?*/
-	if (db_desc->L0_end_log_offset > db_desc->L0_start_log_offset) {
+	if (db_desc->big_log_tail_offset > db_desc->big_log_head_offset) {
 		log_info("L0 present performing recovery checks ...");
-		if (db_desc->L0_end_log_offset < db_desc->commit_log->kv_log_size) {
+
+		if (db_desc->big_log_tail_offset < db_desc->commit_log->big_log_size) {
 			log_info("Commit log: %llu is ahead of L0: %llu replaying "
 				 "missing log parts",
-				 (LLU)db_desc->commit_log->kv_log_size, (LLU)db_desc->L0_end_log_offset);
+				 (LLU)db_desc->commit_log->big_log_size, (LLU)db_desc->big_log_tail_offset);
 			recovery_request rh;
 			rh.volume_desc = volume_desc;
 			rh.db_desc = db_desc;
-			rh.recovery_start_log_offset = db_desc->L0_end_log_offset;
+			rh.recovery_start_log_offset = db_desc->big_log_tail_offset;
 			recovery_worker(&rh);
 			log_info("recovery completed successfully");
-		} else if (db_desc->L0_end_log_offset == db_desc->commit_log->kv_log_size)
+		} else if (db_desc->big_log_tail_offset == db_desc->commit_log->big_log_size)
 			log_info("no recovery needed for db: %s ready :-)\n", db_desc->db_name);
 		else {
 			log_fatal("Boom! Corrupted state for db: %s :-(", db_desc->db_name);
 			raise(SIGINT);
 			exit(EXIT_FAILURE);
 		}
-	} else if (db_desc->L0_end_log_offset == db_desc->L0_start_log_offset) {
-		log_info("L0 is absent L1 ends at %llu replaying missing parts", (LLU)db_desc->L0_end_log_offset);
-		if (db_desc->L0_end_log_offset < db_desc->commit_log->kv_log_size) {
+
+	} else if (db_desc->big_log_tail_offset == db_desc->big_log_head_offset) {
+		log_info("L0 is absent L1 ends at %llu replaying missing parts", (LLU)db_desc->big_log_tail_offset);
+
+		if (db_desc->big_log_tail_offset < db_desc->commit_log->big_log_size) {
 			log_info("Commit log (%llu) is ahead of L0 end (%llu) replaying missing "
 				 "log parts",
-				 (LLU)db_desc->commit_log->kv_log_size, (LLU)db_desc->L0_end_log_offset);
+				 (LLU)db_desc->commit_log->big_log_size, (LLU)db_desc->big_log_tail_offset);
 			recovery_request rh;
 			rh.volume_desc = volume_desc;
 			rh.db_desc = db_desc;
-			rh.recovery_start_log_offset = db_desc->L0_end_log_offset;
+			rh.recovery_start_log_offset = db_desc->big_log_tail_offset;
 			recovery_worker(&rh);
 			log_info("recovery completed successfully");
-		} else if (db_desc->L0_end_log_offset == db_desc->commit_log->kv_log_size)
+		} else if (db_desc->big_log_tail_offset == db_desc->commit_log->big_log_size)
 			log_info("no recovery needed for db: %s ready :-)\n", db_desc->db_name);
 		else {
 			log_fatal("FATAL corrupted state for db: %s :-(", db_desc->db_name);
 			exit(EXIT_FAILURE);
 		}
+
 	} else {
 		log_fatal("FATAL Corrupted state detected");
 		exit(EXIT_FAILURE);
@@ -1217,42 +1275,42 @@ void *append_key_value_to_log(log_operation *req)
 	pthread_spin_lock(&handle->db_desc->lock_log);
 #endif
 	/*append data part in the data log*/
-	if (handle->db_desc->KV_log_size % BUFFER_SEGMENT_SIZE != 0)
-		available_space_in_log = BUFFER_SEGMENT_SIZE - (handle->db_desc->KV_log_size % BUFFER_SEGMENT_SIZE);
+	if (handle->db_desc->big_log_size % BUFFER_SEGMENT_SIZE != 0)
+		available_space_in_log = BUFFER_SEGMENT_SIZE - (handle->db_desc->big_log_size % BUFFER_SEGMENT_SIZE);
 	else
 		available_space_in_log = 0;
 
 	if (available_space_in_log < data_size.kv_size) {
 		/*fill info for kreon master here*/
-		req->metadata->log_segment_addr = (uint64_t)handle->db_desc->KV_log_last_segment - MAPPED;
-		req->metadata->log_offset_full_event = handle->db_desc->KV_log_size;
-		req->metadata->segment_id = handle->db_desc->KV_log_last_segment->segment_id;
+		req->metadata->log_segment_addr = ABSOLUTE_ADDRESS(handle->db_desc->big_log_tail);
+		req->metadata->log_offset_full_event = handle->db_desc->big_log_size;
+		req->metadata->segment_id = handle->db_desc->big_log_tail->segment_id;
 		req->metadata->log_padding = available_space_in_log;
-		req->metadata->end_of_log = handle->db_desc->KV_log_size + available_space_in_log;
+		req->metadata->end_of_log = handle->db_desc->big_log_size + available_space_in_log;
 		req->metadata->segment_full_event = 1;
 
 		/*pad with zeroes remaining bytes in segment*/
-		addr_inlog = (void *)((uint64_t)handle->db_desc->KV_log_last_segment +
-				      (handle->db_desc->KV_log_size % BUFFER_SEGMENT_SIZE));
+		addr_inlog = (void *)((uint64_t)handle->db_desc->big_log_tail +
+				      (handle->db_desc->big_log_size % BUFFER_SEGMENT_SIZE));
 		memset(addr_inlog, 0x00, available_space_in_log);
 
 		allocated_space = data_size.kv_size + sizeof(segment_header);
 		allocated_space += BUFFER_SEGMENT_SIZE - (allocated_space % BUFFER_SEGMENT_SIZE);
 
 		d_header = seg_get_raw_log_segment(handle->volume_desc);
-		memset(d_header->garbage_bytes, 0x00, 2 * MAX_COUNTER_VERSIONS * sizeof(uint64_t));
-		d_header->segment_id = handle->db_desc->KV_log_last_segment->segment_id + 1;
+		d_header->segment_id = handle->db_desc->big_log_tail->segment_id + 1;
 		d_header->next_segment = NULL;
-		handle->db_desc->KV_log_last_segment->next_segment = (void *)((uint64_t)d_header - MAPPED);
-		handle->db_desc->KV_log_last_segment = d_header;
+		handle->db_desc->big_log_tail->next_segment = (void *)ABSOLUTE_ADDRESS(d_header);
+		handle->db_desc->big_log_tail = d_header;
 		/* position the log to the newly added block*/
-		handle->db_desc->KV_log_size += (available_space_in_log + sizeof(segment_header));
+		handle->db_desc->big_log_size += (available_space_in_log + sizeof(segment_header));
 	}
 
-	addr_inlog = (void *)((uint64_t)handle->db_desc->KV_log_last_segment +
-			      (handle->db_desc->KV_log_size % BUFFER_SEGMENT_SIZE));
-	req->metadata->log_offset = handle->db_desc->KV_log_size;
-	handle->db_desc->KV_log_size += data_size.kv_size;
+	addr_inlog = (void *)((uint64_t)handle->db_desc->big_log_tail +
+			      (handle->db_desc->big_log_size % BUFFER_SEGMENT_SIZE));
+	req->metadata->log_offset = handle->db_desc->big_log_size;
+
+	handle->db_desc->big_log_size += data_size.kv_size;
 
 #ifdef LOG_WITH_MUTEX
 	MUTEX_UNLOCK(&handle->db_desc->lock_log);
@@ -1330,7 +1388,7 @@ static inline struct lookup_reply lookup_in_tree(db_descriptor *db_desc, void *k
 	} else {
 		while (curr_node->type != leafNode) {
 			next_addr = _index_node_binary_search((index_node *)curr_node, key, KV_FORMAT);
-			son_node = (void *)(MAPPED + *(uint64_t *)next_addr);
+			son_node = (void *)REAL_ADDRESS(*(uint64_t *)next_addr);
 			son_v2 = son_node->v2;
 			curr_v1 = curr_node->v1;
 
@@ -1343,32 +1401,30 @@ static inline struct lookup_reply lookup_in_tree(db_descriptor *db_desc, void *k
 			curr_node = son_node;
 			curr_v2 = son_v2;
 		}
+	}
 
-		key_addr_in_leaf = find_key_in_static_leaf((struct bt_static_leaf_node *)curr_node,
-							   &db_desc->levels[curr_node->level_id], key + 4,
-							   *(uint32_t *)key);
-		/* log_debug("curr node - MAPPEd %p",MAPPED-(uint64_t)curr_node); */
-		/* key_addr_in_leaf = __find_key_addr_in_leaf((leaf_node *)curr_node, (struct splice *)key); */
+	key_addr_in_leaf = find_key_in_static_leaf((struct bt_static_leaf_node *)curr_node,
+						   &db_desc->levels[curr_node->level_id], key + 4, *(uint32_t *)key);
+	/* log_debug("curr node - MAPPEd %p",MAPPED-(uint64_t)curr_node); */
+	/* key_addr_in_leaf = __find_key_addr_in_leaf((leaf_node *)curr_node, (struct splice *)key); */
 
-		if (key_addr_in_leaf == NULL) {
-			// log_info("key not found %s v1 %llu v2 %llu",((struct splice
-			// *)key)->data,curr_v2, curr_node->v1);
-			rep.addr = NULL;
-		} else {
-			key_addr_in_leaf = (void *)MAPPED + *(uint64_t *)key_addr_in_leaf;
-			index_key_len = *(uint32_t *)key_addr_in_leaf;
-			rep.addr = (void *)(uint64_t)key_addr_in_leaf + 4 + index_key_len;
-		}
-		curr_v1 = curr_node->v1;
+	if (key_addr_in_leaf == NULL) {
+		//log_info("key not found %s v1 %llu v2 %llu",((struct splice *)key)->data,curr_v2, curr_node->v1);
+		rep.addr = NULL;
+	} else {
+		key_addr_in_leaf = (void *)MAPPED + *(uint64_t *)key_addr_in_leaf;
+		index_key_len = *(uint32_t *)key_addr_in_leaf;
+		rep.addr = (void *)(uint64_t)key_addr_in_leaf + 4 + index_key_len;
+	}
+	curr_v1 = curr_node->v1;
 
-		if (curr_v1 != curr_v2) {
-			// log_info("failed at node height %d v1 %llu v2 % llu\n",
-			// curr_node->height, (LLU)curr_node->v1,
-			//	 (LLU)curr_node->v2);
-			rep.addr = NULL;
-			rep.lc_failed = 1;
-			return rep;
-		}
+	if (curr_v1 != curr_v2) {
+		// log_info("failed at node height %d v1 %llu v2 % llu\n",
+		// curr_node->height, (LLU)curr_node->v1,
+		//	 (LLU)curr_node->v2);
+		rep.addr = NULL;
+		rep.lc_failed = 1;
+		return rep;
 	}
 
 	return rep;
@@ -2084,6 +2140,7 @@ release_and_retry:
 				node_copy = (node_header *)seg_get_index_node_header(
 					ins_req->metadata.handle->volume_desc, &db_desc->levels[level_id],
 					ins_req->metadata.tree_id, COW_FOR_INDEX);
+
 				memcpy(node_copy, son, INDEX_NODE_SIZE);
 				seg_free_index_node_header(ins_req->metadata.handle->volume_desc,
 							   &db_desc->levels[level_id], ins_req->metadata.tree_id, son);
@@ -2092,6 +2149,7 @@ release_and_retry:
 				node_copy = (node_header *)seg_get_leaf_node_header(
 					ins_req->metadata.handle->volume_desc, &db_desc->levels[level_id],
 					ins_req->metadata.tree_id, COW_FOR_LEAF);
+
 				memcpy(node_copy, son, LEAF_NODE_SIZE);
 				seg_free_leaf_node(ins_req->metadata.handle->volume_desc, &db_desc->levels[level_id],
 						   ins_req->metadata.tree_id, (leaf_node *)son);
