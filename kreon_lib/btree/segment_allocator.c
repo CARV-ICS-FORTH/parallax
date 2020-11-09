@@ -89,8 +89,6 @@ index_node *seg_get_index_node(volume_descriptor *volume_desc, level_descriptor 
 	ptr->header.first_IN_log_header = (IN_log_header *)((uint64_t)bh - MAPPED);
 	ptr->header.last_IN_log_header = ptr->header.first_IN_log_header;
 	ptr->header.key_log_size = sizeof(IN_log_header);
-	//if (ptr->header.type == rootNode) /*increase node height by 1*/
-	//	ptr->header.height = level_desc->root_w[level_desc->active_tree]->height + 1;
 	return ptr;
 }
 
@@ -160,6 +158,7 @@ leaf_node *seg_get_leaf_node(volume_descriptor *volume_desc, level_descriptor *l
 	leaf->header.last_IN_log_header = NULL; /*unused field in leaves*/
 	leaf->header.key_log_size = 0; /*unused also*/
 	leaf->header.height = 0;
+	leaf->header.level_id = level_desc->level_id;
 	return leaf;
 }
 

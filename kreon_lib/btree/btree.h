@@ -144,15 +144,15 @@ typedef struct node_header {
 	volatile uint64_t v1;
 	volatile uint64_t v2;
 	/*data log info, KV log for leaves private for index*/
+	uint64_t key_log_size;
+	uint64_t numberOfEntriesInNode;
 	IN_log_header *first_IN_log_header;
 	IN_log_header *last_IN_log_header;
-	uint64_t key_log_size;
 	int32_t height; /*0 are leaves, 1 are Bottom Internal nodes, and then we have
-                     INs and root*/
+			  INs and root*/
+	uint8_t level_id;
 	nodeType_t type; /*internal or leaf node*/
-	uint64_t numberOfEntriesInNode;
 	char pad[8];
-
 } __attribute__((packed)) node_header;
 
 typedef struct index_entry {
@@ -198,10 +198,9 @@ typedef struct index_node {
 		   (IN_LENGTH * sizeof(struct index_entry))];
 } __attribute__((packed)) index_node;
 
-typedef struct bt_leaf_node {
+typedef struct bt_static_leaf_node {
 	struct node_header header;
-
-} __attribute__((packed)) bt_leaf_node;
+} __attribute__((packed)) bt_static_leaf_node;
 
 typedef struct leaf_node {
 	struct node_header header;
@@ -323,6 +322,7 @@ typedef struct level_descriptor {
 	/*spilling or not?*/
 	char tree_status[NUM_TREES_PER_LEVEL];
 	uint8_t active_tree;
+	uint8_t level_id;
 	char in_recovery_mode;
 } level_descriptor;
 
@@ -489,7 +489,7 @@ typedef struct spill_data_totrigger {
 	uint64_t prev_level_size;
 	int prev_active_tree;
 	int active_tree;
-	int level_id;
+	uint level_id;
 	int tree_to_spill;
 } spill_data_totrigger;
 
