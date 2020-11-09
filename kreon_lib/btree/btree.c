@@ -70,7 +70,6 @@ uint32_t leaf_size_per_level[MAX_LEVELS] = { LEVEL0_LEAF_SIZE, LEVEL1_LEAF_SIZE,
 					     LEVEL4_LEAF_SIZE, LEVEL5_LEAF_SIZE, LEVEL6_LEAF_SIZE, LEVEL7_LEAF_SIZE };
 
 #define PAGE_SIZE 4096
-#define LEAF_ROOT_NODE_SPLITTED 0xFC
 
 #define MUTATION_LOG_SIZE 2048
 #define STATIC 0x01
@@ -108,11 +107,11 @@ static inline void update_leaf_index_stats(char key_format)
 }
 #endif
 
-static bt_split_result split_index(node_header *node, bt_insert_req *ins_req);
+static struct bt_rebalance_result split_index(node_header *node, bt_insert_req *ins_req);
 void _sent_flush_command_to_replica(db_descriptor *db_desc, int padded_space, int SYNC);
 
 int __update_leaf_index(bt_insert_req *req, leaf_node *leaf, void *key_buf);
-bt_split_result split_leaf(bt_insert_req *req, leaf_node *node);
+struct bt_rebalance_result split_leaf(bt_insert_req *req, leaf_node *node);
 
 /*Buffering aware functions*/
 void *__find_key(db_handle *handle, void *key, char SEARCH_MODE);
@@ -1851,9 +1850,9 @@ void print_key(void *key)
  * @ node_header * req->node: Node to be splitted
  * @ void * key : pointer to key
  */
-static bt_split_result split_index(node_header *node, bt_insert_req *ins_req)
+static struct bt_rebalance_result split_index(node_header *node, bt_insert_req *ins_req)
 {
-	bt_split_result result;
+	struct bt_rebalance_result result;
 	node_header *left_child;
 	node_header *right_child;
 	node_header *tmp_index;
@@ -1951,10 +1950,10 @@ int insert_KV_at_leaf(bt_insert_req *ins_req, node_header *leaf)
 	return ret;
 }
 
-bt_split_result split_leaf(bt_insert_req *req, leaf_node *node)
+struct bt_rebalance_result split_leaf(bt_insert_req *req, leaf_node *node)
 {
 	leaf_node *node_copy;
-	bt_split_result rep;
+	struct bt_rebalance_result rep;
 	uint8_t level_id = req->metadata.level_id;
 	/*cow check*/
 	if (node->header.epoch <= req->metadata.handle->volume_desc->dev_catalogue->epoch) {
@@ -2308,7 +2307,7 @@ uint8_t _concurrent_insert(bt_insert_req *ins_req)
 {
 	/*The array with the locks that belong to this thread from upper levels*/
 	lock_table *upper_level_nodes[MAX_HEIGHT];
-	bt_split_result split_res;
+	struct bt_rebalance_result split_res;
 	lock_table *lock;
 	void *next_addr;
 	pr_system_catalogue *mem_catalogue;
@@ -2585,7 +2584,6 @@ static uint8_t _writers_join_as_readers(bt_insert_req *ins_req)
 	node_header *son;
 	lock_table *lock;
 
-	int64_t ret;
 	unsigned size; /*Size of upper_level_nodes*/
 	unsigned release; /*Counter to know the position that releasing should begin*/
 	uint32_t order;

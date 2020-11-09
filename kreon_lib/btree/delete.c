@@ -22,89 +22,9 @@ extern int32_t index_order;
 extern int32_t leaf_order;
 extern uint64_t snapshot_v1, snapshot_v2;
 
-void *_index_node_binary_search_and_fill_metadata(index_node *node, void *key_buf, char query_key_format,
-						  ancestors *prev)
-{
-	void *addr = NULL;
-	void *index_key_buf;
-	int64_t ret;
-	int32_t middle = 0;
-	int32_t start_idx = 0;
-	int32_t end_idx = node->header.numberOfEntriesInNode - 1;
-	int32_t numberOfEntriesInNode = node->header.numberOfEntriesInNode;
-	int pos = prev->size - 1;
-	int next = prev->size;
-	while (numberOfEntriesInNode > 0) {
-		middle = (start_idx + end_idx) / 2;
-
-		if (numberOfEntriesInNode > index_order || middle < 0 || middle >= numberOfEntriesInNode)
-			return NULL;
-
-		addr = &(node->p[middle].pivot);
-		index_key_buf = (void *)(MAPPED + *(uint64_t *)addr);
-		ret = _tucana_key_cmp(index_key_buf, key_buf, KV_FORMAT, query_key_format);
-		if (ret == 0) {
-			prev->node_has_key[pos] = 1;
-			prev->neighbors[next].left = (node_header *)(MAPPED + node->p[middle].left[0]);
-			prev->neighbors[next].pivot = (void *)node->p[middle].pivot;
-
-			if ((middle + 1) < (numberOfEntriesInNode - 1))
-				prev->neighbors[next].right = (node_header *)(MAPPED + node->p[middle + 1].right[0]);
-
-			addr = &(node->p[middle].right[0]);
-			break;
-		} else if (ret > 0) {
-			end_idx = middle - 1;
-			if (start_idx > end_idx) {
-				addr = &(node->p[middle].left[0]);
-				prev->neighbors[next].pivot = (void *)node->p[middle].pivot;
-				middle--;
-				if ((middle) > 0)
-					prev->neighbors[next].left = (node_header *)(MAPPED + node->p[middle].left[0]);
-
-				if ((middle + 1) < numberOfEntriesInNode)
-					prev->neighbors[next].right =
-						(node_header *)(MAPPED + node->p[middle + 1].right[0]);
-
-				break;
-			}
-		} else { /* ret < 0 */
-			start_idx = middle + 1;
-			if (start_idx > end_idx) {
-				addr = &(node->p[middle].right[0]);
-				prev->neighbors[next].pivot = (void *)node->p[middle].pivot;
-				middle++;
-				if ((middle - 1) > 0)
-					prev->neighbors[next].left =
-						(node_header *)(MAPPED + node->p[middle - 1].left[0]);
-
-				if ((middle) < numberOfEntriesInNode)
-					prev->neighbors[next].right =
-						(node_header *)(MAPPED + node->p[middle].right[0]);
-
-				break;
-			}
-		}
-	}
-
-	if (middle < 0) {
-		addr = &(node->p[0].left[0]);
-		prev->neighbors[next].pivot = (void *)node->p[0].pivot;
-		prev->neighbors[next].right = (node_header *)(MAPPED + node->p[0].right[0]);
-	} else if (middle >= numberOfEntriesInNode) {
-		addr = &(node->p[numberOfEntriesInNode - 1].right[0]);
-		prev->neighbors[next].pivot = (void *)node->p[numberOfEntriesInNode - 1].pivot;
-		prev->neighbors[next].left = (node_header *)(MAPPED + node->p[numberOfEntriesInNode - 1].left[0]);
-	}
-	prev->parent[prev->size++] = (node_header *)node;
-
-	return addr;
-}
-
 int8_t __delete_key(bt_delete_request *req)
 {
 	/*gxanth fix it*/
-	ancestors prev_nodes;
 	rotate_data init = { .left = NULL, .right = NULL, .pivot = NULL };
 	volume_descriptor *volume_desc;
 	node_header *node_copy;
@@ -119,22 +39,13 @@ int8_t __delete_key(bt_delete_request *req)
 	uint32_t order;
 	int8_t ret;
 
-	req->ancs = &prev_nodes;
 	db_desc = req->metadata.handle->db_desc;
 	volume_desc = req->metadata.handle->volume_desc;
 	mem_catalogue = req->metadata.handle->volume_desc->mem_catalogue;
 
 retry:
 
-	prev_nodes.size = 0;
-	for (i = 0; i < MAX_HEIGHT; ++i) {
-		prev_nodes.neighbors[i] = init;
-		prev_nodes.parent[i] = NULL;
-		prev_nodes.node_has_key[i] = 0;
-	}
-
 	parent = flag = NULL;
-	//req->metadata.active_tree = db_desc->levels[req->metadata.level_id].active_tree;
 
 	son = db_desc->levels[req->metadata.level_id].root_w[req->metadata.tree_id];
 
@@ -209,8 +120,8 @@ retry:
 				goto retry;
 			}
 
-			next_addr = _index_node_binary_search_and_fill_metadata((index_node *)son, req->key_buf,
-										req->metadata.key_format, &prev_nodes);
+			next_addr =
+				_index_node_binary_search((index_node *)son, req->key_buf, req->metadata.key_format);
 			parent = son;
 			temp = (node_header *)(MAPPED + *(uint64_t *)next_addr);
 			son = temp;
@@ -263,14 +174,14 @@ uint8_t __delete_from_leaf(bt_delete_request *req, index_node *parent, leaf_node
 				append_key_value_to_log(&append_op);
 			}
 
-			delete_key_value(req->metadata.handle->db_desc, leaf, pos);
+			delete_key_value(leaf, pos);
 			req->metadata.handle->db_desc->dirty = 1;
 			if (leaf->header.type == leafRootNode)
 				return SUCCESS;
 
 			ret = check_for_underflow_in_leaf(leaf, &siblings, req);
 
-			if (ret == 3) {
+			if (ret == ROTATE_IMPOSSIBLE_TRY_TO_MERGE) {
 				/* We could not borrow anything from the left and right neighbors.
 				   We will try to merge with one of them.
 				   If we cannot merge that's a fatal error!
@@ -291,7 +202,7 @@ uint8_t __delete_from_leaf(bt_delete_request *req, index_node *parent, leaf_node
 	return FAILED;
 }
 
-void delete_key_value(db_descriptor *db_desc, leaf_node *leaf, int pos)
+void delete_key_value(leaf_node *leaf, int pos)
 {
 	if (pos > 0 && pos < (leaf->header.numberOfEntriesInNode - 1)) {
 		memmove(&leaf->pointer[pos], &leaf->pointer[pos + 1],
@@ -364,7 +275,8 @@ void __update_index_pivot_in_place(delete_request *del_req, node_header *node, v
 	node->key_log_size += sizeof(int32_t) + key_len;
 }
 
-void *_index_node_binary_search_posret(index_node *node, void *key_buf, char query_key_format, rel_pos *neighbor)
+void *_index_node_binary_search_posret(index_node *node, void *key_buf, char query_key_format,
+				       struct siblings_index_entries *neighbor)
 {
 	void *addr = NULL;
 	void *index_key_buf;
@@ -440,8 +352,8 @@ void *_index_node_binary_search_posret(index_node *node, void *key_buf, char que
 
 void underflow_borrow_from_right_neighbor(leaf_node *curr, leaf_node *right, bt_delete_request *req)
 {
-	rel_pos neighbor_metadata = { .left_entry = NULL, .right_entry = NULL };
-	node_header *parent = req->ancs->parent[req->ancs->size - 1];
+	struct siblings_index_entries neighbor_metadata = { .left_entry = NULL, .right_entry = NULL };
+	node_header *parent = (node_header *)req->parent;
 	void *key_addr;
 	/* raise(SIGINT); */
 
@@ -460,8 +372,7 @@ void underflow_borrow_from_right_neighbor(leaf_node *curr, leaf_node *right, bt_
 	key_addr = (void *)(MAPPED + right->pointer[0]);
 	assert(parent->type != leafNode);
 
-	_index_node_binary_search_posret((index_node *)req->ancs->parent[req->ancs->size - 1], req->key_buf, KV_FORMAT,
-					 &neighbor_metadata);
+	_index_node_binary_search_posret(req->parent, req->key_buf, KV_FORMAT, &neighbor_metadata);
 
 	if (neighbor_metadata.right_entry == NULL) {
 		log_fatal("We are the rightmost node so we cannot borrow from the right leaf");
@@ -474,7 +385,7 @@ void underflow_borrow_from_right_neighbor(leaf_node *curr, leaf_node *right, bt_
 
 void underflow_borrow_from_left_neighbor(leaf_node *curr, leaf_node *left, bt_delete_request *req)
 {
-	rel_pos neighbor_metadata = { .left_entry = NULL, .right_entry = NULL };
+	struct siblings_index_entries neighbor_metadata = { .left_entry = NULL, .right_entry = NULL };
 	void *key_addr;
 
 	memmove(curr->prefix[1], curr->prefix[0], PREFIX_SIZE * curr->header.numberOfEntriesInNode);
@@ -489,20 +400,21 @@ void underflow_borrow_from_left_neighbor(leaf_node *curr, leaf_node *left, bt_de
 	--left->header.numberOfEntriesInNode;
 	/* NOTE in this case we don't have to move anything as it is the last KV pair. */
 	key_addr = (void *)(MAPPED + curr->pointer[0]);
-	_index_node_binary_search_posret((index_node *)req->ancs->parent[req->ancs->size - 1], req->key_buf, KV_FORMAT,
-					 &neighbor_metadata);
+	_index_node_binary_search_posret(req->parent, req->key_buf, KV_FORMAT, &neighbor_metadata);
 
 	assert(neighbor_metadata.left_entry);
 
 	/* A pivot change should happen in the parent index node */
-	__update_index_pivot_in_place(req, req->ancs->parent[req->ancs->size - 1], &neighbor_metadata.left_entry->pivot,
-				      key_addr);
+	__update_index_pivot_in_place(req->metadata.handle, req->parent, &neighbor_metadata.left_entry->pivot, key_addr,
+				      req->metadata.level_id);
 }
 
 void merge_with_right_neighbor(leaf_node *curr, leaf_node *right, bt_delete_request *req)
 {
-	rel_pos parent_metadata = { .left_entry = NULL, .right_entry = NULL, .left_pos = 0, .right_pos = 0 };
-	index_node *parent = (index_node *)req->ancs->parent[req->ancs->size - 1];
+	struct siblings_index_entries parent_metadata = {
+		.left_entry = NULL, .right_entry = NULL, .left_pos = 0, .right_pos = 0
+	};
+	index_node *parent = req->parent;
 
 	memcpy(&curr->pointer[curr->header.numberOfEntriesInNode], &right->pointer[0],
 	       right->header.numberOfEntriesInNode * sizeof(uint64_t));
@@ -540,8 +452,10 @@ void merge_with_right_neighbor(leaf_node *curr, leaf_node *right, bt_delete_requ
 
 void merge_with_left_neighbor(leaf_node *curr, leaf_node *left, bt_delete_request *req)
 {
-	rel_pos parent_metadata = { .left_entry = NULL, .right_entry = NULL, .left_pos = 0, .right_pos = 0 };
-	index_node *parent = (index_node *)req->ancs->parent[req->ancs->size - 1];
+	struct siblings_index_entries parent_metadata = {
+		.left_entry = NULL, .right_entry = NULL, .left_pos = 0, .right_pos = 0
+	};
+	index_node *parent = req->parent;
 	/* First move the kv pointers + prefixes to make space
        for the kv pointers + prefixes of the left leaf */
 	memmove(&curr->prefix[left->header.numberOfEntriesInNode], &curr->prefix[0],
@@ -585,32 +499,34 @@ int8_t merge_with_leaf_neighbor(leaf_node *leaf, rotate_data *siblings, bt_delet
 {
 	leaf_node *left = (leaf_node *)siblings->left;
 	leaf_node *right = (leaf_node *)siblings->right;
-	int merge_with_left = 0;
-	int merge_with_right = 0;
-	int8_t ret = 0;
+	uint64_t merged_with_left_num_entries = 0, merged_with_right_num_entries = 0;
+	uint64_t max_len = leaf_order;
+	int8_t ret = NO_REBALANCE_NEEDED;
 
 	if (left)
-		merge_with_left = leaf->header.numberOfEntriesInNode + left->header.numberOfEntriesInNode;
+		merged_with_left_num_entries = leaf->header.numberOfEntriesInNode + left->header.numberOfEntriesInNode;
 
 	if (right)
-		merge_with_right = leaf->header.numberOfEntriesInNode + right->header.numberOfEntriesInNode;
+		merged_with_right_num_entries =
+			leaf->header.numberOfEntriesInNode + right->header.numberOfEntriesInNode;
 
-	if (merge_with_left && merge_with_left <= leaf_order) {
+	if (merged_with_left_num_entries < max_len) {
 		/* We can merge with the right neighbor */
-		ret = 1;
+		ret = MERGE_WITH_LEFT;
 		left->header.v1++;
 		merge_with_left_neighbor(leaf, left, req);
 		left->header.v2++;
-	} else if (merge_with_right && merge_with_right <= leaf_order) {
+	} else if (merged_with_right_num_entries < max_len) {
 		/* We can merge with the left neighbor */
-		ret = 2;
+		ret = MERGE_WITH_RIGHT;
 		right->header.v1++;
 		merge_with_right_neighbor(leaf, right, req);
 		right->header.v2++;
 	} else {
-		log_fatal("If we reached this case then we cannot borrow a key");
-		log_fatal("from the left or right neighbor nor we can merge with them");
-		assert(0);
+		ret = MERGE_IMPOSSIBLE_FATAL;
+		log_fatal(
+			"If we reached this case then we cannot borrow a key from the left or right neighbor nor we can merge with them");
+		exit(EXIT_FAILURE);
 	}
 	return ret;
 }
@@ -619,27 +535,28 @@ int8_t check_for_underflow_in_leaf(leaf_node *leaf, rotate_data *siblings, bt_de
 {
 	leaf_node *left = (leaf_node *)siblings->left;
 	leaf_node *right = (leaf_node *)siblings->right;
-	int8_t ret = 0;
+	uint64_t underflow_threshold = leaf_order / 2, borrow_threshold = underflow_threshold + 1;
+	int8_t ret = NO_REBALANCE_NEEDED;
 
 	/* If underflow is detected pivots have to change also. */
 
-	if (leaf->header.numberOfEntriesInNode < (leaf_order / 2)) {
-		if (right && (right->header.numberOfEntriesInNode >= ((leaf_order / 2) + 1))) {
-			/* Steal the leftmost KV pair from the right sibling */
-			ret = 1;
-			right->header.v1++;
-			underflow_borrow_from_right_neighbor(leaf, right, req);
-			right->header.v2++;
-		} else if (left && (left->header.numberOfEntriesInNode >= ((leaf_order / 2) + 1))) {
+	if (leaf->header.numberOfEntriesInNode < underflow_threshold) {
+		if (left && (left->header.numberOfEntriesInNode >= borrow_threshold)) {
 			/* Steal the rightmost KV pair from the left sibling */
-			ret = 2;
+			ret = ROTATE_WITH_LEFT;
 			left->header.v1++;
 			underflow_borrow_from_left_neighbor(leaf, left, req);
 			left->header.v2++;
+		} else if (right && (right->header.numberOfEntriesInNode >= borrow_threshold)) {
+			/* Steal the leftmost KV pair from the right sibling */
+			ret = ROTATE_WITH_RIGHT;
+			right->header.v1++;
+			underflow_borrow_from_right_neighbor(leaf, right, req);
+			right->header.v2++;
 		} else {
 			/* We could not borrow a KV pair from the siblings
-               a merge should be triggered now. */
-			ret = 3;
+			   a merge should be triggered now. */
+			ret = ROTATE_IMPOSSIBLE_TRY_TO_MERGE;
 		}
 	}
 	return ret;

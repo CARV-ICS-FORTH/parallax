@@ -49,6 +49,7 @@ void commit_db_logs_per_volume(volume_descriptor *volume_desc)
 	NODE *node;
 	db_descriptor *db_desc;
 	node = get_first(volume_desc->open_databases);
+	db_desc = (db_descriptor *)node;
 
 	while (node != NULL) {
 		db_desc = (db_descriptor *)(node->data);

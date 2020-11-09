@@ -1,4 +1,6 @@
 #include "btree.h"
+#include "delete.h"
+#include "segment_allocator.h"
 
 enum bsearch_status { INSERT = 0, FOUND = 1, ERROR = 2 };
 
@@ -17,7 +19,8 @@ struct bt_static_leaf_structs {
 	bt_leaf_entry *kv_entries;
 };
 
+void init_static_leaf_metadata(struct bt_static_leaf_node *leaf, level_descriptor *level);
 int8_t insert_in_static_leaf(struct bt_static_leaf_node *leaf, bt_insert_req *req, level_descriptor *level);
 void *find_key_in_static_leaf(const struct bt_static_leaf_node *leaf, level_descriptor *level, void *key,
 			      uint32_t key_size);
-void init_static_leaf_metadata(struct bt_static_leaf_node *leaf, level_descriptor *level);
+struct bt_rebalance_result split_static_leaf(struct bt_static_leaf_node *leaf, bt_insert_req *req);

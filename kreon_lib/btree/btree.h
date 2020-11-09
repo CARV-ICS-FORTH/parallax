@@ -8,7 +8,6 @@
 #include "../../build/config.h"
 #include "../allocator/allocator.h"
 #include "uthash.h"
-//#include "../CLHT/include/clht.h"
 
 #include <pthread.h>
 #include <stdlib.h>
@@ -31,27 +30,17 @@
 #define KREON_STANDALONE 19
 #define REPLICA_PENDING_SPILL 20
 
-#define KEY_NOT_FOUND 11
-#define MERGE_NODE 12 //?
-
 /*hierarchy of trees parameters*/
 #define MAX_LEVELS 8
 #define NUM_TREES_PER_LEVEL 2
 
 #define MAX_COUNTER_VERSIONS 4
 
-#define FIXED_SIZE_KEYS_NO
 #define PREFIX_SIZE 12
 
-#define COUNTER_SIZE 2097152 // stats for leaf scanner accesses
-#define COUNTER_THREASHOLD 1
-
 #define SPILL_BUFFER_SIZE 32 * 1024
-#define SIZEOF_LOG_BUFFER 8
 #define SIZEOF_SEGMENT_IN_LOG_BUFFER 2097152
 #define MAX_HEIGHT 9
-#define MIN_ENTRIES_TO_SPILL NUM_OF_SPILL_THREADS_PER_DB - 1
-
 /**
  * FLAGS used of during _insert
  */
@@ -64,11 +53,6 @@
  */
 enum KV_type { KV_FORMAT = 19, KV_PREFIX = 20 };
 #define SYSTEM_ID 0
-#define KV_LOG_ID 5
-
-#define SPILL_ALL_DBS_IMMEDIATELY 0x01
-#define DO_NOT_FORCE_SPILL 0x02
-#define SPILLS_ISSUED 0x00
 
 extern unsigned long long ins_prefix_hit_l0;
 extern unsigned long long ins_prefix_hit_l1;
@@ -426,16 +410,8 @@ typedef struct bt_insert_req {
 	void *key_value_buf;
 } bt_insert_req;
 
-typedef struct ancestors {
-	rotate_data neighbors[MAX_HEIGHT];
-	node_header *parent[MAX_HEIGHT];
-	int8_t node_has_key[MAX_HEIGHT];
-	int size;
-} ancestors;
-
 typedef struct bt_delete_request {
 	bt_mutate_req metadata;
-	ancestors *ancs; /* This field is redundant and should be removed */
 	index_node *parent;
 	struct leaf_node *self;
 	uint64_t offset; /*offset in my parent*/
@@ -458,22 +434,38 @@ typedef struct log_operation {
 	};
 } log_operation;
 
-typedef struct bt_split_result {
+enum bt_rebalance_retcode {
+	NO_REBALANCE_NEEDED = 0,
+	/* Return codes for splits */
+	LEAF_ROOT_NODE_SPLITTED,
+	INDEX_NODE_SPLITTED,
+	/* Return codes for deletes */
+	ROTATE_WITH_LEFT,
+	ROTATE_WITH_RIGHT,
+	ROTATE_IMPOSSIBLE_TRY_TO_MERGE,
+	MERGE_WITH_LEFT,
+	MERGE_WITH_RIGHT,
+	MERGE_IMPOSSIBLE_FATAL,
+};
+
+struct bt_rebalance_result {
 	union {
 		node_header *left_child;
 		index_node *left_ichild;
 		leaf_node *left_lchild;
+		struct bt_static_leaf_node *left_slchild;
 	};
 
 	union {
 		node_header *right_child;
 		index_node *right_ichild;
 		leaf_node *right_lchild;
+		struct bt_static_leaf_node *right_slchild;
 	};
 
 	void *middle_key_buf;
-	uint8_t stat;
-} bt_split_result;
+	enum bt_rebalance_retcode stat;
+};
 
 typedef struct metadata_tologop {
 	uint32_t key_len;
@@ -481,10 +473,12 @@ typedef struct metadata_tologop {
 	uint32_t kv_size;
 } metadata_tologop;
 
-typedef struct split_data {
-	node_header *father;
-	node_header *son;
-} split_data;
+struct siblings_index_entries {
+	index_entry *left_entry;
+	index_entry *right_entry;
+	int left_pos;
+	int right_pos;
+};
 
 typedef struct spill_data_totrigger {
 	db_descriptor *db_desc;
@@ -512,21 +506,19 @@ void free_buffered(void *_handle, void *address, uint32_t num_bytes, int height)
 
 /*functions used from other parts except btree/btree.c*/
 
-void *__findKey(db_handle *handle, void *key_buf, char dirty); // dirty 0
 void *_index_node_binary_search(index_node *node, void *key_buf, char query_key_format);
 
 // void free_logical_node(allocator_descriptor *allocator_desc, node_header
 // *node_index);
 
-node_header *findLeafNode(node_header *root, void *key_buf);
 void init_leaf_node(leaf_node *node);
 void print_node(node_header *node);
-void print_key(void *);
+void print_key(void *key);
 
 lock_table *_find_position(lock_table **table, node_header *node);
 #define MIN(x, y) ((x > y) ? (y) : (x))
 #define KEY_SIZE(x) (*(uint32_t *)x)
-#define ABSOLUTE_ADDRESS(X) (X - MAPPED)
+#define ABSOLUTE_ADDRESS(X) ((uint64_t)X - MAPPED)
 #define REAL_ADDRESS(X) ((void *)(uint64_t)(MAPPED + X))
 #define VALUE_SIZE_OFFSET(KEY_SIZE, KEY) (sizeof(uint32_t) + KEY_SIZE + KEY)
 #define SERIALIZE_KEY(buf, key, key_size)                                                                              \

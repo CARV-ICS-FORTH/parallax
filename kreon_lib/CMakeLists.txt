@@ -40,6 +40,7 @@ add_library(
   btree/segment_allocator.c
   btree/btree.c
   btree/compaction_daemon.c
+  btree/static_leaf.c
   btree/delete.c
   btree/gc.c
   scanner/stack.c
@@ -56,6 +57,7 @@ add_library(
   btree/segment_allocator.c
   btree/btree.c
   btree/compaction_daemon.c
+  btree/static_leaf.c
   btree/delete.c
   btree/gc.c
   scanner/stack.c
@@ -75,6 +77,9 @@ set_property(TARGET ${KREON_LIB_SHARED} PROPERTY POSITION_INDEPENDENT_CODE ON)
 
 target_link_libraries(${KREON_LIB} log mba)
 target_link_libraries(${KREON_LIB_SHARED} log-shared mba-shared)
+
+target_link_libraries(kreonr log mba)
+target_link_libraries(kreonr-shared log-shared mba-shared)
 
 set_source_files_properties(allocator/spin_loop.c PROPERTIES COMPILE_FLAGS
                                                              "-O0")

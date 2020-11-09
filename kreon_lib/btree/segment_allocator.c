@@ -1,7 +1,7 @@
 #include <assert.h>
 #include <signal.h>
-#include "segment_allocator.h"
 #include <log.h>
+#include "segment_allocator.h"
 
 extern uint64_t MAPPED;
 
@@ -167,7 +167,23 @@ leaf_node *seg_get_leaf_node(volume_descriptor *volume_desc, level_descriptor *l
 leaf_node *seg_get_leaf_node_header(volume_descriptor *volume_desc, level_descriptor *level_desc, uint8_t tree_id,
 				    char reason)
 {
-	return (leaf_node *)get_space(volume_desc, level_desc, tree_id, level_desc->leaf_size, reason);
+	struct bt_static_leaf_node *leaf = (struct bt_static_leaf_node *)_get_space(volume_desc, level_desc, tree_id,
+										    level_desc->leaf_size, reason);
+
+	leaf->header.type = leafNode;
+	leaf->header.epoch = volume_desc->mem_catalogue->epoch;
+	leaf->header.numberOfEntriesInNode = 0;
+	leaf->header.fragmentation = 0;
+	leaf->header.v1 = 0;
+	leaf->header.v2 = 0;
+
+	leaf->header.first_IN_log_header = NULL; /*unused field in leaves*/
+	leaf->header.last_IN_log_header = NULL; /*unused field in leaves*/
+	leaf->header.key_log_size = 0; /*unused also*/
+	leaf->header.height = 0;
+	leaf->header.level_id = level_desc->level_id;
+
+	return leaf;
 }
 
 void seg_free_leaf_node(volume_descriptor *volume_desc, level_descriptor *level_desc, uint8_t tree_id, leaf_node *leaf)
@@ -183,7 +199,6 @@ segment_header *seg_get_raw_log_segment(volume_descriptor *volume_desc)
 	segment_header *sg;
 	MUTEX_LOCK(&volume_desc->allocator_lock);
 	sg = (segment_header *)allocate(volume_desc, SEGMENT_SIZE, -1, KV_LOG_EXPANSION);
-
 	MUTEX_UNLOCK(&volume_desc->allocator_lock);
 	return sg;
 }
