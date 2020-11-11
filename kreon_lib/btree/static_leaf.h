@@ -11,7 +11,7 @@ struct bt_static_leaf_structs {
 	struct bt_leaf_entry *kv_entries;
 };
 
-struct bsearch_result {
+struct sl_bsearch_result {
 	int middle;
 	enum bsearch_status status;
 	enum bt_static_leaf_operation op;
@@ -22,7 +22,9 @@ int8_t insert_in_static_leaf(struct bt_static_leaf_node *leaf, bt_insert_req *re
 void *find_key_in_static_leaf(const struct bt_static_leaf_node *leaf, level_descriptor *level, void *key,
 			      uint32_t key_size);
 void binary_search_static_leaf(struct bt_static_leaf_node const *leaf, level_descriptor *level, struct splice *key_buf,
-			       struct bsearch_result *result);
+			       struct sl_bsearch_result *result);
+void retrieve_static_leaf_structures(const struct bt_static_leaf_node *leaf, struct bt_static_leaf_structs *src,
+				     level_descriptor *level);
 int check_static_leaf_split(const struct bt_static_leaf_node *leaf, uint64_t node_capacity);
 /* Rebalance Operations */
 struct bt_rebalance_result split_static_leaf(struct bt_static_leaf_node *leaf, bt_insert_req *req);

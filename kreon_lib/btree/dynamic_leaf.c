@@ -4,19 +4,10 @@
 
 void print_all_keys(const struct bt_dynamic_leaf_node *leaf, uint32_t leaf_size);
 
-struct bsearch_result {
-	int middle;
-	enum bsearch_status status;
-	enum bt_dynamic_leaf_operation op;
-};
-
 struct prefix {
 	char *prefix;
 	uint32_t len;
 };
-
-void binary_search_dynamic_leaf(const struct bt_dynamic_leaf_node *leaf, uint32_t leaf_size, struct splice *key_buf,
-				struct bsearch_result *result);
 
 struct bt_dynamic_leaf_slot_array *get_slot_array_offset(const struct bt_dynamic_leaf_node *leaf)
 {
@@ -66,7 +57,7 @@ struct find_result find_key_in_dynamic_leaf(const struct bt_dynamic_leaf_node *l
 					    uint32_t key_size)
 {
 	char *buf = malloc(key_size + sizeof(uint32_t));
-	struct bsearch_result result = { .middle = 0, .status = INSERT, .op = DYNAMIC_LEAF_FIND };
+	struct dl_bsearch_result result = { .middle = 0, .status = INSERT, .op = DYNAMIC_LEAF_FIND };
 	struct find_result ret_result = { .kv = NULL, .key_type = KV_INPLACE };
 	struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(leaf);
 	struct splice *key_buf = (struct splice *)buf;
@@ -77,9 +68,9 @@ struct find_result find_key_in_dynamic_leaf(const struct bt_dynamic_leaf_node *l
 	binary_search_dynamic_leaf(leaf, leaf_size, key_buf, &result);
 	/* print_all_keys(leaf, leaf_size); */
 	if (result.status != FOUND) {
-		log_info("Middle %d offset %d Numberofentries %d Key Search %*s", result.middle,
-			 slot_array[result.middle].index, leaf->header.numberOfEntriesInNode, key_buf->size,
-			 key_buf->data);
+		/* log_info("Middle %d offset %d Numberofentries %d Key Search %*s", result.middle, */
+		/* 	 slot_array[result.middle].index, leaf->header.numberOfEntriesInNode, key_buf->size, */
+		/* 	 key_buf->data); */
 	}
 
 	switch (result.status) {
@@ -101,7 +92,8 @@ struct find_result find_key_in_dynamic_leaf(const struct bt_dynamic_leaf_node *l
 		}
 		break;
 	default:
-		log_info("Key not found");
+		break;
+		/* log_info("Key not found"); */
 		/* log_info("Key not found %*s Key Found %*s Middle %d Status %d", key_buf->size, key_buf->data, */
 		/* 	 *(uint32_t *)REAL_ADDRESS(src.kv_entries[src.slot_array[result.middle].index].pointer), */
 		/*  REAL_ADDRESS(src.kv_entries[src.slot_array[result.middle].index].pointer) + 4, result.middle, */
@@ -113,7 +105,7 @@ struct find_result find_key_in_dynamic_leaf(const struct bt_dynamic_leaf_node *l
 }
 
 void binary_search_dynamic_leaf(const struct bt_dynamic_leaf_node *leaf, uint32_t leaf_size, struct splice *key_buf,
-				struct bsearch_result *result)
+				struct dl_bsearch_result *result)
 {
 	struct prefix leaf_key_prefix;
 	struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(leaf);
@@ -260,7 +252,7 @@ int check_dynamic_leaf_split(struct bt_dynamic_leaf_node *leaf, uint32_t leaf_si
 struct bt_rebalance_result split_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, uint32_t leaf_size, bt_insert_req *req)
 {
 	struct bt_rebalance_result rep;
-	struct bt_dynamic_leaf_node *leaf_copy, *left_leaf, *right_leaf;
+	struct bt_dynamic_leaf_node *leaf_copy, *left_leaf, *right_leaf, *old_leaf = leaf;
 	struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(leaf);
 	struct bt_dynamic_leaf_slot_array *right_leaf_slot_array, *left_leaf_slot_array;
 	char *key_buf, *leaf_log_tail;
@@ -335,7 +327,7 @@ struct bt_rebalance_result split_dynamic_leaf(struct bt_dynamic_leaf_node *leaf,
 		rep.stat = LEAF_ROOT_NODE_SPLITTED;
 	} else
 		rep.stat = LEAF_NODE_SPLITTED;
-
+	seg_free_leaf_node(volume_desc, level, req->metadata.tree_id, (leaf_node *)old_leaf);
 	return rep;
 }
 
@@ -361,7 +353,7 @@ void write_data_in_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, char *dest, c
 
 int8_t insert_in_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, bt_insert_req *req, level_descriptor *level)
 {
-	struct bsearch_result bsearch = { .middle = 0, .status = INSERT, .op = DYNAMIC_LEAF_INSERT };
+	struct dl_bsearch_result bsearch = { .middle = 0, .status = INSERT, .op = DYNAMIC_LEAF_INSERT };
 	char *leaf_log_tail = get_leaf_log_offset(leaf, level->leaf_size);
 	struct splice *key = (struct splice *)req->key_value_buf;
 	uint32_t metadata_size = sizeof(struct bt_dynamic_leaf_node) +

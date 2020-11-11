@@ -56,12 +56,12 @@
 /*Buffering related tunables*/
 
 #define GB(x) (x * 1024LU * 1024LU * 1024LU)
-#define LEVEL0_TOTAL_SIZE GB(10000)
+#define LEVEL0_TOTAL_SIZE GB(1)
 #define NUMBER_OF_DATABASES (1)
 #define ZERO_LEVEL_MEMORY_UPPER_BOUND \
 	(LEVEL0_TOTAL_SIZE / NUMBER_OF_DATABASES) /*max total memory of level-0 where clients are throttled*/
 #define ZERO_LEVEL_MEMORY_SPILL_THREASHOLD \
-	(0.9 * ZERO_LEVEL_MEMORY_UPPER_BOUND) /*max memory of level-0 to start spilling, in bytes*/
+	(0.02 * ZERO_LEVEL_MEMORY_UPPER_BOUND) /*max memory of level-0 to start spilling, in bytes*/
 
 #define BUFFER_SEGMENT_SIZE (2 * 1024 * 1024)
 #define SEGMENT_MEMORY_THREASHOLD 511 /*Careful, in number of pages -1 used for chaining*/

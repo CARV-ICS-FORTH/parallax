@@ -196,24 +196,24 @@ enum bsearch_status { INSERT = 0, FOUND = 1, ERROR = 2 };
 
 /* Possible options for these defines are multiples of 4KB but they should not be more than BUFFER_SEGMENT_SIZE*/
 #define PAGE_SIZE 4096
-#define LEVEL0_LEAF_SIZE (PAGE_SIZE)
-#define LEVEL1_LEAF_SIZE (PAGE_SIZE * 2)
+#define LEVEL0_LEAF_SIZE (PAGE_SIZE * 3)
+#define LEVEL1_LEAF_SIZE (PAGE_SIZE * 3)
 #define LEVEL2_LEAF_SIZE (PAGE_SIZE * 3)
 #define LEVEL3_LEAF_SIZE (PAGE_SIZE * 4)
-#define LEVEL4_LEAF_SIZE (PAGE_SIZE)
-#define LEVEL5_LEAF_SIZE (PAGE_SIZE)
-#define LEVEL6_LEAF_SIZE (PAGE_SIZE)
-#define LEVEL7_LEAF_SIZE (PAGE_SIZE)
+#define LEVEL4_LEAF_SIZE (PAGE_SIZE * 4)
+#define LEVEL5_LEAF_SIZE (PAGE_SIZE * 4)
+#define LEVEL6_LEAF_SIZE (PAGE_SIZE * 4)
+#define LEVEL7_LEAF_SIZE (PAGE_SIZE * 4)
 
 /* Possible options for these defines are the values in enum bt_layout */
 #define LEVEL0_LEAF_LAYOUT DYNAMIC_LEAF
-#define LEVEL1_LEAF_LAYOUT STATIC_LEAF
-#define LEVEL2_LEAF_LAYOUT STATIC_LEAF
-#define LEVEL3_LEAF_LAYOUT STATIC_LEAF
-#define LEVEL4_LEAF_LAYOUT STATIC_LEAF
-#define LEVEL5_LEAF_LAYOUT STATIC_LEAF
-#define LEVEL6_LEAF_LAYOUT STATIC_LEAF
-#define LEVEL7_LEAF_LAYOUT STATIC_LEAF
+#define LEVEL1_LEAF_LAYOUT DYNAMIC_LEAF
+#define LEVEL2_LEAF_LAYOUT DYNAMIC_LEAF
+#define LEVEL3_LEAF_LAYOUT DYNAMIC_LEAF
+#define LEVEL4_LEAF_LAYOUT DYNAMIC_LEAF
+#define LEVEL5_LEAF_LAYOUT DYNAMIC_LEAF
+#define LEVEL6_LEAF_LAYOUT DYNAMIC_LEAF
+#define LEVEL7_LEAF_LAYOUT DYNAMIC_LEAF
 
 /* this is the same as leaf_root_node */
 //__attribute__((packed))
@@ -418,6 +418,20 @@ typedef struct rotate_data {
 	int pos_right;
 } rotate_data;
 
+typedef struct bt_spill_request {
+	db_descriptor *db_desc;
+	volume_descriptor *volume_desc;
+	uint64_t aggregate_level_size;
+	node_header *src_root;
+	void *start_key;
+	void *end_key;
+	uint64_t l0_start;
+	uint64_t l0_end;
+	uint8_t src_level;
+	uint8_t src_tree;
+	uint8_t dst_level;
+	uint8_t dst_tree;
+} bt_spill_request;
 /*client API*/
 /*management operations*/
 db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_name, char CREATE_FLAG);

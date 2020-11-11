@@ -1150,16 +1150,17 @@ void free_block(void *handle, void *block_address, uint32_t length, int height)
 		//volume_desc = ((db_handle *)handle)->volume_desc;
 	}
 
-	uint64_t pageno = ((uint64_t)block_address - MAPPED) / DEVICE_BLOCK_SIZE;
-	int32_t num_of_pages = length / 4096;
-	int32_t i;
 	__add_log_entry(volume_desc, block_address, length, FREE_BLOCK);
 
-	for (i = 0; i < num_of_pages; i++) {
-		//printf("[%s:%s:%d] reducing priority of pageno %llu\n",__FILE__,__func__,__LINE__,(LLU)pageno);
-		dmap_change_page_priority(FD, pageno, 10);
-		pageno++;
-	}
+	/* uint64_t pageno = ((uint64_t)block_address - MAPPED) / DEVICE_BLOCK_SIZE; */
+	/* int32_t num_of_pages = length / 4096; */
+	/* int32_t i; */
+
+	/* for (i = 0; i < num_of_pages; i++) { */
+	/* 	//printf("[%s:%s:%d] reducing priority of pageno %llu\n",__FILE__,__func__,__LINE__,(LLU)pageno); */
+	/* 	dmap_change_page_priority(FD, pageno, 10); */
+	/* 	pageno++; */
+	/* } */
 }
 
 /**

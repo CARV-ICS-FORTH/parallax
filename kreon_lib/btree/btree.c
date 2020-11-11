@@ -19,6 +19,7 @@
 #include <sys/mman.h>
 #include <sys/syscall.h>
 #include <pthread.h>
+#include <log.h>
 
 #include "btree.h"
 #include "gc.h"
@@ -29,7 +30,6 @@
 #include "../allocator/dmap-ioctl.h"
 #include "../scanner/scanner.h"
 #include "conf.h"
-#include <log.h>
 
 #define PREFIX_STATISTICS_NO
 #define MIN(x, y) ((x > y) ? (y) : (x))
@@ -1403,6 +1403,7 @@ uint8_t _insert_key_value(bt_insert_req *ins_req)
 		key_size = *(uint32_t *)ins_req->key_value_buf;
 		val_size = *(uint32_t *)(ins_req->key_value_buf + 4 + key_size);
 		ins_req->metadata.kv_size = sizeof(uint32_t) + key_size + sizeof(uint32_t) + val_size;
+		assert(ins_req->metadata.kv_size < 4096);
 	} else
 		ins_req->metadata.kv_size = -1;
 	rc = SUCCESS;
@@ -1412,6 +1413,7 @@ uint8_t _insert_key_value(bt_insert_req *ins_req)
 		log_warn("insert failed!");
 		rc = FAILED;
 	}
+
 	return rc;
 }
 
@@ -1424,7 +1426,6 @@ static inline struct lookup_reply lookup_in_tree(db_descriptor *db_desc, void *k
 	void *next_addr;
 	uint64_t curr_v1 = 0, curr_v2 = 0;
 	uint64_t son_v2 = 0;
-
 	uint32_t index_key_len;
 
 	curr_v2 = root->v2;
@@ -1458,7 +1459,6 @@ static inline struct lookup_reply lookup_in_tree(db_descriptor *db_desc, void *k
 			son_node = (void *)REAL_ADDRESS(*(uint64_t *)next_addr);
 			son_v2 = son_node->v2;
 			curr_v1 = curr_node->v1;
-
 			if (curr_v1 != curr_v2) {
 				rep.addr = NULL;
 				rep.lc_failed = 1;
@@ -1481,6 +1481,7 @@ static inline struct lookup_reply lookup_in_tree(db_descriptor *db_desc, void *k
 						      db_desc->levels[level_id].leaf_size, key + 4, *(uint32_t *)key);
 		break;
 	default:
+		assert(0);
 		key_addr_in_leaf = NULL;
 	} /* log_debug("curr node - MAPPEd %p",MAPPED-(uint64_t)curr_node); */
 
@@ -1756,6 +1757,7 @@ void insert_key_at_index(bt_insert_req *ins_req, index_node *node, node_header *
 
 		if (allocated_space > KEY_BLOCK_SIZE) {
 			log_fatal("Cannot host index key larger than KEY_BLOCK_SIZE");
+			raise(SIGINT);
 			exit(EXIT_FAILURE);
 		}
 
@@ -1861,11 +1863,6 @@ static struct bt_rebalance_result split_index(node_header *node, bt_insert_req *
 	return result;
 }
 
-/**
- *  gesalous 26/05/2014 added method. Appends a key-value pair in a leaf node.
- *  returns 0 on success 1 on failure. Changed the default layout of leafs
- **/
-/*Unused allocation_code XXX TODO XXX REMOVE */
 int insert_KV_at_leaf(bt_insert_req *ins_req, node_header *leaf)
 {
 	db_descriptor *db_desc = ins_req->metadata.handle->db_desc;
@@ -1879,14 +1876,14 @@ int insert_KV_at_leaf(bt_insert_req *ins_req, node_header *leaf)
 					    .optype_tolog = insertOp,
 					    .ins_req = ins_req };
 		ins_req->key_value_buf = append_key_value_to_log(&append_op);
-	} else if (!ins_req->metadata.append_to_log && ins_req->metadata.key_format == KV_PREFIX)
+	} else if (!ins_req->metadata.append_to_log && ins_req->metadata.key_format == KV_PREFIX) {
 		;
-	else if (!ins_req->metadata.append_to_log && ins_req->metadata.recovery_request)
+	} else if (!ins_req->metadata.append_to_log && ins_req->metadata.recovery_request) {
 		;
-	else {
-		log_fatal("Wrong combination of key format / append_to_log option");
-		exit(EXIT_FAILURE);
-	}
+	} /* else { */
+	/* 	log_fatal("Wrong combination of key format / append_to_log option"); */
+	/* 	exit(EXIT_FAILURE); */
+	/* } */
 
 	switch (db_desc->levels[level_id].node_layout) {
 	case STATIC_LEAF:
@@ -2025,6 +2022,9 @@ void assert_index_node(node_header *node)
 				exit(EXIT_FAILURE);
 			}
 		}
+		if (key_tmp_prev)
+			log_fatal("corrupted index %*s something else %*s\n", *(uint32_t *)key_tmp_prev,
+				  key_tmp_prev + 4, *(uint32_t *)key_tmp, key_tmp + 4);
 
 		key_tmp_prev = key_tmp;
 		addr += sizeof(uint64_t);
@@ -2244,6 +2244,7 @@ release_and_retry:
 				son->v2++;
 			} else {
 				son->v1++;
+
 				split_res = split_leaf(ins_req, (leaf_node *)son);
 
 				if ((uint64_t)son != (uint64_t)split_res.left_child) {
@@ -2343,6 +2344,7 @@ release_and_retry:
 		}
 		/*Node acquired */
 		son = (node_header *)(MAPPED + *(uint64_t *)next_addr);
+
 		/*if the node is not safe hold its ancestor's lock else release locks from
 		 * ancestors */
 
@@ -2387,7 +2389,6 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 
 	unsigned size; /*Size of upper_level_nodes*/
 	unsigned release; /*Counter to know the position that releasing should begin*/
-
 	// remove some warnings here
 	uint32_t level_id;
 	lock_table *guard_of_level;
@@ -2457,7 +2458,6 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 			__sync_fetch_and_sub(num_level_writers, 1);
 			return FAILURE;
 		}
-
 		/*Find the next node to traverse*/
 		next_addr = _index_node_binary_search((index_node *)son, ins_req->key_value_buf,
 						      ins_req->metadata.key_format);

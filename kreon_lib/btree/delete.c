@@ -157,7 +157,7 @@ uint8_t delete_key_value_from_leaf(bt_delete_request *req, index_node *parent, l
 	   in case we delete a kv pair from the first or the last node.  */
 
 	rotate_data siblings = { .left = NULL, .right = NULL, .pivot = NULL };
-	struct bsearch_result result = { .middle = 0, .status = INSERT, .op = STATIC_LEAF_FIND };
+	struct sl_bsearch_result result = { .middle = 0, .status = INSERT, .op = STATIC_LEAF_FIND };
 	level_descriptor *level = &req->metadata.handle->db_desc->levels[leaf->header.level_id];
 	int pos;
 	int8_t ret;
