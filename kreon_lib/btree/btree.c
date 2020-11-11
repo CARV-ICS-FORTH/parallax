@@ -224,11 +224,11 @@ static void calculate_metadata_offsets(uint32_t bitmap_entries, uint32_t slot_ar
 	leaf_level->bitmap_offset = sizeof(struct bt_static_leaf_node);
 	leaf_level->slot_array_entries = slot_array_entries;
 	leaf_level->slot_array_offset =
-		leaf_level->bitmap_offset + bitmap_entries * sizeof(struct bt_leaf_entry_bitmap);
+		leaf_level->bitmap_offset + (bitmap_entries * sizeof(struct bt_leaf_entry_bitmap));
 	leaf_level->kv_entries = kv_entries;
 	leaf_level->kv_entries_offset = leaf_level->bitmap_offset +
-					bitmap_entries * sizeof(struct bt_leaf_entry_bitmap) +
-					slot_array_entries * sizeof(struct bt_static_leaf_slot_array);
+					(bitmap_entries * sizeof(struct bt_leaf_entry_bitmap)) +
+					(slot_array_entries * sizeof(struct bt_static_leaf_slot_array));
 }
 
 static void init_leaf_sizes_perlevel(level_descriptor *level, int level_id)
@@ -535,6 +535,9 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 
 							/*restore now persistent state of all levels*/
 							for (level_id = 0; level_id < MAX_LEVELS; level_id++) {
+								db_desc->levels[level_id].level_size[0] = 0;
+								db_desc->levels[level_id].level_size[1] = 0;
+								db_desc->levels[level_id].actual_level_size = 0;
 								for (tree_id = 0; tree_id < NUM_TREES_PER_LEVEL;
 								     tree_id++) {
 									db_desc->levels[level_id].level_size[tree_id] =
@@ -724,6 +727,14 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 				db_desc->levels[level_id].offset[tree_id] = 0;
 				init_leaf_sizes_perlevel(&db_desc->levels[level_id], level_id);
 			}
+
+			if (level_id != 0)
+				db_desc->levels[level_id].max_level_size =
+					db_desc->levels[level_id - 1].max_level_size * GF;
+			else
+				db_desc->levels[level_id].max_level_size = MAX_LEVEL0_TOTAL_SIZE;
+
+			log_info("Level %d max_total_size %llu", level_id, db_desc->levels[level_id].max_level_size);
 		}
 
 		/*initialize KV log for this db*/
@@ -734,6 +745,7 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 
 finish_init:
 	/*init soft state for all levels*/
+	MUTEX_INIT(&db_desc->guard_delayed_spills, NULL);
 	for (level_id = 0; level_id < MAX_LEVELS; level_id++) {
 		if (level_id == 0)
 			db_desc->levels[level_id].max_level_size = L0_SIZE;
@@ -745,6 +757,8 @@ finish_init:
 		MUTEX_INIT(&db_desc->levels[level_id].spill_trigger, NULL);
 		MUTEX_INIT(&db_desc->levels[level_id].level_allocation_lock, NULL);
 		init_level_locktable(db_desc, level_id);
+		db_desc->level_tospill[level_id] = -1;
+		db_desc->levels[level_id].actual_level_size = 0;
 		db_desc->levels[level_id].active_writers = 0;
 		/*check again which tree should be active*/
 		db_desc->levels[level_id].active_tree = 0;
@@ -1018,6 +1032,9 @@ void flush_volume(volume_descriptor *volume_desc, char force_spill)
 	return;
 }
 #endif
+static void spill_trigger(bt_spill_request *req);
+static int dequeue_level_fromspill(volatile int *levels);
+static int pending_spills_exist(volatile int *levels);
 
 uint8_t insert_key_value(db_handle *handle, void *key, void *value, uint32_t key_size, uint32_t value_size)
 {
@@ -1025,7 +1042,6 @@ uint8_t insert_key_value(db_handle *handle, void *key, void *value, uint32_t key
 	char __tmp[KV_MAX_SIZE];
 	char *key_buf = __tmp;
 	uint32_t kv_size;
-
 	int active_tree = handle->db_desc->levels[0].active_tree;
 	while (handle->db_desc->levels[0].level_size[active_tree] > handle->db_desc->levels[0].max_level_size) {
 		pthread_mutex_lock(&handle->db_desc->client_barrier_lock);
@@ -1042,11 +1058,7 @@ uint8_t insert_key_value(db_handle *handle, void *key, void *value, uint32_t key
 		active_tree = handle->db_desc->levels[0].active_tree;
 		pthread_mutex_unlock(&handle->db_desc->client_barrier_lock);
 	}
-
 	kv_size = sizeof(uint32_t) + key_size + sizeof(uint32_t) + value_size + sizeof(uint64_t);
-#ifndef NDEBUG
-	assert(kv_size <= KV_MAX_SIZE);
-#endif
 
 	if (kv_size > KV_MAX_SIZE) {
 		log_fatal("Key buffer overflow");
@@ -1177,7 +1189,7 @@ void *append_key_value_to_log(log_operation *req)
 	else
 		available_space_in_log = 0;
 
-	if (available_space_in_log < data_size.kv_size) {
+	if (available_space_in_log < data_size.kv_size + +sizeof(struct log_sequence_number)) {
 		/*fill info for kreon master here*/
 		req->metadata->log_segment_addr = ABSOLUTE_ADDRESS(log_metadata.log_tail);
 		req->metadata->log_offset_full_event = *log_metadata.log_size;
@@ -1190,7 +1202,7 @@ void *append_key_value_to_log(log_operation *req)
 		addr_inlog = (void *)((uint64_t)log_metadata.log_tail + (*log_metadata.log_size % BUFFER_SEGMENT_SIZE));
 		memset(addr_inlog, 0x00, available_space_in_log);
 
-		allocated_space = data_size.kv_size + sizeof(segment_header);
+		allocated_space = data_size.kv_size + sizeof(struct log_sequence_number) + sizeof(segment_header);
 		allocated_space += BUFFER_SEGMENT_SIZE - (allocated_space % BUFFER_SEGMENT_SIZE);
 		d_header = seg_get_raw_log_segment(handle->volume_desc);
 		d_header->segment_id = log_metadata.log_tail->segment_id + 1;
@@ -1220,12 +1232,11 @@ void *append_key_value_to_log(log_operation *req)
 
 uint8_t _insert_key_value(bt_insert_req *ins_req)
 {
-	db_descriptor *db_desc;
+	db_descriptor *db_desc = ins_req->metadata.handle->db_desc;
 	unsigned key_size;
 	unsigned val_size;
 	uint8_t rc;
-
-	db_desc = ins_req->metadata.handle->db_desc;
+	uint8_t level_id = ins_req->metadata.level_id;
 	db_desc->dirty = 0x01;
 
 	if (ins_req->metadata.key_format == KV_FORMAT) {
@@ -1235,7 +1246,9 @@ uint8_t _insert_key_value(bt_insert_req *ins_req)
 		assert(ins_req->metadata.kv_size < 4096);
 	} else
 		ins_req->metadata.kv_size = -1;
+
 	rc = SUCCESS;
+
 	if (writers_join_as_readers(ins_req) == SUCCESS) {
 		rc = SUCCESS;
 	} else if (concurrent_insert(ins_req) != SUCCESS) {
@@ -1484,12 +1497,12 @@ int8_t update_index(index_node *node, node_header *left_child, node_header *righ
 	void *index_key_buf;
 	int32_t middle = 0;
 	int32_t start_idx = 0;
-	int32_t end_idx = node->header.numberOfEntriesInNode - 1;
+	int32_t end_idx = node->header.num_entries - 1;
 	size_t num_of_bytes;
 
 	addr = (void *)(uint64_t)node + sizeof(node_header);
 
-	if (node->header.numberOfEntriesInNode > 0) {
+	if (node->header.num_entries > 0) {
 		while (1) {
 			middle = (start_idx + end_idx) / 2;
 			addr = (void *)(uint64_t)node + (uint64_t)sizeof(node_header) + sizeof(uint64_t) +
@@ -1509,8 +1522,8 @@ int8_t update_index(index_node *node, node_header *left_child, node_header *righ
 				start_idx = middle + 1;
 				if (start_idx > end_idx) {
 					middle++;
-					if (middle >= (int64_t)node->header.numberOfEntriesInNode) {
-						middle = node->header.numberOfEntriesInNode;
+					if (middle >= (int64_t)node->header.num_entries) {
+						middle = node->header.num_entries;
 						addr = (void *)(uint64_t)node + (uint64_t)sizeof(node_header) +
 						       (uint64_t)(middle * 2 * sizeof(uint64_t)) + sizeof(uint64_t);
 					} else
@@ -1521,7 +1534,7 @@ int8_t update_index(index_node *node, node_header *left_child, node_header *righ
 		}
 
 		dest_addr = addr + (2 * sizeof(uint64_t));
-		num_of_bytes = (node->header.numberOfEntriesInNode - middle) * 2 * sizeof(uint64_t);
+		num_of_bytes = (node->header.num_entries - middle) * 2 * sizeof(uint64_t);
 		memmove(dest_addr, addr, num_of_bytes);
 		addr -= sizeof(uint64_t);
 	} else
@@ -1609,8 +1622,8 @@ void insert_key_at_index(bt_insert_req *ins_req, index_node *node, node_header *
 
 	ret = update_index(node, left_child, right_child, key_addr);
 	if (ret)
-		node->header.numberOfEntriesInNode++;
-	// assert_index_node(node);
+		node->header.num_entries++;
+	//assert_index_node(node);
 }
 
 char *node_type(nodeType_t type)
@@ -1664,8 +1677,8 @@ static struct bt_rebalance_result split_index(node_header *node, bt_insert_req *
 	result.left_child->height = node->height;
 	result.right_child->height = node->height;
 
-	for (i = 0; i < node->numberOfEntriesInNode; i++) {
-		if (i < node->numberOfEntriesInNode / 2)
+	for (i = 0; i < node->num_entries; i++) {
+		if (i < node->num_entries / 2)
 			tmp_index = result.left_child;
 		else
 			tmp_index = result.right_child;
@@ -1676,7 +1689,7 @@ static struct bt_rebalance_result split_index(node_header *node, bt_insert_req *
 		full_addr += sizeof(uint64_t);
 		right_child = (node_header *)REAL_ADDRESS(*(uint64_t *)full_addr);
 
-		if (i == node->numberOfEntriesInNode / 2) {
+		if (i == node->num_entries / 2) {
 			result.middle_key_buf = key_buf;
 			continue; /*middle key not needed, is going to the upper level*/
 		}
@@ -1763,8 +1776,8 @@ void *_index_node_binary_search(index_node *node, void *key_buf, char query_key_
 	int64_t ret;
 	int32_t middle = 0;
 	int32_t start_idx = 0;
-	int32_t end_idx = node->header.numberOfEntriesInNode - 1;
-	int32_t numberOfEntriesInNode = node->header.numberOfEntriesInNode;
+	int32_t end_idx = node->header.num_entries - 1;
+	int32_t numberOfEntriesInNode = node->header.num_entries;
 
 	while (numberOfEntriesInNode > 0) {
 		middle = (start_idx + end_idx) / 2;
@@ -1805,12 +1818,12 @@ void *_index_node_binary_search(index_node *node, void *key_buf, char query_key_
 		// log_debug("I passed from this corner case4 %s",
 		// (char*)(index_key_buf+4));
 		addr = &(node->p[0].left[0]);
-	} else if (middle >= (int64_t)node->header.numberOfEntriesInNode) {
+	} else if (middle >= (int64_t)node->header.num_entries) {
 		// log_debug("I passed from this corner case5 %s",
 		// (char*)(index_key_buf+4));
 		/* log_debug("I passed from this corner case2 %s",
 * (char*)(index_key_buf+4)); */
-		addr = &(node->p[node->header.numberOfEntriesInNode - 1].right[0]);
+		addr = &(node->p[node->header.num_entries - 1].right[0]);
 	}
 	// log_debug("END");
 	return addr;
@@ -1825,11 +1838,11 @@ void assert_index_node(node_header *node)
 	void *addr;
 	node_header *child;
 	addr = (void *)(uint64_t)node + (uint64_t)sizeof(node_header);
-	if (node->numberOfEntriesInNode == 0)
+	if (node->num_entries == 0)
 		return;
 	//	if(node->height > 1)
 	//	log_info("Checking node of height %lu\n",node->height);
-	for (k = 0; k < node->numberOfEntriesInNode; k++) {
+	for (k = 0; k < node->num_entries; k++) {
 		/*check child type*/
 		child = (node_header *)(MAPPED + *(uint64_t *)addr);
 		if (child->type != rootNode && child->type != internalNode && child->type != leafNode &&
@@ -1906,7 +1919,7 @@ void _unlock_upper_levels(lock_table *node[], unsigned size, unsigned release)
 int is_split_needed(void *node, enum bt_layout node_layout, uint32_t leaf_size, uint32_t kv_size)
 {
 	node_header *header = (node_header *)node;
-	int64_t num_entries = header->numberOfEntriesInNode;
+	int64_t num_entries = header->num_entries;
 	uint32_t height = header->height;
 
 	if (height != 0) {
@@ -2053,7 +2066,7 @@ release_and_retry:
 			else
 				father_order = index_order;
 			assert(father->epoch > volume_desc->dev_catalogue->epoch);
-			assert(father->numberOfEntriesInNode < father_order);
+			assert(father->num_entries < father_order);
 		}
 
 		uint32_t temp_leaf_size = get_leaf_size(db_desc->levels[level_id].leaf_offsets.kv_entries,
@@ -2133,7 +2146,6 @@ release_and_retry:
 				memcpy(node_copy, son, INDEX_NODE_SIZE);
 				seg_free_index_node_header(ins_req->metadata.handle->volume_desc,
 							   &db_desc->levels[level_id], ins_req->metadata.tree_id, son);
-
 			} else {
 				node_copy = (node_header *)seg_get_leaf_node_header(
 					ins_req->metadata.handle->volume_desc, &db_desc->levels[level_id],
@@ -2168,7 +2180,7 @@ release_and_retry:
 				      (node_header *)(MAPPED + *(uint64_t *)next_addr));
 		upper_level_nodes[size++] = lock;
 		if (RWLOCK_WRLOCK(&lock->rx_lock) != 0) {
-			log_fatal("ERROR unlocking reason follows rc %d");
+			log_fatal("ERROR unlocking reason follows rc");
 			exit(EXIT_FAILURE);
 		}
 		/*Node acquired */
@@ -2276,7 +2288,6 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 
 		if (is_split_needed(son, db_desc->levels[level_id].node_layout, temp_leaf_size,
 				    ins_req->metadata.kv_size)) {
-			log_info("OBEY THE SPLIT MASTER");
 			/*failed needs split*/
 			_unlock_upper_levels(upper_level_nodes, size, release);
 			__sync_fetch_and_sub(num_level_writers, 1);

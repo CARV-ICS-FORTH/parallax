@@ -123,7 +123,7 @@ typedef struct node_header {
 		/* Used in dynamic leaves */
 		uint32_t leaf_log_size;
 	};
-	uint64_t numberOfEntriesInNode;
+	uint64_t num_entries;
 	IN_log_header *first_IN_log_header;
 	IN_log_header *last_IN_log_header;
 	int32_t height; /*0 are leaves, 1 are Bottom Internal nodes, and then we have
@@ -196,14 +196,14 @@ enum bsearch_status { INSERT = 0, FOUND = 1, ERROR = 2 };
 
 /* Possible options for these defines are multiples of 4KB but they should not be more than BUFFER_SEGMENT_SIZE*/
 #define PAGE_SIZE 4096
-#define LEVEL0_LEAF_SIZE (PAGE_SIZE * 3)
-#define LEVEL1_LEAF_SIZE (PAGE_SIZE * 3)
-#define LEVEL2_LEAF_SIZE (PAGE_SIZE * 3)
-#define LEVEL3_LEAF_SIZE (PAGE_SIZE * 4)
-#define LEVEL4_LEAF_SIZE (PAGE_SIZE * 4)
-#define LEVEL5_LEAF_SIZE (PAGE_SIZE * 4)
-#define LEVEL6_LEAF_SIZE (PAGE_SIZE * 4)
-#define LEVEL7_LEAF_SIZE (PAGE_SIZE * 4)
+#define LEVEL0_LEAF_SIZE (PAGE_SIZE * 8)
+#define LEVEL1_LEAF_SIZE (PAGE_SIZE * 8)
+#define LEVEL2_LEAF_SIZE (PAGE_SIZE * 8)
+#define LEVEL3_LEAF_SIZE (PAGE_SIZE * 8)
+#define LEVEL4_LEAF_SIZE (PAGE_SIZE * 8)
+#define LEVEL5_LEAF_SIZE (PAGE_SIZE * 8)
+#define LEVEL6_LEAF_SIZE (PAGE_SIZE * 8)
+#define LEVEL7_LEAF_SIZE (PAGE_SIZE * 8)
 
 /* Possible options for these defines are the values in enum bt_layout */
 #define LEVEL0_LEAF_LAYOUT DYNAMIC_LEAF
@@ -325,9 +325,10 @@ typedef struct level_descriptor {
 	uint64_t level_size[NUM_TREES_PER_LEVEL];
 	uint64_t max_level_size;
 	struct leaf_node_metadata leaf_offsets;
+	uint64_t actual_level_size;
 	int64_t active_writers;
 	/*spilling or not?*/
-	char tree_status[NUM_TREES_PER_LEVEL];
+	volatile char tree_status[NUM_TREES_PER_LEVEL];
 	uint32_t leaf_size;
 	enum bt_layout node_layout;
 	uint8_t active_tree;
@@ -338,6 +339,7 @@ typedef struct level_descriptor {
 typedef struct db_descriptor {
 	char db_name[MAX_DB_NAME_SIZE];
 	level_descriptor levels[MAX_LEVELS];
+	volatile int level_tospill[MAX_LEVELS];
 #if LOG_WITH_MUTEX
 	pthread_mutex_t lock_log;
 #else
@@ -368,6 +370,7 @@ typedef struct db_descriptor {
 	uint64_t small_log_tail_offset;
 
 	commit_log_info *commit_log;
+	pthread_mutex_t guard_delayed_spills;
 	// uint64_t spilled_keys;
 	int32_t reference_count;
 	int32_t group_id;

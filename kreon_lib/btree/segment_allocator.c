@@ -78,7 +78,7 @@ index_node *seg_get_index_node(volume_descriptor *volume_desc, level_descriptor 
 		ptr->header.type = internalNode;
 
 	ptr->header.epoch = volume_desc->mem_catalogue->epoch;
-	ptr->header.numberOfEntriesInNode = 0;
+	ptr->header.num_entries = 0;
 	ptr->header.fragmentation = 0;
 	ptr->header.v1 = 0;
 	ptr->header.v2 = 0;
@@ -151,29 +151,7 @@ leaf_node *seg_get_leaf_node(volume_descriptor *volume_desc, level_descriptor *l
 
 	leaf->header.type = leafNode;
 	leaf->header.epoch = volume_desc->mem_catalogue->epoch;
-	leaf->header.numberOfEntriesInNode = 0;
-	leaf->header.fragmentation = 0;
-	leaf->header.v1 = 0;
-	leaf->header.v2 = 0;
-
-	leaf->header.first_IN_log_header = NULL; /*unused field in leaves*/
-	leaf->header.last_IN_log_header = NULL; /*unused field in leaves*/
-	leaf->header.key_log_size = 0; /*unused also*/
-	leaf->header.height = 0;
-	leaf->header.level_id = level_desc->level_id;
-
-	return leaf;
-}
-
-leaf_node *seg_get_leaf_node_header(volume_descriptor *volume_desc, level_descriptor *level_desc, uint8_t tree_id,
-				    char reason)
-{
-	struct bt_static_leaf_node *leaf = (struct bt_static_leaf_node *)get_space(volume_desc, level_desc, tree_id,
-										   level_desc->leaf_size, reason);
-
-	leaf->header.type = leafNode;
-	leaf->header.epoch = volume_desc->mem_catalogue->epoch;
-	leaf->header.numberOfEntriesInNode = 0;
+	leaf->header.num_entries = 0;
 	leaf->header.fragmentation = 0;
 	leaf->header.v1 = 0;
 	leaf->header.v2 = 0;
@@ -195,7 +173,7 @@ struct bt_dynamic_leaf_node *seg_get_dynamic_leaf_node(volume_descriptor *volume
 
 	leaf->header.type = leafNode;
 	leaf->header.epoch = volume_desc->mem_catalogue->epoch;
-	leaf->header.numberOfEntriesInNode = 0;
+	leaf->header.num_entries = 0;
 	leaf->header.fragmentation = 0;
 	leaf->header.v1 = 0;
 	leaf->header.v2 = 0;
@@ -207,6 +185,26 @@ struct bt_dynamic_leaf_node *seg_get_dynamic_leaf_node(volume_descriptor *volume
 	leaf->header.level_id = level_desc->level_id;
 
 	return leaf;
+}
+
+leaf_node *seg_get_leaf_node_header(volume_descriptor *volume_desc, level_descriptor *level_desc, uint8_t tree_id,
+				    char reason)
+{
+	struct bt_dynamic_leaf_node *leaf = get_space(volume_desc, level_desc, tree_id, level_desc->leaf_size, 0);
+	leaf->header.type = leafNode;
+	leaf->header.epoch = volume_desc->mem_catalogue->epoch;
+	leaf->header.num_entries = 0;
+	leaf->header.fragmentation = 0;
+	leaf->header.v1 = 0;
+	leaf->header.v2 = 0;
+
+	leaf->header.first_IN_log_header = NULL; /*unused field in leaves*/
+	leaf->header.last_IN_log_header = NULL; /*unused field in leaves*/
+	leaf->header.leaf_log_size = 0;
+	leaf->header.height = 0;
+	leaf->header.level_id = level_desc->level_id;
+
+	return (leaf_node *)leaf;
 }
 
 void seg_free_leaf_node(volume_descriptor *volume_desc, level_descriptor *level_desc, uint8_t tree_id, leaf_node *leaf)

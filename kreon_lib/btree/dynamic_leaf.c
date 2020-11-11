@@ -9,6 +9,22 @@ struct prefix {
 	uint32_t len;
 };
 
+void validate_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, level_descriptor *level, uint32_t kv_size, int flag)
+{
+	struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(leaf);
+	assert(flag || leaf->header.leaf_log_size + kv_size <
+			       level->leaf_size - sizeof(struct bt_dynamic_leaf_node) -
+				       (sizeof(struct bt_dynamic_leaf_slot_array) * leaf->header.num_entries + 1));
+
+	for (unsigned i = 0; i < leaf->header.num_entries; ++i) {
+		unsigned size = *(uint32_t *)get_kv_offset(leaf, level->leaf_size, slot_array[i].index);
+		assert(slot_array[i].index <
+		       level->leaf_size - sizeof(struct bt_dynamic_leaf_node) -
+			       (sizeof(struct bt_dynamic_leaf_slot_array) * leaf->header.num_entries));
+		assert(size < 100);
+	}
+}
+
 struct bt_dynamic_leaf_slot_array *get_slot_array_offset(const struct bt_dynamic_leaf_node *leaf)
 {
 	return (struct bt_dynamic_leaf_slot_array *)(((char *)leaf) + sizeof(struct bt_dynamic_leaf_node));
@@ -110,8 +126,8 @@ void binary_search_dynamic_leaf(const struct bt_dynamic_leaf_node *leaf, uint32_
 	struct prefix leaf_key_prefix;
 	struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(leaf);
 	char *leaf_key_buf;
-	int32_t start = 0, middle = 0, end = leaf->header.numberOfEntriesInNode - 1;
-	const int32_t numberOfEntriesInNode = leaf->header.numberOfEntriesInNode;
+	int32_t start = 0, middle = 0, end = leaf->header.num_entries - 1;
+	const int32_t numberOfEntriesInNode = leaf->header.num_entries;
 	uint32_t offset_in_leaf;
 	int ret, ret_case;
 
@@ -190,8 +206,8 @@ void binary_search_dynamic_leaf(const struct bt_dynamic_leaf_node *leaf, uint32_
 void print_all_keys(const struct bt_dynamic_leaf_node *leaf, uint32_t leaf_size)
 {
 	struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(leaf);
-	log_info("number of entries %d", leaf->header.numberOfEntriesInNode);
-	for (unsigned i = 0; i < leaf->header.numberOfEntriesInNode; ++i) {
+	log_info("number of entries %d", leaf->header.num_entries);
+	for (unsigned i = 0; i < leaf->header.num_entries; ++i) {
 		char *key = get_kv_offset(leaf, leaf_size, slot_array[i].index);
 		log_info("offset in leaf %d Size%d key %s\n", slot_array[i].index, KEY_SIZE(key), key + 4);
 	}
@@ -200,7 +216,7 @@ void print_all_keys(const struct bt_dynamic_leaf_node *leaf, uint32_t leaf_size)
 static void shift_right_slot_array(struct bt_dynamic_leaf_node *leaf, uint32_t middle)
 {
 	struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(leaf);
-	const size_t num_items = leaf->header.numberOfEntriesInNode - middle;
+	const size_t num_items = leaf->header.num_entries - middle;
 
 	if (num_items == 0)
 		return;
@@ -232,7 +248,7 @@ int check_dynamic_leaf_split(struct bt_dynamic_leaf_node *leaf, uint32_t leaf_si
 {
 	uint32_t leaf_log_size = leaf->header.leaf_log_size;
 	uint32_t metadata_size = sizeof(struct bt_dynamic_leaf_node) +
-				 (sizeof(struct bt_dynamic_leaf_slot_array) * (leaf->header.numberOfEntriesInNode + 1));
+				 (sizeof(struct bt_dynamic_leaf_slot_array) * (leaf->header.num_entries + 1));
 	uint32_t upper_bound = leaf_size - metadata_size;
 
 	switch (key_type) {
@@ -253,8 +269,7 @@ struct bt_rebalance_result split_dynamic_leaf(struct bt_dynamic_leaf_node *leaf,
 {
 	struct bt_rebalance_result rep;
 	struct bt_dynamic_leaf_node *leaf_copy, *left_leaf, *right_leaf, *old_leaf = leaf;
-	struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(leaf);
-	struct bt_dynamic_leaf_slot_array *right_leaf_slot_array, *left_leaf_slot_array;
+	struct bt_dynamic_leaf_slot_array *slot_array, *right_leaf_slot_array, *left_leaf_slot_array;
 	char *key_buf, *leaf_log_tail;
 	level_descriptor *level = &req->metadata.handle->db_desc->levels[leaf->header.level_id];
 	volume_descriptor *volume_desc = req->metadata.handle->volume_desc;
@@ -262,13 +277,18 @@ struct bt_rebalance_result split_dynamic_leaf(struct bt_dynamic_leaf_node *leaf,
 	uint32_t key_buf_size;
 
 	/*cow check*/
+	validate_dynamic_leaf(leaf, level, 0, 0);
+
 	if (leaf->header.epoch <= volume_desc->dev_catalogue->epoch) {
 		leaf_copy = seg_get_dynamic_leaf_node(volume_desc, level);
 		memcpy(leaf_copy, leaf, level->leaf_size);
 		leaf_copy->header.epoch = volume_desc->mem_catalogue->epoch;
 		leaf = leaf_copy;
+		seg_free_leaf_node(volume_desc, level, req->metadata.tree_id, (leaf_node *)old_leaf);
 	}
+	validate_dynamic_leaf(leaf, level, 0, 0);
 
+	slot_array = get_slot_array_offset(leaf);
 	rep.left_dlchild = seg_get_dynamic_leaf_node(volume_desc, level);
 
 	left_leaf = rep.left_dlchild;
@@ -276,7 +296,7 @@ struct bt_rebalance_result split_dynamic_leaf(struct bt_dynamic_leaf_node *leaf,
 	leaf_log_tail = get_leaf_log_offset(left_leaf, level->leaf_size);
 	left_leaf_slot_array = get_slot_array_offset(left_leaf);
 
-	for (i = 0, j = 0; i < leaf->header.numberOfEntriesInNode / 2; ++i, ++j) {
+	for (i = 0, j = 0; i < leaf->header.num_entries / 2; ++i, ++j) {
 		key_buf = fill_keybuf(get_kv_offset(leaf, leaf_size, slot_array[i].index), slot_array[i].bitmap);
 		uint32_t key_size = KEY_SIZE(key_buf);
 		uint32_t value_size = VALUE_SIZE(key_buf + sizeof(uint32_t) + key_size);
@@ -291,9 +311,8 @@ struct bt_rebalance_result split_dynamic_leaf(struct bt_dynamic_leaf_node *leaf,
 
 	/*Fix Right leaf metadata*/
 	rep.right_dlchild = seg_get_dynamic_leaf_node(volume_desc, level);
-	rep.middle_key_buf =
-		fill_keybuf(get_kv_offset(leaf, leaf_size, slot_array[leaf->header.numberOfEntriesInNode / 2].index),
-			    slot_array[leaf->header.numberOfEntriesInNode / 2].bitmap);
+	rep.middle_key_buf = fill_keybuf(get_kv_offset(leaf, leaf_size, slot_array[leaf->header.num_entries / 2].index),
+					 slot_array[leaf->header.num_entries / 2].bitmap);
 
 	/* print_all_keys(left_leaf, leaf_size); */
 
@@ -301,7 +320,7 @@ struct bt_rebalance_result split_dynamic_leaf(struct bt_dynamic_leaf_node *leaf,
 	/*Copy pointers + prefixes*/
 	leaf_log_tail = get_leaf_log_offset(right_leaf, leaf_size);
 	right_leaf_slot_array = get_slot_array_offset(right_leaf);
-	for (i = leaf->header.numberOfEntriesInNode / 2, j = 0; i < leaf->header.numberOfEntriesInNode; ++i, ++j) {
+	for (i = leaf->header.num_entries / 2, j = 0; i < leaf->header.num_entries; ++i, ++j) {
 		key_buf = fill_keybuf(get_kv_offset(leaf, leaf_size, slot_array[i].index), slot_array[i].bitmap);
 		uint32_t key_size = KEY_SIZE(key_buf);
 		uint32_t value_size = VALUE_SIZE(key_buf + sizeof(uint32_t) + key_size);
@@ -313,20 +332,33 @@ struct bt_rebalance_result split_dynamic_leaf(struct bt_dynamic_leaf_node *leaf,
 		right_leaf_slot_array[j].index = right_leaf->header.leaf_log_size;
 		right_leaf_slot_array[j].bitmap = slot_array[i].bitmap;
 	}
-	rep.left_dlchild->header.height = leaf->header.height;
-	rep.left_dlchild->header.numberOfEntriesInNode = leaf->header.numberOfEntriesInNode / 2;
 
-	rep.right_dlchild->header.numberOfEntriesInNode =
-		leaf->header.numberOfEntriesInNode - (leaf->header.numberOfEntriesInNode / 2);
+	rep.left_dlchild->header.height = leaf->header.height;
+	rep.left_dlchild->header.num_entries = leaf->header.num_entries / 2;
+
+	rep.right_dlchild->header.num_entries = leaf->header.num_entries - (leaf->header.num_entries / 2);
 	rep.right_dlchild->header.type = leafNode;
 
+	/* for(i = 0;i<left_leaf->header.num_entries;++i){ */
+	/* 	unsigned size = *(uint32_t*)get_kv_offset(left_leaf, level->leaf_size, left_leaf_slot_array[i].index); */
+	/* 	assert(size < 100); */
+	/* } */
+
+	/* for(i = 0;i<right_leaf->header.num_entries;++i){ */
+	/* 	unsigned size = *(uint32_t*)get_kv_offset(right_leaf, level->leaf_size, right_leaf_slot_array[i].index); */
+	/* 	assert(size < 100); */
+	/* } */
+
 	/* print_all_keys(right_leaf, leaf_size); */
+	validate_dynamic_leaf(left_leaf, level, 0, 0);
+	validate_dynamic_leaf(right_leaf, level, 0, 0);
 
 	if (leaf->header.type == leafRootNode) {
 		rep.left_dlchild->header.type = leafNode;
 		rep.stat = LEAF_ROOT_NODE_SPLITTED;
 	} else
 		rep.stat = LEAF_NODE_SPLITTED;
+
 	seg_free_leaf_node(volume_desc, level, req->metadata.tree_id, (leaf_node *)old_leaf);
 	return rep;
 }
@@ -357,22 +389,24 @@ int8_t insert_in_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, bt_insert_req *
 	char *leaf_log_tail = get_leaf_log_offset(leaf, level->leaf_size);
 	struct splice *key = (struct splice *)req->key_value_buf;
 	uint32_t metadata_size = sizeof(struct bt_dynamic_leaf_node) +
-				 (sizeof(struct bt_dynamic_leaf_slot_array) * (leaf->header.numberOfEntriesInNode - 1));
+				 (sizeof(struct bt_dynamic_leaf_slot_array) * (leaf->header.num_entries - 1));
 	uint32_t upper_bound = level->leaf_size - metadata_size;
 
 	assert(leaf->header.leaf_log_size < upper_bound);
+	assert(leaf->header.epoch > req->metadata.handle->volume_desc->dev_catalogue->epoch);
 
-	if (unlikely(leaf->header.numberOfEntriesInNode == 0))
+	if (unlikely(leaf->header.num_entries == 0))
 		leaf->header.leaf_log_size = 0;
 
 	binary_search_dynamic_leaf(leaf, level->leaf_size, key, &bsearch);
+	validate_dynamic_leaf(leaf, level, req->metadata.kv_size, 0);
 
 	switch (bsearch.status) {
 	case INSERT:
 		shift_right_slot_array(leaf, bsearch.middle);
 		write_data_in_dynamic_leaf(leaf, leaf_log_tail, req->key_value_buf, req->metadata.kv_size,
 					   bsearch.middle);
-		++leaf->header.numberOfEntriesInNode;
+		++leaf->header.num_entries;
 		break;
 	case FOUND:
 		write_data_in_dynamic_leaf(leaf, leaf_log_tail, req->key_value_buf, req->metadata.kv_size,
@@ -383,6 +417,8 @@ int8_t insert_in_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, bt_insert_req *
 		log_fatal("ERROR in insert path%d", bsearch.middle);
 		exit(EXIT_FAILURE);
 	}
+
+	validate_dynamic_leaf(leaf, level, 0, 1);
 
 	return bsearch.status;
 }

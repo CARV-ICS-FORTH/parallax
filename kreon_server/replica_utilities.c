@@ -71,7 +71,7 @@ node_header *_ru_create_tree_node(struct krm_region_desc *r_desc, int tree_id, i
 		node = (node_header *)_ru_get_space_for_tree(r_desc, tree_id, DEVICE_BLOCK_SIZE);
 		node->type = leafNode;
 		node->epoch = r_desc->db->volume_desc->mem_catalogue->epoch;
-		node->numberOfEntriesInNode = 0;
+		node->num_entries = 0;
 		node->fragmentation = 0;
 		node->v1 = 0;
 		node->v2 = 0;
@@ -83,7 +83,7 @@ node_header *_ru_create_tree_node(struct krm_region_desc *r_desc, int tree_id, i
 		node = (node_header *)_ru_get_space_for_tree(r_desc, tree_id, DEVICE_BLOCK_SIZE);
 		node->type = internalNode;
 		node->epoch = r_desc->db->volume_desc->mem_catalogue->epoch;
-		node->numberOfEntriesInNode = 0;
+		node->num_entries = 0;
 		node->fragmentation = 0;
 		node->v1 = 0;
 		node->v2 = 0;
@@ -127,23 +127,6 @@ void _ru_append_pivot_to_index(struct krm_region_desc *r_desc, node_header *left
 		entries_limit = r_desc->m_state->entries_in_last_node[node_height];
 	}
 
-	if (r_desc->m_state->last_node_per_level[node_height]->numberOfEntriesInNode == entries_limit) {
-		new_node = _ru_create_tree_node(r_desc, tree_id, node_height, internalNode);
-		/*add pivot to index node, right rotate*/
-		pivot_for_the_upper_level =
-			(void *)(uint64_t)r_desc->m_state->last_node_per_level[node_height] + sizeof(node_header) +
-			((r_desc->m_state->last_node_per_level[node_height]->numberOfEntriesInNode - 1) * 2 *
-			 sizeof(uint64_t)) +
-			sizeof(uint64_t);
-		pivot_for_the_upper_level = (void *)MAPPED + *(uint64_t *)pivot_for_the_upper_level;
-
-		_ru_append_pivot_to_index(r_desc, r_desc->m_state->last_node_per_level[node_height],
-					  pivot_for_the_upper_level, new_node, tree_id, node_height + 1);
-
-		--r_desc->m_state->last_node_per_level[node_height]->numberOfEntriesInNode;
-		r_desc->m_state->last_node_per_level[node_height] = new_node;
-	}
-
 	/*append the pivot  to the private key log and add the addr*/
 	key_len = *(uint32_t *)pivot;
 	if (r_desc->m_state->last_node_per_level[node_height]->key_log_size % KEY_BLOCK_SIZE == 0)
@@ -177,15 +160,6 @@ void _ru_append_pivot_to_index(struct krm_region_desc *r_desc, node_header *left
 	memcpy(key_addr, pivot, sizeof(uint32_t) + key_len); /*key length */
 	r_desc->m_state->last_node_per_level[node_height]->key_log_size += sizeof(uint32_t) + key_len;
 
-	/*finally add the pivot entry*/
-	void *addr = (void *)((uint64_t)r_desc->m_state->last_node_per_level[node_height] + sizeof(node_header) +
-			      r_desc->m_state->last_node_per_level[node_height]->numberOfEntriesInNode * 2 *
-				      sizeof(uint64_t));
-	*(uint64_t *)addr = (uint64_t)left_brother - MAPPED;
-	*(uint64_t *)(addr + sizeof(uint64_t)) = (uint64_t)key_addr - MAPPED;
-	*(uint64_t *)(addr + (2 * sizeof(uint64_t))) = (uint64_t)right_brother - MAPPED;
-
-	++r_desc->m_state->last_node_per_level[node_height]->numberOfEntriesInNode;
 	return;
 }
 #if 0

@@ -294,7 +294,7 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 	node = level_sc->root;
 	read_lock_node(level_sc, node);
 
-	if (node->type == leafRootNode && node->numberOfEntriesInNode == 0) {
+	if (node->type == leafRootNode && node->num_entries == 0) {
 		/*we seek in an empty tree*/
 		read_unlock_node(level_sc, node);
 		return END_OF_DATABASE;
@@ -303,8 +303,8 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 	while (node->type != leafNode && node->type != leafRootNode) {
 		inode = (index_node *)node;
 		start_idx = 0;
-		end_idx = inode->header.numberOfEntriesInNode - 1;
-		//middle = (start_idx + end_idx) / 2;
+		end_idx = inode->header.num_entries - 1;
+		middle = (start_idx + end_idx) / 2;
 
 		while (1) {
 			middle = (start_idx + end_idx) / 2;
@@ -329,9 +329,10 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 			}
 		}
 
+		assert(middle < (int64_t)node->num_entries);
 		element.node = node;
 		element.guard = 0;
-		int num_entries = node->numberOfEntriesInNode;
+		int num_entries = node->num_entries;
 		/*the path we need to follow*/
 		if (ret <= 0)
 			node = (node_header *)(MAPPED + inode->p[middle].right[0]);
@@ -406,7 +407,7 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 	}
 
 	/*further checks*/
-	if (middle <= 0 && node->numberOfEntriesInNode > 1) {
+	if (middle <= 0 && node->num_entries > 1) {
 		element.node = node;
 		element.idx = 0;
 		element.leftmost = 1;
@@ -415,7 +416,7 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 		// log_debug("Leftmost boom");
 		stack_push(&(level_sc->stack), element);
 		middle = 0;
-	} else if (middle >= (int64_t)node->numberOfEntriesInNode - 1) {
+	} else if (middle >= (int64_t)node->num_entries - 1) {
 		//log_info("rightmost");
 		element.node = node;
 		element.idx = 0;
@@ -423,7 +424,7 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 		element.rightmost = 1;
 		element.guard = 0;
 		stack_push(&(level_sc->stack), element);
-		middle = node->numberOfEntriesInNode - 1;
+		middle = node->num_entries - 1;
 	} else {
 		// log_info("middle is %d", middle);
 		element.node = node;
@@ -592,20 +593,19 @@ int32_t _get_next_KV(level_scanner *sc)
 				stack_top.leftmost = 0;
 
 				if (stack_top.node->type == leafNode || stack_top.node->type == leafRootNode) {
-					// log_info("got a leftmost leaf advance");
-					if (stack_top.node->numberOfEntriesInNode > 1) {
+					if (stack_top.node->num_entries > 1) {
 						idx = 1;
 						stack_top.idx = 1;
-						if (node->numberOfEntriesInNode == 2)
-							stack_top.rightmost = 1;
 						node = stack_top.node;
+						if (node->num_entries == 2)
+							stack_top.rightmost = 1;
 						stack_push(&sc->stack, stack_top);
 						break;
 					} else {
 						stack_top = stack_pop(&(sc->stack));
 						if (!stack_top.guard) {
-							// log_debug("rightmost in stack throw and continue type %s",
-							//	  node_type(stack_top.node->type));
+							//log_debug("rightmost in stack throw and continue type %s",
+							// node_type(stack_top.node->type));
 							continue;
 						} else
 							return END_OF_DATABASE;
@@ -614,7 +614,7 @@ int32_t _get_next_KV(level_scanner *sc)
 					// log_debug("Calculate and push type %s",
 					// node_type(stack_top.node->type));
 					/*special case applies only for the root*/
-					if (stack_top.node->numberOfEntriesInNode == 1)
+					if (stack_top.node->num_entries == 1)
 						stack_top.rightmost = 1;
 					stack_top.idx = 0;
 					stack_push(&sc->stack, stack_top);
@@ -637,7 +637,7 @@ int32_t _get_next_KV(level_scanner *sc)
 				// node_type(stack_top.node->type),
 				//	  stack_top.idx, stack_top.node->numberOfEntriesInNode);
 				++stack_top.idx;
-				if (stack_top.idx >= stack_top.node->numberOfEntriesInNode - 1)
+				if (stack_top.idx >= stack_top.node->num_entries - 1)
 					stack_top.rightmost = 1;
 			}
 			stack_push(&sc->stack, stack_top);
@@ -693,7 +693,7 @@ int32_t _get_next_KV(level_scanner *sc)
 		/*pointer second*/
 		//*(uint64_t *)(sc->keyValue + PREFIX_SIZE) = MAPPED + lnode->pointer[idx];
 		switch (db_desc->levels[level_id].node_layout) {
-		case STATIC_LEAF: {
+		case STATIC_LEAF:;
 			struct bt_static_leaf_node *slnode = (struct bt_static_leaf_node *)node;
 			struct bt_static_leaf_structs src;
 			//struct bt_leaf_entry *leaf_entry = sc->keyValue;
@@ -706,16 +706,19 @@ int32_t _get_next_KV(level_scanner *sc)
 			/* leaf_entry->pointer = (uint64_t)REAL_ADDRESS(leaf_entry->pointer); */
 			/* log_info("GONE HERE1 %d ", *(uint32_t *)sc->keyValue); */
 			break;
-		}
+
 		case DYNAMIC_LEAF:;
 			struct bt_dynamic_leaf_node *dlnode = (struct bt_dynamic_leaf_node *)node;
 			struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(dlnode);
-			switch (slot_array[idx].bitmap) {
+			switch (KV_INPLACE /* slot_array[idx].bitmap */) {
 			case KV_INPLACE:
 				sc->keyValue = get_kv_offset(dlnode, db_desc->levels[level_id].leaf_size,
 							     slot_array[idx].index);
+				//log_info("offset %d",slot_array[idx].index);
 				break;
+
 			case KV_INLOG: {
+				assert(0);
 				struct bt_leaf_entry *kv_entry = (struct bt_leaf_entry *)get_kv_offset(
 					dlnode, db_desc->levels[level_id].leaf_size, slot_array[idx].index);
 				sc->keyValue = REAL_ADDRESS(kv_entry->pointer);
@@ -725,7 +728,12 @@ int32_t _get_next_KV(level_scanner *sc)
 				assert(0);
 				break;
 			}
+			break;
 		}
+		assert(idx < node->num_entries);
+		assert(*(uint32_t *)sc->keyValue < 100);
+
+		//log_info("key %d x %d numberofentries %llu %d", *(uint32_t*)sc->keyValue, x, node->numberOfEntriesInNode, idx);
 	} else {
 		/*normal scanner*/
 		/* sc->keyValue = (void *)MAPPED + lnode->pointer[idx]; */
