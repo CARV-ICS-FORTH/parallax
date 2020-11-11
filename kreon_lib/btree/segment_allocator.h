@@ -29,11 +29,10 @@ void seg_free_leaf_node(volume_descriptor *volume_desc, level_descriptor *level_
 struct bt_static_leaf_node *seg_get_static_leaf_node(volume_descriptor *volume_desc, level_descriptor *level_desc,
 						     char reason);
 
-
 struct bt_static_leaf_node *seg_get_static_leaf_node(volume_descriptor *volume_desc, level_descriptor *level_desc,
 						     char reason);
 
-char *seg_get_dynamic_leaf_node(volume_descriptor *volume_desc, level_descriptor *level_desc);
+struct bt_dynamic_leaf_node *seg_get_dynamic_leaf_node(volume_descriptor *volume_desc, level_descriptor *level_desc);
 /*log related*/
 segment_header *seg_get_raw_log_segment(volume_descriptor *volume_desc);
 void free_raw_segment(volume_descriptor *volume_desc, segment_header *segment);

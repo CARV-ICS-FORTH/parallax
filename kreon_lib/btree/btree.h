@@ -206,7 +206,7 @@ enum bsearch_status { INSERT = 0, FOUND = 1, ERROR = 2 };
 #define LEVEL7_LEAF_SIZE (PAGE_SIZE)
 
 /* Possible options for these defines are the values in enum bt_layout */
-#define LEVEL0_LEAF_LAYOUT STATIC_LEAF
+#define LEVEL0_LEAF_LAYOUT DYNAMIC_LEAF
 #define LEVEL1_LEAF_LAYOUT STATIC_LEAF
 #define LEVEL2_LEAF_LAYOUT STATIC_LEAF
 #define LEVEL3_LEAF_LAYOUT STATIC_LEAF

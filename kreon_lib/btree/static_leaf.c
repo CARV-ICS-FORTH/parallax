@@ -107,9 +107,12 @@ void binary_search_static_leaf(struct bt_static_leaf_node const *leaf, level_des
 			break;
 		}
 	}
-
 	if (numberOfEntriesInNode) {
 	CHECK_IFKV_FOUND:
+		assert(result->middle >= 0 && result->middle <= numberOfEntriesInNode);
+		if (result->middle == numberOfEntriesInNode)
+			return;
+
 		pos = src.slot_array[result->middle].index;
 		leaf_key_buf = REAL_ADDRESS(src.kv_entries[pos].pointer);
 		ret = _tucana_key_cmp(leaf_key_buf, key_buf, KV_FORMAT, KV_FORMAT);
@@ -157,7 +160,7 @@ void *find_key_in_static_leaf(const struct bt_static_leaf_node *leaf, level_desc
 	return NULL;
 }
 
-void shift_right_slot_array(struct bt_static_leaf_node *leaf, uint32_t middle, level_descriptor *level)
+static void shift_right_slot_array(struct bt_static_leaf_node *leaf, uint32_t middle, level_descriptor *level)
 {
 	struct bt_static_leaf_structs src;
 	const size_t num_items = leaf->header.numberOfEntriesInNode - middle;
@@ -465,6 +468,10 @@ int8_t insert_in_static_leaf(struct bt_static_leaf_node *leaf, bt_insert_req *re
 	struct splice *key = req->key_value_buf;
 	struct bt_leaf_entry_bitmap *bitmap_end;
 	int kventry_slot = -1;
+	static int x = 0;
+	x++;
+	/* if(x == 2) */
+	/* 	BREAKPOINT; */
 
 	if (unlikely(leaf->header.numberOfEntriesInNode == 0))
 		init_static_leaf_metadata(leaf, level);
