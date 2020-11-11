@@ -183,11 +183,6 @@ typedef struct volume_descriptor {
 	volatile char snap_preemption;
 } volume_descriptor;
 
-typedef struct key_deletion_request {
-	uint64_t epoch;
-	void *deleted_kv_addr;
-} key_deletion_request;
-
 /*
  * @dev_name The device name
  * @start The beginning offset in bytes
@@ -205,7 +200,7 @@ void allocator_init(volume_descriptor *volume_desc);
 void mark_page(volume_descriptor *, void *, char, uint64_t *);
 
 void set_priority(uint64_t pageno, char allocation_code, uint64_t num_bytes);
-void *allocate(void *_volume_desc, uint64_t num_bytes, int extensions, char allocation_code);
+void *allocate(void *_volume_desc, uint64_t num_bytes);
 void *allocate_segment(void *_handle, uint64_t num_bytes, int level_id, char allocation_code);
 
 void free_block(void *_volume_desc, void *block_address, uint32_t length, int height);

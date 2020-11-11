@@ -67,7 +67,6 @@ void _sent_flush_command_to_replica(db_descriptor *db_desc, int padded_space, in
 struct bt_rebalance_result split_leaf(bt_insert_req *req, leaf_node *node);
 
 /*Buffering aware functions*/
-void *__find_key(db_handle *handle, void *key, char SEARCH_MODE);
 void spill_buffer(void *_spill_req);
 
 /*functions used for debugging*/
@@ -207,6 +206,8 @@ int prefix_compare(char *l, char *r, size_t prefix_size)
 }
 
 /*XXX TODO XXX REMOVE HEIGHT UNUSED VARIABLE*/
+
+#if 0
 void free_buffered(void *_handle, void *address, uint32_t num_bytes, int height)
 {
 	(void)_handle;
@@ -214,7 +215,6 @@ void free_buffered(void *_handle, void *address, uint32_t num_bytes, int height)
 	(void)num_bytes;
 	(void)height;
 	log_info("gesalous fix update free_buffered");
-#if 0
 	db_handle *handle = (db_handle *)_handle;
 	uint64_t segment_id = (uint64_t)address - (uint64_t)handle->volume_desc->bitmap_end;
 	segment_id = segment_id - (segment_id % BUFFER_SEGMENT_SIZE);
@@ -243,9 +243,9 @@ void free_buffered(void *_handle, void *address, uint32_t num_bytes, int height)
 		}
 	}
 #endif
-#endif
-	return;
+return;
 }
+#endif
 
 /**
  * @param   index_key: address of the index_key
@@ -1136,14 +1136,14 @@ void spill_database(db_handle *handle)
 	RWLOCK_UNLOCK(&handle->db_desc->guard_level_0.rx_lock);
 #endif
 }
+#if 0
 
 /*method for closing a database*/
 void flush_volume(volume_descriptor *volume_desc, char force_spill)
 {
 	(void)volume_desc;
 	(void)force_spill;
-#if 0
-  db_descriptor *db_desc;
+	db_descriptor *db_desc;
 	db_handle *handles;
 	handles = (db_handle *)malloc(sizeof(db_handle) * volume_desc->open_databases->size);
 
@@ -1187,8 +1187,8 @@ void flush_volume(volume_descriptor *volume_desc, char force_spill)
 	snapshot(volume_desc);
 	free(handles);
 	return;
-#endif
 }
+#endif
 
 uint8_t insert_key_value(db_handle *handle, void *key, void *value, uint32_t key_size, uint32_t value_size)
 {
@@ -1486,25 +1486,6 @@ static inline struct lookup_reply lookup_in_tree(db_descriptor *db_desc, void *k
 
 	/* key_addr_in_leaf = __find_key_addr_in_leaf((leaf_node *)curr_node, (struct splice *)key); */
 
-	if (key_addr_in_leaf == NULL) {
-		//log_info("key not found %s v1 %llu v2 %llu",((struct splice *)key)->data,curr_v2, curr_node->v1);
-		rep.addr = NULL;
-	} else {
-		key_addr_in_leaf = (void *)MAPPED + *(uint64_t *)key_addr_in_leaf;
-		index_key_len = *(uint32_t *)key_addr_in_leaf;
-		rep.addr = (void *)(uint64_t)key_addr_in_leaf + 4 + index_key_len;
-	}
-	curr_v1 = curr_node->v1;
-
-	if (curr_v1 != curr_v2) {
-		// log_info("failed at node height %d v1 %llu v2 % llu\n",
-		// curr_node->height, (LLU)curr_node->v1,
-		//	 (LLU)curr_node->v2);
-		rep.addr = NULL;
-		rep.lc_failed = 1;
-		return rep;
-	}
-
 	switch (db_desc->levels[level_id].node_layout) {
 	case DYNAMIC_LEAF:
 		if (ret_result.kv) {
@@ -1539,17 +1520,26 @@ static inline struct lookup_reply lookup_in_tree(db_descriptor *db_desc, void *k
 		}
 		break;
 	}
+	curr_v1 = curr_node->v1;
+
+	if (curr_v1 != curr_v2) {
+		// log_info("failed at node height %d v1 %llu v2 % llu\n",
+		// curr_node->height, (LLU)curr_node->v1,
+		//	 (LLU)curr_node->v2);
+		rep.addr = NULL;
+		rep.lc_failed = 1;
+		return rep;
+	}
 
 	return rep;
 }
 /*this function will be reused in various places such as deletes*/
-void *__find_key(db_handle *handle, void *key, char SEARCH_MODE)
+void *__find_key(db_handle *handle, void *key)
 {
 	struct lookup_reply rep = { .addr = NULL, .lc_failed = 0 };
 	node_header *root_w;
 	node_header *root_r;
 	uint32_t tries;
-	(void)SEARCH_MODE;
 
 	/*again special care for L0*/
 	uint8_t tree_id = handle->db_desc->levels[0].active_tree;
@@ -1634,12 +1624,12 @@ void *find_key(db_handle *handle, void *key, uint32_t key_size)
 		key_buf = &(buf[0]);
 		*(uint32_t *)key_buf = key_size;
 		memcpy((void *)key_buf + sizeof(uint32_t), key, key_size);
-		value = __find_key(handle, key_buf, SEARCH_DIRTY_TREE);
+		value = __find_key(handle, key_buf);
 	} else {
 		key_buf = malloc(key_size + sizeof(uint32_t));
 		*(uint32_t *)key_buf = key_size;
 		memcpy((void *)key_buf + sizeof(uint32_t), key, key_size);
-		value = __find_key(handle, key_buf, SEARCH_DIRTY_TREE);
+		value = __find_key(handle, key_buf);
 		free(key_buf);
 	}
 
@@ -1768,6 +1758,7 @@ void insert_key_at_index(bt_insert_req *ins_req, index_node *node, node_header *
 			log_fatal("Cannot host index key larger than KEY_BLOCK_SIZE");
 			exit(EXIT_FAILURE);
 		}
+
 		d_header = seg_get_IN_log_block(handle->volume_desc,
 						&handle->db_desc->levels[ins_req->metadata.level_id],
 						ins_req->metadata.tree_id, allocation_code);
@@ -2133,7 +2124,6 @@ static uint8_t concurrent_insert(bt_insert_req *ins_req)
 	node_header *son;
 	unsigned size; /*Size of upper_level_nodes*/
 	unsigned release; /*Counter to know the position that releasing should begin*/
-	uint32_t order;
 
 	lock_table *guard_of_level;
 	int64_t *num_level_writers;
@@ -2226,11 +2216,6 @@ release_and_retry:
 	son = db_desc->levels[level_id].root_w[ins_req->metadata.tree_id];
 
 	while (1) {
-		if (son->type == leafNode || son->type == leafRootNode)
-			order = db_desc->levels[level_id].leaf_offsets.kv_entries;
-		else
-			order = index_order;
-
 		/*Check if father is safe it should be*/
 		if (father) {
 			unsigned int father_order;
@@ -2242,7 +2227,8 @@ release_and_retry:
 			assert(father->numberOfEntriesInNode < father_order);
 		}
 
-		uint32_t temp_leaf_size = get_leaf_size(order, db_desc->levels[level_id].node_layout,
+		uint32_t temp_leaf_size = get_leaf_size(db_desc->levels[level_id].leaf_offsets.kv_entries,
+							db_desc->levels[level_id].node_layout,
 							db_desc->levels[level_id].leaf_size);
 
 		if (is_split_needed(son, db_desc->levels[level_id].node_layout, temp_leaf_size,
@@ -2275,6 +2261,7 @@ release_and_retry:
 			if (father != NULL) {
 				/*lamport counter*/
 				father->v1++;
+
 				insert_key_at_index(ins_req, (index_node *)father, split_res.left_child,
 						    split_res.right_child, split_res.middle_key_buf, KEY_LOG_EXPANSION);
 
@@ -2309,6 +2296,7 @@ release_and_retry:
 			/*Cow*/
 			if (son->height > 0) {
 				node_copy = (node_header *)seg_get_index_node_header(
+
 					ins_req->metadata.handle->volume_desc, &db_desc->levels[level_id],
 					ins_req->metadata.tree_id, COW_FOR_INDEX);
 
@@ -2320,6 +2308,7 @@ release_and_retry:
 				node_copy = (node_header *)seg_get_leaf_node_header(
 					ins_req->metadata.handle->volume_desc, &db_desc->levels[level_id],
 					ins_req->metadata.tree_id, COW_FOR_LEAF);
+
 				memcpy(node_copy, son, db_desc->levels[level_id].leaf_size);
 				/* Add static and dynamic layout free operations*/
 				seg_free_leaf_node(ins_req->metadata.handle->volume_desc, &db_desc->levels[level_id],
@@ -2354,13 +2343,16 @@ release_and_retry:
 		}
 		/*Node acquired */
 		son = (node_header *)(MAPPED + *(uint64_t *)next_addr);
-		if (son->type == leafNode || son->type == leafRootNode)
-			order = db_desc->levels[level_id].leaf_offsets.kv_entries;
-		else
-			order = index_order;
 		/*if the node is not safe hold its ancestor's lock else release locks from
 		 * ancestors */
-		if (!(son->epoch <= volume_desc->dev_catalogue->epoch || son->numberOfEntriesInNode >= order)) {
+
+		temp_leaf_size = get_leaf_size(db_desc->levels[level_id].leaf_offsets.kv_entries,
+					       db_desc->levels[level_id].node_layout,
+					       db_desc->levels[level_id].leaf_size);
+
+		if (!(son->epoch <= volume_desc->dev_catalogue->epoch ||
+		      is_split_needed(son, db_desc->levels[level_id].node_layout, temp_leaf_size,
+				      ins_req->metadata.kv_size))) {
 			_unlock_upper_levels(upper_level_nodes, size - 1, release);
 			release = size - 1;
 		}
@@ -2395,7 +2387,6 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 
 	unsigned size; /*Size of upper_level_nodes*/
 	unsigned release; /*Counter to know the position that releasing should begin*/
-	uint32_t order;
 
 	// remove some warnings here
 	uint32_t level_id;
@@ -2449,12 +2440,8 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 	upper_level_nodes[size++] = lock;
 	son = db_desc->levels[level_id].root_w[ins_req->metadata.tree_id];
 	while (1) {
-		if (son->type == leafNode || son->type == leafRootNode)
-			order = db_desc->levels[level_id].leaf_offsets.kv_entries;
-		else
-			order = index_order;
-
-		uint32_t temp_leaf_size = get_leaf_size(order, db_desc->levels[level_id].node_layout,
+		uint32_t temp_leaf_size = get_leaf_size(db_desc->levels[level_id].leaf_offsets.kv_entries,
+							db_desc->levels[level_id].node_layout,
 							db_desc->levels[level_id].leaf_size);
 
 		if (is_split_needed(son, db_desc->levels[level_id].node_layout, temp_leaf_size,
@@ -2501,8 +2488,9 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 		exit(EXIT_FAILURE);
 	}
 
-	uint32_t temp_leaf_size =
-		get_leaf_size(order, db_desc->levels[level_id].node_layout, db_desc->levels[level_id].leaf_size);
+	uint32_t temp_leaf_size = get_leaf_size(db_desc->levels[level_id].leaf_offsets.kv_entries,
+						db_desc->levels[level_id].node_layout,
+						db_desc->levels[level_id].leaf_size);
 
 	if (is_split_needed(son, db_desc->levels[level_id].node_layout, temp_leaf_size, ins_req->metadata.kv_size) ||
 	    son->epoch <= volume_desc->dev_catalogue->epoch) {

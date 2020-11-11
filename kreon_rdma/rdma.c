@@ -57,6 +57,71 @@ void force_send_ack(struct connection_rdma *conn);
 void rdma_thread_events_ctx(void *args);
 
 void on_completion_server(struct rdma_message_context *msg_ctx);
+void *poll_cq(void *arg);
+
+static void *client_spinning_thread_kernel(void *arg);
+
+static void _wait_for_reset_buffer_ack(connection_rdma *conn)
+{
+	int dummy = 1;
+	size_t payload_end = conn->rdma_memory_regions->memory_region_length - MESSAGE_SEGMENT_SIZE;
+	/*wait for RESET_BUFER_ACK*/
+	msg_header *reset_buffer_ack =
+		(msg_header *)((uint64_t)conn->rdma_memory_regions->remote_memory_buffer + payload_end);
+	while (reset_buffer_ack->receive != RESET_BUFFER_ACK) {
+		++dummy;
+		if (dummy % 1000000000 == 0) {
+			DPRINT("\t Waiting for RESET_BUFFER_ACK\n");
+			dummy = 1;
+		}
+	}
+	reset_buffer_ack->receive = 0;
+}
+
+void _send_reset_buffer_ack(struct connection_rdma *conn)
+{
+	struct ibv_send_wr *bad_wr_header;
+	struct ibv_send_wr wr_header;
+	struct ibv_sge sge_header;
+	msg_header *msg;
+	size_t payload_end = conn->rdma_memory_regions->memory_region_length - MESSAGE_SEGMENT_SIZE;
+	//while(conn->pending_received_messages != 0){
+	//	if(++a%1000000000 == 0){
+	//		DPRINT("\tWaiting for processing of received messages to send RESET_BUFFER_ACK pending messages %llu\n",(LLU)conn->pending_received_messages);
+	//	}
+	//}
+
+	msg = (msg_header *)((uint64_t)conn->rdma_memory_regions->local_memory_buffer + payload_end);
+	memset(msg, 0, sizeof(msg_header));
+	msg->type = RESET_BUFFER_ACK;
+	msg->receive = RESET_BUFFER_ACK;
+	msg->pay_len = 0;
+	msg->padding_and_tail = 0;
+
+	memset(&wr_header, 0, sizeof(wr_header));
+	memset(&sge_header, 0, sizeof(sge_header));
+	wr_header.wr_id = (uint64_t)msg;
+	wr_header.opcode = IBV_WR_RDMA_WRITE;
+	wr_header.sg_list = &sge_header;
+	wr_header.num_sge = 1;
+	wr_header.send_flags = IBV_SEND_SIGNALED;
+	wr_header.wr.rdma.remote_addr = ((uint64_t)conn->peer_mr->addr + payload_end);
+	wr_header.wr.rdma.rkey = conn->peer_mr->rkey;
+
+	sge_header.addr = (uint64_t)msg;
+	sge_header.length = TU_HEADER_SIZE;
+	sge_header.lkey = conn->rdma_memory_regions->local_memory_region->lkey;
+
+	if (ibv_post_send(conn->qp, &wr_header, &bad_wr_header) != 0) {
+		DPRINT("FATAL RDMA write failed, reason follows-->\n");
+		perror("Reason: ");
+		DPRINT("payload length of failed wr is %d and local addr %llu msg len %d\n",
+		       bad_wr_header->sg_list->length, (LLU)bad_wr_header->sg_list->addr, msg->pay_len);
+		raise(SIGINT);
+		exit(EXIT_FAILURE);
+	}
+	return;
+}
 
 void init_rdma_message(connection_rdma *conn, msg_header *msg, uint32_t message_type, uint32_t message_size,
 		       uint32_t message_payload_size, uint32_t padding)
@@ -1184,6 +1249,7 @@ uint32_t wait_for_payload_arrival(msg_header *hdr)
 	return message_size;
 }
 
+#if 0
 static void __stop_client(connection_rdma *conn)
 {
 	if (conn->status == STOPPED_BY_THE_SERVER) {
@@ -1214,6 +1280,7 @@ static void __stop_client(connection_rdma *conn)
 	DPRINT("addr = %p, length = %lu KB, rkey = %u\n", new_mr->addr, new_mr->length / 1024, new_mr->rkey);
 	__send_rdma_message(conn, msg, NULL);
 }
+#endif
 
 void _update_client_rendezvous_location(connection_rdma *conn, int message_size)
 {
@@ -1267,7 +1334,6 @@ void _update_rendezvous_location(connection_rdma *conn, int message_size)
 		}
 	}
 }
-
 
 void close_and_free_RDMA_connection(struct channel_rdma *channel, struct connection_rdma *conn)
 {

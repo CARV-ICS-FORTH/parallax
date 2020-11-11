@@ -4,6 +4,7 @@
 
 LIST *init_list(void (*destroy_node)(NODE *node))
 {
+	(void)destroy_node;
 	LIST *list = (LIST *)malloc(sizeof(LIST));
 	list->size = 0;
 	list->first = NULL;

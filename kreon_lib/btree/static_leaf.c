@@ -191,7 +191,7 @@ void print_static_leaf(const struct bt_static_leaf_node *leaf, level_descriptor 
 
 int check_static_leaf_split(const struct bt_static_leaf_node *leaf, uint64_t node_capacity)
 {
-	return leaf->header.numberOfEntriesInNode >= node_capacity ? 1 : 0;
+	return leaf->header.numberOfEntriesInNode >= node_capacity;
 }
 
 struct bt_rebalance_result split_static_leaf(struct bt_static_leaf_node *leaf, bt_insert_req *req)
@@ -208,7 +208,7 @@ struct bt_rebalance_result split_static_leaf(struct bt_static_leaf_node *leaf, b
 
 	/*cow check*/
 	if (leaf->header.epoch <= volume_desc->dev_catalogue->epoch) {
-		leaf_copy = seg_get_leaf_node_header(volume_desc, level, req->metadata.tree_id, COW_FOR_LEAF);
+		leaf_copy = seg_get_leaf_node(volume_desc, level, req->metadata.tree_id, 0);
 		memcpy(leaf_copy, leaf, level->leaf_size);
 		leaf_copy->header.epoch = volume_desc->mem_catalogue->epoch;
 		leaf = leaf_copy;
@@ -217,7 +217,7 @@ struct bt_rebalance_result split_static_leaf(struct bt_static_leaf_node *leaf, b
 	rep.left_slchild = leaf;
 
 	/*Fix Right leaf metadata*/
-	rep.right_slchild = seg_get_leaf_node_header(volume_desc, level, req->metadata.tree_id, LEAF_SPLIT);
+	rep.right_slchild = seg_get_leaf_node(volume_desc, level, req->metadata.tree_id, 0);
 	init_static_leaf_metadata(rep.right_slchild, level);
 	retrieve_static_leaf_structures(rep.right_slchild, &right_leaf_src, level);
 	rep.middle_key_buf = REAL_ADDRESS(
@@ -468,10 +468,6 @@ int8_t insert_in_static_leaf(struct bt_static_leaf_node *leaf, bt_insert_req *re
 	struct splice *key = req->key_value_buf;
 	struct bt_leaf_entry_bitmap *bitmap_end;
 	int kventry_slot = -1;
-	static int x = 0;
-	x++;
-	/* if(x == 2) */
-	/* 	BREAKPOINT; */
 
 	if (unlikely(leaf->header.numberOfEntriesInNode == 0))
 		init_static_leaf_metadata(leaf, level);

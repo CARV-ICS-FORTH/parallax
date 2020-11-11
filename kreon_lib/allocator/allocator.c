@@ -56,13 +56,13 @@ static void check(int test, const char *message, ...)
 }
 
 void __add_log_entry(volume_descriptor *volume_desc, void *address, uint32_t length, char type_of_entry);
-void mount_volume(char *volume_name, int64_t start, int64_t size); /*Called once from a region server*/
+void mount_volume(char *volume_name, int64_t start); /*Called once from a region server*/
 void clean_log_entries(void *volume_desc);
 
 int32_t lread(int32_t fd, off_t offset, int whence, void *ptr, size_t size);
 int32_t lwrite(int32_t fd, off_t offset, int whence, void *ptr, ssize_t size);
 
-void mount_volume(char *volume_name, int64_t start, int64_t unused_size)
+void mount_volume(char *volume_name, int64_t start)
 {
 	int64_t device_size;
 	MUTEX_LOCK(&EUTROPIA_LOCK);
@@ -589,7 +589,7 @@ void set_priority(uint64_t pageno, char allocation_code, uint64_t num_bytes)
 	}
 }
 
-void *allocate(void *_volume_desc, uint64_t num_bytes, int unused, char allocation_code)
+void *allocate(void *_volume_desc, uint64_t num_bytes)
 {
 	volume_descriptor *volume_desc = (volume_descriptor *)_volume_desc;
 	int64_t round[7];
@@ -874,7 +874,7 @@ void allocator_init(volume_descriptor *volume_desc)
 	int fake_blk = 0;
 	int ret;
 
-	mount_volume(volume_desc->volume_name, 0, 0 /* unused */); /*if not mounted */
+	mount_volume(volume_desc->volume_name, 0); /*if not mounted */
 
 	ret = ioctl(FD, FAKE_BLK_IOC_TEST_CAP);
 	if (ret == 0) {

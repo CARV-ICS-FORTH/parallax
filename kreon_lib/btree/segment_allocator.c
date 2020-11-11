@@ -31,7 +31,7 @@ static void *get_space(volume_descriptor *volume_desc, level_descriptor *level_d
 	if (available_space < size) {
 		/*we need to go to the actual allocator to get space*/
 		MUTEX_LOCK(&volume_desc->allocator_lock);
-		new_segment = (segment_header *)allocate(volume_desc, SEGMENT_SIZE, -1, reason);
+		new_segment = (segment_header *)allocate(volume_desc, SEGMENT_SIZE);
 		MUTEX_UNLOCK(&volume_desc->allocator_lock);
 		if (segment_id) {
 			/*chain segments*/
@@ -221,7 +221,7 @@ segment_header *seg_get_raw_log_segment(volume_descriptor *volume_desc)
 {
 	segment_header *sg;
 	MUTEX_LOCK(&volume_desc->allocator_lock);
-	sg = (segment_header *)allocate(volume_desc, SEGMENT_SIZE, -1, KV_LOG_EXPANSION);
+	sg = (segment_header *)allocate(volume_desc, SEGMENT_SIZE);
 	MUTEX_UNLOCK(&volume_desc->allocator_lock);
 	return sg;
 }
@@ -269,7 +269,7 @@ void *get_space_for_system(volume_descriptor *volume_desc, uint32_t size)
 	if (available_space < size) {
 		/*we need to go to the actual allocator to get space*/
 
-		new_segment = (segment_header *)allocate(volume_desc, SEGMENT_SIZE, -1, SYSTEM_ID);
+		new_segment = (segment_header *)allocate(volume_desc, SEGMENT_SIZE);
 
 		if (segment_id) {
 			/*chain segments*/

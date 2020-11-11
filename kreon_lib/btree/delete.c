@@ -70,6 +70,7 @@ retry:
 					node_copy = (node_header *)seg_get_index_node_header(
 						volume_desc, &db_desc->levels[req->metadata.level_id],
 						req->metadata.tree_id, COW_FOR_INDEX);
+
 					memcpy(node_copy, son, INDEX_NODE_SIZE);
 					seg_free_index_node_header(volume_desc,
 								   &db_desc->levels[req->metadata.level_id],

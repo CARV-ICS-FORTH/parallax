@@ -1142,11 +1142,9 @@ _tucana_region_S *get_region(void *key, int key_len)
 	return region;
 }
 #endif
-
+#if 0
 static void kreonR_spill_worker(void *_spill_task_desc)
 {
-// gesalous leave it for later
-#if 0
 	kv_location location;
 	spill_task_descriptor *spill_task_desc = (spill_task_descriptor *)_spill_task_desc;
 	bt_spill_request *spill_req = spill_task_desc->spill_req;
@@ -1433,8 +1431,8 @@ static void kreonR_spill_worker(void *_spill_task_desc)
 			exit(EXIT_FAILURE);
 		}
 	}
-#endif
 }
+#endif
 
 #ifdef TIERING
 void tiering_compaction_check(_tucana_region_S *region, int level_id)
@@ -2494,7 +2492,7 @@ static void handle_task(struct krm_server_desc *mydesc, struct krm_work_task *ta
 			uint32_t new_size = put_offt_req->offset + sizeof(msg_put_key) + K->key_size +
 					    sizeof(msg_put_value) + V->value_size;
 			if (new_size <= SEGMENT_SIZE - sizeof(segment_header)) {
-				value = __find_key(r_desc->db, put_offt_req->kv, SEARCH_DIRTY_TREE);
+				value = __find_key(r_desc->db, put_offt_req->kv);
 
 				void *new_value = malloc(SEGMENT_SIZE - sizeof(segment_header)); /*remove this later
    when test passes*/
@@ -2687,9 +2685,9 @@ static void handle_task(struct krm_server_desc *mydesc, struct krm_work_task *ta
 		task->reply_msg = (void *)((uint64_t)task->conn->rdma_memory_regions->local_memory_buffer +
 					   (uint64_t)task->msg->reply);
 		get_rep = (msg_get_rep *)((uint64_t)task->reply_msg + sizeof(msg_header));
-		// for (int k = 0; k < 10; k++) {
-		value = __find_key(r_desc->db, &get_req->key_size, SEARCH_DIRTY_TREE);
-		// if (value != NULL)
+		//for (int k = 0; k < 10; k++) {
+		value = __find_key(r_desc->db, &get_req->key_size);
+		//if (value != NULL)
 		//	break;
 		//}
 
