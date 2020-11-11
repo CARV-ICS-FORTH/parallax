@@ -40,6 +40,7 @@ int FD;
 
 int32_t FD; /*GLOBAL FD*/
 static inline void *next_word(volume_descriptor *volume_desc, unsigned char op_code);
+void clean_log_entries(void *volume_desc);
 double log2(double x);
 int ffsl(long int i);
 
@@ -54,13 +55,6 @@ static void check(int test, const char *message, ...)
 		exit(EXIT_FAILURE);
 	}
 }
-
-void __add_log_entry(volume_descriptor *volume_desc, void *address, uint32_t length, char type_of_entry);
-void mount_volume(char *volume_name, int64_t start); /*Called once from a region server*/
-void clean_log_entries(void *volume_desc);
-
-int32_t lread(int32_t fd, off_t offset, int whence, void *ptr, size_t size);
-int32_t lwrite(int32_t fd, off_t offset, int whence, void *ptr, ssize_t size);
 
 void mount_volume(char *volume_name, int64_t start)
 {
