@@ -26,14 +26,14 @@ int _init_level_scanner(level_scanner *level_sc, void *start_key, char seek_mode
  * may
  * result in CORRUPTION :-S
  */
-level_scanner *_init_spill_buffer_scanner(db_handle *handle, node_header *node, void *start_key)
+level_scanner *_init_spill_buffer_scanner(db_handle *handle, int level_id, node_header *node, void *start_key)
 {
-	level_scanner *level_sc;
-	level_sc = malloc(sizeof(level_scanner));
+	level_scanner *level_sc = malloc(sizeof(level_scanner));
+	assert(level_sc);
 	stack_init(&level_sc->stack);
 	level_sc->db = handle;
 	level_sc->root = node;
-
+	level_sc->level_id = level_id;
 	level_sc->type = SPILL_BUFFER_SCANNER;
 	//level_sc->keyValue = (void *)malloc(PREFIX_SIZE + sizeof(uint64_t));
 	/*typicall 20 bytes 8 prefix the address to the KV log

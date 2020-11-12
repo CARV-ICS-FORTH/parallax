@@ -72,7 +72,7 @@ void *getValuePtr(scannerHandle *sc);
  *
  **/
 
-level_scanner *_init_spill_buffer_scanner(db_handle *handle, node_header *node, void *start_key);
+level_scanner *_init_spill_buffer_scanner(db_handle *handle, int level_id, node_header *node, void *start_key);
 int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER_MODE mode);
 
 /**

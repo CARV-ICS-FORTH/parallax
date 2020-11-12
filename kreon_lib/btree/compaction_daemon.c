@@ -249,8 +249,10 @@ void *compaction(void *_comp_req)
 	}
 
 	if (dst_root) {
-		struct level_scanner *level_src = _init_spill_buffer_scanner(&handle, src_root, NULL);
-		struct level_scanner *level_dst = _init_spill_buffer_scanner(&handle, dst_root, NULL);
+		struct level_scanner *level_src =
+			_init_spill_buffer_scanner(&handle, comp_req->src_level, src_root, NULL);
+		struct level_scanner *level_dst =
+			_init_spill_buffer_scanner(&handle, comp_req->dst_level, dst_root, NULL);
 
 		log_info("Src [%u][%u] size = %llu", comp_req->src_level, comp_req->src_tree,
 			 db_desc->levels[comp_req->src_level].level_size[comp_req->src_tree]);

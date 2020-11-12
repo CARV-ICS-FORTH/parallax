@@ -327,8 +327,6 @@ typedef struct level_descriptor {
 	char *split_buffer;
 	struct leaf_node_metadata leaf_offsets;
 	uint64_t actual_level_size;
-	uint64_t max_level_size;
-	uint64_t max_level_size;
 #if MEASURE_SST_USED_SPACE
 	double avg_leaf_used_space;
 	double leaf_used_space;
@@ -383,7 +381,6 @@ typedef struct db_descriptor {
 	uint64_t medium_log_tail_offset;
 	uint64_t small_log_head_offset;
 	uint64_t small_log_tail_offset;
-
 	commit_log_info *commit_log;
 	// uint64_t spilled_keys;
 	int32_t reference_count;

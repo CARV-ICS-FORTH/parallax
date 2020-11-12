@@ -91,7 +91,7 @@ void scankeys_with_spill_scanner(db_handle *hd)
 	else
 		spill_root = db_desc->levels[level_id].root_r[active_tree];
 
-	level_sc = _init_spill_buffer_scanner(hd, spill_root, NULL);
+	level_sc = _init_spill_buffer_scanner(hd, level_id, spill_root, NULL);
 
 	//level_sc = _init_spill_buffer_scanner(hd, spill_req.src_root, spill_req.start_key);
 	assert(level_sc != NULL);

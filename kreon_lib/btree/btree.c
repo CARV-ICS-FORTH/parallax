@@ -455,8 +455,8 @@ bt_spill_request *prepare_compaction_metadata(db_handle *handle, int curr_level_
 		to_spill_tree_id = db_desc->levels[curr_level_id].active_tree;
 		curr_level_size = db_desc->levels[curr_level_id].actual_level_size;
 		assert(curr_level_size >= db_desc->levels[curr_level_id].max_level_size);
-
 		assert(spill_req);
+
 		fill_spill_req(handle, spill_req, curr_level_size, curr_level_id, to_spill_tree_id);
 
 		/*set source*/
@@ -464,7 +464,6 @@ bt_spill_request *prepare_compaction_metadata(db_handle *handle, int curr_level_
 			spill_req->src_root = db_desc->levels[curr_level_id].root_w[to_spill_tree_id];
 		else
 			spill_req->src_root = db_desc->levels[curr_level_id].root_r[to_spill_tree_id];
-
 
 		if (db_desc->levels[curr_level_id].tree_status[spill_req->src_tree] == NO_SPILLING &&
 		    db_desc->levels[dst_level].tree_status[spill_req->dst_tree] == NO_SPILLING) {
@@ -518,7 +517,7 @@ void *compaction_daemon(void *args)
 	db_handle handle = *(db_handle *)args;
 	db_descriptor *db_desc = handle.db_desc;
 	int i, level_is_free, level_compaction_ready, ongoing_compaction, prev_level_compaction;
-	int dest_level_is_full, level_is_full;
+	int dest_level_is_full, level_is_full, trigger_compaction;
 
 	while (1) {
 		for (int level_id = 0; level_id < MAX_LEVELS; ++level_id) {
@@ -561,8 +560,10 @@ void *compaction_daemon(void *args)
 				dest_level_is_full = db_desc->levels[level_id + 1].actual_level_size >=
 						     db_desc->levels[level_id + 1].max_level_size;
 
-				if (!prev_level_compaction && !ongoing_compaction && level_is_full &&
-				    !dest_level_is_full) {
+				trigger_compaction = !prev_level_compaction && !ongoing_compaction && level_is_full &&
+						     !dest_level_is_full;
+
+				if (trigger_compaction) {
 					bt_spill_request *spill_req = prepare_compaction_metadata(&handle, level_id);
 
 					if (spill_req) {
@@ -597,8 +598,10 @@ void *compaction_daemon(void *args)
 			MUTEX_LOCK(&db_desc->compaction_lock);
 			switch (pthread_cond_timedwait(&db_desc->compaction_cond, &db_desc->compaction_lock, &ts)) {
 			case EINVAL:
+				log_fatal("FATAL ERROR :TIMEDWAIT RETURNED EINVAL");
 				assert(0);
 			case EPERM:
+				log_fatal("FATAL ERROR :TIMEDWAIT RETURNED EPERM");
 				assert(0);
 			default:
 				break;
@@ -2082,9 +2085,7 @@ void *_index_node_binary_search(index_node *node, void *key_buf, char query_key_
 	// log_debug("END");
 	return addr;
 }
-
-<<<<<<< HEAD
-||||||| parent of 89bae29... [refactor] Remove level_id from btree nodes
+#if 0
 void spill_buffer(void *_spill_req)
 {
 	db_handle handle;
@@ -2197,6 +2198,7 @@ finish_spill:
 	snapshot(spill_req->volume_desc);
 	free(spill_req);
 }
+#endif
 
 #if 0
 void spill_buffer(void *_spill_req)
