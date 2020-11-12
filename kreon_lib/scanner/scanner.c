@@ -489,11 +489,18 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 			case KV_INPLACE:
 				level_sc->keyValue = get_kv_offset(dlnode, db_desc->levels[level_id].leaf_size,
 								   slot_array[middle].index);
+				log_info("%*s", *(uint32_t *)level_sc->keyValue, level_sc->keyValue + 4);
+				level_sc->kv_format = KV_FORMAT;
 				break;
 			case KV_INLOG: {
 				struct bt_leaf_entry *kv_entry = (struct bt_leaf_entry *)get_kv_offset(
 					dlnode, db_desc->levels[level_id].leaf_size, slot_array[middle].index);
-				level_sc->keyValue = REAL_ADDRESS(kv_entry->pointer);
+				kv_entry->pointer = REAL_ADDRESS(kv_entry->pointer);
+				level_sc->keyValue = kv_entry;
+				level_sc->kv_format = KV_PREFIX;
+
+				/* REAL_ADDRESS(*(uint64_t*)get_kv_offset( */
+				/* dlnode, db_desc->levels[level_id].leaf_size, slot_array[middle].index)); */
 				break;
 			}
 			default:
@@ -714,7 +721,6 @@ int32_t _get_next_KV(level_scanner *sc)
 			}
 		} else {
 			/*push yourself, update node and continue*/
-
 			stack_top.node = node;
 
 			read_lock_node(sc, stack_top.node);
@@ -764,18 +770,23 @@ int32_t _get_next_KV(level_scanner *sc)
 		case DYNAMIC_LEAF:;
 			struct bt_dynamic_leaf_node *dlnode = (struct bt_dynamic_leaf_node *)node;
 			struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(dlnode);
-			switch (KV_INPLACE /* slot_array[idx].bitmap */) {
+			switch (slot_array[idx].bitmap) {
 			case KV_INPLACE:
 				sc->keyValue = get_kv_offset(dlnode, db_desc->levels[level_id].leaf_size,
 							     slot_array[idx].index);
+				sc->kv_format = KV_FORMAT;
 				//log_info("offset %d",slot_array[idx].index);
 				break;
 
 			case KV_INLOG: {
-				assert(0);
 				struct bt_leaf_entry *kv_entry = (struct bt_leaf_entry *)get_kv_offset(
 					dlnode, db_desc->levels[level_id].leaf_size, slot_array[idx].index);
-				sc->keyValue = REAL_ADDRESS(kv_entry->pointer);
+				kv_entry->pointer = REAL_ADDRESS(kv_entry->pointer);
+				sc->keyValue = kv_entry;
+				sc->kv_format = KV_PREFIX;
+				/* REAL_ADDRESS(*(uint64_t*)get_kv_offset( */
+				/* dlnode, db_desc->levels[level_id].leaf_size, slot_array[idx].index)) */;
+				/* log_info("%d %s",*(uint32_t*)sc->keyValue,(char *)(sc->keyValue + 4)); */
 				break;
 			}
 			default:
@@ -784,8 +795,10 @@ int32_t _get_next_KV(level_scanner *sc)
 			}
 			break;
 		}
+
 		assert(idx < node->num_entries);
-		assert(*(uint32_t *)sc->keyValue < 100);
+		if (sc->kv_format == KV_FORMAT)
+			assert(*(uint32_t *)sc->keyValue < 100);
 
 		//log_info("key %d x %d numberofentries %llu %d", *(uint32_t*)sc->keyValue, x, node->numberOfEntriesInNode, idx);
 	} else {

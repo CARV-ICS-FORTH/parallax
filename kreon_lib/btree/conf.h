@@ -20,7 +20,7 @@
 
 #define MAX_DB_NAME_SIZE 64
 /*hierarchy of trees parameters*/
-#define MAX_LEVELS 8
+#define MAX_LEVELS 4
 #define NUM_TREES_PER_LEVEL 2
 #define TOTAL_TREES (MAX_LEVELS * NUM_TREES_PER_LEVEL)
 #define GROUP_SIZE 5
@@ -39,7 +39,7 @@
 #define COMMIT_KV_LOG_INTERVAL (500 * SEC)
 #define SNAPSHOT_INTERVAL (1500 * SEC)
 #define GC_INTERVAL (50 * SEC)
-#define COMPACTION_INTERVAL (2 * SEC)
+#define COMPACTION_INTERVAL (10 * SEC)
 
 #define WORD_SIZE 64
 #define BREAKPOINT asm volatile("int3;");
@@ -59,11 +59,12 @@
 #define GB(x) ((x)*1024LU * 1024LU * 1024LU)
 #define MB(x) ((x)*1024LU * 1024LU)
 #define KB(x) ((x)*1024LU)
-#define MAX_LEVEL0_TOTAL_SIZE MB(64)
+#define MAX_LEVEL0_TOTAL_SIZE MB(10)
 #define NUMBER_OF_DATABASES (1)
-#define GF (4)
+#define GF (8)
 #define BUFFER_SEGMENT_SIZE (2 * 1024 * 1024)
 #define SEGMENT_MEMORY_THREASHOLD 511 /*Careful, in number of pages -1 used for chaining*/
+#define THROTTLE_SLEEP_TIME 1000
 #define MAX_ALLOCATION_TRIES 2
 
 #define INSERT_TO_INDEX 1

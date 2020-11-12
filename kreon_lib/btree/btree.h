@@ -6,13 +6,14 @@
 #pragma once
 #include <semaphore.h>
 #include <pthread.h>
+#include <semaphore.h>
 #include <stdlib.h>
 #include <limits.h>
 #include <unistd.h>
 #include <config.h>
 #include "uthash.h"
 #include "../allocator/allocator.h"
-
+#include "../../utilities/mydgmalloc.h"
 #define SUCCESS 4
 #define FAILED 5
 
@@ -29,7 +30,7 @@
 #define REPLICA_PENDING_SPILL 20
 
 /*hierarchy of trees parameters*/
-#define MAX_LEVELS 8
+#define MAX_LEVELS 4
 #define NUM_TREES_PER_LEVEL 2
 
 #define MAX_COUNTER_VERSIONS 4
@@ -139,8 +140,12 @@ typedef struct index_entry {
 } __attribute__((packed)) index_entry;
 
 struct bt_leaf_entry {
-	uint64_t pointer;
 	char prefix[PREFIX_SIZE];
+	uint64_t pointer;
+} __attribute__((packed));
+
+struct bt_leaf_entry2 {
+	uint64_t pointer;
 };
 
 struct bt_leaf_entry_bitmap {
@@ -148,7 +153,7 @@ struct bt_leaf_entry_bitmap {
 };
 
 struct bt_static_leaf_slot_array {
-	uint16_t index;
+	uint32_t index;
 };
 
 struct bt_dynamic_leaf_slot_array {
@@ -195,14 +200,14 @@ enum bsearch_status { INSERT = 0, FOUND = 1, ERROR = 2 };
 
 /* Possible options for these defines are multiples of 4KB but they should not be more than BUFFER_SEGMENT_SIZE*/
 #define PAGE_SIZE 4096
-#define LEVEL0_LEAF_SIZE (PAGE_SIZE * 8)
-#define LEVEL1_LEAF_SIZE (PAGE_SIZE * 8)
-#define LEVEL2_LEAF_SIZE (PAGE_SIZE * 8)
-#define LEVEL3_LEAF_SIZE (PAGE_SIZE * 8)
-#define LEVEL4_LEAF_SIZE (PAGE_SIZE * 8)
-#define LEVEL5_LEAF_SIZE (PAGE_SIZE * 8)
-#define LEVEL6_LEAF_SIZE (PAGE_SIZE * 8)
-#define LEVEL7_LEAF_SIZE (PAGE_SIZE * 8)
+#define LEVEL0_LEAF_SIZE (PAGE_SIZE * 2)
+#define LEVEL1_LEAF_SIZE (PAGE_SIZE * 2)
+#define LEVEL2_LEAF_SIZE (PAGE_SIZE * 2)
+#define LEVEL3_LEAF_SIZE (PAGE_SIZE * 2)
+#define LEVEL4_LEAF_SIZE (PAGE_SIZE * 2)
+#define LEVEL5_LEAF_SIZE (PAGE_SIZE * 2)
+#define LEVEL6_LEAF_SIZE (PAGE_SIZE * 2)
+#define LEVEL7_LEAF_SIZE (PAGE_SIZE * 2)
 
 /* Possible options for these defines are the values in enum bt_layout */
 #define LEVEL0_LEAF_LAYOUT DYNAMIC_LEAF
@@ -324,8 +329,11 @@ typedef struct level_descriptor {
 	//in number of keys
 	uint64_t level_size[NUM_TREES_PER_LEVEL];
 	uint64_t max_level_size;
-	char *split_buffer;
 	struct leaf_node_metadata leaf_offsets;
+	volatile segment_header *medium_log_head;
+	volatile segment_header *medium_log_tail;
+	uint64_t medium_log_size;
+	char *split_buffer;
 	uint64_t actual_level_size;
 #if MEASURE_SST_USED_SPACE
 	double avg_leaf_used_space;
@@ -345,13 +353,19 @@ typedef struct level_descriptor {
 
 typedef struct db_descriptor {
 	char db_name[MAX_DB_NAME_SIZE];
-	level_descriptor levels[MAX_LEVELS];
-	struct compaction_pairs inprogress_compactions[MAX_LEVELS];
-	struct compaction_pairs pending_compactions[MAX_LEVELS];
+	level_descriptor levels[MAX_LEVELS + 1];
+	struct compaction_pairs inprogress_compactions[MAX_LEVELS + 1];
+	struct compaction_pairs pending_compactions[MAX_LEVELS + 1];
 	pthread_t compaction_thread;
 	pthread_mutex_t compaction_structs_lock;
 	pthread_mutex_t compaction_lock;
 	pthread_cond_t compaction_cond;
+	uint64_t blocked_clients;
+	uint64_t compaction_count;
+	sem_t compaction_sem;
+	sem_t compaction_daemon_sem;
+
+	int is_compaction_daemon_sleeping;
 
 #if LOG_WITH_MUTEX
 	pthread_mutex_t lock_log;
@@ -373,6 +387,11 @@ typedef struct db_descriptor {
 	volatile segment_header *small_log_tail;
 	volatile uint64_t small_log_size;
 	volatile uint64_t lsn;
+	segment_header *inmem_medium_log_head[NUM_TREES_PER_LEVEL];
+	segment_header *inmem_medium_log_tail[NUM_TREES_PER_LEVEL];
+	uint64_t inmem_medium_log_size[NUM_TREES_PER_LEVEL];
+	char *inmem_base;
+	mspace inmem_msp;
 	/*coordinates of the latest persistent L0*/
 	/* Shouldn't this be in level_descriptor*/
 	uint64_t big_log_head_offset;
@@ -436,10 +455,13 @@ typedef struct bt_spill_request {
 	db_descriptor *db_desc;
 	volume_descriptor *volume_desc;
 	uint64_t aggregate_level_size;
+	segment_header *medium_log_head;
+	segment_header *medium_log_tail;
 	node_header *src_root;
 	void *start_key;
 	void *end_key;
 	uint64_t level_size;
+	uint64_t medium_log_size;
 	uint64_t l0_start;
 	uint64_t l0_end;
 	uint8_t src_level;
@@ -508,12 +530,13 @@ typedef struct log_operation {
 	};
 } log_operation;
 
-enum log_category { BIG = 1000, MEDIUM = 500, SMALL = 200 };
+enum log_category { BIG = 1000, MEDIUM = 100, SMALL = 0 };
 
 struct log_towrite {
 	volatile segment_header *log_head;
 	volatile segment_header *log_tail;
 	volatile uint64_t *log_size;
+	int level_id;
 	enum log_category status;
 };
 

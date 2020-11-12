@@ -28,7 +28,7 @@
 #include <signal.h>
 
 #include <boost/algorithm/string.hpp>
-
+__thread int x = 0;
 //#include "core/properties.h"
 extern unsigned priv_thread_count;
 extern "C" {
@@ -99,7 +99,7 @@ class EutropiaDB : public YCSBDB {
 
 	void Close()
 	{
-		snapshot(dbs[0]->volume_desc);
+		//snapshot(dbs[0]->volume_desc);
 #if MEASURE_SST_USED_SPACE
 		for (int i = 0; i < MAX_LEVELS; i++)
 			std::cerr << "Avg SST used capacity" << dbs[0]->db_desc->levels[i].avg_leaf_used_space
@@ -128,25 +128,27 @@ class EutropiaDB : public YCSBDB {
 			std::cout << "[" << *(int32_t *)val << "]" << std::endl;
 			exit(EXIT_FAILURE);
 		}
-		//#endif
+#endif
+#if 0
 		std::string value(val + sizeof(int32_t), *(int32_t *)val);
 
 		std::vector<std::string> tokens;
 		boost::split(tokens, value, boost::is_any_of(" "));
 
 		int cnt = 0;
+#endif
+#if 0
 		for (std::map<std::string, std::string>::size_type i = 0; i + 1 < tokens.size(); i += 2) {
 			vmap.insert(std::pair<std::string, std::string>(tokens[i], tokens[i + 1]));
 			++cnt;
 		}
-		//#if 0
 		if (cnt != field_count) {
 			std::cout << "ERROR IN VALUE!" << std::endl;
 			std::cout << "[" << value << "]" << std::endl;
 			exit(EXIT_FAILURE);
 		}
-
-
+#endif
+#if 0
 		for (auto f : *fields) {
 			std::map<std::string, std::string>::iterator it = vmap.find(f);
 			if (it == vmap.end()) {
@@ -275,7 +277,8 @@ class EutropiaDB : public YCSBDB {
 			char *val = (char *)find_key(dbs[db_id], (void *)key.c_str(), key.length());
 			if (val == NULL) {
 				std::cout << "[1]cannot find : " << key << " in DB " << db_id << std::endl;
-				exit(EXIT_FAILURE);
+				return 0;
+				//exit(EXIT_FAILURE);
 			}
 #if 0
         if(*(int32_t *)val > 16000){
@@ -287,20 +290,19 @@ class EutropiaDB : public YCSBDB {
 			std::string value(val + sizeof(int32_t), *(int32_t *)val);
 
 			std::vector<std::string> tokens;
-			boost::split(tokens, value, boost::is_any_of(" "));
+			// boost::split(tokens, value, boost::is_any_of(" "));
 
-			int cnt = 0;
-			for (std::map<std::string, std::string>::size_type i = 0; i + 1 < tokens.size(); i += 2) {
-				vmap.insert(std::pair<std::string, std::string>(tokens[i], tokens[i + 1]));
-				++cnt;
-			}
+			// int cnt = 0;
+			// for (std::map<std::string, std::string>::size_type i = 0; i + 1 < tokens.size(); i += 2) {
+			// 	vmap.insert(std::pair<std::string, std::string>(tokens[i], tokens[i + 1]));
+			// 	++cnt;
+			// }
 #if 0
         if(cnt != field_count){
           std::cout << "ERROR IN VALUE!" << std::endl;
           std::cout << "[" << value << "]" << std::endl;
           exit(EXIT_FAILURE);
         }
-#endif
 			for (auto f : values) {
 				std::map<std::string, std::string>::iterator it = vmap.find(f.first);
 				if (it == vmap.end()) {
@@ -312,11 +314,12 @@ class EutropiaDB : public YCSBDB {
 				it->second = f.second;
 			}
 
+#endif
 			std::vector<KVPair> new_values;
-			for (std::map<std::string, std::string>::iterator it = vmap.begin(); it != vmap.end(); ++it) {
-				KVPair kv = std::make_pair(it->first, it->second);
-				new_values.push_back(kv);
-			}
+			// for (std::map<std::string, std::string>::iterator it = vmap.begin(); it != vmap.end(); ++it) {
+			// 	KVPair kv = std::make_pair(it->first, it->second);
+			// 	new_values.push_back(kv);
+			// }
 
 			return Insert(id, table, key, new_values);
 #if 0
@@ -346,16 +349,38 @@ class EutropiaDB : public YCSBDB {
 		std::hash<std::string> hash_fn;
 		uint32_t db_id = hash_fn(key) % db_num;
 
-		std::string value;
-		int cnt = 0;
-		for (auto v : values) {
-			value.append(v.first);
-			value.append(1, ' ');
-			value.append(v.second);
-			value.append(1, ' ');
-			++cnt;
+		static std::string value3(1000, 'a');
+		static std::string value2(100, 'a');
+		static std::string value(5, 'a');
+		int y = x % 10;
+		++x;
+
+		// insert_key_value(dbs[db_id], (void *)key.c_str(), (void *)value.c_str(), key.length(), value.length());
+		// insert_key_value(dbs[db_id], (void *)key.c_str(), (void *)value3.c_str(), key.length(), value3.length());
+		// insert_key_value(dbs[db_id], (void *)key.c_str(), (void *)value.c_str(), key.length(), value.length());
+
+		if (y >= 0 && y < 6) {
+			insert_key_value(dbs[db_id], (void *)key.c_str(), (void *)value3.c_str(), key.length(),
+					 value3.length());
+			// std::cout << "temp1"<<std::endl;
+		} else if (y >= 6 && y < 8) {
+			insert_key_value(dbs[db_id], (void *)key.c_str(), (void *)value.c_str(), key.length(),
+					 value.length());
+			//std::cout << "temp2"<<std::endl;
+		} else if (y >= 8 && y < 10) {
+			insert_key_value(dbs[db_id], (void *)key.c_str(), (void *)value2.c_str(), key.length(),
+					 value2.length());
+			//std::cout << "temp3"<<std::endl;
 		}
-		value.pop_back();
+		// int cnt = 0;
+		// for (auto v : values) {
+		// 	value.append(v.first);
+		// 	value.append(1, ' ');
+		// 	value.append(v.second);
+		// 	value.append(1, ' ');
+		// 	++cnt;
+		// }
+		// value.pop_back();
 
 #if 0
       if(cnt != field_count){
@@ -365,7 +390,7 @@ class EutropiaDB : public YCSBDB {
       }
 #endif
 
-		insert_key_value(dbs[db_id], (void *)key.c_str(), (void *)value.c_str(), key.length(), value.size());
+		//insert_key_value(dbs[db_id], (void *)key.c_str(), (void *)value.c_str(), key.length(), value.length());
 
 		return 0;
 	}

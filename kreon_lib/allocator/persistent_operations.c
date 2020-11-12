@@ -86,7 +86,8 @@ void commit_db_log(db_descriptor *db_desc, commit_log_info *info)
 			++all_logs_persisted;
 		}
 
-		if (medium_log_current_segment != medium_log_last_segment) {
+		if (medium_log_current_segment->next_segment != NULL &&
+		    medium_log_current_segment != medium_log_last_segment) {
 			medium_log_current_segment =
 				(segment_header *)REAL_ADDRESS(medium_log_current_segment->next_segment);
 			++all_logs_persisted;
@@ -182,7 +183,7 @@ void snapshot(volume_descriptor *volume_desc)
 		db_desc = (db_descriptor *)(node->data);
 
 		/*stop all level writers*/
-		for (level_id = 0; level_id < MAX_LEVELS; level_id++) {
+		for (level_id = 0; level_id < MAX_LEVELS + 1; level_id++) {
 			/*stop level 0 writers for this db*/
 			RWLOCK_WRLOCK(&db_desc->levels[level_id].guard_of_level.rx_lock);
 			/*spinning*/
@@ -220,7 +221,7 @@ void snapshot(volume_descriptor *volume_desc)
 			db_entry = &(db_group->db_entries[db_desc->group_index]);
 			//log_info("pr db entry name %s db name %s", db_entry->db_name, db_desc->db_name);
 
-			for (i = 0; i < MAX_LEVELS; i++) {
+			for (i = 0; i < MAX_LEVELS + 1; i++) {
 				for (j = 0; j < NUM_TREES_PER_LEVEL; j++) {
 					/*Serialize and persist space allocation info for all levels*/
 					if (db_desc->levels[i].last_segment[j] != NULL) {
@@ -356,7 +357,7 @@ void snapshot(volume_descriptor *volume_desc)
 	while (node != NULL) {
 		db_desc = (db_descriptor *)node->data;
 
-		for (i = 0; i < MAX_LEVELS; i++)
+		for (i = 0; i < MAX_LEVELS + 1; i++)
 			RWLOCK_UNLOCK(&db_desc->levels[i].guard_of_level.rx_lock);
 
 		node = node->next;
