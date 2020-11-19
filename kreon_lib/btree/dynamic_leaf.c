@@ -314,7 +314,7 @@ struct bt_rebalance_result split_dynamic_leaf(struct bt_dynamic_leaf_node *leaf,
 	validate_dynamic_leaf(leaf, level, 0, 0);
 #endif
 	if (leaf->header.epoch <= volume_desc->dev_catalogue->epoch) {
-		leaf_copy = seg_get_dynamic_leaf_node(volume_desc, level);
+		leaf_copy = seg_get_dynamic_leaf_node(volume_desc, level, req->metadata.tree_id);
 		memcpy(leaf_copy, leaf, level->leaf_size);
 		leaf_copy->header.epoch = volume_desc->mem_catalogue->epoch;
 		leaf = leaf_copy;
@@ -361,7 +361,7 @@ struct bt_rebalance_result split_dynamic_leaf(struct bt_dynamic_leaf_node *leaf,
 	}
 
 	/*Fix Right leaf metadata*/
-	rep.right_dlchild = seg_get_dynamic_leaf_node(volume_desc, level);
+	rep.right_dlchild = seg_get_dynamic_leaf_node(volume_desc, level, req->metadata.tree_id);
 	rep.middle_key_buf = fill_keybuf(get_kv_offset(leaf, leaf_size, slot_array[leaf->header.num_entries / 2].index),
 					 slot_array[leaf->header.num_entries / 2].bitmap);
 

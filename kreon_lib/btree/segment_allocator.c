@@ -165,10 +165,10 @@ leaf_node *seg_get_leaf_node(volume_descriptor *volume_desc, level_descriptor *l
 	return leaf;
 }
 
-struct bt_dynamic_leaf_node *seg_get_dynamic_leaf_node(volume_descriptor *volume_desc, level_descriptor *level_desc)
+struct bt_dynamic_leaf_node *seg_get_dynamic_leaf_node(volume_descriptor *volume_desc, level_descriptor *level_desc,
+						       uint8_t tree_id)
 {
 	/*Pass tree_id in get_space*/
-	assert(0);
 	struct bt_dynamic_leaf_node *leaf = get_space(volume_desc, level_desc, 0, level_desc->leaf_size, 0);
 
 	leaf->header.type = leafNode;
