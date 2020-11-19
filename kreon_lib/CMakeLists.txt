@@ -94,6 +94,8 @@ target_link_libraries(kreonr-shared log-shared mba-shared dlmalloc)
 set_source_files_properties(allocator/spin_loop.c PROPERTIES COMPILE_FLAGS
                                                              "-O0")
 
+set_source_files_properties(btree/delete.c PROPERTIES COMPILE_FLAGS "-w")
+
 # mkfs for kreon volumes
 add_executable(
   mkfs.kreon

@@ -59,8 +59,8 @@ void rdma_thread_events_ctx(void *args);
 void on_completion_server(struct rdma_message_context *msg_ctx);
 void *poll_cq(void *arg);
 
-static void *client_spinning_thread_kernel(void *arg);
-
+//static void *client_spinning_thread_kernel(void *arg);
+#if 0
 static void _wait_for_reset_buffer_ack(connection_rdma *conn)
 {
 	int dummy = 1;
@@ -77,6 +77,7 @@ static void _wait_for_reset_buffer_ack(connection_rdma *conn)
 	}
 	reset_buffer_ack->receive = 0;
 }
+#endif
 
 void _send_reset_buffer_ack(struct connection_rdma *conn)
 {
@@ -791,7 +792,7 @@ connection_rdma *find_memory_steal_candidate(SIMPLE_CONCURRENT_LIST *connections
 
 // TODO [mvard] Change ethernet_server_connect to use a free port number and add
 // it to zookeeper so the clients can get that info
-static void __stop_client(connection_rdma *conn);
+//static void __stop_client(connection_rdma *conn);
 
 uint16_t ctx_get_local_lid(struct ibv_context *context, int port, struct ibv_port_attr *attr)
 {

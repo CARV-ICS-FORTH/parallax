@@ -2105,10 +2105,8 @@ static struct bt_rebalance_result split_index(node_header *node, bt_insert_req *
 int insert_KV_at_leaf(bt_insert_req *ins_req, node_header *leaf)
 {
 	db_descriptor *db_desc = ins_req->metadata.handle->db_desc;
-	void *key_addr = ins_req->key_value_buf;
 	int ret;
 	uint8_t level_id = ins_req->metadata.level_id;
-	uint8_t active_tree = ins_req->metadata.tree_id;
 
 	if (level_id == 1 && ins_req->metadata.kv_size >= MEDIUM && ins_req->metadata.kv_size < BIG) {
 		log_operation append_op = { .metadata = &ins_req->metadata,

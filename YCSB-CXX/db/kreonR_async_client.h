@@ -82,9 +82,10 @@ class kreonRAsyncClientDB : public YCSBDB {
 
     public:
 	kreonRAsyncClientDB(int num, utils::Properties &props)
-		: db_num(num), field_count(std::stoi(props.GetProperty(CoreWorkload::FIELD_COUNT_PROPERTY,
-								       CoreWorkload::FIELD_COUNT_DEFAULT))),
-		  dbs()
+		: db_num(num)
+		, field_count(std::stoi(
+			  props.GetProperty(CoreWorkload::FIELD_COUNT_PROPERTY, CoreWorkload::FIELD_COUNT_DEFAULT)))
+		, dbs()
 	{
 		struct timeval start;
 
@@ -224,7 +225,6 @@ class kreonRAsyncClientDB : public YCSBDB {
 	{
 		char buffer[1512];
 		int pos;
-		int total_length = 0;
 
 		pos = 0;
 		for (auto v : values) {
@@ -257,10 +257,6 @@ class kreonRAsyncClientDB : public YCSBDB {
 	{
 		char buffer[1512];
 		int pos;
-		int i;
-		int type;
-		int total_length = 0;
-		int ops = 0;
 
 		pos = 0;
 		for (auto v : values) {
@@ -280,7 +276,6 @@ class kreonRAsyncClientDB : public YCSBDB {
 		}
 		/*ommit last space*/
 		pos -= 2;
-		total_length = key.length() + pos + 8;
 
 		if (krc_aput(key.length(), (void *)key.c_str(), pos, (void *)buffer, put_callback, &reply_counter) !=
 		    KRC_SUCCESS) {
