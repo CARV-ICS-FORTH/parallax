@@ -147,11 +147,11 @@ void binary_search_dynamic_leaf(const struct bt_dynamic_leaf_node *leaf, uint32_
 		assert(offset_in_leaf < leaf_size);
 		fill_prefix(&leaf_key_prefix, get_kv_offset(leaf, leaf_size, offset_in_leaf),
 			    slot_array[middle].bitmap);
-		if (req->metadata.key_format == KV_PREFIX)
+		if (req->metadata.key_format == KV_PREFIX) {
 			ret = prefix_compare(leaf_key_prefix.prefix, req->key_value_buf,
 					     PREFIX_SIZE /* MIN(leaf_key_prefix.len, key_buf->size) */
 			);
-		else
+		} else
 			ret = prefix_compare(leaf_key_prefix.prefix, req->key_value_buf + 4,
 					     PREFIX_SIZE /* MIN(leaf_key_prefix.len, key_buf->size) */
 			);
@@ -169,7 +169,6 @@ void binary_search_dynamic_leaf(const struct bt_dynamic_leaf_node *leaf, uint32_
 				ret = _tucana_key_cmp(leaf_key_buf, (void *)kv_entry->pointer, KV_FORMAT, KV_FORMAT);
 			} else {
 				/* log_info("TEST2 %*s %*s",*(uint32_t*)leaf_key_buf,leaf_key_buf + 4,*(uint32_t*)req->key_value_buf,req->key_value_buf + 4); */
-				unsigned key_size = *(uint32_t *)leaf_key_buf;
 				ret = _tucana_key_cmp(leaf_key_buf, req->key_value_buf, KV_FORMAT, KV_FORMAT);
 			}
 			/* log_info("prefix %*s full leaf key %*s user %*s",PREFIX_SIZE,leaf_key_prefix.prefix, */
@@ -195,7 +194,7 @@ void binary_search_dynamic_leaf(const struct bt_dynamic_leaf_node *leaf, uint32_
 
 				result->middle = middle;
 				result->status = INSERT;
-				goto CHECK_IFKV_FOUND;
+				return;
 			}
 
 			break;
@@ -205,41 +204,57 @@ void binary_search_dynamic_leaf(const struct bt_dynamic_leaf_node *leaf, uint32_
 			if (start > end) {
 				result->middle = middle;
 				result->status = INSERT;
-				goto CHECK_IFKV_FOUND;
+				return;
 			}
 
 			break;
 		}
 	}
-
-	/* if (numberOfEntriesInNode) { */
-CHECK_IFKV_FOUND:
-	return;
-	/* 	if (result->middle == numberOfEntriesInNode) */
-	/* 		return; */
-
-	/* 	offset_in_leaf = slot_array[middle].index; */
-	/* 	assert(offset_in_leaf < leaf_size); */
-	/* 	leaf_key_buf = fill_keybuf(get_kv_offset(leaf, leaf_size, offset_in_leaf), slot_array[middle].bitmap); */
-	/* 	ret = _tucana_key_cmp(leaf_key_buf, key_buf, KV_FORMAT, KV_FORMAT); */
-
-	/* 	if (ret == 0) { */
-	/* 		result->status = FOUND; */
-	/* 		return; */
-	/* 	} */
-	/* } */
 }
 
 void print_all_keys(const struct bt_dynamic_leaf_node *leaf, uint32_t leaf_size)
 {
 	struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(leaf);
 	/* log_info("number of entries %d", leaf->header.num_entries); */
+	assert(leaf->header.num_entries < 500);
 	for (unsigned i = 0; i < leaf->header.num_entries; ++i) {
 		char *key = fill_keybuf(get_kv_offset(leaf, leaf_size, slot_array[i].index), slot_array[i].bitmap);
 		assert(KEY_SIZE(key) < 30);
 		/* log_info("offset in leaf %d ADDR %llu Size%d key %s\n", slot_array[i].index, get_kv_offset(leaf, leaf_size, slot_array[i].index),KEY_SIZE(key), key + 4); */
 	}
 	/* log_info("--------------------------------------------"); */
+}
+
+void print_dynamic_leaf(const struct bt_dynamic_leaf_node *leaf, uint32_t leaf_size)
+{
+	struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(leaf);
+	log_info("1--------------------------------------------");
+
+	/* log_info("number of entries %d", leaf->header.num_entries); */
+	for (unsigned i = 0; i < leaf->header.num_entries; ++i) {
+		char *key = fill_keybuf(get_kv_offset(leaf, leaf_size, slot_array[i].index), slot_array[i].bitmap);
+		log_info("offset in leaf %d ADDR %llu Size%d key %s\n", slot_array[i].index,
+			 get_kv_offset(leaf, leaf_size, slot_array[i].index), KEY_SIZE(key), key + 4);
+	}
+	log_info("2--------------------------------------------");
+}
+
+void check_sorted_dynamic_leaf(const struct bt_dynamic_leaf_node *leaf, uint32_t leaf_size)
+{
+	struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(leaf);
+
+	/* log_info("number of entries %d", leaf->header.num_entries); */
+	for (unsigned i = 0; i < leaf->header.num_entries - 1; ++i) {
+		char *key = fill_keybuf(get_kv_offset(leaf, leaf_size, slot_array[i].index), slot_array[i].bitmap);
+		char *key2 =
+			fill_keybuf(get_kv_offset(leaf, leaf_size, slot_array[i + 1].index), slot_array[i + 1].bitmap);
+		if (_tucana_key_cmp(key, key2, KV_FORMAT, KV_FORMAT) > 0) {
+			print_dynamic_leaf(leaf, leaf_size);
+			assert(0);
+		}
+
+		/* log_info("offset in leaf %d ADDR %llu Size%d key %s\n", slot_array[i].index, get_kv_offset(leaf, leaf_size, slot_array[i].index),KEY_SIZE(key), key + 4); */
+	}
 }
 
 static void shift_right_slot_array(struct bt_dynamic_leaf_node *leaf, uint32_t middle)
@@ -312,7 +327,9 @@ struct bt_rebalance_result split_dynamic_leaf(struct bt_dynamic_leaf_node *leaf,
 	/*cow check*/
 #ifdef DEBUG_DYNAMIC_LEAF
 	validate_dynamic_leaf(leaf, level, 0, 0);
+	check_sorted_dynamic_leaf(leaf, leaf_size);
 #endif
+
 	if (leaf->header.epoch <= volume_desc->dev_catalogue->epoch) {
 		leaf_copy = seg_get_dynamic_leaf_node(volume_desc, level, req->metadata.tree_id);
 		memcpy(leaf_copy, leaf, level->leaf_size);
@@ -324,6 +341,7 @@ struct bt_rebalance_result split_dynamic_leaf(struct bt_dynamic_leaf_node *leaf,
 #ifdef DEBUG_DYNAMIC_LEAF
 	validate_dynamic_leaf(leaf, level, 0, 0);
 #endif
+
 	memcpy(split_buffer, leaf, leaf_size);
 	slot_array = get_slot_array_offset((struct bt_dynamic_leaf_node *)split_buffer);
 	left_leaf = rep.left_dlchild = leaf;
@@ -397,14 +415,19 @@ struct bt_rebalance_result split_dynamic_leaf(struct bt_dynamic_leaf_node *leaf,
 #ifdef DEBUG_DYNAMIC_LEAF
 	validate_dynamic_leaf(left_leaf, level, 0, 0);
 	validate_dynamic_leaf(right_leaf, level, 0, 0);
+	check_sorted_dynamic_leaf(left_leaf, leaf_size);
+	check_sorted_dynamic_leaf(right_leaf, leaf_size);
 #endif
+
 	if (leaf->header.type == leafRootNode) {
 		rep.left_dlchild->header.type = leafNode;
 		rep.stat = LEAF_ROOT_NODE_SPLITTED;
 	} else
 		rep.stat = LEAF_NODE_SPLITTED;
+#ifdef DEBUG_DYNAMIC_LEAF
 	print_all_keys(left_leaf, leaf_size);
 	print_all_keys(right_leaf, leaf_size);
+#endif
 
 	seg_free_leaf_node(volume_desc, level, req->metadata.tree_id, (leaf_node *)old_leaf);
 	free(split_buffer);
@@ -424,12 +447,14 @@ void write_data_in_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, char *dest, c
 	else
 		status = KV_INPLACE;
 
+	status = KV_INLOG;
+
 	if (status == KV_INPLACE) {
 		slot_array[middle].bitmap = KV_INPLACE;
 		if (kv_format == KV_FORMAT)
 			leaf->header.leaf_log_size += append_kv_inplace(dest, key_value_buf, key_value_size);
 		else {
-			raise(SIGINT);
+			/* raise(SIGINT); */
 			char *pointer = (char *)(*(uint64_t *)(key_value_buf + PREFIX_SIZE));
 			uint32_t key_size = *(uint32_t *)pointer;
 			uint32_t value_size = *(uint32_t *)(pointer + 4 + key_size);
@@ -519,6 +544,7 @@ int8_t insert_in_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, bt_insert_req *
 
 	assert(leaf->header.leaf_log_size < upper_bound);
 	assert(leaf->header.epoch > req->metadata.handle->volume_desc->dev_catalogue->epoch);
+	//print_dynamic_leaf(leaf, 4096);
 	if (req->metadata.level_id == 1)
 		print_all_keys(leaf, level->leaf_size);
 
@@ -559,9 +585,7 @@ int8_t insert_in_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, bt_insert_req *
 
 #ifdef DEBUG_DYNAMIC_LEAF
 	validate_dynamic_leaf(leaf, level, 0, 1);
+	check_sorted_dynamic_leaf(leaf, level->leaf_size);
 #endif
-	if (req->metadata.level_id == 1)
-		print_all_keys(leaf, level->leaf_size);
-
 	return bsearch.status;
 }

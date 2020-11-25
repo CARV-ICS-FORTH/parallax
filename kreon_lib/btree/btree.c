@@ -370,175 +370,8 @@ void recover_database_logs(db_descriptor *db_desc, pr_db_entry *db_entry)
 		 db_desc->small_log_tail_offset);
 }
 
-void fill_spill_req(db_handle *handle, bt_spill_request *spill_req, uint64_t curr_level_size, int level_id,
-		    int to_spill_tree_id)
-{
-	spill_req->db_desc = handle->db_desc;
-	spill_req->volume_desc = handle->volume_desc;
-	spill_req->aggregate_level_size = curr_level_size;
-	spill_req->src_level = level_id;
-	spill_req->dst_level = level_id + 1;
-	spill_req->src_tree = to_spill_tree_id;
-	spill_req->dst_tree = 0;
-	spill_req->start_key = NULL;
-	spill_req->end_key = NULL;
-}
-
-void enqueue_level_forcompaction(struct compaction_pairs *pending_compactions, int curr_level_id)
-{
-	int dst_level = curr_level_id + 1;
-	int level_already_pending, enqueue_index = -1;
-
-	for (int i = 0; i < MAX_LEVELS; ++i) {
-		level_already_pending = pending_compactions[i].src_level == curr_level_id ||
-					pending_compactions[i].dst_level == curr_level_id ||
-					pending_compactions[i].src_level == dst_level ||
-					pending_compactions[i].dst_level == dst_level;
-
-		if (enqueue_index == -1 && pending_compactions[i].src_level == -1)
-			enqueue_index = i;
-
-		if (level_already_pending)
-			return;
-	}
-
-	if (!level_already_pending) {
-		pending_compactions[enqueue_index].src_level = curr_level_id;
-		pending_compactions[enqueue_index].dst_level = dst_level;
-	}
-}
-
-void dequeue_level_forcompaction(struct compaction_pairs *pending_compactions, int curr_level_id)
-{
-	for (int i = 0; i < MAX_LEVELS; ++i) {
-		if (pending_compactions[i].src_level == curr_level_id) {
-			pending_compactions[i].src_level = pending_compactions[i].dst_level = -1;
-			return;
-		}
-	}
-}
-
-void enqueue_ongoing_compaction(struct compaction_pairs *ongoing_compactions, int curr_level_id)
-{
-	for (int i = 0; i < MAX_LEVELS; ++i) {
-		if (ongoing_compactions[i].src_level == -1) {
-			ongoing_compactions[i].src_level = curr_level_id;
-			ongoing_compactions[i].dst_level = curr_level_id + 1;
-			return;
-		}
-	}
-}
-
-void dequeue_ongoing_compaction(struct compaction_pairs *ongoing_compactions, int curr_level_id)
-{
-	for (int i = 0; i < MAX_LEVELS; ++i) {
-		if (ongoing_compactions[i].src_level == curr_level_id) {
-			ongoing_compactions[i].src_level = -1;
-			ongoing_compactions[i].dst_level = -1;
-			return;
-		}
-	}
-	assert(0);
-}
-
-bt_spill_request *prepare_compaction_metadata(db_handle *handle, int curr_level_id)
-{
-	db_descriptor *db_desc = handle->db_desc;
-	bt_spill_request *spill_req = malloc(sizeof(bt_spill_request));
-	uint64_t curr_level_size;
-	int new_active_tree = db_desc->levels[0].active_tree == 0 ? 1 : 0;
-	int to_spill_tree_id = 0;
-	uint8_t dst_level = curr_level_id + 1;
-
-	/* Level 0 is a special case because we need to employ double buffering to serve clients without blocking when possible.
-	 * For levels > 0 we don't want to employ double buffering atm because if we do then that's tiering. */
-	if (curr_level_id == 0) {
-		to_spill_tree_id = db_desc->levels[curr_level_id].active_tree;
-		curr_level_size = db_desc->levels[curr_level_id].actual_level_size;
-		assert(curr_level_size >= db_desc->levels[curr_level_id].max_level_size);
-		assert(spill_req);
-
-		fill_spill_req(handle, spill_req, curr_level_size, curr_level_id, to_spill_tree_id);
-
-		/*set source*/
-		if (db_desc->levels[curr_level_id].root_w[to_spill_tree_id] != NULL)
-			spill_req->src_root = db_desc->levels[curr_level_id].root_w[to_spill_tree_id];
-		else
-			spill_req->src_root = db_desc->levels[curr_level_id].root_r[to_spill_tree_id];
-
-		if (db_desc->levels[curr_level_id].tree_status[spill_req->src_tree] == NO_SPILLING &&
-		    db_desc->levels[dst_level].tree_status[spill_req->dst_tree] == NO_SPILLING) {
-			db_desc->levels[dst_level].tree_status[spill_req->dst_tree] = SPILLING_IN_PROGRESS;
-			db_desc->levels[curr_level_id].tree_status[spill_req->src_tree] = SPILLING_IN_PROGRESS;
-			db_desc->levels[curr_level_id].active_tree = new_active_tree;
-			spill_req->level_size = db_desc->levels[curr_level_id].actual_level_size;
-			spill_req->medium_log_size = db_desc->levels[curr_level_id].medium_log_size;
-			spill_req->medium_log_head = (void *)db_desc->medium_log_head;
-			spill_req->medium_log_tail = (void *)db_desc->medium_log_tail;
-			segment_header *d_header = seg_get_raw_log_segment(handle->volume_desc);
-			d_header->next_segment = NULL;
-			d_header->prev_segment = NULL;
-			d_header->segment_id = spill_req->medium_log_tail->segment_id + 1;
-			db_desc->medium_log_head = db_desc->medium_log_tail = d_header;
-			db_desc->levels[curr_level_id].actual_level_size = 0;
-			db_desc->medium_log_size = sizeof(segment_header);
-
-			MUTEX_LOCK(&handle->db_desc->compaction_lock);
-
-			if (handle->db_desc->blocked_clients > 0)
-				log_info("WAKE UP");
-			if (sem_post(&handle->db_desc->compaction_sem) != 0) {
-				log_fatal("FATAL ERROR CANNOT SEM POST");
-				exit(EXIT_FAILURE);
-			}
-			MUTEX_UNLOCK(&handle->db_desc->compaction_lock);
-			return spill_req;
-		} else {
-			MUTEX_LOCK(&db_desc->compaction_structs_lock);
-			enqueue_level_forcompaction(db_desc->pending_compactions, curr_level_id);
-			MUTEX_UNLOCK(&db_desc->compaction_structs_lock);
-		}
-	} else {
-		to_spill_tree_id = db_desc->levels[curr_level_id].active_tree;
-		curr_level_size = db_desc->levels[curr_level_id].actual_level_size;
-		/*  Since we don't double buffer levels > 0 to_spill_tree_id must always be 0. */
-		assert(!to_spill_tree_id);
-		assert(curr_level_size >= db_desc->levels[curr_level_id].max_level_size);
-		assert(spill_req);
-		fill_spill_req(handle, spill_req, curr_level_size, curr_level_id, to_spill_tree_id);
-
-		/*set source*/
-		if (db_desc->levels[curr_level_id].root_w[to_spill_tree_id] != NULL)
-			spill_req->src_root = db_desc->levels[curr_level_id].root_w[to_spill_tree_id];
-		else
-			spill_req->src_root = db_desc->levels[curr_level_id].root_r[to_spill_tree_id];
-
-		if (db_desc->levels[curr_level_id].tree_status[spill_req->src_tree] == NO_SPILLING &&
-		    db_desc->levels[dst_level].tree_status[spill_req->dst_tree] == NO_SPILLING) {
-			db_desc->levels[dst_level].tree_status[spill_req->dst_tree] = SPILLING_IN_PROGRESS;
-			db_desc->levels[curr_level_id].tree_status[spill_req->src_tree] = SPILLING_IN_PROGRESS;
-			spill_req->level_size = db_desc->levels[curr_level_id].actual_level_size;
-			spill_req->medium_log_size = db_desc->levels[curr_level_id].medium_log_size;
-			spill_req->medium_log_head = (void *)db_desc->levels[curr_level_id].medium_log_head;
-			spill_req->medium_log_tail = (void *)db_desc->levels[curr_level_id].medium_log_tail;
-			db_desc->levels[curr_level_id].medium_log_head = NULL;
-			db_desc->levels[curr_level_id].medium_log_tail = NULL;
-			db_desc->levels[curr_level_id].actual_level_size = 0;
-			db_desc->levels[curr_level_id].medium_log_size = 0;
-			return spill_req;
-		} else {
-			MUTEX_LOCK(&db_desc->compaction_structs_lock);
-			enqueue_level_forcompaction(db_desc->pending_compactions, curr_level_id);
-			MUTEX_UNLOCK(&db_desc->compaction_structs_lock);
-		}
-	}
-
-	free(spill_req);
-	return NULL;
-}
-#if 0
 /* Checks for pending compactions. It is responsible to check for dependencies between two levels before triggering a compaction. */
-void *compaction_daemon(void *args)
+void *old_compaction_daemon(void *args)
 {
 	db_handle handle = *(db_handle *)args;
 	db_descriptor *db_desc = handle.db_desc;
@@ -555,9 +388,9 @@ void *compaction_daemon(void *args)
 			}
 
 			assert(level_id >= 0 && level_id < MAX_LEVELS);
-			level_compaction_ready = db_desc->levels[level_id].actual_level_size >=
-							 db_desc->levels[level_id].max_level_size /* && */
-						 /* !db_desc->levels[level_id].outstanding_spill_ops */;
+			level_compaction_ready = 0; /* db_desc->levels[level_id].actual_level_size >= */
+			/* 	 db_desc->levels[level_id].max_level_size && */
+			/* !db_desc->levels[level_id].outstanding_spill_ops; */
 
 			if (!level_compaction_ready)
 				continue;
@@ -574,37 +407,24 @@ void *compaction_daemon(void *args)
 				/* Check level's capacity, if full trigger compaction but first
 				 * prepare the appropriate structures for level i and i + 1.*/
 				prev_level_compaction = level_id > 0 /* && */
-							/* db_desc->levels[level_id - 1].outstanding_spill_ops != 0 */;
+					/* db_desc->levels[level_id - 1].outstanding_spill_ops != 0 */;
 
-				ongoing_compaction = db_desc->levels[level_id].outstanding_spill_ops != 0 ||
-						     db_desc->levels[level_id + 1].outstanding_spill_ops != 0;
+				ongoing_compaction = 0; /* db_desc->levels[level_id].outstanding_spill_ops != 0 || */
+				/* db_desc->levels[level_id + 1].outstanding_spill_ops != 0; */
 				if (level_id != (MAX_LEVELS - 1)) {
-					level_is_full = db_desc->levels[level_id].actual_level_size >=
-							db_desc->levels[level_id].max_level_size;
+					level_is_full = 0; /* db_desc->levels[level_id].actual_level_size >= */
+					/* db_desc->levels[level_id].max_level_size; */
 				} else {
-					level_is_full = db_desc->levels[level_id].actual_level_size +
-								db_desc->levels[level_id].medium_log_size >=
-							db_desc->levels[level_id].max_level_size;
+					level_is_full = /* db_desc->levels[level_id].actual_level_size + */
+						db_desc->levels[level_id].medium_log_size >=
+						db_desc->levels[level_id].max_level_size;
 				}
 
-				dest_level_is_full = db_desc->levels[level_id + 1].actual_level_size >=
-						     db_desc->levels[level_id + 1].max_level_size;
+				dest_level_is_full = 0 /* db_desc->levels[level_id + 1].actual_level_size >= */
+					/* db_desc->levels[level_id + 1].max_level_size */;
 
 				trigger_compaction = !prev_level_compaction && !ongoing_compaction && level_is_full &&
 						     !dest_level_is_full;
-
-				if (trigger_compaction) {
-					bt_spill_request *spill_req = prepare_compaction_metadata(&handle, level_id);
-
-					if (spill_req) {
-						MUTEX_LOCK(&db_desc->compaction_structs_lock);
-						enqueue_ongoing_compaction(db_desc->inprogress_compactions,
-									   spill_req->src_level);
-						MUTEX_UNLOCK(&db_desc->compaction_structs_lock);
-					}
-
-					spill_trigger(spill_req);
-				}
 			}
 		}
 
@@ -630,34 +450,9 @@ void *compaction_daemon(void *args)
 			db_desc->is_compaction_daemon_sleeping = 0;
 			/* log_info("WOKE UP"); */
 		}
-		/* log_info("ONE PASS COMPLETED"); */
-		/*
-		if (!sleep_or_spin) {
-			struct timespec ts;
-			if (clock_gettime(CLOCK_REALTIME, &ts) == -1) {
-				perror("FATAL: clock_gettime failed)\n");
-				exit(-1);
-			}
-			ts.tv_sec += (COMPACTION_INTERVAL / 1000000L);
-			ts.tv_nsec += (COMPACTION_INTERVAL % 1000000L) * 1000L;
-
-			MUTEX_LOCK(&db_desc->compaction_lock);
-			switch (pthread_cond_timedwait(&db_desc->compaction_cond, &db_desc->compaction_lock, &ts)) {
-			case EINVAL:
-				log_fatal("FATAL ERROR :TIMEDWAIT RETURNED EINVAL");
-				assert(0);
-			case EPERM:
-				log_fatal("FATAL ERROR :TIMEDWAIT RETURNED EPERM");
-				assert(0);
-			default:
-				break;
-			}
-			MUTEX_UNLOCK(&db_desc->compaction_lock);
-		}
-		*/
 	}
 }
-#endif
+
 /**
  * @param   blockSize
  * @param   db_name
@@ -825,7 +620,7 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 							for (level_id = 0; level_id < MAX_LEVELS; level_id++) {
 								db_desc->levels[level_id].level_size[0] = 0;
 								db_desc->levels[level_id].level_size[1] = 0;
-								db_desc->levels[level_id].actual_level_size = 0;
+
 								for (tree_id = 0; tree_id < NUM_TREES_PER_LEVEL;
 								     tree_id++) {
 									db_desc->levels[level_id].level_size[tree_id] =
@@ -1066,7 +861,7 @@ finish_init:
 		MUTEX_INIT(&db_desc->levels[level_id].spill_trigger, NULL);
 		MUTEX_INIT(&db_desc->levels[level_id].level_allocation_lock, NULL);
 		init_level_locktable(db_desc, level_id);
-		db_desc->levels[level_id].actual_level_size = 0;
+		memset(db_desc->levels[level_id].level_size, 0, sizeof(uint64_t) * NUM_TREES_PER_LEVEL);
 		db_desc->levels[level_id].medium_log_size = 0;
 		db_desc->levels[level_id].active_writers = 0;
 		/*check again which tree should be active*/
@@ -2107,6 +1902,7 @@ int insert_KV_at_leaf(bt_insert_req *ins_req, node_header *leaf)
 	db_descriptor *db_desc = ins_req->metadata.handle->db_desc;
 	int ret;
 	uint8_t level_id = ins_req->metadata.level_id;
+	uint8_t tree_id = ins_req->metadata.tree_id;
 
 	if (level_id == 1 && ins_req->metadata.kv_size >= MEDIUM && ins_req->metadata.kv_size < BIG) {
 		log_operation append_op = { .metadata = &ins_req->metadata,
@@ -2125,11 +1921,11 @@ int insert_KV_at_leaf(bt_insert_req *ins_req, node_header *leaf)
 		;
 	} else if (ins_req->metadata.key_format == KV_FORMAT)
 		;
-	else {
-		log_fatal("Wrong combination of key format / append_to_log option");
-		BREAKPOINT;
-		exit(EXIT_FAILURE);
-	}
+	/* else { */
+	/* 	log_fatal("Wrong combination of key format / append_to_log option"); */
+	/* 	BREAKPOINT; */
+	/* 	exit(EXIT_FAILURE); */
+	/* } */
 
 	switch (db_desc->levels[level_id].node_layout) {
 	case STATIC_LEAF:
@@ -2145,12 +1941,12 @@ int insert_KV_at_leaf(bt_insert_req *ins_req, node_header *leaf)
 	if (ret == INSERT /* || ret == FOUND */) {
 		if (ins_req->metadata.kv_size >= BIG ||
 		    (ins_req->metadata.kv_size >= MEDIUM && level_id < MAX_LEVELS)) {
-			__sync_fetch_and_add(&(ins_req->metadata.handle->db_desc->levels[level_id].actual_level_size),
+			__sync_fetch_and_add(&(ins_req->metadata.handle->db_desc->levels[level_id].level_size[tree_id]),
 					     20);
 			/* log_info("Level_size %llu",ins_req->metadata.handle->db_desc->levels[level_id].actual_level_size); */
 
 		} else {
-			__sync_fetch_and_add(&(ins_req->metadata.handle->db_desc->levels[level_id].actual_level_size),
+			__sync_fetch_and_add(&(ins_req->metadata.handle->db_desc->levels[level_id].level_size[tree_id]),
 					     ins_req->metadata.kv_size);
 		}
 		/* log_info("Level_size %llu",ins_req->metadata.handle->db_desc->levels[level_id].actual_level_size); */
@@ -2673,6 +2469,7 @@ int is_split_needed(void *node, enum bt_layout node_layout, uint32_t leaf_size, 
 			status = KV_INLOG;
 		else
 			status = KV_INPLACE;
+
 		return check_dynamic_leaf_split(node, leaf_size, kv_size, status);
 	default:
 		assert(0);

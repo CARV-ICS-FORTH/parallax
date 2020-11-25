@@ -196,14 +196,14 @@ enum bsearch_status { INSERT = 0, FOUND = 1, ERROR = 2 };
 
 /* Possible options for these defines are multiples of 4KB but they should not be more than BUFFER_SEGMENT_SIZE*/
 #define PAGE_SIZE 4096
-#define LEVEL0_LEAF_SIZE (PAGE_SIZE * 2)
-#define LEVEL1_LEAF_SIZE (PAGE_SIZE * 2)
-#define LEVEL2_LEAF_SIZE (PAGE_SIZE * 2)
-#define LEVEL3_LEAF_SIZE (PAGE_SIZE * 2)
-#define LEVEL4_LEAF_SIZE (PAGE_SIZE * 2)
-#define LEVEL5_LEAF_SIZE (PAGE_SIZE * 2)
-#define LEVEL6_LEAF_SIZE (PAGE_SIZE * 2)
-#define LEVEL7_LEAF_SIZE (PAGE_SIZE * 2)
+#define LEVEL0_LEAF_SIZE (PAGE_SIZE)
+#define LEVEL1_LEAF_SIZE (PAGE_SIZE)
+#define LEVEL2_LEAF_SIZE (PAGE_SIZE)
+#define LEVEL3_LEAF_SIZE (PAGE_SIZE)
+#define LEVEL4_LEAF_SIZE (PAGE_SIZE)
+#define LEVEL5_LEAF_SIZE (PAGE_SIZE)
+#define LEVEL6_LEAF_SIZE (PAGE_SIZE)
+#define LEVEL7_LEAF_SIZE (PAGE_SIZE)
 
 /* Possible options for these defines are the values in enum bt_layout */
 #define LEVEL0_LEAF_LAYOUT DYNAMIC_LEAF
@@ -329,8 +329,6 @@ typedef struct level_descriptor {
 	volatile segment_header *medium_log_head;
 	volatile segment_header *medium_log_tail;
 	uint64_t medium_log_size;
-	char *split_buffer;
-	uint64_t actual_level_size;
 #if MEASURE_SST_USED_SPACE
 	double avg_leaf_used_space;
 	double leaf_used_space;

@@ -54,6 +54,7 @@ void *compaction_daemon(void *args)
 				level_1->tree_status[L1_tree] = SPILLING_IN_PROGRESS;
 				/*start a compaction*/
 				comp_req = (struct compaction_request *)malloc(sizeof(struct compaction_request));
+				assert(comp_req);
 				comp_req->db_desc = handle->db_desc;
 				comp_req->volume_desc = handle->volume_desc;
 				comp_req->src_level = 0;
@@ -127,16 +128,8 @@ void *compaction_daemon(void *args)
 			uint8_t tree_1 = 0; // level_1->active_tree;
 			uint8_t tree_2 = 0; // level_2->active_tree;
 
-			// log_info("level[%u][%u] = %llu size max is: %llu level[%u][%u] = %llu
-			// size", level_id, tree_1,
-			//	 level_1->level_size[tree_1], level_1->max_level_size, level_id
-			//+ 1, tree_2,
-			//	 level_2->level_size[tree_2]);
-			// log_info("level status = %u", level_1->tree_status[tree_1]);
 			if (level_1->tree_status[tree_1] == NO_SPILLING &&
 			    level_1->level_size[tree_1] >= level_1->max_level_size) {
-				// log_info("Level %u is F U L L", level_id);
-				// src ready is destination ok?
 				if (level_2->tree_status[tree_2] == NO_SPILLING &&
 				    level_2->level_size[tree_2] < level_2->max_level_size) {
 					level_1->tree_status[tree_1] = SPILLING_IN_PROGRESS;
@@ -144,6 +137,7 @@ void *compaction_daemon(void *args)
 					/*start a compaction*/
 					struct compaction_request *comp_req_p =
 						(struct compaction_request *)malloc(sizeof(struct compaction_request));
+					assert(comp_req_p);
 					comp_req_p->db_desc = handle->db_desc;
 					comp_req_p->volume_desc = handle->volume_desc;
 					comp_req_p->src_level = level_id;
@@ -280,20 +274,22 @@ void *compaction(void *_comp_req)
 
 		nd_src.KV = level_src->keyValue;
 		nd_src.level_id = comp_req->src_level;
+		nd_src.type = level_src->kv_format;
 		nd_src.active_tree = comp_req->src_tree;
 		sh_insert_heap_node(m_heap, &nd_src);
+		struct bt_leaf_entry *test = level_src->keyValue;
+		struct bt_leaf_entry *test2 = level_dst->keyValue;
 
+		log_info("First key size %d First key %d", *(uint32_t *)test->pointer, *(uint32_t *)test2->pointer);
 		nd_dst.KV = level_dst->keyValue;
 		nd_dst.level_id = comp_req->dst_level;
+		nd_dst.type = level_dst->kv_format;
 		nd_dst.active_tree = comp_req->dst_tree;
 		sh_insert_heap_node(m_heap, &nd_dst);
 		log_info("level scanners and min heap ready");
 		int32_t num_of_keys = (SPILL_BUFFER_SIZE - (2 * sizeof(uint32_t))) / (PREFIX_SIZE + sizeof(uint64_t));
 		enum sh_heap_status stat = GOT_MIN_HEAP;
 		do {
-			while (handle.volume_desc->snap_preemption == SNAP_INTERRUPT_ENABLE)
-				usleep(50000);
-
 			db_desc->dirty = 0x01;
 			if (handle.db_desc->stat == DB_IS_CLOSING) {
 				log_info("db is closing bye bye from spiller");
@@ -305,7 +301,8 @@ void *compaction(void *_comp_req)
 			ins_req.metadata.tree_id = comp_req->dst_tree;
 			ins_req.metadata.key_format = KV_PREFIX;
 			ins_req.metadata.append_to_log = 0;
-			ins_req.metadata.special_split = 1;
+			ins_req.metadata.special_split = 0;
+			//ins_req.metadata.special_split = 1;
 			ins_req.metadata.gc_request = 0;
 			ins_req.metadata.recovery_request = 0;
 
@@ -313,11 +310,13 @@ void *compaction(void *_comp_req)
 				stat = sh_remove_min(m_heap, &nd_min);
 				if (stat != EMPTY_MIN_HEAP) {
 					ins_req.key_value_buf = nd_min.KV;
+					ins_req.metadata.key_format = nd_min.type;
 				} else
 					break;
 				// log_info("Compacting key %s from level %d",
 				//	 (*(uint64_t *)(ins_req.key_value_buf + PREFIX_SIZE)) + 4,
 				// nd_min.level_id);
+				test = ins_req.key_value_buf;
 				_insert_key_value(&ins_req);
 				// log_info("level size
 				// %llu",comp_req->db_desc->levels[comp_req->dst_level].level_size[comp_req->dst_tree]);
@@ -334,6 +333,7 @@ void *compaction(void *_comp_req)
 				rc = _get_next_KV(curr_scanner);
 				if (rc != END_OF_DATABASE) {
 					nd_min.KV = curr_scanner->keyValue;
+					nd_min.type = curr_scanner->kv_format;
 					sh_insert_heap_node(m_heap, &nd_min);
 				}
 				++local_spilled_keys;
@@ -344,8 +344,8 @@ void *compaction(void *_comp_req)
 		_close_spill_buffer_scanner(level_dst, dst_root);
 
 		log_info("local spilled keys %d", local_spilled_keys);
-		assert(local_spilled_keys == db_desc->levels[comp_req->src_level].level_size[comp_req->src_tree] +
-						     db_desc->levels[comp_req->dst_level].level_size[0]);
+		/* assert(local_spilled_keys == db_desc->levels[comp_req->src_level].level_size[comp_req->src_tree] + */
+		/* 				     db_desc->levels[comp_req->dst_level].level_size[0]); */
 		struct db_handle hd = { .db_desc = comp_req->db_desc, .volume_desc = comp_req->volume_desc };
 		/*
      * Now the difficult part we need atomically to free the src level, dst
