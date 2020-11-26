@@ -154,9 +154,22 @@ struct bt_static_leaf_slot_array {
 
 struct bt_dynamic_leaf_slot_array {
 	// The index points to the location of the kv pair in the leaf.
-	uint32_t index : 31;
+	uint32_t index : 28;
+	uint32_t key_category : 3;
 	// This bitmap informs us if the index points to an in-place kv or to a pointer in the log.
 	unsigned char bitmap : 1;
+};
+
+// The first enumeration should always have as a value 0.
+// UNKNOWN_LOG_CATEGORY must always be the last enumeration.
+enum log_category2 {
+	SMALL_INPLACE = 0,
+	SMALL_INLOG,
+	MEDIUM_INPLACE,
+	MEDIUM_INLOG,
+	BIG_INPLACE,
+	BIG_INLOG,
+	UNKNOWN_LOG_CATEGORY
 };
 
 #define INDEX_NODE_REMAIN (INDEX_NODE_SIZE - sizeof(struct node_header))
@@ -483,6 +496,7 @@ typedef struct bt_mutate_req {
 	uint64_t end_of_log;
 	uint32_t log_padding;
 	uint32_t kv_size;
+	enum log_category2 cat;
 	uint8_t level_id;
 	/*only for inserts >= level_1*/
 	uint8_t tree_id;
@@ -524,14 +538,12 @@ typedef struct log_operation {
 	};
 } log_operation;
 
-enum log_category { BIG = 1000, MEDIUM = 100, SMALL = 0 };
-
 struct log_towrite {
 	volatile segment_header *log_head;
 	volatile segment_header *log_tail;
 	volatile uint64_t *log_size;
 	int level_id;
-	enum log_category status;
+	enum log_category2 status;
 };
 
 enum bt_rebalance_retcode {

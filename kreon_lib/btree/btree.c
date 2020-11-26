@@ -884,6 +884,11 @@ finish_init:
 		db_desc->pending_compactions[level_id].dst_level = -1;
 	}
 
+	_Static_assert(UNKNOWN_LOG_CATEGORY < 8,
+		       "Log categories number cannot be stored in 3 bits, increase key_category");
+	_Static_assert(sizeof(struct bt_dynamic_leaf_slot_array) == 4,
+		       "Dynamic slot array is not 4 bytes, are you sure you want to continue?");
+
 #if LOG_WITH_MUTEX
 	MUTEX_INIT(&db_desc->lock_log, NULL);
 #else
@@ -1152,6 +1157,7 @@ uint8_t insert_key_value(db_handle *handle, void *key, void *value, uint32_t key
 	bt_insert_req ins_req;
 	char __tmp[KV_MAX_SIZE];
 	char *key_buf = __tmp;
+	double kv_ratio;
 	uint32_t kv_size;
 	int active_tree = handle->db_desc->levels[0].active_tree;
 
@@ -1170,7 +1176,9 @@ uint8_t insert_key_value(db_handle *handle, void *key, void *value, uint32_t key
 		active_tree = handle->db_desc->levels[0].active_tree;
 		pthread_mutex_unlock(&handle->db_desc->client_barrier_lock);
 	}
+
 	kv_size = sizeof(uint32_t) + key_size + sizeof(uint32_t) + value_size + sizeof(uint64_t);
+	kv_ratio = ((double)key_size) / value_size;
 
 	if (kv_size > KV_MAX_SIZE) {
 		log_fatal("Key buffer overflow");
@@ -1186,6 +1194,14 @@ uint8_t insert_key_value(db_handle *handle, void *key, void *value, uint32_t key
 	ins_req.key_value_buf = key_buf;
 	ins_req.metadata.kv_size = kv_size;
 	ins_req.metadata.level_id = 0;
+
+	if (kv_ratio >= 0.0 && kv_ratio < 0.3)
+		ins_req.metadata.cat = BIG_INLOG;
+	else if (kv_ratio >= 0.3 && kv_ratio <= 0.5)
+		ins_req.metadata.cat = MEDIUM_INLOG;
+	else
+		ins_req.metadata.cat = SMALL_INPLACE;
+
 	/*
 * Note for L0 inserts since active_tree changes dynamically we decide which
 * is the active_tree after
@@ -1257,14 +1273,14 @@ void write_keyvalue_inlog(log_operation *req, metadata_tologop *data_size, char 
 }
 
 size_t SIZE_INMEMORY_LOG = ((1 * 1024 * 1024 * 1024) * 3UL);
-void choose_log_toappend(db_descriptor *db_desc, struct log_towrite *log_metadata, uint32_t kv_size)
+void choose_log_toappend(db_descriptor *db_desc, struct log_towrite *log_metadata)
 {
-	if (kv_size >= BIG) {
+	if (log_metadata->status == BIG_INLOG) {
 		log_metadata->log_head = db_desc->big_log_head;
 		log_metadata->log_tail = db_desc->big_log_tail;
 		log_metadata->log_size = &db_desc->big_log_size;
-		log_metadata->status = BIG;
-	} else if (kv_size >= MEDIUM) {
+		//log_metadata->status = BIG;
+	} else if (log_metadata->status == MEDIUM_INLOG) {
 		if (db_desc->inmem_medium_log_head[db_desc->levels[0].active_tree] == NULL) {
 			segment_header *head;
 
@@ -1302,32 +1318,35 @@ void choose_log_toappend(db_descriptor *db_desc, struct log_towrite *log_metadat
 			log_metadata->log_tail = db_desc->medium_log_tail;
 			log_metadata->log_size = &db_desc->medium_log_size;
 		}
-		log_metadata->status = MEDIUM;
+		//log_metadata->status = MEDIUM;
 
 	} else {
 		log_metadata->log_head = db_desc->small_log_head;
 		log_metadata->log_tail = db_desc->small_log_tail;
 		log_metadata->log_size = &db_desc->small_log_size;
-		log_metadata->status = SMALL;
+		//log_metadata->status = SMALL;
 	}
 }
 
 void update_log_metadata(db_descriptor *db_desc, struct log_towrite *log_metadata)
 {
 	switch (log_metadata->status) {
-	case BIG:
+	case BIG_INLOG:
 		db_desc->big_log_tail = log_metadata->log_tail;
 		return;
-	case MEDIUM:
+	case MEDIUM_INLOG:
 		if (log_metadata->level_id != 0) {
 			db_desc->medium_log_tail = log_metadata->log_tail;
 		} else
 			db_desc->inmem_medium_log_tail[db_desc->levels[0].active_tree] =
 				(segment_header *)log_metadata->log_tail;
 		return;
-	case SMALL:
+	case SMALL_INPLACE:
+	case SMALL_INLOG:
 		db_desc->small_log_tail = log_metadata->log_tail;
 		return;
+	default:
+		assert(0);
 	}
 }
 
@@ -1341,7 +1360,9 @@ void *append_key_value_to_log(log_operation *req)
 	uint32_t available_space_in_log;
 	uint32_t allocated_space;
 	db_handle *handle = req->metadata->handle;
+
 	log_metadata.level_id = req->metadata->level_id;
+	log_metadata.status = req->metadata->cat;
 	extract_keyvalue_size(req, &data_size);
 #ifdef LOG_WITH_MUTEX
 	MUTEX_LOCK(&handle->db_desc->lock_log);
@@ -1349,7 +1370,7 @@ void *append_key_value_to_log(log_operation *req)
 	pthread_spin_lock(&handle->db_desc->lock_log);
 #endif
 
-	choose_log_toappend(handle->db_desc, &log_metadata, data_size.kv_size);
+	choose_log_toappend(handle->db_desc, &log_metadata);
 	/*append data part in the data log*/
 	if (*log_metadata.log_size % BUFFER_SEGMENT_SIZE != 0)
 		available_space_in_log = BUFFER_SEGMENT_SIZE - (*log_metadata.log_size % BUFFER_SEGMENT_SIZE);
@@ -1371,7 +1392,8 @@ void *append_key_value_to_log(log_operation *req)
 
 		allocated_space = data_size.kv_size + sizeof(struct log_sequence_number) + sizeof(segment_header);
 		allocated_space += BUFFER_SEGMENT_SIZE - (allocated_space % BUFFER_SEGMENT_SIZE);
-		if (req->metadata->level_id == 0 && log_metadata.status == MEDIUM) {
+
+		if (req->metadata->level_id == 0 && log_metadata.status == MEDIUM_INLOG) {
 			d_header = (segment_header *)mspace_memalign(handle->db_desc->inmem_msp, SEGMENT_SIZE,
 								     SEGMENT_SIZE);
 			assert(d_header != NULL);
@@ -1900,11 +1922,15 @@ static struct bt_rebalance_result split_index(node_header *node, bt_insert_req *
 int insert_KV_at_leaf(bt_insert_req *ins_req, node_header *leaf)
 {
 	db_descriptor *db_desc = ins_req->metadata.handle->db_desc;
+	enum log_category2 cat = ins_req->metadata.cat;
+	int append_tolog = (ins_req->metadata.append_to_log &&
+			    (cat == SMALL_INLOG || cat == SMALL_INPLACE || //Needed for consistency purposes
+			     cat == MEDIUM_INLOG || cat == BIG_INLOG));
 	int ret;
 	uint8_t level_id = ins_req->metadata.level_id;
 	uint8_t tree_id = ins_req->metadata.tree_id;
 
-	if (level_id == 1 && ins_req->metadata.kv_size >= MEDIUM && ins_req->metadata.kv_size < BIG) {
+	if (append_tolog) {
 		log_operation append_op = { .metadata = &ins_req->metadata,
 					    .optype_tolog = insertOp,
 					    .ins_req = ins_req };
@@ -1939,12 +1965,12 @@ int insert_KV_at_leaf(bt_insert_req *ins_req, node_header *leaf)
 	}
 
 	if (ret == INSERT /* || ret == FOUND */) {
-		if (ins_req->metadata.kv_size >= BIG ||
-		    (ins_req->metadata.kv_size >= MEDIUM && level_id < MAX_LEVELS)) {
-			__sync_fetch_and_add(&(ins_req->metadata.handle->db_desc->levels[level_id].level_size[tree_id]),
-					     20);
-			/* log_info("Level_size %llu",ins_req->metadata.handle->db_desc->levels[level_id].actual_level_size); */
+		int measure_level_used_space = cat == BIG_INLOG || cat == SMALL_INLOG;
+		int medium_inlog = cat == MEDIUM_INLOG && level_id < MAX_LEVELS;
 
+		if (measure_level_used_space || medium_inlog) {
+			__sync_fetch_and_add(&(ins_req->metadata.handle->db_desc->levels[level_id].level_size[tree_id]),
+					     sizeof(struct bt_leaf_entry));
 		} else {
 			__sync_fetch_and_add(&(ins_req->metadata.handle->db_desc->levels[level_id].level_size[tree_id]),
 					     ins_req->metadata.kv_size);
@@ -2447,11 +2473,13 @@ void _unlock_upper_levels(lock_table *node[], unsigned size, unsigned release)
 		}
 }
 
-int is_split_needed(void *node, enum bt_layout node_layout, uint32_t leaf_size, uint32_t kv_size, int level_id)
+int is_split_needed(void *node, bt_insert_req *req, enum bt_layout node_layout, uint32_t leaf_size)
 {
 	node_header *header = (node_header *)node;
 	int64_t num_entries = header->num_entries;
 	uint32_t height = header->height;
+	enum log_category2 cat = req->metadata.cat;
+	uint8_t level_id = req->metadata.level_id;
 
 	if (height != 0) {
 		uint8_t split_index_node = num_entries >= index_order;
@@ -2463,14 +2491,13 @@ int is_split_needed(void *node, enum bt_layout node_layout, uint32_t leaf_size, 
 		return check_static_leaf_split(node, leaf_size);
 	case DYNAMIC_LEAF:;
 		int status;
-		if (kv_size >= BIG)
-			status = KV_INLOG;
-		else if (kv_size >= MEDIUM && level_id < (MAX_LEVELS))
+
+		if (cat == BIG_INLOG || (cat == MEDIUM_INLOG && level_id < MAX_LEVELS) || cat == SMALL_INLOG)
 			status = KV_INLOG;
 		else
 			status = KV_INPLACE;
 
-		return check_dynamic_leaf_split(node, leaf_size, kv_size, status);
+		return check_dynamic_leaf_split(node, leaf_size, req->metadata.kv_size, status);
 	default:
 		assert(0);
 	}
@@ -2613,8 +2640,7 @@ release_and_retry:
 							db_desc->levels[level_id].node_layout,
 							db_desc->levels[level_id].leaf_size);
 
-		if (is_split_needed(son, db_desc->levels[level_id].node_layout, temp_leaf_size,
-				    ins_req->metadata.kv_size, level_id)) {
+		if (is_split_needed(son, ins_req, db_desc->levels[level_id].node_layout, temp_leaf_size)) {
 			/*Overflow split*/
 			if (son->height > 0) {
 				son->v1++;
@@ -2737,8 +2763,7 @@ release_and_retry:
 					       db_desc->levels[level_id].leaf_size);
 
 		if (!(son->epoch <= volume_desc->dev_catalogue->epoch ||
-		      is_split_needed(son, db_desc->levels[level_id].node_layout, temp_leaf_size,
-				      ins_req->metadata.kv_size, level_id))) {
+		      is_split_needed(son, ins_req, db_desc->levels[level_id].node_layout, temp_leaf_size))) {
 			_unlock_upper_levels(upper_level_nodes, size - 1, release);
 			release = size - 1;
 		}
@@ -2829,8 +2854,7 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 							db_desc->levels[level_id].node_layout,
 							db_desc->levels[level_id].leaf_size);
 
-		if (is_split_needed(son, db_desc->levels[level_id].node_layout, temp_leaf_size,
-				    ins_req->metadata.kv_size, level_id)) {
+		if (is_split_needed(son, ins_req, db_desc->levels[level_id].node_layout, temp_leaf_size)) {
 			/*failed needs split*/
 			_unlock_upper_levels(upper_level_nodes, size, release);
 			__sync_fetch_and_sub(num_level_writers, 1);
@@ -2875,8 +2899,7 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 						db_desc->levels[level_id].node_layout,
 						db_desc->levels[level_id].leaf_size);
 
-	if (is_split_needed(son, db_desc->levels[level_id].node_layout, temp_leaf_size, ins_req->metadata.kv_size,
-			    level_id) ||
+	if (is_split_needed(son, ins_req, db_desc->levels[level_id].node_layout, temp_leaf_size) ||
 	    son->epoch <= volume_desc->dev_catalogue->epoch) {
 		_unlock_upper_levels(upper_level_nodes, size, release);
 		__sync_fetch_and_sub(num_level_writers, 1);
