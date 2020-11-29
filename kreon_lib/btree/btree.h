@@ -4,7 +4,6 @@
  *  @author Giorgos Xanthakis  (gxanth@ics.forth.gr)
  */
 #pragma once
-#include <semaphore.h>
 #include <pthread.h>
 #include <semaphore.h>
 #include <stdlib.h>

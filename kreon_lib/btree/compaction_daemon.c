@@ -277,10 +277,7 @@ void *compaction(void *_comp_req)
 		nd_src.type = level_src->kv_format;
 		nd_src.active_tree = comp_req->src_tree;
 		sh_insert_heap_node(m_heap, &nd_src);
-		struct bt_leaf_entry *test = level_src->keyValue;
-		struct bt_leaf_entry *test2 = level_dst->keyValue;
 
-		log_info("First key size %d First key %d", *(uint32_t *)test->pointer, *(uint32_t *)test2->pointer);
 		nd_dst.KV = level_dst->keyValue;
 		nd_dst.level_id = comp_req->dst_level;
 		nd_dst.type = level_dst->kv_format;
@@ -311,12 +308,17 @@ void *compaction(void *_comp_req)
 				if (stat != EMPTY_MIN_HEAP) {
 					ins_req.key_value_buf = nd_min.KV;
 					ins_req.metadata.key_format = nd_min.type;
+					ins_req.metadata.cat = nd_min.cat;
+					if (nd_min.level_id == 0 && nd_min.cat == MEDIUM_INLOG)
+						ins_req.metadata.append_to_log = 1;
+					else
+						ins_req.metadata.append_to_log = 0;
+
 				} else
 					break;
 				// log_info("Compacting key %s from level %d",
 				//	 (*(uint64_t *)(ins_req.key_value_buf + PREFIX_SIZE)) + 4,
 				// nd_min.level_id);
-				test = ins_req.key_value_buf;
 				_insert_key_value(&ins_req);
 				// log_info("level size
 				// %llu",comp_req->db_desc->levels[comp_req->dst_level].level_size[comp_req->dst_tree]);
@@ -334,6 +336,8 @@ void *compaction(void *_comp_req)
 				if (rc != END_OF_DATABASE) {
 					nd_min.KV = curr_scanner->keyValue;
 					nd_min.type = curr_scanner->kv_format;
+					nd_min.cat = curr_scanner->cat;
+					nd_min.level_id = curr_scanner->level_id;
 					sh_insert_heap_node(m_heap, &nd_min);
 				}
 				++local_spilled_keys;

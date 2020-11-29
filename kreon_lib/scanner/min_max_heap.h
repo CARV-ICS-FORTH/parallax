@@ -9,6 +9,7 @@ struct sh_heap_node {
 	uint8_t active_tree;
 	uint8_t duplicate;
 	enum KV_type type;
+	enum log_category2 cat;
 };
 
 struct sh_min_heap {

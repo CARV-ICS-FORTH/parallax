@@ -20,7 +20,8 @@ typedef struct level_scanner {
 	stackT stack;
 	node_header *root; /*root of the tree when the cursor was initialized/reset, related to CPAAS-188*/
 	void *keyValue;
-	int kv_format;
+	uint32_t kv_format;
+	enum log_category2 cat;
 	uint32_t level_id;
 	int32_t type;
 	uint8_t valid : 1;

@@ -387,6 +387,7 @@ struct bt_rebalance_result split_dynamic_leaf(struct bt_dynamic_leaf_node *leaf,
 
 		left_leaf_slot_array[j].index = left_leaf->header.leaf_log_size;
 		left_leaf_slot_array[j].bitmap = slot_array[i].bitmap;
+		left_leaf_slot_array[j].key_category = slot_array[i].key_category;
 	}
 
 	/*Fix Right leaf metadata*/
@@ -413,8 +414,10 @@ struct bt_rebalance_result split_dynamic_leaf(struct bt_dynamic_leaf_node *leaf,
 			memcpy(leaf_log_tail, get_kv_offset(leaf, leaf_size, slot_array[i].index),
 			       sizeof(struct bt_leaf_entry));
 		}
+
 		right_leaf_slot_array[j].index = right_leaf->header.leaf_log_size;
 		right_leaf_slot_array[j].bitmap = slot_array[i].bitmap;
+		right_leaf_slot_array[j].key_category = slot_array[i].key_category;
 	}
 
 	rep.left_dlchild->header.height = leaf->header.height;
@@ -465,7 +468,6 @@ void write_data_in_dynamic_leaf(struct write_dynamic_leaf_args *args)
 		if (kv_format == KV_FORMAT)
 			leaf->header.leaf_log_size += append_kv_inplace(dest, key_value_buf, key_value_size);
 		else {
-			/* raise(SIGINT); */
 			char *pointer = (char *)(*(uint64_t *)(key_value_buf + PREFIX_SIZE));
 			uint32_t key_size = *(uint32_t *)pointer;
 			uint32_t value_size = *(uint32_t *)(pointer + 4 + key_size);

@@ -1194,6 +1194,7 @@ uint8_t insert_key_value(db_handle *handle, void *key, void *value, uint32_t key
 	ins_req.key_value_buf = key_buf;
 	ins_req.metadata.kv_size = kv_size;
 	ins_req.metadata.level_id = 0;
+	ins_req.metadata.key_format = KV_FORMAT;
 
 	if (kv_ratio >= 0.0 && kv_ratio < 0.3)
 		ins_req.metadata.cat = BIG_INLOG;
@@ -1444,12 +1445,9 @@ uint8_t _insert_key_value(bt_insert_req *ins_req)
 		val_size = *(uint32_t *)(ins_req->key_value_buf + 4 + key_size);
 		ins_req->metadata.kv_size = sizeof(uint32_t) + key_size + sizeof(uint32_t) + val_size;
 		assert(ins_req->metadata.kv_size < 4096);
-	} else if (ins_req->metadata.key_format == KV_PREFIX) {
-		key_size = *(uint32_t *)*(uint64_t *)(ins_req->key_value_buf + PREFIX_SIZE);
-		val_size = *(uint32_t *)((char *)(*(uint64_t *)(ins_req->key_value_buf + PREFIX_SIZE)) + 4 + key_size);
-		ins_req->metadata.kv_size = sizeof(uint32_t) + key_size + sizeof(uint32_t) + val_size;
-		assert(ins_req->metadata.kv_size < 4096);
-	}
+	} else if (ins_req->metadata.key_format == KV_PREFIX)
+		ins_req->metadata.kv_size = sizeof(struct bt_leaf_entry);
+
 	rc = SUCCESS;
 
 	if (writers_join_as_readers(ins_req) == SUCCESS) {
