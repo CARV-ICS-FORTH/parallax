@@ -298,8 +298,7 @@ void *compaction(void *_comp_req)
 			ins_req.metadata.tree_id = comp_req->dst_tree;
 			ins_req.metadata.key_format = KV_PREFIX;
 			ins_req.metadata.append_to_log = 0;
-			ins_req.metadata.special_split = 0;
-			//ins_req.metadata.special_split = 1;
+			ins_req.metadata.special_split = 1;
 			ins_req.metadata.gc_request = 0;
 			ins_req.metadata.recovery_request = 0;
 

@@ -26,10 +26,17 @@ void binary_search_dynamic_leaf(const struct bt_dynamic_leaf_node *leaf, uint32_
 
 int check_dynamic_leaf_split(struct bt_dynamic_leaf_node *leaf, uint32_t leaf_size, uint32_t kv_size,
 			     enum kv_entry_location key_type);
+
 struct bt_rebalance_result split_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, uint32_t leaf_size,
 					      bt_insert_req *req);
+
+struct bt_rebalance_result special_split_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, uint32_t leaf_size,
+						      bt_insert_req *req);
+
 int reorganize_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, uint32_t leaf_size, bt_insert_req *req);
 struct bt_rebalance_result blsm_split_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, uint32_t leaf_size,
 						   bt_insert_req *req);
 struct bt_dynamic_leaf_slot_array *get_slot_array_offset(const struct bt_dynamic_leaf_node *leaf);
 char *get_kv_offset(const struct bt_dynamic_leaf_node *leaf, const uint32_t leaf_size, const uint32_t kv_offset);
+
+typedef struct bt_rebalance_result split_dl(struct bt_dynamic_leaf_node *leaf, uint32_t leaf_size, bt_insert_req *req);

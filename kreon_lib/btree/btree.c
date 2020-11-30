@@ -1982,16 +1982,17 @@ int insert_KV_at_leaf(bt_insert_req *ins_req, node_header *leaf)
 
 struct bt_rebalance_result split_leaf(bt_insert_req *req, leaf_node *node)
 {
+	split_dl *split_functions[2] = { split_dynamic_leaf, special_split_dynamic_leaf };
 	level_descriptor *level = &req->metadata.handle->db_desc->levels[req->metadata.level_id];
 	int level_id = req->metadata.level_id;
+
 	switch (level->node_layout) {
 	case STATIC_LEAF:
 		return split_static_leaf((struct bt_static_leaf_node *)node, req);
 	case DYNAMIC_LEAF:;
 		uint32_t leaf_size = req->metadata.handle->db_desc->levels[level_id].leaf_size;
-		struct bt_rebalance_result res =
-			split_dynamic_leaf((struct bt_dynamic_leaf_node *)node, leaf_size, req);
-		return res;
+		return split_functions[req->metadata.special_split]((struct bt_dynamic_leaf_node *)node, leaf_size,
+								    req);
 	default:
 		log_fatal("INDEX IS CORRUPTED!");
 		exit(EXIT_FAILURE);
