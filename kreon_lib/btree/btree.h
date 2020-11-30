@@ -347,7 +347,7 @@ typedef struct level_descriptor {
 	double count_leaves;
 	double count_compactions;
 #endif
-	int64_t active_writers;
+	volatile int64_t active_writers;
 	/*spilling or not?*/
 	char tree_status[NUM_TREES_PER_LEVEL];
 	uint32_t leaf_size;

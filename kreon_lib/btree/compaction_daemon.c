@@ -79,7 +79,8 @@ void *compaction_daemon(void *args)
 						log_fatal("Failed to acquire guard lock");
 						exit(EXIT_FAILURE);
 					}
-					spin_loop(&(comp_req->db_desc->levels[0].active_writers), 0);
+
+					spin_loop(&(handle->db_desc->levels[0].active_writers), 0);
 					/*done now atomically change active tree*/
 					db_desc->levels[0].active_tree = i;
 
