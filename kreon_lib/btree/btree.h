@@ -100,7 +100,8 @@ typedef struct segment_header {
 	void *next_segment;
 	void *prev_segment;
 	uint64_t segment_id;
-	char pad[4072];
+	int in_mem;
+	char pad[4068];
 } segment_header;
 
 /*Note IN stands for Internal Node*/
@@ -208,14 +209,14 @@ enum bsearch_status { INSERT = 0, FOUND = 1, ERROR = 2 };
 
 /* Possible options for these defines are multiples of 4KB but they should not be more than BUFFER_SEGMENT_SIZE*/
 #define PAGE_SIZE 4096
-#define LEVEL0_LEAF_SIZE (PAGE_SIZE)
-#define LEVEL1_LEAF_SIZE (PAGE_SIZE)
-#define LEVEL2_LEAF_SIZE (PAGE_SIZE)
-#define LEVEL3_LEAF_SIZE (PAGE_SIZE)
-#define LEVEL4_LEAF_SIZE (PAGE_SIZE)
-#define LEVEL5_LEAF_SIZE (PAGE_SIZE)
-#define LEVEL6_LEAF_SIZE (PAGE_SIZE)
-#define LEVEL7_LEAF_SIZE (PAGE_SIZE)
+#define LEVEL0_LEAF_SIZE (PAGE_SIZE * 2)
+#define LEVEL1_LEAF_SIZE (PAGE_SIZE * 2)
+#define LEVEL2_LEAF_SIZE (PAGE_SIZE * 2)
+#define LEVEL3_LEAF_SIZE (PAGE_SIZE * 2)
+#define LEVEL4_LEAF_SIZE (PAGE_SIZE * 2)
+#define LEVEL5_LEAF_SIZE (PAGE_SIZE * 2)
+#define LEVEL6_LEAF_SIZE (PAGE_SIZE * 2)
+#define LEVEL7_LEAF_SIZE (PAGE_SIZE * 2)
 
 /* Possible options for these defines are the values in enum bt_layout */
 #define LEVEL0_LEAF_LAYOUT DYNAMIC_LEAF
@@ -349,9 +350,9 @@ typedef struct level_descriptor {
 #endif
 	volatile int64_t active_writers;
 	/*spilling or not?*/
-	char tree_status[NUM_TREES_PER_LEVEL];
 	uint32_t leaf_size;
 	enum bt_layout node_layout;
+	char tree_status[NUM_TREES_PER_LEVEL];
 	uint8_t active_tree;
 	uint8_t level_id;
 	char in_recovery_mode;

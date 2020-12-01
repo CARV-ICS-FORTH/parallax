@@ -15,6 +15,7 @@ struct compaction_request {
 	volume_descriptor *volume_desc;
 	uint64_t l0_start;
 	uint64_t l0_end;
+	int run;
 	uint8_t src_level;
 	uint8_t src_tree;
 	uint8_t dst_level;
@@ -207,6 +208,7 @@ void *compaction(void *_comp_req)
 
 	uint32_t local_spilled_keys = 0;
 	int i, rc = 100;
+	int run = 0;
 
 	pthread_setname_np(pthread_self(), "comp_thread");
 	log_info("starting compaction from level's tree [%u][%u] to level's tree[%u][%u]", comp_req->src_level,
@@ -316,12 +318,9 @@ void *compaction(void *_comp_req)
 
 				} else
 					break;
-				// log_info("Compacting key %s from level %d",
-				//	 (*(uint64_t *)(ins_req.key_value_buf + PREFIX_SIZE)) + 4,
-				// nd_min.level_id);
+
 				_insert_key_value(&ins_req);
-				// log_info("level size
-				// %llu",comp_req->db_desc->levels[comp_req->dst_level].level_size[comp_req->dst_tree]);
+
 				/*refill from the appropriate level*/
 				struct level_scanner *curr_scanner = NULL;
 				if (nd_min.level_id == comp_req->src_level)
@@ -352,40 +351,35 @@ void *compaction(void *_comp_req)
 		/* 				     db_desc->levels[comp_req->dst_level].level_size[0]); */
 		struct db_handle hd = { .db_desc = comp_req->db_desc, .volume_desc = comp_req->volume_desc };
 		/*
-     * Now the difficult part we need atomically to free the src level, dst
-     * level[0]. Then
-     * we need to atomically switch dst_level[1] to dst_level[0]. We ll acquire
-     * the guard lock of each
-     * level for scanners. We ll need another set of lamport counters for
-     * readers to inform them that a
-     * level change took place
-     */
-
-		// if
-		// (RWLOCK_WRLOCK(&(comp_req->db_desc->levels[comp_req->src_level].guard_of_level.rx_lock)))
-		// {
-		//	log_fatal("Failed to acquire guard lock");
-		//	exit(EXIT_FAILURE);
-		//}
-
-		// if
-		// (RWLOCK_WRLOCK(&(comp_req->db_desc->levels[comp_req->dst_level].guard_of_level.rx_lock)))
-		// {
-		//	log_fatal("Failed to acquire guard lock");
-		//	exit(EXIT_FAILURE);
-		//}
+		 * Now the difficult part we need atomically to free the src level, dst
+		 * level[0]. Then
+		 * we need to atomically switch dst_level[1] to dst_level[0]. We ll acquire
+		 * the guard lock of each
+		 * level for scanners. We ll need another set of lamport counters for
+		 * readers to inform them that a
+		 * level change took place
+		 */
 
 		/*special care for dst level atomic switch tree 2 to tree 1 of dst*/
 		struct segment_header *curr_segment = comp_req->db_desc->levels[comp_req->dst_level].first_segment[0];
+		struct segment_header *temp_segment;
+
 		assert(curr_segment != NULL);
 		uint64_t space_freed = 0;
-		while (1) {
-			free_block(comp_req->volume_desc, curr_segment, SEGMENT_SIZE, -1);
-			space_freed += SEGMENT_SIZE;
-			if (curr_segment->next_segment == NULL)
+
+		for (; curr_segment->next_segment != NULL; curr_segment = REAL_ADDRESS(temp_segment)) {
+			temp_segment = curr_segment->next_segment;
+
+			if (curr_segment->in_mem == 0)
+				free_block(comp_req->volume_desc, curr_segment, SEGMENT_SIZE, -1);
+			else {
 				break;
-			curr_segment = MAPPED + curr_segment->next_segment;
+				free(curr_segment);
+				run = 1;
+			}
+			space_freed += SEGMENT_SIZE;
 		}
+
 		log_info("Freed space %llu MB from db:%s level %u", space_freed / (1024 * 1024),
 			 comp_req->db_desc->db_name, comp_req->src_level);
 		log_info("Switching tree[%u][%u] to tree[%u][%u]", comp_req->dst_level, 1, comp_req->dst_level, 0);
@@ -398,16 +392,17 @@ void *compaction(void *_comp_req)
 		ld->offset[0] = ld->offset[1];
 		ld->offset[1] = 0;
 
-		if (ld->root_w[1] != NULL) {
-			while (!__sync_bool_compare_and_swap(&ld->root_r[0], ld->root_r[0], ld->root_w[1])) {
-			}
-		} else if (ld->root_r[1] != NULL) {
-			while (!__sync_bool_compare_and_swap(&ld->root_r[0], ld->root_r[0], ld->root_r[1])) {
-			}
-		} else {
+		if (ld->root_w[1] != NULL)
+			while (!__sync_bool_compare_and_swap(&ld->root_r[0], ld->root_r[0], ld->root_w[1]))
+				;
+		else if (ld->root_r[1] != NULL)
+			while (!__sync_bool_compare_and_swap(&ld->root_r[0], ld->root_r[0], ld->root_r[1]))
+				;
+		else {
 			log_fatal("Where is the root?");
 			exit(EXIT_FAILURE);
 		}
+
 		ld->root_w[0] = NULL;
 		ld->level_size[0] = ld->level_size[1];
 		ld->level_size[1] = 0;
@@ -415,7 +410,7 @@ void *compaction(void *_comp_req)
 		ld->root_r[1] = NULL;
 
 		/*free src level*/
-		seg_free_level(&hd, comp_req->src_level, comp_req->src_tree);
+		seg_free_level(&hd, comp_req->src_level, comp_req->src_tree, run);
 
 		// if
 		// (RWLOCK_UNLOCK(&(comp_req->db_desc->levels[comp_req->src_level].guard_of_level.rx_lock)))

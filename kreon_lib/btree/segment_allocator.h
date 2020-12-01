@@ -39,4 +39,4 @@ void free_raw_segment(volume_descriptor *volume_desc, segment_header *segment);
 
 void *get_space_for_system(volume_descriptor *volume_desc, uint32_t size);
 
-void seg_free_level(db_handle *handle, uint8_t level_id, uint8_t tree_id);
+void seg_free_level(db_handle *handle, uint8_t level_id, uint8_t tree_id, int run);

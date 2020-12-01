@@ -221,7 +221,7 @@ void snapshot(volume_descriptor *volume_desc)
 			db_entry = &(db_group->db_entries[db_desc->group_index]);
 			//log_info("pr db entry name %s db name %s", db_entry->db_name, db_desc->db_name);
 
-			for (i = 0; i < MAX_LEVELS + 1; i++) {
+			for (i = 1; i < MAX_LEVELS + 1; i++) {
 				for (j = 0; j < NUM_TREES_PER_LEVEL; j++) {
 					/*Serialize and persist space allocation info for all levels*/
 					if (db_desc->levels[i].last_segment[j] != NULL) {
