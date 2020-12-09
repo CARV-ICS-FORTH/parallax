@@ -34,6 +34,7 @@ void *compaction_daemon(void *args)
 	struct db_descriptor *db_desc = handle->db_desc;
 	struct compaction_request *comp_req = NULL;
 	pthread_setname_np(pthread_self(), "compactiond");
+
 	int next_L0_tree_to_compact = 0;
 	while (1) {
 		/*special care for Level 0 to 1*/
@@ -278,12 +279,14 @@ void *compaction(void *_comp_req)
 		nd_src.KV = level_src->keyValue;
 		nd_src.level_id = comp_req->src_level;
 		nd_src.type = level_src->kv_format;
+		nd_src.cat = level_src->cat;
 		nd_src.active_tree = comp_req->src_tree;
 		sh_insert_heap_node(m_heap, &nd_src);
 
 		nd_dst.KV = level_dst->keyValue;
 		nd_dst.level_id = comp_req->dst_level;
 		nd_dst.type = level_dst->kv_format;
+		nd_dst.cat = level_dst->cat;
 		nd_dst.active_tree = comp_req->dst_tree;
 		sh_insert_heap_node(m_heap, &nd_dst);
 		log_info("level scanners and min heap ready");
@@ -299,26 +302,40 @@ void *compaction(void *_comp_req)
 			ins_req.metadata.handle = &handle;
 			ins_req.metadata.level_id = comp_req->dst_level;
 			ins_req.metadata.tree_id = comp_req->dst_tree;
-			ins_req.metadata.key_format = KV_PREFIX;
+			/* ins_req.metadata.key_format = KV_PREFIX; */
 			ins_req.metadata.append_to_log = 0;
 			ins_req.metadata.special_split = 1;
 			ins_req.metadata.gc_request = 0;
 			ins_req.metadata.recovery_request = 0;
+			/* ins_req.metadata.cat = BIG_INLOG; */
 
 			for (i = 0; i < num_of_keys; i++) {
 				stat = sh_remove_min(m_heap, &nd_min);
 				if (stat != EMPTY_MIN_HEAP) {
 					ins_req.key_value_buf = nd_min.KV;
 					ins_req.metadata.key_format = nd_min.type;
-					ins_req.metadata.cat = nd_min.cat;
+
+					if (nd_min.KV == nd_src.KV)
+						ins_req.metadata.cat = nd_src.cat;
+					else
+						ins_req.metadata.cat = nd_dst.cat;
+
+					if (ins_req.metadata.cat == SMALL_INPLACE) {
+						ins_req.metadata.key_format = KV_FORMAT;
+					} else
+						ins_req.metadata.key_format = KV_PREFIX;
+
 					if (nd_min.level_id == 0 && nd_min.cat == MEDIUM_INLOG)
 						ins_req.metadata.append_to_log = 1;
 					else
 						ins_req.metadata.append_to_log = 0;
 
-				} else
+				} else {
 					break;
+				}
 
+				/* assert(ins_req.metadata.cat == BIG_INLOG); */
+				/* assert(ins_req.metadata.key_format == KV_PREFIX); */
 				_insert_key_value(&ins_req);
 
 				/*refill from the appropriate level*/
@@ -369,15 +386,10 @@ void *compaction(void *_comp_req)
 
 		for (; curr_segment->next_segment != NULL; curr_segment = REAL_ADDRESS(temp_segment)) {
 			temp_segment = curr_segment->next_segment;
-
-			if (curr_segment->in_mem == 0)
+			if (curr_segment->in_mem == 0) {
 				free_block(comp_req->volume_desc, curr_segment, SEGMENT_SIZE, -1);
-			else {
-				break;
-				free(curr_segment);
-				run = 1;
+				space_freed += SEGMENT_SIZE;
 			}
-			space_freed += SEGMENT_SIZE;
 		}
 
 		log_info("Freed space %llu MB from db:%s level %u", space_freed / (1024 * 1024),
@@ -412,19 +424,6 @@ void *compaction(void *_comp_req)
 		/*free src level*/
 		seg_free_level(&hd, comp_req->src_level, comp_req->src_tree, run);
 
-		// if
-		// (RWLOCK_UNLOCK(&(comp_req->db_desc->levels[comp_req->src_level].guard_of_level.rx_lock)))
-		// {
-		//	log_fatal("Failed to acquire guard lock");
-		//	exit(EXIT_FAILURE);
-		//}
-
-		// if
-		// (RWLOCK_UNLOCK(&(comp_req->db_desc->levels[comp_req->dst_level].guard_of_level.rx_lock)))
-		// {
-		//	log_fatal("Failed to acquire guard lock");
-		//	exit(EXIT_FAILURE);
-		//}
 		log_info("After compaction tree[%d][%d] size is %llu", comp_req->dst_level, 0, ld->level_size[0]);
 	} else {
 		if (RWLOCK_WRLOCK(&(comp_req->db_desc->levels[comp_req->src_level].guard_of_level.rx_lock))) {

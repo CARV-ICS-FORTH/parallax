@@ -835,10 +835,6 @@ finish_init:
 	db_desc->blocked_clients = 0;
 	db_desc->compaction_count = 0;
 	db_desc->is_compaction_daemon_sleeping = 0;
-	if (pthread_create(&db_desc->compaction_thread, NULL, compaction_daemon, handle) != 0) {
-		log_fatal("Cannot create compaction daemon");
-		exit(EXIT_FAILURE);
-	}
 
 	for (i = 0; i < NUM_TREES_PER_LEVEL; ++i) {
 		db_desc->inmem_medium_log_head[i] = db_desc->inmem_medium_log_tail[i] = NULL;
@@ -1608,8 +1604,6 @@ void *__find_key(db_handle *handle, void *key)
 		root_r = handle->db_desc->levels[0].root_r[tree_id];
 
 		if (root_w != NULL) {
-			/* if (level_id == 1) */
-			/* 	BREAKPOINT; */
 			rep = lookup_in_tree(handle->db_desc, key, root_w, 0);
 			if (rep.lc_failed) {
 				++tries;
@@ -1933,6 +1927,7 @@ int insert_KV_at_leaf(bt_insert_req *ins_req, node_header *leaf)
 					    .optype_tolog = insertOp,
 					    .ins_req = ins_req };
 		ins_req->key_value_buf = append_key_value_to_log(&append_op);
+		ins_req->metadata.key_format = KV_FORMAT;
 	} else if (ins_req->metadata.append_to_log && ins_req->metadata.key_format == KV_FORMAT) {
 		log_operation append_op = { .metadata = &ins_req->metadata,
 					    .optype_tolog = insertOp,
@@ -1977,6 +1972,7 @@ int insert_KV_at_leaf(bt_insert_req *ins_req, node_header *leaf)
 
 		//__sync_fetch_and_add(&(ins_req->metadata.handle->db_desc->levels[level_id].total_keys[active_tree]), 1);
 	}
+
 	return ret;
 }
 
@@ -2752,6 +2748,7 @@ release_and_retry:
 			exit(EXIT_FAILURE);
 		}
 		/*Node acquired */
+		ins_req->metadata.reorganized_leaf_pos_INnode = next_addr;
 		son = (node_header *)(MAPPED + *(uint64_t *)next_addr);
 
 		/*if the node is not safe hold its ancestor's lock else release locks from

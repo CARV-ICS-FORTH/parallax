@@ -494,7 +494,7 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 				level_sc->keyValue = get_kv_offset(dlnode, db_desc->levels[level_id].leaf_size,
 								   slot_array[middle].index);
 				log_info("%*s", *(uint32_t *)level_sc->keyValue, level_sc->keyValue + 4);
-				level_sc->kv_format = KV_FORMAT;
+				level_key_format = level_sc->kv_format = KV_FORMAT;
 				level_sc->cat = slot_array[middle].key_category;
 				break;
 			case KV_INLOG: {
@@ -504,7 +504,7 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 				level_sc->kv_entry.pointer = (uint64_t)REAL_ADDRESS(kv_entry->pointer);
 				level_sc->keyValue = &level_sc->kv_entry;
 				level_sc->cat = slot_array[middle].key_category;
-				level_sc->kv_format = KV_PREFIX;
+				level_key_format = level_sc->kv_format = KV_PREFIX;
 
 				/* REAL_ADDRESS(*(uint64_t*)get_kv_offset( */
 				/* dlnode, db_desc->levels[level_id].leaf_size, slot_array[middle].index)); */
@@ -514,8 +514,6 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 				assert(0);
 			}
 			break;
-
-			break;
 		}
 		default:
 			assert(0);
@@ -523,19 +521,66 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 
 		// log_info("key is %s\n", (MAPPED + *(uint64_t *)addr) + sizeof(int32_t));
 	} else { /*normal scanner*/
-		level_key_format = KV_FORMAT;
+		switch (db_desc->levels[level_id].node_layout) {
+		case STATIC_LEAF: {
+			struct bt_static_leaf_node *slnode = (struct bt_static_leaf_node *)node;
+			struct bt_static_leaf_structs src;
+			/* struct bt_leaf_entry *leaf_entry = level_sc->keyValue; */
+			retrieve_static_leaf_structures(slnode, &src, &db_desc->levels[level_id]);
+			level_sc->keyValue = REAL_ADDRESS(src.kv_entries[src.slot_array[middle].index].pointer);
+			//log_info("Offset %llu", src.kv_entries[src.slot_array[middle].index].pointer);
+			/* *leaf_entry = src.kv_entries[src.slot_array[middle].index]; */
+			/* leaf_entry->pointer = (uint64_t)REAL_ADDRESS(leaf_entry->pointer); */
+			/* log_info("GONE BACK %d", *(uint32_t *)level_sc->keyValue); */
+			break;
+		}
+		case DYNAMIC_LEAF: {
+			struct bt_dynamic_leaf_node *dlnode = (struct bt_dynamic_leaf_node *)node;
+			struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(dlnode);
+			switch (slot_array[middle].bitmap) {
+			case KV_INPLACE:
+				level_sc->keyValue = get_kv_offset(dlnode, db_desc->levels[level_id].leaf_size,
+								   slot_array[middle].index);
+				log_info("%*s", *(uint32_t *)level_sc->keyValue, level_sc->keyValue + 4);
+				level_key_format = level_sc->kv_format = KV_FORMAT;
+				level_sc->cat = slot_array[middle].key_category;
+				break;
+			case KV_INLOG: {
+				struct bt_leaf_entry *kv_entry = (struct bt_leaf_entry *)get_kv_offset(
+					dlnode, db_desc->levels[level_id].leaf_size, slot_array[middle].index);
+				level_sc->kv_entry = *kv_entry;
+				level_sc->kv_entry.pointer = (uint64_t)REAL_ADDRESS(kv_entry->pointer);
+				level_sc->keyValue = &level_sc->kv_entry;
+				level_sc->cat = slot_array[middle].key_category;
+				level_key_format = level_sc->kv_format = KV_PREFIX;
+
+				/* REAL_ADDRESS(*(uint64_t*)get_kv_offset( */
+				/* dlnode, db_desc->levels[level_id].leaf_size, slot_array[middle].index)); */
+				break;
+			}
+			default:
+				assert(0);
+			}
+			break;
+		}
+		default:
+			assert(0);
+		}
+
 		//level_sc->keyValue = (void *)MAPPED + lnode->pointer[middle];
 		//log_info("full key is %s", level_sc->keyValue + 4);
 	}
 
 	if (start_key_buf != NULL) {
 		if (mode == GREATER) {
-			while (_tucana_key_cmp(level_sc->keyValue, start_key_buf, level_key_format, KV_FORMAT) <= 0) {
+			while (_tucana_key_cmp(level_sc->keyValue, start_key_buf,
+					       level_sc->kv_format /* level_key_format */, KV_FORMAT) <= 0) {
 				if (_get_next_KV(level_sc) == END_OF_DATABASE)
 					return END_OF_DATABASE;
 			}
 		} else if (mode == GREATER_OR_EQUAL) {
-			while (_tucana_key_cmp(level_sc->keyValue, start_key_buf, level_key_format, KV_FORMAT) < 0) {
+			while (_tucana_key_cmp(level_sc->keyValue, start_key_buf,
+					       level_sc->kv_format /* level_key_format */, KV_FORMAT) < 0) {
 				//log_info("compated index key %s with seek key %s", level_sc->keyValue + 4,
 				//	 start_key_buf + 4);
 				if (_get_next_KV(level_sc) == END_OF_DATABASE)
@@ -567,6 +612,7 @@ int32_t getNext(scannerHandle *sc)
 				next_nd.level_id = nd.level_id;
 				next_nd.active_tree = nd.active_tree;
 				next_nd.type = nd.type;
+				next_nd.cat = sc->LEVEL_SCANNERS[nd.level_id][nd.active_tree].cat;
 				next_nd.KV = sc->LEVEL_SCANNERS[nd.level_id][nd.active_tree].keyValue;
 				sh_insert_heap_node(&sc->heap, &next_nd);
 			}
@@ -814,6 +860,54 @@ int32_t _get_next_KV(level_scanner *sc)
 
 		//log_info("key %d x %d numberofentries %llu %d", *(uint32_t*)sc->keyValue, x, node->numberOfEntriesInNode, idx);
 	} else {
+		switch (db_desc->levels[level_id].node_layout) {
+		case STATIC_LEAF:;
+			struct bt_static_leaf_node *slnode = (struct bt_static_leaf_node *)node;
+			struct bt_static_leaf_structs src;
+			//struct bt_leaf_entry *leaf_entry = sc->keyValue;
+			retrieve_static_leaf_structures(slnode, &src, &db_desc->levels[level_id]);
+			/* log_info("GONE HERE %d", idx); */
+			//*leaf_entry = src.kv_entries[src.slot_array[idx].index];
+			sc->keyValue = REAL_ADDRESS(src.kv_entries[src.slot_array[idx].index].pointer);
+			/* log_info("address %llu %s", src.kv_entries[src.slot_array[idx].index].pointer, */
+			/* 	 (MAPPED + src.kv_entries[src.slot_array[idx].index].pointer) + 4); */
+			/* leaf_entry->pointer = (uint64_t)REAL_ADDRESS(leaf_entry->pointer); */
+			/* log_info("GONE HERE1 %d ", *(uint32_t *)sc->keyValue); */
+			break;
+		case DYNAMIC_LEAF:;
+			struct bt_dynamic_leaf_node *dlnode = (struct bt_dynamic_leaf_node *)node;
+			struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(dlnode);
+			switch (slot_array[idx].bitmap) {
+			case KV_INPLACE:
+				sc->keyValue = get_kv_offset(dlnode, db_desc->levels[level_id].leaf_size,
+							     slot_array[idx].index);
+				sc->kv_format = KV_FORMAT;
+				sc->cat = slot_array[idx].key_category;
+				//log_info("offset %d",slot_array[idx].index);
+				break;
+
+			case KV_INLOG: {
+				struct bt_leaf_entry *kv_entry = (struct bt_leaf_entry *)get_kv_offset(
+					dlnode, db_desc->levels[level_id].leaf_size, slot_array[idx].index);
+
+				/* kv_entry->pointer = (uint64_t) REAL_ADDRESS(kv_entry->pointer); */
+				sc->kv_entry = *kv_entry;
+				sc->kv_entry.pointer = (uint64_t)REAL_ADDRESS(kv_entry->pointer);
+				sc->keyValue = &sc->kv_entry;
+				sc->kv_format = KV_PREFIX;
+				sc->cat = slot_array[idx].key_category;
+				/* REAL_ADDRESS(*(uint64_t*)get_kv_offset( */
+				/* dlnode, db_desc->levels[level_id].leaf_size, slot_array[idx].index)) */;
+				/* log_info("%d %s",*(uint32_t*)sc->keyValue,(char *)(sc->keyValue + 4)); */
+				break;
+			}
+			default:
+				assert(0);
+				break;
+			}
+			break;
+		}
+
 		/*normal scanner*/
 		/* sc->keyValue = (void *)MAPPED + lnode->pointer[idx]; */
 		//log_info("consuming idx %d key %s num entries %lu",idx,sc->keyValue+4,lnode->header.numberOfEntriesInNode);

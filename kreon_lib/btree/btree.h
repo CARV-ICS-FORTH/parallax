@@ -28,10 +28,6 @@
 #define KREON_STANDALONE 19
 #define REPLICA_PENDING_SPILL 20
 
-/*hierarchy of trees parameters*/
-#define MAX_LEVELS 4
-#define NUM_TREES_PER_LEVEL 2
-
 #define MAX_COUNTER_VERSIONS 4
 
 #define PREFIX_SIZE 12
@@ -486,7 +482,7 @@ void spill_database(db_handle *handle);
 
 typedef struct bt_mutate_req {
 	db_handle *handle;
-
+	uint64_t *reorganized_leaf_pos_INnode;
 	/*offset in log where the kv was written*/
 	uint64_t log_offset;
 	/*info for cases of segment_full_event*/
