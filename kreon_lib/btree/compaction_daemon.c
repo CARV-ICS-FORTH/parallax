@@ -314,11 +314,7 @@ void *compaction(void *_comp_req)
 				if (stat != EMPTY_MIN_HEAP) {
 					ins_req.key_value_buf = nd_min.KV;
 					ins_req.metadata.key_format = nd_min.type;
-
-					if (nd_min.KV == nd_src.KV)
-						ins_req.metadata.cat = nd_src.cat;
-					else
-						ins_req.metadata.cat = nd_dst.cat;
+					ins_req.metadata.cat = nd_min.cat;
 
 					if (ins_req.metadata.cat == SMALL_INPLACE) {
 						ins_req.metadata.key_format = KV_FORMAT;
@@ -334,8 +330,11 @@ void *compaction(void *_comp_req)
 					break;
 				}
 
-				/* assert(ins_req.metadata.cat == BIG_INLOG); */
-				/* assert(ins_req.metadata.key_format == KV_PREFIX); */
+				/* if(ins_req.metadata.key_format == KV_FORMAT) */
+				/* 	assert(*(uint32_t*) ins_req.key_value_buf < 30); */
+				/* else */
+				/* 	assert(*(uint32_t*)*(uint64_t*) (ins_req.key_value_buf + PREFIX_SIZE) < 30); */
+
 				_insert_key_value(&ins_req);
 
 				/*refill from the appropriate level*/

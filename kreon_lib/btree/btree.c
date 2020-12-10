@@ -1927,13 +1927,6 @@ int insert_KV_at_leaf(bt_insert_req *ins_req, node_header *leaf)
 					    .optype_tolog = insertOp,
 					    .ins_req = ins_req };
 		ins_req->key_value_buf = append_key_value_to_log(&append_op);
-		ins_req->metadata.key_format = KV_FORMAT;
-	} else if (ins_req->metadata.append_to_log && ins_req->metadata.key_format == KV_FORMAT) {
-		log_operation append_op = { .metadata = &ins_req->metadata,
-					    .optype_tolog = insertOp,
-					    .ins_req = ins_req };
-		ins_req->key_value_buf = append_key_value_to_log(&append_op);
-		ins_req->metadata.key_format = KV_FORMAT;
 	} else if (!ins_req->metadata.append_to_log && ins_req->metadata.key_format == KV_PREFIX) {
 		;
 	} else if (!ins_req->metadata.append_to_log && ins_req->metadata.recovery_request) {
@@ -2649,6 +2642,7 @@ release_and_retry:
 				if (reorganize_dynamic_leaf((struct bt_dynamic_leaf_node *)son,
 							    db_desc->levels[level_id].leaf_size, ins_req))
 					goto release_and_retry;
+
 				son->v1++;
 
 				split_res = split_leaf(ins_req, (leaf_node *)son);

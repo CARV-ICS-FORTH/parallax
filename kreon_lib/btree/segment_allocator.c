@@ -185,6 +185,7 @@ IN_log_header *seg_get_IN_log_block(volume_descriptor *volume_desc, level_descri
 void seg_free_index_node_header(volume_descriptor *volume_desc, level_descriptor *level_desc, uint8_t tree_id,
 				node_header *node)
 {
+	return;
 	//leave for future use
 	(void)level_desc;
 	(void)tree_id;
@@ -195,6 +196,7 @@ void seg_free_index_node_header(volume_descriptor *volume_desc, level_descriptor
 void seg_free_index_node(volume_descriptor *volume_desc, level_descriptor *level_desc, uint8_t tree_id,
 			 index_node *inode)
 {
+	return;
 	//leave for future use
 	(void)level_desc;
 	(void)tree_id;
@@ -246,7 +248,7 @@ struct bt_dynamic_leaf_node *seg_get_dynamic_leaf_node(volume_descriptor *volume
 						       uint8_t tree_id)
 {
 	/*Pass tree_id in get_space*/
-	struct bt_dynamic_leaf_node *leaf = get_space(volume_desc, level_desc, 0, level_desc->leaf_size, 0);
+	struct bt_dynamic_leaf_node *leaf = get_space(volume_desc, level_desc, tree_id, level_desc->leaf_size, 0);
 
 	leaf->header.type = leafNode;
 	leaf->header.epoch = volume_desc->mem_catalogue->epoch;
@@ -284,6 +286,7 @@ leaf_node *seg_get_leaf_node_header(volume_descriptor *volume_desc, level_descri
 
 void seg_free_leaf_node(volume_descriptor *volume_desc, level_descriptor *level_desc, uint8_t tree_id, leaf_node *leaf)
 {
+	return;
 	//leave for future use
 	(void)level_desc;
 	(void)tree_id;
@@ -379,7 +382,9 @@ void seg_free_level(db_handle *handle, uint8_t level_id, uint8_t tree_id, int ru
 {
 	segment_header *curr_segment = handle->db_desc->levels[level_id].first_segment[tree_id];
 	segment_header *temp_segment;
+	db_descriptor *db_desc = handle->db_desc;
 	uint64_t space_freed = 0;
+
 	log_info("Freeing up level %u for db %s", level_id, handle->db_desc->db_name);
 
 	if (level_id != 0)
@@ -388,6 +393,27 @@ void seg_free_level(db_handle *handle, uint8_t level_id, uint8_t tree_id, int ru
 			space_freed += SEGMENT_SIZE;
 		}
 	else {
+		curr_segment = handle->db_desc->inmem_medium_log_head[tree_id];
+		segment_header *next_segment;
+		if (curr_segment) {
+			while (curr_segment->next_segment) {
+				next_segment = REAL_ADDRESS(curr_segment->next_segment);
+				mspace_free(db_desc->inmem_msp, curr_segment);
+				curr_segment = next_segment;
+			}
+
+			mspace_free(db_desc->inmem_msp, curr_segment);
+			segment_header *head =
+				(segment_header *)mspace_memalign(db_desc->inmem_msp, SEGMENT_SIZE, SEGMENT_SIZE);
+			assert(head != NULL);
+			head->next_segment = NULL;
+			head->prev_segment = NULL;
+			head->segment_id = 0;
+			db_desc->inmem_medium_log_head[tree_id] = head;
+			db_desc->inmem_medium_log_tail[tree_id] = head;
+			db_desc->inmem_medium_log_size[tree_id] = sizeof(segment_header);
+		}
+
 #if 0
 		log_info("HELLO");
 		if(!run){
@@ -414,8 +440,8 @@ void seg_free_level(db_handle *handle, uint8_t level_id, uint8_t tree_id, int ru
 	handle->db_desc->levels[level_id].offset[tree_id] = 0;
 	handle->db_desc->levels[level_id].root_r[tree_id] = NULL;
 	handle->db_desc->levels[level_id].root_w[tree_id] = NULL;
-
-	free_raw_segment(handle->volume_desc, curr_segment);
+	/* if(curr_segment->in_mem == 0) */
+	/* 	free_raw_segment(handle->volume_desc, curr_segment); */
 
 	log_info("Freed space %llu MB from db:%s level %u", space_freed / MB(1), handle->db_desc->db_name, level_id);
 }
