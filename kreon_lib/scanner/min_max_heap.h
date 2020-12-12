@@ -5,6 +5,7 @@ enum sh_heap_status { EMPTY_MIN_HEAP = 4, GOT_MIN_HEAP = 5, HEAP_SIZE = 32 };
 
 struct sh_heap_node {
 	void *KV;
+	uint32_t kv_size;
 	uint8_t level_id;
 	uint8_t active_tree;
 	uint8_t duplicate;

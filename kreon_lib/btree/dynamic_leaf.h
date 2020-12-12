@@ -20,7 +20,7 @@ struct dl_bsearch_result {
 
 int8_t insert_in_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, bt_insert_req *req, level_descriptor *level);
 struct find_result find_key_in_dynamic_leaf(const struct bt_dynamic_leaf_node *leaf, uint32_t leaf_size, void *key,
-					    uint32_t key_size);
+					    uint32_t key_size, int level_id);
 void binary_search_dynamic_leaf(const struct bt_dynamic_leaf_node *leaf, uint32_t leaf_size, bt_insert_req *req,
 				struct dl_bsearch_result *result);
 

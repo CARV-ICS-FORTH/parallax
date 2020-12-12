@@ -280,6 +280,7 @@ void *compaction(void *_comp_req)
 		nd_src.level_id = comp_req->src_level;
 		nd_src.type = level_src->kv_format;
 		nd_src.cat = level_src->cat;
+		nd_src.kv_size = level_src->kv_size;
 		nd_src.active_tree = comp_req->src_tree;
 		sh_insert_heap_node(m_heap, &nd_src);
 
@@ -287,6 +288,7 @@ void *compaction(void *_comp_req)
 		nd_dst.level_id = comp_req->dst_level;
 		nd_dst.type = level_dst->kv_format;
 		nd_dst.cat = level_dst->cat;
+		nd_dst.kv_size = level_dst->kv_size;
 		nd_dst.active_tree = comp_req->dst_tree;
 		sh_insert_heap_node(m_heap, &nd_dst);
 		log_info("level scanners and min heap ready");
@@ -315,11 +317,7 @@ void *compaction(void *_comp_req)
 					ins_req.key_value_buf = nd_min.KV;
 					ins_req.metadata.key_format = nd_min.type;
 					ins_req.metadata.cat = nd_min.cat;
-
-					if (ins_req.metadata.cat == SMALL_INPLACE) {
-						ins_req.metadata.key_format = KV_FORMAT;
-					} else
-						ins_req.metadata.key_format = KV_PREFIX;
+					ins_req.metadata.kv_size = nd_min.kv_size;
 
 					if (nd_min.level_id == 0 && nd_min.cat == MEDIUM_INLOG)
 						ins_req.metadata.append_to_log = 1;
@@ -330,10 +328,10 @@ void *compaction(void *_comp_req)
 					break;
 				}
 
-				/* if(ins_req.metadata.key_format == KV_FORMAT) */
-				/* 	assert(*(uint32_t*) ins_req.key_value_buf < 30); */
-				/* else */
-				/* 	assert(*(uint32_t*)*(uint64_t*) (ins_req.key_value_buf + PREFIX_SIZE) < 30); */
+				if (ins_req.metadata.key_format == KV_FORMAT)
+					assert(*(uint32_t *)ins_req.key_value_buf < 30);
+				else
+					assert(*(uint32_t *)*(uint64_t *)(ins_req.key_value_buf + PREFIX_SIZE) < 30);
 
 				_insert_key_value(&ins_req);
 
@@ -352,6 +350,7 @@ void *compaction(void *_comp_req)
 					nd_min.KV = curr_scanner->keyValue;
 					nd_min.type = curr_scanner->kv_format;
 					nd_min.cat = curr_scanner->cat;
+					nd_min.kv_size = curr_scanner->kv_size;
 					nd_min.level_id = curr_scanner->level_id;
 					sh_insert_heap_node(m_heap, &nd_min);
 				}

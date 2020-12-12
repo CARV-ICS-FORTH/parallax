@@ -1431,20 +1431,10 @@ void *append_key_value_to_log(log_operation *req)
 uint8_t _insert_key_value(bt_insert_req *ins_req)
 {
 	db_descriptor *db_desc = ins_req->metadata.handle->db_desc;
-	unsigned key_size;
-	unsigned val_size;
-	uint8_t rc;
+	uint8_t rc = SUCCESS;
+
+	assert(ins_req->metadata.kv_size < 4096);
 	db_desc->dirty = 0x01;
-
-	if (ins_req->metadata.key_format == KV_FORMAT) {
-		key_size = *(uint32_t *)ins_req->key_value_buf;
-		val_size = *(uint32_t *)(ins_req->key_value_buf + 4 + key_size);
-		ins_req->metadata.kv_size = sizeof(uint32_t) + key_size + sizeof(uint32_t) + val_size;
-		assert(ins_req->metadata.kv_size < 4096);
-	} else if (ins_req->metadata.key_format == KV_PREFIX)
-		ins_req->metadata.kv_size = sizeof(struct bt_leaf_entry);
-
-	rc = SUCCESS;
 
 	if (writers_join_as_readers(ins_req) == SUCCESS) {
 		rc = SUCCESS;
@@ -1463,13 +1453,21 @@ static inline struct lookup_reply lookup_in_tree(db_descriptor *db_desc, void *k
 	node_header *curr_node, *son_node = NULL;
 	void *key_addr_in_leaf = NULL;
 	void *next_addr;
-	uint64_t curr_v1 = 0, curr_v2 = 0;
-	uint64_t son_v2 = 0;
 	uint32_t index_key_len;
+	lock_table *prev = NULL, *curr;
 
-	curr_v2 = root->v2;
+	curr = &db_desc->levels[level_id].guard_of_level;
+	if (RWLOCK_RDLOCK(&curr->rx_lock) != 0)
+		exit(EXIT_FAILURE);
+
 	curr_node = root;
 	if (curr_node->type == leafRootNode) {
+		prev = curr;
+		curr = _find_position(db_desc->levels[level_id].level_lock_table, curr_node);
+
+		if (RWLOCK_RDLOCK(&curr->rx_lock) != 0)
+			exit(EXIT_FAILURE);
+
 		switch (db_desc->levels[level_id].node_layout) {
 		case STATIC_LEAF:
 			key_addr_in_leaf = find_key_in_static_leaf((struct bt_static_leaf_node *)curr_node,
@@ -1479,42 +1477,33 @@ static inline struct lookup_reply lookup_in_tree(db_descriptor *db_desc, void *k
 		case DYNAMIC_LEAF:
 			ret_result = find_key_in_dynamic_leaf((struct bt_dynamic_leaf_node *)curr_node,
 							      db_desc->levels[level_id].leaf_size, key + 4,
-							      *(uint32_t *)key);
+							      *(uint32_t *)key, level_id);
 			break;
 		default:
 			assert(0);
 			key_addr_in_leaf = NULL;
 		}
 		goto deser;
-		/* if (key_addr_in_leaf == NULL) */
-		/* 	rep.addr = NULL; */
-		/* else { */
-		/* 	key_addr_in_leaf = (void *)MAPPED + *(uint64_t *)key_addr_in_leaf; */
-		/* 	index_key_len = *(uint32_t *)key_addr_in_leaf; */
-		/* 	rep.addr = (void *)(uint64_t)key_addr_in_leaf + 4 + index_key_len; */
-		/* } */
-		/* curr_v1 = curr_node->v1; */
-
-		/* if (curr_v1 != curr_v2) { */
-		/* 	rep.addr = NULL; */
-		/* 	rep.lc_failed = 1; */
-		/* 	return rep; */
-		/* } */
-
 	} else {
 		while (curr_node->type != leafNode) {
+			prev = curr;
+			curr = _find_position(db_desc->levels[level_id].level_lock_table, curr_node);
+
+			if (RWLOCK_RDLOCK(&curr->rx_lock) != 0)
+				exit(EXIT_FAILURE);
+
+			if (RWLOCK_UNLOCK(&prev->rx_lock) != 0)
+				exit(EXIT_FAILURE);
+
 			next_addr = _index_node_binary_search((index_node *)curr_node, key, KV_FORMAT);
 			son_node = (void *)REAL_ADDRESS(*(uint64_t *)next_addr);
-			son_v2 = son_node->v2;
-			curr_v1 = curr_node->v1;
-			if (curr_v1 != curr_v2) {
-				rep.addr = NULL;
-				rep.lc_failed = 1;
-				return rep;
-			}
+		}
 
-			curr_node = son_node;
-			curr_v2 = son_v2;
+		prev = curr;
+		curr = _find_position(db_desc->levels[level_id].level_lock_table, curr_node);
+		if (RWLOCK_RDLOCK(&curr->rx_lock) != 0) {
+			log_info("EXITING");
+			exit(EXIT_FAILURE);
 		}
 	}
 
@@ -1525,7 +1514,8 @@ static inline struct lookup_reply lookup_in_tree(db_descriptor *db_desc, void *k
 		break;
 	case DYNAMIC_LEAF:
 		ret_result = find_key_in_dynamic_leaf((struct bt_dynamic_leaf_node *)curr_node,
-						      db_desc->levels[level_id].leaf_size, key + 4, *(uint32_t *)key);
+						      db_desc->levels[level_id].leaf_size, key + 4, *(uint32_t *)key,
+						      level_id);
 		break;
 	default:
 		assert(0);
@@ -1568,19 +1558,16 @@ deser:
 		}
 		break;
 	}
-	curr_v1 = curr_node->v1;
 
-	if (curr_v1 != curr_v2) {
-		// log_info("failed at node height %d v1 %llu v2 % llu\n",
-		// curr_node->height, (LLU)curr_node->v1,
-		//	 (LLU)curr_node->v2);
-		rep.addr = NULL;
-		rep.lc_failed = 1;
-		return rep;
-	}
+	if (RWLOCK_UNLOCK(&prev->rx_lock) != 0)
+		exit(EXIT_FAILURE);
+
+	if (RWLOCK_UNLOCK(&curr->rx_lock) != 0)
+		exit(EXIT_FAILURE);
 
 	return rep;
 }
+
 /*this function will be reused in various places such as deletes*/
 void *__find_key(db_handle *handle, void *key)
 {
@@ -1588,7 +1575,6 @@ void *__find_key(db_handle *handle, void *key)
 	node_header *root_w;
 	node_header *root_r;
 	uint32_t tries;
-	uint8_t active_tree;
 	/*again special care for L0*/
 	uint8_t tree_id = handle->db_desc->levels[0].active_tree;
 	uint8_t base = tree_id;
@@ -1598,7 +1584,6 @@ void *__find_key(db_handle *handle, void *key)
 	retry_1:
 		if (tries % 1000000 == 999999)
 			log_warn("possible deadlock detected lamport counters fail after 1M tries");
-		active_tree = handle->db_desc->levels[0].active_tree;
 		// log_warn("active tree of level %lu is %lu", level_id, active_tree);
 		root_w = handle->db_desc->levels[0].root_w[tree_id];
 		root_r = handle->db_desc->levels[0].root_r[tree_id];
@@ -2436,7 +2421,7 @@ uint64_t hash(uint64_t x)
 lock_table *_find_position(lock_table **table, node_header *node)
 {
 	unsigned long position;
-	lock_table *return_value;
+	lock_table *node_lock;
 
 	if (node->height < 0 || node->height >= MAX_HEIGHT) {
 		log_fatal("MAX_HEIGHT exceeded %d rearrange values in size_per_height array ", node->height);
@@ -2447,8 +2432,8 @@ lock_table *_find_position(lock_table **table, node_header *node)
 	position = hash((uint64_t)node) % size_per_height[node->height];
 	// log_info("node %llu height %d position %lu size of height %d", node,
 	// node->height, position, size_per_height[node->height]);
-	return_value = table[node->height];
-	return &return_value[position];
+	node_lock = table[node->height];
+	return &node_lock[position];
 }
 
 void _unlock_upper_levels(lock_table *node[], unsigned size, unsigned release)

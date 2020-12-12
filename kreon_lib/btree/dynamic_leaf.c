@@ -23,9 +23,12 @@ struct write_dynamic_leaf_args {
 	enum log_category2 cat;
 };
 
-/* #ifdef DEBUG_DYNAMIC_LEAF */
+#ifdef DEBUG_DYNAMIC_LEAF
 void validate_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, level_descriptor *level, uint32_t kv_size, int flag)
 {
+	(void)level;
+	(void)kv_size;
+	(void)flag;
 	struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(leaf);
 	/* assert(flag || leaf->header.leaf_log_size + kv_size < */
 	/* 		       level->leaf_size - sizeof(struct bt_dynamic_leaf_node) - */
@@ -33,15 +36,16 @@ void validate_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, level_descriptor *
 
 	for (unsigned i = 0; i < leaf->header.num_entries; ++i) {
 		assert(slot_array[i].index <
-		       level->leaf_size - sizeof(struct bt_dynamic_leaf_node) -
+		       LEVEL0_LEAF_SIZE /* level->leaf_size */ - sizeof(struct bt_dynamic_leaf_node) -
 			       (sizeof(struct bt_dynamic_leaf_slot_array) * leaf->header.num_entries));
-		assert(*(uint32_t *)fill_keybuf(get_kv_offset(leaf, level->leaf_size, slot_array[i].index),
+		assert(*(uint32_t *)fill_keybuf(get_kv_offset(leaf, LEVEL0_LEAF_SIZE /* level->leaf_size */,
+							      slot_array[i].index),
 						slot_array[i].bitmap) < 40);
 		assert(slot_array[i].key_category == BIG_INLOG || slot_array[i].key_category == MEDIUM_INLOG ||
 		       slot_array[i].key_category == SMALL_INPLACE);
 	}
 }
-/* #endif */
+#endif
 
 struct bt_dynamic_leaf_slot_array *get_slot_array_offset(const struct bt_dynamic_leaf_node *leaf)
 {
@@ -81,15 +85,10 @@ char *fill_keybuf(char *key_loc, enum kv_entry_location key_type)
 {
 	switch (key_type) {
 	case KV_INPLACE:
-		if (*(uint32_t *)key_loc > 50)
-			BREAKPOINT;
 		return key_loc;
 	case KV_INLOG: {
 		struct bt_leaf_entry *kv = (struct bt_leaf_entry *)key_loc;
-		if (*(uint32_t *)REAL_ADDRESS(kv->pointer) > 50)
-			BREAKPOINT;
-
-		return (char *)REAL_ADDRESS(kv->pointer); /* (char *) REAL_ADDRESS(kv->pointer); */ //;
+		return (char *)REAL_ADDRESS(kv->pointer);
 	}
 	default:
 		assert(0);
@@ -97,17 +96,20 @@ char *fill_keybuf(char *key_loc, enum kv_entry_location key_type)
 }
 
 struct find_result find_key_in_dynamic_leaf(const struct bt_dynamic_leaf_node *leaf, uint32_t leaf_size, void *key,
-					    uint32_t key_size)
+					    uint32_t key_size, int level_id)
 {
+	bt_insert_req req;
 	char *buf = malloc(key_size + sizeof(uint32_t));
 	struct dl_bsearch_result result = { .middle = 0, .status = INSERT, .op = DYNAMIC_LEAF_FIND };
 	struct find_result ret_result = { .kv = NULL, .key_type = KV_INPLACE };
 	struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(leaf);
 	assert(buf != NULL);
 	SERIALIZE_KEY(buf, key, key_size);
-	bt_insert_req req;
+
 	req.key_value_buf = buf;
 	req.metadata.key_format = KV_FORMAT;
+	req.metadata.level_id = level_id;
+	//validate_dynamic_leaf((void *) leaf, NULL, 0, 0);
 	binary_search_dynamic_leaf(leaf, leaf_size, &req, &result);
 
 	switch (result.status) {
@@ -130,11 +132,6 @@ struct find_result find_key_in_dynamic_leaf(const struct bt_dynamic_leaf_node *l
 		break;
 	default:
 		break;
-		/* log_info("Key not found"); */
-		/* log_info("Key not found %*s Key Found %*s Middle %d Status %d", key_buf->size, key_buf->data, */
-		/* 	 *(uint32_t *)REAL_ADDRESS(src.kv_entries[src.slot_array[result.middle].index].pointer), */
-		/*  REAL_ADDRESS(src.kv_entries[src.slot_array[result.middle].index].pointer) + 4, result.middle, */
-		/*  result.status); */
 	}
 
 	free(buf);
@@ -180,17 +177,12 @@ void binary_search_dynamic_leaf(const struct bt_dynamic_leaf_node *leaf, uint32_
 			char *kv_offset = get_kv_offset(leaf, leaf_size, offset_in_leaf);
 			leaf_key_buf = fill_keybuf(kv_offset, slot_array[middle].bitmap);
 			if (req->metadata.key_format == KV_PREFIX) {
-				/* log_info("TEST1"); */
 				struct bt_leaf_entry *kv_entry = (struct bt_leaf_entry *)req->key_value_buf;
 				ret = _tucana_key_cmp(leaf_key_buf, (void *)kv_entry->pointer, KV_FORMAT, KV_FORMAT);
 			} else {
-				/* log_info("TEST2 %*s %*s",*(uint32_t*)leaf_key_buf,leaf_key_buf + 4,*(uint32_t*)req->key_value_buf,req->key_value_buf + 4); */
 				ret = _tucana_key_cmp(leaf_key_buf, req->key_value_buf, KV_FORMAT, KV_FORMAT);
 			}
-			/* log_info("prefix %*s full leaf key %*s user %*s",PREFIX_SIZE,leaf_key_prefix.prefix, */
-			/* 	 *(uint32_t *) fill_keybuf(get_kv_offset(leaf, leaf_size, offset_in_leaf), slot_array[middle].bitmap), */
-			/* 	 fill_keybuf(get_kv_offset(leaf, leaf_size, offset_in_leaf), slot_array[middle].bitmap) + 4, */
-			/* 	 key_buf->size,key_buf->data); */
+
 			if (ret == 0) {
 				result->middle = middle;
 				result->status = FOUND;
@@ -536,6 +528,7 @@ void write_data_in_dynamic_leaf(struct write_dynamic_leaf_args *args)
 	int status = UNKNOWN_CATEGORY;
 	int middle = args->middle;
 	int kv_format = args->kv_format;
+	struct bt_dynamic_leaf_slot_array slot;
 
 	if (args->cat == BIG_INLOG || args->cat == MEDIUM_INLOG || args->cat == SMALL_INLOG)
 		status = KV_INLOG;
@@ -545,7 +538,8 @@ void write_data_in_dynamic_leaf(struct write_dynamic_leaf_args *args)
 	/* assert(status == KV_INLOG); */
 
 	if (status == KV_INPLACE) {
-		slot_array[middle].bitmap = KV_INPLACE;
+		slot.bitmap = KV_INPLACE;
+		/* slot_array[middle].bitmap = KV_INPLACE; */
 		if (kv_format == KV_FORMAT)
 			leaf->header.leaf_log_size += append_kv_inplace(dest, key_value_buf, key_value_size);
 		else {
@@ -557,7 +551,8 @@ void write_data_in_dynamic_leaf(struct write_dynamic_leaf_args *args)
 	} else if (status == KV_INLOG) {
 		struct splice *key = (struct splice *)key_value_buf;
 		struct bt_leaf_entry *serialized = (struct bt_leaf_entry *)key_value_buf;
-		slot_array[middle].bitmap = KV_INLOG;
+		slot.bitmap = KV_INLOG;
+		/* slot_array[middle].bitmap = KV_INLOG; */
 		if (kv_format == KV_FORMAT) {
 			leaf->header.leaf_log_size += append_bt_leaf_entry_inplace(
 				dest, ABSOLUTE_ADDRESS(key_value_buf), key->data, PREFIX_SIZE /* MIN(key->size, ) */);
@@ -571,9 +566,9 @@ void write_data_in_dynamic_leaf(struct write_dynamic_leaf_args *args)
 	} else
 		assert(0);
 
-	slot_array[middle].index = leaf->header.leaf_log_size;
-	slot_array[middle].key_category = args->cat;
-	/* assert(leaf->header.leaf_log_size - leaf_log_size == key_value_size || leaf->header.leaf_log_size - leaf_log_size == (sizeof(struct bt_leaf_entry))); */
+	slot.index = leaf->header.leaf_log_size;
+	slot.key_category = args->cat;
+	slot_array[middle] = slot;
 }
 
 int reorganize_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, uint32_t leaf_size, bt_insert_req *req)
@@ -592,8 +587,8 @@ int reorganize_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, uint32_t leaf_siz
 					 req->metadata.tree_id);
 
 	struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(reorganize_buffer);
-	validate_dynamic_leaf(reorganize_buffer, &req->metadata.handle->db_desc->levels[req->metadata.level_id],
-			      req->metadata.kv_size, 0);
+	/* validate_dynamic_leaf(reorganize_buffer, &req->metadata.handle->db_desc->levels[req->metadata.level_id], */
+	/* 		      req->metadata.kv_size, 0); */
 
 	leaf->header.num_entries = 0;
 	leaf->header.fragmentation = 0;
@@ -631,8 +626,8 @@ int reorganize_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, uint32_t leaf_siz
 	}
 
 	leaf->header.num_entries = reorganize_buffer->header.num_entries;
-	validate_dynamic_leaf(leaf, &req->metadata.handle->db_desc->levels[req->metadata.level_id],
-			      req->metadata.kv_size, 0);
+	/* validate_dynamic_leaf(leaf, &req->metadata.handle->db_desc->levels[req->metadata.level_id], */
+	/* 		      req->metadata.kv_size, 0); */
 
 	if (leaf->header.type == leafNode)
 		*(req->metadata.reorganized_leaf_pos_INnode) = ABSOLUTE_ADDRESS(leaf);
@@ -674,7 +669,6 @@ int8_t insert_in_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, bt_insert_req *
 #ifdef DEBUG_DYNAMIC_LEAF
 	validate_dynamic_leaf(leaf, level, req->metadata.kv_size, 0);
 #endif
-	validate_dynamic_leaf(leaf, level, req->metadata.kv_size, 0);
 	assert(leaf->header.leaf_log_size < LEVEL0_LEAF_SIZE);
 
 	switch (bsearch.status) {
@@ -711,7 +705,7 @@ int8_t insert_in_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, bt_insert_req *
 	check_sorted_dynamic_leaf(leaf, level->leaf_size);
 #endif
 	assert(leaf->header.leaf_log_size < LEVEL0_LEAF_SIZE);
-	validate_dynamic_leaf(leaf, level, 0, 1);
+	//validate_dynamic_leaf(leaf, level, 0, 1);
 
 	return bsearch.status;
 }

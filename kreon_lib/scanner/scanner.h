@@ -22,6 +22,7 @@ typedef struct level_scanner {
 	void *keyValue;
 	uint32_t kv_format;
 	enum log_category2 cat;
+	uint32_t kv_size;
 	uint32_t level_id;
 	int32_t type;
 	uint8_t valid : 1;
