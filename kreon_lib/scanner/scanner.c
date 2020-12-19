@@ -318,6 +318,11 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 	node = level_sc->root;
 	read_lock_node(level_sc, node);
 
+	if (node == NULL) {
+		read_unlock_node(level_sc, node);
+		return END_OF_DATABASE;
+	}
+
 	if (node->type == leafRootNode && node->num_entries == 0) {
 		/*we seek in an empty tree*/
 		read_unlock_node(level_sc, node);

@@ -247,6 +247,7 @@ void print_dynamic_leaf(const struct bt_dynamic_leaf_node *leaf, uint32_t leaf_s
 	log_info("2--------------------------------------------");
 }
 
+#ifdef DEBUG_DYNAMIC_LEAF
 void check_sorted_dynamic_leaf(const struct bt_dynamic_leaf_node *leaf, uint32_t leaf_size)
 {
 	struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(leaf);
@@ -264,6 +265,7 @@ void check_sorted_dynamic_leaf(const struct bt_dynamic_leaf_node *leaf, uint32_t
 		/* log_info("offset in leaf %d ADDR %llu Size%d key %s\n", slot_array[i].index, get_kv_offset(leaf, leaf_size, slot_array[i].index),KEY_SIZE(key), key + 4); */
 	}
 }
+#endif
 
 static void shift_right_slot_array(struct bt_dynamic_leaf_node *leaf, uint32_t middle)
 {
@@ -296,8 +298,8 @@ uint32_t append_bt_leaf_entry_inplace(char *dest, uint64_t pointer, char *prefix
 	return prefix_size + sizeof(pointer);
 }
 
-int check_dynamic_leaf_split(struct bt_dynamic_leaf_node *leaf, uint32_t leaf_size, uint32_t kv_size,
-			     enum kv_entry_location key_type)
+int check_dynamic_leaf_split(struct bt_dynamic_leaf_node *leaf, uint32_t leaf_size, uint32_t kv_size, int level_id,
+			     enum kv_entry_location key_type, enum log_category2 cat)
 {
 	uint32_t leaf_log_size = leaf->header.leaf_log_size;
 	uint32_t metadata_size = sizeof(struct bt_dynamic_leaf_node) +
@@ -305,6 +307,9 @@ int check_dynamic_leaf_split(struct bt_dynamic_leaf_node *leaf, uint32_t leaf_si
 	uint32_t upper_bound = leaf_size - metadata_size;
 
 	/* log_info("1 leaf addr %llu leaf_log %d upper_bound %d",leaf,leaf_log_size,upper_bound); */
+	if (cat == MEDIUM_INLOG && level_id == LEVEL_MEDIUM_INPLACE)
+		key_type = KV_INPLACE;
+
 	switch (key_type) {
 	case KV_INPLACE:
 		leaf_log_size += kv_size;
@@ -535,11 +540,13 @@ void write_data_in_dynamic_leaf(struct write_dynamic_leaf_args *args)
 	else
 		status = KV_INPLACE;
 
-	/* assert(status == KV_INLOG); */
+	if (args->cat == MEDIUM_INLOG && args->level_id == LEVEL_MEDIUM_INPLACE) {
+		status = KV_INPLACE;
+		args->cat = MEDIUM_INPLACE;
+	}
 
 	if (status == KV_INPLACE) {
 		slot.bitmap = KV_INPLACE;
-		/* slot_array[middle].bitmap = KV_INPLACE; */
 		if (kv_format == KV_FORMAT)
 			leaf->header.leaf_log_size += append_kv_inplace(dest, key_value_buf, key_value_size);
 		else {
@@ -552,7 +559,6 @@ void write_data_in_dynamic_leaf(struct write_dynamic_leaf_args *args)
 		struct splice *key = (struct splice *)key_value_buf;
 		struct bt_leaf_entry *serialized = (struct bt_leaf_entry *)key_value_buf;
 		slot.bitmap = KV_INLOG;
-		/* slot_array[middle].bitmap = KV_INLOG; */
 		if (kv_format == KV_FORMAT) {
 			leaf->header.leaf_log_size += append_bt_leaf_entry_inplace(
 				dest, ABSOLUTE_ADDRESS(key_value_buf), key->data, PREFIX_SIZE /* MIN(key->size, ) */);

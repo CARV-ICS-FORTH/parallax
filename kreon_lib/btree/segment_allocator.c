@@ -2,7 +2,7 @@
 #include <signal.h>
 #include <log.h>
 #include "segment_allocator.h"
-
+#include <sys/mman.h>
 extern uint64_t MAPPED;
 
 struct link_segments_metadata {
@@ -18,15 +18,18 @@ static uint64_t link_memory_segments(struct link_segments_metadata *req)
 {
 	level_descriptor *level_desc = req->level_desc;
 	segment_header *new_segment = req->new_segment;
+	segment_header *prev_segment;
 	uint64_t available_space = req->available_space;
 	uint64_t segment_id = req->segment_id;
 	uint8_t tree_id = req->tree_id;
 
-	if (segment_id) {
+	if (req->level_desc->offset[req->tree_id] != 0) {
 		/*chain segments*/
+		prev_segment = level_desc->last_segment[tree_id];
 		new_segment->next_segment = NULL;
 		new_segment->prev_segment = (segment_header *)ABSOLUTE_ADDRESS(level_desc->last_segment[tree_id]);
 		level_desc->last_segment[tree_id]->next_segment = (segment_header *)ABSOLUTE_ADDRESS(new_segment);
+		prev_segment = level_desc->last_segment[tree_id];
 		level_desc->last_segment[tree_id] = new_segment;
 		level_desc->last_segment[tree_id]->segment_id = segment_id + 1;
 		level_desc->offset[tree_id] += (available_space + sizeof(segment_header));
@@ -38,8 +41,25 @@ static uint64_t link_memory_segments(struct link_segments_metadata *req)
 		level_desc->last_segment[tree_id] = new_segment;
 		level_desc->last_segment[tree_id]->segment_id = 1;
 		level_desc->offset[tree_id] = sizeof(segment_header);
+		prev_segment = NULL;
 	}
+
 	new_segment->in_mem = req->in_mem;
+	if (req->in_mem == 0) {
+		/* if(prev_segment) */
+		/* 	assert(mprotect(prev_segment,4096,PROT_READ) == 0); */
+
+		/* log_info("------------------"); */
+		/* segment_header *current_segment = level_desc->first_segment[tree_id]; */
+		/* while (current_segment != NULL) { */
+		/* 	log_info("New segment id %llu in_mem %d next %llu", current_segment->segment_id, */
+		/* 		 current_segment->in_mem, current_segment->next_segment); */
+		/* 	if (current_segment->next_segment == NULL) */
+		/* 		break; */
+		/* 	current_segment = REAL_ADDRESS(current_segment->next_segment); */
+		/* } */
+		/* log_info("------------------"); */
+	}
 
 	return level_desc->offset[tree_id] % SEGMENT_SIZE;
 }
@@ -58,23 +78,29 @@ static void *get_space(volume_descriptor *volume_desc, level_descriptor *level_d
 	struct link_segments_metadata req = { .level_desc = level_desc, .tree_id = tree_id };
 	segment_header *new_segment = NULL;
 	node_header *node = NULL;
-	uint64_t available_space;
+	uint32_t available_space;
 	uint64_t offset_in_segment = 0;
 	uint64_t segment_id;
 
 	MUTEX_LOCK(&level_desc->level_allocation_lock);
 
 	/*check if we have enough space to satisfy the request*/
-	if (level_desc->offset[tree_id] == 0) {
+	if (level_desc->offset[tree_id] % SEGMENT_SIZE == 0) {
 		available_space = 0;
 		segment_id = 0;
-	} else if (level_desc->offset[tree_id] % SEGMENT_SIZE != 0) {
-		offset_in_segment = level_desc->offset[tree_id] % SEGMENT_SIZE;
-		available_space = SEGMENT_SIZE - offset_in_segment;
-		segment_id = level_desc->last_segment[tree_id]->segment_id;
 	} else {
-		available_space = 0;
-		segment_id = level_desc->last_segment[tree_id]->segment_id;
+#if 0
+	/*  else if (level_desc->offset[tree_id] % SEGMENT_SIZE != 0) { */
+	/* 	offset_in_segment = level_desc->offset[tree_id] % SEGMENT_SIZE; */
+	/* 	available_space = SEGMENT_SIZE - offset_in_segment; */
+	/* 	segment_id = level_desc->last_segment[tree_id]->segment_id; */
+	/* } else { */
+	/* 	available_space = 0; */
+	/* 	segment_id = level_desc->last_segment[tree_id]->segment_id; */
+	/* } */
+#endif
+		available_space = SEGMENT_SIZE - (level_desc->offset[tree_id] % SEGMENT_SIZE);
+		offset_in_segment = level_desc->offset[tree_id] % SEGMENT_SIZE;
 	}
 	if (available_space < size) {
 		/*we need to go to the actual allocator to get space*/
@@ -83,54 +109,24 @@ static void *get_space(volume_descriptor *volume_desc, level_descriptor *level_d
 			new_segment = (segment_header *)allocate(volume_desc, SEGMENT_SIZE);
 			MUTEX_UNLOCK(&volume_desc->allocator_lock);
 			req.in_mem = 0;
-			/* if (segment_id) { */
-			/* 	/\*chain segments*\/ */
-			/* 	new_segment->next_segment = NULL; */
-			/* 	new_segment->prev_segment = */
-			/* 		(segment_header *)((uint64_t)level_desc->last_segment[tree_id] - MAPPED); */
-			/* 	new_segment->in_mem = 0; */
-			/* 	level_desc->last_segment[tree_id]->next_segment = */
-			/* 		(segment_header *)((uint64_t)new_segment - MAPPED); */
-			/* 	level_desc->last_segment[tree_id] = new_segment; */
-			/* 	level_desc->last_segment[tree_id]->segment_id = segment_id + 1; */
-			/* 	level_desc->offset[tree_id] += (available_space + sizeof(segment_header)); */
-			/* } else { */
-			/* 	/\*special case for the first segment for this level*\/ */
-			/* 	new_segment->next_segment = NULL; */
-			/* 	new_segment->prev_segment = NULL; */
-			/* 	new_segment->in_mem = 0; */
-			/* 	level_desc->first_segment[tree_id] = new_segment; */
-			/* 	level_desc->last_segment[tree_id] = new_segment; */
-			/* 	level_desc->last_segment[tree_id]->segment_id = 1; */
-			/* 	level_desc->offset[tree_id] = sizeof(segment_header); */
-			/* } */
 		} else {
-			new_segment = malloc(sizeof(char) * SEGMENT_SIZE);
+			if (posix_memalign((void **)&new_segment, SEGMENT_SIZE, SEGMENT_SIZE) != 0) {
+				log_info("MEMALIGN FAILED");
+				exit(EXIT_FAILURE);
+			}
+			//malloc(sizeof(char) * SEGMENT_SIZE);
 			assert(new_segment);
 			req.in_mem = 1;
-			/* if (segment_id) { */
-			/* 	new_segment->next_segment = NULL; */
-			/* 	new_segment->prev_segment = level_desc->last_segment[tree_id]; */
-			/* 	new_segment->in_mem = 1; */
-			/* 	level_desc->last_segment[tree_id]->next_segment = new_segment; */
-			/* 	level_desc->last_segment[tree_id] = new_segment; */
-			/* 	level_desc->last_segment[tree_id]->segment_id = segment_id + 1; */
-			/* 	level_desc->offset[tree_id] += (available_space + sizeof(segment_header)); */
-			/* } else { */
-			/* 	new_segment->next_segment = NULL; */
-			/* 	new_segment->prev_segment = NULL; */
-			/* 	new_segment->in_mem = 1; */
-			/* 	level_desc->first_segment[tree_id] = new_segment; */
-			/* 	level_desc->last_segment[tree_id] = new_segment; */
-			/* 	level_desc->last_segment[tree_id]->segment_id = 1; */
-			/* 	level_desc->offset[tree_id] = sizeof(segment_header); */
-			/* } */
 		}
+
 		set_link_segments_metadata(&req, new_segment, segment_id, available_space);
 		offset_in_segment = link_memory_segments(&req);
 
 		/* offset_in_segment = level_desc->offset[tree_id] % SEGMENT_SIZE; */
 	}
+	/* if(level_desc->level_id != 0) */
+	/* 	log_info("offset in segment %llu level_id %d tree_id %d available space%llu alloc_size %llu", */
+	/* 		 offset_in_segment, level_desc->level_id, tree_id, available_space, size); */
 
 	node = (node_header *)((uint64_t)level_desc->last_segment[tree_id] + offset_in_segment);
 	level_desc->offset[tree_id] += size;
@@ -393,18 +389,24 @@ void seg_free_level(db_handle *handle, uint8_t level_id, uint8_t tree_id, int ru
 			space_freed += SEGMENT_SIZE;
 		}
 	else {
+		if (RWLOCK_WRLOCK(&db_desc->levels[0].guard_of_level.rx_lock)) {
+			exit(EXIT_FAILURE);
+		}
+
+		spin_loop(&db_desc->levels[0].active_writers, 0);
+
 		curr_segment = handle->db_desc->inmem_medium_log_head[tree_id];
 		segment_header *next_segment;
 		if (curr_segment) {
 			while (curr_segment->next_segment) {
 				next_segment = REAL_ADDRESS(curr_segment->next_segment);
-				mspace_free(db_desc->inmem_msp, curr_segment);
+				free(curr_segment);
 				curr_segment = next_segment;
 			}
 
-			mspace_free(db_desc->inmem_msp, curr_segment);
-			segment_header *head =
-				(segment_header *)mspace_memalign(db_desc->inmem_msp, SEGMENT_SIZE, SEGMENT_SIZE);
+			free(curr_segment);
+			segment_header *head = malloc(SEGMENT_SIZE);
+			//(segment_header *)mspace_memalign(db_desc->inmem_msp, SEGMENT_SIZE, SEGMENT_SIZE);
 			assert(head != NULL);
 			head->next_segment = NULL;
 			head->prev_segment = NULL;
@@ -414,6 +416,24 @@ void seg_free_level(db_handle *handle, uint8_t level_id, uint8_t tree_id, int ru
 			db_desc->inmem_medium_log_size[tree_id] = sizeof(segment_header);
 		}
 
+		curr_segment = handle->db_desc->levels[level_id].first_segment[tree_id];
+		temp_segment = REAL_ADDRESS(curr_segment->next_segment);
+		int flag = 0;
+		while (curr_segment != NULL) {
+			/* log_info("COUNT  %d %llu", curr_segment->segment_id, curr_segment->next_segment); */
+			free(curr_segment);
+			curr_segment = temp_segment;
+			if (temp_segment->next_segment == NULL) {
+				flag = 1;
+				break;
+			}
+			temp_segment = REAL_ADDRESS(temp_segment->next_segment);
+			space_freed += SEGMENT_SIZE;
+		}
+		if (flag) {
+			/* log_info("COUNT %d %llu", curr_segment->segment_id, curr_segment->next_segment); */
+			free(temp_segment);
+		}
 #if 0
 		log_info("HELLO");
 		if(!run){
@@ -425,7 +445,6 @@ void seg_free_level(db_handle *handle, uint8_t level_id, uint8_t tree_id, int ru
 		}
 #endif
 	}
-
 	log_info("Freed space %llu MB from db:%s level tree [%u][%u]", space_freed / (1024 * 1024),
 		 handle->db_desc->db_name, level_id, tree_id);
 	/*assert check
@@ -442,6 +461,9 @@ void seg_free_level(db_handle *handle, uint8_t level_id, uint8_t tree_id, int ru
 	handle->db_desc->levels[level_id].root_w[tree_id] = NULL;
 	/* if(curr_segment->in_mem == 0) */
 	/* 	free_raw_segment(handle->volume_desc, curr_segment); */
-
+	if (level_id == 0)
+		if (RWLOCK_UNLOCK(&db_desc->levels[0].guard_of_level.rx_lock)) {
+			exit(EXIT_FAILURE);
+		}
 	log_info("Freed space %llu MB from db:%s level %u", space_freed / MB(1), handle->db_desc->db_name, level_id);
 }

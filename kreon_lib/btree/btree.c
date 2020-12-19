@@ -1192,13 +1192,13 @@ uint8_t insert_key_value(db_handle *handle, void *key, void *value, uint32_t key
 	ins_req.metadata.level_id = 0;
 	ins_req.metadata.key_format = KV_FORMAT;
 
-	if (kv_ratio >= 0.0 && kv_ratio < 0.3)
+	if (kv_ratio >= 0.0 && kv_ratio < 0.15) {
 		ins_req.metadata.cat = BIG_INLOG;
-	else if (kv_ratio >= 0.3 && kv_ratio <= 0.5)
+	} else if (kv_ratio >= 0.15 && kv_ratio <= 0.3) {
 		ins_req.metadata.cat = MEDIUM_INLOG;
-	else
+	} else {
 		ins_req.metadata.cat = SMALL_INPLACE;
-
+	}
 	/*
 * Note for L0 inserts since active_tree changes dynamically we decide which
 * is the active_tree after
@@ -1226,7 +1226,7 @@ void extract_keyvalue_size(log_operation *req, metadata_tologop *data_size)
 			data_size->value_len =
 				*(uint32_t *)((char *)(*(uint64_t *)(req->ins_req->key_value_buf + PREFIX_SIZE)) +
 					      sizeof(uint32_t) + (data_size->key_len));
-			data_size->kv_size = req->metadata->kv_size;
+			data_size->kv_size = data_size->key_len + data_size->value_len + sizeof(data_size->key_len) * 2;
 		}
 		break;
 	case deleteOp:
@@ -1276,27 +1276,10 @@ void choose_log_toappend(db_descriptor *db_desc, struct log_towrite *log_metadat
 		log_metadata->log_head = db_desc->big_log_head;
 		log_metadata->log_tail = db_desc->big_log_tail;
 		log_metadata->log_size = &db_desc->big_log_size;
-		//log_metadata->status = BIG;
+		log_metadata->status = BIG_INLOG;
 	} else if (log_metadata->status == MEDIUM_INLOG) {
 		if (db_desc->inmem_medium_log_head[db_desc->levels[0].active_tree] == NULL) {
-			segment_header *head;
-
-			if (db_desc->inmem_base == NULL) {
-				db_desc->inmem_base = mmap((void *)MAPPED, 2 * SIZE_INMEMORY_LOG,
-							   PROT_READ | PROT_WRITE, MAP_ANON | MAP_PRIVATE, 0, 0);
-
-				if (db_desc->inmem_base == MAP_FAILED) {
-					log_fatal("Failed to create L0 for db %s of size %lu", db_desc->db_name,
-						  2 * SIZE_INMEMORY_LOG);
-					perror("Reason of mmap failure");
-					exit(EXIT_FAILURE);
-				}
-				log_info("MMAP COMPLETE");
-				db_desc->inmem_msp = create_mspace_with_base(db_desc->inmem_base, SIZE_INMEMORY_LOG, 1);
-				assert(db_desc->inmem_msp != 0);
-			}
-
-			head = (segment_header *)mspace_memalign(db_desc->inmem_msp, SEGMENT_SIZE, SEGMENT_SIZE);
+			segment_header *head = malloc(SEGMENT_SIZE);
 			assert(head != NULL);
 			head->next_segment = NULL;
 			head->prev_segment = NULL;
@@ -1315,13 +1298,13 @@ void choose_log_toappend(db_descriptor *db_desc, struct log_towrite *log_metadat
 			log_metadata->log_tail = db_desc->medium_log_tail;
 			log_metadata->log_size = &db_desc->medium_log_size;
 		}
-		//log_metadata->status = MEDIUM;
+		log_metadata->status = MEDIUM_INLOG;
 
 	} else {
 		log_metadata->log_head = db_desc->small_log_head;
 		log_metadata->log_tail = db_desc->small_log_tail;
 		log_metadata->log_size = &db_desc->small_log_size;
-		//log_metadata->status = SMALL;
+		log_metadata->status = SMALL_INLOG;
 	}
 }
 
@@ -1391,8 +1374,9 @@ void *append_key_value_to_log(log_operation *req)
 		allocated_space += BUFFER_SEGMENT_SIZE - (allocated_space % BUFFER_SEGMENT_SIZE);
 
 		if (req->metadata->level_id == 0 && log_metadata.status == MEDIUM_INLOG) {
-			d_header = (segment_header *)mspace_memalign(handle->db_desc->inmem_msp, SEGMENT_SIZE,
-								     SEGMENT_SIZE);
+			d_header = malloc(
+				SEGMENT_SIZE); /*  (segment_header *)mspace_memalign(handle->db_desc->inmem_msp, SEGMENT_SIZE, */
+			/* SEGMENT_SIZE); */
 			assert(d_header != NULL);
 			d_header->segment_id = log_metadata.log_tail->segment_id + 1;
 			d_header->prev_segment = (void *)ABSOLUTE_ADDRESS(log_metadata.log_tail);
@@ -1411,7 +1395,6 @@ void *append_key_value_to_log(log_operation *req)
 		*log_metadata.log_size += (available_space_in_log + sizeof(segment_header));
 		update_log_metadata(handle->db_desc, &log_metadata);
 	}
-
 	addr_inlog = (void *)((uint64_t)log_metadata.log_tail + (*log_metadata.log_size % BUFFER_SEGMENT_SIZE));
 	req->metadata->log_offset = *log_metadata.log_size;
 	*log_metadata.log_size += data_size.kv_size + sizeof(struct log_sequence_number);
@@ -1446,7 +1429,8 @@ uint8_t _insert_key_value(bt_insert_req *ins_req)
 	return rc;
 }
 
-static inline struct lookup_reply lookup_in_tree(db_descriptor *db_desc, void *key, node_header *root, int level_id)
+static inline struct lookup_reply lookup_in_tree(db_descriptor *db_desc, void *key, node_header *root, int level_id,
+						 int tree_id)
 {
 	struct lookup_reply rep = { .addr = NULL, .lc_failed = 0 };
 	struct find_result ret_result;
@@ -1456,10 +1440,20 @@ static inline struct lookup_reply lookup_in_tree(db_descriptor *db_desc, void *k
 	uint32_t index_key_len;
 	lock_table *prev = NULL, *curr;
 
+	if (!root)
+		return rep;
+
 	curr = &db_desc->levels[level_id].guard_of_level;
 	if (RWLOCK_RDLOCK(&curr->rx_lock) != 0)
 		exit(EXIT_FAILURE);
-
+	if (db_desc->levels[0].root_w[tree_id] == NULL) {
+		if (RWLOCK_UNLOCK(&curr->rx_lock) != 0)
+			exit(EXIT_FAILURE);
+		if (root != NULL)
+			rep.lc_failed = 1;
+		return rep;
+	}
+	__sync_fetch_and_add(&db_desc->levels[level_id].active_writers, 1);
 	curr_node = root;
 	if (curr_node->type == leafRootNode) {
 		prev = curr;
@@ -1497,12 +1491,12 @@ static inline struct lookup_reply lookup_in_tree(db_descriptor *db_desc, void *k
 
 			next_addr = _index_node_binary_search((index_node *)curr_node, key, KV_FORMAT);
 			son_node = (void *)REAL_ADDRESS(*(uint64_t *)next_addr);
+			curr_node = son_node;
 		}
 
 		prev = curr;
 		curr = _find_position(db_desc->levels[level_id].level_lock_table, curr_node);
 		if (RWLOCK_RDLOCK(&curr->rx_lock) != 0) {
-			log_info("EXITING");
 			exit(EXIT_FAILURE);
 		}
 	}
@@ -1565,6 +1559,7 @@ deser:
 	if (RWLOCK_UNLOCK(&curr->rx_lock) != 0)
 		exit(EXIT_FAILURE);
 
+	__sync_fetch_and_sub(&db_desc->levels[level_id].active_writers, 1);
 	return rep;
 }
 
@@ -1589,13 +1584,14 @@ void *__find_key(db_handle *handle, void *key)
 		root_r = handle->db_desc->levels[0].root_r[tree_id];
 
 		if (root_w != NULL) {
-			rep = lookup_in_tree(handle->db_desc, key, root_w, 0);
+			rep = lookup_in_tree(handle->db_desc, key, root_w, 0, tree_id);
+
 			if (rep.lc_failed) {
 				++tries;
 				goto retry_1;
 			}
 		} else if (root_r != NULL) {
-			rep = lookup_in_tree(handle->db_desc, key, root_r, 0);
+			rep = lookup_in_tree(handle->db_desc, key, root_r, 0, tree_id);
 
 			if (rep.lc_failed) {
 				++tries;
@@ -1622,13 +1618,13 @@ void *__find_key(db_handle *handle, void *key)
 		root_w = handle->db_desc->levels[level_id].root_w[0];
 		root_r = handle->db_desc->levels[level_id].root_r[0];
 		if (root_w != NULL) {
-			rep = lookup_in_tree(handle->db_desc, key, root_w, 0);
+			rep = lookup_in_tree(handle->db_desc, key, root_w, 0, tree_id);
 			if (rep.lc_failed) {
 				++tries;
 				goto retry_2;
 			}
 		} else if (root_r != NULL) {
-			rep = lookup_in_tree(handle->db_desc, key, root_r, 0);
+			rep = lookup_in_tree(handle->db_desc, key, root_r, 0, tree_id);
 			if (rep.lc_failed) {
 				++tries;
 				goto retry_2;
@@ -1912,17 +1908,7 @@ int insert_KV_at_leaf(bt_insert_req *ins_req, node_header *leaf)
 					    .optype_tolog = insertOp,
 					    .ins_req = ins_req };
 		ins_req->key_value_buf = append_key_value_to_log(&append_op);
-	} else if (!ins_req->metadata.append_to_log && ins_req->metadata.key_format == KV_PREFIX) {
-		;
-	} else if (!ins_req->metadata.append_to_log && ins_req->metadata.recovery_request) {
-		;
-	} else if (ins_req->metadata.key_format == KV_FORMAT)
-		;
-	/* else { */
-	/* 	log_fatal("Wrong combination of key format / append_to_log option"); */
-	/* 	BREAKPOINT; */
-	/* 	exit(EXIT_FAILURE); */
-	/* } */
+	}
 
 	switch (db_desc->levels[level_id].node_layout) {
 	case STATIC_LEAF:
@@ -1937,7 +1923,7 @@ int insert_KV_at_leaf(bt_insert_req *ins_req, node_header *leaf)
 
 	if (ret == INSERT /* || ret == FOUND */) {
 		int measure_level_used_space = cat == BIG_INLOG || cat == SMALL_INLOG;
-		int medium_inlog = cat == MEDIUM_INLOG && level_id < MAX_LEVELS;
+		int medium_inlog = cat == MEDIUM_INLOG && level_id != LEVEL_MEDIUM_INPLACE;
 
 		if (measure_level_used_space || medium_inlog) {
 			__sync_fetch_and_add(&(ins_req->metadata.handle->db_desc->levels[level_id].level_size[tree_id]),
@@ -2465,12 +2451,13 @@ int is_split_needed(void *node, bt_insert_req *req, enum bt_layout node_layout, 
 	case DYNAMIC_LEAF:;
 		int status;
 
-		if (cat == BIG_INLOG || (cat == MEDIUM_INLOG && level_id < MAX_LEVELS) || cat == SMALL_INLOG)
+		if (cat == BIG_INLOG || (cat == MEDIUM_INLOG && level_id != LEVEL_MEDIUM_INPLACE) || cat == SMALL_INLOG)
 			status = KV_INLOG;
 		else
 			status = KV_INPLACE;
 
-		return check_dynamic_leaf_split(node, leaf_size, req->metadata.kv_size, status);
+		return check_dynamic_leaf_split(node, leaf_size, req->metadata.kv_size, req->metadata.level_id, status,
+						cat);
 	default:
 		assert(0);
 	}

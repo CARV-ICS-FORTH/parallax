@@ -242,11 +242,84 @@ void *compaction(void *_comp_req)
 	else if (handle.db_desc->levels[comp_req->dst_level].root_r[0] != NULL)
 		dst_root = handle.db_desc->levels[comp_req->dst_level].root_r[0];
 	else {
-		log_info("Empty level %d time for an optimization :-)", comp_req->dst_level);
 		dst_root = NULL;
 	}
 
-	if (dst_root) {
+	if (comp_req->src_level == 0 && dst_root == NULL) {
+		struct level_scanner *level_src =
+			_init_spill_buffer_scanner(&handle, comp_req->src_level, src_root, NULL);
+
+		int32_t num_of_keys = (SPILL_BUFFER_SIZE - (2 * sizeof(uint32_t))) / (PREFIX_SIZE + sizeof(uint64_t));
+		do {
+			db_desc->dirty = 0x01;
+			if (handle.db_desc->stat == DB_IS_CLOSING) {
+				log_info("db is closing bye bye from spiller");
+				return NULL;
+			}
+
+			ins_req.metadata.handle = &handle;
+			ins_req.metadata.level_id = comp_req->dst_level;
+			ins_req.metadata.tree_id = comp_req->dst_tree;
+			/* ins_req.metadata.key_format = KV_PREFIX; */
+			ins_req.metadata.append_to_log = 0;
+			ins_req.metadata.special_split = 1;
+			ins_req.metadata.gc_request = 0;
+			ins_req.metadata.recovery_request = 0;
+			/* ins_req.metadata.cat = BIG_INLOG; */
+
+			for (i = 0; i < num_of_keys; i++) {
+				ins_req.key_value_buf = level_src->keyValue;
+				ins_req.metadata.key_format = level_src->kv_format;
+				ins_req.metadata.cat = level_src->cat;
+				ins_req.metadata.kv_size = level_src->kv_size;
+
+				if (level_src->level_id == 0 && level_src->cat == MEDIUM_INLOG) {
+					ins_req.metadata.append_to_log = 1;
+				} else
+					ins_req.metadata.append_to_log = 0;
+
+				assert(ins_req.metadata.key_format == KV_FORMAT ||
+				       ins_req.metadata.key_format == KV_PREFIX);
+				_insert_key_value(&ins_req);
+
+				/*refill from the appropriate level*/
+				rc = _get_next_KV(level_src);
+				if (rc == END_OF_DATABASE)
+					break;
+				++local_spilled_keys;
+			}
+		} while (rc != END_OF_DATABASE);
+		_close_spill_buffer_scanner(level_src, src_root);
+		struct level_descriptor *ld = &comp_req->db_desc->levels[comp_req->dst_level];
+		struct db_handle hd = { .db_desc = comp_req->db_desc, .volume_desc = comp_req->volume_desc };
+
+		ld->first_segment[0] = ld->first_segment[1];
+		ld->first_segment[1] = NULL;
+		ld->last_segment[0] = ld->last_segment[1];
+		ld->last_segment[1] = NULL;
+		ld->offset[0] = ld->offset[1];
+		ld->offset[1] = 0;
+
+		if (ld->root_w[1] != NULL)
+			while (!__sync_bool_compare_and_swap(&ld->root_r[0], ld->root_r[0], ld->root_w[1]))
+				;
+		else if (ld->root_r[1] != NULL)
+			while (!__sync_bool_compare_and_swap(&ld->root_r[0], ld->root_r[0], ld->root_r[1]))
+				;
+		else {
+			log_fatal("Where is the root?");
+			exit(EXIT_FAILURE);
+		}
+
+		ld->root_w[0] = NULL;
+		ld->level_size[0] = ld->level_size[1];
+		ld->level_size[1] = 0;
+		ld->root_w[1] = NULL;
+		ld->root_r[1] = NULL;
+
+		seg_free_level(&hd, comp_req->src_level, comp_req->src_tree, 0);
+
+	} else if (dst_root) {
 		struct level_scanner *level_src =
 			_init_spill_buffer_scanner(&handle, comp_req->src_level, src_root, NULL);
 		struct level_scanner *level_dst =
@@ -319,20 +392,27 @@ void *compaction(void *_comp_req)
 					ins_req.metadata.cat = nd_min.cat;
 					ins_req.metadata.kv_size = nd_min.kv_size;
 
-					if (nd_min.level_id == 0 && nd_min.cat == MEDIUM_INLOG)
+					if (nd_min.level_id == 0 && nd_min.cat == MEDIUM_INLOG) {
 						ins_req.metadata.append_to_log = 1;
-					else
+					} else
 						ins_req.metadata.append_to_log = 0;
 
+					if (nd_min.cat == MEDIUM_INLOG && comp_req->dst_level == LEVEL_MEDIUM_INPLACE) {
+						int key_size =
+							*(uint32_t *)*(uint64_t *)(ins_req.key_value_buf + PREFIX_SIZE);
+						int value_size =
+							*(uint32_t *)((char *)(*(uint64_t *)(ins_req.key_value_buf +
+											     PREFIX_SIZE)) +
+								      key_size + 4);
+						ins_req.metadata.kv_size =
+							key_size + value_size + sizeof(key_size) + sizeof(value_size);
+					}
 				} else {
 					break;
 				}
-
-				if (ins_req.metadata.key_format == KV_FORMAT)
-					assert(*(uint32_t *)ins_req.key_value_buf < 30);
-				else
-					assert(*(uint32_t *)*(uint64_t *)(ins_req.key_value_buf + PREFIX_SIZE) < 30);
-
+				assert(ins_req.metadata.key_format == KV_FORMAT ||
+				       ins_req.metadata.key_format == KV_PREFIX);
+				assert(ins_req.metadata.kv_size < 200);
 				_insert_key_value(&ins_req);
 
 				/*refill from the appropriate level*/
@@ -377,17 +457,37 @@ void *compaction(void *_comp_req)
 
 		/*special care for dst level atomic switch tree 2 to tree 1 of dst*/
 		struct segment_header *curr_segment = comp_req->db_desc->levels[comp_req->dst_level].first_segment[0];
-		struct segment_header *temp_segment;
+		struct segment_header *next_segment;
 
 		assert(curr_segment != NULL);
 		uint64_t space_freed = 0;
 
-		for (; curr_segment->next_segment != NULL; curr_segment = REAL_ADDRESS(temp_segment)) {
-			temp_segment = curr_segment->next_segment;
-			if (curr_segment->in_mem == 0) {
-				free_block(comp_req->volume_desc, curr_segment, SEGMENT_SIZE, -1);
-				space_freed += SEGMENT_SIZE;
+		/* for (; curr_segment->next_segment != NULL; curr_segment = temp_segment) { */
+		/* 	temp_segment = REAL_ADDRESS(curr_segment->next_segment); */
+		/* 	if (curr_segment->in_mem == 0) { */
+		/* 		free_block(comp_req->volume_desc, curr_segment, SEGMENT_SIZE, -1); */
+		/* 		space_freed += SEGMENT_SIZE; */
+		/* 	} */
+		/* } */
+
+		while (curr_segment != NULL) {
+			/* log_info("TEST %llu %llu %d",curr_segment->segment_id,curr_segment->next_segment,curr_segment->in_mem); */
+			if (curr_segment->next_segment == NULL) {
+				next_segment = NULL;
+			} else {
+				next_segment = MAPPED + curr_segment->next_segment;
 			}
+
+			if (curr_segment->in_mem == 0)
+				free_block(comp_req->volume_desc, curr_segment, SEGMENT_SIZE, -1);
+			else
+				free(curr_segment);
+
+			space_freed += SEGMENT_SIZE;
+			if (next_segment)
+				curr_segment = next_segment;
+			else
+				break;
 		}
 
 		log_info("Freed space %llu MB from db:%s level %u", space_freed / (1024 * 1024),
@@ -424,6 +524,8 @@ void *compaction(void *_comp_req)
 
 		log_info("After compaction tree[%d][%d] size is %llu", comp_req->dst_level, 0, ld->level_size[0]);
 	} else {
+		log_info("Empty level %d time for an optimization :-)", comp_req->dst_level);
+
 		if (RWLOCK_WRLOCK(&(comp_req->db_desc->levels[comp_req->src_level].guard_of_level.rx_lock))) {
 			log_fatal("Failed to acquire guard lock");
 			exit(EXIT_FAILURE);
