@@ -90,7 +90,8 @@ typedef struct pr_db_entry {
 
 	uint32_t valid;
 	//forest *replica_forest;
-	char pad[4];
+	/* char pad [4]; */
+	char pad[44];
 } pr_db_entry; //768 bytes or 12 cache lines
 
 typedef struct pr_db_group {

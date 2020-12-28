@@ -30,6 +30,11 @@ void move_kv_pairs_to_new_segment(volume_descriptor *volume_desc, db_descriptor 
 		ins_req.metadata.append_to_log = 1;
 		ins_req.metadata.gc_request = 1;
 		ins_req.metadata.recovery_request = 0;
+		ins_req.metadata.level_id = 0;
+		int key_size = *(uint32_t *)kv_address;
+		ins_req.metadata.kv_size = key_size + 8 + *(uint32_t *)(kv_address + 4 + key_size);
+		ins_req.metadata.key_format = KV_FORMAT;
+		ins_req.metadata.cat = BIG_INLOG;
 		_insert_key_value(&ins_req);
 		//update_key_value_pointer(&handle, key->data, value->data, key->size, value->size);
 	}
@@ -49,7 +54,7 @@ int8_t find_deleted_kv_pairs_in_segment(volume_descriptor *volume_desc, db_descr
 	uint64_t remaining_space;
 	int key_value_size;
 	int garbage_collect_segment = 0;
-
+	log_segment += 8;
 	key = (struct splice *)log_segment;
 	key_value_size = sizeof(key->size) * 2;
 	marks->size = 0;
@@ -69,7 +74,7 @@ int8_t find_deleted_kv_pairs_in_segment(volume_descriptor *volume_desc, db_descr
 		}
 
 		if (key->size != 0 && remaining_space >= 10) {
-			log_segment += key->size + value->size + key_value_size;
+			log_segment += key->size + value->size + key_value_size + 8;
 			size_of_log_segment_checked += key->size + value->size + key_value_size;
 			remaining_space = LOG_DATA_OFFSET - (uint64_t)(log_segment - start_of_log_segment);
 		} else
@@ -154,7 +159,7 @@ void *gc_log_entries(void *v_desc)
 		rc = pthread_cond_timedwait(&volume_desc->gc_cond, &volume_desc->gc_mutex, &ts);
 		MUTEX_UNLOCK(&volume_desc->gc_mutex);
 
-		if (rc != 0 || rc != ETIMEDOUT) {
+		if (rc != ETIMEDOUT) {
 			log_debug("Error in GC thread");
 			exit(EXIT_FAILURE);
 		}

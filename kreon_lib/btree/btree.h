@@ -319,17 +319,17 @@ struct compaction_pairs {
 enum bt_layout { STATIC_LEAF, DYNAMIC_LEAF };
 
 typedef struct level_descriptor {
-	lock_table guard_of_level;
 	pthread_t compaction_thread[NUM_TREES_PER_LEVEL];
 	lock_table *level_lock_table[MAX_HEIGHT];
 	node_header *root_r[NUM_TREES_PER_LEVEL];
 	node_header *root_w[NUM_TREES_PER_LEVEL];
 	pthread_t spiller[NUM_TREES_PER_LEVEL];
-	pthread_mutex_t spill_trigger;
 	pthread_mutex_t level_allocation_lock;
 	segment_header *first_segment[NUM_TREES_PER_LEVEL];
 	segment_header *last_segment[NUM_TREES_PER_LEVEL];
 	uint64_t offset[NUM_TREES_PER_LEVEL];
+	lock_table guard_of_level;
+	pthread_mutex_t spill_trigger;
 	//Since we perform always KV separation we express it
 	//in number of keys
 	uint64_t level_size[NUM_TREES_PER_LEVEL];
@@ -344,7 +344,7 @@ typedef struct level_descriptor {
 	double count_leaves;
 	double count_compactions;
 #endif
-	volatile int64_t active_writers;
+	/*volatile */ int64_t active_writers;
 	/*spilling or not?*/
 	uint32_t leaf_size;
 	enum bt_layout node_layout;
@@ -359,27 +359,27 @@ typedef struct db_descriptor {
 	level_descriptor levels[MAX_LEVELS + 1];
 	struct compaction_pairs inprogress_compactions[MAX_LEVELS + 1];
 	struct compaction_pairs pending_compactions[MAX_LEVELS + 1];
-	pthread_t compaction_thread;
+	pthread_cond_t client_barrier;
+	pthread_cond_t compaction_cond;
 	pthread_mutex_t compaction_structs_lock;
 	pthread_mutex_t compaction_lock;
-	pthread_cond_t compaction_cond;
-	uint64_t blocked_clients;
-	uint64_t compaction_count;
-	sem_t compaction_sem;
-	sem_t compaction_daemon_sem;
-
-	int is_compaction_daemon_sleeping;
-
 #if LOG_WITH_MUTEX
 	pthread_mutex_t lock_log;
 #else
 	pthread_spinlock_t lock_log;
 #endif
-	//compaction daemon staff
-	pthread_t compaction_daemon;
-	sem_t compaction_daemon_interrupts;
-	pthread_cond_t client_barrier;
 	pthread_mutex_t client_barrier_lock;
+	sem_t compaction_daemon_interrupts;
+	sem_t compaction_sem;
+	sem_t compaction_daemon_sem;
+	uint64_t blocked_clients;
+	uint64_t compaction_count;
+	pthread_t compaction_thread;
+	pthread_t compaction_daemon;
+	pthread_t gc_thread;
+	int is_compaction_daemon_sleeping;
+
+	//compaction daemon staff
 	volatile segment_header *big_log_head;
 	volatile segment_header *big_log_tail;
 	volatile uint64_t big_log_size;
@@ -410,7 +410,7 @@ typedef struct db_descriptor {
 	int32_t group_index;
 	volatile char dirty;
 	enum db_status stat;
-} __attribute__((packed)) __attribute__((aligned)) db_descriptor;
+} /* __attribute__((packed)) */ __attribute__((aligned)) db_descriptor;
 
 typedef struct db_handle {
 	volume_descriptor *volume_desc;

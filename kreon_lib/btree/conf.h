@@ -62,6 +62,7 @@
 #define MAX_LEVEL0_TOTAL_SIZE MB(10)
 #define NUMBER_OF_DATABASES (1)
 #define GF (8)
+#define LEVEL_MEDIUM_INPLACE (2)
 #define BUFFER_SEGMENT_SIZE (2 * 1024 * 1024)
 #define SEGMENT_MEMORY_THREASHOLD 511 /*Careful, in number of pages -1 used for chaining*/
 #define THROTTLE_SLEEP_TIME 1000

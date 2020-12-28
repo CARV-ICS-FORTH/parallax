@@ -74,32 +74,33 @@ void *compaction_daemon(void *args)
 		/*can I set a different active tree for L0*/
 		int active_tree = db_desc->levels[0].active_tree;
 		if (db_desc->levels[0].tree_status[active_tree] == SPILLING_IN_PROGRESS) {
-			for (int i = 0; i < NUM_TREES_PER_LEVEL; i++) {
-				if (db_desc->levels[0].tree_status[i] == NO_SPILLING) {
-					/*Acquire guard lock and wait writers to finish*/
-					if (RWLOCK_WRLOCK(&(handle->db_desc->levels[0].guard_of_level.rx_lock))) {
-						log_fatal("Failed to acquire guard lock");
-						exit(EXIT_FAILURE);
-					}
-
-					spin_loop(&(handle->db_desc->levels[0].active_writers), 0);
-					/*done now atomically change active tree*/
-					db_desc->levels[0].active_tree = i;
-
-					/*Release guard lock*/
-					if (RWLOCK_UNLOCK(&handle->db_desc->levels[0].guard_of_level.rx_lock)) {
-						log_fatal("Failed to acquire guard lock");
-						exit(EXIT_FAILURE);
-					}
-
-					pthread_mutex_lock(&db_desc->client_barrier_lock);
-					if (pthread_cond_broadcast(&db_desc->client_barrier) != 0) {
-						log_fatal("Failed to wake up stopped clients");
-						exit(EXIT_FAILURE);
-					}
-					pthread_mutex_unlock(&db_desc->client_barrier_lock);
+			/* for (int i = 0; i < NUM_TREES_PER_LEVEL; i++) { */
+			int next_active_tree = active_tree != (NUM_TREES_PER_LEVEL - 1) ? active_tree + 1 : 0;
+			if (db_desc->levels[0].tree_status[next_active_tree] == NO_SPILLING) {
+				/*Acquire guard lock and wait writers to finish*/
+				if (RWLOCK_WRLOCK(&(handle->db_desc->levels[0].guard_of_level.rx_lock))) {
+					log_fatal("Failed to acquire guard lock");
+					exit(EXIT_FAILURE);
 				}
+
+				spin_loop(&(handle->db_desc->levels[0].active_writers), 0);
+				/*done now atomically change active tree*/
+				db_desc->levels[0].active_tree = next_active_tree;
+				log_info("next active tree %d", next_active_tree);
+				/*Release guard lock*/
+				if (RWLOCK_UNLOCK(&handle->db_desc->levels[0].guard_of_level.rx_lock)) {
+					log_fatal("Failed to acquire guard lock");
+					exit(EXIT_FAILURE);
+				}
+
+				pthread_mutex_lock(&db_desc->client_barrier_lock);
+				if (pthread_cond_broadcast(&db_desc->client_barrier) != 0) {
+					log_fatal("Failed to wake up stopped clients");
+					exit(EXIT_FAILURE);
+				}
+				pthread_mutex_unlock(&db_desc->client_barrier_lock);
 			}
+			/* } */
 		}
 
 		/*Now fire up (if needed) the spill/compaction from L0 to L1*/
@@ -412,7 +413,7 @@ void *compaction(void *_comp_req)
 				}
 				assert(ins_req.metadata.key_format == KV_FORMAT ||
 				       ins_req.metadata.key_format == KV_PREFIX);
-				assert(ins_req.metadata.kv_size < 200);
+				/* assert(ins_req.metadata.kv_size < 200); */
 				_insert_key_value(&ins_req);
 
 				/*refill from the appropriate level*/
@@ -573,6 +574,8 @@ void *compaction(void *_comp_req)
 	snapshot(comp_req->volume_desc);
 	/*wake up clients*/
 	if (comp_req->src_level == 0) {
+		log_info("src level %d dst level %d src_tree %d dst_tree %d", comp_req->src_level, comp_req->dst_level,
+			 comp_req->src_tree, comp_req->dst_tree);
 		pthread_mutex_lock(&comp_req->db_desc->client_barrier_lock);
 		if (pthread_cond_broadcast(&db_desc->client_barrier) != 0) {
 			log_fatal("Failed to wake up stopped clients");

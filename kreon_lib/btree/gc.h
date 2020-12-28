@@ -18,3 +18,4 @@ typedef struct stack {
 } stack;
 
 #define LOG_DATA_OFFSET (BUFFER_SEGMENT_SIZE - sizeof(segment_header))
+void *gc_log_entries(void *v_desc);

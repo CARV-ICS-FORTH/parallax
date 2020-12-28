@@ -108,13 +108,13 @@ static void *get_space(volume_descriptor *volume_desc, level_descriptor *level_d
 			MUTEX_LOCK(&volume_desc->allocator_lock);
 			new_segment = (segment_header *)allocate(volume_desc, SEGMENT_SIZE);
 			MUTEX_UNLOCK(&volume_desc->allocator_lock);
+			assert(new_segment);
 			req.in_mem = 0;
 		} else {
 			if (posix_memalign((void **)&new_segment, SEGMENT_SIZE, SEGMENT_SIZE) != 0) {
 				log_info("MEMALIGN FAILED");
 				exit(EXIT_FAILURE);
 			}
-			//malloc(sizeof(char) * SEGMENT_SIZE);
 			assert(new_segment);
 			req.in_mem = 1;
 		}
@@ -459,8 +459,8 @@ void seg_free_level(db_handle *handle, uint8_t level_id, uint8_t tree_id, int ru
 	handle->db_desc->levels[level_id].offset[tree_id] = 0;
 	handle->db_desc->levels[level_id].root_r[tree_id] = NULL;
 	handle->db_desc->levels[level_id].root_w[tree_id] = NULL;
-	/* if(curr_segment->in_mem == 0) */
-	/* 	free_raw_segment(handle->volume_desc, curr_segment); */
+	if (curr_segment->in_mem == 0)
+		free_raw_segment(handle->volume_desc, curr_segment);
 	if (level_id == 0)
 		if (RWLOCK_UNLOCK(&db_desc->levels[0].guard_of_level.rx_lock)) {
 			exit(EXIT_FAILURE);

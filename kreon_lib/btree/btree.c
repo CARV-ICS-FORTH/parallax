@@ -470,6 +470,8 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 	int i = 0;
 	int digits;
 	uint8_t level_id, tree_id;
+	/* log_info("size of %d",sizeof(pr_db_entry)); */
+	/* exit(0); */
 
 	fprintf(stderr, "\n%s[%s:%s:%d](\"%s\", %" PRIu64 ", %" PRIu64 ", %s);%s\n", "\033[0;32m", __FILE__, __func__,
 		__LINE__, volumeName, start, size, db_name, "\033[0m");
@@ -852,7 +854,7 @@ finish_init:
 
 	db_desc->inmem_base = NULL;
 
-	for (level_id = 0; level_id < MAX_LEVELS + 1; level_id++) {
+	for (level_id = 0; level_id < MAX_LEVELS; level_id++) {
 		RWLOCK_INIT(&db_desc->levels[level_id].guard_of_level.rx_lock, NULL);
 		MUTEX_INIT(&db_desc->levels[level_id].spill_trigger, NULL);
 		MUTEX_INIT(&db_desc->levels[level_id].level_allocation_lock, NULL);
@@ -878,6 +880,15 @@ finish_init:
 		db_desc->inprogress_compactions[level_id].dst_level = -1;
 		db_desc->pending_compactions[level_id].src_level = -1;
 		db_desc->pending_compactions[level_id].dst_level = -1;
+	}
+	static int gc_thread_spawned = 0;
+	if (!gc_thread_spawned) {
+		++gc_thread_spawned;
+		if (pthread_create(&(handle->db_desc->gc_thread), NULL, (void *)gc_log_entries,
+				   (void *)handle->volume_desc) != 0) {
+			log_fatal("Failed to start compaction_daemon for db %s", db_name);
+			exit(EXIT_FAILURE);
+		}
 	}
 
 	_Static_assert(UNKNOWN_LOG_CATEGORY < 8,
@@ -1160,7 +1171,6 @@ uint8_t insert_key_value(db_handle *handle, void *key, void *value, uint32_t key
 	while (handle->db_desc->levels[0].level_size[active_tree] > handle->db_desc->levels[0].max_level_size) {
 		pthread_mutex_lock(&handle->db_desc->client_barrier_lock);
 		active_tree = handle->db_desc->levels[0].active_tree;
-
 		if (handle->db_desc->levels[0].level_size[active_tree] > handle->db_desc->levels[0].max_level_size) {
 			sem_post(&handle->db_desc->compaction_daemon_interrupts);
 			if (pthread_cond_wait(&handle->db_desc->client_barrier,
