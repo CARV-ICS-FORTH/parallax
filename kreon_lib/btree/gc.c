@@ -1,4 +1,5 @@
 #include "gc.h"
+extern sem_t gc_daemon_interrupts;
 
 char *pointer_to_kv_in_log = NULL;
 
@@ -154,15 +155,16 @@ void *gc_log_entries(void *v_desc)
 		}
 		ts.tv_sec += (GC_INTERVAL / 1000000L);
 		ts.tv_nsec += (GC_INTERVAL % 1000000L) * 1000L;
+		sem_wait(&gc_daemon_interrupts);
 
-		MUTEX_LOCK(&volume_desc->gc_mutex);
-		rc = pthread_cond_timedwait(&volume_desc->gc_cond, &volume_desc->gc_mutex, &ts);
-		MUTEX_UNLOCK(&volume_desc->gc_mutex);
+		/* MUTEX_LOCK(&volume_desc->gc_mutex); */
+		/* rc = pthread_cond_timedwait(&volume_desc->gc_cond, &volume_desc->gc_mutex, &ts); */
+		/* MUTEX_UNLOCK(&volume_desc->gc_mutex); */
 
-		if (rc != ETIMEDOUT) {
-			log_debug("Error in GC thread");
-			exit(EXIT_FAILURE);
-		}
+		/* if (rc != ETIMEDOUT) { */
+		/* 	log_debug("Error in GC thread"); */
+		/* 	exit(EXIT_FAILURE); */
+		/* } */
 
 		log_debug("Initiating garbage collection");
 

@@ -459,8 +459,8 @@ void seg_free_level(db_handle *handle, uint8_t level_id, uint8_t tree_id, int ru
 	handle->db_desc->levels[level_id].offset[tree_id] = 0;
 	handle->db_desc->levels[level_id].root_r[tree_id] = NULL;
 	handle->db_desc->levels[level_id].root_w[tree_id] = NULL;
-	if (curr_segment->in_mem == 0)
-		free_raw_segment(handle->volume_desc, curr_segment);
+	/* if (curr_segment->in_mem == 0) */
+	/* 	free_raw_segment(handle->volume_desc, curr_segment); */
 	if (level_id == 0)
 		if (RWLOCK_UNLOCK(&db_desc->levels[0].guard_of_level.rx_lock)) {
 			exit(EXIT_FAILURE);

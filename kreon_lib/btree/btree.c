@@ -43,6 +43,8 @@ extern char *pointer_to_kv_in_log;
 uint64_t countgoto = 0;
 pthread_mutex_t init_lock = PTHREAD_MUTEX_INITIALIZER;
 pthread_spinlock_t log_buffer_lock;
+sem_t gc_daemon_interrupts;
+
 /*number of locks per level*/
 uint32_t size_per_height[MAX_HEIGHT] = { 8192, 4096, 2048, 1024, 512, 256, 128, 64, 32 };
 
@@ -909,6 +911,8 @@ finish_init:
 	log_info("opened DB %s starting its compaction daemon", db_name);
 
 	sem_init(&db_desc->compaction_daemon_interrupts, PTHREAD_PROCESS_PRIVATE, 0);
+	sem_init(&gc_daemon_interrupts, PTHREAD_PROCESS_PRIVATE, 0);
+
 	if (pthread_create(&(handle->db_desc->compaction_daemon), NULL, (void *)compaction_daemon, (void *)handle) !=
 	    0) {
 		log_fatal("Failed to start compaction_daemon for db %s", db_name);
@@ -1448,25 +1452,37 @@ static inline struct lookup_reply lookup_in_tree(db_descriptor *db_desc, void *k
 	void *key_addr_in_leaf = NULL;
 	void *next_addr;
 	uint32_t index_key_len;
-	lock_table *prev = NULL, *curr;
+	lock_table *prev = NULL, *curr = NULL;
 
-	if (!root)
-		return rep;
+	/* if (!root) */
+	/* 	return rep; */
 
-	curr = &db_desc->levels[level_id].guard_of_level;
-	if (RWLOCK_RDLOCK(&curr->rx_lock) != 0)
-		exit(EXIT_FAILURE);
-	if (db_desc->levels[0].root_w[tree_id] == NULL) {
-		if (RWLOCK_UNLOCK(&curr->rx_lock) != 0)
-			exit(EXIT_FAILURE);
-		if (root != NULL)
-			rep.lc_failed = 1;
+	/* curr = &db_desc->levels[level_id].guard_of_level; */
+	/* if (RWLOCK_RDLOCK(&curr->rx_lock) != 0) */
+	/* 	exit(EXIT_FAILURE); */
+	if (db_desc->levels[level_id].root_w[tree_id] != NULL) {
+		/* log_info("Level %d with tree_id %d has root_w",level_id,tree_id); */
+		root = db_desc->levels[level_id].root_w[tree_id];
+	} else if (db_desc->levels[level_id].root_r[tree_id] != NULL) {
+		/* log_info("Level %d with tree_id %d has root_w",level_id,tree_id); */
+		root = db_desc->levels[level_id].root_r[tree_id];
+	} else {
+		/* log_info("Level %d is empty with tree_id %d",level_id,tree_id); */
+		/* if (RWLOCK_UNLOCK(&curr->rx_lock) != 0) */
+		/* 	exit(EXIT_FAILURE); */
 		return rep;
 	}
-	__sync_fetch_and_add(&db_desc->levels[level_id].active_writers, 1);
+
+	/* if (db_desc->levels[0].root_w[tree_id] == NULL) { */
+	/* 	if (RWLOCK_UNLOCK(&curr->rx_lock) != 0) */
+	/* 		exit(EXIT_FAILURE); */
+	/* 	if (root != NULL) */
+	/* 		rep.lc_failed = 1; */
+	/* 	return rep; */
+	/* } */
+	/* __sync_fetch_and_add(&db_desc->levels[level_id].active_writers, 1); */
 	curr_node = root;
 	if (curr_node->type == leafRootNode) {
-		prev = curr;
 		curr = _find_position(db_desc->levels[level_id].level_lock_table, curr_node);
 
 		if (RWLOCK_RDLOCK(&curr->rx_lock) != 0)
@@ -1490,17 +1506,18 @@ static inline struct lookup_reply lookup_in_tree(db_descriptor *db_desc, void *k
 		goto deser;
 	} else {
 		while (curr_node->type != leafNode) {
-			prev = curr;
 			curr = _find_position(db_desc->levels[level_id].level_lock_table, curr_node);
 
 			if (RWLOCK_RDLOCK(&curr->rx_lock) != 0)
 				exit(EXIT_FAILURE);
 
-			if (RWLOCK_UNLOCK(&prev->rx_lock) != 0)
-				exit(EXIT_FAILURE);
+			if (prev)
+				if (RWLOCK_UNLOCK(&prev->rx_lock) != 0)
+					exit(EXIT_FAILURE);
 
 			next_addr = _index_node_binary_search((index_node *)curr_node, key, KV_FORMAT);
 			son_node = (void *)REAL_ADDRESS(*(uint64_t *)next_addr);
+			prev = curr;
 			curr_node = son_node;
 		}
 
@@ -1509,6 +1526,9 @@ static inline struct lookup_reply lookup_in_tree(db_descriptor *db_desc, void *k
 		if (RWLOCK_RDLOCK(&curr->rx_lock) != 0) {
 			exit(EXIT_FAILURE);
 		}
+
+		if (RWLOCK_UNLOCK(&prev->rx_lock) != 0)
+			exit(EXIT_FAILURE);
 	}
 
 	switch (db_desc->levels[level_id].node_layout) {
@@ -1563,8 +1583,8 @@ deser:
 		break;
 	}
 
-	if (RWLOCK_UNLOCK(&prev->rx_lock) != 0)
-		exit(EXIT_FAILURE);
+	/* if (RWLOCK_UNLOCK(&prev->rx_lock) != 0) */
+	/* 	exit(EXIT_FAILURE); */
 
 	if (RWLOCK_UNLOCK(&curr->rx_lock) != 0)
 		exit(EXIT_FAILURE);
@@ -1583,6 +1603,11 @@ void *__find_key(db_handle *handle, void *key)
 	/*again special care for L0*/
 	uint8_t tree_id = handle->db_desc->levels[0].active_tree;
 	uint8_t base = tree_id;
+	//Acquiring guard lock for level 0
+	if (RWLOCK_RDLOCK(&handle->db_desc->levels[0].guard_of_level.rx_lock) != 0)
+		exit(EXIT_FAILURE);
+	__sync_fetch_and_add(&handle->db_desc->levels[0].active_writers, 1);
+
 	while (1) {
 		/*first look the current active tree of the level*/
 		tries = 0;
@@ -1590,58 +1615,86 @@ void *__find_key(db_handle *handle, void *key)
 		if (tries % 1000000 == 999999)
 			log_warn("possible deadlock detected lamport counters fail after 1M tries");
 		// log_warn("active tree of level %lu is %lu", level_id, active_tree);
-		root_w = handle->db_desc->levels[0].root_w[tree_id];
-		root_r = handle->db_desc->levels[0].root_r[tree_id];
+		/* root_w = handle->db_desc->levels[0].root_w[tree_id]; */
+		/* root_r = handle->db_desc->levels[0].root_r[tree_id]; */
 
-		if (root_w != NULL) {
-			rep = lookup_in_tree(handle->db_desc, key, root_w, 0, tree_id);
+		/* if (root_w != NULL) { */
+		/* 	rep = lookup_in_tree(handle->db_desc, key, root_w, 0, tree_id); */
 
-			if (rep.lc_failed) {
-				++tries;
-				goto retry_1;
-			}
-		} else if (root_r != NULL) {
-			rep = lookup_in_tree(handle->db_desc, key, root_r, 0, tree_id);
+		/* 	if (rep.lc_failed) { */
+		/* 		++tries; */
+		/* 		assert(0); */
+		/* 		goto retry_1; */
+		/* 	} */
+		/* } else if (root_r != NULL) { */
+		/* 	rep = lookup_in_tree(handle->db_desc, key, root_r, 0, tree_id); */
 
-			if (rep.lc_failed) {
-				++tries;
-				goto retry_1;
-			}
-		}
+		/* 	if (rep.lc_failed) { */
+		/* 		++tries; */
+		/* 		assert(0); */
+		/* 		goto retry_1; */
+		/* 	} */
+		/* } */
 
-		if (rep.addr != NULL)
+		rep = lookup_in_tree(handle->db_desc, key, NULL, 0, tree_id);
+		assert(rep.lc_failed == 0);
+		if (rep.addr != NULL) {
+			if (RWLOCK_UNLOCK(&handle->db_desc->levels[0].guard_of_level.rx_lock) != 0)
+				exit(EXIT_FAILURE);
+			__sync_fetch_and_sub(&handle->db_desc->levels[0].active_writers, 1);
+
 			goto finish;
+		}
 		++tree_id;
 		if (tree_id >= NUM_TREES_PER_LEVEL)
 			tree_id = 0;
 		if (tree_id == base)
 			break;
 	}
-
+	if (RWLOCK_UNLOCK(&handle->db_desc->levels[0].guard_of_level.rx_lock) != 0)
+		exit(EXIT_FAILURE);
+	__sync_fetch_and_sub(&handle->db_desc->levels[0].active_writers, 1);
 	/*search the rest trees of the level*/
 	for (uint8_t level_id = 1; level_id < MAX_LEVELS; ++level_id) {
+		if (RWLOCK_RDLOCK(&handle->db_desc->levels[level_id].guard_of_level.rx_lock) != 0)
+			exit(EXIT_FAILURE);
+		__sync_fetch_and_add(&handle->db_desc->levels[level_id].active_writers, 1);
+
 		tries = 0;
 	retry_2:
 		if (tries % 1000000 == 999999)
 			log_warn("possible deadlock detected lamport counters fail after 1M "
 				 "tries");
-		root_w = handle->db_desc->levels[level_id].root_w[0];
-		root_r = handle->db_desc->levels[level_id].root_r[0];
-		if (root_w != NULL) {
-			rep = lookup_in_tree(handle->db_desc, key, root_w, 0, tree_id);
-			if (rep.lc_failed) {
-				++tries;
-				goto retry_2;
-			}
-		} else if (root_r != NULL) {
-			rep = lookup_in_tree(handle->db_desc, key, root_r, 0, tree_id);
-			if (rep.lc_failed) {
-				++tries;
-				goto retry_2;
-			}
-		}
-		if (rep.addr != NULL)
+		/* root_w = handle->db_desc->levels[level_id].root_w[0]; */
+		/* root_r = handle->db_desc->levels[level_id].root_r[0]; */
+		/* if (root_w != NULL) { */
+		/* 	rep = lookup_in_tree(handle->db_desc, key, root_w, 0, tree_id); */
+		/* 	if (rep.lc_failed) { */
+		/* 		++tries; */
+		/* 		assert(0); */
+		/* 		goto retry_2; */
+		/* 	} */
+		/* } else if (root_r != NULL) { */
+		/* 	rep = lookup_in_tree(handle->db_desc, key, root_r, 0, tree_id); */
+		/* 	if (rep.lc_failed) { */
+		/* 		++tries; */
+		/* 		assert(0); */
+		/* 		goto retry_2; */
+		/* 	} */
+		/* } */
+
+		rep = lookup_in_tree(handle->db_desc, key, NULL, level_id, 0);
+		assert(rep.lc_failed == 0);
+		if (rep.addr != NULL) {
+			if (RWLOCK_UNLOCK(&handle->db_desc->levels[level_id].guard_of_level.rx_lock) != 0)
+				exit(EXIT_FAILURE);
+			__sync_fetch_and_sub(&handle->db_desc->levels[level_id].active_writers, 1);
+
 			goto finish;
+		}
+		if (RWLOCK_UNLOCK(&handle->db_desc->levels[level_id].guard_of_level.rx_lock) != 0)
+			exit(EXIT_FAILURE);
+		__sync_fetch_and_sub(&handle->db_desc->levels[level_id].active_writers, 1);
 	}
 
 finish:

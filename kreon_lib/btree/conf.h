@@ -20,10 +20,18 @@
 
 #define MAX_DB_NAME_SIZE 64
 /*hierarchy of trees parameters*/
-#define MAX_LEVELS 4
-#define NUM_TREES_PER_LEVEL 2
+/* #define MAX_LEVELS 8 */
+/* #define NUM_TREES_PER_LEVEL 2 */
+/* #define TOTAL_TREES (MAX_LEVELS * NUM_TREES_PER_LEVEL) */
+/* #define GROUP_SIZE 5 */
+/* #define NUM_OF_DB_GROUPS 506 */
+/* #define DEVICE_BLOCK_SIZE 4096 */
+
+/*Configuration trees > 2*/
+#define MAX_LEVELS 8
+#define NUM_TREES_PER_LEVEL 4
 #define TOTAL_TREES (MAX_LEVELS * NUM_TREES_PER_LEVEL)
-#define GROUP_SIZE 5
+#define GROUP_SIZE 2
 #define NUM_OF_DB_GROUPS 506
 #define DEVICE_BLOCK_SIZE 4096
 

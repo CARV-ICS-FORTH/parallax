@@ -9,6 +9,7 @@
 #include <log.h>
 /* Checks for pending compactions. It is responsible to check for dependencies
  * between two levels before triggering a compaction. */
+extern sem_t gc_daemon_interrupts;
 
 struct compaction_request {
 	db_descriptor *db_desc;
@@ -495,6 +496,15 @@ void *compaction(void *_comp_req)
 			 comp_req->db_desc->db_name, comp_req->src_level);
 		log_info("Switching tree[%u][%u] to tree[%u][%u]", comp_req->dst_level, 1, comp_req->dst_level, 0);
 		struct level_descriptor *ld = &comp_req->db_desc->levels[comp_req->dst_level];
+		if (RWLOCK_WRLOCK(&(comp_req->db_desc->levels[comp_req->src_level].guard_of_level.rx_lock))) {
+			log_fatal("Failed to acquire guard lock");
+			exit(EXIT_FAILURE);
+		}
+
+		if (RWLOCK_WRLOCK(&(comp_req->db_desc->levels[comp_req->dst_level].guard_of_level.rx_lock))) {
+			log_fatal("Failed to acquire guard lock");
+			exit(EXIT_FAILURE);
+		}
 
 		ld->first_segment[0] = ld->first_segment[1];
 		ld->first_segment[1] = NULL;
@@ -519,6 +529,16 @@ void *compaction(void *_comp_req)
 		ld->level_size[1] = 0;
 		ld->root_w[1] = NULL;
 		ld->root_r[1] = NULL;
+
+		if (RWLOCK_UNLOCK(&(comp_req->db_desc->levels[comp_req->src_level].guard_of_level.rx_lock))) {
+			log_fatal("Failed to acquire guard lock");
+			exit(EXIT_FAILURE);
+		}
+
+		if (RWLOCK_UNLOCK(&(comp_req->db_desc->levels[comp_req->dst_level].guard_of_level.rx_lock))) {
+			log_fatal("Failed to acquire guard lock");
+			exit(EXIT_FAILURE);
+		}
 
 		/*free src level*/
 		seg_free_level(&hd, comp_req->src_level, comp_req->src_tree, run);
@@ -585,6 +605,7 @@ void *compaction(void *_comp_req)
 	pthread_mutex_unlock(&db_desc->client_barrier_lock);
 	sem_post(&db_desc->compaction_daemon_interrupts);
 	free(comp_req);
+	sem_post(&gc_daemon_interrupts);
 	return NULL;
 }
 #else
