@@ -1187,7 +1187,7 @@ uint8_t insert_key_value(db_handle *handle, void *key, void *value, uint32_t key
 		pthread_mutex_unlock(&handle->db_desc->client_barrier_lock);
 	}
 
-	kv_size = sizeof(uint32_t) + key_size + sizeof(uint32_t) + value_size + sizeof(uint64_t);
+	kv_size = sizeof(uint32_t) + key_size + sizeof(uint32_t) + value_size /* + sizeof(uint64_t) */;
 	kv_ratio = ((double)key_size) / value_size;
 
 	if (kv_size > KV_MAX_SIZE) {
