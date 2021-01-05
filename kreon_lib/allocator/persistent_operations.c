@@ -183,7 +183,7 @@ void snapshot(volume_descriptor *volume_desc)
 		db_desc = (db_descriptor *)(node->data);
 
 		/*stop all level writers*/
-		for (level_id = 0; level_id < MAX_LEVELS + 1; level_id++) {
+		for (level_id = 0; level_id < MAX_LEVELS; level_id++) {
 			/*stop level 0 writers for this db*/
 			RWLOCK_WRLOCK(&db_desc->levels[level_id].guard_of_level.rx_lock);
 			/*spinning*/
@@ -221,7 +221,7 @@ void snapshot(volume_descriptor *volume_desc)
 			db_entry = &(db_group->db_entries[db_desc->group_index]);
 			//log_info("pr db entry name %s db name %s", db_entry->db_name, db_desc->db_name);
 
-			for (i = 1; i < MAX_LEVELS + 1; i++) {
+			for (i = 1; i < MAX_LEVELS; i++) {
 				for (j = 0; j < NUM_TREES_PER_LEVEL; j++) {
 					/*Serialize and persist space allocation info for all levels*/
 					if (db_desc->levels[i].last_segment[j] != NULL) {
@@ -350,21 +350,6 @@ void snapshot(volume_descriptor *volume_desc)
 	volume_desc->last_snapshot = get_timestamp(); /*update snapshot ts*/
 	volume_desc->last_commit = volume_desc->last_snapshot;
 	volume_desc->last_sync = get_timestamp(); /*update snapshot ts*/
-
-	/*release locks*/
-	node = get_first(volume_desc->open_databases);
-
-	while (node != NULL) {
-		db_desc = (db_descriptor *)node->data;
-
-		for (i = 0; i < MAX_LEVELS + 1; i++)
-			RWLOCK_UNLOCK(&db_desc->levels[i].guard_of_level.rx_lock);
-
-		node = node->next;
-	}
-
-	volume_desc->snap_preemption = SNAP_INTERRUPT_DISABLE;
-
 	if (dirty > 0) { /*At least one db is dirty proceed to snapshot()*/
 		//double t1,t2;
 		//struct timeval tim;
@@ -391,5 +376,18 @@ void snapshot(volume_descriptor *volume_desc)
 		//gettimeofday(&tim, NULL);
 		//t2=tim.tv_sec+(tim.tv_usec/1000000.0);
 		//fprintf(stderr, "snap_time=[%lf]sec\n", (t2-t1));
+	}
+	volume_desc->snap_preemption = SNAP_INTERRUPT_DISABLE;
+
+	/*release locks*/
+	node = get_first(volume_desc->open_databases);
+
+	while (node != NULL) {
+		db_desc = (db_descriptor *)node->data;
+
+		for (i = 0; i < MAX_LEVELS; i++)
+			RWLOCK_UNLOCK(&db_desc->levels[i].guard_of_level.rx_lock);
+
+		node = node->next;
 	}
 }

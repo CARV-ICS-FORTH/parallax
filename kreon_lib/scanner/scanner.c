@@ -243,8 +243,8 @@ void closeScanner(scannerHandle *sc)
 		//for (int i = 0; i < MAX_LEVELS; i++)
 		RWLOCK_UNLOCK(&sc->db->db_desc->levels[0].guard_of_level.rx_lock);
 	}
-	if (sc->malloced)
-		free(sc);
+	/* if (sc->malloced) */
+	free(sc);
 }
 
 void close_dirty_scanner(scannerHandle *sc)
@@ -501,7 +501,7 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 								   slot_array[middle].index);
 				key_size = KEY_SIZE(level_sc->keyValue);
 				value_size = VALUE_SIZE(level_sc->keyValue + 4 + key_size);
-				log_info("%*s", key_size, level_sc->keyValue + 4);
+				/* log_info("%*s", key_size, level_sc->keyValue + 4); */
 				level_key_format = level_sc->kv_format = KV_FORMAT;
 				level_sc->cat = slot_array[middle].key_category;
 				level_sc->kv_size = sizeof(key_size) + sizeof(value_size) + key_size + value_size;
@@ -552,7 +552,7 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 			case KV_INPLACE:
 				level_sc->keyValue = get_kv_offset(dlnode, db_desc->levels[level_id].leaf_size,
 								   slot_array[middle].index);
-				log_info("%*s", *(uint32_t *)level_sc->keyValue, level_sc->keyValue + 4);
+				/* log_info("%*s", *(uint32_t *)level_sc->keyValue, level_sc->keyValue + 4); */
 				level_key_format = level_sc->kv_format = KV_FORMAT;
 				level_sc->cat = slot_array[middle].key_category;
 				break;
@@ -561,10 +561,9 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 					dlnode, db_desc->levels[level_id].leaf_size, slot_array[middle].index);
 				level_sc->kv_entry = *kv_entry;
 				level_sc->kv_entry.pointer = (uint64_t)REAL_ADDRESS(kv_entry->pointer);
-				level_sc->keyValue = &level_sc->kv_entry;
+				level_sc->keyValue = (void *)level_sc->kv_entry.pointer;
 				level_sc->cat = slot_array[middle].key_category;
-				level_key_format = level_sc->kv_format = KV_PREFIX;
-
+				level_key_format = level_sc->kv_format = KV_FORMAT;
 				/* REAL_ADDRESS(*(uint64_t*)get_kv_offset( */
 				/* dlnode, db_desc->levels[level_id].leaf_size, slot_array[middle].index)); */
 				break;
@@ -876,6 +875,7 @@ int32_t _get_next_KV(level_scanner *sc)
 
 		//log_info("key %d x %d numberofentries %llu %d", *(uint32_t*)sc->keyValue, x, node->numberOfEntriesInNode, idx);
 	} else {
+		// normal scanner
 		switch (db_desc->levels[level_id].node_layout) {
 		case STATIC_LEAF:;
 			struct bt_static_leaf_node *slnode = (struct bt_static_leaf_node *)node;
@@ -909,8 +909,8 @@ int32_t _get_next_KV(level_scanner *sc)
 				/* kv_entry->pointer = (uint64_t) REAL_ADDRESS(kv_entry->pointer); */
 				sc->kv_entry = *kv_entry;
 				sc->kv_entry.pointer = (uint64_t)REAL_ADDRESS(kv_entry->pointer);
-				sc->keyValue = &sc->kv_entry;
-				sc->kv_format = KV_PREFIX;
+				sc->keyValue = (void *)sc->kv_entry.pointer;
+				sc->kv_format = KV_FORMAT;
 				sc->cat = slot_array[idx].key_category;
 				/* REAL_ADDRESS(*(uint64_t*)get_kv_offset( */
 				/* dlnode, db_desc->levels[level_id].leaf_size, slot_array[idx].index)) */;

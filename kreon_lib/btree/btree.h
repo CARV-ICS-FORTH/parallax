@@ -359,6 +359,7 @@ typedef struct db_descriptor {
 	level_descriptor levels[MAX_LEVELS + 1];
 	struct compaction_pairs inprogress_compactions[MAX_LEVELS + 1];
 	struct compaction_pairs pending_compactions[MAX_LEVELS + 1];
+	uint64_t count_medium_inplace;
 	pthread_cond_t client_barrier;
 	pthread_cond_t compaction_cond;
 	pthread_mutex_t compaction_structs_lock;

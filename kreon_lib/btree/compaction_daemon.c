@@ -321,6 +321,137 @@ void *compaction(void *_comp_req)
 
 		seg_free_level(&hd, comp_req->src_level, comp_req->src_tree, 0);
 
+	} else if (dst_root == NULL && comp_req->dst_level == LEVEL_MEDIUM_INPLACE) {
+		struct level_scanner *level_src =
+			_init_spill_buffer_scanner(&handle, comp_req->src_level, src_root, NULL);
+
+		log_info("Src [%u][%u] size = %llu", comp_req->src_level, comp_req->src_tree,
+			 db_desc->levels[comp_req->src_level].level_size[comp_req->src_tree]);
+
+		log_info("Dst [%u][%u] size = %llu", comp_req->dst_level, 0,
+			 db_desc->levels[comp_req->dst_level].level_size[0]);
+
+		if (!level_src) {
+			log_fatal("Failed to create pair of spill buffer scanners for level's "
+				  "tree[%u][%u]",
+				  comp_req->src_level, comp_req->src_tree);
+			exit(EXIT_FAILURE);
+		}
+
+		log_info("level scanners and min heap ready");
+		int32_t num_of_keys = (SPILL_BUFFER_SIZE - (2 * sizeof(uint32_t))) / (PREFIX_SIZE + sizeof(uint64_t));
+		enum sh_heap_status stat = GOT_MIN_HEAP;
+		do {
+			db_desc->dirty = 0x01;
+			if (handle.db_desc->stat == DB_IS_CLOSING) {
+				log_info("db is closing bye bye from spiller");
+				return NULL;
+			}
+
+			ins_req.metadata.handle = &handle;
+			ins_req.metadata.level_id = comp_req->dst_level;
+			ins_req.metadata.tree_id = comp_req->dst_tree;
+			/* ins_req.metadata.key_format = KV_PREFIX; */
+			ins_req.metadata.append_to_log = 0;
+			ins_req.metadata.special_split = 1;
+			ins_req.metadata.gc_request = 0;
+			ins_req.metadata.recovery_request = 0;
+			/* ins_req.metadata.cat = BIG_INLOG; */
+
+			for (i = 0; i < num_of_keys; i++) {
+				ins_req.key_value_buf = level_src->keyValue;
+				ins_req.metadata.key_format = level_src->kv_format;
+				ins_req.metadata.cat = level_src->cat;
+				ins_req.metadata.kv_size = level_src->kv_size;
+				ins_req.metadata.append_to_log = 0;
+
+				if (level_src->cat == MEDIUM_INLOG && comp_req->dst_level == LEVEL_MEDIUM_INPLACE) {
+					int key_size = *(uint32_t *)*(uint64_t *)(ins_req.key_value_buf + PREFIX_SIZE);
+					int value_size = *(uint32_t *)((char *)(*(uint64_t *)(ins_req.key_value_buf +
+											      PREFIX_SIZE)) +
+								       key_size + 4);
+					ins_req.metadata.kv_size =
+						key_size + value_size + sizeof(key_size) + sizeof(value_size);
+				}
+				assert(ins_req.metadata.key_format == KV_FORMAT ||
+				       ins_req.metadata.key_format == KV_PREFIX);
+				/* assert(ins_req.metadata.kv_size < 200); */
+				_insert_key_value(&ins_req);
+
+				rc = _get_next_KV(level_src);
+				if (rc == END_OF_DATABASE)
+					break;
+
+				++local_spilled_keys;
+			}
+		} while (rc != END_OF_DATABASE);
+
+		_close_spill_buffer_scanner(level_src, src_root);
+
+		log_info("local spilled keys %d", local_spilled_keys);
+		/* assert(local_spilled_keys == db_desc->levels[comp_req->src_level].level_size[comp_req->src_tree] + */
+		/* 				     db_desc->levels[comp_req->dst_level].level_size[0]); */
+		struct db_handle hd = { .db_desc = comp_req->db_desc, .volume_desc = comp_req->volume_desc };
+		/*
+		 * Now the difficult part we need atomically to free the src level, dst
+		 * level[0]. Then
+		 * we need to atomically switch dst_level[1] to dst_level[0]. We ll acquire
+		 * the guard lock of each
+		 * level for scanners. We ll need another set of lamport counters for
+		 * readers to inform them that a
+		 * level change took place
+		 */
+
+		log_info("Switching tree[%u][%u] to tree[%u][%u]", comp_req->dst_level, 1, comp_req->dst_level, 0);
+		struct level_descriptor *ld = &comp_req->db_desc->levels[comp_req->dst_level];
+		if (RWLOCK_WRLOCK(&(comp_req->db_desc->levels[comp_req->src_level].guard_of_level.rx_lock))) {
+			log_fatal("Failed to acquire guard lock");
+			exit(EXIT_FAILURE);
+		}
+
+		if (RWLOCK_WRLOCK(&(comp_req->db_desc->levels[comp_req->dst_level].guard_of_level.rx_lock))) {
+			log_fatal("Failed to acquire guard lock");
+			exit(EXIT_FAILURE);
+		}
+
+		ld->first_segment[0] = ld->first_segment[1];
+		ld->first_segment[1] = NULL;
+		ld->last_segment[0] = ld->last_segment[1];
+		ld->last_segment[1] = NULL;
+		ld->offset[0] = ld->offset[1];
+		ld->offset[1] = 0;
+
+		if (ld->root_w[1] != NULL)
+			while (!__sync_bool_compare_and_swap(&ld->root_r[0], ld->root_r[0], ld->root_w[1]))
+				;
+		else if (ld->root_r[1] != NULL)
+			while (!__sync_bool_compare_and_swap(&ld->root_r[0], ld->root_r[0], ld->root_r[1]))
+				;
+		else {
+			log_fatal("Where is the root?");
+			exit(EXIT_FAILURE);
+		}
+
+		ld->root_w[0] = NULL;
+		ld->level_size[0] = ld->level_size[1];
+		ld->level_size[1] = 0;
+		ld->root_w[1] = NULL;
+		ld->root_r[1] = NULL;
+
+		if (RWLOCK_UNLOCK(&(comp_req->db_desc->levels[comp_req->src_level].guard_of_level.rx_lock))) {
+			log_fatal("Failed to acquire guard lock");
+			exit(EXIT_FAILURE);
+		}
+
+		if (RWLOCK_UNLOCK(&(comp_req->db_desc->levels[comp_req->dst_level].guard_of_level.rx_lock))) {
+			log_fatal("Failed to acquire guard lock");
+			exit(EXIT_FAILURE);
+		}
+
+		/*free src level*/
+		seg_free_level(&hd, comp_req->src_level, comp_req->src_tree, run);
+
+		log_info("After compaction tree[%d][%d] size is %llu", comp_req->dst_level, 0, ld->level_size[0]);
 	} else if (dst_root) {
 		struct level_scanner *level_src =
 			_init_spill_buffer_scanner(&handle, comp_req->src_level, src_root, NULL);
@@ -584,6 +715,7 @@ void *compaction(void *_comp_req)
 		 "cleaning src level",
 		 comp_req->src_level, comp_req->src_tree, comp_req->dst_level, comp_req->dst_tree);
 
+	snapshot(comp_req->volume_desc);
 	db_desc->levels[comp_req->src_level].tree_status[comp_req->src_tree] = NO_SPILLING;
 
 	db_desc->levels[comp_req->dst_level].tree_status[0] = NO_SPILLING;
@@ -591,7 +723,6 @@ void *compaction(void *_comp_req)
 	// log_info("DONE Cleaning src level tree [%u][%u] snapshotting...",
 	// comp_req->src_level, comp_req->src_tree);
 	/*interrupt compaction daemon*/
-	snapshot(comp_req->volume_desc);
 	/*wake up clients*/
 	if (comp_req->src_level == 0) {
 		log_info("src level %d dst level %d src_tree %d dst_tree %d", comp_req->src_level, comp_req->dst_level,
@@ -719,7 +850,7 @@ void *spill_buffer(void *_comp_req)
             comp_req->src_tree_id);
             exit(EXIT_FAILURE);
             }*/
-
+	snapshot(comp_req->volume_desc);
 	db_desc->levels[comp_req->src_level].tree_status[comp_req->src_tree] = NO_SPILLING;
 	db_desc->levels[comp_req->dst_level].tree_status[comp_req->dst_tree] = NO_SPILLING;
 	if (comp_req->src_tree == 0)
@@ -728,7 +859,6 @@ void *spill_buffer(void *_comp_req)
 	// log_info("DONE Cleaning src level tree [%u][%u] snapshotting...",
 	// comp_req->src_level, comp_req->src_tree);
 	/*interrupt compaction daemon*/
-	snapshot(comp_req->volume_desc);
 	/*wake up clients*/
 	if (comp_req->src_level == 0) {
 		pthread_mutex_lock(&comp_req->db_desc->client_barrier_lock);

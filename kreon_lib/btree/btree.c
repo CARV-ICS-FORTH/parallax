@@ -804,7 +804,7 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 		db_desc->dirty = 0x01;
 
 		/*init all persistent fields levels*/
-		for (level_id = 0; level_id < MAX_LEVELS + 1; level_id++) {
+		for (level_id = 0; level_id < MAX_LEVELS; level_id++) {
 			for (tree_id = 0; tree_id < NUM_TREES_PER_LEVEL; tree_id++) {
 				db_desc->levels[level_id].root_r[tree_id] = NULL;
 				db_desc->levels[level_id].root_w[tree_id] = NULL;
@@ -839,7 +839,7 @@ finish_init:
 	db_desc->blocked_clients = 0;
 	db_desc->compaction_count = 0;
 	db_desc->is_compaction_daemon_sleeping = 0;
-
+	db_desc->count_medium_inplace = 0;
 	for (i = 0; i < NUM_TREES_PER_LEVEL; ++i) {
 		db_desc->inmem_medium_log_head[i] = db_desc->inmem_medium_log_tail[i] = NULL;
 		db_desc->inmem_medium_log_size[i] = 0;
@@ -1412,6 +1412,10 @@ void *append_key_value_to_log(log_operation *req)
 	addr_inlog = (void *)((uint64_t)log_metadata.log_tail + (*log_metadata.log_size % BUFFER_SEGMENT_SIZE));
 	req->metadata->log_offset = *log_metadata.log_size;
 	*log_metadata.log_size += data_size.kv_size + sizeof(struct log_sequence_number);
+
+	/* if(req->metadata->cat == BIG_INLOG){ */
+	/*   log_info("kv_size = %d ",data_size.kv_size); */
+	/* } */
 
 	lsn = __sync_fetch_and_add(&handle->db_desc->lsn, 1);
 #ifdef LOG_WITH_MUTEX

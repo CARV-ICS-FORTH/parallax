@@ -680,6 +680,10 @@ int8_t insert_in_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, bt_insert_req *
 	switch (bsearch.status) {
 	case INSERT:
 		shift_right_slot_array(leaf, bsearch.middle);
+		if (write_leaf_args.cat == MEDIUM_INLOG && write_leaf_args.level_id == LEVEL_MEDIUM_INPLACE) {
+			__sync_fetch_and_add(&req->metadata.handle->db_desc->count_medium_inplace, 1);
+		}
+
 		write_data_in_dynamic_leaf(&write_leaf_args);
 		++leaf->header.num_entries;
 		break;
