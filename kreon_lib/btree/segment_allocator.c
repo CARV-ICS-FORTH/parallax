@@ -389,11 +389,11 @@ void seg_free_level(db_handle *handle, uint8_t level_id, uint8_t tree_id, int ru
 			space_freed += SEGMENT_SIZE;
 		}
 	else {
-		if (RWLOCK_WRLOCK(&db_desc->levels[0].guard_of_level.rx_lock)) {
-			exit(EXIT_FAILURE);
-		}
+		/* if (RWLOCK_WRLOCK(&db_desc->levels[0].guard_of_level.rx_lock)) { */
+		/* 	exit(EXIT_FAILURE); */
+		/* } */
 
-		spin_loop(&db_desc->levels[0].active_writers, 0);
+		/* spin_loop(&db_desc->levels[0].active_writers, 0); */
 
 		curr_segment = handle->db_desc->inmem_medium_log_head[tree_id];
 		segment_header *next_segment;
@@ -461,9 +461,9 @@ void seg_free_level(db_handle *handle, uint8_t level_id, uint8_t tree_id, int ru
 	handle->db_desc->levels[level_id].root_w[tree_id] = NULL;
 	/* if (curr_segment->in_mem == 0) */
 	/* 	free_raw_segment(handle->volume_desc, curr_segment); */
-	if (level_id == 0)
-		if (RWLOCK_UNLOCK(&db_desc->levels[0].guard_of_level.rx_lock)) {
-			exit(EXIT_FAILURE);
-		}
+	/* if (level_id == 0) */
+	/* 	if (RWLOCK_UNLOCK(&db_desc->levels[0].guard_of_level.rx_lock)) { */
+	/* 		exit(EXIT_FAILURE); */
+	/* 	} */
 	log_info("Freed space %llu MB from db:%s level %u", space_freed / MB(1), handle->db_desc->db_name, level_id);
 }

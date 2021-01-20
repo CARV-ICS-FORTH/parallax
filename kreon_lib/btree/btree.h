@@ -378,8 +378,6 @@ typedef struct db_descriptor {
 	pthread_t compaction_thread;
 	pthread_t compaction_daemon;
 	pthread_t gc_thread;
-	int is_compaction_daemon_sleeping;
-
 	//compaction daemon staff
 	volatile segment_header *big_log_head;
 	volatile segment_header *big_log_tail;
@@ -404,8 +402,12 @@ typedef struct db_descriptor {
 	uint64_t medium_log_tail_offset;
 	uint64_t small_log_head_offset;
 	uint64_t small_log_tail_offset;
+	uint64_t gc_last_segment_id;
+	uint64_t gc_count_segments;
+	uint64_t gc_keys_transferred;
 	commit_log_info *commit_log;
 	// uint64_t spilled_keys;
+	int is_compaction_daemon_sleeping;
 	int32_t reference_count;
 	int32_t group_id;
 	int32_t group_index;

@@ -883,6 +883,8 @@ finish_init:
 		db_desc->pending_compactions[level_id].src_level = -1;
 		db_desc->pending_compactions[level_id].dst_level = -1;
 	}
+	sem_init(&gc_daemon_interrupts, PTHREAD_PROCESS_PRIVATE, 0);
+
 	static int gc_thread_spawned = 0;
 	if (!gc_thread_spawned) {
 		++gc_thread_spawned;
@@ -892,7 +894,16 @@ finish_init:
 			exit(EXIT_FAILURE);
 		}
 	}
-
+	/* if(!gc_thread_spawned){ */
+	/* 	++gc_thread_spawned; */
+	/* handle->db_desc->gc_count_segments = 0; */
+	/* handle->db_desc->gc_last_segment_id = 0; */
+	/* handle->db_desc->gc_keys_transferred = 0; */
+	/* if (pthread_create(&(handle->db_desc->gc_thread), NULL, (void *)gc_log_entries, (void *)handle) != 0) { */
+	/* 	log_fatal("Failed to start compaction_daemon for db %s", db_name); */
+	/* 	exit(EXIT_FAILURE); */
+	/* } */
+	/* } */
 	_Static_assert(UNKNOWN_LOG_CATEGORY < 8,
 		       "Log categories number cannot be stored in 3 bits, increase key_category");
 	_Static_assert(sizeof(struct bt_dynamic_leaf_slot_array) == 4,
@@ -911,7 +922,6 @@ finish_init:
 	log_info("opened DB %s starting its compaction daemon", db_name);
 
 	sem_init(&db_desc->compaction_daemon_interrupts, PTHREAD_PROCESS_PRIVATE, 0);
-	sem_init(&gc_daemon_interrupts, PTHREAD_PROCESS_PRIVATE, 0);
 
 	if (pthread_create(&(handle->db_desc->compaction_daemon), NULL, (void *)compaction_daemon, (void *)handle) !=
 	    0) {
@@ -1205,6 +1215,9 @@ uint8_t insert_key_value(db_handle *handle, void *key, void *value, uint32_t key
 	ins_req.metadata.kv_size = kv_size;
 	ins_req.metadata.level_id = 0;
 	ins_req.metadata.key_format = KV_FORMAT;
+	ins_req.metadata.append_to_log = 1;
+	ins_req.metadata.gc_request = 0;
+	ins_req.metadata.special_split = 0;
 
 	if (kv_ratio >= 0.0 && kv_ratio < 0.15) {
 		ins_req.metadata.cat = BIG_INLOG;
@@ -1213,15 +1226,12 @@ uint8_t insert_key_value(db_handle *handle, void *key, void *value, uint32_t key
 	} else {
 		ins_req.metadata.cat = SMALL_INPLACE;
 	}
+
 	/*
 * Note for L0 inserts since active_tree changes dynamically we decide which
 * is the active_tree after
 * acquiring the guard lock of the region
 * */
-	ins_req.metadata.key_format = KV_FORMAT;
-	ins_req.metadata.append_to_log = 1;
-	ins_req.metadata.gc_request = 0;
-	ins_req.metadata.special_split = 0;
 
 	return _insert_key_value(&ins_req);
 }
@@ -1431,8 +1441,26 @@ void *append_key_value_to_log(log_operation *req)
 
 uint8_t _insert_key_value(bt_insert_req *ins_req)
 {
+	db_handle *handle = ins_req->metadata.handle;
 	db_descriptor *db_desc = ins_req->metadata.handle->db_desc;
 	uint8_t rc = SUCCESS;
+	int active_tree = handle->db_desc->levels[0].active_tree;
+
+	while (handle->db_desc->levels[0].level_size[active_tree] > handle->db_desc->levels[0].max_level_size &&
+	       ins_req->metadata.gc_request) {
+		pthread_mutex_lock(&handle->db_desc->client_barrier_lock);
+		active_tree = handle->db_desc->levels[0].active_tree;
+		if (handle->db_desc->levels[0].level_size[active_tree] > handle->db_desc->levels[0].max_level_size) {
+			sem_post(&handle->db_desc->compaction_daemon_interrupts);
+			if (pthread_cond_wait(&handle->db_desc->client_barrier,
+					      &handle->db_desc->client_barrier_lock) != 0) {
+				log_fatal("failed to throttle");
+				exit(EXIT_FAILURE);
+			}
+		}
+		active_tree = handle->db_desc->levels[0].active_tree;
+		pthread_mutex_unlock(&handle->db_desc->client_barrier_lock);
+	}
 
 	assert(ins_req->metadata.kv_size < 4096);
 	db_desc->dirty = 0x01;
@@ -2701,6 +2729,7 @@ release_and_retry:
 			if (father != NULL) {
 				/*lamport counter*/
 				father->v1++;
+				assert(father->epoch > ins_req->metadata.handle->volume_desc->dev_catalogue->epoch);
 
 				insert_key_at_index(ins_req, (index_node *)father, split_res.left_child,
 						    split_res.right_child, split_res.middle_key_buf, KEY_LOG_EXPANSION);
@@ -2753,7 +2782,7 @@ release_and_retry:
 				seg_free_leaf_node(ins_req->metadata.handle->volume_desc, &db_desc->levels[level_id],
 						   ins_req->metadata.tree_id, (leaf_node *)son);
 			}
-			node_copy->epoch = mem_catalogue->epoch;
+			node_copy->epoch = volume_desc->mem_catalogue->epoch;
 			son = node_copy;
 			/*Update father's pointer*/
 			if (father != NULL) {
@@ -2807,6 +2836,8 @@ release_and_retry:
 	}
 
 	son->v1++; /*lamport counter*/
+	assert(son->epoch > ins_req->metadata.handle->volume_desc->dev_catalogue->epoch);
+
 	insert_KV_at_leaf(ins_req, son);
 	son->v2++; /*lamport counter*/
 	/*Unlock remaining locks*/

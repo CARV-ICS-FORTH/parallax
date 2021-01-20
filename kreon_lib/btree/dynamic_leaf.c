@@ -158,18 +158,36 @@ void binary_search_dynamic_leaf(const struct bt_dynamic_leaf_node *leaf, uint32_
 
 		offset_in_leaf = slot_array[middle].index;
 		assert(offset_in_leaf < leaf_size);
-		fill_prefix(&leaf_key_prefix, get_kv_offset(leaf, leaf_size, offset_in_leaf),
-			    slot_array[middle].bitmap);
+
+		char padded_prefix[PREFIX_SIZE];
+		struct splice *key_buf = (struct splice *)get_kv_offset(leaf, leaf_size, offset_in_leaf);
+		if (slot_array[middle].bitmap == KV_INPLACE && key_buf->size < PREFIX_SIZE) {
+			memset(padded_prefix, 0x00, PREFIX_SIZE);
+			memcpy(padded_prefix, key_buf->data, key_buf->size);
+			leaf_key_prefix.prefix = padded_prefix;
+			leaf_key_prefix.len = PREFIX_SIZE;
+		} else {
+			fill_prefix(&leaf_key_prefix, get_kv_offset(leaf, leaf_size, offset_in_leaf),
+				    slot_array[middle].bitmap);
+		}
 		if (req->metadata.key_format == KV_PREFIX) {
 			ret = prefix_compare(leaf_key_prefix.prefix, req->key_value_buf,
 					     PREFIX_SIZE /* MIN(leaf_key_prefix.len, key_buf->size) */
 			);
-		} else
-			ret = prefix_compare(leaf_key_prefix.prefix, req->key_value_buf + 4,
-					     PREFIX_SIZE /* MIN(leaf_key_prefix.len, key_buf->size) */
-			);
+		} else {
+			if (*(uint32_t *)req->key_value_buf < PREFIX_SIZE) {
+				char padded_qkey_prefix[PREFIX_SIZE];
+				memset(padded_qkey_prefix, 0x0, PREFIX_SIZE);
+				memcpy(padded_qkey_prefix, req->key_value_buf + sizeof(uint32_t),
+				       *(uint32_t *)req->key_value_buf);
+				ret = prefix_compare(leaf_key_prefix.prefix, padded_qkey_prefix, PREFIX_SIZE);
+			} else
+				ret = prefix_compare(leaf_key_prefix.prefix, req->key_value_buf + 4,
+						     PREFIX_SIZE /*MIN(leaf_key_prefix.len, key_buf->size)*/);
+		}
 
-		/* log_info("%d %*s %*s",ret ,PREFIX_SIZE,leaf_key_prefix.prefix,PREFIX_SIZE,req->key_value_buf+4); */
+		/* log_info("%d %*s %*s",ret
+     * ,PREFIX_SIZE,leaf_key_prefix.prefix,PREFIX_SIZE,req->key_value_buf+4); */
 
 		ret_case = ret < 0 ? LESS_THAN_ZERO : ret > 0 ? GREATER_THAN_ZERO : EQUAL_TO_ZERO;
 
@@ -287,14 +305,23 @@ uint32_t append_kv_inplace(char *dest, char *buf, uint32_t buf_size)
 
 uint32_t append_bt_leaf_entry_inplace(char *dest, uint64_t pointer, char *prefix, uint32_t prefix_size)
 {
-	dest -= sizeof(pointer);
+	char padded_prefix[PREFIX_SIZE];
+	if (prefix_size < PREFIX_SIZE) {
+		memset(padded_prefix, 0x00, PREFIX_SIZE);
+		memcpy(padded_prefix, prefix, prefix_size);
+		prefix = padded_prefix;
+		prefix_size = PREFIX_SIZE;
+	}
+	if (prefix_size)
+		dest -= sizeof(pointer);
 	*(uint64_t *)dest = pointer;
 	dest -= prefix_size;
 	memcpy(dest, prefix, prefix_size);
 	/* log_info("dest %llu",dest); */
 	/* log_info("ADDR %llu pointer %llu",dest,pointer); */
 	/* memcpy(dest, &pointer, sizeof(pointer)); */
-	/* log_info("%d %s %s",*(uint32_t*) (*(uint64_t*)dest + MAPPED),prefix,((char *)(*(uint64_t*)dest + MAPPED) + 4)); */
+	/* log_info("%d %s %s",*(uint32_t*) (*(uint64_t*)dest + MAPPED),prefix,((char
+   * *)(*(uint64_t*)dest + MAPPED) + 4)); */
 	return prefix_size + sizeof(pointer);
 }
 
@@ -560,12 +587,13 @@ void write_data_in_dynamic_leaf(struct write_dynamic_leaf_args *args)
 		struct bt_leaf_entry *serialized = (struct bt_leaf_entry *)key_value_buf;
 		slot.bitmap = KV_INLOG;
 		if (kv_format == KV_FORMAT) {
-			leaf->header.leaf_log_size += append_bt_leaf_entry_inplace(
-				dest, ABSOLUTE_ADDRESS(key_value_buf), key->data, PREFIX_SIZE /* MIN(key->size, ) */);
+			leaf->header.leaf_log_size +=
+				append_bt_leaf_entry_inplace(dest, ABSOLUTE_ADDRESS(key_value_buf), key->data,
+							     /* PREFIX_SIZE */ MIN(key->size, PREFIX_SIZE));
 		} else {
 			leaf->header.leaf_log_size +=
 				append_bt_leaf_entry_inplace(dest, ABSOLUTE_ADDRESS(serialized->pointer), key_value_buf,
-							     PREFIX_SIZE /* MIN(key->size, ) */);
+							     /* PREFIX_SIZE */ MIN(key->size, PREFIX_SIZE));
 		}
 		//Note There is a case where YCSB generates 11 bytes keys and we read invalid bytes from stack.
 		//This should be fixed after Eurosys deadline.
@@ -581,8 +609,8 @@ int reorganize_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, uint32_t leaf_siz
 {
 	enum log_category2 cat = req->metadata.cat;
 	unsigned kv_size = (cat == BIG_INLOG || cat == MEDIUM_INLOG || cat == SMALL_INLOG) ?
-				   sizeof(struct bt_leaf_entry) :
-				   req->metadata.kv_size;
+					 sizeof(struct bt_leaf_entry) :
+					 req->metadata.kv_size;
 
 	if (leaf->header.fragmentation <= kv_size || req->metadata.level_id != 0)
 		return 0;

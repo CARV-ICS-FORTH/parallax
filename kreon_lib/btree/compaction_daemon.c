@@ -94,12 +94,12 @@ void *compaction_daemon(void *args)
 					exit(EXIT_FAILURE);
 				}
 
-				pthread_mutex_lock(&db_desc->client_barrier_lock);
+				MUTEX_LOCK(&db_desc->client_barrier_lock);
 				if (pthread_cond_broadcast(&db_desc->client_barrier) != 0) {
 					log_fatal("Failed to wake up stopped clients");
 					exit(EXIT_FAILURE);
 				}
-				pthread_mutex_unlock(&db_desc->client_barrier_lock);
+				MUTEX_UNLOCK(&db_desc->client_barrier_lock);
 			}
 			/* } */
 		}
@@ -295,6 +295,16 @@ void *compaction(void *_comp_req)
 		struct level_descriptor *ld = &comp_req->db_desc->levels[comp_req->dst_level];
 		struct db_handle hd = { .db_desc = comp_req->db_desc, .volume_desc = comp_req->volume_desc };
 
+		if (RWLOCK_WRLOCK(&(comp_req->db_desc->levels[comp_req->src_level].guard_of_level.rx_lock))) {
+			log_fatal("Failed to acquire guard lock");
+			exit(EXIT_FAILURE);
+		}
+
+		if (RWLOCK_WRLOCK(&(comp_req->db_desc->levels[comp_req->dst_level].guard_of_level.rx_lock))) {
+			log_fatal("Failed to acquire guard lock");
+			exit(EXIT_FAILURE);
+		}
+
 		ld->first_segment[0] = ld->first_segment[1];
 		ld->first_segment[1] = NULL;
 		ld->last_segment[0] = ld->last_segment[1];
@@ -318,8 +328,17 @@ void *compaction(void *_comp_req)
 		ld->level_size[1] = 0;
 		ld->root_w[1] = NULL;
 		ld->root_r[1] = NULL;
-
 		seg_free_level(&hd, comp_req->src_level, comp_req->src_tree, 0);
+
+		if (RWLOCK_UNLOCK(&(comp_req->db_desc->levels[comp_req->src_level].guard_of_level.rx_lock))) {
+			log_fatal("Failed to acquire guard lock");
+			exit(EXIT_FAILURE);
+		}
+
+		if (RWLOCK_UNLOCK(&(comp_req->db_desc->levels[comp_req->dst_level].guard_of_level.rx_lock))) {
+			log_fatal("Failed to acquire guard lock");
+			exit(EXIT_FAILURE);
+		}
 
 	} else if (dst_root == NULL && comp_req->dst_level == LEVEL_MEDIUM_INPLACE) {
 		struct level_scanner *level_src =
@@ -437,6 +456,8 @@ void *compaction(void *_comp_req)
 		ld->level_size[1] = 0;
 		ld->root_w[1] = NULL;
 		ld->root_r[1] = NULL;
+		/*free src level*/
+		seg_free_level(&hd, comp_req->src_level, comp_req->src_tree, run);
 
 		if (RWLOCK_UNLOCK(&(comp_req->db_desc->levels[comp_req->src_level].guard_of_level.rx_lock))) {
 			log_fatal("Failed to acquire guard lock");
@@ -447,9 +468,6 @@ void *compaction(void *_comp_req)
 			log_fatal("Failed to acquire guard lock");
 			exit(EXIT_FAILURE);
 		}
-
-		/*free src level*/
-		seg_free_level(&hd, comp_req->src_level, comp_req->src_tree, run);
 
 		log_info("After compaction tree[%d][%d] size is %llu", comp_req->dst_level, 0, ld->level_size[0]);
 	} else if (dst_root) {
@@ -660,6 +678,8 @@ void *compaction(void *_comp_req)
 		ld->level_size[1] = 0;
 		ld->root_w[1] = NULL;
 		ld->root_r[1] = NULL;
+		/*free src level*/
+		seg_free_level(&hd, comp_req->src_level, comp_req->src_tree, run);
 
 		if (RWLOCK_UNLOCK(&(comp_req->db_desc->levels[comp_req->src_level].guard_of_level.rx_lock))) {
 			log_fatal("Failed to acquire guard lock");
@@ -670,9 +690,6 @@ void *compaction(void *_comp_req)
 			log_fatal("Failed to acquire guard lock");
 			exit(EXIT_FAILURE);
 		}
-
-		/*free src level*/
-		seg_free_level(&hd, comp_req->src_level, comp_req->src_tree, run);
 
 		log_info("After compaction tree[%d][%d] size is %llu", comp_req->dst_level, 0, ld->level_size[0]);
 	} else {
