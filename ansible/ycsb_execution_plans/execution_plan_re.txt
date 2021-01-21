@@ -1,1 +1,0 @@
-run_e run ycsb_execution_plans/workloade
