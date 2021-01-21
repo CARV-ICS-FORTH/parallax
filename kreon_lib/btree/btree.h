@@ -12,7 +12,6 @@
 #include <config.h>
 #include "uthash.h"
 #include "../allocator/allocator.h"
-#include "../../utilities/mydgmalloc.h"
 #define SUCCESS 4
 #define FAILED 5
 
@@ -393,7 +392,6 @@ typedef struct db_descriptor {
 	segment_header *inmem_medium_log_tail[NUM_TREES_PER_LEVEL];
 	uint64_t inmem_medium_log_size[NUM_TREES_PER_LEVEL];
 	char *inmem_base;
-	mspace inmem_msp;
 	/*coordinates of the latest persistent L0*/
 	/* Shouldn't this be in level_descriptor*/
 	uint64_t big_log_head_offset;

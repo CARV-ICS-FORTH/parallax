@@ -26,14 +26,7 @@ file(
 # list(REMOVE_ITEM KREON_C_SOURCE_FILES
 list(APPEND KREON_C_SOURCE_FILES "${CMAKE_SOURCE_DIR}/utilities/spin_loop.c")
 list(APPEND KREON_C_SOURCE_FILES "${CMAKE_SOURCE_DIR}/utilities/list.c")
-set(DLMALLOC_SOURCES ${CMAKE_SOURCE_DIR}/utilities/dgmalloc.c)
-add_library(dlmalloc OBJECT ${DLMALLOC_SOURCES})
-set_property(
-  SOURCE ${DLMALLOC_SOURCES}
-  APPEND_STRING
-  PROPERTY
-    COMPILE_FLAGS
-    " -DONLY_MSPACES -DUSE_SPIN_LOCKS -DMSPACES -DHAVE_USR_INCLUDE_MALLOC_H")
+
 set_source_files_properties(
   KREON_C_SOURCE_FILES PROPERTIES COMPILE_FLAGS
                                   "${CMAKE_C_FLAGS_RELEASE} ${CMAKE_C_FLAGS}")
@@ -85,11 +78,11 @@ add_library(${KREON_LIB_SHARED} SHARED ${KREON_C_SOURCE_FILES})
 set_property(TARGET ${KREON_LIB} PROPERTY POSITION_INDEPENDENT_CODE ON)
 set_property(TARGET ${KREON_LIB_SHARED} PROPERTY POSITION_INDEPENDENT_CODE ON)
 
-target_link_libraries(${KREON_LIB} log mba dlmalloc)
-target_link_libraries(${KREON_LIB_SHARED} log-shared mba-shared dlmalloc)
+target_link_libraries(${KREON_LIB} log mba)
+target_link_libraries(${KREON_LIB_SHARED} log-shared mba-shared)
 
-target_link_libraries(kreonr log mba dlmalloc)
-target_link_libraries(kreonr-shared log-shared mba-shared dlmalloc)
+target_link_libraries(kreonr log mba)
+target_link_libraries(kreonr-shared log-shared mba-shared)
 
 set_source_files_properties(allocator/spin_loop.c PROPERTIES COMPILE_FLAGS
                                                              "-O0")
@@ -103,7 +96,7 @@ add_executable(
   allocator/persistent_operations.c btree/segment_allocator.c
   ../utilities/spin_loop.c ../utilities/list.c)
 
-target_link_libraries(mkfs.kreon log dlmalloc)
+target_link_libraries(mkfs.kreon log)
 
 if(KREON_BUILD_CPACK)
   install(
