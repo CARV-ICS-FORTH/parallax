@@ -57,6 +57,7 @@ if(NOT log_POPULATED)
   FetchContent_MakeAvailable(log)
 endif()
 
+set(DEPENDENCIES log libmba)
 # Compiler configuration
 if(NOT CMAKE_C_COMPILER)
   set(CMAKE_C_COMPILER "gcc")

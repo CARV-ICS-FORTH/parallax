@@ -7,22 +7,24 @@ include_directories(${CMAKE_SOURCE_DIR}/lib)
 set(LIB_TEST_FILES test_deletes test_recovery.c test_scans.c test_dirty_scans.c)
 
 set_source_files_properties(${LIB_TEST_FILES} PROPERTIES COMPILE_FLAGS "-O3")
-set(CMAKE_EXE_LINKER_FLAGS "-Wl,-no-as-needed -lm -lrt -pthread -lnuma")
+set(CMAKE_EXE_LINKER_FLAGS
+    "${CMAKE_EXE_LINKER_FLAGS} -Wl,-no-as-needed -lm -lrt -pthread -lnuma -lutil"
+)
 
 add_executable(test_scans test_scans.c)
-target_link_libraries(test_scans ${PROJECT_NAME})
+target_link_libraries(test_scans ${PROJECT_NAME} ${DEPENDENCIES})
 
 add_executable(test_dirty_scans test_dirty_scans.c)
-target_link_libraries(test_dirty_scans ${PROJECT_NAME})
+target_link_libraries(test_dirty_scans ${PROJECT_NAME} ${DEPENDENCIES})
 
 add_executable(test_spillscans test_spillscanner.c)
-target_link_libraries(test_spillscans ${PROJECT_NAME})
+target_link_libraries(test_spillscans ${PROJECT_NAME} ${DEPENDENCIES})
 
 add_executable(test_deletes test_deletes.c)
-target_link_libraries(test_deletes ${PROJECT_NAME})
+target_link_libraries(test_deletes ${PROJECT_NAME} ${DEPENDENCIES})
 
 add_executable(test_recovery test_recovery.c)
-target_link_libraries(test_recovery ${PROJECT_NAME})
+target_link_libraries(test_recovery ${PROJECT_NAME} ${DEPENDENCIES})
 
 add_executable(test_spills test_spills.c)
-target_link_libraries(test_spills ${PROJECT_NAME})
+target_link_libraries(test_spills ${PROJECT_NAME} ${DEPENDENCIES})
