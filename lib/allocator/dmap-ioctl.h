@@ -39,7 +39,7 @@
 /* zero, fill or test the bit of a single page */
 #define FAKE_BLK_IOC_ZERO_PAGE _IOW(DMAP_IOC_MAGIC, 6, struct fake_blk_page_num)
 #define FAKE_BLK_IOC_FILL_PAGE _IOW(DMAP_IOC_MAGIC, 7, struct fake_blk_page_num)
-#define FAKE_BLK_IOC_TEST_PAGE                                                                                         \
+#define FAKE_BLK_IOC_TEST_PAGE \
 	_IOW(DMAP_IOC_MAGIC, 8, struct fake_blk_page_num) // FIXME there is a bug here. Returns -1 instead of 1
 
 /* zero or fill a range of bits for a range of pages */

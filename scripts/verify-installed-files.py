@@ -4,9 +4,9 @@ import sys
 
 prefix = "./" + sys.argv[1]
 files = [
-    "/usr/local/lib/libkreon.so",
-    "/usr/local/lib/libkreon.a",
-    "/usr/local/bin/mkfs.kreon",
+    "/usr/local/lib/libparallax.so",
+    "/usr/local/lib/libparallax.a",
+    "/usr/local/bin/mkfs.parallax",
 ]
 
 for f in files:

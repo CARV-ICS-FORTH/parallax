@@ -9,12 +9,12 @@
 #include <stdint.h>
 #include <unistd.h>
 #include <log.h>
-#include "../kreon_lib/btree/btree.h"
-#include "../kreon_lib/btree/delete.h"
+#include <btree/btree.h>
+#include <btree/delete.h>
 #define KEY_PREFIX "userakias_computerakias"
 #define KV_SIZE 1024
 #define SCAN_SIZE 50
-#define VOLUME_NAME "/home1/public/gxanth/dataset/kreon.dat"
+#define VOLUME_NAME "/tmp/ramdisk/kreon.dat"
 #define TOTAL_KEYS 0
 #define NUM_KEYS num_keys
 #define SD 0

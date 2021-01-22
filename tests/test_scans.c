@@ -4,12 +4,12 @@
 #include <string.h>
 #include <stdlib.h>
 #include <log.h>
-#include "../kreon_lib/btree/btree.h"
-#include "../kreon_lib/scanner/scanner.h"
-#include "../kreon_lib/scanner/min_max_heap.h"
+#include <btree/btree.h>
+#include <scanner/scanner.h>
+#include <scanner/min_max_heap.h>
 #define KEY_PREFIX "userakias_computerakias"
 #define KV_SIZE 1024
-#define VOLUME_NAME "/usr/local/gesalous/mounts/kreon.dat"
+#define VOLUME_NAME "/tmp/ramdisk/kreon.dat"
 #define NUM_KEYS 10000000
 #define SCAN_SIZE 16
 #define BASE 100000000

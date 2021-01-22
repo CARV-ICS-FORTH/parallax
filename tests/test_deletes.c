@@ -10,8 +10,8 @@
 #include <stdint.h>
 #include <unistd.h>
 #include <log.h>
-#include "../kreon_lib/btree/btree.h"
-#include "../kreon_lib/btree/delete.h"
+#include <btree/btree.h>
+#include <btree/delete.h>
 #define KEY_PREFIX "userakias_computerakias"
 #define KV_SIZE 1024
 #define SCAN_SIZE 50

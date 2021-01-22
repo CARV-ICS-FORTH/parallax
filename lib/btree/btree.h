@@ -10,7 +10,6 @@
 #include <limits.h>
 #include <unistd.h>
 #include <config.h>
-#include "uthash.h"
 #include "../allocator/allocator.h"
 #define SUCCESS 4
 #define FAILED 5
@@ -282,12 +281,6 @@ typedef struct lock_table {
 	pthread_rwlock_t rx_lock;
 	char pad[8];
 } lock_table;
-
-typedef struct map_entry {
-	uint64_t key;
-	uint64_t value;
-	UT_hash_handle hh;
-} map_entry;
 
 typedef struct kv_location {
 	void *kv_addr;

@@ -652,7 +652,7 @@ void *allocate(void *_volume_desc, uint64_t num_bytes)
 			continue;
 		}
 		((size - suffix_size) < WORD_SIZE) ? (mask = 0xFFFFFFFFFFFFFFFF >> (WORD_SIZE - (size - suffix_size))) :
-						     (mask = 0xFFFFFFFFFFFFFFFF);
+							   (mask = 0xFFFFFFFFFFFFFFFF);
 #ifdef DEBUG_ALLOCATOR
 		printf("ALLOCATE: Mask is %llu word is %llu\n", (LLU)mask, (LLU) * (uint64_t *)(word_address));
 #endif
