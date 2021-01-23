@@ -63,14 +63,12 @@ The "Release" build disables warnings and enables optimizations.
 
 ## Build Targets
 
-* build/kreon/libkreon.a - Parallax library (standalone version)
+* build/lib/libparallax.a/so - Parallax library
 * build/YCSB-CXX/ycsb-edb - Standalone Parallax ycsb benchmark
 
 ## Build Package
 
 You can install Parallax in your standard path using cmake.
-
-To enable packaging and installation support you need to define `KREON_BUILD_CPACK` when invoking cmake.
 
 Run `make package` inside the `build` folder to create an RPM file.
 
@@ -78,4 +76,4 @@ Run `make install` inside the `build` folder to install the RPM file.
 
 Run `make uninstall` inside the `build` folder to remove files installed by `make install`. (Directories are not deleted)
 
-In case you want to link statically without using cmake check `scripts/pack-staticlib.py` to create a single binary called `libkreon2.a` and link with it.
+In case you want to link statically without using cmake check `scripts/pack-staticlib.py` to create a single binary called `libparallax2.a` and link with it.
