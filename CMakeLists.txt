@@ -68,10 +68,13 @@ if(NOT CMAKE_CXX_COMPILER)
 endif()
 
 include_directories(${CMAKE_BINARY_DIR})
-set(CMAKE_C_FLAGS_RELEASE "-std=gnu11 -Wall")
+set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -std=gnu11 -Wall")
 set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_RELEASE} -g ")
-set(CMAKE_CXX_FLAGS_RELEASE "-std=gnu++11 -Wall")
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -std=gnu++11 -Wall")
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_RELEASE} -g")
+set(CMAKE_EXE_LINKER_FLAGS
+    "${CMAKE_EXE_LINKER_FLAGS} -Wl,--no-as-needed -lrt -lm -pthread -lnuma -lutil"
+)
 
 add_subdirectory(lib)
 add_subdirectory(YCSB-CXX)

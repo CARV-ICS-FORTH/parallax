@@ -37,9 +37,6 @@ list(APPEND LIB_C_SOURCE_FILES "${CMAKE_SOURCE_DIR}/utilities/list.c")
 set_source_files_properties(
   LIB_C_SOURCE_FILES PROPERTIES COMPILE_FLAGS
                                 "${CMAKE_C_FLAGS_RELEASE} ${CMAKE_C_FLAGS}")
-set(CMAKE_EXE_LINKER_FLAGS
-    "${CMAKE_EXE_LINKER_FLAGS} -Wl,--no-as-needed -lrt -lm -pthread -lnuma -lutil"
-)
 
 add_library(${LIB} ${LIB_C_SOURCE_FILES})
 set_property(TARGET ${LIB} PROPERTY POSITION_INDEPENDENT_CODE ON)

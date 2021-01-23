@@ -7,9 +7,6 @@ include_directories(${CMAKE_SOURCE_DIR}/lib)
 set(LIB_TEST_FILES test_deletes test_recovery.c test_scans.c test_dirty_scans.c)
 
 set_source_files_properties(${LIB_TEST_FILES} PROPERTIES COMPILE_FLAGS "-O3")
-set(CMAKE_EXE_LINKER_FLAGS
-    "${CMAKE_EXE_LINKER_FLAGS} -Wl,-no-as-needed -lm -lrt -pthread -lnuma -lutil"
-)
 
 add_executable(test_scans test_scans.c)
 target_link_libraries(test_scans ${PROJECT_NAME} ${DEPENDENCIES})
