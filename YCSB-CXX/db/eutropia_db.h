@@ -204,8 +204,6 @@ class EutropiaDB : public YCSBDB {
 		//}
 
 		while (isValid(sh)) {
-			bool done = false;
-			unsigned int iter = 0;
 			if (getNext(sh) == END_OF_DATABASE)
 				break;
 
@@ -214,7 +212,6 @@ class EutropiaDB : public YCSBDB {
 			}
 		}
 		closeScanner(sh);
-		//free(sh);
 		return 0;
 	}
 

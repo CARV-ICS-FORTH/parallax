@@ -395,7 +395,7 @@ void reverse_delete_serially_allkeys(db_handle *hd)
 	int64_t i;
 	key *k = (key *)alloca(KV_SIZE);
 	int ret;
-
+	(void)ret;
 	for (i = (TOTAL_KEYS + NUM_KEYS - 1); i > TOTAL_KEYS; --i) {
 		memcpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
 		sprintf(k->key_buf + strlen(KEY_PREFIX), "%llu", (long long unsigned)i);
