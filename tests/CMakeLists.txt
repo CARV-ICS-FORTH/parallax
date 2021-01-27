@@ -1,4 +1,3 @@
-set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 include_directories(${CMAKE_SOURCE_DIR}/lib)
 
 set(LIB_TEST_FILES test_deletes test_recovery.c test_scans.c test_dirty_scans.c)

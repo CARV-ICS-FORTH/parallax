@@ -1,5 +1,5 @@
 include(cmake_utils/PreventInSouceBuilds.cmake.in)
-cmake_minimum_required(VERSION 3.11.0)
+cmake_minimum_required(VERSION 3.11.0 FATAL_ERROR)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 project(parallax VERSION 1.0)
