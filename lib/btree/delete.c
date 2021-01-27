@@ -302,7 +302,7 @@ void *_index_node_binary_search_posret(index_node *node, void *key_buf, char que
 
 		addr = &(node->p[middle].pivot);
 		index_key_buf = REAL_ADDRESS(*(uint64_t *)addr);
-		ret = _tucana_key_cmp(index_key_buf, key_buf, KV_FORMAT, query_key_format);
+		ret = key_cmp(index_key_buf, key_buf, KV_FORMAT, query_key_format);
 		if (ret == 0) {
 			addr = &(node->p[middle].right[0]);
 			neighbor->right_pos = neighbor->left_pos = middle;
@@ -623,7 +623,7 @@ void __find_left_and_right_siblings(index_node *parent, void *key, rotate_data *
 
 		addr = &(parent->p[middle].pivot);
 		index_key_buf = REAL_ADDRESS(*(uint64_t *)addr);
-		ret = _tucana_key_cmp(index_key_buf, key, KV_FORMAT, KV_FORMAT);
+		ret = key_cmp(index_key_buf, key, KV_FORMAT, KV_FORMAT);
 		if (ret == 0) {
 			siblings->pivot = index_key_buf; //Saving the pivot in case we need to replace it.
 			addr = &(parent->p[middle].right[0]);
@@ -686,7 +686,7 @@ void __find_position_in_index(index_node *node, struct splice *key, rotate_data 
 
 		addr = &(node->p[middle].pivot);
 		index_key_buf = REAL_ADDRESS(*(uint64_t *)addr);
-		ret = _tucana_key_cmp(index_key_buf, key, KV_FORMAT, KV_FORMAT);
+		ret = key_cmp(index_key_buf, key, KV_FORMAT, KV_FORMAT);
 		if (ret == 0) {
 			addr = &(node->p[middle].right[0]);
 			siblings->pos_left = middle;

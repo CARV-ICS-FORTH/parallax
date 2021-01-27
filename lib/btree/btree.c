@@ -85,7 +85,7 @@ int prefix_compare(char *l, char *r, size_t prefix_size)
  * @param   query_key_len: query_key length again in encoded form
  */
 
-int64_t _tucana_key_cmp(void *index_key_buf, void *query_key_buf, char index_key_format, char query_key_format)
+int64_t key_cmp(void *index_key_buf, void *query_key_buf, char index_key_format, char query_key_format)
 {
 	int64_t ret;
 	uint32_t size;
@@ -1738,7 +1738,7 @@ int8_t update_index(index_node *node, node_header *left_child, node_header *righ
 			addr = (void *)(uint64_t)node + (uint64_t)sizeof(node_header) + sizeof(uint64_t) +
 			       (uint64_t)(middle * 2 * sizeof(uint64_t));
 			index_key_buf = (void *)(MAPPED + *(uint64_t *)addr);
-			ret = _tucana_key_cmp(index_key_buf, key_buf, KV_FORMAT, KV_FORMAT);
+			ret = key_cmp(index_key_buf, key_buf, KV_FORMAT, KV_FORMAT);
 			if (ret > 0) {
 				end_idx = middle - 1;
 				if (start_idx > end_idx)
@@ -2030,7 +2030,7 @@ void *_index_node_binary_search(index_node *node, void *key_buf, char query_key_
 
 		addr = &(node->p[middle].pivot);
 		index_key_buf = (void *)(MAPPED + *(uint64_t *)addr);
-		ret = _tucana_key_cmp(index_key_buf, key_buf, KV_FORMAT, query_key_format);
+		ret = key_cmp(index_key_buf, key_buf, KV_FORMAT, query_key_format);
 		if (ret == 0) {
 			// log_debug("I passed from this corner case1 %s",
 			// (char*)(index_key_buf+4));
@@ -2071,325 +2071,6 @@ void *_index_node_binary_search(index_node *node, void *key_buf, char query_key_
 	// log_debug("END");
 	return addr;
 }
-#if 0
-void spill_buffer(void *_spill_req)
-{
-	db_handle handle;
-	bt_spill_request *spill_req = (bt_spill_request *)_spill_req;
-	db_descriptor *db_desc;
-	level_scanner *level_sc;
-	bt_insert_req ins_req;
-	int32_t local_spilled_keys = 0;
-	int i, rc = 100;
-#ifndef NDEBUG
-	int printfirstkey = 0;
-#endif
-	log_info("starting spill worker...");
-	//assert(spill_req->dst_tree > 0 && spill_req->dst_tree < 255);
-	/*Initialize a scan object*/
-	db_desc = spill_req->db_desc;
-	log_info("Ops when %d joining function are %llu", spill_req->src_level,
-		 db_desc->levels[spill_req->src_level].outstanding_spill_ops);
-	handle.db_desc = spill_req->db_desc;
-	handle.volume_desc = spill_req->volume_desc;
-
-	level_sc = _init_spill_buffer_scanner(&handle, spill_req->src_root, NULL);
-	assert(level_sc != NULL);
-	int32_t num_of_keys = (SPILL_BUFFER_SIZE - (2 * sizeof(uint32_t))) / (PREFIX_SIZE + sizeof(uint64_t));
-
-	do {
-		while (handle.volume_desc->snap_preemption == SNAP_INTERRUPT_ENABLE)
-			usleep(50000);
-
-		db_desc->dirty = 0x01;
-		if (handle.db_desc->stat == DB_IS_CLOSING) {
-			log_info("db is closing bye bye from spiller");
-			__sync_fetch_and_sub(&db_desc->levels[spill_req->src_level].outstanding_spill_ops, 1);
-			return;
-		}
-
-		ins_req.metadata.handle = &handle;
-		ins_req.metadata.level_id = spill_req->src_level + 1;
-		//ins_req.metadata.key_format = KV_PREFIX;
-		ins_req.metadata.key_format = KV_FORMAT;
-		ins_req.metadata.append_to_log = 0;
-		ins_req.metadata.gc_request = 0;
-		ins_req.metadata.recovery_request = 0;
-		for (i = 0; i < num_of_keys; i++) {
-			ins_req.key_value_buf = level_sc->keyValue;
-#ifndef NDEBUG
-			if (i == 0 && printfirstkey == 0) {
-				log_info("First key_value %s", (char *)(((ins_req.key_value_buf)) + 4));
-				printfirstkey = 1;
-			}
-#endif
-			_insert_key_value(&ins_req);
-			rc = _get_next_KV(level_sc);
-			if (rc == END_OF_DATABASE)
-				break;
-
-			++local_spilled_keys;
-			//_sync_fetch_and_add(&db_desc->spilled_keys,1);
-			if (spill_req->end_key != NULL &&
-			    _tucana_key_cmp(level_sc->keyValue, spill_req->end_key, KV_FORMAT, KV_FORMAT) >= 0) {
-				log_info("STOP KEY REACHED %s", (char *)spill_req->end_key + 4);
-				goto finish_spill;
-			}
-		}
-	} while (rc != END_OF_DATABASE);
-finish_spill:
-
-	_close_spill_buffer_scanner(level_sc);
-	log_info("local spilled keys %d", local_spilled_keys);
-	/*Clean up code, Free the buffer tree was occupying. free_block() used
-	 * intentionally*/
-
-	__sync_fetch_and_sub(&db_desc->levels[spill_req->src_level].outstanding_spill_ops, 1);
-	if (db_desc->levels[spill_req->src_level].outstanding_spill_ops == 0) {
-		log_info("last spiller cleaning up level %u remains", spill_req->src_level);
-
-		segment_header *segment =
-			(void *)db_desc->levels[spill_req->src_level].first_segment[spill_req->src_tree];
-
-		while (segment->next_segment) {
-			/* uint64_t s_id = */
-			/* 	((uint64_t)segment - (uint64_t)handle.volume_desc->bitmap_end) / BUFFER_SEGMENT_SIZE; */
-
-			/* if (handle.volume_desc->segment_utilization_vector[s_id] != 0 && */
-			/*     handle.volume_desc->segment_utilization_vector[s_id] < SEGMENT_MEMORY_THREASHOLD) { */
-			/* 	handle.volume_desc->segment_utilization_vector[s_id] = 0; */
-			/* } */
-
-			free_raw_segment(handle.volume_desc, segment);
-
-			segment = (segment_header *)(MAPPED + (uint64_t)segment->next_segment);
-		}
-
-		free_raw_segment(handle.volume_desc, segment);
-
-		MUTEX_LOCK(&db_desc->compaction_structs_lock);
-		db_desc->levels[spill_req->src_level].first_segment[spill_req->src_tree] = NULL;
-		db_desc->levels[spill_req->src_level].last_segment[spill_req->src_tree] = NULL;
-		db_desc->levels[spill_req->src_level].offset[spill_req->src_tree] = 0;
-		db_desc->levels[spill_req->src_level].root_r[spill_req->src_tree] = NULL;
-		db_desc->levels[spill_req->src_level].root_w[spill_req->src_tree] = NULL;
-		db_desc->levels[spill_req->src_level].tree_status[spill_req->src_tree] = NO_SPILLING;
-		db_desc->levels[spill_req->dst_level].tree_status[spill_req->dst_tree] = NO_SPILLING;
-		dequeue_ongoing_compaction(db_desc->inprogress_compactions, spill_req->src_level);
-		MUTEX_UNLOCK(&db_desc->compaction_structs_lock);
-		/* if (spill_req->src_tree == 0) */
-		/* 	db_desc->big_log_head_offset = spill_req->l0_end; */
-	}
-	log_info("spill finished for level %u", spill_req->src_level);
-	snapshot(spill_req->volume_desc);
-	free(spill_req);
-}
-#endif
-
-#if 0
-void spill_buffer(void *_spill_req)
-{
-	db_handle handle;
-	bt_spill_request *spill_req = (bt_spill_request *)_spill_req;
-	db_descriptor *db_desc;
-	level_scanner *level_sc;
-	bt_insert_req ins_req;
-	int32_t local_spilled_keys = 0;
-	int levelisempty = 0;
-	int i, rc = 100;
-#ifndef NDEBUG
-	int printfirstkey = 0;
-#endif
-	//assert(spill_req->dst_tree > 0 && spill_req->dst_tree < 255);
-	/*Initialize a scan object*/
-	db_desc = spill_req->db_desc;
-	handle.db_desc = spill_req->db_desc;
-	handle.volume_desc = spill_req->volume_desc;
-	log_info("Starting compaction thread...");
-	log_info("Compacting level %d to level %d num_of_threads compacting %llu", spill_req->src_level,
-		 spill_req->dst_level, db_desc->levels[spill_req->src_level].outstanding_spill_ops);
-
-	assert((spill_req->src_level + 1) == spill_req->dst_level);
-
-	level_sc = _init_spill_buffer_scanner(&handle, spill_req->src_level, spill_req->src_root, NULL);
-	assert(level_sc != NULL);
-	int32_t num_of_keys = (SPILL_BUFFER_SIZE - (2 * sizeof(uint32_t))) / (PREFIX_SIZE + sizeof(uint64_t));
-	/* In case this is the first compaction we just need to transfer the tree's root to the next level.
-	 * This makes the first compaction to the destination level to complete with no I/O.*/
-	levelisempty = db_desc->levels[spill_req->dst_level].root_w[0] == NULL &&
-		       db_desc->levels[spill_req->dst_level].root_r[0] == NULL && spill_req->dst_level != MAX_LEVELS &&
-		       spill_req->src_level != 0;
-
-	if (levelisempty)
-		goto finish_spill;
-
-	do {
-		while (handle.volume_desc->snap_preemption == SNAP_INTERRUPT_ENABLE)
-			usleep(50000);
-
-		db_desc->dirty = 0x01;
-		if (handle.db_desc->stat == DB_IS_CLOSING) {
-			log_info("db is closing bye bye from spiller");
-			__sync_fetch_and_sub(&db_desc->levels[spill_req->src_level].outstanding_spill_ops, 1);
-			return;
-		}
-
-		ins_req.metadata.handle = &handle;
-		ins_req.metadata.level_id = spill_req->src_level + 1;
-		//ins_req.metadata.key_format = KV_PREFIX;
-		ins_req.metadata.append_to_log = 0;
-		ins_req.metadata.gc_request = 0;
-		ins_req.metadata.recovery_request = 0;
-		for (i = 0; i < num_of_keys; i++) {
-			ins_req.key_value_buf = level_sc->keyValue;
-			ins_req.metadata.key_format = level_sc->kv_format;
-			/* log_info("kv_format %d",level_sc->kv_format); */
-#ifndef NDEBUG
-			if (unlikely(i == 0 && printfirstkey == 0)) {
-				log_info("First key_value %s", (char *)(((ins_req.key_value_buf)) + 4));
-				printfirstkey = 1;
-			}
-#endif
-			_insert_key_value(&ins_req);
-			rc = _get_next_KV(level_sc);
-			if (rc == END_OF_DATABASE)
-				break;
-
-			++local_spilled_keys;
-			//_sync_fetch_and_add(&db_desc->spilled_keys,1);
-			if (spill_req->end_key != NULL &&
-			    _tucana_key_cmp(level_sc->keyValue, spill_req->end_key, KV_FORMAT, KV_FORMAT) >= 0) {
-				log_info("STOP KEY REACHED %s", (char *)spill_req->end_key + 4);
-				goto finish_spill;
-			}
-		}
-	} while (rc != END_OF_DATABASE);
-finish_spill:
-
-	_close_spill_buffer_scanner(level_sc);
-	/*Clean up code, Free the buffer tree was occupying. free_block() used
-	 * intentionally*/
-
-	/* if (db_desc->levels[spill_req->src_level].outstanding_spill_ops == 0) { */
-	MUTEX_LOCK(&db_desc->compaction_structs_lock);
-	if (spill_req->dst_level == 1) {
-		segment_header *curr_segment = db_desc->inmem_medium_log_head[spill_req->src_tree];
-		segment_header *next_segment;
-		if (curr_segment) {
-			while (curr_segment->next_segment) {
-				next_segment = REAL_ADDRESS(curr_segment->next_segment);
-				mspace_free(db_desc->inmem_msp, curr_segment);
-				curr_segment = next_segment;
-			}
-
-			mspace_free(db_desc->inmem_msp, curr_segment);
-			segment_header *head =
-				(segment_header *)mspace_memalign(db_desc->inmem_msp, SEGMENT_SIZE, SEGMENT_SIZE);
-			assert(head != NULL);
-			head->next_segment = NULL;
-			head->prev_segment = NULL;
-			head->segment_id = 0;
-			db_desc->inmem_medium_log_head[spill_req->src_tree] = head;
-			db_desc->inmem_medium_log_tail[spill_req->src_tree] = head;
-			db_desc->inmem_medium_log_size[spill_req->src_tree] = sizeof(segment_header);
-		}
-	}
-
-	if (spill_req->dst_level == MAX_LEVELS) {
-		segment_header *curr_segment = spill_req->medium_log_head;
-		segment_header *next_segment;
-
-		while (curr_segment->next_segment) {
-			next_segment = REAL_ADDRESS(curr_segment->next_segment);
-			free_raw_segment(handle.volume_desc, curr_segment);
-			curr_segment = next_segment;
-		}
-
-		free_raw_segment(handle.volume_desc, curr_segment);
-	}
-
-	if (levelisempty == 0) {
-		seg_free_level(&handle, spill_req->src_level, spill_req->src_tree);
-		if (spill_req->src_level == 0 && !db_desc->levels[spill_req->dst_level].medium_log_tail) {
-			db_desc->levels[spill_req->dst_level].actual_level_size = spill_req->level_size;
-			db_desc->levels[spill_req->dst_level].medium_log_size += spill_req->medium_log_size;
-			db_desc->levels[spill_req->dst_level].medium_log_head = db_desc->medium_log_head;
-			db_desc->levels[spill_req->dst_level].medium_log_tail = db_desc->medium_log_tail;
-			db_desc->levels[spill_req->dst_level].medium_log_size = db_desc->medium_log_size;
-			segment_header *d_header = seg_get_raw_log_segment(handle.volume_desc);
-			d_header->next_segment = NULL;
-			d_header->prev_segment = NULL;
-			d_header->segment_id = spill_req->medium_log_tail->segment_id + 1;
-			db_desc->medium_log_head = db_desc->medium_log_tail = d_header;
-			db_desc->levels[spill_req->src_level].actual_level_size = 0;
-			db_desc->medium_log_size = sizeof(segment_header);
-		} else if (spill_req->dst_level < MAX_LEVELS)
-			db_desc->levels[spill_req->dst_level].medium_log_tail->next_segment =
-				(void *)ABSOLUTE_ADDRESS(spill_req->medium_log_head);
-	} else {
-		db_desc->levels[spill_req->dst_level].first_segment[spill_req->dst_tree] =
-			db_desc->levels[spill_req->src_level].first_segment[spill_req->src_tree];
-		db_desc->levels[spill_req->dst_level].last_segment[spill_req->dst_tree] =
-			db_desc->levels[spill_req->src_level].last_segment[spill_req->src_tree];
-		db_desc->levels[spill_req->dst_level].root_r[spill_req->dst_tree] =
-			db_desc->levels[spill_req->src_level].root_r[spill_req->src_tree];
-		db_desc->levels[spill_req->dst_level].root_w[spill_req->dst_tree] =
-			db_desc->levels[spill_req->src_level].root_w[spill_req->src_tree];
-		if (spill_req->dst_level < MAX_LEVELS) {
-			db_desc->levels[spill_req->dst_level].actual_level_size = spill_req->level_size;
-			db_desc->levels[spill_req->dst_level].medium_log_size += spill_req->medium_log_size;
-			db_desc->levels[spill_req->dst_level].medium_log_head = spill_req->medium_log_head;
-			db_desc->levels[spill_req->dst_level].medium_log_tail = spill_req->medium_log_tail;
-		}
-	}
-	db_desc->levels[spill_req->src_level].first_segment[spill_req->src_tree] = NULL;
-	db_desc->levels[spill_req->src_level].last_segment[spill_req->src_tree] = NULL;
-	db_desc->levels[spill_req->src_level].offset[spill_req->src_tree] = 0;
-	db_desc->levels[spill_req->src_level].root_r[spill_req->src_tree] = NULL;
-	db_desc->levels[spill_req->src_level].root_w[spill_req->src_tree] = NULL;
-	db_desc->levels[spill_req->src_level].tree_status[spill_req->src_tree] = NO_SPILLING;
-	db_desc->levels[spill_req->dst_level].tree_status[spill_req->dst_tree] = NO_SPILLING;
-
-	log_info("spill finished for level %u", spill_req->src_level);
-	snapshot(spill_req->volume_desc);
-#if MEASURE_SST_USED_SPACE
-	perf_measure_leaf_capacity(&handle, spill_req->dst_level);
-	db_desc->levels[spill_req->dst_level].avg_leaf_used_space +=
-		db_desc->levels[spill_req->dst_level].leaf_used_space /
-		db_desc->levels[spill_req->dst_level].count_leaves;
-	++db_desc->levels[spill_req->dst_level].count_compactions;
-	log_info("Number of leaves %f", db_desc->levels[spill_req->dst_level].count_leaves);
-	db_desc->levels[spill_req->dst_level].leaf_used_space = db_desc->levels[spill_req->dst_level].count_leaves = 0;
-	double cap = db_desc->levels[spill_req->dst_level].avg_leaf_used_space /
-		     db_desc->levels[spill_req->dst_level].count_compactions;
-	log_info("Average SST used capacity %f", cap);
-#endif
-	__sync_fetch_and_sub(&db_desc->levels[spill_req->src_level].outstanding_spill_ops, 1);
-	dequeue_ongoing_compaction(db_desc->inprogress_compactions, spill_req->src_level);
-	MUTEX_UNLOCK(&db_desc->compaction_structs_lock);
-	log_info("local spilled keys %d", local_spilled_keys);
-	log_info("last spiller cleaning up level %u remains", spill_req->src_level);
-
-	if (spill_req->src_level == 0) {
-		MUTEX_LOCK(&handle.db_desc->compaction_lock);
-		if (handle.db_desc->is_compaction_daemon_sleeping)
-			if (sem_post(&handle.db_desc->compaction_daemon_sem) != 0) {
-				log_fatal("FATAL ERROR CANNOT SEM POST");
-				exit(EXIT_FAILURE);
-			}
-
-		if (handle.db_desc->blocked_clients > 0)
-			log_info("WAKE UP");
-		if (sem_post(&handle.db_desc->compaction_sem) != 0) {
-			log_fatal("FATAL ERROR CANNOT SEM POST");
-			exit(EXIT_FAILURE);
-		}
-		MUTEX_UNLOCK(&handle.db_desc->compaction_lock);
-	}
-
-	free(spill_req);
-}
-#endif
 /*functions used for debugging*/
 void assert_index_node(node_header *node)
 {
@@ -2418,7 +2099,7 @@ void assert_index_node(node_header *node)
 		// log_info("key %s\n", (char *)key_tmp + sizeof(int32_t));
 
 		if (key_tmp_prev != NULL) {
-			if (_tucana_key_cmp(key_tmp_prev, key_tmp, KV_FORMAT, KV_FORMAT) >= 0) {
+			if (key_cmp(key_tmp_prev, key_tmp, KV_FORMAT, KV_FORMAT) >= 0) {
 				log_fatal("corrupted index %d:%s something else %d:%s\n", *(uint32_t *)key_tmp_prev,
 					  key_tmp_prev + 4, *(uint32_t *)key_tmp, key_tmp + 4);
 				raise(SIGINT);

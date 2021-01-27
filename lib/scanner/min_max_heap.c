@@ -58,7 +58,7 @@ static inline void heapify(struct sh_min_heap *hp, int i)
 static int sh_cmp_heap_nodes(struct sh_min_heap *hp, struct sh_heap_node *nd_1, struct sh_heap_node *nd_2)
 {
 	int64_t ret;
-	ret = _tucana_key_cmp(nd_1->KV, nd_2->KV, nd_1->type, nd_2->type);
+	ret = key_cmp(nd_1->KV, nd_2->KV, nd_1->type, nd_2->type);
 	if (ret == 0) {
 		/* duplicatelicate detected smallest level_id wins, needs more thinking */
 		if (nd_1->level_id == hp->active_tree) {

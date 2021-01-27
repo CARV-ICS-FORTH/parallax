@@ -340,7 +340,7 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 			/*reconstruct full key*/
 			addr = &(inode->p[middle].pivot);
 			full_pivot_key = (void *)(MAPPED + *(uint64_t *)addr);
-			ret = _tucana_key_cmp(full_pivot_key, start_key_buf, KV_FORMAT, KV_FORMAT);
+			ret = key_cmp(full_pivot_key, start_key_buf, KV_FORMAT, KV_FORMAT);
 			// log_info("pivot %u:%s app %u:%s ret %lld", *(uint32_t
 			// *)(full_pivot_key), full_pivot_key + 4,
 			//	 *(uint32_t *)start_key_buf, start_key_buf + 4, ret);
@@ -583,14 +583,14 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 
 	if (start_key_buf != NULL) {
 		if (mode == GREATER) {
-			while (_tucana_key_cmp(level_sc->keyValue, start_key_buf,
-					       level_sc->kv_format /* level_key_format */, KV_FORMAT) <= 0) {
+			while (key_cmp(level_sc->keyValue, start_key_buf, level_sc->kv_format /* level_key_format */,
+				       KV_FORMAT) <= 0) {
 				if (_get_next_KV(level_sc) == END_OF_DATABASE)
 					return END_OF_DATABASE;
 			}
 		} else if (mode == GREATER_OR_EQUAL) {
-			while (_tucana_key_cmp(level_sc->keyValue, start_key_buf,
-					       level_sc->kv_format /* level_key_format */, KV_FORMAT) < 0) {
+			while (key_cmp(level_sc->keyValue, start_key_buf, level_sc->kv_format /* level_key_format */,
+				       KV_FORMAT) < 0) {
 				//log_info("compated index key %s with seek key %s", level_sc->keyValue + 4,
 				//	 start_key_buf + 4);
 				if (_get_next_KV(level_sc) == END_OF_DATABASE)

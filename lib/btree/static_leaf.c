@@ -70,7 +70,7 @@ void binary_search_static_leaf(struct bt_static_leaf_node const *leaf, level_des
 
 		if (ret_case == EQUAL_TO_ZERO) {
 			leaf_key_buf = REAL_ADDRESS(src.kv_entries[pos].pointer);
-			ret = _tucana_key_cmp(leaf_key_buf, key_buf, KV_FORMAT, KV_FORMAT);
+			ret = key_cmp(leaf_key_buf, key_buf, KV_FORMAT, KV_FORMAT);
 
 			if (ret == 0) {
 				result->middle = middle;
@@ -115,7 +115,7 @@ void binary_search_static_leaf(struct bt_static_leaf_node const *leaf, level_des
 
 		pos = src.slot_array[result->middle].index;
 		leaf_key_buf = REAL_ADDRESS(src.kv_entries[pos].pointer);
-		ret = _tucana_key_cmp(leaf_key_buf, key_buf, KV_FORMAT, KV_FORMAT);
+		ret = key_cmp(leaf_key_buf, key_buf, KV_FORMAT, KV_FORMAT);
 
 		if (ret == 0) {
 			result->status = FOUND;

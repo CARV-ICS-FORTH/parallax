@@ -196,9 +196,9 @@ void binary_search_dynamic_leaf(const struct bt_dynamic_leaf_node *leaf, uint32_
 			leaf_key_buf = fill_keybuf(kv_offset, slot_array[middle].bitmap);
 			if (req->metadata.key_format == KV_PREFIX) {
 				struct bt_leaf_entry *kv_entry = (struct bt_leaf_entry *)req->key_value_buf;
-				ret = _tucana_key_cmp(leaf_key_buf, (void *)kv_entry->pointer, KV_FORMAT, KV_FORMAT);
+				ret = key_cmp(leaf_key_buf, (void *)kv_entry->pointer, KV_FORMAT, KV_FORMAT);
 			} else {
-				ret = _tucana_key_cmp(leaf_key_buf, req->key_value_buf, KV_FORMAT, KV_FORMAT);
+				ret = key_cmp(leaf_key_buf, req->key_value_buf, KV_FORMAT, KV_FORMAT);
 			}
 
 			if (ret == 0) {
@@ -275,7 +275,7 @@ void check_sorted_dynamic_leaf(const struct bt_dynamic_leaf_node *leaf, uint32_t
 		char *key = fill_keybuf(get_kv_offset(leaf, leaf_size, slot_array[i].index), slot_array[i].bitmap);
 		char *key2 =
 			fill_keybuf(get_kv_offset(leaf, leaf_size, slot_array[i + 1].index), slot_array[i + 1].bitmap);
-		if (_tucana_key_cmp(key, key2, KV_FORMAT, KV_FORMAT) > 0) {
+		if (key_cmp(key, key2, KV_FORMAT, KV_FORMAT) > 0) {
 			print_dynamic_leaf(leaf, leaf_size);
 			assert(0);
 		}

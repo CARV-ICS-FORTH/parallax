@@ -608,7 +608,7 @@ void *find_key(db_handle *handle, void *key, uint32_t key_size);
 void *__find_key(db_handle *handle, void *key);
 int8_t delete_key(db_handle *handle, void *key, uint32_t size);
 
-int64_t _tucana_key_cmp(void *index_key_buf, void *query_key_buf, char index_key_format, char query_key_format);
+int64_t key_cmp(void *index_key_buf, void *query_key_buf, char index_key_format, char query_key_format);
 int prefix_compare(char *l, char *r, size_t unused);
 
 void free_buffered(void *_handle, void *address, uint32_t num_bytes, int height);
