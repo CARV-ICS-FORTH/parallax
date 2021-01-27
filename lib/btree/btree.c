@@ -26,7 +26,6 @@
 #include "segment_allocator.h"
 #include "static_leaf.h"
 #include "dynamic_leaf.h"
-#include "../../utilities/macros.h"
 #include "../allocator/dmap-ioctl.h"
 #include "../scanner/scanner.h"
 #include "conf.h"
@@ -692,55 +691,6 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 								}
 							}
 
-#if 0
-							/*recover replica L1 forest if needed*/
-							if (db_entry->replica_forest != NULL) {
-								memcpy((void *)&db_desc->replica_forest,
-								       (void *)MAPPED +
-									       (uint64_t)db_entry->replica_forest,
-								       sizeof(forest));
-								for (i = 0; i < MAX_FOREST_SIZE; i++) {
-									if (db_desc->replica_forest.tree_status[i] ==
-									    PERSISTED) {
-										db_desc->replica_forest
-											.tree_segment_list[i] =
-											(segment_header *)MAPPED +
-											*(uint64_t *)db_entry
-												 ->replica_forest
-												 ->tree_segment_list[i];
-										db_desc->replica_forest.dev / nvme0n1 =
-											(node_header *)MAPPED +
-											*(uint64_t *)db_entry
-												 ->replica_forest
-												 ->tree_roots[i];
-									} else if (db_desc->replica_forest
-												   .tree_status[i] !=
-											   NOT_USED ||
-										   db_desc->replica_forest
-												   .tree_status[i] !=
-											   PERSISTED) {
-										DPRINT("XXX TODO XXX needs recovery of space !\n");
-										exit(EXIT_FAILURE);
-									} else if (db_desc->replica_forest
-											   .tree_status[i] ==
-										   NOT_USED) {
-										db_desc->replica_forest
-											.tree_segment_list[i] = NULL;
-										db_desc->replica_forest.tree_roots[i] =
-											NULL;
-									} else {
-										DPRINT("FATAL DBs forest flags in inconsistent state\n");
-										exit(EXIT_FAILURE);
-									}
-								}
-								DPRINT("-*-*-*- Recovered db's level 1 forest used in replica "
-								       "mode * - * - *\n");
-							} else {
-								DPRINT(" - * - forest not present? skipping - * - *\n");
-								memset(&db_desc->replica_forest, 0x00, sizeof(forest));
-							}
-/*done with replica forest*/
-#endif
 							/*recover KV log for this database*/
 							recover_database_logs(db_desc, db_entry);
 
@@ -753,7 +703,7 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 		}
 
 		if (CREATE_FLAG != CREATE_DB && CREATE_FLAG != O_CREATE_REPLICA_DB) {
-			DPRINT("DB not found instructed not to create one returning NULL\n");
+			log_info("DB not found instructed not to create one returning NULL");
 			return NULL;
 		}
 
