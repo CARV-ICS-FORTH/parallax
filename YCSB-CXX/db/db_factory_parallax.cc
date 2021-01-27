@@ -8,13 +8,12 @@
 
 #include "db_factory.h"
 
-#include "eutropia_db.h"
+#include "parallax_db.h"
 
 using ycsbc::YCSBDB;
 using ycsbc::DBFactory;
 
-YCSBDB* DBFactory::CreateDB(int num, utils::Properties& props)
+YCSBDB *DBFactory::CreateDB(int num, utils::Properties &props)
 {
-  return new EutropiaDB(num, props);
+	return new EutropiaDB(num, props);
 }
-
