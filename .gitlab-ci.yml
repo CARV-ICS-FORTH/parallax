@@ -22,7 +22,7 @@ build_clang-tidy:
   stage: build
   script:
     - mkdir -p build;cd build
-    - cmake .. "-DCMAKE_C_CLANG_TIDY=/bin/clang-tidy;-checks=* --format-style=../.clang-format"
+    - cmake .. "-DCMAKE_C_CLANG_TIDY=/bin/clang-tidy;-checks=*,-clang-analyzer-*,-google-*,-hicpp-braces-around-statements,-bugprone-not-null-terminated-result,-readability-braces-around-statements,-readability-braces-around-statements* --format-style=../.clang-format -p ./compile_commands.json"
     - make all
 
 install_lib:
