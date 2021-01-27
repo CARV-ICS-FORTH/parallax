@@ -1,5 +1,3 @@
-# File: kreon/CMakeLists.txt Author: Michalis Vardoulakis <mvard@ics.forth.gr>
-
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
 set(LIB "${PROJECT_NAME}")
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)

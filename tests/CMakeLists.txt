@@ -1,6 +1,3 @@
-# File: kreon/CMakeLists.txt Authors: Michalis Vardoulakis <mvard@ics.forth.gr>,
-# Giorgos Xanthakis <gxanth@ics.forth.gr>
-
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 include_directories(${CMAKE_SOURCE_DIR}/lib)
 
