@@ -1,5 +1,5 @@
-file(COPY ${CMAKE_SOURCE_DIR}/scripts/mkfs.eutropia.single.sh
+file(COPY ${CMAKE_SOURCE_DIR}/scripts/mkfs.sh
      DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/YCSB-CXX/)
 
-file(COPY ${CMAKE_SOURCE_DIR}/scripts/mkfs.eutropia.single.sh
+file(COPY ${CMAKE_SOURCE_DIR}/scripts/mkfs.sh
      DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tests/)
