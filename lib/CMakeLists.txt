@@ -1,20 +1,6 @@
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
 set(LIB "${PROJECT_NAME}")
 
-if("${CMAKE_BUILD_TYPE}" STREQUAL "Debug")
-  set(CMAKE_C_FLAGS
-      "-Wstrict-prototypes -Wall -Wextra -std=gnu11 -fPIC ${CMAKE_C_FLAGS}"
-  )# -Werror
-  set(CMAKE_C_FLAGS_DEBUG "-ggdb3 -Og ${CMAKE_C_FLAGS_DEBUG}")
-
-endif()
-
-if("${CMAKE_BUILD_TYPE}" STREQUAL "Release")
-  set(CMAKE_C_FLAGS_RELEASE
-      "-flto -fwhopr -funit-at-a-time -fprefetch-loop-arrays -fpeel-loops -O2 -finline-functions -DNDEBUG ${CMAKE_C_FLAGS_RELEASE}"
-  ) # -Werror
-endif()
-
 set(LIB_C_SOURCE_FILES
     allocator/allocator.c
     allocator/persistent_operations.c
@@ -62,9 +48,7 @@ install(
   RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
 set_target_properties(${LIB} PROPERTIES OUTPUT_NAME ${LIB})
 
-find_program(iwyu_path NAMES include-what-you-use iwyu iwyu-tool)
-if(iwyu_path)
-  set_property(TARGET ${LIB} PROPERTY C_INCLUDE_WHAT_YOU_USE ${iwyu_path})
-else()
-  message("Could not find the program include-what-you-use")
-endif()
+# find_program(iwyu_path NAMES include-what-you-use iwyu iwyu-tool)
+# if(iwyu_path) set_property(TARGET ${LIB} PROPERTY C_INCLUDE_WHAT_YOU_USE
+# ${iwyu_path}) else() message("Could not find the program
+# include-what-you-use") endif()

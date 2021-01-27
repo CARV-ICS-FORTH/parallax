@@ -47,7 +47,7 @@ level_scanner *_init_spill_buffer_scanner(db_handle *handle, int level_id, node_
 	return level_sc;
 }
 
-void _close_spill_buffer_scanner(level_scanner *level_sc, node_header *root)
+void _close_spill_buffer_scanner(level_scanner *level_sc)
 {
 	stack_destroy(&(level_sc->stack));
 	free(level_sc);
@@ -301,7 +301,7 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 	int32_t end_idx = 0;
 	int32_t middle;
 	char level_key_format;
-
+	(void)level_key_format;
 	/*drop all paths*/
 	stack_reset(&(level_sc->stack));
 	/*put guard*/
@@ -364,7 +364,7 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 		int num_entries = node->num_entries;
 		/*the path we need to follow*/
 		if (ret <= 0)
-			node = (node_header *)(MAPPED + inode->p[middle].right[0]);
+			node = (node_header *)(MAPPED + inode->p[middle].right);
 		else
 			node = (node_header *)(MAPPED + inode->p[middle].left[0]);
 
@@ -743,7 +743,7 @@ int32_t _get_next_KV(level_scanner *sc)
 					stack_top.idx = 0;
 					stack_push(&sc->stack, stack_top);
 					inode = (index_node *)stack_top.node;
-					node = (node_header *)(MAPPED + inode->p[0].right[0]);
+					node = (node_header *)(MAPPED + inode->p[0].right);
 					assert(node->type == rootNode || node->type == leafRootNode ||
 					       node->type == internalNode || node->type == leafNode);
 					// stack_top.node = node;
@@ -772,7 +772,7 @@ int32_t _get_next_KV(level_scanner *sc)
 				break;
 			} else if (stack_top.node->type == internalNode || stack_top.node->type == rootNode) {
 				inode = (index_node *)stack_top.node;
-				node = (node_header *)(MAPPED + (uint64_t)inode->p[stack_top.idx].right[0]);
+				node = (node_header *)(MAPPED + (uint64_t)inode->p[stack_top.idx].right);
 				up = 0;
 				assert(node->type == rootNode || node->type == leafRootNode ||
 				       node->type == internalNode || node->type == leafNode);

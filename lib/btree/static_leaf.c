@@ -180,16 +180,14 @@ void print_static_leaf(const struct bt_static_leaf_node *leaf, level_descriptor 
 {
 	struct bt_static_leaf_structs leaf_src;
 	uint64_t i;
-	uint32_t key_size;
 	retrieve_static_leaf_structures(leaf, &leaf_src, level);
+
 	for (i = 0; i < leaf->header.num_entries; ++i) {
-		key_size = *(uint32_t *)REAL_ADDRESS(leaf_src.kv_entries[leaf_src.slot_array[i].index].pointer);
 		log_info(" key %*s prefix %s ADDRESS %llu",
 			 *(uint32_t *)REAL_ADDRESS(leaf_src.kv_entries[leaf_src.slot_array[i].index].pointer),
 			 REAL_ADDRESS(leaf_src.kv_entries[leaf_src.slot_array[i].index].pointer) + 4,
 			 leaf_src.kv_entries[leaf_src.slot_array[i].index].prefix,
 			 leaf_src.kv_entries[leaf_src.slot_array[i].index].pointer);
-		assert(key_size > 0 && key_size < 40);
 	}
 }
 
@@ -210,7 +208,7 @@ struct bt_rebalance_result split_static_leaf(struct bt_static_leaf_node *leaf, b
 
 	/*cow check*/
 	if (leaf->header.epoch <= volume_desc->dev_catalogue->epoch) {
-		leaf_copy = seg_get_leaf_node(volume_desc, level, req->metadata.tree_id, 0);
+		leaf_copy = (struct bt_static_leaf_node *)seg_get_leaf_node(volume_desc, level, req->metadata.tree_id);
 		memcpy(leaf_copy, leaf, level->leaf_size);
 		leaf_copy->header.epoch = volume_desc->mem_catalogue->epoch;
 		leaf = leaf_copy;
@@ -219,7 +217,7 @@ struct bt_rebalance_result split_static_leaf(struct bt_static_leaf_node *leaf, b
 
 	rep.left_slchild = leaf;
 	/*Fix Right leaf metadata*/
-	rep.right_slchild = seg_get_leaf_node(volume_desc, level, req->metadata.tree_id, 0);
+	rep.right_slchild = (struct bt_static_leaf_node *)seg_get_leaf_node(volume_desc, level, req->metadata.tree_id);
 	init_static_leaf_metadata(rep.right_slchild, level);
 	retrieve_static_leaf_structures(rep.right_slchild, &right_leaf_src, level);
 	rep.middle_key_buf =

@@ -10,7 +10,7 @@
 #define KEY_PREFIX "userakias_computerakias"
 #define KV_SIZE 1024
 #define VOLUME_NAME "/dev/nvme0n1"
-#define NUM_KEYS 1000000
+#define NUM_KEYS 1000000ULL
 #define SCAN_SIZE 50
 
 typedef struct key {

@@ -69,7 +69,7 @@ retry:
 				if (son->height > 0) {
 					node_copy = (node_header *)seg_get_index_node_header(
 						volume_desc, &db_desc->levels[req->metadata.level_id],
-						req->metadata.tree_id, COW_FOR_INDEX);
+						req->metadata.tree_id);
 
 					memcpy(node_copy, son, INDEX_NODE_SIZE);
 					seg_free_index_node_header(volume_desc,
@@ -79,7 +79,7 @@ retry:
 				} else {
 					node_copy = (node_header *)seg_get_leaf_node_header(
 						volume_desc, &db_desc->levels[req->metadata.level_id],
-						req->metadata.tree_id, COW_FOR_LEAF);
+						req->metadata.tree_id);
 					memcpy(node_copy, son, LEAF_NODE_SIZE);
 					seg_free_leaf_node(volume_desc, &db_desc->levels[req->metadata.level_id],
 							   req->metadata.tree_id, (leaf_node *)son);
@@ -264,8 +264,7 @@ void __update_index_pivot_in_place(bt_delete_request *del_req, node_header *node
 			allocated_space++;
 
 		allocated_space *= KEY_BLOCK_SIZE;
-		d_header = seg_get_IN_log_block(handle->volume_desc, &handle->db_desc->levels[level_id], tree_id,
-						KEY_LOG_EXPANSION);
+		d_header = seg_get_IN_log_block(handle->volume_desc, &handle->db_desc->levels[level_id], tree_id);
 
 		d_header->next = NULL;
 		last_d_header = (IN_log_header *)(MAPPED + (uint64_t)node->last_IN_log_header);
@@ -758,8 +757,8 @@ int8_t delete_key(db_handle *handle, void *key, uint32_t size)
 			if (handle->db_desc->levels[i].root_r[handle->db_desc->levels[i].active_tree] != NULL) {
 				if (handle->db_desc->levels[i].root_r[handle->db_desc->levels[i].active_tree]->type ==
 				    rootNode) {
-					index_node *t = seg_get_index_node_header(
-						handle->volume_desc, &handle->db_desc->levels[i], 0, NEW_ROOT);
+					index_node *t = seg_get_index_node_header(handle->volume_desc,
+										  &handle->db_desc->levels[i], 0);
 					memcpy(t,
 					       handle->db_desc->levels[i].root_r[handle->db_desc->levels[i].active_tree],
 					       INDEX_NODE_SIZE);
@@ -768,8 +767,8 @@ int8_t delete_key(db_handle *handle, void *key, uint32_t size)
 						(node_header *)t;
 				} else {
 					/*Tree too small consists only of 1 leafRootNode*/
-					leaf_node *t = seg_get_leaf_node_header(
-						handle->volume_desc, &handle->db_desc->levels[i], 0, COW_FOR_LEAF);
+					leaf_node *t = seg_get_leaf_node_header(handle->volume_desc,
+										&handle->db_desc->levels[i], 0);
 					memcpy(t,
 					       handle->db_desc->levels[i].root_r[handle->db_desc->levels[i].active_tree],
 					       LEAF_NODE_SIZE);
@@ -783,8 +782,7 @@ int8_t delete_key(db_handle *handle, void *key, uint32_t size)
 				/* log_info("Allocating new active tree %d for level id %d epoch is at %llu", active_tree, */
 				/* 	 i, (LLU)mem_catalogue->epoch); */
 
-				leaf_node *t = seg_get_leaf_node(handle->volume_desc, &handle->db_desc->levels[i], 0,
-								 NEW_ROOT);
+				leaf_node *t = seg_get_leaf_node(handle->volume_desc, &handle->db_desc->levels[i], 0);
 
 				t->header.type = leafRootNode;
 				t->header.epoch = handle->volume_desc->mem_catalogue->epoch;

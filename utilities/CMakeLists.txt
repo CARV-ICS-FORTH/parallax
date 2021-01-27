@@ -1,5 +1,3 @@
-# File: kreon/CMakeLists.txt Author: Michalis Vardoulakis <mvard@ics.forth.gr>
-
 set_source_files_properties(spin_loop.c PROPERTIES COMPILE_FLAGS "-O0")
 
 set_source_files_properties(list.c PROPERTIES COMPILE_FLAGS "-O3")

@@ -23,7 +23,7 @@ typedef struct value {
 	char value_buf[0];
 } value;
 
-int main()
+int main(void)
 {
 	bt_insert_req req;
 	//stackElementT element;

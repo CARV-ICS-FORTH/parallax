@@ -178,7 +178,7 @@ void *gc_log_entries(void *db_handle)
 	volume_descriptor *volume_desc = handle->volume_desc;
 
 	NODE *region;
-	int rc;
+	/* int rc; */
 
 	marks = malloc(sizeof(stack));
 	if (!marks) {

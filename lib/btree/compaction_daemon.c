@@ -16,7 +16,6 @@ struct compaction_request {
 	volume_descriptor *volume_desc;
 	uint64_t l0_start;
 	uint64_t l0_end;
-	int run;
 	uint8_t src_level;
 	uint8_t src_tree;
 	uint8_t dst_level;
@@ -211,7 +210,6 @@ void *compaction(void *_comp_req)
 
 	uint32_t local_spilled_keys = 0;
 	int i, rc = 100;
-	int run = 0;
 
 	pthread_setname_np(pthread_self(), "comp_thread");
 	log_info("starting compaction from level's tree [%u][%u] to level's tree[%u][%u]", comp_req->src_level,
@@ -291,7 +289,7 @@ void *compaction(void *_comp_req)
 				++local_spilled_keys;
 			}
 		} while (rc != END_OF_DATABASE);
-		_close_spill_buffer_scanner(level_src, src_root);
+		_close_spill_buffer_scanner(level_src);
 		struct level_descriptor *ld = &comp_req->db_desc->levels[comp_req->dst_level];
 		struct db_handle hd = { .db_desc = comp_req->db_desc, .volume_desc = comp_req->volume_desc };
 
@@ -328,7 +326,7 @@ void *compaction(void *_comp_req)
 		ld->level_size[1] = 0;
 		ld->root_w[1] = NULL;
 		ld->root_r[1] = NULL;
-		seg_free_level(&hd, comp_req->src_level, comp_req->src_tree, 0);
+		seg_free_level(&hd, comp_req->src_level, comp_req->src_tree);
 
 		if (RWLOCK_UNLOCK(&(comp_req->db_desc->levels[comp_req->src_level].guard_of_level.rx_lock))) {
 			log_fatal("Failed to acquire guard lock");
@@ -359,7 +357,6 @@ void *compaction(void *_comp_req)
 
 		log_info("level scanners and min heap ready");
 		int32_t num_of_keys = (SPILL_BUFFER_SIZE - (2 * sizeof(uint32_t))) / (PREFIX_SIZE + sizeof(uint64_t));
-		enum sh_heap_status stat = GOT_MIN_HEAP;
 		do {
 			db_desc->dirty = 0x01;
 			if (handle.db_desc->stat == DB_IS_CLOSING) {
@@ -405,7 +402,7 @@ void *compaction(void *_comp_req)
 			}
 		} while (rc != END_OF_DATABASE);
 
-		_close_spill_buffer_scanner(level_src, src_root);
+		_close_spill_buffer_scanner(level_src);
 
 		log_info("local spilled keys %d", local_spilled_keys);
 		/* assert(local_spilled_keys == db_desc->levels[comp_req->src_level].level_size[comp_req->src_tree] + */
@@ -457,7 +454,7 @@ void *compaction(void *_comp_req)
 		ld->root_w[1] = NULL;
 		ld->root_r[1] = NULL;
 		/*free src level*/
-		seg_free_level(&hd, comp_req->src_level, comp_req->src_tree, run);
+		seg_free_level(&hd, comp_req->src_level, comp_req->src_tree);
 
 		if (RWLOCK_UNLOCK(&(comp_req->db_desc->levels[comp_req->src_level].guard_of_level.rx_lock))) {
 			log_fatal("Failed to acquire guard lock");
@@ -589,8 +586,8 @@ void *compaction(void *_comp_req)
 			}
 		} while (stat != EMPTY_MIN_HEAP);
 
-		_close_spill_buffer_scanner(level_src, src_root);
-		_close_spill_buffer_scanner(level_dst, dst_root);
+		_close_spill_buffer_scanner(level_src);
+		_close_spill_buffer_scanner(level_dst);
 
 		log_info("local spilled keys %d", local_spilled_keys);
 		/* assert(local_spilled_keys == db_desc->levels[comp_req->src_level].level_size[comp_req->src_tree] + */
@@ -679,7 +676,7 @@ void *compaction(void *_comp_req)
 		ld->root_w[1] = NULL;
 		ld->root_r[1] = NULL;
 		/*free src level*/
-		seg_free_level(&hd, comp_req->src_level, comp_req->src_tree, run);
+		seg_free_level(&hd, comp_req->src_level, comp_req->src_tree);
 
 		if (RWLOCK_UNLOCK(&(comp_req->db_desc->levels[comp_req->src_level].guard_of_level.rx_lock))) {
 			log_fatal("Failed to acquire guard lock");
@@ -837,7 +834,7 @@ void *spill_buffer(void *_comp_req)
 			}
 		} while (rc != END_OF_DATABASE);
 
-		_close_spill_buffer_scanner(level_sc, src_root);
+		_close_spill_buffer_scanner(level_sc);
 
 		log_info("local spilled keys %d", local_spilled_keys);
 

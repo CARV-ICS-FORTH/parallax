@@ -140,8 +140,8 @@ void ommit_padded_space(struct recovery_operator *replay)
 
 				if (iter_logs[i]->log_curr_segment->next_segment == NULL)
 					continue;
-
-				uint64_t segment_id = iter_logs[i]->log_curr_segment->segment_id;
+				uint64_t segment_id = iter_logs[i]->segment_id;
+				(void)segment_id;
 				iter_logs[i]->log_curr_segment =
 					REAL_ADDRESS(iter_logs[i]->log_curr_segment->next_segment);
 #if DEBUG_RECOVERY
@@ -164,7 +164,7 @@ void advance_log_offset(struct log_recovery_metadata *log, char *kv_addr)
 	log->log_offset += sizeof(struct log_sequence_number) + key_size + value_size + 2 * sizeof(uint32_t);
 }
 
-void *find_next_kventry(struct recovery_operator *replay, uint64_t max_lsn, uint64_t *prev_lsn)
+void *find_next_kventry(struct recovery_operator *replay, uint64_t *prev_lsn)
 {
 	assert(NUMBER_OF_LOGS == 3);
 
@@ -194,7 +194,6 @@ void *find_next_kventry(struct recovery_operator *replay, uint64_t max_lsn, uint
 	}
 
 	assert(lsn.id >= *prev_lsn);
-	assert(lsn.id < max_lsn);
 
 	if (pick_log != -1) {
 		*prev_lsn = *prev_lsn + 1;
@@ -242,7 +241,7 @@ void replay_log(recovery_request *rh, struct recovery_operator *replay)
 	while (replay->big.log_offset < replay->big.log_size || replay->medium.log_offset < replay->medium.log_size ||
 	       replay->small.log_offset < replay->small.log_size) {
 		ommit_log_segment_header(replay);
-		kv_addr = find_next_kventry(replay, rh->db_desc->lsn, &prev_lsn);
+		kv_addr = find_next_kventry(replay, &prev_lsn);
 
 		if (kv_addr) {
 			ins_req.key_value_buf = kv_addr;

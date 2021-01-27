@@ -413,7 +413,7 @@ void count_missing_keys(db_handle *hd)
 {
 	uint64_t i;
 	key *k = (key *)alloca(KV_SIZE);
-	int cnt = 0;
+	uint64_t cnt = 0;
 
 	for (i = TOTAL_KEYS; i < (TOTAL_KEYS + NUM_KEYS); i++) {
 		memcpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));

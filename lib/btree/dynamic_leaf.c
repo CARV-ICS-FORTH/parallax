@@ -92,6 +92,8 @@ char *fill_keybuf(char *key_loc, enum kv_entry_location key_type)
 	}
 	default:
 		assert(0);
+		log_fatal("UNKNOWN KEY TYPE");
+		exit(EXIT_FAILURE);
 	}
 }
 
@@ -238,6 +240,7 @@ void binary_search_dynamic_leaf(const struct bt_dynamic_leaf_node *leaf, uint32_
 	}
 }
 
+#if 0
 void print_all_keys(const struct bt_dynamic_leaf_node *leaf, uint32_t leaf_size)
 {
 	struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(leaf);
@@ -250,6 +253,7 @@ void print_all_keys(const struct bt_dynamic_leaf_node *leaf, uint32_t leaf_size)
 	}
 	/* log_info("--------------------------------------------"); */
 }
+#endif
 
 void print_dynamic_leaf(const struct bt_dynamic_leaf_node *leaf, uint32_t leaf_size)
 {
@@ -481,8 +485,8 @@ struct bt_rebalance_result special_split_dynamic_leaf(struct bt_dynamic_leaf_nod
 						      bt_insert_req *req)
 {
 	struct bt_rebalance_result rep;
-	struct bt_dynamic_leaf_node *leaf_copy, *left_leaf, *right_leaf, *old_leaf = leaf;
-	struct bt_dynamic_leaf_slot_array *slot_array, *right_leaf_slot_array, *left_leaf_slot_array;
+	struct bt_dynamic_leaf_node *leaf_copy, *right_leaf, *old_leaf = leaf;
+	struct bt_dynamic_leaf_slot_array *slot_array, *right_leaf_slot_array;
 	int level_id = req->metadata.level_id;
 	char *key_buf, *leaf_log_tail;
 	level_descriptor *level = &req->metadata.handle->db_desc->levels[level_id];
@@ -500,7 +504,7 @@ struct bt_rebalance_result special_split_dynamic_leaf(struct bt_dynamic_leaf_nod
 	}
 
 	slot_array = get_slot_array_offset(leaf);
-	left_leaf = rep.left_dlchild = leaf;
+	rep.left_dlchild = leaf;
 
 	split_point = leaf->header.num_entries - 1;
 	/*Fix Right leaf metadata*/
@@ -685,11 +689,7 @@ int8_t insert_in_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, bt_insert_req *
 							   .cat = req->metadata.cat };
 	struct dl_bsearch_result bsearch = { .middle = 0, .status = INSERT, .op = DYNAMIC_LEAF_INSERT };
 	char *leaf_log_tail = get_leaf_log_offset(leaf, level->leaf_size);
-	uint32_t metadata_size = sizeof(struct bt_dynamic_leaf_node) +
-				 (sizeof(struct bt_dynamic_leaf_slot_array) * (leaf->header.num_entries - 1));
-	uint32_t upper_bound = level->leaf_size - metadata_size;
 
-	assert(leaf->header.leaf_log_size < upper_bound);
 	assert(leaf->header.epoch > req->metadata.handle->volume_desc->dev_catalogue->epoch);
 
 	if (unlikely(leaf->header.num_entries == 0))
