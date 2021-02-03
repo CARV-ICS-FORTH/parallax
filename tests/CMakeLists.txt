@@ -21,3 +21,5 @@ target_link_libraries(test_recovery ${PROJECT_NAME} ${DEPENDENCIES})
 
 add_executable(test_spills test_spills.c)
 target_link_libraries(test_spills ${PROJECT_NAME} ${DEPENDENCIES})
+
+add_subdirectory(Surrogates)
