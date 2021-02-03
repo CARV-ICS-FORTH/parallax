@@ -1,4 +1,14 @@
+#include <assert.h>
+#include <pthread.h>
+#include <semaphore.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <time.h>
+#include <log.h>
 #include "gc.h"
+#include "../allocator/allocator.h"
+#include "../../utilities/list.h"
 extern sem_t gc_daemon_interrupts;
 
 char *pointer_to_kv_in_log = NULL;

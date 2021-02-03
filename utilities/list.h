@@ -1,5 +1,4 @@
 #pragma once
-#include <stdio.h>
 
 typedef struct NODE {
 	void *data;

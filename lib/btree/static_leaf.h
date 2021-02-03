@@ -1,7 +1,6 @@
 #pragma once
+#include <stdint.h>
 #include "btree.h"
-#include "delete.h"
-#include "segment_allocator.h"
 
 enum bt_static_leaf_operation { STATIC_LEAF_INSERT = 0, STATIC_LEAF_FIND = 1 };
 

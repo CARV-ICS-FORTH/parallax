@@ -5,14 +5,9 @@
         Edited by Giorgos Saloustros (gesalous@ics.forth.gr) 21/07/2017
 */
 
-#include <stdio.h>
 #include <stdlib.h>
-#include <time.h>
-#include <signal.h>
 #include <log.h>
-#include <assert.h>
 #include "min_max_heap.h"
-#include "../allocator/allocator.h"
 #include "../btree/btree.h"
 #define LCHILD(x) ((2 * x) + 1)
 #define RCHILD(x) ((2 * x) + 2)

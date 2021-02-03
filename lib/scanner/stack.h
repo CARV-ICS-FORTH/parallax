@@ -9,9 +9,8 @@
  */
 #pragma once
 #include <stdint.h>
-
-#include "../btree/conf.h"
 #include "../btree/btree.h"
+#define MAX_SIZE 64
 
 /*
  * Type: stackElementT

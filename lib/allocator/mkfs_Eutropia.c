@@ -1,13 +1,11 @@
-#include <sys/stat.h>
-#include <sys/mman.h>
 #include <errno.h>
+#include <stdint.h>
 #include <string.h>
-#include <stdarg.h>
-#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <ctype.h>
+#include <unistd.h>
 #include "allocator.h"
+#include "../btree/conf.h"
 
 int32_t lread(int32_t fd, off_t offset, int whence, void *ptr, size_t size);
 int32_t lwrite(int32_t fd, off_t offset, int whence, void *ptr, size_t size);

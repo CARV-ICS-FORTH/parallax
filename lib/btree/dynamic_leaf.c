@@ -1,8 +1,11 @@
-#include <log.h>
-#include <signal.h>
 #include <assert.h>
-#include <sys/mman.h>
+#include <stdlib.h>
+#include <string.h>
+#include <log.h>
 #include "dynamic_leaf.h"
+#include "conf.h"
+#include "segment_allocator.h"
+#include "../allocator/allocator.h"
 
 void print_all_keys(const struct bt_dynamic_leaf_node *leaf, uint32_t leaf_size);
 char *fill_keybuf(char *key_loc, enum kv_entry_location key_type);

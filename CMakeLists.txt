@@ -32,11 +32,16 @@ include(cmake_utils/ycsb.cmake.in)
 include(cmake_utils/cmakeconfig.cmake.in)
 configure_file(config.h.in config.h @ONLY)
 
-FetchContent_Declare(log # Recommendation: Stick close to the original name.
-                     GIT_REPOSITORY https://github.com/innerout/log.c.git)
+set(FETCHCONTENT_QUIET FALSE)
+FetchContent_Declare(
+  log # Recommendation: Stick close to the original name.
+  GIT_REPOSITORY https://github.com/innerout/log.c.git
+  GIT_PROGRESS TRUE)
 
-FetchContent_Declare(libmba # Recommendation: Stick close to the original name.
-                     GIT_REPOSITORY https://github.com/innerout/libmba.git)
+FetchContent_Declare(
+  libmba # Recommendation: Stick close to the original name.
+  GIT_REPOSITORY https://github.com/innerout/libmba.git
+  GIT_PROGRESS TRUE)
 
 FetchContent_GetProperties(log)
 FetchContent_GetProperties(libmba)
@@ -74,7 +79,6 @@ set(CMAKE_CXX_FLAGS_RELEASE
 if("${CMAKE_BUILD_TYPE}" STREQUAL "Debug")
   set(CMAKE_C_FLAGS "-Wstrict-prototypes -Wall -Wextra -fPIC ${CMAKE_C_FLAGS}")
   set(CMAKE_C_FLAGS_DEBUG "-ggdb3 -Og ${CMAKE_C_FLAGS_DEBUG}")
-
 endif()
 
 if("${CMAKE_BUILD_TYPE}" STREQUAL "Release")
@@ -88,7 +92,7 @@ set(CMAKE_EXE_LINKER_FLAGS
 )
 
 add_subdirectory(lib)
-add_subdirectory(YCSB-CXX)
+# add_subdirectory(YCSB-CXX)
 add_subdirectory(utilities)
 add_subdirectory(tests)
 

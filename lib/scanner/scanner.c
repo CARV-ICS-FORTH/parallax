@@ -1,13 +1,14 @@
 #include <assert.h>
 #include <stdlib.h>
-#include <signal.h>
-#include "stack.h"
+#include <string.h>
 #include <log.h>
+#include "stack.h"
 #include "scanner.h"
+#include "../allocator/allocator.h"
 #include "../btree/btree.h"
+#include "../btree/conf.h"
 #include "../btree/static_leaf.h"
 #include "../btree/dynamic_leaf.h"
-#include "../btree/conf.h"
 
 extern int32_t index_order;
 

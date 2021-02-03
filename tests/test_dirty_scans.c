@@ -1,6 +1,6 @@
 #include <assert.h>
 #include <stdio.h>
-#include <alloca.h>
+#include <stdint.h>
 #include <string.h>
 #include <stdlib.h>
 #include <log.h>

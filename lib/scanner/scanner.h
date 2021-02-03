@@ -1,8 +1,10 @@
 #pragma once
+#include <stdint.h>
 #include "stack.h"
 #include "min_max_heap.h"
-#include "../allocator/allocator.h"
 #include "../btree/btree.h"
+#include "../btree/conf.h"
+
 #define FULL_SCANNER 1
 
 #define SPILL_BUFFER_SCANNER 3

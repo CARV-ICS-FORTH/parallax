@@ -9,12 +9,10 @@
  * This is an array implementation of a character stack.
  */
 
-#include <stdio.h>
 #include <stdlib.h> /* for dynamic allocation */
 #include <assert.h>
 #include <log.h>
 #include "stack.h"
-
 /************************ Function Definitions **********************/
 
 void stack_init(stackT *stackP)

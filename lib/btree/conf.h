@@ -54,9 +54,6 @@
 
 #define KEY_BLOCK_SIZE 8192 // 4KB
 
-/*from scan.c*/
-#define MAX_SIZE 64
-
 /*various*/
 #define LLU long long unsigned
 

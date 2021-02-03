@@ -1,9 +1,16 @@
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
 #include <sys/mman.h>
 #include <errno.h>
+#include <log.h>
+#include <config.h>
 #include "allocator.h"
 #include "../btree/btree.h"
 #include "../btree/segment_allocator.h"
-#include <log.h>
+#include "../btree/conf.h"
+#include "../../utilities/list.h"
+#include "../../utilities/spin_loop.h"
 
 void write_log_metadata(db_descriptor *db_desc, commit_log_info *info)
 {

@@ -1,12 +1,19 @@
 #define _GNU_SOURCE
 #define COMPACTION
-
+#include <semaphore.h>
+#include <stdint.h>
+#include <stdlib.h>
 #include <pthread.h>
 #include <assert.h>
-#include "../scanner/scanner.h"
+#include <log.h>
 #include "btree.h"
 #include "segment_allocator.h"
-#include <log.h>
+#include "conf.h"
+#include "../scanner/scanner.h"
+#include "../allocator/allocator.h"
+#include "../scanner/min_max_heap.h"
+#include "../utilities/spin_loop.h"
+
 /* Checks for pending compactions. It is responsible to check for dependencies
  * between two levels before triggering a compaction. */
 extern sem_t gc_daemon_interrupts;

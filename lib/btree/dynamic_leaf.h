@@ -1,7 +1,6 @@
 #pragma once
+#include <stdint.h>
 #include "btree.h"
-#include "delete.h"
-#include "segment_allocator.h"
 
 enum bt_dynamic_leaf_operation { DYNAMIC_LEAF_INSERT = 0, DYNAMIC_LEAF_FIND = 1 };
 

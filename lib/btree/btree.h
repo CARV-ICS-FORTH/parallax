@@ -7,9 +7,11 @@
 #include <pthread.h>
 #include <semaphore.h>
 #include <stdlib.h>
+#include <stdint.h>
+#include <sys/types.h>
 #include <limits.h>
-#include <unistd.h>
 #include <config.h>
+#include "conf.h"
 #include "../allocator/allocator.h"
 #define SUCCESS 4
 #define FAILED 5

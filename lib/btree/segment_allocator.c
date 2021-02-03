@@ -1,8 +1,12 @@
 #include <assert.h>
+#include <stdlib.h>
 #include <signal.h>
 #include <log.h>
+#include <config.h>
 #include "segment_allocator.h"
-#include <sys/mman.h>
+#include "conf.h"
+#include "../allocator/allocator.h"
+
 extern uint64_t MAPPED;
 
 struct link_segments_metadata {

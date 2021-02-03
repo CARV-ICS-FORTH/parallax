@@ -1,11 +1,11 @@
+#include <stdint.h>
+#include <stdlib.h>
 #include <signal.h>
 #include <assert.h>
-#include <sys/mman.h>
-#include "allocator.h"
-#include "../btree/segment_allocator.h"
-#include "../btree/btree.h"
-#include "dmap-ioctl.h"
 #include <log.h>
+#include "allocator.h"
+#include "../btree/btree.h"
+#include "../btree/conf.h"
 
 void load_logs_torecover(recovery_request *recover_req, struct recovery_operator *replay)
 {

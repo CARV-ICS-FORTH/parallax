@@ -1,28 +1,26 @@
 #include <stdio.h>
-#include <semaphore.h>
 #include <time.h>
 #include <assert.h>
 #include <errno.h>
 #include <signal.h>
-#include <sys/types.h>
 #include <sys/mman.h>
-#include <sys/stat.h>
 #include <sys/time.h>
-#include <string.h>
 #include <stdarg.h>
 #include <fcntl.h>
-#include <ctype.h>
 #include <string.h>
-#include <math.h>
-#include <execinfo.h>
-#include <stdbool.h>
 #include <pthread.h>
+#include <inttypes.h>
+#include <linux/fs.h>
+#include <stdlib.h>
+#include <sys/ioctl.h>
+#include <unistd.h>
+#include <log.h>
 #include "dmap-ioctl.h"
-#include "../../utilities/macros.h"
 #include "allocator.h"
+#include "../btree/btree.h"
 #include "../btree/conf.h"
 #include "../btree/segment_allocator.h"
-#include <log.h>
+#include "../utilities/list.h"
 
 #define _FILE_OFFSET_BITS 64
 //#define USE_MLOCK

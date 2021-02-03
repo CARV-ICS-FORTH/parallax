@@ -1,7 +1,6 @@
 #pragma once
 #include "btree.h"
-#include <assert.h>
-#include <log.h>
+#include "conf.h"
 
 typedef struct log_segment {
 	segment_header metadata;

@@ -1,22 +1,8 @@
 #pragma once
-#include <stdio.h>
 #include <stdint.h>
-#include <inttypes.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <string.h>
-#include <sys/types.h>
-#include <fcntl.h>
-#include <errno.h>
-#include <sys/ioctl.h>
 #include <pthread.h>
-#include <sys/ioctl.h>
-#include <sys/stat.h>
-#include <linux/fs.h>
-
-#include "../../utilities/list.h"
-#include "../../utilities/spin_loop.h"
 #include "../btree/conf.h"
+#include "../../utilities/list.h"
 
 #define FREE_BLOCK 124
 

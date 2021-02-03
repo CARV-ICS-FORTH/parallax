@@ -1,6 +1,5 @@
+#include <linux/fs.h>
 #include <sys/ioctl.h>
-#include <sys/types.h>
-#include <sys/stat.h>
 #include <fcntl.h>
 #include <assert.h>
 #include <stdio.h>
@@ -10,7 +9,8 @@
 #include <unistd.h>
 #include <log.h>
 #include <btree/btree.h>
-#include <btree/delete.h>
+#include <allocator/allocator.h>
+
 #define KEY_PREFIX "userakias_computerakias"
 #define KV_SIZE 1024
 #define SCAN_SIZE 50

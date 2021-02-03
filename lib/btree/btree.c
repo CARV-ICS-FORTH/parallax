@@ -8,27 +8,25 @@
  *	@author Giorgos Xanthakis (gxanth@ics.forth.gr)
  *	@author Angelos Bilas (bilas@ics.forth.gr)
  **/
+#include <stdio.h>
 #include <stdlib.h>
 #include <inttypes.h>
 #include <string.h>
 #include <signal.h>
 #include <pthread.h>
 #include <assert.h>
-#include <emmintrin.h>
 #include <sys/types.h>
-#include <sys/mman.h>
-#include <sys/syscall.h>
-#include <pthread.h>
 #include <log.h>
-
 #include "btree.h"
 #include "gc.h"
 #include "segment_allocator.h"
 #include "static_leaf.h"
 #include "dynamic_leaf.h"
-#include "../allocator/dmap-ioctl.h"
-#include "../scanner/scanner.h"
 #include "conf.h"
+#include "../allocator/allocator.h"
+#include "../../utilities/list.h"
+#include "../../utilities/spin_loop.h"
+#include "config.h"
 
 #define PREFIX_STATISTICS_NO
 #define MIN(x, y) ((x > y) ? (y) : (x))
