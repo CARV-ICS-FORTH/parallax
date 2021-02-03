@@ -435,7 +435,7 @@ struct recovery_operator {
 };
 #define NUMBER_OF_LOGS 3
 
-void recovery_worker(recovery_request *rh);
+void recover_region(recovery_request *rh);
 void snapshot(volume_descriptor *volume_desc);
 void commit_db_log(db_descriptor *db_desc, commit_log_info *info);
 void commit_db_logs_per_volume(volume_descriptor *volume_desc);

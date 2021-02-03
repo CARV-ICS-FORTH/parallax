@@ -259,10 +259,9 @@ void replay_log(recovery_request *rh, struct recovery_operator *replay)
 
 		ommit_padded_space(replay);
 	}
-	/* exit(0); */
 }
 
-void recovery_worker(recovery_request *rh)
+void recover_region(recovery_request *rh)
 {
 	db_handle handle;
 	struct recovery_operator replay;

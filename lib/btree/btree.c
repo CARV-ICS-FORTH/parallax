@@ -828,7 +828,7 @@ finish_init:
 			rh.big_log_start_offset = db_desc->big_log_tail_offset;
 			rh.medium_log_start_offset = db_desc->medium_log_tail_offset;
 			rh.small_log_start_offset = db_desc->small_log_tail_offset;
-			recovery_worker(&rh);
+			recover_region(&rh);
 			log_info("recovery completed successfully");
 		} else if (db_desc->big_log_tail_offset == db_desc->commit_log->big_log_size &&
 			   db_desc->medium_log_tail_offset == db_desc->commit_log->medium_log_size &&
@@ -864,7 +864,7 @@ finish_init:
 			rh.big_log_start_offset = db_desc->big_log_tail_offset;
 			rh.medium_log_start_offset = db_desc->medium_log_tail_offset;
 			rh.small_log_start_offset = db_desc->small_log_tail_offset;
-			recovery_worker(&rh);
+			recover_region(&rh);
 			log_info("recovery completed successfully");
 		} else if (db_desc->big_log_tail_offset == db_desc->commit_log->big_log_size &&
 			   db_desc->medium_log_tail_offset == db_desc->commit_log->medium_log_size &&
