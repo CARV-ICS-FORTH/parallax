@@ -1,10 +1,5 @@
 # Building Parallax
 
-## Build Dependencies
-
-To build Parallax, the following libraries have to be installed on your system:
-* `libnuma` - Allocations with NUMA policy
-
 
 ### Installing Dependencies on Ubuntu 18.04 LTS
 
@@ -28,15 +23,11 @@ For the build tools and compiler:
 Parallax requires CMake version >= 3.11.0. On Centos/RHEL this is supplied from the
 EPEL repository and can be installed with:
 
-	sudo yum install cmake3 kernel-devel gcc-c++
+	sudo yum install cmake3 kernel-devel gcc-c++ numactl-devel boost-devel
 
-
-#### Dependencies for Single Node Parallax
-
-	sudo yum install numactl-devel boost-devel
 ## Build Configuration
 
-Compilation is done using the clang compiler, provided by the clang package in
+Compilation is done using the gcc/clang compilers, provided by the gcc/clang packages in
 most Linux distributions. To configure Parallax's build systems and build it run
 the commands:
 
@@ -64,8 +55,8 @@ The "Release" build disables warnings and enables optimizations.
 ## Build Targets
 
 * build/lib/libparallax.a/so - Parallax library
-* build/YCSB-CXX/ycsb-edb - Standalone Parallax ycsb benchmark
-
+* build/YCSB-CXX/ycsb-edb - Standalone Parallax YCSB benchmark
+* build/tests/ - Tests for Parallax
 ## Build Package
 
 You can install Parallax in your standard path using cmake.
