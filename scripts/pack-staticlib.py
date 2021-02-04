@@ -1,6 +1,6 @@
 #!/bin/python3
 # Given a directory containing at least 2 static libraries (.a),
-# it unpacks their .o files in different directories and repacks them in a single static library called libkreon2.a.
+# it unpacks their .o files in different directories and repacks them in a single static library called libparallax2.a.
 # Hopefully this script will be removed if this can be done through cmake.
 # ./pack-staticlib.py path/to/dir/with/static/libraries
 
@@ -34,7 +34,7 @@ def unpackeachstaticlib(filestopack):
         os.system("ar -x ../" + file)
         os.chdir(basedir)
 
-    basecommand = "ar -qc libkreon2.a "
+    basecommand = "ar -qc libparallax2.a "
     os.system(basecommand + concatdirs)
 
 

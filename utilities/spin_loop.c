@@ -1,4 +1,3 @@
-#include <stdio.h>
 #include <stdint.h>
 
 int64_t get_counter(int64_t *counter);

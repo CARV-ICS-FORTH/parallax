@@ -4,13 +4,13 @@
 #include <string.h>
 #include <stdlib.h>
 #include <log.h>
-#include "../kreon_lib/btree/btree.h"
-#include "../kreon_lib/scanner/scanner.h"
+#include <btree/btree.h>
+#include <scanner/scanner.h>
 #define TOTAL_KEYS 1000000
 #define KEY_PREFIX "userakias_computerakias"
 #define KV_SIZE 1024
 #define VOLUME_NAME "/dev/nvme0n1"
-#define NUM_KEYS 1000000
+#define NUM_KEYS 1000000ULL
 #define SCAN_SIZE 50
 
 typedef struct key {

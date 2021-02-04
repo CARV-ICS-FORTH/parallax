@@ -10,7 +10,7 @@ To install shfmt run the command below in your shell:
 
 For development in the cluster source the script to get the latest tools:
 
-	source kreon/scripts/devel-tools/env-vars.sh
+	source parallax/scripts/devel-tools/env-vars.sh
 
 You need to source this script when you login in a machine to develop.
 If you want to avoid sourcing you could copy the contents of the script in your .bashrc.
@@ -33,7 +33,7 @@ Then try upgrading pre-commit:
 
 To install pre-commit hooks:
 
-	cd kreon
+	cd parallax
 	pre-commit install
     pre-commit install --hook-type commit-msg
 
@@ -52,7 +52,7 @@ If you want to run a specific hook with a specific file run:
 
 	git config commit.template .git-commit-template
 
-## Generating compile_commands.json for Single Node Kreon
+## Generating compile_commands.json for Parallax
 
 Install compdb for header awareness in compile_commands.json:
 
@@ -63,7 +63,7 @@ After running cmake .. in the build directory run:
 	cd ..
 	compdb -p build/ list > compile_commands.json
 	mv compile_commands.json build
-	cd kreon
+	cd parallax
 	ln -sf ../build/compile_commands.json
 
 

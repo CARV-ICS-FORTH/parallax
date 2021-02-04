@@ -1,6 +1,7 @@
+#include "list.h"
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "list.h"
 
 LIST *init_list(void (*destroy_node)(NODE *node))
 {

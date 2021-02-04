@@ -1,1 +1,0 @@
-load_e load ycsb_execution_plans/workloade

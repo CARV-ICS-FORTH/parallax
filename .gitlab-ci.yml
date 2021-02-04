@@ -2,6 +2,7 @@ image: carvicsforth/arch_carv:latest
 
 stages:
   - build
+  - test
   - deploy
 
 build_gcc:
@@ -9,51 +10,45 @@ build_gcc:
   script:
     - mkdir -p build;cd build
     - cmake .. -DCMAKE_BUILD_TYPE=Debug
-    - make mkfs.kreon;make kreon;make kreon-shared
-    - make ycsb-edb;make test_scans;make test_spills;make test_spillscans;make test_deletes;
+    - make all
 
 build_clang:
   stage: build
   script:
     - mkdir -p build;cd build
     - cmake .. -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
-    - make mkfs.kreon;make kreon;make kreon-shared
-    - make ycsb-edb;make test_scans;make test_spills;make test_spillscans;make test_deletes;
-
-build_rdma_gcc:
-  image: carvicsforth/ubuntu_carv:latest
-  stage: build
-  script:
-    - mkdir -p build;cd build
-    - cmake .. -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_COMPILER=gcc-10 -DCMAKE_CXX_COMPILER=g++-10
-    - make all
-
-build_rdma_clang:
-  image: carvicsforth/ubuntu_carv:latest
-  stage: build
-  script:
-    - mkdir -p build;cd build
-    - cmake .. -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_COMPILER=clang-10 -DCMAKE_CXX_COMPILER=clang++-10
     - make all
 
 build_clang-tidy:
   stage: build
   script:
     - mkdir -p build;cd build
-    - cmake .. "-DCMAKE_C_CLANG_TIDY=/bin/clang-tidy;-checks=* --format-style=../.clang-format"
-    - make mkfs.kreon;make kreon;make kreon-shared
-    - make ycsb-edb;make test_scans;make test_spills;make test_spillscans;make test_deletes;
+    - cmake .. "-DCMAKE_C_CLANG_TIDY=/bin/clang-tidy;-checks=*,-clang-analyzer-*,-google-*,-hicpp-braces-around-statements,-bugprone-not-null-terminated-result,-readability-braces-around-statements,-readability-braces-around-statements* --format-style=../.clang-format -p ./compile_commands.json"
+    - make all
 
-install_kreon:
+test_surrogates:
+  image: carvicsforth/ubuntu_carv:latest
+  stage: test
+  script:
+    - mkdir -p build;cd build
+    - cmake ..
+    - make SurrogateTUsTest;cd tests/Surrogates;
+    - ./SurrogateTUsTest
+
+
+install_lib:
   image: carvicsforth/ubuntu_carv:latest
   stage: deploy
   variables:
-    KREON_INSTALL_PATH : "installtest"
+    LIB_INSTALL_PATH : "installtest"
   script:
     - mkdir -p build;cd build
-    - cmake .. -DKREON_BUILD_CPACK=True -DCMAKE_BUILD_TYPE=Debug -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_COMPILER=gcc-10 -DCMAKE_CXX_COMPILER=g++-10
-    - make install DESTDIR=$KREON_INSTALL_PATH;mv $KREON_INSTALL_PATH ../scripts/;cd ../scripts
-    - ./verify-installed-files.py $KREON_INSTALL_PATH
+    - cmake .. -DBUILD_SHARED_LIBS=ON -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_COMPILER=gcc-10 -DCMAKE_CXX_COMPILER=g++-10
+    - make install DESTDIR=$LIB_INSTALL_PATH;
+    - cmake .. -DBUILD_SHARED_LIBS=OFF -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_COMPILER=gcc-10 -DCMAKE_CXX_COMPILER=g++-10
+    - make install DESTDIR=$LIB_INSTALL_PATH;
+    - mv $LIB_INSTALL_PATH ../scripts/;cd ../scripts
+    - ./verify-installed-files.py $LIB_INSTALL_PATH
 
 pre-commit:
   stage: build

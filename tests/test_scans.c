@@ -1,15 +1,16 @@
 #include <assert.h>
 #include <stdio.h>
+#include <stdint.h>
 #include <pthread.h>
 #include <string.h>
 #include <stdlib.h>
 #include <log.h>
-#include "../kreon_lib/btree/btree.h"
-#include "../kreon_lib/scanner/scanner.h"
-#include "../kreon_lib/scanner/min_max_heap.h"
+#include <btree/btree.h>
+#include <scanner/scanner.h>
+#include <scanner/min_max_heap.h>
 #define KEY_PREFIX "userakias_computerakias"
 #define KV_SIZE 1024
-#define VOLUME_NAME "/usr/local/gesalous/mounts/kreon.dat"
+#define VOLUME_NAME "/tmp/ramdisk/kreon.dat"
 #define NUM_KEYS 10000000
 #define SCAN_SIZE 16
 #define BASE 100000000
@@ -89,7 +90,7 @@ void *scan_tester(void *args)
 			//element = stack_pop(&(sc->LEVEL_SCANNERS[0].stack));
 			//assert(element.node->type == leafNode);
 			//stack_push(&(sc->LEVEL_SCANNERS[0].stack), element);
-			int scan_size;
+			uint64_t scan_size;
 			if ((local_base + my_args->num_keys) - i > SCAN_SIZE)
 				scan_size = SCAN_SIZE;
 			else
@@ -142,7 +143,7 @@ void *scan_tester(void *args)
 	return NULL;
 }
 
-int main()
+int main(void)
 {
 	char db_name[64];
 	struct scan_tester_args *s_args =
