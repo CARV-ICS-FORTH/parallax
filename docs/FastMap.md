@@ -46,11 +46,11 @@ To load FastMap run:
 
 ```
 
-# Running Kreon with FastMap
+# Running Parallax with FastMap
 
 1. Find the`char * pathname` variable in `YCSB-CXX/db/eutropia_db.h` and set it to `/dev/dmap/dmap1`.
 
-2. Enter the `kreon/build/YCSB-CXX` directory and create a script with the following contents:
+2. Enter the `build/YCSB-CXX` directory and create a script with the following contents:
 
 ```bash
 #!/bin/bash
