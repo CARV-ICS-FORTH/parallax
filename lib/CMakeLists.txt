@@ -12,6 +12,7 @@ set(LIB_C_SOURCE_FILES
     btree/gc.c
     btree/segment_allocator.c
     btree/static_leaf.c
+    btree/set_options.c
     scanner/min_max_heap.c
     scanner/scanner.c
     scanner/stack.c)
@@ -38,11 +39,15 @@ set_source_files_properties(btree/delete.c PROPERTIES COMPILE_FLAGS "-w")
 # mkfs to initialize volumes
 add_executable(
   mkfs.${LIB}
-  allocator/mkfs_Eutropia.c allocator/allocator.c
-  allocator/persistent_operations.c btree/segment_allocator.c
-  ../utilities/spin_loop.c ../utilities/list.c)
+  allocator/mkfs_Eutropia.c
+  allocator/allocator.c
+  allocator/persistent_operations.c
+  btree/segment_allocator.c
+  btree/set_options.c
+  ../utilities/spin_loop.c
+  ../utilities/list.c)
 
-target_link_libraries(mkfs.${LIB} PRIVATE log)
+target_link_libraries(mkfs.${LIB} PRIVATE ${DEPENDENCIES})
 
 install(
   TARGETS ${LIB} mkfs.${LIB}

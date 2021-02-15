@@ -365,8 +365,8 @@ void snapshot(volume_descriptor *volume_desc)
 		//t1=tim.tv_sec+(tim.tv_usec/1000000.0);
 		log_info("Syncing volume... from %llu to %llu", volume_desc->start_addr, volume_desc->size);
 		if (msync(volume_desc->start_addr, volume_desc->size, MS_SYNC) != 0) {
-			log_fatal("Error at msync start_addr %llu size %llu", (LLU)volume_desc->start_addr,
-				  (LLU)volume_desc->size);
+			log_fatal("Error at msync start_addr %llu size %llu",
+				  (long long unsigned)volume_desc->start_addr, (long long unsigned)volume_desc->size);
 			switch (errno) {
 			case EBUSY:
 				log_error("msync returned EBUSY");

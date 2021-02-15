@@ -16,17 +16,19 @@
 #include <pthread.h>
 #include <assert.h>
 #include <sys/types.h>
+#include <config.h>
 #include <log.h>
+#include <uthash.h>
 #include "btree.h"
 #include "gc.h"
 #include "segment_allocator.h"
 #include "static_leaf.h"
 #include "dynamic_leaf.h"
+#include "set_options.h"
 #include "conf.h"
 #include "../allocator/allocator.h"
 #include "../../utilities/list.h"
 #include "../../utilities/spin_loop.h"
-#include "config.h"
 
 #define PREFIX_STATISTICS_NO
 #define MIN(x, y) ((x > y) ? (y) : (x))
@@ -326,8 +328,8 @@ void recover_database_logs(db_descriptor *db_desc, pr_db_entry *db_entry)
 	db_desc->big_log_head_offset = db_entry->big_log_head_offset;
 	db_desc->big_log_tail_offset = db_entry->big_log_tail_offset;
 
-	log_info("Big log segments first: %llu last: %llu log_size %llu", (LLU)db_desc->big_log_head,
-		 (LLU)db_desc->big_log_tail, (LLU)db_desc->big_log_size);
+	log_info("Big log segments first: %llu last: %llu log_size %llu", (long long unsigned)db_desc->big_log_head,
+		 (long long unsigned)db_desc->big_log_tail, (long long unsigned)db_desc->big_log_size);
 	log_info("L0 start log offset %llu end %llu", db_desc->big_log_head_offset, db_desc->big_log_tail_offset);
 
 	if (db_desc->commit_log->medium_log_head != NULL)
@@ -344,8 +346,9 @@ void recover_database_logs(db_descriptor *db_desc, pr_db_entry *db_entry)
 	db_desc->medium_log_head_offset = db_entry->medium_log_head_offset;
 	db_desc->medium_log_tail_offset = db_entry->medium_log_tail_offset;
 
-	log_info("Medium log segments first: %llu last: %llu log_size %llu", (LLU)db_desc->medium_log_head,
-		 (LLU)db_desc->medium_log_tail, (LLU)db_desc->medium_log_size);
+	log_info("Medium log segments first: %llu last: %llu log_size %llu",
+		 (long long unsigned)db_desc->medium_log_head, (long long unsigned)db_desc->medium_log_tail,
+		 (long long unsigned)db_desc->medium_log_size);
 	log_info("Medium L0 start log offset %llu end %llu", db_desc->medium_log_head_offset,
 		 db_desc->medium_log_tail_offset);
 
@@ -363,8 +366,8 @@ void recover_database_logs(db_descriptor *db_desc, pr_db_entry *db_entry)
 	db_desc->small_log_head_offset = db_entry->small_log_head_offset;
 	db_desc->small_log_tail_offset = db_entry->small_log_tail_offset;
 
-	log_info("Small log segments first: %llu last: %llu log_size %llu", (LLU)db_desc->small_log_head,
-		 (LLU)db_desc->small_log_tail, (LLU)db_desc->small_log_size);
+	log_info("Small log segments first: %llu last: %llu log_size %llu", (long long unsigned)db_desc->small_log_head,
+		 (long long unsigned)db_desc->small_log_tail, (long long unsigned)db_desc->small_log_size);
 	log_info("Small L0 start log offset %llu end %llu", db_desc->small_log_head_offset,
 		 db_desc->small_log_tail_offset);
 }
@@ -386,14 +389,12 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 	int i = 0;
 	int digits;
 	uint8_t level_id, tree_id;
-	/* log_info("size of %d",sizeof(pr_db_entry)); */
-	/* exit(0); */
 
 	fprintf(stderr, "\n%s[%s:%s:%d](\"%s\", %" PRIu64 ", %" PRIu64 ", %s);%s\n", "\033[0;32m", __FILE__, __func__,
 		__LINE__, volumeName, start, size, db_name, "\033[0m");
 
 	MUTEX_LOCK(&init_lock);
-
+	parse_options();
 	if (mappedVolumes == NULL) {
 		mappedVolumes = init_list(&destroy_volume_node);
 		/*calculate max leaf,index order*/
@@ -420,7 +421,7 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 
 	key = malloc(strlen(volumeName) + digits + 1);
 	strcpy(key, volumeName);
-	sprintf(key + strlen(volumeName), "%llu", (LLU)start);
+	sprintf(key + strlen(volumeName), "%llu", (long long unsigned)start);
 	key[strlen(volumeName) + digits] = '\0';
 	log_info("Searching volume %s", key);
 	volume_desc = (volume_descriptor *)find_element(mappedVolumes, key);
@@ -668,6 +669,18 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 		strcpy(db_desc->db_name, db_name);
 		db_desc->dirty = 0x01;
 
+		uint64_t level0_size;
+		uint64_t growth_factor;
+		struct option *option;
+
+		HASH_FIND_STR(dboptions, "level0_size", option);
+		check_option("level0_size", option);
+		level0_size = MB(option->value.count);
+
+		HASH_FIND_STR(dboptions, "growth_factor", option);
+		check_option("growth_factor", option);
+		growth_factor = option->value.count;
+
 		/*init all persistent fields levels*/
 		for (level_id = 0; level_id < MAX_LEVELS; level_id++) {
 			for (tree_id = 0; tree_id < NUM_TREES_PER_LEVEL; tree_id++) {
@@ -682,9 +695,9 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 
 			if (level_id != 0)
 				db_desc->levels[level_id].max_level_size =
-					db_desc->levels[level_id - 1].max_level_size * GF;
+					db_desc->levels[level_id - 1].max_level_size * growth_factor;
 			else
-				db_desc->levels[level_id].max_level_size = MAX_LEVEL0_TOTAL_SIZE;
+				db_desc->levels[level_id].max_level_size = level0_size;
 
 			log_info("Level %d max_total_size %llu", level_id, db_desc->levels[level_id].max_level_size);
 		}
@@ -819,7 +832,8 @@ finish_init:
 		    db_desc->small_log_tail_offset < db_desc->commit_log->small_log_size) {
 			log_info("Commit log: %llu is ahead of L0: %llu replaying "
 				 "missing log parts",
-				 (LLU)db_desc->commit_log->big_log_size, (LLU)db_desc->big_log_tail_offset);
+				 (long long unsigned)db_desc->commit_log->big_log_size,
+				 (long long unsigned)db_desc->big_log_tail_offset);
 			recovery_request rh;
 			rh.volume_desc = volume_desc;
 			rh.db_desc = db_desc;
@@ -841,9 +855,12 @@ finish_init:
 	} else if (db_desc->big_log_tail_offset == db_desc->big_log_head_offset ||
 		   db_desc->medium_log_tail_offset == db_desc->medium_log_head_offset ||
 		   db_desc->small_log_tail_offset == db_desc->small_log_head_offset) {
-		log_info("L0 is absent L1 ends at %llu replaying missing parts", (LLU)db_desc->big_log_tail_offset);
-		log_info("L0 is absent L1 ends at %llu replaying missing parts", (LLU)db_desc->medium_log_tail_offset);
-		log_info("L0 is absent L1 ends at %llu replaying missing parts", (LLU)db_desc->small_log_tail_offset);
+		log_info("L0 is absent L1 ends at %llu replaying missing parts",
+			 (long long unsigned)db_desc->big_log_tail_offset);
+		log_info("L0 is absent L1 ends at %llu replaying missing parts",
+			 (long long unsigned)db_desc->medium_log_tail_offset);
+		log_info("L0 is absent L1 ends at %llu replaying missing parts",
+			 (long long unsigned)db_desc->small_log_tail_offset);
 
 		log_info("Condition part1 %d part2 %d part3 %d",
 			 db_desc->big_log_tail_offset < db_desc->commit_log->big_log_size,
@@ -855,7 +872,8 @@ finish_init:
 		    db_desc->small_log_tail_offset < db_desc->commit_log->small_log_size) {
 			log_info("Commit log (%llu) is ahead of L0 end (%llu) replaying missing "
 				 "log parts",
-				 (LLU)db_desc->commit_log->big_log_size, (LLU)db_desc->big_log_tail_offset);
+				 (long long unsigned)db_desc->commit_log->big_log_size,
+				 (long long unsigned)db_desc->big_log_tail_offset);
 			recovery_request rh;
 			rh.volume_desc = volume_desc;
 			rh.db_desc = db_desc;
@@ -1937,8 +1955,8 @@ void assert_index_node(node_header *node)
 		child = (node_header *)(MAPPED + *(uint64_t *)addr);
 		if (child->type != rootNode && child->type != internalNode && child->type != leafNode &&
 		    child->type != leafRootNode) {
-			log_fatal("corrupted child at index for child %llu type is %d\n", (LLU)(uint64_t)child - MAPPED,
-				  child->type);
+			log_fatal("corrupted child at index for child %llu type is %d\n",
+				  (long long unsigned)(uint64_t)child - MAPPED, child->type);
 			raise(SIGINT);
 			exit(EXIT_FAILURE);
 		}
@@ -2139,7 +2157,7 @@ release_and_retry:
 			/*we are allocating a new tree*/
 
 			log_info("Allocating new active tree %d for level id %d epoch is at %llu",
-				 ins_req->metadata.tree_id, level_id, (LLU)mem_catalogue->epoch);
+				 ins_req->metadata.tree_id, level_id, (long long unsigned)mem_catalogue->epoch);
 
 			leaf_node *t = seg_get_leaf_node(ins_req->metadata.handle->volume_desc,
 							 &db_desc->levels[level_id], ins_req->metadata.tree_id);

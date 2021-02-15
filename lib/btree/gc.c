@@ -6,9 +6,12 @@
 #include <stdlib.h>
 #include <time.h>
 #include <log.h>
+#include <uthash.h>
 #include "gc.h"
+#include "set_options.h"
 #include "../allocator/allocator.h"
 #include "../../utilities/list.h"
+
 extern sem_t gc_daemon_interrupts;
 
 char *pointer_to_kv_in_log = NULL;
@@ -182,11 +185,12 @@ void iterate_log_segments(db_descriptor *db_desc, volume_descriptor *volume_desc
 void *gc_log_entries(void *db_handle)
 {
 	struct timespec ts;
+	uint64_t gc_interval;
 	stack *marks;
+	struct option *option;
 	struct db_handle *handle = (struct db_handle *)db_handle;
 	db_descriptor *db_desc = handle->db_desc;
 	volume_descriptor *volume_desc = handle->volume_desc;
-
 	NODE *region;
 	/* int rc; */
 
@@ -196,14 +200,18 @@ void *gc_log_entries(void *db_handle)
 		exit(EXIT_FAILURE);
 	}
 
+	HASH_FIND_STR(dboptions, "gc_interval", option);
+	check_option("gc_interval", option);
+	gc_interval = option->value.count * SEC;
+
 	log_debug("Starting garbage collection thread");
 	while (1) {
 		if (clock_gettime(CLOCK_REALTIME, &ts) == -1) {
 			perror("FATAL: clock_gettime failed)\n");
 			exit(-1);
 		}
-		ts.tv_sec += (GC_INTERVAL / 1000000L);
-		ts.tv_nsec += (GC_INTERVAL % 1000000L) * 1000L;
+		ts.tv_sec += (gc_interval / 1000000L);
+		ts.tv_nsec += (gc_interval % 1000000L) * 1000L;
 		/* sleep(1); */
 		sem_wait(&gc_daemon_interrupts);
 

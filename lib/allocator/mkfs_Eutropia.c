@@ -27,7 +27,8 @@ int main(int argc, char *argv[])
 
 	start = strtoul(argv[2], &ptr, 10);
 	size = strtoul(argv[3], &ptr, 10);
-	printf("mkfs: Initializing volume %s start %llu size %llu\n", (char *)argv[1], (LLU)start, (LLU)size);
+	printf("mkfs: Initializing volume %s start %llu size %llu\n", (char *)argv[1], (long long unsigned)start,
+	       (long long unsigned)size);
 	fd = volume_init(argv[1], start, size, 0);
 	printf("\n\n----- Successfully initialized device -------\n\n");
 
@@ -38,11 +39,11 @@ int main(int argc, char *argv[])
 	}
 	/* print state of the device  */
 	printf("*************  <Superblock> ***********\n");
-	printf("Bitmap size in blocks %llu\n", (LLU)sp.bitmap_size_in_blocks);
-	printf("Device size in blocks %llu\n", (LLU)sp.dev_size_in_blocks);
-	printf("Data addressed in blocks %llu\n", (LLU)sp.dev_addressed_in_blocks);
-	printf("Unmapped blocks %llu\n", (LLU)sp.unmapped_blocks);
-	printf("System catalogue address %llu\n", (LLU)sp.system_catalogue);
+	printf("Bitmap size in blocks %llu\n", (long long unsigned)sp.bitmap_size_in_blocks);
+	printf("Device size in blocks %llu\n", (long long unsigned)sp.dev_size_in_blocks);
+	printf("Data addressed in blocks %llu\n", (long long unsigned)sp.dev_addressed_in_blocks);
+	printf("Unmapped blocks %llu\n", (long long unsigned)sp.unmapped_blocks);
+	printf("System catalogue address %llu\n", (long long unsigned)sp.system_catalogue);
 	printf("************* </Superblock> ***********\n");
 
 	bytes_read =
@@ -53,9 +54,9 @@ int main(int argc, char *argv[])
 	}
 
 	printf("*************  <System_Catalogue> ***********\n");
-	printf("Epoch %llu \n", (LLU)dev_catalogue.epoch);
-	printf("Free log position = %llu\n", (LLU)dev_catalogue.free_log_position);
-	printf("Free log last free %llu\n", (LLU)dev_catalogue.free_log_last_free);
+	printf("Epoch %llu \n", (long long unsigned)dev_catalogue.epoch);
+	printf("Free log position = %llu\n", (long long unsigned)dev_catalogue.free_log_position);
+	printf("Free log last free %llu\n", (long long unsigned)dev_catalogue.free_log_last_free);
 	printf("*************  </System_Catalogue> ***********\n");
 
 	close(fd);
