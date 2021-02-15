@@ -10,5 +10,5 @@ set(SURROGATE_TEST_SOURCES
     main.c)
 
 add_executable(SurrogateTUsTest ${SURROGATE_TEST_SOURCES})
-target_link_libraries(SurrogateTUsTest PRIVATE "${PROJECT_NAME}")
+target_link_libraries(SurrogateTUsTest "${PROJECT_NAME}")
 add_test(NAME SurrogateTUsTest COMMAND $<TARGET_FILE:SurrogateTUsTest>)

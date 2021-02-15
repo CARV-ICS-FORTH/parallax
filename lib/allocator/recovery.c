@@ -29,16 +29,16 @@ void load_logs_torecover(recovery_request *recover_req, struct recovery_operator
 	assert(!replay_onelog_atleast);
 
 	log_info("starting recovery for db %s first big log segment %llu last big log last segment %llu",
-		 recover_req->db_desc->db_name, (LLU)recover_req->db_desc->big_log_head,
-		 (LLU)recover_req->db_desc->big_log_tail);
+		 recover_req->db_desc->db_name, (long long unsigned)recover_req->db_desc->big_log_head,
+		 (long long unsigned)recover_req->db_desc->big_log_tail);
 
 	log_info("starting recovery for db %s first medium log segment %llu last medium log last segment %llu",
-		 recover_req->db_desc->db_name, (LLU)recover_req->db_desc->medium_log_head,
-		 (LLU)recover_req->db_desc->medium_log_tail);
+		 recover_req->db_desc->db_name, (long long unsigned)recover_req->db_desc->medium_log_head,
+		 (long long unsigned)recover_req->db_desc->medium_log_tail);
 
 	log_info("starting recovery for db %s first small log segment %llu last small log last segment %llu",
-		 recover_req->db_desc->db_name, (LLU)recover_req->db_desc->small_log_head,
-		 (LLU)recover_req->db_desc->small_log_tail);
+		 recover_req->db_desc->db_name, (long long unsigned)recover_req->db_desc->small_log_head,
+		 (long long unsigned)recover_req->db_desc->small_log_tail);
 
 	recover_req->db_desc->lsn = recover_req->db_desc->commit_log->lsn;
 	log_info("LSN is %llu", recover_req->db_desc->lsn);
@@ -48,14 +48,17 @@ void load_logs_torecover(recovery_request *recover_req, struct recovery_operator
 	replay->medium.segment_id = recover_req->medium_log_start_offset / BUFFER_SEGMENT_SIZE;
 	replay->small.segment_id = recover_req->small_log_start_offset / BUFFER_SEGMENT_SIZE;
 
-	log_info("Big log start offset %llu maps to segment id %llu", (LLU)recover_req->db_desc->big_log_head_offset,
-		 (LLU)replay->big.segment_id);
+	log_info("Big log start offset %llu maps to segment id %llu",
+		 (long long unsigned)recover_req->db_desc->big_log_head_offset,
+		 (long long unsigned)replay->big.segment_id);
 
-	log_info("Medium start offset %llu maps to segment id %llu", (LLU)recover_req->db_desc->medium_log_head_offset,
-		 (LLU)replay->medium.segment_id);
+	log_info("Medium start offset %llu maps to segment id %llu",
+		 (long long unsigned)recover_req->db_desc->medium_log_head_offset,
+		 (long long unsigned)replay->medium.segment_id);
 
-	log_info("Small start offset %llu maps to segment id %llu", (LLU)recover_req->db_desc->small_log_head_offset,
-		 (LLU)replay->small.segment_id);
+	log_info("Small start offset %llu maps to segment id %llu",
+		 (long long unsigned)recover_req->db_desc->small_log_head_offset,
+		 (long long unsigned)replay->small.segment_id);
 
 	replay->big.log_curr_segment = (segment_header *)REAL_ADDRESS(recover_req->db_desc->commit_log->big_log_tail);
 	replay->medium.log_curr_segment =
@@ -84,13 +87,14 @@ segment_header *find_replay_offset(segment_header *current_log_segment, uint64_t
 		if (previous_segment_id != current_log_segment->segment_id + 1) {
 			log_fatal(
 				"FATAL corrupted segments, segment ids are not sequential previous = %llu current = %llu",
-				(LLU)previous_segment_id, (LLU)current_log_segment->segment_id);
+				(long long unsigned)previous_segment_id,
+				(long long unsigned)current_log_segment->segment_id);
 			raise(SIGINT);
 			exit(EXIT_FAILURE);
 		}
 
 		if (current_log_segment->segment_id < segment_id) {
-			log_fatal("KV log corrupted segment id %llu not found", (LLU)segment_id);
+			log_fatal("KV log corrupted segment id %llu not found", (long long unsigned)segment_id);
 			exit(EXIT_FAILURE);
 		}
 	}
@@ -107,8 +111,9 @@ void set_replay_offset(struct recovery_operator *replay)
 		find_replay_offset(replay->medium.log_curr_segment, replay->medium.segment_id);
 	replay->small.log_curr_segment = find_replay_offset(replay->small.log_curr_segment, replay->small.segment_id);
 	log_info("starting segment of big log %llu medium log %llu small log %llu found starting recovery procedure",
-		 (LLU)replay->big.log_curr_segment->segment_id, (LLU)replay->medium.log_curr_segment->segment_id,
-		 (LLU)replay->small.log_curr_segment->segment_id);
+		 (long long unsigned)replay->big.log_curr_segment->segment_id,
+		 (long long unsigned)replay->medium.log_curr_segment->segment_id,
+		 (long long unsigned)replay->small.log_curr_segment->segment_id);
 }
 
 void ommit_log_segment_header(struct recovery_operator *replay)

@@ -2,7 +2,11 @@ include(cmake_utils/PreventInSouceBuilds.cmake.in)
 cmake_minimum_required(VERSION 3.11.0 FATAL_ERROR)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
-project(parallax VERSION 1.0)
+project(
+  parallax
+  VERSION 1.0
+  LANGUAGES C CXX)
+
 option(BUILD_SHARED_LIBS
        "Build shared libraries (.dll/.so) instead of static ones (.lib/.a)" OFF)
 
@@ -29,29 +33,35 @@ include(CPack)
 include(GNUInstallDirs)
 include(cmake_utils/mkfs.cmake.in)
 include(cmake_utils/ycsb.cmake.in)
+include(cmake_utils/tests.cmake.in)
 include(cmake_utils/cmakeconfig.cmake.in)
 configure_file(config.h.in config.h @ONLY)
 
 set(FETCHCONTENT_QUIET FALSE)
 FetchContent_Declare(
-  log # Recommendation: Stick close to the original name.
+  log
   GIT_REPOSITORY https://github.com/innerout/log.c.git
   GIT_PROGRESS TRUE)
 
 FetchContent_Declare(
-  libmba # Recommendation: Stick close to the original name.
+  libmba
   GIT_REPOSITORY https://github.com/innerout/libmba.git
+  GIT_PROGRESS TRUE)
+
+FetchContent_Declare(
+  yaml
+  GIT_REPOSITORY https://github.com/yaml/libyaml
+  GIT_PROGRESS TRUE)
+
+FetchContent_Declare(
+  uthash
+  GIT_REPOSITORY https://github.com/troydhanson/uthash
   GIT_PROGRESS TRUE)
 
 FetchContent_GetProperties(log)
 FetchContent_GetProperties(libmba)
-
-if(NOT libmba_POPULATED)
-  FetchContent_Populate(libmba)
-  add_subdirectory(${libmba_SOURCE_DIR} ${libmba_BINARY_DIR})
-  include_directories(${libmba_SOURCE_DIR}/include)
-  FetchContent_MakeAvailable(libmba)
-endif()
+FetchContent_GetProperties(yaml)
+FetchContent_GetProperties(uthash)
 
 if(NOT log_POPULATED)
   FetchContent_Populate(log)
@@ -60,15 +70,27 @@ if(NOT log_POPULATED)
   FetchContent_MakeAvailable(log)
 endif()
 
-set(DEPENDENCIES log libmba)
-# Compiler configuration
-if(NOT CMAKE_C_COMPILER)
-  set(CMAKE_C_COMPILER "gcc")
+if(NOT libmba_POPULATED)
+  FetchContent_Populate(libmba)
+  add_subdirectory(${libmba_SOURCE_DIR} ${libmba_BINARY_DIR})
+  FetchContent_MakeAvailable(libmba)
 endif()
 
-if(NOT CMAKE_CXX_COMPILER)
-  set(CMAKE_CXX_COMPILER "g++")
+if(NOT yaml_POPULATED)
+  FetchContent_Populate(yaml)
+  add_subdirectory(${yaml_SOURCE_DIR} ${yaml_BINARY_DIR})
+  FetchContent_MakeAvailable(yaml)
 endif()
+
+# Do not add uthash in the DEPENDENCIES variable. Uthash is a special case
+# because it is a header only library & does not support cmake.
+if(NOT uthash_POPULATED)
+  FetchContent_Populate(uthash)
+  include_directories(${uthash_SOURCE_DIR}/src)
+  FetchContent_MakeAvailable(uthash)
+endif()
+
+set(DEPENDENCIES log libmba yaml)
 
 include_directories(${CMAKE_BINARY_DIR})
 
@@ -92,7 +114,7 @@ set(CMAKE_EXE_LINKER_FLAGS
 )
 
 add_subdirectory(lib)
-# add_subdirectory(YCSB-CXX)
+add_subdirectory(YCSB-CXX)
 add_subdirectory(utilities)
 add_subdirectory(tests)
 

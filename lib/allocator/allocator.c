@@ -15,9 +15,11 @@
 #include <sys/ioctl.h>
 #include <unistd.h>
 #include <log.h>
+#include <uthash.h>
 #include "dmap-ioctl.h"
 #include "allocator.h"
 #include "../btree/btree.h"
+#include "../btree/set_options.h"
 #include "../btree/conf.h"
 #include "../btree/segment_allocator.h"
 #include "../utilities/list.h"
@@ -80,9 +82,11 @@ void mount_volume(char *volume_name, int64_t start)
 		madvise((void *)MAPPED, device_size, MADV_RANDOM);
 
 		if (MAPPED % sysconf(_SC_PAGE_SIZE) == 0)
-			log_info("address space aligned properly address space starts at %llu\n", (LLU)MAPPED);
+			log_info("address space aligned properly address space starts at %llu\n",
+				 (long long unsigned)MAPPED);
 		else {
-			log_fatal("FATAL error Mapped address not aligned correctly mapped: %llu", (LLU)MAPPED);
+			log_fatal("FATAL error Mapped address not aligned correctly mapped: %llu",
+				  (long long unsigned)MAPPED);
 			exit(EXIT_FAILURE);
 		}
 	}
@@ -257,7 +261,7 @@ int32_t volume_init(char *dev_name, int64_t start, int64_t size, int typeOfVolum
 	for (i = 0; i < bitmap_size_in_blocks; i++) {
 		if (lwrite(fd, offset, SEEK_SET, buffer, (size_t)DEVICE_BLOCK_SIZE) == -1) {
 			log_fatal("code = %d,  ERROR = %s\n", errno, strerror(errno));
-			printf("Writing at offset %llu\n", (LLU)offset);
+			printf("Writing at offset %llu\n", (long long unsigned)offset);
 			return -1;
 		}
 		offset += 4096;
@@ -267,7 +271,7 @@ int32_t volume_init(char *dev_name, int64_t start, int64_t size, int typeOfVolum
 	uint64_t pad =
 		(start + ((1 + FREE_LOG_SIZE + bitmap_size_in_blocks) * DEVICE_BLOCK_SIZE)) % BUFFER_SEGMENT_SIZE;
 	pad = BUFFER_SEGMENT_SIZE - pad;
-	log_info("need to pad %llu bytes for alignment purposes", (LLU)pad);
+	log_info("need to pad %llu bytes for alignment purposes", (long long unsigned)pad);
 	/*reserve the first BUFFER_SEGMENT_SIZE for the initial version of the superindex*/
 	int bitmap_bytes = ((BUFFER_SEGMENT_SIZE + pad) / DEVICE_BLOCK_SIZE) / sizeof(uint64_t);
 	int bitmap_bits = ((BUFFER_SEGMENT_SIZE + pad) / DEVICE_BLOCK_SIZE) % sizeof(uint64_t);
@@ -333,7 +337,7 @@ int32_t volume_init(char *dev_name, int64_t start, int64_t size, int typeOfVolum
 	}
 	free(zeroes);
 	offset += sizeof(segment_header);
-	log_info("Writing system catalogue at offset %llu\n", (LLU)offset);
+	log_info("Writing system catalogue at offset %llu\n", (long long unsigned)offset);
 	if (lwrite(fd, offset, SEEK_SET, &sys_catalogue, (size_t)(sizeof(pr_system_catalogue))) == -1) {
 		log_fatal("code = %d,  ERROR = %s\n", errno, strerror(errno));
 		return -1;
@@ -355,11 +359,11 @@ int32_t volume_init(char *dev_name, int64_t start, int64_t size, int typeOfVolum
 	fsync(fd);
 
 	printf("\n\n############ [%s:%s:%d] ####################\n", __FILE__, __func__, __LINE__);
-	printf("\tDevice size in blocks %llu\n", (LLU)dev_size_in_blocks);
-	printf("\tBitmap size in blocks %llu\n", (LLU)bitmap_size_in_blocks);
-	printf("\tData size in blocks %llu\n", (LLU)dev_addressed_in_blocks);
-	printf("\tLog size in blocks %llu\n", (LLU)FREE_LOG_SIZE);
-	printf("\tUnmapped blocks %llu\n", (LLU)unmapped_blocks);
+	printf("\tDevice size in blocks %llu\n", (long long unsigned)dev_size_in_blocks);
+	printf("\tBitmap size in blocks %llu\n", (long long unsigned)bitmap_size_in_blocks);
+	printf("\tData size in blocks %llu\n", (long long unsigned)dev_addressed_in_blocks);
+	printf("\tLog size in blocks %llu\n", (long long unsigned)FREE_LOG_SIZE);
+	printf("\tUnmapped blocks %llu\n", (long long unsigned)unmapped_blocks);
 	printf("################################\n\n");
 
 	return fd;
@@ -622,7 +626,7 @@ void *allocate(void *_volume_desc, uint64_t num_bytes)
 		{
 			if (wrap_around == MAX_ALLOCATION_TRIES) {
 				log_info("Device out of space allocation request size was %llu max_tries %d",
-					 (LLU)num_bytes, MAX_ALLOCATION_TRIES);
+					 (long long unsigned)num_bytes, MAX_ALLOCATION_TRIES);
 				//pthread_mutex_unlock(&(volume_desc->allocator_lock));
 				raise(SIGINT);
 				return NULL;
@@ -885,10 +889,10 @@ void allocator_init(volume_descriptor *volume_desc)
 	volume_desc->start_addr = (void *)(MAPPED + volume_desc->offset);
 
 	log_info("Succesfully initialized volume partition %s address space starts at %llu\n\n",
-		 volume_desc->volume_name, (LLU)volume_desc->start_addr);
+		 volume_desc->volume_name, (long long unsigned)volume_desc->start_addr);
 	volume_desc->volume_superblock = volume_desc->start_addr;
-	log_info("superblock is at %llu and catalogue is at %llu\n", (LLU)volume_desc->volume_superblock,
-		 (LLU)volume_desc->volume_superblock->system_catalogue);
+	log_info("superblock is at %llu and catalogue is at %llu\n", (long long unsigned)volume_desc->volume_superblock,
+		 (long long unsigned)volume_desc->volume_superblock->system_catalogue);
 
 	volume_desc->bitmap_start =
 		(void *)volume_desc->start_addr + DEVICE_BLOCK_SIZE + (FREE_LOG_SIZE * DEVICE_BLOCK_SIZE);
@@ -909,22 +913,28 @@ void allocator_init(volume_descriptor *volume_desc)
 	++volume_desc->mem_catalogue->epoch;
 	//#ifdef DEBUG_ALLOCATOR
 	printf("##########<Kreon: Volume state> ##############\n");
-	printf("\tBitmap size in 4KB blocks = %llu\n", (LLU)volume_desc->volume_superblock->bitmap_size_in_blocks);
-	printf("\tDevice size in 4KB blocks = %llu\n", (LLU)volume_desc->volume_superblock->dev_size_in_blocks);
-	printf("\tDevice addressed (blocks) = %llu\n", (LLU)volume_desc->volume_superblock->dev_addressed_in_blocks);
-	printf("\tUnmapped blocks = %llu\n", (LLU)volume_desc->volume_superblock->unmapped_blocks);
-	printf("\tHard Epoch = %llu Soft_epoch = %llu\n", (LLU)volume_desc->dev_catalogue->epoch,
-	       (LLU)volume_desc->mem_catalogue->epoch);
+	printf("\tBitmap size in 4KB blocks = %llu\n",
+	       (long long unsigned)volume_desc->volume_superblock->bitmap_size_in_blocks);
+	printf("\tDevice size in 4KB blocks = %llu\n",
+	       (long long unsigned)volume_desc->volume_superblock->dev_size_in_blocks);
+	printf("\tDevice addressed (blocks) = %llu\n",
+	       (long long unsigned)volume_desc->volume_superblock->dev_addressed_in_blocks);
+	printf("\tUnmapped blocks = %llu\n", (long long unsigned)volume_desc->volume_superblock->unmapped_blocks);
+	printf("\tHard Epoch = %llu Soft_epoch = %llu\n", (long long unsigned)volume_desc->dev_catalogue->epoch,
+	       (long long unsigned)volume_desc->mem_catalogue->epoch);
 	printf("\tLast segment = %llu first segment %llu position %llu\n",
-	       (LLU)volume_desc->dev_catalogue->first_system_segment,
-	       (LLU)volume_desc->dev_catalogue->last_system_segment, (LLU)volume_desc->dev_catalogue->offset);
-	printf("\tFree Log position = %llu\n", (LLU)volume_desc->mem_catalogue->free_log_position);
-	printf("\tFree log last free position = %llu\n", (LLU)volume_desc->mem_catalogue->free_log_last_free);
+	       (long long unsigned)volume_desc->dev_catalogue->first_system_segment,
+	       (long long unsigned)volume_desc->dev_catalogue->last_system_segment,
+	       (long long unsigned)volume_desc->dev_catalogue->offset);
+	printf("\tFree Log position = %llu\n", (long long unsigned)volume_desc->mem_catalogue->free_log_position);
+	printf("\tFree log last free position = %llu\n",
+	       (long long unsigned)volume_desc->mem_catalogue->free_log_last_free);
 
 	printf("\tSystem catalogue is at address %llu full %llu\n",
-	       (LLU)volume_desc->volume_superblock->system_catalogue,
-	       (LLU)MAPPED + (uint64_t)volume_desc->volume_superblock->system_catalogue);
-	printf("\tBitmap starts: %llu,ends: %llu\n", (LLU)volume_desc->bitmap_start, (LLU)volume_desc->bitmap_end);
+	       (long long unsigned)volume_desc->volume_superblock->system_catalogue,
+	       (long long unsigned)MAPPED + (uint64_t)volume_desc->volume_superblock->system_catalogue);
+	printf("\tBitmap starts: %llu,ends: %llu\n", (long long unsigned)volume_desc->bitmap_start,
+	       (long long unsigned)volume_desc->bitmap_end);
 	printf("######### </Volume state> ###################\n");
 
 	//#endif
@@ -974,8 +984,9 @@ void allocator_init(volume_descriptor *volume_desc)
 		int32_t winner = 0;
 		if (epoch_l > volume_desc->dev_catalogue->epoch && epoch_r > volume_desc->dev_catalogue->epoch) {
 			log_fatal("Corruption detected both bitmap pairs epoch larger than superblock epoch\n");
-			log_fatal("epoch left is %llu epoch right is %llu dev superindex %llu\n", (LLU)epoch_l,
-				  (LLU)epoch_r, (LLU)volume_desc->dev_catalogue->epoch);
+			log_fatal("epoch left is %llu epoch right is %llu dev superindex %llu\n",
+				  (long long unsigned)epoch_l, (long long unsigned)epoch_r,
+				  (long long unsigned)volume_desc->dev_catalogue->epoch);
 			exit(EXIT_FAILURE);
 		}
 		/*to be eligible for winner left has to be smaller or equal to persistent epoch*/
@@ -1049,8 +1060,9 @@ void allocator_init(volume_descriptor *volume_desc)
 	//void * tmp = (superindex *) allocate(volume_desc, SUPERINDEX_SIZE, -1, NEW_SUPERINDEX);
 
 	void *tmp = get_space_for_system(volume_desc, sizeof(pr_system_catalogue));
-	log_info("segment is at %llu tmp is %llu MAPPED %llu", (LLU)volume_desc->mem_catalogue->first_system_segment,
-		 (LLU)tmp, (LLU)MAPPED);
+	log_info("segment is at %llu tmp is %llu MAPPED %llu",
+		 (long long unsigned)volume_desc->mem_catalogue->first_system_segment, (long long unsigned)tmp,
+		 (long long unsigned)MAPPED);
 	memcpy(tmp, (volume_desc->mem_catalogue), sizeof(pr_system_catalogue));
 	free(volume_desc->mem_catalogue);
 	volume_desc->mem_catalogue = (pr_system_catalogue *)tmp;
@@ -1164,18 +1176,35 @@ void clean_log_entries(void *v_desc)
 	void *normalized_addr;
 	void *block_addr;
 	uint64_t epoch;
-	uint32_t length;
-	int32_t i;
-	int32_t rc;
+	uint64_t clean_interval;
+	uint64_t snapshot_interval;
+	uint64_t commit_kvlog_interval;
 	struct timespec ts;
 	volume_descriptor *volume_desc = (volume_descriptor *)v_desc;
-
+	struct option *option;
 	/*Are we operating with filter block device or not?...Let's discover with an ioctl*/
-	int fake_blk = 0;
 	struct fake_blk_pages_num cbits;
 	uint64_t bit_idx;
+	uint32_t i;
+	int32_t rc;
+	int fake_blk = 0;
+	uint32_t length;
+
 	/*single thread, per volume so we don't need locking*/
 	int ret = ioctl(FD, FAKE_BLK_IOC_TEST_CAP);
+
+	HASH_FIND_STR(dboptions, "clean_interval", option);
+	check_option("clean_interval", option);
+	clean_interval = option->value.count * SEC;
+
+	HASH_FIND_STR(dboptions, "snapshot_interval", option);
+	check_option("snapshot_interval", option);
+	snapshot_interval = option->value.count * SEC;
+
+	HASH_FIND_STR(dboptions, "commit_kvlog_interval", option);
+	check_option("commit_kvlog_interval", option);
+	commit_kvlog_interval = option->value.count * SEC;
+
 	if (ret == 0) /*success*/
 		fake_blk = 1;
 
@@ -1185,8 +1214,8 @@ void clean_log_entries(void *v_desc)
 			perror("FATAL: clock_gettime failed)\n");
 			exit(-1);
 		}
-		ts.tv_sec += (CLEAN_INTERVAL / 1000000L);
-		ts.tv_nsec += (CLEAN_INTERVAL % 1000000L) * 1000L;
+		ts.tv_sec += (clean_interval / 1000000L);
+		ts.tv_nsec += (clean_interval % 1000000L) * 1000L;
 
 		rc = MUTEX_LOCK(&volume_desc->mutex); //pthread_mutex_lock(&(volume_desc->mutex));
 		rc = pthread_cond_timedwait(&(volume_desc->cond), &(volume_desc->mutex), &ts);
@@ -1209,8 +1238,14 @@ void clean_log_entries(void *v_desc)
 		MUTEX_LOCK(&volume_desc->allocator_lock);
 		//pthread_mutex_lock(&(volume_desc->allocator_lock));	/*lock allocator metadata*/
 		cbits.num = 0;
+		uint32_t clean_size;
+		struct option *option;
 
-		for (i = 0; i < CLEAN_SIZE; i++) {
+		HASH_FIND_STR(dboptions, "clean_size", option);
+		check_option("clean_size", option);
+		clean_size = option->value.count;
+
+		for (i = 0; i < clean_size; i++) {
 			if (volume_desc->mem_catalogue->free_log_last_free % 4096 == 4080) /*go to next block*/
 				volume_desc->mem_catalogue->free_log_last_free += 16;
 
@@ -1285,9 +1320,9 @@ void clean_log_entries(void *v_desc)
 		/* pthread_mutex_unlock(&(volume_desc->mutex));/\*unlock, to go to sleep*\/ */
 		/*snapshot check*/
 		uint64_t ts = get_timestamp();
-		if ((ts - volume_desc->last_snapshot) >= SNAPSHOT_INTERVAL)
+		if ((ts - volume_desc->last_snapshot) >= snapshot_interval)
 			snapshot(volume_desc);
-		else if (ts - volume_desc->last_commit > COMMIT_KV_LOG_INTERVAL)
+		else if (ts - volume_desc->last_commit > commit_kvlog_interval)
 			commit_db_logs_per_volume(volume_desc);
 	}
 }
