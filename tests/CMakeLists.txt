@@ -14,8 +14,8 @@ target_link_libraries(test_dirty_scans "${PROJECT_NAME}" ${DEPENDENCIES})
 add_executable(test_spillscans test_spillscanner.c)
 target_link_libraries(test_spillscans "${PROJECT_NAME}" ${DEPENDENCIES})
 
-add_executable(test_deletes test_deletes.c)
-target_link_libraries(test_deletes "${PROJECT_NAME}" ${DEPENDENCIES})
+# add_executable(test_deletes test_deletes.c) target_link_libraries(test_deletes
+# "${PROJECT_NAME}" ${DEPENDENCIES})
 
 add_executable(test_recovery test_recovery.c)
 target_link_libraries(test_recovery "${PROJECT_NAME}" ${DEPENDENCIES})

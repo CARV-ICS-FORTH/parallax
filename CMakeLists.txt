@@ -94,20 +94,15 @@ set(DEPENDENCIES log libmba yaml)
 
 include_directories(${CMAKE_BINARY_DIR})
 
-set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -std=gnu11 -Wall -Werror")
+set(CMAKE_C_FLAGS
+    "-std=gnu11 -Wstrict-prototypes -Wall -Wextra -fPIC  -Wunused -Wuninitialized -Wshadow -Wnull-dereference -Werror ${CMAKE_C_FLAGS}"
+)
+set(CMAKE_C_FLAGS_DEBUG "-ggdb3 -Og ${CMAKE_C_FLAGS_DEBUG}")
+set(CMAKE_C_FLAGS_RELEASE
+    "${CMAKE_C_FLAGS_RELEASE} -flto -funit-at-a-time -fprefetch-loop-arrays -fpeel-loops -O2 -finline-functions -DNDEBUG"
+)
 set(CMAKE_CXX_FLAGS_RELEASE
     "${CMAKE_CXX_FLAGS_RELEASE} -std=gnu++11 -Wall -Werror")
-
-if("${CMAKE_BUILD_TYPE}" STREQUAL "Debug")
-  set(CMAKE_C_FLAGS "-Wstrict-prototypes -Wall -Wextra -fPIC ${CMAKE_C_FLAGS}")
-  set(CMAKE_C_FLAGS_DEBUG "-ggdb3 -Og ${CMAKE_C_FLAGS_DEBUG}")
-endif()
-
-if("${CMAKE_BUILD_TYPE}" STREQUAL "Release")
-  set(CMAKE_C_FLAGS_RELEASE
-      "-flto -funit-at-a-time -fprefetch-loop-arrays -fpeel-loops -O2 -finline-functions -DNDEBUG ${CMAKE_C_FLAGS_RELEASE}"
-  )
-endif()
 
 set(CMAKE_EXE_LINKER_FLAGS
     "${CMAKE_EXE_LINKER_FLAGS} -Wl,--no-as-needed -lrt -lm -pthread -lnuma -lutil"

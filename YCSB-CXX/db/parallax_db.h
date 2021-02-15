@@ -37,7 +37,6 @@ extern unsigned priv_thread_count;
 extern "C" {
 #include <allocator/allocator.h>
 #include <btree/btree.h>
-#include <btree/delete.h>
 #include <scanner/scanner.h>
 }
 
@@ -352,7 +351,7 @@ class EutropiaDB : public YCSBDB {
 		int8_t ret;
 		uint32_t db_id = hash_fn(key) % db_num;
 
-		ret = delete_key(dbs[db_id], (void *)key.c_str(), key.size());
+		// ret = delete_key(dbs[db_id], (void *)key.c_str(), key.size());
 		if (ret != 0) {
 			std::cerr << "I could not delete " << key << std::endl;
 			return 0;

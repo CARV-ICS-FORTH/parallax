@@ -7,11 +7,9 @@ set(LIB_C_SOURCE_FILES
     allocator/recovery.c
     btree/btree.c
     btree/compaction_daemon.c
-    btree/delete.c
     btree/dynamic_leaf.c
     btree/gc.c
     btree/segment_allocator.c
-    btree/static_leaf.c
     btree/set_options.c
     scanner/min_max_heap.c
     scanner/scanner.c
@@ -33,9 +31,6 @@ target_link_libraries(${LIB} PRIVATE ${DEPENDENCIES})
 
 set_source_files_properties(allocator/spin_loop.c PROPERTIES COMPILE_FLAGS
                                                              "-O0")
-
-set_source_files_properties(btree/delete.c PROPERTIES COMPILE_FLAGS "-w")
-
 # mkfs to initialize volumes
 add_executable(
   mkfs.${LIB}

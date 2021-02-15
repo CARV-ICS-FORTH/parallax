@@ -310,7 +310,7 @@ struct compaction_pairs {
 	int16_t dst_level;
 };
 
-enum bt_layout { STATIC_LEAF, DYNAMIC_LEAF };
+enum bt_layout { DYNAMIC_LEAF };
 
 typedef struct level_descriptor {
 	pthread_t compaction_thread[NUM_TREES_PER_LEVEL];

@@ -101,10 +101,10 @@ void scankeys_with_spill_scanner(db_handle *hd)
 		memcpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
 		sprintf(k->key_buf + strlen(KEY_PREFIX), "%llu", (long long unsigned)i);
 		k->key_size = strlen(k->key_buf) + 1;
-		char *key = (char *)(*(uint64_t *)(level_sc->keyValue + PREFIX_SIZE));
-		if (memcmp(k->key_buf, key + 4, k->key_size) != 0) {
+		char *scan_key = (char *)(*(uint64_t *)(level_sc->keyValue + PREFIX_SIZE));
+		if (memcmp(k->key_buf, scan_key + 4, k->key_size) != 0) {
 			log_fatal("Test failed after %d keys expected key %s got %lu:%s prefix is %s", j, k->key_buf,
-				  *(uint32_t *)key, key + 4, level_sc->keyValue);
+				  *(uint32_t *)scan_key, scan_key + 4, level_sc->keyValue);
 			exit(EXIT_FAILURE);
 		}
 		//else
