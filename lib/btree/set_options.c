@@ -108,7 +108,6 @@ int parse_options(void)
 		log_info("Option: %s : %llu", current_option->name, current_option->value.count);
 	}
 
-	exit(EXIT_FAILURE);
 	return 0;
 }
 

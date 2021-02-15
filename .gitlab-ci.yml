@@ -36,6 +36,15 @@ test_surrogates:
     - ./SurrogateTUsTest
 
 
+test_options:
+  image: carvicsforth/ubuntu_carv:latest
+  stage: test
+  script:
+    - mkdir -p build;cd build
+    - cmake ..
+    - make test_options;cd tests;
+    - ./test_options
+
 install_lib:
   image: carvicsforth/ubuntu_carv:latest
   stage: deploy

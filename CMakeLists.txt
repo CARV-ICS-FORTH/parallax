@@ -33,6 +33,7 @@ include(CPack)
 include(GNUInstallDirs)
 include(cmake_utils/mkfs.cmake.in)
 include(cmake_utils/ycsb.cmake.in)
+include(cmake_utils/tests.cmake.in)
 include(cmake_utils/cmakeconfig.cmake.in)
 configure_file(config.h.in config.h @ONLY)
 

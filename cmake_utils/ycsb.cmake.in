@@ -15,3 +15,6 @@ file(COPY ${CMAKE_SOURCE_DIR}/scripts/ycsb/start_statistics.sh
 
 file(COPY ${CMAKE_SOURCE_DIR}/scripts/ycsb/stop_statistics.sh
      DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/YCSB-CXX/)
+
+file(COPY ${CMAKE_SOURCE_DIR}/options.yml
+     DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/YCSB-CXX/)
