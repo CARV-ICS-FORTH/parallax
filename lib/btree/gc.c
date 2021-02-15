@@ -57,7 +57,7 @@ void move_kv_pairs_to_new_segment(volume_descriptor *volume_desc, db_descriptor 
 	}
 }
 
-int8_t find_deleted_kv_pairs_in_segment(volume_descriptor *volume_desc, db_descriptor *db_desc, char *log_segment,
+int8_t find_deleted_kv_pairs_in_segment(volume_descriptor *volume_desc, db_descriptor *db_desc, char *log_seg,
 					stack *marks)
 {
 	struct db_handle handle = { .volume_desc = volume_desc, .db_desc = db_desc };
@@ -65,22 +65,22 @@ int8_t find_deleted_kv_pairs_in_segment(volume_descriptor *volume_desc, db_descr
 	struct splice *value;
 	void *value_as_pointer;
 	void *find_value;
-	char *start_of_log_segment = log_segment;
+	char *start_of_log_segment = log_seg;
 	uint64_t size_of_log_segment_checked = 8;
 	uint64_t log_data_without_metadata = LOG_DATA_OFFSET;
 	uint64_t remaining_space;
 	int key_value_size;
 	int garbage_collect_segment = 0;
-	log_segment += 8;
-	key = (struct splice *)log_segment;
+	log_seg += 8;
+	key = (struct splice *)log_seg;
 	key_value_size = sizeof(key->size) * 2;
 	marks->size = 0;
-	remaining_space = LOG_DATA_OFFSET - (uint64_t)(log_segment - start_of_log_segment);
+	remaining_space = LOG_DATA_OFFSET - (uint64_t)(log_seg - start_of_log_segment);
 
 	while (size_of_log_segment_checked < log_data_without_metadata && remaining_space >= 18) {
-		key = (struct splice *)log_segment;
-		value = (struct splice *)(VALUE_SIZE_OFFSET(key->size, log_segment));
-		value_as_pointer = (VALUE_SIZE_OFFSET(key->size, log_segment));
+		key = (struct splice *)log_seg;
+		value = (struct splice *)(VALUE_SIZE_OFFSET(key->size, log_seg));
+		value_as_pointer = (VALUE_SIZE_OFFSET(key->size, log_seg));
 		if (!key->size)
 			break;
 
@@ -94,13 +94,13 @@ int8_t find_deleted_kv_pairs_in_segment(volume_descriptor *volume_desc, db_descr
 		if (remaining_space >= 18 && (find_value == NULL || value_as_pointer != find_value)) {
 			garbage_collect_segment = 1;
 		} else if (remaining_space >= 18 && (find_value != NULL && value_as_pointer == find_value)) {
-			push_stack(marks, log_segment);
+			push_stack(marks, log_seg);
 		}
 
 		if (key->size != 0 && remaining_space >= 18) {
-			log_segment += key->size + value->size + key_value_size + 8;
+			log_seg += key->size + value->size + key_value_size + 8;
 			size_of_log_segment_checked += key->size + value->size + key_value_size + 8;
-			remaining_space = LOG_DATA_OFFSET - (uint64_t)(log_segment - start_of_log_segment);
+			remaining_space = LOG_DATA_OFFSET - (uint64_t)(log_seg - start_of_log_segment);
 		} else
 			break;
 	}
@@ -182,15 +182,15 @@ void iterate_log_segments(db_descriptor *db_desc, volume_descriptor *volume_desc
 	assert(0);
 }
 
-void *gc_log_entries(void *db_handle)
+void *gc_log_entries(void *handle)
 {
 	struct timespec ts;
 	uint64_t gc_interval;
 	stack *marks;
 	struct option *option;
-	struct db_handle *handle = (struct db_handle *)db_handle;
-	db_descriptor *db_desc = handle->db_desc;
-	volume_descriptor *volume_desc = handle->volume_desc;
+	struct db_handle *han = (struct db_handle *)handle;
+	db_descriptor *db_desc = han->db_desc;
+	volume_descriptor *volume_desc = han->volume_desc;
 	NODE *region;
 	/* int rc; */
 

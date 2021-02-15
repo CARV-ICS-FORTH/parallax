@@ -1179,7 +1179,7 @@ void clean_log_entries(void *v_desc)
 	uint64_t clean_interval;
 	uint64_t snapshot_interval;
 	uint64_t commit_kvlog_interval;
-	struct timespec ts;
+	uint64_t ts;
 	volume_descriptor *volume_desc = (volume_descriptor *)v_desc;
 	struct option *option;
 	/*Are we operating with filter block device or not?...Let's discover with an ioctl*/
@@ -1210,15 +1210,15 @@ void clean_log_entries(void *v_desc)
 
 	log_info("Starting cleaner for volume id: %s", (char *)volume_desc->volume_id);
 	while (1) {
-		if (clock_gettime(CLOCK_REALTIME, &ts) == -1) {
+		if (clock_gettime(CLOCK_REALTIME, (struct timespec *)&ts) == -1) {
 			perror("FATAL: clock_gettime failed)\n");
 			exit(-1);
 		}
-		ts.tv_sec += (clean_interval / 1000000L);
-		ts.tv_nsec += (clean_interval % 1000000L) * 1000L;
+		((struct timespec *)&ts)->tv_sec += (clean_interval / 1000000L);
+		((struct timespec *)&ts)->tv_nsec += (clean_interval % 1000000L) * 1000L;
 
 		rc = MUTEX_LOCK(&volume_desc->mutex); //pthread_mutex_lock(&(volume_desc->mutex));
-		rc = pthread_cond_timedwait(&(volume_desc->cond), &(volume_desc->mutex), &ts);
+		rc = pthread_cond_timedwait(&(volume_desc->cond), &(volume_desc->mutex), (struct timespec *)&ts);
 
 		if (rc == 0) { /*cleaner singaled due to space pressure*/
 
@@ -1239,7 +1239,6 @@ void clean_log_entries(void *v_desc)
 		//pthread_mutex_lock(&(volume_desc->allocator_lock));	/*lock allocator metadata*/
 		cbits.num = 0;
 		uint32_t clean_size;
-		struct option *option;
 
 		HASH_FIND_STR(dboptions, "clean_size", option);
 		check_option("clean_size", option);
@@ -1319,7 +1318,7 @@ void clean_log_entries(void *v_desc)
 		/* pthread_mutex_unlock(&(volume_desc->allocator_lock));	/\*release allocator lock*\/ */
 		/* pthread_mutex_unlock(&(volume_desc->mutex));/\*unlock, to go to sleep*\/ */
 		/*snapshot check*/
-		uint64_t ts = get_timestamp();
+		ts = get_timestamp();
 		if ((ts - volume_desc->last_snapshot) >= snapshot_interval)
 			snapshot(volume_desc);
 		else if (ts - volume_desc->last_commit > commit_kvlog_interval)

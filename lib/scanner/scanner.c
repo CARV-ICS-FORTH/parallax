@@ -7,7 +7,6 @@
 #include "../allocator/allocator.h"
 #include "../btree/btree.h"
 #include "../btree/conf.h"
-#include "../btree/static_leaf.h"
 #include "../btree/dynamic_leaf.h"
 
 extern int32_t index_order;
@@ -404,7 +403,7 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 		if (s_key_size >= PREFIX_SIZE)
 			memcpy(key_buf_prefix, (void *)((uint64_t)start_key_buf + sizeof(int32_t)), PREFIX_SIZE);
 		else {
-			uint32_t s_key_size = *(uint32_t *)start_key_buf;
+			s_key_size = *(uint32_t *)start_key_buf;
 			memcpy(key_buf_prefix, (void *)((uint64_t)start_key_buf + sizeof(int32_t)), s_key_size);
 			memset(key_buf_prefix + s_key_size, 0x00, PREFIX_SIZE - s_key_size);
 		}
@@ -413,15 +412,6 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 	/*now perform binary search inside the leaf*/
 	middle = 0;
 	switch (db_desc->levels[level_id].node_layout) {
-	case STATIC_LEAF:;
-		struct sl_bsearch_result slresult = { .middle = 0, .status = INSERT, .op = STATIC_LEAF_FIND };
-		{
-			binary_search_static_leaf((struct bt_static_leaf_node *)node, &db_desc->levels[level_id],
-						  (struct splice *)key_buf_prefix, &slresult);
-			middle = slresult.middle;
-			assert(slresult.status != ERROR);
-			break;
-		}
 	case DYNAMIC_LEAF:;
 		struct dl_bsearch_result dlresult = { .middle = 0, .status = INSERT, .op = DYNAMIC_LEAF_FIND };
 		{
@@ -471,27 +461,7 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 
 	if (level_sc->type == SPILL_BUFFER_SCANNER) {
 		level_key_format = KV_FORMAT;
-		// log_info("stack_top %llu node %llu leaf_order %llu and
-		// sizeof(node_header) %d", (LLU)addr, (LLU)node,
-		//	 leaf_order, sizeof(node_header));
-		/*we assume that sc->keyValue has size of PREFIX_SIZE + sizeof(uint64_t)*/
-		/*prefix first*/
-		//memcpy(level_sc->keyValue, &lnode->prefix[middle][0], PREFIX_SIZE);
-		/*pointer second*/
-		//*(uint64_t *)(level_sc->keyValue + PREFIX_SIZE) = MAPPED + lnode->pointer[middle];
 		switch (db_desc->levels[level_id].node_layout) {
-		case STATIC_LEAF: {
-			struct bt_static_leaf_node *slnode = (struct bt_static_leaf_node *)node;
-			struct bt_static_leaf_structs src;
-			/* struct bt_leaf_entry *leaf_entry = level_sc->keyValue; */
-			retrieve_static_leaf_structures(slnode, &src, &db_desc->levels[level_id]);
-			level_sc->keyValue = REAL_ADDRESS(src.kv_entries[src.slot_array[middle].index].pointer);
-			//log_info("Offset %llu", src.kv_entries[src.slot_array[middle].index].pointer);
-			/* *leaf_entry = src.kv_entries[src.slot_array[middle].index]; */
-			/* leaf_entry->pointer = (uint64_t)REAL_ADDRESS(leaf_entry->pointer); */
-			/* log_info("GONE BACK %d", *(uint32_t *)level_sc->keyValue); */
-			break;
-		}
 		case DYNAMIC_LEAF: {
 			struct bt_dynamic_leaf_node *dlnode = (struct bt_dynamic_leaf_node *)node;
 			struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(dlnode);
@@ -534,18 +504,6 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 		// log_info("key is %s\n", (MAPPED + *(uint64_t *)addr) + sizeof(int32_t));
 	} else { /*normal scanner*/
 		switch (db_desc->levels[level_id].node_layout) {
-		case STATIC_LEAF: {
-			struct bt_static_leaf_node *slnode = (struct bt_static_leaf_node *)node;
-			struct bt_static_leaf_structs src;
-			/* struct bt_leaf_entry *leaf_entry = level_sc->keyValue; */
-			retrieve_static_leaf_structures(slnode, &src, &db_desc->levels[level_id]);
-			level_sc->keyValue = REAL_ADDRESS(src.kv_entries[src.slot_array[middle].index].pointer);
-			//log_info("Offset %llu", src.kv_entries[src.slot_array[middle].index].pointer);
-			/* *leaf_entry = src.kv_entries[src.slot_array[middle].index]; */
-			/* leaf_entry->pointer = (uint64_t)REAL_ADDRESS(leaf_entry->pointer); */
-			/* log_info("GONE BACK %d", *(uint32_t *)level_sc->keyValue); */
-			break;
-		}
 		case DYNAMIC_LEAF: {
 			struct bt_dynamic_leaf_node *dlnode = (struct bt_dynamic_leaf_node *)node;
 			struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(dlnode);
@@ -817,20 +775,6 @@ int32_t _get_next_KV(level_scanner *sc)
 		/*pointer second*/
 		//*(uint64_t *)(sc->keyValue + PREFIX_SIZE) = MAPPED + lnode->pointer[idx];
 		switch (db_desc->levels[level_id].node_layout) {
-		case STATIC_LEAF:;
-			struct bt_static_leaf_node *slnode = (struct bt_static_leaf_node *)node;
-			struct bt_static_leaf_structs src;
-			//struct bt_leaf_entry *leaf_entry = sc->keyValue;
-			retrieve_static_leaf_structures(slnode, &src, &db_desc->levels[level_id]);
-			/* log_info("GONE HERE %d", idx); */
-			//*leaf_entry = src.kv_entries[src.slot_array[idx].index];
-			sc->keyValue = REAL_ADDRESS(src.kv_entries[src.slot_array[idx].index].pointer);
-			/* log_info("address %llu %s", src.kv_entries[src.slot_array[idx].index].pointer, */
-			/* 	 (MAPPED + src.kv_entries[src.slot_array[idx].index].pointer) + 4); */
-			/* leaf_entry->pointer = (uint64_t)REAL_ADDRESS(leaf_entry->pointer); */
-			/* log_info("GONE HERE1 %d ", *(uint32_t *)sc->keyValue); */
-			break;
-
 		case DYNAMIC_LEAF:;
 			struct bt_dynamic_leaf_node *dlnode = (struct bt_dynamic_leaf_node *)node;
 			struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(dlnode);
@@ -878,19 +822,6 @@ int32_t _get_next_KV(level_scanner *sc)
 	} else {
 		// normal scanner
 		switch (db_desc->levels[level_id].node_layout) {
-		case STATIC_LEAF:;
-			struct bt_static_leaf_node *slnode = (struct bt_static_leaf_node *)node;
-			struct bt_static_leaf_structs src;
-			//struct bt_leaf_entry *leaf_entry = sc->keyValue;
-			retrieve_static_leaf_structures(slnode, &src, &db_desc->levels[level_id]);
-			/* log_info("GONE HERE %d", idx); */
-			//*leaf_entry = src.kv_entries[src.slot_array[idx].index];
-			sc->keyValue = REAL_ADDRESS(src.kv_entries[src.slot_array[idx].index].pointer);
-			/* log_info("address %llu %s", src.kv_entries[src.slot_array[idx].index].pointer, */
-			/* 	 (MAPPED + src.kv_entries[src.slot_array[idx].index].pointer) + 4); */
-			/* leaf_entry->pointer = (uint64_t)REAL_ADDRESS(leaf_entry->pointer); */
-			/* log_info("GONE HERE1 %d ", *(uint32_t *)sc->keyValue); */
-			break;
 		case DYNAMIC_LEAF:;
 			struct bt_dynamic_leaf_node *dlnode = (struct bt_dynamic_leaf_node *)node;
 			struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(dlnode);

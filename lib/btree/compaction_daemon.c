@@ -134,7 +134,7 @@ void *compaction_daemon(void *args)
 
 		// rest of levels
 		for (int level_id = 1; level_id < MAX_LEVELS - 1; ++level_id) {
-			struct level_descriptor *level_1 = &handle->db_desc->levels[level_id];
+			level_1 = &handle->db_desc->levels[level_id];
 			struct level_descriptor *level_2 = &handle->db_desc->levels[level_id + 1];
 			uint8_t tree_1 = 0; // level_1->active_tree;
 			uint8_t tree_2 = 0; // level_2->active_tree;

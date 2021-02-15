@@ -3,9 +3,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-LIST *init_list(void (*destroy_node)(NODE *node))
+LIST *init_list(void)
 {
-	(void)destroy_node;
 	LIST *list = (LIST *)malloc(sizeof(LIST));
 	list->size = 0;
 	list->first = NULL;
