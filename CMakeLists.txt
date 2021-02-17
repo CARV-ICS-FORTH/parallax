@@ -95,7 +95,7 @@ set(DEPENDENCIES log libmba yaml)
 include_directories(${CMAKE_BINARY_DIR})
 
 set(CMAKE_C_FLAGS
-    "-std=gnu11 -Wstrict-prototypes -Wall -Wextra -fPIC  -Wunused -Wuninitialized -Wshadow -Wnull-dereference -Werror ${CMAKE_C_FLAGS}"
+    "-std=gnu11 -Wstrict-prototypes -Wall -Wextra -fPIC -fno-omit-frame-pointer -Wunused -Wuninitialized -Wshadow -Wnull-dereference -Werror ${CMAKE_C_FLAGS}"
 )
 set(CMAKE_C_FLAGS_DEBUG "-ggdb3 -Og ${CMAKE_C_FLAGS_DEBUG}")
 set(CMAKE_C_FLAGS_RELEASE
