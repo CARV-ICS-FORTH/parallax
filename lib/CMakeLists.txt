@@ -34,7 +34,7 @@ set_source_files_properties(allocator/spin_loop.c PROPERTIES COMPILE_FLAGS
 # mkfs to initialize volumes
 add_executable(
   mkfs.${LIB}
-  allocator/mkfs_Eutropia.c
+  allocator/mkfs_parallax.c
   allocator/allocator.c
   allocator/persistent_operations.c
   btree/segment_allocator.c

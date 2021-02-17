@@ -34,6 +34,7 @@
 __thread int x = 0;
 //#include "core/properties.h"
 extern unsigned priv_thread_count;
+extern std::string path;
 extern "C" {
 #include <allocator/allocator.h>
 #include <btree/btree.h>
@@ -45,20 +46,20 @@ using std::endl;
 
 namespace ycsbc
 {
-class EutropiaDB : public YCSBDB {
+class ParallaxDB : public YCSBDB {
     private:
 	int db_num;
 	int field_count;
 	std::vector<db_handle *> dbs;
 
     public:
-	EutropiaDB(int num, utils::Properties &props)
+	ParallaxDB(int num, utils::Properties &props)
 		: db_num(num)
 		, field_count(std::stoi(
 			  props.GetProperty(CoreWorkload::FIELD_COUNT_PROPERTY, CoreWorkload::FIELD_COUNT_DEFAULT)))
 		, dbs()
 	{
-		const char *pathname = "/dev/dmap/dmap1";
+		const char *pathname = path.c_str();
 		//const char *pathname = "/usr/local/gesalous/mounts/kreon.dat";
 		int64_t size;
 
@@ -90,7 +91,7 @@ class EutropiaDB : public YCSBDB {
 		}
 	}
 
-	virtual ~EutropiaDB()
+	virtual ~ParallaxDB()
 	{
 	}
 

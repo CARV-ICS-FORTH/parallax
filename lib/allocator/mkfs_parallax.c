@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <log.h>
 #include "allocator.h"
 #include "../btree/conf.h"
 
@@ -21,7 +22,7 @@ int main(int argc, char *argv[])
 	int32_t fd;
 
 	if (argc != 4) {
-		printf("mkfs_Eutropia <Volume name> <offset in bytes> <size in bytes>\n");
+		log_info("mkfs_parallax <Volume name> <offset in bytes> <size in bytes>");
 		exit(-1);
 	}
 
