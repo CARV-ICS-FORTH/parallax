@@ -41,6 +41,7 @@ std::string outf("ops.txt");
 std::string explan_filename("execution_plan.txt");
 std::string results_directory("RESULTS");
 std::string path("/tmp/test");
+std::string custom_workload("sd");
 
 void UsageMessage(const char *command);
 bool StrStartWith(const char *str, const char *pre);
@@ -394,6 +395,15 @@ void ParseCommandLine(int argc, const char *argv[], utils::Properties &props)
 
 			path = std::string(argv[argindex]);
 			argindex++;
+		} else if (strcmp(argv[argindex], "-wl") == 0) {
+			argindex++;
+			if (argindex >= argc) {
+				UsageMessage(argv[0]);
+				exit(-1);
+			}
+
+			custom_workload = std::string(argv[argindex]);
+			argindex++;
 		} else if (strcmp(argv[argindex], "-o") == 0) {
 			argindex++;
 			if (argindex >= argc) {
@@ -448,6 +458,8 @@ void UsageMessage(const char *command)
 	cout << "  -e file          Define the execution plan file (default: execution_plan.txt). For sample format check ep_proposed.txt."
 	     << endl;
 	cout << "  -p /path/to/     Define the file or device the key-value store will write." << endl;
+	cout << "  -wl workload     Define the workload you want to run (default: sd). Options (s,m,l,sd,md,ld)"
+	     << endl;
 	cout << "  -o file          Define the result directory name (default ./RESULTS)." << endl;
 	cout << "  -insertStart     Set counter start value for key generation during load." << endl;
 	cout << "  -clientProcesses Set to the number of client processes (default = 1)." << endl;

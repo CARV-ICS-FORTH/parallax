@@ -29,12 +29,13 @@
 #include <fcntl.h>
 #include <linux/fs.h>
 #include <signal.h>
-
 #include <boost/algorithm/string.hpp>
+#include "workload_gen.h"
 __thread int x = 0;
 //#include "core/properties.h"
 extern unsigned priv_thread_count;
 extern std::string path;
+extern std::string custom_workload;
 extern "C" {
 #include <allocator/allocator.h>
 #include <btree/btree.h>
@@ -309,6 +310,24 @@ class ParallaxDB : public YCSBDB {
 		// insert_key_value(dbs[db_id], (void *)key.c_str(), (void *)value.c_str(), key.length(), value.length());
 		// insert_key_value(dbs[db_id], (void *)key.c_str(), (void *)value3.c_str(), key.length(), value3.length());
 		// insert_key_value(dbs[db_id], (void *)key.c_str(), (void *)value.c_str(), key.length(), value.length());
+		switch (choose_wl(custom_workload, y)) {
+		case 0:
+			insert_key_value(dbs[db_id], (void *)key.c_str(), (void *)value.c_str(), key.length(),
+					 value.length());
+			break;
+		case 1:
+			insert_key_value(dbs[db_id], (void *)key.c_str(), (void *)value2.c_str(), key.length(),
+					 value2.length());
+			break;
+		case 2:
+			insert_key_value(dbs[db_id], (void *)key.c_str(), (void *)value3.c_str(), key.length(),
+					 value3.length());
+			break;
+		default:
+			assert(0);
+			std::cout << "Got Unknown value" << std::endl;
+			exit(EXIT_FAILURE);
+		}
 
 		if (y >= 0 && y < 6) {
 			insert_key_value(dbs[db_id], (void *)key.c_str(), (void *)value3.c_str(), key.length(),
