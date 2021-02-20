@@ -1171,7 +1171,7 @@ void clean_log_entries(void *v_desc)
 	uint64_t commit_kvlog_interval;
 	uint64_t ts;
 	volume_descriptor *volume_desc = (volume_descriptor *)v_desc;
-	struct option *option;
+	struct lib_option *option;
 	/*Are we operating with filter block device or not?...Let's discover with an ioctl*/
 	struct fake_blk_pages_num cbits;
 	uint64_t bit_idx;

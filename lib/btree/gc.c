@@ -187,7 +187,7 @@ void *gc_log_entries(void *handle)
 	struct timespec ts;
 	uint64_t gc_interval;
 	stack *marks;
-	struct option *option;
+	struct lib_option *option;
 	struct db_handle *han = (struct db_handle *)handle;
 	db_descriptor *db_desc = han->db_desc;
 	volume_descriptor *volume_desc = han->volume_desc;

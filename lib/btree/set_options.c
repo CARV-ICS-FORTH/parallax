@@ -10,11 +10,11 @@
 
 #define CONFIG_FILE "options.yml"
 
-struct option *dboptions = NULL;
+struct lib_option *dboptions = NULL;
 
 int parse_options(void)
 {
-	struct option options[128];
+	struct lib_option options[128];
 	FILE *fh = fopen(CONFIG_FILE, "r");
 	char *pEnd;
 	yaml_parser_t parser;
@@ -96,12 +96,12 @@ int parse_options(void)
 	fclose(fh);
 
 	for (int j = 0; j < i; ++j) {
-		struct option *temp = malloc(sizeof(struct option));
-		memcpy(temp, &options[j], sizeof(struct option));
+		struct lib_option *temp = malloc(sizeof(struct lib_option));
+		memcpy(temp, &options[j], sizeof(struct lib_option));
 		HASH_ADD_STR(dboptions, name, temp);
 	}
 
-	struct option *current_option, *tmp;
+	struct lib_option *current_option, *tmp;
 
 	HASH_ITER(hh, dboptions, current_option, tmp)
 	{
@@ -111,7 +111,7 @@ int parse_options(void)
 	return 0;
 }
 
-void check_option(char *option_name, struct option *opt_value)
+void check_option(char *option_name, struct lib_option *opt_value)
 {
 	if (!opt_value) {
 		log_fatal("Cannot find %s option", option_name);
@@ -123,7 +123,7 @@ void write_options(void)
 {
 	FILE *f = fopen(CONFIG_FILE, "w");
 
-	struct option *current_option, *tmp;
+	struct lib_option *current_option, *tmp;
 	HASH_ITER(hh, dboptions, current_option, tmp)
 	{
 		fprintf(f, "%s %llu\n", current_option->name, current_option->value.count);

@@ -669,7 +669,7 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 
 		uint64_t level0_size;
 		uint64_t growth_factor;
-		struct option *option;
+		struct lib_option *option;
 
 		HASH_FIND_STR(dboptions, "level0_size", option);
 		check_option("level0_size", option);
