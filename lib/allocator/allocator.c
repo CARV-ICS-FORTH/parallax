@@ -16,13 +16,13 @@
 #include <unistd.h>
 #include <log.h>
 #include <uthash.h>
+#include <list.h>
 #include "dmap-ioctl.h"
 #include "allocator.h"
 #include "../btree/btree.h"
 #include "../btree/set_options.h"
 #include "../btree/conf.h"
 #include "../btree/segment_allocator.h"
-#include "../utilities/list.h"
 
 #define _FILE_OFFSET_BITS 64
 //#define USE_MLOCK

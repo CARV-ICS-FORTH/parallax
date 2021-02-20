@@ -6,11 +6,11 @@
 #include <stdlib.h>
 #include <time.h>
 #include <log.h>
+#include <list.h>
 #include <uthash.h>
 #include "gc.h"
 #include "set_options.h"
 #include "../allocator/allocator.h"
-#include "../../utilities/list.h"
 
 extern sem_t gc_daemon_interrupts;
 

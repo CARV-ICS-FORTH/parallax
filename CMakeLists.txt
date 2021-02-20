@@ -93,7 +93,7 @@ endif()
 set(DEPENDENCIES log libmba yaml)
 
 include_directories(${CMAKE_BINARY_DIR})
-
+include_directories(${CMAKE_SOURCE_DIR}/utilities)
 set(CMAKE_C_FLAGS
     "-std=gnu11 -Wstrict-prototypes -Wall -Wextra -fPIC -fno-omit-frame-pointer -Wunused -Wuninitialized -Wshadow -Wnull-dereference -Werror ${CMAKE_C_FLAGS}"
 )

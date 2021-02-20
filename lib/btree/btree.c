@@ -18,6 +18,8 @@
 #include <sys/types.h>
 #include <config.h>
 #include <log.h>
+#include <list.h>
+#include <spin_loop.h>
 #include <uthash.h>
 #include "btree.h"
 #include "gc.h"
@@ -26,8 +28,6 @@
 #include "set_options.h"
 #include "conf.h"
 #include "../allocator/allocator.h"
-#include "../../utilities/list.h"
-#include "../../utilities/spin_loop.h"
 
 #define PREFIX_STATISTICS_NO
 #define MIN(x, y) ((x > y) ? (y) : (x))

@@ -1,8 +1,8 @@
 #pragma once
 #include <stdint.h>
 #include <pthread.h>
+#include <list.h>
 #include "../btree/conf.h"
-#include "../../utilities/list.h"
 
 #define FREE_BLOCK 124
 
