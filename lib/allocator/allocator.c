@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <math.h>
 #include <time.h>
 #include <assert.h>
 #include <errno.h>
@@ -41,8 +42,6 @@ int FD;
 int32_t FD; /*GLOBAL FD*/
 static inline void *next_word(volume_descriptor *volume_desc, unsigned char op_code);
 void clean_log_entries(void *volume_desc);
-double log2(double x);
-int ffsl(long int i);
 
 static void check(int test, const char *message, ...)
 {
