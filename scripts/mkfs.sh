@@ -1,7 +1,7 @@
 #!/bin/bash
 
-if [ $# -ne 3 ]; then
-	echo 'Usage: mkfs.sh <device name> <number of DBs> <type of volume (0 for device 1 for file)>'
+if [ $# -ne 2 ]; then
+	echo 'Usage: mkfs.sh <device name> <type of volume (0 for device 1 for file)>'
 	exit 1
 fi
 
@@ -21,12 +21,7 @@ else
 fi
 
 DEV_NAME=$1
-DB_NUM=$2
-TYPE_OF_VOLUME=$3
-if [ "$DB_NUM" -le 0 ]; then
-	echo 'DB number cannot be less than 1!'
-	exit 1
-fi
+TYPE_OF_VOLUME=$2
 
 if [ "$TYPE_OF_VOLUME" -le 0 ]; then
 	DEV_SIZE=$(blockdev --getsize64 "${DEV_NAME}")
@@ -37,13 +32,9 @@ else
 	exit
 fi
 
-ALLOCATOR_SIZE=$((DEV_SIZE / DB_NUM))
-
 echo 'Device:' "${DEV_NAME}" 'has size' "${DEV_SIZE}" 'bytes'
-echo 'Allocator size:' "${ALLOCATOR_SIZE}"
+echo 'Allocator size:' "${DEV_SIZE}"
 
-for i in $(seq 0 $((DB_NUM - 1))); do
-	OFFSET=$( (${i} \* ALLOCATOR_SIZE))
-	${MKFS} "${DEV_NAME}" "${OFFSET}" "${ALLOCATOR_SIZE}" >/dev/null
-done
+OFFSET=0
+${MKFS} "${DEV_NAME}" "${OFFSET}" "${DEV_SIZE}" >/dev/null
 exit 0

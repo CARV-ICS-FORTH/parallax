@@ -1,30 +1,30 @@
 image: carvicsforth/arch_carv:latest
 
 stages:
-  - build
+  # - build
   - test
-  - deploy
+  # - deploy
 
-build_gcc:
-  stage: build
-  script:
-    - mkdir -p build;cd build
-    - cmake .. -DCMAKE_BUILD_TYPE=Debug
-    - make all
+# build_gcc:
+#   stage: build
+#   script:
+#     - mkdir -p build;cd build
+#     - cmake .. -DCMAKE_BUILD_TYPE=Debug
+#     - make all
 
-build_clang:
-  stage: build
-  script:
-    - mkdir -p build;cd build
-    - cmake .. -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
-    - make all
+# build_clang:
+#   stage: build
+#   script:
+#     - mkdir -p build;cd build
+#     - cmake .. -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
+#     - make all
 
-build_clang-tidy:
-  stage: build
-  script:
-    - mkdir -p build;cd build
-    - cmake .. "-DCMAKE_C_CLANG_TIDY=/bin/clang-tidy;-checks=*,-clang-analyzer-*,-google-*,-hicpp-braces-around-statements,-bugprone-not-null-terminated-result,-readability-braces-around-statements,-readability-braces-around-statements* --format-style=../.clang-format -p ./compile_commands.json"
-    - make all
+# build_clang-tidy:
+#   stage: build
+#   script:
+#     - mkdir -p build;cd build
+#     - cmake .. "-DCMAKE_C_CLANG_TIDY=/bin/clang-tidy;-checks=*,-clang-analyzer-*,-google-*,-hicpp-braces-around-statements,-bugprone-not-null-terminated-result,-readability-braces-around-statements,-readability-braces-around-statements* --format-style=../.clang-format -p ./compile_commands.json"
+#     - make all
 
 # build_centos:
 #   image: carvicsforth/centos_carv:latest
@@ -54,29 +54,45 @@ test_options:
     - make test_options;cd tests;
     - ./test_options
 
-install_lib:
-  image: carvicsforth/ubuntu_carv:latest
-  stage: deploy
-  variables:
-    LIB_INSTALL_PATH : "installtest"
+
+test_ycsb_small:
+  image: carvicsforth/arch_carv:latest
+  stage: test
+  tags:
+    - kubernetes
   script:
+    - ./scripts/CI/create_mbbd.sh
     - mkdir -p build;cd build
-    - cmake .. -DBUILD_SHARED_LIBS=ON -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_COMPILER=gcc-10 -DCMAKE_CXX_COMPILER=g++-10
-    - make install DESTDIR=$LIB_INSTALL_PATH;
-    - cmake .. -DBUILD_SHARED_LIBS=OFF -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_COMPILER=gcc-10 -DCMAKE_CXX_COMPILER=g++-10
-    - make install DESTDIR=$LIB_INSTALL_PATH;
-    - mv $LIB_INSTALL_PATH ../scripts/;cd ../scripts
-    - ./verify-installed-files.py $LIB_INSTALL_PATH
+    - cmake ..
+    - make ycsb-edb;make mkfs.parallax;cd YCSB-CXX;
+    - ./mkfs.sh /ycsb_data/kv_store.dat 1
+    - ./ycsb-edb -threads 1 -dbnum 1 -wl sd -p /ycsb_data/kv_store.dat
+    - cd ..;cd ..
+    - ./scripts/CI/destroy_mbbd.sh
 
-pre-commit:
-  stage: build
-  script:
-    - ./scripts/pre-commit-CI.sh
+# install_lib:
+#   image: carvicsforth/ubuntu_carv:latest
+#   stage: deploy
+#   variables:
+#     LIB_INSTALL_PATH : "installtest"
+#   script:
+#     - mkdir -p build;cd build
+#     - cmake .. -DBUILD_SHARED_LIBS=ON -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_COMPILER=gcc-10 -DCMAKE_CXX_COMPILER=g++-10
+#     - make install DESTDIR=$LIB_INSTALL_PATH;
+#     - cmake .. -DBUILD_SHARED_LIBS=OFF -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_COMPILER=gcc-10 -DCMAKE_CXX_COMPILER=g++-10
+#     - make install DESTDIR=$LIB_INSTALL_PATH;
+#     - mv $LIB_INSTALL_PATH ../scripts/;cd ../scripts
+#     - ./verify-installed-files.py $LIB_INSTALL_PATH
 
-pre-merge:
-  stage: build
-  script:
-    - ./scripts/pre-merge-CI.sh
-    - ./scripts/commit-msg-lint.py
-  only:
-    - merge_requests
+# pre-commit:
+#   stage: build
+#   script:
+#     - ./scripts/pre-commit-CI.sh
+
+# pre-merge:
+#   stage: build
+#   script:
+#     - ./scripts/pre-merge-CI.sh
+#     - ./scripts/commit-msg-lint.py
+#   only:
+#     - merge_requests
