@@ -26,6 +26,15 @@ build_clang-tidy:
     - cmake .. "-DCMAKE_C_CLANG_TIDY=/bin/clang-tidy;-checks=*,-clang-analyzer-*,-google-*,-hicpp-braces-around-statements,-bugprone-not-null-terminated-result,-readability-braces-around-statements,-readability-braces-around-statements* --format-style=../.clang-format -p ./compile_commands.json"
     - make all
 
+# build_centos:
+#   image: carvicsforth/centos_carv:latest
+#   stage: build
+#   script:
+#     - scl enable devtoolset-8 -- bash
+#     - mkdir -p build;cd build
+#     - cmake3 ..
+#     - make all
+
 test_surrogates:
   image: carvicsforth/ubuntu_carv:latest
   stage: test

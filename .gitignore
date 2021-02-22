@@ -6,3 +6,4 @@ __pycache__/
 *$py.class
 .ccls-cache/
 .ccls-root
+.gitlab-ci-local
