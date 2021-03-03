@@ -1782,7 +1782,7 @@ static struct bt_rebalance_result split_index(node_header *node, bt_insert_req *
 int insert_KV_at_leaf(bt_insert_req *ins_req, node_header *leaf)
 {
 	db_descriptor *db_desc = ins_req->metadata.handle->db_desc;
-	enum log_category2 cat = ins_req->metadata.cat;
+	enum log_category cat = ins_req->metadata.cat;
 	int append_tolog = (ins_req->metadata.append_to_log &&
 			    (cat == SMALL_INLOG || cat == SMALL_INPLACE || //Needed for consistency purposes
 			     cat == MEDIUM_INLOG || cat == BIG_INLOG));
@@ -2002,7 +2002,7 @@ int is_split_needed(void *node, bt_insert_req *req, enum bt_layout node_layout, 
 	node_header *header = (node_header *)node;
 	int64_t num_entries = header->num_entries;
 	uint32_t height = header->height;
-	enum log_category2 cat = req->metadata.cat;
+	enum log_category cat = req->metadata.cat;
 	uint8_t level_id = req->metadata.level_id;
 
 	if (height != 0) {

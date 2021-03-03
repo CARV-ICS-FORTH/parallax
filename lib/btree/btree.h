@@ -156,7 +156,7 @@ struct bt_dynamic_leaf_slot_array {
 
 // The first enumeration should always have as a value 0.
 // UNKNOWN_LOG_CATEGORY must always be the last enumeration.
-enum log_category2 {
+enum log_category {
 	SMALL_INPLACE = 0,
 	SMALL_INLOG,
 	MEDIUM_INPLACE,
@@ -486,7 +486,7 @@ typedef struct bt_mutate_req {
 	uint64_t end_of_log;
 	uint32_t log_padding;
 	uint32_t kv_size;
-	enum log_category2 cat;
+	enum log_category cat;
 	uint8_t level_id;
 	/*only for inserts >= level_1*/
 	uint8_t tree_id;
@@ -533,7 +533,7 @@ struct log_towrite {
 	volatile segment_header *log_tail;
 	volatile uint64_t *log_size;
 	int level_id;
-	enum log_category2 status;
+	enum log_category status;
 };
 
 enum bt_rebalance_retcode {

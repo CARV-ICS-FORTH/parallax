@@ -24,7 +24,7 @@ void binary_search_dynamic_leaf(const struct bt_dynamic_leaf_node *leaf, uint32_
 				struct dl_bsearch_result *result);
 
 int check_dynamic_leaf_split(struct bt_dynamic_leaf_node *leaf, uint32_t leaf_size, uint32_t kv_size, int level_id,
-			     enum kv_entry_location key_type, enum log_category2 cat);
+			     enum kv_entry_location key_type, enum log_category cat);
 
 struct bt_rebalance_result split_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, uint32_t leaf_size,
 					      bt_insert_req *req);

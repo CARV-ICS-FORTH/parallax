@@ -23,7 +23,7 @@ struct write_dynamic_leaf_args {
 	uint32_t middle;
 	int level_id;
 	int kv_format;
-	enum log_category2 cat;
+	enum log_category cat;
 };
 
 #ifdef DEBUG_DYNAMIC_LEAF
@@ -333,7 +333,7 @@ uint32_t append_bt_leaf_entry_inplace(char *dest, uint64_t pointer, char *prefix
 }
 
 int check_dynamic_leaf_split(struct bt_dynamic_leaf_node *leaf, uint32_t leaf_size, uint32_t kv_size, int level_id,
-			     enum kv_entry_location key_type, enum log_category2 cat)
+			     enum kv_entry_location key_type, enum log_category cat)
 {
 	uint32_t leaf_log_size = leaf->header.leaf_log_size;
 	uint32_t metadata_size = sizeof(struct bt_dynamic_leaf_node) +
@@ -614,7 +614,7 @@ void write_data_in_dynamic_leaf(struct write_dynamic_leaf_args *args)
 
 int reorganize_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, uint32_t leaf_size, bt_insert_req *req)
 {
-	enum log_category2 cat = req->metadata.cat;
+	enum log_category cat = req->metadata.cat;
 	unsigned kv_size = (cat == BIG_INLOG || cat == MEDIUM_INLOG || cat == SMALL_INLOG) ?
 					 sizeof(struct bt_leaf_entry) :
 					 req->metadata.kv_size;
