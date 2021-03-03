@@ -111,8 +111,6 @@ typedef struct node_header {
 	uint64_t epoch; /*epoch of the node. It will be used for knowing when to
                      perform copy on write*/
 	uint64_t fragmentation;
-	volatile uint64_t v1;
-	volatile uint64_t v2;
 	union {
 		/*data log info, KV log for leaves private for index*/
 		/* Used by index nodes */

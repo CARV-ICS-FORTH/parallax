@@ -2167,19 +2167,15 @@ release_and_retry:
 		if (is_split_needed(son, ins_req, db_desc->levels[level_id].node_layout, temp_leaf_size)) {
 			/*Overflow split*/
 			if (son->height > 0) {
-				son->v1++;
 				split_res = split_index(son, ins_req);
 				/*node has splitted, free it*/
 				seg_free_index_node(ins_req->metadata.handle->volume_desc, &db_desc->levels[level_id],
 						    ins_req->metadata.tree_id, (index_node *)son);
 				// free_logical_node(&(req->allocator_desc), son);
-				son->v2++;
 			} else {
 				if (reorganize_dynamic_leaf((struct bt_dynamic_leaf_node *)son,
 							    db_desc->levels[level_id].leaf_size, ins_req))
 					goto release_and_retry;
-
-				son->v1++;
 
 				split_res = split_leaf(ins_req, (leaf_node *)son);
 
@@ -2189,22 +2185,18 @@ release_and_retry:
 							   &ins_req->metadata.handle->db_desc->levels[level_id],
 							   ins_req->metadata.tree_id, (leaf_node *)son);
 					/*fix the dangling lamport*/
-					split_res.left_child->v2++;
-				} else
-					son->v2++;
+				}
 			}
 
 			/*Insert pivot at father*/
 			if (father != NULL) {
 				/*lamport counter*/
-				father->v1++;
 				assert(father->epoch > ins_req->metadata.handle->volume_desc->dev_catalogue->epoch);
 
 				insert_key_at_index(ins_req, (index_node *)father, split_res.left_child,
 						    split_res.right_child, split_res.middle_key_buf);
 
 				/*lamport counter*/
-				father->v2++;
 			} else {
 				/*Root was splitted*/
 				// log_info("new root");
@@ -2217,13 +2209,9 @@ release_and_retry:
 								1;
 
 				new_index_node->header.type = rootNode;
-				new_index_node->header.v1++; /*lamport counter*/
-				son->v1++;
 
 				insert_key_at_index(ins_req, new_index_node, split_res.left_child,
 						    split_res.right_child, split_res.middle_key_buf);
-				new_index_node->header.v2++; /*lamport counter*/
-				son->v2++;
 				/*new write root of the tree*/
 				db_desc->levels[level_id].root_w[ins_req->metadata.tree_id] =
 					(node_header *)new_index_node;
@@ -2253,13 +2241,11 @@ release_and_retry:
 			node_copy->epoch = volume_desc->mem_catalogue->epoch;
 			son = node_copy;
 			/*Update father's pointer*/
-			if (father != NULL) {
-				father->v1++; /*lamport counter*/
+			if (father != NULL)
 				*(uint64_t *)next_addr = (uint64_t)node_copy - MAPPED;
-				father->v2++; /*lamport counter*/
-			} else { /*We COWED the root*/
+			else /*We COWED the root*/
 				db_desc->levels[level_id].root_w[ins_req->metadata.tree_id] = node_copy;
-			}
+
 			goto release_and_retry;
 		}
 
@@ -2302,11 +2288,9 @@ release_and_retry:
 		exit(EXIT_FAILURE);
 	}
 
-	son->v1++; /*lamport counter*/
 	assert(son->epoch > ins_req->metadata.handle->volume_desc->dev_catalogue->epoch);
 
 	insert_KV_at_leaf(ins_req, son);
-	son->v2++; /*lamport counter*/
 	/*Unlock remaining locks*/
 	_unlock_upper_levels(upper_level_nodes, size, release);
 	__sync_fetch_and_sub(num_level_writers, 1);
@@ -2437,9 +2421,7 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 		exit(EXIT_FAILURE);
 	}
 
-	son->v1++; /*lamport counter*/
 	insert_KV_at_leaf(ins_req, son);
-	son->v2++; /*lamport counter*/
 	/*Unlock remaining locks*/
 	_unlock_upper_levels(upper_level_nodes, size, release);
 	__sync_fetch_and_sub(num_level_writers, 1);

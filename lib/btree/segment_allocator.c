@@ -142,8 +142,6 @@ index_node *seg_get_index_node(volume_descriptor *volume_desc, level_descriptor 
 	ptr->header.epoch = volume_desc->mem_catalogue->epoch;
 	ptr->header.num_entries = 0;
 	ptr->header.fragmentation = 0;
-	ptr->header.v1 = 0;
-	ptr->header.v2 = 0;
 
 	/*private key log for index nodes*/
 	bh = (IN_log_header *)((uint64_t)ptr + INDEX_NODE_SIZE);
@@ -216,8 +214,6 @@ leaf_node *seg_get_leaf_node(volume_descriptor *volume_desc, level_descriptor *l
 	leaf->header.epoch = volume_desc->mem_catalogue->epoch;
 	leaf->header.num_entries = 0;
 	leaf->header.fragmentation = 0;
-	leaf->header.v1 = 0;
-	leaf->header.v2 = 0;
 
 	leaf->header.first_IN_log_header = NULL; /*unused field in leaves*/
 	leaf->header.last_IN_log_header = NULL; /*unused field in leaves*/
@@ -237,8 +233,6 @@ struct bt_dynamic_leaf_node *seg_get_dynamic_leaf_node(volume_descriptor *volume
 	leaf->header.epoch = volume_desc->mem_catalogue->epoch;
 	leaf->header.num_entries = 0;
 	leaf->header.fragmentation = 0;
-	leaf->header.v1 = 0;
-	leaf->header.v2 = 0;
 
 	leaf->header.first_IN_log_header = NULL; /*unused field in leaves*/
 	leaf->header.last_IN_log_header = NULL; /*unused field in leaves*/
@@ -255,8 +249,6 @@ leaf_node *seg_get_leaf_node_header(volume_descriptor *volume_desc, level_descri
 	leaf->header.epoch = volume_desc->mem_catalogue->epoch;
 	leaf->header.num_entries = 0;
 	leaf->header.fragmentation = 0;
-	leaf->header.v1 = 0;
-	leaf->header.v2 = 0;
 
 	leaf->header.first_IN_log_header = NULL; /*unused field in leaves*/
 	leaf->header.last_IN_log_header = NULL; /*unused field in leaves*/
