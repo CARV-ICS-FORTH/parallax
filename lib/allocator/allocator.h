@@ -38,6 +38,7 @@ typedef enum volume_state { VOLUME_IS_OPEN = 0x00, VOLUME_IS_CLOSING = 0x01, VOL
 #define SNAP_INTERRUPT_ENABLE 0x0A
 #define SNAP_INTERRUPT_DISABLE 0x0B
 
+#define MIN_VOLUME_SIZE (4 * 1024 * 1024 * 1024LL)
 typedef enum db_status { DB_OPEN, DB_IS_CLOSING } db_status;
 
 extern LIST *mappedVolumes;

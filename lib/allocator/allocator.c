@@ -1,3 +1,4 @@
+#define _LARGEFILE64_SOURCE
 #define _GNU_SOURCE
 #include <stdio.h>
 #include <math.h>
@@ -31,7 +32,6 @@ int32_t DMAP_ACTIVATED = 1;
 uint64_t MAPPED = 0; /*from this address any node can see the entire volume*/
 int FD;
 
-static inline void *next_word(volume_descriptor *volume_desc, unsigned char op_code);
 void clean_log_entries(void *volume_desc);
 
 static void check(int test, const char *message, ...)
@@ -48,8 +48,9 @@ static void check(int test, const char *message, ...)
 
 void mount_volume(char *volume_name, int64_t start)
 {
-	int64_t device_size;
 	static pthread_mutex_t volume_lock = PTHREAD_MUTEX_INITIALIZER;
+	off64_t device_size;
+
 	MUTEX_LOCK(&volume_lock);
 
 	if (MAPPED == 0) {
@@ -58,13 +59,19 @@ void mount_volume(char *volume_name, int64_t start)
 		FD = open(volume_name, O_RDWR); /* open the device */
 		if (ioctl(FD, BLKGETSIZE64, &device_size) == -1) {
 			/*maybe we have a file?*/
-			device_size = lseek(FD, 0, SEEK_END);
+			device_size = lseek64(FD, 0, SEEK_END);
 			if (device_size == -1) {
 				log_fatal("failed to determine volume size exiting...");
 				perror("ioctl");
 				exit(EXIT_FAILURE);
 			}
 		}
+
+		if (device_size < MIN_VOLUME_SIZE) {
+			log_fatal("Sorry minimum supported volume size is %lld GB", MIN_VOLUME_SIZE / GB(1));
+			exit(EXIT_FAILURE);
+		}
+
 		log_info("creating virtual address space offset %lld size %lld", (long long)start,
 			 (long long)device_size);
 		MAPPED = (uint64_t)mmap(NULL, device_size, PROT_READ | PROT_WRITE, MAP_SHARED, FD,
@@ -85,49 +92,19 @@ void mount_volume(char *volume_name, int64_t start)
 }
 
 /*
- * Input: File descriptor, offset, relative position from where it has to be read (SEEK_SET/SEEK_CUR/SEEK_END)
- *    pointer to databuffer, size of data to be read
- * Output: -1 on failure of lseek64/read
- *     number of bytes read on success.
- * Note: This reads absolute offsets in the disk.
- */
-int32_t lread(int32_t fd, off_t offset, int whence, void *ptr, size_t size)
-{
-	if (size % 4096 != 0) {
-		log_fatal("FATAL read request size %d not a multiple of 4k, harmful", (int32_t)size);
-		exit(EXIT_FAILURE);
-	}
-	if (offset % 4096 != 0) {
-		log_fatal("FATAL read-seek request size %ld not a multiple of 4k, harmful", offset);
-		exit(EXIT_FAILURE);
-	}
-	if (lseek(fd, offset, whence) == -1) {
-		log_fatal("lseek: fd:%d, offset:%ld, whence:%d, size:%lu", fd, offset, whence, size);
-		perror("lread");
-		return -1;
-	}
-	if (read(fd, ptr, size) == -1) {
-		log_fatal("lread-!: fd:%d, offset:%ld, whence:%d, size:%lu", fd, offset, whence, size);
-		perror("lread");
-		return -1;
-	}
-	return 1;
-}
-
-/*
  * Input: File descriptor, offset, relative position to where it has to be written (SEEK_SET/SEEK_CUR/SEEK_END)
  *    pointer to databuffer, size of data to be written
  * Output: -1 on failure of lseek64/write
  *     number of bytes written on success.
  * Note: This writes absolute offsets in the disk.
  */
-int32_t lwrite(int32_t fd, off_t offset, int whence, void *ptr, ssize_t size)
+static int32_t lwrite(int32_t fd, off64_t offset, int whence, void *ptr, ssize_t size)
 {
 	ssize_t total_bytes_written = 0;
 	ssize_t bytes_written = 0;
 	assert(size > 0);
 	//log_info("Bytes to write %lld",size);
-	if (lseek(fd, offset, whence) == -1) {
+	if (lseek64(fd, offset, whence) == -1) {
 		log_fatal("lwrite: fd:%d, offset:%ld, whence:%d, size:%lu", fd, offset, whence, size);
 		perror("lwrite");
 		exit(EXIT_FAILURE);

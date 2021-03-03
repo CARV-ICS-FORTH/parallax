@@ -74,7 +74,7 @@ class ParallaxDB : public YCSBDB {
 			perror("ioctl");
 			/*maybe we have a file?*/
 			printf("[%s:%s:%d] querying file size\n", __FILE__, __func__, __LINE__);
-			size = lseek(fd, 0, SEEK_END);
+			size = lseek64(fd, 0, SEEK_END);
 			if (size == -1) {
 				printf("[%s:%s:%d] failed to determine volume size exiting...\n", __FILE__, __func__,
 				       __LINE__);

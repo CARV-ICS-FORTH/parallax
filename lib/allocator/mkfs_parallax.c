@@ -1,3 +1,4 @@
+#define _LARGEFILE64_SOURCE
 #include <errno.h>
 #include <stdint.h>
 #include <string.h>
@@ -8,8 +9,35 @@
 #include "allocator.h"
 #include "../btree/conf.h"
 
-int32_t lread(int32_t fd, off_t offset, int whence, void *ptr, size_t size);
-int32_t lwrite(int32_t fd, off_t offset, int whence, void *ptr, size_t size);
+/*
+ * Input: File descriptor, offset, relative position from where it has to be read (SEEK_SET/SEEK_CUR/SEEK_END)
+ *    pointer to databuffer, size of data to be read
+ * Output: -1 on failure of lseek64/read
+ *     number of bytes read on success.
+ * Note: This reads absolute offsets in the disk.
+ */
+int32_t lread(int32_t fd, off64_t offset, int whence, void *ptr, size_t size)
+{
+	if (size % 4096 != 0) {
+		log_fatal("FATAL read request size %d not a multiple of 4k, harmful", (int32_t)size);
+		exit(EXIT_FAILURE);
+	}
+	if (offset % 4096 != 0) {
+		log_fatal("FATAL read-seek request size %ld not a multiple of 4k, harmful", offset);
+		exit(EXIT_FAILURE);
+	}
+	if (lseek64(fd, offset, whence) == -1) {
+		log_fatal("lseek: fd:%d, offset:%ld, whence:%d, size:%lu", fd, offset, whence, size);
+		perror("lread");
+		return -1;
+	}
+	if (read(fd, ptr, size) == -1) {
+		log_fatal("lread-!: fd:%d, offset:%ld, whence:%d, size:%lu", fd, offset, whence, size);
+		perror("lread");
+		return -1;
+	}
+	return 1;
+}
 
 int main(int argc, char *argv[])
 {
@@ -48,7 +76,7 @@ int main(int argc, char *argv[])
 	printf("************* </Superblock> ***********\n");
 
 	bytes_read =
-		lread(fd, (off_t)sp.system_catalogue, SEEK_SET, &dev_catalogue, (size_t)sizeof(pr_system_catalogue));
+		lread(fd, (off64_t)sp.system_catalogue, SEEK_SET, &dev_catalogue, (size_t)sizeof(pr_system_catalogue));
 	if (bytes_read == -1) {
 		fprintf(stderr, "(lread) Function = %s, code = %d,  ERROR = %s\n", __func__, errno, strerror(errno));
 		return -1;
