@@ -326,13 +326,13 @@ int32_t volume_init(char *dev_name, int64_t start, int64_t size, int typeOfVolum
 	log_info("Syncing");
 	fsync(fd);
 
-	log_info("\n\n############ [%s:%s:%d] ####################");
+	log_info("\n\n\t\t###############################################################");
 	log_info("\tDevice size in blocks %llu", (long long unsigned)dev_size_in_blocks);
 	log_info("\tBitmap size in blocks %llu", (long long unsigned)bitmap_size_in_blocks);
 	log_info("\tData size in blocks %llu", (long long unsigned)dev_addressed_in_blocks);
 	log_info("\tLog size in blocks %llu", (long long unsigned)FREE_LOG_SIZE);
 	log_info("\tUnmapped blocks %llu", (long long unsigned)unmapped_blocks);
-	log_info("################################");
+	log_info("\n\t\t################################################################");
 
 	return fd;
 }
@@ -561,7 +561,7 @@ void *allocate(void *_volume_desc, uint64_t num_bytes)
 	void *src;
 	void *dest;
 	uint64_t start_bit_offset = 0;
-	uint64_t *words;
+	uint64_t *words = NULL;
 	uint64_t highest_bit_mask = 0x8000000000000000;
 	int64_t end_bit_offset = 64;
 	int64_t b = 1;
@@ -574,8 +574,15 @@ void *allocate(void *_volume_desc, uint64_t num_bytes)
 		words = (uint64_t *)malloc(sizeof(uint64_t));
 	else if (size > 1 && size < 64)
 		words = (uint64_t *)malloc(sizeof(uint64_t) * 2);
-	else
-		words = (uint64_t *)malloc((sizeof(uint64_t) * (size / 64)) + 2);
+	else {
+		uint32_t alloc_size = ((size / 64) * sizeof(uint64_t)) + (2 * sizeof(uint64_t));
+		words = (uint64_t *)malloc(alloc_size);
+	}
+
+	if (!words) {
+		log_fatal("Malloc failed out of memory");
+		exit(EXIT_FAILURE);
+	}
 
 	void *word_address; /*current word we are searching*/
 	int32_t i = 0;
@@ -988,14 +995,14 @@ void allocator_init(volume_descriptor *volume_desc)
 		}
 		if (winner == 0) {
 			/*aka 01 read from left write to right */
-			*(volume_desc->allocator_state + (offset / 4)) += 1 << ((offset % 4) * 2);
+			volume_desc->allocator_state[offset / 4] += (1 << ((offset % 4) * 2));
 #ifdef DEBUG_ALLOCATOR
 			printf("left wins: offset %d, position %d, bit %d , added number %d\n", offset, offset / 4,
 			       offset % 4, 1 << (((offset % 4) * 2) + 1));
 #endif
 		} else {
 			/*aka 10 read from right write to left */
-			*(volume_desc->allocator_state + (offset / 4)) += 1 << (((offset % 4) * 2) + 1);
+			volume_desc->allocator_state[offset / 4] += (1 << (((offset % 4) * 2) + 1));
 #ifdef DEBUG_ALLOCATOR
 			printf("right wins: offset %d, position %d, bit %d , added number %d\n", offset, offset / 4,
 			       offset % 4, 1 << ((offset % 4) * 2));
@@ -1147,7 +1154,7 @@ void clean_log_entries(void *v_desc)
 	uint64_t clean_interval;
 	uint64_t snapshot_interval;
 	uint64_t commit_kvlog_interval;
-	uint64_t ts;
+	struct timespec ts;
 	volume_descriptor *volume_desc = (volume_descriptor *)v_desc;
 	struct lib_option *option;
 	/*Are we operating with filter block device or not?...Let's discover with an ioctl*/
@@ -1178,12 +1185,12 @@ void clean_log_entries(void *v_desc)
 
 	log_info("Starting cleaner for volume id: %s", (char *)volume_desc->volume_id);
 	while (1) {
-		if (clock_gettime(CLOCK_REALTIME, (struct timespec *)&ts) == -1) {
+		if (clock_gettime(CLOCK_REALTIME, &ts) == -1) {
 			perror("FATAL: clock_gettime failed)\n");
 			exit(-1);
 		}
-		((struct timespec *)&ts)->tv_sec += (clean_interval / 1000000L);
-		((struct timespec *)&ts)->tv_nsec += (clean_interval % 1000000L) * 1000L;
+		ts.tv_sec += (clean_interval / 1000000L);
+		ts.tv_nsec += (clean_interval % 1000000L) * 1000L;
 
 		rc = MUTEX_LOCK(&volume_desc->mutex); //pthread_mutex_lock(&(volume_desc->mutex));
 		rc = pthread_cond_timedwait(&(volume_desc->cond), &(volume_desc->mutex), (struct timespec *)&ts);
@@ -1286,10 +1293,10 @@ void clean_log_entries(void *v_desc)
 		/* pthread_mutex_unlock(&(volume_desc->allocator_lock));	/\*release allocator lock*\/ */
 		/* pthread_mutex_unlock(&(volume_desc->mutex));/\*unlock, to go to sleep*\/ */
 		/*snapshot check*/
-		ts = get_timestamp();
-		if ((ts - volume_desc->last_snapshot) >= snapshot_interval)
+		uint64_t timestamp = get_timestamp();
+		if ((timestamp - volume_desc->last_snapshot) >= snapshot_interval)
 			snapshot(volume_desc);
-		else if (ts - volume_desc->last_commit > commit_kvlog_interval)
+		else if (timestamp - volume_desc->last_commit > commit_kvlog_interval)
 			commit_db_logs_per_volume(volume_desc);
 	}
 }
