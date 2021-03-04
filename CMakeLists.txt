@@ -94,6 +94,11 @@ set(DEPENDENCIES log libmba yaml)
 
 include_directories(${CMAKE_BINARY_DIR})
 include_directories(${CMAKE_SOURCE_DIR}/utilities)
+
+if(ADD_SANITIZERS)
+  set(CMAKE_C_FLAGS "-fsanitize=address ${CMAKE_C_FLAGS}")
+  set(CMAKE_CXX_FLAGS "-fsanitize=address ${CMAKE_CXX_FLAGS}")
+endif()
 set(CMAKE_C_FLAGS
     "-std=gnu11 -Wstrict-prototypes -Wall -Wextra -fPIC -fno-omit-frame-pointer -Wunused -Wuninitialized -Wshadow -Wnull-dereference -Werror ${CMAKE_C_FLAGS}"
 )
