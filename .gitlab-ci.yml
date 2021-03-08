@@ -66,7 +66,7 @@ test_ycsb_small:
     - cmake ..
     - make ycsb-edb;make mkfs.parallax;cd YCSB-CXX;
     - ./mkfs.sh /ycsb_data/kv_store.dat 1
-    - ./ycsb-edb -threads 1 -dbnum 1 -wl sd -p /ycsb_data/kv_store.dat
+    - ./ycsb-edb -threads 1 -dbnum 1 -wl s -p /tmp/kv_store.dat
     - cd ..;cd ..
     - ./scripts/CI/destroy_mbbd.sh
 

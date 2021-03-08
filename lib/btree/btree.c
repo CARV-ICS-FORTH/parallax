@@ -1107,7 +1107,6 @@ uint8_t insert_key_value(db_handle *handle, void *key, void *value, uint32_t key
 	} else {
 		ins_req.metadata.cat = SMALL_INPLACE;
 	}
-
 	/*
 * Note for L0 inserts since active_tree changes dynamically we decide which
 * is the active_tree after
@@ -1696,24 +1695,6 @@ void insert_key_at_index(bt_insert_req *ins_req, index_node *node, node_header *
 	if (ret)
 		node->header.num_entries++;
 	//assert_index_node(node);
-}
-
-char *node_type(nodeType_t type)
-{
-	switch (type) {
-	case leafNode:
-		return "leafNode";
-	case leafRootNode:
-		return "leafRootnode";
-	case rootNode:
-		return "rootNode";
-	case internalNode:
-		return "internalNode";
-	default:
-		assert(0);
-		log_fatal("UNKNOWN NODE TYPE");
-		exit(EXIT_FAILURE);
-	}
 }
 
 /**

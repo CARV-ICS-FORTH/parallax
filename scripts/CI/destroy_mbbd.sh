@@ -1,4 +1,4 @@
 #!/usr/bin/env bash
 set -euo pipefail
-
-umount /ycsb_data
+rm /tmp/kv_store.dat
+#umount /ycsb_data

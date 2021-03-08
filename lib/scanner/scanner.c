@@ -9,10 +9,25 @@
 #include "../btree/conf.h"
 #include "../btree/dynamic_leaf.h"
 
-extern int32_t index_order;
-
-int32_t _get_next_KV(level_scanner *sc);
 int _init_level_scanner(level_scanner *level_sc, void *start_key, char seek_mode);
+
+char *node_type(nodeType_t type)
+{
+	switch (type) {
+	case leafNode:
+		return "leafNode";
+	case leafRootNode:
+		return "leafRootnode";
+	case rootNode:
+		return "rootNode";
+	case internalNode:
+		return "internalNode";
+	default:
+		assert(0);
+		log_fatal("UNKNOWN NODE TYPE");
+		exit(EXIT_FAILURE);
+	}
+}
 
 /**
  * Spill buffer operation will use this scanner. Traversal begins from root_w
@@ -35,7 +50,6 @@ level_scanner *_init_spill_buffer_scanner(db_handle *handle, int level_id, node_
 	level_sc->root = node;
 	level_sc->level_id = level_id;
 	level_sc->type = SPILL_BUFFER_SCANNER;
-	//level_sc->keyValue = (void *)malloc(PREFIX_SIZE + sizeof(uint64_t));
 	/*typicall 20 bytes 8 prefix the address to the KV log
 	 position scanner now to the appropriate row */
 	if (_seek_scanner(level_sc, start_key, GREATER_OR_EQUAL) == END_OF_DATABASE) {
@@ -341,9 +355,6 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 			addr = &(inode->p[middle].pivot);
 			full_pivot_key = (void *)(MAPPED + *(uint64_t *)addr);
 			ret = key_cmp(full_pivot_key, start_key_buf, KV_FORMAT, KV_FORMAT);
-			// log_info("pivot %u:%s app %u:%s ret %lld", *(uint32_t
-			// *)(full_pivot_key), full_pivot_key + 4,
-			//	 *(uint32_t *)start_key_buf, start_key_buf + 4, ret);
 
 			if (ret == 0) {
 				break;
@@ -364,7 +375,7 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 		int num_entries = node->num_entries;
 		/*the path we need to follow*/
 		if (ret <= 0)
-			node = (node_header *)(MAPPED + inode->p[middle].right);
+			node = (node_header *)(MAPPED + inode->p[middle].right[0]);
 		else
 			node = (node_header *)(MAPPED + inode->p[middle].left[0]);
 
@@ -437,7 +448,7 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 		element.leftmost = 1;
 		element.rightmost = 0;
 		element.guard = 0;
-		// log_debug("Leftmost boom");
+		//log_debug("Leftmost boom %llu", node->num_entries);
 		stack_push(&(level_sc->stack), element);
 		middle = 0;
 	} else if (middle >= (int64_t)node->num_entries - 1) {
@@ -450,7 +461,7 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 		stack_push(&(level_sc->stack), element);
 		middle = node->num_entries - 1;
 	} else {
-		// log_info("middle is %d", middle);
+		//log_info("middle is %d", middle);
 		element.node = node;
 		element.idx = middle;
 		element.leftmost = 0;
@@ -472,7 +483,6 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 								   slot_array[middle].index);
 				key_size = KEY_SIZE(level_sc->keyValue);
 				value_size = VALUE_SIZE(level_sc->keyValue + 4 + key_size);
-				/* log_info("%*s", key_size, level_sc->keyValue + 4); */
 				level_key_format = level_sc->kv_format = KV_FORMAT;
 				level_sc->cat = slot_array[middle].key_category;
 				level_sc->kv_size = sizeof(key_size) + sizeof(value_size) + key_size + value_size;
@@ -488,8 +498,6 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 				level_sc->kv_size = sizeof(struct bt_leaf_entry);
 				level_key_format = level_sc->kv_format = KV_PREFIX;
 
-				/* REAL_ADDRESS(*(uint64_t*)get_kv_offset( */
-				/* dlnode, db_desc->levels[level_id].leaf_size, slot_array[middle].index)); */
 				break;
 			}
 			default:
@@ -501,7 +509,6 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 			assert(0);
 		}
 
-		// log_info("key is %s\n", (MAPPED + *(uint64_t *)addr) + sizeof(int32_t));
 	} else { /*normal scanner*/
 		switch (db_desc->levels[level_id].node_layout) {
 		case DYNAMIC_LEAF: {
@@ -542,19 +549,14 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 
 	if (start_key_buf != NULL) {
 		if (mode == GREATER) {
-			while (key_cmp(level_sc->keyValue, start_key_buf, level_sc->kv_format /* level_key_format */,
-				       KV_FORMAT) <= 0) {
+			while (key_cmp(level_sc->keyValue, start_key_buf, level_sc->kv_format, KV_FORMAT) <= 0)
 				if (_get_next_KV(level_sc) == END_OF_DATABASE)
 					return END_OF_DATABASE;
-			}
+
 		} else if (mode == GREATER_OR_EQUAL) {
-			while (key_cmp(level_sc->keyValue, start_key_buf, level_sc->kv_format /* level_key_format */,
-				       KV_FORMAT) < 0) {
-				//log_info("compated index key %s with seek key %s", level_sc->keyValue + 4,
-				//	 start_key_buf + 4);
+			while (key_cmp(level_sc->keyValue, start_key_buf, level_sc->kv_format, KV_FORMAT) < 0)
 				if (_get_next_KV(level_sc) == END_OF_DATABASE)
 					return END_OF_DATABASE;
-			}
 		}
 	}
 #ifdef DEBUG_SCAN
@@ -694,21 +696,15 @@ int32_t _get_next_KV(level_scanner *sc)
 							return END_OF_DATABASE;
 					}
 				} else if (stack_top.node->type == internalNode || stack_top.node->type == rootNode) {
-					// log_debug("Calculate and push type %s",
-					// node_type(stack_top.node->type));
 					/*special case applies only for the root*/
 					if (stack_top.node->num_entries == 1)
 						stack_top.rightmost = 1;
 					stack_top.idx = 0;
 					stack_push(&sc->stack, stack_top);
 					inode = (index_node *)stack_top.node;
-					node = (node_header *)(MAPPED + inode->p[0].right);
+					node = (node_header *)(MAPPED + inode->p[0].right[0]);
 					assert(node->type == rootNode || node->type == leafRootNode ||
 					       node->type == internalNode || node->type == leafNode);
-					// stack_top.node = node;
-					// log_debug("Calculate and push type %s",
-					// node_type(stack_top.node->type));
-					// stack_push(&sc->stack, stack_top);
 					up = 0;
 					continue;
 				} else {
@@ -716,9 +712,6 @@ int32_t _get_next_KV(level_scanner *sc)
 					assert(0);
 				}
 			} else {
-				// log_debug("Advancing, %s idx = %d entries %d",
-				// node_type(stack_top.node->type),
-				//	  stack_top.idx, stack_top.node->numberOfEntriesInNode);
 				++stack_top.idx;
 				if (stack_top.idx >= stack_top.node->num_entries - 1)
 					stack_top.rightmost = 1;
@@ -731,8 +724,9 @@ int32_t _get_next_KV(level_scanner *sc)
 				break;
 			} else if (stack_top.node->type == internalNode || stack_top.node->type == rootNode) {
 				inode = (index_node *)stack_top.node;
-				node = (node_header *)(MAPPED + (uint64_t)inode->p[stack_top.idx].right);
+				node = (node_header *)(MAPPED + (uint64_t)inode->p[stack_top.idx].right[0]);
 				up = 0;
+
 				assert(node->type == rootNode || node->type == leafRootNode ||
 				       node->type == internalNode || node->type == leafNode);
 				continue;
@@ -766,14 +760,9 @@ int32_t _get_next_KV(level_scanner *sc)
 			}
 		}
 	}
-	//log_warn("Key %lu:%s idx is %d", *(uint32_t *)(MAPPED + (uint64_t)lnode->pointer[idx]),
-	//MAPPED + lnode->pointer[idx] + 4, idx);
 	/*fill buffer and return*/
 	if (sc->type == SPILL_BUFFER_SCANNER) {
 		/*prefix first*/
-		//memcpy(sc->keyValue, &lnode->prefix[idx][0], PREFIX_SIZE);
-		/*pointer second*/
-		//*(uint64_t *)(sc->keyValue + PREFIX_SIZE) = MAPPED + lnode->pointer[idx];
 		switch (db_desc->levels[level_id].node_layout) {
 		case DYNAMIC_LEAF:;
 			struct bt_dynamic_leaf_node *dlnode = (struct bt_dynamic_leaf_node *)node;
@@ -795,16 +784,12 @@ int32_t _get_next_KV(level_scanner *sc)
 				struct bt_leaf_entry *kv_entry = (struct bt_leaf_entry *)get_kv_offset(
 					dlnode, db_desc->levels[level_id].leaf_size, slot_array[idx].index);
 
-				/* kv_entry->pointer = (uint64_t) REAL_ADDRESS(kv_entry->pointer); */
 				sc->kv_entry = *kv_entry;
 				sc->kv_entry.pointer = (uint64_t)REAL_ADDRESS(kv_entry->pointer);
 				sc->keyValue = &sc->kv_entry;
 				sc->kv_format = KV_PREFIX;
 				sc->cat = slot_array[idx].key_category;
 				sc->kv_size = sizeof(struct bt_leaf_entry);
-				/* REAL_ADDRESS(*(uint64_t*)get_kv_offset( */
-				/* dlnode, db_desc->levels[level_id].leaf_size, slot_array[idx].index)) */;
-				/* log_info("%d %s",*(uint32_t*)sc->keyValue,(char *)(sc->keyValue + 4)); */
 				break;
 			}
 			default:
@@ -815,11 +800,8 @@ int32_t _get_next_KV(level_scanner *sc)
 		}
 
 		assert(idx < node->num_entries);
-		if (sc->kv_format == KV_FORMAT)
-			assert(*(uint32_t *)sc->keyValue < 100);
-
-		//log_info("key %d x %d numberofentries %llu %d", *(uint32_t*)sc->keyValue, x, node->numberOfEntriesInNode, idx);
 	} else {
+		assert(0);
 		// normal scanner
 		switch (db_desc->levels[level_id].node_layout) {
 		case DYNAMIC_LEAF:;
