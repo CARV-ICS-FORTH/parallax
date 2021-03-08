@@ -307,9 +307,6 @@ class ParallaxDB : public YCSBDB {
 		int y = x % 10;
 		++x;
 
-		// insert_key_value(dbs[db_id], (void *)key.c_str(), (void *)value.c_str(), key.length(), value.length());
-		// insert_key_value(dbs[db_id], (void *)key.c_str(), (void *)value3.c_str(), key.length(), value3.length());
-		// insert_key_value(dbs[db_id], (void *)key.c_str(), (void *)value.c_str(), key.length(), value.length());
 		switch (choose_wl(custom_workload, y)) {
 		case 0:
 			insert_key_value(dbs[db_id], (void *)key.c_str(), (void *)value.c_str(), key.length(),
@@ -329,19 +326,6 @@ class ParallaxDB : public YCSBDB {
 			exit(EXIT_FAILURE);
 		}
 
-		if (y >= 0 && y < 6) {
-			insert_key_value(dbs[db_id], (void *)key.c_str(), (void *)value3.c_str(), key.length(),
-					 value3.length());
-			// std::cout << "temp1"<<std::endl;
-		} else if (y >= 6 && y < 8) {
-			insert_key_value(dbs[db_id], (void *)key.c_str(), (void *)value.c_str(), key.length(),
-					 value.length());
-			//std::cout << "temp2"<<std::endl;
-		} else if (y >= 8 && y < 10) {
-			insert_key_value(dbs[db_id], (void *)key.c_str(), (void *)value2.c_str(), key.length(),
-					 value2.length());
-			//std::cout << "temp3"<<std::endl;
-		}
 		// int cnt = 0;
 		// for (auto v : values) {
 		// 	value.append(v.first);

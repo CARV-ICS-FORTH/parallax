@@ -24,7 +24,7 @@ int return_wl(std::string &wl)
 	}
 }
 
-int choose_wl(std::string &wl, int &x)
+int choose_wl(std::string &wl, const int &x)
 {
 	switch (return_wl(wl)) {
 	case 0:
