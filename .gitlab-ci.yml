@@ -65,7 +65,7 @@ test_options:
 #     - mkdir -p build;cd build
 #     - cmake ..
 #     - make ycsb-edb;make mkfs.parallax;cd YCSB-CXX;
-#     - ./mkfs.sh /ycsb_data/kv_store.dat 1
+#     - ./mkfs.sh /tmp/kv_store.dat 1
 #     - ./ycsb-edb -threads 1 -dbnum 1 -wl s -p /tmp/kv_store.dat
 #     - cd ..;cd ..
 #     - ./scripts/CI/destroy_mbbd.sh
