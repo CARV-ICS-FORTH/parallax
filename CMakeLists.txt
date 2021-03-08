@@ -31,6 +31,7 @@ endif()
 include(FetchContent)
 include(CPack)
 include(GNUInstallDirs)
+include(CheckCCompilerFlag)
 include(cmake_utils/mkfs.cmake.in)
 include(cmake_utils/ycsb.cmake.in)
 include(cmake_utils/tests.cmake.in)
@@ -93,10 +94,22 @@ endif()
 set(DEPENDENCIES log libmba yaml)
 
 include_directories(${CMAKE_BINARY_DIR})
+include_directories(${CMAKE_SOURCE_DIR}/utilities)
+
+if(ADD_SANITIZERS)
+  set(CMAKE_C_FLAGS "-fsanitize=address,undefined ${CMAKE_C_FLAGS}")
+  set(CMAKE_CXX_FLAGS "-fsanitize=address,undefined ${CMAKE_CXX_FLAGS}")
+endif()
 
 set(CMAKE_C_FLAGS
-    "-std=gnu11 -Wstrict-prototypes -Wall -Wextra -fPIC  -Wunused -Wuninitialized -Wshadow -Wnull-dereference -Werror ${CMAKE_C_FLAGS}"
+    "-std=gnu11 -Wstrict-prototypes -Wall -Wextra -fPIC -fno-omit-frame-pointer -Wunused -Wuninitialized -Wshadow -Werror ${CMAKE_C_FLAGS}"
 )
+
+check_c_compiler_flag("-Wnull-dereference" CHECK_COMPILER_FLAGS)
+if(CHECK_COMPILER_FLAGS)
+  string(APPEND CMAKE_C_FLAGS " -Wnull-dereference")
+endif()
+
 set(CMAKE_C_FLAGS_DEBUG "-ggdb3 -Og ${CMAKE_C_FLAGS_DEBUG}")
 set(CMAKE_C_FLAGS_RELEASE
     "${CMAKE_C_FLAGS_RELEASE} -flto -funit-at-a-time -fprefetch-loop-arrays -fpeel-loops -O2 -finline-functions -DNDEBUG"

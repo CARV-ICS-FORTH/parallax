@@ -18,13 +18,6 @@
 #include <unordered_map>
 #include <sys/time.h>
 
-#ifdef MULTI_CLIENT
-#include <zookeeper.h>
-#include <zookeeper_log.h>
-#include <zookeeper.jute.h>
-#include <mutex>
-#endif
-
 #include "utils.h"
 #include "timer.h"
 #include "client.h"
@@ -47,6 +40,8 @@ Measurements *tail = nullptr;
 std::string outf("ops.txt");
 std::string explan_filename("execution_plan.txt");
 std::string results_directory("RESULTS");
+std::string path("/tmp/test");
+std::string custom_workload("sd");
 
 void UsageMessage(const char *command);
 bool StrStartWith(const char *str, const char *pre);
@@ -258,45 +253,6 @@ void execute_run(utils::Properties &props, ycsbc::YCSBDB *db)
 #endif
 }
 
-#ifdef MULTI_CLIENT
-std::mutex barrier_mutex;
-std::mutex sync_mutex;
-int connected = 0;
-int expired = 0;
-void _zk_watcher(zhandle_t *zkh, int type, int state, const char *path, void *context)
-{
-	/*
-	** zookeeper_init might not have returned, so we
-	** use zkh instead.
-	*/
-	printf("[%s:%s:%d] got event for path %s\n", __FILE__, __func__, __LINE__, path);
-	if (strcmp(path, "/barrier") == 0) {
-		printf("[%s:%s:%d] barrier notification\n", __FILE__, __func__, __LINE__);
-		//notify
-		sync_mutex.lock();
-		barrier_mutex.unlock();
-		sync_mutex.unlock();
-		return;
-	}
-	if (type == ZOO_SESSION_EVENT) {
-		if (state == ZOO_CONNECTED_STATE) {
-			connected = 1;
-			printf("[%s:%s:%d] Received a connection event\n", __FILE__, __func__, __LINE__);
-		} else if (state == ZOO_CONNECTING_STATE) {
-			if (connected == 1) {
-				printf("[%s:%s:%d] disconnected :-(\n", __FILE__, __func__, __LINE__);
-			}
-			connected = 0;
-		} else if (state == ZOO_EXPIRED_SESSION_STATE) {
-			expired = 1;
-			connected = 0;
-			zookeeper_close(zkh);
-		}
-	}
-	printf("[%s:%s:%d] got event %d, %d :-(\n", __FILE__, __func__, __LINE__, type, state);
-}
-#endif
-
 int main(const int argc, const char *argv[])
 {
 	struct timeval start, end;
@@ -307,20 +263,6 @@ int main(const int argc, const char *argv[])
 	std::string start_stats("./start_statistics.sh ");
 	std::string stop_stats("./stop_statistics.sh ");
 
-#ifdef MULTI_CLIENT
-	char path_buffer[128];
-	struct String_vector children;
-	struct Stat zk_stat;
-	string barrier = "/barrier";
-	string barrier_child = "/barrier/child";
-	zhandle_t *zh = NULL;
-	int path_buffer_len = 128;
-	int status;
-	string hostPort;
-	int num_of_clients = 0;
-	bool distributed_setup = false;
-	memset(path_buffer, 0x00, 128);
-#endif
 	ParseCommandLine(argc, argv, props);
 
 	std::cout << "Using execution plan:[" << explan_filename << "]" << std::endl;
@@ -444,6 +386,24 @@ void ParseCommandLine(int argc, const char *argv[], utils::Properties &props)
 
 			explan_filename = std::string(argv[argindex]);
 			argindex++;
+		} else if (strcmp(argv[argindex], "-p") == 0) {
+			argindex++;
+			if (argindex >= argc) {
+				UsageMessage(argv[0]);
+				exit(-1);
+			}
+
+			path = std::string(argv[argindex]);
+			argindex++;
+		} else if (strcmp(argv[argindex], "-wl") == 0) {
+			argindex++;
+			if (argindex >= argc) {
+				UsageMessage(argv[0]);
+				exit(-1);
+			}
+
+			custom_workload = std::string(argv[argindex]);
+			argindex++;
 		} else if (strcmp(argv[argindex], "-o") == 0) {
 			argindex++;
 			if (argindex >= argc) {
@@ -495,12 +455,15 @@ void UsageMessage(const char *command)
 	cout << "Options:" << endl;
 	cout << "  -threads n       Execute using n threads (default: 1)." << endl;
 	cout << "  -dbnum n         Number of distinct databases (default: 1)." << endl;
-	cout << "  -e file          Define the execution plan file (default: execution_plan.txt). For sample format check ep_proposed.txt"
+	cout << "  -e file          Define the execution plan file (default: execution_plan.txt). For sample format check ep_proposed.txt."
+	     << endl;
+	cout << "  -p /path/to/     Define the file or device the key-value store will write." << endl;
+	cout << "  -wl workload     Define the workload you want to run (default: sd). Options (s,m,l,sd,md,ld)"
 	     << endl;
 	cout << "  -o file          Define the result directory name (default ./RESULTS)." << endl;
-	cout << "  -insertStart     Set counter start value for key generation during load" << endl;
-	cout << "  -clientProcesses Set to the number of client processes (default = 1)" << endl;
-	cout << "  -outFile         Set name of ycsb log file (default = ops.txt" << endl;
+	cout << "  -insertStart     Set counter start value for key generation during load." << endl;
+	cout << "  -clientProcesses Set to the number of client processes (default = 1)." << endl;
+	cout << "  -outFile         Set name of ycsb log file (default = ops.txt)." << endl;
 }
 
 inline bool StrStartWith(const char *str, const char *pre)

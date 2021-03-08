@@ -29,11 +29,13 @@
 #include <fcntl.h>
 #include <linux/fs.h>
 #include <signal.h>
-
 #include <boost/algorithm/string.hpp>
+#include "workload_gen.h"
 __thread int x = 0;
 //#include "core/properties.h"
 extern unsigned priv_thread_count;
+extern std::string path;
+extern std::string custom_workload;
 extern "C" {
 #include <allocator/allocator.h>
 #include <btree/btree.h>
@@ -45,20 +47,20 @@ using std::endl;
 
 namespace ycsbc
 {
-class EutropiaDB : public YCSBDB {
+class ParallaxDB : public YCSBDB {
     private:
 	int db_num;
 	int field_count;
 	std::vector<db_handle *> dbs;
 
     public:
-	EutropiaDB(int num, utils::Properties &props)
+	ParallaxDB(int num, utils::Properties &props)
 		: db_num(num)
 		, field_count(std::stoi(
 			  props.GetProperty(CoreWorkload::FIELD_COUNT_PROPERTY, CoreWorkload::FIELD_COUNT_DEFAULT)))
 		, dbs()
 	{
-		const char *pathname = "/dev/dmap/dmap1";
+		const char *pathname = path.c_str();
 		//const char *pathname = "/usr/local/gesalous/mounts/kreon.dat";
 		int64_t size;
 
@@ -72,7 +74,7 @@ class EutropiaDB : public YCSBDB {
 			perror("ioctl");
 			/*maybe we have a file?*/
 			printf("[%s:%s:%d] querying file size\n", __FILE__, __func__, __LINE__);
-			size = lseek(fd, 0, SEEK_END);
+			size = lseek64(fd, 0, SEEK_END);
 			if (size == -1) {
 				printf("[%s:%s:%d] failed to determine volume size exiting...\n", __FILE__, __func__,
 				       __LINE__);
@@ -90,7 +92,7 @@ class EutropiaDB : public YCSBDB {
 		}
 	}
 
-	virtual ~EutropiaDB()
+	virtual ~ParallaxDB()
 	{
 	}
 
@@ -305,23 +307,25 @@ class EutropiaDB : public YCSBDB {
 		int y = x % 10;
 		++x;
 
-		// insert_key_value(dbs[db_id], (void *)key.c_str(), (void *)value.c_str(), key.length(), value.length());
-		// insert_key_value(dbs[db_id], (void *)key.c_str(), (void *)value3.c_str(), key.length(), value3.length());
-		// insert_key_value(dbs[db_id], (void *)key.c_str(), (void *)value.c_str(), key.length(), value.length());
-
-		if (y >= 0 && y < 6) {
-			insert_key_value(dbs[db_id], (void *)key.c_str(), (void *)value3.c_str(), key.length(),
-					 value3.length());
-			// std::cout << "temp1"<<std::endl;
-		} else if (y >= 6 && y < 8) {
+		switch (choose_wl(custom_workload, y)) {
+		case 0:
 			insert_key_value(dbs[db_id], (void *)key.c_str(), (void *)value.c_str(), key.length(),
 					 value.length());
-			//std::cout << "temp2"<<std::endl;
-		} else if (y >= 8 && y < 10) {
+			break;
+		case 1:
 			insert_key_value(dbs[db_id], (void *)key.c_str(), (void *)value2.c_str(), key.length(),
 					 value2.length());
-			//std::cout << "temp3"<<std::endl;
+			break;
+		case 2:
+			insert_key_value(dbs[db_id], (void *)key.c_str(), (void *)value3.c_str(), key.length(),
+					 value3.length());
+			break;
+		default:
+			assert(0);
+			std::cout << "Got Unknown value" << std::endl;
+			exit(EXIT_FAILURE);
 		}
+
 		// int cnt = 0;
 		// for (auto v : values) {
 		// 	value.append(v.first);

@@ -111,8 +111,6 @@ typedef struct node_header {
 	uint64_t epoch; /*epoch of the node. It will be used for knowing when to
                      perform copy on write*/
 	uint64_t fragmentation;
-	volatile uint64_t v1;
-	volatile uint64_t v2;
 	union {
 		/*data log info, KV log for leaves private for index*/
 		/* Used by index nodes */
@@ -158,7 +156,7 @@ struct bt_dynamic_leaf_slot_array {
 
 // The first enumeration should always have as a value 0.
 // UNKNOWN_LOG_CATEGORY must always be the last enumeration.
-enum log_category2 {
+enum log_category {
 	SMALL_INPLACE = 0,
 	SMALL_INLOG,
 	MEDIUM_INPLACE,
@@ -488,7 +486,7 @@ typedef struct bt_mutate_req {
 	uint64_t end_of_log;
 	uint32_t log_padding;
 	uint32_t kv_size;
-	enum log_category2 cat;
+	enum log_category cat;
 	uint8_t level_id;
 	/*only for inserts >= level_1*/
 	uint8_t tree_id;
@@ -535,7 +533,7 @@ struct log_towrite {
 	volatile segment_header *log_tail;
 	volatile uint64_t *log_size;
 	int level_id;
-	enum log_category2 status;
+	enum log_category status;
 };
 
 enum bt_rebalance_retcode {
@@ -605,7 +603,6 @@ uint8_t _insert_key_value(bt_insert_req *ins_req);
 void *append_key_value_to_log(log_operation *req);
 
 uint8_t _insert_index_entry(db_handle *db, kv_location *location, int INSERT_FLAGS);
-char *node_type(nodeType_t type);
 void *find_key(db_handle *handle, void *key, uint32_t key_size);
 void *__find_key(db_handle *handle, void *key);
 int8_t delete_key(db_handle *handle, void *key, uint32_t size);

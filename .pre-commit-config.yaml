@@ -24,7 +24,7 @@ repos:
     - id: clang-format
 
 -   repo: https://github.com/jumanjihouse/pre-commit-hooks
-    rev: 2.1.4
+    rev: master
     hooks:
     - id: shellcheck
       additional_dependencies: []

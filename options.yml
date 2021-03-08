@@ -2,5 +2,6 @@ level0_size : 1
 snapshot_interval : 1500
 commit_kvlog_interval: 500
 gc_interval : 50
+clean_interval: 60
 growth_factor : 4
 clean_size : 500000

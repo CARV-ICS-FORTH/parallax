@@ -4,7 +4,7 @@
 
 enum option_type { LL, STRING };
 
-struct option {
+struct lib_option {
 	char *name;
 	union {
 		char *name;
@@ -14,7 +14,7 @@ struct option {
 	UT_hash_handle hh;
 };
 
-extern struct option *dboptions;
+extern struct lib_option *dboptions;
 
 int parse_options(void);
-void check_option(char *option_name, struct option *opt_value);
+void check_option(char *option_name, struct lib_option *opt_value);

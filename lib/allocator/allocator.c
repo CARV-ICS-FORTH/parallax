@@ -1,4 +1,7 @@
+#define _LARGEFILE64_SOURCE
+#define _GNU_SOURCE
 #include <stdio.h>
+#include <math.h>
 #include <time.h>
 #include <assert.h>
 #include <errno.h>
@@ -16,33 +19,20 @@
 #include <unistd.h>
 #include <log.h>
 #include <uthash.h>
+#include <list.h>
 #include "dmap-ioctl.h"
 #include "allocator.h"
 #include "../btree/btree.h"
 #include "../btree/set_options.h"
 #include "../btree/conf.h"
 #include "../btree/segment_allocator.h"
-#include "../utilities/list.h"
-
-#define _FILE_OFFSET_BITS 64
-//#define USE_MLOCK
-#define __NR_mlock2 284
 
 LIST *mappedVolumes = NULL;
 int32_t DMAP_ACTIVATED = 1;
-
-pthread_mutex_t EUTROPIA_LOCK = PTHREAD_MUTEX_INITIALIZER;
-//volatile uint64_t snapshot_v1;
-//volatile uint64_t snapshot_v2;
-
 uint64_t MAPPED = 0; /*from this address any node can see the entire volume*/
 int FD;
 
-int32_t FD; /*GLOBAL FD*/
-static inline void *next_word(volume_descriptor *volume_desc, unsigned char op_code);
 void clean_log_entries(void *volume_desc);
-double log2(double x);
-int ffsl(long int i);
 
 static void check(int test, const char *message, ...)
 {
@@ -58,8 +48,10 @@ static void check(int test, const char *message, ...)
 
 void mount_volume(char *volume_name, int64_t start)
 {
-	int64_t device_size;
-	MUTEX_LOCK(&EUTROPIA_LOCK);
+	static pthread_mutex_t volume_lock = PTHREAD_MUTEX_INITIALIZER;
+	off64_t device_size;
+
+	MUTEX_LOCK(&volume_lock);
 
 	if (MAPPED == 0) {
 		log_info("Opening Volume %s", volume_name);
@@ -67,14 +59,20 @@ void mount_volume(char *volume_name, int64_t start)
 		FD = open(volume_name, O_RDWR); /* open the device */
 		if (ioctl(FD, BLKGETSIZE64, &device_size) == -1) {
 			/*maybe we have a file?*/
-			device_size = lseek(FD, 0, SEEK_END);
+			device_size = lseek64(FD, 0, SEEK_END);
 			if (device_size == -1) {
 				log_fatal("failed to determine volume size exiting...");
 				perror("ioctl");
 				exit(EXIT_FAILURE);
 			}
 		}
-		log_info("creating virtual address space offset %lld size %lld\n", (long long)start,
+
+		if (device_size < MIN_VOLUME_SIZE) {
+			log_fatal("Sorry minimum supported volume size is %lld GB", MIN_VOLUME_SIZE / GB(1));
+			exit(EXIT_FAILURE);
+		}
+
+		log_info("creating virtual address space offset %lld size %lld", (long long)start,
 			 (long long)device_size);
 		MAPPED = (uint64_t)mmap(NULL, device_size, PROT_READ | PROT_WRITE, MAP_SHARED, FD,
 					start); /*mmap the device*/
@@ -82,7 +80,7 @@ void mount_volume(char *volume_name, int64_t start)
 		madvise((void *)MAPPED, device_size, MADV_RANDOM);
 
 		if (MAPPED % sysconf(_SC_PAGE_SIZE) == 0)
-			log_info("address space aligned properly address space starts at %llu\n",
+			log_info("address space aligned properly address space starts at %llu",
 				 (long long unsigned)MAPPED);
 		else {
 			log_fatal("FATAL error Mapped address not aligned correctly mapped: %llu",
@@ -90,37 +88,7 @@ void mount_volume(char *volume_name, int64_t start)
 			exit(EXIT_FAILURE);
 		}
 	}
-	MUTEX_UNLOCK(&EUTROPIA_LOCK);
-}
-
-/*
- * Input: File descriptor, offset, relative position from where it has to be read (SEEK_SET/SEEK_CUR/SEEK_END)
- *    pointer to databuffer, size of data to be read
- * Output: -1 on failure of lseek64/read
- *     number of bytes read on success.
- * Note: This reads absolute offsets in the disk.
- */
-int32_t lread(int32_t fd, off_t offset, int whence, void *ptr, size_t size)
-{
-	if (size % 4096 != 0) {
-		printf("FATAL read request size %d not a multiple of 4k, harmful\n", (int32_t)size);
-		exit(-1);
-	}
-	if (offset % 4096 != 0) {
-		printf("FATAL read-seek request size %ld not a multiple of 4k, harmful\n", offset);
-		exit(-1);
-	}
-	if (lseek(fd, offset, whence) == -1) {
-		fprintf(stderr, "lseek: fd:%d, offset:%ld, whence:%d, size:%lu\n", fd, offset, whence, size);
-		perror("lread");
-		return -1;
-	}
-	if (read(fd, ptr, size) == -1) {
-		fprintf(stderr, "lread-!: fd:%d, offset:%ld, whence:%d, size:%lu\n", fd, offset, whence, size);
-		perror("lread");
-		return -1;
-	}
-	return 1;
+	MUTEX_UNLOCK(&volume_lock);
 }
 
 /*
@@ -130,14 +98,14 @@ int32_t lread(int32_t fd, off_t offset, int whence, void *ptr, size_t size)
  *     number of bytes written on success.
  * Note: This writes absolute offsets in the disk.
  */
-int32_t lwrite(int32_t fd, off_t offset, int whence, void *ptr, ssize_t size)
+static int32_t lwrite(int32_t fd, off64_t offset, int whence, void *ptr, ssize_t size)
 {
 	ssize_t total_bytes_written = 0;
 	ssize_t bytes_written = 0;
 	assert(size > 0);
 	//log_info("Bytes to write %lld",size);
-	if (lseek(fd, offset, whence) == -1) {
-		printf("lwrite: fd:%d, offset:%ld, whence:%d, size:%lu\n", fd, offset, whence, size);
+	if (lseek64(fd, offset, whence) == -1) {
+		log_fatal("lwrite: fd:%d, offset:%ld, whence:%d, size:%lu", fd, offset, whence, size);
 		perror("lwrite");
 		exit(EXIT_FAILURE);
 	}
@@ -193,13 +161,13 @@ int32_t volume_init(char *dev_name, int64_t start, int64_t size, int typeOfVolum
 		exit(EXIT_FAILURE);
 	}
 
-	fprintf(stderr, "%s[%s:%s:%d] Initiliazing volume(\"%s\", %" PRId64 ", %" PRId64 ", %d);%s\n", "\033[0;32m",
-		__FILE__, __func__, __LINE__, dev_name, start, size, typeOfVolume, "\033[0m");
+	log_info("%s[%s:%s:%d] Initiliazing volume(\"%s\", %" PRId64 ", %" PRId64 ", %d);%s", "\033[0;32m", __FILE__,
+		 __func__, __LINE__, dev_name, start, size, typeOfVolume, "\033[0m");
 
 	dev_size_in_blocks = size / DEVICE_BLOCK_SIZE;
 	buffer = malloc(DEVICE_BLOCK_SIZE);
 	if ((fd = open(dev_name, O_RDWR)) == -1) {
-		log_fatal("code = %d,  ERROR = %s for device %s\n", errno, strerror(errno), dev_name);
+		log_fatal("code = %d,  ERROR = %s for device %s", errno, strerror(errno), dev_name);
 		exit(EXIT_FAILURE);
 	}
 	log_info("initializing volume %s start %llu size %llu size in 4K blocks %llu", dev_name, (long long)start,
@@ -214,7 +182,7 @@ int32_t volume_init(char *dev_name, int64_t start, int64_t size, int typeOfVolum
 
 		ret = ioctl(fd, FAKE_BLK_IOC_ZERO_RANGE, &frang);
 		if (ret) {
-			log_fatal("ioctl(FAKE_BLK_IOC_ZERO_RANGE) failed! Program exiting...\n");
+			log_fatal("ioctl(FAKE_BLK_IOC_ZERO_RANGE) failed! Program exiting...");
 			exit(EXIT_FAILURE);
 		}
 		// XXX Nothing more to do! volume_init() will touch all the other metadata
@@ -260,8 +228,8 @@ int32_t volume_init(char *dev_name, int64_t start, int64_t size, int typeOfVolum
 
 	for (i = 0; i < bitmap_size_in_blocks; i++) {
 		if (lwrite(fd, offset, SEEK_SET, buffer, (size_t)DEVICE_BLOCK_SIZE) == -1) {
-			log_fatal("code = %d,  ERROR = %s\n", errno, strerror(errno));
-			printf("Writing at offset %llu\n", (long long unsigned)offset);
+			log_fatal("code = %d,  ERROR = %s", errno, strerror(errno));
+			log_fatal("Writing at offset %llu", (long long unsigned)offset);
 			return -1;
 		}
 		offset += 4096;
@@ -282,20 +250,20 @@ int32_t volume_init(char *dev_name, int64_t start, int64_t size, int typeOfVolum
 		tmp = (tmp >> bitmap_bits) << bitmap_bits;
 		memcpy(buffer + sizeof(uint64_t) + bitmap_bytes, &tmp, sizeof(char));
 	}
-	fprintf(stderr, "[%s:%s:%d] reserved for BUFFER_SEGMENT_SIZE %d bitmap_bytes %d and bitmap_bits %d\n", __FILE__,
-		__func__, __LINE__, BUFFER_SEGMENT_SIZE, bitmap_bytes, bitmap_bits);
+	log_info("Reserved for BUFFER_SEGMENT_SIZE %d bitmap_bytes %d and bitmap_bits %d", BUFFER_SEGMENT_SIZE,
+		 bitmap_bytes, bitmap_bits);
 
 	/*write it now*/
 	offset = start + 4096 + (FREE_LOG_SIZE * 4096);
 	if (lwrite(fd, offset, SEEK_SET, buffer, (size_t)DEVICE_BLOCK_SIZE) == -1) {
-		fprintf(stderr, "Function = %s, code = %d,  ERROR = %s\n", __func__, errno, strerror(errno));
+		log_error("Function = %s, code = %d,  ERROR = %s", __func__, errno, strerror(errno));
 		return -1;
 	}
 
 	/*mark also it's buddy block */
 	offset += 4096;
 	if (lwrite(fd, offset, SEEK_SET, buffer, (size_t)DEVICE_BLOCK_SIZE) == -1) {
-		fprintf(stderr, "Function = %s, code = %d,  ERROR = %s\n", __func__, errno, strerror(errno));
+		log_error("Function = %s, code = %d,  ERROR = %s", __func__, errno, strerror(errno));
 	}
 
 	/*initializing the log structure */
@@ -304,7 +272,7 @@ int32_t volume_init(char *dev_name, int64_t start, int64_t size, int typeOfVolum
 
 	for (i = 0; i < FREE_LOG_SIZE; i++) {
 		if (lwrite(fd, offset, SEEK_SET, buffer, DEVICE_BLOCK_SIZE) == -1) {
-			fprintf(stderr, "Function = %s, code = %d,  ERROR = %s\n", __func__, errno, strerror(errno));
+			log_error("Function = %s, code = %d,  ERROR = %s", __func__, errno, strerror(errno));
 			return -1;
 		}
 		offset += DEVICE_BLOCK_SIZE;
@@ -315,7 +283,7 @@ int32_t volume_init(char *dev_name, int64_t start, int64_t size, int typeOfVolum
 	offset = start + (uint64_t)DEVICE_BLOCK_SIZE + (uint64_t)(FREE_LOG_SIZE * DEVICE_BLOCK_SIZE) +
 		 (uint64_t)(bitmap_size_in_blocks * DEVICE_BLOCK_SIZE) + pad;
 	if (offset % BUFFER_SEGMENT_SIZE != 0) {
-		log_fatal("FATAL misaligned initial address\n");
+		log_fatal("FATAL misaligned initial address");
 		exit(EXIT_FAILURE);
 	}
 	sys_catalogue.epoch = 0;
@@ -332,14 +300,14 @@ int32_t volume_init(char *dev_name, int64_t start, int64_t size, int typeOfVolum
 	char *zeroes = malloc(sizeof(segment_header));
 	memset(zeroes, 0x00, sizeof(segment_header));
 	if (lwrite(fd, offset, SEEK_SET, zeroes, sizeof(segment_header)) == -1) {
-		log_fatal("code = %d,  ERROR = %s\n", errno, strerror(errno));
+		log_fatal("code = %d,  ERROR = %s", errno, strerror(errno));
 		return -1;
 	}
 	free(zeroes);
 	offset += sizeof(segment_header);
-	log_info("Writing system catalogue at offset %llu\n", (long long unsigned)offset);
+	log_info("Writing system catalogue at offset %llu", (long long unsigned)offset);
 	if (lwrite(fd, offset, SEEK_SET, &sys_catalogue, (size_t)(sizeof(pr_system_catalogue))) == -1) {
-		log_fatal("code = %d,  ERROR = %s\n", errno, strerror(errno));
+		log_fatal("code = %d,  ERROR = %s", errno, strerror(errno));
 		return -1;
 	}
 
@@ -352,20 +320,21 @@ int32_t volume_init(char *dev_name, int64_t start, int64_t size, int typeOfVolum
 	dev_superblock->system_catalogue = (pr_system_catalogue *)(offset);
 
 	if (lwrite(fd, start, SEEK_SET, dev_superblock, sizeof(superblock)) == -1) {
-		log_fatal("code = %d,  ERROR = %s\n", errno, strerror(errno));
+		log_fatal("code = %d,  ERROR = %s", errno, strerror(errno));
 		return -1;
 	}
 	log_info("Syncing");
 	fsync(fd);
 
-	printf("\n\n############ [%s:%s:%d] ####################\n", __FILE__, __func__, __LINE__);
-	printf("\tDevice size in blocks %llu\n", (long long unsigned)dev_size_in_blocks);
-	printf("\tBitmap size in blocks %llu\n", (long long unsigned)bitmap_size_in_blocks);
-	printf("\tData size in blocks %llu\n", (long long unsigned)dev_addressed_in_blocks);
-	printf("\tLog size in blocks %llu\n", (long long unsigned)FREE_LOG_SIZE);
-	printf("\tUnmapped blocks %llu\n", (long long unsigned)unmapped_blocks);
-	printf("################################\n\n");
+	log_info("\n\n\t\t###############################################################");
+	log_info("\tDevice size in blocks %llu", (long long unsigned)dev_size_in_blocks);
+	log_info("\tBitmap size in blocks %llu", (long long unsigned)bitmap_size_in_blocks);
+	log_info("\tData size in blocks %llu", (long long unsigned)dev_addressed_in_blocks);
+	log_info("\tLog size in blocks %llu", (long long unsigned)FREE_LOG_SIZE);
+	log_info("\tUnmapped blocks %llu", (long long unsigned)unmapped_blocks);
+	log_info("\n\t\t################################################################");
 
+	free(dev_superblock);
 	return fd;
 }
 
@@ -593,7 +562,7 @@ void *allocate(void *_volume_desc, uint64_t num_bytes)
 	void *src;
 	void *dest;
 	uint64_t start_bit_offset = 0;
-	uint64_t *words;
+	uint64_t *words = NULL;
 	uint64_t highest_bit_mask = 0x8000000000000000;
 	int64_t end_bit_offset = 64;
 	int64_t b = 1;
@@ -606,8 +575,15 @@ void *allocate(void *_volume_desc, uint64_t num_bytes)
 		words = (uint64_t *)malloc(sizeof(uint64_t));
 	else if (size > 1 && size < 64)
 		words = (uint64_t *)malloc(sizeof(uint64_t) * 2);
-	else
-		words = (uint64_t *)malloc((sizeof(uint64_t) * (size / 64)) + 2);
+	else {
+		uint32_t alloc_size = ((size / 64) * sizeof(uint64_t)) + (2 * sizeof(uint64_t));
+		words = (uint64_t *)malloc(alloc_size);
+	}
+
+	if (!words) {
+		log_fatal("Malloc failed out of memory");
+		exit(EXIT_FAILURE);
+	}
 
 	void *word_address; /*current word we are searching*/
 	int32_t i = 0;
@@ -957,7 +933,9 @@ void allocator_init(volume_descriptor *volume_desc)
    */
 	i = volume_desc->volume_superblock->bitmap_size_in_blocks / 2;
 	offset = 0;
-	volume_desc->allocator_size = i / 4;
+	volume_desc->allocator_size = (i / 4);
+	if (i % 4 != 0)
+		++volume_desc->allocator_size;
 
 	if (volume_desc->allocator_size % 8 != 0) {
 		volume_desc->allocator_size += (8 - (volume_desc->allocator_size % 8));
@@ -1020,14 +998,14 @@ void allocator_init(volume_descriptor *volume_desc)
 		}
 		if (winner == 0) {
 			/*aka 01 read from left write to right */
-			*(volume_desc->allocator_state + (offset / 4)) += 1 << ((offset % 4) * 2);
+			volume_desc->allocator_state[offset / 4] += (1 << ((offset % 4) * 2));
 #ifdef DEBUG_ALLOCATOR
 			printf("left wins: offset %d, position %d, bit %d , added number %d\n", offset, offset / 4,
 			       offset % 4, 1 << (((offset % 4) * 2) + 1));
 #endif
 		} else {
 			/*aka 10 read from right write to left */
-			*(volume_desc->allocator_state + (offset / 4)) += 1 << (((offset % 4) * 2) + 1);
+			volume_desc->allocator_state[offset / 4] += (1 << (((offset % 4) * 2) + 1));
 #ifdef DEBUG_ALLOCATOR
 			printf("right wins: offset %d, position %d, bit %d , added number %d\n", offset, offset / 4,
 			       offset % 4, 1 << ((offset % 4) * 2));
@@ -1179,9 +1157,9 @@ void clean_log_entries(void *v_desc)
 	uint64_t clean_interval;
 	uint64_t snapshot_interval;
 	uint64_t commit_kvlog_interval;
-	uint64_t ts;
+	struct timespec ts;
 	volume_descriptor *volume_desc = (volume_descriptor *)v_desc;
-	struct option *option;
+	struct lib_option *option;
 	/*Are we operating with filter block device or not?...Let's discover with an ioctl*/
 	struct fake_blk_pages_num cbits;
 	uint64_t bit_idx;
@@ -1210,12 +1188,12 @@ void clean_log_entries(void *v_desc)
 
 	log_info("Starting cleaner for volume id: %s", (char *)volume_desc->volume_id);
 	while (1) {
-		if (clock_gettime(CLOCK_REALTIME, (struct timespec *)&ts) == -1) {
+		if (clock_gettime(CLOCK_REALTIME, &ts) == -1) {
 			perror("FATAL: clock_gettime failed)\n");
 			exit(-1);
 		}
-		((struct timespec *)&ts)->tv_sec += (clean_interval / 1000000L);
-		((struct timespec *)&ts)->tv_nsec += (clean_interval % 1000000L) * 1000L;
+		ts.tv_sec += (clean_interval / 1000000L);
+		ts.tv_nsec += (clean_interval % 1000000L) * 1000L;
 
 		rc = MUTEX_LOCK(&volume_desc->mutex); //pthread_mutex_lock(&(volume_desc->mutex));
 		rc = pthread_cond_timedwait(&(volume_desc->cond), &(volume_desc->mutex), (struct timespec *)&ts);
@@ -1318,10 +1296,10 @@ void clean_log_entries(void *v_desc)
 		/* pthread_mutex_unlock(&(volume_desc->allocator_lock));	/\*release allocator lock*\/ */
 		/* pthread_mutex_unlock(&(volume_desc->mutex));/\*unlock, to go to sleep*\/ */
 		/*snapshot check*/
-		ts = get_timestamp();
-		if ((ts - volume_desc->last_snapshot) >= snapshot_interval)
+		uint64_t timestamp = get_timestamp();
+		if ((timestamp - volume_desc->last_snapshot) >= snapshot_interval)
 			snapshot(volume_desc);
-		else if (ts - volume_desc->last_commit > commit_kvlog_interval)
+		else if (timestamp - volume_desc->last_commit > commit_kvlog_interval)
 			commit_db_logs_per_volume(volume_desc);
 	}
 }

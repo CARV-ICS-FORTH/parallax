@@ -23,7 +23,7 @@ struct write_dynamic_leaf_args {
 	uint32_t middle;
 	int level_id;
 	int kv_format;
-	enum log_category2 cat;
+	enum log_category cat;
 };
 
 #ifdef DEBUG_DYNAMIC_LEAF
@@ -63,6 +63,12 @@ char *get_leaf_log_offset(const struct bt_dynamic_leaf_node *leaf, const uint32_
 char *get_kv_offset(const struct bt_dynamic_leaf_node *leaf, const uint32_t leaf_size, const uint32_t kv_offset)
 {
 	return (((char *)leaf) + leaf_size - kv_offset);
+}
+
+void print_slot_array(struct bt_dynamic_leaf_slot_array *slot_array, int i)
+{
+	log_info("slot array index %d offset %d category %d bitmap %d", i, slot_array[i].index,
+		 slot_array[i].key_category, slot_array[i].bitmap);
 }
 
 void fill_prefix(struct prefix *key, char *key_loc, enum kv_entry_location key_type)
@@ -333,7 +339,7 @@ uint32_t append_bt_leaf_entry_inplace(char *dest, uint64_t pointer, char *prefix
 }
 
 int check_dynamic_leaf_split(struct bt_dynamic_leaf_node *leaf, uint32_t leaf_size, uint32_t kv_size, int level_id,
-			     enum kv_entry_location key_type, enum log_category2 cat)
+			     enum kv_entry_location key_type, enum log_category cat)
 {
 	uint32_t leaf_log_size = leaf->header.leaf_log_size;
 	uint32_t metadata_size = sizeof(struct bt_dynamic_leaf_node) +
@@ -479,8 +485,10 @@ struct bt_rebalance_result split_dynamic_leaf(struct bt_dynamic_leaf_node *leaf,
 	print_all_keys(right_leaf, leaf_size);
 #endif
 
+	/* rep.middle_key_buf = fill_keybuf(get_kv_offset(left_leaf, leaf_size, left_leaf_slot_array[left_leaf->header.num_entries - 1].index), */
+	/* 				 left_leaf_slot_array[left_leaf->header.num_entries - 1].bitmap); */
 	seg_free_leaf_node(volume_desc, level, req->metadata.tree_id, (leaf_node *)old_leaf);
-	free(split_buffer);
+	/* free(split_buffer); */
 	return rep;
 }
 
@@ -594,13 +602,12 @@ void write_data_in_dynamic_leaf(struct write_dynamic_leaf_args *args)
 		struct bt_leaf_entry *serialized = (struct bt_leaf_entry *)key_value_buf;
 		slot.bitmap = KV_INLOG;
 		if (kv_format == KV_FORMAT) {
-			leaf->header.leaf_log_size +=
-				append_bt_leaf_entry_inplace(dest, ABSOLUTE_ADDRESS(key_value_buf), key->data,
-							     /* PREFIX_SIZE */ MIN(key->size, PREFIX_SIZE));
+			leaf->header.leaf_log_size += append_bt_leaf_entry_inplace(
+				dest, ABSOLUTE_ADDRESS(key_value_buf), key->data, MIN(key->size, PREFIX_SIZE));
 		} else {
 			leaf->header.leaf_log_size +=
 				append_bt_leaf_entry_inplace(dest, ABSOLUTE_ADDRESS(serialized->pointer), key_value_buf,
-							     /* PREFIX_SIZE */ MIN(key->size, PREFIX_SIZE));
+							     MIN(key->size, PREFIX_SIZE));
 		}
 		//Note There is a case where YCSB generates 11 bytes keys and we read invalid bytes from stack.
 		//This should be fixed after Eurosys deadline.
@@ -614,7 +621,7 @@ void write_data_in_dynamic_leaf(struct write_dynamic_leaf_args *args)
 
 int reorganize_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, uint32_t leaf_size, bt_insert_req *req)
 {
-	enum log_category2 cat = req->metadata.cat;
+	enum log_category cat = req->metadata.cat;
 	unsigned kv_size = (cat == BIG_INLOG || cat == MEDIUM_INLOG || cat == SMALL_INLOG) ?
 					 sizeof(struct bt_leaf_entry) :
 					 req->metadata.kv_size;

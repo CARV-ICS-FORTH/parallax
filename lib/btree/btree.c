@@ -18,6 +18,8 @@
 #include <sys/types.h>
 #include <config.h>
 #include <log.h>
+#include <list.h>
+#include <spin_loop.h>
 #include <uthash.h>
 #include "btree.h"
 #include "gc.h"
@@ -26,8 +28,6 @@
 #include "set_options.h"
 #include "conf.h"
 #include "../allocator/allocator.h"
-#include "../../utilities/list.h"
-#include "../../utilities/spin_loop.h"
 
 #define PREFIX_STATISTICS_NO
 #define MIN(x, y) ((x > y) ? (y) : (x))
@@ -669,7 +669,7 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 
 		uint64_t level0_size;
 		uint64_t growth_factor;
-		struct option *option;
+		struct lib_option *option;
 
 		HASH_FIND_STR(dboptions, "level0_size", option);
 		check_option("level0_size", option);
@@ -1107,7 +1107,6 @@ uint8_t insert_key_value(db_handle *handle, void *key, void *value, uint32_t key
 	} else {
 		ins_req.metadata.cat = SMALL_INPLACE;
 	}
-
 	/*
 * Note for L0 inserts since active_tree changes dynamically we decide which
 * is the active_tree after
@@ -1698,24 +1697,6 @@ void insert_key_at_index(bt_insert_req *ins_req, index_node *node, node_header *
 	//assert_index_node(node);
 }
 
-char *node_type(nodeType_t type)
-{
-	switch (type) {
-	case leafNode:
-		return "leafNode";
-	case leafRootNode:
-		return "leafRootnode";
-	case rootNode:
-		return "rootNode";
-	case internalNode:
-		return "internalNode";
-	default:
-		assert(0);
-		log_fatal("UNKNOWN NODE TYPE");
-		exit(EXIT_FAILURE);
-	}
-}
-
 /**
  * gesalous 05/06/2014 17:30
  * added method for splitting an index node
@@ -1782,7 +1763,7 @@ static struct bt_rebalance_result split_index(node_header *node, bt_insert_req *
 int insert_KV_at_leaf(bt_insert_req *ins_req, node_header *leaf)
 {
 	db_descriptor *db_desc = ins_req->metadata.handle->db_desc;
-	enum log_category2 cat = ins_req->metadata.cat;
+	enum log_category cat = ins_req->metadata.cat;
 	int append_tolog = (ins_req->metadata.append_to_log &&
 			    (cat == SMALL_INLOG || cat == SMALL_INPLACE || //Needed for consistency purposes
 			     cat == MEDIUM_INLOG || cat == BIG_INLOG));
@@ -2002,7 +1983,7 @@ int is_split_needed(void *node, bt_insert_req *req, enum bt_layout node_layout, 
 	node_header *header = (node_header *)node;
 	int64_t num_entries = header->num_entries;
 	uint32_t height = header->height;
-	enum log_category2 cat = req->metadata.cat;
+	enum log_category cat = req->metadata.cat;
 	uint8_t level_id = req->metadata.level_id;
 
 	if (height != 0) {
@@ -2167,19 +2148,15 @@ release_and_retry:
 		if (is_split_needed(son, ins_req, db_desc->levels[level_id].node_layout, temp_leaf_size)) {
 			/*Overflow split*/
 			if (son->height > 0) {
-				son->v1++;
 				split_res = split_index(son, ins_req);
 				/*node has splitted, free it*/
 				seg_free_index_node(ins_req->metadata.handle->volume_desc, &db_desc->levels[level_id],
 						    ins_req->metadata.tree_id, (index_node *)son);
 				// free_logical_node(&(req->allocator_desc), son);
-				son->v2++;
 			} else {
 				if (reorganize_dynamic_leaf((struct bt_dynamic_leaf_node *)son,
 							    db_desc->levels[level_id].leaf_size, ins_req))
 					goto release_and_retry;
-
-				son->v1++;
 
 				split_res = split_leaf(ins_req, (leaf_node *)son);
 
@@ -2189,22 +2166,18 @@ release_and_retry:
 							   &ins_req->metadata.handle->db_desc->levels[level_id],
 							   ins_req->metadata.tree_id, (leaf_node *)son);
 					/*fix the dangling lamport*/
-					split_res.left_child->v2++;
-				} else
-					son->v2++;
+				}
 			}
 
 			/*Insert pivot at father*/
 			if (father != NULL) {
 				/*lamport counter*/
-				father->v1++;
 				assert(father->epoch > ins_req->metadata.handle->volume_desc->dev_catalogue->epoch);
 
 				insert_key_at_index(ins_req, (index_node *)father, split_res.left_child,
 						    split_res.right_child, split_res.middle_key_buf);
 
 				/*lamport counter*/
-				father->v2++;
 			} else {
 				/*Root was splitted*/
 				// log_info("new root");
@@ -2217,13 +2190,9 @@ release_and_retry:
 								1;
 
 				new_index_node->header.type = rootNode;
-				new_index_node->header.v1++; /*lamport counter*/
-				son->v1++;
 
 				insert_key_at_index(ins_req, new_index_node, split_res.left_child,
 						    split_res.right_child, split_res.middle_key_buf);
-				new_index_node->header.v2++; /*lamport counter*/
-				son->v2++;
 				/*new write root of the tree*/
 				db_desc->levels[level_id].root_w[ins_req->metadata.tree_id] =
 					(node_header *)new_index_node;
@@ -2253,13 +2222,11 @@ release_and_retry:
 			node_copy->epoch = volume_desc->mem_catalogue->epoch;
 			son = node_copy;
 			/*Update father's pointer*/
-			if (father != NULL) {
-				father->v1++; /*lamport counter*/
+			if (father != NULL)
 				*(uint64_t *)next_addr = (uint64_t)node_copy - MAPPED;
-				father->v2++; /*lamport counter*/
-			} else { /*We COWED the root*/
+			else /*We COWED the root*/
 				db_desc->levels[level_id].root_w[ins_req->metadata.tree_id] = node_copy;
-			}
+
 			goto release_and_retry;
 		}
 
@@ -2302,11 +2269,9 @@ release_and_retry:
 		exit(EXIT_FAILURE);
 	}
 
-	son->v1++; /*lamport counter*/
 	assert(son->epoch > ins_req->metadata.handle->volume_desc->dev_catalogue->epoch);
 
 	insert_KV_at_leaf(ins_req, son);
-	son->v2++; /*lamport counter*/
 	/*Unlock remaining locks*/
 	_unlock_upper_levels(upper_level_nodes, size, release);
 	__sync_fetch_and_sub(num_level_writers, 1);
@@ -2437,9 +2402,7 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 		exit(EXIT_FAILURE);
 	}
 
-	son->v1++; /*lamport counter*/
 	insert_KV_at_leaf(ins_req, son);
-	son->v2++; /*lamport counter*/
 	/*Unlock remaining locks*/
 	_unlock_upper_levels(upper_level_nodes, size, release);
 	__sync_fetch_and_sub(num_level_writers, 1);

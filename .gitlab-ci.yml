@@ -26,6 +26,15 @@ build_clang-tidy:
     - cmake .. "-DCMAKE_C_CLANG_TIDY=/bin/clang-tidy;-checks=*,-clang-analyzer-*,-google-*,-hicpp-braces-around-statements,-bugprone-not-null-terminated-result,-readability-braces-around-statements,-readability-braces-around-statements* --format-style=../.clang-format -p ./compile_commands.json"
     - make all
 
+build_centos:
+  image: carvicsforth/centos_carv:latest
+  stage: build
+  script:
+    - source scl_source enable devtoolset-8 || echo ignoring exit code so CI does not bomb when it should not > /dev/null
+    - mkdir -p build;cd build
+    - cmake3 ..
+    - make all
+
 test_surrogates:
   image: carvicsforth/ubuntu_carv:latest
   stage: test
@@ -44,6 +53,22 @@ test_options:
     - cmake ..
     - make test_options;cd tests;
     - ./test_options
+
+
+# test_ycsb_small:
+#   image: carvicsforth/arch_carv:latest
+#   stage: test
+#   tags:
+#     - kubernetes
+#   script:
+#     - ./scripts/CI/create_mbbd.sh
+#     - mkdir -p build;cd build
+#     - cmake ..
+#     - make ycsb-edb;make mkfs.parallax;cd YCSB-CXX;
+#     - ./mkfs.sh /tmp/kv_store.dat 1
+#     - ./ycsb-edb -threads 1 -dbnum 1 -wl s -p /tmp/kv_store.dat
+#     - cd ..;cd ..
+#     - ./scripts/CI/destroy_mbbd.sh
 
 install_lib:
   image: carvicsforth/ubuntu_carv:latest

@@ -6,11 +6,11 @@
 #include <stdlib.h>
 #include <time.h>
 #include <log.h>
+#include <list.h>
 #include <uthash.h>
 #include "gc.h"
 #include "set_options.h"
 #include "../allocator/allocator.h"
-#include "../../utilities/list.h"
 
 extern sem_t gc_daemon_interrupts;
 
@@ -187,7 +187,7 @@ void *gc_log_entries(void *handle)
 	struct timespec ts;
 	uint64_t gc_interval;
 	stack *marks;
-	struct option *option;
+	struct lib_option *option;
 	struct db_handle *han = (struct db_handle *)handle;
 	db_descriptor *db_desc = han->db_desc;
 	volume_descriptor *volume_desc = han->volume_desc;

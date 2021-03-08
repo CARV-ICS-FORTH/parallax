@@ -1,3 +1,4 @@
+#define _LARGEFILE64_SOURCE
 #include <linux/fs.h>
 #include <sys/ioctl.h>
 #include <fcntl.h>
@@ -93,7 +94,7 @@ int main(int argc, char *argv[])
 	FD = open(VOLUME_NAME, O_RDWR); /* open the device */
 	if (ioctl(FD, BLKGETSIZE64, &device_size) == -1) {
 		/*maybe we have a file?*/
-		device_size = lseek(FD, 0, SEEK_END);
+		device_size = lseek64(FD, 0, SEEK_END);
 		if (device_size == -1) {
 			log_fatal("failed to determine volume size exiting...");
 			perror("ioctl");
