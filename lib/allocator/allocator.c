@@ -334,6 +334,7 @@ int32_t volume_init(char *dev_name, int64_t start, int64_t size, int typeOfVolum
 	log_info("\tUnmapped blocks %llu", (long long unsigned)unmapped_blocks);
 	log_info("\n\t\t################################################################");
 
+	free(dev_superblock);
 	return fd;
 }
 
@@ -932,7 +933,9 @@ void allocator_init(volume_descriptor *volume_desc)
    */
 	i = volume_desc->volume_superblock->bitmap_size_in_blocks / 2;
 	offset = 0;
-	volume_desc->allocator_size = i / 4;
+	volume_desc->allocator_size = (i / 4);
+	if (i % 4 != 0)
+		++volume_desc->allocator_size;
 
 	if (volume_desc->allocator_size % 8 != 0) {
 		volume_desc->allocator_size += (8 - (volume_desc->allocator_size % 8));

@@ -603,7 +603,6 @@ uint8_t _insert_key_value(bt_insert_req *ins_req);
 void *append_key_value_to_log(log_operation *req);
 
 uint8_t _insert_index_entry(db_handle *db, kv_location *location, int INSERT_FLAGS);
-char *node_type(nodeType_t type);
 void *find_key(db_handle *handle, void *key, uint32_t key_size);
 void *__find_key(db_handle *handle, void *key);
 int8_t delete_key(db_handle *handle, void *key, uint32_t size);
