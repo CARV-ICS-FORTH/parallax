@@ -30,7 +30,7 @@ build_centos:
   image: carvicsforth/centos_carv:latest
   stage: build
   script:
-    - scl enable devtoolset-8 -- bash
+    - source scl_source enable devtoolset-8 || echo ignoring exit code so CI does not bomb when it should not > /dev/null
     - mkdir -p build;cd build
     - cmake3 ..
     - make all
