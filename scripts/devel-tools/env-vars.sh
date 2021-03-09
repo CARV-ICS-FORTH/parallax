@@ -11,3 +11,5 @@ LD_LIBRARY_PATH=/archive/users/gxanth/gcc-10.1.0/lib64:$LD_LIBRARY_PATH
 PATH=/archive/users/gxanth/gdb9.2/bin:$PATH
 CC=gcc-10.1.0
 CXX=g++-10.1.0
+AR=gcc-ar-10.1.0
+CPP=cpp-10.1.0
