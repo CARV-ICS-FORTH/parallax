@@ -65,11 +65,17 @@ FetchContent_Declare(
   GIT_TAG main
   GIT_PROGRESS TRUE)
 
+FetchContent_Declare(
+  libbloom
+  GIT_REPOSITORY https://github.com/innerout/libbloom
+  GIT_TAG cmake)
+
 FetchContent_GetProperties(log)
 FetchContent_GetProperties(libmba)
 FetchContent_GetProperties(yaml)
 FetchContent_GetProperties(uthash)
 FetchContent_GetProperties(cmake-scripts)
+FetchContent_GetProperties(libbloom)
 
 if(NOT log_POPULATED)
   FetchContent_Populate(log)
@@ -104,7 +110,14 @@ if(NOT cmake-scripts_POPULATED)
   include(${cmake-scripts_SOURCE_DIR}/sanitizers.cmake)
 endif()
 
-set(DEPENDENCIES log libmba yaml)
+if(NOT libbloom_POPULATED)
+  FetchContent_Populate(libbloom)
+  add_subdirectory(${libbloom_SOURCE_DIR} ${libbloom_BINARY_DIR})
+  include_directories(${libbloom_SOURCE_DIR}/include)
+  FetchContent_MakeAvailable(libbloom)
+endif()
+
+set(DEPENDENCIES log libmba yaml libbloom)
 
 include_directories(${CMAKE_BINARY_DIR})
 include_directories(${CMAKE_SOURCE_DIR}/utilities)
