@@ -1,2 +1,5 @@
 file(COPY ${CMAKE_SOURCE_DIR}/options.yml
-     DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tests/)
+  DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tests/)
+
+file(COPY ${CMAKE_SOURCE_DIR}/scripts/tests/test_sanitizers.sh
+  DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tests/)

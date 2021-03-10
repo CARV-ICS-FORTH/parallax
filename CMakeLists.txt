@@ -59,10 +59,17 @@ FetchContent_Declare(
   GIT_REPOSITORY https://github.com/troydhanson/uthash
   GIT_PROGRESS TRUE)
 
+FetchContent_Declare(
+  cmake-scripts
+  GIT_REPOSITORY https://github.com/StableCoder/cmake-scripts.git
+  GIT_TAG main
+  GIT_PROGRESS TRUE)
+
 FetchContent_GetProperties(log)
 FetchContent_GetProperties(libmba)
 FetchContent_GetProperties(yaml)
 FetchContent_GetProperties(uthash)
+FetchContent_GetProperties(cmake-scripts)
 
 if(NOT log_POPULATED)
   FetchContent_Populate(log)
@@ -91,15 +98,16 @@ if(NOT uthash_POPULATED)
   FetchContent_MakeAvailable(uthash)
 endif()
 
+if(NOT cmake-scripts_POPULATED)
+  FetchContent_Populate(cmake-scripts)
+  FetchContent_MakeAvailable(cmake-scripts)
+  include(${cmake-scripts_SOURCE_DIR}/sanitizers.cmake)
+endif()
+
 set(DEPENDENCIES log libmba yaml)
 
 include_directories(${CMAKE_BINARY_DIR})
 include_directories(${CMAKE_SOURCE_DIR}/utilities)
-
-if(ADD_SANITIZERS)
-  set(CMAKE_C_FLAGS "-fsanitize=address,undefined ${CMAKE_C_FLAGS}")
-  set(CMAKE_CXX_FLAGS "-fsanitize=address,undefined ${CMAKE_CXX_FLAGS}")
-endif()
 
 set(CMAKE_C_FLAGS
     "-std=gnu11 -Wstrict-prototypes -Wall -Wextra -fPIC -fno-omit-frame-pointer -Wunused -Wuninitialized -Wshadow -Werror ${CMAKE_C_FLAGS}"

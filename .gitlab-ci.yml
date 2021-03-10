@@ -54,6 +54,14 @@ test_options:
     - make test_options;cd tests;
     - ./test_options
 
+test_sanitizers:
+  image: carvicsforth/ubuntu_carv:latest
+  stage: test
+  script:
+    - mkdir -p build;cd build
+    - cmake .. -DUSE_SANITIZER=Address
+    - make test_sanitizers;cd tests;
+    - ./test_sanitizers.sh
 
 # test_ycsb_small:
 #   image: carvicsforth/arch_carv:latest

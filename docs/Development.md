@@ -78,3 +78,14 @@ then create the compilation database by running:
 
 	cd parallax
 	compdb -p build list > compile_commands.json
+
+## Debugging with Compiler Sanitizers
+
+If you want to learn what compilers sanitizers are, check [Wikipedia](https://en.wikipedia.org/wiki/AddressSanitizer).
+
+To use compiler sanitizers to debug code in this project you only need to activate when running the `cmake` command by adding `-DUSE_SANITIZER=YourSanitizer`.
+For example to compile your code with the leak sanitizer:
+
+	cmake3 .. -DUSE_SANITIZER=Leak
+
+To see which sanitizers are supported check this [file](https://github.com/StableCoder/cmake-scripts/blob/main/sanitizers.cmake#L20).
