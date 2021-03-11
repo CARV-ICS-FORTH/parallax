@@ -1,54 +1,63 @@
+---
 # See https://pre-commit.com for more information
 # See https://pre-commit.com/hooks.html for more hooks
 repos:
 
--   repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v3.4.0
-    hooks:
-    -   id: trailing-whitespace
-    -   id: end-of-file-fixer
-    -   id: check-yaml
-    -   id: check-added-large-files
-    -   id: check-executables-have-shebangs
-    -   id: check-merge-conflict
+    - repo: https://github.com/pre-commit/pre-commit-hooks
+      rev: v3.4.0
+      hooks:
+          - id: trailing-whitespace
+          - id: end-of-file-fixer
+          - id: check-yaml
+          - id: check-added-large-files
+          - id: check-executables-have-shebangs
+          - id: check-merge-conflict
+          - id: forbid-new-submodules
     #-   id: name-tests-test I will add it later because it is worth using it but I need to make some changes first
 
--   repo: https://github.com/cheshirekow/cmake-format-precommit
-    rev: v0.6.13
-    hooks:
-    - id: cmake-format
+    - repo: https://github.com/cheshirekow/cmake-format-precommit
+      rev: v0.6.13
+      hooks:
+          - id: cmake-format
 
--   repo: git://github.com/doublify/pre-commit-clang-format
-    rev: 62302476d0da01515660132d76902359bed0f782
-    hooks:
-    - id: clang-format
+    - repo: git://github.com/doublify/pre-commit-clang-format
+      rev: 62302476d0da01515660132d76902359bed0f782
+      hooks:
+          - id: clang-format
 
--   repo: https://github.com/jumanjihouse/pre-commit-hooks
-    rev: master
-    hooks:
-    - id: shellcheck
-      additional_dependencies: []
-    - id: shfmt
+    - repo: https://github.com/jumanjihouse/pre-commit-hooks
+      rev: 2.1.5
+      hooks:
+          - id: shellcheck
+            additional_dependencies: []
+          - id: shfmt
+          - id: protect-first-parent
+          - id: forbid-binary
 
--   repo: https://github.com/psf/black
-    rev: 20.8b1
-    hooks:
-    - id: black
+    - repo: https://github.com/psf/black
+      rev: 20.8b1
+      hooks:
+          - id: black
 
--   repo: local
-    hooks:
-    -   id: pyright
-        name: pyright
-        entry: pyright
-        language: node
-        pass_filenames: false
-        types: [python]
-        additional_dependencies: ['pyright@1.1.80']
+    - repo: local
+      hooks:
+          - id: pyright
+            name: pyright
+            entry: pyright
+            language: node
+            pass_filenames: false
+            types: [python]
+            additional_dependencies: [pyright@1.1.80]
 
--   repo: https://github.com/jorisroovers/gitlint
-    rev: v0.15.0
-    hooks:
-    -   id: gitlint
-        stages: [commit-msg]
-        entry: gitlint
-        args: [--msg-filename]
+    - repo: https://github.com/jorisroovers/gitlint
+      rev: v0.15.0
+      hooks:
+          - id: gitlint
+            stages: [commit-msg]
+            entry: gitlint
+            args: [--msg-filename]
+
+    - repo: https://github.com/jumanjihouse/pre-commit-hook-yamlfmt
+      rev: 0.1.0
+      hooks:
+          - id: yamlfmt
