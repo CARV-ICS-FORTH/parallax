@@ -370,6 +370,17 @@ void recover_database_logs(db_descriptor *db_desc, pr_db_entry *db_entry)
 		 db_desc->small_log_tail_offset);
 }
 
+void init_level_bloom_filters(db_descriptor *db_desc, int level_id, int tree_id)
+{
+#if ENABLE_BLOOM_FILTERS
+	memset(&db_desc->levels[level_id].bloom_filter[tree_id], 0x00, sizeof(struct bloom));
+#else
+	(void)db_desc;
+	(void)level_id;
+	(void)tree_id;
+#endif
+}
+
 /**
  * @param   blockSize
  * @param   db_name
@@ -752,6 +763,9 @@ finish_init:
 #endif
 		for (tree_id = 0; tree_id < NUM_TREES_PER_LEVEL; tree_id++) {
 			db_desc->levels[level_id].tree_status[tree_id] = NO_SPILLING;
+#if ENABLE_BLOOM_FILTERS
+			init_level_bloom_filters(db_desc, level_id, tree_id);
+#endif
 		}
 		init_leaf_sizes_perlevel(&db_desc->levels[level_id], level_id);
 		db_desc->inprogress_compactions[level_id].src_level = -1;
@@ -1355,6 +1369,24 @@ uint8_t _insert_key_value(bt_insert_req *ins_req)
 	return rc;
 }
 
+int find_key_in_bloom_filter(db_descriptor *db_desc, int level_id, char *key)
+{
+#if ENABLE_BLOOM_FILTERS
+	char prefix_key[PREFIX_SIZE];
+	if (*(uint32_t *)key < PREFIX_SIZE) {
+		memset(prefix_key, 0x00, PREFIX_SIZE);
+		memcpy(prefix_key, key + sizeof(uint32_t), *(uint32_t *)key);
+		return bloom_check(&db_desc->levels[level_id].bloom_filter[0], prefix_key, PREFIX_SIZE);
+	} else
+		return bloom_check(&db_desc->levels[level_id].bloom_filter[0], key + sizeof(uint32_t), PREFIX_SIZE);
+#else
+	(void)db_desc;
+	(void)level_id;
+	(void)key;
+#endif
+	return -1;
+}
+
 static inline struct lookup_reply lookup_in_tree(db_descriptor *db_desc, void *key, node_header *root, int level_id,
 						 int tree_id)
 {
@@ -1378,6 +1410,19 @@ static inline struct lookup_reply lookup_in_tree(db_descriptor *db_desc, void *k
 		/* 	exit(EXIT_FAILURE); */
 		return rep;
 	}
+
+#if ENABLE_BLOOM_FILTERS
+	if (level_id > 0) {
+		int check = find_key_in_bloom_filter(db_desc, level_id, key);
+
+		if (0 == check)
+			return rep;
+		else if (-1 != check) {
+			assert(0);
+			exit(EXIT_FAILURE);
+		}
+	}
+#endif
 
 	curr_node = root;
 	if (curr_node->type == leafRootNode) {

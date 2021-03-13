@@ -1,6 +1,7 @@
 #define _GNU_SOURCE
 #define COMPACTION
 #include <semaphore.h>
+#include <string.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <pthread.h>
@@ -253,6 +254,18 @@ void *compaction(void *_comp_req)
 	}
 
 	if (comp_req->src_level == 0 && dst_root == NULL) {
+#if ENABLE_BLOOM_FILTERS
+		/*allocate new bloom filter*/
+		uint64_t capacity = handle.db_desc->levels[comp_req->dst_level].max_level_size;
+		if (bloom_init(&handle.db_desc->levels[comp_req->dst_level].bloom_filter[1], capacity, 0.01)) {
+			log_fatal("Failed to init bloom");
+			assert(0);
+			exit(EXIT_FAILURE);
+		} else
+			log_info("Allocated bloom filter for dst level %u capacity in keys %llu", comp_req->dst_level,
+				 capacity);
+#endif
+
 		struct level_scanner *level_src =
 			_init_spill_buffer_scanner(&handle, comp_req->src_level, src_root, NULL);
 
@@ -334,6 +347,14 @@ void *compaction(void *_comp_req)
 		ld->root_w[1] = NULL;
 		ld->root_r[1] = NULL;
 		seg_free_level(&hd, comp_req->src_level, comp_req->src_tree);
+#if ENABLE_BLOOM_FILTERS
+		if (dst_root) {
+			log_info("Freeing previous bloom filter for dst level %u", comp_req->dst_level);
+			bloom_free(&handle.db_desc->levels[comp_req->src_level].bloom_filter[0]);
+		}
+		ld->bloom_filter[0] = ld->bloom_filter[1];
+		memset(&ld->bloom_filter[1], 0x00, sizeof(struct bloom));
+#endif
 
 		if (RWLOCK_UNLOCK(&(comp_req->db_desc->levels[comp_req->src_level].guard_of_level.rx_lock))) {
 			log_fatal("Failed to acquire guard lock");
@@ -541,6 +562,9 @@ void *compaction(void *_comp_req)
 
 			for (i = 0; i < num_of_keys; i++) {
 				stat = sh_remove_min(m_heap, &nd_min);
+				int key_size;
+				int value_size;
+
 				if (stat != EMPTY_MIN_HEAP) {
 					ins_req.key_value_buf = nd_min.KV;
 					ins_req.metadata.key_format = nd_min.type;
@@ -553,9 +577,9 @@ void *compaction(void *_comp_req)
 						ins_req.metadata.append_to_log = 0;
 
 					if (nd_min.cat == MEDIUM_INLOG && comp_req->dst_level == LEVEL_MEDIUM_INPLACE) {
-						int key_size =
+						key_size =
 							*(uint32_t *)*(uint64_t *)(ins_req.key_value_buf + PREFIX_SIZE);
-						int value_size =
+						value_size =
 							*(uint32_t *)((char *)(*(uint64_t *)(ins_req.key_value_buf +
 											     PREFIX_SIZE)) +
 								      key_size + 4);
@@ -567,8 +591,26 @@ void *compaction(void *_comp_req)
 				}
 				assert(ins_req.metadata.key_format == KV_FORMAT ||
 				       ins_req.metadata.key_format == KV_PREFIX);
-				/* assert(ins_req.metadata.kv_size < 200); */
 				_insert_key_value(&ins_req);
+#if ENABLE_BLOOM_FILTERS
+				char *prefix;
+				if (nd_min.cat == BIG_INLOG || nd_min.cat == MEDIUM_INLOG ||
+				    nd_min.cat == SMALL_INLOG) {
+					prefix = ins_req.key_value_buf;
+					key_size = PREFIX_SIZE;
+				} else {
+					prefix = ins_req.key_value_buf + sizeof(uint32_t);
+					key_size = *(uint32_t *)ins_req.key_value_buf;
+				}
+				int bloom_rc =
+					bloom_add(&ins_req.metadata.handle->db_desc->levels[ins_req.metadata.level_id]
+							   .bloom_filter[1],
+						  prefix, MIN(PREFIX_SIZE, key_size));
+				if (0 != bloom_rc) {
+					log_fatal("Failed to ins key in bloom filter");
+					exit(EXIT_FAILURE);
+				}
+#endif
 
 				/*refill from the appropriate level*/
 				struct level_scanner *curr_scanner = NULL;
@@ -712,6 +754,12 @@ void *compaction(void *_comp_req)
 		struct level_descriptor *leveld_dst = &comp_req->db_desc->levels[comp_req->dst_level];
 
 		swap_levels(leveld_src, leveld_dst, comp_req->src_tree, 0);
+#if ENABLE_BLOOM_FILTERS
+		log_info("Swapping also bloom filter");
+		leveld_dst->bloom_filter[0] = leveld_src->bloom_filter[0];
+		memset(&leveld_src->bloom_filter[0], 0x00, sizeof(struct bloom));
+#endif
+
 		if (RWLOCK_UNLOCK(&(comp_req->db_desc->levels[comp_req->src_level].guard_of_level.rx_lock))) {
 			log_fatal("Failed to acquire guard lock");
 			exit(EXIT_FAILURE);

@@ -5,11 +5,10 @@ pip install gitlint
 #cd kreon-pre-commit
 FILES=$(git diff-tree --no-commit-id --name-only -r "$CI_COMMIT_SHA" | awk '$1=$1' ORS=' ')
 echo "$FILES"
-
 for i in $FILES; do
 	echo ""
 	echo "$i "
-	pre-commit run --files "$i"
+	SKIP=protect-first-parent pre-commit run --files "$i"
 	echo ""
 done
 

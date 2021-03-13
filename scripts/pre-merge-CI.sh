@@ -6,6 +6,6 @@ echo "$FILES"
 for i in $FILES; do
 	echo ""
 	echo "$i "
-	pre-commit run --files "$i"
+	SKIP=protect-first-parent pre-commit run --files "$i"
 	echo ""
 done

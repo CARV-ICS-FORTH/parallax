@@ -11,6 +11,7 @@
 #include <sys/types.h>
 #include <limits.h>
 #include <config.h>
+#include <bloom.h>
 #include "conf.h"
 #include "../allocator/allocator.h"
 #define SUCCESS 4
@@ -311,6 +312,9 @@ struct compaction_pairs {
 enum bt_layout { DYNAMIC_LEAF };
 
 typedef struct level_descriptor {
+#if ENABLE_BLOOM_FILTERS
+	struct bloom bloom_filter[NUM_TREES_PER_LEVEL];
+#endif
 	pthread_t compaction_thread[NUM_TREES_PER_LEVEL];
 	lock_table *level_lock_table[MAX_HEIGHT];
 	node_header *root_r[NUM_TREES_PER_LEVEL];

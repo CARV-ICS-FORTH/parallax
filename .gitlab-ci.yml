@@ -1,73 +1,79 @@
+---
 image: carvicsforth/arch_carv:latest
+variables:
+    FF_GITLAB_REGISTRY_HELPER_IMAGE: 1
+    GIT_STRATEGY: clone
+    GIT_DEPTH: 0
 
 stages:
-  - build
-  - test
-  - deploy
+    - build
+    - test
+    - deploy
 
 build_gcc:
-  stage: build
-  script:
-    - mkdir -p build;cd build
-    - cmake .. -DCMAKE_BUILD_TYPE=Debug
-    - make all
+    stage: build
+    script:
+        - mkdir -p build;cd build
+        - cmake .. -DCMAKE_BUILD_TYPE=Debug
+        - make all
 
 build_clang:
-  stage: build
-  script:
-    - mkdir -p build;cd build
-    - cmake .. -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
-    - make all
+    stage: build
+    script:
+        - mkdir -p build;cd build
+        - cmake .. -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
+        - make all
 
 build_clang-tidy:
-  stage: build
-  script:
-    - mkdir -p build;cd build
-    - cmake .. "-DCMAKE_C_CLANG_TIDY=/bin/clang-tidy;-checks=*,-clang-analyzer-*,-google-*,-hicpp-braces-around-statements,-bugprone-not-null-terminated-result,-readability-braces-around-statements,-readability-braces-around-statements* --format-style=../.clang-format -p ./compile_commands.json"
-    - make all
+    stage: build
+    script:
+        - mkdir -p build;cd build
+        - cmake .. "-DCMAKE_C_CLANG_TIDY=/bin/clang-tidy;-checks=*,-clang-analyzer-*,-google-*,-hicpp-braces-around-statements,-bugprone-not-null-terminated-result,-readability-braces-around-statements,-readability-braces-around-statements*
+          --format-style=../.clang-format -p ./compile_commands.json"
+        - make all
 
 build_cppcheck:
-  stage: build
-  script:
-    - cd lib
-    - cppcheck --language=c . --enable=all --inconclusive --max-ctu-depth=64 -j 4
+    stage: build
+    script:
+        - cd lib
+        - cppcheck --language=c . --enable=all --inconclusive --max-ctu-depth=64 -j 4
 
 build_centos:
-  image: carvicsforth/centos_carv:latest
-  stage: build
-  script:
-    - source scl_source enable devtoolset-8 || echo ignoring exit code so CI does not bomb when it should not > /dev/null
-    - mkdir -p build;cd build
-    - cmake3 ..
-    - make all
+    image: carvicsforth/centos_carv:latest
+    stage: build
+    script:
+        - source scl_source enable devtoolset-8 || echo ignoring exit code so CI does not bomb when it should not > /dev/null
+        - mkdir -p build;cd build
+        - cmake3 ..
+        - make all
 
 test_surrogates:
-  image: carvicsforth/ubuntu_carv:latest
-  stage: test
-  script:
-    - mkdir -p build;cd build
-    - cmake ..
-    - make SurrogateTUsTest;cd tests/Surrogates;
-    - ./SurrogateTUsTest
+    image: carvicsforth/ubuntu_carv:latest
+    stage: test
+    script:
+        - mkdir -p build;cd build
+        - cmake ..
+        - make SurrogateTUsTest;cd tests/Surrogates;
+        - ./SurrogateTUsTest
 
 
 test_options:
-  image: carvicsforth/ubuntu_carv:latest
-  stage: test
-  script:
-    - mkdir -p build;cd build
-    - cmake ..
-    - make test_options;cd tests;
-    - ./test_options
+    image: carvicsforth/ubuntu_carv:latest
+    stage: test
+    script:
+        - mkdir -p build;cd build
+        - cmake ..
+        - make test_options;cd tests;
+        - ./test_options
 
 test_sanitizers:
-  image: carvicsforth/ubuntu_carv:latest
-  stage: test
-  script:
-    - mkdir -p build;cd build
-    - cmake .. -DUSE_SANITIZER=Address
-    - make test_sanitizers;cd tests;
-    - ./test_sanitizers.sh
+    image: carvicsforth/ubuntu_carv:latest
+    stage: test
+    script:
+        - mkdir -p build;cd build
+        - cmake .. -DUSE_SANITIZER=Address
+        - make test_sanitizers;cd tests;
+        - ./test_sanitizers.sh
 
 # test_ycsb_small:
 #   image: carvicsforth/arch_carv:latest
@@ -85,28 +91,28 @@ test_sanitizers:
 #     - ./scripts/CI/destroy_mbbd.sh
 
 install_lib:
-  image: carvicsforth/ubuntu_carv:latest
-  stage: deploy
-  variables:
-    LIB_INSTALL_PATH : "installtest"
-  script:
-    - mkdir -p build;cd build
-    - cmake .. -DBUILD_SHARED_LIBS=ON -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_COMPILER=gcc-10 -DCMAKE_CXX_COMPILER=g++-10
-    - make install DESTDIR=$LIB_INSTALL_PATH;
-    - cmake .. -DBUILD_SHARED_LIBS=OFF -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_COMPILER=gcc-10 -DCMAKE_CXX_COMPILER=g++-10
-    - make install DESTDIR=$LIB_INSTALL_PATH;
-    - mv $LIB_INSTALL_PATH ../scripts/;cd ../scripts
-    - ./verify-installed-files.py $LIB_INSTALL_PATH
+    image: carvicsforth/ubuntu_carv:latest
+    stage: deploy
+    variables:
+        LIB_INSTALL_PATH: installtest
+    script:
+        - mkdir -p build;cd build
+        - cmake .. -DBUILD_SHARED_LIBS=ON -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_COMPILER=gcc-10 -DCMAKE_CXX_COMPILER=g++-10
+        - make install DESTDIR=$LIB_INSTALL_PATH;
+        - cmake .. -DBUILD_SHARED_LIBS=OFF -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_COMPILER=gcc-10 -DCMAKE_CXX_COMPILER=g++-10
+        - make install DESTDIR=$LIB_INSTALL_PATH;
+        - mv $LIB_INSTALL_PATH ../scripts/;cd ../scripts
+        - ./verify-installed-files.py $LIB_INSTALL_PATH
 
 pre-commit:
-  stage: build
-  script:
-    - ./scripts/pre-commit-CI.sh
+    stage: build
+    script:
+        - ./scripts/pre-commit-CI.sh
 
 pre-merge:
-  stage: build
-  script:
-    - ./scripts/pre-merge-CI.sh
-    - ./scripts/commit-msg-lint.py
-  only:
-    - merge_requests
+    stage: build
+    script:
+        - ./scripts/pre-merge-CI.sh
+        - ./scripts/commit-msg-lint.py
+    only:
+        - merge_requests
