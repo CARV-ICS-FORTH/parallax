@@ -1,3 +1,4 @@
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 include_directories(BEFORE core db ../lib)
 
 add_executable(ycsb-edb db/db_factory_parallax.cc core/core_workload.cc

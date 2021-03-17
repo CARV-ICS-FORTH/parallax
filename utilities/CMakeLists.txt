@@ -1,3 +1,5 @@
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 set_source_files_properties(spin_loop.c PROPERTIES COMPILE_FLAGS "-O0")
 
 set_source_files_properties(list.c PROPERTIES COMPILE_FLAGS "-O3")
