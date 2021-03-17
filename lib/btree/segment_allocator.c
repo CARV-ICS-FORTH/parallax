@@ -97,17 +97,16 @@ static void *get_space(volume_descriptor *volume_desc, level_descriptor *level_d
 			MUTEX_LOCK(&volume_desc->allocator_lock);
 			new_segment = (segment_header *)allocate(volume_desc, SEGMENT_SIZE);
 			MUTEX_UNLOCK(&volume_desc->allocator_lock);
-			assert(new_segment);
 			req.in_mem = 0;
 		} else {
 			if (posix_memalign((void **)&new_segment, SEGMENT_SIZE, SEGMENT_SIZE) != 0) {
-				log_info("MEMALIGN FAILED");
+				log_fatal("MEMALIGN FAILED");
 				exit(EXIT_FAILURE);
 			}
-			assert(new_segment);
 			req.in_mem = 1;
 		}
 
+		assert(new_segment);
 		set_link_segments_metadata(&req, new_segment, segment_id, available_space);
 		offset_in_segment = link_memory_segments(&req);
 
@@ -118,11 +117,9 @@ static void *get_space(volume_descriptor *volume_desc, level_descriptor *level_d
 	/* 		 offset_in_segment, level_desc->level_id, tree_id, available_space, size); */
 
 	node = (node_header *)((uint64_t)level_desc->last_segment[tree_id] + offset_in_segment);
+	assert(node);
 	level_desc->offset[tree_id] += size;
-	//level_desc->level_size += size;
 	MUTEX_UNLOCK(&level_desc->level_allocation_lock);
-	assert(node != NULL);
-	//log_info("prt %llu",node);
 	return node;
 }
 
@@ -367,12 +364,6 @@ void seg_free_level(db_handle *handle, uint8_t level_id, uint8_t tree_id)
 			space_freed += SEGMENT_SIZE;
 		}
 	else {
-		/* if (RWLOCK_WRLOCK(&db_desc->levels[0].guard_of_level.rx_lock)) { */
-		/* 	exit(EXIT_FAILURE); */
-		/* } */
-
-		/* spin_loop(&db_desc->levels[0].active_writers, 0); */
-
 		curr_segment = handle->db_desc->inmem_medium_log_head[tree_id];
 		segment_header *next_segment;
 		if (curr_segment) {
