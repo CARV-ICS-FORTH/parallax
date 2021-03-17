@@ -131,7 +131,7 @@ void iterate_log_segments(db_descriptor *db_desc, volume_descriptor *volume_desc
 	log_segment *prev_node = NULL;
 
 	/* We are in the first segment of the log and is not yet full! */
-	if (log_node->metadata.next_segment == NULL) {
+	if (!log_node || log_node->metadata.next_segment == NULL) {
 		log_debug("We reached at the last log segment");
 		return;
 	}
@@ -233,14 +233,16 @@ void *gc_log_entries(void *handle)
 		}
 
 		iterate_log_segments(db_desc, volume_desc, marks);
-		region = get_first(volume_desc->open_databases);
+		if (volume_desc->open_databases) {
+			region = get_first(volume_desc->open_databases);
 
-		while (region != NULL) {
-			db_desc = (db_descriptor *)region->data;
-			iterate_log_segments(db_desc, volume_desc, marks);
-			region = region->next;
+			while (region != NULL) {
+				db_desc = (db_descriptor *)region->data;
+				iterate_log_segments(db_desc, volume_desc, marks);
+				region = region->next;
+			}
+			log_debug("Garbage Collection Finished");
 		}
-		log_debug("Garbage Collection Finished");
 	}
 
 	return NULL;
