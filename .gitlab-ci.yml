@@ -105,6 +105,21 @@ test_ycsb_large:
         - cd ..;cd ..
         - ./scripts/CI/destroy_mbbd.sh
 
+test_ycsb_medium:
+    image: carvicsforth/arch_carv:latest
+    stage: test
+    tags:
+        - kubernetes
+    script:
+        - ./scripts/CI/create_mbbd.sh
+        - mkdir -p build;cd build
+        - cmake ..
+        - make ycsb-edb;make mkfs.parallax;cd YCSB-CXX;
+        - ./mkfs.sh /tmp/kv_store.dat 1
+        - ./ycsb-edb -threads 1 -dbnum 1 -wl m -p /tmp/kv_store.dat
+        - cd ..;cd ..
+        - ./scripts/CI/destroy_mbbd.sh
+
 test_ycsb_smalld:
     image: carvicsforth/arch_carv:latest
     stage: test
