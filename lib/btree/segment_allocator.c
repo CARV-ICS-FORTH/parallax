@@ -397,17 +397,25 @@ void seg_free_level(db_handle *handle, uint8_t level_id, uint8_t tree_id)
 		curr_segment = handle->db_desc->levels[level_id].first_segment[tree_id];
 		temp_segment = REAL_ADDRESS(curr_segment->next_segment);
 		int flag = 0;
-		while (curr_segment != NULL) {
-			/* log_info("COUNT  %d %llu", curr_segment->segment_id, curr_segment->next_segment); */
-			free(curr_segment);
-			curr_segment = temp_segment;
-			if (temp_segment->next_segment == NULL) {
-				flag = 1;
-				break;
+		/* log_info("Level id to free %d %d", level_id,curr_segment->in_mem); */
+
+		if (curr_segment->next_segment) {
+			while (curr_segment != NULL) {
+				/* log_info("COUNT  %d %llu", curr_segment->segment_id, curr_segment->next_segment); */
+				assert(curr_segment->in_mem);
+				free(curr_segment);
+				curr_segment = temp_segment;
+
+				if (temp_segment->next_segment == NULL) {
+					flag = 1;
+					break;
+				}
+				temp_segment = REAL_ADDRESS(temp_segment->next_segment);
+				space_freed += SEGMENT_SIZE;
 			}
-			temp_segment = REAL_ADDRESS(temp_segment->next_segment);
-			space_freed += SEGMENT_SIZE;
-		}
+		} else
+			free(curr_segment);
+
 		if (flag) {
 			/* log_info("COUNT %d %llu", curr_segment->segment_id, curr_segment->next_segment); */
 			free(temp_segment);
