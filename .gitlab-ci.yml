@@ -75,6 +75,21 @@ test_sanitizers:
         - make test_sanitizers;cd tests;
         - ./test_sanitizers.sh
 
+test_ycsb_smalld:
+    image: carvicsforth/arch_carv:latest
+    stage: test
+    tags:
+        - kubernetes
+    script:
+        - ./scripts/CI/create_mbbd.sh
+        - mkdir -p build;cd build
+        - cmake ..
+        - make ycsb-edb;make mkfs.parallax;cd YCSB-CXX;
+        - ./mkfs.sh /tmp/kv_store.dat 1
+        - ./ycsb-edb -threads 1 -dbnum 1 -wl sd -p /tmp/kv_store.dat
+        - cd ..;cd ..
+        - ./scripts/CI/destroy_mbbd.sh
+
 test_ycsb_small:
     image: carvicsforth/arch_carv:latest
     stage: test
