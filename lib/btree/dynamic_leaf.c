@@ -437,6 +437,13 @@ struct bt_rebalance_result split_dynamic_leaf(struct bt_dynamic_leaf_node *leaf,
 	rep.middle_key_buf = fill_keybuf(get_kv_offset(leaf, leaf_size, slot_array[leaf->header.num_entries / 2].index),
 					 slot_array[leaf->header.num_entries / 2].bitmap);
 
+	uint32_t size;
+	size = *(uint32_t *)rep.middle_key_buf;
+	memcpy(rep.middle_key + sizeof(size), rep.middle_key_buf + sizeof(size), size);
+	*(uint32_t *)rep.middle_key = size;
+	assert(size + sizeof(size) < sizeof(rep.middle_key));
+	rep.middle_key_buf = rep.middle_key;
+
 	right_leaf = rep.right_dlchild;
 	/*Copy pointers + prefixes*/
 	leaf_log_tail = get_leaf_log_offset(right_leaf, leaf_size);
@@ -485,10 +492,9 @@ struct bt_rebalance_result split_dynamic_leaf(struct bt_dynamic_leaf_node *leaf,
 	print_all_keys(right_leaf, leaf_size);
 #endif
 
-	/* rep.middle_key_buf = fill_keybuf(get_kv_offset(left_leaf, leaf_size, left_leaf_slot_array[left_leaf->header.num_entries - 1].index), */
-	/* 				 left_leaf_slot_array[left_leaf->header.num_entries - 1].bitmap); */
 	seg_free_leaf_node(volume_desc, level, req->metadata.tree_id, (leaf_node *)old_leaf);
-	/* free(split_buffer); */
+	free(split_buffer);
+
 	return rep;
 }
 
