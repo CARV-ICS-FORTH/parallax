@@ -1092,6 +1092,11 @@ uint8_t insert_key_value(db_handle *handle, void *key, void *value, uint32_t key
 		pthread_mutex_unlock(&handle->db_desc->client_barrier_lock);
 	}
 
+	if (key_size >= 256) {
+		log_info("Keys > 255 bytes are not supported!");
+		return KREON_FAILED;
+	}
+
 	kv_size = sizeof(uint32_t) + key_size + sizeof(uint32_t) + value_size /* + sizeof(uint64_t) */;
 	kv_ratio = ((double)key_size) / value_size;
 
