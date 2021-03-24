@@ -94,9 +94,9 @@ static void *get_space(volume_descriptor *volume_desc, level_descriptor *level_d
 	if (available_space < size) {
 		/*we need to go to the actual allocator to get space*/
 		if (level_desc->level_id != 0) {
-			MUTEX_LOCK(&volume_desc->allocator_lock);
+			MUTEX_LOCK(&volume_desc->bitmap_lock);
 			new_segment = (segment_header *)allocate(volume_desc, SEGMENT_SIZE);
-			MUTEX_UNLOCK(&volume_desc->allocator_lock);
+			MUTEX_UNLOCK(&volume_desc->bitmap_lock);
 			req.in_mem = 0;
 		} else {
 			if (posix_memalign((void **)&new_segment, SEGMENT_SIZE, SEGMENT_SIZE) != 0) {
@@ -168,7 +168,7 @@ void seg_free_index_node_header(volume_descriptor *volume_desc, level_descriptor
 	(void)level_desc;
 	(void)tree_id;
 
-	free_block(volume_desc, node, INDEX_NODE_SIZE, -1);
+	free_block(volume_desc, node, INDEX_NODE_SIZE);
 }
 
 void seg_free_index_node(volume_descriptor *volume_desc, level_descriptor *level_desc, uint8_t tree_id,
@@ -195,11 +195,11 @@ void seg_free_index_node(volume_descriptor *volume_desc, level_descriptor *level
 	while ((uint64_t)curr != (uint64_t)last) {
 		to_free = curr;
 		curr = (IN_log_header *)((uint64_t)MAPPED + (uint64_t)curr->next);
-		free_block(volume_desc, to_free, KEY_BLOCK_SIZE, -1);
+		free_block(volume_desc, to_free, KEY_BLOCK_SIZE);
 	}
-	free_block(volume_desc, last, KEY_BLOCK_SIZE, -1);
+	free_block(volume_desc, last, KEY_BLOCK_SIZE);
 	/*finally node_header*/
-	free_block(volume_desc, inode, INDEX_NODE_SIZE, -1);
+	free_block(volume_desc, inode, INDEX_NODE_SIZE);
 	return;
 }
 
@@ -261,25 +261,25 @@ void seg_free_leaf_node(volume_descriptor *volume_desc, level_descriptor *level_
 	//leave for future use
 	(void)level_desc;
 	(void)tree_id;
-	free_block(volume_desc, leaf, level_desc->leaf_size, -1);
+	free_block(volume_desc, leaf, level_desc->leaf_size);
 }
 
 segment_header *seg_get_raw_log_segment(volume_descriptor *volume_desc)
 {
 	segment_header *sg;
-	MUTEX_LOCK(&volume_desc->allocator_lock);
+	MUTEX_LOCK(&volume_desc->bitmap_lock);
 	sg = (segment_header *)allocate(volume_desc, SEGMENT_SIZE);
-	MUTEX_UNLOCK(&volume_desc->allocator_lock);
+	MUTEX_UNLOCK(&volume_desc->bitmap_lock);
 	return sg;
 }
 
 void free_raw_segment(volume_descriptor *volume_desc, segment_header *segment)
 {
-	free_block(volume_desc, segment, SEGMENT_SIZE, -1);
+	free_block(volume_desc, segment, SEGMENT_SIZE);
 	return;
 }
 
-void *get_space_for_system(volume_descriptor *volume_desc, uint32_t size)
+void *get_space_for_system(volume_descriptor *volume_desc, uint32_t size, int lock)
 {
 	void *addr;
 	if (size % 4096 != 0) {
@@ -295,7 +295,8 @@ void *get_space_for_system(volume_descriptor *volume_desc, uint32_t size)
 	uint64_t offset_in_segment = 0;
 	uint64_t segment_id;
 
-	MUTEX_LOCK(&volume_desc->allocator_lock);
+	if (lock)
+		MUTEX_LOCK(&volume_desc->bitmap_lock);
 
 	first_sys_segment = (segment_header *)(MAPPED + volume_desc->mem_catalogue->first_system_segment);
 	last_sys_segment = (segment_header *)(MAPPED + volume_desc->mem_catalogue->last_system_segment);
@@ -344,8 +345,8 @@ void *get_space_for_system(volume_descriptor *volume_desc, uint32_t size)
 	addr = (void *)(uint64_t)last_sys_segment + offset_in_segment;
 	volume_desc->mem_catalogue->offset += size;
 
-	//log_info("offset now %llu in segment %llu", volume_desc->mem_catalogue->offset, offset_in_segment);
-	MUTEX_UNLOCK(&volume_desc->allocator_lock);
+	if (lock)
+		MUTEX_UNLOCK(&volume_desc->bitmap_lock);
 	return addr;
 }
 

@@ -216,9 +216,12 @@ void mark_log_segments_before_replay(volume_descriptor *volume_desc, segment_hea
 	while (curr_segment) {
 		char *page_tomark = (char *)curr_segment;
 
+		MUTEX_LOCK(&volume_desc->bitmap_lock);
 		for (uint32_t i = 0; i < num_pages; ++i, page_tomark += PAGE_SIZE) {
-			mark_page(volume_desc, page_tomark, 0x00, NULL);
+			bitmap_mark_block_free(volume_desc, page_tomark);
 		}
+		MUTEX_UNLOCK(&volume_desc->bitmap_lock);
+
 #ifdef DEBUG_RECOVERY
 		mprotect(curr_segment, BUFFER_SEGMENT_SIZE, PROT_READ);
 #endif

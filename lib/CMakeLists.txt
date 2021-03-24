@@ -6,6 +6,7 @@ set(LIB_C_SOURCE_FILES
     allocator/allocator.c
     allocator/persistent_operations.c
     allocator/recovery.c
+    api/parallax.c
     btree/btree.c
     btree/compaction_daemon.c
     btree/dynamic_leaf.c
@@ -29,6 +30,11 @@ endif()
 add_library(${LIB} ${LIB_C_SOURCE_FILES})
 set_property(TARGET ${LIB} PROPERTY POSITION_INDEPENDENT_CODE ON)
 target_link_libraries(${LIB} PRIVATE ${DEPENDENCIES})
+set_target_properties(
+  ${LIB} PROPERTIES PUBLIC_HEADER
+                    "${CMAKE_CURRENT_SOURCE_DIR}/include/parallax.h")
+
+target_include_directories(${LIB} PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
 
 set_source_files_properties(allocator/spin_loop.c PROPERTIES COMPILE_FLAGS
                                                              "-O0")
@@ -49,7 +55,8 @@ install(
   TARGETS ${LIB} mkfs.${LIB}
   ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
   LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
-  RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
+  RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
+  PUBLIC_HEADER DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}")
 set_target_properties(${LIB} PROPERTIES OUTPUT_NAME ${LIB})
 
 find_program(iwyu_path NAMES include-what-you-use iwyu iwyu-tool)

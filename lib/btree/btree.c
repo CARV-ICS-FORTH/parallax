@@ -393,10 +393,7 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 	db_handle *handle;
 	volume_descriptor *volume_desc;
 	db_descriptor *db_desc;
-	char *key;
-	uint64_t val;
 	int i = 0;
-	int digits;
 	uint8_t level_id, tree_id;
 
 	fprintf(stderr, "\n%s[%s:%s:%d](\"%s\", %" PRIu64 ", %" PRIu64 ", %s);%s\n", "\033[0;32m", __FILE__, __func__,
@@ -404,95 +401,25 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 
 	MUTEX_LOCK(&init_lock);
 	parse_options();
-	if (mappedVolumes == NULL) {
-		mappedVolumes = init_list();
-		/*calculate max leaf,index order*/
-		index_order = (INDEX_NODE_SIZE - sizeof(node_header)) / (2 * sizeof(uint64_t));
-		index_order -= 2; /*more space for extra pointer, and for rebalacing (merge)*/
-		while (index_order % 2 != 1)
-			--index_order;
+	if (!(volume_desc = get_volume_desc(volumeName, start, 0)))
+		get_volume_desc(volumeName, start, 1);
 
-		log_info("index order set to: %d sizeof node_header = %lu", index_order, sizeof(node_header));
-	}
+	index_order = (INDEX_NODE_SIZE - sizeof(node_header)) / (2 * sizeof(uint64_t));
+	index_order -= 2; /*more space for extra pointer, and for rebalacing (merge)*/
+	while (index_order % 2 != 1)
+		--index_order;
 
-	/*Is requested volume already mapped?, construct key which will be
-* volumeName|start*/
-	val = start;
-	digits = 0;
-
-	while (val > 0) {
-		val = val / 10;
-		digits++;
-	}
-
-	if (digits == 0)
-		digits = 1;
-
-	key = malloc(strlen(volumeName) + digits + 1);
-	strcpy(key, volumeName);
-	sprintf(key + strlen(volumeName), "%llu", (long long unsigned)start);
-	key[strlen(volumeName) + digits] = '\0';
-	log_info("Searching volume %s", key);
-	volume_desc = (volume_descriptor *)find_element(mappedVolumes, key);
-
-	if (volume_desc == NULL) {
-		volume_desc = malloc(sizeof(volume_descriptor));
-		volume_desc->state = VOLUME_IS_OPEN;
-		volume_desc->snap_preemption = SNAP_INTERRUPT_DISABLE;
-		volume_desc->last_snapshot = get_timestamp();
-		volume_desc->last_commit = get_timestamp();
-		volume_desc->last_sync = get_timestamp();
-
-		volume_desc->volume_name = malloc(strlen(volumeName) + 1);
-		strcpy(volume_desc->volume_name, volumeName);
-		volume_desc->volume_id = malloc(strlen(key) + 1);
-		strcpy(volume_desc->volume_id, key);
-		volume_desc->open_databases = init_list();
-		volume_desc->offset = start;
-		volume_desc->size = size;
-		/*allocator lock*/
-		MUTEX_INIT(&(volume_desc->allocator_lock), NULL);
-		/*free operations log*/
-		MUTEX_INIT(&(volume_desc->FREE_LOG_LOCK), NULL);
-		allocator_init(volume_desc);
-		add_first(mappedVolumes, volume_desc, key);
-		volume_desc->reference_count++;
-		/*soft state about the in use pages of level-0 for each BUFFER_SEGMENT_SIZE
-* segment inside the volume*/
-		volume_desc->segment_utilization_vector_size =
-			((volume_desc->volume_superblock->dev_size_in_blocks -
-			  (1 + FREE_LOG_SIZE + volume_desc->volume_superblock->bitmap_size_in_blocks)) /
-			 (SEGMENT_SIZE / DEVICE_BLOCK_SIZE)) *
-			2;
-		volume_desc->segment_utilization_vector =
-			(uint16_t *)malloc(volume_desc->segment_utilization_vector_size);
-
-		if (volume_desc->segment_utilization_vector == NULL) {
-			log_fatal("failed to allocate memory for segment utilization vector of "
-				  "size %lu",
-				  volume_desc->segment_utilization_vector_size);
-			exit(EXIT_FAILURE);
-		}
-
-		memset(volume_desc->segment_utilization_vector, 0x00, volume_desc->segment_utilization_vector_size);
-
-		log_info("volume %s state created max_tries %d", volume_desc->volume_name, MAX_ALLOCATION_TRIES);
-	} else {
-		log_info("Volume already mapped");
-		volume_desc->reference_count++;
-	}
 	/*Before searching the actual volume's catalogue take a look at the current open databases*/
-	db_desc = find_element(volume_desc->open_databases, db_name);
+	db_desc = klist_find_element_with_key(volume_desc->open_databases, db_name);
 
 	if (db_desc != NULL) {
-		log_info("DB %s already open for volume %s", db_name, key);
+		log_info("DB %s already open for volume", db_name);
 		handle = malloc(sizeof(db_handle));
 		memset(handle, 0x00, sizeof(db_handle));
 		handle->volume_desc = volume_desc;
 		handle->db_desc = db_desc;
 		db_desc->reference_count++;
 		MUTEX_UNLOCK(&init_lock);
-		free(key);
 		return handle;
 	} else {
 		pr_db_group *db_group;
@@ -554,29 +481,24 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 									db_desc->levels[level_id].level_size[tree_id] =
 										0;
 									/*segments info per level*/
-									if (db_entry->first_segment
-										    [(level_id * NUM_TREES_PER_LEVEL) +
-										     tree_id] != 0) {
+									if (db_entry->first_segment[level_id][tree_id] !=
+									    0) {
 										db_desc->levels[level_id]
 											.first_segment[tree_id] =
 											(segment_header *)REAL_ADDRESS(
 												db_entry->first_segment
-													[(level_id *
-													  NUM_TREES_PER_LEVEL) +
-													 tree_id]);
+													[level_id]
+													[tree_id]);
 										db_desc->levels[level_id]
 											.last_segment[tree_id] =
 											(segment_header *)REAL_ADDRESS(
 												db_entry->last_segment
-													[(level_id *
-													  NUM_TREES_PER_LEVEL) +
-													 tree_id]);
+													[level_id]
+													[tree_id]);
 										db_desc->levels[level_id]
 											.offset[tree_id] =
-											db_entry->offset
-												[(level_id *
-												  NUM_TREES_PER_LEVEL) +
-												 tree_id];
+											db_entry->offset[level_id]
+													[tree_id];
 									} else {
 										db_desc->levels[level_id]
 											.first_segment[tree_id] = NULL;
@@ -588,20 +510,15 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 									}
 									/*total keys*/
 									db_desc->levels[level_id].level_size[tree_id] =
-										db_entry->level_size
-											[(level_id *
-											  NUM_TREES_PER_LEVEL) +
-											 tree_id];
+										db_entry->level_size[level_id][tree_id];
 									/*finally the roots*/
-									if (db_entry->root_r[(level_id *
-											      NUM_TREES_PER_LEVEL) +
-											     tree_id] != 0) {
-										db_desc->levels[level_id].root_r
-											[tree_id] = (node_header *)REAL_ADDRESS(
-											db_entry->root_r
-												[(level_id *
-												  NUM_TREES_PER_LEVEL) +
-												 tree_id]);
+									if (db_entry->root_r[level_id][tree_id] != 0) {
+										db_desc->levels[level_id]
+											.root_r[tree_id] =
+											(node_header *)REAL_ADDRESS(
+												db_entry->root_r
+													[level_id]
+													[tree_id]);
 										log_warn(
 											"Recovered root r of [%lu][%lu] = %llu ",
 											level_id, tree_id,
@@ -640,7 +557,7 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 
 		if (empty_index == -1) {
 			/*space found in empty group*/
-			pr_db_group *new_group = get_space_for_system(volume_desc, sizeof(pr_db_group));
+			pr_db_group *new_group = get_space_for_system(volume_desc, sizeof(pr_db_group), 1);
 			memset(new_group, 0x00, sizeof(pr_db_group));
 			new_group->epoch = volume_desc->mem_catalogue->epoch;
 			volume_desc->mem_catalogue->db_group_index[empty_group] =
@@ -713,7 +630,7 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 		db_desc->levels[level_id - 1].max_level_size = UINT64_MAX;
 
 		/*initialize KV log for this db*/
-		db_desc->commit_log = (commit_log_info *)get_space_for_system(volume_desc, sizeof(commit_log_info));
+		db_desc->commit_log = (commit_log_info *)get_space_for_system(volume_desc, sizeof(commit_log_info), 1);
 		/*get a page for commit_log info*/
 		pr_init_logs(db_desc, db_entry, volume_desc);
 	}
@@ -805,9 +722,8 @@ finish_init:
 	SPINLOCK_INIT(&db_desc->lock_log, PTHREAD_PROCESS_PRIVATE);
 #endif
 
-	add_first(volume_desc->open_databases, db_desc, db_name);
+	klist_add_first(volume_desc->open_databases, db_desc, db_name, NULL);
 	MUTEX_UNLOCK(&init_lock);
-	free(key);
 	db_desc->stat = DB_OPEN;
 	log_info("opened DB %s starting its compaction daemon", db_name);
 
@@ -920,7 +836,7 @@ finish_init:
 char db_close(db_handle *handle)
 {
 	/*verify that this is a valid db*/
-	if (find_element(handle->volume_desc->open_databases, handle->db_desc->db_name) == NULL) {
+	if (klist_find_element_with_key(handle->volume_desc->open_databases, handle->db_desc->db_name) == NULL) {
 		log_fatal("received close for db: %s that is not listed as open", handle->db_desc->db_name);
 		exit(EXIT_FAILURE);
 	}
@@ -943,130 +859,13 @@ char db_close(db_handle *handle)
 
 	destroy_level_locktable(handle->db_desc, 0);
 
-	if (remove_element(handle->volume_desc->open_databases, handle->db_desc) != 1) {
+	if (klist_remove_element(handle->volume_desc->open_databases, handle->db_desc) != 1) {
 		log_info("Could not find db: %s", handle->db_desc->db_name);
 		MUTEX_UNLOCK(&init_lock);
 		return COULD_NOT_FIND_DB;
 	}
 	return KREON_OK;
 }
-
-void spill_database(db_handle *handle)
-{
-	if (handle)
-		log_warn("Spill database deprecated");
-#if 0
-	int32_t i;
-
-	if (handle->db_desc->db_mode != PRIMARY_DB) {
-		log_info("ommiting spill for back up db");
-		return;
-	}
-	if (memcmp(handle->db_desc->tree_status, DB_NO_SPILLING, NUM_OF_TREES_PER_LEVEL) != 0) {
-		log_info("Nothing to do spill operation already active");
-		return;
-	}
-	RWLOCK_WRLOCK(&handle->db_desc->guard_level_0.rx_lock);
-	spin_loop(&handle->db_desc->count_writers_level_0, 0);
-
-	/*switch to another tree, but which?*/
-	for (i = 0; i < NUM_OF_TREES_PER_LEVEL; i++) {
-		if (i != handle->db_desc->active_tree && handle->db_desc->tree_status[i] != SPILLING_IN_PROGRESS) {
-			int32_t level_id = handle->db_desc->active_tree;
-			handle->db_desc->tree_status[level_id] = SPILLING_IN_PROGRESS;
-			handle->db_desc->active_tree = i;
-
-			/*spawn a spiller thread*/
-			spill_request *spill_req =
-				(spill_request *)malloc(sizeof(spill_request)); /*XXX TODO XXX MEMORY LEAK*/
-			spill_req->db_desc = handle->db_desc;
-			spill_req->volume_desc = handle->volume_desc;
-
-			if (handle->db_desc->root_w[level_id] != NULL)
-				spill_req->src_root = handle->db_desc->root_w[level_id];
-			else if (handle->db_desc->root_r[level_id] != NULL)
-				spill_req->src_root = handle->db_desc->root_r[level_id];
-			else {
-				log_info("empty level-0, nothing to do");
-				free(spill_req);
-				handle->db_desc->tree_status[level_id] = NO_SPILLING;
-				break;
-			}
-			if (handle->db_desc->root_w[level_id] != NULL)
-				spill_req->src_root = handle->db_desc->root_w[level_id];
-			else
-				spill_req->src_root = handle->db_desc->root_r[level_id];
-
-			spill_req->src_tree_id = level_id;
-			spill_req->dst_tree_id = NUM_OF_TREES_PER_LEVEL;
-			spill_req->start_key = NULL;
-			spill_req->end_key = NULL;
-			handle->db_desc->count_active_spillers = 1;
-
-			if (pthread_create(&(handle->db_desc->spiller), NULL, (void *)spill_buffer,
-					   (void *)spill_req) != 0) {
-				log_info("FATAL: error creating spiller thread");
-				exit(EXIT_FAILURE);
-			}
-			break;
-		}
-	}
-	RWLOCK_UNLOCK(&handle->db_desc->guard_level_0.rx_lock);
-#endif
-}
-#if 0
-
-/*method for closing a database*/
-void flush_volume(volume_descriptor *volume_desc, char force_spill)
-{
-	(void)volume_desc;
-	(void)force_spill;
-	db_descriptor *db_desc;
-	db_handle *handles;
-	handles = (db_handle *)malloc(sizeof(db_handle) * volume_desc->open_databases->size);
-
-	int db_id = 0;
-	NODE *node;
-	int i;
-
-	while (1) {
-		log_info("Waiting for pending spills to finish");
-		node = get_first(volume_desc->open_databases);
-		while (node != NULL) {
-			db_desc = (db_descriptor *)(node->data);
-			/*wait for pending spills for this db to finish*/
-			i = 0;
-			while (i < TOTAL_TREES) {
-				if (db_desc->tree_status[i] == SPILLING_IN_PROGRESS) {
-					log_info("Waiting for db %s to finish spills", db_desc->db_name);
-					sleep(4);
-					i = 0;
-				} else
-					i++;
-			}
-			node = node->next;
-		}
-		log_info("ok... no pending spills\n");
-
-		if (force_spill == SPILL_ALL_DBS_IMMEDIATELY) {
-			node = get_first(volume_desc->open_databases);
-			while (node != NULL) {
-				handles[db_id].db_desc = (db_descriptor *)(node->data);
-				handles[db_id].volume_desc = volume_desc;
-				spill_database(&handles[db_id]);
-				++db_id;
-				node = node->next;
-			}
-			force_spill = SPILLS_ISSUED;
-		} else
-			break;
-	}
-	log_info("Finally, snapshoting volume\n");
-	snapshot(volume_desc);
-	free(handles);
-	return;
-}
-#endif
 
 uint8_t insert_key_value(db_handle *handle, void *key, void *value, uint32_t key_size, uint32_t value_size)
 {

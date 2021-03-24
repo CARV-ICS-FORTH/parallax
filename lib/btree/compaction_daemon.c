@@ -676,7 +676,7 @@ void *compaction(void *_comp_req)
 			}
 
 			if (curr_segment->in_mem == 0)
-				free_block(comp_req->volume_desc, curr_segment, SEGMENT_SIZE, -1);
+				free_block(comp_req->volume_desc, curr_segment, SEGMENT_SIZE);
 			else
 				free(curr_segment);
 

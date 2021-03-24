@@ -119,7 +119,7 @@ void fix_nodes_in_log(volume_descriptor *volume_desc, db_descriptor *db_desc, lo
 	return;
 	if (prev_node) {
 		prev_node->metadata.next_segment = curr_node->metadata.next_segment;
-		free_block(volume_desc, curr_node, BUFFER_SEGMENT_SIZE, -1);
+		free_block(volume_desc, curr_node, BUFFER_SEGMENT_SIZE);
 	} else
 		db_desc->big_log_head = (segment_header *)REAL_ADDRESS((uint64_t)curr_node->metadata.next_segment);
 }
@@ -191,7 +191,7 @@ void *gc_log_entries(void *handle)
 	struct db_handle *han = (struct db_handle *)handle;
 	db_descriptor *db_desc = han->db_desc;
 	volume_descriptor *volume_desc = han->volume_desc;
-	NODE *region;
+	struct klist_node *region;
 	/* int rc; */
 
 	marks = malloc(sizeof(stack));
@@ -234,7 +234,7 @@ void *gc_log_entries(void *handle)
 
 		iterate_log_segments(db_desc, volume_desc, marks);
 		if (volume_desc->open_databases) {
-			region = get_first(volume_desc->open_databases);
+			region = klist_get_first(volume_desc->open_databases);
 
 			while (region != NULL) {
 				db_desc = (db_descriptor *)region->data;
