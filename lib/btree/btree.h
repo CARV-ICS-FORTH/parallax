@@ -190,17 +190,11 @@ typedef struct index_node {
 struct kv_format {
 	uint32_t key_size;
 	char key_buf[];
-};
+} __attribute__((packed));
 
 struct value_format {
 	uint32_t value_size;
 	char value[];
-};
-
-struct kv_prefix {
-	char prefix[PREFIX_SIZE];
-	uint64_t device_offt : 63;
-	uint64_t tombstone : 1;
 };
 
 struct bt_static_leaf_node {

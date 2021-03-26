@@ -62,12 +62,8 @@ static inline void update_leaf_index_stats(char key_format)
 #endif
 
 static struct bt_rebalance_result split_index(node_header *node, bt_insert_req *ins_req);
-void _sent_flush_command_to_replica(db_descriptor *db_desc, int padded_space, int SYNC);
 
 struct bt_rebalance_result split_leaf(bt_insert_req *req, leaf_node *node);
-
-/*Buffering aware functions*/
-void spill_buffer(void *_spill_req);
 
 /*functions used for debugging*/
 
@@ -84,113 +80,144 @@ int prefix_compare(char *l, char *r, size_t prefix_size)
  * @param   query_key_len: query_key length again in encoded form
  */
 
-int64_t key_cmp(void *index_key_buf, void *query_key_buf, char index_key_format, char query_key_format)
+int64_t key_cmp(void *key1, void *key2, char key1_format, char key2_format)
 {
 	int64_t ret;
 	uint32_t size;
 	/*we need the left most entry*/
-	if (query_key_buf == NULL)
+	if (key2 == NULL)
 		return 1;
 
-	if (index_key_format == KV_FORMAT && query_key_format == KV_FORMAT) {
-		size = *(uint32_t *)index_key_buf;
-		if (size > *(uint32_t *)query_key_buf)
-			size = *(uint32_t *)query_key_buf;
+	struct kv_format *key1f = NULL;
+	struct kv_format *key2f = NULL;
+	struct bt_leaf_entry *key1p = NULL;
+	struct bt_leaf_entry *key2p = NULL;
 
-		ret = memcmp((void *)index_key_buf + sizeof(uint32_t), (void *)query_key_buf + sizeof(uint32_t), size);
+	if (key1_format == KV_FORMAT && key2_format == KV_FORMAT) {
+		key1f = (struct kv_format *)key1;
+		key1p = NULL;
+		key2f = (struct kv_format *)key2;
+		key2p = NULL;
+
+		size = key1f->key_size;
+		if (size > key2f->key_size)
+			size = key2f->key_size;
+
+		ret = memcmp(key1f->key_buf, key2f->key_buf, size);
 		if (ret != 0)
 			return ret;
-		else if (ret == 0 && *(uint32_t *)index_key_buf == *(uint32_t *)query_key_buf)
-			return 0;
-
-		else { /*larger key wins*/
-
-			if (*(uint32_t *)index_key_buf > *(uint32_t *)query_key_buf)
+		else {
+			/*finally larger key wins*/
+			if (key1f->key_size < key2f->key_size)
+				return -1;
+			else if (key1f->key_size > key2f->key_size)
 				return 1;
 			else
-				return -1;
+				/*equal*/
+				return 0;
 		}
-	} else if (index_key_format == KV_FORMAT && query_key_format == KV_PREFIX) {
-		if (*(uint32_t *)index_key_buf >= PREFIX_SIZE)
-			ret = prefix_compare(index_key_buf + sizeof(uint32_t), query_key_buf, PREFIX_SIZE);
-		else // check here TODO
-			ret = prefix_compare(index_key_buf + sizeof(uint32_t), query_key_buf,
-					     *(int32_t *)index_key_buf);
-		if (ret == 0) { /* we have a tie, prefix didn't help, fetch query_key form KV log*/
+	} else if (key1_format == KV_FORMAT && key2_format == KV_PREFIX) {
+		key1f = (struct kv_format *)key1;
+		key1p = NULL;
+		key2f = NULL;
+		key2p = (struct bt_leaf_entry *)key2;
 
-			query_key_buf = (void *)(*(uint64_t *)(query_key_buf + PREFIX_SIZE));
+		if (key1f->key_size >= PREFIX_SIZE)
+			ret = prefix_compare(key1f->key_buf, key2p->prefix, PREFIX_SIZE);
+		else
+			ret = prefix_compare(key1f->key_buf, key2p->prefix, key1f->key_size);
+		if (ret == 0) {
+			/*we have a tie, prefix didn't help, fetch query_key form KV log*/
+			key2f = (struct kv_format *)key2p->pointer;
+			key2p = NULL;
 
-			size = *(uint32_t *)index_key_buf;
-			if (size > *(uint32_t *)query_key_buf)
-				size = *(uint32_t *)query_key_buf;
+			size = key1f->key_size;
+			if (size > key2f->key_size)
+				size = key2f->key_size;
 
-			ret = memcmp((void *)index_key_buf + sizeof(uint32_t), (void *)query_key_buf + sizeof(uint32_t),
-				     size);
+			ret = memcmp(key1f->key_buf, key2f->key_buf, size);
 
 			if (ret != 0)
 				return ret;
-			else if (ret == 0 && *(uint32_t *)index_key_buf == *(uint32_t *)query_key_buf)
-				return 0;
-
-			else { /*larger key wins*/
-				if (*(uint32_t *)index_key_buf > *(uint32_t *)query_key_buf)
+			else {
+				/*finally larger key wins*/
+				if (key1f->key_size < key2f->key_size)
+					return -1;
+				else if (key1f->key_size > key2f->key_size)
 					return 1;
 				else
-					return -1;
+					/*equal*/
+					return 0;
 			}
 		} else
 			return ret;
-	} else if (index_key_format == KV_PREFIX && query_key_format == KV_FORMAT) {
-		if (*(uint32_t *)query_key_buf >= PREFIX_SIZE)
-			ret = prefix_compare(index_key_buf, query_key_buf + sizeof(uint32_t), PREFIX_SIZE);
+	} else if (key1_format == KV_PREFIX && key2_format == KV_FORMAT) {
+		key1f = NULL;
+		key1p = (struct bt_leaf_entry *)key1;
+		key2f = (struct kv_format *)key2;
+		key2p = NULL;
+
+		if (key2f->key_size >= PREFIX_SIZE)
+			ret = prefix_compare(key1p->prefix, key2f->key_buf, PREFIX_SIZE);
 		else // check here TODO
-			ret = prefix_compare(index_key_buf, query_key_buf + sizeof(uint32_t),
-					     *(int32_t *)query_key_buf);
-		if (ret == 0) { /* we have a tie, prefix didn't help, fetch query_key form KV log*/
-			index_key_buf = (void *)(*(uint64_t *)(index_key_buf + PREFIX_SIZE));
+			ret = prefix_compare(key1p->prefix, key2f->key_buf, key2f->key_size);
 
-			size = *(uint32_t *)query_key_buf;
-			if (size > *(uint32_t *)index_key_buf)
-				size = *(uint32_t *)index_key_buf;
+		if (ret == 0) {
+			/* we have a tie, prefix didn't help, fetch query_key form KV log*/
+			key1f = (struct kv_format *)key1p->pointer;
+			key1p = NULL;
 
-			ret = memcmp((void *)index_key_buf + sizeof(uint32_t), (void *)query_key_buf + sizeof(uint32_t),
-				     size);
+			size = key2f->key_size;
+			if (size > key1f->key_size)
+				size = key1f->key_size;
+
+			ret = memcmp(key1f->key_buf, key2f->key_buf, size);
 			if (ret != 0)
 				return ret;
-			else if (ret == 0 && *(uint32_t *)index_key_buf == *(uint32_t *)query_key_buf)
-				return 0;
-			else { /*larger key wins*/
-
-				if (*(uint32_t *)index_key_buf > *(uint32_t *)query_key_buf)
+			else {
+				/*finally larger key wins*/
+				if (key1f->key_size < key2f->key_size)
+					return -1;
+				else if (key1f->key_size > key2f->key_size)
 					return 1;
 				else
-					return -1;
+					/*equal*/
+					return 0;
 			}
 		} else
 			return ret;
 	} else {
 		/*KV_PREFIX and KV_PREFIX*/
-		ret = prefix_compare(index_key_buf, query_key_buf, PREFIX_SIZE);
+		key1f = NULL;
+		key1p = (struct bt_leaf_entry *)key1;
+		key2f = NULL;
+		key2p = (struct bt_leaf_entry *)key2;
+		ret = prefix_compare(key1p->prefix, key2p->prefix, PREFIX_SIZE);
 		if (ret != 0)
 			return ret;
 		/*full comparison*/
-		void *index_full_key = (void *)*(uint64_t *)(index_key_buf + PREFIX_SIZE);
-		void *query_full_key = (void *)*(uint64_t *)(query_key_buf + PREFIX_SIZE);
-		char index_smaller = 0;
-		size = *(uint32_t *)query_full_key;
-		if (size > *(uint32_t *)index_full_key) {
-			size = *(uint32_t *)index_full_key;
-			index_smaller = 1;
+		key1f = (struct kv_format *)key1p->pointer;
+		//key1p = NULL;
+		key2f = (struct kv_format *)key2p->pointer;
+		//key2p = NULL;
+
+		size = key2f->key_size;
+		if (size > key1f->key_size) {
+			size = key1f->key_size;
 		}
-		ret = memcmp(index_full_key, query_full_key, size);
+
+		ret = memcmp(key1f->key_buf, key2f->key_buf, size);
 		if (ret != 0)
 			return ret;
-		if (index_smaller)
+		/*finally larger key wins*/
+		if (key1f->key_size < key2f->key_size)
 			return -1;
-		else
+		else if (key1f->key_size > key2f->key_size)
 			return 1;
+		else
+			/*equal*/
+			return 0;
 	}
-
 	return 0;
 }
 

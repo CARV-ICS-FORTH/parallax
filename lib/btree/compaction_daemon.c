@@ -638,9 +638,6 @@ void *compaction(void *_comp_req)
 		_close_spill_buffer_scanner(level_src);
 		_close_spill_buffer_scanner(level_dst);
 
-		log_info("local spilled keys %d", local_spilled_keys);
-		/* assert(local_spilled_keys == db_desc->levels[comp_req->src_level].level_size[comp_req->src_tree] + */
-		/* 				     db_desc->levels[comp_req->dst_level].level_size[0]); */
 		struct db_handle hd = { .db_desc = comp_req->db_desc, .volume_desc = comp_req->volume_desc };
 		/*
 		 * Now the difficult part we need atomically to free the src level, dst
