@@ -402,7 +402,7 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 	MUTEX_LOCK(&init_lock);
 	parse_options();
 	if (!(volume_desc = get_volume_desc(volumeName, start, 0)))
-		get_volume_desc(volumeName, start, 1);
+		volume_desc = get_volume_desc(volumeName, start, 1);
 
 	index_order = (INDEX_NODE_SIZE - sizeof(node_header)) / (2 * sizeof(uint64_t));
 	index_order -= 2; /*more space for extra pointer, and for rebalacing (merge)*/
