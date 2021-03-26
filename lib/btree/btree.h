@@ -77,6 +77,8 @@ typedef enum {
 	invalid
 } nodeType_t;
 
+typedef enum db_status { DB_OPEN, DB_IS_CLOSING } db_status;
+
 /*descriptor describing a spill operation and its current status*/
 typedef enum {
 	NO_SPILLING = 0,
@@ -184,6 +186,22 @@ typedef struct index_node {
 	char __pad[INDEX_NODE_SIZE - sizeof(struct node_header) - sizeof(uint64_t) -
 		   (IN_LENGTH * sizeof(struct index_entry))];
 } __attribute__((packed)) index_node;
+
+struct kv_format {
+	uint32_t key_size;
+	char key_buf[];
+};
+
+struct value_format {
+	uint32_t value_size;
+	char value[];
+};
+
+struct kv_prefix {
+	char prefix[PREFIX_SIZE];
+	uint64_t device_offt : 63;
+	uint64_t tombstone : 1;
+};
 
 struct bt_static_leaf_node {
 	struct node_header header;

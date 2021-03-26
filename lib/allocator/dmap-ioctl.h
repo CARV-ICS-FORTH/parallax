@@ -1,3 +1,17 @@
+// Copyright [2020] [FORTH-ICS]
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #ifndef __LINUX_DMAP_IOCTL
 #define __LINUX_DMAP_IOCTL
 
@@ -10,12 +24,15 @@
 
 /*
  * _IO(type,nr) (for a command that has no argument)
- * _IOR(type,nr,datatype) (for reading data from the driver) -- long copy_to_user(void __user *to, const void *from, unsigned long n)
- * _IOW(type,nr,datatype) (for writing data) -- long copy_from_user(void *to, const void __user * from, unsigned long n)
+ * _IOR(type,nr,datatype) (for reading data from the driver) -- long
+ * copy_to_user(void __user *to, const void *from, unsigned long n)
+ * _IOW(type,nr,datatype) (for writing data) -- long copy_from_user(void *to,
+ * const void __user * from, unsigned long n)
  * _IOWR(type,nr,datatype) (for bidirectional transfers).
  */
 
-/* Find a free ioctl code in http://lxr.free-electrons.com/source/Documentation/ioctl/ioctl-number.txt */
+/* Find a free ioctl code in
+ * http://lxr.free-electrons.com/source/Documentation/ioctl/ioctl-number.txt */
 #define DMAP_IOC_MAGIC 0xED
 
 #define DMAP_SET_PAGE_PRIORITY _IOW(DMAP_IOC_MAGIC, 0, struct dmap_page_prio)
@@ -104,11 +121,15 @@ struct fake_blk_page_num {
 	__u64 num;
 } __attribute__((packed));
 
+/*Instruct fastmap that blockids from 0 to num
+ * are now free*/
 struct fake_blk_pages_num {
 	__u64 blocks[511]; /* in order to be 4Kb */
 	__u64 num;
 } __attribute__((packed));
 
+/*Instruct fastmap that Block id offset and in
+ * block id length is now free*/
 struct fake_blk_page_range {
 	__u64 offset;
 	__u64 length;
