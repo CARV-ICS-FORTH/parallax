@@ -23,6 +23,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <allocator/allocator.h>
 
 #define KEY_PREFIX "userakias_computerakias"
 #define KV_SIZE 1024
@@ -89,7 +90,7 @@ void *scan_tester(void *args)
 			// element = stack_pop(&(sc->LEVEL_SCANNERS[0].stack));
 			// assert(element.node->type == leafNode);
 			// stack_push(&(sc->LEVEL_SCANNERS[0].stack), element);
-			int scan_size;
+			uint64_t scan_size;
 			if ((local_base + my_args->num_keys) - i > SCAN_SIZE)
 				scan_size = SCAN_SIZE;
 			else
