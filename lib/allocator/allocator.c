@@ -768,9 +768,10 @@ void bitmap_mark_block_free(struct volume_descriptor *volume_desc, void *addr)
 static void bitmap_mark_reserved(struct volume_descriptor *volume_desc, struct bitmap_word *b_word)
 {
 	bitmap_cow_check(volume_desc, b_word);
-	//log_info("Marking b_word reserved buddy pair:%d word id:%d buddy_id:%d "
+	// log_info("Marking b_word reserved buddy pair:%d word id:%d buddy_id:%d "
 	//	 "start_bit %u end bit %u",
-	//	 b_word->buddy_pair, b_word->word_id, b_word->buddy_id, b_word->start_bit, b_word->end_bit);
+	//	 b_word->buddy_pair, b_word->word_id, b_word->buddy_id,
+	//b_word->start_bit, b_word->end_bit);
 
 	struct bitmap_word_byte {
 		uint8_t b0 : 1;
@@ -899,15 +900,16 @@ static void bitmap_init_buddies_vector(struct volume_descriptor *volume_desc, in
 
 		if (fake_blk) {
 			fake_ioc->offset = ((uint64_t)(data_offset) - (uint64_t)MAPPED) / 4096;
-			//data_offset += ((4088 * 8) * 4096);
+			// data_offset += ((4088 * 8) * 4096);
 			data_offset += (WORDS_PER_BITMAP_BUDDY * WORD_SIZE_IN_BITS * DEVICE_BLOCK_SIZE);
 
 			if (winner == 0) {
-				//memcpy((void *)fake_ioc->bpage, (void *)(i + sizeof(int64_t)), 4088);
+				// memcpy((void *)fake_ioc->bpage, (void *)(i + sizeof(int64_t)), 4088);
 				memcpy((void *)fake_ioc->bpage, b_pair[i].buddy[0].word,
 				       sizeof(b_pair[i].buddy[0].word));
 			} else {
-				//memcpy((void *)fake_ioc->bpage, (void *)(i + DEVICE_BLOCK_SIZE + sizeof(int64_t)),
+				// memcpy((void *)fake_ioc->bpage, (void *)(i + DEVICE_BLOCK_SIZE +
+				// sizeof(int64_t)),
 				//       4088);
 				memcpy((void *)fake_ioc->bpage, b_pair[i].buddy[1].word,
 				       sizeof(b_pair[i].buddy[1].word));
@@ -955,7 +957,7 @@ static void bitmap_reset_pos(struct volume_descriptor *volume_desc)
 {
 	volume_desc->b_pos.buddy_pair = 0;
 	volume_desc->b_pos.word_id = 0;
-	//log_info("Initialized bitmap pos buddy %d", volume_desc->b_pos.buddy_pair);
+	// log_info("Initialized bitmap pos buddy %d", volume_desc->b_pos.buddy_pair);
 	return;
 }
 
@@ -1048,11 +1050,13 @@ static uint32_t bitmap_check_first_n_bits_free(struct bitmap_word *b_word, uint3
 	if (mask == (mask & *b_word->word_addr)) {
 		b_word->start_bit = 0;
 		b_word->end_bit = actual_bits;
-		//log_info("Found First %u bits of word %d in buddy %d", actual_bits, b_word->word_id,
+		// log_info("Found First %u bits of word %d in buddy %d", actual_bits,
+		// b_word->word_id,
 		//	 b_word->buddy_pair);
 		return actual_bits;
 	} else {
-		//log_info("Not Found First %u bits of word %d in buddy %d", actual_bits, b_word->word_id,
+		// log_info("Not Found First %u bits of word %d in buddy %d", actual_bits,
+		// b_word->word_id,
 		//	 b_word->buddy_pair);
 		return 0;
 	}
@@ -1067,21 +1071,22 @@ static uint32_t bitmap_find_nbits_in_word(struct bitmap_word *b_word, uint64_t *
 	else
 		actual_bits = length_bits;
 
-	//log_info("Checking if word %u contains bits %u", b_word->word_id, actual_bits);
+	// log_info("Checking if word %u contains bits %u", b_word->word_id,
+	// actual_bits);
 
 	uint32_t m_rounds;
-	//calculare upper integral part of log2
+	// calculare upper integral part of log2
 	double r = log2(actual_bits);
 	m_rounds = (uint64_t)r;
-	//check if we have decimal points
+	// check if we have decimal points
 	if (floor(r) != r)
 		++m_rounds;
 	assert(m_rounds + 1 < *num_rounds);
 	*num_rounds = m_rounds;
-	//log_info("Num rounds are %u", *num_rounds);
+	// log_info("Num rounds are %u", *num_rounds);
 	int shift_size = 1;
 
-	//Our guard
+	// Our guard
 
 	round[0] = *b_word->word_addr;
 	for (uint32_t i = 0; i < *num_rounds; i++) {
@@ -1091,16 +1096,17 @@ static uint32_t bitmap_find_nbits_in_word(struct bitmap_word *b_word, uint64_t *
 			shift_size = actual_bits - (shift_size * 2);
 		else
 			shift_size *= 2;
-		//log_info("Shift size %u", shift_size);
+		// log_info("Shift size %u", shift_size);
 		uint64_t c = round[i] << shift_size;
 		round[i + 1] = round[i] & c;
 	}
 
-	//did we find size or WORD_SIZE bits?
+	// did we find size or WORD_SIZE bits?
 	if (round[*num_rounds] != 0) {
 		b_word->end_bit = ffsl(round[*num_rounds]);
 		b_word->start_bit = b_word->end_bit - actual_bits;
-		//log_info("Yes it does! end bit is %u round is %llu", b_word->end_bit, round[*num_rounds]);
+		// log_info("Yes it does! end bit is %u round is %llu", b_word->end_bit,
+		// round[*num_rounds]);
 
 		return actual_bits;
 	} else {
@@ -1114,28 +1120,29 @@ static uint32_t bitmap_find_suffix(struct bitmap_word *b_word, uint64_t *rounds,
 	uint32_t size_bits = 0;
 	int L = num_rounds;
 	uint64_t b = 1;
-	//log_info("Suffix search: num rounds are %d", num_rounds);
+	// log_info("Suffix search: num rounds are %d", num_rounds);
 	do {
 		if (mask & (rounds[L] << size_bits)) {
 			size_bits += (b << L);
-			//log_info("Suffix now is %u L = %d rounds %llu", size_bits, L, rounds[L]);
+			// log_info("Suffix now is %u L = %d rounds %llu", size_bits, L,
+			// rounds[L]);
 		}
 		--L;
 	} while (L >= 0);
 	if (size_bits) {
 		b_word->start_bit = WORD_SIZE_IN_BITS - size_bits;
 		b_word->end_bit = WORD_SIZE_IN_BITS;
-		//log_info("Suffix search size found is %u", size_bits);
+		// log_info("Suffix search size found is %u", size_bits);
 		return size_bits;
 	} else {
-		//log_info("Sorry no suffix found");
+		// log_info("Sorry no suffix found");
 		return 0;
 	}
 }
 
 void *allocate(struct volume_descriptor *volume_desc, uint64_t num_bytes)
 {
-	//assert(num_bytes == SEGMENT_SIZE);
+	// assert(num_bytes == SEGMENT_SIZE);
 	if (num_bytes == 0)
 		return NULL;
 
@@ -1207,7 +1214,7 @@ void *allocate(struct volume_descriptor *volume_desc, uint64_t num_bytes)
 			b_words[idx] = b_word;
 			suffix_bits += bits_found;
 			if (suffix_bits == length_bits) {
-				//we are done here
+				// we are done here
 				break;
 			} else {
 				b_word = bitmap_get_next_word(volume_desc);
@@ -1435,7 +1442,7 @@ static void add_log_entry(volume_descriptor *volume_desc, void *address, uint32_
 
 void free_block(struct volume_descriptor *volume_desc, void *address, uint32_t length)
 {
-	//assert(length == SEGMENT_SIZE);
+	// assert(length == SEGMENT_SIZE);
 	// uint64_t pageno = ((uint64_t)address - MAPPED) / DEVICE_BLOCK_SIZE;
 	// int32_t num_of_pages = length / 4096;
 	// int32_t i;
@@ -1468,8 +1475,8 @@ static void clean_log_entries(void *v_desc)
 
 	pthread_setname_np(pthread_self(), "cleanerd");
 
-	//Are we operating with filter block device or not?...Let's discover with an
-	//ioctl
+	// Are we operating with filter block device or not?...Let's discover with an
+	// ioctl
 	int fake_blk = 0;
 	uint64_t free_ops = 0;
 	/*single thread, per volume so we don't need locking*/
@@ -1504,7 +1511,7 @@ static void clean_log_entries(void *v_desc)
 		MUTEX_UNLOCK(&volume_desc->mutex);
 
 		if (rc == 0) {
-			//cleaner singaled due to space pressure
+			// cleaner singaled due to space pressure
 			log_warn("Woke up due to space pressure");
 			force_snapshot(volume_desc);
 			if (volume_desc->state == VOLUME_IS_CLOSING) {
@@ -1523,8 +1530,8 @@ static void clean_log_entries(void *v_desc)
 				(struct free_op_entry *)(MAPPED + sizeof(struct superblock) + free_entry_offt);
 
 			if (fp->epoch >= volume_desc->mem_catalogue->epoch) {
-				//We don't know if these free operations will survive
-				//log_info("Can't free entry's epoch %llu soft epoch %llu", fp->epoch,
+				// We don't know if these free operations will survive
+				// log_info("Can't free entry's epoch %llu soft epoch %llu", fp->epoch,
 				//	 volume_desc->mem_catalogue->epoch);
 				MUTEX_UNLOCK(&volume_desc->free_log_lock);
 				break;
@@ -1532,11 +1539,11 @@ static void clean_log_entries(void *v_desc)
 
 			assert(fp->dev_offt != 0);
 			if (++free_ops % 20000 == 0)
-				log_info(
-					"Freeing epoch %llu dev_offt %llu length %llu at last free %llu free los pos %llu",
-					fp->epoch, fp->dev_offt, fp->length,
-					volume_desc->mem_catalogue->free_log_last_free,
-					volume_desc->mem_catalogue->free_log_position);
+				log_info("Freeing epoch %llu dev_offt %llu length %llu at last free "
+					 "%llu free los pos %llu",
+					 fp->epoch, fp->dev_offt, fp->length,
+					 volume_desc->mem_catalogue->free_log_last_free,
+					 volume_desc->mem_catalogue->free_log_position);
 
 			MUTEX_LOCK(&volume_desc->bitmap_lock);
 			for (uint64_t L = 0; L < fp->length; L += DEVICE_BLOCK_SIZE) {
@@ -1544,16 +1551,16 @@ static void clean_log_entries(void *v_desc)
 				bitmap_mark_block_free(volume_desc, addr);
 			}
 
-			//struct fake_blk_pages_num cbits;
+			// struct fake_blk_pages_num cbits;
 			if (fake_blk) {
 				struct fake_blk_page_range free_op;
 				free_op.offset = fp->dev_offt / DEVICE_BLOCK_SIZE;
 				free_op.length = fp->length / DEVICE_BLOCK_SIZE;
 				ret = ioctl(FD, FAKE_BLK_IOC_ZERO_RANGE, &free_op);
 				if (ret) {
-					log_fatal(
-						"Failed to update Fastmap's bitmap in free operation ret = %d offset %llu length %llu",
-						ret, free_op.offset, free_op.length);
+					log_fatal("Failed to update Fastmap's bitmap in free operation ret = "
+						  "%d offset %llu length %llu",
+						  ret, free_op.offset, free_op.length);
 					log_fatal("Free log pos was: %llu last free %llu",
 						  volume_desc->mem_catalogue->free_log_position,
 						  volume_desc->mem_catalogue->free_log_last_free);
@@ -1579,8 +1586,8 @@ struct volume_descriptor *get_volume_desc(char *volume_name, uint64_t start_offt
 	MUTEX_LOCK(&volume_manager_lock);
 	if (volume_list == NULL)
 		volume_list = klist_init();
-	//Is requested volume already mapped?, construct key which will be
-	//volumeName|start
+	// Is requested volume already mapped?, construct key which will be
+	// volumeName|start
 	uint64_t val = start_offt;
 	uint32_t digits = 0;
 	while (val > 0) {
@@ -1615,7 +1622,7 @@ struct volume_descriptor *get_volume_desc(char *volume_name, uint64_t start_offt
 		MUTEX_INIT(&(volume_desc->bitmap_lock), NULL);
 		/*free operations log*/
 		MUTEX_INIT(&(volume_desc->free_log_lock), NULL);
-		//this call will fill volume's size
+		// this call will fill volume's size
 		allocator_init(volume_desc);
 		klist_add_first(volume_list, volume_desc, key, destroy_volume_node);
 	}
@@ -1624,4 +1631,81 @@ exit:
 	free(key);
 	MUTEX_UNLOCK(&volume_manager_lock);
 	return volume_desc;
+}
+
+struct db_coordinates locate_db(struct volume_descriptor *volume_desc, char *db_name, char create_db)
+{
+	struct db_coordinates db_c = { .group_id = -1, .index = -1, .found = 0, .out_of_space = 0, .new_db = 0 };
+
+	int empty_group = -1;
+	int empty_index = -1;
+	for (int group_id = 0; group_id < NUM_OF_DB_GROUPS; ++group_id) {
+		if (volume_desc->mem_catalogue->db_group_index[group_id] != 0) {
+			struct pr_db_group *db_group = (struct pr_db_group *)REAL_ADDRESS(
+				volume_desc->mem_catalogue->db_group_index[group_id]);
+			for (int group_idx = 0; group_idx < GROUP_SIZE; ++group_idx) {
+				/*empty slot keep in mind*/
+				if (db_group->db_entries[group_idx].valid == 0 && empty_index == -1) {
+					/*Remember the location of the first empty slot within the group*/
+					// log_info("empty slot %d in group %d\n", i, j);
+					empty_group = group_id;
+					empty_index = group_idx;
+				}
+
+				if (db_group->db_entries[group_idx].valid) {
+					/*hosts a database*/
+					struct pr_db_entry *db_entry = &db_group->db_entries[group_idx];
+					if (!strcmp((const char *)db_entry->db_name, (const char *)db_name)) {
+						log_info("DB: %s found at index [%d,%d]", db_entry->db_name, group_id,
+							 group_idx);
+						db_c.group_id = group_id;
+						db_c.index = group_idx;
+						db_c.found = 1;
+						goto exit;
+					}
+				}
+			}
+		} else {
+			if (empty_group == -1) {
+				//Remember the first gap
+				empty_group = group_id;
+			}
+		}
+	}
+exit:
+	if (!db_c.found) {
+		//out of space check
+		if (empty_group == -1 && empty_index == -1) {
+			log_warn("Max number of DBs %d reached", NUM_OF_DB_GROUPS * GROUP_SIZE);
+			db_c.out_of_space = 1;
+			return db_c;
+		}
+		if (!create_db) {
+			db_c.group_id = -1;
+			db_c.index = -1;
+			return db_c;
+		}
+		db_c.found = 1;
+		db_c.new_db = 1;
+
+		db_c.group_id = empty_group;
+		if (empty_index == -1) {
+			db_c.index = 0;
+			struct pr_db_group *new_group = get_space_for_system(volume_desc, sizeof(pr_db_group), 1);
+			memset(new_group, 0x00, sizeof(pr_db_group));
+			new_group->epoch = volume_desc->mem_catalogue->epoch;
+			volume_desc->mem_catalogue->db_group_index[empty_group] =
+				(pr_db_group *)ABSOLUTE_ADDRESS(new_group);
+			log_info("Allocated new pr_db_group epoch at %llu volume epoch %llu", new_group->epoch,
+				 volume_desc->mem_catalogue->epoch);
+		} else
+			db_c.index = empty_index;
+
+		pr_db_group *cur_group =
+			(pr_db_group *)REAL_ADDRESS(volume_desc->mem_catalogue->db_group_index[empty_group]);
+
+		struct pr_db_entry *db_entry = &cur_group->db_entries[empty_index];
+		db_entry->valid = 1;
+	}
+	return db_c;
 }
