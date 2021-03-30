@@ -224,6 +224,7 @@ struct splice {
 	char data[0];
 };
 
+#if 0
 /** contains info about the part of the log which has been commited but has not
  *  been applied in the index. In particular, recovery process now will be
  *  1. Read superblock, db_descriptor
@@ -253,18 +254,6 @@ typedef struct commit_log_info {
 	uint64_t lsn;
 	char pad[4016];
 } commit_log_info;
-
-#if 0
-/*used for tiering compactions at replicas*/
-#define MAX_FOREST_SIZE 124
-typedef struct forest {
-	node_header *tree_roots[MAX_FOREST_SIZE];
-	segment_header *tree_segment_list[MAX_FOREST_SIZE];
-	uint64_t total_keys_per_tree[MAX_FOREST_SIZE];
-	uint64_t end_of_log[MAX_FOREST_SIZE];
-	char tree_status[MAX_FOREST_SIZE];
-	char pad[4];
-} forest;
 #endif
 
 /**
@@ -346,8 +335,6 @@ typedef struct level_descriptor {
 typedef struct db_descriptor {
 	char db_name[MAX_DB_NAME_SIZE];
 	level_descriptor levels[MAX_LEVELS];
-	struct compaction_pairs inprogress_compactions[MAX_LEVELS];
-	struct compaction_pairs pending_compactions[MAX_LEVELS];
 #if MEASURE_MEDIUM_INPLACE
 	uint64_t count_medium_inplace;
 #endif
@@ -369,35 +356,25 @@ typedef struct db_descriptor {
 	pthread_t compaction_thread;
 	pthread_t compaction_daemon;
 	pthread_t gc_thread;
-	//compaction daemon staff
-	volatile segment_header *big_log_head;
-	volatile segment_header *big_log_tail;
-	volatile uint64_t big_log_size;
-	volatile segment_header *medium_log_head;
-	volatile segment_header *medium_log_tail;
-	volatile uint64_t medium_log_size;
-	volatile segment_header *small_log_head;
-	volatile segment_header *small_log_tail;
-	volatile uint64_t small_log_size;
-	volatile uint64_t lsn;
+	segment_header *big_log_head;
+	segment_header *big_log_tail;
+	uint64_t big_log_size;
+	segment_header *medium_log_head;
+	segment_header *medium_log_tail;
+	uint64_t medium_log_size;
+	segment_header *small_log_head;
+	segment_header *small_log_tail;
+	uint64_t small_log_size;
+	uint64_t lsn;
+	//only for L0
 	segment_header *inmem_medium_log_head[NUM_TREES_PER_LEVEL];
 	segment_header *inmem_medium_log_tail[NUM_TREES_PER_LEVEL];
 	uint64_t inmem_medium_log_size[NUM_TREES_PER_LEVEL];
 	struct db_handle *gc_db;
 	char *inmem_base;
-	/*coordinates of the latest persistent L0*/
-	/* Shouldn't this be in level_descriptor*/
-	uint64_t big_log_head_offset;
-	uint64_t big_log_tail_offset;
-	uint64_t medium_log_head_offset;
-	uint64_t medium_log_tail_offset;
-	uint64_t small_log_head_offset;
-	uint64_t small_log_tail_offset;
 	uint64_t gc_last_segment_id;
 	uint64_t gc_count_segments;
 	uint64_t gc_keys_transferred;
-	commit_log_info *commit_log;
-	// uint64_t spilled_keys;
 	int is_compaction_daemon_sleeping;
 	int32_t reference_count;
 	int32_t group_id;
@@ -437,16 +414,8 @@ struct recovery_operator {
 
 void recover_region(recovery_request *rh);
 void snapshot(volume_descriptor *volume_desc);
-void commit_db_log(db_descriptor *db_desc, commit_log_info *info);
-void commit_db_logs_per_volume(volume_descriptor *volume_desc);
-
-typedef struct rotate_data {
-	node_header *left;
-	node_header *right;
-	void *pivot;
-	int pos_left;
-	int pos_right;
-} rotate_data;
+//void commit_db_log(db_descriptor *db_desc, commit_log_info *info);
+//void commit_db_logs_per_volume(volume_descriptor *volume_desc);
 
 typedef struct bt_spill_request {
 	db_descriptor *db_desc;
@@ -531,9 +500,9 @@ typedef struct log_operation {
 } log_operation;
 
 struct log_towrite {
-	volatile segment_header *log_head;
-	volatile segment_header *log_tail;
-	volatile uint64_t *log_size;
+	segment_header *log_head;
+	segment_header *log_tail;
+	uint64_t *log_size;
 	int level_id;
 	enum log_category status;
 };

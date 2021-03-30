@@ -280,115 +280,55 @@ static void destroy_level_locktable(db_descriptor *database, uint8_t level_id)
 		free(&database->levels[level_id].level_lock_table[i]);
 }
 
-static void pr_init_logs(db_descriptor *db_desc, pr_db_entry *db_entry, volume_descriptor *volume_desc)
+static void pr_recover_logs(db_descriptor *db_desc, struct pr_db_entry *entry)
 {
-	log_info("Primary db initializing KV log");
+	log_info("Recovering KV logs (small,medium,large) for DB: %s", db_desc->db_name);
 
+	// Small log
+	db_desc->big_log_head = REAL_ADDRESS(entry->big_log_head_offt);
+	db_desc->big_log_tail = REAL_ADDRESS(entry->big_log_tail_offt);
+	db_desc->big_log_size = entry->big_log_size;
+
+	// Medium log
+	db_desc->medium_log_head = REAL_ADDRESS(entry->medium_log_head_offt);
+	db_desc->medium_log_tail = REAL_ADDRESS(entry->medium_log_tail_offt);
+	db_desc->medium_log_size = entry->medium_log_size;
+
+	// Large log
+	db_desc->big_log_head = REAL_ADDRESS(entry->big_log_head_offt);
+	db_desc->big_log_tail = REAL_ADDRESS(entry->big_log_tail_offt);
+	db_desc->big_log_size = entry->big_log_size;
+	db_desc->lsn = entry->lsn;
+}
+
+static void pr_init_logs(db_descriptor *db_desc, volume_descriptor *volume_desc)
+{
+	log_info("Initializing KV logs (small,medium,large) for DB: %s", db_desc->db_name);
+
+	// Small log
 	db_desc->big_log_head = seg_get_raw_log_segment(volume_desc);
 	db_desc->big_log_tail = db_desc->big_log_head;
 	db_desc->big_log_tail->segment_id = 0;
 	db_desc->big_log_tail->next_segment = NULL;
 	db_desc->big_log_tail->prev_segment = NULL;
 	db_desc->big_log_size = sizeof(segment_header);
-	db_desc->big_log_head_offset = sizeof(segment_header);
-	db_desc->big_log_tail_offset = sizeof(segment_header);
-	/*get a page for commit_log info*/
-	db_desc->commit_log->big_log_head = (segment_header *)ABSOLUTE_ADDRESS(db_desc->big_log_head);
-	db_desc->commit_log->big_log_tail = (segment_header *)ABSOLUTE_ADDRESS(db_desc->big_log_tail);
-	db_desc->commit_log->big_log_size = db_desc->big_log_size;
 
-	/* Medium log */
+	// Medium log
 	db_desc->medium_log_head = seg_get_raw_log_segment(volume_desc);
 	db_desc->medium_log_tail = db_desc->medium_log_head;
 	db_desc->medium_log_tail->segment_id = 0;
 	db_desc->medium_log_tail->next_segment = NULL;
 	db_desc->medium_log_tail->prev_segment = NULL;
 	db_desc->medium_log_size = sizeof(segment_header);
-	db_desc->medium_log_head_offset = sizeof(segment_header);
-	db_desc->medium_log_tail_offset = sizeof(segment_header);
-	db_desc->commit_log->medium_log_head = (segment_header *)ABSOLUTE_ADDRESS(db_desc->medium_log_head);
-	db_desc->commit_log->medium_log_tail = (segment_header *)ABSOLUTE_ADDRESS(db_desc->medium_log_tail);
-	db_desc->commit_log->medium_log_size = db_desc->medium_log_size;
 
-	/* Small log */
+	// Large log
 	db_desc->small_log_head = seg_get_raw_log_segment(volume_desc);
 	db_desc->small_log_tail = db_desc->small_log_head;
 	db_desc->small_log_tail->segment_id = 0;
 	db_desc->small_log_tail->next_segment = NULL;
 	db_desc->small_log_tail->prev_segment = NULL;
 	db_desc->small_log_size = sizeof(segment_header);
-	db_desc->small_log_head_offset = sizeof(segment_header);
-	db_desc->small_log_tail_offset = sizeof(segment_header);
-	db_desc->commit_log->small_log_head = (segment_header *)ABSOLUTE_ADDRESS(db_desc->small_log_head);
-	db_desc->commit_log->small_log_tail = (segment_header *)ABSOLUTE_ADDRESS(db_desc->small_log_tail);
-	db_desc->commit_log->small_log_size = db_desc->small_log_size;
-	db_desc->lsn = db_desc->commit_log->lsn;
-
-	/*persist commit log information, this location stays permanent, there is no
-           * need to rewrite it during snapshot()*/
-	db_entry->commit_log = ABSOLUTE_ADDRESS(db_desc->commit_log);
-}
-
-void recover_database_logs(db_descriptor *db_desc, pr_db_entry *db_entry)
-{
-	db_desc->commit_log = (commit_log_info *)REAL_ADDRESS(db_entry->commit_log);
-
-	if (db_desc->commit_log->big_log_head != NULL)
-		db_desc->big_log_head = (segment_header *)REAL_ADDRESS(db_desc->commit_log->big_log_head);
-	else
-		db_desc->big_log_head = NULL;
-
-	if (db_desc->commit_log->big_log_tail != NULL)
-		db_desc->big_log_tail = (segment_header *)REAL_ADDRESS(db_desc->commit_log->big_log_tail);
-	else
-		db_desc->big_log_tail = NULL;
-
-	db_desc->big_log_size = db_desc->commit_log->big_log_size;
-	db_desc->big_log_head_offset = db_entry->big_log_head_offset;
-	db_desc->big_log_tail_offset = db_entry->big_log_tail_offset;
-
-	log_info("Big log segments first: %llu last: %llu log_size %llu", (long long unsigned)db_desc->big_log_head,
-		 (long long unsigned)db_desc->big_log_tail, (long long unsigned)db_desc->big_log_size);
-	log_info("L0 start log offset %llu end %llu", db_desc->big_log_head_offset, db_desc->big_log_tail_offset);
-
-	if (db_desc->commit_log->medium_log_head != NULL)
-		db_desc->medium_log_head = (segment_header *)REAL_ADDRESS(db_desc->commit_log->medium_log_head);
-	else
-		db_desc->medium_log_head = NULL;
-
-	if (db_desc->commit_log->medium_log_tail != NULL)
-		db_desc->medium_log_tail = (segment_header *)REAL_ADDRESS(db_desc->commit_log->medium_log_tail);
-	else
-		db_desc->medium_log_tail = NULL;
-
-	db_desc->medium_log_size = db_desc->commit_log->medium_log_size;
-	db_desc->medium_log_head_offset = db_entry->medium_log_head_offset;
-	db_desc->medium_log_tail_offset = db_entry->medium_log_tail_offset;
-
-	log_info("Medium log segments first: %llu last: %llu log_size %llu",
-		 (long long unsigned)db_desc->medium_log_head, (long long unsigned)db_desc->medium_log_tail,
-		 (long long unsigned)db_desc->medium_log_size);
-	log_info("Medium L0 start log offset %llu end %llu", db_desc->medium_log_head_offset,
-		 db_desc->medium_log_tail_offset);
-
-	if (db_desc->commit_log->small_log_head != NULL)
-		db_desc->small_log_head = (segment_header *)REAL_ADDRESS(db_desc->commit_log->small_log_head);
-	else
-		db_desc->small_log_head = NULL;
-
-	if (db_desc->commit_log->small_log_tail != NULL)
-		db_desc->small_log_tail = (segment_header *)REAL_ADDRESS(db_desc->commit_log->small_log_tail);
-	else
-		db_desc->small_log_tail = NULL;
-
-	db_desc->small_log_size = db_desc->commit_log->small_log_size;
-	db_desc->small_log_head_offset = db_entry->small_log_head_offset;
-	db_desc->small_log_tail_offset = db_entry->small_log_tail_offset;
-
-	log_info("Small log segments first: %llu last: %llu log_size %llu", (long long unsigned)db_desc->small_log_head,
-		 (long long unsigned)db_desc->small_log_tail, (long long unsigned)db_desc->small_log_size);
-	log_info("Small L0 start log offset %llu end %llu", db_desc->small_log_head_offset,
-		 db_desc->small_log_tail_offset);
+	db_desc->lsn = 0;
 }
 
 void init_level_bloom_filters(db_descriptor *db_desc, int level_id, int tree_id)
@@ -454,7 +394,7 @@ struct db_handle *bt_restore_db(struct volume_descriptor *volume_desc, struct pr
 		}
 	}
 
-	recover_database_logs(db_desc, db_entry);
+	pr_recover_logs(db_desc, db_entry);
 	return handle;
 }
 
@@ -557,14 +497,7 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 						 handle->db_desc->levels[level_id].max_level_size);
 				}
 				handle->db_desc->levels[MAX_LEVELS - 1].max_level_size = UINT64_MAX;
-				//initialize KV log for this db
-				handle->db_desc->commit_log = (commit_log_info *)get_space_for_system(
-					volume_desc, sizeof(commit_log_info), 1);
-				/*get a page for commit_log info*/
-				struct pr_db_group *db_group =
-					REAL_ADDRESS(volume_desc->mem_catalogue->db_group_index[db_c.group_id]);
-				struct pr_db_entry *db_entry = &db_group->db_entries[db_c.index];
-				pr_init_logs(handle->db_desc, db_entry, volume_desc);
+				pr_init_logs(handle->db_desc, volume_desc);
 				handle->db_desc->reference_count = 1;
 			} else {
 				log_info("DB: %s found at index [%d,%d]", db_name, db_c.group_id, db_c.index);
@@ -632,10 +565,6 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 #endif
 		}
 		init_leaf_sizes_perlevel(&handle->db_desc->levels[level_id]);
-		handle->db_desc->inprogress_compactions[level_id].src_level = -1;
-		handle->db_desc->inprogress_compactions[level_id].dst_level = -1;
-		handle->db_desc->pending_compactions[level_id].src_level = -1;
-		handle->db_desc->pending_compactions[level_id].dst_level = -1;
 	}
 	sem_init(&gc_daemon_interrupts, PTHREAD_PROCESS_PRIVATE, 0);
 
@@ -683,6 +612,7 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 		exit(EXIT_FAILURE);
 	}
 
+#if 0
 	/*recovery checks*/
 	log_info("performing recovery checks for db: %s", handle->db_desc->db_name);
 
@@ -762,6 +692,7 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 	log_info("medium start %llu medium end %llu", handle->db_desc->medium_log_head,
 		 handle->db_desc->medium_log_tail);
 	log_info("small start %llu small end %llu", handle->db_desc->small_log_head, handle->db_desc->small_log_tail);
+#endif
 
 	handle->db_desc->gc_db = db_open(volumeName, 0, size, SYSTEMDB, DONOT_CREATE_DB);
 

@@ -78,42 +78,18 @@ typedef struct pr_db_entry {
 	uint64_t first_segment[MAX_LEVELS][NUM_TREES_PER_LEVEL];
 	uint64_t last_segment[MAX_LEVELS][NUM_TREES_PER_LEVEL];
 	uint64_t offset[MAX_LEVELS][NUM_TREES_PER_LEVEL];
-	// expressed in keys per level per tree
 	uint64_t level_size[MAX_LEVELS][NUM_TREES_PER_LEVEL];
-	uint64_t KV_log_first_seg_offt;
-	uint64_t KV_log_last_seg_offt;
-	uint64_t KV_log_size;
 
-	uint64_t L1_index_end_log_offset;
-	uint64_t L1_segment_offt;
-#if 1
-	/*commit log is in a different location on the device for the following
-   *reason:*
-   *Kreon has two persistence operations commit_log and snapshot()
-   * Commit log only commits the log and it is faster than snapshot. It actual
-   *trades performance vs recovery_time.
-   * This is because db should replay a part of its tail log to add missing
-   *index.
-   * Snapshot commits both index and log (it actually calls commit_log) and is
-   *slower but provides instant recovery.
-   * With the separation of these two techiques we are able to issue snapshot
-   *less frequent (order of minutes) without losing data
-   * */
-	uint64_t commit_log;
-	/*
-   * info to locate after a recovery which tail part
-   * of the log is missing from the index
-   */
-	uint64_t big_log_head_offset;
-	uint64_t big_log_tail_offset;
-	uint64_t medium_log_head_offset;
-	uint64_t medium_log_tail_offset;
-	uint64_t small_log_head_offset;
-	uint64_t small_log_tail_offset;
-/* uint64_t L0_start_log_offset; */
-/* uint64_t L0_end_log_offset; */
-#endif
-
+	uint64_t big_log_head_offt;
+	uint64_t big_log_tail_offt;
+	uint64_t big_log_size;
+	uint64_t medium_log_head_offt;
+	uint64_t medium_log_tail_offt;
+	uint64_t medium_log_size;
+	uint64_t small_log_head_offt;
+	uint64_t small_log_tail_offt;
+	uint64_t small_log_size;
+	uint64_t lsn;
 	uint32_t valid;
 	char pad[44];
 } pr_db_entry; // 768 bytes or 12 cache lines

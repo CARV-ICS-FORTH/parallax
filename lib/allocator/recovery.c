@@ -9,8 +9,10 @@
 
 void load_logs_torecover(recovery_request *recover_req, struct recovery_operator *replay)
 {
+	(void) recover_req;
+	(void) replay;
+#if 0
 	unsigned replay_onelog_atleast = 0;
-
 	if (recover_req->db_desc->commit_log->big_log_size < recover_req->db_desc->big_log_size) {
 		log_warn("warning commit log should be larger than in memory log");
 		++replay_onelog_atleast;
@@ -73,6 +75,7 @@ void load_logs_torecover(recovery_request *recover_req, struct recovery_operator
 	replay->big.log_size = recover_req->db_desc->commit_log->big_log_size;
 	replay->medium.log_size = recover_req->db_desc->commit_log->medium_log_size;
 	replay->small.log_size = recover_req->db_desc->commit_log->small_log_size;
+#endif
 }
 
 segment_header *find_replay_offset(segment_header *current_log_segment, uint64_t segment_id)

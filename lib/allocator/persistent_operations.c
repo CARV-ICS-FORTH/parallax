@@ -11,6 +11,7 @@
 #include "../btree/segment_allocator.h"
 #include "../btree/conf.h"
 
+#if 0
 void write_log_metadata(db_descriptor *db_desc, commit_log_info *info)
 {
 	/*write log info*/
@@ -163,6 +164,8 @@ void commit_db_logs_per_volume(volume_descriptor *volume_desc)
 		node = node->next;
 	}
 }
+#endif
+
 /*As normal snapshot except it increases system's epoch
  * even in the case where no writes have taken place
  */
@@ -175,7 +178,7 @@ void force_snapshot(volume_descriptor *volume_desc)
 /*persists a consistent snapshot of the system*/
 void snapshot(volume_descriptor *volume_desc)
 {
-	struct commit_log_info log_info;
+	//struct commit_log_info log_info;
 	pr_db_group *db_group;
 	pr_db_entry *db_entry;
 	node_header *old_root;
@@ -272,42 +275,24 @@ void snapshot(volume_descriptor *volume_desc)
 					db_entry->level_size[i][j] = db_desc->levels[i].level_size[j];
 				}
 			}
-			/*KV log status, not needed commit log is the truth*/
 
-			/*L0 bounds*/
-			log_info.big_log_head = (segment_header *)db_desc->big_log_head;
-			log_info.big_log_tail = (segment_header *)db_desc->big_log_tail;
-			log_info.big_log_size = db_desc->big_log_size;
+			db_entry->big_log_head_offt = ABSOLUTE_ADDRESS(db_desc->big_log_head);
+			db_entry->big_log_tail_offt = ABSOLUTE_ADDRESS(db_desc->big_log_tail);
+			db_entry->big_log_size = db_desc->big_log_size;
 
-			log_info.medium_log_head = (segment_header *)db_desc->medium_log_head;
-			log_info.medium_log_tail = (segment_header *)db_desc->medium_log_tail;
-			log_info.medium_log_size = db_desc->medium_log_size;
+			db_entry->medium_log_head_offt = ABSOLUTE_ADDRESS(db_desc->medium_log_head);
+			db_entry->medium_log_tail_offt = ABSOLUTE_ADDRESS(db_desc->medium_log_tail);
+			db_entry->medium_log_size = db_desc->medium_log_size;
 
-			log_info.small_log_head = (segment_header *)db_desc->small_log_head;
-			log_info.small_log_tail = (segment_header *)db_desc->small_log_tail;
-			log_info.small_log_size = db_desc->small_log_size;
-
-			commit_db_log(db_desc, &log_info);
-			db_desc->big_log_head_offset = db_desc->big_log_size;
-			db_desc->big_log_tail_offset = db_desc->big_log_size;
-			db_desc->medium_log_head_offset = db_desc->medium_log_size;
-			db_desc->medium_log_tail_offset = db_desc->medium_log_size;
-			db_desc->small_log_head_offset = db_desc->small_log_size;
-			db_desc->small_log_tail_offset = db_desc->small_log_size;
-
-			/* Recover log segments */
-			db_entry->big_log_head_offset = db_desc->big_log_head_offset;
-			db_entry->big_log_tail_offset = db_desc->big_log_tail_offset;
-			db_entry->medium_log_head_offset = db_desc->medium_log_head_offset;
-			db_entry->medium_log_tail_offset = db_desc->medium_log_tail_offset;
-			db_entry->small_log_head_offset = db_desc->small_log_head_offset;
-			db_entry->small_log_tail_offset = db_desc->small_log_tail_offset;
+			db_entry->small_log_head_offt = ABSOLUTE_ADDRESS(db_desc->small_log_head);
+			db_entry->small_log_tail_offt = ABSOLUTE_ADDRESS(db_desc->small_log_tail);
+			db_entry->small_log_size = db_desc->small_log_size;
 		}
 		node = node->next;
 	}
 
-	if (dirty > 0) { /*At least one db is dirty proceed to snapshot()*/
-
+	if (dirty > 0) {
+		//At least one db is dirty proceed to snapshot()
 		free_block(volume_desc, volume_desc->dev_catalogue, sizeof(pr_system_catalogue));
 		volume_desc->dev_catalogue = volume_desc->mem_catalogue;
 		/*allocate a new position for superindex*/

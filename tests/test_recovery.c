@@ -104,7 +104,7 @@ void run_workload(void (*f[3])(db_handle *), db_handle *hd)
 
 		if (i == 0 && PERSIST && recover == CREATE_DB) {
 			log_info("COMMITING LOG");
-			commit_db_logs_per_volume(hd->volume_desc);
+			//commit_db_logs_per_volume(hd->volume_desc);
 			exit(EXIT_FAILURE);
 		}
 	}
