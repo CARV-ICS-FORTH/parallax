@@ -1,3 +1,2 @@
 load_e load workloads/workloade
 run_e run workloads/workloade
-run_f run workloads/workloadf
