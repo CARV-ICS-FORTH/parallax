@@ -408,6 +408,10 @@ void init_level_bloom_filters(db_descriptor *db_desc, int level_id, int tree_id)
 #endif
 }
 
+static void bt_recover_L0(struct db_handle *hd)
+{
+}
+
 static struct db_handle *bt_restore_db(struct volume_descriptor *volume_desc, struct pr_db_entry *db_entry,
 				       struct db_coordinates db_c)
 {
