@@ -458,6 +458,88 @@ static void pr_init_logs(db_descriptor *db_desc, volume_descriptor *volume_desc)
 	pr_init_log(&db_desc->small_log);
 	db_desc->lsn = 0;
 }
+#if 0
+void recover_database_logs(db_descriptor *db_desc, pr_db_entry *db_entry)
+{
+	db_desc->commit_log = (commit_log_info *)REAL_ADDRESS(db_entry->commit_log);
+
+	if (db_desc->commit_log->big_log_head != NULL)
+		db_desc->big_log_head = (segment_header *)REAL_ADDRESS(db_desc->commit_log->big_log_head);
+	else
+		db_desc->big_log_head = NULL;
+
+	if (db_desc->commit_log->big_log_tail != NULL)
+		db_desc->big_log_tail = (segment_header *)REAL_ADDRESS(db_desc->commit_log->big_log_tail);
+	else
+		db_desc->big_log_tail = NULL;
+
+	db_desc->big_log_size = db_desc->commit_log->big_log_size;
+	db_desc->big_log_head_offset = db_entry->big_log_head_offset;
+	db_desc->big_log_tail_offset = db_entry->big_log_tail_offset;
+
+	log_info("Big log segments first: %llu last: %llu log_size %llu", (long long unsigned)db_desc->big_log_head,
+		 (long long unsigned)db_desc->big_log_tail, (long long unsigned)db_desc->big_log_size);
+	log_info("L0 start log offset %llu end %llu", db_desc->big_log_head_offset, db_desc->big_log_tail_offset);
+
+	if (db_desc->commit_log->medium_log_head != NULL)
+		db_desc->medium_log_head = (segment_header *)REAL_ADDRESS(db_desc->commit_log->medium_log_head);
+	else
+		db_desc->medium_log_head = NULL;
+
+	if (db_desc->commit_log->medium_log_tail != NULL)
+		db_desc->medium_log_tail = (segment_header *)REAL_ADDRESS(db_desc->commit_log->medium_log_tail);
+	else
+		db_desc->medium_log_tail = NULL;
+
+	db_desc->medium_log_size = db_desc->commit_log->medium_log_size;
+	db_desc->medium_log_head_offset = db_entry->medium_log_head_offset;
+	db_desc->medium_log_tail_offset = db_entry->medium_log_tail_offset;
+
+	log_info("Medium log segments first: %llu last: %llu log_size %llu",
+		 (long long unsigned)db_desc->medium_log_head, (long long unsigned)db_desc->medium_log_tail,
+		 (long long unsigned)db_desc->medium_log_size);
+	log_info("Medium L0 start log offset %llu end %llu", db_desc->medium_log_head_offset,
+		 db_desc->medium_log_tail_offset);
+
+	if (db_desc->commit_log->small_log_head != NULL)
+		db_desc->small_log_head = (segment_header *)REAL_ADDRESS(db_desc->commit_log->small_log_head);
+	else
+		db_desc->small_log_head = NULL;
+
+	if (db_desc->commit_log->small_log_tail != NULL)
+		db_desc->small_log_tail = (segment_header *)REAL_ADDRESS(db_desc->commit_log->small_log_tail);
+	else
+		db_desc->small_log_tail = NULL;
+
+	db_desc->small_log_size = db_desc->commit_log->small_log_size;
+	db_desc->small_log_head_offset = db_entry->small_log_head_offset;
+	db_desc->small_log_tail_offset = db_entry->small_log_tail_offset;
+
+	log_info("Small log segments first: %llu last: %llu log_size %llu", (long long unsigned)db_desc->small_log_head,
+		 (long long unsigned)db_desc->small_log_tail, (long long unsigned)db_desc->small_log_size);
+	log_info("Small L0 start log offset %llu end %llu", db_desc->small_log_head_offset,
+		 db_desc->small_log_tail_offset);
+=======
+	log_info("Recovering KV logs (small,medium,large) for DB: %s", db_desc->db_name);
+
+	// Small log
+	db_desc->big_log_head = REAL_ADDRESS(entry->big_log_head_offt);
+	db_desc->big_log_tail = REAL_ADDRESS(entry->big_log_tail_offt);
+	db_desc->big_log_size = entry->big_log_size;
+
+	// Medium log
+	db_desc->medium_log_head = REAL_ADDRESS(entry->medium_log_head_offt);
+	db_desc->medium_log_tail = REAL_ADDRESS(entry->medium_log_tail_offt);
+	db_desc->medium_log_size = entry->medium_log_size;
+
+	// Large log
+	db_desc->big_log_head = REAL_ADDRESS(entry->big_log_head_offt);
+	db_desc->big_log_tail = REAL_ADDRESS(entry->big_log_tail_offt);
+	db_desc->big_log_size = entry->big_log_size;
+	db_desc->lsn = entry->lsn;
+}
+#endif
+
 
 void init_level_bloom_filters(db_descriptor *db_desc, int level_id, int tree_id)
 {
@@ -469,11 +551,12 @@ void init_level_bloom_filters(db_descriptor *db_desc, int level_id, int tree_id)
 	(void)tree_id;
 #endif
 }
-
-/* static void bt_recover_L0(struct db_handle *hd) */
-/* { */
-/* } */
-
+#if 0
+static void bt_recover_L0(struct db_handle *hd)
+{
+	(void)hd;
+}
+#endif
 struct db_handle *bt_restore_db(struct volume_descriptor *volume_desc, struct pr_db_entry *db_entry,
 				struct db_coordinates db_c)
 {

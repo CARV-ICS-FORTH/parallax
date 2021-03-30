@@ -80,11 +80,6 @@ typedef struct pr_db_entry {
 	uint64_t last_segment[MAX_LEVELS][NUM_TREES_PER_LEVEL];
 	uint64_t offset[MAX_LEVELS][NUM_TREES_PER_LEVEL];
 	uint64_t level_size[MAX_LEVELS][NUM_TREES_PER_LEVEL];
-	//medium log L0
-	uint64_t medium_log_L0_head_offt[NUM_TREES_PER_LEVEL];
-	uint64_t medium_log_L0_tail_offt[NUM_TREES_PER_LEVEL];
-	uint64_t medium_log_L0_size[NUM_TREES_PER_LEVEL];
-
 	uint64_t big_log_head_offt;
 	uint64_t big_log_tail_offt;
 	uint64_t big_log_size;

@@ -420,6 +420,27 @@ void pr_flush_log_tail(struct db_descriptor *db_desc, struct volume_descriptor *
 //void commit_db_log(db_descriptor *db_desc, commit_log_info *info);
 //void commit_db_logs_per_volume(volume_descriptor *volume_desc);
 
+//void commit_db_log(db_descriptor *db_desc, commit_log_info *info);
+//void commit_db_logs_per_volume(volume_descriptor *volume_desc);
+
+typedef struct bt_spill_request {
+	db_descriptor *db_desc;
+	volume_descriptor *volume_desc;
+	uint64_t aggregate_level_size;
+	segment_header *medium_log_head;
+	segment_header *medium_log_tail;
+	node_header *src_root;
+	void *start_key;
+	void *end_key;
+	uint64_t level_size;
+	uint64_t medium_log_size;
+	uint64_t l0_start;
+	uint64_t l0_end;
+	uint8_t src_level;
+	uint8_t src_tree;
+	uint8_t dst_level;
+	uint8_t dst_tree;
+} bt_spill_request;
 /*client API*/
 /*management operations*/
 db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_name, char CREATE_FLAG);
