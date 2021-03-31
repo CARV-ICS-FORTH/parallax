@@ -217,16 +217,6 @@ enum bsearch_status { INSERT = 0, FOUND = 1, ERROR = 2 };
 #define LEVEL6_LEAF_SIZE (PAGE_SIZE * 2)
 #define LEVEL7_LEAF_SIZE (PAGE_SIZE * 2)
 
-/* Possible options for these defines are the values in enum bt_layout */
-#define LEVEL0_LEAF_LAYOUT DYNAMIC_LEAF
-#define LEVEL1_LEAF_LAYOUT DYNAMIC_LEAF
-#define LEVEL2_LEAF_LAYOUT DYNAMIC_LEAF
-#define LEVEL3_LEAF_LAYOUT DYNAMIC_LEAF
-#define LEVEL4_LEAF_LAYOUT DYNAMIC_LEAF
-#define LEVEL5_LEAF_LAYOUT DYNAMIC_LEAF
-#define LEVEL6_LEAF_LAYOUT DYNAMIC_LEAF
-#define LEVEL7_LEAF_LAYOUT DYNAMIC_LEAF
-
 struct splice {
 	uint32_t size;
 	char data[0];
@@ -313,8 +303,6 @@ struct compaction_pairs {
 	int16_t dst_level;
 };
 
-enum bt_layout { DYNAMIC_LEAF };
-
 typedef struct level_descriptor {
 #if ENABLE_BLOOM_FILTERS
 	struct bloom bloom_filter[NUM_TREES_PER_LEVEL];
@@ -347,7 +335,6 @@ typedef struct level_descriptor {
 	/*volatile */ int64_t active_writers;
 	/*spilling or not?*/
 	uint32_t leaf_size;
-	enum bt_layout node_layout;
 	char tree_status[NUM_TREES_PER_LEVEL];
 	uint8_t active_tree;
 	uint8_t level_id;
@@ -356,9 +343,9 @@ typedef struct level_descriptor {
 
 typedef struct db_descriptor {
 	char db_name[MAX_DB_NAME_SIZE];
-	level_descriptor levels[MAX_LEVELS + 1];
-	struct compaction_pairs inprogress_compactions[MAX_LEVELS + 1];
-	struct compaction_pairs pending_compactions[MAX_LEVELS + 1];
+	level_descriptor levels[MAX_LEVELS];
+	struct compaction_pairs inprogress_compactions[MAX_LEVELS];
+	struct compaction_pairs pending_compactions[MAX_LEVELS];
 #if MEASURE_MEDIUM_INPLACE
 	uint64_t count_medium_inplace;
 #endif
