@@ -14,8 +14,6 @@
 
 extern sem_t gc_daemon_interrupts;
 
-char *pointer_to_kv_in_log = NULL;
-
 void push_stack(stack *marks, void *addr)
 {
 	marks->valid_pairs[marks->size++] = addr;
@@ -33,7 +31,6 @@ void move_kv_pairs_to_new_segment(volume_descriptor *volume_desc, db_descriptor 
 
 	for (i = 0; i < marks->size; ++i, ++db_desc->gc_keys_transferred) {
 		kv_address = marks->valid_pairs[i];
-		pointer_to_kv_in_log = kv_address;
 		//struct splice *key = (struct splice *)kv_address;
 		//struct splice *value = (struct splice *)(kv_address + VALUE_SIZE_OFFSET(key->size));
 		handle.volume_desc = volume_desc;
