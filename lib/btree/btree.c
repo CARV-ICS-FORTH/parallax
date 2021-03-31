@@ -580,7 +580,9 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 	handle->db_desc->blocked_clients = 0;
 	handle->db_desc->compaction_count = 0;
 	handle->db_desc->is_compaction_daemon_sleeping = 0;
-	handle->db_desc->count_medium_inplace = 0;
+#if MEASURE_MEDIUM_INPLACE
+	db_desc->count_medium_inplace = 0;
+#endif
 	for (int i = 0; i < NUM_TREES_PER_LEVEL; ++i) {
 		handle->db_desc->inmem_medium_log_head[i] = handle->db_desc->inmem_medium_log_tail[i] = NULL;
 		handle->db_desc->inmem_medium_log_size[i] = 0;

@@ -109,11 +109,13 @@ class ParallaxDB : public YCSBDB {
 			std::cerr << "Avg SST used capacity" << dbs[0]->db_desc->levels[i].avg_leaf_used_space
 				  << std::endl;
 #endif
-		//flush_volume(dbs[0]->volume_desc, SPILL_ALL_DBS_IMMEDIATELY);
+
+#if MEASURE_MEDIUM_INPLACE
 		for (int i = 0; i < db_num; ++i) {
 			std::cerr << "Db name" << dbs[i]->db_desc->db_name << "Number of keys in place"
 				  << dbs[i]->db_desc->count_medium_inplace << std::endl;
 		}
+#endif
 	}
 
 	int __read(int id, const std::string &table, const std::string &key, const std::vector<std::string> *fields,
