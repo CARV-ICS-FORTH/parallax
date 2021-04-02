@@ -6,7 +6,6 @@
 #include <log.h>
 #include <list.h>
 #include <spin_loop.h>
-#include <config.h>
 #include "allocator.h"
 #include "../btree/btree.h"
 #include "../btree/segment_allocator.h"

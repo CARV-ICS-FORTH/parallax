@@ -16,7 +16,6 @@
 #include <pthread.h>
 #include <assert.h>
 #include <sys/types.h>
-#include <config.h>
 #include <log.h>
 #include <list.h>
 #include <spin_loop.h>

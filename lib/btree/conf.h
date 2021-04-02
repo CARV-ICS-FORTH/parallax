@@ -44,7 +44,9 @@
 
 #define WORD_SIZE 64
 #define BREAKPOINT asm volatile("int3;");
-#define KEY_BLOCK_SIZE 8192 // 4KB
+#define LEAF_NODE_SIZE 8192
+#define INDEX_NODE_SIZE 4096
+#define KEY_BLOCK_SIZE 8192
 /*Buffering related tunables*/
 
 #define GB(x) ((x)*1024LU * 1024LU * 1024LU)

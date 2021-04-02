@@ -10,7 +10,6 @@
 #include <stdint.h>
 #include <sys/types.h>
 #include <limits.h>
-#include <config.h>
 #include <bloom.h>
 #include "conf.h"
 #include "../allocator/allocator.h"

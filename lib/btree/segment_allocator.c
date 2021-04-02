@@ -2,7 +2,6 @@
 #include <stdlib.h>
 #include <signal.h>
 #include <log.h>
-#include <config.h>
 #include "segment_allocator.h"
 #include "conf.h"
 #include "../allocator/allocator.h"
