@@ -651,7 +651,7 @@ static void bitmap_cow_check(struct volume_descriptor *volume_desc, struct bitma
 void bitmap_set_buddies_immutable(struct volume_descriptor *volume_desc)
 {
 	uint32_t j = 0;
-	for (uint32_t i = 0; i < volume_desc->buddies_vector->size;) {
+	for (uint32_t i = 0; i < volume_desc->buddies_vector->size; ++j) {
 		int state;
 		int id = j % BITMAP_BUDDY_PAIRS_PER_CELL;
 		switch (id) {
@@ -688,7 +688,6 @@ void bitmap_set_buddies_immutable(struct volume_descriptor *volume_desc)
 			log_fatal("Unhandled state");
 			exit(EXIT_FAILURE);
 		}
-		++j;
 	}
 	return;
 }

@@ -380,6 +380,7 @@ typedef struct db_descriptor {
 	segment_header *inmem_medium_log_head[NUM_TREES_PER_LEVEL];
 	segment_header *inmem_medium_log_tail[NUM_TREES_PER_LEVEL];
 	uint64_t inmem_medium_log_size[NUM_TREES_PER_LEVEL];
+	struct db_handle *gc_db;
 	char *inmem_base;
 	/*coordinates of the latest persistent L0*/
 	/* Shouldn't this be in level_descriptor*/
@@ -400,7 +401,7 @@ typedef struct db_descriptor {
 	int32_t group_index;
 	volatile char dirty;
 	enum db_status stat;
-} /* __attribute__((packed)) */ __attribute__((aligned)) db_descriptor;
+} __attribute__((aligned)) db_descriptor;
 
 typedef struct db_handle {
 	volume_descriptor *volume_desc;
