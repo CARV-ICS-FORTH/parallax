@@ -19,7 +19,7 @@ typedef enum SEEK_SCANNER_MODE { GREATER = 5, GREATER_OR_EQUAL = 6, FETCH_FIRST 
 typedef struct level_scanner {
 	struct bt_leaf_entry kv_entry;
 	union {
-		struct kv_prefix kv_prefix;
+		struct bt_leaf_entry kv_prefix;
 		struct sc_full_kv key_value;
 	};
 

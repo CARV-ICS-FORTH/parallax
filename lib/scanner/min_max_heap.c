@@ -55,7 +55,7 @@ static int sh_cmp_heap_nodes(struct sh_min_heap *hp, struct sh_heap_node *nd_1, 
 	int64_t ret;
 	ret = key_cmp(nd_1->KV, nd_2->KV, nd_1->type, nd_2->type);
 	if (ret == 0) {
-		/* duplicatelicate detected smallest level_id wins, needs more thinking */
+		/* duplicate detected smallest level_id wins, needs more thinking */
 		if (nd_1->level_id == hp->active_tree) {
 			nd_2->duplicate = 1;
 			return 1;
@@ -70,7 +70,7 @@ static int sh_cmp_heap_nodes(struct sh_min_heap *hp, struct sh_heap_node *nd_1, 
 			nd_1->duplicate = 1;
 			return -1;
 		} else {
-			log_fatal("cannot resolve tie active tree = %d nd_1 level_id = %d nd_2 "
+			log_fatal("Cannot resolve tie active tree = %d nd_1 level_id = %d nd_2 "
 				  "level_id = %d",
 				  hp->active_tree, nd_1->level_id, nd_2->level_id);
 			exit(EXIT_FAILURE);

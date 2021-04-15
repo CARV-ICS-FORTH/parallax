@@ -347,7 +347,6 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 		inode = (index_node *)node;
 		start_idx = 0;
 		end_idx = inode->header.num_entries - 1;
-		middle = (start_idx + end_idx) / 2;
 
 		while (1) {
 			middle = (start_idx + end_idx) / 2;
@@ -421,7 +420,6 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 	}
 
 	/*now perform binary search inside the leaf*/
-	middle = 0;
 	switch (db_desc->levels[level_id].node_layout) {
 	case DYNAMIC_LEAF:;
 		struct dl_bsearch_result dlresult = { .middle = 0, .status = INSERT, .op = DYNAMIC_LEAF_FIND };

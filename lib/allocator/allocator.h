@@ -39,10 +39,11 @@
 typedef enum volume_state { VOLUME_IS_OPEN = 0x00, VOLUME_IS_CLOSING = 0x01, VOLUME_IS_CLOSED = 0x02 } volume_state;
 
 /**
-	* Type of allocations.
-	* Most significant bit 1 --> allocation for internal tree
-	* Most signinificant bit 0 --> allocation for outer tree
-	* Rest of bits(common for the two categories above denote the purpose of allocation
+        * Type of allocations.
+        * Most significant bit 1 --> allocation for internal tree
+        * Most signinificant bit 0 --> allocation for outer tree
+        * Rest of bits(common for the two categories above denote the purpose of
+*allocation
 **/
 
 #define COW_FOR_LEAF 0x00
@@ -77,7 +78,7 @@ typedef struct pr_db_entry {
 	uint64_t first_segment[MAX_LEVELS][NUM_TREES_PER_LEVEL];
 	uint64_t last_segment[MAX_LEVELS][NUM_TREES_PER_LEVEL];
 	uint64_t offset[MAX_LEVELS][NUM_TREES_PER_LEVEL];
-	//expressed in keys per level per tree
+	// expressed in keys per level per tree
 	uint64_t level_size[MAX_LEVELS][NUM_TREES_PER_LEVEL];
 	uint64_t KV_log_first_seg_offt;
 	uint64_t KV_log_last_seg_offt;
@@ -86,31 +87,36 @@ typedef struct pr_db_entry {
 	uint64_t L1_index_end_log_offset;
 	uint64_t L1_segment_offt;
 #if 1
-	/*commit log is in a different location on the device for the following reason:*
-	 *Kreon has two persistence operations commit_log and snapshot()
-	 * Commit log only commits the log and it is faster than snapshot. It actual trades performance vs recovery_time.
-	 * This is because db should replay a part of its tail log to add missing index.
-	 * Snapshot commits both index and log (it actually calls commit_log) and is slower but provides instant recovery.
-	 * With the separation of these two techiques we are able to issue snapshot less frequent (order of minutes) without losing data
-	 * */
+	/*commit log is in a different location on the device for the following
+   *reason:*
+   *Kreon has two persistence operations commit_log and snapshot()
+   * Commit log only commits the log and it is faster than snapshot. It actual
+   *trades performance vs recovery_time.
+   * This is because db should replay a part of its tail log to add missing
+   *index.
+   * Snapshot commits both index and log (it actually calls commit_log) and is
+   *slower but provides instant recovery.
+   * With the separation of these two techiques we are able to issue snapshot
+   *less frequent (order of minutes) without losing data
+   * */
 	uint64_t commit_log;
 	/*
-	 * info to locate after a recovery which tail part
-	 * of the log is missing from the index
-	 */
+   * info to locate after a recovery which tail part
+   * of the log is missing from the index
+   */
 	uint64_t big_log_head_offset;
 	uint64_t big_log_tail_offset;
 	uint64_t medium_log_head_offset;
 	uint64_t medium_log_tail_offset;
 	uint64_t small_log_head_offset;
 	uint64_t small_log_tail_offset;
-	/* uint64_t L0_start_log_offset; */
-	/* uint64_t L0_end_log_offset; */
+/* uint64_t L0_start_log_offset; */
+/* uint64_t L0_end_log_offset; */
 #endif
 
 	uint32_t valid;
 	char pad[44];
-} pr_db_entry; //768 bytes or 12 cache lines
+} pr_db_entry; // 768 bytes or 12 cache lines
 
 typedef struct pr_db_group {
 	uint64_t epoch;
@@ -173,17 +179,20 @@ struct bitmap_buddies_state {
 };
 
 typedef struct volume_descriptor {
-	//dirty version on the device of the volume's db catalogue
+	// dirty version on the device of the volume's db catalogue
 	pr_system_catalogue *mem_catalogue;
-	//location in the volume where superindex is
+	// location in the volume where superindex is
 	pr_system_catalogue *dev_catalogue;
-	pthread_t log_cleaner; /* handle for the log cleaner thread. 1 cleaner per volume */
+	pthread_t log_cleaner; /* handle for the log cleaner thread. 1 cleaner per
+                            volume */
 	pthread_cond_t cond; /* conditional wait, used for cleaner*/
 	pthread_mutex_t mutex; /* mutex, used for cleaner */
 	pthread_mutex_t gc_mutex; /* mutex, used for garbage collection thread */
-	pthread_cond_t gc_cond; /* conditional wait, used for garbage collection thread*/
+	pthread_cond_t gc_cond; /* conditional wait, used for garbage collection
+                             thread*/
 
-	pthread_mutex_t free_log_lock; /*lock used for protecting adding entries to the free log of the allocator*/
+	pthread_mutex_t free_log_lock; /*lock used for protecting adding entries to
+                                    the free log of the allocator*/
 	pthread_mutex_t bitmap_lock; /* lock used for threads allocating space in the same volume */
 	uint64_t last_snapshot; /* timestamp of when last snapshot took place*/
 	uint64_t last_commit;
@@ -196,13 +205,13 @@ typedef struct volume_descriptor {
 	void *bitmap_start; /* address of where volume's bitmap starts*/
 	void *bitmap_end; /* address of where volume's bitmap ends */
 	/*
-	* @allocator_state
-	* Contains 2 bits per metadata block pair.
-	* 00 -> read left/write left
-	* 01 read left/write right
-	* 10 read right/write left
-	* 11 read right/write right
-	*/
+  * @allocator_state
+  * Contains 2 bits per metadata block pair.
+  * 00 -> read left/write left
+  * 01 read left/write right
+  * 10 read right/write left
+  * 11 read right/write right
+  */
 	struct bitmap_buddies_state *buddies_vector;
 
 	superblock *volume_superblock; /*address of volume's superblock*/
@@ -215,14 +224,17 @@ typedef struct volume_descriptor {
 	/*free log end*/
 	/*Location of last allocation*/
 	struct bitmap_position b_pos;
-	/* value is set to 2 after a non-successfull allocation operation for a given size.*/
+	/* value is set to 2 after a non-successfull allocation operation for a given
+   * size.*/
 	uint32_t full;
-	/*After a non successfull allocation op, this value is set to max_suffix found.
-	 This is used for indicating to future allocation operations if they should search
-	 a given bitmap-zone or not.*/
+	/*After a non successfull allocation op, this value is set to max_suffix
+   found.
+   This is used for indicating to future allocation operations if they should
+   search
+   a given bitmap-zone or not.*/
 	uint64_t max_suffix;
-	//uint16_t *segment_utilization_vector;
-	//uint64_t segment_utilization_vector_size;
+	// uint16_t *segment_utilization_vector;
+	// uint64_t segment_utilization_vector_size;
 	/*<stats counters>*/
 	uint64_t collisions;
 	uint64_t hits;
@@ -245,6 +257,15 @@ typedef struct volume_descriptor {
  */
 
 struct volume_descriptor *get_volume_desc(char *volume_name, uint64_t start_offt, char create);
+struct db_coordinates {
+	int found;
+	int new_db;
+	int out_of_space;
+	int group_id;
+	int index;
+};
+struct db_coordinates locate_db(struct volume_descriptor *volume_desc, char *db_name, char create_db);
+
 int32_t volume_init(char *dev_name, int64_t start, int64_t size, int typeOfVolume);
 
 void force_snapshot(volume_descriptor *volume_desc);

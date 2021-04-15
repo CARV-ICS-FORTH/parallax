@@ -17,19 +17,11 @@
 #define SUCCESS 4
 #define FAILED 5
 
-#define O_CREATE_REPLICA_DB 0x05
-#define DYNAMIC_KEYS 0
-
 #define SEGMENT_SIZE 2097152
-
-#define MAX_TS 0xFFFFFFFFFFFFFFFF
 
 #define KREON_OK 10
 #define KREON_FAILED 18
 #define KREON_STANDALONE 19
-#define REPLICA_PENDING_SPILL 20
-
-#define MAX_COUNTER_VERSIONS 4
 
 #define PREFIX_SIZE 12
 
@@ -190,17 +182,11 @@ typedef struct index_node {
 struct kv_format {
 	uint32_t key_size;
 	char key_buf[];
-};
+} __attribute__((packed));
 
 struct value_format {
 	uint32_t value_size;
 	char value[];
-};
-
-struct kv_prefix {
-	char prefix[PREFIX_SIZE];
-	uint64_t device_offt : 63;
-	uint64_t tombstone : 1;
 };
 
 struct bt_static_leaf_node {
