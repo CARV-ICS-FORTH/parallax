@@ -46,9 +46,9 @@ void load_logs_torecover(recovery_request *recover_req, struct recovery_operator
 	log_info("LSN is %llu", recover_req->db_desc->lsn);
 
 	/*first, we need to check the L0_start_offset to which segment points to*/
-	replay->big.segment_id = recover_req->big_log_start_offset / BUFFER_SEGMENT_SIZE;
-	replay->medium.segment_id = recover_req->medium_log_start_offset / BUFFER_SEGMENT_SIZE;
-	replay->small.segment_id = recover_req->small_log_start_offset / BUFFER_SEGMENT_SIZE;
+	replay->big.segment_id = recover_req->big_log_start_offset / SEGMENT_SIZE;
+	replay->medium.segment_id = recover_req->medium_log_start_offset / SEGMENT_SIZE;
+	replay->small.segment_id = recover_req->small_log_start_offset / SEGMENT_SIZE;
 
 	log_info("Big log start offset %llu maps to segment id %llu",
 		 (long long unsigned)recover_req->db_desc->big_log_head_offset,
@@ -137,12 +137,12 @@ void ommit_padded_space(struct recovery_operator *replay)
 	uint32_t padded;
 
 	for (int i = 0; i < NUMBER_OF_LOGS; ++i) {
-		remaining_bytes = BUFFER_SEGMENT_SIZE - iter_logs[i]->log_offset % BUFFER_SEGMENT_SIZE;
+		remaining_bytes = SEGMENT_SIZE - iter_logs[i]->log_offset % SEGMENT_SIZE;
 		padded = *(uint32_t *)((char *)iter_logs[i]->log_curr_segment +
-				       (iter_logs[i]->log_offset % BUFFER_SEGMENT_SIZE));
+				       (iter_logs[i]->log_offset % SEGMENT_SIZE));
 		if (iter_logs[i]->log_offset < iter_logs[i]->log_size) {
-			if (iter_logs[i]->log_offset % BUFFER_SEGMENT_SIZE == 0 ||
-			    remaining_bytes <= sizeof(uint32_t) || !padded) {
+			if (iter_logs[i]->log_offset % SEGMENT_SIZE == 0 || remaining_bytes <= sizeof(uint32_t) ||
+			    !padded) {
 				if (remaining_bytes <= sizeof(uint32_t) || !padded)
 					iter_logs[i]->log_offset += remaining_bytes;
 
@@ -183,10 +183,9 @@ void *find_next_kventry(struct recovery_operator *replay, uint64_t *prev_lsn)
 	lsn.id = UINT64_MAX;
 
 	for (int i = 0; i < NUMBER_OF_LOGS; ++i) {
-		if (iter_logs[i]->log_offset % BUFFER_SEGMENT_SIZE != 0 &&
-		    iter_logs[i]->log_offset < iter_logs[i]->log_size) {
-			tmp_kv_addr = ((char *)iter_logs[i]->log_curr_segment +
-				       (iter_logs[i]->log_offset % BUFFER_SEGMENT_SIZE));
+		if (iter_logs[i]->log_offset % SEGMENT_SIZE != 0 && iter_logs[i]->log_offset < iter_logs[i]->log_size) {
+			tmp_kv_addr =
+				((char *)iter_logs[i]->log_curr_segment + (iter_logs[i]->log_offset % SEGMENT_SIZE));
 			tmp_lsn = *(struct log_sequence_number *)tmp_kv_addr;
 
 			if (tmp_lsn.id < lsn.id) {
@@ -215,7 +214,7 @@ void *find_next_kventry(struct recovery_operator *replay, uint64_t *prev_lsn)
 void mark_log_segments_before_replay(volume_descriptor *volume_desc, segment_header *first_segment)
 {
 	segment_header *curr_segment = first_segment;
-	uint32_t num_pages = BUFFER_SEGMENT_SIZE / PAGE_SIZE;
+	uint32_t num_pages = SEGMENT_SIZE / PAGE_SIZE;
 	while (curr_segment) {
 		char *page_tomark = (char *)curr_segment;
 
@@ -226,7 +225,7 @@ void mark_log_segments_before_replay(volume_descriptor *volume_desc, segment_hea
 		MUTEX_UNLOCK(&volume_desc->bitmap_lock);
 
 #ifdef DEBUG_RECOVERY
-		mprotect(curr_segment, BUFFER_SEGMENT_SIZE, PROT_READ);
+		mprotect(curr_segment, SEGMENT_SIZE, PROT_READ);
 #endif
 		if (curr_segment->next_segment == NULL)
 			break;

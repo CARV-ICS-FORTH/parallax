@@ -16,8 +16,6 @@
 #define SUCCESS 4
 #define FAILED 5
 
-#define SEGMENT_SIZE 2097152
-
 #define KREON_OK 10
 #define KREON_FAILED 18
 #define KREON_STANDALONE 19
@@ -332,6 +330,12 @@ typedef struct level_descriptor {
 	char in_recovery_mode;
 } level_descriptor;
 
+//struct bt_small_log {
+//	uint32_t chunk_bytes[SEGMENT_SIZE / ] uint64_t head_dev_offt;
+//	uint64_t tail_dev_offt;
+//	uint64_t size;
+//};
+
 typedef struct db_descriptor {
 	char db_name[MAX_DB_NAME_SIZE];
 	level_descriptor levels[MAX_LEVELS];
@@ -342,11 +346,7 @@ typedef struct db_descriptor {
 	pthread_cond_t compaction_cond;
 	pthread_mutex_t compaction_structs_lock;
 	pthread_mutex_t compaction_lock;
-#if LOG_WITH_MUTEX
 	pthread_mutex_t lock_log;
-#else
-	pthread_spinlock_t lock_log;
-#endif
 	pthread_mutex_t client_barrier_lock;
 	sem_t compaction_daemon_interrupts;
 	sem_t compaction_sem;
@@ -371,7 +371,6 @@ typedef struct db_descriptor {
 	segment_header *inmem_medium_log_tail[NUM_TREES_PER_LEVEL];
 	uint64_t inmem_medium_log_size[NUM_TREES_PER_LEVEL];
 	struct db_handle *gc_db;
-	char *inmem_base;
 	uint64_t gc_last_segment_id;
 	uint64_t gc_count_segments;
 	uint64_t gc_keys_transferred;
@@ -417,24 +416,6 @@ void snapshot(volume_descriptor *volume_desc);
 //void commit_db_log(db_descriptor *db_desc, commit_log_info *info);
 //void commit_db_logs_per_volume(volume_descriptor *volume_desc);
 
-typedef struct bt_spill_request {
-	db_descriptor *db_desc;
-	volume_descriptor *volume_desc;
-	uint64_t aggregate_level_size;
-	segment_header *medium_log_head;
-	segment_header *medium_log_tail;
-	node_header *src_root;
-	void *start_key;
-	void *end_key;
-	uint64_t level_size;
-	uint64_t medium_log_size;
-	uint64_t l0_start;
-	uint64_t l0_end;
-	uint8_t src_level;
-	uint8_t src_tree;
-	uint8_t dst_level;
-	uint8_t dst_tree;
-} bt_spill_request;
 /*client API*/
 /*management operations*/
 db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_name, char CREATE_FLAG);
@@ -572,7 +553,6 @@ typedef struct spill_data_totrigger {
 
 uint8_t insert_key_value(db_handle *handle, void *key, void *value, uint32_t key_size, uint32_t value_size);
 uint8_t _insert_key_value(bt_insert_req *ins_req);
-void *append_key_value_to_log(log_operation *req);
 
 uint8_t _insert_index_entry(db_handle *db, kv_location *location, int INSERT_FLAGS);
 void *find_key(db_handle *handle, void *key, uint32_t key_size);

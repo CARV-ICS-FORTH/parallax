@@ -143,7 +143,7 @@ off64_t mount_volume(char *volume_name, int64_t start, int64_t unused_size)
 	if (MAPPED == 0) {
 		log_info("Opening Volume %s", volume_name);
 		/* open the device */
-		FD = open(volume_name, O_RDWR | O_DIRECT | O_SYNC);
+		FD = open(volume_name, O_RDWR | O_DIRECT | O_DSYNC);
 		if (FD < 0) {
 			log_fatal("Failed to open %s", volume_name);
 			perror("Reason:\n");

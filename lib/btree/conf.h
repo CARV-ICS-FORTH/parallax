@@ -53,6 +53,6 @@
 #define MB(x) ((x)*1024LU * 1024LU)
 #define KB(x) ((x)*1024LU)
 #define LEVEL_MEDIUM_INPLACE (2)
-#define BUFFER_SEGMENT_SIZE (2 * 1024 * 1024)
+#define SEGMENT_SIZE (2 * 1024 * 1024)
 #define MAX_ALLOCATION_TRIES 2
 #define ENABLE_BLOOM_FILTERS 0

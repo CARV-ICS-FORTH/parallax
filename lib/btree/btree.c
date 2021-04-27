@@ -538,8 +538,6 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 		exit(EXIT_FAILURE);
 	}
 
-	handle->db_desc->inmem_base = NULL;
-
 	for (uint8_t level_id = 0; level_id < MAX_LEVELS; level_id++) {
 		RWLOCK_INIT(&handle->db_desc->levels[level_id].guard_of_level.rx_lock, NULL);
 		MUTEX_INIT(&handle->db_desc->levels[level_id].spill_trigger, NULL);
@@ -923,7 +921,7 @@ void update_log_metadata(db_descriptor *db_desc, struct log_towrite *log_metadat
 	}
 }
 
-void *append_key_value_to_log(log_operation *req)
+static void *append_key_value_to_log(log_operation *req)
 {
 	struct log_towrite log_metadata;
 	segment_header *d_header;
@@ -945,8 +943,8 @@ void *append_key_value_to_log(log_operation *req)
 
 	choose_log_toappend(handle->db_desc, &log_metadata);
 	/*append data part in the data log*/
-	if (*log_metadata.log_size % BUFFER_SEGMENT_SIZE != 0)
-		available_space_in_log = BUFFER_SEGMENT_SIZE - (*log_metadata.log_size % BUFFER_SEGMENT_SIZE);
+	if (*log_metadata.log_size % SEGMENT_SIZE != 0)
+		available_space_in_log = SEGMENT_SIZE - (*log_metadata.log_size % SEGMENT_SIZE);
 	else
 		available_space_in_log = 0;
 
@@ -960,11 +958,11 @@ void *append_key_value_to_log(log_operation *req)
 		req->metadata->segment_full_event = 1;
 
 		/*pad with zeroes remaining bytes in segment*/
-		addr_inlog = (void *)((uint64_t)log_metadata.log_tail + (*log_metadata.log_size % BUFFER_SEGMENT_SIZE));
+		addr_inlog = (void *)((uint64_t)log_metadata.log_tail + (*log_metadata.log_size % SEGMENT_SIZE));
 		memset(addr_inlog, 0x00, available_space_in_log);
 
 		allocated_space = data_size.kv_size + sizeof(struct log_sequence_number) + sizeof(segment_header);
-		allocated_space += BUFFER_SEGMENT_SIZE - (allocated_space % BUFFER_SEGMENT_SIZE);
+		allocated_space += SEGMENT_SIZE - (allocated_space % SEGMENT_SIZE);
 
 		if (req->metadata->level_id == 0 && log_metadata.status == MEDIUM_INLOG) {
 			d_header = malloc(SEGMENT_SIZE);
@@ -987,7 +985,7 @@ void *append_key_value_to_log(log_operation *req)
 		*log_metadata.log_size += (available_space_in_log + sizeof(segment_header));
 		update_log_metadata(handle->db_desc, &log_metadata);
 	}
-	addr_inlog = (void *)((uint64_t)log_metadata.log_tail + (*log_metadata.log_size % BUFFER_SEGMENT_SIZE));
+	addr_inlog = (void *)((uint64_t)log_metadata.log_tail + (*log_metadata.log_size % SEGMENT_SIZE));
 	req->metadata->log_offset = *log_metadata.log_size;
 	*log_metadata.log_size += data_size.kv_size + sizeof(struct log_sequence_number);
 
