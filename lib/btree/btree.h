@@ -330,11 +330,12 @@ typedef struct level_descriptor {
 	char in_recovery_mode;
 } level_descriptor;
 
-//struct bt_small_log {
-//	uint32_t chunk_bytes[SEGMENT_SIZE / ] uint64_t head_dev_offt;
-//	uint64_t tail_dev_offt;
-//	uint64_t size;
-//};
+struct bt_small_log {
+	uint32_t chunk_bytes[SEGMENT_SIZE / LOG_CHUNK_SIZE];
+	uint64_t head_dev_offt;
+	uint64_t tail_dev_offt;
+	uint64_t size;
+};
 
 typedef struct db_descriptor {
 	char db_name[MAX_DB_NAME_SIZE];
@@ -362,9 +363,10 @@ typedef struct db_descriptor {
 	segment_header *medium_log_head;
 	segment_header *medium_log_tail;
 	uint64_t medium_log_size;
-	segment_header *small_log_head;
-	segment_header *small_log_tail;
-	uint64_t small_log_size;
+	struct bt_small_log small_log;
+	//segment_header *small_log_head;
+	//segment_header *small_log_tail;
+	//uint64_t small_log_size;
 	uint64_t lsn;
 	//only for L0
 	segment_header *inmem_medium_log_head[NUM_TREES_PER_LEVEL];

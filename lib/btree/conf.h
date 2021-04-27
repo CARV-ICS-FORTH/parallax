@@ -54,5 +54,7 @@
 #define KB(x) ((x)*1024LU)
 #define LEVEL_MEDIUM_INPLACE (2)
 #define SEGMENT_SIZE (2 * 1024 * 1024)
+#define LOG_CHUNK_SIZE (256 * 1024)
+
 #define MAX_ALLOCATION_TRIES 2
 #define ENABLE_BLOOM_FILTERS 0

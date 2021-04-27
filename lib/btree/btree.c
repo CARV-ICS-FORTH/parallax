@@ -305,7 +305,7 @@ static void pr_init_logs(db_descriptor *db_desc, volume_descriptor *volume_desc)
 {
 	log_info("Initializing KV logs (small,medium,large) for DB: %s", db_desc->db_name);
 
-	// Small log
+	// Large log
 	db_desc->big_log_head = seg_get_raw_log_segment(volume_desc);
 	db_desc->big_log_tail = db_desc->big_log_head;
 	db_desc->big_log_tail->segment_id = 0;
@@ -321,13 +321,14 @@ static void pr_init_logs(db_descriptor *db_desc, volume_descriptor *volume_desc)
 	db_desc->medium_log_tail->prev_segment = NULL;
 	db_desc->medium_log_size = sizeof(segment_header);
 
-	// Large log
-	db_desc->small_log_head = seg_get_raw_log_segment(volume_desc);
-	db_desc->small_log_tail = db_desc->small_log_head;
-	db_desc->small_log_tail->segment_id = 0;
-	db_desc->small_log_tail->next_segment = NULL;
-	db_desc->small_log_tail->prev_segment = NULL;
-	db_desc->small_log_size = sizeof(segment_header);
+	// Small log
+	struct segment_header *s = seg_get_raw_log_segment(volume_desc);
+	s->segment_id = 0;
+	s->prev_segment = NULL;
+	s->next_segment = NULL;
+	db_desc->small_log.head_dev_offt = ABSOLUTE_ADDRESS(s);
+	db_desc->small_log.tail_dev_offt = db_desc->small_log.head_dev_offt;
+
 	db_desc->lsn = 0;
 }
 
@@ -892,9 +893,9 @@ void choose_log_toappend(db_descriptor *db_desc, struct log_towrite *log_metadat
 		log_metadata->status = MEDIUM_INLOG;
 
 	} else {
-		log_metadata->log_head = db_desc->small_log_head;
-		log_metadata->log_tail = db_desc->small_log_tail;
-		log_metadata->log_size = &db_desc->small_log_size;
+		log_metadata->log_head = REAL_ADDRESS(db_desc->small_log.head_dev_offt);
+		log_metadata->log_tail = REAL_ADDRESS(db_desc->small_log.tail_dev_offt);
+		log_metadata->log_size = &db_desc->small_log.size;
 		log_metadata->status = SMALL_INLOG;
 	}
 }
@@ -914,7 +915,7 @@ void update_log_metadata(db_descriptor *db_desc, struct log_towrite *log_metadat
 		return;
 	case SMALL_INPLACE:
 	case SMALL_INLOG:
-		db_desc->small_log_tail = log_metadata->log_tail;
+		db_desc->small_log.tail_dev_offt = ABSOLUTE_ADDRESS(log_metadata->log_tail);
 		return;
 	default:
 		assert(0);

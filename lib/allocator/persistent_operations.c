@@ -284,9 +284,9 @@ void snapshot(volume_descriptor *volume_desc)
 			db_entry->medium_log_tail_offt = ABSOLUTE_ADDRESS(db_desc->medium_log_tail);
 			db_entry->medium_log_size = db_desc->medium_log_size;
 
-			db_entry->small_log_head_offt = ABSOLUTE_ADDRESS(db_desc->small_log_head);
-			db_entry->small_log_tail_offt = ABSOLUTE_ADDRESS(db_desc->small_log_tail);
-			db_entry->small_log_size = db_desc->small_log_size;
+			db_entry->small_log_head_offt = db_desc->small_log.head_dev_offt;
+			db_entry->small_log_tail_offt = db_desc->small_log.tail_dev_offt;
+			db_entry->small_log_size = db_desc->small_log.size;
 		}
 		node = node->next;
 	}
