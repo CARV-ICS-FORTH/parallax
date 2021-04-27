@@ -1375,8 +1375,6 @@ static void *bt_append_key_value_to_log_mmap(struct log_operation *req, struct l
 
 		allocated_space = data_size->kv_size + sizeof(struct log_sequence_number) + sizeof(segment_header);
 		allocated_space += SEGMENT_SIZE - (allocated_space % SEGMENT_SIZE);
-
-
 		d_header = seg_get_raw_log_segment(handle->volume_desc);
 		d_header->segment_id = T->segment_id + 1;
 		d_header->prev_segment = (void *)log_metadata->log_desc->tail_dev_offt;
