@@ -44,15 +44,6 @@ extern unsigned long long ins_prefix_miss_l1;
 
 extern int32_t index_order;
 
-/*gxanth staff structures*/
-typedef struct thread_dest {
-	volatile struct thread_dest *next;
-	volatile void *kv_dest;
-	volatile unsigned kv_size;
-	volatile short ready;
-	char pad[40];
-} thread_dest;
-
 struct lookup_reply {
 	void *addr;
 	uint8_t lc_failed;
@@ -92,8 +83,7 @@ typedef struct segment_header {
 	uint64_t segment_end;
 	int moved_kvs;
 	int in_mem;
-	char pad[4046];
-} segment_header;
+} __attribute__((packed, aligned(4096))) segment_header;
 
 /*Note IN stands for Internal Node*/
 typedef struct IN_log_header {
@@ -330,12 +320,32 @@ typedef struct level_descriptor {
 	char in_recovery_mode;
 } level_descriptor;
 
-struct bt_small_log {
-	uint32_t chunk_bytes[SEGMENT_SIZE / LOG_CHUNK_SIZE];
+struct log_tail {
+	char buf[SEGMENT_SIZE];
+	uint32_t bytes_in_chunk[SEGMENT_SIZE / LOG_CHUNK_SIZE];
+	uint64_t dev_offt;
+	uint64_t start;
+	uint64_t end;
+	uint32_t pending_readers;
+	uint32_t free;
+	uint32_t IOs_completed_in_tail;
+	int fd;
+};
+
+struct bt_log_descriptor {
+	struct log_tail *tail[LOG_TAIL_NUM_BUFS];
 	uint64_t head_dev_offt;
 	uint64_t tail_dev_offt;
 	uint64_t size;
+	uint64_t curr_tail_id;
 };
+
+struct bt_kv_log_address {
+	void *addr;
+	uint8_t in_tail;
+	uint8_t tail_id;
+};
+struct bt_kv_log_address bt_get_kv_medium_log_address(struct bt_log_descriptor *log_desc, uint64_t dev_offt);
 
 typedef struct db_descriptor {
 	char db_name[MAX_DB_NAME_SIZE];
@@ -357,21 +367,11 @@ typedef struct db_descriptor {
 	pthread_t compaction_thread;
 	pthread_t compaction_daemon;
 	pthread_t gc_thread;
-	segment_header *big_log_head;
-	segment_header *big_log_tail;
-	uint64_t big_log_size;
-	segment_header *medium_log_head;
-	segment_header *medium_log_tail;
-	uint64_t medium_log_size;
-	struct bt_small_log small_log;
-	//segment_header *small_log_head;
-	//segment_header *small_log_tail;
-	//uint64_t small_log_size;
+	struct bt_log_descriptor big_log;
+	struct bt_log_descriptor medium_log;
+	struct bt_log_descriptor small_log;
 	uint64_t lsn;
 	//only for L0
-	segment_header *inmem_medium_log_head[NUM_TREES_PER_LEVEL];
-	segment_header *inmem_medium_log_tail[NUM_TREES_PER_LEVEL];
-	uint64_t inmem_medium_log_size[NUM_TREES_PER_LEVEL];
 	struct db_handle *gc_db;
 	uint64_t gc_last_segment_id;
 	uint64_t gc_count_segments;
@@ -415,6 +415,8 @@ struct recovery_operator {
 
 void recover_region(recovery_request *rh);
 void snapshot(volume_descriptor *volume_desc);
+void pr_flush_log_tail(struct db_descriptor *db_desc, struct volume_descriptor *volume_desc,
+		       struct bt_log_descriptor *log_desc);
 //void commit_db_log(db_descriptor *db_desc, commit_log_info *info);
 //void commit_db_logs_per_volume(volume_descriptor *volume_desc);
 
@@ -456,6 +458,9 @@ typedef struct bt_mutate_req {
 typedef struct bt_insert_req {
 	bt_mutate_req metadata;
 	void *key_value_buf;
+	//Used in some cases where the KV has been written
+	uint64_t kv_dev_offt : 63;
+	uint64_t translate_medium_log : 1;
 } bt_insert_req;
 
 typedef struct bt_delete_request {
@@ -471,7 +476,7 @@ typedef struct bt_delete_request {
    In the request_type you will add the name of the operation i.e. transactionOp and
    in the log_operation you will add a pointer in the union with the new operation i.e. transaction_request.
 */
-typedef enum { insertOp, deleteOp, unknownOp } request_type;
+typedef enum { insertOp, deleteOp, paddingOp, unknownOp } request_type;
 
 typedef struct log_operation {
 	bt_mutate_req *metadata;
@@ -483,9 +488,7 @@ typedef struct log_operation {
 } log_operation;
 
 struct log_towrite {
-	segment_header *log_head;
-	segment_header *log_tail;
-	uint64_t *log_size;
+	struct bt_log_descriptor *log_desc;
 	int level_id;
 	enum log_category status;
 };
@@ -578,7 +581,7 @@ lock_table *_find_position(lock_table **table, node_header *node);
 #define KEY_SIZE(x) (*(uint32_t *)(x))
 #define VALUE_SIZE(x) KEY_SIZE(x)
 #define ABSOLUTE_ADDRESS(X) (((uint64_t)(X)) - MAPPED)
-#define REAL_ADDRESS(X) ((void *)(uint64_t)(MAPPED + (uint64_t)(X)))
+#define REAL_ADDRESS(X) ((X) ? (void *)(uint64_t)(MAPPED + (uint64_t)(X)) : NULL)
 #define KEY_OFFSET(KEY_SIZE, KV_BUF) (sizeof(uint32_t) + KV_BUF)
 #define VALUE_SIZE_OFFSET(KEY_SIZE, KEY) (sizeof(uint32_t) + KEY_SIZE + KEY)
 #define SERIALIZE_KEY(buf, key, key_size) \

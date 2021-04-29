@@ -23,7 +23,6 @@
 /* #define MAX_LEVELS 8 */
 /* #define NUM_TREES_PER_LEVEL 2 */
 /* #define TOTAL_TREES (MAX_LEVELS * NUM_TREES_PER_LEVEL) */
-/* #define GROUP_SIZE 5 */
 /* #define NUM_OF_DB_GROUPS 506 */
 /* #define DEVICE_BLOCK_SIZE 4096 */
 
@@ -55,6 +54,7 @@
 #define LEVEL_MEDIUM_INPLACE (2)
 #define SEGMENT_SIZE (2 * 1024 * 1024)
 #define LOG_CHUNK_SIZE (256 * 1024)
-
+#define LOG_TAIL_NUM_BUFS 4
+#define ALIGNMENT_SIZE 512
 #define MAX_ALLOCATION_TRIES 2
 #define ENABLE_BLOOM_FILTERS 0

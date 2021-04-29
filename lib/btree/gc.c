@@ -90,7 +90,6 @@ int8_t find_deleted_kv_pairs_in_segment(volume_descriptor *volume_desc, db_descr
 
 		assert(key->size > 0 && key->size < 28);
 		assert(value->size > 5 && value->size < 1500);
-		/* log_info("looking up %*s",key->size,key->data); */
 
 		find_value = find_key(&handle, key->data, key->size);
 		/* assert(find_value); */
@@ -125,15 +124,16 @@ void fix_nodes_in_log(volume_descriptor *volume_desc, db_descriptor *db_desc, lo
 		prev_node->metadata.next_segment = curr_node->metadata.next_segment;
 		free_block(volume_desc, curr_node, SEGMENT_SIZE);
 	} else
-		db_desc->big_log_head = (segment_header *)REAL_ADDRESS((uint64_t)curr_node->metadata.next_segment);
+		db_desc->big_log.head_dev_offt = (uint64_t)curr_node->metadata.next_segment;
 }
 
 void iterate_log_segments(db_descriptor *db_desc, volume_descriptor *volume_desc, stack *marks)
 {
-	log_segment *last_segment = (log_segment *)db_desc->big_log_tail;
-	log_segment *log_node = (log_segment *)db_desc->big_log_head;
+	log_segment *last_segment = (log_segment *)REAL_ADDRESS(db_desc->big_log.tail_dev_offt);
+	log_segment *log_node = (log_segment *)REAL_ADDRESS(db_desc->big_log.head_dev_offt);
 	log_segment *prev_node = NULL;
-
+	log_info("last_segment %llu log_node %llu last_seg offt %llu log node offt %llu", last_segment, log_node,
+		 db_desc->big_log.tail_dev_offt, db_desc->big_log.head_dev_offt);
 	/* We are in the first segment of the log and is not yet full! */
 	if (!log_node || log_node->metadata.next_segment == NULL) {
 		log_debug("We reached at the last log segment");

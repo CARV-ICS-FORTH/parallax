@@ -74,11 +74,16 @@ extern int FD;
 
 typedef struct pr_db_entry {
 	char db_name[MAX_DB_NAME_SIZE];
+	//index staff
 	uint64_t root_r[MAX_LEVELS][NUM_TREES_PER_LEVEL];
 	uint64_t first_segment[MAX_LEVELS][NUM_TREES_PER_LEVEL];
 	uint64_t last_segment[MAX_LEVELS][NUM_TREES_PER_LEVEL];
 	uint64_t offset[MAX_LEVELS][NUM_TREES_PER_LEVEL];
 	uint64_t level_size[MAX_LEVELS][NUM_TREES_PER_LEVEL];
+	//medium log L0
+	uint64_t medium_log_L0_head_offt[NUM_TREES_PER_LEVEL];
+	uint64_t medium_log_L0_tail_offt[NUM_TREES_PER_LEVEL];
+	uint64_t medium_log_L0_size[NUM_TREES_PER_LEVEL];
 
 	uint64_t big_log_head_offt;
 	uint64_t big_log_tail_offt;
@@ -91,7 +96,6 @@ typedef struct pr_db_entry {
 	uint64_t small_log_size;
 	uint64_t lsn;
 	uint32_t valid;
-	char pad[44];
 } pr_db_entry; // 768 bytes or 12 cache lines
 
 typedef struct pr_db_group {

@@ -340,7 +340,6 @@ void seg_free_level(db_handle *handle, uint8_t level_id, uint8_t tree_id)
 {
 	segment_header *curr_segment = handle->db_desc->levels[level_id].first_segment[tree_id];
 	segment_header *temp_segment;
-	db_descriptor *db_desc = handle->db_desc;
 	uint64_t space_freed = 0;
 
 	log_info("Freeing up level %u for db %s", level_id, handle->db_desc->db_name);
@@ -351,7 +350,10 @@ void seg_free_level(db_handle *handle, uint8_t level_id, uint8_t tree_id)
 			space_freed += SEGMENT_SIZE;
 		}
 	else {
-		curr_segment = handle->db_desc->inmem_medium_log_head[tree_id];
+#if 0
+		//free inmem_medium_log_L0
+		curr_segment = (struct segment_header *)REAL_ADDRESS(
+			handle->db_desc->inmem_medium_log_L0[tree_id].head_dev_offt);
 		segment_header *next_segment;
 		if (curr_segment) {
 			while (curr_segment->next_segment) {
@@ -359,19 +361,27 @@ void seg_free_level(db_handle *handle, uint8_t level_id, uint8_t tree_id)
 				free(curr_segment);
 				curr_segment = next_segment;
 			}
-
 			free(curr_segment);
-			segment_header *head = malloc(SEGMENT_SIZE);
-			//(segment_header *)mspace_memalign(db_desc->inmem_msp, SEGMENT_SIZE, SEGMENT_SIZE);
-			assert(head != NULL);
-			head->next_segment = NULL;
-			head->prev_segment = NULL;
-			head->segment_id = 0;
-			db_desc->inmem_medium_log_head[tree_id] = head;
-			db_desc->inmem_medium_log_tail[tree_id] = head;
-			db_desc->inmem_medium_log_size[tree_id] = sizeof(segment_header);
+			db_desc->inmem_medium_log_L0[tree_id].head_dev_offt = 0;
+			db_desc->inmem_medium_log_L0[tree_id].tail_dev_offt = 0;
+			db_desc->inmem_medium_log_L0[tree_id].size = 0;
 		}
-
+		//free now the dev_medium_log_L0
+		curr_segment = (struct segment_header *)REAL_ADDRESS(
+			handle->db_desc->inmem_medium_log_L0[tree_id].head_dev_offt);
+		if (curr_segment) {
+			while (curr_segment->next_segment) {
+				next_segment = REAL_ADDRESS(curr_segment->next_segment);
+				free(curr_segment);
+				curr_segment = next_segment;
+			}
+			free_raw_segment(handle->volume_desc, curr_segment);
+			db_desc->dev_medium_log_L0[tree_id].head_dev_offt = 0;
+			db_desc->dev_medium_log_L0[tree_id].tail_dev_offt = 0;
+			db_desc->dev_medium_log_L0[tree_id].size = 0;
+		}
+#endif
+		//Finally L0 index
 		curr_segment = handle->db_desc->levels[level_id].first_segment[tree_id];
 		temp_segment = REAL_ADDRESS(curr_segment->next_segment);
 		int flag = 0;
@@ -398,24 +408,7 @@ void seg_free_level(db_handle *handle, uint8_t level_id, uint8_t tree_id)
 			/* log_info("COUNT %d %llu", curr_segment->segment_id, curr_segment->next_segment); */
 			free(temp_segment);
 		}
-#if 0
-		log_info("HELLO");
-		if(!run){
-			for(;curr_segment->next_segment != NULL;curr_segment = REAL_ADDRESS(temp_segment)){
-				temp_segment = curr_segment->next_segment;
-				free(curr_segment);
-				space_freed += SEGMENT_SIZE;
-			}
-		}
-#endif
 	}
-	log_info("Freed space %llu MB from db:%s level tree [%u][%u]", space_freed / (1024 * 1024),
-		 handle->db_desc->db_name, level_id, tree_id);
-	/*assert check
-						if(db_desc->spilled_keys != db_desc->total_keys[spill_req->src_tree_id]){
-						printf("[%s:%s:%d] FATAL keys missing --- spilled keys %llu actual %llu spiller id %d\n",__FILE__,__func__,__LINE__,(LLU)db_desc->spilled_keys,(LLU)db_desc->total_keys[spill_req->src_tree_id], spill_req->src_tree_id);
-						exit(EXIT_FAILURE);
-						}*/
 	/*buffered tree out*/
 	handle->db_desc->levels[level_id].level_size[tree_id] = 0;
 	handle->db_desc->levels[level_id].first_segment[tree_id] = NULL;
@@ -423,11 +416,6 @@ void seg_free_level(db_handle *handle, uint8_t level_id, uint8_t tree_id)
 	handle->db_desc->levels[level_id].offset[tree_id] = 0;
 	handle->db_desc->levels[level_id].root_r[tree_id] = NULL;
 	handle->db_desc->levels[level_id].root_w[tree_id] = NULL;
-	/* if (curr_segment->in_mem == 0) */
-	/* 	free_raw_segment(handle->volume_desc, curr_segment); */
-	/* if (level_id == 0) */
-	/* 	if (RWLOCK_UNLOCK(&db_desc->levels[0].guard_of_level.rx_lock)) { */
-	/* 		exit(EXIT_FAILURE); */
-	/* 	} */
+
 	log_info("Freed space %llu MB from db:%s level %u", space_freed / MB(1), handle->db_desc->db_name, level_id);
 }

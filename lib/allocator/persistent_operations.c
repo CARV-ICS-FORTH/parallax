@@ -175,6 +175,34 @@ void force_snapshot(volume_descriptor *volume_desc)
 	snapshot(volume_desc);
 }
 
+void pr_flush_log_tail(struct db_descriptor *db_desc, struct volume_descriptor *volume_desc,
+		       struct bt_log_descriptor *log_desc)
+{
+	log_info("Flushing log tail");
+	(void)db_desc;
+	(void)volume_desc;
+	int last_tail = log_desc->curr_tail_id % LOG_TAIL_NUM_BUFS;
+	uint64_t offt_in_seg = log_desc->size % SEGMENT_SIZE;
+	uint32_t chunk_id = offt_in_seg / LOG_CHUNK_SIZE;
+	uint64_t start_offt, end_offt;
+	if (chunk_id)
+		start_offt = chunk_id * LOG_CHUNK_SIZE;
+	else
+		start_offt = sizeof(struct segment_header);
+
+	ssize_t bytes_written = 0;
+	end_offt = start_offt + LOG_CHUNK_SIZE;
+	while (start_offt < end_offt) {
+		bytes_written = pwrite(FD, &log_desc->tail[last_tail]->buf[start_offt], end_offt - start_offt,
+				       log_desc->tail[last_tail]->dev_offt + start_offt);
+		if (bytes_written == -1) {
+			log_fatal("Failed to write LOG_CHUNK reason follows");
+			perror("Reason");
+			exit(EXIT_FAILURE);
+		}
+		start_offt += bytes_written;
+	}
+}
 /*persists a consistent snapshot of the system*/
 void snapshot(volume_descriptor *volume_desc)
 {
@@ -204,11 +232,11 @@ void snapshot(volume_descriptor *volume_desc)
 			spin_loop(&(db_desc->levels[level_id].active_writers), 0);
 		}
 
-		/*all levels locked*/
+		//all levels locked
 		dirty += db_desc->dirty;
 		/*update the catalogue if db is dirty*/
-
 		if (db_desc->dirty > 0) {
+			pr_flush_log_tail(db_desc, volume_desc, &db_desc->medium_log);
 			db_desc->dirty = 0x00;
 			/*cow check*/
 			db_group = (pr_db_group *)REAL_ADDRESS(
@@ -276,13 +304,13 @@ void snapshot(volume_descriptor *volume_desc)
 				}
 			}
 
-			db_entry->big_log_head_offt = ABSOLUTE_ADDRESS(db_desc->big_log_head);
-			db_entry->big_log_tail_offt = ABSOLUTE_ADDRESS(db_desc->big_log_tail);
-			db_entry->big_log_size = db_desc->big_log_size;
+			db_entry->big_log_head_offt = db_desc->big_log.head_dev_offt;
+			db_entry->big_log_tail_offt = db_desc->big_log.tail_dev_offt;
+			db_entry->big_log_size = db_desc->big_log.size;
 
-			db_entry->medium_log_head_offt = ABSOLUTE_ADDRESS(db_desc->medium_log_head);
-			db_entry->medium_log_tail_offt = ABSOLUTE_ADDRESS(db_desc->medium_log_tail);
-			db_entry->medium_log_size = db_desc->medium_log_size;
+			db_entry->medium_log_head_offt = db_desc->medium_log.head_dev_offt;
+			db_entry->medium_log_tail_offt = db_desc->medium_log.tail_dev_offt;
+			db_entry->medium_log_size = db_desc->medium_log.size;
 
 			db_entry->small_log_head_offt = db_desc->small_log.head_dev_offt;
 			db_entry->small_log_tail_offt = db_desc->small_log.tail_dev_offt;

@@ -19,6 +19,7 @@ struct write_dynamic_leaf_args {
 	struct bt_dynamic_leaf_node *leaf;
 	char *dest;
 	char *key_value_buf;
+	uint64_t kv_dev_offt;
 	uint32_t key_value_size;
 	uint32_t middle;
 	int level_id;
@@ -121,6 +122,7 @@ struct find_result find_key_in_dynamic_leaf(const struct bt_dynamic_leaf_node *l
 	req.metadata.key_format = KV_FORMAT;
 	req.metadata.level_id = level_id;
 	//validate_dynamic_leaf((void *) leaf, NULL, 0, 0);
+	req.translate_medium_log = 0;
 	binary_search_dynamic_leaf(leaf, leaf_size, &req, &result);
 
 	switch (result.status) {
@@ -204,7 +206,18 @@ void binary_search_dynamic_leaf(const struct bt_dynamic_leaf_node *leaf, uint32_
 
 		if (ret_case == EQUAL_TO_ZERO) {
 			char *kv_offset = get_kv_offset(leaf, leaf_size, offset_in_leaf);
-			leaf_key_buf = fill_keybuf(kv_offset, slot_array[middle].bitmap);
+
+			//medium log tail stub
+			if (req->translate_medium_log && req->metadata.level_id == 1 &&
+			    slot_array[middle].key_category == MEDIUM_INLOG) {
+				struct bt_leaf_entry *kv = (struct bt_leaf_entry *)kv_offset;
+				//log_info("Searching tail of medium log");
+				struct bt_kv_log_address L = bt_get_kv_medium_log_address(
+					&req->metadata.handle->db_desc->medium_log, kv->pointer);
+				leaf_key_buf = L.addr;
+			} else
+				leaf_key_buf = fill_keybuf(kv_offset, slot_array[middle].bitmap);
+
 			if (req->metadata.key_format == KV_PREFIX) {
 				struct bt_leaf_entry *kv_entry = (struct bt_leaf_entry *)req->key_value_buf;
 				ret = key_cmp(leaf_key_buf, (void *)kv_entry->pointer, KV_FORMAT, KV_FORMAT);
@@ -526,9 +539,20 @@ struct bt_rebalance_result special_split_dynamic_leaf(struct bt_dynamic_leaf_nod
 	split_point = leaf->header.num_entries - 1;
 	/*Fix Right leaf metadata*/
 	rep.right_dlchild = seg_get_dynamic_leaf_node(volume_desc, level, req->metadata.tree_id);
-	rep.middle_key_buf = fill_keybuf(get_kv_offset(leaf, leaf_size, slot_array[split_point].index),
-					 slot_array[split_point].bitmap);
 
+	char *key_loc = get_kv_offset(leaf, leaf_size, slot_array[split_point].index);
+	//medium log tail stub
+	if (req->metadata.level_id == 1 && slot_array[split_point].key_category == MEDIUM_INLOG) {
+		struct bt_leaf_entry *kv = (struct bt_leaf_entry *)key_loc;
+
+		struct bt_kv_log_address L =
+			bt_get_kv_medium_log_address(&req->metadata.handle->db_desc->medium_log, kv->pointer);
+		rep.middle_key_buf = L.addr;
+		assert(*(uint32_t *)rep.middle_key_buf < 40);
+	} else {
+		rep.middle_key_buf = fill_keybuf(key_loc, slot_array[split_point].bitmap);
+		assert(*(uint32_t *)rep.middle_key_buf < 40);
+	}
 	right_leaf = rep.right_dlchild;
 	/*Copy pointers + prefixes*/
 	leaf_log_tail = get_leaf_log_offset(right_leaf, leaf_size);
@@ -607,13 +631,19 @@ void write_data_in_dynamic_leaf(struct write_dynamic_leaf_args *args)
 		struct splice *key = (struct splice *)key_value_buf;
 		struct bt_leaf_entry *serialized = (struct bt_leaf_entry *)key_value_buf;
 		slot.bitmap = KV_INLOG;
-		if (kv_format == KV_FORMAT) {
-			leaf->header.leaf_log_size += append_bt_leaf_entry_inplace(
-				dest, ABSOLUTE_ADDRESS(key_value_buf), key->data, MIN(key->size, PREFIX_SIZE));
+		if (args->level_id == 1 && args->cat == MEDIUM_INLOG && kv_format == KV_FORMAT) {
+			assert(args->kv_dev_offt != 0);
+			leaf->header.leaf_log_size += append_bt_leaf_entry_inplace(dest, args->kv_dev_offt, key->data,
+										   MIN(key->size, PREFIX_SIZE));
 		} else {
-			leaf->header.leaf_log_size +=
-				append_bt_leaf_entry_inplace(dest, ABSOLUTE_ADDRESS(serialized->pointer), key_value_buf,
-							     MIN(key->size, PREFIX_SIZE));
+			if (kv_format == KV_FORMAT) {
+				leaf->header.leaf_log_size += append_bt_leaf_entry_inplace(
+					dest, ABSOLUTE_ADDRESS(key_value_buf), key->data, MIN(key->size, PREFIX_SIZE));
+			} else {
+				leaf->header.leaf_log_size +=
+					append_bt_leaf_entry_inplace(dest, ABSOLUTE_ADDRESS(serialized->pointer),
+								     key_value_buf, MIN(key->size, PREFIX_SIZE));
+			}
 		}
 		//Note There is a case where YCSB generates 11 bytes keys and we read invalid bytes from stack.
 		//This should be fixed after Eurosys deadline.
@@ -662,14 +692,16 @@ int reorganize_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, uint32_t leaf_siz
 			uint32_t key_size = KEY_SIZE(key_buf);
 			uint32_t value_size = VALUE_SIZE(key_buf + sizeof(uint32_t) + key_size);
 			key_buf_size = (2 * sizeof(uint32_t)) + key_size + value_size;
-			assert(slot_array[i].key_category == SMALL_INPLACE);
+			assert(slot_array[i].key_category == SMALL_INPLACE ||
+			       slot_array[i].key_category == MEDIUM_INPLACE);
 			leaf->header.leaf_log_size += key_buf_size;
 			leaf_log_tail -= key_buf_size;
 			memcpy(leaf_log_tail, key_buf, key_buf_size);
 		} else if (slot_array[i].bitmap == KV_INLOG) {
 			leaf->header.leaf_log_size += sizeof(struct bt_leaf_entry);
 			leaf_log_tail -= sizeof(struct bt_leaf_entry);
-			assert(slot_array[i].key_category != SMALL_INPLACE);
+			assert(slot_array[i].key_category != SMALL_INPLACE &&
+			       slot_array[i].key_category != MEDIUM_INPLACE);
 			memcpy(leaf_log_tail, get_kv_offset(reorganize_buffer, leaf_size, slot_array[i].index),
 			       sizeof(struct bt_leaf_entry));
 		}
@@ -699,6 +731,7 @@ int8_t insert_in_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, bt_insert_req *
 {
 	struct write_dynamic_leaf_args write_leaf_args = { .leaf = leaf,
 							   .key_value_buf = req->key_value_buf,
+							   .kv_dev_offt = req->kv_dev_offt,
 							   .key_value_size = req->metadata.kv_size,
 							   .level_id = level->level_id,
 							   .kv_format = req->metadata.key_format,
@@ -710,7 +743,7 @@ int8_t insert_in_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, bt_insert_req *
 
 	if (unlikely(leaf->header.num_entries == 0))
 		leaf->header.leaf_log_size = 0;
-
+	req->translate_medium_log = 0;
 	binary_search_dynamic_leaf(leaf, level->leaf_size, req, &bsearch);
 
 	write_leaf_args.dest = leaf_log_tail;
