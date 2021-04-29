@@ -339,6 +339,7 @@ struct bt_log_descriptor {
 	uint64_t size;
 	uint64_t curr_tail_id;
 };
+struct bt_kv_log_address bt_get_kv_medium_log_address(struct bt_log_descriptor *log_desc, uint64_t dev_offt);
 
 struct bt_kv_log_address {
 	void *addr;
@@ -419,7 +420,6 @@ void pr_flush_log_tail(struct db_descriptor *db_desc, struct volume_descriptor *
 		       struct bt_log_descriptor *log_desc);
 //void commit_db_log(db_descriptor *db_desc, commit_log_info *info);
 //void commit_db_logs_per_volume(volume_descriptor *volume_desc);
-
 //void commit_db_log(db_descriptor *db_desc, commit_log_info *info);
 //void commit_db_logs_per_volume(volume_descriptor *volume_desc);
 

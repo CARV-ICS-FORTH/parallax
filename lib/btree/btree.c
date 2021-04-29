@@ -2488,7 +2488,7 @@ release_and_retry:
 		son = (node_header *)(MAPPED + *(uint64_t *)next_addr);
 
 		/*if the node is not safe hold its ancestor's lock else release locks from
-* ancestors */
+    ancestors */
 
 		if (!(son->epoch <= volume_desc->dev_catalogue->epoch ||
 		      is_split_needed(son, ins_req, db_desc->levels[level_id].leaf_size))) {
