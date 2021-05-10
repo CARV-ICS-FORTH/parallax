@@ -743,7 +743,7 @@ int8_t insert_in_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, bt_insert_req *
 
 	if (unlikely(leaf->header.num_entries == 0))
 		leaf->header.leaf_log_size = 0;
-	req->translate_medium_log = 0;
+	req->translate_medium_log = 1;
 	binary_search_dynamic_leaf(leaf, level->leaf_size, req, &bsearch);
 
 	write_leaf_args.dest = leaf_log_tail;

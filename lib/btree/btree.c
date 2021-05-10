@@ -919,6 +919,7 @@ uint8_t insert_key_value(db_handle *handle, void *key, void *value, uint32_t key
 	} else {
 		ins_req.metadata.cat = SMALL_INPLACE;
 	}
+
 	/*
 * Note for L0 inserts since active_tree changes dynamically we decide which
 * is the active_tree after
