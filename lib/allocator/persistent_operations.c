@@ -178,7 +178,6 @@ void force_snapshot(volume_descriptor *volume_desc)
 void pr_flush_log_tail(struct db_descriptor *db_desc, struct volume_descriptor *volume_desc,
 		       struct bt_log_descriptor *log_desc)
 {
-	log_info("Flushing log tail");
 	(void)db_desc;
 	(void)volume_desc;
 	int last_tail = log_desc->curr_tail_id % LOG_TAIL_NUM_BUFS;

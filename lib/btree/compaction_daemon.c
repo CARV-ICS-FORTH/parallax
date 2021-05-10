@@ -293,9 +293,6 @@ static void compact_level_mmap_IO(struct db_handle *handle, struct compaction_re
 	if (dst_root)
 		level_dst = _init_spill_buffer_scanner(handle, comp_req->dst_level, dst_root, NULL);
 
-	level_src = _init_spill_buffer_scanner(handle, comp_req->src_level, src_root, NULL);
-	level_dst = _init_spill_buffer_scanner(handle, comp_req->dst_level, dst_root, NULL);
-
 	struct db_descriptor *db_desc = handle->db_desc;
 	log_info("Src [%u][%u] size = %llu", comp_req->src_level, comp_req->src_tree,
 		 db_desc->levels[comp_req->src_level].level_size[comp_req->src_tree]);
@@ -303,7 +300,7 @@ static void compact_level_mmap_IO(struct db_handle *handle, struct compaction_re
 	log_info("Dst [%u][%u] size = %llu", comp_req->dst_level, 0,
 		 db_desc->levels[comp_req->dst_level].level_size[0]);
 
-	if (!level_src || !level_dst) {
+	if (!level_src) {
 		log_fatal("Failed to create pair of spill buffer scanners for level's "
 			  "tree[%u][%u]",
 			  comp_req->src_level, comp_req->src_tree);
@@ -366,9 +363,10 @@ static void compact_level_mmap_IO(struct db_handle *handle, struct compaction_re
 					*(uint32_t *)((char *)(*(uint64_t *)(nd_min.KV + PREFIX_SIZE)) + key_size + 4);
 				ins_req.metadata.kv_size =
 					key_size + value_size + sizeof(key_size) + sizeof(value_size);
-			} else if (comp_req->dst_level == 1 && level_src->cat == MEDIUM_INLOG) {
+			} else if (comp_req->dst_level == 1 && level_src->cat == MEDIUM_INPLACE) {
 				ins_req.metadata.append_to_log = 1;
 				ins_req.metadata.kv_size = nd_min.kv_size;
+				ins_req.metadata.cat = MEDIUM_INLOG;
 			} else {
 				ins_req.metadata.append_to_log = 0;
 				ins_req.metadata.kv_size = nd_min.kv_size;

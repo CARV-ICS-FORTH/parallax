@@ -193,6 +193,10 @@ void execute_load(utils::Properties &props, ycsbc::YCSBDB *db)
 	std::cerr << "Waiting for reporter thread!" << std::endl;
 	reporter.join();
 	std::cout << "Executed " << sum << " operations." << std::endl;
+	for (auto &n : actual_ops) {
+		if (n.valid())
+			n.wait();
+	}
 
 #ifdef COMPUTE_TAIL
 	tail->printStatistics();
@@ -245,7 +249,12 @@ void execute_run(utils::Properties &props, ycsbc::YCSBDB *db)
 	std::cerr << "Waiting for reporter thread!" << std::endl;
 	reporter.join();
 	std::cout << "Executed " << sum << " operations." << std::endl;
+	for (auto &n : actual_ops) {
+		if (n.valid())
+			n.wait();
+	}
 
+	// sleep(10);
 #ifdef COMPUTE_TAIL
 	tail->printStatistics();
 	delete tail;
