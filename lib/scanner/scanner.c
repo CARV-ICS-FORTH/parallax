@@ -78,6 +78,7 @@ static void init_generic_scanner(struct scannerHandle *sc, struct db_handle *han
 	uint8_t active_tree;
 	int retval;
 
+	assert(start_key);
 	if (sc == NULL) {
 		log_fatal("NULL scannerHandle?");
 		exit(EXIT_FAILURE);
@@ -180,7 +181,11 @@ void init_dirty_scanner(struct scannerHandle *sc, struct db_handle *handle, void
 scannerHandle *initScanner(scannerHandle *sc, db_handle *handle, void *start_key, char seek_flag)
 {
 	if (sc == NULL) { // this is for mongodb
-		sc = malloc(sizeof(scannerHandle));
+		sc = calloc(1, sizeof(scannerHandle));
+		if (!sc) {
+			log_fatal("Calloc failed");
+			exit(EXIT_FAILURE);
+		}
 		sc->malloced = 1;
 		snapshot(handle->volume_desc);
 	} else {
@@ -267,11 +272,11 @@ void closeScanner(scannerHandle *sc)
 
 void close_dirty_scanner(scannerHandle *sc)
 {
-	closeScanner(sc);
-
 	struct db_descriptor *db_desc = sc->db->db_desc;
 	for (int i = 0; i < MAX_LEVELS; i++)
 		RWLOCK_UNLOCK(&db_desc->levels[i].guard_of_level.rx_lock);
+
+	closeScanner(sc);
 }
 
 /*XXX TODO XXX, please check if this is legal*/
@@ -415,10 +420,10 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 	else {
 		uint32_t s_key_size = *(uint32_t *)start_key_buf;
 		if (s_key_size >= PREFIX_SIZE)
-			memcpy(key_buf_prefix, (void *)((uint64_t)start_key_buf + sizeof(int32_t)), PREFIX_SIZE);
+			memcpy(key_buf_prefix, (void *)((uint64_t)start_key_buf + sizeof(uint32_t)), PREFIX_SIZE);
 		else {
 			s_key_size = *(uint32_t *)start_key_buf;
-			memcpy(key_buf_prefix, (void *)((uint64_t)start_key_buf + sizeof(int32_t)), s_key_size);
+			memcpy(key_buf_prefix, (void *)((uint64_t)start_key_buf + sizeof(uint32_t)), s_key_size);
 			memset(key_buf_prefix + s_key_size, 0x00, PREFIX_SIZE - s_key_size);
 		}
 	}

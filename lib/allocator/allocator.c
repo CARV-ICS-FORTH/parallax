@@ -1652,11 +1652,11 @@ struct db_coordinates locate_db(struct volume_descriptor *volume_desc, char *db_
 		if (volume_desc->mem_catalogue->db_group_index[group_id] != 0) {
 			struct pr_db_group *db_group = (struct pr_db_group *)REAL_ADDRESS(
 				volume_desc->mem_catalogue->db_group_index[group_id]);
+
 			for (int group_idx = 0; group_idx < GROUP_SIZE; ++group_idx) {
 				/*empty slot keep in mind*/
 				if (db_group->db_entries[group_idx].valid == 0 && empty_index == -1) {
 					/*Remember the location of the first empty slot within the group*/
-					// log_info("empty slot %d in group %d\n", i, j);
 					empty_group = group_id;
 					empty_index = group_idx;
 				}
@@ -1665,8 +1665,8 @@ struct db_coordinates locate_db(struct volume_descriptor *volume_desc, char *db_
 					/*hosts a database*/
 					struct pr_db_entry *db_entry = &db_group->db_entries[group_idx];
 					if (!strcmp((const char *)db_entry->db_name, (const char *)db_name)) {
-						log_info("DB: %s found at index [%d,%d]", db_entry->db_name, group_id,
-							 group_idx);
+						/* log_info("DB: %s found at index [%d,%d]", db_entry->db_name, group_id, */
+						/* 	 group_idx); */
 						db_c.group_id = group_id;
 						db_c.index = group_idx;
 						db_c.found = 1;
@@ -1674,10 +1674,12 @@ struct db_coordinates locate_db(struct volume_descriptor *volume_desc, char *db_
 					}
 				}
 			}
+
 		} else {
 			if (empty_group == -1) {
 				//Remember the first gap
 				empty_group = group_id;
+				empty_index = 0;
 			}
 		}
 	}
@@ -1698,8 +1700,8 @@ exit:
 		db_c.new_db = 1;
 
 		db_c.group_id = empty_group;
-		if (empty_index == -1) {
-			db_c.index = 0;
+		db_c.index = empty_index;
+		if (!volume_desc->mem_catalogue->db_group_index[db_c.group_id]) {
 			struct pr_db_group *new_group = get_space_for_system(volume_desc, sizeof(pr_db_group), 1);
 			memset(new_group, 0x00, sizeof(pr_db_group));
 			new_group->epoch = volume_desc->mem_catalogue->epoch;
@@ -1707,13 +1709,14 @@ exit:
 				(pr_db_group *)ABSOLUTE_ADDRESS(new_group);
 			log_info("Allocated new pr_db_group epoch at %llu volume epoch %llu", new_group->epoch,
 				 volume_desc->mem_catalogue->epoch);
-		} else
-			db_c.index = empty_index;
+		}
 
+		assert(db_c.group_id >= 0);
+		assert(db_c.index >= 0);
 		pr_db_group *cur_group =
-			(pr_db_group *)REAL_ADDRESS(volume_desc->mem_catalogue->db_group_index[empty_group]);
+			(pr_db_group *)REAL_ADDRESS(volume_desc->mem_catalogue->db_group_index[db_c.group_id]);
 
-		struct pr_db_entry *db_entry = &cur_group->db_entries[empty_index];
+		struct pr_db_entry *db_entry = &cur_group->db_entries[db_c.index];
 		db_entry->valid = 1;
 	}
 	return db_c;

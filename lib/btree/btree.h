@@ -91,9 +91,10 @@ typedef struct segment_header {
 	void *prev_segment;
 	uint64_t segment_id;
 	uint64_t segment_garbage_bytes;
+	uint64_t segment_end;
 	int moved_kvs;
 	int in_mem;
-	char pad[4054];
+	char pad[4046];
 } segment_header;
 
 /*Note IN stands for Internal Node*/

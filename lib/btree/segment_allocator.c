@@ -254,6 +254,7 @@ segment_header *seg_get_raw_log_segment(volume_descriptor *volume_desc)
 	sg = (segment_header *)allocate(volume_desc, SEGMENT_SIZE);
 	sg->segment_garbage_bytes = 0;
 	sg->moved_kvs = 0;
+	sg->segment_end = 0;
 	MUTEX_UNLOCK(&volume_desc->bitmap_lock);
 	return sg;
 }

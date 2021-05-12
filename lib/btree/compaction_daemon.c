@@ -9,11 +9,14 @@
 #include <log.h>
 #include <spin_loop.h>
 #include "btree.h"
+#include "gc.h"
 #include "segment_allocator.h"
 #include "conf.h"
 #include "../scanner/scanner.h"
-#include "../allocator/allocator.h"
 #include "../scanner/min_max_heap.h"
+#include "../allocator/allocator.h"
+#include "../../utilities/dups_list.h"
+
 #define COMPACTION_UNIT_OF_WORK 131072
 
 /* Checks for pending compactions. It is responsible to check for dependencies
@@ -39,6 +42,34 @@ struct compaction_request {
 	uint8_t dst_level;
 	uint8_t dst_tree;
 };
+
+void mark_segment_space(db_handle *handle, struct dups_list *list)
+{
+	struct gc_value gc_value;
+	struct dups_node *list_iter;
+	struct segment_header *segment;
+	uint64_t segment_dev_offt;
+
+	for (list_iter = list->head; list_iter; list_iter = list_iter->next) {
+		segment = (struct segment_header *)list_iter->dev_offset;
+		segment_dev_offt = ABSOLUTE_ADDRESS(list_iter->dev_offset);
+		__sync_add_and_fetch(&segment->segment_garbage_bytes, list_iter->kv_size);
+
+		if ((double)segment->segment_garbage_bytes >=
+		    ((double)segment->segment_garbage_bytes) * GC_SEGMENT_THRESHOLD) {
+			char *found = find_key(handle->db_desc->gc_db, &segment_dev_offt, sizeof(segment_dev_offt));
+			gc_value.group_id = handle->db_desc->group_id;
+			gc_value.index = handle->db_desc->group_index;
+			gc_value.moved = segment->moved_kvs;
+
+			if (!found || !segment->moved_kvs)
+				insert_key_value(handle->db_desc->gc_db, &segment_dev_offt, &gc_value,
+						 sizeof(segment_dev_offt), sizeof(gc_value));
+		}
+
+		assert(segment->segment_garbage_bytes < (SEGMENT_SIZE - sizeof(struct segment_header)));
+	}
+}
 
 #ifdef COMPACTION
 static void *compaction(void *_comp_req);
@@ -737,6 +768,9 @@ static void compact_level_mmap_IO(struct db_handle *handle, struct compaction_re
 			log_fatal("Failed to acquire guard lock");
 			exit(EXIT_FAILURE);
 		}
+
+		mark_segment_space(handle, m_heap->dups);
+		sh_destroy_heap(m_heap);
 	}
 }
 
@@ -849,10 +883,9 @@ void *spill_buffer(void *_comp_req)
 	/*Initialize a scan object*/
 	db_desc = comp_req->db_desc;
 
-	db_handle handle;
-	handle.db_desc = comp_req->db_desc;
-	handle.volume_desc = comp_req->volume_desc;
+	db_handle handle = { .db_desc = comp_req->db_desc, .volume_desc = comp_req->volume_desc };
 	struct node_header *src_root = NULL;
+
 	if (handle.db_desc->levels[comp_req->src_level].root_w[comp_req->src_tree] != NULL)
 		src_root = handle.db_desc->levels[comp_req->src_level].root_w[comp_req->src_tree];
 	else if (handle.db_desc->levels[comp_req->src_level].root_r[comp_req->src_tree] != NULL)
@@ -870,7 +903,7 @@ void *spill_buffer(void *_comp_req)
 	int32_t num_of_keys = (SPILL_BUFFER_SIZE - (2 * sizeof(uint32_t))) / (PREFIX_SIZE + sizeof(uint64_t));
 
 	/*optimization check if level below is empty than spill is a metadata
-* operation*/
+	 * operation*/
 	struct node_header *dst_root = NULL;
 	if (handle.db_desc->levels[comp_req->dst_level].root_w[0] != NULL)
 		dst_root = handle.db_desc->levels[comp_req->dst_level].root_w[0];

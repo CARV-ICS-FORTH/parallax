@@ -11,7 +11,8 @@
 #define KEY_PREFIX "ts"
 #define NUM_KEYS num_keys
 #define TOTAL_KEYS 0
-uint64_t num_keys = 100000;
+uint64_t num_keys = 1000000;
+int update_half = 0;
 
 typedef struct key {
 	uint32_t key_size;
@@ -26,11 +27,13 @@ typedef struct value {
 void serially_insert_keys(db_handle *hd)
 {
 	uint64_t i;
-	key *k = (key *)alloca(KV_SIZE);
+	key *k = (key *)malloc(KV_SIZE);
 
 	log_info("Starting population for %lu keys...", NUM_KEYS);
 
 	for (i = TOTAL_KEYS; i < (TOTAL_KEYS + NUM_KEYS); i++) {
+		if (update_half && i % 2 == 1)
+			continue;
 		memcpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
 		sprintf(k->key_buf + strlen(KEY_PREFIX), "%llu", (long long unsigned)i);
 		k->key_size = strlen(k->key_buf) + 1;
@@ -41,13 +44,13 @@ void serially_insert_keys(db_handle *hd)
 			log_info("%s", k->key_buf);
 		insert_key_value(hd, k->key_buf, v->value_buf, k->key_size, v->value_size);
 	}
-
+	free(k);
 	log_info("Population ended");
 }
 
 int main(void)
 {
-	db_handle *system_handle, *handle;
+	db_handle *handle;
 	int64_t size;
 	int fd = open(PATH, O_RDONLY);
 
@@ -70,16 +73,15 @@ int main(void)
 
 	close(fd);
 
-	system_handle = db_open(PATH, 0, size, "systemdb", CREATE_DB);
-	assert(system_handle);
 	handle = db_open(PATH, 0, size, "test.db", CREATE_DB);
 	assert(handle);
-	handle->db_desc->gc_db = system_handle;
-
+	snapshot(handle->volume_desc);
+	update_half = 1;
 	serially_insert_keys(handle);
 	log_info(
 		"-------------------------------------------------------------------FINISH-------------------------------------------------------------------------------");
 	serially_insert_keys(handle);
+	snapshot(handle->volume_desc);
 
 	return 0;
 }

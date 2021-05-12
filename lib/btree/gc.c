@@ -1,9 +1,11 @@
+#define _GNU_SOURCE
 #include <assert.h>
 #include <pthread.h>
 #include <semaphore.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <pthread.h>
 #include <time.h>
 #include <log.h>
 #include <list.h>
@@ -11,7 +13,7 @@
 #include "gc.h"
 #include "set_options.h"
 #include "../allocator/allocator.h"
-
+#include "../scanner/scanner.h"
 extern sem_t gc_daemon_interrupts;
 
 void push_stack(stack *marks, void *addr)
@@ -63,25 +65,30 @@ int8_t find_deleted_kv_pairs_in_segment(volume_descriptor *volume_desc, db_descr
 	void *value_as_pointer;
 	void *find_value;
 	char *start_of_log_segment = log_seg;
+	struct segment_header *segment = (struct segment_header *)start_of_log_segment;
 	uint64_t size_of_log_segment_checked = 8;
 	uint64_t log_data_without_metadata = LOG_DATA_OFFSET;
 	uint64_t remaining_space;
 	int key_value_size;
 	int garbage_collect_segment = 0;
-	log_seg += 8;
+	log_seg += 8 + sizeof(segment_header);
 	key = (struct splice *)log_seg;
 	key_value_size = sizeof(key->size) * 2;
 	marks->size = 0;
 	remaining_space = LOG_DATA_OFFSET - (uint64_t)(log_seg - start_of_log_segment);
 
-	while (size_of_log_segment_checked < log_data_without_metadata && remaining_space >= 18) {
+	if (((struct segment_header *)start_of_log_segment)->moved_kvs)
+		return 0;
+
+	while (size_of_log_segment_checked < log_data_without_metadata && remaining_space >= segment->segment_end &&
+	       remaining_space >= 18) {
 		key = (struct splice *)log_seg;
 		value = (struct splice *)(VALUE_SIZE_OFFSET(key->size, log_seg));
 		value_as_pointer = (VALUE_SIZE_OFFSET(key->size, log_seg));
 		if (!key->size)
 			break;
 
-		assert(key->size > 5 && key->size < 28);
+		assert(key->size > 0 && key->size < 28);
 		assert(value->size > 5 && value->size < 1500);
 		/* log_info("looking up %*s",key->size,key->data); */
 
@@ -179,6 +186,87 @@ void iterate_log_segments(db_descriptor *db_desc, volume_descriptor *volume_desc
 	assert(0);
 }
 
+static struct db_descriptor *find_dbdesc(volume_descriptor *volume_desc, int group_id, int index)
+{
+	struct klist_node *region;
+	struct db_descriptor *db_desc;
+
+	for (region = klist_get_first(volume_desc->open_databases); region; region = region->next) {
+		db_desc = (db_descriptor *)region->data;
+		if (db_desc->group_id == group_id && db_desc->group_index == index)
+			return db_desc;
+	}
+
+	return NULL;
+}
+
+void scan_db(db_descriptor *db_desc, volume_descriptor *volume_desc, stack *marks)
+{
+	struct accum_segments {
+		uint64_t segment_offt;
+		struct gc_value value;
+	};
+	struct accum_segments *segments_toreclaim = calloc(SEGMENTS_TORECLAIM, sizeof(struct accum_segments));
+	struct db_handle handle = { .db_desc = db_desc, .volume_desc = volume_desc };
+	struct db_handle temp_handle = { .volume_desc = volume_desc };
+	struct db_descriptor *temp_db_desc;
+	char start_key[5] = { 0 };
+	uint64_t *key;
+	int segment_count = 0;
+
+	struct gc_value *value;
+	struct segment_header *segment;
+
+	*(uint32_t *)start_key = 1;
+	scannerHandle *sc = (scannerHandle *)calloc(1, sizeof(scannerHandle));
+	assert(segments_toreclaim);
+
+	if (!sc) {
+		log_fatal("Error calloc did not allocate memory!");
+		exit(EXIT_FAILURE);
+	}
+
+	init_dirty_scanner(sc, &handle, start_key, GREATER_OR_EQUAL);
+
+	while (isValid(sc)) {
+		key = getKeyPtr(sc);
+		value = getValuePtr(sc);
+		if (!value->moved) {
+			segments_toreclaim[segment_count].segment_offt = *key;
+			segments_toreclaim[segment_count++].value = *value;
+		}
+		if (segment_count == SEGMENTS_TORECLAIM)
+			break;
+
+		if (getNext(sc) == END_OF_DATABASE) {
+			break;
+		}
+	}
+
+	closeScanner(sc);
+	assert(segment_count <= SEGMENTS_TORECLAIM);
+
+	for (int i = 0; i < segment_count; ++i) {
+		segment = (struct segment_header *)REAL_ADDRESS(segments_toreclaim[i].segment_offt);
+		temp_db_desc = find_dbdesc(volume_desc, segments_toreclaim[i].value.group_id,
+					   segments_toreclaim[i].value.index);
+		temp_handle.db_desc = temp_db_desc;
+		assert(temp_db_desc);
+
+		int ret = find_deleted_kv_pairs_in_segment(temp_handle.volume_desc, temp_handle.db_desc,
+							   (char *)segment, marks);
+
+		if (ret && !segments_toreclaim[i].value.moved) {
+			segment->moved_kvs = 1;
+			segments_toreclaim[i].value.moved = 1;
+		}
+
+		insert_key_value(&handle, &segments_toreclaim[i].segment_offt, &segments_toreclaim[i].value,
+				 sizeof(segments_toreclaim[i].segment_offt), sizeof(segments_toreclaim[i].value));
+	}
+	free(segments_toreclaim);
+}
+
 void *gc_log_entries(void *handle)
 {
 	struct timespec ts;
@@ -189,18 +277,21 @@ void *gc_log_entries(void *handle)
 	db_descriptor *db_desc = han->db_desc;
 	volume_descriptor *volume_desc = han->volume_desc;
 	struct klist_node *region;
-	/* int rc; */
-	marks = malloc(sizeof(stack));
+
+	marks = calloc(1, sizeof(stack));
 	if (!marks) {
 		log_error("ERROR i could not allocate stack");
 		exit(EXIT_FAILURE);
 	}
 
+	pthread_setname_np(pthread_self(), "gcd");
+
 	HASH_FIND_STR(dboptions, "gc_interval", option);
 	check_option("gc_interval", option);
-	gc_interval = option->value.count * SEC;
+	gc_interval = option->value.count;
 
 	log_debug("Starting garbage collection thread");
+
 	while (1) {
 		if (clock_gettime(CLOCK_REALTIME, &ts) == -1) {
 			perror("FATAL: clock_gettime failed)\n");
@@ -208,19 +299,7 @@ void *gc_log_entries(void *handle)
 		}
 		ts.tv_sec += (gc_interval / 1000000L);
 		ts.tv_nsec += (gc_interval % 1000000L) * 1000L;
-		/* sleep(1); */
-		sem_wait(&gc_daemon_interrupts);
-
-		/* MUTEX_LOCK(&volume_desc->gc_mutex); */
-		/* rc = pthread_cond_timedwait(&volume_desc->gc_cond, &volume_desc->gc_mutex, &ts); */
-		/* MUTEX_UNLOCK(&volume_desc->gc_mutex); */
-
-		/* if (rc != ETIMEDOUT) { */
-		/* 	log_debug("Error in GC thread"); */
-		/* 	exit(EXIT_FAILURE); */
-		/* } */
-
-		log_debug("Initiating garbage collection");
+		sleep(gc_interval);
 
 		if (volume_desc->state == VOLUME_IS_CLOSING || volume_desc->state == VOLUME_IS_CLOSED) {
 			log_debug("GC thread exiting %s", volume_desc->volume_id);
@@ -228,15 +307,15 @@ void *gc_log_entries(void *handle)
 			pthread_exit(NULL);
 		}
 
-		if (volume_desc->open_databases) {
-			region = klist_get_first(volume_desc->open_databases);
-			assert(region);
-			while (region != NULL) {
-				db_desc = (db_descriptor *)region->data;
-				//iterate_log_segments(db_desc, volume_desc, marks);
-				region = region->next;
+		region = klist_get_first(volume_desc->open_databases);
+
+		while (region != NULL) {
+			db_desc = (db_descriptor *)region->data;
+			if (!strcmp(db_desc->db_name, SYSTEMDB)) {
+				scan_db(db_desc, volume_desc, marks);
+				break;
 			}
-			log_debug("Garbage Collection Finished");
+			region = region->next;
 		}
 	}
 

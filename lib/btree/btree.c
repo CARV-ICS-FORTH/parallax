@@ -519,9 +519,22 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 			if (db_c.new_db) {
 				log_info("Creating new DB: %s at index [%d,%d]", db_name, db_c.group_id, db_c.index);
 				handle = calloc(1, sizeof(struct db_handle));
+				if (!handle) {
+					log_fatal("calloc failed");
+					exit(EXIT_FAILURE);
+				}
 				handle->db_desc = calloc(1, sizeof(struct db_descriptor));
+
+				if (!handle->db_desc) {
+					log_fatal("calloc failed");
+					exit(EXIT_FAILURE);
+				}
+
 				handle->volume_desc = volume_desc;
+				handle->db_desc->group_id = db_c.group_id;
+				handle->db_desc->group_index = db_c.index;
 				strcpy(handle->db_desc->db_name, db_name);
+
 				for (uint8_t level_id = 0; level_id < MAX_LEVELS; level_id++) {
 					for (uint8_t tree_id = 0; tree_id < NUM_TREES_PER_LEVEL; tree_id++) {
 						handle->db_desc->levels[level_id].root_r[tree_id] = NULL;
@@ -563,6 +576,7 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 			}
 		} else {
 			log_warn("DB: %s not found instructed not to create a new one!", db_name);
+			MUTEX_UNLOCK(&init_lock);
 			return NULL;
 		}
 	}
@@ -748,6 +762,13 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 	log_info("medium start %llu medium end %llu", handle->db_desc->medium_log_head,
 		 handle->db_desc->medium_log_tail);
 	log_info("small start %llu small end %llu", handle->db_desc->small_log_head, handle->db_desc->small_log_tail);
+
+	handle->db_desc->gc_db = db_open(volumeName, 0, size, SYSTEMDB, DONOT_CREATE_DB);
+
+	if (!handle->db_desc->gc_db)
+		handle->db_desc->gc_db = db_open(volumeName, 0, size, SYSTEMDB, CREATE_DB);
+
+	assert(handle->db_desc->gc_db);
 
 	return handle;
 }
@@ -1015,10 +1036,7 @@ void *append_key_value_to_log(log_operation *req)
 		allocated_space += BUFFER_SEGMENT_SIZE - (allocated_space % BUFFER_SEGMENT_SIZE);
 
 		if (req->metadata->level_id == 0 && log_metadata.status == MEDIUM_INLOG) {
-			d_header = malloc(SEGMENT_SIZE); /*  (segment_header
-                            *)mspace_memalign(handle->db_desc->inmem_msp,
-                            SEGMENT_SIZE, */
-			/* SEGMENT_SIZE); */
+			d_header = malloc(SEGMENT_SIZE);
 			assert(d_header != NULL);
 			d_header->segment_id = log_metadata.log_tail->segment_id + 1;
 			d_header->prev_segment = (void *)ABSOLUTE_ADDRESS(log_metadata.log_tail);
@@ -1031,6 +1049,7 @@ void *append_key_value_to_log(log_operation *req)
 			d_header->prev_segment = (void *)ABSOLUTE_ADDRESS(log_metadata.log_tail);
 			d_header->next_segment = NULL;
 			log_metadata.log_tail->next_segment = (void *)ABSOLUTE_ADDRESS(d_header);
+			log_metadata.log_tail->segment_end = available_space_in_log;
 			log_metadata.log_tail = d_header;
 		}
 		/* position the log to the newly added block*/
