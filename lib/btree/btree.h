@@ -90,8 +90,10 @@ typedef struct segment_header {
 	void *next_segment;
 	void *prev_segment;
 	uint64_t segment_id;
+	uint64_t segment_garbage_bytes;
+	int moved_kvs;
 	int in_mem;
-	char pad[4068];
+	char pad[4054];
 } segment_header;
 
 /*Note IN stands for Internal Node*/
@@ -331,7 +333,7 @@ typedef struct level_descriptor {
 	double count_leaves;
 	double count_compactions;
 #endif
-	/*volatile */ int64_t active_writers;
+	int64_t active_writers;
 	/*spilling or not?*/
 	uint32_t leaf_size;
 	char tree_status[NUM_TREES_PER_LEVEL];
@@ -466,6 +468,8 @@ typedef struct bt_spill_request {
 /*client API*/
 /*management operations*/
 db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_name, char CREATE_FLAG);
+struct db_handle *bt_restore_db(struct volume_descriptor *volume_desc, struct pr_db_entry *db_entry,
+				struct db_coordinates db_c);
 
 void *compaction_daemon(void *args);
 void flush_volume(volume_descriptor *volume_desc, char force_spill);
