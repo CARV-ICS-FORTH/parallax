@@ -39,7 +39,7 @@
 /*for allocator.c*/
 #define DATA_PER_BITMAP_BLOCK ((DEVICE_BLOCK_SIZE - 8) * 8) /*Data blocks addressed per bitmap block*/
 #define FREE_LOG_SIZE 512000 /*size in 4KB blocks of the log used for marking the free ops*/
-
+#define MAX_KEY_SIZE 255
 #define SEC (1000000L)
 
 #define WORD_SIZE 64

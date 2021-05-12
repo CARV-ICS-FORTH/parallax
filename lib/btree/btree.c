@@ -406,8 +406,8 @@ void init_level_bloom_filters(db_descriptor *db_desc, int level_id, int tree_id)
 /* { */
 /* } */
 
-static struct db_handle *bt_restore_db(struct volume_descriptor *volume_desc, struct pr_db_entry *db_entry,
-				       struct db_coordinates db_c)
+struct db_handle *bt_restore_db(struct volume_descriptor *volume_desc, struct pr_db_entry *db_entry,
+				struct db_coordinates db_c)
 {
 	struct db_handle *handle = calloc(1, sizeof(struct db_handle));
 	struct db_descriptor *db_desc = calloc(1, sizeof(struct db_descriptor));
@@ -511,18 +511,6 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 			db_c = locate_db(volume_desc, db_name, 1);
 		else
 			db_c = locate_db(volume_desc, db_name, 0);
-		/*init all persistent fields levels*/
-		for (int level_id = 0; level_id < MAX_LEVELS; level_id++) {
-			for (int tree_id = 0; tree_id < NUM_TREES_PER_LEVEL; tree_id++) {
-				handle->db_desc->levels[level_id].root_r[tree_id] = NULL;
-				handle->db_desc->levels[level_id].root_w[tree_id] = NULL;
-				handle->db_desc->levels[level_id].level_size[tree_id] = 0;
-				handle->db_desc->levels[level_id].first_segment[tree_id] = NULL;
-				handle->db_desc->levels[level_id].last_segment[tree_id] = NULL;
-				handle->db_desc->levels[level_id].offset[tree_id] = 0;
-				init_leaf_sizes_perlevel(&handle->db_desc->levels[level_id]);
-			}
-		}
 
 		if (db_c.out_of_space) {
 			log_fatal("DB catalogue out of space");
@@ -533,7 +521,7 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 				handle = calloc(1, sizeof(struct db_handle));
 				handle->db_desc = calloc(1, sizeof(struct db_descriptor));
 				handle->volume_desc = volume_desc;
-
+				strcpy(handle->db_desc->db_name, db_name);
 				for (uint8_t level_id = 0; level_id < MAX_LEVELS; level_id++) {
 					for (uint8_t tree_id = 0; tree_id < NUM_TREES_PER_LEVEL; tree_id++) {
 						handle->db_desc->levels[level_id].root_r[tree_id] = NULL;
@@ -662,6 +650,8 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 						 "key_category");
 	_Static_assert(sizeof(struct bt_dynamic_leaf_slot_array) == 4,
 		       "Dynamic slot array is not 4 bytes, are you sure you want to continue?");
+
+	_Static_assert(sizeof(struct segment_header) == 4096, "Sizeof segment header is not page aligned.");
 
 	MUTEX_INIT(&handle->db_desc->lock_log, NULL);
 
@@ -820,8 +810,8 @@ uint8_t insert_key_value(db_handle *handle, void *key, void *value, uint32_t key
 		pthread_mutex_unlock(&handle->db_desc->client_barrier_lock);
 	}
 
-	if (key_size >= 256) {
-		log_info("Keys > 255 bytes are not supported!");
+	if (key_size > MAX_KEY_SIZE) {
+		log_info("Keys > %d bytes are not supported!", MAX_KEY_SIZE);
 		return KREON_FAILED;
 	}
 
@@ -1803,7 +1793,6 @@ release_and_retry:
 	upper_level_nodes[size++] = guard_of_level;
 	/*mark your presence*/
 	__sync_fetch_and_add(num_level_writers, 1);
-
 	mem_catalogue = ins_req->metadata.handle->volume_desc->mem_catalogue;
 
 	father = NULL;
