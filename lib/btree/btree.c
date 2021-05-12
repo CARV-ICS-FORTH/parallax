@@ -480,6 +480,7 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 	if (!(volume_desc = get_volume_desc(volumeName, start, 0)))
 		volume_desc = get_volume_desc(volumeName, start, 1);
 
+	assert(volume_desc->open_databases);
 	if (index_order == -1) {
 		index_order = (INDEX_NODE_SIZE - sizeof(node_header)) / (2 * sizeof(uint64_t));
 		index_order -= 2; /*more space for extra pointer, and for rebalacing (merge)*/
@@ -631,8 +632,8 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 	static int gc_thread_spawned = 0;
 	if (!gc_thread_spawned) {
 		++gc_thread_spawned;
-		if (pthread_create(&(handle->db_desc->gc_thread), NULL, (void *)gc_log_entries,
-				   (void *)handle->volume_desc) != 0) {
+		assert(handle->volume_desc->open_databases);
+		if (pthread_create(&(handle->db_desc->gc_thread), NULL, (void *)gc_log_entries, (void *)handle) != 0) {
 			log_fatal("Failed to start compaction_daemon for db %s", db_name);
 			exit(EXIT_FAILURE);
 		}

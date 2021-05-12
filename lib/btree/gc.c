@@ -193,7 +193,6 @@ void *gc_log_entries(void *handle)
 	volume_descriptor *volume_desc = han->volume_desc;
 	struct klist_node *region;
 	/* int rc; */
-
 	marks = malloc(sizeof(stack));
 	if (!marks) {
 		log_error("ERROR i could not allocate stack");
@@ -232,13 +231,12 @@ void *gc_log_entries(void *handle)
 			pthread_exit(NULL);
 		}
 
-		iterate_log_segments(db_desc, volume_desc, marks);
 		if (volume_desc->open_databases) {
 			region = klist_get_first(volume_desc->open_databases);
-
+			assert(region);
 			while (region != NULL) {
 				db_desc = (db_descriptor *)region->data;
-				iterate_log_segments(db_desc, volume_desc, marks);
+				//iterate_log_segments(db_desc, volume_desc, marks);
 				region = region->next;
 			}
 			log_debug("Garbage Collection Finished");
