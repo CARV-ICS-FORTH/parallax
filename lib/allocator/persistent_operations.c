@@ -273,10 +273,6 @@ void snapshot(volume_descriptor *volume_desc)
 				}
 			}
 			/*KV log status, not needed commit log is the truth*/
-			//db_group->db_entries[db_desc->group_index].KV_log_first_segment = (segment_header *)((uint64_t)db_desc->KV_log_first_segment - MAPPED);
-			//db_group->db_entries[db_desc->group_index].KV_log_last_segment =  (segment_header *)((uint64_t)db_desc->KV_log_last_segment - MAPPED);
-			//db_group->db_entries[db_desc->group_index].KV_log_size = (uint64_t)db_desc->KV_log_size;
-			/* db_entry->commit_log = ABSOLUTE_ADDRESS(db_desc->commit_log); */
 
 			/*L0 bounds*/
 			log_info.big_log_head = (segment_header *)db_desc->big_log_head;
