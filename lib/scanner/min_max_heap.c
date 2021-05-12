@@ -10,6 +10,7 @@
 #include <log.h>
 #include "min_max_heap.h"
 #include "../btree/btree.h"
+#include "../../utilities/dups_list.h"
 
 #define LCHILD(x) ((2 * x) + 1)
 #define RCHILD(x) ((2 * x) + 2)
@@ -21,7 +22,7 @@ static int sh_cmp_heap_nodes(struct sh_min_heap *hp, struct sh_heap_node *nd_1, 
 struct sh_min_heap *sh_alloc_heap(void)
 {
 	struct sh_min_heap *new_heap = calloc(1, sizeof(struct sh_min_heap));
-	new_heap->duplicate_large_kvs = calloc(GC_ARRAY_SIZE, sizeof(struct sh_heap_node));
+	new_heap->dups = init_dups_list();
 	return new_heap;
 }
 
@@ -31,15 +32,14 @@ struct sh_min_heap *sh_alloc_heap(void)
 void sh_init_heap(struct sh_min_heap *heap, int active_tree)
 {
 	heap->heap_size = 0;
-	heap->dup_array_entries = 0;
-	memset(heap->duplicate_large_kvs, 0, GC_ARRAY_SIZE * sizeof(struct sh_heap_node));
+	heap->dups = init_dups_list();
 	heap->active_tree = active_tree;
 }
 
 /*Destroy a min heap that was allocated using dynamic memory */
 void sh_destroy_heap(struct sh_min_heap *heap)
 {
-	free(heap->duplicate_large_kvs);
+	free_dups_list(&heap->dups);
 	free(heap);
 }
 
@@ -71,12 +71,21 @@ static inline void heapify(struct sh_min_heap *hp, int i)
 
 static void push_back_duplicate_kv(struct sh_min_heap *heap, struct sh_heap_node *hp_node)
 {
-	assert(heap->dup_array_entries < GC_ARRAY_SIZE);
-	log_info("Hello");
-
 	if (hp_node->cat == BIG_INLOG) {
-		heap->duplicate_large_kvs[heap->dup_array_entries++] = *hp_node;
-		log_info("Hello");
+		struct bt_leaf_entry *keyvalue = hp_node->KV;
+		uint64_t segment_offset =
+			ABSOLUTE_ADDRESS(keyvalue->pointer) - (ABSOLUTE_ADDRESS(keyvalue->pointer) % SEGMENT_SIZE);
+		char *kv = (char *)keyvalue->pointer;
+		uint32_t key_size = *(uint32_t *)kv;
+		assert(key_size < MAX_KEY_SIZE);
+		uint32_t value_size = *(uint32_t *)(kv + sizeof(uint32_t) + key_size);
+		struct dups_node *node = find_element(heap->dups, (uint64_t)REAL_ADDRESS(segment_offset));
+
+		if (node)
+			node->kv_size += key_size + value_size + (sizeof(uint32_t) * 2);
+		else
+			append_node(heap->dups, (uint64_t)REAL_ADDRESS(segment_offset),
+				    key_size + value_size + (sizeof(uint32_t) * 2));
 	}
 }
 

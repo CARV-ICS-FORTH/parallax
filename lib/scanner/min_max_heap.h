@@ -1,10 +1,10 @@
 #pragma once
 #include <stdint.h>
 #include "../btree/btree.h"
+#include "../../utilities/dups_list.h"
 
 enum sh_heap_status { EMPTY_MIN_HEAP = 4, GOT_MIN_HEAP = 5 };
 #define HEAP_SIZE 32
-#define GC_ARRAY_SIZE 1024
 
 struct sh_heap_node {
 	void *KV;
@@ -18,9 +18,8 @@ struct sh_heap_node {
 
 struct sh_min_heap {
 	struct sh_heap_node elem[HEAP_SIZE];
-	struct sh_heap_node *duplicate_large_kvs;
+	struct dups_list *dups;
 	int heap_size;
-	int dup_array_entries;
 	int active_tree;
 };
 
