@@ -1598,6 +1598,11 @@ struct volume_descriptor *get_volume_desc(char *volume_name, uint64_t start_offt
 		digits = 1;
 
 	char *key = calloc(1, strlen(volume_name) + digits + 1);
+	if (!key) {
+		log_fatal("Calloc failed");
+		exit(EXIT_FAILURE);
+	}
+
 	strcpy(key, volume_name);
 	sprintf(key + strlen(volume_name), "%llu", (long long unsigned)start_offt);
 	struct volume_descriptor *volume_desc = (volume_descriptor *)klist_find_element_with_key(volume_list, key);
@@ -1606,6 +1611,11 @@ struct volume_descriptor *get_volume_desc(char *volume_name, uint64_t start_offt
 		goto exit;
 	else if (volume_desc == NULL && create) {
 		volume_desc = calloc(1, sizeof(volume_descriptor));
+		if (!volume_desc) {
+			log_fatal("Calloc failed");
+			exit(EXIT_FAILURE);
+		}
+
 		volume_desc->state = VOLUME_IS_OPEN;
 		volume_desc->snap_preemption = SNAP_INTERRUPT_DISABLE;
 		volume_desc->last_snapshot = get_timestamp();

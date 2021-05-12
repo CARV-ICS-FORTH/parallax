@@ -43,7 +43,11 @@ char *node_type(nodeType_t type)
  */
 level_scanner *_init_spill_buffer_scanner(db_handle *handle, int level_id, node_header *node, void *start_key)
 {
-	level_scanner *level_sc = malloc(sizeof(level_scanner));
+	level_scanner *level_sc = calloc(1, sizeof(level_scanner));
+	if (!level_sc) {
+		log_fatal("Calloc failed");
+		exit(EXIT_FAILURE);
+	}
 	assert(level_sc);
 	stack_init(&level_sc->stack);
 	level_sc->db = handle;
