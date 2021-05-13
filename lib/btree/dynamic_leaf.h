@@ -17,6 +17,29 @@ struct dl_bsearch_result {
 	enum bt_dynamic_leaf_operation op;
 };
 
+struct prefix {
+	char *prefix;
+	uint32_t len;
+};
+
+struct write_dynamic_leaf_args {
+	struct bt_dynamic_leaf_node *leaf;
+	char *dest;
+	char *key_value_buf;
+	uint64_t kv_dev_offt;
+	uint32_t key_value_size;
+	uint32_t middle;
+	int level_id;
+	int kv_format;
+	enum log_category cat;
+};
+
+char *get_leaf_log_offset(const struct bt_dynamic_leaf_node *leaf, const uint32_t leaf_size);
+void write_data_in_dynamic_leaf(struct write_dynamic_leaf_args *args);
+
+char *fill_keybuf(char *key_loc, enum kv_entry_location key_type);
+void fill_prefix(struct prefix *key, char *key_loc, enum kv_entry_location key_type);
+
 int8_t insert_in_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, bt_insert_req *req, level_descriptor *level);
 struct find_result find_key_in_dynamic_leaf(const struct bt_dynamic_leaf_node *leaf, uint32_t leaf_size, void *key,
 					    uint32_t key_size, int level_id);

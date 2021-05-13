@@ -54,6 +54,8 @@ typedef enum {
 	internalNode = 790393380,
 	rootNode = 742729384,
 	leafRootNode = 748939994, /*special case for a newly created tree*/
+	keyBlockHeader = 5550000,
+	paddedSpace = 55400000,
 	invalid
 } nodeType_t;
 
@@ -87,12 +89,15 @@ typedef struct segment_header {
 
 /*Note IN stands for Internal Node*/
 typedef struct IN_log_header {
+	nodeType_t type;
 	void *next;
-	/*XXX TODO XXX, add garbage info in the future?*/
 } IN_log_header;
 
 /*leaf or internal node metadata, place always in the first 4KB data block*/
 typedef struct node_header {
+	nodeType_t type; /*internal or leaf node*/
+	int32_t height; /*0 are leaves, 1 are Bottom Internal nodes, and then we have
+			  INs and root*/
 	uint64_t epoch; /*epoch of the node. It will be used for knowing when to
                      perform copy on write*/
 	uint64_t fragmentation;
@@ -106,9 +111,7 @@ typedef struct node_header {
 	uint64_t num_entries;
 	IN_log_header *first_IN_log_header;
 	IN_log_header *last_IN_log_header;
-	int32_t height; /*0 are leaves, 1 are Bottom Internal nodes, and then we have
-			  INs and root*/
-	nodeType_t type; /*internal or leaf node*/
+
 	char pad[8];
 } __attribute__((packed)) node_header;
 
@@ -562,6 +565,7 @@ typedef struct spill_data_totrigger {
 uint8_t insert_key_value(db_handle *handle, void *key, void *value, uint32_t key_size, uint32_t value_size);
 uint8_t _insert_key_value(bt_insert_req *ins_req);
 
+void *append_key_value_to_log(log_operation *req);
 uint8_t _insert_index_entry(db_handle *db, kv_location *location, int INSERT_FLAGS);
 void *find_key(db_handle *handle, void *key, uint32_t key_size);
 void *__find_key(db_handle *handle, void *key);

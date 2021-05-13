@@ -1,5 +1,7 @@
 #define _GNU_SOURCE
 #define COMPACTION
+#include <sys/mman.h>
+
 #include <semaphore.h>
 #include <string.h>
 #include <stdint.h>
@@ -12,6 +14,7 @@
 #include "gc.h"
 #include "segment_allocator.h"
 #include "conf.h"
+#include "dynamic_leaf.h"
 #include "../scanner/scanner.h"
 #include "../scanner/min_max_heap.h"
 #include "../allocator/allocator.h"
@@ -22,16 +25,791 @@
 /* Checks for pending compactions. It is responsible to check for dependencies
  * between two levels before triggering a compaction. */
 extern sem_t gc_daemon_interrupts;
-#if 0
-static void prepare_kvs_forgc(db_handle *handle, struct sh_min_heap *heap)
+
+struct comp_level_write_cursor {
+	char segment_buf[MAX_HEIGHT][SEGMENT_SIZE];
+	uint64_t segment_offt[MAX_HEIGHT];
+	uint64_t dev_offt[MAX_HEIGHT];
+	struct index_node *last_index[MAX_HEIGHT];
+	struct bt_dynamic_leaf_node *last_leaf;
+	uint64_t root_offt;
+	db_handle *handle;
+	uint32_t level_id;
+	uint32_t tree_height;
+	int fd;
+};
+
+enum comp_level_read_cursor_state {
+	COMP_CUR_INIT,
+	COMP_CUR_FIND_LEAF,
+	COMP_CUR_FETCH_NEXT_SEGMENT,
+	COMP_CUR_DECODE_KV,
+	COMP_CUR_CHECK_OFFT
+};
+
+// in log
+struct comp_kv_prefix {
+	char prefix[PREFIX_SIZE];
+	uint64_t device_offt;
+} __attribute__((packed));
+
+// in place
+struct comp_kv_format {
+	char *kv_loc;
+};
+
+struct comp_kv_prefix *prefix_2_comp_kv_prefix(struct prefix *p, enum log_category cat)
 {
-	for (int i = 0; i < heap->dup_array_entries; ++i) {
-		char *pointer_inlog =
-			(char *)ABSOLUTE_ADDRESS(*(uint64_t *)(heap->duplicate_large_kvs[i].KV + PREFIX_SIZE));
-		insert_key_value(handle->db_desc->gc_db, pointer_inlog, "1", sizeof(uint64_t), 2);
+	struct comp_kv_prefix *c_prefix;
+	switch (cat) {
+	case SMALL_INPLACE:
+	case MEDIUM_INPLACE:
+		log_warn("Impossible conversion");
+		return NULL;
+	case MEDIUM_INLOG:
+	case BIG_INLOG:
+		c_prefix = (struct comp_kv_prefix *)p->prefix;
+		break;
+	default:
+		log_fatal("Wrong category");
+		exit(EXIT_FAILURE);
+	}
+	return c_prefix;
+}
+
+struct comp_parallax_key {
+	struct prefix P;
+	union {
+		struct comp_kv_prefix *in_log;
+		struct comp_kv_format in_place;
+	};
+	enum log_category kv_category;
+	enum kv_entry_location kv_type;
+};
+
+struct comp_level_read_cursor {
+	char segment_buf[SEGMENT_SIZE];
+	struct comp_parallax_key cursor_key;
+	uint64_t device_offt;
+	int fd;
+	uint64_t offset;
+	db_handle *handle;
+	segment_header *curr_segment;
+	uint32_t level_id;
+	uint32_t tree_id;
+	uint32_t curr_leaf_entry;
+	char end_of_level;
+	enum log_category category;
+	enum comp_level_read_cursor_state state;
+};
+
+static uint32_t comp_calc_offt_in_seg(char *buffer_start, char *addr)
+{
+	uint64_t start = (uint64_t)buffer_start;
+	uint64_t end = (uint64_t)addr;
+	if (end < start) {
+		log_fatal("End should be greater than start!");
+		exit(EXIT_FAILURE);
+	}
+	uint32_t ret = (end - start) % SEGMENT_SIZE;
+	return ret;
+}
+
+static void comp_write_segment(char *buffer, uint64_t dev_offt, uint32_t buf_offt, uint32_t size, int fd)
+{
+#if 0
+  struct node_header *n = (struct node_header *)&buffer[buf_offt];
+  switch (n->type) {
+  case rootNode:
+  case internalNode: {
+    uint32_t decoded = buf_offt;
+    while (decoded < SEGMENT_SIZE) {
+
+      if (n->type == paddedSpace)
+        break;
+      assert(n->type == rootNode || n->type == internalNode);
+      n = (struct node_header *)((uint64_t)n + INDEX_NODE_SIZE +
+                                 KEY_BLOCK_SIZE);
+      decoded += (INDEX_NODE_SIZE + KEY_BLOCK_SIZE);
+    }
+    break;
+  }
+  case leafNode:
+  case leafRootNode: {
+    int num_leaves = 0;
+		int padded = 0;
+    uint32_t decoded = buf_offt;
+    while (decoded < SEGMENT_SIZE) {
+
+      if (n->type == paddedSpace) {
+        log_warn("Found padded space in leaf segment ok");
+				padded = 1;
+				break;
+      }
+      if (n->type != leafNode && n->type != leafRootNode) {
+        log_fatal("Corruption expected leaf got %u decoded was %u", n->type,
+                  decoded);
+        assert(0);
+      }
+      ++num_leaves;
+      n = (struct node_header *)((uint64_t)n + LEAF_NODE_SIZE);
+      decoded += LEAF_NODE_SIZE;
+    }
+		if(padded)
+			break;
+    assert(num_leaves == 511);
+    break;
+  }
+  case paddedSpace:
+    break;
+  default:
+    assert(0);
+  }
+#endif
+	ssize_t total_bytes_written = buf_offt;
+	ssize_t bytes_written = 0;
+	while (total_bytes_written < size) {
+		bytes_written = pwrite(fd, &buffer[total_bytes_written], size - total_bytes_written,
+				       dev_offt + total_bytes_written);
+		if (bytes_written == -1) {
+			log_fatal("Failed to writed segment for leaf nodes reason follows");
+			perror("Reason");
+			exit(EXIT_FAILURE);
+		}
+		total_bytes_written += bytes_written;
+	}
+#if 0
+	if (fsync(fd)) {
+		log_fatal("Failed to sync file");
+		exit(EXIT_FAILURE);
+	}
+#endif
+	return;
+}
+
+static void comp_init_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, struct volume_descriptor *volume_desc)
+{
+	leaf->header.type = leafNode;
+	leaf->header.epoch = volume_desc->mem_catalogue->epoch;
+	leaf->header.num_entries = 0;
+	leaf->header.fragmentation = 0;
+
+	leaf->header.first_IN_log_header = NULL; /*unused field in leaves*/
+	leaf->header.last_IN_log_header = NULL; /*unused field in leaves*/
+	leaf->header.leaf_log_size = 0;
+	leaf->header.height = 0;
+}
+
+static void comp_init_read_cursor(struct comp_level_read_cursor *c, db_handle *handle, uint32_t level_id,
+				  uint32_t tree_id, int fd)
+{
+	c->fd = fd;
+	c->offset = 0;
+	c->handle = handle;
+	c->curr_segment = NULL;
+	c->level_id = level_id;
+	c->tree_id = tree_id;
+	c->curr_leaf_entry = 0;
+	c->end_of_level = 0;
+	c->state = COMP_CUR_FETCH_NEXT_SEGMENT;
+	return;
+}
+
+static void comp_get_next_key(struct comp_level_read_cursor *c)
+{
+	uint32_t level_leaf_size = c->handle->db_desc->levels[c->level_id].leaf_size;
+	if (c == NULL) {
+		log_fatal("NULL cursor!");
+		assert(0);
+		exit(EXIT_FAILURE);
+	}
+	if (c->end_of_level)
+		return;
+	while (1) {
+	fsm_entry:
+		switch (c->state) {
+		case COMP_CUR_CHECK_OFFT: {
+			if (c->offset >= c->handle->db_desc->levels[c->level_id].offset[c->tree_id]) {
+				log_info("Done read level %u", c->level_id);
+				c->end_of_level = 1;
+				assert(c->offset == c->handle->db_desc->levels[c->level_id].offset[c->tree_id]);
+				return;
+			}
+			if (c->offset % SEGMENT_SIZE == 0)
+				c->state = COMP_CUR_FETCH_NEXT_SEGMENT;
+			else
+				c->state = COMP_CUR_FIND_LEAF;
+			break;
+		}
+
+		case COMP_CUR_FETCH_NEXT_SEGMENT: {
+			if (c->curr_segment == NULL) {
+				c->curr_segment = c->handle->db_desc->levels[c->level_id].first_segment[c->tree_id];
+			} else {
+				if (c->curr_segment->next_segment == NULL) {
+					assert((uint64_t)c->curr_segment ==
+					       (uint64_t)c->handle->db_desc->levels[c->level_id]
+						       .last_segment[c->tree_id]);
+					log_info("Done parsing cursor offset %llu total offt %llu", c->offset,
+						 c->handle->db_desc->levels[c->level_id].offset[c->tree_id]);
+					c->state = COMP_CUR_CHECK_OFFT;
+					goto fsm_entry;
+				} else
+					c->curr_segment =
+						(segment_header *)REAL_ADDRESS((uint64_t)c->curr_segment->next_segment);
+			}
+
+			// log_info("Fetching next segment id %llu", c->curr_segment->segment_id);
+			/*read the segment*/
+			off_t dev_offt = ABSOLUTE_ADDRESS(c->curr_segment);
+			ssize_t bytes_read = sizeof(struct segment_header);
+			ssize_t bytes = 0;
+			while (bytes_read < SEGMENT_SIZE) {
+				bytes = pread(c->fd, &c->segment_buf[bytes_read], SEGMENT_SIZE - bytes_read,
+					      dev_offt + bytes_read);
+				if (bytes == -1) {
+					log_fatal("Failed to read error code");
+					perror("Error");
+					assert(0);
+					exit(EXIT_FAILURE);
+				}
+				bytes_read += bytes;
+			}
+			c->offset += sizeof(struct segment_header);
+			c->state = COMP_CUR_FIND_LEAF;
+			break;
+		}
+
+		case COMP_CUR_DECODE_KV: {
+			struct bt_dynamic_leaf_node *leaf =
+				(struct bt_dynamic_leaf_node *)((uint64_t)c->segment_buf + (c->offset % SEGMENT_SIZE));
+			// slot array entry
+			if (c->curr_leaf_entry >= leaf->header.num_entries) {
+				// done with this leaf
+				c->curr_leaf_entry = 0;
+				c->offset += level_leaf_size;
+				c->state = COMP_CUR_CHECK_OFFT;
+				break;
+			} else {
+				struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(leaf);
+
+				c->category = slot_array[c->curr_leaf_entry].key_category;
+				char *kv_loc =
+					get_kv_offset(leaf, level_leaf_size, slot_array[c->curr_leaf_entry].index);
+				switch (c->category) {
+				case SMALL_INPLACE:
+				case MEDIUM_INPLACE: {
+					// Real key in KV_FORMAT
+					c->cursor_key.in_place.kv_loc =
+						fill_keybuf(kv_loc, slot_array[c->curr_leaf_entry].bitmap);
+					break;
+				}
+				case MEDIUM_INLOG:
+				case BIG_INLOG: {
+					// fill_prefix(&c->cursor_key.P, kv_loc,
+					// slot_array[c->curr_leaf_entry].bitmap);
+					// c->cursor_key.in_log = prefix_2_comp_kv_prefix(&c->cursor_key.P,
+					// c->category);
+					c->cursor_key.in_log = (struct comp_kv_prefix *)kv_loc;
+					c->cursor_key.in_log->device_offt =
+						(uint64_t)REAL_ADDRESS(c->cursor_key.in_log->device_offt);
+					// log_info("prefix is %.12s dev_offt %llu",
+					// c->cursor_key.in_log->prefix,
+					//	 c->cursor_key.in_log->device_offt);
+					break;
+				}
+				default:
+					log_fatal("Cannot handle this category");
+					assert(0);
+					exit(EXIT_FAILURE);
+				}
+				++c->curr_leaf_entry;
+				return;
+			}
+		}
+
+		case COMP_CUR_FIND_LEAF: {
+			/*read four bytes to check what is the node format*/
+			nodeType_t type = *(uint32_t *)(&c->segment_buf[c->offset % SEGMENT_SIZE]);
+			switch (type) {
+			case leafNode:
+			case leafRootNode:
+				//__sync_fetch_and_add(&leaves, 1);
+				//log_info("Found a leaf!");
+				c->state = COMP_CUR_DECODE_KV;
+				goto fsm_entry;
+
+			case rootNode:
+			case internalNode:
+				//log_info("Found an internal");
+				c->offset += INDEX_NODE_SIZE;
+				c->state = COMP_CUR_CHECK_OFFT;
+				goto fsm_entry;
+
+			case keyBlockHeader:
+				//log_info("Found a keyblock header");
+				c->offset += KEY_BLOCK_SIZE;
+				c->state = COMP_CUR_CHECK_OFFT;
+				goto fsm_entry;
+
+			case paddedSpace:
+				//log_info("Found padded space of size %llu",
+				//	 (SEGMENT_SIZE - (c->offset % SEGMENT_SIZE)));
+				c->offset += (SEGMENT_SIZE - (c->offset % SEGMENT_SIZE));
+				c->state = COMP_CUR_CHECK_OFFT;
+				goto fsm_entry;
+			default:
+				log_fatal("Faulty read cursor of level %u Wrong node type %u offset "
+					  "was %llu total level offset %llu",
+					  c->level_id, type, c->offset,
+					  c->handle->db_desc->levels[c->level_id].offset[0]);
+				assert(0);
+				exit(EXIT_FAILURE);
+			}
+
+			break;
+		}
+		default:
+			log_fatal("Error state");
+			assert(0);
+			exit(EXIT_FAILURE);
+		}
 	}
 }
+
+static void comp_init_write_cursor(struct comp_level_write_cursor *c, struct db_handle *handle, int level_id, int fd)
+{
+	c->level_id = level_id;
+	c->tree_height = 0;
+
+	c->fd = fd;
+	c->handle = handle;
+	uint32_t level_leaf_size = c->handle->db_desc->levels[level_id].leaf_size;
+
+	for (int i = 0; i < MAX_HEIGHT; i++) {
+		struct segment_header *seg = get_segment_for_explicit_IO(c->handle->volume_desc,
+									 &c->handle->db_desc->levels[c->level_id], 1);
+
+		c->dev_offt[i] = ABSOLUTE_ADDRESS(seg);
+		// log_info("Got dev_offt[%d] = %llu", i, c->dev_offt[i]);
+		c->segment_offt[i] = sizeof(struct segment_header);
+		if (i == 0) {
+			c->last_index[0] = NULL;
+			c->last_leaf =
+				(struct bt_dynamic_leaf_node *)&c->segment_buf[0][c->segment_offt[0] % SEGMENT_SIZE];
+			comp_init_dynamic_leaf(c->last_leaf, c->handle->volume_desc);
+			c->segment_offt[0] += level_leaf_size;
+		} else {
+			c->last_index[i] = (struct index_node *)&c->segment_buf[i][c->segment_offt[i] % SEGMENT_SIZE];
+
+			/*initialization*/
+			c->last_index[i]->header.type = internalNode;
+			c->last_index[i]->header.height = i;
+			c->last_index[i]->header.epoch = c->handle->volume_desc->mem_catalogue->epoch;
+			c->last_index[i]->header.num_entries = 0;
+			c->last_index[i]->header.fragmentation = 0;
+			/*private key log for index nodes*/
+			IN_log_header *bh = (IN_log_header *)((uint64_t)c->dev_offt[i] +
+							      (c->segment_offt[i] % SEGMENT_SIZE) + INDEX_NODE_SIZE);
+
+			IN_log_header *tmp = (IN_log_header *)&c->segment_buf[i][(uint64_t)bh % SEGMENT_SIZE];
+			tmp->type = keyBlockHeader;
+			tmp->next = (void *)NULL;
+			c->last_index[i]->header.first_IN_log_header = bh;
+			c->last_index[i]->header.last_IN_log_header = c->last_index[i]->header.first_IN_log_header;
+			c->last_index[i]->header.key_log_size = sizeof(IN_log_header);
+			c->segment_offt[i] += (INDEX_NODE_SIZE + KEY_BLOCK_SIZE);
+		}
+	}
+	return;
+}
+
+static void comp_close_write_cursor(struct comp_level_write_cursor *c)
+{
+	uint32_t level_leaf_size = c->handle->db_desc->levels[c->level_id].leaf_size;
+	for (uint32_t i = 0; i < MAX_HEIGHT; i++) {
+		uint32_t *type;
+		if (i <= c->tree_height) {
+			if (i == 0 && c->segment_offt[i] % SEGMENT_SIZE != 0) {
+				type = (uint32_t *)((uint64_t)c->last_leaf + level_leaf_size);
+				// log_info("Marking padded space for %u segment offt %llu", i,
+				// c->segment_offt[0]);
+				*type = paddedSpace;
+			} else if (i > 0 && c->segment_offt[i] % SEGMENT_SIZE != 0) {
+				type = (uint32_t *)((uint64_t)(c->last_index[i]) + INDEX_NODE_SIZE + KEY_BLOCK_SIZE);
+				// log_info("Marking padded space for %u segment offt %llu entries of
+				// last node %llu", i,
+				//	 c->segment_offt[i], c->last_index[i]->header.num_entries);
+				*type = paddedSpace;
+			}
+		} else {
+			type = (uint32_t *)&c->segment_buf[i][c->segment_offt[i]];
+			*type = paddedSpace;
+			// log_info("Marking full padded space for leaves segment offt %llu", i,
+			// c->segment_offt[i]);
+		}
+
+		if (i == c->tree_height) {
+			// log_info("Merged level has a height off %u", c->tree_height);
+			c->last_index[i]->header.type = rootNode;
+			uint32_t offt = comp_calc_offt_in_seg(c->segment_buf[i], (char *)c->last_index[i]);
+			c->root_offt = c->dev_offt[i] + offt;
+		}
+
+		comp_write_segment(c->segment_buf[i], c->dev_offt[i], sizeof(struct segment_header), SEGMENT_SIZE,
+				   c->fd);
+		// log_info("Dumped buffer %u at dev_offt %llu",i,c->dev_offt[i]);
+	}
+#if 0
+	if (fsync(c->fd)) {
+		log_fatal("Failed to sync file");
+		exit(EXIT_FAILURE);
+	}
 #endif
+
+	return;
+}
+
+/*mini allocator*/
+static void comp_get_space(struct comp_level_write_cursor *c, uint32_t height, nodeType_t type)
+{
+	uint32_t level_leaf_size = c->handle->db_desc->levels[c->level_id].leaf_size;
+	switch (type) {
+	case leafNode:
+	case leafRootNode: {
+		uint32_t remaining_space;
+		if (c->segment_offt[0] > 0 && c->segment_offt[0] % SEGMENT_SIZE == 0)
+			remaining_space = 0;
+		else
+			remaining_space = SEGMENT_SIZE - (c->segment_offt[0] % SEGMENT_SIZE);
+		if (remaining_space < level_leaf_size) {
+			if (remaining_space > 0) {
+				*(uint32_t *)(&c->segment_buf[0][c->segment_offt[0] % SEGMENT_SIZE]) = paddedSpace;
+				c->segment_offt[0] += remaining_space;
+			}
+			comp_write_segment(c->segment_buf[0], c->dev_offt[0], sizeof(struct segment_header),
+					   SEGMENT_SIZE, c->fd);
+// uint32_t *type = (uint32_t *)&c->segment_buf[0][4096];
+// assert(*type == leafNode || *type == leafRootNode);
+#if 0
+			if (fsync(FD) != 0) {
+				log_fatal("Failed to sync file!");
+				perror("Reason:\n");
+				exit(EXIT_FAILURE);
+			}
+#endif
+			// type = (uint32_t *)(MAPPED + c->dev_offt[0] + 4096);
+			// assert(*type == leafNode || *type == leafRootNode);
+			// type = (uint32_t
+			// *)((uint64_t)c->handle->db_desc->levels[1].first_segment[1] + 4096);
+			// log_info("dev_offt %llu first segment %llu", c->dev_offt[0],
+			//	 (uint64_t)c->handle->db_desc->levels[1].first_segment[1] -
+			// MAPPED);
+			// assert(*type == leafNode || *type == leafRootNode);
+
+			// log_info("Dumped leaf segment buffer");
+			/*get space from allocator*/
+			struct segment_header *seg = get_segment_for_explicit_IO(
+				c->handle->volume_desc, &c->handle->db_desc->levels[c->level_id], 1);
+			c->dev_offt[0] = ABSOLUTE_ADDRESS(seg);
+			c->segment_offt[0] += sizeof(struct segment_header);
+		}
+		c->last_leaf = (struct bt_dynamic_leaf_node *)(&c->segment_buf[0][(c->segment_offt[0] % SEGMENT_SIZE)]);
+		comp_init_dynamic_leaf(c->last_leaf, c->handle->volume_desc);
+		c->segment_offt[0] += level_leaf_size;
+		break;
+	}
+	case internalNode:
+	case rootNode: {
+		uint32_t remaining_space;
+		if (c->segment_offt[height] > 0 && c->segment_offt[height] % SEGMENT_SIZE == 0)
+			remaining_space = 0;
+		else
+			remaining_space = SEGMENT_SIZE - (c->segment_offt[height] % SEGMENT_SIZE);
+
+		if (remaining_space < (INDEX_NODE_SIZE + KEY_BLOCK_SIZE)) {
+			if (remaining_space > 0) {
+				*(uint32_t *)(&c->segment_buf[height][c->segment_offt[height] % SEGMENT_SIZE]) =
+					paddedSpace;
+				c->segment_offt[height] += remaining_space;
+			}
+
+			comp_write_segment(c->segment_buf[height], c->dev_offt[height], sizeof(struct segment_header),
+					   SEGMENT_SIZE, c->fd);
+
+			// log_info("Dumped index %d segment buffer", height);
+			/*get space from allocator*/
+			struct segment_header *seg = get_segment_for_explicit_IO(
+				c->handle->volume_desc, &c->handle->db_desc->levels[c->level_id], 1);
+			c->segment_offt[height] += sizeof(struct segment_header);
+			c->dev_offt[height] = ABSOLUTE_ADDRESS(seg);
+		}
+		c->last_index[height] =
+			(struct index_node *)&c->segment_buf[height][c->segment_offt[height] % SEGMENT_SIZE];
+
+		/*initialization*/
+		c->last_index[height]->header.type = type;
+		c->last_index[height]->header.height = height;
+		c->last_index[height]->header.epoch = c->handle->volume_desc->mem_catalogue->epoch;
+		c->last_index[height]->header.num_entries = 0;
+		c->last_index[height]->header.fragmentation = 0;
+		/*private key log for index nodes*/
+		IN_log_header *bh = (IN_log_header *)((uint64_t)c->dev_offt[height] +
+						      (c->segment_offt[height] % SEGMENT_SIZE) + INDEX_NODE_SIZE);
+
+		IN_log_header *tmp = (IN_log_header *)&c->segment_buf[height][(uint64_t)bh % SEGMENT_SIZE];
+		// IN_log_header *bh =
+		//   (IN_log_header *)((uint64_t)c->last_index[height] + INDEX_NODE_SIZE);
+		// bh->type = keyBlockHeader;
+		// bh->next = (void *)NULL;
+		tmp->type = keyBlockHeader;
+		tmp->next = NULL;
+		c->last_index[height]->header.first_IN_log_header = bh;
+		//(IN_log_header *)((uint64_t)c->dev_offt[height] + ((uint64_t)bh %
+		// SEGMENT_SIZE));
+		c->last_index[height]->header.last_IN_log_header = c->last_index[height]->header.first_IN_log_header;
+		c->last_index[height]->header.key_log_size = sizeof(IN_log_header);
+		c->segment_offt[height] += (INDEX_NODE_SIZE + KEY_BLOCK_SIZE);
+		break;
+	}
+	default:
+		log_fatal("Wrong type");
+		exit(EXIT_FAILURE);
+	}
+}
+
+static void comp_append_pivot_to_index(struct comp_level_write_cursor *c, uint64_t left_node_offt,
+				       uint64_t right_node_offt, char *pivot, uint32_t height)
+{
+	uint32_t pivot_size = sizeof(uint32_t) + KEY_SIZE(pivot);
+	assert(pivot_size < 25);
+	uint64_t left_index_offt;
+	uint64_t right_index_offt;
+	uint32_t new_index = 0;
+	char *new_pivot = NULL;
+	char *new_pivot_buf = NULL;
+
+	uint32_t remaining_in_index_log;
+	if (c->last_index[height]->header.key_log_size % KEY_BLOCK_SIZE == 0)
+		remaining_in_index_log = 0;
+	else
+		remaining_in_index_log = KEY_BLOCK_SIZE - (c->last_index[height]->header.key_log_size % KEY_BLOCK_SIZE);
+
+	if (c->tree_height < height)
+		c->tree_height = height;
+
+	if (c->last_index[height]->header.num_entries >= (uint32_t)index_order || remaining_in_index_log < pivot_size) {
+		// node if full
+		/*keep current aka left leaf offt*/
+
+		uint32_t offt_l = comp_calc_offt_in_seg(c->segment_buf[height], (char *)c->last_index[height]);
+		left_index_offt = c->dev_offt[height] + offt_l;
+		uint64_t offt = c->last_index[height]->p[c->last_index[height]->header.num_entries - 1].pivot;
+
+		new_pivot = &c->segment_buf[height][offt % SEGMENT_SIZE];
+		// assert(*(uint32_t *)new_pivot > 0);
+		new_pivot_buf = (char *)malloc(*(uint32_t *)new_pivot + sizeof(uint32_t));
+		memcpy(new_pivot_buf, new_pivot, *(uint32_t *)new_pivot + sizeof(uint32_t));
+		// log_info("Done adding pivot %s for height %u", new_pivot + 4, height);
+		--c->last_index[height]->header.num_entries;
+		comp_get_space(c, height, internalNode);
+		/*last leaf updated*/
+		uint32_t offt_r = comp_calc_offt_in_seg(c->segment_buf[height], (char *)c->last_index[height]);
+		right_index_offt = c->dev_offt[height] + offt_r;
+		new_index = 1;
+	}
+	/*copy pivot*/
+	uint64_t pivot_offt = (uint64_t)c->last_index[height]->header.last_IN_log_header +
+			      (c->last_index[height]->header.key_log_size % KEY_BLOCK_SIZE);
+
+	// log_info("pivot location at the device within the segment %llu", pivot_offt
+	// % SEGMENT_SIZE);
+	char *pivot_addr = &c->segment_buf[height][(uint64_t)pivot_offt % SEGMENT_SIZE];
+
+	memcpy(pivot_addr, pivot, pivot_size);
+	// log_info("Adding pivot %u:%s for height %u num entries %u", pivot_size,
+	// pivot + 4, height,
+	// c->last_index[height]->header.numberOfEntriesInNode);
+
+	c->last_index[height]->header.key_log_size += pivot_size;
+	// assert(*(uint32_t *)(pivot_addr) > 0);
+	// assert(*(uint32_t *)(pivot) > 0);
+	++c->last_index[height]->header.num_entries;
+	uint32_t idx = c->last_index[height]->header.num_entries - 1;
+	c->last_index[height]->p[idx].left[0] = left_node_offt;
+	c->last_index[height]->p[idx].pivot = pivot_offt;
+	c->last_index[height]->p[idx].right[0] = right_node_offt;
+
+	if (new_index) {
+		comp_append_pivot_to_index(c, left_index_offt, right_index_offt, new_pivot_buf, height + 1);
+		free(new_pivot_buf);
+	}
+	return;
+}
+
+static int comp_append_medium_L1(struct comp_level_write_cursor *c, struct comp_parallax_key *in,
+				 struct comp_parallax_key *out)
+{
+	if (c->level_id != 1)
+		return 0;
+	if (in->kv_category != MEDIUM_INPLACE)
+		return 0;
+
+	struct bt_insert_req ins_req;
+	ins_req.metadata.handle = c->handle;
+	ins_req.metadata.log_offset = 0;
+
+	ins_req.metadata.kv_size = sizeof(uint32_t) + KEY_SIZE(in->in_place.kv_loc);
+	ins_req.metadata.kv_size += VALUE_SIZE(in->in_place.kv_loc + ins_req.metadata.kv_size) + sizeof(uint32_t);
+	ins_req.metadata.cat = MEDIUM_INLOG;
+	ins_req.metadata.level_id = c->level_id;
+	ins_req.metadata.tree_id = 1;
+	ins_req.metadata.append_to_log = 1;
+	ins_req.metadata.gc_request = 0;
+	ins_req.metadata.recovery_request = 0;
+	ins_req.metadata.special_split = 1;
+	ins_req.metadata.key_format = KV_FORMAT;
+	// bullshit for parallax currently
+	ins_req.metadata.segment_full_event = 0;
+	ins_req.metadata.reorganized_leaf_pos_INnode = NULL;
+	ins_req.metadata.log_segment_addr = 0;
+	ins_req.metadata.log_offset_full_event = 0;
+	ins_req.metadata.segment_id = 0;
+	ins_req.metadata.end_of_log = 0;
+	ins_req.metadata.log_padding = 0;
+	ins_req.key_value_buf = in->in_place.kv_loc;
+	struct log_operation my_op;
+	my_op.metadata = &ins_req.metadata;
+	my_op.optype_tolog = insertOp;
+	my_op.ins_req = &ins_req;
+	// log_info("Appending to medium log during compaction");
+	char *log_location = append_key_value_to_log(&my_op);
+	if (ins_req.metadata.kv_size >= PREFIX_SIZE)
+		memcpy(out->in_log->prefix, in->in_place.kv_loc + sizeof(uint32_t), PREFIX_SIZE);
+	else {
+		memset(out->in_log->prefix, 0x00, PREFIX_SIZE);
+		memcpy(out->in_log->prefix, in->in_place.kv_loc + sizeof(uint32_t), ins_req.metadata.kv_size);
+	}
+	out->kv_category = MEDIUM_INLOG;
+	out->kv_type = KV_INLOG;
+	out->in_log->device_offt = (uint64_t)log_location;
+	return 1;
+}
+
+static void comp_append_entry_to_leaf_node(struct comp_level_write_cursor *c, struct comp_parallax_key *kv)
+{
+	struct comp_kv_prefix my_prefix;
+	uint64_t left_leaf_offt;
+	uint64_t right_leaf_offt;
+	uint32_t level_leaf_size = c->handle->db_desc->levels[c->level_id].leaf_size;
+	uint32_t kv_size;
+	int new_leaf = 0;
+	struct comp_parallax_key trans_medium;
+	trans_medium.in_log = (struct comp_kv_prefix *)&my_prefix;
+	struct write_dynamic_leaf_args write_leaf_args;
+	uint8_t append_to_medium_log = 0;
+	struct comp_parallax_key *my_key = NULL;
+	if (comp_append_medium_L1(c, kv, &trans_medium)) {
+		my_key = &trans_medium;
+		append_to_medium_log = 1;
+	} else {
+		my_key = kv;
+	}
+
+	switch (my_key->kv_type) {
+	case KV_INPLACE:
+		kv_size = sizeof(uint32_t) + KEY_SIZE(my_key->in_place.kv_loc);
+		kv_size += VALUE_SIZE(my_key->in_place.kv_loc + kv_size) + sizeof(uint32_t);
+		write_leaf_args.kv_dev_offt = 0;
+		write_leaf_args.key_value_size = kv_size;
+		write_leaf_args.level_id = c->level_id;
+		write_leaf_args.kv_format = KV_FORMAT;
+		write_leaf_args.cat = my_key->kv_category;
+		write_leaf_args.key_value_buf = my_key->in_place.kv_loc;
+		//log_info("Appending key in_place %u:%s", write_leaf_args.key_value_size,
+		//	 write_leaf_args.key_value_buf + sizeof(uint32_t));
+		break;
+	case KV_INLOG:
+		kv_size = sizeof(struct bt_leaf_entry);
+		write_leaf_args.kv_dev_offt = my_key->in_log->device_offt;
+		write_leaf_args.key_value_buf = (char *)my_key->in_log;
+		write_leaf_args.key_value_size = kv_size;
+		write_leaf_args.level_id = c->level_id;
+		write_leaf_args.kv_format = KV_PREFIX;
+		write_leaf_args.cat = my_key->kv_category;
+		//log_info("Appending prefix is  %s dev offt %llu", my_key->in_log->prefix, my_key->in_log->device_offt);
+		break;
+	default:
+		log_fatal("Unknown key_type (IN_PLACE,IN_LOG) instead got %u", my_key->kv_type);
+		assert(0);
+	}
+
+	if (write_leaf_args.cat == MEDIUM_INLOG && write_leaf_args.level_id == LEVEL_MEDIUM_INPLACE) {
+		kv_size = sizeof(uint32_t) + KEY_SIZE(my_key->in_log->device_offt);
+		kv_size += VALUE_SIZE(my_key->in_log->device_offt + kv_size) + sizeof(uint32_t);
+	}
+
+	if (check_dynamic_leaf_split(c->last_leaf, level_leaf_size, kv_size, c->level_id, my_key->kv_type,
+				     my_key->kv_category)) {
+		// log_info("Time for a split!");
+		/*keep current aka left leaf offt*/
+		uint32_t offt_l = comp_calc_offt_in_seg(c->segment_buf[0], (char *)c->last_leaf);
+		left_leaf_offt = c->dev_offt[0] + offt_l;
+		comp_get_space(c, 0, leafNode);
+		/*last leaf updated*/
+		uint32_t offt_r = comp_calc_offt_in_seg(c->segment_buf[0], (char *)c->last_leaf);
+		right_leaf_offt = c->dev_offt[0] + offt_r;
+		new_leaf = 1;
+	}
+
+	write_leaf_args.leaf = c->last_leaf;
+	write_leaf_args.dest = get_leaf_log_offset(c->last_leaf, level_leaf_size);
+	write_leaf_args.middle = c->last_leaf->header.num_entries;
+
+#if MEASURE_MEDIUM_INPLACE
+	if (write_leaf_args.cat == MEDIUM_INLOG && write_leaf_args.level_id == LEVEL_MEDIUM_INPLACE) {
+		__sync_fetch_and_add(&c->handle->db_desc->count_medium_inplace, 1);
+	}
+#endif
+
+	write_data_in_dynamic_leaf(&write_leaf_args);
+	// just append and leave
+	++c->last_leaf->header.num_entries;
+#if ENABLE_BLOOM_FILTERS
+// TODO XXX
+#endif
+	// TODO SIZE
+	c->handle->db_desc->levels[c->level_id].level_size[1] += write_leaf_args.key_value_size;
+
+	if (new_leaf) {
+		// log_info("keys are %llu for level %u",
+		// c->handle->db_desc->levels[c->level_id].level_size[1],
+		//	 c->level_id);
+		if (append_to_medium_log) {
+			comp_append_pivot_to_index(c, left_leaf_offt, right_leaf_offt, kv->in_place.kv_loc, 1);
+		} else {
+			switch (write_leaf_args.kv_format) {
+			case KV_FORMAT:
+				comp_append_pivot_to_index(c, left_leaf_offt, right_leaf_offt,
+							   write_leaf_args.key_value_buf, 1);
+				break;
+			case KV_PREFIX:
+				if (c->level_id == 1 && my_key->kv_category == MEDIUM_INPLACE)
+					comp_append_pivot_to_index(c, left_leaf_offt, right_leaf_offt,
+								   my_key->in_place.kv_loc, 1);
+				else {
+					// do a page fault to find the pivot
+					//log_info("Dev offt is %llu",my_key->in_log->device_offt);
+					char *pivot_addr = (char *)my_key->in_log->device_offt;
+					comp_append_pivot_to_index(c, left_leaf_offt, right_leaf_offt, pivot_addr, 1);
+				}
+				break;
+			}
+		}
+	}
+	return;
+}
+
 struct compaction_request {
 	db_descriptor *db_desc;
 	volume_descriptor *volume_desc;
@@ -252,7 +1030,349 @@ static void swap_levels(struct level_descriptor *src, struct level_descriptor *d
 }
 
 #ifdef COMPACTION
+static void comp_fill_heap_node(struct compaction_request *comp_req, struct comp_level_read_cursor *cur,
+				struct sh_heap_node *nd)
+{
+	nd->level_id = cur->level_id;
+	nd->active_tree = comp_req->src_tree;
+	nd->cat = cur->category;
+	switch (nd->cat) {
+	case SMALL_INPLACE:
+	case MEDIUM_INPLACE:
+		nd->type = KV_FORMAT;
+		nd->KV = cur->cursor_key.in_place.kv_loc;
+		nd->kv_size = sizeof(uint32_t) + KEY_SIZE(nd->KV);
+		nd->kv_size += VALUE_SIZE(nd->KV + nd->kv_size) + sizeof(uint32_t);
+		break;
+	case BIG_INLOG:
+	case MEDIUM_INLOG:
+		nd->type = KV_PREFIX;
+		// log_info("Prefix %.12s dev_offt %llu", cur->cursor_key.in_log->prefix,
+		//	 cur->cursor_key.in_log->device_offt);
+		nd->KV = cur->cursor_key.in_log;
+		nd->kv_size = sizeof(struct bt_leaf_entry);
+		break;
+	default:
+		log_fatal("UNKNOWN_LOG_CATEGORY");
+		exit(EXIT_FAILURE);
+	}
+}
 
+static void comp_fill_parallax_key(struct sh_heap_node *nd, struct comp_parallax_key *my_key)
+{
+	my_key->kv_category = nd->cat;
+	switch (nd->cat) {
+	case SMALL_INPLACE:
+	case MEDIUM_INPLACE:
+		my_key->in_place.kv_loc = nd->KV;
+		my_key->kv_type = KV_INPLACE;
+		break;
+	case BIG_INLOG:
+	case MEDIUM_INLOG:
+		my_key->in_log = nd->KV;
+		// log_info("Read cursor in_log key prefix %.12s dev_offt %llu",
+		// my_key->in_log->prefix,
+		//	 my_key->in_log->device_offt);
+		my_key->kv_type = KV_INLOG;
+		break;
+	default:
+		log_info("Unhandle/Unknown category");
+		exit(EXIT_FAILURE);
+	}
+}
+
+static void print_heap_node_key(struct sh_heap_node *nd)
+{
+	switch (nd->cat) {
+	case SMALL_INPLACE:
+	case MEDIUM_INPLACE:
+		log_info("In place Key is %u:%s", *(uint32_t *)nd->KV, nd->KV + sizeof(uint32_t));
+		break;
+	case BIG_INLOG:
+	case MEDIUM_INLOG:
+		log_info("In log Key prefix is %.12s device offt %llu", nd->KV, *(uint64_t *)(nd->KV + PREFIX_SIZE));
+		break;
+	default:
+		log_info("Unhandle/Unknown category");
+		exit(EXIT_FAILURE);
+	}
+}
+
+static void compact_level_direct_IO(struct db_handle *handle, struct compaction_request *comp_req)
+{
+	struct node_header *src_root = NULL;
+
+	if (handle->db_desc->levels[comp_req->src_level].root_w[comp_req->src_tree] != NULL)
+		src_root = handle->db_desc->levels[comp_req->src_level].root_w[comp_req->src_tree];
+	else if (handle->db_desc->levels[comp_req->src_level].root_r[comp_req->src_tree] != NULL)
+		src_root = handle->db_desc->levels[comp_req->src_level].root_r[comp_req->src_tree];
+	else {
+		log_fatal("NULL src root for compaction from level's tree [%u][%u] to "
+			  "level's tree[%u][%u] for db %s",
+			  comp_req->src_level, comp_req->src_tree, comp_req->dst_level, comp_req->dst_tree,
+			  handle->db_desc->db_name);
+		exit(EXIT_FAILURE);
+	}
+
+	struct node_header *dst_root = NULL;
+	if (handle->db_desc->levels[comp_req->dst_level].root_w[0] != NULL)
+		dst_root = handle->db_desc->levels[comp_req->dst_level].root_w[0];
+	else if (handle->db_desc->levels[comp_req->dst_level].root_r[0] != NULL)
+		dst_root = handle->db_desc->levels[comp_req->dst_level].root_r[0];
+	else {
+		dst_root = NULL;
+	}
+
+	/*used for L0 only as src*/
+	struct level_scanner *level_src = NULL;
+	struct comp_level_read_cursor *l_src = NULL;
+	struct comp_level_read_cursor *l_dst = NULL;
+	struct comp_level_write_cursor *merged_level = NULL;
+
+	if (comp_req->src_level == 0) {
+		// snapshot(comp_req->volume_desc) --> This is for recovery I think;
+		log_info("Initializing L0 scanner");
+		level_src = _init_spill_buffer_scanner(handle, comp_req->src_level, src_root, NULL);
+	} else {
+		if (posix_memalign((void **)&l_src, ALIGNMENT, sizeof(struct comp_level_read_cursor)) != 0) {
+			log_fatal("Posix memalign failed");
+			perror("Reason: ");
+			exit(EXIT_FAILURE);
+		}
+		comp_init_read_cursor(l_src, handle, comp_req->src_level, 0, FD);
+		comp_get_next_key(l_src);
+		assert(!l_src->end_of_level);
+	}
+
+	if (dst_root) {
+		if (posix_memalign((void **)&l_dst, ALIGNMENT, sizeof(struct comp_level_read_cursor)) != 0) {
+			log_fatal("Posix memalign failed");
+			perror("Reason: ");
+			exit(EXIT_FAILURE);
+		}
+		comp_init_read_cursor(l_dst, handle, comp_req->dst_level, 0, FD);
+		comp_get_next_key(l_dst);
+		assert(!l_dst->end_of_level);
+	}
+
+	log_info("Initializing write cursor for level %u", comp_req->dst_level);
+	if (posix_memalign((void **)&merged_level, ALIGNMENT, sizeof(struct comp_level_write_cursor)) != 0) {
+		log_fatal("Posix memalign failed");
+		perror("Reason: ");
+		exit(EXIT_FAILURE);
+	}
+	comp_init_write_cursor(merged_level, handle, comp_req->dst_level, FD);
+
+	log_info("Src [%u][%u] size = %llu", comp_req->src_level, comp_req->src_tree,
+		 handle->db_desc->levels[comp_req->src_level].level_size[comp_req->src_tree]);
+	if (dst_root)
+		log_info("Dst [%u][%u] size = %llu", comp_req->dst_level, 0,
+			 handle->db_desc->levels[comp_req->dst_level].level_size[0]);
+	else
+		log_info("Empty dst [%u][%u]", comp_req->dst_level, 0);
+
+	// initialize and fill min_heap properly
+	struct sh_min_heap *m_heap = (struct sh_min_heap *)calloc(1, sizeof(struct sh_min_heap));
+	sh_init_heap(m_heap, comp_req->src_level);
+	struct sh_heap_node nd_src = { .KV = NULL, .level_id = 0, .active_tree = 0, .duplicate = 0, .type = KV_PREFIX };
+	struct sh_heap_node nd_dst = { .KV = NULL, .level_id = 0, .active_tree = 0, .duplicate = 0, .type = KV_PREFIX };
+	struct sh_heap_node nd_min = { .KV = NULL, .level_id = 0, .active_tree = 0, .duplicate = 0, .type = KV_PREFIX };
+	// init Li cursor
+	if (level_src) {
+		nd_src.KV = level_src->keyValue;
+		nd_src.level_id = comp_req->src_level;
+		nd_src.type = level_src->kv_format;
+		nd_src.cat = level_src->cat;
+		nd_src.kv_size = level_src->kv_size;
+		nd_src.active_tree = comp_req->src_tree;
+		log_info("Initializing heap from SRC L0 with key:");
+
+	} else {
+		log_info("Initializing heap from SRC read cursor level %u with key:", comp_req->src_level);
+		comp_fill_heap_node(comp_req, l_src, &nd_src);
+	}
+	print_heap_node_key(&nd_src);
+	sh_insert_heap_node(m_heap, &nd_src);
+	// init Li+1 cursor (if any)
+	if (l_dst) {
+		comp_fill_heap_node(comp_req, l_dst, &nd_dst);
+		log_info("Initializing heap from DST read cursor level %u with key:", comp_req->dst_level);
+		print_heap_node_key(&nd_dst);
+		sh_insert_heap_node(m_heap, &nd_dst);
+	}
+	// ############################################################################
+	int32_t num_of_keys = COMPACTION_UNIT_OF_WORK;
+	enum sh_heap_status stat = GOT_MIN_HEAP;
+	do {
+		// while (handle.volume_desc->snap_preemption == SNAP_INTERRUPT_ENABLE)
+		// usleep(50000);
+
+		handle->db_desc->dirty = 0x01;
+		if (handle->db_desc->stat == DB_IS_CLOSING) {
+			log_info("DB %s is closing compaction thread exiting...", handle->db_desc->db_name);
+			if (l_src)
+				free(l_src);
+			if (l_dst)
+				free(l_dst);
+			return;
+		}
+		// This is to synchronize compactions with snapshot
+		RWLOCK_RDLOCK(&handle->db_desc->levels[comp_req->dst_level].guard_of_level.rx_lock);
+		for (int i = 0; i < num_of_keys; i++) {
+			stat = sh_remove_min(m_heap, &nd_min);
+			if (stat == EMPTY_MIN_HEAP)
+				break;
+			if (!nd_min.duplicate) {
+				struct comp_parallax_key my_key;
+				comp_fill_parallax_key(&nd_min, &my_key);
+				comp_append_entry_to_leaf_node(merged_level, &my_key);
+			}
+			// log_info("level size
+			// %llu",comp_req->db_desc->levels[comp_req->dst_level].level_size[comp_req->dst_tree]);
+			/*refill from the appropriate level*/
+			if (nd_min.level_id == comp_req->src_level) {
+				if (nd_min.level_id == 0) {
+					int rc = _get_next_KV(level_src);
+					if (rc != END_OF_DATABASE) {
+						// log_info("Refilling from L0");
+						nd_min.KV = level_src->keyValue;
+						nd_min.level_id = comp_req->src_level;
+						nd_min.type = level_src->kv_format;
+						nd_min.cat = level_src->cat;
+						nd_min.kv_size = level_src->kv_size;
+						nd_min.active_tree = comp_req->src_tree;
+						sh_insert_heap_node(m_heap, &nd_min);
+					}
+				} else {
+					comp_get_next_key(l_src);
+					if (!l_src->end_of_level) {
+						comp_fill_heap_node(comp_req, l_src, &nd_min);
+						// log_info("Refilling from SRC level read cursor");
+						sh_insert_heap_node(m_heap, &nd_min);
+					}
+				}
+			} else if (l_dst) {
+				comp_get_next_key(l_dst);
+				if (!l_dst->end_of_level) {
+					comp_fill_heap_node(comp_req, l_dst, &nd_min);
+					// log_info("Refilling from DST level read cursor key is %s",
+					// nd_min.KV + 4);
+					sh_insert_heap_node(m_heap, &nd_min);
+				}
+			}
+		}
+		RWLOCK_UNLOCK(&handle->db_desc->levels[comp_req->dst_level].guard_of_level.rx_lock);
+	} while (stat != EMPTY_MIN_HEAP);
+
+	if (level_src)
+		_close_spill_buffer_scanner(level_src);
+	else {
+		free(l_src);
+	}
+
+	if (dst_root) {
+		free(l_dst);
+	}
+	free(m_heap);
+	comp_close_write_cursor(merged_level);
+
+	merged_level->handle->db_desc->levels[comp_req->dst_level].root_w[1] =
+		(struct node_header *)REAL_ADDRESS(merged_level->root_offt);
+	assert(merged_level->handle->db_desc->levels[comp_req->dst_level].root_w[1]->type == rootNode);
+	free(merged_level);
+
+	//***************************************************************
+	struct level_descriptor *ld = &comp_req->db_desc->levels[comp_req->dst_level];
+	struct db_handle hd = { .db_desc = comp_req->db_desc, .volume_desc = comp_req->volume_desc };
+
+	if (RWLOCK_WRLOCK(&(comp_req->db_desc->levels[comp_req->src_level].guard_of_level.rx_lock))) {
+		log_fatal("Failed to acquire guard lock");
+		exit(EXIT_FAILURE);
+	}
+
+	if (RWLOCK_WRLOCK(&(comp_req->db_desc->levels[comp_req->dst_level].guard_of_level.rx_lock))) {
+		log_fatal("Failed to acquire guard lock");
+		exit(EXIT_FAILURE);
+	}
+
+	if (l_dst) {
+		// free previous dst level
+		struct segment_header *curr_segment = comp_req->db_desc->levels[comp_req->dst_level].first_segment[0];
+		struct segment_header *next_segment;
+
+		assert(curr_segment != NULL);
+		uint64_t space_freed = 0;
+
+		while (curr_segment != NULL) {
+			/* log_info("TEST %llu %llu
+* %d",curr_segment->segment_id,curr_segment->next_segment,curr_segment->in_mem);
+*/
+			if (curr_segment->next_segment == NULL) {
+				next_segment = NULL;
+			} else {
+				next_segment = MAPPED + curr_segment->next_segment;
+			}
+
+			if (curr_segment->in_mem == 0)
+				free_block(comp_req->volume_desc, curr_segment, SEGMENT_SIZE);
+			else
+				free(curr_segment);
+
+			space_freed += SEGMENT_SIZE;
+			if (next_segment)
+				curr_segment = next_segment;
+			else
+				break;
+		}
+
+		log_info("Freed space %llu MB from db:%s destination level %u", space_freed / (1024 * 1024),
+			 comp_req->db_desc->db_name, comp_req->src_level);
+	}
+	// switch dst tree
+	ld->first_segment[0] = ld->first_segment[1];
+	ld->first_segment[1] = NULL;
+	ld->last_segment[0] = ld->last_segment[1];
+	ld->last_segment[1] = NULL;
+	ld->offset[0] = ld->offset[1];
+	ld->offset[1] = 0;
+
+	if (ld->root_w[1] != NULL)
+		ld->root_r[0] = ld->root_w[1];
+	else if (ld->root_r[1] != NULL)
+		ld->root_r[0] = ld->root_r[1];
+	else {
+		log_fatal("Where is the root?");
+		assert(0);
+		exit(EXIT_FAILURE);
+	}
+
+	ld->root_w[0] = NULL;
+	ld->level_size[0] = ld->level_size[1];
+	ld->level_size[1] = 0;
+	ld->root_w[1] = NULL;
+	ld->root_r[1] = NULL;
+	seg_free_level(&hd, comp_req->src_level, comp_req->src_tree);
+#if ENABLE_BLOOM_FILTERS
+	if (dst_root) {
+		log_info("Freeing previous bloom filter for dst level %u", comp_req->dst_level);
+		bloom_free(&handle.db_desc->levels[comp_req->src_level].bloom_filter[0]);
+	}
+	ld->bloom_filter[0] = ld->bloom_filter[1];
+	memset(&ld->bloom_filter[1], 0x00, sizeof(struct bloom));
+#endif
+
+	if (RWLOCK_UNLOCK(&(comp_req->db_desc->levels[comp_req->src_level].guard_of_level.rx_lock))) {
+		log_fatal("Failed to acquire guard lock");
+		exit(EXIT_FAILURE);
+	}
+
+	if (RWLOCK_UNLOCK(&(comp_req->db_desc->levels[comp_req->dst_level].guard_of_level.rx_lock))) {
+		log_fatal("Failed to acquire guard lock");
+		exit(EXIT_FAILURE);
+	}
+}
+
+#if 0
 static void compact_level_mmap_IO(struct db_handle *handle, struct compaction_request *comp_req)
 {
 #if ENABLE_BLOOM_FILTERS
@@ -391,7 +1511,7 @@ static void compact_level_mmap_IO(struct db_handle *handle, struct compaction_re
 				exit(EXIT_FAILURE);
 			}
 #endif
-			//refill from the appropriate level
+			// refill from the appropriate level
 			struct level_scanner *curr_scanner = NULL;
 			if (nd_min.level_id == comp_req->src_level)
 				curr_scanner = level_src;
@@ -433,7 +1553,7 @@ static void compact_level_mmap_IO(struct db_handle *handle, struct compaction_re
 	}
 
 	if (level_dst) {
-		//free previous dst level
+		// free previous dst level
 		struct segment_header *curr_segment = comp_req->db_desc->levels[comp_req->dst_level].first_segment[0];
 		struct segment_header *next_segment;
 
@@ -442,8 +1562,8 @@ static void compact_level_mmap_IO(struct db_handle *handle, struct compaction_re
 
 		while (curr_segment != NULL) {
 			/* log_info("TEST %llu %llu
-       * %d",curr_segment->segment_id,curr_segment->next_segment,curr_segment->in_mem);
-       */
+* %d",curr_segment->segment_id,curr_segment->next_segment,curr_segment->in_mem);
+*/
 			if (curr_segment->next_segment == NULL) {
 				next_segment = NULL;
 			} else {
@@ -465,7 +1585,7 @@ static void compact_level_mmap_IO(struct db_handle *handle, struct compaction_re
 		log_info("Freed space %llu MB from db:%s destination level %u", space_freed / (1024 * 1024),
 			 comp_req->db_desc->db_name, comp_req->src_level);
 	}
-	//switch dst tree
+	// switch dst tree
 	ld->first_segment[0] = ld->first_segment[1];
 	ld->first_segment[1] = NULL;
 	ld->last_segment[0] = ld->last_segment[1];
@@ -511,7 +1631,7 @@ static void compact_level_mmap_IO(struct db_handle *handle, struct compaction_re
 	mark_segment_space(handle, m_heap->dups);
 	sh_destroy_heap(m_heap);
 }
-
+#endif
 void *compaction(void *_comp_req)
 {
 	db_handle handle;
@@ -525,7 +1645,7 @@ void *compaction(void *_comp_req)
 	handle.db_desc = comp_req->db_desc;
 	handle.volume_desc = comp_req->volume_desc;
 
-	//optimization check if level below is empty
+	// optimization check if level below is empty
 	struct node_header *dst_root = NULL;
 	if (handle.db_desc->levels[comp_req->dst_level].root_w[0] != NULL)
 		dst_root = handle.db_desc->levels[comp_req->dst_level].root_w[0];
@@ -536,10 +1656,10 @@ void *compaction(void *_comp_req)
 	}
 
 	if (comp_req->src_level == 0 || comp_req->dst_level == LEVEL_MEDIUM_INPLACE)
-		compact_level_mmap_IO(&handle, comp_req);
-	else if (dst_root) {
-		compact_level_mmap_IO(&handle, comp_req);
-	} else {
+		compact_level_direct_IO(&handle, comp_req);
+	else if (dst_root)
+		compact_level_direct_IO(&handle, comp_req);
+	else {
 		log_info("Empty level %d time for an optimization :-)", comp_req->dst_level);
 
 		if (RWLOCK_WRLOCK(&(comp_req->db_desc->levels[comp_req->src_level].guard_of_level.rx_lock))) {
@@ -705,15 +1825,15 @@ void *spill_buffer(void *_comp_req)
 		 comp_req->src_level, comp_req->src_tree, comp_req->dst_level, comp_req->dst_tree);
 
 	/*assert check
-      if(db_desc->spilled_keys !=
+if(db_desc->spilled_keys !=
 db_desc->total_keys[comp_req->src_tree_id]){
-      printf("[%s:%s:%d] FATAL keys missing --- spilled keys %llu actual
+printf("[%s:%s:%d] FATAL keys missing --- spilled keys %llu actual
 %llu spiller
-      id
-      %d\n",__FILE__,__func__,__LINE__,(LLU)db_desc->spilled_keys,(LLU)db_desc->total_keys[comp_req->src_tree_id],
-      comp_req->src_tree_id);
-      exit(EXIT_FAILURE);
-      }*/
+id
+%d\n",__FILE__,__func__,__LINE__,(LLU)db_desc->spilled_keys,(LLU)db_desc->total_keys[comp_req->src_tree_id],
+comp_req->src_tree_id);
+exit(EXIT_FAILURE);
+}*/
 	snapshot(comp_req->volume_desc);
 	db_desc->levels[comp_req->src_level].tree_status[comp_req->src_tree] = NO_SPILLING;
 	db_desc->levels[comp_req->dst_level].tree_status[comp_req->dst_tree] = NO_SPILLING;
