@@ -10,23 +10,6 @@
 void print_all_keys(const struct bt_dynamic_leaf_node *leaf, uint32_t leaf_size);
 char *fill_keybuf(char *key_loc, enum kv_entry_location key_type);
 
-struct prefix {
-	char *prefix;
-	uint32_t len;
-};
-
-struct write_dynamic_leaf_args {
-	struct bt_dynamic_leaf_node *leaf;
-	char *dest;
-	char *key_value_buf;
-	uint64_t kv_dev_offt;
-	uint32_t key_value_size;
-	uint32_t middle;
-	int level_id;
-	int kv_format;
-	enum log_category cat;
-};
-
 #ifdef DEBUG_DYNAMIC_LEAF
 void validate_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, level_descriptor *level, uint32_t kv_size, int flag)
 {
@@ -615,16 +598,18 @@ void write_data_in_dynamic_leaf(struct write_dynamic_leaf_args *args)
 	if (args->cat == MEDIUM_INLOG && args->level_id == LEVEL_MEDIUM_INPLACE) {
 		status = KV_INPLACE;
 		args->cat = MEDIUM_INPLACE;
+		assert(args->kv_format == KV_PREFIX);
 	}
 
 	if (status == KV_INPLACE) {
 		slot.bitmap = KV_INPLACE;
-		if (kv_format == KV_FORMAT)
+		if (kv_format == KV_FORMAT) {
 			leaf->header.leaf_log_size += append_kv_inplace(dest, key_value_buf, key_value_size);
-		else {
+		} else {
 			char *pointer = (char *)(*(uint64_t *)(key_value_buf + PREFIX_SIZE));
-			uint32_t key_size = *(uint32_t *)pointer;
-			uint32_t value_size = *(uint32_t *)(pointer + 4 + key_size);
+			uint32_t key_size = KEY_SIZE(pointer);
+			uint32_t value_size = VALUE_SIZE(pointer + key_size + sizeof(uint32_t));
+			//log_info("Toumpa time Key is %u:%s value size %u",key_size,pointer+4,value_size);
 			leaf->header.leaf_log_size += append_kv_inplace(dest, pointer, 8 + key_size + value_size);
 		}
 	} else if (status == KV_INLOG) {

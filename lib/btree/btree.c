@@ -458,6 +458,87 @@ static void pr_init_logs(db_descriptor *db_desc, volume_descriptor *volume_desc)
 	pr_init_log(&db_desc->small_log);
 	db_desc->lsn = 0;
 }
+#if 0
+void recover_database_logs(db_descriptor *db_desc, pr_db_entry *db_entry)
+{
+	db_desc->commit_log = (commit_log_info *)REAL_ADDRESS(db_entry->commit_log);
+
+	if (db_desc->commit_log->big_log_head != NULL)
+		db_desc->big_log_head = (segment_header *)REAL_ADDRESS(db_desc->commit_log->big_log_head);
+	else
+		db_desc->big_log_head = NULL;
+
+	if (db_desc->commit_log->big_log_tail != NULL)
+		db_desc->big_log_tail = (segment_header *)REAL_ADDRESS(db_desc->commit_log->big_log_tail);
+	else
+		db_desc->big_log_tail = NULL;
+
+	db_desc->big_log_size = db_desc->commit_log->big_log_size;
+	db_desc->big_log_head_offset = db_entry->big_log_head_offset;
+	db_desc->big_log_tail_offset = db_entry->big_log_tail_offset;
+
+	log_info("Big log segments first: %llu last: %llu log_size %llu", (long long unsigned)db_desc->big_log_head,
+		 (long long unsigned)db_desc->big_log_tail, (long long unsigned)db_desc->big_log_size);
+	log_info("L0 start log offset %llu end %llu", db_desc->big_log_head_offset, db_desc->big_log_tail_offset);
+
+	if (db_desc->commit_log->medium_log_head != NULL)
+		db_desc->medium_log_head = (segment_header *)REAL_ADDRESS(db_desc->commit_log->medium_log_head);
+	else
+		db_desc->medium_log_head = NULL;
+
+	if (db_desc->commit_log->medium_log_tail != NULL)
+		db_desc->medium_log_tail = (segment_header *)REAL_ADDRESS(db_desc->commit_log->medium_log_tail);
+	else
+		db_desc->medium_log_tail = NULL;
+
+	db_desc->medium_log_size = db_desc->commit_log->medium_log_size;
+	db_desc->medium_log_head_offset = db_entry->medium_log_head_offset;
+	db_desc->medium_log_tail_offset = db_entry->medium_log_tail_offset;
+
+	log_info("Medium log segments first: %llu last: %llu log_size %llu",
+		 (long long unsigned)db_desc->medium_log_head, (long long unsigned)db_desc->medium_log_tail,
+		 (long long unsigned)db_desc->medium_log_size);
+	log_info("Medium L0 start log offset %llu end %llu", db_desc->medium_log_head_offset,
+		 db_desc->medium_log_tail_offset);
+
+	if (db_desc->commit_log->small_log_head != NULL)
+		db_desc->small_log_head = (segment_header *)REAL_ADDRESS(db_desc->commit_log->small_log_head);
+	else
+		db_desc->small_log_head = NULL;
+
+	if (db_desc->commit_log->small_log_tail != NULL)
+		db_desc->small_log_tail = (segment_header *)REAL_ADDRESS(db_desc->commit_log->small_log_tail);
+	else
+		db_desc->small_log_tail = NULL;
+
+	db_desc->small_log_size = db_desc->commit_log->small_log_size;
+	db_desc->small_log_head_offset = db_entry->small_log_head_offset;
+	db_desc->small_log_tail_offset = db_entry->small_log_tail_offset;
+
+	log_info("Small log segments first: %llu last: %llu log_size %llu", (long long unsigned)db_desc->small_log_head,
+		 (long long unsigned)db_desc->small_log_tail, (long long unsigned)db_desc->small_log_size);
+	log_info("Small L0 start log offset %llu end %llu", db_desc->small_log_head_offset,
+		 db_desc->small_log_tail_offset);
+=======
+log_info("Recovering KV logs (small,medium,large) for DB: %s", db_desc->db_name);
+
+// Small log
+db_desc->big_log_head = REAL_ADDRESS(entry->big_log_head_offt);
+db_desc->big_log_tail = REAL_ADDRESS(entry->big_log_tail_offt);
+db_desc->big_log_size = entry->big_log_size;
+
+// Medium log
+db_desc->medium_log_head = REAL_ADDRESS(entry->medium_log_head_offt);
+db_desc->medium_log_tail = REAL_ADDRESS(entry->medium_log_tail_offt);
+db_desc->medium_log_size = entry->medium_log_size;
+
+// Large log
+db_desc->big_log_head = REAL_ADDRESS(entry->big_log_head_offt);
+db_desc->big_log_tail = REAL_ADDRESS(entry->big_log_tail_offt);
+db_desc->big_log_size = entry->big_log_size;
+db_desc->lsn = entry->lsn;
+}
+#endif
 
 void init_level_bloom_filters(db_descriptor *db_desc, int level_id, int tree_id)
 {
@@ -469,11 +550,12 @@ void init_level_bloom_filters(db_descriptor *db_desc, int level_id, int tree_id)
 	(void)tree_id;
 #endif
 }
-
-/* static void bt_recover_L0(struct db_handle *hd) */
-/* { */
-/* } */
-
+#if 0
+static void bt_recover_L0(struct db_handle *hd)
+{
+	(void)hd;
+}
+#endif
 struct db_handle *bt_restore_db(struct volume_descriptor *volume_desc, struct pr_db_entry *db_entry,
 				struct db_coordinates db_c)
 {
@@ -1292,8 +1374,6 @@ static void *bt_append_key_value_to_log_mmap(struct log_operation *req, struct l
 
 		allocated_space = data_size->kv_size + sizeof(struct log_sequence_number) + sizeof(segment_header);
 		allocated_space += SEGMENT_SIZE - (allocated_space % SEGMENT_SIZE);
-
-
 		d_header = seg_get_raw_log_segment(handle->volume_desc);
 		d_header->segment_id = T->segment_id + 1;
 		d_header->prev_segment = (void *)log_metadata->log_desc->tail_dev_offt;
@@ -1321,130 +1401,7 @@ static void *bt_append_key_value_to_log_mmap(struct log_operation *req, struct l
 	return addr_inlog + sizeof(struct log_sequence_number);
 }
 
-#if 0
-static void bt_medium_L0_chunk_IO(struct segment_header *inmem, struct segment_header *dev, int chunk_id, int fd)
-{
-	wait_for_value(&inmem->bytes_per_chunk[chunk_id], LOG_CHUNK_SIZE);
-	// do the IO finally
-	ssize_t total_bytes_written;
-	if (chunk_id)
-		total_bytes_written = 0;
-	else
-		total_bytes_written = sizeof(struct segment_header);
-	ssize_t bytes_written = 0;
-	uint32_t size = LOG_CHUNK_SIZE;
-	char *src = (char *)(uint64_t)inmem + sizeof(struct segment_header) + (chunk_id * LOG_CHUNK_SIZE);
-	uint64_t dst_offt = ABSOLUTE_ADDRESS(dev);
-	dst_offt += (sizeof(struct segment_header) + (chunk_id * LOG_CHUNK_SIZE));
-	while (total_bytes_written < size) {
-		bytes_written = pwrite(fd, &src[total_bytes_written], size - total_bytes_written,
-				       dst_offt + total_bytes_written);
-		if (bytes_written == -1) {
-			log_fatal("Failed to write LOG_CHUNK reason follows");
-			perror("Reason");
-			exit(EXIT_FAILURE);
-		}
-		total_bytes_written += bytes_written;
-	}
-}
-
-
-static void *bt_append_key_value_to_log_medium_L0(struct log_operation *req, struct bt_log_descriptor *inmem_log,
-						  struct bt_log_descriptor *dev_log, struct metadata_tologop *data_size)
-{
-	void *addr_inlog;
-
-	uint64_t lsn;
-	uint32_t available_space_in_log;
-	db_handle *handle = req->metadata->handle;
-
-	struct segment_header *inmem_tail_seg_change = NULL;
-	struct segment_header *dev_tail_seg_change = NULL;
-	int segment_change = 0;
-
-	MUTEX_LOCK(&handle->db_desc->lock_log);
-
-	/*append data part in the data log*/
-	if (inmem_log->size % SEGMENT_SIZE != 0)
-		available_space_in_log = SEGMENT_SIZE - (inmem_log->size % SEGMENT_SIZE);
-	else
-		available_space_in_log = 0;
-
-	if (available_space_in_log < data_size->kv_size + sizeof(struct log_sequence_number)) {
-		if (inmem_log->head_dev_offt == 0) {
-		}
-		segment_change = 1;
-		inmem_tail_seg_change = (struct segment_header *)REAL_ADDRESS(inmem_log->tail_dev_offt);
-		dev_tail_seg_change = (struct segment_header *)REAL_ADDRESS(dev_log->tail_dev_offt);
-		/*pad with zeroes remaining bytes in segment*/
-		addr_inlog = (void *)((uint64_t)inmem_tail_seg_change + (inmem_log->size % SEGMENT_SIZE));
-		memset(addr_inlog, 0x00, available_space_in_log);
-		uint32_t offt_in_seg = inmem_log->size % SEGMENT_SIZE;
-		uint32_t chunk_id = offt_in_seg / LOG_CHUNK_SIZE;
-		__sync_fetch_and_add(&inmem_tail_seg_change->bytes_per_chunk[chunk_id], available_space_in_log);
-
-		// The in memory part
-		struct segment_header *inmem_header = NULL;
-		if (posix_memalign((void **)&inmem_header, SEGMENT_SIZE, SEGMENT_SIZE) != 0) {
-			log_fatal("Failed to allocate memory for L0 inmem log");
-			exit(EXIT_FAILURE);
-		}
-		inmem_header->segment_id = inmem_tail_seg_change->segment_id + 1;
-		inmem_header->prev_segment = (void *)inmem_log->tail_dev_offt;
-		inmem_header->next_segment = NULL;
-		inmem_tail_seg_change->next_segment = (void *)ABSOLUTE_ADDRESS(inmem_header);
-		inmem_log->tail_dev_offt = ABSOLUTE_ADDRESS(inmem_header);
-		// The dev part
-		struct segment_header *dev_header = seg_get_raw_log_segment(handle->volume_desc);
-		dev_header->segment_id = dev_tail_seg_change->segment_id + 1;
-		dev_header->prev_segment = (void *)dev_log->tail_dev_offt;
-		dev_header->next_segment = NULL;
-		dev_tail_seg_change->next_segment = (void *)ABSOLUTE_ADDRESS(dev_header);
-		dev_log->tail_dev_offt = ABSOLUTE_ADDRESS(dev_header);
-		// position the log to the newly added block
-		inmem_log->size += (available_space_in_log + sizeof(segment_header));
-		dev_log->size += (available_space_in_log + sizeof(segment_header));
-	}
-	struct segment_header *inmem_tail = REAL_ADDRESS(inmem_log->tail_dev_offt);
-	struct segment_header *dev_tail = REAL_ADDRESS(dev_log->tail_dev_offt);
-	addr_inlog = (void *)((uint64_t)inmem_tail + (inmem_log->size % SEGMENT_SIZE));
-	req->metadata->log_offset = inmem_log->size;
-	uint64_t ticket = inmem_log->size;
-	uint32_t ticket_size = data_size->kv_size + sizeof(struct log_sequence_number);
-	inmem_log->size += ticket_size;
-	dev_log->size += ticket_size;
-
-	lsn = __sync_fetch_and_add(&handle->db_desc->lsn, 1);
-	MUTEX_UNLOCK(&handle->db_desc->lock_log);
-	write_keyvalue_inlog(req, data_size, addr_inlog, lsn);
-
-	if (segment_change) {
-		uint32_t chunk = (SEGMENT_SIZE / LOG_CHUNK_SIZE) - 1;
-		bt_medium_L0_chunk_IO(inmem_tail_seg_change, dev_tail_seg_change, chunk, FD);
-	}
-
-	// Charge bytes to the corresponding chunks
-	uint64_t offt_in_seg = ticket % SEGMENT_SIZE;
-	uint64_t chunk_id = offt_in_seg / LOG_CHUNK_SIZE;
-	uint64_t offt_in_chunk = offt_in_seg % LOG_CHUNK_SIZE;
-	if (offt_in_chunk + ticket_size >= LOG_CHUNK_SIZE) {
-		uint32_t bytes_l = LOG_CHUNK_SIZE - offt_in_chunk;
-		__sync_fetch_and_add(&inmem_tail->bytes_per_chunk[chunk_id], bytes_l);
-		uint32_t bytes_r = ticket_size - bytes_l;
-
-		if (bytes_r)
-			__sync_fetch_and_add(&inmem_tail->bytes_per_chunk[chunk_id + 1], bytes_r);
-
-		// time for IO, bitches
-		bt_medium_L0_chunk_IO(inmem_tail, dev_tail, chunk_id, FD);
-	} else
-		__sync_fetch_and_add(&inmem_tail->bytes_per_chunk[chunk_id], ticket_size);
-
-	return addr_inlog + sizeof(struct log_sequence_number);
-}
-#endif
-
-static void *append_key_value_to_log(log_operation *req)
+void *append_key_value_to_log(log_operation *req)
 {
 	db_handle *handle = req->metadata->handle;
 	struct log_towrite log_metadata;
@@ -2407,7 +2364,7 @@ release_and_retry:
 		son = (node_header *)(MAPPED + *(uint64_t *)next_addr);
 
 		/*if the node is not safe hold its ancestor's lock else release locks from
-* ancestors */
+    ancestors */
 
 		if (!(son->epoch <= volume_desc->dev_catalogue->epoch ||
 		      is_split_needed(son, ins_req, db_desc->levels[level_id].leaf_size))) {

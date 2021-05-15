@@ -1678,6 +1678,7 @@ struct db_coordinates locate_db(struct volume_descriptor *volume_desc, char *db_
 		} else {
 			if (empty_group == -1) {
 				//Remember the first gap
+				log_info("Empty slot %d in group %d\n", group_id, 0);
 				empty_group = group_id;
 				empty_index = 0;
 			}
@@ -1718,6 +1719,8 @@ exit:
 
 		struct pr_db_entry *db_entry = &cur_group->db_entries[db_c.index];
 		db_entry->valid = 1;
+
+		log_info("DB %s db_name put in slot [%d,%d]", db_name, db_c.group_id, db_c.index);
 	}
 	return db_c;
 }

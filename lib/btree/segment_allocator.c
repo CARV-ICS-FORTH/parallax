@@ -78,8 +78,15 @@ static void *get_space(volume_descriptor *volume_desc, level_descriptor *level_d
 	} else {
 		available_space = SEGMENT_SIZE - (level_desc->offset[tree_id] % SEGMENT_SIZE);
 		offset_in_segment = level_desc->offset[tree_id] % SEGMENT_SIZE;
+		segment_id = level_desc->last_segment[tree_id]->segment_id;
 	}
 	if (available_space < size) {
+		//Characterize remaining empty space if any as paddedSpace
+		if (available_space > 0) {
+			int *pad = (int *)((uint64_t)level_desc->last_segment[tree_id] +
+					   (level_desc->offset[tree_id] % SEGMENT_SIZE));
+			*pad = paddedSpace;
+		}
 		/*we need to go to the actual allocator to get space*/
 		if (level_desc->level_id != 0) {
 			MUTEX_LOCK(&volume_desc->bitmap_lock);
@@ -87,7 +94,7 @@ static void *get_space(volume_descriptor *volume_desc, level_descriptor *level_d
 			MUTEX_UNLOCK(&volume_desc->bitmap_lock);
 			req.in_mem = 0;
 		} else {
-			if (posix_memalign((void **)&new_segment, SEGMENT_SIZE, SEGMENT_SIZE) != 0) {
+			if (posix_memalign((void **)&new_segment, ALIGNMENT, SEGMENT_SIZE) != 0) {
 				log_fatal("MEMALIGN FAILED");
 				exit(EXIT_FAILURE);
 			}
@@ -104,6 +111,43 @@ static void *get_space(volume_descriptor *volume_desc, level_descriptor *level_d
 	level_desc->offset[tree_id] += size;
 	MUTEX_UNLOCK(&level_desc->level_allocation_lock);
 	return node;
+}
+
+struct segment_header *get_segment_for_explicit_IO(volume_descriptor *volume_desc, level_descriptor *level_desc,
+						   uint8_t tree_id)
+{
+	if (level_desc->level_id == 0) {
+		log_warn("Not allowed this kind of allocations for L0!");
+		return NULL;
+	}
+	MUTEX_LOCK(&volume_desc->bitmap_lock);
+	struct segment_header *new_segment = (segment_header *)allocate(volume_desc, SEGMENT_SIZE);
+	MUTEX_UNLOCK(&volume_desc->bitmap_lock);
+	assert(new_segment);
+
+	if (level_desc->offset[tree_id]) {
+		uint64_t segment_id;
+		segment_id = level_desc->last_segment[tree_id]->segment_id + 1;
+		/*chain segments*/
+		new_segment->next_segment = NULL;
+		new_segment->prev_segment = (segment_header *)((uint64_t)level_desc->last_segment[tree_id] - MAPPED);
+
+		level_desc->last_segment[tree_id]->next_segment = (segment_header *)((uint64_t)new_segment - MAPPED);
+		level_desc->last_segment[tree_id] = new_segment;
+		level_desc->last_segment[tree_id]->segment_id = segment_id;
+		level_desc->offset[tree_id] += SEGMENT_SIZE;
+	} else {
+		//log_info("Adding first index segmet for [%u]",tree_id);
+		/*special case for the first segment for this level*/
+		new_segment->next_segment = NULL;
+		new_segment->prev_segment = NULL;
+		level_desc->first_segment[tree_id] = new_segment;
+		level_desc->last_segment[tree_id] = new_segment;
+		level_desc->last_segment[tree_id]->segment_id = 0;
+		level_desc->offset[tree_id] = SEGMENT_SIZE;
+	}
+	new_segment->in_mem = 0;
+	return new_segment;
 }
 
 index_node *seg_get_index_node(volume_descriptor *volume_desc, level_descriptor *level_desc, uint8_t tree_id,
@@ -126,6 +170,7 @@ index_node *seg_get_index_node(volume_descriptor *volume_desc, level_descriptor 
 	/*private key log for index nodes*/
 	bh = (IN_log_header *)((uint64_t)ptr + INDEX_NODE_SIZE);
 	bh->next = (void *)NULL;
+	bh->type = keyBlockHeader;
 	ptr->header.first_IN_log_header = (IN_log_header *)((uint64_t)bh - MAPPED);
 	ptr->header.last_IN_log_header = ptr->header.first_IN_log_header;
 	ptr->header.key_log_size = sizeof(IN_log_header);
@@ -255,6 +300,7 @@ segment_header *seg_get_raw_log_segment(volume_descriptor *volume_desc)
 	sg->segment_garbage_bytes = 0;
 	sg->moved_kvs = 0;
 	sg->segment_end = 0;
+	sg->in_mem = 0;
 	MUTEX_UNLOCK(&volume_desc->bitmap_lock);
 	return sg;
 }
