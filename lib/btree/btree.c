@@ -326,6 +326,11 @@ struct bt_kv_log_address bt_get_kv_medium_log_address(struct bt_log_descriptor *
 static void pr_init_log(struct bt_log_descriptor *log_desc)
 {
 	// Just update the chunk counters according to the log size
+	if (RWLOCK_INIT(&log_desc->log_tail_buf_lock, NULL) != 0) {
+		log_fatal("Failed to init lock");
+		exit(EXIT_FAILURE);
+	}
+
 	for (int i = 0; i < LOG_TAIL_NUM_BUFS; ++i) {
 		if (posix_memalign((void **)&log_desc->tail[i], ALIGNMENT_SIZE, sizeof(struct log_tail)) != 0) {
 			log_fatal("Failed to allocate log buffer for direct IO");
@@ -1286,6 +1291,8 @@ static void *bt_append_to_log_direct_IO(struct log_operation *req, struct log_to
 
 		if (!next_tail->free)
 			wait_for_value(&next_tail->IOs_completed_in_tail, num_chunks);
+		RWLOCK_WRLOCK(&log_metadata->log_desc->log_tail_buf_lock);
+		wait_for_value(&next_tail->pending_readers, 0);
 
 		log_metadata->log_desc->size += available_space_in_log;
 
@@ -1309,6 +1316,7 @@ static void *bt_append_to_log_direct_IO(struct log_operation *req, struct log_to
 		log_metadata->log_desc->curr_tail_id = next_tail_id;
 		//log_info("Curr tail %u start %llu end %llu",next_tail_id,next_tail->start,next_tail->end);
 		segment_change = 1;
+		RWLOCK_UNLOCK(&log_metadata->log_desc->log_tail_buf_lock);
 	}
 	uint32_t tail_id = log_metadata->log_desc->curr_tail_id;
 	my_ticket.req = req;
@@ -1330,7 +1338,9 @@ static void *bt_append_to_log_direct_IO(struct log_operation *req, struct log_to
 		pr_do_log_IO(&pad_ticket);
 		wait_for_value(&pad_ticket.tail->IOs_completed_in_tail, num_chunks);
 		// Now time to retire
+		RWLOCK_WRLOCK(&log_metadata->log_desc->log_tail_buf_lock);
 		pad_ticket.tail->free = 1;
+		RWLOCK_UNLOCK(&log_metadata->log_desc->log_tail_buf_lock);
 	}
 	pr_copy_kv_to_tail(&my_ticket);
 	pr_do_log_IO(&my_ticket);
