@@ -1,7 +1,10 @@
 #pragma once
 #include <stdint.h>
 #include "../btree/btree.h"
-enum sh_heap_status { EMPTY_MIN_HEAP = 4, GOT_MIN_HEAP = 5, HEAP_SIZE = 32 };
+#include "../../utilities/dups_list.h"
+
+enum sh_heap_status { EMPTY_MIN_HEAP = 4, GOT_MIN_HEAP = 5 };
+#define HEAP_SIZE 32
 
 struct sh_heap_node {
 	void *KV;
@@ -15,7 +18,8 @@ struct sh_heap_node {
 
 struct sh_min_heap {
 	struct sh_heap_node elem[HEAP_SIZE];
-	int size;
+	struct dups_list *dups;
+	int heap_size;
 	int active_tree;
 };
 
@@ -24,6 +28,8 @@ struct sc_full_kv {
 	uint8_t deleted;
 };
 
+struct sh_min_heap *sh_alloc_heap(void);
 void sh_init_heap(struct sh_min_heap *heap, int active_tree);
+void sh_destroy_heap(struct sh_min_heap *heap);
 void sh_insert_heap_node(struct sh_min_heap *hp, struct sh_heap_node *nd);
 enum sh_heap_status sh_remove_min(struct sh_min_heap *hp, struct sh_heap_node *heap_node);

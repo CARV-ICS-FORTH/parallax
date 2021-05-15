@@ -264,6 +264,7 @@ struct db_coordinates {
 	int group_id;
 	int index;
 };
+
 struct db_coordinates locate_db(struct volume_descriptor *volume_desc, char *db_name, char create_db);
 
 int32_t volume_init(char *dev_name, int64_t start, int64_t size, int typeOfVolume);

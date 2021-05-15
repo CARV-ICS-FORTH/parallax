@@ -10,7 +10,6 @@
 #include <stdint.h>
 #include <sys/types.h>
 #include <limits.h>
-#include <config.h>
 #include <bloom.h>
 #include "conf.h"
 #include "../allocator/allocator.h"
@@ -91,8 +90,11 @@ typedef struct segment_header {
 	void *next_segment;
 	void *prev_segment;
 	uint64_t segment_id;
+	uint64_t segment_garbage_bytes;
+	uint64_t segment_end;
+	int moved_kvs;
 	int in_mem;
-	char pad[4068];
+	char pad[4046];
 } segment_header;
 
 /*Note IN stands for Internal Node*/
@@ -217,16 +219,6 @@ enum bsearch_status { INSERT = 0, FOUND = 1, ERROR = 2 };
 #define LEVEL6_LEAF_SIZE (PAGE_SIZE * 2)
 #define LEVEL7_LEAF_SIZE (PAGE_SIZE * 2)
 
-/* Possible options for these defines are the values in enum bt_layout */
-#define LEVEL0_LEAF_LAYOUT DYNAMIC_LEAF
-#define LEVEL1_LEAF_LAYOUT DYNAMIC_LEAF
-#define LEVEL2_LEAF_LAYOUT DYNAMIC_LEAF
-#define LEVEL3_LEAF_LAYOUT DYNAMIC_LEAF
-#define LEVEL4_LEAF_LAYOUT DYNAMIC_LEAF
-#define LEVEL5_LEAF_LAYOUT DYNAMIC_LEAF
-#define LEVEL6_LEAF_LAYOUT DYNAMIC_LEAF
-#define LEVEL7_LEAF_LAYOUT DYNAMIC_LEAF
-
 struct splice {
 	uint32_t size;
 	char data[0];
@@ -313,8 +305,6 @@ struct compaction_pairs {
 	int16_t dst_level;
 };
 
-enum bt_layout { DYNAMIC_LEAF };
-
 typedef struct level_descriptor {
 #if ENABLE_BLOOM_FILTERS
 	struct bloom bloom_filter[NUM_TREES_PER_LEVEL];
@@ -344,10 +334,9 @@ typedef struct level_descriptor {
 	double count_leaves;
 	double count_compactions;
 #endif
-	/*volatile */ int64_t active_writers;
+	int64_t active_writers;
 	/*spilling or not?*/
 	uint32_t leaf_size;
-	enum bt_layout node_layout;
 	char tree_status[NUM_TREES_PER_LEVEL];
 	uint8_t active_tree;
 	uint8_t level_id;
@@ -356,10 +345,12 @@ typedef struct level_descriptor {
 
 typedef struct db_descriptor {
 	char db_name[MAX_DB_NAME_SIZE];
-	level_descriptor levels[MAX_LEVELS + 1];
-	struct compaction_pairs inprogress_compactions[MAX_LEVELS + 1];
-	struct compaction_pairs pending_compactions[MAX_LEVELS + 1];
+	level_descriptor levels[MAX_LEVELS];
+	struct compaction_pairs inprogress_compactions[MAX_LEVELS];
+	struct compaction_pairs pending_compactions[MAX_LEVELS];
+#if MEASURE_MEDIUM_INPLACE
 	uint64_t count_medium_inplace;
+#endif
 	pthread_cond_t client_barrier;
 	pthread_cond_t compaction_cond;
 	pthread_mutex_t compaction_structs_lock;
@@ -392,6 +383,7 @@ typedef struct db_descriptor {
 	segment_header *inmem_medium_log_head[NUM_TREES_PER_LEVEL];
 	segment_header *inmem_medium_log_tail[NUM_TREES_PER_LEVEL];
 	uint64_t inmem_medium_log_size[NUM_TREES_PER_LEVEL];
+	struct db_handle *gc_db;
 	char *inmem_base;
 	/*coordinates of the latest persistent L0*/
 	/* Shouldn't this be in level_descriptor*/
@@ -412,7 +404,7 @@ typedef struct db_descriptor {
 	int32_t group_index;
 	volatile char dirty;
 	enum db_status stat;
-} /* __attribute__((packed)) */ __attribute__((aligned)) db_descriptor;
+} __attribute__((aligned)) db_descriptor;
 
 typedef struct db_handle {
 	volume_descriptor *volume_desc;
@@ -477,6 +469,8 @@ typedef struct bt_spill_request {
 /*client API*/
 /*management operations*/
 db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_name, char CREATE_FLAG);
+struct db_handle *bt_restore_db(struct volume_descriptor *volume_desc, struct pr_db_entry *db_entry,
+				struct db_coordinates db_c);
 
 void *compaction_daemon(void *args);
 void flush_volume(volume_descriptor *volume_desc, char force_spill);

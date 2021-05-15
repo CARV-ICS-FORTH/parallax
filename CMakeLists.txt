@@ -35,8 +35,6 @@ include(CheckCCompilerFlag)
 include(cmake_utils/mkfs.cmake.in)
 include(cmake_utils/ycsb.cmake.in)
 include(cmake_utils/tests.cmake.in)
-include(cmake_utils/cmakeconfig.cmake.in)
-configure_file(config.h.in config.h @ONLY)
 
 set(FETCHCONTENT_QUIET FALSE)
 FetchContent_Declare(
@@ -123,7 +121,7 @@ include_directories(${CMAKE_BINARY_DIR})
 include_directories(${CMAKE_SOURCE_DIR}/utilities)
 
 set(CMAKE_C_FLAGS
-    "-std=gnu11 -Wstrict-prototypes -Wall -Wextra -fPIC -fno-omit-frame-pointer -Wunused -Wuninitialized -Wimplicit-function-declaration -Wshadow  ${CMAKE_C_FLAGS}"
+    "-std=gnu11 -Wstrict-prototypes -Wall -Wextra -fPIC -fno-omit-frame-pointer -Wunused -Wuninitialized -Wimplicit-function-declaration -Wshadow  -Werror ${CMAKE_C_FLAGS}"
 )
 
 check_c_compiler_flag("-Wnull-dereference" CHECK_COMPILER_FLAGS)

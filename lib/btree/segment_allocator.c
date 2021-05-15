@@ -2,7 +2,6 @@
 #include <stdlib.h>
 #include <signal.h>
 #include <log.h>
-#include <config.h>
 #include "segment_allocator.h"
 #include "conf.h"
 #include "../allocator/allocator.h"
@@ -50,7 +49,6 @@ static uint64_t link_memory_segments(struct link_segments_metadata *req)
 	}
 
 	new_segment->in_mem = req->in_mem;
-
 	return level_desc->offset[tree_id] % SEGMENT_SIZE;
 }
 
@@ -78,16 +76,6 @@ static void *get_space(volume_descriptor *volume_desc, level_descriptor *level_d
 		available_space = 0;
 		segment_id = 0;
 	} else {
-#if 0
-	/*  else if (level_desc->offset[tree_id] % SEGMENT_SIZE != 0) { */
-	/* 	offset_in_segment = level_desc->offset[tree_id] % SEGMENT_SIZE; */
-	/* 	available_space = SEGMENT_SIZE - offset_in_segment; */
-	/* 	segment_id = level_desc->last_segment[tree_id]->segment_id; */
-	/* } else { */
-	/* 	available_space = 0; */
-	/* 	segment_id = level_desc->last_segment[tree_id]->segment_id; */
-	/* } */
-#endif
 		available_space = SEGMENT_SIZE - (level_desc->offset[tree_id] % SEGMENT_SIZE);
 		offset_in_segment = level_desc->offset[tree_id] % SEGMENT_SIZE;
 	}
@@ -109,12 +97,7 @@ static void *get_space(volume_descriptor *volume_desc, level_descriptor *level_d
 		assert(new_segment);
 		set_link_segments_metadata(&req, new_segment, segment_id, available_space);
 		offset_in_segment = link_memory_segments(&req);
-
-		/* offset_in_segment = level_desc->offset[tree_id] % SEGMENT_SIZE; */
 	}
-	/* if(level_desc->level_id != 0) */
-	/* 	log_info("offset in segment %llu level_id %d tree_id %d available space%llu alloc_size %llu", */
-	/* 		 offset_in_segment, level_desc->level_id, tree_id, available_space, size); */
 
 	node = (node_header *)((uint64_t)level_desc->last_segment[tree_id] + offset_in_segment);
 	assert(node);
@@ -269,6 +252,9 @@ segment_header *seg_get_raw_log_segment(volume_descriptor *volume_desc)
 	segment_header *sg;
 	MUTEX_LOCK(&volume_desc->bitmap_lock);
 	sg = (segment_header *)allocate(volume_desc, SEGMENT_SIZE);
+	sg->segment_garbage_bytes = 0;
+	sg->moved_kvs = 0;
+	sg->segment_end = 0;
 	MUTEX_UNLOCK(&volume_desc->bitmap_lock);
 	return sg;
 }

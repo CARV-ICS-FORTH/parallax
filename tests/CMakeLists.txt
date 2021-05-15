@@ -1,8 +1,14 @@
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 include_directories(${CMAKE_SOURCE_DIR}/lib)
 
-set(LIB_TEST_FILES test_deletes test_recovery.c test_scans.c test_dirty_scans.c
-                   test_options.c test_sanitizers.c)
+set(LIB_TEST_FILES
+    test_deletes
+    test_recovery.c
+    test_scans.c
+    test_dirty_scans.c
+    test_options.c
+    test_sanitizers.c
+    test_gc.c)
 
 set_source_files_properties(${LIB_TEST_FILES} COMPILE_FLAGS "-O3")
 
@@ -31,5 +37,9 @@ add_test(NAME test_options COMMAND $<TARGET_FILE:test_options>)
 set_source_files_properties(test_sanitizers.c COMPILE_FLAGS "-O0")
 add_executable(test_sanitizers test_sanitizers.c)
 add_test(NAME test_sanitizers COMMAND $<TARGET_FILE:test_sanitizers>)
+
+add_executable(test_gc test_gc.c)
+target_link_libraries(test_gc "${PROJECT_NAME}" ${DEPENDENCIES})
+add_test(NAME test_gc COMMAND $<TARGET_FILE:test_gc>)
 
 add_subdirectory(Surrogates)

@@ -39,12 +39,14 @@
 /*for allocator.c*/
 #define DATA_PER_BITMAP_BLOCK ((DEVICE_BLOCK_SIZE - 8) * 8) /*Data blocks addressed per bitmap block*/
 #define FREE_LOG_SIZE 512000 /*size in 4KB blocks of the log used for marking the free ops*/
-
+#define MAX_KEY_SIZE 255
 #define SEC (1000000L)
 
 #define WORD_SIZE 64
 #define BREAKPOINT asm volatile("int3;");
-#define KEY_BLOCK_SIZE 8192 // 4KB
+#define LEAF_NODE_SIZE 8192
+#define INDEX_NODE_SIZE 4096
+#define KEY_BLOCK_SIZE 8192
 /*Buffering related tunables*/
 
 #define GB(x) ((x)*1024LU * 1024LU * 1024LU)

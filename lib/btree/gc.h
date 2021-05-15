@@ -16,5 +16,13 @@ typedef struct stack {
 	int size;
 } stack;
 
+struct gc_value {
+	int group_id;
+	int index;
+	int moved;
+};
+#define SYSTEMDB "systemdb"
+#define GC_SEGMENT_THRESHOLD (10 / 100)
+#define SEGMENTS_TORECLAIM 100000
 #define LOG_DATA_OFFSET (BUFFER_SEGMENT_SIZE - sizeof(segment_header))
 void *gc_log_entries(void *db_handle);
