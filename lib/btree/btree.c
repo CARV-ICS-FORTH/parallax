@@ -296,6 +296,43 @@ static void pr_read_log_tail(struct log_tail *tail)
 	}
 }
 
+struct bt_kv_log_address bt_get_kv_log_address(struct bt_log_descriptor *log_desc, uint64_t dev_offt)
+{
+	struct bt_kv_log_address reply = { .addr = NULL, .tail_id = 0, .in_tail = UINT8_MAX };
+	RWLOCK_RDLOCK(&log_desc->log_tail_buf_lock);
+
+	for (int i = 0; i < LOG_TAIL_NUM_BUFS; ++i) {
+		if (log_desc->tail[i]->free)
+			continue;
+
+		if (dev_offt >= log_desc->tail[i]->start && dev_offt <= log_desc->tail[i]->end) {
+			__sync_fetch_and_add(&log_desc->tail[i]->pending_readers, 1);
+			reply.in_tail = 1;
+			// log_info("KV at tail! offt %llu in the device or %llu", dev_offt,
+			// dev_offt % SEGMENT_SIZE);
+			reply.addr = &log_desc->tail[i]->buf[dev_offt % SEGMENT_SIZE];
+			reply.tail_id = i;
+			RWLOCK_UNLOCK(&log_desc->log_tail_buf_lock);
+			return reply;
+		}
+		// log_info("KV NOT at tail %d! DB: %s offt %llu start %llu end %llu", i,
+		// db_desc->db_name, dev_offt,
+		//	 db_desc->log_tail_buf[i]->start, db_desc->log_tail_buf[i]->end);
+	}
+
+	reply.in_tail = 0;
+	RWLOCK_UNLOCK(&log_desc->log_tail_buf_lock);
+	reply.addr = (void *)(MAPPED + dev_offt);
+	reply.tail_id = UINT8_MAX;
+	return reply;
+}
+
+void bt_done_with_value_log_address(struct bt_log_descriptor *log_desc, struct bt_kv_log_address *L)
+{
+	assert(log_desc->tail[L->tail_id]->pending_readers > 0);
+	__sync_fetch_and_sub(&log_desc->tail[L->tail_id]->pending_readers, 1);
+}
+
 struct bt_kv_log_address bt_get_kv_medium_log_address(struct bt_log_descriptor *log_desc, uint64_t dev_offt)
 {
 	struct bt_kv_log_address reply = { .addr = NULL, .tail_id = 0, .in_tail = UINT8_MAX };
@@ -414,6 +451,7 @@ static void pr_recover_logs(db_descriptor *db_desc, struct pr_db_entry *entry)
 	db_desc->big_log.head_dev_offt = entry->big_log_head_offt;
 	db_desc->big_log.tail_dev_offt = entry->big_log_tail_offt;
 	db_desc->big_log.size = entry->big_log_size;
+	pr_init_log(&db_desc->big_log);
 	db_desc->lsn = entry->lsn;
 }
 
@@ -440,6 +478,7 @@ static void pr_init_logs(db_descriptor *db_desc, volume_descriptor *volume_desc)
 	db_desc->big_log.head_dev_offt = ABSOLUTE_ADDRESS(s);
 	db_desc->big_log.tail_dev_offt = db_desc->big_log.head_dev_offt;
 	db_desc->big_log.size = sizeof(segment_header);
+	pr_init_log(&db_desc->big_log);
 	log_info("Big log head %llu", db_desc->big_log.head_dev_offt);
 
 	// Medium log
@@ -1349,6 +1388,7 @@ static void *bt_append_to_log_direct_IO(struct log_operation *req, struct log_to
 }
 //######################################################################################################
 
+#if 0
 static void *bt_append_key_value_to_log_mmap(struct log_operation *req, struct log_towrite *log_metadata,
 					     struct metadata_tologop *data_size)
 {
@@ -1410,6 +1450,7 @@ static void *bt_append_key_value_to_log_mmap(struct log_operation *req, struct l
 
 	return addr_inlog + sizeof(struct log_sequence_number);
 }
+#endif
 
 void *append_key_value_to_log(log_operation *req)
 {
@@ -1448,7 +1489,8 @@ void *append_key_value_to_log(log_operation *req)
 	}
 	case BIG_INLOG:
 		log_metadata.log_desc = &handle->db_desc->big_log;
-		return bt_append_key_value_to_log_mmap(req, &log_metadata, &data_size);
+		//return bt_append_key_value_to_log_mmap(req, &log_metadata, &data_size);
+		return bt_append_to_log_direct_IO(req, &log_metadata, &data_size);
 	default:
 		log_fatal("Unknown category %u", log_metadata.status);
 		exit(EXIT_FAILURE);
@@ -1930,7 +1972,8 @@ int insert_KV_at_leaf(bt_insert_req *ins_req, node_header *leaf)
 		case MEDIUM_INPLACE:
 			append_key_value_to_log(&append_op);
 			break;
-		case MEDIUM_INLOG:
+		case MEDIUM_INLOG: {
+			assert(0); //With compactions direct IO this is useless
 			if (ins_req->metadata.level_id == 1) {
 				void *addr = append_key_value_to_log(&append_op);
 				ins_req->kv_dev_offt = ABSOLUTE_ADDRESS(addr);
@@ -1938,6 +1981,13 @@ int insert_KV_at_leaf(bt_insert_req *ins_req, node_header *leaf)
 			} else
 				ins_req->key_value_buf = append_key_value_to_log(&append_op);
 			break;
+		}
+		case BIG_INLOG: {
+			void *addr = append_key_value_to_log(&append_op);
+			ins_req->kv_dev_offt = ABSOLUTE_ADDRESS(addr);
+			assert(ins_req->kv_dev_offt != 0);
+			break;
+		}
 		default:
 			ins_req->key_value_buf = append_key_value_to_log(&append_op);
 			break;

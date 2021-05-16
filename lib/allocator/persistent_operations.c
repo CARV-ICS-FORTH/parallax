@@ -235,7 +235,9 @@ void snapshot(volume_descriptor *volume_desc)
 		dirty += db_desc->dirty;
 		/*update the catalogue if db is dirty*/
 		if (db_desc->dirty > 0) {
+			pr_flush_log_tail(db_desc, volume_desc, &db_desc->small_log);
 			pr_flush_log_tail(db_desc, volume_desc, &db_desc->medium_log);
+			pr_flush_log_tail(db_desc, volume_desc, &db_desc->big_log);
 			db_desc->dirty = 0x00;
 			/*cow check*/
 			db_group = (pr_db_group *)REAL_ADDRESS(

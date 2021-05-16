@@ -1129,7 +1129,7 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 	struct comp_level_write_cursor *merged_level = NULL;
 
 	if (comp_req->src_level == 0) {
-		// snapshot(comp_req->volume_desc) --> This is for recovery I think;
+		snapshot(comp_req->volume_desc); // --> This is for recovery I think;
 		log_info("Initializing L0 scanner");
 		level_src = _init_spill_buffer_scanner(handle, comp_req->src_level, src_root, NULL);
 	} else {
