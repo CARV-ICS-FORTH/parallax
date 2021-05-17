@@ -1200,7 +1200,7 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 		sh_insert_heap_node(m_heap, &nd_dst);
 	}
 	// ############################################################################
-	int32_t num_of_keys = COMPACTION_UNIT_OF_WORK;
+	int32_t num_of_keys = 1; // COMPACTION_UNIT_OF_WORK;
 	enum sh_heap_status stat = GOT_MIN_HEAP;
 	do {
 		handle->db_desc->dirty = 0x01;

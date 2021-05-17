@@ -40,7 +40,6 @@
 #include "../btree/segment_allocator.h"
 #include "../btree/set_options.h"
 #include "../utilities/list.h"
-
 //#define USE_MLOCK
 #define __NR_mlock2 284
 
@@ -150,24 +149,23 @@ off64_t mount_volume(char *volume_name, int64_t start, int64_t unused_size)
 			exit(EXIT_FAILURE);
 		}
 
-		if (ioctl(FD, BLKGETSIZE64, &device_size) == -1) {
-			/*maybe we have a file?*/
-			device_size = lseek64(FD, 0, SEEK_END);
-			if (device_size == -1) {
-				log_fatal("failed to determine volume size exiting...");
-				perror("ioctl");
-				exit(EXIT_FAILURE);
-			}
+		device_size = lseek64(FD, 0, SEEK_END);
+		log_info("Found device of %lld bytes", device_size);
+		if (device_size == -1) {
+			log_fatal("failed to determine volume size exiting...");
+			perror("ioctl");
+			exit(EXIT_FAILURE);
 		}
 
 		if (device_size < MIN_VOLUME_SIZE) {
-			log_fatal("Sorry minimum supported volume size is %lld GB",
-				  MIN_VOLUME_SIZE / (1024 * 1024 * 1024));
+			log_fatal("Sorry minimum supported volume size is %lld GB actual size %lld GB",
+				  MIN_VOLUME_SIZE / (1024 * 1024 * 1024), device_size / (1024 * 1024 * 1024));
 			exit(EXIT_FAILURE);
 		}
 
 		log_info("Creating virtual address space offset %lld size %ld\n", (long long)start, device_size);
 		// mmap the device
+
 		char *addr_space = mmap(NULL, device_size, PROT_READ | PROT_WRITE, MAP_SHARED, FD, start);
 		if (addr_space == MAP_FAILED) {
 			log_fatal("MMAP for device %s reason follows", volume_name);

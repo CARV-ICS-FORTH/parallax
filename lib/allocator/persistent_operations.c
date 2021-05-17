@@ -227,9 +227,10 @@ void snapshot(volume_descriptor *volume_desc)
 		for (level_id = 0; level_id < MAX_LEVELS; level_id++) {
 			/*stop level 0 writers for this db*/
 			RWLOCK_WRLOCK(&db_desc->levels[level_id].guard_of_level.rx_lock);
-			/*spinning*/
-			spin_loop(&(db_desc->levels[level_id].active_writers), 0);
 		}
+
+		for (level_id = 0; level_id < MAX_LEVELS; level_id++)
+			spin_loop(&(db_desc->levels[level_id].active_writers), 0);
 
 		//all levels locked
 		dirty += db_desc->dirty;
@@ -350,6 +351,7 @@ void snapshot(volume_descriptor *volume_desc)
 		//gettimeofday(&tim, NULL);
 		//t1=tim.tv_sec+(tim.tv_usec/1000000.0);
 		log_info("Syncing volume... from %llu to %llu", volume_desc->start_addr, volume_desc->size);
+#if 0
 		if (msync(volume_desc->start_addr, volume_desc->size, MS_SYNC) != 0) {
 			log_fatal("Error at msync start_addr %llu size %llu",
 				  (long long unsigned)volume_desc->start_addr, (long long unsigned)volume_desc->size);
@@ -366,6 +368,7 @@ void snapshot(volume_descriptor *volume_desc)
 			}
 			exit(EXIT_FAILURE);
 		}
+#endif
 		//gettimeofday(&tim, NULL);
 		//t2=tim.tv_sec+(tim.tv_usec/1000000.0);
 		//fprintf(stderr, "snap_time=[%lf]sec\n", (t2-t1));
