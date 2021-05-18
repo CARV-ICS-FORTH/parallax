@@ -177,9 +177,10 @@ void binary_search_dynamic_leaf(const struct bt_dynamic_leaf_node *leaf, uint32_
 				memcpy(padded_qkey_prefix, req->key_value_buf + sizeof(uint32_t),
 				       *(uint32_t *)req->key_value_buf);
 				ret = prefix_compare(leaf_key_prefix.prefix, padded_qkey_prefix, PREFIX_SIZE);
-			} else
+			} else {
 				ret = prefix_compare(leaf_key_prefix.prefix, req->key_value_buf + 4,
-						     PREFIX_SIZE /*MIN(leaf_key_prefix.len, key_buf->size)*/);
+						     PREFIX_SIZE /* MIN(leaf_key_prefix.len, key_buf->size) */);
+			}
 		}
 
 		/* log_info("%d %*s %*s",ret

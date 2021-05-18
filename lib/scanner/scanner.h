@@ -18,11 +18,6 @@ typedef enum SEEK_SCANNER_MODE { GREATER = 5, GREATER_OR_EQUAL = 6, FETCH_FIRST 
 
 typedef struct level_scanner {
 	struct bt_leaf_entry kv_entry;
-	union {
-		struct bt_leaf_entry kv_prefix;
-		struct sc_full_kv key_value;
-	};
-
 	db_handle *db;
 	stackT stack;
 	node_header *root; /*root of the tree when the cursor was initialized/reset, related to CPAAS-188*/
@@ -39,11 +34,9 @@ typedef struct level_scanner {
 typedef struct scannerHandle {
 	level_scanner LEVEL_SCANNERS[MAX_LEVELS][NUM_TREES_PER_LEVEL];
 	struct sh_min_heap heap;
-	struct sc_full_kv key_value;
 	db_handle *db;
 	void *keyValue;
 	int32_t type; /*to be removed also*/
-	int32_t malloced;
 } scannerHandle;
 
 /*

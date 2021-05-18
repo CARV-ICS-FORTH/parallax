@@ -22,6 +22,10 @@ static int sh_cmp_heap_nodes(struct sh_min_heap *hp, struct sh_heap_node *nd_1, 
 struct sh_min_heap *sh_alloc_heap(void)
 {
 	struct sh_min_heap *new_heap = calloc(1, sizeof(struct sh_min_heap));
+	if (!new_heap) {
+		log_fatal("Calloc failed");
+		exit(EXIT_FAILURE);
+	}
 	new_heap->dups = init_dups_list();
 	return new_heap;
 }
@@ -33,7 +37,8 @@ void sh_init_heap(struct sh_min_heap *heap, int active_tree)
 {
 	heap->heap_size = 0;
 	heap->dups = init_dups_list();
-	heap->active_tree = active_tree;
+	(void)active_tree;
+	heap->active_tree = -1;
 }
 
 /*Destroy a min heap that was allocated using dynamic memory */
@@ -139,6 +144,7 @@ void sh_insert_heap_node(struct sh_min_heap *hp, struct sh_heap_node *nd)
 		log_fatal("min max heap out of space resize heap accordingly");
 		exit(EXIT_FAILURE);
 	}
+
 	i = hp->heap_size++;
 	while (i && sh_cmp_heap_nodes(hp, nd, &(hp->elem[PARENT(i)])) < 0) {
 		hp->elem[i] = hp->elem[PARENT(i)];

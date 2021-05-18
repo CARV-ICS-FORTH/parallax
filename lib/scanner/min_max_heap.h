@@ -23,11 +23,6 @@ struct sh_min_heap {
 	int active_tree;
 };
 
-struct sc_full_kv {
-	struct kv_format *kv;
-	uint8_t deleted;
-};
-
 struct sh_min_heap *sh_alloc_heap(void);
 void sh_init_heap(struct sh_min_heap *heap, int active_tree);
 void sh_destroy_heap(struct sh_min_heap *heap);

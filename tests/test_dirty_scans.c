@@ -79,7 +79,7 @@ int main(void)
 			  *(uint32_t *)sc->keyValue, sc->keyValue + sizeof(uint32_t));
 		exit(EXIT_FAILURE);
 	}
-	close_dirty_scanner(sc);
+	closeScanner(sc);
 	log_info("milestone 2");
 	log_info("Cornercase scenario...DONE");
 
@@ -123,10 +123,9 @@ int main(void)
 
 		if (i % 100000 == 0)
 			log_info("</Scan no %llu>", i);
-		close_dirty_scanner(sc);
+		closeScanner(sc);
 	}
 	log_info("scan test Successfull");
 	free(k);
-	free(sc);
 	return 1;
 }

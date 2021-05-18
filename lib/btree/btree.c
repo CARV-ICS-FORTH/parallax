@@ -1610,12 +1610,12 @@ void *__find_key(db_handle *handle, void *key)
 {
 	struct lookup_reply rep = { .addr = NULL, .lc_failed = 0 };
 	/*again special care for L0*/
-	uint8_t tree_id = handle->db_desc->levels[0].active_tree;
-	uint8_t base = tree_id;
 	// Acquiring guard lock for level 0
 	if (RWLOCK_RDLOCK(&handle->db_desc->levels[0].guard_of_level.rx_lock) != 0)
 		exit(EXIT_FAILURE);
 	__sync_fetch_and_add(&handle->db_desc->levels[0].active_writers, 1);
+	uint8_t tree_id = handle->db_desc->levels[0].active_tree;
+	uint8_t base = tree_id;
 
 	while (1) {
 		/*first look the current active tree of the level*/

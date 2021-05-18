@@ -6,7 +6,7 @@ set(LIB_C_SOURCE_FILES
     allocator/allocator.c
     allocator/persistent_operations.c
     allocator/recovery.c
-    api/parallax.c
+    # api/parallax.c
     btree/btree.c
     btree/compaction_daemon.c
     btree/dynamic_leaf.c
