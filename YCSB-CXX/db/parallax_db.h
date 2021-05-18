@@ -200,14 +200,13 @@ class ParallaxDB : public YCSBDB {
 		memcpy(key_buf, &klen, sizeof(int32_t));
 		memcpy(key_buf + sizeof(int32_t), key.c_str(), key.length());
 
-		struct scannerHandle *sh = (struct scannerHandle *)malloc(sizeof(struct scannerHandle));
-		init_dirty_scanner(sh, dbs[hash_fn(key) % db_num], key_buf, GREATER_OR_EQUAL);
-		//initScanner(&sh, dbs[hash_fn(key) % db_num], key_buf, GREATER_OR_EQUAL);
+		struct scannerHandle *sh = (struct scannerHandle *)calloc(1, sizeof(struct scannerHandle));
+		if (!sh) {
+			std::cerr << "Calloc failed!";
+			exit(EXIT_FAILURE);
+		}
 
-		//if (!isValid(&sh)) {
-		//snapshot(dbs[0]->volume_desc);
-		//initScanner(&sh, dbs[hash_fn(key) % db_num], key_buf, GREATER_OR_EQUAL);
-		//}
+		init_dirty_scanner(sh, dbs[hash_fn(key) % db_num], key_buf, GREATER_OR_EQUAL);
 
 		while (isValid(sh)) {
 			if (getNext(sh) == END_OF_DATABASE)
@@ -217,6 +216,7 @@ class ParallaxDB : public YCSBDB {
 				break;
 			}
 		}
+
 		closeScanner(sh);
 		return 0;
 	}

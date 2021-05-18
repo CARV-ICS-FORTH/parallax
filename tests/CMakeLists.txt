@@ -2,18 +2,14 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 include_directories(${CMAKE_SOURCE_DIR}/lib)
 
 set(LIB_TEST_FILES
-    test_deletes
-    test_recovery.c
-    test_scans.c
-    test_dirty_scans.c
-    test_options.c
-    test_sanitizers.c
-    test_gc.c)
+    test_deletes test_recovery.c
+    # test_scans.c
+    test_dirty_scans.c test_options.c test_sanitizers.c test_gc.c)
 
 set_source_files_properties(${LIB_TEST_FILES} COMPILE_FLAGS "-O3")
 
-add_executable(test_scans test_scans.c)
-target_link_libraries(test_scans "${PROJECT_NAME}" ${DEPENDENCIES})
+# add_executable(test_scans test_scans.c) target_link_libraries(test_scans
+# "${PROJECT_NAME}" ${DEPENDENCIES})
 
 add_executable(test_dirty_scans test_dirty_scans.c)
 target_link_libraries(test_dirty_scans "${PROJECT_NAME}" ${DEPENDENCIES})
@@ -27,8 +23,8 @@ target_link_libraries(test_spillscans "${PROJECT_NAME}" ${DEPENDENCIES})
 add_executable(test_recovery test_recovery.c)
 target_link_libraries(test_recovery "${PROJECT_NAME}" ${DEPENDENCIES})
 
-add_executable(test_spills test_spills.c)
-target_link_libraries(test_spills "${PROJECT_NAME}" ${DEPENDENCIES})
+# add_executable(test_spills test_spills.c) target_link_libraries(test_spills
+# "${PROJECT_NAME}" ${DEPENDENCIES})
 
 add_executable(test_options test_options.c)
 target_link_libraries(test_options "${PROJECT_NAME}" ${DEPENDENCIES})

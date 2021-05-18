@@ -20,7 +20,7 @@
 #include "../allocator/allocator.h"
 #include "../../utilities/dups_list.h"
 
-#define COMPACTION_UNIT_OF_WORK 131072
+#define COMPACTION_UNIT_OF_WORK 1
 
 /* Checks for pending compactions. It is responsible to check for dependencies
  * between two levels before triggering a compaction. */
@@ -381,7 +381,6 @@ static void comp_init_write_cursor(struct comp_level_write_cursor *c, struct db_
 {
 	c->level_id = level_id;
 	c->tree_height = 0;
-
 	c->fd = fd;
 	c->handle = handle;
 	uint32_t level_leaf_size = c->handle->db_desc->levels[level_id].leaf_size;
@@ -414,14 +413,13 @@ static void comp_init_write_cursor(struct comp_level_write_cursor *c, struct db_
 
 			IN_log_header *tmp = (IN_log_header *)&c->segment_buf[i][(uint64_t)bh % SEGMENT_SIZE];
 			tmp->type = keyBlockHeader;
-			tmp->next = (void *)NULL;
+			tmp->next = NULL;
 			c->last_index[i]->header.first_IN_log_header = bh;
 			c->last_index[i]->header.last_IN_log_header = c->last_index[i]->header.first_IN_log_header;
 			c->last_index[i]->header.key_log_size = sizeof(IN_log_header);
 			c->segment_offt[i] += (INDEX_NODE_SIZE + KEY_BLOCK_SIZE);
 		}
 	}
-	return;
 }
 
 static void comp_close_write_cursor(struct comp_level_write_cursor *c)
@@ -912,6 +910,7 @@ void *compaction_daemon(void *args)
 				}
 
 				spin_loop(&(handle->db_desc->levels[0].active_writers), 0);
+
 				/*done now atomically change active tree*/
 				db_desc->levels[0].active_tree = next_active_tree;
 				log_info("next active tree %d", next_active_tree);
@@ -1172,7 +1171,7 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 		log_info("Empty dst [%u][%u]", comp_req->dst_level, 0);
 
 	// initialize and fill min_heap properly
-	struct sh_min_heap *m_heap = (struct sh_min_heap *)calloc(1, sizeof(struct sh_min_heap));
+	struct sh_min_heap *m_heap = sh_alloc_heap();
 	sh_init_heap(m_heap, comp_req->src_level);
 	struct sh_heap_node nd_src = { .KV = NULL, .level_id = 0, .active_tree = 0, .duplicate = 0, .type = KV_PREFIX };
 	struct sh_heap_node nd_dst = { .KV = NULL, .level_id = 0, .active_tree = 0, .duplicate = 0, .type = KV_PREFIX };
@@ -1204,9 +1203,6 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 	int32_t num_of_keys = COMPACTION_UNIT_OF_WORK;
 	enum sh_heap_status stat = GOT_MIN_HEAP;
 	do {
-		// while (handle.volume_desc->snap_preemption == SNAP_INTERRUPT_ENABLE)
-		// usleep(50000);
-
 		handle->db_desc->dirty = 0x01;
 		if (handle->db_desc->stat == DB_IS_CLOSING) {
 			log_info("DB %s is closing compaction thread exiting...", handle->db_desc->db_name);
@@ -1223,9 +1219,9 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 			if (stat == EMPTY_MIN_HEAP)
 				break;
 			if (!nd_min.duplicate) {
-				struct comp_parallax_key my_key;
-				comp_fill_parallax_key(&nd_min, &my_key);
-				comp_append_entry_to_leaf_node(merged_level, &my_key);
+				struct comp_parallax_key key;
+				comp_fill_parallax_key(&nd_min, &key);
+				comp_append_entry_to_leaf_node(merged_level, &key);
 			}
 			// log_info("level size
 			// %llu",comp_req->db_desc->levels[comp_req->dst_level].level_size[comp_req->dst_tree]);
@@ -1427,7 +1423,6 @@ static void compact_level_mmap_IO(struct db_handle *handle, struct compaction_re
 		exit(EXIT_FAILURE);
 	}
 	struct sh_min_heap *m_heap = sh_alloc_heap();
-	/* 	(struct sh_min_heap *)malloc(sizeof(struct sh_min_heap)); */
 	/* sh_init_heap(m_heap, comp_req->src_level); */
 	struct sh_heap_node nd_src = { .KV = NULL, .level_id = 0, .active_tree = 0, .duplicate = 0, .type = KV_PREFIX };
 	struct sh_heap_node nd_dst = { .KV = NULL, .level_id = 0, .active_tree = 0, .duplicate = 0, .type = KV_PREFIX };
