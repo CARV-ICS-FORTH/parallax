@@ -1370,11 +1370,11 @@ static void *bt_append_to_log_direct_IO(struct log_operation *req, struct log_to
 	if (segment_change) {
 		// do the padding IO as well
 		pr_do_log_IO(&pad_ticket);
-		wait_for_value(&pad_ticket.tail->IOs_completed_in_tail, num_chunks);
+		//wait_for_value(&pad_ticket.tail->IOs_completed_in_tail, num_chunks);
 		// Now time to retire
-		RWLOCK_WRLOCK(&log_metadata->log_desc->log_tail_buf_lock);
-		pad_ticket.tail->free = 1;
-		RWLOCK_UNLOCK(&log_metadata->log_desc->log_tail_buf_lock);
+		//RWLOCK_WRLOCK(&log_metadata->log_desc->log_tail_buf_lock);
+		//pad_ticket.tail->free = 1;
+		//RWLOCK_UNLOCK(&log_metadata->log_desc->log_tail_buf_lock);
 	}
 	pr_copy_kv_to_tail(&my_ticket);
 	pr_do_log_IO(&my_ticket);

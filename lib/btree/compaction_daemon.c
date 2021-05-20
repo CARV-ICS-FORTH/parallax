@@ -1,7 +1,5 @@
-#define _GNU_SOURCE
-#define COMPACTION
+#define _GNU_SOURCE /* See feature_test_macros(7) */
 #include <sys/mman.h>
-
 #include <semaphore.h>
 #include <string.h>
 #include <stdint.h>
@@ -19,7 +17,7 @@
 #include "../scanner/min_max_heap.h"
 #include "../allocator/allocator.h"
 #include "../../utilities/dups_list.h"
-
+#define COMPACTION
 #define COMPACTION_UNIT_OF_WORK 1
 
 /* Checks for pending compactions. It is responsible to check for dependencies
@@ -47,17 +45,6 @@ enum comp_level_read_cursor_state {
 	COMP_CUR_CHECK_OFFT
 };
 
-// in log
-struct comp_kv_prefix {
-	char prefix[PREFIX_SIZE];
-	uint64_t device_offt;
-} __attribute__((packed));
-
-// in place
-struct comp_kv_format {
-	char *kv_loc;
-};
-
 struct comp_kv_prefix *prefix_2_comp_kv_prefix(struct prefix *p, enum log_category cat)
 {
 	struct comp_kv_prefix *c_prefix;
@@ -78,11 +65,11 @@ struct comp_kv_prefix *prefix_2_comp_kv_prefix(struct prefix *p, enum log_catego
 }
 
 struct comp_parallax_key {
-	struct prefix P;
 	union {
-		struct comp_kv_prefix *in_log;
-		struct comp_kv_format in_place;
+		struct bt_leaf_entry *kv_inlog;
+		char *kv_inplace;
 	};
+	struct bt_leaf_entry kvsep;
 	enum log_category kv_category;
 	enum kv_entry_location kv_type;
 };
@@ -300,7 +287,7 @@ static void comp_get_next_key(struct comp_level_read_cursor *c)
 				case SMALL_INPLACE:
 				case MEDIUM_INPLACE: {
 					// Real key in KV_FORMAT
-					c->cursor_key.in_place.kv_loc =
+					c->cursor_key.kv_inplace =
 						fill_keybuf(kv_loc, slot_array[c->curr_leaf_entry].bitmap);
 					break;
 				}
@@ -308,11 +295,10 @@ static void comp_get_next_key(struct comp_level_read_cursor *c)
 				case BIG_INLOG: {
 					// fill_prefix(&c->cursor_key.P, kv_loc,
 					// slot_array[c->curr_leaf_entry].bitmap);
-					// c->cursor_key.in_log = prefix_2_comp_kv_prefix(&c->cursor_key.P,
 					// c->category);
-					c->cursor_key.in_log = (struct comp_kv_prefix *)kv_loc;
-					c->cursor_key.in_log->device_offt =
-						(uint64_t)REAL_ADDRESS(c->cursor_key.in_log->device_offt);
+					c->cursor_key.kv_inlog = (struct bt_leaf_entry *)kv_loc;
+					c->cursor_key.kv_inlog->pointer =
+						(uint64_t)REAL_ADDRESS(c->cursor_key.kv_inlog->pointer);
 					// log_info("prefix is %.12s dev_offt %llu",
 					// c->cursor_key.in_log->prefix,
 					//	 c->cursor_key.in_log->device_offt);
@@ -657,15 +643,15 @@ static int comp_append_medium_L1(struct comp_level_write_cursor *c, struct comp_
 	ins_req.metadata.handle = c->handle;
 	ins_req.metadata.log_offset = 0;
 
-	ins_req.metadata.kv_size = sizeof(uint32_t) + KEY_SIZE(in->in_place.kv_loc);
-	ins_req.metadata.kv_size += VALUE_SIZE(in->in_place.kv_loc + ins_req.metadata.kv_size) + sizeof(uint32_t);
+	ins_req.metadata.kv_size = sizeof(uint32_t) + KEY_SIZE(in->kv_inplace);
+	ins_req.metadata.kv_size += VALUE_SIZE(in->kv_inplace + ins_req.metadata.kv_size) + sizeof(uint32_t);
 	ins_req.metadata.cat = MEDIUM_INLOG;
 	ins_req.metadata.level_id = c->level_id;
 	ins_req.metadata.tree_id = 1;
 	ins_req.metadata.append_to_log = 1;
 	ins_req.metadata.gc_request = 0;
 	ins_req.metadata.recovery_request = 0;
-	ins_req.metadata.special_split = 1;
+	ins_req.metadata.special_split = 0;
 	ins_req.metadata.key_format = KV_FORMAT;
 	// bullshit for parallax currently
 	ins_req.metadata.segment_full_event = 0;
@@ -675,38 +661,40 @@ static int comp_append_medium_L1(struct comp_level_write_cursor *c, struct comp_
 	ins_req.metadata.segment_id = 0;
 	ins_req.metadata.end_of_log = 0;
 	ins_req.metadata.log_padding = 0;
-	ins_req.key_value_buf = in->in_place.kv_loc;
+
+	ins_req.key_value_buf = in->kv_inplace;
 	struct log_operation my_op;
 	my_op.metadata = &ins_req.metadata;
 	my_op.optype_tolog = insertOp;
 	my_op.ins_req = &ins_req;
 	// log_info("Appending to medium log during compaction");
 	char *log_location = append_key_value_to_log(&my_op);
+	out->kv_inlog = &out->kvsep;
 	if (ins_req.metadata.kv_size >= PREFIX_SIZE)
-		memcpy(out->in_log->prefix, in->in_place.kv_loc + sizeof(uint32_t), PREFIX_SIZE);
+		memcpy(out->kv_inlog, in->kv_inplace + sizeof(uint32_t), PREFIX_SIZE);
 	else {
-		memset(out->in_log->prefix, 0x00, PREFIX_SIZE);
-		memcpy(out->in_log->prefix, in->in_place.kv_loc + sizeof(uint32_t), ins_req.metadata.kv_size);
+		memset(out->kv_inlog, 0x00, PREFIX_SIZE);
+		memcpy(out->kv_inlog, in->kv_inplace + sizeof(uint32_t), ins_req.metadata.kv_size);
 	}
+
 	out->kv_category = MEDIUM_INLOG;
 	out->kv_type = KV_INLOG;
-	out->in_log->device_offt = (uint64_t)log_location;
+	out->kv_inlog->pointer = (uint64_t)log_location;
 	return 1;
 }
 
 static void comp_append_entry_to_leaf_node(struct comp_level_write_cursor *c, struct comp_parallax_key *kv)
 {
-	struct comp_kv_prefix my_prefix;
 	uint64_t left_leaf_offt;
 	uint64_t right_leaf_offt;
 	uint32_t level_leaf_size = c->handle->db_desc->levels[c->level_id].leaf_size;
 	uint32_t kv_size;
 	int new_leaf = 0;
 	struct comp_parallax_key trans_medium;
-	trans_medium.in_log = (struct comp_kv_prefix *)&my_prefix;
 	struct write_dynamic_leaf_args write_leaf_args;
 	uint8_t append_to_medium_log = 0;
 	struct comp_parallax_key *my_key = NULL;
+
 	if (comp_append_medium_L1(c, kv, &trans_medium)) {
 		my_key = &trans_medium;
 		append_to_medium_log = 1;
@@ -716,21 +704,21 @@ static void comp_append_entry_to_leaf_node(struct comp_level_write_cursor *c, st
 
 	switch (my_key->kv_type) {
 	case KV_INPLACE:
-		kv_size = sizeof(uint32_t) + KEY_SIZE(my_key->in_place.kv_loc);
-		kv_size += VALUE_SIZE(my_key->in_place.kv_loc + kv_size) + sizeof(uint32_t);
+		kv_size = sizeof(uint32_t) + KEY_SIZE(my_key->kv_inplace);
+		kv_size += VALUE_SIZE(my_key->kv_inplace + kv_size) + sizeof(uint32_t);
 		write_leaf_args.kv_dev_offt = 0;
 		write_leaf_args.key_value_size = kv_size;
 		write_leaf_args.level_id = c->level_id;
 		write_leaf_args.kv_format = KV_FORMAT;
 		write_leaf_args.cat = my_key->kv_category;
-		write_leaf_args.key_value_buf = my_key->in_place.kv_loc;
+		write_leaf_args.key_value_buf = my_key->kv_inplace;
 		//log_info("Appending key in_place %u:%s", write_leaf_args.key_value_size,
 		//	 write_leaf_args.key_value_buf + sizeof(uint32_t));
 		break;
 	case KV_INLOG:
 		kv_size = sizeof(struct bt_leaf_entry);
-		write_leaf_args.kv_dev_offt = my_key->in_log->device_offt;
-		write_leaf_args.key_value_buf = (char *)my_key->in_log;
+		write_leaf_args.kv_dev_offt = my_key->kv_inlog->pointer;
+		write_leaf_args.key_value_buf = (char *)my_key->kv_inlog;
 		write_leaf_args.key_value_size = kv_size;
 		write_leaf_args.level_id = c->level_id;
 		write_leaf_args.kv_format = KV_PREFIX;
@@ -743,8 +731,9 @@ static void comp_append_entry_to_leaf_node(struct comp_level_write_cursor *c, st
 	}
 
 	if (write_leaf_args.cat == MEDIUM_INLOG && write_leaf_args.level_id == LEVEL_MEDIUM_INPLACE) {
-		kv_size = sizeof(uint32_t) + KEY_SIZE(my_key->in_log->device_offt);
-		kv_size += VALUE_SIZE(my_key->in_log->device_offt + kv_size) + sizeof(uint32_t);
+		kv_size = sizeof(uint32_t) + KEY_SIZE(my_key->kv_inlog->pointer);
+		kv_size += VALUE_SIZE(my_key->kv_inlog->pointer + kv_size) + sizeof(uint32_t);
+		write_leaf_args.key_value_size = kv_size;
 	}
 
 	if (check_dynamic_leaf_split(c->last_leaf, level_leaf_size, kv_size, c->level_id, my_key->kv_type,
@@ -784,7 +773,7 @@ static void comp_append_entry_to_leaf_node(struct comp_level_write_cursor *c, st
 		// c->handle->db_desc->levels[c->level_id].level_size[1],
 		//	 c->level_id);
 		if (append_to_medium_log) {
-			comp_append_pivot_to_index(c, left_leaf_offt, right_leaf_offt, kv->in_place.kv_loc, 1);
+			comp_append_pivot_to_index(c, left_leaf_offt, right_leaf_offt, kv->kv_inplace, 1);
 		} else {
 			switch (write_leaf_args.kv_format) {
 			case KV_FORMAT:
@@ -794,11 +783,11 @@ static void comp_append_entry_to_leaf_node(struct comp_level_write_cursor *c, st
 			case KV_PREFIX:
 				if (c->level_id == 1 && my_key->kv_category == MEDIUM_INPLACE)
 					comp_append_pivot_to_index(c, left_leaf_offt, right_leaf_offt,
-								   my_key->in_place.kv_loc, 1);
+								   my_key->kv_inplace, 1);
 				else {
 					// do a page fault to find the pivot
 					//log_info("Dev offt is %llu",my_key->in_log->device_offt);
-					char *pivot_addr = (char *)my_key->in_log->device_offt;
+					char *pivot_addr = (char *)my_key->kv_inlog->pointer;
 					comp_append_pivot_to_index(c, left_leaf_offt, right_leaf_offt, pivot_addr, 1);
 				}
 				break;
@@ -1039,7 +1028,7 @@ static void comp_fill_heap_node(struct compaction_request *comp_req, struct comp
 	case SMALL_INPLACE:
 	case MEDIUM_INPLACE:
 		nd->type = KV_FORMAT;
-		nd->KV = cur->cursor_key.in_place.kv_loc;
+		nd->KV = cur->cursor_key.kv_inplace;
 		nd->kv_size = sizeof(uint32_t) + KEY_SIZE(nd->KV);
 		nd->kv_size += VALUE_SIZE(nd->KV + nd->kv_size) + sizeof(uint32_t);
 		break;
@@ -1048,7 +1037,7 @@ static void comp_fill_heap_node(struct compaction_request *comp_req, struct comp
 		nd->type = KV_PREFIX;
 		// log_info("Prefix %.12s dev_offt %llu", cur->cursor_key.in_log->prefix,
 		//	 cur->cursor_key.in_log->device_offt);
-		nd->KV = cur->cursor_key.in_log;
+		nd->KV = cur->cursor_key.kv_inlog;
 		nd->kv_size = sizeof(struct bt_leaf_entry);
 		break;
 	default:
@@ -1063,12 +1052,12 @@ static void comp_fill_parallax_key(struct sh_heap_node *nd, struct comp_parallax
 	switch (nd->cat) {
 	case SMALL_INPLACE:
 	case MEDIUM_INPLACE:
-		my_key->in_place.kv_loc = nd->KV;
+		my_key->kv_inplace = nd->KV;
 		my_key->kv_type = KV_INPLACE;
 		break;
 	case BIG_INLOG:
 	case MEDIUM_INLOG:
-		my_key->in_log = nd->KV;
+		my_key->kv_inlog = nd->KV;
 		// log_info("Read cursor in_log key prefix %.12s dev_offt %llu",
 		// my_key->in_log->prefix,
 		//	 my_key->in_log->device_offt);
@@ -1357,6 +1346,10 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 	memset(&ld->bloom_filter[1], 0x00, sizeof(struct bloom));
 #endif
 
+	if (comp_req->dst_level == 1) {
+		log_info("Flushing medium log");
+		pr_flush_log_tail(comp_req->db_desc, comp_req->volume_desc, &comp_req->db_desc->medium_log);
+	}
 	if (RWLOCK_UNLOCK(&(comp_req->db_desc->levels[comp_req->src_level].guard_of_level.rx_lock))) {
 		log_fatal("Failed to acquire guard lock");
 		exit(EXIT_FAILURE);
@@ -1698,7 +1691,7 @@ void *compaction(void *_comp_req)
 		 "cleaning src level",
 		 comp_req->src_level, comp_req->src_tree, comp_req->dst_level, comp_req->dst_tree);
 
-	snapshot(comp_req->volume_desc);
+	//snapshot(comp_req->volume_desc);
 	db_desc->levels[comp_req->src_level].tree_status[comp_req->src_tree] = NO_SPILLING;
 	db_desc->levels[comp_req->dst_level].tree_status[0] = NO_SPILLING;
 
@@ -1819,17 +1812,7 @@ void *spill_buffer(void *_comp_req)
 		 "cleaning src level",
 		 comp_req->src_level, comp_req->src_tree, comp_req->dst_level, comp_req->dst_tree);
 
-	/*assert check
-if(db_desc->spilled_keys !=
-db_desc->total_keys[comp_req->src_tree_id]){
-printf("[%s:%s:%d] FATAL keys missing --- spilled keys %llu actual
-%llu spiller
-id
-%d\n",__FILE__,__func__,__LINE__,(LLU)db_desc->spilled_keys,(LLU)db_desc->total_keys[comp_req->src_tree_id],
-comp_req->src_tree_id);
-exit(EXIT_FAILURE);
-}*/
-	snapshot(comp_req->volume_desc);
+	//snapshot(comp_req->volume_desc);
 	db_desc->levels[comp_req->src_level].tree_status[comp_req->src_tree] = NO_SPILLING;
 	db_desc->levels[comp_req->dst_level].tree_status[comp_req->dst_tree] = NO_SPILLING;
 	if (comp_req->src_tree == 0)
