@@ -90,20 +90,25 @@ char *fill_keybuf(char *key_loc, enum kv_entry_location key_type)
 	}
 }
 
-struct find_result find_key_in_dynamic_leaf(const struct bt_dynamic_leaf_node *leaf, uint32_t leaf_size, void *key,
+struct find_result find_key_in_dynamic_leaf(const struct bt_dynamic_leaf_node *leaf, db_descriptor *db_desc, void *key,
 					    uint32_t key_size, int level_id)
 {
 	bt_insert_req req;
-	char *buf = malloc(key_size + sizeof(uint32_t));
+	char buf[MAX_KEY_SIZE + sizeof(uint32_t)];
 	struct dl_bsearch_result result = { .middle = 0, .status = INSERT, .op = DYNAMIC_LEAF_FIND };
 	struct find_result ret_result = { .kv = NULL, .key_type = KV_INPLACE };
 	struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(leaf);
+	db_handle handle = { .db_desc = db_desc, .volume_desc = NULL };
+	uint32_t leaf_size = db_desc->levels[level_id].leaf_size;
+
 	assert(buf != NULL);
 	SERIALIZE_KEY(buf, key, key_size);
+	memset(&req, 0, sizeof(req));
 
 	req.key_value_buf = buf;
 	req.metadata.key_format = KV_FORMAT;
 	req.metadata.level_id = level_id;
+	req.metadata.handle = &handle;
 	//validate_dynamic_leaf((void *) leaf, NULL, 0, 0);
 	req.translate_medium_log = 0;
 	binary_search_dynamic_leaf(leaf, leaf_size, &req, &result);
@@ -130,7 +135,6 @@ struct find_result find_key_in_dynamic_leaf(const struct bt_dynamic_leaf_node *l
 		break;
 	}
 
-	free(buf);
 	return ret_result;
 }
 
