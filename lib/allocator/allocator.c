@@ -911,12 +911,6 @@ static void bitmap_init_buddies_vector(struct volume_descriptor *volume_desc, in
 				memcpy((void *)fake_ioc->bpage, b_pair[i].buddy[1].word,
 				       sizeof(b_pair[i].buddy[1].word));
 			}
-
-			int ret = ioctl(FD, FAKE_BLK_IOC_FLIP_COPY_BITMAP, (void *)fake_ioc);
-			if (ret != 0) {
-				printf("%s ERROR! ioctl(FAKE_BLK_IOC_COPY_PAGE) failed!\n%s", "\033[0;31m", "\033[0m");
-				exit(EXIT_FAILURE);
-			}
 		}
 		uint8_t state;
 		if (winner == 0)
@@ -1548,22 +1542,6 @@ static void clean_log_entries(void *v_desc)
 				bitmap_mark_block_free(volume_desc, addr);
 			}
 
-			// struct fake_blk_pages_num cbits;
-			if (fake_blk) {
-				struct fake_blk_page_range free_op;
-				free_op.offset = fp->dev_offt / DEVICE_BLOCK_SIZE;
-				free_op.length = fp->length / DEVICE_BLOCK_SIZE;
-				ret = ioctl(FD, FAKE_BLK_IOC_ZERO_RANGE, &free_op);
-				if (ret) {
-					log_fatal("Failed to update Fastmap's bitmap in free operation ret = "
-						  "%d offset %llu length %llu",
-						  ret, free_op.offset, free_op.length);
-					log_fatal("Free log pos was: %llu last free %llu",
-						  volume_desc->mem_catalogue->free_log_position,
-						  volume_desc->mem_catalogue->free_log_last_free);
-					exit(EXIT_FAILURE);
-				}
-			}
 			MUTEX_UNLOCK(&volume_desc->bitmap_lock);
 			volume_desc->mem_catalogue->free_log_last_free += sizeof(struct free_op_entry);
 			MUTEX_UNLOCK(&volume_desc->free_log_lock);
