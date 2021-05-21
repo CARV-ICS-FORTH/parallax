@@ -466,11 +466,10 @@ struct bt_rebalance_result split_dynamic_leaf(struct bt_dynamic_leaf_node *leaf,
 		break;
 	}
 
-	uint32_t key_size;
-	key_size = KEY_SIZE(L.addr);
+	uint32_t key_size = KEY_SIZE(L.addr);
 	memcpy(rep.middle_key + sizeof(key_size), L.addr + sizeof(key_size), key_size);
 	*(uint32_t *)rep.middle_key = key_size;
-	assert(size + sizeof(size) < sizeof(rep.middle_key));
+	assert(key_size + sizeof(key_size) < sizeof(rep.middle_key));
 	rep.middle_key_buf = rep.middle_key;
 	if (L.in_tail)
 		bt_done_with_value_log_address(&req->metadata.handle->db_desc->big_log, &L);
@@ -483,7 +482,7 @@ struct bt_rebalance_result split_dynamic_leaf(struct bt_dynamic_leaf_node *leaf,
 	for (i = leaf->header.num_entries / 2, j = 0; i < leaf->header.num_entries; ++i, ++j) {
 		key_buf = fill_keybuf(get_kv_offset(leaf, leaf_size, slot_array[i].index), slot_array[i].bitmap);
 		if (slot_array[i].bitmap == KV_INPLACE) {
-			uint32_t key_size = KEY_SIZE(key_buf);
+			key_size = KEY_SIZE(key_buf);
 			uint32_t value_size = VALUE_SIZE(key_buf + sizeof(uint32_t) + key_size);
 			key_buf_size = 2 * sizeof(uint32_t) + key_size + value_size;
 			leaf_log_tail -= key_buf_size;
