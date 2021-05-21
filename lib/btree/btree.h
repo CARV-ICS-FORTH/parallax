@@ -336,13 +336,14 @@ struct log_tail {
 };
 
 struct bt_log_descriptor {
+	pthread_rwlock_t log_tail_buf_lock;
+	char pad[8];
 	struct log_tail *tail[LOG_TAIL_NUM_BUFS];
 	uint64_t head_dev_offt;
 	uint64_t tail_dev_offt;
 	uint64_t size;
 	uint64_t curr_tail_id;
 };
-struct bt_kv_log_address bt_get_kv_medium_log_address(struct bt_log_descriptor *log_desc, uint64_t dev_offt);
 
 struct bt_kv_log_address {
 	void *addr;
@@ -350,6 +351,8 @@ struct bt_kv_log_address {
 	uint8_t tail_id;
 };
 struct bt_kv_log_address bt_get_kv_medium_log_address(struct bt_log_descriptor *log_desc, uint64_t dev_offt);
+struct bt_kv_log_address bt_get_kv_log_address(struct bt_log_descriptor *log_desc, uint64_t dev_offt);
+void bt_done_with_value_log_address(struct bt_log_descriptor *log_desc, struct bt_kv_log_address *L);
 
 typedef struct db_descriptor {
 	char db_name[MAX_DB_NAME_SIZE];
@@ -515,8 +518,8 @@ enum bt_rebalance_retcode {
 };
 
 struct bt_rebalance_result {
-	/*4 bytes for the key size and 255 Bytes for the key*/
-	char middle_key[259];
+	//4 bytes for the key size and 255 Bytes for the key
+	char middle_key[MAX_KEY_SIZE + sizeof(uint32_t)];
 	union {
 		node_header *left_child;
 		index_node *left_ichild;

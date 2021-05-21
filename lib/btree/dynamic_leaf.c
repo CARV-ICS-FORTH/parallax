@@ -190,24 +190,43 @@ void binary_search_dynamic_leaf(const struct bt_dynamic_leaf_node *leaf, uint32_
 
 		if (ret_case == EQUAL_TO_ZERO) {
 			char *kv_offset = get_kv_offset(leaf, leaf_size, offset_in_leaf);
+			struct bt_kv_log_address L = { .addr = NULL, .in_tail = 0, .tail_id = UINT8_MAX };
 
 			//medium log tail stub
 			if (req->translate_medium_log && req->metadata.level_id == 1 &&
 			    slot_array[middle].key_category == MEDIUM_INLOG) {
+				assert(0); //Dead with direct I/O compactions
 				struct bt_leaf_entry *kv = (struct bt_leaf_entry *)kv_offset;
 				//log_info("Searching tail of medium log");
-				struct bt_kv_log_address L = bt_get_kv_medium_log_address(
-					&req->metadata.handle->db_desc->medium_log, kv->pointer);
+				L = bt_get_kv_medium_log_address(&req->metadata.handle->db_desc->medium_log,
+								 kv->pointer);
 				leaf_key_buf = L.addr;
-			} else
+			} else {
+				//Stub for big log direct IO, this function is called now
+				//only in L0
 				leaf_key_buf = fill_keybuf(kv_offset, slot_array[middle].bitmap);
+				switch (slot_array[middle].key_category) {
+				case BIG_INLOG:
+					if (req->metadata.level_id)
+						L.addr = (void *)leaf_key_buf;
+					else
+						L = bt_get_kv_log_address(&req->metadata.handle->db_desc->big_log,
+									  ABSOLUTE_ADDRESS(leaf_key_buf));
+					break;
+				default:
+					L.addr = leaf_key_buf;
+					break;
+				}
+			}
 
 			if (req->metadata.key_format == KV_PREFIX) {
 				struct bt_leaf_entry *kv_entry = (struct bt_leaf_entry *)req->key_value_buf;
-				ret = key_cmp(leaf_key_buf, (void *)kv_entry->pointer, KV_FORMAT, KV_FORMAT);
+				ret = key_cmp(L.addr, (void *)kv_entry->pointer, KV_FORMAT, KV_FORMAT);
 			} else {
-				ret = key_cmp(leaf_key_buf, req->key_value_buf, KV_FORMAT, KV_FORMAT);
+				ret = key_cmp(L.addr, req->key_value_buf, KV_FORMAT, KV_FORMAT);
 			}
+			if (L.in_tail)
+				bt_done_with_value_log_address(&req->metadata.handle->db_desc->big_log, &L);
 
 			if (ret == 0) {
 				result->middle = middle;
@@ -434,12 +453,27 @@ struct bt_rebalance_result split_dynamic_leaf(struct bt_dynamic_leaf_node *leaf,
 	rep.middle_key_buf = fill_keybuf(get_kv_offset(leaf, leaf_size, slot_array[leaf->header.num_entries / 2].index),
 					 slot_array[leaf->header.num_entries / 2].bitmap);
 
-	uint32_t size;
-	size = *(uint32_t *)rep.middle_key_buf;
-	memcpy(rep.middle_key + sizeof(size), rep.middle_key_buf + sizeof(size), size);
-	*(uint32_t *)rep.middle_key = size;
-	assert(size + sizeof(size) < sizeof(rep.middle_key));
+	//Stub for big log direct IO, this function is called na/now
+	//only in L0
+	struct bt_kv_log_address L = { .addr = NULL, .in_tail = 0, .tail_id = UINT8_MAX };
+	switch (slot_array[leaf->header.num_entries / 2].key_category) {
+	case BIG_INLOG:
+		L = bt_get_kv_log_address(&req->metadata.handle->db_desc->big_log,
+					  ABSOLUTE_ADDRESS(rep.middle_key_buf));
+		break;
+	default:
+		L.addr = rep.middle_key_buf;
+		break;
+	}
+
+	uint32_t key_size = KEY_SIZE(L.addr);
+	memcpy(rep.middle_key + sizeof(key_size), L.addr + sizeof(key_size), key_size);
+	*(uint32_t *)rep.middle_key = key_size;
+	assert(key_size + sizeof(key_size) < sizeof(rep.middle_key));
 	rep.middle_key_buf = rep.middle_key;
+	if (L.in_tail)
+		bt_done_with_value_log_address(&req->metadata.handle->db_desc->big_log, &L);
+	//Stub end
 
 	right_leaf = rep.right_dlchild;
 	/*Copy pointers + prefixes*/
@@ -448,7 +482,7 @@ struct bt_rebalance_result split_dynamic_leaf(struct bt_dynamic_leaf_node *leaf,
 	for (i = leaf->header.num_entries / 2, j = 0; i < leaf->header.num_entries; ++i, ++j) {
 		key_buf = fill_keybuf(get_kv_offset(leaf, leaf_size, slot_array[i].index), slot_array[i].bitmap);
 		if (slot_array[i].bitmap == KV_INPLACE) {
-			uint32_t key_size = KEY_SIZE(key_buf);
+			key_size = KEY_SIZE(key_buf);
 			uint32_t value_size = VALUE_SIZE(key_buf + sizeof(uint32_t) + key_size);
 			key_buf_size = 2 * sizeof(uint32_t) + key_size + value_size;
 			leaf_log_tail -= key_buf_size;
@@ -617,11 +651,19 @@ void write_data_in_dynamic_leaf(struct write_dynamic_leaf_args *args)
 		struct splice *key = (struct splice *)key_value_buf;
 		struct bt_leaf_entry *serialized = (struct bt_leaf_entry *)key_value_buf;
 		slot.bitmap = KV_INLOG;
-		if (args->level_id == 1 && args->cat == MEDIUM_INLOG && kv_format == KV_FORMAT) {
+		if (args->level_id == 0 && args->cat == BIG_INLOG && kv_format == KV_FORMAT) {
 			assert(args->kv_dev_offt != 0);
 			leaf->header.leaf_log_size += append_bt_leaf_entry_inplace(dest, args->kv_dev_offt, key->data,
 										   MIN(key->size, PREFIX_SIZE));
-		} else {
+		}
+#if 0
+		else if (args->level_id == 1 && args->cat == MEDIUM_INLOG && kv_format == KV_FORMAT) {
+			assert(0); //Useless with direct IO compactions
+			leaf->header.leaf_log_size += append_bt_leaf_entry_inplace(dest, args->kv_dev_offt, key->data,
+										   MIN(key->size, PREFIX_SIZE));
+		}
+#endif
+		else {
 			if (kv_format == KV_FORMAT) {
 				leaf->header.leaf_log_size += append_bt_leaf_entry_inplace(
 					dest, ABSOLUTE_ADDRESS(key_value_buf), key->data, MIN(key->size, PREFIX_SIZE));
