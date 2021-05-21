@@ -322,7 +322,7 @@ struct bt_kv_log_address bt_get_kv_log_address(struct bt_log_descriptor *log_des
 
 	reply.in_tail = 0;
 	RWLOCK_UNLOCK(&log_desc->log_tail_buf_lock);
-	reply.addr = (void *)(MAPPED + dev_offt);
+	reply.addr = REAL_ADDRESS(dev_offt);
 	reply.tail_id = UINT8_MAX;
 	return reply;
 }
@@ -1370,11 +1370,6 @@ static void *bt_append_to_log_direct_IO(struct log_operation *req, struct log_to
 	if (segment_change) {
 		// do the padding IO as well
 		pr_do_log_IO(&pad_ticket);
-		//wait_for_value(&pad_ticket.tail->IOs_completed_in_tail, num_chunks);
-		// Now time to retire
-		//RWLOCK_WRLOCK(&log_metadata->log_desc->log_tail_buf_lock);
-		//pad_ticket.tail->free = 1;
-		//RWLOCK_UNLOCK(&log_metadata->log_desc->log_tail_buf_lock);
 	}
 	pr_copy_kv_to_tail(&my_ticket);
 	pr_do_log_IO(&my_ticket);
@@ -1957,6 +1952,8 @@ int insert_KV_at_leaf(bt_insert_req *ins_req, node_header *leaf)
 	uint8_t tree_id = ins_req->metadata.tree_id;
 	ins_req->kv_dev_offt = 0;
 	if (append_tolog) {
+		assert(ins_req->metadata.cat != MEDIUM_INLOG);
+
 		log_operation append_op = { .metadata = &ins_req->metadata,
 					    .optype_tolog = insertOp,
 					    .ins_req = ins_req };
@@ -1967,16 +1964,6 @@ int insert_KV_at_leaf(bt_insert_req *ins_req, node_header *leaf)
 		case MEDIUM_INPLACE:
 			append_key_value_to_log(&append_op);
 			break;
-		case MEDIUM_INLOG: {
-			assert(0); //With compactions direct IO this is useless
-			if (ins_req->metadata.level_id == 1) {
-				void *addr = append_key_value_to_log(&append_op);
-				ins_req->kv_dev_offt = ABSOLUTE_ADDRESS(addr);
-				assert(ins_req->kv_dev_offt != 0);
-			} else
-				ins_req->key_value_buf = append_key_value_to_log(&append_op);
-			break;
-		}
 		case BIG_INLOG: {
 			void *addr = append_key_value_to_log(&append_op);
 			ins_req->kv_dev_offt = ABSOLUTE_ADDRESS(addr);

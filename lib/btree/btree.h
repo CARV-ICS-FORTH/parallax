@@ -337,6 +337,7 @@ struct log_tail {
 
 struct bt_log_descriptor {
 	pthread_rwlock_t log_tail_buf_lock;
+	char pad[8];
 	struct log_tail *tail[LOG_TAIL_NUM_BUFS];
 	uint64_t head_dev_offt;
 	uint64_t tail_dev_offt;

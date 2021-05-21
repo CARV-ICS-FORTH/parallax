@@ -466,10 +466,10 @@ struct bt_rebalance_result split_dynamic_leaf(struct bt_dynamic_leaf_node *leaf,
 		break;
 	}
 
-	uint32_t size;
-	size = *(uint32_t *)L.addr;
-	memcpy(rep.middle_key + sizeof(size), L.addr + sizeof(size), size);
-	*(uint32_t *)rep.middle_key = size;
+	uint32_t key_size;
+	key_size = KEY_SIZE(L.addr);
+	memcpy(rep.middle_key + sizeof(key_size), L.addr + sizeof(key_size), key_size);
+	*(uint32_t *)rep.middle_key = key_size;
 	assert(size + sizeof(size) < sizeof(rep.middle_key));
 	rep.middle_key_buf = rep.middle_key;
 	if (L.in_tail)
@@ -656,11 +656,15 @@ void write_data_in_dynamic_leaf(struct write_dynamic_leaf_args *args)
 			assert(args->kv_dev_offt != 0);
 			leaf->header.leaf_log_size += append_bt_leaf_entry_inplace(dest, args->kv_dev_offt, key->data,
 										   MIN(key->size, PREFIX_SIZE));
-		} else if (args->level_id == 1 && args->cat == MEDIUM_INLOG && kv_format == KV_FORMAT) {
+		}
+#if 0
+		else if (args->level_id == 1 && args->cat == MEDIUM_INLOG && kv_format == KV_FORMAT) {
 			assert(0); //Useless with direct IO compactions
 			leaf->header.leaf_log_size += append_bt_leaf_entry_inplace(dest, args->kv_dev_offt, key->data,
 										   MIN(key->size, PREFIX_SIZE));
-		} else {
+		}
+#endif
+		else {
 			if (kv_format == KV_FORMAT) {
 				leaf->header.leaf_log_size += append_bt_leaf_entry_inplace(
 					dest, ABSOLUTE_ADDRESS(key_value_buf), key->data, MIN(key->size, PREFIX_SIZE));
