@@ -1468,12 +1468,9 @@ static void clean_log_entries(void *v_desc)
 
 	// Are we operating with filter block device or not?...Let's discover with an
 	// ioctl
-	int fake_blk = 0;
 	uint64_t free_ops = 0;
 	/*single thread, per volume so we don't need locking*/
-	int ret = ioctl(FD, FAKE_BLK_IOC_TEST_CAP);
-	if (ret == 0) /*success*/
-		fake_blk = 1;
+	ioctl(FD, FAKE_BLK_IOC_TEST_CAP);
 
 	HASH_FIND_STR(dboptions, "clean_interval", option);
 	check_option("clean_interval", option);
