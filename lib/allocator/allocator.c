@@ -210,8 +210,6 @@ off64_t mount_volume(char *volume_name, int64_t start, int64_t unused_size)
 		} else
 			addr_space = mmap(NULL, device_size, PROT_READ | PROT_WRITE, MAP_SHARED, FD, start);
 
-		log_info("AFTER BLK ZERO RANGE");
-
 		if (addr_space == MAP_FAILED) {
 			log_fatal("MMAP for device %s reason follows", volume_name);
 			perror("Reason for mmap");
@@ -1279,7 +1277,7 @@ void allocator_init(volume_descriptor *volume_desc)
 	if (volume_size > 0)
 		volume_desc->size = volume_size;
 
-	volume_desc->start_addr = (void *)REAL_ADDRESS(volume_desc->offset);
+	volume_desc->start_addr = (void *)(MAPPED + volume_desc->offset);
 
 	log_info("Succesfully initialized volume partition %s address space starts "
 		 "at %llu\n\n",

@@ -320,6 +320,8 @@ int main(const int argc, const char *argv[])
 			std::cerr << "ERROR: Failed to open output file " << outfilename << std::endl;
 			exit(-1);
 		}
+		tmp = start_stats + results_directory + slash + a;
+		system(tmp.c_str());
 
 		if (b == "load")
 			execute_load(props, db);
