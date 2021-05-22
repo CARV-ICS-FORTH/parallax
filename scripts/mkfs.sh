@@ -20,6 +20,8 @@ else
 	MKFS=$SYSTEM_PATH
 fi
 
+cp options.yml "$(dirname "${MKFS}")"
+
 DEV_NAME=$1
 TYPE_OF_VOLUME=$2
 

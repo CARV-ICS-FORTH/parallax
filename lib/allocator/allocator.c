@@ -43,7 +43,7 @@
 //#define USE_MLOCK
 #define __NR_mlock2 284
 
-#define ALLOW_RAW_VOLUMES 0
+#define ALLOW_RAW_VOLUMES 1
 #define MIN_VOLUME_SIZE (8 * 1024 * 1024 * 1024L)
 #define _FILE_OFFSET_BITS 64
 //#define USE_MLOCK
@@ -86,7 +86,8 @@ pthread_mutex_t VOLUME_LOCK = PTHREAD_MUTEX_INITIALIZER;
 // volatile uint64_t snapshot_v2;
 
 uint64_t MAPPED = 0; /*from this address any node can see the entire volume*/
-int FD;
+int FD = -1;
+int fastmap_fd = -1;
 
 /*
  * Input: File descriptor, offset, relative position to where it has to be
@@ -165,8 +166,52 @@ off64_t mount_volume(char *volume_name, int64_t start, int64_t unused_size)
 
 		log_info("Creating virtual address space offset %lld size %ld\n", (long long)start, device_size);
 		// mmap the device
+		struct lib_option *option;
+		HASH_FIND_STR(dboptions, "fastmap_on", option);
+		check_option("fastmap_on", option);
+		int fastmap_on = option->value.count;
+		fastmap_fd = -1;
+		char *addr_space = NULL;
 
-		char *addr_space = mmap(NULL, device_size, PROT_READ | PROT_WRITE, MAP_SHARED, FD, start);
+		if (fastmap_on) {
+			if (close(FD)) {
+				log_fatal("Cannot close FD");
+				exit(EXIT_FAILURE);
+			}
+
+			fastmap_fd = open("/dev/dmap/dmap1", O_RDWR);
+			if (fastmap_fd == -1) {
+				log_fatal("Fastmap could not open!");
+				perror("Reason: ");
+				exit(EXIT_FAILURE);
+			}
+
+			log_info("BEFORE BLK ZERO RANGE start %llu device size %llu", start, device_size);
+			/* struct fake_blk_page_range frang; */
+			/* memset(&frang,0,sizeof(frang)); */
+			/* // we should also zero all range from start to size */
+			/* frang.offset = start / 4096; // convert from bytes to pages */
+			/* frang.length = device_size / 4096; // convert from bytes to pages */
+			/* int ret = ioctl(fastmap_fd, FAKE_BLK_IOC_ZERO_RANGE, &frang); */
+
+			/* if (ret) { */
+			/*   log_fatal("ioctl(FAKE_BLK_IOC_ZERO_RANGE) failed! Program exiting...\n"); */
+			/*   exit(EXIT_FAILURE); */
+			/* } */
+			log_info("Fastmap has been initialiazed");
+
+			addr_space = mmap(NULL, device_size, PROT_READ | PROT_WRITE, MAP_SHARED, fastmap_fd, start);
+			FD = open(volume_name, O_RDWR | O_DIRECT | O_DSYNC);
+			if (FD < 0) {
+				log_fatal("Failed to open %s", volume_name);
+				perror("Reason:\n");
+				exit(EXIT_FAILURE);
+			}
+		} else
+			addr_space = mmap(NULL, device_size, PROT_READ | PROT_WRITE, MAP_SHARED, FD, start);
+
+		log_info("AFTER BLK ZERO RANGE");
+
 		if (addr_space == MAP_FAILED) {
 			log_fatal("MMAP for device %s reason follows", volume_name);
 			perror("Reason for mmap");
@@ -245,21 +290,10 @@ int32_t volume_init(char *dev_name, int64_t start, int64_t size, int typeOfVolum
 
 	/*check if the device is a fake_blk device, maybe add another ioctl for this
 purpose*/
-	ret = ioctl(fd, FAKE_BLK_IOC_TEST_CAP);
-	if (ret == 0) {
-		// we should also zero all range from start to size
-		frang.offset = start / 4096; // convert from bytes to pages
-		frang.length = size / 4096; // convert from bytes to pages
-
-		ret = ioctl(fd, FAKE_BLK_IOC_ZERO_RANGE, &frang);
-		if (ret) {
-			log_fatal("ioctl(FAKE_BLK_IOC_ZERO_RANGE) failed! Program exiting...\n");
-			exit(EXIT_FAILURE);
-		}
-		// XXX Nothing more to do! volume_init() will touch all the other metadata
-		// XXX and this will change the bit values to 1.
-	} else
-		log_info("Volume: %s is not a fake_blk device!", dev_name);
+	struct lib_option *option;
+	HASH_FIND_STR(dboptions, "fastmap_on", option);
+	check_option("fastmap_on", option);
+	int fastmap_on = option->value.count;
 
 	/*
 * Finally, we are going to initiate the bitmap of the device. The idea is the
@@ -1244,28 +1278,34 @@ void allocator_init(volume_descriptor *volume_desc)
 {
 	uint64_t i;
 	int fake_blk = 0;
-	int ret;
+	int ret = 1;
 
 	off64_t volume_size = -1;
 	/*if not mounted */
 	volume_size = mount_volume(volume_desc->volume_name, 0, 0 /* unused */);
 	if (volume_size > 0)
 		volume_desc->size = volume_size;
-
-	ret = ioctl(FD, FAKE_BLK_IOC_TEST_CAP);
-	if (ret == 0) {
+#if 0
+	/* ret = ioctl(FD, FAKE_BLK_IOC_TEST_CAP); */
+	/* if (ret == 0) { */
 		/*success*/
-		fake_blk = 1;
+		/* fake_blk = 1; */
 
-		struct fake_blk_page_range _r;
-		_r.offset = volume_desc->offset / 4096;
-		_r.length = volume_desc->size / 4096;
-		ret = ioctl(FD, FAKE_BLK_IOC_FILL_RANGE, &_r);
-		if (ret != 0) {
-			printf("%s ERROR! ioctl(FAKE_BLK_IOC_FILL_RANGE) failed!\n%s", "\033[0;31m", "\033[0m");
-			exit(EXIT_FAILURE);
+	struct fake_blk_page_range _r;
+	_r.offset = volume_desc->offset / 4096;
+	_r.length = volume_desc->size / 4096;
+
+	if(fastmap_fd != -1)
+	  ret = ioctl(fastmap_fd, FAKE_BLK_IOC_FILL_RANGE, &_r);
+	else
+	  log_info("Fastmap is not loaded");
+
+	if (ret != 0) {
+	  printf("%s ERROR! ioctl(FAKE_BLK_IOC_FILL_RANGE) failed!\n%s", "\033[0;31m", "\033[0m");
+	  exit(EXIT_FAILURE);
 		}
-	}
+	/* } */
+#endif
 	volume_desc->start_addr = (void *)(MAPPED + volume_desc->offset);
 
 	log_info("Succesfully initialized volume partition %s address space starts "
@@ -1470,7 +1510,7 @@ static void clean_log_entries(void *v_desc)
 	// ioctl
 	uint64_t free_ops = 0;
 	/*single thread, per volume so we don't need locking*/
-	ioctl(FD, FAKE_BLK_IOC_TEST_CAP);
+	/* ioctl(FD, FAKE_BLK_IOC_TEST_CAP); */
 
 	HASH_FIND_STR(dboptions, "clean_interval", option);
 	check_option("clean_interval", option);
