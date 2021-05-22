@@ -249,8 +249,6 @@ int32_t volume_init(char *dev_name, int64_t start, int64_t size, int typeOfVolum
 	superblock *dev_superblock;
 	pr_system_catalogue sys_catalogue;
 	int fd = 0;
-	int ret;
-	struct fake_blk_page_range frang;
 
 #if !ALLOW_RAW_VOLUMES
 	if (strlen(dev_name) >= 5 && strncmp(dev_name, "/dev/", 5) == 0) {
@@ -290,10 +288,6 @@ int32_t volume_init(char *dev_name, int64_t start, int64_t size, int typeOfVolum
 
 	/*check if the device is a fake_blk device, maybe add another ioctl for this
 purpose*/
-	struct lib_option *option;
-	HASH_FIND_STR(dboptions, "fastmap_on", option);
-	check_option("fastmap_on", option);
-	int fastmap_on = option->value.count;
 
 	/*
 * Finally, we are going to initiate the bitmap of the device. The idea is the
@@ -1278,35 +1272,14 @@ void allocator_init(volume_descriptor *volume_desc)
 {
 	uint64_t i;
 	int fake_blk = 0;
-	int ret = 1;
 
 	off64_t volume_size = -1;
 	/*if not mounted */
 	volume_size = mount_volume(volume_desc->volume_name, 0, 0 /* unused */);
 	if (volume_size > 0)
 		volume_desc->size = volume_size;
-#if 0
-	/* ret = ioctl(FD, FAKE_BLK_IOC_TEST_CAP); */
-	/* if (ret == 0) { */
-		/*success*/
-		/* fake_blk = 1; */
 
-	struct fake_blk_page_range _r;
-	_r.offset = volume_desc->offset / 4096;
-	_r.length = volume_desc->size / 4096;
-
-	if(fastmap_fd != -1)
-	  ret = ioctl(fastmap_fd, FAKE_BLK_IOC_FILL_RANGE, &_r);
-	else
-	  log_info("Fastmap is not loaded");
-
-	if (ret != 0) {
-	  printf("%s ERROR! ioctl(FAKE_BLK_IOC_FILL_RANGE) failed!\n%s", "\033[0;31m", "\033[0m");
-	  exit(EXIT_FAILURE);
-		}
-	/* } */
-#endif
-	volume_desc->start_addr = (void *)(MAPPED + volume_desc->offset);
+	volume_desc->start_addr = (void *)REAL_ADDRESS(volume_desc->offset);
 
 	log_info("Succesfully initialized volume partition %s address space starts "
 		 "at %llu\n\n",
