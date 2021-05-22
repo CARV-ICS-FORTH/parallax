@@ -1258,6 +1258,8 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 	if (dst_root) {
 		free(l_dst);
 	}
+
+	mark_segment_space(handle, m_heap->dups);
 	free(m_heap);
 	comp_close_write_cursor(merged_level);
 
