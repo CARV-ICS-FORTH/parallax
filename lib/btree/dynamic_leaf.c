@@ -105,6 +105,7 @@ struct find_result find_key_in_dynamic_leaf(const struct bt_dynamic_leaf_node *l
 	SERIALIZE_KEY(buf, key, key_size);
 	memset(&req, 0, sizeof(req));
 
+	memset(&req, 0x00, sizeof(req));
 	req.key_value_buf = buf;
 	req.metadata.key_format = KV_FORMAT;
 	req.metadata.level_id = level_id;
@@ -192,14 +193,14 @@ void binary_search_dynamic_leaf(const struct bt_dynamic_leaf_node *leaf, uint32_
 
 		ret_case = ret < 0 ? LESS_THAN_ZERO : ret > 0 ? GREATER_THAN_ZERO : EQUAL_TO_ZERO;
 
+		struct bt_kv_log_address L = { .addr = NULL, .in_tail = 0, .tail_id = UINT8_MAX };
 		if (ret_case == EQUAL_TO_ZERO) {
 			char *kv_offset = get_kv_offset(leaf, leaf_size, offset_in_leaf);
-			struct bt_kv_log_address L = { .addr = NULL, .in_tail = 0, .tail_id = UINT8_MAX };
 
 			//medium log tail stub
 			if (req->translate_medium_log && req->metadata.level_id == 1 &&
 			    slot_array[middle].key_category == MEDIUM_INLOG) {
-				assert(0); //Dead with direct I/O compactions
+				exit(EXIT_FAILURE); //Dead with direct I/O compactions
 				struct bt_leaf_entry *kv = (struct bt_leaf_entry *)kv_offset;
 				//log_info("Searching tail of medium log");
 				L = bt_get_kv_medium_log_address(&req->metadata.handle->db_desc->medium_log,
@@ -210,6 +211,15 @@ void binary_search_dynamic_leaf(const struct bt_dynamic_leaf_node *leaf, uint32_
 				//only in L0
 				leaf_key_buf = fill_keybuf(kv_offset, slot_array[middle].bitmap);
 				switch (slot_array[middle].key_category) {
+#if MEDIUM_LOG_UNSORTED
+				case MEDIUM_INLOG:
+					if (req->metadata.level_id)
+						L.addr = (void *)leaf_key_buf;
+					else
+						L = bt_get_kv_log_address(&req->metadata.handle->db_desc->medium_log,
+									  ABSOLUTE_ADDRESS(leaf_key_buf));
+					break;
+#endif
 				case BIG_INLOG:
 					if (req->metadata.level_id)
 						L.addr = (void *)leaf_key_buf;
@@ -229,8 +239,23 @@ void binary_search_dynamic_leaf(const struct bt_dynamic_leaf_node *leaf, uint32_
 			} else {
 				ret = key_cmp(L.addr, req->key_value_buf, KV_FORMAT, KV_FORMAT);
 			}
-			if (L.in_tail)
-				bt_done_with_value_log_address(&req->metadata.handle->db_desc->big_log, &L);
+			if (L.in_tail) {
+				struct bt_log_descriptor *log_desc = NULL;
+				//#if MEDIUM_LOG_UNSORTED
+				switch (slot_array[middle].key_category) {
+				case BIG_INLOG:
+					log_desc = &req->metadata.handle->db_desc->big_log;
+					break;
+				case MEDIUM_INLOG:
+					log_desc = &req->metadata.handle->db_desc->medium_log;
+					break;
+				default:
+					log_fatal("Unhandled case");
+					exit(EXIT_FAILURE);
+					//#endif
+				}
+				bt_done_with_value_log_address(log_desc, &L);
+			}
 
 			if (ret == 0) {
 				result->middle = middle;
@@ -461,6 +486,14 @@ struct bt_rebalance_result split_dynamic_leaf(struct bt_dynamic_leaf_node *leaf,
 	//only in L0
 	struct bt_kv_log_address L = { .addr = NULL, .in_tail = 0, .tail_id = UINT8_MAX };
 	switch (slot_array[leaf->header.num_entries / 2].key_category) {
+#if MEDIUM_LOG_UNSORTED
+	case MEDIUM_INLOG:
+		L = bt_get_kv_log_address(&req->metadata.handle->db_desc->medium_log,
+					  ABSOLUTE_ADDRESS(rep.middle_key_buf));
+		//log_info("Pivot is %u:%s",*(uint32_t*)L.addr,L.addr+4);
+		assert(*(uint32_t *)L.addr < 25);
+		break;
+#endif
 	case BIG_INLOG:
 		L = bt_get_kv_log_address(&req->metadata.handle->db_desc->big_log,
 					  ABSOLUTE_ADDRESS(rep.middle_key_buf));
@@ -475,8 +508,24 @@ struct bt_rebalance_result split_dynamic_leaf(struct bt_dynamic_leaf_node *leaf,
 	*(uint32_t *)rep.middle_key = key_size;
 	assert(key_size + sizeof(key_size) < sizeof(rep.middle_key));
 	rep.middle_key_buf = rep.middle_key;
-	if (L.in_tail)
-		bt_done_with_value_log_address(&req->metadata.handle->db_desc->big_log, &L);
+
+	if (L.in_tail) {
+		struct bt_log_descriptor *log_desc = NULL;
+		//#if MEDIUM_LOG_UNSORTED
+		switch (slot_array[leaf->header.num_entries / 2].key_category) {
+		case BIG_INLOG:
+			log_desc = &req->metadata.handle->db_desc->big_log;
+			break;
+		case MEDIUM_INLOG:
+			log_desc = &req->metadata.handle->db_desc->medium_log;
+			break;
+		default:
+			log_fatal("Unhandled case");
+			exit(EXIT_FAILURE);
+			//#endif
+		}
+		bt_done_with_value_log_address(log_desc, &L);
+	}
 	//Stub end
 
 	right_leaf = rep.right_dlchild;
@@ -660,9 +709,9 @@ void write_data_in_dynamic_leaf(struct write_dynamic_leaf_args *args)
 			leaf->header.leaf_log_size += append_bt_leaf_entry_inplace(dest, args->kv_dev_offt, key->data,
 										   MIN(key->size, PREFIX_SIZE));
 		}
-#if 0
-		else if (args->level_id == 1 && args->cat == MEDIUM_INLOG && kv_format == KV_FORMAT) {
-			assert(0); //Useless with direct IO compactions
+#if MEDIUM_LOG_UNSORTED
+		else if (args->level_id == 0 && args->cat == MEDIUM_INLOG && kv_format == KV_FORMAT) {
+			assert(args->kv_dev_offt != 0);
 			leaf->header.leaf_log_size += append_bt_leaf_entry_inplace(dest, args->kv_dev_offt, key->data,
 										   MIN(key->size, PREFIX_SIZE));
 		}
@@ -677,8 +726,6 @@ void write_data_in_dynamic_leaf(struct write_dynamic_leaf_args *args)
 								     key_value_buf, MIN(key->size, PREFIX_SIZE));
 			}
 		}
-		//Note There is a case where YCSB generates 11 bytes keys and we read invalid bytes from stack.
-		//This should be fixed after Eurosys deadline.
 	} else
 		assert(0);
 

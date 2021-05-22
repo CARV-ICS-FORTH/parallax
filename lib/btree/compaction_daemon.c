@@ -1118,7 +1118,16 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 	struct comp_level_write_cursor *merged_level = NULL;
 
 	if (comp_req->src_level == 0) {
-		snapshot(comp_req->volume_desc); // --> This is for recovery I think;
+		//snapshot(comp_req->volume_desc); // --> This is for recovery I think;
+
+		RWLOCK_WRLOCK(&handle->db_desc->levels[0].guard_of_level.rx_lock);
+		spin_loop(&handle->db_desc->levels[0].active_writers, 0);
+		pr_flush_log_tail(comp_req->db_desc, comp_req->volume_desc, &comp_req->db_desc->big_log);
+#if MEDIUM_LOG_UNSORTED
+		pr_flush_log_tail(comp_req->db_desc, comp_req->volume_desc, &comp_req->db_desc->medium_log);
+#endif
+		RWLOCK_UNLOCK(&handle->db_desc->levels[0].guard_of_level.rx_lock);
+
 		log_info("Initializing L0 scanner");
 		level_src = _init_spill_buffer_scanner(handle, comp_req->src_level, src_root, NULL);
 	} else {
@@ -1348,10 +1357,13 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 	memset(&ld->bloom_filter[1], 0x00, sizeof(struct bloom));
 #endif
 
+#if !MEDIUM_LOG_UNSORTED
 	if (comp_req->dst_level == 1) {
 		log_info("Flushing medium log");
 		pr_flush_log_tail(comp_req->db_desc, comp_req->volume_desc, &comp_req->db_desc->medium_log);
 	}
+#endif
+
 	if (RWLOCK_UNLOCK(&(comp_req->db_desc->levels[comp_req->src_level].guard_of_level.rx_lock))) {
 		log_fatal("Failed to acquire guard lock");
 		exit(EXIT_FAILURE);
