@@ -7,6 +7,7 @@
 #include <unistd.h>
 #include <log.h>
 #include "allocator.h"
+#include "../btree/set_options.h"
 #include "../btree/conf.h"
 
 /*
@@ -49,6 +50,7 @@ int main(int argc, char *argv[])
 	int32_t bytes_read = 0;
 	int32_t fd;
 
+	parse_options();
 	if (argc != 4) {
 		log_info("mkfs_parallax <Volume name> <offset in bytes> <size in bytes>");
 		exit(-1);

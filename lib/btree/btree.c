@@ -1585,9 +1585,8 @@ static inline struct lookup_reply lookup_in_tree(db_descriptor *db_desc, void *k
 		if (RWLOCK_RDLOCK(&curr->rx_lock) != 0)
 			exit(EXIT_FAILURE);
 
-		ret_result = find_key_in_dynamic_leaf((struct bt_dynamic_leaf_node *)curr_node,
-						      db_desc->levels[level_id].leaf_size, key + 4, *(uint32_t *)key,
-						      level_id);
+		ret_result = find_key_in_dynamic_leaf((struct bt_dynamic_leaf_node *)curr_node, db_desc, key + 4,
+						      *(uint32_t *)key, level_id);
 		goto deser;
 	} else {
 		while (curr_node->type != leafNode) {
@@ -1616,8 +1615,8 @@ static inline struct lookup_reply lookup_in_tree(db_descriptor *db_desc, void *k
 			exit(EXIT_FAILURE);
 	}
 
-	ret_result = find_key_in_dynamic_leaf((struct bt_dynamic_leaf_node *)curr_node,
-					      db_desc->levels[level_id].leaf_size, key + 4, *(uint32_t *)key, level_id);
+	ret_result = find_key_in_dynamic_leaf((struct bt_dynamic_leaf_node *)curr_node, db_desc, key + 4,
+					      *(uint32_t *)key, level_id);
 
 deser:
 	if (ret_result.kv) {

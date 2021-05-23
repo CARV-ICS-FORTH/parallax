@@ -41,7 +41,7 @@ char *fill_keybuf(char *key_loc, enum kv_entry_location key_type);
 void fill_prefix(struct prefix *key, char *key_loc, enum kv_entry_location key_type);
 
 int8_t insert_in_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, bt_insert_req *req, level_descriptor *level);
-struct find_result find_key_in_dynamic_leaf(const struct bt_dynamic_leaf_node *leaf, uint32_t leaf_size, void *key,
+struct find_result find_key_in_dynamic_leaf(const struct bt_dynamic_leaf_node *leaf, db_descriptor *db_desc, void *key,
 					    uint32_t key_size, int level_id);
 void binary_search_dynamic_leaf(const struct bt_dynamic_leaf_node *leaf, uint32_t leaf_size, bt_insert_req *req,
 				struct dl_bsearch_result *result);
