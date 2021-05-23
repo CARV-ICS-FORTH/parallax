@@ -1189,12 +1189,14 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 		comp_fill_heap_node(comp_req, l_src, &nd_src);
 	}
 	print_heap_node_key(&nd_src);
+	nd_src.db_desc = comp_req->db_desc;
 	sh_insert_heap_node(m_heap, &nd_src);
 	// init Li+1 cursor (if any)
 	if (l_dst) {
 		comp_fill_heap_node(comp_req, l_dst, &nd_dst);
 		log_info("Initializing heap from DST read cursor level %u with key:", comp_req->dst_level);
 		print_heap_node_key(&nd_dst);
+		nd_dst.db_desc = comp_req->db_desc;
 		sh_insert_heap_node(m_heap, &nd_dst);
 	}
 	// ############################################################################
@@ -1235,6 +1237,7 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 						nd_min.cat = level_src->cat;
 						nd_min.kv_size = level_src->kv_size;
 						nd_min.active_tree = comp_req->src_tree;
+						nd_min.db_desc = comp_req->db_desc;
 						sh_insert_heap_node(m_heap, &nd_min);
 					}
 				} else {
@@ -1242,6 +1245,7 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 					if (!l_src->end_of_level) {
 						comp_fill_heap_node(comp_req, l_src, &nd_min);
 						// log_info("Refilling from SRC level read cursor");
+						nd_min.db_desc = comp_req->db_desc;
 						sh_insert_heap_node(m_heap, &nd_min);
 					}
 				}
@@ -1251,6 +1255,7 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 					comp_fill_heap_node(comp_req, l_dst, &nd_min);
 					// log_info("Refilling from DST level read cursor key is %s",
 					// nd_min.KV + 4);
+					nd_min.db_desc = comp_req->db_desc;
 					sh_insert_heap_node(m_heap, &nd_min);
 				}
 			}

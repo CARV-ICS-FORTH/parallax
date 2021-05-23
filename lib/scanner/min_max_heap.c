@@ -98,6 +98,23 @@ static int sh_cmp_heap_nodes(struct sh_min_heap *hp, struct sh_heap_node *nd_1, 
 {
 	int64_t ret;
 
+#if 0
+	struct bt_kv_log_address L1 =  { .addr = NULL, .in_tail = 0, .tail_id = UINT8_MAX };
+	struct bt_kv_log_address L2 =  { .addr = NULL, .in_tail = 0, .tail_id = UINT8_MAX };
+	switch(nd_1->cat){
+		case BIG_INLOG:
+		if(level_id){
+		K
+		}
+			break;
+#if MEDIUM_LOG_UNSORTED
+		case MEDIUM_INLOG:
+			break;
+#endif
+		default:
+			break;
+	}
+#endif
 	ret = key_cmp(nd_1->KV, nd_2->KV, nd_1->type, nd_2->type);
 
 	if (ret == 0) {
