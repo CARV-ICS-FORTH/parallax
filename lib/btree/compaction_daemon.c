@@ -1049,6 +1049,7 @@ static void comp_fill_heap_node(struct compaction_request *comp_req, struct comp
 static void comp_fill_parallax_key(struct sh_heap_node *nd, struct comp_parallax_key *my_key)
 {
 	my_key->kv_category = nd->cat;
+	assert(nd->KV);
 	switch (nd->cat) {
 	case SMALL_INPLACE:
 	case MEDIUM_INPLACE:
@@ -1220,6 +1221,7 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 				break;
 			if (!nd_min.duplicate) {
 				struct comp_parallax_key key;
+				memset(&key, 0, sizeof(key));
 				comp_fill_parallax_key(&nd_min, &key);
 				comp_append_entry_to_leaf_node(merged_level, &key);
 			}

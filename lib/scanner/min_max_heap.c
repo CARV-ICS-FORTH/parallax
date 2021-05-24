@@ -152,8 +152,8 @@ static int sh_cmp_heap_nodes(struct sh_min_heap *hp, struct sh_heap_node *nd_1, 
 	case MEDIUM_INLOG:
 		if (!nd_2->level_id) {
 			struct bt_leaf_entry *b2 = (struct bt_leaf_entry *)nd_2->KV;
-			L1 = bt_get_kv_log_address(&nd_2->db_desc->medium_log, ABSOLUTE_ADDRESS(b2->pointer));
-			if (L1.in_tail) {
+			L2 = bt_get_kv_log_address(&nd_2->db_desc->medium_log, ABSOLUTE_ADDRESS(b2->pointer));
+			if (L2.in_tail) {
 				my_b2 = *b2;
 				my_b2.pointer = (uint64_t)L2.addr;
 				old_pointer_nd2 = nd_2->KV;
@@ -178,9 +178,9 @@ static int sh_cmp_heap_nodes(struct sh_min_heap *hp, struct sh_heap_node *nd_1, 
 			bt_done_with_value_log_address(&nd_1->db_desc->medium_log, &L1);
 			break;
 #endif
-			break;
 		default:
-			log_fatal("Wrong category/faulty state");
+			log_fatal("Wrong category/faulty state cat = %d", nd_1->cat);
+			assert(0);
 			exit(EXIT_FAILURE);
 		}
 		nd_1->KV = old_pointer_nd1;
