@@ -152,7 +152,7 @@ static int sh_cmp_heap_nodes(struct sh_min_heap *hp, struct sh_heap_node *nd_1, 
 	case MEDIUM_INLOG:
 		if (!nd_2->level_id) {
 			struct bt_leaf_entry *b2 = (struct bt_leaf_entry *)nd_2->KV;
-			L1 = bt_get_kv_log_address(&nd_2->db_desc->medium_log, ABSOLUTE_ADDRESS(b1->pointer));
+			L1 = bt_get_kv_log_address(&nd_2->db_desc->medium_log, ABSOLUTE_ADDRESS(b2->pointer));
 			if (L1.in_tail) {
 				my_b2 = *b2;
 				my_b2.pointer = (uint64_t)L2.addr;
