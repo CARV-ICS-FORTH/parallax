@@ -9,8 +9,8 @@
 
 void load_logs_torecover(recovery_request *recover_req, struct recovery_operator *replay)
 {
-	(void) recover_req;
-	(void) replay;
+	(void)recover_req;
+	(void)replay;
 #if 0
 	unsigned replay_onelog_atleast = 0;
 	if (recover_req->db_desc->commit_log->big_log_size < recover_req->db_desc->big_log_size) {
