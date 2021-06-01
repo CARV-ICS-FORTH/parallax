@@ -1226,6 +1226,7 @@ static void pr_do_log_chunk_IO(struct pr_log_ticket *ticket)
 	uint32_t chunk_offt = offt_in_seg % LOG_CHUNK_SIZE;
 	uint32_t chunk_id = offt_in_seg / LOG_CHUNK_SIZE;
 	uint32_t num_chunks = SEGMENT_SIZE / LOG_CHUNK_SIZE;
+	(void)num_chunks;
 	assert(chunk_id != num_chunks);
 	int do_IO;
 
@@ -1344,24 +1345,30 @@ static void *bt_append_to_log_direct_IO(struct log_operation *req, struct log_to
 
 		struct segment_header *d_header = seg_get_raw_log_segment(handle->volume_desc);
 		struct segment_header *last_segment = REAL_ADDRESS(log_metadata->log_desc->tail_dev_offt);
-		d_header->segment_id = last_segment->segment_id + 1;
-		d_header->next_segment = NULL;
-		last_segment->next_segment = (void *)ABSOLUTE_ADDRESS(d_header);
-		log_metadata->log_desc->tail_dev_offt = ABSOLUTE_ADDRESS(d_header);
-		// position the log to the newly added block
-		log_metadata->log_desc->size += sizeof(segment_header);
-		// Reset tail for new use
-		for (int j = 0; j < (SEGMENT_SIZE / LOG_CHUNK_SIZE); ++j)
-			next_tail->bytes_in_chunk[j] = 0;
-		next_tail->IOs_completed_in_tail = 0;
-		next_tail->start = ABSOLUTE_ADDRESS(d_header);
-		next_tail->end = next_tail->start + SEGMENT_SIZE;
-		next_tail->dev_offt = ABSOLUTE_ADDRESS(d_header);
-		next_tail->bytes_in_chunk[0] = sizeof(struct segment_header);
-		next_tail->free = 0;
-		log_metadata->log_desc->curr_tail_id = next_tail_id;
-		//log_info("Curr tail %u start %llu end %llu",next_tail_id,next_tail->start,next_tail->end);
-		segment_change = 1;
+		if (last_segment) {
+			d_header->segment_id = last_segment->segment_id + 1;
+			d_header->next_segment = NULL;
+			last_segment->next_segment = (void *)ABSOLUTE_ADDRESS(d_header);
+			log_metadata->log_desc->tail_dev_offt = ABSOLUTE_ADDRESS(d_header);
+			// position the log to the newly added block
+			log_metadata->log_desc->size += sizeof(segment_header);
+			// Reset tail for new use
+			for (int j = 0; j < (SEGMENT_SIZE / LOG_CHUNK_SIZE); ++j)
+				next_tail->bytes_in_chunk[j] = 0;
+			next_tail->IOs_completed_in_tail = 0;
+			next_tail->start = ABSOLUTE_ADDRESS(d_header);
+			next_tail->end = next_tail->start + SEGMENT_SIZE;
+			next_tail->dev_offt = ABSOLUTE_ADDRESS(d_header);
+			next_tail->bytes_in_chunk[0] = sizeof(struct segment_header);
+			next_tail->free = 0;
+			log_metadata->log_desc->curr_tail_id = next_tail_id;
+			//log_info("Curr tail %u start %llu end %llu",next_tail_id,next_tail->start,next_tail->end);
+			segment_change = 1;
+		} else {
+			log_fatal("Last semgent is NULL");
+			assert(0);
+			exit(EXIT_FAILURE);
+		}
 		RWLOCK_UNLOCK(&log_metadata->log_desc->log_tail_buf_lock);
 	}
 	uint32_t tail_id = log_metadata->log_desc->curr_tail_id;
@@ -1611,7 +1618,7 @@ static inline struct lookup_reply lookup_in_tree(db_descriptor *db_desc, void *k
 						      *(uint32_t *)key, level_id);
 		goto deser;
 	} else {
-		while (curr_node->type != leafNode) {
+		while (curr_node && curr_node->type != leafNode) {
 			curr = _find_position(db_desc->levels[level_id].level_lock_table, curr_node);
 
 			if (RWLOCK_RDLOCK(&curr->rx_lock) != 0)
@@ -1625,6 +1632,12 @@ static inline struct lookup_reply lookup_in_tree(db_descriptor *db_desc, void *k
 			son_node = (void *)REAL_ADDRESS(*(uint64_t *)next_addr);
 			prev = curr;
 			curr_node = son_node;
+		}
+
+		if (curr_node == NULL) {
+			log_fatal("Encountered NULL node in index");
+			assert(0);
+			exit(EXIT_FAILURE);
 		}
 
 		prev = curr;
@@ -1651,6 +1664,11 @@ deser:
 		} else if (ret_result.key_type == KV_INLOG) {
 			key_addr_in_leaf = ret_result.kv;
 			key_addr_in_leaf = (void *)REAL_ADDRESS(*(uint64_t *)key_addr_in_leaf);
+			if (key_addr_in_leaf == NULL) {
+				log_fatal("Encountered NULL pointer from KV in leaf");
+				assert(0);
+				exit(EXIT_FAILURE);
+			}
 			index_key_len = KEY_SIZE(key_addr_in_leaf);
 			rep.addr = (void *)(uint64_t)key_addr_in_leaf + 4 + index_key_len;
 			rep.lc_failed = 0;
@@ -2272,7 +2290,7 @@ release_and_retry:
 	mem_catalogue = ins_req->metadata.handle->volume_desc->mem_catalogue;
 
 	father = NULL;
-
+	next_addr = NULL;
 	/*cow logic follows*/
 	if (db_desc->levels[level_id].root_w[ins_req->metadata.tree_id] == NULL) {
 		if (db_desc->levels[level_id].root_r[ins_req->metadata.tree_id] != NULL) {

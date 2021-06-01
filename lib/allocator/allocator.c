@@ -1702,7 +1702,13 @@ exit:
 			(pr_db_group *)REAL_ADDRESS(volume_desc->mem_catalogue->db_group_index[db_c.group_id]);
 
 		struct pr_db_entry *db_entry = &cur_group->db_entries[db_c.index];
-		db_entry->valid = 1;
+		if (db_entry)
+			db_entry->valid = 1;
+		else {
+			log_fatal("db_entry is NULL!");
+			assert(0);
+			exit(EXIT_FAILURE);
+		}
 
 		log_info("DB %s db_name put in slot [%d,%d]", db_name, db_c.group_id, db_c.index);
 	}

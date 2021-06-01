@@ -350,20 +350,6 @@ class ParallaxDB : public YCSBDB {
 
 		return 0;
 	}
-
-	int Delete(int id, const std::string &table, const std::string &key)
-	{
-		std::hash<std::string> hash_fn;
-		int8_t ret;
-		uint32_t db_id = hash_fn(key) % db_num;
-
-		// ret = delete_key(dbs[db_id], (void *)key.c_str(), key.size());
-		if (ret != 0) {
-			std::cerr << "I could not delete " << key << std::endl;
-			return 0;
-		}
-		return 0;
-	}
 };
 } // namespace ycsbc
 

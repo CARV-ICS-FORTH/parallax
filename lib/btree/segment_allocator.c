@@ -390,12 +390,20 @@ void seg_free_level(db_handle *handle, uint8_t level_id, uint8_t tree_id)
 
 	log_info("Freeing up level %u for db %s", level_id, handle->db_desc->db_name);
 
-	if (level_id != 0)
-		for (; curr_segment->next_segment != NULL; curr_segment = REAL_ADDRESS(curr_segment->next_segment)) {
+	if (level_id != 0) {
+		for (; curr_segment && curr_segment->next_segment != NULL;
+		     curr_segment = REAL_ADDRESS(curr_segment->next_segment)) {
 			free_raw_segment(handle->volume_desc, curr_segment);
 			space_freed += SEGMENT_SIZE;
 		}
-	else {
+
+		if (curr_segment == NULL) {
+			log_fatal("Encountered NULL segment!");
+			assert(0);
+			exit(EXIT_FAILURE);
+		}
+
+	} else {
 #if 0
 		//free inmem_medium_log_L0
 		curr_segment = (struct segment_header *)REAL_ADDRESS(
