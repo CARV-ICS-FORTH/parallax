@@ -1049,6 +1049,7 @@ static void comp_fill_heap_node(struct compaction_request *comp_req, struct comp
 static void comp_fill_parallax_key(struct sh_heap_node *nd, struct comp_parallax_key *my_key)
 {
 	my_key->kv_category = nd->cat;
+	assert(nd->KV);
 	switch (nd->cat) {
 	case SMALL_INPLACE:
 	case MEDIUM_INPLACE:
@@ -1118,7 +1119,16 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 	struct comp_level_write_cursor *merged_level = NULL;
 
 	if (comp_req->src_level == 0) {
-		snapshot(comp_req->volume_desc); // --> This is for recovery I think;
+		//snapshot(comp_req->volume_desc); // --> This is for recovery I think;
+
+		RWLOCK_WRLOCK(&handle->db_desc->levels[0].guard_of_level.rx_lock);
+		spin_loop(&handle->db_desc->levels[0].active_writers, 0);
+		pr_flush_log_tail(comp_req->db_desc, comp_req->volume_desc, &comp_req->db_desc->big_log);
+#if MEDIUM_LOG_UNSORTED
+		pr_flush_log_tail(comp_req->db_desc, comp_req->volume_desc, &comp_req->db_desc->medium_log);
+#endif
+		RWLOCK_UNLOCK(&handle->db_desc->levels[0].guard_of_level.rx_lock);
+
 		log_info("Initializing L0 scanner");
 		level_src = _init_spill_buffer_scanner(handle, comp_req->src_level, src_root, NULL);
 	} else {
@@ -1180,12 +1190,14 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 		comp_fill_heap_node(comp_req, l_src, &nd_src);
 	}
 	print_heap_node_key(&nd_src);
+	nd_src.db_desc = comp_req->db_desc;
 	sh_insert_heap_node(m_heap, &nd_src);
 	// init Li+1 cursor (if any)
 	if (l_dst) {
 		comp_fill_heap_node(comp_req, l_dst, &nd_dst);
 		log_info("Initializing heap from DST read cursor level %u with key:", comp_req->dst_level);
 		print_heap_node_key(&nd_dst);
+		nd_dst.db_desc = comp_req->db_desc;
 		sh_insert_heap_node(m_heap, &nd_dst);
 	}
 	// ############################################################################
@@ -1209,6 +1221,7 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 				break;
 			if (!nd_min.duplicate) {
 				struct comp_parallax_key key;
+				memset(&key, 0, sizeof(key));
 				comp_fill_parallax_key(&nd_min, &key);
 				comp_append_entry_to_leaf_node(merged_level, &key);
 			}
@@ -1226,6 +1239,7 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 						nd_min.cat = level_src->cat;
 						nd_min.kv_size = level_src->kv_size;
 						nd_min.active_tree = comp_req->src_tree;
+						nd_min.db_desc = comp_req->db_desc;
 						sh_insert_heap_node(m_heap, &nd_min);
 					}
 				} else {
@@ -1233,6 +1247,7 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 					if (!l_src->end_of_level) {
 						comp_fill_heap_node(comp_req, l_src, &nd_min);
 						// log_info("Refilling from SRC level read cursor");
+						nd_min.db_desc = comp_req->db_desc;
 						sh_insert_heap_node(m_heap, &nd_min);
 					}
 				}
@@ -1242,6 +1257,7 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 					comp_fill_heap_node(comp_req, l_dst, &nd_min);
 					// log_info("Refilling from DST level read cursor key is %s",
 					// nd_min.KV + 4);
+					nd_min.db_desc = comp_req->db_desc;
 					sh_insert_heap_node(m_heap, &nd_min);
 				}
 			}
@@ -1348,10 +1364,13 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 	memset(&ld->bloom_filter[1], 0x00, sizeof(struct bloom));
 #endif
 
+#if !MEDIUM_LOG_UNSORTED
 	if (comp_req->dst_level == 1) {
 		log_info("Flushing medium log");
 		pr_flush_log_tail(comp_req->db_desc, comp_req->volume_desc, &comp_req->db_desc->medium_log);
 	}
+#endif
+
 	if (RWLOCK_UNLOCK(&(comp_req->db_desc->levels[comp_req->src_level].guard_of_level.rx_lock))) {
 		log_fatal("Failed to acquire guard lock");
 		exit(EXIT_FAILURE);

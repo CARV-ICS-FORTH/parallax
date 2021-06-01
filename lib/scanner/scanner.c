@@ -133,6 +133,7 @@ static void init_generic_scanner(struct scannerHandle *sc, struct db_handle *han
 				nd.level_id = 0;
 				nd.active_tree = i;
 				nd.type = KV_FORMAT;
+				nd.db_desc = handle->db_desc;
 				sh_insert_heap_node(&sc->heap, &nd);
 
 			} else
@@ -161,6 +162,7 @@ static void init_generic_scanner(struct scannerHandle *sc, struct db_handle *han
 				//log_info("Tree[%d][%d] gave us key %s", level_id, 0, nd.KV + 4);
 				nd.level_id = level_id;
 				nd.active_tree = tree_id;
+				nd.db_desc = handle->db_desc;
 				sh_insert_heap_node(&sc->heap, &nd);
 				sc->LEVEL_SCANNERS[level_id][tree_id].valid = 1;
 			}
@@ -576,6 +578,7 @@ int32_t getNext(scannerHandle *sc)
 				next_nd.cat = sc->LEVEL_SCANNERS[nd.level_id][nd.active_tree].cat;
 				next_nd.KV = sc->LEVEL_SCANNERS[nd.level_id][nd.active_tree].keyValue;
 				next_nd.kv_size = sc->LEVEL_SCANNERS[nd.level_id][nd.active_tree].kv_size;
+				next_nd.db_desc = sc->db->db_desc;
 				sh_insert_heap_node(&sc->heap, &next_nd);
 			}
 			if (nd.duplicate == 1) {

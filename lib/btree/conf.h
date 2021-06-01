@@ -35,6 +35,7 @@
 #define NUM_OF_DB_GROUPS 506
 #define DEVICE_BLOCK_SIZE 4096
 #define ALIGNMENT 512
+#define MEDIUM_LOG_UNSORTED 0
 
 /*for allocator.c*/
 #define DATA_PER_BITMAP_BLOCK ((DEVICE_BLOCK_SIZE - 8) * 8) /*Data blocks addressed per bitmap block*/

@@ -98,7 +98,111 @@ static int sh_cmp_heap_nodes(struct sh_min_heap *hp, struct sh_heap_node *nd_1, 
 {
 	int64_t ret;
 
+	struct bt_kv_log_address L1 = { .addr = NULL, .in_tail = 0, .tail_id = UINT8_MAX };
+	struct bt_leaf_entry my_b1 = { .prefix = { 0 }, .pointer = 0 };
+	char *old_pointer_nd1 = NULL;
+	struct bt_kv_log_address L2 = { .addr = NULL, .in_tail = 0, .tail_id = UINT8_MAX };
+	struct bt_leaf_entry my_b2 = { .prefix = { 0 }, .pointer = 0 };
+	char *old_pointer_nd2 = NULL;
+
+	switch (nd_1->cat) {
+	case BIG_INLOG:
+		if (!nd_1->level_id) {
+			struct bt_leaf_entry *b1 = (struct bt_leaf_entry *)nd_1->KV;
+			L1 = bt_get_kv_log_address(&nd_1->db_desc->big_log, ABSOLUTE_ADDRESS(b1->pointer));
+			if (L1.in_tail) {
+				my_b1 = *b1;
+				my_b1.pointer = (uint64_t)L1.addr;
+				old_pointer_nd1 = nd_1->KV;
+				nd_1->KV = &my_b1;
+			}
+		}
+		break;
+#if MEDIUM_LOG_UNSORTED
+	case MEDIUM_INLOG:
+		if (!nd_1->level_id) {
+			struct bt_leaf_entry *b1 = (struct bt_leaf_entry *)nd_1->KV;
+			L1 = bt_get_kv_log_address(&nd_1->db_desc->medium_log, ABSOLUTE_ADDRESS(b1->pointer));
+			if (L1.in_tail) {
+				my_b1 = *b1;
+				my_b1.pointer = (uint64_t)L1.addr;
+				old_pointer_nd1 = nd_1->KV;
+				nd_1->KV = &my_b1;
+			}
+		}
+		break;
+#endif
+	default:
+		break;
+	}
+	switch (nd_2->cat) {
+	case BIG_INLOG:
+		if (!nd_2->level_id) {
+			struct bt_leaf_entry *b2 = (struct bt_leaf_entry *)nd_2->KV;
+			L2 = bt_get_kv_log_address(&nd_2->db_desc->big_log, ABSOLUTE_ADDRESS(b2->pointer));
+			if (L2.in_tail) {
+				my_b2 = *b2;
+				my_b2.pointer = (uint64_t)L2.addr;
+				old_pointer_nd2 = nd_2->KV;
+				nd_2->KV = &my_b2;
+			}
+		}
+		break;
+#if MEDIUM_LOG_UNSORTED
+	case MEDIUM_INLOG:
+		if (!nd_2->level_id) {
+			struct bt_leaf_entry *b2 = (struct bt_leaf_entry *)nd_2->KV;
+			L2 = bt_get_kv_log_address(&nd_2->db_desc->medium_log, ABSOLUTE_ADDRESS(b2->pointer));
+			if (L2.in_tail) {
+				my_b2 = *b2;
+				my_b2.pointer = (uint64_t)L2.addr;
+				old_pointer_nd2 = nd_2->KV;
+				nd_2->KV = &my_b2;
+			}
+		}
+		break;
+#endif
+	default:
+		break;
+	}
+
 	ret = key_cmp(nd_1->KV, nd_2->KV, nd_1->type, nd_2->type);
+
+	if (L1.in_tail) {
+		switch (nd_1->cat) {
+		case BIG_INLOG:
+			bt_done_with_value_log_address(&nd_1->db_desc->big_log, &L1);
+			break;
+#if MEDIUM_LOG_UNSORTED
+		case MEDIUM_INLOG:
+			bt_done_with_value_log_address(&nd_1->db_desc->medium_log, &L1);
+			break;
+#endif
+		default:
+			log_fatal("Wrong category/faulty state cat = %d", nd_1->cat);
+			assert(0);
+			exit(EXIT_FAILURE);
+		}
+		nd_1->KV = old_pointer_nd1;
+	}
+
+	if (L2.in_tail) {
+		switch (nd_2->cat) {
+		case BIG_INLOG:
+			bt_done_with_value_log_address(&nd_2->db_desc->big_log, &L2);
+			break;
+#if MEDIUM_LOG_UNSORTED
+		case MEDIUM_INLOG:
+			bt_done_with_value_log_address(&nd_2->db_desc->medium_log, &L2);
+			break;
+#endif
+			break;
+		default:
+			log_fatal("Wrong category/faulty state");
+			exit(EXIT_FAILURE);
+		}
+		nd_2->KV = old_pointer_nd2;
+	}
 
 	if (ret == 0) {
 		/* duplicate detected smallest level_id wins, needs more thinking */

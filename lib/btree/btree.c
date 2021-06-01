@@ -1035,8 +1035,11 @@ uint8_t insert_key_value(db_handle *handle, void *key, void *value, uint32_t key
 	if (kv_ratio >= 0.0 && kv_ratio < 0.004) {
 		ins_req.metadata.cat = BIG_INLOG;
 	} else if (kv_ratio >= 0.004 && kv_ratio <= 0.3) {
-		//ins_req.metadata.cat = MEDIUM_INLOG;
+#if MEDIUM_LOG_UNSORTED
+		ins_req.metadata.cat = MEDIUM_INLOG;
+#else
 		ins_req.metadata.cat = MEDIUM_INPLACE;
+#endif
 	} else {
 		ins_req.metadata.cat = SMALL_INPLACE;
 	}
@@ -1116,6 +1119,14 @@ void update_log_metadata(db_descriptor *db_desc, struct log_towrite *log_metadat
 		db_desc->big_log.tail_dev_offt = log_metadata->log_desc->tail_dev_offt;
 		return;
 	case MEDIUM_INLOG:
+#if MEDIUM_LOG_UNSORTED
+		if (log_metadata->level_id) {
+			log_fatal("KV separation allowed only for L0");
+			exit(EXIT_FAILURE);
+			return;
+		} else
+			db_desc->medium_log.tail_dev_offt = log_metadata->log_desc->tail_dev_offt;
+#else
 		if (log_metadata->level_id != 0) {
 			db_desc->medium_log.tail_dev_offt = log_metadata->log_desc->tail_dev_offt;
 			return;
@@ -1123,7 +1134,7 @@ void update_log_metadata(db_descriptor *db_desc, struct log_towrite *log_metadat
 			log_fatal("MEDIUM_INLOG with level_id 0 not allowed!");
 			exit(EXIT_FAILURE);
 		}
-
+#endif
 	case SMALL_INPLACE:
 	case SMALL_INLOG:
 	case MEDIUM_INPLACE:
@@ -1309,13 +1320,14 @@ static void *bt_append_to_log_direct_IO(struct log_operation *req, struct log_to
 		uint32_t curr_tail_id = log_metadata->log_desc->curr_tail_id;
 		//log_info("Segment change avail space %u kv size %u",available_space_in_log,data_size->kv_size);
 		// pad with zeroes remaining bytes in segment
-		log_operation pad_op = { .metadata = NULL, .optype_tolog = paddingOp, .ins_req = NULL };
-		pad_ticket.req = &pad_op;
-		pad_ticket.data_size = NULL;
-		pad_ticket.tail = log_metadata->log_desc->tail[curr_tail_id % LOG_TAIL_NUM_BUFS];
-		pad_ticket.log_offt = log_metadata->log_desc->size;
-
-		pr_copy_kv_to_tail(&pad_ticket);
+		if (available_space_in_log > 0) {
+			log_operation pad_op = { .metadata = NULL, .optype_tolog = paddingOp, .ins_req = NULL };
+			pad_ticket.req = &pad_op;
+			pad_ticket.data_size = NULL;
+			pad_ticket.tail = log_metadata->log_desc->tail[curr_tail_id % LOG_TAIL_NUM_BUFS];
+			pad_ticket.log_offt = log_metadata->log_desc->size;
+			pr_copy_kv_to_tail(&pad_ticket);
+		}
 
 		// log_info("Resetting segment start %llu end %llu ...",
 		// ticket->tail->start, ticket->tail->end);
@@ -1367,7 +1379,7 @@ static void *bt_append_to_log_direct_IO(struct log_operation *req, struct log_to
 	log_metadata->log_desc->size += (data_size->kv_size + sizeof(struct log_sequence_number));
 	MUTEX_UNLOCK(&handle->db_desc->lock_log);
 
-	if (segment_change) {
+	if (segment_change && available_space_in_log > 0) {
 		// do the padding IO as well
 		pr_do_log_IO(&pad_ticket);
 	}
@@ -1467,6 +1479,15 @@ void *append_key_value_to_log(log_operation *req)
 	}
 	case MEDIUM_INLOG: {
 		uint8_t level_id = req->metadata->level_id;
+#if MEDIUM_LOG_UNSORTED
+		if (level_id) {
+			log_fatal("KV separation allowed for medium only for L0!");
+			exit(EXIT_FAILURE);
+		} else {
+			log_metadata.log_desc = &handle->db_desc->medium_log;
+			return bt_append_to_log_direct_IO(req, &log_metadata, &data_size);
+		}
+#else
 		if (level_id == 0) {
 			log_fatal("MEDIUM_INLOG not allowed for level_id 0!");
 			exit(EXIT_FAILURE);
@@ -1476,6 +1497,7 @@ void *append_key_value_to_log(log_operation *req)
 			char *c = bt_append_to_log_direct_IO(req, &log_metadata, &data_size);
 			return c;
 		}
+#endif
 	}
 	case BIG_INLOG:
 		log_metadata.log_desc = &handle->db_desc->big_log;
@@ -1951,7 +1973,9 @@ int insert_KV_at_leaf(bt_insert_req *ins_req, node_header *leaf)
 	uint8_t tree_id = ins_req->metadata.tree_id;
 	ins_req->kv_dev_offt = 0;
 	if (append_tolog) {
+#if !MEDIUM_LOG_UNSORTED
 		assert(ins_req->metadata.cat != MEDIUM_INLOG);
+#endif
 
 		log_operation append_op = { .metadata = &ins_req->metadata,
 					    .optype_tolog = insertOp,
@@ -1963,6 +1987,14 @@ int insert_KV_at_leaf(bt_insert_req *ins_req, node_header *leaf)
 		case MEDIUM_INPLACE:
 			append_key_value_to_log(&append_op);
 			break;
+#if MEDIUM_LOG_UNSORTED
+		case MEDIUM_INLOG: {
+			void *addr = append_key_value_to_log(&append_op);
+			ins_req->kv_dev_offt = ABSOLUTE_ADDRESS(addr);
+			assert(ins_req->kv_dev_offt != 0);
+			break;
+		}
+#endif
 		case BIG_INLOG: {
 			void *addr = append_key_value_to_log(&append_op);
 			ins_req->kv_dev_offt = ABSOLUTE_ADDRESS(addr);
