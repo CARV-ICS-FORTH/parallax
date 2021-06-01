@@ -1320,13 +1320,14 @@ static void *bt_append_to_log_direct_IO(struct log_operation *req, struct log_to
 		uint32_t curr_tail_id = log_metadata->log_desc->curr_tail_id;
 		//log_info("Segment change avail space %u kv size %u",available_space_in_log,data_size->kv_size);
 		// pad with zeroes remaining bytes in segment
-		log_operation pad_op = { .metadata = NULL, .optype_tolog = paddingOp, .ins_req = NULL };
-		pad_ticket.req = &pad_op;
-		pad_ticket.data_size = NULL;
-		pad_ticket.tail = log_metadata->log_desc->tail[curr_tail_id % LOG_TAIL_NUM_BUFS];
-		pad_ticket.log_offt = log_metadata->log_desc->size;
-
-		pr_copy_kv_to_tail(&pad_ticket);
+		if (available_space_in_log > 0) {
+			log_operation pad_op = { .metadata = NULL, .optype_tolog = paddingOp, .ins_req = NULL };
+			pad_ticket.req = &pad_op;
+			pad_ticket.data_size = NULL;
+			pad_ticket.tail = log_metadata->log_desc->tail[curr_tail_id % LOG_TAIL_NUM_BUFS];
+			pad_ticket.log_offt = log_metadata->log_desc->size;
+			pr_copy_kv_to_tail(&pad_ticket);
+		}
 
 		// log_info("Resetting segment start %llu end %llu ...",
 		// ticket->tail->start, ticket->tail->end);
@@ -1378,7 +1379,7 @@ static void *bt_append_to_log_direct_IO(struct log_operation *req, struct log_to
 	log_metadata->log_desc->size += (data_size->kv_size + sizeof(struct log_sequence_number));
 	MUTEX_UNLOCK(&handle->db_desc->lock_log);
 
-	if (segment_change) {
+	if (segment_change && available_space_in_log > 0) {
 		// do the padding IO as well
 		pr_do_log_IO(&pad_ticket);
 	}

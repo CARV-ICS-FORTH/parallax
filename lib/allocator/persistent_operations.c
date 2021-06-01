@@ -185,22 +185,20 @@ void pr_flush_log_tail(struct db_descriptor *db_desc, struct volume_descriptor *
 	uint64_t start_offt, end_offt;
 	uint32_t chunk_id;
 	uint32_t idx = log_desc->size % SEGMENT_SIZE;
+	uint32_t remaining_bytes = 0;
 
 	if (idx) {
-		uint32_t remaining_bytes = SEGMENT_SIZE - idx;
+		remaining_bytes = SEGMENT_SIZE - idx;
 		memset(&log_desc->tail[last_tail]->buf[idx], 0, remaining_bytes);
 		log_desc->size += remaining_bytes;
-	}
-
-	if (offt_in_seg == 0) {
-		chunk_id = (SEGMENT_SIZE / LOG_CHUNK_SIZE) - 1;
-		log_info("flush log tail first case");
 	} else
-		chunk_id = offt_in_seg / LOG_CHUNK_SIZE;
+		return;
 
-	for (int i = chunk_id; i < SEGMENT_SIZE / LOG_CHUNK_SIZE; ++i) {
+	chunk_id = offt_in_seg / LOG_CHUNK_SIZE;
+
+	for (int i = chunk_id; i < SEGMENT_SIZE / LOG_CHUNK_SIZE; ++i)
 		log_desc->tail[last_tail]->bytes_in_chunk[i] = LOG_CHUNK_SIZE;
-	}
+
 	log_desc->tail[last_tail]->IOs_completed_in_tail = SEGMENT_SIZE / LOG_CHUNK_SIZE;
 
 	if (chunk_id)
@@ -208,12 +206,14 @@ void pr_flush_log_tail(struct db_descriptor *db_desc, struct volume_descriptor *
 	else
 		start_offt = sizeof(struct segment_header);
 
+	start_offt = sizeof(segment_header);
 	ssize_t bytes_written = 0;
-	//end_offt = start_offt + LOG_CHUNK_SIZE;
-	end_offt = SEGMENT_SIZE - start_offt;
+	/* end_offt = start_offt + LOG_CHUNK_SIZE; */
+	end_offt = SEGMENT_SIZE /* - start_offt */;
 	while (start_offt < end_offt) {
 		bytes_written = pwrite(FD, &log_desc->tail[last_tail]->buf[start_offt], end_offt - start_offt,
 				       log_desc->tail[last_tail]->dev_offt + start_offt);
+
 		if (bytes_written == -1) {
 			log_fatal("Failed to write LOG_CHUNK reason follows");
 			perror("Reason");
@@ -222,6 +222,7 @@ void pr_flush_log_tail(struct db_descriptor *db_desc, struct volume_descriptor *
 		start_offt += bytes_written;
 	}
 }
+
 /*persists a consistent snapshot of the system*/
 void snapshot(volume_descriptor *volume_desc)
 {
