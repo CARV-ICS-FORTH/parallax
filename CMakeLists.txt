@@ -43,11 +43,6 @@ FetchContent_Declare(
   GIT_PROGRESS TRUE)
 
 FetchContent_Declare(
-  libmba
-  GIT_REPOSITORY https://github.com/innerout/libmba.git
-  GIT_PROGRESS TRUE)
-
-FetchContent_Declare(
   yaml
   GIT_REPOSITORY https://github.com/yaml/libyaml
   GIT_PROGRESS TRUE)
@@ -69,7 +64,6 @@ FetchContent_Declare(
   GIT_TAG cmake)
 
 FetchContent_GetProperties(log)
-FetchContent_GetProperties(libmba)
 FetchContent_GetProperties(yaml)
 FetchContent_GetProperties(uthash)
 FetchContent_GetProperties(cmake-scripts)
@@ -80,12 +74,6 @@ if(NOT log_POPULATED)
   add_subdirectory(${log_SOURCE_DIR} ${log_BINARY_DIR})
   include_directories(${log_SOURCE_DIR}/include)
   FetchContent_MakeAvailable(log)
-endif()
-
-if(NOT libmba_POPULATED)
-  FetchContent_Populate(libmba)
-  add_subdirectory(${libmba_SOURCE_DIR} ${libmba_BINARY_DIR})
-  FetchContent_MakeAvailable(libmba)
 endif()
 
 if(NOT yaml_POPULATED)
@@ -115,7 +103,7 @@ if(NOT libbloom_POPULATED)
   FetchContent_MakeAvailable(libbloom)
 endif()
 
-set(DEPENDENCIES log libmba yaml libbloom)
+set(DEPENDENCIES log yaml libbloom)
 
 include_directories(${CMAKE_BINARY_DIR})
 include_directories(${CMAKE_SOURCE_DIR}/utilities)
