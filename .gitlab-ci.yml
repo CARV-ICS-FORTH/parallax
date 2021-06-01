@@ -8,20 +8,36 @@ variables:
 stages:
     - debug_build
     - debug_test
+    - release_build
+    - release_test
     - deploy
 
-build_gcc:
+debug_build_gcc:
     stage: debug_build
     script:
         - mkdir -p build;cd build
         - cmake .. -DCMAKE_BUILD_TYPE=Debug
         - make all
 
-build_clang:
+debug_build_clang:
     stage: debug_build
     script:
         - mkdir -p build;cd build
         - cmake .. -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
+        - make all
+
+release_build_gcc:
+    stage: release_build
+    script:
+        - mkdir -p build;cd build
+        - cmake .. -DCMAKE_BUILD_TYPE=Release
+        - make all
+
+release_build_clang:
+    stage: release_build
+    script:
+        - mkdir -p build;cd build
+        - cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
         - make all
 
 build_clang-tidy:
