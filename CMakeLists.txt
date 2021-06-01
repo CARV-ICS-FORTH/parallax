@@ -139,10 +139,13 @@ if(PEEL_LOOPS)
   string(APPEND CMAKE_C_FLAGS " -fpeel-loops")
 endif()
 
+# if(NOT (CMAKE_C_COMPILER_ID STREQUAL "Clang" AND CMAKE_CXX_COMPILER_ID
+# STREQUAL "Clang")) string(APPEND CMAKE_C_FLAGS " -flto") string(APPEND
+# CMAKE_CXX_FLAGS " -flto") endif()
+
 set(CMAKE_C_FLAGS_DEBUG "-ggdb3 -Og -gz ${CMAKE_C_FLAGS_DEBUG}")
 set(CMAKE_C_FLAGS_RELEASE
-    "${CMAKE_C_FLAGS_RELEASE} -flto -funit-at-a-time -O2 -finline-functions -DNDEBUG"
-)
+    "${CMAKE_C_FLAGS_RELEASE} -funit-at-a-time -O2 -finline-functions -DNDEBUG")
 
 set(CMAKE_CXX_FLAGS_RELEASE
     "${CMAKE_CXX_FLAGS_RELEASE} -std=gnu++11 -Wall -Werror")
