@@ -118,7 +118,7 @@ typedef struct node_header {
 typedef struct index_entry {
 	uint64_t left[1];
 	uint64_t pivot;
-	uint64_t right[0];
+	uint64_t right[];
 } __attribute__((packed)) index_entry;
 
 struct bt_leaf_entry {

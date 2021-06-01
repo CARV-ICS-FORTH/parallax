@@ -86,7 +86,10 @@ segment_header *find_replay_offset(segment_header *current_log_segment, uint64_t
 	while (current_log_segment->segment_id != segment_id) {
 		previous_segment_id = current_log_segment->segment_id;
 		current_log_segment = (segment_header *)REAL_ADDRESS(current_log_segment->prev_segment);
-
+		if (!current_log_segment) {
+			log_fatal("Log segment is NULL!");
+			exit(EXIT_FAILURE);
+		}
 		if (previous_segment_id != current_log_segment->segment_id + 1) {
 			log_fatal(
 				"FATAL corrupted segments, segment ids are not sequential previous = %llu current = %llu",
