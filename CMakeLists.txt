@@ -30,6 +30,7 @@ endif()
 
 include(FetchContent)
 include(CPack)
+include(CTest)
 include(GNUInstallDirs)
 include(CheckCCompilerFlag)
 include(cmake_utils/mkfs.cmake.in)
