@@ -13,7 +13,6 @@
 // limitations under the License.
 
 #pragma once
-#include <stdio.h>
 
 typedef void (*destroy_node_data)(void *data);
 

@@ -4,9 +4,10 @@
 #include <semaphore.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <string.h>
 #include <stdlib.h>
-#include <pthread.h>
 #include <time.h>
+#include <unistd.h>
 #include <log.h>
 #include <list.h>
 #include <uthash.h>

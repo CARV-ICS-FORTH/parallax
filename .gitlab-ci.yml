@@ -26,6 +26,14 @@ debug_build_clang:
         - cmake .. -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
         - make all
 
+iwyu-report:
+    stage: debug_build
+    script:
+        - mkdir -p build;cd build
+        - cmake .. -DCMAKE_BUILD_TYPE=Debug -DRUN_IWYU=ON
+        - make parallax > make_output.txt 2&> iwyu_output.txt || echo ignoring exit code since if this job fails others will fail too > /dev/null
+        - ./check-iwyu-output.py
+
 release_build_gcc:
     stage: release_build
     script:

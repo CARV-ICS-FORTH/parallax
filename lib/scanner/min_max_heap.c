@@ -10,6 +10,7 @@
 #include <log.h>
 #include "min_max_heap.h"
 #include "../btree/btree.h"
+#include "../btree/conf.h"
 #include "../../utilities/dups_list.h"
 
 #define LCHILD(x) ((2 * x) + 1)

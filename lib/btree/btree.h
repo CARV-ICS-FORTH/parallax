@@ -10,7 +10,9 @@
 #include <stdint.h>
 #include <sys/types.h>
 #include <limits.h>
+#if ENABLE_BLOOM_FILTERS
 #include <bloom.h>
+#endif
 #include "conf.h"
 #include "../allocator/allocator.h"
 #define SUCCESS 4

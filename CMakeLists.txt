@@ -36,6 +36,11 @@ include(cmake_utils/mkfs.cmake.in)
 include(cmake_utils/ycsb.cmake.in)
 include(cmake_utils/tests.cmake.in)
 
+if(RUN_IWYU STREQUAL "ON")
+  file(COPY ${CMAKE_SOURCE_DIR}/scripts/CI/check-iwyu-output.py
+       DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
+endif()
+
 set(FETCHCONTENT_QUIET FALSE)
 FetchContent_Declare(
   log

@@ -1,11 +1,12 @@
 #define _GNU_SOURCE /* See feature_test_macros(7) */
-#include <sys/mman.h>
 #include <semaphore.h>
 #include <string.h>
+#include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <pthread.h>
 #include <assert.h>
+#include <unistd.h>
 #include <log.h>
 #include <spin_loop.h>
 #include "btree.h"
