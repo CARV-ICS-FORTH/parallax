@@ -181,6 +181,96 @@ debug_test_ycsb_small:
         - cd ..;cd ..
         - ./scripts/CI/destroy_mbbd.sh
 
+release_test_ycsb_larged:
+    image: carvicsforth/arch_carv:latest
+    stage: release_test
+    tags:
+        - kubernetes
+    script:
+        - ./scripts/CI/create_mbbd.sh
+        - mkdir -p build;cd build
+        - cmake .. -DCMAKE_BUILD_TYPE="Release"
+        - make ycsb-edb;make mkfs.parallax;cd YCSB-CXX;
+        - ./mkfs.sh /tmp/kv_store.dat 1
+        - ./ycsb-edb -threads 1 -dbnum 1 -wl ld -p /tmp/kv_store.dat
+        - cd ..;cd ..
+        - ./scripts/CI/destroy_mbbd.sh
+
+release_test_ycsb_large:
+    image: carvicsforth/arch_carv:latest
+    stage: release_test
+    tags:
+        - kubernetes
+    script:
+        - ./scripts/CI/create_mbbd.sh
+        - mkdir -p build;cd build
+        - cmake .. -DCMAKE_BUILD_TYPE="Release"
+        - make ycsb-edb;make mkfs.parallax;cd YCSB-CXX;
+        - ./mkfs.sh /tmp/kv_store.dat 1
+        - ./ycsb-edb -threads 1 -dbnum 1 -wl l -p /tmp/kv_store.dat
+        - cd ..;cd ..
+        - ./scripts/CI/destroy_mbbd.sh
+
+release_test_ycsb_mediumd:
+    image: carvicsforth/arch_carv:latest
+    stage: release_test
+    tags:
+        - kubernetes
+    script:
+        - ./scripts/CI/create_mbbd.sh
+        - mkdir -p build;cd build
+        - cmake .. -DCMAKE_BUILD_TYPE="Release"
+        - make ycsb-edb;make mkfs.parallax;cd YCSB-CXX;
+        - ./mkfs.sh /tmp/kv_store.dat 1
+        - ./ycsb-edb -threads 1 -dbnum 1 -wl md -p /tmp/kv_store.dat
+        - cd ..;cd ..
+        - ./scripts/CI/destroy_mbbd.sh
+
+release_test_ycsb_medium:
+    image: carvicsforth/arch_carv:latest
+    stage: release_test
+    tags:
+        - kubernetes
+    script:
+        - ./scripts/CI/create_mbbd.sh
+        - mkdir -p build;cd build
+        - cmake .. -DCMAKE_BUILD_TYPE="Release"
+        - make ycsb-edb;make mkfs.parallax;cd YCSB-CXX;
+        - ./mkfs.sh /tmp/kv_store.dat 1
+        - ./ycsb-edb -threads 1 -dbnum 1 -wl m -p /tmp/kv_store.dat
+        - cd ..;cd ..
+        - ./scripts/CI/destroy_mbbd.sh
+
+release_test_ycsb_smalld:
+    image: carvicsforth/arch_carv:latest
+    stage: release_test
+    tags:
+        - kubernetes
+    script:
+        - ./scripts/CI/create_mbbd.sh
+        - mkdir -p build;cd build
+        - cmake .. -DCMAKE_BUILD_TYPE="Release"
+        - make ycsb-edb;make mkfs.parallax;cd YCSB-CXX;
+        - ./mkfs.sh /tmp/kv_store.dat 1
+        - ./ycsb-edb -threads 1 -dbnum 1 -wl sd -p /tmp/kv_store.dat
+        - cd ..;cd ..
+        - ./scripts/CI/destroy_mbbd.sh
+
+release_test_ycsb_small:
+    image: carvicsforth/arch_carv:latest
+    stage: release_test
+    tags:
+        - kubernetes
+    script:
+        - ./scripts/CI/create_mbbd.sh
+        - mkdir -p build;cd build
+        - cmake .. -DCMAKE_BUILD_TYPE="Release"
+        - make ycsb-edb;make mkfs.parallax;cd YCSB-CXX;
+        - ./mkfs.sh /tmp/kv_store.dat 1
+        - ./ycsb-edb -threads 1 -dbnum 1 -wl s -p /tmp/kv_store.dat
+        - cd ..;cd ..
+        - ./scripts/CI/destroy_mbbd.sh
+
 install_lib:
     image: carvicsforth/ubuntu_carv:latest
     stage: deploy
