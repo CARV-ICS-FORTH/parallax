@@ -10,7 +10,9 @@
 #include <stdint.h>
 #include <sys/types.h>
 #include <limits.h>
+#if ENABLE_BLOOM_FILTERS
 #include <bloom.h>
+#endif
 #include "conf.h"
 #include "../allocator/allocator.h"
 #define SUCCESS 4
@@ -118,7 +120,7 @@ typedef struct node_header {
 typedef struct index_entry {
 	uint64_t left[1];
 	uint64_t pivot;
-	uint64_t right[0];
+	uint64_t right[];
 } __attribute__((packed)) index_entry;
 
 struct bt_leaf_entry {

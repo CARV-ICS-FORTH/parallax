@@ -74,6 +74,7 @@ void validate_serially_allkeys_exist(db_handle *hd)
 {
 	uint64_t i;
 	key *k = (key *)malloc(KV_SIZE);
+	(void)hd;
 
 	for (i = TOTAL_KEYS; i < (TOTAL_KEYS + NUM_KEYS); i++) {
 		memcpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
@@ -94,7 +95,7 @@ int match_workload(char *workload)
 	return -1;
 }
 
-void run_workload(void (*f[3])(db_handle *), db_handle *hd)
+void run_workload(void (*f[])(db_handle *), db_handle *hd)
 {
 	for (int i = 0; i < 2; ++i) {
 		if (f[i] == NULL)
@@ -114,7 +115,7 @@ void run_workload(void (*f[3])(db_handle *), db_handle *hd)
 int main(int argc, char *argv[])
 {
 	assert(argc == 5);
-
+	(void)argc;
 	if (!atoi(argv[4]))
 		recover = CREATE_DB;
 	else
@@ -122,7 +123,7 @@ int main(int argc, char *argv[])
 
 	PERSIST = atoi(argv[3]);
 	int64_t device_size;
-	void (*f[3])(db_handle *);
+	void (*f[2])(db_handle *) = { NULL };
 	num_keys = atoll(argv[1]);
 	FD = open(VOLUME_NAME, O_RDWR); /* open the device */
 	if (ioctl(FD, BLKGETSIZE64, &device_size) == -1) {

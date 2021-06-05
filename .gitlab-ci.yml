@@ -6,26 +6,50 @@ variables:
     GIT_DEPTH: 0
 
 stages:
-    - build
-    - test
+    - debug_build
+    - debug_test
+    - release_build
+    - release_test
     - deploy
 
-build_gcc:
-    stage: build
+debug_build_gcc:
+    stage: debug_build
     script:
         - mkdir -p build;cd build
         - cmake .. -DCMAKE_BUILD_TYPE=Debug
         - make all
 
-build_clang:
-    stage: build
+debug_build_clang:
+    stage: debug_build
     script:
         - mkdir -p build;cd build
         - cmake .. -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
         - make all
 
+iwyu-report:
+    stage: debug_build
+    script:
+        - mkdir -p build;cd build
+        - cmake .. -DCMAKE_BUILD_TYPE=Debug -DRUN_IWYU=ON
+        - make parallax > make_output.txt 2&> iwyu_output.txt || echo ignoring exit code since if this job fails others will fail too > /dev/null
+        - ./check-iwyu-output.py
+
+release_build_gcc:
+    stage: release_build
+    script:
+        - mkdir -p build;cd build
+        - cmake .. -DCMAKE_BUILD_TYPE=Release
+        - make all
+
+release_build_clang:
+    stage: release_build
+    script:
+        - mkdir -p build;cd build
+        - cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
+        - make all
+
 build_clang-tidy:
-    stage: build
+    stage: debug_build
     script:
         - mkdir -p build;cd build
         - cmake .. "-DCMAKE_C_CLANG_TIDY=/bin/clang-tidy;-checks=*,-clang-analyzer-*,-google-*,-hicpp-braces-around-statements,-bugprone-not-null-terminated-result,-readability-braces-around-statements,-readability-braces-around-statements*
@@ -33,14 +57,14 @@ build_clang-tidy:
         - make all
 
 build_cppcheck:
-    stage: build
+    stage: debug_build
     script:
         - cd lib
         - cppcheck --language=c . --enable=all --inconclusive --max-ctu-depth=64 -j 4
 
 build_centos:
     image: carvicsforth/centos_carv:latest
-    stage: build
+    stage: debug_build
     script:
         - source scl_source enable devtoolset-8 || echo ignoring exit code so CI does not bomb when it should not > /dev/null
         - mkdir -p build;cd build
@@ -49,7 +73,7 @@ build_centos:
 
 test_surrogates:
     image: carvicsforth/ubuntu_carv:latest
-    stage: test
+    stage: debug_test
     script:
         - mkdir -p build;cd build
         - cmake ..
@@ -59,7 +83,7 @@ test_surrogates:
 
 test_options:
     image: carvicsforth/ubuntu_carv:latest
-    stage: test
+    stage: debug_test
     script:
         - mkdir -p build;cd build
         - cmake ..
@@ -68,16 +92,16 @@ test_options:
 
 test_sanitizers:
     image: carvicsforth/ubuntu_carv:latest
-    stage: test
+    stage: debug_test
     script:
         - mkdir -p build;cd build
         - cmake .. -DUSE_SANITIZER=Address
         - make test_sanitizers;cd tests;
         - ./test_sanitizers.sh
 
-test_ycsb_larged:
+debug_test_ycsb_larged:
     image: carvicsforth/arch_carv:latest
-    stage: test
+    stage: debug_test
     tags:
         - kubernetes
     script:
@@ -85,14 +109,13 @@ test_ycsb_larged:
         - mkdir -p build;cd build
         - cmake ..
         - make ycsb-edb;make mkfs.parallax;cd YCSB-CXX;
-        - ./mkfs.sh /tmp/kv_store.dat 1
-        - ./ycsb-edb -threads 1 -dbnum 1 -wl ld -p /tmp/kv_store.dat
+        - ctest -R ^test_larged$
         - cd ..;cd ..
         - ./scripts/CI/destroy_mbbd.sh
 
-test_ycsb_large:
+debug_test_ycsb_large:
     image: carvicsforth/arch_carv:latest
-    stage: test
+    stage: debug_test
     tags:
         - kubernetes
     script:
@@ -100,14 +123,13 @@ test_ycsb_large:
         - mkdir -p build;cd build
         - cmake ..
         - make ycsb-edb;make mkfs.parallax;cd YCSB-CXX;
-        - ./mkfs.sh /tmp/kv_store.dat 1
-        - ./ycsb-edb -threads 1 -dbnum 1 -wl l -p /tmp/kv_store.dat
+        - ctest -R ^test_large$
         - cd ..;cd ..
         - ./scripts/CI/destroy_mbbd.sh
 
-test_ycsb_mediumd:
+debug_test_ycsb_mediumd:
     image: carvicsforth/arch_carv:latest
-    stage: test
+    stage: debug_test
     tags:
         - kubernetes
     script:
@@ -115,14 +137,13 @@ test_ycsb_mediumd:
         - mkdir -p build;cd build
         - cmake ..
         - make ycsb-edb;make mkfs.parallax;cd YCSB-CXX;
-        - ./mkfs.sh /tmp/kv_store.dat 1
-        - ./ycsb-edb -threads 1 -dbnum 1 -wl md -p /tmp/kv_store.dat
+        - ctest -R ^test_mediumd$
         - cd ..;cd ..
         - ./scripts/CI/destroy_mbbd.sh
 
-test_ycsb_medium:
+debug_test_ycsb_medium:
     image: carvicsforth/arch_carv:latest
-    stage: test
+    stage: debug_test
     tags:
         - kubernetes
     script:
@@ -130,14 +151,13 @@ test_ycsb_medium:
         - mkdir -p build;cd build
         - cmake ..
         - make ycsb-edb;make mkfs.parallax;cd YCSB-CXX;
-        - ./mkfs.sh /tmp/kv_store.dat 1
-        - ./ycsb-edb -threads 1 -dbnum 1 -wl m -p /tmp/kv_store.dat
+        - ctest -R ^test_medium$
         - cd ..;cd ..
         - ./scripts/CI/destroy_mbbd.sh
 
-test_ycsb_smalld:
+debug_test_ycsb_smalld:
     image: carvicsforth/arch_carv:latest
-    stage: test
+    stage: debug_test
     tags:
         - kubernetes
     script:
@@ -145,14 +165,13 @@ test_ycsb_smalld:
         - mkdir -p build;cd build
         - cmake ..
         - make ycsb-edb;make mkfs.parallax;cd YCSB-CXX;
-        - ./mkfs.sh /tmp/kv_store.dat 1
-        - ./ycsb-edb -threads 1 -dbnum 1 -wl sd -p /tmp/kv_store.dat
+        - ctest -R ^test_smalld$
         - cd ..;cd ..
         - ./scripts/CI/destroy_mbbd.sh
 
-test_ycsb_small:
+debug_test_ycsb_small:
     image: carvicsforth/arch_carv:latest
-    stage: test
+    stage: debug_test
     tags:
         - kubernetes
     script:
@@ -160,8 +179,91 @@ test_ycsb_small:
         - mkdir -p build;cd build
         - cmake ..
         - make ycsb-edb;make mkfs.parallax;cd YCSB-CXX;
-        - ./mkfs.sh /tmp/kv_store.dat 1
-        - ./ycsb-edb -threads 1 -dbnum 1 -wl s -p /tmp/kv_store.dat
+        - ctest -R ^test_small$
+        - cd ..;cd ..
+        - ./scripts/CI/destroy_mbbd.sh
+
+release_test_ycsb_larged:
+    image: carvicsforth/arch_carv:latest
+    stage: release_test
+    tags:
+        - kubernetes
+    script:
+        - ./scripts/CI/create_mbbd.sh
+        - mkdir -p build;cd build
+        - cmake .. -DCMAKE_BUILD_TYPE="Release"
+        - make ycsb-edb;make mkfs.parallax;cd YCSB-CXX;
+        - ctest -R ^test_larged$
+        - cd ..;cd ..
+        - ./scripts/CI/destroy_mbbd.sh
+
+release_test_ycsb_large:
+    image: carvicsforth/arch_carv:latest
+    stage: release_test
+    tags:
+        - kubernetes
+    script:
+        - ./scripts/CI/create_mbbd.sh
+        - mkdir -p build;cd build
+        - cmake .. -DCMAKE_BUILD_TYPE="Release"
+        - make ycsb-edb;make mkfs.parallax;cd YCSB-CXX;
+        - ctest -R ^test_large$
+        - cd ..;cd ..
+        - ./scripts/CI/destroy_mbbd.sh
+
+release_test_ycsb_mediumd:
+    image: carvicsforth/arch_carv:latest
+    stage: release_test
+    tags:
+        - kubernetes
+    script:
+        - ./scripts/CI/create_mbbd.sh
+        - mkdir -p build;cd build
+        - cmake .. -DCMAKE_BUILD_TYPE="Release"
+        - make ycsb-edb;make mkfs.parallax;cd YCSB-CXX;
+        - ctest -R ^test_mediumd$
+        - cd ..;cd ..
+        - ./scripts/CI/destroy_mbbd.sh
+
+release_test_ycsb_medium:
+    image: carvicsforth/arch_carv:latest
+    stage: release_test
+    tags:
+        - kubernetes
+    script:
+        - ./scripts/CI/create_mbbd.sh
+        - mkdir -p build;cd build
+        - cmake .. -DCMAKE_BUILD_TYPE="Release"
+        - make ycsb-edb;make mkfs.parallax;cd YCSB-CXX;
+        - ctest -R ^test_medium$
+        - cd ..;cd ..
+        - ./scripts/CI/destroy_mbbd.sh
+
+release_test_ycsb_smalld:
+    image: carvicsforth/arch_carv:latest
+    stage: release_test
+    tags:
+        - kubernetes
+    script:
+        - ./scripts/CI/create_mbbd.sh
+        - mkdir -p build;cd build
+        - cmake .. -DCMAKE_BUILD_TYPE="Release"
+        - make ycsb-edb;make mkfs.parallax;cd YCSB-CXX;
+        - ctest -R ^test_smalld$
+        - cd ..;cd ..
+        - ./scripts/CI/destroy_mbbd.sh
+
+release_test_ycsb_small:
+    image: carvicsforth/arch_carv:latest
+    stage: release_test
+    tags:
+        - kubernetes
+    script:
+        - ./scripts/CI/create_mbbd.sh
+        - mkdir -p build;cd build
+        - cmake .. -DCMAKE_BUILD_TYPE="Release"
+        - make ycsb-edb;make mkfs.parallax;cd YCSB-CXX;
+        - ctest -R ^test_small$
         - cd ..;cd ..
         - ./scripts/CI/destroy_mbbd.sh
 
@@ -180,12 +282,12 @@ install_lib:
         - ./verify-installed-files.py $LIB_INSTALL_PATH
 
 pre-commit:
-    stage: build
+    stage: debug_build
     script:
         - ./scripts/pre-commit-CI.sh
 
 pre-merge:
-    stage: build
+    stage: debug_build
     script:
         - ./scripts/pre-merge-CI.sh
         - ./scripts/commit-msg-lint.py

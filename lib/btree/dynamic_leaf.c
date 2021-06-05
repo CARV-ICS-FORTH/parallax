@@ -856,6 +856,12 @@ int8_t insert_in_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, bt_insert_req *
 		else {
 			char *kv = fill_keybuf(get_kv_offset(leaf, level->leaf_size, slot_array[bsearch.middle].index),
 					       slot_array[bsearch.middle].bitmap);
+			if (kv == NULL) {
+				log_fatal("Encountered NULL kv in leaf");
+				assert(0);
+				exit(EXIT_FAILURE);
+			}
+
 			int key_size = *(uint32_t *)kv;
 			int value_size = *(uint32_t *)(kv + 4 + key_size);
 			int kv_size = key_size + value_size + 2 * sizeof(uint32_t);

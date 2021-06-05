@@ -2,6 +2,11 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
 set(LIB "${PROJECT_NAME}")
 
+option(
+  RUN_IWYU
+  "Run include-what-you-use on the source files of the key-value store library."
+  OFF)
+
 set(LIB_C_SOURCE_FILES
     allocator/allocator.c
     allocator/persistent_operations.c
@@ -60,9 +65,11 @@ install(
   PUBLIC_HEADER DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}")
 set_target_properties(${LIB} PROPERTIES OUTPUT_NAME ${LIB})
 
-find_program(iwyu_path NAMES include-what-you-use iwyu iwyu-tool)
-if(iwyu_path)
-  set_property(TARGET ${LIB} PROPERTY C_INCLUDE_WHAT_YOU_USE ${iwyu_path})
-else()
-  message("Could not find the program include-what-you-use")
+if(RUN_IWYU STREQUAL "ON")
+  find_program(iwyu_path NAMES include-what-you-use iwyu iwyu-tool)
+  if(iwyu_path)
+    set_property(TARGET ${LIB} PROPERTY C_INCLUDE_WHAT_YOU_USE ${iwyu_path})
+  else()
+    message("Could not find the program include-what-you-use")
+  endif()
 endif()

@@ -12,25 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 #pragma once
-#include <sys/types.h>
-#include <unistd.h>
-#include <stdio.h>
 #include <stdint.h>
-#include <inttypes.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <string.h>
-#include <sys/types.h>
-#include <fcntl.h>
-#include <errno.h>
-#include <sys/ioctl.h>
 #include <pthread.h>
-#include <sys/ioctl.h>
-#include <sys/stat.h>
-#include <linux/fs.h>
-
-#include "../utilities/list.h"
-#include "../utilities/spin_loop.h"
 #include "../btree/conf.h"
 #define MAGIC_NUMBER 2036000000
 /*size in 4KB blocks of the log used for marking the free ops*/

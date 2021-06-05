@@ -1,11 +1,12 @@
 #define _GNU_SOURCE /* See feature_test_macros(7) */
-#include <sys/mman.h>
 #include <semaphore.h>
 #include <string.h>
+#include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <pthread.h>
 #include <assert.h>
+#include <unistd.h>
 #include <log.h>
 #include <spin_loop.h>
 #include "btree.h"
@@ -688,7 +689,7 @@ static void comp_append_entry_to_leaf_node(struct comp_level_write_cursor *c, st
 	uint64_t left_leaf_offt;
 	uint64_t right_leaf_offt;
 	uint32_t level_leaf_size = c->handle->db_desc->levels[c->level_id].leaf_size;
-	uint32_t kv_size;
+	uint32_t kv_size = 0;
 	int new_leaf = 0;
 	struct comp_parallax_key trans_medium;
 	struct write_dynamic_leaf_args write_leaf_args;

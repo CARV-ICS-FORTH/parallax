@@ -30,21 +30,22 @@ endif()
 
 include(FetchContent)
 include(CPack)
+include(CTest)
 include(GNUInstallDirs)
 include(CheckCCompilerFlag)
 include(cmake_utils/mkfs.cmake.in)
 include(cmake_utils/ycsb.cmake.in)
 include(cmake_utils/tests.cmake.in)
 
+if(RUN_IWYU STREQUAL "ON")
+  file(COPY ${CMAKE_SOURCE_DIR}/scripts/CI/check-iwyu-output.py
+       DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
+endif()
+
 set(FETCHCONTENT_QUIET FALSE)
 FetchContent_Declare(
   log
   GIT_REPOSITORY https://github.com/innerout/log.c.git
-  GIT_PROGRESS TRUE)
-
-FetchContent_Declare(
-  libmba
-  GIT_REPOSITORY https://github.com/innerout/libmba.git
   GIT_PROGRESS TRUE)
 
 FetchContent_Declare(
@@ -69,7 +70,6 @@ FetchContent_Declare(
   GIT_TAG cmake)
 
 FetchContent_GetProperties(log)
-FetchContent_GetProperties(libmba)
 FetchContent_GetProperties(yaml)
 FetchContent_GetProperties(uthash)
 FetchContent_GetProperties(cmake-scripts)
@@ -80,12 +80,6 @@ if(NOT log_POPULATED)
   add_subdirectory(${log_SOURCE_DIR} ${log_BINARY_DIR})
   include_directories(${log_SOURCE_DIR}/include)
   FetchContent_MakeAvailable(log)
-endif()
-
-if(NOT libmba_POPULATED)
-  FetchContent_Populate(libmba)
-  add_subdirectory(${libmba_SOURCE_DIR} ${libmba_BINARY_DIR})
-  FetchContent_MakeAvailable(libmba)
 endif()
 
 if(NOT yaml_POPULATED)
@@ -115,7 +109,7 @@ if(NOT libbloom_POPULATED)
   FetchContent_MakeAvailable(libbloom)
 endif()
 
-set(DEPENDENCIES log libmba yaml libbloom)
+set(DEPENDENCIES log yaml libbloom)
 
 include_directories(${CMAKE_BINARY_DIR})
 include_directories(${CMAKE_SOURCE_DIR}/utilities)
@@ -124,15 +118,27 @@ set(CMAKE_C_FLAGS
     "-std=gnu11 -Wstrict-prototypes -Wall -Wextra -fPIC -fno-omit-frame-pointer -Wunused -Wuninitialized -Wimplicit-function-declaration -Wshadow  -Werror ${CMAKE_C_FLAGS}"
 )
 
-check_c_compiler_flag("-Wnull-dereference" CHECK_COMPILER_FLAGS)
-if(CHECK_COMPILER_FLAGS)
-  string(APPEND CMAKE_C_FLAGS " -Wnull-dereference")
+if(WNULL_DEREFERENCE)
+  string(APPEND CMAKE_C_FLAGS_DEBUG " -Wnull-dereference")
 endif()
+
+check_c_compiler_flag("-fprefetch-loop-arrays" PREFETCH_LOOP_ARRAYS)
+if(PREFETCH_LOOP_ARRAYS)
+  string(APPEND CMAKE_C_FLAGS " -fprefetch-loop-arrays")
+endif()
+
+check_c_compiler_flag("-fpeel-loops" PEEL_LOOPS)
+if(PEEL_LOOPS)
+  string(APPEND CMAKE_C_FLAGS " -fpeel-loops")
+endif()
+
+# if(NOT (CMAKE_C_COMPILER_ID STREQUAL "Clang" AND CMAKE_CXX_COMPILER_ID
+# STREQUAL "Clang")) string(APPEND CMAKE_C_FLAGS " -flto") string(APPEND
+# CMAKE_CXX_FLAGS " -flto") endif()
 
 set(CMAKE_C_FLAGS_DEBUG "-ggdb3 -Og -gz ${CMAKE_C_FLAGS_DEBUG}")
 set(CMAKE_C_FLAGS_RELEASE
-    "${CMAKE_C_FLAGS_RELEASE} -flto -funit-at-a-time -fprefetch-loop-arrays -fpeel-loops -O2 -finline-functions -DNDEBUG"
-)
+    "${CMAKE_C_FLAGS_RELEASE} -funit-at-a-time -O2 -finline-functions -DNDEBUG")
 
 set(CMAKE_CXX_FLAGS_RELEASE
     "${CMAKE_CXX_FLAGS_RELEASE} -std=gnu++11 -Wall -Werror")

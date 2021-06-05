@@ -1,8 +1,9 @@
+#include <assert.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/mman.h>
-#include <errno.h>
+#include <unistd.h>
 #include <log.h>
 #include <list.h>
 #include <spin_loop.h>
@@ -265,6 +266,11 @@ void snapshot(volume_descriptor *volume_desc)
 			db_group = (pr_db_group *)REAL_ADDRESS(
 				volume_desc->mem_catalogue->db_group_index[db_desc->group_id]);
 
+			if (!db_group) {
+				log_fatal("db_group is NULL!");
+				assert(0);
+				exit(EXIT_FAILURE);
+			}
 			//log_info("group epoch %llu  dev_catalogue %llu", (LLU)db_group->epoch,
 			// volume_desc->dev_catalogue->epoch);
 

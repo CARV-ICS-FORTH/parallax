@@ -15,24 +15,22 @@
 #define _LARGEFILE64_SOURCE
 #define _GNU_SOURCE
 #include <pthread.h>
-#include <sys/types.h>
 #include <unistd.h>
 #include <stdio.h>
 #include <time.h>
 #include <assert.h>
 #include <errno.h>
-#include <signal.h>
 #include <sys/mman.h>
 #include <sys/time.h>
-#include <stdarg.h>
 #include <fcntl.h>
 #include <string.h>
+#include <strings.h>
 #include <inttypes.h>
 #include <linux/fs.h>
 #include <stdlib.h>
-#include <sys/ioctl.h>
 #include <math.h>
 #include <log.h>
+#include <uthash.h>
 #include "dmap-ioctl.h"
 #include "allocator.h"
 #include "../btree/btree.h"
@@ -1702,7 +1700,13 @@ exit:
 			(pr_db_group *)REAL_ADDRESS(volume_desc->mem_catalogue->db_group_index[db_c.group_id]);
 
 		struct pr_db_entry *db_entry = &cur_group->db_entries[db_c.index];
-		db_entry->valid = 1;
+		if (db_entry)
+			db_entry->valid = 1;
+		else {
+			log_fatal("db_entry is NULL!");
+			assert(0);
+			exit(EXIT_FAILURE);
+		}
 
 		log_info("DB %s db_name put in slot [%d,%d]", db_name, db_c.group_id, db_c.index);
 	}
