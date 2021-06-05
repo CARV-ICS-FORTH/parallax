@@ -1,7 +1,7 @@
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 include_directories(${CMAKE_SOURCE_DIR}/lib)
 
-if(CMAKE_TESTING_ENABLED)
+if(BUILD_TESTING)
   set(LIB_TEST_FILES
       test_deletes test_recovery.c
       # test_scans.c

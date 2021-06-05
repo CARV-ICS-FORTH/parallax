@@ -5,11 +5,13 @@ add_executable(ycsb-edb db/db_factory_parallax.cc core/core_workload.cc
                         driver/ycsbc.cc ../utilities/list.c)
 target_link_libraries(ycsb-edb "${PROJECT_NAME}" ${DEPENDENCIES})
 
-find_program(BASH_PROGRAM bash)
-if(NOT BASH_PROGRAM)
-  message(FATAL_ERROR "Bash executable not found")
-endif()
-if(CMAKE_TESTING_ENABLED)
+if(BUILD_TESTING)
+  find_program(BASH_PROGRAM bash)
+
+  if(NOT BASH_PROGRAM)
+    message(FATAL_ERROR "Bash executable not found")
+  endif()
+
   set(DATAFILE "/tmp/kv_store.dat")
   set(RECORD_COUNT 400000)
   set(OPERATION_COUNT 400000)
