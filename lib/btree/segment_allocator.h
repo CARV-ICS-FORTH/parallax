@@ -1,6 +1,6 @@
 #pragma once
 #include <stdint.h>
-#include "../allocator/allocator.h"
+#include "../allocator/volume_manager.h"
 #include "btree.h"
 
 /*functions for index nodes*/

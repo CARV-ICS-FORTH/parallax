@@ -8,7 +8,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <log.h>
-#include <allocator/allocator.h>
+#include <allocator/volume_manager.h>
 #include <btree/btree.h>
 
 #define PATH "/tmp/ramdisk/kreon.dat"

@@ -3,7 +3,7 @@
 #include <signal.h>
 #include <assert.h>
 #include <log.h>
-#include "allocator.h"
+#include "volume_manager.h"
 #include "../btree/btree.h"
 #include "../btree/conf.h"
 
