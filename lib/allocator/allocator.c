@@ -232,6 +232,142 @@ off64_t mount_volume(char *volume_name, int64_t start, int64_t unused_size)
 	return device_size;
 }
 
+/*<new_persistent_design>*/
+#if 0
+//Restores superblock array in memory
+void mem_init_superblock_array(struct volume_descriptor *volume_desc)
+{
+	(void)volume_desc;
+}
+
+static void mem_init_region_superblock(struct mem_region_superblock *mem_region, const char *region_name,
+				       uint32_t region_name_size)
+{
+	int region_id;
+	region_id = mem_region->id;
+	memset(mem_region, 0x00, sizeof(struct mem_region_superblock));
+	mem_region->id = region_id;
+	mem_region->valid = 1;
+	mem_region->reference_count = 0;
+	memcpy(mem_region->region_name, region_name, region_name_size);
+	mem_region->region_name_size = region_name_size;
+	if (pthread_mutex_init(&mem_region->superblock_lock, NULL) != 0) {
+		log_fatal("Failed to initialize region superblock lock");
+		exit(EXIT_FAILURE);
+	}
+}
+
+void pr_write_region_superblock(struct volume_descriptor *volume_desc, struct mem_region_superblock *mem_region)
+{
+	(void)volume_desc;
+	int region_id = mem_region->id;
+	//serialize mem_region to pr_region
+	struct pr_region_superblock pr_region;
+	memcpy(pr_region.region_name, mem_region->region_name, mem_region->region_name_size);
+	for (int l = 1; l < MAX_LEVELS; ++l) {
+		for (int tree = 0; tree < NUM_TREES_PER_LEVEL; ++tree) {
+			pr_region.first_segment[l][tree] = (uint64_t)mem_region->first_segment[l][tree] - MAPPED;
+			pr_region.last_segment[l][tree] = (uint64_t)mem_region->last_segment[l][tree] - MAPPED;
+			pr_region.offset[l][tree] = (uint64_t)mem_region->offset[l][tree];
+			pr_region.level_size[l][tree] = (uint64_t)mem_region->level_size[l][tree];
+		}
+	}
+	pr_region.allocation_log = mem_region->allocation_log;
+
+//struct bt_log_descriptor {
+//	pthread_rwlock_t log_tail_buf_lock;
+//	char pad[8];
+//	struct log_tail *tail[LOG_TAIL_NUM_BUFS];
+//	uint64_t head_dev_offt;
+//	uint64_t tail_dev_offt;
+//	uint64_t size;
+//	uint64_t curr_tail_id;
+//};
+big_log_head_offt;
+	uint64_t big_log_tail_offt;
+	uint64_t big_log_size;
+	uint64_t medium_log_head_offt;
+	uint64_t medium_log_tail_offt;
+	uint64_t medium_log_size;
+	uint64_t small_log_head_offt;
+	uint64_t small_log_tail_offt;
+	uint64_t small_log_size;
+	uint64_t lsn;
+	uint32_t region_name_size;
+	uint32_t id; //in the array
+	uint32_t valid;
+
+	char *region_buffer = (char *)mem_region;
+	ssize_t total_bytes_written = 0;
+	ssize_t offset = region_id * sizeof(struct pr_region_superblock);
+	pthread_mutex_lock(&mem_region->superblock_lock);
+	uint32_t size = sizeof(struct pr_region_superblock);
+
+	while (total_bytes_written < size) {
+		int bytes_written = pwrite(FD, &region_buffer[offset + total_bytes_written], size - total_bytes_written,
+					   offset + total_bytes_written);
+		if (bytes_written == -1) {
+			log_fatal("Failed to write LOG_CHUNK reason follows");
+			perror("Reason");
+			exit(EXIT_FAILURE);
+		}
+		total_bytes_written += bytes_written;
+	}
+	pthread_mutex_unlock(&mem_region->superblock_lock);
+}
+
+struct mem_region_superblock *get_region_superblock(struct volume_descriptor *volume_desc, const char *region_name,
+						    uint32_t region_name_size, char allocate)
+{
+	pthread_mutex_lock(&volume_desc->region_array_lock);
+	struct mem_region_superblock *region = NULL;
+	int next_free_region_id = -1;
+	//search superblock array in the start of the volume
+	for (uint32_t i = 0; i < volume_desc->mem_regions->size; ++i) {
+		if (volume_desc->mem_regions->region[i].region_name_size == region_name_size) {
+			if (memcmp(volume_desc->mem_regions->region[i].region_name, region_name, region_name_size) ==
+			    0) {
+				//Found
+				++volume_desc->mem_regions->region[i].reference_count;
+				log_info(
+					"Found region %s at index %u of the region superblock array reference count of region is %u",
+					volume_desc->mem_regions->region[i].region_name, i,
+					volume_desc->mem_regions->region[i].reference_count);
+				region = &volume_desc->mem_regions->region[i];
+				goto exit;
+			}
+		}
+		if (next_free_region_id < 0 && !volume_desc->mem_regions->region[i].valid)
+			next_free_region_id = i;
+	}
+	if (allocate) {
+		if (next_free_region_id >= 0) {
+			mem_init_region_superblock(&volume_desc->mem_regions->region[next_free_region_id], region_name,
+						   region_name_size);
+			++volume_desc->mem_regions->region[next_free_region_id].reference_count;
+			region = &volume_desc->mem_regions->region[next_free_region_id];
+			goto exit;
+		} else {
+			log_warn("No more space for new regions!");
+			region = NULL;
+			goto exit;
+		}
+	} else {
+		region = NULL;
+		goto exit;
+	}
+exit:
+	pthread_mutex_lock(&volume_desc->region_array_lock);
+	return region;
+}
+
+uint32_t destroy_region_superblock(struct volume_descriptor *volume_desc, const char *region_name)
+{
+	return 0;
+}
+#endif
+/*</new_persistent_design>*/
+
 /**
  * Input: Pointer to device handle. Handle should have the dev_name filled.
  * Return: -1 on failure and 0 on success
@@ -478,14 +614,6 @@ purpose*/
 
 	return fd;
 }
-
-#if 0
-static void destroy_db_list_node(void *data)
-{
-	struct db_descriptor *db_desc = data;
-	free(db_desc);
-}
-#endif
 
 static void destroy_volume_node(void *data)
 {
