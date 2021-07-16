@@ -14,6 +14,7 @@
 #include <bloom.h>
 #endif
 #include "conf.h"
+#include "../allocator/device_structures.h"
 #include "../allocator/volume_manager.h"
 #define SUCCESS 4
 #define FAILED 5
