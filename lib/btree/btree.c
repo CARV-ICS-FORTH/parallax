@@ -27,6 +27,7 @@
 #include "dynamic_leaf.h"
 #include "set_options.h"
 #include "conf.h"
+#include "../allocator/device_structures.h"
 #include "../allocator/volume_manager.h"
 
 #define PREFIX_STATISTICS_NO

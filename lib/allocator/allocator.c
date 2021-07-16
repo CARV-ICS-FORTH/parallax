@@ -28,10 +28,12 @@
 #include <inttypes.h>
 #include <linux/fs.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <math.h>
 #include <log.h>
 #include <uthash.h>
 #include "dmap-ioctl.h"
+#include "device_structures.h"
 #include "volume_manager.h"
 #include "../btree/btree.h"
 #include "../btree/conf.h"

@@ -7,6 +7,7 @@
 #include <log.h>
 #include <list.h>
 #include <spin_loop.h>
+#include "device_structures.h"
 #include "volume_manager.h"
 #include "../btree/btree.h"
 #include "../btree/segment_allocator.h"

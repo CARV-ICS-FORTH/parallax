@@ -16,6 +16,7 @@
 #include "dynamic_leaf.h"
 #include "../scanner/scanner.h"
 #include "../scanner/min_max_heap.h"
+#include "../allocator/device_structures.h"
 #include "../allocator/volume_manager.h"
 #include "../../utilities/dups_list.h"
 #define COMPACTION

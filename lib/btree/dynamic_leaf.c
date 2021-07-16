@@ -5,6 +5,7 @@
 #include "dynamic_leaf.h"
 #include "conf.h"
 #include "segment_allocator.h"
+#include "../allocator/device_structures.h"
 #include "../allocator/volume_manager.h"
 
 void print_all_keys(const struct bt_dynamic_leaf_node *leaf, uint32_t leaf_size);
