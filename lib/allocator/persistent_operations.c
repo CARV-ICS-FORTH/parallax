@@ -7,7 +7,7 @@
 #include <log.h>
 #include <list.h>
 #include <spin_loop.h>
-#include "allocator.h"
+#include "volume_manager.h"
 #include "../btree/btree.h"
 #include "../btree/segment_allocator.h"
 #include "../btree/conf.h"
@@ -228,8 +228,8 @@ void pr_flush_log_tail(struct db_descriptor *db_desc, struct volume_descriptor *
 void snapshot(volume_descriptor *volume_desc)
 {
 	//struct commit_log_info log_info;
-	pr_db_group *db_group;
-	pr_db_entry *db_entry;
+	struct pr_db_group *db_group;
+	struct pr_db_entry *db_entry;
 	node_header *old_root;
 	uint32_t i;
 	uint32_t j;
@@ -263,7 +263,7 @@ void snapshot(volume_descriptor *volume_desc)
 			pr_flush_log_tail(db_desc, volume_desc, &db_desc->big_log);
 			db_desc->dirty = 0x00;
 			/*cow check*/
-			db_group = (pr_db_group *)REAL_ADDRESS(
+			db_group = (struct pr_db_group *)REAL_ADDRESS(
 				volume_desc->mem_catalogue->db_group_index[db_desc->group_id]);
 
 			if (!db_group) {
@@ -278,15 +278,15 @@ void snapshot(volume_descriptor *volume_desc)
 				//log_info("cow for db_group %llu", (LLU)db_group);
 				/*do cow*/
 				//superindex_db_group * new_group = (superindex_db_group *)allocate(volume_desc,DEVICE_BLOCK_SIZE,-1,GROUP_COW);
-				pr_db_group *new_group =
-					(pr_db_group *)get_space_for_system(volume_desc, sizeof(pr_db_group), 0);
+				struct pr_db_group *new_group = (struct pr_db_group *)get_space_for_system(
+					volume_desc, sizeof(struct pr_db_group), 0);
 
-				memcpy(new_group, db_group, sizeof(pr_db_group));
+				memcpy(new_group, db_group, sizeof(struct pr_db_group));
 				new_group->epoch = volume_desc->mem_catalogue->epoch;
-				free_block(volume_desc, db_group, sizeof(pr_db_group));
+				free_block(volume_desc, db_group, sizeof(struct pr_db_group));
 				db_group = new_group;
 				volume_desc->mem_catalogue->db_group_index[db_desc->group_id] =
-					(pr_db_group *)ABSOLUTE_ADDRESS(db_group);
+					(struct pr_db_group *)ABSOLUTE_ADDRESS(db_group);
 			}
 
 			db_entry = &(db_group->db_entries[db_desc->group_index]);
@@ -350,18 +350,18 @@ void snapshot(volume_descriptor *volume_desc)
 
 	if (dirty > 0) {
 		//At least one db is dirty proceed to snapshot()
-		free_block(volume_desc, volume_desc->dev_catalogue, sizeof(pr_system_catalogue));
+		free_block(volume_desc, volume_desc->dev_catalogue, sizeof(struct pr_system_catalogue));
 		volume_desc->dev_catalogue = volume_desc->mem_catalogue;
 		/*allocate a new position for superindex*/
 
-		pr_system_catalogue *tmp =
-			(pr_system_catalogue *)get_space_for_system(volume_desc, sizeof(pr_system_catalogue), 0);
-		memcpy(tmp, volume_desc->dev_catalogue, sizeof(pr_system_catalogue));
+		struct pr_system_catalogue *tmp = (struct pr_system_catalogue *)get_space_for_system(
+			volume_desc, sizeof(struct pr_system_catalogue), 0);
+		memcpy(tmp, volume_desc->dev_catalogue, sizeof(struct pr_system_catalogue));
 		++tmp->epoch;
 		volume_desc->mem_catalogue = tmp;
 
 		volume_desc->volume_superblock->system_catalogue =
-			(pr_system_catalogue *)ABSOLUTE_ADDRESS(volume_desc->dev_catalogue);
+			(struct pr_system_catalogue *)ABSOLUTE_ADDRESS(volume_desc->dev_catalogue);
 
 		bitmap_set_buddies_immutable(volume_desc);
 

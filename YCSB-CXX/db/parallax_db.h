@@ -37,7 +37,7 @@ extern unsigned priv_thread_count;
 extern std::string path;
 extern std::string custom_workload;
 extern "C" {
-#include <allocator/allocator.h>
+#include <allocator/volume_manager.h>
 #include <btree/btree.h>
 #include <scanner/scanner.h>
 }

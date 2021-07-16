@@ -10,7 +10,7 @@
 #include <unistd.h>
 #include <log.h>
 #include <btree/btree.h>
-#include <allocator/allocator.h>
+#include <allocator/volume_manager.h>
 
 #define KEY_PREFIX "userakias_computerakias"
 #define KV_SIZE 1024

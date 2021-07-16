@@ -4,7 +4,7 @@
 #include <log.h>
 #include "segment_allocator.h"
 #include "conf.h"
-#include "../allocator/allocator.h"
+#include "../allocator/volume_manager.h"
 
 extern uint64_t MAPPED;
 

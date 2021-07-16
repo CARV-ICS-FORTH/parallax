@@ -14,6 +14,7 @@
 #pragma once
 #include <stdint.h>
 #include <pthread.h>
+#include "device_structures.h"
 #include "../btree/conf.h"
 #define MAGIC_NUMBER 2036000000
 /*size in 4KB blocks of the log used for marking the free ops*/
@@ -55,59 +56,6 @@ typedef enum volume_state { VOLUME_IS_OPEN = 0x00, VOLUME_IS_CLOSING = 0x01, VOL
 extern uint64_t MAPPED;
 extern int FD;
 
-typedef struct pr_db_entry {
-	char db_name[MAX_DB_NAME_SIZE];
-	//index staff
-	uint64_t root_r[MAX_LEVELS][NUM_TREES_PER_LEVEL];
-	uint64_t first_segment[MAX_LEVELS][NUM_TREES_PER_LEVEL];
-	uint64_t last_segment[MAX_LEVELS][NUM_TREES_PER_LEVEL];
-	uint64_t offset[MAX_LEVELS][NUM_TREES_PER_LEVEL];
-	uint64_t level_size[MAX_LEVELS][NUM_TREES_PER_LEVEL];
-	uint64_t big_log_head_offt;
-	uint64_t big_log_tail_offt;
-	uint64_t big_log_size;
-	uint64_t medium_log_head_offt;
-	uint64_t medium_log_tail_offt;
-	uint64_t medium_log_size;
-	uint64_t small_log_head_offt;
-	uint64_t small_log_tail_offt;
-	uint64_t small_log_size;
-	uint64_t lsn;
-	uint32_t valid;
-} pr_db_entry; // 768 bytes or 12 cache lines
-
-typedef struct pr_db_group {
-	uint64_t epoch;
-
-	pr_db_entry db_entries[GROUP_SIZE];
-
-	char pad[4096 - ((GROUP_SIZE * sizeof(pr_db_entry)) + sizeof(uint64_t))];
-} pr_db_group;
-
-typedef struct pr_system_catalogue {
-	/*latest synced epoch of the superblock*/
-	uint64_t epoch;
-	/*head and tail of the free log, keeps acounting of the free operations*/
-	uint64_t free_log_position;
-	uint64_t free_log_last_free;
-	uint64_t first_system_segment;
-	uint64_t last_system_segment;
-	uint64_t offset;
-	pr_db_group *db_group_index[NUM_OF_DB_GROUPS]; /*relative addresses are stored here*/
-} pr_system_catalogue;
-
-/*volume superblock*/
-typedef struct superblock {
-	pr_system_catalogue *system_catalogue;
-	/*accounting information */
-	int64_t bitmap_size_in_blocks;
-	int64_t dev_size_in_blocks;
-	int64_t dev_addressed_in_blocks;
-	int64_t unmapped_blocks;
-	int64_t magic_number;
-	char pad[4048];
-} superblock;
-
 #define WORDS_PER_BITMAP_BUDDY ((DEVICE_BLOCK_SIZE / sizeof(uint64_t)) - 1)
 struct bitmap_buddy {
 	uint64_t epoch;
@@ -138,9 +86,9 @@ struct bitmap_buddies_state {
 
 typedef struct volume_descriptor {
 	// dirty version on the device of the volume's db catalogue
-	pr_system_catalogue *mem_catalogue;
+	struct pr_system_catalogue *mem_catalogue;
 	// location in the volume where superindex is
-	pr_system_catalogue *dev_catalogue;
+	struct pr_system_catalogue *dev_catalogue;
 	pthread_t log_cleaner; /* handle for the log cleaner thread. 1 cleaner per
                             volume */
 	pthread_cond_t cond; /* conditional wait, used for cleaner*/
@@ -172,7 +120,7 @@ typedef struct volume_descriptor {
   */
 	struct bitmap_buddies_state *buddies_vector;
 
-	superblock *volume_superblock; /*address of volume's superblock*/
+	struct superblock *volume_superblock; /*address of volume's superblock*/
 	struct klist *open_databases;
 
 	/*free log start*/

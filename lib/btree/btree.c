@@ -27,7 +27,7 @@
 #include "dynamic_leaf.h"
 #include "set_options.h"
 #include "conf.h"
-#include "../allocator/allocator.h"
+#include "../allocator/volume_manager.h"
 
 #define PREFIX_STATISTICS_NO
 #define MIN(x, y) ((x > y) ? (y) : (x))
@@ -2240,7 +2240,7 @@ static uint8_t concurrent_insert(bt_insert_req *ins_req)
 	struct bt_rebalance_result split_res;
 	lock_table *lock;
 	void *next_addr;
-	pr_system_catalogue *mem_catalogue;
+	struct pr_system_catalogue *mem_catalogue;
 	volume_descriptor *volume_desc;
 	db_descriptor *db_desc;
 

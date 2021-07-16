@@ -6,7 +6,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <log.h>
-#include "allocator.h"
+#include "volume_manager.h"
 #include "../btree/set_options.h"
 #include "../btree/conf.h"
 
@@ -42,8 +42,8 @@ int32_t lread(int32_t fd, off64_t offset, int whence, void *ptr, size_t size)
 
 int main(int argc, char *argv[])
 {
-	superblock sp;
-	pr_system_catalogue dev_catalogue;
+	struct superblock sp;
+	struct pr_system_catalogue dev_catalogue;
 	char *ptr;
 	uint64_t start;
 	uint64_t size;
@@ -77,8 +77,8 @@ int main(int argc, char *argv[])
 	printf("System catalogue address %llu\n", (long long unsigned)sp.system_catalogue);
 	printf("************* </Superblock> ***********\n");
 
-	bytes_read =
-		lread(fd, (off64_t)sp.system_catalogue, SEEK_SET, &dev_catalogue, (size_t)sizeof(pr_system_catalogue));
+	bytes_read = lread(fd, (off64_t)sp.system_catalogue, SEEK_SET, &dev_catalogue,
+			   (size_t)sizeof(struct pr_system_catalogue));
 	if (bytes_read == -1) {
 		fprintf(stderr, "(lread) Function = %s, code = %d,  ERROR = %s\n", __func__, errno, strerror(errno));
 		return -1;

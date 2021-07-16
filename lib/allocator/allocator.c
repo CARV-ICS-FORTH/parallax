@@ -32,7 +32,7 @@
 #include <log.h>
 #include <uthash.h>
 #include "dmap-ioctl.h"
-#include "allocator.h"
+#include "volume_manager.h"
 #include "../btree/btree.h"
 #include "../btree/conf.h"
 #include "../btree/segment_allocator.h"
@@ -242,8 +242,8 @@ int32_t volume_init(char *dev_name, int64_t start, int64_t size, int typeOfVolum
 	int64_t unmapped_blocks;
 	uint64_t offset;
 
-	superblock *dev_superblock;
-	pr_system_catalogue sys_catalogue;
+	struct superblock *dev_superblock;
+	struct pr_system_catalogue sys_catalogue;
 	int fd = 0;
 
 #if !ALLOW_RAW_VOLUMES
@@ -257,14 +257,16 @@ int32_t volume_init(char *dev_name, int64_t start, int64_t size, int typeOfVolum
 		exit(EXIT_FAILURE);
 	}
 
-	if (sizeof(pr_db_group) != 4096) {
+	if (sizeof(struct pr_db_group) != 4096) {
 		log_fatal("pr_db_group size %lu not 4KB system,(db_entry size %lu) cannot "
 			  "operate!",
-			  sizeof(pr_db_group), sizeof(pr_db_entry));
+			  sizeof(struct pr_db_group), sizeof(struct pr_db_entry));
 		exit(EXIT_FAILURE);
 	}
-	if (sizeof(pr_system_catalogue) != 4096) {
-		log_fatal("pr_system_catalogue size %lu not 4KB system cannot operate!", sizeof(pr_system_catalogue));
+
+	if (sizeof(struct pr_system_catalogue) != 4096) {
+		log_fatal("pr_system_catalogue size %lu not 4KB system cannot operate!",
+			  sizeof(struct pr_system_catalogue));
 		exit(EXIT_FAILURE);
 	}
 
@@ -439,21 +441,21 @@ purpose*/
 	free(zeroes);
 	offset += sizeof(segment_header);
 	log_info("Writing system catalogue at offset %llu\n", (long long unsigned)offset);
-	if (lwrite(fd, (off_t)offset, SEEK_SET, &sys_catalogue, (size_t)(sizeof(pr_system_catalogue))) == -1) {
+	if (lwrite(fd, (off_t)offset, SEEK_SET, &sys_catalogue, (size_t)(sizeof(struct pr_system_catalogue))) == -1) {
 		log_fatal("code = %d,  ERROR = %s\n", errno, strerror(errno));
 		return -1;
 	}
 
 	/*write super block */
-	dev_superblock = (superblock *)malloc(sizeof(superblock));
+	dev_superblock = (struct superblock *)calloc(1, sizeof(struct superblock));
 	dev_superblock->bitmap_size_in_blocks = bitmap_size_in_blocks;
 	dev_superblock->dev_size_in_blocks = dev_size_in_blocks;
 	dev_superblock->dev_addressed_in_blocks = dev_addressed_in_blocks;
 	dev_superblock->unmapped_blocks = unmapped_blocks;
-	dev_superblock->system_catalogue = (pr_system_catalogue *)(offset);
+	dev_superblock->system_catalogue = (struct pr_system_catalogue *)(offset);
 	dev_superblock->magic_number = MAGIC_NUMBER;
 
-	if (lwrite(fd, (off_t)start, SEEK_SET, dev_superblock, sizeof(superblock)) == -1) {
+	if (lwrite(fd, (off_t)start, SEEK_SET, dev_superblock, sizeof(struct superblock)) == -1) {
 		log_fatal("code = %d,  ERROR = %s\n", errno, strerror(errno));
 		return -1;
 	}
@@ -1292,16 +1294,16 @@ void allocator_init(volume_descriptor *volume_desc)
 	// volume_desc->latest_addr = volume_desc->bitmap_start;
 	/*calculate superindex addr and load it to separate memory address space*/
 	volume_desc->dev_catalogue =
-		(pr_system_catalogue *)(MAPPED + (uint64_t)(volume_desc->volume_superblock->system_catalogue));
+		(struct pr_system_catalogue *)(MAPPED + (uint64_t)(volume_desc->volume_superblock->system_catalogue));
 
 	// create a temporary location in memory for soft_superindex and release it at
 	// the end of allocator_init
-	if (posix_memalign((void *)&(volume_desc->mem_catalogue), DEVICE_BLOCK_SIZE, sizeof(pr_system_catalogue)) !=
-	    0) {
+	if (posix_memalign((void *)&(volume_desc->mem_catalogue), DEVICE_BLOCK_SIZE,
+			   sizeof(struct pr_system_catalogue)) != 0) {
 		perror("memalign failed\n");
 		exit(EXIT_FAILURE);
 	}
-	memcpy(volume_desc->mem_catalogue, volume_desc->dev_catalogue, sizeof(pr_system_catalogue));
+	memcpy(volume_desc->mem_catalogue, volume_desc->dev_catalogue, sizeof(struct pr_system_catalogue));
 	++volume_desc->mem_catalogue->epoch;
 	//#ifdef DEBUG_ALLOCATOR
 	printf("##########<Kreon: Volume state> ##############\n");
@@ -1366,13 +1368,13 @@ void allocator_init(volume_descriptor *volume_desc)
 	// void * tmp = (superindex *) allocate(volume_desc, SUPERINDEX_SIZE, -1,
 	// NEW_SUPERINDEX);
 
-	void *tmp = get_space_for_system(volume_desc, sizeof(pr_system_catalogue), 1);
+	void *tmp = get_space_for_system(volume_desc, sizeof(struct pr_system_catalogue), 1);
 	log_info("segment is at %llu tmp is %llu MAPPED %llu",
 		 (long long unsigned)volume_desc->mem_catalogue->first_system_segment, (long long unsigned)tmp,
 		 (long long unsigned)MAPPED);
-	memcpy(tmp, (volume_desc->mem_catalogue), sizeof(pr_system_catalogue));
+	memcpy(tmp, (volume_desc->mem_catalogue), sizeof(struct pr_system_catalogue));
 	free(volume_desc->mem_catalogue);
-	volume_desc->mem_catalogue = (pr_system_catalogue *)tmp;
+	volume_desc->mem_catalogue = (struct pr_system_catalogue *)tmp;
 	volume_desc->collisions = 0;
 	volume_desc->hits = 0;
 	volume_desc->free_ops = 0;
@@ -1685,19 +1687,20 @@ exit:
 		db_c.group_id = empty_group;
 		db_c.index = empty_index;
 		if (!volume_desc->mem_catalogue->db_group_index[db_c.group_id]) {
-			struct pr_db_group *new_group = get_space_for_system(volume_desc, sizeof(pr_db_group), 1);
-			memset(new_group, 0x00, sizeof(pr_db_group));
+			struct pr_db_group *new_group =
+				get_space_for_system(volume_desc, sizeof(struct pr_db_group), 1);
+			memset(new_group, 0x00, sizeof(struct pr_db_group));
 			new_group->epoch = volume_desc->mem_catalogue->epoch;
 			volume_desc->mem_catalogue->db_group_index[empty_group] =
-				(pr_db_group *)ABSOLUTE_ADDRESS(new_group);
+				(struct pr_db_group *)ABSOLUTE_ADDRESS(new_group);
 			log_info("Allocated new pr_db_group epoch at %llu volume epoch %llu", new_group->epoch,
 				 volume_desc->mem_catalogue->epoch);
 		}
 
 		assert(db_c.group_id >= 0);
 		assert(db_c.index >= 0);
-		pr_db_group *cur_group =
-			(pr_db_group *)REAL_ADDRESS(volume_desc->mem_catalogue->db_group_index[db_c.group_id]);
+		struct pr_db_group *cur_group =
+			(struct pr_db_group *)REAL_ADDRESS(volume_desc->mem_catalogue->db_group_index[db_c.group_id]);
 
 		struct pr_db_entry *db_entry = &cur_group->db_entries[db_c.index];
 		if (db_entry)
