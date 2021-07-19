@@ -1,7 +1,8 @@
 #!/bin/bash
-export CC=gcc-9.1
-export CXX=g++-9.1
-LLVMVERSION=10.0.0
+set -xeu
+export CC=gcc-11.1.0
+export CXX=g++-11.1.0
+LLVMVERSION=12.0.1
 mkdir llvm-project
 cd llvm-project || exit
 
