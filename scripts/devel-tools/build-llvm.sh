@@ -21,5 +21,7 @@ mv clang-tools-extra-"$LLVMVERSION".src clang-tools-extra
 mkdir build
 cd build || exit
 cmake3 -G Ninja ../llvm -DLLVM_ENABLE_PROJECTS="clang;clang-tools-extra"
+ninja-build clang
 ninja-build clang-format
+ninja-build clangd
 echo "Export the bin directory to detect clang-format"
