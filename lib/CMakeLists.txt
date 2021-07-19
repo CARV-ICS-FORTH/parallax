@@ -34,8 +34,7 @@ else()
     LIB_C_SOURCE_FILES PROPERTIES COMPILE_FLAGS "${CMAKE_C_FLAGS_RELEASE}")
 endif()
 add_library(${LIB} ${LIB_C_SOURCE_FILES})
-set_property(TARGET ${LIB} PROPERTY POSITION_INDEPENDENT_CODE ON)
-target_link_libraries(${LIB} PRIVATE ${DEPENDENCIES})
+target_link_libraries(${LIB} ${DEPENDENCIES})
 set_target_properties(
   ${LIB} PROPERTIES PUBLIC_HEADER
                     "${CMAKE_CURRENT_SOURCE_DIR}/include/parallax.h")

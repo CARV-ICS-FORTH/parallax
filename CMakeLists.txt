@@ -78,7 +78,6 @@ FetchContent_GetProperties(libbloom)
 if(NOT log_POPULATED)
   FetchContent_Populate(log)
   add_subdirectory(${log_SOURCE_DIR} ${log_BINARY_DIR})
-  include_directories(${log_SOURCE_DIR}/include)
   FetchContent_MakeAvailable(log)
 endif()
 
