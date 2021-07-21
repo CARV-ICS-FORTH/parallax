@@ -1,11 +1,13 @@
 include(cmake_utils/PreventInSouceBuilds.cmake.in)
 cmake_minimum_required(VERSION 3.11.0 FATAL_ERROR)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 project(
   parallax
   VERSION 1.0
   LANGUAGES C CXX)
+
+set(CMAKE_C_STANDARD 11)
+set(CMAKE_C_STANDARD_REQUIRED ON)
 
 option(BUILD_SHARED_LIBS
        "Build shared libraries (.dll/.so) instead of static ones (.lib/.a)" OFF)
@@ -78,7 +80,6 @@ FetchContent_GetProperties(libbloom)
 if(NOT log_POPULATED)
   FetchContent_Populate(log)
   add_subdirectory(${log_SOURCE_DIR} ${log_BINARY_DIR})
-  include_directories(${log_SOURCE_DIR}/include)
   FetchContent_MakeAvailable(log)
 endif()
 
@@ -115,7 +116,7 @@ include_directories(${CMAKE_BINARY_DIR})
 include_directories(${CMAKE_SOURCE_DIR}/utilities)
 
 set(CMAKE_C_FLAGS
-    "-std=gnu11 -Wstrict-prototypes -Wall -Wextra -fPIC -fno-omit-frame-pointer -Wunused -Wuninitialized -Wimplicit-function-declaration -Wshadow  -Werror ${CMAKE_C_FLAGS}"
+    "-Wstrict-prototypes -Wall -Wextra -fno-omit-frame-pointer -Wunused -Wuninitialized -Wimplicit-function-declaration -Wshadow  -Werror ${CMAKE_C_FLAGS}"
 )
 
 if(WNULL_DEREFERENCE)

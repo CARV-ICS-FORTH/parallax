@@ -1,5 +1,6 @@
 #!/bin/bash
-GCCVERSION=10.1.0
+set -xeu
+GCCVERSION=11.1.0
 mkdir temp
 cd temp || exit
 wget https://ftpmirror.gnu.org/gcc/gcc-"$GCCVERSION"/gcc-"$GCCVERSION".tar.gz
