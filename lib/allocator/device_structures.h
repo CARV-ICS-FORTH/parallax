@@ -12,9 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 #pragma once
+#define ALLOW_RAW_VOLUMES 1
+#define MIN_VOLUME_SIZE (8 * 1024 * 1024 * 1024L)
 #include <stdint.h>
 #include <pthread.h>
 #include "../btree/conf.h"
+//physics bitch!
+#define FINE_STRUCTURE_CONSTANT 72973525664
 
 struct pr_db_entry {
 	char db_name[MAX_DB_NAME_SIZE];
@@ -58,10 +62,69 @@ struct pr_system_catalogue {
 /*volume superblock*/
 struct superblock {
 	struct pr_system_catalogue *system_catalogue;
-	/*accounting information */
+	//accounting information
 	int64_t bitmap_size_in_blocks;
 	int64_t dev_size_in_blocks;
 	int64_t dev_addressed_in_blocks;
 	int64_t unmapped_blocks;
 	int64_t magic_number;
+	//<new_persistent_design>
+	int64_t volume_size;
+	uint32_t max_regions_num;
+	uint32_t per_region_log_size;
+	uint64_t regions_log_size;
+	uint64_t volume_metadata_size;
+	uint64_t bitmap_size_in_words;
+	uint64_t unmappedSpace;
+	uint64_t paddedSpace;
+	//</new_persistent_design>
 } __attribute__((packed, aligned(4096)));
+
+//<new_persistent_design>
+enum pr_region_operation { ALLOCATE_SEGMENT, FREE_SEGMENT };
+
+struct pr_region_operation_entry {
+	uint32_t size;
+	enum pr_region_operation op;
+} __attribute__((packed, aligned(8)));
+
+struct pr_region_allocation_log {
+	uint32_t start;
+	uint32_t end;
+	uint32_t size;
+	uint32_t extensions;
+} __attribute__((packed, aligned(16)));
+
+struct pr_region_superblock {
+	char region_name[MAX_DB_NAME_SIZE];
+	uint64_t first_segment[MAX_LEVELS][NUM_TREES_PER_LEVEL];
+	uint64_t last_segment[MAX_LEVELS][NUM_TREES_PER_LEVEL];
+	uint64_t offset[MAX_LEVELS][NUM_TREES_PER_LEVEL];
+	uint64_t level_size[MAX_LEVELS][NUM_TREES_PER_LEVEL];
+	struct pr_region_allocation_log allocation_log;
+	uint64_t big_log_head_offt;
+	uint64_t big_log_tail_offt;
+	uint64_t big_log_size;
+	uint64_t medium_log_head_offt;
+	uint64_t medium_log_tail_offt;
+	uint64_t medium_log_size;
+	uint64_t small_log_head_offt;
+	uint64_t small_log_tail_offt;
+	uint64_t small_log_size;
+	uint64_t lsn;
+	uint32_t region_name_size;
+	uint32_t id; //in the array
+	uint32_t valid;
+} __attribute__((packed, aligned(4096)));
+
+struct pr_superblock_array {
+	uint32_t size;
+	struct pr_region_superblock region[];
+};
+
+struct pr_region_bitmap {
+	uint32_t size;
+	char persistent_bitmap[];
+};
+
+//</new_persistent_design>

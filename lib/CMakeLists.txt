@@ -58,6 +58,11 @@ add_executable(
 
 target_link_libraries(mkfs.${LIB} PRIVATE ${DEPENDENCIES})
 
+# new kv_format utility for new persistent design
+add_executable(kv_format.${LIB} allocator/kv_format.c)
+
+target_link_libraries(kv_format.${LIB} PRIVATE ${DEPENDENCIES})
+
 install(
   TARGETS ${LIB} mkfs.${LIB}
   ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"

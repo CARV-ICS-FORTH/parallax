@@ -252,7 +252,7 @@ void binary_search_dynamic_leaf(const struct bt_dynamic_leaf_node *leaf, uint32_
 				ret = key_cmp(L.addr, req->key_value_buf, KV_FORMAT, KV_FORMAT);
 			}
 			if (L.in_tail) {
-				struct bt_log_descriptor *log_desc = NULL;
+				struct log_descriptor *log_desc = NULL;
 				//#if MEDIUM_LOG_UNSORTED
 				switch (slot_array[middle].key_category) {
 				case BIG_INLOG:
@@ -522,7 +522,7 @@ struct bt_rebalance_result split_dynamic_leaf(struct bt_dynamic_leaf_node *leaf,
 	rep.middle_key_buf = rep.middle_key;
 
 	if (L.in_tail) {
-		struct bt_log_descriptor *log_desc = NULL;
+		struct log_descriptor *log_desc = NULL;
 		//#if MEDIUM_LOG_UNSORTED
 		switch (slot_array[leaf->header.num_entries / 2].key_category) {
 		case BIG_INLOG:

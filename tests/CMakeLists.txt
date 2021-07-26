@@ -43,5 +43,14 @@ if(BUILD_TESTING)
   target_link_libraries(test_gc "${PROJECT_NAME}" ${DEPENDENCIES})
   add_test(NAME test_gc COMMAND $<TARGET_FILE:test_gc>)
 
+  add_executable(
+    test_region_allocations
+    test_region_allocations.c ../lib/allocator/volume_mem_allocator.c
+    ../lib/allocator/djb2.c)
+  target_link_libraries(test_region_allocations "${PROJECT_NAME}"
+                        ${DEPENDENCIES})
+  add_test(NAME test_region_allocations
+           COMMAND $<TARGET_FILE:test_region_allocations>)
+
   add_subdirectory(Surrogates)
 endif()

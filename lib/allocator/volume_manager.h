@@ -15,6 +15,7 @@
 #include <stdint.h>
 #include <pthread.h>
 #include "device_structures.h"
+#include "mem_structures.h"
 #include "../btree/conf.h"
 #define MAGIC_NUMBER 2036000000
 /*size in 4KB blocks of the log used for marking the free ops*/
@@ -56,79 +57,6 @@ typedef enum volume_state { VOLUME_IS_OPEN = 0x00, VOLUME_IS_CLOSING = 0x01, VOL
 extern uint64_t MAPPED;
 extern int FD;
 
-/*<new_persistent_design>*/
-#if 0
-enum pr_region_operation { ALLOCATE_SEGMENT, FREE_SEGMENT };
-
-struct pr_region_operation_entry {
-	uint32_t size;
-	enum pr_region_operation op;
-} __attribute__((packed, aligned(8)));
-
-struct pr_region_allocation_log {
-	uint32_t start;
-	uint32_t end;
-	uint32_t size;
-	uint32_t extensions;
-} __attribute__((packed, aligned(16)));
-
-struct mem_region_superblock {
-	char region_name[MAX_DB_NAME_SIZE];
-	struct segment_header *first_segment[MAX_LEVELS][NUM_TREES_PER_LEVEL];
-	struct segment_header *last_segment[MAX_LEVELS][NUM_TREES_PER_LEVEL];
-	uint64_t offset[MAX_LEVELS][NUM_TREES_PER_LEVEL];
-	uint64_t level_size[MAX_LEVELS][NUM_TREES_PER_LEVEL];
-	struct pr_region_allocation_log allocation_log;
-	pthread_mutex_t superblock_lock;
-	struct bt_log_descriptor big_log;
-	struct bt_log_descriptor medium_log;
-	struct bt_log_descriptor small_log;
-	uint64_t lsn;
-	uint32_t region_name_size;
-	uint32_t id;//in the array
-	uint32_t reference_count;
-	uint32_t valid;
-}__attribute__((packed, aligned(4096)));
-
-struct pr_region_superblock {
-	char region_name[MAX_DB_NAME_SIZE];
-	uint64_t first_segment[MAX_LEVELS][NUM_TREES_PER_LEVEL];
-	uint64_t last_segment[MAX_LEVELS][NUM_TREES_PER_LEVEL];
-	uint64_t offset[MAX_LEVELS][NUM_TREES_PER_LEVEL];
-	uint64_t level_size[MAX_LEVELS][NUM_TREES_PER_LEVEL];
-	struct pr_region_allocation_log allocation_log;
-	uint64_t big_log_head_offt;
-	uint64_t big_log_tail_offt;
-	uint64_t big_log_size;
-	uint64_t medium_log_head_offt;
-	uint64_t medium_log_tail_offt;
-	uint64_t medium_log_size;
-	uint64_t small_log_head_offt;
-	uint64_t small_log_tail_offt;
-	uint64_t small_log_size;
-	uint64_t lsn;
-	uint32_t region_name_size;
-	uint32_t id;//in the array
-	uint32_t valid;
-}__attribute__((packed, aligned(4096)));
-
-struct mem_superblock_array {
-	uint32_t size;
-	struct mem_region_superblock region[];
-};
-
-struct pr_superblock_array {
-	uint32_t size;
-	struct pr_region_superblock region[];
-};
-
-struct pr_region_bitmap {
-	uint32_t size;
-	char persistent_bitmap[];
-};
-#endif
-/*</new_persistent_design>*/
-
 #define WORDS_PER_BITMAP_BUDDY ((DEVICE_BLOCK_SIZE / sizeof(uint64_t)) - 1)
 struct bitmap_buddy {
 	uint64_t epoch;
@@ -159,9 +87,13 @@ struct bitmap_buddies_state {
 
 typedef struct volume_descriptor {
 	/*<new_persistent_design>*/
-	struct mem_superblock_array *mem_regions;
+	struct superblock my_superblock;
 	struct pr_superblock_array *pr_regions;
+	uint64_t *mem_volume_bitmap;
+	int mem_volume_bitmap_size;
+	struct mem_bitmap_word curr_word;
 	pthread_mutex_t region_array_lock;
+	int my_fd;
 	/*</new_persistent_design>*/
 
 	// dirty version on the device of the volume's db catalogue
@@ -231,6 +163,12 @@ typedef struct volume_descriptor {
 	volatile char snap_preemption;
 	char force_snapshot;
 } volume_descriptor;
+
+//<new_persistent_design>
+struct volume_descriptor *mem_get_volume_desc(char *volume_name);
+uint64_t mem_allocate(struct volume_descriptor *volume_desc, uint64_t num_bytes);
+void mem_bitmap_mark_block_free(struct volume_descriptor *volume_desc, uint64_t dev_offt);
+//</new_persistent_design>
 
 /*
  * @dev_name The device name

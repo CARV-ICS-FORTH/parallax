@@ -15,6 +15,7 @@
 #endif
 #include "conf.h"
 #include "../allocator/device_structures.h"
+#include "../allocator/log_structures.h"
 #include "../allocator/volume_manager.h"
 #define SUCCESS 4
 #define FAILED 5
@@ -329,36 +330,14 @@ typedef struct level_descriptor {
 	char in_recovery_mode;
 } level_descriptor;
 
-struct log_tail {
-	char buf[SEGMENT_SIZE];
-	volatile uint32_t bytes_in_chunk[SEGMENT_SIZE / LOG_CHUNK_SIZE];
-	uint64_t dev_offt;
-	uint64_t start;
-	uint64_t end;
-	uint32_t pending_readers;
-	uint32_t free;
-	uint32_t IOs_completed_in_tail;
-	int fd;
-};
-
-struct bt_log_descriptor {
-	pthread_rwlock_t log_tail_buf_lock;
-	char pad[8];
-	struct log_tail *tail[LOG_TAIL_NUM_BUFS];
-	uint64_t head_dev_offt;
-	uint64_t tail_dev_offt;
-	uint64_t size;
-	uint64_t curr_tail_id;
-};
-
 struct bt_kv_log_address {
 	void *addr;
 	uint8_t in_tail;
 	uint8_t tail_id;
 };
-struct bt_kv_log_address bt_get_kv_medium_log_address(struct bt_log_descriptor *log_desc, uint64_t dev_offt);
-struct bt_kv_log_address bt_get_kv_log_address(struct bt_log_descriptor *log_desc, uint64_t dev_offt);
-void bt_done_with_value_log_address(struct bt_log_descriptor *log_desc, struct bt_kv_log_address *L);
+struct bt_kv_log_address bt_get_kv_medium_log_address(struct log_descriptor *log_desc, uint64_t dev_offt);
+struct bt_kv_log_address bt_get_kv_log_address(struct log_descriptor *log_desc, uint64_t dev_offt);
+void bt_done_with_value_log_address(struct log_descriptor *log_desc, struct bt_kv_log_address *L);
 
 typedef struct db_descriptor {
 	char db_name[MAX_DB_NAME_SIZE];
@@ -380,9 +359,9 @@ typedef struct db_descriptor {
 	pthread_t compaction_thread;
 	pthread_t compaction_daemon;
 	pthread_t gc_thread;
-	struct bt_log_descriptor big_log;
-	struct bt_log_descriptor medium_log;
-	struct bt_log_descriptor small_log;
+	struct log_descriptor big_log;
+	struct log_descriptor medium_log;
+	struct log_descriptor small_log;
 	uint64_t lsn;
 	//only for L0
 	struct db_handle *gc_db;
@@ -429,7 +408,7 @@ struct recovery_operator {
 void recover_region(recovery_request *rh);
 void snapshot(volume_descriptor *volume_desc);
 void pr_flush_log_tail(struct db_descriptor *db_desc, struct volume_descriptor *volume_desc,
-		       struct bt_log_descriptor *log_desc);
+		       struct log_descriptor *log_desc);
 //void commit_db_log(db_descriptor *db_desc, commit_log_info *info);
 //void commit_db_logs_per_volume(volume_descriptor *volume_desc);
 //void commit_db_log(db_descriptor *db_desc, commit_log_info *info);
@@ -503,7 +482,7 @@ typedef struct log_operation {
 } log_operation;
 
 struct log_towrite {
-	struct bt_log_descriptor *log_desc;
+	struct log_descriptor *log_desc;
 	int level_id;
 	enum log_category status;
 };

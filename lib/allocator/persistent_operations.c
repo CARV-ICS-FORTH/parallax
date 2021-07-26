@@ -8,6 +8,7 @@
 #include <list.h>
 #include <spin_loop.h>
 #include "device_structures.h"
+#include "log_structures.h"
 #include "volume_manager.h"
 #include "../btree/btree.h"
 #include "../btree/segment_allocator.h"
@@ -178,7 +179,7 @@ void force_snapshot(volume_descriptor *volume_desc)
 }
 
 void pr_flush_log_tail(struct db_descriptor *db_desc, struct volume_descriptor *volume_desc,
-		       struct bt_log_descriptor *log_desc)
+		       struct log_descriptor *log_desc)
 {
 	(void)db_desc;
 	(void)volume_desc;

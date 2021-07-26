@@ -298,7 +298,7 @@ static void pr_read_log_tail(struct log_tail *tail)
 	}
 }
 
-struct bt_kv_log_address bt_get_kv_log_address(struct bt_log_descriptor *log_desc, uint64_t dev_offt)
+struct bt_kv_log_address bt_get_kv_log_address(struct log_descriptor *log_desc, uint64_t dev_offt)
 {
 	struct bt_kv_log_address reply = { .addr = NULL, .tail_id = 0, .in_tail = UINT8_MAX };
 	RWLOCK_RDLOCK(&log_desc->log_tail_buf_lock);
@@ -329,13 +329,13 @@ struct bt_kv_log_address bt_get_kv_log_address(struct bt_log_descriptor *log_des
 	return reply;
 }
 
-void bt_done_with_value_log_address(struct bt_log_descriptor *log_desc, struct bt_kv_log_address *L)
+void bt_done_with_value_log_address(struct log_descriptor *log_desc, struct bt_kv_log_address *L)
 {
 	assert(log_desc->tail[L->tail_id]->pending_readers > 0);
 	__sync_fetch_and_sub(&log_desc->tail[L->tail_id]->pending_readers, 1);
 }
 
-struct bt_kv_log_address bt_get_kv_medium_log_address(struct bt_log_descriptor *log_desc, uint64_t dev_offt)
+struct bt_kv_log_address bt_get_kv_medium_log_address(struct log_descriptor *log_desc, uint64_t dev_offt)
 {
 	struct bt_kv_log_address reply = { .addr = NULL, .tail_id = 0, .in_tail = UINT8_MAX };
 	assert(dev_offt != 0);
@@ -362,7 +362,7 @@ struct bt_kv_log_address bt_get_kv_medium_log_address(struct bt_log_descriptor *
 	return reply;
 }
 
-static void pr_init_log(struct bt_log_descriptor *log_desc)
+static void pr_init_log(struct log_descriptor *log_desc)
 {
 	// Just update the chunk counters according to the log size
 	if (RWLOCK_INIT(&log_desc->log_tail_buf_lock, NULL) != 0) {
