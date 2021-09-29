@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include <log.h>
@@ -150,6 +151,7 @@ void binary_search_dynamic_leaf(const struct bt_dynamic_leaf_node *leaf, uint32_
 	const int32_t numberOfEntriesInNode = leaf->header.num_entries;
 	uint32_t offset_in_leaf;
 	int ret, ret_case;
+	uint32_t kv_size_in_leaf;
 
 	while (numberOfEntriesInNode > 0) {
 		middle = (start + end) / 2;
@@ -178,11 +180,20 @@ void binary_search_dynamic_leaf(const struct bt_dynamic_leaf_node *leaf, uint32_
 			);
 		} else {
 			if (*(uint32_t *)req->key_value_buf < PREFIX_SIZE) {
-				char padded_qkey_prefix[PREFIX_SIZE];
-				memset(padded_qkey_prefix, 0x0, PREFIX_SIZE);
-				memcpy(padded_qkey_prefix, req->key_value_buf + sizeof(uint32_t),
-				       *(uint32_t *)req->key_value_buf);
-				ret = prefix_compare(leaf_key_prefix.prefix, padded_qkey_prefix, PREFIX_SIZE);
+				kv_size_in_leaf = strlen(leaf_key_prefix.prefix) + 1;
+				/* if the size of keys is equal don't compare there padded part
+				 *this fixes corner case where parallax compares same keys but one is padded
+				 */
+				if (kv_size_in_leaf == *(uint32_t *)req->key_value_buf)
+					ret = prefix_compare(leaf_key_prefix.prefix,
+							     req->key_value_buf + sizeof(uint32_t), kv_size_in_leaf);
+				else {
+					char padded_qkey_prefix[PREFIX_SIZE];
+					memset(padded_qkey_prefix, 0x0, PREFIX_SIZE);
+					memcpy(padded_qkey_prefix, req->key_value_buf + sizeof(uint32_t),
+					       *(uint32_t *)req->key_value_buf);
+					ret = prefix_compare(leaf_key_prefix.prefix, padded_qkey_prefix, PREFIX_SIZE);
+				}
 			} else {
 				ret = prefix_compare(leaf_key_prefix.prefix, req->key_value_buf + 4,
 						     PREFIX_SIZE /* MIN(leaf_key_prefix.len, key_buf->size) */);

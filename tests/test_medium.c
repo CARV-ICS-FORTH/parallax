@@ -23,12 +23,12 @@
 
 typedef struct key {
 	uint32_t key_size;
-	char key_buf[0];
+	char key_buf[];
 } key;
 
 typedef struct value {
 	uint32_t value_size;
-	char value_buf[0];
+	char value_buf[];
 } value;
 
 enum kv_type { SMALL, MEDIUM, LARGE };
@@ -57,6 +57,46 @@ static uint64_t generate_random_big_kv_size(void)
 	return size;
 }
 
+void init_small_kv(uint64_t *kv_size, char **key_prefix, enum kv_size_type size_type)
+{
+	if (size_type == RANDOM) {
+		*kv_size = generate_random_small_kv_size();
+		*key_prefix = strdup(SMALL_KEY_PREFIX);
+	} else if (size_type == STATIC) {
+		*kv_size = SMALL_KV_SIZE;
+		*key_prefix = strdup(SMALL_STATIC_SIZE_PREFIX);
+	} else
+		assert(0);
+}
+
+void init_medium_kv(uint64_t *kv_size, char **key_prefix, enum kv_size_type size_type)
+{
+	if (size_type == RANDOM) {
+		*kv_size = generate_random_medium_kv_size();
+		*key_prefix = strdup(MEDIUM_KEY_PREFIX);
+	} else if (size_type == STATIC) {
+		*kv_size = MEDIUM_KV_SIZE;
+		*key_prefix = strdup(MEDIUM_STATIC_SIZE_PREFIX);
+	} else
+		assert(0);
+}
+
+void init_large_kv(uint64_t *kv_size, char **key_prefix, enum kv_size_type size_type)
+{
+	if (size_type == RANDOM) {
+		*kv_size = generate_random_big_kv_size();
+		*key_prefix = strdup(LARGE_KEY_PREFIX);
+	} else if (size_type == STATIC) {
+		*kv_size = LARGE_KV_SIZE;
+		*key_prefix = strdup(LARGE_STATIC_SIZE_PREFIX);
+	} else
+		assert(0);
+}
+
+typedef void init_kv_func(uint64_t *kv_size, char **key_prefix, enum kv_size_type size_type);
+
+init_kv_func *init_kv[3] = { init_small_kv, init_medium_kv, init_large_kv };
+
 static void populate_db(db_handle *hd, uint64_t from, uint64_t num_keys, enum kv_type type, enum kv_size_type size_type)
 {
 	uint64_t i;
@@ -65,43 +105,30 @@ static void populate_db(db_handle *hd, uint64_t from, uint64_t num_keys, enum kv
 	uint64_t kv_size = 0;
 
 	if (type == SMALL) {
-		if (size_type == RANDOM) {
-			kv_size = generate_random_small_kv_size();
+		switch (size_type) {
+		case RANDOM:
+			init_kv[type](&kv_size, &key_prefix, RANDOM);
 			//error handing for too small kv (since key is by default 12 in this test) minimum key is 30
 			if (kv_size <= sizeof(SMALL_KEY_PREFIX) + sizeof(long long unsigned))
 				kv_size = 30;
-
-			key_prefix = strdup(SMALL_KEY_PREFIX);
-		} else if (size_type == STATIC) {
-			kv_size = SMALL_KV_SIZE;
-			key_prefix = strdup(SMALL_STATIC_SIZE_PREFIX);
-		} else
-			assert(0);
-
-	} else if (type == MEDIUM) {
-		if (size_type == RANDOM) {
-			kv_size = generate_random_medium_kv_size();
-			key_prefix = strdup(MEDIUM_KEY_PREFIX);
-		} else if (size_type == STATIC) {
-			kv_size = MEDIUM_KV_SIZE;
-			key_prefix = strdup(MEDIUM_STATIC_SIZE_PREFIX);
-		} else
-			assert(0);
-	} else if (type == LARGE) {
-		if (size_type == RANDOM) {
-			kv_size = generate_random_big_kv_size();
-			key_prefix = strdup(LARGE_KEY_PREFIX);
-		} else if (size_type == STATIC) {
-			kv_size = LARGE_KV_SIZE;
-			key_prefix = strdup(LARGE_STATIC_SIZE_PREFIX);
-		} else
-			assert(0);
-	} else
+			break;
+		case STATIC:
+			init_kv[type](&kv_size, &key_prefix, STATIC);
+			break;
+		}
+	} else if (type == MEDIUM)
+		init_kv[type](&kv_size, &key_prefix, size_type);
+	else if (type == LARGE)
+		init_kv[type](&kv_size, &key_prefix, size_type);
+	else
 		assert(0);
 
 	assert(kv_size != 0);
 	k = (key *)calloc(1, kv_size);
-
+	if (k == NULL) {
+		log_info("Calloc returned NULL, not enough memory exiting...");
+		exit(EXIT_FAILURE);
+	}
 	for (i = from; i < num_keys; i++) {
 		memcpy(k->key_buf, key_prefix, strlen(key_prefix));
 		sprintf(k->key_buf + strlen(key_prefix), "%llu", (long long unsigned)i);
@@ -115,7 +142,6 @@ static void populate_db(db_handle *hd, uint64_t from, uint64_t num_keys, enum kv
 	}
 
 	free(k);
-	return;
 }
 
 static void validate_serially(db_handle *hd, uint64_t from, uint64_t num_keys, enum kv_type type)
@@ -123,21 +149,16 @@ static void validate_serially(db_handle *hd, uint64_t from, uint64_t num_keys, e
 	uint64_t i;
 	char *key_prefix;
 	uint64_t kv_size = 0;
-	if (type == SMALL) {
-		kv_size = SMALL_KV_SIZE;
-		key_prefix = strdup(SMALL_STATIC_SIZE_PREFIX);
-	} else if (type == MEDIUM) {
-		kv_size = MEDIUM_KV_SIZE;
-		key_prefix = strdup(MEDIUM_STATIC_SIZE_PREFIX);
-	} else if (type == LARGE) {
-		kv_size = LARGE_KV_SIZE;
-		key_prefix = strdup(LARGE_STATIC_SIZE_PREFIX);
-	} else
-		assert(0);
+
+	init_kv[type](&kv_size, &key_prefix, STATIC);
 
 	assert(kv_size != 0);
 	key *k = (key *)calloc(1, kv_size);
 
+	if (k == NULL) {
+		log_info("Calloc returned NULL, not enough memory, exiting...");
+		exit(EXIT_FAILURE);
+	}
 	for (i = from; i < num_keys; i++) {
 		memcpy(k->key_buf, key_prefix, strlen(key_prefix));
 		sprintf(k->key_buf + strlen(key_prefix), "%llu", (long long unsigned)i);
@@ -147,8 +168,6 @@ static void validate_serially(db_handle *hd, uint64_t from, uint64_t num_keys, e
 			find_key(hd, k->key_buf, k->key_size);
 		}
 	}
-
-	return;
 }
 
 static void validate_number_of_kvs(db_handle *hd, uint64_t num_keys)
@@ -216,19 +235,20 @@ static void validate_random_size_of_kvs(db_handle *hd, uint64_t from, uint64_t t
 					enum kv_size_type size_type)
 {
 	char *key_prefix;
+	uint64_t kv_size;
 	scannerHandle *sc = (scannerHandle *)calloc(1, sizeof(scannerHandle));
+	if (!sc) {
+		log_info("Calloc returned NULL, not enough memory, exiting...");
+		exit(EXIT_FAILURE);
+	}
 	key k;
 
-	if (key_type == SMALL)
-		key_prefix = strdup(SMALL_KEY_PREFIX);
-	else if (key_type == MEDIUM)
-		key_prefix = strdup(MEDIUM_KEY_PREFIX);
-	else if (key_type == LARGE)
-		key_prefix = strdup(LARGE_KEY_PREFIX);
-	else
-		assert(0);
+	init_kv[key_type](&kv_size, &key_prefix, RANDOM);
 
 	memcpy(k.key_buf, key_prefix, strlen(key_prefix));
+
+	//strlen because random keys use srand to generate their sizes, kvsize is different from the correct one
+	//when created on population phase
 	k.key_size = strlen(key_prefix);
 
 	init_dirty_scanner(sc, hd, &k, GREATER_OR_EQUAL);
@@ -253,17 +273,15 @@ static void validate_static_size_of_kvs(db_handle *hd, uint64_t from, uint64_t t
 					enum kv_size_type size_type)
 {
 	char *key_prefix;
+	uint64_t kv_size;
 	scannerHandle *sc = (scannerHandle *)calloc(1, sizeof(scannerHandle));
+	if (!sc) {
+		log_info("Calloc returned NULL, not enough memory, exiting...");
+		exit(EXIT_FAILURE);
+	}
 	key k;
 
-	if (key_type == SMALL)
-		key_prefix = strdup(SMALL_STATIC_SIZE_PREFIX);
-	else if (key_type == MEDIUM)
-		key_prefix = strdup(MEDIUM_STATIC_SIZE_PREFIX);
-	else if (key_type == LARGE)
-		key_prefix = strdup(LARGE_STATIC_SIZE_PREFIX);
-	else
-		assert(0);
+	init_kv[key_type](&kv_size, &key_prefix, STATIC);
 
 	memcpy(k.key_buf, key_prefix, strlen(key_prefix));
 	k.key_size = strlen(key_prefix);

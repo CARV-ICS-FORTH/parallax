@@ -3,6 +3,7 @@
 #include <string.h>
 #include <getopt.h>
 #include <stdio.h>
+#include <log.h>
 
 static int help_flag;
 
@@ -74,21 +75,24 @@ struct parallax_options *arg_parser(int argc, char *argv[])
 
 	/*--help message*/
 	if (help_flag) {
-		printf("\033[0;32m help for test argmuments:\n\033[0;37m");
-		printf("\t--path=path to file of db, parameter that specifies the target where parallax is going to run\n");
-		printf("\t--num_of_kvs=number, parameter that specifies the number of operation the test will execute\n");
-		printf("\t--small_kvs_percentage=number, parameter that specifies the overall percentage of small kvs out of num_of_kvs operations\n");
-		printf("\t--medium_kvs_percentage=number, parameter that specifies the overall percentage of medium kvs out of num_of_kvs operations\n");
-		printf("\t--large_kvs_percentage=number, parameter that specifies the overall percentage of large kvs out of num_of_kvs operations\n");
-		printf("\033[0;31m Important notes:\n \033[0;37m");
-		printf("\tThe sum of all percentages must be equal to 100. More notes to come..\n");
-		printf("\n");
+		log_info("\033[0;32m help for test argmuments:\n\033[0;37m");
+		log_info(
+			"\t--path=path to file of db, parameter that specifies the target where parallax is going to run");
+		log_info(
+			"\t--num_of_kvs=number, parameter that specifies the number of operation the test will execute");
+		log_info(
+			"\t--small_kvs_percentage=number, parameter that specifies the overall percentage of small kvs out of num_of_kvs operations");
+		log_info(
+			"\t--medium_kvs_percentage=number, parameter that specifies the overall percentage of medium kvs out of num_of_kvs operations");
+		log_info(
+			"\t--large_kvs_percentage=number, parameter that specifies the overall percentage of large kvs out of num_of_kvs operations");
+		log_info("\033[0;31m Important notes:\n \033[0;37m");
+		log_info("\tThe sum of all percentages must be equal to 100. More notes to come..");
 		exit(0);
 	}
-
 	// check for fewer arguments than necessery
 	if (argc != 6) {
-		printf("\033[0;31m Not enough arguments use --help for more\033[0;37\n");
+		log_info("Not enough arguments use --help for more");
 	}
 	return options;
 }
