@@ -19,6 +19,8 @@
 #include "../allocator/device_structures.h"
 #include "../allocator/volume_manager.h"
 #include "../../utilities/dups_list.h"
+#include "segment_LRU_cache.h"
+
 #define COMPACTION
 #define COMPACTION_UNIT_OF_WORK 1
 
@@ -37,6 +39,7 @@ struct comp_level_write_cursor {
 	uint32_t level_id;
 	uint32_t tree_height;
 	int fd;
+	struct chunk_LRU_cache *medium_log_LRU_cache;
 };
 
 enum comp_level_read_cursor_state {
@@ -91,6 +94,52 @@ struct comp_level_read_cursor {
 	enum log_category category;
 	enum comp_level_read_cursor_state state;
 };
+
+static void fetch_segment(char *segment_buf, uint64_t segment_offt, ssize_t size)
+{
+	//assert(segment_offt % SEGMENT_SIZE == 0);
+	off_t dev_offt = segment_offt;
+	ssize_t bytes_to_read = 0;
+	ssize_t bytes = 0;
+	while (bytes_to_read < size) {
+		bytes = pread(FD, &segment_buf[bytes_to_read], size - bytes_to_read, dev_offt + bytes_to_read);
+		if (bytes == -1) {
+			log_fatal("Failed to read error code");
+			perror("Error");
+			assert(0);
+			exit(EXIT_FAILURE);
+		}
+		bytes_to_read += bytes;
+	}
+}
+
+static char *fetch_kv_from_LRU(struct write_dynamic_leaf_args *args, struct comp_level_write_cursor *c)
+{
+	char *segment_chunk = NULL;
+	uint64_t chunk_size = 256 * 1024;
+	uint64_t segment_offset, which_chunk, segment_chunk_offt;
+	char *kv_in_seg = NULL;
+
+	segment_offset = ABSOLUTE_ADDRESS(args->kv_dev_offt) - (ABSOLUTE_ADDRESS(args->kv_dev_offt) % SEGMENT_SIZE);
+
+	which_chunk = (ABSOLUTE_ADDRESS(args->kv_dev_offt) % SEGMENT_SIZE) / chunk_size;
+
+	segment_chunk_offt = segment_offset + (which_chunk * chunk_size);
+	//assert(segment_chunk_offt < ABSOLUTE_ADDRESS(args->kv_dev_offt));
+
+	if (!chunk_exists_in_LRU(c->medium_log_LRU_cache, segment_chunk_offt)) {
+		if (posix_memalign((void **)&segment_chunk, ALIGNMENT_SIZE, chunk_size + (4 * 1024)) != 0) {
+			log_fatal("MEMALIGN FAILED");
+			exit(EXIT_FAILURE);
+		}
+		fetch_segment(segment_chunk, segment_chunk_offt, chunk_size + (4 * 1024));
+		add_to_LRU(c->medium_log_LRU_cache, segment_chunk_offt, segment_chunk);
+	} else
+		segment_chunk = get_chunk_from_LRU(c->medium_log_LRU_cache, segment_chunk_offt);
+
+	kv_in_seg = &segment_chunk[(ABSOLUTE_ADDRESS(args->kv_dev_offt) % SEGMENT_SIZE) - (which_chunk * chunk_size)];
+	return kv_in_seg;
+}
 
 static uint32_t comp_calc_offt_in_seg(char *buffer_start, char *addr)
 {
@@ -692,8 +741,8 @@ static int comp_append_medium_L1(struct comp_level_write_cursor *c, struct comp_
 
 static void comp_append_entry_to_leaf_node(struct comp_level_write_cursor *c, struct comp_parallax_key *kv)
 {
-	uint64_t left_leaf_offt;
-	uint64_t right_leaf_offt;
+	uint64_t left_leaf_offt = 0;
+	uint64_t right_leaf_offt = 0;
 	uint32_t level_leaf_size = c->handle->db_desc->levels[c->level_id].leaf_size;
 	uint32_t kv_size = 0;
 	int new_leaf = 0;
@@ -766,6 +815,8 @@ static void comp_append_entry_to_leaf_node(struct comp_level_write_cursor *c, st
 	}
 #endif
 
+	if (write_leaf_args.cat == MEDIUM_INLOG && write_leaf_args.level_id == LEVEL_MEDIUM_INPLACE)
+		write_leaf_args.key_value_buf = fetch_kv_from_LRU(&write_leaf_args, c);
 	write_data_in_dynamic_leaf(&write_leaf_args);
 	// just append and leave
 	++c->last_leaf->header.num_entries;
@@ -1172,6 +1223,10 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 	}
 	comp_init_write_cursor(merged_level, handle, comp_req->dst_level, FD);
 
+	//initialize LRU cache for storing chunks of segments when medium log goes in place
+	if (merged_level->level_id == MEDIUM_INPLACE)
+		merged_level->medium_log_LRU_cache = init_LRU();
+
 	log_info("Src [%u][%u] size = %llu", comp_req->src_level, comp_req->src_tree,
 		 handle->db_desc->levels[comp_req->src_level].level_size[comp_req->src_tree]);
 	if (comp_roots.dst_root)
@@ -1293,6 +1348,10 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 	merged_level->handle->db_desc->levels[comp_req->dst_level].root_w[1] =
 		(struct node_header *)REAL_ADDRESS(merged_level->root_offt);
 	assert(merged_level->handle->db_desc->levels[comp_req->dst_level].root_w[1]->type == rootNode);
+
+	if (merged_level->level_id == MEDIUM_INPLACE)
+		destroy_LRU(merged_level->medium_log_LRU_cache);
+
 	free(merged_level);
 
 	//***************************************************************

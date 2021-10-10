@@ -6,3 +6,4 @@ clean_interval: 60
 growth_factor: 4
 clean_size: 500000
 fastmap_on: 0
+segment_LRU_cache_size: 400

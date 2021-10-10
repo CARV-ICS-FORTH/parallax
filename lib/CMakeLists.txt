@@ -16,6 +16,7 @@ set(LIB_C_SOURCE_FILES
     btree/compaction_daemon.c
     btree/dynamic_leaf.c
     btree/gc.c
+    btree/segment_LRU_cache.c
     btree/segment_allocator.c
     btree/set_options.c
     scanner/min_max_heap.c

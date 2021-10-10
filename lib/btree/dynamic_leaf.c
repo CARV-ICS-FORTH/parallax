@@ -706,7 +706,7 @@ void write_data_in_dynamic_leaf(struct write_dynamic_leaf_args *args)
 		if (kv_format == KV_FORMAT) {
 			leaf->header.leaf_log_size += append_kv_inplace(dest, key_value_buf, key_value_size);
 		} else {
-			char *pointer = (char *)(*(uint64_t *)(key_value_buf + PREFIX_SIZE));
+			char *pointer = key_value_buf;
 			uint32_t key_size = KEY_SIZE(pointer);
 			uint32_t value_size = VALUE_SIZE(pointer + key_size + sizeof(uint32_t));
 			//log_info("Toumpa time Key is %u:%s value size %u",key_size,pointer+4,value_size);
