@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include <log.h>
@@ -276,28 +277,34 @@ inline int isValid(scannerHandle *sc)
 	return sc->keyValue != NULL;
 }
 
-int32_t getKeySize(scannerHandle *sc)
+int32_t get_key_size(scannerHandle *sc)
 {
 	return *(int32_t *)(sc->keyValue);
 }
 
-void *getKeyPtr(scannerHandle *sc)
+void *get_key_ptr(scannerHandle *sc)
 {
 	return (void *)((char *)(sc->keyValue) + sizeof(int32_t));
 }
 
-int32_t getValueSize(scannerHandle *sc)
+int32_t get_value_size(scannerHandle *sc)
 {
-	int32_t key_size = getKeySize(sc);
+	int32_t key_size = get_key_size(sc);
 	int32_t *val_ptr = (int32_t *)((char *)(sc->keyValue) + sizeof(int32_t) + key_size);
 	return *val_ptr;
 }
 
-void *getValuePtr(scannerHandle *sc)
+void *get_value_ptr(scannerHandle *sc)
 {
-	int32_t key_size = getKeySize(sc);
+	int32_t key_size = get_key_size(sc);
 	char *val_ptr = (char *)(sc->keyValue) + sizeof(int32_t) + key_size;
 	return val_ptr + sizeof(int32_t);
+}
+
+uint32_t get_kv_size(scannerHandle *sc)
+{
+	uint32_t kv_size = sizeof(uint32_t) + get_key_size(sc) + sizeof(uint32_t) + get_value_size(sc);
+	return kv_size;
 }
 
 int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER_MODE mode)

@@ -230,8 +230,8 @@ void scan_db(db_descriptor *db_desc, volume_descriptor *volume_desc, stack *mark
 	init_dirty_scanner(sc, &handle, start_key, GREATER_OR_EQUAL);
 
 	while (isValid(sc)) {
-		key = getKeyPtr(sc);
-		value = getValuePtr(sc);
+		key = get_key_ptr(sc);
+		value = get_value_ptr(sc);
 		if (!value->moved) {
 			segments_toreclaim[segment_count].segment_offt = *key;
 			segments_toreclaim[segment_count++].value = *value;

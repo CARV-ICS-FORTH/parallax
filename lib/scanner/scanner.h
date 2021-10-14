@@ -64,11 +64,11 @@ void init_dirty_scanner(scannerHandle *sc, db_handle *handle, void *start_key, c
 
 int32_t getNext(scannerHandle *sc);
 int isValid(scannerHandle *sc);
-int32_t getKeySize(scannerHandle *sc);
-void *getKeyPtr(scannerHandle *sc);
-int32_t getValueSize(scannerHandle *sc);
-void *getValuePtr(scannerHandle *sc);
-
+int32_t get_key_size(scannerHandle *sc);
+void *get_key_ptr(scannerHandle *sc);
+int32_t get_value_size(scannerHandle *sc);
+void *get_value_ptr(scannerHandle *sc);
+uint32_t get_kv_size(scannerHandle *sc);
 /**
  * __seek_scanner: positions the cursor to the appropriate position
  * returns:
