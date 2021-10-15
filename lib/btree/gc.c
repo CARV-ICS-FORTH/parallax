@@ -220,6 +220,7 @@ void scan_db(db_descriptor *db_desc, volume_descriptor *volume_desc, stack *mark
 
 	*(uint32_t *)start_key = 1;
 	scannerHandle *sc = (scannerHandle *)calloc(1, sizeof(scannerHandle));
+	sc->type_of_scanner = FORWARD_SCANNER;
 	assert(segments_toreclaim);
 
 	if (!sc) {

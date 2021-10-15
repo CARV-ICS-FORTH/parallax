@@ -206,6 +206,7 @@ class ParallaxDB : public YCSBDB {
 			exit(EXIT_FAILURE);
 		}
 
+		sh->type_of_scanner = FORWARD_SCANNER;
 		init_dirty_scanner(sh, dbs[hash_fn(key) % db_num], key_buf, GREATER_OR_EQUAL);
 
 		while (isValid(sh)) {

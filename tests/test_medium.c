@@ -181,6 +181,7 @@ static void validate_number_of_kvs(db_handle *hd, uint64_t num_keys)
 		log_fatal("Error calloc did not allocate memory\n");
 		exit(EXIT_FAILURE);
 	}
+	sc->type_of_scanner = FORWARD_SCANNER;
 	init_dirty_scanner(sc, hd, start_key, GREATER_OR_EQUAL);
 	uint64_t key_count = 1;
 	while (isValid(sc)) {
@@ -237,10 +238,13 @@ static void validate_random_size_of_kvs(db_handle *hd, uint64_t from, uint64_t t
 	char *key_prefix;
 	uint64_t kv_size;
 	scannerHandle *sc = (scannerHandle *)calloc(1, sizeof(scannerHandle));
+
 	if (!sc) {
 		log_info("Calloc returned NULL, not enough memory, exiting...");
 		exit(EXIT_FAILURE);
 	}
+	sc->type_of_scanner = FORWARD_SCANNER;
+
 	key k;
 
 	init_kv[key_type](&kv_size, &key_prefix, RANDOM);
@@ -275,10 +279,13 @@ static void validate_static_size_of_kvs(db_handle *hd, uint64_t from, uint64_t t
 	char *key_prefix;
 	uint64_t kv_size;
 	scannerHandle *sc = (scannerHandle *)calloc(1, sizeof(scannerHandle));
+
 	if (!sc) {
 		log_info("Calloc returned NULL, not enough memory, exiting...");
 		exit(EXIT_FAILURE);
 	}
+
+	sc->type_of_scanner = FORWARD_SCANNER;
 	key k;
 
 	init_kv[key_type](&kv_size, &key_prefix, STATIC);
@@ -301,6 +308,35 @@ static void validate_static_size_of_kvs(db_handle *hd, uint64_t from, uint64_t t
 			assert(0);
 		}
 	}
+}
+
+static void validate_number_of_kvs_reversally(db_handle *hd, uint64_t num_keys)
+{
+	scannerHandle *sc = (scannerHandle *)calloc(1, sizeof(scannerHandle));
+	sc->type_of_scanner = BACKWARD_SCANNER;
+
+	seek_to_last(sc, hd);
+	assert(sc->keyValue != NULL);
+	uint64_t key_count = 1;
+
+	while (isValid(sc)) {
+		if (getPrev(sc) == END_OF_DATABASE)
+			break;
+
+		key_count++;
+	}
+
+	if (key_count != num_keys) {
+		log_fatal("Reverse scanner did not found all keys, found %lu out of %lu. Phase 4 validator failed...",
+			  key_count, num_keys);
+		assert(0);
+	}
+}
+
+static void test_reverse_scans(db_handle *hd, uint64_t num_keys)
+{
+	log_info("Testing reverse scans");
+	validate_number_of_kvs_reversally(hd, num_keys);
 }
 
 static void validate_kvs(db_handle *hd, uint64_t num_keys, uint64_t small_kv_perc, uint64_t medium_kv_perc,
@@ -338,6 +374,9 @@ static void validate_kvs(db_handle *hd, uint64_t num_keys, uint64_t small_kv_per
 	validate_serially(hd, 0, large_num_keys / 2, LARGE);
 	log_info("Validating %lu small static size keys...", small_num_keys / 2);
 	validate_serially(hd, 0, small_num_keys / 2, SMALL);
+
+	//the FORWARD scans have been tested inside validate_kvs. Now its time for the backward scans
+	test_reverse_scans(hd, num_keys);
 
 	return;
 }

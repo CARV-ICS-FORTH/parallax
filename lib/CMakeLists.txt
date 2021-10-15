@@ -20,6 +20,7 @@ set(LIB_C_SOURCE_FILES
     btree/segment_allocator.c
     btree/set_options.c
     scanner/min_max_heap.c
+    scanner/max_min_heap.c
     scanner/scanner.c
     scanner/stack.c)
 
