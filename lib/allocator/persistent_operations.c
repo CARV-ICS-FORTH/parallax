@@ -178,6 +178,55 @@ void force_snapshot(volume_descriptor *volume_desc)
 	snapshot(volume_desc);
 }
 
+//<new_persistent_design>
+void pr_lock_region_superblock(struct db_descriptor *db_desc)
+{
+	pthread_mutex_lock(&db_desc->my_superblock_lock);
+}
+
+void pr_unlock_region_superblock(struct db_descriptor *db_desc)
+{
+	pthread_mutex_unlock(&db_desc->my_superblock_lock);
+}
+
+void pr_flush_region_superblock(struct db_descriptor *db_desc)
+{
+	ssize_t total_bytes_written = 0;
+	ssize_t bytes_written = 0;
+	ssize_t size = sizeof(struct pr_region_superblock);
+	while (total_bytes_written < size) {
+		bytes_written = pwrite(db_desc->my_volume->my_fd, &db_desc->my_superblock, size - total_bytes_written,
+				       db_desc->my_superblock_offt + total_bytes_written);
+		if (bytes_written == -1) {
+			log_fatal("Failed to write region's %s superblock", db_desc->db_name);
+			perror("Reason");
+			exit(EXIT_FAILURE);
+		}
+		total_bytes_written += bytes_written;
+	}
+}
+
+void pr_read_region_superblock(struct db_descriptor *db_desc)
+{
+	//where is my superblock
+	ssize_t total_bytes_written = 0;
+	ssize_t bytes_written = 0;
+	ssize_t size = sizeof(struct pr_region_superblock);
+
+	while (total_bytes_written < size) {
+		bytes_written = pwrite(db_desc->my_volume->my_fd, &db_desc->my_superblock, size - total_bytes_written,
+				       db_desc->my_superblock_offt + total_bytes_written);
+		if (bytes_written == -1) {
+			log_fatal("Failed to read region's %s superblock", db_desc->db_name);
+			perror("Reason");
+			assert(0);
+			exit(EXIT_FAILURE);
+		}
+		total_bytes_written += bytes_written;
+	}
+}
+
+//</new_persistent_design>
 void pr_flush_log_tail(struct db_descriptor *db_desc, struct volume_descriptor *volume_desc,
 		       struct log_descriptor *log_desc)
 {

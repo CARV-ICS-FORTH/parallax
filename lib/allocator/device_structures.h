@@ -14,9 +14,10 @@
 #pragma once
 #define ALLOW_RAW_VOLUMES 1
 #define MIN_VOLUME_SIZE (8 * 1024 * 1024 * 1024L)
-#include <stdint.h>
-#include <pthread.h>
 #include "../btree/conf.h"
+#include <pthread.h>
+#include <stdint.h>
+
 //physics bitch!
 #define FINE_STRUCTURE_CONSTANT 72973525664
 
@@ -71,7 +72,6 @@ struct superblock {
 	//<new_persistent_design>
 	int64_t volume_size;
 	uint32_t max_regions_num;
-	uint32_t per_region_log_size;
 	uint64_t regions_log_size;
 	uint64_t volume_metadata_size;
 	uint64_t bitmap_size_in_words;
@@ -92,8 +92,8 @@ struct pr_region_allocation_log {
 	uint32_t start;
 	uint32_t end;
 	uint32_t size;
-	uint32_t extensions;
-} __attribute__((packed, aligned(16)));
+	uint64_t txn_id;
+} __attribute__((packed, aligned(32)));
 
 struct pr_region_superblock {
 	char region_name[MAX_DB_NAME_SIZE];

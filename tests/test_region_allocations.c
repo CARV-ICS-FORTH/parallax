@@ -13,18 +13,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 #define _GNU_SOURCE
-#include <stdio.h>
-#include <stdint.h>
-#include <pthread.h>
-#include <sched.h>
-#include <stdlib.h>
-#include <assert.h>
-#include <string.h>
-#include <unistd.h>
-#include <log.h>
 #include "../lib/allocator/device_structures.h"
 #include "../lib/allocator/volume_manager.h"
 #include "../lib/btree/btree.h"
+#include <assert.h>
+#include <log.h>
+#include <pthread.h>
+#include <sched.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
 
 static void free_device(struct volume_descriptor *volume_desc, uint64_t capacity)
 {

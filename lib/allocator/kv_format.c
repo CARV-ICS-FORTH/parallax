@@ -1,22 +1,21 @@
 #define _GNU_SOURCE
 #define _LARGEFILE64_SOURCE
+#include "../btree/conf.h"
+#include "mem_structures.h"
+#include "volume_manager.h"
 #include <errno.h>
-#include <stdint.h>
-#include <string.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <unistd.h>
 #include <fcntl.h>
 #include <log.h>
-#include "volume_manager.h"
-#include "mem_structures.h"
-#include "../btree/conf.h"
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
 
-#define KVF_NUM_OPTIONS 3
-enum kvf_options { DEVICE = 0, MAX_REGIONS_NUM, PER_REGION_LOG_SIZE };
+#define KVF_NUM_OPTIONS 2
+enum kvf_options { DEVICE = 0, MAX_REGIONS_NUM };
 static char *kvf_device_name = NULL;
 static uint32_t kvf_max_regions_num = 0;
-static uint32_t kvf_per_region_log_size = 0;
 
 static void *kvf_posix_calloc(size_t size)
 {
@@ -31,8 +30,7 @@ static void *kvf_posix_calloc(size_t size)
 
 static char *kvf_options[] = { "--device", "--max_regions_num", "--per_region_log_size" };
 static char *kvf_help = "Usage ./kv_format <options> Where options include:\n --device <device name>,\n \
-	--max_regions_num <Maximum number of regions to host> \n \
-	--per_region_log_size <Size of the per region log in bytes for peristing allocation operations in MB>\n";
+	--max_regions_num <Maximum number of regions to host> \n";
 
 static void kvf_parse_options(int argc, char **argv)
 {
@@ -58,16 +56,6 @@ static void kvf_parse_options(int argc, char **argv)
 					kvf_max_regions_num = strtoul(argv[i + 1], &ptr, 10);
 					break;
 				}
-				case PER_REGION_LOG_SIZE: {
-					if (i + 1 >= argc) {
-						log_fatal("Wrong arguments number %s", kvf_help);
-						exit(EXIT_FAILURE);
-					}
-					char *ptr;
-					kvf_per_region_log_size = strtoul(argv[i + 1], &ptr, 10);
-					kvf_per_region_log_size = kvf_per_region_log_size * 1024 * 1024;
-					break;
-				}
 				}
 				break;
 			}
@@ -81,11 +69,6 @@ static void kvf_parse_options(int argc, char **argv)
 
 	if (kvf_max_regions_num == 0) {
 		log_fatal("Max region number not specified help:\n %s", kvf_help);
-		exit(EXIT_FAILURE);
-	}
-
-	if (kvf_per_region_log_size == 0) {
-		log_fatal("Log size per region not specified %s help:\n", kvf_help);
 		exit(EXIT_FAILURE);
 	}
 }
@@ -106,7 +89,7 @@ static void kvf_write_buffer(int fd, char *buffer, ssize_t start, ssize_t size, 
 	}
 }
 
-static void kvf_init_superblock_array(char *device_name, uint32_t max_regions_num, uint32_t per_region_log_size)
+static void kvf_init_superblock_array(char *device_name, uint32_t max_regions_num)
 {
 	off64_t device_size = 0;
 	log_info("Opening Volume %s", device_name);
@@ -125,7 +108,7 @@ static void kvf_init_superblock_array(char *device_name, uint32_t max_regions_nu
 		perror("ioctl");
 		exit(EXIT_FAILURE);
 	}
-	log_info("Found device of %lld bytes", device_size);
+	log_info("Found volume of %lld bytes", device_size);
 
 	if (device_size < MIN_VOLUME_SIZE) {
 		log_fatal("Sorry minimum supported volume size is %lld GB actual size %lld GB",
@@ -140,26 +123,13 @@ static void kvf_init_superblock_array(char *device_name, uint32_t max_regions_nu
 	}
 	free(rs);
 	rs = NULL;
-	// Now initialize the log part
-	uint32_t buffer_entries = 8192;
-	uint32_t buffer_size = buffer_entries * sizeof(struct pr_region_operation_entry);
-	char *buffer = kvf_posix_calloc(buffer_size);
-	uint32_t total_entries = per_region_log_size / sizeof(struct pr_region_operation_entry);
-	uint32_t entries = 0;
-	while (entries < total_entries) {
-		kvf_write_buffer(fd, buffer, 0, buffer_size, dev_offt);
-		dev_offt += buffer_size;
-		entries += buffer_entries;
-	}
 	//Finally write accounting information
 	struct superblock *S = (struct superblock *)kvf_posix_calloc(sizeof(struct superblock));
 	S->volume_size = device_size;
 	S->magic_number = FINE_STRUCTURE_CONSTANT;
 	S->max_regions_num = max_regions_num;
-	S->per_region_log_size = per_region_log_size;
-	S->regions_log_size = max_regions_num * (total_entries * sizeof(struct pr_region_operation_entry));
-	S->volume_metadata_size = sizeof(struct superblock) +
-				  (S->max_regions_num * sizeof(struct pr_region_superblock)) + S->regions_log_size;
+	S->volume_metadata_size =
+		sizeof(struct superblock) + (S->max_regions_num * sizeof(struct pr_region_superblock));
 
 	if (S->volume_metadata_size % SEGMENT_SIZE) {
 		S->paddedSpace = (SEGMENT_SIZE - (S->volume_metadata_size % SEGMENT_SIZE));
@@ -177,8 +147,6 @@ static void kvf_init_superblock_array(char *device_name, uint32_t max_regions_nu
 	kvf_write_buffer(fd, (char *)S, 0, sizeof(struct superblock), 0);
 	log_info("Successfully formatted volume %s", device_name);
 	log_info("Size(in bytes) %llu and in GB: %llu", S->volume_size, device_size / (1024 * 1024 * 1024));
-	log_info("Per region log size %lu total region log area in bytes %llu", per_region_log_size,
-		 S->regions_log_size);
 	log_info("In memory bitmap size in words %llu and unmapped space in bytes: %llu", S->bitmap_size_in_words,
 		 S->unmappedSpace);
 	log_info("Volume %s metadata size in bytes: %llu and in MB: %llu paddedSpace %llu bytes", device_name,
@@ -190,13 +158,12 @@ static void kvf_init_superblock_array(char *device_name, uint32_t max_regions_nu
 		log_fatal("Failed to close file %s", device_name);
 		exit(EXIT_FAILURE);
 	}
-	free(buffer);
 	free(kvf_device_name);
 }
 
 int main(int argc, char **argv)
 {
 	kvf_parse_options(argc, argv);
-	kvf_init_superblock_array(kvf_device_name, kvf_max_regions_num, kvf_per_region_log_size);
+	kvf_init_superblock_array(kvf_device_name, kvf_max_regions_num);
 	return 1;
 }

@@ -38,6 +38,7 @@
 #include "device_structures.h"
 #include "mem_structures.h"
 #include "volume_manager.h"
+#include "redo_undo_log.h"
 #include "../btree/btree.h"
 #include "../btree/conf.h"
 #include "../btree/segment_allocator.h"

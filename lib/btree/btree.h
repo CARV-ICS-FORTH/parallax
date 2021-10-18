@@ -4,19 +4,20 @@
  *  @author Giorgos Xanthakis  (gxanth@ics.forth.gr)
  */
 #pragma once
-#include <pthread.h>
-#include <semaphore.h>
-#include <stdlib.h>
-#include <stdint.h>
-#include <sys/types.h>
-#include <limits.h>
-#if ENABLE_BLOOM_FILTERS
-#include <bloom.h>
-#endif
 #include "conf.h"
 #include "../allocator/device_structures.h"
 #include "../allocator/log_structures.h"
 #include "../allocator/volume_manager.h"
+#if ENABLE_BLOOM_FILTERS
+#include <bloom.h>
+#endif
+#include <limits.h>
+#include <pthread.h>
+#include <semaphore.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <sys/types.h>
+
 #define SUCCESS 4
 #define FAILED 5
 
@@ -345,6 +346,15 @@ typedef struct db_descriptor {
 #if MEASURE_MEDIUM_INPLACE
 	uint64_t count_medium_inplace;
 #endif
+
+	//<new_persistent_design>
+	struct pr_region_superblock my_superblock;
+	pthread_mutex_t my_superblock_lock;
+	struct rul_log_descriptor *log_desc;
+	struct volume_descriptor *my_volume;
+	uint64_t my_superblock_offt;
+	//</new_persistent_design>
+
 	pthread_cond_t client_barrier;
 	pthread_cond_t compaction_cond;
 	pthread_mutex_t compaction_structs_lock;
@@ -409,6 +419,12 @@ void recover_region(recovery_request *rh);
 void snapshot(volume_descriptor *volume_desc);
 void pr_flush_log_tail(struct db_descriptor *db_desc, struct volume_descriptor *volume_desc,
 		       struct log_descriptor *log_desc);
+//<new_persistent_design>
+void pr_read_region_superblock(struct db_descriptor *db_desc);
+void pr_flush_region_superblock(struct db_descriptor *db_desc);
+void pr_lock_region_superblock(struct db_descriptor *db_desc);
+void pr_unlock_region_superblock(struct db_descriptor *db_desc);
+//</new_persistent_design>
 //void commit_db_log(db_descriptor *db_desc, commit_log_info *info);
 //void commit_db_logs_per_volume(volume_descriptor *volume_desc);
 //void commit_db_log(db_descriptor *db_desc, commit_log_info *info);

@@ -1,5 +1,7 @@
 #define _LARGEFILE64_SOURCE
 #define _GNU_SOURCE
+#include "djb2.h"
+#include "volume_manager.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
@@ -9,8 +11,7 @@
 #include <fcntl.h>
 #include <uthash.h>
 #include <log.h>
-#include "volume_manager.h"
-#include "djb2.h"
+
 #define MEM_LOG_WORD_SIZE_IN_BITS 8
 #define MEM_WORDS_PER_BITMAP_BLOCK 512
 
@@ -206,14 +207,14 @@ static uint64_t mem_bitmap_translate_word_to_offt(struct volume_descriptor *volu
 		assert(0);
 		exit(EXIT_FAILURE);
 	} else {
-		log_info("Word is %u start bit %u end bit %u", b->word_id, b->start_bit, b->end_bit);
+		//log_info("Word is %u start bit %u end bit %u", b->word_id, b->start_bit, b->end_bit);
 		uint64_t bytes_per_word = MEM_WORD_SIZE_IN_BITS * SEGMENT_SIZE;
 		uint64_t dev_offt = (bytes_per_word * b->word_id);
 		dev_offt += (b->start_bit * SEGMENT_SIZE);
-		log_info("Dev offt = %llu", dev_offt);
+		//log_info("Dev offt = %llu", dev_offt);
 		dev_offt += volume_desc->my_superblock.volume_metadata_size;
-		log_info("Now is Dev offt = %llu volume_metadata_size %llu", dev_offt,
-			 volume_desc->my_superblock.volume_metadata_size);
+		//log_info("Now is Dev offt = %llu volume_metadata_size %llu", dev_offt,
+		//	 volume_desc->my_superblock.volume_metadata_size);
 		return dev_offt;
 	}
 }
@@ -263,6 +264,7 @@ uint64_t mem_allocate(struct volume_descriptor *volume_desc, uint64_t num_bytes)
 					 volume_desc->volume_name, num_bytes, MAX_ALLOCATION_TRIES);
 				mem_bitmap_reset_pos(volume_desc);
 				free(b_words);
+				assert(0);
 				return 0;
 			} else {
 				++wrap_around;
@@ -406,7 +408,7 @@ static int mem_read_into_buffer(char *buffer, uint32_t start, uint32_t size, off
 	while (bytes_read < size) {
 		bytes = pread(fd, &buffer[bytes_read], size - bytes_read, dev_offt + bytes_read);
 		if (bytes == -1) {
-			log_fatal("Failed to read error code");
+			log_fatal("Failed to read, error code");
 			perror("Error");
 			assert(0);
 			exit(EXIT_FAILURE);
@@ -434,16 +436,24 @@ static void mem_print_volume_info(struct superblock *S, char *volume_name)
  */
 void mem_init_superblock_array(struct volume_descriptor *volume_desc)
 {
-	volume_desc->pr_regions =
-		calloc(1, sizeof(struct pr_superblock_array) +
-				  (volume_desc->my_superblock.max_regions_num * sizeof(struct pr_region_superblock)));
+	int ret = posix_memalign((void **)&volume_desc->pr_regions, ALIGNMENT_SIZE,
+				 sizeof(struct pr_superblock_array) + (volume_desc->my_superblock.max_regions_num *
+								       sizeof(struct pr_region_superblock)));
+
+	if (ret) {
+		log_fatal("Failed to allocate regions array!");
+		exit(EXIT_FAILURE);
+	}
+
 	volume_desc->pr_regions->size = volume_desc->my_superblock.max_regions_num;
 	off64_t dev_offt = sizeof(struct superblock);
 	uint32_t size = volume_desc->my_superblock.max_regions_num * sizeof(struct pr_region_superblock);
+
 	if (!mem_read_into_buffer((char *)volume_desc->pr_regions->region, 0, size, dev_offt, volume_desc->my_fd)) {
 		log_fatal("Failed to read volume's region superblocks!");
 		exit(EXIT_FAILURE);
 	}
+
 	log_info("Restored %s region superblocks in memory", volume_desc->volume_name);
 }
 

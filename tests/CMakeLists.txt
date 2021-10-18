@@ -46,11 +46,18 @@ if(BUILD_TESTING)
   add_executable(
     test_region_allocations
     test_region_allocations.c ../lib/allocator/volume_mem_allocator.c
-    ../lib/allocator/djb2.c)
+    ../lib/allocator/djb2.c ../lib/allocator/redo_undo_log.c)
   target_link_libraries(test_region_allocations "${PROJECT_NAME}"
                         ${DEPENDENCIES})
   add_test(NAME test_region_allocations
            COMMAND $<TARGET_FILE:test_region_allocations>)
+
+  add_executable(
+    test_redo_undo_log
+    test_redo_undo_log.c ../lib/allocator/volume_mem_allocator.c
+    ../lib/allocator/djb2.c ../lib/allocator/redo_undo_log.c)
+  target_link_libraries(test_redo_undo_log "${PROJECT_NAME}" ${DEPENDENCIES})
+  add_test(NAME test_redo_undo_log COMMAND $<TARGET_FILE:test_redo_undo_log>)
 
   add_subdirectory(Surrogates)
 endif()
