@@ -12,7 +12,7 @@
 
 static void rul_flush_log_chunk(struct db_descriptor *db_desc, uint32_t chunk_id)
 {
-	struct rul_log_descriptor *log_desc = db_desc->log_desc;
+	struct rul_log_descriptor *log_desc = db_desc->allocation_log;
 
 	//check if pending
 	while (log_desc->pending_IO[chunk_id]) {
@@ -36,7 +36,8 @@ static void rul_flush_log_chunk(struct db_descriptor *db_desc, uint32_t chunk_id
 		ssize_t total_bytes_written = 0;
 
 		while (total_bytes_written < size) {
-			bytes_written = pwrite(db_desc->my_volume->my_fd, db_desc->log_desc->my_segment.chunk[chunk_id],
+			bytes_written = pwrite(db_desc->my_volume->my_fd,
+					       db_desc->allocation_log->my_segment.chunk[chunk_id],
 					       size - total_bytes_written, dev_offt + total_bytes_written);
 			if (bytes_written == -1) {
 				log_fatal("Failed to write region's %s superblock", db_desc->db_name);
@@ -50,7 +51,7 @@ static void rul_flush_log_chunk(struct db_descriptor *db_desc, uint32_t chunk_id
 
 static void rul_aflush_log_chunk(struct db_descriptor *db_desc, uint32_t chunk_id)
 {
-	struct rul_log_descriptor *log_desc = db_desc->log_desc;
+	struct rul_log_descriptor *log_desc = db_desc->allocation_log;
 
 	//check if pending
 	while (log_desc->pending_IO[chunk_id]) {
@@ -88,7 +89,7 @@ static void rul_aflush_log_chunk(struct db_descriptor *db_desc, uint32_t chunk_i
 
 static void rul_wait_all_chunk_IOs(struct db_descriptor *db_desc, uint32_t chunk_num)
 {
-	struct rul_log_descriptor *log_desc = db_desc->log_desc;
+	struct rul_log_descriptor *log_desc = db_desc->allocation_log;
 	for (uint32_t i = 0; i < chunk_num; ++i) {
 		//check if pending
 		while (log_desc->pending_IO[i]) {
@@ -114,7 +115,7 @@ static void rul_wait_all_chunk_IOs(struct db_descriptor *db_desc, uint32_t chunk
 
 static void rul_flush_last_chunk(struct db_descriptor *db_desc)
 {
-	struct rul_log_descriptor *log_desc = db_desc->log_desc;
+	struct rul_log_descriptor *log_desc = db_desc->allocation_log;
 	// Write with explicit I/O the segment_header
 	ssize_t total_bytes_written = 0;
 	ssize_t bytes_written = 0;
@@ -144,10 +145,10 @@ static void rul_flush_last_chunk(struct db_descriptor *db_desc)
 		}
 	}
 	size = RUL_LOG_CHUNK_SIZE_IN_BYTES + RUL_SEGMENT_FOOTER_SIZE_IN_BYTES;
-	dev_offt = (db_desc->log_desc->head_dev_offt + SEGMENT_SIZE) - size;
+	dev_offt = (db_desc->allocation_log->head_dev_offt + SEGMENT_SIZE) - size;
 
 	while (total_bytes_written < size) {
-		bytes_written = pwrite(db_desc->my_volume->my_fd, db_desc->log_desc->my_segment.chunk[chunk_id],
+		bytes_written = pwrite(db_desc->my_volume->my_fd, db_desc->allocation_log->my_segment.chunk[chunk_id],
 				       size - total_bytes_written, dev_offt + total_bytes_written);
 		if (bytes_written == -1) {
 			log_fatal("Failed to write region's %s superblock", db_desc->db_name);
@@ -160,12 +161,16 @@ static void rul_flush_last_chunk(struct db_descriptor *db_desc)
 
 static void rul_read_last_segment(struct db_descriptor *db_desc)
 {
+	(void)db_desc;
+	log_fatal("Fix it gesalous");
+	exit(EXIT_FAILURE);
+#if 0
 	ssize_t total_bytes_read = 0;
 	ssize_t bytes_read = 0;
 	ssize_t size = SEGMENT_SIZE;
 	while (total_bytes_read < size) {
-		bytes_read = pwrite(db_desc->my_volume->my_fd, &db_desc->log_desc->my_segment, size - total_bytes_read,
-				    db_desc->my_superblock_offt + total_bytes_read);
+		bytes_read = pwrite(db_desc->my_volume->my_fd, &db_desc->allocation_log->my_segment,
+				    size - total_bytes_read, db_desc->my_superblock_offt + total_bytes_read);
 		if (bytes_read == -1) {
 			log_fatal("Failed to write region's %s superblock", db_desc->db_name);
 			perror("Reason");
@@ -173,6 +178,7 @@ static void rul_read_last_segment(struct db_descriptor *db_desc)
 		}
 		total_bytes_read += bytes_read;
 	}
+#endif
 }
 
 /**
@@ -182,7 +188,7 @@ static void rul_read_last_segment(struct db_descriptor *db_desc)
 static int rul_append(struct db_descriptor *db_desc, struct rul_log_entry *entry)
 {
 	int ret = 0;
-	struct rul_log_descriptor *log_desc = db_desc->log_desc;
+	struct rul_log_descriptor *log_desc = db_desc->allocation_log;
 
 	if (log_desc->curr_segment_entry > RUL_SEGMENT_MAX_ENTRIES) {
 		// Time to add a new segment
@@ -254,7 +260,7 @@ void rul_log_init(struct db_descriptor *db_desc)
 	log_desc->trans_map = NULL;
 	log_desc->txn_id = db_desc->my_superblock.allocation_log.txn_id;
 
-	db_desc->log_desc = log_desc;
+	db_desc->allocation_log = log_desc;
 
 	if (log_desc->head_dev_offt == 0) {
 		// empty log do the first allocation
@@ -292,7 +298,7 @@ void rul_log_init(struct db_descriptor *db_desc)
 
 uint64_t rul_start_txn(struct db_descriptor *db_desc)
 {
-	struct rul_log_descriptor *log_desc = db_desc->log_desc;
+	struct rul_log_descriptor *log_desc = db_desc->allocation_log;
 	uint64_t txn_id = __sync_fetch_and_add(&log_desc->txn_id, 1);
 	//log_info("Start transaction %llu id curr segment entry %llu", txn_id, db_desc->log_desc->curr_segment_entry);
 	// check if (accidentally) txn exists already
@@ -317,7 +323,7 @@ uint64_t rul_start_txn(struct db_descriptor *db_desc)
 
 int rul_add_entry_in_txn_buf(struct db_descriptor *db_desc, struct rul_log_entry *entry)
 {
-	struct rul_log_descriptor *log_desc = db_desc->log_desc;
+	struct rul_log_descriptor *log_desc = db_desc->allocation_log;
 	uint64_t txn_id = entry->txn_id;
 	struct rul_transaction *my_transaction;
 	HASH_FIND_PTR(log_desc->trans_map, &txn_id, my_transaction);
@@ -346,7 +352,7 @@ int rul_add_entry_in_txn_buf(struct db_descriptor *db_desc, struct rul_log_entry
 
 int rul_flush_txn(struct db_descriptor *db_desc, uint64_t txn_id)
 {
-	struct rul_log_descriptor *log_desc = db_desc->log_desc;
+	struct rul_log_descriptor *log_desc = db_desc->allocation_log;
 	struct rul_transaction *my_transaction;
 	HASH_FIND_PTR(log_desc->trans_map, &txn_id, my_transaction);
 

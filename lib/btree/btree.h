@@ -1,8 +1,17 @@
-/** @file btree.h
- *  @brief
- *  @author Giorgos Saloustros (gesalous@ics.forth.gr)
- *  @author Giorgos Xanthakis  (gxanth@ics.forth.gr)
- */
+// Copyright [2021] [FORTH-ICS]
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #pragma once
 #include "conf.h"
 #include "../allocator/device_structures.h"
@@ -350,9 +359,9 @@ typedef struct db_descriptor {
 	//<new_persistent_design>
 	struct pr_region_superblock my_superblock;
 	pthread_mutex_t my_superblock_lock;
-	struct rul_log_descriptor *log_desc;
+	struct rul_log_descriptor *allocation_log;
 	struct volume_descriptor *my_volume;
-	uint64_t my_superblock_offt;
+	uint32_t my_superblock_idx;
 	//</new_persistent_design>
 
 	pthread_cond_t client_barrier;

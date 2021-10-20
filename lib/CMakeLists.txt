@@ -10,6 +10,8 @@ option(
 set(LIB_C_SOURCE_FILES
     allocator/allocator.c
     allocator/persistent_operations.c
+    allocator/volume_mem_allocator.c
+    allocator/djb2.c
     allocator/recovery.c
     api/parallax.c
     btree/btree.c

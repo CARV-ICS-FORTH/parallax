@@ -1,11 +1,12 @@
-#include <assert.h>
-#include <stdlib.h>
-#include <signal.h>
-#include <log.h>
-#include "segment_allocator.h"
-#include "conf.h"
+
 #include "../allocator/device_structures.h"
 #include "../allocator/volume_manager.h"
+#include "conf.h"
+#include "segment_allocator.h"
+#include <assert.h>
+#include <log.h>
+#include <signal.h>
+#include <stdlib.h>
 
 extern uint64_t MAPPED;
 
@@ -91,6 +92,8 @@ static void *get_space(volume_descriptor *volume_desc, level_descriptor *level_d
 		/*we need to go to the actual allocator to get space*/
 		if (level_desc->level_id != 0) {
 			MUTEX_LOCK(&volume_desc->bitmap_lock);
+			//<new_persitent_design>
+			//</new_persistent_design>
 			new_segment = (segment_header *)allocate(volume_desc, SEGMENT_SIZE);
 			MUTEX_UNLOCK(&volume_desc->bitmap_lock);
 			req.in_mem = 0;

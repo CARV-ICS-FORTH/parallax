@@ -60,7 +60,7 @@ int main(int argc, char *argv[])
 	db_desc->my_volume = volume_desc;
 	pr_read_region_superblock(db_desc);
 	rul_log_init(db_desc);
-	log_info("Initialized redo undo log curr segment entry %llu", db_desc->log_desc->curr_segment_entry);
+	log_info("Initialized redo undo log curr segment entry %llu", db_desc->allocation_log->curr_segment_entry);
 
 	log_info("Initialized redo undo log successfully!, starting %d workers", RUL_NUM_THREADS);
 

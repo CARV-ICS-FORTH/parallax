@@ -1,4 +1,4 @@
-// Copyright [2020] [FORTH-ICS]
+// Copyright [2021] [FORTH-ICS]
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -97,6 +97,7 @@ struct pr_region_allocation_log {
 
 struct pr_region_superblock {
 	char region_name[MAX_DB_NAME_SIZE];
+	uint64_t root_r[MAX_LEVELS][NUM_TREES_PER_LEVEL];
 	uint64_t first_segment[MAX_LEVELS][NUM_TREES_PER_LEVEL];
 	uint64_t last_segment[MAX_LEVELS][NUM_TREES_PER_LEVEL];
 	uint64_t offset[MAX_LEVELS][NUM_TREES_PER_LEVEL];

@@ -1,4 +1,4 @@
-// Copyright [2020] [FORTH-ICS]
+// Copyright [2021] [FORTH-ICS]
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -188,8 +188,6 @@ struct db_coordinates {
 	int group_id;
 	int index;
 };
-
-struct db_coordinates locate_db(struct volume_descriptor *volume_desc, char *db_name, char create_db);
 
 int32_t volume_init(char *dev_name, int64_t start, int64_t size, int typeOfVolume);
 
