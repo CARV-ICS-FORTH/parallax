@@ -89,7 +89,13 @@ if __name__ == "__main__":
     minimum_tokens_param = str(args.tokens)
     files_param = ""
     for file in args.files:
+
         files_param += "--files " + file + " "
+
+        # exclude archive dir if there is the lib dir in files
+        if file == "./lib" or file == "lib":
+            files_param += "--exclude " + file + "/archive "
+
     language_param = args.language
 
     cpd_command = f"{cpd_bin} --minimum-tokens {minimum_tokens_param} {files_param} --language {language_param}"
