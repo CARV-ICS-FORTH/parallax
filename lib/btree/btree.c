@@ -983,13 +983,8 @@ char db_close(db_handle *handle)
 	return KREON_OK;
 }
 
-uint8_t insert_key_value(db_handle *handle, void *key, void *value, uint32_t key_size, uint32_t value_size)
+void wait_for_available_level0_tree(db_handle *handle)
 {
-	bt_insert_req ins_req;
-	char __tmp[KV_MAX_SIZE];
-	char *key_buf = __tmp;
-	double kv_ratio;
-	uint32_t kv_size;
 	int active_tree = handle->db_desc->levels[0].active_tree;
 
 	while (handle->db_desc->levels[0].level_size[active_tree] > handle->db_desc->levels[0].max_level_size) {
@@ -1006,6 +1001,17 @@ uint8_t insert_key_value(db_handle *handle, void *key, void *value, uint32_t key
 		active_tree = handle->db_desc->levels[0].active_tree;
 		pthread_mutex_unlock(&handle->db_desc->client_barrier_lock);
 	}
+}
+
+uint8_t insert_key_value(db_handle *handle, void *key, void *value, uint32_t key_size, uint32_t value_size)
+{
+	bt_insert_req ins_req;
+	char __tmp[KV_MAX_SIZE];
+	char *key_buf = __tmp;
+	double kv_ratio;
+	uint32_t kv_size;
+
+	wait_for_available_level0_tree(handle);
 
 	if (key_size > MAX_KEY_SIZE) {
 		log_info("Keys > %d bytes are not supported!", MAX_KEY_SIZE);
@@ -1017,9 +1023,9 @@ uint8_t insert_key_value(db_handle *handle, void *key, void *value, uint32_t key
 
 	if (kv_size > KV_MAX_SIZE) {
 		log_fatal("Key buffer overflow");
-		BREAKPOINT;
 		exit(EXIT_FAILURE);
 	}
+
 	/*prepare the request*/
 	*(uint32_t *)key_buf = key_size;
 	memcpy((void *)(uint64_t)key_buf + sizeof(uint32_t), key, key_size);
@@ -1523,23 +1529,8 @@ uint8_t _insert_key_value(bt_insert_req *ins_req)
 	db_handle *handle = ins_req->metadata.handle;
 	db_descriptor *db_desc = ins_req->metadata.handle->db_desc;
 	uint8_t rc = SUCCESS;
-	int active_tree = handle->db_desc->levels[0].active_tree;
 
-	while (handle->db_desc->levels[0].level_size[active_tree] > handle->db_desc->levels[0].max_level_size &&
-	       ins_req->metadata.gc_request) {
-		pthread_mutex_lock(&handle->db_desc->client_barrier_lock);
-		active_tree = handle->db_desc->levels[0].active_tree;
-		if (handle->db_desc->levels[0].level_size[active_tree] > handle->db_desc->levels[0].max_level_size) {
-			sem_post(&handle->db_desc->compaction_daemon_interrupts);
-			if (pthread_cond_wait(&handle->db_desc->client_barrier,
-					      &handle->db_desc->client_barrier_lock) != 0) {
-				log_fatal("failed to throttle");
-				exit(EXIT_FAILURE);
-			}
-		}
-		active_tree = handle->db_desc->levels[0].active_tree;
-		pthread_mutex_unlock(&handle->db_desc->client_barrier_lock);
-	}
+	wait_for_available_level0_tree(handle);
 
 	assert(ins_req->metadata.kv_size < 4096);
 	db_desc->dirty = 0x01;
