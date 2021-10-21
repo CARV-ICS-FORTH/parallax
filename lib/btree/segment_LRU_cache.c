@@ -114,9 +114,8 @@ void print_hash_table(struct chunk_hash_entry **hash_table)
 
 struct chunk_LRU_cache *init_LRU(void)
 {
-	struct lib_option *dboptions = NULL;
 	struct lib_option *option;
-	parse_options(&dboptions);
+	parse_options();
 	uint64_t LRU_cache_size;
 	uint64_t chunk_size = KB(256);
 	HASH_FIND_STR(dboptions, "segment_LRU_cache_size", option);
