@@ -123,7 +123,7 @@ struct pr_superblock_array {
 	struct pr_region_superblock region[];
 };
 
-struct pr_region_bitmap {
+struct pr_ownership_registry {
 	uint32_t size;
 	char persistent_bitmap[];
 };
