@@ -259,8 +259,9 @@ static void kvf_init_parallax(char *device_name, uint32_t max_regions_num)
 	free(registry_buffer);
 	registry_buffer = NULL;
 
-	log_info("Registry size: %llu B or %llu KB", registry_size_in_bytes, registry_size_in_bytes / 1024);
-	log_info("All registries size: %llu B or %llu KB", max_regions_num * 2 * registry_size_in_bytes,
+	log_info("Per region ownership registry size: %llu B or %llu KB", registry_size_in_bytes,
+		 registry_size_in_bytes / 1024);
+	log_info("Total ownership registries size: %llu B or %llu KB", max_regions_num * 2 * registry_size_in_bytes,
 		 (max_regions_num * 2 * registry_size_in_bytes) / 1024);
 
 	//Finally write accounting information
@@ -276,12 +277,12 @@ static void kvf_init_parallax(char *device_name, uint32_t max_regions_num)
 	S->unmappedSpace = device_size - mapped_device_size;
 	S->bitmap_size_in_words = registry_size_in_bits / 64;
 	kvf_write_buffer(fd, (char *)S, 0, sizeof(struct superblock), 0);
-	log_info("Successfully formatted volume %s", device_name);
-	log_info("Size(in bytes) %llu and in GB: %llu", S->volume_size, device_size / (1024 * 1024 * 1024));
+	log_info("Size %llu B or %llu GB", S->volume_size, device_size / (1024 * 1024 * 1024));
 	log_info("In memory bitmap size in words %llu or %llu B and unmapped space in bytes: %llu",
 		 S->bitmap_size_in_words, S->bitmap_size_in_words * 8, S->unmappedSpace);
-	log_info("Volume %s metadata size in bytes: %llu and in MB: %llu paddedSpace %llu bytes", device_name,
-		 S->volume_metadata_size, S->volume_metadata_size / (1024 * 1024), S->paddedSpace);
+	log_info(
+		"Volume %s metadata size in bytes: %llu or %llu MB. Padded space in metatata to be segment aligned %llu B",
+		device_name, S->volume_metadata_size, S->volume_metadata_size / (1024 * 1024), S->paddedSpace);
 	free(S);
 	S = NULL;
 
