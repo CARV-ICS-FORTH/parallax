@@ -196,7 +196,6 @@ void snapshot(volume_descriptor *volume_desc);
 
 void allocator_init(volume_descriptor *volume_desc);
 
-void set_priority(uint64_t pageno, char allocation_code, uint64_t num_bytes);
 void *allocate(struct volume_descriptor *volume_desc, uint64_t num_bytes);
 
 void free_block(struct volume_descriptor *volume_desc, void *address, uint32_t length);

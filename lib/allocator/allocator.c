@@ -60,7 +60,6 @@
 struct klist *volume_list = NULL;
 pthread_mutex_t volume_manager_lock = PTHREAD_MUTEX_INITIALIZER;
 
-int32_t DMAP_ACTIVATED = 1;
 /*stats counter*/
 uint64_t internal_tree_cow_for_leaf = 0;
 uint64_t internal_tree_cow_for_index = 0;
@@ -1126,76 +1125,6 @@ static void bitmap_reset_pos(struct volume_descriptor *volume_desc)
 	volume_desc->b_pos.word_id = 0;
 	// log_info("Initialized bitmap pos buddy %d", volume_desc->b_pos.buddy_pair);
 	return;
-}
-
-void set_priority(uint64_t pageno, char allocation_code, uint64_t num_bytes)
-{
-	return;
-	uint64_t num_of_pages = num_bytes / 4096;
-	uint64_t i;
-
-	return;
-	if (DMAP_ACTIVATED) {
-		for (i = 0; i < num_of_pages; i++) {
-			switch (allocation_code) {
-			case GROUP_COW:
-			case NEW_SUPERINDEX:
-			case NEW_GROUP:
-			case NEW_LEVEL_0_TREE:
-			case EXTEND_BUFFER: {
-				if (dmap_set_page_priority(FD, pageno, 0) != 0) {
-					printf("\n*****************************\n[%s:%s:%d]ERROR SETTING "
-					       "PRIORITY to page %" PRIu64 ", not DMAP? deactivating "
-					       "priorities\n*********************"
-					       "*****\n",
-					       __FILE__, __func__, __LINE__, pageno);
-					DMAP_ACTIVATED = 0;
-				}
-				break;
-			}
-			case NEW_ROOT:
-			case INDEX_SPLIT:
-			case KEY_LOG_SPLIT:
-			case COW_FOR_INDEX:
-			case NEW_LEVEL_1_TREE:
-			case KEY_LOG_EXPANSION: {
-				if (dmap_set_page_priority(FD, pageno, 1) != 0) {
-					printf("\n*****\n[%s:%s:%d]ERROR SETTING PRIORITY to page %" PRIu64
-					       ", not DMAP? deactivating priorities\n******\n",
-					       __FILE__, __func__, __LINE__, pageno);
-					DMAP_ACTIVATED = 0;
-				}
-				break;
-			}
-			case LEAF_SPLIT:
-			case COW_FOR_LEAF: {
-				if (dmap_set_page_priority(FD, pageno, 2) != 0) {
-					printf("\n*****\n[%s:%s:%d]ERROR SETTING PRIORITY to page %" PRIu64
-					       ", not DMAP? deactivating priorities\n******\n",
-					       __FILE__, __func__, __LINE__, pageno);
-					DMAP_ACTIVATED = 0;
-				}
-				break;
-			}
-			case KV_LOG_EXPANSION:
-			case REORGANIZATION: {
-				if (dmap_set_page_priority(FD, pageno, 3) != 0) {
-					printf("\n*****\n[%s:%s:%d]ERROR SETTING PRIORITY to page %" PRIu64
-					       ", not DMAP? deactivating priorities\n******\n",
-					       __FILE__, __func__, __LINE__, pageno);
-					DMAP_ACTIVATED = 0;
-				}
-				break;
-			}
-			default: {
-				printf("ERROR UNKNOWN ALLOCATION CODE! [%d]\n", allocation_code);
-				exit(EXIT_FAILURE);
-				break;
-			}
-			}
-			pageno++;
-		}
-	}
 }
 
 static uint32_t bitmap_check_first_n_bits_free(struct bitmap_word *b_word, uint32_t length_bits, uint32_t suffix_bits)

@@ -94,10 +94,9 @@ static uint32_t mem_bitmap_find_suffix(struct mem_bitmap_word *b_word, uint64_t 
 		b_word->end_bit = MEM_WORD_SIZE_IN_BITS;
 		// log_info("Suffix search size found is %u", size_bits);
 		return size_bits;
-	} else {
-		// log_info("Sorry no suffix found");
-		return 0;
 	}
+	// log_info("Sorry no suffix found");
+	return 0;
 }
 
 static uint32_t mem_bitmap_find_nbits_in_word(struct mem_bitmap_word *b_word, uint64_t *round, uint32_t *num_rounds,
@@ -206,17 +205,16 @@ static uint64_t mem_bitmap_translate_word_to_offt(struct volume_descriptor *volu
 		log_fatal("Null word!");
 		assert(0);
 		exit(EXIT_FAILURE);
-	} else {
-		//log_info("Word is %u start bit %u end bit %u", b->word_id, b->start_bit, b->end_bit);
-		uint64_t bytes_per_word = MEM_WORD_SIZE_IN_BITS * SEGMENT_SIZE;
-		uint64_t dev_offt = (bytes_per_word * b->word_id);
-		dev_offt += (b->start_bit * SEGMENT_SIZE);
-		//log_info("Dev offt = %llu", dev_offt);
-		dev_offt += volume_desc->my_superblock.volume_metadata_size;
-		//log_info("Now is Dev offt = %llu volume_metadata_size %llu", dev_offt,
-		//	 volume_desc->my_superblock.volume_metadata_size);
-		return dev_offt;
 	}
+	//log_info("Word is %u start bit %u end bit %u", b->word_id, b->start_bit, b->end_bit);
+	uint64_t bytes_per_word = MEM_WORD_SIZE_IN_BITS * SEGMENT_SIZE;
+	uint64_t dev_offt = (bytes_per_word * b->word_id);
+	dev_offt += (b->start_bit * SEGMENT_SIZE);
+	//log_info("Dev offt = %llu", dev_offt);
+	dev_offt += volume_desc->my_superblock.volume_metadata_size;
+	//log_info("Now is Dev offt = %llu volume_metadata_size %llu", dev_offt,
+	//	 volume_desc->my_superblock.volume_metadata_size);
+	return dev_offt;
 }
 
 uint64_t mem_allocate(struct volume_descriptor *volume_desc, uint64_t num_bytes)
