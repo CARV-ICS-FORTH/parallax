@@ -2,15 +2,15 @@
 #define _GNU_SOURCE
 #include "djb2.h"
 #include "volume_manager.h"
+#include <assert.h>
+#include <fcntl.h>
+#include <log.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <math.h>
-#include <assert.h>
 #include <string.h>
 #include <unistd.h>
-#include <fcntl.h>
 #include <uthash.h>
-#include <log.h>
 
 #define MEM_LOG_WORD_SIZE_IN_BITS 8
 #define MEM_WORDS_PER_BITMAP_BLOCK 512
@@ -147,9 +147,8 @@ static uint32_t mem_bitmap_find_nbits_in_word(struct mem_bitmap_word *b_word, ui
 		//round[*num_rounds]);
 
 		return actual_bits;
-	} else {
-		return 0;
 	}
+	return 0;
 }
 
 static void mem_bitmap_mark_reserved(struct mem_bitmap_word *b_word)
@@ -264,18 +263,17 @@ uint64_t mem_allocate(struct volume_descriptor *volume_desc, uint64_t num_bytes)
 				free(b_words);
 				assert(0);
 				return 0;
-			} else {
-				++wrap_around;
-				if (volume_desc->max_suffix < suffix_bits) /*update max_suffix */
-					volume_desc->max_suffix = suffix_bits;
-				suffix_bits = 0; /*contiguous bytes just broke :-( */
-				idx = -1; /*reset _counters*/
-				// reset bitmap pos
-				log_warn("\n*****\nEnd Of Bitmap, wrap around\n*****\n");
-				mem_bitmap_reset_pos(volume_desc);
-				b_word = bitmap_get_curr_word(volume_desc);
-				continue;
 			}
+			++wrap_around;
+			if (volume_desc->max_suffix < suffix_bits) /*update max_suffix */
+				volume_desc->max_suffix = suffix_bits;
+			suffix_bits = 0; /*contiguous bytes just broke :-( */
+			idx = -1; /*reset _counters*/
+			// reset bitmap pos
+			log_warn("\n*****\nEnd Of Bitmap, wrap around\n*****\n");
+			mem_bitmap_reset_pos(volume_desc);
+			b_word = bitmap_get_curr_word(volume_desc);
+			continue;
 		} else if (*b_word.word_addr == 0) {
 			/*update max_suffix*/
 			if (volume_desc->max_suffix < suffix_bits)
@@ -298,32 +296,30 @@ uint64_t mem_allocate(struct volume_descriptor *volume_desc, uint64_t num_bytes)
 			if (suffix_bits == length_bits) {
 				// we are done here
 				break;
-			} else {
-				b_word = mem_bitmap_get_next_word(volume_desc);
-				continue;
-			}
-		} else {
-			// ok, first high bits not 1
-			idx = -1;
-			uint64_t rounds[MEM_LOG_WORD_SIZE_IN_BITS * 2];
-			uint32_t round_size = MEM_LOG_WORD_SIZE_IN_BITS * 2;
-			bits_found = mem_bitmap_find_nbits_in_word(&b_word, rounds, &round_size, length_bits);
-			//log_info("Bits found %u length_bits %u start bit %u end bit %u", bits_found, length_bits,
-			//	 b_word.start_bit, b_word.end_bit);
-
-			if (bits_found == length_bits) {
-				++idx;
-				b_words[idx] = b_word;
-				break;
-			}
-			bits_found = mem_bitmap_find_suffix(&b_word, rounds, round_size);
-			if (bits_found > 0) {
-				++idx;
-				b_words[idx] = b_word;
-				suffix_bits += bits_found;
 			}
 			b_word = mem_bitmap_get_next_word(volume_desc);
+			continue;
 		}
+		// ok, first high bits not 1
+		idx = -1;
+		uint64_t rounds[MEM_LOG_WORD_SIZE_IN_BITS * 2];
+		uint32_t round_size = MEM_LOG_WORD_SIZE_IN_BITS * 2;
+		bits_found = mem_bitmap_find_nbits_in_word(&b_word, rounds, &round_size, length_bits);
+		//log_info("Bits found %u length_bits %u start bit %u end bit %u", bits_found, length_bits,
+		//	 b_word.start_bit, b_word.end_bit);
+
+		if (bits_found == length_bits) {
+			++idx;
+			b_words[idx] = b_word;
+			break;
+		}
+		bits_found = mem_bitmap_find_suffix(&b_word, rounds, round_size);
+		if (bits_found > 0) {
+			++idx;
+			b_words[idx] = b_word;
+			suffix_bits += bits_found;
+		}
+		b_word = mem_bitmap_get_next_word(volume_desc);
 	}
 	// mark the bitmap now, we have surely find something
 	for (int i = 0; i <= idx; i++) {
