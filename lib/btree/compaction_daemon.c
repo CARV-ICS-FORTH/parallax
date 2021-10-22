@@ -19,7 +19,7 @@
 #include "../allocator/device_structures.h"
 #include "../allocator/volume_manager.h"
 #include "../../utilities/dups_list.h"
-#include "segment_LRU_cache.h"
+#include "medium_log_LRU_cache.h"
 
 #define COMPACTION
 #define COMPACTION_UNIT_OF_WORK 1
@@ -34,12 +34,12 @@ struct comp_level_write_cursor {
 	uint64_t dev_offt[MAX_HEIGHT];
 	struct index_node *last_index[MAX_HEIGHT];
 	struct bt_dynamic_leaf_node *last_leaf;
+	struct chunk_LRU_cache *medium_log_LRU_cache;
 	uint64_t root_offt;
 	db_handle *handle;
 	uint32_t level_id;
 	uint32_t tree_height;
 	int fd;
-	struct chunk_LRU_cache *medium_log_LRU_cache;
 };
 
 enum comp_level_read_cursor_state {
@@ -97,10 +97,10 @@ struct comp_level_read_cursor {
 
 static void fetch_segment(char *segment_buf, uint64_t segment_offt, ssize_t size)
 {
-	//assert(segment_offt % SEGMENT_SIZE == 0);
 	off_t dev_offt = segment_offt;
 	ssize_t bytes_to_read = 0;
 	ssize_t bytes = 0;
+
 	while (bytes_to_read < size) {
 		bytes = pread(FD, &segment_buf[bytes_to_read], size - bytes_to_read, dev_offt + bytes_to_read);
 		if (bytes == -1) {
@@ -115,29 +115,28 @@ static void fetch_segment(char *segment_buf, uint64_t segment_offt, ssize_t size
 
 static char *fetch_kv_from_LRU(struct write_dynamic_leaf_args *args, struct comp_level_write_cursor *c)
 {
-	char *segment_chunk = NULL;
-	uint64_t chunk_size = 256 * 1024;
+	char *segment_chunk = NULL, *kv_in_seg = NULL;
 	uint64_t segment_offset, which_chunk, segment_chunk_offt;
-	char *kv_in_seg = NULL;
 
 	segment_offset = ABSOLUTE_ADDRESS(args->kv_dev_offt) - (ABSOLUTE_ADDRESS(args->kv_dev_offt) % SEGMENT_SIZE);
 
-	which_chunk = (ABSOLUTE_ADDRESS(args->kv_dev_offt) % SEGMENT_SIZE) / chunk_size;
+	which_chunk = (ABSOLUTE_ADDRESS(args->kv_dev_offt) % SEGMENT_SIZE) / LOG_CHUNK_SIZE;
 
-	segment_chunk_offt = segment_offset + (which_chunk * chunk_size);
-	//assert(segment_chunk_offt < ABSOLUTE_ADDRESS(args->kv_dev_offt));
+	segment_chunk_offt = segment_offset + (which_chunk * LOG_CHUNK_SIZE);
 
 	if (!chunk_exists_in_LRU(c->medium_log_LRU_cache, segment_chunk_offt)) {
-		if (posix_memalign((void **)&segment_chunk, ALIGNMENT_SIZE, chunk_size + (4 * 1024)) != 0) {
+		if (posix_memalign((void **)&segment_chunk, ALIGNMENT_SIZE, LOG_CHUNK_SIZE + KB(4)) != 0) {
 			log_fatal("MEMALIGN FAILED");
 			exit(EXIT_FAILURE);
 		}
-		fetch_segment(segment_chunk, segment_chunk_offt, chunk_size + (4 * 1024));
+		fetch_segment(segment_chunk, segment_chunk_offt, LOG_CHUNK_SIZE + KB(4));
 		add_to_LRU(c->medium_log_LRU_cache, segment_chunk_offt, segment_chunk);
 	} else
 		segment_chunk = get_chunk_from_LRU(c->medium_log_LRU_cache, segment_chunk_offt);
 
-	kv_in_seg = &segment_chunk[(ABSOLUTE_ADDRESS(args->kv_dev_offt) % SEGMENT_SIZE) - (which_chunk * chunk_size)];
+	kv_in_seg =
+		&segment_chunk[(ABSOLUTE_ADDRESS(args->kv_dev_offt) % SEGMENT_SIZE) - (which_chunk * LOG_CHUNK_SIZE)];
+
 	return kv_in_seg;
 }
 
