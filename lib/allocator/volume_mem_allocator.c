@@ -464,6 +464,10 @@ static volume_descriptor *mem_init_volume(char *volume_name)
 	memset(volume_desc, 0x00, sizeof(struct volume_descriptor));
 
 	volume_desc->volume_name = calloc(1, strlen(volume_name) + 1);
+	if (!volume_desc->volume_name) {
+		log_fatal("calloc failed");
+		exit(EXIT_FAILURE);
+	}
 	memcpy(volume_desc->volume_name, volume_name, strlen(volume_name));
 
 	volume_desc->my_fd = open(volume_name, O_RDWR | O_DIRECT | O_DSYNC);
@@ -485,20 +489,22 @@ static volume_descriptor *mem_init_volume(char *volume_name)
 		perror("ioctl");
 		exit(EXIT_FAILURE);
 	}
-	if (device_size != volume_desc->my_superblock.volume_size) {
+	if ((uint64_t)device_size !=
+	    volume_desc->my_superblock.volume_size + volume_desc->my_superblock.unmappedSpace) {
 		log_fatal("Volume sizes do not match! Found %lld expected %lld", device_size,
 			  volume_desc->my_superblock.volume_size);
 		exit(EXIT_FAILURE);
 	}
+
 	if (volume_desc->my_superblock.magic_number != FINE_STRUCTURE_CONSTANT) {
 		log_fatal("Volume %s seems not to have been initialized!");
 		exit(EXIT_FAILURE);
 	}
 	volume_desc->mem_volume_bitmap_size = volume_desc->my_superblock.bitmap_size_in_words;
 	mem_print_volume_info(&volume_desc->my_superblock, volume_name);
-	//Now allocate the in memory bitmap
+	/*Now allocate the in memory bitmap*/
 	volume_desc->mem_volume_bitmap = malloc(volume_desc->mem_volume_bitmap_size * sizeof(uint64_t));
-	//set everything to 1 aka free aka don't know
+	/*set everything to 1 aka free aka don't know*/
 	memset(volume_desc->mem_volume_bitmap, 0xFF, volume_desc->mem_volume_bitmap_size * sizeof(uint64_t));
 	mem_init_superblock_array(volume_desc);
 	log_info("Recovering ownership registry... XXX TODO XXX");
@@ -525,6 +531,10 @@ struct volume_descriptor *mem_get_volume_desc(char *volume_name)
 	if (volume == NULL) {
 		log_info("Volume %s not open creating/initializing new volume ...", volume_name);
 		volume = calloc(1, sizeof(struct volume_map_entry));
+		if (!volume) {
+			log_fatal("calloc failed");
+			exit(EXIT_FAILURE);
+		}
 		volume->volume_desc = mem_init_volume(volume_name);
 		if (strlen(volume_name) >= MEM_MAX_VOLUME_NAME_SIZE) {
 			log_fatal("Volume name too large!");
