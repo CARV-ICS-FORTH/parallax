@@ -63,11 +63,7 @@ def calculate_number_of_duplicates(output):
     return num_of_duplicates
 
 
-# Return codes
-# 0 -> 0 duplicates good exit
-# 1 -> cpd command failed (bad argument etc.)
-# 4 -> found duplicates
-def main():
+def parse_arguments():
     parser = argparse.ArgumentParser(
         description="Execute cpd with aprropriate parameters"
     )
@@ -81,8 +77,16 @@ def main():
     parser.add_argument(
         "language", type=str, help="defines the language of the source code"
     )
-    args = parser.parse_args()
+    return parser.parse_args()
 
+
+# Return codes
+# 0 -> 0 duplicates good exit
+# 1 -> cpd command failed (bad argument etc.)
+# 4 -> found duplicates
+def main():
+
+    args = parse_arguments()
     cpd_bin = "pmd-cpd"
     # cpd_bin = "/home1/public/geostyl/pmd-bin-6.38.0-SNAPSHOT/bin/run.sh cpd"
     minimum_tokens_param = str(args.tokens)
