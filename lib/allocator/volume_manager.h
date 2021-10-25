@@ -202,6 +202,4 @@ void free_block(struct volume_descriptor *volume_desc, void *address, uint32_t l
 void bitmap_set_buddies_immutable(struct volume_descriptor *volume_desc);
 void bitmap_mark_block_free(struct volume_descriptor *volume_desc, void *addr);
 
-void mark_page(volume_descriptor *volume_desc, void *block_address, char free, uint64_t *bit_idx);
-
 uint64_t get_timestamp(void);
