@@ -38,11 +38,6 @@
 
 #define SPILL_BUFFER_SIZE 32 * 1024
 #define MAX_HEIGHT 9
-/**
- * FLAGS used of during _insert
- */
-#define SEARCH_PERSISTENT_TREE 0x01
-#define SEARCH_DIRTY_TREE 0x02
 
 /* types used for the keys
  * KV_FORMAT: [key_len|key]
