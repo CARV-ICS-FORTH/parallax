@@ -1,4 +1,5 @@
-# usr/bin/env python3
+#!/usr/bin/env python3
+
 import os
 import sys
 import argparse
@@ -80,17 +81,11 @@ def parse_arguments():
     return parser.parse_args()
 
 
-# Return codes
-# 0 -> 0 duplicates good exit
-# 1 -> cpd command failed (bad argument etc.)
-# 4 -> found duplicates
-def main():
-
-    args = parse_arguments()
+def check_for_duplicate_code(args):
     cpd_bin = "pmd-cpd"
-    # cpd_bin = "/home1/public/geostyl/pmd-bin-6.38.0-SNAPSHOT/bin/run.sh cpd"
     minimum_tokens_param = str(args.tokens)
     files_param = ""
+
     for file in args.files:
 
         files_param += "--files " + file + " "
@@ -106,7 +101,18 @@ def main():
     output = stream.readlines()
 
     format_output(output)
-    return_value = calculate_number_of_duplicates(output)
+    return calculate_number_of_duplicates(output), output
+
+
+# Return codes
+# 0 -> 0 duplicates good exit
+# 1 -> cpd command failed (bad argument etc.)
+# 4 -> found duplicates
+def main():
+
+    args = parse_arguments()
+
+    return_value, output = check_for_duplicate_code(args)
 
     if return_value == 0:
         # if the output-list is empty then we have 0 duplicates
