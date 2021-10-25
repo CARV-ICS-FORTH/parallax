@@ -67,8 +67,7 @@ def calculate_number_of_duplicates(output):
 # 0 -> 0 duplicates good exit
 # 1 -> cpd command failed (bad argument etc.)
 # 4 -> found duplicates
-if __name__ == "__main__":
-
+def main():
     parser = argparse.ArgumentParser(
         description="Execute cpd with aprropriate parameters"
     )
@@ -114,3 +113,7 @@ if __name__ == "__main__":
             sys.exit(1)
 
     sys.exit(4)
+
+
+if __name__ == "__main__":
+    main()
