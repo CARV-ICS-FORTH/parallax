@@ -10,9 +10,7 @@
 
 #define CONFIG_FILE "options.yml"
 
-struct lib_option *dboptions = NULL;
-
-int parse_options(void)
+int parse_options(struct lib_option **db_options)
 {
 	struct lib_option options[128];
 	FILE *fh = fopen(CONFIG_FILE, "r");
@@ -98,12 +96,12 @@ int parse_options(void)
 	for (int j = 0; j < i; ++j) {
 		struct lib_option *temp = malloc(sizeof(struct lib_option));
 		memcpy(temp, &options[j], sizeof(struct lib_option));
-		HASH_ADD_STR(dboptions, name, temp);
+		HASH_ADD_STR(*db_options, name, temp);
 	}
 
 	struct lib_option *current_option, *tmp;
 
-	HASH_ITER(hh, dboptions, current_option, tmp)
+	HASH_ITER(hh, *db_options, current_option, tmp)
 	{
 		log_info("Option: %s : %llu", current_option->name, current_option->value.count);
 	}
@@ -119,12 +117,12 @@ void check_option(char *option_name, struct lib_option *opt_value)
 	}
 }
 
-void write_options(void)
+void write_options(struct lib_option *db_options)
 {
 	FILE *f = fopen(CONFIG_FILE, "w");
 
 	struct lib_option *current_option, *tmp;
-	HASH_ITER(hh, dboptions, current_option, tmp)
+	HASH_ITER(hh, db_options, current_option, tmp)
 	{
 		fprintf(f, "%s %llu\n", current_option->name, current_option->value.count);
 	}

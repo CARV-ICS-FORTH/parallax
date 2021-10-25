@@ -166,7 +166,10 @@ off64_t mount_volume(char *volume_name, int64_t start, int64_t unused_size)
 
 		log_info("Creating virtual address space offset %lld size %ld\n", (long long)start, device_size);
 		// mmap the device
+		struct lib_option *dboptions = NULL;
+		parse_options(&dboptions);
 		struct lib_option *option;
+
 		HASH_FIND_STR(dboptions, "fastmap_on", option);
 		check_option("fastmap_on", option);
 		int fastmap_on = option->value.count;
@@ -1476,6 +1479,8 @@ static void clean_log_entries(void *v_desc)
 	uint64_t free_log_size = FREE_LOG_SIZE_IN_BLOCKS * DEVICE_BLOCK_SIZE;
 	uint64_t clean_interval;
 	uint64_t snapshot_interval;
+	struct lib_option *dboptions = NULL;
+	parse_options(&dboptions);
 
 	pthread_setname_np(pthread_self(), "cleanerd");
 

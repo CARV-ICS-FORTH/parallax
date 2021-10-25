@@ -14,7 +14,5 @@ struct lib_option {
 	UT_hash_handle hh;
 };
 
-extern struct lib_option *dboptions;
-
-int parse_options(void);
+int parse_options(struct lib_option **db_options);
 void check_option(char *option_name, struct lib_option *opt_value);
