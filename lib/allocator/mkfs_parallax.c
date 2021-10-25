@@ -49,8 +49,8 @@ int main(int argc, char *argv[])
 	uint64_t size;
 	int32_t bytes_read = 0;
 	int32_t fd;
-
-	parse_options();
+	struct lib_option *dboptions = NULL;
+	parse_options(&dboptions);
 	if (argc != 4) {
 		log_info("mkfs_parallax <Volume name> <offset in bytes> <size in bytes>");
 		exit(-1);

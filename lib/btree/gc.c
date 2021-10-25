@@ -278,6 +278,7 @@ void *gc_log_entries(void *handle)
 	db_descriptor *db_desc = han->db_desc;
 	volume_descriptor *volume_desc = han->volume_desc;
 	struct klist_node *region;
+	struct lib_option *dboptions = NULL;
 
 	marks = calloc(1, sizeof(stack));
 	if (!marks) {
@@ -287,6 +288,7 @@ void *gc_log_entries(void *handle)
 
 	pthread_setname_np(pthread_self(), "gcd");
 
+	parse_options(&dboptions);
 	HASH_FIND_STR(dboptions, "gc_interval", option);
 	check_option("gc_interval", option);
 	gc_interval = option->value.count;

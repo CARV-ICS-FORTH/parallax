@@ -661,12 +661,13 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 	struct db_handle *handle = NULL;
 	struct volume_descriptor *volume_desc = NULL;
 	struct db_descriptor *db = NULL;
+	struct lib_option *dboptions = NULL;
 
 	fprintf(stderr, "\n%s[%s:%s:%d](\"%s\", %" PRIu64 ", %" PRIu64 ", %s);%s\n", "\033[0;32m", __FILE__, __func__,
 		__LINE__, volumeName, start, size, db_name, "\033[0m");
 
 	MUTEX_LOCK(&init_lock);
-	parse_options();
+	parse_options(&dboptions);
 	if (!(volume_desc = get_volume_desc(volumeName, start, 0)))
 		volume_desc = get_volume_desc(volumeName, start, 1);
 
