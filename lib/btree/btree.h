@@ -442,8 +442,6 @@ void pr_unlock_region_superblock(struct db_descriptor *db_desc);
 /*client API*/
 /*management operations*/
 db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_name, char CREATE_FLAG);
-struct db_handle *bt_restore_db(struct volume_descriptor *volume_desc, struct pr_db_entry *db_entry,
-				struct db_coordinates db_c);
 
 void *compaction_daemon(void *args);
 void flush_volume(volume_descriptor *volume_desc, char force_spill);

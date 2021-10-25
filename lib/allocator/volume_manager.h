@@ -181,13 +181,6 @@ void mem_bitmap_mark_block_free(struct volume_descriptor *volume_desc, uint64_t 
  */
 
 struct volume_descriptor *get_volume_desc(char *volume_name, uint64_t start_offt, char create);
-struct db_coordinates {
-	int found;
-	int new_db;
-	int out_of_space;
-	int group_id;
-	int index;
-};
 
 int32_t volume_init(char *dev_name, int64_t start, int64_t size, int typeOfVolume);
 

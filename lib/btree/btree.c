@@ -431,6 +431,18 @@ static void pr_init_medium_log_L0(struct db_handle *handle, int tree_id) {
 }
 #endif
 
+void init_level_bloom_filters(db_descriptor *db_desc, int level_id, int tree_id)
+{
+#if ENABLE_BLOOM_FILTERS
+	memset(&db_desc->levels[level_id].bloom_filter[tree_id], 0x00, sizeof(struct bloom));
+#else
+	(void)db_desc;
+	(void)level_id;
+	(void)tree_id;
+#endif
+}
+
+#if 0
 static void pr_recover_logs(db_descriptor *db_desc, struct pr_db_entry *entry)
 {
 	log_info("Recovering KV logs (small,medium,large) for DB: %s", db_desc->db_name);
@@ -455,22 +467,12 @@ static void pr_recover_logs(db_descriptor *db_desc, struct pr_db_entry *entry)
 	db_desc->lsn = entry->lsn;
 }
 
-void init_level_bloom_filters(db_descriptor *db_desc, int level_id, int tree_id)
-{
-#if ENABLE_BLOOM_FILTERS
-	memset(&db_desc->levels[level_id].bloom_filter[tree_id], 0x00, sizeof(struct bloom));
-#else
-	(void)db_desc;
-	(void)level_id;
-	(void)tree_id;
-#endif
-}
-#if 0
+
 static void bt_recover_L0(struct db_handle *hd)
 {
 	(void)hd;
 }
-#endif
+
 struct db_handle *bt_restore_db(struct volume_descriptor *volume_desc, struct pr_db_entry *db_entry,
 				struct db_coordinates db_c)
 {
@@ -522,6 +524,7 @@ struct db_handle *bt_restore_db(struct volume_descriptor *volume_desc, struct pr
 	pr_recover_logs(db_desc, db_entry);
 	return handle;
 }
+#endif
 
 /*<new_persistent_design>*/
 
