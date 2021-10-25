@@ -1385,7 +1385,7 @@ void allocator_init(volume_descriptor *volume_desc)
 	memcpy(volume_desc->mem_catalogue, volume_desc->dev_catalogue, sizeof(struct pr_system_catalogue));
 	++volume_desc->mem_catalogue->epoch;
 	//#ifdef DEBUG_ALLOCATOR
-	printf("##########<Kreon: Volume state> ##############\n");
+	printf("##########<Volume state> ##############\n");
 	printf("\tBitmap size in 4KB blocks = %llu\n",
 	       (long long unsigned)volume_desc->volume_superblock->bitmap_size_in_blocks);
 	printf("\tDevice size in 4KB blocks = %llu\n",

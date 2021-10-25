@@ -1,45 +1,116 @@
+// Copyright [2021] [FORTH-ICS]
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+#include "../btree/btree.h"
+#include "../scanner/scanner.h"
 #include <assert.h>
-#include <stdio.h>
-#include <stdint.h>
-#include <string.h>
-#include <stdlib.h>
 #include <log.h>
-#include <btree/btree.h>
-#include <scanner/scanner.h>
-#define TOTAL_KEYS 1000000
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
 #define KEY_PREFIX "userakias_computerakias"
 #define KV_SIZE 1024
-#define VOLUME_NAME "/tmp/ramdisk/kreon.dat"
-#define NUM_KEYS 1000000
-#define SCAN_SIZE 16
-#define BASE 1000000
-typedef struct key {
+
+struct key {
 	uint32_t key_size;
 	char key_buf[0];
-} key;
+};
 
-typedef struct value {
+struct value {
 	uint32_t value_size;
 	char value_buf[0];
-} value;
+};
 
-int main(void)
+static char *volume_name;
+static uint64_t total_keys = 1000000;
+static uint64_t base;
+static uint32_t scan_size = 16;
+
+#define NUM_OPTIONS 3
+enum kvf_options { VOLUME_NAME = 0, TOTAL_KEYS, SCAN_SIZE };
+static char *options[] = { "--volume_name", "--total_keys", "--scan_size" };
+static char *help = "Usage ./test_dirty_scans <options> Where options include:\n --volume_name <volume name>,\n \
+	--total_keys <total number of keys> \n --scan_size <entries to fetch per scan>\n";
+
+static void parse_options(int argc, char **argv)
 {
+	int i, j;
+	for (i = 1; i < argc; i += 2) {
+		for (j = 0; j < NUM_OPTIONS; ++j) {
+			if (strcmp(argv[i], options[j]) == 0) {
+				switch (j) {
+				case VOLUME_NAME:
+					if (i + 1 >= argc) {
+						log_fatal("Wrong arguments number %s", help);
+						exit(EXIT_FAILURE);
+					}
+					volume_name = calloc(1, strlen(argv[i + 1]) + 1);
+					strcpy(volume_name, argv[i + 1]);
+					break;
+				case TOTAL_KEYS: {
+					if (i + 1 >= argc) {
+						log_fatal("Wrong arguments number %s", help);
+						exit(EXIT_FAILURE);
+					}
+					char *ptr;
+					total_keys = strtoul(argv[i + 1], &ptr, 10);
+					break;
+				}
+				case SCAN_SIZE: {
+					if (i + 1 >= argc) {
+						log_fatal("Wrong arguments number %s", help);
+						exit(EXIT_FAILURE);
+					}
+					char *ptr;
+					scan_size = strtoul(argv[i + 1], &ptr, 10);
+					break;
+				}
+				}
+				break;
+			}
+		}
+	}
+
+	if (!volume_name) {
+		log_fatal("Device name not specified help:\n %s", help);
+		exit(EXIT_FAILURE);
+	}
+
+	log_info("Volume name: %s, number of keys: %llu, and scan size = %llu", volume_name, total_keys, scan_size);
+}
+
+int main(int argc, char **argv)
+{
+	parse_options(argc, argv);
+	base = total_keys;
+
 	bt_insert_req req;
 	//stackElementT element;
-	db_handle *hd = db_open(VOLUME_NAME, 0, (60 * 1024 * 1024 * 1024L), "scan_test", CREATE_DB);
+	db_handle *hd = db_open(volume_name, 0, 0, "scan_test", CREATE_DB);
 
-	scannerHandle *sc = (scannerHandle *)malloc(sizeof(scannerHandle));
+	scannerHandle *sc = (scannerHandle *)calloc(1, sizeof(scannerHandle));
 	uint64_t i = 0;
 	uint64_t j = 0;
-	key *k = (key *)malloc(KV_SIZE);
-	log_info("Starting population for %lu keys...", NUM_KEYS);
-	for (i = BASE; i < (BASE + NUM_KEYS); i++) {
+	struct key *k = calloc(1, KV_SIZE);
+	log_info("Starting population for %lu keys...", total_keys);
+	for (i = base; i < base + total_keys; ++i) {
 		memcpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
 		sprintf(k->key_buf + strlen(KEY_PREFIX), "%llu", (long long unsigned)i);
 		k->key_size = strlen(k->key_buf) + 1;
-		value *v = (value *)((uint64_t)k + sizeof(key) + k->key_size);
-		v->value_size = KV_SIZE - ((2 * sizeof(key)) + k->key_size);
+		struct value *v = (struct value *)((uint64_t)k + sizeof(struct key) + k->key_size);
+		v->value_size = KV_SIZE - ((2 * sizeof(struct key)) + k->key_size);
 		memset(v->value_buf, 0xDD, v->value_size);
 
 		req.metadata.handle = hd;
@@ -53,26 +124,28 @@ int main(void)
 		req.metadata.recovery_request = 0;
 		_insert_key_value(&req);
 	}
-	log_info("Population ended, snapshot and testing scan");
+	log_info("Population ended testing scan");
 
 	log_info("Cornercase scenario...");
 	memcpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
-	sprintf(k->key_buf + strlen(KEY_PREFIX), "%llu", (long long unsigned)BASE + 99);
+	sprintf(k->key_buf + strlen(KEY_PREFIX), "%llu", (long long unsigned)base + 99);
 	k->key_size = strlen(k->key_buf) + 1;
-	init_dirty_scanner(sc, hd, (key *)k, GREATER);
+	init_dirty_scanner(sc, hd, (struct key *)k, GREATER);
 	assert(sc->keyValue != NULL);
 	memcpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
-	sprintf(k->key_buf + strlen(KEY_PREFIX), "%llu", (long long unsigned)BASE + 100);
+	sprintf(k->key_buf + strlen(KEY_PREFIX), "%llu", (long long unsigned)base + 100);
 	k->key_size = strlen(k->key_buf) + 1;
+
 	if (memcmp(k->key_buf, sc->keyValue + sizeof(uint32_t), k->key_size) != 0) {
 		log_fatal("Test failed key %s not found scanner instead returned %d:%s", k->key_buf,
 			  *(uint32_t *)sc->keyValue, sc->keyValue + sizeof(uint32_t));
 		exit(EXIT_FAILURE);
 	}
-	log_info("milestone 1");
+	log_info("Milestone 1");
+
 	getNext(sc);
 	memcpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
-	sprintf(k->key_buf + strlen(KEY_PREFIX), "%llu", (long long unsigned)BASE + 101);
+	sprintf(k->key_buf + strlen(KEY_PREFIX), "%llu", (long long unsigned)base + 101);
 	k->key_size = strlen(k->key_buf) + 1;
 	if (memcmp(k->key_buf, sc->keyValue + sizeof(uint32_t), k->key_size) != 0) {
 		log_fatal("Test failed key %s not found scanner instead returned %d:%s", k->key_buf,
@@ -83,14 +156,14 @@ int main(void)
 	log_info("milestone 2");
 	log_info("Cornercase scenario...DONE");
 
-	for (i = BASE; i < (BASE + (NUM_KEYS - SCAN_SIZE)); i++) {
+	for (i = base; i < (base + (total_keys - scan_size)); ++i) {
 		if (i % 100000 == 0)
 			log_info("<Scan no %llu>", i);
 		memcpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
 		sprintf(k->key_buf + strlen(KEY_PREFIX), "%llu", (long long unsigned)i);
 		k->key_size = strlen(k->key_buf) + 1;
 
-		init_dirty_scanner(sc, hd, (key *)k, GREATER_OR_EQUAL);
+		init_dirty_scanner(sc, hd, (struct key *)k, GREATER_OR_EQUAL);
 		assert(sc->keyValue != NULL);
 		//log_info("key is %d:%s  malloced %d scanner size %d",k->key_size,k->key_buf,sc->malloced,sizeof(scannerHandle));
 		//log_info("key of scanner %d:%s",*(uint32_t *)sc->keyValue,sc->keyValue + sizeof(uint32_t));
@@ -103,7 +176,7 @@ int main(void)
 		//assert(element.node->type == leafNode);
 		//stack_push(&(sc->LEVEL_SCANNERS[0].stack), element);
 
-		for (j = 1; j <= SCAN_SIZE; j++) {
+		for (j = 1; j <= scan_size; ++j) {
 			/*construct the key we expect*/
 			memcpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
 			sprintf(k->key_buf + strlen(KEY_PREFIX), "%llu", (long long unsigned)i + j);
