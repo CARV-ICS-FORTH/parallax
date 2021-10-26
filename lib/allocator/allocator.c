@@ -17,23 +17,23 @@
 #include "../btree/conf.h"
 #include "../btree/segment_allocator.h"
 #include "../btree/set_options.h"
+#include "../utilities/list.h"
 #include "device_structures.h"
 #include "djb2.h"
 #include "dmap-ioctl.h"
 #include "log_structures.h"
 #include "mem_structures.h"
 #include "redo_undo_log.h"
-#include "../utilities/list.h"
 #include "volume_manager.h"
 
-#include <pthread.h>
-#include <unistd.h>
-#include <stdio.h>
-#include <time.h>
 #include <assert.h>
 #include <errno.h>
+#include <unistd.h>
+#include <uthash.h>
+#include <stdio.h>
 #include <sys/mman.h>
 #include <sys/time.h>
+#include <time.h>
 #include <fcntl.h>
 #include <string.h>
 #include <strings.h>
@@ -41,9 +41,9 @@
 #include <linux/fs.h>
 #include <stdlib.h>
 #include <stdint.h>
-#include <math.h>
 #include <log.h>
-#include <uthash.h>
+#include <math.h>
+#include <pthread.h>
 
 //#define USE_MLOCK
 #define __NR_mlock2 284
@@ -58,36 +58,9 @@
 #define BLOCKS_PER_BUDDY_PAIR ((DEVICE_BLOCK_SIZE - 8) * 8)
 #define BITS_PER_BYTE 8
 
-struct klist *volume_list = NULL;
-pthread_mutex_t volume_manager_lock = PTHREAD_MUTEX_INITIALIZER;
-
-/*stats counter*/
-uint64_t internal_tree_cow_for_leaf = 0;
-uint64_t internal_tree_cow_for_index = 0;
-uint64_t written_buffered_bytes = 0;
-
-unsigned long long ins_prefix_hit_l0 = 0;
-unsigned long long ins_prefix_hit_l1 = 0;
-unsigned long long ins_prefix_miss_l0 = 0;
-unsigned long long ins_prefix_miss_l1 = 0;
-unsigned long long ins_hack_hit = 0;
-unsigned long long ins_hack_miss = 0;
-
-unsigned long long ins_prefix_hit;
-unsigned long long ins_prefix_miss;
-unsigned long long hash_hit;
-unsigned long long hash_miss;
-unsigned long long find_prefix_hit;
-unsigned long long find_prefix_miss;
-unsigned long long scan_prefix_hit;
-unsigned long long scan_prefix_miss;
-
-extern db_handle *open_dbs;
 pthread_mutex_t VOLUME_LOCK = PTHREAD_MUTEX_INITIALIZER;
-static pthread_mutex_t volume_map_lock = PTHREAD_MUTEX_INITIALIZER;
-static struct volume_map_entry *volume_map = NULL;
-
-uint64_t MAPPED = 0; /*from this address any node can see the entire volume*/
+/*from this address any node can see the entire volume*/
+uint64_t MAPPED = 0;
 int FD = -1;
 int fastmap_fd = -1;
 
@@ -95,6 +68,11 @@ int fastmap_fd = -1;
 #define MEM_LOG_WORD_SIZE_IN_BITS 8
 #define MEM_WORDS_PER_BITMAP_BLOCK 512
 #define MEM_MAX_VOLUME_NAME_SIZE 256
+
+static struct volume_map_entry *volume_map = NULL;
+struct klist *volume_list = NULL;
+pthread_mutex_t volume_manager_lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t volume_map_lock = PTHREAD_MUTEX_INITIALIZER;
 struct volume_map_entry {
 	char volume_name[MEM_MAX_VOLUME_NAME_SIZE];
 	struct volume_descriptor *volume_desc;
