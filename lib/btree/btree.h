@@ -76,7 +76,7 @@ typedef enum {
 	SPILLING_IN_PROGRESS = 1,
 } level_0_tree_status;
 
-enum kreon_status { FAILURE = -1 };
+enum parallax_status { FAILURE = -1 };
 
 enum db_initializers { CREATE_DB = 4, DONOT_CREATE_DB = 5 };
 

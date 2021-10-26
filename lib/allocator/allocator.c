@@ -192,7 +192,7 @@ off64_t mount_volume(char *volume_name, int64_t start, int64_t unused_size)
 			/* } */
 			log_info("Fastmap has been initialiazed");
 
-			addr_space = mmap(NULL, device_size, PROT_READ | PROT_WRITE, MAP_SHARED, fastmap_fd, start);
+			addr_space = mmap(NULL, device_size, PROT_READ /*| PROT_WRITE*/, MAP_SHARED, fastmap_fd, start);
 			FD = open(volume_name, O_RDWR | O_DIRECT | O_DSYNC);
 			if (FD < 0) {
 				log_fatal("Failed to open %s", volume_name);
@@ -200,7 +200,7 @@ off64_t mount_volume(char *volume_name, int64_t start, int64_t unused_size)
 				exit(EXIT_FAILURE);
 			}
 		} else
-			addr_space = mmap(NULL, device_size, PROT_READ | PROT_WRITE, MAP_SHARED, FD, start);
+			addr_space = mmap(NULL, device_size, PROT_READ /*| PROT_WRITE*/, MAP_SHARED, FD, start);
 
 		if (addr_space == MAP_FAILED) {
 			log_fatal("MMAP for device %s reason follows", volume_name);
