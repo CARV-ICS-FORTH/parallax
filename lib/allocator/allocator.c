@@ -28,6 +28,9 @@
 
 #include <assert.h>
 #include <errno.h>
+#include <log.h>
+#include <math.h>
+#include <pthread.h>
 #include <unistd.h>
 #include <uthash.h>
 #include <stdio.h>
@@ -41,9 +44,6 @@
 #include <linux/fs.h>
 #include <stdlib.h>
 #include <stdint.h>
-#include <log.h>
-#include <math.h>
-#include <pthread.h>
 
 //#define USE_MLOCK
 #define __NR_mlock2 284
@@ -1754,10 +1754,9 @@ static uint32_t bitmap_find_suffix(struct bitmap_word *b_word, uint64_t *rounds,
 		b_word->end_bit = WORD_SIZE_IN_BITS;
 		// log_info("Suffix search size found is %u", size_bits);
 		return size_bits;
-	} else {
-		// log_info("Sorry no suffix found");
-		return 0;
 	}
+	// log_info("Sorry no suffix found");
+	return 0;
 }
 
 void *allocate(struct volume_descriptor *volume_desc, uint64_t num_bytes)
