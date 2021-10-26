@@ -219,12 +219,12 @@ void seg_free_index_node(volume_descriptor *volume_desc, level_descriptor *level
 		log_fatal("NULL log for index?");
 		exit(EXIT_FAILURE);
 	}
-	IN_log_header *curr = (IN_log_header *)(MAPPED + (uint64_t)inode->header.first_IN_log_header);
-	IN_log_header *last = (IN_log_header *)(MAPPED + (uint64_t)inode->header.last_IN_log_header);
+	IN_log_header *curr = (IN_log_header *)REAL_ADDRESS(inode->header.first_IN_log_header);
+	IN_log_header *last = (IN_log_header *)REAL_ADDRESS(inode->header.last_IN_log_header);
 	IN_log_header *to_free;
 	while ((uint64_t)curr != (uint64_t)last) {
 		to_free = curr;
-		curr = (IN_log_header *)((uint64_t)MAPPED + (uint64_t)curr->next);
+		curr = (IN_log_header *)REAL_ADDRESS(curr->next);
 		free_block(volume_desc, to_free, KEY_BLOCK_SIZE);
 	}
 	free_block(volume_desc, last, KEY_BLOCK_SIZE);
@@ -327,8 +327,8 @@ void *get_space_for_system(volume_descriptor *volume_desc, uint32_t size, int lo
 	if (lock)
 		MUTEX_LOCK(&volume_desc->bitmap_lock);
 
-	first_sys_segment = (segment_header *)(MAPPED + volume_desc->mem_catalogue->first_system_segment);
-	last_sys_segment = (segment_header *)(MAPPED + volume_desc->mem_catalogue->last_system_segment);
+	first_sys_segment = (segment_header *)REAL_ADDRESS(volume_desc->mem_catalogue->first_system_segment);
+	last_sys_segment = (segment_header *)REAL_ADDRESS(volume_desc->mem_catalogue->last_system_segment);
 	/*check if we have enough space to satisfy the request*/
 
 	if (volume_desc->mem_catalogue->offset == 0) {
