@@ -117,7 +117,9 @@ struct chunk_LRU_cache *init_LRU(void)
 	struct lib_option *option;
 	uint64_t LRU_cache_size;
 	uint64_t chunk_size = KB(256);
-	parse_options();
+	struct lib_option *dboptions = NULL;
+
+	parse_options(&dboptions);
 
 	HASH_FIND_STR(dboptions, "medium_log_LRU_cache_size", option);
 	check_option("medium_log_LRU_cache_size", option);
