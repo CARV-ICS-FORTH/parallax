@@ -744,12 +744,12 @@ static db_descriptor *get_db_from_volume(char *volume_name, char *db_name, char 
 	}
 
 	if (!found_db && create_db && empty_slot != -1) {
-		db_desc->my_volume = volume_desc;
 		int ret = posix_memalign((void **)&db_desc, ALIGNMENT_SIZE, sizeof(struct db_descriptor));
 		if (ret) {
 			log_fatal("Failed to allocate db_descriptor");
 			exit(EXIT_FAILURE);
 		}
+		db_desc->my_volume = volume_desc;
 		init_fresh_db(db_desc, db_name, empty_slot);
 		goto exit;
 	}
@@ -773,9 +773,12 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 
 	MUTEX_LOCK(&init_lock);
 	parse_options(&dboptions);
-	if (!(volume_desc = get_volume_desc(volumeName, start, 0)))
-		volume_desc = get_volume_desc(volumeName, start, 1);
 
+	volume_desc = mem_get_volume_desc(volumeName);
+	if (!volume_desc) {
+		log_fatal("Failed to open volume %s", volumeName);
+		exit(EXIT_FAILURE);
+	}
 	assert(volume_desc->open_databases);
 	index_order = IN_LENGTH;
 	_Static_assert(sizeof(index_node) == 4096, "Index node is not page aligned");
@@ -1521,6 +1524,7 @@ void *append_key_value_to_log(log_operation *req)
 		return bt_append_to_log_direct_IO(req, &log_metadata, &data_size);
 	default:
 		log_fatal("Unknown category %u", log_metadata.status);
+		assert(0);
 		exit(EXIT_FAILURE);
 	}
 }

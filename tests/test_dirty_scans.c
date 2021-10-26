@@ -96,16 +96,13 @@ int main(int argc, char **argv)
 	parse_options(argc, argv);
 	base = total_keys;
 
-	bt_insert_req req;
 	//stackElementT element;
 	db_handle *hd = db_open(volume_name, 0, 0, "scan_test", CREATE_DB);
 
-	scannerHandle *sc = (scannerHandle *)calloc(1, sizeof(scannerHandle));
-	uint64_t i = 0;
-	uint64_t j = 0;
 	struct key *k = calloc(1, KV_SIZE);
 	log_info("Starting population for %lu keys...", total_keys);
-	for (i = base; i < base + total_keys; ++i) {
+	uint64_t key_count = 0;
+	for (uint64_t i = base; i < base + total_keys; ++i) {
 		memcpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
 		sprintf(k->key_buf + strlen(KEY_PREFIX), "%llu", (long long unsigned)i);
 		k->key_size = strlen(k->key_buf) + 1;
@@ -113,16 +110,9 @@ int main(int argc, char **argv)
 		v->value_size = KV_SIZE - ((2 * sizeof(struct key)) + k->key_size);
 		memset(v->value_buf, 0xDD, v->value_size);
 
-		req.metadata.handle = hd;
-		req.metadata.kv_size = k->key_size + v->value_size + (2 * sizeof(uint32_t));
-		assert(req.metadata.kv_size == KV_SIZE);
-		req.key_value_buf = k;
-		req.metadata.level_id = 0;
-		req.metadata.key_format = KV_FORMAT;
-		req.metadata.append_to_log = 1;
-		req.metadata.gc_request = 0;
-		req.metadata.recovery_request = 0;
-		_insert_key_value(&req);
+		insert_key_value(hd, k->key_buf, v->value_buf, k->key_size, v->value_size);
+		if (++key_count % 10000 == 0)
+			log_info("Progress in population %llu keys", key_count);
 	}
 	log_info("Population ended testing scan");
 
@@ -130,6 +120,8 @@ int main(int argc, char **argv)
 	memcpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
 	sprintf(k->key_buf + strlen(KEY_PREFIX), "%llu", (long long unsigned)base + 99);
 	k->key_size = strlen(k->key_buf) + 1;
+
+	scannerHandle *sc = (scannerHandle *)calloc(1, sizeof(scannerHandle));
 	init_dirty_scanner(sc, hd, (struct key *)k, GREATER);
 	assert(sc->keyValue != NULL);
 	memcpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
@@ -153,10 +145,13 @@ int main(int argc, char **argv)
 		exit(EXIT_FAILURE);
 	}
 	closeScanner(sc);
+	sc = NULL;
+
+	sc = (scannerHandle *)calloc(1, sizeof(scannerHandle));
 	log_info("milestone 2");
 	log_info("Cornercase scenario...DONE");
 
-	for (i = base; i < (base + (total_keys - scan_size)); ++i) {
+	for (uint64_t i = base; i < (base + (total_keys - scan_size)); ++i) {
 		if (i % 100000 == 0)
 			log_info("<Scan no %llu>", i);
 		memcpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
@@ -176,7 +171,7 @@ int main(int argc, char **argv)
 		//assert(element.node->type == leafNode);
 		//stack_push(&(sc->LEVEL_SCANNERS[0].stack), element);
 
-		for (j = 1; j <= scan_size; ++j) {
+		for (uint64_t j = 1; j <= scan_size; ++j) {
 			/*construct the key we expect*/
 			memcpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
 			sprintf(k->key_buf + strlen(KEY_PREFIX), "%llu", (long long unsigned)i + j);
@@ -197,6 +192,8 @@ int main(int argc, char **argv)
 		if (i % 100000 == 0)
 			log_info("</Scan no %llu>", i);
 		closeScanner(sc);
+		sc = NULL;
+		sc = (scannerHandle *)calloc(1, sizeof(scannerHandle));
 	}
 	log_info("scan test Successfull");
 	free(k);

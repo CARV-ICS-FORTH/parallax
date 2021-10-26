@@ -621,7 +621,7 @@ static void comp_append_pivot_to_index(struct comp_level_write_cursor *c, uint64
 				       uint64_t right_node_offt, char *pivot, uint32_t height)
 {
 	uint32_t pivot_size = sizeof(uint32_t) + KEY_SIZE(pivot);
-	assert(pivot_size < 25);
+	assert(pivot_size < MAX_KEY_SIZE);
 	uint64_t left_index_offt;
 	uint64_t right_index_offt;
 	uint32_t new_index = 0;
@@ -1401,7 +1401,7 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 		}
 
 		log_info("Freed space %llu MB from db:%s destination level %u", space_freed / (1024 * 1024),
-			 comp_req->db_desc->db_name, comp_req->src_level);
+			 comp_req->db_desc->my_superblock.region_name, comp_req->src_level);
 	}
 	// switch dst tree
 	ld->first_segment[0] = ld->first_segment[1];

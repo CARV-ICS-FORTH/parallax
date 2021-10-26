@@ -92,9 +92,7 @@ static void *get_space(volume_descriptor *volume_desc, level_descriptor *level_d
 		/*we need to go to the actual allocator to get space*/
 		if (level_desc->level_id != 0) {
 			MUTEX_LOCK(&volume_desc->bitmap_lock);
-			//<new_persitent_design>
-			//</new_persistent_design>
-			new_segment = (segment_header *)allocate(volume_desc, SEGMENT_SIZE);
+			new_segment = (segment_header *)REAL_ADDRESS(mem_allocate(volume_desc, SEGMENT_SIZE));
 			MUTEX_UNLOCK(&volume_desc->bitmap_lock);
 			req.in_mem = 0;
 		} else {
@@ -125,7 +123,7 @@ struct segment_header *get_segment_for_explicit_IO(volume_descriptor *volume_des
 		return NULL;
 	}
 	MUTEX_LOCK(&volume_desc->bitmap_lock);
-	struct segment_header *new_segment = (segment_header *)allocate(volume_desc, SEGMENT_SIZE);
+	struct segment_header *new_segment = (segment_header *)REAL_ADDRESS(mem_allocate(volume_desc, SEGMENT_SIZE));
 	MUTEX_UNLOCK(&volume_desc->bitmap_lock);
 	assert(new_segment);
 
@@ -291,7 +289,8 @@ segment_header *seg_get_raw_log_segment(volume_descriptor *volume_desc)
 {
 	segment_header *sg;
 	MUTEX_LOCK(&volume_desc->bitmap_lock);
-	sg = (segment_header *)allocate(volume_desc, SEGMENT_SIZE);
+	sg = (segment_header *)REAL_ADDRESS(mem_allocate(volume_desc, SEGMENT_SIZE));
+
 	sg->segment_garbage_bytes = 0;
 	sg->moved_kvs = 0;
 	sg->segment_end = 0;
@@ -302,7 +301,10 @@ segment_header *seg_get_raw_log_segment(volume_descriptor *volume_desc)
 
 void free_raw_segment(volume_descriptor *volume_desc, segment_header *segment)
 {
-	free_block(volume_desc, segment, SEGMENT_SIZE);
+	log_info("Ommit free block for now");
+	(void)volume_desc;
+	(void)segment;
+	//free_block(volume_desc, segment, SEGMENT_SIZE);
 	return;
 }
 
@@ -344,7 +346,7 @@ void *get_space_for_system(volume_descriptor *volume_desc, uint32_t size, int lo
 	if (available_space < size) {
 		/*we need to go to the actual allocator to get space*/
 
-		new_segment = (segment_header *)allocate(volume_desc, SEGMENT_SIZE);
+		new_segment = (segment_header *)REAL_ADDRESS(mem_allocate(volume_desc, SEGMENT_SIZE));
 
 		if (segment_id) {
 			/*chain segments*/
@@ -383,7 +385,7 @@ void seg_free_level(db_handle *handle, uint8_t level_id, uint8_t tree_id)
 	segment_header *temp_segment;
 	uint64_t space_freed = 0;
 
-	log_info("Freeing up level %u for db %s", level_id, handle->db_desc->db_name);
+	log_info("Freeing up level %u for db %s", level_id, handle->db_desc->my_superblock.region_name);
 
 	if (level_id != 0) {
 		for (; curr_segment && curr_segment->next_segment != NULL;
@@ -466,5 +468,6 @@ void seg_free_level(db_handle *handle, uint8_t level_id, uint8_t tree_id)
 	handle->db_desc->levels[level_id].root_r[tree_id] = NULL;
 	handle->db_desc->levels[level_id].root_w[tree_id] = NULL;
 
-	log_info("Freed space %llu MB from db:%s level %u", space_freed / MB(1), handle->db_desc->db_name, level_id);
+	log_info("Freed space %llu MB from db:%s level %u", space_freed / MB(1),
+		 handle->db_desc->my_superblock.region_name, level_id);
 }

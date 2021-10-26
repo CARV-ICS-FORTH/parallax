@@ -10,7 +10,7 @@ option(
 set(LIB_C_SOURCE_FILES
     allocator/allocator.c
     allocator/persistent_operations.c
-    allocator/volume_mem_allocator.c
+    allocator/djb2.c
     allocator/djb2.c
     allocator/recovery.c
     api/parallax.c
@@ -51,6 +51,7 @@ set_source_files_properties(allocator/spin_loop.c PROPERTIES COMPILE_FLAGS
 add_executable(
   mkfs.${LIB}
   allocator/mkfs_parallax.c
+  allocator/djb2.c
   allocator/allocator.c
   allocator/persistent_operations.c
   btree/segment_allocator.c
