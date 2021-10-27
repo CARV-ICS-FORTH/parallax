@@ -32,7 +32,6 @@
 
 #define KREON_OK 10
 #define KREON_FAILED 18
-#define KREON_STANDALONE 19
 
 #define PREFIX_SIZE 12
 
@@ -224,38 +223,6 @@ struct splice {
 	char data[0];
 };
 
-#if 0
-/** contains info about the part of the log which has been commited but has not
- *  been applied in the index. In particular, recovery process now will be
- *  1. Read superblock, db_descriptor
- *  2. Is commit_log equal to the snapshot log?
- *      2.1 if not
- *              mark commit log segments as reserved in the allocator bitmap
- *              apply commit log changes in the index
- *              snapshot()
- *      else
- *              recover as usual
- * We now have two functions for persistence
- *      1. snapshot() persists the allocator, index, KV log, and db's of a
- *volume--> heavy operation called in minutes granularity
- *      2. commit_log() persists KV log, assuring that data in the KV-log after
- *      this operation are recoverable
- **/
-typedef struct commit_log_info {
-	segment_header *big_log_head;
-	segment_header *big_log_tail;
-	segment_header *medium_log_head;
-	segment_header *medium_log_tail;
-	segment_header *small_log_head;
-	segment_header *small_log_tail;
-	uint64_t big_log_size;
-	uint64_t medium_log_size;
-	uint64_t small_log_size;
-	uint64_t lsn;
-	char pad[4016];
-} commit_log_info;
-#endif
-
 /**
  * db_descriptor is a soft state descriptor per open database. superindex
 *structure
@@ -267,18 +234,6 @@ typedef struct lock_table {
 	pthread_rwlock_t rx_lock;
 	char pad[8];
 } lock_table;
-
-typedef struct kv_location {
-	void *kv_addr;
-	uint64_t log_offset;
-	uint32_t rdma_key;
-} kv_location;
-
-typedef struct kv_proposal {
-	void *kv;
-	void *master_log_addr;
-	uint64_t log_offset;
-} kv_proposal;
 
 struct leaf_node_metadata {
 	uint32_t bitmap_entries;
@@ -572,7 +527,6 @@ uint8_t insert_key_value(db_handle *handle, void *key, void *value, uint32_t key
 uint8_t _insert_key_value(bt_insert_req *ins_req);
 
 void *append_key_value_to_log(log_operation *req);
-uint8_t _insert_index_entry(db_handle *db, kv_location *location, int INSERT_FLAGS);
 void *find_key(db_handle *handle, void *key, uint32_t key_size);
 void *__find_key(db_handle *handle, void *key);
 int8_t delete_key(db_handle *handle, void *key, uint32_t size);
