@@ -427,8 +427,7 @@ static void comp_init_write_cursor(struct comp_level_write_cursor *c, struct db_
 	uint32_t level_leaf_size = c->handle->db_desc->levels[level_id].leaf_size;
 
 	for (int i = 0; i < MAX_HEIGHT; i++) {
-		struct segment_header *seg = get_segment_for_explicit_IO(c->handle->volume_desc,
-									 &c->handle->db_desc->levels[c->level_id], 1);
+		struct segment_header *seg = get_segment_for_explicit_IO(c->handle->db_desc, c->level_id, 1);
 
 		c->dev_offt[i] = ABSOLUTE_ADDRESS(seg);
 		// log_info("Got dev_offt[%d] = %llu", i, c->dev_offt[i]);
@@ -548,8 +547,7 @@ static void comp_get_space(struct comp_level_write_cursor *c, uint32_t height, n
 
 			// log_info("Dumped leaf segment buffer");
 			/*get space from allocator*/
-			struct segment_header *seg = get_segment_for_explicit_IO(
-				c->handle->volume_desc, &c->handle->db_desc->levels[c->level_id], 1);
+			struct segment_header *seg = get_segment_for_explicit_IO(c->handle->db_desc, c->level_id, 1);
 			c->dev_offt[0] = ABSOLUTE_ADDRESS(seg);
 			c->segment_offt[0] += sizeof(struct segment_header);
 		}
@@ -578,8 +576,7 @@ static void comp_get_space(struct comp_level_write_cursor *c, uint32_t height, n
 
 			// log_info("Dumped index %d segment buffer", height);
 			/*get space from allocator*/
-			struct segment_header *seg = get_segment_for_explicit_IO(
-				c->handle->volume_desc, &c->handle->db_desc->levels[c->level_id], 1);
+			struct segment_header *seg = get_segment_for_explicit_IO(c->handle->db_desc, c->level_id, 1);
 			c->segment_offt[height] += sizeof(struct segment_header);
 			c->dev_offt[height] = ABSOLUTE_ADDRESS(seg);
 		}
@@ -1426,7 +1423,7 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 	ld->level_size[1] = 0;
 	ld->root_w[1] = NULL;
 	ld->root_r[1] = NULL;
-	seg_free_level(&hd, comp_req->src_level, comp_req->src_tree);
+	seg_free_level(hd.db_desc, comp_req->src_level, comp_req->src_tree);
 #if ENABLE_BLOOM_FILTERS
 	if (dst_root) {
 		log_info("Freeing previous bloom filter for dst level %u", comp_req->dst_level);
