@@ -300,7 +300,6 @@ struct bt_kv_log_address bt_get_kv_log_address(struct log_descriptor *log_desc, 
 void bt_done_with_value_log_address(struct log_descriptor *log_desc, struct bt_kv_log_address *L);
 
 typedef struct db_descriptor {
-	char db_name[MAX_DB_NAME_SIZE];
 	level_descriptor levels[MAX_LEVELS];
 #if MEASURE_MEDIUM_INPLACE
 	uint64_t count_medium_inplace;

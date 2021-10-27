@@ -644,7 +644,7 @@ static void init_fresh_db(struct db_descriptor *db_desc, char *region_name, uint
 
 static void recover_logs(db_descriptor *db_desc)
 {
-	log_info("Recovering KV logs (small,medium,large) for DB: %s", db_desc->db_name);
+	log_info("Recovering KV logs (small,medium,large) for DB: %s", db_desc->my_superblock.region_name);
 
 	// Small log
 	db_desc->small_log.head_dev_offt = db_desc->my_superblock.small_log_head_offt;
@@ -950,12 +950,14 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 char db_close(db_handle *handle)
 {
 	/*verify that this is a valid db*/
-	if (klist_find_element_with_key(handle->volume_desc->open_databases, handle->db_desc->db_name) == NULL) {
-		log_fatal("received close for db: %s that is not listed as open", handle->db_desc->db_name);
+	if (klist_find_element_with_key(handle->volume_desc->open_databases,
+					handle->db_desc->my_superblock.region_name) == NULL) {
+		log_fatal("received close for db: %s that is not listed as open",
+			  handle->db_desc->my_superblock.region_name);
 		exit(EXIT_FAILURE);
 	}
 
-	log_info("closing region/db %s snapshotting volume\n", handle->db_desc->db_name);
+	log_info("Closing region/db %s snapshotting volume\n", handle->db_desc->my_superblock.region_name);
 	handle->db_desc->stat = DB_IS_CLOSING;
 	snapshot(handle->volume_desc);
 /*stop log appenders*/
@@ -974,7 +976,7 @@ char db_close(db_handle *handle)
 	destroy_level_locktable(handle->db_desc, 0);
 
 	if (klist_remove_element(handle->volume_desc->open_databases, handle->db_desc) != 1) {
-		log_info("Could not find db: %s", handle->db_desc->db_name);
+		log_info("Could not find db: %s", handle->db_desc->my_superblock.region_name);
 		MUTEX_UNLOCK(&init_lock);
 		return COULD_NOT_FIND_DB;
 	}
@@ -2497,7 +2499,7 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 	/*Acquire read guard lock*/
 	ret = RWLOCK_RDLOCK(&guard_of_level->rx_lock);
 	if (ret) {
-		log_fatal("Failed to acquire guard lock for db: %s", db_desc->db_name);
+		log_fatal("Failed to acquire guard lock for db: %s", db_desc->my_superblock.region_name);
 		perror("Reason: ");
 		exit(EXIT_FAILURE);
 	}

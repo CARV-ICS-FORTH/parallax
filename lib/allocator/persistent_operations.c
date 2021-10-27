@@ -200,7 +200,7 @@ void pr_flush_region_superblock(struct db_descriptor *db_desc)
 		bytes_written = pwrite(db_desc->my_volume->my_fd, &db_desc->my_superblock, size - total_bytes_written,
 				       my_superblock_offt + total_bytes_written);
 		if (bytes_written == -1) {
-			log_fatal("Failed to write region's %s superblock", db_desc->db_name);
+			log_fatal("Failed to write region's %s superblock", db_desc->my_superblock.region_name);
 			perror("Reason");
 			exit(EXIT_FAILURE);
 		}
@@ -221,7 +221,7 @@ void pr_read_region_superblock(struct db_descriptor *db_desc)
 		bytes_written = pwrite(db_desc->my_volume->my_fd, &db_desc->my_superblock, size - total_bytes_written,
 				       my_superblock_offt + total_bytes_written);
 		if (bytes_written == -1) {
-			log_fatal("Failed to read region's %s superblock", db_desc->db_name);
+			log_fatal("Failed to read region's %s superblock", db_desc->my_superblock.region_name);
 			perror("Reason");
 			assert(0);
 			exit(EXIT_FAILURE);

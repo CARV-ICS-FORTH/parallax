@@ -1156,7 +1156,7 @@ static void choose_compaction_roots(struct db_handle *handle, struct compaction_
 		log_fatal("NULL src root for compaction from level's tree [%u][%u] to "
 			  "level's tree[%u][%u] for db %s",
 			  comp_req->src_level, comp_req->src_tree, comp_req->dst_level, comp_req->dst_tree,
-			  handle->db_desc->db_name);
+			  handle->db_desc->my_superblock.region_name);
 		exit(EXIT_FAILURE);
 	}
 
@@ -1271,7 +1271,8 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 	do {
 		handle->db_desc->dirty = 0x01;
 		if (handle->db_desc->stat == DB_IS_CLOSING) {
-			log_info("DB %s is closing compaction thread exiting...", handle->db_desc->db_name);
+			log_info("DB %s is closing compaction thread exiting...",
+				 handle->db_desc->my_superblock.region_name);
 			if (l_src)
 				free(l_src);
 			if (l_dst)

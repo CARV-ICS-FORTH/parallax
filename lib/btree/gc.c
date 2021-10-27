@@ -340,7 +340,7 @@ void *gc_log_entries(void *handle)
 
 		while (region != NULL) {
 			db_desc = (db_descriptor *)region->data;
-			if (!strcmp(db_desc->db_name, SYSTEMDB)) {
+			if (!strcmp(db_desc->my_superblock.region_name, SYSTEMDB)) {
 				scan_db(db_desc, volume_desc, marks);
 				break;
 			}

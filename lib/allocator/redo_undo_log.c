@@ -40,7 +40,7 @@ static void rul_flush_log_chunk(struct db_descriptor *db_desc, uint32_t chunk_id
 					       db_desc->allocation_log->my_segment.chunk[chunk_id],
 					       size - total_bytes_written, dev_offt + total_bytes_written);
 			if (bytes_written == -1) {
-				log_fatal("Failed to write region's %s superblock", db_desc->db_name);
+				log_fatal("Failed to write region's %s superblock", db_desc->my_superblock.region_name);
 				perror("Reason");
 				exit(EXIT_FAILURE);
 			}
@@ -151,7 +151,7 @@ static void rul_flush_last_chunk(struct db_descriptor *db_desc)
 		bytes_written = pwrite(db_desc->my_volume->my_fd, db_desc->allocation_log->my_segment.chunk[chunk_id],
 				       size - total_bytes_written, dev_offt + total_bytes_written);
 		if (bytes_written == -1) {
-			log_fatal("Failed to write region's %s superblock", db_desc->db_name);
+			log_fatal("Failed to write region's %s superblock", db_desc->my_superblock.region_name);
 			perror("Reason");
 			exit(EXIT_FAILURE);
 		}
