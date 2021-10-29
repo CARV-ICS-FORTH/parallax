@@ -89,8 +89,8 @@ struct pr_region_operation_entry {
 } __attribute__((packed, aligned(8)));
 
 struct pr_region_allocation_log {
-	uint32_t start;
-	uint32_t end;
+	uint64_t head_dev_offt;
+	uint32_t tail_dev_offt;
 	uint32_t size;
 	uint64_t txn_id;
 } __attribute__((packed, aligned(32)));

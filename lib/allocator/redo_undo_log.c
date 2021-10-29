@@ -207,13 +207,15 @@ static int rul_append(struct db_descriptor *db_desc, struct rul_log_entry *entry
 		log_desc->curr_chunk_entry = 0;
 		log_desc->curr_segment_entry = 0;
 		rul_flush_last_chunk(db_desc);
+#if 0
 		//update and write superblock
-		db_desc->my_superblock.allocation_log.end = log_desc->tail_dev_offt;
+		db_desc->my_superblock.allocation_log.tail_dev_offt = log_desc->tail_dev_offt;
 		db_desc->my_superblock.allocation_log.size = log_desc->size;
 		db_desc->my_superblock.allocation_log.txn_id = log_desc->txn_id;
 		pr_lock_region_superblock(db_desc);
 		pr_flush_region_superblock(db_desc);
 		pr_unlock_region_superblock(db_desc);
+#endif
 		memset(&log_desc->my_segment, 0x00, sizeof(struct rul_log_segment));
 	}
 
@@ -254,8 +256,8 @@ void rul_log_init(struct db_descriptor *db_desc)
 
 	pthread_mutex_init(&log_desc->rul_lock, NULL);
 	// resume state, superblock must have been read in memory
-	log_desc->head_dev_offt = db_desc->my_superblock.allocation_log.start;
-	log_desc->tail_dev_offt = db_desc->my_superblock.allocation_log.end;
+	log_desc->head_dev_offt = db_desc->my_superblock.allocation_log.head_dev_offt;
+	log_desc->tail_dev_offt = db_desc->my_superblock.allocation_log.tail_dev_offt;
 	log_desc->size = db_desc->my_superblock.allocation_log.size;
 	log_desc->trans_map = NULL;
 	log_desc->txn_id = db_desc->my_superblock.allocation_log.txn_id;
@@ -350,8 +352,9 @@ int rul_add_entry_in_txn_buf(struct db_descriptor *db_desc, struct rul_log_entry
 	return 1;
 }
 
-int rul_flush_txn(struct db_descriptor *db_desc, uint64_t txn_id)
+struct rul_log_info rul_flush_txn(struct db_descriptor *db_desc, uint64_t txn_id)
 {
+	struct rul_log_info info = { .head_dev_offt = 0, .tail_dev_offt = 0, .size = 0, .txn_id = 0 };
 	struct rul_log_descriptor *log_desc = db_desc->allocation_log;
 	struct rul_transaction *my_transaction;
 	HASH_FIND_PTR(log_desc->trans_map, &txn_id, my_transaction);
@@ -380,10 +383,14 @@ int rul_flush_txn(struct db_descriptor *db_desc, uint64_t txn_id)
 
 	//synchronously write last
 	rul_flush_log_chunk(db_desc, log_desc->curr_chunk_id);
+	info.head_dev_offt = db_desc->allocation_log->head_dev_offt;
+	info.tail_dev_offt = db_desc->allocation_log->tail_dev_offt;
+	info.size = db_desc->allocation_log->size;
+	info.txn_id = db_desc->allocation_log->txn_id;
 
 	pthread_mutex_unlock(&log_desc->rul_lock);
 	HASH_DEL(log_desc->trans_map, my_transaction);
 	free(my_transaction);
 
-	return 1;
+	return info;
 }

@@ -9,6 +9,7 @@ option(
 
 set(LIB_C_SOURCE_FILES
     allocator/allocator.c
+    allocator/redo_undo_log.c
     allocator/persistent_operations.c
     allocator/djb2.c
     allocator/djb2.c
@@ -53,6 +54,7 @@ add_executable(
   allocator/mkfs_parallax.c
   allocator/djb2.c
   allocator/allocator.c
+  allocator/redo_undo_log.c
   allocator/persistent_operations.c
   btree/segment_allocator.c
   btree/set_options.c

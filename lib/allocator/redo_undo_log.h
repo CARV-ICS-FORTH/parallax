@@ -15,6 +15,13 @@
 enum rul_op_type { RUL_ALLOCATE = 1, RUL_FREE, RUL_COMMIT, RUL_LOG_ALLOCATE, RUL_LOG_FREE };
 #define RUL_LOG_SYSTEM_TXN 0
 
+struct rul_log_info {
+	uint64_t size;
+	uint64_t txn_id;
+	uint64_t tail_dev_offt;
+	uint64_t head_dev_offt;
+};
+
 struct rul_log_entry {
 	uint64_t txn_id;
 	uint64_t dev_offt;
@@ -61,4 +68,4 @@ struct rul_log_descriptor {
 void rul_log_init(struct db_descriptor *db_desc);
 uint64_t rul_start_txn(struct db_descriptor *db_desc);
 int rul_add_entry_in_txn_buf(struct db_descriptor *db_desc, struct rul_log_entry *entry);
-int rul_flush_txn(struct db_descriptor *db_desc, uint64_t txn_id);
+struct rul_log_info rul_flush_txn(struct db_descriptor *db_desc, uint64_t txn_id);

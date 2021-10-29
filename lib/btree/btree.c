@@ -943,7 +943,9 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 		handle->db_desc->gc_db = db_open(volumeName, 0, size, SYSTEMDB, CREATE_DB);
 
 	assert(handle->db_desc->gc_db);
-
+	/*get allocation transaction id for level-0*/
+	MUTEX_INIT(&handle->db_desc->flush_L0_lock, NULL);
+	db_desc->levels[0].allocation_txn_id[0] = rul_start_txn(db_desc);
 	return handle;
 }
 
@@ -1409,70 +1411,6 @@ static void *bt_append_to_log_direct_IO(struct log_operation *req, struct log_to
 	return addr_inlog + sizeof(struct log_sequence_number);
 }
 //######################################################################################################
-
-#if 0
-static void *bt_append_key_value_to_log_mmap(struct log_operation *req, struct log_towrite *log_metadata,
-					     struct metadata_tologop *data_size)
-{
-	segment_header *d_header;
-	void *addr_inlog;
-
-	uint64_t lsn;
-	uint32_t available_space_in_log;
-	uint32_t allocated_space;
-	db_handle *handle = req->metadata->handle;
-
-	MUTEX_LOCK(&handle->db_desc->lock_log);
-
-	/*append data part in the data log*/
-	if (log_metadata->log_desc->size % SEGMENT_SIZE != 0)
-		available_space_in_log = SEGMENT_SIZE - (log_metadata->log_desc->size % SEGMENT_SIZE);
-	else
-		available_space_in_log = 0;
-
-	if (available_space_in_log < data_size->kv_size + sizeof(struct log_sequence_number)) {
-		/*fill info for kreon master here*/
-		req->metadata->log_segment_addr = log_metadata->log_desc->tail_dev_offt;
-		req->metadata->log_offset_full_event = log_metadata->log_desc->size;
-		struct segment_header *T = REAL_ADDRESS(log_metadata->log_desc->tail_dev_offt);
-		req->metadata->segment_id = T->segment_id;
-		req->metadata->log_padding = available_space_in_log;
-		req->metadata->end_of_log = log_metadata->log_desc->size + available_space_in_log;
-		req->metadata->segment_full_event = 1;
-
-		/*pad with zeroes remaining bytes in segment*/
-		addr_inlog = (void *)((uint64_t)T + (log_metadata->log_desc->size % SEGMENT_SIZE));
-		memset(addr_inlog, 0x00, available_space_in_log);
-
-		allocated_space = data_size->kv_size + sizeof(struct log_sequence_number) + sizeof(segment_header);
-		allocated_space += SEGMENT_SIZE - (allocated_space % SEGMENT_SIZE);
-		d_header = seg_get_raw_log_segment(handle->volume_desc);
-		d_header->segment_id = T->segment_id + 1;
-		d_header->prev_segment = (void *)log_metadata->log_desc->tail_dev_offt;
-		d_header->next_segment = NULL;
-		T->next_segment = (void *)ABSOLUTE_ADDRESS(d_header);
-		log_metadata->log_desc->tail_dev_offt = ABSOLUTE_ADDRESS(d_header);
-		/* position the log to the newly added block*/
-		log_metadata->log_desc->size += (available_space_in_log + sizeof(segment_header));
-		update_log_metadata(handle->db_desc, log_metadata);
-	}
-	struct segment_header *T = REAL_ADDRESS(log_metadata->log_desc->tail_dev_offt);
-	addr_inlog = (void *)((uint64_t)T + (log_metadata->log_desc->size % SEGMENT_SIZE));
-	req->metadata->log_offset = log_metadata->log_desc->size;
-	log_metadata->log_desc->size += data_size->kv_size + sizeof(struct log_sequence_number);
-
-	/* if(req->metadata->cat == BIG_INLOG){ */
-	/*   log_info("kv_size = %d ",data_size.kv_size); */
-	/* } */
-
-	lsn = __sync_fetch_and_add(&handle->db_desc->lsn, 1);
-	MUTEX_UNLOCK(&handle->db_desc->lock_log);
-
-	write_keyvalue_inlog(req, data_size, addr_inlog, lsn);
-
-	return addr_inlog + sizeof(struct log_sequence_number);
-}
-#endif
 
 void *append_key_value_to_log(log_operation *req)
 {

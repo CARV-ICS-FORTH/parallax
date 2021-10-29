@@ -265,10 +265,9 @@ typedef struct level_descriptor {
 	/*needed for L0 scanner tiering colission*/
 	uint64_t epoch[NUM_TREES_PER_LEVEL];
 	uint64_t scanner_epoch;
+	uint64_t allocation_txn_id[NUM_TREES_PER_LEVEL];
 	lock_table guard_of_level;
 	pthread_mutex_t spill_trigger;
-	//Since we perform always KV separation we express it
-	//in number of keys
 	uint64_t level_size[NUM_TREES_PER_LEVEL];
 	uint64_t max_level_size;
 	struct leaf_node_metadata leaf_offsets;
@@ -305,13 +304,13 @@ typedef struct db_descriptor {
 	uint64_t count_medium_inplace;
 #endif
 
-	//<new_persistent_design>
+	/*<new_persistent_design>*/
 	struct pr_region_superblock my_superblock;
 	pthread_mutex_t my_superblock_lock;
 	struct rul_log_descriptor *allocation_log;
 	struct volume_descriptor *my_volume;
 	uint32_t my_superblock_idx;
-	//</new_persistent_design>
+	/*</new_persistent_design>*/
 
 	pthread_cond_t client_barrier;
 	pthread_cond_t compaction_cond;
@@ -319,6 +318,11 @@ typedef struct db_descriptor {
 	pthread_mutex_t compaction_lock;
 	pthread_mutex_t lock_log;
 	pthread_mutex_t client_barrier_lock;
+
+	/*<new_persistent_design>*/
+	pthread_mutex_t flush_L0_lock;
+	/*</new_persistent_design>*/
+
 	sem_t compaction_daemon_interrupts;
 	sem_t compaction_sem;
 	sem_t compaction_daemon_sem;
@@ -377,12 +381,14 @@ void recover_region(recovery_request *rh);
 void snapshot(volume_descriptor *volume_desc);
 void pr_flush_log_tail(struct db_descriptor *db_desc, struct volume_descriptor *volume_desc,
 		       struct log_descriptor *log_desc);
-//<new_persistent_design>
+/*<new_persistent_design>*/
 void pr_read_region_superblock(struct db_descriptor *db_desc);
 void pr_flush_region_superblock(struct db_descriptor *db_desc);
 void pr_lock_region_superblock(struct db_descriptor *db_desc);
 void pr_unlock_region_superblock(struct db_descriptor *db_desc);
-//</new_persistent_design>
+void pr_flush_L0(struct db_descriptor *db_desc, uint8_t tree_id);
+void pr_flush_compaction(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id);
+/*</new_persistent_design>*/
 //void commit_db_log(db_descriptor *db_desc, commit_log_info *info);
 //void commit_db_logs_per_volume(volume_descriptor *volume_desc);
 //void commit_db_log(db_descriptor *db_desc, commit_log_info *info);

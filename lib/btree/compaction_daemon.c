@@ -220,12 +220,6 @@ static void comp_write_segment(char *buffer, uint64_t dev_offt, uint32_t buf_off
 		}
 		total_bytes_written += bytes_written;
 	}
-#if 0
-	if (fsync(fd)) {
-		log_fatal("Failed to sync file");
-		exit(EXIT_FAILURE);
-	}
-#endif
 	return;
 }
 
@@ -527,15 +521,8 @@ static void comp_get_space(struct comp_level_write_cursor *c, uint32_t height, n
 			}
 			comp_write_segment(c->segment_buf[0], c->dev_offt[0], sizeof(struct segment_header),
 					   SEGMENT_SIZE, c->fd);
-// uint32_t *type = (uint32_t *)&c->segment_buf[0][4096];
-// assert(*type == leafNode || *type == leafRootNode);
-#if 0
-			if (fsync(FD) != 0) {
-				log_fatal("Failed to sync file!");
-				perror("Reason:\n");
-				exit(EXIT_FAILURE);
-			}
-#endif
+			// uint32_t *type = (uint32_t *)&c->segment_buf[0][4096];
+			// assert(*type == leafNode || *type == leafRootNode);
 			// type = (uint32_t *)(MAPPED + c->dev_offt[0] + 4096);
 			// assert(*type == leafNode || *type == leafRootNode);
 			// type = (uint32_t
@@ -976,7 +963,7 @@ void *compaction_daemon(void *args)
 			/* } */
 		}
 
-		/*Now fire up (if needed) the spill/compaction from L0 to L1*/
+		/*Now fire up (if needed) the compaction from L0 to L1*/
 		if (comp_req) {
 #ifdef COMPACTION
 			comp_req->dst_tree = 1;
