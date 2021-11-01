@@ -21,9 +21,6 @@
 #include "../../utilities/dups_list.h"
 #include "medium_log_LRU_cache.h"
 
-#define COMPACTION
-#define COMPACTION_UNIT_OF_WORK 1
-
 /* Checks for pending compactions. It is responsible to check for dependencies
  * between two levels before triggering a compaction. */
 extern sem_t gc_daemon_interrupts;
@@ -877,11 +874,7 @@ void mark_segment_space(db_handle *handle, struct dups_list *list)
 	}
 }
 
-#ifdef COMPACTION
 static void *compaction(void *_comp_req);
-#else
-static void *spill_buffer(void *_comp_req);
-#endif
 
 void *compaction_daemon(void *args)
 {
@@ -918,11 +911,7 @@ void *compaction_daemon(void *args)
 				comp_req->src_level = 0;
 				comp_req->src_tree = L0_tree;
 				comp_req->dst_level = 1;
-#ifdef COMPACTION
 				comp_req->dst_tree = 1;
-#else
-				comp_req->dst_tree = 0;
-#endif
 				if (++next_L0_tree_to_compact >= NUM_TREES_PER_LEVEL)
 					next_L0_tree_to_compact = 0;
 			}
@@ -965,7 +954,6 @@ void *compaction_daemon(void *args)
 
 		/*Now fire up (if needed) the compaction from L0 to L1*/
 		if (comp_req) {
-#ifdef COMPACTION
 			comp_req->dst_tree = 1;
 			assert(db_desc->levels[0].root_w[comp_req->src_tree] != NULL ||
 			       db_desc->levels[0].root_r[comp_req->src_tree] != NULL);
@@ -974,14 +962,6 @@ void *compaction_daemon(void *args)
 				log_fatal("Failed to start compaction");
 				exit(EXIT_FAILURE);
 			}
-#else
-			comp_req->dst_tree = 0;
-			if (pthread_create(&db_desc->levels[0].compaction_thread[comp_req->src_tree], NULL,
-					   spill_buffer, comp_req) != 0) {
-				log_fatal("Failed to start compaction");
-				exit(EXIT_FAILURE);
-			}
-#endif
 			comp_req = NULL;
 		}
 
@@ -1008,7 +988,6 @@ void *compaction_daemon(void *args)
 					comp_req_p->src_tree = tree_1;
 					comp_req_p->dst_level = level_id + 1;
 
-#ifdef COMPACTION
 					comp_req_p->dst_tree = 1;
 					assert(db_desc->levels[level_id].root_w[0] != NULL ||
 					       db_desc->levels[level_id].root_r[0] != NULL);
@@ -1018,14 +997,6 @@ void *compaction_daemon(void *args)
 						log_fatal("Failed to start compaction");
 						exit(EXIT_FAILURE);
 					}
-#else
-					comp_req_p->dst_tree = 0;
-					if (pthread_create(&db_desc->levels[level_id].compaction_thread[tree_1], NULL,
-							   spill_buffer, comp_req_p) != 0) {
-						log_fatal("Failed to start compaction");
-						exit(EXIT_FAILURE);
-					}
-#endif
 				}
 			}
 		}
@@ -1062,7 +1033,6 @@ static void swap_levels(struct level_descriptor *src, struct level_descriptor *d
 	return;
 }
 
-#ifdef COMPACTION
 static void comp_fill_heap_node(struct compaction_request *comp_req, struct comp_level_read_cursor *cur,
 				struct sh_heap_node *nd)
 {
@@ -1530,127 +1500,3 @@ void *compaction(void *_comp_req)
 	sem_post(&gc_daemon_interrupts);
 	return NULL;
 }
-
-#else
-void *spill_buffer(void *_comp_req)
-{
-	struct bt_insert_req ins_req;
-	struct compaction_request *comp_req = (struct compaction_request *)_comp_req;
-	struct db_descriptor *db_desc;
-	struct level_scanner *level_sc;
-
-	int32_t local_spilled_keys = 0;
-	int i, rc = 100;
-
-	pthread_setname_np(pthread_self(), "comp_thread");
-	log_info("starting compaction from level's tree [%u][%u] to level's tree[%u][%u]", comp_req->src_level,
-		 comp_req->src_tree, comp_req->dst_level, comp_req->dst_tree);
-	/*Initialize a scan object*/
-	db_desc = comp_req->db_desc;
-
-	db_handle handle = { .db_desc = comp_req->db_desc, .volume_desc = comp_req->volume_desc };
-	struct node_header *src_root = NULL;
-
-	if (handle.db_desc->levels[comp_req->src_level].root_w[comp_req->src_tree] != NULL)
-		src_root = handle.db_desc->levels[comp_req->src_level].root_w[comp_req->src_tree];
-	else if (handle.db_desc->levels[comp_req->src_level].root_r[comp_req->src_tree] != NULL)
-		src_root = handle.db_desc->levels[comp_req->src_level].root_r[comp_req->src_tree];
-	else {
-		log_fatal("NULL src root for compaction?");
-		exit(EXIT_FAILURE);
-	}
-	level_sc = _init_spill_buffer_scanner(&handle, src_root, NULL);
-	if (!level_sc) {
-		log_fatal("Failed to create a spill buffer scanner for level's tree[%u][%u]", comp_req->src_level,
-			  comp_req->src_tree);
-		exit(EXIT_FAILURE);
-	}
-	int32_t num_of_keys = (SPILL_BUFFER_SIZE - (2 * sizeof(uint32_t))) / (PREFIX_SIZE + sizeof(uint64_t));
-
-	/*optimization check if level below is empty than spill is a metadata
-	 * operation*/
-	struct node_header *dst_root = NULL;
-	if (handle.db_desc->levels[comp_req->dst_level].root_w[0] != NULL)
-		dst_root = handle.db_desc->levels[comp_req->dst_level].root_w[0];
-	else if (handle.db_desc->levels[comp_req->dst_level].root_r[0] != NULL)
-		dst_root = handle.db_desc->levels[comp_req->dst_level].root_r[0];
-	else {
-		log_info("Empty level %d time for an optimization :-)");
-		dst_root = NULL;
-	}
-
-	if (dst_root) {
-		do {
-			while (handle.volume_desc->snap_preemption == SNAP_INTERRUPT_ENABLE)
-				usleep(50000);
-
-			db_desc->dirty = 0x01;
-			if (handle.db_desc->stat == DB_IS_CLOSING) {
-				log_info("db is closing bye bye from spiller");
-				return NULL;
-			}
-
-			ins_req.metadata.handle = &handle;
-			ins_req.metadata.level_id = comp_req->dst_level;
-			ins_req.metadata.tree_id = comp_req->dst_tree;
-			ins_req.metadata.key_format = KV_PREFIX;
-			ins_req.metadata.append_to_log = 0;
-			ins_req.metadata.special_split = 0;
-
-			ins_req.metadata.gc_request = 0;
-			ins_req.metadata.recovery_request = 0;
-
-			for (i = 0; i < num_of_keys; i++) {
-				ins_req.key_value_buf = level_sc->keyValue;
-				_insert_key_value(&ins_req);
-				rc = _get_next_KV(level_sc);
-				if (rc == END_OF_DATABASE)
-					break;
-
-				++local_spilled_keys;
-			}
-		} while (rc != END_OF_DATABASE);
-
-		_close_spill_buffer_scanner(level_sc);
-
-		log_info("local spilled keys %d", local_spilled_keys);
-
-		struct db_handle hd = { .db_desc = comp_req->db_desc, .volume_desc = comp_req->volume_desc };
-		seg_free_level(&hd, comp_req->src_level, comp_req->src_tree);
-	} else {
-		struct level_descriptor *level_src = &comp_req->db_desc->levels[comp_req->src_level];
-		struct level_descriptor *level_dst = &comp_req->db_desc->levels[comp_req->dst_level];
-		swap_levels(level_src, level_dst, comp_req->src_tree, comp_req->dst_tree);
-
-		log_info("Swapped levels %d to %d successfully", comp_req->src_level, comp_req->dst_level);
-	}
-
-	/*Clean up code, Free the buffer tree was occupying. free_block() used
-* intentionally*/
-	log_info("DONE Compaction from level's tree [%u][%u] to level's tree[%u][%u] "
-		 "cleaning src level",
-		 comp_req->src_level, comp_req->src_tree, comp_req->dst_level, comp_req->dst_tree);
-
-	//snapshot(comp_req->volume_desc);
-	db_desc->levels[comp_req->src_level].tree_status[comp_req->src_tree] = NO_SPILLING;
-	db_desc->levels[comp_req->dst_level].tree_status[comp_req->dst_tree] = NO_SPILLING;
-	if (comp_req->src_tree == 0)
-		db_desc->L0_start_log_offset = comp_req->l0_end;
-
-	// log_info("DONE Cleaning src level tree [%u][%u] snapshotting...",
-	// comp_req->src_level, comp_req->src_tree);
-	/*interrupt compaction daemon*/
-	/*wake up clients*/
-	if (comp_req->src_level == 0) {
-		pthread_mutex_lock(&comp_req->db_desc->client_barrier_lock);
-		if (pthread_cond_broadcast(&db_desc->client_barrier) != 0) {
-			log_fatal("Failed to wake up stopped clients");
-			exit(EXIT_FAILURE);
-		}
-	}
-	pthread_mutex_unlock(&db_desc->client_barrier_lock);
-	sem_post(&db_desc->compaction_daemon_interrupts);
-	free(comp_req);
-	return NULL;
-}
-#endif
