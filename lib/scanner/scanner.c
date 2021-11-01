@@ -143,10 +143,13 @@ static void init_generic_scanner(struct scannerHandle *sc, struct db_handle *han
 				nd.active_tree = i;
 				nd.type = KV_FORMAT;
 				nd.db_desc = handle->db_desc;
-				if (sc->type_of_scanner == FORWARD_SCANNER)
+
+				if (sc->type_of_scanner == FORWARD_SCANNER) {
+					nd.epoch = handle->db_desc->levels[0].epoch[i];
 					sh_insert_heap_node(&sc->heap.min_heap, &nd);
-				else
+				} else //reverse scanners are not supported for now
 					sh_insert_max_heap_node(&sc->heap.max_heap, (struct sh_max_heap_node *)&nd);
+
 			} else
 				sc->LEVEL_SCANNERS[0][i].valid = 0;
 		}
