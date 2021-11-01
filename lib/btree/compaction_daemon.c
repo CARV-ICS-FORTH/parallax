@@ -1,28 +1,33 @@
 #define _GNU_SOURCE /* See feature_test_macros(7) */
-#include <semaphore.h>
-#include <string.h>
-#include <stdio.h>
-#include <stdint.h>
-#include <stdlib.h>
-#include <pthread.h>
-#include <assert.h>
-#include <unistd.h>
-#include <log.h>
-#include <spin_loop.h>
+
 #include "btree.h"
-#include "gc.h"
-#include "segment_allocator.h"
 #include "conf.h"
 #include "dynamic_leaf.h"
-#include "../scanner/scanner.h"
-#include "../scanner/min_max_heap.h"
+#include "gc.h"
+#include "segment_allocator.h"
+
+#include "medium_log_LRU_cache.h"
+#include "../../utilities/dups_list.h"
 #include "../allocator/device_structures.h"
 #include "../allocator/volume_manager.h"
-#include "../../utilities/dups_list.h"
-#include "medium_log_LRU_cache.h"
+#include "../scanner/min_max_heap.h"
+#include "../scanner/scanner.h"
 
-/* Checks for pending compactions. It is responsible to check for dependencies
- * between two levels before triggering a compaction. */
+#include <assert.h>
+#include <log.h>
+#include <pthread.h>
+#include <semaphore.h>
+#include <spin_loop.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+
+/*
+ * Checks for pending compactions. It is responsible to check for dependencies
+ * between two levels before triggering a compaction.
+*/
 extern sem_t gc_daemon_interrupts;
 
 struct comp_level_write_cursor {
