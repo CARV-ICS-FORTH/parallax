@@ -327,7 +327,7 @@ typedef struct level_descriptor {
 
 struct log_tail {
 	char buf[SEGMENT_SIZE];
-	uint32_t bytes_in_chunk[SEGMENT_SIZE / LOG_CHUNK_SIZE];
+	volatile uint32_t bytes_in_chunk[SEGMENT_SIZE / LOG_CHUNK_SIZE];
 	uint64_t dev_offt;
 	uint64_t start;
 	uint64_t end;

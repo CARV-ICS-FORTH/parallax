@@ -1025,8 +1025,9 @@ void *compaction_daemon(void *args)
 					comp_req_p->dst_tree = 1;
 					assert(db_desc->levels[level_id].root_w[0] != NULL ||
 					       db_desc->levels[level_id].root_r[0] != NULL);
-					if (pthread_create(&db_desc->levels[0].compaction_thread[tree_1], NULL,
-							   compaction, comp_req_p) != 0) {
+					if (pthread_create(
+						    &db_desc->levels[comp_req_p->dst_level].compaction_thread[tree_1],
+						    NULL, compaction, comp_req_p) != 0) {
 						log_fatal("Failed to start compaction");
 						exit(EXIT_FAILURE);
 					}
@@ -1181,7 +1182,6 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 
 	if (comp_req->src_level == 0) {
 		//snapshot(comp_req->volume_desc); // --> This is for recovery I think;
-
 		RWLOCK_WRLOCK(&handle->db_desc->levels[0].guard_of_level.rx_lock);
 		spin_loop(&handle->db_desc->levels[0].active_writers, 0);
 		pr_flush_log_tail(comp_req->db_desc, comp_req->volume_desc, &comp_req->db_desc->big_log);
