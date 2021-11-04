@@ -11,14 +11,16 @@ set(LIB_C_SOURCE_FILES
     allocator/allocator.c
     allocator/persistent_operations.c
     allocator/recovery.c
-    # api/parallax.c
+    api/parallax.c
     btree/btree.c
     btree/compaction_daemon.c
     btree/dynamic_leaf.c
     btree/gc.c
+    btree/medium_log_LRU_cache.c
     btree/segment_allocator.c
     btree/set_options.c
     scanner/min_max_heap.c
+    scanner/max_min_heap.c
     scanner/scanner.c
     scanner/stack.c)
 

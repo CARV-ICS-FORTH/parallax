@@ -4,7 +4,7 @@
 #include "min_max_heap.h"
 #include "../btree/btree.h"
 #include "../btree/conf.h"
-
+#include "max_min_heap.h"
 #define FULL_SCANNER 1
 
 #define SPILL_BUFFER_SCANNER 3
@@ -15,6 +15,8 @@
 #define KREON_BUFFER_OVERFLOW 0x0F
 
 typedef enum SEEK_SCANNER_MODE { GREATER = 5, GREATER_OR_EQUAL = 6, FETCH_FIRST } SEEK_SCANNER_MODE;
+
+typedef enum SCANNER_TYPE { FORWARD_SCANNER = 8, BACKWARD_SCANNER } SCANNER_TYPE;
 
 typedef struct level_scanner {
 	struct bt_leaf_entry kv_entry;
@@ -33,10 +35,14 @@ typedef struct level_scanner {
 
 typedef struct scannerHandle {
 	level_scanner LEVEL_SCANNERS[MAX_LEVELS][NUM_TREES_PER_LEVEL];
-	struct sh_min_heap heap;
+	union {
+		struct sh_min_heap min_heap;
+		struct sh_max_heap max_heap;
+	} heap;
 	db_handle *db;
 	void *keyValue;
 	int32_t type; /*to be removed also*/
+	SCANNER_TYPE type_of_scanner;
 } scannerHandle;
 
 /*
@@ -61,14 +67,16 @@ scannerHandle *initScanner(scannerHandle *sc, db_handle *handle, void *key, char
 void closeScanner(scannerHandle *sc);
 
 void init_dirty_scanner(scannerHandle *sc, db_handle *handle, void *start_key, char seek_flag);
+void seek_to_last(scannerHandle *sc, db_handle *handle);
 
 int32_t getNext(scannerHandle *sc);
+int32_t getPrev(scannerHandle *sc);
 int isValid(scannerHandle *sc);
-int32_t getKeySize(scannerHandle *sc);
-void *getKeyPtr(scannerHandle *sc);
-int32_t getValueSize(scannerHandle *sc);
-void *getValuePtr(scannerHandle *sc);
-
+int32_t get_key_size(scannerHandle *sc);
+void *get_key_ptr(scannerHandle *sc);
+int32_t get_value_size(scannerHandle *sc);
+void *get_value_ptr(scannerHandle *sc);
+uint32_t get_kv_size(scannerHandle *sc);
 /**
  * __seek_scanner: positions the cursor to the appropriate position
  * returns:

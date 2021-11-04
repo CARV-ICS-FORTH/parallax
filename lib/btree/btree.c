@@ -1235,9 +1235,10 @@ static void pr_do_log_chunk_IO(struct pr_log_ticket *ticket)
 	uint32_t chunk_offt = offt_in_seg % LOG_CHUNK_SIZE;
 	uint32_t chunk_id = offt_in_seg / LOG_CHUNK_SIZE;
 	uint32_t num_chunks = SEGMENT_SIZE / LOG_CHUNK_SIZE;
+	int do_IO;
+
 	(void)num_chunks;
 	assert(chunk_id != num_chunks);
-	int do_IO;
 
 	if (chunk_offt + ticket->op_size >= LOG_CHUNK_SIZE) {
 		ticket->IO_start_offt = chunk_id * LOG_CHUNK_SIZE;
@@ -1292,16 +1293,20 @@ static void pr_do_log_IO(struct pr_log_ticket *ticket)
 	uint32_t op_size = ticket->op_size;
 	uint32_t remaining = ticket->op_size;
 	uint64_t c_log_offt = log_offt;
+
 	while (remaining > 0) {
 		ticket->log_offt = c_log_offt;
+
 		if (remaining >= LOG_CHUNK_SIZE)
 			ticket->op_size = LOG_CHUNK_SIZE;
 		else
 			ticket->op_size = remaining;
+
 		pr_do_log_chunk_IO(ticket);
 		remaining -= ticket->op_size;
 		c_log_offt += ticket->op_size;
 	}
+
 	ticket->log_offt = log_offt;
 	ticket->op_size = op_size;
 }
