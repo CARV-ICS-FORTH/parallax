@@ -21,7 +21,10 @@
 #include <string.h>
 
 #define KEY_PREFIX "userakias_computerakias"
-#define KV_SIZE 1024
+#define SMALL_VALUE_SIZE 36
+#define MEDIUM_VALUE_SIZE 512
+#define LARGE_VALUE_SIZE 1120
+#define KV_BUFFER_SIZE 4096
 
 struct key {
 	uint32_t key_size;
@@ -99,7 +102,7 @@ int main(int argc, char **argv)
 	//stackElementT element;
 	db_handle *hd = db_open(volume_name, 0, 0, "scan_test", CREATE_DB);
 
-	struct key *k = calloc(1, KV_SIZE);
+	struct key *k = calloc(1, KV_BUFFER_SIZE);
 	log_info("Starting population for %lu keys...", total_keys);
 	uint64_t key_count = 0;
 	for (uint64_t i = base; i < base + total_keys; ++i) {
@@ -107,7 +110,15 @@ int main(int argc, char **argv)
 		sprintf(k->key_buf + strlen(KEY_PREFIX), "%llu", (long long unsigned)i);
 		k->key_size = strlen(k->key_buf) + 1;
 		struct value *v = (struct value *)((uint64_t)k + sizeof(struct key) + k->key_size);
-		v->value_size = KV_SIZE - ((2 * sizeof(struct key)) + k->key_size);
+		uint32_t res = key_count % 10;
+
+		if (res < 6)
+			v->value_size = SMALL_VALUE_SIZE;
+		else if (res >= 8)
+			v->value_size = LARGE_VALUE_SIZE;
+		else
+			v->value_size = MEDIUM_VALUE_SIZE;
+
 		memset(v->value_buf, 0xDD, v->value_size);
 
 		insert_key_value(hd, k->key_buf, v->value_buf, k->key_size, v->value_size);

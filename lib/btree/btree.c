@@ -395,41 +395,6 @@ static void pr_init_log(struct log_descriptor *log_desc)
 		log_desc->tail[0]->bytes_in_chunk[i] = offt_in_seg % LOG_CHUNK_SIZE;
 }
 
-#if 0
-static void pr_init_medium_log_L0(struct db_handle *handle, int tree_id) {
-  // The in memory part
-  struct segment_header *inmem_header = NULL;
-  if (posix_memalign((void **)&inmem_header, SEGMENT_SIZE, SEGMENT_SIZE) != 0) {
-    log_fatal("Failed to allocate memory for L0 inmem log");
-    exit(EXIT_FAILURE);
-  }
-  for (int i = 0; i < NUM_TREES_PER_LEVEL; ++i) {
-    inmem_header->bytes_per_chunk[tree_id] = tree_id;
-    inmem_header->segment_id = 0;
-  }
-  handle->db_desc->inmem_medium_log_L0[tree_id].head_dev_offt =
-      ABSOLUTE_ADDRESS(inmem_header);
-  handle->db_desc->inmem_medium_log_L0[tree_id].tail_dev_offt =
-      ABSOLUTE_ADDRESS(inmem_header);
-  handle->db_desc->inmem_medium_log_L0[tree_id].size =
-      sizeof(struct segment_header);
-  // The same for the dev part
-  struct segment_header *dev_header =
-      seg_get_raw_log_segment(handle->volume_desc);
-  dev_header->segment_id = 0;
-  for (int i = 0; i < NUM_TREES_PER_LEVEL; ++i) {
-    dev_header->bytes_per_chunk[tree_id] = tree_id;
-    dev_header->segment_id = 0;
-  }
-  handle->db_desc->dev_medium_log_L0[tree_id].head_dev_offt =
-      ABSOLUTE_ADDRESS(inmem_header);
-  handle->db_desc->dev_medium_log_L0[tree_id].tail_dev_offt =
-      ABSOLUTE_ADDRESS(inmem_header);
-  handle->db_desc->dev_medium_log_L0[tree_id].size =
-      sizeof(struct segment_header);
-}
-#endif
-
 void init_level_bloom_filters(db_descriptor *db_desc, int level_id, int tree_id)
 {
 #if ENABLE_BLOOM_FILTERS
@@ -527,7 +492,7 @@ struct db_handle *bt_restore_db(struct volume_descriptor *volume_desc, struct pr
 
 /*<new_persistent_design>*/
 
-static void init_log_buffer(struct log_descriptor *log_desc)
+void init_log_buffer(struct log_descriptor *log_desc)
 {
 	// Just update the chunk counters according to the log size
 	if (RWLOCK_INIT(&log_desc->log_tail_buf_lock, NULL) != 0) {
@@ -566,9 +531,8 @@ static void init_log_buffer(struct log_descriptor *log_desc)
 static void init_fresh_logs(struct db_descriptor *db_desc)
 {
 	log_info("Initializing KV logs (small,medium,large) for region: %s", db_desc->my_superblock.region_name);
-
 	// Large log
-	struct segment_header *s = seg_get_raw_log_segment(db_desc);
+	struct segment_header *s = seg_get_raw_log_segment(db_desc, 0, 0);
 	s->segment_id = 0;
 	s->next_segment = NULL;
 	s->prev_segment = NULL;
@@ -579,6 +543,10 @@ static void init_fresh_logs(struct db_descriptor *db_desc)
 	log_info("Large log head %llu", db_desc->big_log.head_dev_offt);
 
 	// Medium log
+	db_desc->medium_log.head_dev_offt = 0;
+	db_desc->medium_log.tail_dev_offt = 0;
+	db_desc->medium_log.size = 0;
+#if 0
 	s = seg_get_raw_log_segment(db_desc);
 	s->segment_id = 0;
 	s->next_segment = NULL;
@@ -587,9 +555,10 @@ static void init_fresh_logs(struct db_descriptor *db_desc)
 	db_desc->medium_log.tail_dev_offt = db_desc->medium_log.head_dev_offt;
 	db_desc->medium_log.size = sizeof(segment_header);
 	init_log_buffer(&db_desc->medium_log);
+#endif
 
 	// Small log
-	s = seg_get_raw_log_segment(db_desc);
+	s = seg_get_raw_log_segment(db_desc, 0, 0);
 	s->segment_id = 0;
 	s->prev_segment = NULL;
 	s->next_segment = NULL;
@@ -732,13 +701,17 @@ static db_descriptor *get_db_from_volume(char *volume_name, char *db_name, char 
 		}
 	}
 	if (found_db) {
-		db_desc->my_volume = volume_desc;
 		int ret = posix_memalign((void **)&db_desc, ALIGNMENT_SIZE, sizeof(struct db_descriptor));
 		if (ret) {
 			log_fatal("Failed to allocate db_descriptor");
 			exit(EXIT_FAILURE);
 		}
+		memset(db_desc, 0x00, sizeof(struct db_descriptor));
+		db_desc->my_volume = volume_desc;
+		log_info("Found DB: %s recovering its allocation log", db_name);
+		rul_log_init(db_desc);
 		restore_db(db_desc, i);
+
 		goto exit;
 	}
 
@@ -748,7 +721,19 @@ static db_descriptor *get_db_from_volume(char *volume_name, char *db_name, char 
 			log_fatal("Failed to allocate db_descriptor");
 			exit(EXIT_FAILURE);
 		}
+		memset(db_desc, 0x00, sizeof(struct db_descriptor));
+
 		db_desc->my_volume = volume_desc;
+		log_info("Initializing new DB: %s, initializing its allocation log", db_name);
+		rul_log_init(db_desc);
+		db_desc->levels[0].allocation_txn_id[0] = rul_start_txn(db_desc);
+		/*
+     * init_fresh_db allocates space for the L0_recovery log and large.
+     * As a result we need to acquire a txn_id for the L0
+    */
+
+		log_info("Got txn %llu for the initialization of Large and L0_recovery_logs of DB: %s",
+			 db_desc->levels[0].allocation_txn_id[0], db_name);
 		init_fresh_db(db_desc, db_name, empty_slot);
 		goto exit;
 	}
@@ -781,6 +766,7 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 	assert(volume_desc->open_databases);
 	index_order = IN_LENGTH;
 	_Static_assert(sizeof(index_node) == 4096, "Index node is not page aligned");
+	_Static_assert(sizeof(struct segment_header) == 4096, "Segment header is not 4 KB");
 	db = klist_find_element_with_key(volume_desc->open_databases, db_name);
 
 	if (db != NULL) {
@@ -945,7 +931,6 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 	assert(handle->db_desc->gc_db);
 	/*get allocation transaction id for level-0*/
 	MUTEX_INIT(&handle->db_desc->flush_L0_lock, NULL);
-	db_desc->levels[0].allocation_txn_id[0] = rul_start_txn(db_desc);
 	return handle;
 }
 
@@ -1223,6 +1208,7 @@ static void pr_copy_kv_to_tail(struct pr_log_ticket *ticket)
 			bytes = remaining;
 
 		__sync_fetch_and_add(&ticket->tail->bytes_in_chunk[chunk_id], bytes);
+		assert(ticket->tail->bytes_in_chunk[chunk_id] <= LOG_CHUNK_SIZE);
 		//log_info("Charged %u bytes for chunk id %u op size %u bytes now %u", bytes, chunk_id,
 		// ticket->op_size, ticket->tail->bytes_in_chunk[chunk_id]);
 		remaining -= bytes;
@@ -1358,7 +1344,8 @@ static void *bt_append_to_log_direct_IO(struct log_operation *req, struct log_to
 
 		log_metadata->log_desc->size += available_space_in_log;
 
-		struct segment_header *d_header = seg_get_raw_log_segment(handle->db_desc);
+		struct segment_header *d_header =
+			seg_get_raw_log_segment(handle->db_desc, req->metadata->level_id, req->metadata->tree_id);
 		struct segment_header *last_segment = REAL_ADDRESS(log_metadata->log_desc->tail_dev_offt);
 		if (last_segment) {
 			d_header->segment_id = last_segment->segment_id + 1;
@@ -1393,7 +1380,7 @@ static void *bt_append_to_log_direct_IO(struct log_operation *req, struct log_to
 	my_ticket.log_offt = log_metadata->log_desc->size;
 	my_ticket.lsn.id = __sync_fetch_and_add(&handle->db_desc->lsn, 1);
 
-	//Where we *will* store it on the device
+	/*Where we *will* store it on the device*/
 	struct segment_header *T = REAL_ADDRESS(log_metadata->log_desc->tail_dev_offt);
 	addr_inlog = (void *)((uint64_t)T + (log_metadata->log_desc->size % SEGMENT_SIZE));
 
@@ -1410,7 +1397,7 @@ static void *bt_append_to_log_direct_IO(struct log_operation *req, struct log_to
 
 	return addr_inlog + sizeof(struct log_sequence_number);
 }
-//######################################################################################################
+/*######################################################################################################*/
 
 void *append_key_value_to_log(log_operation *req)
 {

@@ -1,3 +1,17 @@
+// Copyright [2021] [FORTH-ICS]
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #define _GNU_SOURCE /* See feature_test_macros(7) */
 
 #include "btree.h"
@@ -9,6 +23,7 @@
 #include "medium_log_LRU_cache.h"
 #include "../../utilities/dups_list.h"
 #include "../allocator/device_structures.h"
+#include "../allocator/redo_undo_log.h"
 #include "../allocator/volume_manager.h"
 #include "../scanner/min_max_heap.h"
 #include "../scanner/scanner.h"
@@ -250,7 +265,6 @@ static void comp_init_read_cursor(struct comp_level_read_cursor *c, db_handle *h
 	c->curr_leaf_entry = 0;
 	c->end_of_level = 0;
 	c->state = COMP_CUR_FETCH_NEXT_SEGMENT;
-	return;
 }
 
 static void comp_get_next_key(struct comp_level_read_cursor *c)
@@ -288,7 +302,8 @@ static void comp_get_next_key(struct comp_level_read_cursor *c)
 					assert((uint64_t)c->curr_segment ==
 					       (uint64_t)c->handle->db_desc->levels[c->level_id]
 						       .last_segment[c->tree_id]);
-					log_info("Done parsing cursor offset %llu total offt %llu", c->offset,
+					log_info("Done reading level %lu cursor offset %llu total offt %llu",
+						 c->level_id, c->offset,
 						 c->handle->db_desc->levels[c->level_id].offset[c->tree_id]);
 					c->state = COMP_CUR_CHECK_OFFT;
 					goto fsm_entry;
@@ -296,8 +311,8 @@ static void comp_get_next_key(struct comp_level_read_cursor *c)
 					c->curr_segment =
 						(segment_header *)REAL_ADDRESS((uint64_t)c->curr_segment->next_segment);
 			}
-
-			// log_info("Fetching next segment id %llu", c->curr_segment->segment_id);
+			/*log_info("Fetching next segment id %llu for [%lu][%lu]", c->curr_segment->segment_id,
+				 c->level_id, c->tree_id);*/
 			/*read the segment*/
 			off_t dev_offt = ABSOLUTE_ADDRESS(c->curr_segment);
 			ssize_t bytes_read = sizeof(struct segment_header);
@@ -378,20 +393,20 @@ static void comp_get_next_key(struct comp_level_read_cursor *c)
 
 			case rootNode:
 			case internalNode:
-				//log_info("Found an internal");
+				/*log_info("Found an internal");*/
 				c->offset += INDEX_NODE_SIZE;
 				c->state = COMP_CUR_CHECK_OFFT;
 				goto fsm_entry;
 
 			case keyBlockHeader:
-				//log_info("Found a keyblock header");
+				/*log_info("Found a keyblock header");*/
 				c->offset += KEY_BLOCK_SIZE;
 				c->state = COMP_CUR_CHECK_OFFT;
 				goto fsm_entry;
 
 			case paddedSpace:
-				//log_info("Found padded space of size %llu",
-				//	 (SEGMENT_SIZE - (c->offset % SEGMENT_SIZE)));
+				/*log_info("Found padded space of size %llu",
+					 (SEGMENT_SIZE - (c->offset % SEGMENT_SIZE)));*/
 				c->offset += (SEGMENT_SIZE - (c->offset % SEGMENT_SIZE));
 				c->state = COMP_CUR_CHECK_OFFT;
 				goto fsm_entry;
@@ -422,7 +437,7 @@ static void comp_init_write_cursor(struct comp_level_write_cursor *c, struct db_
 	c->handle = handle;
 	uint32_t level_leaf_size = c->handle->db_desc->levels[level_id].leaf_size;
 
-	for (int i = 0; i < MAX_HEIGHT; i++) {
+	for (int i = 0; i < MAX_HEIGHT; ++i) {
 		struct segment_header *seg = get_segment_for_explicit_IO(c->handle->db_desc, c->level_id, 1);
 
 		c->dev_offt[i] = ABSOLUTE_ADDRESS(seg);
@@ -461,13 +476,13 @@ static void comp_init_write_cursor(struct comp_level_write_cursor *c, struct db_
 static void comp_close_write_cursor(struct comp_level_write_cursor *c)
 {
 	uint32_t level_leaf_size = c->handle->db_desc->levels[c->level_id].leaf_size;
-	for (uint32_t i = 0; i < MAX_HEIGHT; i++) {
+	for (uint32_t i = 0; i < MAX_HEIGHT; ++i) {
 		uint32_t *type;
+		/*log_info("i = %lu tree height: %lu", i, c->tree_height);*/
 		if (i <= c->tree_height) {
 			if (i == 0 && c->segment_offt[i] % SEGMENT_SIZE != 0) {
 				type = (uint32_t *)((uint64_t)c->last_leaf + level_leaf_size);
-				// log_info("Marking padded space for %u segment offt %llu", i,
-				// c->segment_offt[0]);
+				//log_info("Marking padded space for %u segment offt %llu", i, c->segment_offt[0]);
 				*type = paddedSpace;
 			} else if (i > 0 && c->segment_offt[i] % SEGMENT_SIZE != 0) {
 				type = (uint32_t *)((uint64_t)(c->last_index[i]) + INDEX_NODE_SIZE + KEY_BLOCK_SIZE);
@@ -477,7 +492,7 @@ static void comp_close_write_cursor(struct comp_level_write_cursor *c)
 				*type = paddedSpace;
 			}
 		} else {
-			type = (uint32_t *)&c->segment_buf[i][c->segment_offt[i]];
+			type = (uint32_t *)&c->segment_buf[i][sizeof(struct segment_header)];
 			*type = paddedSpace;
 			// log_info("Marking full padded space for leaves segment offt %llu", i,
 			// c->segment_offt[i]);
@@ -672,6 +687,19 @@ static void comp_append_pivot_to_index(struct comp_level_write_cursor *c, uint64
 	return;
 }
 
+static void comp_init_medium_log(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
+{
+	log_info("Initializing medium log for db: %s", db_desc->my_superblock.region_name);
+	struct segment_header *s = seg_get_raw_log_segment(db_desc, level_id, tree_id);
+	s->segment_id = 0;
+	s->next_segment = NULL;
+	s->prev_segment = NULL;
+	db_desc->medium_log.head_dev_offt = ABSOLUTE_ADDRESS(s);
+	db_desc->medium_log.tail_dev_offt = db_desc->medium_log.head_dev_offt;
+	db_desc->medium_log.size = sizeof(segment_header);
+	init_log_buffer(&db_desc->medium_log);
+}
+
 static int comp_append_medium_L1(struct comp_level_write_cursor *c, struct comp_parallax_key *in,
 				 struct comp_parallax_key *out)
 {
@@ -680,6 +708,11 @@ static int comp_append_medium_L1(struct comp_level_write_cursor *c, struct comp_
 	if (in->kv_category != MEDIUM_INPLACE)
 		return 0;
 
+	struct db_descriptor *db_desc = c->handle->db_desc;
+	if (db_desc->medium_log.head_dev_offt == 0 && db_desc->medium_log.tail_dev_offt == 0 &&
+	    db_desc->medium_log.size == 0) {
+		comp_init_medium_log(c->handle->db_desc, c->level_id, 1);
+	}
 	struct bt_insert_req ins_req;
 	ins_req.metadata.handle = c->handle;
 	ins_req.metadata.log_offset = 0;
@@ -694,7 +727,8 @@ static int comp_append_medium_L1(struct comp_level_write_cursor *c, struct comp_
 	ins_req.metadata.recovery_request = 0;
 	ins_req.metadata.special_split = 0;
 	ins_req.metadata.key_format = KV_FORMAT;
-	// bullshit for parallax currently
+
+	/*For Tebis-parallax currently*/
 	ins_req.metadata.segment_full_event = 0;
 	ins_req.metadata.reorganized_leaf_pos_INnode = NULL;
 	ins_req.metadata.log_segment_addr = 0;
@@ -721,6 +755,7 @@ static int comp_append_medium_L1(struct comp_level_write_cursor *c, struct comp_
 	out->kv_category = MEDIUM_INLOG;
 	out->kv_type = KV_INLOG;
 	out->kv_inlog->pointer = (uint64_t)log_location;
+	//log_info("Compact key %s", ins_req.key_value_buf + 4);
 	return 1;
 }
 
@@ -924,7 +959,6 @@ void *compaction_daemon(void *args)
 		/*can I set a different active tree for L0*/
 		int active_tree = db_desc->levels[0].active_tree;
 		if (db_desc->levels[0].tree_status[active_tree] == SPILLING_IN_PROGRESS) {
-			/* for (int i = 0; i < NUM_TREES_PER_LEVEL; i++) { */
 			int next_active_tree = active_tree != (NUM_TREES_PER_LEVEL - 1) ? active_tree + 1 : 0;
 			if (db_desc->levels[0].tree_status[next_active_tree] == NO_SPILLING) {
 				/*Acquire guard lock and wait writers to finish*/
@@ -932,15 +966,16 @@ void *compaction_daemon(void *args)
 					log_fatal("Failed to acquire guard lock");
 					exit(EXIT_FAILURE);
 				}
-
 				spin_loop(&(handle->db_desc->levels[0].active_writers), 0);
 
 				/*done now atomically change active tree*/
 				db_desc->levels[0].active_tree = next_active_tree;
 				db_desc->levels[0].scanner_epoch += 1;
 				db_desc->levels[0].epoch[active_tree] = db_desc->levels[0].scanner_epoch;
-				log_info("next active tree %d, tree epoch is %lu", next_active_tree,
-					 db_desc->levels[0].scanner_epoch);
+				log_info("Next active tree %u for L0 of DB: %s", next_active_tree,
+					 db_desc->my_superblock.region_name);
+				/*Acquire a new transaction id for the next_active_tree*/
+				db_desc->levels[0].allocation_txn_id[next_active_tree] = rul_start_txn(db_desc);
 				/*Release guard lock*/
 				if (RWLOCK_UNLOCK(&handle->db_desc->levels[0].guard_of_level.rx_lock)) {
 					log_fatal("Failed to acquire guard lock");
@@ -954,11 +989,14 @@ void *compaction_daemon(void *args)
 				}
 				MUTEX_UNLOCK(&db_desc->client_barrier_lock);
 			}
-			/* } */
 		}
 
-		/*Now fire up (if needed) the compaction from L0 to L1*/
 		if (comp_req) {
+			/*Start a compaction from L0 to L1. Flush L0 prior to compaction from L0 to L1*/
+			log_info("Flushing L0 for region:%s tree:[0][%u]", db_desc->my_superblock.region_name,
+				 comp_req->src_tree);
+			pr_flush_L0(db_desc, comp_req->src_tree);
+			db_desc->levels[1].allocation_txn_id[1] = rul_start_txn(db_desc);
 			comp_req->dst_tree = 1;
 			assert(db_desc->levels[0].root_w[comp_req->src_tree] != NULL ||
 			       db_desc->levels[0].root_r[comp_req->src_tree] != NULL);
@@ -984,8 +1022,8 @@ void *compaction_daemon(void *args)
 					level_1->tree_status[tree_1] = SPILLING_IN_PROGRESS;
 					level_2->tree_status[tree_2] = SPILLING_IN_PROGRESS;
 					/*start a compaction*/
-					struct compaction_request *comp_req_p =
-						(struct compaction_request *)malloc(sizeof(struct compaction_request));
+					struct compaction_request *comp_req_p = (struct compaction_request *)calloc(
+						1, sizeof(struct compaction_request));
 					assert(comp_req_p);
 					comp_req_p->db_desc = handle->db_desc;
 					comp_req_p->volume_desc = handle->volume_desc;
@@ -994,11 +1032,16 @@ void *compaction_daemon(void *args)
 					comp_req_p->dst_level = level_id + 1;
 
 					comp_req_p->dst_tree = 1;
+
+					/*Acquire a txn_id for the allocations of the compaction*/
+					db_desc->levels[comp_req_p->dst_level].allocation_txn_id[comp_req_p->dst_tree] =
+						rul_start_txn(db_desc);
+
 					assert(db_desc->levels[level_id].root_w[0] != NULL ||
 					       db_desc->levels[level_id].root_r[0] != NULL);
-					if (pthread_create(
-						    &db_desc->levels[comp_req_p->dst_level].compaction_thread[tree_1],
-						    NULL, compaction, comp_req_p) != 0) {
+					if (pthread_create(&db_desc->levels[comp_req_p->dst_level]
+								    .compaction_thread[comp_req_p->dst_tree],
+							   NULL, compaction, comp_req_p) != 0) {
 						log_fatal("Failed to start compaction");
 						exit(EXIT_FAILURE);
 					}
@@ -1222,7 +1265,7 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 	// init Li+1 cursor (if any)
 	if (l_dst) {
 		comp_fill_heap_node(comp_req, l_dst, &nd_dst);
-		log_info("Initializing heap from DST read cursor level %u with key:", comp_req->dst_level);
+		log_info("Initializing heap from DST read cursor level %u", comp_req->dst_level);
 		print_heap_node_key(&nd_dst);
 		nd_dst.db_desc = comp_req->db_desc;
 		sh_insert_heap_node(m_heap, &nd_dst);
@@ -1316,7 +1359,7 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 
 	free(merged_level);
 
-	//***************************************************************
+	/***************************************************************/
 	struct level_descriptor *ld = &comp_req->db_desc->levels[comp_req->dst_level];
 	struct db_handle hd = { .db_desc = comp_req->db_desc, .volume_desc = comp_req->volume_desc };
 
@@ -1330,35 +1373,11 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 		exit(EXIT_FAILURE);
 	}
 
+	uint64_t space_freed;
 	if (l_dst) {
-		// free previous dst level
-		struct segment_header *curr_segment = comp_req->db_desc->levels[comp_req->dst_level].first_segment[0];
-		struct segment_header *next_segment;
-
-		assert(curr_segment != NULL);
-		uint64_t space_freed = 0;
-
-		while (curr_segment != NULL) {
-			/* log_info("TEST %llu %llu
-* %d",curr_segment->segment_id,curr_segment->next_segment,curr_segment->in_mem);
-*/
-			if (curr_segment->next_segment == NULL) {
-				next_segment = NULL;
-			} else {
-				next_segment = MAPPED + curr_segment->next_segment;
-			}
-
-			if (curr_segment->in_mem == 0)
-				free_block(comp_req->volume_desc, curr_segment, SEGMENT_SIZE);
-			else
-				free(curr_segment);
-
-			space_freed += SEGMENT_SIZE;
-			if (next_segment)
-				curr_segment = next_segment;
-			else
-				break;
-		}
+		uint64_t txn_id = comp_req->db_desc->levels[comp_req->dst_level].allocation_txn_id[comp_req->dst_tree];
+		/*free dst (L_i+1) level*/
+		space_freed = seg_free_level(comp_req->db_desc, txn_id, comp_req->dst_level, 0);
 
 		log_info("Freed space %llu MB from db:%s destination level %u", space_freed / (1024 * 1024),
 			 comp_req->db_desc->my_superblock.region_name, comp_req->src_level);
@@ -1386,7 +1405,12 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 	ld->level_size[1] = 0;
 	ld->root_w[1] = NULL;
 	ld->root_r[1] = NULL;
-	seg_free_level(hd.db_desc, comp_req->src_level, comp_req->src_tree);
+	uint64_t txn_id = comp_req->db_desc->levels[comp_req->dst_level].allocation_txn_id[comp_req->dst_tree];
+	space_freed = seg_free_level(hd.db_desc, txn_id, comp_req->src_level, comp_req->src_tree);
+	log_info("Freed space %llu MB from db:%s source level %u", space_freed / (1024 * 1024),
+		 comp_req->db_desc->my_superblock.region_name, comp_req->src_level);
+	seg_zero_level(hd.db_desc, comp_req->src_level, comp_req->src_tree);
+
 #if ENABLE_BLOOM_FILTERS
 	if (dst_root) {
 		log_info("Freeing previous bloom filter for dst level %u", comp_req->dst_level);
@@ -1402,7 +1426,10 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 		pr_flush_log_tail(comp_req->db_desc, comp_req->volume_desc, &comp_req->db_desc->medium_log);
 	}
 #endif
-
+	/*Finally persist compaction */
+	log_info("Flusing compaction[%lu][%lu]", comp_req->dst_level, comp_req->dst_tree);
+	pr_flush_compaction(comp_req->db_desc, comp_req->dst_level, comp_req->dst_tree);
+	log_info("Flusing compaction  done from level %lu tree %lu", comp_req->dst_level, comp_req->dst_tree);
 	if (RWLOCK_UNLOCK(&(comp_req->db_desc->levels[comp_req->src_level].guard_of_level.rx_lock))) {
 		log_fatal("Failed to acquire guard lock");
 		exit(EXIT_FAILURE);

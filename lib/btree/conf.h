@@ -53,7 +53,7 @@
 #define GB(x) ((x)*1024LU * 1024LU * 1024LU)
 #define MB(x) ((x)*1024LU * 1024LU)
 #define KB(x) ((x)*1024LU)
-#define LEVEL_MEDIUM_INPLACE (2)
+#define LEVEL_MEDIUM_INPLACE (3)
 #define SEGMENT_SIZE (2 * 1024 * 1024)
 #define LOG_CHUNK_SIZE (256 * 1024)
 #define LOG_TAIL_NUM_BUFS 4

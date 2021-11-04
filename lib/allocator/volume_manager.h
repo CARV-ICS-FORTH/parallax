@@ -160,16 +160,17 @@ typedef struct volume_descriptor {
 	/*</stats counters>*/
 	int32_t reference_count;
 	int32_t allocator_size;
-	volatile char state; /*used for signaling log cleaner when volume is closing*/
+	/*used for signaling log cleaner when volume is closing*/
+	volatile char state;
 	volatile char snap_preemption;
 	char force_snapshot;
 } volume_descriptor;
 
-//<new_persistent_design>
+/*<new_persistent_design>*/
 struct volume_descriptor *mem_get_volume_desc(char *volume_name);
 uint64_t mem_allocate(struct volume_descriptor *volume_desc, uint64_t num_bytes);
 void mem_bitmap_mark_block_free(struct volume_descriptor *volume_desc, uint64_t dev_offt);
-//</new_persistent_design>
+/*</new_persistent_design>*/
 
 /*
  * @dev_name The device name

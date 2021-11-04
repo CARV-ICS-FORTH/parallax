@@ -1,3 +1,17 @@
+// Copyright [2021] [FORTH-ICS]
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #pragma once
 #include "../btree/btree.h"
 #include "device_structures.h"
@@ -52,6 +66,7 @@ struct rul_transaction_buffer {
 struct rul_log_descriptor {
 	struct rul_log_segment my_segment;
 	pthread_mutex_t rul_lock;
+	pthread_mutex_t trans_map_lock;
 	struct aiocb aiocbp[RUL_LOG_CHUNK_NUM];
 	uint32_t pending_IO[RUL_LOG_CHUNK_NUM];
 	struct rul_transaction *trans_map;
@@ -69,3 +84,4 @@ void rul_log_init(struct db_descriptor *db_desc);
 uint64_t rul_start_txn(struct db_descriptor *db_desc);
 int rul_add_entry_in_txn_buf(struct db_descriptor *db_desc, struct rul_log_entry *entry);
 struct rul_log_info rul_flush_txn(struct db_descriptor *db_desc, uint64_t txn_id);
+void rul_apply_txn_buf_freeops_and_destroy(struct db_descriptor *db_desc, uint64_t txn_id);

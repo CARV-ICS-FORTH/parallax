@@ -552,6 +552,7 @@ static void mem_bitmap_mark_reserved(struct mem_bitmap_word *b_word)
 
 static uint64_t mem_bitmap_translate_word_to_offt(struct volume_descriptor *volume_desc, struct mem_bitmap_word *b)
 {
+	(void)volume_desc;
 	if (!b) {
 		log_fatal("Null word!");
 		assert(0);
@@ -561,8 +562,7 @@ static uint64_t mem_bitmap_translate_word_to_offt(struct volume_descriptor *volu
 	uint64_t bytes_per_word = MEM_WORD_SIZE_IN_BITS * SEGMENT_SIZE;
 	uint64_t dev_offt = (bytes_per_word * b->word_id);
 	dev_offt += (b->start_bit * SEGMENT_SIZE);
-	//log_info("Dev offt = %llu", dev_offt);
-	dev_offt += volume_desc->my_superblock.volume_metadata_size;
+	//dev_offt += volume_desc->my_superblock.volume_metadata_size;
 	//log_info("Now is Dev offt = %llu volume_metadata_size %llu", dev_offt,
 	//	 volume_desc->my_superblock.volume_metadata_size);
 	return dev_offt;
@@ -570,15 +570,19 @@ static uint64_t mem_bitmap_translate_word_to_offt(struct volume_descriptor *volu
 
 uint64_t mem_allocate(struct volume_descriptor *volume_desc, uint64_t num_bytes)
 {
+	uint64_t base_addr;
+	MUTEX_LOCK(&volume_desc->bitmap_lock);
 	// assert(num_bytes == SEGMENT_SIZE);
-	if (num_bytes == 0)
-		return 0;
+	if (num_bytes == 0) {
+		base_addr = 0;
+		assert(0);
+		goto exit;
+	}
 	if (num_bytes % SEGMENT_SIZE != 0) {
 		log_warn("Allocation size: %llu not a multiple of SEGMENT_SIZE: %u", num_bytes, SEGMENT_SIZE);
-		return 0;
+		base_addr = 0;
+		goto exit;
 	}
-
-	uint64_t base_addr;
 
 	uint64_t length_bits = num_bytes / SEGMENT_SIZE;
 
@@ -614,7 +618,8 @@ uint64_t mem_allocate(struct volume_descriptor *volume_desc, uint64_t num_bytes)
 				mem_bitmap_reset_pos(volume_desc);
 				free(b_words);
 				assert(0);
-				return 0;
+				base_addr = 0;
+				goto exit;
 			}
 			++wrap_around;
 			if (volume_desc->max_suffix < suffix_bits) /*update max_suffix */
@@ -680,13 +685,16 @@ uint64_t mem_allocate(struct volume_descriptor *volume_desc, uint64_t num_bytes)
 
 	base_addr = mem_bitmap_translate_word_to_offt(volume_desc, &b_words[0]);
 	free(b_words);
+exit:
+	MUTEX_UNLOCK(&volume_desc->bitmap_lock);
 	return base_addr;
 }
 
 void mem_bitmap_mark_block_free(struct volume_descriptor *volume_desc, uint64_t dev_offt)
 {
+	MUTEX_LOCK(&volume_desc->bitmap_lock);
 	// distance of addr from bitmap end
-	uint64_t distance_in_bits = (dev_offt - volume_desc->my_superblock.volume_metadata_size) / SEGMENT_SIZE;
+	uint64_t distance_in_bits = dev_offt / SEGMENT_SIZE;
 	struct mem_bitmap_word w;
 	w.word_id = distance_in_bits / MEM_WORD_SIZE_IN_BITS;
 	uint32_t bit_in_word = distance_in_bits % MEM_WORD_SIZE_IN_BITS;
@@ -731,7 +739,7 @@ void mem_bitmap_mark_block_free(struct volume_descriptor *volume_desc, uint64_t 
 		my_word[m_idx].b7 = 1;
 		break;
 	}
-	return;
+	MUTEX_UNLOCK(&volume_desc->bitmap_lock);
 }
 
 static int mem_read_into_buffer(char *buffer, uint32_t start, uint32_t size, off_t dev_offt, int fd)
@@ -846,12 +854,24 @@ static volume_descriptor *mem_init_volume(char *volume_name)
 	/*set everything to 1 aka free aka don't know*/
 	memset(volume_desc->mem_volume_bitmap, 0xFF, volume_desc->mem_volume_bitmap_size * sizeof(uint64_t));
 	mem_init_superblock_array(volume_desc);
-	log_info("Recovering ownership registry... XXX TODO XXX");
 
 	volume_desc->curr_word.word_addr = volume_desc->mem_volume_bitmap;
 	volume_desc->curr_word.start_bit = 0;
 	volume_desc->curr_word.end_bit = 0;
 	volume_desc->curr_word.word_id = 0;
+
+	/*Mark as allocated volume's metadata*/
+	uint32_t n_segments = volume_desc->my_superblock.volume_metadata_size / SEGMENT_SIZE;
+	uint64_t dev_offt = 0;
+	for (uint32_t i = 0; i < n_segments; ++i)
+		dev_offt = mem_allocate(volume_desc, SEGMENT_SIZE);
+
+	if (dev_offt + SEGMENT_SIZE != volume_desc->my_superblock.volume_metadata_size) {
+		log_fatal("Faulty marking of volume's metadata as reserved");
+		assert(0);
+		exit(EXIT_FAILURE);
+	}
+	log_info("Recovering ownership registry... XXX TODO XXX");
 
 	volume_desc->open_databases = klist_init();
 	return volume_desc;
