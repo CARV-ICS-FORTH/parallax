@@ -334,11 +334,12 @@ segment_header *seg_get_raw_log_segment(struct db_descriptor *db_desc, uint8_t l
 	segment_header *sg;
 	sg = (segment_header *)REAL_ADDRESS(
 		seg_allocate_segment(db_desc, db_desc->levels[level_id].allocation_txn_id[tree_id]));
-
+#if 0
 	sg->segment_garbage_bytes = 0;
 	sg->moved_kvs = 0;
 	sg->segment_end = 0;
 	sg->in_mem = 0;
+#endif
 	return sg;
 }
 

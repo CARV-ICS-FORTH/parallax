@@ -116,6 +116,7 @@ static void init_generic_scanner(struct scannerHandle *sc, struct db_handle *han
 		sh_init_max_heap(&sc->heap.max_heap, active_tree);
 	else {
 		log_fatal("Unknown scanner type!");
+		assert(0);
 		exit(EXIT_FAILURE);
 	}
 

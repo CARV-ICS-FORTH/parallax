@@ -17,6 +17,7 @@
 #include <stdlib.h>
 #include "../btree/btree.h"
 #include "../scanner/scanner.h"
+#include <assert.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <string.h>
@@ -66,10 +67,10 @@ par_ret_code par_get(par_handle handle, struct par_key *key, struct par_value **
 
 	if (*value == NULL)
 		*value = calloc(1, sizeof(struct par_value) + v->size);
+	assert(v->size < 1300);
 
-	v = (struct val *)((uint64_t)v + sizeof(struct val) + v->size);
 	(*value)->size = v->size;
-	(*value)->data = (const char *)&v[1];
+	(*value)->data = (const char *)v->val;
 	memcpy((char *)(*value)->data, v->val, v->size);
 
 	return PAR_SUCCESS;
@@ -150,7 +151,7 @@ init_seek_key:
 init_scanner:
 	sc = (struct scannerHandle *)calloc(1, sizeof(struct scannerHandle));
 	par_s = (struct par_scanner *)calloc(1, sizeof(struct par_scanner));
-
+	sc->type_of_scanner = FORWARD_SCANNER;
 	init_dirty_scanner(sc, hd, seek_key, native_mode);
 	par_s->sc = sc;
 	par_s->allocated = 0;
@@ -173,7 +174,7 @@ init_scanner:
 			par_s->allocated = 1;
 			par_s->kv_buf = calloc(1, par_s->buf_size);
 		}
-		memcpy(par_s->kv_buf, sc->keyValue, par_s->buf_size);
+		memcpy(par_s->kv_buf, sc->keyValue, kv_size);
 	}
 
 	if (free_seek_key)
@@ -213,7 +214,9 @@ int par_get_next(par_scanner s)
 		par_s->allocated = 1;
 		par_s->kv_buf = calloc(1, par_s->buf_size);
 	}
-	memcpy(par_s->kv_buf, sc->keyValue, par_s->buf_size);
+	//memcpy(par_s->kv_buf, sc->keyValue, par_s->buf_size);
+	//gesalous
+	memcpy(par_s->kv_buf, sc->keyValue, kv_size);
 	return 1;
 }
 
