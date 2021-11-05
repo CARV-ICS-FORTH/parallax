@@ -865,6 +865,68 @@ static volume_descriptor *mem_init_volume(char *volume_name)
 	uint64_t dev_offt = 0;
 	for (uint32_t i = 0; i < n_segments; ++i)
 		dev_offt = mem_allocate(volume_desc, SEGMENT_SIZE);
+	/**
+    * Last bits of bitmap are usually padded in order for the bitmap size to be
+    * a multiple of 4 KB. As a results last bits of the bitmap may point to void
+    * space. So we mark them as "reserved" so the allocator does not bother them.
+  **/
+	uint64_t registry_size_in_bits =
+		(volume_desc->my_superblock.volume_size - volume_desc->my_superblock.unmappedSpace) / SEGMENT_SIZE;
+	uint32_t bits_in_page = 4096 * 8;
+	uint32_t unmapped_bits = 0;
+
+	if (registry_size_in_bits % bits_in_page) {
+		unmapped_bits = (bits_in_page - (registry_size_in_bits % bits_in_page));
+		registry_size_in_bits += unmapped_bits;
+	}
+
+	if (registry_size_in_bits % bits_in_page) {
+		log_fatal("ownership registry must be a multiple of 4 KB its value %llu", registry_size_in_bits);
+		exit(EXIT_FAILURE);
+	}
+
+	struct my_byte {
+		uint8_t b0 : 1;
+		uint8_t b1 : 1;
+		uint8_t b2 : 1;
+		uint8_t b3 : 1;
+		uint8_t b4 : 1;
+		uint8_t b5 : 1;
+		uint8_t b6 : 1;
+		uint8_t b7 : 1;
+	};
+	log_info("Unmapped bits %llu registry_size_in_bits %llu", unmapped_bits, registry_size_in_bits);
+	char *registry_buffer = (char *)volume_desc->mem_volume_bitmap;
+	for (uint64_t i = registry_size_in_bits - 1; i >= registry_size_in_bits - unmapped_bits; --i) {
+		uint64_t idx = i / 8;
+		struct my_byte *B = (struct my_byte *)&registry_buffer[idx];
+		switch (i % 8) {
+		case 0:
+			B->b0 = 0;
+			break;
+		case 1:
+			B->b1 = 0;
+			break;
+		case 2:
+			B->b2 = 0;
+			break;
+		case 3:
+			B->b3 = 0;
+			break;
+		case 4:
+			B->b4 = 0;
+			break;
+		case 5:
+			B->b5 = 0;
+			break;
+		case 6:
+			B->b6 = 0;
+			break;
+		case 7:
+			B->b7 = 0;
+			break;
+		}
+	}
 
 	if (dev_offt + SEGMENT_SIZE != volume_desc->my_superblock.volume_metadata_size) {
 		log_fatal("Faulty marking of volume's metadata as reserved");

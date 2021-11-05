@@ -127,11 +127,11 @@ static void kvf_init_parallax(char *device_name, uint32_t max_regions_num)
 	rs = NULL;
 
 	/*Calculate each region's max size of ownership registry*/
-	uint64_t unmapped_bytes = 0;
+	uint64_t unmapped_bytes = SEGMENT_SIZE;
 	uint64_t mapped_device_size;
 
 	if (device_size % SEGMENT_SIZE)
-		unmapped_bytes = SEGMENT_SIZE - (device_size % SEGMENT_SIZE);
+		unmapped_bytes += (SEGMENT_SIZE - (device_size % SEGMENT_SIZE));
 
 	mapped_device_size = device_size - unmapped_bytes;
 
