@@ -201,6 +201,25 @@ static struct db_descriptor *find_dbdesc(volume_descriptor *volume_desc, int gro
 	return NULL;
 }
 
+//read a segment and store it into segment_buf
+static void fetch_segment(struct segment_header *segment_buf, uint64_t segment_offt)
+{
+	assert(segment_offt % SEGMENT_SIZE == 0);
+	off_t dev_offt = segment_offt;
+	ssize_t bytes_to_read = 0;
+	ssize_t bytes = 0;
+	while (bytes_to_read < SEGMENT_SIZE) {
+		bytes = pread(FD, &segment_buf[bytes_to_read], SEGMENT_SIZE - bytes_to_read, dev_offt + bytes_to_read);
+		if (bytes == -1) {
+			log_fatal("Failed to read error code");
+			perror("Error");
+			assert(0);
+			exit(EXIT_FAILURE);
+		}
+		bytes_to_read += bytes;
+	}
+}
+
 void scan_db(db_descriptor *db_desc, volume_descriptor *volume_desc, stack *marks)
 {
 	struct accum_segments {
@@ -217,6 +236,11 @@ void scan_db(db_descriptor *db_desc, volume_descriptor *volume_desc, stack *mark
 
 	struct gc_value *value;
 	struct segment_header *segment;
+
+	if (posix_memalign((void **)&segment, ALIGNMENT_SIZE, SEGMENT_SIZE) != 0) {
+		log_fatal("MEMALIGN FAILED");
+		exit(EXIT_FAILURE);
+	}
 
 	*(uint32_t *)start_key = 1;
 	scannerHandle *sc = (scannerHandle *)calloc(1, sizeof(scannerHandle));
@@ -249,7 +273,7 @@ void scan_db(db_descriptor *db_desc, volume_descriptor *volume_desc, stack *mark
 	assert(segment_count <= SEGMENTS_TORECLAIM);
 
 	for (int i = 0; i < segment_count; ++i) {
-		segment = (struct segment_header *)REAL_ADDRESS(segments_toreclaim[i].segment_offt);
+		fetch_segment(segment, segments_toreclaim[i].segment_offt);
 		temp_db_desc = find_dbdesc(volume_desc, segments_toreclaim[i].value.group_id,
 					   segments_toreclaim[i].value.index);
 		temp_handle.db_desc = temp_db_desc;
@@ -266,6 +290,7 @@ void scan_db(db_descriptor *db_desc, volume_descriptor *volume_desc, stack *mark
 		insert_key_value(&handle, &segments_toreclaim[i].segment_offt, &segments_toreclaim[i].value,
 				 sizeof(segments_toreclaim[i].segment_offt), sizeof(segments_toreclaim[i].value));
 	}
+	free(segment);
 	free(segments_toreclaim);
 }
 
