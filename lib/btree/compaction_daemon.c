@@ -697,7 +697,7 @@ static void comp_init_medium_log(struct db_descriptor *db_desc, uint8_t level_id
 	db_desc->medium_log.head_dev_offt = ABSOLUTE_ADDRESS(s);
 	db_desc->medium_log.tail_dev_offt = db_desc->medium_log.head_dev_offt;
 	db_desc->medium_log.size = sizeof(segment_header);
-	init_log_buffer(&db_desc->medium_log);
+	init_log_buffer(&db_desc->medium_log, MEDIUM_LOG);
 }
 
 static int comp_append_medium_L1(struct comp_level_write_cursor *c, struct comp_parallax_key *in,

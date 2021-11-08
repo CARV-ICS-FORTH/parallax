@@ -382,7 +382,7 @@ void snapshot(volume_descriptor *volume_desc);
 void pr_flush_log_tail(struct db_descriptor *db_desc, struct volume_descriptor *volume_desc,
 		       struct log_descriptor *log_desc);
 /*<new_persistent_design>*/
-void init_log_buffer(struct log_descriptor *log_desc);
+void init_log_buffer(struct log_descriptor *log_desc, enum log_type my_type);
 void pr_read_region_superblock(struct db_descriptor *db_desc);
 void pr_flush_region_superblock(struct db_descriptor *db_desc);
 void pr_lock_region_superblock(struct db_descriptor *db_desc);

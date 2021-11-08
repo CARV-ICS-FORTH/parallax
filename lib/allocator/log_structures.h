@@ -1,7 +1,9 @@
 #pragma once
-#include <stdint.h>
-#include <pthread.h>
 #include "../btree/conf.h"
+#include <pthread.h>
+#include <stdint.h>
+
+enum log_type { BIG_LOG, MEDIUM_LOG, SMALL_LOG };
 struct log_tail {
 	char buf[SEGMENT_SIZE];
 	uint32_t bytes_in_chunk[SEGMENT_SIZE / LOG_CHUNK_SIZE];
@@ -22,4 +24,5 @@ struct log_descriptor {
 	uint64_t tail_dev_offt;
 	uint64_t size;
 	uint64_t curr_tail_id;
+	enum log_type my_type;
 };

@@ -21,19 +21,20 @@
 #include "gc.h"
 #include "segment_allocator.h"
 #include "set_options.h"
+
 #include <assert.h>
 #include <inttypes.h>
 #include <list.h>
 #include <log.h>
 #include <pthread.h>
-#include <unistd.h>
-#include <uthash.h>
 #include <signal.h>
 #include <spin_loop.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/types.h>
+#include <unistd.h>
+#include <uthash.h>
 
 #define PREFIX_STATISTICS_NO
 #define MIN(x, y) ((x > y) ? (y) : (x))
@@ -359,7 +360,7 @@ struct bt_kv_log_address bt_get_kv_medium_log_address(struct log_descriptor *log
 	return reply;
 }
 
-static void pr_init_log(struct log_descriptor *log_desc)
+static void pr_init_log(struct log_descriptor *log_desc, enum log_type my_type)
 {
 	// Just update the chunk counters according to the log size
 	if (RWLOCK_INIT(&log_desc->log_tail_buf_lock, NULL) != 0) {
@@ -376,6 +377,7 @@ static void pr_init_log(struct log_descriptor *log_desc)
 		log_desc->tail[i]->free = 1;
 		log_desc->tail[i]->fd = FD;
 	}
+	log_desc->my_type = my_type;
 	// Special action for 0
 	log_desc->tail[0]->dev_offt = log_desc->tail_dev_offt;
 	log_desc->tail[0]->start = log_desc->tail_dev_offt;
@@ -415,19 +417,19 @@ static void pr_recover_logs(db_descriptor *db_desc, struct pr_db_entry *entry)
 	db_desc->small_log.head_dev_offt = entry->small_log_head_offt;
 	db_desc->small_log.tail_dev_offt = entry->small_log_tail_offt;
 	db_desc->small_log.size = entry->small_log_size;
-	pr_init_log(&db_desc->small_log);
+	pr_init_log(&db_desc->small_log, SMALL_LOG);
 
 	// Medium log
 	db_desc->medium_log.head_dev_offt = entry->medium_log_head_offt;
 	db_desc->medium_log.tail_dev_offt = entry->medium_log_tail_offt;
 	db_desc->medium_log.size = entry->medium_log_size;
-	pr_init_log(&db_desc->medium_log);
+	pr_init_log(&db_desc->medium_log, MEDIUM_LOG);
 
 	// Big log
 	db_desc->big_log.head_dev_offt = entry->big_log_head_offt;
 	db_desc->big_log.tail_dev_offt = entry->big_log_tail_offt;
 	db_desc->big_log.size = entry->big_log_size;
-	pr_init_log(&db_desc->big_log);
+	pr_init_log(&db_desc->big_log, BIG_LOG);
 	db_desc->lsn = entry->lsn;
 }
 
@@ -492,7 +494,7 @@ struct db_handle *bt_restore_db(struct volume_descriptor *volume_desc, struct pr
 
 /*<new_persistent_design>*/
 
-void init_log_buffer(struct log_descriptor *log_desc)
+void init_log_buffer(struct log_descriptor *log_desc, enum log_type my_type)
 {
 	// Just update the chunk counters according to the log size
 	if (RWLOCK_INIT(&log_desc->log_tail_buf_lock, NULL) != 0) {
@@ -509,6 +511,7 @@ void init_log_buffer(struct log_descriptor *log_desc)
 		log_desc->tail[i]->free = 1;
 		log_desc->tail[i]->fd = FD;
 	}
+	log_desc->my_type = my_type;
 	// Special action for 0
 	log_desc->tail[0]->dev_offt = log_desc->tail_dev_offt;
 	log_desc->tail[0]->start = log_desc->tail_dev_offt;
@@ -539,7 +542,7 @@ static void init_fresh_logs(struct db_descriptor *db_desc)
 	db_desc->big_log.head_dev_offt = ABSOLUTE_ADDRESS(s);
 	db_desc->big_log.tail_dev_offt = db_desc->big_log.head_dev_offt;
 	db_desc->big_log.size = sizeof(segment_header);
-	init_log_buffer(&db_desc->big_log);
+	init_log_buffer(&db_desc->big_log, BIG_LOG);
 	log_info("Large log head %llu", db_desc->big_log.head_dev_offt);
 
 	// Medium log
@@ -554,7 +557,7 @@ static void init_fresh_logs(struct db_descriptor *db_desc)
 	db_desc->medium_log.head_dev_offt = ABSOLUTE_ADDRESS(s);
 	db_desc->medium_log.tail_dev_offt = db_desc->medium_log.head_dev_offt;
 	db_desc->medium_log.size = sizeof(segment_header);
-	init_log_buffer(&db_desc->medium_log);
+	init_log_buffer(&db_desc->medium_log, MEDIUM_LOG);
 #endif
 
 	// Small log
@@ -565,7 +568,7 @@ static void init_fresh_logs(struct db_descriptor *db_desc)
 	db_desc->small_log.head_dev_offt = ABSOLUTE_ADDRESS(s);
 	db_desc->small_log.tail_dev_offt = db_desc->small_log.head_dev_offt;
 	db_desc->small_log.size = sizeof(segment_header);
-	init_log_buffer(&db_desc->small_log);
+	init_log_buffer(&db_desc->small_log, SMALL_LOG);
 	db_desc->lsn = 0;
 }
 
@@ -619,19 +622,19 @@ static void recover_logs(db_descriptor *db_desc)
 	db_desc->small_log.head_dev_offt = db_desc->my_superblock.small_log_head_offt;
 	db_desc->small_log.tail_dev_offt = db_desc->my_superblock.small_log_tail_offt;
 	db_desc->small_log.size = db_desc->my_superblock.small_log_size;
-	pr_init_log(&db_desc->small_log);
+	pr_init_log(&db_desc->small_log, SMALL_LOG);
 
 	// Medium log
 	db_desc->medium_log.head_dev_offt = db_desc->my_superblock.medium_log_head_offt;
 	db_desc->medium_log.tail_dev_offt = db_desc->my_superblock.medium_log_tail_offt;
 	db_desc->medium_log.size = db_desc->my_superblock.medium_log_size;
-	pr_init_log(&db_desc->medium_log);
+	pr_init_log(&db_desc->medium_log, MEDIUM_LOG);
 
 	// Big log
 	db_desc->big_log.head_dev_offt = db_desc->my_superblock.big_log_head_offt;
 	db_desc->big_log.tail_dev_offt = db_desc->my_superblock.big_log_tail_offt;
 	db_desc->big_log.size = db_desc->my_superblock.big_log_size;
-	pr_init_log(&db_desc->big_log);
+	pr_init_log(&db_desc->big_log, BIG_LOG);
 	db_desc->lsn = db_desc->my_superblock.lsn;
 }
 
