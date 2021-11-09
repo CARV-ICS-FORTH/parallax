@@ -959,7 +959,10 @@ void *compaction_daemon(void *args)
 
 				/*done now atomically change active tree*/
 				db_desc->levels[0].active_tree = next_active_tree;
-				log_info("next active tree %d", next_active_tree);
+				db_desc->levels[0].scanner_epoch += 1;
+				db_desc->levels[0].epoch[active_tree] = db_desc->levels[0].scanner_epoch;
+				log_info("next active tree %d, tree epoch is %lu", next_active_tree,
+					 db_desc->levels[0].scanner_epoch);
 				/*Release guard lock*/
 				if (RWLOCK_UNLOCK(&handle->db_desc->levels[0].guard_of_level.rx_lock)) {
 					log_fatal("Failed to acquire guard lock");

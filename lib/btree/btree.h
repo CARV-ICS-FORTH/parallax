@@ -300,6 +300,9 @@ typedef struct level_descriptor {
 	segment_header *first_segment[NUM_TREES_PER_LEVEL];
 	segment_header *last_segment[NUM_TREES_PER_LEVEL];
 	uint64_t offset[NUM_TREES_PER_LEVEL];
+	/*needed for L0 scanner tiering colission*/
+	uint64_t epoch[NUM_TREES_PER_LEVEL];
+	uint64_t scanner_epoch;
 	lock_table guard_of_level;
 	pthread_mutex_t spill_trigger;
 	//Since we perform always KV separation we express it

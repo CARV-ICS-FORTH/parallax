@@ -206,7 +206,6 @@ static int sh_cmp_heap_nodes(struct sh_min_heap *hp, struct sh_heap_node *nd_1, 
 	}
 
 	if (ret == 0) {
-		/* duplicate detected smallest level_id wins, needs more thinking */
 		if (nd_1->level_id == hp->active_tree) {
 			nd_2->duplicate = 1;
 			push_back_duplicate_kv(hp, nd_2);
@@ -234,6 +233,36 @@ static int sh_cmp_heap_nodes(struct sh_min_heap *hp, struct sh_heap_node *nd_1, 
 	return ret;
 }
 
+static void copy_node(struct sh_heap_node *to, struct sh_heap_node *from)
+{
+	to->KV = from->KV;
+	to->level_id = from->level_id;
+	to->cat = from->cat;
+	to->duplicate = from->duplicate;
+	to->db_desc = from->db_desc;
+	to->type = from->type;
+	to->epoch = from->epoch;
+	to->kv_size = from->kv_size;
+	to->active_tree = from->active_tree;
+}
+
+static int check_for_duplicate_inL0(struct sh_min_heap *hp, struct sh_heap_node *nd)
+{
+	int i = hp->heap_size;
+	int ret;
+	while (i) {
+		if (hp->elem[PARENT(i)].level_id == 0 && nd->level_id == 0) {
+			ret = key_cmp(nd->KV, hp->elem[PARENT(i)].KV, nd->type, hp->elem[PARENT(i)].type);
+			if (ret == 0) {
+				copy_node(&hp->elem[PARENT(i)], nd);
+				return 1;
+			}
+		}
+		i = PARENT(i);
+	}
+	return 0;
+}
+
 /*
     Function to insert a heap_node into the min heap, by allocating space for
    that heap_node in the
@@ -249,6 +278,9 @@ void sh_insert_heap_node(struct sh_min_heap *hp, struct sh_heap_node *nd)
 		log_fatal("min max heap out of space resize heap accordingly");
 		exit(EXIT_FAILURE);
 	}
+
+	if (nd->level_id == 0 && check_for_duplicate_inL0(hp, nd))
+		return;
 
 	i = hp->heap_size++;
 	while (i && sh_cmp_heap_nodes(hp, nd, &(hp->elem[PARENT(i)])) < 0) {

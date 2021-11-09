@@ -625,6 +625,7 @@ struct db_handle *bt_restore_db(struct volume_descriptor *volume_desc, struct pr
 
 		for (uint8_t tree_id = 0; tree_id < NUM_TREES_PER_LEVEL; tree_id++) {
 			db_desc->levels[level_id].level_size[tree_id] = 0;
+			db_desc->levels[level_id].epoch[tree_id] = 0;
 			/*segments info per level*/
 			if (db_entry->first_segment[level_id][tree_id] != 0) {
 				db_desc->levels[level_id].first_segment[tree_id] =
@@ -735,6 +736,7 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 						handle->db_desc->levels[level_id].first_segment[tree_id] = NULL;
 						handle->db_desc->levels[level_id].last_segment[tree_id] = NULL;
 						handle->db_desc->levels[level_id].offset[tree_id] = 0;
+						handle->db_desc->levels[level_id].epoch[tree_id] = 0;
 						init_leaf_sizes_perlevel(&handle->db_desc->levels[level_id]);
 					}
 
@@ -798,6 +800,7 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 		handle->db_desc->levels[level_id].active_tree = 0;
 		handle->db_desc->levels[level_id].level_id = level_id;
 		handle->db_desc->levels[level_id].leaf_size = leaf_size_per_level[level_id];
+		handle->db_desc->levels[level_id].scanner_epoch = 0;
 #if MEASURE_SST_USED_SPACE
 		db_desc->levels[level_id].avg_leaf_used_space = 0;
 		db_desc->levels[level_id].leaf_used_space = 0;
@@ -806,6 +809,7 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 #endif
 		for (uint8_t tree_id = 0; tree_id < NUM_TREES_PER_LEVEL; tree_id++) {
 			handle->db_desc->levels[level_id].tree_status[tree_id] = NO_SPILLING;
+			handle->db_desc->levels[level_id].epoch[tree_id] = 0;
 #if ENABLE_BLOOM_FILTERS
 			init_level_bloom_filters(db_desc, level_id, tree_id);
 #endif
