@@ -1030,9 +1030,9 @@ uint8_t insert_key_value(db_handle *handle, void *key, void *value, uint32_t key
 	ins_req.metadata.gc_request = 0;
 	ins_req.metadata.special_split = 0;
 
-	if (kv_ratio >= 0.0 && kv_ratio < 0.004) {
+	if (kv_ratio >= 0.0 && kv_ratio < 0.002) {
 		ins_req.metadata.cat = BIG_INLOG;
-	} else if (kv_ratio >= 0.004 && kv_ratio <= 0.3) {
+	} else if (kv_ratio >= 0.002 && kv_ratio <= 0.2) {
 #if MEDIUM_LOG_UNSORTED
 		ins_req.metadata.cat = MEDIUM_INLOG;
 #else
