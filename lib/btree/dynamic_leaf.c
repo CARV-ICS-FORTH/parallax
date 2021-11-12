@@ -98,7 +98,7 @@ struct find_result find_key_in_dynamic_leaf(const struct bt_dynamic_leaf_node *l
 	bt_insert_req req;
 	char buf[MAX_KEY_SIZE + sizeof(uint32_t)];
 	struct dl_bsearch_result result = { .middle = 0, .status = INSERT, .op = DYNAMIC_LEAF_FIND };
-	struct find_result ret_result = { .kv = NULL, .key_type = KV_INPLACE };
+	struct find_result ret_result = { .kv = NULL, .key_type = KV_INPLACE, .kv_category = UNKNOWN_LOG_CATEGORY };
 	struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(leaf);
 	db_handle handle = { .db_desc = db_desc, .volume_desc = NULL };
 	uint32_t leaf_size = db_desc->levels[level_id].leaf_size;
@@ -123,12 +123,14 @@ struct find_result find_key_in_dynamic_leaf(const struct bt_dynamic_leaf_node *l
 			ret_result.kv = (void *)ABSOLUTE_ADDRESS(
 				get_kv_offset(leaf, leaf_size, slot_array[result.middle].index));
 			ret_result.key_type = KV_INPLACE;
+			ret_result.kv_category = slot_array[result.middle].key_category;
 			break;
 		case KV_INLOG:
 			ret_result.kv = (char *)&((struct bt_leaf_entry *)get_kv_offset(
 							  leaf, leaf_size, slot_array[result.middle].index))
 						->pointer;
 			ret_result.key_type = KV_INLOG;
+			ret_result.kv_category = slot_array[result.middle].key_category;
 			break;
 		default:
 			assert(0);

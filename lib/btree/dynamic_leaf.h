@@ -1,6 +1,6 @@
 #pragma once
-#include <stdint.h>
 #include "btree.h"
+#include <stdint.h>
 
 enum bt_dynamic_leaf_operation { DYNAMIC_LEAF_INSERT = 0, DYNAMIC_LEAF_FIND = 1 };
 
@@ -9,6 +9,7 @@ enum kv_entry_location { UNKNOWN_CATEGORY = -1, KV_INPLACE = 0, KV_INLOG = 1 };
 struct find_result {
 	char *kv;
 	enum kv_entry_location key_type;
+	enum log_category kv_category;
 };
 
 struct dl_bsearch_result {
