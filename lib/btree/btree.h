@@ -54,7 +54,6 @@ extern int32_t index_order;
 
 struct lookup_reply {
 	void *addr;
-	uint8_t lc_failed;
 };
 
 typedef enum {

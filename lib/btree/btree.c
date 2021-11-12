@@ -1499,7 +1499,7 @@ int find_key_in_bloom_filter(db_descriptor *db_desc, int level_id, char *key)
 
 static inline struct lookup_reply lookup_in_tree(db_descriptor *db_desc, void *key, int level_id, int tree_id)
 {
-	struct lookup_reply rep = { .addr = NULL, .lc_failed = 0 };
+	struct lookup_reply rep = { .addr = NULL };
 	struct find_result ret_result = { .kv = NULL };
 	node_header *curr_node, *son_node = NULL;
 	void *key_addr_in_leaf = NULL;
@@ -1587,7 +1587,6 @@ deser:
 			key_addr_in_leaf = (void *)REAL_ADDRESS(key_addr_in_leaf);
 			index_key_len = KEY_SIZE(key_addr_in_leaf);
 			rep.addr = (void *)(uint64_t)key_addr_in_leaf + 4 + index_key_len;
-			rep.lc_failed = 0;
 		} else if (ret_result.key_type == KV_INLOG) {
 			key_addr_in_leaf = ret_result.kv;
 			key_addr_in_leaf = (void *)REAL_ADDRESS(*(uint64_t *)key_addr_in_leaf);
@@ -1598,12 +1597,10 @@ deser:
 			}
 			index_key_len = KEY_SIZE(key_addr_in_leaf);
 			rep.addr = (void *)(uint64_t)key_addr_in_leaf + 4 + index_key_len;
-			rep.lc_failed = 0;
 		} else
 			assert(0);
 	} else {
 		rep.addr = NULL;
-		rep.lc_failed = 0;
 	}
 
 	if (RWLOCK_UNLOCK(&curr->rx_lock) != 0)
@@ -1616,7 +1613,7 @@ deser:
 /*this function will be reused in various places such as deletes*/
 void *__find_key(db_handle *handle, void *key)
 {
-	struct lookup_reply rep = { .addr = NULL, .lc_failed = 0 };
+	struct lookup_reply rep = { .addr = NULL };
 	/*again special care for L0*/
 	// Acquiring guard lock for level 0
 	if (RWLOCK_RDLOCK(&handle->db_desc->levels[0].guard_of_level.rx_lock) != 0)
