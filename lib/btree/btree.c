@@ -1497,8 +1497,7 @@ int find_key_in_bloom_filter(db_descriptor *db_desc, int level_id, char *key)
 	return -1;
 }
 
-static inline struct lookup_reply lookup_in_tree(db_descriptor *db_desc, void *key, node_header *root, int level_id,
-						 int tree_id)
+static inline struct lookup_reply lookup_in_tree(db_descriptor *db_desc, void *key, int level_id, int tree_id)
 {
 	struct lookup_reply rep = { .addr = NULL, .lc_failed = 0 };
 	struct find_result ret_result = { .kv = NULL };
@@ -1507,6 +1506,7 @@ static inline struct lookup_reply lookup_in_tree(db_descriptor *db_desc, void *k
 	void *next_addr;
 	uint32_t index_key_len;
 	lock_table *prev = NULL, *curr = NULL;
+	struct node_header *root = NULL;
 
 	if (db_desc->levels[level_id].root_w[tree_id] != NULL) {
 		/* log_info("Level %d with tree_id %d has root_w",level_id,tree_id); */
@@ -1628,7 +1628,7 @@ void *__find_key(db_handle *handle, void *key)
 	while (1) {
 		/*first look the current active tree of the level*/
 
-		rep = lookup_in_tree(handle->db_desc, key, NULL, 0, tree_id);
+		rep = lookup_in_tree(handle->db_desc, key, 0, tree_id);
 		if (rep.addr != NULL) {
 			if (RWLOCK_UNLOCK(&handle->db_desc->levels[0].guard_of_level.rx_lock) != 0)
 				exit(EXIT_FAILURE);
@@ -1651,7 +1651,7 @@ void *__find_key(db_handle *handle, void *key)
 			exit(EXIT_FAILURE);
 		__sync_fetch_and_add(&handle->db_desc->levels[level_id].active_writers, 1);
 
-		rep = lookup_in_tree(handle->db_desc, key, NULL, level_id, 0);
+		rep = lookup_in_tree(handle->db_desc, key, level_id, 0);
 		if (rep.addr != NULL) {
 			if (RWLOCK_UNLOCK(&handle->db_desc->levels[level_id].guard_of_level.rx_lock) != 0)
 				exit(EXIT_FAILURE);
