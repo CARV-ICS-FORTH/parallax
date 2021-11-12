@@ -1499,7 +1499,7 @@ int find_key_in_bloom_filter(db_descriptor *db_desc, int level_id, char *key)
 
 static inline struct lookup_reply lookup_in_tree(db_descriptor *db_desc, void *key, int level_id, int tree_id)
 {
-	struct lookup_reply rep = { .addr = NULL };
+	struct lookup_reply rep = { .addr = NULL, .buffer_to_pack_kv = NULL, .buffer_overflow = 1, .size = 0 };
 	struct find_result ret_result = { .kv = NULL };
 	node_header *curr_node, *son_node = NULL;
 	void *key_addr_in_leaf = NULL;
@@ -1586,7 +1586,7 @@ deser:
 			key_addr_in_leaf = ret_result.kv;
 			key_addr_in_leaf = (void *)REAL_ADDRESS(key_addr_in_leaf);
 			index_key_len = KEY_SIZE(key_addr_in_leaf);
-			rep.addr = (void *)(uint64_t)key_addr_in_leaf + 4 + index_key_len;
+			rep.addr = (void *)(uint64_t)key_addr_in_leaf + sizeof(uint32_t) + index_key_len;
 		} else if (ret_result.key_type == KV_INLOG) {
 			key_addr_in_leaf = ret_result.kv;
 			key_addr_in_leaf = (void *)REAL_ADDRESS(*(uint64_t *)key_addr_in_leaf);
@@ -1596,12 +1596,48 @@ deser:
 				exit(EXIT_FAILURE);
 			}
 			index_key_len = KEY_SIZE(key_addr_in_leaf);
-			rep.addr = (void *)(uint64_t)key_addr_in_leaf + 4 + index_key_len;
+			rep.addr = (void *)(uint64_t)key_addr_in_leaf + sizeof(uint32_t) + index_key_len;
+		} else {
+			log_fatal("Corrupted KV location");
+			exit(EXIT_FAILURE);
+		}
+		/*Time to pack the kv atomically in the buffer*/
+		/*Do the translation if needed*/
+
+		struct bt_kv_log_address L = { .addr = rep.addr, .tail_id = UINT8_MAX, .in_tail = 0 };
+		if (!level_id) {
+			switch (ret_result.kv_category) {
+			case BIG_INLOG:
+				L = bt_get_kv_log_address(&db_desc->big_log, ABSOLUTE_ADDRESS(rep.addr));
+				break;
+			case BIG_INPLACE:
+			case MEDIUM_INPLACE:
+			case MEDIUM_INLOG:
+			case SMALL_INPLACE:
+			case SMALL_INLOG:
+				break;
+			default:
+				log_fatal("UNKNOWN_LOG_CATEGORY");
+				exit(EXIT_FAILURE);
+			}
+		}
+		uint32_t kv_size = KEY_SIZE(L.addr + sizeof(uint32_t));
+		void *tmp_addr = L.addr + kv_size;
+		kv_size += (VALUE_SIZE(tmp_addr) + sizeof(uint32_t));
+		if (!rep.buffer_to_pack_kv) {
+			rep.buffer_to_pack_kv = calloc(1, kv_size);
+			rep.size = kv_size;
+		}
+		if (rep.size <= kv_size) {
+			/*check if enough*/
+			memcpy(rep.buffer_to_pack_kv, L.addr, kv_size);
+			rep.buffer_overflow = 0;
 		} else
-			assert(0);
-	} else {
+			rep.buffer_overflow = 1;
+		if (L.in_tail)
+			bt_done_with_value_log_address(&db_desc->big_log, &L);
+	} else
 		rep.addr = NULL;
-	}
 
 	if (RWLOCK_UNLOCK(&curr->rx_lock) != 0)
 		exit(EXIT_FAILURE);
@@ -1613,7 +1649,7 @@ deser:
 /*this function will be reused in various places such as deletes*/
 void *__find_key(db_handle *handle, void *key)
 {
-	struct lookup_reply rep = { .addr = NULL };
+	struct lookup_reply rep = { .addr = NULL, .buffer_to_pack_kv = NULL, .buffer_overflow = 1, .size = 0 };
 	/*again special care for L0*/
 	// Acquiring guard lock for level 0
 	if (RWLOCK_RDLOCK(&handle->db_desc->levels[0].guard_of_level.rx_lock) != 0)

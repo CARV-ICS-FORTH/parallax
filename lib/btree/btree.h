@@ -54,6 +54,9 @@ extern int32_t index_order;
 
 struct lookup_reply {
 	void *addr;
+	char *buffer_to_pack_kv;
+	uint32_t size;
+	uint8_t buffer_overflow;
 };
 
 typedef enum {
