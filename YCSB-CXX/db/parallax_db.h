@@ -39,6 +39,7 @@ extern std::string custom_workload;
 extern "C" {
 #include <allocator/volume_manager.h>
 #include <btree/btree.h>
+#include <include/parallax.h>
 #include <scanner/scanner.h>
 }
 
@@ -124,13 +125,15 @@ class ParallaxDB : public YCSBDB {
 		std::hash<std::string> hash_fn;
 		uint32_t db_id = hash_fn(key) % db_num;
 		std::map<std::string, std::string> vmap;
-
-		char *val = (char *)find_key(dbs[db_id], (void *)key.c_str(), key.length());
-		if (val == NULL) {
+		struct par_key my_key = { .size = (uint32_t)key.length(), .data = (const char *)key.c_str() };
+		struct par_value my_tmp = { .val_buffer = NULL };
+		if (par_get(dbs[db_id], &my_key, &my_tmp) != PAR_SUCCESS) {
 			std::cout << "[1]cannot find : " << key << " in DB " << db_id << std::endl;
 			return 0;
 			exit(EXIT_FAILURE);
 		}
+		free(my_tmp.val_buffer);
+		my_tmp.val_buffer = NULL;
 		//     return 0;
 #if 0
 		if (*(int32_t *)val > 16000) {
@@ -228,13 +231,16 @@ class ParallaxDB : public YCSBDB {
 			std::hash<std::string> hash_fn;
 			uint32_t db_id = hash_fn(key) % db_num;
 			std::map<std::string, std::string> vmap;
-
-			char *val = (char *)find_key(dbs[db_id], (void *)key.c_str(), key.length());
-			if (val == NULL) {
+			struct par_key my_key = { .size = (uint32_t)key.length(), .data = (const char *)key.c_str() };
+			struct par_value my_tmp = { .val_buffer = NULL };
+			if (par_get(dbs[db_id], &my_key, &my_tmp) != PAR_SUCCESS) {
 				std::cout << "[1]cannot find : " << key << " in DB " << db_id << std::endl;
 				return 0;
-				//exit(EXIT_FAILURE);
+				exit(EXIT_FAILURE);
 			}
+			free(my_tmp.val_buffer);
+			my_tmp.val_buffer = NULL;
+
 #if 0
         if(*(int32_t *)val > 16000){
           std::cout << "TOO LARGE VALUE SIZE IN READ!" << std::endl;

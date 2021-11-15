@@ -900,12 +900,24 @@ void mark_segment_space(db_handle *handle, struct dups_list *list)
 
 		if ((double)segment->segment_garbage_bytes >=
 		    ((double)segment->segment_garbage_bytes) * GC_SEGMENT_THRESHOLD) {
-			char *found = find_key(handle->db_desc->gc_db, &segment_dev_offt, sizeof(segment_dev_offt));
+			char key_buf[32];
+			uint32_t kv_size = sizeof(segment_dev_offt);
+			memcpy(&key_buf[0], &kv_size, sizeof(uint32_t));
+			memcpy(&key_buf[sizeof(uint32_t)], &segment_dev_offt, kv_size);
+			struct lookup_operation get_op = { .buffer_overflow = 0,
+							   .buffer_to_pack_kv = NULL,
+							   .db_desc = handle->db_desc,
+							   .found = 0,
+							   .kv_buf = key_buf,
+							   .retrieve = 0,
+							   .size = 0 };
+
+			find_key(&get_op);
 			gc_value.group_id = handle->db_desc->group_id;
 			gc_value.index = handle->db_desc->group_index;
 			gc_value.moved = segment->moved_kvs;
 
-			if (!found || !segment->moved_kvs)
+			if (!get_op.found || !segment->moved_kvs)
 				insert_key_value(handle->db_desc->gc_db, &segment_dev_offt, &gc_value,
 						 sizeof(segment_dev_offt), sizeof(gc_value));
 		}

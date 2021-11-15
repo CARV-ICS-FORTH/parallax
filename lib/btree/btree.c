@@ -1497,9 +1497,8 @@ int find_key_in_bloom_filter(db_descriptor *db_desc, int level_id, char *key)
 	return -1;
 }
 
-static inline struct lookup_reply lookup_in_tree(db_descriptor *db_desc, void *key, int level_id, int tree_id)
+static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id, int tree_id)
 {
-	struct lookup_reply rep = { .addr = NULL, .buffer_to_pack_kv = NULL, .buffer_overflow = 1, .size = 0 };
 	struct find_result ret_result = { .kv = NULL };
 	node_header *curr_node, *son_node = NULL;
 	void *key_addr_in_leaf = NULL;
@@ -1508,6 +1507,7 @@ static inline struct lookup_reply lookup_in_tree(db_descriptor *db_desc, void *k
 	lock_table *prev = NULL, *curr = NULL;
 	struct node_header *root = NULL;
 
+	struct db_descriptor *db_desc = get_op->db_desc;
 	if (db_desc->levels[level_id].root_w[tree_id] != NULL) {
 		/* log_info("Level %d with tree_id %d has root_w",level_id,tree_id); */
 		root = db_desc->levels[level_id].root_w[tree_id];
@@ -1518,7 +1518,8 @@ static inline struct lookup_reply lookup_in_tree(db_descriptor *db_desc, void *k
 		/* log_info("Level %d is empty with tree_id %d",level_id,tree_id); */
 		/* if (RWLOCK_UNLOCK(&curr->rx_lock) != 0) */
 		/* 	exit(EXIT_FAILURE); */
-		return rep;
+		get_op->found = 0;
+		return;
 	}
 
 #if ENABLE_BLOOM_FILTERS
@@ -1541,52 +1542,55 @@ static inline struct lookup_reply lookup_in_tree(db_descriptor *db_desc, void *k
 		if (RWLOCK_RDLOCK(&curr->rx_lock) != 0)
 			exit(EXIT_FAILURE);
 
-		ret_result = find_key_in_dynamic_leaf((struct bt_dynamic_leaf_node *)curr_node, db_desc, key + 4,
-						      *(uint32_t *)key, level_id);
+		ret_result = find_key_in_dynamic_leaf((struct bt_dynamic_leaf_node *)curr_node, db_desc,
+						      get_op->kv_buf + sizeof(uint32_t), *(uint32_t *)get_op->kv_buf,
+						      level_id);
 		goto deser;
-	} else {
-		while (curr_node && curr_node->type != leafNode) {
-			curr = _find_position(db_desc->levels[level_id].level_lock_table, curr_node);
-
-			if (RWLOCK_RDLOCK(&curr->rx_lock) != 0)
-				exit(EXIT_FAILURE);
-
-			if (prev)
-				if (RWLOCK_UNLOCK(&prev->rx_lock) != 0)
-					exit(EXIT_FAILURE);
-
-			next_addr = _index_node_binary_search((index_node *)curr_node, key, KV_FORMAT);
-			son_node = (void *)REAL_ADDRESS(*(uint64_t *)next_addr);
-			prev = curr;
-			curr_node = son_node;
-		}
-
-		if (curr_node == NULL) {
-			log_fatal("Encountered NULL node in index");
-			assert(0);
-			exit(EXIT_FAILURE);
-		}
-
-		prev = curr;
-		curr = _find_position(db_desc->levels[level_id].level_lock_table, curr_node);
-		if (RWLOCK_RDLOCK(&curr->rx_lock) != 0) {
-			exit(EXIT_FAILURE);
-		}
-
-		if (RWLOCK_UNLOCK(&prev->rx_lock) != 0)
-			exit(EXIT_FAILURE);
 	}
 
-	ret_result = find_key_in_dynamic_leaf((struct bt_dynamic_leaf_node *)curr_node, db_desc, key + 4,
-					      *(uint32_t *)key, level_id);
+	while (curr_node && curr_node->type != leafNode) {
+		curr = _find_position(db_desc->levels[level_id].level_lock_table, curr_node);
+
+		if (RWLOCK_RDLOCK(&curr->rx_lock) != 0)
+			exit(EXIT_FAILURE);
+
+		if (prev)
+			if (RWLOCK_UNLOCK(&prev->rx_lock) != 0)
+				exit(EXIT_FAILURE);
+
+		next_addr = _index_node_binary_search((index_node *)curr_node, get_op->kv_buf, KV_FORMAT);
+		son_node = (void *)REAL_ADDRESS(*(uint64_t *)next_addr);
+		prev = curr;
+		curr_node = son_node;
+	}
+
+	if (curr_node == NULL) {
+		log_fatal("Encountered NULL node in index");
+		assert(0);
+		exit(EXIT_FAILURE);
+	}
+
+	prev = curr;
+	curr = _find_position(db_desc->levels[level_id].level_lock_table, curr_node);
+	if (RWLOCK_RDLOCK(&curr->rx_lock) != 0) {
+		exit(EXIT_FAILURE);
+	}
+
+	if (RWLOCK_UNLOCK(&prev->rx_lock) != 0)
+		exit(EXIT_FAILURE);
+
+	ret_result = find_key_in_dynamic_leaf((struct bt_dynamic_leaf_node *)curr_node, db_desc,
+					      get_op->kv_buf + sizeof(uint32_t), *(uint32_t *)get_op->kv_buf, level_id);
 
 deser:
 	if (ret_result.kv) {
+		get_op->kv_device_address = NULL;
 		if (ret_result.key_type == KV_INPLACE) {
 			key_addr_in_leaf = ret_result.kv;
 			key_addr_in_leaf = (void *)REAL_ADDRESS(key_addr_in_leaf);
 			index_key_len = KEY_SIZE(key_addr_in_leaf);
-			rep.addr = (void *)(uint64_t)key_addr_in_leaf + sizeof(uint32_t) + index_key_len;
+			get_op->kv_device_address =
+				(void *)(uint64_t)key_addr_in_leaf + sizeof(uint32_t) + index_key_len;
 		} else if (ret_result.key_type == KV_INLOG) {
 			key_addr_in_leaf = ret_result.kv;
 			key_addr_in_leaf = (void *)REAL_ADDRESS(*(uint64_t *)key_addr_in_leaf);
@@ -1596,7 +1600,8 @@ deser:
 				exit(EXIT_FAILURE);
 			}
 			index_key_len = KEY_SIZE(key_addr_in_leaf);
-			rep.addr = (void *)(uint64_t)key_addr_in_leaf + sizeof(uint32_t) + index_key_len;
+			get_op->kv_device_address =
+				(void *)(uint64_t)key_addr_in_leaf + sizeof(uint32_t) + index_key_len;
 		} else {
 			log_fatal("Corrupted KV location");
 			exit(EXIT_FAILURE);
@@ -1604,11 +1609,12 @@ deser:
 		/*Time to pack the kv atomically in the buffer*/
 		/*Do the translation if needed*/
 
-		struct bt_kv_log_address L = { .addr = rep.addr, .tail_id = UINT8_MAX, .in_tail = 0 };
+		struct bt_kv_log_address L = { .addr = get_op->kv_device_address, .tail_id = UINT8_MAX, .in_tail = 0 };
 		if (!level_id) {
 			switch (ret_result.kv_category) {
 			case BIG_INLOG:
-				L = bt_get_kv_log_address(&db_desc->big_log, ABSOLUTE_ADDRESS(rep.addr));
+				L = bt_get_kv_log_address(&db_desc->big_log,
+							  ABSOLUTE_ADDRESS(get_op->kv_device_address));
 				break;
 			case BIG_INPLACE:
 			case MEDIUM_INPLACE:
@@ -1621,51 +1627,53 @@ deser:
 				exit(EXIT_FAILURE);
 			}
 		}
+
 		uint32_t kv_size = KEY_SIZE(L.addr + sizeof(uint32_t));
 		void *tmp_addr = L.addr + kv_size;
-		kv_size += (VALUE_SIZE(tmp_addr) + sizeof(uint32_t));
-		if (!rep.buffer_to_pack_kv) {
-			rep.buffer_to_pack_kv = calloc(1, kv_size);
-			rep.size = kv_size;
+		uint32_t value_size = VALUE_SIZE(tmp_addr);
+		if (get_op->retrieve && !get_op->buffer_to_pack_kv) {
+			get_op->buffer_to_pack_kv = malloc(value_size);
+			get_op->size = value_size;
 		}
-		if (rep.size <= kv_size) {
+		if (get_op->retrieve && get_op->size <= kv_size) {
 			/*check if enough*/
-			memcpy(rep.buffer_to_pack_kv, L.addr, kv_size);
-			rep.buffer_overflow = 0;
+			memcpy(get_op->buffer_to_pack_kv, tmp_addr + sizeof(uint32_t), value_size);
+			get_op->buffer_overflow = 0;
 		} else
-			rep.buffer_overflow = 1;
+			get_op->buffer_overflow = 1;
 		if (L.in_tail)
 			bt_done_with_value_log_address(&db_desc->big_log, &L);
+		get_op->found = 1;
 	} else
-		rep.addr = NULL;
+		get_op->found = 0;
 
 	if (RWLOCK_UNLOCK(&curr->rx_lock) != 0)
 		exit(EXIT_FAILURE);
 
 	__sync_fetch_and_sub(&db_desc->levels[level_id].active_writers, 1);
-	return rep;
+	return;
 }
 
-/*this function will be reused in various places such as deletes*/
-void *__find_key(db_handle *handle, void *key)
+void find_key(struct lookup_operation *get_op)
 {
-	struct lookup_reply rep = { .addr = NULL, .buffer_to_pack_kv = NULL, .buffer_overflow = 1, .size = 0 };
+	get_op->found = 0;
+	struct db_descriptor *db_desc = get_op->db_desc;
 	/*again special care for L0*/
 	// Acquiring guard lock for level 0
-	if (RWLOCK_RDLOCK(&handle->db_desc->levels[0].guard_of_level.rx_lock) != 0)
+	if (RWLOCK_RDLOCK(&db_desc->levels[0].guard_of_level.rx_lock) != 0)
 		exit(EXIT_FAILURE);
-	__sync_fetch_and_add(&handle->db_desc->levels[0].active_writers, 1);
-	uint8_t tree_id = handle->db_desc->levels[0].active_tree;
+	__sync_fetch_and_add(&db_desc->levels[0].active_writers, 1);
+	uint8_t tree_id = db_desc->levels[0].active_tree;
 	uint8_t base = tree_id;
 
 	while (1) {
 		/*first look the current active tree of the level*/
 
-		rep = lookup_in_tree(handle->db_desc, key, 0, tree_id);
-		if (rep.addr != NULL) {
-			if (RWLOCK_UNLOCK(&handle->db_desc->levels[0].guard_of_level.rx_lock) != 0)
+		lookup_in_tree(get_op, 0, tree_id);
+		if (get_op->found) {
+			if (RWLOCK_UNLOCK(&db_desc->levels[0].guard_of_level.rx_lock) != 0)
 				exit(EXIT_FAILURE);
-			__sync_fetch_and_sub(&handle->db_desc->levels[0].active_writers, 1);
+			__sync_fetch_and_sub(&db_desc->levels[0].active_writers, 1);
 
 			goto finish;
 		}
@@ -1675,56 +1683,30 @@ void *__find_key(db_handle *handle, void *key)
 		if (tree_id == base)
 			break;
 	}
-	if (RWLOCK_UNLOCK(&handle->db_desc->levels[0].guard_of_level.rx_lock) != 0)
+	if (RWLOCK_UNLOCK(&db_desc->levels[0].guard_of_level.rx_lock) != 0)
 		exit(EXIT_FAILURE);
-	__sync_fetch_and_sub(&handle->db_desc->levels[0].active_writers, 1);
+	__sync_fetch_and_sub(&db_desc->levels[0].active_writers, 1);
 	/*search the rest trees of the level*/
 	for (uint8_t level_id = 1; level_id < MAX_LEVELS; ++level_id) {
-		if (RWLOCK_RDLOCK(&handle->db_desc->levels[level_id].guard_of_level.rx_lock) != 0)
+		if (RWLOCK_RDLOCK(&db_desc->levels[level_id].guard_of_level.rx_lock) != 0)
 			exit(EXIT_FAILURE);
-		__sync_fetch_and_add(&handle->db_desc->levels[level_id].active_writers, 1);
+		__sync_fetch_and_add(&db_desc->levels[level_id].active_writers, 1);
 
-		rep = lookup_in_tree(handle->db_desc, key, level_id, 0);
-		if (rep.addr != NULL) {
-			if (RWLOCK_UNLOCK(&handle->db_desc->levels[level_id].guard_of_level.rx_lock) != 0)
+		lookup_in_tree(get_op, level_id, 0);
+		if (get_op->found) {
+			if (RWLOCK_UNLOCK(&db_desc->levels[level_id].guard_of_level.rx_lock) != 0)
 				exit(EXIT_FAILURE);
-			__sync_fetch_and_sub(&handle->db_desc->levels[level_id].active_writers, 1);
+			__sync_fetch_and_sub(&db_desc->levels[level_id].active_writers, 1);
 
 			goto finish;
 		}
-		if (RWLOCK_UNLOCK(&handle->db_desc->levels[level_id].guard_of_level.rx_lock) != 0)
+		if (RWLOCK_UNLOCK(&db_desc->levels[level_id].guard_of_level.rx_lock) != 0)
 			exit(EXIT_FAILURE);
-		__sync_fetch_and_sub(&handle->db_desc->levels[level_id].active_writers, 1);
+		__sync_fetch_and_sub(&db_desc->levels[level_id].active_writers, 1);
 	}
 
 finish:
-	return rep.addr;
-}
-
-/* returns the addr where the value of the KV pair resides */
-/* TODO: make this return the offset from MAPPED, not a pointer
- * to the offset */
-
-void *find_key(db_handle *handle, void *key, uint32_t key_size)
-{
-	char buf[4000];
-	void *key_buf = &(buf[0]);
-	void *value;
-
-	if (key_size <= (4000 - sizeof(uint32_t))) {
-		key_buf = &(buf[0]);
-		*(uint32_t *)key_buf = key_size;
-		memcpy((void *)key_buf + sizeof(uint32_t), key, key_size);
-		value = __find_key(handle, key_buf);
-	} else {
-		key_buf = malloc(key_size + sizeof(uint32_t));
-		*(uint32_t *)key_buf = key_size;
-		memcpy((void *)key_buf + sizeof(uint32_t), key, key_size);
-		value = __find_key(handle, key_buf);
-		free(key_buf);
-	}
-
-	return value;
+	return;
 }
 
 /**

@@ -64,7 +64,6 @@ int8_t find_deleted_kv_pairs_in_segment(volume_descriptor *volume_desc, db_descr
 	struct splice *key;
 	struct splice *value;
 	void *value_as_pointer;
-	void *find_value;
 	char *start_of_log_segment = log_seg;
 	struct segment_header *segment = (struct segment_header *)start_of_log_segment;
 	uint64_t size_of_log_segment_checked = 8;
@@ -91,13 +90,19 @@ int8_t find_deleted_kv_pairs_in_segment(volume_descriptor *volume_desc, db_descr
 
 		assert(key->size > 0 && key->size < 28);
 		assert(value->size > 5 && value->size < 1500);
-
-		find_value = find_key(&handle, key->data, key->size);
+		struct lookup_operation get_op = { .db_desc = handle.db_desc,
+						   .found = 0,
+						   .size = 0,
+						   .buffer_to_pack_kv = NULL,
+						   .buffer_overflow = 1,
+						   .kv_buf = (char *)key,
+						   .retrieve = 0 };
+		find_key(&get_op);
 		/* assert(find_value); */
 		/* assert(value_as_pointer == find_value); */
-		if (remaining_space >= 18 && (find_value == NULL || value_as_pointer != find_value)) {
+		if (remaining_space >= 18 && (!get_op.found || value_as_pointer != get_op.kv_device_address)) {
 			garbage_collect_segment = 1;
-		} else if (remaining_space >= 18 && (find_value != NULL && value_as_pointer == find_value)) {
+		} else if (remaining_space >= 18 && (get_op.found && value_as_pointer == get_op.kv_device_address)) {
 			push_stack(marks, log_seg);
 		}
 

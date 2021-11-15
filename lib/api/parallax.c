@@ -21,6 +21,7 @@
 #include <stddef.h>
 #include <stdio.h>
 #include <string.h>
+#define PAR_MAX_PREALLOCATED_SIZE 256
 
 par_handle par_open(par_db_options *options)
 {
@@ -45,42 +46,94 @@ void par_close(par_handle handle)
 
 par_ret_code par_put(par_handle handle, struct par_key_value *key_value)
 {
-	int ret = insert_key_value((db_handle *)handle, (char *)key_value->k.data, (char *)key_value->v.data,
-				   key_value->k.size, key_value->v.size);
+	int ret = insert_key_value((db_handle *)handle, (char *)key_value->k.data, (char *)key_value->v.val_buffer,
+				   key_value->k.size, key_value->v.val_size);
 	if (ret == SUCCESS)
 		return PAR_SUCCESS;
 
 	return PAR_FAILURE;
 }
 
-par_ret_code par_get(par_handle handle, struct par_key *key, struct par_value **value)
+par_ret_code par_get(par_handle handle, struct par_key *key, struct par_value *value)
 {
 	struct val {
 		uint32_t size;
 		char val[];
 	};
 
-	struct val *v = find_key((db_handle *)handle, (char *)key->data, key->size);
+	if (value == NULL) {
+		log_warn("value cannot be NULL");
+		return PAR_FAILURE;
+	}
 
-	if (v == NULL)
+	/*Serialize user key in KV_FORMAT*/
+	char buf[PAR_MAX_PREALLOCATED_SIZE];
+	char *kv_buf = buf;
+	int malloced = 0;
+	if (key->size > PAR_MAX_PREALLOCATED_SIZE) {
+		malloced = 1;
+		kv_buf = calloc(1, key->size + sizeof(uint32_t));
+	}
+	memcpy(&kv_buf[0], &key->size, sizeof(uint32_t));
+	memcpy(&kv_buf[sizeof(uint32_t)], key->data, key->size);
+
+	struct db_handle *hd = (struct db_handle *)handle;
+
+	/*Prepare lookup reply*/
+	struct lookup_operation get_op = { .db_desc = hd->db_desc,
+					   .kv_buf = kv_buf,
+					   .buffer_to_pack_kv = NULL,
+					   .size = 0,
+					   .buffer_overflow = 1,
+					   .found = 0,
+					   .retrieve = 1 };
+
+	if (value->val_buffer != NULL) {
+		get_op.buffer_to_pack_kv = (char *)value->val_buffer;
+		get_op.size = value->val_buffer_size;
+	}
+
+	find_key(&get_op);
+	if (malloced)
+		free(kv_buf);
+
+	if (!get_op.found)
 		return PAR_KEY_NOT_FOUND;
-
-	if (*value == NULL)
-		*value = calloc(1, sizeof(struct par_value) + v->size);
-	assert(v->size < 1300);
-
-	(*value)->size = v->size;
-	(*value)->data = (const char *)v->val;
-	memcpy((char *)(*value)->data, v->val, v->size);
-
+	value->val_buffer = get_op.buffer_to_pack_kv;
+	value->val_size = get_op.size;
 	return PAR_SUCCESS;
 }
 
 par_ret_code par_exists(par_handle handle, struct par_key *key)
 {
-	if (!find_key((db_handle *)handle, (char *)key->data, key->size))
-		return PAR_KEY_NOT_FOUND;
+	/*Serialize user key in KV_FORMAT*/
+	char buf[PAR_MAX_PREALLOCATED_SIZE];
+	char *kv_buf = buf;
+	int malloced = 0;
+	if (key->size > PAR_MAX_PREALLOCATED_SIZE) {
+		malloced = 1;
+		kv_buf = calloc(1, key->size + sizeof(uint32_t));
+	}
+	memcpy(&kv_buf[0], &key->size, sizeof(uint32_t));
+	memcpy(&kv_buf[sizeof(uint32_t)], key->data, key->size);
 
+	struct db_handle *hd = (struct db_handle *)handle;
+
+	/*Prepare lookup reply*/
+	struct lookup_operation get_op = { .db_desc = hd->db_desc,
+					   .kv_buf = kv_buf,
+					   .buffer_to_pack_kv = NULL,
+					   .size = 0,
+					   .buffer_overflow = 1,
+					   .found = 0,
+					   .retrieve = 0 };
+
+	find_key(&get_op);
+	if (malloced)
+		free(kv_buf);
+
+	if (!get_op.found)
+		return PAR_KEY_NOT_FOUND;
 	return PAR_SUCCESS;
 }
 
@@ -93,7 +146,7 @@ par_ret_code par_delete(par_handle handle, struct par_key *key)
 }
 
 /*scanner staff*/
-#define PAR_MAX_PREALLOCATED_SIZE 256
+
 struct par_scanner {
 	char buf[PAR_MAX_PREALLOCATED_SIZE];
 	struct scannerHandle *sc;
@@ -237,7 +290,9 @@ struct par_value par_get_value(par_scanner s)
 {
 	struct par_scanner *par_s = (struct par_scanner *)s;
 	char *value = par_s->kv_buf + *(uint32_t *)par_s->kv_buf + sizeof(uint32_t);
-	struct par_value val = { .size = *(uint32_t *)value, .data = value + sizeof(uint32_t) };
+	struct par_value val = { .val_size = *(uint32_t *)value,
+				 .val_buffer = value + sizeof(uint32_t),
+				 .val_buffer_size = *(uint32_t *)value };
 
 	return val;
 }

@@ -42,8 +42,9 @@ struct par_key {
 };
 
 struct par_value {
-	uint32_t size;
-	const char *data;
+	uint32_t val_buffer_size;
+	uint32_t val_size;
+	char *val_buffer;
 };
 
 struct par_key_value {
@@ -59,7 +60,7 @@ void par_close(par_handle handle);
 par_ret_code par_put(par_handle handle, struct par_key_value *key_value);
 // Takes a key and searches for it. If the key exists in the region then, it allocates the value if it is NULL and the client is responsible to release the memory.
 // Otherwise it copies the data to the existing data buffer provided by the value pointer.
-par_ret_code par_get(par_handle handle, struct par_key *key, struct par_value **value);
+par_ret_code par_get(par_handle handle, struct par_key *key, struct par_value *value);
 // Searches for a key and returns if the key exists in the region.
 par_ret_code par_exists(par_handle handle, struct par_key *key);
 // Deletes an existing key in the region.

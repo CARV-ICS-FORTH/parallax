@@ -12,6 +12,7 @@
 #include <btree/btree.h>
 #include <allocator/volume_manager.h>
 
+#if 0
 #define KEY_PREFIX "userakias_computerakias"
 #define KV_SIZE 1024
 #define SCAN_SIZE 50
@@ -110,10 +111,13 @@ void run_workload(void (*f[])(db_handle *), db_handle *hd)
 		}
 	}
 }
-
+#endif
 /* ./test_recovery |numofoperations| |workload| |save state(0 or 1)| |CREATE_DB or NOT (0 or 1)|*/
 int main(int argc, char *argv[])
 {
+	(void)argc;
+	(void)argv;
+#if 0
 	assert(argc == 5);
 	(void)argc;
 	if (!atoi(argv[4]))
@@ -155,4 +159,5 @@ int main(int argc, char *argv[])
 	run_workload(f, hd);
 	log_info("Recovery test Successfull");
 	return 1;
+#endif
 }

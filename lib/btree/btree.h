@@ -43,7 +43,6 @@
  * KV_PREFIX: [PREFIX|HASH|ADDR_TO_KV_LOG]
  */
 enum KV_type { KV_FORMAT = 19, KV_PREFIX = 20 };
-#define SYSTEM_ID 0
 
 extern unsigned long long ins_prefix_hit_l0;
 extern unsigned long long ins_prefix_hit_l1;
@@ -52,11 +51,15 @@ extern unsigned long long ins_prefix_miss_l1;
 
 extern int32_t index_order;
 
-struct lookup_reply {
-	void *addr;
-	char *buffer_to_pack_kv;
-	uint32_t size;
-	uint8_t buffer_overflow;
+struct lookup_operation {
+	struct db_descriptor *db_desc; /*in variable*/
+	char *kv_buf; /*in variable*/
+	char *buffer_to_pack_kv; /*in-out variable*/
+	void *kv_device_address; /*out variable*/
+	uint32_t size; /*in-out variable*/
+	uint8_t buffer_overflow : 1; /*out variable*/
+	uint8_t found : 1; /*out variable*/
+	uint8_t retrieve : 1; /*in variable*/
 };
 
 typedef enum {
@@ -535,8 +538,7 @@ uint8_t insert_key_value(db_handle *handle, void *key, void *value, uint32_t key
 uint8_t _insert_key_value(bt_insert_req *ins_req);
 
 void *append_key_value_to_log(log_operation *req);
-void *find_key(db_handle *handle, void *key, uint32_t key_size);
-void *__find_key(db_handle *handle, void *key);
+void find_key(struct lookup_operation *get_op);
 int8_t delete_key(db_handle *handle, void *key, uint32_t size);
 
 int64_t key_cmp(void *index_key_buf, void *query_key_buf, char index_key_format, char query_key_format);
