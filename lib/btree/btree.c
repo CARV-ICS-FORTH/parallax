@@ -362,7 +362,7 @@ struct bt_kv_log_address bt_get_kv_medium_log_address(struct log_descriptor *log
 
 static void pr_init_log(struct log_descriptor *log_desc, enum log_type my_type)
 {
-	// Just update the chunk counters according to the log size
+	// Just update thechunk counters according to the log size
 	if (RWLOCK_INIT(&log_desc->log_tail_buf_lock, NULL) != 0) {
 		log_fatal("Failed to init lock");
 		exit(EXIT_FAILURE);
@@ -1250,11 +1250,7 @@ static void pr_do_log_chunk_IO(struct pr_log_ticket *ticket)
 	// wait until all pending bytes are written
 	wait_for_value(&ticket->tail->bytes_in_chunk[chunk_id], LOG_CHUNK_SIZE);
 	// do the IO finally
-	ssize_t total_bytes_written;
-	if (chunk_id)
-		total_bytes_written = 0;
-	else
-		total_bytes_written = sizeof(struct segment_header);
+	ssize_t total_bytes_written = 0;
 	ssize_t bytes_written = 0;
 	uint32_t size = LOG_CHUNK_SIZE;
 	// log_info("IO time, start %llu size %llu segment dev_offt %llu offt in seg
@@ -1305,20 +1301,27 @@ static void bt_add_segment_to_log(struct db_descriptor *db_desc, struct log_desc
 				  uint8_t tree_id)
 {
 	uint32_t curr_tail_id = log_desc->curr_tail_id;
-	uint32_t next_tail_id = ++curr_tail_id;
+	uint32_t next_tail_id = curr_tail_id + 1;
 
-	struct segment_header *next_tail_seg = seg_get_raw_log_segment(db_desc, level_id, tree_id);
-	if (!next_tail_seg) {
+	uint64_t next_tail_seg_offt = ABSOLUTE_ADDRESS(seg_get_raw_log_segment(db_desc, level_id, tree_id));
+	if (!next_tail_seg_offt) {
 		log_fatal("No space for new segment");
 		exit(EXIT_FAILURE);
 	}
+
 	struct segment_header *curr_tail_seg =
 		(struct segment_header *)log_desc->tail[curr_tail_id % LOG_TAIL_NUM_BUFS]->buf;
+
 	struct log_tail *next_tail = log_desc->tail[next_tail_id % LOG_TAIL_NUM_BUFS];
+	struct segment_header *next_tail_seg =
+		(struct segment_header *)log_desc->tail[next_tail_id % LOG_TAIL_NUM_BUFS]->buf;
+
 	next_tail_seg->segment_id = curr_tail_seg->segment_id + 1;
+	//log_info("Curr tail: %lu next_tail: %lu Segment_id is now %llu db %s", curr_tail_id, next_tail_id,
+	//	 next_tail_seg->segment_id, db_desc->my_superblock.region_name);
 	next_tail_seg->next_segment = NULL;
-	next_tail_seg->prev_segment = (void *)ABSOLUTE_ADDRESS(curr_tail_seg);
-	log_desc->tail_dev_offt = ABSOLUTE_ADDRESS(next_tail_seg);
+	next_tail_seg->prev_segment = (void *)log_desc->tail_dev_offt;
+	log_desc->tail_dev_offt = next_tail_seg_offt;
 
 	/*position the log to the newly added block*/
 	log_desc->size += sizeof(segment_header);
@@ -1326,9 +1329,9 @@ static void bt_add_segment_to_log(struct db_descriptor *db_desc, struct log_desc
 	for (int j = 0; j < (SEGMENT_SIZE / LOG_CHUNK_SIZE); ++j)
 		next_tail->bytes_in_chunk[j] = 0;
 	next_tail->IOs_completed_in_tail = 0;
-	next_tail->start = ABSOLUTE_ADDRESS(next_tail_seg);
+	next_tail->start = next_tail_seg_offt;
 	next_tail->end = next_tail->start + SEGMENT_SIZE;
-	next_tail->dev_offt = ABSOLUTE_ADDRESS(next_tail_seg);
+	next_tail->dev_offt = next_tail_seg_offt;
 	next_tail->bytes_in_chunk[0] = sizeof(struct segment_header);
 	next_tail->free = 0;
 	log_desc->curr_tail_id = next_tail_id;
@@ -1378,7 +1381,7 @@ static void *bt_append_to_log_direct_IO(struct log_operation *req, struct log_to
 
 	/*append data part in the data log*/
 	if (log_metadata->log_desc->size == 0)
-		available_space_in_log = 0;
+		available_space_in_log = SEGMENT_SIZE;
 	else if (log_metadata->log_desc->size % SEGMENT_SIZE != 0)
 		available_space_in_log = SEGMENT_SIZE - (log_metadata->log_desc->size % SEGMENT_SIZE);
 	else

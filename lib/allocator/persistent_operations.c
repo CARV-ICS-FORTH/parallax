@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <signal.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -28,6 +29,7 @@ void force_snapshot(volume_descriptor *volume_desc)
 void pr_flush_L0(struct db_descriptor *db_desc, uint8_t tree_id)
 {
 	struct my_log_info {
+		uint64_t head_dev_offt;
 		uint64_t tail_dev_offt;
 		uint64_t size;
 	};
@@ -41,32 +43,42 @@ void pr_flush_L0(struct db_descriptor *db_desc, uint8_t tree_id)
 	MUTEX_LOCK(&db_desc->lock_log);
 
 	/*keep Large log state prior to releasing the lock*/
+	large_log.head_dev_offt = db_desc->big_log.head_dev_offt;
 	large_log.tail_dev_offt = db_desc->big_log.tail_dev_offt;
 	large_log.size = db_desc->big_log.size;
+
 	/*keep L0_recovery_log state prior to releasing the lock*/
+	L0_recovery_log.head_dev_offt = db_desc->small_log.head_dev_offt;
 	L0_recovery_log.tail_dev_offt = db_desc->small_log.tail_dev_offt;
 	L0_recovery_log.size = db_desc->small_log.size;
+
 	MUTEX_UNLOCK(&db_desc->lock_log);
+
 	/*
    * Flush large and L0_recovery_log may flush more. We do this
    * 1)To avoid holding all logs lock while doing I/O
    * 2)We are sure that the (tail, size) of the previous step
    * will be at the device
   */
+
 	/*Flush large log*/
 	pr_flush_log_tail(db_desc, db_desc->my_volume, &db_desc->big_log);
+
 	/*Flush L0 recovery log*/
 	pr_flush_log_tail(db_desc, db_desc->my_volume, &db_desc->small_log);
+
+	uint64_t my_txn_id = db_desc->levels[0].allocation_txn_id[tree_id];
 
 	/*time to write superblock*/
 	pr_lock_region_superblock(db_desc);
 	/*Flush my allocations*/
-	uint64_t my_txn_id = db_desc->levels[0].allocation_txn_id[tree_id];
+
 	struct rul_log_info rul_log = rul_flush_txn(db_desc, my_txn_id);
 	/*new info about large*/
 	db_desc->my_superblock.big_log_tail_offt = large_log.tail_dev_offt;
 	db_desc->my_superblock.big_log_size = large_log.size;
 	/*new info about L0_recovery_log*/
+	db_desc->my_superblock.small_log_head_offt = L0_recovery_log.head_dev_offt;
 	db_desc->my_superblock.small_log_tail_offt = L0_recovery_log.tail_dev_offt;
 	db_desc->my_superblock.small_log_size = L0_recovery_log.size;
 	/*new info about allocation_log*/
@@ -103,6 +115,35 @@ static void pr_flush_L0_to_L1(struct db_descriptor *db_desc, uint8_t level_id, u
 	/*medium log info*/
 	db_desc->my_superblock.medium_log_tail_offt = medium_log.tail_dev_offt;
 	db_desc->my_superblock.medium_log_size = medium_log.size;
+
+	/*trim L0_recovery_log*/
+	struct segment_header *curr = REAL_ADDRESS(db_desc->my_superblock.small_log_tail_offt);
+	log_info("Tail segment id %llu", curr->segment_id);
+	curr = REAL_ADDRESS(curr->prev_segment);
+
+	struct segment_header *head = REAL_ADDRESS(db_desc->my_superblock.small_log_head_offt);
+	log_info("Head segment id %llu", head->segment_id);
+
+	uint64_t bytes_freed = 0;
+	while (curr && (uint64_t)curr->segment_id >= head->segment_id) {
+		struct rul_log_entry E;
+		E.dev_offt = ABSOLUTE_ADDRESS(curr);
+		log_info("Triming L0 recovery log segment:%llu curr segment id:%llu", E.dev_offt, curr->segment_id);
+		E.txn_id = my_txn_id;
+		E.op_type = RUL_FREE;
+		E.size = SEGMENT_SIZE;
+		rul_add_entry_in_txn_buf(db_desc, &E);
+		bytes_freed += SEGMENT_SIZE;
+		curr = REAL_ADDRESS(curr->prev_segment);
+	}
+
+	log_info("*** Freed a total of %llu MB bytes from trimming L0 recovery log head %llu tail %llu size %llu ***",
+		 bytes_freed / (1024 * 1024), db_desc->my_superblock.small_log_head_offt,
+		 db_desc->my_superblock.small_log_tail_offt, db_desc->my_superblock.small_log_size);
+
+	db_desc->my_superblock.small_log_head_offt = db_desc->my_superblock.small_log_tail_offt;
+	db_desc->small_log.head_dev_offt = db_desc->my_superblock.small_log_head_offt;
+
 	/*Flush my allocations*/
 	struct rul_log_info rul_log = rul_flush_txn(db_desc, db_desc->levels[level_id].allocation_txn_id[tree_id]);
 	/*new info about allocation_log*/
