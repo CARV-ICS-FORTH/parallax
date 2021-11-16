@@ -102,8 +102,9 @@ static void pr_flush_L0_to_L1(struct db_descriptor *db_desc, uint8_t level_id, u
 	};
 
 	struct my_log_info medium_log;
+
 	/*
-   *Keep medium log state. We don't need to lock because ONLY one compaction
+   * Keep medium log state. We don't need to lock because ONLY one compaction
    * from L0 to L1 is allowed.
   */
 	medium_log.tail_dev_offt = db_desc->medium_log.tail_dev_offt;
@@ -128,7 +129,7 @@ static void pr_flush_L0_to_L1(struct db_descriptor *db_desc, uint8_t level_id, u
 	while (curr && (uint64_t)curr->segment_id >= head->segment_id) {
 		struct rul_log_entry E;
 		E.dev_offt = ABSOLUTE_ADDRESS(curr);
-		log_info("Triming L0 recovery log segment:%llu curr segment id:%llu", E.dev_offt, curr->segment_id);
+		//log_info("Triming L0 recovery log segment:%llu curr segment id:%llu", E.dev_offt, curr->segment_id);
 		E.txn_id = my_txn_id;
 		E.op_type = RUL_FREE;
 		E.size = SEGMENT_SIZE;
@@ -167,11 +168,44 @@ static void pr_flush_L0_to_L1(struct db_descriptor *db_desc, uint8_t level_id, u
 static void pr_flush_Lmax_to_Ln(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
 {
 	log_info("Flushing Lmax to Ln!");
-	pr_lock_region_superblock(db_desc);
+	struct level_descriptor *level_desc = &db_desc->levels[level_id];
 
 	uint64_t my_txn_id = db_desc->levels[level_id].allocation_txn_id[tree_id];
+	/*trim medium log*/
+	struct segment_header *curr = REAL_ADDRESS(level_desc->medium_in_place_segment_dev_offt);
+	//log_info("Max medium in place segment id %llu", curr->segment_id);
+	curr = REAL_ADDRESS(curr->prev_segment);
+
+	struct segment_header *head = REAL_ADDRESS(db_desc->medium_log.head_dev_offt);
+	//log_info("Head of medium log segment id %llu", head->segment_id);
+
+	uint64_t bytes_freed = 0;
+	while (curr && (uint64_t)curr->segment_id >= head->segment_id) {
+		struct rul_log_entry E;
+		E.dev_offt = ABSOLUTE_ADDRESS(curr);
+		//log_info("Triming medium log segment:%llu curr segment id:%llu", E.dev_offt, curr->segment_id);
+		E.txn_id = my_txn_id;
+		E.op_type = RUL_FREE;
+		E.size = SEGMENT_SIZE;
+		rul_add_entry_in_txn_buf(db_desc, &E);
+		bytes_freed += SEGMENT_SIZE;
+		curr = REAL_ADDRESS(curr->prev_segment);
+	}
+
+	log_info("*** Freed a total of %llu MB bytes from trimming medium log head %llu tail %llu size %llu ***",
+		 bytes_freed / (1024 * 1024), db_desc->my_superblock.small_log_head_offt,
+		 db_desc->my_superblock.small_log_tail_offt, db_desc->my_superblock.small_log_size);
+
+	pr_lock_region_superblock(db_desc);
+
 	/*Flush my allocations*/
 	struct rul_log_info rul_log = rul_flush_txn(db_desc, db_desc->levels[level_id].allocation_txn_id[tree_id]);
+	/*new info about medium log after trim operation*/
+	db_desc->medium_log.head_dev_offt = level_desc->medium_in_place_segment_dev_offt;
+	db_desc->my_superblock.medium_log_head_offt = level_desc->medium_in_place_segment_dev_offt;
+	level_desc->medium_in_place_segment_dev_offt = 0;
+	level_desc->medium_in_place_max_segment_id = 0;
+
 	/*new info about allocation_log*/
 	db_desc->my_superblock.allocation_log.tail_dev_offt = rul_log.tail_dev_offt;
 	db_desc->my_superblock.allocation_log.size = rul_log.size;

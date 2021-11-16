@@ -32,6 +32,7 @@
 #include <log.h>
 #include <pthread.h>
 #include <semaphore.h>
+#include <signal.h>
 #include <spin_loop.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -112,14 +113,16 @@ struct comp_level_read_cursor {
 	enum comp_level_read_cursor_state state;
 };
 
-static void fetch_segment(char *segment_buf, uint64_t segment_offt, ssize_t size)
+static void fetch_segment(struct comp_level_write_cursor *c, char *segment_buf, uint64_t log_chunk_dev_offt,
+			  ssize_t size)
 {
-	off_t dev_offt = segment_offt;
+	off_t dev_offt = log_chunk_dev_offt;
 	ssize_t bytes_to_read = 0;
 	ssize_t bytes = 0;
 
 	while (bytes_to_read < size) {
-		bytes = pread(FD, &segment_buf[bytes_to_read], size - bytes_to_read, dev_offt + bytes_to_read);
+		bytes = pread(c->handle->db_desc->my_volume->my_fd, &segment_buf[bytes_to_read], size - bytes_to_read,
+			      dev_offt + bytes_to_read);
 		if (bytes == -1) {
 			log_fatal("Failed to read error code");
 			perror("Error");
@@ -128,13 +131,23 @@ static void fetch_segment(char *segment_buf, uint64_t segment_offt, ssize_t size
 		}
 		bytes_to_read += bytes;
 	}
+	if (c->level_id == LEVEL_MEDIUM_INPLACE) {
+		struct segment_header *my_seg = (struct segment_header *)segment_buf;
+		struct level_descriptor *level_desc = &c->handle->db_desc->levels[c->level_id];
+
+		if (!(log_chunk_dev_offt % SEGMENT_SIZE)) {
+			if (my_seg->segment_id > level_desc->medium_in_place_max_segment_id) {
+				level_desc->medium_in_place_max_segment_id = my_seg->segment_id;
+				level_desc->medium_in_place_segment_dev_offt = dev_offt;
+			}
+		}
+	}
 }
 
 static char *fetch_kv_from_LRU(struct write_dynamic_leaf_args *args, struct comp_level_write_cursor *c)
 {
 	char *segment_chunk = NULL, *kv_in_seg = NULL;
 	uint64_t segment_offset, which_chunk, segment_chunk_offt;
-
 	segment_offset = ABSOLUTE_ADDRESS(args->kv_dev_offt) - (ABSOLUTE_ADDRESS(args->kv_dev_offt) % SEGMENT_SIZE);
 
 	which_chunk = (ABSOLUTE_ADDRESS(args->kv_dev_offt) % SEGMENT_SIZE) / LOG_CHUNK_SIZE;
@@ -146,7 +159,7 @@ static char *fetch_kv_from_LRU(struct write_dynamic_leaf_args *args, struct comp
 			log_fatal("MEMALIGN FAILED");
 			exit(EXIT_FAILURE);
 		}
-		fetch_segment(segment_chunk, segment_chunk_offt, LOG_CHUNK_SIZE + KB(4));
+		fetch_segment(c, segment_chunk, segment_chunk_offt, LOG_CHUNK_SIZE + KB(4));
 		add_to_LRU(c->medium_log_LRU_cache, segment_chunk_offt, segment_chunk);
 	} else
 		segment_chunk = get_chunk_from_LRU(c->medium_log_LRU_cache, segment_chunk_offt);

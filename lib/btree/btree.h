@@ -286,6 +286,9 @@ typedef struct level_descriptor {
 	double count_compactions;
 #endif
 	int64_t active_writers;
+	/*info for trimming medium_log, used only in L_{n-1}*/
+	uint64_t medium_in_place_max_segment_id;
+	uint64_t medium_in_place_segment_dev_offt;
 	/*spilling or not?*/
 	uint32_t leaf_size;
 	char tree_status[NUM_TREES_PER_LEVEL];
