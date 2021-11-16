@@ -273,7 +273,27 @@ int par_get_next(par_scanner s)
 	}
 	//memcpy(par_s->kv_buf, sc->keyValue, par_s->buf_size);
 	//gesalous
-	memcpy(par_s->kv_buf, sc->keyValue, kv_size);
+	struct bt_kv_log_address L = { .addr = sc->keyValue, .tail_id = UINT8_MAX, .in_tail = 0 };
+	if (!sc->kv_level_id) {
+		switch (sc->kv_cat) {
+		case BIG_INLOG:
+			L = bt_get_kv_log_address(&sc->db->db_desc->big_log, *(uint64_t *)sc->keyValue);
+			break;
+		case BIG_INPLACE:
+		case MEDIUM_INPLACE:
+		case MEDIUM_INLOG:
+		case SMALL_INPLACE:
+		case SMALL_INLOG:
+			break;
+		default:
+			log_fatal("UNKNOWS_LOG_CATEGORY %d", sc->kv_cat);
+			exit(EXIT_FAILURE);
+		}
+	}
+
+	memcpy(par_s->kv_buf, L.addr, kv_size);
+	if (L.in_tail)
+		bt_done_with_value_log_address(&sc->db->db_desc->big_log, &L);
 	return 1;
 }
 

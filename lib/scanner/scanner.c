@@ -1,15 +1,15 @@
-#include <assert.h>
-#include <stdint.h>
-#include <stdlib.h>
-#include <string.h>
-#include <log.h>
-#include "max_min_heap.h"
-#include "stack.h"
 #include "scanner.h"
 #include "../allocator/volume_manager.h"
 #include "../btree/btree.h"
 #include "../btree/conf.h"
 #include "../btree/dynamic_leaf.h"
+#include "max_min_heap.h"
+#include "stack.h"
+#include <assert.h>
+#include <log.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
 
 int _init_level_scanner(level_scanner *level_sc, void *start_key, char seek_mode);
 
@@ -599,7 +599,8 @@ int32_t getNext(scannerHandle *sc)
 		stat = sh_remove_min(&sc->heap.min_heap, &nd);
 		if (stat != EMPTY_MIN_HEAP) {
 			sc->keyValue = nd.KV;
-
+			sc->kv_level_id = nd.level_id;
+			sc->kv_cat = sc->LEVEL_SCANNERS[nd.level_id][nd.active_tree].cat;
 			assert(sc->LEVEL_SCANNERS[nd.level_id][nd.active_tree].valid);
 			if (_get_next_KV(&(sc->LEVEL_SCANNERS[nd.level_id][nd.active_tree])) != END_OF_DATABASE) {
 				//log_info("refilling from level_id %d\n", nd.level_id);

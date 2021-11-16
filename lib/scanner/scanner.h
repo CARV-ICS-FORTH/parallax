@@ -1,10 +1,10 @@
 #pragma once
-#include <stdint.h>
-#include "stack.h"
-#include "min_max_heap.h"
 #include "../btree/btree.h"
 #include "../btree/conf.h"
 #include "max_min_heap.h"
+#include "min_max_heap.h"
+#include "stack.h"
+#include <stdint.h>
 #define FULL_SCANNER 1
 
 #define SPILL_BUFFER_SCANNER 3
@@ -42,6 +42,8 @@ typedef struct scannerHandle {
 	db_handle *db;
 	void *keyValue;
 	int32_t type; /*to be removed also*/
+	int32_t kv_level_id;
+	uint8_t kv_cat;
 	SCANNER_TYPE type_of_scanner;
 } scannerHandle;
 
