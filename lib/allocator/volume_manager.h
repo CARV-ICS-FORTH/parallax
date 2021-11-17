@@ -32,8 +32,6 @@ typedef enum volume_state { VOLUME_IS_OPEN = 0x00, VOLUME_IS_CLOSING = 0x01, VOL
 *allocation
 **/
 
-#define COW_FOR_LEAF 0x00
-#define COW_FOR_INDEX 0x01
 #define KEY_LOG_EXPANSION 0x03
 #define KV_LOG_EXPANSION 0x04
 #define KEY_LOG_SPLIT 0x05
@@ -57,34 +55,6 @@ typedef enum volume_state { VOLUME_IS_OPEN = 0x00, VOLUME_IS_CLOSING = 0x01, VOL
 /*the global mountpoint of a volume*/
 extern uint64_t MAPPED;
 extern int FD;
-
-#define WORDS_PER_BITMAP_BUDDY ((DEVICE_BLOCK_SIZE / sizeof(uint64_t)) - 1)
-struct bitmap_buddy {
-	uint64_t epoch;
-	uint64_t word[WORDS_PER_BITMAP_BUDDY];
-};
-
-struct bitmap_buddy_pair {
-	struct bitmap_buddy buddy[2];
-};
-
-struct bitmap_position {
-	int buddy_pair;
-	int word_id;
-};
-
-#define BITMAP_BUDDY_PAIRS_PER_CELL 4
-struct bitmap_buddies_cell {
-	uint8_t b0 : 2;
-	uint8_t b1 : 2;
-	uint8_t b2 : 2;
-	uint8_t b3 : 2;
-};
-
-struct bitmap_buddies_state {
-	uint32_t size;
-	struct bitmap_buddies_cell buddy[];
-};
 
 typedef struct volume_descriptor {
 	/*<new_persistent_design>*/
@@ -122,26 +92,10 @@ typedef struct volume_descriptor {
 	uint64_t size; /* size of volume in bytes */
 	void *bitmap_start; /* address of where volume's bitmap starts*/
 	void *bitmap_end; /* address of where volume's bitmap ends */
-	/*
-  * @allocator_state
-  * Contains 2 bits per metadata block pair.
-  * 00 -> read left/write left
-  * 01 read left/write right
-  * 10 read right/write left
-  * 11 read right/write right
-  */
-	struct bitmap_buddies_state *buddies_vector;
 
 	struct superblock *volume_superblock; /*address of volume's superblock*/
 	struct klist *open_databases;
 
-	/*free log start*/
-	uint64_t log_size;
-	uint64_t start;
-	uint64_t end;
-	/*free log end*/
-	/*Location of last allocation*/
-	struct bitmap_position b_pos;
 	/* value is set to 2 after a non-successfull allocation operation for a given
    * size.*/
 	uint32_t full;
@@ -171,17 +125,4 @@ struct volume_descriptor *mem_get_volume_desc(char *volume_name);
 uint64_t mem_allocate(struct volume_descriptor *volume_desc, uint64_t num_bytes);
 void mem_bitmap_mark_block_free(struct volume_descriptor *volume_desc, uint64_t dev_offt);
 /*</new_persistent_design>*/
-
-/*
- * @dev_name The device name
- * @start The beginning offset in bytes
- * @size The size of the device in bytes
- * @typeOfVolume Unused
- *
- * @return >= 0 in case of success. < 0 otherwise.
- */
-
-void force_snapshot(volume_descriptor *volume_desc);
-void snapshot(volume_descriptor *volume_desc);
-
 uint64_t get_timestamp(void);
