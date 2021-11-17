@@ -184,10 +184,4 @@ void mem_bitmap_mark_block_free(struct volume_descriptor *volume_desc, uint64_t 
 void force_snapshot(volume_descriptor *volume_desc);
 void snapshot(volume_descriptor *volume_desc);
 
-void *allocate(struct volume_descriptor *volume_desc, uint64_t num_bytes);
-
-void free_block(struct volume_descriptor *volume_desc, void *address, uint32_t length);
-void bitmap_set_buddies_immutable(struct volume_descriptor *volume_desc);
-void bitmap_mark_block_free(struct volume_descriptor *volume_desc, void *addr);
-
 uint64_t get_timestamp(void);

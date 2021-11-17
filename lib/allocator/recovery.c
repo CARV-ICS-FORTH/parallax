@@ -216,24 +216,26 @@ void *find_next_kventry(struct recovery_operator *replay, uint64_t *prev_lsn)
 
 void mark_log_segments_before_replay(volume_descriptor *volume_desc, segment_header *first_segment)
 {
-	segment_header *curr_segment = first_segment;
-	uint32_t num_pages = SEGMENT_SIZE / PAGE_SIZE;
-	while (curr_segment) {
-		char *page_tomark = (char *)curr_segment;
+	(void)first_segment;
+	(void)volume_desc;
+	//segment_header *curr_segment = first_segment;
+	//uint32_t num_pages = SEGMENT_SIZE / PAGE_SIZE;
+	//while (curr_segment) {
+	//	char *page_tomark = (char *)curr_segment;
 
-		MUTEX_LOCK(&volume_desc->bitmap_lock);
-		for (uint32_t i = 0; i < num_pages; ++i, page_tomark += PAGE_SIZE) {
-			bitmap_mark_block_free(volume_desc, page_tomark);
-		}
-		MUTEX_UNLOCK(&volume_desc->bitmap_lock);
+	//	MUTEX_LOCK(&volume_desc->bitmap_lock);
+	//for (uint32_t i = 0; i < num_pages; ++i, page_tomark += PAGE_SIZE) {
+	//	bitmap_mark_block_free(volume_desc, page_tomark);
+	//}
+	//MUTEX_UNLOCK(&volume_desc->bitmap_lock);
 
 #ifdef DEBUG_RECOVERY
-		mprotect(curr_segment, SEGMENT_SIZE, PROT_READ);
+	mprotect(curr_segment, SEGMENT_SIZE, PROT_READ);
 #endif
-		if (curr_segment->next_segment == NULL)
-			break;
-		curr_segment = REAL_ADDRESS(curr_segment->next_segment);
-	}
+	//if (curr_segment->next_segment == NULL)
+	//	break;
+	//curr_segment = REAL_ADDRESS(curr_segment->next_segment);
+	//}
 }
 
 void replay_log(recovery_request *rh, struct recovery_operator *replay)

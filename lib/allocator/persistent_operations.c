@@ -373,7 +373,7 @@ void snapshot(volume_descriptor *volume_desc)
 	//struct commit_log_info log_info;
 	struct pr_db_group *db_group;
 	struct pr_db_entry *db_entry;
-	node_header *old_root;
+	//	node_header *old_root;
 	uint32_t i;
 	uint32_t j;
 	int32_t dirty = 0;
@@ -426,7 +426,7 @@ void snapshot(volume_descriptor *volume_desc)
 
 				memcpy(new_group, db_group, sizeof(struct pr_db_group));
 				new_group->epoch = volume_desc->mem_catalogue->epoch;
-				free_block(volume_desc, db_group, sizeof(struct pr_db_group));
+				//free_block(volume_desc, db_group, sizeof(struct pr_db_group));
 				db_group = new_group;
 				volume_desc->mem_catalogue->db_group_index[db_desc->group_id] =
 					(struct pr_db_group *)ABSOLUTE_ADDRESS(db_group);
@@ -455,16 +455,15 @@ void snapshot(volume_descriptor *volume_desc)
 						db_entry->root_r[i][j] = ABSOLUTE_ADDRESS(db_desc->levels[i].root_w[j]);
 
 						/*mark old root to free it later*/
-						old_root = db_desc->levels[i].root_r[j];
+						//old_root = db_desc->levels[i].root_r[j];
 						db_desc->levels[i].root_r[j] = db_desc->levels[i].root_w[j];
 						db_desc->levels[i].root_w[j] = NULL;
 
-						if (old_root) {
-							if (old_root->type == rootNode)
-								free_block(volume_desc, old_root, INDEX_NODE_SIZE);
-							else
-								free_block(volume_desc, old_root, LEAF_NODE_SIZE);
-						}
+						//if (old_root) {
+						//if (old_root->type == rootNode)
+						//free_block(volume_desc, old_root, INDEX_NODE_SIZE);
+						//else free_block(volume_desc, old_root, LEAF_NODE_SIZE);
+						//}
 
 					} else if (db_desc->levels[i].root_r[j] == NULL) {
 						//log_warn("set %lu to %llu of db_entry %llu", i * j,
@@ -493,7 +492,7 @@ void snapshot(volume_descriptor *volume_desc)
 
 	if (dirty > 0) {
 		//At least one db is dirty proceed to snapshot()
-		free_block(volume_desc, volume_desc->dev_catalogue, sizeof(struct pr_system_catalogue));
+		//free_block(volume_desc, volume_desc->dev_catalogue, sizeof(struct pr_system_catalogue));
 		volume_desc->dev_catalogue = volume_desc->mem_catalogue;
 		/*allocate a new position for superindex*/
 
@@ -506,7 +505,7 @@ void snapshot(volume_descriptor *volume_desc)
 		volume_desc->volume_superblock->system_catalogue =
 			(struct pr_system_catalogue *)ABSOLUTE_ADDRESS(volume_desc->dev_catalogue);
 
-		bitmap_set_buddies_immutable(volume_desc);
+		//bitmap_set_buddies_immutable(volume_desc);
 
 		MUTEX_UNLOCK(&volume_desc->bitmap_lock);
 	}

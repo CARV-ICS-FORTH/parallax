@@ -239,13 +239,15 @@ void seg_free_index_node_header(struct db_descriptor *db_desc, uint8_t level_id,
 
 void seg_free_index_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id, index_node *inode)
 {
-	struct volume_descriptor *volume_desc = db_desc->my_volume;
-	return;
 	//leave for future use
 	(void)db_desc;
 	(void)level_id;
 	(void)tree_id;
 	(void)inode;
+	return;
+#if 0
+	struct volume_descriptor *volume_desc = db_desc->my_volume;
+
 
 	if (inode->header.type == leafNode || inode->header.type == leafRootNode) {
 		log_fatal("Faulty type of node!");
@@ -268,6 +270,7 @@ void seg_free_index_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_
 	free_block(volume_desc, last, KEY_BLOCK_SIZE);
 	/*finally node_header*/
 	free_block(volume_desc, inode, INDEX_NODE_SIZE);
+#endif
 }
 
 leaf_node *seg_get_leaf_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
@@ -320,13 +323,16 @@ leaf_node *seg_get_leaf_node_header(struct db_descriptor *db_desc, uint8_t level
 
 void seg_free_leaf_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id, leaf_node *leaf)
 {
-	return;
 	//leave for future use
 	(void)db_desc;
 	(void)level_id;
 	(void)tree_id;
+	(void)leaf;
+	return;
+#if 0
 	struct level_descriptor *level_desc = &db_desc->levels[level_id];
 	free_block(db_desc->my_volume, leaf, level_desc->leaf_size);
+#endif
 }
 
 segment_header *seg_get_raw_log_segment(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)

@@ -122,6 +122,12 @@ int8_t find_deleted_kv_pairs_in_segment(volume_descriptor *volume_desc, db_descr
 	return 0;
 }
 
+static void free_block(struct volume_descriptor *v, void *addr, uint32_t size)
+{
+	(void)v;
+	(void)addr;
+	(void)size;
+}
 void fix_nodes_in_log(volume_descriptor *volume_desc, db_descriptor *db_desc, log_segment *prev_node,
 		      log_segment *curr_node)
 {

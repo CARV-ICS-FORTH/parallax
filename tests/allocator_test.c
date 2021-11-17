@@ -31,6 +31,8 @@ void start(void *id);
 
 int main()
 {
+	return 1;
+#if 0
 	uint64_t duration;
 	uint64_t mapped;
 	count = 0;
@@ -63,8 +65,9 @@ int main()
 	}
 	printf("Collisions %llu hits %llu sleep %llu max_tries %d\n", collisions, hits, sleep_times, max_tries);
 	return 1;
+#endif
 }
-
+#if 0
 void start(void *id)
 {
 	int32_t myid = *(int *)id;
@@ -92,10 +95,10 @@ void start(void *id)
 	printf("allocations %d\n", allocations);
 	duration = get_timestamp();
 	for (i = 0; i < allocations; i++) {
-		/*decision = rand_r(&seeds[myid])%10;	
-		if(decision < 7) 
+		/*decision = rand_r(&seeds[myid])%10;
+		if(decision < 7)
 			size = 4096;
-		else 
+		else
 			size = 131072;*/
 		size = 16384;
 		addr = allocate(size);
@@ -110,3 +113,4 @@ void start(void *id)
 	printf("duration for thread %d is %llu micro\n", myid, duration);
 	return;
 }
+#endif
