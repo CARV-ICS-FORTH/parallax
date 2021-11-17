@@ -953,15 +953,6 @@ struct volume_descriptor *mem_get_volume_desc(char *volume_name)
 }
 /*</new_persistent_design>*/
 
-static void destroy_volume_node(void *data)
-{
-	struct volume_descriptor *volume_desc = (struct volume_descriptor *)data;
-	free(volume_desc->volume_id);
-	free(volume_desc->volume_name);
-	free(volume_desc->buddies_vector);
-	klist_destroy(volume_desc->open_databases);
-	free(volume_desc);
-}
 /**
  * Volume close. Closes the volume by executing the following steps. Application
  * is responsible to halt any threads
@@ -1964,66 +1955,4 @@ static void clean_log_entries(void *v_desc)
 		// else if (ts - volume_desc->last_commit > commit_kv_log_interval)
 		// commit_db_logs_per_volume(volume_desc);
 	}
-}
-
-struct volume_descriptor *get_volume_desc(char *volume_name, uint64_t start_offt, char create)
-{
-	MUTEX_LOCK(&volume_manager_lock);
-	if (volume_list == NULL)
-		volume_list = klist_init();
-	// Is requested volume already mapped?, construct key which will be
-	// volumeName|start
-	uint64_t val = start_offt;
-	uint32_t digits = 0;
-	while (val > 0) {
-		val = val / 10;
-		digits++;
-	}
-	if (digits == 0)
-		digits = 1;
-
-	char *key = calloc(1, strlen(volume_name) + digits + 1);
-	if (!key) {
-		log_fatal("Calloc failed");
-		exit(EXIT_FAILURE);
-	}
-
-	strcpy(key, volume_name);
-	sprintf(key + strlen(volume_name), "%llu", (long long unsigned)start_offt);
-	struct volume_descriptor *volume_desc = (volume_descriptor *)klist_find_element_with_key(volume_list, key);
-
-	if (volume_desc == NULL && !create)
-		goto exit;
-	else if (volume_desc == NULL && create) {
-		volume_desc = calloc(1, sizeof(volume_descriptor));
-		if (!volume_desc) {
-			log_fatal("Calloc failed");
-			exit(EXIT_FAILURE);
-		}
-
-		volume_desc->state = VOLUME_IS_OPEN;
-		volume_desc->snap_preemption = SNAP_INTERRUPT_DISABLE;
-		volume_desc->last_snapshot = get_timestamp();
-		volume_desc->last_commit = get_timestamp();
-		volume_desc->last_sync = get_timestamp();
-
-		volume_desc->volume_name = calloc(1, strlen(volume_name) + 1);
-		strcpy(volume_desc->volume_name, volume_name);
-		volume_desc->volume_id = calloc(1, strlen(key) + 1);
-		strcpy(volume_desc->volume_id, key);
-		volume_desc->open_databases = klist_init();
-		volume_desc->offset = start_offt;
-		/*allocator lock*/
-		MUTEX_INIT(&(volume_desc->bitmap_lock), NULL);
-		/*free operations log*/
-		MUTEX_INIT(&(volume_desc->free_log_lock), NULL);
-		// this call will fill volume's size
-		allocator_init(volume_desc);
-		klist_add_first(volume_list, volume_desc, key, destroy_volume_node);
-	}
-	++volume_desc->reference_count;
-exit:
-	free(key);
-	MUTEX_UNLOCK(&volume_manager_lock);
-	return volume_desc;
 }

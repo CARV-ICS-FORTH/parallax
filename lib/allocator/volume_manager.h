@@ -181,14 +181,8 @@ void mem_bitmap_mark_block_free(struct volume_descriptor *volume_desc, uint64_t 
  * @return >= 0 in case of success. < 0 otherwise.
  */
 
-struct volume_descriptor *get_volume_desc(char *volume_name, uint64_t start_offt, char create);
-
-int32_t volume_init(char *dev_name, int64_t start, int64_t size, int typeOfVolume);
-
 void force_snapshot(volume_descriptor *volume_desc);
 void snapshot(volume_descriptor *volume_desc);
-
-void allocator_init(volume_descriptor *volume_desc);
 
 void *allocate(struct volume_descriptor *volume_desc, uint64_t num_bytes);
 
