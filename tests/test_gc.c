@@ -80,13 +80,13 @@ int main(void)
 
 	handle = db_open(PATH, 0, size, "test.db", CREATE_DB);
 	assert(handle);
-	snapshot(handle->volume_desc);
+	//snapshot(handle->volume_desc);
 	update_half = 1;
 	serially_insert_keys(handle);
 	log_info(
 		"-------------------------------------------------------------------FINISH-------------------------------------------------------------------------------");
 	serially_insert_keys(handle);
-	snapshot(handle->volume_desc);
+	//snapshot(handle->volume_desc);
 
 	return 0;
 }

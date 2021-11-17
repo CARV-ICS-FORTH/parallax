@@ -949,7 +949,7 @@ char db_close(db_handle *handle)
 
 	log_info("Closing region/db %s snapshotting volume\n", handle->db_desc->my_superblock.region_name);
 	handle->db_desc->stat = DB_IS_CLOSING;
-	snapshot(handle->volume_desc);
+	//snapshot(handle->volume_desc);
 /*stop log appenders*/
 #if LOG_WITH_MUTEX
 	MUTEX_LOCK(&handle->db_desc->lock_log);

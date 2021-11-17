@@ -86,8 +86,11 @@ static void init_generic_scanner(struct scannerHandle *sc, struct db_handle *han
 		exit(EXIT_FAILURE);
 	}
 
-	if (!dirty && handle->db_desc->dirty)
-		snapshot(handle->volume_desc);
+	if (!dirty && handle->db_desc->dirty) {
+		//snapshot(handle->volume_desc);
+		log_fatal("Unsupported operation");
+		exit(EXIT_FAILURE);
+	}
 
 	/*special care for level 0 due to double buffering*/
 	if (dirty) {
