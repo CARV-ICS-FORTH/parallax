@@ -15,22 +15,16 @@
 #define _GNU_SOURCE
 #include "../btree/btree.h"
 #include "../btree/conf.h"
-#include "../btree/segment_allocator.h"
 #include "../btree/set_options.h"
 #include "../utilities/list.h"
 #include "device_structures.h"
 #include "djb2.h"
-#include "dmap-ioctl.h"
 #include "log_structures.h"
 #include "mem_structures.h"
-#include "redo_undo_log.h"
 #include "volume_manager.h"
 
 #include <assert.h>
-#include <errno.h>
 #include <fcntl.h>
-#include <inttypes.h>
-#include <linux/fs.h>
 #include <log.h>
 #include <math.h>
 #include <pthread.h>
@@ -41,7 +35,6 @@
 #include <strings.h>
 #include <sys/mman.h>
 #include <sys/time.h>
-#include <time.h>
 #include <unistd.h>
 #include <uthash.h>
 

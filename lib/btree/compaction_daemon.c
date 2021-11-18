@@ -14,25 +14,23 @@
 
 #define _GNU_SOURCE /* See feature_test_macros(7) */
 
-#include "btree.h"
-#include "conf.h"
-#include "dynamic_leaf.h"
-#include "gc.h"
-#include "segment_allocator.h"
-
-#include "medium_log_LRU_cache.h"
 #include "../../utilities/dups_list.h"
 #include "../allocator/device_structures.h"
 #include "../allocator/redo_undo_log.h"
 #include "../allocator/volume_manager.h"
 #include "../scanner/min_max_heap.h"
 #include "../scanner/scanner.h"
+#include "btree.h"
+#include "conf.h"
+#include "dynamic_leaf.h"
+#include "gc.h"
+#include "medium_log_LRU_cache.h"
+#include "segment_allocator.h"
 
 #include <assert.h>
 #include <log.h>
 #include <pthread.h>
 #include <semaphore.h>
-#include <signal.h>
 #include <spin_loop.h>
 #include <stdint.h>
 #include <stdio.h>

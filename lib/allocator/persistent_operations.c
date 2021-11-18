@@ -13,20 +13,16 @@
 // limitations under the License.
 #include "../btree/btree.h"
 #include "../btree/conf.h"
-#include "../btree/segment_allocator.h"
 #include "device_structures.h"
 #include "log_structures.h"
 #include "redo_undo_log.h"
 #include "volume_manager.h"
 #include <assert.h>
-#include <list.h>
 #include <log.h>
-#include <signal.h>
 #include <spin_loop.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 #include <unistd.h>
 
 /*<new_persistent_design>*/

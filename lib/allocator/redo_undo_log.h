@@ -14,7 +14,6 @@
 
 #pragma once
 #include "../btree/btree.h"
-#include "device_structures.h"
 #include <aio.h>
 #include <pthread.h>
 #include <stdint.h>

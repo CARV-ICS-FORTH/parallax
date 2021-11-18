@@ -1,5 +1,7 @@
 #define _GNU_SOURCE
 #include "gc.h"
+#include "../allocator/device_structures.h"
+#include "../allocator/log_structures.h"
 #include "../allocator/volume_manager.h"
 #include "../scanner/scanner.h"
 #include "set_options.h"
