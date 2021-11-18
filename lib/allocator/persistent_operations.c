@@ -206,27 +206,12 @@ static void pr_flush_Lmax_to_Ln(struct db_descriptor *db_desc, uint8_t level_id,
 
 	pr_lock_region_superblock(db_desc);
 
-	/*Flush my allocations*/
-	struct rul_log_info rul_log = rul_flush_txn(db_desc, db_desc->levels[level_id].allocation_txn_id[tree_id]);
 	/*new info about medium log after trim operation*/
 	db_desc->medium_log.head_dev_offt = level_desc->medium_in_place_segment_dev_offt;
 	db_desc->my_superblock.medium_log_head_offt = level_desc->medium_in_place_segment_dev_offt;
 	level_desc->medium_in_place_segment_dev_offt = 0;
 	level_desc->medium_in_place_max_segment_id = 0;
-
-	/*new info about allocation_log*/
-	db_desc->my_superblock.allocation_log.tail_dev_offt = rul_log.tail_dev_offt;
-	db_desc->my_superblock.allocation_log.size = rul_log.size;
-	db_desc->my_superblock.allocation_log.txn_id = rul_log.txn_id;
-	/*new info about my level*/
-	db_desc->my_superblock.root_r[level_id][tree_id] = ABSOLUTE_ADDRESS(db_desc->levels[level_id].root_r[tree_id]);
-	db_desc->my_superblock.first_segment[level_id][0] =
-		ABSOLUTE_ADDRESS(db_desc->levels[level_id].first_segment[tree_id]);
-	db_desc->my_superblock.last_segment[level_id][tree_id] =
-		ABSOLUTE_ADDRESS(db_desc->levels[level_id].last_segment[tree_id]);
-	db_desc->my_superblock.offset[level_id][tree_id] = db_desc->levels[level_id].offset[tree_id];
-	db_desc->my_superblock.level_size[level_id][tree_id] = db_desc->levels[level_id].level_size[tree_id];
-	pr_flush_region_superblock(db_desc);
+	pr_flush_allocation_log_and_level_info(db_desc, level_id, tree_id);
 
 	pr_unlock_region_superblock(db_desc);
 	rul_apply_txn_buf_freeops_and_destroy(db_desc, my_txn_id);

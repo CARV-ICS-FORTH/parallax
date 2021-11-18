@@ -472,46 +472,11 @@ static uint32_t mem_bitmap_find_nbits_in_word(struct mem_bitmap_word *b_word, ui
 
 static void mem_bitmap_mark_reserved(struct mem_bitmap_word *b_word)
 {
-	struct bitmap_word_byte {
-		uint8_t b0 : 1;
-		uint8_t b1 : 1;
-		uint8_t b2 : 1;
-		uint8_t b3 : 1;
-		uint8_t b4 : 1;
-		uint8_t b5 : 1;
-		uint8_t b6 : 1;
-		uint8_t b7 : 1;
-	};
-	struct bitmap_word_byte *word_b = (struct bitmap_word_byte *)b_word->word_addr;
+	uint8_t *word_byte = (uint8_t *)b_word->word_addr;
 	for (uint32_t bit = b_word->start_bit; bit < b_word->end_bit; ++bit) {
 		uint32_t i = bit / 8;
 		uint32_t j = bit % 8;
-		switch (j) {
-		case 0:
-			word_b[i].b0 = 0;
-			break;
-		case 1:
-			word_b[i].b1 = 0;
-			break;
-		case 2:
-			word_b[i].b2 = 0;
-			break;
-		case 3:
-			word_b[i].b3 = 0;
-			break;
-		case 4:
-			word_b[i].b4 = 0;
-			break;
-		case 5:
-			word_b[i].b5 = 0;
-			break;
-		case 6:
-			word_b[i].b6 = 0;
-			break;
-		case 7:
-			word_b[i].b7 = 0;
-			break;
-		}
+		CLEAR_BIT(&word_byte[i], j);
 	}
 
 	return;
@@ -668,45 +633,10 @@ void mem_bitmap_mark_block_free(struct volume_descriptor *volume_desc, uint64_t 
 	uint32_t bit_in_word = distance_in_bits % MEM_WORD_SIZE_IN_BITS;
 
 	w.word_addr = &volume_desc->mem_volume_bitmap[w.word_id];
-	struct bitmap_byte {
-		uint8_t b0 : 1;
-		uint8_t b1 : 1;
-		uint8_t b2 : 1;
-		uint8_t b3 : 1;
-		uint8_t b4 : 1;
-		uint8_t b5 : 1;
-		uint8_t b6 : 1;
-		uint8_t b7 : 1;
-	};
-	struct bitmap_byte *my_word = (struct bitmap_byte *)w.word_addr;
+	uint8_t *word_byte = (uint8_t *)w.word_addr;
 	int m_idx = bit_in_word / 8;
 	int m_bit = bit_in_word % 8;
-	switch (m_bit) {
-	case 0:
-		my_word[m_idx].b0 = 1;
-		break;
-	case 1:
-		my_word[m_idx].b1 = 1;
-		break;
-	case 2:
-		my_word[m_idx].b2 = 1;
-		break;
-	case 3:
-		my_word[m_idx].b3 = 1;
-		break;
-	case 4:
-		my_word[m_idx].b4 = 1;
-		break;
-	case 5:
-		my_word[m_idx].b5 = 1;
-		break;
-	case 6:
-		my_word[m_idx].b6 = 1;
-		break;
-	case 7:
-		my_word[m_idx].b7 = 1;
-		break;
-	}
+	SET_BIT(&word_byte[m_idx], m_bit);
 	MUTEX_UNLOCK(&volume_desc->bitmap_lock);
 }
 
@@ -853,48 +783,12 @@ static volume_descriptor *mem_init_volume(char *volume_name)
 		log_fatal("ownership registry must be a multiple of 4 KB its value %llu", registry_size_in_bits);
 		exit(EXIT_FAILURE);
 	}
-
-	struct my_byte {
-		uint8_t b0 : 1;
-		uint8_t b1 : 1;
-		uint8_t b2 : 1;
-		uint8_t b3 : 1;
-		uint8_t b4 : 1;
-		uint8_t b5 : 1;
-		uint8_t b6 : 1;
-		uint8_t b7 : 1;
-	};
 	log_info("Unmapped bits %llu registry_size_in_bits %llu", unmapped_bits, registry_size_in_bits);
 	char *registry_buffer = (char *)volume_desc->mem_volume_bitmap;
 	for (uint64_t i = registry_size_in_bits - 1; i >= registry_size_in_bits - unmapped_bits; --i) {
 		uint64_t idx = i / 8;
-		struct my_byte *B = (struct my_byte *)&registry_buffer[idx];
-		switch (i % 8) {
-		case 0:
-			B->b0 = 0;
-			break;
-		case 1:
-			B->b1 = 0;
-			break;
-		case 2:
-			B->b2 = 0;
-			break;
-		case 3:
-			B->b3 = 0;
-			break;
-		case 4:
-			B->b4 = 0;
-			break;
-		case 5:
-			B->b5 = 0;
-			break;
-		case 6:
-			B->b6 = 0;
-			break;
-		case 7:
-			B->b7 = 0;
-			break;
-		}
+		uint8_t *byte = (uint8_t *)&registry_buffer[idx];
+		CLEAR_BIT(byte, (i % 8));
 	}
 
 	if (dev_offt + SEGMENT_SIZE != volume_desc->my_superblock.volume_metadata_size) {

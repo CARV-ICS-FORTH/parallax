@@ -18,6 +18,11 @@
 #include <pthread.h>
 #include <stdint.h>
 
+#define BIT_MASK(X) (1 << X)
+#define INV_BIT_MASK(X) (~BIT_MASK(X))
+#define SET_BIT(X, Y) (*X = *X | BIT_MASK(Y))
+#define CLEAR_BIT(X, Y) (*X = *X & INV_BIT_MASK(Y))
+
 #define MAGIC_NUMBER 2036000000
 /*size in 4KB blocks of the log used for marking the free ops*/
 #define FREE_LOG_SIZE_IN_BLOCKS 512000
@@ -32,23 +37,12 @@ typedef enum volume_state { VOLUME_IS_OPEN = 0x00, VOLUME_IS_CLOSING = 0x01, VOL
  *allocation
  **/
 
-#define KEY_LOG_EXPANSION 0x03
-#define KV_LOG_EXPANSION 0x04
-#define KEY_LOG_SPLIT 0x05
 #define INDEX_SPLIT 0x06
-#define LEAF_SPLIT 0x07
-#define NOT_IMPLEMENTED_YET 0x08
 #define NEW_ROOT 0x0A
 #define NEW_SUPERINDEX 0x0B
 #define GROUP_COW 0x0E
 #define NEW_GROUP 0x0F
 #define NEW_COMMIT_LOG_INFO 0x1A
-#define EXTEND_BUFFER 0x0D /* same as above */
-#define REORGANIZATION 0x02
-#define DELETE_LOG_EXPANSION 0xA3
-
-#define SNAP_INTERRUPT_ENABLE 0x0A
-#define SNAP_INTERRUPT_DISABLE 0x0B
 
 /*the global mountpoint of a volume*/
 extern uint64_t MAPPED;

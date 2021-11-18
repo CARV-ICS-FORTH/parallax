@@ -1,3 +1,17 @@
+// Copyright [2021] [FORTH-ICS]
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #define _GNU_SOURCE
 #define _LARGEFILE64_SOURCE
 #include "../btree/conf.h"
@@ -158,49 +172,13 @@ static void kvf_init_parallax(char *device_name, uint32_t max_regions_num)
 	}
 	uint64_t registry_size_in_bytes = registry_size_in_bits / 8;
 
-	struct my_byte {
-		uint8_t b0 : 1;
-		uint8_t b1 : 1;
-		uint8_t b2 : 1;
-		uint8_t b3 : 1;
-		uint8_t b4 : 1;
-		uint8_t b5 : 1;
-		uint8_t b6 : 1;
-		uint8_t b7 : 1;
-	};
-
 	char *registry_buffer = kvf_posix_calloc(registry_size_in_bytes);
 	/*all available (free) initially)*/
 	memset(registry_buffer, 0xFF, registry_size_in_bytes);
 	for (uint64_t i = registry_size_in_bits - 1; i >= registry_size_in_bits - unmapped_bits; --i) {
 		uint64_t idx = i / 8;
-		struct my_byte *B = (struct my_byte *)&registry_buffer[idx];
-		switch (i % 8) {
-		case 0:
-			B->b0 = 0;
-			break;
-		case 1:
-			B->b1 = 0;
-			break;
-		case 2:
-			B->b2 = 0;
-			break;
-		case 3:
-			B->b3 = 0;
-			break;
-		case 4:
-			B->b4 = 0;
-			break;
-		case 5:
-			B->b5 = 0;
-			break;
-		case 6:
-			B->b6 = 0;
-			break;
-		case 7:
-			B->b7 = 0;
-			break;
-		}
+		uint8_t *B = (uint8_t *)&registry_buffer[idx];
+		CLEAR_BIT(B, (i % 8));
 	}
 	uint64_t metadata_size_in_bytes = sizeof(struct superblock) +
 					  (max_regions_num * sizeof(struct pr_region_superblock)) +
@@ -217,33 +195,8 @@ static void kvf_init_parallax(char *device_name, uint32_t max_regions_num)
 	/*Now mark as reserved the space from the beginning of the volume that is for metadata purposes*/
 	for (uint64_t i = 0; i < metadata_size_in_bits; ++i) {
 		uint64_t idx = i / 8;
-		struct my_byte *B = (struct my_byte *)&registry_buffer[idx];
-		switch (i % 8) {
-		case 0:
-			B->b0 = 0;
-			break;
-		case 1:
-			B->b1 = 0;
-			break;
-		case 2:
-			B->b2 = 0;
-			break;
-		case 3:
-			B->b3 = 0;
-			break;
-		case 4:
-			B->b4 = 0;
-			break;
-		case 5:
-			B->b5 = 0;
-			break;
-		case 6:
-			B->b6 = 0;
-			break;
-		case 7:
-			B->b7 = 0;
-			break;
-		}
+		uint8_t *B = (uint8_t *)&registry_buffer[idx];
+		CLEAR_BIT(B, (i % 8));
 	}
 	dev_offt = sizeof(struct superblock) + (max_regions_num * sizeof(struct pr_region_superblock));
 	for (uint64_t i = 0; i < (2 * max_regions_num); ++i) {
