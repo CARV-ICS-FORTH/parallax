@@ -13,7 +13,6 @@
 // limitations under the License.
 
 #pragma once
-#include "../btree/btree.h"
 #include "../btree/conf.h"
 #include <aio.h>
 #include <pthread.h>
@@ -25,6 +24,8 @@
 #define RUL_LOG_CHUNK_SIZE_IN_BYTES ((SEGMENT_SIZE - RUL_SEGMENT_FOOTER_SIZE_IN_BYTES) / RUL_LOG_CHUNK_NUM)
 #define RUL_LOG_CHUNK_MAX_ENTRIES (RUL_LOG_CHUNK_SIZE_IN_BYTES / sizeof(struct rul_log_entry))
 #define RUL_SEGMENT_MAX_ENTRIES ((RUL_LOG_CHUNK_NUM * RUL_LOG_CHUNK_MAX_ENTRIES) - 1)
+
+struct db_descriptor;
 
 enum rul_op_type { RUL_ALLOCATE = 1, RUL_FREE, RUL_COMMIT, RUL_LOG_ALLOCATE, RUL_LOG_FREE };
 #define RUL_LOG_SYSTEM_TXN 0
