@@ -168,7 +168,6 @@ int main(int argc, char **argv)
 	}
 
 	log_info("Testing GETS DONE! Now, testing scans");
-#if 0
 
 	for (uint64_t i = base; i < (base + (total_keys - scan_size)); ++i) {
 		if (i % 100000 == 0)
@@ -179,12 +178,12 @@ int main(int argc, char **argv)
 
 		my_kv.k.size = k->key_size;
 		my_kv.k.data = k->key_buf;
-		my_scanner = par_init_scanner(hd, &my_kv.k, PAR_GREATER_OR_EQUAL);
+		par_scanner my_scanner = par_init_scanner(hd, &my_kv.k, PAR_GREATER_OR_EQUAL);
 		if (!par_is_valid(my_scanner)) {
 			log_fatal("Nothing found! it shouldn't!");
 			exit(EXIT_FAILURE);
 		}
-		my_keyptr = par_get_key(my_scanner);
+		struct par_key my_keyptr = par_get_key(my_scanner);
 		//log_info("key is %d:%s  malloced %d scanner size %d",k->key_size,k->key_buf,sc->malloced,sizeof(scannerHandle));
 		//log_info("key of scanner %d:%s",*(uint32_t *)sc->keyValue,sc->keyValue + sizeof(uint32_t));
 		if (memcmp(k->key_buf, my_keyptr.data, my_keyptr.size) != 0) {
@@ -221,6 +220,6 @@ int main(int argc, char **argv)
 	}
 	log_info("Scan test Successfull");
 	free(k);
-#endif
+
 	return 1;
 }
