@@ -108,7 +108,7 @@ debug_test_ycsb_larged:
         - ./scripts/CI/create_mbbd.sh
         - mkdir -p build;cd build
         - cmake ..
-        - make ycsb-edb;make mkfs.parallax;cd YCSB-CXX;
+        - make ycsb-edb;make kv_format.parallax;cd YCSB-CXX;
         - ctest -R ^test_larged$
         - cd ..;cd ..
         - ./scripts/CI/destroy_mbbd.sh
@@ -122,7 +122,7 @@ debug_test_ycsb_large:
         - ./scripts/CI/create_mbbd.sh
         - mkdir -p build;cd build
         - cmake ..
-        - make ycsb-edb;make mkfs.parallax;cd YCSB-CXX;
+        - make ycsb-edb;make kv_format.parallax;cd YCSB-CXX;
         - ctest -R ^test_large$
         - cd ..;cd ..
         - ./scripts/CI/destroy_mbbd.sh
@@ -136,7 +136,7 @@ debug_test_ycsb_mediumd:
         - ./scripts/CI/create_mbbd.sh
         - mkdir -p build;cd build
         - cmake ..
-        - make ycsb-edb;make mkfs.parallax;cd YCSB-CXX;
+        - make ycsb-edb;make kv_format.parallax;cd YCSB-CXX;
         - ctest -R ^test_mediumd$
         - cd ..;cd ..
         - ./scripts/CI/destroy_mbbd.sh
@@ -150,7 +150,7 @@ debug_test_ycsb_medium:
         - ./scripts/CI/create_mbbd.sh
         - mkdir -p build;cd build
         - cmake ..
-        - make ycsb-edb;make mkfs.parallax;cd YCSB-CXX;
+        - make ycsb-edb;make kv_format.parallax;cd YCSB-CXX;
         - ctest -R ^test_medium$
         - cd ..;cd ..
         - ./scripts/CI/destroy_mbbd.sh
@@ -164,7 +164,7 @@ debug_test_ycsb_smalld:
         - ./scripts/CI/create_mbbd.sh
         - mkdir -p build;cd build
         - cmake ..
-        - make ycsb-edb;make mkfs.parallax;cd YCSB-CXX;
+        - make ycsb-edb;make kv_format.parallax;cd YCSB-CXX;
         - ctest -R ^test_smalld$
         - cd ..;cd ..
         - ./scripts/CI/destroy_mbbd.sh
@@ -178,7 +178,7 @@ debug_test_ycsb_small:
         - ./scripts/CI/create_mbbd.sh
         - mkdir -p build;cd build
         - cmake ..
-        - make ycsb-edb;make mkfs.parallax;cd YCSB-CXX;
+        - make ycsb-edb;make kv_format.parallax;cd YCSB-CXX;
         - ctest -R ^test_small$
         - cd ..;cd ..
         - ./scripts/CI/destroy_mbbd.sh
@@ -192,7 +192,7 @@ release_test_ycsb_larged:
         - ./scripts/CI/create_mbbd.sh
         - mkdir -p build;cd build
         - cmake .. -DCMAKE_BUILD_TYPE="Release"
-        - make ycsb-edb;make mkfs.parallax;cd YCSB-CXX;
+        - make ycsb-edb;make kv_format.parallax;cd YCSB-CXX;
         - ctest -R ^test_larged$
         - cd ..;cd ..
         - ./scripts/CI/destroy_mbbd.sh
@@ -206,7 +206,7 @@ release_test_ycsb_large:
         - ./scripts/CI/create_mbbd.sh
         - mkdir -p build;cd build
         - cmake .. -DCMAKE_BUILD_TYPE="Release"
-        - make ycsb-edb;make mkfs.parallax;cd YCSB-CXX;
+        - make ycsb-edb;make kv_format.parallax;cd YCSB-CXX;
         - ctest -R ^test_large$
         - cd ..;cd ..
         - ./scripts/CI/destroy_mbbd.sh
@@ -220,7 +220,7 @@ release_test_ycsb_mediumd:
         - ./scripts/CI/create_mbbd.sh
         - mkdir -p build;cd build
         - cmake .. -DCMAKE_BUILD_TYPE="Release"
-        - make ycsb-edb;make mkfs.parallax;cd YCSB-CXX;
+        - make ycsb-edb;make kv_format.parallax;cd YCSB-CXX;
         - ctest -R ^test_mediumd$
         - cd ..;cd ..
         - ./scripts/CI/destroy_mbbd.sh
@@ -234,7 +234,7 @@ release_test_ycsb_medium:
         - ./scripts/CI/create_mbbd.sh
         - mkdir -p build;cd build
         - cmake .. -DCMAKE_BUILD_TYPE="Release"
-        - make ycsb-edb;make mkfs.parallax;cd YCSB-CXX;
+        - make ycsb-edb;make kv_format.parallax;cd YCSB-CXX;
         - ctest -R ^test_medium$
         - cd ..;cd ..
         - ./scripts/CI/destroy_mbbd.sh
@@ -248,7 +248,7 @@ release_test_ycsb_smalld:
         - ./scripts/CI/create_mbbd.sh
         - mkdir -p build;cd build
         - cmake .. -DCMAKE_BUILD_TYPE="Release"
-        - make ycsb-edb;make mkfs.parallax;cd YCSB-CXX;
+        - make ycsb-edb;make kv_format.parallax;cd YCSB-CXX;
         - ctest -R ^test_smalld$
         - cd ..;cd ..
         - ./scripts/CI/destroy_mbbd.sh
@@ -262,7 +262,7 @@ release_test_ycsb_small:
         - ./scripts/CI/create_mbbd.sh
         - mkdir -p build;cd build
         - cmake .. -DCMAKE_BUILD_TYPE="Release"
-        - make ycsb-edb;make mkfs.parallax;cd YCSB-CXX;
+        - make ycsb-edb;make kv_format.parallax;cd YCSB-CXX;
         - ctest -R ^test_small$
         - cd ..;cd ..
         - ./scripts/CI/destroy_mbbd.sh
