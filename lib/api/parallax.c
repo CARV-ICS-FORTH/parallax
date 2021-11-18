@@ -13,13 +13,13 @@
 // limitations under the License.
 
 #include "../include/parallax.h"
-#include <log.h>
-#include <stdlib.h>
 #include "../btree/btree.h"
 #include "../scanner/scanner.h"
 #include <assert.h>
+#include <log.h>
 #include <stddef.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #define PAR_MAX_PREALLOCATED_SIZE 256
 
@@ -54,6 +54,20 @@ par_ret_code par_put(par_handle handle, struct par_key_value *key_value)
 	return PAR_FAILURE;
 }
 
+static inline int par_serialize_to_kv_format(struct par_key *key, char **buf, uint32_t buf_size)
+{
+	int ret = 0;
+	uint32_t key_size = sizeof(uint32_t) + key->size;
+	if (key_size > buf_size) {
+		*buf = malloc(key_size);
+		ret = 1;
+	}
+	char *kv_buf = *buf;
+	memcpy(&kv_buf[0], &key->size, sizeof(uint32_t));
+	memcpy(&kv_buf[sizeof(uint32_t)], key->data, key->size);
+	return ret;
+}
+
 par_ret_code par_get(par_handle handle, struct par_key *key, struct par_value *value)
 {
 	struct val {
@@ -69,13 +83,7 @@ par_ret_code par_get(par_handle handle, struct par_key *key, struct par_value *v
 	/*Serialize user key in KV_FORMAT*/
 	char buf[PAR_MAX_PREALLOCATED_SIZE];
 	char *kv_buf = buf;
-	int malloced = 0;
-	if (key->size > PAR_MAX_PREALLOCATED_SIZE) {
-		malloced = 1;
-		kv_buf = calloc(1, key->size + sizeof(uint32_t));
-	}
-	memcpy(&kv_buf[0], &key->size, sizeof(uint32_t));
-	memcpy(&kv_buf[sizeof(uint32_t)], key->data, key->size);
+	int malloced = par_serialize_to_kv_format(key, &kv_buf, PAR_MAX_PREALLOCATED_SIZE);
 
 	struct db_handle *hd = (struct db_handle *)handle;
 
@@ -109,11 +117,8 @@ par_ret_code par_exists(par_handle handle, struct par_key *key)
 	/*Serialize user key in KV_FORMAT*/
 	char buf[PAR_MAX_PREALLOCATED_SIZE];
 	char *kv_buf = buf;
-	int malloced = 0;
-	if (key->size > PAR_MAX_PREALLOCATED_SIZE) {
-		malloced = 1;
-		kv_buf = calloc(1, key->size + sizeof(uint32_t));
-	}
+	int malloced = par_serialize_to_kv_format(key, &kv_buf, PAR_MAX_PREALLOCATED_SIZE);
+
 	memcpy(&kv_buf[0], &key->size, sizeof(uint32_t));
 	memcpy(&kv_buf[sizeof(uint32_t)], key->data, key->size);
 
