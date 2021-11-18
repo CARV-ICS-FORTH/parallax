@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 #pragma once
-#include "device_structures.h"
 #include "../btree/conf.h"
+#include "device_structures.h"
 #include "mem_structures.h"
 #include <pthread.h>
 #include <stdint.h>
@@ -25,12 +25,12 @@
 typedef enum volume_state { VOLUME_IS_OPEN = 0x00, VOLUME_IS_CLOSING = 0x01, VOLUME_IS_CLOSED = 0x02 } volume_state;
 
 /**
-        * Type of allocations.
-        * Most significant bit 1 --> allocation for internal tree
-        * Most signinificant bit 0 --> allocation for outer tree
-        * Rest of bits(common for the two categories above denote the purpose of
-*allocation
-**/
+ * Type of allocations.
+ * Most significant bit 1 --> allocation for internal tree
+ * Most signinificant bit 0 --> allocation for outer tree
+ * Rest of bits(common for the two categories above denote the purpose of
+ *allocation
+ **/
 
 #define KEY_LOG_EXPANSION 0x03
 #define KV_LOG_EXPANSION 0x04
@@ -43,8 +43,6 @@ typedef enum volume_state { VOLUME_IS_OPEN = 0x00, VOLUME_IS_CLOSING = 0x01, VOL
 #define GROUP_COW 0x0E
 #define NEW_GROUP 0x0F
 #define NEW_COMMIT_LOG_INFO 0x1A
-#define NEW_LEVEL_0_TREE 0x10 /* used for level-0 tree allocations */
-#define NEW_LEVEL_1_TREE 0x20 /* used for level-1 tree allocations */
 #define EXTEND_BUFFER 0x0D /* same as above */
 #define REORGANIZATION 0x02
 #define DELETE_LOG_EXPANSION 0xA3
@@ -71,17 +69,16 @@ typedef struct volume_descriptor {
 	struct pr_system_catalogue *mem_catalogue;
 	// location in the volume where superindex is
 	struct pr_system_catalogue *dev_catalogue;
-	pthread_t log_cleaner; /* handle for the log cleaner thread. 1 cleaner per
-                            volume */
 	pthread_cond_t cond; /* conditional wait, used for cleaner*/
 	pthread_mutex_t mutex; /* mutex, used for cleaner */
 	pthread_mutex_t gc_mutex; /* mutex, used for garbage collection thread */
 	pthread_cond_t gc_cond; /* conditional wait, used for garbage collection
-                             thread*/
+                         thread*/
 
 	pthread_mutex_t free_log_lock; /*lock used for protecting adding entries to
-                                    the free log of the allocator*/
-	pthread_mutex_t bitmap_lock; /* lock used for threads allocating space in the same volume */
+                              the free log of the allocator*/
+	pthread_mutex_t bitmap_lock; /* lock used for threads allocating space in the
+                                  same volume */
 	uint64_t last_snapshot; /* timestamp of when last snapshot took place*/
 	uint64_t last_commit;
 	uint64_t last_sync; /*latest sync timestamp*/
@@ -98,12 +95,12 @@ typedef struct volume_descriptor {
 
 	/* value is set to 2 after a non-successfull allocation operation for a given
    * size.*/
-	uint32_t full;
+	//	uint32_t full;
 	/*After a non successfull allocation op, this value is set to max_suffix
-   found.
-   This is used for indicating to future allocation operations if they should
-   search
-   a given bitmap-zone or not.*/
+found.
+This is used for indicating to future allocation operations if they should
+search
+a given bitmap-zone or not.*/
 	uint64_t max_suffix;
 	// uint16_t *segment_utilization_vector;
 	// uint64_t segment_utilization_vector_size;

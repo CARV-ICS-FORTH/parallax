@@ -93,7 +93,6 @@ PenaltyReturnTypeOnItsOwnLine: 60
 PointerAlignment: Right
 ReflowComments: false
 SortIncludes: true
-SortIncludesOptions: CaseSensitive
 SortUsingDeclarations: false # Unknown to clang-format-4.0
 SpaceAfterCStyleCast: false
 SpaceAfterTemplateKeyword: true

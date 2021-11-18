@@ -1,11 +1,25 @@
-#include <stdint.h>
-#include <stdlib.h>
-#include <signal.h>
-#include <assert.h>
-#include <log.h>
-#include "volume_manager.h"
+// Copyright [2021] [FORTH-ICS]
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #include "../btree/btree.h"
 #include "../btree/conf.h"
+#include "volume_manager.h"
+#include <assert.h>
+#include <log.h>
+#include <signal.h>
+#include <stdint.h>
+#include <stdlib.h>
 
 void load_logs_torecover(recovery_request *recover_req, struct recovery_operator *replay)
 {
@@ -91,10 +105,10 @@ segment_header *find_replay_offset(segment_header *current_log_segment, uint64_t
 			exit(EXIT_FAILURE);
 		}
 		if (previous_segment_id != current_log_segment->segment_id + 1) {
-			log_fatal(
-				"FATAL corrupted segments, segment ids are not sequential previous = %llu current = %llu",
-				(long long unsigned)previous_segment_id,
-				(long long unsigned)current_log_segment->segment_id);
+			log_fatal("FATAL corrupted segments, segment ids are not sequential "
+				  "previous = %llu current = %llu",
+				  (long long unsigned)previous_segment_id,
+				  (long long unsigned)current_log_segment->segment_id);
 			raise(SIGINT);
 			exit(EXIT_FAILURE);
 		}
@@ -116,7 +130,8 @@ void set_replay_offset(struct recovery_operator *replay)
 	replay->medium.log_curr_segment =
 		find_replay_offset(replay->medium.log_curr_segment, replay->medium.segment_id);
 	replay->small.log_curr_segment = find_replay_offset(replay->small.log_curr_segment, replay->small.segment_id);
-	log_info("starting segment of big log %llu medium log %llu small log %llu found starting recovery procedure",
+	log_info("starting segment of big log %llu medium log %llu small log %llu "
+		 "found starting recovery procedure",
 		 (long long unsigned)replay->big.log_curr_segment->segment_id,
 		 (long long unsigned)replay->medium.log_curr_segment->segment_id,
 		 (long long unsigned)replay->small.log_curr_segment->segment_id);
@@ -218,23 +233,23 @@ void mark_log_segments_before_replay(volume_descriptor *volume_desc, segment_hea
 {
 	(void)first_segment;
 	(void)volume_desc;
-	//segment_header *curr_segment = first_segment;
-	//uint32_t num_pages = SEGMENT_SIZE / PAGE_SIZE;
-	//while (curr_segment) {
+	// segment_header *curr_segment = first_segment;
+	// uint32_t num_pages = SEGMENT_SIZE / PAGE_SIZE;
+	// while (curr_segment) {
 	//	char *page_tomark = (char *)curr_segment;
 
 	//	MUTEX_LOCK(&volume_desc->bitmap_lock);
-	//for (uint32_t i = 0; i < num_pages; ++i, page_tomark += PAGE_SIZE) {
+	// for (uint32_t i = 0; i < num_pages; ++i, page_tomark += PAGE_SIZE) {
 	//	bitmap_mark_block_free(volume_desc, page_tomark);
 	//}
-	//MUTEX_UNLOCK(&volume_desc->bitmap_lock);
+	// MUTEX_UNLOCK(&volume_desc->bitmap_lock);
 
 #ifdef DEBUG_RECOVERY
 	mprotect(curr_segment, SEGMENT_SIZE, PROT_READ);
 #endif
-	//if (curr_segment->next_segment == NULL)
+	// if (curr_segment->next_segment == NULL)
 	//	break;
-	//curr_segment = REAL_ADDRESS(curr_segment->next_segment);
+	// curr_segment = REAL_ADDRESS(curr_segment->next_segment);
 	//}
 }
 

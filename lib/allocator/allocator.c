@@ -28,22 +28,22 @@
 
 #include <assert.h>
 #include <errno.h>
+#include <fcntl.h>
+#include <inttypes.h>
+#include <linux/fs.h>
 #include <log.h>
 #include <math.h>
 #include <pthread.h>
-#include <unistd.h>
-#include <uthash.h>
+#include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <strings.h>
 #include <sys/mman.h>
 #include <sys/time.h>
 #include <time.h>
-#include <fcntl.h>
-#include <string.h>
-#include <strings.h>
-#include <inttypes.h>
-#include <linux/fs.h>
-#include <stdlib.h>
-#include <stdint.h>
+#include <unistd.h>
+#include <uthash.h>
 
 #define _FILE_OFFSET_BITS 64
 #define PAGE_SIZE 4096
@@ -148,7 +148,8 @@ off64_t mount_volume(char *volume_name, int64_t start, int64_t unused_size)
 			/* int ret = ioctl(fastmap_fd, FAKE_BLK_IOC_ZERO_RANGE, &frang); */
 
 			/* if (ret) { */
-			/*   log_fatal("ioctl(FAKE_BLK_IOC_ZERO_RANGE) failed! Program exiting...\n"); */
+			/*   log_fatal("ioctl(FAKE_BLK_IOC_ZERO_RANGE) failed! Program
+       * exiting...\n"); */
 			/*   exit(EXIT_FAILURE); */
 			/* } */
 			log_info("Fastmap has been initialiazed");
@@ -206,7 +207,7 @@ void pr_write_region_superblock(struct volume_descriptor *volume_desc, struct me
 	pthread_mutex_lock(&mem_region->superblock_lock);
 	(void)volume_desc;
 	int region_id = mem_region->id;
-	//serialize mem_region to pr_region
+	// serialize mem_region to pr_region
 	struct pr_region_superblock pr_region;
 	memcpy(pr_region.region_name, mem_region->region_name, mem_region->region_name_size);
 	for (int l = 1; l < MAX_LEVELS; ++l) {
@@ -219,7 +220,7 @@ void pr_write_region_superblock(struct volume_descriptor *volume_desc, struct me
 	}
 	pr_region.region_name_size = mem_region->region_name_size;
 	pr_region.allocation_log = mem_region->allocation_log;
-	//serialize the logs(WAL,transient, large)
+	// serialize the logs(WAL,transient, large)
 	pr_region.small_log_head_offt = mem_region->small_log.head_dev_offt;
 	pr_region.small_log_tail_offt = mem_region->small_log.tail_dev_offt;
 	pr_region.small_log_size = mem_region->small_log.size;
@@ -232,9 +233,9 @@ void pr_write_region_superblock(struct volume_descriptor *volume_desc, struct me
 	pr_region.big_log_tail_offt = mem_region->big_log.tail_dev_offt;
 	pr_region.big_log_size = mem_region->big_log.size;
 
-	//lsn
+	// lsn
 	pr_region.lsn = mem_region->lsn;
-	//id
+	// id
 	pr_region.id = mem_region->id;
 	pr_region.valid = mem_region->valid;
 
@@ -444,7 +445,7 @@ static uint32_t mem_bitmap_find_nbits_in_word(struct mem_bitmap_word *b_word, ui
 	// Our guard
 
 	round[0] = *b_word->word_addr;
-	//log_info("Round [0] bitmap is %llu",round[0]);
+	// log_info("Round [0] bitmap is %llu",round[0]);
 	for (uint32_t i = 0; i < *num_rounds; ++i) {
 		if (i == 0)
 			shift_size = 1;
@@ -461,8 +462,8 @@ static uint32_t mem_bitmap_find_nbits_in_word(struct mem_bitmap_word *b_word, ui
 	if (round[*num_rounds] != 0) {
 		b_word->end_bit = ffsl(round[*num_rounds]);
 		b_word->start_bit = b_word->end_bit - actual_bits;
-		//log_info("Yes it does! end bit is %u round is %llu", b_word->end_bit,
-		//round[*num_rounds]);
+		// log_info("Yes it does! end bit is %u round is %llu", b_word->end_bit,
+		// round[*num_rounds]);
 
 		return actual_bits;
 	}
@@ -524,12 +525,13 @@ static uint64_t mem_bitmap_translate_word_to_offt(struct volume_descriptor *volu
 		assert(0);
 		exit(EXIT_FAILURE);
 	}
-	//log_info("Word is %u start bit %u end bit %u", b->word_id, b->start_bit, b->end_bit);
+	// log_info("Word is %u start bit %u end bit %u", b->word_id, b->start_bit,
+	// b->end_bit);
 	uint64_t bytes_per_word = MEM_WORD_SIZE_IN_BITS * SEGMENT_SIZE;
 	uint64_t dev_offt = (bytes_per_word * b->word_id);
 	dev_offt += (b->start_bit * SEGMENT_SIZE);
-	//dev_offt += volume_desc->my_superblock.volume_metadata_size;
-	//log_info("Now is Dev offt = %llu volume_metadata_size %llu", dev_offt,
+	// dev_offt += volume_desc->my_superblock.volume_metadata_size;
+	// log_info("Now is Dev offt = %llu volume_metadata_size %llu", dev_offt,
 	//	 volume_desc->my_superblock.volume_metadata_size);
 	return dev_offt;
 }
@@ -628,8 +630,8 @@ uint64_t mem_allocate(struct volume_descriptor *volume_desc, uint64_t num_bytes)
 		uint64_t rounds[MEM_LOG_WORD_SIZE_IN_BITS * 2];
 		uint32_t round_size = MEM_LOG_WORD_SIZE_IN_BITS * 2;
 		bits_found = mem_bitmap_find_nbits_in_word(&b_word, rounds, &round_size, length_bits);
-		//log_info("Bits found %u length_bits %u start bit %u end bit %u", bits_found, length_bits,
-		//	 b_word.start_bit, b_word.end_bit);
+		// log_info("Bits found %u length_bits %u start bit %u end bit %u",
+		// bits_found, length_bits, 	 b_word.start_bit, b_word.end_bit);
 
 		if (bits_found == length_bits) {
 			++idx;
@@ -739,7 +741,8 @@ static void mem_print_volume_info(struct superblock *S, char *volume_name)
 }
 
 /**
- * Reads from device volume's region superblocks and keeps it in an in memory array
+ * Reads from device volume's region superblocks and keeps it in an in memory
+ * array
  */
 void mem_init_superblock_array(struct volume_descriptor *volume_desc)
 {
@@ -790,7 +793,7 @@ static volume_descriptor *mem_init_volume(char *volume_name)
 		perror("Reason:\n");
 		exit(EXIT_FAILURE);
 	}
-	//read volume superblock (accouning info into memory)
+	// read volume superblock (accouning info into memory)
 	if (!mem_read_into_buffer((char *)&volume_desc->my_superblock, 0, sizeof(struct superblock), 0,
 				  volume_desc->my_fd)) {
 		log_fatal("Failed to read volume's %s superblock", volume_name);
@@ -832,10 +835,10 @@ static volume_descriptor *mem_init_volume(char *volume_name)
 	for (uint32_t i = 0; i < n_segments; ++i)
 		dev_offt = mem_allocate(volume_desc, SEGMENT_SIZE);
 	/**
-    * Last bits of bitmap are usually padded in order for the bitmap size to be
-    * a multiple of 4 KB. As a results last bits of the bitmap may point to void
-    * space. So we mark them as "reserved" so the allocator does not bother them.
-  **/
+   * Last bits of bitmap are usually padded in order for the bitmap size to be
+   * a multiple of 4 KB. As a results last bits of the bitmap may point to void
+   * space. So we mark them as "reserved" so the allocator does not bother them.
+   **/
 	uint64_t registry_size_in_bits =
 		(volume_desc->my_superblock.volume_size - volume_desc->my_superblock.unmappedSpace) / SEGMENT_SIZE;
 	uint32_t bits_in_page = 4096 * 8;

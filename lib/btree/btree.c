@@ -12,10 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "btree.h"
 #include "../allocator/device_structures.h"
 #include "../allocator/redo_undo_log.h"
 #include "../allocator/volume_manager.h"
-#include "btree.h"
 #include "conf.h"
 #include "dynamic_leaf.h"
 #include "gc.h"
@@ -360,43 +360,6 @@ struct bt_kv_log_address bt_get_kv_medium_log_address(struct log_descriptor *log
 	return reply;
 }
 
-static void pr_init_log(struct log_descriptor *log_desc, enum log_type my_type)
-{
-	// Just update thechunk counters according to the log size
-	if (RWLOCK_INIT(&log_desc->log_tail_buf_lock, NULL) != 0) {
-		log_fatal("Failed to init lock");
-		exit(EXIT_FAILURE);
-	}
-
-	for (int i = 0; i < LOG_TAIL_NUM_BUFS; ++i) {
-		if (posix_memalign((void **)&log_desc->tail[i], ALIGNMENT_SIZE, sizeof(struct log_tail)) != 0) {
-			log_fatal("Failed to allocate log buffer for direct IO");
-			exit(EXIT_FAILURE);
-		}
-		memset(log_desc->tail[i], 0x00, sizeof(struct log_tail));
-		log_desc->tail[i]->free = 1;
-		log_desc->tail[i]->fd = FD;
-	}
-	log_desc->my_type = my_type;
-	// Special action for 0
-	log_desc->tail[0]->dev_offt = log_desc->tail_dev_offt;
-	log_desc->tail[0]->start = log_desc->tail_dev_offt;
-	log_desc->tail[0]->end = log_desc->tail[0]->start + SEGMENT_SIZE;
-	log_desc->tail[0]->free = 0;
-	// Recover log
-	pr_read_log_tail(log_desc->tail[0]);
-	// set proper accounting
-	uint64_t offt_in_seg = log_desc->size % SEGMENT_SIZE;
-	uint32_t n_chunks = offt_in_seg / LOG_CHUNK_SIZE;
-	uint32_t i;
-	for (i = 0; i < n_chunks; ++i) {
-		log_desc->tail[0]->bytes_in_chunk[i] = LOG_CHUNK_SIZE;
-		++log_desc->tail[0]->IOs_completed_in_tail;
-	}
-	if (offt_in_seg > 0 && offt_in_seg % LOG_CHUNK_SIZE != 0)
-		log_desc->tail[0]->bytes_in_chunk[i] = offt_in_seg % LOG_CHUNK_SIZE;
-}
-
 void init_level_bloom_filters(db_descriptor *db_desc, int level_id, int tree_id)
 {
 #if ENABLE_BLOOM_FILTERS
@@ -622,19 +585,19 @@ static void recover_logs(db_descriptor *db_desc)
 	db_desc->small_log.head_dev_offt = db_desc->my_superblock.small_log_head_offt;
 	db_desc->small_log.tail_dev_offt = db_desc->my_superblock.small_log_tail_offt;
 	db_desc->small_log.size = db_desc->my_superblock.small_log_size;
-	pr_init_log(&db_desc->small_log, SMALL_LOG);
+	init_log_buffer(&db_desc->small_log, SMALL_LOG);
 
 	// Medium log
 	db_desc->medium_log.head_dev_offt = db_desc->my_superblock.medium_log_head_offt;
 	db_desc->medium_log.tail_dev_offt = db_desc->my_superblock.medium_log_tail_offt;
 	db_desc->medium_log.size = db_desc->my_superblock.medium_log_size;
-	pr_init_log(&db_desc->medium_log, MEDIUM_LOG);
+	init_log_buffer(&db_desc->medium_log, MEDIUM_LOG);
 
 	// Big log
 	db_desc->big_log.head_dev_offt = db_desc->my_superblock.big_log_head_offt;
 	db_desc->big_log.tail_dev_offt = db_desc->my_superblock.big_log_tail_offt;
 	db_desc->big_log.size = db_desc->my_superblock.big_log_size;
-	pr_init_log(&db_desc->big_log, BIG_LOG);
+	init_log_buffer(&db_desc->big_log, BIG_LOG);
 	db_desc->lsn = db_desc->my_superblock.lsn;
 }
 

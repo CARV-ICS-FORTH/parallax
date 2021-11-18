@@ -1,20 +1,20 @@
 #define _GNU_SOURCE
+#include "gc.h"
+#include "../allocator/volume_manager.h"
+#include "../scanner/scanner.h"
+#include "set_options.h"
 #include <assert.h>
+#include <list.h>
+#include <log.h>
 #include <pthread.h>
 #include <semaphore.h>
 #include <stdint.h>
 #include <stdio.h>
-#include <string.h>
 #include <stdlib.h>
+#include <string.h>
 #include <time.h>
 #include <unistd.h>
-#include <log.h>
-#include <list.h>
 #include <uthash.h>
-#include "gc.h"
-#include "set_options.h"
-#include "../allocator/volume_manager.h"
-#include "../scanner/scanner.h"
 extern sem_t gc_daemon_interrupts;
 
 void push_stack(stack *marks, void *addr)
@@ -34,8 +34,9 @@ void move_kv_pairs_to_new_segment(volume_descriptor *volume_desc, db_descriptor 
 
 	for (i = 0; i < marks->size; ++i, ++db_desc->gc_keys_transferred) {
 		kv_address = marks->valid_pairs[i];
-		//struct splice *key = (struct splice *)kv_address;
-		//struct splice *value = (struct splice *)(kv_address + VALUE_SIZE_OFFSET(key->size));
+		// struct splice *key = (struct splice *)kv_address;
+		// struct splice *value = (struct splice *)(kv_address +
+		// VALUE_SIZE_OFFSET(key->size));
 		handle.volume_desc = volume_desc;
 		handle.db_desc = db_desc;
 		ins_req.metadata.handle = &handle;
@@ -53,7 +54,8 @@ void move_kv_pairs_to_new_segment(volume_descriptor *volume_desc, db_descriptor 
 		ins_req.metadata.key_format = KV_FORMAT;
 		ins_req.metadata.cat = BIG_INLOG;
 		_insert_key_value(&ins_req);
-		//update_key_value_pointer(&handle, key->data, value->data, key->size, value->size);
+		// update_key_value_pointer(&handle, key->data, value->data, key->size,
+		// value->size);
 	}
 }
 
@@ -173,16 +175,22 @@ void iterate_log_segments(db_descriptor *db_desc, volume_descriptor *volume_desc
 	/* 	} */
 
 	/* 	uint64_t num_segments_to_check = (end_id - start_id) / 3; */
-	/* 	/\* log_warn("Num segments to check %llu start id %llu end id %llu",num_segments_to_check,start_id,end_id); *\/ */
-	/* 	while (num_segments_to_check != 0 && log_node != (void *)db_desc->big_log_tail) { */
+	/* 	/\* log_warn("Num segments to check %llu start id %llu end id
+   * %llu",num_segments_to_check,start_id,end_id); *\/ */
+	/* 	while (num_segments_to_check != 0 && log_node != (void
+   * *)db_desc->big_log_tail) { */
 	/* 		db_desc->gc_last_segment_id = log_node->metadata.segment_id; */
-	/* 		int8_t ret = find_deleted_kv_pairs_in_segment(volume_desc, db_desc, log_node->data, marks); */
+	/* 		int8_t ret = find_deleted_kv_pairs_in_segment(volume_desc,
+   * db_desc, log_node->data, marks); */
 
 	/* 		if (ret == 1) */
-	/* 			fix_nodes_in_log(volume_desc, db_desc, prev_node, log_node); */
+	/* 			fix_nodes_in_log(volume_desc, db_desc, prev_node,
+   * log_node);
+   */
 
 	/* 		prev_node = log_node; */
-	/* 		log_node = (log_segment *)REAL_ADDRESS((uint64_t)log_node->metadata.next_segment); */
+	/* 		log_node = (log_segment
+   * *)REAL_ADDRESS((uint64_t)log_node->metadata.next_segment); */
 	/* 		--num_segments_to_check; */
 	/* 	} */
 	/* 	sleep(1); */
@@ -212,7 +220,7 @@ static struct db_descriptor *find_dbdesc(volume_descriptor *volume_desc, int gro
 	return NULL;
 }
 
-//read a segment and store it into segment_buf
+// read a segment and store it into segment_buf
 static void fetch_segment(struct segment_header *segment_buf, uint64_t segment_offt)
 {
 	assert(segment_offt % SEGMENT_SIZE == 0);
