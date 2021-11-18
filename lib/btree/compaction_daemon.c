@@ -16,6 +16,7 @@
 
 #include "../../utilities/dups_list.h"
 #include "../allocator/device_structures.h"
+#include "../allocator/log_structures.h"
 #include "../allocator/redo_undo_log.h"
 #include "../allocator/volume_manager.h"
 #include "../scanner/min_max_heap.h"

@@ -14,6 +14,7 @@
 
 #pragma once
 #include "../btree/btree.h"
+#include "../btree/conf.h"
 #include <aio.h>
 #include <pthread.h>
 #include <stdint.h>
