@@ -11,25 +11,44 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+#include "../btree/btree.h"
+#include "../btree/conf.h"
+#include "../btree/segment_allocator.h"
+#include "device_structures.h"
+#include "log_structures.h"
+#include "redo_undo_log.h"
+#include "volume_manager.h"
 #include <assert.h>
+#include <list.h>
+#include <log.h>
 #include <signal.h>
+#include <spin_loop.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <log.h>
-#include <list.h>
-#include <spin_loop.h>
-#include "device_structures.h"
-#include "log_structures.h"
-#include "volume_manager.h"
-#include "redo_undo_log.h"
-#include "../btree/btree.h"
-#include "../btree/segment_allocator.h"
-#include "../btree/conf.h"
 
 /*<new_persistent_design>*/
+static void pr_flush_allocation_log_and_level_info(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
+{
+	/*Flush my allocations*/
+	struct rul_log_info rul_log = rul_flush_txn(db_desc, db_desc->levels[level_id].allocation_txn_id[tree_id]);
+	/*new info about allocation_log*/
+	db_desc->my_superblock.allocation_log.tail_dev_offt = rul_log.tail_dev_offt;
+	db_desc->my_superblock.allocation_log.size = rul_log.size;
+	db_desc->my_superblock.allocation_log.txn_id = rul_log.txn_id;
+	/*new info about my level*/
+	db_desc->my_superblock.root_r[level_id][tree_id] = ABSOLUTE_ADDRESS(db_desc->levels[level_id].root_r[tree_id]);
+	db_desc->my_superblock.first_segment[level_id][0] =
+		ABSOLUTE_ADDRESS(db_desc->levels[level_id].first_segment[tree_id]);
+	db_desc->my_superblock.last_segment[level_id][tree_id] =
+		ABSOLUTE_ADDRESS(db_desc->levels[level_id].last_segment[tree_id]);
+	db_desc->my_superblock.offset[level_id][tree_id] = db_desc->levels[level_id].offset[tree_id];
+	db_desc->my_superblock.level_size[level_id][tree_id] = db_desc->levels[level_id].level_size[tree_id];
+	pr_flush_region_superblock(db_desc);
+}
+
 void pr_flush_L0(struct db_descriptor *db_desc, uint8_t tree_id)
 {
 	struct my_log_info {
@@ -149,22 +168,7 @@ static void pr_flush_L0_to_L1(struct db_descriptor *db_desc, uint8_t level_id, u
 	db_desc->my_superblock.small_log_head_offt = db_desc->my_superblock.small_log_tail_offt;
 	db_desc->small_log.head_dev_offt = db_desc->my_superblock.small_log_head_offt;
 
-	/*Flush my allocations*/
-	struct rul_log_info rul_log = rul_flush_txn(db_desc, db_desc->levels[level_id].allocation_txn_id[tree_id]);
-	/*new info about allocation_log*/
-	db_desc->my_superblock.allocation_log.tail_dev_offt = rul_log.tail_dev_offt;
-	db_desc->my_superblock.allocation_log.size = rul_log.size;
-	db_desc->my_superblock.allocation_log.txn_id = rul_log.txn_id;
-	/*new info about my level*/
-	db_desc->my_superblock.root_r[level_id][tree_id] = ABSOLUTE_ADDRESS(db_desc->levels[level_id].root_r[tree_id]);
-	db_desc->my_superblock.first_segment[level_id][0] =
-		ABSOLUTE_ADDRESS(db_desc->levels[level_id].first_segment[tree_id]);
-	db_desc->my_superblock.last_segment[level_id][tree_id] =
-		ABSOLUTE_ADDRESS(db_desc->levels[level_id].last_segment[tree_id]);
-	db_desc->my_superblock.offset[level_id][tree_id] = db_desc->levels[level_id].offset[tree_id];
-	db_desc->my_superblock.level_size[level_id][tree_id] = db_desc->levels[level_id].level_size[tree_id];
-	pr_flush_region_superblock(db_desc);
-
+	pr_flush_allocation_log_and_level_info(db_desc, level_id, tree_id);
 	pr_unlock_region_superblock(db_desc);
 	rul_apply_txn_buf_freeops_and_destroy(db_desc, my_txn_id);
 }
@@ -238,22 +242,8 @@ void pr_flush_compaction(struct db_descriptor *db_desc, uint8_t level_id, uint8_
 
 	uint64_t my_txn_id = db_desc->levels[level_id].allocation_txn_id[tree_id];
 	pr_lock_region_superblock(db_desc);
-	/*Flush my allocations*/
-	struct rul_log_info rul_log = rul_flush_txn(db_desc, my_txn_id);
-	/*new info about allocation_log*/
-	db_desc->my_superblock.allocation_log.tail_dev_offt = rul_log.tail_dev_offt;
-	db_desc->my_superblock.allocation_log.size = rul_log.size;
-	db_desc->my_superblock.allocation_log.txn_id = rul_log.txn_id;
-	/*new info about my level*/
 
-	db_desc->my_superblock.root_r[level_id][tree_id] = ABSOLUTE_ADDRESS(db_desc->levels[level_id].root_r[tree_id]);
-	db_desc->my_superblock.first_segment[level_id][0] =
-		ABSOLUTE_ADDRESS(db_desc->levels[level_id].first_segment[tree_id]);
-	db_desc->my_superblock.last_segment[level_id][tree_id] =
-		ABSOLUTE_ADDRESS(db_desc->levels[level_id].last_segment[tree_id]);
-	db_desc->my_superblock.offset[level_id][tree_id] = db_desc->levels[level_id].offset[tree_id];
-	db_desc->my_superblock.level_size[level_id][tree_id] = db_desc->levels[level_id].level_size[tree_id];
-	pr_flush_region_superblock(db_desc);
+	pr_flush_allocation_log_and_level_info(db_desc, level_id, tree_id);
 
 	pr_unlock_region_superblock(db_desc);
 	rul_apply_txn_buf_freeops_and_destroy(db_desc, my_txn_id);
