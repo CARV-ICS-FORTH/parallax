@@ -1654,7 +1654,7 @@ deser:
 			}
 		}
 
-		uint32_t kv_size = KEY_SIZE(L.addr + sizeof(uint32_t));
+		uint32_t kv_size = KEY_SIZE(L.addr) + sizeof(uint32_t);
 		void *tmp_addr = L.addr + kv_size;
 		uint32_t value_size = VALUE_SIZE(tmp_addr);
 		if (get_op->retrieve && !get_op->buffer_to_pack_kv) {
