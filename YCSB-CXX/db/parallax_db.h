@@ -338,6 +338,7 @@ class ParallaxDB : public YCSBDB {
 			my_kv.k.data = key.c_str();
 			my_kv.v.val_buffer = (char *)value3.c_str();
 			my_kv.v.val_size = value3.length();
+			par_put(dbs[db_id], &my_kv);
 			break;
 		default:
 			assert(0);

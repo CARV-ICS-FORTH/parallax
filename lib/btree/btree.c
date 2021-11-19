@@ -1644,11 +1644,9 @@ deser:
 				L = bt_get_kv_log_address(&db_desc->big_log,
 							  ABSOLUTE_ADDRESS(get_op->value_device_address));
 				break;
-			case BIG_INPLACE:
 			case MEDIUM_INPLACE:
 			case MEDIUM_INLOG:
 			case SMALL_INPLACE:
-			case SMALL_INLOG:
 				break;
 			default:
 				log_fatal("UNKNOWN_LOG_CATEGORY");
@@ -1671,8 +1669,9 @@ deser:
 		if (L.in_tail)
 			bt_done_with_value_log_address(&db_desc->big_log, &L);
 		get_op->found = 1;
-	} else
+	} else {
 		get_op->found = 0;
+	}
 
 	if (RWLOCK_UNLOCK(&curr->rx_lock) != 0)
 		exit(EXIT_FAILURE);
