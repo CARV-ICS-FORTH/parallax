@@ -328,23 +328,22 @@ class ParallaxDB : public YCSBDB {
 		case 1:
 			my_kv.k.size = key.length();
 			my_kv.k.data = key.c_str();
-			my_kv.v.val_buffer = (char *)value.c_str();
-			my_kv.v.val_size = value.length();
+			my_kv.v.val_buffer = (char *)value2.c_str();
+			my_kv.v.val_size = value2.length();
 			par_put(dbs[db_id], &my_kv);
 
 			break;
 		case 2:
 			my_kv.k.size = key.length();
 			my_kv.k.data = key.c_str();
-			my_kv.v.val_buffer = (char *)value.c_str();
-			my_kv.v.val_size = value.length();
+			my_kv.v.val_buffer = (char *)value3.c_str();
+			my_kv.v.val_size = value3.length();
 			break;
 		default:
 			assert(0);
 			std::cout << "Got Unknown value" << std::endl;
 			exit(EXIT_FAILURE);
 		}
-
 
 #if 0
       if(cnt != field_count){
