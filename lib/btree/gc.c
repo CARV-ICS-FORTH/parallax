@@ -104,9 +104,9 @@ int8_t find_deleted_kv_pairs_in_segment(volume_descriptor *volume_desc, db_descr
 		find_key(&get_op);
 		/* assert(find_value); */
 		/* assert(value_as_pointer == find_value); */
-		if (remaining_space >= 18 && (!get_op.found || value_as_pointer != get_op.kv_device_address)) {
+		if (remaining_space >= 18 && (!get_op.found || value_as_pointer != get_op.value_device_address)) {
 			garbage_collect_segment = 1;
-		} else if (remaining_space >= 18 && (get_op.found && value_as_pointer == get_op.kv_device_address)) {
+		} else if (remaining_space >= 18 && (get_op.found && value_as_pointer == get_op.value_device_address)) {
 			push_stack(marks, log_seg);
 		}
 
