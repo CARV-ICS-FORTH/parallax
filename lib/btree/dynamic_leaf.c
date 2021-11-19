@@ -1,13 +1,13 @@
+#include "dynamic_leaf.h"
+#include "../allocator/device_structures.h"
+#include "../allocator/volume_manager.h"
+#include "conf.h"
+#include "segment_allocator.h"
 #include <assert.h>
+#include <log.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
-#include <log.h>
-#include "dynamic_leaf.h"
-#include "conf.h"
-#include "segment_allocator.h"
-#include "../allocator/device_structures.h"
-#include "../allocator/volume_manager.h"
 
 void print_all_keys(const struct bt_dynamic_leaf_node *leaf, uint32_t leaf_size);
 char *fill_keybuf(char *key_loc, enum kv_entry_location key_type);

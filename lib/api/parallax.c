@@ -15,6 +15,7 @@
 #include "../include/parallax.h"
 #include "../btree/btree.h"
 #include "../scanner/scanner.h"
+#include <assert.h>
 #include <log.h>
 #include <stddef.h>
 #include <stdio.h>

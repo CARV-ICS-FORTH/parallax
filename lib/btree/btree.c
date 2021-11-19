@@ -1610,12 +1610,12 @@ static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id,
 
 deser:
 	if (ret_result.kv) {
-		get_op->kv_device_address = NULL;
+		get_op->value_device_address = NULL;
 		if (ret_result.key_type == KV_INPLACE) {
 			key_addr_in_leaf = ret_result.kv;
 			key_addr_in_leaf = (void *)REAL_ADDRESS(key_addr_in_leaf);
 			index_key_len = KEY_SIZE(key_addr_in_leaf);
-			get_op->kv_device_address =
+			get_op->value_device_address =
 				(void *)(uint64_t)key_addr_in_leaf + sizeof(uint32_t) + index_key_len;
 		} else if (ret_result.key_type == KV_INLOG) {
 			key_addr_in_leaf = ret_result.kv;
@@ -1626,7 +1626,7 @@ deser:
 				exit(EXIT_FAILURE);
 			}
 			index_key_len = KEY_SIZE(key_addr_in_leaf);
-			get_op->kv_device_address =
+			get_op->value_device_address =
 				(void *)(uint64_t)key_addr_in_leaf + sizeof(uint32_t) + index_key_len;
 		} else {
 			log_fatal("Corrupted KV location");
@@ -1635,18 +1635,18 @@ deser:
 		/*Time to pack the kv atomically in the buffer*/
 		/*Do the translation if needed*/
 
-		struct bt_kv_log_address L = { .addr = get_op->kv_device_address, .tail_id = UINT8_MAX, .in_tail = 0 };
+		struct bt_kv_log_address L = { .addr = get_op->value_device_address,
+					       .tail_id = UINT8_MAX,
+					       .in_tail = 0 };
 		if (!level_id) {
 			switch (ret_result.kv_category) {
 			case BIG_INLOG:
 				L = bt_get_kv_log_address(&db_desc->big_log,
-							  ABSOLUTE_ADDRESS(get_op->kv_device_address));
+							  ABSOLUTE_ADDRESS(get_op->value_device_address));
 				break;
-			case BIG_INPLACE:
 			case MEDIUM_INPLACE:
 			case MEDIUM_INLOG:
 			case SMALL_INPLACE:
-			case SMALL_INLOG:
 				break;
 			default:
 				log_fatal("UNKNOWN_LOG_CATEGORY");
@@ -1654,24 +1654,24 @@ deser:
 			}
 		}
 
-		uint32_t kv_size = KEY_SIZE(L.addr + sizeof(uint32_t));
-		void *tmp_addr = L.addr + kv_size;
-		uint32_t value_size = VALUE_SIZE(tmp_addr);
+		uint32_t value_size = VALUE_SIZE(L.addr);
+		//log_info("value size %u query key: %s", value_size, get_op->kv_buf + 4);
 		if (get_op->retrieve && !get_op->buffer_to_pack_kv) {
 			get_op->buffer_to_pack_kv = malloc(value_size);
 			get_op->size = value_size;
 		}
-		if (get_op->retrieve && get_op->size <= kv_size) {
+		if (get_op->retrieve && get_op->size <= value_size) {
 			/*check if enough*/
-			memcpy(get_op->buffer_to_pack_kv, tmp_addr + sizeof(uint32_t), value_size);
+			memcpy(get_op->buffer_to_pack_kv, L.addr + sizeof(uint32_t), value_size);
 			get_op->buffer_overflow = 0;
 		} else
 			get_op->buffer_overflow = 1;
 		if (L.in_tail)
 			bt_done_with_value_log_address(&db_desc->big_log, &L);
 		get_op->found = 1;
-	} else
+	} else {
 		get_op->found = 0;
+	}
 
 	if (RWLOCK_UNLOCK(&curr->rx_lock) != 0)
 		exit(EXIT_FAILURE);
