@@ -18,12 +18,11 @@
 #include <pthread.h>
 #include <stdint.h>
 
-//physics bitch!
+/*physics bitch!*/
 #define FINE_STRUCTURE_CONSTANT 72973525664
-
 struct pr_db_entry {
 	char db_name[MAX_DB_NAME_SIZE];
-	// index staff
+	/*index staff*/
 	uint64_t root_r[MAX_LEVELS][NUM_TREES_PER_LEVEL];
 	uint64_t first_segment[MAX_LEVELS][NUM_TREES_PER_LEVEL];
 	uint64_t last_segment[MAX_LEVELS][NUM_TREES_PER_LEVEL];
@@ -56,20 +55,20 @@ struct pr_system_catalogue {
 	uint64_t first_system_segment;
 	uint64_t last_system_segment;
 	uint64_t offset;
-	// relative addresses are stored here
+	/*relative addresses are stored here*/
 	struct pr_db_group *db_group_index[NUM_OF_DB_GROUPS];
 } __attribute__((packed, aligned(4096)));
 
 /*volume superblock*/
 struct superblock {
 	struct pr_system_catalogue *system_catalogue;
-	//accounting information
+	/*accounting information*/
 	int64_t bitmap_size_in_blocks;
 	int64_t dev_size_in_blocks;
 	int64_t dev_addressed_in_blocks;
 	int64_t unmapped_blocks;
 	int64_t magic_number;
-	//<new_persistent_design>
+	/*<new_persistent_design>*/
 	int64_t volume_size;
 	uint32_t max_regions_num;
 	uint64_t regions_log_size;
@@ -77,7 +76,7 @@ struct superblock {
 	uint64_t bitmap_size_in_words;
 	uint64_t unmappedSpace;
 	uint64_t paddedSpace;
-	//</new_persistent_design>
+	/*</new_persistent_design>*/
 } __attribute__((packed, aligned(4096)));
 
 //<new_persistent_design>
@@ -112,6 +111,8 @@ struct pr_region_superblock {
 	uint64_t small_log_head_offt;
 	uint64_t small_log_tail_offt;
 	uint64_t small_log_size;
+	uint64_t small_log_start_segment_dev_offt;
+	uint64_t small_log_offt_in_start_segment;
 	uint64_t lsn;
 	uint32_t region_name_size;
 	uint32_t id; //in the array

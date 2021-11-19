@@ -132,6 +132,7 @@ static void pr_flush_L0_to_L1(struct db_descriptor *db_desc, uint8_t level_id, u
 	pr_flush_log_tail(db_desc, db_desc->my_volume, &db_desc->medium_log);
 	pr_lock_region_superblock(db_desc);
 	uint64_t my_txn_id = db_desc->levels[level_id].allocation_txn_id[tree_id];
+
 	/*medium log info*/
 	db_desc->my_superblock.medium_log_tail_offt = medium_log.tail_dev_offt;
 	db_desc->my_superblock.medium_log_size = medium_log.size;
@@ -163,6 +164,10 @@ static void pr_flush_L0_to_L1(struct db_descriptor *db_desc, uint8_t level_id, u
 
 	db_desc->my_superblock.small_log_head_offt = db_desc->my_superblock.small_log_tail_offt;
 	db_desc->small_log.head_dev_offt = db_desc->my_superblock.small_log_head_offt;
+
+	/*recovery info for L0 L0_recovery_log*/
+	db_desc->my_superblock.small_log_start_segment_dev_offt = db_desc->small_log_start_segment_dev_offt;
+	db_desc->my_superblock.small_log_offt_in_start_segment = db_desc->small_log_start_offt_in_segment;
 
 	pr_flush_allocation_log_and_level_info(db_desc, level_id, tree_id);
 	pr_unlock_region_superblock(db_desc);

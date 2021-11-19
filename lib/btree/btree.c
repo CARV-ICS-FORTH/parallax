@@ -532,6 +532,9 @@ static void init_fresh_logs(struct db_descriptor *db_desc)
 	db_desc->small_log.head_dev_offt = ABSOLUTE_ADDRESS(s);
 	db_desc->small_log.tail_dev_offt = db_desc->small_log.head_dev_offt;
 	db_desc->small_log.size = sizeof(segment_header);
+	db_desc->small_log_start_segment_dev_offt = db_desc->small_log.tail_dev_offt;
+	db_desc->small_log_start_offt_in_segment = db_desc->small_log.size % SEGMENT_SIZE;
+
 	init_log_buffer(&db_desc->small_log, SMALL_LOG);
 	db_desc->lsn = 0;
 }

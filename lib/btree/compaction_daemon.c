@@ -991,8 +991,13 @@ void *compaction_daemon(void *args)
 					exit(EXIT_FAILURE);
 				}
 				spin_loop(&(handle->db_desc->levels[0].active_writers), 0);
-
+				/*fill L0 recovery log  info*/
+				handle->db_desc->small_log_start_segment_dev_offt =
+					handle->db_desc->small_log.tail_dev_offt;
+				handle->db_desc->small_log_start_offt_in_segment =
+					handle->db_desc->small_log.size % SEGMENT_SIZE;
 				/*done now atomically change active tree*/
+
 				db_desc->levels[0].active_tree = next_active_tree;
 				db_desc->levels[0].scanner_epoch += 1;
 				db_desc->levels[0].epoch[active_tree] = db_desc->levels[0].scanner_epoch;

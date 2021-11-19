@@ -39,10 +39,6 @@ typedef enum volume_state { VOLUME_IS_OPEN = 0x00, VOLUME_IS_CLOSING = 0x01, VOL
 
 #define INDEX_SPLIT 0x06
 #define NEW_ROOT 0x0A
-#define NEW_SUPERINDEX 0x0B
-#define GROUP_COW 0x0E
-#define NEW_GROUP 0x0F
-#define NEW_COMMIT_LOG_INFO 0x1A
 
 /*the global mountpoint of a volume*/
 extern uint64_t MAPPED;

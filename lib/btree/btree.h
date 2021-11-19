@@ -13,10 +13,10 @@
 // limitations under the License.
 
 #pragma once
-#include "conf.h"
 #include "../allocator/device_structures.h"
 #include "../allocator/log_structures.h"
 #include "../allocator/volume_manager.h"
+#include "conf.h"
 #if ENABLE_BLOOM_FILTERS
 #include <bloom.h>
 #endif
@@ -230,8 +230,7 @@ struct splice {
 
 /**
  * db_descriptor is a soft state descriptor per open database. superindex
-*structure
- * keeps a serialized from of the vital information needed to restore each
+ * structure keeps a serialized from of the vital information needed to restore each
 *db_descriptor
 **/
 
@@ -348,6 +347,10 @@ typedef struct db_descriptor {
 	uint64_t gc_last_segment_id;
 	uint64_t gc_count_segments;
 	uint64_t gc_keys_transferred;
+	/*L0 recovery log info*/
+	uint64_t small_log_start_segment_dev_offt;
+	uint64_t small_log_start_offt_in_segment;
+
 	int is_compaction_daemon_sleeping;
 	int32_t reference_count;
 	int32_t group_id;
