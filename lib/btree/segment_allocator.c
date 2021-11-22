@@ -12,11 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "segment_allocator.h"
 #include "../allocator/device_structures.h"
 #include "../allocator/redo_undo_log.h"
 #include "../allocator/volume_manager.h"
 #include "conf.h"
-#include "segment_allocator.h"
 #include <assert.h>
 #include <log.h>
 #include <signal.h>
@@ -35,23 +35,23 @@ struct link_segments_metadata {
 
 static uint64_t seg_allocate_segment(struct db_descriptor *db_desc, uint64_t txn_id)
 {
-	struct rul_log_entry E;
-	E.dev_offt = mem_allocate(db_desc->my_volume, SEGMENT_SIZE);
-	E.txn_id = txn_id;
-	E.op_type = RUL_ALLOCATE;
-	E.size = SEGMENT_SIZE;
-	rul_add_entry_in_txn_buf(db_desc, &E);
-	return E.dev_offt;
+	struct rul_log_entry log_entry;
+	log_entry.dev_offt = mem_allocate(db_desc->my_volume, SEGMENT_SIZE);
+	log_entry.txn_id = txn_id;
+	log_entry.op_type = RUL_ALLOCATE;
+	log_entry.size = SEGMENT_SIZE;
+	rul_add_entry_in_txn_buf(db_desc, &log_entry);
+	return log_entry.dev_offt;
 }
 
 static void seg_free_segment(struct db_descriptor *db_desc, uint64_t txn_id, uint64_t seg_offt)
 {
-	struct rul_log_entry E;
-	E.dev_offt = seg_offt;
-	E.txn_id = txn_id;
-	E.op_type = RUL_FREE;
-	E.size = SEGMENT_SIZE;
-	rul_add_entry_in_txn_buf(db_desc, &E);
+	struct rul_log_entry log_entry;
+	log_entry.dev_offt = seg_offt;
+	log_entry.txn_id = txn_id;
+	log_entry.op_type = RUL_FREE;
+	log_entry.size = SEGMENT_SIZE;
+	rul_add_entry_in_txn_buf(db_desc, &log_entry);
 }
 
 static uint64_t link_memory_segments(struct link_segments_metadata *req)

@@ -39,15 +39,16 @@ static void *rul_worker(void *args)
 		uint64_t my_txn_id = rul_start_txn(db_desc);
 		log_info("Starting trans %llu", my_txn_id);
 		uint32_t trans_length = rand() % RUL_MAX_TRANS_SIZE;
-		struct rul_log_entry E;
+		struct rul_log_entry log_entry;
+
 		for (uint32_t j = 0; j < trans_length; ++j) {
 			uint64_t dev_offt = mem_allocate(db_desc->my_volume, SEGMENT_SIZE);
-			E.txn_id = my_txn_id;
-			E.dev_offt = dev_offt;
-			E.op_type = RUL_ALLOCATE;
-			E.size = SEGMENT_SIZE;
+			log_entry.txn_id = my_txn_id;
+			log_entry.dev_offt = dev_offt;
+			log_entry.op_type = RUL_ALLOCATE;
+			log_entry.size = SEGMENT_SIZE;
 
-			rul_add_entry_in_txn_buf(db_desc, &E);
+			rul_add_entry_in_txn_buf(db_desc, &log_entry);
 			__sync_fetch_and_add(&bytes_allocated, SEGMENT_SIZE);
 		}
 		log_info("Commiting transaction %llu", my_txn_id);

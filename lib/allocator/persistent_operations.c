@@ -147,13 +147,13 @@ static void pr_flush_L0_to_L1(struct db_descriptor *db_desc, uint8_t level_id, u
 
 	uint64_t bytes_freed = 0;
 	while (curr && (uint64_t)curr->segment_id >= head->segment_id) {
-		struct rul_log_entry E;
-		E.dev_offt = ABSOLUTE_ADDRESS(curr);
+		struct rul_log_entry log_entry;
+		log_entry.dev_offt = ABSOLUTE_ADDRESS(curr);
 		//log_info("Triming L0 recovery log segment:%llu curr segment id:%llu", E.dev_offt, curr->segment_id);
-		E.txn_id = my_txn_id;
-		E.op_type = RUL_FREE;
-		E.size = SEGMENT_SIZE;
-		rul_add_entry_in_txn_buf(db_desc, &E);
+		log_entry.txn_id = my_txn_id;
+		log_entry.op_type = RUL_FREE;
+		log_entry.size = SEGMENT_SIZE;
+		rul_add_entry_in_txn_buf(db_desc, &log_entry);
 		bytes_freed += SEGMENT_SIZE;
 		curr = REAL_ADDRESS(curr->prev_segment);
 	}
@@ -190,13 +190,13 @@ static void pr_flush_Lmax_to_Ln(struct db_descriptor *db_desc, uint8_t level_id,
 
 	uint64_t bytes_freed = 0;
 	while (curr && (uint64_t)curr->segment_id >= head->segment_id) {
-		struct rul_log_entry E;
-		E.dev_offt = ABSOLUTE_ADDRESS(curr);
+		struct rul_log_entry log_entry;
+		log_entry.dev_offt = ABSOLUTE_ADDRESS(curr);
 		//log_info("Triming medium log segment:%llu curr segment id:%llu", E.dev_offt, curr->segment_id);
-		E.txn_id = my_txn_id;
-		E.op_type = RUL_FREE;
-		E.size = SEGMENT_SIZE;
-		rul_add_entry_in_txn_buf(db_desc, &E);
+		log_entry.txn_id = my_txn_id;
+		log_entry.op_type = RUL_FREE;
+		log_entry.size = SEGMENT_SIZE;
+		rul_add_entry_in_txn_buf(db_desc, &log_entry);
 		bytes_freed += SEGMENT_SIZE;
 		curr = REAL_ADDRESS(curr->prev_segment);
 	}
