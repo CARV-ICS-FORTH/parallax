@@ -186,9 +186,10 @@ static void mem_init_region_superblock(struct mem_region_superblock *mem_region,
 	mem_region->id = region_id;
 	mem_region->valid = 1;
 	mem_region->reference_count = 0;
-	memcpy(mem_region->region_name, region_name, region_name_size);
+
+  memcpy(mem_region->region_name, region_name, region_name_size);
 	mem_region->region_name_size = region_name_size;
-	if (pthread_mutex_init(&mem_region->superblock_lock, NULL) != 0) {
+	if (MUTEX_INIT(&mem_region->superblock_lock, NULL) != 0) {
 		log_fatal("Failed to initialize region superblock lock");
 		exit(EXIT_FAILURE);
 	}
@@ -197,7 +198,7 @@ static void mem_init_region_superblock(struct mem_region_superblock *mem_region,
 
 void pr_write_region_superblock(struct volume_descriptor *volume_desc, struct mem_region_superblock *mem_region)
 {
-	pthread_mutex_lock(&mem_region->superblock_lock);
+	MUTEX_LOCK(&mem_region->superblock_lock);
 	(void)volume_desc;
 	int region_id = mem_region->id;
 	// serialize mem_region to pr_region
@@ -226,16 +227,14 @@ void pr_write_region_superblock(struct volume_descriptor *volume_desc, struct me
 	pr_region.big_log_tail_offt = mem_region->big_log.tail_dev_offt;
 	pr_region.big_log_size = mem_region->big_log.size;
 
-	// lsn
 	pr_region.lsn = mem_region->lsn;
-	// id
 	pr_region.id = mem_region->id;
 	pr_region.valid = mem_region->valid;
 
 	char *region_buffer = (char *)mem_region;
 	ssize_t total_bytes_written = 0;
 	ssize_t offset = region_id * sizeof(struct pr_region_superblock);
-	pthread_mutex_lock(&mem_region->superblock_lock);
+	MUTEX_LOCK(&mem_region->superblock_lock);
 	uint32_t size = sizeof(struct pr_region_superblock);
 
 	while (total_bytes_written < size) {
@@ -248,7 +247,7 @@ void pr_write_region_superblock(struct volume_descriptor *volume_desc, struct me
 		}
 		total_bytes_written += bytes_written;
 	}
-	pthread_mutex_unlock(&mem_region->superblock_lock);
+	MUTEX_UNLOCK(&mem_region->superblock_lock);
 }
 
 struct mem_region_superblock *get_region_superblock(struct volume_descriptor *volume_desc, const char *region_name,
@@ -259,7 +258,7 @@ struct mem_region_superblock *get_region_superblock(struct volume_descriptor *vo
 	(void)region_name_size;
 	(void)allocate;
 #if 0
-	pthread_mutex_lock(&volume_desc->region_array_lock);
+	MUTEX_LOCK(&volume_desc->region_array_lock);
 	struct mem_region_superblock *region = NULL;
 	int next_free_region_id = -1;
 	//search superblock array in the start of the volume
@@ -297,7 +296,7 @@ struct mem_region_superblock *get_region_superblock(struct volume_descriptor *vo
 		goto exit;
 	}
 exit:
-	pthread_mutex_lock(&volume_desc->region_array_lock);
+	MUTEX_UNLOCK(&volume_desc->region_array_lock);
 	return region;
 
 	return NULL;
@@ -309,7 +308,7 @@ uint32_t destroy_region_superblock(struct volume_descriptor *volume_desc, const 
 				   uint32_t region_name_size)
 {
 	int ret = 1;
-	pthread_mutex_lock(&volume_desc->region_array_lock);
+	MUTEX_LOCK(&volume_desc->region_array_lock);
 
 	struct mem_region_superblock *rs = get_region_superblock(volume_desc, region_name, region_name_size, 0);
 	if (!rs) {
@@ -322,7 +321,7 @@ uint32_t destroy_region_superblock(struct volume_descriptor *volume_desc, const 
 	memset(rs, 0x00, sizeof(struct mem_region_superblock));
 	rs->id = region_id;
 exit:
-	pthread_mutex_unlock(&volume_desc->region_array_lock);
+	MUTEX_UNLOCK(&volume_desc->region_array_lock);
 	return ret;
 }
 
@@ -401,6 +400,7 @@ static uint32_t mem_bitmap_find_suffix(struct mem_bitmap_word *b_word, uint64_t 
 		}
 		--L;
 	} while (L >= 0);
+
 	if (size_bits) {
 		b_word->start_bit = MEM_WORD_SIZE_IN_BITS - size_bits;
 		b_word->end_bit = MEM_WORD_SIZE_IN_BITS;
@@ -755,6 +755,7 @@ static volume_descriptor *mem_init_volume(char *volume_name)
 	/*Mark as allocated volume's metadata*/
 	uint32_t n_segments = volume_desc->my_superblock.volume_metadata_size / SEGMENT_SIZE;
 	uint64_t dev_offt = 0;
+
 	for (uint32_t i = 0; i < n_segments; ++i)
 		dev_offt = mem_allocate(volume_desc, SEGMENT_SIZE);
 	/**
@@ -863,10 +864,8 @@ void volume_close(volume_descriptor *volume_desc)
 	volume_desc->state = VOLUME_IS_CLOSING;
 	/*signal log cleaner*/
 	MUTEX_LOCK(&(volume_desc->mutex));
-	// pthread_mutex_lock(&(volume_desc->mutex));
 	pthread_cond_signal(&(volume_desc->cond));
 	MUTEX_UNLOCK(&(volume_desc->mutex));
-	// pthread_mutex_unlock(&(volume_desc->mutex));
 	/*wait untli cleaner is out*/
 	while (volume_desc->state == VOLUME_IS_CLOSING) {
 	}
