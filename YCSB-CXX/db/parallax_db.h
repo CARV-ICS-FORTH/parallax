@@ -131,15 +131,16 @@ class ParallaxDB : public YCSBDB {
 		std::hash<std::string> hash_fn;
 		uint32_t db_id = hash_fn(key) % db_num;
 		std::map<std::string, std::string> vmap;
-		struct par_key my_key = { .size = (uint32_t)key.length(), .data = (const char *)key.c_str() };
-		struct par_value my_tmp = { .val_buffer = NULL };
-		if (par_get(dbs[db_id], &my_key, &my_tmp) != PAR_SUCCESS) {
+		struct par_key lookup_key = { .size = (uint32_t)key.length(), .data = (const char *)key.c_str() };
+		struct par_value lookup_value = { .val_buffer = NULL };
+
+		if (par_get(dbs[db_id], &lookup_key, &lookup_value) != PAR_SUCCESS) {
 			std::cout << "[1]cannot find : " << key << " in DB " << db_id << std::endl;
 			return 0;
 			exit(EXIT_FAILURE);
 		}
-		free(my_tmp.val_buffer);
-		my_tmp.val_buffer = NULL;
+		free(lookup_value.val_buffer);
+		lookup_value.val_buffer = NULL;
 		//     return 0;
 #if 0
 		if (*(int32_t *)val > 16000) {
@@ -205,16 +206,10 @@ class ParallaxDB : public YCSBDB {
 		int items = 0;
 		std::hash<std::string> hash_fn;
 
-		int32_t klen = key.length();
-		memcpy(key_buf, &klen, sizeof(int32_t));
-		memcpy(key_buf + sizeof(int32_t), key.c_str(), key.length());
+		struct par_key_value KV_pair = { .k = { .size = (uint32_t)key.length(), .data = key.c_str() },
+						 .v = { .val_buffer = NULL } };
 
-		struct par_key_value my_kv;
-		my_kv.k.size = 0;
-		my_kv.k.data = NULL;
-		my_kv.v.val_buffer = NULL;
-
-		par_scanner sc = par_init_scanner(dbs[hash_fn(key) % db_num], &my_kv.k, PAR_GREATER_OR_EQUAL);
+		par_scanner sc = par_init_scanner(dbs[hash_fn(key) % db_num], &KV_pair.k, PAR_GREATER_OR_EQUAL);
 		if (!par_is_valid(sc)) {
 			printf("sc is not initisalized after initialization... exiting\n");
 			exit(EXIT_FAILURE);
@@ -239,15 +234,17 @@ class ParallaxDB : public YCSBDB {
 			std::hash<std::string> hash_fn;
 			uint32_t db_id = hash_fn(key) % db_num;
 			std::map<std::string, std::string> vmap;
-			struct par_key my_key = { .size = (uint32_t)key.length(), .data = (const char *)key.c_str() };
-			struct par_value my_tmp = { .val_buffer = NULL };
-			if (par_get(dbs[db_id], &my_key, &my_tmp) != PAR_SUCCESS) {
+			struct par_key lookup_key = { .size = (uint32_t)key.length(),
+						      .data = (const char *)key.c_str() };
+			struct par_value lookup_value = { .val_buffer = NULL };
+
+			if (par_get(dbs[db_id], &lookup_key, &lookup_value) != PAR_SUCCESS) {
 				std::cout << "[1]cannot find : " << key << " in DB " << db_id << std::endl;
 				return 0;
 				exit(EXIT_FAILURE);
 			}
-			free(my_tmp.val_buffer);
-			my_tmp.val_buffer = NULL;
+			free(lookup_value.val_buffer);
+			lookup_value.val_buffer = NULL;
 
 #if 0
         if(*(int32_t *)val > 16000){
@@ -312,33 +309,30 @@ class ParallaxDB : public YCSBDB {
 		int y = x % 10;
 		++x;
 
-		struct par_key_value my_kv;
-		my_kv.k.size = 0;
-		my_kv.k.data = NULL;
-		my_kv.v.val_buffer = NULL;
+		struct par_key_value KV_pair = { .k = { .size = 0, .data = NULL }, .v = { .val_buffer = NULL } };
 
 		switch (choose_wl(custom_workload, y)) {
 		case 0:
-			my_kv.k.size = key.length();
-			my_kv.k.data = key.c_str();
-			my_kv.v.val_buffer = (char *)value.c_str();
-			my_kv.v.val_size = value.length();
-			par_put(dbs[db_id], &my_kv);
+			KV_pair.k.size = key.length();
+			KV_pair.k.data = key.c_str();
+			KV_pair.v.val_buffer = (char *)value.c_str();
+			KV_pair.v.val_size = value.length();
+			par_put(dbs[db_id], &KV_pair);
 			break;
 		case 1:
-			my_kv.k.size = key.length();
-			my_kv.k.data = key.c_str();
-			my_kv.v.val_buffer = (char *)value2.c_str();
-			my_kv.v.val_size = value2.length();
-			par_put(dbs[db_id], &my_kv);
+			KV_pair.k.size = key.length();
+			KV_pair.k.data = key.c_str();
+			KV_pair.v.val_buffer = (char *)value2.c_str();
+			KV_pair.v.val_size = value2.length();
+			par_put(dbs[db_id], &KV_pair);
 
 			break;
 		case 2:
-			my_kv.k.size = key.length();
-			my_kv.k.data = key.c_str();
-			my_kv.v.val_buffer = (char *)value3.c_str();
-			my_kv.v.val_size = value3.length();
-			par_put(dbs[db_id], &my_kv);
+			KV_pair.k.size = key.length();
+			KV_pair.k.data = key.c_str();
+			KV_pair.v.val_buffer = (char *)value3.c_str();
+			KV_pair.v.val_size = value3.length();
+			par_put(dbs[db_id], &KV_pair);
 			break;
 		default:
 			assert(0);
