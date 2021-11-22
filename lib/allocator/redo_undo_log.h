@@ -69,16 +69,16 @@ struct rul_log_descriptor {
 	pthread_mutex_t rul_lock;
 	pthread_mutex_t trans_map_lock;
 	struct aiocb aiocbp[RUL_LOG_CHUNK_NUM];
-	uint32_t pending_IO[RUL_LOG_CHUNK_NUM];
 	struct rul_transaction *trans_map;
-	uint32_t curr_chunk_id;
-	uint32_t curr_chunk_entry;
-	uint32_t curr_segment_entry;
 	//recoverable staff
 	uint64_t size;
 	uint64_t txn_id;
 	uint64_t tail_dev_offt;
 	uint64_t head_dev_offt;
+	uint32_t pending_IO[RUL_LOG_CHUNK_NUM];
+	uint32_t curr_chunk_id;
+	uint32_t curr_chunk_entry;
+	uint32_t curr_segment_entry;
 };
 
 void rul_log_init(struct db_descriptor *db_desc);

@@ -403,6 +403,7 @@ struct rul_log_info rul_flush_txn(struct db_descriptor *db_desc, uint64_t txn_id
 	struct rul_log_info info = { .head_dev_offt = 0, .tail_dev_offt = 0, .size = 0, .txn_id = 0 };
 	struct rul_log_descriptor *log_desc = db_desc->allocation_log;
 	struct rul_transaction *my_transaction;
+
 	HASH_FIND_PTR(log_desc->trans_map, &txn_id, my_transaction);
 
 	if (my_transaction == NULL) {
