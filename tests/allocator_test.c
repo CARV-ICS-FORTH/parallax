@@ -1,10 +1,10 @@
 #define _GNU_SOURCE
-#include <stdio.h>
-#include <stdint.h>
+#include "allocator.h"
 #include <pthread.h>
 #include <sched.h>
+#include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
-#include "allocator.h"
 #define DEV "/dev/kram"
 
 #define NUM_OF_THREADS 1
@@ -29,7 +29,7 @@ unsigned int seeds[NUM_OF_THREADS];
 
 void start(void *id);
 
-int main()
+int main(void)
 {
 	return 1;
 #if 0

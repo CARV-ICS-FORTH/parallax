@@ -34,7 +34,7 @@ struct key {
 
 struct value {
 	uint32_t value_size;
-	char value_buf[0];
+	char value_buf[];
 };
 
 static char *volume_name;

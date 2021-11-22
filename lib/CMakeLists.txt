@@ -12,7 +12,6 @@ set(LIB_C_SOURCE_FILES
     allocator/redo_undo_log.c
     allocator/persistent_operations.c
     allocator/djb2.c
-    allocator/djb2.c
     allocator/recovery.c
     api/parallax.c
     btree/btree.c

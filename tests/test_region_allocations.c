@@ -32,6 +32,7 @@ static void free_device(struct volume_descriptor *volume_desc, uint64_t capacity
 	uint64_t num_free_ops = 0;
 	uint64_t dev_offt = volume_desc->vol_superblock.volume_metadata_size;
 	int m_exit = 0;
+
 	log_info("Freeing device %s", volume_desc->volume_name);
 	while (!m_exit) {
 		uint32_t num_bytes = SEGMENT_SIZE;
