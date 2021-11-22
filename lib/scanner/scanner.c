@@ -586,7 +586,7 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 	else
 		log_info("start_key_buf NULL sc->keyValue = %s\n", level_sc->keyValue);
 #endif
-	return SUCCESS;
+	return PARALLAX_SUCCESS;
 }
 
 int32_t getNext(scannerHandle *sc)
@@ -618,7 +618,7 @@ int32_t getNext(scannerHandle *sc)
 				//log_warn("ommiting duplicate %s", (char *)nd.data + 4);
 				continue;
 			}
-			return KREON_OK;
+			return PARALLAX_SUCCESS;
 		} else
 			return END_OF_DATABASE;
 	}
@@ -860,7 +860,7 @@ int32_t _get_next_KV(level_scanner *sc)
 			break;
 		}
 	}
-	return SUCCESS;
+	return PARALLAX_SUCCESS;
 }
 
 int32_t _get_prev_KV(level_scanner *sc)
@@ -1054,7 +1054,7 @@ int32_t _get_prev_KV(level_scanner *sc)
 			break;
 		}
 	}
-	return SUCCESS;
+	return PARALLAX_SUCCESS;
 }
 
 int32_t getPrev(scannerHandle *sc)
@@ -1085,7 +1085,7 @@ int32_t getPrev(scannerHandle *sc)
 				//log_warn("ommiting duplicate %s", (char *)nd.data + 4);
 				continue;
 			}
-			return KREON_OK;
+			return PARALLAX_SUCCESS;
 		} else
 			return END_OF_DATABASE;
 	}
@@ -1264,7 +1264,7 @@ static int find_last_key(level_scanner *level_sc)
 		//log_info("full key is %s", level_sc->keyValue + 4);
 	}
 
-	return SUCCESS;
+	return PARALLAX_SUCCESS;
 }
 
 static int fetch_last(level_scanner *level_sc)

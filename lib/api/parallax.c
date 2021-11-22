@@ -1,4 +1,4 @@
-// Copyright [2020] [FORTH-ICS]
+// Copyright [2021] [FORTH-ICS]
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -48,7 +48,7 @@ par_ret_code par_put(par_handle handle, struct par_key_value *key_value)
 {
 	int ret = insert_key_value((db_handle *)handle, (char *)key_value->k.data, (char *)key_value->v.val_buffer,
 				   key_value->k.size, key_value->v.val_size);
-	if (ret == SUCCESS)
+	if (ret == PARALLAX_SUCCESS)
 		return PAR_SUCCESS;
 
 	return PAR_FAILURE;

@@ -27,12 +27,6 @@
 #include <stdlib.h>
 #include <sys/types.h>
 
-#define SUCCESS 4
-#define FAILED 5
-
-#define KREON_OK 10
-#define KREON_FAILED 18
-
 #define PREFIX_SIZE 12
 
 #define SPILL_BUFFER_SIZE 32 * 1024
@@ -43,11 +37,6 @@
  * KV_PREFIX: [PREFIX|HASH|ADDR_TO_KV_LOG]
  */
 enum KV_type { KV_FORMAT = 19, KV_PREFIX = 20 };
-
-extern unsigned long long ins_prefix_hit_l0;
-extern unsigned long long ins_prefix_hit_l1;
-extern unsigned long long ins_prefix_miss_l0;
-extern unsigned long long ins_prefix_miss_l1;
 
 extern int32_t index_order;
 
@@ -80,7 +69,7 @@ typedef enum {
 	SPILLING_IN_PROGRESS = 1,
 } level_0_tree_status;
 
-enum parallax_status { FAILURE = -1 };
+enum parallax_status { PARALLAX_SUCCESS = 102, PARALLAX_FAILURE = 108 };
 
 enum db_initializers { CREATE_DB = 4, DONOT_CREATE_DB = 5 };
 

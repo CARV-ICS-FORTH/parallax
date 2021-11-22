@@ -937,7 +937,7 @@ char db_close(db_handle *handle)
 		MUTEX_UNLOCK(&init_lock);
 		return COULD_NOT_FIND_DB;
 	}
-	return KREON_OK;
+	return PARALLAX_SUCCESS;
 }
 
 void wait_for_available_level0_tree(db_handle *handle)
@@ -972,7 +972,7 @@ uint8_t insert_key_value(db_handle *handle, void *key, void *value, uint32_t key
 
 	if (key_size > MAX_KEY_SIZE) {
 		log_info("Keys > %d bytes are not supported!", MAX_KEY_SIZE);
-		return KREON_FAILED;
+		return PARALLAX_FAILURE;
 	}
 
 	kv_size = sizeof(uint32_t) + key_size + sizeof(uint32_t) + value_size /* + sizeof(uint64_t) */;
@@ -1488,18 +1488,18 @@ uint8_t _insert_key_value(bt_insert_req *ins_req)
 {
 	db_handle *handle = ins_req->metadata.handle;
 	db_descriptor *db_desc = ins_req->metadata.handle->db_desc;
-	uint8_t rc = SUCCESS;
+	uint8_t rc = PARALLAX_SUCCESS;
 
 	wait_for_available_level0_tree(handle);
 
 	assert(ins_req->metadata.kv_size < 4096);
 	db_desc->dirty = 0x01;
 
-	if (writers_join_as_readers(ins_req) == SUCCESS) {
-		rc = SUCCESS;
-	} else if (concurrent_insert(ins_req) != SUCCESS) {
+	if (writers_join_as_readers(ins_req) == PARALLAX_SUCCESS) {
+		rc = PARALLAX_SUCCESS;
+	} else if (concurrent_insert(ins_req) != PARALLAX_SUCCESS) {
 		log_warn("insert failed!");
-		rc = FAILED;
+		rc = PARALLAX_FAILURE;
 	}
 
 	return rc;
@@ -2432,7 +2432,7 @@ release_and_retry:
 	/*Unlock remaining locks*/
 	_unlock_upper_levels(upper_level_nodes, size, release);
 	__sync_fetch_and_sub(num_level_writers, 1);
-	return SUCCESS;
+	return PARALLAX_SUCCESS;
 }
 
 static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
@@ -2484,7 +2484,7 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 	    db_desc->levels[level_id].root_w[ins_req->metadata.tree_id]->type == leafRootNode) {
 		_unlock_upper_levels(upper_level_nodes, size, release);
 		__sync_fetch_and_sub(num_level_writers, 1);
-		return FAILURE;
+		return PARALLAX_FAILURE;
 	}
 
 	/*acquire read lock of the current root*/
@@ -2503,17 +2503,17 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 			/*failed needs split*/
 			_unlock_upper_levels(upper_level_nodes, size, release);
 			__sync_fetch_and_sub(num_level_writers, 1);
-			return FAILURE;
+			return PARALLAX_FAILURE;
 		} else if (son->epoch <= volume_desc->dev_catalogue->epoch) {
 			/*failed needs COW*/
 			_unlock_upper_levels(upper_level_nodes, size, release);
 			__sync_fetch_and_sub(num_level_writers, 1);
-			return FAILURE;
+			return PARALLAX_FAILURE;
 		}
 		/*Find the next node to traverse*/
 		next_addr = _index_node_binary_search((index_node *)son, ins_req->key_value_buf,
 						      ins_req->metadata.key_format);
-		son = (node_header *)(MAPPED + *(uint64_t *)next_addr);
+		son = (node_header *)REAL_ADDRESS(*(uint64_t *)next_addr);
 
 		if (son->height == 0)
 			break;
@@ -2544,7 +2544,7 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 	    son->epoch <= volume_desc->dev_catalogue->epoch) {
 		_unlock_upper_levels(upper_level_nodes, size, release);
 		__sync_fetch_and_sub(num_level_writers, 1);
-		return FAILURE;
+		return PARALLAX_FAILURE;
 	}
 
 	/*Succesfully reached a bin (bottom internal node)*/
@@ -2557,5 +2557,5 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 	/*Unlock remaining locks*/
 	_unlock_upper_levels(upper_level_nodes, size, release);
 	__sync_fetch_and_sub(num_level_writers, 1);
-	return SUCCESS;
+	return PARALLAX_SUCCESS;
 }
