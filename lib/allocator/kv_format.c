@@ -49,6 +49,7 @@ static char *kvf_help = "Usage ./kv_format <options> Where options include:\n --
 static void kvf_parse_options(int argc, char **argv)
 {
 	int i, j;
+
 	for (i = 1; i < argc; i += 2) {
 		for (j = 0; j < KVF_NUM_OPTIONS; ++j) {
 			if (strcmp(argv[i], kvf_options[j]) == 0) {
