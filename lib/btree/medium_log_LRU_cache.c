@@ -1,11 +1,11 @@
+#include "medium_log_LRU_cache.h"
+#include "conf.h"
+#include "set_options.h"
 #include <assert.h>
+#include <log.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <log.h>
 #include <uthash.h>
-#include "set_options.h"
-#include "conf.h"
-#include "medium_log_LRU_cache.h"
 
 struct chunk_list *create_list(void)
 {

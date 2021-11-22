@@ -12,18 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 #include "btree/btree.h"
-#include <assert.h>
-#include <stdio.h>
-#include <pthread.h>
-#include <string.h>
-#include <stdlib.h>
-#include <parallax.h>
-#include <log.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <fcntl.h>
-#include <unistd.h>
 #include <allocator/volume_manager.h>
+#include <assert.h>
+#include <fcntl.h>
+#include <log.h>
+#include <parallax.h>
+#include <pthread.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <unistd.h>
 
 #if 0
 #define KEY_PREFIX "ld"

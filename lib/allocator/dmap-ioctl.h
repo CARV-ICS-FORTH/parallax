@@ -18,8 +18,8 @@
 #include <linux/types.h>
 
 #ifndef __KERNEL__
-#include <sys/ioctl.h>
 #include <stdint.h>
+#include <sys/ioctl.h>
 #endif
 
 /*

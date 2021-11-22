@@ -1,11 +1,11 @@
 #include <assert.h>
-#include <stdio.h>
-#include <stdint.h>
-#include <string.h>
-#include <stdlib.h>
-#include <log.h>
 #include <btree/btree.h>
+#include <log.h>
 #include <scanner/scanner.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #define TOTAL_KEYS 1000000
 #define KEY_PREFIX "userakias_computerakias"
 #define KV_SIZE 1024

@@ -12,11 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 #pragma once
-#include <stdint.h>
-#include <pthread.h>
+#include "../btree/conf.h"
 #include "device_structures.h"
 #include "log_structures.h"
-#include "../btree/conf.h"
+#include <pthread.h>
+#include <stdint.h>
 
 //<new_persistent_design>
 #define MEM_WORD_SIZE_IN_BITS 64

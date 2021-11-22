@@ -754,7 +754,7 @@ int reorganize_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, uint32_t leaf_siz
 {
 	enum log_category cat = req->metadata.cat;
 	unsigned kv_size = (cat == BIG_INLOG || cat == MEDIUM_INLOG || cat == SMALL_INLOG) ?
-					 sizeof(struct bt_leaf_entry) :
+				   sizeof(struct bt_leaf_entry) :
 					 req->metadata.kv_size;
 
 	if (leaf->header.fragmentation <= kv_size || req->metadata.level_id != 0)

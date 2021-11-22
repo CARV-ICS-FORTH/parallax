@@ -8,8 +8,8 @@
  * This is the interface for a stack of characters.
  */
 #pragma once
-#include <stdint.h>
 #include "../btree/btree.h"
+#include <stdint.h>
 #define MAX_SIZE 64
 
 /*
