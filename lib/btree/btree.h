@@ -301,11 +301,11 @@ typedef struct db_descriptor {
 #endif
 
 	/*<new_persistent_design>*/
-	struct pr_region_superblock my_superblock;
-	pthread_mutex_t my_superblock_lock;
+	struct pr_region_superblock db_superblock;
+	pthread_mutex_t db_superblock_lock;
 	struct rul_log_descriptor *allocation_log;
-	struct volume_descriptor *my_volume;
-	uint32_t my_superblock_idx;
+	struct volume_descriptor *db_volume;
+	uint32_t db_superblock_idx;
 	/*</new_persistent_design>*/
 
 	pthread_cond_t client_barrier;

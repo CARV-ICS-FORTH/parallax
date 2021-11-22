@@ -497,7 +497,7 @@ void init_log_buffer(struct log_descriptor *log_desc, enum log_type my_type)
 
 static void init_fresh_logs(struct db_descriptor *db_desc)
 {
-	log_info("Initializing KV logs (small,medium,large) for region: %s", db_desc->my_superblock.region_name);
+	log_info("Initializing KV logs (small,medium,large) for region: %s", db_desc->db_superblock.region_name);
 	// Large log
 	struct segment_header *s = seg_get_raw_log_segment(db_desc, 0, 0);
 	s->segment_id = 0;
@@ -541,14 +541,14 @@ static void init_fresh_logs(struct db_descriptor *db_desc)
 
 static void init_fresh_db(struct db_descriptor *db_desc, char *region_name, uint32_t region_idx)
 {
-	memset(&db_desc->my_superblock, 0x00, sizeof(struct pr_region_superblock));
-	db_desc->my_superblock.id = region_idx;
-	db_desc->my_superblock.valid = 1;
-	strcpy(db_desc->my_superblock.region_name, region_name);
+	memset(&db_desc->db_superblock, 0x00, sizeof(struct pr_region_superblock));
+	db_desc->db_superblock.id = region_idx;
+	db_desc->db_superblock.valid = 1;
+	strcpy(db_desc->db_superblock.region_name, region_name);
 	/*region name already in superblock*/
 	db_desc->dirty = 0;
 
-	struct pr_region_superblock *my_superblock = &db_desc->my_superblock;
+	struct pr_region_superblock *my_superblock = &db_desc->db_superblock;
 
 	/*init now state for all levels*/
 	for (uint8_t level_id = 0; level_id < MAX_LEVELS; ++level_id) {
@@ -583,35 +583,35 @@ static void init_fresh_db(struct db_descriptor *db_desc, char *region_name, uint
 
 static void recover_logs(db_descriptor *db_desc)
 {
-	log_info("Recovering KV logs (small,medium,large) for DB: %s", db_desc->my_superblock.region_name);
+	log_info("Recovering KV logs (small,medium,large) for DB: %s", db_desc->db_superblock.region_name);
 
 	// Small log
-	db_desc->small_log.head_dev_offt = db_desc->my_superblock.small_log_head_offt;
-	db_desc->small_log.tail_dev_offt = db_desc->my_superblock.small_log_tail_offt;
-	db_desc->small_log.size = db_desc->my_superblock.small_log_size;
+	db_desc->small_log.head_dev_offt = db_desc->db_superblock.small_log_head_offt;
+	db_desc->small_log.tail_dev_offt = db_desc->db_superblock.small_log_tail_offt;
+	db_desc->small_log.size = db_desc->db_superblock.small_log_size;
 	init_log_buffer(&db_desc->small_log, SMALL_LOG);
 
 	// Medium log
-	db_desc->medium_log.head_dev_offt = db_desc->my_superblock.medium_log_head_offt;
-	db_desc->medium_log.tail_dev_offt = db_desc->my_superblock.medium_log_tail_offt;
-	db_desc->medium_log.size = db_desc->my_superblock.medium_log_size;
+	db_desc->medium_log.head_dev_offt = db_desc->db_superblock.medium_log_head_offt;
+	db_desc->medium_log.tail_dev_offt = db_desc->db_superblock.medium_log_tail_offt;
+	db_desc->medium_log.size = db_desc->db_superblock.medium_log_size;
 	init_log_buffer(&db_desc->medium_log, MEDIUM_LOG);
 
 	// Big log
-	db_desc->big_log.head_dev_offt = db_desc->my_superblock.big_log_head_offt;
-	db_desc->big_log.tail_dev_offt = db_desc->my_superblock.big_log_tail_offt;
-	db_desc->big_log.size = db_desc->my_superblock.big_log_size;
+	db_desc->big_log.head_dev_offt = db_desc->db_superblock.big_log_head_offt;
+	db_desc->big_log.tail_dev_offt = db_desc->db_superblock.big_log_tail_offt;
+	db_desc->big_log.size = db_desc->db_superblock.big_log_size;
 	init_log_buffer(&db_desc->big_log, BIG_LOG);
-	db_desc->lsn = db_desc->my_superblock.lsn;
+	db_desc->lsn = db_desc->db_superblock.lsn;
 }
 
 static void restore_db(struct db_descriptor *db_desc, uint32_t region_idx)
 {
 	/*First, calculate superblock offt and read it in memory*/
-	db_desc->my_superblock_idx = region_idx;
+	db_desc->db_superblock_idx = region_idx;
 	pr_read_region_superblock(db_desc);
 
-	struct pr_region_superblock *my_superblock = &db_desc->my_superblock;
+	struct pr_region_superblock *my_superblock = &db_desc->db_superblock;
 	/*region name already in superblock*/
 	db_desc->dirty = 0;
 
@@ -677,7 +677,7 @@ static db_descriptor *get_db_from_volume(char *volume_name, char *db_name, char 
 			exit(EXIT_FAILURE);
 		}
 		memset(db_desc, 0x00, sizeof(struct db_descriptor));
-		db_desc->my_volume = volume_desc;
+		db_desc->db_volume = volume_desc;
 		log_info("Found DB: %s recovering its allocation log", db_name);
 		rul_log_init(db_desc);
 		restore_db(db_desc, i);
@@ -693,7 +693,7 @@ static db_descriptor *get_db_from_volume(char *volume_name, char *db_name, char 
 		}
 		memset(db_desc, 0x00, sizeof(struct db_descriptor));
 
-		db_desc->my_volume = volume_desc;
+		db_desc->db_volume = volume_desc;
 		log_info("Initializing new DB: %s, initializing its allocation log", db_name);
 		rul_log_init(db_desc);
 		db_desc->levels[0].allocation_txn_id[0] = rul_start_txn(db_desc);
@@ -708,7 +708,7 @@ static db_descriptor *get_db_from_volume(char *volume_name, char *db_name, char 
 		goto exit;
 	}
 exit:
-	pthread_mutex_unlock(&db_desc->my_volume->region_array_lock);
+	pthread_mutex_unlock(&db_desc->db_volume->region_array_lock);
 	return db_desc;
 }
 /*</new_persistent_design>*/
@@ -782,7 +782,7 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 
 	/*Remove later*/
 	handle->db_desc = db_desc;
-	handle->volume_desc = db_desc->my_volume;
+	handle->volume_desc = db_desc->db_volume;
 	MUTEX_UNLOCK(&init_lock);
 
 	/*init soft state for all levels*/
@@ -908,13 +908,13 @@ char db_close(db_handle *handle)
 {
 	/*verify that this is a valid db*/
 	if (klist_find_element_with_key(handle->volume_desc->open_databases,
-					handle->db_desc->my_superblock.region_name) == NULL) {
+					handle->db_desc->db_superblock.region_name) == NULL) {
 		log_fatal("received close for db: %s that is not listed as open",
-			  handle->db_desc->my_superblock.region_name);
+			  handle->db_desc->db_superblock.region_name);
 		exit(EXIT_FAILURE);
 	}
 
-	log_info("Closing region/db %s snapshotting volume\n", handle->db_desc->my_superblock.region_name);
+	log_info("Closing region/db %s snapshotting volume\n", handle->db_desc->db_superblock.region_name);
 	handle->db_desc->stat = DB_IS_CLOSING;
 	//snapshot(handle->volume_desc);
 /*stop log appenders*/
@@ -933,7 +933,7 @@ char db_close(db_handle *handle)
 	destroy_level_locktable(handle->db_desc, 0);
 
 	if (klist_remove_element(handle->volume_desc->open_databases, handle->db_desc) != 1) {
-		log_info("Could not find db: %s", handle->db_desc->my_superblock.region_name);
+		log_info("Could not find db: %s", handle->db_desc->db_superblock.region_name);
 		MUTEX_UNLOCK(&init_lock);
 		return COULD_NOT_FIND_DB;
 	}
@@ -2468,7 +2468,7 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 	/*Acquire read guard lock*/
 	ret = RWLOCK_RDLOCK(&guard_of_level->rx_lock);
 	if (ret) {
-		log_fatal("Failed to acquire guard lock for db: %s", db_desc->my_superblock.region_name);
+		log_fatal("Failed to acquire guard lock for db: %s", db_desc->db_superblock.region_name);
 		perror("Reason: ");
 		exit(EXIT_FAILURE);
 	}

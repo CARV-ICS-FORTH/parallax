@@ -52,11 +52,11 @@ static void rul_flush_log_chunk(struct db_descriptor *db_desc, uint32_t chunk_id
 		ssize_t total_bytes_written = 0;
 
 		while (total_bytes_written < size) {
-			bytes_written = pwrite(db_desc->my_volume->vol_fd,
+			bytes_written = pwrite(db_desc->db_volume->vol_fd,
 					       db_desc->allocation_log->my_segment.chunk[chunk_id],
 					       size - total_bytes_written, dev_offt + total_bytes_written);
 			if (bytes_written == -1) {
-				log_fatal("Failed to write region's %s superblock", db_desc->my_superblock.region_name);
+				log_fatal("Failed to write region's %s superblock", db_desc->db_superblock.region_name);
 				perror("Reason");
 				exit(EXIT_FAILURE);
 			}
@@ -89,7 +89,7 @@ static void rul_aflush_log_chunk(struct db_descriptor *db_desc, uint32_t chunk_i
 
 	//Prepare an async IO request
 	memset(&log_desc->aiocbp[chunk_id], 0x00, sizeof(struct aiocb));
-	log_desc->aiocbp[chunk_id].aio_fildes = db_desc->my_volume->vol_fd;
+	log_desc->aiocbp[chunk_id].aio_fildes = db_desc->db_volume->vol_fd;
 	log_desc->aiocbp[chunk_id].aio_offset = log_desc->tail_dev_offt + (chunk_id * RUL_LOG_CHUNK_SIZE_IN_BYTES);
 	assert(log_desc->aiocbp[chunk_id].aio_offset % ALIGNMENT_SIZE == 0);
 	log_desc->aiocbp[chunk_id].aio_buf = log_desc->my_segment.chunk[chunk_id];
@@ -185,10 +185,10 @@ static void rul_flush_last_chunk(struct db_descriptor *db_desc)
 	dev_offt = (db_desc->allocation_log->head_dev_offt + SEGMENT_SIZE) - size;
 
 	while (total_bytes_written < size) {
-		bytes_written = pwrite(db_desc->my_volume->vol_fd, db_desc->allocation_log->my_segment.chunk[chunk_id],
+		bytes_written = pwrite(db_desc->db_volume->vol_fd, db_desc->allocation_log->my_segment.chunk[chunk_id],
 				       size - total_bytes_written, dev_offt + total_bytes_written);
 		if (bytes_written == -1) {
-			log_fatal("Failed to write region's %s superblock", db_desc->my_superblock.region_name);
+			log_fatal("Failed to write region's %s superblock", db_desc->db_superblock.region_name);
 			perror("Reason");
 			exit(EXIT_FAILURE);
 		}
@@ -229,7 +229,7 @@ static int rul_append(struct db_descriptor *db_desc, struct rul_log_entry *entry
 
 	if (log_desc->curr_segment_entry > RUL_SEGMENT_MAX_ENTRIES) {
 		// Time to add a new segment
-		uint64_t new_tail_dev_offt = (uint64_t)mem_allocate(db_desc->my_volume, SEGMENT_SIZE);
+		uint64_t new_tail_dev_offt = (uint64_t)mem_allocate(db_desc->db_volume, SEGMENT_SIZE);
 		log_desc->my_segment.next_seg_offt = new_tail_dev_offt;
 		struct rul_log_entry e;
 		e.txn_id = 0;
@@ -295,17 +295,17 @@ void rul_log_init(struct db_descriptor *db_desc)
 	MUTEX_INIT(&log_desc->rul_lock, NULL);
 	MUTEX_INIT(&log_desc->trans_map_lock, NULL);
 	// resume state, superblock must have been read in memory
-	log_desc->head_dev_offt = db_desc->my_superblock.allocation_log.head_dev_offt;
-	log_desc->tail_dev_offt = db_desc->my_superblock.allocation_log.tail_dev_offt;
-	log_desc->size = db_desc->my_superblock.allocation_log.size;
+	log_desc->head_dev_offt = db_desc->db_superblock.allocation_log.head_dev_offt;
+	log_desc->tail_dev_offt = db_desc->db_superblock.allocation_log.tail_dev_offt;
+	log_desc->size = db_desc->db_superblock.allocation_log.size;
 	log_desc->trans_map = NULL;
-	log_desc->txn_id = db_desc->my_superblock.allocation_log.txn_id;
+	log_desc->txn_id = db_desc->db_superblock.allocation_log.txn_id;
 
 	db_desc->allocation_log = log_desc;
 
 	if (log_desc->head_dev_offt == 0) {
 		// empty log do the first allocation
-		uint64_t head_dev_offt = (uint64_t)mem_allocate(db_desc->my_volume, SEGMENT_SIZE);
+		uint64_t head_dev_offt = (uint64_t)mem_allocate(db_desc->db_volume, SEGMENT_SIZE);
 		if (!head_dev_offt) {
 			log_fatal("Out of Space!");
 			assert(0);
@@ -458,7 +458,7 @@ void rul_apply_txn_buf_freeops_and_destroy(struct db_descriptor *db_desc, uint64
 			rul_append(db_desc, &curr->txn_entry[i]);
 			switch (curr->txn_entry[i].op_type) {
 			case RUL_FREE:
-				mem_bitmap_mark_block_free(db_desc->my_volume, curr->txn_entry[i].dev_offt);
+				mem_bitmap_mark_block_free(db_desc->db_volume, curr->txn_entry[i].dev_offt);
 				break;
 			case RUL_ALLOCATE:
 				break;

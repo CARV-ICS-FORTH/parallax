@@ -31,17 +31,17 @@ static void pr_flush_allocation_log_and_level_info(struct db_descriptor *db_desc
 	/*Flush my allocations*/
 	struct rul_log_info rul_log = rul_flush_txn(db_desc, db_desc->levels[level_id].allocation_txn_id[tree_id]);
 	/*new info about allocation_log*/
-	db_desc->my_superblock.allocation_log.tail_dev_offt = rul_log.tail_dev_offt;
-	db_desc->my_superblock.allocation_log.size = rul_log.size;
-	db_desc->my_superblock.allocation_log.txn_id = rul_log.txn_id;
+	db_desc->db_superblock.allocation_log.tail_dev_offt = rul_log.tail_dev_offt;
+	db_desc->db_superblock.allocation_log.size = rul_log.size;
+	db_desc->db_superblock.allocation_log.txn_id = rul_log.txn_id;
 	/*new info about my level*/
-	db_desc->my_superblock.root_r[level_id][tree_id] = ABSOLUTE_ADDRESS(db_desc->levels[level_id].root_r[tree_id]);
-	db_desc->my_superblock.first_segment[level_id][0] =
+	db_desc->db_superblock.root_r[level_id][tree_id] = ABSOLUTE_ADDRESS(db_desc->levels[level_id].root_r[tree_id]);
+	db_desc->db_superblock.first_segment[level_id][0] =
 		ABSOLUTE_ADDRESS(db_desc->levels[level_id].first_segment[tree_id]);
-	db_desc->my_superblock.last_segment[level_id][tree_id] =
+	db_desc->db_superblock.last_segment[level_id][tree_id] =
 		ABSOLUTE_ADDRESS(db_desc->levels[level_id].last_segment[tree_id]);
-	db_desc->my_superblock.offset[level_id][tree_id] = db_desc->levels[level_id].offset[tree_id];
-	db_desc->my_superblock.level_size[level_id][tree_id] = db_desc->levels[level_id].level_size[tree_id];
+	db_desc->db_superblock.offset[level_id][tree_id] = db_desc->levels[level_id].offset[tree_id];
+	db_desc->db_superblock.level_size[level_id][tree_id] = db_desc->levels[level_id].level_size[tree_id];
 	pr_flush_region_superblock(db_desc);
 }
 
@@ -81,10 +81,10 @@ void pr_flush_L0(struct db_descriptor *db_desc, uint8_t tree_id)
   */
 
 	/*Flush large log*/
-	pr_flush_log_tail(db_desc, db_desc->my_volume, &db_desc->big_log);
+	pr_flush_log_tail(db_desc, db_desc->db_volume, &db_desc->big_log);
 
 	/*Flush L0 recovery log*/
-	pr_flush_log_tail(db_desc, db_desc->my_volume, &db_desc->small_log);
+	pr_flush_log_tail(db_desc, db_desc->db_volume, &db_desc->small_log);
 
 	uint64_t my_txn_id = db_desc->levels[0].allocation_txn_id[tree_id];
 
@@ -94,16 +94,16 @@ void pr_flush_L0(struct db_descriptor *db_desc, uint8_t tree_id)
 
 	struct rul_log_info rul_log = rul_flush_txn(db_desc, my_txn_id);
 	/*new info about large*/
-	db_desc->my_superblock.big_log_tail_offt = large_log.tail_dev_offt;
-	db_desc->my_superblock.big_log_size = large_log.size;
+	db_desc->db_superblock.big_log_tail_offt = large_log.tail_dev_offt;
+	db_desc->db_superblock.big_log_size = large_log.size;
 	/*new info about L0_recovery_log*/
-	db_desc->my_superblock.small_log_head_offt = L0_recovery_log.head_dev_offt;
-	db_desc->my_superblock.small_log_tail_offt = L0_recovery_log.tail_dev_offt;
-	db_desc->my_superblock.small_log_size = L0_recovery_log.size;
+	db_desc->db_superblock.small_log_head_offt = L0_recovery_log.head_dev_offt;
+	db_desc->db_superblock.small_log_tail_offt = L0_recovery_log.tail_dev_offt;
+	db_desc->db_superblock.small_log_size = L0_recovery_log.size;
 	/*new info about allocation_log*/
-	db_desc->my_superblock.allocation_log.tail_dev_offt = rul_log.tail_dev_offt;
-	db_desc->my_superblock.allocation_log.size = rul_log.size;
-	db_desc->my_superblock.allocation_log.txn_id = rul_log.txn_id;
+	db_desc->db_superblock.allocation_log.tail_dev_offt = rul_log.tail_dev_offt;
+	db_desc->db_superblock.allocation_log.size = rul_log.size;
+	db_desc->db_superblock.allocation_log.txn_id = rul_log.txn_id;
 	/*flush region superblock*/
 	pr_flush_region_superblock(db_desc);
 
@@ -129,20 +129,20 @@ static void pr_flush_L0_to_L1(struct db_descriptor *db_desc, uint8_t level_id, u
 	medium_log.tail_dev_offt = db_desc->medium_log.tail_dev_offt;
 	medium_log.size = db_desc->medium_log.size;
 	/*Flush medium log*/
-	pr_flush_log_tail(db_desc, db_desc->my_volume, &db_desc->medium_log);
+	pr_flush_log_tail(db_desc, db_desc->db_volume, &db_desc->medium_log);
 	pr_lock_region_superblock(db_desc);
 	uint64_t my_txn_id = db_desc->levels[level_id].allocation_txn_id[tree_id];
 
 	/*medium log info*/
-	db_desc->my_superblock.medium_log_tail_offt = medium_log.tail_dev_offt;
-	db_desc->my_superblock.medium_log_size = medium_log.size;
+	db_desc->db_superblock.medium_log_tail_offt = medium_log.tail_dev_offt;
+	db_desc->db_superblock.medium_log_size = medium_log.size;
 
 	/*trim L0_recovery_log*/
-	struct segment_header *curr = REAL_ADDRESS(db_desc->my_superblock.small_log_tail_offt);
+	struct segment_header *curr = REAL_ADDRESS(db_desc->db_superblock.small_log_tail_offt);
 	log_info("Tail segment id %llu", curr->segment_id);
 	curr = REAL_ADDRESS(curr->prev_segment);
 
-	struct segment_header *head = REAL_ADDRESS(db_desc->my_superblock.small_log_head_offt);
+	struct segment_header *head = REAL_ADDRESS(db_desc->db_superblock.small_log_head_offt);
 	log_info("Head segment id %llu", head->segment_id);
 
 	uint64_t bytes_freed = 0;
@@ -159,15 +159,15 @@ static void pr_flush_L0_to_L1(struct db_descriptor *db_desc, uint8_t level_id, u
 	}
 
 	log_info("*** Freed a total of %llu MB bytes from trimming L0 recovery log head %llu tail %llu size %llu ***",
-		 bytes_freed / (1024 * 1024), db_desc->my_superblock.small_log_head_offt,
-		 db_desc->my_superblock.small_log_tail_offt, db_desc->my_superblock.small_log_size);
+		 bytes_freed / (1024 * 1024), db_desc->db_superblock.small_log_head_offt,
+		 db_desc->db_superblock.small_log_tail_offt, db_desc->db_superblock.small_log_size);
 
-	db_desc->my_superblock.small_log_head_offt = db_desc->my_superblock.small_log_tail_offt;
-	db_desc->small_log.head_dev_offt = db_desc->my_superblock.small_log_head_offt;
+	db_desc->db_superblock.small_log_head_offt = db_desc->db_superblock.small_log_tail_offt;
+	db_desc->small_log.head_dev_offt = db_desc->db_superblock.small_log_head_offt;
 
 	/*recovery info for L0 L0_recovery_log*/
-	db_desc->my_superblock.small_log_start_segment_dev_offt = db_desc->small_log_start_segment_dev_offt;
-	db_desc->my_superblock.small_log_offt_in_start_segment = db_desc->small_log_start_offt_in_segment;
+	db_desc->db_superblock.small_log_start_segment_dev_offt = db_desc->small_log_start_segment_dev_offt;
+	db_desc->db_superblock.small_log_offt_in_start_segment = db_desc->small_log_start_offt_in_segment;
 
 	pr_flush_allocation_log_and_level_info(db_desc, level_id, tree_id);
 	pr_unlock_region_superblock(db_desc);
@@ -202,14 +202,14 @@ static void pr_flush_Lmax_to_Ln(struct db_descriptor *db_desc, uint8_t level_id,
 	}
 
 	log_info("*** Freed a total of %llu MB bytes from trimming medium log head %llu tail %llu size %llu ***",
-		 bytes_freed / (1024 * 1024), db_desc->my_superblock.small_log_head_offt,
-		 db_desc->my_superblock.small_log_tail_offt, db_desc->my_superblock.small_log_size);
+		 bytes_freed / (1024 * 1024), db_desc->db_superblock.small_log_head_offt,
+		 db_desc->db_superblock.small_log_tail_offt, db_desc->db_superblock.small_log_size);
 
 	pr_lock_region_superblock(db_desc);
 
 	/*new info about medium log after trim operation*/
 	db_desc->medium_log.head_dev_offt = level_desc->medium_in_place_segment_dev_offt;
-	db_desc->my_superblock.medium_log_head_offt = level_desc->medium_in_place_segment_dev_offt;
+	db_desc->db_superblock.medium_log_head_offt = level_desc->medium_in_place_segment_dev_offt;
 	level_desc->medium_in_place_segment_dev_offt = 0;
 	level_desc->medium_in_place_max_segment_id = 0;
 	pr_flush_allocation_log_and_level_info(db_desc, level_id, tree_id);
@@ -237,26 +237,26 @@ void pr_flush_compaction(struct db_descriptor *db_desc, uint8_t level_id, uint8_
 
 void pr_lock_region_superblock(struct db_descriptor *db_desc)
 {
-	MUTEX_LOCK(&db_desc->my_superblock_lock);
+	MUTEX_LOCK(&db_desc->db_superblock_lock);
 }
 
 void pr_unlock_region_superblock(struct db_descriptor *db_desc)
 {
-	MUTEX_UNLOCK(&db_desc->my_superblock_lock);
+	MUTEX_UNLOCK(&db_desc->db_superblock_lock);
 }
 
 void pr_flush_region_superblock(struct db_descriptor *db_desc)
 {
 	uint64_t my_superblock_offt =
-		sizeof(struct superblock) + (sizeof(struct pr_region_superblock) + db_desc->my_superblock_idx);
+		sizeof(struct superblock) + (sizeof(struct pr_region_superblock) + db_desc->db_superblock_idx);
 	ssize_t total_bytes_written = 0;
 	ssize_t bytes_written = 0;
 	ssize_t size = sizeof(struct pr_region_superblock);
 	while (total_bytes_written < size) {
-		bytes_written = pwrite(db_desc->my_volume->vol_fd, &db_desc->my_superblock, size - total_bytes_written,
+		bytes_written = pwrite(db_desc->db_volume->vol_fd, &db_desc->db_superblock, size - total_bytes_written,
 				       my_superblock_offt + total_bytes_written);
 		if (bytes_written == -1) {
-			log_fatal("Failed to write region's %s superblock", db_desc->my_superblock.region_name);
+			log_fatal("Failed to write region's %s superblock", db_desc->db_superblock.region_name);
 			perror("Reason");
 			exit(EXIT_FAILURE);
 		}
@@ -271,13 +271,13 @@ void pr_read_region_superblock(struct db_descriptor *db_desc)
 	ssize_t bytes_written = 0;
 	ssize_t size = sizeof(struct pr_region_superblock);
 	uint64_t my_superblock_offt =
-		sizeof(struct superblock) + (sizeof(struct pr_region_superblock) + db_desc->my_superblock_idx);
+		sizeof(struct superblock) + (sizeof(struct pr_region_superblock) + db_desc->db_superblock_idx);
 
 	while (total_bytes_written < size) {
-		bytes_written = pwrite(db_desc->my_volume->vol_fd, &db_desc->my_superblock, size - total_bytes_written,
+		bytes_written = pwrite(db_desc->db_volume->vol_fd, &db_desc->db_superblock, size - total_bytes_written,
 				       my_superblock_offt + total_bytes_written);
 		if (bytes_written == -1) {
-			log_fatal("Failed to read region's %s superblock", db_desc->my_superblock.region_name);
+			log_fatal("Failed to read region's %s superblock", db_desc->db_superblock.region_name);
 			perror("Reason");
 			assert(0);
 			exit(EXIT_FAILURE);
@@ -292,28 +292,6 @@ void pr_flush_log_tail(struct db_descriptor *db_desc, struct volume_descriptor *
 {
 	(void)db_desc;
 	(void)volume_desc;
-
-#if 0
-		/*These were hacks for fastmap to work due to its faulty behavior with direct I/O, remove them ASAP*/
-		if (idx)
-	{
-		remaining_bytes = SEGMENT_SIZE - idx;
-		memset(&log_desc->tail[last_tail]->buf[idx], 0, remaining_bytes);
-		log_desc->size += remaining_bytes;
-	}
-	else
-		return;
-
-	int last_tail = log_desc->curr_tail_id % LOG_TAIL_NUM_BUFS;
-
-	/*Barrier wait all previous operations to finish*/
-	uint32_t chunk_id = offt_in_seg / LOG_CHUNK_SIZE;
-	for (uint32_t i = 0; i < chunk_id; ++i)
-		wait_for_value(&log_desc->tail[last_tail]->bytes_in_chunk[i], LOG_CHUNK_SIZE);
-	for (int i = chunk_id; i < SEGMENT_SIZE / LOG_CHUNK_SIZE; ++i)
-		log_desc->tail[last_tail]->bytes_in_chunk[i] = LOG_CHUNK_SIZE;
-	log_desc->tail[last_tail]->IOs_completed_in_tail = SEGMENT_SIZE / LOG_CHUNK_SIZE;
-#endif
 
 	uint64_t offt_in_seg = log_desc->size % SEGMENT_SIZE;
 	if (!offt_in_seg)

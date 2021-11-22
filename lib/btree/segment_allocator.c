@@ -36,7 +36,7 @@ struct link_segments_metadata {
 static uint64_t seg_allocate_segment(struct db_descriptor *db_desc, uint64_t txn_id)
 {
 	struct rul_log_entry log_entry;
-	log_entry.dev_offt = mem_allocate(db_desc->my_volume, SEGMENT_SIZE);
+	log_entry.dev_offt = mem_allocate(db_desc->db_volume, SEGMENT_SIZE);
 	log_entry.txn_id = txn_id;
 	log_entry.op_type = RUL_ALLOCATE;
 	log_entry.size = SEGMENT_SIZE;
@@ -190,7 +190,7 @@ struct segment_header *get_segment_for_explicit_IO(struct db_descriptor *db_desc
 
 index_node *seg_get_index_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id, char reason)
 {
-	struct volume_descriptor *volume_desc = db_desc->my_volume;
+	struct volume_descriptor *volume_desc = db_desc->db_volume;
 	index_node *ptr;
 	IN_log_header *bh;
 
@@ -276,7 +276,7 @@ void seg_free_index_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_
 leaf_node *seg_get_leaf_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
 {
 	struct level_descriptor *level_desc = &db_desc->levels[level_id];
-	struct volume_descriptor *volume_desc = db_desc->my_volume;
+	struct volume_descriptor *volume_desc = db_desc->db_volume;
 	leaf_node *leaf = (leaf_node *)get_space(db_desc, level_id, tree_id, level_desc->leaf_size);
 
 	leaf->header.type = leafNode;
@@ -309,7 +309,7 @@ struct bt_dynamic_leaf_node *init_leaf_node(struct bt_dynamic_leaf_node *leaf, v
 struct bt_dynamic_leaf_node *seg_get_dynamic_leaf_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
 {
 	struct level_descriptor *level_desc = &db_desc->levels[level_id];
-	struct volume_descriptor *volume_desc = db_desc->my_volume;
+	struct volume_descriptor *volume_desc = db_desc->db_volume;
 	/*Pass tree_id in get_space*/
 	return init_leaf_node(get_space(db_desc, level_id, tree_id, level_desc->leaf_size), volume_desc);
 }
@@ -318,7 +318,7 @@ leaf_node *seg_get_leaf_node_header(struct db_descriptor *db_desc, uint8_t level
 {
 	struct level_descriptor *level_desc = &db_desc->levels[level_id];
 	return (leaf_node *)init_leaf_node(get_space(db_desc, level_id, tree_id, level_desc->leaf_size),
-					   db_desc->my_volume);
+					   db_desc->db_volume);
 }
 
 void seg_free_leaf_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id, leaf_node *leaf)
@@ -427,7 +427,7 @@ uint64_t seg_free_level(struct db_descriptor *db_desc, uint64_t txn_id, uint8_t 
 	segment_header *temp_segment;
 	uint64_t space_freed = 0;
 
-	log_info("Freeing up level %u for db %s", level_id, db_desc->my_superblock.region_name);
+	log_info("Freeing up level %u for db %s", level_id, db_desc->db_superblock.region_name);
 
 	if (level_id != 0) {
 		for (; curr_segment && curr_segment->next_segment != NULL;

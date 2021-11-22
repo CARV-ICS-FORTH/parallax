@@ -42,7 +42,7 @@ static void *rul_worker(void *args)
 		struct rul_log_entry log_entry;
 
 		for (uint32_t j = 0; j < trans_length; ++j) {
-			uint64_t dev_offt = mem_allocate(db_desc->my_volume, SEGMENT_SIZE);
+			uint64_t dev_offt = mem_allocate(db_desc->db_volume, SEGMENT_SIZE);
 			log_entry.txn_id = my_txn_id;
 			log_entry.dev_offt = dev_offt;
 			log_entry.op_type = RUL_ALLOCATE;
@@ -74,7 +74,7 @@ int main(int argc, char *argv[])
 		exit(EXIT_FAILURE);
 	}
 
-	db_desc->my_volume = volume_desc;
+	db_desc->db_volume = volume_desc;
 	pr_read_region_superblock(db_desc);
 	rul_log_init(db_desc);
 	log_info("Initialized redo undo log curr segment entry %llu", db_desc->allocation_log->curr_segment_entry);

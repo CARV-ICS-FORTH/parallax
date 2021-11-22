@@ -120,7 +120,7 @@ static void fetch_segment(struct comp_level_write_cursor *c, char *segment_buf, 
 	ssize_t bytes = 0;
 
 	while (bytes_to_read < size) {
-		bytes = pread(c->handle->db_desc->my_volume->vol_fd, &segment_buf[bytes_to_read], size - bytes_to_read,
+		bytes = pread(c->handle->db_desc->db_volume->vol_fd, &segment_buf[bytes_to_read], size - bytes_to_read,
 			      dev_offt + bytes_to_read);
 		if (bytes == -1) {
 			log_fatal("Failed to read error code");
@@ -701,7 +701,7 @@ static void comp_append_pivot_to_index(struct comp_level_write_cursor *c, uint64
 
 static void comp_init_medium_log(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
 {
-	log_info("Initializing medium log for db: %s", db_desc->my_superblock.region_name);
+	log_info("Initializing medium log for db: %s", db_desc->db_superblock.region_name);
 	struct segment_header *s = seg_get_raw_log_segment(db_desc, level_id, tree_id);
 	s->segment_id = 0;
 	s->next_segment = NULL;
@@ -1002,7 +1002,7 @@ void *compaction_daemon(void *args)
 				db_desc->levels[0].scanner_epoch += 1;
 				db_desc->levels[0].epoch[active_tree] = db_desc->levels[0].scanner_epoch;
 				log_info("Next active tree %u for L0 of DB: %s", next_active_tree,
-					 db_desc->my_superblock.region_name);
+					 db_desc->db_superblock.region_name);
 				/*Acquire a new transaction id for the next_active_tree*/
 				db_desc->levels[0].allocation_txn_id[next_active_tree] = rul_start_txn(db_desc);
 				/*Release guard lock*/
@@ -1022,7 +1022,7 @@ void *compaction_daemon(void *args)
 
 		if (comp_req) {
 			/*Start a compaction from L0 to L1. Flush L0 prior to compaction from L0 to L1*/
-			log_info("Flushing L0 for region:%s tree:[0][%u]", db_desc->my_superblock.region_name,
+			log_info("Flushing L0 for region:%s tree:[0][%u]", db_desc->db_superblock.region_name,
 				 comp_req->src_tree);
 			pr_flush_L0(db_desc, comp_req->src_tree);
 			db_desc->levels[1].allocation_txn_id[1] = rul_start_txn(db_desc);
@@ -1190,7 +1190,7 @@ static void choose_compaction_roots(struct db_handle *handle, struct compaction_
 		log_fatal("NULL src root for compaction from level's tree [%u][%u] to "
 			  "level's tree[%u][%u] for db %s",
 			  comp_req->src_level, comp_req->src_tree, comp_req->dst_level, comp_req->dst_tree,
-			  handle->db_desc->my_superblock.region_name);
+			  handle->db_desc->db_superblock.region_name);
 		exit(EXIT_FAILURE);
 	}
 
@@ -1306,7 +1306,7 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 		handle->db_desc->dirty = 0x01;
 		if (handle->db_desc->stat == DB_IS_CLOSING) {
 			log_info("DB %s is closing compaction thread exiting...",
-				 handle->db_desc->my_superblock.region_name);
+				 handle->db_desc->db_superblock.region_name);
 			if (l_src)
 				free(l_src);
 			if (l_dst)
@@ -1409,7 +1409,7 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 		space_freed = seg_free_level(comp_req->db_desc, txn_id, comp_req->dst_level, 0);
 
 		log_info("Freed space %llu MB from db:%s destination level %u", space_freed / (1024 * 1024),
-			 comp_req->db_desc->my_superblock.region_name, comp_req->src_level);
+			 comp_req->db_desc->db_superblock.region_name, comp_req->src_level);
 	}
 	// switch dst tree
 	ld->first_segment[0] = ld->first_segment[1];
@@ -1437,7 +1437,7 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 	uint64_t txn_id = comp_req->db_desc->levels[comp_req->dst_level].allocation_txn_id[comp_req->dst_tree];
 	space_freed = seg_free_level(hd.db_desc, txn_id, comp_req->src_level, comp_req->src_tree);
 	log_info("Freed space %llu MB from db:%s source level %u", space_freed / (1024 * 1024),
-		 comp_req->db_desc->my_superblock.region_name, comp_req->src_level);
+		 comp_req->db_desc->db_superblock.region_name, comp_req->src_level);
 	seg_zero_level(hd.db_desc, comp_req->src_level, comp_req->src_tree);
 
 #if ENABLE_BLOOM_FILTERS
