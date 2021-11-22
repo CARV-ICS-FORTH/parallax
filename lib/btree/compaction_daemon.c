@@ -120,7 +120,7 @@ static void fetch_segment(struct comp_level_write_cursor *c, char *segment_buf, 
 	ssize_t bytes = 0;
 
 	while (bytes_to_read < size) {
-		bytes = pread(c->handle->db_desc->my_volume->my_fd, &segment_buf[bytes_to_read], size - bytes_to_read,
+		bytes = pread(c->handle->db_desc->my_volume->vol_fd, &segment_buf[bytes_to_read], size - bytes_to_read,
 			      dev_offt + bytes_to_read);
 		if (bytes == -1) {
 			log_fatal("Failed to read error code");

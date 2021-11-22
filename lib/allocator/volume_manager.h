@@ -46,13 +46,13 @@ extern int FD;
 
 typedef struct volume_descriptor {
 	/*<new_persistent_design>*/
-	struct superblock my_superblock;
+	struct superblock vol_superblock;
 	struct pr_superblock_array *pr_regions;
 	uint64_t *mem_volume_bitmap;
 	int mem_volume_bitmap_size;
 	struct mem_bitmap_word curr_word;
 	pthread_mutex_t region_array_lock;
-	int my_fd;
+	int vol_fd;
 	/*</new_persistent_design>*/
 
 	// dirty version on the device of the volume's db catalogue
@@ -80,7 +80,7 @@ typedef struct volume_descriptor {
 	void *bitmap_start; /* address of where volume's bitmap starts*/
 	void *bitmap_end; /* address of where volume's bitmap ends */
 
-	struct superblock *volume_superblock; /*address of volume's superblock*/
+	struct superblock *volume_superblock; /*address of volume's superblock, delete it*/
 	struct klist *open_databases;
 
 	/* value is set to 2 after a non-successfull allocation operation for a given

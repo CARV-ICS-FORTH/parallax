@@ -30,7 +30,7 @@ static void free_device(struct volume_descriptor *volume_desc, uint64_t capacity
 {
 	uint64_t bytes_freed = 0;
 	uint64_t num_free_ops = 0;
-	uint64_t dev_offt = volume_desc->my_superblock.volume_metadata_size;
+	uint64_t dev_offt = volume_desc->vol_superblock.volume_metadata_size;
 	int m_exit = 0;
 	log_info("Freeing device %s", volume_desc->volume_name);
 	while (!m_exit) {
@@ -71,13 +71,13 @@ int main(int argc, char **argv)
 	struct volume_descriptor *volume_desc = mem_get_volume_desc(argv[1]);
 
 	uint64_t device_capacity =
-		volume_desc->my_superblock.volume_size -
-		(volume_desc->my_superblock.volume_metadata_size + volume_desc->my_superblock.unmappedSpace);
+		volume_desc->vol_superblock.volume_size -
+		(volume_desc->vol_superblock.volume_metadata_size + volume_desc->vol_superblock.unmappedSpace);
 
 	for (int i = 0; i < 3; ++i) {
 		uint64_t bytes_allocated = 0;
 		uint64_t num_allocations = 0;
-		uint64_t next_dev_offt = volume_desc->my_superblock.volume_metadata_size;
+		uint64_t next_dev_offt = volume_desc->vol_superblock.volume_metadata_size;
 		uint32_t num_bytes;
 
 		while (1) {

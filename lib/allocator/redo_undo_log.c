@@ -52,7 +52,7 @@ static void rul_flush_log_chunk(struct db_descriptor *db_desc, uint32_t chunk_id
 		ssize_t total_bytes_written = 0;
 
 		while (total_bytes_written < size) {
-			bytes_written = pwrite(db_desc->my_volume->my_fd,
+			bytes_written = pwrite(db_desc->my_volume->vol_fd,
 					       db_desc->allocation_log->my_segment.chunk[chunk_id],
 					       size - total_bytes_written, dev_offt + total_bytes_written);
 			if (bytes_written == -1) {
@@ -89,7 +89,7 @@ static void rul_aflush_log_chunk(struct db_descriptor *db_desc, uint32_t chunk_i
 
 	//Prepare an async IO request
 	memset(&log_desc->aiocbp[chunk_id], 0x00, sizeof(struct aiocb));
-	log_desc->aiocbp[chunk_id].aio_fildes = db_desc->my_volume->my_fd;
+	log_desc->aiocbp[chunk_id].aio_fildes = db_desc->my_volume->vol_fd;
 	log_desc->aiocbp[chunk_id].aio_offset = log_desc->tail_dev_offt + (chunk_id * RUL_LOG_CHUNK_SIZE_IN_BYTES);
 	assert(log_desc->aiocbp[chunk_id].aio_offset % ALIGNMENT_SIZE == 0);
 	log_desc->aiocbp[chunk_id].aio_buf = log_desc->my_segment.chunk[chunk_id];
@@ -185,7 +185,7 @@ static void rul_flush_last_chunk(struct db_descriptor *db_desc)
 	dev_offt = (db_desc->allocation_log->head_dev_offt + SEGMENT_SIZE) - size;
 
 	while (total_bytes_written < size) {
-		bytes_written = pwrite(db_desc->my_volume->my_fd, db_desc->allocation_log->my_segment.chunk[chunk_id],
+		bytes_written = pwrite(db_desc->my_volume->vol_fd, db_desc->allocation_log->my_segment.chunk[chunk_id],
 				       size - total_bytes_written, dev_offt + total_bytes_written);
 		if (bytes_written == -1) {
 			log_fatal("Failed to write region's %s superblock", db_desc->my_superblock.region_name);
@@ -206,7 +206,7 @@ static void rul_read_last_segment(struct db_descriptor *db_desc)
 	ssize_t bytes_read = 0;
 	ssize_t size = SEGMENT_SIZE;
 	while (total_bytes_read < size) {
-		bytes_read = pwrite(db_desc->my_volume->my_fd, &db_desc->allocation_log->my_segment,
+		bytes_read = pwrite(db_desc->my_volume->vol_fd, &db_desc->allocation_log->my_segment,
 				    size - total_bytes_read, db_desc->my_superblock_offt + total_bytes_read);
 		if (bytes_read == -1) {
 			log_fatal("Failed to write region's %s superblock", db_desc->db_name);

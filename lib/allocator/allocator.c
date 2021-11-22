@@ -670,7 +670,7 @@ static void mem_print_volume_info(struct superblock *S, char *volume_name)
 void mem_init_superblock_array(struct volume_descriptor *volume_desc)
 {
 	int ret = posix_memalign((void **)&volume_desc->pr_regions, ALIGNMENT_SIZE,
-				 sizeof(struct pr_superblock_array) + (volume_desc->my_superblock.max_regions_num *
+				 sizeof(struct pr_superblock_array) + (volume_desc->vol_superblock.max_regions_num *
 								       sizeof(struct pr_region_superblock)));
 
 	if (ret) {
@@ -678,11 +678,11 @@ void mem_init_superblock_array(struct volume_descriptor *volume_desc)
 		exit(EXIT_FAILURE);
 	}
 
-	volume_desc->pr_regions->size = volume_desc->my_superblock.max_regions_num;
+	volume_desc->pr_regions->size = volume_desc->vol_superblock.max_regions_num;
 	off64_t dev_offt = sizeof(struct superblock);
-	uint32_t size = volume_desc->my_superblock.max_regions_num * sizeof(struct pr_region_superblock);
+	uint32_t size = volume_desc->vol_superblock.max_regions_num * sizeof(struct pr_region_superblock);
 
-	if (!mem_read_into_buffer((char *)volume_desc->pr_regions->region, 0, size, dev_offt, volume_desc->my_fd)) {
+	if (!mem_read_into_buffer((char *)volume_desc->pr_regions->region, 0, size, dev_offt, volume_desc->vol_fd)) {
 		log_fatal("Failed to read volume's region superblocks!");
 		exit(EXIT_FAILURE);
 	}
@@ -709,38 +709,38 @@ static volume_descriptor *mem_init_volume(char *volume_name)
 	}
 	memcpy(volume_desc->volume_name, volume_name, strlen(volume_name));
 
-	volume_desc->my_fd = open(volume_name, O_RDWR | O_DIRECT | O_DSYNC);
+	volume_desc->vol_fd = open(volume_name, O_RDWR | O_DIRECT | O_DSYNC);
 
-	if (volume_desc->my_fd < 0) {
+	if (volume_desc->vol_fd < 0) {
 		log_fatal("Failed to open %s", volume_name);
 		perror("Reason:\n");
 		exit(EXIT_FAILURE);
 	}
 	// read volume superblock (accouning info into memory)
-	if (!mem_read_into_buffer((char *)&volume_desc->my_superblock, 0, sizeof(struct superblock), 0,
-				  volume_desc->my_fd)) {
+	if (!mem_read_into_buffer((char *)&volume_desc->vol_superblock, 0, sizeof(struct superblock), 0,
+				  volume_desc->vol_fd)) {
 		log_fatal("Failed to read volume's %s superblock", volume_name);
 		exit(EXIT_FAILURE);
 	}
-	off64_t device_size = lseek64(volume_desc->my_fd, 0, SEEK_END);
+	off64_t device_size = lseek64(volume_desc->vol_fd, 0, SEEK_END);
 	if (device_size == -1) {
 		log_fatal("failed to determine volume size exiting...");
 		perror("ioctl");
 		exit(EXIT_FAILURE);
 	}
 	if ((uint64_t)device_size !=
-	    volume_desc->my_superblock.volume_size + volume_desc->my_superblock.unmappedSpace) {
+	    volume_desc->vol_superblock.volume_size + volume_desc->vol_superblock.unmappedSpace) {
 		log_fatal("Volume sizes do not match! Found %lld expected %lld", device_size,
-			  volume_desc->my_superblock.volume_size);
+			  volume_desc->vol_superblock.volume_size);
 		exit(EXIT_FAILURE);
 	}
 
-	if (volume_desc->my_superblock.magic_number != FINE_STRUCTURE_CONSTANT) {
+	if (volume_desc->vol_superblock.magic_number != FINE_STRUCTURE_CONSTANT) {
 		log_fatal("Volume %s seems not to have been initialized!");
 		exit(EXIT_FAILURE);
 	}
-	volume_desc->mem_volume_bitmap_size = volume_desc->my_superblock.bitmap_size_in_words;
-	mem_print_volume_info(&volume_desc->my_superblock, volume_name);
+	volume_desc->mem_volume_bitmap_size = volume_desc->vol_superblock.bitmap_size_in_words;
+	mem_print_volume_info(&volume_desc->vol_superblock, volume_name);
 	/*Now allocate the in memory bitmap*/
 	volume_desc->mem_volume_bitmap = malloc(volume_desc->mem_volume_bitmap_size * sizeof(uint64_t));
 	/*set everything to 1 aka free aka don't know*/
@@ -753,7 +753,7 @@ static volume_descriptor *mem_init_volume(char *volume_name)
 	volume_desc->curr_word.word_id = 0;
 
 	/*Mark as allocated volume's metadata*/
-	uint32_t n_segments = volume_desc->my_superblock.volume_metadata_size / SEGMENT_SIZE;
+	uint32_t n_segments = volume_desc->vol_superblock.volume_metadata_size / SEGMENT_SIZE;
 	uint64_t dev_offt = 0;
 
 	for (uint32_t i = 0; i < n_segments; ++i)
@@ -764,7 +764,7 @@ static volume_descriptor *mem_init_volume(char *volume_name)
    * space. So we mark them as "reserved" so the allocator does not bother them.
    **/
 	uint64_t registry_size_in_bits =
-		(volume_desc->my_superblock.volume_size - volume_desc->my_superblock.unmappedSpace) / SEGMENT_SIZE;
+		(volume_desc->vol_superblock.volume_size - volume_desc->vol_superblock.unmappedSpace) / SEGMENT_SIZE;
 	uint32_t bits_in_page = 4096 * 8;
 	uint32_t unmapped_bits = 0;
 
@@ -785,7 +785,7 @@ static volume_descriptor *mem_init_volume(char *volume_name)
 		CLEAR_BIT(byte, (i % 8));
 	}
 
-	if (dev_offt + SEGMENT_SIZE != volume_desc->my_superblock.volume_metadata_size) {
+	if (dev_offt + SEGMENT_SIZE != volume_desc->vol_superblock.volume_metadata_size) {
 		log_fatal("Faulty marking of volume's metadata as reserved");
 		assert(0);
 		exit(EXIT_FAILURE);
