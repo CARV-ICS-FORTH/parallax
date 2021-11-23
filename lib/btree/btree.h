@@ -51,6 +51,8 @@ struct lookup_operation {
 	uint8_t retrieve : 1; /*in variable*/
 };
 
+enum db_status { DB_START_COMPACTION_DAEMON, DB_OPEN, DB_TERMINATE_COMPACTION_DAEMON, DB_IS_CLOSING };
+
 typedef enum {
 	leafNode = 590675399,
 	internalNode = 790393380,
@@ -60,8 +62,6 @@ typedef enum {
 	paddedSpace = 55400000,
 	invalid
 } nodeType_t;
-
-typedef enum db_status { DB_OPEN, DB_IS_CLOSING } db_status;
 
 /*descriptor describing a spill operation and its current status*/
 typedef enum {
@@ -217,11 +217,11 @@ struct splice {
 	char data[0];
 };
 
-/**
+/*
  * db_descriptor is a soft state descriptor per open database. superindex
  * structure keeps a serialized from of the vital information needed to restore each
-*db_descriptor
-**/
+ * db_descriptor
+*/
 
 typedef struct lock_table {
 	pthread_rwlock_t rx_lock;

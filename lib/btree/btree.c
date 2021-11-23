@@ -906,23 +906,29 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 
 char db_close(db_handle *handle)
 {
+	MUTEX_LOCK(&init_lock);
 	/*verify that this is a valid db*/
 	if (klist_find_element_with_key(handle->volume_desc->open_databases,
 					handle->db_desc->db_superblock.region_name) == NULL) {
-		log_fatal("received close for db: %s that is not listed as open",
-			  handle->db_desc->db_superblock.region_name);
+		log_warn("Received close for db: %s that is not listed as open",
+			 handle->db_desc->db_superblock.region_name);
+		goto finish;
+	}
+
+	--handle->db_desc->reference_count;
+
+	if (handle->db_desc->reference_count < 0) {
+		log_fatal("Negative referece count for DB %s", handle->db_desc->db_superblock.region_name);
 		exit(EXIT_FAILURE);
 	}
 
 	log_info("Closing region/db %s snapshotting volume\n", handle->db_desc->db_superblock.region_name);
+	/*compare and swap here*/
 	handle->db_desc->stat = DB_IS_CLOSING;
-	//snapshot(handle->volume_desc);
-/*stop log appenders*/
-#if LOG_WITH_MUTEX
+
+	/*stop log appenders*/
+
 	MUTEX_LOCK(&handle->db_desc->lock_log);
-#else
-	SPIN_LOCK(&handle->db_desc->lock_log);
-#endif
 	/*stop all writers at all levels*/
 	uint8_t level_id;
 	for (level_id = 0; level_id < MAX_LEVELS; level_id++) {
@@ -930,13 +936,61 @@ char db_close(db_handle *handle)
 		spin_loop(&(handle->db_desc->levels[level_id].active_writers), 0);
 	}
 
-	destroy_level_locktable(handle->db_desc, 0);
+	/*compare and swap*/
+	handle->db_desc->stat = DB_TERMINATE_COMPACTION_DAEMON;
+	sem_post(&handle->db_desc->compaction_daemon_interrupts);
+	while (handle->db_desc->stat != DB_IS_CLOSING)
+		usleep(50);
 
-	if (klist_remove_element(handle->volume_desc->open_databases, handle->db_desc) != 1) {
-		log_info("Could not find db: %s", handle->db_desc->db_superblock.region_name);
-		MUTEX_UNLOCK(&init_lock);
-		return COULD_NOT_FIND_DB;
+	log_info("Ok compaction daemon exited continuing the close sequence of DB:%s",
+		 handle->db_desc->db_superblock.region_name);
+
+	for (uint8_t i = 0; i < NUM_TREES_PER_LEVEL; ++i) {
+		if (handle->db_desc->levels[0].tree_status[i] == SPILLING_IN_PROGRESS) {
+			i = 0;
+			usleep(500);
+			continue;
+		}
 	}
+	log_info("All L0 compactions done");
+	/*wait for all other pending compactions to finish*/
+	for (int i = 1; i < MAX_LEVELS; i++) {
+		if (handle->db_desc->levels[i].tree_status[0] == SPILLING_IN_PROGRESS) {
+			i = 0;
+			usleep(500);
+			continue;
+		}
+	}
+
+	log_info("All pending compactions done for DB:%s", handle->db_desc->db_superblock.region_name);
+
+	if (!klist_remove_element(handle->volume_desc->open_databases, handle->db_desc)) {
+		log_fatal("Failed to remove db_desc of DB %s", handle->db_desc->db_superblock.region_name);
+		exit(EXIT_FAILURE);
+	}
+
+	/*free L0*/
+	for (uint8_t tree_id = 0; tree_id < NUM_TREES_PER_LEVEL; ++tree_id)
+		seg_free_level(handle->db_desc, 0, 0, tree_id);
+
+	for (uint8_t i = 0; i < MAX_LEVELS; ++i) {
+		if (pthread_rwlock_destroy(&handle->db_desc->levels[i].guard_of_level.rx_lock)) {
+			log_fatal("Failed to destroy guard of level lock");
+			exit(EXIT_FAILURE);
+		}
+		destroy_level_locktable(handle->db_desc, i);
+	}
+	// memset(handle->db_desc, 0x00, sizeof(struct db_descriptor));
+	if (pthread_cond_destroy(&handle->db_desc->client_barrier) != 0) {
+		log_fatal("Failed to destroy condition variable");
+		perror("pthread_cond_destroy() error");
+		exit(EXIT_FAILURE);
+	}
+	free(handle->db_desc);
+
+finish:
+	free(handle);
+	MUTEX_UNLOCK(&init_lock);
 	return PARALLAX_SUCCESS;
 }
 

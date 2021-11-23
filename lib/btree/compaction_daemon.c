@@ -951,6 +951,13 @@ void *compaction_daemon(void *args)
 	while (1) {
 		/*special care for Level 0 to 1*/
 		sem_wait(&db_desc->compaction_daemon_interrupts);
+		if (db_desc->stat == DB_TERMINATE_COMPACTION_DAEMON) {
+			log_warn("Compaction daemon instructed to exit because DB %s is closing, "
+				 "Bye bye!...",
+				 db_desc->db_superblock.region_name);
+			db_desc->stat = DB_IS_CLOSING;
+			return NULL;
+		}
 		struct level_descriptor *level_0 = &handle->db_desc->levels[0];
 		struct level_descriptor *level_1 = &handle->db_desc->levels[1];
 
