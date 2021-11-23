@@ -40,8 +40,6 @@
 #define PREFIX_STATISTICS_NO
 #define MIN(x, y) ((x > y) ? (y) : (x))
 
-#define COULD_NOT_FIND_DB 0x02
-
 int32_t index_order = -1;
 extern char *pointer_to_kv_in_log;
 
@@ -223,19 +221,16 @@ int64_t key_cmp(void *key1, void *key2, char key1_format, char key2_format)
 
 static void init_level_locktable(db_descriptor *database, uint8_t level_id)
 {
-	unsigned int i, j;
-	lock_table *init;
-
-	for (i = 0; i < MAX_HEIGHT; ++i) {
+	for (unsigned int i = 0; i < MAX_HEIGHT; ++i) {
 		if (posix_memalign((void **)&database->levels[level_id].level_lock_table[i], 4096,
 				   sizeof(lock_table) * size_per_height[i]) != 0) {
 			log_fatal("memalign failed");
 			exit(EXIT_FAILURE);
 		}
 
-		init = database->levels[level_id].level_lock_table[i];
+		lock_table *init = database->levels[level_id].level_lock_table[i];
 
-		for (j = 0; j < size_per_height[i]; ++j) {
+		for (unsigned int j = 0; j < size_per_height[i]; ++j) {
 			if (RWLOCK_INIT(&init[j].rx_lock, NULL) != 0) {
 				log_fatal("failed to initialize lock_table for level %u lock", level_id);
 				exit(EXIT_FAILURE);
@@ -277,8 +272,8 @@ static void init_leaf_sizes_perlevel(level_descriptor *level)
 
 static void destroy_level_locktable(db_descriptor *database, uint8_t level_id)
 {
-	for (int i = 0; i < MAX_HEIGHT; ++i)
-		free(&database->levels[level_id].level_lock_table[i]);
+	for (uint8_t i = 0; i < MAX_HEIGHT; ++i)
+		free(database->levels[level_id].level_lock_table[i]);
 }
 
 static void pr_read_log_tail(struct log_tail *tail)
@@ -457,6 +452,11 @@ struct db_handle *bt_restore_db(struct volume_descriptor *volume_desc, struct pr
 #endif
 
 /*<new_persistent_design>*/
+static void destroy_log_buffer(struct log_descriptor *log_desc)
+{
+	for (uint32_t i = 0; i < LOG_TAIL_NUM_BUFS; ++i)
+		free(log_desc->tail[i]);
+}
 
 void init_log_buffer(struct log_descriptor *log_desc, enum log_type my_type)
 {
@@ -820,7 +820,7 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 		exit(EXIT_FAILURE);
 	}
 
-	for (uint8_t level_id = 0; level_id < MAX_LEVELS; level_id++) {
+	for (uint8_t level_id = 0; level_id < MAX_LEVELS; ++level_id) {
 		RWLOCK_INIT(&handle->db_desc->levels[level_id].guard_of_level.rx_lock, NULL);
 		MUTEX_INIT(&handle->db_desc->levels[level_id].spill_trigger, NULL);
 		MUTEX_INIT(&handle->db_desc->levels[level_id].level_allocation_lock, NULL);
@@ -904,7 +904,7 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 	return handle;
 }
 
-char db_close(db_handle *handle)
+enum parallax_status db_close(db_handle *handle)
 {
 	MUTEX_LOCK(&init_lock);
 	/*verify that this is a valid db*/
@@ -922,13 +922,20 @@ char db_close(db_handle *handle)
 		exit(EXIT_FAILURE);
 	}
 
-	log_info("Closing region/db %s snapshotting volume\n", handle->db_desc->db_superblock.region_name);
-	/*compare and swap here*/
+	log_info("Closing DB:%s volume\n", handle->db_desc->db_superblock.region_name);
+
+	/*New requests will eventually see that db is closing*/
+	/*wake up possible clients that are stack due to non-availability of L0*/
+	MUTEX_LOCK(&handle->db_desc->client_barrier_lock);
 	handle->db_desc->stat = DB_IS_CLOSING;
+	if (pthread_cond_broadcast(&handle->db_desc->client_barrier) != 0) {
+		log_fatal("Failed to wake up stopped clients");
+		exit(EXIT_FAILURE);
+	}
+	MUTEX_UNLOCK(&handle->db_desc->client_barrier_lock);
 
 	/*stop log appenders*/
 
-	MUTEX_LOCK(&handle->db_desc->lock_log);
 	/*stop all writers at all levels*/
 	uint8_t level_id;
 	for (level_id = 0; level_id < MAX_LEVELS; level_id++) {
@@ -936,7 +943,6 @@ char db_close(db_handle *handle)
 		spin_loop(&(handle->db_desc->levels[level_id].active_writers), 0);
 	}
 
-	/*compare and swap*/
 	handle->db_desc->stat = DB_TERMINATE_COMPACTION_DAEMON;
 	sem_post(&handle->db_desc->compaction_daemon_interrupts);
 	while (handle->db_desc->stat != DB_IS_CLOSING)
@@ -955,12 +961,13 @@ char db_close(db_handle *handle)
 	log_info("All L0 compactions done");
 	/*wait for all other pending compactions to finish*/
 	for (int i = 1; i < MAX_LEVELS; i++) {
-		if (handle->db_desc->levels[i].tree_status[0] == SPILLING_IN_PROGRESS) {
+		if (SPILLING_IN_PROGRESS == handle->db_desc->levels[i].tree_status[0]) {
 			i = 0;
 			usleep(500);
 			continue;
 		}
 	}
+	pr_flush_L0(handle->db_desc, handle->db_desc->levels[0].active_tree);
 
 	log_info("All pending compactions done for DB:%s", handle->db_desc->db_superblock.region_name);
 
@@ -968,6 +975,11 @@ char db_close(db_handle *handle)
 		log_fatal("Failed to remove db_desc of DB %s", handle->db_desc->db_superblock.region_name);
 		exit(EXIT_FAILURE);
 	}
+
+	destroy_log_buffer(&handle->db_desc->big_log);
+	destroy_log_buffer(&handle->db_desc->medium_log);
+	destroy_log_buffer(&handle->db_desc->small_log);
+	rul_log_destroy(handle->db_desc);
 
 	/*free L0*/
 	for (uint8_t tree_id = 0; tree_id < NUM_TREES_PER_LEVEL; ++tree_id)
@@ -1023,6 +1035,11 @@ uint8_t insert_key_value(db_handle *handle, void *key, void *value, uint32_t key
 	uint32_t kv_size;
 
 	wait_for_available_level0_tree(handle);
+
+	if (DB_IS_CLOSING == handle->db_desc->stat) {
+		log_warn("Sorry DB: %s is closing", handle->db_desc->db_superblock.region_name);
+		return PARALLAX_FAILURE;
+	}
 
 	if (key_size > MAX_KEY_SIZE) {
 		log_info("Keys > %d bytes are not supported!", MAX_KEY_SIZE);

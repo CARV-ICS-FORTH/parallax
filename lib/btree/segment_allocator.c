@@ -445,6 +445,12 @@ uint64_t seg_free_level(struct db_descriptor *db_desc, uint64_t txn_id, uint8_t 
 	} else {
 		/*Finally L0 index in memory*/
 		curr_segment = db_desc->levels[level_id].first_segment[tree_id];
+
+		if (!curr_segment) {
+			log_warn("Nothing to do for level[%u][%u] because it is empty", level_id, tree_id);
+			return 0;
+		}
+
 		temp_segment = REAL_ADDRESS(curr_segment->next_segment);
 		int flag = 0;
 		/* log_info("Level id to free %d %d", level_id,curr_segment->in_mem); */

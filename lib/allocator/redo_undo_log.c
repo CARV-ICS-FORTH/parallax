@@ -274,6 +274,13 @@ static int rul_append(struct db_descriptor *db_desc, struct rul_log_entry *entry
 	return ret;
 }
 
+void rul_log_destroy(struct db_descriptor *db_desc)
+{
+	MUTEX_LOCK(&db_desc->allocation_log->rul_lock);
+	free(db_desc->allocation_log);
+	MUTEX_UNLOCK(&db_desc->allocation_log->rul_lock);
+}
+
 void rul_log_init(struct db_descriptor *db_desc)
 {
 	_Static_assert(RUL_LOG_CHUNK_NUM % 2 == 0, "RUL_LOG_CHUNK_NUM invalid!");

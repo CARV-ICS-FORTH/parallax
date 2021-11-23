@@ -3,7 +3,7 @@
 #include "../btree/btree.h"
 #include "../btree/conf.h"
 #include "../btree/dynamic_leaf.h"
-#include "max_min_heap.h"
+#include "../utilities/dups_list.h"
 #include "stack.h"
 #include <assert.h>
 #include <log.h>
@@ -114,10 +114,10 @@ static void init_generic_scanner(struct scannerHandle *sc, struct db_handle *han
 	active_tree = handle->db_desc->levels[0].active_tree;
 	sc->db = handle;
 	if (sc->type_of_scanner == FORWARD_SCANNER)
-		sh_init_heap(&sc->heap.min_heap, active_tree);
-	else if (sc->type_of_scanner == BACKWARD_SCANNER)
-		sh_init_max_heap(&sc->heap.max_heap, active_tree);
-	else {
+		sh_init_heap(&sc->heap, active_tree, MIN_HEAP);
+	else if (sc->type_of_scanner == BACKWARD_SCANNER) {
+		sh_init_heap(&sc->heap, active_tree, MAX_HEAP);
+	} else {
 		log_fatal("Unknown scanner type!");
 		assert(0);
 		exit(EXIT_FAILURE);
@@ -150,9 +150,9 @@ static void init_generic_scanner(struct scannerHandle *sc, struct db_handle *han
 
 				if (sc->type_of_scanner == FORWARD_SCANNER) {
 					nd.epoch = handle->db_desc->levels[0].epoch[i];
-					sh_insert_heap_node(&sc->heap.min_heap, &nd);
+					sh_insert_heap_node(&sc->heap, &nd);
 				} else //reverse scanners are not supported for now
-					sh_insert_max_heap_node(&sc->heap.max_heap, (struct sh_max_heap_node *)&nd);
+					sh_insert_heap_node(&sc->heap, (struct sh_heap_node *)&nd);
 
 			} else
 				sc->LEVEL_SCANNERS[0][i].valid = 0;
@@ -182,9 +182,9 @@ static void init_generic_scanner(struct scannerHandle *sc, struct db_handle *han
 				nd.active_tree = tree_id;
 				nd.db_desc = handle->db_desc;
 				if (sc->type_of_scanner == FORWARD_SCANNER)
-					sh_insert_heap_node(&sc->heap.min_heap, &nd);
+					sh_insert_heap_node(&sc->heap, &nd);
 				else
-					sh_insert_max_heap_node(&sc->heap.max_heap, (struct sh_max_heap_node *)&nd);
+					sh_insert_heap_node(&sc->heap, (struct sh_heap_node *)&nd);
 
 				sc->LEVEL_SCANNERS[level_id][tree_id].valid = 1;
 			}
@@ -292,6 +292,9 @@ void closeScanner(scannerHandle *sc)
 
 		__sync_fetch_and_sub(&sc->db->db_desc->levels[0].active_writers, 1);
 	}
+
+	free_dups_list(&sc->heap.dups);
+
 	free(sc);
 }
 
@@ -596,8 +599,8 @@ int32_t getNext(scannerHandle *sc)
 	struct sh_heap_node next_nd;
 
 	while (1) {
-		stat = sh_remove_min(&sc->heap.min_heap, &nd);
-		if (stat != EMPTY_MIN_HEAP) {
+		stat = sh_remove_top(&sc->heap, &nd);
+		if (stat != EMPTY_HEAP) {
 			sc->keyValue = nd.KV;
 			sc->kv_level_id = nd.level_id;
 			sc->kv_cat = sc->LEVEL_SCANNERS[nd.level_id][nd.active_tree].cat;
@@ -611,7 +614,7 @@ int32_t getNext(scannerHandle *sc)
 				next_nd.KV = sc->LEVEL_SCANNERS[nd.level_id][nd.active_tree].keyValue;
 				next_nd.kv_size = sc->LEVEL_SCANNERS[nd.level_id][nd.active_tree].kv_size;
 				next_nd.db_desc = sc->db->db_desc;
-				sh_insert_heap_node(&sc->heap.min_heap, &next_nd);
+				sh_insert_heap_node(&sc->heap, &next_nd);
 			}
 			if (nd.duplicate == 1) {
 				// assert(0);
@@ -1059,13 +1062,13 @@ int32_t _get_prev_KV(level_scanner *sc)
 
 int32_t getPrev(scannerHandle *sc)
 {
-	enum sh_max_heap_status stat;
-	struct sh_max_heap_node nd;
-	struct sh_max_heap_node next_nd;
+	enum sh_heap_status stat;
+	struct sh_heap_node nd;
+	struct sh_heap_node next_nd;
 
 	while (1) {
-		stat = sh_remove_max(&sc->heap.max_heap, &nd);
-		if (stat != EMPTY_MAX_HEAP) {
+		stat = sh_remove_top(&sc->heap, &nd);
+		if (stat != EMPTY_HEAP) {
 			sc->keyValue = nd.KV;
 
 			assert(sc->LEVEL_SCANNERS[nd.level_id][nd.active_tree].valid);
@@ -1078,7 +1081,7 @@ int32_t getPrev(scannerHandle *sc)
 				next_nd.KV = sc->LEVEL_SCANNERS[nd.level_id][nd.active_tree].keyValue;
 				next_nd.kv_size = sc->LEVEL_SCANNERS[nd.level_id][nd.active_tree].kv_size;
 				next_nd.db_desc = sc->db->db_desc;
-				sh_insert_max_heap_node(&sc->heap.max_heap, &next_nd);
+				sh_insert_heap_node(&sc->heap, &next_nd);
 			}
 			if (nd.duplicate == 1) {
 				// assert(0);
@@ -1317,7 +1320,7 @@ void seek_to_last(struct scannerHandle *sc, struct db_handle *handle)
 	active_tree = handle->db_desc->levels[0].active_tree;
 	sc->db = handle;
 	//its a backward scanner
-	sh_init_max_heap(&sc->heap.max_heap, active_tree);
+	sh_init_heap(&sc->heap, active_tree, MAX_HEAP);
 
 	for (int i = 0; i < NUM_TREES_PER_LEVEL; i++) {
 		struct node_header *root;
@@ -1344,7 +1347,7 @@ void seek_to_last(struct scannerHandle *sc, struct db_handle *handle)
 				nd.type = KV_FORMAT;
 				nd.db_desc = handle->db_desc;
 
-				sh_insert_max_heap_node(&sc->heap.max_heap, (struct sh_max_heap_node *)&nd);
+				sh_insert_heap_node(&sc->heap, (struct sh_heap_node *)&nd);
 			} else
 				sc->LEVEL_SCANNERS[0][i].valid = 0;
 		}
@@ -1373,7 +1376,7 @@ void seek_to_last(struct scannerHandle *sc, struct db_handle *handle)
 				nd.active_tree = tree_id;
 				nd.db_desc = handle->db_desc;
 
-				sh_insert_max_heap_node(&sc->heap.max_heap, (struct sh_max_heap_node *)&nd);
+				sh_insert_heap_node(&sc->heap, (struct sh_heap_node *)&nd);
 
 				sc->LEVEL_SCANNERS[level_id][tree_id].valid = 1;
 			}

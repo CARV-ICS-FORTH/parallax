@@ -219,6 +219,7 @@ int main(int argc, char **argv)
 		par_close_scanner(my_scanner);
 	}
 	log_info("Scan test Successfull");
+	par_close(hd);
 	free(k);
 
 	return 1;

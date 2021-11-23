@@ -395,9 +395,9 @@ void pr_flush_compaction(struct db_descriptor *db_desc, uint8_t level_id, uint8_
 //void commit_db_log(db_descriptor *db_desc, commit_log_info *info);
 //void commit_db_logs_per_volume(volume_descriptor *volume_desc);
 
-/*client API*/
 /*management operations*/
 db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_name, char CREATE_FLAG);
+enum parallax_status db_close(db_handle *handle);
 
 void *compaction_daemon(void *args);
 void flush_volume(volume_descriptor *volume_desc, char force_spill);

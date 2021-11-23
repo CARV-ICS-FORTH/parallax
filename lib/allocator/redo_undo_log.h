@@ -82,6 +82,7 @@ struct rul_log_descriptor {
 };
 
 void rul_log_init(struct db_descriptor *db_desc);
+void rul_log_destroy(struct db_descriptor *db_desc);
 uint64_t rul_start_txn(struct db_descriptor *db_desc);
 int rul_add_entry_in_txn_buf(struct db_descriptor *db_desc, struct rul_log_entry *entry);
 struct rul_log_info rul_flush_txn(struct db_descriptor *db_desc, uint64_t txn_id);

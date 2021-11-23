@@ -15,7 +15,6 @@
 #include "../include/parallax.h"
 #include "../btree/btree.h"
 #include "../scanner/scanner.h"
-#include <assert.h>
 #include <log.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -41,7 +40,7 @@ par_handle par_open(par_db_options *options)
 void par_close(par_handle handle)
 {
 	(void)handle;
-	/* db_close((db_handle *)handle); */
+	db_close((db_handle *)handle);
 }
 
 par_ret_code par_put(par_handle handle, struct par_key_value *key_value)

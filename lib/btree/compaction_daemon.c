@@ -1276,8 +1276,8 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 		log_info("Empty dst [%u][%u]", comp_req->dst_level, 0);
 
 	// initialize and fill min_heap properly
-	struct sh_min_heap *m_heap = sh_alloc_heap();
-	sh_init_heap(m_heap, comp_req->src_level);
+	struct sh_heap *m_heap = sh_alloc_heap();
+	sh_init_heap(m_heap, comp_req->src_level, MIN_HEAP);
 	struct sh_heap_node nd_src = { .KV = NULL, .level_id = 0, .active_tree = 0, .duplicate = 0, .type = KV_PREFIX };
 	struct sh_heap_node nd_dst = { .KV = NULL, .level_id = 0, .active_tree = 0, .duplicate = 0, .type = KV_PREFIX };
 	struct sh_heap_node nd_min = { .KV = NULL, .level_id = 0, .active_tree = 0, .duplicate = 0, .type = KV_PREFIX };
@@ -1308,7 +1308,7 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 	}
 	// ############################################################################
 	int32_t num_of_keys = 1; // COMPACTION_UNIT_OF_WORK;
-	enum sh_heap_status stat = GOT_MIN_HEAP;
+	enum sh_heap_status stat = GOT_HEAP;
 	do {
 		handle->db_desc->dirty = 0x01;
 		if (handle->db_desc->stat == DB_IS_CLOSING) {
@@ -1323,8 +1323,8 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 		// This is to synchronize compactions with snapshot
 		RWLOCK_RDLOCK(&handle->db_desc->levels[comp_req->dst_level].guard_of_level.rx_lock);
 		for (int i = 0; i < num_of_keys; i++) {
-			stat = sh_remove_min(m_heap, &nd_min);
-			if (stat == EMPTY_MIN_HEAP)
+			stat = sh_remove_top(m_heap, &nd_min);
+			if (stat == EMPTY_HEAP)
 				break;
 			if (!nd_min.duplicate) {
 				struct comp_parallax_key key;
@@ -1370,7 +1370,7 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 			}
 		}
 		RWLOCK_UNLOCK(&handle->db_desc->levels[comp_req->dst_level].guard_of_level.rx_lock);
-	} while (stat != EMPTY_MIN_HEAP);
+	} while (stat != EMPTY_HEAP);
 
 	if (level_src)
 		_close_spill_buffer_scanner(level_src);
@@ -1383,9 +1383,9 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 	}
 
 	mark_segment_space(handle, m_heap->dups);
-	free(m_heap);
 	comp_close_write_cursor(merged_level);
 
+	sh_destroy_heap(m_heap);
 	merged_level->handle->db_desc->levels[comp_req->dst_level].root_w[1] =
 		(struct node_header *)REAL_ADDRESS(merged_level->root_offt);
 	assert(merged_level->handle->db_desc->levels[comp_req->dst_level].root_w[1]->type == rootNode);

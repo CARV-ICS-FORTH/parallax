@@ -1,7 +1,7 @@
-#include <assert.h>
-#include <stdlib.h>
-#include <log.h>
 #include "dups_list.h"
+#include <assert.h>
+#include <log.h>
+#include <stdlib.h>
 
 struct dups_list *init_dups_list(void)
 {
@@ -57,10 +57,9 @@ struct dups_node *find_element(struct dups_list *list, uint64_t dev_offset)
 void free_dups_list(struct dups_list **list)
 {
 	assert(*list);
-	struct dups_node *temp_node = (*list)->head;
-	struct dups_node *next_node;
+	struct dups_node *next_node = NULL;
 
-	for (temp_node = (*list)->head; temp_node; temp_node = next_node) {
+	for (struct dups_node *temp_node = (*list)->head; temp_node; temp_node = next_node) {
 		next_node = temp_node->next;
 		free(temp_node);
 	}

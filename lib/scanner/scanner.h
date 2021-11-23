@@ -1,7 +1,6 @@
 #pragma once
 #include "../btree/btree.h"
 #include "../btree/conf.h"
-#include "max_min_heap.h"
 #include "min_max_heap.h"
 #include "stack.h"
 #include <stdint.h>
@@ -35,10 +34,7 @@ typedef struct level_scanner {
 
 typedef struct scannerHandle {
 	level_scanner LEVEL_SCANNERS[MAX_LEVELS][NUM_TREES_PER_LEVEL];
-	union {
-		struct sh_min_heap min_heap;
-		struct sh_max_heap max_heap;
-	} heap;
+	struct sh_heap heap;
 	db_handle *db;
 	void *keyValue;
 	int32_t type; /*to be removed also*/
