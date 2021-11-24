@@ -715,9 +715,9 @@ exit:
 
 db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_name, char CREATE_FLAG)
 {
+	struct db_handle *handle = NULL;
 	uint32_t leaf_size_per_level[10] = { LEVEL0_LEAF_SIZE, LEVEL1_LEAF_SIZE, LEVEL2_LEAF_SIZE, LEVEL3_LEAF_SIZE,
 					     LEVEL4_LEAF_SIZE, LEVEL5_LEAF_SIZE, LEVEL6_LEAF_SIZE, LEVEL7_LEAF_SIZE };
-	struct db_handle *handle = NULL;
 	struct volume_descriptor *volume_desc = NULL;
 	struct db_descriptor *db = NULL;
 	struct lib_option *dboptions = NULL;
@@ -746,8 +746,7 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 		handle->volume_desc = volume_desc;
 		handle->db_desc = db;
 		++handle->db_desc->reference_count;
-		MUTEX_UNLOCK(&init_lock);
-		return handle;
+		goto exit;
 	}
 
 	uint64_t level0_size;
@@ -766,12 +765,12 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 	if (!db_desc) {
 		if (CREATE_DB == CREATE_FLAG) {
 			log_warn("Sorry no room for new DB %s", db_name);
-			MUTEX_UNLOCK(&init_lock);
-			return NULL;
+			handle = NULL;
+			goto exit;
 		}
 		log_warn("Region %s not found instructed not to create a new one", db_name);
-		MUTEX_UNLOCK(&init_lock);
-		return NULL;
+		handle = NULL;
+		goto exit;
 	}
 
 	handle = calloc(1, sizeof(db_handle));
@@ -783,7 +782,6 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 	/*Remove later*/
 	handle->db_desc = db_desc;
 	handle->volume_desc = db_desc->db_volume;
-	MUTEX_UNLOCK(&init_lock);
 
 	/*init soft state for all levels*/
 	for (uint8_t level_id = 0; level_id < MAX_LEVELS; level_id++) {
@@ -893,14 +891,21 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 		exit(EXIT_FAILURE);
 	}
 
-	handle->db_desc->gc_db = db_open(volumeName, 0, size, SYSTEMDB, DONOT_CREATE_DB);
+	if (!strcmp(SYSTEMDB, db_name)) {
+		handle->db_desc->gc_db = db_open(volumeName, 0, size, SYSTEMDB, DONOT_CREATE_DB);
+		if (!handle->db_desc->gc_db)
+			handle->db_desc->gc_db = db_open(volumeName, 0, size, SYSTEMDB, CREATE_DB);
+		assert(handle->db_desc->gc_db);
+	} else
+		handle->db_desc->gc_db = NULL;
 
-	if (!handle->db_desc->gc_db)
-		handle->db_desc->gc_db = db_open(volumeName, 0, size, SYSTEMDB, CREATE_DB);
-
-	assert(handle->db_desc->gc_db);
 	/*get allocation transaction id for level-0*/
 	MUTEX_INIT(&handle->db_desc->flush_L0_lock, NULL);
+
+exit:
+	MUTEX_UNLOCK(&init_lock);
+	destroy_options(dboptions);
+	dboptions = NULL;
 	return handle;
 }
 
@@ -998,11 +1003,13 @@ enum parallax_status db_close(db_handle *handle)
 		perror("pthread_cond_destroy() error");
 		exit(EXIT_FAILURE);
 	}
-	free(handle->db_desc);
 
 finish:
-	free(handle);
+
 	MUTEX_UNLOCK(&init_lock);
+	//if (handle->db_desc->gc_db)
+	//	db_close(handle->db_desc->gc_db);
+	free(handle);
 	return PARALLAX_SUCCESS;
 }
 

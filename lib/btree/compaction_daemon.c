@@ -1520,6 +1520,8 @@ void *compaction(void *_comp_req)
 		struct level_descriptor *leveld_dst = &comp_req->db_desc->levels[comp_req->dst_level];
 
 		swap_levels(leveld_src, leveld_dst, comp_req->src_tree, 0);
+		uint64_t my_txn_id = db_desc->levels[comp_req->dst_level].allocation_txn_id[comp_req->dst_tree];
+		rul_apply_txn_buf_freeops_and_destroy(comp_req->db_desc, my_txn_id);
 #if ENABLE_BLOOM_FILTERS
 		log_info("Swapping also bloom filter");
 		leveld_dst->bloom_filter[0] = leveld_src->bloom_filter[0];

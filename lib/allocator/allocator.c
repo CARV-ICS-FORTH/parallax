@@ -109,53 +109,10 @@ off64_t mount_volume(char *volume_name, int64_t start, int64_t unused_size)
 
 		log_info("Creating virtual address space offset %lld size %ld\n", (long long)start, device_size);
 		// mmap the device
-		struct lib_option *dboptions = NULL;
-		parse_options(&dboptions);
-		struct lib_option *option;
 
-		HASH_FIND_STR(dboptions, "fastmap_on", option);
-		check_option("fastmap_on", option);
-		int fastmap_on = option->value.count;
-		fastmap_fd = -1;
 		char *addr_space = NULL;
 
-		if (fastmap_on) {
-			if (close(FD)) {
-				log_fatal("Cannot close FD");
-				exit(EXIT_FAILURE);
-			}
-
-			fastmap_fd = open("/dev/dmap/dmap1", O_RDWR);
-			if (fastmap_fd == -1) {
-				log_fatal("Fastmap could not open!");
-				perror("Reason: ");
-				exit(EXIT_FAILURE);
-			}
-
-			log_info("BEFORE BLK ZERO RANGE start %llu device size %llu", start, device_size);
-			/* struct fake_blk_page_range frang; */
-			/* memset(&frang,0,sizeof(frang)); */
-			/* // we should also zero all range from start to size */
-			/* frang.offset = start / 4096; // convert from bytes to pages */
-			/* frang.length = device_size / 4096; // convert from bytes to pages */
-			/* int ret = ioctl(fastmap_fd, FAKE_BLK_IOC_ZERO_RANGE, &frang); */
-
-			/* if (ret) { */
-			/*   log_fatal("ioctl(FAKE_BLK_IOC_ZERO_RANGE) failed! Program
-       * exiting...\n"); */
-			/*   exit(EXIT_FAILURE); */
-			/* } */
-			log_info("Fastmap has been initialiazed");
-
-			addr_space = mmap(NULL, device_size, PROT_READ | PROT_WRITE, MAP_SHARED, fastmap_fd, start);
-			FD = open(volume_name, O_RDWR | O_DIRECT | O_DSYNC);
-			if (FD < 0) {
-				log_fatal("Failed to open %s", volume_name);
-				perror("Reason:\n");
-				exit(EXIT_FAILURE);
-			}
-		} else
-			addr_space = mmap(NULL, device_size, PROT_READ | PROT_WRITE, MAP_SHARED, FD, start);
+		addr_space = mmap(NULL, device_size, PROT_READ | PROT_WRITE, MAP_SHARED, FD, start);
 
 		if (addr_space == MAP_FAILED) {
 			log_fatal("MMAP for device %s reason follows", volume_name);
