@@ -94,8 +94,8 @@ struct pr_region_allocation_log {
 	uint64_t txn_id;
 } __attribute__((packed, aligned(32)));
 
-struct pr_region_superblock {
-	char region_name[MAX_DB_NAME_SIZE];
+struct pr_db_superblock {
+	char db_name[MAX_DB_NAME_SIZE];
 	uint64_t root_r[MAX_LEVELS][NUM_TREES_PER_LEVEL];
 	uint64_t first_segment[MAX_LEVELS][NUM_TREES_PER_LEVEL];
 	uint64_t last_segment[MAX_LEVELS][NUM_TREES_PER_LEVEL];
@@ -114,14 +114,14 @@ struct pr_region_superblock {
 	uint64_t small_log_start_segment_dev_offt;
 	uint64_t small_log_offt_in_start_segment;
 	uint64_t lsn;
-	uint32_t region_name_size;
+	uint32_t db_name_size;
 	uint32_t id; //in the array
 	uint32_t valid;
 } __attribute__((packed, aligned(4096)));
 
 struct pr_superblock_array {
 	uint32_t size;
-	struct pr_region_superblock region[];
+	struct pr_db_superblock db[];
 };
 
 struct pr_ownership_registry {

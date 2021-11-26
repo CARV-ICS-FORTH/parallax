@@ -427,7 +427,7 @@ uint64_t seg_free_level(struct db_descriptor *db_desc, uint64_t txn_id, uint8_t 
 	segment_header *temp_segment;
 	uint64_t space_freed = 0;
 
-	log_info("Freeing up level %u for db %s", level_id, db_desc->db_superblock.region_name);
+	log_info("Freeing up level %u for db %s", level_id, db_desc->db_superblock->db_name);
 
 	if (level_id != 0) {
 		for (; curr_segment && curr_segment->next_segment != NULL;

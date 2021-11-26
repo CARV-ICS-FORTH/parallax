@@ -28,6 +28,7 @@ struct mem_bitmap_word {
 	int word_id;
 };
 
+#if 0
 struct mem_region_superblock {
 	char region_name[MAX_DB_NAME_SIZE];
 	struct segment_header *first_segment[MAX_LEVELS][NUM_TREES_PER_LEVEL];
@@ -50,5 +51,6 @@ struct mem_superblock_array {
 	uint32_t size;
 	struct mem_region_superblock region[];
 };
+#endif
 
 //</new_persistent_design>

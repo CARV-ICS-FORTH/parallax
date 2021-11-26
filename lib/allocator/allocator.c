@@ -50,7 +50,6 @@ pthread_mutex_t VOLUME_LOCK = PTHREAD_MUTEX_INITIALIZER;
 /*from this address any node can see the entire volume*/
 uint64_t MAPPED = 0;
 int FD = -1;
-int fastmap_fd = -1;
 
 /*<new_persistent_design>*/
 #define MEM_LOG_WORD_SIZE_IN_BITS 8
@@ -133,152 +132,78 @@ off64_t mount_volume(char *volume_name, int64_t start, int64_t unused_size)
 	return device_size;
 }
 
-#if 0
-static void mem_init_region_superblock(struct mem_region_superblock *mem_region, const char *region_name,
-				       uint32_t region_name_size)
+static uint8_t init_db_superblock(struct pr_db_superblock *db_superblock, const char *db_name, uint32_t db_name_size,
+				  uint32_t db_id)
 {
-	int region_id;
-	region_id = mem_region->id;
-	memset(mem_region, 0x00, sizeof(struct mem_region_superblock));
-	mem_region->id = region_id;
-	mem_region->valid = 1;
-	mem_region->reference_count = 0;
-
-  memcpy(mem_region->region_name, region_name, region_name_size);
-	mem_region->region_name_size = region_name_size;
-	if (MUTEX_INIT(&mem_region->superblock_lock, NULL) != 0) {
-		log_fatal("Failed to initialize region superblock lock");
-		exit(EXIT_FAILURE);
-	}
-}
-#endif
-
-void pr_write_region_superblock(struct volume_descriptor *volume_desc, struct mem_region_superblock *mem_region)
-{
-	MUTEX_LOCK(&mem_region->superblock_lock);
-	(void)volume_desc;
-	int region_id = mem_region->id;
-	// serialize mem_region to pr_region
-	struct pr_region_superblock pr_region;
-	memcpy(pr_region.region_name, mem_region->region_name, mem_region->region_name_size);
-	for (int l = 1; l < MAX_LEVELS; ++l) {
-		for (int tree = 0; tree < NUM_TREES_PER_LEVEL; ++tree) {
-			pr_region.first_segment[l][tree] = (uint64_t)mem_region->first_segment[l][tree] - MAPPED;
-			pr_region.last_segment[l][tree] = (uint64_t)mem_region->last_segment[l][tree] - MAPPED;
-			pr_region.offset[l][tree] = (uint64_t)mem_region->offset[l][tree];
-			pr_region.level_size[l][tree] = (uint64_t)mem_region->level_size[l][tree];
-		}
-	}
-	pr_region.region_name_size = mem_region->region_name_size;
-	pr_region.allocation_log = mem_region->allocation_log;
-	// serialize the logs(WAL,transient, large)
-	pr_region.small_log_head_offt = mem_region->small_log.head_dev_offt;
-	pr_region.small_log_tail_offt = mem_region->small_log.tail_dev_offt;
-	pr_region.small_log_size = mem_region->small_log.size;
-
-	pr_region.medium_log_head_offt = mem_region->medium_log.head_dev_offt;
-	pr_region.medium_log_tail_offt = mem_region->medium_log.tail_dev_offt;
-	pr_region.medium_log_size = mem_region->medium_log.size;
-
-	pr_region.big_log_head_offt = mem_region->big_log.head_dev_offt;
-	pr_region.big_log_tail_offt = mem_region->big_log.tail_dev_offt;
-	pr_region.big_log_size = mem_region->big_log.size;
-
-	pr_region.lsn = mem_region->lsn;
-	pr_region.id = mem_region->id;
-	pr_region.valid = mem_region->valid;
-
-	char *region_buffer = (char *)mem_region;
-	ssize_t total_bytes_written = 0;
-	ssize_t offset = region_id * sizeof(struct pr_region_superblock);
-	MUTEX_LOCK(&mem_region->superblock_lock);
-	uint32_t size = sizeof(struct pr_region_superblock);
-
-	while (total_bytes_written < size) {
-		int bytes_written = pwrite(FD, &region_buffer[offset + total_bytes_written], size - total_bytes_written,
-					   offset + total_bytes_written);
-		if (bytes_written == -1) {
-			log_fatal("Failed to write LOG_CHUNK reason follows");
-			perror("Reason");
-			exit(EXIT_FAILURE);
-		}
-		total_bytes_written += bytes_written;
-	}
-	MUTEX_UNLOCK(&mem_region->superblock_lock);
+	if (db_name_size > MAX_DB_NAME_SIZE)
+		return 0;
+	memset(db_superblock, 0x00, sizeof(struct pr_db_superblock));
+	memcpy(db_superblock->db_name, db_name, db_name_size);
+	db_superblock->db_name_size = db_name_size;
+	db_superblock->id = db_id; //in the array
+	db_superblock->valid = 1;
+	db_superblock->lsn = 0;
+	return 1;
 }
 
-struct mem_region_superblock *get_region_superblock(struct volume_descriptor *volume_desc, const char *region_name,
-						    uint32_t region_name_size, char allocate)
+struct pr_db_superblock *get_db_superblock(struct volume_descriptor *volume_desc, const char *db_name,
+					   uint32_t db_name_size, uint8_t allocate, uint8_t *new_db)
 {
-	(void)volume_desc;
-	(void)region_name;
-	(void)region_name_size;
-	(void)allocate;
-#if 0
-	MUTEX_LOCK(&volume_desc->region_array_lock);
-	struct mem_region_superblock *region = NULL;
-	int next_free_region_id = -1;
+	*new_db = 0;
+	MUTEX_LOCK(&volume_desc->db_array_lock);
+	struct pr_db_superblock *db = NULL;
+	int next_free_db_id = -1;
 	//search superblock array in the start of the volume
 	for (uint32_t i = 0; i < volume_desc->pr_regions->size; ++i) {
-		if (volume_desc->pr_regions->region[i].region_name_size == region_name_size) {
-			if (memcmp(volume_desc->pr_regions->region[i].region_name, region_name, region_name_size) ==
-			    0) {
-				//Found
-				++volume_desc->pr_regions->region[i].reference_count;
-				log_info(
-					"Found region %s at index %u of the region superblock array reference count of region is %u",
-					volume_desc->pr_regions->region[i].region_name, i,
-					volume_desc->pr_regions->region[i].reference_count);
-				region = &volume_desc->mem_regions->region[i];
+		if (!volume_desc->pr_regions->db[i].valid) {
+			if (next_free_db_id == -1)
+				next_free_db_id = i;
+			continue;
+		}
+
+		if (volume_desc->pr_regions->db[i].db_name_size == db_name_size) {
+			if (memcmp(volume_desc->pr_regions->db[i].db_name, db_name, db_name_size) == 0) {
+				/* DB Found*/
+				log_info("Found region %s at index %u of the region superblock array",
+					 volume_desc->pr_regions->db[i].db_name, i);
+				db = &volume_desc->pr_regions->db[i];
 				goto exit;
 			}
 		}
-		if (next_free_region_id < 0 && !volume_desc->mem_regions->region[i].valid)
-			next_free_region_id = i;
 	}
+
 	if (allocate) {
-		if (next_free_region_id >= 0) {
-			mem_init_region_superblock(&volume_desc->mem_regions->region[next_free_region_id], region_name,
-						   region_name_size);
-			++volume_desc->mem_regions->region[next_free_region_id].reference_count;
-			region = &volume_desc->mem_regions->region[next_free_region_id];
-			goto exit;
-		} else {
-			log_warn("No more space for new regions!");
-			region = NULL;
+		if (next_free_db_id >= 0) {
+			*new_db = 1;
+			init_db_superblock(&volume_desc->pr_regions->db[next_free_db_id], db_name, db_name_size,
+					   next_free_db_id);
+			db = &volume_desc->pr_regions->db[next_free_db_id];
 			goto exit;
 		}
-	} else {
-		region = NULL;
-		goto exit;
+		log_warn("No more space for new regions!");
 	}
+	db = NULL;
 exit:
-	MUTEX_UNLOCK(&volume_desc->region_array_lock);
-	return region;
-
-	return NULL;
-#endif
-	return NULL;
+	MUTEX_UNLOCK(&volume_desc->db_array_lock);
+	return db;
 }
 
-uint32_t destroy_region_superblock(struct volume_descriptor *volume_desc, const char *region_name,
-				   uint32_t region_name_size)
+uint32_t destroy_db_superblock(struct volume_descriptor *volume_desc, const char *db_name, uint32_t db_name_size)
 {
 	int ret = 1;
-	MUTEX_LOCK(&volume_desc->region_array_lock);
-
-	struct mem_region_superblock *rs = get_region_superblock(volume_desc, region_name, region_name_size, 0);
-	if (!rs) {
+	MUTEX_LOCK(&volume_desc->db_array_lock);
+	uint8_t found;
+	struct pr_db_superblock *db_superblock = get_db_superblock(volume_desc, db_name, db_name_size, 0, &found);
+	if (!db_superblock) {
 		log_warn("Region %s not found so I cannot destory it :-)");
 		ret = 0;
 		goto exit;
 	}
-	int region_id;
-	region_id = rs->id;
-	memset(rs, 0x00, sizeof(struct mem_region_superblock));
-	rs->id = region_id;
+	int db_id = db_superblock->id;
+	memset(db_superblock, 0x00, sizeof(struct pr_db_superblock));
+	db_superblock->id = db_id;
 exit:
-	MUTEX_UNLOCK(&volume_desc->region_array_lock);
+	MUTEX_UNLOCK(&volume_desc->db_array_lock);
 	return ret;
 }
 
@@ -628,7 +553,7 @@ void mem_init_superblock_array(struct volume_descriptor *volume_desc)
 {
 	int ret = posix_memalign((void **)&volume_desc->pr_regions, ALIGNMENT_SIZE,
 				 sizeof(struct pr_superblock_array) + (volume_desc->vol_superblock.max_regions_num *
-								       sizeof(struct pr_region_superblock)));
+								       sizeof(struct pr_db_superblock)));
 
 	if (ret) {
 		log_fatal("Failed to allocate regions array!");
@@ -637,13 +562,16 @@ void mem_init_superblock_array(struct volume_descriptor *volume_desc)
 
 	volume_desc->pr_regions->size = volume_desc->vol_superblock.max_regions_num;
 	off64_t dev_offt = sizeof(struct superblock);
-	uint32_t size = volume_desc->vol_superblock.max_regions_num * sizeof(struct pr_region_superblock);
+	uint32_t size = volume_desc->vol_superblock.max_regions_num * sizeof(struct pr_db_superblock);
 
-	if (!mem_read_into_buffer((char *)volume_desc->pr_regions->region, 0, size, dev_offt, volume_desc->vol_fd)) {
+	if (!mem_read_into_buffer((char *)volume_desc->pr_regions->db, 0, size, dev_offt, volume_desc->vol_fd)) {
 		log_fatal("Failed to read volume's region superblocks!");
 		exit(EXIT_FAILURE);
 	}
-
+	/*for (uint32_t i = 0; i < volume_desc->vol_superblock.max_regions_num; ++i) {
+		log_info("Region[%u]: valid %u  region name %s", i, volume_desc->pr_regions->db[i].valid,
+			 volume_desc->pr_regions->db[i].db_name);
+	}*/
 	log_info("Restored %s region superblocks in memory", volume_desc->volume_name);
 }
 
@@ -792,6 +720,11 @@ struct volume_descriptor *mem_get_volume_desc(char *volume_name)
 		}
 		memset(volume->volume_desc->dev_catalogue, 0x00, sizeof(struct pr_system_catalogue));
 		volume->volume_desc->mem_catalogue->epoch = 100;
+
+		volume->volume_desc->db_superblock_lock =
+			calloc(volume->volume_desc->vol_superblock.max_regions_num, sizeof(pthread_mutex_t));
+		for (uint32_t i = 0; i < volume->volume_desc->vol_superblock.max_regions_num; ++i)
+			MUTEX_INIT(&volume->volume_desc->db_superblock_lock[i], NULL);
 	}
 	HASH_ADD_PTR(volume_map, hash_key, volume);
 	MUTEX_UNLOCK(&volume_map_lock);

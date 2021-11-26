@@ -367,90 +367,6 @@ void init_level_bloom_filters(db_descriptor *db_desc, int level_id, int tree_id)
 #endif
 }
 
-#if 0
-static void pr_recover_logs(db_descriptor *db_desc, struct pr_db_entry *entry)
-{
-	log_info("Recovering KV logs (small,medium,large) for DB: %s", db_desc->db_name);
-
-	// Small log
-	db_desc->small_log.head_dev_offt = entry->small_log_head_offt;
-	db_desc->small_log.tail_dev_offt = entry->small_log_tail_offt;
-	db_desc->small_log.size = entry->small_log_size;
-	pr_init_log(&db_desc->small_log, SMALL_LOG);
-
-	// Medium log
-	db_desc->medium_log.head_dev_offt = entry->medium_log_head_offt;
-	db_desc->medium_log.tail_dev_offt = entry->medium_log_tail_offt;
-	db_desc->medium_log.size = entry->medium_log_size;
-	pr_init_log(&db_desc->medium_log, MEDIUM_LOG);
-
-	// Big log
-	db_desc->big_log.head_dev_offt = entry->big_log_head_offt;
-	db_desc->big_log.tail_dev_offt = entry->big_log_tail_offt;
-	db_desc->big_log.size = entry->big_log_size;
-	pr_init_log(&db_desc->big_log, BIG_LOG);
-	db_desc->lsn = entry->lsn;
-}
-
-
-static void bt_recover_L0(struct db_handle *hd)
-{
-	(void)hd;
-}
-
-struct db_handle *bt_restore_db(struct volume_descriptor *volume_desc, struct pr_db_entry *db_entry,
-				struct db_coordinates db_c)
-{
-	struct db_handle *handle = calloc(1, sizeof(struct db_handle));
-	struct db_descriptor *db_desc = calloc(1, sizeof(struct db_descriptor));
-
-	handle->volume_desc = volume_desc;
-	handle->db_desc = db_desc;
-	/*initialize database descriptor, soft state first*/
-	db_desc->group_id = db_c.group_id;
-	db_desc->group_index = db_c.index;
-	/*restore db name, in memory*/
-	memset(db_desc->db_name, 0x00, MAX_DB_NAME_SIZE);
-	strcpy(db_desc->db_name, db_entry->db_name);
-	db_desc->dirty = 0;
-
-	/*restore now persistent state of all levels*/
-	for (uint8_t level_id = 0; level_id < MAX_LEVELS; level_id++) {
-		db_desc->levels[level_id].level_size[0] = 0;
-		db_desc->levels[level_id].level_size[1] = 0;
-
-		for (uint8_t tree_id = 0; tree_id < NUM_TREES_PER_LEVEL; tree_id++) {
-			db_desc->levels[level_id].level_size[tree_id] = 0;
-			/*segments info per level*/
-			if (db_entry->first_segment[level_id][tree_id] != 0) {
-				db_desc->levels[level_id].first_segment[tree_id] =
-					(segment_header *)REAL_ADDRESS(db_entry->first_segment[level_id][tree_id]);
-				db_desc->levels[level_id].last_segment[tree_id] =
-					(segment_header *)REAL_ADDRESS(db_entry->last_segment[level_id][tree_id]);
-				db_desc->levels[level_id].offset[tree_id] = db_entry->offset[level_id][tree_id];
-			} else {
-				db_desc->levels[level_id].first_segment[tree_id] = NULL;
-				db_desc->levels[level_id].last_segment[tree_id] = NULL;
-				db_desc->levels[level_id].offset[tree_id] = 0;
-			}
-			/*total keys*/
-			db_desc->levels[level_id].level_size[tree_id] = db_entry->level_size[level_id][tree_id];
-			/*finally the roots*/
-			if (db_entry->root_r[level_id][tree_id] != 0)
-				db_desc->levels[level_id].root_r[tree_id] =
-					(node_header *)REAL_ADDRESS(db_entry->root_r[level_id][tree_id]);
-			else
-				db_desc->levels[level_id].root_r[tree_id] = NULL;
-
-			db_desc->levels[level_id].root_w[tree_id] = NULL;
-		}
-	}
-
-	pr_recover_logs(db_desc, db_entry);
-	return handle;
-}
-#endif
-
 /*<new_persistent_design>*/
 static void destroy_log_buffer(struct log_descriptor *log_desc)
 {
@@ -497,7 +413,7 @@ void init_log_buffer(struct log_descriptor *log_desc, enum log_type my_type)
 
 static void init_fresh_logs(struct db_descriptor *db_desc)
 {
-	log_info("Initializing KV logs (small,medium,large) for region: %s", db_desc->db_superblock.region_name);
+	log_info("Initializing KV logs (small,medium,large) for DB: %s", db_desc->db_superblock->db_name);
 	// Large log
 	struct segment_header *s = seg_get_raw_log_segment(db_desc, 0, 0);
 	s->segment_id = 0;
@@ -539,16 +455,11 @@ static void init_fresh_logs(struct db_descriptor *db_desc)
 	db_desc->lsn = 0;
 }
 
-static void init_fresh_db(struct db_descriptor *db_desc, char *region_name, uint32_t region_idx)
+static void init_fresh_db(struct db_descriptor *db_desc)
 {
-	memset(&db_desc->db_superblock, 0x00, sizeof(struct pr_region_superblock));
-	db_desc->db_superblock.id = region_idx;
-	db_desc->db_superblock.valid = 1;
-	strcpy(db_desc->db_superblock.region_name, region_name);
-	/*region name already in superblock*/
 	db_desc->dirty = 0;
 
-	struct pr_region_superblock *my_superblock = &db_desc->db_superblock;
+	struct pr_db_superblock *my_superblock = db_desc->db_superblock;
 
 	/*init now state for all levels*/
 	for (uint8_t level_id = 0; level_id < MAX_LEVELS; ++level_id) {
@@ -583,36 +494,35 @@ static void init_fresh_db(struct db_descriptor *db_desc, char *region_name, uint
 
 static void recover_logs(db_descriptor *db_desc)
 {
-	log_info("Recovering KV logs (small,medium,large) for DB: %s", db_desc->db_superblock.region_name);
+	log_info("Recovering KV logs (small,medium,large) for DB: %s", db_desc->db_superblock->db_name);
 
 	// Small log
-	db_desc->small_log.head_dev_offt = db_desc->db_superblock.small_log_head_offt;
-	db_desc->small_log.tail_dev_offt = db_desc->db_superblock.small_log_tail_offt;
-	db_desc->small_log.size = db_desc->db_superblock.small_log_size;
+	db_desc->small_log.head_dev_offt = db_desc->db_superblock->small_log_head_offt;
+	db_desc->small_log.tail_dev_offt = db_desc->db_superblock->small_log_tail_offt;
+	db_desc->small_log.size = db_desc->db_superblock->small_log_size;
 	init_log_buffer(&db_desc->small_log, SMALL_LOG);
 
 	// Medium log
-	db_desc->medium_log.head_dev_offt = db_desc->db_superblock.medium_log_head_offt;
-	db_desc->medium_log.tail_dev_offt = db_desc->db_superblock.medium_log_tail_offt;
-	db_desc->medium_log.size = db_desc->db_superblock.medium_log_size;
+	db_desc->medium_log.head_dev_offt = db_desc->db_superblock->medium_log_head_offt;
+	db_desc->medium_log.tail_dev_offt = db_desc->db_superblock->medium_log_tail_offt;
+	db_desc->medium_log.size = db_desc->db_superblock->medium_log_size;
 	init_log_buffer(&db_desc->medium_log, MEDIUM_LOG);
 
 	// Big log
-	db_desc->big_log.head_dev_offt = db_desc->db_superblock.big_log_head_offt;
-	db_desc->big_log.tail_dev_offt = db_desc->db_superblock.big_log_tail_offt;
-	db_desc->big_log.size = db_desc->db_superblock.big_log_size;
+	db_desc->big_log.head_dev_offt = db_desc->db_superblock->big_log_head_offt;
+	db_desc->big_log.tail_dev_offt = db_desc->db_superblock->big_log_tail_offt;
+	db_desc->big_log.size = db_desc->db_superblock->big_log_size;
 	init_log_buffer(&db_desc->big_log, BIG_LOG);
-	db_desc->lsn = db_desc->db_superblock.lsn;
+	db_desc->lsn = db_desc->db_superblock->lsn;
 }
 
 static void restore_db(struct db_descriptor *db_desc, uint32_t region_idx)
 {
 	/*First, calculate superblock offt and read it in memory*/
 	db_desc->db_superblock_idx = region_idx;
-	pr_read_region_superblock(db_desc);
+	pr_read_db_superblock(db_desc);
 
-	struct pr_region_superblock *my_superblock = &db_desc->db_superblock;
-	/*region name already in superblock*/
+	struct pr_db_superblock *my_superblock = db_desc->db_superblock;
 	db_desc->dirty = 0;
 
 	/*restore now persistent state of all levels*/
@@ -655,22 +565,15 @@ static db_descriptor *get_db_from_volume(char *volume_name, char *db_name, char 
 {
 	struct db_descriptor *db_desc = NULL;
 	struct volume_descriptor *volume_desc = mem_get_volume_desc(volume_name);
+	struct pr_db_superblock *db_superblock = NULL;
+	uint8_t new_db = 0;
 
-	pthread_mutex_lock(&volume_desc->region_array_lock);
-	uint32_t i = 0;
-	int found_db = 0;
-	int empty_slot = -1;
-	for (i = 0; i < volume_desc->pr_regions->size; ++i) {
-		if (empty_slot == -1 && !volume_desc->pr_regions->region[i].valid)
-			empty_slot = i;
+	if (CREATE_DB == create_db)
+		db_superblock = get_db_superblock(volume_desc, db_name, strlen(db_name) + 1, 1, &new_db);
+	else
+		db_superblock = get_db_superblock(volume_desc, db_name, strlen(db_name) + 1, 0, &new_db);
 
-		if (!strcmp(volume_desc->pr_regions->region[i].region_name, db_name)) {
-			found_db = 1;
-			log_info("Found db %s at index %d of the regions array");
-			break;
-		}
-	}
-	if (found_db) {
+	if (db_superblock) {
 		int ret = posix_memalign((void **)&db_desc, ALIGNMENT_SIZE, sizeof(struct db_descriptor));
 		if (ret) {
 			log_fatal("Failed to allocate db_descriptor");
@@ -678,37 +581,27 @@ static db_descriptor *get_db_from_volume(char *volume_name, char *db_name, char 
 		}
 		memset(db_desc, 0x00, sizeof(struct db_descriptor));
 		db_desc->db_volume = volume_desc;
-		log_info("Found DB: %s recovering its allocation log", db_name);
-		rul_log_init(db_desc);
-		restore_db(db_desc, i);
+		db_desc->db_superblock = db_superblock;
 
-		goto exit;
-	}
-
-	if (!found_db && create_db && empty_slot != -1) {
-		int ret = posix_memalign((void **)&db_desc, ALIGNMENT_SIZE, sizeof(struct db_descriptor));
-		if (ret) {
-			log_fatal("Failed to allocate db_descriptor");
-			exit(EXIT_FAILURE);
-		}
-		memset(db_desc, 0x00, sizeof(struct db_descriptor));
-
-		db_desc->db_volume = volume_desc;
-		log_info("Initializing new DB: %s, initializing its allocation log", db_name);
-		rul_log_init(db_desc);
-		db_desc->levels[0].allocation_txn_id[0] = rul_start_txn(db_desc);
-		/*
+		if (!new_db) {
+			log_info("Found DB: %s recovering its allocation log", db_name);
+			rul_log_init(db_desc);
+			restore_db(db_desc, db_desc->db_superblock->id);
+		} else {
+			log_info("Initializing new DB: %s, initializing its allocation log", db_name);
+			rul_log_init(db_desc);
+			db_desc->levels[0].allocation_txn_id[0] = rul_start_txn(db_desc);
+			/*
      * init_fresh_db allocates space for the L0_recovery log and large.
      * As a result we need to acquire a txn_id for the L0
     */
 
-		log_info("Got txn %llu for the initialization of Large and L0_recovery_logs of DB: %s",
-			 db_desc->levels[0].allocation_txn_id[0], db_name);
-		init_fresh_db(db_desc, db_name, empty_slot);
-		goto exit;
-	}
-exit:
-	pthread_mutex_unlock(&db_desc->db_volume->region_array_lock);
+			log_info("Got txn %llu for the initialization of Large and L0_recovery_logs of DB: %s",
+				 db_desc->levels[0].allocation_txn_id[0], db_name);
+			init_fresh_db(db_desc);
+		}
+	} else
+		log_info("DB: %s NOT found", db_name);
 	return db_desc;
 }
 /*</new_persistent_design>*/
@@ -768,7 +661,7 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 			handle = NULL;
 			goto exit;
 		}
-		log_warn("Region %s not found instructed not to create a new one", db_name);
+		log_warn("DB %s not found instructed not to create a new one", db_name);
 		handle = NULL;
 		goto exit;
 	}
@@ -891,7 +784,7 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 		exit(EXIT_FAILURE);
 	}
 
-	if (!strcmp(SYSTEMDB, db_name)) {
+	if (strcmp(SYSTEMDB, db_name)) {
 		handle->db_desc->gc_db = db_open(volumeName, 0, size, SYSTEMDB, DONOT_CREATE_DB);
 		if (!handle->db_desc->gc_db)
 			handle->db_desc->gc_db = db_open(volumeName, 0, size, SYSTEMDB, CREATE_DB);
@@ -901,7 +794,8 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 
 	/*get allocation transaction id for level-0*/
 	MUTEX_INIT(&handle->db_desc->flush_L0_lock, NULL);
-
+	pr_flush_L0(db_desc, db_desc->levels[0].active_tree);
+	db_desc->levels[0].allocation_txn_id[db_desc->levels[0].active_tree] = rul_start_txn(db_desc);
 exit:
 	MUTEX_UNLOCK(&init_lock);
 	destroy_options(dboptions);
@@ -911,23 +805,24 @@ exit:
 
 enum parallax_status db_close(db_handle *handle)
 {
+	struct db_handle *gc_db = NULL;
 	MUTEX_LOCK(&init_lock);
 	/*verify that this is a valid db*/
-	if (klist_find_element_with_key(handle->volume_desc->open_databases,
-					handle->db_desc->db_superblock.region_name) == NULL) {
+	if (klist_find_element_with_key(handle->volume_desc->open_databases, handle->db_desc->db_superblock->db_name) ==
+	    NULL) {
 		log_warn("Received close for db: %s that is not listed as open",
-			 handle->db_desc->db_superblock.region_name);
+			 handle->db_desc->db_superblock->db_name);
 		goto finish;
 	}
 
 	--handle->db_desc->reference_count;
 
 	if (handle->db_desc->reference_count < 0) {
-		log_fatal("Negative referece count for DB %s", handle->db_desc->db_superblock.region_name);
+		log_fatal("Negative referece count for DB %s", handle->db_desc->db_superblock->db_name);
 		exit(EXIT_FAILURE);
 	}
 
-	log_info("Closing DB:%s volume\n", handle->db_desc->db_superblock.region_name);
+	log_info("Closing DB:%s volume\n", handle->db_desc->db_superblock->db_name);
 
 	/*New requests will eventually see that db is closing*/
 	/*wake up possible clients that are stack due to non-availability of L0*/
@@ -954,7 +849,7 @@ enum parallax_status db_close(db_handle *handle)
 		usleep(50);
 
 	log_info("Ok compaction daemon exited continuing the close sequence of DB:%s",
-		 handle->db_desc->db_superblock.region_name);
+		 handle->db_desc->db_superblock->db_name);
 
 	for (uint8_t i = 0; i < NUM_TREES_PER_LEVEL; ++i) {
 		if (handle->db_desc->levels[0].tree_status[i] == SPILLING_IN_PROGRESS) {
@@ -974,10 +869,10 @@ enum parallax_status db_close(db_handle *handle)
 	}
 	pr_flush_L0(handle->db_desc, handle->db_desc->levels[0].active_tree);
 
-	log_info("All pending compactions done for DB:%s", handle->db_desc->db_superblock.region_name);
+	log_info("All pending compactions done for DB:%s", handle->db_desc->db_superblock->db_name);
 
 	if (!klist_remove_element(handle->volume_desc->open_databases, handle->db_desc)) {
-		log_fatal("Failed to remove db_desc of DB %s", handle->db_desc->db_superblock.region_name);
+		log_fatal("Failed to remove db_desc of DB %s", handle->db_desc->db_superblock->db_name);
 		exit(EXIT_FAILURE);
 	}
 
@@ -1004,12 +899,16 @@ enum parallax_status db_close(db_handle *handle)
 		exit(EXIT_FAILURE);
 	}
 
+	if (handle->db_desc->gc_db)
+		gc_db = handle->db_desc->gc_db;
+
+	free(handle->db_desc);
 finish:
 
 	MUTEX_UNLOCK(&init_lock);
-	//if (handle->db_desc->gc_db)
-	//	db_close(handle->db_desc->gc_db);
 	free(handle);
+	if (gc_db)
+		db_close(gc_db);
 	return PARALLAX_SUCCESS;
 }
 
@@ -1044,7 +943,7 @@ uint8_t insert_key_value(db_handle *handle, void *key, void *value, uint32_t key
 	wait_for_available_level0_tree(handle);
 
 	if (DB_IS_CLOSING == handle->db_desc->stat) {
-		log_warn("Sorry DB: %s is closing", handle->db_desc->db_superblock.region_name);
+		log_warn("Sorry DB: %s is closing", handle->db_desc->db_superblock->db_name);
 		return PARALLAX_FAILURE;
 	}
 
@@ -2546,7 +2445,7 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 	/*Acquire read guard lock*/
 	ret = RWLOCK_RDLOCK(&guard_of_level->rx_lock);
 	if (ret) {
-		log_fatal("Failed to acquire guard lock for db: %s", db_desc->db_superblock.region_name);
+		log_fatal("Failed to acquire guard lock for db: %s", db_desc->db_superblock->db_name);
 		perror("Reason: ");
 		exit(EXIT_FAILURE);
 	}

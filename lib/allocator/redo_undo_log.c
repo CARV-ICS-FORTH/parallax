@@ -56,7 +56,7 @@ static void rul_flush_log_chunk(struct db_descriptor *db_desc, uint32_t chunk_id
 					       db_desc->allocation_log->my_segment.chunk[chunk_id],
 					       size - total_bytes_written, dev_offt + total_bytes_written);
 			if (bytes_written == -1) {
-				log_fatal("Failed to write region's %s superblock", db_desc->db_superblock.region_name);
+				log_fatal("Failed to write DB's %s superblock", db_desc->db_superblock->db_name);
 				perror("Reason");
 				exit(EXIT_FAILURE);
 			}
@@ -188,7 +188,7 @@ static void rul_flush_last_chunk(struct db_descriptor *db_desc)
 		bytes_written = pwrite(db_desc->db_volume->vol_fd, db_desc->allocation_log->my_segment.chunk[chunk_id],
 				       size - total_bytes_written, dev_offt + total_bytes_written);
 		if (bytes_written == -1) {
-			log_fatal("Failed to write region's %s superblock", db_desc->db_superblock.region_name);
+			log_fatal("Failed to write DB's %s superblock", db_desc->db_superblock->db_name);
 			perror("Reason");
 			exit(EXIT_FAILURE);
 		}
@@ -209,7 +209,7 @@ static void rul_read_last_segment(struct db_descriptor *db_desc)
 		bytes_read = pwrite(db_desc->my_volume->vol_fd, &db_desc->allocation_log->my_segment,
 				    size - total_bytes_read, db_desc->my_superblock_offt + total_bytes_read);
 		if (bytes_read == -1) {
-			log_fatal("Failed to write region's %s superblock", db_desc->db_name);
+			log_fatal("Failed to write DB's %s superblock", db_desc->db_name);
 			perror("Reason");
 			exit(EXIT_FAILURE);
 		}
@@ -250,9 +250,9 @@ static int rul_append(struct db_descriptor *db_desc, struct rul_log_entry *entry
 		db_desc->my_superblock.allocation_log.tail_dev_offt = log_desc->tail_dev_offt;
 		db_desc->my_superblock.allocation_log.size = log_desc->size;
 		db_desc->my_superblock.allocation_log.txn_id = log_desc->txn_id;
-		pr_lock_region_superblock(db_desc);
-		pr_flush_region_superblock(db_desc);
-		pr_unlock_region_superblock(db_desc);
+		pr_lock_db_superblock(db_desc);
+		pr_flush_db_superblock(db_desc);
+		pr_unlock_db_superblock(db_desc);
 #endif
 		memset(&log_desc->my_segment, 0x00, sizeof(struct rul_log_segment));
 	}
@@ -297,16 +297,16 @@ void rul_log_init(struct db_descriptor *db_desc)
 	}
 	memset(log_desc, 0x00, sizeof(struct rul_log_descriptor));
 
-	pr_lock_region_superblock(db_desc);
+	pr_lock_db_superblock(db_desc);
 
 	MUTEX_INIT(&log_desc->rul_lock, NULL);
 	MUTEX_INIT(&log_desc->trans_map_lock, NULL);
 	// resume state, superblock must have been read in memory
-	log_desc->head_dev_offt = db_desc->db_superblock.allocation_log.head_dev_offt;
-	log_desc->tail_dev_offt = db_desc->db_superblock.allocation_log.tail_dev_offt;
-	log_desc->size = db_desc->db_superblock.allocation_log.size;
+	log_desc->head_dev_offt = db_desc->db_superblock->allocation_log.head_dev_offt;
+	log_desc->tail_dev_offt = db_desc->db_superblock->allocation_log.tail_dev_offt;
+	log_desc->size = db_desc->db_superblock->allocation_log.size;
 	log_desc->trans_map = NULL;
-	log_desc->txn_id = db_desc->db_superblock.allocation_log.txn_id;
+	log_desc->txn_id = db_desc->db_superblock->allocation_log.txn_id;
 
 	db_desc->allocation_log = log_desc;
 
@@ -330,13 +330,13 @@ void rul_log_init(struct db_descriptor *db_desc)
 		MUTEX_LOCK(&log_desc->rul_lock);
 		rul_append(db_desc, &e);
 		MUTEX_UNLOCK(&log_desc->rul_lock);
-		// Flush region's superblock
-		pr_flush_region_superblock(db_desc);
+		// Flush DB's superblock
+		pr_flush_db_superblock(db_desc);
 	} else
 		// Read last segment in memory
 		rul_read_last_segment(db_desc);
 
-	pr_unlock_region_superblock(db_desc);
+	pr_unlock_db_superblock(db_desc);
 
 	uint32_t tail_size = log_desc->size % SEGMENT_SIZE;
 	uint32_t n_entries_in_tail = tail_size / sizeof(struct rul_log_entry);

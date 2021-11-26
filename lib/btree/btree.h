@@ -301,10 +301,10 @@ typedef struct db_descriptor {
 #endif
 
 	/*<new_persistent_design>*/
-	struct pr_region_superblock db_superblock;
 	pthread_mutex_t db_superblock_lock;
 	struct rul_log_descriptor *allocation_log;
 	struct volume_descriptor *db_volume;
+	struct pr_db_superblock *db_superblock;
 	uint32_t db_superblock_idx;
 	/*</new_persistent_design>*/
 
@@ -383,10 +383,10 @@ void pr_flush_log_tail(struct db_descriptor *db_desc, struct volume_descriptor *
 		       struct log_descriptor *log_desc);
 /*<new_persistent_design>*/
 void init_log_buffer(struct log_descriptor *log_desc, enum log_type my_type);
-void pr_read_region_superblock(struct db_descriptor *db_desc);
-void pr_flush_region_superblock(struct db_descriptor *db_desc);
-void pr_lock_region_superblock(struct db_descriptor *db_desc);
-void pr_unlock_region_superblock(struct db_descriptor *db_desc);
+void pr_read_db_superblock(struct db_descriptor *db_desc);
+void pr_flush_db_superblock(struct db_descriptor *db_desc);
+void pr_lock_db_superblock(struct db_descriptor *db_desc);
+void pr_unlock_db_superblock(struct db_descriptor *db_desc);
 void pr_flush_L0(struct db_descriptor *db_desc, uint8_t tree_id);
 void pr_flush_compaction(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id);
 /*</new_persistent_design>*/

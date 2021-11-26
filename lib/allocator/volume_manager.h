@@ -51,7 +51,8 @@ typedef struct volume_descriptor {
 	uint64_t *mem_volume_bitmap;
 	int mem_volume_bitmap_size;
 	struct mem_bitmap_word curr_word;
-	pthread_mutex_t region_array_lock;
+	pthread_mutex_t db_array_lock;
+	pthread_mutex_t *db_superblock_lock;
 	int vol_fd;
 	/*</new_persistent_design>*/
 
@@ -111,5 +112,7 @@ a given bitmap-zone or not.*/
 struct volume_descriptor *mem_get_volume_desc(char *volume_name);
 uint64_t mem_allocate(struct volume_descriptor *volume_desc, uint64_t num_bytes);
 void mem_bitmap_mark_block_free(struct volume_descriptor *volume_desc, uint64_t dev_offt);
+struct pr_db_superblock *get_db_superblock(struct volume_descriptor *volume_desc, const char *db_name,
+					   uint32_t db_name_size, uint8_t allocate, uint8_t *new_db);
 /*</new_persistent_design>*/
 uint64_t get_timestamp(void);
