@@ -1,10 +1,10 @@
 #define _GNU_SOURCE
-#include <stdio.h>
-#include <stdint.h>
+#include "allocator.h"
 #include <pthread.h>
 #include <sched.h>
+#include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
-#include "allocator.h"
 #define DEV "/dev/kram"
 
 #define NUM_OF_THREADS 1
@@ -29,8 +29,10 @@ unsigned int seeds[NUM_OF_THREADS];
 
 void start(void *id);
 
-int main()
+int main(void)
 {
+	return 1;
+#if 0
 	uint64_t duration;
 	uint64_t mapped;
 	count = 0;
@@ -63,8 +65,9 @@ int main()
 	}
 	printf("Collisions %llu hits %llu sleep %llu max_tries %d\n", collisions, hits, sleep_times, max_tries);
 	return 1;
+#endif
 }
-
+#if 0
 void start(void *id)
 {
 	int32_t myid = *(int *)id;
@@ -92,10 +95,10 @@ void start(void *id)
 	printf("allocations %d\n", allocations);
 	duration = get_timestamp();
 	for (i = 0; i < allocations; i++) {
-		/*decision = rand_r(&seeds[myid])%10;	
-		if(decision < 7) 
+		/*decision = rand_r(&seeds[myid])%10;
+		if(decision < 7)
 			size = 4096;
-		else 
+		else
 			size = 131072;*/
 		size = 16384;
 		addr = allocate(size);
@@ -110,3 +113,4 @@ void start(void *id)
 	printf("duration for thread %d is %llu micro\n", myid, duration);
 	return;
 }
+#endif

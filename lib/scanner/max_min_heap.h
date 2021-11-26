@@ -1,6 +1,6 @@
 #pragma once
-#include <stdint.h>
 #include "../btree/btree.h"
+#include <stdint.h>
 
 enum sh_max_heap_status { EMPTY_MAX_HEAP = 4, GOT_MAX_HEAP = 5 };
 #define HEAP_SIZE 32

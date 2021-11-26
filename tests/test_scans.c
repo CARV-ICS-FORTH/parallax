@@ -1,4 +1,4 @@
-// Copyright [2020] [FORTH-ICS]
+// Copyright [2021] [FORTH-ICS]
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -11,21 +11,21 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-
 #include "btree/btree.h"
-#include <assert.h>
-#include <stdio.h>
-#include <pthread.h>
-#include <string.h>
-#include <stdlib.h>
-#include <parallax.h>
-#include <log.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <fcntl.h>
-#include <unistd.h>
 #include <allocator/volume_manager.h>
+#include <assert.h>
+#include <fcntl.h>
+#include <log.h>
+#include <parallax.h>
+#include <pthread.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <unistd.h>
 
+#if 0
 #define KEY_PREFIX "ld"
 #define KV_SIZE 512
 //#define VOLUME_NAME "/tmp/ramdisk/kreon1.dat"
@@ -246,9 +246,14 @@ void *scan_tester(void *args)
 	free((char *)kv.v.data);
 	return NULL;
 }
+#endif
 
 int main(int argc, char **argv)
 {
+	(void)argc;
+	(void)argv;
+	return 1;
+#if 0
 	if (argc < 2) {
 		log_fatal("Wrong input. Usage ./test_api <filename>");
 		exit(EXIT_FAILURE);
@@ -314,4 +319,5 @@ int main(int argc, char **argv)
 	free(s_args);
 	par_close(hd);
 	log_info("All tests successfull");
+#endif
 }

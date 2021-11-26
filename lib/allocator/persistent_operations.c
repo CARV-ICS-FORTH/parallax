@@ -1,184 +1,294 @@
+// Copyright [2021] [FORTH-ICS]
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+#include "../btree/btree.h"
+#include "../btree/conf.h"
+#include "device_structures.h"
+#include "log_structures.h"
+#include "redo_undo_log.h"
+#include "volume_manager.h"
 #include <assert.h>
+#include <log.h>
+#include <spin_loop.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 #include <unistd.h>
-#include <log.h>
-#include <list.h>
-#include <spin_loop.h>
-#include "device_structures.h"
-#include "volume_manager.h"
-#include "../btree/btree.h"
-#include "../btree/segment_allocator.h"
-#include "../btree/conf.h"
 
-#if 0
-void write_log_metadata(db_descriptor *db_desc, commit_log_info *info)
+/*<new_persistent_design>*/
+static void pr_flush_allocation_log_and_level_info(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
 {
-	/*write log info*/
-	if (info->big_log_head != NULL)
-		db_desc->commit_log->big_log_head = (segment_header *)ABSOLUTE_ADDRESS(info->big_log_head);
-	else
-		db_desc->commit_log->big_log_head = NULL;
-
-	if (info->big_log_tail != NULL)
-		db_desc->commit_log->big_log_tail = (segment_header *)ABSOLUTE_ADDRESS(info->big_log_tail);
-	else
-		db_desc->commit_log->big_log_tail = NULL;
-
-	/*write log info*/
-	if (info->medium_log_head != NULL)
-		db_desc->commit_log->medium_log_head = (segment_header *)ABSOLUTE_ADDRESS(info->medium_log_head);
-	else
-		db_desc->commit_log->medium_log_head = NULL;
-
-	if (info->medium_log_tail != NULL)
-		db_desc->commit_log->medium_log_tail = (segment_header *)ABSOLUTE_ADDRESS(info->medium_log_tail);
-	else
-		db_desc->commit_log->medium_log_tail = NULL;
-
-	/*write log info*/
-	if (info->small_log_head != NULL)
-		db_desc->commit_log->small_log_head = (segment_header *)ABSOLUTE_ADDRESS(info->small_log_head);
-	else
-		db_desc->commit_log->small_log_head = NULL;
-
-	if (info->small_log_tail != NULL)
-		db_desc->commit_log->small_log_tail = (segment_header *)ABSOLUTE_ADDRESS(info->small_log_tail);
-	else
-		db_desc->commit_log->small_log_tail = NULL;
-
-	db_desc->commit_log->big_log_size = info->big_log_size;
-	db_desc->commit_log->medium_log_size = info->medium_log_size;
-	db_desc->commit_log->small_log_size = info->small_log_size;
+	/*Flush my allocations*/
+	struct rul_log_info rul_log = rul_flush_txn(db_desc, db_desc->levels[level_id].allocation_txn_id[tree_id]);
+	/*new info about allocation_log*/
+	db_desc->db_superblock.allocation_log.tail_dev_offt = rul_log.tail_dev_offt;
+	db_desc->db_superblock.allocation_log.size = rul_log.size;
+	db_desc->db_superblock.allocation_log.txn_id = rul_log.txn_id;
+	/*new info about my level*/
+	db_desc->db_superblock.root_r[level_id][tree_id] = ABSOLUTE_ADDRESS(db_desc->levels[level_id].root_r[tree_id]);
+	db_desc->db_superblock.first_segment[level_id][0] =
+		ABSOLUTE_ADDRESS(db_desc->levels[level_id].first_segment[tree_id]);
+	db_desc->db_superblock.last_segment[level_id][tree_id] =
+		ABSOLUTE_ADDRESS(db_desc->levels[level_id].last_segment[tree_id]);
+	db_desc->db_superblock.offset[level_id][tree_id] = db_desc->levels[level_id].offset[tree_id];
+	db_desc->db_superblock.level_size[level_id][tree_id] = db_desc->levels[level_id].level_size[tree_id];
+	pr_flush_region_superblock(db_desc);
 }
 
-/*persists the KV-log of a DB, not thread safe!*/
-void commit_db_log(db_descriptor *db_desc, commit_log_info *info)
+void pr_flush_L0(struct db_descriptor *db_desc, uint8_t tree_id)
 {
-	segment_header *big_log_current_segment, *big_log_first_segment, *big_log_last_segment;
-	segment_header *medium_log_current_segment, *medium_log_first_segment, *medium_log_last_segment;
-	segment_header *small_log_current_segment, *small_log_first_segment, *small_log_last_segment;
-	unsigned all_logs_persisted = 1;
+	struct my_log_info {
+		uint64_t head_dev_offt;
+		uint64_t tail_dev_offt;
+		uint64_t size;
+	};
 
-	/*sync data then metadata*/
-	big_log_first_segment = (segment_header *)REAL_ADDRESS(db_desc->commit_log->big_log_tail);
-	medium_log_first_segment = (segment_header *)REAL_ADDRESS(db_desc->commit_log->medium_log_tail);
-	small_log_first_segment = (segment_header *)REAL_ADDRESS(db_desc->commit_log->small_log_tail);
+	struct my_log_info large_log;
+	struct my_log_info L0_recovery_log;
 
-	big_log_last_segment = info->big_log_tail;
-	medium_log_last_segment = info->medium_log_tail;
-	small_log_last_segment = info->small_log_tail;
+	MUTEX_LOCK(&db_desc->flush_L0_lock);
 
-	big_log_current_segment = big_log_first_segment;
-	medium_log_current_segment = medium_log_first_segment;
-	small_log_current_segment = small_log_first_segment;
+	/*Lock logs L0_recovery_log, medium, and Large locked*/
+	MUTEX_LOCK(&db_desc->lock_log);
 
-	db_desc->commit_log->lsn = info->lsn;
+	/*keep Large log state prior to releasing the lock*/
+	large_log.head_dev_offt = db_desc->big_log.head_dev_offt;
+	large_log.tail_dev_offt = db_desc->big_log.tail_dev_offt;
+	large_log.size = db_desc->big_log.size;
 
-	while (all_logs_persisted) {
-		all_logs_persisted = 0;
+	/*keep L0_recovery_log state prior to releasing the lock*/
+	L0_recovery_log.head_dev_offt = db_desc->small_log.head_dev_offt;
+	L0_recovery_log.tail_dev_offt = db_desc->small_log.tail_dev_offt;
+	L0_recovery_log.size = db_desc->small_log.size;
 
-		msync(big_log_current_segment, SEGMENT_SIZE, MS_SYNC);
-		msync(medium_log_current_segment, SEGMENT_SIZE, MS_SYNC);
-		msync(small_log_current_segment, SEGMENT_SIZE, MS_SYNC);
+	MUTEX_UNLOCK(&db_desc->lock_log);
 
-#ifdef DEBUG_COMMIT
-		log_info("Committed Segment id %llu", big_log_current_segment->segment_id);
-		log_info("Committed Segment id %llu", medium_log_current_segment->segment_id);
-		log_info("Committed Segment id %llu", small_log_current_segment->segment_id);
-#endif
+	/*
+   * Flush large and L0_recovery_log may flush more. We do this
+   * 1)To avoid holding all logs lock while doing I/O
+   * 2)We are sure that the (tail, size) of the previous step
+   * will be at the device
+  */
 
-		if (big_log_current_segment != big_log_last_segment) {
-			big_log_current_segment = (segment_header *)REAL_ADDRESS(big_log_current_segment->next_segment);
-			++all_logs_persisted;
-		}
+	/*Flush large log*/
+	pr_flush_log_tail(db_desc, db_desc->db_volume, &db_desc->big_log);
 
-		if (medium_log_current_segment->next_segment != NULL &&
-		    medium_log_current_segment != medium_log_last_segment) {
-			medium_log_current_segment =
-				(segment_header *)REAL_ADDRESS(medium_log_current_segment->next_segment);
-			++all_logs_persisted;
-		}
+	/*Flush L0 recovery log*/
+	pr_flush_log_tail(db_desc, db_desc->db_volume, &db_desc->small_log);
 
-		if (small_log_current_segment != small_log_last_segment) {
-			small_log_current_segment =
-				(segment_header *)REAL_ADDRESS(small_log_current_segment->next_segment);
-			++all_logs_persisted;
-		}
+	uint64_t my_txn_id = db_desc->levels[0].allocation_txn_id[tree_id];
+
+	/*time to write superblock*/
+	pr_lock_region_superblock(db_desc);
+	/*Flush my allocations*/
+
+	struct rul_log_info rul_log = rul_flush_txn(db_desc, my_txn_id);
+	/*new info about large*/
+	db_desc->db_superblock.big_log_tail_offt = large_log.tail_dev_offt;
+	db_desc->db_superblock.big_log_size = large_log.size;
+	/*new info about L0_recovery_log*/
+	db_desc->db_superblock.small_log_head_offt = L0_recovery_log.head_dev_offt;
+	db_desc->db_superblock.small_log_tail_offt = L0_recovery_log.tail_dev_offt;
+	db_desc->db_superblock.small_log_size = L0_recovery_log.size;
+	/*new info about allocation_log*/
+	db_desc->db_superblock.allocation_log.tail_dev_offt = rul_log.tail_dev_offt;
+	db_desc->db_superblock.allocation_log.size = rul_log.size;
+	db_desc->db_superblock.allocation_log.txn_id = rul_log.txn_id;
+	/*flush region superblock*/
+	pr_flush_region_superblock(db_desc);
+
+	pr_unlock_region_superblock(db_desc);
+
+	MUTEX_UNLOCK(&db_desc->flush_L0_lock);
+	rul_apply_txn_buf_freeops_and_destroy(db_desc, my_txn_id);
+}
+
+static void pr_flush_L0_to_L1(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
+{
+	struct my_log_info {
+		uint64_t tail_dev_offt;
+		uint64_t size;
+	};
+
+	struct my_log_info medium_log;
+
+	/*
+   * Keep medium log state. We don't need to lock because ONLY one compaction
+   * from L0 to L1 is allowed.
+  */
+	medium_log.tail_dev_offt = db_desc->medium_log.tail_dev_offt;
+	medium_log.size = db_desc->medium_log.size;
+	/*Flush medium log*/
+	pr_flush_log_tail(db_desc, db_desc->db_volume, &db_desc->medium_log);
+	pr_lock_region_superblock(db_desc);
+	uint64_t my_txn_id = db_desc->levels[level_id].allocation_txn_id[tree_id];
+
+	/*medium log info*/
+	db_desc->db_superblock.medium_log_tail_offt = medium_log.tail_dev_offt;
+	db_desc->db_superblock.medium_log_size = medium_log.size;
+
+	/*trim L0_recovery_log*/
+	struct segment_header *curr = REAL_ADDRESS(db_desc->db_superblock.small_log_tail_offt);
+	log_info("Tail segment id %llu", curr->segment_id);
+	curr = REAL_ADDRESS(curr->prev_segment);
+
+	struct segment_header *head = REAL_ADDRESS(db_desc->db_superblock.small_log_head_offt);
+	log_info("Head segment id %llu", head->segment_id);
+
+	uint64_t bytes_freed = 0;
+	while (curr && (uint64_t)curr->segment_id >= head->segment_id) {
+		struct rul_log_entry log_entry;
+		log_entry.dev_offt = ABSOLUTE_ADDRESS(curr);
+		//log_info("Triming L0 recovery log segment:%llu curr segment id:%llu", E.dev_offt, curr->segment_id);
+		log_entry.txn_id = my_txn_id;
+		log_entry.op_type = RUL_FREE;
+		log_entry.size = SEGMENT_SIZE;
+		rul_add_entry_in_txn_buf(db_desc, &log_entry);
+		bytes_freed += SEGMENT_SIZE;
+		curr = REAL_ADDRESS(curr->prev_segment);
 	}
 
-	write_log_metadata(db_desc, info);
+	log_info("*** Freed a total of %llu MB bytes from trimming L0 recovery log head %llu tail %llu size %llu ***",
+		 bytes_freed / (1024 * 1024), db_desc->db_superblock.small_log_head_offt,
+		 db_desc->db_superblock.small_log_tail_offt, db_desc->db_superblock.small_log_size);
 
-	if (msync(db_desc->commit_log, sizeof(commit_log_info), MS_SYNC) == -1) {
-		log_fatal("msync failed");
-		exit(EXIT_FAILURE);
+	db_desc->db_superblock.small_log_head_offt = db_desc->db_superblock.small_log_tail_offt;
+	db_desc->small_log.head_dev_offt = db_desc->db_superblock.small_log_head_offt;
+
+	/*recovery info for L0 L0_recovery_log*/
+	db_desc->db_superblock.small_log_start_segment_dev_offt = db_desc->small_log_start_segment_dev_offt;
+	db_desc->db_superblock.small_log_offt_in_start_segment = db_desc->small_log_start_offt_in_segment;
+
+	pr_flush_allocation_log_and_level_info(db_desc, level_id, tree_id);
+	pr_unlock_region_superblock(db_desc);
+	rul_apply_txn_buf_freeops_and_destroy(db_desc, my_txn_id);
+}
+
+static void pr_flush_Lmax_to_Ln(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
+{
+	log_info("Flushing Lmax to Ln!");
+	struct level_descriptor *level_desc = &db_desc->levels[level_id];
+
+	uint64_t my_txn_id = db_desc->levels[level_id].allocation_txn_id[tree_id];
+	/*trim medium log*/
+	struct segment_header *curr = REAL_ADDRESS(level_desc->medium_in_place_segment_dev_offt);
+	//log_info("Max medium in place segment id %llu", curr->segment_id);
+	curr = REAL_ADDRESS(curr->prev_segment);
+
+	struct segment_header *head = REAL_ADDRESS(db_desc->medium_log.head_dev_offt);
+	//log_info("Head of medium log segment id %llu", head->segment_id);
+
+	uint64_t bytes_freed = 0;
+	while (curr && (uint64_t)curr->segment_id >= head->segment_id) {
+		struct rul_log_entry log_entry;
+		log_entry.dev_offt = ABSOLUTE_ADDRESS(curr);
+		//log_info("Triming medium log segment:%llu curr segment id:%llu", E.dev_offt, curr->segment_id);
+		log_entry.txn_id = my_txn_id;
+		log_entry.op_type = RUL_FREE;
+		log_entry.size = SEGMENT_SIZE;
+		rul_add_entry_in_txn_buf(db_desc, &log_entry);
+		bytes_freed += SEGMENT_SIZE;
+		curr = REAL_ADDRESS(curr->prev_segment);
 	}
 
-	return;
+	log_info("*** Freed a total of %llu MB bytes from trimming medium log head %llu tail %llu size %llu ***",
+		 bytes_freed / (1024 * 1024), db_desc->db_superblock.small_log_head_offt,
+		 db_desc->db_superblock.small_log_tail_offt, db_desc->db_superblock.small_log_size);
+
+	pr_lock_region_superblock(db_desc);
+
+	/*new info about medium log after trim operation*/
+	db_desc->medium_log.head_dev_offt = level_desc->medium_in_place_segment_dev_offt;
+	db_desc->db_superblock.medium_log_head_offt = level_desc->medium_in_place_segment_dev_offt;
+	level_desc->medium_in_place_segment_dev_offt = 0;
+	level_desc->medium_in_place_max_segment_id = 0;
+	pr_flush_allocation_log_and_level_info(db_desc, level_id, tree_id);
+
+	pr_unlock_region_superblock(db_desc);
+	rul_apply_txn_buf_freeops_and_destroy(db_desc, my_txn_id);
 }
 
-void commit_db_logs_per_volume(volume_descriptor *volume_desc)
+void pr_flush_compaction(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
 {
-	struct commit_log_info info;
-	struct klist_node *node;
+	if (level_id == 1)
+		return pr_flush_L0_to_L1(db_desc, level_id, tree_id);
 
-	db_descriptor *db_desc;
-	node = klist_get_first(volume_desc->open_databases);
+	if (level_id == LEVEL_MEDIUM_INPLACE)
+		return pr_flush_Lmax_to_Ln(db_desc, level_id, tree_id);
 
-	while (node != NULL) {
-		db_desc = (db_descriptor *)(node->data);
-		/*stop level 0 writers for this db*/
-		RWLOCK_WRLOCK(&db_desc->levels[0].guard_of_level.rx_lock);
-		/*spinning*/
-		spin_loop(&(db_desc->levels[0].active_writers), 0);
+	uint64_t my_txn_id = db_desc->levels[level_id].allocation_txn_id[tree_id];
+	pr_lock_region_superblock(db_desc);
 
-#if LOG_WITH_MUTEX
-		MUTEX_LOCK(&db_desc->lock_log);
-#else
-		SPIN_LOCK(&db_desc->lock_log);
-#endif
-		info.big_log_head = (segment_header *)db_desc->big_log_head;
-		info.big_log_tail = (segment_header *)db_desc->big_log_tail;
-		info.big_log_size = db_desc->big_log_size;
+	pr_flush_allocation_log_and_level_info(db_desc, level_id, tree_id);
 
-		info.medium_log_head = (segment_header *)db_desc->medium_log_head;
-		info.medium_log_tail = (segment_header *)db_desc->medium_log_tail;
-		info.medium_log_size = db_desc->medium_log_size;
+	pr_unlock_region_superblock(db_desc);
+	rul_apply_txn_buf_freeops_and_destroy(db_desc, my_txn_id);
+}
 
-		info.small_log_head = (segment_header *)db_desc->small_log_head;
-		info.small_log_tail = (segment_header *)db_desc->small_log_tail;
-		info.small_log_size = db_desc->small_log_size;
-		info.lsn = db_desc->lsn;
-#if LOG_WITH_MUTEX
-		MUTEX_UNLOCK(&db_desc->lock_log);
-#else
-		SPIN_UNLOCK(&db_desc->lock_log);
-#endif
-		RWLOCK_UNLOCK(&db_desc->levels[0].guard_of_level.rx_lock);
+void pr_lock_region_superblock(struct db_descriptor *db_desc)
+{
+	MUTEX_LOCK(&db_desc->db_superblock_lock);
+}
 
-		if (db_desc->commit_log->big_log_size != db_desc->big_log_size ||
-		    db_desc->commit_log->medium_log_size != db_desc->medium_log_size ||
-		    db_desc->commit_log->small_log_size != db_desc->small_log_size)
-			commit_db_log(db_desc, &info);
+void pr_unlock_region_superblock(struct db_descriptor *db_desc)
+{
+	MUTEX_UNLOCK(&db_desc->db_superblock_lock);
+}
 
-		node = node->next;
+void pr_flush_region_superblock(struct db_descriptor *db_desc)
+{
+	uint64_t my_superblock_offt =
+		sizeof(struct superblock) + (sizeof(struct pr_region_superblock) + db_desc->db_superblock_idx);
+	ssize_t total_bytes_written = 0;
+	ssize_t bytes_written = 0;
+	ssize_t size = sizeof(struct pr_region_superblock);
+	while (total_bytes_written < size) {
+		bytes_written = pwrite(db_desc->db_volume->vol_fd, &db_desc->db_superblock, size - total_bytes_written,
+				       my_superblock_offt + total_bytes_written);
+		if (bytes_written == -1) {
+			log_fatal("Failed to write region's %s superblock", db_desc->db_superblock.region_name);
+			perror("Reason");
+			exit(EXIT_FAILURE);
+		}
+		total_bytes_written += bytes_written;
 	}
 }
-#endif
 
-/*As normal snapshot except it increases system's epoch
- * even in the case where no writes have taken place
- */
-void force_snapshot(volume_descriptor *volume_desc)
+void pr_read_region_superblock(struct db_descriptor *db_desc)
 {
-	volume_desc->force_snapshot = 1;
-	snapshot(volume_desc);
+	//where is my superblock
+	ssize_t total_bytes_written = 0;
+	ssize_t bytes_written = 0;
+	ssize_t size = sizeof(struct pr_region_superblock);
+	uint64_t my_superblock_offt =
+		sizeof(struct superblock) + (sizeof(struct pr_region_superblock) + db_desc->db_superblock_idx);
+
+	while (total_bytes_written < size) {
+		bytes_written = pwrite(db_desc->db_volume->vol_fd, &db_desc->db_superblock, size - total_bytes_written,
+				       my_superblock_offt + total_bytes_written);
+		if (bytes_written == -1) {
+			log_fatal("Failed to read region's %s superblock", db_desc->db_superblock.region_name);
+			perror("Reason");
+			assert(0);
+			exit(EXIT_FAILURE);
+		}
+		total_bytes_written += bytes_written;
+	}
 }
+/*</new_persistent_design>*/
 
 void pr_flush_log_tail(struct db_descriptor *db_desc, struct volume_descriptor *volume_desc,
-		       struct bt_log_descriptor *log_desc)
+		       struct log_descriptor *log_desc)
 {
 	(void)db_desc;
 	(void)volume_desc;
@@ -212,196 +322,5 @@ void pr_flush_log_tail(struct db_descriptor *db_desc, struct volume_descriptor *
 			exit(EXIT_FAILURE);
 		}
 		start_offt += bytes_written;
-	}
-}
-
-/*persists a consistent snapshot of the system*/
-void snapshot(volume_descriptor *volume_desc)
-{
-	//struct commit_log_info log_info;
-	struct pr_db_group *db_group;
-	struct pr_db_entry *db_entry;
-	node_header *old_root;
-	uint32_t i;
-	uint32_t j;
-	int32_t dirty = 0;
-	uint8_t level_id;
-
-	log_info("trigerring snapshot");
-	volume_desc->snap_preemption = SNAP_INTERRUPT_ENABLE;
-	/*1. Acquire all write locks for each database of the specific volume*/
-	struct klist_node *node = klist_get_first(volume_desc->open_databases);
-	db_descriptor *db_desc;
-
-	while (node != NULL) {
-		db_desc = (db_descriptor *)node->data;
-
-		/*stop all level writers*/
-		for (level_id = 0; level_id < MAX_LEVELS; level_id++) {
-			/*stop level 0 writers for this db*/
-			RWLOCK_WRLOCK(&db_desc->levels[level_id].guard_of_level.rx_lock);
-		}
-
-		for (level_id = 0; level_id < MAX_LEVELS; level_id++)
-			spin_loop(&(db_desc->levels[level_id].active_writers), 0);
-
-		//all levels locked
-		dirty += db_desc->dirty;
-		/*update the catalogue if db is dirty*/
-		if (db_desc->dirty > 0) {
-			pr_flush_log_tail(db_desc, volume_desc, &db_desc->small_log);
-			pr_flush_log_tail(db_desc, volume_desc, &db_desc->medium_log);
-			pr_flush_log_tail(db_desc, volume_desc, &db_desc->big_log);
-			db_desc->dirty = 0x00;
-			/*cow check*/
-			db_group = (struct pr_db_group *)REAL_ADDRESS(
-				volume_desc->mem_catalogue->db_group_index[db_desc->group_id]);
-
-			if (!db_group) {
-				log_fatal("db_group is NULL!");
-				assert(0);
-				exit(EXIT_FAILURE);
-			}
-			//log_info("group epoch %llu  dev_catalogue %llu", (LLU)db_group->epoch,
-			// volume_desc->dev_catalogue->epoch);
-
-			if (db_group->epoch <= volume_desc->dev_catalogue->epoch) {
-				//log_info("cow for db_group %llu", (LLU)db_group);
-				/*do cow*/
-				//superindex_db_group * new_group = (superindex_db_group *)allocate(volume_desc,DEVICE_BLOCK_SIZE,-1,GROUP_COW);
-				struct pr_db_group *new_group = (struct pr_db_group *)get_space_for_system(
-					volume_desc, sizeof(struct pr_db_group), 0);
-
-				memcpy(new_group, db_group, sizeof(struct pr_db_group));
-				new_group->epoch = volume_desc->mem_catalogue->epoch;
-				free_block(volume_desc, db_group, sizeof(struct pr_db_group));
-				db_group = new_group;
-				volume_desc->mem_catalogue->db_group_index[db_desc->group_id] =
-					(struct pr_db_group *)ABSOLUTE_ADDRESS(db_group);
-			}
-
-			db_entry = &(db_group->db_entries[db_desc->group_index]);
-			//log_info("pr db entry name %s db name %s", db_entry->db_name, db_desc->db_name);
-
-			for (i = 1; i < MAX_LEVELS; i++) {
-				for (j = 0; j < NUM_TREES_PER_LEVEL; j++) {
-					/*Serialize and persist space allocation info for all levels*/
-					if (db_desc->levels[i].last_segment[j] != NULL) {
-						db_entry->first_segment[i][j] =
-							ABSOLUTE_ADDRESS(db_desc->levels[i].first_segment[j]);
-						db_entry->last_segment[i][j] =
-							ABSOLUTE_ADDRESS(db_desc->levels[i].last_segment[j]);
-						db_entry->offset[i][j] = db_desc->levels[i].offset[j];
-					} else {
-						db_entry->first_segment[i][j] = 0;
-						db_entry->last_segment[i][j] = 0;
-						db_entry->offset[i][j] = 0;
-					}
-
-					/*now mark new roots*/
-					if (db_desc->levels[i].root_w[j] != NULL) {
-						db_entry->root_r[i][j] = ABSOLUTE_ADDRESS(db_desc->levels[i].root_w[j]);
-
-						/*mark old root to free it later*/
-						old_root = db_desc->levels[i].root_r[j];
-						db_desc->levels[i].root_r[j] = db_desc->levels[i].root_w[j];
-						db_desc->levels[i].root_w[j] = NULL;
-
-						if (old_root) {
-							if (old_root->type == rootNode)
-								free_block(volume_desc, old_root, INDEX_NODE_SIZE);
-							else
-								free_block(volume_desc, old_root, LEAF_NODE_SIZE);
-						}
-
-					} else if (db_desc->levels[i].root_r[j] == NULL) {
-						//log_warn("set %lu to %llu of db_entry %llu", i * j,
-						//	 db_entry->root_r[(i * MAX_LEVELS) + j], (uint64_t)db_entry - MAPPED);
-						db_entry->root_r[i][j] = 0;
-					}
-
-					db_entry->level_size[i][j] = db_desc->levels[i].level_size[j];
-				}
-			}
-
-			db_entry->big_log_head_offt = db_desc->big_log.head_dev_offt;
-			db_entry->big_log_tail_offt = db_desc->big_log.tail_dev_offt;
-			db_entry->big_log_size = db_desc->big_log.size;
-
-			db_entry->medium_log_head_offt = db_desc->medium_log.head_dev_offt;
-			db_entry->medium_log_tail_offt = db_desc->medium_log.tail_dev_offt;
-			db_entry->medium_log_size = db_desc->medium_log.size;
-
-			db_entry->small_log_head_offt = db_desc->small_log.head_dev_offt;
-			db_entry->small_log_tail_offt = db_desc->small_log.tail_dev_offt;
-			db_entry->small_log_size = db_desc->small_log.size;
-		}
-		node = node->next;
-	}
-
-	if (dirty > 0) {
-		//At least one db is dirty proceed to snapshot()
-		free_block(volume_desc, volume_desc->dev_catalogue, sizeof(struct pr_system_catalogue));
-		volume_desc->dev_catalogue = volume_desc->mem_catalogue;
-		/*allocate a new position for superindex*/
-
-		struct pr_system_catalogue *tmp = (struct pr_system_catalogue *)get_space_for_system(
-			volume_desc, sizeof(struct pr_system_catalogue), 0);
-		memcpy(tmp, volume_desc->dev_catalogue, sizeof(struct pr_system_catalogue));
-		++tmp->epoch;
-		volume_desc->mem_catalogue = tmp;
-
-		volume_desc->volume_superblock->system_catalogue =
-			(struct pr_system_catalogue *)ABSOLUTE_ADDRESS(volume_desc->dev_catalogue);
-
-		bitmap_set_buddies_immutable(volume_desc);
-
-		MUTEX_UNLOCK(&volume_desc->bitmap_lock);
-	}
-
-	volume_desc->last_snapshot = get_timestamp(); /*update snapshot ts*/
-	volume_desc->last_commit = volume_desc->last_snapshot;
-	volume_desc->last_sync = get_timestamp(); /*update snapshot ts*/
-	if (dirty > 0) { /*At least one db is dirty proceed to snapshot()*/
-		//double t1,t2;
-		//struct timeval tim;
-
-		//gettimeofday(&tim, NULL);
-		//t1=tim.tv_sec+(tim.tv_usec/1000000.0);
-		log_info("Syncing volume... from %llu to %llu", volume_desc->start_addr, volume_desc->size);
-#if 0
-		if (msync(volume_desc->start_addr, volume_desc->size, MS_SYNC) != 0) {
-			log_fatal("Error at msync start_addr %llu size %llu",
-				  (long long unsigned)volume_desc->start_addr, (long long unsigned)volume_desc->size);
-			switch (errno) {
-			case EBUSY:
-				log_error("msync returned EBUSY");
-				break;
-			case EINVAL:
-				log_error("msync returned EINVAL");
-				break;
-			case ENOMEM:
-				log_error("msync returned ENOMEM");
-				break;
-			}
-			exit(EXIT_FAILURE);
-		}
-#endif
-		//gettimeofday(&tim, NULL);
-		//t2=tim.tv_sec+(tim.tv_usec/1000000.0);
-		//fprintf(stderr, "snap_time=[%lf]sec\n", (t2-t1));
-	}
-	volume_desc->snap_preemption = SNAP_INTERRUPT_DISABLE;
-
-	/*release locks*/
-	node = klist_get_first(volume_desc->open_databases);
-
-	while (node != NULL) {
-		db_desc = (db_descriptor *)node->data;
-
-		for (i = 0; i < MAX_LEVELS; i++)
-			RWLOCK_UNLOCK(&db_desc->levels[i].guard_of_level.rx_lock);
-
-		node = node->next;
 	}
 }

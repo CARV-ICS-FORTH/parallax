@@ -1,12 +1,12 @@
+#include "set_options.h"
 #include <assert.h>
+#include <log.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <log.h>
-#include <yaml.h>
 #include <uthash.h>
-#include "set_options.h"
+#include <yaml.h>
 
 #define CONFIG_FILE "options.yml"
 

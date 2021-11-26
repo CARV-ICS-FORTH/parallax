@@ -9,7 +9,9 @@ option(
 
 set(LIB_C_SOURCE_FILES
     allocator/allocator.c
+    allocator/redo_undo_log.c
     allocator/persistent_operations.c
+    allocator/djb2.c
     allocator/recovery.c
     api/parallax.c
     btree/btree.c
@@ -45,21 +47,13 @@ target_include_directories(${LIB} PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
 
 set_source_files_properties(allocator/spin_loop.c PROPERTIES COMPILE_FLAGS
                                                              "-O0")
-# mkfs to initialize volumes
-add_executable(
-  mkfs.${LIB}
-  allocator/mkfs_parallax.c
-  allocator/allocator.c
-  allocator/persistent_operations.c
-  btree/segment_allocator.c
-  btree/set_options.c
-  ../utilities/spin_loop.c
-  ../utilities/list.c)
+# kv_format utility
+add_executable(kv_format.${LIB} allocator/kv_format.c)
 
-target_link_libraries(mkfs.${LIB} PRIVATE ${DEPENDENCIES})
+target_link_libraries(kv_format.${LIB} PRIVATE ${DEPENDENCIES})
 
 install(
-  TARGETS ${LIB} mkfs.${LIB}
+  TARGETS ${LIB} kv_format.${LIB}
   ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
   LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
   RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"

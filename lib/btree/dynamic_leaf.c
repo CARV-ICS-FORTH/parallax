@@ -1,13 +1,13 @@
+#include "dynamic_leaf.h"
+#include "../allocator/device_structures.h"
+#include "../allocator/volume_manager.h"
+#include "conf.h"
+#include "segment_allocator.h"
 #include <assert.h>
+#include <log.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
-#include <log.h>
-#include "dynamic_leaf.h"
-#include "conf.h"
-#include "segment_allocator.h"
-#include "../allocator/device_structures.h"
-#include "../allocator/volume_manager.h"
 
 void print_all_keys(const struct bt_dynamic_leaf_node *leaf, uint32_t leaf_size);
 char *fill_keybuf(char *key_loc, enum kv_entry_location key_type);
@@ -98,7 +98,7 @@ struct find_result find_key_in_dynamic_leaf(const struct bt_dynamic_leaf_node *l
 	bt_insert_req req;
 	char buf[MAX_KEY_SIZE + sizeof(uint32_t)];
 	struct dl_bsearch_result result = { .middle = 0, .status = INSERT, .op = DYNAMIC_LEAF_FIND };
-	struct find_result ret_result = { .kv = NULL, .key_type = KV_INPLACE };
+	struct find_result ret_result = { .kv = NULL, .key_type = KV_INPLACE, .kv_category = UNKNOWN_LOG_CATEGORY };
 	struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(leaf);
 	db_handle handle = { .db_desc = db_desc, .volume_desc = NULL };
 	uint32_t leaf_size = db_desc->levels[level_id].leaf_size;
@@ -123,12 +123,14 @@ struct find_result find_key_in_dynamic_leaf(const struct bt_dynamic_leaf_node *l
 			ret_result.kv = (void *)ABSOLUTE_ADDRESS(
 				get_kv_offset(leaf, leaf_size, slot_array[result.middle].index));
 			ret_result.key_type = KV_INPLACE;
+			ret_result.kv_category = slot_array[result.middle].key_category;
 			break;
 		case KV_INLOG:
 			ret_result.kv = (char *)&((struct bt_leaf_entry *)get_kv_offset(
 							  leaf, leaf_size, slot_array[result.middle].index))
 						->pointer;
 			ret_result.key_type = KV_INLOG;
+			ret_result.kv_category = slot_array[result.middle].key_category;
 			break;
 		default:
 			assert(0);
@@ -252,7 +254,7 @@ void binary_search_dynamic_leaf(const struct bt_dynamic_leaf_node *leaf, uint32_
 				ret = key_cmp(L.addr, req->key_value_buf, KV_FORMAT, KV_FORMAT);
 			}
 			if (L.in_tail) {
-				struct bt_log_descriptor *log_desc = NULL;
+				struct log_descriptor *log_desc = NULL;
 				//#if MEDIUM_LOG_UNSORTED
 				switch (slot_array[middle].key_category) {
 				case BIG_INLOG:
@@ -432,6 +434,7 @@ struct bt_rebalance_result split_dynamic_leaf(struct bt_dynamic_leaf_node *leaf,
 	char *key_buf, *leaf_log_tail;
 	level_descriptor *level = &req->metadata.handle->db_desc->levels[level_id];
 	volume_descriptor *volume_desc = req->metadata.handle->volume_desc;
+	struct db_descriptor *db_desc = req->metadata.handle->db_desc;
 	uint64_t i, j = 0;
 	uint32_t key_buf_size;
 	/*cow check*/
@@ -441,11 +444,11 @@ struct bt_rebalance_result split_dynamic_leaf(struct bt_dynamic_leaf_node *leaf,
 #endif
 
 	if (leaf->header.epoch <= volume_desc->dev_catalogue->epoch) {
-		leaf_copy = seg_get_dynamic_leaf_node(volume_desc, level, req->metadata.tree_id);
+		leaf_copy = seg_get_dynamic_leaf_node(db_desc, level_id, req->metadata.tree_id);
 		memcpy(leaf_copy, leaf, level->leaf_size);
 		leaf_copy->header.epoch = volume_desc->mem_catalogue->epoch;
 		leaf = leaf_copy;
-		seg_free_leaf_node(volume_desc, level, req->metadata.tree_id, (leaf_node *)old_leaf);
+		seg_free_leaf_node(db_desc, level_id, req->metadata.tree_id, (leaf_node *)old_leaf);
 	}
 
 #ifdef DEBUG_DYNAMIC_LEAF
@@ -490,7 +493,7 @@ struct bt_rebalance_result split_dynamic_leaf(struct bt_dynamic_leaf_node *leaf,
 	}
 
 	/*Fix Right leaf metadata*/
-	rep.right_dlchild = seg_get_dynamic_leaf_node(volume_desc, level, req->metadata.tree_id);
+	rep.right_dlchild = seg_get_dynamic_leaf_node(db_desc, level_id, req->metadata.tree_id);
 	rep.middle_key_buf = fill_keybuf(get_kv_offset(leaf, leaf_size, slot_array[leaf->header.num_entries / 2].index),
 					 slot_array[leaf->header.num_entries / 2].bitmap);
 
@@ -522,7 +525,7 @@ struct bt_rebalance_result split_dynamic_leaf(struct bt_dynamic_leaf_node *leaf,
 	rep.middle_key_buf = rep.middle_key;
 
 	if (L.in_tail) {
-		struct bt_log_descriptor *log_desc = NULL;
+		struct log_descriptor *log_desc = NULL;
 		//#if MEDIUM_LOG_UNSORTED
 		switch (slot_array[leaf->header.num_entries / 2].key_category) {
 		case BIG_INLOG:
@@ -588,7 +591,7 @@ struct bt_rebalance_result split_dynamic_leaf(struct bt_dynamic_leaf_node *leaf,
 	print_all_keys(right_leaf, leaf_size);
 #endif
 
-	seg_free_leaf_node(volume_desc, level, req->metadata.tree_id, (leaf_node *)old_leaf);
+	seg_free_leaf_node(db_desc, level_id, req->metadata.tree_id, (leaf_node *)old_leaf);
 	free(split_buffer);
 
 	return rep;
@@ -604,16 +607,17 @@ struct bt_rebalance_result special_split_dynamic_leaf(struct bt_dynamic_leaf_nod
 	char *key_buf, *leaf_log_tail;
 	level_descriptor *level = &req->metadata.handle->db_desc->levels[level_id];
 	volume_descriptor *volume_desc = req->metadata.handle->volume_desc;
+	struct db_descriptor *db_desc = req->metadata.handle->db_desc;
 	uint64_t split_point;
 	uint32_t key_buf_size;
 	/*cow check*/
 
 	if (leaf->header.epoch <= volume_desc->dev_catalogue->epoch) {
-		leaf_copy = seg_get_dynamic_leaf_node(volume_desc, level, req->metadata.tree_id);
+		leaf_copy = seg_get_dynamic_leaf_node(db_desc, level_id, req->metadata.tree_id);
 		memcpy(leaf_copy, leaf, level->leaf_size);
 		leaf_copy->header.epoch = volume_desc->mem_catalogue->epoch;
 		leaf = leaf_copy;
-		seg_free_leaf_node(volume_desc, level, req->metadata.tree_id, (leaf_node *)old_leaf);
+		seg_free_leaf_node(db_desc, level_id, req->metadata.tree_id, (leaf_node *)old_leaf);
 	}
 
 	slot_array = get_slot_array_offset(leaf);
@@ -621,7 +625,7 @@ struct bt_rebalance_result special_split_dynamic_leaf(struct bt_dynamic_leaf_nod
 
 	split_point = leaf->header.num_entries - 1;
 	/*Fix Right leaf metadata*/
-	rep.right_dlchild = seg_get_dynamic_leaf_node(volume_desc, level, req->metadata.tree_id);
+	rep.right_dlchild = seg_get_dynamic_leaf_node(db_desc, level_id, req->metadata.tree_id);
 
 	char *key_loc = get_kv_offset(leaf, leaf_size, slot_array[split_point].index);
 	//medium log tail stub
@@ -674,7 +678,7 @@ struct bt_rebalance_result special_split_dynamic_leaf(struct bt_dynamic_leaf_nod
 	} else
 		rep.stat = LEAF_NODE_SPLITTED;
 
-	seg_free_leaf_node(volume_desc, level, req->metadata.tree_id, (leaf_node *)old_leaf);
+	seg_free_leaf_node(db_desc, level_id, req->metadata.tree_id, (leaf_node *)old_leaf);
 	return rep;
 }
 
@@ -750,7 +754,7 @@ int reorganize_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, uint32_t leaf_siz
 {
 	enum log_category cat = req->metadata.cat;
 	unsigned kv_size = (cat == BIG_INLOG || cat == MEDIUM_INLOG || cat == SMALL_INLOG) ?
-					 sizeof(struct bt_leaf_entry) :
+				   sizeof(struct bt_leaf_entry) :
 					 req->metadata.kv_size;
 
 	if (leaf->header.fragmentation <= kv_size || req->metadata.level_id != 0)
@@ -758,8 +762,7 @@ int reorganize_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, uint32_t leaf_siz
 
 	struct bt_dynamic_leaf_node *reorganize_buffer = leaf;
 
-	leaf = seg_get_dynamic_leaf_node(req->metadata.handle->volume_desc, &req->metadata.handle->db_desc->levels[0],
-					 req->metadata.tree_id);
+	leaf = seg_get_dynamic_leaf_node(req->metadata.handle->db_desc, 0, req->metadata.tree_id);
 
 	struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(reorganize_buffer);
 	/* validate_dynamic_leaf(reorganize_buffer, &req->metadata.handle->db_desc->levels[req->metadata.level_id], */

@@ -1,15 +1,15 @@
 #define _LARGEFILE64_SOURCE
-#include <sys/stat.h>
-#include <fcntl.h>
-#include <string.h>
+#include <allocator/volume_manager.h>
 #include <assert.h>
-#include <sys/ioctl.h>
+#include <btree/btree.h>
+#include <fcntl.h>
 #include <linux/fs.h>
+#include <log.h>
+#include <string.h>
+#include <sys/ioctl.h>
+#include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
-#include <log.h>
-#include <allocator/volume_manager.h>
-#include <btree/btree.h>
 
 #define PATH "/tmp/ramdisk/kreon.dat"
 #define KV_SIZE 1500
@@ -80,13 +80,13 @@ int main(void)
 
 	handle = db_open(PATH, 0, size, "test.db", CREATE_DB);
 	assert(handle);
-	snapshot(handle->volume_desc);
+	//snapshot(handle->volume_desc);
 	update_half = 1;
 	serially_insert_keys(handle);
 	log_info(
 		"-------------------------------------------------------------------FINISH-------------------------------------------------------------------------------");
 	serially_insert_keys(handle);
-	snapshot(handle->volume_desc);
+	//snapshot(handle->volume_desc);
 
 	return 0;
 }

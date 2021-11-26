@@ -1,54 +1,54 @@
-/** @file btree.h
- *  @brief
- *  @author Giorgos Saloustros (gesalous@ics.forth.gr)
- *  @author Giorgos Xanthakis  (gxanth@ics.forth.gr)
- */
+// Copyright [2021] [FORTH-ICS]
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #pragma once
-#include <pthread.h>
-#include <semaphore.h>
-#include <stdlib.h>
-#include <stdint.h>
-#include <sys/types.h>
-#include <limits.h>
+#include "../allocator/device_structures.h"
+#include "../allocator/log_structures.h"
+#include "../allocator/volume_manager.h"
+#include "conf.h"
 #if ENABLE_BLOOM_FILTERS
 #include <bloom.h>
 #endif
-#include "conf.h"
-#include "../allocator/volume_manager.h"
-#define SUCCESS 4
-#define FAILED 5
-
-#define KREON_OK 10
-#define KREON_FAILED 18
-#define KREON_STANDALONE 19
+#include <limits.h>
+#include <pthread.h>
+#include <semaphore.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <sys/types.h>
 
 #define PREFIX_SIZE 12
 
 #define SPILL_BUFFER_SIZE 32 * 1024
 #define MAX_HEIGHT 9
-/**
- * FLAGS used of during _insert
- */
-#define SEARCH_PERSISTENT_TREE 0x01
-#define SEARCH_DIRTY_TREE 0x02
 
 /* types used for the keys
  * KV_FORMAT: [key_len|key]
  * KV_PREFIX: [PREFIX|HASH|ADDR_TO_KV_LOG]
  */
 enum KV_type { KV_FORMAT = 19, KV_PREFIX = 20 };
-#define SYSTEM_ID 0
-
-extern unsigned long long ins_prefix_hit_l0;
-extern unsigned long long ins_prefix_hit_l1;
-extern unsigned long long ins_prefix_miss_l0;
-extern unsigned long long ins_prefix_miss_l1;
 
 extern int32_t index_order;
 
-struct lookup_reply {
-	void *addr;
-	uint8_t lc_failed;
+struct lookup_operation {
+	struct db_descriptor *db_desc; /*in variable*/
+	char *kv_buf; /*in variable*/
+	char *buffer_to_pack_kv; /*in-out variable*/
+	void *value_device_address; /*out variable*/
+	uint32_t size; /*in-out variable*/
+	uint8_t buffer_overflow : 1; /*out variable*/
+	uint8_t found : 1; /*out variable*/
+	uint8_t retrieve : 1; /*in variable*/
 };
 
 typedef enum {
@@ -69,7 +69,7 @@ typedef enum {
 	SPILLING_IN_PROGRESS = 1,
 } level_0_tree_status;
 
-enum kreon_status { FAILURE = -1 };
+enum parallax_status { PARALLAX_SUCCESS = 102, PARALLAX_FAILURE = 108 };
 
 enum db_initializers { CREATE_DB = 4, DONOT_CREATE_DB = 5 };
 
@@ -217,42 +217,9 @@ struct splice {
 	char data[0];
 };
 
-#if 0
-/** contains info about the part of the log which has been commited but has not
- *  been applied in the index. In particular, recovery process now will be
- *  1. Read superblock, db_descriptor
- *  2. Is commit_log equal to the snapshot log?
- *      2.1 if not
- *              mark commit log segments as reserved in the allocator bitmap
- *              apply commit log changes in the index
- *              snapshot()
- *      else
- *              recover as usual
- * We now have two functions for persistence
- *      1. snapshot() persists the allocator, index, KV log, and db's of a
- *volume--> heavy operation called in minutes granularity
- *      2. commit_log() persists KV log, assuring that data in the KV-log after
- *      this operation are recoverable
- **/
-typedef struct commit_log_info {
-	segment_header *big_log_head;
-	segment_header *big_log_tail;
-	segment_header *medium_log_head;
-	segment_header *medium_log_tail;
-	segment_header *small_log_head;
-	segment_header *small_log_tail;
-	uint64_t big_log_size;
-	uint64_t medium_log_size;
-	uint64_t small_log_size;
-	uint64_t lsn;
-	char pad[4016];
-} commit_log_info;
-#endif
-
 /**
  * db_descriptor is a soft state descriptor per open database. superindex
-*structure
- * keeps a serialized from of the vital information needed to restore each
+ * structure keeps a serialized from of the vital information needed to restore each
 *db_descriptor
 **/
 
@@ -260,18 +227,6 @@ typedef struct lock_table {
 	pthread_rwlock_t rx_lock;
 	char pad[8];
 } lock_table;
-
-typedef struct kv_location {
-	void *kv_addr;
-	uint64_t log_offset;
-	uint32_t rdma_key;
-} kv_location;
-
-typedef struct kv_proposal {
-	void *kv;
-	void *master_log_addr;
-	uint64_t log_offset;
-} kv_proposal;
 
 struct leaf_node_metadata {
 	uint32_t bitmap_entries;
@@ -303,10 +258,9 @@ typedef struct level_descriptor {
 	/*needed for L0 scanner tiering colission*/
 	uint64_t epoch[NUM_TREES_PER_LEVEL];
 	uint64_t scanner_epoch;
+	uint64_t allocation_txn_id[NUM_TREES_PER_LEVEL];
 	lock_table guard_of_level;
 	pthread_mutex_t spill_trigger;
-	//Since we perform always KV separation we express it
-	//in number of keys
 	uint64_t level_size[NUM_TREES_PER_LEVEL];
 	uint64_t max_level_size;
 	struct leaf_node_metadata leaf_offsets;
@@ -320,6 +274,9 @@ typedef struct level_descriptor {
 	double count_compactions;
 #endif
 	int64_t active_writers;
+	/*info for trimming medium_log, used only in L_{n-1}*/
+	uint64_t medium_in_place_max_segment_id;
+	uint64_t medium_in_place_segment_dev_offt;
 	/*spilling or not?*/
 	uint32_t leaf_size;
 	char tree_status[NUM_TREES_PER_LEVEL];
@@ -328,49 +285,40 @@ typedef struct level_descriptor {
 	char in_recovery_mode;
 } level_descriptor;
 
-struct log_tail {
-	char buf[SEGMENT_SIZE];
-	volatile uint32_t bytes_in_chunk[SEGMENT_SIZE / LOG_CHUNK_SIZE];
-	uint64_t dev_offt;
-	uint64_t start;
-	uint64_t end;
-	uint32_t pending_readers;
-	uint32_t free;
-	uint32_t IOs_completed_in_tail;
-	int fd;
-};
-
-struct bt_log_descriptor {
-	pthread_rwlock_t log_tail_buf_lock;
-	char pad[8];
-	struct log_tail *tail[LOG_TAIL_NUM_BUFS];
-	uint64_t head_dev_offt;
-	uint64_t tail_dev_offt;
-	uint64_t size;
-	uint64_t curr_tail_id;
-};
-
 struct bt_kv_log_address {
 	void *addr;
 	uint8_t in_tail;
 	uint8_t tail_id;
 };
-struct bt_kv_log_address bt_get_kv_medium_log_address(struct bt_log_descriptor *log_desc, uint64_t dev_offt);
-struct bt_kv_log_address bt_get_kv_log_address(struct bt_log_descriptor *log_desc, uint64_t dev_offt);
-void bt_done_with_value_log_address(struct bt_log_descriptor *log_desc, struct bt_kv_log_address *L);
+struct bt_kv_log_address bt_get_kv_medium_log_address(struct log_descriptor *log_desc, uint64_t dev_offt);
+struct bt_kv_log_address bt_get_kv_log_address(struct log_descriptor *log_desc, uint64_t dev_offt);
+void bt_done_with_value_log_address(struct log_descriptor *log_desc, struct bt_kv_log_address *L);
 
 typedef struct db_descriptor {
-	char db_name[MAX_DB_NAME_SIZE];
 	level_descriptor levels[MAX_LEVELS];
 #if MEASURE_MEDIUM_INPLACE
 	uint64_t count_medium_inplace;
 #endif
+
+	/*<new_persistent_design>*/
+	struct pr_region_superblock db_superblock;
+	pthread_mutex_t db_superblock_lock;
+	struct rul_log_descriptor *allocation_log;
+	struct volume_descriptor *db_volume;
+	uint32_t db_superblock_idx;
+	/*</new_persistent_design>*/
+
 	pthread_cond_t client_barrier;
 	pthread_cond_t compaction_cond;
 	pthread_mutex_t compaction_structs_lock;
 	pthread_mutex_t compaction_lock;
 	pthread_mutex_t lock_log;
 	pthread_mutex_t client_barrier_lock;
+
+	/*<new_persistent_design>*/
+	pthread_mutex_t flush_L0_lock;
+	/*</new_persistent_design>*/
+
 	sem_t compaction_daemon_interrupts;
 	sem_t compaction_sem;
 	sem_t compaction_daemon_sem;
@@ -379,15 +327,19 @@ typedef struct db_descriptor {
 	pthread_t compaction_thread;
 	pthread_t compaction_daemon;
 	pthread_t gc_thread;
-	struct bt_log_descriptor big_log;
-	struct bt_log_descriptor medium_log;
-	struct bt_log_descriptor small_log;
+	struct log_descriptor big_log;
+	struct log_descriptor medium_log;
+	struct log_descriptor small_log;
 	uint64_t lsn;
 	//only for L0
 	struct db_handle *gc_db;
 	uint64_t gc_last_segment_id;
 	uint64_t gc_count_segments;
 	uint64_t gc_keys_transferred;
+	/*L0 recovery log info*/
+	uint64_t small_log_start_segment_dev_offt;
+	uint64_t small_log_start_offt_in_segment;
+
 	int is_compaction_daemon_sleeping;
 	int32_t reference_count;
 	int32_t group_id;
@@ -428,7 +380,16 @@ struct recovery_operator {
 void recover_region(recovery_request *rh);
 void snapshot(volume_descriptor *volume_desc);
 void pr_flush_log_tail(struct db_descriptor *db_desc, struct volume_descriptor *volume_desc,
-		       struct bt_log_descriptor *log_desc);
+		       struct log_descriptor *log_desc);
+/*<new_persistent_design>*/
+void init_log_buffer(struct log_descriptor *log_desc, enum log_type my_type);
+void pr_read_region_superblock(struct db_descriptor *db_desc);
+void pr_flush_region_superblock(struct db_descriptor *db_desc);
+void pr_lock_region_superblock(struct db_descriptor *db_desc);
+void pr_unlock_region_superblock(struct db_descriptor *db_desc);
+void pr_flush_L0(struct db_descriptor *db_desc, uint8_t tree_id);
+void pr_flush_compaction(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id);
+/*</new_persistent_design>*/
 //void commit_db_log(db_descriptor *db_desc, commit_log_info *info);
 //void commit_db_logs_per_volume(volume_descriptor *volume_desc);
 //void commit_db_log(db_descriptor *db_desc, commit_log_info *info);
@@ -437,8 +398,6 @@ void pr_flush_log_tail(struct db_descriptor *db_desc, struct volume_descriptor *
 /*client API*/
 /*management operations*/
 db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_name, char CREATE_FLAG);
-struct db_handle *bt_restore_db(struct volume_descriptor *volume_desc, struct pr_db_entry *db_entry,
-				struct db_coordinates db_c);
 
 void *compaction_daemon(void *args);
 void flush_volume(volume_descriptor *volume_desc, char force_spill);
@@ -502,7 +461,7 @@ typedef struct log_operation {
 } log_operation;
 
 struct log_towrite {
-	struct bt_log_descriptor *log_desc;
+	struct log_descriptor *log_desc;
 	int level_id;
 	enum log_category status;
 };
@@ -574,9 +533,7 @@ uint8_t insert_key_value(db_handle *handle, void *key, void *value, uint32_t key
 uint8_t _insert_key_value(bt_insert_req *ins_req);
 
 void *append_key_value_to_log(log_operation *req);
-uint8_t _insert_index_entry(db_handle *db, kv_location *location, int INSERT_FLAGS);
-void *find_key(db_handle *handle, void *key, uint32_t key_size);
-void *__find_key(db_handle *handle, void *key);
+void find_key(struct lookup_operation *get_op);
 int8_t delete_key(db_handle *handle, void *key, uint32_t size);
 
 int64_t key_cmp(void *index_key_buf, void *query_key_buf, char index_key_format, char query_key_format);

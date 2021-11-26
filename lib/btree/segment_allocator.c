@@ -1,11 +1,26 @@
-#include <assert.h>
-#include <stdlib.h>
-#include <signal.h>
-#include <log.h>
+// Copyright [2021] [FORTH-ICS]
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #include "segment_allocator.h"
-#include "conf.h"
 #include "../allocator/device_structures.h"
+#include "../allocator/redo_undo_log.h"
 #include "../allocator/volume_manager.h"
+#include "conf.h"
+#include <assert.h>
+#include <log.h>
+#include <signal.h>
+#include <stdlib.h>
 
 extern uint64_t MAPPED;
 
@@ -17,6 +32,27 @@ struct link_segments_metadata {
 	uint64_t tree_id;
 	int in_mem;
 };
+
+static uint64_t seg_allocate_segment(struct db_descriptor *db_desc, uint64_t txn_id)
+{
+	struct rul_log_entry log_entry;
+	log_entry.dev_offt = mem_allocate(db_desc->db_volume, SEGMENT_SIZE);
+	log_entry.txn_id = txn_id;
+	log_entry.op_type = RUL_ALLOCATE;
+	log_entry.size = SEGMENT_SIZE;
+	rul_add_entry_in_txn_buf(db_desc, &log_entry);
+	return log_entry.dev_offt;
+}
+
+static void seg_free_segment(struct db_descriptor *db_desc, uint64_t txn_id, uint64_t seg_offt)
+{
+	struct rul_log_entry log_entry;
+	log_entry.dev_offt = seg_offt;
+	log_entry.txn_id = txn_id;
+	log_entry.op_type = RUL_FREE;
+	log_entry.size = SEGMENT_SIZE;
+	rul_add_entry_in_txn_buf(db_desc, &log_entry);
+}
 
 static uint64_t link_memory_segments(struct link_segments_metadata *req)
 {
@@ -61,8 +97,10 @@ static void set_link_segments_metadata(struct link_segments_metadata *req, segme
 	req->available_space = available_space;
 }
 
-static void *get_space(volume_descriptor *volume_desc, level_descriptor *level_desc, uint8_t tree_id, uint32_t size)
+static void *get_space(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id, uint32_t size)
 {
+	struct level_descriptor *level_desc = &db_desc->levels[level_id];
+
 	struct link_segments_metadata req = { .level_desc = level_desc, .tree_id = tree_id };
 	segment_header *new_segment = NULL;
 	node_header *node = NULL;
@@ -90,9 +128,8 @@ static void *get_space(volume_descriptor *volume_desc, level_descriptor *level_d
 		}
 		/*we need to go to the actual allocator to get space*/
 		if (level_desc->level_id != 0) {
-			MUTEX_LOCK(&volume_desc->bitmap_lock);
-			new_segment = (segment_header *)allocate(volume_desc, SEGMENT_SIZE);
-			MUTEX_UNLOCK(&volume_desc->bitmap_lock);
+			new_segment = (segment_header *)REAL_ADDRESS(
+				seg_allocate_segment(db_desc, db_desc->levels[level_id].allocation_txn_id[tree_id]));
 			req.in_mem = 0;
 		} else {
 			if (posix_memalign((void **)&new_segment, ALIGNMENT, SEGMENT_SIZE) != 0) {
@@ -114,26 +151,26 @@ static void *get_space(volume_descriptor *volume_desc, level_descriptor *level_d
 	return node;
 }
 
-struct segment_header *get_segment_for_explicit_IO(volume_descriptor *volume_desc, level_descriptor *level_desc,
-						   uint8_t tree_id)
+struct segment_header *get_segment_for_explicit_IO(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
 {
+	struct level_descriptor *level_desc = &db_desc->levels[level_id];
+
 	if (level_desc->level_id == 0) {
 		log_warn("Not allowed this kind of allocations for L0!");
 		return NULL;
 	}
-	MUTEX_LOCK(&volume_desc->bitmap_lock);
-	struct segment_header *new_segment = (segment_header *)allocate(volume_desc, SEGMENT_SIZE);
-	MUTEX_UNLOCK(&volume_desc->bitmap_lock);
+	struct segment_header *new_segment = (segment_header *)REAL_ADDRESS(
+		seg_allocate_segment(db_desc, db_desc->levels[level_id].allocation_txn_id[tree_id]));
+	/*log_info("Segment addr %llu", new_segment);*/
 	assert(new_segment);
 
 	if (level_desc->offset[tree_id]) {
-		uint64_t segment_id;
-		segment_id = level_desc->last_segment[tree_id]->segment_id + 1;
+		uint64_t segment_id = level_desc->last_segment[tree_id]->segment_id + 1;
 		/*chain segments*/
 		new_segment->next_segment = NULL;
-		new_segment->prev_segment = (segment_header *)((uint64_t)level_desc->last_segment[tree_id] - MAPPED);
+		new_segment->prev_segment = (segment_header *)ABSOLUTE_ADDRESS(level_desc->last_segment[tree_id]);
 
-		level_desc->last_segment[tree_id]->next_segment = (segment_header *)((uint64_t)new_segment - MAPPED);
+		level_desc->last_segment[tree_id]->next_segment = (segment_header *)(ABSOLUTE_ADDRESS(new_segment));
 		level_desc->last_segment[tree_id] = new_segment;
 		level_desc->last_segment[tree_id]->segment_id = segment_id;
 		level_desc->offset[tree_id] += SEGMENT_SIZE;
@@ -151,13 +188,13 @@ struct segment_header *get_segment_for_explicit_IO(volume_descriptor *volume_des
 	return new_segment;
 }
 
-index_node *seg_get_index_node(volume_descriptor *volume_desc, level_descriptor *level_desc, uint8_t tree_id,
-			       char reason)
+index_node *seg_get_index_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id, char reason)
 {
+	struct volume_descriptor *volume_desc = db_desc->db_volume;
 	index_node *ptr;
 	IN_log_header *bh;
 
-	ptr = (index_node *)get_space(volume_desc, level_desc, tree_id, INDEX_NODE_SIZE + KEY_BLOCK_SIZE);
+	ptr = (index_node *)get_space(db_desc, level_id, tree_id, INDEX_NODE_SIZE + KEY_BLOCK_SIZE);
 
 	if (reason == NEW_ROOT)
 		ptr->header.type = rootNode;
@@ -179,34 +216,38 @@ index_node *seg_get_index_node(volume_descriptor *volume_desc, level_descriptor 
 	return ptr;
 }
 
-index_node *seg_get_index_node_header(volume_descriptor *volume_desc, level_descriptor *level_desc, uint8_t tree_id)
+index_node *seg_get_index_node_header(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
 {
-	return (index_node *)get_space(volume_desc, level_desc, tree_id, INDEX_NODE_SIZE);
+	return (index_node *)get_space(db_desc, level_id, tree_id, INDEX_NODE_SIZE);
 }
 
-IN_log_header *seg_get_IN_log_block(volume_descriptor *volume_desc, level_descriptor *level_desc, uint8_t tree_id)
+IN_log_header *seg_get_IN_log_block(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
 {
-	return (IN_log_header *)get_space(volume_desc, level_desc, tree_id, KEY_BLOCK_SIZE);
+	return (IN_log_header *)get_space(db_desc, level_id, tree_id, KEY_BLOCK_SIZE);
 }
 
-void seg_free_index_node_header(volume_descriptor *volume_desc, level_descriptor *level_desc, uint8_t tree_id,
-				node_header *node)
+void seg_free_index_node_header(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id, node_header *node)
 {
 	return;
 	//leave for future use
-	(void)level_desc;
+	(void)db_desc;
+	(void)level_id;
 	(void)tree_id;
-
-	free_block(volume_desc, node, INDEX_NODE_SIZE);
+	(void)node;
+	//free_block(volume_desc, node, INDEX_NODE_SIZE);
 }
 
-void seg_free_index_node(volume_descriptor *volume_desc, level_descriptor *level_desc, uint8_t tree_id,
-			 index_node *inode)
+void seg_free_index_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id, index_node *inode)
 {
-	return;
 	//leave for future use
-	(void)level_desc;
+	(void)db_desc;
+	(void)level_id;
 	(void)tree_id;
+	(void)inode;
+	return;
+#if 0
+	struct volume_descriptor *volume_desc = db_desc->my_volume;
+
 
 	if (inode->header.type == leafNode || inode->header.type == leafRootNode) {
 		log_fatal("Faulty type of node!");
@@ -218,22 +259,25 @@ void seg_free_index_node(volume_descriptor *volume_desc, level_descriptor *level
 		log_fatal("NULL log for index?");
 		exit(EXIT_FAILURE);
 	}
-	IN_log_header *curr = (IN_log_header *)(MAPPED + (uint64_t)inode->header.first_IN_log_header);
-	IN_log_header *last = (IN_log_header *)(MAPPED + (uint64_t)inode->header.last_IN_log_header);
+	IN_log_header *curr = (IN_log_header *)REAL_ADDRESS(inode->header.first_IN_log_header);
+	IN_log_header *last = (IN_log_header *)REAL_ADDRESS(inode->header.last_IN_log_header);
 	IN_log_header *to_free;
 	while ((uint64_t)curr != (uint64_t)last) {
 		to_free = curr;
-		curr = (IN_log_header *)((uint64_t)MAPPED + (uint64_t)curr->next);
+		curr = (IN_log_header *)REAL_ADDRESS(curr->next);
 		free_block(volume_desc, to_free, KEY_BLOCK_SIZE);
 	}
 	free_block(volume_desc, last, KEY_BLOCK_SIZE);
 	/*finally node_header*/
 	free_block(volume_desc, inode, INDEX_NODE_SIZE);
+#endif
 }
 
-leaf_node *seg_get_leaf_node(volume_descriptor *volume_desc, level_descriptor *level_desc, uint8_t tree_id)
+leaf_node *seg_get_leaf_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
 {
-	leaf_node *leaf = (leaf_node *)get_space(volume_desc, level_desc, tree_id, level_desc->leaf_size);
+	struct level_descriptor *level_desc = &db_desc->levels[level_id];
+	struct volume_descriptor *volume_desc = db_desc->db_volume;
+	leaf_node *leaf = (leaf_node *)get_space(db_desc, level_id, tree_id, level_desc->leaf_size);
 
 	leaf->header.type = leafNode;
 	leaf->header.epoch = volume_desc->mem_catalogue->epoch;
@@ -262,47 +306,50 @@ struct bt_dynamic_leaf_node *init_leaf_node(struct bt_dynamic_leaf_node *leaf, v
 	return leaf;
 }
 
-struct bt_dynamic_leaf_node *seg_get_dynamic_leaf_node(volume_descriptor *volume_desc, level_descriptor *level_desc,
-						       uint8_t tree_id)
+struct bt_dynamic_leaf_node *seg_get_dynamic_leaf_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
 {
+	struct level_descriptor *level_desc = &db_desc->levels[level_id];
+	struct volume_descriptor *volume_desc = db_desc->db_volume;
 	/*Pass tree_id in get_space*/
-	return init_leaf_node(get_space(volume_desc, level_desc, tree_id, level_desc->leaf_size), volume_desc);
+	return init_leaf_node(get_space(db_desc, level_id, tree_id, level_desc->leaf_size), volume_desc);
 }
 
-leaf_node *seg_get_leaf_node_header(volume_descriptor *volume_desc, level_descriptor *level_desc, uint8_t tree_id)
+leaf_node *seg_get_leaf_node_header(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
 {
-	return (leaf_node *)init_leaf_node(get_space(volume_desc, level_desc, tree_id, level_desc->leaf_size),
-					   volume_desc);
+	struct level_descriptor *level_desc = &db_desc->levels[level_id];
+	return (leaf_node *)init_leaf_node(get_space(db_desc, level_id, tree_id, level_desc->leaf_size),
+					   db_desc->db_volume);
 }
 
-void seg_free_leaf_node(volume_descriptor *volume_desc, level_descriptor *level_desc, uint8_t tree_id, leaf_node *leaf)
+void seg_free_leaf_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id, leaf_node *leaf)
 {
-	return;
 	//leave for future use
-	(void)level_desc;
+	(void)db_desc;
+	(void)level_id;
 	(void)tree_id;
-	free_block(volume_desc, leaf, level_desc->leaf_size);
+	(void)leaf;
+	return;
+#if 0
+	struct level_descriptor *level_desc = &db_desc->levels[level_id];
+	free_block(db_desc->my_volume, leaf, level_desc->leaf_size);
+#endif
 }
 
-segment_header *seg_get_raw_log_segment(volume_descriptor *volume_desc)
+segment_header *seg_get_raw_log_segment(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
 {
 	segment_header *sg;
-	MUTEX_LOCK(&volume_desc->bitmap_lock);
-	sg = (segment_header *)allocate(volume_desc, SEGMENT_SIZE);
+	sg = (segment_header *)REAL_ADDRESS(
+		seg_allocate_segment(db_desc, db_desc->levels[level_id].allocation_txn_id[tree_id]));
+#if 0
 	sg->segment_garbage_bytes = 0;
 	sg->moved_kvs = 0;
 	sg->segment_end = 0;
 	sg->in_mem = 0;
-	MUTEX_UNLOCK(&volume_desc->bitmap_lock);
+#endif
 	return sg;
 }
 
-void free_raw_segment(volume_descriptor *volume_desc, segment_header *segment)
-{
-	free_block(volume_desc, segment, SEGMENT_SIZE);
-	return;
-}
-
+/*deprecated*/
 void *get_space_for_system(volume_descriptor *volume_desc, uint32_t size, int lock)
 {
 	void *addr;
@@ -322,8 +369,8 @@ void *get_space_for_system(volume_descriptor *volume_desc, uint32_t size, int lo
 	if (lock)
 		MUTEX_LOCK(&volume_desc->bitmap_lock);
 
-	first_sys_segment = (segment_header *)(MAPPED + volume_desc->mem_catalogue->first_system_segment);
-	last_sys_segment = (segment_header *)(MAPPED + volume_desc->mem_catalogue->last_system_segment);
+	first_sys_segment = (segment_header *)REAL_ADDRESS(volume_desc->mem_catalogue->first_system_segment);
+	last_sys_segment = (segment_header *)REAL_ADDRESS(volume_desc->mem_catalogue->last_system_segment);
 	/*check if we have enough space to satisfy the request*/
 
 	if (volume_desc->mem_catalogue->offset == 0) {
@@ -341,7 +388,7 @@ void *get_space_for_system(volume_descriptor *volume_desc, uint32_t size, int lo
 	if (available_space < size) {
 		/*we need to go to the actual allocator to get space*/
 
-		new_segment = (segment_header *)allocate(volume_desc, SEGMENT_SIZE);
+		new_segment = (segment_header *)REAL_ADDRESS(mem_allocate(volume_desc, SEGMENT_SIZE));
 
 		if (segment_id) {
 			/*chain segments*/
@@ -374,18 +421,18 @@ void *get_space_for_system(volume_descriptor *volume_desc, uint32_t size, int lo
 	return addr;
 }
 
-void seg_free_level(db_handle *handle, uint8_t level_id, uint8_t tree_id)
+uint64_t seg_free_level(struct db_descriptor *db_desc, uint64_t txn_id, uint8_t level_id, uint8_t tree_id)
 {
-	segment_header *curr_segment = handle->db_desc->levels[level_id].first_segment[tree_id];
+	segment_header *curr_segment = db_desc->levels[level_id].first_segment[tree_id];
 	segment_header *temp_segment;
 	uint64_t space_freed = 0;
 
-	log_info("Freeing up level %u for db %s", level_id, handle->db_desc->db_name);
+	log_info("Freeing up level %u for db %s", level_id, db_desc->db_superblock.region_name);
 
 	if (level_id != 0) {
 		for (; curr_segment && curr_segment->next_segment != NULL;
 		     curr_segment = REAL_ADDRESS(curr_segment->next_segment)) {
-			free_raw_segment(handle->volume_desc, curr_segment);
+			seg_free_segment(db_desc, txn_id, ABSOLUTE_ADDRESS(curr_segment));
 			space_freed += SEGMENT_SIZE;
 		}
 
@@ -396,39 +443,8 @@ void seg_free_level(db_handle *handle, uint8_t level_id, uint8_t tree_id)
 		}
 
 	} else {
-#if 0
-		//free inmem_medium_log_L0
-		curr_segment = (struct segment_header *)REAL_ADDRESS(
-			handle->db_desc->inmem_medium_log_L0[tree_id].head_dev_offt);
-		segment_header *next_segment;
-		if (curr_segment) {
-			while (curr_segment->next_segment) {
-				next_segment = REAL_ADDRESS(curr_segment->next_segment);
-				free(curr_segment);
-				curr_segment = next_segment;
-			}
-			free(curr_segment);
-			db_desc->inmem_medium_log_L0[tree_id].head_dev_offt = 0;
-			db_desc->inmem_medium_log_L0[tree_id].tail_dev_offt = 0;
-			db_desc->inmem_medium_log_L0[tree_id].size = 0;
-		}
-		//free now the dev_medium_log_L0
-		curr_segment = (struct segment_header *)REAL_ADDRESS(
-			handle->db_desc->inmem_medium_log_L0[tree_id].head_dev_offt);
-		if (curr_segment) {
-			while (curr_segment->next_segment) {
-				next_segment = REAL_ADDRESS(curr_segment->next_segment);
-				free(curr_segment);
-				curr_segment = next_segment;
-			}
-			free_raw_segment(handle->volume_desc, curr_segment);
-			db_desc->dev_medium_log_L0[tree_id].head_dev_offt = 0;
-			db_desc->dev_medium_log_L0[tree_id].tail_dev_offt = 0;
-			db_desc->dev_medium_log_L0[tree_id].size = 0;
-		}
-#endif
-		//Finally L0 index
-		curr_segment = handle->db_desc->levels[level_id].first_segment[tree_id];
+		/*Finally L0 index in memory*/
+		curr_segment = db_desc->levels[level_id].first_segment[tree_id];
 		temp_segment = REAL_ADDRESS(curr_segment->next_segment);
 		int flag = 0;
 		/* log_info("Level id to free %d %d", level_id,curr_segment->in_mem); */
@@ -455,13 +471,15 @@ void seg_free_level(db_handle *handle, uint8_t level_id, uint8_t tree_id)
 			free(temp_segment);
 		}
 	}
-	/*buffered tree out*/
-	handle->db_desc->levels[level_id].level_size[tree_id] = 0;
-	handle->db_desc->levels[level_id].first_segment[tree_id] = NULL;
-	handle->db_desc->levels[level_id].last_segment[tree_id] = NULL;
-	handle->db_desc->levels[level_id].offset[tree_id] = 0;
-	handle->db_desc->levels[level_id].root_r[tree_id] = NULL;
-	handle->db_desc->levels[level_id].root_w[tree_id] = NULL;
+	return space_freed;
+}
 
-	log_info("Freed space %llu MB from db:%s level %u", space_freed / MB(1), handle->db_desc->db_name, level_id);
+void seg_zero_level(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
+{
+	db_desc->levels[level_id].level_size[tree_id] = 0;
+	db_desc->levels[level_id].first_segment[tree_id] = NULL;
+	db_desc->levels[level_id].last_segment[tree_id] = NULL;
+	db_desc->levels[level_id].offset[tree_id] = 0;
+	db_desc->levels[level_id].root_r[tree_id] = NULL;
+	db_desc->levels[level_id].root_w[tree_id] = NULL;
 }

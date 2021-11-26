@@ -6,7 +6,7 @@ prefix = "./" + sys.argv[1]
 files = [
     "/usr/local/lib/libparallax.so",
     "/usr/local/lib/libparallax.a",
-    "/usr/local/bin/mkfs.parallax",
+    "/usr/local/bin/kv_format.parallax",
 ]
 
 for f in files:

@@ -1,20 +1,22 @@
 #define _GNU_SOURCE
+#include "gc.h"
+#include "../allocator/device_structures.h"
+#include "../allocator/log_structures.h"
+#include "../allocator/volume_manager.h"
+#include "../scanner/scanner.h"
+#include "set_options.h"
 #include <assert.h>
+#include <list.h>
+#include <log.h>
 #include <pthread.h>
 #include <semaphore.h>
 #include <stdint.h>
 #include <stdio.h>
-#include <string.h>
 #include <stdlib.h>
+#include <string.h>
 #include <time.h>
 #include <unistd.h>
-#include <log.h>
-#include <list.h>
 #include <uthash.h>
-#include "gc.h"
-#include "set_options.h"
-#include "../allocator/volume_manager.h"
-#include "../scanner/scanner.h"
 extern sem_t gc_daemon_interrupts;
 
 void push_stack(stack *marks, void *addr)
@@ -34,8 +36,9 @@ void move_kv_pairs_to_new_segment(volume_descriptor *volume_desc, db_descriptor 
 
 	for (i = 0; i < marks->size; ++i, ++db_desc->gc_keys_transferred) {
 		kv_address = marks->valid_pairs[i];
-		//struct splice *key = (struct splice *)kv_address;
-		//struct splice *value = (struct splice *)(kv_address + VALUE_SIZE_OFFSET(key->size));
+		// struct splice *key = (struct splice *)kv_address;
+		// struct splice *value = (struct splice *)(kv_address +
+		// VALUE_SIZE_OFFSET(key->size));
 		handle.volume_desc = volume_desc;
 		handle.db_desc = db_desc;
 		ins_req.metadata.handle = &handle;
@@ -53,7 +56,8 @@ void move_kv_pairs_to_new_segment(volume_descriptor *volume_desc, db_descriptor 
 		ins_req.metadata.key_format = KV_FORMAT;
 		ins_req.metadata.cat = BIG_INLOG;
 		_insert_key_value(&ins_req);
-		//update_key_value_pointer(&handle, key->data, value->data, key->size, value->size);
+		// update_key_value_pointer(&handle, key->data, value->data, key->size,
+		// value->size);
 	}
 }
 
@@ -64,7 +68,6 @@ int8_t find_deleted_kv_pairs_in_segment(volume_descriptor *volume_desc, db_descr
 	struct splice *key;
 	struct splice *value;
 	void *value_as_pointer;
-	void *find_value;
 	char *start_of_log_segment = log_seg;
 	struct segment_header *segment = (struct segment_header *)start_of_log_segment;
 	uint64_t size_of_log_segment_checked = 8;
@@ -91,13 +94,19 @@ int8_t find_deleted_kv_pairs_in_segment(volume_descriptor *volume_desc, db_descr
 
 		assert(key->size > 0 && key->size < 28);
 		assert(value->size > 5 && value->size < 1500);
-
-		find_value = find_key(&handle, key->data, key->size);
+		struct lookup_operation get_op = { .db_desc = handle.db_desc,
+						   .found = 0,
+						   .size = 0,
+						   .buffer_to_pack_kv = NULL,
+						   .buffer_overflow = 1,
+						   .kv_buf = (char *)key,
+						   .retrieve = 0 };
+		find_key(&get_op);
 		/* assert(find_value); */
 		/* assert(value_as_pointer == find_value); */
-		if (remaining_space >= 18 && (find_value == NULL || value_as_pointer != find_value)) {
+		if (remaining_space >= 18 && (!get_op.found || value_as_pointer != get_op.value_device_address)) {
 			garbage_collect_segment = 1;
-		} else if (remaining_space >= 18 && (find_value != NULL && value_as_pointer == find_value)) {
+		} else if (remaining_space >= 18 && (get_op.found && value_as_pointer == get_op.value_device_address)) {
 			push_stack(marks, log_seg);
 		}
 
@@ -117,6 +126,12 @@ int8_t find_deleted_kv_pairs_in_segment(volume_descriptor *volume_desc, db_descr
 	return 0;
 }
 
+static void free_block(struct volume_descriptor *v, void *addr, uint32_t size)
+{
+	(void)v;
+	(void)addr;
+	(void)size;
+}
 void fix_nodes_in_log(volume_descriptor *volume_desc, db_descriptor *db_desc, log_segment *prev_node,
 		      log_segment *curr_node)
 {
@@ -162,16 +177,22 @@ void iterate_log_segments(db_descriptor *db_desc, volume_descriptor *volume_desc
 	/* 	} */
 
 	/* 	uint64_t num_segments_to_check = (end_id - start_id) / 3; */
-	/* 	/\* log_warn("Num segments to check %llu start id %llu end id %llu",num_segments_to_check,start_id,end_id); *\/ */
-	/* 	while (num_segments_to_check != 0 && log_node != (void *)db_desc->big_log_tail) { */
+	/* 	/\* log_warn("Num segments to check %llu start id %llu end id
+   * %llu",num_segments_to_check,start_id,end_id); *\/ */
+	/* 	while (num_segments_to_check != 0 && log_node != (void
+   * *)db_desc->big_log_tail) { */
 	/* 		db_desc->gc_last_segment_id = log_node->metadata.segment_id; */
-	/* 		int8_t ret = find_deleted_kv_pairs_in_segment(volume_desc, db_desc, log_node->data, marks); */
+	/* 		int8_t ret = find_deleted_kv_pairs_in_segment(volume_desc,
+   * db_desc, log_node->data, marks); */
 
 	/* 		if (ret == 1) */
-	/* 			fix_nodes_in_log(volume_desc, db_desc, prev_node, log_node); */
+	/* 			fix_nodes_in_log(volume_desc, db_desc, prev_node,
+   * log_node);
+   */
 
 	/* 		prev_node = log_node; */
-	/* 		log_node = (log_segment *)REAL_ADDRESS((uint64_t)log_node->metadata.next_segment); */
+	/* 		log_node = (log_segment
+   * *)REAL_ADDRESS((uint64_t)log_node->metadata.next_segment); */
 	/* 		--num_segments_to_check; */
 	/* 	} */
 	/* 	sleep(1); */
@@ -201,7 +222,7 @@ static struct db_descriptor *find_dbdesc(volume_descriptor *volume_desc, int gro
 	return NULL;
 }
 
-//read a segment and store it into segment_buf
+// read a segment and store it into segment_buf
 static void fetch_segment(struct segment_header *segment_buf, uint64_t segment_offt)
 {
 	assert(segment_offt % SEGMENT_SIZE == 0);
@@ -340,7 +361,7 @@ void *gc_log_entries(void *handle)
 
 		while (region != NULL) {
 			db_desc = (db_descriptor *)region->data;
-			if (!strcmp(db_desc->db_name, SYSTEMDB)) {
+			if (!strcmp(db_desc->db_superblock.region_name, SYSTEMDB)) {
 				scan_db(db_desc, volume_desc, marks);
 				break;
 			}

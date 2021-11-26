@@ -1,15 +1,15 @@
-#include <assert.h>
-#include <stdint.h>
-#include <stdlib.h>
-#include <string.h>
-#include <log.h>
-#include "max_min_heap.h"
-#include "stack.h"
 #include "scanner.h"
 #include "../allocator/volume_manager.h"
 #include "../btree/btree.h"
 #include "../btree/conf.h"
 #include "../btree/dynamic_leaf.h"
+#include "max_min_heap.h"
+#include "stack.h"
+#include <assert.h>
+#include <log.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
 
 int _init_level_scanner(level_scanner *level_sc, void *start_key, char seek_mode);
 
@@ -86,8 +86,11 @@ static void init_generic_scanner(struct scannerHandle *sc, struct db_handle *han
 		exit(EXIT_FAILURE);
 	}
 
-	if (!dirty && handle->db_desc->dirty)
-		snapshot(handle->volume_desc);
+	if (!dirty && handle->db_desc->dirty) {
+		//snapshot(handle->volume_desc);
+		log_fatal("Unsupported operation");
+		exit(EXIT_FAILURE);
+	}
 
 	/*special care for level 0 due to double buffering*/
 	if (dirty) {
@@ -116,6 +119,7 @@ static void init_generic_scanner(struct scannerHandle *sc, struct db_handle *han
 		sh_init_max_heap(&sc->heap.max_heap, active_tree);
 	else {
 		log_fatal("Unknown scanner type!");
+		assert(0);
 		exit(EXIT_FAILURE);
 	}
 
@@ -582,7 +586,7 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 	else
 		log_info("start_key_buf NULL sc->keyValue = %s\n", level_sc->keyValue);
 #endif
-	return SUCCESS;
+	return PARALLAX_SUCCESS;
 }
 
 int32_t getNext(scannerHandle *sc)
@@ -595,7 +599,8 @@ int32_t getNext(scannerHandle *sc)
 		stat = sh_remove_min(&sc->heap.min_heap, &nd);
 		if (stat != EMPTY_MIN_HEAP) {
 			sc->keyValue = nd.KV;
-
+			sc->kv_level_id = nd.level_id;
+			sc->kv_cat = sc->LEVEL_SCANNERS[nd.level_id][nd.active_tree].cat;
 			assert(sc->LEVEL_SCANNERS[nd.level_id][nd.active_tree].valid);
 			if (_get_next_KV(&(sc->LEVEL_SCANNERS[nd.level_id][nd.active_tree])) != END_OF_DATABASE) {
 				//log_info("refilling from level_id %d\n", nd.level_id);
@@ -613,7 +618,7 @@ int32_t getNext(scannerHandle *sc)
 				//log_warn("ommiting duplicate %s", (char *)nd.data + 4);
 				continue;
 			}
-			return KREON_OK;
+			return PARALLAX_SUCCESS;
 		} else
 			return END_OF_DATABASE;
 	}
@@ -855,7 +860,7 @@ int32_t _get_next_KV(level_scanner *sc)
 			break;
 		}
 	}
-	return SUCCESS;
+	return PARALLAX_SUCCESS;
 }
 
 int32_t _get_prev_KV(level_scanner *sc)
@@ -1049,7 +1054,7 @@ int32_t _get_prev_KV(level_scanner *sc)
 			break;
 		}
 	}
-	return SUCCESS;
+	return PARALLAX_SUCCESS;
 }
 
 int32_t getPrev(scannerHandle *sc)
@@ -1080,7 +1085,7 @@ int32_t getPrev(scannerHandle *sc)
 				//log_warn("ommiting duplicate %s", (char *)nd.data + 4);
 				continue;
 			}
-			return KREON_OK;
+			return PARALLAX_SUCCESS;
 		} else
 			return END_OF_DATABASE;
 	}
@@ -1259,7 +1264,7 @@ static int find_last_key(level_scanner *level_sc)
 		//log_info("full key is %s", level_sc->keyValue + 4);
 	}
 
-	return SUCCESS;
+	return PARALLAX_SUCCESS;
 }
 
 static int fetch_last(level_scanner *level_sc)

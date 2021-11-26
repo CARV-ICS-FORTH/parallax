@@ -5,13 +5,13 @@
         Edited by Giorgos Saloustros (gesalous@ics.forth.gr) 21/07/2017
 */
 
-#include <stdlib.h>
-#include <assert.h>
-#include <log.h>
 #include "min_max_heap.h"
+#include "../../utilities/dups_list.h"
 #include "../btree/btree.h"
 #include "../btree/conf.h"
-#include "../../utilities/dups_list.h"
+#include <assert.h>
+#include <log.h>
+#include <stdlib.h>
 
 #define LCHILD(x) ((2 * x) + 1)
 #define RCHILD(x) ((2 * x) + 2)

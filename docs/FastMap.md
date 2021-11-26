@@ -57,7 +57,7 @@ To load FastMap run:
 
 sudo chown $USER /dev/dmap/dmap1
 sudo chown $USER /dev/nvme0n1
-./mkfs.eutropia.single.sh /dev/nvme0n1 1 0
+./kv_format.parallax /dev/nvme0n1 1 0
 ./ycsb-edb -threads 1 -dbnum 1 -e execution_plan.txt
 ```
 

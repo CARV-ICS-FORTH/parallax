@@ -9,7 +9,8 @@ if(BUILD_TESTING)
       test_dirty_scans.c
       test_options.c
       test_sanitizers.c
-      test_gc.c)
+      test_gc.c
+      test_region_allocations.c)
 
   set_source_files_properties(${LIB_TEST_FILES} COMPILE_FLAGS "-O3")
 
@@ -42,6 +43,21 @@ if(BUILD_TESTING)
   add_executable(test_gc test_gc.c)
   target_link_libraries(test_gc "${PROJECT_NAME}" ${DEPENDENCIES})
   add_test(NAME test_gc COMMAND $<TARGET_FILE:test_gc>)
+
+  add_executable(
+    test_region_allocations
+    test_region_allocations.c ../lib/allocator/allocator.c
+    ../lib/allocator/djb2.c ../lib/allocator/redo_undo_log.c)
+  target_link_libraries(test_region_allocations "${PROJECT_NAME}"
+                        ${DEPENDENCIES})
+  add_test(NAME test_region_allocations
+           COMMAND $<TARGET_FILE:test_region_allocations>)
+
+  add_executable(
+    test_redo_undo_log test_redo_undo_log.c ../lib/allocator/allocator.c
+                       ../lib/allocator/djb2.c ../lib/allocator/redo_undo_log.c)
+  target_link_libraries(test_redo_undo_log "${PROJECT_NAME}" ${DEPENDENCIES})
+  add_test(NAME test_redo_undo_log COMMAND $<TARGET_FILE:test_redo_undo_log>)
 
   add_subdirectory(Surrogates)
 endif()

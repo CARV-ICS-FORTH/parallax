@@ -1,4 +1,4 @@
-// Copyright [2020] [FORTH-ICS]
+// Copyright [2021] [FORTH-ICS]
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,13 +13,15 @@
 // limitations under the License.
 
 #include "../include/parallax.h"
-#include <log.h>
-#include <stdlib.h>
 #include "../btree/btree.h"
 #include "../scanner/scanner.h"
+#include <assert.h>
+#include <log.h>
 #include <stddef.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#define PAR_MAX_PREALLOCATED_SIZE 256
 
 par_handle par_open(par_db_options *options)
 {
@@ -44,42 +46,99 @@ void par_close(par_handle handle)
 
 par_ret_code par_put(par_handle handle, struct par_key_value *key_value)
 {
-	int ret = insert_key_value((db_handle *)handle, (char *)key_value->k.data, (char *)key_value->v.data,
-				   key_value->k.size, key_value->v.size);
-	if (ret == SUCCESS)
+	int ret = insert_key_value((db_handle *)handle, (char *)key_value->k.data, (char *)key_value->v.val_buffer,
+				   key_value->k.size, key_value->v.val_size);
+	if (ret == PARALLAX_SUCCESS)
 		return PAR_SUCCESS;
 
 	return PAR_FAILURE;
 }
 
-par_ret_code par_get(par_handle handle, struct par_key *key, struct par_value **value)
+static inline int par_serialize_to_kv_format(struct par_key *key, char **buf, uint32_t buf_size)
+{
+	int ret = 0;
+	uint32_t key_size = sizeof(uint32_t) + key->size;
+	if (key_size > buf_size) {
+		*buf = malloc(key_size);
+		ret = 1;
+	}
+	char *kv_buf = *buf;
+	memcpy(&kv_buf[0], &key->size, sizeof(uint32_t));
+	memcpy(&kv_buf[sizeof(uint32_t)], key->data, key->size);
+	return ret;
+}
+
+par_ret_code par_get(par_handle handle, struct par_key *key, struct par_value *value)
 {
 	struct val {
 		uint32_t size;
 		char val[];
 	};
 
-	struct val *v = find_key((db_handle *)handle, (char *)key->data, key->size);
+	if (value == NULL) {
+		log_warn("value cannot be NULL");
+		return PAR_FAILURE;
+	}
 
-	if (v == NULL)
+	/*Serialize user key in KV_FORMAT*/
+	char buf[PAR_MAX_PREALLOCATED_SIZE];
+	char *kv_buf = buf;
+	int malloced = par_serialize_to_kv_format(key, &kv_buf, PAR_MAX_PREALLOCATED_SIZE);
+
+	struct db_handle *hd = (struct db_handle *)handle;
+
+	/*Prepare lookup reply*/
+	struct lookup_operation get_op = { .db_desc = hd->db_desc,
+					   .kv_buf = kv_buf,
+					   .buffer_to_pack_kv = NULL,
+					   .size = 0,
+					   .buffer_overflow = 1,
+					   .found = 0,
+					   .retrieve = 1 };
+
+	if (value->val_buffer != NULL) {
+		get_op.buffer_to_pack_kv = (char *)value->val_buffer;
+		get_op.size = value->val_buffer_size;
+	}
+
+	find_key(&get_op);
+	if (malloced)
+		free(kv_buf);
+
+	if (!get_op.found)
 		return PAR_KEY_NOT_FOUND;
-
-	if (*value == NULL)
-		*value = calloc(1, sizeof(struct par_value) + v->size);
-
-	v = (struct val *)((uint64_t)v + sizeof(struct val) + v->size);
-	(*value)->size = v->size;
-	(*value)->data = (const char *)&v[1];
-	memcpy((char *)(*value)->data, v->val, v->size);
-
+	value->val_buffer = get_op.buffer_to_pack_kv;
+	value->val_size = get_op.size;
 	return PAR_SUCCESS;
 }
 
 par_ret_code par_exists(par_handle handle, struct par_key *key)
 {
-	if (!find_key((db_handle *)handle, (char *)key->data, key->size))
-		return PAR_KEY_NOT_FOUND;
+	/*Serialize user key in KV_FORMAT*/
+	char buf[PAR_MAX_PREALLOCATED_SIZE];
+	char *kv_buf = buf;
+	int malloced = par_serialize_to_kv_format(key, &kv_buf, PAR_MAX_PREALLOCATED_SIZE);
 
+	memcpy(&kv_buf[0], &key->size, sizeof(uint32_t));
+	memcpy(&kv_buf[sizeof(uint32_t)], key->data, key->size);
+
+	struct db_handle *hd = (struct db_handle *)handle;
+
+	/*Prepare lookup reply*/
+	struct lookup_operation get_op = { .db_desc = hd->db_desc,
+					   .kv_buf = kv_buf,
+					   .buffer_to_pack_kv = NULL,
+					   .size = 0,
+					   .buffer_overflow = 1,
+					   .found = 0,
+					   .retrieve = 0 };
+
+	find_key(&get_op);
+	if (malloced)
+		free(kv_buf);
+
+	if (!get_op.found)
+		return PAR_KEY_NOT_FOUND;
 	return PAR_SUCCESS;
 }
 
@@ -92,7 +151,7 @@ par_ret_code par_delete(par_handle handle, struct par_key *key)
 }
 
 /*scanner staff*/
-#define PAR_MAX_PREALLOCATED_SIZE 256
+
 struct par_scanner {
 	char buf[PAR_MAX_PREALLOCATED_SIZE];
 	struct scannerHandle *sc;
@@ -150,7 +209,7 @@ init_seek_key:
 init_scanner:
 	sc = (struct scannerHandle *)calloc(1, sizeof(struct scannerHandle));
 	par_s = (struct par_scanner *)calloc(1, sizeof(struct par_scanner));
-
+	sc->type_of_scanner = FORWARD_SCANNER;
 	init_dirty_scanner(sc, hd, seek_key, native_mode);
 	par_s->sc = sc;
 	par_s->allocated = 0;
@@ -173,7 +232,7 @@ init_scanner:
 			par_s->allocated = 1;
 			par_s->kv_buf = calloc(1, par_s->buf_size);
 		}
-		memcpy(par_s->kv_buf, sc->keyValue, par_s->buf_size);
+		memcpy(par_s->kv_buf, sc->keyValue, kv_size);
 	}
 
 	if (free_seek_key)
@@ -213,7 +272,29 @@ int par_get_next(par_scanner s)
 		par_s->allocated = 1;
 		par_s->kv_buf = calloc(1, par_s->buf_size);
 	}
-	memcpy(par_s->kv_buf, sc->keyValue, par_s->buf_size);
+	//memcpy(par_s->kv_buf, sc->keyValue, par_s->buf_size);
+	//gesalous
+	struct bt_kv_log_address L = { .addr = sc->keyValue, .tail_id = UINT8_MAX, .in_tail = 0 };
+	if (!sc->kv_level_id) {
+		switch (sc->kv_cat) {
+		case BIG_INLOG:
+			L = bt_get_kv_log_address(&sc->db->db_desc->big_log, *(uint64_t *)sc->keyValue);
+			break;
+		case BIG_INPLACE:
+		case MEDIUM_INPLACE:
+		case MEDIUM_INLOG:
+		case SMALL_INPLACE:
+		case SMALL_INLOG:
+			break;
+		default:
+			log_fatal("UNKNOWS_LOG_CATEGORY %d", sc->kv_cat);
+			exit(EXIT_FAILURE);
+		}
+	}
+
+	memcpy(par_s->kv_buf, L.addr, kv_size);
+	if (L.in_tail)
+		bt_done_with_value_log_address(&sc->db->db_desc->big_log, &L);
 	return 1;
 }
 
@@ -234,7 +315,9 @@ struct par_value par_get_value(par_scanner s)
 {
 	struct par_scanner *par_s = (struct par_scanner *)s;
 	char *value = par_s->kv_buf + *(uint32_t *)par_s->kv_buf + sizeof(uint32_t);
-	struct par_value val = { .size = *(uint32_t *)value, .data = value + sizeof(uint32_t) };
+	struct par_value val = { .val_size = *(uint32_t *)value,
+				 .val_buffer = value + sizeof(uint32_t),
+				 .val_buffer_size = *(uint32_t *)value };
 
 	return val;
 }

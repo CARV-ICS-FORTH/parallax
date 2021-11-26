@@ -11,26 +11,26 @@
 #ifndef YCSB_C_EUTROPIA_DB_H_
 #define YCSB_C_EUTROPIA_DB_H_
 
-#include <iostream>
-#include <string>
-#include <mutex>
 #include <algorithm>
 #include <atomic>
 #include <functional>
-#include <sstream>
+#include <iostream>
 #include <iterator>
+#include <mutex>
+#include <sstream>
+#include <string>
 
-#include <inttypes.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/time.h>
-#include <sys/types.h>
-#include <sys/stat.h>
+#include "workload_gen.h"
+#include <boost/algorithm/string.hpp>
 #include <fcntl.h>
+#include <inttypes.h>
 #include <linux/fs.h>
 #include <signal.h>
-#include <boost/algorithm/string.hpp>
-#include "workload_gen.h"
+#include <stdlib.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <sys/time.h>
+#include <sys/types.h>
 __thread int x = 0;
 //#include "core/properties.h"
 extern unsigned priv_thread_count;
@@ -39,6 +39,7 @@ extern std::string custom_workload;
 extern "C" {
 #include <allocator/volume_manager.h>
 #include <btree/btree.h>
+#include <include/parallax.h>
 #include <scanner/scanner.h>
 }
 
@@ -51,7 +52,7 @@ class ParallaxDB : public YCSBDB {
     private:
 	int db_num;
 	int field_count;
-	std::vector<db_handle *> dbs;
+	std::vector<par_handle> dbs;
 
     public:
 	ParallaxDB(int num, utils::Properties &props)
@@ -84,11 +85,17 @@ class ParallaxDB : public YCSBDB {
 		}
 
 		close(fd);
+		par_db_options db_options;
+		db_options.volume_name = (char *)pathname;
+		db_options.volume_start = 0;
+		db_options.volume_size = 0;
+		db_options.create_flag = PAR_CREATE_DB;
 
 		for (int i = 0; i < db_num; ++i) {
 			std::string db_name = "data" + std::to_string(i) + ".dat";
-			db_handle *db = db_open((char *)pathname, 0, size, (char *)db_name.c_str(), CREATE_DB);
-			dbs.push_back(db);
+			db_options.db_name = (char *)db_name.c_str();
+			par_handle hd = par_open(&db_options);
+			dbs.push_back(hd);
 		}
 	}
 
@@ -124,13 +131,16 @@ class ParallaxDB : public YCSBDB {
 		std::hash<std::string> hash_fn;
 		uint32_t db_id = hash_fn(key) % db_num;
 		std::map<std::string, std::string> vmap;
+		struct par_key lookup_key = { .size = (uint32_t)key.length(), .data = (const char *)key.c_str() };
+		struct par_value lookup_value = { .val_buffer = NULL };
 
-		char *val = (char *)find_key(dbs[db_id], (void *)key.c_str(), key.length());
-		if (val == NULL) {
+		if (par_get(dbs[db_id], &lookup_key, &lookup_value) != PAR_SUCCESS) {
 			std::cout << "[1]cannot find : " << key << " in DB " << db_id << std::endl;
 			return 0;
 			exit(EXIT_FAILURE);
 		}
+		free(lookup_value.val_buffer);
+		lookup_value.val_buffer = NULL;
 		//     return 0;
 #if 0
 		if (*(int32_t *)val > 16000) {
@@ -196,21 +206,17 @@ class ParallaxDB : public YCSBDB {
 		int items = 0;
 		std::hash<std::string> hash_fn;
 
-		int32_t klen = key.length();
-		memcpy(key_buf, &klen, sizeof(int32_t));
-		memcpy(key_buf + sizeof(int32_t), key.c_str(), key.length());
+		struct par_key_value KV_pair = { .k = { .size = (uint32_t)key.length(), .data = key.c_str() },
+						 .v = { .val_buffer = NULL } };
 
-		struct scannerHandle *sh = (struct scannerHandle *)calloc(1, sizeof(struct scannerHandle));
-		if (!sh) {
-			std::cerr << "Calloc failed!";
+		par_scanner sc = par_init_scanner(dbs[hash_fn(key) % db_num], &KV_pair.k, PAR_GREATER_OR_EQUAL);
+		if (!par_is_valid(sc)) {
+			printf("sc is not initisalized after initialization... exiting\n");
 			exit(EXIT_FAILURE);
 		}
 
-		sh->type_of_scanner = FORWARD_SCANNER;
-		init_dirty_scanner(sh, dbs[hash_fn(key) % db_num], key_buf, GREATER_OR_EQUAL);
-
-		while (isValid(sh)) {
-			if (getNext(sh) == END_OF_DATABASE)
+		while (par_is_valid(sc)) {
+			if (par_get_next(sc) == END_OF_DATABASE)
 				break;
 
 			if (++items >= len) {
@@ -218,7 +224,7 @@ class ParallaxDB : public YCSBDB {
 			}
 		}
 
-		closeScanner(sh);
+		par_close_scanner(sc);
 		return 0;
 	}
 
@@ -228,13 +234,18 @@ class ParallaxDB : public YCSBDB {
 			std::hash<std::string> hash_fn;
 			uint32_t db_id = hash_fn(key) % db_num;
 			std::map<std::string, std::string> vmap;
+			struct par_key lookup_key = { .size = (uint32_t)key.length(),
+						      .data = (const char *)key.c_str() };
+			struct par_value lookup_value = { .val_buffer = NULL };
 
-			char *val = (char *)find_key(dbs[db_id], (void *)key.c_str(), key.length());
-			if (val == NULL) {
+			if (par_get(dbs[db_id], &lookup_key, &lookup_value) != PAR_SUCCESS) {
 				std::cout << "[1]cannot find : " << key << " in DB " << db_id << std::endl;
 				return 0;
-				//exit(EXIT_FAILURE);
+				exit(EXIT_FAILURE);
 			}
+			free(lookup_value.val_buffer);
+			lookup_value.val_buffer = NULL;
+
 #if 0
         if(*(int32_t *)val > 16000){
           std::cout << "TOO LARGE VALUE SIZE IN READ!" << std::endl;
@@ -242,16 +253,8 @@ class ParallaxDB : public YCSBDB {
           exit(EXIT_FAILURE);
         }
 #endif
-			// std::string value(val + sizeof(int32_t), *(int32_t *)val);
 
 			std::vector<std::string> tokens;
-			// boost::split(tokens, value, boost::is_any_of(" "));
-
-			// int cnt = 0;
-			// for (std::map<std::string, std::string>::size_type i = 0; i + 1 < tokens.size(); i += 2) {
-			// 	vmap.insert(std::pair<std::string, std::string>(tokens[i], tokens[i + 1]));
-			// 	++cnt;
-			// }
 #if 0
         if(cnt != field_count){
           std::cout << "ERROR IN VALUE!" << std::endl;
@@ -271,10 +274,6 @@ class ParallaxDB : public YCSBDB {
 
 #endif
 			std::vector<KVPair> new_values;
-			// for (std::map<std::string, std::string>::iterator it = vmap.begin(); it != vmap.end(); ++it) {
-			// 	KVPair kv = std::make_pair(it->first, it->second);
-			// 	new_values.push_back(kv);
-			// }
 
 			return Insert(id, table, key, new_values);
 #if 0
@@ -310,34 +309,36 @@ class ParallaxDB : public YCSBDB {
 		int y = x % 10;
 		++x;
 
+		struct par_key_value KV_pair = { .k = { .size = 0, .data = NULL }, .v = { .val_buffer = NULL } };
+
 		switch (choose_wl(custom_workload, y)) {
 		case 0:
-			insert_key_value(dbs[db_id], (void *)key.c_str(), (void *)value.c_str(), key.length(),
-					 value.length());
+			KV_pair.k.size = key.length();
+			KV_pair.k.data = key.c_str();
+			KV_pair.v.val_buffer = (char *)value.c_str();
+			KV_pair.v.val_size = value.length();
+			par_put(dbs[db_id], &KV_pair);
 			break;
 		case 1:
-			insert_key_value(dbs[db_id], (void *)key.c_str(), (void *)value2.c_str(), key.length(),
-					 value2.length());
+			KV_pair.k.size = key.length();
+			KV_pair.k.data = key.c_str();
+			KV_pair.v.val_buffer = (char *)value2.c_str();
+			KV_pair.v.val_size = value2.length();
+			par_put(dbs[db_id], &KV_pair);
+
 			break;
 		case 2:
-			insert_key_value(dbs[db_id], (void *)key.c_str(), (void *)value3.c_str(), key.length(),
-					 value3.length());
+			KV_pair.k.size = key.length();
+			KV_pair.k.data = key.c_str();
+			KV_pair.v.val_buffer = (char *)value3.c_str();
+			KV_pair.v.val_size = value3.length();
+			par_put(dbs[db_id], &KV_pair);
 			break;
 		default:
 			assert(0);
 			std::cout << "Got Unknown value" << std::endl;
 			exit(EXIT_FAILURE);
 		}
-
-		// int cnt = 0;
-		// for (auto v : values) {
-		// 	value.append(v.first);
-		// 	value.append(1, ' ');
-		// 	value.append(v.second);
-		// 	value.append(1, ' ');
-		// 	++cnt;
-		// }
-		// value.pop_back();
 
 #if 0
       if(cnt != field_count){
@@ -346,8 +347,6 @@ class ParallaxDB : public YCSBDB {
         exit(EXIT_FAILURE);
       }
 #endif
-
-		//insert_key_value(dbs[db_id], (void *)key.c_str(), (void *)value.c_str(), key.length(), value.length());
 
 		return 0;
 	}
