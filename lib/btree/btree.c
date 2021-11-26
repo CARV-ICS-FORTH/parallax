@@ -588,6 +588,7 @@ static db_descriptor *get_db_from_volume(char *volume_name, char *db_name, char 
 			rul_log_init(db_desc);
 			restore_db(db_desc, db_desc->db_superblock->id);
 		} else {
+			db_desc->dirty = 1;
 			log_info("Initializing new DB: %s, initializing its allocation log", db_name);
 			rul_log_init(db_desc);
 			db_desc->levels[0].allocation_txn_id[0] = rul_start_txn(db_desc);

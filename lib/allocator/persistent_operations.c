@@ -47,6 +47,8 @@ static void pr_flush_allocation_log_and_level_info(struct db_descriptor *db_desc
 
 void pr_flush_L0(struct db_descriptor *db_desc, uint8_t tree_id)
 {
+	if (!db_desc->dirty)
+		return;
 	struct my_log_info {
 		uint64_t head_dev_offt;
 		uint64_t tail_dev_offt;
@@ -94,6 +96,7 @@ void pr_flush_L0(struct db_descriptor *db_desc, uint8_t tree_id)
 
 	struct rul_log_info rul_log = rul_flush_txn(db_desc, my_txn_id);
 	/*new info about large*/
+	db_desc->db_superblock->big_log_head_offt = large_log.head_dev_offt;
 	db_desc->db_superblock->big_log_tail_offt = large_log.tail_dev_offt;
 	db_desc->db_superblock->big_log_size = large_log.size;
 	/*new info about L0_recovery_log*/
@@ -265,6 +268,35 @@ void pr_flush_db_superblock(struct db_descriptor *db_desc)
 	}
 }
 
+static void pr_print_db_superblock(struct pr_db_superblock *superblock)
+{
+	log_info("DB name: %s id in the volume's superblock array: %u valid: %u", superblock->db_name, superblock->id,
+		 superblock->valid);
+	log_info("Large log head_dev_offt: %llu tail_dev_offt: %llu size: %llu", superblock->big_log_head_offt,
+		 superblock->big_log_tail_offt, superblock->big_log_size);
+	log_info("Medium log head_dev_offt: %llu tail_dev_offt: %llu size: %llu", superblock->medium_log_head_offt,
+		 superblock->medium_log_tail_offt, superblock->medium_log_size);
+	log_info("L0 L0_recovery_log log head_dev_offt: %llu tail_dev_offt: %llu size: %llu",
+		 superblock->small_log_head_offt, superblock->small_log_tail_offt, superblock->small_log_size);
+	log_info("latest LSN: %llu", superblock->lsn);
+	log_info("Recovery of L0_recovery_log starts from segment_dev_offt: %llu offt_in_seg: %llu",
+		 superblock->small_log_start_segment_dev_offt, superblock->small_log_offt_in_start_segment);
+#if 0
+  for (uint32_t level_id = 0; level_id < MAX_LEVELS; ++level_id) {
+		for (uint32_t tree_id = 0; tree_id < NUM_TREES_PER_LEVEL; ++tree_id) {
+			log_info("Tree[%u][%u] root dev_offt = %llu", level_id, tree_id,
+				 superblock->root_r[level_id][tree_id]);
+			log_info("Tree[%u][%u] first_segment_dev_offt = %llu", level_id, tree_id,
+				 superblock->first_segment[level_id][tree_id]);
+			log_info("Tree[%u][%u] last_segment_dev_offt = %llu", level_id, tree_id,
+				 superblock->last_segment[level_id][tree_id]);
+			log_info("Tree[%u][%u] level size = %llu", level_id, tree_id,
+				 superblock->level_size[level_id][tree_id]);
+		}
+	}
+#endif
+}
+
 void pr_read_db_superblock(struct db_descriptor *db_desc)
 {
 	//where is my superblock
@@ -285,6 +317,7 @@ void pr_read_db_superblock(struct db_descriptor *db_desc)
 		}
 		total_bytes_written += bytes_written;
 	}
+	pr_print_db_superblock(db_desc->db_superblock);
 }
 /*</new_persistent_design>*/
 
