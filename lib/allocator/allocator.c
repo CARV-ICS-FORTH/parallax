@@ -206,7 +206,9 @@ static void replay_allocation_log_segment(struct pr_region_allocation_log *alloc
 			/*print_allocation_type(log_entry->op_type);*/
 
 			switch (log_entry->op_type) {
-			case RUL_LOG_ALLOCATE:
+			case RUL_LARGE_LOG_ALLOCATE:
+			case RUL_MEDIUM_LOG_ALLOCATE:
+			case RUL_SMALL_LOG_ALLOCATE:
 			case RUL_ALLOCATE:
 				CLEAR_BIT(&mem_bitmap[byte_id], bit_id);
 				break;

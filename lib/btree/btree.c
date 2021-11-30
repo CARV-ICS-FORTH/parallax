@@ -415,7 +415,7 @@ static void init_fresh_logs(struct db_descriptor *db_desc)
 {
 	log_info("Initializing KV logs (small,medium,large) for DB: %s", db_desc->db_superblock->db_name);
 	// Large log
-	struct segment_header *s = seg_get_raw_log_segment(db_desc, 0, 0);
+	struct segment_header *s = seg_get_raw_log_segment(db_desc, BIG_LOG, 0, 0);
 	s->segment_id = 0;
 	s->next_segment = NULL;
 	s->prev_segment = NULL;
@@ -441,7 +441,7 @@ static void init_fresh_logs(struct db_descriptor *db_desc)
 #endif
 
 	// Small log
-	s = seg_get_raw_log_segment(db_desc, 0, 0);
+	s = seg_get_raw_log_segment(db_desc, SMALL_LOG, 0, 0);
 	s->segment_id = 0;
 	s->prev_segment = NULL;
 	s->next_segment = NULL;
@@ -1252,8 +1252,8 @@ static void bt_add_segment_to_log(struct db_descriptor *db_desc, struct log_desc
 {
 	uint32_t curr_tail_id = log_desc->curr_tail_id;
 	uint32_t next_tail_id = curr_tail_id + 1;
-
-	uint64_t next_tail_seg_offt = ABSOLUTE_ADDRESS(seg_get_raw_log_segment(db_desc, level_id, tree_id));
+	struct segment_header *new_segment = seg_get_raw_log_segment(db_desc, log_desc->my_type, level_id, tree_id);
+	uint64_t next_tail_seg_offt = ABSOLUTE_ADDRESS(new_segment);
 	if (!next_tail_seg_offt) {
 		log_fatal("No space for new segment");
 		exit(EXIT_FAILURE);
@@ -1293,7 +1293,7 @@ static void bt_add_blob(struct db_descriptor *db_desc, struct log_descriptor *lo
 	uint32_t curr_tail_id = log_desc->curr_tail_id;
 	uint32_t next_tail_id = ++curr_tail_id;
 
-	struct segment_header *next_tail_seg = seg_get_raw_log_segment(db_desc, level_id, tree_id);
+	struct segment_header *next_tail_seg = seg_get_raw_log_segment(db_desc, log_desc->my_type, level_id, tree_id);
 	if (!next_tail_seg) {
 		log_fatal("No space for new segment");
 		exit(EXIT_FAILURE);

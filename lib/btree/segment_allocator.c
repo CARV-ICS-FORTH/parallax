@@ -335,16 +335,31 @@ void seg_free_leaf_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t
 #endif
 }
 
-segment_header *seg_get_raw_log_segment(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
+segment_header *seg_get_raw_log_segment(struct db_descriptor *db_desc, enum log_type log_type, uint8_t level_id,
+					uint8_t tree_id)
 {
-	uint64_t segment_dev_offt = seg_allocate_segment(db_desc, db_desc->levels[level_id].allocation_txn_id[tree_id]);
-	segment_header *sg = (segment_header *)REAL_ADDRESS(segment_dev_offt);
-#if 0
-	sg->segment_garbage_bytes = 0;
-	sg->moved_kvs = 0;
-	sg->segment_end = 0;
-	sg->in_mem = 0;
-#endif
+	enum rul_op_type op_type;
+	switch (log_type) {
+	case BIG_LOG:
+		op_type = RUL_LARGE_LOG_ALLOCATE;
+		break;
+	case MEDIUM_LOG:
+		op_type = RUL_MEDIUM_LOG_ALLOCATE;
+		break;
+	case SMALL_LOG:
+		op_type = RUL_SMALL_LOG_ALLOCATE;
+		break;
+	default:
+		log_fatal("Unknown log type");
+		exit(EXIT_FAILURE);
+	}
+	struct rul_log_entry log_entry;
+	log_entry.dev_offt = mem_allocate(db_desc->db_volume, SEGMENT_SIZE);
+	log_entry.txn_id = db_desc->levels[level_id].allocation_txn_id[tree_id];
+	log_entry.op_type = op_type;
+	log_entry.size = SEGMENT_SIZE;
+	rul_add_entry_in_txn_buf(db_desc, &log_entry);
+	segment_header *sg = (segment_header *)REAL_ADDRESS(log_entry.dev_offt);
 	return sg;
 }
 

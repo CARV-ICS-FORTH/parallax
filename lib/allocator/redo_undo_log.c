@@ -229,7 +229,7 @@ static int rul_append(struct db_descriptor *db_desc, struct rul_log_entry *entry
 		struct rul_log_entry e;
 		e.txn_id = 0;
 		e.dev_offt = new_tail_dev_offt;
-		e.op_type = RUL_LOG_ALLOCATE;
+		e.op_type = RUL_ALLOCATE;
 		//add new entry in the memory segment
 		memcpy(&log_desc->my_segment.chunk[log_desc->curr_chunk_id][log_desc->curr_chunk_entry], &e,
 		       sizeof(struct rul_log_entry));
@@ -358,7 +358,7 @@ void rul_log_init(struct db_descriptor *db_desc)
 		log_desc->size = 0;
 
 		struct rul_log_entry log_entry = {
-			.txn_id = 0, .dev_offt = head_dev_offt, .op_type = RUL_LOG_ALLOCATE, .size = SEGMENT_SIZE
+			.txn_id = 0, .dev_offt = head_dev_offt, .op_type = RUL_ALLOCATE, .size = SEGMENT_SIZE
 		};
 		MUTEX_LOCK(&log_desc->rul_lock);
 		rul_add_first_entry(db_desc, &log_entry);
@@ -508,6 +508,9 @@ void rul_apply_txn_buf_freeops_and_destroy(struct db_descriptor *db_desc, uint64
 				mem_bitmap_mark_block_free(db_desc->db_volume, curr->txn_entry[i].dev_offt);
 				break;
 			case RUL_ALLOCATE:
+			case RUL_LARGE_LOG_ALLOCATE:
+			case RUL_MEDIUM_LOG_ALLOCATE:
+			case RUL_SMALL_LOG_ALLOCATE:
 				break;
 			default:
 				log_fatal("Unhandled case probably corruption in txn buffer");

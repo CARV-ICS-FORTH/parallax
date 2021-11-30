@@ -27,7 +27,15 @@
 
 struct db_descriptor;
 
-enum rul_op_type { RUL_ALLOCATE = 1, RUL_FREE, RUL_COMMIT, RUL_LOG_ALLOCATE, RUL_LOG_FREE };
+enum rul_op_type {
+	RUL_ALLOCATE = 1,
+	RUL_FREE,
+	RUL_COMMIT,
+	RUL_SMALL_LOG_ALLOCATE,
+	RUL_MEDIUM_LOG_ALLOCATE,
+	RUL_LARGE_LOG_ALLOCATE,
+	RUL_LOG_FREE
+};
 
 struct rul_log_info {
 	uint64_t size;

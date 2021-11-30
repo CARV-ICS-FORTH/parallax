@@ -702,7 +702,7 @@ static void comp_append_pivot_to_index(struct comp_level_write_cursor *c, uint64
 static void comp_init_medium_log(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
 {
 	log_info("Initializing medium log for db: %s", db_desc->db_superblock->db_name);
-	struct segment_header *s = seg_get_raw_log_segment(db_desc, level_id, tree_id);
+	struct segment_header *s = seg_get_raw_log_segment(db_desc, MEDIUM_LOG, level_id, tree_id);
 	s->segment_id = 0;
 	s->next_segment = NULL;
 	s->prev_segment = NULL;
