@@ -337,9 +337,8 @@ void seg_free_leaf_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t
 
 segment_header *seg_get_raw_log_segment(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
 {
-	segment_header *sg;
-	sg = (segment_header *)REAL_ADDRESS(
-		seg_allocate_segment(db_desc, db_desc->levels[level_id].allocation_txn_id[tree_id]));
+	uint64_t segment_dev_offt = seg_allocate_segment(db_desc, db_desc->levels[level_id].allocation_txn_id[tree_id]);
+	segment_header *sg = (segment_header *)REAL_ADDRESS(segment_dev_offt);
 #if 0
 	sg->segment_garbage_bytes = 0;
 	sg->moved_kvs = 0;

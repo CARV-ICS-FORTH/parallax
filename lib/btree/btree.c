@@ -457,8 +457,6 @@ static void init_fresh_logs(struct db_descriptor *db_desc)
 
 static void init_fresh_db(struct db_descriptor *db_desc)
 {
-	db_desc->dirty = 0;
-
 	struct pr_db_superblock *my_superblock = db_desc->db_superblock;
 
 	/*init now state for all levels*/
@@ -523,7 +521,6 @@ static void restore_db(struct db_descriptor *db_desc, uint32_t region_idx)
 	pr_read_db_superblock(db_desc);
 
 	struct pr_db_superblock *my_superblock = db_desc->db_superblock;
-	db_desc->dirty = 0;
 
 	/*restore now persistent state of all levels*/
 	for (uint8_t level_id = 0; level_id < MAX_LEVELS; level_id++) {
@@ -585,6 +582,7 @@ static db_descriptor *get_db_from_volume(char *volume_name, char *db_name, char 
 
 		if (!new_db) {
 			log_info("Found DB: %s recovering its allocation log", db_name);
+			db_desc->dirty = 0;
 			rul_log_init(db_desc);
 			restore_db(db_desc, db_desc->db_superblock->id);
 		} else {
@@ -607,27 +605,20 @@ static db_descriptor *get_db_from_volume(char *volume_name, char *db_name, char 
 }
 /*</new_persistent_design>*/
 
-db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_name, char CREATE_FLAG)
+db_handle *internal_db_open(struct volume_descriptor *volume_desc, uint64_t start, uint64_t size, char *db_name,
+			    char CREATE_FLAG)
 {
 	struct db_handle *handle = NULL;
 	uint32_t leaf_size_per_level[10] = { LEVEL0_LEAF_SIZE, LEVEL1_LEAF_SIZE, LEVEL2_LEAF_SIZE, LEVEL3_LEAF_SIZE,
 					     LEVEL4_LEAF_SIZE, LEVEL5_LEAF_SIZE, LEVEL6_LEAF_SIZE, LEVEL7_LEAF_SIZE };
-	struct volume_descriptor *volume_desc = NULL;
 	struct db_descriptor *db = NULL;
 	struct lib_option *dboptions = NULL;
 
 	fprintf(stderr, "\n%s[%s:%s:%d](\"%s\", %" PRIu64 ", %" PRIu64 ", %s);%s\n", "\033[0;32m", __FILE__, __func__,
-		__LINE__, volumeName, start, size, db_name, "\033[0m");
+		__LINE__, volume_desc->volume_name, start, size, db_name, "\033[0m");
 
-	MUTEX_LOCK(&init_lock);
 	parse_options(&dboptions);
 
-	volume_desc = mem_get_volume_desc(volumeName);
-	if (!volume_desc) {
-		log_fatal("Failed to open volume %s", volumeName);
-		exit(EXIT_FAILURE);
-	}
-	assert(volume_desc->open_databases);
 	index_order = IN_LENGTH;
 	_Static_assert(sizeof(index_node) == 4096, "Index node is not page aligned");
 	_Static_assert(sizeof(struct segment_header) == 4096, "Segment header is not 4 KB");
@@ -655,7 +646,7 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 	check_option("growth_factor", option);
 	growth_factor = option->value.count;
 
-	struct db_descriptor *db_desc = get_db_from_volume(volumeName, db_name, CREATE_FLAG);
+	struct db_descriptor *db_desc = get_db_from_volume(volume_desc->volume_name, db_name, CREATE_FLAG);
 	if (!db_desc) {
 		if (CREATE_DB == CREATE_FLAG) {
 			log_warn("Sorry no room for new DB %s", db_name);
@@ -739,28 +730,7 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 #endif
 		}
 	}
-	sem_init(&gc_daemon_interrupts, PTHREAD_PROCESS_PRIVATE, 0);
 
-	static int gc_thread_spawned = 0;
-	if (!gc_thread_spawned) {
-		++gc_thread_spawned;
-		assert(handle->volume_desc->open_databases);
-		if (pthread_create(&(handle->db_desc->gc_thread), NULL, (void *)gc_log_entries, (void *)handle) != 0) {
-			log_fatal("Failed to start gc_thread for db %s", db_name);
-			exit(EXIT_FAILURE);
-		}
-	}
-	/* if(!gc_thread_spawned){ */
-	/* 	++gc_thread_spawned; */
-	/* handle->db_desc->gc_count_segments = 0; */
-	/* handle->db_desc->gc_last_segment_id = 0; */
-	/* handle->db_desc->gc_keys_transferred = 0; */
-	/* if (pthread_create(&(handle->db_desc->gc_thread), NULL, (void
-* *)gc_log_entries, (void *)handle) != 0) { */
-	/* 	log_fatal("Failed to start compaction_daemon for db %s", db_name); */
-	/* 	exit(EXIT_FAILURE); */
-	/* } */
-	/* } */
 	_Static_assert(UNKNOWN_LOG_CATEGORY < 8, "Log categories number cannot be "
 						 "stored in 3 bits, increase "
 						 "key_category");
@@ -773,7 +743,6 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 
 	klist_add_first(volume_desc->open_databases, handle->db_desc, db_name, NULL);
 	handle->db_desc->stat = DB_OPEN;
-	MUTEX_UNLOCK(&init_lock);
 
 	log_info("Opened DB %s starting its compaction daemon", db_name);
 
@@ -785,22 +754,56 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 		exit(EXIT_FAILURE);
 	}
 
-	if (strcmp(SYSTEMDB, db_name)) {
-		handle->db_desc->gc_db = db_open(volumeName, 0, size, SYSTEMDB, DONOT_CREATE_DB);
-		if (!handle->db_desc->gc_db)
-			handle->db_desc->gc_db = db_open(volumeName, 0, size, SYSTEMDB, CREATE_DB);
-		assert(handle->db_desc->gc_db);
-	} else
-		handle->db_desc->gc_db = NULL;
-
 	/*get allocation transaction id for level-0*/
 	MUTEX_INIT(&handle->db_desc->flush_L0_lock, NULL);
 	pr_flush_L0(db_desc, db_desc->levels[0].active_tree);
 	db_desc->levels[0].allocation_txn_id[db_desc->levels[0].active_tree] = rul_start_txn(db_desc);
 exit:
-	MUTEX_UNLOCK(&init_lock);
 	destroy_options(dboptions);
 	dboptions = NULL;
+	return handle;
+}
+
+db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_name, char CREATE_FLAG)
+{
+	MUTEX_LOCK(&init_lock);
+	struct volume_descriptor *volume_desc = mem_get_volume_desc(volumeName);
+	if (!volume_desc) {
+		log_fatal("Failed to open volume %s", volumeName);
+		exit(EXIT_FAILURE);
+	}
+	assert(volume_desc->open_databases);
+	/*retrieve gc db*/
+	struct klist_node *node = klist_get_first(volume_desc->open_databases);
+	struct db_descriptor *gc_db = NULL;
+	int found_gc_db = 0;
+	while (node != NULL) {
+		gc_db = (struct db_descriptor *)node->data;
+		if (strcmp(gc_db->db_superblock->db_name, SYSTEMDB)) {
+			found_gc_db = 1;
+			break;
+		}
+		node = node->next;
+	}
+	if (!found_gc_db) {
+		log_fatal("%s for GC not found creating one", SYSTEMDB);
+		db_handle *gc_db_handle = internal_db_open(volume_desc, start, size, SYSTEMDB, CREATE_DB);
+		gc_db_handle->db_desc->gc_db = NULL;
+		sem_init(&gc_daemon_interrupts, PTHREAD_PROCESS_PRIVATE, 0);
+		gc_db = gc_db_handle->db_desc;
+		if (pthread_create(&(gc_db_handle->db_desc->gc_thread), NULL, (void *)gc_log_entries,
+				   (void *)gc_db_handle) != 0) {
+			log_fatal("Failed to start gc_thread for db %s", db_name);
+			exit(EXIT_FAILURE);
+		}
+	}
+
+	db_handle *handle = internal_db_open(volume_desc, start, size, db_name, CREATE_FLAG);
+
+	handle->db_desc->gc_db = calloc(1, sizeof(struct db_handle));
+	handle->db_desc->gc_db->db_desc = gc_db;
+	handle->db_desc->gc_db->volume_desc = volume_desc;
+	MUTEX_UNLOCK(&init_lock);
 	return handle;
 }
 
@@ -900,9 +903,11 @@ enum parallax_status db_close(db_handle *handle)
 		exit(EXIT_FAILURE);
 	}
 
-	if (handle->db_desc->gc_db)
+	if (handle->db_desc->gc_db) {
 		gc_db = handle->db_desc->gc_db;
-
+		assert(gc_db->db_desc);
+		assert(gc_db->volume_desc);
+	}
 	free(handle->db_desc);
 finish:
 
@@ -1471,7 +1476,7 @@ uint8_t _insert_key_value(bt_insert_req *ins_req)
 	wait_for_available_level0_tree(handle);
 
 	assert(ins_req->metadata.kv_size < 4096);
-	db_desc->dirty = 0x01;
+	db_desc->dirty = 1;
 
 	if (writers_join_as_readers(ins_req) == PARALLAX_SUCCESS) {
 		rc = PARALLAX_SUCCESS;

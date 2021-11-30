@@ -22,7 +22,7 @@
 #define INV_BIT_MASK(X) (~BIT_MASK(X))
 #define SET_BIT(X, Y) (*X = *X | BIT_MASK(Y))
 #define CLEAR_BIT(X, Y) (*X = *X & INV_BIT_MASK(Y))
-
+#define GET_BIT(X, Y) ((X & (1 << Y)) >> Y)
 #define MAGIC_NUMBER 2036000000
 /*size in 4KB blocks of the log used for marking the free ops*/
 #define FREE_LOG_SIZE_IN_BLOCKS 512000

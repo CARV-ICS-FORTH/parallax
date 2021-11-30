@@ -21,6 +21,7 @@
 #include "djb2.h"
 #include "log_structures.h"
 #include "mem_structures.h"
+#include "redo_undo_log.h"
 #include "volume_manager.h"
 
 #include <assert.h>
@@ -107,7 +108,7 @@ off64_t mount_volume(char *volume_name, int64_t start, int64_t unused_size)
 		}
 
 		log_info("Creating virtual address space offset %lld size %ld\n", (long long)start, device_size);
-		// mmap the device
+		/*mmap the device*/
 
 		char *addr_space = NULL;
 
@@ -144,6 +145,181 @@ static uint8_t init_db_superblock(struct pr_db_superblock *db_superblock, const 
 	db_superblock->valid = 1;
 	db_superblock->lsn = 0;
 	return 1;
+}
+
+#if 0
+static void print_allocation_type(enum rul_op_type type)
+{
+	switch (type) {
+	case RUL_ALLOCATE:
+		log_info("RUL_ALLOCATE");
+		break;
+	case RUL_LOG_ALLOCATE:
+		log_info("RUL_LOG_ALLOCATE");
+		break;
+	case RUL_FREE:
+		log_info("RUL_FREE");
+		break;
+	case RUL_LOG_FREE:
+		log_info("RUL_LOG_FREE");
+		break;
+	case RUL_COMMIT:
+		log_info("RUL_COMMIT");
+		break;
+	default:
+		log_fatal("Corrupted operation type %d", type);
+		assert(0);
+		exit(EXIT_FAILURE);
+	}
+}
+#endif
+
+static void replay_allocation_log_segment(struct pr_region_allocation_log *allocation_log,
+					  struct rul_log_segment *segment, uint8_t *mem_bitmap)
+{
+	uint8_t last_segment = (ABSOLUTE_ADDRESS(segment) == allocation_log->tail_dev_offt) ? 1 : 0;
+	uint32_t last_segment_size;
+	uint32_t chunks_in_segment;
+
+	if (last_segment) {
+		last_segment_size = allocation_log->size % SEGMENT_SIZE;
+		chunks_in_segment = last_segment_size / RUL_LOG_CHUNK_SIZE_IN_BYTES;
+		chunks_in_segment += ((last_segment_size % RUL_LOG_CHUNK_SIZE_IN_BYTES) ? 1 : 0);
+	} else
+		chunks_in_segment = RUL_LOG_CHUNK_NUM;
+
+	for (uint32_t chunk_id = 0; chunk_id < chunks_in_segment; ++chunk_id) {
+		uint32_t entries_in_chunk;
+		if (last_segment) {
+			last_segment_size = allocation_log->size % SEGMENT_SIZE;
+			entries_in_chunk = last_segment_size / sizeof(struct rul_log_entry);
+
+		} else
+			entries_in_chunk = RUL_LOG_CHUNK_NUM;
+
+		for (uint32_t entry_id = 0; entry_id < entries_in_chunk; ++entry_id) {
+			void *supress_unaligned_warning = (void *)&(segment->chunk[chunk_id][entry_id]);
+			struct rul_log_entry *log_entry = supress_unaligned_warning;
+			uint64_t bit_distance = log_entry->dev_offt / SEGMENT_SIZE;
+			uint64_t byte_id = bit_distance / 8;
+			uint8_t bit_id = bit_distance % 8;
+			/*print_allocation_type(log_entry->op_type);*/
+
+			switch (log_entry->op_type) {
+			case RUL_LOG_ALLOCATE:
+			case RUL_ALLOCATE:
+				CLEAR_BIT(&mem_bitmap[byte_id], bit_id);
+				break;
+
+			case RUL_LOG_FREE:
+			case RUL_FREE:
+				SET_BIT(&mem_bitmap[byte_id], bit_id);
+				break;
+				break;
+			default:
+				log_fatal("Unknown/Corrupted entry in allocation log");
+				exit(EXIT_FAILURE);
+			}
+		}
+	}
+}
+
+static void apply_db_allocations_to_allocator_bitmap(struct volume_descriptor *volume_desc, uint8_t *mem_bitmap,
+						     int mem_bitmap_size)
+{
+	/* 0 --> in use
+   * 1  --> free
+   */
+	char *volume_allocator_bitmap = (char *)volume_desc->mem_volume_bitmap;
+	int volume_allocator_size = volume_desc->mem_volume_bitmap_size * sizeof(uint64_t);
+
+	if (volume_allocator_size != mem_bitmap_size) {
+		log_fatal("Bitmaps of allocator and db differ in size");
+		exit(EXIT_FAILURE);
+	}
+
+	for (int byte = 0; byte < volume_allocator_size; ++byte) {
+		for (uint8_t bit_id = 0; bit_id < 8; ++bit_id) {
+			uint8_t db_bit_value = GET_BIT(mem_bitmap[byte], bit_id);
+			if (!db_bit_value) {
+				/*Check if there is conflict. If yes we have corruption since two dbs claim space as theirs*/
+				uint8_t allocator_bit_value = GET_BIT(volume_allocator_bitmap[byte], bit_id);
+				if (!allocator_bit_value) {
+					log_fatal("Corruption multiple DBs claim ownership of the same segment !");
+					exit(EXIT_FAILURE);
+				}
+				CLEAR_BIT(&volume_allocator_bitmap[byte], bit_id);
+			}
+		}
+	}
+}
+
+void replay_db_allocation_log(struct volume_descriptor *volume_desc, struct pr_db_superblock *superblock)
+{
+	uint8_t mem_bitmap_size = volume_desc->mem_volume_bitmap_size * sizeof(uint64_t);
+	uint8_t *mem_bitmap = malloc(mem_bitmap_size);
+
+	/*DBs view of the volume initally everything is free*/
+	memset(mem_bitmap, 0xFF, mem_bitmap_size);
+	struct pr_region_allocation_log *allocation_log = &superblock->allocation_log;
+	log_info("Allocation log of DB: %s head %llu tail %llu size %llu", superblock->db_name,
+		 allocation_log->head_dev_offt, allocation_log->tail_dev_offt, allocation_log->size);
+	struct rul_log_segment *segment = NULL;
+
+	enum process_stage { INIT, NORMAL, LAST, EXIT } replay_stage = INIT;
+	while (1) {
+		segment = REAL_ADDRESS(allocation_log->head_dev_offt);
+		switch (replay_stage) {
+		case INIT:
+			if (!allocation_log->head_dev_offt) {
+				replay_stage = EXIT;
+				break;
+			}
+			segment = REAL_ADDRESS(allocation_log->head_dev_offt);
+			replay_allocation_log_segment(allocation_log, segment, mem_bitmap);
+
+			if (segment == REAL_ADDRESS(allocation_log->tail_dev_offt)) {
+				replay_stage = EXIT;
+				break;
+			}
+			replay_stage = NORMAL;
+			break;
+		case NORMAL:
+			segment = REAL_ADDRESS(segment->next_seg_offt);
+			replay_allocation_log_segment(allocation_log, segment, mem_bitmap);
+			if (segment->next_seg_offt == allocation_log->tail_dev_offt) {
+				replay_stage = LAST;
+				break;
+			}
+			replay_stage = NORMAL;
+			break;
+		case LAST:
+			segment = REAL_ADDRESS(allocation_log->tail_dev_offt);
+			replay_allocation_log_segment(allocation_log, segment, mem_bitmap);
+			replay_stage = EXIT;
+			break;
+		case EXIT:
+			return;
+		default:
+			log_fatal("Unknown stage WTF?");
+			exit(EXIT_FAILURE);
+		}
+	}
+
+	apply_db_allocations_to_allocator_bitmap(volume_desc, mem_bitmap, mem_bitmap_size);
+	free(mem_bitmap);
+}
+
+static void recover_allocator_bitmap(struct volume_descriptor *volume_desc)
+{
+	/*Iterate and replay all dbs allocation log info*/
+	uint32_t max_regions = volume_desc->vol_superblock.max_regions_num;
+	for (uint32_t i = 0; i < max_regions; ++i) {
+		if (volume_desc->pr_regions->db[i].valid) {
+			log_info("Replaying allocation log for DB: %s", volume_desc->pr_regions->db[i].db_name);
+			replay_db_allocation_log(volume_desc, &volume_desc->pr_regions->db[i]);
+		}
+	}
 }
 
 struct pr_db_superblock *get_db_superblock(struct volume_descriptor *volume_desc, const char *db_name,
@@ -723,11 +899,14 @@ struct volume_descriptor *mem_get_volume_desc(char *volume_name)
 
 		volume->volume_desc->db_superblock_lock =
 			calloc(volume->volume_desc->vol_superblock.max_regions_num, sizeof(pthread_mutex_t));
+
 		for (uint32_t i = 0; i < volume->volume_desc->vol_superblock.max_regions_num; ++i)
 			MUTEX_INIT(&volume->volume_desc->db_superblock_lock[i], NULL);
+		recover_allocator_bitmap(volume->volume_desc);
 	}
 	HASH_ADD_PTR(volume_map, hash_key, volume);
 	MUTEX_UNLOCK(&volume_map_lock);
+
 	return volume->volume_desc;
 }
 /*</new_persistent_design>*/

@@ -36,6 +36,7 @@
 #define DEVICE_BLOCK_SIZE 4096
 #define ALIGNMENT 512
 #define MEDIUM_LOG_UNSORTED 0
+#define SYSTEMDB "systemdb"
 
 /*for allocator.c*/
 #define DATA_PER_BITMAP_BLOCK ((DEVICE_BLOCK_SIZE - 8) * 8) /*Data blocks addressed per bitmap block*/

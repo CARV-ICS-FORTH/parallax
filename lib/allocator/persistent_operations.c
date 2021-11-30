@@ -31,6 +31,7 @@ static void pr_flush_allocation_log_and_level_info(struct db_descriptor *db_desc
 	/*Flush my allocations*/
 	struct rul_log_info rul_log = rul_flush_txn(db_desc, db_desc->levels[level_id].allocation_txn_id[tree_id]);
 	/*new info about allocation_log*/
+	db_desc->db_superblock->allocation_log.head_dev_offt = rul_log.head_dev_offt;
 	db_desc->db_superblock->allocation_log.tail_dev_offt = rul_log.tail_dev_offt;
 	db_desc->db_superblock->allocation_log.size = rul_log.size;
 	db_desc->db_superblock->allocation_log.txn_id = rul_log.txn_id;
@@ -104,6 +105,7 @@ void pr_flush_L0(struct db_descriptor *db_desc, uint8_t tree_id)
 	db_desc->db_superblock->small_log_tail_offt = L0_recovery_log.tail_dev_offt;
 	db_desc->db_superblock->small_log_size = L0_recovery_log.size;
 	/*new info about allocation_log*/
+	db_desc->db_superblock->allocation_log.head_dev_offt = rul_log.head_dev_offt;
 	db_desc->db_superblock->allocation_log.tail_dev_offt = rul_log.tail_dev_offt;
 	db_desc->db_superblock->allocation_log.size = rul_log.size;
 	db_desc->db_superblock->allocation_log.txn_id = rul_log.txn_id;
