@@ -174,58 +174,6 @@ static void print_allocation_type(enum rul_op_type type)
 }
 #endif
 
-static void replay_allocation_log_segment(struct pr_region_allocation_log *allocation_log,
-					  struct rul_log_segment *segment, uint8_t *mem_bitmap)
-{
-	uint8_t last_segment = (ABSOLUTE_ADDRESS(segment) == allocation_log->tail_dev_offt) ? 1 : 0;
-	uint32_t last_segment_size;
-	uint32_t chunks_in_segment;
-
-	if (last_segment) {
-		last_segment_size = allocation_log->size % SEGMENT_SIZE;
-		chunks_in_segment = last_segment_size / RUL_LOG_CHUNK_SIZE_IN_BYTES;
-		chunks_in_segment += ((last_segment_size % RUL_LOG_CHUNK_SIZE_IN_BYTES) ? 1 : 0);
-	} else
-		chunks_in_segment = RUL_LOG_CHUNK_NUM;
-
-	for (uint32_t chunk_id = 0; chunk_id < chunks_in_segment; ++chunk_id) {
-		uint32_t entries_in_chunk;
-		if (last_segment) {
-			last_segment_size = allocation_log->size % SEGMENT_SIZE;
-			entries_in_chunk = last_segment_size / sizeof(struct rul_log_entry);
-
-		} else
-			entries_in_chunk = RUL_LOG_CHUNK_NUM;
-
-		for (uint32_t entry_id = 0; entry_id < entries_in_chunk; ++entry_id) {
-			void *supress_unaligned_warning = (void *)&(segment->chunk[chunk_id][entry_id]);
-			struct rul_log_entry *log_entry = supress_unaligned_warning;
-			uint64_t bit_distance = log_entry->dev_offt / SEGMENT_SIZE;
-			uint64_t byte_id = bit_distance / 8;
-			uint8_t bit_id = bit_distance % 8;
-			/*print_allocation_type(log_entry->op_type);*/
-
-			switch (log_entry->op_type) {
-			case RUL_LARGE_LOG_ALLOCATE:
-			case RUL_MEDIUM_LOG_ALLOCATE:
-			case RUL_SMALL_LOG_ALLOCATE:
-			case RUL_ALLOCATE:
-				CLEAR_BIT(&mem_bitmap[byte_id], bit_id);
-				break;
-
-			case RUL_LOG_FREE:
-			case RUL_FREE:
-				SET_BIT(&mem_bitmap[byte_id], bit_id);
-				break;
-				break;
-			default:
-				log_fatal("Unknown/Corrupted entry in allocation log");
-				exit(EXIT_FAILURE);
-			}
-		}
-	}
-}
-
 static void apply_db_allocations_to_allocator_bitmap(struct volume_descriptor *volume_desc, uint8_t *mem_bitmap,
 						     int mem_bitmap_size)
 {
@@ -256,6 +204,112 @@ static void apply_db_allocations_to_allocator_bitmap(struct volume_descriptor *v
 	}
 }
 
+struct allocation_log_cursor *init_allocation_log_cursor(struct volume_descriptor *volume_desc,
+							 struct pr_db_superblock *db_superblock)
+{
+	struct allocation_log_cursor *cursor = calloc(1, sizeof(struct allocation_log_cursor));
+	if (!cursor) {
+		log_fatal("Failed to allocate memory");
+		exit(EXIT_FAILURE);
+	}
+	cursor->volume_desc = volume_desc;
+	cursor->db_superblock = db_superblock;
+	cursor->segment = NULL;
+	cursor->chunks_in_segment = 0;
+	cursor->curr_chunk_id = 0;
+	cursor->chunk_entries = 0;
+	cursor->curr_entry_in_chunk = 0;
+	cursor->state = GET_HEAD;
+	cursor->valid = 1;
+	return cursor;
+}
+
+struct rul_log_entry *get_next_allocation_log_entry(struct allocation_log_cursor *cursor)
+{
+	struct pr_region_allocation_log *allocation_log = &cursor->db_superblock->allocation_log;
+
+	while (1) {
+		switch (cursor->state) {
+		case GET_HEAD:
+			if (!allocation_log->head_dev_offt) {
+				cursor->segment = NULL;
+				cursor->state = EXIT;
+				cursor->valid = 0;
+				break;
+			}
+			cursor->segment = REAL_ADDRESS(allocation_log->head_dev_offt);
+			cursor->state = CALCULATE_CHUNKS_IN_SEGMENT;
+			break;
+		case GET_NEXT_SEGMENT:
+			if (cursor->segment == REAL_ADDRESS(allocation_log->tail_dev_offt)) {
+				cursor->segment = NULL;
+				cursor->valid = 0;
+				cursor->state = EXIT;
+				break;
+			}
+			cursor->segment = REAL_ADDRESS(cursor->segment->next_seg_offt);
+			cursor->state = CALCULATE_CHUNKS_IN_SEGMENT;
+			break;
+		case GET_NEXT_CHUNK:
+			if (cursor->curr_chunk_id >= cursor->chunks_in_segment) {
+				cursor->state = GET_NEXT_SEGMENT;
+				break;
+			}
+			++cursor->curr_chunk_id;
+			cursor->state = CALCULATE_CHUNK_ENTRIES;
+			break;
+		case CALCULATE_CHUNKS_IN_SEGMENT: {
+			uint8_t last_segment = (cursor->segment == REAL_ADDRESS(allocation_log->tail_dev_offt)) ? 1 : 0;
+			if (last_segment) {
+				uint32_t last_segment_size = allocation_log->size % SEGMENT_SIZE;
+				cursor->chunks_in_segment = last_segment_size / RUL_LOG_CHUNK_SIZE_IN_BYTES;
+				cursor->chunks_in_segment +=
+					((last_segment_size % RUL_LOG_CHUNK_SIZE_IN_BYTES) ? 1 : 0);
+			} else
+				cursor->chunks_in_segment = RUL_LOG_CHUNK_NUM;
+			cursor->curr_chunk_id = 0;
+			cursor->state = CALCULATE_CHUNK_ENTRIES;
+			break;
+		}
+		case CALCULATE_CHUNK_ENTRIES:
+			if (cursor->curr_chunk_id == cursor->chunks_in_segment - 1) {
+				uint32_t last_chunk_size = allocation_log->size % SEGMENT_SIZE;
+				last_chunk_size =
+					last_chunk_size - (cursor->curr_chunk_id * RUL_LOG_CHUNK_SIZE_IN_BYTES);
+				cursor->chunk_entries = last_chunk_size / sizeof(struct rul_log_entry);
+			} else
+				cursor->chunk_entries = RUL_LOG_CHUNK_MAX_ENTRIES;
+			cursor->curr_entry_in_chunk = 0;
+			cursor->state = GET_NEXT_ENTRY;
+			break;
+
+		case GET_NEXT_ENTRY:
+
+			if (cursor->curr_entry_in_chunk >= cursor->chunk_entries) {
+				cursor->state = GET_NEXT_CHUNK;
+				break;
+			}
+			void *supress_warning =
+				&cursor->segment->chunk[cursor->curr_chunk_id][cursor->curr_entry_in_chunk];
+			struct rul_log_entry *log_entry = supress_warning;
+			++cursor->curr_entry_in_chunk;
+			return log_entry;
+		case EXIT:
+			cursor->segment = NULL;
+			cursor->valid = 0;
+			return NULL;
+		default:
+			log_fatal("Unknown stage WTF?");
+			exit(EXIT_FAILURE);
+		}
+	}
+}
+
+void close_allocation_log_cursor(struct allocation_log_cursor *cursor)
+{
+	free(cursor);
+}
+
 void replay_db_allocation_log(struct volume_descriptor *volume_desc, struct pr_db_superblock *superblock)
 {
 	uint8_t mem_bitmap_size = volume_desc->mem_volume_bitmap_size * sizeof(uint64_t);
@@ -264,50 +318,41 @@ void replay_db_allocation_log(struct volume_descriptor *volume_desc, struct pr_d
 	/*DBs view of the volume initally everything is free*/
 	memset(mem_bitmap, 0xFF, mem_bitmap_size);
 	struct pr_region_allocation_log *allocation_log = &superblock->allocation_log;
+
 	log_info("Allocation log of DB: %s head %llu tail %llu size %llu", superblock->db_name,
 		 allocation_log->head_dev_offt, allocation_log->tail_dev_offt, allocation_log->size);
-	struct rul_log_segment *segment = NULL;
 
-	enum process_stage { INIT, NORMAL, LAST, EXIT } replay_stage = INIT;
+	struct allocation_log_cursor *log_cursor = init_allocation_log_cursor(volume_desc, superblock);
+
 	while (1) {
-		segment = REAL_ADDRESS(allocation_log->head_dev_offt);
-		switch (replay_stage) {
-		case INIT:
-			if (!allocation_log->head_dev_offt) {
-				replay_stage = EXIT;
-				break;
-			}
-			segment = REAL_ADDRESS(allocation_log->head_dev_offt);
-			replay_allocation_log_segment(allocation_log, segment, mem_bitmap);
+		struct rul_log_entry *log_entry = get_next_allocation_log_entry(log_cursor);
+		if (!log_entry)
+			break;
+		uint64_t bit_distance = log_entry->dev_offt / SEGMENT_SIZE;
+		uint64_t byte_id = bit_distance / 8;
+		uint8_t bit_id = bit_distance % 8;
+		/*print_allocation_type(log_entry->op_type);*/
 
-			if (segment == REAL_ADDRESS(allocation_log->tail_dev_offt)) {
-				replay_stage = EXIT;
-				break;
-			}
-			replay_stage = NORMAL;
+		switch (log_entry->op_type) {
+		case RUL_LARGE_LOG_ALLOCATE:
+		case RUL_MEDIUM_LOG_ALLOCATE:
+		case RUL_SMALL_LOG_ALLOCATE:
+		case RUL_ALLOCATE:
+			CLEAR_BIT(&mem_bitmap[byte_id], bit_id);
 			break;
-		case NORMAL:
-			segment = REAL_ADDRESS(segment->next_seg_offt);
-			replay_allocation_log_segment(allocation_log, segment, mem_bitmap);
-			if (segment->next_seg_offt == allocation_log->tail_dev_offt) {
-				replay_stage = LAST;
-				break;
-			}
-			replay_stage = NORMAL;
+
+		case RUL_LOG_FREE:
+		case RUL_FREE:
+			SET_BIT(&mem_bitmap[byte_id], bit_id);
 			break;
-		case LAST:
-			segment = REAL_ADDRESS(allocation_log->tail_dev_offt);
-			replay_allocation_log_segment(allocation_log, segment, mem_bitmap);
-			replay_stage = EXIT;
 			break;
-		case EXIT:
-			return;
 		default:
-			log_fatal("Unknown stage WTF?");
+			log_fatal("Unknown/Corrupted entry in allocation log");
 			exit(EXIT_FAILURE);
 		}
 	}
 
+	close_allocation_log_cursor(log_cursor);
 	apply_db_allocations_to_allocator_bitmap(volume_desc, mem_bitmap, mem_bitmap_size);
 	free(mem_bitmap);
 }
