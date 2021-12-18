@@ -55,7 +55,7 @@ struct rul_log_segment {
 	struct rul_log_entry chunk[RUL_LOG_CHUNK_NUM][RUL_LOG_CHUNK_MAX_ENTRIES];
 	char pad[RUL_SEGMENT_FOOTER_SIZE_IN_BYTES - sizeof(uint64_t)];
 	uint64_t next_seg_offt;
-} __attribute__((packed));
+} __attribute__((packed, aligned(SEGMENT_SIZE)));
 
 #define RUL_ENTRIES_PER_TXN_BUFFER 512
 struct rul_transaction {

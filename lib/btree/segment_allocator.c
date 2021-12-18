@@ -151,7 +151,7 @@ static void *get_space(struct db_descriptor *db_desc, uint8_t level_id, uint8_t 
 	return node;
 }
 
-struct segment_header *get_segment_for_explicit_IO(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
+struct segment_header *get_segment_for_lsm_level_IO(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
 {
 	struct level_descriptor *level_desc = &db_desc->levels[level_id];
 
@@ -159,32 +159,22 @@ struct segment_header *get_segment_for_explicit_IO(struct db_descriptor *db_desc
 		log_warn("Not allowed this kind of allocations for L0!");
 		return NULL;
 	}
-	struct segment_header *new_segment = (segment_header *)REAL_ADDRESS(
-		seg_allocate_segment(db_desc, db_desc->levels[level_id].allocation_txn_id[tree_id]));
-	/*log_info("Segment addr %llu", new_segment);*/
-	assert(new_segment);
+	uint64_t seg_offt = seg_allocate_segment(db_desc, db_desc->levels[level_id].allocation_txn_id[tree_id]);
+	struct segment_header *new_segment = (segment_header *)REAL_ADDRESS(seg_offt);
+	if (!new_segment) {
+		log_fatal("Failed to allocate space for new segment level");
+		exit(EXIT_FAILURE);
+	}
 
 	if (level_desc->offset[tree_id]) {
-		uint64_t segment_id = level_desc->last_segment[tree_id]->segment_id + 1;
-		/*chain segments*/
-		new_segment->next_segment = NULL;
-		new_segment->prev_segment = (segment_header *)ABSOLUTE_ADDRESS(level_desc->last_segment[tree_id]);
-
-		level_desc->last_segment[tree_id]->next_segment = (segment_header *)(ABSOLUTE_ADDRESS(new_segment));
-		level_desc->last_segment[tree_id] = new_segment;
-		level_desc->last_segment[tree_id]->segment_id = segment_id;
 		level_desc->offset[tree_id] += SEGMENT_SIZE;
+		level_desc->last_segment[tree_id] = new_segment;
 	} else {
-		//log_info("Adding first index segmet for [%u]",tree_id);
-		/*special case for the first segment for this level*/
-		new_segment->next_segment = NULL;
-		new_segment->prev_segment = NULL;
+		level_desc->offset[tree_id] = SEGMENT_SIZE;
 		level_desc->first_segment[tree_id] = new_segment;
 		level_desc->last_segment[tree_id] = new_segment;
-		level_desc->last_segment[tree_id]->segment_id = 0;
-		level_desc->offset[tree_id] = SEGMENT_SIZE;
 	}
-	new_segment->in_mem = 0;
+
 	return new_segment;
 }
 

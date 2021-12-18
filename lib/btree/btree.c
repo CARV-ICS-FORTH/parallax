@@ -304,9 +304,12 @@ struct bt_kv_log_address bt_get_kv_log_address(struct log_descriptor *log_desc, 
 		if (dev_offt >= log_desc->tail[i]->start && dev_offt <= log_desc->tail[i]->end) {
 			__sync_fetch_and_add(&log_desc->tail[i]->pending_readers, 1);
 			reply.in_tail = 1;
-			// log_info("KV at tail! offt %llu in the device or %llu", dev_offt,
-			// dev_offt % SEGMENT_SIZE);
-			reply.addr = &log_desc->tail[i]->buf[dev_offt % SEGMENT_SIZE];
+
+			//log_info("KV at tail %d ! offt %llu in the device or %llu inside the segment key size: %u", i,
+			//	 dev_offt, dev_offt % SEGMENT_SIZE,
+			//	 *(uint32_t *)&log_desc->tail[i]->buf[dev_offt % SEGMENT_SIZE]);
+
+			reply.addr = &(log_desc->tail[i]->buf[dev_offt % SEGMENT_SIZE]);
 			reply.tail_id = i;
 			RWLOCK_UNLOCK(&log_desc->log_tail_buf_lock);
 			return reply;
@@ -383,7 +386,7 @@ void init_log_buffer(struct log_descriptor *log_desc, enum log_type my_type)
 	}
 
 	for (int i = 0; i < LOG_TAIL_NUM_BUFS; ++i) {
-		if (posix_memalign((void **)&log_desc->tail[i], ALIGNMENT_SIZE, sizeof(struct log_tail)) != 0) {
+		if (posix_memalign((void **)&log_desc->tail[i], SEGMENT_SIZE, sizeof(struct log_tail)) != 0) {
 			log_fatal("Failed to allocate log buffer for direct IO");
 			exit(EXIT_FAILURE);
 		}
@@ -406,9 +409,11 @@ void init_log_buffer(struct log_descriptor *log_desc, enum log_type my_type)
 	for (i = 0; i < n_chunks; ++i) {
 		log_desc->tail[0]->bytes_in_chunk[i] = LOG_CHUNK_SIZE;
 		++log_desc->tail[0]->IOs_completed_in_tail;
+		log_info("bytes_in_chunk[%u] = %u", i, log_desc->tail[0]->bytes_in_chunk[i]);
 	}
-	if (offt_in_seg > 0 && offt_in_seg % LOG_CHUNK_SIZE != 0)
+	if (offt_in_seg > 0 && offt_in_seg % LOG_CHUNK_SIZE != 0) {
 		log_desc->tail[0]->bytes_in_chunk[i] = offt_in_seg % LOG_CHUNK_SIZE;
+	}
 }
 
 static void init_fresh_logs(struct db_descriptor *db_desc)
@@ -416,12 +421,14 @@ static void init_fresh_logs(struct db_descriptor *db_desc)
 	log_info("Initializing KV logs (small,medium,large) for DB: %s", db_desc->db_superblock->db_name);
 	// Large log
 	struct segment_header *s = seg_get_raw_log_segment(db_desc, BIG_LOG, 0, 0);
-	s->segment_id = 0;
-	s->next_segment = NULL;
-	s->prev_segment = NULL;
+	//s->segment_id = 0;
+	//s->next_segment = NULL;
+	//s->prev_segment = NULL;
 	db_desc->big_log.head_dev_offt = ABSOLUTE_ADDRESS(s);
 	db_desc->big_log.tail_dev_offt = db_desc->big_log.head_dev_offt;
 	db_desc->big_log.size = 0;
+	db_desc->big_log_start_segment_dev_offt = db_desc->big_log.tail_dev_offt;
+	db_desc->big_log_start_offt_in_segment = db_desc->big_log.size % SEGMENT_SIZE;
 	init_log_buffer(&db_desc->big_log, BIG_LOG);
 	log_info("Large log head %llu", db_desc->big_log.head_dev_offt);
 
@@ -442,9 +449,9 @@ static void init_fresh_logs(struct db_descriptor *db_desc)
 
 	// Small log
 	s = seg_get_raw_log_segment(db_desc, SMALL_LOG, 0, 0);
-	s->segment_id = 0;
-	s->prev_segment = NULL;
-	s->next_segment = NULL;
+	//s->segment_id = 0;
+	//s->prev_segment = NULL;
+	//s->next_segment = NULL;
 	db_desc->small_log.head_dev_offt = ABSOLUTE_ADDRESS(s);
 	db_desc->small_log.tail_dev_offt = db_desc->small_log.head_dev_offt;
 	db_desc->small_log.size = sizeof(segment_header);
@@ -519,6 +526,10 @@ static void restore_db(struct db_descriptor *db_desc, uint32_t region_idx)
 	/*First, calculate superblock offt and read it in memory*/
 	db_desc->db_superblock_idx = region_idx;
 	pr_read_db_superblock(db_desc);
+	db_desc->small_log_start_segment_dev_offt = db_desc->db_superblock->small_log_start_segment_dev_offt;
+	db_desc->small_log_start_offt_in_segment = db_desc->db_superblock->small_log_offt_in_start_segment;
+	db_desc->big_log_start_segment_dev_offt = db_desc->db_superblock->big_log_start_segment_dev_offt;
+	db_desc->big_log_start_offt_in_segment = db_desc->db_superblock->big_log_offt_in_start_segment;
 
 	struct pr_db_superblock *my_superblock = db_desc->db_superblock;
 
@@ -534,10 +545,19 @@ static void restore_db(struct db_descriptor *db_desc, uint32_t region_idx)
 			if (my_superblock->first_segment[level_id][tree_id] != 0) {
 				db_desc->levels[level_id].first_segment[tree_id] =
 					(segment_header *)REAL_ADDRESS(my_superblock->first_segment[level_id][tree_id]);
+
 				db_desc->levels[level_id].last_segment[tree_id] =
 					(segment_header *)REAL_ADDRESS(my_superblock->last_segment[level_id][tree_id]);
+
 				db_desc->levels[level_id].offset[tree_id] = my_superblock->offset[level_id][tree_id];
+				log_info("Superblock of db: %s first_segment dev offt: %llu", my_superblock->db_name,
+					 my_superblock->first_segment[level_id][tree_id]);
+				log_info("Restoring level[%u][%u] first segment %llu last segment: %llu size: %llu",
+					 level_id, tree_id, db_desc->levels[level_id].first_segment[tree_id],
+					 db_desc->levels[level_id].last_segment[tree_id],
+					 db_desc->levels[level_id].offset[tree_id]);
 			} else {
+				log_info("Restoring EMPTY level[%u][%u]", level_id, tree_id);
 				db_desc->levels[level_id].first_segment[tree_id] = NULL;
 				db_desc->levels[level_id].last_segment[tree_id] = NULL;
 				db_desc->levels[level_id].offset[tree_id] = 0;
@@ -551,7 +571,9 @@ static void restore_db(struct db_descriptor *db_desc, uint32_t region_idx)
 			else
 				db_desc->levels[level_id].root_r[tree_id] = NULL;
 
-			db_desc->levels[level_id].root_w[tree_id] = NULL;
+			db_desc->levels[level_id].root_w[tree_id] = db_desc->levels[level_id].root_r[tree_id];
+			log_info("Restored root[%u][%u] = %llu", level_id, tree_id,
+				 db_desc->levels[level_id].root_r[tree_id]);
 		}
 	}
 
@@ -756,8 +778,11 @@ db_handle *internal_db_open(struct volume_descriptor *volume_desc, uint64_t star
 
 	/*get allocation transaction id for level-0*/
 	MUTEX_INIT(&handle->db_desc->flush_L0_lock, NULL);
+	//db_desc->levels[0].allocation_txn_id[db_desc->levels[0].active_tree] = rul_start_txn(db_desc);
 	pr_flush_L0(db_desc, db_desc->levels[0].active_tree);
 	db_desc->levels[0].allocation_txn_id[db_desc->levels[0].active_tree] = rul_start_txn(db_desc);
+	recover_L0(handle->db_desc);
+
 exit:
 	destroy_options(dboptions);
 	dboptions = NULL;
@@ -786,7 +811,7 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 		node = node->next;
 	}
 	if (!found_gc_db) {
-		log_fatal("%s for GC not found creating one", SYSTEMDB);
+		log_info("%s for GC not found creating one", SYSTEMDB);
 		db_handle *gc_db_handle = internal_db_open(volume_desc, start, size, SYSTEMDB, CREATE_DB);
 		gc_db_handle->db_desc->gc_db = NULL;
 		sem_init(&gc_daemon_interrupts, PTHREAD_PROCESS_PRIVATE, 0);
@@ -980,9 +1005,9 @@ uint8_t insert_key_value(db_handle *handle, void *key, void *value, uint32_t key
 	ins_req.metadata.gc_request = 0;
 	ins_req.metadata.special_split = 0;
 
-	if (kv_ratio >= 0.0 && kv_ratio < 0.002) {
+	if (kv_ratio >= 0.0 && kv_ratio < 0.02) {
 		ins_req.metadata.cat = BIG_INLOG;
-	} else if (kv_ratio >= 0.002 && kv_ratio <= 0.2) {
+	} else if (kv_ratio >= 0.02 && kv_ratio <= 0.2) {
 #if MEDIUM_LOG_UNSORTED
 		ins_req.metadata.cat = MEDIUM_INLOG;
 #else
@@ -1114,6 +1139,7 @@ static void pr_copy_kv_to_tail(struct pr_log_ticket *ticket)
 		assert(0);
 		return;
 	}
+
 	uint64_t offt_in_seg = ticket->log_offt % SEGMENT_SIZE;
 	switch (ticket->req->optype_tolog) {
 	case insertOp: {
@@ -1127,6 +1153,7 @@ static void pr_copy_kv_to_tail(struct pr_log_ticket *ticket)
 		// offt_in_seg, ticket->op_size);
 		memcpy(&ticket->tail->buf[offt], ticket->req->ins_req->key_value_buf, ticket->op_size);
 		ticket->op_size += sizeof(struct log_sequence_number);
+		assert(*(uint32_t *)&ticket->tail->buf[offt] == 32);
 		break;
 	}
 	case deleteOp: {
@@ -1138,10 +1165,8 @@ static void pr_copy_kv_to_tail(struct pr_log_ticket *ticket)
 			ticket->op_size = 0;
 		else {
 			ticket->op_size = SEGMENT_SIZE - offt_in_seg;
-			// log_info("Time for padding for log_offset %llu offt in seg %llu pad
-			// bytes
-			// %u", ticket->log_offt,
-			//	 offt_in_seg, ticket->op_size);
+			//log_info("Time for padding for log_offset %llu offt in seg %llu pad bytes %u ",
+			//	 ticket->log_offt, offt_in_seg, ticket->op_size);
 			memset(&ticket->tail->buf[offt_in_seg], 0, ticket->op_size);
 		}
 		break;
@@ -1202,7 +1227,7 @@ static void pr_do_log_chunk_IO(struct pr_log_ticket *ticket)
 	// do the IO finally
 	ssize_t total_bytes_written = 0;
 	ssize_t bytes_written = 0;
-	uint32_t size = LOG_CHUNK_SIZE;
+	ssize_t size = LOG_CHUNK_SIZE;
 	// log_info("IO time, start %llu size %llu segment dev_offt %llu offt in seg
 	// %llu", total_bytes_written, size,
 	//	 ticket->tail->dev_segment_offt, ticket->IO_start_offt);
@@ -1294,16 +1319,18 @@ static void bt_add_blob(struct db_descriptor *db_desc, struct log_descriptor *lo
 	uint32_t next_tail_id = ++curr_tail_id;
 
 	struct segment_header *next_tail_seg = seg_get_raw_log_segment(db_desc, log_desc->my_type, level_id, tree_id);
+
 	if (!next_tail_seg) {
 		log_fatal("No space for new segment");
 		exit(EXIT_FAILURE);
 	}
-	struct segment_header *curr_tail_seg =
-		(struct segment_header *)log_desc->tail[curr_tail_id % LOG_TAIL_NUM_BUFS]->buf;
+
+	//struct segment_header *curr_tail_seg =
+	//	(struct segment_header *)log_desc->tail[curr_tail_id % LOG_TAIL_NUM_BUFS]->buf;
 	struct log_tail *next_tail = log_desc->tail[next_tail_id % LOG_TAIL_NUM_BUFS];
-	next_tail_seg->segment_id = curr_tail_seg->segment_id + 1;
-	next_tail_seg->next_segment = NULL;
-	next_tail_seg->prev_segment = (void *)ABSOLUTE_ADDRESS(curr_tail_seg);
+	//next_tail_seg->segment_id = curr_tail_seg->segment_id + 1;
+	//next_tail_seg->next_segment = NULL;
+	//next_tail_seg->prev_segment = (void *)ABSOLUTE_ADDRESS(curr_tail_seg);
 	log_desc->tail_dev_offt = ABSOLUTE_ADDRESS(next_tail_seg);
 
 	// Reset tail for new use
@@ -1313,7 +1340,6 @@ static void bt_add_blob(struct db_descriptor *db_desc, struct log_descriptor *lo
 	next_tail->start = ABSOLUTE_ADDRESS(next_tail_seg);
 	next_tail->end = next_tail->start + SEGMENT_SIZE;
 	next_tail->dev_offt = ABSOLUTE_ADDRESS(next_tail_seg);
-	next_tail->bytes_in_chunk[0] = 0;
 	next_tail->free = 0;
 	log_desc->curr_tail_id = next_tail_id;
 }
@@ -1409,7 +1435,6 @@ static void *bt_append_to_log_direct_IO(struct log_operation *req, struct log_to
 
 	return addr_inlog + sizeof(struct log_sequence_number);
 }
-/*######################################################################################################*/
 
 void *append_key_value_to_log(log_operation *req)
 {
@@ -1475,7 +1500,6 @@ uint8_t _insert_key_value(bt_insert_req *ins_req)
 
 	wait_for_available_level0_tree(handle);
 
-	assert(ins_req->metadata.kv_size < 4096);
 	db_desc->dirty = 1;
 
 	if (writers_join_as_readers(ins_req) == PARALLAX_SUCCESS) {
@@ -1593,11 +1617,14 @@ static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id,
 
 deser:
 	if (ret_result.kv) {
+		struct bt_kv_log_address L = { .addr = NULL, .tail_id = UINT8_MAX, .in_tail = 0 };
 		get_op->value_device_address = NULL;
+
 		if (ret_result.key_type == KV_INPLACE) {
 			key_addr_in_leaf = ret_result.kv;
 			key_addr_in_leaf = (void *)REAL_ADDRESS(key_addr_in_leaf);
 			index_key_len = KEY_SIZE(key_addr_in_leaf);
+			L.addr = key_addr_in_leaf;
 			get_op->value_device_address =
 				(void *)(uint64_t)key_addr_in_leaf + sizeof(uint32_t) + index_key_len;
 		} else if (ret_result.key_type == KV_INLOG) {
@@ -1608,50 +1635,46 @@ deser:
 				assert(0);
 				exit(EXIT_FAILURE);
 			}
-			index_key_len = KEY_SIZE(key_addr_in_leaf);
-			get_op->value_device_address =
-				(void *)(uint64_t)key_addr_in_leaf + sizeof(uint32_t) + index_key_len;
+
+			if (!level_id)
+				L = bt_get_kv_log_address(&db_desc->big_log, ABSOLUTE_ADDRESS(key_addr_in_leaf));
+			else
+				L.addr = key_addr_in_leaf;
+
+			index_key_len = KEY_SIZE(L.addr);
+			assert(index_key_len);
+			get_op->value_device_address = (void *)(uint64_t)L.addr + sizeof(uint32_t) + index_key_len;
 		} else {
 			log_fatal("Corrupted KV location");
 			exit(EXIT_FAILURE);
 		}
-		/*Time to pack the kv atomically in the buffer*/
-		/*Do the translation if needed*/
 
-		struct bt_kv_log_address L = { .addr = get_op->value_device_address,
-					       .tail_id = UINT8_MAX,
-					       .in_tail = 0 };
-		if (!level_id) {
-			switch (ret_result.kv_category) {
-			case BIG_INLOG:
-				L = bt_get_kv_log_address(&db_desc->big_log,
-							  ABSOLUTE_ADDRESS(get_op->value_device_address));
-				break;
-			case MEDIUM_INPLACE:
-			case MEDIUM_INLOG:
-			case SMALL_INPLACE:
-				break;
-			default:
-				log_fatal("UNKNOWN_LOG_CATEGORY");
-				exit(EXIT_FAILURE);
-			}
-		}
-
-		uint32_t value_size = VALUE_SIZE(L.addr);
-		//log_info("value size %u query key: %s", value_size, get_op->kv_buf + 4);
+		uint32_t value_size = VALUE_SIZE(get_op->value_device_address);
 		if (get_op->retrieve && !get_op->buffer_to_pack_kv) {
 			get_op->buffer_to_pack_kv = malloc(value_size);
+
+			if (!get_op->buffer_to_pack_kv) {
+				log_fatal("Malloc failed");
+				exit(EXIT_FAILURE);
+			}
+
 			get_op->size = value_size;
 		}
+
+		//log_info("In tail?: %u which tail?: %u value size %u offt in buf: %llu", L.in_tail, L.tail_id,
+		//	 value_size, ABSOLUTE_ADDRESS(get_op->value_device_address) % SEGMENT_SIZE);
+
 		if (get_op->retrieve && get_op->size <= value_size) {
 			/*check if enough*/
 			memcpy(get_op->buffer_to_pack_kv, L.addr + sizeof(uint32_t), value_size);
 			get_op->buffer_overflow = 0;
 		} else
 			get_op->buffer_overflow = 1;
+
+		get_op->found = 1;
+
 		if (L.in_tail)
 			bt_done_with_value_log_address(&db_desc->big_log, &L);
-		get_op->found = 1;
 	} else {
 		get_op->found = 0;
 	}

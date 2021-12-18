@@ -1,4 +1,4 @@
-// Copyright [2021] [FORTH-ICS]
+// Copyright[2021][FORTH - ICS]
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -113,6 +113,8 @@ struct pr_db_superblock {
 	uint64_t small_log_size;
 	uint64_t small_log_start_segment_dev_offt;
 	uint64_t small_log_offt_in_start_segment;
+	uint64_t big_log_start_segment_dev_offt;
+	uint64_t big_log_offt_in_start_segment;
 	uint64_t lsn;
 	uint32_t db_name_size;
 	uint32_t id; //in the array

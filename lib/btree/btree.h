@@ -339,6 +339,8 @@ typedef struct db_descriptor {
 	/*L0 recovery log info*/
 	uint64_t small_log_start_segment_dev_offt;
 	uint64_t small_log_start_offt_in_segment;
+	uint64_t big_log_start_segment_dev_offt;
+	uint64_t big_log_start_offt_in_segment;
 
 	int is_compaction_daemon_sleeping;
 	int32_t reference_count;
@@ -544,6 +546,7 @@ void free_buffered(void *_handle, void *address, uint32_t num_bytes, int height)
 /*functions used from other parts except btree/btree.c*/
 
 void *_index_node_binary_search(index_node *node, void *key_buf, char query_key_format);
+void recover_L0(struct db_descriptor *db_desc);
 
 // void free_logical_node(allocator_descriptor *allocator_desc, node_header
 // *node_index);

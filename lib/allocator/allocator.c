@@ -112,7 +112,7 @@ off64_t mount_volume(char *volume_name, int64_t start, int64_t unused_size)
 
 		char *addr_space = NULL;
 
-		addr_space = mmap(NULL, device_size, PROT_READ | PROT_WRITE, MAP_SHARED, FD, start);
+		addr_space = mmap(NULL, device_size, PROT_READ, MAP_SHARED, FD, start);
 
 		if (addr_space == MAP_FAILED) {
 			log_fatal("MMAP for device %s reason follows", volume_name);
@@ -185,6 +185,7 @@ static void apply_db_allocations_to_allocator_bitmap(struct volume_descriptor *v
 
 	if (volume_allocator_size != mem_bitmap_size) {
 		log_fatal("Bitmaps of allocator and db differ in size");
+		assert(0);
 		exit(EXIT_FAILURE);
 	}
 
@@ -238,6 +239,7 @@ struct rul_log_entry *get_next_allocation_log_entry(struct allocation_log_cursor
 				break;
 			}
 			cursor->segment = REAL_ADDRESS(allocation_log->head_dev_offt);
+			log_info("HEAD of allocation log is at %llu", allocation_log->head_dev_offt);
 			cursor->state = CALCULATE_CHUNKS_IN_SEGMENT;
 			break;
 		case GET_NEXT_SEGMENT:
@@ -268,6 +270,7 @@ struct rul_log_entry *get_next_allocation_log_entry(struct allocation_log_cursor
 			} else
 				cursor->chunks_in_segment = RUL_LOG_CHUNK_NUM;
 			cursor->curr_chunk_id = 0;
+			log_info("Chunks in allocation log segment are: %llu", cursor->chunks_in_segment);
 			cursor->state = CALCULATE_CHUNK_ENTRIES;
 			break;
 		}
@@ -279,16 +282,20 @@ struct rul_log_entry *get_next_allocation_log_entry(struct allocation_log_cursor
 				cursor->chunk_entries = last_chunk_size / sizeof(struct rul_log_entry);
 			} else
 				cursor->chunk_entries = RUL_LOG_CHUNK_MAX_ENTRIES;
+
 			cursor->curr_entry_in_chunk = 0;
+			log_info("Chunk entries in allocation log segment are: %llu", cursor->chunk_entries);
 			cursor->state = GET_NEXT_ENTRY;
 			break;
 
 		case GET_NEXT_ENTRY:
 
 			if (cursor->curr_entry_in_chunk >= cursor->chunk_entries) {
+				++cursor->curr_chunk_id;
 				cursor->state = GET_NEXT_CHUNK;
 				break;
 			}
+			/*log_info("Chunk id %u curr entry %u", cursor->curr_chunk_id, cursor->curr_entry_in_chunk);*/
 			void *supress_warning =
 				&cursor->segment->chunk[cursor->curr_chunk_id][cursor->curr_entry_in_chunk];
 			struct rul_log_entry *log_entry = supress_warning;
@@ -312,7 +319,7 @@ void close_allocation_log_cursor(struct allocation_log_cursor *cursor)
 
 void replay_db_allocation_log(struct volume_descriptor *volume_desc, struct pr_db_superblock *superblock)
 {
-	uint8_t mem_bitmap_size = volume_desc->mem_volume_bitmap_size * sizeof(uint64_t);
+	uint32_t mem_bitmap_size = volume_desc->mem_volume_bitmap_size * sizeof(uint64_t);
 	uint8_t *mem_bitmap = malloc(mem_bitmap_size);
 
 	/*DBs view of the volume initally everything is free*/
@@ -361,6 +368,7 @@ static void recover_allocator_bitmap(struct volume_descriptor *volume_desc)
 {
 	/*Iterate and replay all dbs allocation log info*/
 	uint32_t max_regions = volume_desc->vol_superblock.max_regions_num;
+
 	for (uint32_t i = 0; i < max_regions; ++i) {
 		if (volume_desc->pr_regions->db[i].valid) {
 			log_info("Replaying allocation log for DB: %s", volume_desc->pr_regions->db[i].db_name);
@@ -379,7 +387,7 @@ struct pr_db_superblock *get_db_superblock(struct volume_descriptor *volume_desc
 	//search superblock array in the start of the volume
 	for (uint32_t i = 0; i < volume_desc->pr_regions->size; ++i) {
 		if (!volume_desc->pr_regions->db[i].valid) {
-			if (next_free_db_id == -1)
+			if (-1 == next_free_db_id)
 				next_free_db_id = i;
 			continue;
 		}
@@ -914,33 +922,41 @@ struct volume_descriptor *mem_get_volume_desc(char *volume_name)
 	uint64_t hash_key = djb2_hash((unsigned char *)volume_name, strlen(volume_name));
 
 	HASH_FIND_PTR(volume_map, &hash_key, volume);
-	if (volume == NULL) {
+
+	if (NULL == volume) {
 		log_info("Volume %s not open creating/initializing new volume ...", volume_name);
 		volume = calloc(1, sizeof(struct volume_map_entry));
+
 		if (!volume) {
 			log_fatal("calloc failed");
 			exit(EXIT_FAILURE);
 		}
+
 		volume->volume_desc = mem_init_volume(volume_name);
+
 		if (strlen(volume_name) >= MEM_MAX_VOLUME_NAME_SIZE) {
 			log_fatal("Volume name too large!");
 			exit(EXIT_FAILURE);
 		}
+
 		memcpy(volume->volume_name, volume_name, strlen(volume_name));
 		volume->hash_key = djb2_hash((unsigned char *)volume_name, strlen(volume_name));
 		volume->volume_desc->size = mount_volume(volume_name, 0, 0);
 		log_warn("Remove this mem / dev catalogue allocation!!!");
+
 		if (posix_memalign((void **)&(volume->volume_desc->mem_catalogue), DEVICE_BLOCK_SIZE,
 				   sizeof(struct pr_system_catalogue)) != 0) {
 			perror("memalign failed\n");
 			exit(EXIT_FAILURE);
 		}
 		memset(volume->volume_desc->mem_catalogue, 0x00, sizeof(struct pr_system_catalogue));
+
 		if (posix_memalign((void **)&(volume->volume_desc->dev_catalogue), DEVICE_BLOCK_SIZE,
 				   sizeof(struct pr_system_catalogue)) != 0) {
 			perror("memalign failed\n");
 			exit(EXIT_FAILURE);
 		}
+
 		memset(volume->volume_desc->dev_catalogue, 0x00, sizeof(struct pr_system_catalogue));
 		volume->volume_desc->mem_catalogue->epoch = 100;
 
@@ -949,8 +965,10 @@ struct volume_descriptor *mem_get_volume_desc(char *volume_name)
 
 		for (uint32_t i = 0; i < volume->volume_desc->vol_superblock.max_regions_num; ++i)
 			MUTEX_INIT(&volume->volume_desc->db_superblock_lock[i], NULL);
+
 		recover_allocator_bitmap(volume->volume_desc);
 	}
+
 	HASH_ADD_PTR(volume_map, hash_key, volume);
 	MUTEX_UNLOCK(&volume_map_lock);
 
