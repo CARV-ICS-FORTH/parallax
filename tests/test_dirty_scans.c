@@ -1,5 +1,3 @@
-// Copyright [2021] [FORTH-ICS]
-//
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -22,7 +20,7 @@
 #define KEY_PREFIX "userakias_computerakias"
 #define SMALL_VALUE_SIZE 4
 #define MEDIUM_VALUE_SIZE 512
-#define LARGE_VALUE_SIZE 1256
+#define LARGE_VALUE_SIZE 2048
 #define KV_BUFFER_SIZE 4096
 
 struct key {
@@ -148,7 +146,7 @@ int main(int argc, char **argv)
 			my_kv.v.val_size = SMALL_VALUE_SIZE;
 			my_kv.v.val_buffer_size = KV_BUFFER_SIZE / 2;
 			my_kv.v.val_buffer = v->value_buf;
-		} else if (res >= 8) {
+		} else if (res >= 6 && res < 8) {
 			my_kv.v.val_size = MEDIUM_VALUE_SIZE;
 			my_kv.v.val_buffer_size = KV_BUFFER_SIZE / 2;
 			my_kv.v.val_buffer = v->value_buf;
