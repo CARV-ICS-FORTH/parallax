@@ -386,7 +386,7 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 			middle = (start_idx + end_idx) / 2;
 			/*reconstruct full key*/
 			addr = &(inode->p[middle].pivot);
-			full_pivot_key = (void *)(MAPPED + *(uint64_t *)addr);
+			full_pivot_key = (void *)REAL_ADDRESS(*(uint64_t *)addr);
 			ret = key_cmp(full_pivot_key, start_key_buf, KV_FORMAT, KV_FORMAT);
 
 			if (ret == 0) {
@@ -440,7 +440,7 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 	}
 
 	int kv_size = 0;
-	int key_format;
+	enum KV_type key_format;
 	/*reached leaf node, lock already there setup prefixes*/
 	if (start_key_buf == NULL) {
 		memset(key_buf_prefix, 0, sizeof(key_buf_prefix));
@@ -466,8 +466,10 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 	bt_insert_req req;
 	req.key_value_buf = key_buf_prefix;
 	req.metadata.kv_size = kv_size;
+	db_handle handle = { .db_desc = db_desc, .volume_desc = NULL };
+	req.metadata.handle = &handle;
 	req.metadata.key_format = key_format;
-
+	req.metadata.level_id = level_sc->level_id;
 	binary_search_dynamic_leaf((struct bt_dynamic_leaf_node *)node, db_desc->levels[level_id].leaf_size, &req,
 				   &dlresult);
 	assert(dlresult.status != ERROR);
@@ -566,29 +568,37 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 		default:
 			assert(0);
 		}
-
-		//level_sc->keyValue = (void *)MAPPED + lnode->pointer[middle];
-		//log_info("full key is %s", level_sc->keyValue + 4);
 	}
 
-	if (start_key_buf != NULL) {
-		if (mode == GREATER) {
-			while (key_cmp(level_sc->keyValue, start_key_buf, level_sc->kv_format, KV_FORMAT) <= 0)
-				if (_get_next_KV(level_sc) == END_OF_DATABASE)
-					return END_OF_DATABASE;
+	if (!start_key_buf)
+		return PARALLAX_SUCCESS;
 
-		} else if (mode == GREATER_OR_EQUAL) {
-			while (key_cmp(level_sc->keyValue, start_key_buf, level_sc->kv_format, KV_FORMAT) < 0)
-				if (_get_next_KV(level_sc) == END_OF_DATABASE)
-					return END_OF_DATABASE;
+	while (1) {
+		struct bt_kv_log_address L = { .addr = level_sc->keyValue, .tail_id = UINT8_MAX, .in_tail = 0 };
+
+		if (!level_sc->level_id && BIG_INLOG == level_sc->cat)
+			L = bt_get_kv_log_address(&level_sc->db->db_desc->big_log,
+						  ABSOLUTE_ADDRESS(level_sc->keyValue));
+		ret = key_cmp(L.addr, start_key_buf, level_sc->kv_format, KV_FORMAT);
+		if (L.in_tail)
+			bt_done_with_value_log_address(&level_sc->db->db_desc->big_log, &L);
+		switch (mode) {
+		case GREATER:
+			if (ret <= 0)
+				break;
+			return PARALLAX_SUCCESS;
+		case GREATER_OR_EQUAL:
+			if (ret < 0)
+				break;
+			return PARALLAX_SUCCESS;
+		default:
+			log_fatal("Unknown Scanner mode");
+			exit(EXIT_FAILURE);
 		}
+
+		if (_get_next_KV(level_sc) == END_OF_DATABASE)
+			return END_OF_DATABASE;
 	}
-#ifdef DEBUG_SCAN
-	if (start_key_buf != NULL)
-		log_info("start_key_buf = %s sc->keyValue = %s\n", start_key_buf + 4, level_sc->keyValue);
-	else
-		log_info("start_key_buf NULL sc->keyValue = %s\n", level_sc->keyValue);
-#endif
 	return PARALLAX_SUCCESS;
 }
 

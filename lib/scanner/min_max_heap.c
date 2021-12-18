@@ -18,6 +18,7 @@
 #include <assert.h>
 #include <log.h>
 #include <stdlib.h>
+#include <string.h>
 
 #define LCHILD(x) ((2 * x) + 1)
 #define RCHILD(x) ((2 * x) + 2)
@@ -100,22 +101,42 @@ static void heapify(struct sh_heap *hp, int i)
 
 static void push_back_duplicate_kv(struct sh_heap *heap, struct sh_heap_node *hp_node)
 {
-	if (hp_node->cat == BIG_INLOG) {
-		struct bt_leaf_entry *keyvalue = hp_node->KV;
-		uint64_t segment_offset =
-			ABSOLUTE_ADDRESS(keyvalue->pointer) - (ABSOLUTE_ADDRESS(keyvalue->pointer) % SEGMENT_SIZE);
-		char *kv = (char *)keyvalue->pointer;
-		uint32_t key_size = *(uint32_t *)kv;
-		assert(key_size < MAX_KEY_SIZE);
-		uint32_t value_size = *(uint32_t *)(kv + sizeof(uint32_t) + key_size);
-		struct dups_node *node = find_element(heap->dups, (uint64_t)REAL_ADDRESS(segment_offset));
+	if (hp_node->cat != BIG_INLOG)
+		return;
 
-		if (node)
-			node->kv_size += key_size + value_size + (sizeof(uint32_t) * 2);
-		else
-			append_node(heap->dups, (uint64_t)REAL_ADDRESS(segment_offset),
-				    key_size + value_size + (sizeof(uint32_t) * 2));
+	struct bt_leaf_entry local;
+	struct bt_leaf_entry *keyvalue = NULL;
+
+	switch (hp_node->type) {
+	case KV_FORMAT:
+		memset(&local.prefix, 0x00, PREFIX_SIZE);
+		uint32_t key_size = *(uint32_t *)hp_node->KV;
+		int size = key_size < PREFIX_SIZE ? key_size : PREFIX_SIZE;
+		memcpy(&local.prefix, hp_node->KV + sizeof(uint32_t), size);
+		local.pointer = (uint64_t)hp_node->KV;
+		keyvalue = &local;
+		break;
+	case KV_PREFIX:
+		keyvalue = (struct bt_leaf_entry *)hp_node->KV;
+		break;
+	default:
+		log_info("Unhandled KV type");
+		exit(EXIT_FAILURE);
 	}
+
+	uint64_t segment_offset =
+		ABSOLUTE_ADDRESS(keyvalue->pointer) - (ABSOLUTE_ADDRESS(keyvalue->pointer) % SEGMENT_SIZE);
+	char *kv = (char *)keyvalue->pointer;
+	uint32_t key_size = *(uint32_t *)kv;
+	assert(key_size < MAX_KEY_SIZE);
+	uint32_t value_size = *(uint32_t *)(kv + sizeof(uint32_t) + key_size);
+	struct dups_node *node = find_element(heap->dups, (uint64_t)REAL_ADDRESS(segment_offset));
+
+	if (node)
+		node->kv_size += key_size + value_size + (sizeof(uint32_t) * 2);
+	else
+		append_node(heap->dups, (uint64_t)REAL_ADDRESS(segment_offset),
+			    key_size + value_size + (sizeof(uint32_t) * 2));
 }
 
 static int sh_cmp_max_heap_nodes(struct sh_heap *hp, struct sh_heap_node *nd_1, struct sh_heap_node *nd_2)
