@@ -14,6 +14,7 @@
 
 #include "segment_allocator.h"
 #include "../allocator/device_structures.h"
+#include "../allocator/log_structures.h"
 #include "../allocator/redo_undo_log.h"
 #include "../allocator/volume_manager.h"
 #include "conf.h"

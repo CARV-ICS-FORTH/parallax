@@ -286,6 +286,7 @@ typedef struct level_descriptor {
 
 struct bt_kv_log_address {
 	void *addr;
+	struct log_descriptor *log_desc;
 	uint8_t in_tail;
 	uint8_t tail_id;
 };
