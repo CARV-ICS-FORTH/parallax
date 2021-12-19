@@ -15,11 +15,9 @@
 #define _GNU_SOURCE
 #include "../btree/btree.h"
 #include "../btree/conf.h"
-#include "../btree/set_options.h"
 #include "../utilities/list.h"
 #include "device_structures.h"
 #include "djb2.h"
-#include "log_structures.h"
 #include "mem_structures.h"
 #include "redo_undo_log.h"
 #include "volume_manager.h"

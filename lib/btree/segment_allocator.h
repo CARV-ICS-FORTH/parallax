@@ -1,4 +1,5 @@
 #pragma once
+#include "../allocator/log_structures.h"
 #include "../allocator/volume_manager.h"
 #include "btree.h"
 #include <stdint.h>

@@ -13,16 +13,20 @@
 // limitations under the License.
 #include "../btree/btree.h"
 #include "../btree/conf.h"
+#include "../scanner/scanner.h"
 #include "device_structures.h"
 #include "log_structures.h"
 #include "redo_undo_log.h"
+#include "uthash.h"
 #include "volume_manager.h"
 #include <assert.h>
 #include <log.h>
+#include <pthread.h>
 #include <spin_loop.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
 
 /*<new_persistent_design>*/
@@ -45,7 +49,7 @@ static void pr_flush_allocation_log_and_level_info(struct db_descriptor *db_desc
 			ABSOLUTE_ADDRESS(db_desc->levels[level_id].first_segment[tree_id]);
 		log_info("Persist %llu first was %llu", db_desc->db_superblock->first_segment[level_id][tree_id],
 			 db_desc->levels[level_id].first_segment[tree_id]);
-		//assert(db_desc->levels[level_id].first_segment[tree_id]);
+		assert(db_desc->levels[level_id].first_segment[tree_id]);
 
 		db_desc->db_superblock->last_segment[level_id][0] =
 			ABSOLUTE_ADDRESS(db_desc->levels[level_id].last_segment[tree_id]);
