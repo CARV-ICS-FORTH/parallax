@@ -936,8 +936,8 @@ finish:
 
 	MUTEX_UNLOCK(&init_lock);
 	free(handle);
-	if (gc_db)
-		db_close(gc_db);
+	//if (gc_db)
+	//	db_close(gc_db);
 	return PARALLAX_SUCCESS;
 }
 
