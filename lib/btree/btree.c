@@ -706,11 +706,12 @@ db_handle *internal_db_open(struct volume_descriptor *volume_desc, uint64_t star
 
 	MUTEX_INIT(&handle->db_desc->compaction_lock, NULL);
 	MUTEX_INIT(&handle->db_desc->compaction_structs_lock, NULL);
+	MUTEX_INIT(&handle->db_desc->segment_ht_lock, NULL);
 	pthread_cond_init(&handle->db_desc->compaction_cond, NULL);
 	handle->db_desc->blocked_clients = 0;
 	handle->db_desc->compaction_count = 0;
 	handle->db_desc->is_compaction_daemon_sleeping = 0;
-
+	handle->db_desc->segment_ht = NULL;
 #if MEASURE_MEDIUM_INPLACE
 	db_desc->count_medium_inplace = 0;
 #endif

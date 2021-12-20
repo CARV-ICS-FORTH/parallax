@@ -126,25 +126,24 @@ int8_t find_deleted_kv_pairs_in_segment(volume_descriptor *volume_desc, db_descr
 	return 0;
 }
 
-static void free_block(struct volume_descriptor *v, void *addr, uint32_t size)
-{
-	(void)v;
-	(void)addr;
-	(void)size;
-}
+#if 0
 void fix_nodes_in_log(volume_descriptor *volume_desc, db_descriptor *db_desc, log_segment *prev_node,
 		      log_segment *curr_node)
 {
 	return;
 	if (prev_node) {
 		prev_node->metadata.next_segment = curr_node->metadata.next_segment;
-		free_block(volume_desc, curr_node, SEGMENT_SIZE);
 	} else
 		db_desc->big_log.head_dev_offt = (uint64_t)curr_node->metadata.next_segment;
 }
+#endif
 
 void iterate_log_segments(db_descriptor *db_desc, volume_descriptor *volume_desc, stack *marks)
 {
+	(void)db_desc;
+	(void)volume_desc;
+	(void)marks;
+#if 0
 	log_segment *last_segment = (log_segment *)REAL_ADDRESS(db_desc->big_log.tail_dev_offt);
 	log_segment *log_node = (log_segment *)REAL_ADDRESS(db_desc->big_log.head_dev_offt);
 	log_segment *prev_node = NULL;
@@ -158,10 +157,10 @@ void iterate_log_segments(db_descriptor *db_desc, volume_descriptor *volume_desc
 
 	while (REAL_ADDRESS(log_node->metadata.next_segment) != last_segment) {
 		int8_t ret = find_deleted_kv_pairs_in_segment(volume_desc, db_desc, log_node->data, marks);
-
+#if 0
 		if (ret == 1)
 			fix_nodes_in_log(volume_desc, db_desc, prev_node, log_node);
-
+#endif
 		prev_node = log_node;
 		log_node = (log_segment *)REAL_ADDRESS((uint64_t)log_node->metadata.next_segment);
 	}
@@ -206,8 +205,9 @@ void iterate_log_segments(db_descriptor *db_desc, volume_descriptor *volume_desc
 
 	log_fatal("Log is corrupted!");
 	assert(0);
+#endif
 }
-
+#if 0
 static struct db_descriptor *find_dbdesc(volume_descriptor *volume_desc, int group_id, int index)
 {
 	struct klist_node *region;
@@ -221,11 +221,13 @@ static struct db_descriptor *find_dbdesc(volume_descriptor *volume_desc, int gro
 
 	return NULL;
 }
-
+#endif
+#if 0
 // read a segment and store it into segment_buf
 static void fetch_segment(struct segment_header *segment_buf, uint64_t segment_offt)
 {
-	assert(segment_offt % SEGMENT_SIZE == 0);
+
+  assert(segment_offt % SEGMENT_SIZE == 0);
 	off_t dev_offt = segment_offt;
 	ssize_t bytes_to_read = 0;
 	ssize_t bytes = 0;
@@ -240,10 +242,15 @@ static void fetch_segment(struct segment_header *segment_buf, uint64_t segment_o
 		bytes_to_read += bytes;
 	}
 }
-
+#endif
 void scan_db(db_descriptor *db_desc, volume_descriptor *volume_desc, stack *marks)
 {
-	struct accum_segments {
+	(void)db_desc;
+	(void)volume_desc;
+	(void)marks;
+#if 0
+
+  struct accum_segments {
 		uint64_t segment_offt;
 		struct gc_value value;
 	};
@@ -254,10 +261,8 @@ void scan_db(db_descriptor *db_desc, volume_descriptor *volume_desc, stack *mark
 	char start_key[5] = { 0 };
 	uint64_t *key;
 	int segment_count = 0;
-
 	struct gc_value *value;
 	struct segment_header *segment;
-
 	if (posix_memalign((void **)&segment, ALIGNMENT_SIZE, SEGMENT_SIZE) != 0) {
 		log_fatal("MEMALIGN FAILED");
 		exit(EXIT_FAILURE);
@@ -278,10 +283,12 @@ void scan_db(db_descriptor *db_desc, volume_descriptor *volume_desc, stack *mark
 	while (isValid(sc)) {
 		key = get_key_ptr(sc);
 		value = get_value_ptr(sc);
+#if 0
 		if (!value->moved) {
 			segments_toreclaim[segment_count].segment_offt = *key;
 			segments_toreclaim[segment_count++].value = *value;
 		}
+#endif
 		if (segment_count == SEGMENTS_TORECLAIM)
 			break;
 
@@ -300,19 +307,20 @@ void scan_db(db_descriptor *db_desc, volume_descriptor *volume_desc, stack *mark
 		temp_handle.db_desc = temp_db_desc;
 		assert(temp_db_desc);
 
+#if 0
 		int ret = find_deleted_kv_pairs_in_segment(temp_handle.volume_desc, temp_handle.db_desc,
 							   (char *)segment, marks);
-
 		if (ret && !segments_toreclaim[i].value.moved) {
 			segment->moved_kvs = 1;
 			segments_toreclaim[i].value.moved = 1;
 		}
-
+#endif
 		insert_key_value(&handle, &segments_toreclaim[i].segment_offt, &segments_toreclaim[i].value,
 				 sizeof(segments_toreclaim[i].segment_offt), sizeof(segments_toreclaim[i].value));
 	}
 	free(segment);
 	free(segments_toreclaim);
+#endif
 }
 
 void *gc_log_entries(void *handle)

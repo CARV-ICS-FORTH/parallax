@@ -16,6 +16,7 @@
 #include "../allocator/log_structures.h"
 #include "../allocator/volume_manager.h"
 #include "conf.h"
+#include "gc.h"
 #if ENABLE_BLOOM_FILTERS
 #include <bloom.h>
 #endif
@@ -314,6 +315,7 @@ typedef struct db_descriptor {
 	pthread_mutex_t compaction_lock;
 	pthread_mutex_t lock_log;
 	pthread_mutex_t client_barrier_lock;
+	pthread_mutex_t segment_ht_lock;
 
 	/*<new_persistent_design>*/
 	pthread_mutex_t flush_L0_lock;
@@ -331,7 +333,8 @@ typedef struct db_descriptor {
 	struct log_descriptor medium_log;
 	struct log_descriptor small_log;
 	uint64_t lsn;
-	//only for L0
+	struct large_log_segment_gc_entry *
+		segment_ht; // A hash table containing every segment that has at least 1 byte of garbage data in the large log.
 	struct db_handle *gc_db;
 	uint64_t gc_last_segment_id;
 	uint64_t gc_count_segments;
@@ -348,7 +351,7 @@ typedef struct db_descriptor {
 	int32_t group_index;
 	volatile char dirty;
 	enum db_status stat;
-} __attribute__((aligned)) db_descriptor;
+} db_descriptor;
 
 typedef struct db_handle {
 	volume_descriptor *volume_desc;
