@@ -421,16 +421,13 @@ static void init_fresh_logs(struct db_descriptor *db_desc)
 	log_info("Initializing KV logs (small,medium,large) for DB: %s", db_desc->db_superblock->db_name);
 	// Large log
 	struct segment_header *s = seg_get_raw_log_segment(db_desc, BIG_LOG, 0, 0);
-	//s->segment_id = 0;
-	//s->next_segment = NULL;
-	//s->prev_segment = NULL;
 	db_desc->big_log.head_dev_offt = ABSOLUTE_ADDRESS(s);
 	db_desc->big_log.tail_dev_offt = db_desc->big_log.head_dev_offt;
 	db_desc->big_log.size = 0;
 	db_desc->big_log_start_segment_dev_offt = db_desc->big_log.tail_dev_offt;
 	db_desc->big_log_start_offt_in_segment = db_desc->big_log.size % SEGMENT_SIZE;
 	init_log_buffer(&db_desc->big_log, BIG_LOG);
-	log_info("Large log head %llu", db_desc->big_log.head_dev_offt);
+	log_info("BIG_LOG head %llu", db_desc->big_log.head_dev_offt);
 
 	// Medium log
 	db_desc->medium_log.head_dev_offt = 0;
@@ -449,9 +446,6 @@ static void init_fresh_logs(struct db_descriptor *db_desc)
 
 	// Small log
 	s = seg_get_raw_log_segment(db_desc, SMALL_LOG, 0, 0);
-	//s->segment_id = 0;
-	//s->prev_segment = NULL;
-	//s->next_segment = NULL;
 	db_desc->small_log.head_dev_offt = ABSOLUTE_ADDRESS(s);
 	db_desc->small_log.tail_dev_offt = db_desc->small_log.head_dev_offt;
 	db_desc->small_log.size = sizeof(segment_header);
@@ -459,6 +453,10 @@ static void init_fresh_logs(struct db_descriptor *db_desc)
 	db_desc->small_log_start_offt_in_segment = db_desc->small_log.size % SEGMENT_SIZE;
 
 	init_log_buffer(&db_desc->small_log, SMALL_LOG);
+	struct segment_header *seg_in_mem = (struct segment_header *)db_desc->small_log.tail[0]->buf;
+	seg_in_mem->segment_id = 0;
+	seg_in_mem->prev_segment = NULL;
+	seg_in_mem->next_segment = NULL;
 	db_desc->lsn = 0;
 }
 
@@ -1153,7 +1151,6 @@ static void pr_copy_kv_to_tail(struct pr_log_ticket *ticket)
 		// offt_in_seg, ticket->op_size);
 		memcpy(&ticket->tail->buf[offt], ticket->req->ins_req->key_value_buf, ticket->op_size);
 		ticket->op_size += sizeof(struct log_sequence_number);
-		assert(*(uint32_t *)&ticket->tail->buf[offt] == 32);
 		break;
 	}
 	case deleteOp: {
@@ -1292,8 +1289,8 @@ static void bt_add_segment_to_log(struct db_descriptor *db_desc, struct log_desc
 		(struct segment_header *)log_desc->tail[next_tail_id % LOG_TAIL_NUM_BUFS]->buf;
 
 	next_tail_seg->segment_id = curr_tail_seg->segment_id + 1;
-	//log_info("Curr tail: %lu next_tail: %lu Segment_id is now %llu db %s", curr_tail_id, next_tail_id,
-	//	 next_tail_seg->segment_id, db_desc->my_superblock.region_name);
+	//log_info("Curr tail: %u next_tail: %u Segment_id is now %llu db %s", curr_tail_id, next_tail_id,
+	//	 next_tail_seg->segment_id, db_desc->db_superblock->db_name);
 	next_tail_seg->next_segment = NULL;
 	next_tail_seg->prev_segment = (void *)log_desc->tail_dev_offt;
 	log_desc->tail_dev_offt = next_tail_seg_offt;

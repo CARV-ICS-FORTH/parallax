@@ -933,7 +933,7 @@ void mark_segment_space(db_handle *handle, struct dups_list *list)
 						 sizeof(segment_dev_offt), sizeof(gc_value));
 		}
 
-		assert(segment->segment_garbage_bytes < (SEGMENT_SIZE - sizeof(struct segment_header)));
+		//assert(segment->segment_garbage_bytes < SEGMENT_SIZE);
 	}
 }
 
