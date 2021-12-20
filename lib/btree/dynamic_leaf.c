@@ -206,6 +206,7 @@ void binary_search_dynamic_leaf(const struct bt_dynamic_leaf_node *leaf, uint32_
 
 		ret_case = ret < 0 ? LESS_THAN_ZERO : ret > 0 ? GREATER_THAN_ZERO : EQUAL_TO_ZERO;
 		struct bt_kv_log_address L = { .addr = NULL, .in_tail = 0, .tail_id = UINT8_MAX };
+
 		if (ret_case == EQUAL_TO_ZERO) {
 			char *kv_offset = get_kv_offset(leaf, leaf_size, offset_in_leaf);
 
@@ -230,6 +231,7 @@ void binary_search_dynamic_leaf(const struct bt_dynamic_leaf_node *leaf, uint32_
 					else
 						L = bt_get_kv_log_address(&req->metadata.handle->db_desc->medium_log,
 									  ABSOLUTE_ADDRESS(leaf_key_buf));
+					L.log_desc = &req->metadata.handle->db_desc->medium_log;
 					break;
 #endif
 				case BIG_INLOG:
@@ -238,6 +240,7 @@ void binary_search_dynamic_leaf(const struct bt_dynamic_leaf_node *leaf, uint32_
 					else
 						L = bt_get_kv_log_address(&req->metadata.handle->db_desc->big_log,
 									  ABSOLUTE_ADDRESS(leaf_key_buf));
+					L.log_desc = &req->metadata.handle->db_desc->big_log;
 
 					break;
 				default:
@@ -246,29 +249,24 @@ void binary_search_dynamic_leaf(const struct bt_dynamic_leaf_node *leaf, uint32_
 				}
 			}
 
-			if (req->metadata.key_format == KV_PREFIX) {
+			switch (req->metadata.key_format) {
+			case KV_PREFIX: {
 				struct bt_leaf_entry *kv_entry = (struct bt_leaf_entry *)req->key_value_buf;
 				ret = key_cmp(L.addr, (void *)kv_entry->pointer, KV_FORMAT, KV_FORMAT);
-			} else {
+				break;
+			}
+			case KV_FORMAT:
+				//log_info("Comparing index key %u:%s with query key :%u:%s", *(uint32_t *)L.addr,
+				//	 L.addr + 4, *(uint32_t *)req->key_value_buf, req->key_value_buf + 4);
 				ret = key_cmp(L.addr, req->key_value_buf, KV_FORMAT, KV_FORMAT);
+				break;
+			default:
+				log_fatal("Corrupted key type");
+				exit(EXIT_FAILURE);
 			}
-			if (L.in_tail) {
-				struct log_descriptor *log_desc = NULL;
-				//#if MEDIUM_LOG_UNSORTED
-				switch (slot_array[middle].key_category) {
-				case BIG_INLOG:
-					log_desc = &req->metadata.handle->db_desc->big_log;
-					break;
-				case MEDIUM_INLOG:
-					log_desc = &req->metadata.handle->db_desc->medium_log;
-					break;
-				default:
-					log_fatal("Unhandled case");
-					exit(EXIT_FAILURE);
-					//#endif
-				}
-				bt_done_with_value_log_address(log_desc, &L);
-			}
+
+			if (L.in_tail)
+				bt_done_with_value_log_address(L.log_desc, &L);
 
 			if (ret == 0) {
 				result->middle = middle;
