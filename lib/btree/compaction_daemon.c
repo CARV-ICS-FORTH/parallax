@@ -38,6 +38,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <uthash.h>
 
 /*
  * Checks for pending compactions. It is responsible to check for dependencies

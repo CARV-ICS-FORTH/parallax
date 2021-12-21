@@ -4,12 +4,12 @@
 #include "../allocator/log_structures.h"
 #include "../allocator/volume_manager.h"
 #include "../scanner/scanner.h"
+#include "btree.h"
 #include "set_options.h"
 #include <assert.h>
 #include <list.h>
 #include <log.h>
 #include <pthread.h>
-#include <semaphore.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>

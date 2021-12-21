@@ -16,7 +16,6 @@
 #include "../allocator/log_structures.h"
 #include "../allocator/volume_manager.h"
 #include "conf.h"
-#include "gc.h"
 #if ENABLE_BLOOM_FILTERS
 #include <bloom.h>
 #endif

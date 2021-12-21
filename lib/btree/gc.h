@@ -1,7 +1,8 @@
 #pragma once
-#include "btree.h"
 #include "conf.h"
+#include <stdint.h>
 #include <uthash.h>
+
 typedef struct log_segment {
 	char data[SEGMENT_SIZE];
 } log_segment;

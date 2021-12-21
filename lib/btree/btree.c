@@ -813,7 +813,6 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 		log_info("%s for GC not found creating one", SYSTEMDB);
 		db_handle *gc_db_handle = internal_db_open(volume_desc, start, size, SYSTEMDB, CREATE_DB);
 		gc_db_handle->db_desc->gc_db = NULL;
-		sem_init(&gc_daemon_interrupts, PTHREAD_PROCESS_PRIVATE, 0);
 		gc_db = gc_db_handle->db_desc;
 		if (pthread_create(&(gc_db_handle->db_desc->gc_thread), NULL, (void *)gc_log_entries,
 				   (void *)gc_db_handle) != 0) {
