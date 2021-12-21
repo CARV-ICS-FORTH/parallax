@@ -574,14 +574,16 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 		return PARALLAX_SUCCESS;
 
 	while (1) {
-		struct bt_kv_log_address L = { .addr = level_sc->keyValue, .tail_id = UINT8_MAX, .in_tail = 0 };
+		struct bt_kv_log_address log_address = { .addr = level_sc->keyValue,
+							 .tail_id = UINT8_MAX,
+							 .in_tail = 0 };
 
 		if (!level_sc->level_id && BIG_INLOG == level_sc->cat)
-			L = bt_get_kv_log_address(&level_sc->db->db_desc->big_log,
-						  ABSOLUTE_ADDRESS(level_sc->keyValue));
-		ret = key_cmp(L.addr, start_key_buf, level_sc->kv_format, KV_FORMAT);
-		if (L.in_tail)
-			bt_done_with_value_log_address(&level_sc->db->db_desc->big_log, &L);
+			log_address = bt_get_kv_log_address(&level_sc->db->db_desc->big_log,
+							    ABSOLUTE_ADDRESS(level_sc->keyValue));
+		ret = key_cmp(log_address.addr, start_key_buf, level_sc->kv_format, KV_FORMAT);
+		if (log_address.in_tail)
+			bt_done_with_value_log_address(&level_sc->db->db_desc->big_log, &log_address);
 		switch (mode) {
 		case GREATER:
 			if (ret <= 0)

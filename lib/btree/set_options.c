@@ -100,8 +100,8 @@ int parse_options(struct lib_option **db_options)
 		HASH_ADD_STR(*db_options, name, temp);
 	}
 
-	struct lib_option *current_option, *tmp;
 #if ENABLE_OPTIONS_OUTPUT
+	struct lib_option *current_option, *tmp;
 	HASH_ITER(hh, *db_options, current_option, tmp)
 	{
 		log_info("Option: %s : %llu", current_option->name, current_option->value.count);
