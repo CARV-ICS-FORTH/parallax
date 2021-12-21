@@ -1,5 +1,3 @@
-// Copyright [2021] [FORTH-ICS]
-//
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -12,8 +10,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 #include "../include/parallax.h"
-//#include "../btree/btree.h"
-//#include "../scanner/scanner.h"
 #include <assert.h>
 #include <log.h>
 #include <stdint.h>
@@ -24,7 +20,7 @@
 #define KEY_PREFIX "userakias_computerakias"
 #define SMALL_VALUE_SIZE 4
 #define MEDIUM_VALUE_SIZE 512
-#define LARGE_VALUE_SIZE 1256
+#define LARGE_VALUE_SIZE 2048
 #define KV_BUFFER_SIZE 4096
 
 struct key {
@@ -41,12 +37,17 @@ static char *volume_name;
 static uint64_t total_keys = 1000000;
 static uint64_t base;
 static uint32_t scan_size = 16;
+static char workload[512];
 
-#define NUM_OPTIONS 3
-enum kvf_options { VOLUME_NAME = 0, TOTAL_KEYS, SCAN_SIZE };
-static char *options[] = { "--volume_name", "--total_keys", "--scan_size" };
+enum workload_types { Load = 0, Get, Scan, All };
+const char *workload_tags[] = { "Load", "Get", "Scan", "All" };
+
+#define NUM_OPTIONS 4
+enum kvf_options { VOLUME_NAME = 0, TOTAL_KEYS, SCAN_SIZE, WORKLOAD };
+static char *options[] = { "--volume_name", "--total_keys", "--scan_size", "--workload" };
 static char *help = "Usage ./test_dirty_scans <options> Where options include:\n --volume_name <volume name>,\n \
-	--total_keys <total number of keys> \n --scan_size <entries to fetch per scan>\n";
+	--total_keys <total number of keys> \n --scan_size <entries to fetch per scan>\n \
+--workload <Load, Get, Scan, All>";
 
 static void parse_options(int argc, char **argv)
 {
@@ -55,6 +56,22 @@ static void parse_options(int argc, char **argv)
 		for (j = 0; j < NUM_OPTIONS; ++j) {
 			if (strcmp(argv[i], options[j]) == 0) {
 				switch (j) {
+				case WORKLOAD:
+					if (i + 1 >= argc) {
+						log_fatal("Wrong arguments number %s", help);
+						exit(EXIT_FAILURE);
+					}
+
+					strcpy(workload, argv[i + 1]);
+					if (!(!strcmp(workload, workload_tags[Load]) ||
+					      !strcmp(workload, workload_tags[Get]) ||
+					      !strcmp(workload, workload_tags[Scan]) ||
+					      !strcmp(workload, workload_tags[All]))) {
+						log_fatal(
+							"Unknown workload type possible values are Load, Get, Scan, All (Default)");
+						exit(EXIT_FAILURE);
+					}
+					break;
 				case VOLUME_NAME:
 					if (i + 1 >= argc) {
 						log_fatal("Wrong arguments number %s", help);
@@ -97,9 +114,10 @@ static void parse_options(int argc, char **argv)
 
 int main(int argc, char **argv)
 {
+	strcpy(workload, "All"); /*Default value*/
 	parse_options(argc, argv);
 	base = 100000000L;
-
+	log_info("Running workload %s", workload);
 	par_db_options db_options;
 	db_options.volume_name = volume_name;
 	db_options.db_name = "scan_test";
@@ -110,6 +128,9 @@ int main(int argc, char **argv)
 
 	struct par_key_value my_kv = { .k.size = 0, .k.data = NULL, .v.val_buffer = NULL };
 	struct key *k = calloc(1, KV_BUFFER_SIZE);
+
+	if (strcmp(workload, workload_tags[Load]) && strcmp(workload, workload_tags[All]))
+		goto Get;
 	log_info("Starting population for %lu keys...", total_keys);
 	uint64_t key_count = 0;
 	for (uint64_t i = base; i < base + total_keys; ++i) {
@@ -125,7 +146,7 @@ int main(int argc, char **argv)
 			my_kv.v.val_size = SMALL_VALUE_SIZE;
 			my_kv.v.val_buffer_size = KV_BUFFER_SIZE / 2;
 			my_kv.v.val_buffer = v->value_buf;
-		} else if (res >= 8) {
+		} else if (res >= 6 && res < 8) {
 			my_kv.v.val_size = MEDIUM_VALUE_SIZE;
 			my_kv.v.val_buffer_size = KV_BUFFER_SIZE / 2;
 			my_kv.v.val_buffer = v->value_buf;
@@ -139,6 +160,10 @@ int main(int argc, char **argv)
 			log_info("Progress in population %llu keys", key_count);
 	}
 	log_info("Population ended Successfully! :-)");
+
+Get:
+	if (strcmp(workload, workload_tags[Get]) && strcmp(workload, workload_tags[All]))
+		goto Scan;
 
 	log_info("Testing GETS now");
 	for (uint64_t i = base; i < base + total_keys; ++i) {
@@ -167,7 +192,13 @@ int main(int argc, char **argv)
 		my_value.val_buffer = NULL;
 	}
 
-	log_info("Testing GETS DONE! Now, testing scans");
+	log_info("Testing GETS DONE!");
+
+Scan:
+	if (strcmp(workload, workload_tags[Scan]) && strcmp(workload, workload_tags[All]))
+		goto exit;
+
+	log_info("Now, testing scans");
 
 	for (uint64_t i = base; i < (base + (total_keys - scan_size)); ++i) {
 		if (i % 100000 == 0)
@@ -219,6 +250,8 @@ int main(int argc, char **argv)
 		par_close_scanner(my_scanner);
 	}
 	log_info("Scan test Successfull");
+exit:
+	par_close(hd);
 	free(k);
 
 	return 1;

@@ -326,13 +326,15 @@ static void comp_get_next_key(struct comp_level_read_cursor *c)
 			/*log_info("Fetching next segment id %llu for [%lu][%lu]", c->curr_segment->segment_id,
 				 c->level_id, c->tree_id);*/
 			/*read the segment*/
+
 			off_t dev_offt = ABSOLUTE_ADDRESS(c->curr_segment);
-			ssize_t bytes_read = sizeof(struct segment_header);
+			log_info("Reading level segment from dev_offt: %llu", dev_offt);
+			ssize_t bytes_read = 0; //sizeof(struct segment_header);
 			ssize_t bytes = 0;
 			while (bytes_read < SEGMENT_SIZE) {
 				bytes = pread(c->fd, &c->segment_buf[bytes_read], SEGMENT_SIZE - bytes_read,
 					      dev_offt + bytes_read);
-				if (bytes == -1) {
+				if (-1 == bytes) {
 					log_fatal("Failed to read error code");
 					perror("Error");
 					assert(0);
@@ -447,13 +449,15 @@ static void comp_init_write_cursor(struct comp_level_write_cursor *c, struct db_
 	c->tree_height = 0;
 	c->fd = fd;
 	c->handle = handle;
-	uint32_t level_leaf_size = c->handle->db_desc->levels[level_id].leaf_size;
+	struct level_descriptor *level_desc = &c->handle->db_desc->levels[c->level_id];
+	uint32_t level_leaf_size = level_desc->leaf_size;
 
 	for (int i = 0; i < MAX_HEIGHT; ++i) {
-		struct segment_header *seg = get_segment_for_explicit_IO(c->handle->db_desc, c->level_id, 1);
+		struct segment_header *device_segment =
+			get_segment_for_lsm_level_IO(c->handle->db_desc, c->level_id, 1);
+		memset(&c->segment_buf[0][0], 0x00, sizeof(struct segment_header));
 
-		c->dev_offt[i] = ABSOLUTE_ADDRESS(seg);
-		// log_info("Got dev_offt[%d] = %llu", i, c->dev_offt[i]);
+		c->dev_offt[i] = ABSOLUTE_ADDRESS(device_segment);
 		c->segment_offt[i] = sizeof(struct segment_header);
 		if (i == 0) {
 			c->last_index[0] = NULL;
@@ -515,18 +519,16 @@ static void comp_close_write_cursor(struct comp_level_write_cursor *c)
 			c->last_index[i]->header.type = rootNode;
 			uint32_t offt = comp_calc_offt_in_seg(c->segment_buf[i], (char *)c->last_index[i]);
 			c->root_offt = c->dev_offt[i] + offt;
+			c->handle->db_desc->levels[c->level_id].root_r[1] = REAL_ADDRESS(c->root_offt);
 		}
-
-		comp_write_segment(c->segment_buf[i], c->dev_offt[i], sizeof(struct segment_header), SEGMENT_SIZE,
-				   c->fd);
+		struct segment_header *segment_in_mem_buffer = (struct segment_header *)c->segment_buf[i];
+		if (i == MAX_HEIGHT - 1)
+			segment_in_mem_buffer->next_segment = NULL;
+		else
+			segment_in_mem_buffer->next_segment = (void *)c->dev_offt[i + 1];
+		comp_write_segment(c->segment_buf[i], c->dev_offt[i], 0, SEGMENT_SIZE, c->fd);
 		// log_info("Dumped buffer %u at dev_offt %llu",i,c->dev_offt[i]);
 	}
-#if 0
-	if (fsync(c->fd)) {
-		log_fatal("Failed to sync file");
-		exit(EXIT_FAILURE);
-	}
-#endif
 
 	return;
 }
@@ -534,7 +536,8 @@ static void comp_close_write_cursor(struct comp_level_write_cursor *c)
 /*mini allocator*/
 static void comp_get_space(struct comp_level_write_cursor *c, uint32_t height, nodeType_t type)
 {
-	uint32_t level_leaf_size = c->handle->db_desc->levels[c->level_id].leaf_size;
+	struct level_descriptor *level_desc = &c->handle->db_desc->levels[c->level_id];
+	uint32_t level_leaf_size = level_desc->leaf_size;
 	switch (type) {
 	case leafNode:
 	case leafRootNode: {
@@ -548,23 +551,17 @@ static void comp_get_space(struct comp_level_write_cursor *c, uint32_t height, n
 				*(uint32_t *)(&c->segment_buf[0][c->segment_offt[0] % SEGMENT_SIZE]) = paddedSpace;
 				c->segment_offt[0] += remaining_space;
 			}
-			comp_write_segment(c->segment_buf[0], c->dev_offt[0], sizeof(struct segment_header),
-					   SEGMENT_SIZE, c->fd);
-			// uint32_t *type = (uint32_t *)&c->segment_buf[0][4096];
-			// assert(*type == leafNode || *type == leafRootNode);
-			// type = (uint32_t *)(MAPPED + c->dev_offt[0] + 4096);
-			// assert(*type == leafNode || *type == leafRootNode);
-			// type = (uint32_t
-			// *)((uint64_t)c->handle->db_desc->levels[1].first_segment[1] + 4096);
-			// log_info("dev_offt %llu first segment %llu", c->dev_offt[0],
-			//	 (uint64_t)c->handle->db_desc->levels[1].first_segment[1] -
-			// MAPPED);
-			// assert(*type == leafNode || *type == leafRootNode);
 
-			// log_info("Dumped leaf segment buffer");
-			/*get space from allocator*/
-			struct segment_header *seg = get_segment_for_explicit_IO(c->handle->db_desc, c->level_id, 1);
-			c->dev_offt[0] = ABSOLUTE_ADDRESS(seg);
+			struct segment_header *new_device_segment =
+				get_segment_for_lsm_level_IO(c->handle->db_desc, c->level_id, 1);
+			struct segment_header *current_segment_mem_buffer =
+				(struct segment_header *)&c->segment_buf[0][0];
+			current_segment_mem_buffer->next_segment = (void *)ABSOLUTE_ADDRESS(new_device_segment);
+
+			comp_write_segment(c->segment_buf[0], c->dev_offt[0], 0, SEGMENT_SIZE, c->fd);
+			memset(&c->segment_buf[0][0], 0x00, sizeof(struct segment_header));
+
+			c->dev_offt[0] = ABSOLUTE_ADDRESS(new_device_segment);
 			c->segment_offt[0] += sizeof(struct segment_header);
 		}
 		c->last_leaf = (struct bt_dynamic_leaf_node *)(&c->segment_buf[0][(c->segment_offt[0] % SEGMENT_SIZE)]);
@@ -587,14 +584,16 @@ static void comp_get_space(struct comp_level_write_cursor *c, uint32_t height, n
 				c->segment_offt[height] += remaining_space;
 			}
 
-			comp_write_segment(c->segment_buf[height], c->dev_offt[height], sizeof(struct segment_header),
-					   SEGMENT_SIZE, c->fd);
+			struct segment_header *new_device_segment =
+				get_segment_for_lsm_level_IO(c->handle->db_desc, c->level_id, 1);
+			struct segment_header *current_segment_mem_buffer =
+				(struct segment_header *)&c->segment_buf[height][0];
+			current_segment_mem_buffer->next_segment = (void *)ABSOLUTE_ADDRESS(new_device_segment);
 
-			// log_info("Dumped index %d segment buffer", height);
-			/*get space from allocator*/
-			struct segment_header *seg = get_segment_for_explicit_IO(c->handle->db_desc, c->level_id, 1);
+			comp_write_segment(c->segment_buf[0], c->dev_offt[0], 0, SEGMENT_SIZE, c->fd);
+			memset(&c->segment_buf[0][0], 0x00, sizeof(struct segment_header));
 			c->segment_offt[height] += sizeof(struct segment_header);
-			c->dev_offt[height] = ABSOLUTE_ADDRESS(seg);
+			c->dev_offt[height] = ABSOLUTE_ADDRESS(new_device_segment);
 		}
 		c->last_index[height] =
 			(struct index_node *)&c->segment_buf[height][c->segment_offt[height] % SEGMENT_SIZE];
@@ -701,11 +700,11 @@ static void comp_append_pivot_to_index(struct comp_level_write_cursor *c, uint64
 
 static void comp_init_medium_log(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
 {
-	log_info("Initializing medium log for db: %s", db_desc->db_superblock.region_name);
-	struct segment_header *s = seg_get_raw_log_segment(db_desc, level_id, tree_id);
-	s->segment_id = 0;
-	s->next_segment = NULL;
-	s->prev_segment = NULL;
+	log_info("Initializing medium log for db: %s", db_desc->db_superblock->db_name);
+	struct segment_header *s = seg_get_raw_log_segment(db_desc, MEDIUM_LOG, level_id, tree_id);
+	//s->segment_id = 0;
+	//s->next_segment = NULL;
+	//s->prev_segment = NULL;
 	db_desc->medium_log.head_dev_offt = ABSOLUTE_ADDRESS(s);
 	db_desc->medium_log.tail_dev_offt = db_desc->medium_log.head_dev_offt;
 	db_desc->medium_log.size = sizeof(segment_header);
@@ -934,7 +933,7 @@ void mark_segment_space(db_handle *handle, struct dups_list *list)
 						 sizeof(segment_dev_offt), sizeof(gc_value));
 		}
 
-		assert(segment->segment_garbage_bytes < (SEGMENT_SIZE - sizeof(struct segment_header)));
+		//assert(segment->segment_garbage_bytes < SEGMENT_SIZE);
 	}
 }
 
@@ -951,6 +950,13 @@ void *compaction_daemon(void *args)
 	while (1) {
 		/*special care for Level 0 to 1*/
 		sem_wait(&db_desc->compaction_daemon_interrupts);
+		if (db_desc->stat == DB_TERMINATE_COMPACTION_DAEMON) {
+			log_warn("Compaction daemon instructed to exit because DB %s is closing, "
+				 "Bye bye!...",
+				 db_desc->db_superblock->db_name);
+			db_desc->stat = DB_IS_CLOSING;
+			return NULL;
+		}
 		struct level_descriptor *level_0 = &handle->db_desc->levels[0];
 		struct level_descriptor *level_1 = &handle->db_desc->levels[1];
 
@@ -996,13 +1002,19 @@ void *compaction_daemon(void *args)
 					handle->db_desc->small_log.tail_dev_offt;
 				handle->db_desc->small_log_start_offt_in_segment =
 					handle->db_desc->small_log.size % SEGMENT_SIZE;
+
+				/*fill big log recovery  info*/
+				handle->db_desc->big_log_start_segment_dev_offt =
+					handle->db_desc->big_log.tail_dev_offt;
+				handle->db_desc->big_log_start_offt_in_segment =
+					handle->db_desc->big_log.size % SEGMENT_SIZE;
 				/*done now atomically change active tree*/
 
 				db_desc->levels[0].active_tree = next_active_tree;
 				db_desc->levels[0].scanner_epoch += 1;
 				db_desc->levels[0].epoch[active_tree] = db_desc->levels[0].scanner_epoch;
 				log_info("Next active tree %u for L0 of DB: %s", next_active_tree,
-					 db_desc->db_superblock.region_name);
+					 db_desc->db_superblock->db_name);
 				/*Acquire a new transaction id for the next_active_tree*/
 				db_desc->levels[0].allocation_txn_id[next_active_tree] = rul_start_txn(db_desc);
 				/*Release guard lock*/
@@ -1022,7 +1034,7 @@ void *compaction_daemon(void *args)
 
 		if (comp_req) {
 			/*Start a compaction from L0 to L1. Flush L0 prior to compaction from L0 to L1*/
-			log_info("Flushing L0 for region:%s tree:[0][%u]", db_desc->db_superblock.region_name,
+			log_info("Flushing L0 for region:%s tree:[0][%u]", db_desc->db_superblock->db_name,
 				 comp_req->src_tree);
 			pr_flush_L0(db_desc, comp_req->src_tree);
 			db_desc->levels[1].allocation_txn_id[1] = rul_start_txn(db_desc);
@@ -1190,7 +1202,7 @@ static void choose_compaction_roots(struct db_handle *handle, struct compaction_
 		log_fatal("NULL src root for compaction from level's tree [%u][%u] to "
 			  "level's tree[%u][%u] for db %s",
 			  comp_req->src_level, comp_req->src_tree, comp_req->dst_level, comp_req->dst_tree,
-			  handle->db_desc->db_superblock.region_name);
+			  handle->db_desc->db_superblock->db_name);
 		exit(EXIT_FAILURE);
 	}
 
@@ -1269,8 +1281,8 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 		log_info("Empty dst [%u][%u]", comp_req->dst_level, 0);
 
 	// initialize and fill min_heap properly
-	struct sh_min_heap *m_heap = sh_alloc_heap();
-	sh_init_heap(m_heap, comp_req->src_level);
+	struct sh_heap *m_heap = sh_alloc_heap();
+	sh_init_heap(m_heap, comp_req->src_level, MIN_HEAP);
 	struct sh_heap_node nd_src = { .KV = NULL, .level_id = 0, .active_tree = 0, .duplicate = 0, .type = KV_PREFIX };
 	struct sh_heap_node nd_dst = { .KV = NULL, .level_id = 0, .active_tree = 0, .duplicate = 0, .type = KV_PREFIX };
 	struct sh_heap_node nd_min = { .KV = NULL, .level_id = 0, .active_tree = 0, .duplicate = 0, .type = KV_PREFIX };
@@ -1301,12 +1313,12 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 	}
 	// ############################################################################
 	int32_t num_of_keys = 1; // COMPACTION_UNIT_OF_WORK;
-	enum sh_heap_status stat = GOT_MIN_HEAP;
+	enum sh_heap_status stat = GOT_HEAP;
 	do {
 		handle->db_desc->dirty = 0x01;
 		if (handle->db_desc->stat == DB_IS_CLOSING) {
 			log_info("DB %s is closing compaction thread exiting...",
-				 handle->db_desc->db_superblock.region_name);
+				 handle->db_desc->db_superblock->db_name);
 			if (l_src)
 				free(l_src);
 			if (l_dst)
@@ -1316,8 +1328,8 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 		// This is to synchronize compactions with snapshot
 		RWLOCK_RDLOCK(&handle->db_desc->levels[comp_req->dst_level].guard_of_level.rx_lock);
 		for (int i = 0; i < num_of_keys; i++) {
-			stat = sh_remove_min(m_heap, &nd_min);
-			if (stat == EMPTY_MIN_HEAP)
+			stat = sh_remove_top(m_heap, &nd_min);
+			if (stat == EMPTY_HEAP)
 				break;
 			if (!nd_min.duplicate) {
 				struct comp_parallax_key key;
@@ -1363,7 +1375,7 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 			}
 		}
 		RWLOCK_UNLOCK(&handle->db_desc->levels[comp_req->dst_level].guard_of_level.rx_lock);
-	} while (stat != EMPTY_MIN_HEAP);
+	} while (stat != EMPTY_HEAP);
 
 	if (level_src)
 		_close_spill_buffer_scanner(level_src);
@@ -1376,9 +1388,9 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 	}
 
 	mark_segment_space(handle, m_heap->dups);
-	free(m_heap);
 	comp_close_write_cursor(merged_level);
 
+	sh_destroy_heap(m_heap);
 	merged_level->handle->db_desc->levels[comp_req->dst_level].root_w[1] =
 		(struct node_header *)REAL_ADDRESS(merged_level->root_offt);
 	assert(merged_level->handle->db_desc->levels[comp_req->dst_level].root_w[1]->type == rootNode);
@@ -1409,8 +1421,33 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 		space_freed = seg_free_level(comp_req->db_desc, txn_id, comp_req->dst_level, 0);
 
 		log_info("Freed space %llu MB from db:%s destination level %u", space_freed / (1024 * 1024),
-			 comp_req->db_desc->db_superblock.region_name, comp_req->src_level);
+			 comp_req->db_desc->db_superblock->db_name, comp_req->src_level);
 	}
+
+	uint64_t txn_id = comp_req->db_desc->levels[comp_req->dst_level].allocation_txn_id[comp_req->dst_tree];
+	space_freed = seg_free_level(hd.db_desc, txn_id, comp_req->src_level, comp_req->src_tree);
+	log_info("Freed space %llu MB from db:%s source level %u", space_freed / (1024 * 1024),
+		 comp_req->db_desc->db_superblock->db_name, comp_req->src_level);
+	seg_zero_level(hd.db_desc, comp_req->src_level, comp_req->src_tree);
+
+#if ENABLE_BLOOM_FILTERS
+	if (dst_root) {
+		log_info("Freeing previous bloom filter for dst level %u", comp_req->dst_level);
+		bloom_free(&handle.db_desc->levels[comp_req->src_level].bloom_filter[0]);
+	}
+	ld->bloom_filter[0] = ld->bloom_filter[1];
+	memset(&ld->bloom_filter[1], 0x00, sizeof(struct bloom));
+#endif
+
+#if !MEDIUM_LOG_UNSORTED
+	if (comp_req->dst_level == 1) {
+		log_info("Flushing medium log");
+		pr_flush_log_tail(comp_req->db_desc, comp_req->volume_desc, &comp_req->db_desc->medium_log);
+	}
+#endif
+	/*Finally persist compaction */
+	pr_flush_compaction(comp_req->db_desc, comp_req->dst_level, comp_req->dst_tree);
+	log_info("Flushed compaction[%u][%u] successfully", comp_req->dst_level, comp_req->dst_tree);
 	// switch dst tree
 	ld->first_segment[0] = ld->first_segment[1];
 	ld->first_segment[1] = NULL;
@@ -1434,31 +1471,6 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 	ld->level_size[1] = 0;
 	ld->root_w[1] = NULL;
 	ld->root_r[1] = NULL;
-	uint64_t txn_id = comp_req->db_desc->levels[comp_req->dst_level].allocation_txn_id[comp_req->dst_tree];
-	space_freed = seg_free_level(hd.db_desc, txn_id, comp_req->src_level, comp_req->src_tree);
-	log_info("Freed space %llu MB from db:%s source level %u", space_freed / (1024 * 1024),
-		 comp_req->db_desc->db_superblock.region_name, comp_req->src_level);
-	seg_zero_level(hd.db_desc, comp_req->src_level, comp_req->src_tree);
-
-#if ENABLE_BLOOM_FILTERS
-	if (dst_root) {
-		log_info("Freeing previous bloom filter for dst level %u", comp_req->dst_level);
-		bloom_free(&handle.db_desc->levels[comp_req->src_level].bloom_filter[0]);
-	}
-	ld->bloom_filter[0] = ld->bloom_filter[1];
-	memset(&ld->bloom_filter[1], 0x00, sizeof(struct bloom));
-#endif
-
-#if !MEDIUM_LOG_UNSORTED
-	if (comp_req->dst_level == 1) {
-		log_info("Flushing medium log");
-		pr_flush_log_tail(comp_req->db_desc, comp_req->volume_desc, &comp_req->db_desc->medium_log);
-	}
-#endif
-	/*Finally persist compaction */
-	log_info("Flusing compaction[%lu][%lu]", comp_req->dst_level, comp_req->dst_tree);
-	pr_flush_compaction(comp_req->db_desc, comp_req->dst_level, comp_req->dst_tree);
-	log_info("Flusing compaction  done from level %lu tree %lu", comp_req->dst_level, comp_req->dst_tree);
 	if (RWLOCK_UNLOCK(&(comp_req->db_desc->levels[comp_req->src_level].guard_of_level.rx_lock))) {
 		log_fatal("Failed to acquire guard lock");
 		exit(EXIT_FAILURE);
@@ -1512,7 +1524,14 @@ void *compaction(void *_comp_req)
 		struct level_descriptor *leveld_src = &comp_req->db_desc->levels[comp_req->src_level];
 		struct level_descriptor *leveld_dst = &comp_req->db_desc->levels[comp_req->dst_level];
 
-		swap_levels(leveld_src, leveld_dst, comp_req->src_tree, 0);
+		swap_levels(leveld_src, leveld_dst, comp_req->src_tree, 1);
+		pr_flush_compaction(comp_req->db_desc, comp_req->dst_level, comp_req->dst_tree);
+		swap_levels(leveld_dst, leveld_dst, 1, 0);
+		log_info("Flushed compaction[%u][%u] (Swap levels) successfully", comp_req->dst_level,
+			 comp_req->dst_tree);
+
+		//uint64_t my_txn_id = db_desc->levels[comp_req->dst_level].allocation_txn_id[comp_req->dst_tree];
+		//rul_apply_txn_buf_freeops_and_destroy(comp_req->db_desc, my_txn_id);
 #if ENABLE_BLOOM_FILTERS
 		log_info("Swapping also bloom filter");
 		leveld_dst->bloom_filter[0] = leveld_src->bloom_filter[0];

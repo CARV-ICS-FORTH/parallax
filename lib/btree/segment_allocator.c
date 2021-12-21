@@ -14,6 +14,7 @@
 
 #include "segment_allocator.h"
 #include "../allocator/device_structures.h"
+#include "../allocator/log_structures.h"
 #include "../allocator/redo_undo_log.h"
 #include "../allocator/volume_manager.h"
 #include "conf.h"
@@ -151,7 +152,10 @@ static void *get_space(struct db_descriptor *db_desc, uint8_t level_id, uint8_t 
 	return node;
 }
 
-struct segment_header *get_segment_for_explicit_IO(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
+/*
+ * We use this function to allocate space only for the lsm levels during compaction
+*/
+struct segment_header *get_segment_for_lsm_level_IO(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
 {
 	struct level_descriptor *level_desc = &db_desc->levels[level_id];
 
@@ -159,32 +163,22 @@ struct segment_header *get_segment_for_explicit_IO(struct db_descriptor *db_desc
 		log_warn("Not allowed this kind of allocations for L0!");
 		return NULL;
 	}
-	struct segment_header *new_segment = (segment_header *)REAL_ADDRESS(
-		seg_allocate_segment(db_desc, db_desc->levels[level_id].allocation_txn_id[tree_id]));
-	/*log_info("Segment addr %llu", new_segment);*/
-	assert(new_segment);
+	uint64_t seg_offt = seg_allocate_segment(db_desc, db_desc->levels[level_id].allocation_txn_id[tree_id]);
+	struct segment_header *new_segment = (segment_header *)REAL_ADDRESS(seg_offt);
+	if (!new_segment) {
+		log_fatal("Failed to allocate space for new segment level");
+		exit(EXIT_FAILURE);
+	}
 
 	if (level_desc->offset[tree_id]) {
-		uint64_t segment_id = level_desc->last_segment[tree_id]->segment_id + 1;
-		/*chain segments*/
-		new_segment->next_segment = NULL;
-		new_segment->prev_segment = (segment_header *)ABSOLUTE_ADDRESS(level_desc->last_segment[tree_id]);
-
-		level_desc->last_segment[tree_id]->next_segment = (segment_header *)(ABSOLUTE_ADDRESS(new_segment));
-		level_desc->last_segment[tree_id] = new_segment;
-		level_desc->last_segment[tree_id]->segment_id = segment_id;
 		level_desc->offset[tree_id] += SEGMENT_SIZE;
+		level_desc->last_segment[tree_id] = new_segment;
 	} else {
-		//log_info("Adding first index segmet for [%u]",tree_id);
-		/*special case for the first segment for this level*/
-		new_segment->next_segment = NULL;
-		new_segment->prev_segment = NULL;
+		level_desc->offset[tree_id] = SEGMENT_SIZE;
 		level_desc->first_segment[tree_id] = new_segment;
 		level_desc->last_segment[tree_id] = new_segment;
-		level_desc->last_segment[tree_id]->segment_id = 0;
-		level_desc->offset[tree_id] = SEGMENT_SIZE;
 	}
-	new_segment->in_mem = 0;
+
 	return new_segment;
 }
 
@@ -335,17 +329,31 @@ void seg_free_leaf_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t
 #endif
 }
 
-segment_header *seg_get_raw_log_segment(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
+segment_header *seg_get_raw_log_segment(struct db_descriptor *db_desc, enum log_type log_type, uint8_t level_id,
+					uint8_t tree_id)
 {
-	segment_header *sg;
-	sg = (segment_header *)REAL_ADDRESS(
-		seg_allocate_segment(db_desc, db_desc->levels[level_id].allocation_txn_id[tree_id]));
-#if 0
-	sg->segment_garbage_bytes = 0;
-	sg->moved_kvs = 0;
-	sg->segment_end = 0;
-	sg->in_mem = 0;
-#endif
+	enum rul_op_type op_type;
+	switch (log_type) {
+	case BIG_LOG:
+		op_type = RUL_LARGE_LOG_ALLOCATE;
+		break;
+	case MEDIUM_LOG:
+		op_type = RUL_MEDIUM_LOG_ALLOCATE;
+		break;
+	case SMALL_LOG:
+		op_type = RUL_SMALL_LOG_ALLOCATE;
+		break;
+	default:
+		log_fatal("Unknown log type");
+		exit(EXIT_FAILURE);
+	}
+	struct rul_log_entry log_entry;
+	log_entry.dev_offt = mem_allocate(db_desc->db_volume, SEGMENT_SIZE);
+	log_entry.txn_id = db_desc->levels[level_id].allocation_txn_id[tree_id];
+	log_entry.op_type = op_type;
+	log_entry.size = SEGMENT_SIZE;
+	rul_add_entry_in_txn_buf(db_desc, &log_entry);
+	segment_header *sg = (segment_header *)REAL_ADDRESS(log_entry.dev_offt);
 	return sg;
 }
 
@@ -427,7 +435,7 @@ uint64_t seg_free_level(struct db_descriptor *db_desc, uint64_t txn_id, uint8_t 
 	segment_header *temp_segment;
 	uint64_t space_freed = 0;
 
-	log_info("Freeing up level %u for db %s", level_id, db_desc->db_superblock.region_name);
+	log_info("Freeing up level %u for db %s", level_id, db_desc->db_superblock->db_name);
 
 	if (level_id != 0) {
 		for (; curr_segment && curr_segment->next_segment != NULL;
@@ -445,6 +453,12 @@ uint64_t seg_free_level(struct db_descriptor *db_desc, uint64_t txn_id, uint8_t 
 	} else {
 		/*Finally L0 index in memory*/
 		curr_segment = db_desc->levels[level_id].first_segment[tree_id];
+
+		if (!curr_segment) {
+			log_warn("Nothing to do for level[%u][%u] because it is empty", level_id, tree_id);
+			return 0;
+		}
+
 		temp_segment = REAL_ADDRESS(curr_segment->next_segment);
 		int flag = 0;
 		/* log_info("Level id to free %d %d", level_id,curr_segment->in_mem); */

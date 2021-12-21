@@ -1,3 +1,4 @@
+#define ENABLE_OPTIONS_OUTPUT 0
 #include "set_options.h"
 #include <assert.h>
 #include <log.h>
@@ -99,13 +100,13 @@ int parse_options(struct lib_option **db_options)
 		HASH_ADD_STR(*db_options, name, temp);
 	}
 
+#if ENABLE_OPTIONS_OUTPUT
 	struct lib_option *current_option, *tmp;
-
 	HASH_ITER(hh, *db_options, current_option, tmp)
 	{
 		log_info("Option: %s : %llu", current_option->name, current_option->value.count);
 	}
-
+#endif
 	return 0;
 }
 
@@ -116,8 +117,8 @@ void check_option(char *option_name, struct lib_option *opt_value)
 		exit(EXIT_FAILURE);
 	}
 }
-
-void write_options(struct lib_option *db_options)
+#if 0
+static void write_options(struct lib_option *db_options)
 {
 	FILE *f = fopen(CONFIG_FILE, "w");
 
@@ -125,5 +126,18 @@ void write_options(struct lib_option *db_options)
 	HASH_ITER(hh, db_options, current_option, tmp)
 	{
 		fprintf(f, "%s %llu\n", current_option->name, current_option->value.count);
+	}
+}
+#endif
+
+void destroy_options(struct lib_option *db_options)
+{
+	struct lib_option *current_option, *tmp;
+	HASH_ITER(hh, db_options, current_option, tmp)
+	{
+		//log_info("Freeing option %s", current_option->name);
+		HASH_DEL(db_options, current_option); /* delete; users advances to next */
+		free(current_option->name);
+		free(current_option); /* optional- if you want to free  */
 	}
 }

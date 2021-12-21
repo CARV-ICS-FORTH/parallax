@@ -15,7 +15,6 @@
 #include "../include/parallax.h"
 #include "../btree/btree.h"
 #include "../scanner/scanner.h"
-#include <assert.h>
 #include <log.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -41,7 +40,7 @@ par_handle par_open(par_db_options *options)
 void par_close(par_handle handle)
 {
 	(void)handle;
-	/* db_close((db_handle *)handle); */
+	db_close((db_handle *)handle);
 }
 
 par_ret_code par_put(par_handle handle, struct par_key_value *key_value)
@@ -221,8 +220,13 @@ init_scanner:
 		par_s->valid = 0;
 	else {
 		par_s->valid = 1;
-		uint32_t kv_size = get_key_size(sc) + sizeof(struct kv_format);
-		struct kv_format *v = (struct kv_format *)((uint64_t)sc->keyValue + kv_size);
+
+		struct bt_kv_log_address log_address = { .addr = sc->keyValue, .tail_id = UINT8_MAX, .in_tail = 0 };
+		if (!sc->kv_level_id && BIG_INLOG == sc->kv_cat)
+			log_address = bt_get_kv_log_address(&sc->db->db_desc->big_log, ABSOLUTE_ADDRESS(sc->keyValue));
+
+		uint32_t kv_size = KEY_SIZE(log_address.addr) + sizeof(struct kv_format);
+		struct kv_format *v = (struct kv_format *)((uint64_t)log_address.addr + kv_size);
 		kv_size += (v->key_size + sizeof(struct kv_format));
 		if (kv_size > par_s->buf_size) {
 			//log_info("Space not enougn needing %u got %u", kv_size, par_s->buf_size);
@@ -232,7 +236,9 @@ init_scanner:
 			par_s->allocated = 1;
 			par_s->kv_buf = calloc(1, par_s->buf_size);
 		}
-		memcpy(par_s->kv_buf, sc->keyValue, kv_size);
+		memcpy(par_s->kv_buf, log_address.addr, kv_size);
+		if (log_address.in_tail)
+			bt_done_with_value_log_address(&sc->db->db_desc->big_log, &log_address);
 	}
 
 	if (free_seek_key)
@@ -260,11 +266,16 @@ int par_get_next(par_scanner s)
 		par_s->valid = 0;
 		return 0;
 	}
-	uint32_t kv_size = get_key_size(sc) + sizeof(struct kv_format);
-	struct kv_format *v = (struct kv_format *)((uint64_t)sc->keyValue + kv_size);
+
+	struct bt_kv_log_address log_address = { .addr = sc->keyValue, .tail_id = UINT8_MAX, .in_tail = 0 };
+	if (!sc->kv_level_id && BIG_INLOG == sc->kv_cat)
+		log_address = bt_get_kv_log_address(&sc->db->db_desc->big_log, ABSOLUTE_ADDRESS(sc->keyValue));
+
+	uint32_t kv_size = KEY_SIZE(log_address.addr) + sizeof(struct kv_format);
+	struct kv_format *v = (struct kv_format *)((uint64_t)log_address.addr + kv_size);
 	kv_size += v->key_size + sizeof(struct kv_format);
 	if (kv_size > par_s->buf_size) {
-		//log_info("Space not enougn needing %u got %u", kv_size, par_s->buf_size);
+		//log_info("Space not enough needing %u got %u", kv_size, par_s->buf_size);
 		if (par_s->allocated)
 			free(par_s->kv_buf);
 
@@ -272,29 +283,9 @@ int par_get_next(par_scanner s)
 		par_s->allocated = 1;
 		par_s->kv_buf = calloc(1, par_s->buf_size);
 	}
-	//memcpy(par_s->kv_buf, sc->keyValue, par_s->buf_size);
-	//gesalous
-	struct bt_kv_log_address L = { .addr = sc->keyValue, .tail_id = UINT8_MAX, .in_tail = 0 };
-	if (!sc->kv_level_id) {
-		switch (sc->kv_cat) {
-		case BIG_INLOG:
-			L = bt_get_kv_log_address(&sc->db->db_desc->big_log, *(uint64_t *)sc->keyValue);
-			break;
-		case BIG_INPLACE:
-		case MEDIUM_INPLACE:
-		case MEDIUM_INLOG:
-		case SMALL_INPLACE:
-		case SMALL_INLOG:
-			break;
-		default:
-			log_fatal("UNKNOWS_LOG_CATEGORY %d", sc->kv_cat);
-			exit(EXIT_FAILURE);
-		}
-	}
-
-	memcpy(par_s->kv_buf, L.addr, kv_size);
-	if (L.in_tail)
-		bt_done_with_value_log_address(&sc->db->db_desc->big_log, &L);
+	memcpy(par_s->kv_buf, log_address.addr, kv_size);
+	if (log_address.in_tail)
+		bt_done_with_value_log_address(&sc->db->db_desc->big_log, &log_address);
 	return 1;
 }
 

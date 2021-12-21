@@ -14,6 +14,7 @@
 
 #define _GNU_SOURCE
 #define _LARGEFILE64_SOURCE
+#define NUM_OF_OWNERSHIP_REGISTRY_PAIRS (2)
 #include "../btree/conf.h"
 #include "mem_structures.h"
 #include "volume_manager.h"
@@ -132,11 +133,11 @@ static void kvf_init_parallax(char *device_name, uint32_t max_regions_num)
 	}
 
 	/*Initialize all region superblocks*/
-	struct pr_region_superblock *rs = kvf_posix_calloc(sizeof(struct pr_region_superblock));
+	struct pr_db_superblock *rs = kvf_posix_calloc(sizeof(struct pr_db_superblock));
 	uint64_t dev_offt = sizeof(struct superblock);
 	for (uint32_t i = 0; i < max_regions_num; ++i) {
-		kvf_write_buffer(fd, (char *)rs, 0, sizeof(struct pr_region_superblock), dev_offt);
-		dev_offt += sizeof(struct pr_region_superblock);
+		kvf_write_buffer(fd, (char *)rs, 0, sizeof(struct pr_db_superblock), dev_offt);
+		dev_offt += sizeof(struct pr_db_superblock);
 	}
 	free(rs);
 	rs = NULL;
@@ -182,8 +183,8 @@ static void kvf_init_parallax(char *device_name, uint32_t max_regions_num)
 		CLEAR_BIT(B, (i % 8));
 	}
 	uint64_t metadata_size_in_bytes = sizeof(struct superblock) +
-					  (max_regions_num * sizeof(struct pr_region_superblock)) +
-					  (max_regions_num * 2 * registry_size_in_bytes);
+					  (max_regions_num * sizeof(struct pr_db_superblock)) +
+					  (max_regions_num * NUM_OF_OWNERSHIP_REGISTRY_PAIRS * registry_size_in_bytes);
 
 	if (metadata_size_in_bytes % SEGMENT_SIZE)
 		metadata_size_in_bytes =
@@ -199,8 +200,8 @@ static void kvf_init_parallax(char *device_name, uint32_t max_regions_num)
 		uint8_t *B = (uint8_t *)&registry_buffer[idx];
 		CLEAR_BIT(B, (i % 8));
 	}
-	dev_offt = sizeof(struct superblock) + (max_regions_num * sizeof(struct pr_region_superblock));
-	for (uint64_t i = 0; i < (2 * max_regions_num); ++i) {
+	dev_offt = sizeof(struct superblock) + (max_regions_num * sizeof(struct pr_db_superblock));
+	for (uint64_t i = 0; i < (NUM_OF_OWNERSHIP_REGISTRY_PAIRS * max_regions_num); ++i) {
 		kvf_write_buffer(fd, registry_buffer, 0, registry_size_in_bytes, dev_offt);
 		dev_offt += registry_size_in_bytes;
 	}
@@ -222,7 +223,7 @@ static void kvf_init_parallax(char *device_name, uint32_t max_regions_num)
 	struct superblock *S = (struct superblock *)kvf_posix_calloc(sizeof(struct superblock));
 	S->volume_size = mapped_device_size;
 	S->paddedSpace = metadata_size_in_bytes -
-			 (sizeof(struct superblock) + (max_regions_num * sizeof(struct pr_region_superblock)) +
+			 (sizeof(struct superblock) + (max_regions_num * sizeof(struct pr_db_superblock)) +
 			  (max_regions_num * 2 * registry_size_in_bytes));
 	S->magic_number = FINE_STRUCTURE_CONSTANT;
 	S->max_regions_num = max_regions_num;

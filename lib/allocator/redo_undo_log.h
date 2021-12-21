@@ -27,8 +27,15 @@
 
 struct db_descriptor;
 
-enum rul_op_type { RUL_ALLOCATE = 1, RUL_FREE, RUL_COMMIT, RUL_LOG_ALLOCATE, RUL_LOG_FREE };
-#define RUL_LOG_SYSTEM_TXN 0
+enum rul_op_type {
+	RUL_ALLOCATE = 1,
+	RUL_FREE,
+	RUL_COMMIT,
+	RUL_SMALL_LOG_ALLOCATE,
+	RUL_MEDIUM_LOG_ALLOCATE,
+	RUL_LARGE_LOG_ALLOCATE,
+	RUL_LOG_FREE
+};
 
 struct rul_log_info {
 	uint64_t size;
@@ -48,7 +55,7 @@ struct rul_log_segment {
 	struct rul_log_entry chunk[RUL_LOG_CHUNK_NUM][RUL_LOG_CHUNK_MAX_ENTRIES];
 	char pad[RUL_SEGMENT_FOOTER_SIZE_IN_BYTES - sizeof(uint64_t)];
 	uint64_t next_seg_offt;
-} __attribute__((packed));
+} __attribute__((packed, aligned(SEGMENT_SIZE)));
 
 #define RUL_ENTRIES_PER_TXN_BUFFER 512
 struct rul_transaction {
@@ -82,6 +89,7 @@ struct rul_log_descriptor {
 };
 
 void rul_log_init(struct db_descriptor *db_desc);
+void rul_log_destroy(struct db_descriptor *db_desc);
 uint64_t rul_start_txn(struct db_descriptor *db_desc);
 int rul_add_entry_in_txn_buf(struct db_descriptor *db_desc, struct rul_log_entry *entry);
 struct rul_log_info rul_flush_txn(struct db_descriptor *db_desc, uint64_t txn_id);

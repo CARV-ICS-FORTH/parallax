@@ -13,7 +13,6 @@
 // limitations under the License.
 
 #pragma once
-#include "../allocator/device_structures.h"
 #include "../allocator/log_structures.h"
 #include "../allocator/volume_manager.h"
 #include "conf.h"
@@ -51,6 +50,8 @@ struct lookup_operation {
 	uint8_t retrieve : 1; /*in variable*/
 };
 
+enum db_status { DB_START_COMPACTION_DAEMON, DB_OPEN, DB_TERMINATE_COMPACTION_DAEMON, DB_IS_CLOSING };
+
 typedef enum {
 	leafNode = 590675399,
 	internalNode = 790393380,
@@ -60,8 +61,6 @@ typedef enum {
 	paddedSpace = 55400000,
 	invalid
 } nodeType_t;
-
-typedef enum db_status { DB_OPEN, DB_IS_CLOSING } db_status;
 
 /*descriptor describing a spill operation and its current status*/
 typedef enum {
@@ -217,11 +216,11 @@ struct splice {
 	char data[0];
 };
 
-/**
+/*
  * db_descriptor is a soft state descriptor per open database. superindex
- * structure keeps a serialized from of the vital information needed to restore each
-*db_descriptor
-**/
+ * structure keeps a serialized form of the vital information needed to restore each
+ * db_descriptor
+*/
 
 typedef struct lock_table {
 	pthread_rwlock_t rx_lock;
@@ -287,6 +286,7 @@ typedef struct level_descriptor {
 
 struct bt_kv_log_address {
 	void *addr;
+	struct log_descriptor *log_desc;
 	uint8_t in_tail;
 	uint8_t tail_id;
 };
@@ -301,10 +301,10 @@ typedef struct db_descriptor {
 #endif
 
 	/*<new_persistent_design>*/
-	struct pr_region_superblock db_superblock;
 	pthread_mutex_t db_superblock_lock;
 	struct rul_log_descriptor *allocation_log;
 	struct volume_descriptor *db_volume;
+	struct pr_db_superblock *db_superblock;
 	uint32_t db_superblock_idx;
 	/*</new_persistent_design>*/
 
@@ -339,6 +339,8 @@ typedef struct db_descriptor {
 	/*L0 recovery log info*/
 	uint64_t small_log_start_segment_dev_offt;
 	uint64_t small_log_start_offt_in_segment;
+	uint64_t big_log_start_segment_dev_offt;
+	uint64_t big_log_start_offt_in_segment;
 
 	int is_compaction_daemon_sleeping;
 	int32_t reference_count;
@@ -383,10 +385,10 @@ void pr_flush_log_tail(struct db_descriptor *db_desc, struct volume_descriptor *
 		       struct log_descriptor *log_desc);
 /*<new_persistent_design>*/
 void init_log_buffer(struct log_descriptor *log_desc, enum log_type my_type);
-void pr_read_region_superblock(struct db_descriptor *db_desc);
-void pr_flush_region_superblock(struct db_descriptor *db_desc);
-void pr_lock_region_superblock(struct db_descriptor *db_desc);
-void pr_unlock_region_superblock(struct db_descriptor *db_desc);
+void pr_read_db_superblock(struct db_descriptor *db_desc);
+void pr_flush_db_superblock(struct db_descriptor *db_desc);
+void pr_lock_db_superblock(struct db_descriptor *db_desc);
+void pr_unlock_db_superblock(struct db_descriptor *db_desc);
 void pr_flush_L0(struct db_descriptor *db_desc, uint8_t tree_id);
 void pr_flush_compaction(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id);
 /*</new_persistent_design>*/
@@ -395,9 +397,9 @@ void pr_flush_compaction(struct db_descriptor *db_desc, uint8_t level_id, uint8_
 //void commit_db_log(db_descriptor *db_desc, commit_log_info *info);
 //void commit_db_logs_per_volume(volume_descriptor *volume_desc);
 
-/*client API*/
 /*management operations*/
 db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_name, char CREATE_FLAG);
+enum parallax_status db_close(db_handle *handle);
 
 void *compaction_daemon(void *args);
 void flush_volume(volume_descriptor *volume_desc, char force_spill);
@@ -544,6 +546,7 @@ void free_buffered(void *_handle, void *address, uint32_t num_bytes, int height)
 /*functions used from other parts except btree/btree.c*/
 
 void *_index_node_binary_search(index_node *node, void *key_buf, char query_key_format);
+void recover_L0(struct db_descriptor *db_desc);
 
 // void free_logical_node(allocator_descriptor *allocator_desc, node_header
 // *node_index);

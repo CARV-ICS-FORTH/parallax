@@ -110,6 +110,9 @@ class ParallaxDB : public YCSBDB {
 
 	void Close()
 	{
+		for (int i = 0; i < db_num; ++i) {
+			par_close(dbs[i]);
+		}
 		//snapshot(dbs[0]->volume_desc);
 #if MEASURE_SST_USED_SPACE
 		for (int i = 0; i < MAX_LEVELS; i++)
@@ -303,7 +306,7 @@ class ParallaxDB : public YCSBDB {
 		std::hash<std::string> hash_fn;
 		uint32_t db_id = hash_fn(key) % db_num;
 
-		static std::string value3(1000, 'a');
+		static std::string value3(2000, 'a');
 		static std::string value2(100, 'a');
 		static std::string value(5, 'a');
 		int y = x % 10;

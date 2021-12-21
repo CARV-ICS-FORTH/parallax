@@ -15,12 +15,11 @@
 #define _GNU_SOURCE
 #include "../btree/btree.h"
 #include "../btree/conf.h"
-#include "../btree/set_options.h"
 #include "../utilities/list.h"
 #include "device_structures.h"
 #include "djb2.h"
-#include "log_structures.h"
 #include "mem_structures.h"
+#include "redo_undo_log.h"
 #include "volume_manager.h"
 
 #include <assert.h>
@@ -50,7 +49,6 @@ pthread_mutex_t VOLUME_LOCK = PTHREAD_MUTEX_INITIALIZER;
 /*from this address any node can see the entire volume*/
 uint64_t MAPPED = 0;
 int FD = -1;
-int fastmap_fd = -1;
 
 /*<new_persistent_design>*/
 #define MEM_LOG_WORD_SIZE_IN_BITS 8
@@ -108,54 +106,11 @@ off64_t mount_volume(char *volume_name, int64_t start, int64_t unused_size)
 		}
 
 		log_info("Creating virtual address space offset %lld size %ld\n", (long long)start, device_size);
-		// mmap the device
-		struct lib_option *dboptions = NULL;
-		parse_options(&dboptions);
-		struct lib_option *option;
+		/*mmap the device*/
 
-		HASH_FIND_STR(dboptions, "fastmap_on", option);
-		check_option("fastmap_on", option);
-		int fastmap_on = option->value.count;
-		fastmap_fd = -1;
 		char *addr_space = NULL;
 
-		if (fastmap_on) {
-			if (close(FD)) {
-				log_fatal("Cannot close FD");
-				exit(EXIT_FAILURE);
-			}
-
-			fastmap_fd = open("/dev/dmap/dmap1", O_RDWR);
-			if (fastmap_fd == -1) {
-				log_fatal("Fastmap could not open!");
-				perror("Reason: ");
-				exit(EXIT_FAILURE);
-			}
-
-			log_info("BEFORE BLK ZERO RANGE start %llu device size %llu", start, device_size);
-			/* struct fake_blk_page_range frang; */
-			/* memset(&frang,0,sizeof(frang)); */
-			/* // we should also zero all range from start to size */
-			/* frang.offset = start / 4096; // convert from bytes to pages */
-			/* frang.length = device_size / 4096; // convert from bytes to pages */
-			/* int ret = ioctl(fastmap_fd, FAKE_BLK_IOC_ZERO_RANGE, &frang); */
-
-			/* if (ret) { */
-			/*   log_fatal("ioctl(FAKE_BLK_IOC_ZERO_RANGE) failed! Program
-       * exiting...\n"); */
-			/*   exit(EXIT_FAILURE); */
-			/* } */
-			log_info("Fastmap has been initialiazed");
-
-			addr_space = mmap(NULL, device_size, PROT_READ | PROT_WRITE, MAP_SHARED, fastmap_fd, start);
-			FD = open(volume_name, O_RDWR | O_DIRECT | O_DSYNC);
-			if (FD < 0) {
-				log_fatal("Failed to open %s", volume_name);
-				perror("Reason:\n");
-				exit(EXIT_FAILURE);
-			}
-		} else
-			addr_space = mmap(NULL, device_size, PROT_READ | PROT_WRITE, MAP_SHARED, FD, start);
+		addr_space = mmap(NULL, device_size, PROT_READ, MAP_SHARED, FD, start);
 
 		if (addr_space == MAP_FAILED) {
 			log_fatal("MMAP for device %s reason follows", volume_name);
@@ -176,152 +131,308 @@ off64_t mount_volume(char *volume_name, int64_t start, int64_t unused_size)
 	return device_size;
 }
 
-#if 0
-static void mem_init_region_superblock(struct mem_region_superblock *mem_region, const char *region_name,
-				       uint32_t region_name_size)
+static uint8_t init_db_superblock(struct pr_db_superblock *db_superblock, const char *db_name, uint32_t db_name_size,
+				  uint32_t db_id)
 {
-	int region_id;
-	region_id = mem_region->id;
-	memset(mem_region, 0x00, sizeof(struct mem_region_superblock));
-	mem_region->id = region_id;
-	mem_region->valid = 1;
-	mem_region->reference_count = 0;
+	if (db_name_size > MAX_DB_NAME_SIZE)
+		return 0;
+	memset(db_superblock, 0x00, sizeof(struct pr_db_superblock));
+	memcpy(db_superblock->db_name, db_name, db_name_size);
+	db_superblock->db_name_size = db_name_size;
+	db_superblock->id = db_id; //in the array
+	db_superblock->valid = 1;
+	db_superblock->lsn = 0;
+	return 1;
+}
 
-  memcpy(mem_region->region_name, region_name, region_name_size);
-	mem_region->region_name_size = region_name_size;
-	if (MUTEX_INIT(&mem_region->superblock_lock, NULL) != 0) {
-		log_fatal("Failed to initialize region superblock lock");
+#if 0
+static void print_allocation_type(enum rul_op_type type)
+{
+	switch (type) {
+	case RUL_ALLOCATE:
+		log_info("RUL_ALLOCATE");
+		break;
+	case RUL_LOG_ALLOCATE:
+		log_info("RUL_LOG_ALLOCATE");
+		break;
+	case RUL_FREE:
+		log_info("RUL_FREE");
+		break;
+	case RUL_LOG_FREE:
+		log_info("RUL_LOG_FREE");
+		break;
+	case RUL_COMMIT:
+		log_info("RUL_COMMIT");
+		break;
+	default:
+		log_fatal("Corrupted operation type %d", type);
+		assert(0);
 		exit(EXIT_FAILURE);
 	}
 }
 #endif
 
-void pr_write_region_superblock(struct volume_descriptor *volume_desc, struct mem_region_superblock *mem_region)
+static void apply_db_allocations_to_allocator_bitmap(struct volume_descriptor *volume_desc, uint8_t *mem_bitmap,
+						     int mem_bitmap_size)
 {
-	MUTEX_LOCK(&mem_region->superblock_lock);
-	(void)volume_desc;
-	int region_id = mem_region->id;
-	// serialize mem_region to pr_region
-	struct pr_region_superblock pr_region;
-	memcpy(pr_region.region_name, mem_region->region_name, mem_region->region_name_size);
-	for (int l = 1; l < MAX_LEVELS; ++l) {
-		for (int tree = 0; tree < NUM_TREES_PER_LEVEL; ++tree) {
-			pr_region.first_segment[l][tree] = (uint64_t)mem_region->first_segment[l][tree] - MAPPED;
-			pr_region.last_segment[l][tree] = (uint64_t)mem_region->last_segment[l][tree] - MAPPED;
-			pr_region.offset[l][tree] = (uint64_t)mem_region->offset[l][tree];
-			pr_region.level_size[l][tree] = (uint64_t)mem_region->level_size[l][tree];
+	/* 0 --> in use
+   * 1  --> free
+   */
+	char *volume_allocator_bitmap = (char *)volume_desc->mem_volume_bitmap;
+	int volume_allocator_size = volume_desc->mem_volume_bitmap_size * sizeof(uint64_t);
+
+	if (volume_allocator_size != mem_bitmap_size) {
+		log_fatal("Bitmaps of allocator and db differ in size");
+		assert(0);
+		exit(EXIT_FAILURE);
+	}
+
+	for (int byte = 0; byte < volume_allocator_size; ++byte) {
+		for (uint8_t bit_id = 0; bit_id < 8; ++bit_id) {
+			uint8_t db_bit_value = GET_BIT(mem_bitmap[byte], bit_id);
+			if (!db_bit_value) {
+				/*Check if there is conflict. If yes we have corruption since two dbs claim space as theirs*/
+				uint8_t allocator_bit_value = GET_BIT(volume_allocator_bitmap[byte], bit_id);
+				if (!allocator_bit_value) {
+					log_fatal("Corruption multiple DBs claim ownership of the same segment !");
+					exit(EXIT_FAILURE);
+				}
+				CLEAR_BIT(&volume_allocator_bitmap[byte], bit_id);
+			}
 		}
 	}
-	pr_region.region_name_size = mem_region->region_name_size;
-	pr_region.allocation_log = mem_region->allocation_log;
-	// serialize the logs(WAL,transient, large)
-	pr_region.small_log_head_offt = mem_region->small_log.head_dev_offt;
-	pr_region.small_log_tail_offt = mem_region->small_log.tail_dev_offt;
-	pr_region.small_log_size = mem_region->small_log.size;
-
-	pr_region.medium_log_head_offt = mem_region->medium_log.head_dev_offt;
-	pr_region.medium_log_tail_offt = mem_region->medium_log.tail_dev_offt;
-	pr_region.medium_log_size = mem_region->medium_log.size;
-
-	pr_region.big_log_head_offt = mem_region->big_log.head_dev_offt;
-	pr_region.big_log_tail_offt = mem_region->big_log.tail_dev_offt;
-	pr_region.big_log_size = mem_region->big_log.size;
-
-	pr_region.lsn = mem_region->lsn;
-	pr_region.id = mem_region->id;
-	pr_region.valid = mem_region->valid;
-
-	char *region_buffer = (char *)mem_region;
-	ssize_t total_bytes_written = 0;
-	ssize_t offset = region_id * sizeof(struct pr_region_superblock);
-	MUTEX_LOCK(&mem_region->superblock_lock);
-	uint32_t size = sizeof(struct pr_region_superblock);
-
-	while (total_bytes_written < size) {
-		int bytes_written = pwrite(FD, &region_buffer[offset + total_bytes_written], size - total_bytes_written,
-					   offset + total_bytes_written);
-		if (bytes_written == -1) {
-			log_fatal("Failed to write LOG_CHUNK reason follows");
-			perror("Reason");
-			exit(EXIT_FAILURE);
-		}
-		total_bytes_written += bytes_written;
-	}
-	MUTEX_UNLOCK(&mem_region->superblock_lock);
 }
 
-struct mem_region_superblock *get_region_superblock(struct volume_descriptor *volume_desc, const char *region_name,
-						    uint32_t region_name_size, char allocate)
+struct allocation_log_cursor *init_allocation_log_cursor(struct volume_descriptor *volume_desc,
+							 struct pr_db_superblock *db_superblock)
 {
-	(void)volume_desc;
-	(void)region_name;
-	(void)region_name_size;
-	(void)allocate;
-#if 0
-	MUTEX_LOCK(&volume_desc->region_array_lock);
-	struct mem_region_superblock *region = NULL;
-	int next_free_region_id = -1;
+	struct allocation_log_cursor *cursor = calloc(1, sizeof(struct allocation_log_cursor));
+	if (!cursor) {
+		log_fatal("Failed to allocate memory");
+		exit(EXIT_FAILURE);
+	}
+	cursor->volume_desc = volume_desc;
+	cursor->db_superblock = db_superblock;
+	cursor->segment = NULL;
+	cursor->chunks_in_segment = 0;
+	cursor->curr_chunk_id = 0;
+	cursor->chunk_entries = 0;
+	cursor->curr_entry_in_chunk = 0;
+	cursor->state = GET_HEAD;
+	cursor->valid = 1;
+	return cursor;
+}
+
+struct rul_log_entry *get_next_allocation_log_entry(struct allocation_log_cursor *cursor)
+{
+	struct pr_region_allocation_log *allocation_log = &cursor->db_superblock->allocation_log;
+
+	while (1) {
+		switch (cursor->state) {
+		case GET_HEAD:
+			if (!allocation_log->head_dev_offt) {
+				cursor->segment = NULL;
+				cursor->state = EXIT;
+				cursor->valid = 0;
+				break;
+			}
+			cursor->segment = REAL_ADDRESS(allocation_log->head_dev_offt);
+			log_info("HEAD of allocation log is at %llu", allocation_log->head_dev_offt);
+			cursor->state = CALCULATE_CHUNKS_IN_SEGMENT;
+			break;
+		case GET_NEXT_SEGMENT:
+			if (cursor->segment == REAL_ADDRESS(allocation_log->tail_dev_offt)) {
+				cursor->segment = NULL;
+				cursor->valid = 0;
+				cursor->state = EXIT;
+				break;
+			}
+			cursor->segment = REAL_ADDRESS(cursor->segment->next_seg_offt);
+			cursor->state = CALCULATE_CHUNKS_IN_SEGMENT;
+			break;
+		case GET_NEXT_CHUNK:
+			if (cursor->curr_chunk_id >= cursor->chunks_in_segment) {
+				cursor->state = GET_NEXT_SEGMENT;
+				break;
+			}
+			++cursor->curr_chunk_id;
+			cursor->state = CALCULATE_CHUNK_ENTRIES;
+			break;
+		case CALCULATE_CHUNKS_IN_SEGMENT: {
+			uint8_t last_segment = (cursor->segment == REAL_ADDRESS(allocation_log->tail_dev_offt)) ? 1 : 0;
+			if (last_segment) {
+				uint32_t last_segment_size = allocation_log->size % SEGMENT_SIZE;
+				cursor->chunks_in_segment = last_segment_size / RUL_LOG_CHUNK_SIZE_IN_BYTES;
+				cursor->chunks_in_segment +=
+					((last_segment_size % RUL_LOG_CHUNK_SIZE_IN_BYTES) ? 1 : 0);
+			} else
+				cursor->chunks_in_segment = RUL_LOG_CHUNK_NUM;
+			cursor->curr_chunk_id = 0;
+			log_info("Chunks in allocation log segment are: %llu", cursor->chunks_in_segment);
+			cursor->state = CALCULATE_CHUNK_ENTRIES;
+			break;
+		}
+		case CALCULATE_CHUNK_ENTRIES:
+			if (cursor->curr_chunk_id == cursor->chunks_in_segment - 1) {
+				uint32_t last_chunk_size = allocation_log->size % SEGMENT_SIZE;
+				last_chunk_size =
+					last_chunk_size - (cursor->curr_chunk_id * RUL_LOG_CHUNK_SIZE_IN_BYTES);
+				cursor->chunk_entries = last_chunk_size / sizeof(struct rul_log_entry);
+			} else
+				cursor->chunk_entries = RUL_LOG_CHUNK_MAX_ENTRIES;
+
+			cursor->curr_entry_in_chunk = 0;
+			log_info("Chunk entries in allocation log segment are: %llu", cursor->chunk_entries);
+			cursor->state = GET_NEXT_ENTRY;
+			break;
+
+		case GET_NEXT_ENTRY:
+
+			if (cursor->curr_entry_in_chunk >= cursor->chunk_entries) {
+				++cursor->curr_chunk_id;
+				cursor->state = GET_NEXT_CHUNK;
+				break;
+			}
+			/*log_info("Chunk id %u curr entry %u", cursor->curr_chunk_id, cursor->curr_entry_in_chunk);*/
+			void *supress_warning =
+				&cursor->segment->chunk[cursor->curr_chunk_id][cursor->curr_entry_in_chunk];
+			struct rul_log_entry *log_entry = supress_warning;
+			++cursor->curr_entry_in_chunk;
+			return log_entry;
+		case EXIT:
+			cursor->segment = NULL;
+			cursor->valid = 0;
+			return NULL;
+		default:
+			log_fatal("Unknown stage WTF?");
+			exit(EXIT_FAILURE);
+		}
+	}
+}
+
+void close_allocation_log_cursor(struct allocation_log_cursor *cursor)
+{
+	free(cursor);
+}
+
+void replay_db_allocation_log(struct volume_descriptor *volume_desc, struct pr_db_superblock *superblock)
+{
+	uint32_t mem_bitmap_size = volume_desc->mem_volume_bitmap_size * sizeof(uint64_t);
+	uint8_t *mem_bitmap = malloc(mem_bitmap_size);
+
+	/*DBs view of the volume initally everything is free*/
+	memset(mem_bitmap, 0xFF, mem_bitmap_size);
+	struct pr_region_allocation_log *allocation_log = &superblock->allocation_log;
+
+	log_info("Allocation log of DB: %s head %llu tail %llu size %llu", superblock->db_name,
+		 allocation_log->head_dev_offt, allocation_log->tail_dev_offt, allocation_log->size);
+
+	struct allocation_log_cursor *log_cursor = init_allocation_log_cursor(volume_desc, superblock);
+
+	while (1) {
+		struct rul_log_entry *log_entry = get_next_allocation_log_entry(log_cursor);
+		if (!log_entry)
+			break;
+		uint64_t bit_distance = log_entry->dev_offt / SEGMENT_SIZE;
+		uint64_t byte_id = bit_distance / 8;
+		uint8_t bit_id = bit_distance % 8;
+		/*print_allocation_type(log_entry->op_type);*/
+
+		switch (log_entry->op_type) {
+		case RUL_LARGE_LOG_ALLOCATE:
+		case RUL_MEDIUM_LOG_ALLOCATE:
+		case RUL_SMALL_LOG_ALLOCATE:
+		case RUL_ALLOCATE:
+			CLEAR_BIT(&mem_bitmap[byte_id], bit_id);
+			break;
+
+		case RUL_LOG_FREE:
+		case RUL_FREE:
+			SET_BIT(&mem_bitmap[byte_id], bit_id);
+			break;
+			break;
+		default:
+			log_fatal("Unknown/Corrupted entry in allocation log");
+			exit(EXIT_FAILURE);
+		}
+	}
+
+	close_allocation_log_cursor(log_cursor);
+	apply_db_allocations_to_allocator_bitmap(volume_desc, mem_bitmap, mem_bitmap_size);
+	free(mem_bitmap);
+}
+
+static void recover_allocator_bitmap(struct volume_descriptor *volume_desc)
+{
+	/*Iterate and replay all dbs allocation log info*/
+	uint32_t max_regions = volume_desc->vol_superblock.max_regions_num;
+
+	for (uint32_t i = 0; i < max_regions; ++i) {
+		if (volume_desc->pr_regions->db[i].valid) {
+			log_info("Replaying allocation log for DB: %s", volume_desc->pr_regions->db[i].db_name);
+			replay_db_allocation_log(volume_desc, &volume_desc->pr_regions->db[i]);
+		}
+	}
+}
+
+struct pr_db_superblock *get_db_superblock(struct volume_descriptor *volume_desc, const char *db_name,
+					   uint32_t db_name_size, uint8_t allocate, uint8_t *new_db)
+{
+	*new_db = 0;
+	MUTEX_LOCK(&volume_desc->db_array_lock);
+	struct pr_db_superblock *db = NULL;
+	int next_free_db_id = -1;
 	//search superblock array in the start of the volume
 	for (uint32_t i = 0; i < volume_desc->pr_regions->size; ++i) {
-		if (volume_desc->pr_regions->region[i].region_name_size == region_name_size) {
-			if (memcmp(volume_desc->pr_regions->region[i].region_name, region_name, region_name_size) ==
-			    0) {
-				//Found
-				++volume_desc->pr_regions->region[i].reference_count;
-				log_info(
-					"Found region %s at index %u of the region superblock array reference count of region is %u",
-					volume_desc->pr_regions->region[i].region_name, i,
-					volume_desc->pr_regions->region[i].reference_count);
-				region = &volume_desc->mem_regions->region[i];
+		if (!volume_desc->pr_regions->db[i].valid) {
+			if (-1 == next_free_db_id)
+				next_free_db_id = i;
+			continue;
+		}
+
+		if (volume_desc->pr_regions->db[i].db_name_size == db_name_size) {
+			if (memcmp(volume_desc->pr_regions->db[i].db_name, db_name, db_name_size) == 0) {
+				/* DB Found*/
+				log_info("Found region %s at index %u of the region superblock array",
+					 volume_desc->pr_regions->db[i].db_name, i);
+				db = &volume_desc->pr_regions->db[i];
 				goto exit;
 			}
 		}
-		if (next_free_region_id < 0 && !volume_desc->mem_regions->region[i].valid)
-			next_free_region_id = i;
 	}
+
 	if (allocate) {
-		if (next_free_region_id >= 0) {
-			mem_init_region_superblock(&volume_desc->mem_regions->region[next_free_region_id], region_name,
-						   region_name_size);
-			++volume_desc->mem_regions->region[next_free_region_id].reference_count;
-			region = &volume_desc->mem_regions->region[next_free_region_id];
-			goto exit;
-		} else {
-			log_warn("No more space for new regions!");
-			region = NULL;
+		if (next_free_db_id >= 0) {
+			*new_db = 1;
+			init_db_superblock(&volume_desc->pr_regions->db[next_free_db_id], db_name, db_name_size,
+					   next_free_db_id);
+			db = &volume_desc->pr_regions->db[next_free_db_id];
 			goto exit;
 		}
-	} else {
-		region = NULL;
-		goto exit;
+		log_warn("No more space for new regions!");
 	}
+	db = NULL;
 exit:
-	MUTEX_UNLOCK(&volume_desc->region_array_lock);
-	return region;
-
-	return NULL;
-#endif
-	return NULL;
+	MUTEX_UNLOCK(&volume_desc->db_array_lock);
+	return db;
 }
 
-uint32_t destroy_region_superblock(struct volume_descriptor *volume_desc, const char *region_name,
-				   uint32_t region_name_size)
+uint32_t destroy_db_superblock(struct volume_descriptor *volume_desc, const char *db_name, uint32_t db_name_size)
 {
 	int ret = 1;
-	MUTEX_LOCK(&volume_desc->region_array_lock);
-
-	struct mem_region_superblock *rs = get_region_superblock(volume_desc, region_name, region_name_size, 0);
-	if (!rs) {
+	MUTEX_LOCK(&volume_desc->db_array_lock);
+	uint8_t found;
+	struct pr_db_superblock *db_superblock = get_db_superblock(volume_desc, db_name, db_name_size, 0, &found);
+	if (!db_superblock) {
 		log_warn("Region %s not found so I cannot destory it :-)");
 		ret = 0;
 		goto exit;
 	}
-	int region_id;
-	region_id = rs->id;
-	memset(rs, 0x00, sizeof(struct mem_region_superblock));
-	rs->id = region_id;
+	int db_id = db_superblock->id;
+	memset(db_superblock, 0x00, sizeof(struct pr_db_superblock));
+	db_superblock->id = db_id;
 exit:
-	MUTEX_UNLOCK(&volume_desc->region_array_lock);
+	MUTEX_UNLOCK(&volume_desc->db_array_lock);
 	return ret;
 }
 
@@ -671,7 +782,7 @@ void mem_init_superblock_array(struct volume_descriptor *volume_desc)
 {
 	int ret = posix_memalign((void **)&volume_desc->pr_regions, ALIGNMENT_SIZE,
 				 sizeof(struct pr_superblock_array) + (volume_desc->vol_superblock.max_regions_num *
-								       sizeof(struct pr_region_superblock)));
+								       sizeof(struct pr_db_superblock)));
 
 	if (ret) {
 		log_fatal("Failed to allocate regions array!");
@@ -680,13 +791,16 @@ void mem_init_superblock_array(struct volume_descriptor *volume_desc)
 
 	volume_desc->pr_regions->size = volume_desc->vol_superblock.max_regions_num;
 	off64_t dev_offt = sizeof(struct superblock);
-	uint32_t size = volume_desc->vol_superblock.max_regions_num * sizeof(struct pr_region_superblock);
+	uint32_t size = volume_desc->vol_superblock.max_regions_num * sizeof(struct pr_db_superblock);
 
-	if (!mem_read_into_buffer((char *)volume_desc->pr_regions->region, 0, size, dev_offt, volume_desc->vol_fd)) {
+	if (!mem_read_into_buffer((char *)volume_desc->pr_regions->db, 0, size, dev_offt, volume_desc->vol_fd)) {
 		log_fatal("Failed to read volume's region superblocks!");
 		exit(EXIT_FAILURE);
 	}
-
+	/*for (uint32_t i = 0; i < volume_desc->vol_superblock.max_regions_num; ++i) {
+		log_info("Region[%u]: valid %u  region name %s", i, volume_desc->pr_regions->db[i].valid,
+			 volume_desc->pr_regions->db[i].db_name);
+	}*/
 	log_info("Restored %s region superblocks in memory", volume_desc->volume_name);
 }
 
@@ -806,38 +920,56 @@ struct volume_descriptor *mem_get_volume_desc(char *volume_name)
 	uint64_t hash_key = djb2_hash((unsigned char *)volume_name, strlen(volume_name));
 
 	HASH_FIND_PTR(volume_map, &hash_key, volume);
-	if (volume == NULL) {
+
+	if (NULL == volume) {
 		log_info("Volume %s not open creating/initializing new volume ...", volume_name);
 		volume = calloc(1, sizeof(struct volume_map_entry));
+
 		if (!volume) {
 			log_fatal("calloc failed");
 			exit(EXIT_FAILURE);
 		}
+
 		volume->volume_desc = mem_init_volume(volume_name);
+
 		if (strlen(volume_name) >= MEM_MAX_VOLUME_NAME_SIZE) {
 			log_fatal("Volume name too large!");
 			exit(EXIT_FAILURE);
 		}
+
 		memcpy(volume->volume_name, volume_name, strlen(volume_name));
 		volume->hash_key = djb2_hash((unsigned char *)volume_name, strlen(volume_name));
 		volume->volume_desc->size = mount_volume(volume_name, 0, 0);
 		log_warn("Remove this mem / dev catalogue allocation!!!");
+
 		if (posix_memalign((void **)&(volume->volume_desc->mem_catalogue), DEVICE_BLOCK_SIZE,
 				   sizeof(struct pr_system_catalogue)) != 0) {
 			perror("memalign failed\n");
 			exit(EXIT_FAILURE);
 		}
 		memset(volume->volume_desc->mem_catalogue, 0x00, sizeof(struct pr_system_catalogue));
+
 		if (posix_memalign((void **)&(volume->volume_desc->dev_catalogue), DEVICE_BLOCK_SIZE,
 				   sizeof(struct pr_system_catalogue)) != 0) {
 			perror("memalign failed\n");
 			exit(EXIT_FAILURE);
 		}
+
 		memset(volume->volume_desc->dev_catalogue, 0x00, sizeof(struct pr_system_catalogue));
 		volume->volume_desc->mem_catalogue->epoch = 100;
+
+		volume->volume_desc->db_superblock_lock =
+			calloc(volume->volume_desc->vol_superblock.max_regions_num, sizeof(pthread_mutex_t));
+
+		for (uint32_t i = 0; i < volume->volume_desc->vol_superblock.max_regions_num; ++i)
+			MUTEX_INIT(&volume->volume_desc->db_superblock_lock[i], NULL);
+
+		recover_allocator_bitmap(volume->volume_desc);
 	}
+
 	HASH_ADD_PTR(volume_map, hash_key, volume);
 	MUTEX_UNLOCK(&volume_map_lock);
+
 	return volume->volume_desc;
 }
 /*</new_persistent_design>*/
