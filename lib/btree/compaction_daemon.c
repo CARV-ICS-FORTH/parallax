@@ -43,7 +43,6 @@
  * Checks for pending compactions. It is responsible to check for dependencies
  * between two levels before triggering a compaction.
 */
-extern sem_t gc_daemon_interrupts;
 
 struct comp_level_write_cursor {
 	char segment_buf[MAX_HEIGHT][SEGMENT_SIZE];
@@ -1581,6 +1580,5 @@ void *compaction(void *_comp_req)
 	pthread_mutex_unlock(&db_desc->client_barrier_lock);
 	sem_post(&db_desc->compaction_daemon_interrupts);
 	free(comp_req);
-	sem_post(&gc_daemon_interrupts);
 	return NULL;
 }

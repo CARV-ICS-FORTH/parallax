@@ -15,11 +15,6 @@ typedef struct stack {
 	int size;
 } stack;
 
-struct gc_value {
-	int group_id;
-	int index;
-};
-
 struct large_log_segment_gc_entry {
 	uint64_t segment_dev_offt;
 	unsigned garbage_bytes;
