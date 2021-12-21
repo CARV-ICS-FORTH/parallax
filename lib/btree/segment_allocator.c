@@ -152,6 +152,9 @@ static void *get_space(struct db_descriptor *db_desc, uint8_t level_id, uint8_t 
 	return node;
 }
 
+/*
+ * We use this function to allocate space only for the lsm levels during compaction
+*/
 struct segment_header *get_segment_for_lsm_level_IO(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
 {
 	struct level_descriptor *level_desc = &db_desc->levels[level_id];
