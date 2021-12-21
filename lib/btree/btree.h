@@ -218,7 +218,7 @@ struct splice {
 
 /*
  * db_descriptor is a soft state descriptor per open database. superindex
- * structure keeps a serialized from of the vital information needed to restore each
+ * structure keeps a serialized form of the vital information needed to restore each
  * db_descriptor
 */
 
