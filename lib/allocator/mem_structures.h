@@ -18,7 +18,6 @@
 #include <pthread.h>
 #include <stdint.h>
 
-//<new_persistent_design>
 #define MEM_WORD_SIZE_IN_BITS 64
 
 struct mem_bitmap_word {
@@ -27,30 +26,3 @@ struct mem_bitmap_word {
 	uint32_t end_bit;
 	int word_id;
 };
-
-#if 0
-struct mem_region_superblock {
-	char region_name[MAX_DB_NAME_SIZE];
-	struct segment_header *first_segment[MAX_LEVELS][NUM_TREES_PER_LEVEL];
-	struct segment_header *last_segment[MAX_LEVELS][NUM_TREES_PER_LEVEL];
-	uint64_t offset[MAX_LEVELS][NUM_TREES_PER_LEVEL];
-	uint64_t level_size[MAX_LEVELS][NUM_TREES_PER_LEVEL];
-	struct pr_region_allocation_log allocation_log;
-	pthread_mutex_t superblock_lock;
-	struct log_descriptor big_log;
-	struct log_descriptor medium_log;
-	struct log_descriptor small_log;
-	uint64_t lsn;
-	uint32_t region_name_size;
-	uint32_t id; //in the array
-	uint32_t reference_count;
-	uint32_t valid;
-} __attribute__((packed, aligned(4096)));
-
-struct mem_superblock_array {
-	uint32_t size;
-	struct mem_region_superblock region[];
-};
-#endif
-
-//</new_persistent_design>
