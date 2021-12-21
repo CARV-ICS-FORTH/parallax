@@ -14,6 +14,7 @@
 
 #define _GNU_SOURCE
 #define _LARGEFILE64_SOURCE
+#define NUM_OF_OWNERSHIP_REGISTRY_PAIRS (2)
 #include "../btree/conf.h"
 #include "mem_structures.h"
 #include "volume_manager.h"
@@ -183,7 +184,7 @@ static void kvf_init_parallax(char *device_name, uint32_t max_regions_num)
 	}
 	uint64_t metadata_size_in_bytes = sizeof(struct superblock) +
 					  (max_regions_num * sizeof(struct pr_db_superblock)) +
-					  (max_regions_num * 2 * registry_size_in_bytes);
+					  (max_regions_num * NUM_OF_OWNERSHIP_REGISTRY_PAIRS * registry_size_in_bytes);
 
 	if (metadata_size_in_bytes % SEGMENT_SIZE)
 		metadata_size_in_bytes =
@@ -200,7 +201,7 @@ static void kvf_init_parallax(char *device_name, uint32_t max_regions_num)
 		CLEAR_BIT(B, (i % 8));
 	}
 	dev_offt = sizeof(struct superblock) + (max_regions_num * sizeof(struct pr_db_superblock));
-	for (uint64_t i = 0; i < (2 * max_regions_num); ++i) {
+	for (uint64_t i = 0; i < (NUM_OF_OWNERSHIP_REGISTRY_PAIRS * max_regions_num); ++i) {
 		kvf_write_buffer(fd, registry_buffer, 0, registry_size_in_bytes, dev_offt);
 		dev_offt += registry_size_in_bytes;
 	}
