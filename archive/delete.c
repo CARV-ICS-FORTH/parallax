@@ -1,20 +1,20 @@
-#include <stdlib.h>
-#include <inttypes.h>
-#include <string.h>
-#include <signal.h>
-#include <pthread.h>
 #include <assert.h>
+#include <inttypes.h>
+#include <pthread.h>
+#include <signal.h>
+#include <stdlib.h>
+#include <string.h>
 
-#include <sys/types.h>
 #include <sys/mman.h>
 #include <sys/syscall.h>
+#include <sys/types.h>
 
 #include "../scanner/scanner.h"
-#include <log.h>
 #include "conf.h"
-#include "segment_allocator.h"
 #include "delete.h"
+#include "segment_allocator.h"
 #include "static_leaf.h"
+#include <log.h>
 
 extern int32_t index_order;
 
