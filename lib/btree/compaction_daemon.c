@@ -427,9 +427,10 @@ static void comp_get_next_key(struct comp_level_read_cursor *c)
 				goto fsm_entry;
 			default:
 				log_fatal("Faulty read cursor of level %u Wrong node type %u offset "
-					  "was %llu total level offset %llu",
+					  "was %llu total level offset %llu faulty segment offt: %llu",
 					  c->level_id, type, c->offset,
-					  c->handle->db_desc->levels[c->level_id].offset[0]);
+					  c->handle->db_desc->levels[c->level_id].offset[0],
+					  ABSOLUTE_ADDRESS(c->curr_segment));
 				assert(0);
 				exit(EXIT_FAILURE);
 			}
@@ -495,7 +496,7 @@ static void comp_close_write_cursor(struct comp_level_write_cursor *c)
 	uint32_t level_leaf_size = c->handle->db_desc->levels[c->level_id].leaf_size;
 	for (uint32_t i = 0; i < MAX_HEIGHT; ++i) {
 		uint32_t *type;
-		/*log_info("i = %lu tree height: %lu", i, c->tree_height);*/
+		//log_info("i = %lu tree height: %lu", i, c->tree_height);
 		if (i <= c->tree_height) {
 			if (i == 0 && c->segment_offt[i] % SEGMENT_SIZE != 0) {
 				type = (uint32_t *)((uint64_t)c->last_leaf + level_leaf_size);
@@ -511,8 +512,7 @@ static void comp_close_write_cursor(struct comp_level_write_cursor *c)
 		} else {
 			type = (uint32_t *)&c->segment_buf[i][sizeof(struct segment_header)];
 			*type = paddedSpace;
-			// log_info("Marking full padded space for leaves segment offt %llu", i,
-			// c->segment_offt[i]);
+			//log_info("Marking full padded space for leaves segment offt %llu", i, c->segment_offt[i]);
 		}
 
 		if (i == c->tree_height) {

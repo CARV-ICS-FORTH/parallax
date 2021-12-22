@@ -169,27 +169,29 @@ static void pr_flush_L0_to_L1(struct db_descriptor *db_desc, uint8_t level_id, u
 	db_desc->db_superblock->medium_log_size = medium_log.size;
 
 	/*trim L0_recovery_log*/
-	struct segment_header *curr = REAL_ADDRESS(db_desc->db_superblock->small_log_tail_offt);
-	log_info("Tail segment id %llu", curr->segment_id);
-	curr = REAL_ADDRESS(curr->prev_segment);
+	struct segment_header *tail = REAL_ADDRESS(db_desc->db_superblock->small_log_tail_offt);
+	log_info("Tail segment id %llu", tail->segment_id);
+	struct segment_header *curr = REAL_ADDRESS(tail->prev_segment);
 
 	struct segment_header *head = REAL_ADDRESS(db_desc->db_superblock->small_log_head_offt);
 	log_info("Head segment id %llu", head->segment_id);
 
 	uint64_t bytes_freed = 0;
-	while (curr) {
-		struct rul_log_entry log_entry;
-		log_entry.dev_offt = ABSOLUTE_ADDRESS(curr);
-		log_info("Triming L0 recovery log segment:%llu curr segment id:%llu", log_entry.dev_offt,
-			 curr->segment_id);
-		log_entry.txn_id = my_txn_id;
-		log_entry.op_type = RUL_FREE;
-		log_entry.size = SEGMENT_SIZE;
-		rul_add_entry_in_txn_buf(db_desc, &log_entry);
-		bytes_freed += SEGMENT_SIZE;
-		if (curr->segment_id == head->segment_id)
-			break;
-		curr = REAL_ADDRESS(curr->prev_segment);
+	if (tail != head) {
+		while (1) {
+			struct rul_log_entry log_entry;
+			log_entry.dev_offt = ABSOLUTE_ADDRESS(curr);
+			log_info("Triming L0 recovery log segment:%llu curr segment id:%llu", log_entry.dev_offt,
+				 curr->segment_id);
+			log_entry.txn_id = my_txn_id;
+			log_entry.op_type = RUL_FREE;
+			log_entry.size = SEGMENT_SIZE;
+			rul_add_entry_in_txn_buf(db_desc, &log_entry);
+			bytes_freed += SEGMENT_SIZE;
+			if (curr->segment_id == head->segment_id)
+				break;
+			curr = REAL_ADDRESS(curr->prev_segment);
+		}
 	}
 
 	log_info("*** Freed a total of %llu MB bytes from trimming L0 recovery log head %llu tail %llu size %llu ***",
