@@ -164,19 +164,18 @@ struct segment_header *get_segment_for_lsm_level_IO(struct db_descriptor *db_des
 		return NULL;
 	}
 	uint64_t seg_offt = seg_allocate_segment(db_desc, db_desc->levels[level_id].allocation_txn_id[tree_id]);
-	struct segment_header *new_segment = (segment_header *)REAL_ADDRESS(seg_offt);
+	struct segment_header *new_segment = (struct segment_header *)REAL_ADDRESS(seg_offt);
 	if (!new_segment) {
 		log_fatal("Failed to allocate space for new segment level");
 		exit(EXIT_FAILURE);
 	}
 
-	if (level_desc->offset[tree_id]) {
+	if (level_desc->offset[tree_id])
 		level_desc->offset[tree_id] += SEGMENT_SIZE;
-		level_desc->last_segment[tree_id] = new_segment;
-	} else {
+	else {
 		level_desc->offset[tree_id] = SEGMENT_SIZE;
 		level_desc->first_segment[tree_id] = new_segment;
-		level_desc->last_segment[tree_id] = new_segment;
+		level_desc->last_segment[tree_id] = NULL;
 	}
 
 	return new_segment;
