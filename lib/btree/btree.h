@@ -334,7 +334,6 @@ typedef struct db_descriptor {
 	uint64_t lsn;
 	struct large_log_segment_gc_entry *
 		segment_ht; // A hash table containing every segment that has at least 1 byte of garbage data in the large log.
-	struct db_handle *gc_db;
 	uint64_t gc_last_segment_id;
 	uint64_t gc_count_segments;
 	uint64_t gc_keys_transferred;

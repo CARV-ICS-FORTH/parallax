@@ -791,6 +791,7 @@ exit:
 db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_name, char CREATE_FLAG)
 {
 	MUTEX_LOCK(&init_lock);
+
 	struct volume_descriptor *volume_desc = mem_get_volume_desc(volumeName);
 	if (!volume_desc) {
 		log_fatal("Failed to open volume %s", volumeName);
@@ -798,41 +799,15 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 	}
 	assert(volume_desc->open_databases);
 	/*retrieve gc db*/
-	struct klist_node *node = klist_get_first(volume_desc->open_databases);
-	struct db_descriptor *gc_db = NULL;
-	int found_gc_db = 0;
-	while (node != NULL) {
-		gc_db = (struct db_descriptor *)node->data;
-		if (strcmp(gc_db->db_superblock->db_name, SYSTEMDB)) {
-			found_gc_db = 1;
-			break;
-		}
-		node = node->next;
-	}
-	if (!found_gc_db) {
-		log_info("%s for GC not found creating one", SYSTEMDB);
-		db_handle *gc_db_handle = internal_db_open(volume_desc, start, size, SYSTEMDB, CREATE_DB);
-		gc_db_handle->db_desc->gc_db = NULL;
-		gc_db = gc_db_handle->db_desc;
-		if (pthread_create(&(gc_db_handle->db_desc->gc_thread), NULL, (void *)gc_log_entries,
-				   (void *)gc_db_handle) != 0) {
-			log_fatal("Failed to start gc_thread for db %s", db_name);
-			exit(EXIT_FAILURE);
-		}
-	}
 
 	db_handle *handle = internal_db_open(volume_desc, start, size, db_name, CREATE_FLAG);
 
-	handle->db_desc->gc_db = calloc(1, sizeof(struct db_handle));
-	handle->db_desc->gc_db->db_desc = gc_db;
-	handle->db_desc->gc_db->volume_desc = volume_desc;
 	MUTEX_UNLOCK(&init_lock);
 	return handle;
 }
 
 enum parallax_status db_close(db_handle *handle)
 {
-	struct db_handle *gc_db = NULL;
 	MUTEX_LOCK(&init_lock);
 	/*verify that this is a valid db*/
 	if (klist_find_element_with_key(handle->volume_desc->open_databases, handle->db_desc->db_superblock->db_name) ==
@@ -926,11 +901,6 @@ enum parallax_status db_close(db_handle *handle)
 		exit(EXIT_FAILURE);
 	}
 
-	if (handle->db_desc->gc_db) {
-		gc_db = handle->db_desc->gc_db;
-		assert(gc_db->db_desc);
-		assert(gc_db->volume_desc);
-	}
 	free(handle->db_desc);
 finish:
 

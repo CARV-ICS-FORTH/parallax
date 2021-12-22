@@ -23,7 +23,6 @@ struct large_log_segment_gc_entry {
 	UT_hash_handle hh;
 } __attribute__((aligned(128)));
 
-#define SYSTEMDB "systemdb"
 #define GC_SEGMENT_THRESHOLD (10 / 100)
 #define SEGMENTS_TORECLAIM 100000
 #define LOG_DATA_OFFSET (SEGMENT_SIZE)
