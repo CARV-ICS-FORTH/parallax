@@ -19,7 +19,6 @@
 #include "../allocator/volume_manager.h"
 #include "conf.h"
 #include "dynamic_leaf.h"
-#include "gc.h"
 #include "segment_allocator.h"
 #include "set_options.h"
 
