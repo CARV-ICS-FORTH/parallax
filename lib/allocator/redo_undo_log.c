@@ -269,9 +269,7 @@ static int rul_append(struct db_descriptor *db_desc, struct rul_log_entry *entry
 
 void rul_log_destroy(struct db_descriptor *db_desc)
 {
-	MUTEX_LOCK(&db_desc->allocation_log->rul_lock);
 	free(db_desc->allocation_log);
-	MUTEX_UNLOCK(&db_desc->allocation_log->rul_lock);
 }
 
 static void rul_add_first_entry(struct db_descriptor *db_desc, struct rul_log_entry *log_entry)
