@@ -1427,15 +1427,16 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 	}
 
 	uint64_t space_freed;
+	/*Free L_(i+1)*/
 	if (l_dst) {
 		uint64_t txn_id = comp_req->db_desc->levels[comp_req->dst_level].allocation_txn_id[comp_req->dst_tree];
 		/*free dst (L_i+1) level*/
 		space_freed = seg_free_level(comp_req->db_desc, txn_id, comp_req->dst_level, 0);
 
 		log_info("Freed space %llu MB from db:%s destination level %u", space_freed / (1024 * 1024),
-			 comp_req->db_desc->db_superblock->db_name, comp_req->src_level);
+			 comp_req->db_desc->db_superblock->db_name, comp_req->dst_level);
 	}
-
+	/*Free and zero L_i*/
 	uint64_t txn_id = comp_req->db_desc->levels[comp_req->dst_level].allocation_txn_id[comp_req->dst_tree];
 	space_freed = seg_free_level(hd.db_desc, txn_id, comp_req->src_level, comp_req->src_tree);
 	log_info("Freed space %llu MB from db:%s source level %u", space_freed / (1024 * 1024),
@@ -1460,7 +1461,7 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 	/*Finally persist compaction */
 	pr_flush_compaction(comp_req->db_desc, comp_req->dst_level, comp_req->dst_tree);
 	log_info("Flushed compaction[%u][%u] successfully", comp_req->dst_level, comp_req->dst_tree);
-	// switch dst tree
+	/*set L'_(i+1) as L_(i+1)*/
 	ld->first_segment[0] = ld->first_segment[1];
 	ld->first_segment[1] = NULL;
 	ld->last_segment[0] = ld->last_segment[1];
@@ -1483,6 +1484,7 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 	ld->level_size[1] = 0;
 	ld->root_w[1] = NULL;
 	ld->root_r[1] = NULL;
+
 	if (RWLOCK_UNLOCK(&(comp_req->db_desc->levels[comp_req->src_level].guard_of_level.rx_lock))) {
 		log_fatal("Failed to acquire guard lock");
 		exit(EXIT_FAILURE);

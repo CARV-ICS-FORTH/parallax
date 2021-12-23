@@ -164,7 +164,7 @@ struct segment_header *get_segment_for_lsm_level_IO(struct db_descriptor *db_des
 		return NULL;
 	}
 	uint64_t seg_offt = seg_allocate_segment(db_desc, db_desc->levels[level_id].allocation_txn_id[tree_id]);
-	//	log_info("Allocated level segment %llu", seg_offt);
+	//log_info("Allocated level segment %llu", seg_offt);
 	struct segment_header *new_segment = (struct segment_header *)REAL_ADDRESS(seg_offt);
 	if (!new_segment) {
 		log_fatal("Failed to allocate space for new segment level");
@@ -436,7 +436,7 @@ uint64_t seg_free_level(struct db_descriptor *db_desc, uint64_t txn_id, uint8_t 
 	uint64_t space_freed = 0;
 
 	if (!curr_segment) {
-		log_fatal("Cannot free an empty level");
+		log_warn("Cannot free an empty level");
 		return 0;
 	}
 

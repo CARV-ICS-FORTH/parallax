@@ -29,37 +29,49 @@
 #include <unistd.h>
 
 /*<new_persistent_design>*/
-static void pr_flush_allocation_log_and_level_info(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
+static void pr_flush_allocation_log_and_level_info(struct db_descriptor *db_desc, uint8_t src_level_id,
+						   uint8_t dst_level_id, uint8_t tree_id)
 {
 	/*Flush my allocations*/
-	struct rul_log_info rul_log = rul_flush_txn(db_desc, db_desc->levels[level_id].allocation_txn_id[tree_id]);
+	struct rul_log_info rul_log = rul_flush_txn(db_desc, db_desc->levels[dst_level_id].allocation_txn_id[tree_id]);
 	/*new info about allocation_log*/
 	db_desc->db_superblock->allocation_log.head_dev_offt = rul_log.head_dev_offt;
 	db_desc->db_superblock->allocation_log.tail_dev_offt = rul_log.tail_dev_offt;
 	db_desc->db_superblock->allocation_log.size = rul_log.size;
 	db_desc->db_superblock->allocation_log.txn_id = rul_log.txn_id;
 
-	if (level_id) {
+	/*zero out Li*/
+	if (src_level_id) {
+		db_desc->db_superblock->root_r[src_level_id][0] = 0;
+		db_desc->db_superblock->first_segment[src_level_id][0] = 0;
+		db_desc->db_superblock->last_segment[src_level_id][0] = 0;
+		db_desc->db_superblock->offset[src_level_id][0] = 0;
+		db_desc->db_superblock->level_size[src_level_id][0] = 0;
+		db_desc->db_superblock->root_r[src_level_id][0] = 0;
+	}
+
+	if (dst_level_id) {
 		/*new info about my level*/
-		db_desc->db_superblock->root_r[level_id][0] =
-			ABSOLUTE_ADDRESS(db_desc->levels[level_id].root_r[tree_id]);
+		db_desc->db_superblock->root_r[dst_level_id][0] =
+			ABSOLUTE_ADDRESS(db_desc->levels[dst_level_id].root_r[tree_id]);
 
-		db_desc->db_superblock->first_segment[level_id][0] =
-			ABSOLUTE_ADDRESS(db_desc->levels[level_id].first_segment[tree_id]);
-		log_info("Persist %llu first was %llu", db_desc->db_superblock->first_segment[level_id][tree_id],
-			 db_desc->levels[level_id].first_segment[tree_id]);
-		assert(db_desc->levels[level_id].first_segment[tree_id]);
+		db_desc->db_superblock->first_segment[dst_level_id][0] =
+			ABSOLUTE_ADDRESS(db_desc->levels[dst_level_id].first_segment[tree_id]);
+		log_info("Persist %u first was %llu", dst_level_id,
+			 ABSOLUTE_ADDRESS(db_desc->levels[dst_level_id].first_segment[tree_id]));
+		assert(db_desc->levels[dst_level_id].first_segment[tree_id]);
 
-		db_desc->db_superblock->last_segment[level_id][0] =
-			ABSOLUTE_ADDRESS(db_desc->levels[level_id].last_segment[tree_id]);
+		db_desc->db_superblock->last_segment[dst_level_id][0] =
+			ABSOLUTE_ADDRESS(db_desc->levels[dst_level_id].last_segment[tree_id]);
 
-		db_desc->db_superblock->offset[level_id][0] = db_desc->levels[level_id].offset[tree_id];
+		db_desc->db_superblock->offset[dst_level_id][0] = db_desc->levels[dst_level_id].offset[tree_id];
 
-		db_desc->db_superblock->level_size[level_id][0] = db_desc->levels[level_id].level_size[tree_id];
-		log_info("Writing root[%u][%u] = %llu", level_id, tree_id, db_desc->levels[level_id].root_r[tree_id]);
+		db_desc->db_superblock->level_size[dst_level_id][0] = db_desc->levels[dst_level_id].level_size[tree_id];
+		log_info("Writing root[%u][%u] = %llu", dst_level_id, tree_id,
+			 db_desc->levels[dst_level_id].root_r[tree_id]);
 
-		db_desc->db_superblock->root_r[level_id][0] =
-			ABSOLUTE_ADDRESS(db_desc->levels[level_id].root_r[tree_id]);
+		db_desc->db_superblock->root_r[dst_level_id][0] =
+			ABSOLUTE_ADDRESS(db_desc->levels[dst_level_id].root_r[tree_id]);
 	}
 
 	pr_flush_db_superblock(db_desc);
@@ -171,13 +183,13 @@ static void pr_flush_L0_to_L1(struct db_descriptor *db_desc, uint8_t level_id, u
 	/*trim L0_recovery_log*/
 	struct segment_header *tail = REAL_ADDRESS(db_desc->db_superblock->small_log_tail_offt);
 	log_info("Tail segment id %llu", tail->segment_id);
-	struct segment_header *curr = REAL_ADDRESS(tail->prev_segment);
 
 	struct segment_header *head = REAL_ADDRESS(db_desc->db_superblock->small_log_head_offt);
 	log_info("Head segment id %llu", head->segment_id);
 
 	uint64_t bytes_freed = 0;
 	if (tail != head) {
+		struct segment_header *curr = REAL_ADDRESS(tail->prev_segment);
 		while (1) {
 			struct rul_log_entry log_entry;
 			log_entry.dev_offt = ABSOLUTE_ADDRESS(curr);
@@ -207,7 +219,7 @@ static void pr_flush_L0_to_L1(struct db_descriptor *db_desc, uint8_t level_id, u
 	db_desc->db_superblock->big_log_start_segment_dev_offt = db_desc->big_log_start_segment_dev_offt;
 	db_desc->db_superblock->big_log_offt_in_start_segment = db_desc->big_log_start_offt_in_segment;
 
-	pr_flush_allocation_log_and_level_info(db_desc, level_id, tree_id);
+	pr_flush_allocation_log_and_level_info(db_desc, level_id - 1, level_id, tree_id);
 	pr_unlock_db_superblock(db_desc);
 	rul_apply_txn_buf_freeops_and_destroy(db_desc, my_txn_id);
 }
@@ -228,7 +240,7 @@ static void pr_flush_Lmax_to_Ln(struct db_descriptor *db_desc, uint8_t level_id,
 		//log_info("Head of medium log segment id %llu", head->segment_id);
 
 		uint64_t bytes_freed = 0;
-		while (curr) {
+		while (curr != head) {
 			struct rul_log_entry log_entry;
 			log_entry.dev_offt = ABSOLUTE_ADDRESS(curr);
 			log_info("Triming medium log segment:%llu curr segment id:%llu", log_entry.dev_offt,
@@ -255,7 +267,7 @@ static void pr_flush_Lmax_to_Ln(struct db_descriptor *db_desc, uint8_t level_id,
 	db_desc->db_superblock->medium_log_head_offt = level_desc->medium_in_place_segment_dev_offt;
 	level_desc->medium_in_place_segment_dev_offt = 0;
 	level_desc->medium_in_place_max_segment_id = 0;
-	pr_flush_allocation_log_and_level_info(db_desc, level_id, tree_id);
+	pr_flush_allocation_log_and_level_info(db_desc, level_id - 1, level_id, tree_id);
 
 	pr_unlock_db_superblock(db_desc);
 	rul_apply_txn_buf_freeops_and_destroy(db_desc, my_txn_id);
@@ -272,7 +284,7 @@ void pr_flush_compaction(struct db_descriptor *db_desc, uint8_t level_id, uint8_
 	uint64_t my_txn_id = db_desc->levels[level_id].allocation_txn_id[tree_id];
 	pr_lock_db_superblock(db_desc);
 
-	pr_flush_allocation_log_and_level_info(db_desc, level_id, tree_id);
+	pr_flush_allocation_log_and_level_info(db_desc, level_id - 1, level_id, tree_id);
 
 	pr_unlock_db_superblock(db_desc);
 	rul_apply_txn_buf_freeops_and_destroy(db_desc, my_txn_id);

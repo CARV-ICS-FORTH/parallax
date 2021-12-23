@@ -320,7 +320,7 @@ void replay_db_allocation_log(struct volume_descriptor *volume_desc, struct pr_d
 	uint32_t mem_bitmap_size = volume_desc->mem_volume_bitmap_size * sizeof(uint64_t);
 	uint8_t *mem_bitmap = malloc(mem_bitmap_size);
 
-	/*DBs view of the volume initally everything is free*/
+	/*DBs view of the volume initally everything as don't know not mine*/
 	memset(mem_bitmap, 0xFF, mem_bitmap_size);
 	struct pr_region_allocation_log *allocation_log = &superblock->allocation_log;
 
@@ -343,13 +343,15 @@ void replay_db_allocation_log(struct volume_descriptor *volume_desc, struct pr_d
 		case RUL_MEDIUM_LOG_ALLOCATE:
 		case RUL_SMALL_LOG_ALLOCATE:
 		case RUL_ALLOCATE:
+			//log_info("Marking dev_offt: %llu as RESERVED txn_id: %llu", log_entry->dev_offt,
+			//	 log_entry->txn_id);
 			CLEAR_BIT(&mem_bitmap[byte_id], bit_id);
 			break;
 
 		case RUL_LOG_FREE:
 		case RUL_FREE:
+			//log_info("Marking dev_offt: %llu as FREE txn_id: %llu", log_entry->dev_offt, log_entry->txn_id);
 			SET_BIT(&mem_bitmap[byte_id], bit_id);
-			break;
 			break;
 		default:
 			log_fatal("Unknown/Corrupted entry in allocation log");
