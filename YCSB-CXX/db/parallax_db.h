@@ -61,30 +61,17 @@ class ParallaxDB : public YCSBDB {
 			  props.GetProperty(CoreWorkload::FIELD_COUNT_PROPERTY, CoreWorkload::FIELD_COUNT_DEFAULT)))
 		, dbs()
 	{
+	}
+
+	virtual ~ParallaxDB()
+	{
+	}
+
+    public:
+	void Init()
+	{
 		const char *pathname = path.c_str();
-		//const char *pathname = "/usr/local/gesalous/mounts/kreon.dat";
-		int64_t size;
 
-		int fd = open(pathname, O_RDONLY);
-		if (fd == -1) {
-			perror("open");
-			exit(EXIT_FAILURE);
-		}
-
-		if (ioctl(fd, BLKGETSIZE64, &size) == -1) {
-			perror("ioctl");
-			/*maybe we have a file?*/
-			printf("[%s:%s:%d] querying file size\n", __FILE__, __func__, __LINE__);
-			size = lseek64(fd, 0, SEEK_END);
-			if (size == -1) {
-				printf("[%s:%s:%d] failed to determine volume size exiting...\n", __FILE__, __func__,
-				       __LINE__);
-				perror("ioctl");
-				exit(EXIT_FAILURE);
-			}
-		}
-
-		close(fd);
 		par_db_options db_options;
 		db_options.volume_name = (char *)pathname;
 		db_options.volume_start = 0;
@@ -97,15 +84,6 @@ class ParallaxDB : public YCSBDB {
 			par_handle hd = par_open(&db_options);
 			dbs.push_back(hd);
 		}
-	}
-
-	virtual ~ParallaxDB()
-	{
-	}
-
-    public:
-	void Init()
-	{
 	}
 
 	void Close()
