@@ -6,22 +6,22 @@
 //  Copyright (c) 2014 Jinglei Ren <jinglei@ren.systems>.
 //
 
-#include <cstring>
-#include <string>
-#include <iostream>
-#include <vector>
-#include <future>
 #include <chrono>
-#include <thread>
-#include <sstream>
+#include <cstring>
 #include <fstream>
-#include <unordered_map>
+#include <future>
+#include <iostream>
+#include <sstream>
+#include <string>
 #include <sys/time.h>
+#include <thread>
+#include <unordered_map>
+#include <vector>
 
-#include "utils.h"
-#include "timer.h"
 #include "client.h"
 #include "core_workload.h"
+#include "timer.h"
+#include "utils.h"
 #ifdef COMPUTE_TAIL
 #include "Measurements.hpp"
 #endif
@@ -150,6 +150,7 @@ uint64_t DelegateRunClient(ycsbc::YCSBDB *db, ycsbc::CoreWorkload *wl, int id, u
 
 void execute_load(utils::Properties &props, ycsbc::YCSBDB *db)
 {
+	struct timeval start, end;
 	ycsbc::CoreWorkload wl;
 	wl.Init(props);
 
@@ -165,6 +166,11 @@ void execute_load(utils::Properties &props, ycsbc::YCSBDB *db)
 	vector<future<uint64_t> > actual_ops;
 	uint64_t total_ops = std::stoull(props[ycsbc::CoreWorkload::RECORD_COUNT_PROPERTY]);
 	total_ops /= std::stoull(props.GetProperty("clientProcesses", "1"));
+	gettimeofday(&start, NULL);
+	db->Init();
+	gettimeofday(&end, NULL);
+	printf("Init DB takes %ld usec\n",
+	       ((end.tv_sec * 1000000 + end.tv_usec) - (start.tv_sec * 1000000 + start.tv_usec)));
 
 	for (int i = 0; i < num_threads; ++i) {
 		ops_data.push_back(0);
@@ -203,10 +209,16 @@ void execute_load(utils::Properties &props, ycsbc::YCSBDB *db)
 	delete tail;
 	tail = nullptr;
 #endif
+	gettimeofday(&start, NULL);
+	db->Close();
+	gettimeofday(&end, NULL);
+	printf("Close DB takes %ld usec\n",
+	       ((end.tv_sec * 1000000 + end.tv_usec) - (start.tv_sec * 1000000 + start.tv_usec)));
 }
 
 void execute_run(utils::Properties &props, ycsbc::YCSBDB *db)
 {
+	struct timeval start, end;
 	ycsbc::CoreWorkload wl;
 	wl.Init(props);
 
@@ -221,6 +233,12 @@ void execute_run(utils::Properties &props, ycsbc::YCSBDB *db)
 
 	vector<future<uint64_t> > actual_ops;
 	uint64_t total_ops = std::stoull(props[ycsbc::CoreWorkload::OPERATION_COUNT_PROPERTY]);
+
+	gettimeofday(&start, NULL);
+	db->Init();
+	gettimeofday(&end, NULL);
+	printf("Init DB takes %ld usec\n",
+	       ((end.tv_sec * 1000000 + end.tv_usec) - (start.tv_sec * 1000000 + start.tv_usec)));
 
 	for (int i = 0; i < num_threads; ++i) {
 		ops_data.push_back(0);
@@ -260,6 +278,11 @@ void execute_run(utils::Properties &props, ycsbc::YCSBDB *db)
 	delete tail;
 	tail = nullptr;
 #endif
+	gettimeofday(&start, NULL);
+	db->Close();
+	gettimeofday(&end, NULL);
+	printf("Close DB takes %ld usec\n",
+	       ((end.tv_sec * 1000000 + end.tv_usec) - (start.tv_sec * 1000000 + start.tv_usec)));
 }
 
 int main(const int argc, const char *argv[])
@@ -277,11 +300,7 @@ int main(const int argc, const char *argv[])
 	std::cout << "Using execution plan:[" << explan_filename << "]" << std::endl;
 	std::cout << "Using result directory:[" << results_directory << "]" << std::endl;
 
-	gettimeofday(&start, NULL);
 	ycsbc::YCSBDB *db = ycsbc::DBFactory::CreateDB(db_num, props);
-	gettimeofday(&end, NULL);
-	printf("Opening DB takes %ld usec\n",
-	       ((end.tv_sec * 1000000 + end.tv_usec) - (start.tv_sec * 1000000 + start.tv_usec)));
 
 	std::ifstream infile(explan_filename);
 	std::string line;
@@ -307,11 +326,6 @@ int main(const int argc, const char *argv[])
 		getcwd(path, 256);
 		std::cout << "workload_file_path = " << path << '/' << c << std::endl;
 		read_workload_file(c.c_str(), props);
-		gettimeofday(&start, NULL);
-		db->Init();
-		gettimeofday(&end, NULL);
-		printf("Init DB takes %ld usec\n",
-		       ((end.tv_sec * 1000000 + end.tv_usec) - (start.tv_sec * 1000000 + start.tv_usec)));
 		std::string tmp = create_directory + space + results_directory + slash + a;
 		system(tmp.c_str());
 		std::string outfilename = results_directory + slash + a + slash + outf;
@@ -334,13 +348,6 @@ int main(const int argc, const char *argv[])
 		system(tmp.c_str());
 		system("date");
 		ofil.close();
-
-		printf("[%s:%s:%d]\n", __FILE__, __func__, __LINE__);
-		gettimeofday(&start, NULL);
-		db->Close();
-		gettimeofday(&end, NULL);
-		printf("Close DB takes %ld usec\n",
-		       ((end.tv_sec * 1000000 + end.tv_usec) - (start.tv_sec * 1000000 + start.tv_usec)));
 	}
 
 	// deallocate the db

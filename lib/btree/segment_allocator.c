@@ -164,19 +164,19 @@ struct segment_header *get_segment_for_lsm_level_IO(struct db_descriptor *db_des
 		return NULL;
 	}
 	uint64_t seg_offt = seg_allocate_segment(db_desc, db_desc->levels[level_id].allocation_txn_id[tree_id]);
-	struct segment_header *new_segment = (segment_header *)REAL_ADDRESS(seg_offt);
+	//log_info("Allocated level segment %llu", seg_offt);
+	struct segment_header *new_segment = (struct segment_header *)REAL_ADDRESS(seg_offt);
 	if (!new_segment) {
 		log_fatal("Failed to allocate space for new segment level");
 		exit(EXIT_FAILURE);
 	}
 
-	if (level_desc->offset[tree_id]) {
+	if (level_desc->offset[tree_id])
 		level_desc->offset[tree_id] += SEGMENT_SIZE;
-		level_desc->last_segment[tree_id] = new_segment;
-	} else {
+	else {
 		level_desc->offset[tree_id] = SEGMENT_SIZE;
 		level_desc->first_segment[tree_id] = new_segment;
-		level_desc->last_segment[tree_id] = new_segment;
+		level_desc->last_segment[tree_id] = NULL;
 	}
 
 	return new_segment;
@@ -435,20 +435,23 @@ uint64_t seg_free_level(struct db_descriptor *db_desc, uint64_t txn_id, uint8_t 
 	segment_header *temp_segment;
 	uint64_t space_freed = 0;
 
+	if (!curr_segment) {
+		log_warn("Cannot free an empty level");
+		return 0;
+	}
+
 	log_info("Freeing up level %u for db %s", level_id, db_desc->db_superblock->db_name);
 
 	if (level_id != 0) {
-		for (; curr_segment && curr_segment->next_segment != NULL;
-		     curr_segment = REAL_ADDRESS(curr_segment->next_segment)) {
+		while (1) {
+			//log_info("Freeing level segment %llu", ABSOLUTE_ADDRESS(curr_segment));
 			seg_free_segment(db_desc, txn_id, ABSOLUTE_ADDRESS(curr_segment));
 			space_freed += SEGMENT_SIZE;
+			if (NULL == curr_segment->next_segment)
+				break;
+			curr_segment = REAL_ADDRESS(curr_segment->next_segment);
 		}
-
-		if (curr_segment == NULL) {
-			log_fatal("Encountered NULL segment!");
-			assert(0);
-			exit(EXIT_FAILURE);
-		}
+		assert(space_freed == db_desc->levels[level_id].offset[0]);
 
 	} else {
 		/*Finally L0 index in memory*/

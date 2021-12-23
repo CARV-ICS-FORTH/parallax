@@ -555,7 +555,7 @@ static void restore_db(struct db_descriptor *db_desc, uint32_t region_idx)
 					 db_desc->levels[level_id].last_segment[tree_id],
 					 db_desc->levels[level_id].offset[tree_id]);
 			} else {
-				log_info("Restoring EMPTY level[%u][%u]", level_id, tree_id);
+				//log_info("Restoring EMPTY level[%u][%u]", level_id, tree_id);
 				db_desc->levels[level_id].first_segment[tree_id] = NULL;
 				db_desc->levels[level_id].last_segment[tree_id] = NULL;
 				db_desc->levels[level_id].offset[tree_id] = 0;
@@ -570,8 +570,9 @@ static void restore_db(struct db_descriptor *db_desc, uint32_t region_idx)
 				db_desc->levels[level_id].root_r[tree_id] = NULL;
 
 			db_desc->levels[level_id].root_w[tree_id] = db_desc->levels[level_id].root_r[tree_id];
-			log_info("Restored root[%u][%u] = %llu", level_id, tree_id,
-				 db_desc->levels[level_id].root_r[tree_id]);
+			if (db_desc->levels[level_id].root_r[tree_id])
+				log_info("Restored root[%u][%u] = %llu", level_id, tree_id,
+					 db_desc->levels[level_id].root_r[tree_id]);
 		}
 	}
 
@@ -936,6 +937,7 @@ finish:
 
 	MUTEX_UNLOCK(&init_lock);
 	free(handle);
+	handle = NULL;
 	//if (gc_db)
 	//	db_close(gc_db);
 	return PARALLAX_SUCCESS;
