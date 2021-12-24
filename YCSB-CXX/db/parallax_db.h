@@ -183,7 +183,6 @@ class ParallaxDB : public YCSBDB {
 	int Scan(int id, const std::string &table, const std::string &key, int len,
 		 const std::vector<std::string> *fields, std::vector<KVPair> &result)
 	{
-		char key_buf[512];
 		int items = 0;
 		std::hash<std::string> hash_fn;
 

@@ -609,7 +609,7 @@ static uint64_t mem_bitmap_translate_word_to_offt(struct volume_descriptor *volu
 
 uint64_t mem_allocate(struct volume_descriptor *volume_desc, uint64_t num_bytes)
 {
-	uint64_t base_addr;
+	uint64_t base_addr = 0;
 	MUTEX_LOCK(&volume_desc->bitmap_lock);
 	// assert(num_bytes == SEGMENT_SIZE);
 	if (num_bytes == 0) {
@@ -722,8 +722,10 @@ uint64_t mem_allocate(struct volume_descriptor *volume_desc, uint64_t num_bytes)
 		mem_bitmap_mark_reserved(&b_words[i]);
 	}
 
-	base_addr = mem_bitmap_translate_word_to_offt(volume_desc, &b_words[0]);
-	free(b_words);
+	if (idx != -1) {
+		base_addr = mem_bitmap_translate_word_to_offt(volume_desc, b_words);
+		free(b_words);
+	}
 exit:
 	MUTEX_UNLOCK(&volume_desc->bitmap_lock);
 	return base_addr;
