@@ -102,6 +102,9 @@ a given bitmap-zone or not.*/
 	/*</stats counters>*/
 	int32_t reference_count;
 	int32_t allocator_size;
+	// Variable that notifies the volume if a gc has been spawned.
+	// We should have one GC thread per volume!
+	uint8_t gc_thread_spawned;
 	/*used for signaling log cleaner when volume is closing*/
 	volatile char state;
 	volatile char snap_preemption;

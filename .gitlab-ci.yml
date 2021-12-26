@@ -184,6 +184,20 @@ debug_test_ycsb_small:
         - cd ..;cd ..
         - ./scripts/CI/destroy_mbbd.sh
 
+debug_test_gc:
+    image: carvicsforth/arch_carv:latest
+    stage: debug_test
+    tags:
+        - kubernetes
+    script:
+        - ./scripts/CI/create_mbbd.sh
+        - mkdir -p build;cd build
+        - cmake ..
+        - make test_gc;make kv_format.parallax;cd tests;
+        - ctest -R ^test_gc$
+        - cd ..;cd ..
+        - ./scripts/CI/destroy_mbbd.sh
+
 release_test_ycsb_larged:
     image: carvicsforth/arch_carv:latest
     stage: release_test
@@ -265,6 +279,20 @@ release_test_ycsb_small:
         - cmake .. -DCMAKE_BUILD_TYPE="Release"
         - make ycsb-edb;make kv_format.parallax;cd YCSB-CXX;
         - ctest -R ^test_small$
+        - cd ..;cd ..
+        - ./scripts/CI/destroy_mbbd.sh
+
+release_test_gc:
+    image: carvicsforth/arch_carv:latest
+    stage: release_test
+    tags:
+        - kubernetes
+    script:
+        - ./scripts/CI/create_mbbd.sh
+        - mkdir -p build;cd build
+        - cmake .. -DCMAKE_BUILD_TYPE="Release"
+        - make test_gc;make kv_format.parallax;cd tests;
+        - ctest -R ^test_gc$
         - cd ..;cd ..
         - ./scripts/CI/destroy_mbbd.sh
 

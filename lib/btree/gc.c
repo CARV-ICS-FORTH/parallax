@@ -1,9 +1,7 @@
 #define _GNU_SOURCE
 #include "gc.h"
-#include "../allocator/device_structures.h"
 #include "../allocator/log_structures.h"
 #include "../allocator/volume_manager.h"
-#include "../scanner/scanner.h"
 #include "btree.h"
 #include "set_options.h"
 #include <assert.h>
@@ -13,7 +11,6 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 #include <time.h>
 #include <unistd.h>
 #include <uthash.h>
@@ -59,31 +56,27 @@ int8_t find_deleted_kv_pairs_in_segment(struct db_handle handle, char *log_seg, 
 	struct splice *value;
 	void *value_as_pointer;
 	char *start_of_log_segment = log_seg;
-	struct segment_header *segment = (struct segment_header *)start_of_log_segment;
 	uint64_t size_of_log_segment_checked = 8;
 	uint64_t log_data_without_metadata = LOG_DATA_OFFSET;
-	uint64_t remaining_space;
+	uint64_t remaining_space = LOG_DATA_OFFSET;
 	int key_value_size;
 	int garbage_collect_segment = 0;
-	log_seg += 8 + sizeof(segment_header);
+
+	log_seg += 8;
 	key = (struct splice *)log_seg;
 	key_value_size = sizeof(key->size) * 2;
 	marks->size = 0;
-	remaining_space = LOG_DATA_OFFSET - (uint64_t)(log_seg - start_of_log_segment);
 
-	if (((struct segment_header *)start_of_log_segment)->moved_kvs)
-		return 0;
-
-	while (size_of_log_segment_checked < log_data_without_metadata && remaining_space >= segment->segment_end &&
-	       remaining_space >= 18) {
+	while (size_of_log_segment_checked < log_data_without_metadata && remaining_space >= 18) {
 		key = (struct splice *)log_seg;
 		value = (struct splice *)(VALUE_SIZE_OFFSET(key->size, log_seg));
 		value_as_pointer = (VALUE_SIZE_OFFSET(key->size, log_seg));
+
 		if (!key->size)
 			break;
 
 		assert(key->size > 0 && key->size < 28);
-		assert(value->size > 5 && value->size < 1500);
+		assert(value->size > 5 && value->size <= 2000);
 		struct lookup_operation get_op = { .db_desc = handle.db_desc,
 						   .found = 0,
 						   .size = 0,
@@ -94,11 +87,10 @@ int8_t find_deleted_kv_pairs_in_segment(struct db_handle handle, char *log_seg, 
 		find_key(&get_op);
 		/* assert(find_value); */
 		/* assert(value_as_pointer == find_value); */
-		if (remaining_space >= 18 && (!get_op.found || value_as_pointer != get_op.value_device_address)) {
+		if (remaining_space >= 18 && (!get_op.found || value_as_pointer != get_op.value_device_address))
 			garbage_collect_segment = 1;
-		} else if (remaining_space >= 18 && (get_op.found && value_as_pointer == get_op.value_device_address)) {
+		else if (remaining_space >= 18 && (get_op.found && value_as_pointer == get_op.value_device_address))
 			push_stack(marks, log_seg);
-		}
 
 		if (key->size != 0 && remaining_space >= 18) {
 			log_seg += key->size + value->size + key_value_size + 8;
@@ -109,6 +101,7 @@ int8_t find_deleted_kv_pairs_in_segment(struct db_handle handle, char *log_seg, 
 	}
 
 	assert(marks->size < STACK_SIZE);
+
 	if (garbage_collect_segment) {
 		move_kv_pairs_to_new_segment(handle, marks);
 		return 1;
@@ -139,10 +132,6 @@ static void fetch_segment(struct log_segment *segment_buf, uint64_t segment_offt
 
 void scan_db(db_descriptor *db_desc, volume_descriptor *volume_desc, stack *marks)
 {
-	(void)db_desc;
-	(void)volume_desc;
-	(void)marks;
-
 	struct accum_segments {
 		unsigned *segment_moved;
 		uint64_t segment_dev_offt;
@@ -151,21 +140,10 @@ void scan_db(db_descriptor *db_desc, volume_descriptor *volume_desc, stack *mark
 	struct accum_segments *segments_toreclaim = calloc(SEGMENTS_TORECLAIM, sizeof(struct accum_segments));
 	struct db_handle temp_handle = { .db_desc = db_desc, .volume_desc = volume_desc };
 	struct log_segment *segment;
-	char start_key[8] = { 0 };
 	int segment_count = 0;
 
 	if (posix_memalign((void **)&segment, ALIGNMENT_SIZE, SEGMENT_SIZE) != 0) {
 		log_fatal("MEMALIGN FAILED");
-		exit(EXIT_FAILURE);
-	}
-
-	*(uint32_t *)start_key = 1;
-	scannerHandle *sc = (scannerHandle *)calloc(1, sizeof(scannerHandle));
-	sc->type_of_scanner = FORWARD_SCANNER;
-	assert(segments_toreclaim);
-
-	if (!sc) {
-		log_fatal("Error calloc did not allocate memory!");
 		exit(EXIT_FAILURE);
 	}
 
@@ -176,8 +154,6 @@ void scan_db(db_descriptor *db_desc, volume_descriptor *volume_desc, stack *mark
 	HASH_ITER(hh, segment_ht, current_segment, tmp)
 	{
 		if (REAL_ADDRESS(current_segment->segment_dev_offt) != last_segment) {
-			log_info("Current segment device offset %llu", current_segment->segment_dev_offt,
-				 current_segment->garbage_bytes);
 			// If we get a segment with 0 garbage bytes it is fatal! The gc thread should only check for segments that contain invalid data.
 			assert(current_segment->garbage_bytes > 0);
 
@@ -197,6 +173,9 @@ void scan_db(db_descriptor *db_desc, volume_descriptor *volume_desc, stack *mark
 
 	for (int i = 0; i < segment_count; ++i) {
 		fetch_segment(segment, segments_toreclaim[i].segment_dev_offt);
+
+		if (*segments_toreclaim[i].segment_moved)
+			continue;
 
 		int ret = find_deleted_kv_pairs_in_segment(temp_handle, (char *)segment, marks);
 
@@ -254,13 +233,10 @@ void *gc_log_entries(void *handle)
 
 		while (region != NULL) {
 			db_desc = (db_descriptor *)region->data;
-			if (!strcmp(db_desc->db_superblock->db_name, SYSTEMDB)) {
-				scan_db(db_desc, volume_desc, marks);
-				break;
-			}
+			scan_db(db_desc, volume_desc, marks);
 			region = region->next;
 		}
 	}
 
-	return NULL;
+	pthread_exit(NULL);
 }

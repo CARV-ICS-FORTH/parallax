@@ -11,7 +11,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-#define PATH "/tmp/ramdisk/kreon.dat"
+#define PATH "/tmp/kv_store.dat"
 #define KV_SIZE 1500
 #define KEY_PREFIX "ts"
 #define NUM_KEYS num_keys
@@ -80,13 +80,11 @@ int main(void)
 
 	handle = db_open(PATH, 0, size, "test.db", CREATE_DB);
 	assert(handle);
-	//snapshot(handle->volume_desc);
 	update_half = 1;
 	serially_insert_keys(handle);
 	log_info(
 		"-------------------------------------------------------------------FINISH-------------------------------------------------------------------------------");
 	serially_insert_keys(handle);
-	//snapshot(handle->volume_desc);
-
+	sleep(15);
 	return 0;
 }

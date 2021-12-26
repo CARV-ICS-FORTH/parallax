@@ -918,8 +918,7 @@ static volume_descriptor *mem_init_volume(char *volume_name)
 	return volume_desc;
 }
 /**
- * Retrieves or creates if not present the volume_descriptor for a
- * a volume_name
+ * Retrieves or creates if not present the volume_descriptor for a volume_name.
  */
 struct volume_descriptor *mem_get_volume_desc(char *volume_name)
 {

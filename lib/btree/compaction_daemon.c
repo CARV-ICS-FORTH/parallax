@@ -910,28 +910,36 @@ struct compaction_request {
 
 void mark_segment_space(db_handle *handle, struct dups_list *list)
 {
-	struct large_log_segment_gc_entry *segment_ht = handle->db_desc->segment_ht;
 	struct dups_node *list_iter;
+	struct large_log_segment_gc_entry *temp_segment_entry;
 	uint64_t segment_dev_offt;
+
 	MUTEX_LOCK(&handle->db_desc->segment_ht_lock);
 
 	for (list_iter = list->head; list_iter; list_iter = list_iter->next) {
 		segment_dev_offt = ABSOLUTE_ADDRESS(list_iter->dev_offset);
 
 		struct large_log_segment_gc_entry *search_segment;
-		HASH_FIND(hh, segment_ht, &segment_dev_offt, sizeof(segment_dev_offt), search_segment);
+		HASH_FIND(hh, handle->db_desc->segment_ht, &segment_dev_offt, sizeof(segment_dev_offt), search_segment);
 
-		if (!search_segment) {
-			struct large_log_segment_gc_entry *temp_segment_entry =
-				malloc(sizeof(struct large_log_segment_gc_entry));
+		if (search_segment) {
+			// If the segment is already in the hash table just increase the garbage bytes.
+			search_segment->garbage_bytes += list_iter->kv_size;
+			assert(search_segment->garbage_bytes < SEGMENT_SIZE);
+		} else {
+			// This is the first time we detect garbage bytes in this segment,
+			// allocate a node and insert it in the hash table.
+			temp_segment_entry = malloc(sizeof(struct large_log_segment_gc_entry));
+			if (!temp_segment_entry) {
+				log_fatal("Malloc returnt NULL!");
+				exit(EXIT_FAILURE);
+			}
+
 			temp_segment_entry->segment_dev_offt = segment_dev_offt;
 			temp_segment_entry->garbage_bytes = list_iter->kv_size;
 			temp_segment_entry->segment_moved = 0;
-			HASH_ADD(hh, segment_ht, segment_dev_offt, sizeof(temp_segment_entry->segment_dev_offt),
-				 temp_segment_entry);
-		} else {
-			search_segment->garbage_bytes += list_iter->kv_size;
-			assert(search_segment->garbage_bytes < SEGMENT_SIZE);
+			HASH_ADD(hh, handle->db_desc->segment_ht, segment_dev_offt,
+				 sizeof(temp_segment_entry->segment_dev_offt), temp_segment_entry);
 		}
 	}
 

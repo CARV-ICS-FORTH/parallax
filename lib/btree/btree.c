@@ -19,6 +19,7 @@
 #include "../allocator/volume_manager.h"
 #include "conf.h"
 #include "dynamic_leaf.h"
+#include "gc.h"
 #include "segment_allocator.h"
 #include "set_options.h"
 
@@ -774,6 +775,15 @@ db_handle *internal_db_open(struct volume_descriptor *volume_desc, uint64_t star
 		exit(EXIT_FAILURE);
 	}
 
+	if (!volume_desc->gc_thread_spawned) {
+		if (pthread_create(&(handle->db_desc->gc_thread), NULL, (void *)gc_log_entries, (void *)handle) != 0) {
+			log_fatal("Failed to start garbage collection thread for db %s", db_name);
+			exit(EXIT_FAILURE);
+		}
+		++volume_desc->gc_thread_spawned;
+	}
+	assert(volume_desc->gc_thread_spawned <= 1);
+
 	/*get allocation transaction id for level-0*/
 	MUTEX_INIT(&handle->db_desc->flush_L0_lock, NULL);
 	//db_desc->levels[0].allocation_txn_id[db_desc->levels[0].active_tree] = rul_start_txn(db_desc);
@@ -906,8 +916,6 @@ finish:
 	MUTEX_UNLOCK(&init_lock);
 	free(handle);
 	handle = NULL;
-	//if (gc_db)
-	//	db_close(gc_db);
 	return PARALLAX_SUCCESS;
 }
 
