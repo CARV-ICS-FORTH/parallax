@@ -56,18 +56,17 @@ int8_t find_deleted_kv_pairs_in_segment(struct db_handle handle, char *log_seg, 
 	struct splice *value;
 	void *value_as_pointer;
 	char *start_of_log_segment = log_seg;
-	uint64_t size_of_log_segment_checked = 8;
-	uint64_t log_data_without_metadata = LOG_DATA_OFFSET;
-	uint64_t remaining_space = LOG_DATA_OFFSET;
+	uint64_t checked_segment_chunk = sizeof(struct log_sequence_number);
+	uint64_t segment_data = LOG_DATA_OFFSET;
 	int key_value_size;
 	int garbage_collect_segment = 0;
 
-	log_seg += 8;
+	log_seg += sizeof(struct log_sequence_number);
 	key = (struct splice *)log_seg;
 	key_value_size = sizeof(key->size) * 2;
 	marks->size = 0;
 
-	while (size_of_log_segment_checked < log_data_without_metadata && remaining_space >= 18) {
+	while (checked_segment_chunk < segment_data) {
 		key = (struct splice *)log_seg;
 		value = (struct splice *)(VALUE_SIZE_OFFSET(key->size, log_seg));
 		value_as_pointer = (VALUE_SIZE_OFFSET(key->size, log_seg));
@@ -87,15 +86,14 @@ int8_t find_deleted_kv_pairs_in_segment(struct db_handle handle, char *log_seg, 
 		find_key(&get_op);
 		/* assert(find_value); */
 		/* assert(value_as_pointer == find_value); */
-		if (remaining_space >= 18 && (!get_op.found || value_as_pointer != get_op.value_device_address))
+		if (!get_op.found || value_as_pointer != get_op.value_device_address)
 			garbage_collect_segment = 1;
-		else if (remaining_space >= 18 && (get_op.found && value_as_pointer == get_op.value_device_address))
+		else if (get_op.found && value_as_pointer == get_op.value_device_address)
 			push_stack(marks, log_seg);
 
-		if (key->size != 0 && remaining_space >= 18) {
+		if (key->size != 0) {
 			log_seg += key->size + value->size + key_value_size + 8;
-			size_of_log_segment_checked += key->size + value->size + key_value_size + 8;
-			remaining_space = LOG_DATA_OFFSET - (uint64_t)(log_seg - start_of_log_segment);
+			checked_segment_chunk += key->size + value->size + key_value_size + 8;
 		} else
 			break;
 	}

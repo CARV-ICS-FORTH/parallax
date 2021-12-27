@@ -931,7 +931,7 @@ void mark_segment_space(db_handle *handle, struct dups_list *list)
 			// allocate a node and insert it in the hash table.
 			temp_segment_entry = malloc(sizeof(struct large_log_segment_gc_entry));
 			if (!temp_segment_entry) {
-				log_fatal("Malloc returnt NULL!");
+				log_fatal("Malloc return NULL!");
 				exit(EXIT_FAILURE);
 			}
 
