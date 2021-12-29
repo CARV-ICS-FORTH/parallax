@@ -419,7 +419,6 @@ int check_dynamic_leaf_split(struct bt_dynamic_leaf_node *leaf, uint32_t leaf_si
 		assert(0);
 	}
 	/* log_info("2 leaf addr %llu leaf_log %d upper_bound %d",leaf,leaf_log_size,upper_bound); */
-
 	return !(leaf_log_size < upper_bound);
 }
 
@@ -441,7 +440,6 @@ struct bt_rebalance_result split_dynamic_leaf(struct bt_dynamic_leaf_node *leaf,
 	validate_dynamic_leaf(leaf, level, 0, 0);
 	check_sorted_dynamic_leaf(leaf, leaf_size);
 #endif
-
 	if (leaf->header.epoch <= volume_desc->dev_catalogue->epoch) {
 		leaf_copy = seg_get_dynamic_leaf_node(db_desc, level_id, req->metadata.tree_id);
 		memcpy(leaf_copy, leaf, level->leaf_size);
@@ -805,6 +803,7 @@ int reorganize_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, uint32_t leaf_siz
 		leaf_slot_array[i].index = leaf->header.leaf_log_size;
 		leaf_slot_array[i].kv_loc = slot_array[i].kv_loc;
 		leaf_slot_array[i].key_category = slot_array[i].key_category;
+		leaf_slot_array[i].tombstone = slot_array[i].tombstone;
 	}
 
 	leaf->header.num_entries = reorganize_buffer->header.num_entries;
