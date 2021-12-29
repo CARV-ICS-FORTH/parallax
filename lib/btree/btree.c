@@ -46,7 +46,6 @@ extern char *pointer_to_kv_in_log;
 uint64_t countgoto = 0;
 pthread_mutex_t init_lock = PTHREAD_MUTEX_INITIALIZER;
 pthread_spinlock_t log_buffer_lock;
-sem_t gc_daemon_interrupts;
 
 /*number of locks per level*/
 uint32_t size_per_height[MAX_HEIGHT] = { 8192, 4096, 2048, 1024, 512, 256, 128, 64, 32 };
@@ -706,11 +705,12 @@ db_handle *internal_db_open(struct volume_descriptor *volume_desc, uint64_t star
 
 	MUTEX_INIT(&handle->db_desc->compaction_lock, NULL);
 	MUTEX_INIT(&handle->db_desc->compaction_structs_lock, NULL);
+	MUTEX_INIT(&handle->db_desc->segment_ht_lock, NULL);
 	pthread_cond_init(&handle->db_desc->compaction_cond, NULL);
 	handle->db_desc->blocked_clients = 0;
 	handle->db_desc->compaction_count = 0;
 	handle->db_desc->is_compaction_daemon_sleeping = 0;
-
+	handle->db_desc->segment_ht = NULL;
 #if MEASURE_MEDIUM_INPLACE
 	db_desc->count_medium_inplace = 0;
 #endif
@@ -775,6 +775,15 @@ db_handle *internal_db_open(struct volume_descriptor *volume_desc, uint64_t star
 		exit(EXIT_FAILURE);
 	}
 
+	if (!volume_desc->gc_thread_spawned) {
+		if (pthread_create(&(handle->db_desc->gc_thread), NULL, (void *)gc_log_entries, (void *)handle) != 0) {
+			log_fatal("Failed to start garbage collection thread for db %s", db_name);
+			exit(EXIT_FAILURE);
+		}
+		++volume_desc->gc_thread_spawned;
+	}
+	assert(volume_desc->gc_thread_spawned <= 1);
+
 	/*get allocation transaction id for level-0*/
 	MUTEX_INIT(&handle->db_desc->flush_L0_lock, NULL);
 	//db_desc->levels[0].allocation_txn_id[db_desc->levels[0].active_tree] = rul_start_txn(db_desc);
@@ -791,6 +800,7 @@ exit:
 db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_name, char CREATE_FLAG)
 {
 	MUTEX_LOCK(&init_lock);
+
 	struct volume_descriptor *volume_desc = mem_get_volume_desc(volumeName);
 	if (!volume_desc) {
 		log_fatal("Failed to open volume %s", volumeName);
@@ -798,42 +808,15 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 	}
 	assert(volume_desc->open_databases);
 	/*retrieve gc db*/
-	struct klist_node *node = klist_get_first(volume_desc->open_databases);
-	struct db_descriptor *gc_db = NULL;
-	int found_gc_db = 0;
-	while (node != NULL) {
-		gc_db = (struct db_descriptor *)node->data;
-		if (strcmp(gc_db->db_superblock->db_name, SYSTEMDB)) {
-			found_gc_db = 1;
-			break;
-		}
-		node = node->next;
-	}
-	if (!found_gc_db) {
-		log_info("%s for GC not found creating one", SYSTEMDB);
-		db_handle *gc_db_handle = internal_db_open(volume_desc, start, size, SYSTEMDB, CREATE_DB);
-		gc_db_handle->db_desc->gc_db = NULL;
-		sem_init(&gc_daemon_interrupts, PTHREAD_PROCESS_PRIVATE, 0);
-		gc_db = gc_db_handle->db_desc;
-		if (pthread_create(&(gc_db_handle->db_desc->gc_thread), NULL, (void *)gc_log_entries,
-				   (void *)gc_db_handle) != 0) {
-			log_fatal("Failed to start gc_thread for db %s", db_name);
-			exit(EXIT_FAILURE);
-		}
-	}
 
 	db_handle *handle = internal_db_open(volume_desc, start, size, db_name, CREATE_FLAG);
 
-	handle->db_desc->gc_db = calloc(1, sizeof(struct db_handle));
-	handle->db_desc->gc_db->db_desc = gc_db;
-	handle->db_desc->gc_db->volume_desc = volume_desc;
 	MUTEX_UNLOCK(&init_lock);
 	return handle;
 }
 
 enum parallax_status db_close(db_handle *handle)
 {
-	struct db_handle *gc_db = NULL;
 	MUTEX_LOCK(&init_lock);
 	/*verify that this is a valid db*/
 	if (klist_find_element_with_key(handle->volume_desc->open_databases, handle->db_desc->db_superblock->db_name) ==
@@ -927,19 +910,12 @@ enum parallax_status db_close(db_handle *handle)
 		exit(EXIT_FAILURE);
 	}
 
-	if (handle->db_desc->gc_db) {
-		gc_db = handle->db_desc->gc_db;
-		assert(gc_db->db_desc);
-		assert(gc_db->volume_desc);
-	}
 	free(handle->db_desc);
 finish:
 
 	MUTEX_UNLOCK(&init_lock);
 	free(handle);
 	handle = NULL;
-	//if (gc_db)
-	//	db_close(gc_db);
 	return PARALLAX_SUCCESS;
 }
 

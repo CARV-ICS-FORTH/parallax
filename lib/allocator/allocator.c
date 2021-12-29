@@ -591,16 +591,17 @@ static void mem_bitmap_mark_reserved(struct mem_bitmap_word *b_word)
 static uint64_t mem_bitmap_translate_word_to_offt(struct volume_descriptor *volume_desc, struct mem_bitmap_word *b)
 {
 	(void)volume_desc;
+
 	if (!b) {
 		log_fatal("Null word!");
 		assert(0);
 		exit(EXIT_FAILURE);
 	}
+
 	// log_info("Word is %u start bit %u end bit %u", b->word_id, b->start_bit,
 	// b->end_bit);
 	uint64_t bytes_per_word = MEM_WORD_SIZE_IN_BITS * SEGMENT_SIZE;
-	uint64_t dev_offt = (bytes_per_word * b->word_id);
-	dev_offt += (b->start_bit * SEGMENT_SIZE);
+	uint64_t dev_offt = (bytes_per_word * b->word_id) + (b->start_bit * SEGMENT_SIZE);
 	// dev_offt += volume_desc->my_superblock.volume_metadata_size;
 	// log_info("Now is Dev offt = %llu volume_metadata_size %llu", dev_offt,
 	//	 volume_desc->my_superblock.volume_metadata_size);
@@ -609,7 +610,7 @@ static uint64_t mem_bitmap_translate_word_to_offt(struct volume_descriptor *volu
 
 uint64_t mem_allocate(struct volume_descriptor *volume_desc, uint64_t num_bytes)
 {
-	uint64_t base_addr;
+	uint64_t base_addr = 0;
 	MUTEX_LOCK(&volume_desc->bitmap_lock);
 	// assert(num_bytes == SEGMENT_SIZE);
 	if (num_bytes == 0) {
@@ -628,6 +629,7 @@ uint64_t mem_allocate(struct volume_descriptor *volume_desc, uint64_t num_bytes)
 	struct mem_bitmap_word *b_words = NULL;
 	/*how many words will i need?*/
 	uint32_t alloc_size;
+
 	if (length_bits == 1)
 		alloc_size = sizeof(struct mem_bitmap_word);
 	else if (length_bits > 1 && length_bits < 64)
@@ -635,6 +637,7 @@ uint64_t mem_allocate(struct volume_descriptor *volume_desc, uint64_t num_bytes)
 	else
 		alloc_size = ((length_bits / MEM_WORD_SIZE_IN_BITS) * sizeof(struct mem_bitmap_word)) +
 			     (2 * sizeof(struct mem_bitmap_word));
+
 	b_words = (struct mem_bitmap_word *)malloc(alloc_size);
 
 	if (b_words == NULL) {
@@ -660,9 +663,11 @@ uint64_t mem_allocate(struct volume_descriptor *volume_desc, uint64_t num_bytes)
 				base_addr = 0;
 				goto exit;
 			}
+
 			++wrap_around;
 			if (volume_desc->max_suffix < suffix_bits) /*update max_suffix */
 				volume_desc->max_suffix = suffix_bits;
+
 			suffix_bits = 0; /*contiguous bytes just broke :-( */
 			idx = -1; /*reset _counters*/
 			// reset bitmap pos
@@ -686,17 +691,16 @@ uint64_t mem_allocate(struct volume_descriptor *volume_desc, uint64_t num_bytes)
 		uint32_t bits_found = mem_bitmap_check_first_n_bits_free(&b_word, length_bits, suffix_bits);
 
 		if (bits_found) {
-			++idx;
-			b_words[idx] = b_word;
+			b_words[++idx] = b_word;
 			suffix_bits += bits_found;
-			if (suffix_bits == length_bits) {
-				// we are done here
-				break;
-			}
+			if (suffix_bits == length_bits)
+				break; // we are done here
+
 			b_word = mem_bitmap_get_next_word(volume_desc);
 			continue;
 		}
-		// ok, first high bits not 1
+
+		// First high bits not 1
 		idx = -1;
 		uint64_t rounds[MEM_LOG_WORD_SIZE_IN_BITS * 2];
 		uint32_t round_size = MEM_LOG_WORD_SIZE_IN_BITS * 2;
@@ -705,25 +709,25 @@ uint64_t mem_allocate(struct volume_descriptor *volume_desc, uint64_t num_bytes)
 		// bits_found, length_bits, 	 b_word.start_bit, b_word.end_bit);
 
 		if (bits_found == length_bits) {
-			++idx;
-			b_words[idx] = b_word;
+			b_words[++idx] = b_word;
 			break;
 		}
+
 		bits_found = mem_bitmap_find_suffix(&b_word, rounds, round_size);
 		if (bits_found > 0) {
-			++idx;
-			b_words[idx] = b_word;
+			b_words[++idx] = b_word;
 			suffix_bits += bits_found;
 		}
 		b_word = mem_bitmap_get_next_word(volume_desc);
 	}
-	// mark the bitmap now, we have surely find something
-	for (int i = 0; i <= idx; i++) {
+	// mark the bitmap now, we have surely found something
+	for (int i = 0; i <= idx; i++)
 		mem_bitmap_mark_reserved(&b_words[i]);
-	}
 
-	base_addr = mem_bitmap_translate_word_to_offt(volume_desc, &b_words[0]);
-	free(b_words);
+	if (idx != -1) {
+		base_addr = mem_bitmap_translate_word_to_offt(volume_desc, b_words);
+		free(b_words);
+	}
 exit:
 	MUTEX_UNLOCK(&volume_desc->bitmap_lock);
 	return base_addr;
@@ -750,6 +754,7 @@ static int mem_read_into_buffer(char *buffer, uint32_t start, uint32_t size, off
 {
 	ssize_t bytes_read = start;
 	ssize_t bytes = 0;
+
 	while (bytes_read < size) {
 		bytes = pread(fd, &buffer[bytes_read], size - bytes_read, dev_offt + bytes_read);
 		if (bytes == -1) {
@@ -760,6 +765,7 @@ static int mem_read_into_buffer(char *buffer, uint32_t start, uint32_t size, off
 		}
 		bytes_read += bytes;
 	}
+
 	return 1;
 }
 
@@ -912,8 +918,7 @@ static volume_descriptor *mem_init_volume(char *volume_name)
 	return volume_desc;
 }
 /**
- * Retrieves or creates if not present the volume_descriptor for a
- * a volume_name
+ * Retrieves or creates if not present the volume_descriptor for a volume_name.
  */
 struct volume_descriptor *mem_get_volume_desc(char *volume_name)
 {

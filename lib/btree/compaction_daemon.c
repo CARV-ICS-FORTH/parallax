@@ -38,12 +38,12 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <uthash.h>
 
 /*
  * Checks for pending compactions. It is responsible to check for dependencies
  * between two levels before triggering a compaction.
 */
-extern sem_t gc_daemon_interrupts;
 
 struct comp_level_write_cursor {
 	char segment_buf[MAX_HEIGHT][SEGMENT_SIZE];
@@ -910,42 +910,40 @@ struct compaction_request {
 
 void mark_segment_space(db_handle *handle, struct dups_list *list)
 {
-	struct gc_value gc_value;
 	struct dups_node *list_iter;
-	struct segment_header *segment;
+	struct large_log_segment_gc_entry *temp_segment_entry;
 	uint64_t segment_dev_offt;
 
+	MUTEX_LOCK(&handle->db_desc->segment_ht_lock);
+
 	for (list_iter = list->head; list_iter; list_iter = list_iter->next) {
-		segment = (struct segment_header *)list_iter->dev_offset;
 		segment_dev_offt = ABSOLUTE_ADDRESS(list_iter->dev_offset);
-		__sync_add_and_fetch(&segment->segment_garbage_bytes, list_iter->kv_size);
 
-		if ((double)segment->segment_garbage_bytes >=
-		    ((double)segment->segment_garbage_bytes) * GC_SEGMENT_THRESHOLD) {
-			char key_buf[32];
-			uint32_t kv_size = sizeof(segment_dev_offt);
-			memcpy(&key_buf[0], &kv_size, sizeof(uint32_t));
-			memcpy(&key_buf[sizeof(uint32_t)], &segment_dev_offt, kv_size);
-			struct lookup_operation get_op = { .buffer_overflow = 0,
-							   .buffer_to_pack_kv = NULL,
-							   .db_desc = handle->db_desc,
-							   .found = 0,
-							   .kv_buf = key_buf,
-							   .retrieve = 0,
-							   .size = 0 };
+		struct large_log_segment_gc_entry *search_segment;
+		HASH_FIND(hh, handle->db_desc->segment_ht, &segment_dev_offt, sizeof(segment_dev_offt), search_segment);
 
-			find_key(&get_op);
-			gc_value.group_id = handle->db_desc->group_id;
-			gc_value.index = handle->db_desc->group_index;
-			gc_value.moved = segment->moved_kvs;
+		if (search_segment) {
+			// If the segment is already in the hash table just increase the garbage bytes.
+			search_segment->garbage_bytes += list_iter->kv_size;
+			assert(search_segment->garbage_bytes < SEGMENT_SIZE);
+		} else {
+			// This is the first time we detect garbage bytes in this segment,
+			// allocate a node and insert it in the hash table.
+			temp_segment_entry = malloc(sizeof(struct large_log_segment_gc_entry));
+			if (!temp_segment_entry) {
+				log_fatal("Malloc return NULL!");
+				exit(EXIT_FAILURE);
+			}
 
-			if (!get_op.found || !segment->moved_kvs)
-				insert_key_value(handle->db_desc->gc_db, &segment_dev_offt, &gc_value,
-						 sizeof(segment_dev_offt), sizeof(gc_value));
+			temp_segment_entry->segment_dev_offt = segment_dev_offt;
+			temp_segment_entry->garbage_bytes = list_iter->kv_size;
+			temp_segment_entry->segment_moved = 0;
+			HASH_ADD(hh, handle->db_desc->segment_ht, segment_dev_offt,
+				 sizeof(temp_segment_entry->segment_dev_offt), temp_segment_entry);
 		}
-
-		//assert(segment->segment_garbage_bytes < SEGMENT_SIZE);
 	}
+
+	MUTEX_UNLOCK(&handle->db_desc->segment_ht_lock);
 }
 
 static void *compaction(void *_comp_req);
@@ -1591,6 +1589,5 @@ void *compaction(void *_comp_req)
 	pthread_mutex_unlock(&db_desc->client_barrier_lock);
 	sem_post(&db_desc->compaction_daemon_interrupts);
 	free(comp_req);
-	sem_post(&gc_daemon_interrupts);
 	return NULL;
 }
