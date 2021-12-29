@@ -732,6 +732,7 @@ void recover_L0(struct db_descriptor *db_desc)
 {
 	db_handle hd = { .db_desc = db_desc, .volume_desc = db_desc->db_volume };
 	struct log_cursor *cursor[2];
+	request_type op_type;
 	cursor[0] = init_log_cursor(db_desc, SMALL_LOG);
 	log_info("Small log cursor status: %u", cursor[0]->valid);
 	cursor[1] = init_log_cursor(db_desc, BIG_LOG);
@@ -753,9 +754,16 @@ void recover_L0(struct db_descriptor *db_desc)
 			choice = 0;
 		else
 			choice = 1;
+
+		if (cursor[choice]->type == SMALL_LOG && cursor[choice]->tombstone)
+			op_type = deleteOp;
+		else
+			op_type = insertOp;
+
 		//log_info("Recovering key %s choice is %d", kvs[choice]->p_key->key_data, choice);
 		insert_key_value(&hd, kvs[choice]->p_key->key_data, kvs[choice]->p_value->value_data,
-				 kvs[choice]->p_key->key_size, kvs[choice]->p_value->value_size, insertOp);
+				 kvs[choice]->p_key->key_size, kvs[choice]->p_value->value_size, op_type);
+
 		kvs[choice] = get_next_log_entry(cursor[choice]);
 	}
 	close_log_cursor(cursor[0]);

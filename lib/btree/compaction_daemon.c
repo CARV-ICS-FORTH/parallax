@@ -898,7 +898,6 @@ static void comp_append_entry_to_leaf_node(struct comp_level_write_cursor *c, st
 			}
 		}
 	}
-	return;
 }
 
 struct compaction_request {
@@ -1141,6 +1140,7 @@ static void comp_fill_heap_node(struct compaction_request *comp_req, struct comp
 	nd->level_id = cur->level_id;
 	nd->active_tree = comp_req->src_tree;
 	nd->cat = cur->category;
+	nd->tombstone = cur->cursor_key.tombstone;
 	switch (nd->cat) {
 	case SMALL_INPLACE:
 	case MEDIUM_INPLACE:
@@ -1166,6 +1166,7 @@ static void comp_fill_heap_node(struct compaction_request *comp_req, struct comp
 static void comp_fill_parallax_key(struct sh_heap_node *nd, struct comp_parallax_key *my_key)
 {
 	my_key->kv_category = nd->cat;
+	my_key->tombstone = nd->tombstone;
 	assert(nd->KV);
 	switch (nd->cat) {
 	case SMALL_INPLACE:
@@ -1307,6 +1308,7 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 		nd_src.type = level_src->kv_format;
 		nd_src.cat = level_src->cat;
 		nd_src.kv_size = level_src->kv_size;
+		nd_src.tombstone = level_src->tombstone;
 		nd_src.active_tree = comp_req->src_tree;
 		log_info("Initializing heap from SRC L0 with key:");
 
@@ -1343,8 +1345,10 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 		RWLOCK_RDLOCK(&handle->db_desc->levels[comp_req->dst_level].guard_of_level.rx_lock);
 		for (int i = 0; i < num_of_keys; i++) {
 			stat = sh_remove_top(m_heap, &nd_min);
+
 			if (stat == EMPTY_HEAP)
 				break;
+
 			if (!nd_min.duplicate) {
 				struct comp_parallax_key key;
 				memset(&key, 0, sizeof(key));
@@ -1363,6 +1367,7 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 						nd_min.level_id = comp_req->src_level;
 						nd_min.type = level_src->kv_format;
 						nd_min.cat = level_src->cat;
+						nd_min.tombstone = level_src->tombstone;
 						nd_min.kv_size = level_src->kv_size;
 						nd_min.active_tree = comp_req->src_tree;
 						nd_min.db_desc = comp_req->db_desc;

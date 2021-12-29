@@ -105,7 +105,7 @@ par_ret_code par_get(par_handle handle, struct par_key *key, struct par_value *v
 	if (malloced)
 		free(kv_buf);
 
-	if (!get_op.found || get_op.tombstone)
+	if (!get_op.found)
 		return PAR_KEY_NOT_FOUND;
 	value->val_buffer = get_op.buffer_to_pack_kv;
 	value->val_size = get_op.size;
@@ -146,7 +146,12 @@ par_ret_code par_exists(par_handle handle, struct par_key *key)
 par_ret_code par_delete(par_handle handle, struct par_key *key)
 {
 	struct db_handle *hd = (struct db_handle *)handle;
-	return insert_key_value(hd, (void *)key->data, "empty", key->size, 0, deleteOp);
+	int ret = insert_key_value(hd, (void *)key->data, "empty", key->size, 0, deleteOp);
+
+	if (ret == PARALLAX_SUCCESS)
+		return PAR_SUCCESS;
+
+	return PAR_FAILURE;
 }
 
 /*scanner staff*/

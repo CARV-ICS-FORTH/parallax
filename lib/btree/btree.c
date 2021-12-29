@@ -1673,10 +1673,12 @@ void find_key(struct lookup_operation *get_op)
 	uint8_t tree_id = db_desc->levels[0].active_tree;
 	uint8_t base = tree_id;
 
+	get_op->tombstone = 0;
 	while (1) {
 		/*first look the current active tree of the level*/
 
 		lookup_in_tree(get_op, 0, tree_id);
+
 		if (get_op->found) {
 			if (RWLOCK_UNLOCK(&db_desc->levels[0].guard_of_level.rx_lock) != 0)
 				exit(EXIT_FAILURE);
@@ -1713,6 +1715,9 @@ void find_key(struct lookup_operation *get_op)
 	}
 
 finish:
+	if (get_op->found && get_op->tombstone)
+		get_op->found = 0;
+
 	return;
 }
 
