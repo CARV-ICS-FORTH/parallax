@@ -94,6 +94,7 @@ struct comp_parallax_key {
 	struct bt_leaf_entry kvsep;
 	enum log_category kv_category;
 	enum kv_entry_location kv_type;
+	uint8_t tombstone : 1;
 };
 
 struct comp_level_read_cursor {
@@ -362,6 +363,7 @@ static void comp_get_next_key(struct comp_level_read_cursor *c)
 				struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(leaf);
 
 				c->category = slot_array[c->curr_leaf_entry].key_category;
+				c->cursor_key.tombstone = slot_array[c->curr_leaf_entry].tombstone;
 				char *kv_loc =
 					get_kv_offset(leaf, level_leaf_size, slot_array[c->curr_leaf_entry].index);
 				switch (c->category) {
@@ -369,7 +371,7 @@ static void comp_get_next_key(struct comp_level_read_cursor *c)
 				case MEDIUM_INPLACE: {
 					// Real key in KV_FORMAT
 					c->cursor_key.kv_inplace =
-						fill_keybuf(kv_loc, slot_array[c->curr_leaf_entry].bitmap);
+						fill_keybuf(kv_loc, slot_array[c->curr_leaf_entry].kv_loc);
 					break;
 				}
 				case MEDIUM_INLOG:
@@ -810,6 +812,7 @@ static void comp_append_entry_to_leaf_node(struct comp_level_write_cursor *c, st
 		write_leaf_args.kv_format = KV_FORMAT;
 		write_leaf_args.cat = my_key->kv_category;
 		write_leaf_args.key_value_buf = my_key->kv_inplace;
+		write_leaf_args.tombstone = my_key->tombstone;
 		//log_info("Appending key in_place %u:%s", write_leaf_args.key_value_size,
 		//	 write_leaf_args.key_value_buf + sizeof(uint32_t));
 		break;
@@ -821,6 +824,7 @@ static void comp_append_entry_to_leaf_node(struct comp_level_write_cursor *c, st
 		write_leaf_args.level_id = c->level_id;
 		write_leaf_args.kv_format = KV_PREFIX;
 		write_leaf_args.cat = my_key->kv_category;
+		write_leaf_args.tombstone = my_key->tombstone;
 		//log_info("Appending prefix is  %s dev offt %llu", my_key->in_log->prefix, my_key->in_log->device_offt);
 		break;
 	default:

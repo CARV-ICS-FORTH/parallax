@@ -46,7 +46,7 @@ void par_close(par_handle handle)
 par_ret_code par_put(par_handle handle, struct par_key_value *key_value)
 {
 	int ret = insert_key_value((db_handle *)handle, (char *)key_value->k.data, (char *)key_value->v.val_buffer,
-				   key_value->k.size, key_value->v.val_size);
+				   key_value->k.size, key_value->v.val_size, insertOp);
 	if (ret == PARALLAX_SUCCESS)
 		return PAR_SUCCESS;
 
@@ -93,6 +93,7 @@ par_ret_code par_get(par_handle handle, struct par_key *key, struct par_value *v
 					   .size = 0,
 					   .buffer_overflow = 1,
 					   .found = 0,
+					   .tombstone = 0,
 					   .retrieve = 1 };
 
 	if (value->val_buffer != NULL) {
@@ -104,7 +105,7 @@ par_ret_code par_get(par_handle handle, struct par_key *key, struct par_value *v
 	if (malloced)
 		free(kv_buf);
 
-	if (!get_op.found)
+	if (!get_op.found || get_op.tombstone)
 		return PAR_KEY_NOT_FOUND;
 	value->val_buffer = get_op.buffer_to_pack_kv;
 	value->val_size = get_op.size;
@@ -138,15 +139,14 @@ par_ret_code par_exists(par_handle handle, struct par_key *key)
 
 	if (!get_op.found)
 		return PAR_KEY_NOT_FOUND;
+
 	return PAR_SUCCESS;
 }
 
 par_ret_code par_delete(par_handle handle, struct par_key *key)
 {
-	log_fatal("Parallax doesn't support deletes right now. Will be implemented soon");
-	(void)handle;
-	(void)key;
-	exit(EXIT_FAILURE);
+	struct db_handle *hd = (struct db_handle *)handle;
+	return insert_key_value(hd, (void *)key->data, "empty", key->size, 0, deleteOp);
 }
 
 /*scanner staff*/

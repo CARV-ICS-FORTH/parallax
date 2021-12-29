@@ -509,7 +509,7 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 		level_key_format = KV_FORMAT;
 		struct bt_dynamic_leaf_node *dlnode = (struct bt_dynamic_leaf_node *)node;
 		struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(dlnode);
-		switch (slot_array[middle].bitmap) {
+		switch (slot_array[middle].kv_loc) {
 		case KV_INPLACE: {
 			uint32_t key_size, value_size;
 			level_sc->keyValue =
@@ -518,6 +518,7 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 			value_size = VALUE_SIZE(level_sc->keyValue + 4 + key_size);
 			level_key_format = level_sc->kv_format = KV_FORMAT;
 			level_sc->cat = slot_array[middle].key_category;
+			level_sc->tombstone = slot_array[middle].tombstone;
 			level_sc->kv_size = sizeof(key_size) + sizeof(value_size) + key_size + value_size;
 
 			break;
@@ -529,6 +530,7 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 			level_sc->kv_entry.pointer = (uint64_t)REAL_ADDRESS(kv_entry->pointer);
 			level_sc->keyValue = &level_sc->kv_entry;
 			level_sc->cat = slot_array[middle].key_category;
+			level_sc->tombstone = slot_array[middle].tombstone;
 			level_sc->kv_size = sizeof(struct bt_leaf_entry);
 			level_key_format = level_sc->kv_format = KV_PREFIX;
 
@@ -541,7 +543,7 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 	} else { /*normal scanner*/
 		struct bt_dynamic_leaf_node *dlnode = (struct bt_dynamic_leaf_node *)node;
 		struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(dlnode);
-		switch (slot_array[middle].bitmap) {
+		switch (slot_array[middle].kv_loc) {
 		case KV_INPLACE:;
 			uint32_t key_size, value_size;
 			level_sc->keyValue =
@@ -552,6 +554,7 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 			/* log_info("%*s", *(uint32_t *)level_sc->keyValue, level_sc->keyValue + 4); */
 			level_key_format = level_sc->kv_format = KV_FORMAT;
 			level_sc->cat = slot_array[middle].key_category;
+			level_sc->tombstone = slot_array[middle].tombstone;
 			break;
 		case KV_INLOG: {
 			struct bt_leaf_entry *kv_entry = (struct bt_leaf_entry *)get_kv_offset(
@@ -560,6 +563,7 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 			level_sc->kv_entry.pointer = (uint64_t)REAL_ADDRESS(kv_entry->pointer);
 			level_sc->keyValue = (void *)level_sc->kv_entry.pointer;
 			level_sc->cat = slot_array[middle].key_category;
+			level_sc->tombstone = slot_array[middle].tombstone;
 			level_key_format = level_sc->kv_format = KV_FORMAT;
 			/* REAL_ADDRESS(*(uint64_t*)get_kv_offset( */
 			/* dlnode, db_desc->levels[level_id].leaf_size, slot_array[middle].index)); */
@@ -628,7 +632,7 @@ int32_t getNext(scannerHandle *sc)
 				next_nd.db_desc = sc->db->db_desc;
 				sh_insert_heap_node(&sc->heap, &next_nd);
 			}
-			if (nd.duplicate == 1) {
+			if (nd.duplicate == 1 || nd.tombstone == 1) {
 				// assert(0);
 				//log_warn("ommiting duplicate %s", (char *)nd.data + 4);
 				continue;
@@ -806,7 +810,7 @@ int32_t _get_next_KV(level_scanner *sc)
 		/*prefix first*/
 		struct bt_dynamic_leaf_node *dlnode = (struct bt_dynamic_leaf_node *)node;
 		struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(dlnode);
-		switch (slot_array[idx].bitmap) {
+		switch (slot_array[idx].kv_loc) {
 		case KV_INPLACE:;
 			uint32_t key_size, value_size;
 			sc->keyValue =
@@ -815,6 +819,7 @@ int32_t _get_next_KV(level_scanner *sc)
 			value_size = VALUE_SIZE(sc->keyValue + sizeof(key_size) + key_size);
 			sc->kv_format = KV_FORMAT;
 			sc->cat = slot_array[idx].key_category;
+			sc->tombstone = slot_array[idx].tombstone;
 			sc->kv_size = sizeof(key_size) + sizeof(value_size) + key_size + value_size;
 			//log_info("offset %d",slot_array[idx].index);
 			break;
@@ -828,6 +833,7 @@ int32_t _get_next_KV(level_scanner *sc)
 			sc->keyValue = &sc->kv_entry;
 			sc->kv_format = KV_PREFIX;
 			sc->cat = slot_array[idx].key_category;
+			sc->tombstone = slot_array[idx].tombstone;
 			sc->kv_size = sizeof(struct bt_leaf_entry);
 			break;
 		}
@@ -841,7 +847,7 @@ int32_t _get_next_KV(level_scanner *sc)
 		// normal scanner
 		struct bt_dynamic_leaf_node *dlnode = (struct bt_dynamic_leaf_node *)node;
 		struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(dlnode);
-		switch (slot_array[idx].bitmap) {
+		switch (slot_array[idx].kv_loc) {
 		case KV_INPLACE:;
 			uint32_t key_size, value_size;
 
@@ -1000,7 +1006,7 @@ int32_t _get_prev_KV(level_scanner *sc)
 		/*prefix first*/
 		struct bt_dynamic_leaf_node *dlnode = (struct bt_dynamic_leaf_node *)node;
 		struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(dlnode);
-		switch (slot_array[idx].bitmap) {
+		switch (slot_array[idx].kv_loc) {
 		case KV_INPLACE:;
 			uint32_t key_size, value_size;
 			sc->keyValue =
@@ -1009,6 +1015,7 @@ int32_t _get_prev_KV(level_scanner *sc)
 			value_size = VALUE_SIZE(sc->keyValue + sizeof(key_size) + key_size);
 			sc->kv_format = KV_FORMAT;
 			sc->cat = slot_array[idx].key_category;
+			sc->tombstone = slot_array[idx].tombstone;
 			sc->kv_size = sizeof(key_size) + sizeof(value_size) + key_size + value_size;
 			//log_info("offset %d",slot_array[idx].index);
 			break;
@@ -1022,6 +1029,7 @@ int32_t _get_prev_KV(level_scanner *sc)
 			sc->keyValue = &sc->kv_entry;
 			sc->kv_format = KV_PREFIX;
 			sc->cat = slot_array[idx].key_category;
+			sc->tombstone = slot_array[idx].tombstone;
 			sc->kv_size = sizeof(struct bt_leaf_entry);
 			break;
 		}
@@ -1035,7 +1043,7 @@ int32_t _get_prev_KV(level_scanner *sc)
 		// normal scanner
 		struct bt_dynamic_leaf_node *dlnode = (struct bt_dynamic_leaf_node *)node;
 		struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(dlnode);
-		switch (slot_array[idx].bitmap) {
+		switch (slot_array[idx].kv_loc) {
 		case KV_INPLACE:;
 			uint32_t key_size, value_size;
 
@@ -1095,7 +1103,7 @@ int32_t getPrev(scannerHandle *sc)
 				next_nd.db_desc = sc->db->db_desc;
 				sh_insert_heap_node(&sc->heap, &next_nd);
 			}
-			if (nd.duplicate == 1) {
+			if (nd.duplicate == 1 || nd.tombstone == 1) {
 				// assert(0);
 				//log_warn("ommiting duplicate %s", (char *)nd.data + 4);
 				continue;
@@ -1216,7 +1224,7 @@ static int find_last_key(level_scanner *level_sc)
 		level_key_format = KV_FORMAT;
 		struct bt_dynamic_leaf_node *dlnode = (struct bt_dynamic_leaf_node *)node;
 		struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(dlnode);
-		switch (slot_array[middle].bitmap) {
+		switch (slot_array[middle].kv_loc) {
 		case KV_INPLACE: {
 			uint32_t key_size, value_size;
 			level_sc->keyValue =
@@ -1225,6 +1233,7 @@ static int find_last_key(level_scanner *level_sc)
 			value_size = VALUE_SIZE(level_sc->keyValue + 4 + key_size);
 			level_key_format = level_sc->kv_format = KV_FORMAT;
 			level_sc->cat = slot_array[middle].key_category;
+			level_sc->tombstone = slot_array[middle].tombstone;
 			level_sc->kv_size = sizeof(key_size) + sizeof(value_size) + key_size + value_size;
 
 			break;
@@ -1236,6 +1245,7 @@ static int find_last_key(level_scanner *level_sc)
 			level_sc->kv_entry.pointer = (uint64_t)REAL_ADDRESS(kv_entry->pointer);
 			level_sc->keyValue = &level_sc->kv_entry;
 			level_sc->cat = slot_array[middle].key_category;
+			level_sc->tombstone = slot_array[middle].tombstone;
 			level_sc->kv_size = sizeof(struct bt_leaf_entry);
 			level_key_format = level_sc->kv_format = KV_PREFIX;
 
@@ -1248,7 +1258,7 @@ static int find_last_key(level_scanner *level_sc)
 	} else { /*normal scanner*/
 		struct bt_dynamic_leaf_node *dlnode = (struct bt_dynamic_leaf_node *)node;
 		struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(dlnode);
-		switch (slot_array[middle].bitmap) {
+		switch (slot_array[middle].kv_loc) {
 		case KV_INPLACE:;
 			uint32_t key_size, value_size;
 			level_sc->keyValue =
@@ -1258,6 +1268,7 @@ static int find_last_key(level_scanner *level_sc)
 			level_sc->kv_size = sizeof(key_size) + sizeof(value_size) + key_size + value_size;
 			/* log_info("%*s", *(uint32_t *)level_sc->keyValue, level_sc->keyValue + 4); */
 			level_key_format = level_sc->kv_format = KV_FORMAT;
+			level_sc->tombstone = slot_array[middle].tombstone;
 			level_sc->cat = slot_array[middle].key_category;
 			break;
 		case KV_INLOG: {
@@ -1267,6 +1278,7 @@ static int find_last_key(level_scanner *level_sc)
 			level_sc->kv_entry.pointer = (uint64_t)REAL_ADDRESS(kv_entry->pointer);
 			level_sc->keyValue = (void *)level_sc->kv_entry.pointer;
 			level_sc->cat = slot_array[middle].key_category;
+			level_sc->tombstone = slot_array[middle].tombstone;
 			level_key_format = level_sc->kv_format = KV_FORMAT;
 			/* REAL_ADDRESS(*(uint64_t*)get_kv_offset( */
 			/* dlnode, db_desc->levels[level_id].leaf_size, slot_array[middle].index)); */

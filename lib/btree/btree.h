@@ -47,6 +47,7 @@ struct lookup_operation {
 	uint32_t size; /*in-out variable*/
 	uint8_t buffer_overflow : 1; /*out variable*/
 	uint8_t found : 1; /*out variable*/
+	uint8_t tombstone : 1;
 	uint8_t retrieve : 1; /*in variable*/
 };
 
@@ -137,10 +138,13 @@ struct bt_static_leaf_slot_array {
 
 struct bt_dynamic_leaf_slot_array {
 	// The index points to the location of the kv pair in the leaf.
-	uint32_t index : 28;
+	uint32_t index : 27;
 	uint32_t key_category : 3;
-	// This bitmap informs us if the index points to an in-place kv or to a pointer in the log.
-	unsigned char bitmap : 1;
+	// Tombstone notifies if the key is deleted.
+	uint32_t tombstone : 1;
+	// Informs us if the index points to an in-place kv or to a pointer in the log.
+	// TODO: Delete this since we can get this information from the key_category field.
+	unsigned char kv_loc : 1;
 };
 
 // The first enumeration should always have as a value 0.
@@ -428,6 +432,7 @@ typedef struct bt_mutate_req {
 	/*needed for distributed version of Kreon*/
 	uint8_t segment_full_event : 1;
 	uint8_t special_split : 1;
+	uint8_t tombstone : 1;
 	char key_format;
 } bt_mutate_req;
 
@@ -512,6 +517,13 @@ typedef struct metadata_tologop {
 	uint32_t kv_size;
 } metadata_tologop;
 
+#define BT_DELETE_MARKER_ID 0xFFFFFFFF
+struct bt_delete_marker {
+	uint32_t marker_id;
+	uint32_t key_size;
+	char key[];
+};
+
 struct log_sequence_number {
 	uint64_t id;
 };
@@ -532,7 +544,8 @@ typedef struct spill_data_totrigger {
 	int tree_to_spill;
 } spill_data_totrigger;
 
-uint8_t insert_key_value(db_handle *handle, void *key, void *value, uint32_t key_size, uint32_t value_size);
+uint8_t insert_key_value(db_handle *handle, void *key, void *value, uint32_t key_size, uint32_t value_size,
+			 request_type op_type);
 uint8_t _insert_key_value(bt_insert_req *ins_req);
 
 void *append_key_value_to_log(log_operation *req);

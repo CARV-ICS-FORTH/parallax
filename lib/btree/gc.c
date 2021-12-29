@@ -177,9 +177,9 @@ void scan_db(db_descriptor *db_desc, volume_descriptor *volume_desc, stack *mark
 
 		int ret = find_deleted_kv_pairs_in_segment(temp_handle, (char *)segment, marks);
 
-		if (ret && !segments_toreclaim[i].segment_moved)
+<		if (ret && !segments_toreclaim[i].segment_moved)
 			*segments_toreclaim[i].segment_moved = 1;
-	}
+|	}
 
 	free(segment);
 	free(segments_toreclaim);

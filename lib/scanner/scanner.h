@@ -30,6 +30,7 @@ typedef struct level_scanner {
 	int32_t type;
 	uint8_t valid : 1;
 	uint8_t dirty : 1;
+	uint8_t tombstone : 1;
 } level_scanner;
 
 typedef struct scannerHandle {
