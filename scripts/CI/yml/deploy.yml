@@ -12,3 +12,22 @@ install_lib:
         - make install DESTDIR=$LIB_INSTALL_PATH;
         - mv $LIB_INSTALL_PATH ../scripts/;cd ../scripts
         - ./verify-installed-files.py $LIB_INSTALL_PATH
+
+automate-github-sync:
+    image: carvicsforth/ubuntu_carv:latest
+    stage: deploy
+    only:
+        - master
+    before_script:
+        - which ssh-agent || ( apt-get update -qy && apt-get install openssh-client -qqy )
+        - eval `ssh-agent -s`
+        - echo "${SSH_PRIVATE_KEY}" | tr -d '\r' | ssh-add - > /dev/null
+        - mkdir -p ~/.ssh
+        - chmod 700 ~/.ssh
+        - echo "$SSH_PUBLIC_KEY" >> ~/.ssh/id_rsa.pub
+        - '[[ -f /.dockerenv ]] && echo -e "Host *\n\tStrictHostKeyChecking no\n\n" > ~/.ssh/config'
+    script:
+        - git config --global user.email "${CI_EMAIL}"
+        - git config --global user.name "${CI_USERNAME}"
+        - git remote rm origin && git remote add origin git@github.com:CARV-ICS-FORTH/parallax.git
+        - git push origin HEAD:master
