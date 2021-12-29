@@ -138,7 +138,7 @@ void get_all_valid_keys(par_handle hd)
 		/* assert(get_op.tombstone); */
 		/* assert(get_op.found); */
 	}
-	for (i = ((TOTAL_KEYS + ((NUM_KEYS / 2) + 1))); i < (TOTAL_KEYS + NUM_KEYS); i++) {
+	for (i = ((TOTAL_KEYS + NUM_KEYS / 2)); i < (TOTAL_KEYS + NUM_KEYS); i++) {
 		memcpy(k->key_buf + 4, KEY_PREFIX, strlen(KEY_PREFIX));
 		sprintf(k->key_buf + 4 + strlen(KEY_PREFIX), "%llu", (long long unsigned)i);
 		k->key_size = strlen(&k->key_buf[4]) + 1;
@@ -168,6 +168,53 @@ void get_all_valid_keys(par_handle hd)
 	assert(count == NUM_KEYS / 2);
 }
 
+void scan_all_valid_keys(par_handle hd)
+{
+	uint64_t i;
+	key *k = (key *)malloc(KV_SIZE);
+	uint64_t count = 0;
+	struct par_key par_key;
+	par_scanner my_scanner;
+
+	memset(&my_scanner, 0, sizeof(my_scanner));
+
+	log_info("Scan for all valid keys");
+	for (i = ((TOTAL_KEYS + ((NUM_KEYS / 2)))); i < (TOTAL_KEYS + NUM_KEYS); i++) {
+		memcpy(k->key_buf + 4, KEY_PREFIX, strlen(KEY_PREFIX));
+		sprintf(k->key_buf + 4 + strlen(KEY_PREFIX), "%llu", (long long unsigned)i);
+		k->key_size = strlen(&k->key_buf[4]) + 1;
+		*(uint32_t *)k->key_buf = k->key_size;
+		/* log_info("size %u, %u , string %*s", *(uint32_t*) k->key_buf,k->key_size,k->key_size,&k->key_buf[4]); */
+		if (i % 10000 == 0)
+			log_info("%s", &k->key_buf[4]);
+
+		par_key.size = k->key_size;
+		par_key.data = &k->key_buf[4];
+		my_scanner = par_init_scanner(hd, &par_key, PAR_GREATER_OR_EQUAL);
+		if (!par_is_valid(my_scanner)) {
+			log_fatal("Nothing found! it shouldn't!");
+			exit(EXIT_FAILURE);
+		}
+		struct par_key my_keyptr = par_get_key(my_scanner);
+		//log_info("key is %d:%s  malloced %d scanner size %d",k->key_size,k->key_buf,sc->malloced,sizeof(scannerHandle));
+		//log_info("key of scanner %d:%s",*(uint32_t *)sc->keyValue,sc->keyValue + sizeof(uint32_t));
+		if (memcmp(&k->key_buf[4], my_keyptr.data, my_keyptr.size) != 0) {
+			log_fatal("Test failed key %s not found scanner instead returned %d:%s", &k->key_buf[4],
+				  my_keyptr.size, my_keyptr.data);
+			exit(EXIT_FAILURE);
+		} else
+			++count;
+		/* assert(get_op.tombstone); */
+		/* assert(get_op.found); */
+		assert(par_get_next(my_scanner));
+	}
+	par_close_scanner(my_scanner);
+
+	free(k);
+	log_info("Scanning finished %d", count);
+	assert(count == NUM_KEYS / 2);
+}
+
 int main(void)
 {
 	par_db_options db_options;
@@ -186,7 +233,7 @@ int main(void)
 	log_info("----------------------------------CLOSE FINISH--------------------------------------");
 	handle = par_open(&db_options);
 	get_all_valid_keys(handle);
-
+	scan_all_valid_keys(handle);
 	//snapshot(handle->volume_desc);
 
 	return 0;
