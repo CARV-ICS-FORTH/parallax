@@ -1,0 +1,31 @@
+---
+debug_build_gcc:
+    stage: debug_build
+    script:
+        - mkdir -p build;cd build
+        - cmake .. -DCMAKE_BUILD_TYPE=Debug
+        - make all
+
+debug_build_clang:
+    stage: debug_build
+    script:
+        - mkdir -p build;cd build
+        - cmake .. -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
+        - make all
+
+build_centos:
+    image: carvicsforth/centos_carv:latest
+    stage: debug_build
+    script:
+        - source scl_source enable devtoolset-8 || echo ignoring exit code so CI does not bomb when it should not > /dev/null
+        - mkdir -p build;cd build
+        - cmake3 ..
+        - make all
+
+pre-merge:
+    stage: debug_build
+    script:
+        - ./scripts/pre-merge-CI.sh
+        - ./scripts/commit-msg-lint.py
+    only:
+        - merge_requests

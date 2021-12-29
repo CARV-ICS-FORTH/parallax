@@ -1,0 +1,14 @@
+---
+release_build_gcc:
+    stage: release_build
+    script:
+        - mkdir -p build;cd build
+        - cmake .. -DCMAKE_BUILD_TYPE=Release
+        - make all
+
+release_build_clang:
+    stage: release_build
+    script:
+        - mkdir -p build;cd build
+        - cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
+        - make all

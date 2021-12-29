@@ -79,7 +79,10 @@ void get_all_keys(par_handle hd)
 		par_key.size = k->key_size;
 		memset(&par_value, 0, sizeof(par_value));
 
-		assert(par_get(hd, &par_key, &par_value) == PAR_SUCCESS);
+		if (par_get(hd, &par_key, &par_value) != PAR_SUCCESS) {
+			log_info("ERROR key not found!");
+			exit(EXIT_FAILURE);
+		}
 	}
 	free(k);
 	log_info("Searching finished");
@@ -102,7 +105,11 @@ void delete_half_keys(par_handle hd)
 
 		if (i % 10000 == 0)
 			log_info("%s", k->key_buf);
-		assert(par_delete(hd, &par_key) == PAR_SUCCESS);
+
+		if (par_delete(hd, &par_key) == PAR_SUCCESS) {
+			log_info("ERROR key not found!");
+			exit(EXIT_FAILURE);
+		}
 	}
 	sleep(5);
 	free(k);

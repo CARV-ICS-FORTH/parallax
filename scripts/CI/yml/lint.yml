@@ -1,0 +1,37 @@
+---
+iwyu-report:
+    stage: lint
+    script:
+        - mkdir -p build;cd build
+        - cmake .. -DCMAKE_BUILD_TYPE=Debug -DRUN_IWYU=ON
+        - make parallax > make_output.txt 2&> iwyu_output.txt || echo ignoring exit code since if this job fails others will fail too > /dev/null
+        - ./check-iwyu-output.py
+
+build_clang-tidy:
+    stage: lint
+    script:
+        - mkdir -p build;cd build
+        - cmake .. "-DCMAKE_C_CLANG_TIDY=/bin/clang-tidy;-checks=*,-clang-analyzer-*,-google-*,-hicpp-braces-around-statements,-bugprone-not-null-terminated-result,-readability-braces-around-statements,-readability-braces-around-statements*
+          --format-style=../.clang-format -p ./compile_commands.json"
+        - make all
+
+build_cppcheck:
+    stage: lint
+    script:
+        - cd lib
+        - cppcheck --language=c . --enable=all --inconclusive --max-ctu-depth=64 -j 4
+
+CPD:
+    stage: lint
+    script:
+        - echo -e "\e[0Ksection_start:`date +%s`:CPD_lib_section\r\e[0K CPD lib"
+        - python3 ./scripts/CI/cpd_output.py 100 ./lib c
+        - echo -e "\e[0Ksection_end:`date +%s`:CPD_lib_section\r\e[0K"
+        - echo -e "\e[0Ksection_start:`date +%s`:CPD_tests_section[collapsed=true]\r\e[0K CPD tests"
+        - python3 ./scripts/CI/cpd_output.py 100 ./tests c || exit 0
+        - echo -e "\e[0Ksection_end:`date +%s`:CPD_tests_section\r\e[0K"
+
+pre-commit:
+    stage: lint
+    script:
+        - ./scripts/pre-commit-CI.sh
