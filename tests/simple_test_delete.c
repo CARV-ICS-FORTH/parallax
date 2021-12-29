@@ -113,7 +113,7 @@ void get_all_valid_keys(par_handle hd)
 {
 	uint64_t i;
 	key *k = (key *)malloc(KV_SIZE);
-	int count = 0;
+	uint64_t count = 0;
 	struct par_key par_key;
 	struct par_value par_value;
 
@@ -165,6 +165,7 @@ void get_all_valid_keys(par_handle hd)
 
 	free(k);
 	log_info("Searching finished %d", count);
+	assert(count == NUM_KEYS / 2);
 }
 
 int main(void)
@@ -182,6 +183,10 @@ int main(void)
 	delete_half_keys(handle);
 	get_all_valid_keys(handle);
 	par_close(handle);
+	log_info("----------------------------------CLOSE FINISH--------------------------------------");
+	handle = par_open(&db_options);
+	get_all_valid_keys(handle);
+
 	//snapshot(handle->volume_desc);
 
 	return 0;
