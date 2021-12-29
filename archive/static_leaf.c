@@ -1,13 +1,13 @@
-#include <assert.h>
-#include <stdlib.h>
-#include <string.h>
-#include <stdint.h>
-#include <mba/bitset.h>
-#include <log.h>
 #include "static_leaf.h"
 #include "../allocator/allocator.h"
 #include "btree.h"
 #include "segment_allocator.h"
+#include <assert.h>
+#include <log.h>
+#include <mba/bitset.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
 void print_static_leaf(const struct bt_static_leaf_node *leaf, level_descriptor *level);
 
 void retrieve_static_leaf_structures(const struct bt_static_leaf_node *leaf, struct bt_static_leaf_structs *src,
