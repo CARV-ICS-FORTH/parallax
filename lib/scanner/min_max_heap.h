@@ -27,6 +27,7 @@ struct sh_heap_node {
 	uint8_t level_id;
 	uint8_t active_tree;
 	uint8_t duplicate;
+	uint8_t tombstone : 1;
 	enum KV_type type;
 	enum log_category cat;
 };

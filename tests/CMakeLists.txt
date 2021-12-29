@@ -9,6 +9,7 @@ if(BUILD_TESTING)
       test_dirty_scans.c
       test_options.c
       test_sanitizers.c
+      simple_test_delete.c
       test_gc.c
       test_region_allocations.c)
 
@@ -43,6 +44,10 @@ if(BUILD_TESTING)
   add_executable(test_gc test_gc.c)
   target_link_libraries(test_gc "${PROJECT_NAME}" ${DEPENDENCIES})
   add_test(NAME test_gc COMMAND $<TARGET_FILE:test_gc>)
+
+  add_executable(simple_test_delete simple_test_delete.c)
+  target_link_libraries(simple_test_delete "${PROJECT_NAME}" ${DEPENDENCIES})
+  add_test(NAME simple_test_delete COMMAND $<TARGET_FILE:simple_test_delete>)
 
   add_executable(
     test_region_allocations

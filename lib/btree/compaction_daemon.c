@@ -94,6 +94,7 @@ struct comp_parallax_key {
 	struct bt_leaf_entry kvsep;
 	enum log_category kv_category;
 	enum kv_entry_location kv_type;
+	uint8_t tombstone : 1;
 };
 
 struct comp_level_read_cursor {
@@ -362,6 +363,7 @@ static void comp_get_next_key(struct comp_level_read_cursor *c)
 				struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(leaf);
 
 				c->category = slot_array[c->curr_leaf_entry].key_category;
+				c->cursor_key.tombstone = slot_array[c->curr_leaf_entry].tombstone;
 				char *kv_loc =
 					get_kv_offset(leaf, level_leaf_size, slot_array[c->curr_leaf_entry].index);
 				switch (c->category) {
@@ -369,7 +371,7 @@ static void comp_get_next_key(struct comp_level_read_cursor *c)
 				case MEDIUM_INPLACE: {
 					// Real key in KV_FORMAT
 					c->cursor_key.kv_inplace =
-						fill_keybuf(kv_loc, slot_array[c->curr_leaf_entry].bitmap);
+						fill_keybuf(kv_loc, slot_array[c->curr_leaf_entry].kv_loc);
 					break;
 				}
 				case MEDIUM_INLOG:
@@ -810,6 +812,7 @@ static void comp_append_entry_to_leaf_node(struct comp_level_write_cursor *c, st
 		write_leaf_args.kv_format = KV_FORMAT;
 		write_leaf_args.cat = my_key->kv_category;
 		write_leaf_args.key_value_buf = my_key->kv_inplace;
+		write_leaf_args.tombstone = my_key->tombstone;
 		//log_info("Appending key in_place %u:%s", write_leaf_args.key_value_size,
 		//	 write_leaf_args.key_value_buf + sizeof(uint32_t));
 		break;
@@ -821,6 +824,7 @@ static void comp_append_entry_to_leaf_node(struct comp_level_write_cursor *c, st
 		write_leaf_args.level_id = c->level_id;
 		write_leaf_args.kv_format = KV_PREFIX;
 		write_leaf_args.cat = my_key->kv_category;
+		write_leaf_args.tombstone = my_key->tombstone;
 		//log_info("Appending prefix is  %s dev offt %llu", my_key->in_log->prefix, my_key->in_log->device_offt);
 		break;
 	default:
@@ -894,7 +898,6 @@ static void comp_append_entry_to_leaf_node(struct comp_level_write_cursor *c, st
 			}
 		}
 	}
-	return;
 }
 
 struct compaction_request {
@@ -1137,6 +1140,7 @@ static void comp_fill_heap_node(struct compaction_request *comp_req, struct comp
 	nd->level_id = cur->level_id;
 	nd->active_tree = comp_req->src_tree;
 	nd->cat = cur->category;
+	nd->tombstone = cur->cursor_key.tombstone;
 	switch (nd->cat) {
 	case SMALL_INPLACE:
 	case MEDIUM_INPLACE:
@@ -1162,6 +1166,7 @@ static void comp_fill_heap_node(struct compaction_request *comp_req, struct comp
 static void comp_fill_parallax_key(struct sh_heap_node *nd, struct comp_parallax_key *my_key)
 {
 	my_key->kv_category = nd->cat;
+	my_key->tombstone = nd->tombstone;
 	assert(nd->KV);
 	switch (nd->cat) {
 	case SMALL_INPLACE:
@@ -1303,6 +1308,7 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 		nd_src.type = level_src->kv_format;
 		nd_src.cat = level_src->cat;
 		nd_src.kv_size = level_src->kv_size;
+		nd_src.tombstone = level_src->tombstone;
 		nd_src.active_tree = comp_req->src_tree;
 		log_info("Initializing heap from SRC L0 with key:");
 
@@ -1339,8 +1345,10 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 		RWLOCK_RDLOCK(&handle->db_desc->levels[comp_req->dst_level].guard_of_level.rx_lock);
 		for (int i = 0; i < num_of_keys; i++) {
 			stat = sh_remove_top(m_heap, &nd_min);
+
 			if (stat == EMPTY_HEAP)
 				break;
+
 			if (!nd_min.duplicate) {
 				struct comp_parallax_key key;
 				memset(&key, 0, sizeof(key));
@@ -1359,6 +1367,7 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 						nd_min.level_id = comp_req->src_level;
 						nd_min.type = level_src->kv_format;
 						nd_min.cat = level_src->cat;
+						nd_min.tombstone = level_src->tombstone;
 						nd_min.kv_size = level_src->kv_size;
 						nd_min.active_tree = comp_req->src_tree;
 						nd_min.db_desc = comp_req->db_desc;

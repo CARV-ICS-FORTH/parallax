@@ -10,12 +10,14 @@ struct find_result {
 	char *kv;
 	enum kv_entry_location key_type;
 	enum log_category kv_category;
+	uint8_t tombstone : 1;
 };
 
 struct dl_bsearch_result {
 	int middle;
 	enum bsearch_status status;
 	enum bt_dynamic_leaf_operation op;
+	uint32_t tombstone : 1;
 };
 
 struct prefix {
@@ -30,6 +32,7 @@ struct write_dynamic_leaf_args {
 	uint64_t kv_dev_offt;
 	uint32_t key_value_size;
 	uint32_t middle;
+	uint32_t tombstone : 1;
 	int level_id;
 	int kv_format;
 	enum log_category cat;

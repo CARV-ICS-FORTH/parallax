@@ -759,6 +759,7 @@ db_handle *internal_db_open(struct volume_descriptor *volume_desc, uint64_t star
 		       "Dynamic slot array is not 4 bytes, are you sure you want to continue?");
 	_Static_assert(sizeof(struct segment_header) == 4096, "Segment header not page aligned!");
 	_Static_assert(sizeof(struct pr_db_group) == 4096, "pr_db_group overflow!");
+	_Static_assert(sizeof(struct bt_dynamic_leaf_slot_array) == 4, "slot array != 4 Bytes");
 
 	MUTEX_INIT(&handle->db_desc->lock_log, NULL);
 
@@ -939,7 +940,8 @@ void wait_for_available_level0_tree(db_handle *handle)
 	}
 }
 
-uint8_t insert_key_value(db_handle *handle, void *key, void *value, uint32_t key_size, uint32_t value_size)
+uint8_t insert_key_value(db_handle *handle, void *key, void *value, uint32_t key_size, uint32_t value_size,
+			 request_type op_type)
 {
 	bt_insert_req ins_req;
 	char __tmp[KV_MAX_SIZE];
@@ -980,6 +982,7 @@ uint8_t insert_key_value(db_handle *handle, void *key, void *value, uint32_t key
 	ins_req.metadata.append_to_log = 1;
 	ins_req.metadata.gc_request = 0;
 	ins_req.metadata.special_split = 0;
+	ins_req.metadata.tombstone = op_type == deleteOp;
 
 	if (kv_ratio >= 0.0 && kv_ratio < 0.02) {
 		ins_req.metadata.cat = BIG_INLOG;
@@ -992,6 +995,9 @@ uint8_t insert_key_value(db_handle *handle, void *key, void *value, uint32_t key
 	} else {
 		ins_req.metadata.cat = SMALL_INPLACE;
 	}
+
+	if (op_type == deleteOp)
+		ins_req.metadata.cat = SMALL_INPLACE;
 
 	/*
 * Note for L0 inserts since active_tree changes dynamically we decide which
@@ -1020,46 +1026,15 @@ void extract_keyvalue_size(log_operation *req, metadata_tologop *data_size)
 		}
 		break;
 	case deleteOp:
-		data_size->key_len = *(uint32_t *)req->del_req->key_buf;
+		data_size->key_len = *(uint32_t *)req->ins_req->key_value_buf;
 		data_size->value_len = 0;
-		data_size->kv_size = data_size->key_len + (sizeof(uint32_t) * 2);
+		data_size->kv_size = sizeof(struct bt_delete_marker) + data_size->key_len;
 		break;
 	default:
 		log_fatal("Trying to append unknown operation in log! ");
 		exit(EXIT_FAILURE);
 	}
 }
-
-void write_keyvalue_inlog(log_operation *req, metadata_tologop *data_size, char *addr_inlog, uint64_t lsn)
-{
-	*(uint64_t *)addr_inlog = lsn;
-	addr_inlog += sizeof(struct log_sequence_number);
-
-	switch (req->optype_tolog) {
-	case insertOp:
-		if (req->metadata->key_format == KV_FORMAT) {
-			memcpy(addr_inlog, req->ins_req->key_value_buf,
-			       sizeof(data_size->key_len) + data_size->key_len + sizeof(data_size->value_len) +
-				       data_size->value_len);
-		} else {
-			memcpy(addr_inlog, (void *)*(uint64_t *)(req->ins_req->key_value_buf + PREFIX_SIZE),
-			       sizeof(data_size->key_len) + data_size->key_len + sizeof(data_size->value_len) +
-				       data_size->value_len);
-			req->metadata->key_format = KV_FORMAT;
-		}
-		break;
-	case deleteOp:
-		memcpy(addr_inlog, req->del_req->key_buf, sizeof(data_size->key_len) + data_size->key_len);
-		addr_inlog += (sizeof(data_size->key_len) + data_size->key_len);
-		memcpy(addr_inlog, &data_size->value_len, sizeof(data_size->value_len));
-		break;
-	default:
-		log_fatal("Trying to append unknown operation in log! ");
-		exit(EXIT_FAILURE);
-	}
-}
-
-size_t SIZE_INMEMORY_LOG = ((1 * 1024 * 1024 * 1024) * 3UL);
 
 void update_log_metadata(db_descriptor *db_desc, struct log_towrite *log_metadata)
 {
@@ -1116,33 +1091,47 @@ static void pr_copy_kv_to_tail(struct pr_log_ticket *ticket)
 		return;
 	}
 
-	uint64_t offt_in_seg = ticket->log_offt % SEGMENT_SIZE;
+	uint64_t offset_in_seg = ticket->log_offt % SEGMENT_SIZE;
+	uint64_t offt = offset_in_seg;
 	switch (ticket->req->optype_tolog) {
 	case insertOp: {
-		uint64_t offt = offt_in_seg;
 		// first the lsn
 		memcpy(&ticket->tail->buf[offt], &ticket->lsn, sizeof(struct log_sequence_number));
 		offt += sizeof(struct log_sequence_number);
+
 		ticket->op_size = sizeof(ticket->data_size->key_len) + ticket->data_size->key_len +
 				  sizeof(ticket->data_size->value_len) + ticket->data_size->value_len;
 		// log_info("Copying ta log offt %llu in buf %u bytes %u", ticket->log_offt,
 		// offt_in_seg, ticket->op_size);
-		memcpy(&ticket->tail->buf[offt], ticket->req->ins_req->key_value_buf, ticket->op_size);
 		ticket->op_size += sizeof(struct log_sequence_number);
+
+		memcpy(&ticket->tail->buf[offt], ticket->req->ins_req->key_value_buf, ticket->op_size);
 		break;
 	}
 	case deleteOp: {
-		log_fatal("Delete operation not supported yet");
-		exit(EXIT_FAILURE);
+		struct bt_delete_marker dm = { .marker_id = BT_DELETE_MARKER_ID,
+					       .key_size = ticket->data_size->key_len };
+
+		// Append the LSN + the delete marker
+		memcpy(&ticket->tail->buf[offt], &ticket->lsn, sizeof(struct log_sequence_number));
+		offt += sizeof(struct log_sequence_number);
+		memcpy(&ticket->tail->buf[offt], &dm, sizeof(struct bt_delete_marker));
+		offt += sizeof(struct bt_delete_marker);
+		ticket->op_size = sizeof(struct log_sequence_number) + sizeof(struct bt_delete_marker);
+
+		// Append the deleted key
+		memcpy(&ticket->tail->buf[offt], ticket->req->ins_req->key_value_buf + sizeof(uint32_t), dm.key_size);
+		ticket->op_size += ticket->data_size->key_len;
+		break;
 	}
 	case paddingOp: {
-		if (offt_in_seg == 0)
+		if (offset_in_seg == 0)
 			ticket->op_size = 0;
 		else {
-			ticket->op_size = SEGMENT_SIZE - offt_in_seg;
+			ticket->op_size = SEGMENT_SIZE - offset_in_seg;
 			//log_info("Time for padding for log_offset %llu offt in seg %llu pad bytes %u ",
 			//	 ticket->log_offt, offt_in_seg, ticket->op_size);
-			memset(&ticket->tail->buf[offt_in_seg], 0, ticket->op_size);
+			memset(&ticket->tail->buf[offset_in_seg], 0, ticket->op_size);
 		}
 		break;
 	}
@@ -1152,7 +1141,7 @@ static void pr_copy_kv_to_tail(struct pr_log_ticket *ticket)
 	}
 
 	uint32_t remaining = ticket->op_size;
-	uint32_t curr_offt_in_seg = offt_in_seg;
+	uint32_t curr_offt_in_seg = offset_in_seg;
 	while (remaining > 0) {
 		uint32_t chunk_id = curr_offt_in_seg / LOG_CHUNK_SIZE;
 		int64_t offt_in_chunk = curr_offt_in_seg - (chunk_id * LOG_CHUNK_SIZE);
@@ -1324,11 +1313,13 @@ static void *bt_append_to_log_direct_IO(struct log_operation *req, struct log_to
 {
 	db_handle *handle = req->metadata->handle;
 
-	struct pr_log_ticket my_ticket = { .log_offt = 0, .IO_start_offt = 0, .IO_size = 0 };
+	struct pr_log_ticket log_kv_entry_ticket = { .log_offt = 0, .IO_start_offt = 0, .IO_size = 0 };
 	struct pr_log_ticket pad_ticket = { .log_offt = 0, .IO_start_offt = 0, .IO_size = 0 };
 	char *addr_inlog = NULL;
-	MUTEX_LOCK(&handle->db_desc->lock_log);
 	uint32_t available_space_in_log;
+	uint32_t reserve_needed_space = sizeof(struct log_sequence_number) + data_size->kv_size;
+
+	MUTEX_LOCK(&handle->db_desc->lock_log);
 
 	/*append data part in the data log*/
 	if (log_metadata->log_desc->size == 0)
@@ -1342,7 +1333,12 @@ static void *bt_append_to_log_direct_IO(struct log_operation *req, struct log_to
 	int segment_change = 0;
 	//log_info("Direct IO in log kv size is %u log size %u avail space %u", data_size->kv_size,
 	//	 log_metadata->log_desc->size, available_space_in_log);
-	if (available_space_in_log < (data_size->kv_size + sizeof(struct log_sequence_number))) {
+	if (req->metadata->tombstone) {
+		reserve_needed_space =
+			sizeof(struct log_sequence_number) + sizeof(struct bt_delete_marker) + data_size->key_len;
+	}
+
+	if (available_space_in_log < reserve_needed_space) {
 		uint32_t curr_tail_id = log_metadata->log_desc->curr_tail_id;
 		//log_info("Segment change avail space %u kv size %u",available_space_in_log,data_size->kv_size);
 		// pad with zeroes remaining bytes in segment
@@ -1386,38 +1382,40 @@ static void *bt_append_to_log_direct_IO(struct log_operation *req, struct log_to
 		segment_change = 1;
 		RWLOCK_UNLOCK(&log_metadata->log_desc->log_tail_buf_lock);
 	}
+
 	uint32_t tail_id = log_metadata->log_desc->curr_tail_id;
-	my_ticket.req = req;
-	my_ticket.data_size = data_size;
-	my_ticket.tail = log_metadata->log_desc->tail[tail_id % LOG_TAIL_NUM_BUFS];
-	my_ticket.log_offt = log_metadata->log_desc->size;
-	my_ticket.lsn.id = __sync_fetch_and_add(&handle->db_desc->lsn, 1);
+	log_kv_entry_ticket.req = req;
+	log_kv_entry_ticket.data_size = data_size;
+	log_kv_entry_ticket.tail = log_metadata->log_desc->tail[tail_id % LOG_TAIL_NUM_BUFS];
+	log_kv_entry_ticket.log_offt = log_metadata->log_desc->size;
+	log_kv_entry_ticket.lsn.id = __sync_fetch_and_add(&handle->db_desc->lsn, 1);
 
 	/*Where we *will* store it on the device*/
-	struct segment_header *T = REAL_ADDRESS(log_metadata->log_desc->tail_dev_offt);
-	addr_inlog = (void *)((uint64_t)T + (log_metadata->log_desc->size % SEGMENT_SIZE));
+	struct segment_header *device_location = REAL_ADDRESS(log_metadata->log_desc->tail_dev_offt);
+	addr_inlog = (void *)((uint64_t)device_location + (log_metadata->log_desc->size % SEGMENT_SIZE));
 
 	req->metadata->log_offset = log_metadata->log_desc->size;
-	log_metadata->log_desc->size += (data_size->kv_size + sizeof(struct log_sequence_number));
+	log_metadata->log_desc->size += reserve_needed_space;
 	MUTEX_UNLOCK(&handle->db_desc->lock_log);
 
 	if (segment_change && available_space_in_log > 0) {
 		// do the padding IO as well
 		pr_do_log_IO(&pad_ticket);
 	}
-	pr_copy_kv_to_tail(&my_ticket);
-	pr_do_log_IO(&my_ticket);
+	pr_copy_kv_to_tail(&log_kv_entry_ticket);
+	pr_do_log_IO(&log_kv_entry_ticket);
 
 	return addr_inlog + sizeof(struct log_sequence_number);
 }
 
 void *append_key_value_to_log(log_operation *req)
 {
-	db_handle *handle = req->metadata->handle;
 	struct log_towrite log_metadata;
+	struct metadata_tologop data_size;
+	db_handle *handle = req->metadata->handle;
+
 	log_metadata.level_id = req->metadata->level_id;
 	log_metadata.status = req->metadata->cat;
-	struct metadata_tologop data_size;
 	extract_keyvalue_size(req, &data_size);
 
 	switch (log_metadata.status) {
@@ -1553,6 +1551,7 @@ static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id,
 		ret_result = find_key_in_dynamic_leaf((struct bt_dynamic_leaf_node *)curr_node, db_desc,
 						      get_op->kv_buf + sizeof(uint32_t), *(uint32_t *)get_op->kv_buf,
 						      level_id);
+		get_op->tombstone = ret_result.tombstone;
 		goto deser;
 	}
 
@@ -1589,6 +1588,7 @@ static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id,
 
 	ret_result = find_key_in_dynamic_leaf((struct bt_dynamic_leaf_node *)curr_node, db_desc,
 					      get_op->kv_buf + sizeof(uint32_t), *(uint32_t *)get_op->kv_buf, level_id);
+	get_op->tombstone = ret_result.tombstone;
 
 deser:
 	if (ret_result.kv) {
@@ -1673,10 +1673,12 @@ void find_key(struct lookup_operation *get_op)
 	uint8_t tree_id = db_desc->levels[0].active_tree;
 	uint8_t base = tree_id;
 
+	get_op->tombstone = 0;
 	while (1) {
 		/*first look the current active tree of the level*/
 
 		lookup_in_tree(get_op, 0, tree_id);
+
 		if (get_op->found) {
 			if (RWLOCK_UNLOCK(&db_desc->levels[0].guard_of_level.rx_lock) != 0)
 				exit(EXIT_FAILURE);
@@ -1713,6 +1715,9 @@ void find_key(struct lookup_operation *get_op)
 	}
 
 finish:
+	if (get_op->found && get_op->tombstone)
+		get_op->found = 0;
+
 	return;
 }
 
@@ -1924,12 +1929,11 @@ int insert_KV_at_leaf(bt_insert_req *ins_req, node_header *leaf)
 {
 	db_descriptor *db_desc = ins_req->metadata.handle->db_desc;
 	enum log_category cat = ins_req->metadata.cat;
-	int append_tolog = ins_req->metadata.append_to_log; //&&
-		//(cat == SMALL_INLOG || cat == SMALL_INPLACE || // Needed for consistency purposes
-		//cat == MEDIUM_INLOG ||  cat == BIG_INLOG));
+	int append_tolog = ins_req->metadata.append_to_log;
 	int ret = -1;
 	uint8_t level_id = ins_req->metadata.level_id;
 	uint8_t tree_id = ins_req->metadata.tree_id;
+
 	ins_req->kv_dev_offt = 0;
 	if (append_tolog) {
 #if !MEDIUM_LOG_UNSORTED
@@ -1939,6 +1943,10 @@ int insert_KV_at_leaf(bt_insert_req *ins_req, node_header *leaf)
 		log_operation append_op = { .metadata = &ins_req->metadata,
 					    .optype_tolog = insertOp,
 					    .ins_req = ins_req };
+
+		if (ins_req->metadata.tombstone == 1)
+			append_op.optype_tolog = deleteOp;
+
 		switch (ins_req->metadata.cat) {
 		case SMALL_INPLACE:
 			append_key_value_to_log(&append_op);

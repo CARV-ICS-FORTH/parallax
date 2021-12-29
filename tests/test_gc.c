@@ -47,7 +47,7 @@ void serially_insert_keys(db_handle *hd)
 		memset(v->value_buf, 0xDD, v->value_size);
 		if (i % 10000 == 0)
 			log_info("%s", k->key_buf);
-		insert_key_value(hd, k->key_buf, v->value_buf, k->key_size, v->value_size);
+		insert_key_value(hd, k->key_buf, v->value_buf, k->key_size, v->value_size, insertOp);
 	}
 	free(k);
 	log_info("Population ended");
