@@ -55,7 +55,6 @@ int8_t find_deleted_kv_pairs_in_segment(struct db_handle handle, char *log_seg, 
 	struct splice *key;
 	struct splice *value;
 	void *value_as_pointer;
-	char *start_of_log_segment = log_seg;
 	uint64_t checked_segment_chunk = sizeof(struct log_sequence_number);
 	uint64_t segment_data = LOG_DATA_OFFSET;
 	int key_value_size;
@@ -177,9 +176,9 @@ void scan_db(db_descriptor *db_desc, volume_descriptor *volume_desc, stack *mark
 
 		int ret = find_deleted_kv_pairs_in_segment(temp_handle, (char *)segment, marks);
 
-<		if (ret && !segments_toreclaim[i].segment_moved)
+		if (ret && !segments_toreclaim[i].segment_moved)
 			*segments_toreclaim[i].segment_moved = 1;
-|	}
+	}
 
 	free(segment);
 	free(segments_toreclaim);

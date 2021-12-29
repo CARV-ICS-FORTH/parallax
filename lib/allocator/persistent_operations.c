@@ -555,6 +555,26 @@ struct log_cursor {
 	uint8_t tombstone : 1;
 };
 
+void prepare_cursor_op(struct log_cursor *cursor)
+{
+	cursor->entry.lsn = *(uint64_t *)cursor->pos_in_segment;
+	cursor->pos_in_segment += sizeof(uint64_t);
+	struct bt_delete_marker *dm = (struct bt_delete_marker *)cursor->pos_in_segment;
+
+	if (dm->marker_id != BT_DELETE_MARKER_ID) {
+		cursor->entry.p_key = (struct par_key *)cursor->pos_in_segment;
+		cursor->pos_in_segment += (sizeof(struct par_key) + cursor->entry.p_key->key_size);
+		cursor->entry.p_value = (struct par_value *)cursor->pos_in_segment;
+		cursor->pos_in_segment += (sizeof(struct par_value) + cursor->entry.p_value->value_size);
+		cursor->tombstone = 0;
+	} else {
+		cursor->pos_in_segment += sizeof(dm->marker_id);
+		cursor->entry.p_key = (struct par_key *)cursor->pos_in_segment;
+		cursor->pos_in_segment += (sizeof(struct par_key) + cursor->entry.p_key->key_size);
+		cursor->tombstone = 1;
+	}
+}
+
 static void init_pos_log_cursor_in_segment(struct log_cursor *cursor)
 {
 	if (0 == cursor->log_segments->n_entries) {
@@ -592,22 +612,7 @@ static void init_pos_log_cursor_in_segment(struct log_cursor *cursor)
 		}
 	}
 
-	cursor->entry.lsn = *(uint64_t *)cursor->pos_in_segment;
-	cursor->pos_in_segment += sizeof(uint64_t);
-	struct bt_delete_marker *dm = (struct bt_delete_marker *)cursor->pos_in_segment;
-
-	if (dm->marker_id != BT_DELETE_MARKER_ID) {
-		cursor->entry.p_key = (struct par_key *)cursor->pos_in_segment;
-		cursor->pos_in_segment += (sizeof(struct par_key) + cursor->entry.p_key->key_size);
-		cursor->entry.p_value = (struct par_value *)cursor->pos_in_segment;
-		cursor->pos_in_segment += (sizeof(struct par_value) + cursor->entry.p_value->value_size);
-		cursor->tombstone = 0;
-	} else {
-		cursor->pos_in_segment += sizeof(dm->marker_id);
-		cursor->entry.p_key = (struct par_key *)cursor->pos_in_segment;
-		cursor->pos_in_segment += (sizeof(struct par_key) + cursor->entry.p_key->key_size);
-		cursor->tombstone = 1;
-	}
+	prepare_cursor_op(cursor);
 }
 
 static struct log_cursor *init_log_cursor(struct db_descriptor *db_desc, enum log_type type)
@@ -708,22 +713,7 @@ start:
 		goto start;
 	}
 
-	cursor->entry.lsn = *(uint64_t *)cursor->pos_in_segment;
-	cursor->pos_in_segment += sizeof(uint64_t);
-	struct bt_delete_marker *dm = (struct bt_delete_marker *)cursor->pos_in_segment;
-
-	if (dm->marker_id != BT_DELETE_MARKER_ID) {
-		cursor->entry.p_key = (struct par_key *)cursor->pos_in_segment;
-		cursor->pos_in_segment += (sizeof(struct par_key) + cursor->entry.p_key->key_size);
-		cursor->entry.p_value = (struct par_value *)cursor->pos_in_segment;
-		cursor->pos_in_segment += (sizeof(struct par_value) + cursor->entry.p_value->value_size);
-		cursor->tombstone = 0;
-	} else {
-		cursor->pos_in_segment += sizeof(dm->marker_id);
-		cursor->entry.p_key = (struct par_key *)cursor->pos_in_segment;
-		cursor->pos_in_segment += (sizeof(struct par_key) + cursor->entry.p_key->key_size);
-		cursor->tombstone = 1;
-	}
+	prepare_cursor_op(cursor);
 
 	return &cursor->entry;
 }
