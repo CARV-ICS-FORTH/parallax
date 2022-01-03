@@ -55,30 +55,7 @@ void serially_insert_keys(db_handle *hd)
 
 int main(void)
 {
-	db_handle *handle;
-	int64_t size;
-	int fd = open(PATH, O_RDONLY);
-
-	if (fd == -1) {
-		perror("open");
-		exit(EXIT_FAILURE);
-	}
-
-	if (ioctl(fd, BLKGETSIZE64, &size) == -1) {
-		perror("ioctl");
-		/*maybe we have a file?*/
-		printf("[%s:%s:%d] querying file size\n", __FILE__, __func__, __LINE__);
-		size = lseek64(fd, 0, SEEK_END);
-		if (size == -1) {
-			printf("[%s:%s:%d] failed to determine volume size exiting...\n", __FILE__, __func__, __LINE__);
-			perror("ioctl");
-			exit(EXIT_FAILURE);
-		}
-	}
-
-	close(fd);
-
-	handle = db_open(PATH, 0, size, "test.db", CREATE_DB);
+	db_handle *handle = db_open(PATH, 0, 0, "test.db", CREATE_DB);
 	assert(handle);
 	update_half = 1;
 	serially_insert_keys(handle);
