@@ -1103,9 +1103,9 @@ static void pr_copy_kv_to_tail(struct pr_log_ticket *ticket)
 				  sizeof(ticket->data_size->value_len) + ticket->data_size->value_len;
 		// log_info("Copying ta log offt %llu in buf %u bytes %u", ticket->log_offt,
 		// offt_in_seg, ticket->op_size);
-		ticket->op_size += sizeof(struct log_sequence_number);
 
 		memcpy(&ticket->tail->buf[offt], ticket->req->ins_req->key_value_buf, ticket->op_size);
+		ticket->op_size += sizeof(struct log_sequence_number);
 		break;
 	}
 	case deleteOp: {
