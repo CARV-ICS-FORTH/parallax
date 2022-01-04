@@ -1,18 +1,4 @@
 ---
-install_lib:
-    image: carvicsforth/ubuntu_carv:latest
-    stage: deploy
-    variables:
-        LIB_INSTALL_PATH: installtest
-    script:
-        - mkdir -p build;cd build
-        - cmake .. -DBUILD_SHARED_LIBS=ON -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_COMPILER=gcc-10 -DCMAKE_CXX_COMPILER=g++-10
-        - make install DESTDIR=$LIB_INSTALL_PATH;
-        - cmake .. -DBUILD_SHARED_LIBS=OFF -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_COMPILER=gcc-10 -DCMAKE_CXX_COMPILER=g++-10
-        - make install DESTDIR=$LIB_INSTALL_PATH;
-        - mv $LIB_INSTALL_PATH ../scripts/;cd ../scripts
-        - ./verify-installed-files.py $LIB_INSTALL_PATH
-
 automate-github-sync:
     image: carvicsforth/ubuntu_carv:latest
     stage: deploy
@@ -31,3 +17,4 @@ automate-github-sync:
         - git config --global user.name "${CI_USERNAME}"
         - git remote rm origin && git remote add origin git@github.com:CARV-ICS-FORTH/parallax.git
         - git push origin HEAD:master
+    needs: [install_lib]
