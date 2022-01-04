@@ -41,7 +41,6 @@
 #define MIN(x, y) ((x > y) ? (y) : (x))
 
 int32_t index_order = -1;
-extern char *pointer_to_kv_in_log;
 
 uint64_t countgoto = 0;
 pthread_mutex_t init_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -2188,12 +2187,9 @@ static uint8_t concurrent_insert(bt_insert_req *ins_req)
 	struct bt_rebalance_result split_res;
 	lock_table *lock;
 	void *next_addr;
-	struct pr_system_catalogue *mem_catalogue;
-	volume_descriptor *volume_desc;
 	db_descriptor *db_desc;
 
 	index_node *new_index_node;
-	node_header *node_copy;
 	node_header *father;
 	node_header *son;
 	unsigned size; /*Size of upper_level_nodes*/
@@ -2203,7 +2199,6 @@ static uint8_t concurrent_insert(bt_insert_req *ins_req)
 	int64_t *num_level_writers;
 	uint32_t level_id;
 
-	volume_desc = ins_req->metadata.handle->volume_desc;
 	db_desc = ins_req->metadata.handle->db_desc;
 	level_id = ins_req->metadata.level_id;
 	guard_of_level = &(db_desc->levels[level_id].guard_of_level);
@@ -2236,41 +2231,20 @@ release_and_retry:
 	upper_level_nodes[size++] = guard_of_level;
 	/*mark your presence*/
 	__sync_fetch_and_add(num_level_writers, 1);
-	mem_catalogue = ins_req->metadata.handle->volume_desc->mem_catalogue;
 
 	father = NULL;
 	next_addr = NULL;
-	/*cow logic follows*/
+
 	if (db_desc->levels[level_id].root_w[ins_req->metadata.tree_id] == NULL) {
-		if (db_desc->levels[level_id].root_r[ins_req->metadata.tree_id] != NULL) {
-			if (db_desc->levels[level_id].root_r[ins_req->metadata.tree_id]->type == rootNode) {
-				index_node *t = seg_get_index_node_header(ins_req->metadata.handle->db_desc, level_id,
-									  ins_req->metadata.tree_id);
-				memcpy(t, db_desc->levels[level_id].root_r[ins_req->metadata.tree_id], INDEX_NODE_SIZE);
-				t->header.epoch = mem_catalogue->epoch;
-				db_desc->levels[level_id].root_w[ins_req->metadata.tree_id] = (node_header *)t;
-			} else {
-				/*Tree too small consists only of 1 leafRootNode*/
-				leaf_node *t = seg_get_leaf_node_header(ins_req->metadata.handle->db_desc, level_id,
-									ins_req->metadata.tree_id);
-
-				memcpy(t, db_desc->levels[level_id].root_r[ins_req->metadata.tree_id],
-				       db_desc->levels[level_id].leaf_size);
-
-				t->header.epoch = mem_catalogue->epoch;
-				db_desc->levels[level_id].root_w[ins_req->metadata.tree_id] = (node_header *)t;
-			}
-		} else {
+		if (db_desc->levels[level_id].root_r[ins_req->metadata.tree_id] == NULL) {
 			/*we are allocating a new tree*/
 
-			log_info("Allocating new active tree %d for level id %d epoch is at %llu",
-				 ins_req->metadata.tree_id, level_id, (long long unsigned)mem_catalogue->epoch);
+			log_info("Allocating new active tree %d for level id %d", ins_req->metadata.tree_id, level_id);
 
 			leaf_node *t = seg_get_leaf_node(ins_req->metadata.handle->db_desc, level_id,
 							 ins_req->metadata.tree_id);
 
 			t->header.type = leafRootNode;
-			t->header.epoch = mem_catalogue->epoch;
 			db_desc->levels[level_id].root_w[ins_req->metadata.tree_id] = (node_header *)t;
 		}
 	}
@@ -2295,7 +2269,6 @@ release_and_retry:
 			else
 				father_order = index_order;
 
-			assert(father->epoch > volume_desc->dev_catalogue->epoch);
 			assert(father->num_entries < father_order);
 		}
 
@@ -2313,24 +2286,12 @@ release_and_retry:
 					goto release_and_retry;
 
 				split_res = split_leaf(ins_req, (leaf_node *)son);
-
-				if ((uint64_t)son != (uint64_t)split_res.left_child) {
-					/*cow happened*/
-					seg_free_leaf_node(ins_req->metadata.handle->db_desc, level_id,
-							   ins_req->metadata.tree_id, (leaf_node *)son);
-					/*fix the dangling lamport*/
-				}
 			}
 
 			/*Insert pivot at father*/
 			if (father != NULL) {
-				/*lamport counter*/
-				assert(father->epoch > ins_req->metadata.handle->volume_desc->dev_catalogue->epoch);
-
 				insert_key_at_index(ins_req, (index_node *)father, split_res.left_child,
 						    split_res.right_child, split_res.middle_key_buf);
-
-				/*lamport counter*/
 			} else {
 				/*Root was splitted*/
 				// log_info("new root");
@@ -2349,33 +2310,6 @@ release_and_retry:
 				db_desc->levels[level_id].root_w[ins_req->metadata.tree_id] =
 					(node_header *)new_index_node;
 			}
-			goto release_and_retry;
-		} else if (son->epoch <= volume_desc->dev_catalogue->epoch) {
-			/*Cow*/
-			if (son->height > 0) {
-				node_copy = (node_header *)seg_get_index_node_header(
-					ins_req->metadata.handle->db_desc, level_id, ins_req->metadata.tree_id);
-
-				memcpy(node_copy, son, INDEX_NODE_SIZE);
-				seg_free_index_node_header(ins_req->metadata.handle->db_desc, level_id,
-							   ins_req->metadata.tree_id, son);
-			} else {
-				node_copy = (node_header *)seg_get_leaf_node_header(
-					ins_req->metadata.handle->db_desc, level_id, ins_req->metadata.tree_id);
-
-				memcpy(node_copy, son, db_desc->levels[level_id].leaf_size);
-				/* Add static and dynamic layout free operations*/
-				seg_free_leaf_node(ins_req->metadata.handle->db_desc, level_id,
-						   ins_req->metadata.tree_id, (leaf_node *)son);
-			}
-			node_copy->epoch = volume_desc->mem_catalogue->epoch;
-			son = node_copy;
-			/*Update father's pointer*/
-			if (father != NULL)
-				*(uint64_t *)next_addr = (uint64_t)ABSOLUTE_ADDRESS(node_copy);
-			else /*We COWED the root*/
-				db_desc->levels[level_id].root_w[ins_req->metadata.tree_id] = node_copy;
-
 			goto release_and_retry;
 		}
 
@@ -2400,8 +2334,7 @@ release_and_retry:
 		/*if the node is not safe hold its ancestor's lock else release locks from
     ancestors */
 
-		if (!(son->epoch <= volume_desc->dev_catalogue->epoch ||
-		      is_split_needed(son, ins_req, db_desc->levels[level_id].leaf_size))) {
+		if (!is_split_needed(son, ins_req, db_desc->levels[level_id].leaf_size)) {
 			_unlock_upper_levels(upper_level_nodes, size - 1, release);
 			release = size - 1;
 		}
@@ -2415,8 +2348,6 @@ release_and_retry:
 		exit(EXIT_FAILURE);
 	}
 
-	assert(son->epoch > ins_req->metadata.handle->volume_desc->dev_catalogue->epoch);
-
 	insert_KV_at_leaf(ins_req, son);
 	/*Unlock remaining locks*/
 	_unlock_upper_levels(upper_level_nodes, size, release);
@@ -2429,7 +2360,6 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 	/*The array with the locks that belong to this thread from upper levels*/
 	lock_table *upper_level_nodes[MAX_HEIGHT];
 	void *next_addr;
-	volume_descriptor *volume_desc;
 	db_descriptor *db_desc;
 	node_header *son;
 	lock_table *lock;
@@ -2441,7 +2371,7 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 	lock_table *guard_of_level;
 	int64_t *num_level_writers;
 	int ret = 0;
-	volume_desc = ins_req->metadata.handle->volume_desc;
+
 	db_desc = ins_req->metadata.handle->db_desc;
 	level_id = ins_req->metadata.level_id;
 	guard_of_level = &db_desc->levels[level_id].guard_of_level;
@@ -2493,12 +2423,8 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 			_unlock_upper_levels(upper_level_nodes, size, release);
 			__sync_fetch_and_sub(num_level_writers, 1);
 			return PARALLAX_FAILURE;
-		} else if (son->epoch <= volume_desc->dev_catalogue->epoch) {
-			/*failed needs COW*/
-			_unlock_upper_levels(upper_level_nodes, size, release);
-			__sync_fetch_and_sub(num_level_writers, 1);
-			return PARALLAX_FAILURE;
 		}
+
 		/*Find the next node to traverse*/
 		next_addr = _index_node_binary_search((index_node *)son, ins_req->key_value_buf,
 						      ins_req->metadata.key_format);
@@ -2529,8 +2455,7 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 		exit(EXIT_FAILURE);
 	}
 
-	if (is_split_needed(son, ins_req, db_desc->levels[level_id].leaf_size) ||
-	    son->epoch <= volume_desc->dev_catalogue->epoch) {
+	if (is_split_needed(son, ins_req, db_desc->levels[level_id].leaf_size)) {
 		_unlock_upper_levels(upper_level_nodes, size, release);
 		__sync_fetch_and_sub(num_level_writers, 1);
 		return PARALLAX_FAILURE;

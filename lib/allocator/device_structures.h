@@ -43,13 +43,10 @@ struct pr_db_entry {
 }; // 768 bytes or 12 cache lines
 
 struct pr_db_group {
-	uint64_t epoch;
 	struct pr_db_entry db_entries[GROUP_SIZE];
 } __attribute__((packed, aligned(4096)));
 
 struct pr_system_catalogue {
-	/*latest synced epoch of the superblock*/
-	uint64_t epoch;
 	/*head and tail of the free log, keeps acounting of the free operations*/
 	uint64_t free_log_position;
 	uint64_t free_log_last_free;

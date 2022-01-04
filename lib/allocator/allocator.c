@@ -964,7 +964,6 @@ struct volume_descriptor *mem_get_volume_desc(char *volume_name)
 		}
 
 		memset(volume->volume_desc->dev_catalogue, 0x00, sizeof(struct pr_system_catalogue));
-		volume->volume_desc->mem_catalogue->epoch = 100;
 
 		volume->volume_desc->db_superblock_lock =
 			calloc(volume->volume_desc->vol_superblock.max_regions_num, sizeof(pthread_mutex_t));
@@ -1047,10 +1046,8 @@ static void add_log_entry(volume_descriptor *volume_desc, void *address, uint32_
 		uint64_t next_pos = volume_desc->mem_catalogue->free_log_position % free_log_size;
 		uint64_t last_free = volume_desc->mem_catalogue->free_log_last_free % free_log_size;
 		if (next_pos >= last_free) {
-			struct free_op_entry entry = { .epoch = volume_desc->mem_catalogue->epoch,
-						       .dev_offt = dev_offt,
-						       .length = length };
-			char *dest = (char *)(MAPPED + free_log_offt + next_pos);
+			struct free_op_entry entry = { .dev_offt = dev_offt, .length = length };
+			char *dest = (char *)REAL_ADDRESS(free_log_offt + next_pos);
 			memcpy(dest, &entry, sizeof(struct free_op_entry));
 			volume_desc->mem_catalogue->free_log_position += sizeof(struct free_op_entry);
 			MUTEX_UNLOCK(&volume_desc->free_log_lock);
@@ -1061,10 +1058,8 @@ static void add_log_entry(volume_descriptor *volume_desc, void *address, uint32_
 			log_warn("OUT OF LOG SPACE: No room for writing log_entry forcing snapshot");
 			pthread_cond_signal(&(volume_desc->cond));
 			MUTEX_UNLOCK(&volume_desc->mutex);
-			sleep(4);
 		}
 	}
-	return;
 }
 
 void free_block(struct volume_descriptor *volume_desc, void *address, uint32_t length)
