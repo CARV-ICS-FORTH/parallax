@@ -5,6 +5,7 @@ debug_build_gcc:
         - mkdir -p build;cd build
         - cmake .. -DCMAKE_BUILD_TYPE=Debug
         - make all
+    needs: []
 
 debug_build_clang:
     stage: debug_build
@@ -12,8 +13,9 @@ debug_build_clang:
         - mkdir -p build;cd build
         - cmake .. -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
         - make all
+    needs: []
 
-build_centos:
+debug_build_centos:
     image: carvicsforth/centos_carv:latest
     stage: debug_build
     script:
@@ -21,6 +23,7 @@ build_centos:
         - mkdir -p build;cd build
         - cmake3 ..
         - make all
+    needs: []
 
 pre-merge:
     stage: debug_build

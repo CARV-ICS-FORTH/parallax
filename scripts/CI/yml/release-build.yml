@@ -5,6 +5,7 @@ release_build_gcc:
         - mkdir -p build;cd build
         - cmake .. -DCMAKE_BUILD_TYPE=Release
         - make all
+    needs: []
 
 release_build_clang:
     stage: release_build
@@ -12,3 +13,4 @@ release_build_clang:
         - mkdir -p build;cd build
         - cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
         - make all
+    needs: []
