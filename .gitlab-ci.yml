@@ -13,4 +13,5 @@ stages:
     - release_build
     - debug_test
     - release_test
+    - install
     - deploy

@@ -121,6 +121,7 @@ debug_test_gc:
         - mkdir -p build;cd build
         - cmake ..
         - make test_gc;make kv_format.parallax;cd tests;
+        - ./mkfs.sh /tmp/kv_store.dat 128
         - ctest -R ^test_gc$
         - cd ..;cd ..
         - ./scripts/CI/destroy_mbbd.sh
