@@ -10,8 +10,6 @@ fi
 ./mkfs.sh "$1" 128
 ./generate_workloads.py "$2" "$3"
 ./ycsb-edb -threads 1 -dbnum 1 -e execution_plan_a2d.txt -p "$1" -wl "$4"
-mv RESULTS RESULTSATOD
 
 ./mkfs.sh "$1" 128
 ./ycsb-edb -threads 1 -dbnum 1 -e execution_plan_e.txt -p "$1" -wl "$4"
-mv RESULTS RESULTSE
