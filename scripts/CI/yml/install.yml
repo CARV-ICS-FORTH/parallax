@@ -12,3 +12,24 @@ install_lib:
         - make install DESTDIR=$LIB_INSTALL_PATH;
         - mv $LIB_INSTALL_PATH ../scripts/;cd ../scripts
         - ./verify-installed-files.py $LIB_INSTALL_PATH
+
+build_centos_rpm:
+    image: carvicsforth/centos_carv:latest
+    stage: debug_build
+    script:
+        - source scl_source enable devtoolset-8 || echo ignoring exit code so CI does not bomb when it should not > /dev/null
+        - mkdir -p build;cd build
+        - cmake3 ..
+        - cpack3 -D CPACK_RPM_PACKAGE_DEBUG=1 -G "RPM"
+        - export RPMFILE=`ls | grep "rpm"`
+        - rpm -Uvh "$RPMFILE"
+
+build_ubuntu_deb:
+    image: carvicsforth/ubuntu_carv:latest
+    stage: debug_build
+    script:
+        - mkdir -p build;cd build
+        - cmake ..
+        - cpack -D CPACK_RPM_PACKAGE_DEBUG=1 -G "DEB"
+        - export DEBFILE=`ls | grep "deb"`
+        - dpkg -i "$DEBFILE"
