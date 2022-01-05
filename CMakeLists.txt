@@ -31,7 +31,6 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
 endif()
 
 include(FetchContent)
-include(CPack)
 include(CTest)
 include(GNUInstallDirs)
 include(CheckCCompilerFlag)
@@ -159,6 +158,10 @@ set(CPACK_PACKAGE_RELEASE 1)
 set(CPACK_PACKAGE_VENDOR "FORTH-ICS")
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY
     "${PROJECT_NAME} is a high-speed and high-efficiency key-value store.")
+set(CPACK_PACKAGE_CONTACT
+    "Giorgos Saloustros <gesalous@ics.forth.gr, Giorgos Xanthakis <gxanth@ics.forth.gr>, Giorgos Stylianakis <geostyl@ics.forth.gr>"
+)
+
 set(CPACK_GENERATOR "RPM")
 set(CPACK_RPM_PACKAGE_LICENSE "ASL v2.0")
 set(CPACK_RPM_PACKAGE_GROUP "Applications/Databases")
@@ -170,6 +173,8 @@ set(CPACK_PACKAGE_FILE_NAME
     "${CPACK_PACKAGE_NAME}-${CPACK_PACKAGE_VERSION}-${CPACK_PACKAGE_RELEASE}.${CMAKE_SYSTEM_PROCESSOR}"
 )
 
+set(CPACK_DEBIAN_PACKAGE_DEPENDS "libnuma-dev (>= 2.0.12)")
+
 if(NOT TARGET uninstall)
   configure_file(
     "${CMAKE_CURRENT_SOURCE_DIR}/cmake_utils/cmake_uninstall.cmake.in"
@@ -179,3 +184,7 @@ if(NOT TARGET uninstall)
     uninstall COMMAND ${CMAKE_COMMAND} -P
                       ${CMAKE_CURRENT_BINARY_DIR}/cmake_uninstall.cmake)
 endif()
+
+# This should be left at the end of the CMakeLists otherwise the generation of
+# RPM and DEB packages will not work.
+include(CPack)

@@ -17,4 +17,4 @@ automate-github-sync:
         - git config --global user.name "${CI_USERNAME}"
         - git remote rm origin && git remote add origin git@github.com:CARV-ICS-FORTH/parallax.git
         - git push origin HEAD:master
-    needs: [install_lib]
+    needs: [install_lib, build_centos_rpm, build_ubuntu_deb]
