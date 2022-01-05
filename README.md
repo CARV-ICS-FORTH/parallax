@@ -71,8 +71,11 @@ The "Release" build disables warnings and enables optimizations.
 You can install Parallax in your standard path using cmake.
 
 Run `cpack -G "RPM"` inside the `build` folder to create an RPM file.
+
 Run `cpack -G "DEB"` inside the `build` folder to create a DEB file.
+
 Run `sudo rpm -Uvh parallax.rpm` using the rpm file produced from the `cpack` command.
+
 Run `sudo dpkg -i parallax.deb` using the deb filed produced from the `cpack` command.
 
 Run `make install` inside the `build` folder to install Parallax without producing an RPM or DEB file.
