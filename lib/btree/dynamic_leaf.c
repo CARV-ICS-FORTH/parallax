@@ -13,8 +13,6 @@
 // limitations under the License.
 
 #include "dynamic_leaf.h"
-#include "../allocator/device_structures.h"
-#include "../allocator/volume_manager.h"
 #include "conf.h"
 #include "segment_allocator.h"
 #include <assert.h>
@@ -439,13 +437,12 @@ int check_dynamic_leaf_split(struct bt_dynamic_leaf_node *leaf, uint32_t leaf_si
 struct bt_rebalance_result split_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, uint32_t leaf_size, bt_insert_req *req)
 {
 	struct bt_rebalance_result rep;
-	struct bt_dynamic_leaf_node *leaf_copy, *left_leaf, *right_leaf, *old_leaf = leaf;
+	struct bt_dynamic_leaf_node *left_leaf, *right_leaf, *old_leaf = leaf;
 	struct bt_dynamic_leaf_slot_array *slot_array, *right_leaf_slot_array, *left_leaf_slot_array;
 	int level_id = req->metadata.level_id;
 	char *split_buffer = malloc(leaf_size);
 	char *key_buf, *leaf_log_tail;
 	level_descriptor *level = &req->metadata.handle->db_desc->levels[level_id];
-	volume_descriptor *volume_desc = req->metadata.handle->volume_desc;
 	struct db_descriptor *db_desc = req->metadata.handle->db_desc;
 	uint64_t i, j = 0;
 	uint32_t key_buf_size;
@@ -454,17 +451,6 @@ struct bt_rebalance_result split_dynamic_leaf(struct bt_dynamic_leaf_node *leaf,
 	validate_dynamic_leaf(leaf, level, 0, 0);
 	check_sorted_dynamic_leaf(leaf, leaf_size);
 #endif
-	if (leaf->header.epoch <= volume_desc->dev_catalogue->epoch) {
-		leaf_copy = seg_get_dynamic_leaf_node(db_desc, level_id, req->metadata.tree_id);
-		memcpy(leaf_copy, leaf, level->leaf_size);
-		leaf_copy->header.epoch = volume_desc->mem_catalogue->epoch;
-		leaf = leaf_copy;
-		seg_free_leaf_node(db_desc, level_id, req->metadata.tree_id, (leaf_node *)old_leaf);
-	}
-
-#ifdef DEBUG_DYNAMIC_LEAF
-	validate_dynamic_leaf(leaf, level, 0, 0);
-#endif
 
 	memcpy(split_buffer, leaf, leaf_size);
 	slot_array = get_slot_array_offset((struct bt_dynamic_leaf_node *)split_buffer);
@@ -472,7 +458,6 @@ struct bt_rebalance_result split_dynamic_leaf(struct bt_dynamic_leaf_node *leaf,
 	leaf = (struct bt_dynamic_leaf_node *)split_buffer;
 	/*Fix left leaf metadata*/
 	left_leaf->header.type = leafNode;
-	left_leaf->header.epoch = volume_desc->mem_catalogue->epoch;
 	left_leaf->header.num_entries = 0;
 	left_leaf->header.fragmentation = 0;
 	left_leaf->header.first_IN_log_header = NULL; /*unused field in leaves*/
@@ -614,24 +599,14 @@ struct bt_rebalance_result special_split_dynamic_leaf(struct bt_dynamic_leaf_nod
 						      bt_insert_req *req)
 {
 	struct bt_rebalance_result rep;
-	struct bt_dynamic_leaf_node *leaf_copy, *right_leaf, *old_leaf = leaf;
+	struct bt_dynamic_leaf_node *right_leaf, *old_leaf = leaf;
 	struct bt_dynamic_leaf_slot_array *slot_array, *right_leaf_slot_array;
 	int level_id = req->metadata.level_id;
 	char *key_buf, *leaf_log_tail;
-	level_descriptor *level = &req->metadata.handle->db_desc->levels[level_id];
-	volume_descriptor *volume_desc = req->metadata.handle->volume_desc;
 	struct db_descriptor *db_desc = req->metadata.handle->db_desc;
 	uint64_t split_point;
 	uint32_t key_buf_size;
 	/*cow check*/
-
-	if (leaf->header.epoch <= volume_desc->dev_catalogue->epoch) {
-		leaf_copy = seg_get_dynamic_leaf_node(db_desc, level_id, req->metadata.tree_id);
-		memcpy(leaf_copy, leaf, level->leaf_size);
-		leaf_copy->header.epoch = volume_desc->mem_catalogue->epoch;
-		leaf = leaf_copy;
-		seg_free_leaf_node(db_desc, level_id, req->metadata.tree_id, (leaf_node *)old_leaf);
-	}
 
 	slot_array = get_slot_array_offset(leaf);
 	rep.left_dlchild = leaf;
@@ -832,7 +807,6 @@ int reorganize_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, uint32_t leaf_siz
 	} else
 		assert(0);
 
-	assert(leaf->header.epoch > req->metadata.handle->volume_desc->dev_catalogue->epoch);
 	return 1;
 }
 
@@ -848,8 +822,6 @@ int8_t insert_in_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, bt_insert_req *
 							   .tombstone = req->metadata.tombstone };
 	struct dl_bsearch_result bsearch = { .middle = 0, .status = INSERT, .op = DYNAMIC_LEAF_INSERT };
 	char *leaf_log_tail = get_leaf_log_offset(leaf, level->leaf_size);
-
-	assert(leaf->header.epoch > req->metadata.handle->volume_desc->dev_catalogue->epoch);
 
 	if (unlikely(leaf->header.num_entries == 0))
 		leaf->header.leaf_log_size = 0;

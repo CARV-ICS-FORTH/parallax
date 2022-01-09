@@ -184,7 +184,6 @@ struct segment_header *get_segment_for_lsm_level_IO(struct db_descriptor *db_des
 
 index_node *seg_get_index_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id, char reason)
 {
-	struct volume_descriptor *volume_desc = db_desc->db_volume;
 	index_node *ptr;
 	IN_log_header *bh;
 
@@ -195,7 +194,6 @@ index_node *seg_get_index_node(struct db_descriptor *db_desc, uint8_t level_id, 
 	else
 		ptr->header.type = internalNode;
 
-	ptr->header.epoch = volume_desc->mem_catalogue->epoch;
 	ptr->header.num_entries = 0;
 	ptr->header.fragmentation = 0;
 
@@ -238,7 +236,6 @@ void seg_free_index_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_
 	(void)level_id;
 	(void)tree_id;
 	(void)inode;
-	return;
 #if 0
 	struct volume_descriptor *volume_desc = db_desc->my_volume;
 
@@ -270,11 +267,9 @@ void seg_free_index_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_
 leaf_node *seg_get_leaf_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
 {
 	struct level_descriptor *level_desc = &db_desc->levels[level_id];
-	struct volume_descriptor *volume_desc = db_desc->db_volume;
 	leaf_node *leaf = (leaf_node *)get_space(db_desc, level_id, tree_id, level_desc->leaf_size);
 
 	leaf->header.type = leafNode;
-	leaf->header.epoch = volume_desc->mem_catalogue->epoch;
 	leaf->header.num_entries = 0;
 	leaf->header.fragmentation = 0;
 
@@ -286,10 +281,9 @@ leaf_node *seg_get_leaf_node(struct db_descriptor *db_desc, uint8_t level_id, ui
 	return leaf;
 }
 
-struct bt_dynamic_leaf_node *init_leaf_node(struct bt_dynamic_leaf_node *leaf, volume_descriptor *volume_desc)
+struct bt_dynamic_leaf_node *init_leaf_node(struct bt_dynamic_leaf_node *leaf)
 {
 	leaf->header.type = leafNode;
-	leaf->header.epoch = volume_desc->mem_catalogue->epoch;
 	leaf->header.num_entries = 0;
 	leaf->header.fragmentation = 0;
 
@@ -303,16 +297,13 @@ struct bt_dynamic_leaf_node *init_leaf_node(struct bt_dynamic_leaf_node *leaf, v
 struct bt_dynamic_leaf_node *seg_get_dynamic_leaf_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
 {
 	struct level_descriptor *level_desc = &db_desc->levels[level_id];
-	struct volume_descriptor *volume_desc = db_desc->db_volume;
-	/*Pass tree_id in get_space*/
-	return init_leaf_node(get_space(db_desc, level_id, tree_id, level_desc->leaf_size), volume_desc);
+	return init_leaf_node(get_space(db_desc, level_id, tree_id, level_desc->leaf_size));
 }
 
 leaf_node *seg_get_leaf_node_header(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
 {
 	struct level_descriptor *level_desc = &db_desc->levels[level_id];
-	return (leaf_node *)init_leaf_node(get_space(db_desc, level_id, tree_id, level_desc->leaf_size),
-					   db_desc->db_volume);
+	return (leaf_node *)init_leaf_node(get_space(db_desc, level_id, tree_id, level_desc->leaf_size));
 }
 
 void seg_free_leaf_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id, leaf_node *leaf)
@@ -322,7 +313,6 @@ void seg_free_leaf_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t
 	(void)level_id;
 	(void)tree_id;
 	(void)leaf;
-	return;
 #if 0
 	struct level_descriptor *level_desc = &db_desc->levels[level_id];
 	free_block(db_desc->my_volume, leaf, level_desc->leaf_size);

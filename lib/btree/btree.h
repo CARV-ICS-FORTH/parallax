@@ -98,10 +98,7 @@ typedef struct IN_log_header {
 /*leaf or internal node metadata, place always in the first 4KB data block*/
 typedef struct node_header {
 	nodeType_t type; /*internal or leaf node*/
-	int32_t height; /*0 are leaves, 1 are Bottom Internal nodes, and then we have
-			  INs and root*/
-	uint64_t epoch; /*epoch of the node. It will be used for knowing when to
-                     perform copy on write*/
+	char pad1[4];
 	uint64_t fragmentation;
 	union {
 		/*data log info, KV log for leaves private for index*/
@@ -113,8 +110,8 @@ typedef struct node_header {
 	uint64_t num_entries;
 	IN_log_header *first_IN_log_header;
 	IN_log_header *last_IN_log_header;
-
-	char pad[8];
+	int32_t height; /*0 are leaves, 1 are Bottom Internal nodes, and then we have
+			  INs and root*/
 } __attribute__((packed)) node_header;
 
 typedef struct index_entry {

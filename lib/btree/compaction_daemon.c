@@ -250,13 +250,11 @@ static void comp_write_segment(char *buffer, uint64_t dev_offt, uint32_t buf_off
 		}
 		total_bytes_written += bytes_written;
 	}
-	return;
 }
 
-static void comp_init_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, struct volume_descriptor *volume_desc)
+static void comp_init_dynamic_leaf(struct bt_dynamic_leaf_node *leaf)
 {
 	leaf->header.type = leafNode;
-	leaf->header.epoch = volume_desc->mem_catalogue->epoch;
 	leaf->header.num_entries = 0;
 	leaf->header.fragmentation = 0;
 
@@ -467,7 +465,7 @@ static void comp_init_write_cursor(struct comp_level_write_cursor *c, struct db_
 			c->last_index[0] = NULL;
 			c->last_leaf =
 				(struct bt_dynamic_leaf_node *)&c->segment_buf[0][c->segment_offt[0] % SEGMENT_SIZE];
-			comp_init_dynamic_leaf(c->last_leaf, c->handle->volume_desc);
+			comp_init_dynamic_leaf(c->last_leaf);
 			c->segment_offt[0] += level_leaf_size;
 		} else {
 			c->last_index[i] = (struct index_node *)&c->segment_buf[i][c->segment_offt[i] % SEGMENT_SIZE];
@@ -475,7 +473,6 @@ static void comp_init_write_cursor(struct comp_level_write_cursor *c, struct db_
 			/*initialization*/
 			c->last_index[i]->header.type = internalNode;
 			c->last_index[i]->header.height = i;
-			c->last_index[i]->header.epoch = c->handle->volume_desc->mem_catalogue->epoch;
 			c->last_index[i]->header.num_entries = 0;
 			c->last_index[i]->header.fragmentation = 0;
 			/*private key log for index nodes*/
@@ -574,7 +571,7 @@ static void comp_get_space(struct comp_level_write_cursor *c, uint32_t height, n
 			c->segment_offt[0] += sizeof(struct segment_header);
 		}
 		c->last_leaf = (struct bt_dynamic_leaf_node *)(&c->segment_buf[0][(c->segment_offt[0] % SEGMENT_SIZE)]);
-		comp_init_dynamic_leaf(c->last_leaf, c->handle->volume_desc);
+		comp_init_dynamic_leaf(c->last_leaf);
 		c->segment_offt[0] += level_leaf_size;
 		break;
 	}
@@ -610,7 +607,6 @@ static void comp_get_space(struct comp_level_write_cursor *c, uint32_t height, n
 		/*initialization*/
 		c->last_index[height]->header.type = type;
 		c->last_index[height]->header.height = height;
-		c->last_index[height]->header.epoch = c->handle->volume_desc->mem_catalogue->epoch;
 		c->last_index[height]->header.num_entries = 0;
 		c->last_index[height]->header.fragmentation = 0;
 		/*private key log for index nodes*/
