@@ -86,7 +86,6 @@ static uint64_t link_memory_segments(struct link_segments_metadata *req)
 		prev_segment = NULL;
 	}
 
-	new_segment->in_mem = req->in_mem;
 	return level_desc->offset[tree_id] % SEGMENT_SIZE;
 }
 
@@ -459,7 +458,6 @@ uint64_t seg_free_level(struct db_descriptor *db_desc, uint64_t txn_id, uint8_t 
 		if (curr_segment->next_segment) {
 			while (curr_segment != NULL) {
 				/* log_info("COUNT  %d %llu", curr_segment->segment_id, curr_segment->next_segment); */
-				assert(curr_segment->in_mem);
 				free(curr_segment);
 				curr_segment = temp_segment;
 
