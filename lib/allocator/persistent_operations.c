@@ -709,6 +709,7 @@ start:
 	//	 cursor->log_size);
 
 	if (remaining_bytes_in_segment < sizeof(uint32_t) || 0 == *(uint32_t *)cursor->pos_in_segment) {
+		cursor->pos_in_segment += remaining_bytes_in_segment;
 		get_next_log_segment(cursor);
 		goto start;
 	}
