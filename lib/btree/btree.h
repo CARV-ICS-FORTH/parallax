@@ -210,9 +210,10 @@ enum bsearch_status { INSERT = 0, FOUND = 1, ERROR = 2 };
 #define LEVEL6_LEAF_SIZE (PAGE_SIZE * 2)
 #define LEVEL7_LEAF_SIZE (PAGE_SIZE * 2)
 
+//TODO: Replace splice with another structure to avoid duplication
 struct splice {
 	uint32_t size;
-	char data[0];
+	char data[];
 };
 
 /*
@@ -289,6 +290,7 @@ struct bt_kv_log_address {
 	uint8_t in_tail;
 	uint8_t tail_id;
 };
+
 struct bt_kv_log_address bt_get_kv_medium_log_address(struct log_descriptor *log_desc, uint64_t dev_offt);
 struct bt_kv_log_address bt_get_kv_log_address(struct log_descriptor *log_desc, uint64_t dev_offt);
 void bt_done_with_value_log_address(struct log_descriptor *log_desc, struct bt_kv_log_address *L);
