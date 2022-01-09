@@ -1041,7 +1041,8 @@ static void add_log_entry(volume_descriptor *volume_desc, void *address, uint32_
 
 	MUTEX_LOCK(&volume_desc->free_log_lock);
 
-	uint64_t dev_offt = (uint64_t)address - MAPPED;
+	uint64_t dev_offt = (uint64_t)ABSOLUTE_ADDRESS(address);
+
 	while (1) {
 		uint64_t next_pos = volume_desc->mem_catalogue->free_log_position % free_log_size;
 		uint64_t last_free = volume_desc->mem_catalogue->free_log_last_free % free_log_size;
@@ -1064,18 +1065,5 @@ static void add_log_entry(volume_descriptor *volume_desc, void *address, uint32_
 
 void free_block(struct volume_descriptor *volume_desc, void *address, uint32_t length)
 {
-	// assert(length == SEGMENT_SIZE);
-	// uint64_t pageno = ((uint64_t)address - MAPPED) / DEVICE_BLOCK_SIZE;
-	// int32_t num_of_pages = length / 4096;
-	// int32_t i;
-	// assert((uint64_t)address >= MAPPED &&
-	//      (uint64_t)address <= (MAPPED + volume_desc->size));
 	add_log_entry(volume_desc, address, length);
-
-	// for (i = 0; i < num_of_pages; i++) {
-	// printf("[%s:%s:%d] reducing priority of pageno
-	//%llu\n",__FILE__,__func__,__LINE__,(long long unsigned)pageno);
-	// dmap_change_page_priority(FD, pageno, 10);
-	// pageno++;
-	//}
 }

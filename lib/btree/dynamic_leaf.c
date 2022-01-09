@@ -79,8 +79,7 @@ void fill_prefix(struct prefix *key, char *key_loc, enum kv_entry_location key_t
 		break;
 	}
 	case KV_INLOG:
-		key->prefix = ((struct bt_leaf_entry *)key_loc)
-				      ->prefix; //((*(uint64_t*) key_loc) + MAPPED) + 4 /* + sizeof(uint64_t) */;
+		key->prefix = ((struct bt_leaf_entry *)key_loc)->prefix;
 		key->len = PREFIX_SIZE;
 		break;
 	default:
@@ -128,6 +127,7 @@ struct find_result find_key_in_dynamic_leaf(const struct bt_dynamic_leaf_node *l
 	binary_search_dynamic_leaf(leaf, leaf_size, &req, &result);
 
 	ret_result.tombstone = result.tombstone;
+
 	switch (result.status) {
 	case FOUND:
 		switch (slot_array[result.middle].kv_loc) {
@@ -188,10 +188,10 @@ void binary_search_dynamic_leaf(const struct bt_dynamic_leaf_node *leaf, uint32_
 			fill_prefix(&leaf_key_prefix, get_kv_offset(leaf, leaf_size, offset_in_leaf),
 				    slot_array[middle].kv_loc);
 		}
+
 		if (req->metadata.key_format == KV_PREFIX) {
-			ret = prefix_compare(leaf_key_prefix.prefix, req->key_value_buf,
-					     PREFIX_SIZE /* MIN(leaf_key_prefix.len, key_buf->size) */
-			);
+			ret = prefix_compare(leaf_key_prefix.prefix, req->key_value_buf, PREFIX_SIZE);
+
 		} else {
 			if (*(uint32_t *)req->key_value_buf < PREFIX_SIZE) {
 				kv_size_in_leaf = strlen(leaf_key_prefix.prefix) + 1;
@@ -209,13 +209,9 @@ void binary_search_dynamic_leaf(const struct bt_dynamic_leaf_node *leaf, uint32_
 					ret = prefix_compare(leaf_key_prefix.prefix, padded_qkey_prefix, PREFIX_SIZE);
 				}
 			} else {
-				ret = prefix_compare(leaf_key_prefix.prefix, req->key_value_buf + 4,
-						     PREFIX_SIZE /* MIN(leaf_key_prefix.len, key_buf->size) */);
+				ret = prefix_compare(leaf_key_prefix.prefix, req->key_value_buf + 4, PREFIX_SIZE);
 			}
 		}
-
-		/* log_info("%d %*s %*s",ret
-     * ,PREFIX_SIZE,leaf_key_prefix.prefix,PREFIX_SIZE,req->key_value_buf+4); */
 
 		ret_case = ret < 0 ? LESS_THAN_ZERO : ret > 0 ? GREATER_THAN_ZERO : EQUAL_TO_ZERO;
 		struct bt_kv_log_address L = { .addr = NULL, .in_tail = 0, .tail_id = UINT8_MAX };
@@ -223,44 +219,34 @@ void binary_search_dynamic_leaf(const struct bt_dynamic_leaf_node *leaf, uint32_
 		if (ret_case == EQUAL_TO_ZERO) {
 			char *kv_offset = get_kv_offset(leaf, leaf_size, offset_in_leaf);
 
-			//medium log tail stub
-			if (req->translate_medium_log && req->metadata.level_id == 1 &&
-			    slot_array[middle].key_category == MEDIUM_INLOG) {
-				exit(EXIT_FAILURE); //Dead with direct I/O compactions
-				struct bt_leaf_entry *kv = (struct bt_leaf_entry *)kv_offset;
-				//log_info("Searching tail of medium log");
-				L = bt_get_kv_medium_log_address(&req->metadata.handle->db_desc->medium_log,
-								 kv->pointer);
-				leaf_key_buf = L.addr;
-			} else {
+			leaf_key_buf = fill_keybuf(kv_offset, slot_array[middle].kv_loc);
+			switch (slot_array[middle].key_category) {
+#if MEDIUM_LOG_UNSORTED
+			case MEDIUM_INLOG:
+				if (req->metadata.level_id)
+					L.addr = (void *)leaf_key_buf;
+				else
+					L = bt_get_kv_log_address(&req->metadata.handle->db_desc->medium_log,
+								  ABSOLUTE_ADDRESS(leaf_key_buf));
+				L.log_desc = &req->metadata.handle->db_desc->medium_log;
+				break;
+#endif
 				//Stub for big log direct IO, this function is called now
 				//only in L0
-				leaf_key_buf = fill_keybuf(kv_offset, slot_array[middle].kv_loc);
-				switch (slot_array[middle].key_category) {
-#if MEDIUM_LOG_UNSORTED
-				case MEDIUM_INLOG:
-					if (req->metadata.level_id)
-						L.addr = (void *)leaf_key_buf;
-					else
-						L = bt_get_kv_log_address(&req->metadata.handle->db_desc->medium_log,
-									  ABSOLUTE_ADDRESS(leaf_key_buf));
-					L.log_desc = &req->metadata.handle->db_desc->medium_log;
-					break;
-#endif
-				case BIG_INLOG:
-					if (req->metadata.level_id)
-						L.addr = (void *)leaf_key_buf;
-					else
-						L = bt_get_kv_log_address(&req->metadata.handle->db_desc->big_log,
-									  ABSOLUTE_ADDRESS(leaf_key_buf));
-					L.log_desc = &req->metadata.handle->db_desc->big_log;
+			case BIG_INLOG:
+				if (req->metadata.level_id)
+					L.addr = (void *)leaf_key_buf;
+				else
+					L = bt_get_kv_log_address(&req->metadata.handle->db_desc->big_log,
+								  ABSOLUTE_ADDRESS(leaf_key_buf));
+				L.log_desc = &req->metadata.handle->db_desc->big_log;
 
-					break;
-				default:
-					L.addr = leaf_key_buf;
-					break;
-				}
+				break;
+			default:
+				L.addr = leaf_key_buf;
+				break;
 			}
+
 			switch (req->metadata.key_format) {
 			case KV_PREFIX: {
 				struct bt_leaf_entry *kv_entry = (struct bt_leaf_entry *)req->key_value_buf;
@@ -319,15 +305,16 @@ void binary_search_dynamic_leaf(const struct bt_dynamic_leaf_node *leaf, uint32_
 	}
 }
 
-#if 0
+#ifdef DEBUG_DYNAMIC_LEAF
 void print_all_keys(const struct bt_dynamic_leaf_node *leaf, uint32_t leaf_size)
 {
 	struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(leaf);
 	/* log_info("number of entries %d", leaf->header.num_entries); */
 	assert(leaf->header.num_entries < 500);
 	for (unsigned i = 0; i < leaf->header.num_entries; ++i) {
-		char *key = fill_keybuf(get_kv_offset(leaf, leaf_size, slot_array[i].index), slot_array[i].bitmap);
+		char *key = fill_keybuf(get_kv_offset(leaf, leaf_size, slot_array[i].index), slot_array[i].kv_loc);
 		assert(KEY_SIZE(key) < 30);
+		log_debug("Key %*s", KEY_SIZE(key), key + 4);
 		/* log_info("offset in leaf %d ADDR %llu Size%d key %s\n", slot_array[i].index, get_kv_offset(leaf, leaf_size, slot_array[i].index),KEY_SIZE(key), key + 4); */
 	}
 	/* log_info("--------------------------------------------"); */
@@ -400,11 +387,7 @@ uint32_t append_bt_leaf_entry_inplace(char *dest, uint64_t pointer, char *prefix
 	*(uint64_t *)dest = pointer;
 	dest -= prefix_size;
 	memcpy(dest, prefix, prefix_size);
-	/* log_info("dest %llu",dest); */
-	/* log_info("ADDR %llu pointer %llu",dest,pointer); */
-	/* memcpy(dest, &pointer, sizeof(pointer)); */
-	/* log_info("%d %s %s",*(uint32_t*) (*(uint64_t*)dest + MAPPED),prefix,((char
-   * *)(*(uint64_t*)dest + MAPPED) + 4)); */
+
 	return prefix_size + sizeof(pointer);
 }
 
@@ -585,7 +568,9 @@ struct bt_rebalance_result split_dynamic_leaf(struct bt_dynamic_leaf_node *leaf,
 	} else
 		rep.stat = LEAF_NODE_SPLITTED;
 #ifdef DEBUG_DYNAMIC_LEAF
+	log_debug("left leaf");
 	print_all_keys(left_leaf, leaf_size);
+	log_debug("right leaf");
 	print_all_keys(right_leaf, leaf_size);
 #endif
 
