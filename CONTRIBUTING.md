@@ -11,11 +11,11 @@ Please note we have a code of conduct, please follow it in all your interactions
 
 2. Create a branch deriving as base from master branch.
 
-3. If you develop in the cluster append in your PATH the paths mentioned in the [README.md](https://carvgit.ics.forth.gr/evolve/kreon#development-in-cluster) and install [shfmt](https://carvgit.ics.forth.gr/evolve/kreon#install-shfmt).
+3. If you develop in the cluster append in your PATH the paths mentioned in the [README.md](https://github.com/CARV-ICS-FORTH/parallax/blob/master/docs/Development.md#development-in-cluster) and install [shfmt](https://github.com/CARV-ICS-FORTH/parallax/blob/master/docs/Development.md#install-shfmt).
 
-4. Install [pre-commit](https://pre-commit.com/) hooks as described in the [README.md](https://carvgit.ics.forth.gr/evolve/kreon#pre-commit-hooks-using-pre-commit).
+4. Install [pre-commit](https://pre-commit.com/) hooks as described in the [README.md](https://github.com/CARV-ICS-FORTH/parallax/blob/master/docs/Development.md#pre-commit-hooks-using-pre-commit).
 
-5. Install the [git commit template](https://carvgit.ics.forth.gr/evolve/kreon/blob/master/.git-commit-template) as described in the [README.md](https://carvgit.ics.forth.gr/evolve/kreon#git-commit-message-template).
+5. Install the [git commit template](https://github.com/CARV-ICS-FORTH/parallax/blob/master/.git-commit-template) as described in the [README.md](https://github.com/CARV-ICS-FORTH/parallax/blob/master/docs/Development.md#commit-message-template).
 
 6. It is your responsibility to synchronize your branch with master branch by rebasing/merging whenever master is updated.
 

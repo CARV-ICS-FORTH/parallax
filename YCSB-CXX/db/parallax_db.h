@@ -33,7 +33,6 @@
 #include <sys/types.h>
 __thread int x = 0;
 //#include "core/properties.h"
-extern unsigned priv_thread_count;
 extern std::string path;
 extern std::string custom_workload;
 extern "C" {

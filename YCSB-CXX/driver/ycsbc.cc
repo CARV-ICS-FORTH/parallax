@@ -30,8 +30,8 @@
 
 using namespace std;
 
-unsigned priv_thread_count;
 int db_num = 1;
+std::string produce_statistics = "off";
 ofstream ofil;
 #ifdef COMPUTE_TAIL
 Measurements *tail = nullptr;
@@ -326,16 +326,20 @@ int main(const int argc, const char *argv[])
 		getcwd(path, 256);
 		std::cout << "workload_file_path = " << path << '/' << c << std::endl;
 		read_workload_file(c.c_str(), props);
-		std::string tmp = create_directory + space + results_directory + slash + a;
-		system(tmp.c_str());
-		std::string outfilename = results_directory + slash + a + slash + outf;
-		ofil.open(outfilename);
-		if (ofil.fail()) {
-			std::cerr << "ERROR: Failed to open output file " << outfilename << std::endl;
-			exit(-1);
+		std::string tmp;
+
+		if (produce_statistics != "off") {
+			tmp = create_directory + space + results_directory + slash + a;
+			system(tmp.c_str());
+			std::string outfilename = results_directory + slash + a + slash + outf;
+			ofil.open(outfilename);
+			if (ofil.fail()) {
+				std::cerr << "ERROR: Failed to open output file " << outfilename << std::endl;
+				exit(-1);
+			}
+			tmp = start_stats + results_directory + slash + a;
+			system(tmp.c_str());
 		}
-		tmp = start_stats + results_directory + slash + a;
-		system(tmp.c_str());
 
 		if (b == "load")
 			execute_load(props, db);
@@ -344,10 +348,13 @@ int main(const int argc, const char *argv[])
 		else
 			assert(0);
 
-		tmp = stop_stats + results_directory + slash + a;
-		system(tmp.c_str());
-		system("date");
-		ofil.close();
+		if (produce_statistics != "off") {
+			tmp = stop_stats + results_directory + slash + a;
+			system(tmp.c_str());
+
+			system("date");
+			ofil.close();
+		}
 	}
 
 	// deallocate the db
@@ -455,6 +462,15 @@ void ParseCommandLine(int argc, const char *argv[], utils::Properties &props)
 			}
 			outf = std::string(argv[argindex]);
 			argindex++;
+		} else if (strcmp(argv[argindex], "-stats") == 0) {
+			argindex++;
+			if (argindex >= argc) {
+				UsageMessage(argv[0]);
+				exit(-1);
+			}
+			produce_statistics = std::string(argv[argindex]);
+			std::cerr << produce_statistics << std::endl;
+			argindex++;
 		} else {
 			cout << "Unknown option " << argv[argindex] << endl;
 			exit(0);
@@ -482,6 +498,8 @@ void UsageMessage(const char *command)
 	cout << "  -insertStart     Set counter start value for key generation during load." << endl;
 	cout << "  -clientProcesses Set to the number of client processes (default = 1)." << endl;
 	cout << "  -outFile         Set name of ycsb log file (default = ops.txt)." << endl;
+	cout << "  -stats           Set it to on/off to produce or not the YCSB statistics in the RESULTS folder."
+	     << endl;
 }
 
 inline bool StrStartWith(const char *str, const char *pre)
