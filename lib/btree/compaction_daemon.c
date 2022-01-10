@@ -1240,9 +1240,9 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 		//snapshot(comp_req->volume_desc); // --> This is for recovery I think;
 		RWLOCK_WRLOCK(&handle->db_desc->levels[0].guard_of_level.rx_lock);
 		spin_loop(&handle->db_desc->levels[0].active_writers, 0);
-		pr_flush_log_tail(comp_req->db_desc, comp_req->volume_desc, &comp_req->db_desc->big_log);
+		pr_flush_log_tail(comp_req->db_desc, &comp_req->db_desc->big_log);
 #if MEDIUM_LOG_UNSORTED
-		pr_flush_log_tail(comp_req->db_desc, comp_req->volume_desc, &comp_req->db_desc->medium_log);
+		pr_flush_log_tail(comp_req->db_desc, &comp_req->db_desc->medium_log);
 #endif
 		RWLOCK_UNLOCK(&handle->db_desc->levels[0].guard_of_level.rx_lock);
 
@@ -1458,7 +1458,7 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 #if !MEDIUM_LOG_UNSORTED
 	if (comp_req->dst_level == 1) {
 		log_info("Flushing medium log");
-		pr_flush_log_tail(comp_req->db_desc, comp_req->volume_desc, &comp_req->db_desc->medium_log);
+		pr_flush_log_tail(comp_req->db_desc, &comp_req->db_desc->medium_log);
 	}
 #endif
 	/*Finally persist compaction */
