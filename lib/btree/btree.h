@@ -379,9 +379,7 @@ struct recovery_operator {
 	struct log_recovery_metadata medium;
 	struct log_recovery_metadata small;
 };
-#define NUMBER_OF_LOGS 3
 
-void recover_region(recovery_request *rh);
 void snapshot(volume_descriptor *volume_desc);
 void pr_flush_log_tail(struct db_descriptor *db_desc, struct volume_descriptor *volume_desc,
 		       struct log_descriptor *log_desc);
@@ -525,22 +523,6 @@ struct log_sequence_number {
 	uint64_t id;
 };
 
-struct siblings_index_entries {
-	index_entry *left_entry;
-	index_entry *right_entry;
-	int left_pos;
-	int right_pos;
-};
-
-typedef struct spill_data_totrigger {
-	db_descriptor *db_desc;
-	uint64_t prev_level_size;
-	int prev_active_tree;
-	int active_tree;
-	uint level_id;
-	int tree_to_spill;
-} spill_data_totrigger;
-
 uint8_t insert_key_value(db_handle *handle, void *key, void *value, uint32_t key_size, uint32_t value_size,
 			 request_type op_type);
 uint8_t _insert_key_value(bt_insert_req *ins_req);
@@ -551,8 +533,6 @@ int8_t delete_key(db_handle *handle, void *key, uint32_t size);
 
 int64_t key_cmp(void *index_key_buf, void *query_key_buf, char index_key_format, char query_key_format);
 int prefix_compare(char *l, char *r, size_t unused);
-
-void free_buffered(void *_handle, void *address, uint32_t num_bytes, int height);
 
 /*functions used from other parts except btree/btree.c*/
 
