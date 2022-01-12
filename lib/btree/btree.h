@@ -65,8 +65,8 @@ typedef enum {
 
 /*descriptor describing a spill operation and its current status*/
 typedef enum {
-	NO_SPILLING = 0,
-	SPILLING_IN_PROGRESS = 1,
+	NO_COMPACTION = 0,
+	COMPACTION_IN_PROGRESS = 1,
 } level_0_tree_status;
 
 enum parallax_status { PARALLAX_SUCCESS = 102, PARALLAX_FAILURE = 108 };

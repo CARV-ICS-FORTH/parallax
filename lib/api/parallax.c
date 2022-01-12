@@ -212,7 +212,18 @@ init_seek_key:
 
 init_scanner:
 	sc = (struct scannerHandle *)calloc(1, sizeof(struct scannerHandle));
+
+	if (!sc) {
+		log_fatal("Calloc did not return memory!");
+		return NULL;
+	}
+
 	par_s = (struct par_scanner *)calloc(1, sizeof(struct par_scanner));
+	if (!par_s) {
+		log_fatal("Calloc did not return memory!");
+		return NULL;
+	}
+
 	sc->type_of_scanner = FORWARD_SCANNER;
 	init_dirty_scanner(sc, hd, seek_key, native_mode);
 	par_s->sc = sc;
