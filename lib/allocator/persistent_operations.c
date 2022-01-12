@@ -411,7 +411,7 @@ void pr_flush_log_tail(struct db_descriptor *db_desc, struct volume_descriptor *
 	}
 }
 
-#define PR_CURSOR_MAX_SEGMENTS_SIZE 1
+#define PR_CURSOR_MAX_SEGMENTS_SIZE 64
 
 struct segment_array {
 	uint64_t *segments;
@@ -442,21 +442,29 @@ static struct segment_array *find_N_last_small_log_segments(struct db_descriptor
 	/*traverse small log and fill the segment array*/
 	log_info("Recovery of small log start from segment dev offt: %llu", db_desc->small_log_start_segment_dev_offt);
 	struct segment_header *first_recovery_segment = REAL_ADDRESS(db_desc->small_log_start_segment_dev_offt);
-	struct segment_array *segments = calloc(1, sizeof(struct segment_array));
-	segments->segments = calloc(PR_CURSOR_MAX_SEGMENTS_SIZE, sizeof(uint64_t));
-	segments->size = PR_CURSOR_MAX_SEGMENTS_SIZE;
+	struct segment_array *segment_array = calloc(1, sizeof(struct segment_array));
+
+	if (!segment_array) {
+		log_fatal("Calloc did not return memory");
+		exit(EXIT_FAILURE);
+	}
+
+	segment_array->segments = calloc(PR_CURSOR_MAX_SEGMENTS_SIZE, sizeof(uint64_t));
+	if (!segment_array->segments) {
+		log_fatal("Calloc did not return memory");
+		exit(EXIT_FAILURE);
+	}
+
+	segment_array->size = PR_CURSOR_MAX_SEGMENTS_SIZE;
+	segment_array->entry_id = PR_CURSOR_MAX_SEGMENTS_SIZE - 1;
 
 	for (struct segment_header *segment = REAL_ADDRESS(db_desc->small_log.tail_dev_offt);
 	     segment != first_recovery_segment; segment = REAL_ADDRESS(segment->prev_segment)) {
-		//log_info("First recovery segment: %llu Head: %llu Tail: %llu curr segment %llu", first_recovery_segment,
-		//	 REAL_ADDRESS(db_desc->small_log.head_dev_offt), REAL_ADDRESS(db_desc->small_log.tail_dev_offt),
-		//	 segment);
-		add_segment_in_array(segments, ABSOLUTE_ADDRESS(segment));
+		add_segment_in_array(segment_array, ABSOLUTE_ADDRESS(segment));
 	}
-	//log_info("Adding finally %llu", first_recovery_segment);
-	add_segment_in_array(segments, ABSOLUTE_ADDRESS(first_recovery_segment));
+	add_segment_in_array(segment_array, ABSOLUTE_ADDRESS(first_recovery_segment));
 
-	return segments;
+	return segment_array;
 }
 
 static struct segment_array *find_N_last_blobs(struct db_descriptor *db_desc, uint64_t start_segment_offt)
@@ -474,6 +482,7 @@ static struct segment_array *find_N_last_blobs(struct db_descriptor *db_desc, ui
 	struct segment_array *segments = calloc(1, sizeof(struct segment_array));
 	segments->segments = calloc(PR_CURSOR_MAX_SEGMENTS_SIZE, sizeof(uint64_t));
 	segments->size = PR_CURSOR_MAX_SEGMENTS_SIZE;
+	segments->entry_id = PR_CURSOR_MAX_SEGMENTS_SIZE - 1;
 	uint32_t start_tracing_segments = 0;
 
 	struct blob_entry *b_entry;
@@ -530,12 +539,12 @@ static struct segment_array *find_N_last_blobs(struct db_descriptor *db_desc, ui
 struct par_key {
 	uint32_t key_size;
 	char key_data[];
-};
+} __attribute__((packed));
 
 struct par_value {
 	uint32_t value_size;
 	char value_data[];
-};
+} __attribute__((packed));
 
 struct kv_entry {
 	uint64_t lsn;
@@ -549,28 +558,36 @@ struct log_cursor {
 	uint64_t log_size;
 	struct segment_array *log_segments;
 	struct segment_header *curr_segment;
-	char *pos_in_segment;
+	uint64_t offt_in_segment;
 	enum log_type type;
 	uint8_t valid;
 	uint8_t tombstone : 1;
 };
 
+static char *get_cursor_addr(struct log_cursor *cursor)
+{
+	char *pos_in_segment = (char *)((uint64_t)cursor->curr_segment + cursor->offt_in_segment);
+	return pos_in_segment;
+}
+
 void prepare_cursor_op(struct log_cursor *cursor)
 {
-	cursor->entry.lsn = *(uint64_t *)cursor->pos_in_segment;
-	cursor->pos_in_segment += sizeof(uint64_t);
-	struct bt_delete_marker *dm = (struct bt_delete_marker *)cursor->pos_in_segment;
+	cursor->entry.lsn = *(uint64_t *)get_cursor_addr(cursor);
+	cursor->offt_in_segment += sizeof(uint64_t);
+	struct bt_delete_marker *dm = (struct bt_delete_marker *)get_cursor_addr(cursor);
 
 	if (dm->marker_id != BT_DELETE_MARKER_ID) {
-		cursor->entry.p_key = (struct par_key *)cursor->pos_in_segment;
-		cursor->pos_in_segment += (sizeof(struct par_key) + cursor->entry.p_key->key_size);
-		cursor->entry.p_value = (struct par_value *)cursor->pos_in_segment;
-		cursor->pos_in_segment += (sizeof(struct par_value) + cursor->entry.p_value->value_size);
+		cursor->entry.p_key = (struct par_key *)get_cursor_addr(cursor);
+		assert(cursor->entry.p_key->key_size < 30);
+		cursor->offt_in_segment += (sizeof(struct par_key) + cursor->entry.p_key->key_size);
+		cursor->entry.p_value = (struct par_value *)get_cursor_addr(cursor);
+		assert(cursor->entry.p_value->value_size <= 2000);
+		cursor->offt_in_segment += (sizeof(struct par_value) + cursor->entry.p_value->value_size);
 		cursor->tombstone = 0;
 	} else {
-		cursor->pos_in_segment += sizeof(dm->marker_id);
-		cursor->entry.p_key = (struct par_key *)cursor->pos_in_segment;
-		cursor->pos_in_segment += (sizeof(struct par_key) + cursor->entry.p_key->key_size);
+		cursor->offt_in_segment += sizeof(dm->marker_id);
+		cursor->entry.p_key = (struct par_key *)get_cursor_addr(cursor);
+		cursor->offt_in_segment += (sizeof(struct par_key) + cursor->entry.p_key->key_size);
 		cursor->tombstone = 1;
 	}
 }
@@ -586,11 +603,10 @@ static void init_pos_log_cursor_in_segment(struct log_cursor *cursor)
 	cursor->valid = 1;
 	cursor->curr_segment = REAL_ADDRESS(cursor->log_segments->segments[cursor->log_segments->entry_id]);
 	assert(cursor->curr_segment);
-	cursor->pos_in_segment = (char *)cursor->curr_segment;
 
 	/*Cornercases*/
 	if (SMALL_LOG == cursor->type) {
-		cursor->pos_in_segment = &cursor->pos_in_segment[sizeof(struct segment_header)];
+		cursor->offt_in_segment = sizeof(struct segment_header);
 		if (cursor->curr_segment == REAL_ADDRESS(cursor->log_tail_dev_offt)) {
 			if (cursor->log_size % SEGMENT_SIZE == sizeof(struct segment_header)) {
 				/*Nothing to parse*/
@@ -601,6 +617,7 @@ static void init_pos_log_cursor_in_segment(struct log_cursor *cursor)
 			}
 		}
 	} else if (BIG_LOG == cursor->type) {
+		cursor->offt_in_segment = 0;
 		if (cursor->curr_segment == REAL_ADDRESS(cursor->log_tail_dev_offt)) {
 			if (cursor->log_size == 0) {
 				/*Nothing to parse*/
@@ -618,7 +635,13 @@ static void init_pos_log_cursor_in_segment(struct log_cursor *cursor)
 static struct log_cursor *init_log_cursor(struct db_descriptor *db_desc, enum log_type type)
 {
 	struct log_cursor *cursor = calloc(1, sizeof(struct log_cursor));
+
+	if (!cursor) {
+		log_fatal("Malloc did not return memory for the cursor!");
+		exit(EXIT_FAILURE);
+	}
 	cursor->type = type;
+
 	switch (cursor->type) {
 	case BIG_LOG:
 		cursor->log_tail_dev_offt = db_desc->big_log.tail_dev_offt;
@@ -642,6 +665,7 @@ static struct log_cursor *init_log_cursor(struct db_descriptor *db_desc, enum lo
 	}
 
 	init_pos_log_cursor_in_segment(cursor);
+
 	return cursor;
 }
 
@@ -656,7 +680,6 @@ static void get_next_log_segment(struct log_cursor *cursor)
 {
 	switch (cursor->type) {
 	case BIG_LOG:
-
 		--cursor->log_segments->entry_id;
 		//log_info("BIG LOG entry id: %d n_entries: %u size : %u", cursor->log_segments->entry_id,
 		//	 cursor->log_segments->n_entries, cursor->log_segments->size);
@@ -666,7 +689,7 @@ static void get_next_log_segment(struct log_cursor *cursor)
 			return;
 		}
 		cursor->curr_segment = REAL_ADDRESS(cursor->log_segments->segments[cursor->log_segments->entry_id]);
-		cursor->pos_in_segment = (char *)cursor->curr_segment;
+		cursor->offt_in_segment = 0;
 		break;
 	case SMALL_LOG:
 		++cursor->log_segments->entry_id;
@@ -675,9 +698,8 @@ static void get_next_log_segment(struct log_cursor *cursor)
 			cursor->valid = 0;
 			return;
 		}
-
 		cursor->curr_segment = REAL_ADDRESS(cursor->log_segments->segments[cursor->log_segments->entry_id]);
-		cursor->pos_in_segment = (char *)cursor->curr_segment + sizeof(struct segment_header);
+		cursor->offt_in_segment = sizeof(struct segment_header);
 		break;
 	default:
 		log_fatal("Unhandled cursor type");
@@ -696,20 +718,19 @@ start:
 	/*Are there enough bytes in segment?*/
 
 	uint32_t remaining_bytes_in_segment;
-	int is_tail;
-	is_tail = (cursor->curr_segment == REAL_ADDRESS(cursor->log_tail_dev_offt)) ? 1 : 0;
+	int is_tail = cursor->curr_segment == REAL_ADDRESS(cursor->log_tail_dev_offt);
+
 	if (is_tail)
-		remaining_bytes_in_segment =
-			(cursor->log_size % SEGMENT_SIZE) - ((uint64_t)cursor->pos_in_segment % SEGMENT_SIZE);
+		remaining_bytes_in_segment = (cursor->log_size % SEGMENT_SIZE) - ((uint64_t)cursor->offt_in_segment);
 	else
-		remaining_bytes_in_segment = SEGMENT_SIZE - ((uint64_t)cursor->pos_in_segment % SEGMENT_SIZE);
+		remaining_bytes_in_segment = SEGMENT_SIZE - ((uint64_t)cursor->offt_in_segment);
 
 	//log_info("Remaining bytes in segment are %u pos normalized %llu is_tail?: %d log size: %llu",
 	//	 remaining_bytes_in_segment, (uint64_t)cursor->pos_in_segment % SEGMENT_SIZE, is_tail,
 	//	 cursor->log_size);
-
-	if (remaining_bytes_in_segment < sizeof(uint32_t) || 0 == *(uint32_t *)cursor->pos_in_segment) {
-		cursor->pos_in_segment += remaining_bytes_in_segment;
+	char *pos_in_segment = get_cursor_addr(cursor);
+	if (remaining_bytes_in_segment < sizeof(uint32_t) || 0 == *(uint32_t *)pos_in_segment) {
+		cursor->offt_in_segment += remaining_bytes_in_segment;
 		get_next_log_segment(cursor);
 		goto start;
 	}
@@ -722,29 +743,29 @@ start:
 void recover_L0(struct db_descriptor *db_desc)
 {
 	db_handle hd = { .db_desc = db_desc, .volume_desc = db_desc->db_volume };
-	struct log_cursor *cursor[2];
+	struct log_cursor *cursor[LOG_TYPES_COUNT];
 
-	cursor[0] = init_log_cursor(db_desc, SMALL_LOG);
-	log_info("Small log cursor status: %u", cursor[0]->valid);
-	cursor[1] = init_log_cursor(db_desc, BIG_LOG);
-	log_info("Big log cursor status: %u", cursor[1]->valid);
+	cursor[SMALL_LOG] = init_log_cursor(db_desc, SMALL_LOG);
+	log_info("Small log cursor status: %u", cursor[SMALL_LOG]->valid);
+	cursor[BIG_LOG] = init_log_cursor(db_desc, BIG_LOG);
+	log_info("Big log cursor status: %u", cursor[BIG_LOG]->valid);
 
-	struct kv_entry *kvs[2];
-	kvs[0] = &cursor[0]->entry;
-	kvs[1] = &cursor[1]->entry;
+	struct kv_entry *kvs[LOG_TYPES_COUNT];
+	kvs[SMALL_LOG] = &cursor[SMALL_LOG]->entry;
+	kvs[BIG_LOG] = &cursor[BIG_LOG]->entry;
 
-	int choice;
+	enum log_type choice;
 	while (1) {
-		if (!cursor[0]->valid && !cursor[1]->valid)
+		if (!cursor[SMALL_LOG]->valid && !cursor[BIG_LOG]->valid)
 			break;
-		else if (!cursor[0]->valid)
-			choice = 1;
-		else if (!cursor[1]->valid)
-			choice = 0;
-		else if (cursor[0]->entry.lsn < cursor[1]->entry.lsn)
-			choice = 0;
+		else if (!cursor[SMALL_LOG]->valid)
+			choice = BIG_LOG;
+		else if (!cursor[BIG_LOG]->valid)
+			choice = SMALL_LOG;
+		else if (cursor[SMALL_LOG]->entry.lsn < cursor[BIG_LOG]->entry.lsn)
+			choice = SMALL_LOG;
 		else
-			choice = 1;
+			choice = BIG_LOG;
 
 		if (cursor[choice]->type == SMALL_LOG && cursor[choice]->tombstone)
 			insert_key_value(&hd, kvs[choice]->p_key->key_data, "empty", kvs[choice]->p_key->key_size, 0,
@@ -757,6 +778,6 @@ void recover_L0(struct db_descriptor *db_desc)
 
 		kvs[choice] = get_next_log_entry(cursor[choice]);
 	}
-	close_log_cursor(cursor[0]);
-	close_log_cursor(cursor[1]);
+	close_log_cursor(cursor[SMALL_LOG]);
+	close_log_cursor(cursor[BIG_LOG]);
 }

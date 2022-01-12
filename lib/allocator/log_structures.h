@@ -17,7 +17,7 @@
 #include <pthread.h>
 #include <stdint.h>
 
-enum log_type { BIG_LOG, MEDIUM_LOG, SMALL_LOG };
+enum log_type { SMALL_LOG = 0, MEDIUM_LOG, BIG_LOG, LOG_TYPES_COUNT };
 struct log_tail {
 	char buf[SEGMENT_SIZE];
 	uint32_t bytes_in_chunk[SEGMENT_SIZE / LOG_CHUNK_SIZE];
