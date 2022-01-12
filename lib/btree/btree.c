@@ -743,7 +743,7 @@ db_handle *internal_db_open(struct volume_descriptor *volume_desc, uint64_t star
 		db_desc->levels[level_id].count_compactions = 0;
 #endif
 		for (uint8_t tree_id = 0; tree_id < NUM_TREES_PER_LEVEL; tree_id++) {
-			handle->db_desc->levels[level_id].tree_status[tree_id] = NO_SPILLING;
+			handle->db_desc->levels[level_id].tree_status[tree_id] = NO_COMPACTION;
 			handle->db_desc->levels[level_id].epoch[tree_id] = 0;
 #if ENABLE_BLOOM_FILTERS
 			init_level_bloom_filters(db_desc, level_id, tree_id);
@@ -757,6 +757,7 @@ db_handle *internal_db_open(struct volume_descriptor *volume_desc, uint64_t star
 	_Static_assert(sizeof(struct bt_dynamic_leaf_slot_array) == 4,
 		       "Dynamic slot array is not 4 bytes, are you sure you want to continue?");
 	_Static_assert(sizeof(struct segment_header) == 4096, "Segment header not page aligned!");
+	_Static_assert(LOG_TAIL_NUM_BUFS >= 2, "Minimum number of in memory log buffers!");
 	_Static_assert(sizeof(struct pr_db_group) == 4096, "pr_db_group overflow!");
 	_Static_assert(sizeof(struct bt_dynamic_leaf_slot_array) == 4, "slot array != 4 Bytes");
 
@@ -819,8 +820,10 @@ enum parallax_status db_close(db_handle *handle)
 {
 	MUTEX_LOCK(&init_lock);
 	/*verify that this is a valid db*/
-	if (klist_find_element_with_key(handle->volume_desc->open_databases, handle->db_desc->db_superblock->db_name) ==
-	    NULL) {
+	int not_valid_db = klist_find_element_with_key(handle->volume_desc->open_databases,
+						       handle->db_desc->db_superblock->db_name) == NULL;
+
+	if (not_valid_db) {
 		log_warn("Received close for db: %s that is not listed as open",
 			 handle->db_desc->db_superblock->db_name);
 		goto finish;
@@ -847,9 +850,9 @@ enum parallax_status db_close(db_handle *handle)
 
 	/*stop log appenders*/
 
-	/*stop all writers at all levels*/
-	uint8_t level_id;
-	for (level_id = 0; level_id < MAX_LEVELS; level_id++) {
+	/*stop all writers at all levels and wait for all clients to complete their operations.*/
+
+	for (uint8_t level_id = 0; level_id < MAX_LEVELS; level_id++) {
 		RWLOCK_WRLOCK(&handle->db_desc->levels[level_id].guard_of_level.rx_lock);
 		spin_loop(&(handle->db_desc->levels[level_id].active_writers), 0);
 	}
@@ -862,17 +865,24 @@ enum parallax_status db_close(db_handle *handle)
 	log_info("Ok compaction daemon exited continuing the close sequence of DB:%s",
 		 handle->db_desc->db_superblock->db_name);
 
+	/* Release the locks for all levels to allow pending compactions to complete. */
+	for (uint8_t level_id = 0; level_id < MAX_LEVELS; level_id++)
+		RWLOCK_UNLOCK(&handle->db_desc->levels[level_id].guard_of_level.rx_lock);
+
+	/*Level 0 compactions*/
 	for (uint8_t i = 0; i < NUM_TREES_PER_LEVEL; ++i) {
-		if (handle->db_desc->levels[0].tree_status[i] == SPILLING_IN_PROGRESS) {
+		if (handle->db_desc->levels[0].tree_status[i] == COMPACTION_IN_PROGRESS) {
 			i = 0;
 			usleep(500);
 			continue;
 		}
 	}
+
 	log_info("All L0 compactions done");
+
 	/*wait for all other pending compactions to finish*/
 	for (int i = 1; i < MAX_LEVELS; i++) {
-		if (SPILLING_IN_PROGRESS == handle->db_desc->levels[i].tree_status[0]) {
+		if (COMPACTION_IN_PROGRESS == handle->db_desc->levels[i].tree_status[0]) {
 			i = 0;
 			usleep(500);
 			continue;
@@ -1241,7 +1251,13 @@ static void bt_add_segment_to_log(struct db_descriptor *db_desc, struct log_desc
 	uint32_t curr_tail_id = log_desc->curr_tail_id;
 	uint32_t next_tail_id = curr_tail_id + 1;
 	struct segment_header *new_segment = seg_get_raw_log_segment(db_desc, log_desc->my_type, level_id, tree_id);
+
+	if (!new_segment) {
+		log_fatal("Cannot allocate memory from the device!");
+		exit(EXIT_FAILURE);
+	}
 	uint64_t next_tail_seg_offt = ABSOLUTE_ADDRESS(new_segment);
+
 	if (!next_tail_seg_offt) {
 		log_fatal("No space for new segment");
 		exit(EXIT_FAILURE);
@@ -1250,6 +1266,7 @@ static void bt_add_segment_to_log(struct db_descriptor *db_desc, struct log_desc
 	struct segment_header *curr_tail_seg =
 		(struct segment_header *)log_desc->tail[curr_tail_id % LOG_TAIL_NUM_BUFS]->buf;
 
+	//parse_log_segment(curr_tail_seg);
 	struct log_tail *next_tail = log_desc->tail[next_tail_id % LOG_TAIL_NUM_BUFS];
 	struct segment_header *next_tail_seg =
 		(struct segment_header *)log_desc->tail[next_tail_id % LOG_TAIL_NUM_BUFS]->buf;
@@ -1260,12 +1277,12 @@ static void bt_add_segment_to_log(struct db_descriptor *db_desc, struct log_desc
 	next_tail_seg->next_segment = NULL;
 	next_tail_seg->prev_segment = (void *)log_desc->tail_dev_offt;
 	log_desc->tail_dev_offt = next_tail_seg_offt;
-
 	/*position the log to the newly added block*/
 	log_desc->size += sizeof(segment_header);
 	// Reset tail for new use
 	for (int j = 0; j < (SEGMENT_SIZE / LOG_CHUNK_SIZE); ++j)
 		next_tail->bytes_in_chunk[j] = 0;
+
 	next_tail->IOs_completed_in_tail = 0;
 	next_tail->start = next_tail_seg_offt;
 	next_tail->end = next_tail->start + SEGMENT_SIZE;
@@ -1299,6 +1316,7 @@ static void bt_add_blob(struct db_descriptor *db_desc, struct log_descriptor *lo
 	// Reset tail for new use
 	for (int j = 0; j < (SEGMENT_SIZE / LOG_CHUNK_SIZE); ++j)
 		next_tail->bytes_in_chunk[j] = 0;
+
 	next_tail->IOs_completed_in_tail = 0;
 	next_tail->start = ABSOLUTE_ADDRESS(next_tail_seg);
 	next_tail->end = next_tail->start + SEGMENT_SIZE;
@@ -1662,6 +1680,12 @@ deser:
 
 void find_key(struct lookup_operation *get_op)
 {
+	if (DB_IS_CLOSING == get_op->db_desc->stat) {
+		log_warn("Sorry DB: %s is closing", get_op->db_desc->db_superblock->db_name);
+		get_op->found = 0;
+		return;
+	}
+
 	get_op->found = 0;
 	struct db_descriptor *db_desc = get_op->db_desc;
 	/*again special care for L0*/

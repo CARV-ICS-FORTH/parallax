@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "scanner.h"
+#include "../allocator/device_structures.h"
 #include "../allocator/volume_manager.h"
 #include "../btree/btree.h"
 #include "../btree/conf.h"
@@ -218,8 +219,12 @@ static void init_generic_scanner(struct scannerHandle *sc, struct db_handle *han
 /*no snaphsot scanner (with lock)*/
 void init_dirty_scanner(struct scannerHandle *sc, struct db_handle *handle, void *start_key, char seek_flag)
 {
+	if (DB_IS_CLOSING == handle->db_desc->stat) {
+		log_warn("Sorry DB: %s is closing", handle->db_desc->db_superblock->db_name);
+		return;
+	}
+
 	init_generic_scanner(sc, handle, start_key, seek_flag, 1);
-	return;
 }
 
 scannerHandle *initScanner(scannerHandle *sc, db_handle *handle, void *start_key, char seek_flag)

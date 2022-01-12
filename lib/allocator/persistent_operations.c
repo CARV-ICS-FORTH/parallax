@@ -670,7 +670,7 @@ static void get_next_log_segment(struct log_cursor *cursor)
 		break;
 	case SMALL_LOG:
 		++cursor->log_segments->entry_id;
-		if (cursor->log_segments->entry_id >= (cursor->log_segments->size)) {
+		if (cursor->log_segments->entry_id >= cursor->log_segments->size) {
 			cursor->curr_segment = NULL;
 			cursor->valid = 0;
 			return;

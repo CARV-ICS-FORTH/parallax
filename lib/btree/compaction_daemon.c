@@ -970,16 +970,16 @@ void *compaction_daemon(void *args)
 
 		int L0_tree = next_L0_tree_to_compact;
 		// is level-0 full and not already spilling?
-		if (level_0->tree_status[L0_tree] == NO_SPILLING &&
+		if (level_0->tree_status[L0_tree] == NO_COMPACTION &&
 		    level_0->level_size[L0_tree] >= level_0->max_level_size) {
 			// Can I issue a spill to L1?
 			int L1_tree = 0;
-			if (level_1->tree_status[L1_tree] == NO_SPILLING &&
+			if (level_1->tree_status[L1_tree] == NO_COMPACTION &&
 			    level_1->level_size[L1_tree] < level_1->max_level_size) {
 				/*mark them as spilling L0*/
-				level_0->tree_status[L0_tree] = SPILLING_IN_PROGRESS;
+				level_0->tree_status[L0_tree] = COMPACTION_IN_PROGRESS;
 				/*mark them as spilling L1*/
-				level_1->tree_status[L1_tree] = SPILLING_IN_PROGRESS;
+				level_1->tree_status[L1_tree] = COMPACTION_IN_PROGRESS;
 
 				/*start a compaction*/
 				comp_req = (struct compaction_request *)calloc(1, sizeof(struct compaction_request));
@@ -996,9 +996,9 @@ void *compaction_daemon(void *args)
 		}
 		/*can I set a different active tree for L0*/
 		int active_tree = db_desc->levels[0].active_tree;
-		if (db_desc->levels[0].tree_status[active_tree] == SPILLING_IN_PROGRESS) {
+		if (db_desc->levels[0].tree_status[active_tree] == COMPACTION_IN_PROGRESS) {
 			int next_active_tree = active_tree != (NUM_TREES_PER_LEVEL - 1) ? active_tree + 1 : 0;
-			if (db_desc->levels[0].tree_status[next_active_tree] == NO_SPILLING) {
+			if (db_desc->levels[0].tree_status[next_active_tree] == NO_COMPACTION) {
 				/*Acquire guard lock and wait writers to finish*/
 				if (RWLOCK_WRLOCK(&(handle->db_desc->levels[0].guard_of_level.rx_lock))) {
 					log_fatal("Failed to acquire guard lock");
@@ -1064,12 +1064,12 @@ void *compaction_daemon(void *args)
 			uint8_t tree_1 = 0; // level_1->active_tree;
 			uint8_t tree_2 = 0; // level_2->active_tree;
 
-			if (level_1->tree_status[tree_1] == NO_SPILLING &&
+			if (level_1->tree_status[tree_1] == NO_COMPACTION &&
 			    level_1->level_size[tree_1] >= level_1->max_level_size) {
-				if (level_2->tree_status[tree_2] == NO_SPILLING &&
+				if (level_2->tree_status[tree_2] == NO_COMPACTION &&
 				    level_2->level_size[tree_2] < level_2->max_level_size) {
-					level_1->tree_status[tree_1] = SPILLING_IN_PROGRESS;
-					level_2->tree_status[tree_2] = SPILLING_IN_PROGRESS;
+					level_1->tree_status[tree_1] = COMPACTION_IN_PROGRESS;
+					level_2->tree_status[tree_2] = COMPACTION_IN_PROGRESS;
 					/*start a compaction*/
 					struct compaction_request *comp_req_p = (struct compaction_request *)calloc(
 						1, sizeof(struct compaction_request));
@@ -1578,8 +1578,8 @@ void *compaction(void *_comp_req)
 		 comp_req->src_level, comp_req->src_tree, comp_req->dst_level, comp_req->dst_tree);
 
 	//snapshot(comp_req->volume_desc);
-	db_desc->levels[comp_req->src_level].tree_status[comp_req->src_tree] = NO_SPILLING;
-	db_desc->levels[comp_req->dst_level].tree_status[0] = NO_SPILLING;
+	db_desc->levels[comp_req->src_level].tree_status[comp_req->src_tree] = NO_COMPACTION;
+	db_desc->levels[comp_req->dst_level].tree_status[0] = NO_COMPACTION;
 
 	/*wake up clients*/
 	if (comp_req->src_level == 0) {
