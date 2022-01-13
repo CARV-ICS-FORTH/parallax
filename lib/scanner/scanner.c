@@ -14,7 +14,6 @@
 
 #include "scanner.h"
 #include "../allocator/device_structures.h"
-#include "../allocator/volume_manager.h"
 #include "../btree/btree.h"
 #include "../btree/conf.h"
 #include "../btree/dynamic_leaf.h"
@@ -367,8 +366,6 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 	int32_t start_idx = 0;
 	int32_t end_idx = 0;
 	int32_t middle;
-	char level_key_format;
-	(void)level_key_format;
 	/*drop all paths*/
 	stack_reset(&(level_sc->stack));
 	/*put guard*/
@@ -427,9 +424,9 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 		int num_entries = node->num_entries;
 		/*the path we need to follow*/
 		if (ret <= 0)
-			node = (node_header *)(MAPPED + inode->p[middle].right[0]);
+			node = (node_header *)REAL_ADDRESS(inode->p[middle].right[0]);
 		else
-			node = (node_header *)(MAPPED + inode->p[middle].left[0]);
+			node = (node_header *)REAL_ADDRESS(inode->p[middle].left[0]);
 
 		read_lock_node(level_sc, node);
 
@@ -525,7 +522,6 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 	}
 
 	if (level_sc->type == SPILL_BUFFER_SCANNER) {
-		level_key_format = KV_FORMAT;
 		struct bt_dynamic_leaf_node *dlnode = (struct bt_dynamic_leaf_node *)node;
 		struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(dlnode);
 		switch (slot_array[middle].kv_loc) {
@@ -535,7 +531,6 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 				get_kv_offset(dlnode, db_desc->levels[level_id].leaf_size, slot_array[middle].index);
 			key_size = KEY_SIZE(level_sc->keyValue);
 			value_size = VALUE_SIZE(level_sc->keyValue + 4 + key_size);
-			level_key_format = level_sc->kv_format = KV_FORMAT;
 			level_sc->cat = slot_array[middle].key_category;
 			level_sc->tombstone = slot_array[middle].tombstone;
 			level_sc->kv_size = sizeof(key_size) + sizeof(value_size) + key_size + value_size;
@@ -551,7 +546,6 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 			level_sc->cat = slot_array[middle].key_category;
 			level_sc->tombstone = slot_array[middle].tombstone;
 			level_sc->kv_size = sizeof(struct bt_leaf_entry);
-			level_key_format = level_sc->kv_format = KV_PREFIX;
 
 			break;
 		}
@@ -571,7 +565,6 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 			value_size = VALUE_SIZE(level_sc->keyValue + 4 + key_size);
 			level_sc->kv_size = sizeof(key_size) + sizeof(value_size) + key_size + value_size;
 			/* log_info("%*s", *(uint32_t *)level_sc->keyValue, level_sc->keyValue + 4); */
-			level_key_format = level_sc->kv_format = KV_FORMAT;
 			level_sc->cat = slot_array[middle].key_category;
 			level_sc->tombstone = slot_array[middle].tombstone;
 			break;
@@ -583,7 +576,6 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 			level_sc->keyValue = (void *)level_sc->kv_entry.pointer;
 			level_sc->cat = slot_array[middle].key_category;
 			level_sc->tombstone = slot_array[middle].tombstone;
-			level_key_format = level_sc->kv_format = KV_FORMAT;
 			/* REAL_ADDRESS(*(uint64_t*)get_kv_offset( */
 			/* dlnode, db_desc->levels[level_id].leaf_size, slot_array[middle].index)); */
 			break;
@@ -766,7 +758,7 @@ int32_t _get_next_KV(level_scanner *sc)
 					stack_top.idx = 0;
 					stack_push(&sc->stack, stack_top);
 					inode = (index_node *)stack_top.node;
-					node = (node_header *)(MAPPED + inode->p[0].right[0]);
+					node = (node_header *)REAL_ADDRESS(inode->p[0].right[0]);
 					assert(node->type == rootNode || node->type == leafRootNode ||
 					       node->type == internalNode || node->type == leafNode);
 					up = 0;
@@ -788,7 +780,7 @@ int32_t _get_next_KV(level_scanner *sc)
 				break;
 			} else if (stack_top.node->type == internalNode || stack_top.node->type == rootNode) {
 				inode = (index_node *)stack_top.node;
-				node = (node_header *)(MAPPED + (uint64_t)inode->p[stack_top.idx].right[0]);
+				node = (node_header *)REAL_ADDRESS(inode->p[stack_top.idx].right[0]);
 				up = 0;
 
 				assert(node->type == rootNode || node->type == leafRootNode ||
@@ -817,7 +809,7 @@ int32_t _get_next_KV(level_scanner *sc)
 				break;
 			} else if (node->type == internalNode || node->type == rootNode) {
 				inode = (index_node *)node;
-				node = (node_header *)(MAPPED + (uint64_t)inode->p[0].left[0]);
+				node = (node_header *)REAL_ADDRESS(inode->p[0].left[0]);
 			} else {
 				log_fatal("Reached corrupted node");
 				assert(0);
@@ -966,7 +958,7 @@ int32_t _get_prev_KV(level_scanner *sc)
 					stack_top.idx = stack_top.node->num_entries - 1;
 					stack_push(&sc->stack, stack_top);
 					inode = (index_node *)stack_top.node;
-					node = (node_header *)(MAPPED + inode->p[stack_top.idx].left[0]);
+					node = (node_header *)REAL_ADDRESS(inode->p[stack_top.idx].left[0]);
 					assert(node->type == rootNode || node->type == leafRootNode ||
 					       node->type == internalNode || node->type == leafNode);
 					up = 0;
@@ -987,7 +979,7 @@ int32_t _get_prev_KV(level_scanner *sc)
 				break;
 			} else if (stack_top.node->type == internalNode || stack_top.node->type == rootNode) {
 				inode = (index_node *)stack_top.node;
-				node = (node_header *)(MAPPED + (uint64_t)inode->p[stack_top.idx].left[0]);
+				node = (node_header *)REAL_ADDRESS(inode->p[stack_top.idx].left[0]);
 				up = 0;
 				assert(node->type == rootNode || node->type == leafRootNode ||
 				       node->type == internalNode || node->type == leafNode);
@@ -1012,7 +1004,7 @@ int32_t _get_prev_KV(level_scanner *sc)
 				break;
 			} else if (node->type == internalNode || node->type == rootNode) {
 				inode = (index_node *)node;
-				node = (node_header *)(MAPPED + (uint64_t)inode->p[stack_top.idx].right[0]);
+				node = (node_header *)REAL_ADDRESS(inode->p[stack_top.idx].right[0]);
 			} else {
 				log_fatal("Reached corrupted node");
 				assert(0);
@@ -1143,8 +1135,6 @@ static int find_last_key(level_scanner *level_sc)
 	uint32_t level_id = level_sc->level_id;
 	int32_t end_idx = 0;
 	int32_t middle;
-	char level_key_format;
-	(void)level_key_format;
 	/*drop all paths*/
 	stack_reset(&(level_sc->stack));
 	/*put guard*/
@@ -1178,7 +1168,7 @@ static int find_last_key(level_scanner *level_sc)
 		element.guard = 0;
 		element.node = node;
 
-		node = (node_header *)(MAPPED + inode->p[end_idx].right[0]);
+		node = (node_header *)REAL_ADDRESS(inode->p[end_idx].right[0]);
 
 		read_lock_node(level_sc, node);
 
@@ -1240,7 +1230,6 @@ static int find_last_key(level_scanner *level_sc)
 	middle = node->num_entries - 1;
 
 	if (level_sc->type == SPILL_BUFFER_SCANNER) {
-		level_key_format = KV_FORMAT;
 		struct bt_dynamic_leaf_node *dlnode = (struct bt_dynamic_leaf_node *)node;
 		struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(dlnode);
 		switch (slot_array[middle].kv_loc) {
@@ -1250,7 +1239,6 @@ static int find_last_key(level_scanner *level_sc)
 				get_kv_offset(dlnode, db_desc->levels[level_id].leaf_size, slot_array[middle].index);
 			key_size = KEY_SIZE(level_sc->keyValue);
 			value_size = VALUE_SIZE(level_sc->keyValue + 4 + key_size);
-			level_key_format = level_sc->kv_format = KV_FORMAT;
 			level_sc->cat = slot_array[middle].key_category;
 			level_sc->tombstone = slot_array[middle].tombstone;
 			level_sc->kv_size = sizeof(key_size) + sizeof(value_size) + key_size + value_size;
@@ -1266,8 +1254,6 @@ static int find_last_key(level_scanner *level_sc)
 			level_sc->cat = slot_array[middle].key_category;
 			level_sc->tombstone = slot_array[middle].tombstone;
 			level_sc->kv_size = sizeof(struct bt_leaf_entry);
-			level_key_format = level_sc->kv_format = KV_PREFIX;
-
 			break;
 		}
 		default:
@@ -1286,7 +1272,6 @@ static int find_last_key(level_scanner *level_sc)
 			value_size = VALUE_SIZE(level_sc->keyValue + 4 + key_size);
 			level_sc->kv_size = sizeof(key_size) + sizeof(value_size) + key_size + value_size;
 			/* log_info("%*s", *(uint32_t *)level_sc->keyValue, level_sc->keyValue + 4); */
-			level_key_format = level_sc->kv_format = KV_FORMAT;
 			level_sc->tombstone = slot_array[middle].tombstone;
 			level_sc->cat = slot_array[middle].key_category;
 			break;
@@ -1298,7 +1283,6 @@ static int find_last_key(level_scanner *level_sc)
 			level_sc->keyValue = (void *)level_sc->kv_entry.pointer;
 			level_sc->cat = slot_array[middle].key_category;
 			level_sc->tombstone = slot_array[middle].tombstone;
-			level_key_format = level_sc->kv_format = KV_FORMAT;
 			/* REAL_ADDRESS(*(uint64_t*)get_kv_offset( */
 			/* dlnode, db_desc->levels[level_id].leaf_size, slot_array[middle].index)); */
 			break;
@@ -1306,8 +1290,6 @@ static int find_last_key(level_scanner *level_sc)
 		default:
 			assert(0);
 		}
-		//level_sc->keyValue = (void *)MAPPED + lnode->pointer[middle];
-		//log_info("full key is %s", level_sc->keyValue + 4);
 	}
 
 	return PARALLAX_SUCCESS;

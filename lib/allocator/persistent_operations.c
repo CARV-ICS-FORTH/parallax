@@ -117,10 +117,10 @@ void pr_flush_L0(struct db_descriptor *db_desc, uint8_t tree_id)
   */
 
 	/*Flush large log*/
-	pr_flush_log_tail(db_desc, db_desc->db_volume, &db_desc->big_log);
+	pr_flush_log_tail(db_desc, &db_desc->big_log);
 
 	/*Flush L0 recovery log*/
-	pr_flush_log_tail(db_desc, db_desc->db_volume, &db_desc->small_log);
+	pr_flush_log_tail(db_desc, &db_desc->small_log);
 
 	uint64_t my_txn_id = db_desc->levels[0].allocation_txn_id[tree_id];
 
@@ -172,7 +172,7 @@ static void pr_flush_L0_to_L1(struct db_descriptor *db_desc, uint8_t level_id, u
 	medium_log.tail_dev_offt = db_desc->medium_log.tail_dev_offt;
 	medium_log.size = db_desc->medium_log.size;
 	/*Flush medium log*/
-	pr_flush_log_tail(db_desc, db_desc->db_volume, &db_desc->medium_log);
+	pr_flush_log_tail(db_desc, &db_desc->medium_log);
 	pr_lock_db_superblock(db_desc);
 	uint64_t my_txn_id = db_desc->levels[level_id].allocation_txn_id[tree_id];
 
@@ -375,12 +375,8 @@ void pr_read_db_superblock(struct db_descriptor *db_desc)
 }
 /*</new_persistent_design>*/
 
-void pr_flush_log_tail(struct db_descriptor *db_desc, struct volume_descriptor *volume_desc,
-		       struct log_descriptor *log_desc)
+void pr_flush_log_tail(struct db_descriptor *db_desc, struct log_descriptor *log_desc)
 {
-	(void)db_desc;
-	(void)volume_desc;
-
 	uint64_t offt_in_seg = log_desc->size % SEGMENT_SIZE;
 	if (!offt_in_seg)
 		return;

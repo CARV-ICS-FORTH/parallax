@@ -33,7 +33,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/types.h>
 #include <unistd.h>
 #include <uthash.h>
 
@@ -1772,7 +1771,7 @@ int8_t update_index(index_node *node, node_header *left_child, node_header *righ
 			middle = (start_idx + end_idx) / 2;
 			addr = (void *)(uint64_t)node + (uint64_t)sizeof(node_header) + sizeof(uint64_t) +
 			       (uint64_t)(middle * 2 * sizeof(uint64_t));
-			index_key_buf = (void *)(MAPPED + *(uint64_t *)addr);
+			index_key_buf = (void *)REAL_ADDRESS(*(uint64_t *)addr);
 			ret = key_cmp(index_key_buf, key_buf, KV_FORMAT, KV_FORMAT);
 			if (ret > 0) {
 				end_idx = middle - 1;
@@ -1873,15 +1872,15 @@ void insert_key_at_index(bt_insert_req *ins_req, index_node *node, node_header *
 		d_header = seg_get_IN_log_block(handle->db_desc, ins_req->metadata.level_id, ins_req->metadata.tree_id);
 
 		d_header->next = NULL;
-		last_d_header = (IN_log_header *)(MAPPED + (uint64_t)node->header.last_IN_log_header);
-		last_d_header->next = (void *)((uint64_t)d_header - MAPPED);
+		last_d_header = (IN_log_header *)REAL_ADDRESS(node->header.last_IN_log_header);
+		last_d_header->next = (void *)ABSOLUTE_ADDRESS(d_header);
 		node->header.last_IN_log_header = last_d_header->next;
 		node->header.key_log_size +=
 			(avail_space + sizeof(IN_log_header)); /* position the log to the newly added block*/
 	}
 	/* put the KV now */
-	key_addr = (void *)MAPPED + (uint64_t)node->header.last_IN_log_header +
-		   (uint64_t)(node->header.key_log_size % KEY_BLOCK_SIZE);
+	key_addr = (void *)REAL_ADDRESS((uint64_t)node->header.last_IN_log_header +
+					(uint64_t)(node->header.key_log_size % KEY_BLOCK_SIZE));
 	memcpy(key_addr, key_buf, sizeof(uint32_t) + key_len); /*key length */
 	node->header.key_log_size += (sizeof(uint32_t) + key_len);
 
@@ -2052,7 +2051,7 @@ void *_index_node_binary_search(index_node *node, void *key_buf, char query_key_
 			return NULL;
 
 		addr = &(node->p[middle].pivot);
-		index_key_buf = (void *)(MAPPED + *(uint64_t *)addr);
+		index_key_buf = (void *)REAL_ADDRESS(*(uint64_t *)addr);
 		ret = key_cmp(index_key_buf, key_buf, KV_FORMAT, query_key_format);
 		if (ret == 0) {
 			// log_debug("I passed from this corner case1 %s",
@@ -2109,16 +2108,16 @@ void assert_index_node(node_header *node)
 	//	log_info("Checking node of height %lu\n",node->height);
 	for (k = 0; k < node->num_entries; k++) {
 		/*check child type*/
-		child = (node_header *)(MAPPED + *(uint64_t *)addr);
+		child = (node_header *)REAL_ADDRESS(*(uint64_t *)addr);
 		if (child->type != rootNode && child->type != internalNode && child->type != leafNode &&
 		    child->type != leafRootNode) {
 			log_fatal("corrupted child at index for child %llu type is %d\n",
-				  (long long unsigned)(uint64_t)child - MAPPED, child->type);
+				  (long long unsigned)ABSOLUTE_ADDRESS(child), child->type);
 			raise(SIGINT);
 			exit(EXIT_FAILURE);
 		}
 		addr += sizeof(uint64_t);
-		key_tmp = (void *)MAPPED + *(uint64_t *)addr;
+		key_tmp = (void *)REAL_ADDRESS(*(uint64_t *)addr);
 		// log_info("key %s\n", (char *)key_tmp + sizeof(int32_t));
 
 		if (key_tmp_prev != NULL) {
@@ -2136,13 +2135,12 @@ void assert_index_node(node_header *node)
 		key_tmp_prev = key_tmp;
 		addr += sizeof(uint64_t);
 	}
-	child = (node_header *)(MAPPED + *(uint64_t *)addr);
+	child = (node_header *)REAL_ADDRESS(*(uint64_t *)addr);
 	if (child->type != rootNode && child->type != internalNode && child->type != leafNode &&
 	    child->type != leafRootNode) {
 		log_fatal("Corrupted last child at index");
 		exit(EXIT_FAILURE);
 	}
-	// printf("\t\tpointer to last child %llu\n", (LLU)(uint64_t)child-MAPPED);
 }
 
 uint64_t hash(uint64_t x)
@@ -2345,7 +2343,7 @@ release_and_retry:
 		father = son;
 		/*Taking the lock of the next node before its traversal*/
 		lock = _find_position(ins_req->metadata.handle->db_desc->levels[level_id].level_lock_table,
-				      (node_header *)(MAPPED + *(uint64_t *)next_addr));
+				      (node_header *)REAL_ADDRESS(*(uint64_t *)next_addr));
 		upper_level_nodes[size++] = lock;
 		if (RWLOCK_WRLOCK(&lock->rx_lock) != 0) {
 			log_fatal("ERROR unlocking reason follows rc");
@@ -2353,7 +2351,7 @@ release_and_retry:
 		}
 		/*Node acquired */
 		ins_req->metadata.reorganized_leaf_pos_INnode = next_addr;
-		son = (node_header *)(MAPPED + *(uint64_t *)next_addr);
+		son = (node_header *)REAL_ADDRESS(*(uint64_t *)next_addr);
 
 		/*if the node is not safe hold its ancestor's lock else release locks from
     ancestors */
@@ -2458,7 +2456,7 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 			break;
 		/*Acquire the lock of the next node before its traversal*/
 		lock = _find_position(db_desc->levels[level_id].level_lock_table,
-				      (node_header *)(MAPPED + *(uint64_t *)next_addr));
+				      (node_header *)REAL_ADDRESS(*(uint64_t *)next_addr));
 		upper_level_nodes[size++] = lock;
 
 		if (RWLOCK_RDLOCK(&lock->rx_lock) != 0) {
@@ -2471,7 +2469,7 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 	}
 
 	lock = _find_position(db_desc->levels[level_id].level_lock_table,
-			      (node_header *)(MAPPED + *(uint64_t *)next_addr));
+			      (node_header *)REAL_ADDRESS(*(uint64_t *)next_addr));
 	upper_level_nodes[size++] = lock;
 
 	if (RWLOCK_WRLOCK(&lock->rx_lock) != 0) {

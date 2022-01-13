@@ -39,7 +39,6 @@ par_handle par_open(par_db_options *options)
 
 void par_close(par_handle handle)
 {
-	(void)handle;
 	db_close((db_handle *)handle);
 }
 

@@ -86,7 +86,6 @@ static uint64_t link_memory_segments(struct link_segments_metadata *req)
 		prev_segment = NULL;
 	}
 
-	new_segment->in_mem = req->in_mem;
 	return level_desc->offset[tree_id] % SEGMENT_SIZE;
 }
 
@@ -201,7 +200,7 @@ index_node *seg_get_index_node(struct db_descriptor *db_desc, uint8_t level_id, 
 	bh = (IN_log_header *)((uint64_t)ptr + INDEX_NODE_SIZE);
 	bh->next = (void *)NULL;
 	bh->type = keyBlockHeader;
-	ptr->header.first_IN_log_header = (IN_log_header *)((uint64_t)bh - MAPPED);
+	ptr->header.first_IN_log_header = (IN_log_header *)ABSOLUTE_ADDRESS(bh);
 	ptr->header.last_IN_log_header = ptr->header.first_IN_log_header;
 	ptr->header.key_log_size = sizeof(IN_log_header);
 
@@ -391,8 +390,8 @@ void *get_space_for_system(volume_descriptor *volume_desc, uint32_t size, int lo
 		if (segment_id) {
 			/*chain segments*/
 			new_segment->next_segment = NULL;
-			new_segment->prev_segment = (segment_header *)((uint64_t)last_sys_segment - MAPPED);
-			last_sys_segment->next_segment = (segment_header *)((uint64_t)new_segment - MAPPED);
+			new_segment->prev_segment = (segment_header *)ABSOLUTE_ADDRESS(last_sys_segment);
+			last_sys_segment->next_segment = (segment_header *)ABSOLUTE_ADDRESS(new_segment);
 			last_sys_segment = new_segment;
 			last_sys_segment->segment_id = segment_id + 1;
 			volume_desc->mem_catalogue->offset += (available_space + sizeof(segment_header));
@@ -407,8 +406,8 @@ void *get_space_for_system(volume_descriptor *volume_desc, uint32_t size, int lo
 		}
 		offset_in_segment = volume_desc->mem_catalogue->offset % SEGMENT_SIZE;
 		/*serialize the updated info of first, last system segments*/
-		volume_desc->mem_catalogue->first_system_segment = (uint64_t)first_sys_segment - MAPPED;
-		volume_desc->mem_catalogue->last_system_segment = (uint64_t)last_sys_segment - MAPPED;
+		volume_desc->mem_catalogue->first_system_segment = ABSOLUTE_ADDRESS(first_sys_segment);
+		volume_desc->mem_catalogue->last_system_segment = ABSOLUTE_ADDRESS(last_sys_segment);
 	}
 
 	addr = (void *)(uint64_t)last_sys_segment + offset_in_segment;
@@ -459,7 +458,6 @@ uint64_t seg_free_level(struct db_descriptor *db_desc, uint64_t txn_id, uint8_t 
 		if (curr_segment->next_segment) {
 			while (curr_segment != NULL) {
 				/* log_info("COUNT  %d %llu", curr_segment->segment_id, curr_segment->next_segment); */
-				assert(curr_segment->in_mem);
 				free(curr_segment);
 				curr_segment = temp_segment;
 
