@@ -24,7 +24,6 @@
 #include <semaphore.h>
 #include <stdint.h>
 #include <stdlib.h>
-#include <sys/types.h>
 
 #define PREFIX_SIZE 12
 

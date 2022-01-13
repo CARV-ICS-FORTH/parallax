@@ -14,7 +14,6 @@
 
 #include "scanner.h"
 #include "../allocator/device_structures.h"
-#include "../allocator/volume_manager.h"
 #include "../btree/btree.h"
 #include "../btree/conf.h"
 #include "../btree/dynamic_leaf.h"
