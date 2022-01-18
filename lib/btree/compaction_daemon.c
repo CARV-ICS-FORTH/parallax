@@ -476,16 +476,16 @@ static void comp_init_write_cursor(struct comp_level_write_cursor *c, struct db_
 			c->last_index[i]->header.num_entries = 0;
 			c->last_index[i]->header.fragmentation = 0;
 			/*private key log for index nodes*/
-			IN_log_header *bh = (IN_log_header *)((uint64_t)c->dev_offt[i] +
-							      (c->segment_offt[i] % SEGMENT_SIZE) + INDEX_NODE_SIZE);
+			uint64_t index_log_dev_offt =
+				c->dev_offt[i] + c->segment_offt[i] % SEGMENT_SIZE + INDEX_NODE_SIZE;
 
-			IN_log_header *tmp = (IN_log_header *)&c->segment_buf[i][(uint64_t)bh % SEGMENT_SIZE];
+			IN_log_header *tmp = (IN_log_header *)&c->segment_buf[i][index_log_dev_offt % SEGMENT_SIZE];
 			tmp->type = keyBlockHeader;
 			tmp->next = NULL;
-			c->last_index[i]->header.first_IN_log_header = bh;
+			c->last_index[i]->header.first_IN_log_header = (IN_log_header *)index_log_dev_offt;
 			c->last_index[i]->header.last_IN_log_header = c->last_index[i]->header.first_IN_log_header;
 			c->last_index[i]->header.key_log_size = sizeof(IN_log_header);
-			c->segment_offt[i] += (INDEX_NODE_SIZE + KEY_BLOCK_SIZE);
+			c->segment_offt[i] += INDEX_NODE_SIZE + KEY_BLOCK_SIZE;
 		}
 	}
 }
@@ -610,22 +610,18 @@ static void comp_get_space(struct comp_level_write_cursor *c, uint32_t height, n
 		c->last_index[height]->header.num_entries = 0;
 		c->last_index[height]->header.fragmentation = 0;
 		/*private key log for index nodes*/
-		IN_log_header *bh = (IN_log_header *)((uint64_t)c->dev_offt[height] +
-						      (c->segment_offt[height] % SEGMENT_SIZE) + INDEX_NODE_SIZE);
+		uint64_t index_log_dev_offt =
+			c->dev_offt[height] + c->segment_offt[height] % SEGMENT_SIZE + INDEX_NODE_SIZE;
 
-		IN_log_header *tmp = (IN_log_header *)&c->segment_buf[height][(uint64_t)bh % SEGMENT_SIZE];
-		// IN_log_header *bh =
-		//   (IN_log_header *)((uint64_t)c->last_index[height] + INDEX_NODE_SIZE);
-		// bh->type = keyBlockHeader;
-		// bh->next = (void *)NULL;
+		IN_log_header *tmp = (IN_log_header *)&c->segment_buf[height][index_log_dev_offt % SEGMENT_SIZE];
 		tmp->type = keyBlockHeader;
 		tmp->next = NULL;
-		c->last_index[height]->header.first_IN_log_header = bh;
+		c->last_index[height]->header.first_IN_log_header = (IN_log_header *)index_log_dev_offt;
 		//(IN_log_header *)((uint64_t)c->dev_offt[height] + ((uint64_t)bh %
 		// SEGMENT_SIZE));
 		c->last_index[height]->header.last_IN_log_header = c->last_index[height]->header.first_IN_log_header;
 		c->last_index[height]->header.key_log_size = sizeof(IN_log_header);
-		c->segment_offt[height] += (INDEX_NODE_SIZE + KEY_BLOCK_SIZE);
+		c->segment_offt[height] += INDEX_NODE_SIZE + KEY_BLOCK_SIZE;
 		break;
 	}
 	default:
