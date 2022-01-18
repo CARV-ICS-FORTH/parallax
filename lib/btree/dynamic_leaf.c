@@ -108,7 +108,7 @@ struct find_result find_key_in_dynamic_leaf(const struct bt_dynamic_leaf_node *l
 {
 	bt_insert_req req;
 	char buf[MAX_KEY_SIZE + sizeof(uint32_t)];
-	struct dl_bsearch_result result = { .middle = 0, .status = INSERT, .op = DYNAMIC_LEAF_FIND };
+	struct dl_bsearch_result result = { .middle = 0, .status = INSERT, .op = DYNAMIC_LEAF_FIND, .debug = 0 };
 	struct find_result ret_result = { .kv = NULL, .key_type = KV_INPLACE, .kv_category = UNKNOWN_LOG_CATEGORY };
 	struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(leaf);
 	db_handle handle = { .db_desc = db_desc, .volume_desc = NULL };
@@ -126,6 +126,14 @@ struct find_result find_key_in_dynamic_leaf(const struct bt_dynamic_leaf_node *l
 	req.translate_medium_log = 0;
 	binary_search_dynamic_leaf(leaf, leaf_size, &req, &result);
 
+	/* if(result.status != FOUND){ */
+	/* 	result.middle = 0; */
+	/* 	result.status = INSERT; */
+	/* 	result.op = DYNAMIC_LEAF_FIND; */
+	/* 	result.debug = 1; */
+	/* 	binary_search_dynamic_leaf(leaf, leaf_size, &req, &result); */
+
+	/* } */
 	ret_result.tombstone = result.tombstone;
 
 	switch (result.status) {
@@ -209,6 +217,9 @@ void binary_search_dynamic_leaf(const struct bt_dynamic_leaf_node *leaf, uint32_
 					ret = prefix_compare(leaf_key_prefix.prefix, padded_qkey_prefix, PREFIX_SIZE);
 				}
 			} else {
+				if (result->debug == 1)
+					log_debug("%s %s", leaf_key_prefix.prefix, req->key_value_buf + 4);
+
 				ret = prefix_compare(leaf_key_prefix.prefix, req->key_value_buf + 4, PREFIX_SIZE);
 			}
 		}
@@ -805,7 +816,7 @@ int8_t insert_in_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, bt_insert_req *
 							   .kv_format = req->metadata.key_format,
 							   .cat = req->metadata.cat,
 							   .tombstone = req->metadata.tombstone };
-	struct dl_bsearch_result bsearch = { .middle = 0, .status = INSERT, .op = DYNAMIC_LEAF_INSERT };
+	struct dl_bsearch_result bsearch = { .middle = 0, .status = INSERT, .op = DYNAMIC_LEAF_INSERT, .debug = 0 };
 	char *leaf_log_tail = get_leaf_log_offset(leaf, level->leaf_size);
 
 	if (unlikely(leaf->header.num_entries == 0))

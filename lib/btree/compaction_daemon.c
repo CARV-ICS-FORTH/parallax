@@ -1419,11 +1419,13 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 		log_fatal("Failed to acquire guard lock");
 		exit(EXIT_FAILURE);
 	}
-
 	if (RWLOCK_WRLOCK(&(comp_req->db_desc->levels[comp_req->dst_level].guard_of_level.rx_lock))) {
 		log_fatal("Failed to acquire guard lock");
 		exit(EXIT_FAILURE);
 	}
+
+	spin_loop(&comp_req->db_desc->levels[comp_req->src_level].active_operations, 0);
+	spin_loop(&comp_req->db_desc->levels[comp_req->dst_level].active_operations, 0);
 
 	uint64_t space_freed;
 	/*Free L_(i+1)*/
@@ -1534,10 +1536,14 @@ void *compaction(void *_comp_req)
 			log_fatal("Failed to acquire guard lock");
 			exit(EXIT_FAILURE);
 		}
+		spin_loop(&comp_req->db_desc->levels[comp_req->src_level].active_operations, 0);
+		spin_loop(&comp_req->db_desc->levels[comp_req->dst_level].active_operations, 0);
+
 		struct level_descriptor *leveld_src = &comp_req->db_desc->levels[comp_req->src_level];
 		struct level_descriptor *leveld_dst = &comp_req->db_desc->levels[comp_req->dst_level];
 
 		swap_levels(leveld_src, leveld_dst, comp_req->src_tree, 1);
+
 		pr_flush_compaction(comp_req->db_desc, comp_req->dst_level, comp_req->dst_tree);
 		swap_levels(leveld_dst, leveld_dst, 1, 0);
 		log_info("Flushed compaction[%u][%u] (Swap levels) successfully", comp_req->dst_level,
