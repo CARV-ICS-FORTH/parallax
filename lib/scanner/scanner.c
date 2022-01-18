@@ -113,7 +113,7 @@ static void init_generic_scanner(struct scannerHandle *sc, struct db_handle *han
 		*/
 		for (int i = 0; i < MAX_LEVELS; i++)
 			RWLOCK_RDLOCK(&handle->db_desc->levels[i].guard_of_level.rx_lock);
-		__sync_fetch_and_add(&handle->db_desc->levels[0].active_writers, 1);
+		__sync_fetch_and_add(&handle->db_desc->levels[0].active_operations, 1);
 	}
 
 	for (int i = 0; i < MAX_LEVELS; i++) {
@@ -308,7 +308,7 @@ void closeScanner(scannerHandle *sc)
 		for (int i = 0; i < MAX_LEVELS; i++)
 			RWLOCK_UNLOCK(&sc->db->db_desc->levels[i].guard_of_level.rx_lock);
 
-		__sync_fetch_and_sub(&sc->db->db_desc->levels[0].active_writers, 1);
+		__sync_fetch_and_sub(&sc->db->db_desc->levels[0].active_operations, 1);
 	}
 
 	free_dups_list(&sc->heap.dups);
@@ -478,7 +478,7 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 
 	/*now perform binary search inside the leaf*/
 	middle = 0;
-	struct dl_bsearch_result dlresult = { .middle = 0, .status = INSERT, .op = DYNAMIC_LEAF_FIND };
+	struct dl_bsearch_result dlresult = { .middle = 0, .status = INSERT, .op = DYNAMIC_LEAF_FIND, .debug = 0 };
 	bt_insert_req req;
 	req.key_value_buf = key_buf_prefix;
 	req.metadata.kv_size = kv_size;
@@ -1188,7 +1188,7 @@ static int find_last_key(level_scanner *level_sc)
 
 	/*now perform binary search inside the leaf*/
 	middle = 0;
-	struct dl_bsearch_result dlresult = { .middle = 0, .status = INSERT, .op = DYNAMIC_LEAF_FIND };
+	struct dl_bsearch_result dlresult = { .middle = 0, .status = INSERT, .op = DYNAMIC_LEAF_FIND, .debug = 0 };
 	bt_insert_req req;
 	req.key_value_buf = key_buf_prefix;
 	req.metadata.kv_size = kv_size;
@@ -1337,7 +1337,7 @@ void seek_to_last(struct scannerHandle *sc, struct db_handle *handle)
 		*/
 		for (int i = 0; i < MAX_LEVELS; i++)
 			RWLOCK_RDLOCK(&handle->db_desc->levels[i].guard_of_level.rx_lock);
-		__sync_fetch_and_add(&handle->db_desc->levels[0].active_writers, 1);
+		__sync_fetch_and_add(&handle->db_desc->levels[0].active_operations, 1);
 	}
 
 	for (int i = 0; i < MAX_LEVELS; i++) {

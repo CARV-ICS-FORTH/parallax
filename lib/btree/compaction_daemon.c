@@ -1000,7 +1000,7 @@ void *compaction_daemon(void *args)
 					log_fatal("Failed to acquire guard lock");
 					exit(EXIT_FAILURE);
 				}
-				spin_loop(&(handle->db_desc->levels[0].active_writers), 0);
+				spin_loop(&(handle->db_desc->levels[0].active_operations), 0);
 				/*fill L0 recovery log  info*/
 				handle->db_desc->small_log_start_segment_dev_offt =
 					handle->db_desc->small_log.tail_dev_offt;
@@ -1235,7 +1235,7 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 	if (comp_req->src_level == 0) {
 		//snapshot(comp_req->volume_desc); // --> This is for recovery I think;
 		RWLOCK_WRLOCK(&handle->db_desc->levels[0].guard_of_level.rx_lock);
-		spin_loop(&handle->db_desc->levels[0].active_writers, 0);
+		spin_loop(&handle->db_desc->levels[0].active_operations, 0);
 		pr_flush_log_tail(comp_req->db_desc, &comp_req->db_desc->big_log);
 #if MEDIUM_LOG_UNSORTED
 		pr_flush_log_tail(comp_req->db_desc, &comp_req->db_desc->medium_log);
@@ -1581,13 +1581,13 @@ void *compaction(void *_comp_req)
 	if (comp_req->src_level == 0) {
 		log_info("src level %d dst level %d src_tree %d dst_tree %d", comp_req->src_level, comp_req->dst_level,
 			 comp_req->src_tree, comp_req->dst_tree);
-		pthread_mutex_lock(&comp_req->db_desc->client_barrier_lock);
+		MUTEX_LOCK(&comp_req->db_desc->client_barrier_lock);
 		if (pthread_cond_broadcast(&db_desc->client_barrier) != 0) {
 			log_fatal("Failed to wake up stopped clients");
 			exit(EXIT_FAILURE);
 		}
 	}
-	pthread_mutex_unlock(&db_desc->client_barrier_lock);
+	MUTEX_UNLOCK(&db_desc->client_barrier_lock);
 	sem_post(&db_desc->compaction_daemon_interrupts);
 	free(comp_req);
 	return NULL;
