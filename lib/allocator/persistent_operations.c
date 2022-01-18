@@ -159,6 +159,7 @@ void pr_flush_L0(struct db_descriptor *db_desc, uint8_t tree_id)
 static void pr_flush_L0_to_L1(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
 {
 	struct my_log_info {
+		uint64_t head_dev_offt;
 		uint64_t tail_dev_offt;
 		uint64_t size;
 	};
@@ -169,6 +170,7 @@ static void pr_flush_L0_to_L1(struct db_descriptor *db_desc, uint8_t level_id, u
    * Keep medium log state. We don't need to lock because ONLY one compaction
    * from L0 to L1 is allowed.
   */
+	medium_log.head_dev_offt = db_desc->medium_log.head_dev_offt;
 	medium_log.tail_dev_offt = db_desc->medium_log.tail_dev_offt;
 	medium_log.size = db_desc->medium_log.size;
 	/*Flush medium log*/
@@ -177,6 +179,7 @@ static void pr_flush_L0_to_L1(struct db_descriptor *db_desc, uint8_t level_id, u
 	uint64_t my_txn_id = db_desc->levels[level_id].allocation_txn_id[tree_id];
 
 	/*medium log info*/
+	db_desc->db_superblock->medium_log_head_offt = medium_log.head_dev_offt;
 	db_desc->db_superblock->medium_log_tail_offt = medium_log.tail_dev_offt;
 	db_desc->db_superblock->medium_log_size = medium_log.size;
 
