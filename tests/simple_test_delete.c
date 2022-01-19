@@ -106,7 +106,7 @@ void delete_half_keys(par_handle hd)
 		if (i % 10000 == 0)
 			log_info("%s", k->key_buf);
 
-		if (par_delete(hd, &par_key) == PAR_SUCCESS) {
+		if (par_delete(hd, &par_key) != PAR_SUCCESS) {
 			log_info("ERROR key not found!");
 			exit(EXIT_FAILURE);
 		}
@@ -242,6 +242,6 @@ int main(void)
 	get_all_valid_keys(handle);
 	scan_all_valid_keys(handle);
 	//snapshot(handle->volume_desc);
-
+	par_close(handle);
 	return 0;
 }
