@@ -305,6 +305,7 @@ void pr_unlock_db_superblock(struct db_descriptor *db_desc)
 
 void pr_flush_db_superblock(struct db_descriptor *db_desc)
 {
+	db_desc->db_superblock->lsn = db_desc->lsn;
 	uint64_t my_superblock_offt =
 		sizeof(struct superblock) + (sizeof(struct pr_db_superblock) * db_desc->db_superblock->id);
 	ssize_t total_bytes_written = 0;
