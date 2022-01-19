@@ -839,6 +839,11 @@ enum parallax_status db_close(db_handle *handle)
 		MUTEX_UNLOCK(&init_lock);
 		return PARALLAX_SUCCESS;
 	}
+	/*Remove so it is not visible by the GC thread*/
+	if (!klist_remove_element(handle->volume_desc->open_databases, handle->db_desc)) {
+		log_fatal("Failed to remove db_desc of DB %s", handle->db_desc->db_superblock->db_name);
+		exit(EXIT_FAILURE);
+	}
 
 	log_info("Closing DB: %s\n", handle->db_desc->db_superblock->db_name);
 
@@ -895,11 +900,6 @@ enum parallax_status db_close(db_handle *handle)
 	pr_flush_L0(handle->db_desc, handle->db_desc->levels[0].active_tree);
 
 	log_info("All pending compactions done for DB:%s", handle->db_desc->db_superblock->db_name);
-
-	if (!klist_remove_element(handle->volume_desc->open_databases, handle->db_desc)) {
-		log_fatal("Failed to remove db_desc of DB %s", handle->db_desc->db_superblock->db_name);
-		exit(EXIT_FAILURE);
-	}
 
 	destroy_log_buffer(&handle->db_desc->big_log);
 	destroy_log_buffer(&handle->db_desc->medium_log);

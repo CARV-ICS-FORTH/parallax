@@ -154,9 +154,9 @@ int klist_remove_element(struct klist *list, void *data)
 			else
 				list->first = node->next;
 			--list->size;
-			if (node->key)
-				free(node->key);
-			free(node);
+			//if (node->key)
+			//	free(node->key);
+			//free(node);
 			ret = 1;
 		}
 		node = node->next;
