@@ -834,8 +834,13 @@ enum parallax_status db_close(db_handle *handle)
 		log_fatal("Negative referece count for DB %s", handle->db_desc->db_superblock->db_name);
 		exit(EXIT_FAILURE);
 	}
+	if (handle->db_desc->reference_count > 0) {
+		log_warn("Sorry more guys uses this DB: %s", handle->db_desc->db_superblock->db_name);
+		MUTEX_UNLOCK(&init_lock);
+		return PARALLAX_SUCCESS;
+	}
 
-	log_info("Closing DB:%s volume\n", handle->db_desc->db_superblock->db_name);
+	log_info("Closing DB: %s\n", handle->db_desc->db_superblock->db_name);
 
 	/*New requests will eventually see that db is closing*/
 	/*wake up possible clients that are stack due to non-availability of L0*/
