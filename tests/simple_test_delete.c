@@ -181,7 +181,7 @@ void scan_all_valid_keys(par_handle hd)
 	key *k = (key *)malloc(KV_SIZE);
 	uint64_t count = 0;
 	struct par_key par_key;
-	par_scanner my_scanner;
+	par_scanner my_scanner = NULL;
 
 	memset(&my_scanner, 0, sizeof(my_scanner));
 
@@ -194,13 +194,15 @@ void scan_all_valid_keys(par_handle hd)
 		/* log_info("size %u, %u , string %*s", *(uint32_t*) k->key_buf,k->key_size,k->key_size,&k->key_buf[4]); */
 		if (i % 10000 == 0)
 			log_info("%s", &k->key_buf[4]);
+		if (!my_scanner) {
+			par_key.size = k->key_size;
+			par_key.data = &k->key_buf[4];
+			my_scanner = par_init_scanner(hd, &par_key, PAR_GREATER_OR_EQUAL);
 
-		par_key.size = k->key_size;
-		par_key.data = &k->key_buf[4];
-		my_scanner = par_init_scanner(hd, &par_key, PAR_GREATER_OR_EQUAL);
-		if (!par_is_valid(my_scanner)) {
-			log_fatal("Nothing found! it shouldn't!");
-			exit(EXIT_FAILURE);
+			if (!par_is_valid(my_scanner)) {
+				log_fatal("Nothing found! it shouldn't!");
+				exit(EXIT_FAILURE);
+			}
 		}
 		struct par_key my_keyptr = par_get_key(my_scanner);
 		//log_info("key is %d:%s  malloced %d scanner size %d",k->key_size,k->key_buf,sc->malloced,sizeof(scannerHandle));
@@ -213,12 +215,17 @@ void scan_all_valid_keys(par_handle hd)
 			++count;
 		/* assert(get_op.tombstone); */
 		/* assert(get_op.found); */
-		assert(par_get_next(my_scanner));
+		if (!par_get_next(my_scanner))
+			break;
+	}
+	if ((NUM_KEYS / 2) != count) {
+		log_fatal("Test failed found %llu keys should have found: %llu", count, NUM_KEYS / 2);
+		exit(EXIT_FAILURE);
 	}
 	par_close_scanner(my_scanner);
 
 	free(k);
-	log_info("Scanning finished %d", count);
+	log_info("Scanning finished %llu", count);
 	assert(count == NUM_KEYS / 2);
 }
 
