@@ -771,6 +771,7 @@ static int comp_append_medium_L1(struct comp_level_write_cursor *c, struct comp_
 	out->kv_category = MEDIUM_INLOG;
 	out->kv_type = KV_INLOG;
 	out->kv_inlog->pointer = (uint64_t)log_location;
+	out->tombstone = 0;
 	//log_info("Compact key %s", ins_req.key_value_buf + 4);
 	return 1;
 }
