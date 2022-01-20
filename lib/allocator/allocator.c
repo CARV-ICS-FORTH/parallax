@@ -1056,7 +1056,7 @@ static void add_log_entry(volume_descriptor *volume_desc, void *address, uint32_
 		} else {
 			MUTEX_UNLOCK(&volume_desc->free_log_lock);
 			MUTEX_LOCK(&volume_desc->mutex);
-			log_warn("OUT OF LOG SPACE: No room for writing log_entry forcing snapshot");
+			log_warn("OUT OF LOG SPACE: No room for writing log_entry");
 			pthread_cond_signal(&(volume_desc->cond));
 			MUTEX_UNLOCK(&volume_desc->mutex);
 		}

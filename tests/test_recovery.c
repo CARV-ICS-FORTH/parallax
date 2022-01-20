@@ -144,7 +144,6 @@ int main(int argc, char *argv[])
 
 	if (recover == CREATE_DB) {
 		hd->db_desc->dirty = 1;
-		snapshot(hd->volume_desc);
 	}
 
 	if (recover == CREATE_DB) {

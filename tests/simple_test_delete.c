@@ -238,7 +238,6 @@ int main(void)
 	db_options.create_flag = PAR_CREATE_DB;
 	db_options.db_name = "test.db";
 	par_handle handle = par_open(&db_options);
-	//snapshot(handle->volume_desc);
 	serially_insert_keys(handle);
 	get_all_keys(handle);
 	delete_half_keys(handle);
@@ -248,7 +247,6 @@ int main(void)
 	handle = par_open(&db_options);
 	get_all_valid_keys(handle);
 	scan_all_valid_keys(handle);
-	//snapshot(handle->volume_desc);
 	par_close(handle);
 	return 0;
 }

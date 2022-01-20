@@ -1,15 +1,15 @@
 #define _LARGEFILE64_SOURCE
-#include <fcntl.h>
-#include <string.h>
-#include <assert.h>
-#include <sys/ioctl.h>
-#include <linux/fs.h>
-#include <unistd.h>
-#include <log.h>
-#include <allocator/volume_manager.h>
-#include <btree/btree.h>
 #include "arg_parser.h"
+#include <allocator/volume_manager.h>
+#include <assert.h>
+#include <btree/btree.h>
+#include <fcntl.h>
+#include <linux/fs.h>
+#include <log.h>
 #include <scanner/scanner.h>
+#include <string.h>
+#include <sys/ioctl.h>
+#include <unistd.h>
 #define SMALL_KEY_PREFIX "ts"
 #define MEDIUM_KEY_PREFIX "tm"
 #define LARGE_KEY_PREFIX "tl"
@@ -172,7 +172,6 @@ static void validate_serially(db_handle *hd, uint64_t from, uint64_t num_keys, e
 
 static void validate_number_of_kvs(db_handle *hd, uint64_t num_keys)
 {
-	snapshot(hd->volume_desc);
 	char start_key[5] = { 0 };
 	*(uint32_t *)start_key = 1;
 

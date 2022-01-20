@@ -1,16 +1,16 @@
-#include <linux/fs.h>
-#include <sys/ioctl.h>
-#include <fcntl.h>
-#include <assert.h>
-#include <stdio.h>
 #include <alloca.h>
-#include <string.h>
-#include <stdlib.h>
-#include <stdint.h>
-#include <unistd.h>
-#include <log.h>
 #include <allocator/allocator.h>
+#include <assert.h>
 #include <btree/btree.h>
+#include <fcntl.h>
+#include <linux/fs.h>
+#include <log.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/ioctl.h>
+#include <unistd.h>
 
 #define KEY_PREFIX "userakias_computerakias"
 #define KV_SIZE 1024
@@ -453,8 +453,6 @@ void run_workload(void (*f[3])(db_handle *), db_handle *hd)
 
 	for (i = 0; i < 3; ++i) {
 		f[i](hd);
-		if (i == 1 && PERSIST)
-			snapshot(hd->volume_desc);
 	}
 }
 
