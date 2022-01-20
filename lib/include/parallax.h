@@ -27,14 +27,18 @@ typedef enum par_ret_code {
 
 typedef enum par_db_initializers { PAR_CREATE_DB = 4, PAR_DONOT_CREATE_DB = 5 } par_db_initializers;
 
-// par_db_options contains the basic metadata to initialize a region.
+// par_db_options contains the basic metadata to initialize a DB.
 typedef struct par_db_options {
-	char *volume_name; // File or a block device to store the region's data
-	const char *db_name; // Region name
-	uint64_t volume_start; // Base offset to the file or device to write data
-	uint64_t volume_size; // File or device size
-	enum par_db_initializers create_flag; // With PAR_CREATE_DB the region if is created if it does not exist.
-		// With PAR_DONOT_CREATE_DB the region is not created if it exists.
+	char *volume_name; /*File or a block device to store the DB's data*/
+	const char *db_name; /*DB name*/
+	uint64_t volume_start; /* Base offset to the file or device to write data */
+	uint64_t volume_size; /* File or device size */
+	/**
+    *With PAR_CREATE_DB the DB if is created if it does not exist.
+		With PAR_DONOT_CREATE_DB the DB is not created if it exists
+  */
+	enum par_db_initializers create_flag;
+
 } par_db_options;
 
 struct par_key {
@@ -53,31 +57,69 @@ struct par_key_value {
 	struct par_value v;
 };
 
-// Opens a region based on the options provided.
+/**
+  *Opens a DB based on the options provided.
+*/
 par_handle par_open(par_db_options *options);
-// Closes the region referenced by handle. Syncs data to the file or device before exiting.
+
+/**
+  * Closes the DB referenced by handle. Syncs data to the file or device before exiting.
+*/
 void par_close(par_handle handle);
-// Inserts the key in the region if it does not exist else this becomes an update internally.
+
+/**
+  * Inserts the key in the DB if it does not exist else this becomes an update internally.
+*/
 par_ret_code par_put(par_handle handle, struct par_key_value *key_value);
-// Takes a key and searches for it. If the key exists in the region then, it allocates the value if it is NULL and the client is responsible to release the memory.
-// Otherwise it copies the data to the existing data buffer provided by the value pointer.
+
+/**
+  * Takes as input a key and searches for it. If the key exists in the DB then, it allocates the value if it is NULL and the client is responsible to release the memory.
+  * Otherwise it copies the data to the existing data buffer provided by the value pointer.
+*/
 par_ret_code par_get(par_handle handle, struct par_key *key, struct par_value *value);
-// Searches for a key and returns if the key exists in the region.
+
+/**
+  * Searches for a key and returns if the key exists in the DB.
+*/
 par_ret_code par_exists(par_handle handle, struct par_key *key);
-// Deletes an existing key in the region.
+
+/**
+  * Deletes an existing key in the DB.
+*/
 par_ret_code par_delete(par_handle handle, struct par_key *key);
-/*scanner staff*/
+
+/**
+  * scanner API. At the current state scanner supports snapshot isolation. The lifetime of a scanner start with
+  * a call to par_init_scanner and ends with par_close_scanner. Currently, to provide snapshot isolation during
+  * an active scanner no updates or insers can be performed in the DB. We will add other types of scanner with
+  * relaxed semantics for higher concurrency soon
+  */
 par_scanner par_init_scanner(par_handle db_handle, struct par_key *key, par_seek_mode mode);
 void par_close_scanner(par_scanner sc);
-// Advances the scanner iterator to the next key-value.
+
+/**
+  * Advances the scanner iterator to the next key-value.
+*/
 int par_get_next(par_scanner sc);
-// Checks the scanner if the current key-value is valid else we reached the end of database.
+
+/**
+  * Checks the scanner if the current key-value is valid else we reached the end of database.
+*/
 int par_is_valid(par_scanner sc);
-// Takes a scanner and returns the current key size + key in the iterator.
+
+/**
+  * Takes a scanner and returns the current key size + key in the iterator.
+*/
 struct par_key par_get_key(par_scanner sc);
-// Takes a scanner and returns the current value size + value in the iterator.
+
+/**
+  * Takes a scanner and returns the current value size + value in the iterator.
+*/
 struct par_value par_get_value(par_scanner sc);
-// Syncs data to the file or device.
+
+/**
+  * Syncs data to the file or device.
+*/
 par_ret_code par_sync(par_handle db_handle);
 
 /* #endif // __PARALLAX_H_ */

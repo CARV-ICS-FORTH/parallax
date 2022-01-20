@@ -92,8 +92,8 @@ release_test_gc:
         - ./scripts/CI/create_mbbd.sh
         - mkdir -p build;cd build
         - cmake .. -DCMAKE_BUILD_TYPE="Release"
-        - ./mkfs.sh /tmp/kv_store.dat 128
         - make test_gc;make kv_format.parallax;cd tests;
+        - ./mkfs.sh /tmp/kv_store.dat 128
         - ctest -R ^test_gc$
         - cd ..;cd ..
         - ./scripts/CI/destroy_mbbd.sh

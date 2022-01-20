@@ -578,10 +578,8 @@ void prepare_cursor_op(struct log_cursor *cursor)
 
 	if (dm->marker_id != BT_DELETE_MARKER_ID) {
 		cursor->entry.p_key = (struct par_key *)get_cursor_addr(cursor);
-		assert(cursor->entry.p_key->key_size < 30);
 		cursor->offt_in_segment += (sizeof(struct par_key) + cursor->entry.p_key->key_size);
 		cursor->entry.p_value = (struct par_value *)get_cursor_addr(cursor);
-		assert(cursor->entry.p_value->value_size <= 2000);
 		cursor->offt_in_segment += (sizeof(struct par_value) + cursor->entry.p_value->value_size);
 		cursor->tombstone = 0;
 	} else {

@@ -1222,6 +1222,34 @@ static void choose_compaction_roots(struct db_handle *handle, struct compaction_
 	}
 }
 
+static void lock_to_update_levels_after_compaction(struct compaction_request *comp_req)
+{
+	if (RWLOCK_WRLOCK(&(comp_req->db_desc->levels[comp_req->src_level].guard_of_level.rx_lock))) {
+		log_fatal("Failed to acquire guard lock");
+		exit(EXIT_FAILURE);
+	}
+
+	if (RWLOCK_WRLOCK(&(comp_req->db_desc->levels[comp_req->dst_level].guard_of_level.rx_lock))) {
+		log_fatal("Failed to acquire guard lock");
+		exit(EXIT_FAILURE);
+	}
+	spin_loop(&comp_req->db_desc->levels[comp_req->src_level].active_operations, 0);
+	spin_loop(&comp_req->db_desc->levels[comp_req->dst_level].active_operations, 0);
+}
+
+static void unlock_to_update_levels_after_compaction(struct compaction_request *comp_req)
+{
+	if (RWLOCK_UNLOCK(&(comp_req->db_desc->levels[comp_req->src_level].guard_of_level.rx_lock))) {
+		log_fatal("Failed to acquire guard lock");
+		exit(EXIT_FAILURE);
+	}
+
+	if (RWLOCK_UNLOCK(&(comp_req->db_desc->levels[comp_req->dst_level].guard_of_level.rx_lock))) {
+		log_fatal("Failed to acquire guard lock");
+		exit(EXIT_FAILURE);
+	}
+}
+
 static void compact_level_direct_IO(struct db_handle *handle, struct compaction_request *comp_req)
 {
 	struct compaction_roots comp_roots = { .src_root = NULL, .dst_root = NULL };
@@ -1416,17 +1444,7 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 	struct level_descriptor *ld = &comp_req->db_desc->levels[comp_req->dst_level];
 	struct db_handle hd = { .db_desc = comp_req->db_desc, .volume_desc = comp_req->volume_desc };
 
-	if (RWLOCK_WRLOCK(&(comp_req->db_desc->levels[comp_req->src_level].guard_of_level.rx_lock))) {
-		log_fatal("Failed to acquire guard lock");
-		exit(EXIT_FAILURE);
-	}
-	if (RWLOCK_WRLOCK(&(comp_req->db_desc->levels[comp_req->dst_level].guard_of_level.rx_lock))) {
-		log_fatal("Failed to acquire guard lock");
-		exit(EXIT_FAILURE);
-	}
-
-	spin_loop(&comp_req->db_desc->levels[comp_req->src_level].active_operations, 0);
-	spin_loop(&comp_req->db_desc->levels[comp_req->dst_level].active_operations, 0);
+	lock_to_update_levels_after_compaction(comp_req);
 
 	uint64_t space_freed;
 	/*Free L_(i+1)*/
@@ -1487,15 +1505,7 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 	ld->root_w[1] = NULL;
 	ld->root_r[1] = NULL;
 
-	if (RWLOCK_UNLOCK(&(comp_req->db_desc->levels[comp_req->src_level].guard_of_level.rx_lock))) {
-		log_fatal("Failed to acquire guard lock");
-		exit(EXIT_FAILURE);
-	}
-
-	if (RWLOCK_UNLOCK(&(comp_req->db_desc->levels[comp_req->dst_level].guard_of_level.rx_lock))) {
-		log_fatal("Failed to acquire guard lock");
-		exit(EXIT_FAILURE);
-	}
+	unlock_to_update_levels_after_compaction(comp_req);
 }
 
 void *compaction(void *_comp_req)
@@ -1528,17 +1538,7 @@ void *compaction(void *_comp_req)
 	else {
 		log_info("Empty level %d time for an optimization :-)", comp_req->dst_level);
 
-		if (RWLOCK_WRLOCK(&(comp_req->db_desc->levels[comp_req->src_level].guard_of_level.rx_lock))) {
-			log_fatal("Failed to acquire guard lock");
-			exit(EXIT_FAILURE);
-		}
-
-		if (RWLOCK_WRLOCK(&(comp_req->db_desc->levels[comp_req->dst_level].guard_of_level.rx_lock))) {
-			log_fatal("Failed to acquire guard lock");
-			exit(EXIT_FAILURE);
-		}
-		spin_loop(&comp_req->db_desc->levels[comp_req->src_level].active_operations, 0);
-		spin_loop(&comp_req->db_desc->levels[comp_req->dst_level].active_operations, 0);
+		lock_to_update_levels_after_compaction(comp_req);
 
 		struct level_descriptor *leveld_src = &comp_req->db_desc->levels[comp_req->src_level];
 		struct level_descriptor *leveld_dst = &comp_req->db_desc->levels[comp_req->dst_level];
@@ -1557,16 +1557,7 @@ void *compaction(void *_comp_req)
 		leveld_dst->bloom_filter[0] = leveld_src->bloom_filter[0];
 		memset(&leveld_src->bloom_filter[0], 0x00, sizeof(struct bloom));
 #endif
-
-		if (RWLOCK_UNLOCK(&(comp_req->db_desc->levels[comp_req->src_level].guard_of_level.rx_lock))) {
-			log_fatal("Failed to acquire guard lock");
-			exit(EXIT_FAILURE);
-		}
-
-		if (RWLOCK_UNLOCK(&(comp_req->db_desc->levels[comp_req->dst_level].guard_of_level.rx_lock))) {
-			log_fatal("Failed to acquire guard lock");
-			exit(EXIT_FAILURE);
-		}
+		unlock_to_update_levels_after_compaction(comp_req);
 
 		log_info("Swapped levels %d to %d successfully", comp_req->src_level, comp_req->dst_level);
 		log_info("After swapping src tree[%d][%d] size is %llu", comp_req->src_level, 0,
