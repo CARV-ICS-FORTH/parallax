@@ -1,17 +1,17 @@
 #define _LARGEFILE64_SOURCE
-#include <linux/fs.h>
-#include <sys/ioctl.h>
-#include <fcntl.h>
-#include <assert.h>
-#include <stdio.h>
 #include <alloca.h>
-#include <string.h>
-#include <stdlib.h>
-#include <stdint.h>
-#include <unistd.h>
-#include <log.h>
-#include <btree/btree.h>
 #include <allocator/allocator.h>
+#include <assert.h>
+#include <btree/btree.h>
+#include <fcntl.h>
+#include <linux/fs.h>
+#include <log.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/ioctl.h>
+#include <unistd.h>
 #define NUM_KEYS num_keys
 #define PERSIST persist
 #define TOTAL_KEYS 0
@@ -105,9 +105,6 @@ int main(int argc, char *argv[])
 	db_handle *hd = db_open(VOLUME_NAME, 0, device_size, "test_spills", CREATE_DB);
 
 	serially_insert_keys(hd);
-
-	if (PERSIST)
-		snapshot(hd->volume_desc);
 
 	validate_serially_allkeys_exist(hd);
 

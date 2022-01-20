@@ -379,7 +379,6 @@ struct recovery_operator {
 	struct log_recovery_metadata small;
 };
 
-void snapshot(volume_descriptor *volume_desc);
 void pr_flush_log_tail(struct db_descriptor *db_desc, struct log_descriptor *log_desc);
 /*<new_persistent_design>*/
 void init_log_buffer(struct log_descriptor *log_desc, enum log_type my_type);

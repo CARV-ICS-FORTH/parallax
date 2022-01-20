@@ -68,7 +68,7 @@ void *scan_tester(void *args)
 			if (i % 10000 == 0)
 				log_info("put ops %lu", i);
 		}
-		log_info("Population ended, snapshot and testing scan");
+		log_info("Population ended, testing scan");
 		par_sync(my_args->handle);
 
 		memcpy((char *)kv.k.data, KEY_PREFIX, strlen(KEY_PREFIX));

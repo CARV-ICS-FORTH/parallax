@@ -70,7 +70,6 @@ typedef struct volume_descriptor {
                               the free log of the allocator*/
 	pthread_mutex_t bitmap_lock; /* lock used for threads allocating space in the
                                   same volume */
-	uint64_t last_snapshot; /* timestamp of when last snapshot took place*/
 	uint64_t last_commit;
 	uint64_t last_sync; /*latest sync timestamp*/
 	char *volume_id; /* name of the volume's id, dynamically allocated */
@@ -108,7 +107,6 @@ a given bitmap-zone or not.*/
 	/*used for signaling log cleaner when volume is closing*/
 	volatile char state;
 	volatile char snap_preemption;
-	char force_snapshot;
 } volume_descriptor;
 
 enum allocation_log_cursor_state {

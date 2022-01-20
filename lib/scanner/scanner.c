@@ -100,11 +100,12 @@ static void init_generic_scanner(struct scannerHandle *sc, struct db_handle *han
 		exit(EXIT_FAILURE);
 	}
 
-	if (!dirty && handle->db_desc->dirty) {
-		//snapshot(handle->volume_desc);
+	/**
+  if (!dirty && handle->db_desc->dirty) {
 		log_fatal("Unsupported operation");
 		exit(EXIT_FAILURE);
 	}
+  **/
 
 	/*special care for level 0 due to double buffering*/
 	if (dirty) {
@@ -1326,9 +1327,6 @@ void seek_to_last(struct scannerHandle *sc, struct db_handle *handle)
 		log_fatal("NULL scannerHandle?");
 		exit(EXIT_FAILURE);
 	}
-
-	if (!dirty && handle->db_desc->dirty)
-		snapshot(handle->volume_desc);
 
 	/*special care for level 0 due to double buffering*/
 	if (dirty) {

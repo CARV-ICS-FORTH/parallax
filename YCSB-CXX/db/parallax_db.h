@@ -90,7 +90,6 @@ class ParallaxDB : public YCSBDB {
 		for (int i = 0; i < db_num; ++i) {
 			par_close(dbs[i]);
 		}
-		//snapshot(dbs[0]->volume_desc);
 #if MEASURE_SST_USED_SPACE
 		for (int i = 0; i < MAX_LEVELS; i++)
 			std::cerr << "Avg SST used capacity" << dbs[0]->db_desc->levels[i].avg_leaf_used_space

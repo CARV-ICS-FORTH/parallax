@@ -1262,7 +1262,6 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 	struct comp_level_write_cursor *merged_level = NULL;
 
 	if (comp_req->src_level == 0) {
-		//snapshot(comp_req->volume_desc); // --> This is for recovery I think;
 		RWLOCK_WRLOCK(&handle->db_desc->levels[0].guard_of_level.rx_lock);
 		spin_loop(&handle->db_desc->levels[0].active_operations, 0);
 		pr_flush_log_tail(comp_req->db_desc, &comp_req->db_desc->big_log);
@@ -1362,7 +1361,7 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 				free(l_dst);
 			return;
 		}
-		// This is to synchronize compactions with snapshot
+		// This is to synchronize compactions with flush
 		RWLOCK_RDLOCK(&handle->db_desc->levels[comp_req->dst_level].guard_of_level.rx_lock);
 		for (int i = 0; i < num_of_keys; i++) {
 			stat = sh_remove_top(m_heap, &nd_min);
@@ -1571,7 +1570,6 @@ void *compaction(void *_comp_req)
 		 "cleaning src level",
 		 comp_req->src_level, comp_req->src_tree, comp_req->dst_level, comp_req->dst_tree);
 
-	//snapshot(comp_req->volume_desc);
 	db_desc->levels[comp_req->src_level].tree_status[comp_req->src_tree] = NO_COMPACTION;
 	db_desc->levels[comp_req->dst_level].tree_status[0] = NO_COMPACTION;
 
