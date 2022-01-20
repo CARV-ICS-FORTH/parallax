@@ -128,7 +128,6 @@ int main(int argc, char **argv)
 
 	struct par_key_value my_kv = { .k.size = 0, .k.data = NULL, .v.val_buffer = NULL };
 	struct key *k = calloc(1, KV_BUFFER_SIZE);
-
 	if (strcmp(workload, workload_tags[Load]) && strcmp(workload, workload_tags[All]))
 		goto Get;
 	log_info("Starting population for %lu keys...", total_keys);
@@ -193,6 +192,26 @@ Get:
 	}
 
 	log_info("Testing GETS DONE!");
+
+	log_info("Testing if gets value are sane");
+	char *key = "SanityCheck";
+	char *value = "Hello this is a sane test";
+	my_kv.k.size = strlen(key) + 1;
+	my_kv.k.data = key;
+	my_kv.v.val_size = strlen(value) + 1;
+	my_kv.v.val_buffer = value;
+	par_put(hd, &my_kv);
+	struct par_value my_value = { .val_buffer = NULL };
+	if (par_get(hd, &my_kv.k, &my_value) != PAR_SUCCESS) {
+		log_fatal("Key %u:%s not found", my_kv.k.size, my_kv.k.data);
+		exit(EXIT_FAILURE);
+	}
+	if (!strcmp(my_value.val_buffer, my_kv.v.val_buffer)) {
+		log_fatal("Value is wrong do not match expected: %s got: %s", my_kv.v.val_buffer, my_value.val_buffer);
+		exit(EXIT_FAILURE);
+	}
+	free(my_value.val_buffer);
+	log_info("Testing if gets value are sane DONE");
 
 Scan:
 	if (strcmp(workload, workload_tags[Scan]) && strcmp(workload, workload_tags[All]))

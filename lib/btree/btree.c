@@ -1662,7 +1662,7 @@ deser:
 
 		if (get_op->retrieve && get_op->size <= value_size) {
 			/*check if enough*/
-			memcpy(get_op->buffer_to_pack_kv, L.addr + sizeof(uint32_t), value_size);
+			memcpy(get_op->buffer_to_pack_kv, L.addr + sizeof(uint32_t) + KEY_SIZE(L.addr), value_size);
 			get_op->buffer_overflow = 0;
 		} else
 			get_op->buffer_overflow = 1;
