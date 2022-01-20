@@ -729,7 +729,7 @@ db_handle *internal_db_open(struct volume_descriptor *volume_desc, uint64_t star
 		init_level_locktable(handle->db_desc, level_id);
 		memset(handle->db_desc->levels[level_id].level_size, 0, sizeof(uint64_t) * NUM_TREES_PER_LEVEL);
 		handle->db_desc->levels[level_id].medium_log_size = 0;
-		handle->db_desc->levels[level_id].active_writers = 0;
+		handle->db_desc->levels[level_id].active_operations = 0;
 		/*check again which tree should be active*/
 		handle->db_desc->levels[level_id].active_tree = 0;
 		handle->db_desc->levels[level_id].level_id = level_id;
@@ -834,8 +834,18 @@ enum parallax_status db_close(db_handle *handle)
 		log_fatal("Negative referece count for DB %s", handle->db_desc->db_superblock->db_name);
 		exit(EXIT_FAILURE);
 	}
+	if (handle->db_desc->reference_count > 0) {
+		log_warn("Sorry more guys uses this DB: %s", handle->db_desc->db_superblock->db_name);
+		MUTEX_UNLOCK(&init_lock);
+		return PARALLAX_SUCCESS;
+	}
+	/*Remove so it is not visible by the GC thread*/
+	if (!klist_remove_element(handle->volume_desc->open_databases, handle->db_desc)) {
+		log_fatal("Failed to remove db_desc of DB %s", handle->db_desc->db_superblock->db_name);
+		exit(EXIT_FAILURE);
+	}
 
-	log_info("Closing DB:%s volume\n", handle->db_desc->db_superblock->db_name);
+	log_info("Closing DB: %s\n", handle->db_desc->db_superblock->db_name);
 
 	/*New requests will eventually see that db is closing*/
 	/*wake up possible clients that are stack due to non-availability of L0*/
@@ -853,7 +863,7 @@ enum parallax_status db_close(db_handle *handle)
 
 	for (uint8_t level_id = 0; level_id < MAX_LEVELS; level_id++) {
 		RWLOCK_WRLOCK(&handle->db_desc->levels[level_id].guard_of_level.rx_lock);
-		spin_loop(&(handle->db_desc->levels[level_id].active_writers), 0);
+		spin_loop(&(handle->db_desc->levels[level_id].active_operations), 0);
 	}
 
 	handle->db_desc->stat = DB_TERMINATE_COMPACTION_DAEMON;
@@ -890,11 +900,6 @@ enum parallax_status db_close(db_handle *handle)
 	pr_flush_L0(handle->db_desc, handle->db_desc->levels[0].active_tree);
 
 	log_info("All pending compactions done for DB:%s", handle->db_desc->db_superblock->db_name);
-
-	if (!klist_remove_element(handle->volume_desc->open_databases, handle->db_desc)) {
-		log_fatal("Failed to remove db_desc of DB %s", handle->db_desc->db_superblock->db_name);
-		exit(EXIT_FAILURE);
-	}
 
 	destroy_log_buffer(&handle->db_desc->big_log);
 	destroy_log_buffer(&handle->db_desc->medium_log);
@@ -1530,12 +1535,12 @@ static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id,
 	struct node_header *root = NULL;
 
 	struct db_descriptor *db_desc = get_op->db_desc;
-	if (db_desc->levels[level_id].root_w[tree_id] != NULL) {
-		/* log_info("Level %d with tree_id %d has root_w",level_id,tree_id); */
-		root = db_desc->levels[level_id].root_w[tree_id];
-	} else if (db_desc->levels[level_id].root_r[tree_id] != NULL) {
+	if (db_desc->levels[level_id].root_r[tree_id] != NULL) {
 		/* log_info("Level %d with tree_id %d has root_w",level_id,tree_id); */
 		root = db_desc->levels[level_id].root_r[tree_id];
+	} else if (db_desc->levels[level_id].root_w[tree_id] != NULL) {
+		/* log_info("Level %d with tree_id %d has root_w",level_id,tree_id); */
+		root = db_desc->levels[level_id].root_w[tree_id];
 	} else {
 		/* log_info("Level %d is empty with tree_id %d",level_id,tree_id); */
 		/* if (RWLOCK_UNLOCK(&curr->rx_lock) != 0) */
@@ -1673,7 +1678,7 @@ deser:
 	if (RWLOCK_UNLOCK(&curr->rx_lock) != 0)
 		exit(EXIT_FAILURE);
 
-	__sync_fetch_and_sub(&db_desc->levels[level_id].active_writers, 1);
+	__sync_fetch_and_sub(&db_desc->levels[level_id].active_operations, 1);
 	return;
 }
 
@@ -1685,26 +1690,26 @@ void find_key(struct lookup_operation *get_op)
 		return;
 	}
 
-	get_op->found = 0;
 	struct db_descriptor *db_desc = get_op->db_desc;
 	/*again special care for L0*/
 	// Acquiring guard lock for level 0
 	if (RWLOCK_RDLOCK(&db_desc->levels[0].guard_of_level.rx_lock) != 0)
 		exit(EXIT_FAILURE);
-	__sync_fetch_and_add(&db_desc->levels[0].active_writers, 1);
+	__sync_fetch_and_add(&db_desc->levels[0].active_operations, 1);
 	uint8_t tree_id = db_desc->levels[0].active_tree;
 	uint8_t base = tree_id;
 
-	get_op->tombstone = 0;
 	while (1) {
 		/*first look the current active tree of the level*/
 
+		get_op->found = 0;
+		get_op->tombstone = 0;
 		lookup_in_tree(get_op, 0, tree_id);
 
 		if (get_op->found) {
 			if (RWLOCK_UNLOCK(&db_desc->levels[0].guard_of_level.rx_lock) != 0)
 				exit(EXIT_FAILURE);
-			__sync_fetch_and_sub(&db_desc->levels[0].active_writers, 1);
+			__sync_fetch_and_sub(&db_desc->levels[0].active_operations, 1);
 
 			goto finish;
 		}
@@ -1716,24 +1721,26 @@ void find_key(struct lookup_operation *get_op)
 	}
 	if (RWLOCK_UNLOCK(&db_desc->levels[0].guard_of_level.rx_lock) != 0)
 		exit(EXIT_FAILURE);
-	__sync_fetch_and_sub(&db_desc->levels[0].active_writers, 1);
+	__sync_fetch_and_sub(&db_desc->levels[0].active_operations, 1);
 	/*search the rest trees of the level*/
 	for (uint8_t level_id = 1; level_id < MAX_LEVELS; ++level_id) {
 		if (RWLOCK_RDLOCK(&db_desc->levels[level_id].guard_of_level.rx_lock) != 0)
 			exit(EXIT_FAILURE);
-		__sync_fetch_and_add(&db_desc->levels[level_id].active_writers, 1);
+		__sync_fetch_and_add(&db_desc->levels[level_id].active_operations, 1);
 
+		get_op->found = 0;
+		get_op->tombstone = 0;
 		lookup_in_tree(get_op, level_id, 0);
 		if (get_op->found) {
 			if (RWLOCK_UNLOCK(&db_desc->levels[level_id].guard_of_level.rx_lock) != 0)
 				exit(EXIT_FAILURE);
-			__sync_fetch_and_sub(&db_desc->levels[level_id].active_writers, 1);
+			__sync_fetch_and_sub(&db_desc->levels[level_id].active_operations, 1);
 
 			goto finish;
 		}
 		if (RWLOCK_UNLOCK(&db_desc->levels[level_id].guard_of_level.rx_lock) != 0)
 			exit(EXIT_FAILURE);
-		__sync_fetch_and_sub(&db_desc->levels[level_id].active_writers, 1);
+		__sync_fetch_and_sub(&db_desc->levels[level_id].active_operations, 1);
 	}
 
 finish:
@@ -2224,7 +2231,7 @@ static uint8_t concurrent_insert(bt_insert_req *ins_req)
 	db_desc = ins_req->metadata.handle->db_desc;
 	level_id = ins_req->metadata.level_id;
 	guard_of_level = &(db_desc->levels[level_id].guard_of_level);
-	num_level_writers = &db_desc->levels[level_id].active_writers;
+	num_level_writers = &db_desc->levels[level_id].active_operations;
 
 	release = 0;
 	size = 0;
@@ -2397,7 +2404,7 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 	db_desc = ins_req->metadata.handle->db_desc;
 	level_id = ins_req->metadata.level_id;
 	guard_of_level = &db_desc->levels[level_id].guard_of_level;
-	num_level_writers = &db_desc->levels[level_id].active_writers;
+	num_level_writers = &db_desc->levels[level_id].active_operations;
 
 	size = 0;
 	release = 0;

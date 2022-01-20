@@ -1,4 +1,4 @@
-// Copyright [2020] [FORTH-ICS]
+// Copyright [2021] [FORTH-ICS]
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,7 +13,7 @@
 // limitations under the License.
 
 #pragma once
-
+#include <pthread.h>
 typedef void (*destroy_node_data)(void *data);
 
 struct klist_node {
@@ -25,6 +25,7 @@ struct klist_node {
 };
 
 struct klist {
+	pthread_mutex_t list_lock;
 	struct klist_node *first;
 	struct klist_node *last;
 	int mode;
@@ -41,3 +42,5 @@ int klist_remove_element(struct klist *list, void *data);
 int klist_delete_element(struct klist *list, void *data);
 
 void klist_destroy(struct klist *list);
+
+/*iterator API used by the gc*/

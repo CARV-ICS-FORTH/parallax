@@ -29,6 +29,8 @@
 #include <unistd.h>
 #include <uthash.h>
 
+extern pthread_mutex_t init_lock;
+
 void push_stack(stack *marks, void *addr)
 {
 	marks->valid_pairs[marks->size++] = addr;
@@ -240,13 +242,35 @@ void *gc_log_entries(void *handle)
 			pthread_exit(NULL);
 		}
 
-		region = klist_get_first(volume_desc->open_databases);
+		int init_loop_condition = 1;
+		while (1) {
+			if (init_loop_condition) {
+				MUTEX_LOCK(&init_lock);
+				region = klist_get_first(volume_desc->open_databases);
+				init_loop_condition = 0;
+			} else
+				region = region->next;
 
-		while (region != NULL) {
+			if (!region) {
+				MUTEX_UNLOCK(&init_lock);
+				break;
+			}
+
 			db_desc = (db_descriptor *)region->data;
+			++db_desc->reference_count;
+			MUTEX_UNLOCK(&init_lock);
+
 			scan_db(db_desc, volume_desc, marks);
-			region = region->next;
+
+			MUTEX_LOCK(&init_lock);
+			--db_desc->reference_count;
 		}
+
+		//while (region != NULL) {
+		//	db_desc = (db_descriptor *)region->data;
+		//	scan_db(db_desc, volume_desc, marks);
+		//	region = region->next;
+		//}
 	}
 
 	pthread_exit(NULL);

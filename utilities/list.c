@@ -1,4 +1,4 @@
-// Copyright [2020] [FORTH-ICS]
+// Copyright [2021] [FORTH-ICS]
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -11,11 +11,11 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-
+#include "list.h"
+#include "../lib/btree/conf.h"
+#include <log.h>
 #include <stdlib.h>
 #include <string.h>
-#include "list.h"
-#include <log.h>
 
 struct klist *klist_init(void)
 {
@@ -24,6 +24,7 @@ struct klist *klist_init(void)
 		log_fatal("Calloc failed");
 		exit(EXIT_FAILURE);
 	}
+	MUTEX_INIT(&list->list_lock, NULL);
 	list->size = 0;
 	list->first = NULL;
 	list->last = NULL;
@@ -32,13 +33,23 @@ struct klist *klist_init(void)
 
 void *klist_get_first(struct klist *list)
 {
-	if (!list)
-		return NULL;
-	return list->first;
+	struct klist_node *node = NULL;
+
+	if (list) {
+		MUTEX_LOCK(&list->list_lock);
+		node = list->first;
+		MUTEX_UNLOCK(&list->list_lock);
+	}
+	return node;
 }
 
 void klist_add_first(struct klist *list, void *data, const char *data_key, destroy_node_data destroy_data)
 {
+	if (!list)
+		return;
+
+	MUTEX_LOCK(&list->list_lock);
+
 	struct klist_node *node = (struct klist_node *)calloc(1, sizeof(struct klist_node));
 	if (!node) {
 		log_fatal("Calloc failed out of memory");
@@ -66,10 +77,15 @@ void klist_add_first(struct klist *list, void *data, const char *data_key, destr
 		list->first = node;
 	}
 	++list->size;
+	MUTEX_UNLOCK(&list->list_lock);
 }
 
 void klist_add_last(struct klist *list, void *data, const char *data_key, destroy_node_data destroy_data)
 {
+	if (!list)
+		return;
+
+	MUTEX_LOCK(&list->list_lock);
 	struct klist_node *node = calloc(1, sizeof(struct klist_node));
 	if (!node) {
 		log_fatal("Calloc failed");
@@ -97,30 +113,35 @@ void klist_add_last(struct klist *list, void *data, const char *data_key, destro
 		list->last = node;
 	}
 	++list->size;
+	MUTEX_UNLOCK(&list->list_lock);
 }
 
 void *klist_remove_first(struct klist *list)
 {
-	struct klist_node *node;
+	struct klist_node *node = NULL;
+	if (!list)
+		return NULL;
+	MUTEX_LOCK(&list->list_lock);
 	if (list->size > 1) {
 		node = list->first;
 		list->first = list->first->next;
 		list->first->prev = NULL;
 		--list->size;
-		return node;
 	} else if (list->size == 1) {
 		node = list->first;
 		list->size = 0;
 		list->first = NULL;
 		list->last = NULL;
-		return node;
-	} else
-		return NULL;
+	}
+	MUTEX_UNLOCK(&list->list_lock);
+	return node;
 }
 
 int klist_remove_element(struct klist *list, void *data)
 {
-	struct klist_node *node;
+	struct klist_node *node = NULL;
+	int ret = 0;
+	MUTEX_LOCK(&list->list_lock);
 	node = list->first;
 	for (int i = 0; i < list->size; i++) {
 		if (node->data == data) {
@@ -133,18 +154,22 @@ int klist_remove_element(struct klist *list, void *data)
 			else
 				list->first = node->next;
 			--list->size;
-			if (node->key)
-				free(node->key);
-			free(node);
-			return 1;
+			//if (node->key)
+			//	free(node->key);
+			//free(node);
+			ret = 1;
 		}
 		node = node->next;
 	}
-	return 0;
+	MUTEX_UNLOCK(&list->list_lock);
+	return ret;
 }
 
 int klist_delete_element(struct klist *list, void *data)
 {
+	int ret = 0;
+
+	MUTEX_LOCK(&list->list_lock);
 	struct klist_node *node;
 	node = list->first;
 	for (int i = 0; i < list->size; i++) {
@@ -166,18 +191,22 @@ int klist_delete_element(struct klist *list, void *data)
 		}
 		node = node->next;
 	}
-	return 0;
+	MUTEX_UNLOCK(&list->list_lock);
+	return ret;
 }
 
 void *klist_find_element_with_key(struct klist *list, char *data_key)
 {
+	void *data = NULL;
+	MUTEX_LOCK(&list->list_lock);
 	struct klist_node *node = list->first;
 	for (int i = 0; i < list->size; i++) {
 		if (strcmp(node->key, data_key) == 0)
-			return node->data;
+			data = node->data;
 		node = node->next;
 	}
-	return NULL;
+	MUTEX_UNLOCK(&list->list_lock);
+	return data;
 }
 
 void klist_destroy(struct klist *list)

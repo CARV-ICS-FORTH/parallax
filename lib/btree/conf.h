@@ -48,7 +48,6 @@
 #define GROUP_SIZE 2
 #define NUM_OF_DB_GROUPS 506
 #define DEVICE_BLOCK_SIZE 4096
-#define ALIGNMENT 512
 #define MEDIUM_LOG_UNSORTED 0
 #define SYSTEMDB "systemdb"
 
@@ -58,11 +57,11 @@
 #define MAX_KEY_SIZE 255
 #define SEC (1000000L)
 
-#define WORD_SIZE 64
+#define WORD_SIZE (64)
 #define BREAKPOINT asm volatile("int3;");
-#define LEAF_NODE_SIZE 8192
-#define INDEX_NODE_SIZE 4096
-#define KEY_BLOCK_SIZE 8192
+#define LEAF_NODE_SIZE (8192)
+#define INDEX_NODE_SIZE (4096)
+#define KEY_BLOCK_SIZE (8192)
 /*Buffering related tunables*/
 
 #define GB(x) ((x)*1024LU * 1024LU * 1024LU)
@@ -70,6 +69,7 @@
 #define KB(x) ((x)*1024LU)
 #define LEVEL_MEDIUM_INPLACE (3)
 #define SEGMENT_SIZE (2 * 1024 * 1024)
+#define ALIGNMENT SEGMENT_SIZE
 #define LOG_CHUNK_SIZE (256 * 1024)
 #define LOG_TAIL_NUM_BUFS 4
 #define ALIGNMENT_SIZE 512

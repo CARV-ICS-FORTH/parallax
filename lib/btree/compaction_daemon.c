@@ -476,16 +476,16 @@ static void comp_init_write_cursor(struct comp_level_write_cursor *c, struct db_
 			c->last_index[i]->header.num_entries = 0;
 			c->last_index[i]->header.fragmentation = 0;
 			/*private key log for index nodes*/
-			IN_log_header *bh = (IN_log_header *)((uint64_t)c->dev_offt[i] +
-							      (c->segment_offt[i] % SEGMENT_SIZE) + INDEX_NODE_SIZE);
+			uint64_t index_log_dev_offt =
+				c->dev_offt[i] + c->segment_offt[i] % SEGMENT_SIZE + INDEX_NODE_SIZE;
 
-			IN_log_header *tmp = (IN_log_header *)&c->segment_buf[i][(uint64_t)bh % SEGMENT_SIZE];
+			IN_log_header *tmp = (IN_log_header *)&c->segment_buf[i][index_log_dev_offt % SEGMENT_SIZE];
 			tmp->type = keyBlockHeader;
 			tmp->next = NULL;
-			c->last_index[i]->header.first_IN_log_header = bh;
+			c->last_index[i]->header.first_IN_log_header = (IN_log_header *)index_log_dev_offt;
 			c->last_index[i]->header.last_IN_log_header = c->last_index[i]->header.first_IN_log_header;
 			c->last_index[i]->header.key_log_size = sizeof(IN_log_header);
-			c->segment_offt[i] += (INDEX_NODE_SIZE + KEY_BLOCK_SIZE);
+			c->segment_offt[i] += INDEX_NODE_SIZE + KEY_BLOCK_SIZE;
 		}
 	}
 }
@@ -610,22 +610,18 @@ static void comp_get_space(struct comp_level_write_cursor *c, uint32_t height, n
 		c->last_index[height]->header.num_entries = 0;
 		c->last_index[height]->header.fragmentation = 0;
 		/*private key log for index nodes*/
-		IN_log_header *bh = (IN_log_header *)((uint64_t)c->dev_offt[height] +
-						      (c->segment_offt[height] % SEGMENT_SIZE) + INDEX_NODE_SIZE);
+		uint64_t index_log_dev_offt =
+			c->dev_offt[height] + c->segment_offt[height] % SEGMENT_SIZE + INDEX_NODE_SIZE;
 
-		IN_log_header *tmp = (IN_log_header *)&c->segment_buf[height][(uint64_t)bh % SEGMENT_SIZE];
-		// IN_log_header *bh =
-		//   (IN_log_header *)((uint64_t)c->last_index[height] + INDEX_NODE_SIZE);
-		// bh->type = keyBlockHeader;
-		// bh->next = (void *)NULL;
+		IN_log_header *tmp = (IN_log_header *)&c->segment_buf[height][index_log_dev_offt % SEGMENT_SIZE];
 		tmp->type = keyBlockHeader;
 		tmp->next = NULL;
-		c->last_index[height]->header.first_IN_log_header = bh;
+		c->last_index[height]->header.first_IN_log_header = (IN_log_header *)index_log_dev_offt;
 		//(IN_log_header *)((uint64_t)c->dev_offt[height] + ((uint64_t)bh %
 		// SEGMENT_SIZE));
 		c->last_index[height]->header.last_IN_log_header = c->last_index[height]->header.first_IN_log_header;
 		c->last_index[height]->header.key_log_size = sizeof(IN_log_header);
-		c->segment_offt[height] += (INDEX_NODE_SIZE + KEY_BLOCK_SIZE);
+		c->segment_offt[height] += INDEX_NODE_SIZE + KEY_BLOCK_SIZE;
 		break;
 	}
 	default:
@@ -775,6 +771,7 @@ static int comp_append_medium_L1(struct comp_level_write_cursor *c, struct comp_
 	out->kv_category = MEDIUM_INLOG;
 	out->kv_type = KV_INLOG;
 	out->kv_inlog->pointer = (uint64_t)log_location;
+	out->tombstone = 0;
 	//log_info("Compact key %s", ins_req.key_value_buf + 4);
 	return 1;
 }
@@ -1004,7 +1001,7 @@ void *compaction_daemon(void *args)
 					log_fatal("Failed to acquire guard lock");
 					exit(EXIT_FAILURE);
 				}
-				spin_loop(&(handle->db_desc->levels[0].active_writers), 0);
+				spin_loop(&(handle->db_desc->levels[0].active_operations), 0);
 				/*fill L0 recovery log  info*/
 				handle->db_desc->small_log_start_segment_dev_offt =
 					handle->db_desc->small_log.tail_dev_offt;
@@ -1239,7 +1236,7 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 	if (comp_req->src_level == 0) {
 		//snapshot(comp_req->volume_desc); // --> This is for recovery I think;
 		RWLOCK_WRLOCK(&handle->db_desc->levels[0].guard_of_level.rx_lock);
-		spin_loop(&handle->db_desc->levels[0].active_writers, 0);
+		spin_loop(&handle->db_desc->levels[0].active_operations, 0);
 		pr_flush_log_tail(comp_req->db_desc, &comp_req->db_desc->big_log);
 #if MEDIUM_LOG_UNSORTED
 		pr_flush_log_tail(comp_req->db_desc, &comp_req->db_desc->medium_log);
@@ -1423,11 +1420,13 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 		log_fatal("Failed to acquire guard lock");
 		exit(EXIT_FAILURE);
 	}
-
 	if (RWLOCK_WRLOCK(&(comp_req->db_desc->levels[comp_req->dst_level].guard_of_level.rx_lock))) {
 		log_fatal("Failed to acquire guard lock");
 		exit(EXIT_FAILURE);
 	}
+
+	spin_loop(&comp_req->db_desc->levels[comp_req->src_level].active_operations, 0);
+	spin_loop(&comp_req->db_desc->levels[comp_req->dst_level].active_operations, 0);
 
 	uint64_t space_freed;
 	/*Free L_(i+1)*/
@@ -1538,10 +1537,14 @@ void *compaction(void *_comp_req)
 			log_fatal("Failed to acquire guard lock");
 			exit(EXIT_FAILURE);
 		}
+		spin_loop(&comp_req->db_desc->levels[comp_req->src_level].active_operations, 0);
+		spin_loop(&comp_req->db_desc->levels[comp_req->dst_level].active_operations, 0);
+
 		struct level_descriptor *leveld_src = &comp_req->db_desc->levels[comp_req->src_level];
 		struct level_descriptor *leveld_dst = &comp_req->db_desc->levels[comp_req->dst_level];
 
 		swap_levels(leveld_src, leveld_dst, comp_req->src_tree, 1);
+
 		pr_flush_compaction(comp_req->db_desc, comp_req->dst_level, comp_req->dst_tree);
 		swap_levels(leveld_dst, leveld_dst, 1, 0);
 		log_info("Flushed compaction[%u][%u] (Swap levels) successfully", comp_req->dst_level,
@@ -1585,13 +1588,13 @@ void *compaction(void *_comp_req)
 	if (comp_req->src_level == 0) {
 		log_info("src level %d dst level %d src_tree %d dst_tree %d", comp_req->src_level, comp_req->dst_level,
 			 comp_req->src_tree, comp_req->dst_tree);
-		pthread_mutex_lock(&comp_req->db_desc->client_barrier_lock);
+		MUTEX_LOCK(&comp_req->db_desc->client_barrier_lock);
 		if (pthread_cond_broadcast(&db_desc->client_barrier) != 0) {
 			log_fatal("Failed to wake up stopped clients");
 			exit(EXIT_FAILURE);
 		}
 	}
-	pthread_mutex_unlock(&db_desc->client_barrier_lock);
+	MUTEX_UNLOCK(&db_desc->client_barrier_lock);
 	sem_post(&db_desc->compaction_daemon_interrupts);
 	free(comp_req);
 	return NULL;
