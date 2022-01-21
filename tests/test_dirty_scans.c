@@ -182,7 +182,8 @@ Get:
 		if (my_value.val_size != SMALL_VALUE_SIZE && my_value.val_size != MEDIUM_VALUE_SIZE &&
 		    my_value.val_size != LARGE_VALUE_SIZE) {
 			log_fatal(
-				"Corrupted size got %lu does not match any of the SMALL, MEDIUM, and LARGE categories");
+				"Corrupted size for key: %s got %lu does not match any of the SMALL, MEDIUM, and LARGE categories",
+				my_kv.k.data, my_value.val_size);
 			exit(EXIT_FAILURE);
 		}
 		my_value.val_size = UINT32_MAX;
@@ -206,11 +207,12 @@ Get:
 		log_fatal("Key %u:%s not found", my_kv.k.size, my_kv.k.data);
 		exit(EXIT_FAILURE);
 	}
-	if (!strcmp(my_value.val_buffer, my_kv.v.val_buffer)) {
+	if (strcmp(my_value.val_buffer, my_kv.v.val_buffer)) {
 		log_fatal("Value is wrong do not match expected: %s got: %s", my_kv.v.val_buffer, my_value.val_buffer);
 		exit(EXIT_FAILURE);
 	}
 	free(my_value.val_buffer);
+
 	log_info("Testing if gets value are sane DONE");
 
 Scan:

@@ -1644,25 +1644,27 @@ deser:
 			log_fatal("Corrupted KV location");
 			exit(EXIT_FAILURE);
 		}
+		uint32_t *value_size = L.addr + sizeof(uint32_t) + KEY_SIZE(L.addr);
 
-		uint32_t value_size = VALUE_SIZE(get_op->value_device_address);
 		if (get_op->retrieve && !get_op->buffer_to_pack_kv) {
-			get_op->buffer_to_pack_kv = malloc(value_size);
+			get_op->buffer_to_pack_kv = malloc(*value_size);
 
 			if (!get_op->buffer_to_pack_kv) {
 				log_fatal("Malloc failed");
 				exit(EXIT_FAILURE);
 			}
 
-			get_op->size = value_size;
+			get_op->size = *value_size;
 		}
 
+		//log_info("key size: %u key: %s value size: %u", KEY_SIZE(L.addr), L.addr + 4, *value_size);
 		//log_info("In tail?: %u which tail?: %u value size %u offt in buf: %llu", L.in_tail, L.tail_id,
-		//	 value_size, ABSOLUTE_ADDRESS(get_op->value_device_address) % SEGMENT_SIZE);
+		//	 *value_size, ABSOLUTE_ADDRESS(get_op->value_device_address) % SEGMENT_SIZE);
 
-		if (get_op->retrieve && get_op->size <= value_size) {
+		if (get_op->retrieve && get_op->size <= *value_size) {
 			/*check if enough*/
-			memcpy(get_op->buffer_to_pack_kv, L.addr + sizeof(uint32_t) + KEY_SIZE(L.addr), value_size);
+			memcpy(get_op->buffer_to_pack_kv,
+			       L.addr + sizeof(uint32_t) + KEY_SIZE(L.addr) + sizeof(uint32_t), *value_size);
 			get_op->buffer_overflow = 0;
 		} else
 			get_op->buffer_overflow = 1;
