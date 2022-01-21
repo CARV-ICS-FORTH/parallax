@@ -212,25 +212,7 @@ Get:
 		exit(EXIT_FAILURE);
 	}
 	free(my_value.val_buffer);
-	struct par_key_value key_value;
 
-	char *ramon_k = "TESTKEY";
-	char *ramon_v = "TESTVAL";
-	key_value.k.size = strlen(ramon_k) + 1;
-	;
-	key_value.k.data = ramon_k;
-	key_value.v.val_size = strlen(ramon_v) + 1;
-	key_value.v.val_buffer = ramon_v;
-
-	par_ret_code ret = par_exists(hd, &key_value.k);
-	if (ret == PAR_KEY_NOT_FOUND) {
-		par_put(hd, &key_value);
-		struct par_value val;
-		val.val_buffer = NULL;
-		par_get(hd, &key_value.k, &val);
-		log_info("Ramon Get value = %s", val.val_buffer);
-		free(val.val_buffer);
-	}
 	log_info("Testing if gets value are sane DONE");
 
 Scan:
