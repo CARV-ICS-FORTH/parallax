@@ -182,7 +182,8 @@ Get:
 		if (my_value.val_size != SMALL_VALUE_SIZE && my_value.val_size != MEDIUM_VALUE_SIZE &&
 		    my_value.val_size != LARGE_VALUE_SIZE) {
 			log_fatal(
-				"Corrupted size got %lu does not match any of the SMALL, MEDIUM, and LARGE categories");
+				"Corrupted size for key: %s got %lu does not match any of the SMALL, MEDIUM, and LARGE categories",
+				my_kv.k.data, my_value.val_size);
 			exit(EXIT_FAILURE);
 		}
 		my_value.val_size = UINT32_MAX;
@@ -206,11 +207,30 @@ Get:
 		log_fatal("Key %u:%s not found", my_kv.k.size, my_kv.k.data);
 		exit(EXIT_FAILURE);
 	}
-	if (!strcmp(my_value.val_buffer, my_kv.v.val_buffer)) {
+	if (strcmp(my_value.val_buffer, my_kv.v.val_buffer)) {
 		log_fatal("Value is wrong do not match expected: %s got: %s", my_kv.v.val_buffer, my_value.val_buffer);
 		exit(EXIT_FAILURE);
 	}
 	free(my_value.val_buffer);
+	struct par_key_value key_value;
+
+	char *ramon_k = "TESTKEY";
+	char *ramon_v = "TESTVAL";
+	key_value.k.size = strlen(ramon_k) + 1;
+	;
+	key_value.k.data = ramon_k;
+	key_value.v.val_size = strlen(ramon_v) + 1;
+	key_value.v.val_buffer = ramon_v;
+
+	par_ret_code ret = par_exists(hd, &key_value.k);
+	if (ret == PAR_KEY_NOT_FOUND) {
+		par_put(hd, &key_value);
+		struct par_value val;
+		val.val_buffer = NULL;
+		par_get(hd, &key_value.k, &val);
+		log_info("Ramon Get value = %s", val.val_buffer);
+		free(val.val_buffer);
+	}
 	log_info("Testing if gets value are sane DONE");
 
 Scan:
