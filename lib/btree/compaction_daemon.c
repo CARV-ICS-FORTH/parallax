@@ -831,8 +831,8 @@ static void comp_append_entry_to_leaf_node(struct comp_level_write_cursor *c, st
 		write_leaf_args.key_value_size = kv_size;
 	}
 
-	if (check_dynamic_leaf_split(c->last_leaf, level_leaf_size, kv_size, c->level_id, my_key->kv_type,
-				     my_key->kv_category)) {
+	if (is_dynamic_leaf_full(c->last_leaf, level_leaf_size, kv_size, c->level_id, my_key->kv_type,
+				 my_key->kv_category)) {
 		// log_info("Time for a split!");
 		/*keep current aka left leaf offt*/
 		uint32_t offt_l = comp_calc_offt_in_seg(c->segment_buf[0], (char *)c->last_leaf);

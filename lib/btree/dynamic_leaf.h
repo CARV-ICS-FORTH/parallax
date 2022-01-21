@@ -65,8 +65,8 @@ struct find_result find_key_in_dynamic_leaf(const struct bt_dynamic_leaf_node *l
 void binary_search_dynamic_leaf(const struct bt_dynamic_leaf_node *leaf, uint32_t leaf_size, bt_insert_req *req,
 				struct dl_bsearch_result *result);
 
-int check_dynamic_leaf_split(struct bt_dynamic_leaf_node *leaf, uint32_t leaf_size, uint32_t kv_size, int level_id,
-			     enum kv_entry_location key_type, enum log_category cat);
+int is_dynamic_leaf_full(struct bt_dynamic_leaf_node *leaf, uint32_t leaf_size, uint32_t kv_size, int level_id,
+			 enum kv_entry_location key_type, enum log_category cat);
 
 void print_slot_array(struct bt_dynamic_leaf_slot_array *slot_array, int i);
 

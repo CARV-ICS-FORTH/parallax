@@ -2208,7 +2208,7 @@ int is_split_needed(void *node, bt_insert_req *req, uint32_t leaf_size)
 	else
 		status = KV_INPLACE;
 
-	return check_dynamic_leaf_split(node, leaf_size, req->metadata.kv_size, req->metadata.level_id, status, cat);
+	return is_dynamic_leaf_full(node, leaf_size, req->metadata.kv_size, req->metadata.level_id, status, cat);
 }
 
 static uint8_t concurrent_insert(bt_insert_req *ins_req)

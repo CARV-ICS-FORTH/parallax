@@ -402,8 +402,8 @@ uint32_t append_bt_leaf_entry_inplace(char *dest, uint64_t pointer, char *prefix
 	return prefix_size + sizeof(pointer);
 }
 
-int check_dynamic_leaf_split(struct bt_dynamic_leaf_node *leaf, uint32_t leaf_size, uint32_t kv_size, int level_id,
-			     enum kv_entry_location key_type, enum log_category cat)
+int is_dynamic_leaf_full(struct bt_dynamic_leaf_node *leaf, uint32_t leaf_size, uint32_t kv_size, int level_id,
+			 enum kv_entry_location key_type, enum log_category cat)
 {
 	uint32_t leaf_log_size = leaf->header.leaf_log_size;
 	uint32_t metadata_size = sizeof(struct bt_dynamic_leaf_node) +
