@@ -35,6 +35,15 @@ CPD:
         - echo -e "\e[0Ksection_end:`date +%s`:CPD_tests_section\r\e[0K"
     needs: []
 
+check-pre-commit-hooks:
+    stage: lint
+    script:
+        - cp .pre-commit-config.yaml previous.yaml
+        - pre-commit autoupdate
+        - diff .pre-commit-config.yaml previous.yaml > out
+        - if [ $(wc -l < out) -ne 0 ]; then exit 1 ;fi
+    allow_failure: true
+
 pre-commit:
     stage: lint
     script:
