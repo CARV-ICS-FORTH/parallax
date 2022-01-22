@@ -281,7 +281,7 @@ void pr_flush_compaction(struct db_descriptor *db_desc, uint8_t level_id, uint8_
 	if (level_id == 1)
 		return pr_flush_L0_to_L1(db_desc, level_id, tree_id);
 
-	if (level_id == LEVEL_MEDIUM_INPLACE)
+	if (level_id == db_desc->level_medium_inplace)
 		return pr_flush_Lmax_to_Ln(db_desc, level_id, tree_id);
 
 	uint64_t my_txn_id = db_desc->levels[level_id].allocation_txn_id[tree_id];

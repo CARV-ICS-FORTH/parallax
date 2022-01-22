@@ -654,6 +654,8 @@ db_handle *internal_db_open(struct volume_descriptor *volume_desc, uint64_t star
 
 	uint64_t level0_size;
 	uint64_t growth_factor;
+	uint64_t level_medium_inplace;
+
 	struct lib_option *option;
 
 	HASH_FIND_STR(dboptions, "level0_size", option);
@@ -663,6 +665,10 @@ db_handle *internal_db_open(struct volume_descriptor *volume_desc, uint64_t star
 	HASH_FIND_STR(dboptions, "growth_factor", option);
 	check_option("growth_factor", option);
 	growth_factor = option->value.count;
+
+	HASH_FIND_STR(dboptions, "level_medium_inplace", option);
+	check_option("level_medium_inplace", option);
+	level_medium_inplace = option->value.count;
 
 	struct db_descriptor *db_desc = get_db_from_volume(volume_desc->volume_name, db_name, CREATE_FLAG);
 	if (!db_desc) {
@@ -676,6 +682,7 @@ db_handle *internal_db_open(struct volume_descriptor *volume_desc, uint64_t star
 		goto exit;
 	}
 
+	db_desc->level_medium_inplace = level_medium_inplace;
 	handle = calloc(1, sizeof(db_handle));
 	if (!handle) {
 		log_fatal("calloc failed");
@@ -2007,9 +2014,9 @@ int insert_KV_at_leaf(bt_insert_req *ins_req, node_header *leaf)
 
 	ret = insert_in_dynamic_leaf((struct bt_dynamic_leaf_node *)leaf, ins_req, &db_desc->levels[level_id]);
 
-	if (ret == INSERT /* || ret == FOUND */) {
+	if (ret == INSERT) {
 		int measure_level_used_space = cat == BIG_INLOG || cat == SMALL_INLOG;
-		int medium_inlog = cat == MEDIUM_INLOG && level_id != LEVEL_MEDIUM_INPLACE;
+		int medium_inlog = cat == MEDIUM_INLOG && level_id != db_desc->level_medium_inplace;
 
 		if (cat == MEDIUM_INPLACE && level_id == 0) {
 			__sync_fetch_and_add(&(ins_req->metadata.handle->db_desc->levels[level_id].level_size[tree_id]),
@@ -2201,14 +2208,23 @@ int is_split_needed(void *node, bt_insert_req *req, uint32_t leaf_size)
 		return split_index_node;
 	}
 
-	int status;
+	int key_type;
 
-	if (cat == BIG_INLOG || (cat == MEDIUM_INLOG && level_id != LEVEL_MEDIUM_INPLACE) || cat == SMALL_INLOG)
-		status = KV_INLOG;
+	if ((cat == MEDIUM_INLOG && level_id != req->metadata.handle->db_desc->level_medium_inplace) ||
+	    cat == BIG_INLOG)
+		key_type = KV_INLOG;
 	else
-		status = KV_INPLACE;
+		key_type = KV_INPLACE;
 
-	return check_dynamic_leaf_split(node, leaf_size, req->metadata.kv_size, req->metadata.level_id, status, cat);
+	struct split_level_leaf split_metadata = { .leaf = node,
+						   .leaf_size = leaf_size,
+						   .kv_size = req->metadata.kv_size,
+						   .level_id = req->metadata.level_id,
+						   .level_medium_inplace =
+							   req->metadata.handle->db_desc->level_medium_inplace,
+						   .key_type = key_type,
+						   .cat = cat };
+	return is_dynamic_leaf_full(split_metadata);
 }
 
 static uint8_t concurrent_insert(bt_insert_req *ins_req)

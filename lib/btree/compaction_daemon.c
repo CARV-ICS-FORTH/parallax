@@ -131,7 +131,7 @@ static void fetch_segment(struct comp_level_write_cursor *c, char *segment_buf, 
 		}
 		bytes_to_read += bytes;
 	}
-	if (c->level_id == LEVEL_MEDIUM_INPLACE) {
+	if (c->level_id == c->handle->db_desc->level_medium_inplace) {
 		struct segment_header *my_seg = (struct segment_header *)segment_buf;
 		struct level_descriptor *level_desc = &c->handle->db_desc->levels[c->level_id];
 
@@ -795,6 +795,7 @@ static void comp_append_entry_to_leaf_node(struct comp_level_write_cursor *c, st
 		my_key = kv;
 	}
 
+	write_leaf_args.level_medium_inplace = c->handle->db_desc->level_medium_inplace;
 	switch (my_key->kv_type) {
 	case KV_INPLACE:
 		kv_size = sizeof(uint32_t) + KEY_SIZE(my_key->kv_inplace);
@@ -825,14 +826,22 @@ static void comp_append_entry_to_leaf_node(struct comp_level_write_cursor *c, st
 		assert(0);
 	}
 
-	if (write_leaf_args.cat == MEDIUM_INLOG && write_leaf_args.level_id == LEVEL_MEDIUM_INPLACE) {
+	if (write_leaf_args.cat == MEDIUM_INLOG &&
+	    write_leaf_args.level_id == c->handle->db_desc->level_medium_inplace) {
 		kv_size = sizeof(uint32_t) + KEY_SIZE(my_key->kv_inlog->pointer);
 		kv_size += VALUE_SIZE(my_key->kv_inlog->pointer + kv_size) + sizeof(uint32_t);
 		write_leaf_args.key_value_size = kv_size;
 	}
 
-	if (check_dynamic_leaf_split(c->last_leaf, level_leaf_size, kv_size, c->level_id, my_key->kv_type,
-				     my_key->kv_category)) {
+	struct split_level_leaf split_metadata = { .leaf = c->last_leaf,
+						   .leaf_size = level_leaf_size,
+						   .kv_size = kv_size,
+						   .level_id = c->level_id,
+						   .key_type = my_key->kv_type,
+						   .cat = my_key->kv_category,
+						   .level_medium_inplace = c->handle->db_desc->level_medium_inplace };
+
+	if (is_dynamic_leaf_full(split_metadata)) {
 		// log_info("Time for a split!");
 		/*keep current aka left leaf offt*/
 		uint32_t offt_l = comp_calc_offt_in_seg(c->segment_buf[0], (char *)c->last_leaf);
@@ -849,12 +858,13 @@ static void comp_append_entry_to_leaf_node(struct comp_level_write_cursor *c, st
 	write_leaf_args.middle = c->last_leaf->header.num_entries;
 
 #if MEASURE_MEDIUM_INPLACE
-	if (write_leaf_args.cat == MEDIUM_INLOG && write_leaf_args.level_id == LEVEL_MEDIUM_INPLACE) {
+	if (write_leaf_args.cat == MEDIUM_INLOG &&
+	    write_leaf_args.level_id == c->handle->db_desc->level_medium_inplace) {
 		__sync_fetch_and_add(&c->handle->db_desc->count_medium_inplace, 1);
 	}
 #endif
 
-	if (write_leaf_args.cat == MEDIUM_INLOG && write_leaf_args.level_id == LEVEL_MEDIUM_INPLACE)
+	if (write_leaf_args.cat == MEDIUM_INLOG && write_leaf_args.level_id == c->handle->db_desc->level_medium_inplace)
 		write_leaf_args.key_value_buf = fetch_kv_from_LRU(&write_leaf_args, c);
 	write_data_in_dynamic_leaf(&write_leaf_args);
 	// just append and leave
@@ -1304,7 +1314,7 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 	comp_init_write_cursor(merged_level, handle, comp_req->dst_level, FD);
 
 	//initialize LRU cache for storing chunks of segments when medium log goes in place
-	if (merged_level->level_id == LEVEL_MEDIUM_INPLACE)
+	if (merged_level->level_id == handle->db_desc->level_medium_inplace)
 		merged_level->medium_log_LRU_cache = init_LRU();
 
 	log_info("Src [%u][%u] size = %llu", comp_req->src_level, comp_req->src_tree,
@@ -1434,7 +1444,7 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 		(struct node_header *)REAL_ADDRESS(merged_level->root_offt);
 	assert(merged_level->handle->db_desc->levels[comp_req->dst_level].root_w[1]->type == rootNode);
 
-	if (merged_level->level_id == LEVEL_MEDIUM_INPLACE)
+	if (merged_level->level_id == handle->db_desc->level_medium_inplace)
 		destroy_LRU(merged_level->medium_log_LRU_cache);
 
 	free(merged_level);
@@ -1530,7 +1540,7 @@ void *compaction(void *_comp_req)
 		dst_root = NULL;
 	}
 
-	if (comp_req->src_level == 0 || comp_req->dst_level == LEVEL_MEDIUM_INPLACE)
+	if (comp_req->src_level == 0 || comp_req->dst_level == handle.db_desc->level_medium_inplace)
 		compact_level_direct_IO(&handle, comp_req);
 	else if (dst_root)
 		compact_level_direct_IO(&handle, comp_req);

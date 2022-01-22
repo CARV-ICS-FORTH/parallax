@@ -332,8 +332,8 @@ typedef struct db_descriptor {
 	struct log_descriptor medium_log;
 	struct log_descriptor small_log;
 	uint64_t lsn;
-	struct large_log_segment_gc_entry *
-		segment_ht; // A hash table containing every segment that has at least 1 byte of garbage data in the large log.
+	// A hash table containing every segment that has at least 1 byte of garbage data in the large log.
+	struct large_log_segment_gc_entry *segment_ht;
 	uint64_t gc_last_segment_id;
 	uint64_t gc_count_segments;
 	uint64_t gc_keys_transferred;
@@ -342,7 +342,7 @@ typedef struct db_descriptor {
 	uint64_t small_log_start_offt_in_segment;
 	uint64_t big_log_start_segment_dev_offt;
 	uint64_t big_log_start_offt_in_segment;
-
+	unsigned int level_medium_inplace;
 	int is_compaction_daemon_sleeping;
 	int32_t reference_count;
 	int32_t group_id;

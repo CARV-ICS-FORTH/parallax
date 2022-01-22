@@ -402,21 +402,20 @@ uint32_t append_bt_leaf_entry_inplace(char *dest, uint64_t pointer, char *prefix
 	return prefix_size + sizeof(pointer);
 }
 
-int check_dynamic_leaf_split(struct bt_dynamic_leaf_node *leaf, uint32_t leaf_size, uint32_t kv_size, int level_id,
-			     enum kv_entry_location key_type, enum log_category cat)
+int is_dynamic_leaf_full(struct split_level_leaf split_metadata)
 {
-	uint32_t leaf_log_size = leaf->header.leaf_log_size;
-	uint32_t metadata_size = sizeof(struct bt_dynamic_leaf_node) +
-				 (sizeof(struct bt_dynamic_leaf_slot_array) * (leaf->header.num_entries + 1));
-	uint32_t upper_bound = leaf_size - metadata_size;
+	uint32_t leaf_log_size = split_metadata.leaf->header.leaf_log_size;
+	uint32_t metadata_size = sizeof(struct bt_dynamic_leaf_node) + (sizeof(struct bt_dynamic_leaf_slot_array) *
+									(split_metadata.leaf->header.num_entries + 1));
+	uint32_t upper_bound = split_metadata.leaf_size - metadata_size;
 
 	/* log_info("1 leaf addr %llu leaf_log %d upper_bound %d",leaf,leaf_log_size,upper_bound); */
-	if (cat == MEDIUM_INLOG && level_id == LEVEL_MEDIUM_INPLACE)
-		key_type = KV_INPLACE;
+	if (split_metadata.cat == MEDIUM_INLOG && split_metadata.level_id == split_metadata.level_medium_inplace)
+		split_metadata.key_type = KV_INPLACE;
 
-	switch (key_type) {
+	switch (split_metadata.key_type) {
 	case KV_INPLACE:
-		leaf_log_size += kv_size;
+		leaf_log_size += split_metadata.kv_size;
 		break;
 	case KV_INLOG:
 		leaf_log_size += sizeof(struct bt_leaf_entry);
@@ -683,7 +682,7 @@ void write_data_in_dynamic_leaf(struct write_dynamic_leaf_args *args)
 	else
 		status = KV_INPLACE;
 
-	if (args->cat == MEDIUM_INLOG && args->level_id == LEVEL_MEDIUM_INPLACE) {
+	if (args->cat == MEDIUM_INLOG && args->level_id == args->level_medium_inplace) {
 		status = KV_INPLACE;
 		args->cat = MEDIUM_INPLACE;
 		assert(args->kv_format == KV_PREFIX);
@@ -814,6 +813,8 @@ int8_t insert_in_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, bt_insert_req *
 							   .key_value_size = req->metadata.kv_size,
 							   .level_id = level->level_id,
 							   .kv_format = req->metadata.key_format,
+							   .level_medium_inplace =
+								   req->metadata.handle->db_desc->level_medium_inplace,
 							   .cat = req->metadata.cat,
 							   .tombstone = req->metadata.tombstone };
 	struct dl_bsearch_result bsearch = { .middle = 0, .status = INSERT, .op = DYNAMIC_LEAF_INSERT, .debug = 0 };
