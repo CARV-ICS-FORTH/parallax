@@ -22,7 +22,7 @@
 
 struct mem_bitmap_word {
 	uint64_t *word_addr;
-	uint32_t start_bit;
-	uint32_t end_bit;
 	int word_id;
-};
+	uint8_t start_bit;
+	uint8_t end_bit;
+} __attribute__((packed, aligned(16)));
