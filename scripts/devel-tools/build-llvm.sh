@@ -33,4 +33,5 @@ ninja-build clang-format
 ninja-build clangd
 ninja-build clang-tidy
 ninja-build lldb
+ninja-build compiler-rt
 echo "Export the bin directory to detect clang-format"
