@@ -114,19 +114,23 @@ static int sh_cmp_heap_nodes(struct sh_heap *hp, struct sh_heap_node *nd_1, stru
 	int64_t ret;
 	if (L1.in_tail && L2.in_tail) {
 		/*key1 and key2 are KV_FORMATed*/
-		construct_keys_for_cmp(&key1_cmp, &key2_cmp, L1.addr, L2.addr, KV_FORMAT, KV_FORMAT);
+		init_key_cmp(&key1_cmp, L1.addr, KV_FORMAT);
+		init_key_cmp(&key2_cmp, L2.addr, KV_FORMAT);
 		ret = key_cmp(&key1_cmp, &key2_cmp);
 	} else if (L1.in_tail) {
 		/*key1 is KV_FORMATED key2 is nd2->type*/
-		construct_keys_for_cmp(&key1_cmp, &key2_cmp, L1.addr, nd_2->KV, KV_FORMAT, nd_2->type);
+		init_key_cmp(&key1_cmp, L1.addr, KV_FORMAT);
+		init_key_cmp(&key2_cmp, nd_2->KV, nd_2->type);
 		ret = key_cmp(&key1_cmp, &key2_cmp);
 	} else if (L2.in_tail) {
 		/*key1 is nd1_type key2 is KV_FORMAT*/
-		construct_keys_for_cmp(&key1_cmp, &key2_cmp, nd_1->KV, L2.addr, nd_1->type, KV_FORMAT);
+		init_key_cmp(&key1_cmp, nd_1->KV, nd_1->type);
+		init_key_cmp(&key2_cmp, L2.addr, KV_FORMAT);
 		ret = key_cmp(&key1_cmp, &key2_cmp);
 	} else {
 		/*key1 is nd1_type key2 is nd2_type*/
-		construct_keys_for_cmp(&key1_cmp, &key2_cmp, nd_1->KV, nd_2->KV, nd_1->type, nd_2->type);
+		init_key_cmp(&key1_cmp, nd_1->KV, nd_1->type);
+		init_key_cmp(&key2_cmp, nd_2->KV, nd_2->type);
 		ret = key_cmp(&key1_cmp, &key2_cmp);
 	}
 	if (L1.in_tail)
@@ -240,8 +244,8 @@ static int check_for_duplicate_inL0(struct sh_heap *hp, struct sh_heap_node *nd)
 	while (i) {
 		if (hp->elem[PARENT(i)].level_id == 0 && nd->level_id == 0) {
 			/*key1 is nd_type key2 is PARENT type*/
-			construct_keys_for_cmp(&key1_cmp, &key2_cmp, nd->KV, hp->elem[PARENT(i)].KV, nd->type,
-					       hp->elem[PARENT(i)].type);
+			init_key_cmp(&key1_cmp, nd->KV, nd->type);
+			init_key_cmp(&key2_cmp, hp->elem[PARENT(i)].KV, hp->elem[PARENT(i)].type);
 			ret = key_cmp(&key1_cmp, &key2_cmp);
 			if (ret == 0) {
 				copy_node(&hp->elem[PARENT(i)], nd);

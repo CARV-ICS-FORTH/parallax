@@ -75,19 +75,21 @@ int prefix_compare(char *l, char *r, size_t prefix_size)
 	return memcmp(l, r, prefix_size);
 }
 
-static void build_key(struct key_compare *key_cmp, void *key_buf, char key_format)
+void init_key_cmp(struct key_compare *key_cmp, void *key_buf, char key_format)
 {
-	assert(key_cmp->is_NIL != 1);
+	key_cmp->is_NIL = key_buf == NULL;
+	if (key_cmp->is_NIL == 1)
+		return;
 
 	if (key_format == KV_FORMAT) {
 		key_cmp->key_size = *(uint32_t *)key_buf;
 		key_cmp->key = (char *)key_buf + sizeof(uint32_t);
-		key_cmp->cat = KV_FORMAT;
+		key_cmp->key_format = KV_FORMAT;
 	} else if (key_format == KV_PREFIX) {
 		key_cmp->key_size = PREFIX_SIZE;
 		key_cmp->key = ((struct bt_leaf_entry *)key_buf)->prefix;
 		key_cmp->kv_dev_offt = ((struct bt_leaf_entry *)key_buf)->pointer;
-		key_cmp->cat = KV_PREFIX;
+		key_cmp->key_format = KV_PREFIX;
 	} else {
 		log_fatal("Unknown key category, exiting");
 		assert(0);
@@ -95,28 +97,6 @@ static void build_key(struct key_compare *key_cmp, void *key_buf, char key_forma
 	}
 }
 
-void construct_keys_for_cmp(struct key_compare *key1_cmp, struct key_compare *key2_cmp, void *key1, void *key2,
-			    char key1_format, char key2_format)
-{
-	/*if a key is NULL, inform key_cmp for that*/
-	if (key1 == NULL)
-		key1_cmp->is_NIL = 1;
-	else
-		key1_cmp->is_NIL = 0;
-
-	if (key2 == NULL)
-		key2_cmp->is_NIL = 1;
-	else
-		key2_cmp->is_NIL = 0;
-
-	/*build key1*/
-	if (key1_cmp->is_NIL == 0)
-		build_key(key1_cmp, key1, key1_format);
-
-	/*build key2*/
-	if (key2_cmp->is_NIL == 0)
-		build_key(key2_cmp, key2, key2_format);
-}
 /**
  * @param   index_key: address of the index_key
  * @param   index_key_len: length of the index_key in encoded form first 2
@@ -136,7 +116,7 @@ int64_t key_cmp(struct key_compare *key1, struct key_compare *key2)
 	if (key1->is_NIL == 1)
 		return -1;
 
-	if (key1->cat == KV_FORMAT && key2->cat == KV_FORMAT) {
+	if (key1->key_format == KV_FORMAT && key2->key_format == KV_FORMAT) {
 		size = key1->key_size;
 		if (size > key2->key_size)
 			size = key2->key_size;
@@ -153,7 +133,7 @@ int64_t key_cmp(struct key_compare *key1, struct key_compare *key2)
 		return 0;
 	}
 
-	if (key1->cat == KV_FORMAT && key2->cat == KV_PREFIX) {
+	if (key1->key_format == KV_FORMAT && key2->key_format == KV_PREFIX) {
 		if (key1->key_size >= PREFIX_SIZE)
 			ret = prefix_compare(key1->key, key2->key, PREFIX_SIZE);
 		else
@@ -181,7 +161,7 @@ int64_t key_cmp(struct key_compare *key1, struct key_compare *key2)
 		return ret;
 	}
 
-	if (key1->cat == KV_PREFIX && key2->cat == KV_FORMAT) {
+	if (key1->key_format == KV_PREFIX && key2->key_format == KV_FORMAT) {
 		if (key2->key_size >= PREFIX_SIZE)
 			ret = prefix_compare(key1->key, key2->key, PREFIX_SIZE);
 		else // check here TODO
@@ -1809,7 +1789,8 @@ int8_t update_index(index_node *node, node_header *left_child, node_header *righ
 			       (uint64_t)(middle * 2 * sizeof(uint64_t));
 			index_key_buf = (void *)REAL_ADDRESS(*(uint64_t *)addr);
 			/*key1 and key2 are KV_FORMATed*/
-			construct_keys_for_cmp(&key1_cmp, &key2_cmp, index_key_buf, key_buf, KV_FORMAT, KV_FORMAT);
+			init_key_cmp(&key1_cmp, index_key_buf, KV_FORMAT);
+			init_key_cmp(&key2_cmp, key_buf, KV_FORMAT);
 			ret = key_cmp(&key1_cmp, &key2_cmp);
 			if (ret > 0) {
 				end_idx = middle - 1;
@@ -2093,7 +2074,8 @@ void *_index_node_binary_search(index_node *node, void *key_buf, char query_key_
 		addr = &(node->p[middle].pivot);
 		index_key_buf = (void *)REAL_ADDRESS(*(uint64_t *)addr);
 		/*key1 is KV_FORMATED key2 is query_key_format*/
-		construct_keys_for_cmp(&key1_cmp, &key2_cmp, index_key_buf, key_buf, KV_FORMAT, query_key_format);
+		init_key_cmp(&key1_cmp, index_key_buf, KV_FORMAT);
+		init_key_cmp(&key2_cmp, key_buf, query_key_format);
 		ret = key_cmp(&key1_cmp, &key2_cmp);
 		if (ret == 0) {
 			// log_debug("I passed from this corner case1 %s",
@@ -2166,7 +2148,8 @@ void assert_index_node(node_header *node)
 
 		if (key_tmp_prev != NULL) {
 			/*key1 and key2 are KV_FORMATed*/
-			construct_keys_for_cmp(&key1_cmp, &key2_cmp, key_tmp_prev, key_tmp, KV_FORMAT, KV_FORMAT);
+			init_key_cmp(&key1_cmp, key_tmp_prev, KV_FORMAT);
+			init_key_cmp(&key2_cmp, key_tmp, KV_FORMAT);
 			if (key_cmp(&key1_cmp, &key2_cmp) >= 0) {
 				log_fatal("corrupted index %d:%s something else %d:%s\n", *(uint32_t *)key_tmp_prev,
 					  key_tmp_prev + 4, *(uint32_t *)key_tmp, key_tmp + 4);

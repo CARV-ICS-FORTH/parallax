@@ -264,8 +264,8 @@ void binary_search_dynamic_leaf(const struct bt_dynamic_leaf_node *leaf, uint32_
 			case KV_PREFIX: {
 				struct bt_leaf_entry *kv_entry = (struct bt_leaf_entry *)req->key_value_buf;
 				/*key1 and key2 are KV_FORMATed*/
-				construct_keys_for_cmp(&key1_cmp, &key2_cmp, L.addr, (void *)kv_entry->pointer,
-						       KV_FORMAT, KV_FORMAT);
+				init_key_cmp(&key1_cmp, L.addr, KV_FORMAT);
+				init_key_cmp(&key2_cmp, (void *)kv_entry->pointer, KV_FORMAT);
 				ret = key_cmp(&key1_cmp, &key2_cmp);
 				break;
 			}
@@ -274,8 +274,8 @@ void binary_search_dynamic_leaf(const struct bt_dynamic_leaf_node *leaf, uint32_
 				//log_info("Comparing index key %u:%s with query key :%u:%s", *(uint32_t *)L.addr,
 				//	 L.addr + 4, *(uint32_t *)req->key_value_buf, req->key_value_buf + 4);
 				/*key1 and key2 are KV_FORMATed*/
-				construct_keys_for_cmp(&key1_cmp, &key2_cmp, L.addr, req->key_value_buf, KV_FORMAT,
-						       KV_FORMAT);
+				init_key_cmp(&key1_cmp, L.addr, KV_FORMAT);
+				init_key_cmp(&key2_cmp, req->key_value_buf, KV_FORMAT);
 				ret = key_cmp(&key1_cmp, &key2_cmp);
 				break;
 			default:
@@ -365,7 +365,8 @@ void check_sorted_dynamic_leaf(const struct bt_dynamic_leaf_node *leaf, uint32_t
 		char *key2 =
 			fill_keybuf(get_kv_offset(leaf, leaf_size, slot_array[i + 1].index), slot_array[i + 1].bitmap);
 		/*key1 and key2 are KV_FORMATed*/
-		construct_keys_for_cmp(&key1_cmp, &key2_cmp, key, key2, KV_FORMAT, KV_FORMAT);
+		init_key_cmp(&key1_cmp, key, KV_FORMAT);
+		init_key_cmp(&key2_cmp, key2, KV_FORMAT);
 		if (key_cmp(&key1_cmp, &key2_cmp) > 0) {
 			print_dynamic_leaf(leaf, leaf_size);
 			assert(0);

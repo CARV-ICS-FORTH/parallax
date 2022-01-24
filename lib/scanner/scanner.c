@@ -405,8 +405,8 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 			/*reconstruct full key*/
 			addr = &(inode->p[middle].pivot);
 			full_pivot_key = (void *)REAL_ADDRESS(*(uint64_t *)addr);
-			construct_keys_for_cmp(&key1_cmp, &key2_cmp, full_pivot_key, start_key_buf, KV_FORMAT,
-					       KV_FORMAT);
+			init_key_cmp(&key1_cmp, full_pivot_key, KV_FORMAT);
+			init_key_cmp(&key2_cmp, start_key_buf, KV_FORMAT);
 			ret = key_cmp(&key1_cmp, &key2_cmp);
 
 			if (ret == 0) {
@@ -604,8 +604,8 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 			log_address = bt_get_kv_log_address(&level_sc->db->db_desc->big_log,
 							    ABSOLUTE_ADDRESS(level_sc->keyValue));
 		/*key1 is level_sc->kv_format key2 is KV_FORMAT*/
-		construct_keys_for_cmp(&key1_cmp, &key2_cmp, log_address.addr, start_key_buf, level_sc->kv_format,
-				       KV_FORMAT);
+		init_key_cmp(&key1_cmp, log_address.addr, level_sc->kv_format);
+		init_key_cmp(&key2_cmp, start_key_buf, KV_FORMAT);
 		ret = key_cmp(&key1_cmp, &key2_cmp);
 		if (log_address.in_tail)
 			bt_done_with_value_log_address(&level_sc->db->db_desc->big_log, &log_address);
