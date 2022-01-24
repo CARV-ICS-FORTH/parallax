@@ -153,6 +153,14 @@ enum log_category {
 	UNKNOWN_LOG_CATEGORY
 };
 
+struct key_compare {
+	char *key;
+	uint64_t kv_dev_offt;
+	uint32_t key_size;
+	uint8_t is_NIL;
+	enum KV_type cat;
+};
+
 #define INDEX_NODE_REMAIN (INDEX_NODE_SIZE - sizeof(struct node_header))
 #define LEAF_NODE_REMAIN (LEAF_NODE_SIZE - sizeof(struct node_header))
 
@@ -527,7 +535,9 @@ void *append_key_value_to_log(log_operation *req);
 void find_key(struct lookup_operation *get_op);
 int8_t delete_key(db_handle *handle, void *key, uint32_t size);
 
-int64_t key_cmp(void *index_key_buf, void *query_key_buf, char index_key_format, char query_key_format);
+void construct_keys_for_cmp(struct key_compare *key1_cmp, struct key_compare *key2_cmp, void *key1, void *key2,
+			    char key1_format, char key2_format);
+int64_t key_cmp(struct key_compare *key1_cmp, struct key_compare *key2_cmp);
 int prefix_compare(char *l, char *r, size_t unused);
 
 /*functions used from other parts except btree/btree.c*/
