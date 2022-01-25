@@ -898,7 +898,7 @@ enum parallax_status db_close(db_handle *handle)
 	log_info("All L0 compactions done");
 
 	/*wait for all other pending compactions to finish*/
-	for (int i = 1; i < MAX_LEVELS; i++) {
+	for (uint8_t i = 1; i < MAX_LEVELS; i++) {
 		if (COMPACTION_IN_PROGRESS == handle->db_desc->levels[i].tree_status[0]) {
 			i = 0;
 			usleep(500);
