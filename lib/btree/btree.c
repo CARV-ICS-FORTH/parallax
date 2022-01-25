@@ -1541,12 +1541,12 @@ static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id,
 	struct node_header *root = NULL;
 
 	struct db_descriptor *db_desc = get_op->db_desc;
-	if (db_desc->levels[level_id].root_r[tree_id] != NULL) {
-		/* log_info("Level %d with tree_id %d has root_w",level_id,tree_id); */
-		root = db_desc->levels[level_id].root_r[tree_id];
-	} else if (db_desc->levels[level_id].root_w[tree_id] != NULL) {
+	if (db_desc->levels[level_id].root_w[tree_id] != NULL) {
 		/* log_info("Level %d with tree_id %d has root_w",level_id,tree_id); */
 		root = db_desc->levels[level_id].root_w[tree_id];
+	} else if (db_desc->levels[level_id].root_r[tree_id] != NULL) {
+		/* log_info("Level %d with tree_id %d has root_w",level_id,tree_id); */
+		root = db_desc->levels[level_id].root_r[tree_id];
 	} else {
 		/* log_info("Level %d is empty with tree_id %d",level_id,tree_id); */
 		/* if (RWLOCK_UNLOCK(&curr->rx_lock) != 0) */

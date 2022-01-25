@@ -440,8 +440,7 @@ typedef struct bt_insert_req {
 	bt_mutate_req metadata;
 	void *key_value_buf;
 	//Used in some cases where the KV has been written
-	uint64_t kv_dev_offt : 63;
-	uint64_t translate_medium_log : 1;
+	uint64_t kv_dev_offt;
 } bt_insert_req;
 
 typedef struct bt_delete_request {

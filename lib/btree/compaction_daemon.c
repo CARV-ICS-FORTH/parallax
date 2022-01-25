@@ -728,7 +728,6 @@ static int comp_append_medium_L1(struct comp_level_write_cursor *c, struct comp_
 	struct bt_insert_req ins_req;
 	ins_req.metadata.handle = c->handle;
 	ins_req.metadata.log_offset = 0;
-	ins_req.translate_medium_log = 0;
 
 	ins_req.metadata.kv_size = sizeof(uint32_t) + KEY_SIZE(in->kv_inplace);
 	ins_req.metadata.kv_size += VALUE_SIZE(in->kv_inplace + ins_req.metadata.kv_size) + sizeof(uint32_t);
