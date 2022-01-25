@@ -392,13 +392,16 @@ void init_log_buffer(struct log_descriptor *log_desc, enum log_type my_type)
 		log_desc->tail[i]->fd = FD;
 	}
 	log_desc->my_type = my_type;
+
 	// Special action for 0
 	log_desc->tail[0]->dev_offt = log_desc->tail_dev_offt;
 	log_desc->tail[0]->start = log_desc->tail_dev_offt;
 	log_desc->tail[0]->end = log_desc->tail[0]->start + SEGMENT_SIZE;
 	log_desc->tail[0]->free = 0;
+
 	// Recover log
 	pr_read_log_tail(log_desc->tail[0]);
+
 	// set proper accounting
 	uint64_t offt_in_seg = log_desc->size % SEGMENT_SIZE;
 	uint32_t n_chunks = offt_in_seg / LOG_CHUNK_SIZE;
@@ -1476,9 +1479,7 @@ void *append_key_value_to_log(log_operation *req)
 			exit(EXIT_FAILURE);
 		} else {
 			log_metadata.log_desc = &handle->db_desc->medium_log;
-			//return bt_append_key_value_to_log_mmap(req, &log_metadata, &data_size);
-			char *c = bt_append_to_log_direct_IO(req, &log_metadata, &data_size);
-			return c;
+			return bt_append_to_log_direct_IO(req, &log_metadata, &data_size);
 		}
 #endif
 	}
