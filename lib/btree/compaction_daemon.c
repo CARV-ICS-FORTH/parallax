@@ -696,7 +696,6 @@ static void comp_append_pivot_to_index(struct comp_level_write_cursor *c, uint64
 		comp_append_pivot_to_index(c, left_index_offt, right_index_offt, new_pivot_buf, height + 1);
 		free(new_pivot_buf);
 	}
-	return;
 }
 
 static void comp_init_medium_log(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
@@ -743,7 +742,6 @@ static int comp_append_medium_L1(struct comp_level_write_cursor *c, struct comp_
 	ins_req.metadata.tombstone = 0;
 	ins_req.key_value_buf = in->kv_inplace;
 	ins_req.metadata.reorganized_leaf_pos_INnode = NULL;
-
 	/*For Tebis-parallax currently*/
 	ins_req.metadata.segment_full_event = 0;
 	ins_req.metadata.log_segment_addr = 0;
@@ -774,126 +772,128 @@ static int comp_append_medium_L1(struct comp_level_write_cursor *c, struct comp_
 	return 1;
 }
 
-static void comp_append_entry_to_leaf_node(struct comp_level_write_cursor *c, struct comp_parallax_key *kv)
+static void comp_append_entry_to_leaf_node(struct comp_level_write_cursor *cursor, struct comp_parallax_key *kv)
 {
-	uint64_t left_leaf_offt = 0;
-	uint64_t right_leaf_offt = 0;
-	uint32_t level_leaf_size = c->handle->db_desc->levels[c->level_id].leaf_size;
-	uint32_t kv_size = 0;
-	int new_leaf = 0;
 	struct comp_parallax_key trans_medium;
 	struct write_dynamic_leaf_args write_leaf_args;
+	struct comp_parallax_key *curr_key = kv;
+	uint64_t left_leaf_offt = 0;
+	uint64_t right_leaf_offt = 0;
+	uint32_t level_leaf_size = cursor->handle->db_desc->levels[cursor->level_id].leaf_size;
+	uint32_t kv_size = 0;
 	uint8_t append_to_medium_log = 0;
-	struct comp_parallax_key *my_key = NULL;
 
-	if (comp_append_medium_L1(c, kv, &trans_medium)) {
-		my_key = &trans_medium;
+	if (comp_append_medium_L1(cursor, kv, &trans_medium)) {
+		curr_key = &trans_medium;
 		append_to_medium_log = 1;
-	} else {
-		my_key = kv;
 	}
 
-	write_leaf_args.level_medium_inplace = c->handle->db_desc->level_medium_inplace;
-	switch (my_key->kv_type) {
+	write_leaf_args.level_medium_inplace = cursor->handle->db_desc->level_medium_inplace;
+	switch (curr_key->kv_type) {
 	case KV_INPLACE:
-		kv_size = sizeof(uint32_t) + KEY_SIZE(my_key->kv_inplace);
-		kv_size += VALUE_SIZE(my_key->kv_inplace + kv_size) + sizeof(uint32_t);
+		kv_size = sizeof(uint32_t) + KEY_SIZE(curr_key->kv_inplace);
+		kv_size += VALUE_SIZE(curr_key->kv_inplace + kv_size) + sizeof(uint32_t);
 		write_leaf_args.kv_dev_offt = 0;
 		write_leaf_args.key_value_size = kv_size;
-		write_leaf_args.level_id = c->level_id;
+		write_leaf_args.level_id = cursor->level_id;
 		write_leaf_args.kv_format = KV_FORMAT;
-		write_leaf_args.cat = my_key->kv_category;
-		write_leaf_args.key_value_buf = my_key->kv_inplace;
-		write_leaf_args.tombstone = my_key->tombstone;
+		write_leaf_args.cat = curr_key->kv_category;
+		write_leaf_args.key_value_buf = curr_key->kv_inplace;
+		write_leaf_args.tombstone = curr_key->tombstone;
 		//log_info("Appending key in_place %u:%s", write_leaf_args.key_value_size,
 		//	 write_leaf_args.key_value_buf + sizeof(uint32_t));
 		break;
 	case KV_INLOG:
 		kv_size = sizeof(struct bt_leaf_entry);
-		write_leaf_args.kv_dev_offt = my_key->kv_inlog->pointer;
-		write_leaf_args.key_value_buf = (char *)my_key->kv_inlog;
+		write_leaf_args.kv_dev_offt = curr_key->kv_inlog->pointer;
+		write_leaf_args.key_value_buf = (char *)curr_key->kv_inlog;
 		write_leaf_args.key_value_size = kv_size;
-		write_leaf_args.level_id = c->level_id;
+		write_leaf_args.level_id = cursor->level_id;
 		write_leaf_args.kv_format = KV_PREFIX;
-		write_leaf_args.cat = my_key->kv_category;
-		write_leaf_args.tombstone = my_key->tombstone;
+		write_leaf_args.cat = curr_key->kv_category;
+		write_leaf_args.tombstone = curr_key->tombstone;
 		//log_info("Appending prefix is  %s dev offt %llu", my_key->in_log->prefix, my_key->in_log->device_offt);
 		break;
 	default:
-		log_fatal("Unknown key_type (IN_PLACE,IN_LOG) instead got %u", my_key->kv_type);
+		log_fatal("Unknown key_type (IN_PLACE,IN_LOG) instead got %u", curr_key->kv_type);
 		assert(0);
 	}
 
 	if (write_leaf_args.cat == MEDIUM_INLOG &&
-	    write_leaf_args.level_id == c->handle->db_desc->level_medium_inplace) {
-		kv_size = sizeof(uint32_t) + KEY_SIZE(my_key->kv_inlog->pointer);
-		kv_size += VALUE_SIZE(my_key->kv_inlog->pointer + kv_size) + sizeof(uint32_t);
+	    write_leaf_args.level_id == cursor->handle->db_desc->level_medium_inplace) {
+		kv_size = sizeof(uint32_t) + KEY_SIZE(curr_key->kv_inlog->pointer);
+		kv_size += VALUE_SIZE(curr_key->kv_inlog->pointer + kv_size) + sizeof(uint32_t);
 		write_leaf_args.key_value_size = kv_size;
 	}
 
-	struct split_level_leaf split_metadata = { .leaf = c->last_leaf,
+	struct split_level_leaf split_metadata = { .leaf = cursor->last_leaf,
 						   .leaf_size = level_leaf_size,
 						   .kv_size = kv_size,
-						   .level_id = c->level_id,
-						   .key_type = my_key->kv_type,
-						   .cat = my_key->kv_category,
-						   .level_medium_inplace = c->handle->db_desc->level_medium_inplace };
+						   .level_id = cursor->level_id,
+						   .key_type = curr_key->kv_type,
+						   .cat = curr_key->kv_category,
+						   .level_medium_inplace =
+							   cursor->handle->db_desc->level_medium_inplace };
 
+	int new_leaf = 0;
 	if (is_dynamic_leaf_full(split_metadata)) {
 		// log_info("Time for a split!");
 		/*keep current aka left leaf offt*/
-		uint32_t offt_l = comp_calc_offt_in_seg(c->segment_buf[0], (char *)c->last_leaf);
-		left_leaf_offt = c->dev_offt[0] + offt_l;
-		comp_get_space(c, 0, leafNode);
+		uint32_t offt_l = comp_calc_offt_in_seg(cursor->segment_buf[0], (char *)cursor->last_leaf);
+		left_leaf_offt = cursor->dev_offt[0] + offt_l;
+		comp_get_space(cursor, 0, leafNode);
 		/*last leaf updated*/
-		uint32_t offt_r = comp_calc_offt_in_seg(c->segment_buf[0], (char *)c->last_leaf);
-		right_leaf_offt = c->dev_offt[0] + offt_r;
+		uint32_t offt_r = comp_calc_offt_in_seg(cursor->segment_buf[0], (char *)cursor->last_leaf);
+		right_leaf_offt = cursor->dev_offt[0] + offt_r;
 		new_leaf = 1;
 	}
 
-	write_leaf_args.leaf = c->last_leaf;
-	write_leaf_args.dest = get_leaf_log_offset(c->last_leaf, level_leaf_size);
-	write_leaf_args.middle = c->last_leaf->header.num_entries;
+	write_leaf_args.leaf = cursor->last_leaf;
+	write_leaf_args.dest = get_leaf_log_offset(cursor->last_leaf, level_leaf_size);
+	write_leaf_args.middle = cursor->last_leaf->header.num_entries;
 
 #if MEASURE_MEDIUM_INPLACE
 	if (write_leaf_args.cat == MEDIUM_INLOG &&
 	    write_leaf_args.level_id == c->handle->db_desc->level_medium_inplace) {
-		__sync_fetch_and_add(&c->handle->db_desc->count_medium_inplace, 1);
+		__sync_fetch_and_add(&cursor->handle->db_desc->count_medium_inplace, 1);
 	}
 #endif
 
-	if (write_leaf_args.cat == MEDIUM_INLOG && write_leaf_args.level_id == c->handle->db_desc->level_medium_inplace)
-		write_leaf_args.key_value_buf = fetch_kv_from_LRU(&write_leaf_args, c);
+	if (write_leaf_args.cat == MEDIUM_INLOG &&
+	    write_leaf_args.level_id == cursor->handle->db_desc->level_medium_inplace)
+		write_leaf_args.key_value_buf = fetch_kv_from_LRU(&write_leaf_args, cursor);
+
 	write_data_in_dynamic_leaf(&write_leaf_args);
 	// just append and leave
-	++c->last_leaf->header.num_entries;
+	++cursor->last_leaf->header.num_entries;
 #if ENABLE_BLOOM_FILTERS
 // TODO XXX
 #endif
 	// TODO SIZE
-	c->handle->db_desc->levels[c->level_id].level_size[1] += write_leaf_args.key_value_size;
+	cursor->handle->db_desc->levels[cursor->level_id].level_size[1] += write_leaf_args.key_value_size;
 
 	if (new_leaf) {
 		// log_info("keys are %llu for level %u",
 		// c->handle->db_desc->levels[c->level_id].level_size[1],
 		//	 c->level_id);
 		if (append_to_medium_log) {
-			comp_append_pivot_to_index(c, left_leaf_offt, right_leaf_offt, kv->kv_inplace, 1);
+			comp_append_pivot_to_index(cursor, left_leaf_offt, right_leaf_offt, kv->kv_inplace, 1);
 		} else {
 			switch (write_leaf_args.kv_format) {
 			case KV_FORMAT:
-				comp_append_pivot_to_index(c, left_leaf_offt, right_leaf_offt,
+				comp_append_pivot_to_index(cursor, left_leaf_offt, right_leaf_offt,
 							   write_leaf_args.key_value_buf, 1);
 				break;
 			case KV_PREFIX:
-				if (c->level_id == 1 && my_key->kv_category == MEDIUM_INPLACE)
-					comp_append_pivot_to_index(c, left_leaf_offt, right_leaf_offt,
-								   my_key->kv_inplace, 1);
+				if (cursor->level_id == 1 && curr_key->kv_category == MEDIUM_INPLACE)
+					comp_append_pivot_to_index(cursor, left_leaf_offt, right_leaf_offt,
+								   curr_key->kv_inplace, 1);
 				else {
 					// do a page fault to find the pivot
 					//log_info("Dev offt is %llu",my_key->in_log->device_offt);
-					char *pivot_addr = (char *)my_key->kv_inlog->pointer;
-					comp_append_pivot_to_index(c, left_leaf_offt, right_leaf_offt, pivot_addr, 1);
+					char *pivot_addr = (char *)curr_key->kv_inlog->pointer;
+					comp_append_pivot_to_index(cursor, left_leaf_offt, right_leaf_offt, pivot_addr,
+								   1);
 				}
 				break;
 			}

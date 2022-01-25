@@ -124,7 +124,6 @@ struct find_result find_key_in_dynamic_leaf(const struct bt_dynamic_leaf_node *l
 	req.metadata.level_id = level_id;
 	req.metadata.handle = &handle;
 	//validate_dynamic_leaf((void *) leaf, NULL, 0, 0);
-	req.translate_medium_log = 0;
 	binary_search_dynamic_leaf(leaf, leaf_size, &req, &result);
 
 	/* if(result.status != FOUND){ */
@@ -748,9 +747,8 @@ void write_data_in_dynamic_leaf(struct write_dynamic_leaf_args *args)
 int reorganize_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, uint32_t leaf_size, bt_insert_req *req)
 {
 	enum log_category cat = req->metadata.cat;
-	unsigned kv_size = (cat == BIG_INLOG || cat == MEDIUM_INLOG || cat == SMALL_INLOG) ?
-				   sizeof(struct bt_leaf_entry) :
-					 req->metadata.kv_size;
+	unsigned kv_size = (cat == BIG_INLOG || cat == MEDIUM_INLOG) ? sizeof(struct bt_leaf_entry) :
+									     req->metadata.kv_size;
 
 	if (leaf->header.fragmentation <= kv_size || req->metadata.level_id != 0)
 		return 0;
@@ -833,7 +831,7 @@ int8_t insert_in_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, bt_insert_req *
 
 	if (unlikely(leaf->header.num_entries == 0))
 		leaf->header.leaf_log_size = 0;
-	req->translate_medium_log = 1;
+
 	binary_search_dynamic_leaf(leaf, level->leaf_size, req, &bsearch);
 
 	write_leaf_args.dest = leaf_log_tail;
