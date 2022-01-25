@@ -499,7 +499,6 @@ struct bt_rebalance_result {
 		struct bt_static_leaf_node *right_slchild;
 		struct bt_dynamic_leaf_node *right_dlchild;
 	};
-	void *middle_key_buf;
 	enum bt_rebalance_retcode stat;
 };
 

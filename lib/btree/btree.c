@@ -1949,7 +1949,8 @@ static struct bt_rebalance_result split_index(node_header *node, bt_insert_req *
 		right_child = (node_header *)REAL_ADDRESS(*(uint64_t *)full_addr);
 
 		if (i == node->num_entries / 2) {
-			result.middle_key_buf = key_buf;
+			KEY_SIZE(result.middle_key) = KEY_SIZE(key_buf);
+			memcpy(&result.middle_key[4], key_buf + 4, KEY_SIZE(result.middle_key));
 			continue; /*middle key not needed, is going to the upper level*/
 		}
 
@@ -2339,7 +2340,7 @@ release_and_retry:
 			/*Insert pivot at father*/
 			if (father != NULL) {
 				insert_key_at_index(ins_req, (index_node *)father, split_res.left_child,
-						    split_res.right_child, split_res.middle_key_buf);
+						    split_res.right_child, split_res.middle_key);
 			} else {
 				/*Root was splitted*/
 				// log_info("new root");
@@ -2353,7 +2354,7 @@ release_and_retry:
 				new_index_node->header.type = rootNode;
 
 				insert_key_at_index(ins_req, new_index_node, split_res.left_child,
-						    split_res.right_child, split_res.middle_key_buf);
+						    split_res.right_child, split_res.middle_key);
 				/*new write root of the tree*/
 				db_desc->levels[level_id].root_w[ins_req->metadata.tree_id] =
 					(node_header *)new_index_node;

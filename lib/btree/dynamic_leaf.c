@@ -434,7 +434,7 @@ struct bt_rebalance_result split_dynamic_leaf(struct bt_dynamic_leaf_node *leaf,
 	struct bt_dynamic_leaf_slot_array *slot_array, *right_leaf_slot_array, *left_leaf_slot_array;
 	int level_id = req->metadata.level_id;
 	char *split_buffer = malloc(leaf_size);
-	char *key_buf, *leaf_log_tail;
+	char *key_buf, *leaf_log_tail, *middle_key_buf = NULL;
 	level_descriptor *level = &req->metadata.handle->db_desc->levels[level_id];
 	struct db_descriptor *db_desc = req->metadata.handle->db_desc;
 	uint64_t i, j = 0;
@@ -484,8 +484,8 @@ struct bt_rebalance_result split_dynamic_leaf(struct bt_dynamic_leaf_node *leaf,
 
 	/*Fix Right leaf metadata*/
 	rep.right_dlchild = seg_get_dynamic_leaf_node(db_desc, level_id, req->metadata.tree_id);
-	rep.middle_key_buf = fill_keybuf(get_kv_offset(leaf, leaf_size, slot_array[leaf->header.num_entries / 2].index),
-					 slot_array[leaf->header.num_entries / 2].kv_loc);
+	middle_key_buf = fill_keybuf(get_kv_offset(leaf, leaf_size, slot_array[leaf->header.num_entries / 2].index),
+				     slot_array[leaf->header.num_entries / 2].kv_loc);
 
 	//Stub for big log direct IO, this function is called na/now
 	//only in L0
@@ -493,18 +493,16 @@ struct bt_rebalance_result split_dynamic_leaf(struct bt_dynamic_leaf_node *leaf,
 	switch (slot_array[leaf->header.num_entries / 2].key_category) {
 #if MEDIUM_LOG_UNSORTED
 	case MEDIUM_INLOG:
-		L = bt_get_kv_log_address(&req->metadata.handle->db_desc->medium_log,
-					  ABSOLUTE_ADDRESS(rep.middle_key_buf));
+		L = bt_get_kv_log_address(&req->metadata.handle->db_desc->medium_log, ABSOLUTE_ADDRESS(middle_key_buf));
 		//log_info("Pivot is %u:%s",*(uint32_t*)L.addr,L.addr+4);
 		assert(*(uint32_t *)L.addr < 25);
 		break;
 #endif
 	case BIG_INLOG:
-		L = bt_get_kv_log_address(&req->metadata.handle->db_desc->big_log,
-					  ABSOLUTE_ADDRESS(rep.middle_key_buf));
+		L = bt_get_kv_log_address(&req->metadata.handle->db_desc->big_log, ABSOLUTE_ADDRESS(middle_key_buf));
 		break;
 	default:
-		L.addr = rep.middle_key_buf;
+		L.addr = middle_key_buf;
 		break;
 	}
 
@@ -512,7 +510,6 @@ struct bt_rebalance_result split_dynamic_leaf(struct bt_dynamic_leaf_node *leaf,
 	memcpy(rep.middle_key + sizeof(key_size), L.addr + sizeof(key_size), key_size);
 	*(uint32_t *)rep.middle_key = key_size;
 	assert(key_size + sizeof(key_size) < sizeof(rep.middle_key));
-	rep.middle_key_buf = rep.middle_key;
 
 	if (L.in_tail) {
 		struct log_descriptor *log_desc = NULL;
@@ -597,7 +594,7 @@ struct bt_rebalance_result special_split_dynamic_leaf(struct bt_dynamic_leaf_nod
 	struct bt_dynamic_leaf_node *right_leaf, *old_leaf = leaf;
 	struct bt_dynamic_leaf_slot_array *slot_array, *right_leaf_slot_array;
 	int level_id = req->metadata.level_id;
-	char *key_buf, *leaf_log_tail;
+	char *key_buf, *leaf_log_tail, *middle_key_buf = NULL;
 	struct db_descriptor *db_desc = req->metadata.handle->db_desc;
 	uint64_t split_point;
 	uint32_t key_buf_size;
@@ -617,12 +614,15 @@ struct bt_rebalance_result special_split_dynamic_leaf(struct bt_dynamic_leaf_nod
 
 		struct bt_kv_log_address L =
 			bt_get_kv_medium_log_address(&req->metadata.handle->db_desc->medium_log, kv->pointer);
-		rep.middle_key_buf = L.addr;
-		assert(*(uint32_t *)rep.middle_key_buf < 40);
+		middle_key_buf = L.addr;
 	} else {
-		rep.middle_key_buf = fill_keybuf(key_loc, slot_array[split_point].kv_loc);
-		assert(*(uint32_t *)rep.middle_key_buf < 40);
+		middle_key_buf = fill_keybuf(key_loc, slot_array[split_point].kv_loc);
 	}
+	assert(KEY_SIZE(middle_key_buf) < 40);
+
+	KEY_SIZE(rep.middle_key) = KEY_SIZE(middle_key_buf);
+	memcpy(&rep.middle_key[4], middle_key_buf + 4, KEY_SIZE(rep.middle_key));
+
 	right_leaf = rep.right_dlchild;
 	/*Copy pointers + prefixes*/
 	leaf_log_tail = get_leaf_log_offset(right_leaf, leaf_size);
