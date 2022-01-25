@@ -17,6 +17,7 @@
 #include "../btree/conf.h"
 #include <assert.h>
 #include <log.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -108,16 +109,30 @@ static int sh_cmp_heap_nodes(struct sh_heap *hp, struct sh_heap_node *nd_1, stru
 {
 	struct bt_kv_log_address L1 = sh_translate_log_address(nd_1);
 	struct bt_kv_log_address L2 = sh_translate_log_address(nd_2);
+	struct key_compare key1_cmp, key2_cmp;
 
 	int64_t ret;
-	if (L1.in_tail && L2.in_tail)
-		ret = key_cmp(L1.addr, L2.addr, KV_FORMAT, KV_FORMAT);
-	else if (L1.in_tail)
-		ret = key_cmp(L1.addr, nd_2->KV, KV_FORMAT, nd_2->type);
-	else if (L2.in_tail)
-		ret = key_cmp(nd_1->KV, L2.addr, nd_1->type, KV_FORMAT);
-	else
-		ret = key_cmp(nd_1->KV, nd_2->KV, nd_1->type, nd_2->type);
+	if (L1.in_tail && L2.in_tail) {
+		/*key1 and key2 are KV_FORMATed*/
+		init_key_cmp(&key1_cmp, L1.addr, KV_FORMAT);
+		init_key_cmp(&key2_cmp, L2.addr, KV_FORMAT);
+		ret = key_cmp(&key1_cmp, &key2_cmp);
+	} else if (L1.in_tail) {
+		/*key1 is KV_FORMATED key2 is nd2->type*/
+		init_key_cmp(&key1_cmp, L1.addr, KV_FORMAT);
+		init_key_cmp(&key2_cmp, nd_2->KV, nd_2->type);
+		ret = key_cmp(&key1_cmp, &key2_cmp);
+	} else if (L2.in_tail) {
+		/*key1 is nd1_type key2 is KV_FORMAT*/
+		init_key_cmp(&key1_cmp, nd_1->KV, nd_1->type);
+		init_key_cmp(&key2_cmp, L2.addr, KV_FORMAT);
+		ret = key_cmp(&key1_cmp, &key2_cmp);
+	} else {
+		/*key1 is nd1_type key2 is nd2_type*/
+		init_key_cmp(&key1_cmp, nd_1->KV, nd_1->type);
+		init_key_cmp(&key2_cmp, nd_2->KV, nd_2->type);
+		ret = key_cmp(&key1_cmp, &key2_cmp);
+	}
 	if (L1.in_tail)
 		bt_done_with_value_log_address(L1.log_desc, &L1);
 	if (L2.in_tail)
@@ -225,9 +240,13 @@ static int check_for_duplicate_inL0(struct sh_heap *hp, struct sh_heap_node *nd)
 {
 	int i = hp->heap_size;
 	int ret;
+	struct key_compare key1_cmp, key2_cmp;
 	while (i) {
 		if (hp->elem[PARENT(i)].level_id == 0 && nd->level_id == 0) {
-			ret = key_cmp(nd->KV, hp->elem[PARENT(i)].KV, nd->type, hp->elem[PARENT(i)].type);
+			/*key1 is nd_type key2 is PARENT type*/
+			init_key_cmp(&key1_cmp, nd->KV, nd->type);
+			init_key_cmp(&key2_cmp, hp->elem[PARENT(i)].KV, hp->elem[PARENT(i)].type);
+			ret = key_cmp(&key1_cmp, &key2_cmp);
 			if (ret == 0) {
 				copy_node(&hp->elem[PARENT(i)], nd);
 				return 1;

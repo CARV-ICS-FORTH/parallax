@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "dynamic_leaf.h"
+#include "btree.h"
 #include "conf.h"
 #include "segment_allocator.h"
 #include <assert.h>
@@ -174,6 +175,7 @@ void binary_search_dynamic_leaf(const struct bt_dynamic_leaf_node *leaf, uint32_
 	uint32_t offset_in_leaf;
 	int ret, ret_case;
 	uint32_t kv_size_in_leaf;
+	struct key_compare key1_cmp, key2_cmp;
 
 	while (numberOfEntriesInNode > 0) {
 		middle = (start + end) / 2;
@@ -261,14 +263,20 @@ void binary_search_dynamic_leaf(const struct bt_dynamic_leaf_node *leaf, uint32_
 			switch (req->metadata.key_format) {
 			case KV_PREFIX: {
 				struct bt_leaf_entry *kv_entry = (struct bt_leaf_entry *)req->key_value_buf;
-				ret = key_cmp(L.addr, (void *)kv_entry->pointer, KV_FORMAT, KV_FORMAT);
+				/*key1 and key2 are KV_FORMATed*/
+				init_key_cmp(&key1_cmp, L.addr, KV_FORMAT);
+				init_key_cmp(&key2_cmp, (void *)kv_entry->pointer, KV_FORMAT);
+				ret = key_cmp(&key1_cmp, &key2_cmp);
 				break;
 			}
 			case KV_FORMAT:
 
 				//log_info("Comparing index key %u:%s with query key :%u:%s", *(uint32_t *)L.addr,
 				//	 L.addr + 4, *(uint32_t *)req->key_value_buf, req->key_value_buf + 4);
-				ret = key_cmp(L.addr, req->key_value_buf, KV_FORMAT, KV_FORMAT);
+				/*key1 and key2 are KV_FORMATed*/
+				init_key_cmp(&key1_cmp, L.addr, KV_FORMAT);
+				init_key_cmp(&key2_cmp, req->key_value_buf, KV_FORMAT);
+				ret = key_cmp(&key1_cmp, &key2_cmp);
 				break;
 			default:
 				log_fatal("Corrupted key type");
@@ -350,13 +358,16 @@ void print_dynamic_leaf(const struct bt_dynamic_leaf_node *leaf, uint32_t leaf_s
 void check_sorted_dynamic_leaf(const struct bt_dynamic_leaf_node *leaf, uint32_t leaf_size)
 {
 	struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(leaf);
-
+	struct key_compare key1_cmp, key2_cmp;
 	/* log_info("number of entries %d", leaf->header.num_entries); */
 	for (unsigned i = 0; i < leaf->header.num_entries - 1; ++i) {
 		char *key = fill_keybuf(get_kv_offset(leaf, leaf_size, slot_array[i].index), slot_array[i].bitmap);
 		char *key2 =
 			fill_keybuf(get_kv_offset(leaf, leaf_size, slot_array[i + 1].index), slot_array[i + 1].bitmap);
-		if (key_cmp(key, key2, KV_FORMAT, KV_FORMAT) > 0) {
+		/*key1 and key2 are KV_FORMATed*/
+		init_key_cmp(&key1_cmp, key, KV_FORMAT);
+		init_key_cmp(&key2_cmp, key2, KV_FORMAT);
+		if (key_cmp(&key1_cmp, &key2_cmp) > 0) {
 			print_dynamic_leaf(leaf, leaf_size);
 			assert(0);
 		}

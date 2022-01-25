@@ -30,6 +30,7 @@
 #include <pthread.h>
 #include <signal.h>
 #include <spin_loop.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -74,6 +75,28 @@ int prefix_compare(char *l, char *r, size_t prefix_size)
 	return memcmp(l, r, prefix_size);
 }
 
+void init_key_cmp(struct key_compare *key_cmp, void *key_buf, char key_format)
+{
+	key_cmp->is_NIL = key_buf == NULL;
+	if (key_cmp->is_NIL == 1)
+		return;
+
+	if (key_format == KV_FORMAT) {
+		key_cmp->key_size = *(uint32_t *)key_buf;
+		key_cmp->key = (char *)key_buf + sizeof(uint32_t);
+		key_cmp->key_format = KV_FORMAT;
+	} else if (key_format == KV_PREFIX) {
+		key_cmp->key_size = PREFIX_SIZE;
+		key_cmp->key = ((struct bt_leaf_entry *)key_buf)->prefix;
+		key_cmp->kv_dev_offt = ((struct bt_leaf_entry *)key_buf)->pointer;
+		key_cmp->key_format = KV_PREFIX;
+	} else {
+		log_fatal("Unknown key category, exiting");
+		assert(0);
+		exit(EXIT_FAILURE);
+	}
+}
+
 /**
  * @param   index_key: address of the index_key
  * @param   index_key_len: length of the index_key in encoded form first 2
@@ -82,68 +105,55 @@ int prefix_compare(char *l, char *r, size_t prefix_size)
  * @param   query_key_len: query_key length again in encoded form
  */
 
-int64_t key_cmp(void *key1, void *key2, char key1_format, char key2_format)
+int64_t key_cmp(struct key_compare *key1, struct key_compare *key2)
 {
 	int64_t ret;
 	uint32_t size;
 	/*we need the left most entry*/
-	if (key2 == NULL)
+	if (key2->is_NIL == 1)
 		return 1;
 
-	struct kv_format *key1f = NULL;
-	struct kv_format *key2f = NULL;
-	struct bt_leaf_entry *key1p = NULL;
-	struct bt_leaf_entry *key2p = NULL;
+	if (key1->is_NIL == 1)
+		return -1;
 
-	if (key1_format == KV_FORMAT && key2_format == KV_FORMAT) {
-		key1f = (struct kv_format *)key1;
-		key1p = NULL;
-		key2f = (struct kv_format *)key2;
-		key2p = NULL;
+	if (key1->key_format == KV_FORMAT && key2->key_format == KV_FORMAT) {
+		size = key1->key_size;
+		if (size > key2->key_size)
+			size = key2->key_size;
 
-		size = key1f->key_size;
-		if (size > key2f->key_size)
-			size = key2f->key_size;
-
-		ret = memcmp(key1f->key_buf, key2f->key_buf, size);
+		ret = memcmp(key1->key, key2->key, size);
 		if (ret != 0)
 			return ret;
 		/*finally larger key wins*/
-		if (key1f->key_size < key2f->key_size)
+		if (key1->key_size < key2->key_size)
 			return -1;
-		if (key1f->key_size > key2f->key_size)
+		if (key1->key_size > key2->key_size)
 			return 1;
 		/*equal*/
 		return 0;
 	}
 
-	if (key1_format == KV_FORMAT && key2_format == KV_PREFIX) {
-		key1f = (struct kv_format *)key1;
-		key1p = NULL;
-		key2f = NULL;
-		key2p = (struct bt_leaf_entry *)key2;
-
-		if (key1f->key_size >= PREFIX_SIZE)
-			ret = prefix_compare(key1f->key_buf, key2p->prefix, PREFIX_SIZE);
+	if (key1->key_format == KV_FORMAT && key2->key_format == KV_PREFIX) {
+		if (key1->key_size >= PREFIX_SIZE)
+			ret = prefix_compare(key1->key, key2->key, PREFIX_SIZE);
 		else
-			ret = prefix_compare(key1f->key_buf, key2p->prefix, key1f->key_size);
+			ret = prefix_compare(key1->key, key2->key, key1->key_size);
 		if (ret == 0) {
 			/*we have a tie, prefix didn't help, fetch query_key form KV log*/
-			key2f = (struct kv_format *)key2p->pointer;
-			key2p = NULL;
+			struct kv_format *key2f = (struct kv_format *)key2->kv_dev_offt;
 
-			size = key1f->key_size;
+			size = key1->key_size;
 			if (size > key2f->key_size)
 				size = key2f->key_size;
 
-			ret = memcmp(key1f->key_buf, key2f->key_buf, size);
+			ret = memcmp(key1->key, key2f->key_buf, size);
 
 			if (ret != 0)
 				return ret;
 			/*finally larger key wins*/
-			if (key1f->key_size < key2f->key_size)
+			if (key1->key_size < key2f->key_size)
 				return -1;
-			if (key1f->key_size > key2f->key_size)
+			if (key1->key_size > key2f->key_size)
 				return 1;
 			/*equal*/
 			return 0;
@@ -151,33 +161,27 @@ int64_t key_cmp(void *key1, void *key2, char key1_format, char key2_format)
 		return ret;
 	}
 
-	if (key1_format == KV_PREFIX && key2_format == KV_FORMAT) {
-		key1f = NULL;
-		key1p = (struct bt_leaf_entry *)key1;
-		key2f = (struct kv_format *)key2;
-		key2p = NULL;
-
-		if (key2f->key_size >= PREFIX_SIZE)
-			ret = prefix_compare(key1p->prefix, key2f->key_buf, PREFIX_SIZE);
+	if (key1->key_format == KV_PREFIX && key2->key_format == KV_FORMAT) {
+		if (key2->key_size >= PREFIX_SIZE)
+			ret = prefix_compare(key1->key, key2->key, PREFIX_SIZE);
 		else // check here TODO
-			ret = prefix_compare(key1p->prefix, key2f->key_buf, key2f->key_size);
+			ret = prefix_compare(key1->key, key2->key, key2->key_size);
 
 		if (ret == 0) {
 			/* we have a tie, prefix didn't help, fetch query_key form KV log*/
-			key1f = (struct kv_format *)key1p->pointer;
-			key1p = NULL;
+			struct kv_format *key1f = (struct kv_format *)key1->kv_dev_offt;
 
-			size = key2f->key_size;
+			size = key2->key_size;
 			if (size > key1f->key_size)
 				size = key1f->key_size;
 
-			ret = memcmp(key1f->key_buf, key2f->key_buf, size);
+			ret = memcmp(key1f->key_buf, key2->key, size);
 			if (ret != 0)
 				return ret;
 			/*finally larger key wins*/
-			if (key1f->key_size < key2f->key_size)
+			if (key1f->key_size < key2->key_size)
 				return -1;
-			if (key1f->key_size > key2f->key_size)
+			if (key1f->key_size > key2->key_size)
 				return 1;
 			/*equal*/
 			return 0;
@@ -186,18 +190,12 @@ int64_t key_cmp(void *key1, void *key2, char key1_format, char key2_format)
 	}
 
 	/*KV_PREFIX and KV_PREFIX*/
-	key1f = NULL;
-	key1p = (struct bt_leaf_entry *)key1;
-	key2f = NULL;
-	key2p = (struct bt_leaf_entry *)key2;
-	ret = prefix_compare(key1p->prefix, key2p->prefix, PREFIX_SIZE);
+	ret = prefix_compare(key1->key, key2->key, PREFIX_SIZE);
 	if (ret != 0)
 		return ret;
 	/*full comparison*/
-	key1f = (struct kv_format *)key1p->pointer;
-	// key1p = NULL;
-	key2f = (struct kv_format *)key2p->pointer;
-	// key2p = NULL;
+	struct kv_format *key1f = (struct kv_format *)key1->kv_dev_offt;
+	struct kv_format *key2f = (struct kv_format *)key2->kv_dev_offt;
 
 	size = key2f->key_size;
 	if (size > key1f->key_size) {
@@ -1780,6 +1778,7 @@ int8_t update_index(index_node *node, node_header *left_child, node_header *righ
 	int32_t start_idx = 0;
 	int32_t end_idx = node->header.num_entries - 1;
 	size_t num_of_bytes;
+	struct key_compare key1_cmp, key2_cmp;
 
 	addr = (void *)(uint64_t)node + sizeof(node_header);
 
@@ -1789,7 +1788,10 @@ int8_t update_index(index_node *node, node_header *left_child, node_header *righ
 			addr = (void *)(uint64_t)node + (uint64_t)sizeof(node_header) + sizeof(uint64_t) +
 			       (uint64_t)(middle * 2 * sizeof(uint64_t));
 			index_key_buf = (void *)REAL_ADDRESS(*(uint64_t *)addr);
-			ret = key_cmp(index_key_buf, key_buf, KV_FORMAT, KV_FORMAT);
+			/*key1 and key2 are KV_FORMATed*/
+			init_key_cmp(&key1_cmp, index_key_buf, KV_FORMAT);
+			init_key_cmp(&key2_cmp, key_buf, KV_FORMAT);
+			ret = key_cmp(&key1_cmp, &key2_cmp);
 			if (ret > 0) {
 				end_idx = middle - 1;
 				if (start_idx > end_idx)
@@ -2061,6 +2063,7 @@ void *_index_node_binary_search(index_node *node, void *key_buf, char query_key_
 	int32_t start_idx = 0;
 	int32_t end_idx = node->header.num_entries - 1;
 	int32_t numberOfEntriesInNode = node->header.num_entries;
+	struct key_compare key1_cmp, key2_cmp;
 
 	while (numberOfEntriesInNode > 0) {
 		middle = (start_idx + end_idx) / 2;
@@ -2070,7 +2073,10 @@ void *_index_node_binary_search(index_node *node, void *key_buf, char query_key_
 
 		addr = &(node->p[middle].pivot);
 		index_key_buf = (void *)REAL_ADDRESS(*(uint64_t *)addr);
-		ret = key_cmp(index_key_buf, key_buf, KV_FORMAT, query_key_format);
+		/*key1 is KV_FORMATED key2 is query_key_format*/
+		init_key_cmp(&key1_cmp, index_key_buf, KV_FORMAT);
+		init_key_cmp(&key2_cmp, key_buf, query_key_format);
+		ret = key_cmp(&key1_cmp, &key2_cmp);
 		if (ret == 0) {
 			// log_debug("I passed from this corner case1 %s",
 			// (char*)(index_key_buf+4));
@@ -2119,6 +2125,8 @@ void assert_index_node(node_header *node)
 	void *key_tmp_prev = NULL;
 	void *addr;
 	node_header *child;
+	struct key_compare key1_cmp, key2_cmp;
+
 	addr = (void *)(uint64_t)node + (uint64_t)sizeof(node_header);
 	if (node->num_entries == 0)
 		return;
@@ -2139,7 +2147,10 @@ void assert_index_node(node_header *node)
 		// log_info("key %s\n", (char *)key_tmp + sizeof(int32_t));
 
 		if (key_tmp_prev != NULL) {
-			if (key_cmp(key_tmp_prev, key_tmp, KV_FORMAT, KV_FORMAT) >= 0) {
+			/*key1 and key2 are KV_FORMATed*/
+			init_key_cmp(&key1_cmp, key_tmp_prev, KV_FORMAT);
+			init_key_cmp(&key2_cmp, key_tmp, KV_FORMAT);
+			if (key_cmp(&key1_cmp, &key2_cmp) >= 0) {
 				log_fatal("corrupted index %d:%s something else %d:%s\n", *(uint32_t *)key_tmp_prev,
 					  key_tmp_prev + 4, *(uint32_t *)key_tmp, key_tmp + 4);
 				raise(SIGINT);
