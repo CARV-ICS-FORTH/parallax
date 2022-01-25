@@ -392,13 +392,16 @@ void init_log_buffer(struct log_descriptor *log_desc, enum log_type my_type)
 		log_desc->tail[i]->fd = FD;
 	}
 	log_desc->my_type = my_type;
+
 	// Special action for 0
 	log_desc->tail[0]->dev_offt = log_desc->tail_dev_offt;
 	log_desc->tail[0]->start = log_desc->tail_dev_offt;
 	log_desc->tail[0]->end = log_desc->tail[0]->start + SEGMENT_SIZE;
 	log_desc->tail[0]->free = 0;
+
 	// Recover log
 	pr_read_log_tail(log_desc->tail[0]);
+
 	// set proper accounting
 	uint64_t offt_in_seg = log_desc->size % SEGMENT_SIZE;
 	uint32_t n_chunks = offt_in_seg / LOG_CHUNK_SIZE;
@@ -1476,9 +1479,7 @@ void *append_key_value_to_log(log_operation *req)
 			exit(EXIT_FAILURE);
 		} else {
 			log_metadata.log_desc = &handle->db_desc->medium_log;
-			//return bt_append_key_value_to_log_mmap(req, &log_metadata, &data_size);
-			char *c = bt_append_to_log_direct_IO(req, &log_metadata, &data_size);
-			return c;
+			return bt_append_to_log_direct_IO(req, &log_metadata, &data_size);
 		}
 #endif
 	}
@@ -1948,7 +1949,8 @@ static struct bt_rebalance_result split_index(node_header *node, bt_insert_req *
 		right_child = (node_header *)REAL_ADDRESS(*(uint64_t *)full_addr);
 
 		if (i == node->num_entries / 2) {
-			result.middle_key_buf = key_buf;
+			KEY_SIZE(result.middle_key) = KEY_SIZE(key_buf);
+			memcpy(&result.middle_key[4], key_buf + 4, KEY_SIZE(result.middle_key));
 			continue; /*middle key not needed, is going to the upper level*/
 		}
 
@@ -2338,7 +2340,7 @@ release_and_retry:
 			/*Insert pivot at father*/
 			if (father != NULL) {
 				insert_key_at_index(ins_req, (index_node *)father, split_res.left_child,
-						    split_res.right_child, split_res.middle_key_buf);
+						    split_res.right_child, split_res.middle_key);
 			} else {
 				/*Root was splitted*/
 				// log_info("new root");
@@ -2352,7 +2354,7 @@ release_and_retry:
 				new_index_node->header.type = rootNode;
 
 				insert_key_at_index(ins_req, new_index_node, split_res.left_child,
-						    split_res.right_child, split_res.middle_key_buf);
+						    split_res.right_child, split_res.middle_key);
 				/*new write root of the tree*/
 				db_desc->levels[level_id].root_w[ins_req->metadata.tree_id] =
 					(node_header *)new_index_node;

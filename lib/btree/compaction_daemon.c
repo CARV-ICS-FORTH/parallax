@@ -703,9 +703,6 @@ static void comp_init_medium_log(struct db_descriptor *db_desc, uint8_t level_id
 {
 	log_info("Initializing medium log for db: %s", db_desc->db_superblock->db_name);
 	struct segment_header *s = seg_get_raw_log_segment(db_desc, MEDIUM_LOG, level_id, tree_id);
-	//s->segment_id = 0;
-	//s->next_segment = NULL;
-	//s->prev_segment = NULL;
 	db_desc->medium_log.head_dev_offt = ABSOLUTE_ADDRESS(s);
 	db_desc->medium_log.tail_dev_offt = db_desc->medium_log.head_dev_offt;
 	db_desc->medium_log.size = sizeof(segment_header);
@@ -743,17 +740,18 @@ static int comp_append_medium_L1(struct comp_level_write_cursor *c, struct comp_
 	ins_req.metadata.recovery_request = 0;
 	ins_req.metadata.special_split = 0;
 	ins_req.metadata.key_format = KV_FORMAT;
+	ins_req.metadata.tombstone = 0;
+	ins_req.key_value_buf = in->kv_inplace;
+	ins_req.metadata.reorganized_leaf_pos_INnode = NULL;
 
 	/*For Tebis-parallax currently*/
 	ins_req.metadata.segment_full_event = 0;
-	ins_req.metadata.reorganized_leaf_pos_INnode = NULL;
 	ins_req.metadata.log_segment_addr = 0;
 	ins_req.metadata.log_offset_full_event = 0;
 	ins_req.metadata.segment_id = 0;
 	ins_req.metadata.end_of_log = 0;
 	ins_req.metadata.log_padding = 0;
 
-	ins_req.key_value_buf = in->kv_inplace;
 	struct log_operation my_op;
 	my_op.metadata = &ins_req.metadata;
 	my_op.optype_tolog = insertOp;
