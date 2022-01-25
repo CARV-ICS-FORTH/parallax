@@ -7,6 +7,7 @@ test_surrogates:
         - cmake ..
         - make SurrogateTUsTest;cd tests/Surrogates;
         - ./SurrogateTUsTest
+    needs: [debug_build_gcc]
 
 
 test_options:
@@ -17,6 +18,7 @@ test_options:
         - cmake ..
         - make test_options;cd tests;
         - ./test_options
+    needs: [debug_build_gcc]
 
 test_sanitizers:
     image: carvicsforth/ubuntu_carv:latest
@@ -26,6 +28,7 @@ test_sanitizers:
         - cmake .. -DUSE_SANITIZER=Address
         - make test_sanitizers;cd tests;
         - ./test_sanitizers.sh
+    needs: [debug_build_gcc]
 
 debug_test_ycsb_larged:
     image: carvicsforth/arch_carv:latest
@@ -40,6 +43,7 @@ debug_test_ycsb_larged:
         - ctest -R ^test_larged$
         - cd ..;cd ..
         - ./scripts/CI/destroy_mbbd.sh
+    needs: [debug_build_gcc]
 
 debug_test_ycsb_large:
     image: carvicsforth/arch_carv:latest
@@ -54,6 +58,7 @@ debug_test_ycsb_large:
         - ctest -R ^test_large$
         - cd ..;cd ..
         - ./scripts/CI/destroy_mbbd.sh
+    needs: [debug_build_gcc]
 
 debug_test_ycsb_mediumd:
     image: carvicsforth/arch_carv:latest
@@ -68,6 +73,7 @@ debug_test_ycsb_mediumd:
         - ctest -R ^test_mediumd$
         - cd ..;cd ..
         - ./scripts/CI/destroy_mbbd.sh
+    needs: [debug_build_gcc]
 
 debug_test_ycsb_medium:
     image: carvicsforth/arch_carv:latest
@@ -82,6 +88,7 @@ debug_test_ycsb_medium:
         - ctest -R ^test_medium$
         - cd ..;cd ..
         - ./scripts/CI/destroy_mbbd.sh
+    needs: [debug_build_gcc]
 
 debug_test_ycsb_smalld:
     image: carvicsforth/arch_carv:latest
@@ -96,6 +103,7 @@ debug_test_ycsb_smalld:
         - ctest -R ^test_smalld$
         - cd ..;cd ..
         - ./scripts/CI/destroy_mbbd.sh
+    needs: [debug_build_gcc]
 
 debug_test_ycsb_small:
     image: carvicsforth/arch_carv:latest
@@ -110,6 +118,7 @@ debug_test_ycsb_small:
         - ctest -R ^test_small$
         - cd ..;cd ..
         - ./scripts/CI/destroy_mbbd.sh
+    needs: [debug_build_gcc]
 
 debug_test_gc:
     image: carvicsforth/arch_carv:latest
@@ -125,3 +134,4 @@ debug_test_gc:
         - ctest -R ^test_gc$
         - cd ..;cd ..
         - ./scripts/CI/destroy_mbbd.sh
+    needs: [debug_build_gcc]

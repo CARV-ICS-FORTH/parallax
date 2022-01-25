@@ -12,6 +12,7 @@ release_test_ycsb_larged:
         - ctest -R ^test_larged$
         - cd ..;cd ..
         - ./scripts/CI/destroy_mbbd.sh
+    needs: [release_build_gcc]
 
 release_test_ycsb_large:
     image: carvicsforth/arch_carv:latest
@@ -26,6 +27,7 @@ release_test_ycsb_large:
         - ctest -R ^test_large$
         - cd ..;cd ..
         - ./scripts/CI/destroy_mbbd.sh
+    needs: [release_build_gcc]
 
 release_test_ycsb_mediumd:
     image: carvicsforth/arch_carv:latest
@@ -40,6 +42,7 @@ release_test_ycsb_mediumd:
         - ctest -R ^test_mediumd$
         - cd ..;cd ..
         - ./scripts/CI/destroy_mbbd.sh
+    needs: [release_build_gcc]
 
 release_test_ycsb_medium:
     image: carvicsforth/arch_carv:latest
@@ -54,6 +57,7 @@ release_test_ycsb_medium:
         - ctest -R ^test_medium$
         - cd ..;cd ..
         - ./scripts/CI/destroy_mbbd.sh
+    needs: [release_build_gcc]
 
 release_test_ycsb_smalld:
     image: carvicsforth/arch_carv:latest
@@ -68,6 +72,7 @@ release_test_ycsb_smalld:
         - ctest -R ^test_smalld$
         - cd ..;cd ..
         - ./scripts/CI/destroy_mbbd.sh
+    needs: [release_build_gcc]
 
 release_test_ycsb_small:
     image: carvicsforth/arch_carv:latest
@@ -82,6 +87,7 @@ release_test_ycsb_small:
         - ctest -R ^test_small$
         - cd ..;cd ..
         - ./scripts/CI/destroy_mbbd.sh
+    needs: [release_build_gcc]
 
 release_test_gc:
     image: carvicsforth/arch_carv:latest
@@ -97,3 +103,4 @@ release_test_gc:
         - ctest -R ^test_gc$
         - cd ..;cd ..
         - ./scripts/CI/destroy_mbbd.sh
+    needs: [release_build_gcc]
