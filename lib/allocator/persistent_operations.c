@@ -377,7 +377,6 @@ void pr_read_db_superblock(struct db_descriptor *db_desc)
 	}
 	pr_print_db_superblock(db_desc->db_superblock);
 }
-/*</new_persistent_design>*/
 
 void pr_flush_log_tail(struct db_descriptor *db_desc, struct log_descriptor *log_desc)
 {
@@ -765,12 +764,12 @@ void recover_L0(struct db_descriptor *db_desc)
 		else
 			choice = BIG_LOG;
 
-		if (cursor[choice]->type == SMALL_LOG && cursor[choice]->tombstone)
-			insert_key_value(&hd, kvs[choice]->p_key->key_data, "empty", kvs[choice]->p_key->key_size, 0,
-					 deleteOp);
-		else
+		if (!cursor[choice]->tombstone)
 			insert_key_value(&hd, kvs[choice]->p_key->key_data, kvs[choice]->p_value->value_data,
 					 kvs[choice]->p_key->key_size, kvs[choice]->p_value->value_size, insertOp);
+		else
+			insert_key_value(&hd, kvs[choice]->p_key->key_data, "empty", kvs[choice]->p_key->key_size, 0,
+					 deleteOp);
 
 		//log_info("Recovering key %s choice is %d", kvs[choice]->p_key->key_data, choice);
 
