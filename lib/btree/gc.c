@@ -30,12 +30,17 @@
 #include <uthash.h>
 
 extern pthread_mutex_t init_lock;
+static uint8_t gc_executed = 0;
 
 struct gc_segment_descriptor {
 	char *log_segment_in_memory;
 	uint64_t segment_dev_offt;
 };
 
+uint8_t is_gc_executed(void)
+{
+	return gc_executed;
+}
 
 void push_stack(stack *marks, void *addr)
 {
@@ -122,6 +127,7 @@ int8_t find_deleted_kv_pairs_in_segment(struct db_handle handle, struct gc_segme
 
 	if (garbage_collect_segment) {
 		move_kv_pairs_to_new_segment(handle, marks);
+		gc_executed = 1;
 		return 1;
 	}
 	return 0;
