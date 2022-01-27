@@ -44,6 +44,12 @@ check-pre-commit-hooks:
         - if [ $(wc -l < out) -ne 0 ]; then exit 1 ;fi
     allow_failure: true
 
+check-env-vars:
+    stage: lint
+    script:
+        - python3 ./scripts/CI/check-env-vars-version.py
+    allow_failure: true
+
 pre-commit:
     stage: lint
     script:
