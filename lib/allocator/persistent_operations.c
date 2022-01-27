@@ -209,12 +209,12 @@ static void pr_flush_L0_to_L1(struct db_descriptor *db_desc, uint8_t level_id, u
 		}
 	}
 
-	log_info("*** Freed a total of %llu MB bytes from trimming L0 recovery log head %llu tail %llu size %llu ***",
+	log_info("Freed a total of %llu MB bytes from trimming L0 recovery log head %llu tail %llu size %llu ***",
 		 bytes_freed / (1024 * 1024), db_desc->db_superblock->small_log_head_offt,
 		 db_desc->db_superblock->small_log_tail_offt, db_desc->db_superblock->small_log_size);
 
-	db_desc->db_superblock->small_log_head_offt = db_desc->db_superblock->small_log_tail_offt;
-	db_desc->small_log.head_dev_offt = db_desc->db_superblock->small_log_head_offt;
+	db_desc->small_log.head_dev_offt = db_desc->db_superblock->small_log_head_offt =
+		db_desc->db_superblock->small_log_start_segment_dev_offt;
 
 	/*recovery info for L0 L0_recovery_log*/
 	db_desc->db_superblock->small_log_start_segment_dev_offt = db_desc->small_log_start_segment_dev_offt;
