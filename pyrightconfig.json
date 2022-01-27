@@ -20,5 +20,6 @@
     "reportInvalidStringEscapeSequence":true,
     "reportCallInDefaultInitializer":true,
     "reportUnnecessaryCast":true,
+    "reportPrivateImportUsage":false,
     "pythonPlatform": "Linux"
 }
