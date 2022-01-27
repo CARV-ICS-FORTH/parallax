@@ -42,7 +42,7 @@ struct lookup_operation {
 	struct db_descriptor *db_desc; /*in variable*/
 	char *kv_buf; /*in variable*/
 	char *buffer_to_pack_kv; /*in-out variable*/
-	void *value_device_address; /*out variable*/
+	char *key_device_address; /*out variable*/
 	uint32_t size; /*in-out variable*/
 	uint8_t buffer_overflow : 1; /*out variable*/
 	uint8_t found : 1; /*out variable*/
