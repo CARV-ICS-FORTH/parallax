@@ -31,12 +31,17 @@
 
 extern pthread_mutex_t init_lock;
 
+struct gc_segment_descriptor {
+	char *log_segment_in_memory;
+	uint64_t segment_dev_offt;
+};
+
+
 void push_stack(stack *marks, void *addr)
 {
 	marks->valid_pairs[marks->size++] = addr;
 	assert(marks->size != STACK_SIZE);
 }
-
 void move_kv_pairs_to_new_segment(struct db_handle handle, stack *marks)
 {
 	bt_insert_req ins_req;
@@ -55,10 +60,9 @@ void move_kv_pairs_to_new_segment(struct db_handle handle, stack *marks)
 		ins_req.metadata.recovery_request = 0;
 		ins_req.metadata.level_id = 0;
 		ins_req.metadata.special_split = 0;
+		ins_req.metadata.tombstone = 0;
 		int key_size = *(uint32_t *)kv_address;
 		int value_size = *(uint32_t *)(kv_address + 4 + key_size);
-		/* assert(key_size > 5 && key_size < 27); */
-		/* assert(value_size > 5 && value_size < 1500); */
 		ins_req.metadata.kv_size = key_size + 8 + value_size;
 		ins_req.metadata.key_format = KV_FORMAT;
 		ins_req.metadata.cat = BIG_INLOG;
@@ -66,31 +70,31 @@ void move_kv_pairs_to_new_segment(struct db_handle handle, stack *marks)
 	}
 }
 
-int8_t find_deleted_kv_pairs_in_segment(struct db_handle handle, char *log_seg, stack *marks)
+int8_t find_deleted_kv_pairs_in_segment(struct db_handle handle, struct gc_segment_descriptor *log_seg, stack *marks)
 {
+	struct gc_segment_descriptor iter_log_segment = *log_seg;
+	char *log_segment_in_device = REAL_ADDRESS(log_seg->segment_dev_offt);
 	struct splice *key;
 	struct splice *value;
-	void *value_as_pointer;
 	uint64_t checked_segment_chunk = sizeof(struct log_sequence_number);
 	uint64_t segment_data = LOG_DATA_OFFSET;
 	int key_value_size;
 	int garbage_collect_segment = 0;
 
-	log_seg += sizeof(struct log_sequence_number);
-	key = (struct splice *)log_seg;
+	iter_log_segment.log_segment_in_memory += sizeof(struct log_sequence_number);
+	log_segment_in_device += sizeof(struct log_sequence_number);
+
+	key = (struct splice *)iter_log_segment.log_segment_in_memory;
 	key_value_size = sizeof(key->size) * 2;
 	marks->size = 0;
 
 	while (checked_segment_chunk < segment_data) {
-		key = (struct splice *)log_seg;
-		value = (struct splice *)(VALUE_SIZE_OFFSET(key->size, log_seg));
-		value_as_pointer = (VALUE_SIZE_OFFSET(key->size, log_seg));
+		key = (struct splice *)iter_log_segment.log_segment_in_memory;
+		value = (struct splice *)(VALUE_SIZE_OFFSET(key->size, iter_log_segment.log_segment_in_memory));
 
 		if (!key->size)
 			break;
 
-		assert(key->size > 0 && key->size < 28);
-		assert(value->size > 5 && value->size <= 2000);
 		struct lookup_operation get_op = { .db_desc = handle.db_desc,
 						   .found = 0,
 						   .size = 0,
@@ -99,15 +103,16 @@ int8_t find_deleted_kv_pairs_in_segment(struct db_handle handle, char *log_seg, 
 						   .kv_buf = (char *)key,
 						   .retrieve = 0 };
 		find_key(&get_op);
-		/* assert(find_value); */
-		/* assert(value_as_pointer == find_value); */
-		if (!get_op.found || value_as_pointer != get_op.value_device_address)
+
+		if (!get_op.found || log_segment_in_device != get_op.key_device_address)
 			garbage_collect_segment = 1;
-		else if (get_op.found && value_as_pointer == get_op.value_device_address)
-			push_stack(marks, log_seg);
+		else if (get_op.found && log_segment_in_device == get_op.key_device_address)
+			push_stack(marks, iter_log_segment.log_segment_in_memory);
 
 		if (key->size != 0) {
-			log_seg += key->size + value->size + key_value_size + 8;
+			uint32_t bytes_to_move = key->size + value->size + key_value_size + 8;
+			iter_log_segment.log_segment_in_memory += bytes_to_move;
+			log_segment_in_device += bytes_to_move;
 			checked_segment_chunk += key->size + value->size + key_value_size + 8;
 		} else
 			break;
@@ -153,7 +158,7 @@ void scan_db(db_descriptor *db_desc, volume_descriptor *volume_desc, stack *mark
 	struct accum_segments *segments_toreclaim = calloc(SEGMENTS_TORECLAIM, sizeof(struct accum_segments));
 	struct db_handle temp_handle = { .db_desc = db_desc, .volume_desc = volume_desc };
 	struct log_segment *segment;
-	int segment_count = 0;
+	uint32_t segment_count = 0;
 
 	if (posix_memalign((void **)&segment, ALIGNMENT_SIZE, SEGMENT_SIZE) != 0) {
 		log_fatal("MEMALIGN FAILED");
@@ -184,13 +189,17 @@ void scan_db(db_descriptor *db_desc, volume_descriptor *volume_desc, stack *mark
 
 	temp_handle.db_desc = db_desc;
 
-	for (int i = 0; i < segment_count; ++i) {
-		fetch_segment(segment, segments_toreclaim[i].segment_dev_offt);
+	for (uint32_t i = 0; i < segment_count; ++i) {
+		uint64_t segment_dev_offt = segments_toreclaim[i].segment_dev_offt;
+
+		fetch_segment(segment, segment_dev_offt);
 
 		if (*segments_toreclaim[i].segment_moved)
 			continue;
 
-		int ret = find_deleted_kv_pairs_in_segment(temp_handle, (char *)segment, marks);
+		struct gc_segment_descriptor gc_segment = { .log_segment_in_memory = segment->data,
+							    .segment_dev_offt = segment_dev_offt };
+		int ret = find_deleted_kv_pairs_in_segment(temp_handle, &gc_segment, marks);
 
 		if (ret && !segments_toreclaim[i].segment_moved)
 			*segments_toreclaim[i].segment_moved = 1;
@@ -265,12 +274,6 @@ void *gc_log_entries(void *handle)
 			MUTEX_LOCK(&init_lock);
 			--db_desc->reference_count;
 		}
-
-		//while (region != NULL) {
-		//	db_desc = (db_descriptor *)region->data;
-		//	scan_db(db_desc, volume_desc, marks);
-		//	region = region->next;
-		//}
 	}
 
 	pthread_exit(NULL);

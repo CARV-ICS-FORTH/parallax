@@ -1534,9 +1534,8 @@ static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id,
 {
 	struct find_result ret_result = { .kv = NULL };
 	node_header *curr_node, *son_node = NULL;
-	void *key_addr_in_leaf = NULL;
+	char *key_addr_in_leaf = NULL;
 	void *next_addr;
-	uint32_t index_key_len;
 	lock_table *prev = NULL, *curr = NULL;
 	struct node_header *root = NULL;
 
@@ -1619,19 +1618,14 @@ static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id,
 
 deser:
 	if (ret_result.kv) {
-		struct bt_kv_log_address L = { .addr = NULL, .tail_id = UINT8_MAX, .in_tail = 0 };
-		get_op->value_device_address = NULL;
+		struct bt_kv_log_address kv = { .addr = NULL, .tail_id = UINT8_MAX, .in_tail = 0 };
+		get_op->key_device_address = NULL;
 
 		if (ret_result.key_type == KV_INPLACE) {
-			key_addr_in_leaf = ret_result.kv;
-			key_addr_in_leaf = (void *)REAL_ADDRESS(key_addr_in_leaf);
-			index_key_len = KEY_SIZE(key_addr_in_leaf);
-			L.addr = key_addr_in_leaf;
-			get_op->value_device_address =
-				(void *)(uint64_t)key_addr_in_leaf + sizeof(uint32_t) + index_key_len;
+			kv.addr = REAL_ADDRESS(ret_result.kv);
+			get_op->key_device_address = ret_result.kv;
 		} else if (ret_result.key_type == KV_INLOG) {
-			key_addr_in_leaf = ret_result.kv;
-			key_addr_in_leaf = (void *)REAL_ADDRESS(*(uint64_t *)key_addr_in_leaf);
+			key_addr_in_leaf = (char *)REAL_ADDRESS(*(uint64_t *)ret_result.kv);
 			if (key_addr_in_leaf == NULL) {
 				log_fatal("Encountered NULL pointer from KV in leaf");
 				assert(0);
@@ -1639,18 +1633,16 @@ deser:
 			}
 
 			if (!level_id)
-				L = bt_get_kv_log_address(&db_desc->big_log, ABSOLUTE_ADDRESS(key_addr_in_leaf));
+				kv = bt_get_kv_log_address(&db_desc->big_log, ABSOLUTE_ADDRESS(key_addr_in_leaf));
 			else
-				L.addr = key_addr_in_leaf;
+				kv.addr = key_addr_in_leaf;
 
-			index_key_len = KEY_SIZE(L.addr);
-			assert(index_key_len);
-			get_op->value_device_address = (void *)(uint64_t)L.addr + sizeof(uint32_t) + index_key_len;
+			get_op->key_device_address = (char *)ABSOLUTE_ADDRESS(kv.addr);
 		} else {
 			log_fatal("Corrupted KV location");
 			exit(EXIT_FAILURE);
 		}
-		uint32_t *value_size = L.addr + sizeof(uint32_t) + KEY_SIZE(L.addr);
+		uint32_t *value_size = kv.addr + sizeof(uint32_t) + KEY_SIZE(kv.addr);
 
 		if (get_op->retrieve && !get_op->buffer_to_pack_kv) {
 			get_op->buffer_to_pack_kv = malloc(*value_size);
@@ -1670,15 +1662,17 @@ deser:
 		if (get_op->retrieve && get_op->size <= *value_size) {
 			/*check if enough*/
 			memcpy(get_op->buffer_to_pack_kv,
-			       L.addr + sizeof(uint32_t) + KEY_SIZE(L.addr) + sizeof(uint32_t), *value_size);
+			       kv.addr + sizeof(uint32_t) + KEY_SIZE(kv.addr) + sizeof(uint32_t), *value_size);
 			get_op->buffer_overflow = 0;
 		} else
 			get_op->buffer_overflow = 1;
 
 		get_op->found = 1;
+		if (get_op->tombstone)
+			get_op->key_device_address = NULL;
 
-		if (L.in_tail)
-			bt_done_with_value_log_address(&db_desc->big_log, &L);
+		if (kv.in_tail)
+			bt_done_with_value_log_address(&db_desc->big_log, &kv);
 	} else {
 		get_op->found = 0;
 	}
