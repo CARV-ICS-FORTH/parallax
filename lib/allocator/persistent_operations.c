@@ -184,7 +184,7 @@ static void pr_flush_L0_to_L1(struct db_descriptor *db_desc, uint8_t level_id, u
 	db_desc->db_superblock->medium_log_size = medium_log.size;
 
 	/*trim L0_recovery_log*/
-	struct segment_header *tail = REAL_ADDRESS(db_desc->db_superblock->small_log_tail_offt);
+	struct segment_header *tail = REAL_ADDRESS(db_desc->small_log_start_segment_dev_offt);
 	log_info("Tail segment id %llu", tail->segment_id);
 
 	struct segment_header *head = REAL_ADDRESS(db_desc->db_superblock->small_log_head_offt);
@@ -209,12 +209,12 @@ static void pr_flush_L0_to_L1(struct db_descriptor *db_desc, uint8_t level_id, u
 		}
 	}
 
-	log_info("*** Freed a total of %llu MB bytes from trimming L0 recovery log head %llu tail %llu size %llu ***",
+	log_info("Freed a total of %llu MB bytes from trimming L0 recovery log head %llu tail %llu size %llu ***",
 		 bytes_freed / (1024 * 1024), db_desc->db_superblock->small_log_head_offt,
 		 db_desc->db_superblock->small_log_tail_offt, db_desc->db_superblock->small_log_size);
 
-	db_desc->db_superblock->small_log_head_offt = db_desc->db_superblock->small_log_tail_offt;
-	db_desc->small_log.head_dev_offt = db_desc->db_superblock->small_log_head_offt;
+	db_desc->small_log.head_dev_offt = db_desc->db_superblock->small_log_head_offt =
+		db_desc->db_superblock->small_log_start_segment_dev_offt;
 
 	/*recovery info for L0 L0_recovery_log*/
 	db_desc->db_superblock->small_log_start_segment_dev_offt = db_desc->small_log_start_segment_dev_offt;
@@ -589,7 +589,7 @@ void prepare_cursor_op(struct log_cursor *cursor)
 	}
 }
 
-static void init_pos_log_cursor_in_segment(struct log_cursor *cursor)
+static void init_pos_log_cursor_in_segment(struct db_descriptor *db_desc, struct log_cursor *cursor)
 {
 	if (0 == cursor->log_segments->n_entries) {
 		cursor->curr_segment = NULL;
@@ -603,7 +603,7 @@ static void init_pos_log_cursor_in_segment(struct log_cursor *cursor)
 
 	/*Cornercases*/
 	if (SMALL_LOG == cursor->type) {
-		cursor->offt_in_segment = sizeof(struct segment_header);
+		cursor->offt_in_segment = db_desc->small_log_start_offt_in_segment;
 		if (cursor->curr_segment == REAL_ADDRESS(cursor->log_tail_dev_offt)) {
 			if (cursor->log_size % SEGMENT_SIZE == sizeof(struct segment_header)) {
 				/*Nothing to parse*/
@@ -614,6 +614,7 @@ static void init_pos_log_cursor_in_segment(struct log_cursor *cursor)
 			}
 		}
 	} else if (BIG_LOG == cursor->type) {
+		cursor->offt_in_segment = db_desc->big_log_start_offt_in_segment;
 		cursor->offt_in_segment = 0;
 		if (cursor->curr_segment == REAL_ADDRESS(cursor->log_tail_dev_offt)) {
 			if (cursor->log_size == 0) {
@@ -661,7 +662,7 @@ static struct log_cursor *init_log_cursor(struct db_descriptor *db_desc, enum lo
 		exit(EXIT_FAILURE);
 	}
 
-	init_pos_log_cursor_in_segment(cursor);
+	init_pos_log_cursor_in_segment(db_desc, cursor);
 
 	return cursor;
 }
