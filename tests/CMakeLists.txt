@@ -43,7 +43,8 @@ if(BUILD_TESTING)
 
   add_executable(test_gc test_gc.c arg_parser.c)
   target_link_libraries(test_gc "${PROJECT_NAME}" ${DEPENDENCIES})
-  add_test(NAME test_gc COMMAND $<TARGET_FILE:test_gc>)
+  add_test(NAME test_gc COMMAND $<TARGET_FILE:test_gc> --file=/tmp/kv_store.dat
+                                --num_of_kvs=1000000)
 
   add_executable(simple_test_delete simple_test_delete.c)
   target_link_libraries(simple_test_delete "${PROJECT_NAME}" ${DEPENDENCIES})
