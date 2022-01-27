@@ -41,7 +41,7 @@ if(BUILD_TESTING)
   add_executable(test_sanitizers test_sanitizers.c)
   add_test(NAME test_sanitizers COMMAND $<TARGET_FILE:test_sanitizers>)
 
-  add_executable(test_gc test_gc.c)
+  add_executable(test_gc test_gc.c arg_parser.c)
   target_link_libraries(test_gc "${PROJECT_NAME}" ${DEPENDENCIES})
   add_test(NAME test_gc COMMAND $<TARGET_FILE:test_gc>)
 
