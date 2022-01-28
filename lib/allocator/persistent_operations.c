@@ -28,6 +28,12 @@
 #include <string.h>
 #include <unistd.h>
 
+struct log_info {
+	uint64_t head_dev_offt;
+	uint64_t tail_dev_offt;
+	uint64_t size;
+};
+
 /*<new_persistent_design>*/
 static void pr_flush_allocation_log_and_level_info(struct db_descriptor *db_desc, uint8_t src_level_id,
 						   uint8_t dst_level_id, uint8_t tree_id)
@@ -83,14 +89,9 @@ void pr_flush_L0(struct db_descriptor *db_desc, uint8_t tree_id)
 		log_info("DB: %s clean nothing to flush ", db_desc->db_superblock->db_name);
 		return;
 	}
-	struct my_log_info {
-		uint64_t head_dev_offt;
-		uint64_t tail_dev_offt;
-		uint64_t size;
-	};
 
-	struct my_log_info large_log;
-	struct my_log_info L0_recovery_log;
+	struct log_info large_log;
+	struct log_info L0_recovery_log;
 
 	MUTEX_LOCK(&db_desc->flush_L0_lock);
 
@@ -158,13 +159,7 @@ void pr_flush_L0(struct db_descriptor *db_desc, uint8_t tree_id)
 
 static void pr_flush_L0_to_L1(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
 {
-	struct my_log_info {
-		uint64_t head_dev_offt;
-		uint64_t tail_dev_offt;
-		uint64_t size;
-	};
-
-	struct my_log_info medium_log;
+	struct log_info medium_log;
 
 	/*
    * Keep medium log state. We don't need to lock because ONLY one compaction
