@@ -279,13 +279,13 @@ void pr_flush_compaction(struct db_descriptor *db_desc, uint8_t level_id, uint8_
 	if (level_id == db_desc->level_medium_inplace)
 		return pr_flush_Lmax_to_Ln(db_desc, level_id, tree_id);
 
-	uint64_t my_txn_id = db_desc->levels[level_id].allocation_txn_id[tree_id];
+	uint64_t txn_id = db_desc->levels[level_id].allocation_txn_id[tree_id];
 	pr_lock_db_superblock(db_desc);
 
 	pr_flush_allocation_log_and_level_info(db_desc, level_id - 1, level_id, tree_id);
 
 	pr_unlock_db_superblock(db_desc);
-	rul_apply_txn_buf_freeops_and_destroy(db_desc, my_txn_id);
+	rul_apply_txn_buf_freeops_and_destroy(db_desc, txn_id);
 }
 
 void pr_lock_db_superblock(struct db_descriptor *db_desc)
