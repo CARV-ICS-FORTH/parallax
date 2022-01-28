@@ -527,7 +527,7 @@ static void restore_db(struct db_descriptor *db_desc, uint32_t region_idx)
 	db_desc->big_log_start_segment_dev_offt = db_desc->db_superblock->big_log_start_segment_dev_offt;
 	db_desc->big_log_start_offt_in_segment = db_desc->db_superblock->big_log_offt_in_start_segment;
 
-	struct pr_db_superblock *my_superblock = db_desc->db_superblock;
+	struct pr_db_superblock *superblock = db_desc->db_superblock;
 
 	/*restore now persistent state of all levels*/
 	for (uint8_t level_id = 0; level_id < MAX_LEVELS; level_id++) {
@@ -538,16 +538,16 @@ static void restore_db(struct db_descriptor *db_desc, uint32_t region_idx)
 			db_desc->levels[level_id].level_size[tree_id] = 0;
 			db_desc->levels[level_id].epoch[tree_id] = 0;
 			/*segments info per level*/
-			if (my_superblock->first_segment[level_id][tree_id] != 0) {
+			if (superblock->first_segment[level_id][tree_id] != 0) {
 				db_desc->levels[level_id].first_segment[tree_id] =
-					(segment_header *)REAL_ADDRESS(my_superblock->first_segment[level_id][tree_id]);
+					(segment_header *)REAL_ADDRESS(superblock->first_segment[level_id][tree_id]);
 
 				db_desc->levels[level_id].last_segment[tree_id] =
-					(segment_header *)REAL_ADDRESS(my_superblock->last_segment[level_id][tree_id]);
+					(segment_header *)REAL_ADDRESS(superblock->last_segment[level_id][tree_id]);
 
-				db_desc->levels[level_id].offset[tree_id] = my_superblock->offset[level_id][tree_id];
-				log_info("Superblock of db: %s first_segment dev offt: %llu", my_superblock->db_name,
-					 my_superblock->first_segment[level_id][tree_id]);
+				db_desc->levels[level_id].offset[tree_id] = superblock->offset[level_id][tree_id];
+				log_info("Superblock of db: %s first_segment dev offt: %llu", superblock->db_name,
+					 superblock->first_segment[level_id][tree_id]);
 				log_info("Restoring level[%u][%u] first segment %llu last segment: %llu size: %llu",
 					 level_id, tree_id, db_desc->levels[level_id].first_segment[tree_id],
 					 db_desc->levels[level_id].last_segment[tree_id],
@@ -559,11 +559,11 @@ static void restore_db(struct db_descriptor *db_desc, uint32_t region_idx)
 				db_desc->levels[level_id].offset[tree_id] = 0;
 			}
 			/*total keys*/
-			db_desc->levels[level_id].level_size[tree_id] = my_superblock->level_size[level_id][tree_id];
+			db_desc->levels[level_id].level_size[tree_id] = superblock->level_size[level_id][tree_id];
 			/*finally the roots*/
-			if (my_superblock->root_r[level_id][tree_id] != 0)
+			if (superblock->root_r[level_id][tree_id] != 0)
 				db_desc->levels[level_id].root_r[tree_id] =
-					(node_header *)REAL_ADDRESS(my_superblock->root_r[level_id][tree_id]);
+					(node_header *)REAL_ADDRESS(superblock->root_r[level_id][tree_id]);
 			else
 				db_desc->levels[level_id].root_r[tree_id] = NULL;
 
