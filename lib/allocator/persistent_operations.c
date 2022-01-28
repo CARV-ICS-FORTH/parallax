@@ -301,14 +301,14 @@ void pr_unlock_db_superblock(struct db_descriptor *db_desc)
 void pr_flush_db_superblock(struct db_descriptor *db_desc)
 {
 	db_desc->db_superblock->lsn = db_desc->lsn;
-	uint64_t my_superblock_offt =
+	uint64_t superblock_offt =
 		sizeof(struct superblock) + (sizeof(struct pr_db_superblock) * db_desc->db_superblock->id);
 	ssize_t total_bytes_written = 0;
 	ssize_t bytes_written = 0;
 	ssize_t size = sizeof(struct pr_db_superblock);
 	while (total_bytes_written < size) {
 		bytes_written = pwrite(db_desc->db_volume->vol_fd, db_desc->db_superblock, size - total_bytes_written,
-				       my_superblock_offt + total_bytes_written);
+				       superblock_offt + total_bytes_written);
 		if (bytes_written == -1) {
 			log_fatal("Failed to write region's %s superblock", db_desc->db_superblock->db_name);
 			perror("Reason");
@@ -356,12 +356,12 @@ void pr_read_db_superblock(struct db_descriptor *db_desc)
 	ssize_t total_bytes_written = 0;
 	ssize_t bytes_written = 0;
 	ssize_t size = sizeof(struct pr_db_superblock);
-	uint64_t my_superblock_offt =
+	uint64_t superblock_offt =
 		sizeof(struct superblock) + (sizeof(struct pr_db_superblock) * db_desc->db_superblock->id);
 
 	while (total_bytes_written < size) {
 		bytes_written = pwrite(db_desc->db_volume->vol_fd, db_desc->db_superblock, size - total_bytes_written,
-				       my_superblock_offt + total_bytes_written);
+				       superblock_offt + total_bytes_written);
 		if (bytes_written == -1) {
 			log_fatal("Failed to read region's %s superblock", db_desc->db_superblock->db_name);
 			perror("Reason");
