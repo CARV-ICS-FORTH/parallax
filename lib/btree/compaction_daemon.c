@@ -132,12 +132,12 @@ static void fetch_segment(struct comp_level_write_cursor *c, char *segment_buf, 
 		bytes_to_read += bytes;
 	}
 	if (c->level_id == c->handle->db_desc->level_medium_inplace) {
-		struct segment_header *my_seg = (struct segment_header *)segment_buf;
+		struct segment_header *segment = (struct segment_header *)segment_buf;
 		struct level_descriptor *level_desc = &c->handle->db_desc->levels[c->level_id];
 
 		if (!(log_chunk_dev_offt % SEGMENT_SIZE)) {
-			if (my_seg->segment_id > level_desc->medium_in_place_max_segment_id) {
-				level_desc->medium_in_place_max_segment_id = my_seg->segment_id;
+			if (segment->segment_id > level_desc->medium_in_place_max_segment_id) {
+				level_desc->medium_in_place_max_segment_id = segment->segment_id;
 				level_desc->medium_in_place_segment_dev_offt = dev_offt;
 			}
 		}
@@ -812,7 +812,6 @@ static void comp_append_entry_to_leaf_node(struct comp_level_write_cursor *curso
 		write_leaf_args.kv_format = KV_PREFIX;
 		write_leaf_args.cat = curr_key->kv_category;
 		write_leaf_args.tombstone = curr_key->tombstone;
-		//log_info("Appending prefix is  %s dev offt %llu", my_key->in_log->prefix, my_key->in_log->device_offt);
 		break;
 	default:
 		log_fatal("Unknown key_type (IN_PLACE,IN_LOG) instead got %u", curr_key->kv_type);
