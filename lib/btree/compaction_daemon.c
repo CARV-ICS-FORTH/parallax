@@ -750,12 +750,12 @@ static int comp_append_medium_L1(struct comp_level_write_cursor *c, struct comp_
 	ins_req.metadata.end_of_log = 0;
 	ins_req.metadata.log_padding = 0;
 
-	struct log_operation my_op;
-	my_op.metadata = &ins_req.metadata;
-	my_op.optype_tolog = insertOp;
-	my_op.ins_req = &ins_req;
+	struct log_operation log_op;
+	log_op.metadata = &ins_req.metadata;
+	log_op.optype_tolog = insertOp;
+	log_op.ins_req = &ins_req;
 	// log_info("Appending to medium log during compaction");
-	char *log_location = append_key_value_to_log(&my_op);
+	char *log_location = append_key_value_to_log(&log_op);
 	out->kv_inlog = &out->kvsep;
 	if (ins_req.metadata.kv_size >= PREFIX_SIZE)
 		memcpy(out->kv_inlog, in->kv_inplace + sizeof(uint32_t), PREFIX_SIZE);
