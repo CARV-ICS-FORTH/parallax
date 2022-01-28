@@ -381,23 +381,23 @@ uint64_t rul_start_txn(struct db_descriptor *db_desc)
 	uint64_t txn_id = __sync_fetch_and_add(&log_desc->txn_id, 1);
 	log_info("Start transaction %llu id curr segment entry %llu", txn_id, log_desc->curr_segment_entry);
 	// check if (accidentally) txn exists already
-	struct rul_transaction *my_transaction;
+	struct rul_transaction *transaction;
 
 	MUTEX_LOCK(&log_desc->trans_map_lock);
-	HASH_FIND_PTR(log_desc->trans_map, &txn_id, my_transaction);
-	if (my_transaction != NULL) {
+	HASH_FIND_PTR(log_desc->trans_map, &txn_id, transaction);
+	if (transaction != NULL) {
 		log_fatal("Txn %llu already exists (it shouldn't)", txn_id);
 		exit(EXIT_FAILURE);
 	}
-	my_transaction = calloc(1, sizeof(struct rul_transaction));
-	my_transaction->txn_id = txn_id;
-	struct rul_transaction_buffer *my_trans_buf = calloc(1, sizeof(struct rul_transaction_buffer));
-	my_trans_buf->next = NULL;
-	my_trans_buf->n_entries = 0;
-	my_transaction->head = my_trans_buf;
-	my_transaction->tail = my_trans_buf;
+	transaction = calloc(1, sizeof(struct rul_transaction));
+	transaction->txn_id = txn_id;
+	struct rul_transaction_buffer *transaction_buf = calloc(1, sizeof(struct rul_transaction_buffer));
+	transaction_buf->next = NULL;
+	transaction_buf->n_entries = 0;
+	transaction->head = transaction_buf;
+	transaction->tail = transaction_buf;
 
-	HASH_ADD_PTR(log_desc->trans_map, txn_id, my_transaction);
+	HASH_ADD_PTR(log_desc->trans_map, txn_id, transaction);
 	MUTEX_UNLOCK(&log_desc->trans_map_lock);
 	return txn_id;
 }
@@ -408,32 +408,32 @@ int rul_add_entry_in_txn_buf(struct db_descriptor *db_desc, struct rul_log_entry
 	//	 entry->txn_id);
 	struct rul_log_descriptor *log_desc = db_desc->allocation_log;
 	uint64_t txn_id = entry->txn_id;
-	struct rul_transaction *my_transaction;
+	struct rul_transaction *transaction;
 
 	MUTEX_LOCK(&log_desc->trans_map_lock);
-	HASH_FIND_PTR(log_desc->trans_map, &txn_id, my_transaction);
+	HASH_FIND_PTR(log_desc->trans_map, &txn_id, transaction);
 
-	if (my_transaction == NULL) {
+	if (transaction == NULL) {
 		log_fatal("Txn %llu not found!", txn_id);
 		assert(0);
 		exit(EXIT_FAILURE);
 	}
 	MUTEX_UNLOCK(&log_desc->trans_map_lock);
 
-	struct rul_transaction_buffer *my_trans_buf = my_transaction->tail;
+	struct rul_transaction_buffer *transaction_buf = transaction->tail;
 	// Is there enough space
-	if (my_trans_buf->n_entries >= RUL_ENTRIES_PER_TXN_BUFFER) {
+	if (transaction_buf->n_entries >= RUL_ENTRIES_PER_TXN_BUFFER) {
 		struct rul_transaction_buffer *new_trans_buf = calloc(1, sizeof(struct rul_transaction_buffer));
-		my_trans_buf->next = new_trans_buf;
+		transaction_buf->next = new_trans_buf;
 		new_trans_buf->next = NULL;
 		new_trans_buf->n_entries = 0;
-		my_transaction->tail = new_trans_buf;
+		transaction->tail = new_trans_buf;
 
-		my_trans_buf = new_trans_buf;
+		transaction_buf = new_trans_buf;
 	}
 
-	my_trans_buf->txn_entry[my_trans_buf->n_entries] = *entry;
-	++my_trans_buf->n_entries;
+	transaction_buf->txn_entry[transaction_buf->n_entries] = *entry;
+	++transaction_buf->n_entries;
 	return 1;
 }
 
@@ -441,18 +441,18 @@ struct rul_log_info rul_flush_txn(struct db_descriptor *db_desc, uint64_t txn_id
 {
 	struct rul_log_info info = { .head_dev_offt = 0, .tail_dev_offt = 0, .size = 0, .txn_id = 0 };
 	struct rul_log_descriptor *log_desc = db_desc->allocation_log;
-	struct rul_transaction *my_transaction;
+	struct rul_transaction *transaction;
 
-	HASH_FIND_PTR(log_desc->trans_map, &txn_id, my_transaction);
+	HASH_FIND_PTR(log_desc->trans_map, &txn_id, transaction);
 
-	if (my_transaction == NULL) {
+	if (transaction == NULL) {
 		log_fatal("Txn %llu not found!", txn_id);
 		assert(0);
 		exit(EXIT_FAILURE);
 	}
 
 	MUTEX_LOCK(&log_desc->rul_lock);
-	struct rul_transaction_buffer *curr = my_transaction->head;
+	struct rul_transaction_buffer *curr = transaction->head;
 	log_info("Flushing txn id %llu for DB: %s, num entries %u", txn_id, db_desc->db_superblock->db_name,
 		 curr->n_entries);
 	assert(curr != NULL);
@@ -482,19 +482,19 @@ struct rul_log_info rul_flush_txn(struct db_descriptor *db_desc, uint64_t txn_id
 void rul_apply_txn_buf_freeops_and_destroy(struct db_descriptor *db_desc, uint64_t txn_id)
 {
 	struct rul_log_descriptor *log_desc = db_desc->allocation_log;
-	struct rul_transaction *my_transaction;
+	struct rul_transaction *transaction;
 
 	MUTEX_LOCK(&log_desc->trans_map_lock);
-	HASH_FIND_PTR(log_desc->trans_map, &txn_id, my_transaction);
+	HASH_FIND_PTR(log_desc->trans_map, &txn_id, transaction);
 
-	if (my_transaction == NULL) {
+	if (transaction == NULL) {
 		log_fatal("Txn %llu not found!", txn_id);
 		assert(0);
 		exit(EXIT_FAILURE);
 	}
 	MUTEX_UNLOCK(&log_desc->trans_map_lock);
 
-	struct rul_transaction_buffer *curr = my_transaction->head;
+	struct rul_transaction_buffer *curr = transaction->head;
 	assert(curr != NULL);
 	while (curr) {
 		for (uint32_t i = 0; i < curr->n_entries; ++i) {
@@ -522,7 +522,7 @@ void rul_apply_txn_buf_freeops_and_destroy(struct db_descriptor *db_desc, uint64
 	}
 
 	MUTEX_LOCK(&log_desc->trans_map_lock);
-	HASH_DEL(log_desc->trans_map, my_transaction);
+	HASH_DEL(log_desc->trans_map, transaction);
 	MUTEX_UNLOCK(&log_desc->trans_map_lock);
-	free(my_transaction);
+	free(transaction);
 }
