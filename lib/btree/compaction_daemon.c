@@ -889,7 +889,6 @@ static void comp_append_entry_to_leaf_node(struct comp_level_write_cursor *curso
 								   curr_key->kv_inplace, 1);
 				else {
 					// do a page fault to find the pivot
-					//log_info("Dev offt is %llu",my_key->in_log->device_offt);
 					char *pivot_addr = (char *)curr_key->kv_inlog->pointer;
 					comp_append_pivot_to_index(cursor, left_leaf_offt, right_leaf_offt, pivot_addr,
 								   1);
@@ -1159,24 +1158,21 @@ static void comp_fill_heap_node(struct compaction_request *comp_req, struct comp
 	}
 }
 
-static void comp_fill_parallax_key(struct sh_heap_node *nd, struct comp_parallax_key *my_key)
+static void comp_fill_parallax_key(struct sh_heap_node *nd, struct comp_parallax_key *curr_key)
 {
-	my_key->kv_category = nd->cat;
-	my_key->tombstone = nd->tombstone;
+	curr_key->kv_category = nd->cat;
+	curr_key->tombstone = nd->tombstone;
 	assert(nd->KV);
 	switch (nd->cat) {
 	case SMALL_INPLACE:
 	case MEDIUM_INPLACE:
-		my_key->kv_inplace = nd->KV;
-		my_key->kv_type = KV_INPLACE;
+		curr_key->kv_inplace = nd->KV;
+		curr_key->kv_type = KV_INPLACE;
 		break;
 	case BIG_INLOG:
 	case MEDIUM_INLOG:
-		my_key->kv_inlog = nd->KV;
-		// log_info("Read cursor in_log key prefix %.12s dev_offt %llu",
-		// my_key->in_log->prefix,
-		//	 my_key->in_log->device_offt);
-		my_key->kv_type = KV_INLOG;
+		curr_key->kv_inlog = nd->KV;
+		curr_key->kv_type = KV_INLOG;
 		break;
 	default:
 		log_info("Unhandle/Unknown category");
@@ -1552,8 +1548,6 @@ void *compaction(void *_comp_req)
 		log_info("Flushed compaction[%u][%u] (Swap levels) successfully", comp_req->dst_level,
 			 comp_req->dst_tree);
 
-		//uint64_t my_txn_id = db_desc->levels[comp_req->dst_level].allocation_txn_id[comp_req->dst_tree];
-		//rul_apply_txn_buf_freeops_and_destroy(comp_req->db_desc, my_txn_id);
 #if ENABLE_BLOOM_FILTERS
 		log_info("Swapping also bloom filter");
 		leveld_dst->bloom_filter[0] = leveld_src->bloom_filter[0];
