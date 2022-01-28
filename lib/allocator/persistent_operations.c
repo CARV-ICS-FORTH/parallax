@@ -738,6 +738,7 @@ void recover_L0(struct db_descriptor *db_desc)
 	db_handle hd = { .db_desc = db_desc, .volume_desc = db_desc->db_volume };
 	struct log_cursor *cursor[LOG_TYPES_COUNT];
 
+	assert(db_desc->small_log_start_segment_dev_offt == db_desc->small_log.head_dev_offt);
 	cursor[SMALL_LOG] = init_log_cursor(db_desc, SMALL_LOG);
 	log_info("Small log cursor status: %u", cursor[SMALL_LOG]->valid);
 	cursor[BIG_LOG] = init_log_cursor(db_desc, BIG_LOG);
