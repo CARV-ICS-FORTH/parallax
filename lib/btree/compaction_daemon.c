@@ -1005,22 +1005,18 @@ void *compaction_daemon(void *args)
 			int next_active_tree = active_tree != (NUM_TREES_PER_LEVEL - 1) ? active_tree + 1 : 0;
 			if (db_desc->levels[0].tree_status[next_active_tree] == NO_COMPACTION) {
 				/*Acquire guard lock and wait writers to finish*/
-				if (RWLOCK_WRLOCK(&(handle->db_desc->levels[0].guard_of_level.rx_lock))) {
+				if (RWLOCK_WRLOCK(&(db_desc->levels[0].guard_of_level.rx_lock))) {
 					log_fatal("Failed to acquire guard lock");
 					exit(EXIT_FAILURE);
 				}
-				spin_loop(&(handle->db_desc->levels[0].active_operations), 0);
+				spin_loop(&(db_desc->levels[0].active_operations), 0);
 				/*fill L0 recovery log  info*/
-				handle->db_desc->small_log_start_segment_dev_offt =
-					handle->db_desc->small_log.tail_dev_offt;
-				handle->db_desc->small_log_start_offt_in_segment =
-					handle->db_desc->small_log.size % SEGMENT_SIZE;
+				db_desc->small_log_start_segment_dev_offt = db_desc->small_log.tail_dev_offt;
+				db_desc->small_log_start_offt_in_segment = db_desc->small_log.size % SEGMENT_SIZE;
 
 				/*fill big log recovery  info*/
-				handle->db_desc->big_log_start_segment_dev_offt =
-					handle->db_desc->big_log.tail_dev_offt;
-				handle->db_desc->big_log_start_offt_in_segment =
-					handle->db_desc->big_log.size % SEGMENT_SIZE;
+				db_desc->big_log_start_segment_dev_offt = db_desc->big_log.tail_dev_offt;
+				db_desc->big_log_start_offt_in_segment = db_desc->big_log.size % SEGMENT_SIZE;
 				/*done now atomically change active tree*/
 
 				db_desc->levels[0].active_tree = next_active_tree;
@@ -1031,7 +1027,7 @@ void *compaction_daemon(void *args)
 				/*Acquire a new transaction id for the next_active_tree*/
 				db_desc->levels[0].allocation_txn_id[next_active_tree] = rul_start_txn(db_desc);
 				/*Release guard lock*/
-				if (RWLOCK_UNLOCK(&handle->db_desc->levels[0].guard_of_level.rx_lock)) {
+				if (RWLOCK_UNLOCK(&db_desc->levels[0].guard_of_level.rx_lock)) {
 					log_fatal("Failed to acquire guard lock");
 					exit(EXIT_FAILURE);
 				}
@@ -1064,8 +1060,8 @@ void *compaction_daemon(void *args)
 
 		// rest of levels
 		for (int level_id = 1; level_id < MAX_LEVELS - 1; ++level_id) {
-			level_1 = &handle->db_desc->levels[level_id];
-			struct level_descriptor *level_2 = &handle->db_desc->levels[level_id + 1];
+			level_1 = &db_desc->levels[level_id];
+			struct level_descriptor *level_2 = &db_desc->levels[level_id + 1];
 			uint8_t tree_1 = 0; // level_1->active_tree;
 			uint8_t tree_2 = 0; // level_2->active_tree;
 
@@ -1079,7 +1075,7 @@ void *compaction_daemon(void *args)
 					struct compaction_request *comp_req_p = (struct compaction_request *)calloc(
 						1, sizeof(struct compaction_request));
 					assert(comp_req_p);
-					comp_req_p->db_desc = handle->db_desc;
+					comp_req_p->db_desc = db_desc;
 					comp_req_p->volume_desc = handle->volume_desc;
 					comp_req_p->src_level = level_id;
 					comp_req_p->src_tree = tree_1;
