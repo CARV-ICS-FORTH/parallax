@@ -372,7 +372,7 @@ static void destroy_log_buffer(struct log_descriptor *log_desc)
 		free(log_desc->tail[i]);
 }
 
-void init_log_buffer(struct log_descriptor *log_desc, enum log_type my_type)
+void init_log_buffer(struct log_descriptor *log_desc, enum log_type log_type)
 {
 	// Just update the chunk counters according to the log size
 	if (RWLOCK_INIT(&log_desc->log_tail_buf_lock, NULL) != 0) {
@@ -389,7 +389,7 @@ void init_log_buffer(struct log_descriptor *log_desc, enum log_type my_type)
 		log_desc->tail[i]->free = 1;
 		log_desc->tail[i]->fd = FD;
 	}
-	log_desc->my_type = my_type;
+	log_desc->log_type = log_type;
 
 	// Special action for 0
 	log_desc->tail[0]->dev_offt = log_desc->tail_dev_offt;
@@ -460,7 +460,7 @@ static void init_fresh_logs(struct db_descriptor *db_desc)
 
 static void init_fresh_db(struct db_descriptor *db_desc)
 {
-	struct pr_db_superblock *my_superblock = db_desc->db_superblock;
+	struct pr_db_superblock *superblock = db_desc->db_superblock;
 
 	/*init now state for all levels*/
 	for (uint8_t level_id = 0; level_id < MAX_LEVELS; ++level_id) {
@@ -472,21 +472,21 @@ static void init_fresh_db(struct db_descriptor *db_desc)
 			/*segments info per level*/
 
 			db_desc->levels[level_id].first_segment[tree_id] = 0;
-			my_superblock->first_segment[level_id][tree_id] = 0;
+			superblock->first_segment[level_id][tree_id] = 0;
 
 			db_desc->levels[level_id].last_segment[tree_id] = 0;
-			my_superblock->last_segment[level_id][tree_id] = 0;
+			superblock->last_segment[level_id][tree_id] = 0;
 
 			db_desc->levels[level_id].offset[tree_id] = 0;
-			my_superblock->offset[level_id][tree_id] = 0;
+			superblock->offset[level_id][tree_id] = 0;
 
 			/*total keys*/
 			db_desc->levels[level_id].level_size[tree_id] = 0;
-			my_superblock->level_size[level_id][tree_id] = 0;
+			superblock->level_size[level_id][tree_id] = 0;
 			/*finally the roots*/
 			db_desc->levels[level_id].root_r[tree_id] = NULL;
 			db_desc->levels[level_id].root_w[tree_id] = NULL;
-			my_superblock->root_r[level_id][tree_id] = 0;
+			superblock->root_r[level_id][tree_id] = 0;
 		}
 	}
 
@@ -527,7 +527,7 @@ static void restore_db(struct db_descriptor *db_desc, uint32_t region_idx)
 	db_desc->big_log_start_segment_dev_offt = db_desc->db_superblock->big_log_start_segment_dev_offt;
 	db_desc->big_log_start_offt_in_segment = db_desc->db_superblock->big_log_offt_in_start_segment;
 
-	struct pr_db_superblock *my_superblock = db_desc->db_superblock;
+	struct pr_db_superblock *superblock = db_desc->db_superblock;
 
 	/*restore now persistent state of all levels*/
 	for (uint8_t level_id = 0; level_id < MAX_LEVELS; level_id++) {
@@ -538,16 +538,16 @@ static void restore_db(struct db_descriptor *db_desc, uint32_t region_idx)
 			db_desc->levels[level_id].level_size[tree_id] = 0;
 			db_desc->levels[level_id].epoch[tree_id] = 0;
 			/*segments info per level*/
-			if (my_superblock->first_segment[level_id][tree_id] != 0) {
+			if (superblock->first_segment[level_id][tree_id] != 0) {
 				db_desc->levels[level_id].first_segment[tree_id] =
-					(segment_header *)REAL_ADDRESS(my_superblock->first_segment[level_id][tree_id]);
+					(segment_header *)REAL_ADDRESS(superblock->first_segment[level_id][tree_id]);
 
 				db_desc->levels[level_id].last_segment[tree_id] =
-					(segment_header *)REAL_ADDRESS(my_superblock->last_segment[level_id][tree_id]);
+					(segment_header *)REAL_ADDRESS(superblock->last_segment[level_id][tree_id]);
 
-				db_desc->levels[level_id].offset[tree_id] = my_superblock->offset[level_id][tree_id];
-				log_info("Superblock of db: %s first_segment dev offt: %llu", my_superblock->db_name,
-					 my_superblock->first_segment[level_id][tree_id]);
+				db_desc->levels[level_id].offset[tree_id] = superblock->offset[level_id][tree_id];
+				log_info("Superblock of db: %s first_segment dev offt: %llu", superblock->db_name,
+					 superblock->first_segment[level_id][tree_id]);
 				log_info("Restoring level[%u][%u] first segment %llu last segment: %llu size: %llu",
 					 level_id, tree_id, db_desc->levels[level_id].first_segment[tree_id],
 					 db_desc->levels[level_id].last_segment[tree_id],
@@ -559,11 +559,11 @@ static void restore_db(struct db_descriptor *db_desc, uint32_t region_idx)
 				db_desc->levels[level_id].offset[tree_id] = 0;
 			}
 			/*total keys*/
-			db_desc->levels[level_id].level_size[tree_id] = my_superblock->level_size[level_id][tree_id];
+			db_desc->levels[level_id].level_size[tree_id] = superblock->level_size[level_id][tree_id];
 			/*finally the roots*/
-			if (my_superblock->root_r[level_id][tree_id] != 0)
+			if (superblock->root_r[level_id][tree_id] != 0)
 				db_desc->levels[level_id].root_r[tree_id] =
-					(node_header *)REAL_ADDRESS(my_superblock->root_r[level_id][tree_id]);
+					(node_header *)REAL_ADDRESS(superblock->root_r[level_id][tree_id]);
 			else
 				db_desc->levels[level_id].root_r[tree_id] = NULL;
 
@@ -1262,7 +1262,7 @@ static void bt_add_segment_to_log(struct db_descriptor *db_desc, struct log_desc
 {
 	uint32_t curr_tail_id = log_desc->curr_tail_id;
 	uint32_t next_tail_id = curr_tail_id + 1;
-	struct segment_header *new_segment = seg_get_raw_log_segment(db_desc, log_desc->my_type, level_id, tree_id);
+	struct segment_header *new_segment = seg_get_raw_log_segment(db_desc, log_desc->log_type, level_id, tree_id);
 
 	if (!new_segment) {
 		log_fatal("Cannot allocate memory from the device!");
@@ -1310,7 +1310,7 @@ static void bt_add_blob(struct db_descriptor *db_desc, struct log_descriptor *lo
 	uint32_t curr_tail_id = log_desc->curr_tail_id;
 	uint32_t next_tail_id = ++curr_tail_id;
 
-	struct segment_header *next_tail_seg = seg_get_raw_log_segment(db_desc, log_desc->my_type, level_id, tree_id);
+	struct segment_header *next_tail_seg = seg_get_raw_log_segment(db_desc, log_desc->log_type, level_id, tree_id);
 
 	if (!next_tail_seg) {
 		log_fatal("No space for new segment");
@@ -1393,7 +1393,7 @@ static void *bt_append_to_log_direct_IO(struct log_operation *req, struct log_to
 
 		log_metadata->log_desc->size += available_space_in_log;
 
-		switch (log_metadata->log_desc->my_type) {
+		switch (log_metadata->log_desc->log_type) {
 		case BIG_LOG:
 			bt_add_blob(handle->db_desc, log_metadata->log_desc, req->metadata->level_id,
 				    req->metadata->tree_id);

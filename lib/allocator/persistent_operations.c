@@ -28,6 +28,12 @@
 #include <string.h>
 #include <unistd.h>
 
+struct log_info {
+	uint64_t head_dev_offt;
+	uint64_t tail_dev_offt;
+	uint64_t size;
+};
+
 /*<new_persistent_design>*/
 static void pr_flush_allocation_log_and_level_info(struct db_descriptor *db_desc, uint8_t src_level_id,
 						   uint8_t dst_level_id, uint8_t tree_id)
@@ -83,14 +89,9 @@ void pr_flush_L0(struct db_descriptor *db_desc, uint8_t tree_id)
 		log_info("DB: %s clean nothing to flush ", db_desc->db_superblock->db_name);
 		return;
 	}
-	struct my_log_info {
-		uint64_t head_dev_offt;
-		uint64_t tail_dev_offt;
-		uint64_t size;
-	};
 
-	struct my_log_info large_log;
-	struct my_log_info L0_recovery_log;
+	struct log_info large_log;
+	struct log_info L0_recovery_log;
 
 	MUTEX_LOCK(&db_desc->flush_L0_lock);
 
@@ -122,13 +123,13 @@ void pr_flush_L0(struct db_descriptor *db_desc, uint8_t tree_id)
 	/*Flush L0 recovery log*/
 	pr_flush_log_tail(db_desc, &db_desc->small_log);
 
-	uint64_t my_txn_id = db_desc->levels[0].allocation_txn_id[tree_id];
+	uint64_t txn_id = db_desc->levels[0].allocation_txn_id[tree_id];
 
 	/*time to write superblock*/
 	pr_lock_db_superblock(db_desc);
 	/*Flush my allocations*/
 
-	struct rul_log_info rul_log = rul_flush_txn(db_desc, my_txn_id);
+	struct rul_log_info rul_log = rul_flush_txn(db_desc, txn_id);
 	/*new info about large*/
 	db_desc->db_superblock->big_log_head_offt = large_log.head_dev_offt;
 	db_desc->db_superblock->big_log_tail_offt = large_log.tail_dev_offt;
@@ -153,18 +154,12 @@ void pr_flush_L0(struct db_descriptor *db_desc, uint8_t tree_id)
 	pr_unlock_db_superblock(db_desc);
 
 	MUTEX_UNLOCK(&db_desc->flush_L0_lock);
-	rul_apply_txn_buf_freeops_and_destroy(db_desc, my_txn_id);
+	rul_apply_txn_buf_freeops_and_destroy(db_desc, txn_id);
 }
 
 static void pr_flush_L0_to_L1(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
 {
-	struct my_log_info {
-		uint64_t head_dev_offt;
-		uint64_t tail_dev_offt;
-		uint64_t size;
-	};
-
-	struct my_log_info medium_log;
+	struct log_info medium_log;
 
 	/*
    * Keep medium log state. We don't need to lock because ONLY one compaction
@@ -176,7 +171,7 @@ static void pr_flush_L0_to_L1(struct db_descriptor *db_desc, uint8_t level_id, u
 	/*Flush medium log*/
 	pr_flush_log_tail(db_desc, &db_desc->medium_log);
 	pr_lock_db_superblock(db_desc);
-	uint64_t my_txn_id = db_desc->levels[level_id].allocation_txn_id[tree_id];
+	uint64_t txn_id = db_desc->levels[level_id].allocation_txn_id[tree_id];
 
 	/*medium log info*/
 	db_desc->db_superblock->medium_log_head_offt = medium_log.head_dev_offt;
@@ -198,7 +193,7 @@ static void pr_flush_L0_to_L1(struct db_descriptor *db_desc, uint8_t level_id, u
 			log_entry.dev_offt = ABSOLUTE_ADDRESS(curr);
 			log_info("Triming L0 recovery log segment:%llu curr segment id:%llu", log_entry.dev_offt,
 				 curr->segment_id);
-			log_entry.txn_id = my_txn_id;
+			log_entry.txn_id = txn_id;
 			log_entry.op_type = RUL_FREE;
 			log_entry.size = SEGMENT_SIZE;
 			rul_add_entry_in_txn_buf(db_desc, &log_entry);
@@ -224,7 +219,7 @@ static void pr_flush_L0_to_L1(struct db_descriptor *db_desc, uint8_t level_id, u
 
 	pr_flush_allocation_log_and_level_info(db_desc, level_id - 1, level_id, tree_id);
 	pr_unlock_db_superblock(db_desc);
-	rul_apply_txn_buf_freeops_and_destroy(db_desc, my_txn_id);
+	rul_apply_txn_buf_freeops_and_destroy(db_desc, txn_id);
 }
 
 static void pr_flush_Lmax_to_Ln(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
@@ -232,7 +227,7 @@ static void pr_flush_Lmax_to_Ln(struct db_descriptor *db_desc, uint8_t level_id,
 	log_info("Flushing Lmax to Ln!");
 	struct level_descriptor *level_desc = &db_desc->levels[level_id];
 
-	uint64_t my_txn_id = db_desc->levels[level_id].allocation_txn_id[tree_id];
+	uint64_t txn_id = db_desc->levels[level_id].allocation_txn_id[tree_id];
 	/*trim medium log*/
 	struct segment_header *curr = REAL_ADDRESS(level_desc->medium_in_place_segment_dev_offt);
 	//log_info("Max medium in place segment id %llu", curr->segment_id);
@@ -248,7 +243,7 @@ static void pr_flush_Lmax_to_Ln(struct db_descriptor *db_desc, uint8_t level_id,
 			log_entry.dev_offt = ABSOLUTE_ADDRESS(curr);
 			log_info("Triming medium log segment:%llu curr segment id:%llu", log_entry.dev_offt,
 				 curr->segment_id);
-			log_entry.txn_id = my_txn_id;
+			log_entry.txn_id = txn_id;
 			log_entry.op_type = RUL_FREE;
 			log_entry.size = SEGMENT_SIZE;
 			rul_add_entry_in_txn_buf(db_desc, &log_entry);
@@ -273,7 +268,7 @@ static void pr_flush_Lmax_to_Ln(struct db_descriptor *db_desc, uint8_t level_id,
 	pr_flush_allocation_log_and_level_info(db_desc, level_id - 1, level_id, tree_id);
 
 	pr_unlock_db_superblock(db_desc);
-	rul_apply_txn_buf_freeops_and_destroy(db_desc, my_txn_id);
+	rul_apply_txn_buf_freeops_and_destroy(db_desc, txn_id);
 }
 
 void pr_flush_compaction(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
@@ -284,13 +279,13 @@ void pr_flush_compaction(struct db_descriptor *db_desc, uint8_t level_id, uint8_
 	if (level_id == db_desc->level_medium_inplace)
 		return pr_flush_Lmax_to_Ln(db_desc, level_id, tree_id);
 
-	uint64_t my_txn_id = db_desc->levels[level_id].allocation_txn_id[tree_id];
+	uint64_t txn_id = db_desc->levels[level_id].allocation_txn_id[tree_id];
 	pr_lock_db_superblock(db_desc);
 
 	pr_flush_allocation_log_and_level_info(db_desc, level_id - 1, level_id, tree_id);
 
 	pr_unlock_db_superblock(db_desc);
-	rul_apply_txn_buf_freeops_and_destroy(db_desc, my_txn_id);
+	rul_apply_txn_buf_freeops_and_destroy(db_desc, txn_id);
 }
 
 void pr_lock_db_superblock(struct db_descriptor *db_desc)
@@ -306,14 +301,14 @@ void pr_unlock_db_superblock(struct db_descriptor *db_desc)
 void pr_flush_db_superblock(struct db_descriptor *db_desc)
 {
 	db_desc->db_superblock->lsn = db_desc->lsn;
-	uint64_t my_superblock_offt =
+	uint64_t superblock_offt =
 		sizeof(struct superblock) + (sizeof(struct pr_db_superblock) * db_desc->db_superblock->id);
 	ssize_t total_bytes_written = 0;
 	ssize_t bytes_written = 0;
 	ssize_t size = sizeof(struct pr_db_superblock);
 	while (total_bytes_written < size) {
 		bytes_written = pwrite(db_desc->db_volume->vol_fd, db_desc->db_superblock, size - total_bytes_written,
-				       my_superblock_offt + total_bytes_written);
+				       superblock_offt + total_bytes_written);
 		if (bytes_written == -1) {
 			log_fatal("Failed to write region's %s superblock", db_desc->db_superblock->db_name);
 			perror("Reason");
@@ -361,12 +356,12 @@ void pr_read_db_superblock(struct db_descriptor *db_desc)
 	ssize_t total_bytes_written = 0;
 	ssize_t bytes_written = 0;
 	ssize_t size = sizeof(struct pr_db_superblock);
-	uint64_t my_superblock_offt =
+	uint64_t superblock_offt =
 		sizeof(struct superblock) + (sizeof(struct pr_db_superblock) * db_desc->db_superblock->id);
 
 	while (total_bytes_written < size) {
 		bytes_written = pwrite(db_desc->db_volume->vol_fd, db_desc->db_superblock, size - total_bytes_written,
-				       my_superblock_offt + total_bytes_written);
+				       superblock_offt + total_bytes_written);
 		if (bytes_written == -1) {
 			log_fatal("Failed to read region's %s superblock", db_desc->db_superblock->db_name);
 			perror("Reason");

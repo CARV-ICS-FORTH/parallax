@@ -132,12 +132,12 @@ static void fetch_segment(struct comp_level_write_cursor *c, char *segment_buf, 
 		bytes_to_read += bytes;
 	}
 	if (c->level_id == c->handle->db_desc->level_medium_inplace) {
-		struct segment_header *my_seg = (struct segment_header *)segment_buf;
+		struct segment_header *segment = (struct segment_header *)segment_buf;
 		struct level_descriptor *level_desc = &c->handle->db_desc->levels[c->level_id];
 
 		if (!(log_chunk_dev_offt % SEGMENT_SIZE)) {
-			if (my_seg->segment_id > level_desc->medium_in_place_max_segment_id) {
-				level_desc->medium_in_place_max_segment_id = my_seg->segment_id;
+			if (segment->segment_id > level_desc->medium_in_place_max_segment_id) {
+				level_desc->medium_in_place_max_segment_id = segment->segment_id;
 				level_desc->medium_in_place_segment_dev_offt = dev_offt;
 			}
 		}
@@ -750,12 +750,12 @@ static int comp_append_medium_L1(struct comp_level_write_cursor *c, struct comp_
 	ins_req.metadata.end_of_log = 0;
 	ins_req.metadata.log_padding = 0;
 
-	struct log_operation my_op;
-	my_op.metadata = &ins_req.metadata;
-	my_op.optype_tolog = insertOp;
-	my_op.ins_req = &ins_req;
+	struct log_operation log_op;
+	log_op.metadata = &ins_req.metadata;
+	log_op.optype_tolog = insertOp;
+	log_op.ins_req = &ins_req;
 	// log_info("Appending to medium log during compaction");
-	char *log_location = append_key_value_to_log(&my_op);
+	char *log_location = append_key_value_to_log(&log_op);
 	out->kv_inlog = &out->kvsep;
 	if (ins_req.metadata.kv_size >= PREFIX_SIZE)
 		memcpy(out->kv_inlog, in->kv_inplace + sizeof(uint32_t), PREFIX_SIZE);
@@ -812,7 +812,6 @@ static void comp_append_entry_to_leaf_node(struct comp_level_write_cursor *curso
 		write_leaf_args.kv_format = KV_PREFIX;
 		write_leaf_args.cat = curr_key->kv_category;
 		write_leaf_args.tombstone = curr_key->tombstone;
-		//log_info("Appending prefix is  %s dev offt %llu", my_key->in_log->prefix, my_key->in_log->device_offt);
 		break;
 	default:
 		log_fatal("Unknown key_type (IN_PLACE,IN_LOG) instead got %u", curr_key->kv_type);
@@ -890,7 +889,6 @@ static void comp_append_entry_to_leaf_node(struct comp_level_write_cursor *curso
 								   curr_key->kv_inplace, 1);
 				else {
 					// do a page fault to find the pivot
-					//log_info("Dev offt is %llu",my_key->in_log->device_offt);
 					char *pivot_addr = (char *)curr_key->kv_inlog->pointer;
 					comp_append_pivot_to_index(cursor, left_leaf_offt, right_leaf_offt, pivot_addr,
 								   1);
@@ -1005,22 +1003,18 @@ void *compaction_daemon(void *args)
 			int next_active_tree = active_tree != (NUM_TREES_PER_LEVEL - 1) ? active_tree + 1 : 0;
 			if (db_desc->levels[0].tree_status[next_active_tree] == NO_COMPACTION) {
 				/*Acquire guard lock and wait writers to finish*/
-				if (RWLOCK_WRLOCK(&(handle->db_desc->levels[0].guard_of_level.rx_lock))) {
+				if (RWLOCK_WRLOCK(&(db_desc->levels[0].guard_of_level.rx_lock))) {
 					log_fatal("Failed to acquire guard lock");
 					exit(EXIT_FAILURE);
 				}
-				spin_loop(&(handle->db_desc->levels[0].active_operations), 0);
+				spin_loop(&(db_desc->levels[0].active_operations), 0);
 				/*fill L0 recovery log  info*/
-				handle->db_desc->small_log_start_segment_dev_offt =
-					handle->db_desc->small_log.tail_dev_offt;
-				handle->db_desc->small_log_start_offt_in_segment =
-					handle->db_desc->small_log.size % SEGMENT_SIZE;
+				db_desc->small_log_start_segment_dev_offt = db_desc->small_log.tail_dev_offt;
+				db_desc->small_log_start_offt_in_segment = db_desc->small_log.size % SEGMENT_SIZE;
 
 				/*fill big log recovery  info*/
-				handle->db_desc->big_log_start_segment_dev_offt =
-					handle->db_desc->big_log.tail_dev_offt;
-				handle->db_desc->big_log_start_offt_in_segment =
-					handle->db_desc->big_log.size % SEGMENT_SIZE;
+				db_desc->big_log_start_segment_dev_offt = db_desc->big_log.tail_dev_offt;
+				db_desc->big_log_start_offt_in_segment = db_desc->big_log.size % SEGMENT_SIZE;
 				/*done now atomically change active tree*/
 
 				db_desc->levels[0].active_tree = next_active_tree;
@@ -1031,7 +1025,7 @@ void *compaction_daemon(void *args)
 				/*Acquire a new transaction id for the next_active_tree*/
 				db_desc->levels[0].allocation_txn_id[next_active_tree] = rul_start_txn(db_desc);
 				/*Release guard lock*/
-				if (RWLOCK_UNLOCK(&handle->db_desc->levels[0].guard_of_level.rx_lock)) {
+				if (RWLOCK_UNLOCK(&db_desc->levels[0].guard_of_level.rx_lock)) {
 					log_fatal("Failed to acquire guard lock");
 					exit(EXIT_FAILURE);
 				}
@@ -1064,8 +1058,8 @@ void *compaction_daemon(void *args)
 
 		// rest of levels
 		for (int level_id = 1; level_id < MAX_LEVELS - 1; ++level_id) {
-			level_1 = &handle->db_desc->levels[level_id];
-			struct level_descriptor *level_2 = &handle->db_desc->levels[level_id + 1];
+			level_1 = &db_desc->levels[level_id];
+			struct level_descriptor *level_2 = &db_desc->levels[level_id + 1];
 			uint8_t tree_1 = 0; // level_1->active_tree;
 			uint8_t tree_2 = 0; // level_2->active_tree;
 
@@ -1079,7 +1073,7 @@ void *compaction_daemon(void *args)
 					struct compaction_request *comp_req_p = (struct compaction_request *)calloc(
 						1, sizeof(struct compaction_request));
 					assert(comp_req_p);
-					comp_req_p->db_desc = handle->db_desc;
+					comp_req_p->db_desc = db_desc;
 					comp_req_p->volume_desc = handle->volume_desc;
 					comp_req_p->src_level = level_id;
 					comp_req_p->src_tree = tree_1;
@@ -1164,24 +1158,21 @@ static void comp_fill_heap_node(struct compaction_request *comp_req, struct comp
 	}
 }
 
-static void comp_fill_parallax_key(struct sh_heap_node *nd, struct comp_parallax_key *my_key)
+static void comp_fill_parallax_key(struct sh_heap_node *nd, struct comp_parallax_key *curr_key)
 {
-	my_key->kv_category = nd->cat;
-	my_key->tombstone = nd->tombstone;
+	curr_key->kv_category = nd->cat;
+	curr_key->tombstone = nd->tombstone;
 	assert(nd->KV);
 	switch (nd->cat) {
 	case SMALL_INPLACE:
 	case MEDIUM_INPLACE:
-		my_key->kv_inplace = nd->KV;
-		my_key->kv_type = KV_INPLACE;
+		curr_key->kv_inplace = nd->KV;
+		curr_key->kv_type = KV_INPLACE;
 		break;
 	case BIG_INLOG:
 	case MEDIUM_INLOG:
-		my_key->kv_inlog = nd->KV;
-		// log_info("Read cursor in_log key prefix %.12s dev_offt %llu",
-		// my_key->in_log->prefix,
-		//	 my_key->in_log->device_offt);
-		my_key->kv_type = KV_INLOG;
+		curr_key->kv_inlog = nd->KV;
+		curr_key->kv_type = KV_INLOG;
 		break;
 	default:
 		log_info("Unhandle/Unknown category");
@@ -1557,8 +1548,6 @@ void *compaction(void *_comp_req)
 		log_info("Flushed compaction[%u][%u] (Swap levels) successfully", comp_req->dst_level,
 			 comp_req->dst_tree);
 
-		//uint64_t my_txn_id = db_desc->levels[comp_req->dst_level].allocation_txn_id[comp_req->dst_tree];
-		//rul_apply_txn_buf_freeops_and_destroy(comp_req->db_desc, my_txn_id);
 #if ENABLE_BLOOM_FILTERS
 		log_info("Swapping also bloom filter");
 		leveld_dst->bloom_filter[0] = leveld_src->bloom_filter[0];
