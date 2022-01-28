@@ -38,5 +38,5 @@ struct log_descriptor {
 	uint64_t tail_dev_offt;
 	uint64_t size;
 	uint64_t curr_tail_id;
-	enum log_type my_type;
+	enum log_type log_type;
 };

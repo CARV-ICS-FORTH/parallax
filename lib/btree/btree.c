@@ -372,7 +372,7 @@ static void destroy_log_buffer(struct log_descriptor *log_desc)
 		free(log_desc->tail[i]);
 }
 
-void init_log_buffer(struct log_descriptor *log_desc, enum log_type my_type)
+void init_log_buffer(struct log_descriptor *log_desc, enum log_type log_type)
 {
 	// Just update the chunk counters according to the log size
 	if (RWLOCK_INIT(&log_desc->log_tail_buf_lock, NULL) != 0) {
@@ -389,7 +389,7 @@ void init_log_buffer(struct log_descriptor *log_desc, enum log_type my_type)
 		log_desc->tail[i]->free = 1;
 		log_desc->tail[i]->fd = FD;
 	}
-	log_desc->my_type = my_type;
+	log_desc->log_type = log_type;
 
 	// Special action for 0
 	log_desc->tail[0]->dev_offt = log_desc->tail_dev_offt;
@@ -1262,7 +1262,7 @@ static void bt_add_segment_to_log(struct db_descriptor *db_desc, struct log_desc
 {
 	uint32_t curr_tail_id = log_desc->curr_tail_id;
 	uint32_t next_tail_id = curr_tail_id + 1;
-	struct segment_header *new_segment = seg_get_raw_log_segment(db_desc, log_desc->my_type, level_id, tree_id);
+	struct segment_header *new_segment = seg_get_raw_log_segment(db_desc, log_desc->log_type, level_id, tree_id);
 
 	if (!new_segment) {
 		log_fatal("Cannot allocate memory from the device!");
@@ -1310,7 +1310,7 @@ static void bt_add_blob(struct db_descriptor *db_desc, struct log_descriptor *lo
 	uint32_t curr_tail_id = log_desc->curr_tail_id;
 	uint32_t next_tail_id = ++curr_tail_id;
 
-	struct segment_header *next_tail_seg = seg_get_raw_log_segment(db_desc, log_desc->my_type, level_id, tree_id);
+	struct segment_header *next_tail_seg = seg_get_raw_log_segment(db_desc, log_desc->log_type, level_id, tree_id);
 
 	if (!next_tail_seg) {
 		log_fatal("No space for new segment");
@@ -1393,7 +1393,7 @@ static void *bt_append_to_log_direct_IO(struct log_operation *req, struct log_to
 
 		log_metadata->log_desc->size += available_space_in_log;
 
-		switch (log_metadata->log_desc->my_type) {
+		switch (log_metadata->log_desc->log_type) {
 		case BIG_LOG:
 			bt_add_blob(handle->db_desc, log_metadata->log_desc, req->metadata->level_id,
 				    req->metadata->tree_id);
