@@ -460,7 +460,7 @@ static void init_fresh_logs(struct db_descriptor *db_desc)
 
 static void init_fresh_db(struct db_descriptor *db_desc)
 {
-	struct pr_db_superblock *my_superblock = db_desc->db_superblock;
+	struct pr_db_superblock *superblock = db_desc->db_superblock;
 
 	/*init now state for all levels*/
 	for (uint8_t level_id = 0; level_id < MAX_LEVELS; ++level_id) {
@@ -472,21 +472,21 @@ static void init_fresh_db(struct db_descriptor *db_desc)
 			/*segments info per level*/
 
 			db_desc->levels[level_id].first_segment[tree_id] = 0;
-			my_superblock->first_segment[level_id][tree_id] = 0;
+			superblock->first_segment[level_id][tree_id] = 0;
 
 			db_desc->levels[level_id].last_segment[tree_id] = 0;
-			my_superblock->last_segment[level_id][tree_id] = 0;
+			superblock->last_segment[level_id][tree_id] = 0;
 
 			db_desc->levels[level_id].offset[tree_id] = 0;
-			my_superblock->offset[level_id][tree_id] = 0;
+			superblock->offset[level_id][tree_id] = 0;
 
 			/*total keys*/
 			db_desc->levels[level_id].level_size[tree_id] = 0;
-			my_superblock->level_size[level_id][tree_id] = 0;
+			superblock->level_size[level_id][tree_id] = 0;
 			/*finally the roots*/
 			db_desc->levels[level_id].root_r[tree_id] = NULL;
 			db_desc->levels[level_id].root_w[tree_id] = NULL;
-			my_superblock->root_r[level_id][tree_id] = 0;
+			superblock->root_r[level_id][tree_id] = 0;
 		}
 	}
 
