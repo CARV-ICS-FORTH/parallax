@@ -53,7 +53,7 @@ static void rul_flush_log_chunk(struct db_descriptor *db_desc, uint32_t chunk_id
 	ssize_t total_bytes_written = 0;
 	log_info("Flushing chunk %u offt: %llu", chunk_id, dev_offt);
 	while (total_bytes_written < size) {
-		bytes_written = pwrite(db_desc->db_volume->vol_fd, db_desc->allocation_log->my_segment.chunk[chunk_id],
+		bytes_written = pwrite(db_desc->db_volume->vol_fd, db_desc->allocation_log->segment.chunk[chunk_id],
 				       size - total_bytes_written, dev_offt + total_bytes_written);
 		if (bytes_written == -1) {
 			log_fatal("Failed to write DB's %s superblock", db_desc->db_superblock->db_name);
@@ -91,7 +91,7 @@ static void rul_aflush_log_chunk(struct db_descriptor *db_desc, uint32_t chunk_i
 	log_desc->aiocbp[chunk_id].aio_fildes = db_desc->db_volume->vol_fd;
 	log_desc->aiocbp[chunk_id].aio_offset = log_desc->tail_dev_offt + (chunk_id * RUL_LOG_CHUNK_SIZE_IN_BYTES);
 	assert(log_desc->aiocbp[chunk_id].aio_offset % ALIGNMENT_SIZE == 0);
-	log_desc->aiocbp[chunk_id].aio_buf = log_desc->my_segment.chunk[chunk_id];
+	log_desc->aiocbp[chunk_id].aio_buf = log_desc->segment.chunk[chunk_id];
 	assert((uint64_t)log_desc->aiocbp[chunk_id].aio_buf % ALIGNMENT_SIZE == 0);
 	log_desc->aiocbp[chunk_id].aio_nbytes = RUL_LOG_CHUNK_SIZE_IN_BYTES;
 	log_desc->pending_IO[chunk_id] = 1;
@@ -184,7 +184,7 @@ static void rul_flush_last_chunk(struct db_descriptor *db_desc)
 	dev_offt = (db_desc->allocation_log->head_dev_offt + SEGMENT_SIZE) - size;
 
 	while (total_bytes_written < size) {
-		bytes_written = pwrite(db_desc->db_volume->vol_fd, db_desc->allocation_log->my_segment.chunk[chunk_id],
+		bytes_written = pwrite(db_desc->db_volume->vol_fd, db_desc->allocation_log->segment.chunk[chunk_id],
 				       size - total_bytes_written, dev_offt + total_bytes_written);
 		if (bytes_written == -1) {
 			log_fatal("Failed to write DB's %s superblock", db_desc->db_superblock->db_name);
@@ -202,7 +202,7 @@ static void rul_read_last_segment(struct db_descriptor *db_desc)
 	ssize_t size = SEGMENT_SIZE;
 	ssize_t dev_offt = db_desc->allocation_log->tail_dev_offt;
 	while (total_bytes_read < size) {
-		bytes_read = pread(db_desc->db_volume->vol_fd, &db_desc->allocation_log->my_segment,
+		bytes_read = pread(db_desc->db_volume->vol_fd, &db_desc->allocation_log->segment,
 				   size - total_bytes_read, dev_offt + total_bytes_read);
 		if (bytes_read == -1) {
 			log_fatal("Failed to read DB's %s superblock", db_desc->db_superblock->db_name);
@@ -225,16 +225,16 @@ static int rul_append(struct db_descriptor *db_desc, struct rul_log_entry *entry
 	if (log_desc->curr_segment_entry > RUL_SEGMENT_MAX_ENTRIES) {
 		// Time to add a new segment
 		uint64_t new_tail_dev_offt = (uint64_t)mem_allocate(db_desc->db_volume, SEGMENT_SIZE);
-		log_desc->my_segment.next_seg_offt = new_tail_dev_offt;
+		log_desc->segment.next_seg_offt = new_tail_dev_offt;
 		struct rul_log_entry e;
 		e.txn_id = 0;
 		e.dev_offt = new_tail_dev_offt;
 		e.op_type = RUL_ALLOCATE;
 		//add new entry in the memory segment
-		memcpy(&log_desc->my_segment.chunk[log_desc->curr_chunk_id][log_desc->curr_chunk_entry], &e,
+		memcpy(&log_desc->segment.chunk[log_desc->curr_chunk_id][log_desc->curr_chunk_entry], &e,
 		       sizeof(struct rul_log_entry));
 		log_desc->size += (sizeof(struct rul_log_entry) + RUL_SEGMENT_FOOTER_SIZE_IN_BYTES);
-		log_desc->my_segment.next_seg_offt = new_tail_dev_offt;
+		log_desc->segment.next_seg_offt = new_tail_dev_offt;
 		log_desc->tail_dev_offt = new_tail_dev_offt;
 		log_desc->curr_chunk_id = 0;
 		log_desc->curr_chunk_entry = 0;
@@ -249,7 +249,7 @@ static int rul_append(struct db_descriptor *db_desc, struct rul_log_entry *entry
 		pr_flush_db_superblock(db_desc);
 		pr_unlock_db_superblock(db_desc);
 #endif
-		memset(&log_desc->my_segment, 0x00, sizeof(struct rul_log_segment));
+		memset(&log_desc->segment, 0x00, sizeof(struct rul_log_segment));
 	}
 
 	if (log_desc->curr_chunk_entry >= RUL_LOG_CHUNK_MAX_ENTRIES) {
@@ -259,7 +259,7 @@ static int rul_append(struct db_descriptor *db_desc, struct rul_log_entry *entry
 	}
 
 	//Finally append
-	memcpy(&log_desc->my_segment.chunk[log_desc->curr_chunk_id][log_desc->curr_chunk_entry], entry,
+	memcpy(&log_desc->segment.chunk[log_desc->curr_chunk_id][log_desc->curr_chunk_entry], entry,
 	       sizeof(struct rul_log_entry));
 	log_desc->size += sizeof(struct rul_log_entry);
 	++log_desc->curr_chunk_entry;
@@ -301,7 +301,7 @@ static void rul_add_first_entry(struct db_descriptor *db_desc, struct rul_log_en
 	}
 	struct rul_log_descriptor *allocation_log = db_desc->allocation_log;
 	allocation_log->size += sizeof(*log_entry);
-	allocation_log->my_segment.chunk[allocation_log->curr_chunk_id][allocation_log->curr_chunk_entry] = *log_entry;
+	allocation_log->segment.chunk[allocation_log->curr_chunk_id][allocation_log->curr_chunk_entry] = *log_entry;
 	++allocation_log->curr_chunk_entry;
 	++allocation_log->curr_segment_entry;
 

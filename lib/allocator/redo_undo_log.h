@@ -72,7 +72,7 @@ struct rul_transaction_buffer {
 };
 
 struct rul_log_descriptor {
-	struct rul_log_segment my_segment;
+	struct rul_log_segment segment;
 	pthread_mutex_t rul_lock;
 	pthread_mutex_t trans_map_lock;
 	struct aiocb aiocbp[RUL_LOG_CHUNK_NUM];
