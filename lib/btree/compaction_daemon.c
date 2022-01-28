@@ -1347,9 +1347,9 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 		sh_insert_heap_node(m_heap, &nd_dst);
 	}
 	// ############################################################################
-	int32_t num_of_keys = 1; // COMPACTION_UNIT_OF_WORK;
 	enum sh_heap_status stat = GOT_HEAP;
 	do {
+		// TODO: Remove dirty
 		handle->db_desc->dirty = 0x01;
 		if (handle->db_desc->stat == DB_IS_CLOSING) {
 			log_info("DB %s is closing compaction thread exiting...",
@@ -1362,56 +1362,57 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 		}
 		// This is to synchronize compactions with flush
 		RWLOCK_RDLOCK(&handle->db_desc->levels[comp_req->dst_level].guard_of_level.rx_lock);
-		for (int i = 0; i < num_of_keys; i++) {
-			stat = sh_remove_top(m_heap, &nd_min);
+		stat = sh_remove_top(m_heap, &nd_min);
 
-			if (stat == EMPTY_HEAP)
-				break;
+		if (stat == EMPTY_HEAP) {
+			RWLOCK_UNLOCK(&handle->db_desc->levels[comp_req->dst_level].guard_of_level.rx_lock);
+			break;
+		}
 
-			if (!nd_min.duplicate) {
-				struct comp_parallax_key key;
-				memset(&key, 0, sizeof(key));
-				comp_fill_parallax_key(&nd_min, &key);
-				comp_append_entry_to_leaf_node(merged_level, &key);
-			}
-			// log_info("level size
-			// %llu",comp_req->db_desc->levels[comp_req->dst_level].level_size[comp_req->dst_tree]);
-			/*refill from the appropriate level*/
-			if (nd_min.level_id == comp_req->src_level) {
-				if (nd_min.level_id == 0) {
-					int rc = _get_next_KV(level_src);
-					if (rc != END_OF_DATABASE) {
-						// log_info("Refilling from L0");
-						nd_min.KV = level_src->keyValue;
-						nd_min.level_id = comp_req->src_level;
-						nd_min.type = level_src->kv_format;
-						nd_min.cat = level_src->cat;
-						nd_min.tombstone = level_src->tombstone;
-						nd_min.kv_size = level_src->kv_size;
-						nd_min.active_tree = comp_req->src_tree;
-						nd_min.db_desc = comp_req->db_desc;
-						sh_insert_heap_node(m_heap, &nd_min);
-					}
-				} else {
-					comp_get_next_key(l_src);
-					if (!l_src->end_of_level) {
-						comp_fill_heap_node(comp_req, l_src, &nd_min);
-						// log_info("Refilling from SRC level read cursor");
-						nd_min.db_desc = comp_req->db_desc;
-						sh_insert_heap_node(m_heap, &nd_min);
-					}
+		if (!nd_min.duplicate) {
+			struct comp_parallax_key key;
+			memset(&key, 0, sizeof(key));
+			comp_fill_parallax_key(&nd_min, &key);
+			comp_append_entry_to_leaf_node(merged_level, &key);
+		}
+		// log_info("level size
+		// %llu",comp_req->db_desc->levels[comp_req->dst_level].level_size[comp_req->dst_tree]);
+		/*refill from the appropriate level*/
+		if (nd_min.level_id == comp_req->src_level) {
+			if (nd_min.level_id == 0) {
+				int rc = _get_next_KV(level_src);
+				if (rc != END_OF_DATABASE) {
+					// log_info("Refilling from L0");
+					nd_min.KV = level_src->keyValue;
+					nd_min.level_id = comp_req->src_level;
+					nd_min.type = level_src->kv_format;
+					nd_min.cat = level_src->cat;
+					nd_min.tombstone = level_src->tombstone;
+					nd_min.kv_size = level_src->kv_size;
+					nd_min.active_tree = comp_req->src_tree;
+					nd_min.db_desc = comp_req->db_desc;
+					sh_insert_heap_node(m_heap, &nd_min);
 				}
-			} else if (l_dst) {
-				comp_get_next_key(l_dst);
-				if (!l_dst->end_of_level) {
-					comp_fill_heap_node(comp_req, l_dst, &nd_min);
-					// log_info("Refilling from DST level read cursor key is %s",
-					// nd_min.KV + 4);
+			} else {
+				comp_get_next_key(l_src);
+				if (!l_src->end_of_level) {
+					comp_fill_heap_node(comp_req, l_src, &nd_min);
+					// log_info("Refilling from SRC level read cursor");
 					nd_min.db_desc = comp_req->db_desc;
 					sh_insert_heap_node(m_heap, &nd_min);
 				}
 			}
+		} else if (l_dst) {
+			comp_get_next_key(l_dst);
+			if (!l_dst->end_of_level) {
+				comp_fill_heap_node(comp_req, l_dst, &nd_min);
+				// log_info("Refilling from DST level read cursor key is %s",
+				// nd_min.KV + 4);
+				nd_min.db_desc = comp_req->db_desc;
+				sh_insert_heap_node(m_heap, &nd_min);
+			}
 		}
+
 		RWLOCK_UNLOCK(&handle->db_desc->levels[comp_req->dst_level].guard_of_level.rx_lock);
 	} while (stat != EMPTY_HEAP);
 
