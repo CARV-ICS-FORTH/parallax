@@ -110,9 +110,26 @@ void validate_inserted_keys(par_handle hd)
 
 int main(int argc, char *argv[])
 {
-	struct parallax_options *opts = arg_parser(argc, argv);
-	char *path = strdup(opts->file);
-	num_keys = opts->num_of_kvs;
+	int help_flag = 0;
+	struct wrap_option options[] = {
+		{ { "help", no_argument, &help_flag, 1 }, "Prints valid arguments for test_medium.", NULL, INTEGER },
+		{ { "file", required_argument, 0, 'a' },
+		  "--file=path to file of db, parameter that specifies the target where parallax is going to run.",
+		  NULL,
+		  STRING },
+		{ { "num_of_kvs", required_argument, 0, 'b' },
+		  "--num_of_kvs=number, parameter that specifies the number of operation the test will execute.",
+		  NULL,
+		  INTEGER },
+		{ { 0, 0, 0, 0 }, "End of arguments", NULL, INTEGER }
+	};
+	unsigned options_len = (sizeof(options) / sizeof(struct wrap_option));
+
+	arg_parse(argc, argv, options, options_len);
+	arg_print_options(help_flag, options, options_len);
+
+	char *path = get_string_option(options, 1);
+	num_keys = get_integer_option(options, 2);
 
 	par_db_options db_options;
 	db_options.volume_name = path;
