@@ -25,7 +25,7 @@
 
 struct key {
 	uint32_t key_size;
-	char key_buf[0];
+	char key_buf[];
 };
 
 struct value {

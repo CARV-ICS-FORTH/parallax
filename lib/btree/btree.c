@@ -88,7 +88,7 @@ void init_key_cmp(struct key_compare *key_cmp, void *key_buf, char key_format)
 	} else if (key_format == KV_PREFIX) {
 		key_cmp->key_size = PREFIX_SIZE;
 		key_cmp->key = ((struct bt_leaf_entry *)key_buf)->prefix;
-		key_cmp->kv_dev_offt = ((struct bt_leaf_entry *)key_buf)->pointer;
+		key_cmp->kv_dev_offt = ((struct bt_leaf_entry *)key_buf)->dev_offt;
 		key_cmp->key_format = KV_PREFIX;
 	} else {
 		log_fatal("Unknown key category, exiting");
@@ -900,7 +900,7 @@ enum parallax_status db_close(db_handle *handle)
 	/*wait for all other pending compactions to finish*/
 	for (uint8_t i = 1; i < MAX_LEVELS; i++) {
 		if (COMPACTION_IN_PROGRESS == handle->db_desc->levels[i].tree_status[0]) {
-			i = 0;
+			i = 1;
 			usleep(500);
 			continue;
 		}
@@ -946,7 +946,7 @@ void wait_for_available_level0_tree(db_handle *handle)
 	int active_tree = handle->db_desc->levels[0].active_tree;
 
 	while (handle->db_desc->levels[0].level_size[active_tree] > handle->db_desc->levels[0].max_level_size) {
-		pthread_mutex_lock(&handle->db_desc->client_barrier_lock);
+		MUTEX_LOCK(&handle->db_desc->client_barrier_lock);
 		active_tree = handle->db_desc->levels[0].active_tree;
 		if (handle->db_desc->levels[0].level_size[active_tree] > handle->db_desc->levels[0].max_level_size) {
 			sem_post(&handle->db_desc->compaction_daemon_interrupts);
@@ -957,7 +957,7 @@ void wait_for_available_level0_tree(db_handle *handle)
 			}
 		}
 		active_tree = handle->db_desc->levels[0].active_tree;
-		pthread_mutex_unlock(&handle->db_desc->client_barrier_lock);
+		MUTEX_UNLOCK(&handle->db_desc->client_barrier_lock);
 	}
 }
 
@@ -1483,7 +1483,6 @@ void *append_key_value_to_log(log_operation *req)
 	}
 	case BIG_INLOG:
 		log_metadata.log_desc = &handle->db_desc->big_log;
-		//return bt_append_key_value_to_log_mmap(req, &log_metadata, &data_size);
 		return bt_append_to_log_direct_IO(req, &log_metadata, &data_size);
 	default:
 		log_fatal("Unknown category %u", log_metadata.status);

@@ -378,8 +378,8 @@ static void comp_get_next_key(struct comp_level_read_cursor *c)
 					// slot_array[c->curr_leaf_entry].bitmap);
 					// c->category);
 					c->cursor_key.kv_inlog = (struct bt_leaf_entry *)kv_loc;
-					c->cursor_key.kv_inlog->pointer =
-						(uint64_t)REAL_ADDRESS(c->cursor_key.kv_inlog->pointer);
+					c->cursor_key.kv_inlog->dev_offt =
+						(uint64_t)REAL_ADDRESS(c->cursor_key.kv_inlog->dev_offt);
 					// log_info("prefix is %.12s dev_offt %llu",
 					// c->cursor_key.in_log->prefix,
 					//	 c->cursor_key.in_log->device_offt);
@@ -766,7 +766,7 @@ static int comp_append_medium_L1(struct comp_level_write_cursor *c, struct comp_
 
 	out->kv_category = MEDIUM_INLOG;
 	out->kv_type = KV_INLOG;
-	out->kv_inlog->pointer = (uint64_t)log_location;
+	out->kv_inlog->dev_offt = (uint64_t)log_location;
 	out->tombstone = 0;
 	//log_info("Compact key %s", ins_req.key_value_buf + 4);
 	return 1;
@@ -805,7 +805,7 @@ static void comp_append_entry_to_leaf_node(struct comp_level_write_cursor *curso
 		break;
 	case KV_INLOG:
 		kv_size = sizeof(struct bt_leaf_entry);
-		write_leaf_args.kv_dev_offt = curr_key->kv_inlog->pointer;
+		write_leaf_args.kv_dev_offt = curr_key->kv_inlog->dev_offt;
 		write_leaf_args.key_value_buf = (char *)curr_key->kv_inlog;
 		write_leaf_args.key_value_size = kv_size;
 		write_leaf_args.level_id = cursor->level_id;
@@ -820,8 +820,8 @@ static void comp_append_entry_to_leaf_node(struct comp_level_write_cursor *curso
 
 	if (write_leaf_args.cat == MEDIUM_INLOG &&
 	    write_leaf_args.level_id == cursor->handle->db_desc->level_medium_inplace) {
-		kv_size = sizeof(uint32_t) + KEY_SIZE(curr_key->kv_inlog->pointer);
-		kv_size += VALUE_SIZE(curr_key->kv_inlog->pointer + kv_size) + sizeof(uint32_t);
+		kv_size = sizeof(uint32_t) + KEY_SIZE(curr_key->kv_inlog->dev_offt);
+		kv_size += VALUE_SIZE(curr_key->kv_inlog->dev_offt + kv_size) + sizeof(uint32_t);
 		write_leaf_args.key_value_size = kv_size;
 	}
 
@@ -889,7 +889,7 @@ static void comp_append_entry_to_leaf_node(struct comp_level_write_cursor *curso
 								   curr_key->kv_inplace, 1);
 				else {
 					// do a page fault to find the pivot
-					char *pivot_addr = (char *)curr_key->kv_inlog->pointer;
+					char *pivot_addr = (char *)curr_key->kv_inlog->dev_offt;
 					comp_append_pivot_to_index(cursor, left_leaf_offt, right_leaf_offt, pivot_addr,
 								   1);
 				}
@@ -1329,12 +1329,12 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 		nd_src.kv_size = level_src->kv_size;
 		nd_src.tombstone = level_src->tombstone;
 		nd_src.active_tree = comp_req->src_tree;
-		log_info("Initializing heap from SRC L0 with key:");
-
+		log_info("Initializing heap from SRC L0");
 	} else {
 		log_info("Initializing heap from SRC read cursor level %u with key:", comp_req->src_level);
 		comp_fill_heap_node(comp_req, l_src, &nd_src);
 	}
+
 	print_heap_node_key(&nd_src);
 	nd_src.db_desc = comp_req->db_desc;
 	sh_insert_heap_node(m_heap, &nd_src);
@@ -1347,83 +1347,74 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 		sh_insert_heap_node(m_heap, &nd_dst);
 	}
 	// ############################################################################
-	int32_t num_of_keys = 1; // COMPACTION_UNIT_OF_WORK;
 	enum sh_heap_status stat = GOT_HEAP;
+
 	do {
+		// TODO: Remove dirty
 		handle->db_desc->dirty = 0x01;
-		if (handle->db_desc->stat == DB_IS_CLOSING) {
-			log_info("DB %s is closing compaction thread exiting...",
-				 handle->db_desc->db_superblock->db_name);
-			if (l_src)
-				free(l_src);
-			if (l_dst)
-				free(l_dst);
-			return;
-		}
 		// This is to synchronize compactions with flush
 		RWLOCK_RDLOCK(&handle->db_desc->levels[comp_req->dst_level].guard_of_level.rx_lock);
-		for (int i = 0; i < num_of_keys; i++) {
-			stat = sh_remove_top(m_heap, &nd_min);
+		stat = sh_remove_top(m_heap, &nd_min);
 
-			if (stat == EMPTY_HEAP)
-				break;
+		if (stat == EMPTY_HEAP) {
+			RWLOCK_UNLOCK(&handle->db_desc->levels[comp_req->dst_level].guard_of_level.rx_lock);
+			break;
+		}
 
-			if (!nd_min.duplicate) {
-				struct comp_parallax_key key;
-				memset(&key, 0, sizeof(key));
-				comp_fill_parallax_key(&nd_min, &key);
-				comp_append_entry_to_leaf_node(merged_level, &key);
-			}
-			// log_info("level size
-			// %llu",comp_req->db_desc->levels[comp_req->dst_level].level_size[comp_req->dst_tree]);
-			/*refill from the appropriate level*/
-			if (nd_min.level_id == comp_req->src_level) {
-				if (nd_min.level_id == 0) {
-					int rc = _get_next_KV(level_src);
-					if (rc != END_OF_DATABASE) {
-						// log_info("Refilling from L0");
-						nd_min.KV = level_src->keyValue;
-						nd_min.level_id = comp_req->src_level;
-						nd_min.type = level_src->kv_format;
-						nd_min.cat = level_src->cat;
-						nd_min.tombstone = level_src->tombstone;
-						nd_min.kv_size = level_src->kv_size;
-						nd_min.active_tree = comp_req->src_tree;
-						nd_min.db_desc = comp_req->db_desc;
-						sh_insert_heap_node(m_heap, &nd_min);
-					}
-				} else {
-					comp_get_next_key(l_src);
-					if (!l_src->end_of_level) {
-						comp_fill_heap_node(comp_req, l_src, &nd_min);
-						// log_info("Refilling from SRC level read cursor");
-						nd_min.db_desc = comp_req->db_desc;
-						sh_insert_heap_node(m_heap, &nd_min);
-					}
+		if (!nd_min.duplicate) {
+			struct comp_parallax_key key;
+			memset(&key, 0, sizeof(key));
+			comp_fill_parallax_key(&nd_min, &key);
+			comp_append_entry_to_leaf_node(merged_level, &key);
+		}
+		// log_info("level size
+		// %llu",comp_req->db_desc->levels[comp_req->dst_level].level_size[comp_req->dst_tree]);
+		/*refill from the appropriate level*/
+		if (nd_min.level_id == comp_req->src_level) {
+			if (nd_min.level_id == 0) {
+				if (_get_next_KV(level_src) != END_OF_DATABASE) {
+					// log_info("Refilling from L0");
+					nd_min.KV = level_src->keyValue;
+					nd_min.level_id = comp_req->src_level;
+					nd_min.type = level_src->kv_format;
+					nd_min.cat = level_src->cat;
+					nd_min.tombstone = level_src->tombstone;
+					nd_min.kv_size = level_src->kv_size;
+					nd_min.active_tree = comp_req->src_tree;
+					nd_min.db_desc = comp_req->db_desc;
+					sh_insert_heap_node(m_heap, &nd_min);
 				}
-			} else if (l_dst) {
-				comp_get_next_key(l_dst);
-				if (!l_dst->end_of_level) {
-					comp_fill_heap_node(comp_req, l_dst, &nd_min);
-					// log_info("Refilling from DST level read cursor key is %s",
-					// nd_min.KV + 4);
+
+			} else {
+				comp_get_next_key(l_src);
+				if (!l_src->end_of_level) {
+					comp_fill_heap_node(comp_req, l_src, &nd_min);
+					// log_info("Refilling from SRC level read cursor");
 					nd_min.db_desc = comp_req->db_desc;
 					sh_insert_heap_node(m_heap, &nd_min);
 				}
 			}
+		} else if (l_dst) {
+			comp_get_next_key(l_dst);
+			if (!l_dst->end_of_level) {
+				comp_fill_heap_node(comp_req, l_dst, &nd_min);
+				// log_info("Refilling from DST level read cursor key is %s",
+				// nd_min.KV + 4);
+				nd_min.db_desc = comp_req->db_desc;
+				sh_insert_heap_node(m_heap, &nd_min);
+			}
 		}
+
 		RWLOCK_UNLOCK(&handle->db_desc->levels[comp_req->dst_level].guard_of_level.rx_lock);
 	} while (stat != EMPTY_HEAP);
 
 	if (level_src)
 		_close_spill_buffer_scanner(level_src);
-	else {
+	else
 		free(l_src);
-	}
 
-	if (comp_roots.dst_root) {
+	if (comp_roots.dst_root)
 		free(l_dst);
-	}
 
 	mark_segment_space(handle, m_heap->dups);
 	comp_close_write_cursor(merged_level);

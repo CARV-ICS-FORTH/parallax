@@ -39,7 +39,7 @@ static void push_back_duplicate_kv(struct sh_heap *heap, struct sh_heap_node *hp
 		uint32_t key_size = *(uint32_t *)hp_node->KV;
 		int size = key_size < PREFIX_SIZE ? key_size : PREFIX_SIZE;
 		memcpy(&local.prefix, hp_node->KV + sizeof(uint32_t), size);
-		local.pointer = (uint64_t)hp_node->KV;
+		local.dev_offt = (uint64_t)hp_node->KV;
 		keyvalue = &local;
 		break;
 	case KV_PREFIX:
@@ -51,8 +51,8 @@ static void push_back_duplicate_kv(struct sh_heap *heap, struct sh_heap_node *hp
 	}
 
 	uint64_t segment_offset =
-		ABSOLUTE_ADDRESS(keyvalue->pointer) - (ABSOLUTE_ADDRESS(keyvalue->pointer) % SEGMENT_SIZE);
-	char *kv = (char *)keyvalue->pointer;
+		ABSOLUTE_ADDRESS(keyvalue->dev_offt) - (ABSOLUTE_ADDRESS(keyvalue->dev_offt) % SEGMENT_SIZE);
+	char *kv = (char *)keyvalue->dev_offt;
 	uint32_t key_size = *(uint32_t *)kv;
 	assert(key_size < MAX_KEY_SIZE);
 	uint32_t value_size = *(uint32_t *)(kv + sizeof(uint32_t) + key_size);
@@ -75,7 +75,7 @@ static struct bt_kv_log_address sh_translate_log_address(struct sh_heap_node *he
 		break;
 	case KV_PREFIX: {
 		struct bt_leaf_entry *leaf_entry = (struct bt_leaf_entry *)heap_node->KV;
-		log_address.addr = (void *)leaf_entry->pointer;
+		log_address.addr = (void *)leaf_entry->dev_offt;
 		break;
 	}
 	default:
@@ -191,9 +191,9 @@ void sh_init_heap(struct sh_heap *heap, int active_tree, enum sh_heap_type heap_
 /*Destroy a min heap that was allocated using dynamic memory */
 void sh_destroy_heap(struct sh_heap *heap)
 {
-	struct dups_list *poutsa = heap->dups;
-	free_dups_list(&poutsa);
-	assert(NULL == poutsa);
+	struct dups_list *heap_destroy = heap->dups;
+	free_dups_list(&heap_destroy);
+	assert(NULL == heap_destroy);
 	free(heap);
 }
 

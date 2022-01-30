@@ -95,7 +95,7 @@ char *fill_keybuf(char *key_loc, enum kv_entry_location key_type)
 		return key_loc;
 	case KV_INLOG: {
 		struct bt_leaf_entry *kv = (struct bt_leaf_entry *)key_loc;
-		return (char *)REAL_ADDRESS(kv->pointer);
+		return (char *)REAL_ADDRESS(kv->dev_offt);
 	}
 	default:
 		assert(0);
@@ -148,7 +148,7 @@ struct find_result find_key_in_dynamic_leaf(const struct bt_dynamic_leaf_node *l
 		case KV_INLOG:
 			ret_result.kv = (char *)&((struct bt_leaf_entry *)get_kv_offset(
 							  leaf, leaf_size, slot_array[result.middle].index))
-						->pointer;
+						->dev_offt;
 			ret_result.key_type = KV_INLOG;
 			ret_result.kv_category = slot_array[result.middle].key_category;
 			break;
@@ -264,7 +264,7 @@ void binary_search_dynamic_leaf(const struct bt_dynamic_leaf_node *leaf, uint32_
 				struct bt_leaf_entry *kv_entry = (struct bt_leaf_entry *)req->key_value_buf;
 				/*key1 and key2 are KV_FORMATed*/
 				init_key_cmp(&key1_cmp, L.addr, KV_FORMAT);
-				init_key_cmp(&key2_cmp, (void *)kv_entry->pointer, KV_FORMAT);
+				init_key_cmp(&key2_cmp, (void *)kv_entry->dev_offt, KV_FORMAT);
 				ret = key_cmp(&key1_cmp, &key2_cmp);
 				break;
 			}
@@ -623,7 +623,7 @@ struct bt_rebalance_result special_split_dynamic_leaf(struct bt_dynamic_leaf_nod
 		struct bt_leaf_entry *kv = (struct bt_leaf_entry *)key_loc;
 
 		struct bt_kv_log_address L =
-			bt_get_kv_medium_log_address(&req->metadata.handle->db_desc->medium_log, kv->pointer);
+			bt_get_kv_medium_log_address(&req->metadata.handle->db_desc->medium_log, kv->dev_offt);
 		middle_key_buf = L.addr;
 	} else {
 		middle_key_buf = fill_keybuf(key_loc, slot_array[split_point].kv_loc);
@@ -731,7 +731,7 @@ void write_data_in_dynamic_leaf(struct write_dynamic_leaf_args *args)
 					dest, ABSOLUTE_ADDRESS(key_value_buf), key->data, MIN(key->size, PREFIX_SIZE));
 			} else {
 				leaf->header.leaf_log_size +=
-					append_bt_leaf_entry_inplace(dest, ABSOLUTE_ADDRESS(serialized->pointer),
+					append_bt_leaf_entry_inplace(dest, ABSOLUTE_ADDRESS(serialized->dev_offt),
 								     key_value_buf, MIN(key->size, PREFIX_SIZE));
 			}
 		}
