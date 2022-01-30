@@ -1352,15 +1352,6 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 	do {
 		// TODO: Remove dirty
 		handle->db_desc->dirty = 0x01;
-		if (handle->db_desc->stat == DB_IS_CLOSING) {
-			log_info("DB %s is closing compaction thread exiting...",
-				 handle->db_desc->db_superblock->db_name);
-			if (l_src)
-				free(l_src);
-			if (l_dst)
-				free(l_dst);
-			return;
-		}
 		// This is to synchronize compactions with flush
 		RWLOCK_RDLOCK(&handle->db_desc->levels[comp_req->dst_level].guard_of_level.rx_lock);
 		stat = sh_remove_top(m_heap, &nd_min);
