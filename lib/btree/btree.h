@@ -119,7 +119,7 @@ typedef struct index_entry {
 
 struct bt_leaf_entry {
 	char prefix[PREFIX_SIZE];
-	uint64_t pointer;
+	uint64_t dev_offt;
 } __attribute__((packed));
 
 struct bt_leaf_entry_bitmap {
