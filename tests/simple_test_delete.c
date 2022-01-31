@@ -1,8 +1,10 @@
 #define _LARGEFILE64_SOURCE
+#include "arg_parser.h"
 #include <allocator/volume_manager.h>
 #include <assert.h>
 #include <btree/btree.h>
 #include <fcntl.h>
+#include <getopt.h>
 #include <linux/fs.h>
 #include <log.h>
 #include <parallax.h>
@@ -12,7 +14,6 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-#define PATH "/tmp/ramdisk/kv_store.dat"
 #define KV_SIZE 1500
 #define KEY_PREFIX "ts"
 #define NUM_KEYS num_keys
@@ -63,7 +64,6 @@ void get_all_keys(par_handle hd)
 	uint64_t i;
 	key *k = (key *)malloc(KV_SIZE);
 	struct par_key par_key;
-	struct par_value par_value;
 
 	log_info("Search for all keys");
 
@@ -77,9 +77,8 @@ void get_all_keys(par_handle hd)
 			log_info("%s", &k->key_buf[4]);
 		par_key.data = &k->key_buf[4];
 		par_key.size = k->key_size;
-		memset(&par_value, 0, sizeof(par_value));
 
-		if (par_get(hd, &par_key, &par_value) != PAR_SUCCESS) {
+		if (par_exists(hd, &par_key) != PAR_SUCCESS) {
 			log_info("ERROR key not found!");
 			exit(EXIT_FAILURE);
 		}
@@ -122,7 +121,6 @@ void get_all_valid_keys(par_handle hd)
 	key *k = (key *)malloc(KV_SIZE);
 	uint64_t count = 0;
 	struct par_key par_key;
-	struct par_value par_value;
 
 	log_info("Search for all keys");
 	for (i = TOTAL_KEYS; i < (TOTAL_KEYS + NUM_KEYS / 2); i++) {
@@ -136,12 +134,12 @@ void get_all_valid_keys(par_handle hd)
 
 		par_key.data = &k->key_buf[4];
 		par_key.size = k->key_size;
-		memset(&par_value, 0, sizeof(par_value));
-		if (par_get(hd, &par_key, &par_value) == PAR_KEY_NOT_FOUND) {
+		if (par_exists(hd, &par_key) == PAR_KEY_NOT_FOUND) {
 			/* log_info("%d", get_op.tombstone); */
 			/* BREAKPOINT; */
 			++count;
 		}
+
 		/* assert(get_op.tombstone); */
 		/* assert(get_op.found); */
 	}
@@ -156,16 +154,15 @@ void get_all_valid_keys(par_handle hd)
 
 		par_key.data = &k->key_buf[4];
 		par_key.size = k->key_size;
-		memset(&par_value, 0, sizeof(par_value));
-		if (par_get(hd, &par_key, &par_value) == PAR_SUCCESS) {
+		if (par_exists(hd, &par_key) == PAR_SUCCESS) {
 			/* log_info("%s found %d", &k->key_buf[4], get_op.found); */
 			/* log_info("%d", get_op.tombstone); */
 			/* exit(EXIT_FAILURE); */
 			/* ++count; */
-
 		} else {
 			count++;
 		}
+
 		/* assert(get_op.tombstone); */
 		/* assert(get_op.found); */
 	}
@@ -229,15 +226,36 @@ void scan_all_valid_keys(par_handle hd)
 	assert(count == NUM_KEYS / 2);
 }
 
-int main(void)
+int main(int argc, char *argv[])
 {
+	int help_flag = 0;
+	struct wrap_option options[] = {
+		{ { "help", no_argument, &help_flag, 1 }, "Prints valid arguments for test_medium.", NULL, INTEGER },
+		{ { "file", required_argument, 0, 'a' },
+		  "--file=path to file of db, parameter that specifies the target where parallax is going to run.",
+		  NULL,
+		  STRING },
+		{ { "num_of_kvs", required_argument, 0, 'b' },
+		  "--num_of_kvs=number, parameter that specifies the number of operations the test will execute.",
+		  NULL,
+		  INTEGER },
+		{ { 0, 0, 0, 0 }, "End of arguments", NULL, INTEGER }
+	};
+	unsigned options_len = (sizeof(options) / sizeof(struct wrap_option));
+
+	arg_parse(argc, argv, options, options_len);
+	arg_print_options(help_flag, options, options_len);
+
+	num_keys = *(int *)get_option(options, 2);
+
 	par_db_options db_options;
-	db_options.volume_name = PATH;
+	db_options.volume_name = get_option(options, 1);
 	db_options.volume_start = 0;
 	db_options.volume_size = 0;
 	db_options.create_flag = PAR_CREATE_DB;
 	db_options.db_name = "test.db";
 	par_handle handle = par_open(&db_options);
+
 	serially_insert_keys(handle);
 	get_all_keys(handle);
 	delete_half_keys(handle);

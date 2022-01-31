@@ -119,7 +119,7 @@ int main(int argc, char *argv[])
 		  NULL,
 		  STRING },
 		{ { "num_of_kvs", required_argument, 0, 'b' },
-		  "--num_of_kvs=number, parameter that specifies the number of operation the test will execute.",
+		  "--num_of_kvs=number, parameter that specifies the number of operations the test will execute.",
 		  NULL,
 		  INTEGER },
 		{ { 0, 0, 0, 0 }, "End of arguments", NULL, INTEGER }

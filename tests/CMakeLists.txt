@@ -77,9 +77,11 @@ if(BUILD_TESTING)
   add_test(NAME test_gc COMMAND $<TARGET_FILE:test_gc> --file=/tmp/kv_store.dat
                                 --num_of_kvs=1000000)
 
-  add_executable(simple_test_delete simple_test_delete.c)
+  add_executable(simple_test_delete simple_test_delete.c arg_parser.c)
   target_link_libraries(simple_test_delete "${PROJECT_NAME}" ${DEPENDENCIES})
-  add_test(NAME simple_test_delete COMMAND $<TARGET_FILE:simple_test_delete>)
+  add_test(NAME simple_test_delete
+           COMMAND $<TARGET_FILE:simple_test_delete> --file=/tmp/kv_store.dat
+                   --num_of_kvs=1000000)
 
   add_executable(
     test_region_allocations
