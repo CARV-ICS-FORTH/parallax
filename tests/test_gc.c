@@ -15,7 +15,8 @@
 uint64_t num_keys = 1000000;
 int update_half = 0;
 
-/** This test checks if the garbage collection mechanism moves KVs properly at the end of the log.
+/**
+ * This test checks if the garbage collection mechanism moves KVs properly at the end of the log.
  * Initially KVs are inserted to load the database with large KVs (Phase 1).
  * Next the KVs that were inserted in Phase 1 are validated to be sure no corruptions occured (Phase 2).
  * Next we update half of the KVs to trigger the GC thread to move KVs in the log tail (Phase 3).
@@ -128,8 +129,8 @@ int main(int argc, char *argv[])
 	arg_parse(argc, argv, options, options_len);
 	arg_print_options(help_flag, options, options_len);
 
-	char *path = get_string_option(options, 1);
-	num_keys = get_integer_option(options, 2);
+	char *path = get_option(options, 1);
+	num_keys = *(int *)get_option(options, 2);
 
 	par_db_options db_options;
 	db_options.volume_name = path;

@@ -41,14 +41,26 @@ void arg_print_options(int help_flag, struct wrap_option *options, unsigned opti
 	}
 }
 
-int get_integer_option(struct wrap_option *options, unsigned option_index)
+int *get_integer_option(struct wrap_option *options, unsigned option_index)
 {
-	return *(int *)options[option_index].option_value;
+	return (int *)options[option_index].option_value;
 }
 
 char *get_string_option(struct wrap_option *options, unsigned option_index)
 {
 	return options[option_index].option_value;
+}
+
+void *get_option(struct wrap_option *options, unsigned option_index)
+{
+	switch (options[option_index].option_type) {
+	case STRING:
+		return get_string_option(options, option_index);
+	case INTEGER:
+		return get_integer_option(options, option_index);
+	default:
+		exit(EXIT_FAILURE);
+	}
 }
 
 void arg_parse(int argc, char *argv[], struct wrap_option *options, unsigned options_len)
