@@ -15,7 +15,8 @@
 uint64_t num_keys = 1000000;
 int update_half = 0;
 
-/** This test checks if the garbage collection mechanism moves KVs properly at the end of the log.
+/**
+ * This test checks if the garbage collection mechanism moves KVs properly at the end of the log.
  * Initially KVs are inserted to load the database with large KVs (Phase 1).
  * Next the KVs that were inserted in Phase 1 are validated to be sure no corruptions occured (Phase 2).
  * Next we update half of the KVs to trigger the GC thread to move KVs in the log tail (Phase 3).
@@ -110,9 +111,26 @@ void validate_inserted_keys(par_handle hd)
 
 int main(int argc, char *argv[])
 {
-	struct parallax_options *opts = arg_parser(argc, argv);
-	char *path = strdup(opts->file);
-	num_keys = opts->num_of_kvs;
+	int help_flag = 0;
+	struct wrap_option options[] = {
+		{ { "help", no_argument, &help_flag, 1 }, "Prints valid arguments for test_medium.", NULL, INTEGER },
+		{ { "file", required_argument, 0, 'a' },
+		  "--file=path to file of db, parameter that specifies the target where parallax is going to run.",
+		  NULL,
+		  STRING },
+		{ { "num_of_kvs", required_argument, 0, 'b' },
+		  "--num_of_kvs=number, parameter that specifies the number of operation the test will execute.",
+		  NULL,
+		  INTEGER },
+		{ { 0, 0, 0, 0 }, "End of arguments", NULL, INTEGER }
+	};
+	unsigned options_len = (sizeof(options) / sizeof(struct wrap_option));
+
+	arg_parse(argc, argv, options, options_len);
+	arg_print_options(help_flag, options, options_len);
+
+	char *path = get_option(options, 1);
+	num_keys = *(int *)get_option(options, 2);
 
 	par_db_options db_options;
 	db_options.volume_name = path;
