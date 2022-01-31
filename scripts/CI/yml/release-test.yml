@@ -300,3 +300,19 @@ release_test_dirty_scans_largedp:
         - cd ..;cd ..
         - ./scripts/CI/destroy_mbbd.sh
     needs: [release_build_gcc]
+
+release_simple_test_delete:
+    image: carvicsforth/arch_carv:latest
+    stage: release_test
+    tags:
+        - kubernetes
+    script:
+        - ./scripts/CI/create_mbbd.sh
+        - mkdir -p build;cd build
+        - cmake .. -DCMAKE_BUILD_TYPE="Release"
+        - make simple_test_delete;make kv_format.parallax;cd tests;
+        - ./mkfs.sh /tmp/kv_store.dat 128
+        - ctest -R ^simple_test_delete$
+        - cd ..;cd ..
+        - ./scripts/CI/destroy_mbbd.sh
+    needs: [release_build_gcc]
