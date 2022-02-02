@@ -1,3 +1,4 @@
+#include "btree/btree.h"
 #define _LARGEFILE64_SOURCE
 #include "../lib/include/parallax.h"
 #include "arg_parser.h"
@@ -16,9 +17,11 @@
 #define MEDIUM_STATIC_SIZE_PREFIX "zm"
 #define LARGE_STATIC_SIZE_PREFIX "zl"
 
+#define SMALLEST_KV_FORMAT_SIZE(x) x + 2 * sizeof(uint32_t) + 1
 #define SMALL_KV_SIZE 48
 #define MEDIUM_KV_SIZE 256
 #define LARGE_KV_SIZE 1500
+#define VALUE_SIZE_WHEN_OVERFLOW 20
 
 typedef struct key {
 	uint32_t key_size;
@@ -46,29 +49,62 @@ static par_handle open_db(const char *path)
 	return handle;
 }
 
-void init_small_kv(uint64_t *kv_size, char **key_prefix, enum kv_size_type size_type)
+static uint64_t generate_random_small_kv_size(void)
+{
+	/*minimum kv will have 5 size*/
+	uint64_t size = rand() % (100 + 1 - 5) + 5;
+	assert(size >= 5 && size <= 100);
+	return size;
+}
+
+static uint64_t generate_random_big_kv_size(void)
+{
+	/* we use rand without using srand to generate the same number of "random" kvs over many executions
+	 * of this test */
+	uint64_t size = rand() % (KV_MAX_SIZE + 1 - 1025) + 1025;
+	assert(size > 1024 && size <= KV_MAX_SIZE);
+	return size;
+}
+
+static uint64_t generate_random_medium_kv_size(void)
+{
+	uint64_t size = rand() % (1024 + 1 - 101) + 101;
+	assert(size > 100 && size <= 1024);
+	return size;
+}
+
+static void init_small_kv(uint64_t *kv_size, char **key_prefix, enum kv_size_type size_type)
 {
 	if (size_type == STATIC) {
 		*kv_size = SMALL_KV_SIZE;
 		*key_prefix = strdup(SMALL_STATIC_SIZE_PREFIX);
+	} else if (size_type == RANDOM) {
+		*kv_size = generate_random_small_kv_size();
+		*key_prefix = strdup(SMALL_KEY_PREFIX);
 	} else
 		assert(0);
 }
 
-void init_medium_kv(uint64_t *kv_size, char **key_prefix, enum kv_size_type size_type)
+static void init_medium_kv(uint64_t *kv_size, char **key_prefix, enum kv_size_type size_type)
 {
 	if (size_type == STATIC) {
 		*kv_size = MEDIUM_KV_SIZE;
 		*key_prefix = strdup(MEDIUM_STATIC_SIZE_PREFIX);
+	} else if (size_type == RANDOM) {
+		*kv_size = generate_random_medium_kv_size();
+		*key_prefix = strdup(MEDIUM_KEY_PREFIX);
 	} else
 		assert(0);
 }
 
-void init_big_kv(uint64_t *kv_size, char **key_prefix, enum kv_size_type size_type)
+static void init_big_kv(uint64_t *kv_size, char **key_prefix, enum kv_size_type size_type)
 {
 	if (size_type == STATIC) {
 		*kv_size = LARGE_KV_SIZE;
 		*key_prefix = strdup(LARGE_STATIC_SIZE_PREFIX);
+	} else if (size_type == RANDOM) {
+		*kv_size = generate_random_big_kv_size();
+		*key_prefix = strdup(LARGE_KEY_PREFIX);
 	} else
 		assert(0);
 }
@@ -77,6 +113,25 @@ typedef void init_kv_func(uint64_t *kv_size, char **key_prefix, enum kv_size_typ
 
 init_kv_func *init_kv[3] = { init_small_kv, init_medium_kv, init_big_kv };
 
+static uint64_t space_needed_for_the_kv(uint64_t kv_size, char *key_prefix, uint64_t i)
+{
+	uint64_t keybuf_size;
+	/*allocate enough space for a kv*/
+	char *buf = (char *)malloc(LARGE_KV_SIZE);
+	memcpy(buf, key_prefix, strlen(key_prefix));
+	sprintf(buf + strlen(key_prefix), "%llu", (long long unsigned)i);
+	keybuf_size = strlen(buf) + 1;
+
+	/* a random generated key do not have enough space
+	 * allocate minimum needed space for the KV
+	*/
+	if (kv_size < SMALLEST_KV_FORMAT_SIZE(keybuf_size))
+		kv_size = SMALLEST_KV_FORMAT_SIZE(keybuf_size);
+
+	free(buf);
+	return kv_size;
+}
+
 static void populate_db(par_handle hd, uint64_t from, uint64_t num_keys, enum kv_type type, enum kv_size_type size_type)
 {
 	uint64_t i;
@@ -84,18 +139,16 @@ static void populate_db(par_handle hd, uint64_t from, uint64_t num_keys, enum kv
 	char *key_prefix;
 	uint64_t kv_size = 0;
 
-	init_kv[type](&kv_size, &key_prefix, size_type);
-
-	assert(kv_size != 0);
-
-	k = (key *)calloc(1, kv_size);
-
 	for (i = from; i < num_keys; i++) {
+		init_kv[type](&kv_size, &key_prefix, size_type);
+		kv_size = space_needed_for_the_kv(kv_size, key_prefix, i);
+		k = (key *)calloc(1, kv_size);
+
 		memcpy(k->key_buf, key_prefix, strlen(key_prefix));
 		sprintf(k->key_buf + strlen(key_prefix), "%llu", (long long unsigned)i);
 		k->key_size = strlen(k->key_buf) + 1;
-		value *v = (value *)((uint64_t)k + sizeof(key) + k->key_size);
-		v->value_size = kv_size - ((2 * sizeof(key)) + k->key_size);
+		value *v = (value *)((uint64_t)k + sizeof(uint32_t) + k->key_size);
+		v->value_size = kv_size - ((2 * sizeof(uint32_t)) + k->key_size);
 		memset(v->value_buf, 0xDD, v->value_size);
 		if (i % 1000 == 0)
 			log_info("%s", k->key_buf);
@@ -109,8 +162,8 @@ static void populate_db(par_handle hd, uint64_t from, uint64_t num_keys, enum kv
 			log_fatal("Put failed!");
 			exit(EXIT_FAILURE);
 		}
+		free(k);
 	}
-	free(k);
 	log_info("Population ended");
 }
 
@@ -123,12 +176,19 @@ static void insert_keys(par_handle handle, uint64_t num_of_keys, uint32_t small_
 
 	assert(small_kvs_num + medium_kvs_num + big_kvs_num == num_of_keys);
 
-	log_info("populating %lu medium static size keys..", medium_kvs_num);
-	populate_db(handle, 0, medium_kvs_num, MEDIUM, STATIC);
-	log_info("populating %lu large static size keys..", big_kvs_num);
-	populate_db(handle, 0, big_kvs_num, BIG, STATIC);
-	log_info("populating %lu small static size keys..", small_kvs_num);
-	populate_db(handle, 0, small_kvs_num, SMALL, STATIC);
+	log_info("populating %lu medium static size keys..", medium_kvs_num / 2);
+	populate_db(handle, 0, medium_kvs_num / 2, MEDIUM, STATIC);
+	log_info("populating %lu large static size keys..", big_kvs_num / 2);
+	populate_db(handle, 0, big_kvs_num / 2, BIG, STATIC);
+	log_info("populating %lu small static size keys..", small_kvs_num / 2);
+	populate_db(handle, 0, small_kvs_num / 2, SMALL, STATIC);
+
+	log_info("population %lu large random size keys..", big_kvs_num / 2);
+	populate_db(handle, 0, big_kvs_num / 2, BIG, RANDOM);
+	log_info("population %lu small random size keys..", small_kvs_num / 2);
+	populate_db(handle, 0, small_kvs_num / 2, SMALL, RANDOM);
+	log_info("population %lu medium random size keys..", medium_kvs_num / 2);
+	populate_db(handle, 0, medium_kvs_num / 2, MEDIUM, RANDOM);
 }
 
 static void scanner_validate_number_of_kvs(par_handle hd, uint64_t num_keys)
@@ -214,6 +274,40 @@ static void validate_static_size_of_kvs(par_handle hd, uint64_t from, uint64_t t
 	par_close_scanner(sc);
 }
 
+static void validate_random_size_of_kvs(par_handle hd, uint64_t from, uint64_t to, enum kv_type key_type,
+					enum kv_size_type size_type)
+{
+	char *key_prefix;
+	uint64_t kv_size;
+	struct par_key k;
+
+	init_kv[key_type](&kv_size, &key_prefix, RANDOM);
+
+	memcpy((char *)k.data, key_prefix, strlen(key_prefix));
+	sprintf((char *)k.data + strlen(key_prefix), "%llu", (long long unsigned)0);
+
+	k.size = strlen(k.data) + 1;
+
+	par_scanner sc = par_init_scanner(hd, &k, PAR_GREATER_OR_EQUAL);
+	assert(par_is_valid(sc));
+
+	if (!check_correctness_of_size(sc, key_type, size_type)) {
+		log_fatal("found a kv with size out of its category range");
+		assert(0);
+	}
+
+	for (uint64_t i = from + 1; i < to; i++) {
+		par_get_next(sc);
+		assert(par_is_valid(sc));
+
+		if (!check_correctness_of_size(sc, key_type, size_type)) {
+			log_fatal("found a kv with size out of its category range");
+			assert(0);
+		}
+	}
+	par_close_scanner(sc);
+}
+
 static void validate_kvs(par_handle *hd, uint64_t num_keys, uint64_t small_kv_perc, uint64_t medium_kv_perc,
 			 uint64_t large_kv_perc)
 {
@@ -230,12 +324,25 @@ static void validate_kvs(par_handle *hd, uint64_t num_keys, uint64_t small_kv_pe
 	 * validate that the sizes of keys are correctx
 	*/
 	log_info("Validating static size of small kvs");
-	validate_static_size_of_kvs(hd, 0, small_num_keys, SMALL, STATIC);
+	validate_static_size_of_kvs(hd, 0, small_num_keys / 2, SMALL, STATIC);
 	log_info("Validating static size of medium kvs");
-	validate_static_size_of_kvs(hd, 0, medium_num_keys, MEDIUM, STATIC);
+	validate_static_size_of_kvs(hd, 0, medium_num_keys / 2, MEDIUM, STATIC);
 	log_info("Validating static size of large kvs");
-	validate_static_size_of_kvs(hd, 0, large_num_keys, BIG, STATIC);
+	validate_static_size_of_kvs(hd, 0, large_num_keys / 2, BIG, STATIC);
 
+	/* third stage
+	 * validate that random kvs exist in the correct size category
+	*/
+	log_info("Validating random size of small kvs");
+	validate_random_size_of_kvs(hd, 0, small_num_keys / 2, SMALL, RANDOM);
+	log_info("Validating random size of medium kvs");
+	validate_random_size_of_kvs(hd, 0, medium_num_keys / 2, MEDIUM, RANDOM);
+	log_info("Validating random size of large kvs");
+	validate_random_size_of_kvs(hd, 0, large_num_keys / 2, BIG, RANDOM);
+
+	/* forth stage
+	 * validate that all keys exist and have the correct size with par_get
+	 * ... */
 	return;
 }
 
