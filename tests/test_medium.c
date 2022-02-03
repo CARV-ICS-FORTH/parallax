@@ -1,4 +1,3 @@
-#include "btree/btree.h"
 #define _LARGEFILE64_SOURCE
 #include "../lib/include/parallax.h"
 #include "arg_parser.h"
@@ -308,7 +307,30 @@ static void validate_random_size_of_kvs(par_handle hd, uint64_t from, uint64_t t
 	par_close_scanner(sc);
 }
 
-static void validate_kvs(par_handle *hd, uint64_t num_keys, uint64_t small_kv_perc, uint64_t medium_kv_perc,
+static void read_all_static_kvs(par_handle handle, uint64_t from, uint64_t to, enum kv_type kv_type,
+				enum kv_size_type size_type)
+{
+	uint64_t i, kv_size;
+	char *key_prefix;
+	struct par_key_value my_kv = { .k.size = 0, .k.data = NULL, .v.val_buffer = NULL };
+
+	init_kv[kv_type](&kv_size, &key_prefix, size_type);
+	/*allocate enough space for all kvs, won't use all of it*/
+	char *buf = (char *)malloc(LARGE_KV_SIZE);
+
+	for (i = from; i < to; i++) {
+		memcpy(buf, key_prefix, strlen(key_prefix));
+		sprintf(buf + strlen(key_prefix), "%llu", (long long unsigned)i);
+		my_kv.k.size = strlen(buf) + 1;
+		my_kv.k.data = buf;
+		if (par_get(handle, &my_kv.k, &my_kv.v) != PAR_SUCCESS) {
+			log_fatal("Key %u:%s not found", my_kv.k.size, my_kv.k.data);
+			exit(EXIT_FAILURE);
+		}
+	}
+}
+
+static void validate_kvs(par_handle hd, uint64_t num_keys, uint64_t small_kv_perc, uint64_t medium_kv_perc,
 			 uint64_t large_kv_perc)
 {
 	uint64_t small_num_keys = (num_keys * small_kv_perc) / 100;
@@ -342,7 +364,14 @@ static void validate_kvs(par_handle *hd, uint64_t num_keys, uint64_t small_kv_pe
 
 	/* forth stage
 	 * validate that all keys exist and have the correct size with par_get
-	 * ... */
+	 */
+	log_info("Validating %lu medium static size keys...", medium_num_keys / 2);
+	read_all_static_kvs(hd, 0, medium_num_keys / 2, MEDIUM, STATIC);
+	log_info("Validating %lu big static size keys...", large_num_keys / 2);
+	read_all_static_kvs(hd, 0, large_num_keys / 2, BIG, STATIC);
+	log_info("Validating %lu small static size keys...", small_num_keys / 2);
+	read_all_static_kvs(hd, 0, small_num_keys / 2, SMALL, STATIC);
+
 	return;
 }
 
