@@ -14,6 +14,7 @@
 
 #define _GNU_SOURCE /* See feature_test_macros(7) */
 
+#include "compaction_daemon.h"
 #include "../../utilities/dups_list.h"
 #include "../allocator/device_structures.h"
 #include "../allocator/log_structures.h"
@@ -40,79 +41,7 @@
 #include <unistd.h>
 #include <uthash.h>
 
-/*
- * Checks for pending compactions. It is responsible to check for dependencies
- * between two levels before triggering a compaction.
-*/
-
-struct comp_level_write_cursor {
-	char segment_buf[MAX_HEIGHT][SEGMENT_SIZE];
-	uint64_t segment_offt[MAX_HEIGHT];
-	uint64_t dev_offt[MAX_HEIGHT];
-	struct index_node *last_index[MAX_HEIGHT];
-	struct bt_dynamic_leaf_node *last_leaf;
-	struct chunk_LRU_cache *medium_log_LRU_cache;
-	uint64_t root_offt;
-	db_handle *handle;
-	uint32_t level_id;
-	uint32_t tree_height;
-	int fd;
-};
-
-enum comp_level_read_cursor_state {
-	COMP_CUR_INIT,
-	COMP_CUR_FIND_LEAF,
-	COMP_CUR_FETCH_NEXT_SEGMENT,
-	COMP_CUR_DECODE_KV,
-	COMP_CUR_CHECK_OFFT
-};
-
-struct comp_kv_prefix *prefix_2_comp_kv_prefix(struct prefix *p, enum log_category cat)
-{
-	struct comp_kv_prefix *c_prefix;
-	switch (cat) {
-	case SMALL_INPLACE:
-	case MEDIUM_INPLACE:
-		log_warn("Impossible conversion");
-		return NULL;
-	case MEDIUM_INLOG:
-	case BIG_INLOG:
-		c_prefix = (struct comp_kv_prefix *)p->prefix;
-		break;
-	default:
-		log_fatal("Wrong category");
-		exit(EXIT_FAILURE);
-	}
-	return c_prefix;
-}
-
-struct comp_parallax_key {
-	union {
-		struct bt_leaf_entry *kv_inlog;
-		char *kv_inplace;
-	};
-	struct bt_leaf_entry kvsep;
-	enum log_category kv_category;
-	enum kv_entry_location kv_type;
-	uint8_t tombstone : 1;
-};
-
-struct comp_level_read_cursor {
-	char segment_buf[SEGMENT_SIZE];
-	struct comp_parallax_key cursor_key;
-	uint64_t device_offt;
-	uint64_t offset;
-	db_handle *handle;
-	segment_header *curr_segment;
-	uint32_t level_id;
-	uint32_t tree_id;
-	uint32_t curr_leaf_entry;
-	int fd;
-	enum log_category category;
-	enum comp_level_read_cursor_state state;
-	char end_of_level;
-};
-
+//TODO Rename to fetch_chunk
 static void fetch_segment(struct comp_level_write_cursor *c, char *segment_buf, uint64_t log_chunk_dev_offt,
 			  ssize_t size)
 {
@@ -174,12 +103,14 @@ static uint32_t comp_calc_offt_in_seg(char *buffer_start, char *addr)
 {
 	uint64_t start = (uint64_t)buffer_start;
 	uint64_t end = (uint64_t)addr;
+
 	if (end < start) {
 		log_fatal("End should be greater than start!");
 		exit(EXIT_FAILURE);
 	}
-	uint32_t ret = (end - start) % SEGMENT_SIZE;
-	return ret;
+	assert(end - start < SEGMENT_SIZE);
+
+	return (end - start) % SEGMENT_SIZE;
 }
 
 struct compaction_roots {
@@ -190,53 +121,49 @@ struct compaction_roots {
 static void comp_write_segment(char *buffer, uint64_t dev_offt, uint32_t buf_offt, uint32_t size, int fd)
 {
 #if 0
-  struct node_header *n = (struct node_header *)&buffer[buf_offt];
-  switch (n->type) {
-  case rootNode:
-  case internalNode: {
-    uint32_t decoded = buf_offt;
-    while (decoded < SEGMENT_SIZE) {
-
-      if (n->type == paddedSpace)
-        break;
-      assert(n->type == rootNode || n->type == internalNode);
-      n = (struct node_header *)((uint64_t)n + INDEX_NODE_SIZE +
-                                 KEY_BLOCK_SIZE);
-      decoded += (INDEX_NODE_SIZE + KEY_BLOCK_SIZE);
-    }
-    break;
-  }
-  case leafNode:
-  case leafRootNode: {
-    int num_leaves = 0;
+	struct node_header *n = (struct node_header *)&buffer[sizeof(struct segment_header)];
+	switch (n->type) {
+	case rootNode:
+	case internalNode: {
+		uint32_t decoded = sizeof(struct segment_header);
+		while (decoded < SEGMENT_SIZE) {
+			if (n->type == paddedSpace)
+				break;
+			assert(n->type == rootNode || n->type == internalNode);
+			n = (struct node_header *)((uint64_t)n + INDEX_NODE_SIZE + KEY_BLOCK_SIZE);
+			decoded += (INDEX_NODE_SIZE + KEY_BLOCK_SIZE);
+		}
+		break;
+	}
+	case leafNode:
+	case leafRootNode: {
+		int num_leaves = 0;
 		int padded = 0;
-    uint32_t decoded = buf_offt;
-    while (decoded < SEGMENT_SIZE) {
-
-      if (n->type == paddedSpace) {
-        log_warn("Found padded space in leaf segment ok");
+		uint32_t decoded = sizeof(struct segment_header);
+		while (decoded < SEGMENT_SIZE) {
+			if (n->type == paddedSpace) {
+				log_warn("Found padded space in leaf segment ok");
 				padded = 1;
 				break;
-      }
-      if (n->type != leafNode && n->type != leafRootNode) {
-        log_fatal("Corruption expected leaf got %u decoded was %u", n->type,
-                  decoded);
-        assert(0);
-      }
-      ++num_leaves;
-      n = (struct node_header *)((uint64_t)n + LEAF_NODE_SIZE);
-      decoded += LEAF_NODE_SIZE;
-    }
-		if(padded)
+			}
+			if (n->type != leafNode && n->type != leafRootNode) {
+				log_fatal("Corruption expected leaf got %u decoded was %u", n->type, decoded);
+				assert(0);
+			}
+			++num_leaves;
+			n = (struct node_header *)((uint64_t)n + LEAF_NODE_SIZE);
+			decoded += LEAF_NODE_SIZE;
+		}
+		if (padded)
 			break;
-    assert(num_leaves == 511);
-    break;
-  }
-  case paddedSpace:
-    break;
-  default:
-    assert(0);
-  }
+		assert(num_leaves == 255);
+		break;
+	}
+	case paddedSpace:
+		break;
+	default:
+		assert(0);
+	}
 #endif
 	ssize_t total_bytes_written = buf_offt;
 	ssize_t bytes_written = 0;
@@ -267,6 +194,7 @@ static void comp_init_dynamic_leaf(struct bt_dynamic_leaf_node *leaf)
 static void comp_init_read_cursor(struct comp_level_read_cursor *c, db_handle *handle, uint32_t level_id,
 				  uint32_t tree_id, int fd)
 {
+	memset(c, 0, sizeof(struct comp_level_read_cursor));
 	c->fd = fd;
 	c->offset = 0;
 	c->handle = handle;
@@ -318,6 +246,8 @@ static void comp_get_next_key(struct comp_level_read_cursor *c)
 						 c->handle->db_desc->levels[c->level_id].offset[c->tree_id]);
 					assert(c->offset == c->handle->db_desc->levels[c->level_id].offset[c->tree_id]);
 					c->state = COMP_CUR_CHECK_OFFT;
+					//TODO replace goto with continue;
+					//TODO Rename device_offt
 					goto fsm_entry;
 				} else
 					c->curr_segment =
@@ -447,114 +377,43 @@ static void comp_get_next_key(struct comp_level_read_cursor *c)
 
 static void comp_init_write_cursor(struct comp_level_write_cursor *c, struct db_handle *handle, int level_id, int fd)
 {
+	memset(c, 0, sizeof(struct comp_level_write_cursor));
 	c->level_id = level_id;
 	c->tree_height = 0;
 	c->fd = fd;
 	c->handle = handle;
-	struct level_descriptor *level_desc = &c->handle->db_desc->levels[c->level_id];
-	uint32_t level_leaf_size = level_desc->leaf_size;
 
-	for (int i = 0; i < MAX_HEIGHT; ++i) {
-		struct segment_header *device_segment =
-			get_segment_for_lsm_level_IO(c->handle->db_desc, c->level_id, 1);
-		memset(&c->segment_buf[0][0], 0x00, sizeof(struct segment_header));
+	comp_get_space(c, 0, leafNode);
+	assert(c->last_segment_btree_level_offt[0]);
+	c->first_segment_btree_level_offt[0] = c->last_segment_btree_level_offt[0];
 
-		c->dev_offt[i] = ABSOLUTE_ADDRESS(device_segment);
-		c->segment_offt[i] = sizeof(struct segment_header);
-		if (i == 0) {
-			c->last_index[0] = NULL;
-			c->last_leaf =
-				(struct bt_dynamic_leaf_node *)&c->segment_buf[0][c->segment_offt[0] % SEGMENT_SIZE];
-			comp_init_dynamic_leaf(c->last_leaf);
-			c->segment_offt[0] += level_leaf_size;
-		} else {
-			c->last_index[i] = (struct index_node *)&c->segment_buf[i][c->segment_offt[i] % SEGMENT_SIZE];
-
-			/*initialization*/
-			c->last_index[i]->header.type = internalNode;
-			c->last_index[i]->header.height = i;
-			c->last_index[i]->header.num_entries = 0;
-			c->last_index[i]->header.fragmentation = 0;
-			/*private key log for index nodes*/
-			uint64_t index_log_dev_offt =
-				c->dev_offt[i] + c->segment_offt[i] % SEGMENT_SIZE + INDEX_NODE_SIZE;
-
-			IN_log_header *tmp = (IN_log_header *)&c->segment_buf[i][index_log_dev_offt % SEGMENT_SIZE];
-			tmp->type = keyBlockHeader;
-			tmp->next = NULL;
-			c->last_index[i]->header.first_IN_log_header = (IN_log_header *)index_log_dev_offt;
-			c->last_index[i]->header.last_IN_log_header = c->last_index[i]->header.first_IN_log_header;
-			c->last_index[i]->header.key_log_size = sizeof(IN_log_header);
-			c->segment_offt[i] += INDEX_NODE_SIZE + KEY_BLOCK_SIZE;
-		}
+	for (int i = 1; i < MAX_HEIGHT; ++i) {
+		comp_get_space(c, i, internalNode);
+		c->first_segment_btree_level_offt[i] = c->last_segment_btree_level_offt[i];
+		assert(c->last_segment_btree_level_offt[i]);
 	}
-}
-
-static void comp_close_write_cursor(struct comp_level_write_cursor *c)
-{
-	uint32_t level_leaf_size = c->handle->db_desc->levels[c->level_id].leaf_size;
-	for (uint32_t i = 0; i < MAX_HEIGHT; ++i) {
-		uint32_t *type;
-		//log_info("i = %lu tree height: %lu", i, c->tree_height);
-		if (i <= c->tree_height) {
-			if (i == 0 && c->segment_offt[i] % SEGMENT_SIZE != 0) {
-				type = (uint32_t *)((uint64_t)c->last_leaf + level_leaf_size);
-				//log_info("Marking padded space for %u segment offt %llu", i, c->segment_offt[0]);
-				*type = paddedSpace;
-			} else if (i > 0 && c->segment_offt[i] % SEGMENT_SIZE != 0) {
-				type = (uint32_t *)((uint64_t)(c->last_index[i]) + INDEX_NODE_SIZE + KEY_BLOCK_SIZE);
-				// log_info("Marking padded space for %u segment offt %llu entries of
-				// last node %llu", i,
-				//	 c->segment_offt[i], c->last_index[i]->header.num_entries);
-				*type = paddedSpace;
-			}
-		} else {
-			type = (uint32_t *)&c->segment_buf[i][sizeof(struct segment_header)];
-			*type = paddedSpace;
-			//log_info("Marking full padded space for leaves segment offt %llu", i, c->segment_offt[i]);
-		}
-
-		if (i == c->tree_height) {
-			// log_info("Merged level has a height off %u", c->tree_height);
-			c->last_index[i]->header.type = rootNode;
-			uint32_t offt = comp_calc_offt_in_seg(c->segment_buf[i], (char *)c->last_index[i]);
-			c->root_offt = c->dev_offt[i] + offt;
-			c->handle->db_desc->levels[c->level_id].root_r[1] = REAL_ADDRESS(c->root_offt);
-		}
-
-		struct segment_header *segment_in_mem_buffer = (struct segment_header *)c->segment_buf[i];
-
-		if (MAX_HEIGHT - 1 == i) {
-			c->handle->db_desc->levels[c->level_id].last_segment[1] = REAL_ADDRESS(c->dev_offt[i]);
-			segment_in_mem_buffer->next_segment = NULL;
-		} else {
-			assert(c->dev_offt[i + 1]);
-			segment_in_mem_buffer->next_segment = (void *)c->dev_offt[i + 1];
-		}
-
-		comp_write_segment(c->segment_buf[i], c->dev_offt[i], 0, SEGMENT_SIZE, c->fd);
-		// log_info("Dumped buffer %u at dev_offt %llu",i,c->dev_offt[i]);
-	}
-
-	return;
 }
 
 /*mini allocator*/
 static void comp_get_space(struct comp_level_write_cursor *c, uint32_t height, nodeType_t type)
 {
+	assert(height < MAX_HEIGHT);
+
 	struct level_descriptor *level_desc = &c->handle->db_desc->levels[c->level_id];
 	uint32_t level_leaf_size = level_desc->leaf_size;
 	switch (type) {
 	case leafNode:
 	case leafRootNode: {
 		uint32_t remaining_space;
-		if (c->segment_offt[0] > 0 && c->segment_offt[0] % SEGMENT_SIZE == 0)
+		if (c->segment_offt[0] == 0)
+			remaining_space = 0;
+		else if (c->segment_offt[0] > 0 && c->segment_offt[0] % SEGMENT_SIZE == 0)
 			remaining_space = 0;
 		else
-			remaining_space = SEGMENT_SIZE - (c->segment_offt[0] % SEGMENT_SIZE);
+			remaining_space = SEGMENT_SIZE - c->segment_offt[0] % SEGMENT_SIZE;
 		if (remaining_space < level_leaf_size) {
 			if (remaining_space > 0) {
-				*(uint32_t *)(&c->segment_buf[0][c->segment_offt[0] % SEGMENT_SIZE]) = paddedSpace;
+				*(uint32_t *)&c->segment_buf[0][c->segment_offt[0] % SEGMENT_SIZE] = paddedSpace;
 				c->segment_offt[0] += remaining_space;
 			}
 
@@ -562,13 +421,22 @@ static void comp_get_space(struct comp_level_write_cursor *c, uint32_t height, n
 				get_segment_for_lsm_level_IO(c->handle->db_desc, c->level_id, 1);
 			struct segment_header *current_segment_mem_buffer =
 				(struct segment_header *)&c->segment_buf[0][0];
-			current_segment_mem_buffer->next_segment = (void *)ABSOLUTE_ADDRESS(new_device_segment);
 
-			comp_write_segment(c->segment_buf[0], c->dev_offt[0], 0, SEGMENT_SIZE, c->fd);
+			if (c->segment_offt[height] != 0) {
+				current_segment_mem_buffer->next_segment = (void *)ABSOLUTE_ADDRESS(new_device_segment);
+
+				assert(new_device_segment);
+				assert(current_segment_mem_buffer->next_segment);
+				comp_write_segment(c->segment_buf[0], c->last_segment_btree_level_offt[0], 0,
+						   SEGMENT_SIZE, c->fd);
+			}
+
 			memset(&c->segment_buf[0][0], 0x00, sizeof(struct segment_header));
 
-			c->dev_offt[0] = ABSOLUTE_ADDRESS(new_device_segment);
-			c->segment_offt[0] += sizeof(struct segment_header);
+			c->last_segment_btree_level_offt[0] = ABSOLUTE_ADDRESS(new_device_segment);
+			c->segment_offt[0] = sizeof(struct segment_header);
+			current_segment_mem_buffer->segment_id = c->segment_id_cnt++;
+			current_segment_mem_buffer->nodetype = type;
 		}
 		c->last_leaf = (struct bt_dynamic_leaf_node *)(&c->segment_buf[0][(c->segment_offt[0] % SEGMENT_SIZE)]);
 		comp_init_dynamic_leaf(c->last_leaf);
@@ -578,7 +446,9 @@ static void comp_get_space(struct comp_level_write_cursor *c, uint32_t height, n
 	case internalNode:
 	case rootNode: {
 		uint32_t remaining_space;
-		if (c->segment_offt[height] > 0 && c->segment_offt[height] % SEGMENT_SIZE == 0)
+		if (c->segment_offt[height] == 0)
+			remaining_space = 0;
+		else if (c->segment_offt[height] > 0 && c->segment_offt[height] % SEGMENT_SIZE == 0)
 			remaining_space = 0;
 		else
 			remaining_space = SEGMENT_SIZE - (c->segment_offt[height] % SEGMENT_SIZE);
@@ -594,12 +464,22 @@ static void comp_get_space(struct comp_level_write_cursor *c, uint32_t height, n
 				get_segment_for_lsm_level_IO(c->handle->db_desc, c->level_id, 1);
 			struct segment_header *current_segment_mem_buffer =
 				(struct segment_header *)&c->segment_buf[height][0];
-			current_segment_mem_buffer->next_segment = (void *)ABSOLUTE_ADDRESS(new_device_segment);
 
-			comp_write_segment(c->segment_buf[0], c->dev_offt[0], 0, SEGMENT_SIZE, c->fd);
-			memset(&c->segment_buf[0][0], 0x00, sizeof(struct segment_header));
+			if (c->segment_offt[height] != 0) {
+				current_segment_mem_buffer->next_segment = (void *)ABSOLUTE_ADDRESS(new_device_segment);
+
+				assert(new_device_segment);
+				assert(current_segment_mem_buffer->next_segment);
+
+				comp_write_segment(c->segment_buf[height], c->last_segment_btree_level_offt[height], 0,
+						   SEGMENT_SIZE, c->fd);
+			}
+
+			memset(&c->segment_buf[height][0], 0x00, sizeof(struct segment_header));
 			c->segment_offt[height] += sizeof(struct segment_header);
-			c->dev_offt[height] = ABSOLUTE_ADDRESS(new_device_segment);
+			c->last_segment_btree_level_offt[height] = ABSOLUTE_ADDRESS(new_device_segment);
+			current_segment_mem_buffer->segment_id = c->segment_id_cnt++;
+			current_segment_mem_buffer->nodetype = type;
 		}
 		c->last_index[height] =
 			(struct index_node *)&c->segment_buf[height][c->segment_offt[height] % SEGMENT_SIZE];
@@ -610,8 +490,8 @@ static void comp_get_space(struct comp_level_write_cursor *c, uint32_t height, n
 		c->last_index[height]->header.num_entries = 0;
 		c->last_index[height]->header.fragmentation = 0;
 		/*private key log for index nodes*/
-		uint64_t index_log_dev_offt =
-			c->dev_offt[height] + c->segment_offt[height] % SEGMENT_SIZE + INDEX_NODE_SIZE;
+		uint64_t index_log_dev_offt = c->last_segment_btree_level_offt[height] +
+					      c->segment_offt[height] % SEGMENT_SIZE + INDEX_NODE_SIZE;
 
 		IN_log_header *tmp = (IN_log_header *)&c->segment_buf[height][index_log_dev_offt % SEGMENT_SIZE];
 		tmp->type = keyBlockHeader;
@@ -630,11 +510,115 @@ static void comp_get_space(struct comp_level_write_cursor *c, uint32_t height, n
 	}
 }
 
+char *nodetype_tostring(nodeType_t type)
+{
+	switch (type) {
+	case leafNode:
+		return "leafnode";
+	case leafRootNode:
+		return "leafRootNode";
+	case rootNode:
+		return "rootNode";
+	case internalNode:
+		return "internalnode";
+	case paddedSpace:
+		return "paddedspace";
+	default:
+		return "UnknownNode";
+	}
+}
+
+static void assert_level_segments(db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
+{
+	uint64_t measure_level_bytes = 0;
+	return;
+	segment_header *segment = db_desc->levels[level_id].first_segment[tree_id];
+	assert(segment);
+
+	log_info("First segment in get_assert_level %u %llu segment id %lu %s next segment %lu", level_id, segment,
+		 segment->segment_id, nodetype_tostring(segment->nodetype), segment->next_segment);
+	measure_level_bytes += SEGMENT_SIZE;
+
+	for (segment = REAL_ADDRESS(segment->next_segment); segment->next_segment;
+	     segment = REAL_ADDRESS(segment->next_segment)) {
+		log_info("segment in get_assert_level %u %llu segment id %lu %s next %lu ", level_id, segment,
+			 segment->segment_id, nodetype_tostring(segment->nodetype), segment->next_segment);
+
+		measure_level_bytes += SEGMENT_SIZE;
+	}
+	log_info("segment in get_assert_level %u %llu segment id %lu %s next %lu ", level_id, segment,
+		 segment->segment_id, nodetype_tostring(segment->nodetype), segment->next_segment);
+
+	measure_level_bytes += SEGMENT_SIZE;
+
+	log_debug("Measured %lu offset in level %lu", measure_level_bytes, db_desc->levels[level_id].offset[tree_id]);
+	assert(segment == db_desc->levels[level_id].last_segment[tree_id]);
+	assert(measure_level_bytes == db_desc->levels[level_id].offset[tree_id]);
+}
+
+static void comp_close_write_cursor(struct comp_level_write_cursor *c)
+{
+	uint32_t level_leaf_size = c->handle->db_desc->levels[c->level_id].leaf_size;
+	for (uint32_t i = 0; i < MAX_HEIGHT; ++i) {
+		uint32_t *type;
+		log_info("i = %u tree height: %u", i, c->tree_height);
+
+		if (i <= c->tree_height) {
+			assert(c->segment_offt[i] > 4096);
+			if (i == 0 && c->segment_offt[i] % SEGMENT_SIZE != 0) {
+				type = (uint32_t *)((uint64_t)c->last_leaf + level_leaf_size);
+				//log_info("Marking padded space for %u segment offt %llu", i, c->segment_offt[0]);
+				*type = paddedSpace;
+			} else if (i > 0 && c->segment_offt[i] % SEGMENT_SIZE != 0) {
+				type = (uint32_t *)(((uint64_t)c->last_index[i]) + INDEX_NODE_SIZE + KEY_BLOCK_SIZE);
+				// log_info("Marking padded space for %u segment offt %llu entries of
+				// last node %llu", i,
+				//	 c->segment_offt[i], c->last_index[i]->header.num_entries);
+				*type = paddedSpace;
+			}
+		} else {
+			type = (uint32_t *)&c->segment_buf[i][sizeof(struct segment_header)];
+			*type = paddedSpace;
+			log_info("Marking full padded space for level_id %u tree height %u", c->level_id,
+				 c->tree_height);
+		}
+
+		if (i == c->tree_height) {
+			// log_info("Merged level has a height off %u", c->tree_height);
+			c->last_index[i]->header.type = rootNode;
+			uint32_t offt = comp_calc_offt_in_seg(c->segment_buf[i], (char *)c->last_index[i]);
+			c->root_offt = c->last_segment_btree_level_offt[i] + offt;
+			c->handle->db_desc->levels[c->level_id].root_r[1] = REAL_ADDRESS(c->root_offt);
+		}
+
+		struct segment_header *segment_in_mem_buffer = (struct segment_header *)c->segment_buf[i];
+		//segment_in_mem_buffer->segment_id = c->segment_id_cnt++;
+		//assert(c->segment_id_cnt != 251);
+		/* segment_in_mem_buffer->nodetype = paddedSpace; */
+
+		if (MAX_HEIGHT - 1 == i) {
+			c->handle->db_desc->levels[c->level_id].last_segment[1] =
+				REAL_ADDRESS(c->last_segment_btree_level_offt[i]);
+			assert(c->last_segment_btree_level_offt[i]);
+			segment_in_mem_buffer->next_segment = NULL;
+		} else {
+			assert(c->last_segment_btree_level_offt[i + 1]);
+			segment_in_mem_buffer->next_segment = (void *)c->first_segment_btree_level_offt[i + 1];
+		}
+		log_debug("i %d Next pointer address %lu", i, segment_in_mem_buffer->next_segment);
+		comp_write_segment(c->segment_buf[i], c->last_segment_btree_level_offt[i], 0, SEGMENT_SIZE, c->fd);
+		log_info("Dumped buffer %u at dev_offt %llu", i, c->last_segment_btree_level_offt[i]);
+	}
+
+	assert_level_segments(c->handle->db_desc, c->level_id, 1);
+}
+
 static void comp_append_pivot_to_index(struct comp_level_write_cursor *c, uint64_t left_node_offt,
 				       uint64_t right_node_offt, char *pivot, uint32_t height)
 {
 	uint32_t pivot_size = sizeof(uint32_t) + KEY_SIZE(pivot);
 	assert(pivot_size < MAX_KEY_SIZE);
+
 	uint64_t left_index_offt;
 	uint64_t right_index_offt;
 	uint32_t new_index = 0;
@@ -655,19 +639,19 @@ static void comp_append_pivot_to_index(struct comp_level_write_cursor *c, uint64
 		/*keep current aka left leaf offt*/
 
 		uint32_t offt_l = comp_calc_offt_in_seg(c->segment_buf[height], (char *)c->last_index[height]);
-		left_index_offt = c->dev_offt[height] + offt_l;
+		left_index_offt = c->last_segment_btree_level_offt[height] + offt_l;
 		uint64_t offt = c->last_index[height]->p[c->last_index[height]->header.num_entries - 1].pivot;
 
 		new_pivot = &c->segment_buf[height][offt % SEGMENT_SIZE];
 		// assert(*(uint32_t *)new_pivot > 0);
-		new_pivot_buf = (char *)malloc(*(uint32_t *)new_pivot + sizeof(uint32_t));
-		memcpy(new_pivot_buf, new_pivot, *(uint32_t *)new_pivot + sizeof(uint32_t));
+		new_pivot_buf = (char *)malloc(KEY_SIZE(new_pivot) + sizeof(uint32_t));
+		memcpy(new_pivot_buf, new_pivot, KEY_SIZE(new_pivot) + sizeof(uint32_t));
 		// log_info("Done adding pivot %s for height %u", new_pivot + 4, height);
 		--c->last_index[height]->header.num_entries;
 		comp_get_space(c, height, internalNode);
 		/*last leaf updated*/
 		uint32_t offt_r = comp_calc_offt_in_seg(c->segment_buf[height], (char *)c->last_index[height]);
-		right_index_offt = c->dev_offt[height] + offt_r;
+		right_index_offt = c->last_segment_btree_level_offt[height] + offt_r;
 		new_index = 1;
 	}
 	/*copy pivot*/
@@ -679,6 +663,8 @@ static void comp_append_pivot_to_index(struct comp_level_write_cursor *c, uint64
 	char *pivot_addr = &c->segment_buf[height][(uint64_t)pivot_offt % SEGMENT_SIZE];
 
 	memcpy(pivot_addr, pivot, pivot_size);
+	assert(KEY_SIZE(pivot_addr) < MAX_KEY_SIZE);
+
 	// log_info("Adding pivot %u:%s for height %u num entries %u", pivot_size,
 	// pivot + 4, height,
 	// c->last_index[height]->header.numberOfEntriesInNode);
@@ -820,9 +806,20 @@ static void comp_append_entry_to_leaf_node(struct comp_level_write_cursor *curso
 
 	if (write_leaf_args.cat == MEDIUM_INLOG &&
 	    write_leaf_args.level_id == cursor->handle->db_desc->level_medium_inplace) {
-		kv_size = sizeof(uint32_t) + KEY_SIZE(curr_key->kv_inlog->dev_offt);
-		kv_size += VALUE_SIZE(curr_key->kv_inlog->dev_offt + kv_size) + sizeof(uint32_t);
+		write_leaf_args.key_value_buf = fetch_kv_from_LRU(&write_leaf_args, cursor);
+		assert(KEY_SIZE(write_leaf_args.key_value_buf) < MAX_KEY_SIZE);
+		write_leaf_args.cat = MEDIUM_INPLACE;
+
+		kv_size = sizeof(uint32_t) + KEY_SIZE(write_leaf_args.key_value_buf);
+		kv_size += VALUE_SIZE(write_leaf_args.key_value_buf + kv_size) + sizeof(uint32_t);
 		write_leaf_args.key_value_size = kv_size;
+		curr_key->kv_type = KV_INPLACE;
+		curr_key->kv_category = MEDIUM_INPLACE;
+		curr_key->kv_inplace = write_leaf_args.key_value_buf;
+		write_leaf_args.kv_format = KV_FORMAT;
+#if MEASURE_MEDIUM_INPLACE
+		__sync_fetch_and_add(&cursor->handle->db_desc->count_medium_inplace, 1);
+#endif
 	}
 
 	struct split_level_leaf split_metadata = { .leaf = cursor->last_leaf,
@@ -839,28 +836,17 @@ static void comp_append_entry_to_leaf_node(struct comp_level_write_cursor *curso
 		// log_info("Time for a split!");
 		/*keep current aka left leaf offt*/
 		uint32_t offt_l = comp_calc_offt_in_seg(cursor->segment_buf[0], (char *)cursor->last_leaf);
-		left_leaf_offt = cursor->dev_offt[0] + offt_l;
+		left_leaf_offt = cursor->last_segment_btree_level_offt[0] + offt_l;
 		comp_get_space(cursor, 0, leafNode);
 		/*last leaf updated*/
 		uint32_t offt_r = comp_calc_offt_in_seg(cursor->segment_buf[0], (char *)cursor->last_leaf);
-		right_leaf_offt = cursor->dev_offt[0] + offt_r;
+		right_leaf_offt = cursor->last_segment_btree_level_offt[0] + offt_r;
 		new_leaf = 1;
 	}
 
 	write_leaf_args.leaf = cursor->last_leaf;
 	write_leaf_args.dest = get_leaf_log_offset(cursor->last_leaf, level_leaf_size);
 	write_leaf_args.middle = cursor->last_leaf->header.num_entries;
-
-#if MEASURE_MEDIUM_INPLACE
-	if (write_leaf_args.cat == MEDIUM_INLOG &&
-	    write_leaf_args.level_id == c->handle->db_desc->level_medium_inplace) {
-		__sync_fetch_and_add(&cursor->handle->db_desc->count_medium_inplace, 1);
-	}
-#endif
-
-	if (write_leaf_args.cat == MEDIUM_INLOG &&
-	    write_leaf_args.level_id == cursor->handle->db_desc->level_medium_inplace)
-		write_leaf_args.key_value_buf = fetch_kv_from_LRU(&write_leaf_args, cursor);
 
 	write_data_in_dynamic_leaf(&write_leaf_args);
 	// just append and leave
@@ -969,7 +955,7 @@ void *compaction_daemon(void *args)
 			return NULL;
 		}
 		struct level_descriptor *level_0 = &handle->db_desc->levels[0];
-		struct level_descriptor *level_1 = &handle->db_desc->levels[1];
+		struct level_descriptor *src_level = &handle->db_desc->levels[1];
 
 		int L0_tree = next_L0_tree_to_compact;
 		// is level-0 full and not already spilling?
@@ -977,12 +963,12 @@ void *compaction_daemon(void *args)
 		    level_0->level_size[L0_tree] >= level_0->max_level_size) {
 			// Can I issue a spill to L1?
 			int L1_tree = 0;
-			if (level_1->tree_status[L1_tree] == NO_COMPACTION &&
-			    level_1->level_size[L1_tree] < level_1->max_level_size) {
+			if (src_level->tree_status[L1_tree] == NO_COMPACTION &&
+			    src_level->level_size[L1_tree] < src_level->max_level_size) {
 				/*mark them as spilling L0*/
 				level_0->tree_status[L0_tree] = COMPACTION_IN_PROGRESS;
 				/*mark them as spilling L1*/
-				level_1->tree_status[L1_tree] = COMPACTION_IN_PROGRESS;
+				src_level->tree_status[L1_tree] = COMPACTION_IN_PROGRESS;
 
 				/*start a compaction*/
 				comp_req = (struct compaction_request *)calloc(1, sizeof(struct compaction_request));
@@ -1058,17 +1044,17 @@ void *compaction_daemon(void *args)
 
 		// rest of levels
 		for (int level_id = 1; level_id < MAX_LEVELS - 1; ++level_id) {
-			level_1 = &db_desc->levels[level_id];
-			struct level_descriptor *level_2 = &db_desc->levels[level_id + 1];
+			src_level = &db_desc->levels[level_id];
+			struct level_descriptor *dst_level = &db_desc->levels[level_id + 1];
 			uint8_t tree_1 = 0; // level_1->active_tree;
 			uint8_t tree_2 = 0; // level_2->active_tree;
 
-			if (level_1->tree_status[tree_1] == NO_COMPACTION &&
-			    level_1->level_size[tree_1] >= level_1->max_level_size) {
-				if (level_2->tree_status[tree_2] == NO_COMPACTION &&
-				    level_2->level_size[tree_2] < level_2->max_level_size) {
-					level_1->tree_status[tree_1] = COMPACTION_IN_PROGRESS;
-					level_2->tree_status[tree_2] = COMPACTION_IN_PROGRESS;
+			if (src_level->tree_status[tree_1] == NO_COMPACTION &&
+			    src_level->level_size[tree_1] >= src_level->max_level_size) {
+				if (dst_level->tree_status[tree_2] == NO_COMPACTION &&
+				    dst_level->level_size[tree_2] < dst_level->max_level_size) {
+					src_level->tree_status[tree_1] = COMPACTION_IN_PROGRESS;
+					dst_level->tree_status[tree_2] = COMPACTION_IN_PROGRESS;
 					/*start a compaction*/
 					struct compaction_request *comp_req_p = (struct compaction_request *)calloc(
 						1, sizeof(struct compaction_request));
@@ -1299,6 +1285,7 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 		perror("Reason: ");
 		exit(EXIT_FAILURE);
 	}
+
 	assert(0 == handle->db_desc->levels[comp_req->dst_level].offset[comp_req->dst_tree]);
 	comp_init_write_cursor(merged_level, handle, comp_req->dst_level, FD);
 

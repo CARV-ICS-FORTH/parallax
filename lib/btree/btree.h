@@ -84,6 +84,7 @@ typedef struct segment_header {
 	uint64_t segment_id;
 	uint64_t segment_garbage_bytes;
 	uint64_t segment_end;
+	nodeType_t nodetype;
 } __attribute__((packed, aligned(4096))) segment_header;
 
 /*Note IN stands for Internal Node*/
