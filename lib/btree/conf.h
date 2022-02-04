@@ -30,6 +30,7 @@
 #define RWLOCK_UNLOCK(L) pthread_rwlock_unlock(L)
 
 //TODO This must become generic
+#define MAX_DB_NAME_SIZE 64
 #define MAX_LEVELS (8)
 #define NUM_TREES_PER_LEVEL (4)
 #define TOTAL_TREES (MAX_LEVELS * NUM_TREES_PER_LEVEL)

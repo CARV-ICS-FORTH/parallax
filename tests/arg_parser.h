@@ -6,8 +6,8 @@
 
 /**
  * This enumerator is responsible for decoding properly the data that `optarg` contains.
- * At the moment it support STRING and INTEGER types but it is easy to extend.
- * Add the new type and extend the fill_option() in arg_parser.c.
+ * At the moment it supports STRING and INTEGER types but it is easy to extend for other types.
+ * To add a new type extend the enumerator and extend the fill_option() in arg_parser.c.
  */
 enum option_type { STRING, INTEGER };
 
