@@ -18,7 +18,7 @@ if(BUILD_TESTING)
   add_executable(test_scans test_scans.c)
   target_link_libraries(test_scans "${PROJECT_NAME}" ${DEPENDENCIES})
 
-  add_executable(test_dirty_scans test_dirty_scans.c)
+  add_executable(test_dirty_scans test_dirty_scans.c arg_parser.c)
   target_link_libraries(test_dirty_scans "${PROJECT_NAME}" ${DEPENDENCIES})
 
   add_executable(test_spillscans test_spillscanner.c)
