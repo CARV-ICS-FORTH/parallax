@@ -29,18 +29,6 @@
 #define RWLOCK_RDLOCK(L) pthread_rwlock_rdlock(L)
 #define RWLOCK_UNLOCK(L) pthread_rwlock_unlock(L)
 
-/*don't use spinlock for log, critical section contains RDMA communication*/
-#define LOG_WITH_MUTEX 1
-
-#define MAX_DB_NAME_SIZE 64
-/*hierarchy of trees parameters*/
-/* #define MAX_LEVELS 8 */
-/* #define NUM_TREES_PER_LEVEL 2 */
-/* #define TOTAL_TREES (MAX_LEVELS * NUM_TREES_PER_LEVEL) */
-/* #define NUM_OF_DB_GROUPS 506 */
-/* #define DEVICE_BLOCK_SIZE 4096 */
-
-/*Configuration trees > 2 */
 //TODO This must become generic
 #define MAX_LEVELS (8)
 #define NUM_TREES_PER_LEVEL (4)
