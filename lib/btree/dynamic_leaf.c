@@ -692,28 +692,15 @@ void write_data_in_dynamic_leaf(struct write_dynamic_leaf_args *args)
 	else
 		status = KV_INPLACE;
 
-	if (args->cat == MEDIUM_INLOG && args->level_id == args->level_medium_inplace) {
-		status = KV_INPLACE;
-		args->cat = MEDIUM_INPLACE;
-		assert(args->kv_format == KV_PREFIX);
-	}
-
 	if (status == KV_INPLACE) {
+		assert(kv_format != KV_PREFIX);
 		slot.kv_loc = KV_INPLACE;
-		if (kv_format == KV_FORMAT) {
-			leaf->header.leaf_log_size += append_kv_inplace(dest, key_value_buf, key_value_size);
-		} else {
-			char *pointer = key_value_buf;
-			uint32_t key_size = KEY_SIZE(pointer);
-			uint32_t value_size = VALUE_SIZE(pointer + key_size + sizeof(uint32_t));
-			//log_info("Toumpa time Key is %u:%s value size %u",key_size,pointer+4,value_size);
-			leaf->header.leaf_log_size += append_kv_inplace(dest, pointer, 8 + key_size + value_size);
-		}
+		leaf->header.leaf_log_size += append_kv_inplace(dest, key_value_buf, key_value_size);
 	} else if (status == KV_INLOG) {
-		struct splice *key = (struct splice *)key_value_buf;
 		struct bt_leaf_entry *serialized = (struct bt_leaf_entry *)key_value_buf;
 		slot.kv_loc = KV_INLOG;
 		if (args->level_id == 0 && args->cat == BIG_INLOG && kv_format == KV_FORMAT) {
+			struct splice *key = (struct splice *)key_value_buf;
 			assert(args->kv_dev_offt != 0);
 			leaf->header.leaf_log_size += append_bt_leaf_entry_inplace(dest, args->kv_dev_offt, key->data,
 										   MIN(key->size, PREFIX_SIZE));
@@ -726,13 +713,14 @@ void write_data_in_dynamic_leaf(struct write_dynamic_leaf_args *args)
 		}
 #endif
 		else {
+
 			if (kv_format == KV_FORMAT) {
+				struct splice *key = (struct splice *)key_value_buf;
 				leaf->header.leaf_log_size += append_bt_leaf_entry_inplace(
 					dest, ABSOLUTE_ADDRESS(key_value_buf), key->data, MIN(key->size, PREFIX_SIZE));
 			} else {
-				leaf->header.leaf_log_size +=
-					append_bt_leaf_entry_inplace(dest, ABSOLUTE_ADDRESS(serialized->dev_offt),
-								     key_value_buf, MIN(key->size, PREFIX_SIZE));
+				leaf->header.leaf_log_size += append_bt_leaf_entry_inplace(
+					dest, ABSOLUTE_ADDRESS(serialized->dev_offt), serialized->prefix, PREFIX_SIZE);
 			}
 		}
 	} else
