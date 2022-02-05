@@ -18,6 +18,7 @@
 #include "../btree/conf.h"
 #include "../btree/dynamic_leaf.h"
 #include "../utilities/dups_list.h"
+#include "min_max_heap.h"
 #include "stack.h"
 #include <assert.h>
 #include <log.h>
@@ -94,6 +95,8 @@ static void init_generic_scanner(struct scannerHandle *sc, struct db_handle *han
 	uint8_t active_tree;
 	int retval;
 
+	memset(&nd, 0, sizeof(struct sh_heap_node));
+
 	assert(start_key);
 	if (sc == NULL) {
 		log_fatal("NULL scannerHandle?");
@@ -162,7 +165,6 @@ static void init_generic_scanner(struct scannerHandle *sc, struct db_handle *han
 				nd.active_tree = i;
 				nd.type = KV_FORMAT;
 				nd.db_desc = handle->db_desc;
-
 				if (sc->type_of_scanner == FORWARD_SCANNER) {
 					nd.epoch = handle->db_desc->levels[0].epoch[i];
 					sh_insert_heap_node(&sc->heap, &nd);
@@ -634,6 +636,9 @@ int32_t getNext(scannerHandle *sc)
 	enum sh_heap_status stat;
 	struct sh_heap_node nd;
 	struct sh_heap_node next_nd;
+
+	memset(&nd, 0, sizeof(struct sh_heap_node));
+	memset(&next_nd, 0, sizeof(struct sh_heap_node));
 
 	while (1) {
 		stat = sh_remove_top(&sc->heap, &nd);

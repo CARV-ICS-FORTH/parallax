@@ -23,27 +23,27 @@ if(BUILD_TESTING)
   add_test(
     NAME test_dirty_scans_small
     COMMAND $<TARGET_FILE:test_dirty_scans> --file=/tmp/kv_store.dat
-            --num_of_kvs=4000000 --scan_size=30 --workload="All" --kv_mix="s")
+            --num_of_kvs=4000000 --scan_size=30 --workload=All --kv_mix=s)
   add_test(
     NAME test_dirty_scans_medium
     COMMAND $<TARGET_FILE:test_dirty_scans> --file=/tmp/kv_store.dat
-            --num_of_kvs=4000000 --scan_size=30 --workload="All" --kv_mix="m")
+            --num_of_kvs=4000000 --scan_size=30 --workload=All --kv_mix=m)
   add_test(
     NAME test_dirty_scans_large
     COMMAND $<TARGET_FILE:test_dirty_scans> --file=/tmp/kv_store.dat
-            --num_of_kvs=4000000 --scan_size=30 --workload="All" --kv_mix="l")
+            --num_of_kvs=4000000 --scan_size=30 --workload=All --kv_mix=l)
   add_test(
     NAME test_dirty_scans_smalld
     COMMAND $<TARGET_FILE:test_dirty_scans> --file=/tmp/kv_store.dat
-            --num_of_kvs=4000000 --scan_size=30 --workload="All" --kv_mix="sd")
+            --num_of_kvs=4000000 --scan_size=30 --workload=All --kv_mix=sd)
   add_test(
     NAME test_dirty_scans_mediumd
     COMMAND $<TARGET_FILE:test_dirty_scans> --file=/tmp/kv_store.dat
-            --num_of_kvs=4000000 --scan_size=30 --workload="All" --kv_mix="md")
+            --num_of_kvs=4000000 --scan_size=30 --workload=All --kv_mix=md)
   add_test(
     NAME test_dirty_scans_larged
     COMMAND $<TARGET_FILE:test_dirty_scans> --file=/tmp/kv_store.dat
-            --num_of_kvs=4000000 --scan_size=30 --workload="All" --kv_mix="ld")
+            --num_of_kvs=4000000 --scan_size=30 --workload=All --kv_mix=ld)
 
   add_test(NAME test_dirty_scans_smallp COMMAND test_dirty_scans.sh s)
   add_test(NAME test_dirty_scans_mediump COMMAND test_dirty_scans.sh m)

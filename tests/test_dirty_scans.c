@@ -321,5 +321,5 @@ exit:
 	par_close(hd);
 	free(k);
 
-	return 1;
+	return 0;
 }
