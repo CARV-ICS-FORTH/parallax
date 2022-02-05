@@ -20,6 +20,37 @@ if(BUILD_TESTING)
 
   add_executable(test_dirty_scans test_dirty_scans.c arg_parser.c)
   target_link_libraries(test_dirty_scans "${PROJECT_NAME}" ${DEPENDENCIES})
+  add_test(
+    NAME test_dirty_scans_small
+    COMMAND $<TARGET_FILE:test_dirty_scans> --file=/tmp/kv_store.dat
+            --num_of_kvs=4000000 --scan_size=30 --workload="All" --kv_mix="s")
+  add_test(
+    NAME test_dirty_scans_medium
+    COMMAND $<TARGET_FILE:test_dirty_scans> --file=/tmp/kv_store.dat
+            --num_of_kvs=4000000 --scan_size=30 --workload="All" --kv_mix="m")
+  add_test(
+    NAME test_dirty_scans_large
+    COMMAND $<TARGET_FILE:test_dirty_scans> --file=/tmp/kv_store.dat
+            --num_of_kvs=4000000 --scan_size=30 --workload="All" --kv_mix="l")
+  add_test(
+    NAME test_dirty_scans_smalld
+    COMMAND $<TARGET_FILE:test_dirty_scans> --file=/tmp/kv_store.dat
+            --num_of_kvs=4000000 --scan_size=30 --workload="All" --kv_mix="sd")
+  add_test(
+    NAME test_dirty_scans_mediumd
+    COMMAND $<TARGET_FILE:test_dirty_scans> --file=/tmp/kv_store.dat
+            --num_of_kvs=4000000 --scan_size=30 --workload="All" --kv_mix="md")
+  add_test(
+    NAME test_dirty_scans_larged
+    COMMAND $<TARGET_FILE:test_dirty_scans> --file=/tmp/kv_store.dat
+            --num_of_kvs=4000000 --scan_size=30 --workload="All" --kv_mix="ld")
+
+  add_test(NAME test_dirty_scans_smallp COMMAND test_dirty_scans.sh s)
+  add_test(NAME test_dirty_scans_mediump COMMAND test_dirty_scans.sh m)
+  add_test(NAME test_dirty_scans_largep COMMAND test_dirty_scans.sh l)
+  add_test(NAME test_dirty_scans_smalldp COMMAND test_dirty_scans.sh sd)
+  add_test(NAME test_dirty_scans_mediumdp COMMAND test_dirty_scans.sh md)
+  add_test(NAME test_dirty_scans_largedp COMMAND test_dirty_scans.sh ld)
 
   add_executable(test_spillscans test_spillscanner.c)
   target_link_libraries(test_spillscans "${PROJECT_NAME}" ${DEPENDENCIES})
