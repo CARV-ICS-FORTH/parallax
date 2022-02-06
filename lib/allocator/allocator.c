@@ -290,9 +290,7 @@ struct rul_log_entry *get_next_allocation_log_entry(struct allocation_log_cursor
 		case GET_NEXT_ENTRY:
 
 			if (cursor->curr_entry_in_chunk >= cursor->chunk_entries) {
-				++cursor->curr_chunk_id;
 				cursor->state = GET_NEXT_CHUNK;
-				++cursor->curr_chunk_id;
 				break;
 			}
 			/*log_info("Chunk id %u curr entry %u", cursor->curr_chunk_id, cursor->curr_entry_in_chunk);*/
