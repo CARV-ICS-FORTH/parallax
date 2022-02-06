@@ -292,6 +292,7 @@ struct rul_log_entry *get_next_allocation_log_entry(struct allocation_log_cursor
 			if (cursor->curr_entry_in_chunk >= cursor->chunk_entries) {
 				++cursor->curr_chunk_id;
 				cursor->state = GET_NEXT_CHUNK;
+				++cursor->curr_chunk_id;
 				break;
 			}
 			/*log_info("Chunk id %u curr entry %u", cursor->curr_chunk_id, cursor->curr_entry_in_chunk);*/
@@ -355,7 +356,8 @@ void replay_db_allocation_log(struct volume_descriptor *volume_desc, struct pr_d
 			SET_BIT(&mem_bitmap[byte_id], bit_id);
 			break;
 		default:
-			log_fatal("Unknown/Corrupted entry in allocation log");
+			log_fatal("Unknown/Corrupted entry in allocation log try type is: %d", log_entry->op_type);
+			assert(0);
 			exit(EXIT_FAILURE);
 		}
 	}
