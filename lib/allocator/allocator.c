@@ -238,7 +238,8 @@ struct rul_log_entry *get_next_allocation_log_entry(struct allocation_log_cursor
 				break;
 			}
 			cursor->segment = REAL_ADDRESS(allocation_log->head_dev_offt);
-			log_info("HEAD of allocation log is at %llu", allocation_log->head_dev_offt);
+			log_info("HEAD of allocation log is at %llu tail is at %llu offset is %llu",
+				 allocation_log->head_dev_offt, allocation_log->tail_dev_offt, allocation_log->size);
 			cursor->state = CALCULATE_CHUNKS_IN_SEGMENT;
 			break;
 		case GET_NEXT_SEGMENT:
@@ -252,11 +253,12 @@ struct rul_log_entry *get_next_allocation_log_entry(struct allocation_log_cursor
 			cursor->state = CALCULATE_CHUNKS_IN_SEGMENT;
 			break;
 		case GET_NEXT_CHUNK:
+			++cursor->curr_chunk_id;
 			if (cursor->curr_chunk_id >= cursor->chunks_in_segment) {
 				cursor->state = GET_NEXT_SEGMENT;
 				break;
 			}
-			++cursor->curr_chunk_id;
+
 			cursor->state = CALCULATE_CHUNK_ENTRIES;
 			break;
 		case CALCULATE_CHUNKS_IN_SEGMENT: {
@@ -288,7 +290,8 @@ struct rul_log_entry *get_next_allocation_log_entry(struct allocation_log_cursor
 			break;
 
 		case GET_NEXT_ENTRY:
-
+			//log_info("Cursor chunk entries: %u current: %u", cursor->chunk_entries,
+			//	 cursor->curr_entry_in_chunk);
 			if (cursor->curr_entry_in_chunk >= cursor->chunk_entries) {
 				cursor->state = GET_NEXT_CHUNK;
 				break;
