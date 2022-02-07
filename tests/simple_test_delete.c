@@ -171,7 +171,7 @@ void get_all_valid_keys(par_handle hd)
 	}
 
 	free(k);
-	log_info("Searching finished %d", count);
+	log_info("Searching finished %lu", count);
 	assert(count == NUM_KEYS / 2);
 }
 
@@ -219,13 +219,13 @@ void scan_all_valid_keys(par_handle hd)
 			break;
 	}
 	if ((NUM_KEYS / 2) != count) {
-		log_fatal("Test failed found %llu keys should have found: %llu", count, NUM_KEYS / 2);
+		log_fatal("Test failed found %lu keys should have found: %lu", count, NUM_KEYS / 2);
 		exit(EXIT_FAILURE);
 	}
 	par_close_scanner(my_scanner);
 
 	free(k);
-	log_info("Scanning finished %llu", count);
+	log_info("Scanning finished %lu", count);
 	assert(count == NUM_KEYS / 2);
 }
 

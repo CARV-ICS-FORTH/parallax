@@ -219,7 +219,7 @@ void binary_search_dynamic_leaf(const struct bt_dynamic_leaf_node *leaf, uint32_
 				}
 			} else {
 				if (result->debug == 1)
-					log_debug("%s %s", leaf_key_prefix.prefix, req->key_value_buf + 4);
+					log_debug("%s %s", leaf_key_prefix.prefix, (char *)req->key_value_buf + 4);
 
 				ret = prefix_compare(leaf_key_prefix.prefix, req->key_value_buf + 4, PREFIX_SIZE);
 			}
@@ -347,7 +347,7 @@ void print_dynamic_leaf(const struct bt_dynamic_leaf_node *leaf, uint32_t leaf_s
 	/* log_info("number of entries %d", leaf->header.num_entries); */
 	for (unsigned i = 0; i < leaf->header.num_entries; ++i) {
 		char *key = fill_keybuf(get_kv_offset(leaf, leaf_size, slot_array[i].index), slot_array[i].kv_loc);
-		log_info("offset in leaf %d ADDR %llu Size%d key %s\n", slot_array[i].index,
+		log_info("offset in leaf %d ADDR %p Size%d key %s\n", slot_array[i].index,
 			 get_kv_offset(leaf, leaf_size, slot_array[i].index), KEY_SIZE(key), key + 4);
 	}
 	log_info("2--------------------------------------------");

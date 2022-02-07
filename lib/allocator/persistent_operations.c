@@ -63,7 +63,7 @@ static void pr_flush_allocation_log_and_level_info(struct db_descriptor *db_desc
 
 		db_desc->db_superblock->first_segment[dst_level_id][0] =
 			ABSOLUTE_ADDRESS(db_desc->levels[dst_level_id].first_segment[tree_id]);
-		log_info("Persist %u first was %llu", dst_level_id,
+		log_info("Persist %u first was %lu", dst_level_id,
 			 ABSOLUTE_ADDRESS(db_desc->levels[dst_level_id].first_segment[tree_id]));
 		assert(db_desc->levels[dst_level_id].first_segment[tree_id]);
 
@@ -73,7 +73,7 @@ static void pr_flush_allocation_log_and_level_info(struct db_descriptor *db_desc
 		db_desc->db_superblock->offset[dst_level_id][0] = db_desc->levels[dst_level_id].offset[tree_id];
 
 		db_desc->db_superblock->level_size[dst_level_id][0] = db_desc->levels[dst_level_id].level_size[tree_id];
-		log_info("Writing root[%u][%u] = %llu", dst_level_id, tree_id,
+		log_info("Writing root[%u][%u] = %p", dst_level_id, tree_id,
 			 db_desc->levels[dst_level_id].root_r[tree_id]);
 
 		db_desc->db_superblock->root_r[dst_level_id][0] =
@@ -180,10 +180,10 @@ static void pr_flush_L0_to_L1(struct db_descriptor *db_desc, uint8_t level_id, u
 
 	/*trim L0_recovery_log*/
 	struct segment_header *tail = REAL_ADDRESS(db_desc->small_log_start_segment_dev_offt);
-	log_info("Tail segment id %llu", tail->segment_id);
+	log_info("Tail segment id %lu", tail->segment_id);
 
 	struct segment_header *head = REAL_ADDRESS(db_desc->db_superblock->small_log_head_offt);
-	log_info("Head segment id %llu", head->segment_id);
+	log_info("Head segment id %lu", head->segment_id);
 
 	uint64_t bytes_freed = 0;
 	if (tail != head) {
@@ -191,7 +191,7 @@ static void pr_flush_L0_to_L1(struct db_descriptor *db_desc, uint8_t level_id, u
 		while (1) {
 			struct rul_log_entry log_entry;
 			log_entry.dev_offt = ABSOLUTE_ADDRESS(curr);
-			log_info("Triming L0 recovery log segment:%llu curr segment id:%llu", log_entry.dev_offt,
+			log_info("Triming L0 recovery log segment:%lu curr segment id:%lu", log_entry.dev_offt,
 				 curr->segment_id);
 			log_entry.txn_id = txn_id;
 			log_entry.op_type = RUL_FREE;
@@ -204,7 +204,7 @@ static void pr_flush_L0_to_L1(struct db_descriptor *db_desc, uint8_t level_id, u
 		}
 	}
 
-	log_info("Freed a total of %llu MB bytes from trimming L0 recovery log head %llu tail %llu size %llu ***",
+	log_info("Freed a total of %lu MB bytes from trimming L0 recovery log head %lu tail %lu size %lu ***",
 		 bytes_freed / (1024 * 1024), db_desc->db_superblock->small_log_head_offt,
 		 db_desc->db_superblock->small_log_tail_offt, db_desc->db_superblock->small_log_size);
 
@@ -241,7 +241,7 @@ static void pr_flush_Lmax_to_Ln(struct db_descriptor *db_desc, uint8_t level_id,
 		while (curr != head) {
 			struct rul_log_entry log_entry;
 			log_entry.dev_offt = ABSOLUTE_ADDRESS(curr);
-			log_info("Triming medium log segment:%llu curr segment id:%llu", log_entry.dev_offt,
+			log_info("Triming medium log segment:%lu curr segment id:%lu", log_entry.dev_offt,
 				 curr->segment_id);
 			log_entry.txn_id = txn_id;
 			log_entry.op_type = RUL_FREE;
@@ -253,10 +253,9 @@ static void pr_flush_Lmax_to_Ln(struct db_descriptor *db_desc, uint8_t level_id,
 			curr = REAL_ADDRESS(curr->prev_segment);
 		}
 
-		log_info(
-			"*** Freed a total of %llu MB bytes from trimming medium log head %llu tail %llu size %llu ***",
-			bytes_freed / (1024 * 1024), db_desc->db_superblock->small_log_head_offt,
-			db_desc->db_superblock->small_log_tail_offt, db_desc->db_superblock->small_log_size);
+		log_info("*** Freed a total of %lu MB bytes from trimming medium log head %lu tail %lu size %lu ***",
+			 bytes_freed / (1024 * 1024), db_desc->db_superblock->small_log_head_offt,
+			 db_desc->db_superblock->small_log_tail_offt, db_desc->db_superblock->small_log_size);
 	}
 	pr_lock_db_superblock(db_desc);
 
@@ -323,16 +322,16 @@ static void pr_print_db_superblock(struct pr_db_superblock *superblock)
 {
 	log_info("DB name: %s id in the volume's superblock array: %u valid: %u", superblock->db_name, superblock->id,
 		 superblock->valid);
-	log_info("Large log head_dev_offt: %llu tail_dev_offt: %llu size: %llu", superblock->big_log_head_offt,
+	log_info("Large log head_dev_offt: %lu tail_dev_offt: %lu size: %lu", superblock->big_log_head_offt,
 		 superblock->big_log_tail_offt, superblock->big_log_size);
-	log_info("Medium log head_dev_offt: %llu tail_dev_offt: %llu size: %llu", superblock->medium_log_head_offt,
+	log_info("Medium log head_dev_offt: %lu tail_dev_offt: %lu size: %lu", superblock->medium_log_head_offt,
 		 superblock->medium_log_tail_offt, superblock->medium_log_size);
-	log_info("L0 L0_recovery_log log head_dev_offt: %llu tail_dev_offt: %llu size: %llu",
+	log_info("L0 L0_recovery_log log head_dev_offt: %lu tail_dev_offt: %lu size: %lu",
 		 superblock->small_log_head_offt, superblock->small_log_tail_offt, superblock->small_log_size);
-	log_info("latest LSN: %llu", superblock->lsn);
-	log_info("Recovery of L0_recovery_log starts from segment_dev_offt: %llu offt_in_seg: %llu",
+	log_info("latest LSN: %lu", superblock->lsn);
+	log_info("Recovery of L0_recovery_log starts from segment_dev_offt: %lu offt_in_seg: %lu",
 		 superblock->small_log_start_segment_dev_offt, superblock->small_log_offt_in_start_segment);
-	log_info("Recovery of Big log starts from segment_dev_offt: %llu offt_in_seg: %llu",
+	log_info("Recovery of Big log starts from segment_dev_offt: %lu offt_in_seg: %lu",
 		 superblock->big_log_start_segment_dev_offt, superblock->big_log_offt_in_start_segment);
 #if 0
   for (uint32_t level_id = 0; level_id < MAX_LEVELS; ++level_id) {
@@ -391,7 +390,7 @@ void pr_flush_log_tail(struct db_descriptor *db_desc, struct log_descriptor *log
 
 	ssize_t bytes_written = 0;
 	uint64_t end_offt = start_offt + LOG_CHUNK_SIZE;
-	log_info("Flushing log tail start_offt: %llu end_offt: %llu last tail %d", start_offt, end_offt, last_tail);
+	log_info("Flushing log tail start_offt: %lu end_offt: %lu last tail %d", start_offt, end_offt, last_tail);
 	while (start_offt < end_offt) {
 		bytes_written = pwrite(db_desc->db_volume->vol_fd, &log_desc->tail[last_tail]->buf[start_offt],
 				       end_offt - start_offt, log_desc->tail[last_tail]->dev_offt + start_offt);
@@ -434,7 +433,7 @@ static int add_segment_in_array(struct segment_array *segments, uint64_t dev_off
 static struct segment_array *find_N_last_small_log_segments(struct db_descriptor *db_desc)
 {
 	/*traverse small log and fill the segment array*/
-	log_info("Recovery of small log start from segment dev offt: %llu", db_desc->small_log_start_segment_dev_offt);
+	log_info("Recovery of small log start from segment dev offt: %lu", db_desc->small_log_start_segment_dev_offt);
 	struct segment_header *first_recovery_segment = REAL_ADDRESS(db_desc->small_log_start_segment_dev_offt);
 	struct segment_array *segment_array = calloc(1, sizeof(struct segment_array));
 

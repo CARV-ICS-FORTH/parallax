@@ -351,7 +351,7 @@ void *get_space_for_system(volume_descriptor *volume_desc, uint32_t size, int lo
 {
 	void *addr;
 	if (size % 4096 != 0) {
-		log_fatal("faulty size %lu not a multiple of 4KB", size);
+		log_fatal("faulty size %u not a multiple of 4KB", size);
 		raise(SIGINT);
 		exit(EXIT_FAILURE);
 	}

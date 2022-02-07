@@ -51,7 +51,7 @@ static void rul_flush_log_chunk(struct db_descriptor *db_desc, uint32_t chunk_id
 	ssize_t dev_offt = log_desc->tail_dev_offt + (chunk_id * RUL_LOG_CHUNK_SIZE_IN_BYTES);
 	ssize_t bytes_written = 0;
 	ssize_t total_bytes_written = 0;
-	log_info("Flushing chunk %u offt: %llu", chunk_id, dev_offt);
+	log_info("Flushing chunk %u offt: %lu", chunk_id, dev_offt);
 	while (total_bytes_written < size) {
 		bytes_written = pwrite(db_desc->db_volume->vol_fd, db_desc->allocation_log->segment.chunk[chunk_id],
 				       size - total_bytes_written, dev_offt + total_bytes_written);
@@ -305,7 +305,7 @@ static void rul_add_first_entry(struct db_descriptor *db_desc, struct rul_log_en
 	++allocation_log->curr_chunk_entry;
 	++allocation_log->curr_segment_entry;
 
-	log_info("Adding first entry at dev_offt: %llu offset now: %llu", log_entry->dev_offt,
+	log_info("Adding first entry at dev_offt: %lu offset now: %lu", log_entry->dev_offt,
 		 db_desc->allocation_log->size);
 	free(log_chunk);
 }
@@ -370,7 +370,7 @@ void rul_log_init(struct db_descriptor *db_desc)
 	log_desc->curr_chunk_id = n_entries_in_tail / RUL_LOG_CHUNK_MAX_ENTRIES;
 	log_desc->curr_chunk_entry = n_entries_in_tail % RUL_LOG_CHUNK_MAX_ENTRIES;
 	log_info(
-		"State of the allocation log of DB:%s head_dev_offt: %llu tail_dev_offt: %llu size: %llu curr_chunk_id: %u curr_chunk_entry: %u, curr_segment_entry: %u",
+		"State of the allocation log of DB:%s head_dev_offt: %lu tail_dev_offt: %lu size: %lu curr_chunk_id: %u curr_chunk_entry: %u, curr_segment_entry: %u",
 		db_desc->db_superblock->db_name, log_desc->head_dev_offt, log_desc->tail_dev_offt, log_desc->size,
 		log_desc->curr_chunk_id, log_desc->curr_chunk_entry, log_desc->curr_segment_entry);
 }
@@ -379,14 +379,14 @@ uint64_t rul_start_txn(struct db_descriptor *db_desc)
 {
 	struct rul_log_descriptor *log_desc = db_desc->allocation_log;
 	uint64_t txn_id = __sync_fetch_and_add(&log_desc->txn_id, 1);
-	log_info("Start transaction %llu id curr segment entry %llu", txn_id, log_desc->curr_segment_entry);
+	log_info("Start transaction %lu id curr segment entry %u", txn_id, log_desc->curr_segment_entry);
 	// check if (accidentally) txn exists already
 	struct rul_transaction *transaction;
 
 	MUTEX_LOCK(&log_desc->trans_map_lock);
 	HASH_FIND_PTR(log_desc->trans_map, &txn_id, transaction);
 	if (transaction != NULL) {
-		log_fatal("Txn %llu already exists (it shouldn't)", txn_id);
+		log_fatal("Txn %lu already exists (it shouldn't)", txn_id);
 		exit(EXIT_FAILURE);
 	}
 	transaction = calloc(1, sizeof(struct rul_transaction));
@@ -414,7 +414,7 @@ int rul_add_entry_in_txn_buf(struct db_descriptor *db_desc, struct rul_log_entry
 	HASH_FIND_PTR(log_desc->trans_map, &txn_id, transaction);
 
 	if (transaction == NULL) {
-		log_fatal("Txn %llu not found!", txn_id);
+		log_fatal("Txn %lu not found!", txn_id);
 		assert(0);
 		exit(EXIT_FAILURE);
 	}
@@ -446,14 +446,14 @@ struct rul_log_info rul_flush_txn(struct db_descriptor *db_desc, uint64_t txn_id
 	HASH_FIND_PTR(log_desc->trans_map, &txn_id, transaction);
 
 	if (transaction == NULL) {
-		log_fatal("Txn %llu not found!", txn_id);
+		log_fatal("Txn %lu not found!", txn_id);
 		assert(0);
 		exit(EXIT_FAILURE);
 	}
 
 	MUTEX_LOCK(&log_desc->rul_lock);
 	struct rul_transaction_buffer *curr = transaction->head;
-	log_info("Flushing txn id %llu for DB: %s, num entries %u", txn_id, db_desc->db_superblock->db_name,
+	log_info("Flushing txn id %lu for DB: %s, num entries %u", txn_id, db_desc->db_superblock->db_name,
 		 curr->n_entries);
 	assert(curr != NULL);
 	while (curr) {
@@ -488,7 +488,7 @@ void rul_apply_txn_buf_freeops_and_destroy(struct db_descriptor *db_desc, uint64
 	HASH_FIND_PTR(log_desc->trans_map, &txn_id, transaction);
 
 	if (transaction == NULL) {
-		log_fatal("Txn %llu not found!", txn_id);
+		log_fatal("Txn %lu not found!", txn_id);
 		assert(0);
 		exit(EXIT_FAILURE);
 	}

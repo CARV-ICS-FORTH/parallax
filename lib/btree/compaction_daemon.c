@@ -241,9 +241,8 @@ static void comp_get_next_key(struct comp_level_read_cursor *c)
 					assert((uint64_t)c->curr_segment ==
 					       (uint64_t)c->handle->db_desc->levels[c->level_id]
 						       .last_segment[c->tree_id]);
-					log_info("Done reading level %lu cursor offset %llu total offt %llu",
-						 c->level_id, c->offset,
-						 c->handle->db_desc->levels[c->level_id].offset[c->tree_id]);
+					log_info("Done reading level %u cursor offset %lu total offt %lu", c->level_id,
+						 c->offset, c->handle->db_desc->levels[c->level_id].offset[c->tree_id]);
 					assert(c->offset == c->handle->db_desc->levels[c->level_id].offset[c->tree_id]);
 					c->state = COMP_CUR_CHECK_OFFT;
 					//TODO replace goto with continue;
@@ -357,7 +356,7 @@ static void comp_get_next_key(struct comp_level_read_cursor *c)
 				goto fsm_entry;
 			default:
 				log_fatal("Faulty read cursor of level %u Wrong node type %u offset "
-					  "was %llu total level offset %llu faulty segment offt: %llu",
+					  "was %lu total level offset %lu faulty segment offt: %lu",
 					  c->level_id, type, c->offset,
 					  c->handle->db_desc->levels[c->level_id].offset[0],
 					  ABSOLUTE_ADDRESS(c->curr_segment));
@@ -535,19 +534,19 @@ static void assert_level_segments(db_descriptor *db_desc, uint8_t level_id, uint
 	segment_header *segment = db_desc->levels[level_id].first_segment[tree_id];
 	assert(segment);
 
-	log_info("First segment in get_assert_level %u %llu segment id %lu %s next segment %lu", level_id, segment,
+	log_info("First segment in get_assert_level %u %p segment id %lu %s next segment %p", level_id, segment,
 		 segment->segment_id, nodetype_tostring(segment->nodetype), segment->next_segment);
 	measure_level_bytes += SEGMENT_SIZE;
 
 	for (segment = REAL_ADDRESS(segment->next_segment); segment->next_segment;
 	     segment = REAL_ADDRESS(segment->next_segment)) {
-		log_info("segment in get_assert_level %u %llu segment id %lu %s next %lu ", level_id, segment,
+		log_info("segment in get_assert_level %u %p segment id %lu %s next %p ", level_id, segment,
 			 segment->segment_id, nodetype_tostring(segment->nodetype), segment->next_segment);
 
 		measure_level_bytes += SEGMENT_SIZE;
 	}
-	log_info("segment in get_assert_level %u %llu segment id %lu %s next %lu ", level_id, segment,
-		 segment->segment_id, nodetype_tostring(segment->nodetype), segment->next_segment);
+	log_info("segment in get_assert_level %u %p segment id %lu %s next %p ", level_id, segment, segment->segment_id,
+		 nodetype_tostring(segment->nodetype), segment->next_segment);
 
 	measure_level_bytes += SEGMENT_SIZE;
 
@@ -605,9 +604,9 @@ static void comp_close_write_cursor(struct comp_level_write_cursor *c)
 			assert(c->last_segment_btree_level_offt[i + 1]);
 			segment_in_mem_buffer->next_segment = (void *)c->first_segment_btree_level_offt[i + 1];
 		}
-		log_debug("i %d Next pointer address %lu", i, segment_in_mem_buffer->next_segment);
+		log_debug("i %d Next pointer address %p", i, segment_in_mem_buffer->next_segment);
 		comp_write_segment(c->segment_buf[i], c->last_segment_btree_level_offt[i], 0, SEGMENT_SIZE, c->fd);
-		log_info("Dumped buffer %u at dev_offt %llu", i, c->last_segment_btree_level_offt[i]);
+		log_info("Dumped buffer %u at dev_offt %lu", i, c->last_segment_btree_level_offt[i]);
 	}
 
 	assert_level_segments(c->handle->db_desc, c->level_id, 1);
@@ -1171,11 +1170,12 @@ static void print_heap_node_key(struct sh_heap_node *nd)
 	switch (nd->cat) {
 	case SMALL_INPLACE:
 	case MEDIUM_INPLACE:
-		log_info("In place Key is %u:%s", *(uint32_t *)nd->KV, nd->KV + sizeof(uint32_t));
+		log_info("In place Key is %u:%s", *(uint32_t *)nd->KV, (char *)nd->KV + sizeof(uint32_t));
 		break;
 	case BIG_INLOG:
 	case MEDIUM_INLOG:
-		log_info("In log Key prefix is %.12s device offt %llu", nd->KV, *(uint64_t *)(nd->KV + PREFIX_SIZE));
+		log_info("In log Key prefix is %.12s device offt %lu", (char *)nd->KV,
+			 *(uint64_t *)(nd->KV + PREFIX_SIZE));
 		break;
 	default:
 		log_info("Unhandle/Unknown category");
@@ -1293,10 +1293,10 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 	if (merged_level->level_id == handle->db_desc->level_medium_inplace)
 		merged_level->medium_log_LRU_cache = init_LRU();
 
-	log_info("Src [%u][%u] size = %llu", comp_req->src_level, comp_req->src_tree,
+	log_info("Src [%u][%u] size = %lu", comp_req->src_level, comp_req->src_tree,
 		 handle->db_desc->levels[comp_req->src_level].level_size[comp_req->src_tree]);
 	if (comp_roots.dst_root)
-		log_info("Dst [%u][%u] size = %llu", comp_req->dst_level, 0,
+		log_info("Dst [%u][%u] size = %lu", comp_req->dst_level, 0,
 			 handle->db_desc->levels[comp_req->dst_level].level_size[0]);
 	else
 		log_info("Empty dst [%u][%u]", comp_req->dst_level, 0);
@@ -1429,13 +1429,13 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 		/*free dst (L_i+1) level*/
 		space_freed = seg_free_level(comp_req->db_desc, txn_id, comp_req->dst_level, 0);
 
-		log_info("Freed space %llu MB from db:%s destination level %u", space_freed / (1024 * 1024),
+		log_info("Freed space %lu MB from db:%s destination level %u", space_freed / (1024 * 1024),
 			 comp_req->db_desc->db_superblock->db_name, comp_req->dst_level);
 	}
 	/*Free and zero L_i*/
 	uint64_t txn_id = comp_req->db_desc->levels[comp_req->dst_level].allocation_txn_id[comp_req->dst_tree];
 	space_freed = seg_free_level(hd.db_desc, txn_id, comp_req->src_level, comp_req->src_tree);
-	log_info("Freed space %llu MB from db:%s source level %u", space_freed / (1024 * 1024),
+	log_info("Freed space %lu MB from db:%s source level %u", space_freed / (1024 * 1024),
 		 comp_req->db_desc->db_superblock->db_name, comp_req->src_level);
 	seg_zero_level(hd.db_desc, comp_req->src_level, comp_req->src_tree);
 
@@ -1534,9 +1534,9 @@ void *compaction(void *_comp_req)
 		unlock_to_update_levels_after_compaction(comp_req);
 
 		log_info("Swapped levels %d to %d successfully", comp_req->src_level, comp_req->dst_level);
-		log_info("After swapping src tree[%d][%d] size is %llu", comp_req->src_level, 0,
+		log_info("After swapping src tree[%d][%d] size is %lu", comp_req->src_level, 0,
 			 leveld_src->level_size[0]);
-		log_info("After swapping dst tree[%d][%d] size is %llu", comp_req->dst_level, 0,
+		log_info("After swapping dst tree[%d][%d] size is %lu", comp_req->dst_level, 0,
 			 leveld_dst->level_size[0]);
 		assert(leveld_dst->first_segment != NULL);
 	}
