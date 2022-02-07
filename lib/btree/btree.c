@@ -425,7 +425,7 @@ static void init_fresh_logs(struct db_descriptor *db_desc)
 	db_desc->big_log_start_segment_dev_offt = db_desc->big_log.tail_dev_offt;
 	db_desc->big_log_start_offt_in_segment = db_desc->big_log.size % SEGMENT_SIZE;
 	init_log_buffer(&db_desc->big_log, BIG_LOG);
-	log_info("BIG_LOG head %llu", db_desc->big_log.head_dev_offt);
+	log_info("BIG_LOG head %lu", db_desc->big_log.head_dev_offt);
 
 	// Medium log
 	db_desc->medium_log.head_dev_offt = 0;
@@ -546,9 +546,9 @@ static void restore_db(struct db_descriptor *db_desc, uint32_t region_idx)
 					(segment_header *)REAL_ADDRESS(superblock->last_segment[level_id][tree_id]);
 
 				db_desc->levels[level_id].offset[tree_id] = superblock->offset[level_id][tree_id];
-				log_info("Superblock of db: %s first_segment dev offt: %llu", superblock->db_name,
+				log_info("Superblock of db: %s first_segment dev offt: %lu", superblock->db_name,
 					 superblock->first_segment[level_id][tree_id]);
-				log_info("Restoring level[%u][%u] first segment %llu last segment: %llu size: %llu",
+				log_info("Restoring level[%u][%u] first segment %p last segment: %p size: %lu",
 					 level_id, tree_id, db_desc->levels[level_id].first_segment[tree_id],
 					 db_desc->levels[level_id].last_segment[tree_id],
 					 db_desc->levels[level_id].offset[tree_id]);
@@ -569,7 +569,7 @@ static void restore_db(struct db_descriptor *db_desc, uint32_t region_idx)
 
 			db_desc->levels[level_id].root_w[tree_id] = db_desc->levels[level_id].root_r[tree_id];
 			if (db_desc->levels[level_id].root_r[tree_id])
-				log_info("Restored root[%u][%u] = %llu", level_id, tree_id,
+				log_info("Restored root[%u][%u] = %p", level_id, tree_id,
 					 db_desc->levels[level_id].root_r[tree_id]);
 		}
 	}
@@ -614,7 +614,7 @@ static db_descriptor *get_db_from_volume(char *volume_name, char *db_name, char 
      * As a result we need to acquire a txn_id for the L0
     */
 
-			log_info("Got txn %llu for the initialization of Large and L0_recovery_logs of DB: %s",
+			log_info("Got txn %lu for the initialization of Large and L0_recovery_logs of DB: %s",
 				 db_desc->levels[0].allocation_txn_id[0], db_name);
 			init_fresh_db(db_desc);
 		}
@@ -704,7 +704,7 @@ db_handle *internal_db_open(struct volume_descriptor *volume_desc, uint64_t star
 		else
 			handle->db_desc->levels[level_id].max_level_size = level0_size;
 
-		log_info("DB:Level %d max_total_size %llu", level_id, handle->db_desc->levels[level_id].max_level_size);
+		log_info("DB:Level %d max_total_size %lu", level_id, handle->db_desc->levels[level_id].max_level_size);
 	}
 	handle->db_desc->levels[MAX_LEVELS - 1].max_level_size = UINT64_MAX;
 	handle->db_desc->reference_count = 1;
@@ -1791,8 +1791,8 @@ int8_t update_index(index_node *node, node_header *left_child, node_header *righ
 					// addr is the same
 					break;
 			} else if (ret == 0) {
-				log_fatal("key already present index_key %s key_buf %s", index_key_buf + 4,
-					  key_buf + 4);
+				log_fatal("key already present index_key %s key_buf %s", (char *)(index_key_buf + 4),
+					  (char *)(key_buf + 4));
 				raise(SIGINT);
 				exit(EXIT_FAILURE);
 			} else {
@@ -2145,14 +2145,14 @@ void assert_index_node(node_header *node)
 			init_key_cmp(&key2_cmp, key_tmp, KV_FORMAT);
 			if (key_cmp(&key1_cmp, &key2_cmp) >= 0) {
 				log_fatal("corrupted index %d:%s something else %d:%s\n", *(uint32_t *)key_tmp_prev,
-					  key_tmp_prev + 4, *(uint32_t *)key_tmp, key_tmp + 4);
+					  (char *)(key_tmp_prev + 4), *(uint32_t *)key_tmp, (char *)(key_tmp + 4));
 				raise(SIGINT);
 				exit(EXIT_FAILURE);
 			}
 		}
 		if (key_tmp_prev)
 			log_fatal("corrupted index %*s something else %*s\n", *(uint32_t *)key_tmp_prev,
-				  key_tmp_prev + 4, *(uint32_t *)key_tmp, key_tmp + 4);
+				  (char *)key_tmp_prev + 4, *(uint32_t *)key_tmp, (char *)key_tmp + 4);
 
 		key_tmp_prev = key_tmp;
 		addr += sizeof(uint64_t);

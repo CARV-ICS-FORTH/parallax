@@ -158,7 +158,7 @@ int main(int argc, char **argv)
 	}
 
 	if (kv_mix_index == 6) {
-		log_fatal("Invalid kv_mix provided! kv_mix = %s", get_option(options, 5));
+		log_fatal("Invalid kv_mix provided! kv_mix = %s", (char *)get_option(options, 5));
 		return 1;
 	}
 
@@ -202,7 +202,7 @@ int main(int argc, char **argv)
 		}
 		par_put(hd, &my_kv);
 		if (++key_count % 10000 == 0)
-			log_info("Progress in population %llu keys", key_count);
+			log_info("Progress in population %lu keys", key_count);
 	}
 	log_info("Population ended Successfully! :-)");
 
@@ -213,7 +213,7 @@ Get:
 	log_info("Testing GETS now");
 	for (uint64_t i = base; i < base + total_keys; ++i) {
 		if (i % 100000 == 0)
-			log_info("<Get no %llu>", i);
+			log_info("<Get no %lu>", i);
 		memcpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
 		sprintf(k->key_buf + strlen(KEY_PREFIX), "%llu", (long long unsigned)i);
 		k->key_size = strlen(k->key_buf);
@@ -228,7 +228,7 @@ Get:
 		if (my_value.val_size != SMALL_VALUE_SIZE && my_value.val_size != MEDIUM_VALUE_SIZE &&
 		    my_value.val_size != LARGE_VALUE_SIZE) {
 			log_fatal(
-				"Corrupted size for key: %s got %lu does not match any of the SMALL, MEDIUM, and LARGE categories",
+				"Corrupted size for key: %s got %u does not match any of the SMALL, MEDIUM, and LARGE categories",
 				my_kv.k.data, my_value.val_size);
 			exit(EXIT_FAILURE);
 		}
@@ -269,7 +269,7 @@ Scan:
 
 	for (uint64_t i = base; i < (base + (total_keys - scan_size)); ++i) {
 		if (i % 100000 == 0)
-			log_info("<Scan no %llu>", i);
+			log_info("<Scan no %lu>", i);
 		memcpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
 		sprintf(k->key_buf + strlen(KEY_PREFIX), "%llu", (long long unsigned)i);
 		k->key_size = strlen(k->key_buf);
@@ -313,7 +313,7 @@ Scan:
 		}
 
 		if (i % 100000 == 0)
-			log_info("</Scan no %llu>", i);
+			log_info("</Scan no %lu>", i);
 		par_close_scanner(my_scanner);
 	}
 	log_info("Scan test Successfull");

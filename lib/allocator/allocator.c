@@ -93,7 +93,7 @@ off64_t mount_volume(char *volume_name, int64_t start, int64_t unused_size)
 		}
 
 		device_size = lseek64(FD, 0, SEEK_END);
-		log_info("Found device of %lld bytes", device_size);
+		log_info("Found device of %ld bytes", device_size);
 		if (device_size == -1) {
 			log_fatal("failed to determine volume size exiting...");
 			perror("ioctl");
@@ -101,7 +101,7 @@ off64_t mount_volume(char *volume_name, int64_t start, int64_t unused_size)
 		}
 
 		if (device_size < MIN_VOLUME_SIZE) {
-			log_fatal("Sorry minimum supported volume size is %lld GB actual size %lld GB",
+			log_fatal("Sorry minimum supported volume size is %ld GB actual size %ld GB",
 				  MIN_VOLUME_SIZE / (1024 * 1024 * 1024), device_size / (1024 * 1024 * 1024));
 			exit(EXIT_FAILURE);
 		}
@@ -237,7 +237,8 @@ struct rul_log_entry *get_next_allocation_log_entry(struct allocation_log_cursor
 				break;
 			}
 			cursor->segment = REAL_ADDRESS(allocation_log->head_dev_offt);
-			log_info("HEAD of allocation log is at %llu tail is at %llu offset is %llu",
+			//TODO check tail_dev_offt should be uint32_t and not uint64_t
+			log_info("HEAD of allocation log is at %lu tail is at %u offset is %u",
 				 allocation_log->head_dev_offt, allocation_log->tail_dev_offt, allocation_log->size);
 			cursor->state = CALCULATE_CHUNKS_IN_SEGMENT;
 			break;
@@ -272,7 +273,7 @@ struct rul_log_entry *get_next_allocation_log_entry(struct allocation_log_cursor
 			}
 
 			cursor->curr_chunk_id = 0;
-			log_info("Chunks in allocation log segment are: %llu", cursor->chunks_in_segment);
+			log_info("Chunks in allocation log segment are: %u", cursor->chunks_in_segment);
 			cursor->state = CALCULATE_CHUNK_ENTRIES;
 			break;
 		}
@@ -286,7 +287,7 @@ struct rul_log_entry *get_next_allocation_log_entry(struct allocation_log_cursor
 			}
 
 			cursor->curr_entry_in_chunk = 0;
-			log_info("Chunk entries in allocation log segment are: %llu", cursor->chunk_entries);
+			log_info("Chunk entries in allocation log segment are: %u", cursor->chunk_entries);
 			cursor->state = GET_NEXT_ENTRY;
 			break;
 
@@ -325,7 +326,7 @@ void replay_db_allocation_log(struct volume_descriptor *volume_desc, struct pr_d
 	memset(mem_bitmap, 0xFF, mem_bitmap_size);
 	struct pr_region_allocation_log *allocation_log = &superblock->allocation_log;
 
-	log_info("Allocation log of DB: %s head %llu tail %llu size %llu", superblock->db_name,
+	log_info("Allocation log of DB: %s head %lu tail %u size %u", superblock->db_name,
 		 allocation_log->head_dev_offt, allocation_log->tail_dev_offt, allocation_log->size);
 
 	struct allocation_log_cursor *log_cursor = init_allocation_log_cursor(volume_desc, superblock);
@@ -426,7 +427,7 @@ uint32_t destroy_db_superblock(struct volume_descriptor *volume_desc, const char
 	uint8_t found;
 	struct pr_db_superblock *db_superblock = get_db_superblock(volume_desc, db_name, db_name_size, 0, &found);
 	if (!db_superblock) {
-		log_warn("Region %s not found so I cannot destory it :-)");
+		log_warn("DB not found so I cannot destory it :-)");
 		ret = 0;
 		goto exit;
 	}
@@ -619,7 +620,7 @@ uint64_t mem_allocate(struct volume_descriptor *volume_desc, uint64_t num_bytes)
 		goto exit;
 	}
 	if (num_bytes % SEGMENT_SIZE != 0) {
-		log_warn("Allocation size: %llu not a multiple of SEGMENT_SIZE: %u", num_bytes, SEGMENT_SIZE);
+		log_warn("Allocation size: %lu not a multiple of SEGMENT_SIZE: %u", num_bytes, SEGMENT_SIZE);
 		base_addr = 0;
 		goto exit;
 	}
@@ -655,7 +656,7 @@ uint64_t mem_allocate(struct volume_descriptor *volume_desc, uint64_t num_bytes)
 			// reached end of bitmap
 			if (wrap_around == MAX_ALLOCATION_TRIES) {
 				log_warn("Volume %s out of space allocation request size was "
-					 "%llu max_tries %d\n",
+					 "%lu max_tries %d\n",
 					 volume_desc->volume_name, num_bytes, MAX_ALLOCATION_TRIES);
 				mem_bitmap_reset_pos(volume_desc);
 				free(b_words);
@@ -775,10 +776,10 @@ static int mem_read_into_buffer(char *buffer, uint32_t start, uint32_t size, off
 static void mem_print_volume_info(struct superblock *S, char *volume_name)
 {
 	log_info("<Volume %s info>", volume_name);
-	log_info("Volume size in GB: %llu", S->volume_size / (1024 * 1024 * 1024));
-	log_info("Able to host up to %u regions useful space in GB: %llu", S->max_regions_num,
+	log_info("Volume size in GB: %lu", S->volume_size / (1024 * 1024 * 1024));
+	log_info("Able to host up to %u regions useful space in GB: %lu", S->max_regions_num,
 		 (S->volume_size - (S->volume_metadata_size + S->unmappedSpace)) / (1024 * 1024 * 1024));
-	log_info("Unmapped space %llu", S->unmappedSpace);
+	log_info("Unmapped space %lu", S->unmappedSpace);
 	log_info("</Volume %s info>", volume_name);
 }
 
@@ -852,13 +853,13 @@ static volume_descriptor *mem_init_volume(char *volume_name)
 	}
 	if ((uint64_t)device_size !=
 	    volume_desc->vol_superblock.volume_size + volume_desc->vol_superblock.unmappedSpace) {
-		log_fatal("Volume sizes do not match! Found %lld expected %lld", device_size,
+		log_fatal("Volume sizes do not match! Found %ld expected %ld", device_size,
 			  volume_desc->vol_superblock.volume_size);
 		exit(EXIT_FAILURE);
 	}
 
 	if (volume_desc->vol_superblock.magic_number != FINE_STRUCTURE_CONSTANT) {
-		log_fatal("Volume %s seems not to have been initialized!");
+		log_fatal("Volume seems not to have been initialized!");
 		exit(EXIT_FAILURE);
 	}
 	volume_desc->mem_volume_bitmap_size = volume_desc->vol_superblock.bitmap_size_in_words;
@@ -896,10 +897,10 @@ static volume_descriptor *mem_init_volume(char *volume_name)
 	}
 
 	if (registry_size_in_bits % bits_in_page) {
-		log_fatal("ownership registry must be a multiple of 4 KB its value %llu", registry_size_in_bits);
+		log_fatal("ownership registry must be a multiple of 4 KB its value %lu", registry_size_in_bits);
 		exit(EXIT_FAILURE);
 	}
-	log_info("Unmapped bits %llu registry_size_in_bits %llu", unmapped_bits, registry_size_in_bits);
+	log_info("Unmapped bits %u registry_size_in_bits %lu", unmapped_bits, registry_size_in_bits);
 	char *registry_buffer = (char *)volume_desc->mem_volume_bitmap;
 	for (uint64_t i = registry_size_in_bits - 1; i >= registry_size_in_bits - unmapped_bits; --i) {
 		uint64_t idx = i / 8;

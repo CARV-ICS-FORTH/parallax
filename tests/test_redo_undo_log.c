@@ -37,7 +37,7 @@ static void *rul_worker(void *args)
 
 	for (uint32_t i = 0; i < RUL_TRANS_PER_WORKER; ++i) {
 		uint64_t my_txn_id = rul_start_txn(db_desc);
-		log_info("Starting trans %llu", my_txn_id);
+		log_info("Starting trans %lu", my_txn_id);
 		uint32_t trans_length = rand() % RUL_MAX_TRANS_SIZE;
 		struct rul_log_entry log_entry;
 
@@ -51,7 +51,7 @@ static void *rul_worker(void *args)
 			rul_add_entry_in_txn_buf(db_desc, &log_entry);
 			__sync_fetch_and_add(&bytes_allocated, SEGMENT_SIZE);
 		}
-		log_info("Commiting transaction %llu", my_txn_id);
+		log_info("Commiting transaction %lu", my_txn_id);
 		rul_flush_txn(db_desc, my_txn_id);
 	}
 	return NULL;
@@ -77,7 +77,7 @@ int main(int argc, char *argv[])
 	db_desc->db_volume = volume_desc;
 	pr_read_db_superblock(db_desc);
 	rul_log_init(db_desc);
-	log_info("Initialized redo undo log curr segment entry %llu", db_desc->allocation_log->curr_segment_entry);
+	log_info("Initialized redo undo log curr segment entry %u", db_desc->allocation_log->curr_segment_entry);
 
 	log_info("Initialized redo undo log successfully!, starting %d workers", RUL_NUM_THREADS);
 

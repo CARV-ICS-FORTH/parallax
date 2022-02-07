@@ -74,5 +74,5 @@ void print_ascending_list(struct dups_list *list)
 		return;
 
 	for (struct dups_node *curr = list->head; curr; curr = curr->next)
-		log_info("print in order %llu", curr->dev_offset);
+		log_info("print in order %lu", curr->dev_offset);
 }

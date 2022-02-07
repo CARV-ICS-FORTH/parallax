@@ -47,7 +47,7 @@ static void free_device(struct volume_descriptor *volume_desc, uint64_t capacity
 			log_info("This is the last free");
 		}
 		if (++num_free_ops % 10000 == 0) {
-			log_info("Freed up to %llu out of %llu", bytes_freed, capacity);
+			log_info("Freed up to %lu out of %lu", bytes_freed, capacity);
 		}
 		mem_bitmap_mark_block_free(volume_desc, dev_offt);
 		bytes_freed += num_bytes;
@@ -55,10 +55,10 @@ static void free_device(struct volume_descriptor *volume_desc, uint64_t capacity
 		dev_offt += num_bytes;
 	}
 	if (bytes_freed != capacity) {
-		log_fatal("Missing free bytes freed %llu capacity %llu", bytes_freed, capacity);
+		log_fatal("Missing free bytes freed %lu capacity %lu", bytes_freed, capacity);
 		exit(EXIT_FAILURE);
 	}
-	log_info("Freed all the %llu bytes of the device", bytes_freed);
+	log_info("Freed all the %lu bytes of the device", bytes_freed);
 	return;
 }
 
@@ -99,8 +99,8 @@ int main(int argc, char **argv)
 			int last = 0;
 
 			if (++num_allocations % 10000 == 0)
-				log_info("Have allocated %llu bytes so far out of device capacity %llu",
-					 bytes_allocated, device_capacity);
+				log_info("Have allocated %lu bytes so far out of device capacity %lu", bytes_allocated,
+					 device_capacity);
 
 			if (device_capacity - bytes_allocated == 0) {
 				log_info("Whole device allocated ! :-)");
@@ -115,18 +115,18 @@ int main(int argc, char **argv)
 			uint64_t dev_offt = mem_allocate(volume_desc, num_bytes);
 			if (dev_offt == 0) {
 				log_fatal(
-					"Device out of space thish should not happen! allocations: %llu device capacity: %llu",
+					"Device out of space thish should not happen! allocations: %lu device capacity: %lu",
 					bytes_allocated, device_capacity);
 				exit(EXIT_FAILURE);
 			}
 			if (dev_offt != (uint64_t)next_dev_offt) {
-				log_fatal("Allocation failed for num bytes %u should have been %llu got "
-					  "%llu",
+				log_fatal("Allocation failed for num bytes %u should have been %lu got "
+					  "%lu",
 					  num_bytes, next_dev_offt, dev_offt);
 				exit(EXIT_FAILURE);
 			}
 			if (dev_offt % (SEGMENT_SIZE) != 0) {
-				log_fatal("Misaligned dev_offt %llu, offt %llu MAPPED %llu", dev_offt);
+				log_fatal("Misaligned dev_offt %lu", dev_offt);
 				exit(EXIT_FAILURE);
 			}
 
@@ -143,13 +143,13 @@ int main(int argc, char **argv)
 		}
 
 		if (bytes_allocated != device_capacity) {
-			log_fatal("Managed to allocate %llu bytes when device capacity is %llu bytes", bytes_allocated,
+			log_fatal("Managed to allocate %lu bytes when device capacity is %lu bytes", bytes_allocated,
 				  device_capacity);
 			exit(EXIT_FAILURE);
 		}
 		log_info("ALLOCATION test successfull round %d! freeing everything", i);
 		free_device(volume_desc, device_capacity);
-		log_info("Allocation for num_bytes %llu successful! Proceeding to next round", num_bytes);
+		log_info("Allocation for num_bytes %u successful! Proceeding to next round", num_bytes);
 		sleep(4);
 	}
 
