@@ -10,6 +10,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 #include "../include/parallax.h"
+#include "arg_parser.h"
 #include <assert.h>
 #include <log.h>
 #include <stdint.h>
@@ -33,7 +34,6 @@ struct value {
 	char value_buf[];
 };
 
-static char *volume_name;
 static uint64_t total_keys = 1000000;
 static uint64_t base;
 static uint32_t scan_size = 16;
@@ -41,85 +41,131 @@ static char workload[512];
 
 enum workload_types { Load = 0, Get, Scan, All };
 const char *workload_tags[] = { "Load", "Get", "Scan", "All" };
+const char *kv_mix[] = { "s", "m", "l", "sd", "md", "ld" };
 
 #define NUM_OPTIONS 4
 enum kvf_options { VOLUME_NAME = 0, TOTAL_KEYS, SCAN_SIZE, WORKLOAD };
-static char *options[] = { "--volume_name", "--total_keys", "--scan_size", "--workload" };
-static char *help = "Usage ./test_dirty_scans <options> Where options include:\n --volume_name <volume name>,\n \
-	--total_keys <total number of keys> \n --scan_size <entries to fetch per scan>\n \
---workload <Load, Get, Scan, All>";
 
-static void parse_options(int argc, char **argv)
+unsigned choose_mix(const char *mix, unsigned key_count)
 {
-	int i, j;
-	for (i = 1; i < argc; i += 2) {
-		for (j = 0; j < NUM_OPTIONS; ++j) {
-			if (strcmp(argv[i], options[j]) == 0) {
-				switch (j) {
-				case WORKLOAD:
-					if (i + 1 >= argc) {
-						log_fatal("Wrong arguments number %s", help);
-						exit(EXIT_FAILURE);
-					}
-
-					strcpy(workload, argv[i + 1]);
-					if (!(!strcmp(workload, workload_tags[Load]) ||
-					      !strcmp(workload, workload_tags[Get]) ||
-					      !strcmp(workload, workload_tags[Scan]) ||
-					      !strcmp(workload, workload_tags[All]))) {
-						log_fatal(
-							"Unknown workload type possible values are Load, Get, Scan, All (Default)");
-						exit(EXIT_FAILURE);
-					}
-					break;
-				case VOLUME_NAME:
-					if (i + 1 >= argc) {
-						log_fatal("Wrong arguments number %s", help);
-						exit(EXIT_FAILURE);
-					}
-					volume_name = calloc(1, strlen(argv[i + 1]) + 1);
-					strcpy(volume_name, argv[i + 1]);
-					break;
-				case TOTAL_KEYS: {
-					if (i + 1 >= argc) {
-						log_fatal("Wrong arguments number %s", help);
-						exit(EXIT_FAILURE);
-					}
-					char *ptr;
-					total_keys = strtoul(argv[i + 1], &ptr, 10);
-					break;
-				}
-				case SCAN_SIZE: {
-					if (i + 1 >= argc) {
-						log_fatal("Wrong arguments number %s", help);
-						exit(EXIT_FAILURE);
-					}
-					char *ptr;
-					scan_size = strtoul(argv[i + 1], &ptr, 10);
-					break;
-				}
-				}
-				break;
-			}
-		}
-	}
-
-	if (!volume_name) {
-		log_fatal("Device name not specified help:\n %s", help);
+	unsigned kv_mix_mapping;
+	if (!strcmp(mix, "sd"))
+		kv_mix_mapping = 0;
+	else if (!strcmp(mix, "md"))
+		kv_mix_mapping = 1;
+	else if (!strcmp(mix, "ld"))
+		kv_mix_mapping = 2;
+	else if (!strcmp(mix, "s"))
+		kv_mix_mapping = 3;
+	else if (!strcmp(mix, "m"))
+		kv_mix_mapping = 4;
+	else if (!strcmp(mix, "l"))
+		kv_mix_mapping = 5;
+	else {
+		log_fatal("Error unknown workload specified");
 		exit(EXIT_FAILURE);
 	}
 
-	log_info("Volume name: %s, number of keys: %llu, and scan size = %llu", volume_name, total_keys, scan_size);
+	switch (kv_mix_mapping) {
+	case 0:
+		if (key_count < 6)
+			return 0;
+		else if (key_count >= 6 && key_count < 8)
+			return 1;
+		else
+			return 2;
+
+		break;
+	case 1:
+		if (key_count < 6)
+			return 1;
+		else if (key_count >= 6 && key_count < 8)
+			return 0;
+		else
+			return 2;
+
+		break;
+	case 2:
+		if (key_count < 6)
+			return 2;
+		else if (key_count >= 6 && key_count < 8)
+			return 0;
+		else
+			return 1;
+
+		break;
+	case 3:
+		return 0;
+	case 4:
+		return 1;
+	case 5:
+		return 2;
+	default:
+		assert(0);
+		log_fatal("Unknown workload given");
+		exit(EXIT_FAILURE);
+	}
 }
 
 int main(int argc, char **argv)
 {
 	strcpy(workload, "All"); /*Default value*/
-	parse_options(argc, argv);
+	int help_flag = 0;
+
+	struct wrap_option options[] = {
+		{ { "help", no_argument, &help_flag, 1 }, "Prints valid arguments for test_medium.", NULL, INTEGER },
+		{ { "file", required_argument, 0, 'a' },
+		  "--file=path to file of db, parameter that specifies the target where parallax is going to run.",
+		  NULL,
+		  STRING },
+		{ { "num_of_kvs", required_argument, 0, 'b' },
+		  "--num_of_kvs=number, parameter that specifies the number of operation the test will execute.",
+		  NULL,
+		  INTEGER },
+		{ { "scan_size", required_argument, 0, 'b' },
+		  "--scan_size=number, parameter that specifies entries to fetch per scan",
+		  NULL,
+		  INTEGER },
+		{ { "workload", required_argument, 0, 'b' },
+		  "--workload=string, parameter that specifies the workload to run possible options <Load, Get, Scan, All>",
+		  NULL,
+		  STRING },
+		{ { "kv_mix", required_argument, 0, 'b' },
+		  "--kv_mix=string, parameter that specifies the mix of the kvs to run possible options <s, m, l, sd, md, ld>",
+		  NULL,
+		  STRING },
+		{ { 0, 0, 0, 0 }, "End of arguments", NULL, INTEGER }
+	};
+	unsigned options_len = (sizeof(options) / sizeof(struct wrap_option));
+
+	arg_parse(argc, argv, options, options_len);
+	arg_print_options(help_flag, options, options_len);
+
+	total_keys = *(int *)get_option(options, 2);
+	scan_size = *(int *)get_option(options, 3);
+
+	strcpy(workload, get_option(options, 4));
+	if (!(!strcmp(workload, workload_tags[Load]) || !strcmp(workload, workload_tags[Get]) ||
+	      !strcmp(workload, workload_tags[Scan]) || !strcmp(workload, workload_tags[All]))) {
+		log_fatal("Unknown workload type possible values are Load, Get, Scan, All (Default)");
+		exit(EXIT_FAILURE);
+	}
+
+	unsigned kv_mix_index;
+	for (kv_mix_index = 0; kv_mix_index < 6; kv_mix_index++) {
+		if (!strcmp(kv_mix[kv_mix_index], get_option(options, 5)))
+			break;
+	}
+
+	if (kv_mix_index == 6) {
+		log_fatal("Invalid kv_mix provided! kv_mix = %s", get_option(options, 5));
+		return 1;
+	}
+
 	base = 100000000L;
 	log_info("Running workload %s", workload);
 	par_db_options db_options;
-	db_options.volume_name = volume_name;
+	db_options.volume_name = get_option(options, 1);
 	db_options.db_name = "scan_test";
 	db_options.volume_start = 0;
 	db_options.volume_size = 0;
@@ -137,15 +183,15 @@ int main(int argc, char **argv)
 		sprintf(k->key_buf + strlen(KEY_PREFIX), "%llu", (long long unsigned)i);
 		k->key_size = strlen(k->key_buf);
 		struct value *v = (struct value *)((uint64_t)k + sizeof(struct key) + k->key_size);
-		uint32_t res = key_count % 10;
+		uint32_t res = choose_mix(kv_mix[kv_mix_index], key_count % 10);
 
 		my_kv.k.size = k->key_size;
 		my_kv.k.data = k->key_buf;
-		if (res < 6) {
+		if (res == 0) {
 			my_kv.v.val_size = SMALL_VALUE_SIZE;
 			my_kv.v.val_buffer_size = KV_BUFFER_SIZE / 2;
 			my_kv.v.val_buffer = v->value_buf;
-		} else if (res >= 6 && res < 8) {
+		} else if (res == 1) {
 			my_kv.v.val_size = MEDIUM_VALUE_SIZE;
 			my_kv.v.val_buffer_size = KV_BUFFER_SIZE / 2;
 			my_kv.v.val_buffer = v->value_buf;
@@ -275,5 +321,5 @@ exit:
 	par_close(hd);
 	free(k);
 
-	return 1;
+	return 0;
 }

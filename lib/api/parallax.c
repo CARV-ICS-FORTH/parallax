@@ -196,7 +196,7 @@ par_scanner par_init_scanner(par_handle handle, struct par_key *key, par_seek_mo
 		goto init_scanner;
 	}
 	default:
-		printf("Unknown seek scanner mode");
+		fprintf(stderr, "Unknown seek scanner mode\n");
 		return NULL;
 	}
 init_seek_key:

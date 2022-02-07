@@ -29,33 +29,16 @@
 #define RWLOCK_RDLOCK(L) pthread_rwlock_rdlock(L)
 #define RWLOCK_UNLOCK(L) pthread_rwlock_unlock(L)
 
-/*don't use spinlock for log, critical section contains RDMA communication*/
-#define LOG_WITH_MUTEX 1
-
-#define MAX_DB_NAME_SIZE 64
-/*hierarchy of trees parameters*/
-/* #define MAX_LEVELS 8 */
-/* #define NUM_TREES_PER_LEVEL 2 */
-/* #define TOTAL_TREES (MAX_LEVELS * NUM_TREES_PER_LEVEL) */
-/* #define NUM_OF_DB_GROUPS 506 */
-/* #define DEVICE_BLOCK_SIZE 4096 */
-
-/*Configuration trees > 2 */
 //TODO This must become generic
-#define MAX_LEVELS 8
-#define NUM_TREES_PER_LEVEL 4
+#define MAX_DB_NAME_SIZE 64
+#define MAX_LEVELS (8)
+#define NUM_TREES_PER_LEVEL (4)
 #define TOTAL_TREES (MAX_LEVELS * NUM_TREES_PER_LEVEL)
-#define GROUP_SIZE 2
-#define NUM_OF_DB_GROUPS 506
-#define DEVICE_BLOCK_SIZE 4096
+#define GROUP_SIZE (2)
+#define NUM_OF_DB_GROUPS (506)
+#define DEVICE_BLOCK_SIZE (4096)
 #define MEDIUM_LOG_UNSORTED 0
-#define SYSTEMDB "systemdb"
-
-/*for allocator.c*/
-#define DATA_PER_BITMAP_BLOCK ((DEVICE_BLOCK_SIZE - 8) * 8) /*Data blocks addressed per bitmap block*/
-#define FREE_LOG_SIZE 512000 /*size in 4KB blocks of the log used for marking the free ops*/
-#define MAX_KEY_SIZE 255
-#define SEC (1000000L)
+#define MAX_KEY_SIZE (255)
 
 #define WORD_SIZE (64)
 #define BREAKPOINT asm volatile("int3;");
@@ -70,7 +53,7 @@
 #define SEGMENT_SIZE (2 * 1024 * 1024)
 #define ALIGNMENT SEGMENT_SIZE
 #define LOG_CHUNK_SIZE (256 * 1024)
-#define LOG_TAIL_NUM_BUFS 4
-#define ALIGNMENT_SIZE 512
-#define MAX_ALLOCATION_TRIES 2
-#define ENABLE_BLOOM_FILTERS 0
+#define LOG_TAIL_NUM_BUFS (4)
+#define ALIGNMENT_SIZE (512)
+#define MAX_ALLOCATION_TRIES (2)
+#define ENABLE_BLOOM_FILTERS (0)
