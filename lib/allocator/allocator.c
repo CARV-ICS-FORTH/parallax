@@ -227,7 +227,6 @@ struct allocation_log_cursor *init_allocation_log_cursor(struct volume_descripto
 struct rul_log_entry *get_next_allocation_log_entry(struct allocation_log_cursor *cursor)
 {
 	struct pr_region_allocation_log *allocation_log = &cursor->db_superblock->allocation_log;
-
 	while (1) {
 		switch (cursor->state) {
 		case GET_HEAD:
@@ -243,6 +242,7 @@ struct rul_log_entry *get_next_allocation_log_entry(struct allocation_log_cursor
 			cursor->state = CALCULATE_CHUNKS_IN_SEGMENT;
 			break;
 		case GET_NEXT_SEGMENT:
+			assert(REAL_ADDRESS(allocation_log->tail_dev_offt));
 			if (cursor->segment == REAL_ADDRESS(allocation_log->tail_dev_offt)) {
 				cursor->segment = NULL;
 				cursor->valid = 0;
@@ -262,27 +262,28 @@ struct rul_log_entry *get_next_allocation_log_entry(struct allocation_log_cursor
 			cursor->state = CALCULATE_CHUNK_ENTRIES;
 			break;
 		case CALCULATE_CHUNKS_IN_SEGMENT: {
-			uint8_t last_segment = (cursor->segment == REAL_ADDRESS(allocation_log->tail_dev_offt)) ? 1 : 0;
+			cursor->chunks_in_segment = RUL_LOG_CHUNK_NUM;
+
+			uint8_t last_segment = cursor->segment == REAL_ADDRESS(allocation_log->tail_dev_offt);
 			if (last_segment) {
 				uint32_t last_segment_size = allocation_log->size % SEGMENT_SIZE;
 				cursor->chunks_in_segment = last_segment_size / RUL_LOG_CHUNK_SIZE_IN_BYTES;
-				cursor->chunks_in_segment +=
-					((last_segment_size % RUL_LOG_CHUNK_SIZE_IN_BYTES) ? 1 : 0);
-			} else
-				cursor->chunks_in_segment = RUL_LOG_CHUNK_NUM;
+				cursor->chunks_in_segment += last_segment_size % RUL_LOG_CHUNK_SIZE_IN_BYTES != 0;
+			}
+
 			cursor->curr_chunk_id = 0;
 			log_info("Chunks in allocation log segment are: %llu", cursor->chunks_in_segment);
 			cursor->state = CALCULATE_CHUNK_ENTRIES;
 			break;
 		}
 		case CALCULATE_CHUNK_ENTRIES:
+			cursor->chunk_entries = RUL_LOG_CHUNK_MAX_ENTRIES;
+
 			if (cursor->curr_chunk_id == cursor->chunks_in_segment - 1) {
-				uint32_t last_chunk_size = allocation_log->size % SEGMENT_SIZE;
-				last_chunk_size =
-					last_chunk_size - (cursor->curr_chunk_id * RUL_LOG_CHUNK_SIZE_IN_BYTES);
+				uint32_t last_chunk_size = (allocation_log->size % SEGMENT_SIZE) -
+							   (cursor->curr_chunk_id * RUL_LOG_CHUNK_SIZE_IN_BYTES);
 				cursor->chunk_entries = last_chunk_size / sizeof(struct rul_log_entry);
-			} else
-				cursor->chunk_entries = RUL_LOG_CHUNK_MAX_ENTRIES;
+			}
 
 			cursor->curr_entry_in_chunk = 0;
 			log_info("Chunk entries in allocation log segment are: %llu", cursor->chunk_entries);
@@ -297,17 +298,14 @@ struct rul_log_entry *get_next_allocation_log_entry(struct allocation_log_cursor
 				break;
 			}
 			/*log_info("Chunk id %u curr entry %u", cursor->curr_chunk_id, cursor->curr_entry_in_chunk);*/
-			void *supress_warning =
-				&cursor->segment->chunk[cursor->curr_chunk_id][cursor->curr_entry_in_chunk];
-			struct rul_log_entry *log_entry = supress_warning;
-			++cursor->curr_entry_in_chunk;
-			return log_entry;
+			return &cursor->segment->chunk[cursor->curr_chunk_id][cursor->curr_entry_in_chunk++];
 		case EXIT:
 			cursor->segment = NULL;
 			cursor->valid = 0;
 			return NULL;
 		default:
 			log_fatal("Unknown stage WTF?");
+			assert(0);
 			exit(EXIT_FAILURE);
 		}
 	}
@@ -331,11 +329,9 @@ void replay_db_allocation_log(struct volume_descriptor *volume_desc, struct pr_d
 		 allocation_log->head_dev_offt, allocation_log->tail_dev_offt, allocation_log->size);
 
 	struct allocation_log_cursor *log_cursor = init_allocation_log_cursor(volume_desc, superblock);
+	struct rul_log_entry *log_entry;
 
-	while (1) {
-		struct rul_log_entry *log_entry = get_next_allocation_log_entry(log_cursor);
-		if (!log_entry)
-			break;
+	while ((log_entry = get_next_allocation_log_entry(log_cursor))) {
 		uint64_t bit_distance = log_entry->dev_offt / SEGMENT_SIZE;
 		uint64_t byte_id = bit_distance / 8;
 		uint8_t bit_id = bit_distance % 8;
