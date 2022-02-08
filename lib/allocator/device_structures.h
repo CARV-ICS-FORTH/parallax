@@ -42,24 +42,8 @@ struct pr_db_entry {
 	uint32_t valid;
 }; // 768 bytes or 12 cache lines
 
-struct pr_db_group {
-	struct pr_db_entry db_entries[GROUP_SIZE];
-} __attribute__((packed, aligned(4096)));
-
-struct pr_system_catalogue {
-	/*head and tail of the free log, keeps acounting of the free operations*/
-	uint64_t free_log_position;
-	uint64_t free_log_last_free;
-	uint64_t first_system_segment;
-	uint64_t last_system_segment;
-	uint64_t offset;
-	/*relative addresses are stored here*/
-	struct pr_db_group *db_group_index[NUM_OF_DB_GROUPS];
-} __attribute__((packed, aligned(4096)));
-
 /*volume superblock*/
 struct superblock {
-	struct pr_system_catalogue *system_catalogue;
 	/*accounting information*/
 	int64_t bitmap_size_in_blocks;
 	int64_t dev_size_in_blocks;

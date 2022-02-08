@@ -46,6 +46,3 @@ struct segment_header *get_segment_for_lsm_level_IO(struct db_descriptor *db_des
 
 uint64_t seg_free_level(struct db_descriptor *db_desc, uint64_t txn_id, uint8_t level_id, uint8_t tree_id);
 void seg_zero_level(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id);
-
-/*deprecated*/
-void *get_space_for_system(volume_descriptor *volume_desc, uint32_t size, int lock);
