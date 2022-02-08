@@ -950,21 +950,6 @@ struct volume_descriptor *mem_get_volume_desc(char *volume_name)
 		volume->volume_desc->size = mount_volume(volume_name, 0, 0);
 		log_warn("Remove this mem / dev catalogue allocation!!!");
 
-		if (posix_memalign((void **)&(volume->volume_desc->mem_catalogue), DEVICE_BLOCK_SIZE,
-				   sizeof(struct pr_system_catalogue)) != 0) {
-			perror("memalign failed\n");
-			exit(EXIT_FAILURE);
-		}
-		memset(volume->volume_desc->mem_catalogue, 0x00, sizeof(struct pr_system_catalogue));
-
-		if (posix_memalign((void **)&(volume->volume_desc->dev_catalogue), DEVICE_BLOCK_SIZE,
-				   sizeof(struct pr_system_catalogue)) != 0) {
-			perror("memalign failed\n");
-			exit(EXIT_FAILURE);
-		}
-
-		memset(volume->volume_desc->dev_catalogue, 0x00, sizeof(struct pr_system_catalogue));
-
 		volume->volume_desc->db_superblock_lock =
 			calloc(volume->volume_desc->vol_superblock.max_regions_num, sizeof(pthread_mutex_t));
 
@@ -1018,52 +1003,4 @@ uint64_t get_timestamp(void)
 	struct timeval tv;
 	gettimeofday(&tv, NULL);
 	return tv.tv_sec * (uint64_t)1000000 + tv.tv_usec;
-}
-
-struct free_op_entry {
-	uint64_t epoch;
-	uint64_t dev_offt;
-	uint64_t length;
-	uint64_t future_extensions;
-};
-
-static void add_log_entry(volume_descriptor *volume_desc, void *address, uint32_t length)
-{
-	uint64_t free_log_size = FREE_LOG_SIZE_IN_BLOCKS * DEVICE_BLOCK_SIZE;
-	uint64_t free_log_offt = sizeof(struct superblock);
-
-	if (((uint64_t)address < (uint64_t)volume_desc->bitmap_end)) {
-		log_fatal("address inside bitmap range? block address %llu "
-			  "bitmap_end %llu, stack trace follows",
-			  (long long unsigned)address, (long long unsigned)volume_desc->bitmap_end);
-		exit(EXIT_FAILURE);
-	}
-
-	MUTEX_LOCK(&volume_desc->free_log_lock);
-
-	uint64_t dev_offt = (uint64_t)ABSOLUTE_ADDRESS(address);
-
-	while (1) {
-		uint64_t next_pos = volume_desc->mem_catalogue->free_log_position % free_log_size;
-		uint64_t last_free = volume_desc->mem_catalogue->free_log_last_free % free_log_size;
-		if (next_pos >= last_free) {
-			struct free_op_entry entry = { .dev_offt = dev_offt, .length = length };
-			char *dest = (char *)REAL_ADDRESS(free_log_offt + next_pos);
-			memcpy(dest, &entry, sizeof(struct free_op_entry));
-			volume_desc->mem_catalogue->free_log_position += sizeof(struct free_op_entry);
-			MUTEX_UNLOCK(&volume_desc->free_log_lock);
-			break;
-		} else {
-			MUTEX_UNLOCK(&volume_desc->free_log_lock);
-			MUTEX_LOCK(&volume_desc->mutex);
-			log_warn("OUT OF LOG SPACE: No room for writing log_entry");
-			pthread_cond_signal(&(volume_desc->cond));
-			MUTEX_UNLOCK(&volume_desc->mutex);
-		}
-	}
-}
-
-void free_block(struct volume_descriptor *volume_desc, void *address, uint32_t length)
-{
-	add_log_entry(volume_desc, address, length);
 }

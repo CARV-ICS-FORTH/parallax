@@ -765,7 +765,6 @@ db_handle *internal_db_open(struct volume_descriptor *volume_desc, uint64_t star
 		       "Dynamic slot array is not 4 bytes, are you sure you want to continue?");
 	_Static_assert(sizeof(struct segment_header) == 4096, "Segment header not page aligned!");
 	_Static_assert(LOG_TAIL_NUM_BUFS >= 2, "Minimum number of in memory log buffers!");
-	_Static_assert(sizeof(struct pr_db_group) == 4096, "pr_db_group overflow!");
 	_Static_assert(sizeof(struct bt_dynamic_leaf_slot_array) == 4, "slot array != 4 Bytes");
 
 	MUTEX_INIT(&handle->db_desc->lock_log, NULL);
