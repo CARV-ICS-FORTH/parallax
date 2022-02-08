@@ -20,7 +20,6 @@
 #include "conf.h"
 #include <assert.h>
 #include <log.h>
-#include <signal.h>
 #include <stdlib.h>
 
 extern uint64_t MAPPED;
