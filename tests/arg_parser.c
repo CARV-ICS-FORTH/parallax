@@ -28,14 +28,14 @@ void arg_print_options(int help_flag, struct wrap_option *options, unsigned opti
 			if (options[i].option_value) {
 				switch (options[i].option_type) {
 				case STRING:
-					fprintf(stderr, "%s", (char *)options[i].option_value);
+					fprintf(stderr, "%s", (char *)get_option(options, i));
 					break;
 				case INTEGER:
-					fprintf(stderr, "%lu", *(uint64_t *)options[i].option_value);
+					fprintf(stderr, "%d", *(int *)get_option(options, i));
 					break;
 				}
-				fprintf(stderr, "\n");
 			}
+			fprintf(stderr, "\n");
 		}
 		exit(EXIT_FAILURE);
 	}

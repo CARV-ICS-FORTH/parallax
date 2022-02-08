@@ -328,6 +328,19 @@ debug_test_dirty_scans_largedp:
         - make test_dirty_scans;make kv_format.parallax;cd tests;
         - ./mkfs.sh /tmp/kv_store.dat 128
         - ctest -R ^test_dirty_scans_largedp$
+
+debug_simple_test_delete:
+    image: carvicsforth/arch_carv:latest
+    stage: debug_test
+    tags:
+        - kubernetes
+    script:
+        - ./scripts/CI/create_mbbd.sh
+        - mkdir -p build;cd build
+        - cmake ..
+        - make simple_test_delete;make kv_format.parallax;cd tests;
+        - ./mkfs.sh /tmp/kv_store.dat 128
+        - ctest -R ^simple_test_delete$
         - cd ..;cd ..
         - ./scripts/CI/destroy_mbbd.sh
     needs: [debug_build_gcc]
