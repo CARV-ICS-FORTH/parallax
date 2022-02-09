@@ -42,9 +42,6 @@
 #define PAGE_SIZE 4096
 #define WORD_SIZE_IN_BITS 64
 #define LOG_WORD_SIZE_IN_BITS 8
-/*Bytes addressed per bitmap block*/
-#define BLOCKS_PER_BUDDY_PAIR ((DEVICE_BLOCK_SIZE - 8) * 8)
-#define BITS_PER_BYTE 8
 
 pthread_mutex_t VOLUME_LOCK = PTHREAD_MUTEX_INITIALIZER;
 /*from this address any node can see the entire volume*/
