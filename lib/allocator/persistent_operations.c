@@ -546,7 +546,10 @@ struct kv_entry {
 };
 
 struct log_cursor {
-	struct segment_header *curr_segment[SEGMENT_SIZE];
+	/**
+    * Leave this first in struct definition do not change it
+  **/
+	char curr_segment_in_mem[SEGMENT_SIZE];
 	struct kv_entry entry;
 	struct db_descriptor *db_desc;
 	uint64_t log_tail_dev_offt;
@@ -561,7 +564,7 @@ struct log_cursor {
 
 static char *get_cursor_addr(struct log_cursor *cursor)
 {
-	char *pos_in_segment = (char *)((uint64_t)cursor->curr_segment + cursor->offt_in_segment);
+	char *pos_in_segment = &cursor->curr_segment_in_mem[cursor->offt_in_segment];
 	return pos_in_segment;
 }
 
@@ -594,7 +597,7 @@ static void init_pos_log_cursor_in_segment(struct db_descriptor *db_desc, struct
 
 	cursor->valid = 1;
 	//cursor->curr_segment = REAL_ADDRESS(cursor->log_segments->segments[cursor->log_segments->entry_id]);
-	if (!read_dev_offt_into_buffer((char *)cursor->curr_segment, 0, SEGMENT_SIZE,
+	if (!read_dev_offt_into_buffer((char *)cursor->curr_segment_in_mem, 0, SEGMENT_SIZE,
 				       cursor->log_segments->segments[cursor->log_segments->entry_id],
 				       db_desc->db_volume->vol_fd)) {
 		log_fatal("Failed to read dev offt: %lu",
@@ -637,7 +640,7 @@ static void init_pos_log_cursor_in_segment(struct db_descriptor *db_desc, struct
 static struct log_cursor *init_log_cursor(struct db_descriptor *db_desc, enum log_type type)
 {
 	struct log_cursor *cursor = NULL;
-	if (posix_memalign((void **)&cursor, ALIGNMENT_SIZE, SEGMENT_SIZE) != 0) {
+	if (posix_memalign((void **)&cursor, ALIGNMENT_SIZE, sizeof(struct log_cursor)) != 0) {
 		log_fatal("MEMALIGN FAILED");
 		exit(EXIT_FAILURE);
 	}
@@ -689,8 +692,8 @@ static void get_next_log_segment(struct log_cursor *cursor)
 			cursor->valid = 0;
 			return;
 		}
-		//cursor->curr_segment = REAL_ADDRESS(cursor->log_segments->segments[cursor->log_segments->entry_id]);
-		if (!read_dev_offt_into_buffer((char *)cursor->curr_segment, 0, SEGMENT_SIZE,
+
+		if (!read_dev_offt_into_buffer((char *)cursor->curr_segment_in_mem, 0, SEGMENT_SIZE,
 					       cursor->log_segments->segments[cursor->log_segments->entry_id],
 					       cursor->db_desc->db_volume->vol_fd)) {
 			log_fatal("Failed to read dev offt: %lu",
@@ -704,8 +707,8 @@ static void get_next_log_segment(struct log_cursor *cursor)
 			cursor->valid = 0;
 			return;
 		}
-		//cursor->curr_segment = REAL_ADDRESS(cursor->log_segments->segments[cursor->log_segments->entry_id]);
-		if (!read_dev_offt_into_buffer((char *)cursor->curr_segment, 0, SEGMENT_SIZE,
+
+		if (!read_dev_offt_into_buffer((char *)cursor->curr_segment_in_mem, 0, SEGMENT_SIZE,
 					       cursor->log_segments->segments[cursor->log_segments->entry_id],
 					       cursor->db_desc->db_volume->vol_fd)) {
 			log_fatal("Failed to read dev offt: %lu",
@@ -730,7 +733,7 @@ start:
 	/*Are there enough bytes in segment?*/
 
 	uint32_t remaining_bytes_in_segment;
-	int is_tail = cursor->curr_segment == REAL_ADDRESS(cursor->log_tail_dev_offt);
+	int is_tail = cursor->log_segments->segments[cursor->log_segments->entry_id] == cursor->log_tail_dev_offt;
 
 	if (is_tail)
 		remaining_bytes_in_segment = (cursor->log_size % SEGMENT_SIZE) - ((uint64_t)cursor->offt_in_segment);
