@@ -748,7 +748,8 @@ void mem_bitmap_mark_block_free(struct volume_descriptor *volume_desc, uint64_t 
 	MUTEX_UNLOCK(&volume_desc->bitmap_lock);
 }
 
-int read_dev_offt_into_buffer(char *buffer, uint32_t start, uint32_t size, off_t dev_offt, int fd)
+int read_dev_offt_into_buffer(char *buffer, const uint32_t start, const uint32_t size, const off_t dev_offt,
+			      const int fd)
 {
 	ssize_t bytes_read = start;
 	ssize_t bytes = 0;

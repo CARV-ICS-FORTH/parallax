@@ -152,6 +152,7 @@ struct rul_log_entry *get_next_allocation_log_entry(struct allocation_log_cursor
 /**
   * Reads size bytes from the device/file dev_offt into the in memory buffer.
 **/
-int read_dev_offt_into_buffer(char *buffer, uint32_t start, uint32_t size, off_t dev_offt, int fd);
+int read_dev_offt_into_buffer(char *buffer, const uint32_t start, const uint32_t size, const off_t dev_offt,
+			      const int fd);
 
 uint64_t get_timestamp(void);
