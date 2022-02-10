@@ -562,27 +562,26 @@ struct log_cursor {
 	uint8_t tombstone : 1;
 };
 
-static char *get_cursor_addr(struct log_cursor *cursor)
+static char *get_position_in_segment(struct log_cursor *cursor)
 {
-	char *pos_in_segment = &cursor->curr_segment_in_mem[cursor->offt_in_segment];
-	return pos_in_segment;
+	return &cursor->curr_segment_in_mem[cursor->offt_in_segment];
 }
 
 void prepare_cursor_op(struct log_cursor *cursor)
 {
-	cursor->entry.lsn = *(uint64_t *)get_cursor_addr(cursor);
+	cursor->entry.lsn = *(uint64_t *)get_position_in_segment(cursor);
 	cursor->offt_in_segment += sizeof(uint64_t);
-	struct bt_delete_marker *dm = (struct bt_delete_marker *)get_cursor_addr(cursor);
+	struct bt_delete_marker *dm = (struct bt_delete_marker *)get_position_in_segment(cursor);
 
 	if (dm->marker_id != BT_DELETE_MARKER_ID) {
-		cursor->entry.p_key = (struct par_key *)get_cursor_addr(cursor);
+		cursor->entry.p_key = (struct par_key *)get_position_in_segment(cursor);
 		cursor->offt_in_segment += (sizeof(struct par_key) + cursor->entry.p_key->key_size);
-		cursor->entry.p_value = (struct par_value *)get_cursor_addr(cursor);
+		cursor->entry.p_value = (struct par_value *)get_position_in_segment(cursor);
 		cursor->offt_in_segment += (sizeof(struct par_value) + cursor->entry.p_value->value_size);
 		cursor->tombstone = 0;
 	} else {
 		cursor->offt_in_segment += sizeof(dm->marker_id);
-		cursor->entry.p_key = (struct par_key *)get_cursor_addr(cursor);
+		cursor->entry.p_key = (struct par_key *)get_position_in_segment(cursor);
 		cursor->offt_in_segment += (sizeof(struct par_key) + cursor->entry.p_key->key_size);
 		cursor->tombstone = 1;
 	}
@@ -743,7 +742,7 @@ start:
 	//log_info("Remaining bytes in segment are %u pos normalized %llu is_tail?: %d log size: %llu",
 	//	 remaining_bytes_in_segment, (uint64_t)cursor->pos_in_segment % SEGMENT_SIZE, is_tail,
 	//	 cursor->log_size);
-	char *pos_in_segment = get_cursor_addr(cursor);
+	char *pos_in_segment = get_position_in_segment(cursor);
 	if (remaining_bytes_in_segment < sizeof(uint32_t) || 0 == *(uint32_t *)pos_in_segment) {
 		cursor->offt_in_segment += remaining_bytes_in_segment;
 		get_next_log_segment(cursor);
