@@ -549,14 +549,14 @@ struct log_cursor {
 	/**
     * Leave this first in struct definition do not change it
   **/
-	char curr_segment_in_mem[SEGMENT_SIZE];
+	char *segment_in_mem_buffer;
 	struct kv_entry entry;
 	struct db_descriptor *db_desc;
 	uint64_t log_tail_dev_offt;
 	uint64_t log_size;
 	struct segment_array *log_segments;
-
 	uint64_t offt_in_segment;
+	uint32_t segment_in_mem_size;
 	enum log_type type;
 	uint8_t valid;
 	uint8_t tombstone : 1;
@@ -564,7 +564,7 @@ struct log_cursor {
 
 static char *get_position_in_segment(struct log_cursor *cursor)
 {
-	return &cursor->curr_segment_in_mem[cursor->offt_in_segment];
+	return &cursor->segment_in_mem_buffer[cursor->offt_in_segment];
 }
 
 void prepare_cursor_op(struct log_cursor *cursor)
@@ -596,7 +596,7 @@ static void init_pos_log_cursor_in_segment(struct db_descriptor *db_desc, struct
 
 	cursor->valid = 1;
 	//cursor->curr_segment = REAL_ADDRESS(cursor->log_segments->segments[cursor->log_segments->entry_id]);
-	if (!read_dev_offt_into_buffer((char *)cursor->curr_segment_in_mem, 0, SEGMENT_SIZE,
+	if (!read_dev_offt_into_buffer((char *)cursor->segment_in_mem_buffer, 0, cursor->segment_in_mem_size,
 				       cursor->log_segments->segments[cursor->log_segments->entry_id],
 				       db_desc->db_volume->vol_fd)) {
 		log_fatal("Failed to read dev offt: %lu",
@@ -638,13 +638,14 @@ static void init_pos_log_cursor_in_segment(struct db_descriptor *db_desc, struct
 
 static struct log_cursor *init_log_cursor(struct db_descriptor *db_desc, enum log_type type)
 {
-	struct log_cursor *cursor = NULL;
-	if (posix_memalign((void **)&cursor, ALIGNMENT_SIZE, sizeof(struct log_cursor)) != 0) {
+	struct log_cursor *cursor = calloc(1, sizeof(struct log_cursor));
+	cursor->segment_in_mem_size = SEGMENT_SIZE;
+	cursor->db_desc = db_desc;
+	cursor->type = type;
+	if (posix_memalign((void **)&cursor->segment_in_mem_buffer, ALIGNMENT_SIZE, cursor->segment_in_mem_size) != 0) {
 		log_fatal("MEMALIGN FAILED");
 		exit(EXIT_FAILURE);
 	}
-	cursor->db_desc = db_desc;
-	cursor->type = type;
 
 	switch (cursor->type) {
 	case BIG_LOG:
@@ -677,6 +678,7 @@ static void close_log_cursor(struct log_cursor *cursor)
 {
 	free(cursor->log_segments->segments);
 	free(cursor->log_segments);
+	free(cursor->segment_in_mem_buffer);
 	free(cursor);
 }
 
@@ -692,7 +694,7 @@ static void get_next_log_segment(struct log_cursor *cursor)
 			return;
 		}
 
-		if (!read_dev_offt_into_buffer((char *)cursor->curr_segment_in_mem, 0, SEGMENT_SIZE,
+		if (!read_dev_offt_into_buffer((char *)cursor->segment_in_mem_buffer, 0, cursor->segment_in_mem_size,
 					       cursor->log_segments->segments[cursor->log_segments->entry_id],
 					       cursor->db_desc->db_volume->vol_fd)) {
 			log_fatal("Failed to read dev offt: %lu",
@@ -707,7 +709,7 @@ static void get_next_log_segment(struct log_cursor *cursor)
 			return;
 		}
 
-		if (!read_dev_offt_into_buffer((char *)cursor->curr_segment_in_mem, 0, SEGMENT_SIZE,
+		if (!read_dev_offt_into_buffer((char *)cursor->segment_in_mem_buffer, 0, cursor->segment_in_mem_size,
 					       cursor->log_segments->segments[cursor->log_segments->entry_id],
 					       cursor->db_desc->db_volume->vol_fd)) {
 			log_fatal("Failed to read dev offt: %lu",
