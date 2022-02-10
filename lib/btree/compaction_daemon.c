@@ -957,16 +957,16 @@ void *compaction_daemon(void *args)
 		struct level_descriptor *src_level = &handle->db_desc->levels[1];
 
 		int L0_tree = next_L0_tree_to_compact;
-		// is level-0 full and not already spilling?
+		// is level-0 full and not already compacting?
 		if (level_0->tree_status[L0_tree] == NO_COMPACTION &&
 		    level_0->level_size[L0_tree] >= level_0->max_level_size) {
-			// Can I issue a spill to L1?
+			// Can I issue a compaction to L1?
 			int L1_tree = 0;
 			if (src_level->tree_status[L1_tree] == NO_COMPACTION &&
 			    src_level->level_size[L1_tree] < src_level->max_level_size) {
-				/*mark them as spilling L0*/
+				/*mark them as compacting L0*/
 				level_0->tree_status[L0_tree] = COMPACTION_IN_PROGRESS;
-				/*mark them as spilling L1*/
+				/*mark them as compacting L1*/
 				src_level->tree_status[L1_tree] = COMPACTION_IN_PROGRESS;
 
 				/*start a compaction*/
@@ -1256,7 +1256,7 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 		RWLOCK_UNLOCK(&handle->db_desc->levels[0].guard_of_level.rx_lock);
 
 		log_info("Initializing L0 scanner");
-		level_src = _init_spill_buffer_scanner(handle, comp_req->src_level, comp_roots.src_root, NULL);
+		level_src = _init_compaction_buffer_scanner(handle, comp_req->src_level, comp_roots.src_root, NULL);
 	} else {
 		if (posix_memalign((void **)&l_src, ALIGNMENT, sizeof(struct comp_level_read_cursor)) != 0) {
 			log_fatal("Posix memalign failed");
@@ -1396,7 +1396,7 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 	} while (stat != EMPTY_HEAP);
 
 	if (level_src)
-		_close_spill_buffer_scanner(level_src);
+		_close_compaction_buffer_scanner(level_src);
 	else
 		free(l_src);
 

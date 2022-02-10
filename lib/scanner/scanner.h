@@ -17,13 +17,11 @@
 #include "min_max_heap.h"
 #include "stack.h"
 #include <stdint.h>
+
 #define FULL_SCANNER 1
-
-#define SPILL_BUFFER_SCANNER 3
-#define CLOSE_SPILL_BUFFER_SCANNER 4
-#define LEVEL_SCANNER 5
-
 #define END_OF_DATABASE 2
+#define COMPACTION_BUFFER_SCANNER 3
+#define LEVEL_SCANNER 4
 
 typedef enum SEEK_SCANNER_MODE { GREATER = 5, GREATER_OR_EQUAL = 6, FETCH_FIRST } SEEK_SCANNER_MODE;
 
@@ -96,7 +94,7 @@ uint32_t get_kv_size(scannerHandle *sc);
  *
  **/
 
-level_scanner *_init_spill_buffer_scanner(db_handle *handle, int level_id, node_header *node, void *start_key);
+level_scanner *_init_compaction_buffer_scanner(db_handle *handle, int level_id, node_header *node, void *start_key);
 int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER_MODE mode);
 
 /**
@@ -106,7 +104,7 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
  *        END_OF_DATABASE, end of database reached
  **/
 int32_t _get_next_KV(level_scanner *sc);
-void _close_spill_buffer_scanner(level_scanner *sc);
+void _close_compaction_buffer_scanner(level_scanner *sc);
 void close_dirty_scanner(scannerHandle *sc);
 #if MEASURE_SST_USED_SPACE
 void perf_measure_leaf_capacity(db_handle *hd, int level_id);

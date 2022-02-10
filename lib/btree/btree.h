@@ -27,7 +27,6 @@
 
 #define PREFIX_SIZE 12
 
-#define SPILL_BUFFER_SIZE 32 * 1024
 #define MAX_HEIGHT 9
 
 /* types used for the keys
@@ -62,7 +61,7 @@ typedef enum {
 	invalid
 } nodeType_t;
 
-/*descriptor describing a spill operation and its current status*/
+/*descriptor describing a compaction operation and its current status*/
 typedef enum {
 	NO_COMPACTION = 0,
 	COMPACTION_IN_PROGRESS = 1,
@@ -257,7 +256,6 @@ typedef struct level_descriptor {
 	lock_table *level_lock_table[MAX_HEIGHT];
 	node_header *root_r[NUM_TREES_PER_LEVEL];
 	node_header *root_w[NUM_TREES_PER_LEVEL];
-	pthread_t spiller[NUM_TREES_PER_LEVEL];
 	pthread_mutex_t level_allocation_lock;
 	segment_header *first_segment[NUM_TREES_PER_LEVEL];
 	segment_header *last_segment[NUM_TREES_PER_LEVEL];
@@ -267,7 +265,6 @@ typedef struct level_descriptor {
 	uint64_t scanner_epoch;
 	uint64_t allocation_txn_id[NUM_TREES_PER_LEVEL];
 	lock_table guard_of_level;
-	pthread_mutex_t spill_trigger;
 	uint64_t level_size[NUM_TREES_PER_LEVEL];
 	uint64_t max_level_size;
 	struct leaf_node_metadata leaf_offsets;
@@ -284,7 +281,6 @@ typedef struct level_descriptor {
 	/*info for trimming medium_log, used only in L_{n-1}*/
 	uint64_t medium_in_place_max_segment_id;
 	uint64_t medium_in_place_segment_dev_offt;
-	/*spilling or not?*/
 	uint32_t leaf_size;
 	char tree_status[NUM_TREES_PER_LEVEL];
 	uint8_t active_tree;
@@ -356,7 +352,7 @@ typedef struct db_descriptor {
 	int32_t reference_count;
 	int32_t group_id;
 	int32_t group_index;
-	volatile char dirty;
+	char dirty;
 	enum db_status stat;
 } db_descriptor;
 
@@ -408,8 +404,6 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 enum parallax_status db_close(db_handle *handle);
 
 void *compaction_daemon(void *args);
-void flush_volume(volume_descriptor *volume_desc, char force_spill);
-void spill_database(db_handle *handle);
 
 typedef struct bt_mutate_req {
 	db_handle *handle;
