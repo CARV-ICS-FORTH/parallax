@@ -546,9 +546,6 @@ struct kv_entry {
 };
 
 struct log_cursor {
-	/**
-    * Leave this first in struct definition do not change it
-  **/
 	char *segment_in_mem_buffer;
 	struct kv_entry entry;
 	struct db_descriptor *db_desc;
