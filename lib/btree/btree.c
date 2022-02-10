@@ -732,7 +732,6 @@ db_handle *internal_db_open(struct volume_descriptor *volume_desc, uint64_t star
 
 	for (uint8_t level_id = 0; level_id < MAX_LEVELS; ++level_id) {
 		RWLOCK_INIT(&handle->db_desc->levels[level_id].guard_of_level.rx_lock, NULL);
-		MUTEX_INIT(&handle->db_desc->levels[level_id].spill_trigger, NULL);
 		MUTEX_INIT(&handle->db_desc->levels[level_id].level_allocation_lock, NULL);
 		init_level_locktable(handle->db_desc, level_id);
 		memset(handle->db_desc->levels[level_id].level_size, 0, sizeof(uint64_t) * NUM_TREES_PER_LEVEL);

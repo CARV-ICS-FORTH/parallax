@@ -47,7 +47,7 @@ char *node_type(nodeType_t type)
 }
 
 /**
- * Spill buffer operation will use this scanner. Traversal begins from root_w
+ * Compaction buffer operation will use this scanner. Traversal begins from root_w
  * and
  * free all index nodes (leaves and index) during traversal.However, since we
  * have also
@@ -58,7 +58,7 @@ char *node_type(nodeType_t type)
  * may
  * result in CORRUPTION :-S
  */
-level_scanner *_init_spill_buffer_scanner(db_handle *handle, int level_id, node_header *node, void *start_key)
+level_scanner *_init_compaction_buffer_scanner(db_handle *handle, int level_id, node_header *node, void *start_key)
 {
 	level_scanner *level_sc = calloc(1, sizeof(level_scanner));
 	if (!level_sc) {
@@ -70,19 +70,17 @@ level_scanner *_init_spill_buffer_scanner(db_handle *handle, int level_id, node_
 	level_sc->db = handle;
 	level_sc->root = node;
 	level_sc->level_id = level_id;
-	level_sc->type = SPILL_BUFFER_SCANNER;
+	level_sc->type = COMPACTION_BUFFER_SCANNER;
 	/*typicall 20 bytes 8 prefix the address to the KV log
 	 position scanner now to the appropriate row */
 	if (_seek_scanner(level_sc, start_key, GREATER_OR_EQUAL) == END_OF_DATABASE) {
-		log_info("empty internal buffer during spill operation, is that possible?");
-		// will happen in close_spill_buffer_scanner stack_destroy(&(sc->stack));
-		// free(sc);
+		log_info("empty internal buffer during compaction operation, is that possible?");
 		return NULL;
 	}
 	return level_sc;
 }
 
-void _close_spill_buffer_scanner(level_scanner *level_sc)
+void _close_compaction_buffer_scanner(level_scanner *level_sc)
 {
 	stack_destroy(&(level_sc->stack));
 	free(level_sc);
@@ -527,7 +525,7 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 		stack_push(&(level_sc->stack), element);
 	}
 
-	if (level_sc->type == SPILL_BUFFER_SCANNER) {
+	if (level_sc->type == COMPACTION_BUFFER_SCANNER) {
 		struct bt_dynamic_leaf_node *dlnode = (struct bt_dynamic_leaf_node *)node;
 		struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(dlnode);
 		switch (slot_array[middle].kv_loc) {
@@ -705,7 +703,7 @@ void perf_measure_leaf_capacity(db_handle *hd, int level_id)
  * update: 25/10/2016 14:21: for tucana_2 related scans buffer returned will
  * in the following form:
  * prefix(8 bytes)|hash(4 bytes)|address_to_data(8 bytes)
- * update: 09/03/2017 14:15: for SPILL_BUFFER_SCANNER only we ll return codes
+ * update: 09/03/2017 14:15: for COMPACTION_BUFFER_SCANNER only we ll return codes
  * when a leaf search is exhausted
  **/
 int32_t _get_next_KV(level_scanner *sc)
@@ -832,7 +830,7 @@ int32_t _get_next_KV(level_scanner *sc)
 		}
 	}
 	/*fill buffer and return*/
-	if (sc->type == SPILL_BUFFER_SCANNER) {
+	if (sc->type == COMPACTION_BUFFER_SCANNER) {
 		/*prefix first*/
 		struct bt_dynamic_leaf_node *dlnode = (struct bt_dynamic_leaf_node *)node;
 		struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(dlnode);
@@ -1028,7 +1026,7 @@ int32_t _get_prev_KV(level_scanner *sc)
 	}
 
 	/*fill buffer and return*/
-	if (sc->type == SPILL_BUFFER_SCANNER) {
+	if (sc->type == COMPACTION_BUFFER_SCANNER) {
 		/*prefix first*/
 		struct bt_dynamic_leaf_node *dlnode = (struct bt_dynamic_leaf_node *)node;
 		struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(dlnode);
@@ -1244,7 +1242,7 @@ static int find_last_key(level_scanner *level_sc)
 	//we just need the last key of the leaf.
 	middle = node->num_entries - 1;
 
-	if (level_sc->type == SPILL_BUFFER_SCANNER) {
+	if (level_sc->type == COMPACTION_BUFFER_SCANNER) {
 		struct bt_dynamic_leaf_node *dlnode = (struct bt_dynamic_leaf_node *)node;
 		struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(dlnode);
 		switch (slot_array[middle].kv_loc) {
