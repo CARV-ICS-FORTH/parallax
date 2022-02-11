@@ -11,12 +11,14 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+
 #pragma once
 #include "../btree/conf.h"
 #include "device_structures.h"
 #include "mem_structures.h"
 #include <pthread.h>
 #include <stdint.h>
+#include <sys/types.h>
 
 #define BIT_MASK(X) (1 << X)
 #define INV_BIT_MASK(X) (~BIT_MASK(X))
@@ -146,5 +148,11 @@ struct allocation_log_cursor *init_allocation_log_cursor(struct volume_descripto
 void close_allocation_log_cursor(struct allocation_log_cursor *cursor);
 
 struct rul_log_entry *get_next_allocation_log_entry(struct allocation_log_cursor *cursor);
+
+/**
+  * Reads size bytes from the device/file dev_offt into the in memory buffer.
+**/
+int read_dev_offt_into_buffer(char *buffer, const uint32_t start, const uint32_t size, const off_t dev_offt,
+			      const int fd);
 
 uint64_t get_timestamp(void);

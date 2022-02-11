@@ -42,9 +42,6 @@
 #define PAGE_SIZE 4096
 #define WORD_SIZE_IN_BITS 64
 #define LOG_WORD_SIZE_IN_BITS 8
-/*Bytes addressed per bitmap block*/
-#define BLOCKS_PER_BUDDY_PAIR ((DEVICE_BLOCK_SIZE - 8) * 8)
-#define BITS_PER_BYTE 8
 
 pthread_mutex_t VOLUME_LOCK = PTHREAD_MUTEX_INITIALIZER;
 /*from this address any node can see the entire volume*/
@@ -751,7 +748,8 @@ void mem_bitmap_mark_block_free(struct volume_descriptor *volume_desc, uint64_t 
 	MUTEX_UNLOCK(&volume_desc->bitmap_lock);
 }
 
-static int mem_read_into_buffer(char *buffer, uint32_t start, uint32_t size, off_t dev_offt, int fd)
+int read_dev_offt_into_buffer(char *buffer, const uint32_t start, const uint32_t size, const off_t dev_offt,
+			      const int fd)
 {
 	ssize_t bytes_read = start;
 	ssize_t bytes = 0;
@@ -802,7 +800,7 @@ void mem_init_superblock_array(struct volume_descriptor *volume_desc)
 	off64_t dev_offt = sizeof(struct superblock);
 	uint32_t size = volume_desc->vol_superblock.max_regions_num * sizeof(struct pr_db_superblock);
 
-	if (!mem_read_into_buffer((char *)volume_desc->pr_regions->db, 0, size, dev_offt, volume_desc->vol_fd)) {
+	if (!read_dev_offt_into_buffer((char *)volume_desc->pr_regions->db, 0, size, dev_offt, volume_desc->vol_fd)) {
 		log_fatal("Failed to read volume's region superblocks!");
 		exit(EXIT_FAILURE);
 	}
@@ -840,8 +838,8 @@ static volume_descriptor *mem_init_volume(char *volume_name)
 		exit(EXIT_FAILURE);
 	}
 	// read volume superblock (accouning info into memory)
-	if (!mem_read_into_buffer((char *)&volume_desc->vol_superblock, 0, sizeof(struct superblock), 0,
-				  volume_desc->vol_fd)) {
+	if (!read_dev_offt_into_buffer((char *)&volume_desc->vol_superblock, 0, sizeof(struct superblock), 0,
+				       volume_desc->vol_fd)) {
 		log_fatal("Failed to read volume's %s superblock", volume_name);
 		exit(EXIT_FAILURE);
 	}

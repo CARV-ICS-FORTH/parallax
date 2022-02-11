@@ -546,38 +546,39 @@ struct kv_entry {
 };
 
 struct log_cursor {
+	char *segment_in_mem_buffer;
 	struct kv_entry entry;
+	struct db_descriptor *db_desc;
 	uint64_t log_tail_dev_offt;
 	uint64_t log_size;
 	struct segment_array *log_segments;
-	struct segment_header *curr_segment;
 	uint64_t offt_in_segment;
+	uint32_t segment_in_mem_size;
 	enum log_type type;
 	uint8_t valid;
 	uint8_t tombstone : 1;
 };
 
-static char *get_cursor_addr(struct log_cursor *cursor)
+static char *get_position_in_segment(struct log_cursor *cursor)
 {
-	char *pos_in_segment = (char *)((uint64_t)cursor->curr_segment + cursor->offt_in_segment);
-	return pos_in_segment;
+	return &cursor->segment_in_mem_buffer[cursor->offt_in_segment];
 }
 
 void prepare_cursor_op(struct log_cursor *cursor)
 {
-	cursor->entry.lsn = *(uint64_t *)get_cursor_addr(cursor);
+	cursor->entry.lsn = *(uint64_t *)get_position_in_segment(cursor);
 	cursor->offt_in_segment += sizeof(uint64_t);
-	struct bt_delete_marker *dm = (struct bt_delete_marker *)get_cursor_addr(cursor);
+	struct bt_delete_marker *dm = (struct bt_delete_marker *)get_position_in_segment(cursor);
 
 	if (dm->marker_id != BT_DELETE_MARKER_ID) {
-		cursor->entry.p_key = (struct par_key *)get_cursor_addr(cursor);
+		cursor->entry.p_key = (struct par_key *)get_position_in_segment(cursor);
 		cursor->offt_in_segment += (sizeof(struct par_key) + cursor->entry.p_key->key_size);
-		cursor->entry.p_value = (struct par_value *)get_cursor_addr(cursor);
+		cursor->entry.p_value = (struct par_value *)get_position_in_segment(cursor);
 		cursor->offt_in_segment += (sizeof(struct par_value) + cursor->entry.p_value->value_size);
 		cursor->tombstone = 0;
 	} else {
 		cursor->offt_in_segment += sizeof(dm->marker_id);
-		cursor->entry.p_key = (struct par_key *)get_cursor_addr(cursor);
+		cursor->entry.p_key = (struct par_key *)get_position_in_segment(cursor);
 		cursor->offt_in_segment += (sizeof(struct par_key) + cursor->entry.p_key->key_size);
 		cursor->tombstone = 1;
 	}
@@ -586,39 +587,47 @@ void prepare_cursor_op(struct log_cursor *cursor)
 static void init_pos_log_cursor_in_segment(struct db_descriptor *db_desc, struct log_cursor *cursor)
 {
 	if (0 == cursor->log_segments->n_entries) {
-		cursor->curr_segment = NULL;
 		cursor->valid = 0;
 		return;
 	}
 
 	cursor->valid = 1;
-	cursor->curr_segment = REAL_ADDRESS(cursor->log_segments->segments[cursor->log_segments->entry_id]);
-	assert(cursor->curr_segment);
+	//cursor->curr_segment = REAL_ADDRESS(cursor->log_segments->segments[cursor->log_segments->entry_id]);
+	if (!read_dev_offt_into_buffer((char *)cursor->segment_in_mem_buffer, 0, cursor->segment_in_mem_size,
+				       cursor->log_segments->segments[cursor->log_segments->entry_id],
+				       db_desc->db_volume->vol_fd)) {
+		log_fatal("Failed to read dev offt: %lu",
+			  cursor->log_segments->segments[cursor->log_segments->entry_id]);
+	}
 
 	/*Cornercases*/
-	if (SMALL_LOG == cursor->type) {
+	switch (cursor->type) {
+	case SMALL_LOG:
 		cursor->offt_in_segment = db_desc->small_log_start_offt_in_segment;
-		if (cursor->curr_segment == REAL_ADDRESS(cursor->log_tail_dev_offt)) {
+		if (cursor->log_segments->segments[cursor->log_segments->entry_id] == cursor->log_tail_dev_offt) {
 			if (cursor->log_size % SEGMENT_SIZE == sizeof(struct segment_header)) {
 				/*Nothing to parse*/
 				log_info("Nothing to parse in the small log");
-				cursor->curr_segment = NULL;
 				cursor->valid = 0;
 				return;
 			}
 		}
-	} else if (BIG_LOG == cursor->type) {
+		break;
+	case BIG_LOG:
 		cursor->offt_in_segment = db_desc->big_log_start_offt_in_segment;
 		cursor->offt_in_segment = 0;
-		if (cursor->curr_segment == REAL_ADDRESS(cursor->log_tail_dev_offt)) {
+		if (cursor->log_segments->segments[cursor->log_segments->entry_id] == cursor->log_tail_dev_offt) {
 			if (cursor->log_size == 0) {
 				/*Nothing to parse*/
 				log_info("Nothing to parse in the big log");
-				cursor->curr_segment = NULL;
 				cursor->valid = 0;
 				return;
 			}
 		}
+		break;
+	default:
+		log_fatal("Unhandled cursor type");
+		exit(EXIT_FAILURE);
 	}
 
 	prepare_cursor_op(cursor);
@@ -627,12 +636,13 @@ static void init_pos_log_cursor_in_segment(struct db_descriptor *db_desc, struct
 static struct log_cursor *init_log_cursor(struct db_descriptor *db_desc, enum log_type type)
 {
 	struct log_cursor *cursor = calloc(1, sizeof(struct log_cursor));
-
-	if (!cursor) {
-		log_fatal("Malloc did not return memory for the cursor!");
+	cursor->segment_in_mem_size = SEGMENT_SIZE;
+	cursor->db_desc = db_desc;
+	cursor->type = type;
+	if (posix_memalign((void **)&cursor->segment_in_mem_buffer, ALIGNMENT_SIZE, cursor->segment_in_mem_size) != 0) {
+		log_fatal("MEMALIGN FAILED");
 		exit(EXIT_FAILURE);
 	}
-	cursor->type = type;
 
 	switch (cursor->type) {
 	case BIG_LOG:
@@ -665,6 +675,7 @@ static void close_log_cursor(struct log_cursor *cursor)
 {
 	free(cursor->log_segments->segments);
 	free(cursor->log_segments);
+	free(cursor->segment_in_mem_buffer);
 	free(cursor);
 }
 
@@ -676,21 +687,31 @@ static void get_next_log_segment(struct log_cursor *cursor)
 		//log_info("BIG LOG entry id: %d n_entries: %u size : %u", cursor->log_segments->entry_id,
 		//	 cursor->log_segments->n_entries, cursor->log_segments->size);
 		if (cursor->log_segments->entry_id < cursor->log_segments->size - cursor->log_segments->n_entries) {
-			cursor->curr_segment = NULL;
 			cursor->valid = 0;
 			return;
 		}
-		cursor->curr_segment = REAL_ADDRESS(cursor->log_segments->segments[cursor->log_segments->entry_id]);
+
+		if (!read_dev_offt_into_buffer((char *)cursor->segment_in_mem_buffer, 0, cursor->segment_in_mem_size,
+					       cursor->log_segments->segments[cursor->log_segments->entry_id],
+					       cursor->db_desc->db_volume->vol_fd)) {
+			log_fatal("Failed to read dev offt: %lu",
+				  cursor->log_segments->segments[cursor->log_segments->entry_id]);
+		}
 		cursor->offt_in_segment = 0;
 		break;
 	case SMALL_LOG:
 		++cursor->log_segments->entry_id;
 		if (cursor->log_segments->entry_id >= cursor->log_segments->size) {
-			cursor->curr_segment = NULL;
 			cursor->valid = 0;
 			return;
 		}
-		cursor->curr_segment = REAL_ADDRESS(cursor->log_segments->segments[cursor->log_segments->entry_id]);
+
+		if (!read_dev_offt_into_buffer((char *)cursor->segment_in_mem_buffer, 0, cursor->segment_in_mem_size,
+					       cursor->log_segments->segments[cursor->log_segments->entry_id],
+					       cursor->db_desc->db_volume->vol_fd)) {
+			log_fatal("Failed to read dev offt: %lu",
+				  cursor->log_segments->segments[cursor->log_segments->entry_id]);
+		}
 		cursor->offt_in_segment = sizeof(struct segment_header);
 		break;
 	default:
@@ -710,7 +731,7 @@ start:
 	/*Are there enough bytes in segment?*/
 
 	uint32_t remaining_bytes_in_segment;
-	int is_tail = cursor->curr_segment == REAL_ADDRESS(cursor->log_tail_dev_offt);
+	int is_tail = cursor->log_segments->segments[cursor->log_segments->entry_id] == cursor->log_tail_dev_offt;
 
 	if (is_tail)
 		remaining_bytes_in_segment = (cursor->log_size % SEGMENT_SIZE) - ((uint64_t)cursor->offt_in_segment);
@@ -720,7 +741,7 @@ start:
 	//log_info("Remaining bytes in segment are %u pos normalized %llu is_tail?: %d log size: %llu",
 	//	 remaining_bytes_in_segment, (uint64_t)cursor->pos_in_segment % SEGMENT_SIZE, is_tail,
 	//	 cursor->log_size);
-	char *pos_in_segment = get_cursor_addr(cursor);
+	char *pos_in_segment = get_position_in_segment(cursor);
 	if (remaining_bytes_in_segment < sizeof(uint32_t) || 0 == *(uint32_t *)pos_in_segment) {
 		cursor->offt_in_segment += remaining_bytes_in_segment;
 		get_next_log_segment(cursor);
