@@ -11,6 +11,7 @@ if(BUILD_TESTING)
       test_sanitizers.c
       simple_test_delete.c
       test_gc.c
+      test_leaf_root_delete_get_scan.c
       test_region_allocations.c)
 
   set_source_files_properties(${LIB_TEST_FILES} COMPILE_FLAGS "-O3")
@@ -76,6 +77,14 @@ if(BUILD_TESTING)
   add_test(NAME simple_test_delete
            COMMAND $<TARGET_FILE:simple_test_delete> --file=/tmp/kv_store.dat
                    --num_of_kvs=1000000)
+
+  add_executable(test_leaf_root_delete_get_scan test_leaf_root_delete_get_scan.c
+                                                arg_parser.c)
+  target_link_libraries(test_leaf_root_delete_get_scan "${PROJECT_NAME}"
+                        ${DEPENDENCIES})
+  add_test(NAME test_leaf_root_delete_get_scan
+           COMMAND $<TARGET_FILE:test_leaf_root_delete_get_scan>
+                   --file=/tmp/kv_store.dat)
 
   add_executable(
     test_region_allocations
