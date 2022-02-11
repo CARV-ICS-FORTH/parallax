@@ -344,3 +344,19 @@ debug_simple_test_delete:
         - cd ..;cd ..
         - ./scripts/CI/destroy_mbbd.sh
     needs: [debug_build_gcc]
+
+debug_leaf_root_delete_get_scan:
+    image: carvicsforth/arch_carv:latest
+    stage: debug_test
+    tags:
+        - kubernetes
+    script:
+        - ./scripts/CI/create_mbbd.sh
+        - mkdir -p build;cd build
+        - cmake ..
+        - make test_leaf_root_delete_get_scan;make kv_format.parallax;cd tests;
+        - ./mkfs.sh /tmp/kv_store.dat 128
+        - ctest -R ^test_leaf_root_delete_get_scan$
+        - cd ..;cd ..
+        - ./scripts/CI/destroy_mbbd.sh
+    needs: [debug_build_gcc]

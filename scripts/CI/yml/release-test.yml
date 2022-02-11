@@ -316,3 +316,19 @@ release_simple_test_delete:
         - cd ..;cd ..
         - ./scripts/CI/destroy_mbbd.sh
     needs: [release_build_gcc]
+
+release_leaf_root_delete_get_scan:
+    image: carvicsforth/arch_carv:latest
+    stage: release_test
+    tags:
+        - kubernetes
+    script:
+        - ./scripts/CI/create_mbbd.sh
+        - mkdir -p build;cd build
+        - cmake .. -DCMAKE_BUILD_TYPE="Release"
+        - make test_leaf_root_delete_get_scan;make kv_format.parallax;cd tests;
+        - ./mkfs.sh /tmp/kv_store.dat 128
+        - ctest -R ^test_leaf_root_delete_get_scan$
+        - cd ..;cd ..
+        - ./scripts/CI/destroy_mbbd.sh
+    needs: [release_build_gcc]
