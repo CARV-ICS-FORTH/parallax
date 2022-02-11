@@ -89,11 +89,9 @@ void _close_compaction_buffer_scanner(level_scanner *level_sc)
 static void init_generic_scanner(struct scannerHandle *sc, struct db_handle *handle, void *start_key, char seek_flag,
 				 char dirty)
 {
-	struct sh_heap_node nd;
+	struct sh_heap_node nd = { 0 };
 	uint8_t active_tree;
 	int retval;
-
-	memset(&nd, 0, sizeof(struct sh_heap_node));
 
 	assert(start_key);
 	if (sc == NULL) {
@@ -163,6 +161,7 @@ static void init_generic_scanner(struct scannerHandle *sc, struct db_handle *han
 				nd.active_tree = i;
 				nd.type = KV_FORMAT;
 				nd.db_desc = handle->db_desc;
+				nd.tombstone = sc->LEVEL_SCANNERS[0][i].tombstone;
 				if (sc->type_of_scanner == FORWARD_SCANNER) {
 					nd.epoch = handle->db_desc->levels[0].epoch[i];
 					sh_insert_heap_node(&sc->heap, &nd);
@@ -196,6 +195,7 @@ static void init_generic_scanner(struct scannerHandle *sc, struct db_handle *han
 				nd.level_id = level_id;
 				nd.active_tree = tree_id;
 				nd.db_desc = handle->db_desc;
+				nd.tombstone = sc->LEVEL_SCANNERS[level_id][tree_id].tombstone;
 				if (sc->type_of_scanner == FORWARD_SCANNER)
 					sh_insert_heap_node(&sc->heap, &nd);
 				else
@@ -631,12 +631,9 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 
 int32_t getNext(scannerHandle *sc)
 {
-	enum sh_heap_status stat;
-	struct sh_heap_node nd;
-	struct sh_heap_node next_nd;
-
-	memset(&nd, 0, sizeof(struct sh_heap_node));
-	memset(&next_nd, 0, sizeof(struct sh_heap_node));
+	enum sh_heap_status stat = { 0 };
+	struct sh_heap_node nd = { 0 };
+	struct sh_heap_node next_nd = { 0 };
 
 	while (1) {
 		stat = sh_remove_top(&sc->heap, &nd);
@@ -654,11 +651,12 @@ int32_t getNext(scannerHandle *sc)
 				next_nd.KV = sc->LEVEL_SCANNERS[nd.level_id][nd.active_tree].keyValue;
 				next_nd.kv_size = sc->LEVEL_SCANNERS[nd.level_id][nd.active_tree].kv_size;
 				next_nd.db_desc = sc->db->db_desc;
+				next_nd.tombstone = sc->LEVEL_SCANNERS[nd.level_id][nd.active_tree].tombstone;
 				sh_insert_heap_node(&sc->heap, &next_nd);
 			}
 			if (nd.duplicate == 1 || nd.tombstone == 1) {
 				// assert(0);
-				//log_warn("ommiting duplicate %s", (char *)nd.data + 4);
+				//log_warn("ommiting duplicate %s", (char *)nd.KV + 4);
 				continue;
 			}
 			return PARALLAX_SUCCESS;
@@ -872,7 +870,7 @@ int32_t _get_next_KV(level_scanner *sc)
 		struct bt_dynamic_leaf_node *dlnode = (struct bt_dynamic_leaf_node *)node;
 		struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(dlnode);
 		switch (slot_array[idx].kv_loc) {
-		case KV_INPLACE:;
+		case KV_INPLACE: {
 			uint32_t key_size, value_size;
 
 			sc->keyValue =
@@ -880,6 +878,7 @@ int32_t _get_next_KV(level_scanner *sc)
 			assert(*(uint32_t *)sc->keyValue < 100);
 			sc->kv_format = KV_FORMAT;
 			sc->cat = slot_array[idx].key_category;
+			sc->tombstone = slot_array[idx].tombstone;
 			sc->keyValue =
 				get_kv_offset(dlnode, db_desc->levels[level_id].leaf_size, slot_array[idx].index);
 			key_size = KEY_SIZE(sc->keyValue);
@@ -887,7 +886,7 @@ int32_t _get_next_KV(level_scanner *sc)
 			sc->kv_size = sizeof(key_size) + sizeof(value_size) + key_size + value_size;
 
 			break;
-
+		}
 		case KV_INLOG: {
 			struct bt_leaf_entry *kv_entry = (struct bt_leaf_entry *)get_kv_offset(
 				dlnode, db_desc->levels[level_id].leaf_size, slot_array[idx].index);
@@ -896,6 +895,7 @@ int32_t _get_next_KV(level_scanner *sc)
 			sc->kv_entry.dev_offt = (uint64_t)REAL_ADDRESS(kv_entry->dev_offt);
 			sc->keyValue = (void *)sc->kv_entry.dev_offt;
 			sc->kv_format = KV_FORMAT;
+			sc->tombstone = slot_array[idx].tombstone;
 			sc->cat = slot_array[idx].key_category;
 			break;
 		}
