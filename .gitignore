@@ -8,3 +8,6 @@ __pycache__/
 .ccls-root
 .gitlab-ci-local
 .cache
+docs/html
+docs/xml
+docs/latex
