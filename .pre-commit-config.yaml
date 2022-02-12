@@ -14,7 +14,6 @@ repos:
           - id: check-executables-have-shebangs
           - id: check-merge-conflict
           - id: forbid-new-submodules
-    #-   id: name-tests-test I will add it later because it is worth using it but I need to make some changes first
 
     - repo: https://github.com/cheshirekow/cmake-format-precommit
       rev: v0.6.13
@@ -34,6 +33,8 @@ repos:
           - id: shfmt
           - id: protect-first-parent
           - id: forbid-binary
+            exclude: docs/logo.jpg
+
 
     - repo: https://github.com/psf/black
       rev: 22.1.0
