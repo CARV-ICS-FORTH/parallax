@@ -62,7 +62,7 @@ void serially_insert_keys(par_handle hd)
 void get_all_keys(par_handle hd)
 {
 	uint64_t i;
-	key *k = (key *)malloc(KV_SIZE);
+	key *k = (key *)calloc(1, KV_SIZE);
 	struct par_key par_key;
 
 	log_info("Search for all keys");
@@ -118,7 +118,7 @@ void delete_half_keys(par_handle hd)
 void get_all_valid_keys(par_handle hd)
 {
 	uint64_t i;
-	key *k = (key *)malloc(KV_SIZE);
+	key *k = (key *)calloc(1, KV_SIZE);
 	uint64_t count = 0;
 	struct par_key par_key;
 
@@ -175,7 +175,7 @@ void get_all_valid_keys(par_handle hd)
 void scan_all_valid_keys(par_handle hd)
 {
 	uint64_t i;
-	key *k = (key *)malloc(KV_SIZE);
+	key *k = (key *)calloc(1, KV_SIZE);
 	uint64_t count = 0;
 	struct par_key par_key;
 	par_scanner my_scanner = NULL;
