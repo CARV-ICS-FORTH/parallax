@@ -628,8 +628,9 @@ db_handle *internal_db_open(struct volume_descriptor *volume_desc, uint64_t star
 			    char CREATE_FLAG)
 {
 	struct db_handle *handle = NULL;
-	uint32_t leaf_size_per_level[10] = { LEVEL0_LEAF_SIZE, LEVEL1_LEAF_SIZE, LEVEL2_LEAF_SIZE, LEVEL3_LEAF_SIZE,
-					     LEVEL4_LEAF_SIZE, LEVEL5_LEAF_SIZE, LEVEL6_LEAF_SIZE, LEVEL7_LEAF_SIZE };
+	const uint32_t leaf_size_per_level[10] = { LEVEL0_LEAF_SIZE, LEVEL1_LEAF_SIZE, LEVEL2_LEAF_SIZE,
+						   LEVEL3_LEAF_SIZE, LEVEL4_LEAF_SIZE, LEVEL5_LEAF_SIZE,
+						   LEVEL6_LEAF_SIZE, LEVEL7_LEAF_SIZE };
 	struct db_descriptor *db = NULL;
 	struct lib_option *dboptions = NULL;
 
@@ -1566,7 +1567,7 @@ static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id,
 
 	curr_node = root;
 	if (curr_node->type == leafRootNode) {
-		curr = _find_position(db_desc->levels[level_id].level_lock_table, curr_node);
+		curr = _find_position((const lock_table **)db_desc->levels[level_id].level_lock_table, curr_node);
 
 		if (RWLOCK_RDLOCK(&curr->rx_lock) != 0)
 			exit(EXIT_FAILURE);
@@ -1579,7 +1580,7 @@ static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id,
 	}
 
 	while (curr_node && curr_node->type != leafNode) {
-		curr = _find_position(db_desc->levels[level_id].level_lock_table, curr_node);
+		curr = _find_position((const lock_table **)db_desc->levels[level_id].level_lock_table, curr_node);
 
 		if (RWLOCK_RDLOCK(&curr->rx_lock) != 0)
 			exit(EXIT_FAILURE);
@@ -1601,7 +1602,7 @@ static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id,
 	}
 
 	prev = curr;
-	curr = _find_position(db_desc->levels[level_id].level_lock_table, curr_node);
+	curr = _find_position((const lock_table **)db_desc->levels[level_id].level_lock_table, curr_node);
 	if (RWLOCK_RDLOCK(&curr->rx_lock) != 0) {
 		exit(EXIT_FAILURE);
 	}
@@ -2171,10 +2172,10 @@ uint64_t hash(uint64_t x)
 	return x;
 }
 
-lock_table *_find_position(lock_table **table, node_header *node)
+lock_table *_find_position(const lock_table **table, node_header *node)
 {
 	unsigned long position;
-	lock_table *node_lock;
+	const lock_table *node_lock;
 
 	if (node->height < 0 || node->height >= MAX_HEIGHT) {
 		log_fatal("MAX_HEIGHT exceeded %d rearrange values in size_per_height array ", node->height);
@@ -2186,7 +2187,7 @@ lock_table *_find_position(lock_table **table, node_header *node)
 	// log_info("node %llu height %d position %lu size of height %d", node,
 	// node->height, position, size_per_height[node->height]);
 	node_lock = table[node->height];
-	return &node_lock[position];
+	return (lock_table *)&node_lock[position];
 }
 
 void _unlock_upper_levels(lock_table *node[], unsigned size, unsigned release)
@@ -2300,7 +2301,7 @@ release_and_retry:
 		}
 	}
 	/*acquiring lock of the current root*/
-	lock = _find_position(db_desc->levels[level_id].level_lock_table,
+	lock = _find_position((const lock_table **)db_desc->levels[level_id].level_lock_table,
 			      db_desc->levels[level_id].root_w[ins_req->metadata.tree_id]);
 	if (RWLOCK_WRLOCK(&lock->rx_lock) != 0) {
 		log_fatal("ERROR locking");
@@ -2371,8 +2372,9 @@ release_and_retry:
 						      ins_req->metadata.key_format);
 		father = son;
 		/*Taking the lock of the next node before its traversal*/
-		lock = _find_position(ins_req->metadata.handle->db_desc->levels[level_id].level_lock_table,
-				      (node_header *)REAL_ADDRESS(*(uint64_t *)next_addr));
+		lock = _find_position(
+			(const lock_table **)ins_req->metadata.handle->db_desc->levels[level_id].level_lock_table,
+			(node_header *)REAL_ADDRESS(*(uint64_t *)next_addr));
 		upper_level_nodes[size++] = lock;
 		if (RWLOCK_WRLOCK(&lock->rx_lock) != 0) {
 			log_fatal("ERROR unlocking reason follows rc");
@@ -2458,7 +2460,7 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 	}
 
 	/*acquire read lock of the current root*/
-	lock = _find_position(db_desc->levels[level_id].level_lock_table,
+	lock = _find_position((const lock_table **)db_desc->levels[level_id].level_lock_table,
 			      db_desc->levels[level_id].root_w[ins_req->metadata.tree_id]);
 
 	if (RWLOCK_RDLOCK(&lock->rx_lock) != 0) {
@@ -2484,7 +2486,7 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 		if (son->height == 0)
 			break;
 		/*Acquire the lock of the next node before its traversal*/
-		lock = _find_position(db_desc->levels[level_id].level_lock_table,
+		lock = _find_position((const lock_table **)db_desc->levels[level_id].level_lock_table,
 				      (node_header *)REAL_ADDRESS(*(uint64_t *)next_addr));
 		upper_level_nodes[size++] = lock;
 
@@ -2497,7 +2499,7 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 		release = size - 1;
 	}
 
-	lock = _find_position(db_desc->levels[level_id].level_lock_table,
+	lock = _find_position((const lock_table **)db_desc->levels[level_id].level_lock_table,
 			      (node_header *)REAL_ADDRESS(*(uint64_t *)next_addr));
 	upper_level_nodes[size++] = lock;
 

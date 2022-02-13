@@ -170,7 +170,7 @@ static void print_allocation_type(enum rul_op_type type)
 }
 #endif
 
-static void apply_db_allocations_to_allocator_bitmap(struct volume_descriptor *volume_desc, uint8_t *mem_bitmap,
+static void apply_db_allocations_to_allocator_bitmap(struct volume_descriptor *volume_desc, const uint8_t *mem_bitmap,
 						     int mem_bitmap_size)
 {
 	/* 0 --> in use
@@ -496,7 +496,7 @@ static uint32_t mem_bitmap_check_first_n_bits_free(struct mem_bitmap_word *b_wor
 	return 0;
 }
 
-static uint32_t mem_bitmap_find_suffix(struct mem_bitmap_word *b_word, uint64_t *rounds, int num_rounds)
+static uint32_t mem_bitmap_find_suffix(struct mem_bitmap_word *b_word, const uint64_t *rounds, int num_rounds)
 {
 	uint64_t mask = 0x8000000000000000;
 	uint32_t size_bits = 0;

@@ -66,7 +66,7 @@ void remove_from_list(struct chunk_list *list)
 }
 
 //move node at the end of the list
-void move_node_to_tail(struct chunk_list *list, struct chunk_listnode *node)
+void move_node_to_tail(struct chunk_list *list, const struct chunk_listnode *node)
 {
 	assert(list != NULL);
 	assert(node != NULL);

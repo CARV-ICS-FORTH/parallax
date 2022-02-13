@@ -29,5 +29,5 @@ struct lib_option {
 };
 
 int parse_options(struct lib_option **db_options);
-void check_option(char *option_name, struct lib_option *opt_value);
+void check_option(char *option_name, const struct lib_option *opt_value);
 void destroy_options(struct lib_option *db_options);

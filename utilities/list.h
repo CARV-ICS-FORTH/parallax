@@ -38,8 +38,8 @@ void klist_add_first(struct klist *list, void *data, const char *data_key, destr
 void klist_add_last(struct klist *list, void *data, const char *data_key, destroy_node_data destroy_data);
 void *klist_remove_first(struct klist *list);
 void *klist_find_element_with_key(struct klist *list, char *data_key);
-int klist_remove_element(struct klist *list, void *data);
-int klist_delete_element(struct klist *list, void *data);
+int klist_remove_element(struct klist *list, const void *data);
+int klist_delete_element(struct klist *list, const void *data);
 
 void klist_destroy(struct klist *list);
 

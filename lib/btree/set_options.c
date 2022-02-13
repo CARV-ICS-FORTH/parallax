@@ -124,7 +124,7 @@ int parse_options(struct lib_option **db_options)
 	return 0;
 }
 
-void check_option(char *option_name, struct lib_option *opt_value)
+void check_option(char *option_name, const struct lib_option *opt_value)
 {
 	if (!opt_value) {
 		log_fatal("Cannot find %s option", option_name);

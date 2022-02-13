@@ -18,9 +18,9 @@
 #include <stdint.h>
 
 #ifdef CHECKSUM_DATA_MESSAGES
-unsigned long djb2_hash_commulative(unsigned char *, uint32_t, unsigned long);
+unsigned long djb2_hash_commulative(const unsigned char *, uint32_t, unsigned long);
 #endif
 
-unsigned long djb2_hash(unsigned char *, uint32_t);
+unsigned long djb2_hash(const unsigned char *, uint32_t);
 
 #endif //_DJB2_H

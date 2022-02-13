@@ -541,7 +541,7 @@ void recover_L0(struct db_descriptor *db_desc);
 // void free_logical_node(allocator_descriptor *allocator_desc, node_header
 // *node_index);
 
-lock_table *_find_position(lock_table **table, node_header *node);
+lock_table *_find_position(const lock_table **table, node_header *node);
 #define MIN(x, y) ((x > y) ? (y) : (x))
 #define KEY_SIZE(x) (*(uint32_t *)(x))
 #define VALUE_SIZE(x) KEY_SIZE(x)

@@ -137,7 +137,7 @@ void *klist_remove_first(struct klist *list)
 	return node;
 }
 
-int klist_remove_element(struct klist *list, void *data)
+int klist_remove_element(struct klist *list, const void *data)
 {
 	struct klist_node *node = NULL;
 	int ret = 0;
@@ -165,7 +165,7 @@ int klist_remove_element(struct klist *list, void *data)
 	return ret;
 }
 
-int klist_delete_element(struct klist *list, void *data)
+int klist_delete_element(struct klist *list, const void *data)
 {
 	int ret = 0;
 
