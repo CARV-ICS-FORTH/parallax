@@ -111,7 +111,7 @@ int8_t find_deleted_kv_pairs_in_segment(struct db_handle handle, struct gc_segme
 
 		if (!get_op.found || log_segment_in_device != get_op.key_device_address)
 			garbage_collect_segment = 1;
-		else if (get_op.found && log_segment_in_device == get_op.key_device_address)
+		else
 			push_stack(marks, iter_log_segment.log_segment_in_memory);
 
 		if (key->size != 0) {

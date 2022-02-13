@@ -1325,28 +1325,23 @@ void seek_to_last(struct scannerHandle *sc, struct db_handle *handle)
 	uint8_t active_tree;
 	int retval;
 
-	char dirty = 1;
-
 	if (sc == NULL) {
 		log_fatal("NULL scannerHandle?");
 		exit(EXIT_FAILURE);
 	}
 
 	/*special care for level 0 due to double buffering*/
-	if (dirty) {
-		/*take read lock of all levels (Level-0 client writes, other for switching trees
+	/*take read lock of all levels (Level-0 client writes, other for switching trees
 		*after compaction
 		*/
-		for (int i = 0; i < MAX_LEVELS; i++)
-			RWLOCK_RDLOCK(&handle->db_desc->levels[i].guard_of_level.rx_lock);
-		__sync_fetch_and_add(&handle->db_desc->levels[0].active_operations, 1);
-	}
+	for (int i = 0; i < MAX_LEVELS; i++)
+		RWLOCK_RDLOCK(&handle->db_desc->levels[i].guard_of_level.rx_lock);
+	__sync_fetch_and_add(&handle->db_desc->levels[0].active_operations, 1);
 
 	for (int i = 0; i < MAX_LEVELS; i++) {
 		for (int j = 0; j < NUM_TREES_PER_LEVEL; j++) {
 			sc->LEVEL_SCANNERS[i][j].valid = 0;
-			if (dirty)
-				sc->LEVEL_SCANNERS[i][j].dirty = 1;
+			sc->LEVEL_SCANNERS[i][j].dirty = 1;
 		}
 	}
 
@@ -1358,12 +1353,9 @@ void seek_to_last(struct scannerHandle *sc, struct db_handle *handle)
 
 	for (int i = 0; i < NUM_TREES_PER_LEVEL; i++) {
 		struct node_header *root;
-		if (dirty) {
-			if (handle->db_desc->levels[0].root_w[i] != NULL)
-				root = handle->db_desc->levels[0].root_w[i];
-			else
-				root = handle->db_desc->levels[0].root_r[i];
-		} else
+		if (handle->db_desc->levels[0].root_w[i] != NULL)
+			root = handle->db_desc->levels[0].root_w[i];
+		else
 			root = handle->db_desc->levels[0].root_r[i];
 
 		if (root != NULL) {

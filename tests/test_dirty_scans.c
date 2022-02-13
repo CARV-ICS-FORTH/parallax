@@ -70,7 +70,7 @@ unsigned choose_mix(const char *mix, unsigned key_count)
 	case 0:
 		if (key_count < 6)
 			return 0;
-		else if (key_count >= 6 && key_count < 8)
+		else if (key_count < 8)
 			return 1;
 		else
 			return 2;
@@ -79,7 +79,7 @@ unsigned choose_mix(const char *mix, unsigned key_count)
 	case 1:
 		if (key_count < 6)
 			return 1;
-		else if (key_count >= 6 && key_count < 8)
+		else if (key_count < 8)
 			return 0;
 		else
 			return 2;
@@ -88,7 +88,7 @@ unsigned choose_mix(const char *mix, unsigned key_count)
 	case 2:
 		if (key_count < 6)
 			return 2;
-		else if (key_count >= 6 && key_count < 8)
+		else if (key_count < 8)
 			return 0;
 		else
 			return 1;

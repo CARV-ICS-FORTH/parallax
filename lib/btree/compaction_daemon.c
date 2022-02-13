@@ -403,7 +403,7 @@ static void comp_get_space(struct comp_level_write_cursor *c, uint32_t height, n
 		uint32_t remaining_space;
 		if (c->segment_offt[0] == 0)
 			remaining_space = 0;
-		else if (c->segment_offt[0] > 0 && c->segment_offt[0] % SEGMENT_SIZE == 0)
+		else if (c->segment_offt[0] % SEGMENT_SIZE == 0)
 			remaining_space = 0;
 		else
 			remaining_space = SEGMENT_SIZE - c->segment_offt[0] % SEGMENT_SIZE;
@@ -444,7 +444,7 @@ static void comp_get_space(struct comp_level_write_cursor *c, uint32_t height, n
 		uint32_t remaining_space;
 		if (c->segment_offt[height] == 0)
 			remaining_space = 0;
-		else if (c->segment_offt[height] > 0 && c->segment_offt[height] % SEGMENT_SIZE == 0)
+		else if (c->segment_offt[height] % SEGMENT_SIZE == 0)
 			remaining_space = 0;
 		else
 			remaining_space = SEGMENT_SIZE - (c->segment_offt[height] % SEGMENT_SIZE);
