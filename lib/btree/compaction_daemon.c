@@ -1132,7 +1132,7 @@ static void comp_fill_heap_node(struct compaction_request *comp_req, struct comp
 		nd->type = KV_PREFIX;
 		// log_info("Prefix %.12s dev_offt %llu", cur->cursor_key.in_log->prefix,
 		//	 cur->cursor_key.in_log->device_offt);
-		nd->KV = cur->cursor_key.kv_inlog;
+		nd->KV = (char *)cur->cursor_key.kv_inlog;
 		nd->kv_size = sizeof(struct bt_leaf_entry);
 		break;
 	default:
@@ -1154,7 +1154,7 @@ static void comp_fill_parallax_key(struct sh_heap_node *nd, struct comp_parallax
 		break;
 	case BIG_INLOG:
 	case MEDIUM_INLOG:
-		curr_key->kv_inlog = nd->KV;
+		curr_key->kv_inlog = (struct bt_leaf_entry *)nd->KV;
 		curr_key->kv_type = KV_INLOG;
 		break;
 	default:

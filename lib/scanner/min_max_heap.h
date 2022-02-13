@@ -20,7 +20,7 @@ enum sh_heap_status { UNITIALIZED, INITIALIZED, EMPTY_HEAP = 4, GOT_HEAP = 5 };
 #define HEAP_SIZE 32
 
 struct sh_heap_node {
-	void *KV;
+	char *KV;
 	struct db_descriptor *db_desc;
 	uint64_t epoch;
 	uint32_t kv_size;

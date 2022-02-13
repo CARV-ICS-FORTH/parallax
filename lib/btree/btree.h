@@ -289,7 +289,7 @@ typedef struct level_descriptor {
 } level_descriptor;
 
 struct bt_kv_log_address {
-	void *addr;
+	char *addr;
 	struct log_descriptor *log_desc;
 	uint8_t in_tail;
 	uint8_t tail_id;
@@ -433,7 +433,7 @@ typedef struct bt_mutate_req {
 
 typedef struct bt_insert_req {
 	bt_mutate_req metadata;
-	void *key_value_buf;
+	char *key_value_buf;
 	//Used in some cases where the KV has been written
 	uint64_t kv_dev_offt;
 } bt_insert_req;

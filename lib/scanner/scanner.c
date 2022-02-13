@@ -545,7 +545,7 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 				dlnode, db_desc->levels[level_id].leaf_size, slot_array[middle].index);
 			level_sc->kv_entry = *kv_entry;
 			level_sc->kv_entry.dev_offt = (uint64_t)REAL_ADDRESS(kv_entry->dev_offt);
-			level_sc->keyValue = &level_sc->kv_entry;
+			level_sc->keyValue = (char *)&level_sc->kv_entry;
 			level_sc->cat = slot_array[middle].key_category;
 			level_sc->tombstone = slot_array[middle].tombstone;
 			level_sc->kv_size = sizeof(struct bt_leaf_entry);
@@ -850,7 +850,7 @@ int32_t _get_next_KV(level_scanner *sc)
 
 			sc->kv_entry = *kv_entry;
 			sc->kv_entry.dev_offt = (uint64_t)REAL_ADDRESS(kv_entry->dev_offt);
-			sc->keyValue = &sc->kv_entry;
+			sc->keyValue = (char *)&sc->kv_entry;
 			sc->kv_format = KV_PREFIX;
 			sc->cat = slot_array[idx].key_category;
 			sc->tombstone = slot_array[idx].tombstone;
@@ -1048,7 +1048,7 @@ int32_t _get_prev_KV(level_scanner *sc)
 
 			sc->kv_entry = *kv_entry;
 			sc->kv_entry.dev_offt = (uint64_t)REAL_ADDRESS(kv_entry->dev_offt);
-			sc->keyValue = &sc->kv_entry;
+			sc->keyValue = (char *)&sc->kv_entry;
 			sc->kv_format = KV_PREFIX;
 			sc->cat = slot_array[idx].key_category;
 			sc->tombstone = slot_array[idx].tombstone;
@@ -1260,7 +1260,7 @@ static int find_last_key(level_scanner *level_sc)
 			level_sc->kv_entry = *kv_entry;
 			level_sc->kv_format = KV_PREFIX;
 			level_sc->kv_entry.dev_offt = (uint64_t)REAL_ADDRESS(kv_entry->dev_offt);
-			level_sc->keyValue = &level_sc->kv_entry;
+			level_sc->keyValue = (char *)&level_sc->kv_entry;
 			level_sc->cat = slot_array[middle].key_category;
 			level_sc->tombstone = slot_array[middle].tombstone;
 			level_sc->kv_size = sizeof(struct bt_leaf_entry);

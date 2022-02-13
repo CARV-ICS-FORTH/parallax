@@ -989,9 +989,9 @@ uint8_t insert_key_value(db_handle *handle, void *key, void *value, uint32_t key
 
 	/*prepare the request*/
 	*(uint32_t *)key_buf = key_size;
-	memcpy((void *)(uint64_t)key_buf + sizeof(uint32_t), key, key_size);
-	*(uint32_t *)((uint64_t)key_buf + sizeof(uint32_t) + key_size) = value_size;
-	memcpy((void *)(uint64_t)key_buf + sizeof(uint32_t) + key_size + sizeof(uint32_t), value, value_size);
+	memcpy(key_buf + sizeof(uint32_t), key, key_size);
+	*(uint32_t *)(key_buf + sizeof(uint32_t) + key_size) = value_size;
+	memcpy(key_buf + sizeof(uint32_t) + key_size + sizeof(uint32_t), value, value_size);
 	ins_req.metadata.handle = handle;
 	ins_req.key_value_buf = key_buf;
 	ins_req.metadata.kv_size = kv_size;
@@ -1637,7 +1637,7 @@ deser:
 			log_fatal("Corrupted KV location");
 			exit(EXIT_FAILURE);
 		}
-		uint32_t *value_size = kv.addr + sizeof(uint32_t) + KEY_SIZE(kv.addr);
+		uint32_t *value_size = (uint32_t *)(kv.addr + sizeof(uint32_t) + KEY_SIZE(kv.addr));
 
 		if (get_op->retrieve && !get_op->buffer_to_pack_kv) {
 			get_op->buffer_to_pack_kv = malloc(*value_size);
@@ -1676,7 +1676,6 @@ deser:
 		exit(EXIT_FAILURE);
 
 	__sync_fetch_and_sub(&db_desc->levels[level_id].active_operations, 1);
-	return;
 }
 
 void find_key(struct lookup_operation *get_op)
@@ -1743,8 +1742,6 @@ void find_key(struct lookup_operation *get_op)
 finish:
 	if (get_op->found && get_op->tombstone)
 		get_op->found = 0;
-
-	return;
 }
 
 /**
@@ -1758,11 +1755,11 @@ finish:
 */
 int8_t update_index(index_node *node, node_header *left_child, node_header *right_child, void *key_buf)
 {
-	void *addr;
+	char *addr;
 	uint64_t entry_val = 0;
 	struct key_compare key1_cmp, key2_cmp;
 
-	addr = (void *)(uint64_t)node + sizeof(node_header);
+	addr = (char *)node + sizeof(node_header);
 
 	if (node->header.num_entries > 0) {
 		int32_t middle;
@@ -1770,9 +1767,9 @@ int8_t update_index(index_node *node, node_header *left_child, node_header *righ
 		int32_t end_idx = node->header.num_entries - 1;
 		while (1) {
 			middle = (start_idx + end_idx) / 2;
-			addr = (void *)(uint64_t)node + (uint64_t)sizeof(node_header) + sizeof(uint64_t) +
-			       (uint64_t)(middle * 2 * sizeof(uint64_t));
-			void *index_key_buf = (void *)REAL_ADDRESS(*(uint64_t *)addr);
+			addr = ((char *)node) + sizeof(node_header) + sizeof(uint64_t) +
+			       (middle * 2 * sizeof(uint64_t));
+			char *index_key_buf = REAL_ADDRESS(*(uint64_t *)addr);
 			/*key1 and key2 are KV_FORMATed*/
 			init_key_cmp(&key1_cmp, index_key_buf, KV_FORMAT);
 			init_key_cmp(&key2_cmp, key_buf, KV_FORMAT);
@@ -1784,7 +1781,7 @@ int8_t update_index(index_node *node, node_header *left_child, node_header *righ
 					break;
 			} else if (ret == 0) {
 				log_fatal("key already present index_key %s key_buf %s", (char *)(index_key_buf + 4),
-					  (char *)(key_buf + 4));
+					  (char *)key_buf + 4);
 				exit(EXIT_FAILURE);
 			} else {
 				start_idx = middle + 1;
@@ -1792,8 +1789,8 @@ int8_t update_index(index_node *node, node_header *left_child, node_header *righ
 					middle++;
 					if (middle >= (int64_t)node->header.num_entries) {
 						middle = node->header.num_entries;
-						addr = (void *)(uint64_t)node + (uint64_t)sizeof(node_header) +
-						       (uint64_t)(middle * 2 * sizeof(uint64_t)) + sizeof(uint64_t);
+						addr = ((char *)node) + sizeof(node_header) +
+						       (middle * 2 * sizeof(uint64_t)) + sizeof(uint64_t);
 					} else
 						addr += (2 * sizeof(uint64_t));
 					break;
@@ -1806,7 +1803,7 @@ int8_t update_index(index_node *node, node_header *left_child, node_header *righ
 		memmove(dest_addr, addr, num_of_bytes);
 		addr -= sizeof(uint64_t);
 	} else
-		addr = (void *)node + sizeof(node_header);
+		addr = (char *)node + sizeof(node_header);
 
 	/*update the entry*/
 	if (left_child != 0)
@@ -1902,7 +1899,7 @@ static struct bt_rebalance_result split_index(node_header *node, bt_insert_req *
 {
 	struct bt_rebalance_result result;
 	node_header *tmp_index;
-	void *full_addr;
+	char *full_addr;
 	uint32_t i = 0;
 	// assert_index_node(node);
 	result.left_child = (node_header *)seg_get_index_node(
@@ -1912,7 +1909,7 @@ static struct bt_rebalance_result split_index(node_header *node, bt_insert_req *
 		ins_req->metadata.handle->db_desc, ins_req->metadata.level_id, ins_req->metadata.tree_id, INDEX_SPLIT);
 
 	/*initialize*/
-	full_addr = (void *)((uint64_t)node + (uint64_t)sizeof(node_header));
+	full_addr = (char *)node + (uint64_t)sizeof(node_header);
 	/*set node heights*/
 	result.left_child->height = node->height;
 	result.right_child->height = node->height;
@@ -1926,7 +1923,7 @@ static struct bt_rebalance_result split_index(node_header *node, bt_insert_req *
 		node_header *left_child = (node_header *)REAL_ADDRESS(*(uint64_t *)full_addr);
 
 		full_addr += sizeof(uint64_t);
-		void *key_buf = (void *)REAL_ADDRESS(*(uint64_t *)full_addr);
+		char *key_buf = (char *)REAL_ADDRESS(*(uint64_t *)full_addr);
 		full_addr += sizeof(uint64_t);
 		node_header *right_child = (node_header *)REAL_ADDRESS(*(uint64_t *)full_addr);
 
@@ -2099,13 +2096,13 @@ void *_index_node_binary_search(index_node *node, void *key_buf, char query_key_
 void assert_index_node(node_header *node)
 {
 	uint32_t k;
-	void *key_tmp;
-	void *key_tmp_prev = NULL;
-	void *addr;
+	char *key_tmp;
+	char *key_tmp_prev = NULL;
+	char *addr;
 	node_header *child;
 	struct key_compare key1_cmp, key2_cmp;
 
-	addr = (void *)(uint64_t)node + (uint64_t)sizeof(node_header);
+	addr = (char *)node + sizeof(node_header);
 	if (node->num_entries == 0)
 		return;
 	//	if(node->height > 1)
@@ -2120,7 +2117,7 @@ void assert_index_node(node_header *node)
 			exit(EXIT_FAILURE);
 		}
 		addr += sizeof(uint64_t);
-		key_tmp = (void *)REAL_ADDRESS(*(uint64_t *)addr);
+		key_tmp = REAL_ADDRESS(*(uint64_t *)addr);
 		// log_info("key %s\n", (char *)key_tmp + sizeof(int32_t));
 
 		if (key_tmp_prev != NULL) {
@@ -2129,13 +2126,13 @@ void assert_index_node(node_header *node)
 			init_key_cmp(&key2_cmp, key_tmp, KV_FORMAT);
 			if (key_cmp(&key1_cmp, &key2_cmp) >= 0) {
 				log_fatal("corrupted index %d:%s something else %d:%s\n", *(uint32_t *)key_tmp_prev,
-					  (char *)(key_tmp_prev + 4), *(uint32_t *)key_tmp, (char *)(key_tmp + 4));
+					  key_tmp_prev + 4, *(uint32_t *)key_tmp, (char *)(key_tmp + 4));
 				exit(EXIT_FAILURE);
 			}
 		}
 		if (key_tmp_prev)
 			log_fatal("corrupted index %*s something else %*s\n", *(uint32_t *)key_tmp_prev,
-				  (char *)key_tmp_prev + 4, *(uint32_t *)key_tmp, (char *)key_tmp + 4);
+				  key_tmp_prev + 4, *(uint32_t *)key_tmp, key_tmp + 4);
 
 		key_tmp_prev = key_tmp;
 		addr += sizeof(uint64_t);
