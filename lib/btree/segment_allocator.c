@@ -58,19 +58,15 @@ static uint64_t link_memory_segments(struct link_segments_metadata *req)
 {
 	level_descriptor *level_desc = req->level_desc;
 	segment_header *new_segment = req->new_segment;
-	segment_header *prev_segment;
 	uint64_t available_space = req->available_space;
 	uint64_t segment_id = req->segment_id;
 	uint8_t tree_id = req->tree_id;
 
-	(void)prev_segment;
 	if (req->level_desc->offset[req->tree_id] != 0) {
 		/*chain segments*/
-		prev_segment = level_desc->last_segment[tree_id];
 		new_segment->next_segment = NULL;
 		new_segment->prev_segment = (segment_header *)ABSOLUTE_ADDRESS(level_desc->last_segment[tree_id]);
 		level_desc->last_segment[tree_id]->next_segment = (segment_header *)ABSOLUTE_ADDRESS(new_segment);
-		prev_segment = level_desc->last_segment[tree_id];
 		level_desc->last_segment[tree_id] = new_segment;
 		level_desc->last_segment[tree_id]->segment_id = segment_id + 1;
 		level_desc->offset[tree_id] += (available_space + sizeof(segment_header));
@@ -82,7 +78,6 @@ static uint64_t link_memory_segments(struct link_segments_metadata *req)
 		level_desc->last_segment[tree_id] = new_segment;
 		level_desc->last_segment[tree_id]->segment_id = 1;
 		level_desc->offset[tree_id] = sizeof(segment_header);
-		prev_segment = NULL;
 	}
 
 	return level_desc->offset[tree_id] % SEGMENT_SIZE;

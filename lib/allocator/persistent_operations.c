@@ -612,7 +612,6 @@ static void init_pos_log_cursor_in_segment(struct db_descriptor *db_desc, struct
 		break;
 	case BIG_LOG:
 		cursor->offt_in_segment = db_desc->big_log_start_offt_in_segment;
-		cursor->offt_in_segment = 0;
 		if (cursor->log_segments->segments[cursor->log_segments->entry_id] == cursor->log_tail_dev_offt) {
 			if (cursor->log_size == 0) {
 				/*Nothing to parse*/

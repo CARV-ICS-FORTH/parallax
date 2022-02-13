@@ -1216,7 +1216,6 @@ static int find_last_key(level_scanner *level_sc)
 		element.guard = 0;
 		//log_debug("Leftmost boom %llu", node->num_entries);
 		stack_push(&(level_sc->stack), element);
-		middle = 0;
 	} else if (middle >= (int64_t)node->num_entries - 1) {
 		//log_info("rightmost");
 		element.node = node;
@@ -1225,7 +1224,6 @@ static int find_last_key(level_scanner *level_sc)
 		element.rightmost = 1;
 		element.guard = 0;
 		stack_push(&(level_sc->stack), element);
-		middle = node->num_entries - 1;
 	} else {
 		//log_info("middle is %d", middle);
 		element.node = node;

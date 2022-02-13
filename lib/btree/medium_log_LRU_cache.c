@@ -72,7 +72,6 @@ void move_node_to_tail(struct chunk_list *list, const struct chunk_listnode *nod
 	assert(node != NULL);
 
 	struct chunk_listnode *pfront, *pback;
-	pfront = list->head;
 	pback = NULL;
 
 	for (pfront = list->head; pfront != node; pback = pfront, pfront = pfront->next)
