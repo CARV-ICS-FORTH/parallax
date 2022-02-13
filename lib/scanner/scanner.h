@@ -72,7 +72,7 @@ typedef struct scannerHandle {
  * }
  * closeScanner(scanner);
  */
-scannerHandle *initScanner(scannerHandle *sc, db_handle *handle, void *key, char seek_mode);
+scannerHandle *initScanner(scannerHandle *sc, db_handle *handle, void *start_key, char seek_flag);
 void closeScanner(scannerHandle *sc);
 
 void init_dirty_scanner(scannerHandle *sc, db_handle *handle, void *start_key, char seek_flag);
@@ -104,7 +104,7 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
  *        END_OF_DATABASE, end of database reached
  **/
 int32_t _get_next_KV(level_scanner *sc);
-void _close_compaction_buffer_scanner(level_scanner *sc);
+void _close_compaction_buffer_scanner(level_scanner *level_sc);
 void close_dirty_scanner(scannerHandle *sc);
 #if MEASURE_SST_USED_SPACE
 void perf_measure_leaf_capacity(db_handle *hd, int level_id);

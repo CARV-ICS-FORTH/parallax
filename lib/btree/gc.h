@@ -40,5 +40,5 @@ struct large_log_segment_gc_entry {
 #define GC_SEGMENT_THRESHOLD (10 / 100)
 #define SEGMENTS_TORECLAIM 100000
 #define LOG_DATA_OFFSET (SEGMENT_SIZE)
-void *gc_log_entries(void *db_handle);
+void *gc_log_entries(void *hd);
 uint8_t is_gc_executed(void);

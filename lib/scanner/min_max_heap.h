@@ -41,7 +41,7 @@ struct sh_heap {
 };
 
 struct sh_heap *sh_alloc_heap(void);
-void sh_init_heap(struct sh_heap *heap, int active_tree, enum sh_heap_type type);
+void sh_init_heap(struct sh_heap *heap, int active_tree, enum sh_heap_type heap_type);
 void sh_destroy_heap(struct sh_heap *heap);
 void sh_insert_heap_node(struct sh_heap *hp, struct sh_heap_node *nd);
 enum sh_heap_status sh_remove_top(struct sh_heap *hp, struct sh_heap_node *heap_node);

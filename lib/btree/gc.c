@@ -215,15 +215,15 @@ void scan_db(db_descriptor *db_desc, volume_descriptor *volume_desc, stack *mark
 	free(segments_toreclaim);
 }
 
-void *gc_log_entries(void *handle)
+void *gc_log_entries(void *hd)
 {
 	struct timespec ts;
 	uint64_t gc_interval;
 	stack *marks;
 	struct lib_option *option;
-	struct db_handle *han = (struct db_handle *)handle;
-	db_descriptor *db_desc = han->db_desc;
-	volume_descriptor *volume_desc = han->volume_desc;
+	struct db_handle *handle = (struct db_handle *)hd;
+	db_descriptor *db_desc = handle->db_desc;
+	volume_descriptor *volume_desc = handle->volume_desc;
 	struct klist_node *region;
 	struct lib_option *dboptions = NULL;
 

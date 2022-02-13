@@ -159,25 +159,25 @@ struct chunk_LRU_cache *init_LRU(void)
 	return new_LRU;
 }
 
-void add_to_LRU(struct chunk_LRU_cache *LRU_cache, uint64_t chunk_offt, char *chunk_buf)
+void add_to_LRU(struct chunk_LRU_cache *chunk_cache, uint64_t chunk_offt, char *chunk_buf)
 {
-	assert(LRU_cache != NULL);
-	assert(LRU_cache->chunks_list != NULL);
+	assert(chunk_cache != NULL);
+	assert(chunk_cache->chunks_list != NULL);
 
 	//remove oldest chunk (head of list) from LRU
-	if (LRU_cache->hash_table_count == LRU_cache->hash_table_capacity) {
+	if (chunk_cache->hash_table_count == chunk_cache->hash_table_capacity) {
 		struct chunk_hash_entry *oldest_used_chunk;
-		HASH_FIND(hh, *(LRU_cache->chunks_hash_table), &LRU_cache->chunks_list->head->chunk_offt,
+		HASH_FIND(hh, *(chunk_cache->chunks_hash_table), &chunk_cache->chunks_list->head->chunk_offt,
 			  sizeof(uint64_t), oldest_used_chunk);
 
-		HASH_DEL(*(LRU_cache->chunks_hash_table), oldest_used_chunk);
+		HASH_DEL(*(chunk_cache->chunks_hash_table), oldest_used_chunk);
 
-		remove_from_list(LRU_cache->chunks_list);
-		--LRU_cache->hash_table_count;
+		remove_from_list(chunk_cache->chunks_list);
+		--chunk_cache->hash_table_count;
 	}
 
 	//always adds on tail,as it is the newest chunk
-	add_to_list(LRU_cache->chunks_list, chunk_buf, chunk_offt);
+	add_to_list(chunk_cache->chunks_list, chunk_buf, chunk_offt);
 
 	struct chunk_hash_entry *new_entry;
 	new_entry = (struct chunk_hash_entry *)calloc(1, sizeof(struct chunk_hash_entry));
@@ -188,31 +188,31 @@ void add_to_LRU(struct chunk_LRU_cache *LRU_cache, uint64_t chunk_offt, char *ch
 	}
 
 	new_entry->chunk_offt = chunk_offt;
-	new_entry->chunk_ptr = LRU_cache->chunks_list->tail;
-	HASH_ADD(hh, *(LRU_cache->chunks_hash_table), chunk_offt, sizeof(uint64_t), new_entry);
+	new_entry->chunk_ptr = chunk_cache->chunks_list->tail;
+	HASH_ADD(hh, *(chunk_cache->chunks_hash_table), chunk_offt, sizeof(uint64_t), new_entry);
 
 	assert(new_entry->chunk_ptr->chunk_offt == chunk_offt);
 
-	++LRU_cache->hash_table_count;
+	++chunk_cache->hash_table_count;
 	//log_info("hash chunks %lu list nodes %d", LRU_cache->hash_table_count, LRU_cache->chunks_list->size);
 }
 
-int chunk_exists_in_LRU(struct chunk_LRU_cache *LRU_cache, uint64_t chunk_offt)
+int chunk_exists_in_LRU(struct chunk_LRU_cache *chunk_cache, uint64_t chunk_offt)
 {
-	assert(LRU_cache != NULL);
+	assert(chunk_cache != NULL);
 	struct chunk_hash_entry *chunk;
 
-	HASH_FIND(hh, *(LRU_cache->chunks_hash_table), &chunk_offt, sizeof(uint64_t), chunk);
+	HASH_FIND(hh, *(chunk_cache->chunks_hash_table), &chunk_offt, sizeof(uint64_t), chunk);
 
 	return chunk != NULL;
 }
 
-char *get_chunk_from_LRU(struct chunk_LRU_cache *LRU_cache, uint64_t chunk_offt)
+char *get_chunk_from_LRU(struct chunk_LRU_cache *chunk_cache, uint64_t chunk_offt)
 {
-	assert(LRU_cache != NULL);
+	assert(chunk_cache != NULL);
 	struct chunk_hash_entry *chunk;
-	HASH_FIND(hh, *(LRU_cache->chunks_hash_table), &chunk_offt, sizeof(uint64_t), chunk);
-	move_node_to_tail(LRU_cache->chunks_list, chunk->chunk_ptr);
+	HASH_FIND(hh, *(chunk_cache->chunks_hash_table), &chunk_offt, sizeof(uint64_t), chunk);
+	move_node_to_tail(chunk_cache->chunks_list, chunk->chunk_ptr);
 	assert(chunk->chunk_ptr->chunk_offt == chunk_offt);
 	return chunk->chunk_ptr->chunk_buf;
 }
@@ -243,13 +243,13 @@ static void free_LRU_list(struct chunk_list *list)
 	}
 }
 
-void destroy_LRU(struct chunk_LRU_cache *LRU_cache)
+void destroy_LRU(struct chunk_LRU_cache *chunk_cache)
 {
-	assert(LRU_cache != NULL);
+	assert(chunk_cache != NULL);
 
 	log_info("Compaction done! Destroying the LRU for medium log to in place");
-	free_LRU_hashtable(LRU_cache->chunks_hash_table);
-	free_LRU_list(LRU_cache->chunks_list);
-	free(LRU_cache->chunks_list);
-	free(LRU_cache);
+	free_LRU_hashtable(chunk_cache->chunks_hash_table);
+	free_LRU_list(chunk_cache->chunks_list);
+	free(chunk_cache->chunks_list);
+	free(chunk_cache);
 }

@@ -1235,7 +1235,7 @@ static void pr_do_log_IO(struct pr_log_ticket *ticket)
 {
 	uint64_t log_offt = ticket->log_offt;
 	uint32_t op_size = ticket->op_size;
-	uint32_t remaining = ticket->op_size;
+	uint32_t remaining = op_size;
 	uint64_t c_log_offt = log_offt;
 
 	while (remaining > 0) {
