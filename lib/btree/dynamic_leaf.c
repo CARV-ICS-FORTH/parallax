@@ -607,7 +607,6 @@ struct bt_rebalance_result special_split_dynamic_leaf(struct bt_dynamic_leaf_nod
 	char *key_buf, *leaf_log_tail, *middle_key_buf = NULL;
 	struct db_descriptor *db_desc = req->metadata.handle->db_desc;
 	uint64_t split_point;
-	uint32_t key_buf_size;
 	/*cow check*/
 
 	slot_array = get_slot_array_offset(leaf);
@@ -644,7 +643,7 @@ struct bt_rebalance_result special_split_dynamic_leaf(struct bt_dynamic_leaf_nod
 	if (slot_array[split_point].kv_loc == KV_INPLACE) {
 		uint32_t key_size = KEY_SIZE(key_buf);
 		uint32_t value_size = VALUE_SIZE(key_buf + sizeof(uint32_t) + key_size);
-		key_buf_size = 2 * sizeof(uint32_t) + key_size + value_size;
+		uint32_t key_buf_size = 2 * sizeof(uint32_t) + key_size + value_size;
 		leaf_log_tail -= key_buf_size;
 		right_leaf->header.leaf_log_size += key_buf_size;
 		memcpy(leaf_log_tail, key_buf, key_buf_size);
@@ -755,18 +754,16 @@ int reorganize_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, uint32_t leaf_siz
 	leaf->header.height = 0;
 	leaf->header.type = reorganize_buffer->header.type;
 
-	char *key_buf;
-	unsigned key_buf_size;
 	char *leaf_log_tail = get_leaf_log_offset(leaf, leaf_size);
 	struct bt_dynamic_leaf_slot_array *leaf_slot_array = get_slot_array_offset(leaf);
 
 	for (uint64_t i = 0; i < reorganize_buffer->header.num_entries; ++i) {
-		key_buf = fill_keybuf(get_kv_offset(reorganize_buffer, leaf_size, slot_array[i].index),
-				      slot_array[i].kv_loc);
+		char *key_buf = fill_keybuf(get_kv_offset(reorganize_buffer, leaf_size, slot_array[i].index),
+					    slot_array[i].kv_loc);
 		if (slot_array[i].kv_loc == KV_INPLACE) {
 			uint32_t key_size = KEY_SIZE(key_buf);
 			uint32_t value_size = VALUE_SIZE(key_buf + sizeof(uint32_t) + key_size);
-			key_buf_size = (2 * sizeof(uint32_t)) + key_size + value_size;
+			uint32_t key_buf_size = (2 * sizeof(uint32_t)) + key_size + value_size;
 			assert(slot_array[i].key_category == SMALL_INPLACE ||
 			       slot_array[i].key_category == MEDIUM_INPLACE);
 			leaf->header.leaf_log_size += key_buf_size;

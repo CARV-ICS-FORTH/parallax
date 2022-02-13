@@ -80,7 +80,6 @@ int8_t find_deleted_kv_pairs_in_segment(struct db_handle handle, struct gc_segme
 	struct gc_segment_descriptor iter_log_segment = *log_seg;
 	char *log_segment_in_device = REAL_ADDRESS(log_seg->segment_dev_offt);
 	struct splice *key;
-	struct splice *value;
 	uint64_t checked_segment_chunk = sizeof(struct log_sequence_number);
 	uint64_t segment_data = LOG_DATA_OFFSET;
 	int key_value_size;
@@ -95,7 +94,8 @@ int8_t find_deleted_kv_pairs_in_segment(struct db_handle handle, struct gc_segme
 
 	while (checked_segment_chunk < segment_data) {
 		key = (struct splice *)iter_log_segment.log_segment_in_memory;
-		value = (struct splice *)(VALUE_SIZE_OFFSET(key->size, iter_log_segment.log_segment_in_memory));
+		struct splice *value =
+			(struct splice *)(VALUE_SIZE_OFFSET(key->size, iter_log_segment.log_segment_in_memory));
 
 		if (!key->size)
 			break;
@@ -138,12 +138,12 @@ static void fetch_segment(struct log_segment *segment_buf, uint64_t segment_offt
 {
 	off_t dev_offt = segment_offt;
 	ssize_t bytes_to_read = 0;
-	ssize_t bytes = 0;
 
 	assert(segment_offt % SEGMENT_SIZE == 0);
 
 	while (bytes_to_read < SEGMENT_SIZE) {
-		bytes = pread(FD, &segment_buf[bytes_to_read], SEGMENT_SIZE - bytes_to_read, dev_offt + bytes_to_read);
+		ssize_t bytes =
+			pread(FD, &segment_buf[bytes_to_read], SEGMENT_SIZE - bytes_to_read, dev_offt + bytes_to_read);
 		if (bytes == -1) {
 			log_fatal("Failed to read error code");
 			perror("Error");

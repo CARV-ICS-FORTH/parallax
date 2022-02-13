@@ -364,8 +364,6 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 	node_header *node;
 	int64_t ret;
 	uint32_t level_id = level_sc->level_id;
-	int32_t start_idx = 0;
-	int32_t end_idx = 0;
 	int32_t middle;
 	struct key_compare key1_cmp, key2_cmp;
 	/*drop all paths*/
@@ -397,8 +395,8 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 
 	while (node->type != leafNode && node->type != leafRootNode) {
 		inode = (index_node *)node;
-		start_idx = 0;
-		end_idx = inode->header.num_entries - 1;
+		int32_t start_idx = 0;
+		int32_t end_idx = inode->header.num_entries - 1;
 
 		while (1) {
 			middle = (start_idx + end_idx) / 2;
@@ -680,7 +678,7 @@ void perf_preorder_count_leaf_capacity(level_descriptor *level, node_header *roo
 		node = REAL_ADDRESS(inode->p[i].left[0]);
 		perf_preorder_count_leaf_capacity(level, node);
 	}
-
+	(void)node;
 	/* node = REAL_ADDRESS(inode->p[root->num_entries].left); */
 	/* perf_preorder_count_leaf_capacity(level,node); */
 }
@@ -1146,7 +1144,6 @@ static int find_last_key(level_scanner *level_sc)
 	index_node *inode;
 	node_header *node;
 	uint32_t level_id = level_sc->level_id;
-	int32_t end_idx = 0;
 	int32_t middle;
 	/*drop all paths*/
 	stack_reset(&(level_sc->stack));
@@ -1176,7 +1173,7 @@ static int find_last_key(level_scanner *level_sc)
 
 	while (node->type != leafNode && node->type != leafRootNode) {
 		inode = (index_node *)node;
-		end_idx = inode->header.num_entries - 1;
+		int32_t end_idx = inode->header.num_entries - 1;
 
 		element.guard = 0;
 		element.node = node;

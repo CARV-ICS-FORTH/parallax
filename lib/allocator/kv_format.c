@@ -92,10 +92,10 @@ static void kvf_parse_options(int argc, char **argv)
 static void kvf_write_buffer(int fd, char *buffer, ssize_t start, ssize_t size, uint64_t dev_offt)
 {
 	ssize_t total_bytes_written = start;
-	ssize_t bytes_written = 0;
+
 	while (total_bytes_written < size) {
-		bytes_written = pwrite(fd, &buffer[total_bytes_written], size - total_bytes_written,
-				       dev_offt + total_bytes_written);
+		ssize_t bytes_written = pwrite(fd, &buffer[total_bytes_written], size - total_bytes_written,
+					       dev_offt + total_bytes_written);
 		if (bytes_written == -1) {
 			log_fatal("Failed to writed segment for leaf nodes reason follows");
 			perror("Reason");

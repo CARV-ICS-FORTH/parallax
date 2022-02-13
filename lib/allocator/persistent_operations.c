@@ -303,11 +303,10 @@ void pr_flush_db_superblock(struct db_descriptor *db_desc)
 	uint64_t superblock_offt =
 		sizeof(struct superblock) + (sizeof(struct pr_db_superblock) * db_desc->db_superblock->id);
 	ssize_t total_bytes_written = 0;
-	ssize_t bytes_written = 0;
 	ssize_t size = sizeof(struct pr_db_superblock);
 	while (total_bytes_written < size) {
-		bytes_written = pwrite(db_desc->db_volume->vol_fd, db_desc->db_superblock, size - total_bytes_written,
-				       superblock_offt + total_bytes_written);
+		ssize_t bytes_written = pwrite(db_desc->db_volume->vol_fd, db_desc->db_superblock,
+					       size - total_bytes_written, superblock_offt + total_bytes_written);
 		if (bytes_written == -1) {
 			log_fatal("Failed to write region's %s superblock", db_desc->db_superblock->db_name);
 			perror("Reason");
@@ -353,14 +352,13 @@ void pr_read_db_superblock(struct db_descriptor *db_desc)
 {
 	//where is my superblock
 	ssize_t total_bytes_written = 0;
-	ssize_t bytes_written = 0;
 	ssize_t size = sizeof(struct pr_db_superblock);
 	uint64_t superblock_offt =
 		sizeof(struct superblock) + (sizeof(struct pr_db_superblock) * db_desc->db_superblock->id);
 
 	while (total_bytes_written < size) {
-		bytes_written = pwrite(db_desc->db_volume->vol_fd, db_desc->db_superblock, size - total_bytes_written,
-				       superblock_offt + total_bytes_written);
+		ssize_t bytes_written = pwrite(db_desc->db_volume->vol_fd, db_desc->db_superblock,
+					       size - total_bytes_written, superblock_offt + total_bytes_written);
 		if (bytes_written == -1) {
 			log_fatal("Failed to read region's %s superblock", db_desc->db_superblock->db_name);
 			perror("Reason");
@@ -388,12 +386,11 @@ void pr_flush_log_tail(struct db_descriptor *db_desc, struct log_descriptor *log
 	uint64_t start_offt;
 	start_offt = chunk_id * LOG_CHUNK_SIZE;
 
-	ssize_t bytes_written = 0;
 	uint64_t end_offt = start_offt + LOG_CHUNK_SIZE;
 	log_info("Flushing log tail start_offt: %lu end_offt: %lu last tail %d", start_offt, end_offt, last_tail);
 	while (start_offt < end_offt) {
-		bytes_written = pwrite(db_desc->db_volume->vol_fd, &log_desc->tail[last_tail]->buf[start_offt],
-				       end_offt - start_offt, log_desc->tail[last_tail]->dev_offt + start_offt);
+		ssize_t bytes_written = pwrite(db_desc->db_volume->vol_fd, &log_desc->tail[last_tail]->buf[start_offt],
+					       end_offt - start_offt, log_desc->tail[last_tail]->dev_offt + start_offt);
 
 		if (bytes_written == -1) {
 			log_fatal("Failed to write LOG_CHUNK reason follows");

@@ -752,10 +752,9 @@ int read_dev_offt_into_buffer(char *buffer, const uint32_t start, const uint32_t
 			      const int fd)
 {
 	ssize_t bytes_read = start;
-	ssize_t bytes = 0;
 
 	while (bytes_read < size) {
-		bytes = pread(fd, &buffer[bytes_read], size - bytes_read, dev_offt + bytes_read);
+		ssize_t bytes = pread(fd, &buffer[bytes_read], size - bytes_read, dev_offt + bytes_read);
 		if (bytes == -1) {
 			log_fatal("Failed to read, error code");
 			perror("Error");

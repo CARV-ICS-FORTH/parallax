@@ -47,11 +47,10 @@ static void fetch_segment(struct comp_level_write_cursor *c, char *segment_buf, 
 {
 	off_t dev_offt = log_chunk_dev_offt;
 	ssize_t bytes_to_read = 0;
-	ssize_t bytes = 0;
 
 	while (bytes_to_read < size) {
-		bytes = pread(c->handle->db_desc->db_volume->vol_fd, &segment_buf[bytes_to_read], size - bytes_to_read,
-			      dev_offt + bytes_to_read);
+		ssize_t bytes = pread(c->handle->db_desc->db_volume->vol_fd, &segment_buf[bytes_to_read],
+				      size - bytes_to_read, dev_offt + bytes_to_read);
 		if (bytes == -1) {
 			log_fatal("Failed to read error code");
 			perror("Error");
@@ -166,10 +165,9 @@ static void comp_write_segment(char *buffer, uint64_t dev_offt, uint32_t buf_off
 	}
 #endif
 	ssize_t total_bytes_written = buf_offt;
-	ssize_t bytes_written = 0;
 	while (total_bytes_written < size) {
-		bytes_written = pwrite(fd, &buffer[total_bytes_written], size - total_bytes_written,
-				       dev_offt + total_bytes_written);
+		ssize_t bytes_written = pwrite(fd, &buffer[total_bytes_written], size - total_bytes_written,
+					       dev_offt + total_bytes_written);
 		if (bytes_written == -1) {
 			log_fatal("Failed to writed segment for leaf nodes reason follows");
 			perror("Reason");
@@ -259,10 +257,9 @@ static void comp_get_next_key(struct comp_level_read_cursor *c)
 			off_t dev_offt = ABSOLUTE_ADDRESS(c->curr_segment);
 			//	log_info("Reading level segment from dev_offt: %llu", dev_offt);
 			ssize_t bytes_read = 0; //sizeof(struct segment_header);
-			ssize_t bytes = 0;
 			while (bytes_read < SEGMENT_SIZE) {
-				bytes = pread(c->fd, &c->segment_buf[bytes_read], SEGMENT_SIZE - bytes_read,
-					      dev_offt + bytes_read);
+				ssize_t bytes = pread(c->fd, &c->segment_buf[bytes_read], SEGMENT_SIZE - bytes_read,
+						      dev_offt + bytes_read);
 				if (-1 == bytes) {
 					log_fatal("Failed to read error code");
 					perror("Error");
@@ -1045,11 +1042,12 @@ void *compaction_daemon(void *args)
 		for (int level_id = 1; level_id < MAX_LEVELS - 1; ++level_id) {
 			src_level = &db_desc->levels[level_id];
 			struct level_descriptor *dst_level = &db_desc->levels[level_id + 1];
-			uint8_t tree_1 = 0; // level_1->active_tree;
-			uint8_t tree_2 = 0; // level_2->active_tree;
+			uint8_t tree_1 = 0;
 
 			if (src_level->tree_status[tree_1] == NO_COMPACTION &&
 			    src_level->level_size[tree_1] >= src_level->max_level_size) {
+				uint8_t tree_2 = 0;
+
 				if (dst_level->tree_status[tree_2] == NO_COMPACTION &&
 				    dst_level->level_size[tree_2] < dst_level->max_level_size) {
 					src_level->tree_status[tree_1] = COMPACTION_IN_PROGRESS;

@@ -273,10 +273,10 @@ static void destroy_level_locktable(db_descriptor *database, uint8_t level_id)
 
 static void pr_read_log_tail(struct log_tail *tail)
 {
-	ssize_t bytes = 0;
 	ssize_t bytes_read = 0;
 	while (bytes_read < SEGMENT_SIZE) {
-		bytes = pread(tail->fd, &tail->buf[bytes_read], SEGMENT_SIZE - bytes_read, tail->dev_offt + bytes_read);
+		ssize_t bytes =
+			pread(tail->fd, &tail->buf[bytes_read], SEGMENT_SIZE - bytes_read, tail->dev_offt + bytes_read);
 		if (bytes == -1) {
 			log_fatal("Failed to read error code");
 			perror("Error");
@@ -1210,16 +1210,15 @@ static void pr_do_log_chunk_IO(struct pr_log_ticket *ticket)
 	wait_for_value(&ticket->tail->bytes_in_chunk[chunk_id], LOG_CHUNK_SIZE);
 	// do the IO finally
 	ssize_t total_bytes_written = 0;
-	ssize_t bytes_written = 0;
 	ssize_t size = LOG_CHUNK_SIZE;
 	// log_info("IO time, start %llu size %llu segment dev_offt %llu offt in seg
 	// %llu", total_bytes_written, size,
 	//	 ticket->tail->dev_segment_offt, ticket->IO_start_offt);
 	while (total_bytes_written < size) {
-		bytes_written = pwrite(ticket->tail->fd,
-				       &ticket->tail->buf[ticket->IO_start_offt + total_bytes_written],
-				       size - total_bytes_written,
-				       ticket->tail->dev_offt + ticket->IO_start_offt + total_bytes_written);
+		ssize_t bytes_written = pwrite(ticket->tail->fd,
+					       &ticket->tail->buf[ticket->IO_start_offt + total_bytes_written],
+					       size - total_bytes_written,
+					       ticket->tail->dev_offt + ticket->IO_start_offt + total_bytes_written);
 		if (bytes_written == -1) {
 			log_fatal("Failed to write LOG_CHUNK reason follows");
 			perror("Reason");
@@ -1761,29 +1760,25 @@ finish:
 */
 int8_t update_index(index_node *node, node_header *left_child, node_header *right_child, void *key_buf)
 {
-	int64_t ret = 0;
 	void *addr;
-	void *dest_addr;
 	uint64_t entry_val = 0;
-	void *index_key_buf;
-	int32_t middle = 0;
-	int32_t start_idx = 0;
-	int32_t end_idx = node->header.num_entries - 1;
-	size_t num_of_bytes;
 	struct key_compare key1_cmp, key2_cmp;
 
 	addr = (void *)(uint64_t)node + sizeof(node_header);
 
 	if (node->header.num_entries > 0) {
+		int32_t middle;
+		int32_t start_idx = 0;
+		int32_t end_idx = node->header.num_entries - 1;
 		while (1) {
 			middle = (start_idx + end_idx) / 2;
 			addr = (void *)(uint64_t)node + (uint64_t)sizeof(node_header) + sizeof(uint64_t) +
 			       (uint64_t)(middle * 2 * sizeof(uint64_t));
-			index_key_buf = (void *)REAL_ADDRESS(*(uint64_t *)addr);
+			void *index_key_buf = (void *)REAL_ADDRESS(*(uint64_t *)addr);
 			/*key1 and key2 are KV_FORMATed*/
 			init_key_cmp(&key1_cmp, index_key_buf, KV_FORMAT);
 			init_key_cmp(&key2_cmp, key_buf, KV_FORMAT);
-			ret = key_cmp(&key1_cmp, &key2_cmp);
+			int64_t ret = key_cmp(&key1_cmp, &key2_cmp);
 			if (ret > 0) {
 				end_idx = middle - 1;
 				if (start_idx > end_idx)
@@ -1809,8 +1804,8 @@ int8_t update_index(index_node *node, node_header *left_child, node_header *righ
 			}
 		}
 
-		dest_addr = addr + (2 * sizeof(uint64_t));
-		num_of_bytes = (node->header.num_entries - middle) * 2 * sizeof(uint64_t);
+		void *dest_addr = addr + (2 * sizeof(uint64_t));
+		size_t num_of_bytes = (node->header.num_entries - middle) * 2 * sizeof(uint64_t);
 		memmove(dest_addr, addr, num_of_bytes);
 		addr -= sizeof(uint64_t);
 	} else
@@ -1854,7 +1849,6 @@ void insert_key_at_index(bt_insert_req *ins_req, index_node *node, node_header *
 	IN_log_header *last_d_header = NULL;
 	int32_t avail_space;
 	int32_t req_space;
-	int32_t allocated_space;
 
 	uint32_t key_len = *(uint32_t *)key_buf;
 	int8_t ret;
@@ -1868,7 +1862,7 @@ void insert_key_at_index(bt_insert_req *ins_req, index_node *node, node_header *
 	req_space = (key_len + sizeof(uint32_t));
 	if (avail_space < req_space) {
 		/*room not sufficient get new block*/
-		allocated_space = (req_space + sizeof(IN_log_header)) / KEY_BLOCK_SIZE;
+		int32_t allocated_space = (req_space + sizeof(IN_log_header)) / KEY_BLOCK_SIZE;
 		if ((req_space + sizeof(IN_log_header)) % KEY_BLOCK_SIZE != 0)
 			allocated_space++;
 		allocated_space *= KEY_BLOCK_SIZE;
@@ -1911,11 +1905,8 @@ void insert_key_at_index(bt_insert_req *ins_req, index_node *node, node_header *
 static struct bt_rebalance_result split_index(node_header *node, bt_insert_req *ins_req)
 {
 	struct bt_rebalance_result result;
-	node_header *left_child;
-	node_header *right_child;
 	node_header *tmp_index;
 	void *full_addr;
-	void *key_buf;
 	uint32_t i = 0;
 	// assert_index_node(node);
 	result.left_child = (node_header *)seg_get_index_node(
@@ -1936,11 +1927,12 @@ static struct bt_rebalance_result split_index(node_header *node, bt_insert_req *
 		else
 			tmp_index = result.right_child;
 
-		left_child = (node_header *)REAL_ADDRESS(*(uint64_t *)full_addr);
+		node_header *left_child = (node_header *)REAL_ADDRESS(*(uint64_t *)full_addr);
+
 		full_addr += sizeof(uint64_t);
-		key_buf = (void *)REAL_ADDRESS(*(uint64_t *)full_addr);
+		void *key_buf = (void *)REAL_ADDRESS(*(uint64_t *)full_addr);
 		full_addr += sizeof(uint64_t);
-		right_child = (node_header *)REAL_ADDRESS(*(uint64_t *)full_addr);
+		node_header *right_child = (node_header *)REAL_ADDRESS(*(uint64_t *)full_addr);
 
 		if (i == node->num_entries / 2) {
 			KEY_SIZE(result.middle_key) = KEY_SIZE(key_buf);
@@ -2049,8 +2041,6 @@ struct bt_rebalance_result split_leaf(bt_insert_req *req, leaf_node *node)
 void *_index_node_binary_search(index_node *node, void *key_buf, char query_key_format)
 {
 	void *addr = NULL;
-	void *index_key_buf;
-	int64_t ret;
 	int32_t middle = 0;
 	int32_t start_idx = 0;
 	int32_t end_idx = node->header.num_entries - 1;
@@ -2064,11 +2054,11 @@ void *_index_node_binary_search(index_node *node, void *key_buf, char query_key_
 			return NULL;
 
 		addr = &(node->p[middle].pivot);
-		index_key_buf = (void *)REAL_ADDRESS(*(uint64_t *)addr);
+		void *index_key_buf = (void *)REAL_ADDRESS(*(uint64_t *)addr);
 		/*key1 is KV_FORMATED key2 is query_key_format*/
 		init_key_cmp(&key1_cmp, index_key_buf, KV_FORMAT);
 		init_key_cmp(&key2_cmp, key_buf, query_key_format);
-		ret = key_cmp(&key1_cmp, &key2_cmp);
+		int64_t ret = key_cmp(&key1_cmp, &key2_cmp);
 		if (ret == 0) {
 			// log_debug("I passed from this corner case1 %s",
 			// (char*)(index_key_buf+4));
