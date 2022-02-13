@@ -51,6 +51,11 @@ check-env-vars:
         - python3 ./scripts/CI/check-env-vars-version.py
     allow_failure: true
 
+check-curr-branch-docs:
+    stage: lint
+    script:
+        - bash ./scripts/CI/generate-doc-metrics.sh
+
 pre-commit:
     stage: lint
     script:
