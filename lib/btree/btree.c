@@ -28,7 +28,6 @@
 #include <list.h>
 #include <log.h>
 #include <pthread.h>
-#include <signal.h>
 #include <spin_loop.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -936,7 +935,6 @@ finish:
 
 	MUTEX_UNLOCK(&init_lock);
 	free(handle);
-	handle = NULL;
 	return PARALLAX_SUCCESS;
 }
 
@@ -1787,7 +1785,6 @@ int8_t update_index(index_node *node, node_header *left_child, node_header *righ
 			} else if (ret == 0) {
 				log_fatal("key already present index_key %s key_buf %s", (char *)(index_key_buf + 4),
 					  (char *)(key_buf + 4));
-				raise(SIGINT);
 				exit(EXIT_FAILURE);
 			} else {
 				start_idx = middle + 1;
@@ -1870,7 +1867,6 @@ void insert_key_at_index(bt_insert_req *ins_req, index_node *node, node_header *
 		if (allocated_space > KEY_BLOCK_SIZE) {
 			log_info("alloc %d key block %d", allocated_space, KEY_BLOCK_SIZE);
 			log_fatal("Cannot host index key larger than KEY_BLOCK_SIZE");
-			raise(SIGINT);
 			exit(EXIT_FAILURE);
 		}
 
@@ -2121,7 +2117,6 @@ void assert_index_node(node_header *node)
 		    child->type != leafRootNode) {
 			log_fatal("corrupted child at index for child %llu type is %d\n",
 				  (long long unsigned)ABSOLUTE_ADDRESS(child), child->type);
-			raise(SIGINT);
 			exit(EXIT_FAILURE);
 		}
 		addr += sizeof(uint64_t);
@@ -2135,7 +2130,6 @@ void assert_index_node(node_header *node)
 			if (key_cmp(&key1_cmp, &key2_cmp) >= 0) {
 				log_fatal("corrupted index %d:%s something else %d:%s\n", *(uint32_t *)key_tmp_prev,
 					  (char *)(key_tmp_prev + 4), *(uint32_t *)key_tmp, (char *)(key_tmp + 4));
-				raise(SIGINT);
 				exit(EXIT_FAILURE);
 			}
 		}
@@ -2169,7 +2163,6 @@ lock_table *_find_position(const lock_table **table, node_header *node)
 
 	if (node->height < 0 || node->height >= MAX_HEIGHT) {
 		log_fatal("MAX_HEIGHT exceeded %d rearrange values in size_per_height array ", node->height);
-		raise(SIGINT);
 		exit(EXIT_FAILURE);
 	}
 

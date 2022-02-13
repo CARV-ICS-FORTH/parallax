@@ -68,11 +68,6 @@ static inline int par_serialize_to_kv_format(struct par_key *key, char **buf, ui
 
 par_ret_code par_get(par_handle handle, struct par_key *key, struct par_value *value)
 {
-	struct val {
-		uint32_t size;
-		char val[];
-	};
-
 	if (value == NULL) {
 		log_warn("value cannot be NULL");
 		return PAR_FAILURE;
