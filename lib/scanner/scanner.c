@@ -28,24 +28,6 @@
 
 int _init_level_scanner(level_scanner *level_sc, void *start_key, char seek_mode);
 
-char *node_type(nodeType_t type)
-{
-	switch (type) {
-	case leafNode:
-		return "leafNode";
-	case leafRootNode:
-		return "leafRootnode";
-	case rootNode:
-		return "rootNode";
-	case internalNode:
-		return "internalNode";
-	default:
-		assert(0);
-		log_fatal("UNKNOWN NODE TYPE");
-		exit(EXIT_FAILURE);
-	}
-}
-
 /**
  * Compaction buffer operation will use this scanner. Traversal begins from root_w
  * and
@@ -227,16 +209,6 @@ void init_dirty_scanner(struct scannerHandle *sc, struct db_handle *handle, void
 	init_generic_scanner(sc, handle, start_key, seek_flag, 1);
 }
 
-scannerHandle *initScanner(scannerHandle *sc, db_handle *handle, void *start_key, char seek_flag)
-{
-	if (sc == NULL) {
-		log_fatal("Null scanner is not acceptable");
-		exit(EXIT_FAILURE);
-	}
-	init_generic_scanner(sc, handle, start_key, seek_flag, 0);
-	return sc;
-}
-
 int _init_level_scanner(level_scanner *level_sc, void *start_key, char seek_mode)
 {
 	stack_init(&level_sc->stack);
@@ -328,23 +300,11 @@ int32_t get_key_size(scannerHandle *sc)
 	return *(int32_t *)(sc->keyValue);
 }
 
-void *get_key_ptr(scannerHandle *sc)
-{
-	return (void *)((char *)(sc->keyValue) + sizeof(int32_t));
-}
-
 int32_t get_value_size(scannerHandle *sc)
 {
 	int32_t key_size = get_key_size(sc);
 	int32_t *val_ptr = (int32_t *)((char *)(sc->keyValue) + sizeof(int32_t) + key_size);
 	return *val_ptr;
-}
-
-void *get_value_ptr(scannerHandle *sc)
-{
-	int32_t key_size = get_key_size(sc);
-	char *val_ptr = (char *)(sc->keyValue) + sizeof(int32_t) + key_size;
-	return val_ptr + sizeof(int32_t);
 }
 
 uint32_t get_kv_size(scannerHandle *sc)
@@ -683,6 +643,7 @@ void perf_preorder_count_leaf_capacity(level_descriptor *level, node_header *roo
 	/* perf_preorder_count_leaf_capacity(level,node); */
 }
 
+// cppcheck-suppress unusedFunction
 void perf_measure_leaf_capacity(db_handle *hd, int level_id)
 {
 	node_header *root = hd->db_desc->levels[level_id].root_r[0];
@@ -732,14 +693,11 @@ int32_t _get_next_KV(level_scanner *sc)
 
 				stack_top = stack_pop(&(sc->stack));
 				if (!stack_top.guard) {
-					// log_debug("rightmost in stack throw and continue type %s",
-					//	  node_type(stack_top.node->type));
 					continue;
 				} else {
 					return END_OF_DATABASE;
 				}
 			} else if (stack_top.leftmost) {
-				// log_debug("leftmost? %s", node_type(stack_top.node->type));
 				stack_top.leftmost = 0;
 
 				if (stack_top.node->type == leafNode || stack_top.node->type == leafRootNode) {
@@ -754,8 +712,6 @@ int32_t _get_next_KV(level_scanner *sc)
 					} else {
 						stack_top = stack_pop(&(sc->stack));
 						if (!stack_top.guard) {
-							//log_debug("rightmost in stack throw and continue type %s",
-							// node_type(stack_top.node->type));
 							continue;
 						} else
 							return END_OF_DATABASE;
@@ -806,7 +762,6 @@ int32_t _get_next_KV(level_scanner *sc)
 
 			read_lock_node(sc, stack_top.node);
 
-			// log_debug("Saved type %s", node_type(stack_top.node->type));
 			stack_top.idx = 0;
 			stack_top.leftmost = 1;
 			stack_top.rightmost = 0;
@@ -936,15 +891,12 @@ int32_t _get_prev_KV(level_scanner *sc)
 				read_unlock_node(sc, stack_top.node);
 
 				stack_top = stack_pop(&(sc->stack));
-				//printf("rightmost? %s", stack_top.node->type);
-				//node_type(stack_top.node->type);
 				if (!stack_top.guard) {
 					continue;
 				} else {
 					return END_OF_DATABASE;
 				}
 			} else if (stack_top.rightmost) {
-				//log_debug("rightmost? %s", node_type(stack_top.node->type));
 				stack_top.rightmost = 0;
 				if (stack_top.node->type == leafNode || stack_top.node->type == leafRootNode) {
 					//log_info("got a rightmost leaf advance");
@@ -980,7 +932,7 @@ int32_t _get_prev_KV(level_scanner *sc)
 				}
 			} else {
 				--stack_top.idx;
-				if (stack_top.idx <= 0)
+				if (stack_top.idx == 0)
 					stack_top.leftmost = 1;
 			}
 			stack_push(&sc->stack, stack_top);

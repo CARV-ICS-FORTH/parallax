@@ -59,7 +59,7 @@ typedef struct scannerHandle {
  *
  * Example use to print all the database in sorted order:
  *
- * scannerHandle *scanner = initScanner(db, NULL);
+ * scannerHandle *scanner = init_dirty_scanner(db, NULL);
  * while(isValid(scanner)){
  * 		std::cout << "[" << entries
  *							<< "][" << getKeySize(scanner)
@@ -72,19 +72,16 @@ typedef struct scannerHandle {
  * }
  * closeScanner(scanner);
  */
-scannerHandle *initScanner(scannerHandle *sc, db_handle *handle, void *start_key, char seek_flag);
+void init_dirty_scanner(scannerHandle *sc, db_handle *handle, void *start_key, char seek_flag);
 void closeScanner(scannerHandle *sc);
 
-void init_dirty_scanner(scannerHandle *sc, db_handle *handle, void *start_key, char seek_flag);
 void seek_to_last(scannerHandle *sc, db_handle *handle);
 
 int32_t getNext(scannerHandle *sc);
 int32_t getPrev(scannerHandle *sc);
 int isValid(scannerHandle *sc);
 int32_t get_key_size(scannerHandle *sc);
-void *get_key_ptr(scannerHandle *sc);
 int32_t get_value_size(scannerHandle *sc);
-void *get_value_ptr(scannerHandle *sc);
 uint32_t get_kv_size(scannerHandle *sc);
 /**
  * __seek_scanner: positions the cursor to the appropriate position

@@ -80,63 +80,6 @@ void klist_add_first(struct klist *list, void *data, const char *data_key, destr
 	MUTEX_UNLOCK(&list->list_lock);
 }
 
-void klist_add_last(struct klist *list, void *data, const char *data_key, destroy_node_data destroy_data)
-{
-	if (!list)
-		return;
-
-	MUTEX_LOCK(&list->list_lock);
-	struct klist_node *node = calloc(1, sizeof(struct klist_node));
-	if (!node) {
-		log_fatal("Calloc failed");
-		exit(EXIT_FAILURE);
-	}
-	node->data = data;
-	if (data_key != NULL) {
-		node->key = calloc(1, strlen(data_key) + 1);
-		if (!node->key) {
-			log_fatal("calloc failed");
-			exit(EXIT_FAILURE);
-		}
-		strcpy(node->key, data_key);
-	}
-	node->destroy_data = destroy_data;
-	if (list->size == 0) {
-		node->prev = NULL;
-		node->next = NULL;
-		list->first = node;
-		list->last = node;
-	} else {
-		node->prev = list->last;
-		node->next = NULL;
-		list->last->next = node;
-		list->last = node;
-	}
-	++list->size;
-	MUTEX_UNLOCK(&list->list_lock);
-}
-
-void *klist_remove_first(struct klist *list)
-{
-	struct klist_node *node = NULL;
-	if (!list)
-		return NULL;
-	MUTEX_LOCK(&list->list_lock);
-	if (list->size > 1) {
-		node = list->first;
-		list->first = list->first->next;
-		list->first->prev = NULL;
-		--list->size;
-	} else if (list->size == 1) {
-		node = list->first;
-		list->size = 0;
-		list->first = NULL;
-		list->last = NULL;
-	}
-	MUTEX_UNLOCK(&list->list_lock);
-	return node;
-}
-
 int klist_remove_element(struct klist *list, const void *data)
 {
 	struct klist_node *node = NULL;
@@ -165,36 +108,6 @@ int klist_remove_element(struct klist *list, const void *data)
 	return ret;
 }
 
-int klist_delete_element(struct klist *list, const void *data)
-{
-	int ret = 0;
-
-	MUTEX_LOCK(&list->list_lock);
-	struct klist_node *node;
-	node = list->first;
-	for (int i = 0; i < list->size; i++) {
-		if (node->data == data) {
-			if (node->next != NULL) /*node is not the last*/
-				node->next->prev = node->prev;
-			else
-				list->last = node->prev;
-			if (node->prev != NULL) /*node is not the first*/
-				node->prev->next = node->next;
-			else
-				list->first = node->next;
-			--list->size;
-			(*node->destroy_data)(node->data);
-			if (node->key)
-				free(node->key);
-			free(node);
-			return 1;
-		}
-		node = node->next;
-	}
-	MUTEX_UNLOCK(&list->list_lock);
-	return ret;
-}
-
 void *klist_find_element_with_key(struct klist *list, char *data_key)
 {
 	void *data = NULL;
@@ -207,16 +120,4 @@ void *klist_find_element_with_key(struct klist *list, char *data_key)
 	}
 	MUTEX_UNLOCK(&list->list_lock);
 	return data;
-}
-
-void klist_destroy(struct klist *list)
-{
-	struct klist_node *node = list->first;
-	struct klist_node *next_node = NULL;
-	while (node != NULL) {
-		next_node = node->next;
-		klist_delete_element(list, node->data);
-		node = next_node;
-	}
-	free(list);
 }

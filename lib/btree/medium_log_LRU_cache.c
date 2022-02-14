@@ -99,6 +99,7 @@ void move_node_to_tail(struct chunk_list *list, const struct chunk_listnode *nod
 	list->tail = pfront;
 }
 
+// cppcheck-suppress unusedFunction
 void print_list(struct chunk_list *list)
 {
 	assert(list != NULL);
@@ -114,6 +115,7 @@ void print_list(struct chunk_list *list)
 	log_info("list size %d , i %d", list->size, i);
 }
 
+// cppcheck-suppress unusedFunction
 void print_hash_table(struct chunk_hash_entry **hash_table)
 {
 	struct chunk_hash_entry *current_entry, *tmp;

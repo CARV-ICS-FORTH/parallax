@@ -53,16 +53,6 @@ static uint8_t concurrent_insert(bt_insert_req *ins_req);
 
 void assert_index_node(node_header *node);
 
-#ifdef PREFIX_STATISTICS
-static inline void update_leaf_index_stats(char key_format)
-{
-	if (key_format == KV_FORMAT)
-		__sync_fetch_and_add(&ins_prefix_miss_l0, 1);
-	else
-		__sync_fetch_and_add(&ins_prefix_miss_l1, 1);
-}
-#endif
-
 static struct bt_rebalance_result split_index(node_header *node, bt_insert_req *ins_req);
 
 struct bt_rebalance_result split_leaf(bt_insert_req *req, leaf_node *node);
@@ -353,6 +343,7 @@ struct bt_kv_log_address bt_get_kv_medium_log_address(struct log_descriptor *log
 	return reply;
 }
 
+// cppcheck-suppress unusedFunction
 void init_level_bloom_filters(db_descriptor *db_desc, int level_id, int tree_id)
 {
 #if ENABLE_BLOOM_FILTERS
@@ -364,7 +355,6 @@ void init_level_bloom_filters(db_descriptor *db_desc, int level_id, int tree_id)
 #endif
 }
 
-/*<new_persistent_design>*/
 static void destroy_log_buffer(struct log_descriptor *log_desc)
 {
 	for (uint32_t i = 0; i < LOG_TAIL_NUM_BUFS; ++i)
@@ -1054,41 +1044,7 @@ void extract_keyvalue_size(log_operation *req, metadata_tologop *data_size)
 	}
 }
 
-void update_log_metadata(db_descriptor *db_desc, struct log_towrite *log_metadata)
-{
-	switch (log_metadata->status) {
-	case BIG_INLOG:
-		db_desc->big_log.tail_dev_offt = log_metadata->log_desc->tail_dev_offt;
-		return;
-	case MEDIUM_INLOG:
-#if MEDIUM_LOG_UNSORTED
-		if (log_metadata->level_id) {
-			log_fatal("KV separation allowed only for L0");
-			exit(EXIT_FAILURE);
-			return;
-		} else
-			db_desc->medium_log.tail_dev_offt = log_metadata->log_desc->tail_dev_offt;
-#else
-		if (log_metadata->level_id != 0) {
-			db_desc->medium_log.tail_dev_offt = log_metadata->log_desc->tail_dev_offt;
-			return;
-		} else {
-			log_fatal("MEDIUM_INLOG with level_id 0 not allowed!");
-			exit(EXIT_FAILURE);
-		}
-#endif
-	case SMALL_INPLACE:
-	case SMALL_INLOG:
-	case MEDIUM_INPLACE:
-		db_desc->small_log.tail_dev_offt = log_metadata->log_desc->tail_dev_offt;
-		return;
-	default:
-		assert(0);
-	}
-}
-
 //######################################################################################################
-// Helper functions for writing to the log(s) with direct IO
 struct pr_log_ticket {
 	// in var
 	struct log_tail *tail;
@@ -1507,6 +1463,7 @@ uint8_t _insert_key_value(bt_insert_req *ins_req)
 	return rc;
 }
 
+// cppcheck-suppress unusedFunction
 int find_key_in_bloom_filter(db_descriptor *db_desc, int level_id, char *key)
 {
 #if ENABLE_BLOOM_FILTERS
@@ -2092,7 +2049,9 @@ void *_index_node_binary_search(index_node *node, void *key_buf, char query_key_
 	// log_debug("END");
 	return addr;
 }
+
 /*functions used for debugging*/
+// cppcheck-suppress unusedFunction
 void assert_index_node(node_header *node)
 {
 	uint32_t k;

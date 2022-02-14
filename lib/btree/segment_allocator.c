@@ -201,24 +201,9 @@ index_node *seg_get_index_node(struct db_descriptor *db_desc, uint8_t level_id, 
 	return ptr;
 }
 
-index_node *seg_get_index_node_header(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
-{
-	return (index_node *)get_space(db_desc, level_id, tree_id, INDEX_NODE_SIZE);
-}
-
 IN_log_header *seg_get_IN_log_block(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
 {
 	return (IN_log_header *)get_space(db_desc, level_id, tree_id, KEY_BLOCK_SIZE);
-}
-
-void seg_free_index_node_header(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id, node_header *node)
-{
-	return;
-	//leave for future use
-	(void)db_desc;
-	(void)level_id;
-	(void)tree_id;
-	(void)node;
 }
 
 void seg_free_index_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id, index_node *inode)
@@ -264,12 +249,6 @@ struct bt_dynamic_leaf_node *seg_get_dynamic_leaf_node(struct db_descriptor *db_
 {
 	struct level_descriptor *level_desc = &db_desc->levels[level_id];
 	return init_leaf_node(get_space(db_desc, level_id, tree_id, level_desc->leaf_size));
-}
-
-leaf_node *seg_get_leaf_node_header(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
-{
-	struct level_descriptor *level_desc = &db_desc->levels[level_id];
-	return (leaf_node *)init_leaf_node(get_space(db_desc, level_id, tree_id, level_desc->leaf_size));
 }
 
 void seg_free_leaf_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id, leaf_node *leaf)

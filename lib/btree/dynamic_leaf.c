@@ -64,12 +64,6 @@ char *get_kv_offset(const struct bt_dynamic_leaf_node *leaf, const uint32_t leaf
 	return (((char *)leaf) + leaf_size - kv_offset);
 }
 
-void print_slot_array(struct bt_dynamic_leaf_slot_array *slot_array, int i)
-{
-	log_info("slot array index %d offset %d category %d bitmap %d", i, slot_array[i].index,
-		 slot_array[i].key_category, slot_array[i].kv_loc);
-}
-
 void fill_prefix(struct prefix *key, char *key_loc, enum kv_entry_location key_type)
 {
 	switch (key_type) {

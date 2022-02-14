@@ -78,8 +78,6 @@ void binary_search_dynamic_leaf(const struct bt_dynamic_leaf_node *leaf, uint32_
 
 int is_dynamic_leaf_full(struct split_level_leaf split_metadata);
 
-void print_slot_array(struct bt_dynamic_leaf_slot_array *slot_array, int i);
-
 struct bt_rebalance_result split_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, uint32_t leaf_size,
 					      bt_insert_req *req);
 

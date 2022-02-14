@@ -312,6 +312,7 @@ struct par_key par_get_key(par_scanner sc)
 	return key;
 }
 
+// cppcheck-suppress unusedFunction
 struct par_value par_get_value(par_scanner sc)
 {
 	struct par_scanner *par_s = (struct par_scanner *)sc;
@@ -323,6 +324,7 @@ struct par_value par_get_value(par_scanner sc)
 	return val;
 }
 
+// cppcheck-suppress unusedFunction
 par_ret_code par_sync(par_handle handle)
 {
 	log_fatal("Currently developing persistency..");

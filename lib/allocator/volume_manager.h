@@ -154,5 +154,3 @@ struct rul_log_entry *get_next_allocation_log_entry(struct allocation_log_cursor
 **/
 int read_dev_offt_into_buffer(char *buffer, const uint32_t start, const uint32_t size, const off_t dev_offt,
 			      const int fd);
-
-uint64_t get_timestamp(void);
