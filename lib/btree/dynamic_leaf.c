@@ -104,7 +104,9 @@ struct find_result find_key_in_dynamic_leaf(const struct bt_dynamic_leaf_node *l
 	bt_insert_req req;
 	char buf[MAX_KEY_SIZE + sizeof(uint32_t)];
 	struct dl_bsearch_result result = { .middle = 0, .status = INSERT, .op = DYNAMIC_LEAF_FIND, .debug = 0 };
-	struct find_result ret_result = { .kv = NULL, .key_type = KV_INPLACE, .kv_category = UNKNOWN_LOG_CATEGORY };
+	struct find_result ret_result = {
+		.kv = NULL, .key_type = KV_INPLACE, .kv_category = UNKNOWN_LOG_CATEGORY, .tombstone = 0
+	};
 	struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(leaf);
 	db_handle handle = { .db_desc = db_desc, .volume_desc = NULL };
 	uint32_t leaf_size = db_desc->levels[level_id].leaf_size;
@@ -163,7 +165,7 @@ void binary_search_dynamic_leaf(const struct bt_dynamic_leaf_node *leaf, uint32_
 	struct prefix leaf_key_prefix;
 	struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(leaf);
 	char *leaf_key_buf;
-	int32_t start = 0, middle = 0, end = leaf->header.num_entries - 1;
+	int32_t start = 0, middle, end = leaf->header.num_entries - 1;
 	const int32_t numberOfEntriesInNode = leaf->header.num_entries;
 	uint32_t offset_in_leaf;
 	int ret, ret_case;

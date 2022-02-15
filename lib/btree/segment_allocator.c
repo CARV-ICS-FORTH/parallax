@@ -322,29 +322,21 @@ uint64_t seg_free_level(struct db_descriptor *db_desc, uint64_t txn_id, uint8_t 
 		}
 
 		temp_segment = REAL_ADDRESS(curr_segment->next_segment);
-		int flag = 0;
 		/* log_info("Level id to free %d %d", level_id,curr_segment->in_mem); */
 
 		if (curr_segment->next_segment) {
-			while (curr_segment != NULL) {
+			while (temp_segment->next_segment != NULL) {
 				/* log_info("COUNT  %d %llu", curr_segment->segment_id, curr_segment->next_segment); */
 				free(curr_segment);
 				curr_segment = temp_segment;
-
-				if (temp_segment->next_segment == NULL) {
-					flag = 1;
-					break;
-				}
 				temp_segment = REAL_ADDRESS(temp_segment->next_segment);
+				assert(temp_segment);
 				space_freed += SEGMENT_SIZE;
 			}
+			free(temp_segment);
+
 		} else
 			free(curr_segment);
-
-		if (flag) {
-			/* log_info("COUNT %d %llu", curr_segment->segment_id, curr_segment->next_segment); */
-			free(temp_segment);
-		}
 	}
 	return space_freed;
 }

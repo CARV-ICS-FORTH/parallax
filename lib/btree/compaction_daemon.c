@@ -206,12 +206,13 @@ static void comp_init_read_cursor(struct comp_level_read_cursor *c, db_handle *h
 
 static void comp_get_next_key(struct comp_level_read_cursor *c)
 {
-	uint32_t level_leaf_size = c->handle->db_desc->levels[c->level_id].leaf_size;
 	if (c == NULL) {
 		log_fatal("NULL cursor!");
 		assert(0);
 		exit(EXIT_FAILURE);
 	}
+
+	uint32_t level_leaf_size = c->handle->db_desc->levels[c->level_id].leaf_size;
 	if (c->end_of_level)
 		return;
 	while (1) {
@@ -506,6 +507,7 @@ static void comp_get_space(struct comp_level_write_cursor *c, uint32_t height, n
 	}
 }
 
+#if 0
 char *nodetype_tostring(nodeType_t type)
 {
 	switch (type) {
@@ -527,7 +529,6 @@ char *nodetype_tostring(nodeType_t type)
 static void assert_level_segments(db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
 {
 	uint64_t measure_level_bytes = 0;
-	return;
 	segment_header *segment = db_desc->levels[level_id].first_segment[tree_id];
 	assert(segment);
 
@@ -551,6 +552,7 @@ static void assert_level_segments(db_descriptor *db_desc, uint8_t level_id, uint
 	assert(segment == db_desc->levels[level_id].last_segment[tree_id]);
 	assert(measure_level_bytes == db_desc->levels[level_id].offset[tree_id]);
 }
+#endif
 
 static void comp_close_write_cursor(struct comp_level_write_cursor *c)
 {
@@ -606,7 +608,9 @@ static void comp_close_write_cursor(struct comp_level_write_cursor *c)
 		log_info("Dumped buffer %u at dev_offt %lu", i, c->last_segment_btree_level_offt[i]);
 	}
 
+#if 0
 	assert_level_segments(c->handle->db_desc, c->level_id, 1);
+#endif
 }
 
 static void comp_append_pivot_to_index(struct comp_level_write_cursor *c, uint64_t left_node_offt,

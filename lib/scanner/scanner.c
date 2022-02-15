@@ -589,12 +589,11 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 
 int32_t getNext(scannerHandle *sc)
 {
-	enum sh_heap_status stat = { 0 };
 	struct sh_heap_node nd = { 0 };
 	struct sh_heap_node next_nd = { 0 };
 
 	while (1) {
-		stat = sh_remove_top(&sc->heap, &nd);
+		enum sh_heap_status stat = sh_remove_top(&sc->heap, &nd);
 		if (stat != EMPTY_HEAP) {
 			sc->keyValue = nd.KV;
 			sc->kv_level_id = nd.level_id;

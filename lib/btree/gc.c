@@ -172,11 +172,12 @@ void scan_db(db_descriptor *db_desc, volume_descriptor *volume_desc, stack *mark
 	}
 
 	log_segment *last_segment = (log_segment *)REAL_ADDRESS(db_desc->big_log.tail_dev_offt);
-	struct large_log_segment_gc_entry *current_segment, *tmp, *segment_ht = db_desc->segment_ht;
+	struct large_log_segment_gc_entry *current_segment = NULL, *tmp, *segment_ht = db_desc->segment_ht;
 
 	MUTEX_LOCK(&db_desc->segment_ht_lock);
 	HASH_ITER(hh, segment_ht, current_segment, tmp)
 	{
+		assert(current_segment);
 		if (REAL_ADDRESS(current_segment->segment_dev_offt) != last_segment) {
 			// If we get a segment with 0 garbage bytes it is fatal! The gc thread should only check for segments that contain invalid data.
 			assert(current_segment->garbage_bytes > 0);
@@ -207,7 +208,7 @@ void scan_db(db_descriptor *db_desc, volume_descriptor *volume_desc, stack *mark
 							    .segment_dev_offt = segment_dev_offt };
 		int ret = find_deleted_kv_pairs_in_segment(temp_handle, &gc_segment, marks);
 
-		if (ret && !segments_toreclaim[i].segment_moved)
+		if (ret)
 			*segments_toreclaim[i].segment_moved = 1;
 	}
 
@@ -222,7 +223,7 @@ void *gc_log_entries(void *hd)
 	stack *marks;
 	struct lib_option *option;
 	struct db_handle *handle = (struct db_handle *)hd;
-	db_descriptor *db_desc = handle->db_desc;
+	db_descriptor *db_desc;
 	volume_descriptor *volume_desc = handle->volume_desc;
 	struct klist_node *region;
 	struct lib_option *dboptions = NULL;

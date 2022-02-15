@@ -1484,9 +1484,9 @@ int find_key_in_bloom_filter(db_descriptor *db_desc, int level_id, char *key)
 
 static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id, int tree_id)
 {
-	struct find_result ret_result = { .kv = NULL };
 	node_header *curr_node, *son_node = NULL;
 	char *key_addr_in_leaf = NULL;
+	struct find_result ret_result;
 	void *next_addr;
 	lock_table *prev = NULL, *curr = NULL;
 	struct node_header *root = NULL;
@@ -1594,8 +1594,8 @@ deser:
 			log_fatal("Corrupted KV location");
 			exit(EXIT_FAILURE);
 		}
+		assert(kv.addr);
 		uint32_t *value_size = (uint32_t *)(kv.addr + sizeof(uint32_t) + KEY_SIZE(kv.addr));
-
 		if (get_op->retrieve && !get_op->buffer_to_pack_kv) {
 			get_op->buffer_to_pack_kv = malloc(*value_size);
 
@@ -1977,6 +1977,7 @@ struct bt_rebalance_result split_leaf(bt_insert_req *req, leaf_node *node)
 	int level_id = req->metadata.level_id;
 
 	uint32_t leaf_size = req->metadata.handle->db_desc->levels[level_id].leaf_size;
+	// cppcheck-suppress uninitvar
 	return split_functions[req->metadata.special_split]((struct bt_dynamic_leaf_node *)node, leaf_size, req);
 }
 
@@ -2069,6 +2070,7 @@ void assert_index_node(node_header *node)
 	for (k = 0; k < node->num_entries; k++) {
 		/*check child type*/
 		child = (node_header *)REAL_ADDRESS(*(uint64_t *)addr);
+		assert(child);
 		if (child->type != rootNode && child->type != internalNode && child->type != leafNode &&
 		    child->type != leafRootNode) {
 			log_fatal("corrupted child at index for child %llu type is %d\n",
@@ -2097,6 +2099,7 @@ void assert_index_node(node_header *node)
 		addr += sizeof(uint64_t);
 	}
 	child = (node_header *)REAL_ADDRESS(*(uint64_t *)addr);
+	assert(child);
 	if (child->type != rootNode && child->type != internalNode && child->type != leafNode &&
 	    child->type != leafRootNode) {
 		log_fatal("Corrupted last child at index");
@@ -2142,6 +2145,7 @@ void _unlock_upper_levels(lock_table *node[], unsigned size, unsigned release)
 
 int is_split_needed(void *node, bt_insert_req *req, uint32_t leaf_size)
 {
+	assert(node);
 	node_header *header = (node_header *)node;
 	int64_t num_entries = header->num_entries;
 	uint32_t height = header->height;
@@ -2323,7 +2327,7 @@ release_and_retry:
 		/*Node acquired */
 		ins_req->metadata.reorganized_leaf_pos_INnode = next_addr;
 		son = (node_header *)REAL_ADDRESS(*(uint64_t *)next_addr);
-
+		assert(son);
 		/*if the node is not safe hold its ancestor's lock else release locks from
     ancestors */
 
@@ -2422,6 +2426,7 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 		next_addr = _index_node_binary_search((index_node *)son, ins_req->key_value_buf,
 						      ins_req->metadata.key_format);
 		son = (node_header *)REAL_ADDRESS(*(uint64_t *)next_addr);
+		assert(son);
 
 		if (son->height == 0)
 			break;
