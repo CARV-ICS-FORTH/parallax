@@ -2117,6 +2117,7 @@ lock_table *_find_position(const lock_table **table, node_header *node)
 	unsigned long position;
 	const lock_table *node_lock;
 
+	assert(node);
 	if (node->height < 0 || node->height >= MAX_HEIGHT) {
 		log_fatal("MAX_HEIGHT exceeded %d rearrange values in size_per_height array ", node->height);
 		exit(EXIT_FAILURE);
