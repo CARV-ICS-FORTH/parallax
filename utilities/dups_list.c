@@ -67,12 +67,3 @@ void free_dups_list(struct dups_list **list)
 	free(*list);
 	*list = NULL;
 }
-
-void print_ascending_list(struct dups_list *list)
-{
-	if (!list)
-		return;
-
-	for (struct dups_node *curr = list->head; curr; curr = curr->next)
-		log_info("print in order %lu", curr->dev_offset);
-}

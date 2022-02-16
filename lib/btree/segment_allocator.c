@@ -58,19 +58,15 @@ static uint64_t link_memory_segments(struct link_segments_metadata *req)
 {
 	level_descriptor *level_desc = req->level_desc;
 	segment_header *new_segment = req->new_segment;
-	segment_header *prev_segment;
 	uint64_t available_space = req->available_space;
 	uint64_t segment_id = req->segment_id;
 	uint8_t tree_id = req->tree_id;
 
-	(void)prev_segment;
 	if (req->level_desc->offset[req->tree_id] != 0) {
 		/*chain segments*/
-		prev_segment = level_desc->last_segment[tree_id];
 		new_segment->next_segment = NULL;
 		new_segment->prev_segment = (segment_header *)ABSOLUTE_ADDRESS(level_desc->last_segment[tree_id]);
 		level_desc->last_segment[tree_id]->next_segment = (segment_header *)ABSOLUTE_ADDRESS(new_segment);
-		prev_segment = level_desc->last_segment[tree_id];
 		level_desc->last_segment[tree_id] = new_segment;
 		level_desc->last_segment[tree_id]->segment_id = segment_id + 1;
 		level_desc->offset[tree_id] += (available_space + sizeof(segment_header));
@@ -82,7 +78,6 @@ static uint64_t link_memory_segments(struct link_segments_metadata *req)
 		level_desc->last_segment[tree_id] = new_segment;
 		level_desc->last_segment[tree_id]->segment_id = 1;
 		level_desc->offset[tree_id] = sizeof(segment_header);
-		prev_segment = NULL;
 	}
 
 	return level_desc->offset[tree_id] % SEGMENT_SIZE;
@@ -206,24 +201,9 @@ index_node *seg_get_index_node(struct db_descriptor *db_desc, uint8_t level_id, 
 	return ptr;
 }
 
-index_node *seg_get_index_node_header(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
-{
-	return (index_node *)get_space(db_desc, level_id, tree_id, INDEX_NODE_SIZE);
-}
-
 IN_log_header *seg_get_IN_log_block(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
 {
 	return (IN_log_header *)get_space(db_desc, level_id, tree_id, KEY_BLOCK_SIZE);
-}
-
-void seg_free_index_node_header(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id, node_header *node)
-{
-	return;
-	//leave for future use
-	(void)db_desc;
-	(void)level_id;
-	(void)tree_id;
-	(void)node;
 }
 
 void seg_free_index_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id, index_node *inode)
@@ -269,12 +249,6 @@ struct bt_dynamic_leaf_node *seg_get_dynamic_leaf_node(struct db_descriptor *db_
 {
 	struct level_descriptor *level_desc = &db_desc->levels[level_id];
 	return init_leaf_node(get_space(db_desc, level_id, tree_id, level_desc->leaf_size));
-}
-
-leaf_node *seg_get_leaf_node_header(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
-{
-	struct level_descriptor *level_desc = &db_desc->levels[level_id];
-	return (leaf_node *)init_leaf_node(get_space(db_desc, level_id, tree_id, level_desc->leaf_size));
 }
 
 void seg_free_leaf_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id, leaf_node *leaf)
@@ -348,29 +322,21 @@ uint64_t seg_free_level(struct db_descriptor *db_desc, uint64_t txn_id, uint8_t 
 		}
 
 		temp_segment = REAL_ADDRESS(curr_segment->next_segment);
-		int flag = 0;
 		/* log_info("Level id to free %d %d", level_id,curr_segment->in_mem); */
 
 		if (curr_segment->next_segment) {
-			while (curr_segment != NULL) {
+			while (temp_segment->next_segment != NULL) {
 				/* log_info("COUNT  %d %llu", curr_segment->segment_id, curr_segment->next_segment); */
 				free(curr_segment);
 				curr_segment = temp_segment;
-
-				if (temp_segment->next_segment == NULL) {
-					flag = 1;
-					break;
-				}
 				temp_segment = REAL_ADDRESS(temp_segment->next_segment);
+				assert(temp_segment);
 				space_freed += SEGMENT_SIZE;
 			}
+			free(temp_segment);
+
 		} else
 			free(curr_segment);
-
-		if (flag) {
-			/* log_info("COUNT %d %llu", curr_segment->segment_id, curr_segment->next_segment); */
-			free(temp_segment);
-		}
 	}
 	return space_freed;
 }

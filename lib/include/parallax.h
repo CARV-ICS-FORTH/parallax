@@ -94,7 +94,7 @@ par_ret_code par_delete(par_handle handle, struct par_key *key);
   * an active scanner no updates or insers can be performed in the DB. We will add other types of scanner with
   * relaxed semantics for higher concurrency soon
   */
-par_scanner par_init_scanner(par_handle db_handle, struct par_key *key, par_seek_mode mode);
+par_scanner par_init_scanner(par_handle handle, struct par_key *key, par_seek_mode mode);
 void par_close_scanner(par_scanner sc);
 
 /**
@@ -120,6 +120,6 @@ struct par_value par_get_value(par_scanner sc);
 /**
   * Syncs data to the file or device.
 */
-par_ret_code par_sync(par_handle db_handle);
+par_ret_code par_sync(par_handle handle);
 
 /* #endif // __PARALLAX_H_ */

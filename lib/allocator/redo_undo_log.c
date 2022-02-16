@@ -49,12 +49,12 @@ static void rul_flush_log_chunk(struct db_descriptor *db_desc, uint32_t chunk_id
 	}
 	ssize_t size = RUL_LOG_CHUNK_SIZE_IN_BYTES;
 	ssize_t dev_offt = log_desc->tail_dev_offt + (chunk_id * RUL_LOG_CHUNK_SIZE_IN_BYTES);
-	ssize_t bytes_written = 0;
 	ssize_t total_bytes_written = 0;
 	log_info("Flushing chunk %u offt: %lu", chunk_id, dev_offt);
 	while (total_bytes_written < size) {
-		bytes_written = pwrite(db_desc->db_volume->vol_fd, db_desc->allocation_log->segment.chunk[chunk_id],
-				       size - total_bytes_written, dev_offt + total_bytes_written);
+		ssize_t bytes_written = pwrite(db_desc->db_volume->vol_fd,
+					       db_desc->allocation_log->segment.chunk[chunk_id],
+					       size - total_bytes_written, dev_offt + total_bytes_written);
 		if (bytes_written == -1) {
 			log_fatal("Failed to write DB's %s superblock", db_desc->db_superblock->db_name);
 			perror("Reason");
@@ -154,7 +154,6 @@ static void rul_flush_last_chunk(struct db_descriptor *db_desc)
 	struct rul_log_descriptor *log_desc = db_desc->allocation_log;
 	// Write with explicit I/O the segment_header
 	ssize_t total_bytes_written = 0;
-	ssize_t bytes_written = 0;
 	ssize_t size;
 	ssize_t dev_offt;
 	uint32_t chunk_id = RUL_LOG_CHUNK_NUM - 1;
@@ -184,8 +183,9 @@ static void rul_flush_last_chunk(struct db_descriptor *db_desc)
 	dev_offt = (db_desc->allocation_log->head_dev_offt + SEGMENT_SIZE) - size;
 
 	while (total_bytes_written < size) {
-		bytes_written = pwrite(db_desc->db_volume->vol_fd, db_desc->allocation_log->segment.chunk[chunk_id],
-				       size - total_bytes_written, dev_offt + total_bytes_written);
+		ssize_t bytes_written = pwrite(db_desc->db_volume->vol_fd,
+					       db_desc->allocation_log->segment.chunk[chunk_id],
+					       size - total_bytes_written, dev_offt + total_bytes_written);
 		if (bytes_written == -1) {
 			log_fatal("Failed to write DB's %s superblock", db_desc->db_superblock->db_name);
 			perror("Reason");
@@ -198,12 +198,11 @@ static void rul_flush_last_chunk(struct db_descriptor *db_desc)
 static void rul_read_last_segment(struct db_descriptor *db_desc)
 {
 	ssize_t total_bytes_read = 0;
-	ssize_t bytes_read = 0;
 	ssize_t size = SEGMENT_SIZE;
 	ssize_t dev_offt = db_desc->allocation_log->tail_dev_offt;
 	while (total_bytes_read < size) {
-		bytes_read = pread(db_desc->db_volume->vol_fd, &db_desc->allocation_log->segment,
-				   size - total_bytes_read, dev_offt + total_bytes_read);
+		ssize_t bytes_read = pread(db_desc->db_volume->vol_fd, &db_desc->allocation_log->segment,
+					   size - total_bytes_read, dev_offt + total_bytes_read);
 		if (bytes_read == -1) {
 			log_fatal("Failed to read DB's %s superblock", db_desc->db_superblock->db_name);
 			perror("Reason");
@@ -286,12 +285,11 @@ static void rul_add_first_entry(struct db_descriptor *db_desc, struct rul_log_en
 	memcpy(log_chunk, log_entry, sizeof(struct rul_log_entry));
 	ssize_t size = RUL_LOG_CHUNK_SIZE_IN_BYTES;
 	ssize_t dev_offt = db_desc->allocation_log->head_dev_offt;
-	ssize_t bytes_written = 0;
 	ssize_t total_bytes_written = 0;
 
 	while (total_bytes_written < size) {
-		bytes_written = pwrite(db_desc->db_volume->vol_fd, log_chunk, size - total_bytes_written,
-				       dev_offt + total_bytes_written);
+		ssize_t bytes_written = pwrite(db_desc->db_volume->vol_fd, log_chunk, size - total_bytes_written,
+					       dev_offt + total_bytes_written);
 		if (bytes_written == -1) {
 			log_fatal("Failed to initialize allocation log of DB: %s", db_desc->db_superblock->db_name);
 			perror("Reason");

@@ -34,7 +34,6 @@
 #include <string.h>
 #include <strings.h>
 #include <sys/mman.h>
-#include <sys/time.h>
 #include <unistd.h>
 #include <uthash.h>
 
@@ -170,7 +169,7 @@ static void print_allocation_type(enum rul_op_type type)
 }
 #endif
 
-static void apply_db_allocations_to_allocator_bitmap(struct volume_descriptor *volume_desc, uint8_t *mem_bitmap,
+static void apply_db_allocations_to_allocator_bitmap(struct volume_descriptor *volume_desc, const uint8_t *mem_bitmap,
 						     int mem_bitmap_size)
 {
 	/* 0 --> in use
@@ -417,27 +416,6 @@ exit:
 	return db;
 }
 
-uint32_t destroy_db_superblock(struct volume_descriptor *volume_desc, const char *db_name, uint32_t db_name_size)
-{
-	int ret = 1;
-	MUTEX_LOCK(&volume_desc->db_array_lock);
-	uint8_t found;
-	struct pr_db_superblock *db_superblock = get_db_superblock(volume_desc, db_name, db_name_size, 0, &found);
-	if (!db_superblock) {
-		log_warn("DB not found so I cannot destory it :-)");
-		ret = 0;
-		goto exit;
-	}
-	int db_id = db_superblock->id;
-	memset(db_superblock, 0x00, sizeof(struct pr_db_superblock));
-	db_superblock->id = db_id;
-exit:
-	MUTEX_UNLOCK(&volume_desc->db_array_lock);
-	return ret;
-}
-
-/*<new_persistent_design>*/
-
 static struct mem_bitmap_word mem_bitmap_get_curr_word(struct volume_descriptor *volume_desc)
 {
 	return volume_desc->curr_word;
@@ -496,7 +474,7 @@ static uint32_t mem_bitmap_check_first_n_bits_free(struct mem_bitmap_word *b_wor
 	return 0;
 }
 
-static uint32_t mem_bitmap_find_suffix(struct mem_bitmap_word *b_word, uint64_t *rounds, int num_rounds)
+static uint32_t mem_bitmap_find_suffix(struct mem_bitmap_word *b_word, const uint64_t *rounds, int num_rounds)
 {
 	uint64_t mask = 0x8000000000000000;
 	uint32_t size_bits = 0;
@@ -752,10 +730,9 @@ int read_dev_offt_into_buffer(char *buffer, const uint32_t start, const uint32_t
 			      const int fd)
 {
 	ssize_t bytes_read = start;
-	ssize_t bytes = 0;
 
 	while (bytes_read < size) {
-		bytes = pread(fd, &buffer[bytes_read], size - bytes_read, dev_offt + bytes_read);
+		ssize_t bytes = pread(fd, &buffer[bytes_read], size - bytes_read, dev_offt + bytes_read);
 		if (bytes == -1) {
 			log_fatal("Failed to read, error code");
 			perror("Error");
@@ -961,44 +938,4 @@ struct volume_descriptor *mem_get_volume_desc(char *volume_name)
 	MUTEX_UNLOCK(&volume_map_lock);
 
 	return volume->volume_desc;
-}
-/*</new_persistent_design>*/
-
-/**
- * Volume close. Closes the volume by executing the following steps. Application
- * is responsible to halt any threads
- * using this volume prior to close operation. (Designed primarly for move
- * operation in HBase)
- * 1.Remove volume from mappedVolumes list
- * 2.Signal garbage collector to terminate
- * 3.Free resources such as struct volume_descriptor
- * */
-void volume_close(volume_descriptor *volume_desc)
-{
-	/*1.first of all, is this volume present?*/
-	if (klist_find_element_with_key(volume_list, volume_desc->volume_id) == NULL) {
-		log_info("volume: %s with volume id:%s not found during close operation\n", volume_desc->volume_name,
-			 volume_desc->volume_id);
-		return;
-	}
-	log_info("closing volume: %s with id %s\n", volume_desc->volume_name, volume_desc->volume_id);
-	/*2.Inform log cleaner to exit*/
-	volume_desc->state = VOLUME_IS_CLOSING;
-	/*signal log cleaner*/
-	MUTEX_LOCK(&(volume_desc->mutex));
-	pthread_cond_signal(&(volume_desc->cond));
-	MUTEX_UNLOCK(&(volume_desc->mutex));
-	/*wait untli cleaner is out*/
-	while (volume_desc->state == VOLUME_IS_CLOSING) {
-	}
-
-	/*3. remove from mappedVolumes*/
-	klist_delete_element(volume_list, volume_desc);
-}
-
-uint64_t get_timestamp(void)
-{
-	struct timeval tv;
-	gettimeofday(&tv, NULL);
-	return tv.tv_sec * (uint64_t)1000000 + tv.tv_usec;
 }

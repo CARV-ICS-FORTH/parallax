@@ -32,7 +32,7 @@ typedef struct level_scanner {
 	db_handle *db;
 	stackT stack;
 	node_header *root; /*root of the tree when the cursor was initialized/reset, related to CPAAS-188*/
-	void *keyValue;
+	char *keyValue;
 	uint32_t kv_format;
 	enum log_category cat;
 	uint32_t kv_size;
@@ -59,7 +59,7 @@ typedef struct scannerHandle {
  *
  * Example use to print all the database in sorted order:
  *
- * scannerHandle *scanner = initScanner(db, NULL);
+ * scannerHandle *scanner = init_dirty_scanner(db, NULL);
  * while(isValid(scanner)){
  * 		std::cout << "[" << entries
  *							<< "][" << getKeySize(scanner)
@@ -72,19 +72,16 @@ typedef struct scannerHandle {
  * }
  * closeScanner(scanner);
  */
-scannerHandle *initScanner(scannerHandle *sc, db_handle *handle, void *key, char seek_mode);
+void init_dirty_scanner(scannerHandle *sc, db_handle *handle, void *start_key, char seek_flag);
 void closeScanner(scannerHandle *sc);
 
-void init_dirty_scanner(scannerHandle *sc, db_handle *handle, void *start_key, char seek_flag);
 void seek_to_last(scannerHandle *sc, db_handle *handle);
 
 int32_t getNext(scannerHandle *sc);
 int32_t getPrev(scannerHandle *sc);
 int isValid(scannerHandle *sc);
 int32_t get_key_size(scannerHandle *sc);
-void *get_key_ptr(scannerHandle *sc);
 int32_t get_value_size(scannerHandle *sc);
-void *get_value_ptr(scannerHandle *sc);
 uint32_t get_kv_size(scannerHandle *sc);
 /**
  * __seek_scanner: positions the cursor to the appropriate position
@@ -104,7 +101,7 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
  *        END_OF_DATABASE, end of database reached
  **/
 int32_t _get_next_KV(level_scanner *sc);
-void _close_compaction_buffer_scanner(level_scanner *sc);
+void _close_compaction_buffer_scanner(level_scanner *level_sc);
 void close_dirty_scanner(scannerHandle *sc);
 #if MEASURE_SST_USED_SPACE
 void perf_measure_leaf_capacity(db_handle *hd, int level_id);

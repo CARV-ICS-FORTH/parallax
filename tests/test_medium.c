@@ -195,7 +195,7 @@ static void validate_number_of_kvs(db_handle *hd, uint64_t num_keys)
 	}
 }
 
-static unsigned int get_kv_size(void *kv_buf)
+static unsigned int get_kv_size(char *kv_buf)
 {
 	return (KEY_SIZE(kv_buf) + VALUE_SIZE(kv_buf + sizeof(uint32_t) + KEY_SIZE(kv_buf)) + 2 * sizeof(uint32_t));
 }

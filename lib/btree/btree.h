@@ -289,7 +289,7 @@ typedef struct level_descriptor {
 } level_descriptor;
 
 struct bt_kv_log_address {
-	void *addr;
+	char *addr;
 	struct log_descriptor *log_desc;
 	uint8_t in_tail;
 	uint8_t tail_id;
@@ -433,7 +433,7 @@ typedef struct bt_mutate_req {
 
 typedef struct bt_insert_req {
 	bt_mutate_req metadata;
-	void *key_value_buf;
+	char *key_value_buf;
 	//Used in some cases where the KV has been written
 	uint64_t kv_dev_offt;
 } bt_insert_req;
@@ -530,8 +530,8 @@ void find_key(struct lookup_operation *get_op);
 int8_t delete_key(db_handle *handle, void *key, uint32_t size);
 
 void init_key_cmp(struct key_compare *key_cmp, void *key_buf, char key_format);
-int64_t key_cmp(struct key_compare *key1_cmp, struct key_compare *key2_cmp);
-int prefix_compare(char *l, char *r, size_t unused);
+int64_t key_cmp(struct key_compare *key1, struct key_compare *key2);
+int prefix_compare(char *l, char *r, size_t prefix_size);
 
 /*functions used from other parts except btree/btree.c*/
 
@@ -541,7 +541,7 @@ void recover_L0(struct db_descriptor *db_desc);
 // void free_logical_node(allocator_descriptor *allocator_desc, node_header
 // *node_index);
 
-lock_table *_find_position(lock_table **table, node_header *node);
+lock_table *_find_position(const lock_table **table, node_header *node);
 #define MIN(x, y) ((x > y) ? (y) : (x))
 #define KEY_SIZE(x) (*(uint32_t *)(x))
 #define VALUE_SIZE(x) KEY_SIZE(x)

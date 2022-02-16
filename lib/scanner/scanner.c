@@ -28,24 +28,6 @@
 
 int _init_level_scanner(level_scanner *level_sc, void *start_key, char seek_mode);
 
-char *node_type(nodeType_t type)
-{
-	switch (type) {
-	case leafNode:
-		return "leafNode";
-	case leafRootNode:
-		return "leafRootnode";
-	case rootNode:
-		return "rootNode";
-	case internalNode:
-		return "internalNode";
-	default:
-		assert(0);
-		log_fatal("UNKNOWN NODE TYPE");
-		exit(EXIT_FAILURE);
-	}
-}
-
 /**
  * Compaction buffer operation will use this scanner. Traversal begins from root_w
  * and
@@ -227,16 +209,6 @@ void init_dirty_scanner(struct scannerHandle *sc, struct db_handle *handle, void
 	init_generic_scanner(sc, handle, start_key, seek_flag, 1);
 }
 
-scannerHandle *initScanner(scannerHandle *sc, db_handle *handle, void *start_key, char seek_flag)
-{
-	if (sc == NULL) {
-		log_fatal("Null scanner is not acceptable");
-		exit(EXIT_FAILURE);
-	}
-	init_generic_scanner(sc, handle, start_key, seek_flag, 0);
-	return sc;
-}
-
 int _init_level_scanner(level_scanner *level_sc, void *start_key, char seek_mode)
 {
 	stack_init(&level_sc->stack);
@@ -260,12 +232,12 @@ static void read_lock_node(struct level_scanner *level_sc, struct node_header *n
 	if (level_sc->level_id > 0)
 		return;
 
-	struct lock_table *lock = _find_position(level_sc->db->db_desc->levels[0].level_lock_table, node);
+	struct lock_table *lock =
+		_find_position((const lock_table **)level_sc->db->db_desc->levels[0].level_lock_table, node);
 	if (RWLOCK_RDLOCK(&lock->rx_lock) != 0) {
 		log_fatal("ERROR locking");
 		exit(EXIT_FAILURE);
 	}
-	return;
 }
 
 static void read_unlock_node(struct level_scanner *level_sc, struct node_header *node)
@@ -275,12 +247,12 @@ static void read_unlock_node(struct level_scanner *level_sc, struct node_header 
 	if (level_sc->level_id > 0)
 		return;
 
-	struct lock_table *lock = _find_position(level_sc->db->db_desc->levels[0].level_lock_table, node);
+	struct lock_table *lock =
+		_find_position((const lock_table **)level_sc->db->db_desc->levels[0].level_lock_table, node);
 	if (RWLOCK_UNLOCK(&lock->rx_lock) != 0) {
 		log_fatal("ERROR locking");
 		exit(EXIT_FAILURE);
 	}
-	return;
 }
 
 void closeScanner(scannerHandle *sc)
@@ -328,23 +300,11 @@ int32_t get_key_size(scannerHandle *sc)
 	return *(int32_t *)(sc->keyValue);
 }
 
-void *get_key_ptr(scannerHandle *sc)
-{
-	return (void *)((char *)(sc->keyValue) + sizeof(int32_t));
-}
-
 int32_t get_value_size(scannerHandle *sc)
 {
 	int32_t key_size = get_key_size(sc);
 	int32_t *val_ptr = (int32_t *)((char *)(sc->keyValue) + sizeof(int32_t) + key_size);
 	return *val_ptr;
-}
-
-void *get_value_ptr(scannerHandle *sc)
-{
-	int32_t key_size = get_key_size(sc);
-	char *val_ptr = (char *)(sc->keyValue) + sizeof(int32_t) + key_size;
-	return val_ptr + sizeof(int32_t);
 }
 
 uint32_t get_kv_size(scannerHandle *sc)
@@ -364,8 +324,6 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 	node_header *node;
 	int64_t ret;
 	uint32_t level_id = level_sc->level_id;
-	int32_t start_idx = 0;
-	int32_t end_idx = 0;
 	int32_t middle;
 	struct key_compare key1_cmp, key2_cmp;
 	/*drop all paths*/
@@ -397,8 +355,8 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 
 	while (node->type != leafNode && node->type != leafRootNode) {
 		inode = (index_node *)node;
-		start_idx = 0;
-		end_idx = inode->header.num_entries - 1;
+		int32_t start_idx = 0;
+		int32_t end_idx = inode->header.num_entries - 1;
 
 		while (1) {
 			middle = (start_idx + end_idx) / 2;
@@ -547,7 +505,7 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 				dlnode, db_desc->levels[level_id].leaf_size, slot_array[middle].index);
 			level_sc->kv_entry = *kv_entry;
 			level_sc->kv_entry.dev_offt = (uint64_t)REAL_ADDRESS(kv_entry->dev_offt);
-			level_sc->keyValue = &level_sc->kv_entry;
+			level_sc->keyValue = (char *)&level_sc->kv_entry;
 			level_sc->cat = slot_array[middle].key_category;
 			level_sc->tombstone = slot_array[middle].tombstone;
 			level_sc->kv_size = sizeof(struct bt_leaf_entry);
@@ -631,12 +589,11 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 
 int32_t getNext(scannerHandle *sc)
 {
-	enum sh_heap_status stat = { 0 };
 	struct sh_heap_node nd = { 0 };
 	struct sh_heap_node next_nd = { 0 };
 
 	while (1) {
-		stat = sh_remove_top(&sc->heap, &nd);
+		enum sh_heap_status stat = sh_remove_top(&sc->heap, &nd);
 		if (stat != EMPTY_HEAP) {
 			sc->keyValue = nd.KV;
 			sc->kv_level_id = nd.level_id;
@@ -680,11 +637,12 @@ void perf_preorder_count_leaf_capacity(level_descriptor *level, node_header *roo
 		node = REAL_ADDRESS(inode->p[i].left[0]);
 		perf_preorder_count_leaf_capacity(level, node);
 	}
-
+	(void)node;
 	/* node = REAL_ADDRESS(inode->p[root->num_entries].left); */
 	/* perf_preorder_count_leaf_capacity(level,node); */
 }
 
+// cppcheck-suppress unusedFunction
 void perf_measure_leaf_capacity(db_handle *hd, int level_id)
 {
 	node_header *root = hd->db_desc->levels[level_id].root_r[0];
@@ -734,14 +692,11 @@ int32_t _get_next_KV(level_scanner *sc)
 
 				stack_top = stack_pop(&(sc->stack));
 				if (!stack_top.guard) {
-					// log_debug("rightmost in stack throw and continue type %s",
-					//	  node_type(stack_top.node->type));
 					continue;
 				} else {
 					return END_OF_DATABASE;
 				}
 			} else if (stack_top.leftmost) {
-				// log_debug("leftmost? %s", node_type(stack_top.node->type));
 				stack_top.leftmost = 0;
 
 				if (stack_top.node->type == leafNode || stack_top.node->type == leafRootNode) {
@@ -756,8 +711,6 @@ int32_t _get_next_KV(level_scanner *sc)
 					} else {
 						stack_top = stack_pop(&(sc->stack));
 						if (!stack_top.guard) {
-							//log_debug("rightmost in stack throw and continue type %s",
-							// node_type(stack_top.node->type));
 							continue;
 						} else
 							return END_OF_DATABASE;
@@ -808,7 +761,6 @@ int32_t _get_next_KV(level_scanner *sc)
 
 			read_lock_node(sc, stack_top.node);
 
-			// log_debug("Saved type %s", node_type(stack_top.node->type));
 			stack_top.idx = 0;
 			stack_top.leftmost = 1;
 			stack_top.rightmost = 0;
@@ -852,7 +804,7 @@ int32_t _get_next_KV(level_scanner *sc)
 
 			sc->kv_entry = *kv_entry;
 			sc->kv_entry.dev_offt = (uint64_t)REAL_ADDRESS(kv_entry->dev_offt);
-			sc->keyValue = &sc->kv_entry;
+			sc->keyValue = (char *)&sc->kv_entry;
 			sc->kv_format = KV_PREFIX;
 			sc->cat = slot_array[idx].key_category;
 			sc->tombstone = slot_array[idx].tombstone;
@@ -938,15 +890,12 @@ int32_t _get_prev_KV(level_scanner *sc)
 				read_unlock_node(sc, stack_top.node);
 
 				stack_top = stack_pop(&(sc->stack));
-				//printf("rightmost? %s", stack_top.node->type);
-				//node_type(stack_top.node->type);
 				if (!stack_top.guard) {
 					continue;
 				} else {
 					return END_OF_DATABASE;
 				}
 			} else if (stack_top.rightmost) {
-				//log_debug("rightmost? %s", node_type(stack_top.node->type));
 				stack_top.rightmost = 0;
 				if (stack_top.node->type == leafNode || stack_top.node->type == leafRootNode) {
 					//log_info("got a rightmost leaf advance");
@@ -982,7 +931,7 @@ int32_t _get_prev_KV(level_scanner *sc)
 				}
 			} else {
 				--stack_top.idx;
-				if (stack_top.idx <= 0)
+				if (stack_top.idx == 0)
 					stack_top.leftmost = 1;
 			}
 			stack_push(&sc->stack, stack_top);
@@ -1050,7 +999,7 @@ int32_t _get_prev_KV(level_scanner *sc)
 
 			sc->kv_entry = *kv_entry;
 			sc->kv_entry.dev_offt = (uint64_t)REAL_ADDRESS(kv_entry->dev_offt);
-			sc->keyValue = &sc->kv_entry;
+			sc->keyValue = (char *)&sc->kv_entry;
 			sc->kv_format = KV_PREFIX;
 			sc->cat = slot_array[idx].key_category;
 			sc->tombstone = slot_array[idx].tombstone;
@@ -1146,7 +1095,6 @@ static int find_last_key(level_scanner *level_sc)
 	index_node *inode;
 	node_header *node;
 	uint32_t level_id = level_sc->level_id;
-	int32_t end_idx = 0;
 	int32_t middle;
 	/*drop all paths*/
 	stack_reset(&(level_sc->stack));
@@ -1176,7 +1124,7 @@ static int find_last_key(level_scanner *level_sc)
 
 	while (node->type != leafNode && node->type != leafRootNode) {
 		inode = (index_node *)node;
-		end_idx = inode->header.num_entries - 1;
+		int32_t end_idx = inode->header.num_entries - 1;
 
 		element.guard = 0;
 		element.node = node;
@@ -1219,7 +1167,6 @@ static int find_last_key(level_scanner *level_sc)
 		element.guard = 0;
 		//log_debug("Leftmost boom %llu", node->num_entries);
 		stack_push(&(level_sc->stack), element);
-		middle = 0;
 	} else if (middle >= (int64_t)node->num_entries - 1) {
 		//log_info("rightmost");
 		element.node = node;
@@ -1228,7 +1175,6 @@ static int find_last_key(level_scanner *level_sc)
 		element.rightmost = 1;
 		element.guard = 0;
 		stack_push(&(level_sc->stack), element);
-		middle = node->num_entries - 1;
 	} else {
 		//log_info("middle is %d", middle);
 		element.node = node;
@@ -1265,7 +1211,7 @@ static int find_last_key(level_scanner *level_sc)
 			level_sc->kv_entry = *kv_entry;
 			level_sc->kv_format = KV_PREFIX;
 			level_sc->kv_entry.dev_offt = (uint64_t)REAL_ADDRESS(kv_entry->dev_offt);
-			level_sc->keyValue = &level_sc->kv_entry;
+			level_sc->keyValue = (char *)&level_sc->kv_entry;
 			level_sc->cat = slot_array[middle].key_category;
 			level_sc->tombstone = slot_array[middle].tombstone;
 			level_sc->kv_size = sizeof(struct bt_leaf_entry);
@@ -1330,28 +1276,23 @@ void seek_to_last(struct scannerHandle *sc, struct db_handle *handle)
 	uint8_t active_tree;
 	int retval;
 
-	char dirty = 1;
-
 	if (sc == NULL) {
 		log_fatal("NULL scannerHandle?");
 		exit(EXIT_FAILURE);
 	}
 
 	/*special care for level 0 due to double buffering*/
-	if (dirty) {
-		/*take read lock of all levels (Level-0 client writes, other for switching trees
+	/*take read lock of all levels (Level-0 client writes, other for switching trees
 		*after compaction
 		*/
-		for (int i = 0; i < MAX_LEVELS; i++)
-			RWLOCK_RDLOCK(&handle->db_desc->levels[i].guard_of_level.rx_lock);
-		__sync_fetch_and_add(&handle->db_desc->levels[0].active_operations, 1);
-	}
+	for (int i = 0; i < MAX_LEVELS; i++)
+		RWLOCK_RDLOCK(&handle->db_desc->levels[i].guard_of_level.rx_lock);
+	__sync_fetch_and_add(&handle->db_desc->levels[0].active_operations, 1);
 
 	for (int i = 0; i < MAX_LEVELS; i++) {
 		for (int j = 0; j < NUM_TREES_PER_LEVEL; j++) {
 			sc->LEVEL_SCANNERS[i][j].valid = 0;
-			if (dirty)
-				sc->LEVEL_SCANNERS[i][j].dirty = 1;
+			sc->LEVEL_SCANNERS[i][j].dirty = 1;
 		}
 	}
 
@@ -1363,12 +1304,9 @@ void seek_to_last(struct scannerHandle *sc, struct db_handle *handle)
 
 	for (int i = 0; i < NUM_TREES_PER_LEVEL; i++) {
 		struct node_header *root;
-		if (dirty) {
-			if (handle->db_desc->levels[0].root_w[i] != NULL)
-				root = handle->db_desc->levels[0].root_w[i];
-			else
-				root = handle->db_desc->levels[0].root_r[i];
-		} else
+		if (handle->db_desc->levels[0].root_w[i] != NULL)
+			root = handle->db_desc->levels[0].root_w[i];
+		else
 			root = handle->db_desc->levels[0].root_r[i];
 
 		if (root != NULL) {

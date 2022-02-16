@@ -68,11 +68,6 @@ static inline int par_serialize_to_kv_format(struct par_key *key, char **buf, ui
 
 par_ret_code par_get(par_handle handle, struct par_key *key, struct par_value *value)
 {
-	struct val {
-		uint32_t size;
-		char val[];
-	};
-
 	if (value == NULL) {
 		log_warn("value cannot be NULL");
 		return PAR_FAILURE;
@@ -261,30 +256,30 @@ init_scanner:
 	return (par_scanner)par_s;
 }
 
-void par_close_scanner(par_scanner s)
+void par_close_scanner(par_scanner sc)
 {
-	struct par_scanner *par_s = (struct par_scanner *)s;
+	struct par_scanner *par_s = (struct par_scanner *)sc;
 	closeScanner((struct scannerHandle *)par_s->sc);
 	if (par_s->allocated)
 		free(par_s->kv_buf);
 
 	free(par_s);
-	return;
 }
 
-int par_get_next(par_scanner s)
+int par_get_next(par_scanner sc)
 {
-	struct par_scanner *par_s = (struct par_scanner *)s;
-	struct scannerHandle *sc = par_s->sc;
-	int32_t ret = getNext(sc);
+	struct par_scanner *par_s = (struct par_scanner *)sc;
+	struct scannerHandle *scanner_hd = par_s->sc;
+	int32_t ret = getNext(scanner_hd);
 	if (ret == END_OF_DATABASE) {
 		par_s->valid = 0;
 		return 0;
 	}
 
-	struct bt_kv_log_address log_address = { .addr = sc->keyValue, .tail_id = UINT8_MAX, .in_tail = 0 };
-	if (!sc->kv_level_id && BIG_INLOG == sc->kv_cat)
-		log_address = bt_get_kv_log_address(&sc->db->db_desc->big_log, ABSOLUTE_ADDRESS(sc->keyValue));
+	struct bt_kv_log_address log_address = { .addr = scanner_hd->keyValue, .tail_id = UINT8_MAX, .in_tail = 0 };
+	if (!scanner_hd->kv_level_id && BIG_INLOG == scanner_hd->kv_cat)
+		log_address = bt_get_kv_log_address(&scanner_hd->db->db_desc->big_log,
+						    ABSOLUTE_ADDRESS(scanner_hd->keyValue));
 
 	uint32_t kv_size = KEY_SIZE(log_address.addr) + sizeof(struct kv_format);
 	struct kv_format *v = (struct kv_format *)((uint64_t)log_address.addr + kv_size);
@@ -300,26 +295,27 @@ int par_get_next(par_scanner s)
 	}
 	memcpy(par_s->kv_buf, log_address.addr, kv_size);
 	if (log_address.in_tail)
-		bt_done_with_value_log_address(&sc->db->db_desc->big_log, &log_address);
+		bt_done_with_value_log_address(&scanner_hd->db->db_desc->big_log, &log_address);
 	return 1;
 }
 
-int par_is_valid(par_scanner s)
+int par_is_valid(par_scanner sc)
 {
-	struct par_scanner *par_s = (struct par_scanner *)s;
+	struct par_scanner *par_s = (struct par_scanner *)sc;
 	return par_s->valid;
 }
 
-struct par_key par_get_key(par_scanner s)
+struct par_key par_get_key(par_scanner sc)
 {
-	struct par_scanner *par_s = (struct par_scanner *)s;
+	struct par_scanner *par_s = (struct par_scanner *)sc;
 	struct par_key key = { .size = *(uint32_t *)par_s->kv_buf, .data = par_s->kv_buf + sizeof(uint32_t) };
 	return key;
 }
 
-struct par_value par_get_value(par_scanner s)
+// cppcheck-suppress unusedFunction
+struct par_value par_get_value(par_scanner sc)
 {
-	struct par_scanner *par_s = (struct par_scanner *)s;
+	struct par_scanner *par_s = (struct par_scanner *)sc;
 	char *value = par_s->kv_buf + *(uint32_t *)par_s->kv_buf + sizeof(uint32_t);
 	struct par_value val = { .val_size = *(uint32_t *)value,
 				 .val_buffer = value + sizeof(uint32_t),
@@ -328,10 +324,11 @@ struct par_value par_get_value(par_scanner s)
 	return val;
 }
 
-par_ret_code par_sync(par_handle dbhandle)
+// cppcheck-suppress unusedFunction
+par_ret_code par_sync(par_handle handle)
 {
 	log_fatal("Currently developing persistency..");
-	(void)dbhandle;
+	(void)handle;
 	//exit(EXIT_FAILURE);
 	return PAR_FAILURE;
 }
