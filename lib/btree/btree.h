@@ -112,9 +112,8 @@ typedef struct node_header {
 } __attribute__((packed)) node_header;
 
 typedef struct index_entry {
-	uint64_t left[1];
+	uint64_t left;
 	uint64_t pivot;
-	uint64_t right[];
 } __attribute__((packed)) index_entry;
 
 struct bt_leaf_entry {
@@ -183,11 +182,6 @@ struct kv_format {
 	uint32_t key_size;
 	char key_buf[];
 } __attribute__((packed));
-
-struct value_format {
-	uint32_t value_size;
-	char value[];
-};
 
 struct bt_static_leaf_node {
 	struct node_header header;

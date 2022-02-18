@@ -114,8 +114,16 @@ set(DEPENDENCIES log yaml libbloom)
 include_directories(${CMAKE_BINARY_DIR})
 include_directories(${CMAKE_SOURCE_DIR}/utilities)
 
+if(TREAT_WARNINGS_AS_ERRORS)
+  set(CMAKE_C_FLAGS " -Werror ${CMAKE_C_FLAGS}")
+  set(CMAKE_CXX_FLAGS " -Werror ${CMAKE_CXX_FLAGS}")
+endif()
+
 set(CMAKE_C_FLAGS
-    "-Wstrict-prototypes -Wall -Wextra -fno-omit-frame-pointer -Wunused -Wuninitialized -Wimplicit-function-declaration -Wshadow  -Werror ${CMAKE_C_FLAGS}"
+    "-Wstrict-prototypes -Wall -Wextra -fno-omit-frame-pointer -Wunused -Wuninitialized ${CMAKE_C_FLAGS}"
+)
+set(CMAKE_C_FLAGS
+    "-Wimplicit-function-declaration -Wshadow  -pedantic -pedantic-errors ${CMAKE_C_FLAGS}"
 )
 
 if(WNULL_DEREFERENCE)
@@ -144,8 +152,7 @@ set(CMAKE_C_FLAGS_DEBUG "-ggdb3 -Og -gz ${CMAKE_C_FLAGS_DEBUG}")
 set(CMAKE_C_FLAGS_RELEASE
     "${CMAKE_C_FLAGS_RELEASE} -funit-at-a-time -O2 -finline-functions -DNDEBUG")
 
-set(CMAKE_CXX_FLAGS_RELEASE
-    "${CMAKE_CXX_FLAGS_RELEASE} -std=gnu++11 -Wall -Werror")
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -std=gnu++11 -Wall")
 
 set(CMAKE_EXE_LINKER_FLAGS
     "${CMAKE_EXE_LINKER_FLAGS} -Wl,--no-as-needed -lrt -lm -pthread -lnuma -lutil"

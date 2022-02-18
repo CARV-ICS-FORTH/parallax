@@ -74,7 +74,7 @@ static void pr_flush_allocation_log_and_level_info(struct db_descriptor *db_desc
 
 		db_desc->db_superblock->level_size[dst_level_id][0] = db_desc->levels[dst_level_id].level_size[tree_id];
 		log_info("Writing root[%u][%u] = %p", dst_level_id, tree_id,
-			 db_desc->levels[dst_level_id].root_r[tree_id]);
+			 (void *)db_desc->levels[dst_level_id].root_r[tree_id]);
 
 		db_desc->db_superblock->root_r[dst_level_id][0] =
 			ABSOLUTE_ADDRESS(db_desc->levels[dst_level_id].root_r[tree_id]);
@@ -272,12 +272,14 @@ static void pr_flush_Lmax_to_Ln(struct db_descriptor *db_desc, uint8_t level_id,
 
 void pr_flush_compaction(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
 {
-	if (level_id == 1)
-		return pr_flush_L0_to_L1(db_desc, level_id, tree_id);
-
-	if (level_id == db_desc->level_medium_inplace)
-		return pr_flush_Lmax_to_Ln(db_desc, level_id, tree_id);
-
+	if (level_id == 1) {
+		pr_flush_L0_to_L1(db_desc, level_id, tree_id);
+		return;
+	}
+	if (level_id == db_desc->level_medium_inplace) {
+		pr_flush_Lmax_to_Ln(db_desc, level_id, tree_id);
+		return;
+	}
 	uint64_t txn_id = db_desc->levels[level_id].allocation_txn_id[tree_id];
 	pr_lock_db_superblock(db_desc);
 

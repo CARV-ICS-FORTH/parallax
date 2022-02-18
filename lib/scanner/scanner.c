@@ -386,9 +386,9 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 		int num_entries = node->num_entries;
 		/*the path we need to follow*/
 		if (ret <= 0)
-			node = (node_header *)REAL_ADDRESS(inode->p[middle].right[0]);
+			node = (node_header *)REAL_ADDRESS(inode->p[middle + 1].left);
 		else
-			node = (node_header *)REAL_ADDRESS(inode->p[middle].left[0]);
+			node = (node_header *)REAL_ADDRESS(inode->p[middle].left);
 
 		read_lock_node(level_sc, node);
 
@@ -722,7 +722,7 @@ int32_t _get_next_KV(level_scanner *sc)
 					stack_top.idx = 0;
 					stack_push(&sc->stack, stack_top);
 					inode = (index_node *)stack_top.node;
-					node = (node_header *)REAL_ADDRESS(inode->p[0].right[0]);
+					node = (node_header *)REAL_ADDRESS(inode->p[1].left);
 					assert(node->type == rootNode || node->type == leafRootNode ||
 					       node->type == internalNode || node->type == leafNode);
 					up = 0;
@@ -744,7 +744,7 @@ int32_t _get_next_KV(level_scanner *sc)
 				break;
 			} else if (stack_top.node->type == internalNode || stack_top.node->type == rootNode) {
 				inode = (index_node *)stack_top.node;
-				node = (node_header *)REAL_ADDRESS(inode->p[stack_top.idx].right[0]);
+				node = (node_header *)REAL_ADDRESS(inode->p[stack_top.idx + 1].left);
 				up = 0;
 
 				assert(node->type == rootNode || node->type == leafRootNode ||
@@ -772,7 +772,7 @@ int32_t _get_next_KV(level_scanner *sc)
 				break;
 			} else if (node->type == internalNode || node->type == rootNode) {
 				inode = (index_node *)node;
-				node = (node_header *)REAL_ADDRESS(inode->p[0].left[0]);
+				node = (node_header *)REAL_ADDRESS(inode->p[0].left);
 			} else {
 				log_fatal("Reached corrupted node");
 				assert(0);
@@ -920,7 +920,7 @@ int32_t _get_prev_KV(level_scanner *sc)
 					stack_top.idx = stack_top.node->num_entries - 1;
 					stack_push(&sc->stack, stack_top);
 					inode = (index_node *)stack_top.node;
-					node = (node_header *)REAL_ADDRESS(inode->p[stack_top.idx].left[0]);
+					node = (node_header *)REAL_ADDRESS(inode->p[stack_top.idx].left);
 					assert(node->type == rootNode || node->type == leafRootNode ||
 					       node->type == internalNode || node->type == leafNode);
 					up = 0;
@@ -941,7 +941,7 @@ int32_t _get_prev_KV(level_scanner *sc)
 				break;
 			} else if (stack_top.node->type == internalNode || stack_top.node->type == rootNode) {
 				inode = (index_node *)stack_top.node;
-				node = (node_header *)REAL_ADDRESS(inode->p[stack_top.idx].left[0]);
+				node = (node_header *)REAL_ADDRESS(inode->p[stack_top.idx].left);
 				up = 0;
 				assert(node->type == rootNode || node->type == leafRootNode ||
 				       node->type == internalNode || node->type == leafNode);
@@ -966,7 +966,7 @@ int32_t _get_prev_KV(level_scanner *sc)
 				break;
 			} else if (node->type == internalNode || node->type == rootNode) {
 				inode = (index_node *)node;
-				node = (node_header *)REAL_ADDRESS(inode->p[stack_top.idx].right[0]);
+				node = (node_header *)REAL_ADDRESS(inode->p[stack_top.idx + 1].left);
 			} else {
 				log_fatal("Reached corrupted node");
 				assert(0);
@@ -1129,7 +1129,7 @@ static int find_last_key(level_scanner *level_sc)
 		element.guard = 0;
 		element.node = node;
 
-		node = (node_header *)REAL_ADDRESS(inode->p[end_idx].right[0]);
+		node = (node_header *)REAL_ADDRESS(inode->p[end_idx + 1].left);
 
 		read_lock_node(level_sc, node);
 

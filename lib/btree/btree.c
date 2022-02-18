@@ -538,8 +538,8 @@ static void restore_db(struct db_descriptor *db_desc, uint32_t region_idx)
 				log_info("Superblock of db: %s first_segment dev offt: %lu", superblock->db_name,
 					 superblock->first_segment[level_id][tree_id]);
 				log_info("Restoring level[%u][%u] first segment %p last segment: %p size: %lu",
-					 level_id, tree_id, db_desc->levels[level_id].first_segment[tree_id],
-					 db_desc->levels[level_id].last_segment[tree_id],
+					 level_id, tree_id, (void *)db_desc->levels[level_id].first_segment[tree_id],
+					 (void *)db_desc->levels[level_id].last_segment[tree_id],
 					 db_desc->levels[level_id].offset[tree_id]);
 			} else {
 				//log_info("Restoring EMPTY level[%u][%u]", level_id, tree_id);
@@ -559,7 +559,7 @@ static void restore_db(struct db_descriptor *db_desc, uint32_t region_idx)
 			db_desc->levels[level_id].root_w[tree_id] = db_desc->levels[level_id].root_r[tree_id];
 			if (db_desc->levels[level_id].root_r[tree_id])
 				log_info("Restored root[%u][%u] = %p", level_id, tree_id,
-					 db_desc->levels[level_id].root_r[tree_id]);
+					 (void *)db_desc->levels[level_id].root_r[tree_id]);
 		}
 	}
 
@@ -765,14 +765,13 @@ db_handle *internal_db_open(struct volume_descriptor *volume_desc, uint64_t star
 
 	sem_init(&handle->db_desc->compaction_daemon_interrupts, PTHREAD_PROCESS_PRIVATE, 0);
 
-	if (pthread_create(&(handle->db_desc->compaction_daemon), NULL, (void *)compaction_daemon, (void *)handle) !=
-	    0) {
+	if (pthread_create(&(handle->db_desc->compaction_daemon), NULL, compaction_daemon, (void *)handle) != 0) {
 		log_fatal("Failed to start compaction_daemon for db %s", db_name);
 		exit(EXIT_FAILURE);
 	}
 
 	if (!volume_desc->gc_thread_spawned) {
-		if (pthread_create(&(handle->db_desc->gc_thread), NULL, (void *)gc_log_entries, (void *)handle) != 0) {
+		if (pthread_create(&(handle->db_desc->gc_thread), NULL, gc_log_entries, (void *)handle) != 0) {
 			log_fatal("Failed to start garbage collection thread for db %s", db_name);
 			exit(EXIT_FAILURE);
 		}
@@ -2013,14 +2012,14 @@ void *_index_node_binary_search(index_node *node, void *key_buf, char query_key_
 		if (ret == 0) {
 			// log_debug("I passed from this corner case1 %s",
 			// (char*)(index_key_buf+4));
-			addr = &(node->p[middle].right);
+			addr = &node->p[middle + 1].left;
 			break;
 		} else if (ret > 0) {
 			end_idx = middle - 1;
 			if (start_idx > end_idx) {
 				// log_debug("I passed from this corner case2 %s",
 				// (char*)(index_key_buf+4));
-				addr = &(node->p[middle].left[0]);
+				addr = &node->p[middle].left;
 				middle--;
 				break;
 			}
@@ -2029,8 +2028,7 @@ void *_index_node_binary_search(index_node *node, void *key_buf, char query_key_
 			if (start_idx > end_idx) {
 				// log_debug("I passed from this corner case3 %s",
 				// (char*)(index_key_buf+4));
-				addr = &(node->p[middle].right);
-				middle++;
+				addr = &node->p[++middle].left;
 				break;
 			}
 		}
@@ -2039,13 +2037,13 @@ void *_index_node_binary_search(index_node *node, void *key_buf, char query_key_
 	if (middle < 0) {
 		// log_debug("I passed from this corner case4 %s",
 		// (char*)(index_key_buf+4));
-		addr = &(node->p[0].left[0]);
+		addr = &(node->p[0].left);
 	} else if (middle >= (int64_t)node->header.num_entries) {
 		// log_debug("I passed from this corner case5 %s",
 		// (char*)(index_key_buf+4));
 		/* log_debug("I passed from this corner case2 %s",
 * (char*)(index_key_buf+4)); */
-		addr = &(node->p[node->header.num_entries - 1].right);
+		addr = &node->p[node->header.num_entries].left;
 	}
 	// log_debug("END");
 	return addr;

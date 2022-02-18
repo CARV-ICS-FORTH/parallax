@@ -344,7 +344,7 @@ void print_dynamic_leaf(const struct bt_dynamic_leaf_node *leaf, uint32_t leaf_s
 	for (unsigned i = 0; i < leaf->header.num_entries; ++i) {
 		char *key = fill_keybuf(get_kv_offset(leaf, leaf_size, slot_array[i].index), slot_array[i].kv_loc);
 		log_info("offset in leaf %d ADDR %p Size%d key %s\n", slot_array[i].index,
-			 get_kv_offset(leaf, leaf_size, slot_array[i].index), KEY_SIZE(key), key + 4);
+			 (void *)get_kv_offset(leaf, leaf_size, slot_array[i].index), KEY_SIZE(key), key + 4);
 	}
 	log_info("2--------------------------------------------");
 }
