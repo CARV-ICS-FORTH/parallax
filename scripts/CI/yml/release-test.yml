@@ -16,7 +16,7 @@ release_test_ycsb_larged:
     script:
         - make ycsb-edb;make kv_format.parallax;cd YCSB-CXX;
         - ctest -R ^test_larged$
-    needs: [release_build_gcc]
+    needs: [release_build_gcc, release_build_clang]
 
 release_test_ycsb_large:
     image: carvicsforth/arch_carv:latest
@@ -27,7 +27,7 @@ release_test_ycsb_large:
     script:
         - make ycsb-edb;make kv_format.parallax;cd YCSB-CXX;
         - ctest -R ^test_large$
-    needs: [release_build_gcc]
+    needs: [release_build_gcc, release_build_clang]
 
 release_test_ycsb_mediumd:
     image: carvicsforth/arch_carv:latest
@@ -38,7 +38,7 @@ release_test_ycsb_mediumd:
     script:
         - make ycsb-edb;make kv_format.parallax;cd YCSB-CXX;
         - ctest -R ^test_mediumd$
-    needs: [release_build_gcc]
+    needs: [release_build_gcc, release_build_clang]
 
 release_test_ycsb_medium:
     image: carvicsforth/arch_carv:latest
@@ -49,7 +49,7 @@ release_test_ycsb_medium:
     script:
         - make ycsb-edb;make kv_format.parallax;cd YCSB-CXX;
         - ctest -R ^test_medium$
-    needs: [release_build_gcc]
+    needs: [release_build_gcc, release_build_clang]
 
 release_test_ycsb_smalld:
     image: carvicsforth/arch_carv:latest
@@ -60,7 +60,7 @@ release_test_ycsb_smalld:
     script:
         - make ycsb-edb;make kv_format.parallax;cd YCSB-CXX;
         - ctest -R ^test_smalld$
-    needs: [release_build_gcc]
+    needs: [release_build_gcc, release_build_clang]
 
 release_test_ycsb_small:
     image: carvicsforth/arch_carv:latest
@@ -71,7 +71,7 @@ release_test_ycsb_small:
     script:
         - make ycsb-edb;make kv_format.parallax;cd YCSB-CXX;
         - ctest -R ^test_small$
-    needs: [release_build_gcc]
+    needs: [release_build_gcc, release_build_clang]
 
 release_test_gc:
     image: carvicsforth/arch_carv:latest
@@ -83,7 +83,7 @@ release_test_gc:
         - make test_gc;make kv_format.parallax;cd tests;
         - ./mkfs.sh "$NVME0/$CI_JOB_ID"/kv_store.dat 128
         - ctest -R ^test_gc$
-    needs: [release_build_gcc]
+    needs: [release_build_gcc, release_build_clang]
 
 release_test_dirty_scans_small:
     image: carvicsforth/arch_carv:latest
@@ -95,7 +95,7 @@ release_test_dirty_scans_small:
         - make test_dirty_scans;make kv_format.parallax;cd tests;
         - ./mkfs.sh "$NVME0/$CI_JOB_ID"/kv_store.dat 128
         - ctest -R ^test_dirty_scans_small$
-    needs: [release_build_gcc]
+    needs: [release_build_gcc, release_build_clang]
 
 release_test_dirty_scans_medium:
     image: carvicsforth/arch_carv:latest
@@ -107,7 +107,7 @@ release_test_dirty_scans_medium:
         - make test_dirty_scans;make kv_format.parallax;cd tests;
         - ./mkfs.sh "$NVME0/$CI_JOB_ID"/kv_store.dat 128
         - ctest -R ^test_dirty_scans_medium$
-    needs: [release_build_gcc]
+    needs: [release_build_gcc, release_build_clang]
 
 release_test_dirty_scans_large:
     image: carvicsforth/arch_carv:latest
@@ -119,7 +119,7 @@ release_test_dirty_scans_large:
         - make test_dirty_scans;make kv_format.parallax;cd tests;
         - ./mkfs.sh "$NVME0/$CI_JOB_ID"/kv_store.dat 128
         - ctest -R ^test_dirty_scans_large$
-    needs: [release_build_gcc]
+    needs: [release_build_gcc, release_build_clang]
 
 
 release_test_dirty_scans_smalld:
@@ -132,7 +132,7 @@ release_test_dirty_scans_smalld:
         - make test_dirty_scans;make kv_format.parallax;cd tests;
         - ./mkfs.sh "$NVME0/$CI_JOB_ID"/kv_store.dat 128
         - ctest -R ^test_dirty_scans_smalld$
-    needs: [release_build_gcc]
+    needs: [release_build_gcc, release_build_clang]
 
 
 release_test_dirty_scans_mediumd:
@@ -145,7 +145,7 @@ release_test_dirty_scans_mediumd:
         - make test_dirty_scans;make kv_format.parallax;cd tests;
         - ./mkfs.sh "$NVME0/$CI_JOB_ID"/kv_store.dat 128
         - ctest -R ^test_dirty_scans_mediumd$
-    needs: [release_build_gcc]
+    needs: [release_build_gcc, release_build_clang]
 
 
 release_test_dirty_scans_larged:
@@ -158,7 +158,7 @@ release_test_dirty_scans_larged:
         - make test_dirty_scans;make kv_format.parallax;cd tests;
         - ./mkfs.sh "$NVME0/$CI_JOB_ID"/kv_store.dat 128
         - ctest -R ^test_dirty_scans_larged$
-    needs: [release_build_gcc]
+    needs: [release_build_gcc, release_build_clang]
 
 release_test_dirty_scans_smallp:
     image: carvicsforth/arch_carv:latest
@@ -170,7 +170,7 @@ release_test_dirty_scans_smallp:
         - make test_dirty_scans;make kv_format.parallax;cd tests;
         - ./mkfs.sh "$NVME0/$CI_JOB_ID"/kv_store.dat 128
         - ctest -R ^test_dirty_scans_smallp$
-    needs: [release_build_gcc]
+    needs: [release_build_gcc, release_build_clang]
 
 release_test_dirty_scans_mediump:
     image: carvicsforth/arch_carv:latest
@@ -182,7 +182,7 @@ release_test_dirty_scans_mediump:
         - make test_dirty_scans;make kv_format.parallax;cd tests;
         - ./mkfs.sh "$NVME0/$CI_JOB_ID"/kv_store.dat 128
         - ctest -R ^test_dirty_scans_mediump$
-    needs: [release_build_gcc]
+    needs: [release_build_gcc, release_build_clang]
 
 release_test_dirty_scans_largep:
     image: carvicsforth/arch_carv:latest
@@ -194,7 +194,7 @@ release_test_dirty_scans_largep:
         - make test_dirty_scans;make kv_format.parallax;cd tests;
         - ./mkfs.sh "$NVME0/$CI_JOB_ID"/kv_store.dat 128
         - ctest -R ^test_dirty_scans_largep$
-    needs: [release_build_gcc]
+    needs: [release_build_gcc, release_build_clang]
 
 
 release_test_dirty_scans_smalldp:
@@ -207,7 +207,7 @@ release_test_dirty_scans_smalldp:
         - make test_dirty_scans;make kv_format.parallax;cd tests;
         - ./mkfs.sh "$NVME0/$CI_JOB_ID"/kv_store.dat 128
         - ctest -R ^test_dirty_scans_smalldp$
-    needs: [release_build_gcc]
+    needs: [release_build_gcc, release_build_clang]
 
 release_test_dirty_scans_mediumdp:
     image: carvicsforth/arch_carv:latest
@@ -219,7 +219,7 @@ release_test_dirty_scans_mediumdp:
         - make test_dirty_scans;make kv_format.parallax;cd tests;
         - ./mkfs.sh "$NVME0/$CI_JOB_ID"/kv_store.dat 128
         - ctest -R ^test_dirty_scans_mediumdp$
-    needs: [release_build_gcc]
+    needs: [release_build_gcc, release_build_clang]
 
 release_test_dirty_scans_largedp:
     image: carvicsforth/arch_carv:latest
@@ -231,7 +231,7 @@ release_test_dirty_scans_largedp:
         - make test_dirty_scans;make kv_format.parallax;cd tests;
         - ./mkfs.sh "$NVME0/$CI_JOB_ID"/kv_store.dat 128
         - ctest -R ^test_dirty_scans_largedp$
-    needs: [release_build_gcc]
+    needs: [release_build_gcc, release_build_clang]
 
 release_simple_test_delete:
     image: carvicsforth/arch_carv:latest
@@ -243,7 +243,7 @@ release_simple_test_delete:
         - make simple_test_delete;make kv_format.parallax;cd tests;
         - ./mkfs.sh "$NVME0/$CI_JOB_ID"/kv_store.dat 128
         - ctest -R ^simple_test_delete$
-    needs: [release_build_gcc]
+    needs: [release_build_gcc, release_build_clang]
 
 release_leaf_root_delete_get_scan:
     image: carvicsforth/arch_carv:latest
@@ -255,4 +255,4 @@ release_leaf_root_delete_get_scan:
         - make test_leaf_root_delete_get_scan;make kv_format.parallax;cd tests;
         - ./mkfs.sh "$NVME0/$CI_JOB_ID"/kv_store.dat 128
         - ctest -R ^test_leaf_root_delete_get_scan$
-    needs: [release_build_gcc]
+    needs: [release_build_gcc, release_build_clang]
