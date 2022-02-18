@@ -15,7 +15,9 @@
 #pragma once
 #include "../allocator/log_structures.h"
 #include "../allocator/volume_manager.h"
+#include "../common/common.h"
 #include "conf.h"
+
 #if ENABLE_BLOOM_FILTERS
 #include <bloom.h>
 #endif
@@ -24,7 +26,6 @@
 #include <semaphore.h>
 #include <stdint.h>
 #include <stdlib.h>
-
 #define PREFIX_SIZE 12
 
 #define MAX_HEIGHT 9
@@ -540,7 +541,7 @@ lock_table *_find_position(const lock_table **table, node_header *node);
 #define KEY_SIZE(x) (*(uint32_t *)(x))
 #define VALUE_SIZE(x) KEY_SIZE(x)
 #define ABSOLUTE_ADDRESS(X) (((uint64_t)(X)) - MAPPED)
-#define REAL_ADDRESS(X) ((X) ? (void *)(uint64_t)(MAPPED + (uint64_t)(X)) : NULL)
+#define REAL_ADDRESS(X) ((X) ? (void *)(MAPPED + (uint64_t)(X)) : BUG_ON(__FILE__, __LINE__, __func__))
 #define KEY_OFFSET(KEY_SIZE, KV_BUF) (sizeof(uint32_t) + KV_BUF)
 #define VALUE_SIZE_OFFSET(KEY_SIZE, KEY) (sizeof(uint32_t) + KEY_SIZE + KEY)
 #define SERIALIZE_KEY(buf, key, key_size) \

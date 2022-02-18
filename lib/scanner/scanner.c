@@ -45,7 +45,7 @@ level_scanner *_init_compaction_buffer_scanner(db_handle *handle, int level_id, 
 	level_scanner *level_sc = calloc(1, sizeof(level_scanner));
 	if (!level_sc) {
 		log_fatal("Calloc failed");
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 	assert(level_sc);
 	stack_init(&level_sc->stack);
@@ -78,13 +78,13 @@ static void init_generic_scanner(struct scannerHandle *sc, struct db_handle *han
 	assert(start_key);
 	if (sc == NULL) {
 		log_fatal("NULL scannerHandle?");
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 
 	/**
   if (!dirty && handle->db_desc->dirty) {
 		log_fatal("Unsupported operation");
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
   **/
 
@@ -116,7 +116,7 @@ static void init_generic_scanner(struct scannerHandle *sc, struct db_handle *han
 	} else {
 		log_fatal("Unknown scanner type!");
 		assert(0);
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 
 	for (int i = 0; i < NUM_TREES_PER_LEVEL; i++) {
@@ -232,7 +232,7 @@ static void read_lock_node(struct level_scanner *level_sc, struct node_header *n
 		_find_position((const lock_table **)level_sc->db->db_desc->levels[0].level_lock_table, node);
 	if (RWLOCK_RDLOCK(&lock->rx_lock) != 0) {
 		log_fatal("ERROR locking");
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 }
 
@@ -247,7 +247,7 @@ static void read_unlock_node(struct level_scanner *level_sc, struct node_header 
 		_find_position((const lock_table **)level_sc->db->db_desc->levels[0].level_lock_table, node);
 	if (RWLOCK_UNLOCK(&lock->rx_lock) != 0) {
 		log_fatal("ERROR locking");
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 }
 
@@ -574,7 +574,7 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 			return PARALLAX_SUCCESS;
 		default:
 			log_fatal("Unknown Scanner mode");
-			exit(EXIT_FAILURE);
+			_Exit(EXIT_FAILURE);
 		}
 
 		if (_get_next_KV(level_sc) == END_OF_DATABASE)
@@ -675,7 +675,7 @@ int32_t _get_next_KV(level_scanner *sc)
 	}
 	if (stack_top.node->type != leafNode && stack_top.node->type != leafRootNode) {
 		log_fatal("Corrupted scanner stack, top element should be a leaf node");
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 	node = stack_top.node;
 	// log_info("stack top rightmost %d leftmost %d", stack_top.rightmost,
@@ -749,7 +749,7 @@ int32_t _get_next_KV(level_scanner *sc)
 			} else {
 				log_fatal("Corrupted node");
 				assert(0);
-				exit(EXIT_FAILURE);
+				_Exit(EXIT_FAILURE);
 			}
 		} else {
 			/*push yourself, update node and continue*/
@@ -849,7 +849,7 @@ int32_t _get_next_KV(level_scanner *sc)
 		}
 		default:
 			assert(0);
-			exit(EXIT_FAILURE);
+			_Exit(EXIT_FAILURE);
 			break;
 		}
 	}
@@ -874,7 +874,7 @@ int32_t _get_prev_KV(level_scanner *sc)
 
 	if (stack_top.node->type != leafNode && stack_top.node->type != leafRootNode) {
 		log_fatal("Corrupted scanner stack, top element should be a leaf node");
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 
 	node = stack_top.node;
@@ -945,7 +945,7 @@ int32_t _get_prev_KV(level_scanner *sc)
 			} else {
 				log_fatal("Corrupted node");
 				assert(0);
-				exit(EXIT_FAILURE);
+				_Exit(EXIT_FAILURE);
 			}
 		} else {
 			stack_top.node = node;
@@ -1042,7 +1042,7 @@ int32_t _get_prev_KV(level_scanner *sc)
 		}
 		default:
 			assert(0);
-			exit(EXIT_FAILURE);
+			_Exit(EXIT_FAILURE);
 			break;
 		}
 	}
@@ -1274,7 +1274,7 @@ void seek_to_last(struct scannerHandle *sc, struct db_handle *handle)
 
 	if (sc == NULL) {
 		log_fatal("NULL scannerHandle?");
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 
 	/*special care for level 0 due to double buffering*/

@@ -82,7 +82,7 @@ void init_key_cmp(struct key_compare *key_cmp, void *key_buf, char key_format)
 	} else {
 		log_fatal("Unknown key category, exiting");
 		assert(0);
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 }
 
@@ -209,7 +209,7 @@ static void init_level_locktable(db_descriptor *database, uint8_t level_id)
 		if (posix_memalign((void **)&database->levels[level_id].level_lock_table[i], 4096,
 				   sizeof(lock_table) * size_per_height[i]) != 0) {
 			log_fatal("memalign failed");
-			exit(EXIT_FAILURE);
+			_Exit(EXIT_FAILURE);
 		}
 
 		lock_table *init = database->levels[level_id].level_lock_table[i];
@@ -217,7 +217,7 @@ static void init_level_locktable(db_descriptor *database, uint8_t level_id)
 		for (unsigned int j = 0; j < size_per_height[i]; ++j) {
 			if (RWLOCK_INIT(&init[j].rx_lock, NULL) != 0) {
 				log_fatal("failed to initialize lock_table for level %u lock", level_id);
-				exit(EXIT_FAILURE);
+				_Exit(EXIT_FAILURE);
 			}
 		}
 	}
@@ -270,7 +270,7 @@ static void pr_read_log_tail(struct log_tail *tail)
 			log_fatal("Failed to read error code");
 			perror("Error");
 			assert(0);
-			exit(EXIT_FAILURE);
+			_Exit(EXIT_FAILURE);
 		}
 		bytes_read += bytes;
 	}
@@ -366,13 +366,13 @@ void init_log_buffer(struct log_descriptor *log_desc, enum log_type log_type)
 	// Just update the chunk counters according to the log size
 	if (RWLOCK_INIT(&log_desc->log_tail_buf_lock, NULL) != 0) {
 		log_fatal("Failed to init lock");
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 
 	for (int i = 0; i < LOG_TAIL_NUM_BUFS; ++i) {
 		if (posix_memalign((void **)&log_desc->tail[i], SEGMENT_SIZE, sizeof(struct log_tail)) != 0) {
 			log_fatal("Failed to allocate log buffer for direct IO");
-			exit(EXIT_FAILURE);
+			_Exit(EXIT_FAILURE);
 		}
 		memset(log_desc->tail[i], 0x00, sizeof(struct log_tail));
 		log_desc->tail[i]->free = 1;
@@ -582,7 +582,7 @@ static db_descriptor *get_db_from_volume(char *volume_name, char *db_name, char 
 		int ret = posix_memalign((void **)&db_desc, ALIGNMENT_SIZE, sizeof(struct db_descriptor));
 		if (ret) {
 			log_fatal("Failed to allocate db_descriptor");
-			exit(EXIT_FAILURE);
+			_Exit(EXIT_FAILURE);
 		}
 		memset(db_desc, 0x00, sizeof(struct db_descriptor));
 		db_desc->db_volume = volume_desc;
@@ -677,7 +677,7 @@ db_handle *internal_db_open(struct volume_descriptor *volume_desc, uint64_t star
 	handle = calloc(1, sizeof(db_handle));
 	if (!handle) {
 		log_fatal("calloc failed");
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 
 	/*Remove later*/
@@ -713,11 +713,11 @@ db_handle *internal_db_open(struct volume_descriptor *volume_desc, uint64_t star
 
 	if (sem_init(&handle->db_desc->compaction_sem, 0, 0) != 0) {
 		log_fatal("Semaphore cannot be initialized");
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 	if (sem_init(&handle->db_desc->compaction_daemon_sem, 0, 0) != 0) {
 		log_fatal("FATAL semaphore cannot be initialized");
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 
 	for (uint8_t level_id = 0; level_id < MAX_LEVELS; ++level_id) {
@@ -767,13 +767,13 @@ db_handle *internal_db_open(struct volume_descriptor *volume_desc, uint64_t star
 
 	if (pthread_create(&(handle->db_desc->compaction_daemon), NULL, compaction_daemon, (void *)handle) != 0) {
 		log_fatal("Failed to start compaction_daemon for db %s", db_name);
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 
 	if (!volume_desc->gc_thread_spawned) {
 		if (pthread_create(&(handle->db_desc->gc_thread), NULL, gc_log_entries, (void *)handle) != 0) {
 			log_fatal("Failed to start garbage collection thread for db %s", db_name);
-			exit(EXIT_FAILURE);
+			_Exit(EXIT_FAILURE);
 		}
 		++volume_desc->gc_thread_spawned;
 	}
@@ -799,7 +799,7 @@ db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_nam
 	struct volume_descriptor *volume_desc = mem_get_volume_desc(volumeName);
 	if (!volume_desc) {
 		log_fatal("Failed to open volume %s", volumeName);
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 	assert(volume_desc->open_databases);
 	/*retrieve gc db*/
@@ -827,7 +827,7 @@ enum parallax_status db_close(db_handle *handle)
 
 	if (handle->db_desc->reference_count < 0) {
 		log_fatal("Negative referece count for DB %s", handle->db_desc->db_superblock->db_name);
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 	if (handle->db_desc->reference_count > 0) {
 		log_warn("Sorry more guys uses this DB: %s", handle->db_desc->db_superblock->db_name);
@@ -837,7 +837,7 @@ enum parallax_status db_close(db_handle *handle)
 	/*Remove so it is not visible by the GC thread*/
 	if (!klist_remove_element(handle->volume_desc->open_databases, handle->db_desc)) {
 		log_fatal("Failed to remove db_desc of DB %s", handle->db_desc->db_superblock->db_name);
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 
 	log_info("Closing DB: %s\n", handle->db_desc->db_superblock->db_name);
@@ -848,7 +848,7 @@ enum parallax_status db_close(db_handle *handle)
 	handle->db_desc->stat = DB_IS_CLOSING;
 	if (pthread_cond_broadcast(&handle->db_desc->client_barrier) != 0) {
 		log_fatal("Failed to wake up stopped clients");
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 	MUTEX_UNLOCK(&handle->db_desc->client_barrier_lock);
 
@@ -908,7 +908,7 @@ enum parallax_status db_close(db_handle *handle)
 	for (uint8_t i = 0; i < MAX_LEVELS; ++i) {
 		if (pthread_rwlock_destroy(&handle->db_desc->levels[i].guard_of_level.rx_lock)) {
 			log_fatal("Failed to destroy guard of level lock");
-			exit(EXIT_FAILURE);
+			_Exit(EXIT_FAILURE);
 		}
 		destroy_level_locktable(handle->db_desc, i);
 	}
@@ -916,7 +916,7 @@ enum parallax_status db_close(db_handle *handle)
 	if (pthread_cond_destroy(&handle->db_desc->client_barrier) != 0) {
 		log_fatal("Failed to destroy condition variable");
 		perror("pthread_cond_destroy() error");
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 
 	free(handle->db_desc);
@@ -939,7 +939,7 @@ void wait_for_available_level0_tree(db_handle *handle)
 			if (pthread_cond_wait(&handle->db_desc->client_barrier,
 					      &handle->db_desc->client_barrier_lock) != 0) {
 				log_fatal("failed to throttle");
-				exit(EXIT_FAILURE);
+				_Exit(EXIT_FAILURE);
 			}
 		}
 		active_tree = handle->db_desc->levels[0].active_tree;
@@ -973,7 +973,7 @@ uint8_t insert_key_value(db_handle *handle, void *key, void *value, uint32_t key
 
 	if (kv_size > KV_MAX_SIZE) {
 		log_fatal("Key buffer overflow");
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 
 	/*prepare the request*/
@@ -1039,7 +1039,7 @@ void extract_keyvalue_size(log_operation *req, metadata_tologop *data_size)
 		break;
 	default:
 		log_fatal("Trying to append unknown operation in log! ");
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 }
 
@@ -1110,7 +1110,7 @@ static void pr_copy_kv_to_tail(struct pr_log_ticket *ticket)
 	}
 	default:
 		log_fatal("Unknown op");
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 
 	uint32_t remaining = ticket->op_size;
@@ -1175,7 +1175,7 @@ static void pr_do_log_chunk_IO(struct pr_log_ticket *ticket)
 		if (bytes_written == -1) {
 			log_fatal("Failed to write LOG_CHUNK reason follows");
 			perror("Reason");
-			exit(EXIT_FAILURE);
+			_Exit(EXIT_FAILURE);
 		}
 		total_bytes_written += bytes_written;
 	}
@@ -1217,13 +1217,13 @@ static void bt_add_segment_to_log(struct db_descriptor *db_desc, struct log_desc
 
 	if (!new_segment) {
 		log_fatal("Cannot allocate memory from the device!");
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 	uint64_t next_tail_seg_offt = ABSOLUTE_ADDRESS(new_segment);
 
 	if (!next_tail_seg_offt) {
 		log_fatal("No space for new segment");
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 
 	struct segment_header *curr_tail_seg =
@@ -1265,7 +1265,7 @@ static void bt_add_blob(struct db_descriptor *db_desc, struct log_descriptor *lo
 
 	if (!next_tail_seg) {
 		log_fatal("No space for new segment");
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 
 	//struct segment_header *curr_tail_seg =
@@ -1356,7 +1356,7 @@ static void *bt_append_to_log_direct_IO(struct log_operation *req, struct log_to
 			break;
 		default:
 			log_fatal("Unknown category");
-			exit(EXIT_FAILURE);
+			_Exit(EXIT_FAILURE);
 		}
 
 		segment_change = 1;
@@ -1406,7 +1406,7 @@ void *append_key_value_to_log(log_operation *req)
 		uint8_t level_id = req->metadata->level_id;
 		if (level_id) {
 			log_fatal("Append for MEDIUM_INPLACE for level_id > 0 ? Not allowed");
-			exit(EXIT_FAILURE);
+			_Exit(EXIT_FAILURE);
 		} else {
 			log_metadata.log_desc = &handle->db_desc->small_log;
 			return bt_append_to_log_direct_IO(req, &log_metadata, &data_size);
@@ -1417,7 +1417,7 @@ void *append_key_value_to_log(log_operation *req)
 #if MEDIUM_LOG_UNSORTED
 		if (level_id) {
 			log_fatal("KV separation allowed for medium only for L0!");
-			exit(EXIT_FAILURE);
+			_Exit(EXIT_FAILURE);
 		} else {
 			log_metadata.log_desc = &handle->db_desc->medium_log;
 			return bt_append_to_log_direct_IO(req, &log_metadata, &data_size);
@@ -1425,7 +1425,7 @@ void *append_key_value_to_log(log_operation *req)
 #else
 		if (level_id == 0) {
 			log_fatal("MEDIUM_INLOG not allowed for level_id 0!");
-			exit(EXIT_FAILURE);
+			_Exit(EXIT_FAILURE);
 		} else {
 			log_metadata.log_desc = &handle->db_desc->medium_log;
 			return bt_append_to_log_direct_IO(req, &log_metadata, &data_size);
@@ -1438,7 +1438,7 @@ void *append_key_value_to_log(log_operation *req)
 	default:
 		log_fatal("Unknown category %u", log_metadata.status);
 		assert(0);
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 }
 
@@ -1500,7 +1500,7 @@ static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id,
 	} else {
 		/* log_info("Level %d is empty with tree_id %d",level_id,tree_id); */
 		/* if (RWLOCK_UNLOCK(&curr->rx_lock) != 0) */
-		/* 	exit(EXIT_FAILURE); */
+		/* 	_Exit(EXIT_FAILURE); */
 		get_op->found = 0;
 		return;
 	}
@@ -1513,7 +1513,7 @@ static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id,
 			return rep;
 		else if (-1 != check) {
 			assert(0);
-			exit(EXIT_FAILURE);
+			_Exit(EXIT_FAILURE);
 		}
 	}
 #endif
@@ -1523,7 +1523,7 @@ static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id,
 		curr = _find_position((const lock_table **)db_desc->levels[level_id].level_lock_table, curr_node);
 
 		if (RWLOCK_RDLOCK(&curr->rx_lock) != 0)
-			exit(EXIT_FAILURE);
+			_Exit(EXIT_FAILURE);
 
 		ret_result = find_key_in_dynamic_leaf((struct bt_dynamic_leaf_node *)curr_node, db_desc,
 						      get_op->kv_buf + sizeof(uint32_t), *(uint32_t *)get_op->kv_buf,
@@ -1536,11 +1536,11 @@ static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id,
 		curr = _find_position((const lock_table **)db_desc->levels[level_id].level_lock_table, curr_node);
 
 		if (RWLOCK_RDLOCK(&curr->rx_lock) != 0)
-			exit(EXIT_FAILURE);
+			_Exit(EXIT_FAILURE);
 
 		if (prev)
 			if (RWLOCK_UNLOCK(&prev->rx_lock) != 0)
-				exit(EXIT_FAILURE);
+				_Exit(EXIT_FAILURE);
 
 		next_addr = _index_node_binary_search((index_node *)curr_node, get_op->kv_buf, KV_FORMAT);
 		son_node = (void *)REAL_ADDRESS(*(uint64_t *)next_addr);
@@ -1551,17 +1551,17 @@ static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id,
 	if (curr_node == NULL) {
 		log_fatal("Encountered NULL node in index");
 		assert(0);
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 
 	prev = curr;
 	curr = _find_position((const lock_table **)db_desc->levels[level_id].level_lock_table, curr_node);
 	if (RWLOCK_RDLOCK(&curr->rx_lock) != 0) {
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 
 	if (RWLOCK_UNLOCK(&prev->rx_lock) != 0)
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 
 	ret_result = find_key_in_dynamic_leaf((struct bt_dynamic_leaf_node *)curr_node, db_desc,
 					      get_op->kv_buf + sizeof(uint32_t), *(uint32_t *)get_op->kv_buf, level_id);
@@ -1580,7 +1580,7 @@ deser:
 			if (key_addr_in_leaf == NULL) {
 				log_fatal("Encountered NULL pointer from KV in leaf");
 				assert(0);
-				exit(EXIT_FAILURE);
+				_Exit(EXIT_FAILURE);
 			}
 
 			if (!level_id)
@@ -1591,7 +1591,7 @@ deser:
 			get_op->key_device_address = (char *)ABSOLUTE_ADDRESS(kv.addr);
 		} else {
 			log_fatal("Corrupted KV location");
-			exit(EXIT_FAILURE);
+			_Exit(EXIT_FAILURE);
 		}
 		assert(kv.addr);
 		uint32_t *value_size = (uint32_t *)(kv.addr + sizeof(uint32_t) + KEY_SIZE(kv.addr));
@@ -1600,7 +1600,7 @@ deser:
 
 			if (!get_op->buffer_to_pack_kv) {
 				log_fatal("Malloc failed");
-				exit(EXIT_FAILURE);
+				_Exit(EXIT_FAILURE);
 			}
 
 			get_op->size = *value_size;
@@ -1629,7 +1629,7 @@ deser:
 	}
 
 	if (RWLOCK_UNLOCK(&curr->rx_lock) != 0)
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 
 	__sync_fetch_and_sub(&db_desc->levels[level_id].active_operations, 1);
 }
@@ -1646,7 +1646,7 @@ void find_key(struct lookup_operation *get_op)
 	/*again special care for L0*/
 	// Acquiring guard lock for level 0
 	if (RWLOCK_RDLOCK(&db_desc->levels[0].guard_of_level.rx_lock) != 0)
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	__sync_fetch_and_add(&db_desc->levels[0].active_operations, 1);
 	uint8_t tree_id = db_desc->levels[0].active_tree;
 	uint8_t base = tree_id;
@@ -1660,7 +1660,7 @@ void find_key(struct lookup_operation *get_op)
 
 		if (get_op->found) {
 			if (RWLOCK_UNLOCK(&db_desc->levels[0].guard_of_level.rx_lock) != 0)
-				exit(EXIT_FAILURE);
+				_Exit(EXIT_FAILURE);
 			__sync_fetch_and_sub(&db_desc->levels[0].active_operations, 1);
 
 			goto finish;
@@ -1672,12 +1672,12 @@ void find_key(struct lookup_operation *get_op)
 			break;
 	}
 	if (RWLOCK_UNLOCK(&db_desc->levels[0].guard_of_level.rx_lock) != 0)
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	__sync_fetch_and_sub(&db_desc->levels[0].active_operations, 1);
 	/*search the rest trees of the level*/
 	for (uint8_t level_id = 1; level_id < MAX_LEVELS; ++level_id) {
 		if (RWLOCK_RDLOCK(&db_desc->levels[level_id].guard_of_level.rx_lock) != 0)
-			exit(EXIT_FAILURE);
+			_Exit(EXIT_FAILURE);
 		__sync_fetch_and_add(&db_desc->levels[level_id].active_operations, 1);
 
 		get_op->found = 0;
@@ -1685,13 +1685,13 @@ void find_key(struct lookup_operation *get_op)
 		lookup_in_tree(get_op, level_id, 0);
 		if (get_op->found) {
 			if (RWLOCK_UNLOCK(&db_desc->levels[level_id].guard_of_level.rx_lock) != 0)
-				exit(EXIT_FAILURE);
+				_Exit(EXIT_FAILURE);
 			__sync_fetch_and_sub(&db_desc->levels[level_id].active_operations, 1);
 
 			goto finish;
 		}
 		if (RWLOCK_UNLOCK(&db_desc->levels[level_id].guard_of_level.rx_lock) != 0)
-			exit(EXIT_FAILURE);
+			_Exit(EXIT_FAILURE);
 		__sync_fetch_and_sub(&db_desc->levels[level_id].active_operations, 1);
 	}
 
@@ -1738,7 +1738,7 @@ int8_t update_index(index_node *node, node_header *left_child, node_header *righ
 			} else if (ret == 0) {
 				log_fatal("key already present index_key %s key_buf %s", (char *)(index_key_buf + 4),
 					  (char *)key_buf + 4);
-				exit(EXIT_FAILURE);
+				_Exit(EXIT_FAILURE);
 			} else {
 				start_idx = middle + 1;
 				if (start_idx > end_idx) {
@@ -1820,7 +1820,7 @@ void insert_key_at_index(bt_insert_req *ins_req, index_node *node, node_header *
 		if (allocated_space > KEY_BLOCK_SIZE) {
 			log_info("alloc %d key block %d", allocated_space, KEY_BLOCK_SIZE);
 			log_fatal("Cannot host index key larger than KEY_BLOCK_SIZE");
-			exit(EXIT_FAILURE);
+			_Exit(EXIT_FAILURE);
 		}
 
 		d_header = seg_get_IN_log_block(handle->db_desc, ins_req->metadata.level_id, ins_req->metadata.tree_id);
@@ -2073,7 +2073,7 @@ void assert_index_node(node_header *node)
 		    child->type != leafRootNode) {
 			log_fatal("corrupted child at index for child %llu type is %d\n",
 				  (long long unsigned)ABSOLUTE_ADDRESS(child), child->type);
-			exit(EXIT_FAILURE);
+			_Exit(EXIT_FAILURE);
 		}
 		addr += sizeof(uint64_t);
 		key_tmp = REAL_ADDRESS(*(uint64_t *)addr);
@@ -2086,7 +2086,7 @@ void assert_index_node(node_header *node)
 			if (key_cmp(&key1_cmp, &key2_cmp) >= 0) {
 				log_fatal("corrupted index %d:%s something else %d:%s\n", *(uint32_t *)key_tmp_prev,
 					  key_tmp_prev + 4, *(uint32_t *)key_tmp, (char *)(key_tmp + 4));
-				exit(EXIT_FAILURE);
+				_Exit(EXIT_FAILURE);
 			}
 		}
 		if (key_tmp_prev)
@@ -2101,7 +2101,7 @@ void assert_index_node(node_header *node)
 	if (child->type != rootNode && child->type != internalNode && child->type != leafNode &&
 	    child->type != leafRootNode) {
 		log_fatal("Corrupted last child at index");
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 }
 
@@ -2121,7 +2121,7 @@ lock_table *_find_position(const lock_table **table, node_header *node)
 	assert(node);
 	if (node->height < 0 || node->height >= MAX_HEIGHT) {
 		log_fatal("MAX_HEIGHT exceeded %d rearrange values in size_per_height array ", node->height);
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 
 	position = hash((uint64_t)node) % size_per_height[node->height];
@@ -2137,7 +2137,7 @@ void _unlock_upper_levels(lock_table *node[], unsigned size, unsigned release)
 	for (i = release; i < size; ++i)
 		if (RWLOCK_UNLOCK(&node[i]->rx_lock) != 0) {
 			log_fatal("ERROR unlocking");
-			exit(EXIT_FAILURE);
+			_Exit(EXIT_FAILURE);
 		}
 }
 
@@ -2215,7 +2215,7 @@ release_and_retry:
 	release = 0;
 	if (RWLOCK_WRLOCK(&guard_of_level->rx_lock)) {
 		log_fatal("Failed to acquire guard lock for level %u", level_id);
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 	/*now look which is the active_tree of L0*/
 	if (ins_req->metadata.level_id == 0) {
@@ -2247,7 +2247,7 @@ release_and_retry:
 			      db_desc->levels[level_id].root_w[ins_req->metadata.tree_id]);
 	if (RWLOCK_WRLOCK(&lock->rx_lock) != 0) {
 		log_fatal("ERROR locking");
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 
 	upper_level_nodes[size++] = lock;
@@ -2320,7 +2320,7 @@ release_and_retry:
 		upper_level_nodes[size++] = lock;
 		if (RWLOCK_WRLOCK(&lock->rx_lock) != 0) {
 			log_fatal("ERROR unlocking reason follows rc");
-			exit(EXIT_FAILURE);
+			_Exit(EXIT_FAILURE);
 		}
 		/*Node acquired */
 		ins_req->metadata.reorganized_leaf_pos_INnode = next_addr;
@@ -2340,7 +2340,7 @@ release_and_retry:
 
 	if (son->height != 0) {
 		log_fatal("FATAL son corrupted");
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 
 	insert_KV_at_leaf(ins_req, son);
@@ -2384,7 +2384,7 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 	if (ret) {
 		log_fatal("Failed to acquire guard lock for db: %s", db_desc->db_superblock->db_name);
 		perror("Reason: ");
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 	/*now look which is the active_tree of L0*/
 	if (ins_req->metadata.level_id == 0)
@@ -2407,7 +2407,7 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 
 	if (RWLOCK_RDLOCK(&lock->rx_lock) != 0) {
 		log_fatal("ERROR locking");
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 
 	upper_level_nodes[size++] = lock;
@@ -2435,7 +2435,7 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 
 		if (RWLOCK_RDLOCK(&lock->rx_lock) != 0) {
 			log_fatal("ERROR unlocking");
-			exit(EXIT_FAILURE);
+			_Exit(EXIT_FAILURE);
 		}
 		/*lock of node acquired */
 		_unlock_upper_levels(upper_level_nodes, size - 1, release);
@@ -2448,7 +2448,7 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 
 	if (RWLOCK_WRLOCK(&lock->rx_lock) != 0) {
 		log_fatal("ERROR unlocking");
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 
 	if (is_split_needed(son, ins_req, db_desc->levels[level_id].leaf_size)) {
@@ -2460,7 +2460,7 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 	/*Succesfully reached a bin (bottom internal node)*/
 	if (son->height != 0) {
 		log_fatal("FATAL son corrupted");
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 
 	insert_KV_at_leaf(ins_req, son);

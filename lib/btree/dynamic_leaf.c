@@ -94,7 +94,7 @@ char *fill_keybuf(char *key_loc, enum kv_entry_location key_type)
 	default:
 		assert(0);
 		log_fatal("UNKNOWN KEY TYPE");
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 }
 
@@ -275,7 +275,7 @@ void binary_search_dynamic_leaf(const struct bt_dynamic_leaf_node *leaf, uint32_
 				break;
 			default:
 				log_fatal("Corrupted key type");
-				exit(EXIT_FAILURE);
+				_Exit(EXIT_FAILURE);
 			}
 
 			if (L.in_tail)
@@ -529,7 +529,7 @@ struct bt_rebalance_result split_dynamic_leaf(struct bt_dynamic_leaf_node *leaf,
 			break;
 		default:
 			log_fatal("Unhandled case");
-			exit(EXIT_FAILURE);
+			_Exit(EXIT_FAILURE);
 			//#endif
 		}
 		bt_done_with_value_log_address(log_desc, &L);
@@ -849,7 +849,7 @@ int8_t insert_in_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, bt_insert_req *
 			if (kv == NULL) {
 				log_fatal("Encountered NULL kv in leaf");
 				assert(0);
-				exit(EXIT_FAILURE);
+				_Exit(EXIT_FAILURE);
 			}
 
 			int key_size = *(uint32_t *)kv;
@@ -861,7 +861,7 @@ int8_t insert_in_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, bt_insert_req *
 		break;
 	default:
 		log_fatal("ERROR in insert path%d", bsearch.middle);
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 
 #ifdef DEBUG_DYNAMIC_LEAF

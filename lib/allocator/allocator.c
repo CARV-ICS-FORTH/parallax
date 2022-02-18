@@ -74,7 +74,7 @@ off64_t mount_volume(char *volume_name, int64_t start, int64_t unused_size)
 #if !ALLOW_RAW_VOLUMES
 	if (strlen(volume_name) >= 5 && strncmp(volume_name, "/dev/", 5) == 0) {
 		log_fatal("Volume is a raw device %s current version does not support it!", volume_name);
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 #endif
 
@@ -85,7 +85,7 @@ off64_t mount_volume(char *volume_name, int64_t start, int64_t unused_size)
 		if (FD < 0) {
 			log_fatal("Failed to open %s", volume_name);
 			perror("Reason:\n");
-			exit(EXIT_FAILURE);
+			_Exit(EXIT_FAILURE);
 		}
 
 		device_size = lseek64(FD, 0, SEEK_END);
@@ -93,13 +93,13 @@ off64_t mount_volume(char *volume_name, int64_t start, int64_t unused_size)
 		if (device_size == -1) {
 			log_fatal("failed to determine volume size exiting...");
 			perror("ioctl");
-			exit(EXIT_FAILURE);
+			_Exit(EXIT_FAILURE);
 		}
 
 		if (device_size < MIN_VOLUME_SIZE) {
 			log_fatal("Sorry minimum supported volume size is %ld GB actual size %ld GB",
 				  MIN_VOLUME_SIZE / (1024 * 1024 * 1024), device_size / (1024 * 1024 * 1024));
-			exit(EXIT_FAILURE);
+			_Exit(EXIT_FAILURE);
 		}
 
 		log_info("Creating virtual address space offset %lld size %ld\n", (long long)start, device_size);
@@ -112,7 +112,7 @@ off64_t mount_volume(char *volume_name, int64_t start, int64_t unused_size)
 		if (addr_space == MAP_FAILED) {
 			log_fatal("MMAP for device %s reason follows", volume_name);
 			perror("Reason for mmap");
-			exit(EXIT_FAILURE);
+			_Exit(EXIT_FAILURE);
 		}
 
 		MAPPED = (uint64_t)addr_space;
@@ -120,7 +120,7 @@ off64_t mount_volume(char *volume_name, int64_t start, int64_t unused_size)
 
 		if (MAPPED % sysconf(_SC_PAGE_SIZE) != 0) {
 			log_fatal("Mapped address not aligned correctly mapped: %llu", (long long unsigned)MAPPED);
-			exit(EXIT_FAILURE);
+			_Exit(EXIT_FAILURE);
 		}
 	}
 
@@ -164,7 +164,7 @@ static void print_allocation_type(enum rul_op_type type)
 	default:
 		log_fatal("Corrupted operation type %d", type);
 		assert(0);
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 }
 #endif
@@ -181,7 +181,7 @@ static void apply_db_allocations_to_allocator_bitmap(struct volume_descriptor *v
 	if (volume_allocator_size != mem_bitmap_size) {
 		log_fatal("Bitmaps of allocator and db differ in size");
 		assert(0);
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 
 	for (int byte = 0; byte < volume_allocator_size; ++byte) {
@@ -192,7 +192,7 @@ static void apply_db_allocations_to_allocator_bitmap(struct volume_descriptor *v
 				uint8_t allocator_bit_value = GET_BIT(volume_allocator_bitmap[byte], bit_id);
 				if (!allocator_bit_value) {
 					log_fatal("Corruption multiple DBs claim ownership of the same segment !");
-					exit(EXIT_FAILURE);
+					_Exit(EXIT_FAILURE);
 				}
 				CLEAR_BIT(&volume_allocator_bitmap[byte], bit_id);
 			}
@@ -206,7 +206,7 @@ struct allocation_log_cursor *init_allocation_log_cursor(struct volume_descripto
 	struct allocation_log_cursor *cursor = calloc(1, sizeof(struct allocation_log_cursor));
 	if (!cursor) {
 		log_fatal("Failed to allocate memory");
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 	cursor->volume_desc = volume_desc;
 	cursor->db_superblock = db_superblock;
@@ -303,7 +303,7 @@ struct rul_log_entry *get_next_allocation_log_entry(struct allocation_log_cursor
 		default:
 			log_fatal("Unknown stage WTF?");
 			assert(0);
-			exit(EXIT_FAILURE);
+			_Exit(EXIT_FAILURE);
 		}
 	}
 }
@@ -352,7 +352,7 @@ void replay_db_allocation_log(struct volume_descriptor *volume_desc, struct pr_d
 		default:
 			log_fatal("Unknown/Corrupted entry in allocation log try type is: %d", log_entry->op_type);
 			assert(0);
-			exit(EXIT_FAILURE);
+			_Exit(EXIT_FAILURE);
 		}
 	}
 
@@ -457,7 +457,7 @@ static uint32_t mem_bitmap_check_first_n_bits_free(struct mem_bitmap_word *b_wor
 			mask = mask >> diff;
 		else {
 			log_fatal("Wrong sliding number!");
-			exit(EXIT_FAILURE);
+			_Exit(EXIT_FAILURE);
 		}
 	}
 	if (mask == (mask & *b_word->word_addr)) {
@@ -571,7 +571,7 @@ static uint64_t mem_bitmap_translate_word_to_offt(struct volume_descriptor *volu
 	if (!b) {
 		log_fatal("Null word!");
 		assert(0);
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 
 	// log_info("Word is %u start bit %u end bit %u", b->word_id, b->start_bit,
@@ -618,7 +618,7 @@ uint64_t mem_allocate(struct volume_descriptor *volume_desc, uint64_t num_bytes)
 
 	if (b_words == NULL) {
 		log_fatal("Malloc failed out of memory");
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 
 	int32_t wrap_around = 0;
@@ -737,7 +737,7 @@ int read_dev_offt_into_buffer(char *buffer, const uint32_t start, const uint32_t
 			log_fatal("Failed to read, error code");
 			perror("Error");
 			assert(0);
-			exit(EXIT_FAILURE);
+			_Exit(EXIT_FAILURE);
 		}
 		bytes_read += bytes;
 	}
@@ -770,7 +770,7 @@ void mem_init_superblock_array(struct volume_descriptor *volume_desc)
 
 	if (ret) {
 		log_fatal("Failed to allocate regions array!");
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 
 	volume_desc->pr_regions->size = volume_desc->vol_superblock.max_regions_num;
@@ -779,7 +779,7 @@ void mem_init_superblock_array(struct volume_descriptor *volume_desc)
 
 	if (!read_dev_offt_into_buffer((char *)volume_desc->pr_regions->db, 0, size, dev_offt, volume_desc->vol_fd)) {
 		log_fatal("Failed to read volume's region superblocks!");
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 	/*for (uint32_t i = 0; i < volume_desc->vol_superblock.max_regions_num; ++i) {
 		log_info("Region[%u]: valid %u  region name %s", i, volume_desc->pr_regions->db[i].valid,
@@ -796,14 +796,14 @@ static volume_descriptor *mem_init_volume(char *volume_name)
 	struct volume_descriptor *volume_desc;
 	if (posix_memalign((void **)&volume_desc, ALIGNMENT_SIZE, sizeof(struct volume_descriptor))) {
 		log_fatal("posix memalign failed");
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 	memset(volume_desc, 0x00, sizeof(struct volume_descriptor));
 
 	volume_desc->volume_name = calloc(1, strlen(volume_name) + 1);
 	if (!volume_desc->volume_name) {
 		log_fatal("calloc failed");
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 	memcpy(volume_desc->volume_name, volume_name, strlen(volume_name));
 
@@ -812,30 +812,30 @@ static volume_descriptor *mem_init_volume(char *volume_name)
 	if (volume_desc->vol_fd < 0) {
 		log_fatal("Failed to open %s", volume_name);
 		perror("Reason:\n");
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 	// read volume superblock (accouning info into memory)
 	if (!read_dev_offt_into_buffer((char *)&volume_desc->vol_superblock, 0, sizeof(struct superblock), 0,
 				       volume_desc->vol_fd)) {
 		log_fatal("Failed to read volume's %s superblock", volume_name);
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 	off64_t device_size = lseek64(volume_desc->vol_fd, 0, SEEK_END);
 	if (device_size == -1) {
 		log_fatal("failed to determine volume size exiting...");
 		perror("ioctl");
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 	if ((uint64_t)device_size !=
 	    volume_desc->vol_superblock.volume_size + volume_desc->vol_superblock.unmappedSpace) {
 		log_fatal("Volume sizes do not match! Found %ld expected %ld", device_size,
 			  volume_desc->vol_superblock.volume_size);
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 
 	if (volume_desc->vol_superblock.magic_number != FINE_STRUCTURE_CONSTANT) {
 		log_fatal("Volume seems not to have been initialized!");
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 	volume_desc->mem_volume_bitmap_size = volume_desc->vol_superblock.bitmap_size_in_words;
 	mem_print_volume_info(&volume_desc->vol_superblock, volume_name);
@@ -873,7 +873,7 @@ static volume_descriptor *mem_init_volume(char *volume_name)
 
 	if (registry_size_in_bits % bits_in_page) {
 		log_fatal("ownership registry must be a multiple of 4 KB its value %lu", registry_size_in_bits);
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 	log_info("Unmapped bits %u registry_size_in_bits %lu", unmapped_bits, registry_size_in_bits);
 	char *registry_buffer = (char *)volume_desc->mem_volume_bitmap;
@@ -886,7 +886,7 @@ static volume_descriptor *mem_init_volume(char *volume_name)
 	if (dev_offt + SEGMENT_SIZE != volume_desc->vol_superblock.volume_metadata_size) {
 		log_fatal("Faulty marking of volume's metadata as reserved");
 		assert(0);
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 	log_info("Recovering ownership registry... XXX TODO XXX");
 
@@ -910,14 +910,14 @@ struct volume_descriptor *mem_get_volume_desc(char *volume_name)
 
 		if (!volume) {
 			log_fatal("calloc failed");
-			exit(EXIT_FAILURE);
+			_Exit(EXIT_FAILURE);
 		}
 
 		volume->volume_desc = mem_init_volume(volume_name);
 
 		if (strlen(volume_name) >= MEM_MAX_VOLUME_NAME_SIZE) {
 			log_fatal("Volume name too large!");
-			exit(EXIT_FAILURE);
+			_Exit(EXIT_FAILURE);
 		}
 
 		memcpy(volume->volume_name, volume_name, strlen(volume_name));

@@ -37,17 +37,17 @@ int parse_options(struct lib_option **db_options)
 
 	if (access(CONFIG_FILE, F_OK)) {
 		log_fatal("%s does not exist.", CONFIG_FILE);
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 
 	if (!yaml_parser_initialize(&parser)) {
 		log_fatal("Failed to initialize parser!");
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 
 	if (fh == NULL) {
 		log_fatal("Failed to open file!");
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 
 	yaml_parser_set_input_file(&parser, fh);
@@ -94,7 +94,7 @@ int parse_options(struct lib_option **db_options)
 			break;
 		default:
 			assert(0);
-			exit(EXIT_FAILURE);
+			_Exit(EXIT_FAILURE);
 			/* log_info("Got token of type %d\n", token.type); */
 		}
 
@@ -128,9 +128,10 @@ void check_option(char *option_name, const struct lib_option *opt_value)
 {
 	if (!opt_value) {
 		log_fatal("Cannot find %s option", option_name);
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 }
+
 #if 0
 static void write_options(struct lib_option *db_options)
 {
