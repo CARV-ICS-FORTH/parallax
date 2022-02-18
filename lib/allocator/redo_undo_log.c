@@ -47,10 +47,14 @@ static void rul_flush_log_chunk(struct db_descriptor *db_desc, uint32_t chunk_id
 			break;
 		}
 	}
+	uint32_t last_chunk_size =
+		(db_desc->allocation_log->size % SEGMENT_SIZE) - (chunk_id * RUL_LOG_CHUNK_SIZE_IN_BYTES);
+	assert(0 == last_chunk_size % sizeof(struct rul_log_entry));
+	uint32_t chunk_entries = last_chunk_size / sizeof(struct rul_log_entry);
 	ssize_t size = RUL_LOG_CHUNK_SIZE_IN_BYTES;
 	ssize_t dev_offt = log_desc->tail_dev_offt + (chunk_id * RUL_LOG_CHUNK_SIZE_IN_BYTES);
 	ssize_t total_bytes_written = 0;
-	log_info("Flushing chunk %u offt: %lu", chunk_id, dev_offt);
+	log_info("Flushing chunk %u offt: %lu chunk entries = %u", chunk_id, dev_offt, chunk_entries);
 	while (total_bytes_written < size) {
 		ssize_t bytes_written = pwrite(db_desc->db_volume->vol_fd,
 					       db_desc->allocation_log->segment.chunk[chunk_id],
@@ -95,6 +99,7 @@ static void rul_aflush_log_chunk(struct db_descriptor *db_desc, uint32_t chunk_i
 	assert((uint64_t)log_desc->aiocbp[chunk_id].aio_buf % ALIGNMENT_SIZE == 0);
 	log_desc->aiocbp[chunk_id].aio_nbytes = RUL_LOG_CHUNK_SIZE_IN_BYTES;
 	log_desc->pending_IO[chunk_id] = 1;
+	/*log_info("Aflush chunk id %u dev offset: %lu", chunk_id, log_desc->aiocbp[chunk_id].aio_offset);*/
 
 	//Now issue the async IO
 	if (aio_write(&log_desc->aiocbp[chunk_id])) {
@@ -151,7 +156,6 @@ static void rul_wait_all_chunk_IOs(struct db_descriptor *db_desc, uint32_t chunk
 
 static void rul_flush_last_chunk(struct db_descriptor *db_desc)
 {
-	struct rul_log_descriptor *log_desc = db_desc->allocation_log;
 	// Write with explicit I/O the segment_header
 	ssize_t total_bytes_written = 0;
 	ssize_t size;
@@ -160,27 +164,9 @@ static void rul_flush_last_chunk(struct db_descriptor *db_desc)
 
 	rul_wait_all_chunk_IOs(db_desc, RUL_LOG_CHUNK_NUM - 1);
 
-	for (uint32_t i = 0; i < RUL_LOG_CHUNK_NUM; ++i) {
-		//check if pending
-		while (log_desc->pending_IO[i]) {
-			int state = aio_error(&log_desc->aiocbp[i]);
-			switch (state) {
-			case 0:
-				log_desc->pending_IO[i] = 0;
-				break;
-			case EINPROGRESS:
-				break;
-			case ECANCELED:
-				log_warn("Request cacelled");
-				break;
-			default:
-				log_fatal("error appending to redo undo log");
-				break;
-			}
-		}
-	}
 	size = RUL_LOG_CHUNK_SIZE_IN_BYTES + RUL_SEGMENT_FOOTER_SIZE_IN_BYTES;
-	dev_offt = (db_desc->allocation_log->head_dev_offt + SEGMENT_SIZE) - size;
+	dev_offt = (db_desc->allocation_log->tail_dev_offt + SEGMENT_SIZE) - size;
+	/*log_info("Flushing *LAST* chunk %u offt: %lu", RUL_LOG_CHUNK_NUM - 1, dev_offt);*/
 
 	while (total_bytes_written < size) {
 		ssize_t bytes_written = pwrite(db_desc->db_volume->vol_fd,
@@ -219,26 +205,29 @@ static void rul_read_last_segment(struct db_descriptor *db_desc)
 static int rul_append(struct db_descriptor *db_desc, struct rul_log_entry *entry)
 {
 	int ret = 0;
-	struct rul_log_descriptor *log_desc = db_desc->allocation_log;
+	struct rul_log_descriptor *allocation_log = db_desc->allocation_log;
 
-	if (log_desc->curr_segment_entry > RUL_SEGMENT_MAX_ENTRIES) {
+	if (allocation_log->curr_segment_entry >= RUL_SEGMENT_MAX_ENTRIES) {
+		uint64_t segment_id;
 		// Time to add a new segment
 		uint64_t new_tail_dev_offt = (uint64_t)mem_allocate(db_desc->db_volume, SEGMENT_SIZE);
-		log_desc->segment.next_seg_offt = new_tail_dev_offt;
+		allocation_log->segment.next_seg_offt = new_tail_dev_offt;
+		segment_id = allocation_log->segment.segment_id;
+		/*log_info("Segment id is %lu dev_offt: %lu", segment_id, allocation_log->tail_dev_offt);*/
 		struct rul_log_entry e;
 		e.txn_id = 0;
 		e.dev_offt = new_tail_dev_offt;
 		e.op_type = RUL_ALLOCATE;
 		//add new entry in the memory segment
-		memcpy(&log_desc->segment.chunk[log_desc->curr_chunk_id][log_desc->curr_chunk_entry], &e,
-		       sizeof(struct rul_log_entry));
-		log_desc->size += (sizeof(struct rul_log_entry) + RUL_SEGMENT_FOOTER_SIZE_IN_BYTES);
-		log_desc->segment.next_seg_offt = new_tail_dev_offt;
-		log_desc->tail_dev_offt = new_tail_dev_offt;
-		log_desc->curr_chunk_id = 0;
-		log_desc->curr_chunk_entry = 0;
-		log_desc->curr_segment_entry = 0;
+		allocation_log->segment.chunk[allocation_log->curr_chunk_id][allocation_log->curr_chunk_entry] = e;
+
 		rul_flush_last_chunk(db_desc);
+		allocation_log->size += (sizeof(struct rul_log_entry) + RUL_SEGMENT_FOOTER_SIZE_IN_BYTES);
+		allocation_log->segment.next_seg_offt = new_tail_dev_offt;
+		allocation_log->tail_dev_offt = new_tail_dev_offt;
+		allocation_log->curr_chunk_id = 0;
+		allocation_log->curr_chunk_entry = 0;
+		allocation_log->curr_segment_entry = 0;
 #if 0
 		//update and write superblock
 		db_desc->my_superblock.allocation_log.tail_dev_offt = log_desc->tail_dev_offt;
@@ -248,21 +237,23 @@ static int rul_append(struct db_descriptor *db_desc, struct rul_log_entry *entry
 		pr_flush_db_superblock(db_desc);
 		pr_unlock_db_superblock(db_desc);
 #endif
-		memset(&log_desc->segment, 0x00, sizeof(struct rul_log_segment));
+		memset(&allocation_log->segment, 0x00, sizeof(struct rul_log_segment));
+		allocation_log->segment.segment_id = segment_id + 1;
 	}
 
-	if (log_desc->curr_chunk_entry >= RUL_LOG_CHUNK_MAX_ENTRIES) {
-		rul_aflush_log_chunk(db_desc, log_desc->curr_chunk_id);
-		++log_desc->curr_chunk_id;
-		log_desc->curr_chunk_entry = 0;
+	if (allocation_log->curr_chunk_entry >= RUL_LOG_CHUNK_MAX_ENTRIES) {
+		rul_aflush_log_chunk(db_desc, allocation_log->curr_chunk_id);
+		++allocation_log->curr_chunk_id;
+		allocation_log->curr_chunk_entry = 0;
 	}
 
-	//Finally append
-	memcpy(&log_desc->segment.chunk[log_desc->curr_chunk_id][log_desc->curr_chunk_entry], entry,
-	       sizeof(struct rul_log_entry));
-	log_desc->size += sizeof(struct rul_log_entry);
-	++log_desc->curr_chunk_entry;
-	++log_desc->curr_segment_entry;
+	/*Finally append*/
+	/*log_info("Appending in segment (%u,%u)", allocation_log->curr_chunk_id, allocation_log->curr_chunk_entry);*/
+	allocation_log->segment.chunk[allocation_log->curr_chunk_id][allocation_log->curr_chunk_entry] = *entry;
+
+	allocation_log->size += sizeof(struct rul_log_entry);
+	++allocation_log->curr_chunk_entry;
+	++allocation_log->curr_segment_entry;
 	return ret;
 }
 
@@ -284,7 +275,7 @@ static void rul_add_first_entry(struct db_descriptor *db_desc, struct rul_log_en
 	assert(log_entry->op_type != 0);
 	memcpy(log_chunk, log_entry, sizeof(struct rul_log_entry));
 	ssize_t size = RUL_LOG_CHUNK_SIZE_IN_BYTES;
-	ssize_t dev_offt = db_desc->allocation_log->head_dev_offt;
+	ssize_t dev_offt = db_desc->allocation_log->tail_dev_offt;
 	ssize_t total_bytes_written = 0;
 
 	while (total_bytes_written < size) {
@@ -329,8 +320,7 @@ void rul_log_init(struct db_descriptor *db_desc)
 	MUTEX_INIT(&log_desc->rul_lock, NULL);
 	MUTEX_INIT(&log_desc->trans_map_lock, NULL);
 	// resume state, superblock must have been read in memory
-	log_desc->head_dev_offt = db_desc->db_superblock->allocation_log.head_dev_offt;
-	log_desc->tail_dev_offt = db_desc->db_superblock->allocation_log.tail_dev_offt;
+	log_desc->head_dev_offt = log_desc->tail_dev_offt = db_desc->db_superblock->allocation_log.head_dev_offt;
 	log_desc->size = db_desc->db_superblock->allocation_log.size;
 	log_desc->trans_map = NULL;
 	log_desc->txn_id = db_desc->db_superblock->allocation_log.txn_id;
@@ -429,9 +419,9 @@ int rul_add_entry_in_txn_buf(struct db_descriptor *db_desc, struct rul_log_entry
 
 		transaction_buf = new_trans_buf;
 	}
-
-	transaction_buf->txn_entry[transaction_buf->n_entries] = *entry;
-	++transaction_buf->n_entries;
+	assert(entry->op_type != 0);
+	transaction_buf->txn_entry[transaction_buf->n_entries++] = *entry;
+	//log_info("N entries: %u trans buf %p", transaction_buf->n_entries, transaction_buf);
 	return 1;
 }
 
@@ -455,11 +445,15 @@ struct rul_log_info rul_flush_txn(struct db_descriptor *db_desc, uint64_t txn_id
 		 curr->n_entries);
 	assert(curr != NULL);
 	while (curr) {
+		//log_info("curr->n_entries %u", curr->n_entries);
 		for (uint32_t i = 0; i < curr->n_entries; ++i) {
 			rul_append(db_desc, &curr->txn_entry[i]);
+			assert(curr->txn_entry[i].op_type != 0);
 			//log_info("Appending Entry %llu type: %d", curr->txn_entry[i].dev_offt,
 			//	 curr->txn_entry[i].op_type);
 		}
+		if (!curr->next)
+			assert(curr == transaction->tail);
 		curr = curr->next;
 	}
 
@@ -500,7 +494,7 @@ void rul_apply_txn_buf_freeops_and_destroy(struct db_descriptor *db_desc, uint64
 			switch (curr->txn_entry[i].op_type) {
 			case RUL_FREE:
 			case RUL_LOG_FREE:
-				mem_bitmap_mark_block_free(db_desc->db_volume, curr->txn_entry[i].dev_offt);
+				mem_free_segment(db_desc->db_volume, curr->txn_entry[i].dev_offt);
 				break;
 			case RUL_ALLOCATE:
 			case RUL_LARGE_LOG_ALLOCATE:
