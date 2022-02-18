@@ -49,7 +49,7 @@ static void free_device(struct volume_descriptor *volume_desc, uint64_t capacity
 		if (++num_free_ops % 10000 == 0) {
 			log_info("Freed up to %lu out of %lu", bytes_freed, capacity);
 		}
-		mem_bitmap_mark_block_free(volume_desc, dev_offt);
+		mem_free_segment(volume_desc, dev_offt);
 		bytes_freed += num_bytes;
 		++num_free_ops;
 		dev_offt += num_bytes;
