@@ -119,26 +119,17 @@ if(TREAT_WARNINGS_AS_ERRORS)
   set(CMAKE_CXX_FLAGS " -Werror ${CMAKE_CXX_FLAGS}")
 endif()
 
-set(CMAKE_C_FLAGS
-    "-Wstrict-prototypes -Wall -Wextra -fno-omit-frame-pointer -Wunused -Wuninitialized ${CMAKE_C_FLAGS}"
+string(
+  APPEND
+  CMAKE_C_FLAGS
+  " -Wstrict-prototypes -Wall -Wextra -fno-omit-frame-pointer -Wunused -Wuninitialized"
 )
-set(CMAKE_C_FLAGS
-    "-Wimplicit-function-declaration -Wshadow  -pedantic -pedantic-errors ${CMAKE_C_FLAGS}"
+string(
+  APPEND
+  CMAKE_C_FLAGS
+  " -Wimplicit-function-declaration -Wshadow -pedantic -pedantic-errors -Wmisleading-indentation"
 )
-
-if(WNULL_DEREFERENCE)
-  string(APPEND CMAKE_C_FLAGS_DEBUG " -Wnull-dereference")
-endif()
-
-check_c_compiler_flag("-fprefetch-loop-arrays" PREFETCH_LOOP_ARRAYS)
-if(PREFETCH_LOOP_ARRAYS)
-  string(APPEND CMAKE_C_FLAGS " -fprefetch-loop-arrays")
-endif()
-
-check_c_compiler_flag("-fpeel-loops" PEEL_LOOPS)
-if(PEEL_LOOPS)
-  string(APPEND CMAKE_C_FLAGS " -fpeel-loops")
-endif()
+include(cmake_utils/check-compiler-flags.cmake.in)
 
 set(DEVICE_PATH $ENV{NVME0})
 set(CI_JOB_ID $ENV{CI_JOB_ID})

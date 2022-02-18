@@ -178,10 +178,7 @@ static void init_generic_scanner(struct scannerHandle *sc, struct db_handle *han
 				nd.active_tree = tree_id;
 				nd.db_desc = handle->db_desc;
 				nd.tombstone = sc->LEVEL_SCANNERS[level_id][tree_id].tombstone;
-				if (sc->type_of_scanner == FORWARD_SCANNER)
-					sh_insert_heap_node(&sc->heap, &nd);
-				else
-					sh_insert_heap_node(&sc->heap, (struct sh_heap_node *)&nd);
+				sh_insert_heap_node(&sc->heap, &nd);
 
 				sc->LEVEL_SCANNERS[level_id][tree_id].valid = 1;
 			}
@@ -195,7 +192,6 @@ static void init_generic_scanner(struct scannerHandle *sc, struct db_handle *han
 		log_warn("Reached end of database");
 		sc->keyValue = NULL;
 	}
-	return;
 }
 
 /*no snaphsot scanner (with lock)*/
