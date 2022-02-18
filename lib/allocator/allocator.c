@@ -226,9 +226,10 @@ struct rul_log_entry *get_next_allocation_log_entry(struct allocation_log_cursor
 				break;
 			}
 			cursor->segment = REAL_ADDRESS(allocation_log->head_dev_offt);
+			log_info("Allocation log segment id = %lu", cursor->segment->segment_id);
 			//TODO check tail_dev_offt should be uint32_t and not uint64_t
-			log_info("HEAD of allocation log is at %lu tail is at %u offset is %u",
-				 allocation_log->head_dev_offt, allocation_log->tail_dev_offt, allocation_log->size);
+			//log_info("HEAD of allocation log is at %lu tail is at %u offset is %u",
+			//	 allocation_log->head_dev_offt, allocation_log->tail_dev_offt, allocation_log->size);
 			cursor->state = CALCULATE_CHUNKS_IN_SEGMENT;
 			break;
 		case GET_NEXT_SEGMENT:
@@ -240,6 +241,7 @@ struct rul_log_entry *get_next_allocation_log_entry(struct allocation_log_cursor
 				break;
 			}
 			cursor->segment = REAL_ADDRESS(cursor->segment->next_seg_offt);
+			/*log_info("Allocation log segment id = %lu", cursor->segment->segment_id);*/
 			cursor->state = CALCULATE_CHUNKS_IN_SEGMENT;
 			break;
 		case GET_NEXT_CHUNK:
@@ -259,24 +261,28 @@ struct rul_log_entry *get_next_allocation_log_entry(struct allocation_log_cursor
 				uint32_t last_segment_size = allocation_log->size % SEGMENT_SIZE;
 				cursor->chunks_in_segment = last_segment_size / RUL_LOG_CHUNK_SIZE_IN_BYTES;
 				cursor->chunks_in_segment += last_segment_size % RUL_LOG_CHUNK_SIZE_IN_BYTES != 0;
+				log_info("This is the last chunk in segment are %u", cursor->chunks_in_segment);
 			}
 
 			cursor->curr_chunk_id = 0;
-			log_info("Chunks in allocation log segment are: %u", cursor->chunks_in_segment);
 			cursor->state = CALCULATE_CHUNK_ENTRIES;
+			/*log_info("Chunks in allocation log segment are: %u", cursor->chunks_in_segment);*/
 			break;
 		}
 		case CALCULATE_CHUNK_ENTRIES:
 			cursor->chunk_entries = RUL_LOG_CHUNK_MAX_ENTRIES;
 
-			if (cursor->curr_chunk_id == cursor->chunks_in_segment - 1) {
+			uint8_t last_segment = cursor->segment == REAL_ADDRESS(allocation_log->tail_dev_offt);
+			if (last_segment && cursor->curr_chunk_id == cursor->chunks_in_segment - 1) {
+				log_info("Boo ya!");
 				uint32_t last_chunk_size = (allocation_log->size % SEGMENT_SIZE) -
 							   (cursor->curr_chunk_id * RUL_LOG_CHUNK_SIZE_IN_BYTES);
+				assert(0 == last_chunk_size % sizeof(struct rul_log_entry));
 				cursor->chunk_entries = last_chunk_size / sizeof(struct rul_log_entry);
 			}
 
 			cursor->curr_entry_in_chunk = 0;
-			log_info("Chunk entries in allocation log segment are: %u", cursor->chunk_entries);
+			/*log_info("Chunk entries in redo undo log chunk are: %u", cursor->chunk_entries);*/
 			cursor->state = GET_NEXT_ENTRY;
 			break;
 
@@ -287,7 +293,7 @@ struct rul_log_entry *get_next_allocation_log_entry(struct allocation_log_cursor
 				cursor->state = GET_NEXT_CHUNK;
 				break;
 			}
-			/*log_info("Chunk id %u curr entry %u", cursor->curr_chunk_id, cursor->curr_entry_in_chunk);*/
+			//log_info("Chunk id %u curr entry %u", cursor->curr_chunk_id, cursor->curr_entry_in_chunk);
 			return &cursor->segment->chunk[cursor->curr_chunk_id][cursor->curr_entry_in_chunk++];
 		case EXIT:
 			cursor->segment = NULL;
@@ -702,7 +708,7 @@ exit:
 	return base_addr;
 }
 
-void mem_bitmap_mark_block_free(struct volume_descriptor *volume_desc, uint64_t dev_offt)
+void mem_free_segment(struct volume_descriptor *volume_desc, uint64_t dev_offt)
 {
 	MUTEX_LOCK(&volume_desc->bitmap_lock);
 	// distance of addr from bitmap end
@@ -916,7 +922,6 @@ struct volume_descriptor *mem_get_volume_desc(char *volume_name)
 		memcpy(volume->volume_name, volume_name, strlen(volume_name));
 		volume->hash_key = djb2_hash((unsigned char *)volume_name, strlen(volume_name));
 		volume->volume_desc->size = mount_volume(volume_name, 0, 0);
-		log_warn("Remove this mem / dev catalogue allocation!!!");
 
 		volume->volume_desc->db_superblock_lock =
 			calloc(volume->volume_desc->vol_superblock.max_regions_num, sizeof(pthread_mutex_t));
