@@ -261,7 +261,6 @@ struct rul_log_entry *get_next_allocation_log_entry(struct allocation_log_cursor
 				uint32_t last_segment_size = allocation_log->size % SEGMENT_SIZE;
 				cursor->chunks_in_segment = last_segment_size / RUL_LOG_CHUNK_SIZE_IN_BYTES;
 				cursor->chunks_in_segment += last_segment_size % RUL_LOG_CHUNK_SIZE_IN_BYTES != 0;
-				log_info("This is the last chunk in segment are %u", cursor->chunks_in_segment);
 			}
 
 			cursor->curr_chunk_id = 0;
@@ -274,7 +273,6 @@ struct rul_log_entry *get_next_allocation_log_entry(struct allocation_log_cursor
 
 			uint8_t last_segment = cursor->segment == REAL_ADDRESS(allocation_log->tail_dev_offt);
 			if (last_segment && cursor->curr_chunk_id == cursor->chunks_in_segment - 1) {
-				log_info("Boo ya!");
 				uint32_t last_chunk_size = (allocation_log->size % SEGMENT_SIZE) -
 							   (cursor->curr_chunk_id * RUL_LOG_CHUNK_SIZE_IN_BYTES);
 				assert(0 == last_chunk_size % sizeof(struct rul_log_entry));
@@ -321,7 +319,7 @@ void replay_db_allocation_log(struct volume_descriptor *volume_desc, struct pr_d
 	memset(mem_bitmap, 0xFF, mem_bitmap_size);
 	struct pr_region_allocation_log *allocation_log = &superblock->allocation_log;
 
-	log_info("Allocation log of DB: %s head %lu tail %u size %u", superblock->db_name,
+	log_info("Allocation log of DB: %s head %lu tail %lu size %lu", superblock->db_name,
 		 allocation_log->head_dev_offt, allocation_log->tail_dev_offt, allocation_log->size);
 
 	struct allocation_log_cursor *log_cursor = init_allocation_log_cursor(volume_desc, superblock);
@@ -350,6 +348,10 @@ void replay_db_allocation_log(struct volume_descriptor *volume_desc, struct pr_d
 			break;
 		default:
 			log_fatal("Unknown/Corrupted entry in allocation log try type is: %d", log_entry->op_type);
+			log_fatal("Head off = %lu Tail = %lu cur = %lu chunk_id %u entry %u segment id %lu",
+				  allocation_log->head_dev_offt, allocation_log->tail_dev_offt,
+				  ABSOLUTE_ADDRESS(log_cursor->segment), log_cursor->curr_chunk_id,
+				  log_cursor->curr_entry_in_chunk, log_cursor->segment->segment_id);
 			assert(0);
 			_Exit(EXIT_FAILURE);
 		}
@@ -775,15 +777,16 @@ void mem_init_superblock_array(struct volume_descriptor *volume_desc)
 	volume_desc->pr_regions->size = volume_desc->vol_superblock.max_regions_num;
 	off64_t dev_offt = sizeof(struct superblock);
 	uint32_t size = volume_desc->vol_superblock.max_regions_num * sizeof(struct pr_db_superblock);
-
 	if (!read_dev_offt_into_buffer((char *)volume_desc->pr_regions->db, 0, size, dev_offt, volume_desc->vol_fd)) {
 		log_fatal("Failed to read volume's region superblocks!");
 		_Exit(EXIT_FAILURE);
 	}
-	/*for (uint32_t i = 0; i < volume_desc->vol_superblock.max_regions_num; ++i) {
-		log_info("Region[%u]: valid %u  region name %s", i, volume_desc->pr_regions->db[i].valid,
-			 volume_desc->pr_regions->db[i].db_name);
-	}*/
+	for (uint32_t i = 0; i < volume_desc->vol_superblock.max_regions_num; ++i) {
+		/*log_info("Region[%u]: valid %u  region name %s allocation log head: %lu tail: %lu", i,
+			 volume_desc->pr_regions->db[i].valid, volume_desc->pr_regions->db[i].db_name,
+			 volume_desc->pr_regions->db[i].allocation_log.head_dev_offt,
+			 volume_desc->pr_regions->db[i].allocation_log.tail_dev_offt);*/
+	}
 	log_info("Restored %s region superblocks in memory", volume_desc->volume_name);
 }
 
