@@ -96,7 +96,9 @@ if(BUILD_TESTING)
     test_redo_undo_log.c ../lib/allocator/allocator.c ../lib/allocator/djb2.c
     ../lib/allocator/redo_undo_log.c arg_parser.c)
   target_link_libraries(test_redo_undo_log "${PROJECT_NAME}" ${DEPENDENCIES})
-  add_test(NAME test_redo_undo_log COMMAND $<TARGET_FILE:test_redo_undo_log>)
+  add_test(NAME test_redo_undo_log
+           COMMAND $<TARGET_FILE:test_redo_undo_log> --file=/tmp/kv_store.dat
+                   --num_threads=4)
 
   add_subdirectory(Surrogates)
 endif()
