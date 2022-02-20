@@ -19,8 +19,9 @@
 #include <log.h>
 #include <pthread.h>
 #include <stdlib.h>
-#define RUL_TRANSACTION_SIZE (1048576)
-#define RUL_NUM_THREADS 1
+#define RUL_TRANSACTION_SIZE (3457)
+#define RUL_TRANSACTION_NUM (1239)
+#define RUL_NUM_THREADS 4
 
 struct rul_worker_arg {
 	struct db_descriptor *db_desc;
@@ -31,34 +32,36 @@ static void *rul_worker(void *args)
 	struct rul_worker_arg *my_args = (struct rul_worker_arg *)args;
 	struct db_descriptor *db_desc = my_args->db_desc;
 
-	uint64_t my_txn_id = rul_start_txn(db_desc);
-	log_info("Starting trans %lu", my_txn_id);
 	uint64_t dev_offt = 0;
-	for (uint32_t i = 0; i < RUL_TRANSACTION_SIZE; ++i) {
-		struct rul_log_entry log_entry = { 0 };
-		log_entry.size = SEGMENT_SIZE;
-		log_entry.txn_id = my_txn_id;
-		if (0 == i % 2) {
-			dev_offt = mem_allocate(db_desc->db_volume, SEGMENT_SIZE);
-			log_entry.dev_offt = dev_offt;
-			log_entry.op_type = RUL_ALLOCATE;
-		} else {
-			mem_free_segment(db_desc->db_volume, dev_offt);
-			log_entry.dev_offt = dev_offt;
-			log_entry.op_type = RUL_FREE;
+	for (uint32_t i = 0; i < RUL_TRANSACTION_NUM; ++i) {
+		uint64_t my_txn_id = rul_start_txn(db_desc);
+		//log_info("Starting trans %lu", my_txn_id);
+		for (uint32_t j = 0; j < RUL_TRANSACTION_SIZE; ++j) {
+			struct rul_log_entry log_entry = { 0 };
+			log_entry.size = SEGMENT_SIZE;
+			log_entry.txn_id = my_txn_id;
+			if (0 == j % 2) {
+				dev_offt = mem_allocate(db_desc->db_volume, SEGMENT_SIZE);
+				log_entry.dev_offt = dev_offt;
+				log_entry.op_type = RUL_LARGE_LOG_ALLOCATE;
+			} else {
+				mem_free_segment(db_desc->db_volume, dev_offt);
+				log_entry.dev_offt = dev_offt;
+				log_entry.op_type = RUL_FREE;
+			}
+			rul_add_entry_in_txn_buf(db_desc, &log_entry);
 		}
-		rul_add_entry_in_txn_buf(db_desc, &log_entry);
-	}
-	log_info("Commiting transaction %lu", my_txn_id);
-	pr_lock_db_superblock(db_desc);
-	struct rul_log_info rul_log = rul_flush_txn(db_desc, my_txn_id);
 
-	db_desc->db_superblock->allocation_log.head_dev_offt = rul_log.head_dev_offt;
-	db_desc->db_superblock->allocation_log.tail_dev_offt = rul_log.tail_dev_offt;
-	db_desc->db_superblock->allocation_log.size = rul_log.size;
-	db_desc->db_superblock->allocation_log.txn_id = rul_log.txn_id;
-	pr_flush_db_superblock(db_desc);
-	pr_unlock_db_superblock(db_desc);
+		pr_lock_db_superblock(db_desc);
+		struct rul_log_info rul_log = rul_flush_txn(db_desc, my_txn_id);
+
+		db_desc->db_superblock->allocation_log.head_dev_offt = rul_log.head_dev_offt;
+		db_desc->db_superblock->allocation_log.tail_dev_offt = rul_log.tail_dev_offt;
+		db_desc->db_superblock->allocation_log.size = rul_log.size;
+		db_desc->db_superblock->allocation_log.txn_id = rul_log.txn_id;
+		pr_flush_db_superblock(db_desc);
+		pr_unlock_db_superblock(db_desc);
+	}
 	return NULL;
 }
 
