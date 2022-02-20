@@ -13,7 +13,6 @@
 // limitations under the License.
 
 #define _GNU_SOURCE
-#define _LARGEFILE64_SOURCE
 #define NUM_OF_OWNERSHIP_REGISTRY_PAIRS (2)
 #include "../btree/conf.h"
 #include "mem_structures.h"

@@ -237,8 +237,7 @@ void *gc_log_entries(void *hd)
 	pthread_setname_np(pthread_self(), "gcd");
 
 	parse_options(&dboptions);
-	HASH_FIND_STR(dboptions, "gc_interval", option);
-	check_option("gc_interval", option);
+	check_option(dboptions, "gc_interval", &option);
 	gc_interval = option->value.count;
 
 	log_debug("Starting garbage collection thread");

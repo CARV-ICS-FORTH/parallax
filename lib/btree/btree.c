@@ -34,10 +34,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <uthash.h>
-
-#define PREFIX_STATISTICS_NO
-#define MIN(x, y) ((x > y) ? (y) : (x))
 
 int32_t index_order = -1;
 
@@ -649,16 +645,13 @@ db_handle *internal_db_open(struct volume_descriptor *volume_desc, uint64_t star
 
 	struct lib_option *option;
 
-	HASH_FIND_STR(dboptions, "level0_size", option);
-	check_option("level0_size", option);
+	check_option(dboptions, "level0_size", &option);
 	level0_size = MB(option->value.count);
 
-	HASH_FIND_STR(dboptions, "growth_factor", option);
-	check_option("growth_factor", option);
+	check_option(dboptions, "growth_factor", &option);
 	growth_factor = option->value.count;
 
-	HASH_FIND_STR(dboptions, "level_medium_inplace", option);
-	check_option("level_medium_inplace", option);
+	check_option(dboptions, "level_medium_inplace", &option);
 	level_medium_inplace = option->value.count;
 
 	struct db_descriptor *db_desc = get_db_from_volume(volume_desc->volume_name, db_name, CREATE_FLAG);

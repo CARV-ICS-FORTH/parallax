@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#define _LARGEFILE64_SOURCE
 #define _GNU_SOURCE
 #include "../btree/btree.h"
 #include "../btree/conf.h"
@@ -37,11 +36,6 @@
 #include <unistd.h>
 #include <uthash.h>
 
-#define _FILE_OFFSET_BITS 64
-#define PAGE_SIZE 4096
-#define WORD_SIZE_IN_BITS 64
-#define LOG_WORD_SIZE_IN_BITS 8
-
 pthread_mutex_t VOLUME_LOCK = PTHREAD_MUTEX_INITIALIZER;
 /*from this address any node can see the entire volume*/
 uint64_t MAPPED = 0;
@@ -49,7 +43,6 @@ int FD = -1;
 
 /*<new_persistent_design>*/
 #define MEM_LOG_WORD_SIZE_IN_BITS 8
-#define MEM_WORDS_PER_BITMAP_BLOCK 512
 #define MEM_MAX_VOLUME_NAME_SIZE 256
 
 static struct volume_map_entry *volume_map = NULL;

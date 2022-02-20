@@ -541,7 +541,7 @@ lock_table *_find_position(const lock_table **table, node_header *node);
 #define KEY_SIZE(x) (*(uint32_t *)(x))
 #define VALUE_SIZE(x) KEY_SIZE(x)
 #define ABSOLUTE_ADDRESS(X) (((uint64_t)(X)) - MAPPED)
-#define REAL_ADDRESS(X) ((X) ? (void *)(MAPPED + (uint64_t)(X)) : BUG_ON(__FILE__, __LINE__, __func__))
+#define REAL_ADDRESS(X) ((X) ? (void *)(MAPPED + (uint64_t)(X)) : BUG_ON())
 #define KEY_OFFSET(KEY_SIZE, KV_BUF) (sizeof(uint32_t) + KV_BUF)
 #define VALUE_SIZE_OFFSET(KEY_SIZE, KEY) (sizeof(uint32_t) + KEY_SIZE + KEY)
 #define SERIALIZE_KEY(buf, key, key_size) \

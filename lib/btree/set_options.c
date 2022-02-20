@@ -14,6 +14,7 @@
 
 #define ENABLE_OPTIONS_OUTPUT 0
 #include "set_options.h"
+#include "../common/common.h"
 #include <assert.h>
 #include <log.h>
 #include <stdio.h>
@@ -124,11 +125,13 @@ int parse_options(struct lib_option **db_options)
 	return 0;
 }
 
-void check_option(char *option_name, const struct lib_option *opt_value)
+void check_option(const struct lib_option *db_options, const char *option_name, struct lib_option **opt_value)
 {
-	if (!opt_value) {
+	HASH_FIND_STR(db_options, option_name, *opt_value);
+
+	if (!*opt_value) {
 		log_fatal("Cannot find %s option", option_name);
-		_Exit(EXIT_FAILURE);
+		BUG_ON();
 	}
 }
 

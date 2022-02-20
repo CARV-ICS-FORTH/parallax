@@ -11,16 +11,19 @@ void stack_trace(void)
 
 	int trace_size = backtrace(trace, TRACE_SIZE);
 	messages = backtrace_symbols(trace, trace_size);
+
 	log_fatal("<<<<<<<<<[stack trace starts here]>>>>>>>>>");
+
 	for (int i = 0; i < trace_size; i++)
 		log_fatal("%s", messages[i]);
+
 	log_fatal("<<<<<<<<<[stack trace ends here]>>>>>>>>>");
+
 	free(messages);
 }
 
-void *BUG_ON(const char *file, unsigned line, const char *function)
+_Noreturn void *BUG_ON(void)
 {
-	log_fatal("Fatal BUG: File %s: line %u: function %s", file, line, function);
 	stack_trace();
 	_Exit(EXIT_FAILURE);
 }
