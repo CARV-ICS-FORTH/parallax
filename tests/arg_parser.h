@@ -26,10 +26,12 @@ struct wrap_option {
 };
 
 /**
- * Responsible for parsing the cmd line arguments and fillin the options array with the arguments provided.
+ * Responsible for parsing the cmd line arguments and filling the options array with the arguments provided.
  * It takes argc and argv from main and options should be an array filled with valid data.
  * As getopt the last option should contain the {0,0,0,0} value for getopt to detect the end of the array.
  * options_len should take into account also the slot of the {0,0,0,0} element.
+ * If the number of options provided do not match to options_len -2
+ * when arg_print_options() is called the program will exit.
  */
 void arg_parse(int argc, char *argv[], struct wrap_option *options, unsigned options_len);
 

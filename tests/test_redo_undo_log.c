@@ -15,13 +15,14 @@
 #include "../lib/allocator/redo_undo_log.h"
 #include "../lib/allocator/volume_manager.h"
 #include "../lib/btree/btree.h"
+#include "arg_parser.h"
 #include <fcntl.h>
 #include <log.h>
 #include <pthread.h>
 #include <stdlib.h>
+
 #define RUL_TRANSACTION_SIZE (3457)
 #define RUL_TRANSACTION_NUM (1239)
-#define RUL_NUM_THREADS 4
 
 struct rul_worker_arg {
 	struct db_descriptor *db_desc;
@@ -67,10 +68,23 @@ static void *rul_worker(void *args)
 
 int main(int argc, char *argv[])
 {
-	if (argc != 2) {
-		log_fatal("Wrong number of arguments, Usage: ./test_redo_undo_log <file name>");
-		exit(EXIT_FAILURE);
-	}
+	uint32_t num_threads = 0;
+	int help_flag = 0;
+	struct wrap_option options[] = {
+		{ { "help", no_argument, &help_flag, 1 }, "Prints valid arguments for test_medium.", NULL, INTEGER },
+		{ { "file", required_argument, 0, 'a' },
+		  "--file=path to file of db, parameter that specifies the target where parallax is going to run.",
+		  NULL,
+		  STRING },
+		{ { "num_threads", required_argument, 0, 'a' },
+		  "--num_threads=<int> number of threads to spawn to run the test.",
+		  NULL,
+		  INTEGER },
+		{ { 0, 0, 0, 0 }, "End of arguments", NULL, INTEGER }
+	};
+	unsigned options_len = (sizeof(options) / sizeof(struct wrap_option));
+	arg_parse(argc, argv, options, options_len);
+	arg_print_options(help_flag, options, options_len);
 	log_info("Configuration is :");
 
 	log_info("RUL_LOG_CHUNK_NUM = %u", RUL_LOG_CHUNK_NUM);
@@ -79,21 +93,27 @@ int main(int argc, char *argv[])
 	log_info("RUL_LOG_CHUNK_MAX_ENTRIES = %lu", RUL_LOG_CHUNK_MAX_ENTRIES);
 	log_info("RUL_SEGMENT_MAX_ENTRIES = %lu", RUL_SEGMENT_MAX_ENTRIES);
 
-	db_handle *handle = db_open(argv[1], 0, UINT64_MAX, "redo_undo_test", CREATE_DB);
+	db_handle *handle = db_open(get_option(options, 1), 0, UINT64_MAX, "redo_undo_test", CREATE_DB);
 
 	struct rul_worker_arg args;
 	args.db_desc = handle->db_desc;
-	pthread_t workers[RUL_NUM_THREADS];
-	for (uint32_t i = 0; i < RUL_NUM_THREADS; ++i) {
+	num_threads = *(uint32_t *)get_option(options, 2);
+	pthread_t workers[num_threads];
+	for (uint32_t i = 0; i < num_threads; ++i) {
 		if (pthread_create(&workers[i], NULL, rul_worker, &args) != 0) {
-			log_fatal("Faile to create worker");
-			exit(EXIT_FAILURE);
+			log_fatal("Failed to create worker");
+			_Exit(EXIT_FAILURE);
 		}
 	}
 
-	for (uint32_t i = 0; i < RUL_NUM_THREADS; ++i)
+	for (uint32_t i = 0; i < num_threads; ++i)
 		pthread_join(workers[i], NULL);
+
 	log_info("Test done closing DB");
 	db_close(handle);
+
+	handle = db_open(get_option(options, 1), 0, UINT64_MAX, "redo_undo_test", CREATE_DB);
+	db_close(handle);
+
 	return 1;
 }

@@ -20,6 +20,7 @@ void fill_option(struct wrap_option *options, unsigned option_index)
 	}
 }
 
+static int fail = 0;
 void arg_print_options(int help_flag, struct wrap_option *options, unsigned options_len)
 {
 	if (help_flag) {
@@ -37,8 +38,11 @@ void arg_print_options(int help_flag, struct wrap_option *options, unsigned opti
 			}
 			fprintf(stderr, "\n");
 		}
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
+
+	if (fail)
+		_Exit(EXIT_FAILURE);
 }
 
 int *get_integer_option(struct wrap_option *options, unsigned option_index)
@@ -59,7 +63,7 @@ void *get_option(struct wrap_option *options, unsigned option_index)
 	case INTEGER:
 		return get_integer_option(options, option_index);
 	default:
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 }
 
@@ -67,7 +71,7 @@ void arg_parse(int argc, char *argv[], struct wrap_option *options, unsigned opt
 {
 	/* getopt_long stores the option index here. */
 	int option_index = 0;
-
+	unsigned count_parsed_arguments = 0;
 	struct option temp_options[options_len];
 	for (unsigned i = 0; i < options_len; ++i)
 		temp_options[i] = options[i].option;
@@ -76,10 +80,20 @@ void arg_parse(int argc, char *argv[], struct wrap_option *options, unsigned opt
 		int c = getopt_long(argc, argv, "", temp_options, &option_index);
 
 		if (c == -1)
-			return;
+			break;
 		else if (!c)
 			continue;
-		else
+		else {
 			fill_option(options, option_index);
+			++count_parsed_arguments;
+		}
+	}
+
+	/** We need to ignore the help option and the final option that signals
+	 * we reached the end of the options buffer thus -2 options by default. */
+	if (options_len - 2 != count_parsed_arguments) {
+		log_fatal("Not enough arguments provided! Expected %u provided %u !", options_len - 2,
+			  count_parsed_arguments);
+		fail = 1;
 	}
 }
