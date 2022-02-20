@@ -208,7 +208,7 @@ static void rul_read_last_segment(struct db_descriptor *db_desc)
  * Appends a new entry in the redo-undo log
  *
  */
-static int rul_append(struct db_descriptor *db_desc, struct rul_log_entry *entry)
+static int rul_append(struct db_descriptor *db_desc, const struct rul_log_entry *entry)
 {
 	int ret = 0;
 	struct rul_log_descriptor *allocation_log = db_desc->allocation_log;
