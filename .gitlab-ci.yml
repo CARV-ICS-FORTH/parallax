@@ -5,6 +5,7 @@ variables:
     GIT_STRATEGY: clone
     GIT_DEPTH: 0
     CTEST_OUTPUT_ON_FAILURE: 1
+    NVME0: /nvme0
 
 include: scripts/CI/yml/*.yml
 stages:

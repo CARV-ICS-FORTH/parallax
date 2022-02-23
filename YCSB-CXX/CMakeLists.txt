@@ -12,14 +12,13 @@ if(BUILD_TESTING)
     message(FATAL_ERROR "Bash executable not found")
   endif()
 
-  set(DATAFILE "/tmp/kv_store.dat")
   set(RECORD_COUNT 400000)
   set(OPERATION_COUNT 400000)
   add_test(
     test_larged
     ${BASH_PROGRAM}
     ${CMAKE_CURRENT_SOURCE_DIR}/run-ycsb.sh
-    ${DATAFILE}
+    ${FILEPATH}
     ${RECORD_COUNT}
     ${OPERATION_COUNT}
     ld)
@@ -27,7 +26,7 @@ if(BUILD_TESTING)
     test_large
     ${BASH_PROGRAM}
     ${CMAKE_CURRENT_SOURCE_DIR}/run-ycsb.sh
-    ${DATAFILE}
+    ${FILEPATH}
     ${RECORD_COUNT}
     ${OPERATION_COUNT}
     l)
@@ -35,7 +34,7 @@ if(BUILD_TESTING)
     test_mediumd
     ${BASH_PROGRAM}
     ${CMAKE_CURRENT_SOURCE_DIR}/run-ycsb.sh
-    ${DATAFILE}
+    ${FILEPATH}
     ${RECORD_COUNT}
     ${OPERATION_COUNT}
     md)
@@ -43,7 +42,7 @@ if(BUILD_TESTING)
     test_medium
     ${BASH_PROGRAM}
     ${CMAKE_CURRENT_SOURCE_DIR}/run-ycsb.sh
-    ${DATAFILE}
+    ${FILEPATH}
     ${RECORD_COUNT}
     ${OPERATION_COUNT}
     m)
@@ -51,7 +50,7 @@ if(BUILD_TESTING)
     test_smalld
     ${BASH_PROGRAM}
     ${CMAKE_CURRENT_SOURCE_DIR}/run-ycsb.sh
-    ${DATAFILE}
+    ${FILEPATH}
     ${RECORD_COUNT}
     ${OPERATION_COUNT}
     sd)
@@ -59,7 +58,7 @@ if(BUILD_TESTING)
     test_small
     ${BASH_PROGRAM}
     ${CMAKE_CURRENT_SOURCE_DIR}/run-ycsb.sh
-    ${DATAFILE}
+    ${FILEPATH}
     ${RECORD_COUNT}
     ${OPERATION_COUNT}
     s)

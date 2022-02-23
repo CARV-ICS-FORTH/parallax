@@ -7,7 +7,6 @@
 #include <string.h>
 #include <unistd.h>
 
-#define PATH "/tmp/kv_store.dat"
 #define KV_SIZE 1500
 #define KEY_PREFIX "ts"
 #define NUM_KEYS num_keys
