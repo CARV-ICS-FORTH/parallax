@@ -1,3 +1,4 @@
 #!/usr/bin/env bash
 set -euo pipefail
-rm /tmp/kv_store.dat
+
+rm -rf "${NVME0:?}"/"${CI_JOB_ID:?}"

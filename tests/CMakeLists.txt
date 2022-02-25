@@ -22,27 +22,27 @@ if(BUILD_TESTING)
   target_link_libraries(test_dirty_scans "${PROJECT_NAME}" ${DEPENDENCIES})
   add_test(
     NAME test_dirty_scans_small
-    COMMAND $<TARGET_FILE:test_dirty_scans> --file=/tmp/kv_store.dat
+    COMMAND $<TARGET_FILE:test_dirty_scans> --file=${FILEPATH}
             --num_of_kvs=4000000 --scan_size=30 --workload=All --kv_mix=s)
   add_test(
     NAME test_dirty_scans_medium
-    COMMAND $<TARGET_FILE:test_dirty_scans> --file=/tmp/kv_store.dat
+    COMMAND $<TARGET_FILE:test_dirty_scans> --file=${FILEPATH}
             --num_of_kvs=4000000 --scan_size=30 --workload=All --kv_mix=m)
   add_test(
     NAME test_dirty_scans_large
-    COMMAND $<TARGET_FILE:test_dirty_scans> --file=/tmp/kv_store.dat
+    COMMAND $<TARGET_FILE:test_dirty_scans> --file=${FILEPATH}
             --num_of_kvs=4000000 --scan_size=30 --workload=All --kv_mix=l)
   add_test(
     NAME test_dirty_scans_smalld
-    COMMAND $<TARGET_FILE:test_dirty_scans> --file=/tmp/kv_store.dat
+    COMMAND $<TARGET_FILE:test_dirty_scans> --file=${FILEPATH}
             --num_of_kvs=4000000 --scan_size=30 --workload=All --kv_mix=sd)
   add_test(
     NAME test_dirty_scans_mediumd
-    COMMAND $<TARGET_FILE:test_dirty_scans> --file=/tmp/kv_store.dat
+    COMMAND $<TARGET_FILE:test_dirty_scans> --file=${FILEPATH}
             --num_of_kvs=4000000 --scan_size=30 --workload=All --kv_mix=md)
   add_test(
     NAME test_dirty_scans_larged
-    COMMAND $<TARGET_FILE:test_dirty_scans> --file=/tmp/kv_store.dat
+    COMMAND $<TARGET_FILE:test_dirty_scans> --file=${FILEPATH}
             --num_of_kvs=4000000 --scan_size=30 --workload=All --kv_mix=ld)
 
   add_test(NAME test_dirty_scans_smallp COMMAND test_dirty_scans.sh s)
@@ -65,13 +65,13 @@ if(BUILD_TESTING)
 
   add_executable(test_gc test_gc.c arg_parser.c)
   target_link_libraries(test_gc "${PROJECT_NAME}" ${DEPENDENCIES})
-  add_test(NAME test_gc COMMAND $<TARGET_FILE:test_gc> --file=/tmp/kv_store.dat
+  add_test(NAME test_gc COMMAND $<TARGET_FILE:test_gc> --file=${FILEPATH}
                                 --num_of_kvs=1000000)
 
   add_executable(simple_test_delete simple_test_delete.c arg_parser.c)
   target_link_libraries(simple_test_delete "${PROJECT_NAME}" ${DEPENDENCIES})
   add_test(NAME simple_test_delete
-           COMMAND $<TARGET_FILE:simple_test_delete> --file=/tmp/kv_store.dat
+           COMMAND $<TARGET_FILE:simple_test_delete> --file=${FILEPATH}
                    --num_of_kvs=1000000)
 
   add_executable(test_leaf_root_delete_get_scan test_leaf_root_delete_get_scan.c
@@ -80,7 +80,7 @@ if(BUILD_TESTING)
                         ${DEPENDENCIES})
   add_test(NAME test_leaf_root_delete_get_scan
            COMMAND $<TARGET_FILE:test_leaf_root_delete_get_scan>
-                   --file=/tmp/kv_store.dat)
+                   --file=${FILEPATH})
 
   add_executable(
     test_region_allocations

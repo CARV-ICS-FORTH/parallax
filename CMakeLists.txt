@@ -132,6 +132,10 @@ if(PEEL_LOOPS)
   string(APPEND CMAKE_C_FLAGS " -fpeel-loops")
 endif()
 
+set(DEVICE_PATH $ENV{NVME0})
+set(CI_JOB_ID $ENV{CI_JOB_ID})
+set(FILEPATH "${DEVICE_PATH}/${CI_JOB_ID}/kv_store.dat")
+
 # if(NOT (CMAKE_C_COMPILER_ID STREQUAL "Clang" AND CMAKE_CXX_COMPILER_ID
 # STREQUAL "Clang")) string(APPEND CMAKE_C_FLAGS " -flto") string(APPEND
 # CMAKE_CXX_FLAGS " -flto") endif()

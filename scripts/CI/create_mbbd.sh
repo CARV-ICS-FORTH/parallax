@@ -1,4 +1,4 @@
 #!/usr/bin/env bash
 set -euo pipefail
-
-fallocate -l 14G /tmp/kv_store.dat
+mkdir -p "$NVME0"/"$CI_JOB_ID"/
+fallocate -l 14G "$NVME0"/"$CI_JOB_ID"/kv_store.dat
