@@ -321,10 +321,9 @@ uint64_t seg_free_level(struct db_descriptor *db_desc, uint64_t txn_id, uint8_t 
 			return 0;
 		}
 
-		temp_segment = REAL_ADDRESS(curr_segment->next_segment);
-		/* log_info("Level id to free %d %d", level_id,curr_segment->in_mem); */
-
 		if (curr_segment->next_segment) {
+			temp_segment = REAL_ADDRESS(curr_segment->next_segment);
+			/* log_info("Level id to free %d %d", level_id,curr_segment->in_mem); */
 			while (temp_segment->next_segment != NULL) {
 				/* log_info("COUNT  %d %llu", curr_segment->segment_id, curr_segment->next_segment); */
 				free(curr_segment);
@@ -334,7 +333,6 @@ uint64_t seg_free_level(struct db_descriptor *db_desc, uint64_t txn_id, uint8_t 
 				space_freed += SEGMENT_SIZE;
 			}
 			free(temp_segment);
-
 		} else
 			free(curr_segment);
 	}

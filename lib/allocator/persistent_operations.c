@@ -229,9 +229,9 @@ static void pr_flush_Lmax_to_Ln(struct db_descriptor *db_desc, uint8_t level_id,
 
 	uint64_t txn_id = db_desc->levels[level_id].allocation_txn_id[tree_id];
 	/*trim medium log*/
-	struct segment_header *curr = REAL_ADDRESS(level_desc->medium_in_place_segment_dev_offt);
 	//log_info("Max medium in place segment id %llu", curr->segment_id);
-	if (curr) {
+	if (level_desc->medium_in_place_segment_dev_offt) {
+		struct segment_header *curr = REAL_ADDRESS(level_desc->medium_in_place_segment_dev_offt);
 		curr = REAL_ADDRESS(curr->prev_segment);
 
 		struct segment_header *head = REAL_ADDRESS(db_desc->medium_log.head_dev_offt);

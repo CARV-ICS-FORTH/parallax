@@ -8,11 +8,6 @@ if(CLANG_LIFETIME)
   string(APPEND CMAKE_C_FLAGS " -Wlifetime")
 endif()
 
-check_c_compiler_flag("-Wuseless-cast" USELESS_CAST)
-if(USELESS_CAST)
-  string(APPEND CMAKE_C_FLAGS " -Wuseless-cast")
-endif()
-
 check_c_compiler_flag("-Wduplicated-branches" DUPLICATED_BRANCH)
 if(DUPLICATED_BRANCH)
   string(APPEND CMAKE_C_FLAGS " -Wduplicated-branches")
