@@ -4,6 +4,8 @@
 #include <stdlib.h>
 
 #define TRACE_SIZE 32
+
+/** Prints the stack trace for the last \def TRACE_SIZE functions on the call_stack.  */
 void stack_trace(void)
 {
 	void *trace[TRACE_SIZE];
@@ -22,6 +24,8 @@ void stack_trace(void)
 	free(messages);
 }
 
+/** Prints a stack trace and terminates program execution.
+ *  It returns void * to suppress compiler warnings in the future this function will return void.*/
 _Noreturn void *BUG_ON(void)
 {
 	stack_trace();
