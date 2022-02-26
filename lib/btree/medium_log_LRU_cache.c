@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "medium_log_LRU_cache.h"
+#include "../common/common.h"
 #include "conf.h"
 #include "set_options.h"
 #include <assert.h>
@@ -36,7 +37,7 @@ void add_to_list(struct chunk_list *list, char *chunk_buf, uint64_t chunk_offt)
 
 	if (!new_node) {
 		log_fatal("Error calloc did not allocate memory!");
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 
 	new_node->chunk_buf = chunk_buf;
@@ -136,21 +137,20 @@ struct chunk_LRU_cache *init_LRU(void)
 
 	parse_options(&dboptions);
 
-	HASH_FIND_STR(dboptions, "medium_log_LRU_cache_size", option);
-	check_option("medium_log_LRU_cache_size", option);
+	check_option(dboptions, "medium_log_LRU_cache_size", &option);
 	LRU_cache_size = MB(option->value.count);
 
 	log_info("Init LRU with %lu chunks", LRU_cache_size / chunk_size);
 	struct chunk_LRU_cache *new_LRU = (struct chunk_LRU_cache *)calloc(1, sizeof(struct chunk_LRU_cache));
 	if (new_LRU == NULL) {
 		log_info("Calloc returned NULL, not enough memory, exiting...");
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 
 	new_LRU->chunks_hash_table = (struct chunk_hash_entry **)calloc(1, sizeof(struct chunk_hash_entry *));
 	if (new_LRU->chunks_hash_table == NULL) {
 		log_info("Calloc returned NULL, not enough memory, exiting...");
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 
 	*(new_LRU->chunks_hash_table) = NULL; /* needed by uthash api */
@@ -167,12 +167,23 @@ void add_to_LRU(struct chunk_LRU_cache *chunk_cache, uint64_t chunk_offt, char *
 
 	//remove oldest chunk (head of list) from LRU
 	if (chunk_cache->hash_table_count == chunk_cache->hash_table_capacity) {
-		struct chunk_hash_entry *oldest_used_chunk;
+		struct chunk_hash_entry *oldest_used_chunk = NULL;
+
 		HASH_FIND(hh, *(chunk_cache->chunks_hash_table), &chunk_cache->chunks_list->head->chunk_offt,
 			  sizeof(uint64_t), oldest_used_chunk);
 
+		if (!oldest_used_chunk)
+			BUG_ON();
+
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic ignored "-Wnull-dereference"
+#endif
+
 		HASH_DEL(*(chunk_cache->chunks_hash_table), oldest_used_chunk);
 
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
 		remove_from_list(chunk_cache->chunks_list);
 		--chunk_cache->hash_table_count;
 	}
@@ -185,7 +196,7 @@ void add_to_LRU(struct chunk_LRU_cache *chunk_cache, uint64_t chunk_offt, char *
 
 	if (!new_entry) {
 		log_fatal("Error calloc did not allocate memory!");
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 
 	new_entry->chunk_offt = chunk_offt;
@@ -211,8 +222,12 @@ int chunk_exists_in_LRU(struct chunk_LRU_cache *chunk_cache, uint64_t chunk_offt
 char *get_chunk_from_LRU(struct chunk_LRU_cache *chunk_cache, uint64_t chunk_offt)
 {
 	assert(chunk_cache != NULL);
-	struct chunk_hash_entry *chunk;
+	struct chunk_hash_entry *chunk = NULL;
 	HASH_FIND(hh, *(chunk_cache->chunks_hash_table), &chunk_offt, sizeof(uint64_t), chunk);
+
+	if (!chunk)
+		return BUG_ON();
+
 	move_node_to_tail(chunk_cache->chunks_list, chunk->chunk_ptr);
 	assert(chunk->chunk_ptr->chunk_offt == chunk_offt);
 	return chunk->chunk_ptr->chunk_buf;

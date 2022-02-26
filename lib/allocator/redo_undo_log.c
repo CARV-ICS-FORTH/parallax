@@ -58,7 +58,7 @@ static void rul_flush_log_chunk(struct db_descriptor *db_desc, uint32_t chunk_id
 		if (bytes_written == -1) {
 			log_fatal("Failed to write DB's %s superblock", db_desc->db_superblock->db_name);
 			perror("Reason");
-			exit(EXIT_FAILURE);
+			_Exit(EXIT_FAILURE);
 		}
 		total_bytes_written += bytes_written;
 	}
@@ -99,7 +99,7 @@ static void rul_aflush_log_chunk(struct db_descriptor *db_desc, uint32_t chunk_i
 	//Now issue the async IO
 	if (aio_write(&log_desc->aiocbp[chunk_id])) {
 		log_fatal("IO failed for redo undo log");
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 
 	uint32_t i = chunk_id;
@@ -118,7 +118,7 @@ static void rul_aflush_log_chunk(struct db_descriptor *db_desc, uint32_t chunk_i
 			log_fatal("error appending to redo undo log for chunk %u  state is %d Reason is %s", i, state,
 				  strerror(state));
 			assert(0);
-			exit(EXIT_FAILURE);
+			_Exit(EXIT_FAILURE);
 		}
 	}
 }
@@ -143,7 +143,7 @@ static void rul_wait_all_chunk_IOs(struct db_descriptor *db_desc, uint32_t chunk
 				log_fatal("error appending to redo undo log for chunk %u  state is %d Reason is %s", i,
 					  state, strerror(state));
 				assert(0);
-				exit(EXIT_FAILURE);
+				_Exit(EXIT_FAILURE);
 			}
 		}
 	}
@@ -189,7 +189,7 @@ static void rul_flush_last_chunk(struct db_descriptor *db_desc)
 		if (bytes_written == -1) {
 			log_fatal("Failed to write DB's %s superblock", db_desc->db_superblock->db_name);
 			perror("Reason");
-			exit(EXIT_FAILURE);
+			_Exit(EXIT_FAILURE);
 		}
 		total_bytes_written += bytes_written;
 	}
@@ -206,7 +206,7 @@ static void rul_read_last_segment(struct db_descriptor *db_desc)
 		if (bytes_read == -1) {
 			log_fatal("Failed to read DB's %s superblock", db_desc->db_superblock->db_name);
 			perror("Reason");
-			exit(EXIT_FAILURE);
+			_Exit(EXIT_FAILURE);
 		}
 		total_bytes_read += bytes_read;
 	}
@@ -277,7 +277,7 @@ static void rul_add_first_entry(struct db_descriptor *db_desc, struct rul_log_en
 
 	if (0 != posix_memalign((void **)&log_chunk, ALIGNMENT_SIZE, RUL_LOG_CHUNK_SIZE_IN_BYTES)) {
 		log_fatal("memalign failed");
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 
 	memset(log_chunk, 0xFF, RUL_LOG_CHUNK_SIZE_IN_BYTES);
@@ -293,7 +293,7 @@ static void rul_add_first_entry(struct db_descriptor *db_desc, struct rul_log_en
 		if (bytes_written == -1) {
 			log_fatal("Failed to initialize allocation log of DB: %s", db_desc->db_superblock->db_name);
 			perror("Reason");
-			exit(EXIT_FAILURE);
+			_Exit(EXIT_FAILURE);
 		}
 		total_bytes_written += bytes_written;
 	}
@@ -320,7 +320,7 @@ void rul_log_init(struct db_descriptor *db_desc)
 	struct rul_log_descriptor *log_desc;
 	if (posix_memalign((void **)&log_desc, ALIGNMENT, sizeof(struct rul_log_descriptor)) != 0) {
 		log_fatal("Failed to allocate redo_undo_log descriptor buffer");
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 	memset(log_desc, 0x00, sizeof(struct rul_log_descriptor));
 
@@ -343,7 +343,7 @@ void rul_log_init(struct db_descriptor *db_desc)
 		if (!head_dev_offt) {
 			log_fatal("Out of Space!");
 			assert(0);
-			exit(EXIT_FAILURE);
+			_Exit(EXIT_FAILURE);
 		}
 		log_desc->head_dev_offt = head_dev_offt;
 		log_desc->tail_dev_offt = head_dev_offt;
@@ -385,7 +385,7 @@ uint64_t rul_start_txn(struct db_descriptor *db_desc)
 	HASH_FIND_PTR(log_desc->trans_map, &txn_id, transaction);
 	if (transaction != NULL) {
 		log_fatal("Txn %lu already exists (it shouldn't)", txn_id);
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 	transaction = calloc(1, sizeof(struct rul_transaction));
 	transaction->txn_id = txn_id;
@@ -414,7 +414,7 @@ int rul_add_entry_in_txn_buf(struct db_descriptor *db_desc, struct rul_log_entry
 	if (transaction == NULL) {
 		log_fatal("Txn %lu not found!", txn_id);
 		assert(0);
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 	MUTEX_UNLOCK(&log_desc->trans_map_lock);
 
@@ -446,7 +446,7 @@ struct rul_log_info rul_flush_txn(struct db_descriptor *db_desc, uint64_t txn_id
 	if (transaction == NULL) {
 		log_fatal("Txn %lu not found!", txn_id);
 		assert(0);
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 
 	MUTEX_LOCK(&log_desc->rul_lock);
@@ -488,7 +488,7 @@ void rul_apply_txn_buf_freeops_and_destroy(struct db_descriptor *db_desc, uint64
 	if (transaction == NULL) {
 		log_fatal("Txn %lu not found!", txn_id);
 		assert(0);
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 	MUTEX_UNLOCK(&log_desc->trans_map_lock);
 
@@ -510,7 +510,7 @@ void rul_apply_txn_buf_freeops_and_destroy(struct db_descriptor *db_desc, uint64
 			default:
 				log_fatal("Unhandled case probably corruption in txn buffer");
 				assert(0);
-				exit(EXIT_FAILURE);
+				_Exit(EXIT_FAILURE);
 			}
 		}
 		struct rul_transaction_buffer *del = curr;

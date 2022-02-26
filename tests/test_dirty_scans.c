@@ -43,7 +43,6 @@ enum workload_types { Load = 0, Get, Scan, All };
 const char *workload_tags[] = { "Load", "Get", "Scan", "All" };
 const char *kv_mix[] = { "s", "m", "l", "sd", "md", "ld" };
 
-#define NUM_OPTIONS 4
 enum kvf_options { VOLUME_NAME = 0, TOTAL_KEYS, SCAN_SIZE, WORKLOAD };
 
 unsigned choose_mix(const char *mix, unsigned key_count)

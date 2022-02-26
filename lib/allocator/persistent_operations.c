@@ -74,7 +74,7 @@ static void pr_flush_allocation_log_and_level_info(struct db_descriptor *db_desc
 
 		db_desc->db_superblock->level_size[dst_level_id][0] = db_desc->levels[dst_level_id].level_size[tree_id];
 		log_info("Writing root[%u][%u] = %p", dst_level_id, tree_id,
-			 db_desc->levels[dst_level_id].root_r[tree_id]);
+			 (void *)db_desc->levels[dst_level_id].root_r[tree_id]);
 
 		db_desc->db_superblock->root_r[dst_level_id][0] =
 			ABSOLUTE_ADDRESS(db_desc->levels[dst_level_id].root_r[tree_id]);
@@ -229,9 +229,9 @@ static void pr_flush_Lmax_to_Ln(struct db_descriptor *db_desc, uint8_t level_id,
 
 	uint64_t txn_id = db_desc->levels[level_id].allocation_txn_id[tree_id];
 	/*trim medium log*/
-	struct segment_header *curr = REAL_ADDRESS(level_desc->medium_in_place_segment_dev_offt);
 	//log_info("Max medium in place segment id %llu", curr->segment_id);
-	if (curr) {
+	if (level_desc->medium_in_place_segment_dev_offt) {
+		struct segment_header *curr = REAL_ADDRESS(level_desc->medium_in_place_segment_dev_offt);
 		curr = REAL_ADDRESS(curr->prev_segment);
 
 		struct segment_header *head = REAL_ADDRESS(db_desc->medium_log.head_dev_offt);
@@ -272,12 +272,14 @@ static void pr_flush_Lmax_to_Ln(struct db_descriptor *db_desc, uint8_t level_id,
 
 void pr_flush_compaction(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
 {
-	if (level_id == 1)
-		return pr_flush_L0_to_L1(db_desc, level_id, tree_id);
-
-	if (level_id == db_desc->level_medium_inplace)
-		return pr_flush_Lmax_to_Ln(db_desc, level_id, tree_id);
-
+	if (level_id == 1) {
+		pr_flush_L0_to_L1(db_desc, level_id, tree_id);
+		return;
+	}
+	if (level_id == db_desc->level_medium_inplace) {
+		pr_flush_Lmax_to_Ln(db_desc, level_id, tree_id);
+		return;
+	}
 	uint64_t txn_id = db_desc->levels[level_id].allocation_txn_id[tree_id];
 	pr_lock_db_superblock(db_desc);
 
@@ -311,7 +313,7 @@ void pr_flush_db_superblock(struct db_descriptor *db_desc)
 			log_fatal("Failed to write region's %s superblock", db_desc->db_superblock->db_name);
 			perror("Reason");
 			assert(0);
-			exit(EXIT_FAILURE);
+			_Exit(EXIT_FAILURE);
 		}
 		total_bytes_written += bytes_written;
 	}
@@ -363,7 +365,7 @@ void pr_read_db_superblock(struct db_descriptor *db_desc)
 			log_fatal("Failed to read region's %s superblock", db_desc->db_superblock->db_name);
 			perror("Reason");
 			assert(0);
-			exit(EXIT_FAILURE);
+			_Exit(EXIT_FAILURE);
 		}
 		total_bytes_written += bytes_written;
 	}
@@ -395,7 +397,7 @@ void pr_flush_log_tail(struct db_descriptor *db_desc, struct log_descriptor *log
 		if (bytes_written == -1) {
 			log_fatal("Failed to write LOG_CHUNK reason follows");
 			perror("Reason");
-			exit(EXIT_FAILURE);
+			_Exit(EXIT_FAILURE);
 		}
 		start_offt += bytes_written;
 	}
@@ -436,13 +438,13 @@ static struct segment_array *find_N_last_small_log_segments(struct db_descriptor
 
 	if (!segment_array) {
 		log_fatal("Calloc did not return memory");
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 
 	segment_array->segments = calloc(PR_CURSOR_MAX_SEGMENTS_SIZE, sizeof(uint64_t));
 	if (!segment_array->segments) {
 		log_fatal("Calloc did not return memory");
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 
 	segment_array->size = PR_CURSOR_MAX_SEGMENTS_SIZE;
@@ -511,7 +513,7 @@ static struct segment_array *find_N_last_blobs(struct db_descriptor *db_desc, ui
 		default:
 			log_fatal("Unknown/Corrupted entry in allocation log %d", log_entry->op_type);
 			assert(0);
-			exit(EXIT_FAILURE);
+			_Exit(EXIT_FAILURE);
 		}
 	}
 
@@ -623,7 +625,7 @@ static void init_pos_log_cursor_in_segment(struct db_descriptor *db_desc, struct
 		break;
 	default:
 		log_fatal("Unhandled cursor type");
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 
 	prepare_cursor_op(cursor);
@@ -637,7 +639,7 @@ static struct log_cursor *init_log_cursor(struct db_descriptor *db_desc, enum lo
 	cursor->type = type;
 	if (posix_memalign((void **)&cursor->segment_in_mem_buffer, ALIGNMENT_SIZE, cursor->segment_in_mem_size) != 0) {
 		log_fatal("MEMALIGN FAILED");
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 
 	switch (cursor->type) {
@@ -659,7 +661,7 @@ static struct log_cursor *init_log_cursor(struct db_descriptor *db_desc, enum lo
 		break;
 	default:
 		log_fatal("Unknown/ Unsupported log type");
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 
 	init_pos_log_cursor_in_segment(db_desc, cursor);
@@ -712,7 +714,7 @@ static void get_next_log_segment(struct log_cursor *cursor)
 		break;
 	default:
 		log_fatal("Unhandled cursor type");
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 }
 

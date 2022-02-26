@@ -1,0 +1,49 @@
+check_c_compiler_flag("-Wlogical-op" LOGICAL_OP)
+if(LOGICAL_OP)
+  string(APPEND CMAKE_C_FLAGS " -Wlogical-op")
+endif()
+
+check_c_compiler_flag("-Wlifetime" CLANG_LIFETIME)
+if(CLANG_LIFETIME)
+  string(APPEND CMAKE_C_FLAGS " -Wlifetime")
+endif()
+
+check_c_compiler_flag("-Wduplicated-branches" DUPLICATED_BRANCH)
+if(DUPLICATED_BRANCH)
+  string(APPEND CMAKE_C_FLAGS " -Wduplicated-branches")
+endif()
+
+check_c_compiler_flag("-Wduplicated-cond" DUPLICATED_COND)
+if(DUPLICATED_COND)
+  string(APPEND CMAKE_C_FLAGS " -Wduplicated-cond")
+endif()
+
+check_c_compiler_flag("-Wnull-dereference" WNULL_DEREFERENCE)
+if(WNULL_DEREFERENCE)
+  string(APPEND CMAKE_C_FLAGS " -Wnull-dereference")
+endif()
+
+check_c_compiler_flag("-Wunused-local-typedefs" UNUSED_LOCAL_TYPEDEFS)
+if(UNUSED_LOCAL_TYPEDEFS)
+  string(APPEND CMAKE_C_FLAGS " -Wunused-local-typedefs")
+endif()
+
+check_c_compiler_flag("-Wunused-macros" UNUSED_MACRO)
+if(UNUSED_MACRO)
+  string(APPEND CMAKE_C_FLAGS " -Wunused-macros")
+endif()
+
+check_c_compiler_flag("-Wparentheses" PARENTHESES)
+if(PARENTHESES)
+  string(APPEND CMAKE_C_FLAGS " -Wparentheses")
+endif()
+
+check_c_compiler_flag("-fprefetch-loop-arrays" PREFETCH_LOOP_ARRAYS)
+if(PREFETCH_LOOP_ARRAYS)
+  string(APPEND CMAKE_C_FLAGS " -fprefetch-loop-arrays")
+endif()
+
+check_c_compiler_flag("-fpeel-loops" PEEL_LOOPS)
+if(PEEL_LOOPS)
+  string(APPEND CMAKE_C_FLAGS " -fpeel-loops")
+endif()

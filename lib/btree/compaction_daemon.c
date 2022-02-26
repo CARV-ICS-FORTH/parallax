@@ -55,7 +55,7 @@ static void fetch_segment(struct comp_level_write_cursor *c, char *segment_buf, 
 			log_fatal("Failed to read error code");
 			perror("Error");
 			assert(0);
-			exit(EXIT_FAILURE);
+			_Exit(EXIT_FAILURE);
 		}
 		bytes_to_read += bytes;
 	}
@@ -85,7 +85,7 @@ static char *fetch_kv_from_LRU(struct write_dynamic_leaf_args *args, struct comp
 	if (!chunk_exists_in_LRU(c->medium_log_LRU_cache, segment_chunk_offt)) {
 		if (posix_memalign((void **)&segment_chunk, ALIGNMENT_SIZE, LOG_CHUNK_SIZE + KB(4)) != 0) {
 			log_fatal("MEMALIGN FAILED");
-			exit(EXIT_FAILURE);
+			_Exit(EXIT_FAILURE);
 		}
 		fetch_segment(c, segment_chunk, segment_chunk_offt, LOG_CHUNK_SIZE + KB(4));
 		add_to_LRU(c->medium_log_LRU_cache, segment_chunk_offt, segment_chunk);
@@ -105,7 +105,7 @@ static uint32_t comp_calc_offt_in_seg(char *buffer_start, char *addr)
 
 	if (end < start) {
 		log_fatal("End should be greater than start!");
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 	assert(end - start < SEGMENT_SIZE);
 
@@ -171,7 +171,7 @@ static void comp_write_segment(char *buffer, uint64_t dev_offt, uint32_t buf_off
 		if (bytes_written == -1) {
 			log_fatal("Failed to writed segment for leaf nodes reason follows");
 			perror("Reason");
-			exit(EXIT_FAILURE);
+			_Exit(EXIT_FAILURE);
 		}
 		total_bytes_written += bytes_written;
 	}
@@ -209,7 +209,7 @@ static void comp_get_next_key(struct comp_level_read_cursor *c)
 	if (c == NULL) {
 		log_fatal("NULL cursor!");
 		assert(0);
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 
 	uint32_t level_leaf_size = c->handle->db_desc->levels[c->level_id].leaf_size;
@@ -265,7 +265,7 @@ static void comp_get_next_key(struct comp_level_read_cursor *c)
 					log_fatal("Failed to read error code");
 					perror("Error");
 					assert(0);
-					exit(EXIT_FAILURE);
+					_Exit(EXIT_FAILURE);
 				}
 				bytes_read += bytes;
 			}
@@ -315,7 +315,7 @@ static void comp_get_next_key(struct comp_level_read_cursor *c)
 				default:
 					log_fatal("Cannot handle this category");
 					assert(0);
-					exit(EXIT_FAILURE);
+					_Exit(EXIT_FAILURE);
 				}
 				++c->curr_leaf_entry;
 				return;
@@ -359,7 +359,7 @@ static void comp_get_next_key(struct comp_level_read_cursor *c)
 					  c->handle->db_desc->levels[c->level_id].offset[0],
 					  ABSOLUTE_ADDRESS(c->curr_segment));
 				assert(0);
-				exit(EXIT_FAILURE);
+				_Exit(EXIT_FAILURE);
 			}
 
 			break;
@@ -367,7 +367,7 @@ static void comp_get_next_key(struct comp_level_read_cursor *c)
 		default:
 			log_fatal("Error state");
 			assert(0);
-			exit(EXIT_FAILURE);
+			_Exit(EXIT_FAILURE);
 		}
 	}
 }
@@ -503,7 +503,7 @@ static void comp_get_space(struct comp_level_write_cursor *c, uint32_t height, n
 	}
 	default:
 		log_fatal("Wrong type");
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 }
 
@@ -674,9 +674,9 @@ static void comp_append_pivot_to_index(struct comp_level_write_cursor *c, uint64
 	// assert(*(uint32_t *)(pivot) > 0);
 	++c->last_index[height]->header.num_entries;
 	uint32_t idx = c->last_index[height]->header.num_entries - 1;
-	c->last_index[height]->p[idx].left[0] = left_node_offt;
+	c->last_index[height]->p[idx].left = left_node_offt;
 	c->last_index[height]->p[idx].pivot = pivot_offt;
-	c->last_index[height]->p[idx].right[0] = right_node_offt;
+	c->last_index[height]->p[idx + 1].left = right_node_offt;
 
 	if (new_index) {
 		comp_append_pivot_to_index(c, left_index_offt, right_index_offt, new_pivot_buf, height + 1);
@@ -920,7 +920,7 @@ void mark_segment_space(db_handle *handle, struct dups_list *list)
 			temp_segment_entry = malloc(sizeof(struct large_log_segment_gc_entry));
 			if (!temp_segment_entry) {
 				log_fatal("Malloc return NULL!");
-				exit(EXIT_FAILURE);
+				_Exit(EXIT_FAILURE);
 			}
 
 			temp_segment_entry->segment_dev_offt = segment_dev_offt;
@@ -991,7 +991,7 @@ void *compaction_daemon(void *args)
 				/*Acquire guard lock and wait writers to finish*/
 				if (RWLOCK_WRLOCK(&(db_desc->levels[0].guard_of_level.rx_lock))) {
 					log_fatal("Failed to acquire guard lock");
-					exit(EXIT_FAILURE);
+					_Exit(EXIT_FAILURE);
 				}
 				spin_loop(&(db_desc->levels[0].active_operations), 0);
 				/*fill L0 recovery log  info*/
@@ -1013,13 +1013,13 @@ void *compaction_daemon(void *args)
 				/*Release guard lock*/
 				if (RWLOCK_UNLOCK(&db_desc->levels[0].guard_of_level.rx_lock)) {
 					log_fatal("Failed to acquire guard lock");
-					exit(EXIT_FAILURE);
+					_Exit(EXIT_FAILURE);
 				}
 
 				MUTEX_LOCK(&db_desc->client_barrier_lock);
 				if (pthread_cond_broadcast(&db_desc->client_barrier) != 0) {
 					log_fatal("Failed to wake up stopped clients");
-					exit(EXIT_FAILURE);
+					_Exit(EXIT_FAILURE);
 				}
 				MUTEX_UNLOCK(&db_desc->client_barrier_lock);
 			}
@@ -1037,7 +1037,7 @@ void *compaction_daemon(void *args)
 			if (pthread_create(&db_desc->levels[0].compaction_thread[comp_req->src_tree], NULL, compaction,
 					   comp_req) != 0) {
 				log_fatal("Failed to start compaction");
-				exit(EXIT_FAILURE);
+				_Exit(EXIT_FAILURE);
 			}
 			comp_req = NULL;
 		}
@@ -1078,7 +1078,7 @@ void *compaction_daemon(void *args)
 								    .compaction_thread[comp_req_p->dst_tree],
 							   NULL, compaction, comp_req_p) != 0) {
 						log_fatal("Failed to start compaction");
-						exit(EXIT_FAILURE);
+						_Exit(EXIT_FAILURE);
 					}
 				}
 			}
@@ -1141,7 +1141,7 @@ static void comp_fill_heap_node(struct compaction_request *comp_req, struct comp
 		break;
 	default:
 		log_fatal("UNKNOWN_LOG_CATEGORY");
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 }
 
@@ -1163,7 +1163,7 @@ static void comp_fill_parallax_key(struct sh_heap_node *nd, struct comp_parallax
 		break;
 	default:
 		log_info("Unhandle/Unknown category");
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 }
 
@@ -1181,7 +1181,7 @@ static void print_heap_node_key(struct sh_heap_node *nd)
 		break;
 	default:
 		log_info("Unhandle/Unknown category");
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 }
 
@@ -1197,7 +1197,7 @@ static void choose_compaction_roots(struct db_handle *handle, struct compaction_
 			  "level's tree[%u][%u] for db %s",
 			  comp_req->src_level, comp_req->src_tree, comp_req->dst_level, comp_req->dst_tree,
 			  handle->db_desc->db_superblock->db_name);
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 
 	if (handle->db_desc->levels[comp_req->dst_level].root_w[0] != NULL)
@@ -1213,12 +1213,12 @@ static void lock_to_update_levels_after_compaction(struct compaction_request *co
 {
 	if (RWLOCK_WRLOCK(&(comp_req->db_desc->levels[comp_req->src_level].guard_of_level.rx_lock))) {
 		log_fatal("Failed to acquire guard lock");
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 
 	if (RWLOCK_WRLOCK(&(comp_req->db_desc->levels[comp_req->dst_level].guard_of_level.rx_lock))) {
 		log_fatal("Failed to acquire guard lock");
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 	spin_loop(&comp_req->db_desc->levels[comp_req->src_level].active_operations, 0);
 	spin_loop(&comp_req->db_desc->levels[comp_req->dst_level].active_operations, 0);
@@ -1228,12 +1228,12 @@ static void unlock_to_update_levels_after_compaction(struct compaction_request *
 {
 	if (RWLOCK_UNLOCK(&(comp_req->db_desc->levels[comp_req->src_level].guard_of_level.rx_lock))) {
 		log_fatal("Failed to acquire guard lock");
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 
 	if (RWLOCK_UNLOCK(&(comp_req->db_desc->levels[comp_req->dst_level].guard_of_level.rx_lock))) {
 		log_fatal("Failed to acquire guard lock");
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 }
 
@@ -1263,7 +1263,7 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 		if (posix_memalign((void **)&l_src, ALIGNMENT, sizeof(struct comp_level_read_cursor)) != 0) {
 			log_fatal("Posix memalign failed");
 			perror("Reason: ");
-			exit(EXIT_FAILURE);
+			_Exit(EXIT_FAILURE);
 		}
 		comp_init_read_cursor(l_src, handle, comp_req->src_level, 0, FD);
 		comp_get_next_key(l_src);
@@ -1274,7 +1274,7 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 		if (posix_memalign((void **)&l_dst, ALIGNMENT, sizeof(struct comp_level_read_cursor)) != 0) {
 			log_fatal("Posix memalign failed");
 			perror("Reason: ");
-			exit(EXIT_FAILURE);
+			_Exit(EXIT_FAILURE);
 		}
 		comp_init_read_cursor(l_dst, handle, comp_req->dst_level, 0, FD);
 		comp_get_next_key(l_dst);
@@ -1285,7 +1285,7 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 	if (posix_memalign((void **)&merged_level, ALIGNMENT, sizeof(struct comp_level_write_cursor)) != 0) {
 		log_fatal("Posix memalign failed");
 		perror("Reason: ");
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 
 	assert(0 == handle->db_desc->levels[comp_req->dst_level].offset[comp_req->dst_tree]);
@@ -1474,7 +1474,7 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 	else {
 		log_fatal("Where is the root?");
 		assert(0);
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 
 	ld->root_w[0] = NULL;
@@ -1557,7 +1557,7 @@ void *compaction(void *_comp_req)
 		MUTEX_LOCK(&comp_req->db_desc->client_barrier_lock);
 		if (pthread_cond_broadcast(&db_desc->client_barrier) != 0) {
 			log_fatal("Failed to wake up stopped clients");
-			exit(EXIT_FAILURE);
+			_Exit(EXIT_FAILURE);
 		}
 	}
 	MUTEX_UNLOCK(&db_desc->client_barrier_lock);

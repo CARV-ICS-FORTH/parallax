@@ -148,7 +148,7 @@ static void fetch_segment(struct log_segment *segment_buf, uint64_t segment_offt
 			log_fatal("Failed to read error code");
 			perror("Error");
 			assert(0);
-			exit(EXIT_FAILURE);
+			_Exit(EXIT_FAILURE);
 		}
 		bytes_to_read += bytes;
 	}
@@ -168,7 +168,7 @@ void scan_db(db_descriptor *db_desc, volume_descriptor *volume_desc, stack *mark
 
 	if (posix_memalign((void **)&segment, ALIGNMENT_SIZE, SEGMENT_SIZE) != 0) {
 		log_fatal("MEMALIGN FAILED");
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 
 	log_segment *last_segment = (log_segment *)REAL_ADDRESS(db_desc->big_log.tail_dev_offt);
@@ -231,14 +231,13 @@ void *gc_log_entries(void *hd)
 	marks = calloc(1, sizeof(stack));
 	if (!marks) {
 		log_error("ERROR i could not allocate stack");
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 
 	pthread_setname_np(pthread_self(), "gcd");
 
 	parse_options(&dboptions);
-	HASH_FIND_STR(dboptions, "gc_interval", option);
-	check_option("gc_interval", option);
+	check_option(dboptions, "gc_interval", &option);
 	gc_interval = option->value.count;
 
 	log_debug("Starting garbage collection thread");
@@ -246,7 +245,7 @@ void *gc_log_entries(void *hd)
 	while (1) {
 		if (clock_gettime(CLOCK_REALTIME, &ts) == -1) {
 			perror("FATAL: clock_gettime failed)\n");
-			exit(-1);
+			_Exit(-1);
 		}
 		ts.tv_sec += (gc_interval / 1000000L);
 		ts.tv_nsec += (gc_interval % 1000000L) * 1000L;

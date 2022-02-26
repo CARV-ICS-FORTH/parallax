@@ -329,6 +329,6 @@ par_ret_code par_sync(par_handle handle)
 {
 	log_fatal("Currently developing persistency..");
 	(void)handle;
-	//exit(EXIT_FAILURE);
+	//_Exit(EXIT_FAILURE);
 	return PAR_FAILURE;
 }

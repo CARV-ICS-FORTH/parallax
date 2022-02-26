@@ -47,7 +47,7 @@ static void push_back_duplicate_kv(struct sh_heap *heap, struct sh_heap_node *hp
 		break;
 	default:
 		log_info("Unhandled KV type");
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 
 	uint64_t segment_offset =
@@ -80,7 +80,7 @@ static struct bt_kv_log_address sh_translate_log_address(struct sh_heap_node *he
 	}
 	default:
 		log_fatal("Wrong category");
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 
 	switch (heap_node->cat) {
@@ -160,7 +160,7 @@ static int sh_cmp_heap_nodes(struct sh_heap *hp, struct sh_heap_node *nd_1, stru
 			log_fatal("Cannot resolve tie active tree = %d nd_1 level_id = %d nd_2 "
 				  "level_id = %d",
 				  hp->active_tree, nd_1->level_id, nd_2->level_id);
-			exit(EXIT_FAILURE);
+			_Exit(EXIT_FAILURE);
 		}
 	}
 	return ret;
@@ -171,7 +171,7 @@ struct sh_heap *sh_alloc_heap(void)
 	struct sh_heap *new_heap = calloc(1, sizeof(struct sh_heap));
 	if (!new_heap) {
 		log_fatal("Calloc failed");
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 	return new_heap;
 }
@@ -270,7 +270,7 @@ void sh_insert_heap_node(struct sh_heap *hp, struct sh_heap_node *nd)
 	nd->duplicate = 0;
 	if (hp->heap_size > HEAP_SIZE) {
 		log_fatal("min max heap out of space resize heap accordingly");
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 
 	if (nd->level_id == 0 && check_for_duplicate_inL0(hp, nd))

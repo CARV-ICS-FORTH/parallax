@@ -313,7 +313,7 @@ int main(const int argc, const char *argv[])
 		std::string a, b, c;
 		if (!(iss >> a >> b >> c)) {
 			std::cerr << "ERROR: Parsing execution plan!" << std::endl;
-			exit(EXIT_FAILURE);
+			_Exit(EXIT_FAILURE);
 			break;
 		}
 
@@ -335,7 +335,7 @@ int main(const int argc, const char *argv[])
 			ofil.open(outfilename);
 			if (ofil.fail()) {
 				std::cerr << "ERROR: Failed to open output file " << outfilename << std::endl;
-				exit(-1);
+				_Exit(-1);
 			}
 			tmp = start_stats + results_directory + slash + a;
 			system(tmp.c_str());
@@ -375,7 +375,7 @@ void read_workload_file(const char *filename, utils::Properties &props)
 		props.Load(input);
 	} catch (const string &message) {
 		cout << message << endl;
-		exit(-1);
+		_Exit(-1);
 	}
 	input.close();
 }
@@ -389,7 +389,7 @@ void ParseCommandLine(int argc, const char *argv[], utils::Properties &props)
 			argindex++;
 			if (argindex >= argc) {
 				UsageMessage(argv[0]);
-				exit(-1);
+				_Exit(-1);
 			}
 			props.SetProperty("threadcount", argv[argindex]);
 			argindex++;
@@ -397,7 +397,7 @@ void ParseCommandLine(int argc, const char *argv[], utils::Properties &props)
 			argindex++;
 			if (argindex >= argc) {
 				UsageMessage(argv[0]);
-				exit(-1);
+				_Exit(-1);
 			}
 
 			db_num = std::atoi(argv[argindex]);
@@ -406,7 +406,7 @@ void ParseCommandLine(int argc, const char *argv[], utils::Properties &props)
 			argindex++;
 			if (argindex >= argc) {
 				UsageMessage(argv[0]);
-				exit(-1);
+				_Exit(-1);
 			}
 
 			explan_filename = std::string(argv[argindex]);
@@ -415,7 +415,7 @@ void ParseCommandLine(int argc, const char *argv[], utils::Properties &props)
 			argindex++;
 			if (argindex >= argc) {
 				UsageMessage(argv[0]);
-				exit(-1);
+				_Exit(-1);
 			}
 
 			path = std::string(argv[argindex]);
@@ -424,7 +424,7 @@ void ParseCommandLine(int argc, const char *argv[], utils::Properties &props)
 			argindex++;
 			if (argindex >= argc) {
 				UsageMessage(argv[0]);
-				exit(-1);
+				_Exit(-1);
 			}
 
 			custom_workload = std::string(argv[argindex]);
@@ -433,7 +433,7 @@ void ParseCommandLine(int argc, const char *argv[], utils::Properties &props)
 			argindex++;
 			if (argindex >= argc) {
 				UsageMessage(argv[0]);
-				exit(-1);
+				_Exit(-1);
 			}
 
 			results_directory = std::string(argv[argindex]);
@@ -442,7 +442,7 @@ void ParseCommandLine(int argc, const char *argv[], utils::Properties &props)
 			argindex++;
 			if (argindex >= argc) {
 				UsageMessage(argv[0]);
-				exit(-1);
+				_Exit(-1);
 			}
 			props.SetProperty(ycsbc::CoreWorkload::INSERT_START_PROPERTY, argv[argindex]);
 			argindex++;
@@ -450,7 +450,7 @@ void ParseCommandLine(int argc, const char *argv[], utils::Properties &props)
 			argindex++;
 			if (argindex >= argc) {
 				UsageMessage(argv[0]);
-				exit(-1);
+				_Exit(-1);
 			}
 			props.SetProperty("clientProcesses", argv[argindex]);
 			argindex++;
@@ -458,7 +458,7 @@ void ParseCommandLine(int argc, const char *argv[], utils::Properties &props)
 			argindex++;
 			if (argindex >= argc) {
 				UsageMessage(argv[0]);
-				exit(-1);
+				_Exit(-1);
 			}
 			outf = std::string(argv[argindex]);
 			argindex++;
@@ -466,20 +466,20 @@ void ParseCommandLine(int argc, const char *argv[], utils::Properties &props)
 			argindex++;
 			if (argindex >= argc) {
 				UsageMessage(argv[0]);
-				exit(-1);
+				_Exit(-1);
 			}
 			produce_statistics = std::string(argv[argindex]);
 			std::cerr << produce_statistics << std::endl;
 			argindex++;
 		} else {
 			cout << "Unknown option " << argv[argindex] << endl;
-			exit(0);
+			_Exit(0);
 		}
 	}
 
 	if (argindex == 1 || argindex != argc) {
 		UsageMessage(argv[0]);
-		exit(0);
+		_Exit(0);
 	}
 }
 

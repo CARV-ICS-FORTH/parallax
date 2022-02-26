@@ -34,6 +34,7 @@ set(LIB_C_SOURCE_FILES
     btree/medium_log_LRU_cache.c
     btree/segment_allocator.c
     btree/set_options.c
+    common/common.c
     scanner/min_max_heap.c
     scanner/scanner.c
     scanner/stack.c)

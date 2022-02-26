@@ -114,23 +114,22 @@ set(DEPENDENCIES log yaml libbloom)
 include_directories(${CMAKE_BINARY_DIR})
 include_directories(${CMAKE_SOURCE_DIR}/utilities)
 
-set(CMAKE_C_FLAGS
-    "-Wstrict-prototypes -Wall -Wextra -fno-omit-frame-pointer -Wunused -Wuninitialized -Wimplicit-function-declaration -Wshadow  -Werror ${CMAKE_C_FLAGS}"
+if(TREAT_WARNINGS_AS_ERRORS)
+  set(CMAKE_C_FLAGS " -Werror ${CMAKE_C_FLAGS}")
+  set(CMAKE_CXX_FLAGS " -Werror ${CMAKE_CXX_FLAGS}")
+endif()
+
+string(
+  APPEND
+  CMAKE_C_FLAGS
+  " -Wstrict-prototypes -Wall -Wextra -fno-omit-frame-pointer -Wunused -Wuninitialized"
 )
-
-if(WNULL_DEREFERENCE)
-  string(APPEND CMAKE_C_FLAGS_DEBUG " -Wnull-dereference")
-endif()
-
-check_c_compiler_flag("-fprefetch-loop-arrays" PREFETCH_LOOP_ARRAYS)
-if(PREFETCH_LOOP_ARRAYS)
-  string(APPEND CMAKE_C_FLAGS " -fprefetch-loop-arrays")
-endif()
-
-check_c_compiler_flag("-fpeel-loops" PEEL_LOOPS)
-if(PEEL_LOOPS)
-  string(APPEND CMAKE_C_FLAGS " -fpeel-loops")
-endif()
+string(
+  APPEND
+  CMAKE_C_FLAGS
+  " -Wimplicit-function-declaration -Wshadow -pedantic -pedantic-errors -Wmisleading-indentation"
+)
+include(cmake_utils/check-compiler-flags.cmake.in)
 
 set(DEVICE_PATH $ENV{NVME0})
 set(CI_JOB_ID $ENV{CI_JOB_ID})
@@ -144,8 +143,7 @@ set(CMAKE_C_FLAGS_DEBUG "-ggdb3 -Og -gz ${CMAKE_C_FLAGS_DEBUG}")
 set(CMAKE_C_FLAGS_RELEASE
     "${CMAKE_C_FLAGS_RELEASE} -funit-at-a-time -O2 -finline-functions -DNDEBUG")
 
-set(CMAKE_CXX_FLAGS_RELEASE
-    "${CMAKE_CXX_FLAGS_RELEASE} -std=gnu++11 -Wall -Werror")
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -std=gnu++11 -Wall")
 
 set(CMAKE_EXE_LINKER_FLAGS
     "${CMAKE_EXE_LINKER_FLAGS} -Wl,--no-as-needed -lrt -lm -pthread -lnuma -lutil"

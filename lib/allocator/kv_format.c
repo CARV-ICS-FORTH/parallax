@@ -13,7 +13,6 @@
 // limitations under the License.
 
 #define _GNU_SOURCE
-#define _LARGEFILE64_SOURCE
 #define NUM_OF_OWNERSHIP_REGISTRY_PAIRS (2)
 #include "../btree/conf.h"
 #include "mem_structures.h"
@@ -37,7 +36,7 @@ static void *kvf_posix_calloc(size_t size)
 	char *ptr;
 	if (posix_memalign((void **)&ptr, 512, size)) {
 		log_fatal("posix memalign failed");
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 	memset(ptr, 0x00, size);
 	return ptr;
@@ -58,7 +57,7 @@ static void kvf_parse_options(int argc, char **argv)
 				case DEVICE:
 					if (i + 1 >= argc) {
 						log_fatal("Wrong arguments number %s", kvf_help);
-						exit(EXIT_FAILURE);
+						_Exit(EXIT_FAILURE);
 					}
 					kvf_device_name = kvf_posix_calloc(strlen(argv[i + 1]) + 1);
 					strcpy(kvf_device_name, argv[i + 1]);
@@ -66,7 +65,7 @@ static void kvf_parse_options(int argc, char **argv)
 				case MAX_REGIONS_NUM: {
 					if (i + 1 >= argc) {
 						log_fatal("Wrong arguments number %s", kvf_help);
-						exit(EXIT_FAILURE);
+						_Exit(EXIT_FAILURE);
 					}
 					char *ptr;
 					kvf_max_regions_num = strtoul(argv[i + 1], &ptr, 10);
@@ -80,12 +79,12 @@ static void kvf_parse_options(int argc, char **argv)
 
 	if (kvf_device_name == NULL) {
 		log_fatal("Device name not specified help:\n %s", kvf_help);
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 
 	if (kvf_max_regions_num == 0) {
 		log_fatal("Max region number not specified help:\n %s", kvf_help);
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 }
 
@@ -99,7 +98,7 @@ static void kvf_write_buffer(int fd, char *buffer, ssize_t start, ssize_t size, 
 		if (bytes_written == -1) {
 			log_fatal("Failed to writed segment for leaf nodes reason follows");
 			perror("Reason");
-			exit(EXIT_FAILURE);
+			_Exit(EXIT_FAILURE);
 		}
 		total_bytes_written += bytes_written;
 	}
@@ -114,7 +113,7 @@ static void kvf_init_parallax(char *device_name, uint32_t max_regions_num)
 	if (fd < 0) {
 		log_fatal("Failed to open %s", device_name);
 		perror("Reason:\n");
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 
 	device_size = lseek64(fd, 0, SEEK_END);
@@ -122,14 +121,14 @@ static void kvf_init_parallax(char *device_name, uint32_t max_regions_num)
 	if (device_size == -1) {
 		log_fatal("failed to determine volume size exiting...");
 		perror("ioctl");
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 	log_info("Found volume of %ld MB", device_size / (1024 * 1024));
 
 	if (device_size < MIN_VOLUME_SIZE) {
 		log_fatal("Sorry minimum supported volume size is %ld GB actual size %ld GB",
 			  MIN_VOLUME_SIZE / (1024 * 1024 * 1024), device_size / (1024 * 1024 * 1024));
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 
 	/*Initialize all region superblocks*/
@@ -156,7 +155,7 @@ static void kvf_init_parallax(char *device_name, uint32_t max_regions_num)
 
 	if (mapped_device_size % SEGMENT_SIZE) {
 		log_fatal("Something went wrong actual_device_size should be a multiple of SEGMENT_SIZE");
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 
 	uint64_t registry_size_in_bits = mapped_device_size / SEGMENT_SIZE;
@@ -170,7 +169,7 @@ static void kvf_init_parallax(char *device_name, uint32_t max_regions_num)
 
 	if (registry_size_in_bits % bits_in_page) {
 		log_fatal("ownership registry must be a multiple of 4 KB its value %lu", registry_size_in_bits);
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 	uint64_t registry_size_in_bytes = registry_size_in_bits / 8;
 
@@ -209,7 +208,7 @@ static void kvf_init_parallax(char *device_name, uint32_t max_regions_num)
 	if (fsync(fd)) {
 		log_fatal("Failed to sync volume: %s metadata", device_name);
 		perror("Reason:");
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 	free(registry_buffer);
 	registry_buffer = NULL;
@@ -244,12 +243,12 @@ static void kvf_init_parallax(char *device_name, uint32_t max_regions_num)
 	if (fsync(fd)) {
 		log_fatal("Failed to sync volume: %s metadata", device_name);
 		perror("Reason:");
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 
 	if (close(fd)) {
 		log_fatal("Failed to close file %s", device_name);
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 	free(kvf_device_name);
 }
