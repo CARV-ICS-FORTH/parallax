@@ -1,13 +1,17 @@
 #!/usr/bin/env python3
 
-# This script checks the documentation of the master branch and compares it with the documentation of the current branch,
-# if the documentation ratio is less than the master branch ration then the script will fail.
+"""
+This script checks the documentation of the master branch and compares it with the documentation of the current branch,
+if the documentation ratio is less than the master branch ration then the script will fail.
+"""
 import os
 import sys
 
-# Given a branch name and the source directory of the project this function
-# generates a doxygen summary for documented code.
+
 def generate_doxygen_report(branch_name, src_dir):
+    """
+    Given a branch name and the source directory of the project this function generates a doxygen summary for documented code.
+    """
 
     doc_summary_file = f"doc-summary-{branch_name}.info"
     # Produce coverxygen report to produce the coverage report using lcov
@@ -37,8 +41,13 @@ def generate_doxygen_report(branch_name, src_dir):
 
 def main():
 
+    """
+    Compares the doxygen coverage between two branches.
+    Returns 0 if the current branch contains >= coverage compared to the second branch.
+    Returns 1 if the current branch contains < coverage compared to the second branch.
+    """
     if len(sys.argv) < 5:
-        print("To run this script run:")
+        print("To execute this script run:")
         print(
             "coverxygen.py current_branch_name current_branch_src_dir default_branch_name default_branch_src_dir"
         )
