@@ -14,9 +14,9 @@
 #include "redo_undo_log.h"
 #include "../btree/btree.h"
 #include "../btree/conf.h"
+#include "../common/common.h"
 #include "device_structures.h"
 #include "volume_manager.h"
-#include "../common/common.h"
 
 #include <aio.h>
 #include <assert.h>
@@ -55,11 +55,7 @@ static void rul_flush_log_chunk(struct db_descriptor *db_desc, uint32_t chunk_id
 	ssize_t size = RUL_LOG_CHUNK_SIZE_IN_BYTES;
 	ssize_t dev_offt = log_desc->tail_dev_offt + (chunk_id * RUL_LOG_CHUNK_SIZE_IN_BYTES);
 	ssize_t total_bytes_written = 0;
-	/*uint32_t last_chunk_size =
-		(db_desc->allocation_log->size % SEGMENT_SIZE) - (chunk_id * RUL_LOG_CHUNK_SIZE_IN_BYTES);*/
-	/*assert(0 == last_chunk_size % sizeof(struct rul_log_entry));*/
-	/*uint32_t chunk_entries = last_chunk_size / sizeof(struct rul_log_entry);*/
-	/*log_info("Flushing chunk %u offt: %lu chunk entries = %u", chunk_id, dev_offt, chunk_entries);*/
+
 	while (total_bytes_written < size) {
 		ssize_t bytes_written = pwrite(db_desc->db_volume->vol_fd,
 					       db_desc->allocation_log->segment.chunk[chunk_id],
@@ -67,7 +63,7 @@ static void rul_flush_log_chunk(struct db_descriptor *db_desc, uint32_t chunk_id
 		if (bytes_written == -1) {
 			log_fatal("Failed to write DB's %s superblock", db_desc->db_superblock->db_name);
 			perror("Reason");
-			_Exit(EXIT_FAILURE);
+			BUG_ON();
 		}
 		total_bytes_written += bytes_written;
 	}
@@ -128,8 +124,7 @@ static void rul_aflush_log_chunk(struct db_descriptor *db_desc, uint32_t chunk_i
 		default:
 			log_fatal("error appending to redo undo log for chunk %u  state is %d Reason is %s", i, state,
 				  strerror(state));
-			assert(0);
-			_Exit(EXIT_FAILURE);
+			BUG_ON();
 		}
 	}
 }
@@ -172,7 +167,6 @@ static void rul_flush_last_chunk(struct db_descriptor *db_desc)
 
 	size = RUL_LOG_CHUNK_SIZE_IN_BYTES + RUL_SEGMENT_FOOTER_SIZE_IN_BYTES;
 	dev_offt = (db_desc->allocation_log->tail_dev_offt + SEGMENT_SIZE) - size;
-	/*log_info("Flushing *LAST* chunk %u offt: %lu", RUL_LOG_CHUNK_NUM - 1, dev_offt);*/
 
 	while (total_bytes_written < size) {
 		ssize_t bytes_written = pwrite(db_desc->db_volume->vol_fd,
@@ -181,7 +175,7 @@ static void rul_flush_last_chunk(struct db_descriptor *db_desc)
 		if (bytes_written == -1) {
 			log_fatal("Failed to write DB's %s superblock", db_desc->db_superblock->db_name);
 			perror("Reason");
-			_Exit(EXIT_FAILURE);
+			BUG_ON();
 		}
 		total_bytes_written += bytes_written;
 	}
@@ -372,7 +366,7 @@ uint64_t rul_start_txn(struct db_descriptor *db_desc)
 {
 	struct rul_log_descriptor *log_desc = db_desc->allocation_log;
 	uint64_t txn_id = __sync_fetch_and_add(&log_desc->txn_id, 1);
-	/*log_info("Start transaction %lu id curr segment entry %u", txn_id, log_desc->curr_segment_entry);*/
+
 	/*check if (accidentally) txn exists already*/
 	struct rul_transaction *transaction;
 
@@ -380,7 +374,7 @@ uint64_t rul_start_txn(struct db_descriptor *db_desc)
 	HASH_FIND_PTR(log_desc->trans_map, &txn_id, transaction);
 	if (transaction != NULL) {
 		log_fatal("Txn %lu already exists (it shouldn't)", txn_id);
-		_Exit(EXIT_FAILURE);
+		BUG_ON();
 	}
 	transaction = calloc(1, sizeof(struct rul_transaction));
 	transaction->txn_id = txn_id;
@@ -397,8 +391,6 @@ uint64_t rul_start_txn(struct db_descriptor *db_desc)
 
 int rul_add_entry_in_txn_buf(struct db_descriptor *db_desc, struct rul_log_entry *entry)
 {
-	/*log_info("Adding entry in allocation log offt : %u type: %u txn_id: %llu", entry->dev_offt, entry->op_type,
-		 entry->txn_id);*/
 	struct rul_log_descriptor *log_desc = db_desc->allocation_log;
 	uint64_t txn_id = entry->txn_id;
 	struct rul_transaction *transaction;
@@ -408,8 +400,7 @@ int rul_add_entry_in_txn_buf(struct db_descriptor *db_desc, struct rul_log_entry
 
 	if (transaction == NULL) {
 		log_fatal("Txn %lu not found!", txn_id);
-		assert(0);
-		_Exit(EXIT_FAILURE);
+		BUG_ON();
 	}
 	MUTEX_UNLOCK(&log_desc->trans_map_lock);
 
@@ -447,8 +438,7 @@ struct rul_log_info rul_flush_txn(struct db_descriptor *db_desc, uint64_t txn_id
 
 	MUTEX_LOCK(&log_desc->rul_lock);
 	struct rul_transaction_buffer *curr = transaction->head;
-	/*log_info("Flushing txn id %lu for DB: %s, num entries %u", txn_id, db_desc->db_superblock->db_name,
-		 curr->n_entries);*/
+
 	assert(curr != NULL);
 	while (curr) {
 		for (uint32_t i = 0; i < curr->n_entries; ++i) {

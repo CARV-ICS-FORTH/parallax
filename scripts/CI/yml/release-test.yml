@@ -267,4 +267,4 @@ release_test_redo_undo_log:
         - make test_redo_undo_log;make kv_format.parallax;cd tests;
         - ./mkfs.sh "$NVME0/$CI_JOB_ID"/kv_store.dat 128
         - ctest -R ^test_redo_undo_log$
-    needs: [release_build_gcc,release_build_clang]
+    needs: [release_build_gcc, release_build_clang]

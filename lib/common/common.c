@@ -26,7 +26,7 @@ void stack_trace(void)
 
 /** Prints a stack trace and terminates program execution.
  *  It returns void * to suppress compiler warnings in the future this function will return void.*/
-_Noreturn void *BUG_ON(void)
+__attribute__((noreturn)) void *BUG_ON(void)
 {
 	stack_trace();
 	_Exit(EXIT_FAILURE);

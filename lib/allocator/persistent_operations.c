@@ -13,6 +13,7 @@
 // limitations under the License.
 #include "../btree/btree.h"
 #include "../btree/conf.h"
+#include "../common/common.h"
 #include "device_structures.h"
 #include "log_structures.h"
 #include "redo_undo_log.h"
@@ -516,8 +517,7 @@ static struct segment_array *find_N_last_blobs(struct db_descriptor *db_desc, ui
 				"Cursor status: chunk_id %u entry in chunk %u chunk entries: %u chunks_in_segment: %u",
 				log_cursor->curr_chunk_id, log_cursor->curr_entry_in_chunk, log_cursor->chunk_entries,
 				log_cursor->chunks_in_segment);
-			assert(0);
-			_Exit(EXIT_FAILURE);
+			BUG_ON();
 		}
 	}
 

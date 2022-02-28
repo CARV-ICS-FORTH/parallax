@@ -74,7 +74,7 @@ struct pr_region_allocation_log {
 	uint64_t tail_dev_offt;
 	uint64_t size;
 	uint64_t txn_id;
-} __attribute__((packed, aligned(32)));
+} __attribute__((packed));
 
 struct pr_db_superblock {
 	char db_name[MAX_DB_NAME_SIZE];
