@@ -115,5 +115,5 @@ int main(int argc, char *argv[])
 	handle = db_open(get_option(options, 1), 0, UINT64_MAX, "redo_undo_test", CREATE_DB);
 	db_close(handle);
 
-	return 1;
+	return 0;
 }
