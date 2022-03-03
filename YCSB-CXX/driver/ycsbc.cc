@@ -99,10 +99,11 @@ void PrintClientStatus(int interval, int duration, std::vector<uint64_t> &ops_da
 }
 
 uint64_t DelegateLoadClient(ycsbc::YCSBDB *db, ycsbc::CoreWorkload *wl, int id, uint64_t num_ops,
-			    std::vector<uint64_t> &ops_data, const std::atomic_bool &cancelled)
+			    std::vector<uint64_t> &ops_data, const std::atomic_bool &cancelled, uint64_t *finished)
 {
 	ycsbc::Client client(*db, *wl, id);
 
+	assert(*finished == 0);
 	uint64_t oks = 0, tmp;
 	for (uint64_t i = 0; ((i < num_ops) && (!cancelled)); ++i) {
 		oks += client.DoInsert(&tmp);
@@ -112,13 +113,15 @@ uint64_t DelegateLoadClient(ycsbc::YCSBDB *db, ycsbc::CoreWorkload *wl, int id, 
 #endif
 	}
 
+	*finished = 1;
 	return oks;
 }
 
 uint64_t DelegateRunClient(ycsbc::YCSBDB *db, ycsbc::CoreWorkload *wl, int id, uint64_t num_ops,
-			   std::vector<uint64_t> &ops_data, const std::atomic_bool &cancelled)
+			   std::vector<uint64_t> &ops_data, const std::atomic_bool &cancelled, uint64_t *finished)
 {
 	ycsbc::Client client(*db, *wl, id);
+	assert(*finished == 0);
 
 	int op;
 	uint64_t oks = 0, tmp;
@@ -144,7 +147,7 @@ uint64_t DelegateRunClient(ycsbc::YCSBDB *db, ycsbc::CoreWorkload *wl, int id, u
 		tail->addLatency(id, _op, tmp);
 #endif
 	}
-
+	*finished = 1;
 	return oks;
 }
 
@@ -164,6 +167,10 @@ void execute_load(utils::Properties &props, ycsbc::YCSBDB *db)
 #endif
 
 	vector<future<uint64_t> > actual_ops;
+	std::vector<uint64_t> finished;
+	actual_ops.reserve(num_threads);
+	finished.reserve(num_threads);
+
 	uint64_t total_ops = std::stoull(props[ycsbc::CoreWorkload::RECORD_COUNT_PROPERTY]);
 	total_ops /= std::stoull(props.GetProperty("clientProcesses", "1"));
 	gettimeofday(&start, NULL);
@@ -174,13 +181,13 @@ void execute_load(utils::Properties &props, ycsbc::YCSBDB *db)
 
 	for (int i = 0; i < num_threads; ++i) {
 		ops_data.push_back(0);
-
+		finished.push_back(0);
 		uint64_t local_ops = total_ops / num_threads;
 		if (i == num_threads - 1)
 			local_ops += (total_ops % num_threads);
 
 		actual_ops.emplace_back(async(launch::async, DelegateLoadClient, db, &wl, i, local_ops,
-					      std::ref(ops_data), std::ref(cancellation_token)));
+					      std::ref(ops_data), std::ref(cancellation_token), &finished[i]));
 	}
 	assert((int)actual_ops.size() == num_threads);
 
@@ -199,10 +206,10 @@ void execute_load(utils::Properties &props, ycsbc::YCSBDB *db)
 	std::cerr << "Waiting for reporter thread!" << std::endl;
 	reporter.join();
 	std::cout << "Executed " << sum << " operations." << std::endl;
-	for (auto &n : actual_ops) {
-		if (n.valid())
-			n.wait();
-	}
+
+	for (unsigned i = 0; i < finished.size(); ++i)
+		while (finished[i] == 0)
+			;
 
 #ifdef COMPUTE_TAIL
 	tail->printStatistics();
@@ -225,7 +232,9 @@ void execute_run(utils::Properties &props, ycsbc::YCSBDB *db)
 	const int num_threads = stoi(props.GetProperty("threadcount", "1"));
 	std::atomic_bool cancellation_token(false);
 	std::vector<uint64_t> ops_data;
-
+	std::vector<uint64_t> finished;
+	ops_data.reserve(num_threads);
+	finished.reserve(num_threads);
 #ifdef COMPUTE_TAIL
 	tail = new Measurements(num_threads);
 	tail->ResetStatistics();
@@ -242,13 +251,13 @@ void execute_run(utils::Properties &props, ycsbc::YCSBDB *db)
 
 	for (int i = 0; i < num_threads; ++i) {
 		ops_data.push_back(0);
-
+		finished.push_back(0);
 		uint64_t local_ops = total_ops / num_threads;
 		if (i == num_threads - 1)
 			local_ops += (total_ops % num_threads);
 
 		actual_ops.emplace_back(async(launch::async, DelegateRunClient, db, &wl, i, local_ops,
-					      std::ref(ops_data), std::ref(cancellation_token)));
+					      std::ref(ops_data), std::ref(cancellation_token), &finished[i]));
 	}
 	assert((int)actual_ops.size() == num_threads);
 
@@ -266,13 +275,12 @@ void execute_run(utils::Properties &props, ycsbc::YCSBDB *db)
 
 	std::cerr << "Waiting for reporter thread!" << std::endl;
 	reporter.join();
-	std::cout << "Executed " << sum << " operations." << std::endl;
-	for (auto &n : actual_ops) {
-		if (n.valid())
-			n.wait();
-	}
+	std::cerr << "Executed " << sum << " operations." << std::endl;
 
-	// sleep(10);
+	for (unsigned i = 0; i < finished.size(); ++i)
+		while (finished[i] == 0)
+			;
+
 #ifdef COMPUTE_TAIL
 	tail->printStatistics();
 	delete tail;
@@ -281,8 +289,8 @@ void execute_run(utils::Properties &props, ycsbc::YCSBDB *db)
 	gettimeofday(&start, NULL);
 	db->Close();
 	gettimeofday(&end, NULL);
-	printf("Close DB takes %ld usec\n",
-	       ((end.tv_sec * 1000000 + end.tv_usec) - (start.tv_sec * 1000000 + start.tv_usec)));
+	fprintf(stderr, "Close DB takes %ld usec\n",
+		((end.tv_sec * 1000000 + end.tv_usec) - (start.tv_sec * 1000000 + start.tv_usec)));
 }
 
 int main(const int argc, const char *argv[])
