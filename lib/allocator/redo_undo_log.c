@@ -28,6 +28,9 @@
 #include <unistd.h>
 #include <uthash.h>
 
+/**
+ * Writes synchronously to the device a chunk from a log segment.
+ * */
 static void rul_flush_log_chunk(struct db_descriptor *db_desc, uint32_t chunk_id)
 {
 	struct rul_log_descriptor *log_desc = db_desc->allocation_log;
@@ -69,7 +72,10 @@ static void rul_flush_log_chunk(struct db_descriptor *db_desc, uint32_t chunk_id
 	}
 }
 
-static void rul_aflush_log_chunk(struct db_descriptor *db_desc, uint32_t chunk_id)
+/**
+ * Writes asynchronously to the device a chunk from a log segment.
+ * */
+static void rul_async_flush_log_chunk(struct db_descriptor *db_desc, uint32_t chunk_id)
 {
 	struct rul_log_descriptor *log_desc = db_desc->allocation_log;
 
@@ -148,8 +154,7 @@ static void rul_wait_all_chunk_IOs(struct db_descriptor *db_desc, uint32_t chunk
 			default:
 				log_fatal("error appending to redo undo log for chunk %u  state is %d Reason is %s", i,
 					  state, strerror(state));
-				assert(0);
-				_Exit(EXIT_FAILURE);
+				BUG_ON();
 			}
 		}
 	}
@@ -192,7 +197,7 @@ static void rul_read_last_segment(struct db_descriptor *db_desc)
 		if (bytes_read == -1) {
 			log_fatal("Failed to read DB's %s superblock", db_desc->db_superblock->db_name);
 			perror("Reason");
-			_Exit(EXIT_FAILURE);
+			BUG_ON();
 		}
 		total_bytes_read += bytes_read;
 	}
@@ -241,7 +246,7 @@ static int rul_append(struct db_descriptor *db_desc, const struct rul_log_entry 
 	}
 
 	if (allocation_log->curr_chunk_entry >= RUL_LOG_CHUNK_MAX_ENTRIES) {
-		rul_aflush_log_chunk(db_desc, allocation_log->curr_chunk_id);
+		rul_async_flush_log_chunk(db_desc, allocation_log->curr_chunk_id);
 		++allocation_log->curr_chunk_id;
 		allocation_log->curr_chunk_entry = 0;
 	}
@@ -267,7 +272,7 @@ static void rul_add_first_entry(struct db_descriptor *db_desc, struct rul_log_en
 
 	if (0 != posix_memalign((void **)&log_chunk, ALIGNMENT_SIZE, RUL_LOG_CHUNK_SIZE_IN_BYTES)) {
 		log_fatal("memalign failed");
-		_Exit(EXIT_FAILURE);
+		BUG_ON();
 	}
 
 	memset(log_chunk, 0xFF, RUL_LOG_CHUNK_SIZE_IN_BYTES);
@@ -283,7 +288,7 @@ static void rul_add_first_entry(struct db_descriptor *db_desc, struct rul_log_en
 		if (bytes_written == -1) {
 			log_fatal("Failed to initialize allocation log of DB: %s", db_desc->db_superblock->db_name);
 			perror("Reason");
-			_Exit(EXIT_FAILURE);
+			BUG_ON();
 		}
 		total_bytes_written += bytes_written;
 	}
@@ -308,7 +313,7 @@ void rul_log_init(struct db_descriptor *db_desc)
 	struct rul_log_descriptor *log_desc;
 	if (posix_memalign((void **)&log_desc, ALIGNMENT, sizeof(struct rul_log_descriptor)) != 0) {
 		log_fatal("Failed to allocate redo_undo_log descriptor buffer");
-		_Exit(EXIT_FAILURE);
+		BUG_ON();
 	}
 	memset(log_desc, 0x00, sizeof(struct rul_log_descriptor));
 
@@ -329,8 +334,7 @@ void rul_log_init(struct db_descriptor *db_desc)
 		uint64_t head_dev_offt = (uint64_t)mem_allocate(db_desc->db_volume, SEGMENT_SIZE);
 		if (!head_dev_offt) {
 			log_fatal("Out of Space!");
-			assert(0);
-			_Exit(EXIT_FAILURE);
+			BUG_ON();
 		}
 		log_desc->head_dev_offt = head_dev_offt;
 		log_desc->tail_dev_offt = head_dev_offt;
@@ -431,8 +435,7 @@ struct rul_log_info rul_flush_txn(struct db_descriptor *db_desc, uint64_t txn_id
 
 	if (transaction == NULL) {
 		log_fatal("Txn %lu not found!", txn_id);
-		assert(0);
-		_Exit(EXIT_FAILURE);
+		BUG_ON();
 	}
 	MUTEX_UNLOCK(&log_desc->trans_map_lock);
 
@@ -474,8 +477,7 @@ void rul_apply_txn_buf_freeops_and_destroy(struct db_descriptor *db_desc, uint64
 
 	if (transaction == NULL) {
 		log_fatal("Txn %lu not found!", txn_id);
-		assert(0);
-		_Exit(EXIT_FAILURE);
+		BUG_ON();
 	}
 	MUTEX_UNLOCK(&log_desc->trans_map_lock);
 
@@ -496,8 +498,7 @@ void rul_apply_txn_buf_freeops_and_destroy(struct db_descriptor *db_desc, uint64
 				break;
 			default:
 				log_fatal("Unhandled case probably corruption in txn buffer");
-				assert(0);
-				_Exit(EXIT_FAILURE);
+				BUG_ON();
 			}
 		}
 		struct rul_transaction_buffer *del = curr;
