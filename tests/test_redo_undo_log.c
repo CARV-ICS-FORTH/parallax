@@ -15,85 +15,105 @@
 #include "../lib/allocator/redo_undo_log.h"
 #include "../lib/allocator/volume_manager.h"
 #include "../lib/btree/btree.h"
+#include "arg_parser.h"
 #include <fcntl.h>
 #include <log.h>
 #include <pthread.h>
 #include <stdlib.h>
 
-#define RUL_MAX_TRANS_SIZE 32
-#define RUL_TRANS_PER_WORKER 1024
-#define RUL_NUM_THREADS 1
+#define RUL_TRANSACTION_SIZE (3457)
+#define RUL_TRANSACTION_NUM (1239)
 
 struct rul_worker_arg {
 	struct db_descriptor *db_desc;
 };
-
-static uint64_t bytes_allocated = 0;
 
 static void *rul_worker(void *args)
 {
 	struct rul_worker_arg *my_args = (struct rul_worker_arg *)args;
 	struct db_descriptor *db_desc = my_args->db_desc;
 
-	for (uint32_t i = 0; i < RUL_TRANS_PER_WORKER; ++i) {
+	uint64_t dev_offt = 0;
+	for (uint32_t i = 0; i < RUL_TRANSACTION_NUM; ++i) {
 		uint64_t my_txn_id = rul_start_txn(db_desc);
-		log_info("Starting trans %lu", my_txn_id);
-		uint32_t trans_length = rand() % RUL_MAX_TRANS_SIZE;
-		struct rul_log_entry log_entry;
-
-		for (uint32_t j = 0; j < trans_length; ++j) {
-			uint64_t dev_offt = mem_allocate(db_desc->db_volume, SEGMENT_SIZE);
-			log_entry.txn_id = my_txn_id;
-			log_entry.dev_offt = dev_offt;
-			log_entry.op_type = RUL_ALLOCATE;
+		//log_info("Starting trans %lu", my_txn_id);
+		for (uint32_t j = 0; j < RUL_TRANSACTION_SIZE; ++j) {
+			struct rul_log_entry log_entry = { 0 };
 			log_entry.size = SEGMENT_SIZE;
-
+			log_entry.txn_id = my_txn_id;
+			if (0 == j % 2) {
+				dev_offt = mem_allocate(db_desc->db_volume, SEGMENT_SIZE);
+				log_entry.dev_offt = dev_offt;
+				log_entry.op_type = RUL_LARGE_LOG_ALLOCATE;
+			} else {
+				mem_free_segment(db_desc->db_volume, dev_offt);
+				log_entry.dev_offt = dev_offt;
+				log_entry.op_type = RUL_FREE;
+			}
 			rul_add_entry_in_txn_buf(db_desc, &log_entry);
-			__sync_fetch_and_add(&bytes_allocated, SEGMENT_SIZE);
 		}
-		log_info("Commiting transaction %lu", my_txn_id);
-		rul_flush_txn(db_desc, my_txn_id);
+
+		pr_lock_db_superblock(db_desc);
+		struct rul_log_info rul_log = rul_flush_txn(db_desc, my_txn_id);
+
+		db_desc->db_superblock->allocation_log.head_dev_offt = rul_log.head_dev_offt;
+		db_desc->db_superblock->allocation_log.tail_dev_offt = rul_log.tail_dev_offt;
+		db_desc->db_superblock->allocation_log.size = rul_log.size;
+		db_desc->db_superblock->allocation_log.txn_id = rul_log.txn_id;
+		pr_flush_db_superblock(db_desc);
+		pr_unlock_db_superblock(db_desc);
 	}
 	return NULL;
 }
 
 int main(int argc, char *argv[])
 {
-	if (argc != 2) {
-		log_fatal("Wrong number of arguments, Usage: ./test_redo_undo_log <file name>");
-		exit(EXIT_FAILURE);
-	}
+	uint32_t num_threads = 0;
+	int help_flag = 0;
+	struct wrap_option options[] = {
+		{ { "help", no_argument, &help_flag, 1 }, "Prints valid arguments for test_medium.", NULL, INTEGER },
+		{ { "file", required_argument, 0, 'a' },
+		  "--file=path to file of db, parameter that specifies the target where parallax is going to run.",
+		  NULL,
+		  STRING },
+		{ { "num_threads", required_argument, 0, 'a' },
+		  "--num_threads=<int> number of threads to spawn to run the test.",
+		  NULL,
+		  INTEGER },
+		{ { 0, 0, 0, 0 }, "End of arguments", NULL, INTEGER }
+	};
+	unsigned options_len = (sizeof(options) / sizeof(struct wrap_option));
+	arg_parse(argc, argv, options, options_len);
+	arg_print_options(help_flag, options, options_len);
+	log_info("Configuration is :");
 
-	log_info("Opening volume %s", argv[1]);
-	struct volume_descriptor *volume_desc = mem_get_volume_desc(argv[1]);
+	log_info("RUL_LOG_CHUNK_NUM = %u", RUL_LOG_CHUNK_NUM);
+	log_info("RUL_SEGMENT_FOOTER_SIZE_IN_BYTES = %u", RUL_SEGMENT_FOOTER_SIZE_IN_BYTES);
+	log_info("RUL_LOG_CHUNK_SIZE_IN_BYTES = %u", RUL_LOG_CHUNK_SIZE_IN_BYTES);
+	log_info("RUL_LOG_CHUNK_MAX_ENTRIES = %lu", RUL_LOG_CHUNK_MAX_ENTRIES);
+	log_info("RUL_SEGMENT_MAX_ENTRIES = %lu", RUL_SEGMENT_MAX_ENTRIES);
 
-	struct db_descriptor *db_desc;
-	int ret = posix_memalign((void **)&db_desc, ALIGNMENT_SIZE, sizeof(struct db_descriptor));
-	if (ret) {
-		log_fatal("Failed to allocate db_descriptor");
-		exit(EXIT_FAILURE);
-	}
-
-	db_desc->db_volume = volume_desc;
-	pr_read_db_superblock(db_desc);
-	rul_log_init(db_desc);
-	log_info("Initialized redo undo log curr segment entry %u", db_desc->allocation_log->curr_segment_entry);
-
-	log_info("Initialized redo undo log successfully!, starting %d workers", RUL_NUM_THREADS);
+	db_handle *handle = db_open(get_option(options, 1), 0, UINT64_MAX, "redo_undo_test", CREATE_DB);
 
 	struct rul_worker_arg args;
-	args.db_desc = db_desc;
-	pthread_t workers[RUL_NUM_THREADS];
-	for (uint32_t i = 0; i < RUL_NUM_THREADS; ++i) {
+	args.db_desc = handle->db_desc;
+	num_threads = *(uint32_t *)get_option(options, 2);
+	pthread_t workers[num_threads];
+	for (uint32_t i = 0; i < num_threads; ++i) {
 		if (pthread_create(&workers[i], NULL, rul_worker, &args) != 0) {
-			log_fatal("Faile to create worker");
-			exit(EXIT_FAILURE);
+			log_fatal("Failed to create worker");
+			_Exit(EXIT_FAILURE);
 		}
 	}
 
-	for (uint32_t i = 0; i < RUL_NUM_THREADS; ++i)
+	for (uint32_t i = 0; i < num_threads; ++i)
 		pthread_join(workers[i], NULL);
-	log_info("Writing phase done now verifying the outcome...");
 
-	return 1;
+	log_info("Test done closing DB");
+	db_close(handle);
+
+	handle = db_open(get_option(options, 1), 0, UINT64_MAX, "redo_undo_test", CREATE_DB);
+	db_close(handle);
+
+	return 0;
 }

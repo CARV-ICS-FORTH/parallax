@@ -259,6 +259,7 @@ debug_test_dirty_scans_largedp:
     script:
         - make test_dirty_scans;make kv_format.parallax;cd tests;
         - ctest -R ^test_dirty_scans_largedp$
+    needs: [debug_build_gcc, debug_build_clang]
 
 debug_simple_test_delete:
     image: carvicsforth/arch_carv:latest
@@ -282,4 +283,16 @@ debug_leaf_root_delete_get_scan:
         - make test_leaf_root_delete_get_scan;make kv_format.parallax;cd tests;
         - ./mkfs.sh "$NVME0/$CI_JOB_ID"/kv_store.dat 128
         - ctest -R ^test_leaf_root_delete_get_scan$
+    needs: [debug_build_gcc, debug_build_clang]
+
+debug_test_redo_undo_log:
+    image: carvicsforth/arch_carv:latest
+    stage: debug_test
+    <<: *debug_build_commands
+    tags:
+        - kubernetes
+    script:
+        - make test_redo_undo_log;make kv_format.parallax;cd tests;
+        - ./mkfs.sh "$NVME0/$CI_JOB_ID"/kv_store.dat 128
+        - ctest -R ^test_redo_undo_log$
     needs: [debug_build_gcc, debug_build_clang]

@@ -15,6 +15,7 @@
 #define _GNU_SOURCE
 #include "../btree/btree.h"
 #include "../btree/conf.h"
+#include "../common/common.h"
 #include "../utilities/list.h"
 #include "device_structures.h"
 #include "djb2.h"
@@ -226,9 +227,6 @@ struct rul_log_entry *get_next_allocation_log_entry(struct allocation_log_cursor
 				break;
 			}
 			cursor->segment = REAL_ADDRESS(allocation_log->head_dev_offt);
-			//TODO check tail_dev_offt should be uint32_t and not uint64_t
-			log_info("HEAD of allocation log is at %lu tail is at %u offset is %u",
-				 allocation_log->head_dev_offt, allocation_log->tail_dev_offt, allocation_log->size);
 			cursor->state = CALCULATE_CHUNKS_IN_SEGMENT;
 			break;
 		case GET_NEXT_SEGMENT:
@@ -262,41 +260,37 @@ struct rul_log_entry *get_next_allocation_log_entry(struct allocation_log_cursor
 			}
 
 			cursor->curr_chunk_id = 0;
-			log_info("Chunks in allocation log segment are: %u", cursor->chunks_in_segment);
 			cursor->state = CALCULATE_CHUNK_ENTRIES;
 			break;
 		}
 		case CALCULATE_CHUNK_ENTRIES:
 			cursor->chunk_entries = RUL_LOG_CHUNK_MAX_ENTRIES;
 
-			if (cursor->curr_chunk_id == cursor->chunks_in_segment - 1) {
+			uint8_t last_segment = cursor->segment == REAL_ADDRESS(allocation_log->tail_dev_offt);
+			if (last_segment && cursor->curr_chunk_id == cursor->chunks_in_segment - 1) {
 				uint32_t last_chunk_size = (allocation_log->size % SEGMENT_SIZE) -
 							   (cursor->curr_chunk_id * RUL_LOG_CHUNK_SIZE_IN_BYTES);
+				assert(0 == last_chunk_size % sizeof(struct rul_log_entry));
 				cursor->chunk_entries = last_chunk_size / sizeof(struct rul_log_entry);
 			}
 
 			cursor->curr_entry_in_chunk = 0;
-			log_info("Chunk entries in allocation log segment are: %u", cursor->chunk_entries);
 			cursor->state = GET_NEXT_ENTRY;
 			break;
 
 		case GET_NEXT_ENTRY:
-			//log_info("Cursor chunk entries: %u current: %u", cursor->chunk_entries,
-			//	 cursor->curr_entry_in_chunk);
 			if (cursor->curr_entry_in_chunk >= cursor->chunk_entries) {
 				cursor->state = GET_NEXT_CHUNK;
 				break;
 			}
-			/*log_info("Chunk id %u curr entry %u", cursor->curr_chunk_id, cursor->curr_entry_in_chunk);*/
 			return &cursor->segment->chunk[cursor->curr_chunk_id][cursor->curr_entry_in_chunk++];
 		case EXIT:
 			cursor->segment = NULL;
 			cursor->valid = 0;
 			return NULL;
 		default:
-			log_fatal("Unknown stage WTF?");
-			assert(0);
-			_Exit(EXIT_FAILURE);
+			log_fatal("Unknown state in redo undo log!");
+			BUG_ON();
 		}
 	}
 }
@@ -315,8 +309,8 @@ void replay_db_allocation_log(struct volume_descriptor *volume_desc, struct pr_d
 	memset(mem_bitmap, 0xFF, mem_bitmap_size);
 	struct pr_region_allocation_log *allocation_log = &superblock->allocation_log;
 
-	log_info("Allocation log of DB: %s head %lu tail %u size %u", superblock->db_name,
-		 allocation_log->head_dev_offt, allocation_log->tail_dev_offt, allocation_log->size);
+	/* log_info("Allocation log of DB: %s head %lu tail %lu size %lu", superblock->db_name, */
+	/* 	 allocation_log->head_dev_offt, allocation_log->tail_dev_offt, allocation_log->size); */
 
 	struct allocation_log_cursor *log_cursor = init_allocation_log_cursor(volume_desc, superblock);
 	struct rul_log_entry *log_entry;
@@ -344,8 +338,11 @@ void replay_db_allocation_log(struct volume_descriptor *volume_desc, struct pr_d
 			break;
 		default:
 			log_fatal("Unknown/Corrupted entry in allocation log try type is: %d", log_entry->op_type);
-			assert(0);
-			_Exit(EXIT_FAILURE);
+			log_fatal("Head off = %lu Tail = %lu cur = %lu chunk_id %u entry %u segment id %lu",
+				  allocation_log->head_dev_offt, allocation_log->tail_dev_offt,
+				  ABSOLUTE_ADDRESS(log_cursor->segment), log_cursor->curr_chunk_id,
+				  log_cursor->curr_entry_in_chunk, log_cursor->segment->segment_id);
+			BUG_ON();
 		}
 	}
 
@@ -702,7 +699,7 @@ exit:
 	return base_addr;
 }
 
-void mem_bitmap_mark_block_free(struct volume_descriptor *volume_desc, uint64_t dev_offt)
+void mem_free_segment(struct volume_descriptor *volume_desc, uint64_t dev_offt)
 {
 	MUTEX_LOCK(&volume_desc->bitmap_lock);
 	// distance of addr from bitmap end
@@ -769,15 +766,10 @@ void mem_init_superblock_array(struct volume_descriptor *volume_desc)
 	volume_desc->pr_regions->size = volume_desc->vol_superblock.max_regions_num;
 	off64_t dev_offt = sizeof(struct superblock);
 	uint32_t size = volume_desc->vol_superblock.max_regions_num * sizeof(struct pr_db_superblock);
-
 	if (!read_dev_offt_into_buffer((char *)volume_desc->pr_regions->db, 0, size, dev_offt, volume_desc->vol_fd)) {
 		log_fatal("Failed to read volume's region superblocks!");
-		_Exit(EXIT_FAILURE);
+		BUG_ON();
 	}
-	/*for (uint32_t i = 0; i < volume_desc->vol_superblock.max_regions_num; ++i) {
-		log_info("Region[%u]: valid %u  region name %s", i, volume_desc->pr_regions->db[i].valid,
-			 volume_desc->pr_regions->db[i].db_name);
-	}*/
 	log_info("Restored %s region superblocks in memory", volume_desc->volume_name);
 }
 
@@ -786,17 +778,17 @@ void mem_init_superblock_array(struct volume_descriptor *volume_desc)
  */
 static volume_descriptor *mem_init_volume(char *volume_name)
 {
-	struct volume_descriptor *volume_desc;
+	struct volume_descriptor *volume_desc = NULL;
 	if (posix_memalign((void **)&volume_desc, ALIGNMENT_SIZE, sizeof(struct volume_descriptor))) {
 		log_fatal("posix memalign failed");
-		_Exit(EXIT_FAILURE);
+		BUG_ON();
 	}
 	memset(volume_desc, 0x00, sizeof(struct volume_descriptor));
 
 	volume_desc->volume_name = calloc(1, strlen(volume_name) + 1);
 	if (!volume_desc->volume_name) {
 		log_fatal("calloc failed");
-		_Exit(EXIT_FAILURE);
+		BUG_ON();
 	}
 	memcpy(volume_desc->volume_name, volume_name, strlen(volume_name));
 
@@ -805,30 +797,30 @@ static volume_descriptor *mem_init_volume(char *volume_name)
 	if (volume_desc->vol_fd < 0) {
 		log_fatal("Failed to open %s", volume_name);
 		perror("Reason:\n");
-		_Exit(EXIT_FAILURE);
+		BUG_ON();
 	}
 	// read volume superblock (accouning info into memory)
 	if (!read_dev_offt_into_buffer((char *)&volume_desc->vol_superblock, 0, sizeof(struct superblock), 0,
 				       volume_desc->vol_fd)) {
 		log_fatal("Failed to read volume's %s superblock", volume_name);
-		_Exit(EXIT_FAILURE);
+		BUG_ON();
 	}
 	off64_t device_size = lseek64(volume_desc->vol_fd, 0, SEEK_END);
 	if (device_size == -1) {
 		log_fatal("failed to determine volume size exiting...");
 		perror("ioctl");
-		_Exit(EXIT_FAILURE);
+		BUG_ON();
 	}
 	if ((uint64_t)device_size !=
 	    volume_desc->vol_superblock.volume_size + volume_desc->vol_superblock.unmappedSpace) {
 		log_fatal("Volume sizes do not match! Found %ld expected %ld", device_size,
 			  volume_desc->vol_superblock.volume_size);
-		_Exit(EXIT_FAILURE);
+		BUG_ON();
 	}
 
 	if (volume_desc->vol_superblock.magic_number != FINE_STRUCTURE_CONSTANT) {
 		log_fatal("Volume seems not to have been initialized!");
-		_Exit(EXIT_FAILURE);
+		BUG_ON();
 	}
 	volume_desc->mem_volume_bitmap_size = volume_desc->vol_superblock.bitmap_size_in_words;
 	mem_print_volume_info(&volume_desc->vol_superblock, volume_name);
@@ -916,7 +908,6 @@ struct volume_descriptor *mem_get_volume_desc(char *volume_name)
 		memcpy(volume->volume_name, volume_name, strlen(volume_name));
 		volume->hash_key = djb2_hash((unsigned char *)volume_name, strlen(volume_name));
 		volume->volume_desc->size = mount_volume(volume_name, 0, 0);
-		log_warn("Remove this mem / dev catalogue allocation!!!");
 
 		volume->volume_desc->db_superblock_lock =
 			calloc(volume->volume_desc->vol_superblock.max_regions_num, sizeof(pthread_mutex_t));

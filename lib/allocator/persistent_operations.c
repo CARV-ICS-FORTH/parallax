@@ -13,6 +13,7 @@
 // limitations under the License.
 #include "../btree/btree.h"
 #include "../btree/conf.h"
+#include "../common/common.h"
 #include "device_structures.h"
 #include "log_structures.h"
 #include "redo_undo_log.h"
@@ -512,8 +513,11 @@ static struct segment_array *find_N_last_blobs(struct db_descriptor *db_desc, ui
 		}
 		default:
 			log_fatal("Unknown/Corrupted entry in allocation log %d", log_entry->op_type);
-			assert(0);
-			_Exit(EXIT_FAILURE);
+			log_fatal(
+				"Cursor status: chunk_id %u entry in chunk %u chunk entries: %u chunks_in_segment: %u",
+				log_cursor->curr_chunk_id, log_cursor->curr_entry_in_chunk, log_cursor->chunk_entries,
+				log_cursor->chunks_in_segment);
+			BUG_ON();
 		}
 	}
 

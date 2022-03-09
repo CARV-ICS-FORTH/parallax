@@ -47,15 +47,17 @@ struct rul_log_info {
 struct rul_log_entry {
 	uint64_t txn_id;
 	uint64_t dev_offt;
+	char pad[8];
 	enum rul_op_type op_type;
 	uint32_t size;
-} __attribute__((packed, aligned(32)));
+} __attribute__((packed));
 
 struct rul_log_segment {
 	struct rul_log_entry chunk[RUL_LOG_CHUNK_NUM][RUL_LOG_CHUNK_MAX_ENTRIES];
-	char pad[RUL_SEGMENT_FOOTER_SIZE_IN_BYTES - sizeof(uint64_t)];
 	uint64_t next_seg_offt;
-} __attribute__((packed, aligned(SEGMENT_SIZE)));
+	uint64_t segment_id;
+	char pad[RUL_SEGMENT_FOOTER_SIZE_IN_BYTES - (2 * sizeof(uint64_t))];
+} __attribute__((packed));
 
 #define RUL_ENTRIES_PER_TXN_BUFFER 512
 struct rul_transaction {
