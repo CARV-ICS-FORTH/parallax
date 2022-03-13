@@ -20,7 +20,6 @@
 #define SMALL_KV_SIZE 48
 #define MEDIUM_KV_SIZE 256
 #define LARGE_KV_SIZE 1500
-#define VALUE_SIZE_WHEN_OVERFLOW 20
 
 typedef struct key {
 	uint32_t key_size;
