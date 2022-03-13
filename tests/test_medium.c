@@ -277,7 +277,7 @@ static void validate_random_size_of_kvs(par_handle hd, uint64_t from, uint64_t t
 {
 	char *key_prefix;
 	uint64_t kv_size;
-	struct par_key k;
+	struct par_key k = { .size = 0, .data = NULL };
 
 	init_kv[key_type](&kv_size, &key_prefix, RANDOM);
 
@@ -406,7 +406,7 @@ int main(int argc, char *argv[])
 	arg_parse(argc, argv, options, options_len);
 
 	const char *path = get_option(options, 1);
-	const uint64_t num_of_keys = *(int *)get_option(options, 2);
+	const uint64_t num_of_keys = *(uint64_t *)get_option(options, 2);
 	const uint32_t medium_kvs_percentage = *(int *)get_option(options, 3);
 	const uint32_t small_kvs_percentage = *(int *)get_option(options, 4);
 	const uint32_t big_kvs_percentage = *(int *)get_option(options, 5);
