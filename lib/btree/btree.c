@@ -920,17 +920,25 @@ finish:
 	return PARALLAX_SUCCESS;
 }
 
-void wait_for_available_level0_tree(db_handle *handle, uint8_t rwlock)
+void wait_for_available_level0_tree(db_handle *handle, uint8_t level_id, uint8_t rwlock)
 {
+	if (level_id > 0)
+		return;
+
 	int active_tree = handle->db_desc->levels[0].active_tree;
+
 	uint8_t relock = 0;
 	while (handle->db_desc->levels[0].level_size[active_tree] > handle->db_desc->levels[0].max_level_size) {
 		active_tree = handle->db_desc->levels[0].active_tree;
 		if (handle->db_desc->levels[0].level_size[active_tree] > handle->db_desc->levels[0].max_level_size) {
-			RWLOCK_UNLOCK(&handle->db_desc->levels[0].guard_of_level.rx_lock);
-			relock = 1;
+			if (!relock) {
+				RWLOCK_UNLOCK(&handle->db_desc->levels[0].guard_of_level.rx_lock);
+				relock = 1;
+			}
+
 			MUTEX_LOCK(&handle->db_desc->client_barrier_lock);
 			sem_post(&handle->db_desc->compaction_daemon_interrupts);
+
 			if (pthread_cond_wait(&handle->db_desc->client_barrier,
 					      &handle->db_desc->client_barrier_lock) != 0) {
 				log_fatal("failed to throttle");
@@ -2213,11 +2221,11 @@ release_and_retry:
 		_Exit(EXIT_FAILURE);
 	}
 
-	wait_for_available_level0_tree(ins_req->metadata.handle, 0);
+	wait_for_available_level0_tree(ins_req->metadata.handle, level_id, 0);
 	/*now look which is the active_tree of L0*/
-	if (ins_req->metadata.level_id == 0) {
+	if (ins_req->metadata.level_id == 0)
 		ins_req->metadata.tree_id = ins_req->metadata.handle->db_desc->levels[0].active_tree;
-	}
+
 	/*level's guard lock aquired*/
 	upper_level_nodes[size++] = guard_of_level;
 	/*mark your presence*/
@@ -2383,7 +2391,7 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 		BUG_ON();
 	}
 
-	wait_for_available_level0_tree(ins_req->metadata.handle, 1);
+	wait_for_available_level0_tree(ins_req->metadata.handle, level_id, 1);
 	/*now look which is the active_tree of L0*/
 	if (ins_req->metadata.level_id == 0)
 		ins_req->metadata.tree_id = ins_req->metadata.handle->db_desc->levels[0].active_tree;

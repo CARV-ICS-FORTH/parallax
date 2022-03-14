@@ -989,7 +989,7 @@ void *compaction_daemon(void *args)
 			int next_active_tree = active_tree != (NUM_TREES_PER_LEVEL - 1) ? active_tree + 1 : 0;
 			if (db_desc->levels[0].tree_status[next_active_tree] == NO_COMPACTION) {
 				/*Acquire guard lock and wait writers to finish*/
-				if (RWLOCK_WRLOCK(&(db_desc->levels[0].guard_of_level.rx_lock))) {
+				if (RWLOCK_WRLOCK(&db_desc->levels[0].guard_of_level.rx_lock)) {
 					log_fatal("Failed to acquire guard lock");
 					_Exit(EXIT_FAILURE);
 				}
