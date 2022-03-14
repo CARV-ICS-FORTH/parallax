@@ -919,6 +919,13 @@ finish:
 	return PARALLAX_SUCCESS;
 }
 
+/**
+ *  When all trees on level 0 are full and compactions cannot keep up with clients
+ *  this functions blocks clients from writing in any of the level 0 roots.
+ *  Assumes that the caller has acquired rwlock of level 0.
+ *  \param level_id The level in the LSM tree.
+ *  \param rwlock If 1 locks the guard of level 0 as a read lock. If 0 locks the guard of level 0 as a write lock.
+ *  */
 void wait_for_available_level0_tree(db_handle *handle, uint8_t level_id, uint8_t rwlock)
 {
 	if (level_id > 0)
@@ -931,6 +938,7 @@ void wait_for_available_level0_tree(db_handle *handle, uint8_t level_id, uint8_t
 		active_tree = handle->db_desc->levels[0].active_tree;
 		if (handle->db_desc->levels[0].level_size[active_tree] > handle->db_desc->levels[0].max_level_size) {
 			if (!relock) {
+				/* Release the lock of level 0 to allow compactions to progress. */
 				RWLOCK_UNLOCK(&handle->db_desc->levels[0].guard_of_level.rx_lock);
 				relock = 1;
 			}
@@ -948,6 +956,7 @@ void wait_for_available_level0_tree(db_handle *handle, uint8_t level_id, uint8_t
 		MUTEX_UNLOCK(&handle->db_desc->client_barrier_lock);
 	}
 
+	/* Reacquire the lock of level 0 to access safely level 0. */
 	if (relock) {
 		if (rwlock == 1)
 			RWLOCK_RDLOCK(&handle->db_desc->levels[0].guard_of_level.rx_lock);
