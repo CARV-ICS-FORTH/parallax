@@ -221,13 +221,13 @@ static void scanner_validate_number_of_kvs_using_internal_api(par_handle hd, uin
 	*size = 1;
 
 	//fill the seek_key with the smallest key of the region
-	char *seek_key = (char*) tmp;
-	*(uint32_t*)seek_key = *size;
+	char *seek_key = (char *)tmp;
+	*(uint32_t *)seek_key = *size;
 	memcpy(seek_key + sizeof(uint32_t), smallest_key, *size);
 
-	struct scannerHandle* sc = (struct scannerHandle *) calloc(1,sizeof(struct scannerHandle));
+	struct scannerHandle *sc = (struct scannerHandle *)calloc(1, sizeof(struct scannerHandle));
 	sc->type_of_scanner = FORWARD_SCANNER;
-	init_generic_scanner(sc, hd, seek_key, GREATER_OR_EQUAL, 1);
+	init_dirty_scanner(sc, hd, seek_key, GREATER_OR_EQUAL);
 
 	while (getNext(sc) != END_OF_DATABASE)
 		++key_count;
@@ -312,7 +312,7 @@ static void validate_random_size_of_kvs(par_handle hd, uint64_t from, uint64_t t
 	struct par_key k = { .size = 0, .data = NULL };
 
 	init_kv[key_type](&kv_size, &key_prefix, RANDOM);
-	k.data = (char*) malloc(kv_size);
+	k.data = (char *)malloc(kv_size);
 
 	memcpy((char *)k.data, key_prefix, strlen(key_prefix));
 	sprintf((char *)k.data + strlen(key_prefix), "%llu", (long long unsigned)0);

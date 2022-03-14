@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 #include "scanner.h"
-#include "../allocator/device_structures.h"
 #include "../btree/btree.h"
 #include "../btree/conf.h"
 #include "../btree/dynamic_leaf.h"
@@ -42,8 +41,8 @@ int _init_level_scanner(level_scanner *level_sc, void *start_key, char seek_mode
 	return 0;
 }
 
-static void init_generic_scanner(struct scannerHandle *sc, struct db_handle *handle, void *start_key, char seek_flag,
-				 char dirty)
+void init_generic_scanner(struct scannerHandle *sc, struct db_handle *handle, void *start_key, char seek_flag,
+			  char dirty)
 {
 	struct sh_heap_node nd = { 0 };
 	uint8_t active_tree;
