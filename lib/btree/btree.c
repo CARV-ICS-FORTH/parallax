@@ -920,14 +920,16 @@ finish:
 	return PARALLAX_SUCCESS;
 }
 
-void wait_for_available_level0_tree(db_handle *handle)
+void wait_for_available_level0_tree(db_handle *handle, uint8_t rwlock)
 {
 	int active_tree = handle->db_desc->levels[0].active_tree;
-
+	uint8_t relock = 0;
 	while (handle->db_desc->levels[0].level_size[active_tree] > handle->db_desc->levels[0].max_level_size) {
-		MUTEX_LOCK(&handle->db_desc->client_barrier_lock);
 		active_tree = handle->db_desc->levels[0].active_tree;
 		if (handle->db_desc->levels[0].level_size[active_tree] > handle->db_desc->levels[0].max_level_size) {
+			RWLOCK_UNLOCK(&handle->db_desc->levels[0].guard_of_level.rx_lock);
+			relock = 1;
+			MUTEX_LOCK(&handle->db_desc->client_barrier_lock);
 			sem_post(&handle->db_desc->compaction_daemon_interrupts);
 			if (pthread_cond_wait(&handle->db_desc->client_barrier,
 					      &handle->db_desc->client_barrier_lock) != 0) {
@@ -937,6 +939,13 @@ void wait_for_available_level0_tree(db_handle *handle)
 		}
 		active_tree = handle->db_desc->levels[0].active_tree;
 		MUTEX_UNLOCK(&handle->db_desc->client_barrier_lock);
+	}
+
+	if (relock) {
+		if (rwlock == 1)
+			RWLOCK_RDLOCK(&handle->db_desc->levels[0].guard_of_level.rx_lock);
+		else
+			RWLOCK_WRLOCK(&handle->db_desc->levels[0].guard_of_level.rx_lock);
 	}
 }
 
@@ -948,8 +957,6 @@ uint8_t insert_key_value(db_handle *handle, void *key, void *value, uint32_t key
 	char *key_buf = __tmp;
 	double kv_ratio;
 	uint32_t kv_size;
-
-	wait_for_available_level0_tree(handle);
 
 	if (DB_IS_CLOSING == handle->db_desc->stat) {
 		log_warn("Sorry DB: %s is closing", handle->db_desc->db_superblock->db_name);
@@ -1437,13 +1444,8 @@ void *append_key_value_to_log(log_operation *req)
 
 uint8_t _insert_key_value(bt_insert_req *ins_req)
 {
-	db_handle *handle = ins_req->metadata.handle;
-	db_descriptor *db_desc = ins_req->metadata.handle->db_desc;
+	ins_req->metadata.handle->db_desc->dirty = 1;
 	uint8_t rc = PARALLAX_SUCCESS;
-
-	wait_for_available_level0_tree(handle);
-
-	db_desc->dirty = 1;
 
 	if (writers_join_as_readers(ins_req) == PARALLAX_SUCCESS) {
 		rc = PARALLAX_SUCCESS;
@@ -2210,6 +2212,8 @@ release_and_retry:
 		log_fatal("Failed to acquire guard lock for level %u", level_id);
 		_Exit(EXIT_FAILURE);
 	}
+
+	wait_for_available_level0_tree(ins_req->metadata.handle, 0);
 	/*now look which is the active_tree of L0*/
 	if (ins_req->metadata.level_id == 0) {
 		ins_req->metadata.tree_id = ins_req->metadata.handle->db_desc->levels[0].active_tree;
@@ -2358,7 +2362,6 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 	uint32_t level_id;
 	lock_table *guard_of_level;
 	int64_t *num_level_writers;
-	int ret = 0;
 
 	db_desc = ins_req->metadata.handle->db_desc;
 	level_id = ins_req->metadata.level_id;
@@ -2373,12 +2376,14 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 * if we donot succeed we try with concurrent_insert
 */
 	/*Acquire read guard lock*/
-	ret = RWLOCK_RDLOCK(&guard_of_level->rx_lock);
-	if (ret) {
+
+	if (RWLOCK_RDLOCK(&guard_of_level->rx_lock) != 0) {
 		log_fatal("Failed to acquire guard lock for db: %s", db_desc->db_superblock->db_name);
 		perror("Reason: ");
-		_Exit(EXIT_FAILURE);
+		BUG_ON();
 	}
+
+	wait_for_available_level0_tree(ins_req->metadata.handle, 1);
 	/*now look which is the active_tree of L0*/
 	if (ins_req->metadata.level_id == 0)
 		ins_req->metadata.tree_id = ins_req->metadata.handle->db_desc->levels[0].active_tree;
