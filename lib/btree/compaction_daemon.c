@@ -295,8 +295,8 @@ static void comp_get_next_key(struct comp_level_read_cursor *c)
 				case SMALL_INPLACE:
 				case MEDIUM_INPLACE: {
 					// Real key in KV_FORMAT
-					c->cursor_key.kv_inplace =
-						fill_keybuf(kv_loc, slot_array[c->curr_leaf_entry].kv_loc);
+					c->cursor_key.kv_inplace = fill_keybuf(
+						kv_loc, get_kv_format(slot_array[c->curr_leaf_entry].key_category));
 					break;
 				}
 				case MEDIUM_INLOG:

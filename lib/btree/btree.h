@@ -132,25 +132,22 @@ struct bt_static_leaf_slot_array {
 
 struct bt_dynamic_leaf_slot_array {
 	// The index points to the location of the kv pair in the leaf.
-	uint32_t index : 27;
-	uint32_t key_category : 3;
+	uint16_t index : 13;
+	uint16_t key_category : 2;
 	// Tombstone notifies if the key is deleted.
-	uint32_t tombstone : 1;
+	uint16_t tombstone : 1;
 	// Informs us if the index points to an in-place kv or to a pointer in the log.
 	// TODO: Delete this since we can get this information from the key_category field.
-	unsigned char kv_loc : 1;
+	//unsigned char kv_loc : 1;
 };
 
 // The first enumeration should always have as a value 0.
-// UNKNOWN_LOG_CATEGORY must always be the last enumeration.
-enum log_category {
+// BIG_INLOG must always be the last enumeration.
+enum kv_category {
 	SMALL_INPLACE = 0,
-	SMALL_INLOG,
 	MEDIUM_INPLACE,
 	MEDIUM_INLOG,
-	BIG_INPLACE,
 	BIG_INLOG,
-	UNKNOWN_LOG_CATEGORY
 };
 
 struct key_compare {
@@ -412,7 +409,7 @@ typedef struct bt_mutate_req {
 	uint64_t end_of_log;
 	uint32_t log_padding;
 	uint32_t kv_size;
-	enum log_category cat;
+	enum kv_category cat;
 	uint8_t level_id;
 	/*only for inserts >= level_1*/
 	uint8_t tree_id;
@@ -460,7 +457,7 @@ typedef struct log_operation {
 struct log_towrite {
 	struct log_descriptor *log_desc;
 	int level_id;
-	enum log_category status;
+	enum kv_category status;
 };
 
 enum bt_rebalance_retcode {

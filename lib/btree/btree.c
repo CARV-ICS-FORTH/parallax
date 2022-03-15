@@ -741,14 +741,13 @@ db_handle *internal_db_open(struct volume_descriptor *volume_desc, uint64_t star
 		}
 	}
 
-	_Static_assert(UNKNOWN_LOG_CATEGORY < 8, "Log categories number cannot be "
-						 "stored in 3 bits, increase "
-						 "key_category");
-	_Static_assert(sizeof(struct bt_dynamic_leaf_slot_array) == 4,
-		       "Dynamic slot array is not 4 bytes, are you sure you want to continue?");
+	_Static_assert(BIG_INLOG < 4, "KV categories number cannot be "
+				      "stored in 2 bits, increase "
+				      "key_category");
+	_Static_assert(sizeof(struct bt_dynamic_leaf_slot_array) == 2,
+		       "Dynamic slot array is not 2 bytes, are you sure you want to continue?");
 	_Static_assert(sizeof(struct segment_header) == 4096, "Segment header not page aligned!");
 	_Static_assert(LOG_TAIL_NUM_BUFS >= 2, "Minimum number of in memory log buffers!");
-	_Static_assert(sizeof(struct bt_dynamic_leaf_slot_array) == 4, "slot array != 4 Bytes");
 
 	MUTEX_INIT(&handle->db_desc->lock_log, NULL);
 
@@ -1911,7 +1910,7 @@ static struct bt_rebalance_result split_index(node_header *node, bt_insert_req *
 int insert_KV_at_leaf(bt_insert_req *ins_req, node_header *leaf)
 {
 	db_descriptor *db_desc = ins_req->metadata.handle->db_desc;
-	enum log_category cat = ins_req->metadata.cat;
+	enum kv_category cat = ins_req->metadata.cat;
 	int append_tolog = ins_req->metadata.append_to_log;
 	int ret = -1;
 	uint8_t level_id = ins_req->metadata.level_id;
@@ -1960,7 +1959,7 @@ int insert_KV_at_leaf(bt_insert_req *ins_req, node_header *leaf)
 	ret = insert_in_dynamic_leaf((struct bt_dynamic_leaf_node *)leaf, ins_req, &db_desc->levels[level_id]);
 
 	if (ret == INSERT) {
-		int measure_level_used_space = cat == BIG_INLOG || cat == SMALL_INLOG;
+		int measure_level_used_space = cat == BIG_INLOG;
 		int medium_inlog = cat == MEDIUM_INLOG && level_id != db_desc->level_medium_inplace;
 
 		if (cat == MEDIUM_INPLACE && level_id == 0) {
@@ -2155,7 +2154,7 @@ int is_split_needed(void *node, bt_insert_req *req, uint32_t leaf_size)
 	node_header *header = (node_header *)node;
 	int64_t num_entries = header->num_entries;
 	uint32_t height = header->height;
-	enum log_category cat = req->metadata.cat;
+	enum kv_category cat = req->metadata.cat;
 	uint8_t level_id = req->metadata.level_id;
 
 	if (height != 0) {
