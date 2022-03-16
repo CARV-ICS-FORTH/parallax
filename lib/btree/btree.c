@@ -38,7 +38,6 @@
 
 int32_t index_order = -1;
 
-uint64_t countgoto = 0;
 pthread_mutex_t init_lock = PTHREAD_MUTEX_INITIALIZER;
 pthread_spinlock_t log_buffer_lock;
 
@@ -109,13 +108,8 @@ int64_t key_cmp(struct key_compare *key1, struct key_compare *key2)
 		ret = memcmp(key1->key, key2->key, size);
 		if (ret != 0)
 			return ret;
-		/*finally larger key wins*/
-		if (key1->key_size < key2->key_size)
-			return -1;
-		if (key1->key_size > key2->key_size)
-			return 1;
-		/*equal*/
-		return 0;
+
+		return key1->key_size - key2->key_size;
 	}
 
 	if (key1->key_format == KV_FORMAT && key2->key_format == KV_PREFIX) {
@@ -135,13 +129,8 @@ int64_t key_cmp(struct key_compare *key1, struct key_compare *key2)
 
 			if (ret != 0)
 				return ret;
-			/*finally larger key wins*/
-			if (key1->key_size < key2f->key_size)
-				return -1;
-			if (key1->key_size > key2f->key_size)
-				return 1;
-			/*equal*/
-			return 0;
+
+			return key1->key_size - key2f->key_size;
 		}
 		return ret;
 	}
@@ -163,13 +152,8 @@ int64_t key_cmp(struct key_compare *key1, struct key_compare *key2)
 			ret = memcmp(key1f->key_buf, key2->key, size);
 			if (ret != 0)
 				return ret;
-			/*finally larger key wins*/
-			if (key1f->key_size < key2->key_size)
-				return -1;
-			if (key1f->key_size > key2->key_size)
-				return 1;
-			/*equal*/
-			return 0;
+
+			return key1f->key_size - key2->key_size;
 		}
 		return ret;
 	}
@@ -190,13 +174,8 @@ int64_t key_cmp(struct key_compare *key1, struct key_compare *key2)
 	ret = memcmp(key1f->key_buf, key2f->key_buf, size);
 	if (ret != 0)
 		return ret;
-	/*finally larger key wins*/
-	if (key1f->key_size < key2f->key_size)
-		return -1;
-	if (key1f->key_size > key2f->key_size)
-		return 1;
-	/*equal*/
-	return 0;
+
+	return key1f->key_size - key2f->key_size;
 }
 
 static void init_level_locktable(db_descriptor *database, uint8_t level_id)
@@ -924,8 +903,8 @@ finish:
  *  When all trees on level 0 are full and compactions cannot keep up with clients
  *  this functions blocks clients from writing in any of the level 0 roots.
  *  Assumes that the caller has acquired rwlock of level 0.
- *  \param level_id The level in the LSM tree.
- *  \param rwlock If 1 locks the guard of level 0 as a read lock. If 0 locks the guard of level 0 as a write lock.
+ *  @param level_id The level in the LSM tree.
+ *  @param rwlock If 1 locks the guard of level 0 as a read lock. If 0 locks the guard of level 0 as a write lock.
  *  */
 void wait_for_available_level0_tree(db_handle *handle, uint8_t level_id, uint8_t rwlock)
 {
@@ -957,7 +936,7 @@ void wait_for_available_level0_tree(db_handle *handle, uint8_t level_id, uint8_t
 		MUTEX_UNLOCK(&handle->db_desc->client_barrier_lock);
 	}
 
-	/* Reacquire the lock of level 0 to access safely level 0. */
+	/* Reacquire the lock of level 0 to access it safely. */
 	if (relock) {
 		if (rwlock == 1)
 			RWLOCK_RDLOCK(&handle->db_desc->levels[0].guard_of_level.rx_lock);
