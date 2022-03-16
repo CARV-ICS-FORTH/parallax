@@ -16,11 +16,11 @@
 #include "../lib/allocator/volume_manager.h"
 #include "../lib/btree/btree.h"
 #include "arg_parser.h"
+#include <common/common.h>
 #include <fcntl.h>
 #include <log.h>
 #include <pthread.h>
 #include <stdlib.h>
-
 #define RUL_TRANSACTION_SIZE (3457)
 #define RUL_TRANSACTION_NUM (1239)
 
@@ -102,7 +102,7 @@ int main(int argc, char *argv[])
 	for (uint32_t i = 0; i < num_threads; ++i) {
 		if (pthread_create(&workers[i], NULL, rul_worker, &args) != 0) {
 			log_fatal("Failed to create worker");
-			_Exit(EXIT_FAILURE);
+			BUG_ON();
 		}
 	}
 

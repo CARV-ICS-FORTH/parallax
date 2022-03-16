@@ -17,6 +17,7 @@
 #include "../allocator/log_structures.h"
 #include "../allocator/redo_undo_log.h"
 #include "../allocator/volume_manager.h"
+#include "../common/common.h"
 #include "conf.h"
 #include <assert.h>
 #include <log.h>
@@ -128,7 +129,7 @@ static void *get_space(struct db_descriptor *db_desc, uint8_t level_id, uint8_t 
 		} else {
 			if (posix_memalign((void **)&new_segment, ALIGNMENT, SEGMENT_SIZE) != 0) {
 				log_fatal("MEMALIGN FAILED");
-				_Exit(EXIT_FAILURE);
+				BUG_ON();
 			}
 			req.in_mem = 1;
 		}
@@ -161,7 +162,7 @@ struct segment_header *get_segment_for_lsm_level_IO(struct db_descriptor *db_des
 	struct segment_header *new_segment = (struct segment_header *)REAL_ADDRESS(seg_offt);
 	if (!new_segment) {
 		log_fatal("Failed to allocate space for new segment level");
-		_Exit(EXIT_FAILURE);
+		BUG_ON();
 	}
 
 	if (level_desc->offset[tree_id])
@@ -276,7 +277,7 @@ segment_header *seg_get_raw_log_segment(struct db_descriptor *db_desc, enum log_
 		break;
 	default:
 		log_fatal("Unknown log type");
-		_Exit(EXIT_FAILURE);
+		BUG_ON();
 	}
 	struct rul_log_entry log_entry;
 	log_entry.dev_offt = mem_allocate(db_desc->db_volume, SEGMENT_SIZE);

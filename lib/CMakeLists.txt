@@ -61,7 +61,7 @@ target_include_directories(${LIB} PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
 set_source_files_properties(allocator/spin_loop.c PROPERTIES COMPILE_FLAGS
                                                              "-O0")
 # kv_format utility
-add_executable(kv_format.${LIB} allocator/kv_format.c)
+add_executable(kv_format.${LIB} allocator/kv_format.c common/common.c)
 
 target_link_libraries(kv_format.${LIB} PRIVATE ${DEPENDENCIES})
 

@@ -1,4 +1,5 @@
 #include "arg_parser.h"
+#include <common/common.h>
 #include <log.h>
 #include <parallax.h>
 #include <stdlib.h>
@@ -35,7 +36,7 @@ int main(int argc, char *argv[])
 
 	if (par_put(handle, &key_value) != PAR_SUCCESS) {
 		log_fatal("Par put failed!");
-		_Exit(EXIT_FAILURE);
+		BUG_ON();
 	}
 
 	key_value.k.data = "Example";
@@ -45,18 +46,18 @@ int main(int argc, char *argv[])
 
 	if (par_put(handle, &key_value) != PAR_SUCCESS) {
 		log_fatal("Par put failed!");
-		_Exit(EXIT_FAILURE);
+		BUG_ON();
 	}
 
 	if (par_delete(handle, &key_value.k) != PAR_SUCCESS) {
 		log_fatal("Par put failed!");
-		_Exit(EXIT_FAILURE);
+		BUG_ON();
 	}
 
 	struct par_value unused_value = { 0 };
 	if (par_get(handle, &key_value.k, &unused_value) != PAR_KEY_NOT_FOUND) {
 		log_fatal("Found key that should not exist!");
-		_Exit(EXIT_FAILURE);
+		BUG_ON();
 	}
 	key_value.k.data = "";
 	key_value.k.size = 1;
@@ -69,13 +70,13 @@ int main(int argc, char *argv[])
 	struct par_key keyptr = par_get_key(scanner);
 	if (strncmp(keyptr.data, "/", strlen("/"))) {
 		log_fatal("Expected key not found from scanner!");
-		_Exit(EXIT_FAILURE);
+		BUG_ON();
 	}
 
 	if (par_get_next(scanner) == 1) {
 		keyptr = par_get_key(scanner);
 		log_fatal("Found key that should not be found in scanner! %s", keyptr.data);
-		_Exit(EXIT_FAILURE);
+		BUG_ON();
 	}
 	par_close_scanner(scanner);
 	par_close(handle);

@@ -314,7 +314,7 @@ void pr_flush_db_superblock(struct db_descriptor *db_desc)
 			log_fatal("Failed to write region's %s superblock", db_desc->db_superblock->db_name);
 			perror("Reason");
 			assert(0);
-			_Exit(EXIT_FAILURE);
+			BUG_ON();
 		}
 		total_bytes_written += bytes_written;
 	}
@@ -366,7 +366,7 @@ void pr_read_db_superblock(struct db_descriptor *db_desc)
 			log_fatal("Failed to read region's %s superblock", db_desc->db_superblock->db_name);
 			perror("Reason");
 			assert(0);
-			_Exit(EXIT_FAILURE);
+			BUG_ON();
 		}
 		total_bytes_written += bytes_written;
 	}
@@ -398,7 +398,7 @@ void pr_flush_log_tail(struct db_descriptor *db_desc, struct log_descriptor *log
 		if (bytes_written == -1) {
 			log_fatal("Failed to write LOG_CHUNK reason follows");
 			perror("Reason");
-			_Exit(EXIT_FAILURE);
+			BUG_ON();
 		}
 		start_offt += bytes_written;
 	}
@@ -439,13 +439,13 @@ static struct segment_array *find_N_last_small_log_segments(struct db_descriptor
 
 	if (!segment_array) {
 		log_fatal("Calloc did not return memory");
-		_Exit(EXIT_FAILURE);
+		BUG_ON();
 	}
 
 	segment_array->segments = calloc(PR_CURSOR_MAX_SEGMENTS_SIZE, sizeof(uint64_t));
 	if (!segment_array->segments) {
 		log_fatal("Calloc did not return memory");
-		_Exit(EXIT_FAILURE);
+		BUG_ON();
 	}
 
 	segment_array->size = PR_CURSOR_MAX_SEGMENTS_SIZE;
@@ -629,7 +629,7 @@ static void init_pos_log_cursor_in_segment(struct db_descriptor *db_desc, struct
 		break;
 	default:
 		log_fatal("Unhandled cursor type");
-		_Exit(EXIT_FAILURE);
+		BUG_ON();
 	}
 
 	prepare_cursor_op(cursor);
@@ -643,7 +643,7 @@ static struct log_cursor *init_log_cursor(struct db_descriptor *db_desc, enum lo
 	cursor->type = type;
 	if (posix_memalign((void **)&cursor->segment_in_mem_buffer, ALIGNMENT_SIZE, cursor->segment_in_mem_size) != 0) {
 		log_fatal("MEMALIGN FAILED");
-		_Exit(EXIT_FAILURE);
+		BUG_ON();
 	}
 
 	switch (cursor->type) {
@@ -665,7 +665,7 @@ static struct log_cursor *init_log_cursor(struct db_descriptor *db_desc, enum lo
 		break;
 	default:
 		log_fatal("Unknown/ Unsupported log type");
-		_Exit(EXIT_FAILURE);
+		BUG_ON();
 	}
 
 	init_pos_log_cursor_in_segment(db_desc, cursor);
@@ -718,7 +718,7 @@ static void get_next_log_segment(struct log_cursor *cursor)
 		break;
 	default:
 		log_fatal("Unhandled cursor type");
-		_Exit(EXIT_FAILURE);
+		BUG_ON();
 	}
 }
 

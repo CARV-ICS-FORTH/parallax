@@ -42,7 +42,7 @@ pthread_mutex_t init_lock = PTHREAD_MUTEX_INITIALIZER;
 pthread_spinlock_t log_buffer_lock;
 
 /*number of locks per level*/
-uint32_t size_per_height[MAX_HEIGHT] = { 8192, 4096, 2048, 1024, 512, 256, 128, 64, 32 };
+const uint32_t size_per_height[MAX_HEIGHT] = { 8192, 4096, 2048, 1024, 512, 256, 128, 64, 32 };
 
 static uint8_t writers_join_as_readers(bt_insert_req *ins_req);
 static uint8_t concurrent_insert(bt_insert_req *ins_req);
@@ -52,8 +52,6 @@ void assert_index_node(node_header *node);
 static struct bt_rebalance_result split_index(node_header *node, bt_insert_req *ins_req);
 
 struct bt_rebalance_result split_leaf(bt_insert_req *req, leaf_node *node);
-
-/*functions used for debugging*/
 
 int prefix_compare(char *l, char *r, size_t prefix_size)
 {

@@ -270,7 +270,7 @@ void sh_insert_heap_node(struct sh_heap *hp, struct sh_heap_node *nd)
 	nd->duplicate = 0;
 	if (hp->heap_size > HEAP_SIZE) {
 		log_fatal("min max heap out of space resize heap accordingly");
-		_Exit(EXIT_FAILURE);
+		BUG_ON();
 	}
 
 	if (nd->level_id == 0 && check_for_duplicate_inL0(hp, nd))

@@ -37,7 +37,7 @@ void add_to_list(struct chunk_list *list, char *chunk_buf, uint64_t chunk_offt)
 
 	if (!new_node) {
 		log_fatal("Error calloc did not allocate memory!");
-		_Exit(EXIT_FAILURE);
+		BUG_ON();
 	}
 
 	new_node->chunk_buf = chunk_buf;
@@ -144,13 +144,13 @@ struct chunk_LRU_cache *init_LRU(void)
 	struct chunk_LRU_cache *new_LRU = (struct chunk_LRU_cache *)calloc(1, sizeof(struct chunk_LRU_cache));
 	if (new_LRU == NULL) {
 		log_info("Calloc returned NULL, not enough memory, exiting...");
-		_Exit(EXIT_FAILURE);
+		BUG_ON();
 	}
 
 	new_LRU->chunks_hash_table = (struct chunk_hash_entry **)calloc(1, sizeof(struct chunk_hash_entry *));
 	if (new_LRU->chunks_hash_table == NULL) {
 		log_info("Calloc returned NULL, not enough memory, exiting...");
-		_Exit(EXIT_FAILURE);
+		BUG_ON();
 	}
 
 	*(new_LRU->chunks_hash_table) = NULL; /* needed by uthash api */
@@ -196,7 +196,7 @@ void add_to_LRU(struct chunk_LRU_cache *chunk_cache, uint64_t chunk_offt, char *
 
 	if (!new_entry) {
 		log_fatal("Error calloc did not allocate memory!");
-		_Exit(EXIT_FAILURE);
+		BUG_ON();
 	}
 
 	new_entry->chunk_offt = chunk_offt;

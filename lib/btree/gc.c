@@ -147,8 +147,7 @@ static void fetch_segment(struct log_segment *segment_buf, uint64_t segment_offt
 		if (bytes == -1) {
 			log_fatal("Failed to read error code");
 			perror("Error");
-			assert(0);
-			_Exit(EXIT_FAILURE);
+			BUG_ON();
 		}
 		bytes_to_read += bytes;
 	}
@@ -168,7 +167,7 @@ void scan_db(db_descriptor *db_desc, volume_descriptor *volume_desc, stack *mark
 
 	if (posix_memalign((void **)&segment, ALIGNMENT_SIZE, SEGMENT_SIZE) != 0) {
 		log_fatal("MEMALIGN FAILED");
-		_Exit(EXIT_FAILURE);
+		BUG_ON();
 	}
 
 	log_segment *last_segment = (log_segment *)REAL_ADDRESS(db_desc->big_log.tail_dev_offt);
@@ -231,7 +230,7 @@ void *gc_log_entries(void *hd)
 	marks = calloc(1, sizeof(stack));
 	if (!marks) {
 		log_error("ERROR i could not allocate stack");
-		_Exit(EXIT_FAILURE);
+		BUG_ON();
 	}
 
 	pthread_setname_np(pthread_self(), "gcd");

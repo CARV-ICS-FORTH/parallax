@@ -393,6 +393,7 @@ uint64_t rul_start_txn(struct db_descriptor *db_desc)
 	return txn_id;
 }
 
+// TODO Make this function void
 int rul_add_entry_in_txn_buf(struct db_descriptor *db_desc, struct rul_log_entry *entry)
 {
 	struct rul_log_descriptor *log_desc = db_desc->allocation_log;
@@ -416,7 +417,6 @@ int rul_add_entry_in_txn_buf(struct db_descriptor *db_desc, struct rul_log_entry
 		new_trans_buf->next = NULL;
 		new_trans_buf->n_entries = 0;
 		transaction->tail = new_trans_buf;
-
 		transaction_buf = new_trans_buf;
 	}
 	assert(entry->op_type != 0);

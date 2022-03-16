@@ -46,7 +46,7 @@ level_scanner *_init_compaction_buffer_scanner(db_handle *handle, int level_id, 
 	level_scanner *level_sc = calloc(1, sizeof(level_scanner));
 	if (!level_sc) {
 		log_fatal("Calloc failed");
-		_Exit(EXIT_FAILURE);
+		BUG_ON();
 	}
 	assert(level_sc);
 	stack_init(&level_sc->stack);
@@ -79,13 +79,13 @@ static void init_generic_scanner(struct scannerHandle *sc, struct db_handle *han
 	assert(start_key);
 	if (sc == NULL) {
 		log_fatal("NULL scannerHandle?");
-		_Exit(EXIT_FAILURE);
+		BUG_ON();
 	}
 
 	/**
   if (!dirty && handle->db_desc->dirty) {
 		log_fatal("Unsupported operation");
-		_Exit(EXIT_FAILURE);
+		BUG_ON();
 	}
   **/
 
@@ -116,8 +116,7 @@ static void init_generic_scanner(struct scannerHandle *sc, struct db_handle *han
 		sh_init_heap(&sc->heap, active_tree, MAX_HEAP);
 	} else {
 		log_fatal("Unknown scanner type!");
-		assert(0);
-		_Exit(EXIT_FAILURE);
+		BUG_ON();
 	}
 
 	for (int i = 0; i < NUM_TREES_PER_LEVEL; i++) {
@@ -233,7 +232,7 @@ static void read_lock_node(struct level_scanner *level_sc, struct node_header *n
 		_find_position((const lock_table **)level_sc->db->db_desc->levels[0].level_lock_table, node);
 	if (RWLOCK_RDLOCK(&lock->rx_lock) != 0) {
 		log_fatal("ERROR locking");
-		_Exit(EXIT_FAILURE);
+		BUG_ON();
 	}
 }
 
@@ -248,7 +247,7 @@ static void read_unlock_node(struct level_scanner *level_sc, struct node_header 
 		_find_position((const lock_table **)level_sc->db->db_desc->levels[0].level_lock_table, node);
 	if (RWLOCK_UNLOCK(&lock->rx_lock) != 0) {
 		log_fatal("ERROR locking");
-		_Exit(EXIT_FAILURE);
+		BUG_ON();
 	}
 }
 
@@ -510,14 +509,14 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 			break;
 		}
 		default:
-			assert(0);
+			BUG_ON();
 		}
 
 	} else { /*normal scanner*/
 		struct bt_dynamic_leaf_node *dlnode = (struct bt_dynamic_leaf_node *)node;
 		struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(dlnode);
 		switch (get_kv_format(slot_array[middle].key_category)) {
-		case KV_INPLACE:;
+			case KV_INPLACE:{
 			uint32_t key_size, value_size;
 			level_sc->keyValue =
 				get_kv_offset(dlnode, db_desc->levels[level_id].leaf_size, slot_array[middle].index);
@@ -529,6 +528,7 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 			level_sc->cat = slot_array[middle].key_category;
 			level_sc->tombstone = slot_array[middle].tombstone;
 			break;
+		}
 		case KV_INLOG: {
 			struct bt_leaf_entry *kv_entry = (struct bt_leaf_entry *)get_kv_offset(
 				dlnode, db_desc->levels[level_id].leaf_size, slot_array[middle].index);
@@ -543,7 +543,7 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 			break;
 		}
 		default:
-			assert(0);
+			BUG_ON();
 		}
 	}
 
@@ -575,7 +575,7 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 			return PARALLAX_SUCCESS;
 		default:
 			log_fatal("Unknown Scanner mode");
-			_Exit(EXIT_FAILURE);
+			BUG_ON();
 		}
 
 		if (_get_next_KV(level_sc) == END_OF_DATABASE)
@@ -609,7 +609,6 @@ int32_t getNext(scannerHandle *sc)
 				sh_insert_heap_node(&sc->heap, &next_nd);
 			}
 			if (nd.duplicate == 1 || nd.tombstone == 1) {
-				// assert(0);
 				//log_warn("ommiting duplicate %s", (char *)nd.KV + 4);
 				continue;
 			}
@@ -676,7 +675,7 @@ int32_t _get_next_KV(level_scanner *sc)
 	}
 	if (stack_top.node->type != leafNode && stack_top.node->type != leafRootNode) {
 		log_fatal("Corrupted scanner stack, top element should be a leaf node");
-		_Exit(EXIT_FAILURE);
+		BUG_ON();
 	}
 	node = stack_top.node;
 	// log_info("stack top rightmost %d leftmost %d", stack_top.rightmost,
@@ -726,7 +725,7 @@ int32_t _get_next_KV(level_scanner *sc)
 					continue;
 				} else {
 					log_fatal("Corrupted node");
-					assert(0);
+					BUG_ON();
 				}
 			} else {
 				++stack_top.idx;
@@ -749,8 +748,7 @@ int32_t _get_next_KV(level_scanner *sc)
 				continue;
 			} else {
 				log_fatal("Corrupted node");
-				assert(0);
-				_Exit(EXIT_FAILURE);
+				BUG_ON();
 			}
 		} else {
 			/*push yourself, update node and continue*/
@@ -772,7 +770,7 @@ int32_t _get_next_KV(level_scanner *sc)
 				node = (node_header *)REAL_ADDRESS(inode->p[0].left);
 			} else {
 				log_fatal("Reached corrupted node");
-				assert(0);
+				BUG_ON();
 			}
 		}
 	}
@@ -782,7 +780,7 @@ int32_t _get_next_KV(level_scanner *sc)
 		struct bt_dynamic_leaf_node *dlnode = (struct bt_dynamic_leaf_node *)node;
 		struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(dlnode);
 		switch (get_kv_format(slot_array[idx].key_category)) {
-		case KV_INPLACE:;
+		case KV_INPLACE: {
 			uint32_t key_size, value_size;
 			sc->keyValue =
 				get_kv_offset(dlnode, db_desc->levels[level_id].leaf_size, slot_array[idx].index);
@@ -794,7 +792,7 @@ int32_t _get_next_KV(level_scanner *sc)
 			sc->kv_size = sizeof(key_size) + sizeof(value_size) + key_size + value_size;
 			//log_info("offset %d",slot_array[idx].index);
 			break;
-
+		}
 		case KV_INLOG: {
 			struct bt_leaf_entry *kv_entry = (struct bt_leaf_entry *)get_kv_offset(
 				dlnode, db_desc->levels[level_id].leaf_size, slot_array[idx].index);
@@ -809,7 +807,7 @@ int32_t _get_next_KV(level_scanner *sc)
 			break;
 		}
 		default:
-			assert(0);
+			BUG_ON();
 			break;
 		}
 
@@ -849,8 +847,7 @@ int32_t _get_next_KV(level_scanner *sc)
 			break;
 		}
 		default:
-			assert(0);
-			_Exit(EXIT_FAILURE);
+			BUG_ON();
 			break;
 		}
 	}
@@ -875,7 +872,7 @@ int32_t _get_prev_KV(level_scanner *sc)
 
 	if (stack_top.node->type != leafNode && stack_top.node->type != leafRootNode) {
 		log_fatal("Corrupted scanner stack, top element should be a leaf node");
-		_Exit(EXIT_FAILURE);
+		BUG_ON();
 	}
 
 	node = stack_top.node;
@@ -924,7 +921,7 @@ int32_t _get_prev_KV(level_scanner *sc)
 					continue;
 				} else {
 					log_fatal("Corrupted node");
-					assert(0);
+					BUG_ON();
 				}
 			} else {
 				--stack_top.idx;
@@ -945,8 +942,7 @@ int32_t _get_prev_KV(level_scanner *sc)
 				continue;
 			} else {
 				log_fatal("Corrupted node");
-				assert(0);
-				_Exit(EXIT_FAILURE);
+				BUG_ON();
 			}
 		} else {
 			stack_top.node = node;
@@ -966,7 +962,7 @@ int32_t _get_prev_KV(level_scanner *sc)
 				node = (node_header *)REAL_ADDRESS(inode->p[stack_top.idx + 1].left);
 			} else {
 				log_fatal("Reached corrupted node");
-				assert(0);
+				BUG_ON();
 			}
 		}
 	}
@@ -977,7 +973,7 @@ int32_t _get_prev_KV(level_scanner *sc)
 		struct bt_dynamic_leaf_node *dlnode = (struct bt_dynamic_leaf_node *)node;
 		struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(dlnode);
 		switch (get_kv_format(slot_array[idx].key_category)) {
-		case KV_INPLACE:;
+		case KV_INPLACE: {
 			uint32_t key_size, value_size;
 			sc->keyValue =
 				get_kv_offset(dlnode, db_desc->levels[level_id].leaf_size, slot_array[idx].index);
@@ -989,7 +985,7 @@ int32_t _get_prev_KV(level_scanner *sc)
 			sc->kv_size = sizeof(key_size) + sizeof(value_size) + key_size + value_size;
 			//log_info("offset %d",slot_array[idx].index);
 			break;
-
+		}
 		case KV_INLOG: {
 			struct bt_leaf_entry *kv_entry = (struct bt_leaf_entry *)get_kv_offset(
 				dlnode, db_desc->levels[level_id].leaf_size, slot_array[idx].index);
@@ -1004,7 +1000,7 @@ int32_t _get_prev_KV(level_scanner *sc)
 			break;
 		}
 		default:
-			assert(0);
+			BUG_ON();
 			break;
 		}
 
@@ -1014,7 +1010,7 @@ int32_t _get_prev_KV(level_scanner *sc)
 		struct bt_dynamic_leaf_node *dlnode = (struct bt_dynamic_leaf_node *)node;
 		struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(dlnode);
 		switch (get_kv_format(slot_array[idx].key_category)) {
-		case KV_INPLACE:;
+		case KV_INPLACE: {
 			uint32_t key_size, value_size;
 
 			sc->keyValue =
@@ -1027,9 +1023,8 @@ int32_t _get_prev_KV(level_scanner *sc)
 			key_size = KEY_SIZE(sc->keyValue);
 			value_size = VALUE_SIZE(sc->keyValue + sizeof(key_size) + key_size);
 			sc->kv_size = sizeof(key_size) + sizeof(value_size) + key_size + value_size;
-
 			break;
-
+		}
 		case KV_INLOG: {
 			struct bt_leaf_entry *kv_entry = (struct bt_leaf_entry *)get_kv_offset(
 				dlnode, db_desc->levels[level_id].leaf_size, slot_array[idx].index);
@@ -1042,9 +1037,7 @@ int32_t _get_prev_KV(level_scanner *sc)
 			break;
 		}
 		default:
-			assert(0);
-			_Exit(EXIT_FAILURE);
-			break;
+			BUG_ON();
 		}
 	}
 	return PARALLAX_SUCCESS;
@@ -1074,7 +1067,6 @@ int32_t getPrev(scannerHandle *sc)
 				sh_insert_heap_node(&sc->heap, &next_nd);
 			}
 			if (nd.duplicate == 1 || nd.tombstone == 1) {
-				// assert(0);
 				//log_warn("ommiting duplicate %s", (char *)nd.data + 4);
 				continue;
 			}
@@ -1222,7 +1214,7 @@ static int find_last_key(level_scanner *level_sc)
 		struct bt_dynamic_leaf_node *dlnode = (struct bt_dynamic_leaf_node *)node;
 		struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(dlnode);
 		switch (get_kv_format(slot_array[middle].key_category)) {
-		case KV_INPLACE:;
+		case KV_INPLACE: {
 			uint32_t key_size, value_size;
 			level_sc->keyValue =
 				get_kv_offset(dlnode, db_desc->levels[level_id].leaf_size, slot_array[middle].index);
@@ -1234,6 +1226,7 @@ static int find_last_key(level_scanner *level_sc)
 			level_sc->tombstone = slot_array[middle].tombstone;
 			level_sc->cat = slot_array[middle].key_category;
 			break;
+		}
 		case KV_INLOG: {
 			struct bt_leaf_entry *kv_entry = (struct bt_leaf_entry *)get_kv_offset(
 				dlnode, db_desc->levels[level_id].leaf_size, slot_array[middle].index);
@@ -1248,7 +1241,7 @@ static int find_last_key(level_scanner *level_sc)
 			break;
 		}
 		default:
-			assert(0);
+			BUG_ON();
 		}
 	}
 
@@ -1275,7 +1268,7 @@ void seek_to_last(struct scannerHandle *sc, struct db_handle *handle)
 
 	if (sc == NULL) {
 		log_fatal("NULL scannerHandle?");
-		_Exit(EXIT_FAILURE);
+		BUG_ON();
 	}
 
 	/*special care for level 0 due to double buffering*/

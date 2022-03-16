@@ -46,7 +46,10 @@ struct rul_log_info {
 
 struct rul_log_entry {
 	uint64_t txn_id;
-	uint64_t dev_offt;
+	union {
+		uint64_t dev_offt;
+		uint32_t segment_garbage_bytes;
+	};
 	char pad[8];
 	enum rul_op_type op_type;
 	uint32_t size;
