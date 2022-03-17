@@ -89,3 +89,9 @@ For example to compile your code with the leak sanitizer:
 	cmake3 .. -DUSE_SANITIZER=Leak
 
 To see which sanitizers are supported check this [file](https://github.com/StableCoder/cmake-scripts/blob/main/sanitizers.cmake#L20).
+
+## Disable Logging from the library
+
+To disable all output from `log_*` calls in the library code run:
+
+	cmake3 .. -DDISABLE_LOGGING=ON
