@@ -622,7 +622,9 @@ db_handle *internal_db_open(struct volume_descriptor *volume_desc, uint64_t star
 		__LINE__, volume_desc->volume_name, start, size, db_name, "\033[0m");
 
 	parse_options(&dboptions);
-
+#if DISABLE_LOGGING
+	log_set_quiet(true);
+#endif
 	index_order = IN_LENGTH;
 	_Static_assert(sizeof(index_node) == 4096, "Index node is not page aligned");
 	_Static_assert(sizeof(struct segment_header) == 4096, "Segment header is not 4 KB");
