@@ -36,6 +36,17 @@ test_sanitizers:
         - ./test_sanitizers.sh
     needs: [debug_build_gcc, debug_build_clang]
 
+test_optional_logging:
+    image: carvicsforth/arch_carv:latest
+    stage: debug_test
+    script:
+        - mkdir build; cd build
+        - cmake .. -DDISABLE_LOGGING=ON
+        - cd tests
+        - make test_optional_logging
+        - ./test_optional_logging &> output
+        - cat output | wc -l | grep 0
+
 debug_test_ycsb_larged:
     image: carvicsforth/arch_carv:latest
     stage: debug_test
