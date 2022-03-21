@@ -40,7 +40,7 @@ struct comp_parallax_key {
 		char *kv_inplace;
 	};
 	struct bt_leaf_entry kvsep;
-	enum log_category kv_category;
+	enum kv_category kv_category;
 	enum kv_entry_location kv_type;
 	uint8_t tombstone : 1;
 };
@@ -56,7 +56,7 @@ struct comp_level_read_cursor {
 	uint32_t tree_id;
 	uint32_t curr_leaf_entry;
 	int fd;
-	enum log_category category;
+	enum kv_category category;
 	enum comp_level_read_cursor_state state;
 	char end_of_level;
 };

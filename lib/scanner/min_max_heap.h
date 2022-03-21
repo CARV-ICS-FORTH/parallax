@@ -29,7 +29,7 @@ struct sh_heap_node {
 	uint8_t duplicate;
 	uint8_t tombstone : 1;
 	enum KV_type type;
-	enum log_category cat;
+	enum kv_category cat;
 };
 
 struct sh_heap {

@@ -133,8 +133,9 @@ string(
 string(
   APPEND
   CMAKE_C_FLAGS
-  " -Wimplicit-function-declaration -Wshadow -pedantic -pedantic-errors -Wmisleading-indentation"
+  " -Wimplicit-function-declaration -Wshadow -pedantic -pedantic-errors -Wmisleading-indentation -pipe"
 )
+string(APPEND CMAKE_CXX_FLAGS " -pipe")
 include(cmake_utils/check-compiler-flags.cmake.in)
 
 set(DEVICE_PATH $ENV{NVME0})

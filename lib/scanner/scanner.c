@@ -17,6 +17,7 @@
 #include "../btree/btree.h"
 #include "../btree/conf.h"
 #include "../btree/dynamic_leaf.h"
+#include "../common/common.h"
 #include "../utilities/dups_list.h"
 #include "min_max_heap.h"
 #include "stack.h"
@@ -482,7 +483,7 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 	if (level_sc->type == COMPACTION_BUFFER_SCANNER) {
 		struct bt_dynamic_leaf_node *dlnode = (struct bt_dynamic_leaf_node *)node;
 		struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(dlnode);
-		switch (slot_array[middle].kv_loc) {
+		switch (get_kv_format(slot_array[middle].key_category)) {
 		case KV_INPLACE: {
 			uint32_t key_size, value_size;
 			level_sc->keyValue =
@@ -515,7 +516,7 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 	} else { /*normal scanner*/
 		struct bt_dynamic_leaf_node *dlnode = (struct bt_dynamic_leaf_node *)node;
 		struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(dlnode);
-		switch (slot_array[middle].kv_loc) {
+		switch (get_kv_format(slot_array[middle].key_category)) {
 		case KV_INPLACE:;
 			uint32_t key_size, value_size;
 			level_sc->keyValue =
@@ -780,7 +781,7 @@ int32_t _get_next_KV(level_scanner *sc)
 		/*prefix first*/
 		struct bt_dynamic_leaf_node *dlnode = (struct bt_dynamic_leaf_node *)node;
 		struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(dlnode);
-		switch (slot_array[idx].kv_loc) {
+		switch (get_kv_format(slot_array[idx].key_category)) {
 		case KV_INPLACE:;
 			uint32_t key_size, value_size;
 			sc->keyValue =
@@ -817,7 +818,7 @@ int32_t _get_next_KV(level_scanner *sc)
 		// normal scanner
 		struct bt_dynamic_leaf_node *dlnode = (struct bt_dynamic_leaf_node *)node;
 		struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(dlnode);
-		switch (slot_array[idx].kv_loc) {
+		switch (get_kv_format(slot_array[idx].key_category)) {
 		case KV_INPLACE: {
 			uint32_t key_size, value_size;
 
@@ -975,7 +976,7 @@ int32_t _get_prev_KV(level_scanner *sc)
 		/*prefix first*/
 		struct bt_dynamic_leaf_node *dlnode = (struct bt_dynamic_leaf_node *)node;
 		struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(dlnode);
-		switch (slot_array[idx].kv_loc) {
+		switch (get_kv_format(slot_array[idx].key_category)) {
 		case KV_INPLACE:;
 			uint32_t key_size, value_size;
 			sc->keyValue =
@@ -1012,7 +1013,7 @@ int32_t _get_prev_KV(level_scanner *sc)
 		// normal scanner
 		struct bt_dynamic_leaf_node *dlnode = (struct bt_dynamic_leaf_node *)node;
 		struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(dlnode);
-		switch (slot_array[idx].kv_loc) {
+		switch (get_kv_format(slot_array[idx].key_category)) {
 		case KV_INPLACE:;
 			uint32_t key_size, value_size;
 
@@ -1187,7 +1188,7 @@ static int find_last_key(level_scanner *level_sc)
 	if (level_sc->type == COMPACTION_BUFFER_SCANNER) {
 		struct bt_dynamic_leaf_node *dlnode = (struct bt_dynamic_leaf_node *)node;
 		struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(dlnode);
-		switch (slot_array[middle].kv_loc) {
+		switch (get_kv_format(slot_array[middle].key_category)) {
 		case KV_INPLACE: {
 			uint32_t key_size, value_size;
 			level_sc->keyValue =
@@ -1214,13 +1215,13 @@ static int find_last_key(level_scanner *level_sc)
 			break;
 		}
 		default:
-			assert(0);
+			BUG_ON();
 		}
 
 	} else { /*normal scanner*/
 		struct bt_dynamic_leaf_node *dlnode = (struct bt_dynamic_leaf_node *)node;
 		struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(dlnode);
-		switch (slot_array[middle].kv_loc) {
+		switch (get_kv_format(slot_array[middle].key_category)) {
 		case KV_INPLACE:;
 			uint32_t key_size, value_size;
 			level_sc->keyValue =

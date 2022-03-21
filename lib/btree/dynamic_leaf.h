@@ -23,7 +23,7 @@ enum kv_entry_location { UNKNOWN_CATEGORY = -1, KV_INPLACE = 0, KV_INLOG = 1 };
 struct find_result {
 	char *kv;
 	enum kv_entry_location key_type;
-	enum log_category kv_category;
+	enum kv_category kv_category;
 	uint8_t tombstone : 1;
 };
 
@@ -51,7 +51,7 @@ struct write_dynamic_leaf_args {
 	unsigned int level_id;
 	unsigned int level_medium_inplace;
 	int kv_format;
-	enum log_category cat;
+	enum kv_category cat;
 };
 
 struct split_level_leaf {
@@ -61,7 +61,7 @@ struct split_level_leaf {
 	unsigned int level_id;
 	unsigned int level_medium_inplace;
 	enum kv_entry_location key_type;
-	enum log_category cat;
+	enum kv_category cat;
 };
 
 char *get_leaf_log_offset(const struct bt_dynamic_leaf_node *leaf, const uint32_t leaf_size);
@@ -91,3 +91,5 @@ struct bt_dynamic_leaf_slot_array *get_slot_array_offset(const struct bt_dynamic
 char *get_kv_offset(const struct bt_dynamic_leaf_node *leaf, const uint32_t leaf_size, const uint32_t kv_offset);
 
 typedef struct bt_rebalance_result split_dl(struct bt_dynamic_leaf_node *leaf, uint32_t leaf_size, bt_insert_req *req);
+
+enum kv_entry_location get_kv_format(enum kv_category kv_category);
