@@ -20,6 +20,7 @@
 #include "../allocator/log_structures.h"
 #include "../allocator/redo_undo_log.h"
 #include "../allocator/volume_manager.h"
+#include "../common/common.h"
 #include "../scanner/min_max_heap.h"
 #include "../scanner/scanner.h"
 #include "btree.h"

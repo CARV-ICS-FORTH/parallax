@@ -15,7 +15,6 @@
 #define ENABLE_OPTIONS_OUTPUT 0
 #include "set_options.h"
 #include "../common/common.h"
-#include <assert.h>
 #include <log.h>
 #include <stdio.h>
 #include <stdlib.h>
