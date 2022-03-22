@@ -895,7 +895,6 @@ void mark_segment_space(db_handle *handle, struct dups_list *list, uint8_t level
 {
 	struct dups_node *list_iter;
 	struct dups_list *calculate_diffs;
-	struct dups_node *node;
 	struct large_log_segment_gc_entry *temp_segment_entry;
 	uint64_t segment_dev_offt;
 	calculate_diffs = init_dups_list();
@@ -922,7 +921,8 @@ void mark_segment_space(db_handle *handle, struct dups_list *list, uint8_t level
 			HASH_ADD(hh, handle->db_desc->segment_ht, segment_dev_offt,
 				 sizeof(temp_segment_entry->segment_dev_offt), temp_segment_entry);
 		}
-		node = find_element(calculate_diffs, segment_dev_offt);
+
+		struct dups_node *node = find_element(calculate_diffs, segment_dev_offt);
 
 		if (node)
 			node->kv_size += list_iter->kv_size;

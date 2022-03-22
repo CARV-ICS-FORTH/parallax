@@ -218,11 +218,10 @@ static int rul_append(struct db_descriptor *db_desc, const struct rul_log_entry 
 		uint64_t new_tail_dev_offt = mem_allocate(db_desc->db_volume, SEGMENT_SIZE);
 		allocation_log->segment.next_seg_offt = new_tail_dev_offt;
 		segment_id = allocation_log->segment.segment_id;
-		struct rul_log_entry e;
-		e.txn_id = 0;
-		e.dev_offt = new_tail_dev_offt;
-		e.op_type = RUL_ALLOCATE;
-		e.size = SEGMENT_SIZE;
+		struct rul_log_entry e = {
+			.txn_id = 0, .dev_offt = new_tail_dev_offt, .op_type = RUL_ALLOCATE, .size = SEGMENT_SIZE
+		};
+
 		//add new entry in the memory segment
 		allocation_log->segment.chunk[allocation_log->curr_chunk_id][allocation_log->curr_chunk_entry] = e;
 		allocation_log->size += (sizeof(struct rul_log_entry) + RUL_SEGMENT_FOOTER_SIZE_IN_BYTES);

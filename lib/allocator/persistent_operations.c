@@ -242,13 +242,12 @@ static void pr_flush_Lmax_to_Ln(struct db_descriptor *db_desc, uint8_t level_id,
 
 		uint64_t bytes_freed = 0;
 		while (curr != head) {
-			struct rul_log_entry log_entry;
-			log_entry.dev_offt = ABSOLUTE_ADDRESS(curr);
+			struct rul_log_entry log_entry = { .dev_offt = ABSOLUTE_ADDRESS(curr),
+							   .txn_id = txn_id,
+							   .op_type = RUL_FREE,
+							   .size = SEGMENT_SIZE };
 			log_info("Triming medium log segment:%lu curr segment id:%lu", log_entry.dev_offt,
 				 curr->segment_id);
-			log_entry.txn_id = txn_id;
-			log_entry.op_type = RUL_FREE;
-			log_entry.size = SEGMENT_SIZE;
 			rul_add_entry_in_txn_buf(db_desc, &log_entry);
 			bytes_freed += SEGMENT_SIZE;
 			if (curr->segment_id == head->segment_id)
