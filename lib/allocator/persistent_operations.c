@@ -554,7 +554,7 @@ static struct segment_array *find_N_last_blobs(struct db_descriptor *db_desc, ui
 			break;
 		}
 		case BLOB_GARBAGE_BYTES:
-			assert(log_entry->size > 0 && log_entry->size <= SEGMENT_SIZE);
+			assert(log_entry->blob_garbage_bytes > 0 && log_entry->blob_garbage_bytes < SEGMENT_SIZE);
 			node = find_element(garbage_bytes_for_blobs, log_entry->dev_offt);
 
 			if (node)

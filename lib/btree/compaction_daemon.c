@@ -907,6 +907,7 @@ void mark_segment_space(db_handle *handle, struct dups_list *list, uint8_t level
 		struct large_log_segment_gc_entry *search_segment;
 		HASH_FIND(hh, handle->db_desc->segment_ht, &segment_dev_offt, sizeof(segment_dev_offt), search_segment);
 
+		assert(list_iter->kv_size > 0);
 		if (search_segment) {
 			// If the segment is already in the hash table just increase the garbage bytes.
 			search_segment->garbage_bytes += list_iter->kv_size;
