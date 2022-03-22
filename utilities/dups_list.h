@@ -3,7 +3,7 @@
 #include <stdint.h>
 
 struct dups_node {
-	uint64_t dev_offset;
+	uint64_t dev_offt;
 	uint64_t kv_size;
 	struct dups_node *next;
 };

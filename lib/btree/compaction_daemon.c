@@ -891,16 +891,19 @@ struct compaction_request {
 	uint8_t dst_tree;
 };
 
-void mark_segment_space(db_handle *handle, struct dups_list *list)
+void mark_segment_space(db_handle *handle, struct dups_list *list, uint8_t level_id, uint8_t tree_id)
 {
 	struct dups_node *list_iter;
+	struct dups_list *calculate_diffs;
+	struct dups_node *node;
 	struct large_log_segment_gc_entry *temp_segment_entry;
 	uint64_t segment_dev_offt;
+	calculate_diffs = init_dups_list();
 
 	MUTEX_LOCK(&handle->db_desc->segment_ht_lock);
 
 	for (list_iter = list->head; list_iter; list_iter = list_iter->next) {
-		segment_dev_offt = ABSOLUTE_ADDRESS(list_iter->dev_offset);
+		segment_dev_offt = ABSOLUTE_ADDRESS(list_iter->dev_offt);
 
 		struct large_log_segment_gc_entry *search_segment;
 		HASH_FIND(hh, handle->db_desc->segment_ht, &segment_dev_offt, sizeof(segment_dev_offt), search_segment);
@@ -913,20 +916,31 @@ void mark_segment_space(db_handle *handle, struct dups_list *list)
 			// This is the first time we detect garbage bytes in this segment,
 			// allocate a node and insert it in the hash table.
 			temp_segment_entry = malloc(sizeof(struct large_log_segment_gc_entry));
-			if (!temp_segment_entry) {
-				log_fatal("Malloc return NULL!");
-				BUG_ON();
-			}
-
 			temp_segment_entry->segment_dev_offt = segment_dev_offt;
 			temp_segment_entry->garbage_bytes = list_iter->kv_size;
 			temp_segment_entry->segment_moved = 0;
 			HASH_ADD(hh, handle->db_desc->segment_ht, segment_dev_offt,
 				 sizeof(temp_segment_entry->segment_dev_offt), temp_segment_entry);
 		}
+		node = find_element(calculate_diffs, segment_dev_offt);
+
+		if (node)
+			node->kv_size += list_iter->kv_size;
+		else
+			append_node(calculate_diffs, segment_dev_offt, list_iter->kv_size);
 	}
 
 	MUTEX_UNLOCK(&handle->db_desc->segment_ht_lock);
+
+	for (struct dups_node *persist_blob_metadata = calculate_diffs->head; persist_blob_metadata;
+	     persist_blob_metadata = persist_blob_metadata->next) {
+		uint64_t txn_id = handle->db_desc->levels[level_id].allocation_txn_id[tree_id];
+		struct rul_log_entry entry = { .dev_offt = persist_blob_metadata->dev_offt,
+					       .txn_id = txn_id,
+					       .op_type = BLOB_GARBAGE_BYTES,
+					       .size = persist_blob_metadata->kv_size };
+		rul_add_entry_in_txn_buf(handle->db_desc, &entry);
+	}
 }
 
 static void *compaction(void *_comp_req);
@@ -1400,7 +1414,7 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 	if (comp_roots.dst_root)
 		free(l_dst);
 
-	mark_segment_space(handle, m_heap->dups);
+	mark_segment_space(handle, m_heap->dups, comp_req->dst_level, 1);
 	comp_close_write_cursor(merged_level);
 
 	sh_destroy_heap(m_heap);

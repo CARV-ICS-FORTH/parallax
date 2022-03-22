@@ -99,6 +99,7 @@ if(BUILD_TESTING)
   target_link_libraries(test_redo_undo_log "${PROJECT_NAME}" ${DEPENDENCIES})
   add_test(NAME test_redo_undo_log COMMAND $<TARGET_FILE:test_redo_undo_log>
                                            --file=${FILEPATH} --num_threads=4)
+
   add_executable(test_optional_logging test_optional_logging.c)
   add_test(NAME test_optional_logging
            COMMAND $<TARGET_FILE:test_optional_logging>)

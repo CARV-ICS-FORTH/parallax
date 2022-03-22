@@ -13,8 +13,10 @@
 // limitations under the License.
 #include "../btree/btree.h"
 #include "../btree/conf.h"
+#include "../btree/gc.h"
 #include "../common/common.h"
 #include "device_structures.h"
+#include "dups_list.h"
 #include "log_structures.h"
 #include "redo_undo_log.h"
 #include "uthash.h"
@@ -190,15 +192,15 @@ static void pr_flush_L0_to_L1(struct db_descriptor *db_desc, uint8_t level_id, u
 	if (tail != head) {
 		struct segment_header *curr = REAL_ADDRESS(tail->prev_segment);
 		while (1) {
-			struct rul_log_entry log_entry;
-			log_entry.dev_offt = ABSOLUTE_ADDRESS(curr);
+			struct rul_log_entry log_entry = { .dev_offt = ABSOLUTE_ADDRESS(curr),
+							   .txn_id = txn_id,
+							   .op_type = RUL_FREE,
+							   .size = SEGMENT_SIZE };
 			log_info("Triming L0 recovery log segment:%lu curr segment id:%lu", log_entry.dev_offt,
 				 curr->segment_id);
-			log_entry.txn_id = txn_id;
-			log_entry.op_type = RUL_FREE;
-			log_entry.size = SEGMENT_SIZE;
 			rul_add_entry_in_txn_buf(db_desc, &log_entry);
 			bytes_freed += SEGMENT_SIZE;
+
 			if (curr->segment_id == head->segment_id)
 				break;
 			curr = REAL_ADDRESS(curr->prev_segment);
@@ -277,10 +279,12 @@ void pr_flush_compaction(struct db_descriptor *db_desc, uint8_t level_id, uint8_
 		pr_flush_L0_to_L1(db_desc, level_id, tree_id);
 		return;
 	}
+
 	if (level_id == db_desc->level_medium_inplace) {
 		pr_flush_Lmax_to_Ln(db_desc, level_id, tree_id);
 		return;
 	}
+
 	uint64_t txn_id = db_desc->levels[level_id].allocation_txn_id[tree_id];
 	pr_lock_db_superblock(db_desc);
 
@@ -313,7 +317,6 @@ void pr_flush_db_superblock(struct db_descriptor *db_desc)
 		if (bytes_written == -1) {
 			log_fatal("Failed to write region's %s superblock", db_desc->db_superblock->db_name);
 			perror("Reason");
-			assert(0);
 			BUG_ON();
 		}
 		total_bytes_written += bytes_written;
@@ -365,7 +368,6 @@ void pr_read_db_superblock(struct db_descriptor *db_desc)
 		if (bytes_written == -1) {
 			log_fatal("Failed to read region's %s superblock", db_desc->db_superblock->db_name);
 			perror("Reason");
-			assert(0);
 			BUG_ON();
 		}
 		total_bytes_written += bytes_written;
@@ -460,6 +462,45 @@ static struct segment_array *find_N_last_small_log_segments(struct db_descriptor
 	return segment_array;
 }
 
+static uint32_t count_garbage_entries = 0;
+static uint32_t count_garbage_bytes = 0;
+static uint8_t enable_validate_garbage_blob_bytes = 0;
+
+uint32_t get_garbage_entries(void)
+{
+	return count_garbage_entries;
+}
+
+uint32_t get_garbage_bytes(void)
+{
+	return count_garbage_bytes;
+}
+
+void enable_validation_garbage_bytes(void)
+{
+	enable_validate_garbage_blob_bytes = 1;
+}
+
+void disable_validation_garbage_bytes(void)
+{
+	enable_validate_garbage_blob_bytes = 0;
+}
+
+void validate_garbage_blob_bytes(struct dups_list *test_garbage_bytes_list)
+{
+	if (!enable_validate_garbage_blob_bytes)
+		return;
+
+	uint32_t count_entries = 0;
+	uint32_t count_bytes = 0;
+
+	for (struct dups_node *node = test_garbage_bytes_list->head; node; node = node->next, ++count_entries)
+		count_bytes += node->kv_size;
+
+	count_garbage_entries = count_entries;
+	count_garbage_bytes = count_bytes;
+}
+
 static struct segment_array *find_N_last_blobs(struct db_descriptor *db_desc, uint64_t start_segment_offt)
 {
 	struct blob_entry {
@@ -468,6 +509,8 @@ static struct segment_array *find_N_last_blobs(struct db_descriptor *db_desc, ui
 		UT_hash_handle hh;
 	};
 	struct blob_entry *root_blob_entry = NULL;
+	struct dups_list *garbage_bytes_for_blobs = init_dups_list();
+	struct dups_node *node = NULL;
 	log_info("Allocation log cursor for volume %s DB: %s", db_desc->db_volume->volume_name,
 		 db_desc->db_superblock->db_name);
 	struct allocation_log_cursor *log_cursor =
@@ -511,6 +554,17 @@ static struct segment_array *find_N_last_blobs(struct db_descriptor *db_desc, ui
 				segments->segments[b_entry->array_id] = 0;
 			break;
 		}
+		case BLOB_GARBAGE_BYTES:
+			assert(log_entry->size > 0 && log_entry->size <= SEGMENT_SIZE);
+			node = find_element(garbage_bytes_for_blobs, log_entry->dev_offt);
+
+			if (node)
+				node->kv_size += log_entry->blob_garbage_bytes;
+			else
+				append_node(garbage_bytes_for_blobs, log_entry->dev_offt,
+					    log_entry->blob_garbage_bytes);
+
+			break;
 		default:
 			log_fatal("Unknown/Corrupted entry in allocation log %d", log_entry->op_type);
 			log_fatal(
@@ -523,6 +577,21 @@ static struct segment_array *find_N_last_blobs(struct db_descriptor *db_desc, ui
 
 	close_allocation_log_cursor(log_cursor);
 	struct blob_entry *current_entry, *tmp;
+
+	if (garbage_bytes_for_blobs->head) {
+		validate_garbage_blob_bytes(garbage_bytes_for_blobs);
+		for (node = garbage_bytes_for_blobs->head; node; node = node->next) {
+			struct large_log_segment_gc_entry *temp_segment_entry =
+				malloc(sizeof(struct large_log_segment_gc_entry));
+			temp_segment_entry->segment_dev_offt = node->dev_offt;
+			temp_segment_entry->garbage_bytes = node->kv_size;
+			temp_segment_entry->segment_moved = 0;
+			HASH_ADD(hh, db_desc->segment_ht, segment_dev_offt,
+				 sizeof(temp_segment_entry->segment_dev_offt), temp_segment_entry);
+		}
+		free_dups_list(&garbage_bytes_for_blobs);
+		assert(!garbage_bytes_for_blobs);
+	}
 
 	HASH_ITER(hh, root_blob_entry, current_entry, tmp)
 	{
