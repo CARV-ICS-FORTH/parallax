@@ -155,7 +155,6 @@ static void print_allocation_type(enum rul_op_type type)
 		break;
 	default:
 		log_fatal("Corrupted operation type %d", type);
-		assert(0);
 		BUG_ON();
 	}
 }
@@ -333,6 +332,8 @@ void replay_db_allocation_log(struct volume_descriptor *volume_desc, struct pr_d
 		case RUL_FREE:
 			//log_info("Marking dev_offt: %llu as FREE txn_id: %llu", log_entry->dev_offt, log_entry->txn_id);
 			SET_BIT(&mem_bitmap[byte_id], bit_id);
+			break;
+		case BLOB_GARBAGE_BYTES:
 			break;
 		default:
 			log_fatal("Unknown/Corrupted entry in allocation log try type is: %d", log_entry->op_type);

@@ -939,7 +939,7 @@ void mark_segment_space(db_handle *handle, struct dups_list *list, uint8_t level
 		struct rul_log_entry entry = { .dev_offt = persist_blob_metadata->dev_offt,
 					       .txn_id = txn_id,
 					       .op_type = BLOB_GARBAGE_BYTES,
-					       .size = persist_blob_metadata->kv_size };
+					       .blob_garbage_bytes = persist_blob_metadata->kv_size };
 		rul_add_entry_in_txn_buf(handle->db_desc, &entry);
 	}
 }
