@@ -482,6 +482,7 @@ void rul_apply_txn_buf_freeops_and_destroy(struct db_descriptor *db_desc, uint64
 			case RUL_LARGE_LOG_ALLOCATE:
 			case RUL_MEDIUM_LOG_ALLOCATE:
 			case RUL_SMALL_LOG_ALLOCATE:
+			case BLOB_GARBAGE_BYTES:
 				break;
 			default:
 				log_fatal("Unhandled case probably corruption in txn buffer");
