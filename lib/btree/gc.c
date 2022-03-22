@@ -32,6 +32,7 @@
 
 extern pthread_mutex_t init_lock;
 static uint8_t gc_executed = 0;
+static uint8_t gc_active = 1;
 
 struct gc_segment_descriptor {
 	char *log_segment_in_memory;
@@ -41,6 +42,11 @@ struct gc_segment_descriptor {
 uint8_t is_gc_executed(void)
 {
 	return gc_executed;
+}
+
+void disable_gc(void)
+{
+	gc_active = 0;
 }
 
 void push_stack(stack *marks, void *addr)
@@ -227,6 +233,9 @@ void *gc_log_entries(void *hd)
 	volume_descriptor *volume_desc = handle->volume_desc;
 	struct klist_node *region;
 	struct lib_option *dboptions = NULL;
+
+	if (!gc_active)
+		pthread_exit(NULL);
 
 	marks = calloc(1, sizeof(stack));
 	if (!marks) {
