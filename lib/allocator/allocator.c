@@ -37,7 +37,6 @@
 #include <unistd.h>
 #include <uthash.h>
 
-pthread_mutex_t VOLUME_LOCK = PTHREAD_MUTEX_INITIALIZER;
 /*from this address any node can see the entire volume*/
 uint64_t MAPPED = 0;
 int FD = -1;
@@ -48,8 +47,6 @@ int FD = -1;
 
 static struct volume_map_entry *volume_map = NULL;
 struct klist *volume_list = NULL;
-pthread_mutex_t volume_manager_lock = PTHREAD_MUTEX_INITIALIZER;
-static pthread_mutex_t volume_map_lock = PTHREAD_MUTEX_INITIALIZER;
 struct volume_map_entry {
 	char volume_name[MEM_MAX_VOLUME_NAME_SIZE];
 	struct volume_descriptor *volume_desc;
@@ -63,6 +60,7 @@ off64_t mount_volume(char *volume_name, int64_t start, int64_t unused_size)
 	(void)unused_size;
 	off64_t device_size = 0;
 
+	static pthread_mutex_t VOLUME_LOCK = PTHREAD_MUTEX_INITIALIZER;
 	MUTEX_LOCK(&VOLUME_LOCK);
 
 #if !ALLOW_RAW_VOLUMES
@@ -625,9 +623,7 @@ uint64_t mem_allocate(struct volume_descriptor *volume_desc, uint64_t num_bytes)
 					 volume_desc->volume_name, num_bytes, MAX_ALLOCATION_TRIES);
 				mem_bitmap_reset_pos(volume_desc);
 				free(b_words);
-				assert(0);
-				base_addr = 0;
-				goto exit;
+				BUG_ON();
 			}
 
 			++wrap_around;
@@ -883,6 +879,7 @@ static volume_descriptor *mem_init_volume(char *volume_name)
  */
 struct volume_descriptor *mem_get_volume_desc(char *volume_name)
 {
+	static pthread_mutex_t volume_map_lock = PTHREAD_MUTEX_INITIALIZER;
 	MUTEX_LOCK(&volume_map_lock);
 	struct volume_map_entry *volume;
 	uint64_t hash_key = djb2_hash((unsigned char *)volume_name, strlen(volume_name));
