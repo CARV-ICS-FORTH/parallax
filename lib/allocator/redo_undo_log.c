@@ -381,8 +381,7 @@ uint64_t rul_start_txn(struct db_descriptor *db_desc)
 	return txn_id;
 }
 
-// TODO Make this function void
-int rul_add_entry_in_txn_buf(struct db_descriptor *db_desc, struct rul_log_entry *entry)
+void rul_add_entry_in_txn_buf(struct db_descriptor *db_desc, struct rul_log_entry *entry)
 {
 	struct rul_log_descriptor *log_desc = db_desc->allocation_log;
 	uint64_t txn_id = entry->txn_id;
@@ -408,7 +407,6 @@ int rul_add_entry_in_txn_buf(struct db_descriptor *db_desc, struct rul_log_entry
 
 	assert(entry->op_type != 0);
 	transaction_buf->txn_entry[transaction_buf->n_entries++] = *entry;
-	return 1;
 }
 
 struct rul_log_info rul_flush_txn(struct db_descriptor *db_desc, uint64_t txn_id)
@@ -436,8 +434,11 @@ struct rul_log_info rul_flush_txn(struct db_descriptor *db_desc, uint64_t txn_id
 			rul_append(db_desc, &curr->txn_entry[i]);
 		}
 
+#ifndef NDEBUG
 		if (!curr->next)
 			assert(curr == transaction->tail);
+#endif
+
 		curr = curr->next;
 	}
 
