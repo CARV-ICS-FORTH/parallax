@@ -460,6 +460,7 @@ static struct segment_array *find_N_last_small_log_segments(struct db_descriptor
 	return segment_array;
 }
 
+/*Variables responsible to expose internal stats to tests!*/
 static uint32_t count_garbage_entries = 0;
 static uint32_t count_garbage_bytes = 0;
 static uint8_t enable_validate_garbage_blob_bytes = 0;
@@ -484,6 +485,10 @@ void disable_validation_garbage_bytes(void)
 	enable_validate_garbage_blob_bytes = 0;
 }
 
+/**
+ * \brief Counts the found garbage bytes during the recovery of the redo undo log.
+ * Requires a call to \ref enable_validation_garbage_bytes before calling it otherwise instantly returns.
+ * */
 void validate_garbage_blob_bytes(struct large_log_segment_gc_entry *test_garbage_bytes_list)
 {
 	if (!enable_validate_garbage_blob_bytes)
@@ -594,15 +599,6 @@ static struct segment_array *find_N_last_blobs(struct db_descriptor *db_desc, ui
 	if (garbage_bytes_for_blobs) {
 		validate_garbage_blob_bytes(garbage_bytes_for_blobs);
 		db_desc->segment_ht = garbage_bytes_for_blobs;
-		/* for (node = garbage_bytes_for_blobs->head; node; node = node->next) { */
-		/* 	struct large_log_segment_gc_entry *temp_segment_entry = */
-		/* 		malloc(sizeof(struct large_log_segment_gc_entry)); */
-		/* 	temp_segment_entry->segment_dev_offt = node->dev_offt; */
-		/* 	temp_segment_entry->garbage_bytes = node->kv_size; */
-		/* 	temp_segment_entry->segment_moved = 0; */
-		/* 	HASH_ADD(hh, db_desc->segment_ht, segment_dev_offt, */
-		/* 		 sizeof(temp_segment_entry->segment_dev_offt), temp_segment_entry); */
-		/* } */
 	}
 
 	HASH_ITER(hh, root_blob_entry, current_entry, tmp)
