@@ -16,7 +16,6 @@
 #include "../btree/gc.h"
 #include "../common/common.h"
 #include "device_structures.h"
-#include "dups_list.h"
 #include "log_structures.h"
 #include "redo_undo_log.h"
 #include "uthash.h"
@@ -495,8 +494,11 @@ void validate_garbage_blob_bytes(struct large_log_segment_gc_entry *test_garbage
 
 	struct large_log_segment_gc_entry *current_option = NULL;
 	struct large_log_segment_gc_entry *tmp = NULL;
+
 	HASH_ITER(hh, test_garbage_bytes_list, current_option, tmp)
 	{
+		/* Suprresses possible null pointer dereference of cppcheck*/
+		assert(current_option);
 		++count_entries;
 		count_bytes += current_option->garbage_bytes;
 	}

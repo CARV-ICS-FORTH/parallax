@@ -516,7 +516,7 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 		struct bt_dynamic_leaf_node *dlnode = (struct bt_dynamic_leaf_node *)node;
 		struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(dlnode);
 		switch (get_kv_format(slot_array[middle].key_category)) {
-			case KV_INPLACE:{
+		case KV_INPLACE: {
 			uint32_t key_size, value_size;
 			level_sc->keyValue =
 				get_kv_offset(dlnode, db_desc->levels[level_id].leaf_size, slot_array[middle].index);
