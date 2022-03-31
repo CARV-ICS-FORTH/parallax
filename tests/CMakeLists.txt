@@ -74,8 +74,9 @@ if(BUILD_TESTING)
            COMMAND $<TARGET_FILE:simple_test_delete> --file=${FILEPATH}
                    --num_of_kvs=1000000)
 
-  add_executable(test_leaf_root_delete_get_scan test_leaf_root_delete_get_scan.c
-                                                arg_parser.c)
+  add_executable(
+    test_leaf_root_delete_get_scan test_leaf_root_delete_get_scan.c
+                                   arg_parser.c ../lib/common/common.c)
   target_link_libraries(test_leaf_root_delete_get_scan "${PROJECT_NAME}"
                         ${DEPENDENCIES})
   add_test(NAME test_leaf_root_delete_get_scan
@@ -98,6 +99,7 @@ if(BUILD_TESTING)
   target_link_libraries(test_redo_undo_log "${PROJECT_NAME}" ${DEPENDENCIES})
   add_test(NAME test_redo_undo_log COMMAND $<TARGET_FILE:test_redo_undo_log>
                                            --file=${FILEPATH} --num_threads=4)
+
   add_executable(test_optional_logging test_optional_logging.c)
   add_test(NAME test_optional_logging
            COMMAND $<TARGET_FILE:test_optional_logging>)

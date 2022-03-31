@@ -13,6 +13,7 @@
 // limitations under the License.
 #include "../btree/btree.h"
 #include "../btree/conf.h"
+#include "../btree/gc.h"
 #include "../common/common.h"
 #include "device_structures.h"
 #include "log_structures.h"
@@ -190,15 +191,15 @@ static void pr_flush_L0_to_L1(struct db_descriptor *db_desc, uint8_t level_id, u
 	if (tail != head) {
 		struct segment_header *curr = REAL_ADDRESS(tail->prev_segment);
 		while (1) {
-			struct rul_log_entry log_entry;
-			log_entry.dev_offt = ABSOLUTE_ADDRESS(curr);
+			struct rul_log_entry log_entry = { .dev_offt = ABSOLUTE_ADDRESS(curr),
+							   .txn_id = txn_id,
+							   .op_type = RUL_FREE,
+							   .size = SEGMENT_SIZE };
 			log_info("Triming L0 recovery log segment:%lu curr segment id:%lu", log_entry.dev_offt,
 				 curr->segment_id);
-			log_entry.txn_id = txn_id;
-			log_entry.op_type = RUL_FREE;
-			log_entry.size = SEGMENT_SIZE;
 			rul_add_entry_in_txn_buf(db_desc, &log_entry);
 			bytes_freed += SEGMENT_SIZE;
+
 			if (curr->segment_id == head->segment_id)
 				break;
 			curr = REAL_ADDRESS(curr->prev_segment);
@@ -240,13 +241,12 @@ static void pr_flush_Lmax_to_Ln(struct db_descriptor *db_desc, uint8_t level_id,
 
 		uint64_t bytes_freed = 0;
 		while (curr != head) {
-			struct rul_log_entry log_entry;
-			log_entry.dev_offt = ABSOLUTE_ADDRESS(curr);
+			struct rul_log_entry log_entry = { .dev_offt = ABSOLUTE_ADDRESS(curr),
+							   .txn_id = txn_id,
+							   .op_type = RUL_FREE,
+							   .size = SEGMENT_SIZE };
 			log_info("Triming medium log segment:%lu curr segment id:%lu", log_entry.dev_offt,
 				 curr->segment_id);
-			log_entry.txn_id = txn_id;
-			log_entry.op_type = RUL_FREE;
-			log_entry.size = SEGMENT_SIZE;
 			rul_add_entry_in_txn_buf(db_desc, &log_entry);
 			bytes_freed += SEGMENT_SIZE;
 			if (curr->segment_id == head->segment_id)
@@ -277,10 +277,12 @@ void pr_flush_compaction(struct db_descriptor *db_desc, uint8_t level_id, uint8_
 		pr_flush_L0_to_L1(db_desc, level_id, tree_id);
 		return;
 	}
+
 	if (level_id == db_desc->level_medium_inplace) {
 		pr_flush_Lmax_to_Ln(db_desc, level_id, tree_id);
 		return;
 	}
+
 	uint64_t txn_id = db_desc->levels[level_id].allocation_txn_id[tree_id];
 	pr_lock_db_superblock(db_desc);
 
@@ -313,8 +315,7 @@ void pr_flush_db_superblock(struct db_descriptor *db_desc)
 		if (bytes_written == -1) {
 			log_fatal("Failed to write region's %s superblock", db_desc->db_superblock->db_name);
 			perror("Reason");
-			assert(0);
-			_Exit(EXIT_FAILURE);
+			BUG_ON();
 		}
 		total_bytes_written += bytes_written;
 	}
@@ -365,8 +366,7 @@ void pr_read_db_superblock(struct db_descriptor *db_desc)
 		if (bytes_written == -1) {
 			log_fatal("Failed to read region's %s superblock", db_desc->db_superblock->db_name);
 			perror("Reason");
-			assert(0);
-			_Exit(EXIT_FAILURE);
+			BUG_ON();
 		}
 		total_bytes_written += bytes_written;
 	}
@@ -398,7 +398,7 @@ void pr_flush_log_tail(struct db_descriptor *db_desc, struct log_descriptor *log
 		if (bytes_written == -1) {
 			log_fatal("Failed to write LOG_CHUNK reason follows");
 			perror("Reason");
-			_Exit(EXIT_FAILURE);
+			BUG_ON();
 		}
 		start_offt += bytes_written;
 	}
@@ -439,13 +439,13 @@ static struct segment_array *find_N_last_small_log_segments(struct db_descriptor
 
 	if (!segment_array) {
 		log_fatal("Calloc did not return memory");
-		_Exit(EXIT_FAILURE);
+		BUG_ON();
 	}
 
 	segment_array->segments = calloc(PR_CURSOR_MAX_SEGMENTS_SIZE, sizeof(uint64_t));
 	if (!segment_array->segments) {
 		log_fatal("Calloc did not return memory");
-		_Exit(EXIT_FAILURE);
+		BUG_ON();
 	}
 
 	segment_array->size = PR_CURSOR_MAX_SEGMENTS_SIZE;
@@ -460,6 +460,58 @@ static struct segment_array *find_N_last_small_log_segments(struct db_descriptor
 	return segment_array;
 }
 
+/*Variables responsible to expose internal stats to tests!*/
+static uint32_t count_garbage_entries = 0;
+static uint32_t count_garbage_bytes = 0;
+static uint8_t enable_validate_garbage_blob_bytes = 0;
+
+uint32_t get_garbage_entries(void)
+{
+	return count_garbage_entries;
+}
+
+uint32_t get_garbage_bytes(void)
+{
+	return count_garbage_bytes;
+}
+
+void enable_validation_garbage_bytes(void)
+{
+	enable_validate_garbage_blob_bytes = 1;
+}
+
+void disable_validation_garbage_bytes(void)
+{
+	enable_validate_garbage_blob_bytes = 0;
+}
+
+/**
+ * \brief Counts the found garbage bytes during the recovery of the redo undo log.
+ * Requires a call to \ref enable_validation_garbage_bytes before calling it otherwise instantly returns.
+ * */
+void validate_garbage_blob_bytes(struct large_log_segment_gc_entry *test_garbage_bytes_list)
+{
+	if (!enable_validate_garbage_blob_bytes)
+		return;
+
+	uint32_t count_entries = 0;
+	uint32_t count_bytes = 0;
+
+	struct large_log_segment_gc_entry *current_option = NULL;
+	struct large_log_segment_gc_entry *tmp = NULL;
+
+	HASH_ITER(hh, test_garbage_bytes_list, current_option, tmp)
+	{
+		/* Suprresses possible null pointer dereference of cppcheck*/
+		assert(current_option);
+		++count_entries;
+		count_bytes += current_option->garbage_bytes;
+	}
+
+	count_garbage_entries = count_entries;
+	count_garbage_bytes = count_bytes;
+}
+
 static struct segment_array *find_N_last_blobs(struct db_descriptor *db_desc, uint64_t start_segment_offt)
 {
 	struct blob_entry {
@@ -468,6 +520,8 @@ static struct segment_array *find_N_last_blobs(struct db_descriptor *db_desc, ui
 		UT_hash_handle hh;
 	};
 	struct blob_entry *root_blob_entry = NULL;
+	struct large_log_segment_gc_entry *garbage_bytes_for_blobs = NULL;
+	struct large_log_segment_gc_entry *node = NULL;
 	log_info("Allocation log cursor for volume %s DB: %s", db_desc->db_volume->volume_name,
 		 db_desc->db_superblock->db_name);
 	struct allocation_log_cursor *log_cursor =
@@ -511,6 +565,24 @@ static struct segment_array *find_N_last_blobs(struct db_descriptor *db_desc, ui
 				segments->segments[b_entry->array_id] = 0;
 			break;
 		}
+		case BLOB_GARBAGE_BYTES:
+			assert(log_entry->blob_garbage_bytes > 0 && log_entry->blob_garbage_bytes < SEGMENT_SIZE);
+			HASH_FIND(hh, garbage_bytes_for_blobs, &log_entry->dev_offt, sizeof(log_entry->dev_offt), node);
+
+			if (node)
+				node->garbage_bytes += log_entry->blob_garbage_bytes;
+			else {
+				struct large_log_segment_gc_entry *temp_segment_entry =
+					calloc(1, sizeof(struct large_log_segment_gc_entry));
+				temp_segment_entry->segment_dev_offt = log_entry->dev_offt;
+				temp_segment_entry->garbage_bytes = log_entry->blob_garbage_bytes;
+				temp_segment_entry->segment_moved = 0;
+
+				HASH_ADD(hh, garbage_bytes_for_blobs, segment_dev_offt, sizeof(log_entry->dev_offt),
+					 temp_segment_entry);
+			}
+
+			break;
 		default:
 			log_fatal("Unknown/Corrupted entry in allocation log %d", log_entry->op_type);
 			log_fatal(
@@ -523,6 +595,11 @@ static struct segment_array *find_N_last_blobs(struct db_descriptor *db_desc, ui
 
 	close_allocation_log_cursor(log_cursor);
 	struct blob_entry *current_entry, *tmp;
+
+	if (garbage_bytes_for_blobs) {
+		validate_garbage_blob_bytes(garbage_bytes_for_blobs);
+		db_desc->segment_ht = garbage_bytes_for_blobs;
+	}
 
 	HASH_ITER(hh, root_blob_entry, current_entry, tmp)
 	{
@@ -629,7 +706,7 @@ static void init_pos_log_cursor_in_segment(struct db_descriptor *db_desc, struct
 		break;
 	default:
 		log_fatal("Unhandled cursor type");
-		_Exit(EXIT_FAILURE);
+		BUG_ON();
 	}
 
 	prepare_cursor_op(cursor);
@@ -643,7 +720,7 @@ static struct log_cursor *init_log_cursor(struct db_descriptor *db_desc, enum lo
 	cursor->type = type;
 	if (posix_memalign((void **)&cursor->segment_in_mem_buffer, ALIGNMENT_SIZE, cursor->segment_in_mem_size) != 0) {
 		log_fatal("MEMALIGN FAILED");
-		_Exit(EXIT_FAILURE);
+		BUG_ON();
 	}
 
 	switch (cursor->type) {
@@ -665,7 +742,7 @@ static struct log_cursor *init_log_cursor(struct db_descriptor *db_desc, enum lo
 		break;
 	default:
 		log_fatal("Unknown/ Unsupported log type");
-		_Exit(EXIT_FAILURE);
+		BUG_ON();
 	}
 
 	init_pos_log_cursor_in_segment(db_desc, cursor);
@@ -718,7 +795,7 @@ static void get_next_log_segment(struct log_cursor *cursor)
 		break;
 	default:
 		log_fatal("Unhandled cursor type");
-		_Exit(EXIT_FAILURE);
+		BUG_ON();
 	}
 }
 

@@ -136,9 +136,6 @@ struct bt_dynamic_leaf_slot_array {
 	uint16_t key_category : 2;
 	// Tombstone notifies if the key is deleted.
 	uint16_t tombstone : 1;
-	// Informs us if the index points to an in-place kv or to a pointer in the log.
-	// TODO: Delete this since we can get this information from the key_category field.
-	//unsigned char kv_loc : 1;
 };
 
 // The first enumeration should always have as a value 0.

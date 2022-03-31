@@ -12,10 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "../lib/allocator/redo_undo_log.h"
-#include "../lib/allocator/volume_manager.h"
-#include "../lib/btree/btree.h"
 #include "arg_parser.h"
+#include "btree/gc.h"
+#include <allocator/persistent_operations.h>
+#include <allocator/redo_undo_log.h>
+#include <allocator/volume_manager.h>
+#include <btree/btree.h>
+#include <common/common.h>
 #include <fcntl.h>
 #include <log.h>
 #include <pthread.h>
@@ -23,6 +26,7 @@
 
 #define RUL_TRANSACTION_SIZE (3457)
 #define RUL_TRANSACTION_NUM (1239)
+#define GARBAGE_BYTES 128
 
 struct rul_worker_arg {
 	struct db_descriptor *db_desc;
@@ -34,27 +38,33 @@ static void *rul_worker(void *args)
 	struct db_descriptor *db_desc = my_args->db_desc;
 
 	uint64_t dev_offt = 0;
+	uint64_t fake_dev_offt = 1;
+
 	for (uint32_t i = 0; i < RUL_TRANSACTION_NUM; ++i) {
-		uint64_t my_txn_id = rul_start_txn(db_desc);
+		uint64_t txn_id = rul_start_txn(db_desc);
 		//log_info("Starting trans %lu", my_txn_id);
 		for (uint32_t j = 0; j < RUL_TRANSACTION_SIZE; ++j) {
 			struct rul_log_entry log_entry = { 0 };
 			log_entry.size = SEGMENT_SIZE;
-			log_entry.txn_id = my_txn_id;
-			if (0 == j % 2) {
+			log_entry.txn_id = txn_id;
+			if (0 == j % 3) {
 				dev_offt = mem_allocate(db_desc->db_volume, SEGMENT_SIZE);
 				log_entry.dev_offt = dev_offt;
 				log_entry.op_type = RUL_LARGE_LOG_ALLOCATE;
-			} else {
+			} else if (1 == j % 3) {
 				mem_free_segment(db_desc->db_volume, dev_offt);
 				log_entry.dev_offt = dev_offt;
 				log_entry.op_type = RUL_FREE;
+			} else {
+				log_entry.dev_offt = fake_dev_offt++;
+				log_entry.op_type = BLOB_GARBAGE_BYTES;
+				log_entry.blob_garbage_bytes = GARBAGE_BYTES;
 			}
 			rul_add_entry_in_txn_buf(db_desc, &log_entry);
 		}
 
 		pr_lock_db_superblock(db_desc);
-		struct rul_log_info rul_log = rul_flush_txn(db_desc, my_txn_id);
+		struct rul_log_info rul_log = rul_flush_txn(db_desc, txn_id);
 
 		db_desc->db_superblock->allocation_log.head_dev_offt = rul_log.head_dev_offt;
 		db_desc->db_superblock->allocation_log.tail_dev_offt = rul_log.tail_dev_offt;
@@ -64,6 +74,45 @@ static void *rul_worker(void *args)
 		pr_unlock_db_superblock(db_desc);
 	}
 	return NULL;
+}
+
+uint32_t count_entries(void)
+{
+	uint32_t count = 0;
+	for (uint32_t i = 0; i < RUL_TRANSACTION_NUM; ++i)
+		for (uint32_t j = 0; j < RUL_TRANSACTION_SIZE; ++j)
+			if (2 == j % 3)
+				++count;
+
+	return count;
+}
+
+void *validate_blobs_garbage_bytes(void *args)
+{
+	uint32_t num_threads = *(uint32_t *)args;
+	uint32_t garbage_entries;
+	uint32_t garbage_bytes;
+
+	while (!get_garbage_entries())
+		;
+	while (!get_garbage_bytes())
+		;
+	garbage_entries = get_garbage_entries();
+	garbage_bytes = get_garbage_bytes();
+
+	if (count_entries() != garbage_entries) {
+		log_fatal("fatal inserted garbage entries do not match with recovered entries expected %u got %u",
+			  count_entries(), garbage_entries);
+		BUG_ON();
+	}
+
+	uint32_t expected_garbage_bytes = count_entries() * GARBAGE_BYTES * num_threads;
+	if (garbage_bytes != expected_garbage_bytes) {
+		log_fatal("fatal inserted garbage bytes do not match with recovered bytes expected %u got %u",
+			  expected_garbage_bytes, garbage_bytes);
+	}
+
+	pthread_exit(NULL);
 }
 
 int main(int argc, char *argv[])
@@ -93,6 +142,7 @@ int main(int argc, char *argv[])
 	log_info("RUL_LOG_CHUNK_MAX_ENTRIES = %lu", RUL_LOG_CHUNK_MAX_ENTRIES);
 	log_info("RUL_SEGMENT_MAX_ENTRIES = %lu", RUL_SEGMENT_MAX_ENTRIES);
 
+	disable_gc();
 	db_handle *handle = db_open(get_option(options, 1), 0, UINT64_MAX, "redo_undo_test", CREATE_DB);
 
 	struct rul_worker_arg args;
@@ -102,7 +152,7 @@ int main(int argc, char *argv[])
 	for (uint32_t i = 0; i < num_threads; ++i) {
 		if (pthread_create(&workers[i], NULL, rul_worker, &args) != 0) {
 			log_fatal("Failed to create worker");
-			_Exit(EXIT_FAILURE);
+			BUG_ON();
 		}
 	}
 
@@ -112,8 +162,17 @@ int main(int argc, char *argv[])
 	log_info("Test done closing DB");
 	db_close(handle);
 
+	pthread_t validator_thread;
+	if (pthread_create(&validator_thread, NULL, validate_blobs_garbage_bytes, &num_threads) != 0) {
+		log_fatal("Failed to create worker");
+		BUG_ON();
+	}
+
+	enable_validation_garbage_bytes();
 	handle = db_open(get_option(options, 1), 0, UINT64_MAX, "redo_undo_test", CREATE_DB);
+	pthread_join(validator_thread, NULL);
 	db_close(handle);
+	disable_validation_garbage_bytes();
 
 	return 0;
 }

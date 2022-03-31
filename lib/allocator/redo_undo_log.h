@@ -34,7 +34,8 @@ enum rul_op_type {
 	RUL_SMALL_LOG_ALLOCATE,
 	RUL_MEDIUM_LOG_ALLOCATE,
 	RUL_LARGE_LOG_ALLOCATE,
-	RUL_LOG_FREE
+	RUL_LOG_FREE,
+	BLOB_GARBAGE_BYTES
 };
 
 struct rul_log_info {
@@ -47,7 +48,8 @@ struct rul_log_info {
 struct rul_log_entry {
 	uint64_t txn_id;
 	uint64_t dev_offt;
-	char pad[8];
+	uint32_t blob_garbage_bytes;
+	char pad[4];
 	enum rul_op_type op_type;
 	uint32_t size;
 } __attribute__((packed));
@@ -93,6 +95,6 @@ struct rul_log_descriptor {
 void rul_log_init(struct db_descriptor *db_desc);
 void rul_log_destroy(struct db_descriptor *db_desc);
 uint64_t rul_start_txn(struct db_descriptor *db_desc);
-int rul_add_entry_in_txn_buf(struct db_descriptor *db_desc, struct rul_log_entry *entry);
+void rul_add_entry_in_txn_buf(struct db_descriptor *db_desc, struct rul_log_entry *entry);
 struct rul_log_info rul_flush_txn(struct db_descriptor *db_desc, uint64_t txn_id);
 void rul_apply_txn_buf_freeops_and_destroy(struct db_descriptor *db_desc, uint64_t txn_id);

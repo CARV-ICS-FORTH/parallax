@@ -218,11 +218,10 @@ static int rul_append(struct db_descriptor *db_desc, const struct rul_log_entry 
 		uint64_t new_tail_dev_offt = mem_allocate(db_desc->db_volume, SEGMENT_SIZE);
 		allocation_log->segment.next_seg_offt = new_tail_dev_offt;
 		segment_id = allocation_log->segment.segment_id;
-		struct rul_log_entry e;
-		e.txn_id = 0;
-		e.dev_offt = new_tail_dev_offt;
-		e.op_type = RUL_ALLOCATE;
-		e.size = SEGMENT_SIZE;
+		struct rul_log_entry e = {
+			.txn_id = 0, .dev_offt = new_tail_dev_offt, .op_type = RUL_ALLOCATE, .size = SEGMENT_SIZE
+		};
+
 		//add new entry in the memory segment
 		allocation_log->segment.chunk[allocation_log->curr_chunk_id][allocation_log->curr_chunk_entry] = e;
 		allocation_log->size += (sizeof(struct rul_log_entry) + RUL_SEGMENT_FOOTER_SIZE_IN_BYTES);
@@ -232,15 +231,6 @@ static int rul_append(struct db_descriptor *db_desc, const struct rul_log_entry 
 		allocation_log->curr_chunk_id = 0;
 		allocation_log->curr_chunk_entry = 0;
 		allocation_log->curr_segment_entry = 0;
-#if 0
-		//update and write superblock
-		db_desc->my_superblock.allocation_log.tail_dev_offt = log_desc->tail_dev_offt;
-		db_desc->my_superblock.allocation_log.size = log_desc->size;
-		db_desc->my_superblock.allocation_log.txn_id = log_desc->txn_id;
-		pr_lock_db_superblock(db_desc);
-		pr_flush_db_superblock(db_desc);
-		pr_unlock_db_superblock(db_desc);
-#endif
 		memset(&allocation_log->segment, 0x00, sizeof(struct rul_log_segment));
 		allocation_log->segment.segment_id = segment_id + 1;
 	}
@@ -383,8 +373,6 @@ uint64_t rul_start_txn(struct db_descriptor *db_desc)
 	transaction = calloc(1, sizeof(struct rul_transaction));
 	transaction->txn_id = txn_id;
 	struct rul_transaction_buffer *transaction_buf = calloc(1, sizeof(struct rul_transaction_buffer));
-	transaction_buf->next = NULL;
-	transaction_buf->n_entries = 0;
 	transaction->head = transaction_buf;
 	transaction->tail = transaction_buf;
 
@@ -393,7 +381,7 @@ uint64_t rul_start_txn(struct db_descriptor *db_desc)
 	return txn_id;
 }
 
-int rul_add_entry_in_txn_buf(struct db_descriptor *db_desc, struct rul_log_entry *entry)
+void rul_add_entry_in_txn_buf(struct db_descriptor *db_desc, struct rul_log_entry *entry)
 {
 	struct rul_log_descriptor *log_desc = db_desc->allocation_log;
 	uint64_t txn_id = entry->txn_id;
@@ -413,15 +401,12 @@ int rul_add_entry_in_txn_buf(struct db_descriptor *db_desc, struct rul_log_entry
 	if (transaction_buf->n_entries >= RUL_ENTRIES_PER_TXN_BUFFER) {
 		struct rul_transaction_buffer *new_trans_buf = calloc(1, sizeof(struct rul_transaction_buffer));
 		transaction_buf->next = new_trans_buf;
-		new_trans_buf->next = NULL;
-		new_trans_buf->n_entries = 0;
 		transaction->tail = new_trans_buf;
-
 		transaction_buf = new_trans_buf;
 	}
+
 	assert(entry->op_type != 0);
 	transaction_buf->txn_entry[transaction_buf->n_entries++] = *entry;
-	return 1;
 }
 
 struct rul_log_info rul_flush_txn(struct db_descriptor *db_desc, uint64_t txn_id)
@@ -449,8 +434,11 @@ struct rul_log_info rul_flush_txn(struct db_descriptor *db_desc, uint64_t txn_id
 			rul_append(db_desc, &curr->txn_entry[i]);
 		}
 
+#ifndef NDEBUG
 		if (!curr->next)
 			assert(curr == transaction->tail);
+#endif
+
 		curr = curr->next;
 	}
 
@@ -495,6 +483,7 @@ void rul_apply_txn_buf_freeops_and_destroy(struct db_descriptor *db_desc, uint64
 			case RUL_LARGE_LOG_ALLOCATE:
 			case RUL_MEDIUM_LOG_ALLOCATE:
 			case RUL_SMALL_LOG_ALLOCATE:
+			case BLOB_GARBAGE_BYTES:
 				break;
 			default:
 				log_fatal("Unhandled case probably corruption in txn buffer");

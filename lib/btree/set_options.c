@@ -15,7 +15,6 @@
 #define ENABLE_OPTIONS_OUTPUT 0
 #include "set_options.h"
 #include "../common/common.h"
-#include <assert.h>
 #include <log.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -38,17 +37,17 @@ int parse_options(struct lib_option **db_options)
 
 	if (access(CONFIG_FILE, F_OK)) {
 		log_fatal("%s does not exist.", CONFIG_FILE);
-		_Exit(EXIT_FAILURE);
+		BUG_ON();
 	}
 
 	if (!yaml_parser_initialize(&parser)) {
 		log_fatal("Failed to initialize parser!");
-		_Exit(EXIT_FAILURE);
+		BUG_ON();
 	}
 
 	if (fh == NULL) {
 		log_fatal("Failed to open file!");
-		_Exit(EXIT_FAILURE);
+		BUG_ON();
 	}
 
 	yaml_parser_set_input_file(&parser, fh);
@@ -94,8 +93,7 @@ int parse_options(struct lib_option **db_options)
 
 			break;
 		default:
-			assert(0);
-			_Exit(EXIT_FAILURE);
+			BUG_ON();
 			/* log_info("Got token of type %d\n", token.type); */
 		}
 

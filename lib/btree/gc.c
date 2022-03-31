@@ -16,6 +16,7 @@
 #include "gc.h"
 #include "../allocator/log_structures.h"
 #include "../allocator/volume_manager.h"
+#include "../common/common.h"
 #include "btree.h"
 #include "set_options.h"
 #include <assert.h>
@@ -31,6 +32,7 @@
 
 extern pthread_mutex_t init_lock;
 static uint8_t gc_executed = 0;
+static uint8_t gc_active = 1;
 
 struct gc_segment_descriptor {
 	char *log_segment_in_memory;
@@ -40,6 +42,11 @@ struct gc_segment_descriptor {
 uint8_t is_gc_executed(void)
 {
 	return gc_executed;
+}
+
+void disable_gc(void)
+{
+	gc_active = 0;
 }
 
 void push_stack(stack *marks, void *addr)
@@ -147,8 +154,7 @@ static void fetch_segment(struct log_segment *segment_buf, uint64_t segment_offt
 		if (bytes == -1) {
 			log_fatal("Failed to read error code");
 			perror("Error");
-			assert(0);
-			_Exit(EXIT_FAILURE);
+			BUG_ON();
 		}
 		bytes_to_read += bytes;
 	}
@@ -168,7 +174,7 @@ void scan_db(db_descriptor *db_desc, volume_descriptor *volume_desc, stack *mark
 
 	if (posix_memalign((void **)&segment, ALIGNMENT_SIZE, SEGMENT_SIZE) != 0) {
 		log_fatal("MEMALIGN FAILED");
-		_Exit(EXIT_FAILURE);
+		BUG_ON();
 	}
 
 	log_segment *last_segment = (log_segment *)REAL_ADDRESS(db_desc->big_log.tail_dev_offt);
@@ -228,10 +234,13 @@ void *gc_log_entries(void *hd)
 	struct klist_node *region;
 	struct lib_option *dboptions = NULL;
 
+	if (!gc_active)
+		pthread_exit(NULL);
+
 	marks = calloc(1, sizeof(stack));
 	if (!marks) {
 		log_error("ERROR i could not allocate stack");
-		_Exit(EXIT_FAILURE);
+		BUG_ON();
 	}
 
 	pthread_setname_np(pthread_self(), "gcd");

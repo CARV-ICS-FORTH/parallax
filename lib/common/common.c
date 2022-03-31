@@ -5,7 +5,7 @@
 
 #define TRACE_SIZE 32
 
-/** Prints the stack trace for the last \def TRACE_SIZE functions on the call_stack.  */
+/** Prints the stack trace for the last \ref TRACE_SIZE functions on the call_stack.  */
 void stack_trace(void)
 {
 	void *trace[TRACE_SIZE];
