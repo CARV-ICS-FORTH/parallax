@@ -915,7 +915,7 @@ void mark_segment_space(db_handle *handle, struct dups_list *list, uint8_t level
 		} else {
 			// This is the first time we detect garbage bytes in this segment,
 			// allocate a node and insert it in the hash table.
-			temp_segment_entry = malloc(sizeof(struct large_log_segment_gc_entry));
+			temp_segment_entry = calloc(1, sizeof(struct large_log_segment_gc_entry));
 			temp_segment_entry->segment_dev_offt = segment_dev_offt;
 			temp_segment_entry->garbage_bytes = list_iter->kv_size;
 			temp_segment_entry->segment_moved = 0;

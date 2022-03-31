@@ -485,7 +485,7 @@ void disable_validation_garbage_bytes(void)
 	enable_validate_garbage_blob_bytes = 0;
 }
 
-void validate_garbage_blob_bytes(struct dups_list *test_garbage_bytes_list)
+void validate_garbage_blob_bytes(struct large_log_segment_gc_entry *test_garbage_bytes_list)
 {
 	if (!enable_validate_garbage_blob_bytes)
 		return;
@@ -493,8 +493,13 @@ void validate_garbage_blob_bytes(struct dups_list *test_garbage_bytes_list)
 	uint32_t count_entries = 0;
 	uint32_t count_bytes = 0;
 
-	for (struct dups_node *node = test_garbage_bytes_list->head; node; node = node->next, ++count_entries)
-		count_bytes += node->kv_size;
+	struct large_log_segment_gc_entry *current_option = NULL;
+	struct large_log_segment_gc_entry *tmp = NULL;
+	HASH_ITER(hh, test_garbage_bytes_list, current_option, tmp)
+	{
+		++count_entries;
+		count_bytes += current_option->garbage_bytes;
+	}
 
 	count_garbage_entries = count_entries;
 	count_garbage_bytes = count_bytes;
@@ -508,8 +513,8 @@ static struct segment_array *find_N_last_blobs(struct db_descriptor *db_desc, ui
 		UT_hash_handle hh;
 	};
 	struct blob_entry *root_blob_entry = NULL;
-	struct dups_list *garbage_bytes_for_blobs = init_dups_list();
-	struct dups_node *node = NULL;
+	struct large_log_segment_gc_entry *garbage_bytes_for_blobs = NULL;
+	struct large_log_segment_gc_entry *node = NULL;
 	log_info("Allocation log cursor for volume %s DB: %s", db_desc->db_volume->volume_name,
 		 db_desc->db_superblock->db_name);
 	struct allocation_log_cursor *log_cursor =
@@ -555,13 +560,20 @@ static struct segment_array *find_N_last_blobs(struct db_descriptor *db_desc, ui
 		}
 		case BLOB_GARBAGE_BYTES:
 			assert(log_entry->blob_garbage_bytes > 0 && log_entry->blob_garbage_bytes < SEGMENT_SIZE);
-			node = find_element(garbage_bytes_for_blobs, log_entry->dev_offt);
+			HASH_FIND(hh, garbage_bytes_for_blobs, &log_entry->dev_offt, sizeof(log_entry->dev_offt), node);
 
 			if (node)
-				node->kv_size += log_entry->blob_garbage_bytes;
-			else
-				append_node(garbage_bytes_for_blobs, log_entry->dev_offt,
-					    log_entry->blob_garbage_bytes);
+				node->garbage_bytes += log_entry->blob_garbage_bytes;
+			else {
+				struct large_log_segment_gc_entry *temp_segment_entry =
+					calloc(1, sizeof(struct large_log_segment_gc_entry));
+				temp_segment_entry->segment_dev_offt = log_entry->dev_offt;
+				temp_segment_entry->garbage_bytes = log_entry->blob_garbage_bytes;
+				temp_segment_entry->segment_moved = 0;
+
+				HASH_ADD(hh, garbage_bytes_for_blobs, segment_dev_offt, sizeof(log_entry->dev_offt),
+					 temp_segment_entry);
+			}
 
 			break;
 		default:
@@ -577,19 +589,18 @@ static struct segment_array *find_N_last_blobs(struct db_descriptor *db_desc, ui
 	close_allocation_log_cursor(log_cursor);
 	struct blob_entry *current_entry, *tmp;
 
-	if (garbage_bytes_for_blobs->head) {
+	if (garbage_bytes_for_blobs) {
 		validate_garbage_blob_bytes(garbage_bytes_for_blobs);
-		for (node = garbage_bytes_for_blobs->head; node; node = node->next) {
-			struct large_log_segment_gc_entry *temp_segment_entry =
-				malloc(sizeof(struct large_log_segment_gc_entry));
-			temp_segment_entry->segment_dev_offt = node->dev_offt;
-			temp_segment_entry->garbage_bytes = node->kv_size;
-			temp_segment_entry->segment_moved = 0;
-			HASH_ADD(hh, db_desc->segment_ht, segment_dev_offt,
-				 sizeof(temp_segment_entry->segment_dev_offt), temp_segment_entry);
-		}
-		free_dups_list(&garbage_bytes_for_blobs);
-		assert(!garbage_bytes_for_blobs);
+		db_desc->segment_ht = garbage_bytes_for_blobs;
+		/* for (node = garbage_bytes_for_blobs->head; node; node = node->next) { */
+		/* 	struct large_log_segment_gc_entry *temp_segment_entry = */
+		/* 		malloc(sizeof(struct large_log_segment_gc_entry)); */
+		/* 	temp_segment_entry->segment_dev_offt = node->dev_offt; */
+		/* 	temp_segment_entry->garbage_bytes = node->kv_size; */
+		/* 	temp_segment_entry->segment_moved = 0; */
+		/* 	HASH_ADD(hh, db_desc->segment_ht, segment_dev_offt, */
+		/* 		 sizeof(temp_segment_entry->segment_dev_offt), temp_segment_entry); */
+		/* } */
 	}
 
 	HASH_ITER(hh, root_blob_entry, current_entry, tmp)
