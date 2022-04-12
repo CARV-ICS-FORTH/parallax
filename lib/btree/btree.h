@@ -164,14 +164,13 @@ struct key_compare {
 #define KV_LEAF_ENTRY (sizeof(struct bt_leaf_entry) + sizeof(struct bt_static_leaf_slot_array) + (1 / CHAR_BIT))
 #define LN_LENGTH ((LEAF_NODE_REMAIN) / (KV_LEAF_ENTRY))
 
-/* this is the same as root_node */
-typedef struct index_node {
+struct index_node {
 	node_header header;
 	index_entry p[IN_LENGTH];
 	uint64_t __last_pointer; /* XXX do not use it directly! */
 	char __pad[INDEX_NODE_SIZE - sizeof(struct node_header) - sizeof(uint64_t) -
 		   (IN_LENGTH * sizeof(struct index_entry))];
-} __attribute__((packed)) index_node;
+} __attribute__((packed));
 
 struct kv_format {
 	uint32_t key_size;
@@ -429,7 +428,7 @@ typedef struct bt_insert_req {
 
 typedef struct bt_delete_request {
 	bt_mutate_req metadata;
-	index_node *parent;
+	struct index_node *parent;
 	struct leaf_node *self;
 	uint64_t offset; /*offset in my parent*/
 	void *key_buf;
@@ -477,7 +476,7 @@ struct bt_rebalance_result {
 	char middle_key[MAX_KEY_SIZE + sizeof(uint32_t)];
 	union {
 		node_header *left_child;
-		index_node *left_ichild;
+		struct index_node *left_ichild;
 		leaf_node *left_lchild;
 		struct bt_static_leaf_node *left_slchild;
 		struct bt_dynamic_leaf_node *left_dlchild;
@@ -485,7 +484,7 @@ struct bt_rebalance_result {
 
 	union {
 		node_header *right_child;
-		index_node *right_ichild;
+		struct index_node *right_ichild;
 		leaf_node *right_lchild;
 		struct bt_static_leaf_node *right_slchild;
 		struct bt_dynamic_leaf_node *right_dlchild;
@@ -525,7 +524,7 @@ int prefix_compare(char *l, char *r, size_t prefix_size);
 
 /*functions used from other parts except btree/btree.c*/
 
-void *_index_node_binary_search(index_node *node, void *key_buf, char query_key_format);
+void *_index_node_binary_search(struct index_node *node, void *key_buf, char query_key_format);
 void recover_L0(struct db_descriptor *db_desc);
 
 // void free_logical_node(allocator_descriptor *allocator_desc, node_header

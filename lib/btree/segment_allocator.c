@@ -174,12 +174,12 @@ struct segment_header *get_segment_for_lsm_level_IO(struct db_descriptor *db_des
 	return new_segment;
 }
 
-index_node *seg_get_index_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id, char reason)
+struct index_node *seg_get_index_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id, char reason)
 {
-	index_node *ptr;
-	IN_log_header *bh;
+	struct index_node *ptr = NULL;
+	IN_log_header *bh = NULL;
 
-	ptr = (index_node *)get_space(db_desc, level_id, tree_id, INDEX_NODE_SIZE + KEY_BLOCK_SIZE);
+	ptr = (struct index_node *)get_space(db_desc, level_id, tree_id, INDEX_NODE_SIZE + KEY_BLOCK_SIZE);
 
 	if (reason == NEW_ROOT)
 		ptr->header.type = rootNode;
@@ -205,7 +205,7 @@ IN_log_header *seg_get_IN_log_block(struct db_descriptor *db_desc, uint8_t level
 	return (IN_log_header *)get_space(db_desc, level_id, tree_id, KEY_BLOCK_SIZE);
 }
 
-void seg_free_index_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id, index_node *inode)
+void seg_free_index_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id, struct index_node *inode)
 {
 	//leave for future use
 	(void)db_desc;

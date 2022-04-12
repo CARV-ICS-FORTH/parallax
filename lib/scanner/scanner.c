@@ -316,7 +316,7 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 	db_descriptor *db_desc = level_sc->db->db_desc;
 	void *full_pivot_key;
 	void *addr = NULL;
-	index_node *inode;
+	struct index_node *inode;
 	node_header *node;
 	int64_t ret;
 	uint32_t level_id = level_sc->level_id;
@@ -350,7 +350,7 @@ int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER
 	}
 
 	while (node->type != leafNode && node->type != leafRootNode) {
-		inode = (index_node *)node;
+		inode = (struct index_node *)node;
 		int32_t start_idx = 0;
 		int32_t end_idx = inode->header.num_entries - 1;
 
@@ -628,7 +628,7 @@ void perf_preorder_count_leaf_capacity(level_descriptor *level, node_header *roo
 	}
 
 	node_header *node;
-	index_node *inode = (index_node *)root;
+	struct index_node *inode = (struct index_node *)root;
 	for (uint64_t i = 0; i < root->num_entries; i++) {
 		node = REAL_ADDRESS(inode->p[i].left[0]);
 		perf_preorder_count_leaf_capacity(level, node);
@@ -663,7 +663,7 @@ int32_t _get_next_KV(level_scanner *sc)
 	db_descriptor *db_desc = sc->db->db_desc;
 	stackElementT stack_top;
 	node_header *node;
-	index_node *inode;
+	struct index_node *inode;
 	uint32_t level_id = sc->level_id;
 	uint32_t idx;
 	uint32_t up = 1;
@@ -717,7 +717,7 @@ int32_t _get_next_KV(level_scanner *sc)
 						stack_top.rightmost = 1;
 					stack_top.idx = 0;
 					stack_push(&sc->stack, stack_top);
-					inode = (index_node *)stack_top.node;
+					inode = (struct index_node *)stack_top.node;
 					node = (node_header *)REAL_ADDRESS(inode->p[1].left);
 					assert(node->type == rootNode || node->type == leafRootNode ||
 					       node->type == internalNode || node->type == leafNode);
@@ -739,7 +739,7 @@ int32_t _get_next_KV(level_scanner *sc)
 				node = stack_top.node;
 				break;
 			} else if (stack_top.node->type == internalNode || stack_top.node->type == rootNode) {
-				inode = (index_node *)stack_top.node;
+				inode = (struct index_node *)stack_top.node;
 				node = (node_header *)REAL_ADDRESS(inode->p[stack_top.idx + 1].left);
 				up = 0;
 
@@ -766,7 +766,7 @@ int32_t _get_next_KV(level_scanner *sc)
 				idx = 0;
 				break;
 			} else if (node->type == internalNode || node->type == rootNode) {
-				inode = (index_node *)node;
+				inode = (struct index_node *)node;
 				node = (node_header *)REAL_ADDRESS(inode->p[0].left);
 			} else {
 				log_fatal("Reached corrupted node");
@@ -860,7 +860,7 @@ int32_t _get_prev_KV(level_scanner *sc)
 	uint32_t level_id = sc->level_id;
 	stackElementT stack_top;
 	node_header *node;
-	index_node *inode;
+	struct index_node *inode;
 	uint32_t idx;
 	uint32_t up = 1;
 
@@ -913,7 +913,7 @@ int32_t _get_prev_KV(level_scanner *sc)
 						stack_top.leftmost = 1;
 					stack_top.idx = stack_top.node->num_entries - 1;
 					stack_push(&sc->stack, stack_top);
-					inode = (index_node *)stack_top.node;
+					inode = (struct index_node *)stack_top.node;
 					node = (node_header *)REAL_ADDRESS(inode->p[stack_top.idx].left);
 					assert(node->type == rootNode || node->type == leafRootNode ||
 					       node->type == internalNode || node->type == leafNode);
@@ -934,7 +934,7 @@ int32_t _get_prev_KV(level_scanner *sc)
 				node = stack_top.node;
 				break;
 			} else if (stack_top.node->type == internalNode || stack_top.node->type == rootNode) {
-				inode = (index_node *)stack_top.node;
+				inode = (struct index_node *)stack_top.node;
 				node = (node_header *)REAL_ADDRESS(inode->p[stack_top.idx].left);
 				up = 0;
 				assert(node->type == rootNode || node->type == leafRootNode ||
@@ -958,7 +958,7 @@ int32_t _get_prev_KV(level_scanner *sc)
 				idx = stack_top.node->num_entries - 1;
 				break;
 			} else if (node->type == internalNode || node->type == rootNode) {
-				inode = (index_node *)node;
+				inode = (struct index_node *)node;
 				node = (node_header *)REAL_ADDRESS(inode->p[stack_top.idx + 1].left);
 			} else {
 				log_fatal("Reached corrupted node");
@@ -1081,7 +1081,7 @@ static int find_last_key(level_scanner *level_sc)
 	char key_buf_prefix[PREFIX_SIZE + sizeof(uint32_t) + MAX_KEY_SIZE];
 	stackElementT element;
 	db_descriptor *db_desc = level_sc->db->db_desc;
-	index_node *inode;
+	struct index_node *inode;
 	node_header *node;
 	uint32_t level_id = level_sc->level_id;
 	int32_t middle;
@@ -1112,7 +1112,7 @@ static int find_last_key(level_scanner *level_sc)
 	}
 
 	while (node->type != leafNode && node->type != leafRootNode) {
-		inode = (index_node *)node;
+		inode = (struct index_node *)node;
 		int32_t end_idx = inode->header.num_entries - 1;
 
 		element.guard = 0;

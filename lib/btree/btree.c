@@ -603,7 +603,7 @@ db_handle *internal_db_open(struct volume_descriptor *volume_desc, uint64_t star
 	log_set_quiet(true);
 #endif
 	index_order = IN_LENGTH;
-	_Static_assert(sizeof(index_node) == 4096, "Index node is not page aligned");
+	_Static_assert(sizeof(struct index_node) == 4096, "Index node is not page aligned");
 	_Static_assert(sizeof(struct segment_header) == 4096, "Segment header is not 4 KB");
 	db = klist_find_element_with_key(volume_desc->open_databases, db_name);
 
@@ -1578,7 +1578,7 @@ static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id,
 			if (RWLOCK_UNLOCK(&prev->rx_lock) != 0)
 				BUG_ON();
 
-		next_addr = _index_node_binary_search((index_node *)curr_node, get_op->kv_buf, KV_FORMAT);
+		next_addr = _index_node_binary_search((struct index_node *)curr_node, get_op->kv_buf, KV_FORMAT);
 		son_node = (void *)REAL_ADDRESS(*(uint64_t *)next_addr);
 		prev = curr;
 		curr_node = son_node;
@@ -1743,7 +1743,7 @@ finish:
  |block_header|pointer_to_node|pointer_to_key|pointer_to_node |
  pointer_to_key|...
 */
-int8_t update_index(index_node *node, node_header *left_child, node_header *right_child, void *key_buf)
+int8_t update_index(struct index_node *node, node_header *left_child, node_header *right_child, void *key_buf)
 {
 	char *addr;
 	uint64_t entry_val = 0;
@@ -1824,8 +1824,8 @@ int8_t update_index(index_node *node, node_header *left_child, node_header *righ
  * @param   key: address of the key to be inserted
  * @param   key_len: size of the key
  */
-void insert_key_at_index(bt_insert_req *ins_req, index_node *node, node_header *left_child, node_header *right_child,
-			 void *key_buf)
+void insert_key_at_index(bt_insert_req *ins_req, struct index_node *node, node_header *left_child,
+			 node_header *right_child, void *key_buf)
 {
 	void *key_addr = NULL;
 	struct db_handle *handle = ins_req->metadata.handle;
@@ -1923,7 +1923,7 @@ static struct bt_rebalance_result split_index(node_header *node, bt_insert_req *
 			continue; /*middle key not needed, is going to the upper level*/
 		}
 
-		insert_key_at_index(ins_req, (index_node *)tmp_index, left_child, right_child, key_buf);
+		insert_key_at_index(ins_req, (struct index_node *)tmp_index, left_child, right_child, key_buf);
 	}
 
 	result.stat = INDEX_NODE_SPLITTED;
@@ -2022,7 +2022,7 @@ struct bt_rebalance_result split_leaf(bt_insert_req *req, leaf_node *node)
  *  Updated (26/10/2016 17:05) key_buf can be in two formats
  *
  **/
-void *_index_node_binary_search(index_node *node, void *key_buf, char query_key_format)
+void *_index_node_binary_search(struct index_node *node, void *key_buf, char query_key_format)
 {
 	void *addr = NULL;
 	int32_t middle = 0;
@@ -2217,7 +2217,7 @@ static uint8_t concurrent_insert(bt_insert_req *ins_req)
 	void *next_addr;
 	db_descriptor *db_desc;
 
-	index_node *new_index_node;
+	struct index_node *new_index_node;
 	node_header *father;
 	node_header *son;
 	unsigned size; /*Size of upper_level_nodes*/
@@ -2308,7 +2308,7 @@ release_and_retry:
 				split_res = split_index(son, ins_req);
 				/*node has splitted, free it*/
 				seg_free_index_node(ins_req->metadata.handle->db_desc, level_id,
-						    ins_req->metadata.tree_id, (index_node *)son);
+						    ins_req->metadata.tree_id, (struct index_node *)son);
 				// free_logical_node(&(req->allocator_desc), son);
 			} else {
 				if (reorganize_dynamic_leaf((struct bt_dynamic_leaf_node *)son,
@@ -2320,7 +2320,7 @@ release_and_retry:
 
 			/*Insert pivot at father*/
 			if (father != NULL) {
-				insert_key_at_index(ins_req, (index_node *)father, split_res.left_child,
+				insert_key_at_index(ins_req, (struct index_node *)father, split_res.left_child,
 						    split_res.right_child, split_res.middle_key);
 			} else {
 				/*Root was splitted*/
@@ -2346,7 +2346,7 @@ release_and_retry:
 		if (son->height == 0)
 			break;
 		/*Finding the next node to traverse*/
-		next_addr = _index_node_binary_search((index_node *)son, ins_req->key_value_buf,
+		next_addr = _index_node_binary_search((struct index_node *)son, ins_req->key_value_buf,
 						      ins_req->metadata.key_format);
 		father = son;
 		/*Taking the lock of the next node before its traversal*/
@@ -2458,7 +2458,7 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 		}
 
 		/*Find the next node to traverse*/
-		next_addr = _index_node_binary_search((index_node *)son, ins_req->key_value_buf,
+		next_addr = _index_node_binary_search((struct index_node *)son, ins_req->key_value_buf,
 						      ins_req->metadata.key_format);
 		son = (node_header *)REAL_ADDRESS(*(uint64_t *)next_addr);
 		assert(son);
