@@ -95,8 +95,11 @@ typedef struct IN_log_header {
 
 /*leaf or internal node metadata, place always in the first 4KB data block*/
 typedef struct node_header {
-	nodeType_t type; /*internal or leaf node*/
-	char pad1[4];
+	/*internal or leaf node*/
+	nodeType_t type;
+	/*0 are leaves, 1 are Bottom Internal nodes, and then we have
+	INs and root*/
+	int32_t height;
 	uint64_t fragmentation;
 	union {
 		/*data log info, KV log for leaves private for index*/
@@ -108,8 +111,9 @@ typedef struct node_header {
 	uint64_t num_entries;
 	IN_log_header *first_IN_log_header;
 	IN_log_header *last_IN_log_header;
-	int32_t height; /*0 are leaves, 1 are Bottom Internal nodes, and then we have
-			  INs and root*/
+	/*pad to be exacly one cache line*/
+	char pad1[16];
+
 } __attribute__((packed)) node_header;
 
 typedef struct index_entry {
@@ -163,6 +167,16 @@ struct key_compare {
 #define LN_ITEM_SIZE (sizeof(uint64_t) + (PREFIX_SIZE * sizeof(char)))
 #define KV_LEAF_ENTRY (sizeof(struct bt_leaf_entry) + sizeof(struct bt_static_leaf_slot_array) + (1 / CHAR_BIT))
 #define LN_LENGTH ((LEAF_NODE_REMAIN) / (KV_LEAF_ENTRY))
+
+#define NEW_INDEX_NODE_REMAIN (INDEX_NODE_SIZE - sizeof(struct node_header))
+#define NEW_INDEX_NODE_SIZE (NEW_INDEX_NODE_REMAIN / (sizeof(uint16_t) + sizeof(uint64_t)))
+#define NEW_INDEX_NODE_PADDING (NEW_INDEX_NODE_REMAIN % (sizeof(uint16_t) + sizeof(uint64_t)))
+
+struct new_index_node {
+	uint16_t pivot_offt[NEW_INDEX_NODE_SIZE];
+	char pad[NEW_INDEX_NODE_PADDING];
+	uint64_t children_offt[NEW_INDEX_NODE_SIZE];
+} __attribute__((packed));
 
 struct index_node {
 	node_header header;
