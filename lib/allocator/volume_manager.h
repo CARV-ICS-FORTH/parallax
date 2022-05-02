@@ -154,3 +154,6 @@ struct rul_log_entry *get_next_allocation_log_entry(struct allocation_log_cursor
 **/
 int read_dev_offt_into_buffer(char *buffer, const uint32_t start, const uint32_t size, const off_t dev_offt,
 			      const int fd);
+
+/*TODO this is a dummy function that should be replaced with kvformat*/
+void volume_init(char *dev_name, int start, int dev_size, int unused);
