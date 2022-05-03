@@ -1809,7 +1809,7 @@ struct bt_rebalance_result split_leaf(bt_insert_req *req, leaf_node *node)
 	return split_functions[req->metadata.special_split]((struct bt_dynamic_leaf_node *)node, leaf_size, req);
 }
 
-uint64_t hash(uint64_t x)
+uint64_t par_hash(uint64_t x)
 {
 	x = (x ^ (x >> 30)) * UINT64_C(0xbf58476d1ce4e5b9);
 	x = (x ^ (x >> 27)) * UINT64_C(0x94d049bb133111eb);
@@ -1826,7 +1826,7 @@ lock_table *_find_position(const lock_table **table, node_header *node)
 		BUG_ON();
 	}
 
-	unsigned long position = hash((uint64_t)node) % size_per_height[node->height];
+	unsigned long position = par_hash((uint64_t)node) % size_per_height[node->height];
 	// log_info("node %llu height %d position %lu size of height %d", node,
 	// node->height, position, size_per_height[node->height]);
 	const lock_table *node_lock = table[node->height];
