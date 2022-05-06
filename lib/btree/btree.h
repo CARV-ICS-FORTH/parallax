@@ -30,6 +30,8 @@
 
 #define MAX_HEIGHT 9
 
+#define NEW_INDEX_NODE_LAYOUT_NO
+
 /* types used for the keys
  * KV_FORMAT: [key_len|key]
  * KV_PREFIX: [PREFIX|HASH|ADDR_TO_KV_LOG]
@@ -108,11 +110,11 @@ typedef struct node_header {
 		/* Used in dynamic leaves */
 		uint32_t leaf_log_size;
 	};
-	uint64_t num_entries;
 	IN_log_header *first_IN_log_header;
 	IN_log_header *last_IN_log_header;
+	int32_t num_entries;
 	/*pad to be exacly one cache line*/
-	char pad1[16];
+	char pad1[20];
 
 } __attribute__((packed)) node_header;
 
@@ -167,16 +169,6 @@ struct key_compare {
 #define LN_ITEM_SIZE (sizeof(uint64_t) + (PREFIX_SIZE * sizeof(char)))
 #define KV_LEAF_ENTRY (sizeof(struct bt_leaf_entry) + sizeof(struct bt_static_leaf_slot_array) + (1 / CHAR_BIT))
 #define LN_LENGTH ((LEAF_NODE_REMAIN) / (KV_LEAF_ENTRY))
-
-#define NEW_INDEX_NODE_REMAIN (INDEX_NODE_SIZE - sizeof(struct node_header))
-#define NEW_INDEX_NODE_SIZE (NEW_INDEX_NODE_REMAIN / (sizeof(uint16_t) + sizeof(uint64_t)))
-#define NEW_INDEX_NODE_PADDING (NEW_INDEX_NODE_REMAIN % (sizeof(uint16_t) + sizeof(uint64_t)))
-
-struct new_index_node {
-	uint16_t pivot_offt[NEW_INDEX_NODE_SIZE];
-	char pad[NEW_INDEX_NODE_PADDING];
-	uint64_t children_offt[NEW_INDEX_NODE_SIZE];
-} __attribute__((packed));
 
 struct index_node {
 	node_header header;
@@ -537,14 +529,15 @@ int64_t key_cmp(struct key_compare *key1, struct key_compare *key2);
 int prefix_compare(char *l, char *r, size_t prefix_size);
 
 /*functions used from other parts except btree/btree.c*/
-
 void *_index_node_binary_search(struct index_node *node, void *key_buf, char query_key_format);
+
 void recover_L0(struct db_descriptor *db_desc);
 
 // void free_logical_node(allocator_descriptor *allocator_desc, node_header
 // *node_index);
 
 lock_table *_find_position(const lock_table **table, node_header *node);
+
 #define MIN(x, y) ((x > y) ? (y) : (x))
 #define KEY_SIZE(x) (*(uint32_t *)(x))
 #define VALUE_SIZE(x) KEY_SIZE(x)

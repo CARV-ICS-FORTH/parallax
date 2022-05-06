@@ -29,6 +29,7 @@ set(LIB_C_SOURCE_FILES
     allocator/djb2.c
     api/parallax.c
     btree/btree.c
+    btree/index_node.c
     btree/compaction_daemon.c
     btree/dynamic_leaf.c
     btree/gc.c

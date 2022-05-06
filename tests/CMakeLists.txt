@@ -4,6 +4,7 @@ include_directories(${CMAKE_SOURCE_DIR}/lib)
 if(BUILD_TESTING)
   set(LIB_TEST_FILES
       test_recovery.c
+      test_index_node.c
       test_scans.c
       test_dirty_scans.c
       test_options.c
@@ -16,6 +17,9 @@ if(BUILD_TESTING)
       test_par_put_serialized.c)
 
   set_source_files_properties(${LIB_TEST_FILES} COMPILE_FLAGS "-O3")
+
+  add_executable(test_index_node test_index_node.c arg_parser.c)
+  target_link_libraries(test_index_node "${PROJECT_NAME}" ${DEPENDENCIES})
 
   add_executable(test_scans test_scans.c)
   target_link_libraries(test_scans "${PROJECT_NAME}" ${DEPENDENCIES})

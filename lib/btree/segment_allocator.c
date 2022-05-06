@@ -19,11 +19,10 @@
 #include "../allocator/volume_manager.h"
 #include "../common/common.h"
 #include "conf.h"
+#include "index_node.h"
 #include <assert.h>
 #include <log.h>
 #include <stdlib.h>
-
-extern uint64_t MAPPED;
 
 struct link_segments_metadata {
 	level_descriptor *level_desc;
@@ -176,11 +175,12 @@ struct segment_header *get_segment_for_lsm_level_IO(struct db_descriptor *db_des
 
 struct index_node *seg_get_index_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id, char reason)
 {
-	struct index_node *ptr = NULL;
+	struct index_node *ptr =
+		(struct index_node *)get_space(db_desc, level_id, tree_id, INDEX_NODE_SIZE + KEY_BLOCK_SIZE);
+
+#ifndef NEW_INDEX_NODE_LAYOUT
+
 	IN_log_header *bh = NULL;
-
-	ptr = (struct index_node *)get_space(db_desc, level_id, tree_id, INDEX_NODE_SIZE + KEY_BLOCK_SIZE);
-
 	if (reason == NEW_ROOT)
 		ptr->header.type = rootNode;
 	else
@@ -196,7 +196,7 @@ struct index_node *seg_get_index_node(struct db_descriptor *db_desc, uint8_t lev
 	ptr->header.first_IN_log_header = (IN_log_header *)ABSOLUTE_ADDRESS(bh);
 	ptr->header.last_IN_log_header = ptr->header.first_IN_log_header;
 	ptr->header.key_log_size = sizeof(IN_log_header);
-
+#endif
 	return ptr;
 }
 
