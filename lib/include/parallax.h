@@ -58,6 +58,13 @@ struct par_key_value {
 };
 
 /**
+ * Calls the device formatting function of Parallax to initialize the volume's metadata. It does the same job as kv_format.parallax.
+ * @param device_name Raw device or file to XFS filesystem. e.g /dev/sdc or /home/test/test.dat
+ * @param max_regions_num Maximum regions that will be needed in this deployment it should always be > 1.
+ * */
+void par_format(char *device_name, uint32_t max_regions_num);
+
+/**
   *Opens a DB based on the options provided.
 */
 par_handle par_open(par_db_options *options);
