@@ -268,3 +268,14 @@ release_test_redo_undo_log:
         - ./mkfs.sh "$NVME0/$CI_JOB_ID"/kv_store.dat 128
         - ctest -R ^test_redo_undo_log$
     needs: [release_build_gcc, release_build_clang]
+
+release_test_par_format:
+    image: carvicsforth/arch_carv:latest
+    stage: release_test
+    <<: *release_build_commands
+    tags:
+        - kubernetes
+    script:
+        - make test_par_format;cd tests;
+        - ctest -R ^test_par_format$
+    needs: [release_build_gcc, release_build_clang]
