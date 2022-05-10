@@ -30,7 +30,7 @@
 
 #define MAX_HEIGHT 9
 
-#define NEW_INDEX_NODE_LAYOUT_NO
+#define NEW_INDEX_NODE_LAYOUT
 
 /* types used for the keys
  * KV_FORMAT: [key_len|key]

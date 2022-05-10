@@ -11,7 +11,6 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-
 #include "btree.h"
 #include "../allocator/device_structures.h"
 #include "../allocator/log_structures.h"
@@ -21,6 +20,7 @@
 #include "conf.h"
 #include "dynamic_leaf.h"
 #include "gc.h"
+#include "index_node.h"
 #include "segment_allocator.h"
 #include "set_options.h"
 
@@ -1580,7 +1580,7 @@ static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id,
 
 #ifdef NEW_INDEX_NODE_LAYOUT
 		uint64_t child_offset =
-			new_index_node_binary_search((struct new_index_node *)curr_node, get_op->kv_buf, KV_FORMAT);
+			new_index_binary_search((struct new_index_node *)curr_node, get_op->kv_buf, KV_FORMAT);
 		son_node = (void *)REAL_ADDRESS(child_offset);
 #else
 		next_addr = _index_node_binary_search((struct index_node *)curr_node, get_op->kv_buf, KV_FORMAT);
@@ -2152,19 +2152,17 @@ uint64_t hash(uint64_t x)
 
 lock_table *_find_position(const lock_table **table, node_header *node)
 {
-	unsigned long position;
-	const lock_table *node_lock;
-
 	assert(node);
 	if (node->height < 0 || node->height >= MAX_HEIGHT) {
 		log_fatal("MAX_HEIGHT exceeded %d rearrange values in size_per_height array ", node->height);
+		assert(0);
 		BUG_ON();
 	}
 
-	position = hash((uint64_t)node) % size_per_height[node->height];
+	unsigned long position = hash((uint64_t)node) % size_per_height[node->height];
 	// log_info("node %llu height %d position %lu size of height %d", node,
 	// node->height, position, size_per_height[node->height]);
-	node_lock = table[node->height];
+	const lock_table *node_lock = table[node->height];
 	return (lock_table *)&node_lock[position];
 }
 
@@ -2182,23 +2180,18 @@ int is_split_needed(void *node, bt_insert_req *req, uint32_t leaf_size)
 {
 	assert(node);
 	node_header *header = (node_header *)node;
-	int64_t num_entries = header->num_entries;
 	uint32_t height = header->height;
 	enum kv_category cat = req->metadata.cat;
 	uint8_t level_id = req->metadata.level_id;
 
-	if (height != 0) {
-		uint8_t split_index_node = num_entries >= index_order;
-		return split_index_node;
-	}
+	if (height != 0)
+		return new_index_is_split_needed((struct new_index_node *)node, MAX_KEY_SIZE);
 
-	int key_type;
+	int key_type = KV_INPLACE;
 
 	if ((cat == MEDIUM_INLOG && level_id != req->metadata.handle->db_desc->level_medium_inplace) ||
 	    cat == BIG_INLOG)
 		key_type = KV_INLOG;
-	else
-		key_type = KV_INPLACE;
 
 	struct split_level_leaf split_metadata = { .leaf = node,
 						   .leaf_size = leaf_size,
@@ -2283,6 +2276,7 @@ release_and_retry:
 
 	while (1) {
 		/*Check if father is safe it should be*/
+#ifndef NEW_INDEX_NODE_LAYOUT
 		if (father) {
 			int32_t father_order = index_order;
 			if (father->type == leafNode || father->type == leafRootNode)
@@ -2290,12 +2284,13 @@ release_and_retry:
 
 			assert(father->num_entries < father_order);
 		}
+#endif
 
 		if (is_split_needed(son, ins_req, db_desc->levels[level_id].leaf_size)) {
 			/*Overflow split*/
 			if (son->height > 0) {
 #ifdef NEW_INDEX_NODE_LAYOUT
-				split_res = split_new_index_node(son, ins_req);
+				split_res = new_index_split_node((struct new_index_node *)son, ins_req);
 #else
 				split_res = split_index(son, ins_req);
 #endif
@@ -2313,21 +2308,23 @@ release_and_retry:
 				BUG_ON();
 			}
 
-			/*Insert pivot at father*/
-			if (father != NULL) {
-				insert_key_at_index(ins_req, (struct index_node *)father, split_res.left_child,
-						    split_res.right_child, split_res.middle_key);
-			} else {
+			if (NULL == father) {
 				/*Root was splitted*/
 #ifdef NEW_INDEX_NODE_LAYOUT
-				struct new_index_node *new_root = seg_get_and_init_new_root_node(
-					ins_req->metadata.handle->db_desc, level_id, ins_req->metadata.tree_id);
+				struct new_index_node *new_root = (struct new_index_node *)seg_get_index_node(
+					ins_req->metadata.handle->db_desc, level_id, ins_req->metadata.tree_id, -1);
+
+				new_index_init_node(ADD_GUARD, new_root, rootNode);
+
 				new_root->header.height = db_desc->levels[ins_req->metadata.level_id]
 								  .root_w[ins_req->metadata.tree_id]
 								  ->height +
 							  1;
-				insert_key_at_index(ins_req, (struct index_node *)new_root, split_res.left_child,
-						    split_res.right_child, split_res.middle_key);
+
+				struct pivot_pointer left = { .child_offt = ABSOLUTE_ADDRESS(split_res.left_child) };
+				struct pivot_pointer right = { .child_offt = ABSOLUTE_ADDRESS(split_res.right_child) };
+				new_index_insert_pivot(new_root, &left, (struct pivot_key *)split_res.middle_key,
+						       &right);
 				/*new write root of the tree*/
 				db_desc->levels[level_id].root_w[ins_req->metadata.tree_id] = (node_header *)new_root;
 #else
@@ -2346,8 +2343,23 @@ release_and_retry:
 				/*new write root of the tree*/
 				db_desc->levels[level_id].root_w[ins_req->metadata.tree_id] =
 					(node_header *)new_index_node;
+				/*new write root of the tree*/
+
+				db_desc->levels[level_id].root_w[ins_req->metadata.tree_id] =
+					(node_header *)new_index_node;
 #endif
+				goto release_and_retry;
 			}
+			/*Insert pivot at father*/
+#ifdef NEW_INDEX_NODE_LAYOUT
+			struct pivot_pointer left = { .child_offt = ABSOLUTE_ADDRESS(split_res.left_child) };
+			struct pivot_pointer right = { .child_offt = ABSOLUTE_ADDRESS(split_res.right_child) };
+			new_index_insert_pivot((struct new_index_node *)father, &left,
+					       (struct pivot_key *)split_res.middle_key, &right);
+#else
+			insert_key_at_index(ins_req, father, split_res.left_child, split_res.right_child,
+					    split_res.middle_key);
+#endif
 			goto release_and_retry;
 		}
 
@@ -2355,13 +2367,14 @@ release_and_retry:
 			break;
 
 #ifdef NEW_INDEX_NODE_LAYOUT
-		uint8_t exact_match = 0;
-		//TO REMOVE
 		struct new_index_node *n_son = (struct new_index_node *)son;
-		int32_t child_position = new_index_node_binary_search_get_pos(
-			n_son, ins_req->key_value_buf, ins_req->metadata.key_format, &exact_match);
+
+		struct pivot_pointer *son_pivot =
+			new_index_search_get_pivot(n_son, ins_req->key_value_buf, ins_req->metadata.key_format);
+		log_debug("Visitting son at dev off %lu", son_pivot->child_offt);
+
 		father = son;
-		son = (node_header *)REAL_ADDRESS(n_son->children_offt[child_position]);
+		son = REAL_ADDRESS(son_pivot->child_offt);
 		assert(son);
 		next_addr = (void *)UINT64_MAX;
 
@@ -2374,8 +2387,9 @@ release_and_retry:
 			log_fatal("ERROR unlocking reason follows rc");
 			BUG_ON();
 		}
+
 		/*Node lock acquired */
-		ins_req->metadata.reorganized_leaf_pos_INnode = &n_son->children_offt[child_position];
+		ins_req->metadata.reorganized_leaf_pos_INnode = (uint64_t *)son_pivot;
 
 		/*if the node is not safe hold its ancestor's lock else release locks from
     ancestors */
@@ -2499,8 +2513,8 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 		}
 
 #ifdef NEW_INDEX_NODE_LAYOUT
-		uint64_t child_offt = new_index_node_binary_search((struct new_index_node *)son, ins_req->key_value_buf,
-								   ins_req->metadata.key_format);
+		uint64_t child_offt = new_index_binary_search((struct new_index_node *)son, ins_req->key_value_buf,
+							      ins_req->metadata.key_format);
 		son = (node_header *)REAL_ADDRESS(child_offt);
 
 		assert(son);

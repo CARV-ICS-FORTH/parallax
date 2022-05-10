@@ -18,6 +18,7 @@ static struct new_index_slot_array_entry *new_index_get_slot_array(struct new_in
 
 void new_index_add_guard(struct new_index_node *node, uint64_t child_node_dev_offt)
 {
+	log_debug("Adding guard");
 	char guard_buf[sizeof(struct pivot_key) + NEW_INDEX_GUARD_SIZE + sizeof(struct pivot_pointer)];
 	struct pivot_key *guard = (struct pivot_key *)&guard_buf[0];
 	guard->size = 1;
@@ -57,30 +58,31 @@ void new_index_init_node(enum add_guard_option_t option, struct new_index_node *
 		new_index_add_guard(node, UINT64_MAX);
 }
 
-static uint32_t new_index_get_next_pivot_offt_in_node(struct new_index_node *node, struct pivot_key *key)
+static uint32_t new_index_get_remaining_space(struct new_index_node *node)
 {
 	/*Is there enough space?*/
 	uint64_t left_border_dev_offt = (uint64_t)sizeof(struct node_header) +
 					(node->header.num_entries * sizeof(struct new_index_slot_array_entry));
-
 	/*What is the value of the right border if we append the pivot?*/
-	uint64_t right_border_dev_offt = node->header.key_log_size - PIVOT_SIZE(key);
-
-	/*Do they interfere?*/
-	if (left_border_dev_offt >= right_border_dev_offt) {
-		log_debug("Node is full remaining space is %lu requested is %lu",
-			  node->header.key_log_size - left_border_dev_offt, PIVOT_SIZE(key));
-		/*yes node is full*/
-		return 0;
-	}
-	return right_border_dev_offt;
+	uint64_t right_border_dev_offt = node->header.key_log_size;
+	return right_border_dev_offt - left_border_dev_offt;
 }
 
-int new_index_is_full(struct new_index_node *node, struct pivot_key *key)
+static uint32_t new_index_get_next_pivot_offt_in_node(struct new_index_node *node, struct pivot_key *key)
 {
-	if (new_index_get_next_pivot_offt_in_node(node, key))
+	uint32_t remaining_space = new_index_get_remaining_space(node);
+
+	if (remaining_space < PIVOT_KEY_SIZE(key))
 		return 0;
-	return 1;
+	return node->header.key_log_size - PIVOT_SIZE(key);
+}
+
+int new_index_is_split_needed(struct new_index_node *node, uint32_t max_pivot_size)
+{
+	uint32_t remaining_space = new_index_get_remaining_space(node);
+	if (remaining_space < max_pivot_size)
+		return 1;
+	return 0;
 }
 
 /*
@@ -106,11 +108,7 @@ static int32_t new_index_search_get_pos(struct new_index_node *node, void *looku
 		struct key_compare pivot_cmp = { 0 };
 		struct key_compare lookup_key_cmp = { 0 };
 		struct pivot_key *p_key = (struct pivot_key *)NEW_INDEX_PIVOT_ADDRESS(node, slot_array[middle].pivot);
-		if (p_key->size >= 250) {
-			log_debug("Cmp: Pivot key size: %u data: %.*s look up key %.*s", p_key->size, p_key->size,
-				  p_key->data, *(uint32_t *)lookup_key, (char *)lookup_key + 4);
-			assert(0);
-		}
+
 		init_key_cmp(&pivot_cmp, p_key, KV_FORMAT);
 		init_key_cmp(&lookup_key_cmp, lookup_key, lookup_key_format);
 		comparison_return_value = key_cmp(&pivot_cmp, &lookup_key_cmp);
@@ -131,7 +129,8 @@ static int32_t new_index_search_get_pos(struct new_index_node *node, void *looku
 	return middle;
 }
 
-uint64_t new_index_binary_search(struct new_index_node *node, void *lookup_key, enum KV_type lookup_key_format)
+static struct pivot_key *new_index_search_get_full_pivot(struct new_index_node *node, void *lookup_key,
+							 enum KV_type lookup_key_format)
 {
 	uint8_t exact_match = 0;
 	int32_t position = new_index_search_get_pos(node, lookup_key, lookup_key_format, &exact_match);
@@ -141,6 +140,20 @@ uint64_t new_index_binary_search(struct new_index_node *node, void *lookup_key, 
 	//log_debug("Position is %d exact match %u pivot: %.*s lookup key %.*s", position, exact_match, pivot->size,
 	//	  pivot->data, *(uint32_t *)lookup_key, &((char *)lookup_key)[4]);
 
+	return pivot;
+}
+struct pivot_pointer *new_index_search_get_pivot(struct new_index_node *node, void *lookup_key,
+						 enum KV_type lookup_key_format)
+{
+	struct pivot_key *pivot = new_index_search_get_full_pivot(node, lookup_key, lookup_key_format);
+	uint32_t pivot_size = PIVOT_KEY_SIZE(pivot);
+	struct pivot_pointer *pivot_p = (struct pivot_pointer *)&((char *)pivot)[pivot_size];
+	return pivot_p;
+}
+
+uint64_t new_index_binary_search(struct new_index_node *node, void *lookup_key, enum KV_type lookup_key_format)
+{
+	struct pivot_key *pivot = new_index_search_get_full_pivot(node, lookup_key, lookup_key_format);
 	uint64_t *child_offt = (uint64_t *)&((char *)pivot)[PIVOT_KEY_SIZE(pivot)];
 	return *child_offt;
 }
@@ -171,6 +184,7 @@ static int new_index_internal_insert_pivot(struct new_index_node *node, struct p
 		memmove(&slot_array[position + 2], &slot_array[position + 1],
 			(node->header.num_entries - (position + 1)) * sizeof(struct new_index_slot_array_entry));
 
+		log_debug("Position is %u", position);
 		/*Update in-place the left_child. This is ok because we call this function for L0 which is in memory*/
 		struct pivot_key *left_pivot_key =
 			(struct pivot_key *)NEW_INDEX_PIVOT_ADDRESS(node, slot_array[position].pivot);
@@ -200,6 +214,7 @@ int new_index_append_pivot(struct new_index_node *node, struct pivot_key *key, s
 int new_index_insert_pivot(struct new_index_node *node, struct pivot_pointer *left_child, struct pivot_key *key,
 			   struct pivot_pointer *right_child)
 {
+	log_debug("Insert pivot %.*s", key->size, key->data);
 	return new_index_internal_insert_pivot(node, left_child, key, right_child, 0);
 }
 
@@ -271,7 +286,7 @@ struct bt_rebalance_result new_index_split_node(struct new_index_node *node, bt_
 	struct new_index_slot_array_entry *slot_array = new_index_get_slot_array(node);
 	struct pivot_key *middle_key = (struct pivot_key *)NEW_INDEX_PIVOT_ADDRESS(node, slot_array[curr_entry].pivot);
 	memcpy(&result.middle_key, middle_key, PIVOT_KEY_SIZE(middle_key));
-	log_info("Middle key is: pivot key is %.*s", piv_key->size, piv_key->data);
+	log_debug("Middle key is: pivot key is %.*s", piv_key->size, piv_key->data);
 
 	result.right_child = (node_header *)seg_get_index_node(
 		ins_req->metadata.handle->db_desc, ins_req->metadata.level_id, ins_req->metadata.tree_id, 0);
