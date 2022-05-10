@@ -23,7 +23,7 @@
 #include <uthash.h>
 #include <yaml.h>
 
-#define CONFIG_FILE "options.yml"
+#define CONFIG_FILE "../../options.yml"
 
 int parse_options(struct lib_option **db_options)
 {
