@@ -16,9 +16,8 @@
 #define NUM_OF_OWNERSHIP_REGISTRY_PAIRS (2)
 #include "../btree/conf.h"
 #include "../common/common.h"
-#include "mem_structures.h"
+#include "device_structures.h"
 #include "volume_manager.h"
-#include <errno.h>
 #include <fcntl.h>
 #include <log.h>
 #include <stdint.h>
@@ -27,11 +26,7 @@
 #include <string.h>
 #include <unistd.h>
 
-#define KVF_NUM_OPTIONS 2
-enum kvf_options { DEVICE = 0, MAX_REGIONS_NUM };
-static char *kvf_device_name = NULL;
-static uint32_t kvf_max_regions_num = 0;
-
+/* TODO: check if there is a point to have this function. */
 static void *kvf_posix_calloc(size_t size)
 {
 	char *ptr;
@@ -43,13 +38,24 @@ static void *kvf_posix_calloc(size_t size)
 	return ptr;
 }
 
-static char *kvf_options[] = { "--device", "--max_regions_num", "--per_region_log_size" };
-static char *kvf_help = "Usage ./kv_format <options> Where options include:\n --device <device name>,\n \
-	--max_regions_num <Maximum number of regions to host> \n";
+#ifdef STANDALONE_FORMAT
+#define KVF_NUM_OPTIONS 2
+struct parse_options {
+	char *device_name;
+	uint32_t max_regions_num;
+};
 
-static void kvf_parse_options(int argc, char **argv)
+static struct parse_options kvf_parse_options(int argc, char **argv)
 {
 	int i, j;
+	struct parse_options options;
+	char *kvf_device_name = NULL;
+	uint32_t kvf_max_regions_num = 0;
+	/* TODO: Use arg_parser here too. */
+	enum kvf_options { DEVICE = 0, MAX_REGIONS_NUM };
+	char *kvf_options[] = { "--device", "--max_regions_num", "--per_region_log_size" };
+	char *kvf_help = "Usage ./kv_format <options> Where options include:\n --device <device name>,\n \
+	--max_regions_num <Maximum number of regions to host> \n";
 
 	for (i = 1; i < argc; i += 2) {
 		for (j = 0; j < KVF_NUM_OPTIONS; ++j) {
@@ -87,7 +93,12 @@ static void kvf_parse_options(int argc, char **argv)
 		log_fatal("Max region number not specified help:\n %s", kvf_help);
 		BUG_ON();
 	}
+
+	options.device_name = kvf_device_name;
+	options.max_regions_num = kvf_max_regions_num;
+	return options;
 }
+#endif
 
 static void kvf_write_buffer(int fd, char *buffer, ssize_t start, ssize_t size, uint64_t dev_offt)
 {
@@ -105,7 +116,7 @@ static void kvf_write_buffer(int fd, char *buffer, ssize_t start, ssize_t size, 
 	}
 }
 
-static void kvf_init_parallax(char *device_name, uint32_t max_regions_num)
+void kvf_init_parallax(char *device_name, uint32_t max_regions_num)
 {
 	off64_t device_size = 0;
 	log_info("Opening Volume %s", device_name);
@@ -251,12 +262,17 @@ static void kvf_init_parallax(char *device_name, uint32_t max_regions_num)
 		log_fatal("Failed to close file %s", device_name);
 		BUG_ON();
 	}
-	free(kvf_device_name);
+
+	free(device_name);
 }
+
+#ifdef STANDALONE_FORMAT
 
 int main(int argc, char **argv)
 {
-	kvf_parse_options(argc, argv);
-	kvf_init_parallax(kvf_device_name, kvf_max_regions_num);
+	struct parse_options options = kvf_parse_options(argc, argv);
+	kvf_init_parallax(options.device_name, options.max_regions_num);
 	return 1;
 }
+
+#endif

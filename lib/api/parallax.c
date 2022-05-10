@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "../include/parallax.h"
+#include "../allocator/kv_format.h"
 #include "../btree/btree.h"
 #include "../scanner/scanner.h"
 #include <log.h>
@@ -21,6 +22,11 @@
 #include <stdlib.h>
 #include <string.h>
 #define PAR_MAX_PREALLOCATED_SIZE 256
+
+void par_format(char *device_name, uint32_t max_regions_num)
+{
+	kvf_init_parallax(device_name, max_regions_num);
+}
 
 par_handle par_open(par_db_options *options)
 {

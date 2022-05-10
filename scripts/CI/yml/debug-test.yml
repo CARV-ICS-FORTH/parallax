@@ -308,3 +308,14 @@ debug_test_redo_undo_log:
         - ./mkfs.sh "$NVME0/$CI_JOB_ID"/kv_store.dat 128
         - ctest -R ^test_redo_undo_log$
     needs: [debug_build_gcc, debug_build_clang]
+
+debug_test_par_format:
+    image: carvicsforth/arch_carv:latest
+    stage: debug_test
+    <<: *debug_build_commands
+    tags:
+        - kubernetes
+    script:
+        - make test_par_format;cd tests;
+        - ctest -R ^test_par_format$
+    needs: [debug_build_gcc, debug_build_clang]

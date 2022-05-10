@@ -23,6 +23,7 @@ option(
 
 set(LIB_C_SOURCE_FILES
     allocator/allocator.c
+    allocator/kv_format.c
     allocator/redo_undo_log.c
     allocator/persistent_operations.c
     allocator/djb2.c
@@ -62,7 +63,7 @@ set_source_files_properties(allocator/spin_loop.c PROPERTIES COMPILE_FLAGS
                                                              "-O0")
 # kv_format utility
 add_executable(kv_format.${LIB} allocator/kv_format.c common/common.c)
-
+target_compile_definitions(kv_format.${LIB} PUBLIC -DSTANDALONE_FORMAT)
 target_link_libraries(kv_format.${LIB} PRIVATE ${DEPENDENCIES})
 
 install(
