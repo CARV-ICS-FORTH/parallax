@@ -16,9 +16,8 @@
 #define NUM_OF_OWNERSHIP_REGISTRY_PAIRS (2)
 #include "../btree/conf.h"
 #include "../common/common.h"
-#include "mem_structures.h"
+#include "device_structures.h"
 #include "volume_manager.h"
-#include <errno.h>
 #include <fcntl.h>
 #include <log.h>
 #include <stdint.h>
