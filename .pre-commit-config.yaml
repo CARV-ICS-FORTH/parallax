@@ -4,7 +4,7 @@
 repos:
 
     - repo: https://github.com/pre-commit/pre-commit-hooks
-      rev: v4.1.0
+      rev: v4.2.0
       hooks:
           - id: trailing-whitespace
             exclude: docs/
@@ -60,7 +60,7 @@ repos:
             args: [--msg-filename]
 
     - repo: https://github.com/jumanjihouse/pre-commit-hook-yamlfmt
-      rev: 0.1.1
+      rev: 0.2.1
       hooks:
           - id: yamlfmt
             exclude: options.yml
