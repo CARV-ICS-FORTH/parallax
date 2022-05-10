@@ -921,11 +921,3 @@ struct volume_descriptor *mem_get_volume_desc(char *volume_name)
 
 	return volume->volume_desc;
 }
-
-void volume_init(char *dev_name, int start, int dev_size, int unused)
-{
-	(void)dev_name;
-	(void)start;
-	(void)dev_size;
-	(void)unused;
-}
