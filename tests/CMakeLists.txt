@@ -116,5 +116,6 @@ if(BUILD_TESTING)
                         ${DEPENDENCIES})
   add_test(NAME test_par_put_serialized
            COMMAND $<TARGET_FILE:test_par_put_serialized> --file=${FILEPATH})
+
   add_subdirectory(Surrogates)
 endif()
