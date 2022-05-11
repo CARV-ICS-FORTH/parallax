@@ -48,6 +48,7 @@ static par_handle open_db(const char *path)
 	return handle;
 }
 
+/** kv_size generators logic follow */
 static uint64_t generate_random_small_kv_size(void)
 {
 	/*minimum kv will have 5 size*/
@@ -72,6 +73,7 @@ static uint64_t generate_random_medium_kv_size(void)
 	return size;
 }
 
+/** Functions for initializing a kv based on their category*/
 static void init_small_kv(uint64_t *kv_size, char **key_prefix, enum kv_size_type size_type)
 {
 	if (size_type == STATIC) {
@@ -109,12 +111,11 @@ static void init_big_kv(uint64_t *kv_size, char **key_prefix, enum kv_size_type 
 }
 
 typedef void init_kv_func(uint64_t *kv_size, char **key_prefix, enum kv_size_type size_type);
-
 init_kv_func *init_kv[3] = { init_small_kv, init_medium_kv, init_big_kv };
 
+/** Function allocating enough space for a kv*/
 static uint64_t space_needed_for_the_kv(uint64_t kv_size, char *key_prefix, uint64_t i)
 {
-	/*allocate enough space for a kv*/
 	char *buf = (char *)malloc(LARGE_KV_SIZE);
 	memcpy(buf, key_prefix, strlen(key_prefix));
 	sprintf(buf + strlen(key_prefix), "%llu", (long long unsigned)i);
@@ -130,6 +131,7 @@ static uint64_t space_needed_for_the_kv(uint64_t kv_size, char *key_prefix, uint
 	return kv_size;
 }
 
+/** Main insert logic for populating the db with a kv category*/
 static void populate_db(par_handle hd, uint64_t from, uint64_t num_keys, enum kv_type type, enum kv_size_type size_type)
 {
 	char *key_prefix;
@@ -163,6 +165,10 @@ static void populate_db(par_handle hd, uint64_t from, uint64_t num_keys, enum kv
 	log_info("Population ended");
 }
 
+/** This function populates the db in the above manner:
+ *  First static size kvs are inserted following the - medium kvs - big kvs - small kvs - order
+ *  After that random generated size keys are inserted followin the -big kvs - small kvs - medium kvs - order
+ **/
 static void insert_keys(par_handle handle, uint64_t num_of_keys, uint32_t small_kvs_percentage,
 			uint32_t medium_kvs_percentage, uint32_t big_kvs_percentage)
 {
@@ -217,7 +223,7 @@ static void scanner_validate_number_of_kvs_using_internal_api(par_handle hd, uin
 
 	*size = 1;
 
-	//fill the seek_key with the smallest key of the region
+	/*fill the seek_key with the smallest key of the region*/
 	char *seek_key = (char *)tmp;
 	*(uint32_t *)seek_key = *size;
 	memcpy(seek_key + sizeof(uint32_t), smallest_key, *size);
@@ -245,6 +251,7 @@ static unsigned int scanner_kv_size(par_scanner sc)
 	return (scanner_key.size + scanner_value.val_size + 2 * sizeof(uint32_t));
 }
 
+/** Function returning if the size of a kv corresponds to its kv_category*/
 static int check_correctness_of_size(par_scanner sc, enum kv_type key_type, enum kv_size_type size_type)
 {
 	if (key_type == SMALL) {
@@ -339,6 +346,7 @@ static void validate_random_size_of_kvs(par_handle hd, uint64_t from, uint64_t t
 	par_close_scanner(sc);
 }
 
+/** Main retrieve-kvs logic*/
 static void read_all_static_kvs(par_handle handle, uint64_t from, uint64_t to, enum kv_type kv_type,
 				enum kv_size_type size_type)
 {
@@ -362,6 +370,11 @@ static void read_all_static_kvs(par_handle handle, uint64_t from, uint64_t to, e
 	}
 }
 
+/** Function validating the already populated kvs
+ *  First it scans the whole db to ensure that the number of the inserted keys are equal to the benchmark size
+ *  After it validates each static size kv category using scanners
+ *  Then it validates each random size kv category using scanners
+ *  Finally it retrieves all static size kvs using par_get to ensure that the kvs are correct */
 static void validate_kvs(par_handle hd, uint64_t num_keys, uint64_t small_kv_perc, uint64_t medium_kv_perc,
 			 uint64_t large_kv_perc)
 {
@@ -404,7 +417,7 @@ static void validate_kvs(par_handle hd, uint64_t num_keys, uint64_t small_kv_per
 	log_info("Validating %lu small static size keys...", small_num_keys / 2);
 	read_all_static_kvs(hd, 0, small_num_keys / 2, SMALL, STATIC);
 }
-
+/** ./test_mixes --file=path_to_file --num_of_kvs=number_of_kvs --medium_kv_percentage=percentage_of_medium_kvs --small_kv_percentage=percentage_of_small_kvs --big_kv_percentage=percentage_of_big_kvs*/
 int main(int argc, char *argv[])
 {
 	int help_flag = 0;
@@ -444,11 +457,11 @@ int main(int argc, char *argv[])
 
 	/*sum of percentages must be equal 100*/
 	assert(medium_kvs_percentage + small_kvs_percentage + big_kvs_percentage == 100);
-
 	par_handle handle = open_db(path);
 
+	/*populate the db phase*/
 	insert_keys(handle, num_of_keys, small_kvs_percentage, medium_kvs_percentage, big_kvs_percentage);
-
+	/*validate the poppulated db phase*/
 	validate_kvs(handle, num_of_keys, small_kvs_percentage, medium_kvs_percentage, big_kvs_percentage);
 
 	par_close(handle);
