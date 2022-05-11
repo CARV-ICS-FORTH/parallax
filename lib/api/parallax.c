@@ -58,6 +58,12 @@ par_ret_code par_put(par_handle handle, struct par_key_value *key_value)
 	return PAR_FAILURE;
 }
 
+par_ret_code par_put_serialized(par_handle handle, char *serialized_key_value)
+{
+	int ret = serialized_insert_key_value((db_handle *)handle, serialized_key_value);
+	return ret == PARALLAX_SUCCESS ? PAR_SUCCESS : PAR_FAILURE;
+}
+
 static inline int par_serialize_to_kv_format(struct par_key *key, char **buf, uint32_t buf_size)
 {
 	int ret = 0;

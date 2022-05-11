@@ -512,6 +512,7 @@ struct log_sequence_number {
 
 uint8_t insert_key_value(db_handle *handle, void *key, void *value, uint32_t key_size, uint32_t value_size,
 			 request_type op_type);
+uint8_t serialized_insert_key_value(db_handle *handle, const char *serialized_key_value);
 uint8_t _insert_key_value(bt_insert_req *ins_req);
 
 void *append_key_value_to_log(log_operation *req);

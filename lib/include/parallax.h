@@ -80,6 +80,13 @@ void par_close(par_handle handle);
 par_ret_code par_put(par_handle handle, struct par_key_value *key_value);
 
 /**
+ * Inserts a serialized key value pair by using the buffer provided by the user.
+ * @param serialized_key_value is a buffer containing the serialized key value pair.
+ * The format of the key value pair is | key_size | key | value_size | value |, where {key,value}_size is uint32_t.
+ * */
+par_ret_code par_put_serialized(par_handle handle, char *serialized_key_value);
+
+/**
   * Takes as input a key and searches for it. If the key exists in the DB then, it allocates the value if it is NULL and the client is responsible to release the memory.
   * Otherwise it copies the data to the existing data buffer provided by the value pointer.
 */
