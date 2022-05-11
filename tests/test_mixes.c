@@ -114,12 +114,11 @@ init_kv_func *init_kv[3] = { init_small_kv, init_medium_kv, init_big_kv };
 
 static uint64_t space_needed_for_the_kv(uint64_t kv_size, char *key_prefix, uint64_t i)
 {
-	uint64_t keybuf_size;
 	/*allocate enough space for a kv*/
 	char *buf = (char *)malloc(LARGE_KV_SIZE);
 	memcpy(buf, key_prefix, strlen(key_prefix));
 	sprintf(buf + strlen(key_prefix), "%llu", (long long unsigned)i);
-	keybuf_size = strlen(buf) + 1;
+	uint64_t keybuf_size = strlen(buf) + 1;
 
 	/* a random generated key do not have enough space
 	 * allocate minimum needed space for the KV
@@ -133,15 +132,13 @@ static uint64_t space_needed_for_the_kv(uint64_t kv_size, char *key_prefix, uint
 
 static void populate_db(par_handle hd, uint64_t from, uint64_t num_keys, enum kv_type type, enum kv_size_type size_type)
 {
-	uint64_t i;
-	key *k;
 	char *key_prefix;
 	uint64_t kv_size = 0;
 
-	for (i = from; i < num_keys; i++) {
+	for (uint64_t i = from; i < num_keys; i++) {
 		init_kv[type](&kv_size, &key_prefix, size_type);
 		kv_size = space_needed_for_the_kv(kv_size, key_prefix, i);
-		k = (key *)calloc(1, kv_size);
+		key *k = (key *)calloc(1, kv_size);
 
 		memcpy(k->key_buf, key_prefix, strlen(key_prefix));
 		sprintf(k->key_buf + strlen(key_prefix), "%llu", (long long unsigned)i);
@@ -159,7 +156,7 @@ static void populate_db(par_handle hd, uint64_t from, uint64_t num_keys, enum kv
 
 		if (par_put(hd, &kv) != PAR_SUCCESS) {
 			log_fatal("Put failed!");
-			exit(EXIT_FAILURE);
+			_exit(EXIT_FAILURE);
 		}
 		free(k);
 	}
@@ -273,9 +270,13 @@ static int check_correctness_of_size(par_scanner sc, enum kv_type key_type, enum
 static void validate_static_size_of_kvs(par_handle hd, uint64_t from, uint64_t to, enum kv_type key_type,
 					enum kv_size_type size_type)
 {
-	char *key_prefix;
-	uint64_t kv_size;
+	char *key_prefix = NULL;
+	uint64_t kv_size = 0;
 	struct par_key k;
+	if (from == to) {
+		/*this is an empty category dont try to validate anything*/
+		return;
+	}
 
 	init_kv[key_type](&kv_size, &key_prefix, STATIC);
 	k.data = (char *)malloc(kv_size);
@@ -294,7 +295,6 @@ static void validate_static_size_of_kvs(par_handle hd, uint64_t from, uint64_t t
 
 	for (uint64_t i = from + 1; i < to; i++) {
 		par_get_next(sc);
-		assert(par_is_valid(sc));
 		if (!check_correctness_of_size(sc, key_type, size_type)) {
 			log_fatal("Found a KV that has size out of its category range");
 			assert(0);
@@ -307,8 +307,8 @@ static void validate_static_size_of_kvs(par_handle hd, uint64_t from, uint64_t t
 static void validate_random_size_of_kvs(par_handle hd, uint64_t from, uint64_t to, enum kv_type key_type,
 					enum kv_size_type size_type)
 {
-	char *key_prefix;
-	uint64_t kv_size;
+	char *key_prefix = NULL;
+	uint64_t kv_size = 0;
 	struct par_key k = { .size = 0, .data = NULL };
 
 	init_kv[key_type](&kv_size, &key_prefix, RANDOM);
@@ -342,22 +342,22 @@ static void validate_random_size_of_kvs(par_handle hd, uint64_t from, uint64_t t
 static void read_all_static_kvs(par_handle handle, uint64_t from, uint64_t to, enum kv_type kv_type,
 				enum kv_size_type size_type)
 {
-	uint64_t i, kv_size;
-	char *key_prefix;
+	uint64_t kv_size = 0;
+	char *key_prefix = NULL;
 	struct par_key_value my_kv = { .k.size = 0, .k.data = NULL, .v.val_buffer = NULL };
 
 	init_kv[kv_type](&kv_size, &key_prefix, size_type);
 	/*allocate enough space for all kvs, won't use all of it*/
 	char *buf = (char *)malloc(LARGE_KV_SIZE);
 
-	for (i = from; i < to; i++) {
+	for (uint64_t i = from; i < to; i++) {
 		memcpy(buf, key_prefix, strlen(key_prefix));
 		sprintf(buf + strlen(key_prefix), "%llu", (long long unsigned)i);
 		my_kv.k.size = strlen(buf) + 1;
 		my_kv.k.data = buf;
 		if (par_get(handle, &my_kv.k, &my_kv.v) != PAR_SUCCESS) {
 			log_fatal("Key %u:%s not found", my_kv.k.size, my_kv.k.data);
-			exit(EXIT_FAILURE);
+			_exit(EXIT_FAILURE);
 		}
 	}
 }
@@ -403,8 +403,6 @@ static void validate_kvs(par_handle hd, uint64_t num_keys, uint64_t small_kv_per
 	read_all_static_kvs(hd, 0, large_num_keys / 2, BIG, STATIC);
 	log_info("Validating %lu small static size keys...", small_num_keys / 2);
 	read_all_static_kvs(hd, 0, small_num_keys / 2, SMALL, STATIC);
-
-	return;
 }
 
 int main(int argc, char *argv[])
@@ -455,5 +453,5 @@ int main(int argc, char *argv[])
 
 	par_close(handle);
 	log_info("test successfull");
-	return 1;
+	return 0;
 }
