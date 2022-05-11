@@ -966,7 +966,7 @@ uint8_t insert_key_value(db_handle *handle, void *key, void *value, uint32_t key
 	kv_ratio = ((double)key_size) / value_size;
 
 	if (kv_size > KV_MAX_SIZE) {
-		log_fatal("Key buffer overflow");
+		log_fatal("Key buffer overflow %u", kv_size);
 		BUG_ON();
 	}
 
@@ -1038,7 +1038,7 @@ uint8_t serialized_insert_key_value(db_handle *handle, const char *serialized_ke
 	double kv_ratio = ((double)key_size) / value_size;
 
 	if (kv_size > KV_MAX_SIZE) {
-		log_fatal("Key buffer overflow");
+		log_fatal("Key buffer overflow %u", kv_size);
 		BUG_ON();
 	}
 
@@ -1650,7 +1650,7 @@ deser:
 			       kv.addr + sizeof(uint32_t) + KEY_SIZE(kv.addr) + sizeof(uint32_t), *value_size);
 			get_op->buffer_overflow = 0;
 		} else
-			get_op->buffer_overflow = 1;
+			get_op->buffer_overflow = *value_size;
 
 		get_op->found = 1;
 		if (get_op->tombstone)

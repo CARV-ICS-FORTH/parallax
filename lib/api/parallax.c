@@ -111,8 +111,12 @@ par_ret_code par_get(par_handle handle, struct par_key *key, struct par_value *v
 	if (malloced)
 		free(kv_buf);
 
+	if (get_op.buffer_overflow)
+		return PAR_GET_NOT_ENOUGH_BUFFER_SPACE;
+
 	if (!get_op.found)
 		return PAR_KEY_NOT_FOUND;
+
 	value->val_buffer = get_op.buffer_to_pack_kv;
 	value->val_size = get_op.size;
 	return PAR_SUCCESS;
