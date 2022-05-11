@@ -270,7 +270,7 @@ static int check_correctness_of_size(par_scanner sc, enum kv_type key_type, enum
 static void validate_static_size_of_kvs(par_handle hd, uint64_t from, uint64_t to, enum kv_type key_type,
 					enum kv_size_type size_type)
 {
-	char *key_prefix = NULL;
+	char *key_prefix;
 	uint64_t kv_size = 0;
 	struct par_key k;
 	if (from == to) {
@@ -307,7 +307,7 @@ static void validate_static_size_of_kvs(par_handle hd, uint64_t from, uint64_t t
 static void validate_random_size_of_kvs(par_handle hd, uint64_t from, uint64_t to, enum kv_type key_type,
 					enum kv_size_type size_type)
 {
-	char *key_prefix = NULL;
+	char *key_prefix;
 	uint64_t kv_size = 0;
 	struct par_key k = { .size = 0, .data = NULL };
 
@@ -343,7 +343,7 @@ static void read_all_static_kvs(par_handle handle, uint64_t from, uint64_t to, e
 				enum kv_size_type size_type)
 {
 	uint64_t kv_size = 0;
-	char *key_prefix = NULL;
+	char *key_prefix;
 	struct par_key_value my_kv = { .k.size = 0, .k.data = NULL, .v.val_buffer = NULL };
 
 	init_kv[kv_type](&kv_size, &key_prefix, size_type);

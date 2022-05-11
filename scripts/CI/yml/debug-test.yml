@@ -338,3 +338,27 @@ debug_test_par_put_serialized:
         - make test_par_put_serialized;cd tests;
         - ctest -R ^test_par_put_serialized$
     needs: [debug_build_gcc, debug_build_clang]
+
+debug_test_mixes_all_medium:
+    image: carvicsforth/arch_carv:latest
+    stage: debug_test
+    <<: *debug_build_commands
+    tags:
+        - kubernetes
+    script:
+        - make test_mixes;make kv_format.parallax;cd tests;
+        - ./mkfs.sh "$NVME0/$CI_JOB_ID"/kv_store.dat 128
+        - ctest -R ^test_mixes_all_medium$
+    needs: [debug_build_gcc, debug_build_clang]
+
+debug_test_mixes_most_small_few_medium:
+    image: carvicsforth/arch_carv:latest
+    stage: debug_test
+    <<: *debug_build_commands
+    tags:
+        - kubernetes
+    script:
+        - make test_mixes;make kv_format.parallax;cd tests;
+        - ./mkfs.sh "$NVME0/$CI_JOB_ID"/kv_store.dat 128
+        - ctest -R ^test_mixes_most_small_few_medium$
+    needs: [debug_build_gcc, debug_build_clang]
