@@ -12,7 +12,8 @@ if(BUILD_TESTING)
       test_gc.c
       test_leaf_root_delete_get_scan.c
       test_region_allocations.c
-      test_par_format.c)
+      test_par_format.c
+      test_par_put_serialized.c)
 
   set_source_files_properties(${LIB_TEST_FILES} COMPILE_FLAGS "-O3")
 
@@ -110,5 +111,10 @@ if(BUILD_TESTING)
   add_test(NAME test_par_format COMMAND $<TARGET_FILE:test_par_format>
                                         --file=${FILEPATH})
 
+  add_executable(test_par_put_serialized test_par_put_serialized.c arg_parser.c)
+  target_link_libraries(test_par_put_serialized "${PROJECT_NAME}"
+                        ${DEPENDENCIES})
+  add_test(NAME test_par_put_serialized
+           COMMAND $<TARGET_FILE:test_par_put_serialized> --file=${FILEPATH})
   add_subdirectory(Surrogates)
 endif()

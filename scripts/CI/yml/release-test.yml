@@ -121,7 +121,6 @@ release_test_dirty_scans_large:
         - ctest -R ^test_dirty_scans_large$
     needs: [release_build_gcc, release_build_clang]
 
-
 release_test_dirty_scans_smalld:
     image: carvicsforth/arch_carv:latest
     stage: release_test
@@ -134,7 +133,6 @@ release_test_dirty_scans_smalld:
         - ctest -R ^test_dirty_scans_smalld$
     needs: [release_build_gcc, release_build_clang]
 
-
 release_test_dirty_scans_mediumd:
     image: carvicsforth/arch_carv:latest
     stage: release_test
@@ -146,7 +144,6 @@ release_test_dirty_scans_mediumd:
         - ./mkfs.sh "$NVME0/$CI_JOB_ID"/kv_store.dat 128
         - ctest -R ^test_dirty_scans_mediumd$
     needs: [release_build_gcc, release_build_clang]
-
 
 release_test_dirty_scans_larged:
     image: carvicsforth/arch_carv:latest
@@ -195,7 +192,6 @@ release_test_dirty_scans_largep:
         - ./mkfs.sh "$NVME0/$CI_JOB_ID"/kv_store.dat 128
         - ctest -R ^test_dirty_scans_largep$
     needs: [release_build_gcc, release_build_clang]
-
 
 release_test_dirty_scans_smalldp:
     image: carvicsforth/arch_carv:latest
@@ -278,4 +274,15 @@ release_test_par_format:
     script:
         - make test_par_format;cd tests;
         - ctest -R ^test_par_format$
+    needs: [release_build_gcc, release_build_clang]
+
+release_test_par_put_serialized:
+    image: carvicsforth/arch_carv:latest
+    stage: release_test
+    <<: *release_build_commands
+    tags:
+        - kubernetes
+    script:
+        - make test_par_put_serialized;cd tests;
+        - ctest -R ^test_par_put_serialized$
     needs: [release_build_gcc, release_build_clang]
