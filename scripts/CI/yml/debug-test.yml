@@ -16,7 +16,6 @@ test_surrogates:
         - ./SurrogateTUsTest
     needs: [debug_build_gcc, debug_build_clang]
 
-
 test_options:
     image: carvicsforth/ubuntu_carv:latest
     stage: debug_test
@@ -162,7 +161,6 @@ debug_test_dirty_scans_large:
         - ctest -R ^test_dirty_scans_large$
     needs: [debug_build_gcc, debug_build_clang]
 
-
 debug_test_dirty_scans_smalld:
     image: carvicsforth/arch_carv:latest
     stage: debug_test
@@ -175,7 +173,6 @@ debug_test_dirty_scans_smalld:
         - ctest -R ^test_dirty_scans_smalld$
     needs: [debug_build_gcc, debug_build_clang]
 
-
 debug_test_dirty_scans_mediumd:
     image: carvicsforth/arch_carv:latest
     stage: debug_test
@@ -187,7 +184,6 @@ debug_test_dirty_scans_mediumd:
         - ./mkfs.sh "$NVME0/$CI_JOB_ID"/kv_store.dat 128
         - ctest -R ^test_dirty_scans_mediumd$
     needs: [debug_build_gcc, debug_build_clang]
-
 
 debug_test_dirty_scans_larged:
     image: carvicsforth/arch_carv:latest
@@ -236,7 +232,6 @@ debug_test_dirty_scans_largep:
         - ./mkfs.sh "$NVME0/$CI_JOB_ID"/kv_store.dat 128
         - ctest -R ^test_dirty_scans_largep$
     needs: [debug_build_gcc, debug_build_clang]
-
 
 debug_test_dirty_scans_smalldp:
     image: carvicsforth/arch_carv:latest
@@ -318,4 +313,15 @@ debug_test_par_format:
     script:
         - make test_par_format;cd tests;
         - ctest -R ^test_par_format$
+    needs: [debug_build_gcc, debug_build_clang]
+
+debug_test_par_put_serialized:
+    image: carvicsforth/arch_carv:latest
+    stage: debug_test
+    <<: *debug_build_commands
+    tags:
+        - kubernetes
+    script:
+        - make test_par_put_serialized;cd tests;
+        - ctest -R ^test_par_put_serialized$
     needs: [debug_build_gcc, debug_build_clang]

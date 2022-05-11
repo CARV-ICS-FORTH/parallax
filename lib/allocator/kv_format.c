@@ -262,8 +262,6 @@ void kvf_init_parallax(char *device_name, uint32_t max_regions_num)
 		log_fatal("Failed to close file %s", device_name);
 		BUG_ON();
 	}
-
-	free(device_name);
 }
 
 #ifdef STANDALONE_FORMAT
@@ -272,6 +270,7 @@ int main(int argc, char **argv)
 {
 	struct parse_options options = kvf_parse_options(argc, argv);
 	kvf_init_parallax(options.device_name, options.max_regions_num);
+	free(options.device_name);
 	return 1;
 }
 

@@ -966,7 +966,7 @@ uint8_t insert_key_value(db_handle *handle, void *key, void *value, uint32_t key
 	kv_ratio = ((double)key_size) / value_size;
 
 	if (kv_size > KV_MAX_SIZE) {
-		log_fatal("Key buffer overflow");
+		log_fatal("Key buffer overflow %u", kv_size);
 		BUG_ON();
 	}
 
@@ -1005,6 +1005,56 @@ uint8_t insert_key_value(db_handle *handle, void *key, void *value, uint32_t key
 * is the active_tree after
 * acquiring the guard lock of the region
 * */
+
+	return _insert_key_value(&ins_req);
+}
+
+/**
+ * Inserts a serialized key value pair by using the buffer provided by the user.
+ * @param serialized_key_value is a buffer containing the serialized key value pair.
+ * The format of the key value pair is | key_size | key | value_size | value |, where {key,value}_size is uint32_t.
+ * */
+
+uint8_t serialized_insert_key_value(db_handle *handle, const char *serialized_key_value)
+{
+	bt_insert_req ins_req = { .metadata.handle = handle,
+				  .key_value_buf = (char *)serialized_key_value,
+				  .metadata.level_id = 0,
+				  .metadata.key_format = KV_FORMAT,
+				  .metadata.append_to_log = 1 };
+
+	if (DB_IS_CLOSING == handle->db_desc->stat) {
+		log_warn("Sorry DB: %s is closing", handle->db_desc->db_superblock->db_name);
+		return PARALLAX_FAILURE;
+	}
+
+	uint32_t key_size = KEY_SIZE(serialized_key_value);
+	if (key_size > MAX_KEY_SIZE) {
+		log_info("Keys > %d bytes are not supported!", MAX_KEY_SIZE);
+		return PARALLAX_FAILURE;
+	}
+	uint32_t value_size = VALUE_SIZE(serialized_key_value + key_size + sizeof(key_size));
+	uint32_t kv_size = sizeof(uint32_t) + key_size + sizeof(uint32_t) + value_size;
+	double kv_ratio = ((double)key_size) / value_size;
+
+	if (kv_size > KV_MAX_SIZE) {
+		log_fatal("Key buffer overflow %u", kv_size);
+		BUG_ON();
+	}
+
+	ins_req.metadata.kv_size = kv_size;
+
+	if (kv_ratio >= 0.0 && kv_ratio < 0.02) {
+		ins_req.metadata.cat = BIG_INLOG;
+	} else if (kv_ratio >= 0.02 && kv_ratio <= 0.2) {
+#if MEDIUM_LOG_UNSORTED
+		ins_req.metadata.cat = MEDIUM_INLOG;
+#else
+		ins_req.metadata.cat = MEDIUM_INPLACE;
+#endif
+	} else {
+		ins_req.metadata.cat = SMALL_INPLACE;
+	}
 
 	return _insert_key_value(&ins_req);
 }
@@ -1600,7 +1650,7 @@ deser:
 			       kv.addr + sizeof(uint32_t) + KEY_SIZE(kv.addr) + sizeof(uint32_t), *value_size);
 			get_op->buffer_overflow = 0;
 		} else
-			get_op->buffer_overflow = 1;
+			get_op->buffer_overflow = *value_size;
 
 		get_op->found = 1;
 		if (get_op->tombstone)
