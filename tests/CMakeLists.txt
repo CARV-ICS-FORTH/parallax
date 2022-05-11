@@ -82,7 +82,7 @@ if(BUILD_TESTING)
   add_executable(test_gc test_gc.c arg_parser.c)
   target_link_libraries(test_gc "${PROJECT_NAME}" ${DEPENDENCIES})
   add_test(NAME test_gc COMMAND $<TARGET_FILE:test_gc> --file=${FILEPATH}
-    --num_of_kvs=1000000)
+                                --num_of_kvs=1000000)
 
   add_executable(test_medium test_medium.c arg_parser.c)
   target_link_libraries(test_medium "${PROJECT_NAME}" ${DEPENDENCIES})
@@ -91,7 +91,6 @@ if(BUILD_TESTING)
     COMMAND
       $<TARGET_FILE:test_medium> --file=/tmp/kv_store.dat --num_of_kvs=1000000
       --small_kv_percentage=10 --medium_kv_percentage=80 --big_kv_percentage=10)
-
 
   add_executable(simple_test_delete simple_test_delete.c arg_parser.c)
   target_link_libraries(simple_test_delete "${PROJECT_NAME}" ${DEPENDENCIES})
