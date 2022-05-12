@@ -21,8 +21,7 @@ build_cppcheck:
     stage: lint
     script:
         - cppcheck --language=c . --enable=all --inconclusive --max-ctu-depth=1024 -iYCSB-CXX -ibuild --inline-suppr --suppress=missingInclude
-        - cppcheck --language=c . --enable=all --inconclusive --max-ctu-depth=1024 -iYCSB-CXX -ibuild --inline-suppr --suppress=missingInclude
-          &> log.txt
+        - cppcheck --language=c . --enable=all --inconclusive --max-ctu-depth=1024 -iYCSB-CXX -ibuild --inline-suppr --suppress=missingInclude &> log.txt
         - python scripts/CI/check-cppcheck-output.py
     needs: []
 
