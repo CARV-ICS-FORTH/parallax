@@ -2371,7 +2371,7 @@ release_and_retry:
 
 		struct pivot_pointer *son_pivot =
 			new_index_search_get_pivot(n_son, ins_req->key_value_buf, ins_req->metadata.key_format);
-		log_debug("Visitting son at dev off %lu", son_pivot->child_offt);
+		//log_debug("Visitting son at dev off %lu", son_pivot->child_offt);
 
 		father = son;
 		son = REAL_ADDRESS(son_pivot->child_offt);
