@@ -4,6 +4,7 @@
 #include <stdint.h>
 
 #define NEW_INDEX_NODE_SIZE (INDEX_NODE_SIZE + KEY_BLOCK_SIZE)
+#define PIVOT_KEY_SIZE(X) ((X)->size + sizeof(*X))
 
 struct pivot_key {
 	uint32_t size;
@@ -73,20 +74,20 @@ int new_index_insert_pivot(struct new_index_node *node, struct pivot_pointer *le
 int new_index_append_pivot(struct new_index_node *node, struct pivot_key *key, struct pivot_pointer *right_child);
 
 /**
-  * Search index node and returns the pivot associated with the lookup key. The pivot entry consists of
-  * uint32_t pivot_size and data and the device offset to the node which should be visitted next. Doing the operation
-  * pivot_key + PIVOT_KEY_SIZE we get the pivot pointer
-  */
-struct pivot_pointer *new_index_search_get_pivot(struct new_index_node *node, void *lookup_key,
-						 enum KV_type lookup_key_format);
-
-/**
   * Worst case analysis here. If the remaining space is smaller than the
   * maximum possible pivot key we report that this node needs to be split
   * @param node: The index node that the function checks
   * @return: 0 if the nodes does not need splitting >0 otherwise
   */
 int new_index_is_split_needed(struct new_index_node *node, uint32_t max_pivot_size);
+
+/**
+  * Search index node and returns the pivot associated with the lookup key. The pivot entry consists of
+  * uint32_t pivot_size and data and the device offset to the node which should be visitted next. Doing the operation
+  * pivot_key + PIVOT_KEY_SIZE we get the pivot pointer
+  */
+struct pivot_pointer *new_index_search_get_pivot(struct new_index_node *node, void *lookup_key,
+						 enum KV_type lookup_key_format);
 
 /*
  * Performs binary search in an index node and returns the device offt of the
@@ -99,15 +100,27 @@ uint64_t new_index_binary_search(struct new_index_node *node, void *lookup_key, 
  */
 struct bt_rebalance_result new_index_split_node(struct new_index_node *node, bt_insert_req *ins_req);
 
-/*
+/**
  * Iterators for parsing index nodes. Compaction, scanner, and other future
  * entiries must use this API in order to abstact the index node
  * implementation
  */
 void new_index_iterator_init(struct new_index_node *node, struct new_index_node_iterator *iterator);
 
+/**
+  * Initializes a new iterator and positions it to a pivot pointer greater or
+  * equal to the pivo key
+  * @param node: the index node to search
+  * @param iterator: pointer to the iterator to be initialized
+  * @parama key: Key to position itself
+  */
+void new_index_iterator_init_with_key(struct new_index_node *node, struct new_index_node_iterator *iterator,
+				      struct pivot_key *key);
+
 uint8_t new_index_iterator_is_valid(struct new_index_node_iterator *iterator);
 
-struct pivot_key *new_index_node_iterator_get(struct new_index_node_iterator *iterator);
+struct pivot_key *new_index_iterator_get_pivot_key(struct new_index_node_iterator *iterator);
+
+struct pivot_pointer *new_index_iterator_get_pivot_pointer(struct new_index_node_iterator *iterator);
 
 #endif
