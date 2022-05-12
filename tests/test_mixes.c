@@ -1,11 +1,11 @@
-#define _LARGEFILE64_SOURCE
-#include "../lib/include/parallax.h"
 #include "arg_parser.h"
-#include "scanner/scanner.h"
+#include "common/common.h"
 #include <assert.h>
 #include <fcntl.h>
+#include <include/parallax.h>
 #include <linux/fs.h>
 #include <log.h>
+#include <scanner/scanner.h>
 #include <string.h>
 #include <sys/ioctl.h>
 #include <unistd.h>
@@ -16,11 +16,10 @@
 #define MEDIUM_STATIC_SIZE_PREFIX "zm"
 #define LARGE_STATIC_SIZE_PREFIX "zl"
 
-#define SMALLEST_KV_FORMAT_SIZE(x) x + 2 * sizeof(uint32_t) + 1
+#define SMALLEST_KV_FORMAT_SIZE(x) (x + 2 * sizeof(uint32_t) + 1)
 #define SMALL_KV_SIZE 48
 #define MEDIUM_KV_SIZE 256
 #define LARGE_KV_SIZE 1500
-#define PAR_MAX_PREALLOCATED_SIZE 256
 
 typedef struct key {
 	uint32_t key_size;
@@ -76,38 +75,50 @@ static uint64_t generate_random_medium_kv_size(void)
 /** Functions for initializing a kv based on their category*/
 static void init_small_kv(uint64_t *kv_size, char **key_prefix, enum kv_size_type size_type)
 {
-	if (size_type == STATIC) {
+	switch (size_type) {
+	case STATIC:
 		*kv_size = SMALL_KV_SIZE;
 		*key_prefix = strdup(SMALL_STATIC_SIZE_PREFIX);
-	} else if (size_type == RANDOM) {
+		break;
+	case RANDOM:
 		*kv_size = generate_random_small_kv_size();
 		*key_prefix = strdup(SMALL_KEY_PREFIX);
-	} else
-		assert(0);
+		break;
+	default:
+		BUG_ON();
+	}
 }
 
 static void init_medium_kv(uint64_t *kv_size, char **key_prefix, enum kv_size_type size_type)
 {
-	if (size_type == STATIC) {
+	switch (size_type) {
+	case STATIC:
 		*kv_size = MEDIUM_KV_SIZE;
 		*key_prefix = strdup(MEDIUM_STATIC_SIZE_PREFIX);
-	} else if (size_type == RANDOM) {
+		break;
+	case RANDOM:
 		*kv_size = generate_random_medium_kv_size();
 		*key_prefix = strdup(MEDIUM_KEY_PREFIX);
-	} else
-		assert(0);
+		break;
+	default:
+		BUG_ON();
+	}
 }
 
 static void init_big_kv(uint64_t *kv_size, char **key_prefix, enum kv_size_type size_type)
 {
-	if (size_type == STATIC) {
+	switch (size_type) {
+	case STATIC:
 		*kv_size = LARGE_KV_SIZE;
 		*key_prefix = strdup(LARGE_STATIC_SIZE_PREFIX);
-	} else if (size_type == RANDOM) {
+		break;
+	case RANDOM:
 		*kv_size = generate_random_big_kv_size();
 		*key_prefix = strdup(LARGE_KEY_PREFIX);
-	} else
-		assert(0);
+		break;
+	default:
+		BUG_ON();
+	}
 }
 
 typedef void init_kv_func(uint64_t *kv_size, char **key_prefix, enum kv_size_type size_type);
@@ -151,12 +162,7 @@ static void populate_db(par_handle hd, uint64_t from, uint64_t num_keys, enum kv
 		if (i % 1000 == 0)
 			log_info("%s", k->key_buf);
 
-		struct par_key_value kv = { .k.data = (const char *)k->key_buf,
-					    .k.size = k->key_size,
-					    .v.val_buffer = v->value_buf,
-					    .v.val_size = v->value_size };
-
-		if (par_put(hd, &kv) != PAR_SUCCESS) {
+		if (par_put_serialized(hd, (char *)k) != PAR_SUCCESS) {
 			log_fatal("Put failed!");
 			_exit(EXIT_FAILURE);
 		}
@@ -212,66 +218,39 @@ static void scanner_validate_number_of_kvs(par_handle hd, uint64_t num_keys)
 	par_close_scanner(sc);
 }
 
-/** this function is used only to call init_generic_scanner and closeScanner in order to nullify cppcheck errors
- *  TODO fix those functions in order to pass cppcheck */
-static void scanner_validate_number_of_kvs_using_internal_api(par_handle hd, uint64_t num_keys)
+static unsigned int scanner_kv_size(par_scanner sc, enum kv_size_type size_type, uint32_t kv_category_size)
 {
 	uint64_t key_count = 0;
-	char smallest_key[4] = { '\0' };
-	char tmp[PAR_MAX_PREALLOCATED_SIZE];
-	uint32_t *size = (uint32_t *)smallest_key;
-
-	*size = 1;
-
-	/*fill the seek_key with the smallest key of the region*/
-	char *seek_key = (char *)tmp;
-	*(uint32_t *)seek_key = *size;
-	memcpy(seek_key + sizeof(uint32_t), smallest_key, *size);
-
-	struct scannerHandle *sc = (struct scannerHandle *)calloc(1, sizeof(struct scannerHandle));
-	sc->type_of_scanner = FORWARD_SCANNER;
-	init_dirty_scanner(sc, hd, seek_key, GREATER_OR_EQUAL);
-
 	while (getNext(sc) != END_OF_DATABASE)
 		++key_count;
+	/*we can't know the the random generated size*/
+	if (size_type == RANDOM)
+		return 1;
 
-	if (key_count != num_keys - 1) {
-		log_fatal("Scanner did not found all keys. Phase one of validator failed...");
-		assert(0);
-	}
-
-	closeScanner(sc);
-}
-
-static unsigned int scanner_kv_size(par_scanner sc)
-{
 	struct par_key scanner_key = par_get_key(sc);
 	struct par_value scanner_value = par_get_value(sc);
+	uint32_t scanner_kv_size = scanner_key.size + scanner_value.val_size + 2 * sizeof(uint32_t);
 
-	return (scanner_key.size + scanner_value.val_size + 2 * sizeof(uint32_t));
+	if (scanner_kv_size == kv_category_size)
+		return 1;
+
+	log_debug("This is going to be an error, size is %d cat size is %d", scanner_kv_size, kv_category_size);
+	return 0;
 }
 
 /** Function returning if the size of a kv corresponds to its kv_category*/
 static int check_correctness_of_size(par_scanner sc, enum kv_type key_type, enum kv_size_type size_type)
 {
-	if (key_type == SMALL) {
-		if (size_type == STATIC) {
-			if (scanner_kv_size(sc) != SMALL_KV_SIZE)
-				return 0;
-		}
-	} else if (key_type == MEDIUM) {
-		if (size_type == STATIC) {
-			if (scanner_kv_size(sc) != MEDIUM_KV_SIZE)
-				return 0;
-		}
-	} else if (key_type == BIG) {
-		if (size_type == STATIC) {
-			if (scanner_kv_size(sc) != LARGE_KV_SIZE)
-				return 0;
-		}
+	switch (key_type) {
+	case SMALL:
+		return scanner_kv_size(sc, size_type, SMALL_KV_SIZE);
+	case MEDIUM:
+		return scanner_kv_size(sc, size_type, MEDIUM_KV_SIZE);
+	case BIG:
+		return scanner_kv_size(sc, size_type, LARGE_KV_SIZE);
+	default:
+		BUG_ON();
 	}
-
-	return 1;
 }
 
 static void validate_static_size_of_kvs(par_handle hd, uint64_t from, uint64_t to, enum kv_type key_type,
@@ -386,7 +365,6 @@ static void validate_kvs(par_handle hd, uint64_t num_keys, uint64_t small_kv_per
 	 * check if num of inserted  keys == num_key using scanners
 	*/
 	scanner_validate_number_of_kvs(hd, num_keys);
-	scanner_validate_number_of_kvs_using_internal_api(hd, num_keys);
 	/* second stage
 	 * validate that the sizes of keys are correctx
 	*/
@@ -457,6 +435,7 @@ int main(int argc, char *argv[])
 
 	/*sum of percentages must be equal 100*/
 	assert(medium_kvs_percentage + small_kvs_percentage + big_kvs_percentage == 100);
+	par_format((char *)path, 128);
 	par_handle handle = open_db(path);
 
 	/*populate the db phase*/

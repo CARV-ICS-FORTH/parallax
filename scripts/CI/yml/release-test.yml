@@ -308,7 +308,6 @@ release_test_mixes_all_medium:
         - kubernetes
     script:
         - make test_mixes;make kv_format.parallax;cd tests;
-        - ./mkfs.sh "$NVME0/$CI_JOB_ID"/kv_store.dat 128
         - ctest -R ^test_mixes_all_medium$
     needs: [release_build_gcc, release_build_clang]
 
@@ -320,6 +319,5 @@ release_test_mixes_most_small_few_medium:
         - kubernetes
     script:
         - make test_mixes;make kv_format.parallax;cd tests;
-        - ./mkfs.sh "$NVME0/$CI_JOB_ID"/kv_store.dat 128
         - ctest -R ^test_mixes_most_small_few_medium$
     needs: [release_build_gcc, release_build_clang]
