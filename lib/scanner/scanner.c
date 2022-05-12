@@ -866,7 +866,7 @@ int32_t _get_next_KV(level_scanner *sc)
 	node_header *node;
 	struct index_node *inode;
 	uint32_t level_id = sc->level_id;
-	uint32_t idx;
+	int32_t idx;
 	uint32_t up = 1;
 
 	stack_top = stack_pop(&(sc->stack)); /*get the element*/

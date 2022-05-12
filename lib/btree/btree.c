@@ -1523,7 +1523,6 @@ static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id,
 	node_header *curr_node, *son_node = NULL;
 	char *key_addr_in_leaf = NULL;
 	struct find_result ret_result;
-	void *next_addr;
 	lock_table *prev = NULL, *curr = NULL;
 	struct node_header *root = NULL;
 
@@ -1583,7 +1582,7 @@ static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id,
 			new_index_binary_search((struct new_index_node *)curr_node, get_op->kv_buf, KV_FORMAT);
 		son_node = (void *)REAL_ADDRESS(child_offset);
 #else
-		next_addr = _index_node_binary_search((struct index_node *)curr_node, get_op->kv_buf, KV_FORMAT);
+		void *next_addr = _index_node_binary_search((struct index_node *)curr_node, get_op->kv_buf, KV_FORMAT);
 		son_node = (void *)REAL_ADDRESS(*(uint64_t *)next_addr);
 #endif
 
@@ -1894,9 +1893,7 @@ void insert_key_at_index(bt_insert_req *ins_req, struct index_node *node, node_h
 static struct bt_rebalance_result split_index(node_header *node, bt_insert_req *ins_req)
 {
 	struct bt_rebalance_result result;
-	node_header *tmp_index;
-	char *full_addr;
-	uint32_t i = 0;
+
 	// assert_index_node(node);
 	result.left_child = (node_header *)seg_get_index_node(
 		ins_req->metadata.handle->db_desc, ins_req->metadata.level_id, ins_req->metadata.tree_id, INDEX_SPLIT);
@@ -1905,12 +1902,13 @@ static struct bt_rebalance_result split_index(node_header *node, bt_insert_req *
 		ins_req->metadata.handle->db_desc, ins_req->metadata.level_id, ins_req->metadata.tree_id, INDEX_SPLIT);
 
 	/*initialize*/
-	full_addr = (char *)node + (uint64_t)sizeof(node_header);
+	char *full_addr = (char *)node + (uint64_t)sizeof(node_header);
 	/*set node heights*/
 	result.left_child->height = node->height;
 	result.right_child->height = node->height;
 
-	for (i = 0; i < node->num_entries; i++) {
+	node_header *tmp_index = NULL;
+	for (int32_t i = 0; i < node->num_entries; i++) {
 		if (i < node->num_entries / 2)
 			tmp_index = result.left_child;
 		else
@@ -2090,7 +2088,6 @@ void *_index_node_binary_search(struct index_node *node, void *key_buf, char que
 // cppcheck-suppress unusedFunction
 void assert_index_node(node_header *node)
 {
-	uint32_t k;
 	char *key_tmp;
 	char *key_tmp_prev = NULL;
 	char *addr;
@@ -2102,7 +2099,7 @@ void assert_index_node(node_header *node)
 		return;
 	//	if(node->height > 1)
 	//	log_info("Checking node of height %lu\n",node->height);
-	for (k = 0; k < node->num_entries; k++) {
+	for (int32_t k = 0; k < node->num_entries; k++) {
 		/*check child type*/
 		child = (node_header *)REAL_ADDRESS(*(uint64_t *)addr);
 		assert(child);
@@ -2248,7 +2245,6 @@ release_and_retry:
 
 	node_header *son = NULL;
 	node_header *father = NULL;
-	void *next_addr = NULL;
 
 	if (db_desc->levels[level_id].root_w[ins_req->metadata.tree_id] == NULL) {
 		if (db_desc->levels[level_id].root_r[ins_req->metadata.tree_id] == NULL) {
@@ -2376,7 +2372,6 @@ release_and_retry:
 		father = son;
 		son = REAL_ADDRESS(son_pivot->child_offt);
 		assert(son);
-		next_addr = (void *)UINT64_MAX;
 
 		/*Take the lock of the next node before its traversal*/
 		lock = _find_position(
@@ -2399,8 +2394,8 @@ release_and_retry:
 			release = size - 1;
 		}
 #else
-		next_addr = _index_node_binary_search((struct index_node *)son, ins_req->key_value_buf,
-						      ins_req->metadata.key_format);
+		void *next_addr = _index_node_binary_search((struct index_node *)son, ins_req->key_value_buf,
+							    ins_req->metadata.key_format);
 
 		father = son;
 		/*Take the lock of the next node before its traversal*/
@@ -2445,25 +2440,16 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 {
 	/*The array with the locks that belong to this thread from upper levels*/
 	lock_table *upper_level_nodes[MAX_HEIGHT];
-	void *next_addr;
-	db_descriptor *db_desc;
 	node_header *son;
 	lock_table *lock;
 
-	unsigned size; /*Size of upper_level_nodes*/
-	unsigned release; /*Counter to know the position that releasing should begin*/
-	// remove some warnings here
-	uint32_t level_id;
-	lock_table *guard_of_level;
-	int64_t *num_level_writers;
+	db_descriptor *db_desc = ins_req->metadata.handle->db_desc;
+	uint32_t level_id = ins_req->metadata.level_id;
+	lock_table *guard_of_level = &db_desc->levels[level_id].guard_of_level;
+	int64_t *num_level_writers = &db_desc->levels[level_id].active_operations;
 
-	db_desc = ins_req->metadata.handle->db_desc;
-	level_id = ins_req->metadata.level_id;
-	guard_of_level = &db_desc->levels[level_id].guard_of_level;
-	num_level_writers = &db_desc->levels[level_id].active_operations;
-
-	size = 0;
-	release = 0;
+	unsigned size = 0;
+	unsigned release = 0;
 
 	/*
 * Caution no retry here, we just optimistically try to insert,
@@ -2533,8 +2519,8 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 		_unlock_upper_levels(upper_level_nodes, size - 1, release);
 		release = size - 1;
 #else
-		next_addr = _index_node_binary_search((struct index_node *)son, ins_req->key_value_buf,
-						      ins_req->metadata.key_format);
+		void *next_addr = _index_node_binary_search((struct index_node *)son, ins_req->key_value_buf,
+							    ins_req->metadata.key_format);
 		son = (node_header *)REAL_ADDRESS(*(uint64_t *)next_addr);
 
 		assert(son);
