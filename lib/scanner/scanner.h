@@ -25,7 +25,7 @@
 
 typedef enum SEEK_SCANNER_MODE { GREATER = 5, GREATER_OR_EQUAL = 6, FETCH_FIRST } SEEK_SCANNER_MODE;
 
-typedef enum SCANNER_TYPE { FORWARD_SCANNER = 8, BACKWARD_SCANNER } SCANNER_TYPE;
+typedef enum SCANNER_TYPE { FORWARD_SCANNER = 1 } SCANNER_TYPE;
 
 typedef struct level_scanner {
 	struct bt_leaf_entry kv_entry;
