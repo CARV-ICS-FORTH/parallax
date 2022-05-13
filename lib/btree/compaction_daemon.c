@@ -219,7 +219,7 @@ static void comp_get_next_key(struct comp_level_read_cursor *c)
 		switch (c->state) {
 		case COMP_CUR_CHECK_OFFT: {
 			if (c->offset >= c->handle->db_desc->levels[c->level_id].offset[c->tree_id]) {
-				log_info("Done read level %u", c->level_id);
+				log_debug("Done read level %u", c->level_id);
 				c->end_of_level = 1;
 				assert(c->offset == c->handle->db_desc->levels[c->level_id].offset[c->tree_id]);
 				return;
@@ -239,8 +239,9 @@ static void comp_get_next_key(struct comp_level_read_cursor *c)
 					assert((uint64_t)c->curr_segment ==
 					       (uint64_t)c->handle->db_desc->levels[c->level_id]
 						       .last_segment[c->tree_id]);
-					log_info("Done reading level %u cursor offset %lu total offt %lu", c->level_id,
-						 c->offset, c->handle->db_desc->levels[c->level_id].offset[c->tree_id]);
+					log_debug("Done reading level %u cursor offset %lu total offt %lu", c->level_id,
+						  c->offset,
+						  c->handle->db_desc->levels[c->level_id].offset[c->tree_id]);
 					assert(c->offset == c->handle->db_desc->levels[c->level_id].offset[c->tree_id]);
 					c->state = COMP_CUR_CHECK_OFFT;
 					//TODO replace goto with continue;
@@ -565,7 +566,7 @@ static void comp_close_write_cursor(struct comp_level_write_cursor *c)
 	uint32_t level_leaf_size = c->handle->db_desc->levels[c->level_id].leaf_size;
 	for (int32_t i = 0; i < MAX_HEIGHT; ++i) {
 		uint32_t *type;
-		log_info("i = %u tree height: %u", i, c->tree_height);
+		//log_debug("i = %u tree height: %u", i, c->tree_height);
 
 		if (i <= c->tree_height) {
 			assert(c->segment_offt[i] > 4096);
@@ -583,8 +584,8 @@ static void comp_close_write_cursor(struct comp_level_write_cursor *c)
 		} else {
 			type = (uint32_t *)&c->segment_buf[i][sizeof(struct segment_header)];
 			*type = paddedSpace;
-			log_info("Marking full padded space for level_id %u tree height %u", c->level_id,
-				 c->tree_height);
+			//log_debug("Marking full padded space for level_id %u tree height %u", c->level_id,
+			//	  c->tree_height);
 		}
 
 		if (i == c->tree_height) {
@@ -617,9 +618,7 @@ static void comp_close_write_cursor(struct comp_level_write_cursor *c)
 			assert(c->last_segment_btree_level_offt[i + 1]);
 			segment_in_mem_buffer->next_segment = (void *)c->first_segment_btree_level_offt[i + 1];
 		}
-		log_debug("i %d Next pointer address %p", i, segment_in_mem_buffer->next_segment);
 		comp_write_segment(c->segment_buf[i], c->last_segment_btree_level_offt[i], 0, SEGMENT_SIZE, c->fd);
-		log_debug("Dumped buffer %u at dev_offt %lu", i, c->last_segment_btree_level_offt[i]);
 	}
 
 #if 0
@@ -631,8 +630,8 @@ static void comp_close_write_cursor(struct comp_level_write_cursor *c)
 static void comp_append_pivot_to_index(int32_t height, struct comp_level_write_cursor *c, uint64_t left_node_offt,
 				       struct pivot_key *pivot, uint64_t right_node_offt)
 {
-	log_debug("Append pivot %.*s left child offt %lu right child offt %lu", pivot->size, pivot->data,
-		  left_node_offt, right_node_offt);
+	//log_debug("Append pivot %.*s left child offt %lu right child offt %lu", pivot->size, pivot->data,
+	//	  left_node_offt, right_node_offt);
 
 	if (c->tree_height < height)
 		c->tree_height = height;
@@ -640,21 +639,19 @@ static void comp_append_pivot_to_index(int32_t height, struct comp_level_write_c
 	struct new_index_node *node = (struct new_index_node *)c->last_index[height];
 
 	if (new_index_is_empty(node)) {
-		log_debug("Empty node adding %lu as guard pointer", left_node_offt);
 		new_index_add_guard(node, left_node_offt);
 		new_index_set_height(node, height);
 	}
 
 	struct pivot_pointer right = { .child_offt = right_node_offt };
 
-	while (0 != new_index_append_pivot((struct new_index_node *)node, (struct pivot_key *)pivot, &right)) {
+	while (new_index_append_pivot((struct new_index_node *)node, (struct pivot_key *)pivot, &right)) {
 		uint32_t offt_l = comp_calc_offt_in_seg(c->segment_buf[height], (char *)c->last_index[height]);
 		uint64_t left_index_offt = c->last_segment_btree_level_offt[height] + offt_l;
 
 		struct pivot_key *pivot_copy = new_index_remove_last_pivot_key(node);
 		struct pivot_pointer *piv_pointer =
 			(struct pivot_pointer *)&((char *)pivot_copy)[PIVOT_KEY_SIZE(pivot_copy)];
-		log_debug("Pivot copy is %.*s", pivot_copy->size, pivot_copy->data);
 		comp_get_space(c, height, internalNode);
 		node = (struct new_index_node *)c->last_index[height];
 		new_index_init_node(DO_NOT_ADD_GUARD, node, internalNode);
@@ -743,7 +740,7 @@ static void comp_append_pivot_to_index(struct comp_level_write_cursor *c, uint64
 
 static void comp_init_medium_log(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
 {
-	log_info("Initializing medium log for db: %s", db_desc->db_superblock->db_name);
+	log_debug("Initializing medium log for db: %s", db_desc->db_superblock->db_name);
 	struct segment_header *s = seg_get_raw_log_segment(db_desc, MEDIUM_LOG, level_id, tree_id);
 	db_desc->medium_log.head_dev_offt = ABSOLUTE_ADDRESS(s);
 	db_desc->medium_log.tail_dev_offt = db_desc->medium_log.head_dev_offt;
