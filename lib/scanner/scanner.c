@@ -329,10 +329,10 @@ static void new_index_fill_normal_scanner(struct level_scanner *level_sc, struct
 	}
 }
 
-enum level_scanner_status_t { GET_NEXT_KV = 1, POP_STACK, PUSH_STACK };
-
 int32_t new_index_level_scanner_get_next(level_scanner *sc)
 {
+	enum level_scanner_status_t { GET_NEXT_KV = 1, POP_STACK, PUSH_STACK };
+
 	stackElementT stack_element = stack_pop(&(sc->stack)); /*get the element*/
 
 	if (stack_element.guard) {

@@ -72,6 +72,10 @@ typedef struct scannerHandle {
  * }
  * closeScanner(scanner);
  */
+
+#ifdef NEW_INDEX_NODE_LAYOUT
+int32_t new_index_level_scanner_get_next(level_scanner *sc);
+#endif
 void init_dirty_scanner(scannerHandle *sc, db_handle *handle, void *start_key, char seek_flag);
 void closeScanner(scannerHandle *sc);
 
@@ -84,10 +88,8 @@ int32_t get_key_size(scannerHandle *sc);
 int32_t get_value_size(scannerHandle *sc);
 uint32_t get_kv_size(scannerHandle *sc);
 /**
- * __seek_scanner: positions the cursor to the appropriate position
- * returns:
- *        SUCCESS: Cursor positioned
- *        END_OF_DATABASE: End of database reached
+ * __seek_scanner: positions the cursor to the appropriate position returns:
+ * SUCCESS: Cursor positioned END_OF_DATABASE: End of database reached
  *
  **/
 
