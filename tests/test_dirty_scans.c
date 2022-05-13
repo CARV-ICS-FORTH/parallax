@@ -323,8 +323,9 @@ int main(int argc, char **argv)
 
 	strcpy(workload, get_option(options, 4));
 	if (!(!strcmp(workload, workload_tags[Load]) || !strcmp(workload, workload_tags[Get]) ||
-	      !strcmp(workload, workload_tags[Scan]) || !strcmp(workload, workload_tags[All]))) {
-		log_fatal("Unknown workload type possible values are Load, Get, Scan, All (Default)");
+	      !strcmp(workload, workload_tags[Scan]) || !strcmp(workload, workload_tags[All]) ||
+	      !strcmp(workload, workload_tags[Scan2]))) {
+		log_fatal("Unknown workload type %s possible values are Load, Get, Scan, All (Default)", workload);
 		_exit(EXIT_FAILURE);
 	}
 
