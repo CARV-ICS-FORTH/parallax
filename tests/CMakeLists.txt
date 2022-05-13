@@ -90,13 +90,13 @@ if(BUILD_TESTING)
   add_test(
     NAME test_mixes_all_medium
     COMMAND
-      $<TARGET_FILE:test_mixes> --file=/tmp/kv_store.dat --num_of_kvs=1000000
+      $<TARGET_FILE:test_mixes> --file=${FILEPATH} --num_of_kvs=1000000
       --small_kv_percentage=0 --medium_kv_percentage=100 --big_kv_percentage=0)
 
   add_test(
     NAME test_mixes_most_small_few_medium
     COMMAND
-      $<TARGET_FILE:test_mixes> --file=/tmp/kv_store.dat --num_of_kvs=1000000
+      $<TARGET_FILE:test_mixes> --file=${FILEPATH} --num_of_kvs=1000000
       --small_kv_percentage=99 --medium_kv_percentage=1 --big_kv_percentage=0)
 
   add_executable(simple_test_delete simple_test_delete.c arg_parser.c)
