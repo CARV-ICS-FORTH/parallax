@@ -22,7 +22,7 @@ struct comp_level_write_cursor {
 	uint64_t segment_id_cnt;
 	db_handle *handle;
 	uint32_t level_id;
-	uint32_t tree_height;
+	int32_t tree_height;
 	int fd;
 };
 
@@ -54,7 +54,7 @@ struct comp_level_read_cursor {
 	segment_header *curr_segment;
 	uint32_t level_id;
 	uint32_t tree_id;
-	uint32_t curr_leaf_entry;
+	int32_t curr_leaf_entry;
 	int fd;
 	enum kv_category category;
 	enum comp_level_read_cursor_state state;

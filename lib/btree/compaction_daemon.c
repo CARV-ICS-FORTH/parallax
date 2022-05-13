@@ -333,11 +333,19 @@ static void comp_get_next_key(struct comp_level_read_cursor *c)
 			case rootNode:
 			case internalNode:
 				/*log_info("Found an internal");*/
+#ifdef NEW_INDEX_NODE_LAYOUT
+				c->offset += NEW_INDEX_NODE_SIZE;
+#else
 				c->offset += INDEX_NODE_SIZE;
+#endif
 				c->state = COMP_CUR_CHECK_OFFT;
 				goto fsm_entry;
 
 			case keyBlockHeader:
+#ifdef NEW_INDEX_NODE_LAYOUT
+				log_fatal("keyBlockHeader? not in this case");
+				BUG_ON();
+#endif
 				/*log_info("Found a keyblock header");*/
 				c->offset += KEY_BLOCK_SIZE;
 				c->state = COMP_CUR_CHECK_OFFT;
@@ -381,6 +389,9 @@ static void comp_init_write_cursor(struct comp_level_write_cursor *c, struct db_
 
 	for (int i = 1; i < MAX_HEIGHT; ++i) {
 		comp_get_space(c, i, internalNode);
+#ifdef NEW_INDEX_NODE_LAYOUT
+		new_index_init_node(DO_NOT_ADD_GUARD, (struct new_index_node *)c->last_index[i], internalNode);
+#endif
 		c->first_segment_btree_level_offt[i] = c->last_segment_btree_level_offt[i];
 		assert(c->last_segment_btree_level_offt[i]);
 	}
@@ -552,7 +563,7 @@ static void assert_level_segments(db_descriptor *db_desc, uint8_t level_id, uint
 static void comp_close_write_cursor(struct comp_level_write_cursor *c)
 {
 	uint32_t level_leaf_size = c->handle->db_desc->levels[c->level_id].leaf_size;
-	for (uint32_t i = 0; i < MAX_HEIGHT; ++i) {
+	for (int32_t i = 0; i < MAX_HEIGHT; ++i) {
 		uint32_t *type;
 		log_info("i = %u tree height: %u", i, c->tree_height);
 
@@ -577,8 +588,16 @@ static void comp_close_write_cursor(struct comp_level_write_cursor *c)
 		}
 
 		if (i == c->tree_height) {
-			// log_info("Merged level has a height off %u", c->tree_height);
+			log_debug("Merged level has a height off %u", c->tree_height);
+#ifdef NEW_INDEX_NODE_LAYOUT
+			if (new_index_set_type((struct new_index_node *)c->last_index[i], rootNode)) {
+				log_fatal("Error setting node type");
+				assert(0);
+				BUG_ON();
+			}
+#else
 			c->last_index[i]->header.type = rootNode;
+#endif
 			uint32_t offt = comp_calc_offt_in_seg(c->segment_buf[i], (char *)c->last_index[i]);
 			c->root_offt = c->last_segment_btree_level_offt[i] + offt;
 			c->handle->db_desc->levels[c->level_id].root_r[1] = REAL_ADDRESS(c->root_offt);
@@ -600,7 +619,7 @@ static void comp_close_write_cursor(struct comp_level_write_cursor *c)
 		}
 		log_debug("i %d Next pointer address %p", i, segment_in_mem_buffer->next_segment);
 		comp_write_segment(c->segment_buf[i], c->last_segment_btree_level_offt[i], 0, SEGMENT_SIZE, c->fd);
-		log_info("Dumped buffer %u at dev_offt %lu", i, c->last_segment_btree_level_offt[i]);
+		log_debug("Dumped buffer %u at dev_offt %lu", i, c->last_segment_btree_level_offt[i]);
 	}
 
 #if 0
@@ -608,6 +627,48 @@ static void comp_close_write_cursor(struct comp_level_write_cursor *c)
 #endif
 }
 
+#ifdef NEW_INDEX_NODE_LAYOUT
+static void comp_append_pivot_to_index(int32_t height, struct comp_level_write_cursor *c, uint64_t left_node_offt,
+				       struct pivot_key *pivot, uint64_t right_node_offt)
+{
+	log_debug("Append pivot %.*s left child offt %lu right child offt %lu", pivot->size, pivot->data,
+		  left_node_offt, right_node_offt);
+
+	if (c->tree_height < height)
+		c->tree_height = height;
+
+	struct new_index_node *node = (struct new_index_node *)c->last_index[height];
+
+	if (new_index_is_empty(node)) {
+		log_debug("Empty node adding %lu as guard pointer", left_node_offt);
+		new_index_add_guard(node, left_node_offt);
+		new_index_set_height(node, height);
+	}
+
+	struct pivot_pointer right = { .child_offt = right_node_offt };
+
+	while (0 != new_index_append_pivot((struct new_index_node *)node, (struct pivot_key *)pivot, &right)) {
+		uint32_t offt_l = comp_calc_offt_in_seg(c->segment_buf[height], (char *)c->last_index[height]);
+		uint64_t left_index_offt = c->last_segment_btree_level_offt[height] + offt_l;
+
+		struct pivot_key *pivot_copy = new_index_remove_last_pivot_key(node);
+		struct pivot_pointer *piv_pointer =
+			(struct pivot_pointer *)&((char *)pivot_copy)[PIVOT_KEY_SIZE(pivot_copy)];
+		log_debug("Pivot copy is %.*s", pivot_copy->size, pivot_copy->data);
+		comp_get_space(c, height, internalNode);
+		node = (struct new_index_node *)c->last_index[height];
+		new_index_init_node(DO_NOT_ADD_GUARD, node, internalNode);
+		new_index_add_guard(node, piv_pointer->child_offt);
+		new_index_set_height(node, height);
+
+		/*last leaf updated*/
+		uint32_t offt_r = comp_calc_offt_in_seg(c->segment_buf[height], (char *)c->last_index[height]);
+		uint64_t right_index_offt = c->last_segment_btree_level_offt[height] + offt_r;
+		comp_append_pivot_to_index(height + 1, c, left_index_offt, pivot_copy, right_index_offt);
+		free(pivot_copy);
+	}
+}
+#else
 static void comp_append_pivot_to_index(struct comp_level_write_cursor *c, uint64_t left_node_offt,
 				       uint64_t right_node_offt, char *pivot, uint32_t height)
 {
@@ -678,6 +739,7 @@ static void comp_append_pivot_to_index(struct comp_level_write_cursor *c, uint64
 		free(new_pivot_buf);
 	}
 }
+#endif
 
 static void comp_init_medium_log(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
 {
@@ -856,23 +918,26 @@ static void comp_append_entry_to_leaf_node(struct comp_level_write_cursor *curso
 		// log_info("keys are %llu for level %u",
 		// c->handle->db_desc->levels[c->level_id].level_size[1],
 		//	 c->level_id);
-		if (append_to_medium_log) {
-			comp_append_pivot_to_index(cursor, left_leaf_offt, right_leaf_offt, kv->kv_inplace, 1);
-		} else {
+		if (append_to_medium_log)
+			comp_append_pivot_to_index(1, cursor, left_leaf_offt, (struct pivot_key *)kv->kv_inplace,
+						   right_leaf_offt);
+		else {
 			switch (write_leaf_args.kv_format) {
 			case KV_FORMAT:
-				comp_append_pivot_to_index(cursor, left_leaf_offt, right_leaf_offt,
-							   write_leaf_args.key_value_buf, 1);
+				comp_append_pivot_to_index(1, cursor, left_leaf_offt,
+							   (struct pivot_key *)write_leaf_args.key_value_buf,
+							   right_leaf_offt);
 				break;
 			case KV_PREFIX:
 				if (cursor->level_id == 1 && curr_key->kv_category == MEDIUM_INPLACE)
-					comp_append_pivot_to_index(cursor, left_leaf_offt, right_leaf_offt,
-								   curr_key->kv_inplace, 1);
+					comp_append_pivot_to_index(1, cursor, left_leaf_offt,
+								   (struct pivot_key *)curr_key->kv_inplace,
+								   right_leaf_offt);
 				else {
 					// do a page fault to find the pivot
 					char *pivot_addr = (char *)curr_key->kv_inlog->dev_offt;
-					comp_append_pivot_to_index(cursor, left_leaf_offt, right_leaf_offt, pivot_addr,
-								   1);
+					comp_append_pivot_to_index(1, cursor, left_leaf_offt,
+								   (struct pivot_key *)pivot_addr, right_leaf_offt);
 				}
 				break;
 			}
@@ -1267,7 +1332,7 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 #endif
 		RWLOCK_UNLOCK(&handle->db_desc->levels[0].guard_of_level.rx_lock);
 
-		log_info("Initializing L0 scanner");
+		log_debug("Initializing L0 scanner");
 		level_src = _init_compaction_buffer_scanner(handle, comp_req->src_level, comp_roots.src_root, NULL);
 	} else {
 		if (posix_memalign((void **)&l_src, ALIGNMENT, sizeof(struct comp_level_read_cursor)) != 0) {
@@ -1291,7 +1356,7 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 		assert(!l_dst->end_of_level);
 	}
 
-	log_info("Initializing write cursor for level %u", comp_req->dst_level);
+	log_debug("Initializing write cursor for level %u", comp_req->dst_level);
 	if (posix_memalign((void **)&merged_level, ALIGNMENT, sizeof(struct comp_level_write_cursor)) != 0) {
 		log_fatal("Posix memalign failed");
 		perror("Reason: ");
@@ -1305,13 +1370,13 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 	if (merged_level->level_id == handle->db_desc->level_medium_inplace)
 		merged_level->medium_log_LRU_cache = init_LRU();
 
-	log_info("Src [%u][%u] size = %lu", comp_req->src_level, comp_req->src_tree,
-		 handle->db_desc->levels[comp_req->src_level].level_size[comp_req->src_tree]);
+	log_debug("Src [%u][%u] size = %lu", comp_req->src_level, comp_req->src_tree,
+		  handle->db_desc->levels[comp_req->src_level].level_size[comp_req->src_tree]);
 	if (comp_roots.dst_root)
-		log_info("Dst [%u][%u] size = %lu", comp_req->dst_level, 0,
-			 handle->db_desc->levels[comp_req->dst_level].level_size[0]);
+		log_debug("Dst [%u][%u] size = %lu", comp_req->dst_level, 0,
+			  handle->db_desc->levels[comp_req->dst_level].level_size[0]);
 	else
-		log_info("Empty dst [%u][%u]", comp_req->dst_level, 0);
+		log_debug("Empty dst [%u][%u]", comp_req->dst_level, 0);
 
 	// initialize and fill min_heap properly
 	struct sh_heap *m_heap = sh_alloc_heap();
@@ -1328,9 +1393,9 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 		nd_src.kv_size = level_src->kv_size;
 		nd_src.tombstone = level_src->tombstone;
 		nd_src.active_tree = comp_req->src_tree;
-		log_info("Initializing heap from SRC L0");
+		log_debug("Initializing heap from SRC L0");
 	} else {
-		log_info("Initializing heap from SRC read cursor level %u with key:", comp_req->src_level);
+		log_debug("Initializing heap from SRC read cursor level %u with key:", comp_req->src_level);
 		comp_fill_heap_node(comp_req, l_src, &nd_src);
 	}
 
@@ -1340,7 +1405,7 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 	// init Li+1 cursor (if any)
 	if (l_dst) {
 		comp_fill_heap_node(comp_req, l_dst, &nd_dst);
-		log_info("Initializing heap from DST read cursor level %u", comp_req->dst_level);
+		log_debug("Initializing heap from DST read cursor level %u", comp_req->dst_level);
 		print_heap_node_key(&nd_dst);
 		nd_dst.db_desc = comp_req->db_desc;
 		sh_insert_heap_node(m_heap, &nd_dst);
@@ -1371,7 +1436,11 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 		/*refill from the appropriate level*/
 		if (nd_min.level_id == comp_req->src_level) {
 			if (nd_min.level_id == 0) {
+#ifdef NEW_INDEX_NODE_LAYOUT
+				if (new_index_level_scanner_get_next(level_src) != END_OF_DATABASE) {
+#else
 				if (_get_next_KV(level_src) != END_OF_DATABASE) {
+#endif
 					// log_info("Refilling from L0");
 					nd_min.KV = level_src->keyValue;
 					nd_min.level_id = comp_req->src_level;
@@ -1434,26 +1503,26 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 
 	lock_to_update_levels_after_compaction(comp_req);
 
-	uint64_t space_freed;
+	uint64_t space_freed = 0;
 	/*Free L_(i+1)*/
 	if (l_dst) {
 		uint64_t txn_id = comp_req->db_desc->levels[comp_req->dst_level].allocation_txn_id[comp_req->dst_tree];
 		/*free dst (L_i+1) level*/
 		space_freed = seg_free_level(comp_req->db_desc, txn_id, comp_req->dst_level, 0);
 
-		log_info("Freed space %lu MB from db:%s destination level %u", space_freed / (1024 * 1024),
-			 comp_req->db_desc->db_superblock->db_name, comp_req->dst_level);
+		log_debug("Freed space %lu MB from db:%s destination level %u", space_freed / (1024 * 1024),
+			  comp_req->db_desc->db_superblock->db_name, comp_req->dst_level);
 	}
 	/*Free and zero L_i*/
 	uint64_t txn_id = comp_req->db_desc->levels[comp_req->dst_level].allocation_txn_id[comp_req->dst_tree];
 	space_freed = seg_free_level(hd.db_desc, txn_id, comp_req->src_level, comp_req->src_tree);
-	log_info("Freed space %lu MB from db:%s source level %u", space_freed / (1024 * 1024),
-		 comp_req->db_desc->db_superblock->db_name, comp_req->src_level);
+	log_debug("Freed space %lu MB from db:%s source level %u", space_freed / (1024 * 1024),
+		  comp_req->db_desc->db_superblock->db_name, comp_req->src_level);
 	seg_zero_level(hd.db_desc, comp_req->src_level, comp_req->src_tree);
 
 #if ENABLE_BLOOM_FILTERS
 	if (dst_root) {
-		log_info("Freeing previous bloom filter for dst level %u", comp_req->dst_level);
+		log_debug("Freeing previous bloom filter for dst level %u", comp_req->dst_level);
 		bloom_free(&handle.db_desc->levels[comp_req->src_level].bloom_filter[0]);
 	}
 	ld->bloom_filter[0] = ld->bloom_filter[1];
@@ -1468,7 +1537,7 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 #endif
 	/*Finally persist compaction */
 	pr_flush_compaction(comp_req->db_desc, comp_req->dst_level, comp_req->dst_tree);
-	log_info("Flushed compaction[%u][%u] successfully", comp_req->dst_level, comp_req->dst_tree);
+	log_debug("Flushed compaction[%u][%u] successfully", comp_req->dst_level, comp_req->dst_tree);
 	/*set L'_(i+1) as L_(i+1)*/
 	ld->first_segment[0] = ld->first_segment[1];
 	ld->first_segment[1] = NULL;
@@ -1495,6 +1564,34 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 	unlock_to_update_levels_after_compaction(comp_req);
 }
 
+static void compact_with_empty_destination_level(struct compaction_request *comp_req)
+{
+	log_debug("Empty level %d time for an optimization :-)", comp_req->dst_level);
+
+	lock_to_update_levels_after_compaction(comp_req);
+
+	struct level_descriptor *leveld_src = &comp_req->db_desc->levels[comp_req->src_level];
+	struct level_descriptor *leveld_dst = &comp_req->db_desc->levels[comp_req->dst_level];
+
+	swap_levels(leveld_src, leveld_dst, comp_req->src_tree, 1);
+
+	pr_flush_compaction(comp_req->db_desc, comp_req->dst_level, comp_req->dst_tree);
+	swap_levels(leveld_dst, leveld_dst, 1, 0);
+	log_debug("Flushed compaction[%u][%u] (Swap levels) successfully", comp_req->dst_level, comp_req->dst_tree);
+
+#if ENABLE_BLOOM_FILTERS
+	log_info("Swapping also bloom filter");
+	leveld_dst->bloom_filter[0] = leveld_src->bloom_filter[0];
+	memset(&leveld_src->bloom_filter[0], 0x00, sizeof(struct bloom));
+#endif
+	unlock_to_update_levels_after_compaction(comp_req);
+
+	log_debug("Swapped levels %d to %d successfully", comp_req->src_level, comp_req->dst_level);
+	log_debug("After swapping src tree[%d][%d] size is %lu", comp_req->src_level, 0, leveld_src->level_size[0]);
+	log_debug("After swapping dst tree[%d][%d] size is %lu", comp_req->dst_level, 0, leveld_dst->level_size[0]);
+	assert(leveld_dst->first_segment != NULL);
+}
+
 void *compaction(void *_comp_req)
 {
 	db_handle handle;
@@ -1518,43 +1615,14 @@ void *compaction(void *_comp_req)
 		dst_root = NULL;
 	}
 
-	if (comp_req->src_level == 0 || comp_req->dst_level == handle.db_desc->level_medium_inplace)
+	if (comp_req->src_level == 0 || comp_req->dst_level == handle.db_desc->level_medium_inplace || dst_root)
 		compact_level_direct_IO(&handle, comp_req);
-	else if (dst_root)
-		compact_level_direct_IO(&handle, comp_req);
-	else {
-		log_info("Empty level %d time for an optimization :-)", comp_req->dst_level);
+	else
+		compact_with_empty_destination_level(comp_req);
 
-		lock_to_update_levels_after_compaction(comp_req);
-
-		struct level_descriptor *leveld_src = &comp_req->db_desc->levels[comp_req->src_level];
-		struct level_descriptor *leveld_dst = &comp_req->db_desc->levels[comp_req->dst_level];
-
-		swap_levels(leveld_src, leveld_dst, comp_req->src_tree, 1);
-
-		pr_flush_compaction(comp_req->db_desc, comp_req->dst_level, comp_req->dst_tree);
-		swap_levels(leveld_dst, leveld_dst, 1, 0);
-		log_info("Flushed compaction[%u][%u] (Swap levels) successfully", comp_req->dst_level,
-			 comp_req->dst_tree);
-
-#if ENABLE_BLOOM_FILTERS
-		log_info("Swapping also bloom filter");
-		leveld_dst->bloom_filter[0] = leveld_src->bloom_filter[0];
-		memset(&leveld_src->bloom_filter[0], 0x00, sizeof(struct bloom));
-#endif
-		unlock_to_update_levels_after_compaction(comp_req);
-
-		log_info("Swapped levels %d to %d successfully", comp_req->src_level, comp_req->dst_level);
-		log_info("After swapping src tree[%d][%d] size is %lu", comp_req->src_level, 0,
-			 leveld_src->level_size[0]);
-		log_info("After swapping dst tree[%d][%d] size is %lu", comp_req->dst_level, 0,
-			 leveld_dst->level_size[0]);
-		assert(leveld_dst->first_segment != NULL);
-	}
-
-	log_info("DONE Compaction from level's tree [%u][%u] to level's tree[%u][%u] "
-		 "cleaning src level",
-		 comp_req->src_level, comp_req->src_tree, comp_req->dst_level, comp_req->dst_tree);
+	log_debug("DONE Compaction from level's tree [%u][%u] to level's tree[%u][%u] "
+		  "cleaning src level",
+		  comp_req->src_level, comp_req->src_tree, comp_req->dst_level, comp_req->dst_tree);
 
 	db_desc->levels[comp_req->src_level].tree_status[comp_req->src_tree] = NO_COMPACTION;
 	db_desc->levels[comp_req->dst_level].tree_status[0] = NO_COMPACTION;
