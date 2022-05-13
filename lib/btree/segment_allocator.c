@@ -297,7 +297,7 @@ uint64_t seg_free_level(struct db_descriptor *db_desc, uint64_t txn_id, uint8_t 
 		return 0;
 	}
 
-	log_info("Freeing up level %u for db %s", level_id, db_desc->db_superblock->db_name);
+	log_debug("Freeing up level %u for db %s", level_id, db_desc->db_superblock->db_name);
 
 	if (level_id != 0) {
 		while (1) {
