@@ -34,6 +34,11 @@ void new_index_add_guard(struct new_index_node *node, uint64_t child_node_dev_of
 	slot_array[0].pivot = node->header.key_log_size;
 }
 
+int new_index_is_empty(struct new_index_node *node)
+{
+	return !node->header.num_entries;
+}
+
 void new_index_init_node(enum add_guard_option_t option, struct new_index_node *node, nodeType_t type)
 {
 	switch (option) {
@@ -129,16 +134,57 @@ static int32_t new_index_search_get_pos(struct new_index_node *node, void *looku
 	return middle;
 }
 
+int new_index_set_type(struct new_index_node *node, nodeType_t node_type)
+{
+	if (!node)
+		return -1;
+
+	switch (node_type) {
+	case internalNode:
+	case rootNode:
+		break;
+	default:
+		return -1;
+	}
+	node->header.type = node_type;
+	return 0;
+}
+
+void new_index_set_height(struct new_index_node *node, int32_t height)
+{
+	if (!node)
+		return;
+	node->header.height = height;
+}
+
+struct pivot_key *new_index_remove_last_pivot_key(struct new_index_node *node)
+{
+	if (!node)
+		return NULL;
+	if (0 == node->header.num_entries)
+		return NULL;
+	int32_t position = node->header.num_entries - 1;
+	struct new_index_slot_array_entry *slot_array = new_index_get_slot_array(node);
+	struct pivot_key *pivot = (struct pivot_key *)NEW_INDEX_PIVOT_ADDRESS(node, slot_array[position].pivot);
+
+	struct pivot_key *pivot_copy = calloc(1, PIVOT_SIZE(pivot));
+	memcpy(pivot_copy, pivot, PIVOT_SIZE(pivot));
+	--node->header.num_entries;
+	return pivot_copy;
+}
+
 static struct pivot_key *new_index_search_get_full_pivot(struct new_index_node *node, void *lookup_key,
 							 enum KV_type lookup_key_format)
 {
+	//log_debug("<search>");
 	uint8_t exact_match = 0;
 	int32_t position = new_index_search_get_pos(node, lookup_key, lookup_key_format, &exact_match);
 
 	struct new_index_slot_array_entry *slot_array = new_index_get_slot_array(node);
 	struct pivot_key *pivot = (struct pivot_key *)NEW_INDEX_PIVOT_ADDRESS(node, slot_array[position].pivot);
-	//log_debug("Position is %d exact match %u pivot: %.*s lookup key %.*s", position, exact_match, pivot->size,
-	//	  pivot->data, *(uint32_t *)lookup_key, &((char *)lookup_key)[4]);
+	//log_debug("Position is %d exact match %u pivot: %.*s lookup key %.*s node height %d", position, exact_match,
+	//	  pivot->size, pivot->data, *(uint32_t *)lookup_key, &((char *)lookup_key)[4], node->header.height);
+	//log_debug("</search>");
 
 	return pivot;
 }
