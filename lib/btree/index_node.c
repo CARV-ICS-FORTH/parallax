@@ -51,6 +51,7 @@ void new_index_init_node(enum add_guard_option_t option, struct new_index_node *
 	}
 
 	node->header.type = type;
+	node->header.num_entries = 0;
 
 	node->header.height = -1;
 	node->header.fragmentation = 0;
