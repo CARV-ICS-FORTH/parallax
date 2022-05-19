@@ -24,6 +24,7 @@
 #include <assert.h>
 #include <errno.h>
 #include <log.h>
+#include <signal.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -77,37 +78,32 @@ static void init_generic_scanner(struct scannerHandle *sc, struct db_handle *han
 	}
 	sh_init_heap(&sc->heap, active_tree, MIN_HEAP);
 
-	for (int i = 0; i < NUM_TREES_PER_LEVEL; i++) {
-		struct node_header *root;
-		if (dirty) {
-			if (handle->db_desc->levels[0].root_w[i] != NULL)
-				root = handle->db_desc->levels[0].root_w[i];
-			else
-				root = handle->db_desc->levels[0].root_r[i];
-		} else
-			root = handle->db_desc->levels[0].root_r[i];
+	for (int i = 0; i < NUM_TREES_PER_LEVEL; ++i) {
+		struct node_header *root = handle->db_desc->levels[0].root_r[i];
+		if (dirty && handle->db_desc->levels[0].root_w[i] != NULL)
+			root = handle->db_desc->levels[0].root_w[i];
 
-		if (root != NULL) {
-			sc->LEVEL_SCANNERS[0][i].db = handle;
-			sc->LEVEL_SCANNERS[0][i].level_id = 0;
-			sc->LEVEL_SCANNERS[0][i].root = root;
-			retval = _init_level_scanner(&(sc->LEVEL_SCANNERS[0][i]), start_key, seek_flag);
+		sc->LEVEL_SCANNERS[0][i].valid = 0;
 
-			if (retval == 0) {
-				sc->LEVEL_SCANNERS[0][i].valid = 1;
-				nd.KV = sc->LEVEL_SCANNERS[0][i].keyValue;
-				nd.kv_size = sc->LEVEL_SCANNERS[0][i].kv_size;
-				nd.level_id = 0;
-				nd.active_tree = i;
-				nd.type = KV_FORMAT;
-				nd.db_desc = handle->db_desc;
-				nd.tombstone = sc->LEVEL_SCANNERS[0][i].tombstone;
-				nd.epoch = handle->db_desc->levels[0].epoch[i];
-				sh_insert_heap_node(&sc->heap, &nd);
+		if (!root)
+			continue;
+		sc->LEVEL_SCANNERS[0][i].db = handle;
+		sc->LEVEL_SCANNERS[0][i].level_id = 0;
+		sc->LEVEL_SCANNERS[0][i].root = root;
+		retval = _init_level_scanner(&(sc->LEVEL_SCANNERS[0][i]), start_key, seek_flag);
 
-			} else
-				sc->LEVEL_SCANNERS[0][i].valid = 0;
-		}
+		if (retval)
+			continue;
+		sc->LEVEL_SCANNERS[0][i].valid = 1;
+		nd.KV = sc->LEVEL_SCANNERS[0][i].keyValue;
+		nd.kv_size = sc->LEVEL_SCANNERS[0][i].kv_size;
+		nd.level_id = 0;
+		nd.active_tree = i;
+		nd.type = KV_FORMAT;
+		nd.db_desc = handle->db_desc;
+		nd.tombstone = sc->LEVEL_SCANNERS[0][i].tombstone;
+		nd.epoch = handle->db_desc->levels[0].epoch[i];
+		sh_insert_heap_node(&sc->heap, &nd);
 	}
 
 	for (uint32_t level_id = 1; level_id < MAX_LEVELS; level_id++) {
@@ -117,26 +113,26 @@ static void init_generic_scanner(struct scannerHandle *sc, struct db_handle *han
 		root = handle->db_desc->levels[level_id].root_w[tree_id];
 		if (!root)
 			root = handle->db_desc->levels[level_id].root_r[tree_id];
+		if (!root)
+			continue;
 
-		if (root != NULL) {
-			sc->LEVEL_SCANNERS[level_id][tree_id].db = handle;
-			sc->LEVEL_SCANNERS[level_id][tree_id].level_id = level_id;
-			sc->LEVEL_SCANNERS[level_id][tree_id].root = root;
-			retval = _init_level_scanner(&sc->LEVEL_SCANNERS[level_id][tree_id], start_key, seek_flag);
-			if (retval == 0) {
-				sc->LEVEL_SCANNERS[level_id][tree_id].valid = 1;
-				nd.KV = sc->LEVEL_SCANNERS[level_id][tree_id].keyValue;
-				nd.kv_size = sc->LEVEL_SCANNERS[level_id][tree_id].kv_size;
-				nd.type = KV_FORMAT;
-				//log_info("Tree[%d][%d] gave us key %s", level_id, 0, nd.KV + 4);
-				nd.level_id = level_id;
-				nd.active_tree = tree_id;
-				nd.db_desc = handle->db_desc;
-				nd.tombstone = sc->LEVEL_SCANNERS[level_id][tree_id].tombstone;
-				sh_insert_heap_node(&sc->heap, &nd);
+		sc->LEVEL_SCANNERS[level_id][tree_id].db = handle;
+		sc->LEVEL_SCANNERS[level_id][tree_id].level_id = level_id;
+		sc->LEVEL_SCANNERS[level_id][tree_id].root = root;
+		retval = _init_level_scanner(&sc->LEVEL_SCANNERS[level_id][tree_id], start_key, seek_flag);
+		if (retval == 0) {
+			sc->LEVEL_SCANNERS[level_id][tree_id].valid = 1;
+			nd.KV = sc->LEVEL_SCANNERS[level_id][tree_id].keyValue;
+			nd.kv_size = sc->LEVEL_SCANNERS[level_id][tree_id].kv_size;
+			nd.type = KV_FORMAT;
+			//log_info("Tree[%d][%d] gave us key %s", level_id, 0, nd.KV + 4);
+			nd.level_id = level_id;
+			nd.active_tree = tree_id;
+			nd.db_desc = handle->db_desc;
+			nd.tombstone = sc->LEVEL_SCANNERS[level_id][tree_id].tombstone;
+			sh_insert_heap_node(&sc->heap, &nd);
 
-				sc->LEVEL_SCANNERS[level_id][tree_id].valid = 1;
-			}
+			sc->LEVEL_SCANNERS[level_id][tree_id].valid = 1;
 		}
 	}
 
@@ -351,22 +347,26 @@ int32_t new_index_level_scanner_get_next(level_scanner *sc)
 		switch (status) {
 		case GET_NEXT_KV:
 			//log_debug("get_next kv");
-			if (++stack_element.idx >= stack_element.node->num_entries) {
-				//log_debug("Leaf idx is %d num_entries %d", stack_element.idx,
-				//	  stack_element.node->num_entries);
 
+			if (++stack_element.idx >= stack_element.node->num_entries) {
+				//log_debug("Done with leaf from level %u Leaf: %lu idx is %d num_entries %d",
+				//	  sc->level_id, stack_element.node, stack_element.idx,
+				//	  stack_element.node->num_entries);
 				read_unlock_node(sc, stack_element.node);
 				status = POP_STACK;
 				break;
 			}
-			//log_debug("Leaf idx is %d num_entries %d", stack_element.idx, stack_element.node->num_entries);
+
 			if (COMPACTION_BUFFER_SCANNER == sc->type)
 				new_index_fill_compaction_scanner(sc, &sc->db->db_desc->levels[sc->level_id],
 								  stack_element.node, stack_element.idx);
 			else
 				new_index_fill_normal_scanner(sc, &sc->db->db_desc->levels[sc->level_id],
 							      stack_element.node, stack_element.idx);
+			//log_debug("Get next Returning Leaf:%lu idx is %d num_entries %d", stack_element.node,
+			//	  stack_element.idx, stack_element.node->num_entries);
 			stack_push(&sc->stack, stack_element);
+
 			return PARALLAX_SUCCESS;
 
 		case PUSH_STACK: {
@@ -380,7 +380,6 @@ int32_t new_index_level_scanner_get_next(level_scanner *sc)
 			if (stack_element.node->type == leafNode || stack_element.node->type == leafRootNode) {
 				stack_element.idx = -1;
 				status = GET_NEXT_KV;
-				//log_debug("Found a leaf");
 				break;
 			}
 
@@ -389,7 +388,6 @@ int32_t new_index_level_scanner_get_next(level_scanner *sc)
 		}
 
 		case POP_STACK:
-			//log_debug("Popping stack");
 			stack_element = stack_pop(&(sc->stack));
 
 			if (stack_element.guard)
@@ -442,7 +440,9 @@ int32_t new_index_level_scanner_seek(level_scanner *level_sc, void *start_key_bu
 	};
 	stack_push(&(level_sc->stack), guard_element);
 
-	stackElementT element = { .guard = 0, .leftmost = 0, .rightmost = 0, .idx = 0, .node = NULL, .iterator = { 0 } };
+	stackElementT element = {
+		.guard = 0, .leftmost = 0, .rightmost = 0, .idx = INT32_MAX, .node = NULL, .iterator = { 0 }
+	};
 
 	char zero_key_buf[64];
 	struct pivot_key *start_key = start_key_buf;
@@ -1063,37 +1063,37 @@ int32_t getNext(scannerHandle *sc)
 
 	while (1) {
 		enum sh_heap_status stat = sh_remove_top(&sc->heap, &nd);
-		if (stat != EMPTY_HEAP) {
-			sc->keyValue = nd.KV;
-			sc->kv_level_id = nd.level_id;
-			sc->kv_cat = sc->LEVEL_SCANNERS[nd.level_id][nd.active_tree].cat;
-			assert(sc->LEVEL_SCANNERS[nd.level_id][nd.active_tree].valid);
+		if (EMPTY_HEAP == stat)
+			return END_OF_DATABASE;
+
+		sc->keyValue = nd.KV;
+		sc->kv_level_id = nd.level_id;
+		sc->kv_cat = sc->LEVEL_SCANNERS[nd.level_id][nd.active_tree].cat;
+		assert(sc->LEVEL_SCANNERS[nd.level_id][nd.active_tree].valid);
 #ifdef NEW_INDEX_NODE_LAYOUT
-			if (new_index_level_scanner_get_next(&(sc->LEVEL_SCANNERS[nd.level_id][nd.active_tree])) !=
-			    END_OF_DATABASE) {
+		if (new_index_level_scanner_get_next(&(sc->LEVEL_SCANNERS[nd.level_id][nd.active_tree])) !=
+		    END_OF_DATABASE) {
 #else
-			if (_get_next_KV(&(sc->LEVEL_SCANNERS[nd.level_id][nd.active_tree])) != END_OF_DATABASE) {
+		if (_get_next_KV(&(sc->LEVEL_SCANNERS[nd.level_id][nd.active_tree])) != END_OF_DATABASE) {
 #endif
 
-				//log_info("refilling from level_id %d\n", nd.level_id);
-				next_nd.level_id = nd.level_id;
-				next_nd.active_tree = nd.active_tree;
-				next_nd.type = nd.type;
-				next_nd.cat = sc->LEVEL_SCANNERS[nd.level_id][nd.active_tree].cat;
-				next_nd.KV = sc->LEVEL_SCANNERS[nd.level_id][nd.active_tree].keyValue;
-				next_nd.kv_size = sc->LEVEL_SCANNERS[nd.level_id][nd.active_tree].kv_size;
-				next_nd.db_desc = sc->db->db_desc;
-				next_nd.tombstone = sc->LEVEL_SCANNERS[nd.level_id][nd.active_tree].tombstone;
-				sh_insert_heap_node(&sc->heap, &next_nd);
-			}
-			if (nd.duplicate == 1 || nd.tombstone == 1) {
-				//log_warn("ommiting duplicate %s", (char *)nd.KV + 4);
-				continue;
-			}
-			return PARALLAX_SUCCESS;
+			next_nd.level_id = nd.level_id;
+			next_nd.active_tree = nd.active_tree;
+			next_nd.type = nd.type;
+			next_nd.cat = sc->LEVEL_SCANNERS[nd.level_id][nd.active_tree].cat;
+			next_nd.KV = sc->LEVEL_SCANNERS[nd.level_id][nd.active_tree].keyValue;
+			next_nd.kv_size = sc->LEVEL_SCANNERS[nd.level_id][nd.active_tree].kv_size;
+			next_nd.db_desc = sc->db->db_desc;
+			next_nd.tombstone = sc->LEVEL_SCANNERS[nd.level_id][nd.active_tree].tombstone;
+			sh_insert_heap_node(&sc->heap, &next_nd);
 		}
-		return END_OF_DATABASE;
+		if (nd.duplicate == 1 || nd.tombstone == 1) {
+			//log_warn("ommiting duplicate %s", (char *)nd.KV + 4);
+			continue;
+		}
+		return PARALLAX_SUCCESS;
 	}
+	//return END_OF_DATABASE;
 }
 
 #if MEASURE_SST_USED_SPACE

@@ -12,22 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-/*
- *          File: stack.c
- *        Author: Robert I. Pitts <rip@cs.bu.edu>
- * Last Modified: March 7, 2000
- *         Topic: Stack - Array Implementation
- * Modified by Giorgos Saloustros, renamed functions due to conflict 13/04/2016
- * ----------------------------------------------------------------
- *
- * This is an array implementation of a character stack.
- */
-
 #include "stack.h"
 #include <assert.h>
 #include <log.h>
-#include <stdlib.h> /* for dynamic allocation */
-/************************ Function Definitions **********************/
+#include <stdlib.h>
 
 void stack_init(stackT *stackP)
 {
