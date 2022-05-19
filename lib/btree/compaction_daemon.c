@@ -29,11 +29,11 @@
 #include "gc.h"
 #include "medium_log_LRU_cache.h"
 #include "segment_allocator.h"
-
 #include <assert.h>
 #include <log.h>
 #include <pthread.h>
 #include <semaphore.h>
+#include <signal.h>
 #include <spin_loop.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -42,9 +42,38 @@
 #include <unistd.h>
 #include <uthash.h>
 
-//TODO Rename to fetch_chunk
-static void fetch_segment(struct comp_level_write_cursor *c, char *segment_buf, uint64_t log_chunk_dev_offt,
-			  ssize_t size)
+static void comp_medium_log_set_max_segment_id(struct comp_level_write_cursor *c)
+{
+	uint64_t max_segment_id = 0;
+	uint64_t max_segment_offt = 0;
+
+	struct medium_log_segment_map_t *current_entry = NULL;
+	struct medium_log_segment_map_t *tmp = NULL;
+	HASH_ITER(hh, c->medium_log_segment_map, current_entry, tmp)
+	{
+		/* Suprresses possible null pointer dereference of cppcheck*/
+		assert(current_entry);
+		uint64_t segment_id = current_entry->id;
+		if (UINT64_MAX == segment_id) {
+			struct segment_header *segment = REAL_ADDRESS(current_entry->dev_offt);
+			segment_id = segment->segment_id;
+		}
+		if (segment_id >= max_segment_id) {
+			max_segment_id = segment_id;
+			max_segment_offt = current_entry->dev_offt;
+		}
+		HASH_DEL(c->medium_log_segment_map, current_entry);
+		free(current_entry);
+	}
+	struct level_descriptor *level_desc = &c->handle->db_desc->levels[c->level_id];
+	level_desc->medium_in_place_max_segment_id = max_segment_id;
+	level_desc->medium_in_place_segment_dev_offt = max_segment_offt;
+	log_debug("Max segment id touched during medium transfer to in place is %lu and corresponding offt: %lu",
+		  max_segment_id, max_segment_offt);
+}
+
+static void fetch_segment_chunk(struct comp_level_write_cursor *c, uint64_t log_chunk_dev_offt, char *segment_buf,
+				ssize_t size)
 {
 	off_t dev_offt = log_chunk_dev_offt;
 	ssize_t bytes_to_read = 0;
@@ -59,17 +88,42 @@ static void fetch_segment(struct comp_level_write_cursor *c, char *segment_buf, 
 		}
 		bytes_to_read += bytes;
 	}
-	if (c->level_id == c->handle->db_desc->level_medium_inplace) {
-		struct segment_header *segment = (struct segment_header *)segment_buf;
-		struct level_descriptor *level_desc = &c->handle->db_desc->levels[c->level_id];
 
-		if (!(log_chunk_dev_offt % SEGMENT_SIZE)) {
-			if (segment->segment_id > level_desc->medium_in_place_max_segment_id) {
-				level_desc->medium_in_place_max_segment_id = segment->segment_id;
-				level_desc->medium_in_place_segment_dev_offt = dev_offt;
-			}
-		}
+	if (c->level_id != c->handle->db_desc->level_medium_inplace)
+		return;
+
+	uint64_t segment_dev_offt = log_chunk_dev_offt - (log_chunk_dev_offt % SEGMENT_SIZE);
+
+	struct medium_log_segment_map_t *entry = NULL;
+	//log_debug("Searching segment offt: %lu log chunk offt %lu mod %lu", segment_dev_offt, log_chunk_dev_offt,
+	//	  log_chunk_dev_offt % SEGMENT_SIZE);
+	HASH_FIND_PTR(c->medium_log_segment_map, &segment_dev_offt, entry);
+
+	/*Never seen it before*/
+	_Bool found = true;
+
+	if (!entry) {
+		entry = calloc(1, sizeof(*entry));
+		entry->dev_offt = segment_dev_offt;
+		found = false;
 	}
+
+	/*Already seen and set its id, nothing to do*/
+	if (found && entry->id != UINT64_MAX)
+		return;
+
+	entry->dev_offt = segment_dev_offt;
+	entry->id = UINT64_MAX;
+
+	if (!(log_chunk_dev_offt % SEGMENT_SIZE)) {
+		struct segment_header *segment = (struct segment_header *)segment_buf;
+		entry->id = segment->segment_id;
+		//log_debug("Correcting segment id %lu devofft: %lu mod %lu", entry->id, entry->dev_offt,
+		//	  log_chunk_dev_offt % SEGMENT_SIZE);
+	}
+
+	if (!found)
+		HASH_ADD_PTR(c->medium_log_segment_map, dev_offt, entry);
 }
 
 static char *fetch_kv_from_LRU(struct write_dynamic_leaf_args *args, struct comp_level_write_cursor *c)
@@ -87,7 +141,7 @@ static char *fetch_kv_from_LRU(struct write_dynamic_leaf_args *args, struct comp
 			log_fatal("MEMALIGN FAILED");
 			BUG_ON();
 		}
-		fetch_segment(c, segment_chunk, segment_chunk_offt, LOG_CHUNK_SIZE + KB(4));
+		fetch_segment_chunk(c, segment_chunk_offt, segment_chunk, LOG_CHUNK_SIZE + KB(4));
 		add_to_LRU(c->medium_log_LRU_cache, segment_chunk_offt, segment_chunk);
 	} else
 		segment_chunk = get_chunk_from_LRU(c->medium_log_LRU_cache, segment_chunk_offt);
@@ -1489,9 +1543,10 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 		(struct node_header *)REAL_ADDRESS(merged_level->root_offt);
 	assert(merged_level->handle->db_desc->levels[comp_req->dst_level].root_w[1]->type == rootNode);
 
-	if (merged_level->level_id == handle->db_desc->level_medium_inplace)
+	if (merged_level->level_id == handle->db_desc->level_medium_inplace) {
+		comp_medium_log_set_max_segment_id(merged_level);
 		destroy_LRU(merged_level->medium_log_LRU_cache);
-
+	}
 	free(merged_level);
 
 	/***************************************************************/
@@ -1507,13 +1562,13 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 		/*free dst (L_i+1) level*/
 		space_freed = seg_free_level(comp_req->db_desc, txn_id, comp_req->dst_level, 0);
 
-		log_debug("Freed space %lu MB from db:%s destination level %u", space_freed / (1024 * 1024),
+		log_debug("Freed space %lu MB from db:%s destination level %u", space_freed / (1024 * 1024L),
 			  comp_req->db_desc->db_superblock->db_name, comp_req->dst_level);
 	}
 	/*Free and zero L_i*/
 	uint64_t txn_id = comp_req->db_desc->levels[comp_req->dst_level].allocation_txn_id[comp_req->dst_tree];
 	space_freed = seg_free_level(hd.db_desc, txn_id, comp_req->src_level, comp_req->src_tree);
-	log_debug("Freed space %lu MB from db:%s source level %u", space_freed / (1024 * 1024),
+	log_debug("Freed space %lu MB from db:%s source level %u", space_freed / (1024 * 1024L),
 		  comp_req->db_desc->db_superblock->db_name, comp_req->src_level);
 	seg_zero_level(hd.db_desc, comp_req->src_level, comp_req->src_tree);
 
@@ -1574,7 +1629,8 @@ static void compact_with_empty_destination_level(struct compaction_request *comp
 
 	pr_flush_compaction(comp_req->db_desc, comp_req->dst_level, comp_req->dst_tree);
 	swap_levels(leveld_dst, leveld_dst, 1, 0);
-	log_debug("Flushed compaction[%u][%u] (Swap levels) successfully", comp_req->dst_level, comp_req->dst_tree);
+	log_debug("Flushed compaction (Swap levels) successfully from src[%u][%u] to dst[%u][%u]", comp_req->src_level,
+		  comp_req->src_tree, comp_req->dst_level, comp_req->dst_tree);
 
 #if ENABLE_BLOOM_FILTERS
 	log_info("Swapping also bloom filter");

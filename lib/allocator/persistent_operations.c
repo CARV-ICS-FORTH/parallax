@@ -231,22 +231,24 @@ static void pr_flush_Lmax_to_Ln(struct db_descriptor *db_desc, uint8_t level_id,
 
 	uint64_t txn_id = db_desc->levels[level_id].allocation_txn_id[tree_id];
 	/*trim medium log*/
-	//log_info("Max medium in place segment id %llu", curr->segment_id);
+
+	uint8_t trim_medium_log = 0;
 	if (level_desc->medium_in_place_segment_dev_offt) {
+		trim_medium_log = 1;
 		struct segment_header *curr = REAL_ADDRESS(level_desc->medium_in_place_segment_dev_offt);
-		curr = REAL_ADDRESS(curr->prev_segment);
+		if (curr->prev_segment)
+			curr = REAL_ADDRESS(curr->prev_segment);
+		else
+			curr = NULL;
 
 		struct segment_header *head = REAL_ADDRESS(db_desc->medium_log.head_dev_offt);
-		//log_info("Head of medium log segment id %llu", head->segment_id);
 
 		uint64_t bytes_freed = 0;
-		while (curr != head) {
+		while (curr && curr != head) {
 			struct rul_log_entry log_entry = { .dev_offt = ABSOLUTE_ADDRESS(curr),
 							   .txn_id = txn_id,
 							   .op_type = RUL_FREE,
 							   .size = SEGMENT_SIZE };
-			log_debug("Triming medium log segment:%lu curr segment id:%lu", log_entry.dev_offt,
-				  curr->segment_id);
 			rul_add_entry_in_txn_buf(db_desc, &log_entry);
 			bytes_freed += SEGMENT_SIZE;
 			if (curr->segment_id == head->segment_id)
@@ -255,16 +257,19 @@ static void pr_flush_Lmax_to_Ln(struct db_descriptor *db_desc, uint8_t level_id,
 		}
 
 		log_debug("*** Freed a total of %lu MB bytes from trimming medium log head %lu tail %lu size %lu ***",
-			  bytes_freed / (1024 * 1024), db_desc->db_superblock->small_log_head_offt,
+			  bytes_freed / (1024 * 1024L), db_desc->db_superblock->small_log_head_offt,
 			  db_desc->db_superblock->small_log_tail_offt, db_desc->db_superblock->small_log_size);
 	}
 	pr_lock_db_superblock(db_desc);
 
 	/*new info about medium log after trim operation*/
-	db_desc->medium_log.head_dev_offt = level_desc->medium_in_place_segment_dev_offt;
-	db_desc->db_superblock->medium_log_head_offt = level_desc->medium_in_place_segment_dev_offt;
-	level_desc->medium_in_place_segment_dev_offt = 0;
-	level_desc->medium_in_place_max_segment_id = 0;
+	if (trim_medium_log) {
+		db_desc->medium_log.head_dev_offt = level_desc->medium_in_place_segment_dev_offt;
+		db_desc->db_superblock->medium_log_head_offt = level_desc->medium_in_place_segment_dev_offt;
+		level_desc->medium_in_place_segment_dev_offt = 0;
+		level_desc->medium_in_place_max_segment_id = 0;
+	}
+
 	pr_flush_allocation_log_and_level_info(db_desc, level_id - 1, level_id, tree_id);
 
 	pr_unlock_db_superblock(db_desc);
