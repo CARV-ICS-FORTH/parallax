@@ -9,10 +9,10 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-#include "../include/parallax.h"
 #include "arg_parser.h"
 #include <assert.h>
 #include <log.h>
+#include <parallax.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -145,6 +145,7 @@ static void put_workload(struct workload_config_t *workload_config, const char *
 			my_kv.v.val_buffer_size = KV_BUFFER_SIZE / 2;
 			my_kv.v.val_buffer = v->value_buf;
 		}
+		//log_debug("key %.*s %u", my_kv.k.size, my_kv.k.data, my_kv.v.val_size);
 		par_put(workload_config->handle, &my_kv);
 		if (!(++key_count % workload_config->progress_report))
 			log_info("Progress in population %lu keys", key_count);
@@ -252,6 +253,7 @@ static void scan_workload(struct workload_config_t *workload_config)
 				  my_keyptr.size, my_keyptr.data);
 			_exit(EXIT_FAILURE);
 		}
+		memset((void *)my_keyptr.data, 0x00, my_keyptr.size);
 
 		uint64_t scan_entries = 0;
 		for (uint64_t j = i + 2 + expected_offset; scan_entries <= workload_config->scan_size;
@@ -267,11 +269,13 @@ static void scan_workload(struct workload_config_t *workload_config)
 				break;
 			}
 			my_keyptr = par_get_key(my_scanner);
+
 			if (memcmp(k->key_buf, my_keyptr.data, my_keyptr.size) != 0) {
 				log_fatal("Test failed for i: %lu key %.*s not found scanner instead returned %.*s",
 					  scan_entries, k->key_size, k->key_buf, my_keyptr.size, my_keyptr.data);
 				_exit(EXIT_FAILURE);
 			}
+			memset((void *)my_keyptr.data, 0x00, my_keyptr.size);
 			++scan_entries;
 		}
 
@@ -341,9 +345,12 @@ int main(int argc, char **argv)
 	}
 
 	base = 100000000L;
+
 	log_info("Running workload %s", workload);
 	par_db_options db_options;
 	db_options.volume_name = get_option(options, 1);
+	if (strcmp(workload, workload_tags[Load]) == 0 || strcmp(workload, workload_tags[All]) == 0)
+		par_format(db_options.volume_name, 16);
 	db_options.db_name = "scan_test";
 	db_options.volume_start = 0;
 	db_options.volume_size = 0;
