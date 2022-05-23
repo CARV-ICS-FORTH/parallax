@@ -18,7 +18,6 @@
 #include <pthread.h>
 #include <stdint.h>
 #include <uthash.h>
-
 #define RUL_LOG_CHUNK_NUM 8
 #define RUL_SEGMENT_FOOTER_SIZE_IN_BYTES (RUL_LOG_CHUNK_NUM * ALIGNMENT_SIZE)
 #define RUL_LOG_CHUNK_SIZE_IN_BYTES ((SEGMENT_SIZE - RUL_SEGMENT_FOOTER_SIZE_IN_BYTES) / RUL_LOG_CHUNK_NUM)
@@ -26,6 +25,7 @@
 #define RUL_SEGMENT_MAX_ENTRIES ((RUL_LOG_CHUNK_NUM * RUL_LOG_CHUNK_MAX_ENTRIES) - 1)
 
 struct db_descriptor;
+struct rul_log_entry;
 
 enum rul_op_type {
 	RUL_ALLOCATE = 1,
