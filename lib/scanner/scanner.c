@@ -214,12 +214,11 @@ static void read_unlock_node(struct level_scanner *level_sc, struct node_header 
 
 void closeScanner(scannerHandle *sc)
 {
-	stackElementT stack_top = { 0 };
 	/*special care for L0*/
 	for (int i = 0; i < NUM_TREES_PER_LEVEL; i++) {
 		if (sc->LEVEL_SCANNERS[0][i].valid && sc->LEVEL_SCANNERS[0][i].dirty) {
 			while (1) {
-				stack_top = stack_pop(&(sc->LEVEL_SCANNERS[0][i].stack));
+				stackElementT stack_top = stack_pop(&(sc->LEVEL_SCANNERS[0][i].stack));
 				if (stack_top.guard)
 					break;
 				read_unlock_node(&sc->LEVEL_SCANNERS[0][i], stack_top.node);
@@ -460,9 +459,9 @@ int32_t new_index_level_scanner_seek(level_scanner *level_sc, void *start_key_bu
 
 	stackElementT element = { .guard = 0, .idx = INT32_MAX, .node = NULL, .iterator = { 0 } };
 
-	char zero_key_buf[64];
 	struct pivot_key *start_key = start_key_buf;
 	if (!start_key_buf) {
+		char zero_key_buf[64];
 		start_key = (struct pivot_key *)zero_key_buf;
 		start_key->size = 1;
 		start_key->data[0] = 0x00;

@@ -30,11 +30,6 @@ struct key {
 	char key_buf[];
 };
 
-struct value {
-	uint32_t value_size;
-	char value_buf[];
-};
-
 static uint64_t total_keys = 1000000;
 static uint64_t base;
 static uint32_t scan_size = 16;
@@ -127,7 +122,7 @@ static void put_workload(struct workload_config_t *workload_config, const char *
 		memcpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
 		sprintf(k->key_buf + strlen(KEY_PREFIX), "%llu", (long long unsigned)i);
 		k->key_size = strlen(k->key_buf);
-		struct value *v = (struct value *)((uint64_t)k + sizeof(struct key) + k->key_size);
+		char *value_payload = (char *)((uint64_t)k + sizeof(struct key) + k->key_size);
 		uint32_t res = choose_mix(kv_size_mix, key_count % 10);
 
 		my_kv.k.size = k->key_size;
@@ -135,15 +130,15 @@ static void put_workload(struct workload_config_t *workload_config, const char *
 		if (res == 0) {
 			my_kv.v.val_size = SMALL_VALUE_SIZE;
 			my_kv.v.val_buffer_size = KV_BUFFER_SIZE / 2;
-			my_kv.v.val_buffer = v->value_buf;
+			my_kv.v.val_buffer = value_payload;
 		} else if (res == 1) {
 			my_kv.v.val_size = MEDIUM_VALUE_SIZE;
 			my_kv.v.val_buffer_size = KV_BUFFER_SIZE / 2;
-			my_kv.v.val_buffer = v->value_buf;
+			my_kv.v.val_buffer = value_payload;
 		} else {
 			my_kv.v.val_size = LARGE_VALUE_SIZE;
 			my_kv.v.val_buffer_size = KV_BUFFER_SIZE / 2;
-			my_kv.v.val_buffer = v->value_buf;
+			my_kv.v.val_buffer = value_payload;
 		}
 		//log_debug("key %.*s %u", my_kv.k.size, my_kv.k.data, my_kv.v.val_size);
 		par_put(workload_config->handle, &my_kv);
