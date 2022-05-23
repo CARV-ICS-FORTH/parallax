@@ -27,14 +27,15 @@
 #include "conf.h"
 #include "dynamic_leaf.h"
 #include "gc.h"
+#include "index_node.h"
 #include "medium_log_LRU_cache.h"
 #include "segment_allocator.h"
 #include <assert.h>
 #include <log.h>
 #include <pthread.h>
 #include <semaphore.h>
-#include <signal.h>
 #include <spin_loop.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>

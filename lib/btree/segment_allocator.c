@@ -19,7 +19,6 @@
 #include "../allocator/volume_manager.h"
 #include "../common/common.h"
 #include "conf.h"
-#include "index_node.h"
 #include <assert.h>
 #include <log.h>
 #include <stdlib.h>

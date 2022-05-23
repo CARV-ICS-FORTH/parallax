@@ -1,8 +1,9 @@
 #include "index_node.h"
+#include "../common/common.h"
 #include "segment_allocator.h"
 #include <assert.h>
 #include <log.h>
-#include <signal.h>
+#include <stdlib.h>
 #include <string.h>
 
 #define NEW_INDEX_GUARD_SIZE 1
@@ -184,16 +185,6 @@ static struct pivot_key *new_index_search_get_full_pivot(struct new_index_node *
 	//log_debug("</search>");
 
 	return pivot;
-}
-
-struct pivot_pointer *new_index_search_get_pivot_from_pos(struct new_index_node *node, int32_t position)
-{
-	if (position >= node->header.num_entries)
-		return NULL;
-
-	struct new_index_slot_array_entry *slot_array = new_index_get_slot_array(node);
-	struct pivot_key *pivot = (struct pivot_key *)NEW_INDEX_PIVOT_ADDRESS(node, slot_array[position].pivot);
-	return (struct pivot_pointer *)&((char *)pivot)[PIVOT_SIZE(pivot)];
 }
 
 struct pivot_pointer *new_index_search_get_pivot(struct new_index_node *node, void *lookup_key,

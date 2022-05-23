@@ -2,6 +2,7 @@
 #define INDEX_NODE_H
 #include "../common/common.h"
 #include "btree.h"
+#include "conf.h"
 #include <stdint.h>
 #define PIVOT_KEY_SIZE(X) ((X) ? (X)->size + sizeof(*X) : BUG_ON_UINT32T())
 #define PIVOT_SIZE(X) (PIVOT_KEY_SIZE(X) + sizeof(struct pivot_pointer))
