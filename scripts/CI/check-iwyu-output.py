@@ -52,6 +52,7 @@ def get_headers(file_lines, add_or_remove, data_dict):
             hashtag_pos = line.find("#")
             greater_pos = line.find(">")
             doubleq_pos = line.rfind('"')
+            struct_pos = line.find("struct")
 
             # The header can be included using <>
             if greater_pos != -1:
@@ -60,6 +61,9 @@ def get_headers(file_lines, add_or_remove, data_dict):
             # The header can be included using ""
             if doubleq_pos != -1:
                 data_dict[last_file].append(line[hashtag_pos : doubleq_pos + 1])
+
+            if struct_pos != -1:
+                data_dict[last_file].append(line)
 
         if add_or_remove in line:
             check_next_line = True
