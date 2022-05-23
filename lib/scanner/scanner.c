@@ -103,6 +103,7 @@ static void init_generic_scanner(struct scannerHandle *sc, struct db_handle *han
 		nd.db_desc = handle->db_desc;
 		nd.tombstone = sc->LEVEL_SCANNERS[0][i].tombstone;
 		nd.epoch = handle->db_desc->levels[0].epoch[i];
+		nd.cat = sc->LEVEL_SCANNERS[0][i].cat;
 		sh_insert_heap_node(&sc->heap, &nd);
 	}
 
@@ -298,6 +299,7 @@ static void new_index_fill_normal_scanner(struct level_scanner *level_sc, struct
 {
 	struct bt_dynamic_leaf_node *dlnode = (struct bt_dynamic_leaf_node *)node;
 	struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(dlnode);
+
 	switch (get_kv_format(slot_array[position].key_category)) {
 	case KV_INPLACE: {
 		level_sc->keyValue = get_kv_offset(dlnode, level->leaf_size, slot_array[position].index);
@@ -316,6 +318,13 @@ static void new_index_fill_normal_scanner(struct level_scanner *level_sc, struct
 		level_sc->kv_format = KV_FORMAT;
 		level_sc->kv_entry.dev_offt = (uint64_t)REAL_ADDRESS(kv_entry->dev_offt);
 		level_sc->keyValue = (void *)level_sc->kv_entry.dev_offt;
+
+		if (level_sc->level_id) {
+			uint32_t key_size = KEY_SIZE(level_sc->keyValue);
+			uint32_t value_size = VALUE_SIZE(level_sc->keyValue + sizeof(uint32_t) + key_size);
+			level_sc->kv_size = sizeof(key_size) + sizeof(value_size) + key_size + value_size;
+		} else
+			level_sc->kv_size = UINT32_MAX;
 		level_sc->cat = slot_array[position].key_category;
 		level_sc->tombstone = slot_array[position].tombstone;
 		break;
@@ -469,6 +478,7 @@ int32_t new_index_level_scanner_seek(level_scanner *level_sc, void *start_key_bu
 		node = REAL_ADDRESS(piv_pointer->child_offt);
 		read_lock_node(level_sc, node);
 	}
+	assert(node->type == leafNode || node->type == leafRootNode);
 
 	/*Whole path root to leaf is locked. Now set the element for the leaf node*/
 	memset(&element, 0x00, sizeof(element));
@@ -1058,10 +1068,9 @@ int32_t _get_next_KV(level_scanner *sc)
 
 int32_t getNext(scannerHandle *sc)
 {
-	struct sh_heap_node nd = { 0 };
-	struct sh_heap_node next_nd = { 0 };
-
 	while (1) {
+		struct sh_heap_node nd = { 0 };
+
 		enum sh_heap_status stat = sh_remove_top(&sc->heap, &nd);
 		if (EMPTY_HEAP == stat)
 			return END_OF_DATABASE;
@@ -1074,9 +1083,10 @@ int32_t getNext(scannerHandle *sc)
 		if (new_index_level_scanner_get_next(&(sc->LEVEL_SCANNERS[nd.level_id][nd.active_tree])) !=
 		    END_OF_DATABASE) {
 #else
-		if (_get_next_KV(&(sc->LEVEL_SCANNERS[nd.level_id][nd.active_tree])) != END_OF_DATABASE) {
+		if (_get_next_KV(&(sc->LEVEL_SCANNERS[nd.level_id][nd.active_tree])) != END_OF_DATABASE)
 #endif
-
+			//TODO: use designated initializers for next_nd
+			struct sh_heap_node next_nd = { 0 };
 			next_nd.level_id = nd.level_id;
 			next_nd.active_tree = nd.active_tree;
 			next_nd.type = nd.type;
