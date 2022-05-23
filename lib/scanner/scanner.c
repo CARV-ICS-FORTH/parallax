@@ -29,7 +29,18 @@
 #include <stdlib.h>
 #include <string.h>
 
-int _init_level_scanner(level_scanner *level_sc, void *start_key, char seek_mode);
+int _init_level_scanner(level_scanner *level_sc, void *start_key, char seek_mode)
+{
+	stack_init(&level_sc->stack);
+
+	/* position scanner now to the appropriate row */
+	if (new_index_level_scanner_seek(level_sc, start_key, seek_mode) == END_OF_DATABASE) {
+		stack_destroy(&(level_sc->stack));
+		return -1;
+	}
+	level_sc->type = LEVEL_SCANNER;
+	return 0;
+}
 
 static void init_generic_scanner(struct scannerHandle *sc, struct db_handle *handle, void *start_key, char seek_flag,
 				 char dirty)
@@ -444,14 +455,10 @@ int32_t new_index_level_scanner_seek(level_scanner *level_sc, void *start_key_bu
 	/*Drop all paths*/
 	stack_reset(&(level_sc->stack));
 	/*Insert stack guard*/
-	stackElementT guard_element = {
-		.guard = 1, .leftmost = 0, .rightmost = 0, .idx = 0, .node = NULL, .iterator = { 0 }
-	};
+	stackElementT guard_element = { .guard = 1, .idx = 0, .node = NULL, .iterator = { 0 } };
 	stack_push(&(level_sc->stack), guard_element);
 
-	stackElementT element = {
-		.guard = 0, .leftmost = 0, .rightmost = 0, .idx = INT32_MAX, .node = NULL, .iterator = { 0 }
-	};
+	stackElementT element = { .guard = 0, .idx = INT32_MAX, .node = NULL, .iterator = { 0 } };
 
 	char zero_key_buf[64];
 	struct pivot_key *start_key = start_key_buf;
@@ -539,43 +546,12 @@ level_scanner *_init_compaction_buffer_scanner(db_handle *handle, int level_id, 
 	level_sc->root = node;
 	level_sc->level_id = level_id;
 	level_sc->type = COMPACTION_BUFFER_SCANNER;
-	/*typicall 20 bytes 8 prefix the address to the KV log
-	 position scanner now to the appropriate row */
-#ifdef NEW_INDEX_NODE_LAYOUT
+
 	if (new_index_level_scanner_seek(level_sc, start_key, GREATER_OR_EQUAL) == END_OF_DATABASE) {
 		log_info("empty internal buffer during compaction operation, is that possible?");
 		return NULL;
 	}
-#else
-	if (_seek_scanner(level_sc, start_key, GREATER_OR_EQUAL) == END_OF_DATABASE) {
-		log_info("empty internal buffer during compaction operation, is that possible?");
-		return NULL;
-	}
-#endif
 	return level_sc;
-}
-
-int _init_level_scanner(level_scanner *level_sc, void *start_key, char seek_mode)
-{
-	stack_init(&level_sc->stack);
-
-	/* position scanner now to the appropriate row */
-#ifdef NEW_INDEX_NODE_LAYOUT
-	if (new_index_level_scanner_seek(level_sc, start_key, seek_mode) == END_OF_DATABASE) {
-		stack_destroy(&(level_sc->stack));
-		return -1;
-	}
-#else
-	if (_seek_scanner(level_sc, start_key, seek_mode) == END_OF_DATABASE) {
-		// log_info("EMPTY DATABASE after seek for key %u:%s!", *(uint32_t
-		// *)start_key,
-		//	 start_key + sizeof(uint32_t));
-		stack_destroy(&(level_sc->stack));
-		return -1;
-	}
-#endif
-	level_sc->type = LEVEL_SCANNER;
-	return 0;
 }
 
 void _close_compaction_buffer_scanner(level_scanner *level_sc)
@@ -583,488 +559,6 @@ void _close_compaction_buffer_scanner(level_scanner *level_sc)
 	stack_destroy(&(level_sc->stack));
 	free(level_sc);
 }
-
-//#else
-int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER_MODE mode)
-{
-	char key_buf_prefix[PREFIX_SIZE + sizeof(uint32_t) + MAX_KEY_SIZE];
-	stackElementT element;
-	db_descriptor *db_desc = level_sc->db->db_desc;
-	void *full_pivot_key;
-	void *addr = NULL;
-	struct index_node *inode;
-	node_header *node;
-	int64_t ret;
-	uint32_t level_id = level_sc->level_id;
-	int32_t middle;
-	struct key_compare key1_cmp, key2_cmp;
-	/*drop all paths*/
-	stack_reset(&(level_sc->stack));
-	/*put guard*/
-	element.guard = 1;
-	element.leftmost = 0;
-	element.rightmost = 0;
-	element.idx = 0;
-	element.node = NULL;
-
-	stack_push(&(level_sc->stack), element);
-	/* for L0 already safe we have read lock of guard lock
-	 * else its just a root_r of levels >= 1
-	 */
-	node = level_sc->root;
-	read_lock_node(level_sc, node);
-
-	if (node == NULL) {
-		read_unlock_node(level_sc, node);
-		return END_OF_DATABASE;
-	}
-
-	if (node->type == leafRootNode && node->num_entries == 0) {
-		/*we seek in an empty tree*/
-		read_unlock_node(level_sc, node);
-		return END_OF_DATABASE;
-	}
-
-	while (node->type != leafNode && node->type != leafRootNode) {
-		inode = (struct index_node *)node;
-		int32_t start_idx = 0;
-		int32_t end_idx = inode->header.num_entries - 1;
-
-		while (1) {
-			middle = (start_idx + end_idx) / 2;
-			/*reconstruct full key*/
-			addr = &(inode->p[middle].pivot);
-			full_pivot_key = (void *)REAL_ADDRESS(*(uint64_t *)addr);
-			init_key_cmp(&key1_cmp, full_pivot_key, KV_FORMAT);
-			init_key_cmp(&key2_cmp, start_key_buf, KV_FORMAT);
-			ret = key_cmp(&key1_cmp, &key2_cmp);
-
-			if (ret == 0) {
-				break;
-			} else if (ret > 0) {
-				end_idx = middle - 1;
-				if (start_idx > end_idx)
-					break;
-			} else {
-				start_idx = middle + 1;
-				if (start_idx > end_idx)
-					break;
-			}
-		}
-
-		assert(middle < (int64_t)node->num_entries);
-		element.node = node;
-		element.guard = 0;
-		int num_entries = node->num_entries;
-		/*the path we need to follow*/
-		if (ret <= 0)
-			node = (node_header *)REAL_ADDRESS(inode->p[middle + 1].left);
-		else
-			node = (node_header *)REAL_ADDRESS(inode->p[middle].left);
-
-		read_lock_node(level_sc, node);
-
-		/*cornercases leftmost path and rightmost path*/
-		if (middle == 0 && ret > 0) {
-			/*first path of node*/
-			//log_info("leftmost path");
-			element.leftmost = 1;
-			element.rightmost = 0;
-			element.idx = 0;
-		} else if (middle >= (int64_t)num_entries - 1 && ret <= 0) {
-			/*last path of node*/
-			//log_info("rightmost path middle = %d num entries = %d",middle, num_entries);
-			//log_info("pivot %s seek key %s",full_pivot_key+4,start_key_buf+4);
-			element.leftmost = 0;
-			element.rightmost = 1;
-			element.idx = middle;
-		} else {
-			element.leftmost = 0;
-			element.rightmost = 0;
-			if (ret > 0)
-				element.idx = --middle;
-			else
-				element.idx = middle;
-		}
-		stack_push(&(level_sc->stack), element);
-	}
-
-	int kv_size = 0;
-	enum KV_type key_format;
-	/*reached leaf node, lock already there setup prefixes*/
-	if (start_key_buf == NULL) {
-		memset(key_buf_prefix, 0, sizeof(key_buf_prefix));
-		key_format = KV_FORMAT;
-	} else {
-		uint32_t s_key_size = *(uint32_t *)start_key_buf;
-		if (s_key_size >= PREFIX_SIZE) {
-			memcpy(key_buf_prefix, (void *)((uint64_t)start_key_buf + sizeof(uint32_t)), PREFIX_SIZE);
-		} else {
-			s_key_size = *(uint32_t *)start_key_buf;
-			memcpy(key_buf_prefix, (void *)((uint64_t)start_key_buf + sizeof(uint32_t)), s_key_size);
-			memset(key_buf_prefix + s_key_size, 0x00, PREFIX_SIZE - s_key_size);
-		}
-		((struct bt_leaf_entry *)key_buf_prefix)->dev_offt = (uint64_t)start_key_buf;
-
-		kv_size = *(uint32_t *)start_key_buf;
-		key_format = KV_PREFIX;
-	}
-
-	/*now perform binary search inside the leaf*/
-	middle = 0;
-	struct dl_bsearch_result dlresult = { .middle = 0, .status = INSERT, .op = DYNAMIC_LEAF_FIND, .debug = 0 };
-	bt_insert_req req;
-	req.key_value_buf = key_buf_prefix;
-	req.metadata.kv_size = kv_size;
-	db_handle handle = { .db_desc = db_desc, .volume_desc = NULL };
-	req.metadata.handle = &handle;
-	req.metadata.key_format = key_format;
-	req.metadata.level_id = level_sc->level_id;
-	binary_search_dynamic_leaf((struct bt_dynamic_leaf_node *)node, db_desc->levels[level_id].leaf_size, &req,
-				   &dlresult);
-	assert(dlresult.status != ERROR);
-
-	middle = dlresult.middle;
-
-	/*further checks*/
-	if (middle <= 0 && node->num_entries > 1) {
-		element.node = node;
-		element.idx = 0;
-		element.leftmost = 1;
-		element.rightmost = 0;
-		element.guard = 0;
-		//log_debug("Leftmost boom %llu", node->num_entries);
-		stack_push(&(level_sc->stack), element);
-		middle = 0;
-	} else if (middle >= (int64_t)node->num_entries - 1) {
-		//log_info("rightmost");
-		element.node = node;
-		element.idx = 0;
-		element.leftmost = 0;
-		element.rightmost = 1;
-		element.guard = 0;
-		stack_push(&(level_sc->stack), element);
-		middle = node->num_entries - 1;
-	} else {
-		//log_info("middle is %d", middle);
-		element.node = node;
-		element.idx = middle;
-		element.leftmost = 0;
-		element.rightmost = 0;
-		element.guard = 0;
-		stack_push(&(level_sc->stack), element);
-	}
-
-	if (level_sc->type == COMPACTION_BUFFER_SCANNER) {
-		struct bt_dynamic_leaf_node *dlnode = (struct bt_dynamic_leaf_node *)node;
-		struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(dlnode);
-		switch (get_kv_format(slot_array[middle].key_category)) {
-		case KV_INPLACE: {
-			uint32_t key_size, value_size;
-			level_sc->keyValue =
-				get_kv_offset(dlnode, db_desc->levels[level_id].leaf_size, slot_array[middle].index);
-			key_size = KEY_SIZE(level_sc->keyValue);
-			value_size = VALUE_SIZE(level_sc->keyValue + 4 + key_size);
-			level_sc->kv_format = KV_FORMAT;
-			level_sc->cat = slot_array[middle].key_category;
-			level_sc->tombstone = slot_array[middle].tombstone;
-			level_sc->kv_size = sizeof(key_size) + sizeof(value_size) + key_size + value_size;
-
-			break;
-		}
-		case KV_INLOG: {
-			struct bt_leaf_entry *kv_entry = (struct bt_leaf_entry *)get_kv_offset(
-				dlnode, db_desc->levels[level_id].leaf_size, slot_array[middle].index);
-			level_sc->kv_entry = *kv_entry;
-			level_sc->kv_entry.dev_offt = (uint64_t)REAL_ADDRESS(kv_entry->dev_offt);
-			level_sc->keyValue = (char *)&level_sc->kv_entry;
-			level_sc->cat = slot_array[middle].key_category;
-			level_sc->tombstone = slot_array[middle].tombstone;
-			level_sc->kv_size = sizeof(struct bt_leaf_entry);
-			level_sc->kv_format = KV_PREFIX;
-			break;
-		}
-		default:
-			BUG_ON();
-		}
-
-	} else { /*normal scanner*/
-		struct bt_dynamic_leaf_node *dlnode = (struct bt_dynamic_leaf_node *)node;
-		struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(dlnode);
-		switch (get_kv_format(slot_array[middle].key_category)) {
-		case KV_INPLACE: {
-			uint32_t key_size, value_size;
-			level_sc->keyValue =
-				get_kv_offset(dlnode, db_desc->levels[level_id].leaf_size, slot_array[middle].index);
-			key_size = KEY_SIZE(level_sc->keyValue);
-			value_size = VALUE_SIZE(level_sc->keyValue + 4 + key_size);
-			level_sc->kv_size = sizeof(key_size) + sizeof(value_size) + key_size + value_size;
-			level_sc->kv_format = KV_FORMAT;
-			/* log_info("%*s", *(uint32_t *)level_sc->keyValue, level_sc->keyValue + 4); */
-			level_sc->cat = slot_array[middle].key_category;
-			level_sc->tombstone = slot_array[middle].tombstone;
-			break;
-		}
-		case KV_INLOG: {
-			struct bt_leaf_entry *kv_entry = (struct bt_leaf_entry *)get_kv_offset(
-				dlnode, db_desc->levels[level_id].leaf_size, slot_array[middle].index);
-			level_sc->kv_entry = *kv_entry;
-			level_sc->kv_format = KV_FORMAT;
-			level_sc->kv_entry.dev_offt = (uint64_t)REAL_ADDRESS(kv_entry->dev_offt);
-			level_sc->keyValue = (void *)level_sc->kv_entry.dev_offt;
-			level_sc->cat = slot_array[middle].key_category;
-			level_sc->tombstone = slot_array[middle].tombstone;
-			/* REAL_ADDRESS(*(uint64_t*)get_kv_offset( */
-			/* dlnode, db_desc->levels[level_id].leaf_size, slot_array[middle].index)); */
-			break;
-		}
-		default:
-			BUG_ON();
-		}
-	}
-
-	if (!start_key_buf)
-		return PARALLAX_SUCCESS;
-
-	while (1) {
-		struct bt_kv_log_address log_address = { .addr = level_sc->keyValue,
-							 .tail_id = UINT8_MAX,
-							 .in_tail = 0 };
-
-		if (!level_sc->level_id && BIG_INLOG == level_sc->cat)
-			log_address = bt_get_kv_log_address(&level_sc->db->db_desc->big_log,
-							    ABSOLUTE_ADDRESS(level_sc->keyValue));
-		/*key1 is level_sc->kv_format key2 is KV_FORMAT*/
-		init_key_cmp(&key1_cmp, log_address.addr, level_sc->kv_format);
-		init_key_cmp(&key2_cmp, start_key_buf, KV_FORMAT);
-		ret = key_cmp(&key1_cmp, &key2_cmp);
-		if (log_address.in_tail)
-			bt_done_with_value_log_address(&level_sc->db->db_desc->big_log, &log_address);
-		switch (mode) {
-		case GREATER:
-			if (ret <= 0)
-				break;
-			return PARALLAX_SUCCESS;
-		case GREATER_OR_EQUAL:
-			if (ret < 0)
-				break;
-			return PARALLAX_SUCCESS;
-		default:
-			log_fatal("Unknown Scanner mode");
-			BUG_ON();
-		}
-
-		if (_get_next_KV(level_sc) == END_OF_DATABASE)
-			return END_OF_DATABASE;
-	}
-	return PARALLAX_SUCCESS;
-}
-
-/**
- * 05/01/2015 11:01 : Returns a serialized buffer in the following form:
- * Key_len|key|value_length|value
- * update: 25/10/2016 14:21: for tucana_2 related scans buffer returned will
- * in the following form:
- * prefix(8 bytes)|hash(4 bytes)|address_to_data(8 bytes)
- * update: 09/03/2017 14:15: for COMPACTION_BUFFER_SCANNER only we ll return codes
- * when a leaf search is exhausted
- **/
-int32_t _get_next_KV(level_scanner *sc)
-{
-	db_descriptor *db_desc = sc->db->db_desc;
-	stackElementT stack_top;
-	node_header *node;
-	struct index_node *inode;
-	uint32_t level_id = sc->level_id;
-	int32_t idx;
-	uint32_t up = 1;
-
-	stack_top = stack_pop(&(sc->stack)); /*get the element*/
-	if (stack_top.guard) {
-		sc->keyValue = NULL;
-		return END_OF_DATABASE;
-	}
-	if (stack_top.node->type != leafNode && stack_top.node->type != leafRootNode) {
-		log_fatal("Corrupted scanner stack, top element should be a leaf node");
-		BUG_ON();
-	}
-	node = stack_top.node;
-	// log_info("stack top rightmost %d leftmost %d", stack_top.rightmost,
-	// stack_top.leftmost);
-	while (1) {
-		if (up) {
-			/*check if we can advance in the current node*/
-			if (stack_top.rightmost) {
-				read_unlock_node(sc, stack_top.node);
-
-				stack_top = stack_pop(&(sc->stack));
-				if (!stack_top.guard) {
-					continue;
-				} else {
-					return END_OF_DATABASE;
-				}
-			} else if (stack_top.leftmost) {
-				stack_top.leftmost = 0;
-
-				if (stack_top.node->type == leafNode || stack_top.node->type == leafRootNode) {
-					if (stack_top.node->num_entries > 1) {
-						idx = 1;
-						stack_top.idx = 1;
-						node = stack_top.node;
-						if (node->num_entries == 2)
-							stack_top.rightmost = 1;
-						stack_push(&sc->stack, stack_top);
-						break;
-					} else {
-						stack_top = stack_pop(&(sc->stack));
-						if (!stack_top.guard) {
-							continue;
-						} else
-							return END_OF_DATABASE;
-					}
-				} else if (stack_top.node->type == internalNode || stack_top.node->type == rootNode) {
-					/*special case applies only for the root*/
-					if (stack_top.node->num_entries == 1)
-						stack_top.rightmost = 1;
-					stack_top.idx = 0;
-					stack_push(&sc->stack, stack_top);
-					inode = (struct index_node *)stack_top.node;
-					node = (node_header *)REAL_ADDRESS(inode->p[1].left);
-					assert(node->type == rootNode || node->type == leafRootNode ||
-					       node->type == internalNode || node->type == leafNode);
-					up = 0;
-					continue;
-				} else {
-					log_fatal("Corrupted node");
-					BUG_ON();
-				}
-			} else {
-				++stack_top.idx;
-				if (stack_top.idx >= stack_top.node->num_entries - 1)
-					stack_top.rightmost = 1;
-			}
-			stack_push(&sc->stack, stack_top);
-
-			if (stack_top.node->type == leafNode || stack_top.node->type == leafRootNode) {
-				idx = stack_top.idx;
-				node = stack_top.node;
-				break;
-			} else if (stack_top.node->type == internalNode || stack_top.node->type == rootNode) {
-				inode = (struct index_node *)stack_top.node;
-				node = (node_header *)REAL_ADDRESS(inode->p[stack_top.idx + 1].left);
-				up = 0;
-
-				assert(node->type == rootNode || node->type == leafRootNode ||
-				       node->type == internalNode || node->type == leafNode);
-				continue;
-			} else {
-				log_fatal("Corrupted node");
-				BUG_ON();
-			}
-		} else {
-			/*push yourself, update node and continue*/
-			stack_top.node = node;
-
-			read_lock_node(sc, stack_top.node);
-
-			stack_top.idx = 0;
-			stack_top.leftmost = 1;
-			stack_top.rightmost = 0;
-			stack_top.guard = 0;
-			stack_push(&sc->stack, stack_top);
-			if (node->type == leafNode || node->type == leafRootNode) {
-				// log_info("consumed first entry of leaf");
-				idx = 0;
-				break;
-			} else if (node->type == internalNode || node->type == rootNode) {
-				inode = (struct index_node *)node;
-				node = (node_header *)REAL_ADDRESS(inode->p[0].left);
-			} else {
-				log_fatal("Reached corrupted node");
-				BUG_ON();
-			}
-		}
-	}
-	/*fill buffer and return*/
-	if (sc->type == COMPACTION_BUFFER_SCANNER) {
-		/*prefix first*/
-		struct bt_dynamic_leaf_node *dlnode = (struct bt_dynamic_leaf_node *)node;
-		struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(dlnode);
-		switch (get_kv_format(slot_array[idx].key_category)) {
-		case KV_INPLACE: {
-			uint32_t key_size, value_size;
-			sc->keyValue =
-				get_kv_offset(dlnode, db_desc->levels[level_id].leaf_size, slot_array[idx].index);
-			key_size = KEY_SIZE(sc->keyValue);
-			value_size = VALUE_SIZE(sc->keyValue + sizeof(key_size) + key_size);
-			sc->kv_format = KV_FORMAT;
-			sc->cat = slot_array[idx].key_category;
-			sc->tombstone = slot_array[idx].tombstone;
-			sc->kv_size = sizeof(key_size) + sizeof(value_size) + key_size + value_size;
-			//log_info("offset %d",slot_array[idx].index);
-			break;
-		}
-		case KV_INLOG: {
-			struct bt_leaf_entry *kv_entry = (struct bt_leaf_entry *)get_kv_offset(
-				dlnode, db_desc->levels[level_id].leaf_size, slot_array[idx].index);
-
-			sc->kv_entry = *kv_entry;
-			sc->kv_entry.dev_offt = (uint64_t)REAL_ADDRESS(kv_entry->dev_offt);
-			sc->keyValue = (char *)&sc->kv_entry;
-			sc->kv_format = KV_PREFIX;
-			sc->cat = slot_array[idx].key_category;
-			sc->tombstone = slot_array[idx].tombstone;
-			sc->kv_size = sizeof(struct bt_leaf_entry);
-			break;
-		}
-		default:
-			BUG_ON();
-			break;
-		}
-
-		assert(idx < node->num_entries);
-	} else {
-		// normal scanner
-		struct bt_dynamic_leaf_node *dlnode = (struct bt_dynamic_leaf_node *)node;
-		struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(dlnode);
-		switch (get_kv_format(slot_array[idx].key_category)) {
-		case KV_INPLACE: {
-			uint32_t key_size, value_size;
-
-			sc->keyValue =
-				get_kv_offset(dlnode, db_desc->levels[level_id].leaf_size, slot_array[idx].index);
-			assert(*(uint32_t *)sc->keyValue < 100);
-			sc->kv_format = KV_FORMAT;
-			sc->cat = slot_array[idx].key_category;
-			sc->tombstone = slot_array[idx].tombstone;
-			sc->keyValue =
-				get_kv_offset(dlnode, db_desc->levels[level_id].leaf_size, slot_array[idx].index);
-			key_size = KEY_SIZE(sc->keyValue);
-			value_size = VALUE_SIZE(sc->keyValue + sizeof(key_size) + key_size);
-			sc->kv_size = sizeof(key_size) + sizeof(value_size) + key_size + value_size;
-
-			break;
-		}
-		case KV_INLOG: {
-			struct bt_leaf_entry *kv_entry = (struct bt_leaf_entry *)get_kv_offset(
-				dlnode, db_desc->levels[level_id].leaf_size, slot_array[idx].index);
-
-			sc->kv_entry = *kv_entry;
-			sc->kv_entry.dev_offt = (uint64_t)REAL_ADDRESS(kv_entry->dev_offt);
-			sc->keyValue = (void *)sc->kv_entry.dev_offt;
-			sc->kv_format = KV_FORMAT;
-			sc->tombstone = slot_array[idx].tombstone;
-			sc->cat = slot_array[idx].key_category;
-			break;
-		}
-		default:
-			BUG_ON();
-			break;
-		}
-	}
-	return PARALLAX_SUCCESS;
-}
-//#endif
 
 int32_t getNext(scannerHandle *sc)
 {
@@ -1079,12 +573,8 @@ int32_t getNext(scannerHandle *sc)
 		sc->kv_level_id = nd.level_id;
 		sc->kv_cat = sc->LEVEL_SCANNERS[nd.level_id][nd.active_tree].cat;
 		assert(sc->LEVEL_SCANNERS[nd.level_id][nd.active_tree].valid);
-#ifdef NEW_INDEX_NODE_LAYOUT
 		if (new_index_level_scanner_get_next(&(sc->LEVEL_SCANNERS[nd.level_id][nd.active_tree])) !=
 		    END_OF_DATABASE) {
-#else
-		if (_get_next_KV(&(sc->LEVEL_SCANNERS[nd.level_id][nd.active_tree])) != END_OF_DATABASE)
-#endif
 			//TODO: use designated initializers for next_nd
 			struct sh_heap_node next_nd = { 0 };
 			next_nd.level_id = nd.level_id;

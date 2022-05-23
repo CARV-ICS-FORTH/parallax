@@ -35,13 +35,9 @@
  */
 
 typedef struct stackElementT {
-#ifdef NEW_INDEX_NODE_LAYOUT
 	struct new_index_node_iterator iterator;
-#endif
 	node_header *node;
 	int32_t idx;
-	uint8_t leftmost;
-	uint8_t rightmost;
 	uint8_t guard;
 } stackElementT;
 

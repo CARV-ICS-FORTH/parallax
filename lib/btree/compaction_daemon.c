@@ -183,8 +183,8 @@ static void comp_write_segment(char *buffer, uint64_t dev_offt, uint32_t buf_off
 			if (n->type == paddedSpace)
 				break;
 			assert(n->type == rootNode || n->type == internalNode);
-			n = (struct node_header *)((uint64_t)n + INDEX_NODE_SIZE + KEY_BLOCK_SIZE);
-			decoded += (INDEX_NODE_SIZE + KEY_BLOCK_SIZE);
+			n = (struct node_header *)((uint64_t)n + NEW_INDEX_NODE_SIZE);
+			decoded += (NEW_INDEX_NODE_SIZE);
 		}
 		break;
 	}
@@ -237,8 +237,6 @@ static void comp_init_dynamic_leaf(struct bt_dynamic_leaf_node *leaf)
 	leaf->header.num_entries = 0;
 	leaf->header.fragmentation = 0;
 
-	leaf->header.first_IN_log_header = NULL; /*unused field in leaves*/
-	leaf->header.last_IN_log_header = NULL; /*unused field in leaves*/
 	leaf->header.leaf_log_size = 0;
 	leaf->header.height = 0;
 }
@@ -388,21 +386,7 @@ static void comp_get_next_key(struct comp_level_read_cursor *c)
 			case rootNode:
 			case internalNode:
 				/*log_info("Found an internal");*/
-#ifdef NEW_INDEX_NODE_LAYOUT
 				c->offset += NEW_INDEX_NODE_SIZE;
-#else
-				c->offset += INDEX_NODE_SIZE;
-#endif
-				c->state = COMP_CUR_CHECK_OFFT;
-				goto fsm_entry;
-
-			case keyBlockHeader:
-#ifdef NEW_INDEX_NODE_LAYOUT
-				log_fatal("keyBlockHeader? not in this case");
-				BUG_ON();
-#endif
-				/*log_info("Found a keyblock header");*/
-				c->offset += KEY_BLOCK_SIZE;
 				c->state = COMP_CUR_CHECK_OFFT;
 				goto fsm_entry;
 
@@ -444,9 +428,7 @@ static void comp_init_write_cursor(struct comp_level_write_cursor *c, struct db_
 
 	for (int i = 1; i < MAX_HEIGHT; ++i) {
 		comp_get_space(c, i, internalNode);
-#ifdef NEW_INDEX_NODE_LAYOUT
 		new_index_init_node(DO_NOT_ADD_GUARD, (struct new_index_node *)c->last_index[i], internalNode);
-#endif
 		c->first_segment_btree_level_offt[i] = c->last_segment_btree_level_offt[i];
 		assert(c->last_segment_btree_level_offt[i]);
 	}
@@ -511,7 +493,7 @@ static void comp_get_space(struct comp_level_write_cursor *c, uint32_t height, n
 		else
 			remaining_space = SEGMENT_SIZE - (c->segment_offt[height] % SEGMENT_SIZE);
 
-		if (remaining_space < (INDEX_NODE_SIZE + KEY_BLOCK_SIZE)) {
+		if (remaining_space < NEW_INDEX_NODE_SIZE) {
 			if (remaining_space > 0) {
 				*(uint32_t *)(&c->segment_buf[height][c->segment_offt[height] % SEGMENT_SIZE]) =
 					paddedSpace;
@@ -541,25 +523,7 @@ static void comp_get_space(struct comp_level_write_cursor *c, uint32_t height, n
 		}
 		c->last_index[height] =
 			(struct index_node *)&c->segment_buf[height][c->segment_offt[height] % SEGMENT_SIZE];
-
-		/*initialization*/
-		c->last_index[height]->header.type = type;
-		c->last_index[height]->header.height = height;
-		c->last_index[height]->header.num_entries = 0;
-		c->last_index[height]->header.fragmentation = 0;
-		/*private key log for index nodes*/
-		uint64_t index_log_dev_offt = c->last_segment_btree_level_offt[height] +
-					      c->segment_offt[height] % SEGMENT_SIZE + INDEX_NODE_SIZE;
-
-		IN_log_header *tmp = (IN_log_header *)&c->segment_buf[height][index_log_dev_offt % SEGMENT_SIZE];
-		tmp->type = keyBlockHeader;
-		tmp->next = NULL;
-		c->last_index[height]->header.first_IN_log_header = (IN_log_header *)index_log_dev_offt;
-		//(IN_log_header *)((uint64_t)c->dev_offt[height] + ((uint64_t)bh %
-		// SEGMENT_SIZE));
-		c->last_index[height]->header.last_IN_log_header = c->last_index[height]->header.first_IN_log_header;
-		c->last_index[height]->header.key_log_size = sizeof(IN_log_header);
-		c->segment_offt[height] += INDEX_NODE_SIZE + KEY_BLOCK_SIZE;
+		c->segment_offt[height] += NEW_INDEX_NODE_SIZE;
 		break;
 	}
 	default:
@@ -629,7 +593,7 @@ static void comp_close_write_cursor(struct comp_level_write_cursor *c)
 				//log_info("Marking padded space for %u segment offt %llu", i, c->segment_offt[0]);
 				*type = paddedSpace;
 			} else if (i > 0 && c->segment_offt[i] % SEGMENT_SIZE != 0) {
-				type = (uint32_t *)(((uint64_t)c->last_index[i]) + INDEX_NODE_SIZE + KEY_BLOCK_SIZE);
+				type = (uint32_t *)(((uint64_t)c->last_index[i]) + NEW_INDEX_NODE_SIZE);
 				// log_info("Marking padded space for %u segment offt %llu entries of
 				// last node %llu", i,
 				//	 c->segment_offt[i], c->last_index[i]->header.num_entries);
@@ -644,15 +608,12 @@ static void comp_close_write_cursor(struct comp_level_write_cursor *c)
 
 		if (i == c->tree_height) {
 			log_debug("Merged level has a height off %u", c->tree_height);
-#ifdef NEW_INDEX_NODE_LAYOUT
+
 			if (new_index_set_type((struct new_index_node *)c->last_index[i], rootNode)) {
 				log_fatal("Error setting node type");
 				assert(0);
 				BUG_ON();
 			}
-#else
-			c->last_index[i]->header.type = rootNode;
-#endif
 			uint32_t offt = comp_calc_offt_in_seg(c->segment_buf[i], (char *)c->last_index[i]);
 			c->root_offt = c->last_segment_btree_level_offt[i] + offt;
 			c->handle->db_desc->levels[c->level_id].root_r[1] = REAL_ADDRESS(c->root_offt);
@@ -680,7 +641,6 @@ static void comp_close_write_cursor(struct comp_level_write_cursor *c)
 #endif
 }
 
-#ifdef NEW_INDEX_NODE_LAYOUT
 static void comp_append_pivot_to_index(int32_t height, struct comp_level_write_cursor *c, uint64_t left_node_offt,
 				       struct pivot_key *pivot, uint64_t right_node_offt)
 {
@@ -719,78 +679,6 @@ static void comp_append_pivot_to_index(int32_t height, struct comp_level_write_c
 		free(pivot_copy);
 	}
 }
-#else
-static void comp_append_pivot_to_index(struct comp_level_write_cursor *c, uint64_t left_node_offt,
-				       uint64_t right_node_offt, char *pivot, uint32_t height)
-{
-	uint32_t pivot_size = sizeof(uint32_t) + KEY_SIZE(pivot);
-	assert(pivot_size < MAX_KEY_SIZE);
-
-	uint64_t left_index_offt;
-	uint64_t right_index_offt;
-	uint32_t new_index = 0;
-	char *new_pivot = NULL;
-	char *new_pivot_buf = NULL;
-
-	uint32_t remaining_in_index_log;
-	if (c->last_index[height]->header.key_log_size % KEY_BLOCK_SIZE == 0)
-		remaining_in_index_log = 0;
-	else
-		remaining_in_index_log = KEY_BLOCK_SIZE - (c->last_index[height]->header.key_log_size % KEY_BLOCK_SIZE);
-
-	if (c->tree_height < height)
-		c->tree_height = height;
-
-	if (c->last_index[height]->header.num_entries >= (uint32_t)index_order || remaining_in_index_log < pivot_size) {
-		// node if full
-		/*keep current aka left leaf offt*/
-
-		uint32_t offt_l = comp_calc_offt_in_seg(c->segment_buf[height], (char *)c->last_index[height]);
-		left_index_offt = c->last_segment_btree_level_offt[height] + offt_l;
-		uint64_t offt = c->last_index[height]->p[c->last_index[height]->header.num_entries - 1].pivot;
-
-		new_pivot = &c->segment_buf[height][offt % SEGMENT_SIZE];
-		// assert(*(uint32_t *)new_pivot > 0);
-		new_pivot_buf = (char *)malloc(KEY_SIZE(new_pivot) + sizeof(uint32_t));
-		memcpy(new_pivot_buf, new_pivot, KEY_SIZE(new_pivot) + sizeof(uint32_t));
-		// log_info("Done adding pivot %s for height %u", new_pivot + 4, height);
-		--c->last_index[height]->header.num_entries;
-		comp_get_space(c, height, internalNode);
-		/*last leaf updated*/
-		uint32_t offt_r = comp_calc_offt_in_seg(c->segment_buf[height], (char *)c->last_index[height]);
-		right_index_offt = c->last_segment_btree_level_offt[height] + offt_r;
-		new_index = 1;
-	}
-	/*copy pivot*/
-	uint64_t pivot_offt = (uint64_t)c->last_index[height]->header.last_IN_log_header +
-			      (c->last_index[height]->header.key_log_size % KEY_BLOCK_SIZE);
-
-	// log_info("pivot location at the device within the segment %llu", pivot_offt
-	// % SEGMENT_SIZE);
-	char *pivot_addr = &c->segment_buf[height][(uint64_t)pivot_offt % SEGMENT_SIZE];
-
-	memcpy(pivot_addr, pivot, pivot_size);
-	assert(KEY_SIZE(pivot_addr) < MAX_KEY_SIZE);
-
-	// log_info("Adding pivot %u:%s for height %u num entries %u", pivot_size,
-	// pivot + 4, height,
-	// c->last_index[height]->header.numberOfEntriesInNode);
-
-	c->last_index[height]->header.key_log_size += pivot_size;
-	// assert(*(uint32_t *)(pivot_addr) > 0);
-	// assert(*(uint32_t *)(pivot) > 0);
-	++c->last_index[height]->header.num_entries;
-	uint32_t idx = c->last_index[height]->header.num_entries - 1;
-	c->last_index[height]->p[idx].left = left_node_offt;
-	c->last_index[height]->p[idx].pivot = pivot_offt;
-	c->last_index[height]->p[idx + 1].left = right_node_offt;
-
-	if (new_index) {
-		comp_append_pivot_to_index(c, left_index_offt, right_index_offt, new_pivot_buf, height + 1);
-		free(new_pivot_buf);
-	}
-}
-#endif
 
 static void comp_init_medium_log(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
 {
@@ -1298,15 +1186,15 @@ static void print_heap_node_key(struct sh_heap_node *nd)
 	switch (nd->cat) {
 	case SMALL_INPLACE:
 	case MEDIUM_INPLACE:
-		log_info("In place Key is %u:%s", *(uint32_t *)nd->KV, (char *)nd->KV + sizeof(uint32_t));
+		log_debug("In place Key is %u:%s", *(uint32_t *)nd->KV, (char *)nd->KV + sizeof(uint32_t));
 		break;
 	case BIG_INLOG:
 	case MEDIUM_INLOG:
-		log_info("In log Key prefix is %.12s device offt %lu", (char *)nd->KV,
-			 *(uint64_t *)(nd->KV + PREFIX_SIZE));
+		log_debug("In log Key prefix is %.12s device offt %lu", (char *)nd->KV,
+			  *(uint64_t *)(nd->KV + PREFIX_SIZE));
 		break;
 	default:
-		log_info("Unhandle/Unknown category");
+		log_fatal("Unhandle/Unknown category");
 		BUG_ON();
 	}
 }
@@ -1487,11 +1375,7 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 		/*refill from the appropriate level*/
 		if (nd_min.level_id == comp_req->src_level) {
 			if (nd_min.level_id == 0) {
-#ifdef NEW_INDEX_NODE_LAYOUT
 				if (new_index_level_scanner_get_next(level_src) != END_OF_DATABASE) {
-#else
-				if (_get_next_KV(level_src) != END_OF_DATABASE) {
-#endif
 					// log_info("Refilling from L0");
 					nd_min.KV = level_src->keyValue;
 					nd_min.level_id = comp_req->src_level;

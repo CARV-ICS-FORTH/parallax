@@ -36,8 +36,6 @@
 #include <string.h>
 #include <unistd.h>
 
-int32_t index_order = -1;
-
 pthread_mutex_t init_lock = PTHREAD_MUTEX_INITIALIZER;
 pthread_spinlock_t log_buffer_lock;
 
@@ -48,8 +46,6 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req);
 static uint8_t concurrent_insert(bt_insert_req *ins_req);
 
 void assert_index_node(node_header *node);
-
-static struct bt_rebalance_result split_index(node_header *node, bt_insert_req *ins_req);
 
 struct bt_rebalance_result split_leaf(bt_insert_req *req, leaf_node *node);
 
@@ -602,8 +598,7 @@ db_handle *internal_db_open(struct volume_descriptor *volume_desc, uint64_t star
 #if DISABLE_LOGGING
 	log_set_quiet(true);
 #endif
-	index_order = IN_LENGTH;
-	_Static_assert(sizeof(struct index_node) == 4096, "Index node is not page aligned");
+	_Static_assert(sizeof(struct new_index_node) == NEW_INDEX_NODE_SIZE, "Index node is not page aligned");
 	_Static_assert(sizeof(struct segment_header) == 4096, "Segment header is not 4 KB");
 	db = klist_find_element_with_key(volume_desc->open_databases, db_name);
 
@@ -1582,14 +1577,9 @@ static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id,
 			if (RWLOCK_UNLOCK(&prev->rx_lock) != 0)
 				BUG_ON();
 
-#ifdef NEW_INDEX_NODE_LAYOUT
 		uint64_t child_offset =
 			new_index_binary_search((struct new_index_node *)curr_node, get_op->kv_buf, KV_FORMAT);
 		son_node = (void *)REAL_ADDRESS(child_offset);
-#else
-		void *next_addr = _index_node_binary_search((struct index_node *)curr_node, get_op->kv_buf, KV_FORMAT);
-		son_node = (void *)REAL_ADDRESS(*(uint64_t *)next_addr);
-#endif
 
 		prev = curr;
 		curr_node = son_node;
@@ -1745,204 +1735,6 @@ finish:
 		get_op->found = 0;
 }
 
-/**
- * @param   node:
- * @param   left_child:
- * @param   right_child:
- * @param   key:
- * @param   key_len:
- |block_header|pointer_to_node|pointer_to_key|pointer_to_node |
- pointer_to_key|...
-*/
-int8_t update_index(struct index_node *node, node_header *left_child, node_header *right_child, void *key_buf)
-{
-	assert(0);
-	char *addr;
-	uint64_t entry_val = 0;
-	struct key_compare key1_cmp, key2_cmp;
-
-	addr = (char *)node + sizeof(node_header);
-
-	if (node->header.num_entries > 0) {
-		int32_t middle;
-		int32_t start_idx = 0;
-		int32_t end_idx = node->header.num_entries - 1;
-		while (1) {
-			middle = (start_idx + end_idx) / 2;
-			addr = ((char *)node) + sizeof(node_header) + sizeof(uint64_t) +
-			       (middle * 2 * sizeof(uint64_t));
-			char *index_key_buf = REAL_ADDRESS(*(uint64_t *)addr);
-			/*key1 and key2 are KV_FORMATed*/
-			init_key_cmp(&key1_cmp, index_key_buf, KV_FORMAT);
-			init_key_cmp(&key2_cmp, key_buf, KV_FORMAT);
-			int64_t ret = key_cmp(&key1_cmp, &key2_cmp);
-			if (ret > 0) {
-				end_idx = middle - 1;
-				if (start_idx > end_idx)
-					// addr is the same
-					break;
-			} else if (ret == 0) {
-				log_fatal("key already present index_key %s key_buf %s", (char *)(index_key_buf + 4),
-					  (char *)key_buf + 4);
-				BUG_ON();
-			} else {
-				start_idx = middle + 1;
-				if (start_idx > end_idx) {
-					middle++;
-					if (middle >= (int64_t)node->header.num_entries) {
-						middle = node->header.num_entries;
-						addr = ((char *)node) + sizeof(node_header) +
-						       (middle * 2 * sizeof(uint64_t)) + sizeof(uint64_t);
-					} else
-						addr += (2 * sizeof(uint64_t));
-					break;
-				}
-			}
-		}
-
-		void *dest_addr = addr + (2 * sizeof(uint64_t));
-		size_t num_of_bytes = (node->header.num_entries - middle) * 2 * sizeof(uint64_t);
-		memmove(dest_addr, addr, num_of_bytes);
-		addr -= sizeof(uint64_t);
-	} else
-		addr = (char *)node + sizeof(node_header);
-
-	/*update the entry*/
-	if (left_child != 0)
-		entry_val = (uint64_t)ABSOLUTE_ADDRESS(left_child);
-	else
-		entry_val = 0;
-
-	memcpy(addr, &entry_val, sizeof(uint64_t));
-	addr += sizeof(uint64_t);
-	entry_val = (uint64_t)ABSOLUTE_ADDRESS(key_buf);
-	memcpy(addr, &entry_val, sizeof(uint64_t));
-
-	addr += sizeof(uint64_t);
-	if (right_child != 0)
-		entry_val = (uint64_t)ABSOLUTE_ADDRESS(right_child);
-	else
-		entry_val = 0;
-
-	memcpy(addr, &entry_val, sizeof(uint64_t));
-	return 1;
-}
-
-/**
- * @param   handle: database handle
- * @param   node: address of the index node where the key should be inserted
- * @param   left_child: address to the left child (full not absolute)
- * @param   right_child: address to the left child (full not absolute)
- * @param   key: address of the key to be inserted
- * @param   key_len: size of the key
- */
-void insert_key_at_index(bt_insert_req *ins_req, struct index_node *node, node_header *left_child,
-			 node_header *right_child, void *key_buf)
-{
-	void *key_addr = NULL;
-	struct db_handle *handle = ins_req->metadata.handle;
-	IN_log_header *d_header = NULL;
-	IN_log_header *last_d_header = NULL;
-
-	// assert_index_node(node);
-	uint32_t avail_space = 0;
-	if (node->header.key_log_size % KEY_BLOCK_SIZE != 0)
-		avail_space = (int32_t)KEY_BLOCK_SIZE - (node->header.key_log_size % KEY_BLOCK_SIZE);
-
-	uint32_t key_len = *(uint32_t *)key_buf;
-	uint32_t req_space = (key_len + sizeof(uint32_t));
-
-	if (avail_space < req_space) {
-		/*room not sufficient get new block*/
-		uint32_t allocated_space = (req_space + sizeof(IN_log_header)) / KEY_BLOCK_SIZE;
-		if ((req_space + sizeof(IN_log_header)) % KEY_BLOCK_SIZE != 0)
-			allocated_space++;
-		allocated_space *= KEY_BLOCK_SIZE;
-
-		if (allocated_space > KEY_BLOCK_SIZE) {
-			log_fatal("Allocation request %d key block %d", allocated_space, KEY_BLOCK_SIZE);
-			log_fatal("Cannot host index key larger than KEY_BLOCK_SIZE");
-			BUG_ON();
-		}
-
-		d_header = seg_get_IN_log_block(handle->db_desc, ins_req->metadata.level_id, ins_req->metadata.tree_id);
-
-		d_header->next = NULL;
-		last_d_header = (IN_log_header *)REAL_ADDRESS(node->header.last_IN_log_header);
-		last_d_header->next = (void *)ABSOLUTE_ADDRESS(d_header);
-		node->header.last_IN_log_header = last_d_header->next;
-		node->header.key_log_size +=
-			(avail_space + sizeof(IN_log_header)); /* position the log to the newly added block*/
-	}
-	/* put the KV now */
-	key_addr = (void *)REAL_ADDRESS((uint64_t)node->header.last_IN_log_header +
-					(uint64_t)(node->header.key_log_size % KEY_BLOCK_SIZE));
-	memcpy(key_addr, key_buf, sizeof(uint32_t) + key_len);
-
-	uint8_t ret = update_index(node, left_child, right_child, key_addr);
-
-	node->header.key_log_size += (sizeof(uint32_t) + key_len);
-
-	if (ret)
-		++node->header.num_entries;
-	// assert_index_node(node);
-}
-
-/**
- * gesalous 05/06/2014 17:30
- * added method for splitting an index node
- * @ struct btree_hanlde * handle: The handle of the B+ tree
- * @ node_header * req->node: Node to be splitted
- * @ void * key : pointer to key
- */
-static struct bt_rebalance_result split_index(node_header *node, bt_insert_req *ins_req)
-{
-	struct bt_rebalance_result result;
-
-	// assert_index_node(node);
-	result.left_child = (node_header *)seg_get_index_node(
-		ins_req->metadata.handle->db_desc, ins_req->metadata.level_id, ins_req->metadata.tree_id, INDEX_SPLIT);
-
-	result.right_child = (node_header *)seg_get_index_node(
-		ins_req->metadata.handle->db_desc, ins_req->metadata.level_id, ins_req->metadata.tree_id, INDEX_SPLIT);
-
-	/*initialize*/
-	char *full_addr = (char *)node + (uint64_t)sizeof(node_header);
-	/*set node heights*/
-	result.left_child->height = node->height;
-	result.right_child->height = node->height;
-
-	node_header *tmp_index = NULL;
-	for (int32_t i = 0; i < node->num_entries; i++) {
-		if (i < node->num_entries / 2)
-			tmp_index = result.left_child;
-		else
-			tmp_index = result.right_child;
-
-		node_header *left_child = (node_header *)REAL_ADDRESS(*(uint64_t *)full_addr);
-
-		full_addr += sizeof(uint64_t);
-		char *key_buf = (char *)REAL_ADDRESS(*(uint64_t *)full_addr);
-		full_addr += sizeof(uint64_t);
-		node_header *right_child = (node_header *)REAL_ADDRESS(*(uint64_t *)full_addr);
-
-		if (i == node->num_entries / 2) {
-			KEY_SIZE(result.middle_key) = KEY_SIZE(key_buf);
-			memcpy(&result.middle_key[4], key_buf + 4, KEY_SIZE(result.middle_key));
-			continue; /*middle key not needed, is going to the upper level*/
-		}
-
-		insert_key_at_index(ins_req, (struct index_node *)tmp_index, left_child, right_child, key_buf);
-	}
-
-	result.stat = INDEX_NODE_SPLITTED;
-	// result.left_child->v2++; /*lamport counter*/
-	// result.right_child->v2++; /*lamport counter*/
-	// assert_index_node(result.left_child);
-	// assert_index_node(result.right_child);
-	return result;
-}
-
 int insert_KV_at_leaf(bt_insert_req *ins_req, node_header *leaf)
 {
 	db_descriptor *db_desc = ins_req->metadata.handle->db_desc;
@@ -2021,127 +1813,6 @@ struct bt_rebalance_result split_leaf(bt_insert_req *req, leaf_node *node)
 	uint32_t leaf_size = req->metadata.handle->db_desc->levels[level_id].leaf_size;
 	// cppcheck-suppress uninitvar
 	return split_functions[req->metadata.special_split]((struct bt_dynamic_leaf_node *)node, leaf_size, req);
-}
-
-/*
- * performs a binary search at an index(root, internal node) and returns the
- * index. We have a separate search function for index and leaves due to their
- * different format
- */
-void *_index_node_binary_search(struct index_node *node, void *key_buf, char query_key_format)
-{
-	void *addr = NULL;
-	int32_t middle = 0;
-	int32_t start_idx = 0;
-	int32_t end_idx = node->header.num_entries - 1;
-	int32_t numberOfEntriesInNode = node->header.num_entries;
-	struct key_compare key1_cmp, key2_cmp;
-
-	while (numberOfEntriesInNode > 0) {
-		middle = (start_idx + end_idx) / 2;
-
-		if (numberOfEntriesInNode > index_order || middle < 0 || middle >= numberOfEntriesInNode)
-			return NULL;
-
-		addr = &(node->p[middle].pivot);
-		void *index_key_buf = (void *)REAL_ADDRESS(*(uint64_t *)addr);
-		/*key1 is KV_FORMATED key2 is query_key_format*/
-		init_key_cmp(&key1_cmp, index_key_buf, KV_FORMAT);
-		init_key_cmp(&key2_cmp, key_buf, query_key_format);
-		int64_t ret = key_cmp(&key1_cmp, &key2_cmp);
-		if (ret == 0) {
-			// log_debug("I passed from this corner case1 %s",
-			// (char*)(index_key_buf+4));
-			addr = &node->p[middle + 1].left;
-			break;
-		} else if (ret > 0) {
-			end_idx = middle - 1;
-			if (start_idx > end_idx) {
-				// log_debug("I passed from this corner case2 %s",
-				// (char*)(index_key_buf+4));
-				addr = &node->p[middle].left;
-				middle--;
-				break;
-			}
-		} else { /* ret < 0 */
-			start_idx = middle + 1;
-			if (start_idx > end_idx) {
-				// log_debug("I passed from this corner case3 %s",
-				// (char*)(index_key_buf+4));
-				addr = &node->p[++middle].left;
-				break;
-			}
-		}
-	}
-
-	if (middle < 0) {
-		// log_debug("I passed from this corner case4 %s",
-		// (char*)(index_key_buf+4));
-		addr = &(node->p[0].left);
-	} else if (middle >= (int64_t)node->header.num_entries) {
-		// log_debug("I passed from this corner case5 %s",
-		// (char*)(index_key_buf+4));
-		/* log_debug("I passed from this corner case2 %s",
-* (char*)(index_key_buf+4)); */
-		addr = &node->p[node->header.num_entries].left;
-	}
-	// log_debug("END");
-	return addr;
-}
-
-/*functions used for debugging*/
-// cppcheck-suppress unusedFunction
-void assert_index_node(node_header *node)
-{
-	char *key_tmp;
-	char *key_tmp_prev = NULL;
-	char *addr;
-	node_header *child;
-	struct key_compare key1_cmp, key2_cmp;
-
-	addr = (char *)node + sizeof(node_header);
-	if (node->num_entries == 0)
-		return;
-	//	if(node->height > 1)
-	//	log_info("Checking node of height %lu\n",node->height);
-	for (int32_t k = 0; k < node->num_entries; k++) {
-		/*check child type*/
-		child = (node_header *)REAL_ADDRESS(*(uint64_t *)addr);
-		assert(child);
-		if (child->type != rootNode && child->type != internalNode && child->type != leafNode &&
-		    child->type != leafRootNode) {
-			log_fatal("corrupted child at index for child %llu type is %d\n",
-				  (long long unsigned)ABSOLUTE_ADDRESS(child), child->type);
-			BUG_ON();
-		}
-		addr += sizeof(uint64_t);
-		key_tmp = REAL_ADDRESS(*(uint64_t *)addr);
-		// log_info("key %s\n", (char *)key_tmp + sizeof(int32_t));
-
-		if (key_tmp_prev != NULL) {
-			/*key1 and key2 are KV_FORMATed*/
-			init_key_cmp(&key1_cmp, key_tmp_prev, KV_FORMAT);
-			init_key_cmp(&key2_cmp, key_tmp, KV_FORMAT);
-			if (key_cmp(&key1_cmp, &key2_cmp) >= 0) {
-				log_fatal("corrupted index %d:%s something else %d:%s\n", *(uint32_t *)key_tmp_prev,
-					  key_tmp_prev + 4, *(uint32_t *)key_tmp, (char *)(key_tmp + 4));
-				BUG_ON();
-			}
-		}
-		if (key_tmp_prev)
-			log_fatal("corrupted index %*s something else %*s\n", *(uint32_t *)key_tmp_prev,
-				  key_tmp_prev + 4, *(uint32_t *)key_tmp, key_tmp + 4);
-
-		key_tmp_prev = key_tmp;
-		addr += sizeof(uint64_t);
-	}
-	child = (node_header *)REAL_ADDRESS(*(uint64_t *)addr);
-	assert(child);
-	if (child->type != rootNode && child->type != internalNode && child->type != leafNode &&
-	    child->type != leafRootNode) {
-		log_fatal("Corrupted last child at index");
-		BUG_ON();
-	}
 }
 
 uint64_t hash(uint64_t x)
@@ -2277,24 +1948,10 @@ release_and_retry:
 
 	while (1) {
 		/*Check if father is safe it should be*/
-#ifndef NEW_INDEX_NODE_LAYOUT
-		if (father) {
-			int32_t father_order = index_order;
-			if (father->type == leafNode || father->type == leafRootNode)
-				father_order = db_desc->levels[level_id].leaf_offsets.kv_entries;
-
-			assert(father->num_entries < father_order);
-		}
-#endif
-
 		if (is_split_needed(son, ins_req, db_desc->levels[level_id].leaf_size)) {
 			/*Overflow split*/
 			if (son->height > 0) {
-#ifdef NEW_INDEX_NODE_LAYOUT
 				split_res = new_index_split_node((struct new_index_node *)son, ins_req);
-#else
-				split_res = split_index(son, ins_req);
-#endif
 				/*node has splitted, free it*/
 				seg_free_index_node(ins_req->metadata.handle->db_desc, level_id,
 						    ins_req->metadata.tree_id, (struct index_node *)son);
@@ -2311,7 +1968,6 @@ release_and_retry:
 
 			if (NULL == father) {
 				/*Root was splitted*/
-#ifdef NEW_INDEX_NODE_LAYOUT
 				struct new_index_node *new_root = (struct new_index_node *)seg_get_index_node(
 					ins_req->metadata.handle->db_desc, level_id, ins_req->metadata.tree_id, -1);
 
@@ -2328,46 +1984,19 @@ release_and_retry:
 						       &right);
 				/*new write root of the tree*/
 				db_desc->levels[level_id].root_w[ins_req->metadata.tree_id] = (node_header *)new_root;
-#else
-				struct index_node *new_index_node =
-					seg_get_index_node(ins_req->metadata.handle->db_desc, level_id,
-							   ins_req->metadata.tree_id, NEW_ROOT);
-				new_index_node->header.height = db_desc->levels[ins_req->metadata.level_id]
-									.root_w[ins_req->metadata.tree_id]
-									->height +
-								1;
-
-				new_index_node->header.type = rootNode;
-				insert_key_at_index(ins_req, new_index_node, split_res.left_child,
-						    split_res.right_child, split_res.middle_key);
-
-				/*new write root of the tree*/
-				db_desc->levels[level_id].root_w[ins_req->metadata.tree_id] =
-					(node_header *)new_index_node;
-				/*new write root of the tree*/
-
-				db_desc->levels[level_id].root_w[ins_req->metadata.tree_id] =
-					(node_header *)new_index_node;
-#endif
 				goto release_and_retry;
 			}
 			/*Insert pivot at father*/
-#ifdef NEW_INDEX_NODE_LAYOUT
 			struct pivot_pointer left = { .child_offt = ABSOLUTE_ADDRESS(split_res.left_child) };
 			struct pivot_pointer right = { .child_offt = ABSOLUTE_ADDRESS(split_res.right_child) };
 			new_index_insert_pivot((struct new_index_node *)father, &left,
 					       (struct pivot_key *)split_res.middle_key, &right);
-#else
-			insert_key_at_index(ins_req, father, split_res.left_child, split_res.right_child,
-					    split_res.middle_key);
-#endif
 			goto release_and_retry;
 		}
 
 		if (son->height == 0)
 			break;
 
-#ifdef NEW_INDEX_NODE_LAYOUT
 		struct new_index_node *n_son = (struct new_index_node *)son;
 
 		struct pivot_pointer *son_pivot =
@@ -2398,32 +2027,6 @@ release_and_retry:
 			_unlock_upper_levels(upper_level_nodes, size - 1, release);
 			release = size - 1;
 		}
-#else
-		void *next_addr = _index_node_binary_search((struct index_node *)son, ins_req->key_value_buf,
-							    ins_req->metadata.key_format);
-
-		father = son;
-		/*Take the lock of the next node before its traversal*/
-		lock = _find_position(
-			(const lock_table **)ins_req->metadata.handle->db_desc->levels[level_id].level_lock_table,
-			(node_header *)REAL_ADDRESS(*(uint64_t *)next_addr));
-		upper_level_nodes[size++] = lock;
-		if (RWLOCK_WRLOCK(&lock->rx_lock) != 0) {
-			log_fatal("ERROR unlocking reason follows rc");
-			BUG_ON();
-		}
-		/*Node acquired */
-		ins_req->metadata.reorganized_leaf_pos_INnode = next_addr;
-		son = (node_header *)REAL_ADDRESS(*(uint64_t *)next_addr);
-		assert(son);
-		/*if the node is not safe hold its ancestor's lock else release locks from
-    ancestors */
-
-		if (!is_split_needed(son, ins_req, db_desc->levels[level_id].leaf_size)) {
-			_unlock_upper_levels(upper_level_nodes, size - 1, release);
-			release = size - 1;
-		}
-#endif
 	}
 	/*Succesfully reached a bin (bottom internal node)*/
 	if (son->type != leafRootNode)
@@ -2503,7 +2106,6 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 			return PARALLAX_FAILURE;
 		}
 
-#ifdef NEW_INDEX_NODE_LAYOUT
 		uint64_t child_offt = new_index_binary_search((struct new_index_node *)son, ins_req->key_value_buf,
 							      ins_req->metadata.key_format);
 		son = (node_header *)REAL_ADDRESS(child_offt);
@@ -2523,36 +2125,9 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 		/*lock of node acquired */
 		_unlock_upper_levels(upper_level_nodes, size - 1, release);
 		release = size - 1;
-#else
-		void *next_addr = _index_node_binary_search((struct index_node *)son, ins_req->key_value_buf,
-							    ins_req->metadata.key_format);
-		son = (node_header *)REAL_ADDRESS(*(uint64_t *)next_addr);
-
-		assert(son);
-
-		if (son->height == 0)
-			break;
-		/*Acquire the lock of the next node before its traversal*/
-		lock = _find_position((const lock_table **)db_desc->levels[level_id].level_lock_table,
-				      (node_header *)REAL_ADDRESS(*(uint64_t *)next_addr));
-		upper_level_nodes[size++] = lock;
-
-		if (RWLOCK_RDLOCK(&lock->rx_lock) != 0) {
-			log_fatal("ERROR unlocking");
-			BUG_ON();
-		}
-		/*lock of node acquired */
-		_unlock_upper_levels(upper_level_nodes, size - 1, release);
-		release = size - 1;
-#endif
 	}
 
-#ifdef NEW_INDEX_NODE_LAYOUT
 	lock = _find_position((const lock_table **)db_desc->levels[level_id].level_lock_table, son);
-#else
-	lock = _find_position((const lock_table **)db_desc->levels[level_id].level_lock_table,
-			      (node_header *)REAL_ADDRESS(*(uint64_t *)next_addr));
-#endif
 	upper_level_nodes[size++] = lock;
 
 	if (RWLOCK_WRLOCK(&lock->rx_lock) != 0) {

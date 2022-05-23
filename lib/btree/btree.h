@@ -38,8 +38,6 @@
  */
 enum KV_type { KV_FORMAT = 19, KV_PREFIX = 20 };
 
-extern int32_t index_order;
-
 struct lookup_operation {
 	struct db_descriptor *db_desc; /*in variable*/
 	char *kv_buf; /*in variable*/
@@ -59,7 +57,6 @@ typedef enum {
 	internalNode = 790393380,
 	rootNode = 742729384,
 	leafRootNode = 748939994, /*special case for a newly created tree*/
-	keyBlockHeader = 5550000,
 	paddedSpace = 55400000,
 	invalid
 } nodeType_t;
@@ -100,7 +97,7 @@ typedef struct node_header {
 	/*internal or leaf node*/
 	nodeType_t type;
 	/*0 are leaves, 1 are Bottom Internal nodes, and then we have
-	INs and root*/
+  INs and root*/
 	int32_t height;
 	uint64_t fragmentation;
 	union {
@@ -110,18 +107,11 @@ typedef struct node_header {
 		/* Used in dynamic leaves */
 		uint32_t leaf_log_size;
 	};
-	IN_log_header *first_IN_log_header;
-	IN_log_header *last_IN_log_header;
 	int32_t num_entries;
 	/*pad to be exacly one cache line*/
-	char pad1[20];
+	char pad[36];
 
 } __attribute__((packed)) node_header;
-
-typedef struct index_entry {
-	uint64_t left;
-	uint64_t pivot;
-} __attribute__((packed)) index_entry;
 
 struct bt_leaf_entry {
 	char prefix[PREFIX_SIZE];
@@ -161,22 +151,11 @@ struct key_compare {
 	uint8_t is_NIL;
 };
 
-#define INDEX_NODE_REMAIN (INDEX_NODE_SIZE - sizeof(struct node_header))
 #define LEAF_NODE_REMAIN (LEAF_NODE_SIZE - sizeof(struct node_header))
-
-#define IN_LENGTH ((INDEX_NODE_REMAIN - sizeof(uint64_t)) / sizeof(struct index_entry) - 1)
 
 #define LN_ITEM_SIZE (sizeof(uint64_t) + (PREFIX_SIZE * sizeof(char)))
 #define KV_LEAF_ENTRY (sizeof(struct bt_leaf_entry) + sizeof(struct bt_static_leaf_slot_array) + (1 / CHAR_BIT))
 #define LN_LENGTH ((LEAF_NODE_REMAIN) / (KV_LEAF_ENTRY))
-
-struct index_node {
-	node_header header;
-	index_entry p[IN_LENGTH];
-	uint64_t __last_pointer; /* XXX do not use it directly! */
-	char __pad[INDEX_NODE_SIZE - sizeof(struct node_header) - sizeof(uint64_t) -
-		   (IN_LENGTH * sizeof(struct index_entry))];
-} __attribute__((packed));
 
 struct kv_format {
 	uint32_t key_size;
@@ -527,9 +506,6 @@ int8_t delete_key(db_handle *handle, void *key, uint32_t size);
 void init_key_cmp(struct key_compare *key_cmp, void *key_buf, char key_format);
 int64_t key_cmp(struct key_compare *key1, struct key_compare *key2);
 int prefix_compare(char *l, char *r, size_t prefix_size);
-
-/*functions used from other parts except btree/btree.c*/
-void *_index_node_binary_search(struct index_node *node, void *key_buf, char query_key_format);
 
 void recover_L0(struct db_descriptor *db_desc);
 

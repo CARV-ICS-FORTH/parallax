@@ -49,7 +49,7 @@ void stack_push(stackT *stackP, stackElementT element)
 stackElementT stack_pop(stackT *stackP)
 {
 	if (stack_is_empty(stackP)) {
-		stackElementT guard = { .node = NULL, .idx = 0, .leftmost = 0, .rightmost = 0, .guard = 1 };
+		stackElementT guard = { .node = NULL, .idx = 0, .guard = 1 };
 		return guard;
 	}
 	return stackP->contents[stackP->top--];

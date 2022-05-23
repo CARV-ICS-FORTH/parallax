@@ -73,9 +73,8 @@ typedef struct scannerHandle {
  * closeScanner(scanner);
  */
 
-#ifdef NEW_INDEX_NODE_LAYOUT
+int32_t new_index_level_scanner_seek(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER_MODE mode);
 int32_t new_index_level_scanner_get_next(level_scanner *sc);
-#endif
 void init_dirty_scanner(scannerHandle *sc, db_handle *handle, void *start_key, char seek_flag);
 void closeScanner(scannerHandle *sc);
 
@@ -94,15 +93,7 @@ uint32_t get_kv_size(scannerHandle *sc);
  **/
 
 level_scanner *_init_compaction_buffer_scanner(db_handle *handle, int level_id, node_header *node, void *start_key);
-int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER_MODE mode);
 
-/**
- * __get_next_KV: brings the next kv pair
- * returns:
- *        SUCCESS, sc->keyValue field contains the address where the
- *        END_OF_DATABASE, end of database reached
- **/
-int32_t _get_next_KV(level_scanner *sc);
 void _close_compaction_buffer_scanner(level_scanner *level_sc);
 void close_dirty_scanner(scannerHandle *sc);
 #if MEASURE_SST_USED_SPACE

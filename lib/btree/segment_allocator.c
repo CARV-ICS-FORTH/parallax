@@ -175,34 +175,10 @@ struct segment_header *get_segment_for_lsm_level_IO(struct db_descriptor *db_des
 
 struct index_node *seg_get_index_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id, char reason)
 {
-	struct index_node *ptr =
-		(struct index_node *)get_space(db_desc, level_id, tree_id, INDEX_NODE_SIZE + KEY_BLOCK_SIZE);
+	(void)reason;
+	struct index_node *ptr = (struct index_node *)get_space(db_desc, level_id, tree_id, NEW_INDEX_NODE_SIZE);
 
-#ifndef NEW_INDEX_NODE_LAYOUT
-
-	IN_log_header *bh = NULL;
-	if (reason == NEW_ROOT)
-		ptr->header.type = rootNode;
-	else
-		ptr->header.type = internalNode;
-
-	ptr->header.num_entries = 0;
-	ptr->header.fragmentation = 0;
-
-	/*private key log for index nodes*/
-	bh = (IN_log_header *)((uint64_t)ptr + INDEX_NODE_SIZE);
-	bh->next = (void *)NULL;
-	bh->type = keyBlockHeader;
-	ptr->header.first_IN_log_header = (IN_log_header *)ABSOLUTE_ADDRESS(bh);
-	ptr->header.last_IN_log_header = ptr->header.first_IN_log_header;
-	ptr->header.key_log_size = sizeof(IN_log_header);
-#endif
 	return ptr;
-}
-
-IN_log_header *seg_get_IN_log_block(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
-{
-	return (IN_log_header *)get_space(db_desc, level_id, tree_id, KEY_BLOCK_SIZE);
 }
 
 void seg_free_index_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id, struct index_node *inode)
@@ -223,8 +199,6 @@ leaf_node *seg_get_leaf_node(struct db_descriptor *db_desc, uint8_t level_id, ui
 	leaf->header.num_entries = 0;
 	leaf->header.fragmentation = 0;
 
-	leaf->header.first_IN_log_header = NULL; /*unused field in leaves*/
-	leaf->header.last_IN_log_header = NULL; /*unused field in leaves*/
 	leaf->header.key_log_size = 0; /*unused also*/
 	leaf->header.height = 0;
 
@@ -237,8 +211,6 @@ struct bt_dynamic_leaf_node *init_leaf_node(struct bt_dynamic_leaf_node *leaf)
 	leaf->header.num_entries = 0;
 	leaf->header.fragmentation = 0;
 
-	leaf->header.first_IN_log_header = NULL; /*unused field in leaves*/
-	leaf->header.last_IN_log_header = NULL; /*unused field in leaves*/
 	leaf->header.leaf_log_size = 0;
 	leaf->header.height = 0;
 	return leaf;
