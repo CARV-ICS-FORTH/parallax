@@ -6,9 +6,6 @@
 #include <string.h>
 
 #define NEW_INDEX_GUARD_SIZE 1
-#define PIVOT_KEY_SIZE(X) ((X)->size + sizeof(*X))
-#define PIVOT_SIZE(X) (PIVOT_KEY_SIZE(X) + sizeof(struct pivot_pointer))
-#define NEW_INDEX_PIVOT_ADDRESS(X, Y) ((uint64_t)(X) + (Y))
 
 static struct new_index_slot_array_entry *new_index_get_slot_array(struct new_index_node *node)
 {
@@ -57,8 +54,6 @@ void new_index_init_node(enum add_guard_option_t option, struct new_index_node *
 	node->header.fragmentation = 0;
 
 	/*private key log for index nodes, these are unnecessary now will be deleted*/
-	node->header.first_IN_log_header = NULL;
-	node->header.last_IN_log_header = NULL;
 	node->header.key_log_size = NEW_INDEX_NODE_SIZE;
 	if (ADD_GUARD == option)
 		new_index_add_guard(node, UINT64_MAX);

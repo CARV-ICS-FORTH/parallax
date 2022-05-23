@@ -1,11 +1,11 @@
 #ifndef INDEX_NODE_H
 #define INDEX_NODE_H
+#include "../common/common.h"
 #include "btree.h"
 #include <stdint.h>
-
-#define NEW_INDEX_NODE_SIZE (INDEX_NODE_SIZE + KEY_BLOCK_SIZE)
-#define PIVOT_KEY_SIZE(X) ((X)->size + sizeof(*X))
-
+#define PIVOT_KEY_SIZE(X) ((X) ? (X)->size + sizeof(*X) : BUG_ON_UINT32T())
+#define PIVOT_SIZE(X) (PIVOT_KEY_SIZE(X) + sizeof(struct pivot_pointer))
+#define NEW_INDEX_PIVOT_ADDRESS(X, Y) ((uint64_t)(X) + (Y))
 struct pivot_key {
 	uint32_t size;
 	char data[];

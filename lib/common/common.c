@@ -2,7 +2,6 @@
 #include <execinfo.h>
 #include <log.h>
 #include <stdlib.h>
-
 #define TRACE_SIZE 32
 
 /** Prints the stack trace for the last \ref TRACE_SIZE functions on the call_stack.  */
@@ -27,6 +26,12 @@ void stack_trace(void)
 /** Prints a stack trace and terminates program execution.
  *  It returns void * to suppress compiler warnings in the future this function will return void.*/
 __attribute__((noreturn)) void *BUG_ON(void)
+{
+	stack_trace();
+	_Exit(EXIT_FAILURE);
+}
+
+__attribute__((noreturn)) uint32_t BUG_ON_UINT32T(void)
 {
 	stack_trace();
 	_Exit(EXIT_FAILURE);
