@@ -12,7 +12,7 @@ branch = os.environ["CI_BUILD_REF_NAME"]
 
 with gitlab.Gitlab(host, private_token=token) as gl:
     parallax = gl.projects.get(project)
-    commits = parallax.commits.list(ref_name=branch)
+    commits = parallax.commits.list(ref_name=branch, all=True)[:200]
     new_commits = []
     dest_branch_commits = parallax.commits.list(
         ref_name=os.environ["CI_MERGE_REQUEST_TARGET_BRANCH_NAME"]
