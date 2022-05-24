@@ -1,3 +1,4 @@
+include(CheckCXXCompilerFlag)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 include_directories(BEFORE core db ../lib)
 
@@ -6,7 +7,14 @@ add_executable(
   driver/ycsbc.cc ../utilities/list.c
 )
 target_link_libraries(ycsb-edb "${PROJECT_NAME}" ${DEPENDENCIES})
-target_compile_options(ycsb-edb PUBLIC "-Wno-deprecated-array-compare")
+check_cxx_compiler_flag("-Wno-deprecated-array-compare" DEPRECATED_ARRAY_COMPARE)
+if(DEPRECATED_ARRAY_COMPARE)
+  string(APPEND CMAKE_CXX_FLAGS " -Wno-deprecated-array-compare")
+endif()
+check_cxx_compiler_flag("-Wno-array-compare" ARRAY_COMPARE)
+if(ARRAY_COMPARE)
+  string(APPEND CMAKE_CXX_FLAGS " -Wno-array-compare")
+endif()
 
 
 if(BUILD_TESTING)
