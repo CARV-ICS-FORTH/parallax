@@ -438,11 +438,15 @@ int32_t new_index_level_scanner_seek(level_scanner *level_sc, void *start_key_bu
 	uint32_t level_id = level_sc->level_id;
 
 	struct pivot_key *start_key = start_key_buf;
+
+	// cppcheck-suppress variableScope
+	char zero_key_buf[16];
 	if (!start_key) {
-		char zero_key_buf[16] = { 0 };
+		memset(zero_key_buf, 0x00, sizeof(zero_key_buf));
 		start_key = (struct pivot_key *)zero_key_buf;
 		start_key->size = 1;
 	}
+
 	/*
    * For L0 already safe we have read lock of guard lock else its just a root_r
    * of levels >= 1
@@ -471,6 +475,7 @@ int32_t new_index_level_scanner_seek(level_scanner *level_sc, void *start_key_bu
 	struct node_header *node = level_sc->root;
 
 	while (node->type != leafNode && node->type != leafRootNode) {
+		log_debug("Start key is %lu size %u start_key_buf %lu", start_key, start_key->size, start_key_buf);
 		element.node = node;
 		new_index_iterator_init_with_key((struct index_node *)element.node, &element.iterator, start_key);
 
@@ -499,6 +504,7 @@ int32_t new_index_level_scanner_seek(level_scanner *level_sc, void *start_key_bu
 
 	req.key_value_buf = (char *)start_key;
 
+	log_debug("Start key is %lu", start_key);
 	req.metadata.kv_size = PIVOT_KEY_SIZE(start_key);
 	db_handle handle = { .db_desc = db_desc, .volume_desc = NULL };
 	req.metadata.handle = &handle;
