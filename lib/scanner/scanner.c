@@ -435,16 +435,14 @@ int32_t new_index_level_scanner_get_next(level_scanner *sc)
 
 int32_t new_index_level_scanner_seek(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER_MODE mode)
 {
-	char zero_key_buf[16];
 	uint32_t level_id = level_sc->level_id;
 
 	struct pivot_key *start_key = start_key_buf;
 	if (!start_key) {
-		memset(zero_key_buf, 0x00, sizeof(zero_key_buf));
+		char zero_key_buf[16] = { 0 };
 		start_key = (struct pivot_key *)zero_key_buf;
 		start_key->size = 1;
 	}
-
 	/*
    * For L0 already safe we have read lock of guard lock else its just a root_r
    * of levels >= 1
