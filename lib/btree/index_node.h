@@ -4,9 +4,7 @@
 #include "btree.h"
 #include "conf.h"
 #include <stdint.h>
-#define PIVOT_KEY_SIZE(X) ((X) ? (X)->size + sizeof(*X) : BUG_ON_UINT32T())
-#define PIVOT_SIZE(X) (PIVOT_KEY_SIZE(X) + sizeof(struct pivot_pointer))
-#define NEW_INDEX_PIVOT_ADDRESS(X, Y) ((uint64_t)(X) + (Y))
+
 struct pivot_key {
 	uint32_t size;
 	char data[];
@@ -140,7 +138,7 @@ struct bt_rebalance_result new_index_split_node(struct new_index_node *node, bt_
 /**
  * Iterators for parsing index nodes. Compaction, scanner, and other future
  * entiries must use this API in order to abstact the index node
- * implementation
+ * implementation. This iterator starts from the first pivot of the node. 
  */
 void new_index_iterator_init(struct new_index_node *node, struct new_index_node_iterator *iterator);
 
@@ -160,4 +158,7 @@ struct pivot_key *new_index_iterator_get_pivot_key(struct new_index_node_iterato
 
 struct pivot_pointer *new_index_iterator_get_pivot_pointer(struct new_index_node_iterator *iterator);
 
+#define PIVOT_KEY_SIZE(X) ((X) ? (X)->size + sizeof(*X) : BUG_ON_UINT32T())
+#define PIVOT_SIZE(X) (PIVOT_KEY_SIZE(X) + sizeof(struct pivot_pointer))
+#define NEW_INDEX_PIVOT_ADDRESS(X, Y) ((uint64_t)(X) + (Y))
 #endif
