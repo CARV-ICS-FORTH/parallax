@@ -332,11 +332,11 @@ struct pivot_key *new_index_iterator_get_pivot_key(struct new_index_node_iterato
 struct bt_rebalance_result new_index_split_node(struct index_node *node, bt_insert_req *ins_req)
 {
 	struct bt_rebalance_result result = { 0 };
-	struct new_index_node_iterator iterator;
 
 	result.left_child = (struct node_header *)seg_get_index_node(
 		ins_req->metadata.handle->db_desc, ins_req->metadata.level_id, ins_req->metadata.tree_id, 0);
 
+	struct new_index_node_iterator iterator = { 0 };
 	new_index_iterator_init(node, &iterator);
 	struct pivot_key *piv_key = new_index_iterator_get_pivot_key(&iterator);
 	new_index_init_node(DO_NOT_ADD_GUARD, (struct index_node *)result.left_child, internalNode);
