@@ -1,4 +1,4 @@
-// Copyright [2021] [FORTH-ICS]
+// Copyright[2021][FORTH - ICS]
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -188,7 +188,10 @@ static void read_lock_node(struct level_scanner *level_sc, struct node_header *n
 		case EDEADLK:
 			log_fatal("EDEADLK");
 			break;
+		default:
+			break;
 		}
+
 		log_fatal("ERROR locking");
 		perror("Reason");
 		assert(0);
@@ -402,7 +405,7 @@ int32_t new_index_level_scanner_get_next(level_scanner *sc)
 				break;
 			}
 
-			new_index_iterator_init((struct new_index_node *)stack_element.node, &stack_element.iterator);
+			new_index_iterator_init((struct index_node *)stack_element.node, &stack_element.iterator);
 			break;
 		}
 
@@ -432,7 +435,15 @@ int32_t new_index_level_scanner_get_next(level_scanner *sc)
 
 int32_t new_index_level_scanner_seek(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER_MODE mode)
 {
+	char zero_key_buf[16];
 	uint32_t level_id = level_sc->level_id;
+
+	struct pivot_key *start_key = start_key_buf;
+	if (!start_key) {
+		memset(zero_key_buf, 0x00, sizeof(zero_key_buf));
+		start_key = (struct pivot_key *)zero_key_buf;
+		start_key->size = 1;
+	}
 
 	/*
    * For L0 already safe we have read lock of guard lock else its just a root_r
@@ -459,18 +470,11 @@ int32_t new_index_level_scanner_seek(level_scanner *level_sc, void *start_key_bu
 
 	stackElementT element = { .guard = 0, .idx = INT32_MAX, .node = NULL, .iterator = { 0 } };
 
-	struct pivot_key *start_key = start_key_buf;
-	if (!start_key_buf) {
-		char zero_key_buf[64];
-		start_key = (struct pivot_key *)zero_key_buf;
-		start_key->size = 1;
-		start_key->data[0] = 0x00;
-	}
 	struct node_header *node = level_sc->root;
 
 	while (node->type != leafNode && node->type != leafRootNode) {
 		element.node = node;
-		new_index_iterator_init_with_key((struct new_index_node *)element.node, &element.iterator, start_key);
+		new_index_iterator_init_with_key((struct index_node *)element.node, &element.iterator, start_key);
 
 		if (!new_index_iterator_is_valid(&element.iterator)) {
 			log_fatal("Invalid index node iterator during seek");
@@ -494,7 +498,9 @@ int32_t new_index_level_scanner_seek(level_scanner *level_sc, void *start_key_bu
 	db_descriptor *db_desc = level_sc->db->db_desc;
 	struct dl_bsearch_result dlresult = { .middle = 0, .status = INSERT, .op = DYNAMIC_LEAF_INSERT, .debug = 0 };
 	bt_insert_req req = { 0 };
+
 	req.key_value_buf = (char *)start_key;
+
 	req.metadata.kv_size = PIVOT_KEY_SIZE(start_key);
 	db_handle handle = { .db_desc = db_desc, .volume_desc = NULL };
 	req.metadata.handle = &handle;
@@ -605,7 +611,7 @@ void perf_preorder_count_leaf_capacity(level_descriptor *level, node_header *roo
 	}
 
 	node_header *node;
-	struct index_node *inode = (struct index_node *)root;
+	struct new_index_node *inode = (struct new_index_node *)root;
 	for (uint64_t i = 0; i < root->num_entries; i++) {
 		node = REAL_ADDRESS(inode->p[i].left[0]);
 		perf_preorder_count_leaf_capacity(level, node);

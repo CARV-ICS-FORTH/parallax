@@ -28,7 +28,7 @@ static void create_pivot(struct pivot_key *pivot, uint32_t pivot_num, const unsi
 	}
 }
 
-static void verify_pivots(struct new_index_node *node, struct pivot_key **pivot, uint32_t num_node_keys, uint32_t base)
+static void verify_pivots(struct index_node *node, struct pivot_key **pivot, uint32_t num_node_keys, uint32_t base)
 {
 	/*
    * Verify that you can find all keys and their respective children are
@@ -74,7 +74,7 @@ static uint32_t insert_and_verify_pivots(db_handle *handle, unsigned char *alpha
 	}
 
 	/*insert in ascending order*/
-	struct new_index_node *node = NULL;
+	struct index_node *node = NULL;
 	posix_memalign((void **)&node, 4096, NEW_INDEX_NODE_SIZE);
 
 	new_index_init_node(ADD_GUARD, node, internalNode);
@@ -121,12 +121,12 @@ static uint32_t insert_and_verify_pivots(db_handle *handle, unsigned char *alpha
 	struct bt_rebalance_result split_res = new_index_split_node(node, &ins_req);
 
 	log_info("Testing left child... num entries: %d", split_res.left_child->num_entries);
-	verify_pivots((struct new_index_node *)split_res.left_child, pivot, split_res.left_child->num_entries - 1,
+	verify_pivots((struct index_node *)split_res.left_child, pivot, split_res.left_child->num_entries - 1,
 		      PIVOT_BASE);
 	log_info("Left child is fine!");
 
 	log_info("Testing right child...");
-	verify_pivots((struct new_index_node *)split_res.right_child, &pivot[split_res.left_child->num_entries],
+	verify_pivots((struct index_node *)split_res.right_child, &pivot[split_res.left_child->num_entries],
 		      split_res.right_child->num_entries - 1, PIVOT_BASE + split_res.left_child->num_entries);
 	log_info("Right child is fine!");
 

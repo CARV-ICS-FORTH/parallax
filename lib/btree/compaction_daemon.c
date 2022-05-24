@@ -429,7 +429,7 @@ static void comp_init_write_cursor(struct comp_level_write_cursor *c, struct db_
 
 	for (int i = 1; i < MAX_HEIGHT; ++i) {
 		comp_get_space(c, i, internalNode);
-		new_index_init_node(DO_NOT_ADD_GUARD, (struct new_index_node *)c->last_index[i], internalNode);
+		new_index_init_node(DO_NOT_ADD_GUARD, (struct index_node *)c->last_index[i], internalNode);
 		c->first_segment_btree_level_offt[i] = c->last_segment_btree_level_offt[i];
 		assert(c->last_segment_btree_level_offt[i]);
 	}
@@ -610,7 +610,7 @@ static void comp_close_write_cursor(struct comp_level_write_cursor *c)
 		if (i == c->tree_height) {
 			log_debug("Merged level has a height off %u", c->tree_height);
 
-			if (new_index_set_type((struct new_index_node *)c->last_index[i], rootNode)) {
+			if (new_index_set_type((struct index_node *)c->last_index[i], rootNode)) {
 				log_fatal("Error setting node type");
 				assert(0);
 				BUG_ON();
@@ -651,7 +651,7 @@ static void comp_append_pivot_to_index(int32_t height, struct comp_level_write_c
 	if (c->tree_height < height)
 		c->tree_height = height;
 
-	struct new_index_node *node = (struct new_index_node *)c->last_index[height];
+	struct index_node *node = (struct index_node *)c->last_index[height];
 
 	if (new_index_is_empty(node)) {
 		new_index_add_guard(node, left_node_offt);
@@ -660,7 +660,7 @@ static void comp_append_pivot_to_index(int32_t height, struct comp_level_write_c
 
 	struct pivot_pointer right = { .child_offt = right_node_offt };
 
-	while (new_index_append_pivot((struct new_index_node *)node, (struct pivot_key *)pivot, &right)) {
+	while (new_index_append_pivot((struct index_node *)node, (struct pivot_key *)pivot, &right)) {
 		uint32_t offt_l = comp_calc_offt_in_seg(c->segment_buf[height], (char *)c->last_index[height]);
 		uint64_t left_index_offt = c->last_segment_btree_level_offt[height] + offt_l;
 
@@ -668,7 +668,7 @@ static void comp_append_pivot_to_index(int32_t height, struct comp_level_write_c
 		struct pivot_pointer *piv_pointer =
 			(struct pivot_pointer *)&((char *)pivot_copy)[PIVOT_KEY_SIZE(pivot_copy)];
 		comp_get_space(c, height, internalNode);
-		node = (struct new_index_node *)c->last_index[height];
+		node = (struct index_node *)c->last_index[height];
 		new_index_init_node(DO_NOT_ADD_GUARD, node, internalNode);
 		new_index_add_guard(node, piv_pointer->child_offt);
 		new_index_set_height(node, height);
