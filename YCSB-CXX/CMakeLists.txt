@@ -6,7 +6,7 @@ add_executable(
   driver/ycsbc.cc ../utilities/list.c
 )
 target_link_libraries(ycsb-edb "${PROJECT_NAME}" ${DEPENDENCIES})
-target_compile_options(ycsb-edb PUBLIC "-Wno-array-compare")
+target_compile_options(ycsb-edb PUBLIC "-Wno-deprecated-array-compare")
 
 
 if(BUILD_TESTING)
