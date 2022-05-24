@@ -12,9 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#ifndef SEGMENT_ALLOCATOR_H
+#define SEGMENT_ALLOCATOR_H
 #pragma once
 #include "../allocator/log_structures.h"
 #include "btree.h"
+#include "index_node.h"
 #include <stdint.h>
 
 /*functions for index nodes*/
@@ -43,3 +46,4 @@ struct segment_header *get_segment_for_lsm_level_IO(struct db_descriptor *db_des
 
 uint64_t seg_free_level(struct db_descriptor *db_desc, uint64_t txn_id, uint8_t level_id, uint8_t tree_id);
 void seg_zero_level(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id);
+#endif
