@@ -59,6 +59,8 @@ static void comp_medium_log_set_max_segment_id(struct comp_level_write_cursor *c
 			struct segment_header *segment = REAL_ADDRESS(current_entry->dev_offt);
 			segment_id = segment->segment_id;
 		}
+
+		// cppcheck-suppress unsignedPositive
 		if (segment_id >= max_segment_id) {
 			max_segment_id = segment_id;
 			max_segment_offt = current_entry->dev_offt;

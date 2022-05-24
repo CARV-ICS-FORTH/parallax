@@ -203,8 +203,9 @@ uint64_t new_index_binary_search(struct index_node *node, void *lookup_key, enum
 	return *child_offt;
 }
 
-static int new_index_internal_insert_pivot(struct index_node *node, struct pivot_pointer *left_child,
-					   struct pivot_key *key, struct pivot_pointer *right_child, uint8_t is_append)
+static int new_index_internal_insert_pivot(struct index_node *node, const struct pivot_pointer *left_child,
+					   struct pivot_key *key, const struct pivot_pointer *right_child,
+					   uint8_t is_append)
 {
 	uint64_t pivot_offt_in_node = new_index_get_next_pivot_offt_in_node(node, key);
 
