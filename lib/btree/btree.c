@@ -598,7 +598,7 @@ db_handle *internal_db_open(struct volume_descriptor *volume_desc, uint64_t star
 #if DISABLE_LOGGING
 	log_set_quiet(true);
 #endif
-	_Static_assert(sizeof(struct index_node) == NEW_INDEX_NODE_SIZE, "Index node is not page aligned");
+	_Static_assert(sizeof(struct index_node) == INDEX_NODE_SIZE, "Index node is not page aligned");
 	_Static_assert(sizeof(struct segment_header) == 4096, "Segment header is not 4 KB");
 	db = klist_find_element_with_key(volume_desc->open_databases, db_name);
 
@@ -1577,8 +1577,7 @@ static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id,
 			if (RWLOCK_UNLOCK(&prev->rx_lock) != 0)
 				BUG_ON();
 
-		uint64_t child_offset =
-			new_index_binary_search((struct index_node *)curr_node, get_op->kv_buf, KV_FORMAT);
+		uint64_t child_offset = index_binary_search((struct index_node *)curr_node, get_op->kv_buf, KV_FORMAT);
 		son_node = (void *)REAL_ADDRESS(child_offset);
 
 		prev = curr;
@@ -1858,7 +1857,7 @@ int is_split_needed(void *node, bt_insert_req *req, uint32_t leaf_size)
 	uint8_t level_id = req->metadata.level_id;
 
 	if (height != 0)
-		return new_index_is_split_needed((struct index_node *)node, MAX_KEY_SIZE);
+		return index_is_split_needed((struct index_node *)node, MAX_KEY_SIZE);
 
 	int key_type = KV_INPLACE;
 
@@ -1951,7 +1950,7 @@ release_and_retry:
 		if (is_split_needed(son, ins_req, db_desc->levels[level_id].leaf_size)) {
 			/*Overflow split*/
 			if (son->height > 0) {
-				split_res = new_index_split_node((struct index_node *)son, ins_req);
+				split_res = index_split_node((struct index_node *)son, ins_req);
 				/*node has splitted, free it*/
 				seg_free_index_node(ins_req->metadata.handle->db_desc, level_id,
 						    ins_req->metadata.tree_id, (struct index_node *)son);
@@ -1971,7 +1970,7 @@ release_and_retry:
 				struct index_node *new_root = (struct index_node *)seg_get_index_node(
 					ins_req->metadata.handle->db_desc, level_id, ins_req->metadata.tree_id, -1);
 
-				new_index_init_node(ADD_GUARD, new_root, rootNode);
+				index_init_node(ADD_GUARD, new_root, rootNode);
 
 				new_root->header.height = db_desc->levels[ins_req->metadata.level_id]
 								  .root_w[ins_req->metadata.tree_id]
@@ -1980,8 +1979,7 @@ release_and_retry:
 
 				struct pivot_pointer left = { .child_offt = ABSOLUTE_ADDRESS(split_res.left_child) };
 				struct pivot_pointer right = { .child_offt = ABSOLUTE_ADDRESS(split_res.right_child) };
-				new_index_insert_pivot(new_root, &left, (struct pivot_key *)split_res.middle_key,
-						       &right);
+				index_insert_pivot(new_root, &left, (struct pivot_key *)split_res.middle_key, &right);
 				/*new write root of the tree*/
 				db_desc->levels[level_id].root_w[ins_req->metadata.tree_id] = (node_header *)new_root;
 				goto release_and_retry;
@@ -1989,8 +1987,8 @@ release_and_retry:
 			/*Insert pivot at father*/
 			struct pivot_pointer left = { .child_offt = ABSOLUTE_ADDRESS(split_res.left_child) };
 			struct pivot_pointer right = { .child_offt = ABSOLUTE_ADDRESS(split_res.right_child) };
-			new_index_insert_pivot((struct index_node *)father, &left,
-					       (struct pivot_key *)split_res.middle_key, &right);
+			index_insert_pivot((struct index_node *)father, &left, (struct pivot_key *)split_res.middle_key,
+					   &right);
 			goto release_and_retry;
 		}
 
@@ -2000,7 +1998,7 @@ release_and_retry:
 		struct index_node *n_son = (struct index_node *)son;
 
 		struct pivot_pointer *son_pivot =
-			new_index_search_get_pivot(n_son, ins_req->key_value_buf, ins_req->metadata.key_format);
+			index_search_get_pivot(n_son, ins_req->key_value_buf, ins_req->metadata.key_format);
 		//log_debug("Visitting son at dev off %lu", son_pivot->child_offt);
 
 		father = son;
@@ -2106,8 +2104,8 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 			return PARALLAX_FAILURE;
 		}
 
-		uint64_t child_offt = new_index_binary_search((struct index_node *)son, ins_req->key_value_buf,
-							      ins_req->metadata.key_format);
+		uint64_t child_offt = index_binary_search((struct index_node *)son, ins_req->key_value_buf,
+							  ins_req->metadata.key_format);
 		son = (node_header *)REAL_ADDRESS(child_offt);
 
 		assert(son);

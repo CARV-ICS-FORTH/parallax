@@ -2,19 +2,21 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 include_directories(${CMAKE_SOURCE_DIR}/lib)
 
 if(BUILD_TESTING)
-  set(LIB_TEST_FILES
-      test_recovery.c
-      test_index_node.c
-      test_scans.c
-      test_dirty_scans.c
-      test_options.c
-      test_sanitizers.c
-      simple_test_delete.c
-      test_gc.c
-      test_leaf_root_delete_get_scan.c
-      test_region_allocations.c
-      test_par_format.c
-      test_par_put_serialized.c)
+  set(
+    LIB_TEST_FILES
+    test_recovery.c
+    test_index_node.c
+    test_scans.c
+    test_dirty_scans.c
+    test_options.c
+    test_sanitizers.c
+    simple_test_delete.c
+    test_gc.c
+    test_leaf_root_delete_get_scan.c
+    test_region_allocations.c
+    test_par_format.c
+    test_par_put_serialized.c
+  )
 
   set_source_files_properties(${LIB_TEST_FILES} COMPILE_FLAGS "-O3")
 
@@ -26,30 +28,42 @@ if(BUILD_TESTING)
 
   add_executable(test_dirty_scans test_dirty_scans.c arg_parser.c)
   target_link_libraries(test_dirty_scans "${PROJECT_NAME}" ${DEPENDENCIES})
+
+  add_test(
+    NAME test_index_node
+    COMMAND $<TARGET_FILE:test_index_node> --file=${FILEPATH}
+  )
+
   add_test(
     NAME test_dirty_scans_small
     COMMAND $<TARGET_FILE:test_dirty_scans> --file=${FILEPATH}
-            --num_of_kvs=4000000 --scan_size=30 --workload=All --kv_mix=s)
+    --num_of_kvs=4000000 --scan_size=30 --workload=All --kv_mix=s
+  )
   add_test(
     NAME test_dirty_scans_medium
     COMMAND $<TARGET_FILE:test_dirty_scans> --file=${FILEPATH}
-            --num_of_kvs=4000000 --scan_size=30 --workload=All --kv_mix=m)
+    --num_of_kvs=4000000 --scan_size=30 --workload=All --kv_mix=m
+  )
   add_test(
     NAME test_dirty_scans_large
     COMMAND $<TARGET_FILE:test_dirty_scans> --file=${FILEPATH}
-            --num_of_kvs=4000000 --scan_size=30 --workload=All --kv_mix=l)
+    --num_of_kvs=4000000 --scan_size=30 --workload=All --kv_mix=l
+  )
   add_test(
     NAME test_dirty_scans_smalld
     COMMAND $<TARGET_FILE:test_dirty_scans> --file=${FILEPATH}
-            --num_of_kvs=4000000 --scan_size=30 --workload=All --kv_mix=sd)
+    --num_of_kvs=4000000 --scan_size=30 --workload=All --kv_mix=sd
+  )
   add_test(
     NAME test_dirty_scans_mediumd
     COMMAND $<TARGET_FILE:test_dirty_scans> --file=${FILEPATH}
-            --num_of_kvs=4000000 --scan_size=30 --workload=All --kv_mix=md)
+    --num_of_kvs=4000000 --scan_size=30 --workload=All --kv_mix=md
+  )
   add_test(
     NAME test_dirty_scans_larged
     COMMAND $<TARGET_FILE:test_dirty_scans> --file=${FILEPATH}
-            --num_of_kvs=4000000 --scan_size=30 --workload=All --kv_mix=ld)
+    --num_of_kvs=4000000 --scan_size=30 --workload=All --kv_mix=ld
+  )
 
   add_test(NAME test_dirty_scans_smallp COMMAND test_dirty_scans.sh s)
   add_test(NAME test_dirty_scans_mediump COMMAND test_dirty_scans.sh m)
@@ -71,55 +85,80 @@ if(BUILD_TESTING)
 
   add_executable(test_gc test_gc.c arg_parser.c)
   target_link_libraries(test_gc "${PROJECT_NAME}" ${DEPENDENCIES})
-  add_test(NAME test_gc COMMAND $<TARGET_FILE:test_gc> --file=${FILEPATH}
-                                --num_of_kvs=1000000)
+  add_test(
+    NAME test_gc COMMAND $<TARGET_FILE:test_gc> --file=${FILEPATH}
+    --num_of_kvs=1000000
+  )
 
   add_executable(simple_test_delete simple_test_delete.c arg_parser.c)
   target_link_libraries(simple_test_delete "${PROJECT_NAME}" ${DEPENDENCIES})
-  add_test(NAME simple_test_delete
-           COMMAND $<TARGET_FILE:simple_test_delete> --file=${FILEPATH}
-                   --num_of_kvs=1000000)
+  add_test(
+    NAME simple_test_delete
+    COMMAND $<TARGET_FILE:simple_test_delete> --file=${FILEPATH}
+    --num_of_kvs=1000000
+  )
 
   add_executable(
     test_leaf_root_delete_get_scan test_leaf_root_delete_get_scan.c
-                                   arg_parser.c ../lib/common/common.c)
-  target_link_libraries(test_leaf_root_delete_get_scan "${PROJECT_NAME}"
-                        ${DEPENDENCIES})
-  add_test(NAME test_leaf_root_delete_get_scan
-           COMMAND $<TARGET_FILE:test_leaf_root_delete_get_scan>
-                   --file=${FILEPATH})
+    arg_parser.c ../lib/common/common.c
+  )
+  target_link_libraries(
+    test_leaf_root_delete_get_scan "${PROJECT_NAME}"
+    ${DEPENDENCIES}
+  )
+  add_test(
+    NAME test_leaf_root_delete_get_scan
+    COMMAND $<TARGET_FILE:test_leaf_root_delete_get_scan>
+    --file=${FILEPATH}
+  )
 
   add_executable(
     test_region_allocations
     test_region_allocations.c ../lib/allocator/allocator.c
-    ../lib/allocator/djb2.c ../lib/allocator/redo_undo_log.c)
-  target_link_libraries(test_region_allocations "${PROJECT_NAME}"
-                        ${DEPENDENCIES})
-  add_test(NAME test_region_allocations
-           COMMAND $<TARGET_FILE:test_region_allocations>)
+    ../lib/allocator/djb2.c ../lib/allocator/redo_undo_log.c
+  )
+  target_link_libraries(
+    test_region_allocations "${PROJECT_NAME}"
+    ${DEPENDENCIES}
+  )
+  add_test(
+    NAME test_region_allocations
+    COMMAND $<TARGET_FILE:test_region_allocations>
+  )
 
   add_executable(
     test_redo_undo_log
     test_redo_undo_log.c ../lib/allocator/allocator.c ../lib/allocator/djb2.c
-    ../lib/allocator/redo_undo_log.c arg_parser.c)
+    ../lib/allocator/redo_undo_log.c arg_parser.c
+  )
   target_link_libraries(test_redo_undo_log "${PROJECT_NAME}" ${DEPENDENCIES})
-  add_test(NAME test_redo_undo_log COMMAND $<TARGET_FILE:test_redo_undo_log>
-                                           --file=${FILEPATH} --num_threads=4)
+  add_test(
+    NAME test_redo_undo_log COMMAND $<TARGET_FILE:test_redo_undo_log>
+    --file=${FILEPATH} --num_threads=4
+  )
 
   add_executable(test_optional_logging test_optional_logging.c)
-  add_test(NAME test_optional_logging
-           COMMAND $<TARGET_FILE:test_optional_logging>)
+  add_test(
+    NAME test_optional_logging
+    COMMAND $<TARGET_FILE:test_optional_logging>
+  )
 
   add_executable(test_par_format test_par_format.c arg_parser.c)
   target_link_libraries(test_par_format "${PROJECT_NAME}" ${DEPENDENCIES})
-  add_test(NAME test_par_format COMMAND $<TARGET_FILE:test_par_format>
-                                        --file=${FILEPATH})
+  add_test(
+    NAME test_par_format COMMAND $<TARGET_FILE:test_par_format>
+    --file=${FILEPATH}
+  )
 
   add_executable(test_par_put_serialized test_par_put_serialized.c arg_parser.c)
-  target_link_libraries(test_par_put_serialized "${PROJECT_NAME}"
-                        ${DEPENDENCIES})
-  add_test(NAME test_par_put_serialized
-           COMMAND $<TARGET_FILE:test_par_put_serialized> --file=${FILEPATH})
+  target_link_libraries(
+    test_par_put_serialized "${PROJECT_NAME}"
+    ${DEPENDENCIES}
+  )
+  add_test(
+    NAME test_par_put_serialized
+    COMMAND $<TARGET_FILE:test_par_put_serialized> --file=${FILEPATH}
+  )
 
   add_subdirectory(Surrogates)
 endif()

@@ -393,7 +393,7 @@ int32_t new_index_level_scanner_get_next(level_scanner *sc)
 
 		case PUSH_STACK: {
 			//log_debug("Pushing stack");
-			struct pivot_pointer *pivot = new_index_iterator_get_pivot_pointer(&stack_element.iterator);
+			struct pivot_pointer *pivot = index_iterator_get_pivot_pointer(&stack_element.iterator);
 			stack_push(&sc->stack, stack_element);
 			memset(&stack_element, 0x00, sizeof(stack_element));
 			stack_element.node = REAL_ADDRESS(pivot->child_offt);
@@ -405,7 +405,7 @@ int32_t new_index_level_scanner_get_next(level_scanner *sc)
 				break;
 			}
 
-			new_index_iterator_init((struct index_node *)stack_element.node, &stack_element.iterator);
+			index_iterator_init((struct index_node *)stack_element.node, &stack_element.iterator);
 			break;
 		}
 
@@ -416,7 +416,7 @@ int32_t new_index_level_scanner_get_next(level_scanner *sc)
 				return END_OF_DATABASE;
 
 			assert(stack_element.node->type == internalNode || stack_element.node->type == rootNode);
-			if (new_index_iterator_is_valid(&stack_element.iterator)) {
+			if (index_iterator_is_valid(&stack_element.iterator)) {
 				status = PUSH_STACK;
 				//log_debug("Proceeding with the next pivot of node: %lu", stack_element.node);
 			} else {
@@ -476,15 +476,15 @@ int32_t new_index_level_scanner_seek(level_scanner *level_sc, void *start_key_bu
 
 	while (node->type != leafNode && node->type != leafRootNode) {
 		element.node = node;
-		new_index_iterator_init_with_key((struct index_node *)element.node, &element.iterator, start_key);
+		index_iterator_init_with_key((struct index_node *)element.node, &element.iterator, start_key);
 
-		if (!new_index_iterator_is_valid(&element.iterator)) {
+		if (!index_iterator_is_valid(&element.iterator)) {
 			log_fatal("Invalid index node iterator during seek");
 			assert(0);
 			BUG_ON();
 		}
 
-		struct pivot_pointer *piv_pointer = new_index_iterator_get_pivot_pointer(&element.iterator);
+		struct pivot_pointer *piv_pointer = index_iterator_get_pivot_pointer(&element.iterator);
 		stack_push(&(level_sc->stack), element);
 
 		node = REAL_ADDRESS(piv_pointer->child_offt);

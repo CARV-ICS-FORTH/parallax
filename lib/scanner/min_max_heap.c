@@ -235,27 +235,6 @@ static void heapify(struct sh_heap *hp, int i)
 */
 void sh_insert_heap_node(struct sh_heap *hp, struct sh_heap_node *nd)
 {
-#if 0
-	if (record) {
-		switch (nd->cat) {
-		case SMALL_INPLACE:
-		case MEDIUM_INPLACE:
-			log_debug("Inserting at heap key: %s level id %u", nd->KV + 4, nd->level_id);
-			if (strncmp(nd->KV + 4, "userakias_computerakias", 23) != 0)
-				assert(0);
-			break;
-		case MEDIUM_INLOG:
-		case BIG_INLOG: {
-			struct bt_kv_log_address L = sh_translate_log_address(nd);
-			log_debug("Inserting at heap key: %s", L.addr + 4);
-			break;
-		}
-		default:
-			log_fatal("What?");
-			_Exit(EXIT_FAILURE);
-		}
-	}
-#endif
 	nd->duplicate = 0;
 	if (hp->heap_size > HEAP_SIZE) {
 		log_fatal("min max heap out of space resize heap accordingly");

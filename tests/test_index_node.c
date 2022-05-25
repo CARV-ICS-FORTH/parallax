@@ -38,7 +38,7 @@ static void verify_pivots(struct index_node *node, struct pivot_key **pivot, uin
 	guard->size = 1;
 	guard->data[0] = 0x00;
 
-	uint64_t child_offt = new_index_binary_search(node, guard, KV_FORMAT);
+	uint64_t child_offt = index_binary_search(node, guard, KV_FORMAT);
 	uint64_t expected_value = base;
 	if (child_offt != expected_value) {
 		log_fatal("i = %u Child offt corrupted shoud be %lu but its value is %lu", 0, expected_value,
@@ -48,7 +48,7 @@ static void verify_pivots(struct index_node *node, struct pivot_key **pivot, uin
 
 	for (uint32_t i = 0; i < num_node_keys; ++i) {
 		//log_debug("Look up key is %.*s", pivot[i]->size, pivot[i]->data);
-		child_offt = new_index_binary_search(node, pivot[i], KV_FORMAT);
+		child_offt = index_binary_search(node, pivot[i], KV_FORMAT);
 		expected_value = base + i + 1;
 		//log_debug("i = %u expected %lu got %lu lookup key %.*s", i, expected_value, child_offt, pivot[i]->size,
 		//	  pivot[i]->data);
@@ -75,15 +75,15 @@ static uint32_t insert_and_verify_pivots(db_handle *handle, unsigned char *alpha
 
 	/*insert in ascending order*/
 	struct index_node *node = NULL;
-	posix_memalign((void **)&node, 4096, NEW_INDEX_NODE_SIZE);
+	posix_memalign((void **)&node, 4096, INDEX_NODE_SIZE);
 
-	new_index_init_node(ADD_GUARD, node, internalNode);
+	index_init_node(ADD_GUARD, node, internalNode);
 	uint32_t num_node_keys = 0;
 	for (num_node_keys = 0; num_node_keys < MAX_NODE_KEYS_NUM; ++num_node_keys) {
 		struct pivot_pointer left_child = { .child_offt = (uint64_t)PIVOT_BASE + num_node_keys };
 		struct pivot_pointer right_child = { .child_offt = (uint64_t)PIVOT_BASE + num_node_keys + 1 };
 
-		if (new_index_insert_pivot(node, &left_child, pivot[num_node_keys], &right_child)) {
+		if (index_insert_pivot(node, &left_child, pivot[num_node_keys], &right_child)) {
 			log_info(
 				"Failed to insert pivot %.*s after %u pivots because node is full don't worry proceeding to the next step",
 				pivot[num_node_keys]->size, pivot[num_node_keys]->data, num_node_keys);
@@ -96,7 +96,7 @@ static uint32_t insert_and_verify_pivots(db_handle *handle, unsigned char *alpha
 	log_info("Success insert pivots with ascending order test!");
 	log_info("Testing now with descending order...");
 
-	new_index_init_node(ADD_GUARD, node, internalNode);
+	index_init_node(ADD_GUARD, node, internalNode);
 
 	for (int32_t i = (int32_t)num_node_keys - 1; i >= 0; --i) {
 		struct pivot_pointer left_child = { .child_offt = (uint64_t)PIVOT_BASE + i };
@@ -105,7 +105,7 @@ static uint32_t insert_and_verify_pivots(db_handle *handle, unsigned char *alpha
 		//log_debug("Descending order %u pivot %.*s", i, pivot[i]->size, pivot[i]->data);
 		assert(pivot[i]->size < 250);
 
-		if (new_index_insert_pivot(node, &left_child, pivot[i], &right_child)) {
+		if (index_insert_pivot(node, &left_child, pivot[i], &right_child)) {
 			log_fatal("Capacity is known from the previous step this should not happen");
 			_exit(EXIT_FAILURE);
 		}
@@ -118,7 +118,7 @@ static uint32_t insert_and_verify_pivots(db_handle *handle, unsigned char *alpha
 
 	bt_insert_req ins_req = { 0 };
 	ins_req.metadata.handle = handle;
-	struct bt_rebalance_result split_res = new_index_split_node(node, &ins_req);
+	struct bt_rebalance_result split_res = index_split_node(node, &ins_req);
 
 	log_info("Testing left child... num entries: %d", split_res.left_child->num_entries);
 	verify_pivots((struct index_node *)split_res.left_child, pivot, split_res.left_child->num_entries - 1,
