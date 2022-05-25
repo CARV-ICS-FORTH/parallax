@@ -138,7 +138,7 @@ struct bt_rebalance_result new_index_split_node(struct index_node *node, bt_inse
 /**
  * Iterators for parsing index nodes. Compaction, scanner, and other future
  * entiries must use this API in order to abstact the index node
- * implementation. This iterator starts from the first pivot of the node. 
+ * implementation. This iterator starts from the first pivot of the node.
  */
 void new_index_iterator_init(struct index_node *node, struct new_index_node_iterator *iterator);
 
