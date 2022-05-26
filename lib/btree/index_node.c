@@ -45,11 +45,7 @@ uint8_t index_is_empty(const struct index_node *node)
 
 void index_init_node(enum add_guard_option_t option, struct index_node *node, nodeType_t type)
 {
-	switch (option) {
-	case ADD_GUARD:
-	case DO_NOT_ADD_GUARD:
-		break;
-	default:
+	if (option != ADD_GUARD && option != DO_NOT_ADD_GUARD) {
 		log_fatal("Unknown guard option");
 		BUG_ON();
 	}
