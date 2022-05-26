@@ -1,3 +1,24 @@
+// Copyright [2021] [FORTH-ICS]
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+/**
+  * This test takes as input the volume path and tests the following
+  * scenarions: 1) Insert all pivots in ascending order and verify correctness.
+  * 2) Insert all pivots in descending order and verify correctness. 3) Split
+  * index_node and check correctness for its children.
+**/
+
 #define ALPHABET_SIZE 26
 #define MAX_PIVOT_KEY_SIZE 200
 #define MAX_NODE_KEYS_NUM 500
@@ -43,7 +64,7 @@ static void verify_pivots(struct index_node *node, struct pivot_key **pivot, uin
 	if (child_offt != expected_value) {
 		log_fatal("i = %u Child offt corrupted shoud be %lu but its value is %lu", 0, expected_value,
 			  child_offt);
-		assert(0);
+		_exit(EXIT_FAILURE);
 	}
 
 	for (uint32_t i = 0; i < num_node_keys; ++i) {
@@ -55,7 +76,7 @@ static void verify_pivots(struct index_node *node, struct pivot_key **pivot, uin
 		if (child_offt != expected_value) {
 			log_fatal("i = %u Child offt corrupted shoud be %lu but its value is %lu", i, expected_value,
 				  child_offt);
-			assert(0);
+			_exit(EXIT_FAILURE);
 		}
 	}
 	free(guard);
@@ -83,8 +104,12 @@ static uint32_t insert_and_verify_pivots(db_handle *handle, unsigned char *alpha
 		struct pivot_pointer left_child = { .child_offt = (uint64_t)PIVOT_BASE + num_node_keys };
 		struct pivot_pointer right_child = { .child_offt = (uint64_t)PIVOT_BASE + num_node_keys + 1 };
 
-		if (index_insert_pivot(node, &left_child, pivot[num_node_keys], &right_child)) {
-			log_info(
+		struct insert_pivot_req_t ins_pivot_req = { .node = node,
+							    .left_child = &left_child,
+							    .key = pivot[num_node_keys],
+							    .right_child = &right_child };
+		if (index_insert_pivot(&ins_pivot_req)) {
+			log_warn(
 				"Failed to insert pivot %.*s after %u pivots because node is full don't worry proceeding to the next step",
 				pivot[num_node_keys]->size, pivot[num_node_keys]->data, num_node_keys);
 			break;
@@ -105,7 +130,10 @@ static uint32_t insert_and_verify_pivots(db_handle *handle, unsigned char *alpha
 		//log_debug("Descending order %u pivot %.*s", i, pivot[i]->size, pivot[i]->data);
 		assert(pivot[i]->size < 250);
 
-		if (index_insert_pivot(node, &left_child, pivot[i], &right_child)) {
+		struct insert_pivot_req_t ins_pivot_req = {
+			.node = node, .left_child = &left_child, .key = pivot[i], .right_child = &right_child
+		};
+		if (index_insert_pivot(&ins_pivot_req)) {
 			log_fatal("Capacity is known from the previous step this should not happen");
 			_exit(EXIT_FAILURE);
 		}

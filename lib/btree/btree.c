@@ -37,7 +37,6 @@
 #include <unistd.h>
 
 pthread_mutex_t init_lock = PTHREAD_MUTEX_INITIALIZER;
-pthread_spinlock_t log_buffer_lock;
 
 /*number of locks per level*/
 const uint32_t size_per_height[MAX_HEIGHT] = { 8192, 4096, 2048, 1024, 512, 256, 128, 64, 32 };
@@ -1979,7 +1978,13 @@ release_and_retry:
 
 				struct pivot_pointer left = { .child_offt = ABSOLUTE_ADDRESS(split_res.left_child) };
 				struct pivot_pointer right = { .child_offt = ABSOLUTE_ADDRESS(split_res.right_child) };
-				index_insert_pivot(new_root, &left, (struct pivot_key *)split_res.middle_key, &right);
+				struct insert_pivot_req_t ins_pivot_req = {
+					.node = new_root,
+					.left_child = &left,
+					.key = (struct pivot_key *)split_res.middle_key,
+					.right_child = &right
+				};
+				index_insert_pivot(&ins_pivot_req);
 				/*new write root of the tree*/
 				db_desc->levels[level_id].root_w[ins_req->metadata.tree_id] = (node_header *)new_root;
 				goto release_and_retry;
@@ -1987,8 +1992,11 @@ release_and_retry:
 			/*Insert pivot at father*/
 			struct pivot_pointer left = { .child_offt = ABSOLUTE_ADDRESS(split_res.left_child) };
 			struct pivot_pointer right = { .child_offt = ABSOLUTE_ADDRESS(split_res.right_child) };
-			index_insert_pivot((struct index_node *)father, &left, (struct pivot_key *)split_res.middle_key,
-					   &right);
+			struct insert_pivot_req_t ins_pivot_req = { .node = (struct index_node *)father,
+								    .left_child = &left,
+								    .key = (struct pivot_key *)split_res.middle_key,
+								    .right_child = &right };
+			index_insert_pivot(&ins_pivot_req);
 			goto release_and_retry;
 		}
 

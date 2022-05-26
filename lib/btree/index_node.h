@@ -9,7 +9,7 @@
 struct pivot_key {
 	uint32_t size;
 	char data[];
-} __attribute__((packed));
+};
 
 struct pivot_pointer {
 	uint64_t child_offt;
@@ -20,12 +20,18 @@ struct new_index_node_iterator {
 	struct pivot_key *key;
 	int32_t position;
 	int32_t num_entries;
-	int8_t is_valid;
+};
+
+struct insert_pivot_req_t {
+	struct index_node *node;
+	struct pivot_pointer *left_child;
+	struct pivot_key *key;
+	struct pivot_pointer *right_child;
 };
 
 struct new_index_slot_array_entry {
 	uint16_t pivot;
-};
+} __attribute__((packed));
 
 struct index_node {
 	struct node_header header;
@@ -86,20 +92,24 @@ void new_index_add_guard(struct index_node *node, uint64_t child_node_dev_offt);
  * we create two children left and right. Right contains all the keys greater
  * or equal to the pivot_key. Left contains all the keys that are greater or
  * equal of the previous pivot key
- * @return 0 on Success 1 on failure
+ * @return 0 on success, 1 on failure
  */
 
-bool index_insert_pivot(struct index_node *node, struct pivot_pointer *left_child, struct pivot_key *key,
-			struct pivot_pointer *right_child);
+bool index_insert_pivot(struct insert_pivot_req_t *ins_pivot_req);
 
 /*
  * Appends a new pivot in the index node. When we split a leaf or an index node
  * we create two children left and right. Right contains all the keys greater
  * or equal to the pivot_key. Left contains all the keys that are greater or
- * equal of the previous pivot key
- * @return 0 on Success 1 on failure
+ * equal of the previous pivot key. 
+ * 
+ * @param ins_pivot_req contains the node,
+ * right_child, and pivot_key. Caution left_child arg is ignored from this
+ * function. 
+ * 
+ * @return 0 on success, 1 on failure.
  */
-bool index_append_pivot(struct index_node *node, struct pivot_key *key, struct pivot_pointer *right_child);
+bool index_append_pivot(struct insert_pivot_req_t *ins_pivot_req);
 
 /**
   * Worst case analysis here. If the remaining space is smaller than the

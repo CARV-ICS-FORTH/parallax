@@ -194,7 +194,6 @@ static void read_lock_node(struct level_scanner *level_sc, struct node_header *n
 
 		log_fatal("ERROR locking");
 		perror("Reason");
-		assert(0);
 		BUG_ON();
 	}
 }

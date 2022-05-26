@@ -808,7 +808,7 @@ static struct kv_entry *get_next_log_entry(struct log_cursor *cursor)
 {
 start:
 	if (!cursor->valid) {
-		log_info("sorry cursor not valid!");
+		log_debug("sorry cursor not valid!");
 		return NULL;
 	}
 	/*Advance cursor for future use*/

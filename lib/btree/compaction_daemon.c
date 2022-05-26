@@ -661,7 +661,8 @@ static void comp_append_pivot_to_index(int32_t height, struct comp_level_write_c
 
 	struct pivot_pointer right = { .child_offt = right_node_offt };
 
-	while (index_append_pivot((struct index_node *)node, (struct pivot_key *)pivot, &right)) {
+	struct insert_pivot_req_t ins_pivot_req = { .node = node, .key = pivot, .right_child = &right };
+	while (index_append_pivot(&ins_pivot_req)) {
 		uint32_t offt_l = comp_calc_offt_in_seg(c->segment_buf[height], (char *)c->last_index[height]);
 		uint64_t left_index_offt = c->last_segment_btree_level_offt[height] + offt_l;
 
@@ -669,10 +670,10 @@ static void comp_append_pivot_to_index(int32_t height, struct comp_level_write_c
 		struct pivot_pointer *piv_pointer =
 			(struct pivot_pointer *)&((char *)pivot_copy)[PIVOT_KEY_SIZE(pivot_copy)];
 		comp_get_space(c, height, internalNode);
-		node = (struct index_node *)c->last_index[height];
-		index_init_node(DO_NOT_ADD_GUARD, node, internalNode);
-		new_index_add_guard(node, piv_pointer->child_offt);
-		index_set_height(node, height);
+		ins_pivot_req.node = (struct index_node *)c->last_index[height];
+		index_init_node(DO_NOT_ADD_GUARD, ins_pivot_req.node, internalNode);
+		new_index_add_guard(ins_pivot_req.node, piv_pointer->child_offt);
+		index_set_height(ins_pivot_req.node, height);
 
 		/*last leaf updated*/
 		uint32_t offt_r = comp_calc_offt_in_seg(c->segment_buf[height], (char *)c->last_index[height]);
