@@ -22,9 +22,7 @@
 #include <assert.h>
 #include <log.h>
 #include <stdlib.h>
-
-extern uint64_t MAPPED;
-
+struct index_node;
 struct link_segments_metadata {
 	level_descriptor *level_desc;
 	segment_header *new_segment;
@@ -174,38 +172,15 @@ struct segment_header *get_segment_for_lsm_level_IO(struct db_descriptor *db_des
 	return new_segment;
 }
 
-index_node *seg_get_index_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id, char reason)
+struct index_node *seg_get_index_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id, char reason)
 {
-	index_node *ptr;
-	IN_log_header *bh;
-
-	ptr = (index_node *)get_space(db_desc, level_id, tree_id, INDEX_NODE_SIZE + KEY_BLOCK_SIZE);
-
-	if (reason == NEW_ROOT)
-		ptr->header.type = rootNode;
-	else
-		ptr->header.type = internalNode;
-
-	ptr->header.num_entries = 0;
-	ptr->header.fragmentation = 0;
-
-	/*private key log for index nodes*/
-	bh = (IN_log_header *)((uint64_t)ptr + INDEX_NODE_SIZE);
-	bh->next = (void *)NULL;
-	bh->type = keyBlockHeader;
-	ptr->header.first_IN_log_header = (IN_log_header *)ABSOLUTE_ADDRESS(bh);
-	ptr->header.last_IN_log_header = ptr->header.first_IN_log_header;
-	ptr->header.key_log_size = sizeof(IN_log_header);
+	(void)reason;
+	struct index_node *ptr = (struct index_node *)get_space(db_desc, level_id, tree_id, INDEX_NODE_SIZE);
 
 	return ptr;
 }
 
-IN_log_header *seg_get_IN_log_block(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
-{
-	return (IN_log_header *)get_space(db_desc, level_id, tree_id, KEY_BLOCK_SIZE);
-}
-
-void seg_free_index_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id, index_node *inode)
+void seg_free_index_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id, struct index_node *inode)
 {
 	//leave for future use
 	(void)db_desc;
@@ -223,8 +198,6 @@ leaf_node *seg_get_leaf_node(struct db_descriptor *db_desc, uint8_t level_id, ui
 	leaf->header.num_entries = 0;
 	leaf->header.fragmentation = 0;
 
-	leaf->header.first_IN_log_header = NULL; /*unused field in leaves*/
-	leaf->header.last_IN_log_header = NULL; /*unused field in leaves*/
 	leaf->header.key_log_size = 0; /*unused also*/
 	leaf->header.height = 0;
 
@@ -237,8 +210,6 @@ struct bt_dynamic_leaf_node *init_leaf_node(struct bt_dynamic_leaf_node *leaf)
 	leaf->header.num_entries = 0;
 	leaf->header.fragmentation = 0;
 
-	leaf->header.first_IN_log_header = NULL; /*unused field in leaves*/
-	leaf->header.last_IN_log_header = NULL; /*unused field in leaves*/
 	leaf->header.leaf_log_size = 0;
 	leaf->header.height = 0;
 	return leaf;
@@ -297,7 +268,7 @@ uint64_t seg_free_level(struct db_descriptor *db_desc, uint64_t txn_id, uint8_t 
 		return 0;
 	}
 
-	log_info("Freeing up level %u for db %s", level_id, db_desc->db_superblock->db_name);
+	log_debug("Freeing up level %u for db %s", level_id, db_desc->db_superblock->db_name);
 
 	if (level_id != 0) {
 		while (1) {

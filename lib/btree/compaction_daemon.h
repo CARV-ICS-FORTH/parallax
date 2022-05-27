@@ -4,7 +4,13 @@
 #include "conf.h"
 #include "dynamic_leaf.h"
 #include <stdint.h>
-/** Private header for compaction_daemon it should not be included to other source files.*/
+#include <uthash.h>
+
+struct medium_log_segment_map {
+	uint64_t id;
+	uint64_t dev_offt;
+	UT_hash_handle hh;
+};
 
 /*
  * Checks for pending compactions. It is responsible to check for dependencies
@@ -18,11 +24,12 @@ struct comp_level_write_cursor {
 	struct index_node *last_index[MAX_HEIGHT];
 	struct bt_dynamic_leaf_node *last_leaf;
 	struct chunk_LRU_cache *medium_log_LRU_cache;
+	struct medium_log_segment_map *medium_log_segment_map;
 	uint64_t root_offt;
 	uint64_t segment_id_cnt;
 	db_handle *handle;
 	uint32_t level_id;
-	uint32_t tree_height;
+	int32_t tree_height;
 	int fd;
 };
 
@@ -54,7 +61,7 @@ struct comp_level_read_cursor {
 	segment_header *curr_segment;
 	uint32_t level_id;
 	uint32_t tree_id;
-	uint32_t curr_leaf_entry;
+	int32_t curr_leaf_entry;
 	int fd;
 	enum kv_category category;
 	enum comp_level_read_cursor_state state;

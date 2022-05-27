@@ -22,6 +22,7 @@
  */
 #pragma once
 #include "../btree/btree.h"
+#include "../btree/index_node.h"
 #include <stdint.h>
 #define MAX_SIZE 64
 
@@ -34,10 +35,9 @@
  */
 
 typedef struct stackElementT {
+	struct index_node_iterator iterator;
 	node_header *node;
-	uint32_t idx;
-	uint8_t leftmost;
-	uint8_t rightmost;
+	int32_t idx;
 	uint8_t guard;
 } stackElementT;
 

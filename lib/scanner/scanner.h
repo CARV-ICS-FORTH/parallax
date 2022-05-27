@@ -25,7 +25,7 @@
 
 typedef enum SEEK_SCANNER_MODE { GREATER = 5, GREATER_OR_EQUAL = 6, FETCH_FIRST } SEEK_SCANNER_MODE;
 
-typedef enum SCANNER_TYPE { FORWARD_SCANNER = 8, BACKWARD_SCANNER } SCANNER_TYPE;
+typedef enum SCANNER_TYPE { FORWARD_SCANNER = 1 } SCANNER_TYPE;
 
 typedef struct level_scanner {
 	struct bt_leaf_entry kv_entry;
@@ -72,6 +72,9 @@ typedef struct scannerHandle {
  * }
  * closeScanner(scanner);
  */
+
+int32_t level_scanner_seek(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER_MODE mode);
+int32_t level_scanner_get_next(level_scanner *sc);
 void init_dirty_scanner(scannerHandle *sc, db_handle *handle, void *start_key, char seek_flag);
 void closeScanner(scannerHandle *sc);
 
@@ -84,23 +87,13 @@ int32_t get_key_size(scannerHandle *sc);
 int32_t get_value_size(scannerHandle *sc);
 uint32_t get_kv_size(scannerHandle *sc);
 /**
- * __seek_scanner: positions the cursor to the appropriate position
- * returns:
- *        SUCCESS: Cursor positioned
- *        END_OF_DATABASE: End of database reached
+ * __seek_scanner: positions the cursor to the appropriate position returns:
+ * SUCCESS: Cursor positioned END_OF_DATABASE: End of database reached
  *
  **/
 
 level_scanner *_init_compaction_buffer_scanner(db_handle *handle, int level_id, node_header *node, void *start_key);
-int32_t _seek_scanner(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER_MODE mode);
 
-/**
- * __get_next_KV: brings the next kv pair
- * returns:
- *        SUCCESS, sc->keyValue field contains the address where the
- *        END_OF_DATABASE, end of database reached
- **/
-int32_t _get_next_KV(level_scanner *sc);
 void _close_compaction_buffer_scanner(level_scanner *level_sc);
 void close_dirty_scanner(scannerHandle *sc);
 #if MEASURE_SST_USED_SPACE

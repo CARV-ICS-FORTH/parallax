@@ -43,7 +43,8 @@ def get_headers(file_lines, add_or_remove, data_dict):
     check_next_line = False
 
     for line in file_lines:
-
+        comment_in_line = line.find("//")
+        line = line[0:comment_in_line]
         if check_next_line == True:
             if line == "":
                 check_next_line = False

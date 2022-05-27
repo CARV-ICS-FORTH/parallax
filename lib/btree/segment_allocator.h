@@ -12,21 +12,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#ifndef SEGMENT_ALLOCATOR_H
+#define SEGMENT_ALLOCATOR_H
 #pragma once
 #include "../allocator/log_structures.h"
 #include "btree.h"
 #include <stdint.h>
-
+struct index_node;
 /*functions for index nodes*/
-index_node *seg_get_index_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id, char reason);
+struct index_node *seg_get_index_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id, char reason);
 
-index_node *seg_get_index_node_header(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id);
-
-IN_log_header *seg_get_IN_log_block(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id);
+struct index_node *seg_get_index_node_header(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id);
 
 void seg_free_index_node_header(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id, node_header *node);
 
-void seg_free_index_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id, index_node *inode);
+void seg_free_index_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id, struct index_node *inode);
 
 /*function for leaf nodes*/
 leaf_node *seg_get_leaf_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id);
@@ -45,3 +45,4 @@ struct segment_header *get_segment_for_lsm_level_IO(struct db_descriptor *db_des
 
 uint64_t seg_free_level(struct db_descriptor *db_desc, uint64_t txn_id, uint8_t level_id, uint8_t tree_id);
 void seg_zero_level(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id);
+#endif

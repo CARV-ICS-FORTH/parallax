@@ -354,7 +354,7 @@ void print_dynamic_leaf(const struct bt_dynamic_leaf_node *leaf, uint32_t leaf_s
 	log_info("1--------------------------------------------");
 
 	/* log_info("number of entries %d", leaf->header.num_entries); */
-	for (unsigned i = 0; i < leaf->header.num_entries; ++i) {
+	for (int32_t i = 0; i < leaf->header.num_entries; ++i) {
 		char *key = fill_keybuf(get_kv_offset(leaf, leaf_size, slot_array[i].index),
 					get_kv_format(slot_array[i].key_category));
 		log_info("offset in leaf %d ADDR %p Size%d key %s\n", slot_array[i].index,
@@ -457,7 +457,7 @@ struct bt_rebalance_result split_dynamic_leaf(struct bt_dynamic_leaf_node *leaf,
 	char *key_buf, *leaf_log_tail, *middle_key_buf = NULL;
 	level_descriptor *level = &req->metadata.handle->db_desc->levels[level_id];
 	struct db_descriptor *db_desc = req->metadata.handle->db_desc;
-	uint64_t i, j = 0;
+	int32_t i, j = 0;
 	uint32_t key_buf_size;
 	/*cow check*/
 #ifdef DEBUG_DYNAMIC_LEAF
@@ -473,8 +473,6 @@ struct bt_rebalance_result split_dynamic_leaf(struct bt_dynamic_leaf_node *leaf,
 	left_leaf->header.type = leafNode;
 	left_leaf->header.num_entries = 0;
 	left_leaf->header.fragmentation = 0;
-	left_leaf->header.first_IN_log_header = NULL; /*unused field in leaves*/
-	left_leaf->header.last_IN_log_header = NULL; /*unused field in leaves*/
 	left_leaf->header.leaf_log_size = 0;
 	left_leaf->header.height = 0;
 
@@ -764,7 +762,7 @@ int reorganize_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, uint32_t leaf_siz
 	char *leaf_log_tail = get_leaf_log_offset(leaf, leaf_size);
 	struct bt_dynamic_leaf_slot_array *leaf_slot_array = get_slot_array_offset(leaf);
 
-	for (uint64_t i = 0; i < reorganize_buffer->header.num_entries; ++i) {
+	for (int32_t i = 0; i < reorganize_buffer->header.num_entries; ++i) {
 		char *key_buf = fill_keybuf(get_kv_offset(reorganize_buffer, leaf_size, slot_array[i].index),
 					    get_kv_format(slot_array[i].key_category));
 
