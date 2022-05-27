@@ -35,7 +35,7 @@
  */
 
 typedef struct stackElementT {
-	struct new_index_node_iterator iterator;
+	struct index_node_iterator iterator;
 	node_header *node;
 	int32_t idx;
 	uint8_t guard;

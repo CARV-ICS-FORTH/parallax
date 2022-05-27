@@ -48,8 +48,8 @@ static void comp_medium_log_set_max_segment_id(struct comp_level_write_cursor *c
 	uint64_t max_segment_id = 0;
 	uint64_t max_segment_offt = 0;
 
-	struct medium_log_segment_map_t *current_entry = NULL;
-	struct medium_log_segment_map_t *tmp = NULL;
+	struct medium_log_segment_map *current_entry = NULL;
+	struct medium_log_segment_map *tmp = NULL;
 	HASH_ITER(hh, c->medium_log_segment_map, current_entry, tmp)
 	{
 		/* Suprresses possible null pointer dereference of cppcheck*/
@@ -97,7 +97,7 @@ static void fetch_segment_chunk(struct comp_level_write_cursor *c, uint64_t log_
 
 	uint64_t segment_dev_offt = log_chunk_dev_offt - (log_chunk_dev_offt % SEGMENT_SIZE);
 
-	struct medium_log_segment_map_t *entry = NULL;
+	struct medium_log_segment_map *entry = NULL;
 	//log_debug("Searching segment offt: %lu log chunk offt %lu mod %lu", segment_dev_offt, log_chunk_dev_offt,
 	//	  log_chunk_dev_offt % SEGMENT_SIZE);
 	HASH_FIND_PTR(c->medium_log_segment_map, &segment_dev_offt, entry);
@@ -118,11 +118,9 @@ static void fetch_segment_chunk(struct comp_level_write_cursor *c, uint64_t log_
 	entry->dev_offt = segment_dev_offt;
 	entry->id = UINT64_MAX;
 
-	if (!(log_chunk_dev_offt % SEGMENT_SIZE)) {
+	if (0 == log_chunk_dev_offt % SEGMENT_SIZE) {
 		struct segment_header *segment = (struct segment_header *)segment_buf;
 		entry->id = segment->segment_id;
-		//log_debug("Correcting segment id %lu devofft: %lu mod %lu", entry->id, entry->dev_offt,
-		//	  log_chunk_dev_offt % SEGMENT_SIZE);
 	}
 
 	if (!found)
@@ -612,7 +610,7 @@ static void comp_close_write_cursor(struct comp_level_write_cursor *c)
 		if (i == c->tree_height) {
 			log_debug("Merged level has a height off %u", c->tree_height);
 
-			if (index_set_type((struct index_node *)c->last_index[i], rootNode)) {
+			if (!index_set_type((struct index_node *)c->last_index[i], rootNode)) {
 				log_fatal("Error setting node type");
 				BUG_ON();
 			}
@@ -655,14 +653,14 @@ static void comp_append_pivot_to_index(int32_t height, struct comp_level_write_c
 	struct index_node *node = (struct index_node *)c->last_index[height];
 
 	if (index_is_empty(node)) {
-		new_index_add_guard(node, left_node_offt);
+		index_add_guard(node, left_node_offt);
 		index_set_height(node, height);
 	}
 
 	struct pivot_pointer right = { .child_offt = right_node_offt };
 
-	struct insert_pivot_req_t ins_pivot_req = { .node = node, .key = pivot, .right_child = &right };
-	while (index_append_pivot(&ins_pivot_req)) {
+	struct insert_pivot_req ins_pivot_req = { .node = node, .key = pivot, .right_child = &right };
+	while (!index_append_pivot(&ins_pivot_req)) {
 		uint32_t offt_l = comp_calc_offt_in_seg(c->segment_buf[height], (char *)c->last_index[height]);
 		uint64_t left_index_offt = c->last_segment_btree_level_offt[height] + offt_l;
 
@@ -672,7 +670,7 @@ static void comp_append_pivot_to_index(int32_t height, struct comp_level_write_c
 		comp_get_space(c, height, internalNode);
 		ins_pivot_req.node = (struct index_node *)c->last_index[height];
 		index_init_node(DO_NOT_ADD_GUARD, ins_pivot_req.node, internalNode);
-		new_index_add_guard(ins_pivot_req.node, piv_pointer->child_offt);
+		index_add_guard(ins_pivot_req.node, piv_pointer->child_offt);
 		index_set_height(ins_pivot_req.node, height);
 
 		/*last leaf updated*/
@@ -1378,7 +1376,7 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 		/*refill from the appropriate level*/
 		if (nd_min.level_id == comp_req->src_level) {
 			if (nd_min.level_id == 0) {
-				if (new_index_level_scanner_get_next(level_src) != END_OF_DATABASE) {
+				if (level_scanner_get_next(level_src) != END_OF_DATABASE) {
 					// log_info("Refilling from L0");
 					nd_min.KV = level_src->keyValue;
 					nd_min.level_id = comp_req->src_level;

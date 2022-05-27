@@ -104,11 +104,11 @@ static uint32_t insert_and_verify_pivots(db_handle *handle, unsigned char *alpha
 		struct pivot_pointer left_child = { .child_offt = (uint64_t)PIVOT_BASE + num_node_keys };
 		struct pivot_pointer right_child = { .child_offt = (uint64_t)PIVOT_BASE + num_node_keys + 1 };
 
-		struct insert_pivot_req_t ins_pivot_req = { .node = node,
-							    .left_child = &left_child,
-							    .key = pivot[num_node_keys],
-							    .right_child = &right_child };
-		if (index_insert_pivot(&ins_pivot_req)) {
+		struct insert_pivot_req ins_pivot_req = { .node = node,
+							  .left_child = &left_child,
+							  .key = pivot[num_node_keys],
+							  .right_child = &right_child };
+		if (!index_insert_pivot(&ins_pivot_req)) {
 			log_warn(
 				"Failed to insert pivot %.*s after %u pivots because node is full don't worry proceeding to the next step",
 				pivot[num_node_keys]->size, pivot[num_node_keys]->data, num_node_keys);
@@ -130,10 +130,10 @@ static uint32_t insert_and_verify_pivots(db_handle *handle, unsigned char *alpha
 		//log_debug("Descending order %u pivot %.*s", i, pivot[i]->size, pivot[i]->data);
 		assert(pivot[i]->size < 250);
 
-		struct insert_pivot_req_t ins_pivot_req = {
+		struct insert_pivot_req ins_pivot_req = {
 			.node = node, .left_child = &left_child, .key = pivot[i], .right_child = &right_child
 		};
-		if (index_insert_pivot(&ins_pivot_req)) {
+		if (!index_insert_pivot(&ins_pivot_req)) {
 			log_fatal("Capacity is known from the previous step this should not happen");
 			_exit(EXIT_FAILURE);
 		}
@@ -185,10 +185,9 @@ int main(int argc, char *argv[])
 
 	db_handle *handle = db_open(get_option(options, 1), 0, UINT64_MAX, "redo_undo_test", CREATE_DB);
 	unsigned char *alphabet = calloc(ALPHABET_SIZE, sizeof(char));
-	alphabet[0] = 'A';
-
-	for (uint32_t i = 1; i < ALPHABET_SIZE; ++i)
-		alphabet[i] = alphabet[i - 1] + 1;
+	char letter = 'A';
+	for (uint32_t i = 0; i < ALPHABET_SIZE; ++i)
+		alphabet[i] = letter++;
 
 	insert_and_verify_pivots(handle, alphabet, ALPHABET_SIZE);
 	free(alphabet);

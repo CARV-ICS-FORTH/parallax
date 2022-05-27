@@ -30,12 +30,6 @@
 
 #define MAX_HEIGHT 9
 
-#define NEW_INDEX_NODE_LAYOUT
-
-/* types used for the keys
- * KV_FORMAT: [key_len|key]
- * KV_PREFIX: [PREFIX|HASH|ADDR_TO_KV_LOG]
- */
 enum KV_type { KV_FORMAT = 19, KV_PREFIX = 20 };
 
 struct lookup_operation {

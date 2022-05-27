@@ -34,7 +34,7 @@ int _init_level_scanner(level_scanner *level_sc, void *start_key, char seek_mode
 	stack_init(&level_sc->stack);
 
 	/* position scanner now to the appropriate row */
-	if (new_index_level_scanner_seek(level_sc, start_key, seek_mode) == END_OF_DATABASE) {
+	if (level_scanner_seek(level_sc, start_key, seek_mode) == END_OF_DATABASE) {
 		stack_destroy(&(level_sc->stack));
 		return -1;
 	}
@@ -271,9 +271,8 @@ uint32_t get_kv_size(scannerHandle *sc)
 	return kv_size;
 }
 
-//#ifdef NEW_INDEX_NODE_LAYOUT
-static void new_index_fill_compaction_scanner(struct level_scanner *level_sc, struct level_descriptor *level,
-					      struct node_header *node, int32_t position)
+static void fill_compaction_scanner(struct level_scanner *level_sc, struct level_descriptor *level,
+				    struct node_header *node, int32_t position)
 {
 	struct bt_dynamic_leaf_node *dlnode = (struct bt_dynamic_leaf_node *)node;
 	struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(dlnode);
@@ -306,8 +305,8 @@ static void new_index_fill_compaction_scanner(struct level_scanner *level_sc, st
 	}
 }
 
-static void new_index_fill_normal_scanner(struct level_scanner *level_sc, struct level_descriptor *level,
-					  struct node_header *node, int32_t position)
+static void fill_normal_scanner(struct level_scanner *level_sc, struct level_descriptor *level,
+				struct node_header *node, int32_t position)
 {
 	struct bt_dynamic_leaf_node *dlnode = (struct bt_dynamic_leaf_node *)node;
 	struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(dlnode);
@@ -346,7 +345,7 @@ static void new_index_fill_normal_scanner(struct level_scanner *level_sc, struct
 	}
 }
 
-int32_t new_index_level_scanner_get_next(level_scanner *sc)
+int32_t level_scanner_get_next(level_scanner *sc)
 {
 	enum level_scanner_status_t { GET_NEXT_KV = 1, POP_STACK, PUSH_STACK };
 
@@ -379,11 +378,11 @@ int32_t new_index_level_scanner_get_next(level_scanner *sc)
 			}
 
 			if (COMPACTION_BUFFER_SCANNER == sc->type)
-				new_index_fill_compaction_scanner(sc, &sc->db->db_desc->levels[sc->level_id],
-								  stack_element.node, stack_element.idx);
+				fill_compaction_scanner(sc, &sc->db->db_desc->levels[sc->level_id], stack_element.node,
+							stack_element.idx);
 			else
-				new_index_fill_normal_scanner(sc, &sc->db->db_desc->levels[sc->level_id],
-							      stack_element.node, stack_element.idx);
+				fill_normal_scanner(sc, &sc->db->db_desc->levels[sc->level_id], stack_element.node,
+						    stack_element.idx);
 			//log_debug("Get next Returning Leaf:%lu idx is %d num_entries %d", stack_element.node,
 			//	  stack_element.idx, stack_element.node->num_entries);
 			stack_push(&sc->stack, stack_element);
@@ -432,7 +431,7 @@ int32_t new_index_level_scanner_get_next(level_scanner *sc)
 	return PARALLAX_SUCCESS;
 }
 
-int32_t new_index_level_scanner_seek(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER_MODE mode)
+int32_t level_scanner_seek(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER_MODE mode)
 {
 	uint32_t level_id = level_sc->level_id;
 
@@ -515,17 +514,15 @@ int32_t new_index_level_scanner_seek(level_scanner *level_sc, void *start_key_bu
 	stack_push(&level_sc->stack, element);
 
 	if ((mode == GREATER && FOUND == dlresult.status) || element.idx >= node->num_entries) {
-		if (END_OF_DATABASE == new_index_level_scanner_get_next(level_sc))
+		if (END_OF_DATABASE == level_scanner_get_next(level_sc))
 			return END_OF_DATABASE;
 	}
 
 	element = stack_pop(&level_sc->stack);
 	if (level_sc->type == COMPACTION_BUFFER_SCANNER)
-		new_index_fill_compaction_scanner(level_sc, &db_desc->levels[level_sc->level_id], element.node,
-						  element.idx);
+		fill_compaction_scanner(level_sc, &db_desc->levels[level_sc->level_id], element.node, element.idx);
 	else
-		new_index_fill_normal_scanner(level_sc, &db_desc->levels[level_sc->level_id], element.node,
-					      element.idx);
+		fill_normal_scanner(level_sc, &db_desc->levels[level_sc->level_id], element.node, element.idx);
 
 	stack_push(&level_sc->stack, element);
 	return PARALLAX_SUCCESS;
@@ -553,7 +550,7 @@ level_scanner *_init_compaction_buffer_scanner(db_handle *handle, int level_id, 
 	level_sc->level_id = level_id;
 	level_sc->type = COMPACTION_BUFFER_SCANNER;
 
-	if (new_index_level_scanner_seek(level_sc, start_key, GREATER_OR_EQUAL) == END_OF_DATABASE) {
+	if (level_scanner_seek(level_sc, start_key, GREATER_OR_EQUAL) == END_OF_DATABASE) {
 		log_info("empty internal buffer during compaction operation, is that possible?");
 		return NULL;
 	}
@@ -579,8 +576,7 @@ int32_t getNext(scannerHandle *sc)
 		sc->kv_level_id = nd.level_id;
 		sc->kv_cat = sc->LEVEL_SCANNERS[nd.level_id][nd.active_tree].cat;
 		assert(sc->LEVEL_SCANNERS[nd.level_id][nd.active_tree].valid);
-		if (new_index_level_scanner_get_next(&(sc->LEVEL_SCANNERS[nd.level_id][nd.active_tree])) !=
-		    END_OF_DATABASE) {
+		if (level_scanner_get_next(&(sc->LEVEL_SCANNERS[nd.level_id][nd.active_tree])) != END_OF_DATABASE) {
 			//TODO: use designated initializers for next_nd
 			struct sh_heap_node next_nd = { 0 };
 			next_nd.level_id = nd.level_id;
@@ -612,7 +608,7 @@ void perf_preorder_count_leaf_capacity(level_descriptor *level, node_header *roo
 	}
 
 	node_header *node;
-	struct new_index_node *inode = (struct new_index_node *)root;
+	struct index_node *inode = (struct index_node *)root;
 	for (uint64_t i = 0; i < root->num_entries; i++) {
 		node = REAL_ADDRESS(inode->p[i].left[0]);
 		perf_preorder_count_leaf_capacity(level, node);

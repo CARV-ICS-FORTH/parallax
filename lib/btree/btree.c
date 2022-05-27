@@ -1858,7 +1858,7 @@ int is_split_needed(void *node, bt_insert_req *req, uint32_t leaf_size)
 	if (height != 0)
 		return index_is_split_needed((struct index_node *)node, MAX_KEY_SIZE);
 
-	int key_type = KV_INPLACE;
+	enum kv_entry_location key_type = KV_INPLACE;
 
 	if ((cat == MEDIUM_INLOG && level_id != req->metadata.handle->db_desc->level_medium_inplace) ||
 	    cat == BIG_INLOG)
@@ -1978,7 +1978,7 @@ release_and_retry:
 
 				struct pivot_pointer left = { .child_offt = ABSOLUTE_ADDRESS(split_res.left_child) };
 				struct pivot_pointer right = { .child_offt = ABSOLUTE_ADDRESS(split_res.right_child) };
-				struct insert_pivot_req_t ins_pivot_req = {
+				struct insert_pivot_req ins_pivot_req = {
 					.node = new_root,
 					.left_child = &left,
 					.key = (struct pivot_key *)split_res.middle_key,
@@ -1992,10 +1992,10 @@ release_and_retry:
 			/*Insert pivot at father*/
 			struct pivot_pointer left = { .child_offt = ABSOLUTE_ADDRESS(split_res.left_child) };
 			struct pivot_pointer right = { .child_offt = ABSOLUTE_ADDRESS(split_res.right_child) };
-			struct insert_pivot_req_t ins_pivot_req = { .node = (struct index_node *)father,
-								    .left_child = &left,
-								    .key = (struct pivot_key *)split_res.middle_key,
-								    .right_child = &right };
+			struct insert_pivot_req ins_pivot_req = { .node = (struct index_node *)father,
+								  .left_child = &left,
+								  .key = (struct pivot_key *)split_res.middle_key,
+								  .right_child = &right };
 			index_insert_pivot(&ins_pivot_req);
 			goto release_and_retry;
 		}

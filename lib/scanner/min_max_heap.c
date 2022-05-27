@@ -170,7 +170,7 @@ static int64_t sh_cmp_heap_nodes(struct sh_heap *hp, struct sh_heap_node *nd_1, 
 	if (L2.in_tail)
 		bt_done_with_value_log_address(L2.log_desc, &L2);
 
-	return (ret ? ret : sh_solve_tie(hp, nd_1, nd_2));
+	return ret ? ret : sh_solve_tie(hp, nd_1, nd_2);
 }
 /*Allocate a min heap using dynamic memory and zero initialize it */
 struct sh_heap *sh_alloc_heap(void)

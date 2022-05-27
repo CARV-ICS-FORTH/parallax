@@ -34,6 +34,13 @@ if(BUILD_TESTING)
     COMMAND $<TARGET_FILE:test_index_node> --file=${FILEPATH}
   )
 
+
+  add_test(
+    NAME test_dirty_scans_sd_greater
+    COMMAND $<TARGET_FILE:test_dirty_scans> --file=${FILEPATH}
+    --num_of_kvs=4000000 --scan_size=30 --workload=All_scan_greater --kv_mix=sd
+  )
+
   add_test(
     NAME test_dirty_scans_small
     COMMAND $<TARGET_FILE:test_dirty_scans> --file=${FILEPATH}

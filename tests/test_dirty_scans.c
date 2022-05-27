@@ -35,8 +35,8 @@ static uint64_t base;
 static uint32_t scan_size = 16;
 static char workload[512];
 
-enum workload_types { Load = 0, Get, Scan, All, Scan2 };
-const char *workload_tags[] = { "Load", "Get", "Scan", "All", "Scan2" };
+enum workload_types { Load = 0, Get, Scan, All, All_scan_greater };
+const char *workload_tags[] = { "Load", "Get", "Scan", "All", "All_scan_greater" };
 const char *kv_mix[] = { "s", "m", "l", "sd", "md", "ld" };
 
 enum kvf_options { VOLUME_NAME = 0, TOTAL_KEYS, SCAN_SIZE, WORKLOAD };
@@ -323,7 +323,7 @@ int main(int argc, char **argv)
 	strcpy(workload, get_option(options, 4));
 	if (!(!strcmp(workload, workload_tags[Load]) || !strcmp(workload, workload_tags[Get]) ||
 	      !strcmp(workload, workload_tags[Scan]) || !strcmp(workload, workload_tags[All]) ||
-	      !strcmp(workload, workload_tags[Scan2]))) {
+	      !strcmp(workload, workload_tags[All_scan_greater]))) {
 		log_fatal("Unknown workload type %s possible values are Load, Get, Scan, All (Default)", workload);
 		_exit(EXIT_FAILURE);
 	}
@@ -360,10 +360,12 @@ int main(int argc, char **argv)
 						     .seek_mode = PAR_GREATER_OR_EQUAL,
 						     .progress_report = 100000 };
 
-	if (!strcmp(workload, workload_tags[Load]) || !strcmp(workload, workload_tags[All]))
+	if (!strcmp(workload, workload_tags[Load]) || !strcmp(workload, workload_tags[All]) ||
+	    !strcmp(workload, workload_tags[All_scan_greater]))
 		put_workload(&workload_config, kv_mix[kv_mix_index]);
 
-	if (!strcmp(workload, workload_tags[Get]) || !strcmp(workload, workload_tags[All]))
+	if (!strcmp(workload, workload_tags[Get]) || !strcmp(workload, workload_tags[All]) ||
+	    !strcmp(workload, workload_tags[All_scan_greater]))
 		get_workload(&workload_config);
 
 	if (!strcmp(workload, workload_tags[Scan]) || !strcmp(workload, workload_tags[All])) {
@@ -371,7 +373,7 @@ int main(int argc, char **argv)
 		scan_workload(&workload_config);
 	}
 
-	if (!strcmp(workload, workload_tags[Scan2])) {
+	if (!strcmp(workload, workload_tags[All_scan_greater])) {
 		workload_config.base = base;
 		workload_config.seek_mode = PAR_GREATER;
 		log_info("Testing scan with PAR_GREATER mode");
