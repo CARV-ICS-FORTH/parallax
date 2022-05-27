@@ -87,26 +87,26 @@ bool index_is_empty(const struct index_node *node);
 */
 void index_add_guard(struct index_node *node, uint64_t child_node_dev_offt);
 
-/*
+/**
  * Inserts a new pivot in the index node. When we split a leaf or an index node
  * we create two children left and right. Right contains all the keys greater
  * or equal to the pivot_key. Left contains all the keys that are greater or
- * equal of the previous pivot key
+ * equal of the previous pivot key.
  * @return true on success, false on failure
  */
 
 bool index_insert_pivot(struct insert_pivot_req *ins_pivot_req);
 
-/*
+/**
  * Appends a new pivot in the index node. When we split a leaf or an index node
  * we create two children left and right. Right contains all the keys greater
  * or equal to the pivot_key. Left contains all the keys that are greater or
- * equal of the previous pivot key. 
- * 
+ * equal of the previous pivot key.
+ *
  * @param ins_pivot_req contains the node,
  * right_child, and pivot_key. Caution left_child arg is ignored from this
- * function. 
- * 
+ * function.
+ *
  * @return true on success, false on failure.
  */
 bool index_append_pivot(struct insert_pivot_req *ins_pivot_req);
@@ -122,7 +122,7 @@ bool index_is_split_needed(struct index_node *node, uint32_t max_pivot_size);
 /**
   * Search index node and returns the pivot associated with the lookup key. The pivot entry consists of
   * uint32_t pivot_size and data and the device offset to the node which should be visitted next. Doing the operation
-  * pivot_key + PIVOT_KEY_SIZE we get the pivot pointer
+  * pivot_key + PIVOT_KEY_SIZE we get the pivot pointer.
   */
 struct pivot_pointer *index_search_get_pivot(struct index_node *node, void *lookup_key, enum KV_type lookup_key_format);
 
@@ -134,7 +134,7 @@ struct pivot_pointer *index_search_get_pivot(struct index_node *node, void *look
   */
 struct pivot_key *index_remove_last_pivot_key(struct index_node *node);
 
-/*
+/**
  * Performs binary search in an index node and returns the device offt of the
  * children node that we need to follow
  */
@@ -154,10 +154,10 @@ void index_iterator_init(struct index_node *node, struct index_node_iterator *it
 
 /**
   * Initializes a new iterator and positions it to a pivot pointer greater or
-  * equal to the pivo key
+  * equal to the pivot key.
   * @param node: the index node to search
   * @param iterator: pointer to the iterator to be initialized
-  * @parama key: Key to position itself
+  * @param key: Key to position itself
   */
 void index_iterator_init_with_key(struct index_node *node, struct index_node_iterator *iterator, struct pivot_key *key);
 
