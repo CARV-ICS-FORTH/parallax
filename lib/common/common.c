@@ -23,16 +23,20 @@ void stack_trace(void)
 	free(messages);
 }
 
-/** Prints a stack trace and terminates program execution.
- *  It returns void * to suppress compiler warnings in the future this function will return void.*/
-__attribute__((noreturn)) void *BUG_ON(void)
+__attribute__((noreturn)) void print_stack_trace(void)
 {
 	stack_trace();
 	_Exit(EXIT_FAILURE);
 }
 
-__attribute__((noreturn)) uint32_t CALC_PIVOT_SIZE_OF_NULL_POINTER_BUG(void)
+/** Prints a stack trace and terminates program execution.
+ *  It returns void * to suppress compiler warnings in the future this function will return void.*/
+__attribute__((noreturn)) void *BUG_ON(void)
 {
-	stack_trace();
-	_Exit(EXIT_FAILURE);
+	print_stack_trace();
+}
+
+__attribute__((noreturn)) uint32_t BUG_ON_UINT32T(void)
+{
+	print_stack_trace();
 }

@@ -168,7 +168,7 @@ struct pivot_key *index_iterator_get_pivot_key(struct new_index_node_iterator *i
 
 struct pivot_pointer *index_iterator_get_pivot_pointer(struct new_index_node_iterator *iterator);
 
-#define PIVOT_KEY_SIZE(X) ((X) ? (X)->size + sizeof(*X) : CALC_PIVOT_SIZE_OF_NULL_POINTER_BUG())
+#define PIVOT_KEY_SIZE(X) ((X) ? (X)->size + sizeof(*X) : BUG_ON_UINT32T())
 #define PIVOT_SIZE(X) (PIVOT_KEY_SIZE(X) + sizeof(struct pivot_pointer))
 #define NEW_INDEX_PIVOT_ADDRESS(X, Y) ((uint64_t)(X) + (Y))
 #endif
