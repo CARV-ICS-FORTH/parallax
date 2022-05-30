@@ -29,8 +29,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-
-
 int _init_level_scanner(level_scanner *level_sc, void *start_key, char seek_mode)
 {
 	stack_init(&level_sc->stack);
