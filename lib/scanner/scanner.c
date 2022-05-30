@@ -246,30 +246,6 @@ void closeScanner(scannerHandle *sc)
 	free(sc);
 }
 
-/*XXX TODO XXX, please check if this is legal*/
-inline int isValid(scannerHandle *sc)
-{
-	return sc->keyValue != NULL;
-}
-
-int32_t get_key_size(scannerHandle *sc)
-{
-	return *(int32_t *)(sc->keyValue);
-}
-
-int32_t get_value_size(scannerHandle *sc)
-{
-	int32_t key_size = get_key_size(sc);
-	int32_t *val_ptr = (int32_t *)((char *)(sc->keyValue) + sizeof(int32_t) + key_size);
-	return *val_ptr;
-}
-
-uint32_t get_kv_size(scannerHandle *sc)
-{
-	uint32_t kv_size = sizeof(uint32_t) + get_key_size(sc) + sizeof(uint32_t) + get_value_size(sc);
-	return kv_size;
-}
-
 static void fill_compaction_scanner(struct level_scanner *level_sc, struct level_descriptor *level,
 				    struct node_header *node, int32_t position)
 {
