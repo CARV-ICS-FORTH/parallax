@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 #include "scanner.h"
+#include "../allocator/device_structures.h"
 #include "../btree/btree.h"
 #include "../btree/conf.h"
 #include "../btree/dynamic_leaf.h"
@@ -27,6 +28,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+
 
 int _init_level_scanner(level_scanner *level_sc, void *start_key, char seek_mode)
 {
