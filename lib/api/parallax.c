@@ -329,7 +329,6 @@ struct par_key par_get_key(par_scanner sc)
 	return key;
 }
 
-// cppcheck-suppress unusedFunction
 struct par_value par_get_value(par_scanner sc)
 {
 	struct par_scanner *par_s = (struct par_scanner *)sc;
