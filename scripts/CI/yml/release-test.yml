@@ -321,3 +321,14 @@ release_test_mixes_most_small_few_medium:
         - make test_mixes;make kv_format.parallax;cd tests;
         - ctest -R ^test_mixes_most_small_few_medium$
     needs: [release_build_gcc, release_build_clang]
+
+release_test_mixes_all_categories:
+    image: carvicsforth/arch_carv:latest
+    stage: release_test
+    <<: *release_build_commands
+    tags:
+        - kubernetes
+    script:
+        - make test_mixes;make kv_format.parallax;cd tests;
+        - ctest -R ^test_mixes_all_categories$
+    needs: [release_build_gcc, release_build_clang]

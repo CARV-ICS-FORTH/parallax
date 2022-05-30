@@ -99,6 +99,12 @@ if(BUILD_TESTING)
       $<TARGET_FILE:test_mixes> --file=${FILEPATH} --num_of_kvs=1000000
       --small_kv_percentage=99 --medium_kv_percentage=1 --big_kv_percentage=0)
 
+  add_test(
+    NAME test_mixes_all_categories
+    COMMAND
+      $<TARGET_FILE:test_mixes> --file=${FILEPATH} --num_of_kvs=10000000
+      --medium_kv_percentage=50 --small_kv_percentage=45 --big_kv_percentage=5)
+
   add_executable(simple_test_delete simple_test_delete.c arg_parser.c)
   target_link_libraries(simple_test_delete "${PROJECT_NAME}" ${DEPENDENCIES})
   add_test(NAME simple_test_delete
