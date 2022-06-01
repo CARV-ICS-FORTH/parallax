@@ -1,11 +1,11 @@
 #include "arg_parser.h"
-#include "btree/btree.h"
-#include "common/common.h"
 #include <assert.h>
+#include <btree/btree.h>
+#include <common/common.h>
 #include <fcntl.h>
-#include <include/parallax.h>
 #include <linux/fs.h>
 #include <log.h>
+#include <parallax.h>
 #include <scanner/scanner.h>
 #include <stdlib.h>
 #include <string.h>
@@ -128,14 +128,11 @@ static uint64_t space_needed_for_the_kv(uint64_t kv_size, char *key_prefix, uint
 	sprintf(buf + strlen(key_prefix), "%llu", (long long unsigned)i);
 	uint64_t keybuf_size = strlen(buf) + 1;
 
-	/* a random generated key do not have enough space
-	 * allocate minimum needed space for the KV
-	*/
-	if (kv_size < SMALLEST_KV_FORMAT_SIZE(keybuf_size))
-		kv_size = SMALLEST_KV_FORMAT_SIZE(keybuf_size);
+	/* A random generated key does not have enough space allocate minimum needed space for the KV.*/
+	uint64_t smallest_kv_size = SMALLEST_KV_FORMAT_SIZE(keybuf_size);
 
 	free(buf);
-	return kv_size;
+	return kv_size < smallest_kv_size ? smallest_kv_size : kv_size;
 }
 
 /** Main insert logic for populating the db with a kv category*/
@@ -248,16 +245,8 @@ static unsigned int scanner_kv_size(par_scanner sc, enum kv_size_type size_type,
 /** Function returning if the size of a kv corresponds to its kv_category*/
 static int check_correctness_of_size(par_scanner sc, enum kv_type key_type, enum kv_size_type size_type)
 {
-	switch (key_type) {
-	case SMALL:
-		return scanner_kv_size(sc, size_type, SMALL_KV_SIZE);
-	case MEDIUM:
-		return scanner_kv_size(sc, size_type, MEDIUM_KV_SIZE);
-	case BIG:
-		return scanner_kv_size(sc, size_type, LARGE_KV_SIZE);
-	default:
-		BUG_ON();
-	}
+	int kv_sizes[3] = { SMALL_KV_SIZE, MEDIUM_KV_SIZE, LARGE_KV_SIZE };
+	return scanner_kv_size(sc, size_type, kv_sizes[key_type]);
 }
 
 static void validate_static_size_of_kvs(par_handle hd, struct task task_info)
