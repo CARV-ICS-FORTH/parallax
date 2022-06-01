@@ -86,6 +86,7 @@ static uint64_t generate_random_size(enum kv_type kv_category)
 	       random_sizes_table[kv_category].min;
 }
 
+/** This function initializes a kv by filling the fields of init_info*/
 void init_kv(struct init_key_values *init_info)
 {
 	struct init_values {
@@ -206,6 +207,7 @@ static void insert_keys(par_handle handle, struct test_info info)
 	populate_db(handle, population_info);
 }
 
+/** This function validates the total number of kvs using scanners and asserts that all kvs are present*/
 static void scanner_validate_number_of_kvs(par_handle hd, uint64_t num_keys)
 {
 	uint64_t key_count = 0;
@@ -225,6 +227,7 @@ static void scanner_validate_number_of_kvs(par_handle hd, uint64_t num_keys)
 	par_close_scanner(sc);
 }
 
+/** Function that asserts that the kv_size of a static size category is correct to its accordingly category size*/
 static unsigned int scanner_kv_size(par_scanner sc, enum kv_size_type size_type, uint32_t kv_category_size)
 {
 	/*we can't know the the random generated size*/
