@@ -339,7 +339,7 @@ debug_test_par_put_serialized:
         - ctest -R ^test_par_put_serialized$
     needs: [debug_build_gcc, debug_build_clang]
 
-debug_test_mixes_all_100_medium:
+debug_test_medium:
     image: carvicsforth/arch_carv:latest
     stage: debug_test
     <<: *debug_build_commands
@@ -347,7 +347,7 @@ debug_test_mixes_all_100_medium:
         - kubernetes
     script:
         - make test_mixes;cd tests;
-        - ctest -R ^test_mixes_100_medium$
+        - ctest -R ^test_medium$
     needs: [debug_build_gcc, debug_build_clang]
 
 debug_test_mixes_99_small_1_medium:

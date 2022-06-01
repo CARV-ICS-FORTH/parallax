@@ -300,7 +300,7 @@ release_test_par_put_serialized:
         - ctest -R ^test_par_put_serialized$
     needs: [release_build_gcc, release_build_clang]
 
-release_test_mixes_100_medium:
+release_test_medium:
     image: carvicsforth/arch_carv:latest
     stage: release_test
     <<: *release_build_commands
@@ -308,7 +308,7 @@ release_test_mixes_100_medium:
         - kubernetes
     script:
         - make test_mixes;cd tests;
-        - ctest -R ^test_mixes_100_medium$
+        - ctest -R ^test_medium$
     needs: [release_build_gcc, release_build_clang]
 
 release_test_mixes_99_small_1_medium:

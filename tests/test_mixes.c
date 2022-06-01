@@ -1,4 +1,5 @@
 #include "arg_parser.h"
+#include "btree/btree.h"
 #include "common/common.h"
 #include <assert.h>
 #include <fcntl.h>
@@ -21,6 +22,7 @@
 #define SMALL_KV_SIZE 48
 #define MEDIUM_KV_SIZE 256
 #define LARGE_KV_SIZE 1500
+#define NUMBER_OF_KV_CATEGORIES 3 /*S M L*/
 
 typedef struct key {
 	uint32_t key_size;
@@ -56,6 +58,13 @@ struct init_key_values {
 	enum kv_type kv_category;
 };
 
+struct random_sizes {
+	uint32_t min;
+	uint32_t max;
+};
+
+struct random_sizes random_sizes_table[NUMBER_OF_KV_CATEGORIES];
+
 static par_handle open_db(const char *path)
 {
 	par_db_options db_options;
@@ -73,50 +82,41 @@ static uint64_t generate_random_size(enum kv_type kv_category)
 {
 	/* we use rand without using srand to generate the same number of "random" kvs over many executions
 	 * of this test */
-
-	switch (kv_category) {
-	case SMALL:
-		return rand() % (100 + 1 - 5) + 5;
-	case MEDIUM:
-		return rand() % (1024 + 1 - 101) + 101;
-	case BIG:
-		return rand() % (KV_MAX_SIZE + 1 - 1025) + 1025;
-	}
-	BUG_ON();
+	return rand() % (random_sizes_table[kv_category].max + 1 - random_sizes_table[kv_category].min) +
+	       random_sizes_table[kv_category].min;
 }
 
 void init_kv(struct init_key_values *init_info)
 {
-	switch (init_info->kv_category) {
-	case SMALL:
-		if (init_info->size_type == STATIC) {
-			init_info->kv_size = SMALL_KV_SIZE;
-			init_info->key_prefix = strdup(SMALL_STATIC_SIZE_PREFIX);
-		} else {
-			init_info->kv_size = generate_random_size(SMALL);
-			init_info->key_prefix = strdup(SMALL_KEY_PREFIX);
-		}
-		return;
-	case MEDIUM:
-		if (init_info->size_type == STATIC) {
-			init_info->kv_size = MEDIUM_KV_SIZE;
-			init_info->key_prefix = strdup(MEDIUM_STATIC_SIZE_PREFIX);
-		} else {
-			init_info->kv_size = generate_random_size(MEDIUM);
-			init_info->key_prefix = strdup(MEDIUM_KEY_PREFIX);
-		}
-		return;
-	case BIG:
-		if (init_info->size_type == STATIC) {
-			init_info->kv_size = LARGE_KV_SIZE;
-			init_info->key_prefix = strdup(LARGE_STATIC_SIZE_PREFIX);
-		} else {
-			init_info->kv_size = generate_random_size(BIG);
-			init_info->key_prefix = strdup(LARGE_KEY_PREFIX);
-		}
-		return;
+	struct init_values {
+		uint64_t static_kv_size;
+		uint64_t random_kv_size;
+		char *static_kv_prefix;
+		char *random_kv_prefix;
+	};
+	struct init_values init_values_buffer[NUMBER_OF_KV_CATEGORIES];
+	init_values_buffer[SMALL].random_kv_prefix = strdup(SMALL_KEY_PREFIX);
+	init_values_buffer[SMALL].static_kv_prefix = strdup(SMALL_STATIC_SIZE_PREFIX);
+	init_values_buffer[SMALL].static_kv_size = SMALL_KV_SIZE;
+	init_values_buffer[SMALL].random_kv_size = generate_random_size(SMALL);
+
+	init_values_buffer[MEDIUM].random_kv_prefix = strdup(MEDIUM_KEY_PREFIX);
+	init_values_buffer[MEDIUM].static_kv_prefix = strdup(MEDIUM_STATIC_SIZE_PREFIX);
+	init_values_buffer[MEDIUM].static_kv_size = MEDIUM_KV_SIZE;
+	init_values_buffer[MEDIUM].random_kv_size = generate_random_size(MEDIUM);
+
+	init_values_buffer[BIG].random_kv_prefix = strdup(LARGE_KEY_PREFIX);
+	init_values_buffer[BIG].static_kv_prefix = strdup(LARGE_STATIC_SIZE_PREFIX);
+	init_values_buffer[BIG].static_kv_size = LARGE_KV_SIZE;
+	init_values_buffer[BIG].random_kv_size = generate_random_size(BIG);
+
+	if (init_info->size_type == STATIC) {
+		init_info->kv_size = init_values_buffer[init_info->kv_category].static_kv_size;
+		init_info->key_prefix = init_values_buffer[init_info->kv_category].static_kv_prefix;
+	} else {
+		init_info->kv_size = init_values_buffer[init_info->kv_category].random_kv_size;
+		init_info->key_prefix = init_values_buffer[init_info->kv_category].random_kv_prefix;
 	}
-	BUG_ON();
 }
 
 /** Function allocating enough space for a kv*/
@@ -160,7 +160,7 @@ static void populate_db(par_handle hd, struct task task_info)
 
 		if (par_put_serialized(hd, (char *)k) != PAR_SUCCESS) {
 			log_fatal("Put failed!");
-			_exit(EXIT_FAILURE);
+			BUG_ON();
 		}
 		free(k);
 	}
@@ -239,7 +239,7 @@ static unsigned int scanner_kv_size(par_scanner sc, enum kv_size_type size_type,
 		return 1;
 
 	log_fatal("size of kv found by scanner is %d cat size is %d", scanner_kv_size, kv_category_size);
-	return 0;
+	BUG_ON();
 }
 
 /** Function returning if the size of a kv corresponds to its kv_category*/
@@ -280,7 +280,7 @@ static void validate_static_size_of_kvs(par_handle hd, struct task task_info)
 
 	if (!check_correctness_of_size(sc, task_info.key_type, task_info.size_type)) {
 		log_fatal("Found a kv that has size out of its category range");
-		_exit(EXIT_FAILURE);
+		BUG_ON();
 	}
 
 	for (uint64_t i = task_info.from + 1; i < task_info.to; ++i) {
@@ -314,7 +314,7 @@ static void validate_random_size_of_kvs(par_handle hd, struct task task_info)
 
 	if (!check_correctness_of_size(sc, task_info.key_type, task_info.size_type)) {
 		log_fatal("found a kv with size out of its category range");
-		assert(0);
+		BUG_ON();
 	}
 
 	for (uint64_t i = task_info.from + 1; i < task_info.to; ++i) {
@@ -323,7 +323,7 @@ static void validate_random_size_of_kvs(par_handle hd, struct task task_info)
 
 		if (!check_correctness_of_size(sc, task_info.key_type, task_info.size_type)) {
 			log_fatal("found a kv with size out of its category range");
-			_exit(EXIT_FAILURE);
+			BUG_ON();
 		}
 	}
 	par_close_scanner(sc);
@@ -459,6 +459,13 @@ int main(int argc, char *argv[])
 	assert(medium_kvs_percentage + small_kvs_percentage + big_kvs_percentage == 100);
 	par_format((char *)path, 128);
 	par_handle handle = open_db(path);
+
+	random_sizes_table[SMALL].min = 5;
+	random_sizes_table[SMALL].max = 100;
+	random_sizes_table[MEDIUM].min = 101;
+	random_sizes_table[MEDIUM].max = 1024;
+	random_sizes_table[BIG].min = 1025;
+	random_sizes_table[BIG].max = KV_MAX_SIZE;
 
 	struct test_info t_info = { .small_kv_percentage = small_kvs_percentage,
 				    .medium_kv_percentage = medium_kvs_percentage,

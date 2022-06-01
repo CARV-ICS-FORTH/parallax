@@ -88,7 +88,7 @@ if(BUILD_TESTING)
   target_link_libraries(test_mixes "${PROJECT_NAME}" ${DEPENDENCIES})
 
   add_test(
-    NAME test_mixes_100_medium
+    NAME test_medium
     COMMAND
       $<TARGET_FILE:test_mixes> --file=${FILEPATH} --num_of_kvs=1000000
       --small_kv_percentage=0 --medium_kv_percentage=100 --big_kv_percentage=0)
