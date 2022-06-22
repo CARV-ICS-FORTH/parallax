@@ -165,10 +165,13 @@ static void populate_db(par_handle hd, struct task task_info)
 	log_info("Population ended");
 }
 
-/** This function populates the db in the above manner:
- *  First static size kvs are inserted following the - medium kvs - big kvs - small kvs - order
- *  After that random generated size keys are inserted followin the -big kvs - small kvs - medium kvs - order
- **/
+/**
+ * This function populates the db in the above manner:
+ * @param handle is an initialised par_handle
+ * @param info contains informations about the insertion process like the different percetages of kc categories
+ * First static size kvs are inserted following the - medium kvs - big kvs - small kvs - order
+ * After that random generated size keys are inserted followin the -big kvs - small kvs - medium kvs - order
+ * */
 static void insert_keys(par_handle handle, struct test_info info)
 {
 	uint64_t small_kvs_num = (info.num_keys * info.small_kv_percentage) / 100;
@@ -204,7 +207,11 @@ static void insert_keys(par_handle handle, struct test_info info)
 	populate_db(handle, population_info);
 }
 
-/** This function validates the total number of kvs using scanners and asserts that all kvs are present*/
+/**
+ * This function validates the total number of kvs using scanners and asserts that all kvs are present
+ * @param handle is an initialised par_handle
+ * @param num_keys are the total number of kvcs that we want this scanner to validate
+ * */
 static void scanner_validate_number_of_kvs(par_handle hd, uint64_t num_keys)
 {
 	uint64_t key_count = 0;
@@ -224,7 +231,12 @@ static void scanner_validate_number_of_kvs(par_handle hd, uint64_t num_keys)
 	par_close_scanner(sc);
 }
 
-/** Function that asserts that the kv_size of a static size category is correct to its accordingly category size*/
+/**
+ * This function asserts that the kv_size of a static size category is correct to its accordingly category size
+ * @param sc is an initialized par_scanner
+ * @param size_type indicates if the size category is either RANDOM or STATIC
+ * @param kv_cateogry_size indicates if the kv category is SMALL|MEDIUM|BIG
+ * */
 static unsigned int scanner_kv_size(par_scanner sc, enum kv_size_type size_type, uint32_t kv_category_size)
 {
 	/*we can't know the the random generated size*/
@@ -345,11 +357,15 @@ static void read_all_static_kvs(par_handle handle, struct task task_info)
 	}
 }
 
-/** Function validating the already populated kvs
- *  First it scans the whole db to ensure that the number of the inserted keys are equal to the benchmark size
- *  After it validates each static size kv category using scanners
- *  Then it validates each random size kv category using scanners
- *  Finally it retrieves all static size kvs using par_get to ensure that the kvs are correct */
+/**
+ * Function validating the already populated kvs
+ * @param hd is an initialised par_handle
+ * @param v_info contains informations about the validation process like the different percetages of kc categories
+ * First it scans the whole db to ensure that the number of the inserted keys are equal to the benchmark size
+ * After it validates each static size kv category using scanners
+ * Then it validates each random size kv category using scanners
+ * Finally it retrieves all static size kvs using par_get to ensure that the kvs are correct
+ * */
 static void validate_kvs(par_handle hd, struct test_info v_info)
 {
 	uint64_t small_num_keys = (v_info.num_keys * v_info.small_kv_percentage) / 100;
@@ -409,7 +425,10 @@ static void validate_kvs(par_handle hd, struct test_info v_info)
 	task_info.key_type = SMALL;
 	read_all_static_kvs(hd, task_info);
 }
-/** ./test_mixes --file=path_to_file --num_of_kvs=number_of_kvs --medium_kv_percentage=percentage_of_medium_kvs --small_kv_percentage=percentage_of_small_kvs --big_kv_percentage=percentage_of_big_kvs*/
+
+/**
+ * test_mixes inserts and validates(with scans and reads), random size and static size kvs using the public api of Parallax
+ * */
 int main(int argc, char *argv[])
 {
 	int help_flag = 0;
