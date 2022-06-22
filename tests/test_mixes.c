@@ -19,8 +19,8 @@
 #define LARGE_STATIC_SIZE_PREFIX "zl"
 
 #define SMALLEST_KV_FORMAT_SIZE(x) (x + 2 * sizeof(uint32_t) + 1)
-#define SMALL_KV_SIZE 48
-#define MEDIUM_KV_SIZE 256
+#define SMALL_KV_SIZE 29
+#define MEDIUM_KV_SIZE 129
 #define LARGE_KV_SIZE 1500
 #define NUMBER_OF_KV_CATEGORIES 3 /*S M L*/
 
@@ -423,15 +423,15 @@ int main(int argc, char *argv[])
 		  "--num_of_kvs=number, parameter that specifies the number of operation the test will execute.",
 		  NULL,
 		  INTEGER },
-		{ { "medium_kv_percentage", required_argument, 0, 'c' },
+		{ { "medium_kv_percentage", required_argument, 0, 'b' },
 		  "--medium_kv_percentage=number, percentage of medium category kvs out of num_of_kvs to be inserted",
 		  NULL,
 		  INTEGER },
-		{ { "small_kv_percentage", required_argument, 0, 'd' },
+		{ { "small_kv_percentage", required_argument, 0, 'b' },
 		  "--small_kv_percentage=number, percentage of small category kvs out of num_of_kvs to be inserted",
 		  NULL,
 		  INTEGER },
-		{ { "big_kv_percentage", required_argument, 0, 'e' },
+		{ { "big_kv_percentage", required_argument, 0, 'b' },
 		  "--big_kv_percentage=number, percentage of big category kvs out of num_of_kvs to be inserted",
 		  NULL,
 		  INTEGER },
@@ -440,7 +440,7 @@ int main(int argc, char *argv[])
 	unsigned options_len = (sizeof(options) / sizeof(struct wrap_option));
 
 	arg_parse(argc, argv, options, options_len);
-
+	arg_print_options(help_flag, options, options_len);
 	const char *path = get_option(options, 1);
 	const uint64_t num_of_keys = *(uint64_t *)get_option(options, 2);
 	const uint32_t medium_kvs_percentage = *(int *)get_option(options, 3);
