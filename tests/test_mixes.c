@@ -12,10 +12,10 @@
 #include <sys/ioctl.h>
 #include <unistd.h>
 #define SMALL_KEY_PREFIX "ts"
-#define MEDIUM_KEY_PREFIX "tm"
+#define MEDIUM_KEY_PREFIX "tmmmmmmmmmmm"
 #define LARGE_KEY_PREFIX "tl"
 #define SMALL_STATIC_SIZE_PREFIX "zs"
-#define MEDIUM_STATIC_SIZE_PREFIX "zm"
+#define MEDIUM_STATIC_SIZE_PREFIX "zmmmmmmmmmmm"
 #define LARGE_STATIC_SIZE_PREFIX "zl"
 
 #define SMALLEST_KV_FORMAT_SIZE(x) (x + 2 * sizeof(uint32_t) + 1)
