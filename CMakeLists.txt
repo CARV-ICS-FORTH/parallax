@@ -43,6 +43,7 @@ include(CheckCCompilerFlag)
 include(cmake_utils/mkfs.cmake.in)
 include(cmake_utils/ycsb.cmake.in)
 include(cmake_utils/tests.cmake.in)
+include(cmake_utils/tracer.cmake.in)
 
 if(RUN_IWYU STREQUAL "ON")
   file(COPY ${CMAKE_SOURCE_DIR}/scripts/CI/check-iwyu-output.py
@@ -160,6 +161,7 @@ add_subdirectory(lib)
 add_subdirectory(YCSB-CXX)
 add_subdirectory(utilities)
 add_subdirectory(tests)
+add_subdirectory(tracer)
 
 set(CPACK_PACKAGE_NAME ${PROJECT_NAME})
 set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})

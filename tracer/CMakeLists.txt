@@ -1,0 +1,13 @@
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+include_directories(${CMAKE_SOURCE_DIR}/lib)
+
+if(BUILD_TESTING)
+  set(LIB_TRACER_FILES
+      tracer.c)
+
+  set_source_files_properties(${LIB_TRACER_FILES} COMPILE_FLAGS "-O3")
+
+  add_executable(tracer tracer.c ../tests/arg_parser.c)
+  target_link_libraries(tracer "${PROJECT_NAME}" ${DEPENDENCIES})
+
+endif()
