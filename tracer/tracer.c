@@ -113,7 +113,7 @@ par_handle open_db(const char *path)
 	par_handle handle = par_open(&db_options);
 	return handle;
 }
-/***/
+
 int main(int argc, char **argv)
 {
 	int help_flag = 0;
