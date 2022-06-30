@@ -1,7 +1,6 @@
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 if(BUILD_TESTING)
-  set(LIB_TRACER_FILES
-      tracer.c)
+  set(LIB_TRACER_FILES tracer.c)
 
   set_source_files_properties(${LIB_TRACER_FILES} COMPILE_FLAGS "-O3")
 
