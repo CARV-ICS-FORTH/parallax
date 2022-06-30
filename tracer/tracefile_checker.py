@@ -55,14 +55,9 @@ def validate_put_op_format(line_list):
     key_size = int(line_list[1])
     key = line_list[2];
     value_size = int(line_list[3])
-    value = line_list[4]
 
     if(key_size != len(key)):
         print(colors.RED + "key " + key + " is not valid" + colors.ENDC)
-        print("Exiting..")
-        sys.exit(1)
-    elif(value_size != len(value)):
-        print(colors.RED + "value" + value + " is not valid" + colors.ENDC)
         print("Exiting..")
         sys.exit(1)
 

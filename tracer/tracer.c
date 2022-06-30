@@ -1,23 +1,24 @@
 #include "../tests/arg_parser.h"
-#include "btree/btree.h"
 #include <log.h>
 #include <parallax.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-
 #define NUM_OF_OPS 2
 
+void execute_put_request(par_handle hd, char *line);
+void execute_get_request(par_handle hd, char *line);
+typedef void execute_task(par_handle hd, char *line);
+execute_task *const tracer_dispatcher[NUM_OF_OPS] = { execute_put_request, execute_get_request };
 enum Op { PUT = 0, GET };
 
 void execute_get_request(par_handle hd, char *line)
 {
 	/*thats the operation, we dont need it*/
-	strtok(line, " ");
-	uint32_t key_size = atoi(strtok(NULL, " "));
-	char *key = strtok(NULL, " ");
-
+	strtok_r(line, " ", &line);
+	uint32_t key_size = atoi(strtok_r(line, " ", &line));
+	char *key = strtok_r(line, " ", &line);
 	struct par_key lookup_key = { .size = (uint32_t)key_size, .data = (const char *)key };
 	struct par_value lookup_value = { .val_buffer = NULL };
 
@@ -28,17 +29,16 @@ void execute_get_request(par_handle hd, char *line)
 	free(lookup_value.val_buffer);
 }
 
-uint64_t op_count = 0;
 void execute_put_request(par_handle hd, char *line)
 {
 	char _tmp[4096];
 	char *key_buf = _tmp;
 	/*thats the operation, we dont need it*/
-	strtok(line, " ");
-	uint32_t key_size = atoi(strtok(NULL, " "));
-	char *key = strtok(NULL, " ");
-	uint32_t value_size = atoi(strtok(NULL, " "));
-	char *value = strtok(NULL, " ");
+	strtok_r(line, " ", &line);
+	uint32_t key_size = atoi(strtok_r(line, " ", &line));
+	char *key = strtok_r(line, " ", &line);
+	uint32_t value_size = atoi(strtok_r(line, " ", &line));
+	char *value = strtok_r(line, " ", &line);
 
 	/*prepare the request*/
 	*(uint32_t *)key_buf = key_size;
@@ -47,17 +47,13 @@ void execute_put_request(par_handle hd, char *line)
 	memcpy(key_buf + sizeof(uint32_t) + key_size + sizeof(uint32_t), value, value_size);
 
 	par_put_serialized(hd, key_buf);
-	op_count++;
 }
-
-typedef void execute_task(par_handle hd, char *line);
-execute_task *const tracer_dispatcher[NUM_OF_OPS] = { execute_put_request, execute_get_request };
 
 enum Op get_op(char *line)
 {
 	char *tmp_line = strdup(line);
 	/*thats the Operation*/
-	char *token = strtok(tmp_line, " ");
+	char *token = strtok_r(tmp_line, " ", &tmp_line);
 	if (!strcmp(token, "PUT"))
 		return PUT;
 

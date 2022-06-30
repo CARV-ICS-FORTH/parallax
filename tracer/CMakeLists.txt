@@ -1,6 +1,4 @@
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-include_directories(${CMAKE_SOURCE_DIR}/lib)
-
 if(BUILD_TESTING)
   set(LIB_TRACER_FILES
       tracer.c)
