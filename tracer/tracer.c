@@ -13,6 +13,11 @@ typedef void execute_task(par_handle hd, char *line);
 execute_task *const tracer_dispatcher[NUM_OF_OPS] = { execute_put_request, execute_get_request };
 enum Op { PUT = 0, GET };
 
+/**
+ * Execute a get request of the key specified by line
+ * @param hd, the db handle that we initiated with db open
+ * @param line, a str with the line contents
+ * */
 void execute_get_request(par_handle hd, char *line)
 {
 	/*thats the operation, we dont need it*/
@@ -29,6 +34,11 @@ void execute_get_request(par_handle hd, char *line)
 	free(lookup_value.val_buffer);
 }
 
+/**
+ * Execute a put request of the key specified by line
+ * @param hd, the db handle that we initiated with db open
+ * @param line, a str with the line contents
+ * */
 void execute_put_request(par_handle hd, char *line)
 {
 	char _tmp[4096];
@@ -60,6 +70,11 @@ enum Op get_op(char *line)
 	return GET;
 }
 
+/**
+ * Read the file line by line and execute its operations
+ * @param hd, the db handle that we initiated with db open
+ * @param filename, name of the tracefile
+ * */
 void execute_trace(par_handle hd, char *filename)
 {
 	char *line = NULL;
@@ -82,6 +97,10 @@ void execute_trace(par_handle hd, char *filename)
 		free(line);
 }
 
+/**
+ * Opens the db
+ * @param path, the path to the file where the db will be initiated
+ * */
 par_handle open_db(const char *path)
 {
 	par_db_options db_options;
@@ -94,7 +113,7 @@ par_handle open_db(const char *path)
 	par_handle handle = par_open(&db_options);
 	return handle;
 }
-
+/***/
 int main(int argc, char **argv)
 {
 	int help_flag = 0;
