@@ -113,10 +113,15 @@ void init_kv(struct init_key_values *init_info)
 
 	if (init_info->size_type == STATIC) {
 		init_info->kv_size = init_values_buffer[init_info->kv_category].static_kv_size;
-		init_info->key_prefix = init_values_buffer[init_info->kv_category].static_kv_prefix;
+		init_info->key_prefix = strdup(init_values_buffer[init_info->kv_category].static_kv_prefix);
 	} else {
 		init_info->kv_size = init_values_buffer[init_info->kv_category].random_kv_size;
-		init_info->key_prefix = init_values_buffer[init_info->kv_category].random_kv_prefix;
+		init_info->key_prefix = strdup(init_values_buffer[init_info->kv_category].random_kv_prefix);
+	}
+	/*free the strdup space*/
+	for (uint32_t i = 0; i < NUMBER_OF_KV_CATEGORIES; ++i) {
+		free(init_values_buffer[i].random_kv_prefix);
+		free(init_values_buffer[i].static_kv_prefix);
 	}
 }
 
@@ -161,6 +166,7 @@ static void populate_db(par_handle hd, struct task task_info)
 			BUG_ON();
 		}
 		free(k);
+		free(init_info.key_prefix);
 	}
 	log_info("Population ended");
 }
@@ -177,8 +183,6 @@ static void insert_keys(par_handle handle, struct test_info info)
 	uint64_t small_kvs_num = (info.num_keys * info.small_kv_percentage) / 100;
 	uint64_t medium_kvs_num = (info.num_keys * info.medium_kv_percentage) / 100;
 	uint64_t big_kvs_num = (info.num_keys * info.large_kv_percentage) / 100;
-
-	assert(small_kvs_num + medium_kvs_num + big_kvs_num == info.num_keys);
 
 	log_info("populating %lu medium static size keys..", medium_kvs_num / 2);
 	struct task population_info = { .from = 0, .to = medium_kvs_num / 2, .key_type = MEDIUM, .size_type = STATIC };
@@ -294,8 +298,8 @@ static void validate_static_size_of_kvs(par_handle hd, struct task task_info)
 			BUG_ON();
 		}
 	}
-
 	par_close_scanner(sc);
+	free((void *)k.data);
 }
 
 static void validate_random_size_of_kvs(par_handle hd, struct task task_info)
@@ -331,6 +335,7 @@ static void validate_random_size_of_kvs(par_handle hd, struct task task_info)
 		}
 	}
 	par_close_scanner(sc);
+	free((void *)k.data);
 }
 
 /** Main retrieve-kvs logic*/
@@ -355,6 +360,7 @@ static void read_all_static_kvs(par_handle handle, struct task task_info)
 			BUG_ON();
 		}
 	}
+	free(buf);
 }
 
 /**
