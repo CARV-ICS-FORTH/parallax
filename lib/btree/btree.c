@@ -964,6 +964,7 @@ uint8_t insert_key_value(db_handle *handle, void *key, void *value, uint32_t key
 		log_fatal("Key buffer overflow %u", kv_size);
 		BUG_ON();
 	}
+	/*We always use as nominator the smallest value of the pair <key size, value size>*/
 	double kv_ratio = ((double)key_size) / value_size;
 	if (value_size < key_size)
 		kv_ratio = ((double)value_size) / key_size;
