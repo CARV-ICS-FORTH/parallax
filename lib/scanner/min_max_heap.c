@@ -55,7 +55,7 @@ static void push_back_duplicate_kv(struct sh_heap *heap, struct sh_heap_node *hp
 		ABSOLUTE_ADDRESS(keyvalue->dev_offt) - (ABSOLUTE_ADDRESS(keyvalue->dev_offt) % SEGMENT_SIZE);
 	char *kv = (char *)keyvalue->dev_offt;
 	uint32_t key_size = *(uint32_t *)kv;
-	assert(key_size < MAX_KEY_SIZE);
+	assert(key_size <= MAX_KEY_SIZE);
 	uint32_t value_size = *(uint32_t *)(kv + sizeof(uint32_t) + key_size);
 	struct dups_node *node = find_element(heap->dups, (uint64_t)REAL_ADDRESS(segment_offset));
 

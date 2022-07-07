@@ -943,8 +943,6 @@ uint8_t insert_key_value(db_handle *handle, void *key, void *value, uint32_t key
 	bt_insert_req ins_req;
 	char __tmp[KV_MAX_SIZE];
 	char *key_buf = __tmp;
-	double kv_ratio;
-	uint32_t kv_size;
 
 	if (DB_IS_CLOSING == handle->db_desc->stat) {
 		log_warn("Sorry DB: %s is closing", handle->db_desc->db_superblock->db_name);
@@ -961,13 +959,17 @@ uint8_t insert_key_value(db_handle *handle, void *key, void *value, uint32_t key
 		BUG_ON();
 	}
 
-	kv_size = sizeof(uint32_t) + key_size + sizeof(uint32_t) + value_size /* + sizeof(uint64_t) */;
-	kv_ratio = ((double)key_size) / value_size;
-
+	uint32_t kv_size = sizeof(uint32_t) + key_size + sizeof(uint32_t) + value_size /* + sizeof(uint64_t) */;
 	if (kv_size > KV_MAX_SIZE) {
 		log_fatal("Key buffer overflow %u", kv_size);
 		BUG_ON();
 	}
+	double kv_ratio = ((double)key_size) / value_size;
+	if (value_size < key_size)
+		kv_ratio = ((double)value_size) / key_size;
+#define MAX_KV_IN_PLACE_SIZE (1024)
+	if (key_size + value_size > MAX_KV_IN_PLACE_SIZE)
+		kv_ratio = 0; /*Forcefully characterize it as BIG_INLOG*/
 
 	/*prepare the request*/
 	*(uint32_t *)key_buf = key_size;
