@@ -85,6 +85,13 @@ static void pr_flush_allocation_log_and_level_info(struct db_descriptor *db_desc
 	pr_flush_db_superblock(db_desc);
 }
 
+/*
+ *Persists L0 key value pairs in storage making it recoverable.
+* @param db_desc is the descriptor of the db
+* @param tree_id The id of the tree in L0. Parallax performs double buffering
+* in L0 during a compaction operation from L0 to L1. As a result, valid tree_id
+* values are from 0 to NUM_TREES_PER_LEVEL-1.
+*/
 void pr_flush_L0(struct db_descriptor *db_desc, uint8_t tree_id)
 {
 	if (!db_desc->dirty) {
@@ -276,6 +283,11 @@ static void pr_flush_Lmax_to_Ln(struct db_descriptor *db_desc, uint8_t level_id,
 	rul_apply_txn_buf_freeops_and_destroy(db_desc, txn_id);
 }
 
+/*Persists the results of a compaction from Li to Li+1 where i >= 1.
+ * @param db_desc the descriptor of the database @param level_id the id of
+ * level i+1
+ * @param tree_id
+ */
 void pr_flush_compaction(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
 {
 	if (level_id == 1) {
