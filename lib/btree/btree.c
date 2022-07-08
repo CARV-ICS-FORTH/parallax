@@ -208,10 +208,10 @@ static void calculate_metadata_offsets(uint32_t bitmap_entries, uint32_t slot_ar
 static void init_leaf_sizes_perlevel(level_descriptor *level)
 {
 	double kv_leaf_entry = sizeof(struct bt_leaf_entry) + sizeof(struct bt_static_leaf_slot_array) + (1 / CHAR_BIT);
-	double numentries_without_metadata;
-	uint32_t bitmap_entries;
-	uint32_t slot_array_entries;
-	uint32_t kv_entries;
+	double numentries_without_metadata = 0;
+	uint32_t bitmap_entries = 0;
+	uint32_t slot_array_entries = 0;
+	uint32_t kv_entries = 0;
 
 	numentries_without_metadata = (level->leaf_size - sizeof(struct bt_static_leaf_node)) / kv_leaf_entry;
 	bitmap_entries = (numentries_without_metadata / CHAR_BIT) + 1;

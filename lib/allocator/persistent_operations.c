@@ -36,7 +36,8 @@ struct log_info {
 	uint64_t size;
 };
 
-/*<new_persistent_design>*/
+/**
+ *<new_persistent_design>*/
 static void pr_flush_allocation_log_and_level_info(struct db_descriptor *db_desc, uint8_t src_level_id,
 						   uint8_t dst_level_id, uint8_t tree_id)
 {
@@ -231,6 +232,10 @@ static void pr_flush_L0_to_L1(struct db_descriptor *db_desc, uint8_t level_id, u
 	rul_apply_txn_buf_freeops_and_destroy(db_desc, txn_id);
 }
 
+/**
+* Flushes compaction from level Lmax where the medium KV pairs are transferred
+* from the medium log to in-place
+*/
 static void pr_flush_Lmax_to_Ln(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
 {
 	log_debug("Flushing Lmax to Ln!");

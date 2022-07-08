@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#define _GNU_SOURCE /* See feature_test_macros(7) */
+#define _GNU_SOURCE
 
 #include "compaction_daemon.h"
 #include "../../utilities/dups_list.h"
