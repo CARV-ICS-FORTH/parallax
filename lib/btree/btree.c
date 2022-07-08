@@ -359,8 +359,8 @@ void init_log_buffer(struct log_descriptor *log_desc, enum log_type log_type)
 	// set proper accounting
 	uint64_t offt_in_seg = log_desc->size % SEGMENT_SIZE;
 	uint32_t n_chunks = offt_in_seg / LOG_CHUNK_SIZE;
-	uint32_t i;
-	for (i = 0; i < n_chunks; ++i) {
+	uint32_t i = 0;
+	for (; i < n_chunks; ++i) {
 		log_desc->tail[0]->bytes_in_chunk[i] = LOG_CHUNK_SIZE;
 		++log_desc->tail[0]->IOs_completed_in_tail;
 		log_info("bytes_in_chunk[%u] = %u", i, log_desc->tail[0]->bytes_in_chunk[i]);
@@ -937,6 +937,31 @@ void wait_for_available_level0_tree(db_handle *handle, uint8_t level_id, uint8_t
 	}
 }
 
+static enum kv_category calculate_KV_category(uint32_t key_size, uint32_t value_size, request_type op_type)
+{
+	if (op_type == deleteOp)
+		return SMALL_INPLACE;
+
+	/*We always use as nominator the smallest value of the pair <key size, value size>*/
+	double kv_ratio = ((double)key_size) / value_size;
+	if (value_size < key_size)
+		kv_ratio = ((double)value_size) / key_size;
+
+	if (key_size + value_size > MAX_KV_IN_PLACE_SIZE)
+		kv_ratio = 0; /*Forcefully characterize it as BIG_INLOG*/
+
+	enum kv_category category = SMALL_INPLACE;
+	if (kv_ratio >= 0.0 && kv_ratio < 0.02)
+		category = BIG_INLOG;
+	else if (kv_ratio >= 0.02 && kv_ratio <= 0.2)
+#if MEDIUM_LOG_UNSORTED
+		category = MEDIUM_INLOG;
+#else
+		category = MEDIUM_INPLACE;
+#endif
+	return category;
+}
+
 uint8_t insert_key_value(db_handle *handle, void *key, void *value, uint32_t key_size, uint32_t value_size,
 			 request_type op_type)
 {
@@ -964,13 +989,6 @@ uint8_t insert_key_value(db_handle *handle, void *key, void *value, uint32_t key
 		log_fatal("Key buffer overflow %u", kv_size);
 		BUG_ON();
 	}
-	/*We always use as nominator the smallest value of the pair <key size, value size>*/
-	double kv_ratio = ((double)key_size) / value_size;
-	if (value_size < key_size)
-		kv_ratio = ((double)value_size) / key_size;
-#define MAX_KV_IN_PLACE_SIZE (1024)
-	if (key_size + value_size > MAX_KV_IN_PLACE_SIZE)
-		kv_ratio = 0; /*Forcefully characterize it as BIG_INLOG*/
 
 	/*prepare the request*/
 	*(uint32_t *)key_buf = key_size;
@@ -987,20 +1005,7 @@ uint8_t insert_key_value(db_handle *handle, void *key, void *value, uint32_t key
 	ins_req.metadata.special_split = 0;
 	ins_req.metadata.tombstone = op_type == deleteOp;
 
-	if (kv_ratio >= 0.0 && kv_ratio < 0.02) {
-		ins_req.metadata.cat = BIG_INLOG;
-	} else if (kv_ratio >= 0.02 && kv_ratio <= 0.2) {
-#if MEDIUM_LOG_UNSORTED
-		ins_req.metadata.cat = MEDIUM_INLOG;
-#else
-		ins_req.metadata.cat = MEDIUM_INPLACE;
-#endif
-	} else {
-		ins_req.metadata.cat = SMALL_INPLACE;
-	}
-
-	if (op_type == deleteOp)
-		ins_req.metadata.cat = SMALL_INPLACE;
+	ins_req.metadata.cat = calculate_KV_category(key_size, value_size, op_type);
 
 	/*
 * Note for L0 inserts since active_tree changes dynamically we decide which
@@ -1037,7 +1042,6 @@ uint8_t serialized_insert_key_value(db_handle *handle, const char *serialized_ke
 	}
 	uint32_t value_size = VALUE_SIZE(serialized_key_value + key_size + sizeof(key_size));
 	uint32_t kv_size = sizeof(uint32_t) + key_size + sizeof(uint32_t) + value_size;
-	double kv_ratio = ((double)key_size) / value_size;
 
 	if (kv_size > KV_MAX_SIZE) {
 		log_fatal("Key buffer overflow %u", kv_size);
@@ -1045,18 +1049,7 @@ uint8_t serialized_insert_key_value(db_handle *handle, const char *serialized_ke
 	}
 
 	ins_req.metadata.kv_size = kv_size;
-
-	if (kv_ratio >= 0.0 && kv_ratio < 0.02) {
-		ins_req.metadata.cat = BIG_INLOG;
-	} else if (kv_ratio >= 0.02 && kv_ratio <= 0.2) {
-#if MEDIUM_LOG_UNSORTED
-		ins_req.metadata.cat = MEDIUM_INLOG;
-#else
-		ins_req.metadata.cat = MEDIUM_INPLACE;
-#endif
-	} else {
-		ins_req.metadata.cat = SMALL_INPLACE;
-	}
+	ins_req.metadata.cat = calculate_KV_category(key_size, value_size, insertOp);
 
 	return _insert_key_value(&ins_req);
 }

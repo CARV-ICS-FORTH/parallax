@@ -37,6 +37,7 @@
 #define DEVICE_BLOCK_SIZE (4096)
 #define MEDIUM_LOG_UNSORTED 0
 #define MAX_KEY_SIZE (255)
+#define MAX_KV_IN_PLACE_SIZE (1024)
 
 #define WORD_SIZE (64)
 #define BREAKPOINT asm volatile("int3;");
