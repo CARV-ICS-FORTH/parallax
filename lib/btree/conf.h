@@ -18,7 +18,9 @@
 #define SPIN_LOCK(L) pthread_spin_lock(L)
 #define SPIN_UNLOCK(L) pthread_spin_unlock(L)
 
-/*Important note Condition variables are not defined*/
+/**
+  * Important note Condition variables are not defined*
+  */
 #define MUTEX_INIT(L, attr) pthread_mutex_init(L, attr)
 #define MUTEX_LOCK(L) pthread_mutex_lock(L)
 #define MUTEX_TRYLOCK(L) pthread_mutex_trylock(L)
@@ -37,6 +39,7 @@
 #define DEVICE_BLOCK_SIZE (4096)
 #define MEDIUM_LOG_UNSORTED 0
 #define MAX_KEY_SIZE (255)
+#define MAX_KV_IN_PLACE_SIZE (1024)
 
 #define WORD_SIZE (64)
 #define BREAKPOINT asm volatile("int3;");

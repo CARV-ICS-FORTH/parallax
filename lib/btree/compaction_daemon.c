@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#define _GNU_SOURCE /* See feature_test_macros(7) */
+#define _GNU_SOURCE
 
 #include "compaction_daemon.h"
 #include "../../utilities/dups_list.h"
@@ -804,7 +804,7 @@ static void comp_append_entry_to_leaf_node(struct comp_level_write_cursor *curso
 	if (write_leaf_args.cat == MEDIUM_INLOG &&
 	    write_leaf_args.level_id == cursor->handle->db_desc->level_medium_inplace) {
 		write_leaf_args.key_value_buf = fetch_kv_from_LRU(&write_leaf_args, cursor);
-		assert(KEY_SIZE(write_leaf_args.key_value_buf) < MAX_KEY_SIZE);
+		assert(KEY_SIZE(write_leaf_args.key_value_buf) <= MAX_KEY_SIZE);
 		write_leaf_args.cat = MEDIUM_INPLACE;
 
 		kv_size = sizeof(uint32_t) + KEY_SIZE(write_leaf_args.key_value_buf);

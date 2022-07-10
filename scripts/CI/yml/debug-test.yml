@@ -173,6 +173,19 @@ debug_test_dirty_scans_smalld:
         - ctest -R ^test_dirty_scans_smalld$
     needs: [debug_build_gcc, debug_build_clang]
 
+debug_test_dirty_scans_smalld_greater:
+    image: carvicsforth/arch_carv:latest
+    stage: debug_test
+    <<: *debug_build_commands
+    tags:
+        - kubernetes
+    script:
+        - make test_dirty_scans;make kv_format.parallax;cd tests;
+        - ./mkfs.sh "$NVME0/$CI_JOB_ID"/kv_store.dat 128
+        - ctest -R ^test_dirty_scans_sd_greater$
+    when: manual
+    needs: [debug_build_gcc, debug_build_clang]
+
 debug_test_dirty_scans_mediumd:
     image: carvicsforth/arch_carv:latest
     stage: debug_test
