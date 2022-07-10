@@ -47,7 +47,7 @@ struct par_key {
 	const char *data;
 };
 
-/*
+/**
  * If val_buffer is not NULL during a get operation val_buffer_size keeps the
  * size of the application preallocated buffer where Parallax will copy there
  * the corresponding value of the key. If val_buffer is NULL Parallax ignores
