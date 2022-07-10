@@ -133,7 +133,6 @@ release_test_dirty_scans_smalld:
         - ctest -R ^test_dirty_scans_smalld$
     needs: [release_build_gcc, release_build_clang]
 
-
 release_test_dirty_scans_smalld_greater:
     image: carvicsforth/arch_carv:latest
     stage: release_test
@@ -143,10 +142,9 @@ release_test_dirty_scans_smalld_greater:
     script:
         - make test_dirty_scans;make kv_format.parallax;cd tests;
         - ./mkfs.sh "$NVME0/$CI_JOB_ID"/kv_store.dat 128
-        - ctest -R ^test_dirty_scans_smalld_greater$
+        - ctest -R ^test_dirty_scans_sd_greater$
     when: manual
     needs: [release_build_gcc, release_build_clang]
-
 
 release_test_dirty_scans_mediumd:
     image: carvicsforth/arch_carv:latest
