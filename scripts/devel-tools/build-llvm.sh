@@ -1,8 +1,10 @@
 #!/bin/bash
 set -xeu
-export CC=gcc-11.1.0
-export CXX=g++-11.1.0
-LLVMVERSION=13.0.0
+# shellcheck disable=SC2034
+CC=gcc-12.1.0
+# shellcheck disable=SC2034
+CXX=g++-12.1.0
+LLVMVERSION=14.0.6
 mkdir llvm-project
 cd llvm-project || exit
 
@@ -26,13 +28,8 @@ mv lldb-"$LLVMVERSION".src lldb
 
 mkdir build
 cd build || exit
+# For release > 14 you need to modify the CMakelists.txt file and remove every reference to the LLVM_THIRD_PARTY variable
 cmake3 -G Ninja ../llvm -DLLVM_ENABLE_PROJECTS="clang;clang-tools-extra;compiler-rt;lldb" -DCMAKE_BUILD_TYPE=Release
 
-ninja-build clang
-ninja-build clang-format
-ninja-build clangd
-ninja-build clang-tidy
-ninja-build lldb
-ninja-build llvm-symbolizer
-ninja-build compiler-rt
+ninja-build clang clang-format clangd clang-tidy lldb llvm-symbolizer compiler-rt
 echo "Export the bin directory to detect clang-format"
