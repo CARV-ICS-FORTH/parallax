@@ -332,3 +332,14 @@ release_test_mixes_45_small_50_medium_5_big:
         - make test_mixes;cd tests;
         - ctest -R ^test_mixes_45_small_50_medium_5_big$
     needs: [release_build_gcc, release_build_clang]
+
+release_tracer:
+    image: carvicsforth/arch_carv:latest
+    stage: release_test
+    <<: *release_build_commands
+    tags:
+        - kubernetes
+    script:
+        - make tracer;cd tracer;
+        - ctest -R ^tracer$
+    needs: [release_build_gcc, release_build_clang]
