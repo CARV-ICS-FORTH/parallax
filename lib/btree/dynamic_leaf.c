@@ -133,6 +133,7 @@ struct find_result find_key_in_dynamic_leaf(const struct bt_dynamic_leaf_node *l
 	req.metadata.level_id = level_id;
 	req.metadata.handle = &handle;
 	//validate_dynamic_leaf((void *) leaf, NULL, 0, 0);
+	//result.debug = 1;
 	binary_search_dynamic_leaf(leaf, leaf_size, &req, &result);
 
 	/* if(result.status != FOUND){ */
@@ -177,63 +178,74 @@ void binary_search_dynamic_leaf(const struct bt_dynamic_leaf_node *leaf, uint32_
 {
 	struct prefix leaf_key_prefix;
 	struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(leaf);
-	char *leaf_key_buf;
-	int32_t start = 0, middle, end = leaf->header.num_entries - 1;
+	char *leaf_key_buf = NULL;
+	int32_t start = 0, end = leaf->header.num_entries - 1;
 	const int32_t numberOfEntriesInNode = leaf->header.num_entries;
 	uint32_t offset_in_leaf;
 	int ret, ret_case;
-	uint32_t kv_size_in_leaf;
 	struct key_compare key1_cmp, key2_cmp;
 
 	while (numberOfEntriesInNode > 0) {
-		middle = (start + end) / 2;
+		int32_t middle = (start + end) / 2;
 		if (middle < 0 || middle >= numberOfEntriesInNode) {
 			result->status = ERROR;
+			assert(0);
 			return;
 		}
 
 		offset_in_leaf = slot_array[middle].index;
 		assert(offset_in_leaf < leaf_size);
 
-		char padded_prefix[PREFIX_SIZE];
+		// log_debug("Start %d end %d", start, end);
+		/**
+      * This buffer is usefull in cases where the key is stored in place and
+      * its size is smaller than PREFIX_SIZE
+      */
+		char padded_leaf_prefix[PREFIX_SIZE];
+		/**
+      *Initialized leaf key prefix either inside the index or the padded_prefix
+     * case
+    */
 		struct splice *key_buf = (struct splice *)get_kv_offset(leaf, leaf_size, offset_in_leaf);
 		if (get_kv_format(slot_array[middle].key_category) == KV_INPLACE && key_buf->size < PREFIX_SIZE) {
-			memset(padded_prefix, 0x00, PREFIX_SIZE);
-			memcpy(padded_prefix, key_buf->data, key_buf->size);
-			leaf_key_prefix.prefix = padded_prefix;
+			memset(padded_leaf_prefix, 0x00, PREFIX_SIZE);
+			memcpy(padded_leaf_prefix, key_buf->data, key_buf->size);
+			leaf_key_prefix.prefix = padded_leaf_prefix;
 			leaf_key_prefix.len = PREFIX_SIZE;
-		} else {
+		} else
 			fill_prefix(&leaf_key_prefix, get_kv_offset(leaf, leaf_size, offset_in_leaf),
 				    get_kv_format(slot_array[middle].key_category));
-		}
 
+		/**
+     * Next we check the look up key
+    */
 		if (req->metadata.key_format == KV_PREFIX) {
 			ret = prefix_compare(leaf_key_prefix.prefix, req->key_value_buf, PREFIX_SIZE);
-
-		} else {
-			if (*(uint32_t *)req->key_value_buf < PREFIX_SIZE) {
-				kv_size_in_leaf = strlen(leaf_key_prefix.prefix) + 1;
-				/* if the size of keys is equal don't compare there padded part
-				 *this fixes corner case where parallax compares same keys but one is padded
-				 */
-				if (kv_size_in_leaf == *(uint32_t *)req->key_value_buf)
-					ret = prefix_compare(leaf_key_prefix.prefix,
-							     req->key_value_buf + sizeof(uint32_t), kv_size_in_leaf);
-				else {
-					char padded_qkey_prefix[PREFIX_SIZE];
-					memset(padded_qkey_prefix, 0x0, PREFIX_SIZE);
-					memcpy(padded_qkey_prefix, req->key_value_buf + sizeof(uint32_t),
-					       *(uint32_t *)req->key_value_buf);
-					ret = prefix_compare(leaf_key_prefix.prefix, padded_qkey_prefix, PREFIX_SIZE);
-				}
-			} else {
-				if (result->debug == 1)
-					log_debug("%s %s", leaf_key_prefix.prefix, (char *)req->key_value_buf + 4);
-
-				ret = prefix_compare(leaf_key_prefix.prefix, req->key_value_buf + 4, PREFIX_SIZE);
-			}
+			// log_debug("Look up key %.*s leaf key %.*s", PREFIX_SIZE, req->key_value_buf, PREFIX_SIZE,
+			// 	  leaf_key_prefix.prefix);
+			goto check_comparison;
 		}
 
+		if (KEY_SIZE(req->key_value_buf) >= PREFIX_SIZE) {
+			ret = prefix_compare(leaf_key_prefix.prefix, req->key_value_buf + sizeof(uint32_t),
+					     PREFIX_SIZE);
+			// log_debug("Look up key %.*s leaf key %.*s", PREFIX_SIZE, req->key_value_buf + sizeof(uint32_t),
+			// 	  PREFIX_SIZE, leaf_key_prefix.prefix);
+			goto check_comparison;
+		}
+
+		/**
+      * Case we have a key in KV_FORMAT encoding that IS smaller than
+      * PREFIX_SIZE
+    */
+
+		char padded_lookupkey_prefix[PREFIX_SIZE] = { 0 };
+		memcpy(padded_lookupkey_prefix, req->key_value_buf + sizeof(uint32_t), KEY_SIZE(req->key_value_buf));
+		ret = prefix_compare(leaf_key_prefix.prefix, padded_lookupkey_prefix, PREFIX_SIZE);
+		// log_debug("Look up key smaller than PREFIX_SIZE lookup key %.*s leaf key %.*s", PREFIX_SIZE,
+		// 	  padded_lookupkey_prefix, PREFIX_SIZE, leaf_key_prefix.prefix);
+
+	check_comparison:
 		ret_case = ret < 0 ? LESS_THAN_ZERO : ret > 0 ? GREATER_THAN_ZERO : EQUAL_TO_ZERO;
 		struct bt_kv_log_address L = { .addr = NULL, .in_tail = 0, .tail_id = UINT8_MAX };
 
@@ -279,12 +291,13 @@ void binary_search_dynamic_leaf(const struct bt_dynamic_leaf_node *leaf, uint32_
 			}
 			case KV_FORMAT:
 
-				//log_info("Comparing index key %u:%s with query key :%u:%s", *(uint32_t *)L.addr,
-				//	 L.addr + 4, *(uint32_t *)req->key_value_buf, req->key_value_buf + 4);
 				/*key1 and key2 are KV_FORMATed*/
 				init_key_cmp(&key1_cmp, L.addr, KV_FORMAT);
 				init_key_cmp(&key2_cmp, req->key_value_buf, KV_FORMAT);
 				ret = key_cmp(&key1_cmp, &key2_cmp);
+				// log_info("Comparing index key %u:%s with query key :%u:%s result is %d",
+				// 	 *(uint32_t *)L.addr, L.addr + 4, *(uint32_t *)req->key_value_buf,
+				// 	 req->key_value_buf + 4, ret);
 				break;
 			default:
 				log_fatal("Corrupted key type");
@@ -527,7 +540,7 @@ struct bt_rebalance_result split_dynamic_leaf(struct bt_dynamic_leaf_node *leaf,
 	uint32_t key_size = KEY_SIZE(L.addr);
 	memcpy(rep.middle_key + sizeof(key_size), L.addr + sizeof(key_size), key_size);
 	*(uint32_t *)rep.middle_key = key_size;
-	assert(key_size + sizeof(key_size) < sizeof(rep.middle_key));
+	assert(key_size + sizeof(key_size) <= sizeof(rep.middle_key));
 
 	if (L.in_tail) {
 		struct log_descriptor *log_desc = NULL;
@@ -740,7 +753,7 @@ int reorganize_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, uint32_t leaf_siz
 {
 	enum kv_category cat = req->metadata.cat;
 	unsigned kv_size = (cat == BIG_INLOG || cat == MEDIUM_INLOG) ? sizeof(struct bt_leaf_entry) :
-									     req->metadata.kv_size;
+								       req->metadata.kv_size;
 
 	if (leaf->header.fragmentation <= kv_size || req->metadata.level_id != 0)
 		return 0;
@@ -847,7 +860,6 @@ int8_t insert_in_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, bt_insert_req *
 	case FOUND:;
 
 		struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(leaf);
-
 		if (slot_array[bsearch.middle].key_category == BIG_INLOG ||
 		    slot_array[bsearch.middle].key_category == MEDIUM_INLOG)
 			leaf->header.fragmentation += sizeof(struct bt_leaf_entry);
