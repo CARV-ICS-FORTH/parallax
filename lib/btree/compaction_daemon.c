@@ -336,41 +336,37 @@ static void comp_get_next_key(struct comp_level_read_cursor *c)
 				c->offset += level_leaf_size;
 				c->state = COMP_CUR_CHECK_OFFT;
 				break;
-			} else {
-				struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(leaf);
-
-				c->category = slot_array[c->curr_leaf_entry].key_category;
-				c->cursor_key.tombstone = slot_array[c->curr_leaf_entry].tombstone;
-				char *kv_loc =
-					get_kv_offset(leaf, level_leaf_size, slot_array[c->curr_leaf_entry].index);
-				switch (c->category) {
-				case SMALL_INPLACE:
-				case MEDIUM_INPLACE: {
-					// Real key in KV_FORMAT
-					c->cursor_key.kv_inplace = fill_keybuf(
-						kv_loc, get_kv_format(slot_array[c->curr_leaf_entry].key_category));
-					break;
-				}
-				case MEDIUM_INLOG:
-				case BIG_INLOG: {
-					// fill_prefix(&c->cursor_key.P, kv_loc,
-					// slot_array[c->curr_leaf_entry].bitmap);
-					// c->category);
-					c->cursor_key.kv_inlog = (struct bt_leaf_entry *)kv_loc;
-					c->cursor_key.kv_inlog->dev_offt =
-						(uint64_t)REAL_ADDRESS(c->cursor_key.kv_inlog->dev_offt);
-					// log_info("prefix is %.12s dev_offt %llu",
-					// c->cursor_key.in_log->prefix,
-					//	 c->cursor_key.in_log->device_offt);
-					break;
-				}
-				default:
-					log_fatal("Cannot handle this category");
-					BUG_ON();
-				}
-				++c->curr_leaf_entry;
-				return;
 			}
+			struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(leaf);
+
+			c->category = slot_array[c->curr_leaf_entry].key_category;
+			c->cursor_key.tombstone = slot_array[c->curr_leaf_entry].tombstone;
+			char *kv_loc = get_kv_offset(leaf, level_leaf_size, slot_array[c->curr_leaf_entry].index);
+			switch (c->category) {
+			case SMALL_INPLACE:
+			case MEDIUM_INPLACE: {
+				// Real key in KV_FORMAT
+				c->cursor_key.kv_inplace =
+					fill_keybuf(kv_loc, get_kv_format(slot_array[c->curr_leaf_entry].key_category));
+				break;
+			}
+			case MEDIUM_INLOG:
+			case BIG_INLOG: {
+				// fill_prefix(&c->cursor_key.P, kv_loc,
+				// slot_array[c->curr_leaf_entry].bitmap);
+				// c->category);
+				c->cursor_key.kv_inlog = (struct bt_leaf_entry *)kv_loc;
+				c->cursor_key.kv_inlog->dev_offt =
+					(uint64_t)REAL_ADDRESS(c->cursor_key.kv_inlog->dev_offt);
+				// log_debug("prefix is %.*s", PREFIX_SIZE, c->cursor_key.kv_inlog->prefix);
+				break;
+			}
+			default:
+				log_fatal("Cannot handle this category");
+				BUG_ON();
+			}
+			++c->curr_leaf_entry;
+			return;
 		}
 
 		case COMP_CUR_FIND_LEAF: {
@@ -737,21 +733,21 @@ static int comp_append_medium_L1(struct comp_level_write_cursor *c, struct comp_
 	log_op.metadata = &ins_req.metadata;
 	log_op.optype_tolog = insertOp;
 	log_op.ins_req = &ins_req;
-	// log_info("Appending to medium log during compaction");
-	char *log_location = append_key_value_to_log(&log_op);
-	out->kv_inlog = &out->kvsep;
-	if (ins_req.metadata.kv_size >= PREFIX_SIZE)
-		memcpy(out->kv_inlog, in->kv_inplace + sizeof(uint32_t), PREFIX_SIZE);
-	else {
-		memset(out->kv_inlog, 0x00, PREFIX_SIZE);
-		memcpy(out->kv_inlog, in->kv_inplace + sizeof(uint32_t), ins_req.metadata.kv_size);
-	}
 
+	char *log_location = append_key_value_to_log(&log_op);
+
+	if (KEY_SIZE(in->kv_inplace) >= PREFIX_SIZE)
+		memcpy(out->kvsep.prefix, in->kv_inplace + sizeof(uint32_t), PREFIX_SIZE);
+	else {
+		memset(out->kvsep.prefix, 0x00, PREFIX_SIZE);
+		memcpy(out->kvsep.prefix, in->kv_inplace + sizeof(uint32_t), KEY_SIZE(in->kv_inplace));
+	}
+	out->kvsep.dev_offt = (uint64_t)log_location;
 	out->kv_category = MEDIUM_INLOG;
 	out->kv_type = KV_INLOG;
-	out->kv_inlog->dev_offt = (uint64_t)log_location;
+	out->kv_inlog = &out->kvsep;
 	out->tombstone = 0;
-	//log_info("Compact key %s", ins_req.key_value_buf + 4);
+
 	return 1;
 }
 
@@ -786,6 +782,7 @@ static void comp_append_entry_to_leaf_node(struct comp_level_write_cursor *curso
 		//log_info("Appending key in_place %u:%s", write_leaf_args.key_value_size,
 		//	 write_leaf_args.key_value_buf + sizeof(uint32_t));
 		break;
+
 	case KV_INLOG:
 		kv_size = sizeof(struct bt_leaf_entry);
 		write_leaf_args.kv_dev_offt = curr_key->kv_inlog->dev_offt;
@@ -1364,11 +1361,21 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 			RWLOCK_UNLOCK(&handle->db_desc->levels[comp_req->dst_level].guard_of_level.rx_lock);
 			break;
 		}
-
+		assert(nd_min.duplicate == 0 && nd_min.tombstone == 0);
 		if (!nd_min.duplicate) {
-			struct comp_parallax_key key;
-			memset(&key, 0, sizeof(key));
+			struct comp_parallax_key key = { 0 };
 			comp_fill_parallax_key(&nd_min, &key);
+			// if (nd_min.type == KV_FORMAT) {
+			// 	log_debug("Inserting key %u %.*s cat: %u", KEY_SIZE(nd_min.KV), KEY_SIZE(nd_min.KV),
+			// 		  nd_min.KV + sizeof(uint32_t), nd_min.cat);
+			// } else {
+			// 	log_debug("Prefix is %.*s cat %u", PREFIX_SIZE, nd_min.KV, nd_min.cat);
+			// 	struct bt_leaf_entry *tmp = (struct bt_leaf_entry *)nd_min.KV;
+			// 	char *full_key = (char *)tmp->dev_offt;
+			// 	log_debug("Full key %u %.*s", KEY_SIZE(full_key), KEY_SIZE(full_key),
+			// 		  full_key + sizeof(uint32_t));
+			// }
+
 			comp_append_entry_to_leaf_node(merged_level, &key);
 		}
 		// log_info("level size
