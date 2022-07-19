@@ -90,9 +90,9 @@ void init_key_cmp(struct key_compare *key_cmp, void *key_buf, char key_format)
  * @param   query_key_len: query_key length again in encoded form
  */
 
-int64_t key_cmp(struct key_compare *key1, struct key_compare *key2)
+int key_cmp(struct key_compare *key1, struct key_compare *key2)
 {
-	int64_t ret;
+	int ret;
 	uint32_t size;
 	/*we need the left most entry*/
 	if (key2->is_NIL == 1)
@@ -102,9 +102,7 @@ int64_t key_cmp(struct key_compare *key1, struct key_compare *key2)
 		return -1;
 
 	if (key1->key_format == KV_FORMAT && key2->key_format == KV_FORMAT) {
-		size = key1->key_size;
-		if (size > key2->key_size)
-			size = key2->key_size;
+		size = key1->key_size <= key2->key_size ? key1->key_size : key2->key_size;
 
 		ret = memcmp(key1->key, key2->key, size);
 		if (ret != 0)
@@ -118,22 +116,19 @@ int64_t key_cmp(struct key_compare *key1, struct key_compare *key2)
 			ret = prefix_compare(key1->key, key2->key, PREFIX_SIZE);
 		else
 			ret = prefix_compare(key1->key, key2->key, key1->key_size);
-		if (ret == 0) {
-			/*we have a tie, prefix didn't help, fetch query_key form KV log*/
-			struct kv_format *key2f = (struct kv_format *)key2->kv_dev_offt;
+		if (!ret)
+			return ret;
+		/*we have a tie, prefix didn't help, fetch query_key form KV log*/
+		struct kv_format *key2f = (struct kv_format *)key2->kv_dev_offt;
 
-			size = key1->key_size;
-			if (size > key2f->key_size)
-				size = key2f->key_size;
+		size = key1->key_size <= key2f->key_size ? key1->key_size : key2f->key_size;
 
-			ret = memcmp(key1->key, key2f->key_buf, size);
+		ret = memcmp(key1->key, key2f->key_buf, size);
 
-			if (ret != 0)
-				return ret;
+		if (ret != 0)
+			return ret;
 
-			return key1->key_size - key2f->key_size;
-		}
-		return ret;
+		return key1->key_size - key2f->key_size;
 	}
 
 	if (key1->key_format == KV_PREFIX && key2->key_format == KV_FORMAT) {
@@ -142,21 +137,18 @@ int64_t key_cmp(struct key_compare *key1, struct key_compare *key2)
 		else // check here TODO
 			ret = prefix_compare(key1->key, key2->key, key2->key_size);
 
-		if (ret == 0) {
-			/* we have a tie, prefix didn't help, fetch query_key form KV log*/
-			struct kv_format *key1f = (struct kv_format *)key1->kv_dev_offt;
+		if (!ret)
+			return ret;
+		/* we have a tie, prefix didn't help, fetch query_key form KV log*/
+		struct kv_format *key1f = (struct kv_format *)key1->kv_dev_offt;
 
-			size = key2->key_size;
-			if (size > key1f->key_size)
-				size = key1f->key_size;
+		size = key1f->key_size < key2->key_size ? key1f->key_size : key2->key_size;
 
-			ret = memcmp(key1f->key_buf, key2->key, size);
-			if (ret != 0)
-				return ret;
+		ret = memcmp(key1f->key_buf, key2->key, size);
+		if (ret != 0)
+			return ret;
 
-			return key1f->key_size - key2->key_size;
-		}
-		return ret;
+		return key1f->key_size - key2->key_size;
 	}
 
 	/*KV_PREFIX and KV_PREFIX*/
@@ -167,10 +159,7 @@ int64_t key_cmp(struct key_compare *key1, struct key_compare *key2)
 	struct kv_format *key1f = (struct kv_format *)key1->kv_dev_offt;
 	struct kv_format *key2f = (struct kv_format *)key2->kv_dev_offt;
 
-	size = key2f->key_size;
-	if (size > key1f->key_size) {
-		size = key1f->key_size;
-	}
+	size = key1f->key_size < key2f->key_size ? key1f->key_size : key2f->key_size;
 
 	ret = memcmp(key1f->key_buf, key2f->key_buf, size);
 	if (ret != 0)
@@ -1537,9 +1526,7 @@ static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id,
 		/* log_info("Level %d with tree_id %d has root_w",level_id,tree_id); */
 		root = db_desc->levels[level_id].root_r[tree_id];
 	} else {
-		/* log_info("Level %d is empty with tree_id %d",level_id,tree_id); */
-		/* if (RWLOCK_UNLOCK(&curr->rx_lock) != 0) */
-		/* 	BUG_ON(); */
+		//log_info("Level %d is empty with tree_id %d", level_id, tree_id);
 		get_op->found = 0;
 		return;
 	}
@@ -1652,9 +1639,10 @@ deser:
 			memcpy(get_op->buffer_to_pack_kv,
 			       kv.addr + sizeof(uint32_t) + KEY_SIZE(kv.addr) + sizeof(uint32_t), *value_size);
 			get_op->buffer_overflow = 0;
-		} else
-			get_op->buffer_overflow = *value_size;
-
+		} else {
+			get_op->buffer_overflow = 1; //*value_size;
+			assert(0);
+		}
 		get_op->found = 1;
 		if (get_op->tombstone)
 			get_op->key_device_address = NULL;
@@ -1860,7 +1848,7 @@ int is_split_needed(void *node, bt_insert_req *req, uint32_t leaf_size)
 	uint8_t level_id = req->metadata.level_id;
 
 	if (height != 0)
-		return index_is_split_needed((struct index_node *)node, MAX_KEY_SIZE);
+		return index_is_split_needed((struct index_node *)node, MAX_KEY_SIZE + sizeof(uint32_t));
 
 	enum kv_entry_location key_type = KV_INPLACE;
 
@@ -2058,8 +2046,8 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 {
 	/*The array with the locks that belong to this thread from upper levels*/
 	lock_table *upper_level_nodes[MAX_HEIGHT];
-	node_header *son;
-	lock_table *lock;
+	node_header *son = { 0 };
+	lock_table *lock = { 0 };
 
 	db_descriptor *db_desc = ins_req->metadata.handle->db_desc;
 	uint32_t level_id = ins_req->metadata.level_id;
@@ -2108,6 +2096,7 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 
 	upper_level_nodes[size++] = lock;
 	son = db_desc->levels[level_id].root_w[ins_req->metadata.tree_id];
+	assert(son->height);
 	while (1) {
 		if (is_split_needed(son, ins_req, db_desc->levels[level_id].leaf_size)) {
 			/*failed needs split*/
@@ -2119,7 +2108,6 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 		uint64_t child_offt = index_binary_search((struct index_node *)son, ins_req->key_value_buf,
 							  ins_req->metadata.key_format);
 		son = (node_header *)REAL_ADDRESS(child_offt);
-
 		assert(son);
 
 		if (son->height == 0)
