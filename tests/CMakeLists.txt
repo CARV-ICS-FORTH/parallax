@@ -3,6 +3,7 @@ include_directories(${CMAKE_SOURCE_DIR}/lib)
 
 if(BUILD_TESTING)
   set(LIB_TEST_FILES
+      tiresias.c
       test_recovery.c
       test_index_node.c
       test_scans.c
@@ -26,6 +27,9 @@ if(BUILD_TESTING)
 
   add_executable(test_dirty_scans test_dirty_scans.c arg_parser.c)
   target_link_libraries(test_dirty_scans "${PROJECT_NAME}" ${DEPENDENCIES})
+
+  add_executable(tiresias tiresias.c arg_parser.c)
+  target_link_libraries(tiresias "${PROJECT_NAME}" ${DEPENDENCIES})
 
   add_test(NAME test_index_node COMMAND $<TARGET_FILE:test_index_node>
                                         --file=${FILEPATH})
