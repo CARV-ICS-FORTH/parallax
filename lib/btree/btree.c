@@ -56,22 +56,30 @@ int prefix_compare(char *l, char *r, size_t prefix_size)
 void init_key_cmp(struct key_compare *key_cmp, void *key_buf, char key_format)
 {
 	key_cmp->is_NIL = key_buf == NULL;
+
 	if (key_cmp->is_NIL == 1)
 		return;
 
 	if (key_format == KV_FORMAT) {
 		key_cmp->key_size = *(uint32_t *)key_buf;
 		key_cmp->key = (char *)key_buf + sizeof(uint32_t);
+		key_cmp->kv_dev_offt = UINT64_MAX;
 		key_cmp->key_format = KV_FORMAT;
-	} else if (key_format == KV_PREFIX) {
+		if (key_cmp->key_size > 0)
+			return;
+		key_cmp->is_NIL = 1;
+		return;
+	}
+
+	if (key_format == KV_PREFIX) {
 		key_cmp->key_size = PREFIX_SIZE;
 		key_cmp->key = ((struct bt_leaf_entry *)key_buf)->prefix;
 		key_cmp->kv_dev_offt = ((struct bt_leaf_entry *)key_buf)->dev_offt;
 		key_cmp->key_format = KV_PREFIX;
-	} else {
-		log_fatal("Unknown key category, exiting");
-		BUG_ON();
+		return;
 	}
+	log_fatal("Unknown key category, exiting");
+	BUG_ON();
 }
 
 /**
