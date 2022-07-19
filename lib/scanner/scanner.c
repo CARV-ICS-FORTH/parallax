@@ -345,9 +345,9 @@ int32_t level_scanner_get_next(level_scanner *sc)
 			//log_debug("get_next kv");
 
 			if (++stack_element.idx >= stack_element.node->num_entries) {
-				//log_debug("Done with leaf from level %u Leaf: %lu idx is %d num_entries %d",
-				//	  sc->level_id, stack_element.node, stack_element.idx,
-				//	  stack_element.node->num_entries);
+				// log_debug("Done with leaf from level %u Leaf: %lu idx is %d num_entries %d",
+				//   sc->level_id, stack_element.node, stack_element.idx,
+				//   stack_element.node->num_entries);
 				read_unlock_node(sc, stack_element.node);
 				status = POP_STACK;
 				break;
@@ -365,7 +365,7 @@ int32_t level_scanner_get_next(level_scanner *sc)
 
 			return PARALLAX_SUCCESS;
 
-		case PUSH_STACK: {
+		case PUSH_STACK:;
 			//log_debug("Pushing stack");
 			struct pivot_pointer *pivot = index_iterator_get_pivot_pointer(&stack_element.iterator);
 			stack_push(&sc->stack, stack_element);
@@ -381,7 +381,6 @@ int32_t level_scanner_get_next(level_scanner *sc)
 
 			index_iterator_init((struct index_node *)stack_element.node, &stack_element.iterator);
 			break;
-		}
 
 		case POP_STACK:
 			stack_element = stack_pop(&(sc->stack));
@@ -418,7 +417,7 @@ int32_t level_scanner_seek(level_scanner *level_sc, void *start_key_buf, SEEK_SC
 	if (!start_key) {
 		memset(zero_key_buf, 0x00, sizeof(zero_key_buf));
 		start_key = (struct pivot_key *)zero_key_buf;
-		start_key->size = 1;
+		start_key->size = 0;
 	}
 
 	/*
@@ -450,7 +449,8 @@ int32_t level_scanner_seek(level_scanner *level_sc, void *start_key_buf, SEEK_SC
 
 	while (node->type != leafNode && node->type != leafRootNode) {
 		element.node = node;
-		index_iterator_init_with_key((struct index_node *)element.node, &element.iterator, start_key);
+		// index_iterator_init_with_key((struct index_node *)element.node, &element.iterator, start_key);
+		index_iterator_init_with_key((struct index_node *)element.node, &element.iterator, NULL);
 
 		if (!index_iterator_is_valid(&element.iterator)) {
 			log_fatal("Invalid index node iterator during seek");
