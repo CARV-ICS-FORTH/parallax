@@ -66,46 +66,6 @@ static void push_back_duplicate_kv(struct sh_heap *heap, struct sh_heap_node *hp
 			    key_size + value_size + (sizeof(uint32_t) * 2));
 }
 
-static struct bt_kv_log_address sh_translate_log_address(struct sh_heap_node *heap_node)
-{
-	struct bt_kv_log_address log_address = { .addr = NULL, .in_tail = 0, .tail_id = UINT8_MAX, .log_desc = NULL };
-
-	switch (heap_node->type) {
-	case KV_FORMAT:
-		log_address.addr = heap_node->KV;
-		break;
-	case KV_PREFIX: {
-		struct bt_leaf_entry *leaf_entry = (struct bt_leaf_entry *)heap_node->KV;
-		log_address.addr = (void *)leaf_entry->dev_offt;
-		break;
-	}
-	default:
-		log_fatal("Wrong category");
-		_Exit(EXIT_FAILURE);
-	}
-
-	switch (heap_node->cat) {
-	case BIG_INLOG:
-		if (!heap_node->level_id) {
-			log_address =
-				bt_get_kv_log_address(&heap_node->db_desc->big_log, ABSOLUTE_ADDRESS(log_address.addr));
-			log_address.log_desc = &heap_node->db_desc->big_log;
-		}
-		break;
-#if MEDIUM_LOG_UNSORTED
-	case MEDIUM_INLOG:
-		if (!heap_node->level_id)
-			log_address = bt_get_kv_log_address(&nd_1->db_desc->medium_log,
-							    ABSOLUTE_ADDRESS(log_address->pointer));
-		log_address.log_desc = &heap_node->db_desc->medium_log;
-		break;
-#endif
-	default:
-		break;
-	}
-	return log_address;
-}
-
 static int sh_solve_tie(struct sh_heap *heap, struct sh_heap_node *nd_1, struct sh_heap_node *nd_2)
 {
 	int ret = 1;
@@ -136,39 +96,70 @@ static int sh_solve_tie(struct sh_heap *heap, struct sh_heap_node *nd_1, struct 
 	return ret;
 }
 
-static int64_t sh_cmp_heap_nodes(struct sh_heap *hp, struct sh_heap_node *nd_1, struct sh_heap_node *nd_2)
+static int sh_prefix_compare(struct key_compare *key1, struct key_compare *key2)
 {
-	struct bt_kv_log_address L1 = sh_translate_log_address(nd_1);
-	struct bt_kv_log_address L2 = sh_translate_log_address(nd_2);
+	uint32_t size = key1->key_size <= key2->key_size ? key1->key_size : key2->key_size;
+	size = size < PREFIX_SIZE ? size : PREFIX_SIZE;
+
+	int ret = memcmp(key1->key, key2->key, size);
+
+	if (ret)
+		return ret;
+
+	if (PREFIX_SIZE == size)
+		return 0;
+
+	return key1->key_size - key2->key_size;
+}
+
+static int sh_cmp_heap_nodes(struct sh_heap *hp, struct sh_heap_node *nd_1, struct sh_heap_node *nd_2)
+{
 	struct key_compare key1_cmp = { 0 };
 	struct key_compare key2_cmp = { 0 };
+	init_key_cmp(&key1_cmp, nd_1->KV, nd_1->type);
+	init_key_cmp(&key2_cmp, nd_2->KV, nd_2->type);
 
-	int64_t ret = 0;
-	if (L1.in_tail && L2.in_tail) {
-		/*key1 and key2 are KV_FORMATed*/
-		init_key_cmp(&key1_cmp, L1.addr, KV_FORMAT);
-		init_key_cmp(&key2_cmp, L2.addr, KV_FORMAT);
-		ret = key_cmp(&key1_cmp, &key2_cmp);
-	} else if (L1.in_tail) {
-		/*key1 is KV_FORMATED key2 is nd2->type*/
-		init_key_cmp(&key1_cmp, L1.addr, KV_FORMAT);
-		init_key_cmp(&key2_cmp, nd_2->KV, nd_2->type);
-		ret = key_cmp(&key1_cmp, &key2_cmp);
-	} else if (L2.in_tail) {
-		/*key1 is nd1_type key2 is KV_FORMAT*/
-		init_key_cmp(&key1_cmp, nd_1->KV, nd_1->type);
-		init_key_cmp(&key2_cmp, L2.addr, KV_FORMAT);
-		ret = key_cmp(&key1_cmp, &key2_cmp);
-	} else {
-		/*key1 is nd1_type key2 is nd2_type*/
-		init_key_cmp(&key1_cmp, nd_1->KV, nd_1->type);
-		init_key_cmp(&key2_cmp, nd_2->KV, nd_2->type);
-		ret = key_cmp(&key1_cmp, &key2_cmp);
+	/**
+    * We use a custom prefix_compare for the following reason. Default
+    * key_comparator (key_cmp) for KV_PREFIX keys will fetch keys from storage if
+    * prefix comparison equals 0. This means that for KV_PREFIX we need to
+    * translate log pointers (if they belong to level 0) which is an expensive
+    * operation. To avoid this, since this code is executed for compactions and
+    * scans so it is in the critical path, we use a custom prefix_compare
+    * function that stops only in prefix comparison.
+    */
+	int ret = sh_prefix_compare(&key1_cmp, &key2_cmp);
+	if (ret) {
+		// log_debug("Result is %d", ret);
+		return ret;
 	}
-	if (L1.in_tail)
-		bt_done_with_value_log_address(L1.log_desc, &L1);
-	if (L2.in_tail)
-		bt_done_with_value_log_address(L2.log_desc, &L2);
+	/**
+    * Going for full key comparison, we are going to end up in the full key
+    * comparator
+  */
+	struct bt_kv_log_address key1 = { 0 };
+	if (key1_cmp.key_format == KV_PREFIX) {
+		key1.addr = (char *)key1_cmp.kv_dev_offt;
+		if (nd_1->cat == BIG_INLOG && 0 == nd_1->level_id)
+			key1 = bt_get_kv_log_address(&nd_1->db_desc->big_log, key1_cmp.kv_dev_offt);
+		init_key_cmp(&key1_cmp, key1.addr, KV_FORMAT);
+	}
+
+	struct bt_kv_log_address key2 = { 0 };
+	if (key2_cmp.key_format == KV_PREFIX) {
+		key2.addr = (char *)key2_cmp.kv_dev_offt;
+		if (nd_2->cat == BIG_INLOG && 0 == nd_2->level_id)
+			key2 = bt_get_kv_log_address(&nd_2->db_desc->big_log, key2_cmp.kv_dev_offt);
+		init_key_cmp(&key2_cmp, key2.addr, KV_FORMAT);
+	}
+
+	ret = key_cmp(&key1_cmp, &key2_cmp);
+	key1.in_tail ? bt_done_with_value_log_address(key1.log_desc, &key1) : (void)key1;
+	key2.in_tail ? bt_done_with_value_log_address(key2.log_desc, &key2) : (void)key2;
+
+	// log_debug("Result is %d", ret);
+	if (ret)
+		return ret;
 
 	return ret ? ret : sh_solve_tie(hp, nd_1, nd_2);
 }
