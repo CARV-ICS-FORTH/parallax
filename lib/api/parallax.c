@@ -97,7 +97,7 @@ par_ret_code par_get(par_handle handle, struct par_key *key, struct par_value *v
 					   .kv_buf = kv_buf,
 					   .buffer_to_pack_kv = NULL,
 					   .size = 0,
-					   .buffer_overflow = 1,
+					   .buffer_overflow = 0,
 					   .found = 0,
 					   .tombstone = 0,
 					   .retrieve = 1 };
@@ -111,11 +111,11 @@ par_ret_code par_get(par_handle handle, struct par_key *key, struct par_value *v
 	if (malloced)
 		free(kv_buf);
 
-	if (get_op.buffer_overflow)
-		return PAR_GET_NOT_ENOUGH_BUFFER_SPACE;
-
 	if (!get_op.found)
 		return PAR_KEY_NOT_FOUND;
+
+	if (get_op.buffer_overflow)
+		return PAR_GET_NOT_ENOUGH_BUFFER_SPACE;
 
 	value->val_buffer = get_op.buffer_to_pack_kv;
 	value->val_size = get_op.size;
@@ -183,7 +183,7 @@ par_scanner par_init_scanner(par_handle handle, struct par_key *key, par_seek_mo
 		uint32_t key_size;
 		char key[];
 	};
-	char smallest_key[4] = { '\0' };
+	char smallest_key[8] = { '\0' };
 	struct scannerHandle *sc = NULL;
 	struct par_scanner *par_s = NULL;
 	struct par_seek_key *seek_key = NULL;
