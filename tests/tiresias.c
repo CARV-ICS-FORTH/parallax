@@ -10,7 +10,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 #include "../btree/conf.h"
-#include "../btree/gc.h"
 #include "arg_parser.h"
 #include <assert.h>
 #include <db.h>
@@ -40,7 +39,7 @@ struct workload_config_t {
 static void generate_random_key(unsigned char *key_buffer, uint32_t key_size)
 {
 	for (uint32_t i = 0; i < key_size; i++)
-		key_buffer[i] = rand() % 93 + 33;
+		key_buffer[i] = rand() % 256;
 }
 
 static void generate_random_value(char *value_buffer, uint32_t value_size, uint32_t id)
@@ -145,7 +144,7 @@ static void get_workload(struct workload_config_t *workload_config)
 				"Key is size: %u data: %.*s not found! keys found so far %lu code is %d insert order was %lu",
 				key.size, key.size, (char *)key.data, unique_keys, get_status, insert_order);
 			locate_key(workload_config->handle, key);
-			continue;
+			_exit(EXIT_FAILURE);
 		}
 		if (value.val_size != data.size) {
 			log_fatal("Value sizes mismatch waited %u got %u", data.size, value.val_size);
@@ -262,7 +261,6 @@ int main(int argc, char **argv)
 	db_options.volume_start = 0;
 	db_options.volume_size = 0;
 	db_options.create_flag = PAR_CREATE_DB;
-	disable_gc();
 	par_handle hd = par_open(&db_options);
 
 	struct workload_config_t workload_config = {
@@ -283,7 +281,7 @@ int main(int argc, char **argv)
 	}
 
 	par_close(hd);
-	truth->remove(truth, truth_db, NULL, 0);
+	truth->close(truth, 0);
 
 	return 0;
 }
