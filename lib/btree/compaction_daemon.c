@@ -1187,9 +1187,11 @@ static void print_heap_node_key(struct sh_heap_node *nd)
 		log_debug("In place Key is %u:%s", *(uint32_t *)nd->KV, (char *)nd->KV + sizeof(uint32_t));
 		break;
 	case BIG_INLOG:
-	case MEDIUM_INLOG:
-		log_debug("In log Key prefix is %.12s device offt %lu", (char *)nd->KV,
-			  *(uint64_t *)(nd->KV + PREFIX_SIZE));
+	case MEDIUM_INLOG:;
+		char *full_key = (char *)((struct bt_leaf_entry *)nd->KV)->dev_offt;
+
+		log_debug("In log Key prefix is %.*s full key size: %u  full key data %.*s", PREFIX_SIZE,
+			  (char *)nd->KV, KEY_SIZE(full_key), KEY_SIZE(full_key), full_key + sizeof(uint32_t));
 		break;
 	default:
 		log_fatal("Unhandle/Unknown category");
@@ -1336,13 +1338,13 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 		comp_fill_heap_node(comp_req, l_src, &nd_src);
 	}
 
-	print_heap_node_key(&nd_src);
+	// print_heap_node_key(&nd_src);
 	nd_src.db_desc = comp_req->db_desc;
 	sh_insert_heap_node(m_heap, &nd_src);
 	// init Li+1 cursor (if any)
 	if (l_dst) {
 		comp_fill_heap_node(comp_req, l_dst, &nd_dst);
-		log_debug("Initializing heap from DST read cursor level %u", comp_req->dst_level);
+		// log_debug("Initializing heap from DST read cursor level %u", comp_req->dst_level);
 		print_heap_node_key(&nd_dst);
 		nd_dst.db_desc = comp_req->db_desc;
 		sh_insert_heap_node(m_heap, &nd_dst);
