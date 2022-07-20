@@ -338,3 +338,36 @@ debug_test_par_put_serialized:
         - make test_par_put_serialized;cd tests;
         - ctest -R ^test_par_put_serialized$
     needs: [debug_build_gcc, debug_build_clang]
+
+debug_test_medium:
+    image: carvicsforth/arch_carv:latest
+    stage: debug_test
+    <<: *debug_build_commands
+    tags:
+        - kubernetes
+    script:
+        - make test_mixes;cd tests;
+        - ctest -R ^test_medium$
+    needs: [debug_build_gcc, debug_build_clang]
+
+debug_test_mixes_99_small_1_medium:
+    image: carvicsforth/arch_carv:latest
+    stage: debug_test
+    <<: *debug_build_commands
+    tags:
+        - kubernetes
+    script:
+        - make test_mixes;cd tests;
+        - ctest -R ^test_mixes_99_small_1_medium$
+    needs: [debug_build_gcc, debug_build_clang]
+
+debug_test_mixes_45_small_50_medium_5_big:
+    image: carvicsforth/arch_carv:latest
+    stage: debug_test
+    <<: *debug_build_commands
+    tags:
+        - kubernetes
+    script:
+        - make test_mixes;cd tests;
+        - ctest -R ^test_mixes_45_small_50_medium_5_big$
+    needs: [debug_build_gcc, debug_build_clang]

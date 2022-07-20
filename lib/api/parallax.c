@@ -189,15 +189,16 @@ par_scanner par_init_scanner(par_handle handle, struct par_key *key, par_seek_mo
 	struct par_seek_key *seek_key = NULL;
 	char free_seek_key = 0;
 
-	enum SEEK_SCANNER_MODE native_mode = 0;
+	enum SEEK_SCANNER_MODE scanner_mode = 0;
 	switch (mode) {
 	case PAR_GREATER:
-		native_mode = GREATER;
+		scanner_mode = GREATER;
 		goto init_seek_key;
 	case PAR_GREATER_OR_EQUAL:
-		native_mode = GREATER_OR_EQUAL;
+		scanner_mode = GREATER_OR_EQUAL;
 		goto init_seek_key;
 	case PAR_FETCH_FIRST: {
+		scanner_mode = GREATER_OR_EQUAL;
 		uint32_t *size = (uint32_t *)smallest_key;
 		*size = 1;
 		//fill the seek_key with the smallest key of the region
@@ -235,7 +236,7 @@ init_scanner:
 	}
 
 	sc->type_of_scanner = FORWARD_SCANNER;
-	init_dirty_scanner(sc, hd, seek_key, native_mode);
+	init_dirty_scanner(sc, hd, seek_key, scanner_mode);
 	par_s->sc = sc;
 	par_s->allocated = 0;
 	par_s->buf_size = PAR_MAX_PREALLOCATED_SIZE;
@@ -328,7 +329,6 @@ struct par_key par_get_key(par_scanner sc)
 	return key;
 }
 
-// cppcheck-suppress unusedFunction
 struct par_value par_get_value(par_scanner sc)
 {
 	struct par_scanner *par_s = (struct par_scanner *)sc;

@@ -7,7 +7,7 @@
 
 int main(int argc, char *argv[])
 {
-	int help_flag;
+	int help_flag = 0;
 	struct wrap_option options[] = {
 		{ { "help", no_argument, &help_flag, 1 }, "Prints valid arguments for test_medium.", NULL, INTEGER },
 		{ { "file", required_argument, 0, 'a' },

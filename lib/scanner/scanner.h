@@ -54,25 +54,6 @@ typedef struct scannerHandle {
 	SCANNER_TYPE type_of_scanner;
 } scannerHandle;
 
-/*
- * Standalone version
- *
- * Example use to print all the database in sorted order:
- *
- * scannerHandle *scanner = init_dirty_scanner(db, NULL);
- * while(isValid(scanner)){
- * 		std::cout << "[" << entries
- *							<< "][" << getKeySize(scanner)
- *							<< "][" << (char *)getKeyPtr(scanner)
- *							<< "][" << getValueSize(scanner)
- *							<< "][" << (char *)getValuePtr(scanner)
- *							<< "]"
- *							<< std::endl;
- *		getNextKV(scanner);
- * }
- * closeScanner(scanner);
- */
-
 int32_t level_scanner_seek(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER_MODE mode);
 int32_t level_scanner_get_next(level_scanner *sc);
 void init_dirty_scanner(scannerHandle *sc, db_handle *handle, void *start_key, char seek_flag);
@@ -82,10 +63,6 @@ void seek_to_last(scannerHandle *sc, db_handle *handle);
 
 int32_t getNext(scannerHandle *sc);
 int32_t getPrev(scannerHandle *sc);
-int isValid(scannerHandle *sc);
-int32_t get_key_size(scannerHandle *sc);
-int32_t get_value_size(scannerHandle *sc);
-uint32_t get_kv_size(scannerHandle *sc);
 /**
  * __seek_scanner: positions the cursor to the appropriate position returns:
  * SUCCESS: Cursor positioned END_OF_DATABASE: End of database reached
