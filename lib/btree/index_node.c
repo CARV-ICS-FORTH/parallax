@@ -76,16 +76,19 @@ static uint32_t index_get_remaining_space(struct index_node *node)
 static uint32_t index_get_next_pivot_offt_in_node(struct index_node *node, struct pivot_key *key)
 {
 	uint32_t remaining_space = index_get_remaining_space(node);
+	uint32_t size_needed = PIVOT_SIZE(key) + sizeof(struct index_slot_array_entry);
 	//log_debug("Remaining space %u pivot_size: %lu", remaining_space, PIVOT_SIZE(key));
-	return (remaining_space <= (PIVOT_SIZE(key) + sizeof(struct pivot_pointer))) ?
-		       0 :
-		       node->header.key_log_size - PIVOT_SIZE(key);
+	return remaining_space <= size_needed ? 0 : node->header.key_log_size - PIVOT_SIZE(key);
 }
 
 bool index_is_split_needed(struct index_node *node, uint32_t max_pivot_size)
 {
-	max_pivot_size += sizeof(uint32_t) * 2;
+	max_pivot_size += sizeof(uint32_t) + sizeof(struct pivot_pointer) + sizeof(struct index_slot_array_entry);
+	// max_pivot_size += (2*sizeof(uint64_t));
 	uint32_t remaining_space = index_get_remaining_space(node);
+	// if(remaining_space < max_pivot_size){
+	//    log_debug("remaining_space %u max_pivot_size %u",remaining_space,max_pivot_size);
+	//  }
 	return remaining_space < max_pivot_size;
 }
 
