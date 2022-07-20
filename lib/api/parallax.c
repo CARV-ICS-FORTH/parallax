@@ -200,7 +200,7 @@ par_scanner par_init_scanner(par_handle handle, struct par_key *key, par_seek_mo
 	case PAR_FETCH_FIRST: {
 		scanner_mode = GREATER_OR_EQUAL;
 		uint32_t *size = (uint32_t *)smallest_key;
-		*size = 1;
+		*size = 0;
 		//fill the seek_key with the smallest key of the region
 		seek_key = (struct par_seek_key *)tmp;
 		seek_key->key_size = *size;
