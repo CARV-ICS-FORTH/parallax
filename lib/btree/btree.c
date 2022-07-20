@@ -1848,7 +1848,7 @@ int is_split_needed(void *node, bt_insert_req *req, uint32_t leaf_size)
 	uint8_t level_id = req->metadata.level_id;
 
 	if (height != 0)
-		return index_is_split_needed((struct index_node *)node, MAX_KEY_SIZE + sizeof(uint32_t));
+		return index_is_split_needed((struct index_node *)node, MAX_KEY_SIZE);
 
 	enum kv_entry_location key_type = KV_INPLACE;
 
@@ -1976,7 +1976,10 @@ release_and_retry:
 					.key = (struct pivot_key *)split_res.middle_key,
 					.right_child = &right
 				};
-				index_insert_pivot(&ins_pivot_req);
+				if (!index_insert_pivot(&ins_pivot_req)) {
+					log_fatal("Cannot insert pivot!");
+					_exit(EXIT_FAILURE);
+				}
 				/*new write root of the tree*/
 				db_desc->levels[level_id].root_w[ins_req->metadata.tree_id] = (node_header *)new_root;
 				goto release_and_retry;
@@ -1988,7 +1991,10 @@ release_and_retry:
 								  .left_child = &left,
 								  .key = (struct pivot_key *)split_res.middle_key,
 								  .right_child = &right };
-			index_insert_pivot(&ins_pivot_req);
+			if (!index_insert_pivot(&ins_pivot_req)) {
+				log_fatal("Cannot insert pivot! pivot is %u", KEY_SIZE(ins_pivot_req.key));
+				_exit(EXIT_FAILURE);
+			}
 			goto release_and_retry;
 		}
 
