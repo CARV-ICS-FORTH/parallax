@@ -140,8 +140,9 @@ static int sh_cmp_heap_nodes(struct sh_heap *hp, struct sh_heap_node *nd_1, stru
 	struct bt_kv_log_address key1 = { 0 };
 	if (key1_cmp.key_format == KV_PREFIX) {
 		key1.addr = (char *)key1_cmp.kv_dev_offt;
-		if (nd_1->cat == BIG_INLOG && 0 == nd_1->level_id)
-			key1 = bt_get_kv_log_address(&nd_1->db_desc->big_log, key1_cmp.kv_dev_offt);
+		if (nd_1->cat == BIG_INLOG && 0 == nd_1->level_id) {
+			key1 = bt_get_kv_log_address(&nd_1->db_desc->big_log, ABSOLUTE_ADDRESS(key1_cmp.kv_dev_offt));
+		}
 		init_key_cmp(&key1_cmp, key1.addr, KV_FORMAT);
 	}
 
@@ -149,7 +150,7 @@ static int sh_cmp_heap_nodes(struct sh_heap *hp, struct sh_heap_node *nd_1, stru
 	if (key2_cmp.key_format == KV_PREFIX) {
 		key2.addr = (char *)key2_cmp.kv_dev_offt;
 		if (nd_2->cat == BIG_INLOG && 0 == nd_2->level_id)
-			key2 = bt_get_kv_log_address(&nd_2->db_desc->big_log, key2_cmp.kv_dev_offt);
+			key2 = bt_get_kv_log_address(&nd_2->db_desc->big_log, ABSOLUTE_ADDRESS(key2_cmp.kv_dev_offt));
 		init_key_cmp(&key2_cmp, key2.addr, KV_FORMAT);
 	}
 
