@@ -183,7 +183,7 @@ par_scanner par_init_scanner(par_handle handle, struct par_key *key, par_seek_mo
 		uint32_t key_size;
 		char key[];
 	};
-	char smallest_key[8] = { '\0' };
+	char smallest_key[8] = { 0 };
 	struct scannerHandle *sc = NULL;
 	struct par_scanner *par_s = NULL;
 	struct par_seek_key *seek_key = NULL;
@@ -208,7 +208,7 @@ par_scanner par_init_scanner(par_handle handle, struct par_key *key, par_seek_mo
 		goto init_scanner;
 	}
 	default:
-		fprintf(stderr, "Unknown seek scanner mode\n");
+		log_fatal("Unknown seek scanner mode");
 		return NULL;
 	}
 init_seek_key:
