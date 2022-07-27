@@ -29,7 +29,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-int _init_level_scanner(level_scanner *level_sc, void *start_key, char seek_mode)
+int init_level_scanner(level_scanner *level_sc, void *start_key, char seek_mode)
 {
 	stack_init(&level_sc->stack);
 
@@ -101,7 +101,7 @@ void init_generic_scanner(struct scannerHandle *sc, struct db_handle *handle, vo
 		sc->LEVEL_SCANNERS[0][i].db = handle;
 		sc->LEVEL_SCANNERS[0][i].level_id = 0;
 		sc->LEVEL_SCANNERS[0][i].root = root;
-		retval = _init_level_scanner(&(sc->LEVEL_SCANNERS[0][i]), start_key, seek_flag);
+		retval = init_level_scanner(&(sc->LEVEL_SCANNERS[0][i]), start_key, seek_flag);
 
 		if (retval)
 			continue;
@@ -131,7 +131,7 @@ void init_generic_scanner(struct scannerHandle *sc, struct db_handle *handle, vo
 		sc->LEVEL_SCANNERS[level_id][tree_id].db = handle;
 		sc->LEVEL_SCANNERS[level_id][tree_id].level_id = level_id;
 		sc->LEVEL_SCANNERS[level_id][tree_id].root = root;
-		retval = _init_level_scanner(&sc->LEVEL_SCANNERS[level_id][tree_id], start_key, seek_flag);
+		retval = init_level_scanner(&sc->LEVEL_SCANNERS[level_id][tree_id], start_key, seek_flag);
 		if (retval == 0) {
 			sc->LEVEL_SCANNERS[level_id][tree_id].valid = 1;
 			nd.KV = sc->LEVEL_SCANNERS[level_id][tree_id].keyValue;
@@ -448,9 +448,10 @@ int32_t level_scanner_seek(level_scanner *level_sc, void *start_key_buf, SEEK_SC
 	struct node_header *node = level_sc->root;
 
 	while (node->type != leafNode && node->type != leafRootNode) {
+		// log_debug("Stark key size %u", start_key->size);
 		element.node = node;
-		// index_iterator_init_with_key((struct index_node *)element.node, &element.iterator, start_key);
-		index_iterator_init_with_key((struct index_node *)element.node, &element.iterator, NULL);
+		index_iterator_init_with_key((struct index_node *)element.node, &element.iterator, start_key);
+		// index_iterator_init_with_key((struct index_node *)element.node, &element.iterator, NULL);
 
 		if (!index_iterator_is_valid(&element.iterator)) {
 			log_fatal("Invalid index node iterator during seek");
@@ -485,6 +486,7 @@ int32_t level_scanner_seek(level_scanner *level_sc, void *start_key_buf, SEEK_SC
 	binary_search_dynamic_leaf((struct bt_dynamic_leaf_node *)node, db_desc->levels[level_id].leaf_size, &req,
 				   &dlresult);
 	assert(dlresult.status != ERROR);
+
 	element.idx = dlresult.middle;
 
 	stack_push(&level_sc->stack, element);
