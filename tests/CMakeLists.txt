@@ -28,8 +28,16 @@ if(BUILD_TESTING)
   add_executable(test_dirty_scans test_dirty_scans.c arg_parser.c)
   target_link_libraries(test_dirty_scans "${PROJECT_NAME}" ${DEPENDENCIES})
 
-  add_executable(tiresias tiresias.c arg_parser.c)
-  target_link_libraries(tiresias "${PROJECT_NAME}" ${DEPENDENCIES})
+  find_library(
+    BDB_LIBRARY
+    NAMES libdb.so
+    PATHS ${bdb_LIB_PATHS})
+
+  if(BDB_LIBRARY)
+    add_executable(tiresias tiresias.c arg_parser.c)
+    target_link_libraries(tiresias "${PROJECT_NAME}" ${DEPENDENCIES}
+                          ${BDB_LIBRARY})
+  endif()
 
   add_test(NAME test_index_node COMMAND $<TARGET_FILE:test_index_node>
                                         --file=${FILEPATH})
