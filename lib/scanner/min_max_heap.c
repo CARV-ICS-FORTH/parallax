@@ -155,20 +155,19 @@ static int sh_cmp_heap_nodes(struct sh_heap *hp, struct sh_heap_node *nd_1, stru
 	}
 
 	ret = key_cmp(&key1_cmp, &key2_cmp);
+	// log_debug("Compared key1: %.*s with key2 %.*s result is %d", key1_cmp.key_size, key1_cmp.key, key2_cmp.key_size,
+	// 	  key2_cmp.key, ret);
 	key1.in_tail ? bt_done_with_value_log_address(key1.log_desc, &key1) : (void)key1;
 	key2.in_tail ? bt_done_with_value_log_address(key2.log_desc, &key2) : (void)key2;
 
-	// log_debug("Result is %d", ret);
-	if (ret)
-		return ret;
-
 	return ret ? ret : sh_solve_tie(hp, nd_1, nd_2);
 }
-/*Allocate a min heap using dynamic memory and zero initialize it */
+/**
+ * Allocates a min heap using dynamic memory and zero initialize it
+ */
 struct sh_heap *sh_alloc_heap(void)
 {
-	struct sh_heap *new_heap = calloc(1, sizeof(struct sh_heap));
-	return new_heap;
+	return calloc(1, sizeof(struct sh_heap));
 }
 
 /*

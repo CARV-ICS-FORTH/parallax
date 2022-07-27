@@ -65,9 +65,7 @@ void init_key_cmp(struct key_compare *key_cmp, void *key_buf, char key_format)
 		key_cmp->key = (char *)key_buf + sizeof(uint32_t);
 		key_cmp->kv_dev_offt = UINT64_MAX;
 		key_cmp->key_format = KV_FORMAT;
-		if (key_cmp->key_size > 0)
-			return;
-		key_cmp->is_NIL = 1;
+		// assert(key_cmp->key_size > 0);
 		return;
 	}
 
@@ -242,7 +240,7 @@ static void pr_read_log_tail(struct log_tail *tail)
 
 struct bt_kv_log_address bt_get_kv_log_address(struct log_descriptor *log_desc, uint64_t dev_offt)
 {
-	struct bt_kv_log_address reply = { .addr = NULL, .tail_id = 0, .in_tail = UINT8_MAX };
+	struct bt_kv_log_address reply = { .addr = NULL, .tail_id = 0, .in_tail = UINT8_MAX, .log_desc = NULL };
 	RWLOCK_RDLOCK(&log_desc->log_tail_buf_lock);
 
 	for (int i = 0; i < LOG_TAIL_NUM_BUFS; ++i) {
@@ -259,6 +257,7 @@ struct bt_kv_log_address bt_get_kv_log_address(struct log_descriptor *log_desc, 
 
 			reply.addr = &(log_desc->tail[i]->buf[dev_offt % SEGMENT_SIZE]);
 			reply.tail_id = i;
+			reply.log_desc = log_desc;
 			RWLOCK_UNLOCK(&log_desc->log_tail_buf_lock);
 			return reply;
 		}
@@ -978,6 +977,7 @@ uint8_t insert_key_value(db_handle *handle, void *key, void *value, uint32_t key
 
 	if (!key_size) {
 		log_fatal("Trying to enter a zero sized key? Not valid!");
+		assert(0);
 		BUG_ON();
 	}
 
@@ -1512,10 +1512,12 @@ int find_key_in_bloom_filter(db_descriptor *db_desc, int level_id, char *key)
 
 static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id, int tree_id)
 {
-	node_header *curr_node, *son_node = NULL;
+	node_header *curr_node = NULL;
+	node_header *son_node = NULL;
 	char *key_addr_in_leaf = NULL;
 	struct find_result ret_result;
-	lock_table *prev = NULL, *curr = NULL;
+	lock_table *prev = NULL;
+	lock_table *curr = NULL;
 	struct node_header *root = NULL;
 
 	struct db_descriptor *db_desc = get_op->db_desc;
@@ -1593,66 +1595,66 @@ static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id,
 	get_op->tombstone = ret_result.tombstone;
 
 deser:
-	if (ret_result.kv) {
-		struct bt_kv_log_address kv = { .addr = NULL, .tail_id = UINT8_MAX, .in_tail = 0 };
-		get_op->key_device_address = NULL;
-
-		if (ret_result.key_type == KV_INPLACE) {
-			kv.addr = REAL_ADDRESS(ret_result.kv);
-			get_op->key_device_address = ret_result.kv;
-		} else if (ret_result.key_type == KV_INLOG) {
-			key_addr_in_leaf = (char *)REAL_ADDRESS(*(uint64_t *)ret_result.kv);
-			if (key_addr_in_leaf == NULL) {
-				log_fatal("Encountered NULL pointer from KV in leaf");
-				BUG_ON();
-			}
-
-			if (!level_id)
-				kv = bt_get_kv_log_address(&db_desc->big_log, ABSOLUTE_ADDRESS(key_addr_in_leaf));
-			else
-				kv.addr = key_addr_in_leaf;
-
-			get_op->key_device_address = (char *)ABSOLUTE_ADDRESS(kv.addr);
-		} else {
-			log_fatal("Corrupted KV location");
-			BUG_ON();
-		}
-		assert(kv.addr);
-		uint32_t *value_size = (uint32_t *)(kv.addr + sizeof(uint32_t) + KEY_SIZE(kv.addr));
-		if (get_op->retrieve && !get_op->buffer_to_pack_kv) {
-			get_op->buffer_to_pack_kv = malloc(*value_size);
-
-			if (!get_op->buffer_to_pack_kv) {
-				log_fatal("Malloc failed");
-				BUG_ON();
-			}
-
-			get_op->size = *value_size;
-		}
-
-		//log_info("key size: %u key: %s value size: %u", KEY_SIZE(L.addr), L.addr + 4, *value_size);
-		//log_info("In tail?: %u which tail?: %u value size %u offt in buf: %llu", L.in_tail, L.tail_id,
-		//	 *value_size, ABSOLUTE_ADDRESS(get_op->value_device_address) % SEGMENT_SIZE);
-
-		if (get_op->retrieve && get_op->size <= *value_size) {
-			/*check if enough*/
-			memcpy(get_op->buffer_to_pack_kv,
-			       kv.addr + sizeof(uint32_t) + KEY_SIZE(kv.addr) + sizeof(uint32_t), *value_size);
-			get_op->buffer_overflow = 0;
-		} else {
-			get_op->buffer_overflow = 1; //*value_size;
-			assert(0);
-		}
-		get_op->found = 1;
-		if (get_op->tombstone)
-			get_op->key_device_address = NULL;
-
-		if (kv.in_tail)
-			bt_done_with_value_log_address(&db_desc->big_log, &kv);
-	} else {
+	if (!ret_result.kv) {
 		get_op->found = 0;
+		goto exit;
+	}
+	get_op->found = 1;
+	struct bt_kv_log_address kv_pair = { .addr = NULL, .tail_id = UINT8_MAX, .in_tail = 0 };
+	get_op->key_device_address = NULL;
+
+	if (ret_result.key_type != KV_INPLACE && ret_result.key_type != KV_INLOG) {
+		log_fatal("Corrupted KV location");
+		BUG_ON();
 	}
 
+	if (ret_result.key_type == KV_INPLACE) {
+		kv_pair.addr = REAL_ADDRESS(ret_result.kv);
+		get_op->key_device_address = ret_result.kv;
+	} else if (ret_result.key_type == KV_INLOG) {
+		key_addr_in_leaf = (char *)REAL_ADDRESS(*(uint64_t *)ret_result.kv);
+		if (key_addr_in_leaf == NULL) {
+			log_fatal("Encountered NULL pointer from KV in leaf");
+			BUG_ON();
+		}
+
+		kv_pair.addr = key_addr_in_leaf;
+		if (!level_id)
+			kv_pair = bt_get_kv_log_address(&db_desc->big_log, ABSOLUTE_ADDRESS(key_addr_in_leaf));
+
+		get_op->key_device_address = (char *)ABSOLUTE_ADDRESS(kv_pair.addr);
+	}
+
+	assert(kv_pair.addr);
+	uint32_t *value_size = (uint32_t *)(kv_pair.addr + sizeof(uint32_t) + KEY_SIZE(kv_pair.addr));
+	if (get_op->retrieve && !get_op->buffer_to_pack_kv) {
+		get_op->buffer_to_pack_kv = malloc(*value_size);
+		get_op->size = *value_size;
+	}
+
+	//log_info("key size: %u key: %s value size: %u", KEY_SIZE(L.addr), L.addr + 4, *value_size);
+	//log_info("In tail?: %u which tail?: %u value size %u offt in buf: %llu", L.in_tail, L.tail_id,
+	//	 *value_size, ABSOLUTE_ADDRESS(get_op->value_device_address) % SEGMENT_SIZE);
+
+	if (get_op->retrieve && get_op->size > *value_size) {
+		get_op->buffer_overflow = 1;
+		log_debug("get_op->size %u actual size %u get_op retrieve %u", get_op->size, *value_size,
+			  get_op->retrieve);
+	}
+
+	if (get_op->retrieve && get_op->size <= *value_size) {
+		memcpy(get_op->buffer_to_pack_kv,
+		       kv_pair.addr + sizeof(uint32_t) + KEY_SIZE(kv_pair.addr) + sizeof(uint32_t), *value_size);
+		get_op->buffer_overflow = 0;
+	}
+
+	if (get_op->tombstone)
+		get_op->key_device_address = NULL;
+
+	if (kv_pair.in_tail)
+		bt_done_with_value_log_address(&db_desc->big_log, &kv_pair);
+
+exit:
 	if (RWLOCK_UNLOCK(&curr->rx_lock) != 0)
 		BUG_ON();
 

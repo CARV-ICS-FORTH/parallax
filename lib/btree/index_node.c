@@ -277,10 +277,10 @@ static void index_internal_iterator_init(struct index_node *node, struct index_n
 	iterator->key = NULL;
 
 	iterator->position = 0;
-	if (key) {
-		bool exact_match = 0;
-		iterator->position = index_search_get_pos(node, key, KV_FORMAT, &exact_match);
-	}
+	if (!key)
+		return;
+	bool exact_match = 0;
+	iterator->position = index_search_get_pos(node, key, KV_FORMAT, &exact_match);
 }
 
 void index_iterator_init_with_key(struct index_node *node, struct index_node_iterator *iterator, struct pivot_key *key)

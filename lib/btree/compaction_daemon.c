@@ -1363,7 +1363,7 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 			RWLOCK_UNLOCK(&handle->db_desc->levels[comp_req->dst_level].guard_of_level.rx_lock);
 			break;
 		}
-		assert(nd_min.duplicate == 0 && nd_min.tombstone == 0);
+
 		if (!nd_min.duplicate) {
 			struct comp_parallax_key key = { 0 };
 			comp_fill_parallax_key(&nd_min, &key);
