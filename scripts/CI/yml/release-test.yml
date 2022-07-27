@@ -1,345 +1,345 @@
 ---
 .release_build_commands: &release_build_commands
-    before_script:
-        - ./scripts/CI/create_mbbd.sh
-        - mkdir -p build;cd build
-        - cmake .. -DCMAKE_BUILD_TYPE="Release"
-    after_script:
-        - ./scripts/CI/destroy_mbbd.sh
+  before_script:
+    - ./scripts/CI/create_mbbd.sh
+    - mkdir -p build;cd build
+    - cmake .. -DCMAKE_BUILD_TYPE="Release"
+  after_script:
+    - ./scripts/CI/destroy_mbbd.sh
 
 release_test_ycsb_larged:
-    image: carvicsforth/arch_carv:latest
-    stage: release_test
-    <<: *release_build_commands
-    tags:
-        - kubernetes
-    script:
-        - make ycsb-edb;make kv_format.parallax;cd YCSB-CXX;
-        - ctest -R ^test_larged$
-    needs: [release_build_gcc, release_build_clang]
+  image: carvicsforth/arch_carv:latest
+  stage: release_test
+  <<: *release_build_commands
+  tags:
+    - kubernetes
+  script:
+    - make ycsb-edb;make kv_format.parallax;cd YCSB-CXX;
+    - ctest -R ^test_larged$
+  needs: [release_build_gcc, release_build_clang]
 
 release_test_ycsb_large:
-    image: carvicsforth/arch_carv:latest
-    stage: release_test
-    <<: *release_build_commands
-    tags:
-        - kubernetes
-    script:
-        - make ycsb-edb;make kv_format.parallax;cd YCSB-CXX;
-        - ctest -R ^test_large$
-    needs: [release_build_gcc, release_build_clang]
+  image: carvicsforth/arch_carv:latest
+  stage: release_test
+  <<: *release_build_commands
+  tags:
+    - kubernetes
+  script:
+    - make ycsb-edb;make kv_format.parallax;cd YCSB-CXX;
+    - ctest -R ^test_large$
+  needs: [release_build_gcc, release_build_clang]
 
 release_test_ycsb_mediumd:
-    image: carvicsforth/arch_carv:latest
-    stage: release_test
-    <<: *release_build_commands
-    tags:
-        - kubernetes
-    script:
-        - make ycsb-edb;make kv_format.parallax;cd YCSB-CXX;
-        - ctest -R ^test_mediumd$
-    needs: [release_build_gcc, release_build_clang]
+  image: carvicsforth/arch_carv:latest
+  stage: release_test
+  <<: *release_build_commands
+  tags:
+    - kubernetes
+  script:
+    - make ycsb-edb;make kv_format.parallax;cd YCSB-CXX;
+    - ctest -R ^test_mediumd$
+  needs: [release_build_gcc, release_build_clang]
 
 release_test_ycsb_medium:
-    image: carvicsforth/arch_carv:latest
-    stage: release_test
-    <<: *release_build_commands
-    tags:
-        - kubernetes
-    script:
-        - make ycsb-edb;make kv_format.parallax;cd YCSB-CXX;
-        - ctest -R ^test_medium$
-    needs: [release_build_gcc, release_build_clang]
+  image: carvicsforth/arch_carv:latest
+  stage: release_test
+  <<: *release_build_commands
+  tags:
+    - kubernetes
+  script:
+    - make ycsb-edb;make kv_format.parallax;cd YCSB-CXX;
+    - ctest -R ^test_medium$
+  needs: [release_build_gcc, release_build_clang]
 
 release_test_ycsb_smalld:
-    image: carvicsforth/arch_carv:latest
-    stage: release_test
-    <<: *release_build_commands
-    tags:
-        - kubernetes
-    script:
-        - make ycsb-edb;make kv_format.parallax;cd YCSB-CXX;
-        - ctest -R ^test_smalld$
-    needs: [release_build_gcc, release_build_clang]
+  image: carvicsforth/arch_carv:latest
+  stage: release_test
+  <<: *release_build_commands
+  tags:
+    - kubernetes
+  script:
+    - make ycsb-edb;make kv_format.parallax;cd YCSB-CXX;
+    - ctest -R ^test_smalld$
+  needs: [release_build_gcc, release_build_clang]
 
 release_test_ycsb_small:
-    image: carvicsforth/arch_carv:latest
-    stage: release_test
-    <<: *release_build_commands
-    tags:
-        - kubernetes
-    script:
-        - make ycsb-edb;make kv_format.parallax;cd YCSB-CXX;
-        - ctest -R ^test_small$
-    needs: [release_build_gcc, release_build_clang]
+  image: carvicsforth/arch_carv:latest
+  stage: release_test
+  <<: *release_build_commands
+  tags:
+    - kubernetes
+  script:
+    - make ycsb-edb;make kv_format.parallax;cd YCSB-CXX;
+    - ctest -R ^test_small$
+  needs: [release_build_gcc, release_build_clang]
 
 release_test_gc:
-    image: carvicsforth/arch_carv:latest
-    stage: release_test
-    <<: *release_build_commands
-    tags:
-        - kubernetes
-    script:
-        - make test_gc;make kv_format.parallax;cd tests;
-        - ./mkfs.sh "$NVME0/$CI_JOB_ID"/kv_store.dat 128
-        - ctest -R ^test_gc$
-    needs: [release_build_gcc, release_build_clang]
+  image: carvicsforth/arch_carv:latest
+  stage: release_test
+  <<: *release_build_commands
+  tags:
+    - kubernetes
+  script:
+    - make test_gc;make kv_format.parallax;cd tests;
+    - ./mkfs.sh "$NVME0/$CI_JOB_ID"/kv_store.dat 128
+    - ctest -R ^test_gc$
+  needs: [release_build_gcc, release_build_clang]
 
 release_test_dirty_scans_small:
-    image: carvicsforth/arch_carv:latest
-    stage: release_test
-    <<: *release_build_commands
-    tags:
-        - kubernetes
-    script:
-        - make test_dirty_scans;make kv_format.parallax;cd tests;
-        - ./mkfs.sh "$NVME0/$CI_JOB_ID"/kv_store.dat 128
-        - ctest -R ^test_dirty_scans_small$
-    needs: [release_build_gcc, release_build_clang]
+  image: carvicsforth/arch_carv:latest
+  stage: release_test
+  <<: *release_build_commands
+  tags:
+    - kubernetes
+  script:
+    - make test_dirty_scans;make kv_format.parallax;cd tests;
+    - ./mkfs.sh "$NVME0/$CI_JOB_ID"/kv_store.dat 128
+    - ctest -R ^test_dirty_scans_small$
+  needs: [release_build_gcc, release_build_clang]
 
 release_test_dirty_scans_medium:
-    image: carvicsforth/arch_carv:latest
-    stage: release_test
-    <<: *release_build_commands
-    tags:
-        - kubernetes
-    script:
-        - make test_dirty_scans;make kv_format.parallax;cd tests;
-        - ./mkfs.sh "$NVME0/$CI_JOB_ID"/kv_store.dat 128
-        - ctest -R ^test_dirty_scans_medium$
-    needs: [release_build_gcc, release_build_clang]
+  image: carvicsforth/arch_carv:latest
+  stage: release_test
+  <<: *release_build_commands
+  tags:
+    - kubernetes
+  script:
+    - make test_dirty_scans;make kv_format.parallax;cd tests;
+    - ./mkfs.sh "$NVME0/$CI_JOB_ID"/kv_store.dat 128
+    - ctest -R ^test_dirty_scans_medium$
+  needs: [release_build_gcc, release_build_clang]
 
 release_test_dirty_scans_large:
-    image: carvicsforth/arch_carv:latest
-    stage: release_test
-    <<: *release_build_commands
-    tags:
-        - kubernetes
-    script:
-        - make test_dirty_scans;make kv_format.parallax;cd tests;
-        - ./mkfs.sh "$NVME0/$CI_JOB_ID"/kv_store.dat 128
-        - ctest -R ^test_dirty_scans_large$
-    needs: [release_build_gcc, release_build_clang]
+  image: carvicsforth/arch_carv:latest
+  stage: release_test
+  <<: *release_build_commands
+  tags:
+    - kubernetes
+  script:
+    - make test_dirty_scans;make kv_format.parallax;cd tests;
+    - ./mkfs.sh "$NVME0/$CI_JOB_ID"/kv_store.dat 128
+    - ctest -R ^test_dirty_scans_large$
+  needs: [release_build_gcc, release_build_clang]
 
 release_test_dirty_scans_smalld:
-    image: carvicsforth/arch_carv:latest
-    stage: release_test
-    <<: *release_build_commands
-    tags:
-        - kubernetes
-    script:
-        - make test_dirty_scans;make kv_format.parallax;cd tests;
-        - ./mkfs.sh "$NVME0/$CI_JOB_ID"/kv_store.dat 128
-        - ctest -R ^test_dirty_scans_smalld$
-    needs: [release_build_gcc, release_build_clang]
+  image: carvicsforth/arch_carv:latest
+  stage: release_test
+  <<: *release_build_commands
+  tags:
+    - kubernetes
+  script:
+    - make test_dirty_scans;make kv_format.parallax;cd tests;
+    - ./mkfs.sh "$NVME0/$CI_JOB_ID"/kv_store.dat 128
+    - ctest -R ^test_dirty_scans_smalld$
+  needs: [release_build_gcc, release_build_clang]
 
 release_test_dirty_scans_smalld_greater:
-    image: carvicsforth/arch_carv:latest
-    stage: release_test
-    <<: *release_build_commands
-    tags:
-        - kubernetes
-    script:
-        - make test_dirty_scans;make kv_format.parallax;cd tests;
-        - ./mkfs.sh "$NVME0/$CI_JOB_ID"/kv_store.dat 128
-        - ctest -R ^test_dirty_scans_sd_greater$
-    when: manual
-    needs: [release_build_gcc, release_build_clang]
+  image: carvicsforth/arch_carv:latest
+  stage: release_test
+  <<: *release_build_commands
+  tags:
+    - kubernetes
+  script:
+    - make test_dirty_scans;make kv_format.parallax;cd tests;
+    - ./mkfs.sh "$NVME0/$CI_JOB_ID"/kv_store.dat 128
+    - ctest -R ^test_dirty_scans_sd_greater$
+  when: manual
+  needs: [release_build_gcc, release_build_clang]
 
 release_test_dirty_scans_mediumd:
-    image: carvicsforth/arch_carv:latest
-    stage: release_test
-    <<: *release_build_commands
-    tags:
-        - kubernetes
-    script:
-        - make test_dirty_scans;make kv_format.parallax;cd tests;
-        - ./mkfs.sh "$NVME0/$CI_JOB_ID"/kv_store.dat 128
-        - ctest -R ^test_dirty_scans_mediumd$
-    needs: [release_build_gcc, release_build_clang]
+  image: carvicsforth/arch_carv:latest
+  stage: release_test
+  <<: *release_build_commands
+  tags:
+    - kubernetes
+  script:
+    - make test_dirty_scans;make kv_format.parallax;cd tests;
+    - ./mkfs.sh "$NVME0/$CI_JOB_ID"/kv_store.dat 128
+    - ctest -R ^test_dirty_scans_mediumd$
+  needs: [release_build_gcc, release_build_clang]
 
 release_test_dirty_scans_larged:
-    image: carvicsforth/arch_carv:latest
-    stage: release_test
-    <<: *release_build_commands
-    tags:
-        - kubernetes
-    script:
-        - make test_dirty_scans;make kv_format.parallax;cd tests;
-        - ./mkfs.sh "$NVME0/$CI_JOB_ID"/kv_store.dat 128
-        - ctest -R ^test_dirty_scans_larged$
-    needs: [release_build_gcc, release_build_clang]
+  image: carvicsforth/arch_carv:latest
+  stage: release_test
+  <<: *release_build_commands
+  tags:
+    - kubernetes
+  script:
+    - make test_dirty_scans;make kv_format.parallax;cd tests;
+    - ./mkfs.sh "$NVME0/$CI_JOB_ID"/kv_store.dat 128
+    - ctest -R ^test_dirty_scans_larged$
+  needs: [release_build_gcc, release_build_clang]
 
 release_test_dirty_scans_smallp:
-    image: carvicsforth/arch_carv:latest
-    stage: release_test
-    <<: *release_build_commands
-    tags:
-        - kubernetes
-    script:
-        - make test_dirty_scans;make kv_format.parallax;cd tests;
-        - ./mkfs.sh "$NVME0/$CI_JOB_ID"/kv_store.dat 128
-        - ctest -R ^test_dirty_scans_smallp$
-    needs: [release_build_gcc, release_build_clang]
+  image: carvicsforth/arch_carv:latest
+  stage: release_test
+  <<: *release_build_commands
+  tags:
+    - kubernetes
+  script:
+    - make test_dirty_scans;make kv_format.parallax;cd tests;
+    - ./mkfs.sh "$NVME0/$CI_JOB_ID"/kv_store.dat 128
+    - ctest -R ^test_dirty_scans_smallp$
+  needs: [release_build_gcc, release_build_clang]
 
 release_test_dirty_scans_mediump:
-    image: carvicsforth/arch_carv:latest
-    stage: release_test
-    <<: *release_build_commands
-    tags:
-        - kubernetes
-    script:
-        - make test_dirty_scans;make kv_format.parallax;cd tests;
-        - ./mkfs.sh "$NVME0/$CI_JOB_ID"/kv_store.dat 128
-        - ctest -R ^test_dirty_scans_mediump$
-    needs: [release_build_gcc, release_build_clang]
+  image: carvicsforth/arch_carv:latest
+  stage: release_test
+  <<: *release_build_commands
+  tags:
+    - kubernetes
+  script:
+    - make test_dirty_scans;make kv_format.parallax;cd tests;
+    - ./mkfs.sh "$NVME0/$CI_JOB_ID"/kv_store.dat 128
+    - ctest -R ^test_dirty_scans_mediump$
+  needs: [release_build_gcc, release_build_clang]
 
 release_test_dirty_scans_largep:
-    image: carvicsforth/arch_carv:latest
-    stage: release_test
-    <<: *release_build_commands
-    tags:
-        - kubernetes
-    script:
-        - make test_dirty_scans;make kv_format.parallax;cd tests;
-        - ./mkfs.sh "$NVME0/$CI_JOB_ID"/kv_store.dat 128
-        - ctest -R ^test_dirty_scans_largep$
-    needs: [release_build_gcc, release_build_clang]
+  image: carvicsforth/arch_carv:latest
+  stage: release_test
+  <<: *release_build_commands
+  tags:
+    - kubernetes
+  script:
+    - make test_dirty_scans;make kv_format.parallax;cd tests;
+    - ./mkfs.sh "$NVME0/$CI_JOB_ID"/kv_store.dat 128
+    - ctest -R ^test_dirty_scans_largep$
+  needs: [release_build_gcc, release_build_clang]
 
 release_test_dirty_scans_smalldp:
-    image: carvicsforth/arch_carv:latest
-    stage: release_test
-    <<: *release_build_commands
-    tags:
-        - kubernetes
-    script:
-        - make test_dirty_scans;make kv_format.parallax;cd tests;
-        - ./mkfs.sh "$NVME0/$CI_JOB_ID"/kv_store.dat 128
-        - ctest -R ^test_dirty_scans_smalldp$
-    needs: [release_build_gcc, release_build_clang]
+  image: carvicsforth/arch_carv:latest
+  stage: release_test
+  <<: *release_build_commands
+  tags:
+    - kubernetes
+  script:
+    - make test_dirty_scans;make kv_format.parallax;cd tests;
+    - ./mkfs.sh "$NVME0/$CI_JOB_ID"/kv_store.dat 128
+    - ctest -R ^test_dirty_scans_smalldp$
+  needs: [release_build_gcc, release_build_clang]
 
 release_test_dirty_scans_mediumdp:
-    image: carvicsforth/arch_carv:latest
-    stage: release_test
-    <<: *release_build_commands
-    tags:
-        - kubernetes
-    script:
-        - make test_dirty_scans;make kv_format.parallax;cd tests;
-        - ./mkfs.sh "$NVME0/$CI_JOB_ID"/kv_store.dat 128
-        - ctest -R ^test_dirty_scans_mediumdp$
-    needs: [release_build_gcc, release_build_clang]
+  image: carvicsforth/arch_carv:latest
+  stage: release_test
+  <<: *release_build_commands
+  tags:
+    - kubernetes
+  script:
+    - make test_dirty_scans;make kv_format.parallax;cd tests;
+    - ./mkfs.sh "$NVME0/$CI_JOB_ID"/kv_store.dat 128
+    - ctest -R ^test_dirty_scans_mediumdp$
+  needs: [release_build_gcc, release_build_clang]
 
 release_test_dirty_scans_largedp:
-    image: carvicsforth/arch_carv:latest
-    stage: release_test
-    <<: *release_build_commands
-    tags:
-        - kubernetes
-    script:
-        - make test_dirty_scans;make kv_format.parallax;cd tests;
-        - ./mkfs.sh "$NVME0/$CI_JOB_ID"/kv_store.dat 128
-        - ctest -R ^test_dirty_scans_largedp$
-    needs: [release_build_gcc, release_build_clang]
+  image: carvicsforth/arch_carv:latest
+  stage: release_test
+  <<: *release_build_commands
+  tags:
+    - kubernetes
+  script:
+    - make test_dirty_scans;make kv_format.parallax;cd tests;
+    - ./mkfs.sh "$NVME0/$CI_JOB_ID"/kv_store.dat 128
+    - ctest -R ^test_dirty_scans_largedp$
+  needs: [release_build_gcc, release_build_clang]
 
 release_simple_test_delete:
-    image: carvicsforth/arch_carv:latest
-    stage: release_test
-    <<: *release_build_commands
-    tags:
-        - kubernetes
-    script:
-        - make simple_test_delete;make kv_format.parallax;cd tests;
-        - ./mkfs.sh "$NVME0/$CI_JOB_ID"/kv_store.dat 128
-        - ctest -R ^simple_test_delete$
-    needs: [release_build_gcc, release_build_clang]
+  image: carvicsforth/arch_carv:latest
+  stage: release_test
+  <<: *release_build_commands
+  tags:
+    - kubernetes
+  script:
+    - make simple_test_delete;make kv_format.parallax;cd tests;
+    - ./mkfs.sh "$NVME0/$CI_JOB_ID"/kv_store.dat 128
+    - ctest -R ^simple_test_delete$
+  needs: [release_build_gcc, release_build_clang]
 
 release_leaf_root_delete_get_scan:
-    image: carvicsforth/arch_carv:latest
-    stage: release_test
-    <<: *release_build_commands
-    tags:
-        - kubernetes
-    script:
-        - make test_leaf_root_delete_get_scan;make kv_format.parallax;cd tests;
-        - ./mkfs.sh "$NVME0/$CI_JOB_ID"/kv_store.dat 128
-        - ctest -R ^test_leaf_root_delete_get_scan$
-    needs: [release_build_gcc, release_build_clang]
+  image: carvicsforth/arch_carv:latest
+  stage: release_test
+  <<: *release_build_commands
+  tags:
+    - kubernetes
+  script:
+    - make test_leaf_root_delete_get_scan;make kv_format.parallax;cd tests;
+    - ./mkfs.sh "$NVME0/$CI_JOB_ID"/kv_store.dat 128
+    - ctest -R ^test_leaf_root_delete_get_scan$
+  needs: [release_build_gcc, release_build_clang]
 
 release_test_redo_undo_log:
-    image: carvicsforth/arch_carv:latest
-    stage: release_test
-    <<: *release_build_commands
-    tags:
-        - kubernetes
-    script:
-        - make test_redo_undo_log;make kv_format.parallax;cd tests;
-        - ./mkfs.sh "$NVME0/$CI_JOB_ID"/kv_store.dat 128
-        - ctest -R ^test_redo_undo_log$
-    needs: [release_build_gcc, release_build_clang]
+  image: carvicsforth/arch_carv:latest
+  stage: release_test
+  <<: *release_build_commands
+  tags:
+    - kubernetes
+  script:
+    - make test_redo_undo_log;make kv_format.parallax;cd tests;
+    - ./mkfs.sh "$NVME0/$CI_JOB_ID"/kv_store.dat 128
+    - ctest -R ^test_redo_undo_log$
+  needs: [release_build_gcc, release_build_clang]
 
 release_test_par_format:
-    image: carvicsforth/arch_carv:latest
-    stage: release_test
-    <<: *release_build_commands
-    tags:
-        - kubernetes
-    script:
-        - make test_par_format;cd tests;
-        - ctest -R ^test_par_format$
-    needs: [release_build_gcc, release_build_clang]
+  image: carvicsforth/arch_carv:latest
+  stage: release_test
+  <<: *release_build_commands
+  tags:
+    - kubernetes
+  script:
+    - make test_par_format;cd tests;
+    - ctest -R ^test_par_format$
+  needs: [release_build_gcc, release_build_clang]
 
 release_test_par_put_serialized:
-    image: carvicsforth/arch_carv:latest
-    stage: release_test
-    <<: *release_build_commands
-    tags:
-        - kubernetes
-    script:
-        - make test_par_put_serialized;cd tests;
-        - ctest -R ^test_par_put_serialized$
-    needs: [release_build_gcc, release_build_clang]
+  image: carvicsforth/arch_carv:latest
+  stage: release_test
+  <<: *release_build_commands
+  tags:
+    - kubernetes
+  script:
+    - make test_par_put_serialized;cd tests;
+    - ctest -R ^test_par_put_serialized$
+  needs: [release_build_gcc, release_build_clang]
 
 release_test_medium:
-    image: carvicsforth/arch_carv:latest
-    stage: release_test
-    <<: *release_build_commands
-    tags:
-        - kubernetes
-    script:
-        - make test_mixes;cd tests;
-        - ctest -R ^test_medium$
-    needs: [release_build_gcc, release_build_clang]
+  image: carvicsforth/arch_carv:latest
+  stage: release_test
+  <<: *release_build_commands
+  tags:
+    - kubernetes
+  script:
+    - make test_mixes;cd tests;
+    - ctest -R ^test_medium$
+  needs: [release_build_gcc, release_build_clang]
 
 release_test_mixes_99_small_1_medium:
-    image: carvicsforth/arch_carv:latest
-    stage: release_test
-    <<: *release_build_commands
-    tags:
-        - kubernetes
-    script:
-        - make test_mixes;cd tests;
-        - ctest -R ^test_mixes_99_small_1_medium$
-    needs: [release_build_gcc, release_build_clang]
+  image: carvicsforth/arch_carv:latest
+  stage: release_test
+  <<: *release_build_commands
+  tags:
+    - kubernetes
+  script:
+    - make test_mixes;cd tests;
+    - ctest -R ^test_mixes_99_small_1_medium$
+  needs: [release_build_gcc, release_build_clang]
 
 release_test_mixes_45_small_50_medium_5_big:
-    image: carvicsforth/arch_carv:latest
-    stage: release_test
-    <<: *release_build_commands
-    tags:
-        - kubernetes
-    script:
-        - make test_mixes;cd tests;
-        - ctest -R ^test_mixes_45_small_50_medium_5_big$
-    needs: [release_build_gcc, release_build_clang]
+  image: carvicsforth/arch_carv:latest
+  stage: release_test
+  <<: *release_build_commands
+  tags:
+    - kubernetes
+  script:
+    - make test_mixes;cd tests;
+    - ctest -R ^test_mixes_45_small_50_medium_5_big$
+  needs: [release_build_gcc, release_build_clang]
 
 release_tracer:
-    image: carvicsforth/arch_carv:latest
-    stage: release_test
-    <<: *release_build_commands
-    tags:
-        - kubernetes
-    script:
-        - make tracer;cd tracer;
-        - ctest -R ^tracer$
-    needs: [release_build_gcc, release_build_clang]
+  image: carvicsforth/arch_carv:latest
+  stage: release_test
+  <<: *release_build_commands
+  tags:
+    - kubernetes
+  script:
+    - make tracer;cd tracer;
+    - ctest -R ^tracer$
+  needs: [release_build_gcc, release_build_clang]
