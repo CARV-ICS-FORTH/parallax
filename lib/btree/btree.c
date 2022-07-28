@@ -2044,8 +2044,8 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 {
 	/*The array with the locks that belong to this thread from upper levels*/
 	lock_table *upper_level_nodes[MAX_HEIGHT];
-	node_header *son = { 0 };
-	lock_table *lock = { 0 };
+	node_header *son = NULL;
+	lock_table *lock = NULL;
 
 	db_descriptor *db_desc = ins_req->metadata.handle->db_desc;
 	uint32_t level_id = ins_req->metadata.level_id;
