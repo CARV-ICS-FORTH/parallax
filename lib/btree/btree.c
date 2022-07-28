@@ -977,7 +977,6 @@ uint8_t insert_key_value(db_handle *handle, void *key, void *value, uint32_t key
 
 	if (!key_size) {
 		log_fatal("Trying to enter a zero sized key? Not valid!");
-		assert(0);
 		BUG_ON();
 	}
 
@@ -1512,7 +1511,6 @@ int find_key_in_bloom_filter(db_descriptor *db_desc, int level_id, char *key)
 
 static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id, int tree_id)
 {
-	node_header *curr_node = NULL;
 	node_header *son_node = NULL;
 	char *key_addr_in_leaf = NULL;
 	struct find_result ret_result;
@@ -1521,17 +1519,16 @@ static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id,
 	struct node_header *root = NULL;
 
 	struct db_descriptor *db_desc = get_op->db_desc;
-	if (db_desc->levels[level_id].root_w[tree_id] != NULL) {
-		/* log_info("Level %d with tree_id %d has root_w",level_id,tree_id); */
-		root = db_desc->levels[level_id].root_w[tree_id];
-	} else if (db_desc->levels[level_id].root_r[tree_id] != NULL) {
-		/* log_info("Level %d with tree_id %d has root_w",level_id,tree_id); */
-		root = db_desc->levels[level_id].root_r[tree_id];
-	} else {
-		//log_info("Level %d is empty with tree_id %d", level_id, tree_id);
+
+	if (db_desc->levels[level_id].root_w[tree_id] == NULL && db_desc->levels[level_id].root_r[tree_id] == NULL) {
 		get_op->found = 0;
 		return;
 	}
+
+	root = db_desc->levels[level_id].root_r[tree_id];
+
+	if (db_desc->levels[level_id].root_w[tree_id] != NULL)
+		root = db_desc->levels[level_id].root_w[tree_id];
 
 #if ENABLE_BLOOM_FILTERS
 	if (level_id > 0) {
@@ -1545,7 +1542,7 @@ static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id,
 	}
 #endif
 
-	curr_node = root;
+	node_header *curr_node = root;
 	if (curr_node->type == leafRootNode) {
 		curr = _find_position((const lock_table **)db_desc->levels[level_id].level_lock_table, curr_node);
 
