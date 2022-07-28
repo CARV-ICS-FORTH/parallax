@@ -540,8 +540,7 @@ int32_t getNext(scannerHandle *sc)
 	while (1) {
 		struct sh_heap_node nd = { 0 };
 
-		enum sh_heap_status stat = sh_remove_top(&sc->heap, &nd);
-		if (EMPTY_HEAP == stat)
+		if (!sh_remove_top(&sc->heap, &nd))
 			return END_OF_DATABASE;
 
 		sc->keyValue = nd.KV;

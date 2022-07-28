@@ -252,22 +252,20 @@ void sh_insert_heap_node(struct sh_heap *hp, struct sh_heap_node *nd)
 /**
  * Removes the top element of the min max heap and writes to the variable
  * pointed to by heap node pointer.
- * @returns GOT_HEAP if it founds and element or EMPTY_HEAP if the heap is
+ * @returns true if it founds and element or false if the heap is
  * empty.
 */
-enum sh_heap_status sh_remove_top(struct sh_heap *hp, struct sh_heap_node *heap_node)
+bool sh_remove_top(struct sh_heap *heap, struct sh_heap_node *node)
 {
-	if (hp->heap_size) {
-		*heap_node = hp->elem[0];
-		//log_debug("key is %s",heap_node->data+4);
+	if (0 == heap->heap_size)
+		return false;
 
-		if (hp->heap_size == 1) { // fast path
-			hp->heap_size = 0;
-		} else {
-			hp->elem[0] = hp->elem[--hp->heap_size];
-			heapify(hp, 0);
-		}
-		return GOT_HEAP;
-	}
-	return EMPTY_HEAP;
+	*node = heap->elem[0];
+
+	if (0 == --heap->heap_size)
+		return true;
+
+	heap->elem[0] = heap->elem[--heap->heap_size];
+	heapify(heap, 0);
+	return true;
 }

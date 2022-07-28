@@ -1349,17 +1349,13 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 		nd_dst.db_desc = comp_req->db_desc;
 		sh_insert_heap_node(m_heap, &nd_dst);
 	}
-	// ############################################################################
-	enum sh_heap_status stat = GOT_HEAP;
 
-	do {
+	for (;;) {
 		// TODO: Remove dirty
 		handle->db_desc->dirty = 0x01;
 		// This is to synchronize compactions with flush
 		RWLOCK_RDLOCK(&handle->db_desc->levels[comp_req->dst_level].guard_of_level.rx_lock);
-		stat = sh_remove_top(m_heap, &nd_min);
-
-		if (stat == EMPTY_HEAP) {
+		if (!sh_remove_top(m_heap, &nd_min)) {
 			RWLOCK_UNLOCK(&handle->db_desc->levels[comp_req->dst_level].guard_of_level.rx_lock);
 			break;
 		}
@@ -1367,6 +1363,7 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 		if (!nd_min.duplicate) {
 			struct comp_parallax_key key = { 0 };
 			comp_fill_parallax_key(&nd_min, &key);
+
 			comp_append_entry_to_leaf_node(merged_level, &key);
 		}
 		// log_info("level size
@@ -1408,7 +1405,7 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 		}
 
 		RWLOCK_UNLOCK(&handle->db_desc->levels[comp_req->dst_level].guard_of_level.rx_lock);
-	} while (stat != EMPTY_HEAP);
+	}
 
 	if (level_src)
 		_close_compaction_buffer_scanner(level_src);
