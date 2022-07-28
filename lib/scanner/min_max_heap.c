@@ -66,6 +66,15 @@ static void push_back_duplicate_kv(struct sh_heap *heap, struct sh_heap_node *hp
 			    key_size + value_size + (sizeof(uint32_t) * 2));
 }
 
+/**
+ * Solves cases when we have duplicated keys across adjacent levels. It takes
+ * into account the level id of each key to solve the tie. The rule is that the
+ * key with the largest level id is duplicate and is ignored.
+ * @returns negative int if nd_1 < nd_2, possitive if nd_1>nd_2, and 0 if equal
+ * @param heap, pointer to min max heap
+ * @param nd_1 heap node containing the actual key, its corresponding level_id
+ * @param nd_2 heap node containing the key and its corresponding level_id
+ */
 static int sh_solve_tie(struct sh_heap *heap, struct sh_heap_node *nd_1, struct sh_heap_node *nd_2)
 {
 	int ret = 1;
@@ -96,6 +105,9 @@ static int sh_solve_tie(struct sh_heap *heap, struct sh_heap_node *nd_1, struct 
 	return ret;
 }
 
+/**
+ * Compares only the prefixes of two keys. In case of a tie it returns 0
+ */
 static int sh_prefix_compare(struct key_compare *key1, struct key_compare *key2)
 {
 	uint32_t size = key1->key_size <= key2->key_size ? key1->key_size : key2->key_size;
@@ -112,6 +124,12 @@ static int sh_prefix_compare(struct key_compare *key1, struct key_compare *key2)
 	return key1->key_size - key2->key_size;
 }
 
+/**
+ * The comparator function used from the min max heap to compare node
+ * @param hp the pointer to the min max heap structure
+ * @param nd_1 pointer to the heap node
+ * @param nd_2 pointer to the heap node
+ */
 static int sh_cmp_heap_nodes(struct sh_heap *hp, struct sh_heap_node *nd_1, struct sh_heap_node *nd_2)
 {
 	struct key_compare key1_cmp = { 0 };
@@ -175,7 +193,9 @@ void sh_init_heap(struct sh_heap *heap, int active_tree, enum sh_heap_type heap_
 	heap->active_tree = -1;
 }
 
-/*Destroy a min heap that was allocated using dynamic memory */
+/**
+ *Destroy a min heap that was allocated using dynamic memory
+ */
 void sh_destroy_heap(struct sh_heap *heap)
 {
 	struct dups_list *heap_destroy = heap->dups;
@@ -184,15 +204,12 @@ void sh_destroy_heap(struct sh_heap *heap)
 	free(heap);
 }
 
-/*
-    Heapify function is used to make sure that the heap property is never
-   violated
-    In case of deletion of a heap_node, or creating a min heap from an array,
-   heap property
-    may be violated. In such cases, heapify function can be called to make sure
-   that
-    heap property is never violated
-*/
+/**
+ * Heapify function is used to make sure that the heap property is never
+ * violated In case of deletion of a heap_node, or creating a min heap from an
+ * array, heap property may be violated. In such cases, heapify function can
+ * be called to make sure that heap property is never violated
+ */
 static void heapify(struct sh_heap *hp, int i)
 {
 	int smallest = i;
@@ -210,10 +227,10 @@ static void heapify(struct sh_heap *hp, int i)
 	}
 }
 
-/*
-    Function to insert a heap_node into the min heap, by allocating space for
-    that heap_node in the heap and also making sure that the heap property and
-    shape propety are never violated.
+/**
+ * Function to insert a heap_node into the min heap, by allocating space for
+ * that heap_node in the heap and also making sure that the heap property and
+ * shape propety are never violated.
 */
 void sh_insert_heap_node(struct sh_heap *hp, struct sh_heap_node *nd)
 {
@@ -232,6 +249,12 @@ void sh_insert_heap_node(struct sh_heap *hp, struct sh_heap_node *nd)
 	hp->elem[i] = *nd;
 }
 
+/**
+ * Removes the top element of the min max heap and writes to the variable
+ * pointed to by heap node pointer.
+ * @returns GOT_HEAP if it founds and element or EMPTY_HEAP if the heap is
+ * empty.
+*/
 enum sh_heap_status sh_remove_top(struct sh_heap *hp, struct sh_heap_node *heap_node)
 {
 	if (hp->heap_size) {
