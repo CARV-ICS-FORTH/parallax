@@ -175,6 +175,7 @@ struct par_scanner {
 	char *kv_buf;
 };
 
+#define SMALLEST_KEY_BUFFER_SIZE (8)
 par_scanner par_init_scanner(par_handle handle, struct par_key *key, par_seek_mode mode)
 {
 	char tmp[PAR_MAX_PREALLOCATED_SIZE];
@@ -183,7 +184,7 @@ par_scanner par_init_scanner(par_handle handle, struct par_key *key, par_seek_mo
 		uint32_t key_size;
 		char key[];
 	};
-	char smallest_key[8] = { 0 };
+	char smallest_key[SMALLEST_KEY_BUFFER_SIZE] = { 0 };
 	struct scannerHandle *sc = NULL;
 	struct par_scanner *par_s = NULL;
 	struct par_seek_key *seek_key = NULL;
