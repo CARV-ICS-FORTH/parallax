@@ -84,12 +84,7 @@ static uint32_t index_get_next_pivot_offt_in_node(struct index_node *node, struc
 bool index_is_split_needed(struct index_node *node, uint32_t max_pivot_size)
 {
 	max_pivot_size += sizeof(uint32_t) + sizeof(struct pivot_pointer) + sizeof(struct index_slot_array_entry);
-	// max_pivot_size += (2*sizeof(uint64_t));
-	uint32_t remaining_space = index_get_remaining_space(node);
-	// if(remaining_space < max_pivot_size){
-	//    log_debug("remaining_space %u max_pivot_size %u",remaining_space,max_pivot_size);
-	//  }
-	return remaining_space < max_pivot_size;
+	return index_get_remaining_space(node) < max_pivot_size;
 }
 
 /**
@@ -118,15 +113,9 @@ static int32_t index_search_get_pos(struct index_node *node, void *lookup_key, e
 		init_key_cmp(&pivot_cmp, p_key, KV_FORMAT);
 		init_key_cmp(&lookup_key_cmp, lookup_key, lookup_key_format);
 
-		/**
-      *At zero position we have a guard or -oo
-      */
+		/*At zero position we have a guard or -oo*/
 		comparison_return_value = key_cmp(&pivot_cmp, &lookup_key_cmp);
 
-		// log_debug("Start %d end %d num_entries %d pivot key %u : %.*s, lookup_key %u : %.*s cmp value %d",
-		// 	  start, end, node->header.num_entries, pivot_cmp.key_size, pivot_cmp.key_size, pivot_cmp.key,
-		// 	  lookup_key_cmp.key_size, lookup_key_cmp.key_size, lookup_key_cmp.key,
-		// 	  comparison_return_value);
 		if (0 == comparison_return_value) {
 			*exact_match = 1;
 			return middle;
@@ -138,9 +127,7 @@ static int32_t index_search_get_pos(struct index_node *node, void *lookup_key, e
 			start = middle + 1;
 	}
 
-	int pos = (comparison_return_value > 0) ? middle - 1 : middle;
-	// log_debug("Pos is %d", pos);
-	return pos;
+	return comparison_return_value > 0 ? middle - 1 : middle;
 }
 
 bool index_set_type(struct index_node *node, const nodeType_t node_type)
@@ -180,7 +167,7 @@ struct pivot_key *index_remove_last_pivot_key(struct index_node *node)
 static struct pivot_key *index_search_get_full_pivot(struct index_node *node, void *lookup_key,
 						     enum KV_type lookup_key_format)
 {
-	bool exact_match = 0;
+	bool exact_match = false;
 	int32_t position = index_search_get_pos(node, lookup_key, lookup_key_format, &exact_match);
 
 	struct index_slot_array_entry *slot_array = index_get_slot_array(node);
@@ -334,8 +321,6 @@ struct bt_rebalance_result index_split_node(struct index_node *node, bt_insert_r
 
 	int32_t curr_entry = 0;
 
-	//log_debug("First .Iterator: pivot key is %u: %.*s", piv_key->size, piv_key->size, piv_key->data);
-
 	while (index_iterator_is_valid(&iterator) && curr_entry < node->header.num_entries / 2) {
 		struct insert_pivot_req ins_pivot_req = { .node = (struct index_node *)result.left_child,
 							  .key = piv_key,
@@ -347,13 +332,11 @@ struct bt_rebalance_result index_split_node(struct index_node *node, bt_insert_r
 		}
 		++curr_entry;
 		piv_key = index_iterator_get_pivot_key(&iterator);
-		//log_debug("Iterator: pivot key is %u: %.*s", piv_key->size, piv_key->size, piv_key->data);
 	}
 
 	struct index_slot_array_entry *slot_array = index_get_slot_array(node);
 	struct pivot_key *middle_key = (struct pivot_key *)INDEX_PIVOT_ADDRESS(node, slot_array[curr_entry].pivot);
 	memcpy(&result.middle_key, middle_key, PIVOT_KEY_SIZE(middle_key));
-	//log_debug("Middle key is: pivot key is %u: %.*s", piv_key->size, piv_key->size, piv_key->data);
 
 	result.right_child = (node_header *)seg_get_index_node(
 		ins_req->metadata.handle->db_desc, ins_req->metadata.level_id, ins_req->metadata.tree_id, 0);

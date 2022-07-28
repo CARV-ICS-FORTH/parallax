@@ -1367,17 +1367,6 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 		if (!nd_min.duplicate) {
 			struct comp_parallax_key key = { 0 };
 			comp_fill_parallax_key(&nd_min, &key);
-			// if (nd_min.type == KV_FORMAT) {
-			// 	log_debug("Inserting key %u %.*s cat: %u", KEY_SIZE(nd_min.KV), KEY_SIZE(nd_min.KV),
-			// 		  nd_min.KV + sizeof(uint32_t), nd_min.cat);
-			// } else {
-			// 	log_debug("Prefix is %.*s cat %u", PREFIX_SIZE, nd_min.KV, nd_min.cat);
-			// 	struct bt_leaf_entry *tmp = (struct bt_leaf_entry *)nd_min.KV;
-			// 	char *full_key = (char *)tmp->dev_offt;
-			// 	log_debug("Full key %u %.*s", KEY_SIZE(full_key), KEY_SIZE(full_key),
-			// 		  full_key + sizeof(uint32_t));
-			// }
-
 			comp_append_entry_to_leaf_node(merged_level, &key);
 		}
 		// log_info("level size

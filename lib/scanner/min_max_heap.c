@@ -119,24 +119,19 @@ static int sh_cmp_heap_nodes(struct sh_heap *hp, struct sh_heap_node *nd_1, stru
 	init_key_cmp(&key1_cmp, nd_1->KV, nd_1->type);
 	init_key_cmp(&key2_cmp, nd_2->KV, nd_2->type);
 
-	/**
-    * We use a custom prefix_compare for the following reason. Default
-    * key_comparator (key_cmp) for KV_PREFIX keys will fetch keys from storage if
-    * prefix comparison equals 0. This means that for KV_PREFIX we need to
-    * translate log pointers (if they belong to level 0) which is an expensive
-    * operation. To avoid this, since this code is executed for compactions and
-    * scans so it is in the critical path, we use a custom prefix_compare
-    * function that stops only in prefix comparison.
+	/*We use a custom prefix_compare for the following reason. Default
+   * key_comparator (key_cmp) for KV_PREFIX keys will fetch keys from storage
+   * if prefix comparison equals 0. This means that for KV_PREFIX we need to
+   * translate log pointers (if they belong to level 0) which is an expensive
+   * operation. To avoid this, since this code is executed for compactions and
+   * scans so it is in the critical path, we use a custom prefix_compare
+   * function that stops only in prefix comparison.
     */
 	int ret = sh_prefix_compare(&key1_cmp, &key2_cmp);
-	if (ret) {
-		// log_debug("Result is %d", ret);
+	if (ret)
 		return ret;
-	}
-	/**
-    * Going for full key comparison, we are going to end up in the full key
-    * comparator
-  */
+	/*Going for full key comparison, we are going to end up in the full key
+   * comparator*/
 	struct bt_kv_log_address key1 = { 0 };
 	if (key1_cmp.key_format == KV_PREFIX) {
 		key1.addr = (char *)key1_cmp.kv_dev_offt;
@@ -155,8 +150,6 @@ static int sh_cmp_heap_nodes(struct sh_heap *hp, struct sh_heap_node *nd_1, stru
 	}
 
 	ret = key_cmp(&key1_cmp, &key2_cmp);
-	// log_debug("Compared key1: %.*s with key2 %.*s result is %d", key1_cmp.key_size, key1_cmp.key, key2_cmp.key_size,
-	// 	  key2_cmp.key, ret);
 	key1.in_tail ? bt_done_with_value_log_address(key1.log_desc, &key1) : (void)key1;
 	key2.in_tail ? bt_done_with_value_log_address(key2.log_desc, &key2) : (void)key2;
 

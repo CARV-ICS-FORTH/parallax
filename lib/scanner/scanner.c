@@ -345,9 +345,6 @@ int32_t level_scanner_get_next(level_scanner *sc)
 			//log_debug("get_next kv");
 
 			if (++stack_element.idx >= stack_element.node->num_entries) {
-				// log_debug("Done with leaf from level %u Leaf: %lu idx is %d num_entries %d",
-				//   sc->level_id, stack_element.node, stack_element.idx,
-				//   stack_element.node->num_entries);
 				read_unlock_node(sc, stack_element.node);
 				status = POP_STACK;
 				break;
@@ -448,14 +445,11 @@ int32_t level_scanner_seek(level_scanner *level_sc, void *start_key_buf, SEEK_SC
 	struct node_header *node = level_sc->root;
 
 	while (node->type != leafNode && node->type != leafRootNode) {
-		// log_debug("Stark key size %u", start_key->size);
 		element.node = node;
 		index_iterator_init_with_key((struct index_node *)element.node, &element.iterator, start_key);
-		// index_iterator_init_with_key((struct index_node *)element.node, &element.iterator, NULL);
 
 		if (!index_iterator_is_valid(&element.iterator)) {
 			log_fatal("Invalid index node iterator during seek");
-			assert(0);
 			BUG_ON();
 		}
 

@@ -196,16 +196,11 @@ void binary_search_dynamic_leaf(const struct bt_dynamic_leaf_node *leaf, uint32_
 		offset_in_leaf = slot_array[middle].index;
 		assert(offset_in_leaf < leaf_size);
 
-		// log_debug("Start %d end %d", start, end);
-		/**
-      * This buffer is usefull in cases where the key is stored in place and
-      * its size is smaller than PREFIX_SIZE
-      */
+		/*This buffer is usefull in cases where the key is stored in place and its
+     * size is smaller than PREFIX_SIZE */
 		char padded_leaf_prefix[PREFIX_SIZE];
-		/**
-      *Initialized leaf key prefix either inside the index or the padded_prefix
-     * case
-    */
+		/*Initialized leaf key prefix either inside the index or the padded_prefix
+     * case*/
 		struct splice *key_buf = (struct splice *)get_kv_offset(leaf, leaf_size, offset_in_leaf);
 		if (get_kv_format(slot_array[middle].key_category) == KV_INPLACE && key_buf->size < PREFIX_SIZE) {
 			memset(padded_leaf_prefix, 0x00, PREFIX_SIZE);
@@ -216,34 +211,24 @@ void binary_search_dynamic_leaf(const struct bt_dynamic_leaf_node *leaf, uint32_
 			fill_prefix(&leaf_key_prefix, get_kv_offset(leaf, leaf_size, offset_in_leaf),
 				    get_kv_format(slot_array[middle].key_category));
 
-		/**
-     * Next we check the look up key
-    */
+		/* Next we check the look up key*/
 		if (req->metadata.key_format == KV_PREFIX) {
 			ret = prefix_compare(leaf_key_prefix.prefix, req->key_value_buf, PREFIX_SIZE);
-			// log_debug("Look up key %.*s leaf key %.*s", PREFIX_SIZE, req->key_value_buf, PREFIX_SIZE,
-			// 	  leaf_key_prefix.prefix);
 			goto check_comparison;
 		}
 
 		if (KEY_SIZE(req->key_value_buf) >= PREFIX_SIZE) {
 			ret = prefix_compare(leaf_key_prefix.prefix, req->key_value_buf + sizeof(uint32_t),
 					     PREFIX_SIZE);
-			// log_debug("Look up key %.*s leaf key %.*s", PREFIX_SIZE, req->key_value_buf + sizeof(uint32_t),
-			// 	  PREFIX_SIZE, leaf_key_prefix.prefix);
 			goto check_comparison;
 		}
 
-		/**
-      * Case we have a key in KV_FORMAT encoding that IS smaller than
-      * PREFIX_SIZE
-    */
+		/*Case we have a key in KV_FORMAT encoding that IS smaller than
+     * PREFIX_SIZE*/
 
 		char padded_lookupkey_prefix[PREFIX_SIZE] = { 0 };
 		memcpy(padded_lookupkey_prefix, req->key_value_buf + sizeof(uint32_t), KEY_SIZE(req->key_value_buf));
 		ret = prefix_compare(leaf_key_prefix.prefix, padded_lookupkey_prefix, PREFIX_SIZE);
-		// log_debug("Look up key smaller than PREFIX_SIZE lookup key %.*s leaf key %.*s", PREFIX_SIZE,
-		// 	  padded_lookupkey_prefix, PREFIX_SIZE, leaf_key_prefix.prefix);
 
 	check_comparison:
 		ret_case = ret < 0 ? LESS_THAN_ZERO : ret > 0 ? GREATER_THAN_ZERO : EQUAL_TO_ZERO;
@@ -295,9 +280,6 @@ void binary_search_dynamic_leaf(const struct bt_dynamic_leaf_node *leaf, uint32_
 				init_key_cmp(&key1_cmp, L.addr, KV_FORMAT);
 				init_key_cmp(&key2_cmp, req->key_value_buf, KV_FORMAT);
 				ret = key_cmp(&key1_cmp, &key2_cmp);
-				// log_info("Comparing index key %u:%s with query key :%u:%s result is %d",
-				// 	 *(uint32_t *)L.addr, L.addr + 4, *(uint32_t *)req->key_value_buf,
-				// 	 req->key_value_buf + 4, ret);
 				break;
 			default:
 				log_fatal("Corrupted key type");
