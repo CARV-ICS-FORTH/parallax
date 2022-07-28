@@ -131,9 +131,9 @@ static void get_workload(struct workload_config_t *workload_config)
 	workload_config->truth->cursor(workload_config->truth, NULL, &cursorp, 0);
 
 	/* Iterate over the database, retrieving each record in turn. */
-	int ret = 0;
 	uint64_t unique_keys = 0;
-	while ((ret = cursorp->get(cursorp, &key, &data, DB_NEXT)) == 0) {
+	int ret = cursorp->get(cursorp, &key, &data, DB_NEXT);
+	for (; ret == 0; ret = cursorp->get(cursorp, &key, &data, DB_NEXT)) {
 		struct par_key par_key = { .size = key.size, .data = key.data };
 		struct par_value value = { 0 };
 
@@ -163,8 +163,7 @@ static void get_workload(struct workload_config_t *workload_config)
 		_exit(EXIT_FAILURE);
 	}
 
-	if (cursorp != NULL)
-		cursorp->close(cursorp);
+	cursorp->close(cursorp);
 	log_info("Testing GETS DONE!");
 }
 
