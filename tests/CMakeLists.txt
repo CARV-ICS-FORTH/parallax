@@ -90,19 +90,19 @@ if(BUILD_TESTING)
   add_test(
     NAME test_medium
     COMMAND
-      $<TARGET_FILE:test_mixes> --file=${FILEPATH} --num_of_kvs=1000000
+      $<TARGET_FILE:test_mixes> --file=${FILEPATH} --num_of_kvs=400000
       --small_kv_percentage=0 --medium_kv_percentage=100 --big_kv_percentage=0)
 
   add_test(
     NAME test_mixes_99_small_1_medium
     COMMAND
-      $<TARGET_FILE:test_mixes> --file=${FILEPATH} --num_of_kvs=1000000
+      $<TARGET_FILE:test_mixes> --file=${FILEPATH} --num_of_kvs=400000
       --small_kv_percentage=99 --medium_kv_percentage=1 --big_kv_percentage=0)
 
   add_test(
     NAME test_mixes_45_small_50_medium_5_big
     COMMAND
-      $<TARGET_FILE:test_mixes> --file=${FILEPATH} --num_of_kvs=1000000
+      $<TARGET_FILE:test_mixes> --file=${FILEPATH} --num_of_kvs=400000
       --medium_kv_percentage=50 --small_kv_percentage=45 --big_kv_percentage=5)
 
   add_executable(simple_test_delete simple_test_delete.c arg_parser.c)
