@@ -322,7 +322,7 @@ release_test_mixes_99_small_1_medium:
         - ctest -R ^test_mixes_99_small_1_medium$
     needs: [release_build_gcc, release_build_clang]
 
-release_test_45_small_50_medium_5_big:
+release_test_mixes_45_small_50_medium_5_big:
     image: carvicsforth/arch_carv:latest
     stage: release_test
     <<: *release_build_commands
