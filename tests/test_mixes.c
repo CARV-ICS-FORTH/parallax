@@ -158,8 +158,9 @@ static void populate_db(par_handle hd, struct task task_info)
 		value *v = (value *)((char *)k + sizeof(uint32_t) + k->key_size);
 		v->value_size = init_info.kv_size - ((2 * sizeof(uint32_t)) + k->key_size);
 		memset(v->value_buf, 0, v->value_size);
-		if (i % 1000 == 0)
-			log_debug("%s", k->key_buf);
+		//if (i % 1000 == 0)
+		//	log_debug("%s", k->key_buf);
+		
 
 		if (par_put_serialized(hd, (char *)k) != PAR_SUCCESS) {
 			log_fatal("Put failed!");
@@ -227,7 +228,7 @@ static void scanner_validate_number_of_kvs(par_handle hd, uint64_t num_keys)
 		par_get_next(sc);
 	}
 
-	log_debug("scanner found %lu kvs", key_count);
+	//log_debug("scanner found %lu kvs", key_count);
 	if (key_count != num_keys) {
 		log_fatal("Scanner did not found all keys. Phase one of validator failed...");
 		BUG_ON();
