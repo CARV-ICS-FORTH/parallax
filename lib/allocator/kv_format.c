@@ -16,6 +16,7 @@
 #define NUM_OF_OWNERSHIP_REGISTRY_PAIRS (2)
 #include "../btree/conf.h"
 #include "../common/common.h"
+#include "../common/common_macros.h"
 #include "device_structures.h"
 #include "volume_manager.h"
 #include <fcntl.h>
@@ -152,8 +153,7 @@ void kvf_init_parallax(char *device_name, uint32_t max_regions_num)
 		kvf_write_buffer(fd, (char *)rs, 0, sizeof(struct pr_db_superblock), dev_offt);
 		dev_offt += sizeof(struct pr_db_superblock);
 	}
-	free(rs);
-	rs = NULL;
+	SAFE_FREE_PTR(rs);
 
 	/*Calculate each region's max size of ownership registry*/
 	uint64_t unmapped_bytes = SEGMENT_SIZE;
@@ -224,9 +224,7 @@ void kvf_init_parallax(char *device_name, uint32_t max_regions_num)
 		perror("Reason:");
 		BUG_ON();
 	}
-
-	free(registry_buffer);
-	registry_buffer = NULL;
+	SAFE_FREE_PTR(registry_buffer);
 
 	log_info("Per region ownership registry size: %lu B or %lu KB", registry_size_in_bytes,
 		 registry_size_in_bytes / KB(1));
@@ -253,8 +251,7 @@ void kvf_init_parallax(char *device_name, uint32_t max_regions_num)
 		"Volume %s metadata size in bytes: %lu or %lu MB. Padded space in metatata to be segment aligned %lu B",
 		device_name, S->volume_metadata_size, S->volume_metadata_size / MB(1), S->paddedSpace);
 
-	free(S);
-	S = NULL;
+	SAFE_FREE_PTR(S);
 
 	if (fsync(fd)) {
 		log_fatal("Failed to sync volume: %s metadata", device_name);
@@ -274,7 +271,7 @@ int main(int argc, char **argv)
 {
 	struct parse_options options = kvf_parse_options(argc, argv);
 	kvf_init_parallax(options.device_name, options.max_regions_num);
-	free(options.device_name);
+	SAFE_FREE_PTR(options.device_name);
 	return 1;
 }
 
