@@ -45,6 +45,8 @@ struct parse_options {
 	uint32_t max_regions_num;
 };
 
+// TODO replace argument parsing with arg_parser from tests directory.
+// Maybe arg parser should become a standalone library
 static struct parse_options kvf_parse_options(int argc, char **argv)
 {
 	int i, j;
@@ -59,7 +61,7 @@ static struct parse_options kvf_parse_options(int argc, char **argv)
 
 	for (i = 1; i < argc; i += 2) {
 		for (j = 0; j < KVF_NUM_OPTIONS; ++j) {
-			if (strcmp(argv[i], kvf_options[j]) == 0) {
+			if (0 == strcmp(argv[i], kvf_options[j])) {
 				switch (j) {
 				case DEVICE:
 					if (i + 1 >= argc) {
@@ -84,12 +86,12 @@ static struct parse_options kvf_parse_options(int argc, char **argv)
 		}
 	}
 
-	if (kvf_device_name == NULL) {
+	if (NULL == kvf_device_name) {
 		log_fatal("Device name not specified help:\n %s", kvf_help);
 		BUG_ON();
 	}
 
-	if (kvf_max_regions_num == 0) {
+	if (0 == kvf_max_regions_num) {
 		log_fatal("Max region number not specified help:\n %s", kvf_help);
 		BUG_ON();
 	}
@@ -107,7 +109,7 @@ static void kvf_write_buffer(int fd, char *buffer, ssize_t start, ssize_t size, 
 	while (total_bytes_written < size) {
 		ssize_t bytes_written = pwrite(fd, &buffer[total_bytes_written], size - total_bytes_written,
 					       dev_offt + total_bytes_written);
-		if (bytes_written == -1) {
+		if (-1 == bytes_written) {
 			log_fatal("Failed to writed segment for leaf nodes reason follows");
 			perror("Reason");
 			BUG_ON();
@@ -130,16 +132,16 @@ void kvf_init_parallax(char *device_name, uint32_t max_regions_num)
 
 	device_size = lseek64(fd, 0, SEEK_END);
 
-	if (device_size == -1) {
+	if (-1 == device_size) {
 		log_fatal("failed to determine volume size exiting...");
 		perror("ioctl");
 		BUG_ON();
 	}
-	log_info("Found volume of %ld MB", device_size / (1024 * 1024));
+	log_info("Found volume of %ld MB", device_size / MB(1));
 
 	if (device_size < MIN_VOLUME_SIZE) {
-		log_fatal("Sorry minimum supported volume size is %ld GB actual size %ld GB",
-			  MIN_VOLUME_SIZE / (1024 * 1024 * 1024), device_size / (1024 * 1024 * 1024));
+		log_fatal("Sorry minimum supported volume size is %ld GB actual size %ld GB", MIN_VOLUME_SIZE / GB(1),
+			  device_size / GB(1));
 		BUG_ON();
 	}
 
@@ -155,15 +157,15 @@ void kvf_init_parallax(char *device_name, uint32_t max_regions_num)
 
 	/*Calculate each region's max size of ownership registry*/
 	uint64_t unmapped_bytes = SEGMENT_SIZE;
-	uint64_t mapped_device_size;
+	uint64_t mapped_device_size = 0;
 
 	if (device_size % SEGMENT_SIZE)
 		unmapped_bytes += (SEGMENT_SIZE - (device_size % SEGMENT_SIZE));
 
 	mapped_device_size = device_size - unmapped_bytes;
 
-	log_info("Mapped device size: %lu MB unmapped for alignment purposes: %lu KB",
-		 mapped_device_size / (1024 * 1024), unmapped_bytes / 1024);
+	log_info("Mapped device size: %lu MB unmapped for alignment purposes: %lu KB", mapped_device_size / MB(1),
+		 unmapped_bytes / KB(1));
 
 	if (mapped_device_size % SEGMENT_SIZE) {
 		log_fatal("Something went wrong actual_device_size should be a multiple of SEGMENT_SIZE");
@@ -201,8 +203,8 @@ void kvf_init_parallax(char *device_name, uint32_t max_regions_num)
 		metadata_size_in_bytes =
 			metadata_size_in_bytes + (SEGMENT_SIZE - (metadata_size_in_bytes % SEGMENT_SIZE));
 
-	log_info("Volume metadata size: %lu KB or %lu MB", metadata_size_in_bytes / 1024,
-		 metadata_size_in_bytes / (1024 * 1024));
+	log_info("Volume metadata size: %lu KB or %lu MB", metadata_size_in_bytes / KB(1),
+		 metadata_size_in_bytes / MB(1));
 
 	uint64_t metadata_size_in_bits = (metadata_size_in_bytes / SEGMENT_SIZE) * 8;
 	/*Now mark as reserved the space from the beginning of the volume that is for metadata purposes*/
@@ -222,13 +224,14 @@ void kvf_init_parallax(char *device_name, uint32_t max_regions_num)
 		perror("Reason:");
 		BUG_ON();
 	}
+
 	free(registry_buffer);
 	registry_buffer = NULL;
 
 	log_info("Per region ownership registry size: %lu B or %lu KB", registry_size_in_bytes,
-		 registry_size_in_bytes / 1024);
+		 registry_size_in_bytes / KB(1));
 	log_info("Total ownership registries size: %lu B or %lu KB", max_regions_num * 2 * registry_size_in_bytes,
-		 (max_regions_num * 2 * registry_size_in_bytes) / 1024);
+		 (max_regions_num * 2 * registry_size_in_bytes) / KB(1));
 
 	//Finally write accounting information
 	struct superblock *S = (struct superblock *)kvf_posix_calloc(sizeof(struct superblock));
@@ -243,12 +246,13 @@ void kvf_init_parallax(char *device_name, uint32_t max_regions_num)
 	S->unmappedSpace = device_size - mapped_device_size;
 	S->bitmap_size_in_words = registry_size_in_bits / 64;
 	kvf_write_buffer(fd, (char *)S, 0, sizeof(struct superblock), 0);
-	log_info("Size %lu B or %lu GB", S->volume_size, device_size / (1024 * 1024 * 1024));
+	log_info("Size %lu B or %lu GB", S->volume_size, device_size / GB(1));
 	log_info("In memory bitmap size in words %lu or %lu B and unmapped space in bytes: %lu",
 		 S->bitmap_size_in_words, S->bitmap_size_in_words * 8, S->unmappedSpace);
 	log_info(
 		"Volume %s metadata size in bytes: %lu or %lu MB. Padded space in metatata to be segment aligned %lu B",
-		device_name, S->volume_metadata_size, S->volume_metadata_size / (1024 * 1024), S->paddedSpace);
+		device_name, S->volume_metadata_size, S->volume_metadata_size / MB(1), S->paddedSpace);
+
 	free(S);
 	S = NULL;
 

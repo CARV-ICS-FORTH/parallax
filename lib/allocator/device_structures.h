@@ -51,7 +51,7 @@ struct superblock {
 	int64_t unmapped_blocks;
 	int64_t magic_number;
 	/*<new_persistent_design>*/
-	int64_t volume_size;
+	uint64_t volume_size;
 	uint32_t max_regions_num;
 	uint64_t regions_log_size;
 	uint64_t volume_metadata_size;
