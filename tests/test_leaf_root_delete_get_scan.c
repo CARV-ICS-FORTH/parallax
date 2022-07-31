@@ -82,6 +82,11 @@ int main(int argc, char *argv[])
 		BUG_ON();
 	}
 	par_close_scanner(scanner);
-	par_close(handle);
+	error_message = par_close(handle);
+	if (error_message) {
+		log_fatal("%s", error_message);
+		free(error_message);
+		return EXIT_FAILURE;
+	}
 	return 0;
 }

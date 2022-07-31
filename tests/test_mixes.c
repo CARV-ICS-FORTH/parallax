@@ -1,3 +1,4 @@
+#include "allocator/volume_manager.h"
 #include "arg_parser.h"
 #include <assert.h>
 #include <btree/btree.h>
@@ -501,7 +502,12 @@ int main(int argc, char *argv[])
 	/*validate the poppulated db phase*/
 	validate_kvs(handle, t_info);
 
-	par_close(handle);
+	error_message = par_close(handle);
+	if (error_message) {
+		log_fatal("%s", error_message);
+		free(error_message);
+		return EXIT_FAILURE;
+	}
 	log_info("test successfull");
 	return 0;
 }

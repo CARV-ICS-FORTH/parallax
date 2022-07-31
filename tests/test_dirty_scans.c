@@ -390,7 +390,11 @@ int main(int argc, char **argv)
 		scan_workload(&workload_config);
 	}
 
-	par_close(hd);
-
+	error_message = par_close(hd);
+	if (error_message) {
+		log_fatal("%s", error_message);
+		free(error_message);
+		return EXIT_FAILURE;
+	}
 	return 0;
 }

@@ -92,7 +92,12 @@ class ParallaxDB : public YCSBDB {
 	void Close()
 	{
 		for (int i = 0; i < db_num; ++i) {
-			par_close(dbs[i]);
+			char *error_message = par_close(dbs[i]);
+			if (error_message != nullptr) {
+				std::cerr << error_message << std::endl;
+				free(error_message);
+				_Exit(EXIT_FAILURE);
+			}
 		}
 #if MEASURE_SST_USED_SPACE
 		for (int i = 0; i < MAX_LEVELS; i++)

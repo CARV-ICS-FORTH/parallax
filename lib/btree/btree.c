@@ -633,21 +633,17 @@ db_handle *internal_db_open(struct volume_descriptor *volume_desc, char *db_name
 	}
 
 	db_desc->level_medium_inplace = level_medium_inplace;
-	handle = malloc(sizeof(db_handle));
-
-	/*Remove later*/
+	handle = calloc(1, sizeof(db_handle));
 	handle->db_desc = db_desc;
 	handle->volume_desc = db_desc->db_volume;
 
+	handle->db_desc->levels[0].max_level_size = level0_size;
 	/*init soft state for all levels*/
-	for (uint8_t level_id = 0; level_id < MAX_LEVELS; level_id++) {
+	for (uint8_t level_id = 1; level_id < MAX_LEVELS; level_id++) {
 		init_leaf_sizes_perlevel(&handle->db_desc->levels[level_id]);
 
-		if (level_id != 0)
-			handle->db_desc->levels[level_id].max_level_size =
-				handle->db_desc->levels[level_id - 1].max_level_size * growth_factor;
-		else
-			handle->db_desc->levels[level_id].max_level_size = level0_size;
+		handle->db_desc->levels[level_id].max_level_size =
+			handle->db_desc->levels[level_id - 1].max_level_size * growth_factor;
 
 		log_info("DB:Level %d max_total_size %lu", level_id, handle->db_desc->levels[level_id].max_level_size);
 	}
@@ -713,7 +709,7 @@ db_handle *internal_db_open(struct volume_descriptor *volume_desc, char *db_name
 	MUTEX_INIT(&handle->db_desc->lock_log, NULL);
 
 	klist_add_first(volume_desc->open_databases, handle->db_desc, db_name, NULL);
-	handle->db_desc->stat = DB_OPEN;
+	handle->db_desc->db_state = DB_OPEN;
 
 	log_info("Opened DB %s starting its compaction daemon", db_name);
 
@@ -724,6 +720,7 @@ db_handle *internal_db_open(struct volume_descriptor *volume_desc, char *db_name
 		BUG_ON();
 	}
 
+	handle->db_desc->gc_scanning_db = false;
 	if (!volume_desc->gc_thread_spawned) {
 		if (pthread_create(&(handle->db_desc->gc_thread), NULL, gc_log_entries, (void *)handle) != 0) {
 			log_fatal("Failed to start garbage collection thread for db %s", db_name);
@@ -745,12 +742,12 @@ exit:
 	return handle;
 }
 
-db_handle *db_open(char *volumeName, char *db_name, par_db_initializers create_flag, char **error_message)
+db_handle *db_open(char *volume_name, char *db_name, par_db_initializers create_flag, char **error_message)
 {
 	MUTEX_LOCK(&init_lock);
-	struct volume_descriptor *volume_desc = mem_get_volume_desc(volumeName);
+	struct volume_descriptor *volume_desc = mem_get_volume_desc(volume_name);
 	if (!volume_desc) {
-		create_error_message(error_message, "Failed to open volume %s", volumeName);
+		create_error_message(error_message, "Failed to open volume %s", volume_name);
 		return NULL;
 	}
 	assert(volume_desc->open_databases);
@@ -761,29 +758,37 @@ db_handle *db_open(char *volumeName, char *db_name, par_db_initializers create_f
 	return handle;
 }
 
-enum parallax_status db_close(db_handle *handle)
+char *db_close(db_handle *handle)
 {
+	char *error_message = NULL;
 	MUTEX_LOCK(&init_lock);
 	/*verify that this is a valid db*/
 	int not_valid_db = klist_find_element_with_key(handle->volume_desc->open_databases,
 						       handle->db_desc->db_superblock->db_name) == NULL;
 
 	if (not_valid_db) {
-		log_warn("Received close for db: %s that is not listed as open",
-			 handle->db_desc->db_superblock->db_name);
+		create_error_message(&error_message, "Received close for db: %s that is not listed as open",
+				     handle->db_desc->db_superblock->db_name);
 		goto finish;
 	}
 
 	--handle->db_desc->reference_count;
+	// We need to wait for the garbage collection thread to stop working on the db
+	// otherwise we could leave this db in an undefined state where it will never close.
+	// Scenario is -> db_close is called while gc is having a reference to the db and
+	// when it decreases the reference the handle is never closed.
+	while (handle->db_desc->gc_scanning_db)
+		sleep(50);
 
 	if (handle->db_desc->reference_count < 0) {
 		log_fatal("Negative referece count for DB %s", handle->db_desc->db_superblock->db_name);
 		BUG_ON();
 	}
 	if (handle->db_desc->reference_count > 0) {
-		log_warn("Sorry more guys uses this DB: %s", handle->db_desc->db_superblock->db_name);
+		create_error_message(&error_message, "Sorry more guys uses this DB: %s remaining guys %d",
+				     handle->db_desc->db_superblock->db_name, handle->db_desc->reference_count);
 		MUTEX_UNLOCK(&init_lock);
-		return PARALLAX_SUCCESS;
+		return error_message;
 	}
 	/*Remove so it is not visible by the GC thread*/
 	if (!klist_remove_element(handle->volume_desc->open_databases, handle->db_desc)) {
@@ -796,7 +801,7 @@ enum parallax_status db_close(db_handle *handle)
 	/*New requests will eventually see that db is closing*/
 	/*wake up possible clients that are stack due to non-availability of L0*/
 	MUTEX_LOCK(&handle->db_desc->client_barrier_lock);
-	handle->db_desc->stat = DB_IS_CLOSING;
+	handle->db_desc->db_state = DB_IS_CLOSING;
 	if (pthread_cond_broadcast(&handle->db_desc->client_barrier) != 0) {
 		log_fatal("Failed to wake up stopped clients");
 		BUG_ON();
@@ -812,9 +817,9 @@ enum parallax_status db_close(db_handle *handle)
 		spin_loop(&(handle->db_desc->levels[level_id].active_operations), 0);
 	}
 
-	handle->db_desc->stat = DB_TERMINATE_COMPACTION_DAEMON;
+	handle->db_desc->db_state = DB_TERMINATE_COMPACTION_DAEMON;
 	sem_post(&handle->db_desc->compaction_daemon_interrupts);
-	while (handle->db_desc->stat != DB_IS_CLOSING)
+	while (handle->db_desc->db_state != DB_IS_CLOSING)
 		usleep(50);
 
 	log_info("Ok compaction daemon exited continuing the close sequence of DB:%s",
@@ -875,7 +880,7 @@ finish:
 
 	MUTEX_UNLOCK(&init_lock);
 	free(handle);
-	return PARALLAX_SUCCESS;
+	return error_message;
 }
 
 /**
@@ -949,21 +954,21 @@ static enum kv_category calculate_KV_category(uint32_t key_size, uint32_t value_
 	return category;
 }
 
-uint8_t insert_key_value(db_handle *handle, void *key, void *value, uint32_t key_size, uint32_t value_size,
-			 request_type op_type)
+par_ret_code insert_key_value(db_handle *handle, void *key, void *value, uint32_t key_size, uint32_t value_size,
+			      request_type op_type)
 {
 	bt_insert_req ins_req;
 	char __tmp[KV_MAX_SIZE];
 	char *key_buf = __tmp;
 
-	if (DB_IS_CLOSING == handle->db_desc->stat) {
+	if (DB_IS_CLOSING == handle->db_desc->db_state) {
 		log_warn("Sorry DB: %s is closing", handle->db_desc->db_superblock->db_name);
-		return PARALLAX_FAILURE;
+		return PAR_FAILURE;
 	}
 
 	if (key_size > MAX_KEY_SIZE) {
 		log_fatal("Keys > %d bytes are not supported!", MAX_KEY_SIZE);
-		return PARALLAX_FAILURE;
+		return PAR_FAILURE;
 	}
 
 	if (!key_size) {
@@ -995,10 +1000,10 @@ uint8_t insert_key_value(db_handle *handle, void *key, void *value, uint32_t key
 	ins_req.metadata.cat = calculate_KV_category(key_size, value_size, op_type);
 
 	/*
-* Note for L0 inserts since active_tree changes dynamically we decide which
-* is the active_tree after
-* acquiring the guard lock of the region
-* */
+	 * Note for L0 inserts since active_tree changes dynamically we decide which
+	 * is the active_tree after
+	 * acquiring the guard lock of the region
+	 * */
 
 	return _insert_key_value(&ins_req);
 }
@@ -1009,7 +1014,7 @@ uint8_t insert_key_value(db_handle *handle, void *key, void *value, uint32_t key
  * The format of the key value pair is | key_size | key | value_size | value |, where {key,value}_size is uint32_t.
  * */
 
-uint8_t serialized_insert_key_value(db_handle *handle, const char *serialized_key_value)
+par_ret_code serialized_insert_key_value(db_handle *handle, const char *serialized_key_value)
 {
 	bt_insert_req ins_req = { .metadata.handle = handle,
 				  .key_value_buf = (char *)serialized_key_value,
@@ -1017,15 +1022,15 @@ uint8_t serialized_insert_key_value(db_handle *handle, const char *serialized_ke
 				  .metadata.key_format = KV_FORMAT,
 				  .metadata.append_to_log = 1 };
 
-	if (DB_IS_CLOSING == handle->db_desc->stat) {
+	if (DB_IS_CLOSING == handle->db_desc->db_state) {
 		log_warn("Sorry DB: %s is closing", handle->db_desc->db_superblock->db_name);
-		return PARALLAX_FAILURE;
+		return PAR_FAILURE;
 	}
 
 	uint32_t key_size = KEY_SIZE(serialized_key_value);
 	if (key_size > MAX_KEY_SIZE) {
 		log_info("Keys > %d bytes are not supported!", MAX_KEY_SIZE);
-		return PARALLAX_FAILURE;
+		return PAR_FAILURE;
 	}
 	uint32_t value_size = VALUE_SIZE(serialized_key_value + key_size + sizeof(key_size));
 	uint32_t kv_size = sizeof(uint32_t) + key_size + sizeof(uint32_t) + value_size;
@@ -1466,19 +1471,19 @@ void *append_key_value_to_log(log_operation *req)
 	}
 }
 
-uint8_t _insert_key_value(bt_insert_req *ins_req)
+par_ret_code _insert_key_value(bt_insert_req *ins_req)
 {
 	ins_req->metadata.handle->db_desc->dirty = 1;
-	uint8_t rc = PARALLAX_SUCCESS;
+	par_ret_code ret_code = PAR_SUCCESS;
 
-	if (writers_join_as_readers(ins_req) == PARALLAX_SUCCESS) {
-		rc = PARALLAX_SUCCESS;
-	} else if (concurrent_insert(ins_req) != PARALLAX_SUCCESS) {
+	if (writers_join_as_readers(ins_req) == PAR_SUCCESS) {
+		ret_code = PAR_SUCCESS;
+	} else if (concurrent_insert(ins_req) != PAR_SUCCESS) {
 		log_warn("insert failed!");
-		rc = PARALLAX_FAILURE;
+		ret_code = PAR_FAILURE;
 	}
 
-	return rc;
+	return ret_code;
 }
 
 // cppcheck-suppress unusedFunction
@@ -1644,7 +1649,7 @@ exit:
 
 void find_key(struct lookup_operation *get_op)
 {
-	if (DB_IS_CLOSING == get_op->db_desc->stat) {
+	if (DB_IS_CLOSING == get_op->db_desc->db_state) {
 		log_warn("Sorry DB: %s is closing", get_op->db_desc->db_superblock->db_name);
 		get_op->found = 0;
 		return;
@@ -2028,7 +2033,7 @@ release_and_retry:
 	/*Unlock remaining locks*/
 	_unlock_upper_levels(upper_level_nodes, size, release);
 	__sync_fetch_and_sub(num_level_writers, 1);
-	return PARALLAX_SUCCESS;
+	return PAR_SUCCESS;
 }
 
 static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
@@ -2071,7 +2076,7 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 	    db_desc->levels[level_id].root_w[ins_req->metadata.tree_id]->type == leafRootNode) {
 		_unlock_upper_levels(upper_level_nodes, size, release);
 		__sync_fetch_and_sub(num_level_writers, 1);
-		return PARALLAX_FAILURE;
+		return PAR_FAILURE;
 	}
 
 	/*acquire read lock of the current root*/
@@ -2091,7 +2096,7 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 			/*failed needs split*/
 			_unlock_upper_levels(upper_level_nodes, size, release);
 			__sync_fetch_and_sub(num_level_writers, 1);
-			return PARALLAX_FAILURE;
+			return PAR_FAILURE;
 		}
 
 		uint64_t child_offt = index_binary_search((struct index_node *)son, ins_req->key_value_buf,
@@ -2125,7 +2130,7 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 	if (is_split_needed(son, ins_req, db_desc->levels[level_id].leaf_size)) {
 		_unlock_upper_levels(upper_level_nodes, size, release);
 		__sync_fetch_and_sub(num_level_writers, 1);
-		return PARALLAX_FAILURE;
+		return PAR_FAILURE;
 	}
 
 	/*Succesfully reached a bin (bottom internal node)*/
@@ -2138,5 +2143,5 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 	/*Unlock remaining locks*/
 	_unlock_upper_levels(upper_level_nodes, size, release);
 	__sync_fetch_and_sub(num_level_writers, 1);
-	return PARALLAX_SUCCESS;
+	return PAR_SUCCESS;
 }

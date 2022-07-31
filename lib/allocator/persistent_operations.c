@@ -817,17 +817,13 @@ start:
 	/*Advance cursor for future use*/
 	/*Are there enough bytes in segment?*/
 
-	uint32_t remaining_bytes_in_segment;
+	uint32_t remaining_bytes_in_segment = 0;
 	int is_tail = cursor->log_segments->segments[cursor->log_segments->entry_id] == cursor->log_tail_dev_offt;
 
+	remaining_bytes_in_segment = SEGMENT_SIZE - ((uint64_t)cursor->offt_in_segment);
 	if (is_tail)
 		remaining_bytes_in_segment = (cursor->log_size % SEGMENT_SIZE) - ((uint64_t)cursor->offt_in_segment);
-	else
-		remaining_bytes_in_segment = SEGMENT_SIZE - ((uint64_t)cursor->offt_in_segment);
 
-	//log_info("Remaining bytes in segment are %u pos normalized %llu is_tail?: %d log size: %llu",
-	//	 remaining_bytes_in_segment, (uint64_t)cursor->pos_in_segment % SEGMENT_SIZE, is_tail,
-	//	 cursor->log_size);
 	char *pos_in_segment = get_position_in_segment(cursor);
 	if (remaining_bytes_in_segment < sizeof(uint32_t) || 0 == *(uint32_t *)pos_in_segment) {
 		cursor->offt_in_segment += remaining_bytes_in_segment;

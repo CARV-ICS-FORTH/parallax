@@ -156,7 +156,7 @@ void init_generic_scanner(struct scannerHandle *sc, struct db_handle *handle, vo
 
 void init_dirty_scanner(struct scannerHandle *sc, struct db_handle *handle, void *start_key, char seek_flag)
 {
-	if (DB_IS_CLOSING == handle->db_desc->stat) {
+	if (DB_IS_CLOSING == handle->db_desc->db_state) {
 		log_warn("Sorry DB: %s is closing", handle->db_desc->db_superblock->db_name);
 		return;
 	}
@@ -360,7 +360,7 @@ int32_t level_scanner_get_next(level_scanner *sc)
 			//	  stack_element.idx, stack_element.node->num_entries);
 			stack_push(&sc->stack, stack_element);
 
-			return PARALLAX_SUCCESS;
+			return PAR_SUCCESS;
 
 		case PUSH_STACK:;
 			//log_debug("Pushing stack");
@@ -400,7 +400,7 @@ int32_t level_scanner_get_next(level_scanner *sc)
 		}
 	}
 
-	return PARALLAX_SUCCESS;
+	return PAR_SUCCESS;
 }
 
 int32_t level_scanner_seek(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER_MODE mode)
@@ -497,7 +497,7 @@ int32_t level_scanner_seek(level_scanner *level_sc, void *start_key_buf, SEEK_SC
 		fill_normal_scanner(level_sc, &db_desc->levels[level_sc->level_id], element.node, element.idx);
 
 	stack_push(&level_sc->stack, element);
-	return PARALLAX_SUCCESS;
+	return PAR_SUCCESS;
 }
 
 /**

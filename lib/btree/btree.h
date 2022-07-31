@@ -18,6 +18,7 @@
 #include "../common/common.h"
 #include "../include/parallax/parallax.h"
 #include "conf.h"
+#include <stdbool.h>
 
 #if ENABLE_BLOOM_FILTERS
 #include <bloom.h>
@@ -61,8 +62,6 @@ typedef enum {
 	NO_COMPACTION = 0,
 	COMPACTION_IN_PROGRESS = 1,
 } level_0_tree_status;
-
-enum parallax_status { PARALLAX_SUCCESS = 102, PARALLAX_FAILURE = 108 };
 
 /*
  * header of segment is 4K. L0 and KV log segments are chained in a linked list
@@ -312,8 +311,9 @@ typedef struct db_descriptor {
 	int32_t reference_count;
 	int32_t group_id;
 	int32_t group_index;
+	bool gc_scanning_db;
+	enum db_status db_state;
 	char dirty;
-	enum db_status stat;
 } db_descriptor;
 
 typedef struct db_handle {
@@ -354,8 +354,8 @@ void pr_flush_L0(struct db_descriptor *db_desc, uint8_t tree_id);
 void pr_flush_compaction(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id);
 
 /*management operations*/
-db_handle *db_open(char *volumeName, char *db_name, par_db_initializers create_flag, char **error_message);
-enum parallax_status db_close(db_handle *handle);
+db_handle *db_open(char *volume_name, char *db_name, par_db_initializers create_flag, char **error_message);
+char *db_close(db_handle *handle);
 
 void *compaction_daemon(void *args);
 
@@ -475,10 +475,10 @@ struct log_sequence_number {
 	uint64_t id;
 };
 
-uint8_t insert_key_value(db_handle *handle, void *key, void *value, uint32_t key_size, uint32_t value_size,
-			 request_type op_type);
-uint8_t serialized_insert_key_value(db_handle *handle, const char *serialized_key_value);
-uint8_t _insert_key_value(bt_insert_req *ins_req);
+par_ret_code insert_key_value(db_handle *handle, void *key, void *value, uint32_t key_size, uint32_t value_size,
+			      request_type op_type);
+par_ret_code serialized_insert_key_value(db_handle *handle, const char *serialized_key_value);
+par_ret_code _insert_key_value(bt_insert_req *ins_req);
 
 void *append_key_value_to_log(log_operation *req);
 void find_key(struct lookup_operation *get_op);

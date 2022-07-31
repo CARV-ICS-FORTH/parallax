@@ -264,7 +264,14 @@ int main(int argc, char *argv[])
 	get_all_keys(handle);
 	delete_half_keys(handle);
 	get_all_valid_keys(handle);
-	par_close(handle);
+	error_message = par_close(handle);
+
+	if (error_message) {
+		log_fatal("%s", error_message);
+		free(error_message);
+		return EXIT_FAILURE;
+	}
+
 	log_info("----------------------------------CLOSE FINISH--------------------------------------");
 	handle = par_open(&db_options, &error_message);
 	if (error_message) {
@@ -275,6 +282,12 @@ int main(int argc, char *argv[])
 
 	get_all_valid_keys(handle);
 	scan_all_valid_keys(handle);
-	par_close(handle);
+	error_message = par_close(handle);
+
+	if (error_message) {
+		log_fatal("%s", error_message);
+		free(error_message);
+		return EXIT_FAILURE;
+	}
 	return 0;
 }

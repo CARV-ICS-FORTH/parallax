@@ -65,7 +65,7 @@ struct par_key_value {
  * @retval NULL Function successfully executed.
  * @retval NON-NULL The reason the function failed.
  */
-char *par_format(char *device_name, uint32_t max_regions_num);
+char *par_format(char *device_name, uint32_t max_regions_num) __attribute__((warn_unused_result));
 
 /**
  ** Opens a DB based on the options provided.
@@ -82,7 +82,8 @@ par_handle par_open(par_db_options *db_options, char **error_message);
  * @param handle Handle returned by \ref par_open.
  * @return Error message in case of failure.
  */
-char *par_close(par_handle handle);
+
+char *par_close(par_handle handle) __attribute__((warn_unused_result));
 typedef enum par_ret_code {
 	PAR_SUCCESS = 0,
 	PAR_FAILURE,

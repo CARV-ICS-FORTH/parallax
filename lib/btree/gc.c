@@ -19,6 +19,7 @@
 #include "../common/common.h"
 #include "../common/common_functions.h"
 #include "btree.h"
+#include "conf.h"
 #include "set_options.h"
 #include <assert.h>
 #include <list.h>
@@ -283,12 +284,14 @@ void *gc_log_entries(void *hd)
 
 			db_desc = (db_descriptor *)region->data;
 			++db_desc->reference_count;
+			db_desc->gc_scanning_db = true;
 			MUTEX_UNLOCK(&init_lock);
 
 			scan_db(db_desc, volume_desc, marks);
 
 			MUTEX_LOCK(&init_lock);
 			--db_desc->reference_count;
+			db_desc->gc_scanning_db = false;
 		}
 	}
 

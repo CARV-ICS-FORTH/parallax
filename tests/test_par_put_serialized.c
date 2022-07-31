@@ -52,7 +52,12 @@ int main(int argc, char *argv[])
 	if (par_put_serialized(handle, serialized_key_value) != PAR_SUCCESS)
 		return EXIT_FAILURE;
 
-	par_close(handle);
+	error_message = par_close(handle);
 
+	if (error_message) {
+		log_fatal("%s", error_message);
+		free(error_message);
+		return EXIT_FAILURE;
+	}
 	return EXIT_SUCCESS;
 }
