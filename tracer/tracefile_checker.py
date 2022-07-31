@@ -34,6 +34,8 @@ class Op(enum.Enum):
     NONE = 3
 
 
+# create an argparser for the checker
+# checker required a 'file' argument
 def parse_arguments():
     parser = argparse.ArgumentParser(
         description="Execute tracer with appropriate parameters"
@@ -42,6 +44,7 @@ def parse_arguments():
     return parser.parse_args()
 
 
+# return the operation based on the current line
 def get_op(line_list):
     if line_list[0] == "PUT":
         return Op.PUT
@@ -51,6 +54,8 @@ def get_op(line_list):
         return Op.NONE
 
 
+# Validate that the get operation follows the GET KEY_SIZE KEY format
+# if not throw an error and exit
 def validate_get_op_format(line_list):
     key_size = int(line_list[1])
     key = line_list[2]
@@ -60,6 +65,8 @@ def validate_get_op_format(line_list):
         sys.exit(1)
 
 
+# Validate that the put operation follows the PUT KEY_SIZE KEY VALUE_SIZE
+# if not throw an error and exti
 def validate_put_op_format(line_list):
     key_size = int(line_list[1])
     key = line_list[2]
@@ -94,6 +101,7 @@ def validate_line(line):
         sys.exit(1)
 
 
+# return the number of lines in the file, located in filename
 def count_lines(filename):
     tracefile = open(filename, "r")
     line = tracefile.readline()
@@ -105,6 +113,8 @@ def count_lines(filename):
     return count
 
 
+# process each line of the file and validate that all the lines are following
+# the operation appropirate's format,
 def validate_tracefile(args):
     filename = args.file
     number_of_lines = count_lines(filename)
