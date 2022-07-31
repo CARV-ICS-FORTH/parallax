@@ -61,7 +61,8 @@ set_target_properties(
   ${LIB} PROPERTIES PUBLIC_HEADER
                     "${CMAKE_CURRENT_SOURCE_DIR}/include/parallax.h")
 
-target_include_directories(${LIB} PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
+target_include_directories(
+  ${LIB} PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include/parallax")
 
 set_source_files_properties(allocator/spin_loop.c PROPERTIES COMPILE_FLAGS
                                                              "-O0")
