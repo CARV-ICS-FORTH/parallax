@@ -143,7 +143,6 @@ release_test_dirty_scans_smalld_greater:
         - make test_dirty_scans;make kv_format.parallax;cd tests;
         - ./mkfs.sh "$NVME0/$CI_JOB_ID"/kv_store.dat 128
         - ctest -R ^test_dirty_scans_sd_greater$
-    when: manual
     needs: [release_build_gcc, release_build_clang]
 
 release_test_dirty_scans_mediumd:
@@ -331,4 +330,15 @@ release_test_mixes_45_small_50_medium_5_big:
     script:
         - make test_mixes;cd tests;
         - ctest -R ^test_mixes_45_small_50_medium_5_big$
+    needs: [release_build_gcc, release_build_clang]
+
+release_tracer:
+    image: carvicsforth/arch_carv:latest
+    stage: release_test
+    <<: *release_build_commands
+    tags:
+        - kubernetes
+    script:
+        - make tracer;cd tracer;
+        - ctest -R ^tracer$
     needs: [release_build_gcc, release_build_clang]
