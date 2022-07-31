@@ -17,6 +17,7 @@
 #include "../allocator/redo_undo_log.h"
 #include "../allocator/volume_manager.h"
 #include "../common/common.h"
+#include "../include/parallax/parallax.h"
 #include "conf.h"
 #include "dynamic_leaf.h"
 #include "gc.h"
@@ -528,17 +529,16 @@ static void restore_db(struct db_descriptor *db_desc, uint32_t region_idx)
 	recover_logs(db_desc);
 }
 
-static db_descriptor *get_db_from_volume(char *volume_name, char *db_name, char create_db)
+static db_descriptor *get_db_from_volume(char *volume_name, char *db_name, par_db_initializers create_db)
 {
 	struct db_descriptor *db_desc = NULL;
 	struct volume_descriptor *volume_desc = mem_get_volume_desc(volume_name);
 	struct pr_db_superblock *db_superblock = NULL;
 	uint8_t new_db = 0;
 
-	if (CREATE_DB == create_db)
-		db_superblock = get_db_superblock(volume_desc, db_name, strlen(db_name) + 1, 1, &new_db);
-	else
-		db_superblock = get_db_superblock(volume_desc, db_name, strlen(db_name) + 1, 0, &new_db);
+	//TODO Refactor get_db_superblock -> Takes too much arguments -> create a struct
+	db_superblock =
+		get_db_superblock(volume_desc, db_name, strlen(db_name) + 1, PAR_CREATE_DB == create_db, &new_db);
 
 	if (db_superblock) {
 		int ret = posix_memalign((void **)&db_desc, ALIGNMENT_SIZE, sizeof(struct db_descriptor));
@@ -560,23 +560,21 @@ static db_descriptor *get_db_from_volume(char *volume_name, char *db_name, char 
 			log_info("Initializing new DB: %s, initializing its allocation log", db_name);
 			rul_log_init(db_desc);
 			db_desc->levels[0].allocation_txn_id[0] = rul_start_txn(db_desc);
-			/*
-     * init_fresh_db allocates space for the L0_recovery log and large.
-     * As a result we need to acquire a txn_id for the L0
-    */
 
 			log_info("Got txn %lu for the initialization of Large and L0_recovery_logs of DB: %s",
 				 db_desc->levels[0].allocation_txn_id[0], db_name);
+
+			//init_fresh_db allocates space for the L0_recovery log and large.
+			//As a result we need to acquire a txn_id for the L0
 			init_fresh_db(db_desc);
 		}
 	} else
 		log_info("DB: %s NOT found", db_name);
 	return db_desc;
 }
-/*</new_persistent_design>*/
 
-db_handle *internal_db_open(struct volume_descriptor *volume_desc, uint64_t start, uint64_t size, char *db_name,
-			    char CREATE_FLAG)
+db_handle *internal_db_open(struct volume_descriptor *volume_desc, char *db_name, par_db_initializers create_flag,
+			    char **error_message)
 {
 	struct db_handle *handle = NULL;
 	const uint32_t leaf_size_per_level[10] = { LEVEL0_LEAF_SIZE, LEVEL1_LEAF_SIZE, LEVEL2_LEAF_SIZE,
@@ -585,8 +583,7 @@ db_handle *internal_db_open(struct volume_descriptor *volume_desc, uint64_t star
 	struct db_descriptor *db = NULL;
 	struct lib_option *dboptions = NULL;
 
-	fprintf(stderr, "\n%s[%s:%s:%d](\"%s\", %" PRIu64 ", %" PRIu64 ", %s);%s\n", "\033[0;32m", __FILE__, __func__,
-		__LINE__, volume_desc->volume_name, start, size, db_name, "\033[0m");
+	log_info("Using Volume name = %s to open db with name = %s", volume_desc->volume_name, db_name);
 
 	parse_options(&dboptions);
 #if DISABLE_LOGGING
@@ -597,18 +594,17 @@ db_handle *internal_db_open(struct volume_descriptor *volume_desc, uint64_t star
 	db = klist_find_element_with_key(volume_desc->open_databases, db_name);
 
 	if (db != NULL) {
-		log_info("DB %s already open for volume", db_name);
+		create_error_message(error_message, "DB %s already open for volume", db_name);
 		handle = calloc(1, sizeof(struct db_handle));
-		memset(handle, 0x00, sizeof(db_handle));
 		handle->volume_desc = volume_desc;
 		handle->db_desc = db;
 		++handle->db_desc->reference_count;
 		goto exit;
 	}
 
-	uint64_t level0_size;
-	uint64_t growth_factor;
-	uint64_t level_medium_inplace;
+	uint64_t level0_size = 0;
+	uint64_t growth_factor = 0;
+	uint64_t level_medium_inplace = 0;
 
 	struct lib_option *option;
 
@@ -621,24 +617,23 @@ db_handle *internal_db_open(struct volume_descriptor *volume_desc, uint64_t star
 	check_option(dboptions, "level_medium_inplace", &option);
 	level_medium_inplace = option->value.count;
 
-	struct db_descriptor *db_desc = get_db_from_volume(volume_desc->volume_name, db_name, CREATE_FLAG);
+	struct db_descriptor *db_desc = get_db_from_volume(volume_desc->volume_name, db_name, create_flag);
 	if (!db_desc) {
-		if (CREATE_DB == CREATE_FLAG) {
-			log_warn("Sorry no room for new DB %s", db_name);
-			handle = NULL;
-			goto exit;
-		}
-		log_warn("DB %s not found instructed not to create a new one", db_name);
+		char *fmt_string = NULL;
 		handle = NULL;
+
+		if (PAR_CREATE_DB == create_flag)
+			fmt_string = "Sorry no room for new DB %s";
+
+		if (PAR_DONOT_CREATE_DB == create_flag)
+			fmt_string = "DB %s not found instructed not to create a new one";
+
+		create_error_message(error_message, fmt_string, db_name);
 		goto exit;
 	}
 
 	db_desc->level_medium_inplace = level_medium_inplace;
-	handle = calloc(1, sizeof(db_handle));
-	if (!handle) {
-		log_fatal("calloc failed");
-		BUG_ON();
-	}
+	handle = malloc(sizeof(db_handle));
 
 	/*Remove later*/
 	handle->db_desc = db_desc;
@@ -740,7 +735,6 @@ db_handle *internal_db_open(struct volume_descriptor *volume_desc, uint64_t star
 
 	/*get allocation transaction id for level-0*/
 	MUTEX_INIT(&handle->db_desc->flush_L0_lock, NULL);
-	//db_desc->levels[0].allocation_txn_id[db_desc->levels[0].active_tree] = rul_start_txn(db_desc);
 	pr_flush_L0(db_desc, db_desc->levels[0].active_tree);
 	db_desc->levels[0].allocation_txn_id[db_desc->levels[0].active_tree] = rul_start_txn(db_desc);
 	recover_L0(handle->db_desc);
@@ -751,19 +745,17 @@ exit:
 	return handle;
 }
 
-db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_name, char CREATE_FLAG)
+db_handle *db_open(char *volumeName, char *db_name, par_db_initializers create_flag, char **error_message)
 {
 	MUTEX_LOCK(&init_lock);
-
 	struct volume_descriptor *volume_desc = mem_get_volume_desc(volumeName);
 	if (!volume_desc) {
-		log_fatal("Failed to open volume %s", volumeName);
-		BUG_ON();
+		create_error_message(error_message, "Failed to open volume %s", volumeName);
+		return NULL;
 	}
 	assert(volume_desc->open_databases);
-	/*retrieve gc db*/
 
-	db_handle *handle = internal_db_open(volume_desc, start, size, db_name, CREATE_FLAG);
+	db_handle *handle = internal_db_open(volume_desc, db_name, create_flag, error_message);
 
 	MUTEX_UNLOCK(&init_lock);
 	return handle;

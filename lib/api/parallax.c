@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "../include/parallax.h"
+#include "../include/parallax/parallax.h"
 #include "../allocator/kv_format.h"
 #include "../btree/btree.h"
 #include "../scanner/scanner.h"
@@ -23,29 +23,26 @@
 #include <string.h>
 #define PAR_MAX_PREALLOCATED_SIZE 256
 
-void par_format(char *device_name, uint32_t max_regions_num)
+char *par_format(char *device_name, uint32_t max_regions_num)
 {
-	kvf_init_parallax(device_name, max_regions_num);
+	return kvf_init_parallax(device_name, max_regions_num);
 }
 
-par_handle par_open(par_db_options *options)
+par_handle par_open(par_db_options *db_options, char **error_message)
 {
-	switch (options->create_flag) {
-	case PAR_CREATE_DB:
-		return (par_handle)db_open(options->volume_name, options->volume_start, options->volume_size,
-					   (char *)options->db_name, CREATE_DB);
-	case PAR_DONOT_CREATE_DB:
-		return (par_handle)db_open(options->volume_name, options->volume_start, options->volume_size,
-					   (char *)options->db_name, DONOT_CREATE_DB);
-	default:
-		printf("Unknown open option flag\n");
-		return NULL;
+	if (db_options->create_flag == PAR_CREATE_DB || db_options->create_flag == PAR_DONOT_CREATE_DB) {
+		return (par_handle)db_open(db_options->volume_name, (char *)db_options->db_name,
+					   db_options->create_flag, error_message);
 	}
+
+	create_error_message(error_message, "Unknown create flag provided.");
+	return NULL;
 }
 
-void par_close(par_handle handle)
+char *par_close(par_handle handle)
 {
 	db_close((db_handle *)handle);
+	return NULL;
 }
 
 par_ret_code par_put(par_handle handle, struct par_key_value *key_value)

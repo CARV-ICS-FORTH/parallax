@@ -1,8 +1,8 @@
 #include "arg_parser.h"
-#include "parallax.h"
 #include <assert.h>
 #include <btree/gc.h>
 #include <log.h>
+#include <parallax/parallax.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
@@ -131,14 +131,14 @@ int main(int argc, char *argv[])
 	char *path = get_option(options, 1);
 	num_keys = *(int *)get_option(options, 2);
 
-	par_db_options db_options;
-	db_options.volume_name = path;
-	db_options.volume_start = 0;
-	db_options.volume_size = 0;
-	db_options.create_flag = PAR_CREATE_DB;
-	db_options.db_name = "testgc.db";
-
-	par_handle handle = par_open(&db_options);
+	par_db_options db_options = { .volume_name = path, .create_flag = PAR_CREATE_DB, .db_name = "testgc.db" };
+	char *error_message = NULL;
+	par_handle handle = par_open(&db_options, &error_message);
+	if (error_message) {
+		log_fatal("%s", error_message);
+		free(error_message);
+		return EXIT_FAILURE;
+	}
 
 	serially_insert_keys(handle);
 	validate_inserted_keys(handle);

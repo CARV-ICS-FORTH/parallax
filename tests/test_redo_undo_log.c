@@ -143,7 +143,14 @@ int main(int argc, char *argv[])
 	log_info("RUL_SEGMENT_MAX_ENTRIES = %lu", RUL_SEGMENT_MAX_ENTRIES);
 
 	disable_gc();
-	db_handle *handle = db_open(get_option(options, 1), 0, UINT64_MAX, "redo_undo_test", CREATE_DB);
+	char *error_message = NULL;
+	//TODO Refactor Use par_open maybe
+	db_handle *handle = db_open(get_option(options, 1), "redo_undo_test", PAR_CREATE_DB, &error_message);
+	if (error_message) {
+		log_fatal("%s", error_message);
+		free(error_message);
+		return EXIT_FAILURE;
+	}
 
 	struct rul_worker_arg args;
 	args.db_desc = handle->db_desc;
@@ -169,7 +176,13 @@ int main(int argc, char *argv[])
 	}
 
 	enable_validation_garbage_bytes();
-	handle = db_open(get_option(options, 1), 0, UINT64_MAX, "redo_undo_test", CREATE_DB);
+	//TODO Refactor use par_open maybe
+	handle = db_open(get_option(options, 1), "redo_undo_test", PAR_CREATE_DB, &error_message);
+	if (error_message) {
+		log_fatal("%s", error_message);
+		free(error_message);
+		return EXIT_FAILURE;
+	}
 	pthread_join(validator_thread, NULL);
 	db_close(handle);
 	disable_validation_garbage_bytes();

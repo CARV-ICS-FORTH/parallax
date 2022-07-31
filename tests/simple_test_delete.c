@@ -1,4 +1,3 @@
-#define _LARGEFILE64_SOURCE
 #include "arg_parser.h"
 #include <allocator/volume_manager.h>
 #include <assert.h>
@@ -7,7 +6,8 @@
 #include <getopt.h>
 #include <linux/fs.h>
 #include <log.h>
-#include <parallax.h>
+#include <parallax/parallax.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
 #include <sys/stat.h>
@@ -248,13 +248,17 @@ int main(int argc, char *argv[])
 
 	num_keys = *(int *)get_option(options, 2);
 
-	par_db_options db_options;
-	db_options.volume_name = get_option(options, 1);
-	db_options.volume_start = 0;
-	db_options.volume_size = 0;
-	db_options.create_flag = PAR_CREATE_DB;
-	db_options.db_name = "test.db";
-	par_handle handle = par_open(&db_options);
+	par_db_options db_options = { .volume_name = get_option(options, 1),
+				      .create_flag = PAR_CREATE_DB,
+				      .db_name = "test.db" };
+	char *error_message = NULL;
+	par_handle handle = par_open(&db_options, &error_message);
+
+	if (error_message) {
+		log_fatal("%s", error_message);
+		free(error_message);
+		return EXIT_FAILURE;
+	}
 
 	serially_insert_keys(handle);
 	get_all_keys(handle);
@@ -262,7 +266,13 @@ int main(int argc, char *argv[])
 	get_all_valid_keys(handle);
 	par_close(handle);
 	log_info("----------------------------------CLOSE FINISH--------------------------------------");
-	handle = par_open(&db_options);
+	handle = par_open(&db_options, &error_message);
+	if (error_message) {
+		log_fatal("%s", error_message);
+		free(error_message);
+		return EXIT_FAILURE;
+	}
+
 	get_all_valid_keys(handle);
 	scan_all_valid_keys(handle);
 	par_close(handle);

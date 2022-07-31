@@ -14,6 +14,7 @@
 
 #include "dynamic_leaf.h"
 #include "../common/common.h"
+#include "../common/common_functions.h"
 #include "btree.h"
 #include "conf.h"
 #include "segment_allocator.h"
@@ -24,7 +25,6 @@
 #include <string.h>
 
 void print_all_keys(const struct bt_dynamic_leaf_node *leaf, uint32_t leaf_size);
-char *fill_keybuf(char *key_loc, enum kv_entry_location key_type);
 
 enum kv_entry_location get_kv_format(enum kv_category kv_category)
 {

@@ -13,6 +13,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cstdlib>
 #include <functional>
 #include <iostream>
 #include <iterator>
@@ -36,10 +37,7 @@ __thread int x = 0;
 extern std::string path;
 extern std::string custom_workload;
 extern "C" {
-#include <allocator/volume_manager.h>
-#include <btree/btree.h>
-#include <include/parallax.h>
-#include <scanner/scanner.h>
+#include <parallax/parallax.h>
 }
 
 using std::cout;
@@ -73,14 +71,20 @@ class ParallaxDB : public YCSBDB {
 
 		par_db_options db_options;
 		db_options.volume_name = (char *)pathname;
-		db_options.volume_start = 0;
-		db_options.volume_size = 0;
 		db_options.create_flag = PAR_CREATE_DB;
 		dbs.clear();
 		for (int i = 0; i < db_num; ++i) {
 			std::string db_name = "data" + std::to_string(i) + ".dat";
 			db_options.db_name = (char *)db_name.c_str();
-			par_handle hd = par_open(&db_options);
+			char *error_message = nullptr;
+			par_handle hd = par_open(&db_options, &error_message);
+
+			if (error_message != nullptr) {
+				std::cerr << error_message << std::endl;
+				free(error_message);
+				_Exit(EXIT_FAILURE);
+			}
+
 			dbs.push_back(hd);
 		}
 	}
@@ -194,7 +198,7 @@ class ParallaxDB : public YCSBDB {
 		}
 
 		while (par_is_valid(sc)) {
-			if (par_get_next(sc) == END_OF_DATABASE)
+			if (par_get_next(sc) == 0)
 				break;
 
 			if (++items >= len) {

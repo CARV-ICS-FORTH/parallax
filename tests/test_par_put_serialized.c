@@ -1,5 +1,6 @@
 #include "arg_parser.h"
-#include <parallax.h>
+#include "log.h"
+#include <parallax/parallax.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -21,13 +22,23 @@ int main(int argc, char *argv[])
 	arg_print_options(help_flag, options, options_len);
 
 	char *path = get_option(options, 1);
-	par_format(path, MAX_REGIONS);
+	char *error_message = par_format(path, MAX_REGIONS);
+	if (error_message) {
+		log_fatal("%s", error_message);
+		free(error_message);
+		return EXIT_FAILURE;
+	}
+
 	par_db_options db_options = { .volume_name = path,
-				      .volume_start = 0,
-				      .volume_size = 0,
 				      .create_flag = PAR_CREATE_DB,
 				      .db_name = "serialized_par_put.db" };
-	par_handle handle = par_open(&db_options);
+	par_handle handle = par_open(&db_options, &error_message);
+	if (error_message) {
+		log_fatal("%s", error_message);
+		free(error_message);
+		return EXIT_FAILURE;
+	}
+
 	char serialized_key_value[1024] = { 0 };
 	char *serialize_kv = serialized_key_value;
 	*(uint32_t *)serialize_kv = 10;

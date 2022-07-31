@@ -1,5 +1,7 @@
 #include "arg_parser.h"
-#include <parallax.h>
+#include <log.h>
+#include <parallax/parallax.h>
+#include <stdlib.h>
 
 #define MAX_REGIONS 128
 
@@ -18,6 +20,12 @@ int main(int argc, char *argv[])
 
 	arg_parse(argc, argv, options, options_len);
 	arg_print_options(help_flag, options, options_len);
-	par_format(get_option(options, 1), MAX_REGIONS);
+	char *error_message = par_format(get_option(options, 1), MAX_REGIONS);
+	if (error_message) {
+		log_fatal("%s", error_message);
+		free(error_message);
+		return EXIT_FAILURE;
+	}
+
 	return 0;
 }

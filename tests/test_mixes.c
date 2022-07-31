@@ -5,7 +5,7 @@
 #include <fcntl.h>
 #include <linux/fs.h>
 #include <log.h>
-#include <parallax.h>
+#include <parallax/parallax.h>
 #include <scanner/scanner.h>
 #include <stdlib.h>
 #include <string.h>
@@ -67,14 +67,18 @@ struct random_sizes random_sizes_table[NUMBER_OF_KV_CATEGORIES];
 
 static par_handle open_db(const char *path)
 {
-	par_db_options db_options;
-	db_options.volume_name = (char *)path;
-	db_options.volume_start = 0;
-	db_options.volume_size = 0;
-	db_options.create_flag = PAR_CREATE_DB;
-	db_options.db_name = "testmedium.db";
+	par_db_options db_options = { .volume_name = (char *)path,
+				      .create_flag = PAR_CREATE_DB,
+				      .db_name = "testmedium.db" };
 
-	par_handle handle = par_open(&db_options);
+	char *error_message = NULL;
+	par_handle handle = par_open(&db_options, &error_message);
+	if (error_message) {
+		log_fatal("%s", error_message);
+		free(error_message);
+		_Exit(EXIT_FAILURE);
+	}
+
 	return handle;
 }
 
@@ -471,7 +475,13 @@ int main(int argc, char *argv[])
 
 	/*sum of percentages must be equal 100*/
 	assert(medium_kvs_percentage + small_kvs_percentage + big_kvs_percentage == 100);
-	par_format((char *)path, 128);
+	char *error_message = par_format((char *)path, 128);
+	if (error_message) {
+		log_fatal("%s", error_message);
+		free(error_message);
+		return EXIT_FAILURE;
+	}
+
 	par_handle handle = open_db(path);
 
 	random_sizes_table[SMALL].min = 5;

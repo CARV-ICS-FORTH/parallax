@@ -15,6 +15,7 @@
 #include "../btree/conf.h"
 #include "../btree/gc.h"
 #include "../common/common.h"
+#include "../common/common_functions.h"
 #include "device_structures.h"
 #include "log_structures.h"
 #include "redo_undo_log.h"
@@ -628,20 +629,10 @@ static struct segment_array *find_N_last_blobs(struct db_descriptor *db_desc, ui
 	return segments;
 }
 
-struct par_key {
-	uint32_t key_size;
-	char key_data[];
-} __attribute__((packed));
-
-struct par_value {
-	uint32_t value_size;
-	char value_data[];
-} __attribute__((packed));
-
 struct kv_entry {
 	uint64_t lsn;
-	struct par_key *p_key;
-	struct par_value *p_value;
+	struct splice *par_key;
+	struct splice *par_value;
 };
 
 struct log_cursor {
@@ -670,15 +661,15 @@ void prepare_cursor_op(struct log_cursor *cursor)
 	struct bt_delete_marker *dm = (struct bt_delete_marker *)get_position_in_segment(cursor);
 
 	if (dm->marker_id != BT_DELETE_MARKER_ID) {
-		cursor->entry.p_key = (struct par_key *)get_position_in_segment(cursor);
-		cursor->offt_in_segment += (sizeof(struct par_key) + cursor->entry.p_key->key_size);
-		cursor->entry.p_value = (struct par_value *)get_position_in_segment(cursor);
-		cursor->offt_in_segment += (sizeof(struct par_value) + cursor->entry.p_value->value_size);
+		cursor->entry.par_key = (struct splice *)get_position_in_segment(cursor);
+		cursor->offt_in_segment += get_key_size_with_metadata(cursor->entry.par_key);
+		cursor->entry.par_value = (struct splice *)get_position_in_segment(cursor);
+		cursor->offt_in_segment += get_value_size_with_metadata(cursor->entry.par_value);
 		cursor->tombstone = 0;
 	} else {
 		cursor->offt_in_segment += sizeof(dm->marker_id);
-		cursor->entry.p_key = (struct par_key *)get_position_in_segment(cursor);
-		cursor->offt_in_segment += (sizeof(struct par_key) + cursor->entry.p_key->key_size);
+		cursor->entry.par_key = (struct splice *)get_position_in_segment(cursor);
+		cursor->offt_in_segment += get_key_size_with_metadata(cursor->entry.par_key);
 		cursor->tombstone = 1;
 	}
 }
@@ -878,13 +869,11 @@ void recover_L0(struct db_descriptor *db_desc)
 			choice = BIG_LOG;
 
 		if (!cursor[choice]->tombstone)
-			insert_key_value(&hd, kvs[choice]->p_key->key_data, kvs[choice]->p_value->value_data,
-					 kvs[choice]->p_key->key_size, kvs[choice]->p_value->value_size, insertOp);
+			insert_key_value(&hd, kvs[choice]->par_key->data, kvs[choice]->par_value->data,
+					 kvs[choice]->par_key->size, kvs[choice]->par_value->size, insertOp);
 		else
-			insert_key_value(&hd, kvs[choice]->p_key->key_data, "empty", kvs[choice]->p_key->key_size, 0,
+			insert_key_value(&hd, kvs[choice]->par_key->data, "empty", kvs[choice]->par_key->size, 0,
 					 deleteOp);
-
-		//log_info("Recovering key %s choice is %d", kvs[choice]->p_key->key_data, choice);
 
 		kvs[choice] = get_next_log_entry(cursor[choice]);
 	}

@@ -12,7 +12,7 @@
 #include "arg_parser.h"
 #include <assert.h>
 #include <log.h>
-#include <parallax.h>
+#include <parallax/parallax.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -341,15 +341,26 @@ int main(int argc, char **argv)
 	base = 100000000L;
 
 	log_info("Running workload %s", workload);
-	par_db_options db_options;
-	db_options.volume_name = get_option(options, 1);
-	if (strcmp(workload, workload_tags[Load]) == 0 || strcmp(workload, workload_tags[All]) == 0)
-		par_format(db_options.volume_name, 16);
-	db_options.db_name = "scan_test";
-	db_options.volume_start = 0;
-	db_options.volume_size = 0;
-	db_options.create_flag = PAR_CREATE_DB;
-	par_handle hd = par_open(&db_options);
+	par_db_options db_options = { .volume_name = get_option(options, 1),
+				      .db_name = "scan_test",
+				      .create_flag = PAR_CREATE_DB };
+	char *error_message = NULL;
+
+	if (strcmp(workload, workload_tags[Load]) == 0 || strcmp(workload, workload_tags[All]) == 0) {
+		error_message = par_format(db_options.volume_name, 16);
+		if (error_message) {
+			log_fatal("%s", error_message);
+			free(error_message);
+			return EXIT_FAILURE;
+		}
+	}
+	par_handle hd = par_open(&db_options, &error_message);
+
+	if (error_message) {
+		log_fatal("%s", error_message);
+		free(error_message);
+		return EXIT_FAILURE;
+	}
 
 	struct workload_config_t workload_config = { .handle = hd,
 						     .base = base + 1,

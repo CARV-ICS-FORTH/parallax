@@ -183,7 +183,8 @@ int main(int argc, char *argv[])
 	arg_parse(argc, argv, options, options_len);
 	arg_print_options(help_flag, options, options_len);
 
-	db_handle *handle = db_open(get_option(options, 1), 0, UINT64_MAX, "redo_undo_test", CREATE_DB);
+	char *error_message = NULL;
+	db_handle *handle = db_open(get_option(options, 1), "redo_undo_test", PAR_CREATE_DB, &error_message);
 	unsigned char *alphabet = calloc(ALPHABET_SIZE, sizeof(char));
 	char letter = 'A';
 	for (uint32_t i = 0; i < ALPHABET_SIZE; ++i)

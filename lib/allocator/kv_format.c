@@ -119,31 +119,33 @@ static void kvf_write_buffer(int fd, char *buffer, ssize_t start, ssize_t size, 
 	}
 }
 
-void kvf_init_parallax(char *device_name, uint32_t max_regions_num)
+char *kvf_init_parallax(char *device_name, uint32_t max_regions_num)
 {
+	char *error_message = NULL;
 	off64_t device_size = 0;
+
 	log_info("Opening Volume %s", device_name);
 	/* open the device */
 	int fd = open(device_name, O_RDWR);
 	if (fd < 0) {
-		log_fatal("Failed to open %s", device_name);
-		perror("Reason:\n");
-		BUG_ON();
+		create_error_message(&error_message, "Failed to open %s", device_name);
+		return error_message;
 	}
 
 	device_size = lseek64(fd, 0, SEEK_END);
 
 	if (-1 == device_size) {
-		log_fatal("failed to determine volume size exiting...");
+		create_error_message(&error_message, "Failed to determine volume size");
 		perror("ioctl");
-		BUG_ON();
+		return error_message;
 	}
+
 	log_info("Found volume of %ld MB", device_size / MB(1));
 
 	if (device_size < MIN_VOLUME_SIZE) {
-		log_fatal("Sorry minimum supported volume size is %ld GB actual size %ld GB", MIN_VOLUME_SIZE / GB(1),
-			  device_size / GB(1));
-		BUG_ON();
+		create_error_message(&error_message, "Sorry minimum supported volume size is %ld GB actual size %ld GB",
+				     MIN_VOLUME_SIZE / GB(1), device_size / GB(1));
+		return error_message;
 	}
 
 	/*Initialize all region superblocks*/
@@ -168,8 +170,9 @@ void kvf_init_parallax(char *device_name, uint32_t max_regions_num)
 		 unmapped_bytes / KB(1));
 
 	if (mapped_device_size % SEGMENT_SIZE) {
-		log_fatal("Something went wrong actual_device_size should be a multiple of SEGMENT_SIZE");
-		BUG_ON();
+		create_error_message(&error_message,
+				     "Something went wrong actual_device_size should be a multiple of SEGMENT_SIZE");
+		return error_message;
 	}
 
 	uint64_t registry_size_in_bits = mapped_device_size / SEGMENT_SIZE;
@@ -182,8 +185,9 @@ void kvf_init_parallax(char *device_name, uint32_t max_regions_num)
 	}
 
 	if (registry_size_in_bits % bits_in_page) {
-		log_fatal("ownership registry must be a multiple of 4 KB its value %lu", registry_size_in_bits);
-		BUG_ON();
+		create_error_message(&error_message, "Ownership registry must be a multiple of 4 KB its value %lu",
+				     registry_size_in_bits);
+		return error_message;
 	}
 	uint64_t registry_size_in_bytes = registry_size_in_bits / 8;
 
@@ -220,9 +224,9 @@ void kvf_init_parallax(char *device_name, uint32_t max_regions_num)
 	}
 
 	if (fsync(fd)) {
-		log_fatal("Failed to sync volume: %s metadata", device_name);
+		create_error_message(&error_message, "Failed to sync volume: %s metadata", device_name);
 		perror("Reason:");
-		BUG_ON();
+		return error_message;
 	}
 	SAFE_FREE_PTR(registry_buffer);
 
@@ -254,15 +258,17 @@ void kvf_init_parallax(char *device_name, uint32_t max_regions_num)
 	SAFE_FREE_PTR(S);
 
 	if (fsync(fd)) {
-		log_fatal("Failed to sync volume: %s metadata", device_name);
+		create_error_message(&error_message, "Failed to sync volume: %s metadata", device_name);
 		perror("Reason:");
-		BUG_ON();
+		return error_message;
 	}
 
 	if (close(fd)) {
-		log_fatal("Failed to close file %s", device_name);
-		BUG_ON();
+		create_error_message(&error_message, "Failed to close file %s", device_name);
+		return error_message;
 	}
+
+	return NULL;
 }
 
 #ifdef STANDALONE_FORMAT
@@ -270,9 +276,14 @@ void kvf_init_parallax(char *device_name, uint32_t max_regions_num)
 int main(int argc, char **argv)
 {
 	struct parse_options options = kvf_parse_options(argc, argv);
-	kvf_init_parallax(options.device_name, options.max_regions_num);
+	char *error = kvf_init_parallax(options.device_name, options.max_regions_num);
 	SAFE_FREE_PTR(options.device_name);
-	return 1;
+
+	if (error) {
+		log_fatal("Parallax format failed with %s", error);
+		return 1;
+	}
+	return 0;
 }
 
 #endif

@@ -16,7 +16,7 @@
 #include <assert.h>
 #include <fcntl.h>
 #include <log.h>
-#include <parallax.h>
+#include <parallax/parallax.h>
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>

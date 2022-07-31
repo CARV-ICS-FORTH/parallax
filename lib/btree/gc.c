@@ -17,6 +17,7 @@
 #include "../allocator/log_structures.h"
 #include "../allocator/volume_manager.h"
 #include "../common/common.h"
+#include "../common/common_functions.h"
 #include "btree.h"
 #include "set_options.h"
 #include <assert.h>

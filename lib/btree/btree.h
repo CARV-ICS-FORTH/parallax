@@ -16,6 +16,7 @@
 #include "../allocator/log_structures.h"
 #include "../allocator/volume_manager.h"
 #include "../common/common.h"
+#include "../include/parallax/parallax.h"
 #include "conf.h"
 
 #if ENABLE_BLOOM_FILTERS
@@ -62,8 +63,6 @@ typedef enum {
 } level_0_tree_status;
 
 enum parallax_status { PARALLAX_SUCCESS = 102, PARALLAX_FAILURE = 108 };
-
-enum db_initializers { CREATE_DB = 4, DONOT_CREATE_DB = 5 };
 
 /*
  * header of segment is 4K. L0 and KV log segments are chained in a linked list
@@ -183,12 +182,6 @@ enum bsearch_status { INSERT = 0, FOUND = 1, ERROR = 2 };
 #define LEVEL5_LEAF_SIZE (PAGE_SIZE * 2)
 #define LEVEL6_LEAF_SIZE (PAGE_SIZE * 2)
 #define LEVEL7_LEAF_SIZE (PAGE_SIZE * 2)
-
-//TODO: Replace splice with another structure to avoid duplication
-struct splice {
-	uint32_t size;
-	char data[];
-};
 
 /*
  * db_descriptor is a soft state descriptor per open database. superindex
@@ -352,7 +345,6 @@ struct recovery_operator {
 };
 
 void pr_flush_log_tail(struct db_descriptor *db_desc, struct log_descriptor *log_desc);
-/*<new_persistent_design>*/
 void init_log_buffer(struct log_descriptor *log_desc, enum log_type log_type);
 void pr_read_db_superblock(struct db_descriptor *db_desc);
 void pr_flush_db_superblock(struct db_descriptor *db_desc);
@@ -360,14 +352,9 @@ void pr_lock_db_superblock(struct db_descriptor *db_desc);
 void pr_unlock_db_superblock(struct db_descriptor *db_desc);
 void pr_flush_L0(struct db_descriptor *db_desc, uint8_t tree_id);
 void pr_flush_compaction(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id);
-/*</new_persistent_design>*/
-//void commit_db_log(db_descriptor *db_desc, commit_log_info *info);
-//void commit_db_logs_per_volume(volume_descriptor *volume_desc);
-//void commit_db_log(db_descriptor *db_desc, commit_log_info *info);
-//void commit_db_logs_per_volume(volume_descriptor *volume_desc);
 
 /*management operations*/
-db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_name, char CREATE_FLAG);
+db_handle *db_open(char *volumeName, char *db_name, par_db_initializers create_flag, char **error_message);
 enum parallax_status db_close(db_handle *handle);
 
 void *compaction_daemon(void *args);

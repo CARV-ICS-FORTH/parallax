@@ -1,7 +1,7 @@
 #include "arg_parser.h"
 #include <common/common.h>
 #include <log.h>
-#include <parallax.h>
+#include <parallax/parallax.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -22,12 +22,15 @@ int main(int argc, char *argv[])
 	arg_print_options(help_flag, options, options_len);
 
 	par_db_options db_options = { .volume_name = get_option(options, 1),
-				      .volume_start = 0,
-				      .volume_size = 0,
 				      .create_flag = PAR_CREATE_DB,
 				      .db_name = "test_leaf_root_delete_get_scan.db" };
-
-	par_handle handle = par_open(&db_options);
+	char *error_message = NULL;
+	par_handle handle = par_open(&db_options, &error_message);
+	if (error_message) {
+		log_fatal("%s", error_message);
+		free(error_message);
+		return EXIT_FAILURE;
+	}
 	struct par_key_value key_value;
 	key_value.k.data = "/";
 	key_value.k.size = strlen(key_value.k.data);
