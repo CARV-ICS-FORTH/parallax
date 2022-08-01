@@ -1,2 +1,2 @@
-file(COPY ${CMAKE_SOURCE_DIR}/options.yml
+file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/options.yml
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tracer/)
