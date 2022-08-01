@@ -57,7 +57,7 @@ typedef struct scannerHandle {
 int32_t level_scanner_seek(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER_MODE mode);
 int32_t level_scanner_get_next(level_scanner *sc);
 void init_dirty_scanner(scannerHandle *sc, db_handle *handle, void *start_key, char seek_flag);
-void closeScanner(scannerHandle *sc);
+void close_scanner(scannerHandle *scanner);
 
 void seek_to_last(scannerHandle *sc, db_handle *handle);
 

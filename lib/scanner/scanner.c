@@ -214,37 +214,37 @@ static void read_unlock_node(struct level_scanner *level_sc, struct node_header 
 	}
 }
 
-void closeScanner(scannerHandle *sc)
+void close_scanner(scannerHandle *scanner)
 {
 	/*special care for L0*/
 	for (int i = 0; i < NUM_TREES_PER_LEVEL; i++) {
-		if (sc->LEVEL_SCANNERS[0][i].valid && sc->LEVEL_SCANNERS[0][i].dirty) {
+		if (scanner->LEVEL_SCANNERS[0][i].valid && scanner->LEVEL_SCANNERS[0][i].dirty) {
 			while (1) {
-				stackElementT stack_top = stack_pop(&(sc->LEVEL_SCANNERS[0][i].stack));
+				stackElementT stack_top = stack_pop(&(scanner->LEVEL_SCANNERS[0][i].stack));
 				if (stack_top.guard)
 					break;
-				read_unlock_node(&sc->LEVEL_SCANNERS[0][i], stack_top.node);
+				read_unlock_node(&scanner->LEVEL_SCANNERS[0][i], stack_top.node);
 			}
 		}
-		stack_destroy(&(sc->LEVEL_SCANNERS[0][i].stack));
+		stack_destroy(&(scanner->LEVEL_SCANNERS[0][i].stack));
 	}
 
 	for (int i = 1; i < MAX_LEVELS; i++) {
-		if (sc->LEVEL_SCANNERS[i][0].valid) {
-			stack_destroy(&(sc->LEVEL_SCANNERS[i][0].stack));
+		if (scanner->LEVEL_SCANNERS[i][0].valid) {
+			stack_destroy(&(scanner->LEVEL_SCANNERS[i][0].stack));
 		}
 	}
 	/*finally*/
-	if (sc->LEVEL_SCANNERS[0][0].dirty) {
+	if (scanner->LEVEL_SCANNERS[0][0].dirty) {
 		for (int i = 0; i < MAX_LEVELS; i++)
-			RWLOCK_UNLOCK(&sc->db->db_desc->levels[i].guard_of_level.rx_lock);
+			RWLOCK_UNLOCK(&scanner->db->db_desc->levels[i].guard_of_level.rx_lock);
 
-		__sync_fetch_and_sub(&sc->db->db_desc->levels[0].active_operations, 1);
+		__sync_fetch_and_sub(&scanner->db->db_desc->levels[0].active_operations, 1);
 	}
 
-	free_dups_list(&sc->heap.dups);
+	free_dups_list(&scanner->heap.dups);
 
-	free(sc);
+	free(scanner);
 }
 
 static void fill_compaction_scanner(struct level_scanner *level_sc, struct level_descriptor *level,

@@ -277,7 +277,7 @@ init_scanner:
 void par_close_scanner(par_scanner sc)
 {
 	struct par_scanner *par_s = (struct par_scanner *)sc;
-	closeScanner((struct scannerHandle *)par_s->sc);
+	close_scanner((struct scannerHandle *)par_s->sc);
 	if (par_s->allocated)
 		free(par_s->kv_buf);
 
