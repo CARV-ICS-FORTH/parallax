@@ -1408,7 +1408,7 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 	}
 
 	if (level_src)
-		_close_compaction_buffer_scanner(level_src);
+		close_compaction_buffer_scanner(level_src);
 	else
 		free(l_src);
 

@@ -232,21 +232,21 @@ static void heapify(struct sh_heap *hp, int i)
  * that heap_node in the heap and also making sure that the heap property and
  * shape propety are never violated.
 */
-void sh_insert_heap_node(struct sh_heap *hp, struct sh_heap_node *nd)
+void sh_insert_heap_node(struct sh_heap *heap, struct sh_heap_node *node)
 {
-	nd->duplicate = 0;
-	if (hp->heap_size > HEAP_SIZE) {
+	node->duplicate = 0;
+	if (heap->heap_size > HEAP_SIZE) {
 		log_fatal("min max heap out of space resize heap accordingly");
 		BUG_ON();
 	}
 
-	int i = hp->heap_size++;
-	while (i && sh_cmp_heap_nodes(hp, nd, &(hp->elem[PARENT(i)])) < 0) {
-		hp->elem[i] = hp->elem[PARENT(i)];
+	int i = heap->heap_size++;
+	while (i && sh_cmp_heap_nodes(heap, node, &(heap->elem[PARENT(i)])) < 0) {
+		heap->elem[i] = heap->elem[PARENT(i)];
 		i = PARENT(i);
 	}
 
-	hp->elem[i] = *nd;
+	heap->elem[i] = *node;
 }
 
 /**
@@ -265,7 +265,7 @@ bool sh_remove_top(struct sh_heap *heap, struct sh_heap_node *node)
 	if (0 == --heap->heap_size)
 		return true;
 
-	heap->elem[0] = heap->elem[--heap->heap_size];
+	heap->elem[0] = heap->elem[heap->heap_size];
 	heapify(heap, 0);
 	return true;
 }

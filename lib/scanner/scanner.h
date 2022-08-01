@@ -61,17 +61,11 @@ void closeScanner(scannerHandle *sc);
 
 void seek_to_last(scannerHandle *sc, db_handle *handle);
 
-int32_t getNext(scannerHandle *sc);
-int32_t getPrev(scannerHandle *sc);
-/**
- * __seek_scanner: positions the cursor to the appropriate position returns:
- * SUCCESS: Cursor positioned END_OF_DATABASE: End of database reached
- *
- **/
+int32_t getNext(scannerHandle *scanner);
 
 level_scanner *_init_compaction_buffer_scanner(db_handle *handle, int level_id, node_header *node, void *start_key);
 
-void _close_compaction_buffer_scanner(level_scanner *level_sc);
+void close_compaction_buffer_scanner(level_scanner *level_sc);
 void close_dirty_scanner(scannerHandle *sc);
 #if MEASURE_SST_USED_SPACE
 void perf_measure_leaf_capacity(db_handle *hd, int level_id);

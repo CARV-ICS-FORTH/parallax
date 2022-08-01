@@ -529,38 +529,38 @@ level_scanner *_init_compaction_buffer_scanner(db_handle *handle, int level_id, 
 	return level_sc;
 }
 
-void _close_compaction_buffer_scanner(level_scanner *level_sc)
+void close_compaction_buffer_scanner(level_scanner *level_sc)
 {
 	stack_destroy(&(level_sc->stack));
 	free(level_sc);
 }
 
-int32_t getNext(scannerHandle *sc)
+int32_t getNext(scannerHandle *scanner)
 {
-	while (1) {
-		struct sh_heap_node nd = { 0 };
+	for (;;) {
+		struct sh_heap_node node = { 0 };
 
-		if (!sh_remove_top(&sc->heap, &nd))
+		if (!sh_remove_top(&scanner->heap, &node))
 			return END_OF_DATABASE;
 
-		sc->keyValue = nd.KV;
-		sc->kv_level_id = nd.level_id;
-		sc->kv_cat = sc->LEVEL_SCANNERS[nd.level_id][nd.active_tree].cat;
-		assert(sc->LEVEL_SCANNERS[nd.level_id][nd.active_tree].valid);
-		if (level_scanner_get_next(&(sc->LEVEL_SCANNERS[nd.level_id][nd.active_tree])) != END_OF_DATABASE) {
-			//TODO: use designated initializers for next_nd
-			struct sh_heap_node next_nd = { 0 };
-			next_nd.level_id = nd.level_id;
-			next_nd.active_tree = nd.active_tree;
-			next_nd.type = nd.type;
-			next_nd.cat = sc->LEVEL_SCANNERS[nd.level_id][nd.active_tree].cat;
-			next_nd.KV = sc->LEVEL_SCANNERS[nd.level_id][nd.active_tree].keyValue;
-			next_nd.kv_size = sc->LEVEL_SCANNERS[nd.level_id][nd.active_tree].kv_size;
-			next_nd.db_desc = sc->db->db_desc;
-			next_nd.tombstone = sc->LEVEL_SCANNERS[nd.level_id][nd.active_tree].tombstone;
-			sh_insert_heap_node(&sc->heap, &next_nd);
+		scanner->keyValue = node.KV;
+		scanner->kv_level_id = node.level_id;
+		scanner->kv_cat = scanner->LEVEL_SCANNERS[node.level_id][node.active_tree].cat;
+		assert(scanner->LEVEL_SCANNERS[node.level_id][node.active_tree].valid);
+		if (level_scanner_get_next(&(scanner->LEVEL_SCANNERS[node.level_id][node.active_tree])) !=
+		    END_OF_DATABASE) {
+			struct sh_heap_node next_node = { 0 };
+			next_node.level_id = node.level_id;
+			next_node.active_tree = node.active_tree;
+			next_node.type = node.type;
+			next_node.cat = scanner->LEVEL_SCANNERS[node.level_id][node.active_tree].cat;
+			next_node.KV = scanner->LEVEL_SCANNERS[node.level_id][node.active_tree].keyValue;
+			next_node.kv_size = scanner->LEVEL_SCANNERS[node.level_id][node.active_tree].kv_size;
+			next_node.db_desc = scanner->db->db_desc;
+			next_node.tombstone = scanner->LEVEL_SCANNERS[node.level_id][node.active_tree].tombstone;
+			sh_insert_heap_node(&scanner->heap, &next_node);
 		}
-		if (nd.duplicate == 1 || nd.tombstone == 1) {
+		if (node.duplicate == 1 || node.tombstone == 1) {
 			//log_warn("ommiting duplicate %s", (char *)nd.KV + 4);
 			continue;
 		}
