@@ -351,16 +351,11 @@ static void comp_get_next_key(struct comp_level_read_cursor *c)
 				break;
 			}
 			case MEDIUM_INLOG:
-			case BIG_INLOG: {
-				// fill_prefix(&c->cursor_key.P, kv_loc,
-				// slot_array[c->curr_leaf_entry].bitmap);
-				// c->category);
+			case BIG_INLOG:
 				c->cursor_key.kv_inlog = (struct bt_leaf_entry *)kv_loc;
 				c->cursor_key.kv_inlog->dev_offt =
 					(uint64_t)REAL_ADDRESS(c->cursor_key.kv_inlog->dev_offt);
-				// log_debug("prefix is %.*s", PREFIX_SIZE, c->cursor_key.kv_inlog->prefix);
 				break;
-			}
 			default:
 				log_fatal("Cannot handle this category");
 				BUG_ON();
@@ -1338,7 +1333,6 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 		comp_fill_heap_node(comp_req, l_src, &nd_src);
 	}
 
-	// print_heap_node_key(&nd_src);
 	nd_src.db_desc = comp_req->db_desc;
 	sh_insert_heap_node(m_heap, &nd_src);
 	// init Li+1 cursor (if any)
@@ -1350,8 +1344,7 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 		sh_insert_heap_node(m_heap, &nd_dst);
 	}
 
-	for (;;) {
-		// TODO: Remove dirty
+	while (1) {
 		handle->db_desc->dirty = 0x01;
 		// This is to synchronize compactions with flush
 		RWLOCK_RDLOCK(&handle->db_desc->levels[comp_req->dst_level].guard_of_level.rx_lock);
@@ -1362,12 +1355,11 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 
 		if (!nd_min.duplicate) {
 			struct comp_parallax_key key = { 0 };
-			comp_fill_parallax_key(&nd_min, &key);
 
+			comp_fill_parallax_key(&nd_min, &key);
 			comp_append_entry_to_leaf_node(merged_level, &key);
 		}
-		// log_info("level size
-		// %llu",comp_req->db_desc->levels[comp_req->dst_level].level_size[comp_req->dst_tree]);
+
 		/*refill from the appropriate level*/
 		if (nd_min.level_id == comp_req->src_level) {
 			if (nd_min.level_id == 0) {

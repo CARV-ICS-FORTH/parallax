@@ -90,11 +90,11 @@ bool index_is_split_needed(struct index_node *node, uint32_t max_pivot_size)
 /**
  * Returns the position in the node header children offt array which we need to follow based on the lookup_key.
  * The actual offset is at node->children_offt[position]
-*/
+ */
 static int32_t index_search_get_pos(struct index_node *node, void *lookup_key, enum KV_type lookup_key_format,
 				    bool *exact_match)
 {
-	*exact_match = 0;
+	*exact_match = false;
 
 	int comparison_return_value = 0;
 	int32_t start = 0;
@@ -117,7 +117,7 @@ static int32_t index_search_get_pos(struct index_node *node, void *lookup_key, e
 		comparison_return_value = key_cmp(&pivot_cmp, &lookup_key_cmp);
 
 		if (0 == comparison_return_value) {
-			*exact_match = 1;
+			*exact_match = true;
 			return middle;
 		}
 
@@ -167,8 +167,8 @@ struct pivot_key *index_remove_last_pivot_key(struct index_node *node)
 static struct pivot_key *index_search_get_full_pivot(struct index_node *node, void *lookup_key,
 						     enum KV_type lookup_key_format)
 {
-	bool exact_match = false;
-	int32_t position = index_search_get_pos(node, lookup_key, lookup_key_format, &exact_match);
+	bool unused = false; // Created here to call the function
+	int32_t position = index_search_get_pos(node, lookup_key, lookup_key_format, &unused);
 
 	struct index_slot_array_entry *slot_array = index_get_slot_array(node);
 	struct pivot_key *pivot = (struct pivot_key *)INDEX_PIVOT_ADDRESS(node, slot_array[position].pivot);
@@ -199,11 +199,14 @@ static bool index_internal_insert_pivot(struct insert_pivot_req *ins_pivot_req, 
 
 	struct index_slot_array_entry *slot_array = index_get_slot_array(ins_pivot_req->node);
 	if (!is_append) {
-		bool exact_match = 0;
+		bool exact_match = false;
 		position =
 			index_search_get_pos(ins_pivot_req->node, (void *)ins_pivot_req->key, KV_FORMAT, &exact_match);
 		assert(position >= 0);
 
+		//TODO refactor this and move it inside index_search_get_pos
+		//On the other call sites of index_search_get_pos exact match is not an error.
+		//so we should move the error reporting inside the function.
 		if (exact_match) {
 			log_fatal("Key size %u data: %s already present in index node", ins_pivot_req->key->size,
 				  ins_pivot_req->key->data);
@@ -266,7 +269,8 @@ static void index_internal_iterator_init(struct index_node *node, struct index_n
 	iterator->position = 0;
 	if (!key)
 		return;
-	bool exact_match = 0;
+
+	bool unused_match = false;
 	iterator->position = index_search_get_pos(node, key, KV_FORMAT, &exact_match);
 }
 

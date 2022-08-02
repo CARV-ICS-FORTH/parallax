@@ -537,7 +537,7 @@ void close_compaction_buffer_scanner(level_scanner *level_sc)
 
 int32_t getNext(scannerHandle *scanner)
 {
-	for (;;) {
+	while (1) {
 		struct sh_heap_node node = { 0 };
 
 		if (!sh_remove_top(&scanner->heap, &node))

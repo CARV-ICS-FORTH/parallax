@@ -133,17 +133,8 @@ struct find_result find_key_in_dynamic_leaf(const struct bt_dynamic_leaf_node *l
 	req.metadata.level_id = level_id;
 	req.metadata.handle = &handle;
 	//validate_dynamic_leaf((void *) leaf, NULL, 0, 0);
-	//result.debug = 1;
 	binary_search_dynamic_leaf(leaf, leaf_size, &req, &result);
 
-	/* if(result.status != FOUND){ */
-	/* 	result.middle = 0; */
-	/* 	result.status = INSERT; */
-	/* 	result.op = DYNAMIC_LEAF_FIND; */
-	/* 	result.debug = 1; */
-	/* 	binary_search_dynamic_leaf(leaf, leaf_size, &req, &result); */
-
-	/* } */
 	ret_result.tombstone = result.tombstone;
 
 	switch (result.status) {
@@ -196,11 +187,11 @@ void binary_search_dynamic_leaf(const struct bt_dynamic_leaf_node *leaf, uint32_
 		offset_in_leaf = slot_array[middle].index;
 		assert(offset_in_leaf < leaf_size);
 
-		/*This buffer is usefull in cases where the key is stored in place and its
-     * size is smaller than PREFIX_SIZE */
+		/*This buffer is usefull in cases where the key is stored in place and its size is
+		 * smaller than PREFIX_SIZE */
 		char padded_leaf_prefix[PREFIX_SIZE];
-		/*Initialized leaf key prefix either inside the index or the padded_prefix
-     * case*/
+
+		/*Initialized leaf key prefix either inside the index or the padded_prefix case*/
 		struct splice *key_buf = (struct splice *)get_kv_offset(leaf, leaf_size, offset_in_leaf);
 		if (get_kv_format(slot_array[middle].key_category) == KV_INPLACE && key_buf->size < PREFIX_SIZE) {
 			memset(padded_leaf_prefix, 0x00, PREFIX_SIZE);
@@ -223,8 +214,7 @@ void binary_search_dynamic_leaf(const struct bt_dynamic_leaf_node *leaf, uint32_
 			goto check_comparison;
 		}
 
-		/*Case we have a key in KV_FORMAT encoding that IS smaller than
-     * PREFIX_SIZE*/
+		/*Case we have a key in KV_FORMAT encoding that IS smaller than PREFIX_SIZE*/
 
 		char padded_lookupkey_prefix[PREFIX_SIZE] = { 0 };
 		memcpy(padded_lookupkey_prefix, req->key_value_buf + sizeof(uint32_t), KEY_SIZE(req->key_value_buf));

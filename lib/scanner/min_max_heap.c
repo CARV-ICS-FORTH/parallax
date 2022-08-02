@@ -137,19 +137,19 @@ static int sh_cmp_heap_nodes(struct sh_heap *hp, struct sh_heap_node *nd_1, stru
 	init_key_cmp(&key1_cmp, nd_1->KV, nd_1->type);
 	init_key_cmp(&key2_cmp, nd_2->KV, nd_2->type);
 
-	/*We use a custom prefix_compare for the following reason. Default
-   * key_comparator (key_cmp) for KV_PREFIX keys will fetch keys from storage
-   * if prefix comparison equals 0. This means that for KV_PREFIX we need to
-   * translate log pointers (if they belong to level 0) which is an expensive
-   * operation. To avoid this, since this code is executed for compactions and
-   * scans so it is in the critical path, we use a custom prefix_compare
-   * function that stops only in prefix comparison.
-    */
+	/* We use a custom prefix_compare for the following reason. Default
+	 * key_comparator (key_cmp) for KV_PREFIX keys will fetch keys from storage
+	 * if prefix comparison equals 0. This means that for KV_PREFIX we need to
+	 * translate log pointers (if they belong to level 0) which is an expensive
+	 * operation. To avoid this, since this code is executed for compactions and
+	 * scans so it is in the critical path, we use a custom prefix_compare
+	 * function that stops only in prefix comparison.
+	 */
 	int ret = sh_prefix_compare(&key1_cmp, &key2_cmp);
 	if (ret)
 		return ret;
-	/*Going for full key comparison, we are going to end up in the full key
-   * comparator*/
+
+	/* Going for full key comparison, we are going to end up in the full key comparator*/
 	struct bt_kv_log_address key1 = { 0 };
 	if (key1_cmp.key_format == KV_PREFIX) {
 		key1.addr = (char *)key1_cmp.kv_dev_offt;
@@ -168,8 +168,10 @@ static int sh_cmp_heap_nodes(struct sh_heap *hp, struct sh_heap_node *nd_1, stru
 	}
 
 	ret = key_cmp(&key1_cmp, &key2_cmp);
-	key1.in_tail ? bt_done_with_value_log_address(key1.log_desc, &key1) : (void)key1;
-	key2.in_tail ? bt_done_with_value_log_address(key2.log_desc, &key2) : (void)key2;
+	if (key1.in_tail)
+		bt_done_with_value_log_address(key1.log_desc, &key1);
+	if (key2.in_tail)
+		bt_done_with_value_log_address(key2.log_desc, &key2);
 
 	return ret ? ret : sh_solve_tie(hp, nd_1, nd_2);
 }
@@ -231,7 +233,7 @@ static void heapify(struct sh_heap *hp, int i)
  * Function to insert a heap_node into the min heap, by allocating space for
  * that heap_node in the heap and also making sure that the heap property and
  * shape propety are never violated.
-*/
+ */
 void sh_insert_heap_node(struct sh_heap *heap, struct sh_heap_node *node)
 {
 	node->duplicate = 0;
@@ -254,7 +256,7 @@ void sh_insert_heap_node(struct sh_heap *heap, struct sh_heap_node *node)
  * pointed to by heap node pointer.
  * @returns true if it founds and element or false if the heap is
  * empty.
-*/
+ */
 bool sh_remove_top(struct sh_heap *heap, struct sh_heap_node *node)
 {
 	if (0 == heap->heap_size)
@@ -262,7 +264,8 @@ bool sh_remove_top(struct sh_heap *heap, struct sh_heap_node *node)
 
 	*node = heap->elem[0];
 
-	if (0 == --heap->heap_size)
+	--heap->heap_size;
+	if (0 == heap->heap_size)
 		return true;
 
 	heap->elem[0] = heap->elem[heap->heap_size];
