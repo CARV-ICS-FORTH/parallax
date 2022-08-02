@@ -59,10 +59,9 @@ add_library(${LIB} ${LIB_C_SOURCE_FILES})
 target_link_libraries(${LIB} ${DEPENDENCIES})
 set_target_properties(
   ${LIB} PROPERTIES PUBLIC_HEADER
-                    "${CMAKE_CURRENT_SOURCE_DIR}/include/parallax.h")
+                    "${CMAKE_CURRENT_SOURCE_DIR}/include/parallax/parallax.h")
 
-target_include_directories(
-  ${LIB} PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include/parallax")
+target_include_directories(${LIB} PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include/")
 
 set_source_files_properties(allocator/spin_loop.c PROPERTIES COMPILE_FLAGS
                                                              "-O0")
