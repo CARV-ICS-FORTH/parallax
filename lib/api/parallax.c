@@ -44,15 +44,24 @@ char *par_close(par_handle handle)
 	return db_close((db_handle *)handle);
 }
 
-par_ret_code par_put(par_handle handle, struct par_key_value *key_value)
+void par_put(par_handle handle, struct par_key_value *key_value, char **error_message)
 {
-	return insert_key_value((db_handle *)handle, (char *)key_value->k.data, (char *)key_value->v.val_buffer,
-				key_value->k.size, key_value->v.val_size, insertOp);
+	if (*error_message) {
+		free(*error_message);
+	}
+
+	*error_message = insert_key_value((db_handle *)handle, (char *)key_value->k.data,
+					  (char *)key_value->v.val_buffer, key_value->k.size, key_value->v.val_size,
+					  insertOp);
 }
 
-par_ret_code par_put_serialized(par_handle handle, char *serialized_key_value)
+void par_put_serialized(par_handle handle, char *serialized_key_value, char **error_message)
 {
-	return serialized_insert_key_value((db_handle *)handle, serialized_key_value);
+	if (*error_message) {
+		free(*error_message);
+	}
+
+	*error_message = serialized_insert_key_value((db_handle *)handle, serialized_key_value);
 }
 
 static inline int par_serialize_to_kv_format(struct par_key *key, char **buf, uint32_t buf_size)
@@ -144,10 +153,14 @@ par_ret_code par_exists(par_handle handle, struct par_key *key)
 	return PAR_SUCCESS;
 }
 
-par_ret_code par_delete(par_handle handle, struct par_key *key)
+void par_delete(par_handle handle, struct par_key *key, char **error_message)
 {
+	if (*error_message) {
+		free(error_message);
+	}
+
 	struct db_handle *hd = (struct db_handle *)handle;
-	return insert_key_value(hd, (void *)key->data, "empty", key->size, 0, deleteOp);
+	*error_message = insert_key_value(hd, (void *)key->data, "empty", key->size, 0, deleteOp);
 }
 
 /*scanner staff*/

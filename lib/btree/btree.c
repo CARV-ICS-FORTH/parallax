@@ -954,34 +954,47 @@ static enum kv_category calculate_KV_category(uint32_t key_size, uint32_t value_
 	return category;
 }
 
-par_ret_code insert_key_value(db_handle *handle, void *key, void *value, uint32_t key_size, uint32_t value_size,
-			      request_type op_type)
+static char *insert_error_handling(db_handle *handle, uint32_t key_size, uint32_t value_size)
 {
-	bt_insert_req ins_req;
-	char __tmp[KV_MAX_SIZE];
-	char *key_buf = __tmp;
-
+	char *error_message = NULL;
 	if (DB_IS_CLOSING == handle->db_desc->db_state) {
-		log_warn("Sorry DB: %s is closing", handle->db_desc->db_superblock->db_name);
-		return PAR_FAILURE;
+		create_error_message(&error_message, "DB: %s is closing", handle->db_desc->db_superblock->db_name);
+		return error_message;
 	}
 
 	if (key_size > MAX_KEY_SIZE) {
-		log_fatal("Keys > %d bytes are not supported!", MAX_KEY_SIZE);
-		return PAR_FAILURE;
+		create_error_message(&error_message, "Provided key %u Keys > %d bytes are not supported", key_size,
+				     MAX_KEY_SIZE);
+		return error_message;
 	}
 
 	if (!key_size) {
-		log_fatal("Trying to enter a zero sized key? Not valid!");
-		BUG_ON();
+		create_error_message(&error_message, "Trying to enter a zero sized key? Not valid!");
+		return error_message;
 	}
 
-	uint32_t kv_size = sizeof(uint32_t) + key_size + sizeof(uint32_t) + value_size /* + sizeof(uint64_t) */;
+	uint32_t kv_size = sizeof(uint32_t) + key_size + sizeof(uint32_t) + value_size;
 	if (kv_size > KV_MAX_SIZE) {
-		log_fatal("Key buffer overflow %u", kv_size);
-		BUG_ON();
+		create_error_message(&error_message, "KV size > 4KB buffer overflow! KV size = %u", kv_size);
+		return error_message;
 	}
 
+	return NULL;
+}
+
+char *insert_key_value(db_handle *handle, void *key, void *value, uint32_t key_size, uint32_t value_size,
+		       request_type op_type)
+{
+	bt_insert_req ins_req = { 0 };
+	char __tmp[KV_MAX_SIZE];
+	char *key_buf = __tmp;
+	char *error_message = NULL;
+
+	error_message = insert_error_handling(handle, key_size, value_size);
+	if (error_message)
+		return error_message;
+
+	uint32_t kv_size = sizeof(key_size) + sizeof(value_size) + key_size + value_size;
 	/*prepare the request*/
 	*(uint32_t *)key_buf = key_size;
 	memcpy(key_buf + sizeof(uint32_t), key, key_size);
@@ -1005,16 +1018,10 @@ par_ret_code insert_key_value(db_handle *handle, void *key, void *value, uint32_
 	 * acquiring the guard lock of the region
 	 * */
 
-	return _insert_key_value(&ins_req);
+	return btree_insert_key_value(&ins_req);
 }
 
-/**
- * Inserts a serialized key value pair by using the buffer provided by the user.
- * @param serialized_key_value is a buffer containing the serialized key value pair.
- * The format of the key value pair is | key_size | key | value_size | value |, where {key,value}_size is uint32_t.
- * */
-
-par_ret_code serialized_insert_key_value(db_handle *handle, const char *serialized_key_value)
+char *serialized_insert_key_value(db_handle *handle, const char *serialized_key_value)
 {
 	bt_insert_req ins_req = { .metadata.handle = handle,
 				  .key_value_buf = (char *)serialized_key_value,
@@ -1022,28 +1029,18 @@ par_ret_code serialized_insert_key_value(db_handle *handle, const char *serializ
 				  .metadata.key_format = KV_FORMAT,
 				  .metadata.append_to_log = 1 };
 
-	if (DB_IS_CLOSING == handle->db_desc->db_state) {
-		log_warn("Sorry DB: %s is closing", handle->db_desc->db_superblock->db_name);
-		return PAR_FAILURE;
-	}
-
 	uint32_t key_size = KEY_SIZE(serialized_key_value);
-	if (key_size > MAX_KEY_SIZE) {
-		log_info("Keys > %d bytes are not supported!", MAX_KEY_SIZE);
-		return PAR_FAILURE;
-	}
 	uint32_t value_size = VALUE_SIZE(serialized_key_value + key_size + sizeof(key_size));
 	uint32_t kv_size = sizeof(uint32_t) + key_size + sizeof(uint32_t) + value_size;
 
-	if (kv_size > KV_MAX_SIZE) {
-		log_fatal("Key buffer overflow %u", kv_size);
-		BUG_ON();
-	}
+	char *error_message = insert_error_handling(handle, key_size, value_size);
+	if (error_message)
+		return error_message;
 
 	ins_req.metadata.kv_size = kv_size;
 	ins_req.metadata.cat = calculate_KV_category(key_size, value_size, insertOp);
 
-	return _insert_key_value(&ins_req);
+	return btree_insert_key_value(&ins_req);
 }
 
 void extract_keyvalue_size(log_operation *req, metadata_tologop *data_size)
@@ -1471,19 +1468,16 @@ void *append_key_value_to_log(log_operation *req)
 	}
 }
 
-par_ret_code _insert_key_value(bt_insert_req *ins_req)
+char *btree_insert_key_value(bt_insert_req *ins_req)
 {
 	ins_req->metadata.handle->db_desc->dirty = 1;
-	par_ret_code ret_code = PAR_SUCCESS;
 
-	if (writers_join_as_readers(ins_req) == PAR_SUCCESS) {
-		ret_code = PAR_SUCCESS;
-	} else if (concurrent_insert(ins_req) != PAR_SUCCESS) {
-		log_warn("insert failed!");
-		ret_code = PAR_FAILURE;
-	}
+	if (writers_join_as_readers(ins_req) == PAR_SUCCESS)
+		;
+	else if (concurrent_insert(ins_req) != PAR_SUCCESS)
+		create_error_message(&ins_req->metadata.error_message, "Insert failed");
 
-	return ret_code;
+	return ins_req->metadata.error_message;
 }
 
 // cppcheck-suppress unusedFunction
@@ -1737,8 +1731,6 @@ int insert_KV_at_leaf(bt_insert_req *ins_req, node_header *leaf)
 
 		switch (ins_req->metadata.cat) {
 		case SMALL_INPLACE:
-			append_key_value_to_log(&append_op);
-			break;
 		case MEDIUM_INPLACE:
 			append_key_value_to_log(&append_op);
 			break;
@@ -1993,7 +1985,6 @@ release_and_retry:
 
 		struct pivot_pointer *son_pivot =
 			index_search_get_pivot(n_son, ins_req->key_value_buf, ins_req->metadata.key_format);
-		//log_debug("Visitting son at dev off %lu", son_pivot->child_offt);
 
 		father = son;
 		son = REAL_ADDRESS(son_pivot->child_offt);

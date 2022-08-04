@@ -297,29 +297,22 @@ class ParallaxDB : public YCSBDB {
 		++x;
 
 		struct par_key_value KV_pair = { .k = { .size = 0, .data = NULL }, .v = { .val_buffer = NULL } };
+		char *error_message = NULL;
 
+		KV_pair.k.size = key.length();
+		KV_pair.k.data = key.c_str();
 		switch (choose_wl(custom_workload, y)) {
 		case 0:
-			KV_pair.k.size = key.length();
-			KV_pair.k.data = key.c_str();
 			KV_pair.v.val_buffer = (char *)value.c_str();
 			KV_pair.v.val_size = value.length();
-			par_put(dbs[db_id], &KV_pair);
 			break;
 		case 1:
-			KV_pair.k.size = key.length();
-			KV_pair.k.data = key.c_str();
 			KV_pair.v.val_buffer = (char *)value2.c_str();
 			KV_pair.v.val_size = value2.length();
-			par_put(dbs[db_id], &KV_pair);
-
 			break;
 		case 2:
-			KV_pair.k.size = key.length();
-			KV_pair.k.data = key.c_str();
 			KV_pair.v.val_buffer = (char *)value3.c_str();
 			KV_pair.v.val_size = value3.length();
-			par_put(dbs[db_id], &KV_pair);
 			break;
 		default:
 			assert(0);
@@ -327,6 +320,12 @@ class ParallaxDB : public YCSBDB {
 			exit(EXIT_FAILURE);
 		}
 
+		par_put(dbs[db_id], &KV_pair, &error_message);
+		if (error_message != nullptr) {
+			std::cerr << error_message << std::endl;
+			free(error_message);
+			exit(EXIT_FAILURE);
+		}
 #if 0
       if(cnt != field_count){
         std::cout << "[INSERT] ERROR IN VALUE!" << std::endl;

@@ -1,4 +1,5 @@
 #include "arg_parser.h"
+#include "common/common.h"
 #include <allocator/volume_manager.h>
 #include <assert.h>
 #include <btree/btree.h>
@@ -51,8 +52,13 @@ void serially_insert_keys(par_handle hd)
 		key_value.k.data = k->key_buf;
 		key_value.v.val_buffer = v->value_buf;
 		key_value.v.val_size = v->value_size;
-
-		par_put(hd, &key_value);
+		char *error_message = NULL;
+		par_put(hd, &key_value, &error_message);
+		if (error_message) {
+			log_fatal("Put failed %s", error_message);
+			free(error_message);
+			BUG_ON();
+		}
 	}
 
 	free(k);
@@ -105,8 +111,11 @@ void delete_half_keys(par_handle hd)
 		if (i % 10000 == 0)
 			log_info("%s", k->key_buf);
 
-		if (par_delete(hd, &par_key) != PAR_SUCCESS) {
-			log_info("ERROR key not found!");
+		char *error_message = NULL;
+		par_delete(hd, &par_key, &error_message);
+		if (error_message) {
+			log_info("ERROR key not found! %s", error_message);
+			free(error_message);
 			exit(EXIT_FAILURE);
 		}
 	}

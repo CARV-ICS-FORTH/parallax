@@ -62,8 +62,11 @@ void serially_insert_keys(par_handle hd)
 					    .v.val_buffer = v->value_buf,
 					    .v.val_size = v->value_size };
 
-		if (par_put(hd, &kv) != PAR_SUCCESS) {
-			log_fatal("Put failed!");
+		char *error_message = NULL;
+		par_put(hd, &kv, &error_message);
+		if (error_message) {
+			log_fatal("Put failed %s ! ", error_message);
+			free(error_message);
 			exit(EXIT_FAILURE);
 		}
 	}

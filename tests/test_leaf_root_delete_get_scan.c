@@ -37,8 +37,10 @@ int main(int argc, char *argv[])
 	key_value.v.val_buffer = "16895|0|";
 	key_value.v.val_size = strlen(key_value.v.val_buffer);
 
-	if (par_put(handle, &key_value) != PAR_SUCCESS) {
-		log_fatal("Par put failed!");
+	par_put(handle, &key_value, &error_message);
+	if (error_message) {
+		log_fatal("Par put failed %s!", error_message);
+		free(error_message);
 		BUG_ON();
 	}
 
@@ -47,13 +49,18 @@ int main(int argc, char *argv[])
 	key_value.v.val_buffer = "Content";
 	key_value.v.val_size = strlen(key_value.v.val_buffer);
 
-	if (par_put(handle, &key_value) != PAR_SUCCESS) {
-		log_fatal("Par put failed!");
+	par_put(handle, &key_value, &error_message);
+	if (error_message) {
+		log_fatal("Par put failed! %s", error_message);
+		free(error_message);
 		BUG_ON();
 	}
 
-	if (par_delete(handle, &key_value.k) != PAR_SUCCESS) {
-		log_fatal("Par put failed!");
+	par_delete(handle, &key_value.k, &error_message);
+
+	if (error_message) {
+		log_fatal("Par put failed! %s", error_message);
+		free(error_message);
 		BUG_ON();
 	}
 

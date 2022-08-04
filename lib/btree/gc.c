@@ -80,7 +80,13 @@ void move_kv_pairs_to_new_segment(struct db_handle handle, stack *marks)
 		ins_req.metadata.kv_size = key_size + 8 + value_size;
 		ins_req.metadata.key_format = KV_FORMAT;
 		ins_req.metadata.cat = BIG_INLOG;
-		_insert_key_value(&ins_req);
+		char *error_message = btree_insert_key_value(&ins_req);
+
+		if (error_message) {
+			log_fatal("Insert failed %s", error_message);
+			free(error_message);
+			BUG_ON();
+		}
 	}
 }
 

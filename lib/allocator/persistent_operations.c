@@ -864,12 +864,20 @@ void recover_L0(struct db_descriptor *db_desc)
 		else
 			choice = BIG_LOG;
 
+		char *error_message = NULL;
 		if (!cursor[choice]->tombstone)
-			insert_key_value(&hd, kvs[choice]->par_key->data, kvs[choice]->par_value->data,
-					 kvs[choice]->par_key->size, kvs[choice]->par_value->size, insertOp);
+			error_message = insert_key_value(&hd, kvs[choice]->par_key->data, kvs[choice]->par_value->data,
+							 kvs[choice]->par_key->size, kvs[choice]->par_value->size,
+							 insertOp);
 		else
-			insert_key_value(&hd, kvs[choice]->par_key->data, "empty", kvs[choice]->par_key->size, 0,
-					 deleteOp);
+			error_message = insert_key_value(&hd, kvs[choice]->par_key->data, "empty",
+							 kvs[choice]->par_key->size, 0, deleteOp);
+
+		if (error_message) {
+			log_fatal("Insert failed reason = %s, exiting", error_message);
+			free(error_message);
+			BUG_ON();
+		}
 
 		kvs[choice] = get_next_log_entry(cursor[choice]);
 	}

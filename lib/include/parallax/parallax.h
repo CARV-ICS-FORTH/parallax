@@ -94,14 +94,14 @@ typedef enum par_ret_code {
 /**
   * Inserts the key in the DB if it does not exist else this becomes an update internally.
 */
-par_ret_code par_put(par_handle handle, struct par_key_value *key_value);
+void par_put(par_handle handle, struct par_key_value *key_value, char **error_message);
 
 /**
  * Inserts a serialized key value pair by using the buffer provided by the user.
  * @param serialized_key_value is a buffer containing the serialized key value pair.
  * The format of the key value pair is | key_size | key | value_size | value |, where {key,value}_size is uint32_t.
  * */
-par_ret_code par_put_serialized(par_handle handle, char *serialized_key_value);
+void par_put_serialized(par_handle handle, char *serialized_key_value, char **error_message);
 
 /**
   * Takes as input a key and searches for it. If the key exists in the DB then, it allocates the value if it is NULL and the client is responsible to release the memory.
@@ -118,7 +118,7 @@ par_ret_code par_exists(par_handle handle, struct par_key *key);
 /**
   * Deletes an existing key in the DB.
 */
-par_ret_code par_delete(par_handle handle, struct par_key *key);
+void par_delete(par_handle handle, struct par_key *key, char **error_message);
 
 /**
   * scanner API. At the current state scanner supports snapshot isolation. The lifetime of a scanner start with

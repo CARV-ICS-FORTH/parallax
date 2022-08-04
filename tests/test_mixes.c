@@ -164,8 +164,11 @@ static void populate_db(par_handle hd, struct task task_info)
 		v->value_size = init_info.kv_size - ((2 * sizeof(uint32_t)) + k->key_size);
 		memset(v->value_buf, 0, v->value_size);
 
-		if (par_put_serialized(hd, (char *)k) != PAR_SUCCESS) {
-			log_fatal("Put failed!");
+		char *error_message = NULL;
+		par_put_serialized(hd, (char *)k, &error_message);
+		if (error_message) {
+			log_fatal("Put failed! %s", error_message);
+			free(error_message);
 			BUG_ON();
 		}
 		free(k);

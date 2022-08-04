@@ -140,8 +140,14 @@ static void put_workload(struct workload_config_t *workload_config, const char *
 			my_kv.v.val_buffer_size = KV_BUFFER_SIZE / 2;
 			my_kv.v.val_buffer = value_payload;
 		}
-		//log_debug("key %.*s %u", my_kv.k.size, my_kv.k.data, my_kv.v.val_size);
-		par_put(workload_config->handle, &my_kv);
+		char *error_message = NULL;
+		par_put(workload_config->handle, &my_kv, &error_message);
+		if (error_message) {
+			log_fatal("Insert failed %s", error_message);
+			free(error_message);
+			exit(EXIT_FAILURE);
+		}
+
 		if (!(++key_count % workload_config->progress_report))
 			log_info("Progress in population %lu keys", key_count);
 	}
@@ -188,11 +194,17 @@ static void get_workload(struct workload_config_t *workload_config)
 	log_info("Testing if gets value are sane");
 	char *key = "SanityCheck";
 	char *value = "Hello this is a sane test";
+	char *error_message = NULL;
 	my_kv.k.size = strlen(key) + 1;
 	my_kv.k.data = key;
 	my_kv.v.val_size = strlen(value) + 1;
 	my_kv.v.val_buffer = value;
-	par_put(workload_config->handle, &my_kv);
+	par_put(workload_config->handle, &my_kv, &error_message);
+	if (error_message) {
+		log_fatal("Insert failed %s", error_message);
+		free(error_message);
+		exit(EXIT_FAILURE);
+	}
 	struct par_value my_value = { .val_buffer = NULL };
 	if (par_get(workload_config->handle, &my_kv.k, &my_value) != PAR_SUCCESS) {
 		log_fatal("Key %u:%s not found", my_kv.k.size, my_kv.k.data);

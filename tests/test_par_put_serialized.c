@@ -49,8 +49,12 @@ int main(int argc, char *argv[])
 	serialize_kv += 4;
 	*serialize_kv = 'a';
 
-	if (par_put_serialized(handle, serialized_key_value) != PAR_SUCCESS)
+	par_put_serialized(handle, serialized_key_value, &error_message);
+	if (error_message) {
+		log_fatal("%s", error_message);
+		free(error_message);
 		return EXIT_FAILURE;
+	}
 
 	error_message = par_close(handle);
 

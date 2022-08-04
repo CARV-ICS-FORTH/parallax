@@ -362,6 +362,7 @@ void *compaction_daemon(void *args);
 typedef struct bt_mutate_req {
 	db_handle *handle;
 	uint64_t *reorganized_leaf_pos_INnode;
+	char *error_message;
 	/*offset in log where the kv was written*/
 	uint64_t log_offset;
 	/*info for cases of segment_full_event*/
@@ -475,10 +476,18 @@ struct log_sequence_number {
 	uint64_t id;
 };
 
-par_ret_code insert_key_value(db_handle *handle, void *key, void *value, uint32_t key_size, uint32_t value_size,
-			      request_type op_type);
-par_ret_code serialized_insert_key_value(db_handle *handle, const char *serialized_key_value);
-par_ret_code _insert_key_value(bt_insert_req *ins_req);
+char *insert_key_value(db_handle *handle, void *key, void *value, uint32_t key_size, uint32_t value_size,
+		       request_type op_type) __attribute__((warn_unused_result));
+
+/**
+ * Inserts a serialized key value pair by using the buffer provided by the user.
+ * The format of the key value pair is | key_size | key | value_size | value |, where {key,value}_size is uint32_t.
+ * @param handle
+ * @param serialized_key_value is a buffer containing the serialized key value pair.
+ * @return Returns the error message if any otherwise NULL on success.
+ * */
+char *serialized_insert_key_value(db_handle *handle, const char *serialized_key_value);
+char *btree_insert_key_value(bt_insert_req *ins_req) __attribute__((warn_unused_result));
 
 void *append_key_value_to_log(log_operation *req);
 void find_key(struct lookup_operation *get_op);
