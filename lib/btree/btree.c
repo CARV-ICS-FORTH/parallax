@@ -929,8 +929,11 @@ void wait_for_available_level0_tree(db_handle *handle, uint8_t level_id, uint8_t
 	}
 }
 
-static enum kv_category calculate_KV_category(uint32_t key_size, uint32_t value_size, request_type op_type)
+enum kv_category calculate_KV_category(uint32_t key_size, uint32_t value_size, request_type op_type)
 {
+	assert(op_type == insertOp || op_type == deleteOp);
+	assert(key_size && value_size);
+
 	if (op_type == deleteOp)
 		return SMALL_INPLACE;
 
@@ -1009,14 +1012,12 @@ char *insert_key_value(db_handle *handle, void *key, void *value, uint32_t key_s
 	ins_req.metadata.gc_request = 0;
 	ins_req.metadata.special_split = 0;
 	ins_req.metadata.tombstone = op_type == deleteOp;
-
 	ins_req.metadata.cat = calculate_KV_category(key_size, value_size, op_type);
-
+	ins_req.metadata.put_op_metadata.key_value_category = ins_req.metadata.cat;
 	/*
 	 * Note for L0 inserts since active_tree changes dynamically we decide which
-	 * is the active_tree after
-	 * acquiring the guard lock of the region
-	 * */
+	 * is the active_tree after acquiring the guard lock of the region.
+	 */
 
 	return btree_insert_key_value(&ins_req);
 }
@@ -1323,7 +1324,7 @@ static void *bt_append_to_log_direct_IO(struct log_operation *req, struct log_to
 	struct pr_log_ticket log_kv_entry_ticket = { .log_offt = 0, .IO_start_offt = 0, .IO_size = 0 };
 	struct pr_log_ticket pad_ticket = { .log_offt = 0, .IO_start_offt = 0, .IO_size = 0 };
 	char *addr_inlog = NULL;
-	uint32_t available_space_in_log;
+	uint32_t available_space_in_log = 0;
 	uint32_t reserve_needed_space = sizeof(struct log_sequence_number) + data_size->kv_size;
 
 	MUTEX_LOCK(&handle->db_desc->lock_log);
@@ -1333,8 +1334,6 @@ static void *bt_append_to_log_direct_IO(struct log_operation *req, struct log_to
 		available_space_in_log = SEGMENT_SIZE;
 	else if (log_metadata->log_desc->size % SEGMENT_SIZE != 0)
 		available_space_in_log = SEGMENT_SIZE - (log_metadata->log_desc->size % SEGMENT_SIZE);
-	else
-		available_space_in_log = 0;
 
 	uint32_t num_chunks = SEGMENT_SIZE / LOG_CHUNK_SIZE;
 	int segment_change = 0;
@@ -1396,12 +1395,13 @@ static void *bt_append_to_log_direct_IO(struct log_operation *req, struct log_to
 	log_kv_entry_ticket.tail = log_metadata->log_desc->tail[tail_id % LOG_TAIL_NUM_BUFS];
 	log_kv_entry_ticket.log_offt = log_metadata->log_desc->size;
 	log_kv_entry_ticket.lsn.id = __sync_fetch_and_add(&handle->db_desc->lsn, 1);
-
 	/*Where we *will* store it on the device*/
 	struct segment_header *device_location = REAL_ADDRESS(log_metadata->log_desc->tail_dev_offt);
 	addr_inlog = (void *)((uint64_t)device_location + (log_metadata->log_desc->size % SEGMENT_SIZE));
 
 	req->metadata->log_offset = log_metadata->log_desc->size;
+	req->metadata->put_op_metadata.offset_in_log = req->metadata->log_offset;
+	req->metadata->put_op_metadata.lsn = log_kv_entry_ticket.lsn.id;
 	log_metadata->log_desc->size += reserve_needed_space;
 	MUTEX_UNLOCK(&handle->db_desc->lock_log);
 
@@ -1417,12 +1417,10 @@ static void *bt_append_to_log_direct_IO(struct log_operation *req, struct log_to
 
 void *append_key_value_to_log(log_operation *req)
 {
-	struct log_towrite log_metadata;
-	struct metadata_tologop data_size;
+	struct log_towrite log_metadata = { .level_id = req->metadata->level_id, .status = req->metadata->cat };
+	struct metadata_tologop data_size = { 0 };
 	db_handle *handle = req->metadata->handle;
 
-	log_metadata.level_id = req->metadata->level_id;
-	log_metadata.status = req->metadata->cat;
 	extract_keyvalue_size(req, &data_size);
 
 	switch (log_metadata.status) {

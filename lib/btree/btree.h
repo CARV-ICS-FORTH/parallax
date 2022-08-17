@@ -18,6 +18,7 @@
 #include "../common/common.h"
 #include "../include/parallax/parallax.h"
 #include "conf.h"
+#include "parallax/structures.h"
 #include <stdbool.h>
 
 #if ENABLE_BLOOM_FILTERS
@@ -124,15 +125,6 @@ struct bt_dynamic_leaf_slot_array {
 	uint16_t key_category : 2;
 	// Tombstone notifies if the key is deleted.
 	uint16_t tombstone : 1;
-};
-
-// The first enumeration should always have as a value 0.
-// BIG_INLOG must always be the last enumeration.
-enum kv_category {
-	SMALL_INPLACE = 0,
-	MEDIUM_INPLACE,
-	MEDIUM_INLOG,
-	BIG_INLOG,
 };
 
 struct key_compare {
@@ -360,6 +352,7 @@ char *db_close(db_handle *handle);
 void *compaction_daemon(void *args);
 
 typedef struct bt_mutate_req {
+	struct par_put_metadata put_op_metadata;
 	db_handle *handle;
 	uint64_t *reorganized_leaf_pos_INnode;
 	char *error_message;
@@ -401,13 +394,6 @@ typedef struct bt_delete_request {
 	void *key_buf;
 } bt_delete_request;
 
-/* In case more operations are tracked in the log in the future such as transactions
-   you will need to change the request_type enumerator and the log_operation struct.
-   In the request_type you will add the name of the operation i.e. transactionOp and
-   in the log_operation you will add a pointer in the union with the new operation i.e. transaction_request.
-*/
-typedef enum { insertOp, deleteOp, paddingOp, unknownOp } request_type;
-
 typedef struct log_operation {
 	bt_mutate_req *metadata;
 	request_type optype_tolog;
@@ -416,6 +402,15 @@ typedef struct log_operation {
 		bt_delete_request *del_req;
 	};
 } log_operation;
+
+/**
+ * Returns the category of the KV based on its key-value size and the operation to perform.
+ * @param key_size
+ * @param value_size
+ * @param op_type Operation to execute.(put, delete, padding)
+ * @return On success return the KV category.
+ */
+enum kv_category calculate_KV_category(uint32_t key_size, uint32_t value_size, request_type op_type);
 
 struct log_towrite {
 	struct log_descriptor *log_desc;

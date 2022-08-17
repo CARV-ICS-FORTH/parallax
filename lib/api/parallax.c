@@ -23,6 +23,15 @@
 #include <string.h>
 #define PAR_MAX_PREALLOCATED_SIZE 256
 
+/*
+ * Frees an error message, it is a runtime check if the pointer is not NULL.
+ * @param error_message A pointer to the error message.
+ */
+static void free_error_message(char **error_message)
+{
+	if (*error_message)
+		free(*error_message);
+}
 char *par_format(char *device_name, uint32_t max_regions_num)
 {
 	return kvf_init_parallax(device_name, max_regions_num);
@@ -44,11 +53,20 @@ char *par_close(par_handle handle)
 	return db_close((db_handle *)handle);
 }
 
+enum kv_category get_kv_category(uint32_t key_size, uint32_t value_size, request_type operation, char **error_message)
+{
+	free_error_message(error_message);
+	if (paddingOp == operation || unknownOp == operation) {
+		create_error_message(error_message, "Unknown operation provided %d", operation);
+		return BIG_INLOG;
+	}
+
+	return calculate_KV_category(key_size, value_size, operation);
+}
+
 void par_put(par_handle handle, struct par_key_value *key_value, char **error_message)
 {
-	if (*error_message) {
-		free(*error_message);
-	}
+	free_error_message(error_message);
 
 	*error_message = insert_key_value((db_handle *)handle, (char *)key_value->k.data,
 					  (char *)key_value->v.val_buffer, key_value->k.size, key_value->v.val_size,
@@ -57,10 +75,7 @@ void par_put(par_handle handle, struct par_key_value *key_value, char **error_me
 
 void par_put_serialized(par_handle handle, char *serialized_key_value, char **error_message)
 {
-	if (*error_message) {
-		free(*error_message);
-	}
-
+	free_error_message(error_message);
 	*error_message = serialized_insert_key_value((db_handle *)handle, serialized_key_value);
 }
 
@@ -155,10 +170,7 @@ par_ret_code par_exists(par_handle handle, struct par_key *key)
 
 void par_delete(par_handle handle, struct par_key *key, char **error_message)
 {
-	if (*error_message) {
-		free(error_message);
-	}
-
+	free_error_message(error_message);
 	struct db_handle *hd = (struct db_handle *)handle;
 	*error_message = insert_key_value(hd, (void *)key->data, "empty", key->size, 0, deleteOp);
 }
