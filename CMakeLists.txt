@@ -20,9 +20,8 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/.git")
   set(default_build_type "Debug")
 endif()
 
-if(NOT (${CMAKE_SOURCE_DIR} STREQUAL ${CMAKE_CURRENT_SOURCE_DIR})) # Parallax is
-                                                                   # a
-                                                                   # dependency
+# Parallax is a dependency
+if(NOT (${CMAKE_SOURCE_DIR} STREQUAL ${CMAKE_CURRENT_SOURCE_DIR}))
   option(BUILD_TESTING "" OFF)
 endif()
 
