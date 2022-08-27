@@ -1028,7 +1028,8 @@ struct par_put_metadata insert_key_value(db_handle *handle, void *key, void *val
 	return ins_req.metadata.put_op_metadata;
 }
 
-char *serialized_insert_key_value(db_handle *handle, const char *serialized_key_value)
+struct par_put_metadata serialized_insert_key_value(db_handle *handle, const char *serialized_key_value,
+						    char *error_message)
 {
 	bt_insert_req ins_req = { .metadata.handle = handle,
 				  .key_value_buf = (char *)serialized_key_value,
@@ -1040,14 +1041,19 @@ char *serialized_insert_key_value(db_handle *handle, const char *serialized_key_
 	uint32_t value_size = VALUE_SIZE(serialized_key_value + key_size + sizeof(key_size));
 	uint32_t kv_size = sizeof(uint32_t) + key_size + sizeof(uint32_t) + value_size;
 
-	char *error_message = insert_error_handling(handle, key_size, value_size);
-	if (error_message)
-		return error_message;
-
+	error_message = insert_error_handling(handle, key_size, value_size);
+	if (error_message) {
+		// construct an invalid par_put_metadata
+		struct par_put_metadata invalid_put_metadata = { .lsn = UINT64_MAX,
+								 .offset_in_log = UINT64_MAX,
+								 .key_value_category = SMALL_INPLACE };
+		return invalid_put_metadata;
+	}
 	ins_req.metadata.kv_size = kv_size;
 	ins_req.metadata.cat = calculate_KV_category(key_size, value_size, insertOp);
 
-	return btree_insert_key_value(&ins_req);
+	error_message = btree_insert_key_value(&ins_req);
+	return ins_req.metadata.put_op_metadata;
 }
 
 void extract_keyvalue_size(log_operation *req, metadata_tologop *data_size)

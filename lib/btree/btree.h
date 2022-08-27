@@ -481,7 +481,8 @@ struct par_put_metadata insert_key_value(db_handle *handle, void *key, void *val
  * @param serialized_key_value is a buffer containing the serialized key value pair.
  * @return Returns the error message if any otherwise NULL on success.
  * */
-char *serialized_insert_key_value(db_handle *handle, const char *serialized_key_value);
+struct par_put_metadata serialized_insert_key_value(db_handle *handle, const char *serialized_key_value,
+						    char *error_message);
 char *btree_insert_key_value(bt_insert_req *ins_req) __attribute__((warn_unused_result));
 
 void *append_key_value_to_log(log_operation *req);

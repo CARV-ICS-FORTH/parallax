@@ -75,7 +75,7 @@ void par_put(par_handle handle, struct par_key_value *key_value, char **error_me
 void par_put_serialized(par_handle handle, char *serialized_key_value, char **error_message)
 {
 	free_error_message(error_message);
-	*error_message = serialized_insert_key_value((db_handle *)handle, serialized_key_value);
+	serialized_insert_key_value((db_handle *)handle, serialized_key_value, *error_message);
 }
 
 static inline int par_serialize_to_kv_format(struct par_key *key, char **buf, uint32_t buf_size)
