@@ -866,12 +866,12 @@ void recover_L0(struct db_descriptor *db_desc)
 
 		char *error_message = NULL;
 		if (!cursor[choice]->tombstone)
-			error_message = insert_key_value(&hd, kvs[choice]->par_key->data, kvs[choice]->par_value->data,
-							 kvs[choice]->par_key->size, kvs[choice]->par_value->size,
-							 insertOp);
+			insert_key_value(&hd, kvs[choice]->par_key->data, kvs[choice]->par_value->data,
+					 kvs[choice]->par_key->size, kvs[choice]->par_value->size, insertOp,
+					 error_message);
 		else
-			error_message = insert_key_value(&hd, kvs[choice]->par_key->data, "empty",
-							 kvs[choice]->par_key->size, 0, deleteOp);
+			insert_key_value(&hd, kvs[choice]->par_key->data, "empty", kvs[choice]->par_key->size, 0,
+					 deleteOp, error_message);
 
 		if (error_message) {
 			log_fatal("Insert failed reason = %s, exiting", error_message);

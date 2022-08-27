@@ -985,17 +985,16 @@ static char *insert_error_handling(db_handle *handle, uint32_t key_size, uint32_
 	return NULL;
 }
 
-char *insert_key_value(db_handle *handle, void *key, void *value, uint32_t key_size, uint32_t value_size,
-		       request_type op_type)
+void insert_key_value(db_handle *handle, void *key, void *value, uint32_t key_size, uint32_t value_size,
+		      request_type op_type, char *error_message)
 {
 	bt_insert_req ins_req = { 0 };
 	char __tmp[KV_MAX_SIZE];
 	char *key_buf = __tmp;
-	char *error_message = NULL;
 
 	error_message = insert_error_handling(handle, key_size, value_size);
 	if (error_message)
-		return error_message;
+		return;
 
 	uint32_t kv_size = sizeof(key_size) + sizeof(value_size) + key_size + value_size;
 	/*prepare the request*/
@@ -1019,7 +1018,7 @@ char *insert_key_value(db_handle *handle, void *key, void *value, uint32_t key_s
 	 * is the active_tree after acquiring the guard lock of the region.
 	 */
 
-	return btree_insert_key_value(&ins_req);
+	error_message = btree_insert_key_value(&ins_req);
 }
 
 char *serialized_insert_key_value(db_handle *handle, const char *serialized_key_value)
