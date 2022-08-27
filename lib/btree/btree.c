@@ -18,6 +18,7 @@
 #include "../allocator/volume_manager.h"
 #include "../common/common.h"
 #include "../include/parallax/parallax.h"
+#include "../include/parallax/structures.h"
 #include "conf.h"
 #include "dynamic_leaf.h"
 #include "gc.h"
@@ -985,16 +986,21 @@ static char *insert_error_handling(db_handle *handle, uint32_t key_size, uint32_
 	return NULL;
 }
 
-void insert_key_value(db_handle *handle, void *key, void *value, uint32_t key_size, uint32_t value_size,
-		      request_type op_type, char *error_message)
+struct par_put_metadata insert_key_value(db_handle *handle, void *key, void *value, uint32_t key_size,
+					 uint32_t value_size, request_type op_type, char *error_message)
 {
 	bt_insert_req ins_req = { 0 };
 	char __tmp[KV_MAX_SIZE];
 	char *key_buf = __tmp;
 
 	error_message = insert_error_handling(handle, key_size, value_size);
-	if (error_message)
-		return;
+	if (error_message) {
+		// construct an invalid par_put_metadata
+		struct par_put_metadata invalid_put_metadata = { .lsn = UINT64_MAX,
+								 .offset_in_log = UINT64_MAX,
+								 .key_value_category = SMALL_INPLACE };
+		return invalid_put_metadata;
+	}
 
 	uint32_t kv_size = sizeof(key_size) + sizeof(value_size) + key_size + value_size;
 	/*prepare the request*/
@@ -1019,6 +1025,7 @@ void insert_key_value(db_handle *handle, void *key, void *value, uint32_t key_si
 	 */
 
 	error_message = btree_insert_key_value(&ins_req);
+	return ins_req.metadata.put_op_metadata;
 }
 
 char *serialized_insert_key_value(db_handle *handle, const char *serialized_key_value)

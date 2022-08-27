@@ -471,8 +471,8 @@ struct log_sequence_number {
 	uint64_t id;
 };
 
-void insert_key_value(db_handle *handle, void *key, void *value, uint32_t key_size, uint32_t value_size,
-		      request_type op_type, char *error_message);
+struct par_put_metadata insert_key_value(db_handle *handle, void *key, void *value, uint32_t key_size,
+					 uint32_t value_size, request_type op_type, char *error_message);
 
 /**
  * Inserts a serialized key value pair by using the buffer provided by the user.
