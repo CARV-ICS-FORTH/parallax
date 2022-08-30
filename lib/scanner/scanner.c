@@ -467,7 +467,7 @@ int32_t level_scanner_seek(level_scanner *level_sc, void *start_key_buf, SEEK_SC
 
 	/*now perform binary search inside the leaf*/
 	db_descriptor *db_desc = level_sc->db->db_desc;
-	struct dl_bsearch_result dlresult = { .middle = 0, .status = INSERT, .op = DYNAMIC_LEAF_INSERT, .debug = 0 };
+	struct dl_bsearch_result dlresult = { .middle = 0, .status = INSERT, .op = DYNAMIC_LEAF_INSERT };
 	bt_insert_req req = { 0 };
 
 	req.key_value_buf = (char *)start_key;

@@ -118,7 +118,7 @@ struct find_result find_key_in_dynamic_leaf(const struct bt_dynamic_leaf_node *l
 {
 	bt_insert_req req;
 	char buf[MAX_KEY_SIZE + sizeof(uint32_t)];
-	struct dl_bsearch_result result = { .middle = 0, .status = INSERT, .op = DYNAMIC_LEAF_FIND, .debug = 0 };
+	struct dl_bsearch_result result = { .middle = 0, .status = INSERT, .op = DYNAMIC_LEAF_FIND };
 	struct find_result ret_result = { .kv = NULL, .key_type = KV_INPLACE, .kv_category = BIG_INLOG, .tombstone = 0 };
 	struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(leaf);
 	db_handle handle = { .db_desc = db_desc, .volume_desc = NULL };
@@ -801,7 +801,7 @@ int8_t insert_in_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, bt_insert_req *
 								   req->metadata.handle->db_desc->level_medium_inplace,
 							   .cat = req->metadata.cat,
 							   .tombstone = req->metadata.tombstone };
-	struct dl_bsearch_result bsearch = { .middle = 0, .status = INSERT, .op = DYNAMIC_LEAF_INSERT, .debug = 0 };
+	struct dl_bsearch_result bsearch = { .middle = 0, .status = INSERT, .op = DYNAMIC_LEAF_INSERT };
 	char *leaf_log_tail = get_leaf_log_offset(leaf, level->leaf_size);
 
 	if (unlikely(leaf->header.num_entries == 0))
