@@ -288,8 +288,7 @@ int par_get_next(par_scanner sc)
 {
 	struct par_scanner *par_s = (struct par_scanner *)sc;
 	struct scannerHandle *scanner_hd = par_s->sc;
-	int32_t ret = getNext(scanner_hd);
-	if (ret == END_OF_DATABASE) {
+	if (!get_next(scanner_hd)) {
 		par_s->valid = 0;
 		return 0;
 	}

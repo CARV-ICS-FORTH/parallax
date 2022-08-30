@@ -148,8 +148,8 @@ void init_generic_scanner(struct scannerHandle *sc, struct db_handle *handle, vo
 		}
 	}
 
-	if (sc->type_of_scanner == FORWARD_SCANNER && getNext(sc) == END_OF_DATABASE) {
-		log_warn("Reached end of database");
+	if (sc->type_of_scanner == FORWARD_SCANNER && !get_next(sc)) {
+		log_debug("Reached end of database");
 		sc->keyValue = NULL;
 	}
 }
@@ -535,13 +535,13 @@ void close_compaction_buffer_scanner(level_scanner *level_sc)
 	free(level_sc);
 }
 
-int32_t getNext(scannerHandle *scanner)
+bool get_next(scannerHandle *scanner)
 {
 	while (1) {
 		struct sh_heap_node node = { 0 };
 
 		if (!sh_remove_top(&scanner->heap, &node))
-			return END_OF_DATABASE;
+			return false;
 
 		scanner->keyValue = node.KV;
 		scanner->kv_level_id = node.level_id;
@@ -564,9 +564,8 @@ int32_t getNext(scannerHandle *scanner)
 			//log_warn("ommiting duplicate %s", (char *)nd.KV + 4);
 			continue;
 		}
-		return PARALLAX_SUCCESS;
+		return true;
 	}
-	//return END_OF_DATABASE;
 }
 
 #if MEASURE_SST_USED_SPACE

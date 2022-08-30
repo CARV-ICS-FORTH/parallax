@@ -61,7 +61,7 @@ void close_scanner(scannerHandle *scanner);
 
 void seek_to_last(scannerHandle *sc, db_handle *handle);
 
-int32_t getNext(scannerHandle *scanner);
+bool get_next(scannerHandle *scanner);
 
 level_scanner *_init_compaction_buffer_scanner(db_handle *handle, int level_id, node_header *node, void *start_key);
 
