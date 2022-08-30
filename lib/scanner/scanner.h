@@ -16,6 +16,7 @@
 #include "../btree/conf.h"
 #include "min_max_heap.h"
 #include "stack.h"
+#include <stdbool.h>
 #include <stdint.h>
 
 #define FULL_SCANNER 1
