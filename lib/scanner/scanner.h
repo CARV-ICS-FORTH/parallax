@@ -61,6 +61,11 @@ void close_scanner(scannerHandle *scanner);
 
 void seek_to_last(scannerHandle *sc, db_handle *handle);
 
+/** Positions the cursor to the next KV pair.
+ * @param scanner pointer the
+ * scanner object @return true if the advancement of the cursos is sucessfull
+ * false if we have reached the end of the database
+*/
 bool get_next(scannerHandle *scanner);
 
 level_scanner *_init_compaction_buffer_scanner(db_handle *handle, int level_id, node_header *node, void *start_key);
