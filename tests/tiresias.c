@@ -22,12 +22,19 @@
 #include <unistd.h>
 #define MAX_KV_PAIR_SIZE 4096
 #define MY_MAX_KEY_SIZE 255
-static char workload[512];
 
-enum workload_types { Load = 0, Get, Scan, All, All_scan_greater };
-const char *workload_tags[] = { "Load", "Get", "Scan", "All", "All_scan_greater" };
-
-enum kvf_options { VOLUME_NAME = 0, TOTAL_KEYS, SCAN_SIZE, WORKLOAD };
+/**
+ * This test uses a BerkeleyDB key value store as the source of truth. We use
+ * BerkeleyDB because a) it is robust and b) it is available in the majority of
+ * package managers of popular Linux distributions. During the population
+ * phase, it produces keys and values of all sizes and of all contents using
+ * the srand function. Then, it stores them in Parallax and BerkeleyDB. In the
+ * verification stage, it opens a cursor in BerkeleyDB and retieves keys and
+ * values from Parallax. It checks the correctness of keys and values with the
+ * ones stored in BerkeleyDB. In the final phase, it iterates all the kv pairs
+ * and checks if their total number agree with the kv pairs stored in
+ * BekeleyDB.
+ */
 
 struct workload_config_t {
 	par_handle handle;
@@ -185,7 +192,6 @@ static void scan_workload(struct workload_config_t *workload_config)
 
 int main(int argc, char **argv)
 {
-	strcpy(workload, "All"); /*Default value*/
 	int help_flag = 0;
 
 	struct wrap_option options[] = {
@@ -198,38 +204,20 @@ int main(int argc, char **argv)
 		  "--num_of_kvs=number, parameter that specifies the number of operation the test will execute.",
 		  NULL,
 		  INTEGER },
-		{ { "scan_size", required_argument, 0, 'b' },
-		  "--scan_size=number, parameter that specifies entries to fetch per scan",
-		  NULL,
-		  INTEGER },
-		{ { "workload", required_argument, 0, 'b' },
-		  "--workload=string, parameter that specifies the workload to run possible options <Load, Get, Scan, All>",
-		  NULL,
-		  STRING },
-		{ { "kv_mix", required_argument, 0, 'b' },
-		  "--kv_mix=string, parameter that specifies the mix of the kvs to run possible options <s, m, l, sd, md, ld>",
-		  NULL,
-		  STRING },
 		{ { 0, 0, 0, 0 }, "End of arguments", NULL, INTEGER }
 	};
-	unsigned options_len = (sizeof(options) / sizeof(struct wrap_option));
 
+	unsigned options_len = (sizeof(options) / sizeof(struct wrap_option));
+	log_debug("Options len %u", options_len);
 	arg_parse(argc, argv, options, options_len);
 	arg_print_options(help_flag, options, options_len);
 	uint64_t total_keys = *(int *)get_option(options, 2);
+	log_debug("Total keys %lu", total_keys);
 
-	strcpy(workload, get_option(options, 4));
-	if (!(!strcmp(workload, workload_tags[Load]) || !strcmp(workload, workload_tags[Get]) ||
-	      !strcmp(workload, workload_tags[Scan]) || !strcmp(workload, workload_tags[All]) ||
-	      !strcmp(workload, workload_tags[All_scan_greater]))) {
-		log_fatal("Unknown workload type %s possible values are Load, Get, Scan, All (Default)", workload);
-		_exit(EXIT_FAILURE);
-	}
-
-	log_info("Running workload %s", workload);
 	srand(1);
 	par_db_options db_options = { 0 };
 	db_options.volume_name = get_option(options, 1);
+	log_debug("Volume name %s", db_options.volume_name);
 	char truth_db[4096] = { 0 };
 	memcpy(truth_db, db_options.volume_name, strlen(db_options.volume_name));
 	uint32_t idx = strlen(truth_db);
@@ -253,8 +241,7 @@ int main(int argc, char **argv)
 		return (ret);
 	}
 
-	if (strcmp(workload, workload_tags[Load]) == 0 || strcmp(workload, workload_tags[All]) == 0)
-		par_format(db_options.volume_name, 16);
+	par_format(db_options.volume_name, 16);
 
 	db_options.db_name = "TIRESIAS";
 	db_options.volume_start = 0;
@@ -266,18 +253,11 @@ int main(int argc, char **argv)
 		.handle = hd, .truth = truth, .total_keys = total_keys, .progress_report = 100000
 	};
 
-	if (!strcmp(workload, workload_tags[Load]) || !strcmp(workload, workload_tags[All]) ||
-	    !strcmp(workload, workload_tags[All_scan_greater]))
-		put_workload(&workload_config);
+	put_workload(&workload_config);
 
-	if (!strcmp(workload, workload_tags[Get]) || !strcmp(workload, workload_tags[All]) ||
-	    !strcmp(workload, workload_tags[All_scan_greater]))
-		get_workload(&workload_config);
+	get_workload(&workload_config);
 
-	if (!strcmp(workload, workload_tags[Scan]) || !strcmp(workload, workload_tags[All])) {
-		log_info("Testing scan with PAR_GREATER_OR_EQUAL mode");
-		scan_workload(&workload_config);
-	}
+	scan_workload(&workload_config);
 
 	par_close(hd);
 	truth->close(truth, 0);
