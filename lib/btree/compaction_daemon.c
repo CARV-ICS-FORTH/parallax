@@ -880,6 +880,7 @@ static void comp_append_entry_to_leaf_node(struct comp_level_write_cursor *curso
 struct compaction_request {
 	db_descriptor *db_desc;
 	volume_descriptor *volume_desc;
+	par_db_options *db_options;
 	uint64_t l0_start;
 	uint64_t l0_end;
 	uint8_t src_level;
@@ -982,6 +983,7 @@ void *compaction_daemon(void *args)
 				assert(comp_req);
 				comp_req->db_desc = handle->db_desc;
 				comp_req->volume_desc = handle->volume_desc;
+				comp_req->db_options = &handle->db_options;
 				comp_req->src_level = 0;
 				comp_req->src_tree = L0_tree;
 				comp_req->dst_level = 1;
@@ -1069,6 +1071,7 @@ void *compaction_daemon(void *args)
 					assert(comp_req_p);
 					comp_req_p->db_desc = db_desc;
 					comp_req_p->volume_desc = handle->volume_desc;
+					comp_req_p->db_options = &handle->db_options;
 					comp_req_p->src_level = level_id;
 					comp_req_p->src_tree = tree_1;
 					comp_req_p->dst_level = level_id + 1;
@@ -1526,10 +1529,9 @@ void *compaction(void *_comp_req)
 	log_info("starting compaction from level's tree [%u][%u] to level's tree[%u][%u]", comp_req->src_level,
 		 comp_req->src_tree, comp_req->dst_level, comp_req->dst_tree);
 	/*Initialize a scan object*/
-
 	handle.db_desc = comp_req->db_desc;
 	handle.volume_desc = comp_req->volume_desc;
-
+	memcpy(&handle.db_options, comp_req->db_options, sizeof(struct par_db_options));
 	// optimization check if level below is empty
 	struct node_header *dst_root = NULL;
 	if (handle.db_desc->levels[comp_req->dst_level].root_w[0] != NULL)
