@@ -14,7 +14,7 @@
 #include <assert.h>
 #include <db.h>
 #include <log.h>
-#include <parallax.h>
+#include <parallax/parallax.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
