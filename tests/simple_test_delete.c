@@ -259,7 +259,8 @@ int main(int argc, char *argv[])
 
 	par_db_options db_options = { .volume_name = get_option(options, 1),
 				      .create_flag = PAR_CREATE_DB,
-				      .db_name = "test.db" };
+				      .db_name = "test.db",
+				      .options = par_get_default_options() };
 	char *error_message = NULL;
 	par_handle handle = par_open(&db_options, &error_message);
 

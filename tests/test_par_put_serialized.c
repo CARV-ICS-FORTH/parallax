@@ -31,7 +31,8 @@ int main(int argc, char *argv[])
 
 	par_db_options db_options = { .volume_name = path,
 				      .create_flag = PAR_CREATE_DB,
-				      .db_name = "serialized_par_put.db" };
+				      .db_name = "serialized_par_put.db",
+				      .options = par_get_default_options() };
 	par_handle handle = par_open(&db_options, &error_message);
 	if (error_message) {
 		log_fatal("%s", error_message);

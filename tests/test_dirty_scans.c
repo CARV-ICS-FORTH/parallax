@@ -355,7 +355,8 @@ int main(int argc, char **argv)
 	log_info("Running workload %s", workload);
 	par_db_options db_options = { .volume_name = get_option(options, 1),
 				      .db_name = "scan_test",
-				      .create_flag = PAR_CREATE_DB };
+				      .create_flag = PAR_CREATE_DB,
+				      .options = par_get_default_options() };
 	char *error_message = NULL;
 
 	if (strcmp(workload, workload_tags[Load]) == 0 || strcmp(workload, workload_tags[All]) == 0) {

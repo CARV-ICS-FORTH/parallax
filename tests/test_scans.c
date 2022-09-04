@@ -291,8 +291,8 @@ int main(int argc, char **argv)
 
 	db_options.volume_start = 0;
 	db_options.volume_name = argv[1];
-
 	db_options.create_flag = PAR_CREATE_DB;
+	db_options.options = par_get_default_options();
 
 	par_handle hd;
 	for (int i = 0; i < NUM_TESTERS; i++) {
