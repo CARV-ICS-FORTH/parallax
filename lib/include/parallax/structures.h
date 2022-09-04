@@ -24,7 +24,13 @@ enum kv_category {
  */
 typedef enum { insertOp, deleteOp, paddingOp, unknownOp } request_type;
 
-typedef enum { LEVEL0_SIZE = 0, GC_INTERVAL, GROWTH_FACTOR, MEDIUM_LOG_LRU_CACHE_SIZE, LEVEL_MEDIUM_INPLACE } options;
+typedef enum {
+	LEVEL0_SIZE = 0,
+	GC_INTERVAL,
+	GROWTH_FACTOR,
+	MEDIUM_LOG_LRU_CACHE_SIZE,
+	LEVEL_MEDIUM_INPLACE
+} par_options;
 
 struct par_options_desc {
 	uint64_t value;
