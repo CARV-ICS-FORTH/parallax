@@ -235,12 +235,10 @@ void *gc_log_entries(void *hd)
 	struct timespec ts;
 	uint64_t gc_interval;
 	stack *marks;
-	struct lib_option *option;
 	struct db_handle *handle = (struct db_handle *)hd;
 	db_descriptor *db_desc;
 	volume_descriptor *volume_desc = handle->volume_desc;
 	struct klist_node *region;
-	struct lib_option *dboptions = NULL;
 
 	if (!gc_active)
 		pthread_exit(NULL);
@@ -253,9 +251,7 @@ void *gc_log_entries(void *hd)
 
 	pthread_setname_np(pthread_self(), "gcd");
 
-	parse_options(&dboptions);
-	check_option(dboptions, "gc_interval", &option);
-	gc_interval = option->value.count;
+	gc_interval = handle->db_options.options[GC_INTERVAL].value;
 
 	log_debug("Starting garbage collection thread");
 
