@@ -15,6 +15,7 @@
 #include "medium_log_LRU_cache.h"
 #include "../common/common.h"
 #include "conf.h"
+#include "parallax/structures.h"
 #include "set_options.h"
 #include <assert.h>
 #include <log.h>
@@ -128,17 +129,10 @@ void print_hash_table(struct chunk_hash_entry **hash_table)
 	}
 }
 
-struct chunk_LRU_cache *init_LRU(void)
+struct chunk_LRU_cache *init_LRU(struct db_handle *handle)
 {
-	struct lib_option *option;
-	uint64_t LRU_cache_size;
 	uint64_t chunk_size = KB(256);
-	struct lib_option *dboptions = NULL;
-
-	parse_options(&dboptions);
-
-	check_option(dboptions, "medium_log_LRU_cache_size", &option);
-	LRU_cache_size = MB(option->value.count);
+	uint64_t LRU_cache_size = handle->db_options.options[MEDIUM_LOG_LRU_CACHE_SIZE].value;
 
 	log_info("Init LRU with %lu chunks", LRU_cache_size / chunk_size);
 	struct chunk_LRU_cache *new_LRU = (struct chunk_LRU_cache *)calloc(1, sizeof(struct chunk_LRU_cache));

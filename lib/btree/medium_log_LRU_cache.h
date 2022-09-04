@@ -14,6 +14,7 @@
 
 #ifndef MEDIUM_LOG_CACHE_H_
 #define MEDIUM_LOG_CACHE_H_
+#include "btree.h"
 #include <stdint.h>
 #include <uthash.h>
 
@@ -45,7 +46,7 @@ struct chunk_LRU_cache {
 	uint64_t hash_table_capacity;
 };
 
-struct chunk_LRU_cache *init_LRU(void);
+struct chunk_LRU_cache *init_LRU(struct db_handle *handle);
 void add_to_LRU(struct chunk_LRU_cache *chunk_cache, uint64_t chunk_offt, char *chunk_buf);
 int chunk_exists_in_LRU(struct chunk_LRU_cache *chunk_cache, uint64_t chunk_offt);
 char *get_chunk_from_LRU(struct chunk_LRU_cache *chunk_cache, uint64_t chunk_offt);

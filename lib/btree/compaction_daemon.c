@@ -1302,7 +1302,7 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 
 	//initialize LRU cache for storing chunks of segments when medium log goes in place
 	if (merged_level->level_id == handle->db_desc->level_medium_inplace)
-		merged_level->medium_log_LRU_cache = init_LRU();
+		merged_level->medium_log_LRU_cache = init_LRU(handle);
 
 	log_debug("Src [%u][%u] size = %lu", comp_req->src_level, comp_req->src_tree,
 		  handle->db_desc->levels[comp_req->src_level].level_size[comp_req->src_tree]);
