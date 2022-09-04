@@ -608,13 +608,13 @@ db_handle *internal_db_open(struct volume_descriptor *volume_desc, par_db_option
 		char *fmt_string = NULL;
 		handle = NULL;
 
-		if (PAR_CREATE_DB == handle->db_options.create_flag)
+		if (PAR_CREATE_DB == db_options->create_flag)
 			fmt_string = "Sorry no room for new DB %s";
 
-		if (PAR_DONOT_CREATE_DB == handle->db_options.create_flag)
+		if (PAR_DONOT_CREATE_DB == db_options->create_flag)
 			fmt_string = "DB %s not found instructed not to create a new one";
 
-		create_error_message(error_message, fmt_string, handle->db_options.db_name);
+		create_error_message(error_message, fmt_string, db_options->db_name);
 		goto exit;
 	}
 
