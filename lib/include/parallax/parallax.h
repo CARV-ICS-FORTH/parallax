@@ -130,4 +130,10 @@ struct par_value par_get_value(par_scanner sc);
  */
 par_ret_code par_sync(par_handle handle);
 
+/**
+ * Create, populate and return a buffer containing the default db_options values from option.yml file. Callers can modify the buffer at will.
+ * @retval Array with NUM_OF_OPTIONS sizeo of struct options_desc
+ */
+struct par_options_desc *par_get_default_options(void);
+
 #endif // PARALLAX_H_

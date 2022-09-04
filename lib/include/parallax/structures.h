@@ -1,7 +1,6 @@
 #ifndef PARALLAX_STRUCTURES_H_
 #define PARALLAX_STRUCTURES_H_
 
-#include "../../btree/set_options.h"
 #include <stdint.h>
 typedef void *par_handle;
 typedef void *par_scanner;
@@ -25,6 +24,12 @@ enum kv_category {
  */
 typedef enum { insertOp, deleteOp, paddingOp, unknownOp } request_type;
 
+typedef enum { LEVEL0_SIZE = 0, GC_INTERVAL, GROWTH_FACTOR, MEDIUM_LOG_LRU_CACHE_SIZE, LEVEL_MEDIUM_INPLACE } options;
+
+struct par_options_desc {
+	uint64_t value;
+};
+
 typedef struct par_db_options {
 	char *volume_name; /*File or a block device to store the DB's data*/
 	const char *db_name; /*DB name*/
@@ -33,7 +38,7 @@ typedef struct par_db_options {
 	 * With PAR_DONOT_CREATE_DB the DB is not created if it exists.
 	 */
 	enum par_db_initializers create_flag;
-	struct options_desc options[NUM_OF_OPTIONS]; /*buffer containing the options' values*/
+	struct par_options_desc *options; /*buffer containing the options' values*/
 } par_db_options;
 
 struct par_key {
