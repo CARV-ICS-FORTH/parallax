@@ -66,46 +66,15 @@ static void push_back_duplicate_kv(struct sh_heap *heap, struct sh_heap_node *hp
 			    key_size + value_size + (sizeof(uint32_t) * 2));
 }
 
-static struct bt_kv_log_address sh_translate_log_address(struct sh_heap_node *heap_node)
-{
-	struct bt_kv_log_address log_address = { .addr = NULL, .in_tail = 0, .tail_id = UINT8_MAX, .log_desc = NULL };
-
-	switch (heap_node->type) {
-	case KV_FORMAT:
-		log_address.addr = heap_node->KV;
-		break;
-	case KV_PREFIX: {
-		struct bt_leaf_entry *leaf_entry = (struct bt_leaf_entry *)heap_node->KV;
-		log_address.addr = (void *)leaf_entry->dev_offt;
-		break;
-	}
-	default:
-		log_fatal("Wrong category");
-		_Exit(EXIT_FAILURE);
-	}
-
-	switch (heap_node->cat) {
-	case BIG_INLOG:
-		if (!heap_node->level_id) {
-			log_address =
-				bt_get_kv_log_address(&heap_node->db_desc->big_log, ABSOLUTE_ADDRESS(log_address.addr));
-			log_address.log_desc = &heap_node->db_desc->big_log;
-		}
-		break;
-#if MEDIUM_LOG_UNSORTED
-	case MEDIUM_INLOG:
-		if (!heap_node->level_id)
-			log_address = bt_get_kv_log_address(&nd_1->db_desc->medium_log,
-							    ABSOLUTE_ADDRESS(log_address->pointer));
-		log_address.log_desc = &heap_node->db_desc->medium_log;
-		break;
-#endif
-	default:
-		break;
-	}
-	return log_address;
-}
-
+/**
+ * Solves cases when we have duplicated keys across adjacent levels. It takes
+ * into account the level id of each key to solve the tie. The rule is that the
+ * key with the largest level id is duplicate and is ignored.
+ * @returns negative int if nd_1 < nd_2, possitive if nd_1>nd_2, and 0 if equal
+ * @param heap, pointer to min max heap
+ * @param nd_1 heap node containing the actual key, its corresponding level_id
+ * @param nd_2 heap node containing the key and its corresponding level_id
+ */
 static int sh_solve_tie(struct sh_heap *heap, struct sh_heap_node *nd_1, struct sh_heap_node *nd_2)
 {
 	int ret = 1;
@@ -136,47 +105,82 @@ static int sh_solve_tie(struct sh_heap *heap, struct sh_heap_node *nd_1, struct 
 	return ret;
 }
 
-static int64_t sh_cmp_heap_nodes(struct sh_heap *hp, struct sh_heap_node *nd_1, struct sh_heap_node *nd_2)
+/**
+ * Compares only the prefixes of two keys. In case of a tie it returns 0
+ */
+static int sh_prefix_compare(struct key_compare *key1, struct key_compare *key2)
 {
-	struct bt_kv_log_address L1 = sh_translate_log_address(nd_1);
-	struct bt_kv_log_address L2 = sh_translate_log_address(nd_2);
+	uint32_t size = key1->key_size <= key2->key_size ? key1->key_size : key2->key_size;
+	size = size < PREFIX_SIZE ? size : PREFIX_SIZE;
+
+	int ret = memcmp(key1->key, key2->key, size);
+
+	if (ret)
+		return ret;
+
+	if (PREFIX_SIZE == size)
+		return 0;
+
+	return key1->key_size - key2->key_size;
+}
+
+/**
+ * The comparator function used from the min max heap to compare node
+ * @param hp the pointer to the min max heap structure
+ * @param nd_1 pointer to the heap node
+ * @param nd_2 pointer to the heap node
+ */
+static int sh_cmp_heap_nodes(struct sh_heap *hp, struct sh_heap_node *nd_1, struct sh_heap_node *nd_2)
+{
 	struct key_compare key1_cmp = { 0 };
 	struct key_compare key2_cmp = { 0 };
+	init_key_cmp(&key1_cmp, nd_1->KV, nd_1->type);
+	init_key_cmp(&key2_cmp, nd_2->KV, nd_2->type);
 
-	int64_t ret = 0;
-	if (L1.in_tail && L2.in_tail) {
-		/*key1 and key2 are KV_FORMATed*/
-		init_key_cmp(&key1_cmp, L1.addr, KV_FORMAT);
-		init_key_cmp(&key2_cmp, L2.addr, KV_FORMAT);
-		ret = key_cmp(&key1_cmp, &key2_cmp);
-	} else if (L1.in_tail) {
-		/*key1 is KV_FORMATED key2 is nd2->type*/
-		init_key_cmp(&key1_cmp, L1.addr, KV_FORMAT);
-		init_key_cmp(&key2_cmp, nd_2->KV, nd_2->type);
-		ret = key_cmp(&key1_cmp, &key2_cmp);
-	} else if (L2.in_tail) {
-		/*key1 is nd1_type key2 is KV_FORMAT*/
-		init_key_cmp(&key1_cmp, nd_1->KV, nd_1->type);
-		init_key_cmp(&key2_cmp, L2.addr, KV_FORMAT);
-		ret = key_cmp(&key1_cmp, &key2_cmp);
-	} else {
-		/*key1 is nd1_type key2 is nd2_type*/
-		init_key_cmp(&key1_cmp, nd_1->KV, nd_1->type);
-		init_key_cmp(&key2_cmp, nd_2->KV, nd_2->type);
-		ret = key_cmp(&key1_cmp, &key2_cmp);
+	/* We use a custom prefix_compare for the following reason. Default
+	 * key_comparator (key_cmp) for KV_PREFIX keys will fetch keys from storage
+	 * if prefix comparison equals 0. This means that for KV_PREFIX we need to
+	 * translate log pointers (if they belong to level 0) which is an expensive
+	 * operation. To avoid this, since this code is executed for compactions and
+	 * scans so it is in the critical path, we use a custom prefix_compare
+	 * function that stops only in prefix comparison.
+	 */
+	int ret = sh_prefix_compare(&key1_cmp, &key2_cmp);
+	if (ret)
+		return ret;
+
+	/* Going for full key comparison, we are going to end up in the full key comparator*/
+	struct bt_kv_log_address key1 = { 0 };
+	if (key1_cmp.key_format == KV_PREFIX) {
+		key1.addr = (char *)key1_cmp.kv_dev_offt;
+		if (nd_1->cat == BIG_INLOG && 0 == nd_1->level_id) {
+			key1 = bt_get_kv_log_address(&nd_1->db_desc->big_log, ABSOLUTE_ADDRESS(key1_cmp.kv_dev_offt));
+		}
+		init_key_cmp(&key1_cmp, key1.addr, KV_FORMAT);
 	}
-	if (L1.in_tail)
-		bt_done_with_value_log_address(L1.log_desc, &L1);
-	if (L2.in_tail)
-		bt_done_with_value_log_address(L2.log_desc, &L2);
+
+	struct bt_kv_log_address key2 = { 0 };
+	if (key2_cmp.key_format == KV_PREFIX) {
+		key2.addr = (char *)key2_cmp.kv_dev_offt;
+		if (nd_2->cat == BIG_INLOG && 0 == nd_2->level_id)
+			key2 = bt_get_kv_log_address(&nd_2->db_desc->big_log, ABSOLUTE_ADDRESS(key2_cmp.kv_dev_offt));
+		init_key_cmp(&key2_cmp, key2.addr, KV_FORMAT);
+	}
+
+	ret = key_cmp(&key1_cmp, &key2_cmp);
+	if (key1.in_tail)
+		bt_done_with_value_log_address(key1.log_desc, &key1);
+	if (key2.in_tail)
+		bt_done_with_value_log_address(key2.log_desc, &key2);
 
 	return ret ? ret : sh_solve_tie(hp, nd_1, nd_2);
 }
-/*Allocate a min heap using dynamic memory and zero initialize it */
+/**
+ * Allocates a min heap using dynamic memory and zero initialize it
+ */
 struct sh_heap *sh_alloc_heap(void)
 {
-	struct sh_heap *new_heap = calloc(1, sizeof(struct sh_heap));
-	return new_heap;
+	return calloc(1, sizeof(struct sh_heap));
 }
 
 /*
@@ -191,7 +195,9 @@ void sh_init_heap(struct sh_heap *heap, int active_tree, enum sh_heap_type heap_
 	heap->active_tree = -1;
 }
 
-/*Destroy a min heap that was allocated using dynamic memory */
+/**
+ *Destroy a min heap that was allocated using dynamic memory
+ */
 void sh_destroy_heap(struct sh_heap *heap)
 {
 	struct dups_list *heap_destroy = heap->dups;
@@ -200,15 +206,12 @@ void sh_destroy_heap(struct sh_heap *heap)
 	free(heap);
 }
 
-/*
-    Heapify function is used to make sure that the heap property is never
-   violated
-    In case of deletion of a heap_node, or creating a min heap from an array,
-   heap property
-    may be violated. In such cases, heapify function can be called to make sure
-   that
-    heap property is never violated
-*/
+/**
+ * Heapify function is used to make sure that the heap property is never
+ * violated In case of deletion of a heap_node, or creating a min heap from an
+ * array, heap property may be violated. In such cases, heapify function can
+ * be called to make sure that heap property is never violated
+ */
 static void heapify(struct sh_heap *hp, int i)
 {
 	int smallest = i;
@@ -226,41 +229,46 @@ static void heapify(struct sh_heap *hp, int i)
 	}
 }
 
-/*
-    Function to insert a heap_node into the min heap, by allocating space for
-    that heap_node in the heap and also making sure that the heap property and
-    shape propety are never violated.
-*/
-void sh_insert_heap_node(struct sh_heap *hp, struct sh_heap_node *nd)
+/**
+ * Function to insert a heap_node into the min heap, by allocating space for
+ * that heap_node in the heap and also making sure that the heap property and
+ * shape propety are never violated.
+ */
+void sh_insert_heap_node(struct sh_heap *heap, struct sh_heap_node *node)
 {
-	nd->duplicate = 0;
-	if (hp->heap_size > HEAP_SIZE) {
+	node->duplicate = 0;
+	if (heap->heap_size > HEAP_SIZE) {
 		log_fatal("min max heap out of space resize heap accordingly");
 		BUG_ON();
 	}
 
-	int i = hp->heap_size++;
-	while (i && sh_cmp_heap_nodes(hp, nd, &(hp->elem[PARENT(i)])) < 0) {
-		hp->elem[i] = hp->elem[PARENT(i)];
+	int i = heap->heap_size++;
+	while (i && sh_cmp_heap_nodes(heap, node, &(heap->elem[PARENT(i)])) < 0) {
+		heap->elem[i] = heap->elem[PARENT(i)];
 		i = PARENT(i);
 	}
 
-	hp->elem[i] = *nd;
+	heap->elem[i] = *node;
 }
 
-enum sh_heap_status sh_remove_top(struct sh_heap *hp, struct sh_heap_node *heap_node)
+/**
+ * Removes the top element of the min max heap and writes to the variable
+ * pointed to by heap node pointer.
+ * @returns true if it founds and element or false if the heap is
+ * empty.
+ */
+bool sh_remove_top(struct sh_heap *heap, struct sh_heap_node *node)
 {
-	if (hp->heap_size) {
-		*heap_node = hp->elem[0];
-		//log_debug("key is %s",heap_node->data+4);
+	if (0 == heap->heap_size)
+		return false;
 
-		if (hp->heap_size == 1) { // fast path
-			hp->heap_size = 0;
-		} else {
-			hp->elem[0] = hp->elem[--hp->heap_size];
-			heapify(hp, 0);
-		}
-		return GOT_HEAP;
-	}
-	return EMPTY_HEAP;
+	*node = heap->elem[0];
+
+	--heap->heap_size;
+	if (0 == heap->heap_size)
+		return true;
+
+	heap->elem[0] = heap->elem[heap->heap_size];
+	heapify(heap, 0);
+	return true;
 }

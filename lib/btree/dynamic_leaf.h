@@ -32,7 +32,6 @@ struct dl_bsearch_result {
 	enum bsearch_status status;
 	enum bt_dynamic_leaf_operation op;
 	uint32_t tombstone : 1;
-	uint8_t debug : 1;
 };
 
 struct prefix {

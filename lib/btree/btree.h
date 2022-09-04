@@ -498,7 +498,7 @@ void find_key(struct lookup_operation *get_op);
 int8_t delete_key(db_handle *handle, void *key, uint32_t size);
 
 void init_key_cmp(struct key_compare *key_cmp, void *key_buf, char key_format);
-int64_t key_cmp(struct key_compare *key1, struct key_compare *key2);
+int key_cmp(struct key_compare *key1, struct key_compare *key2);
 int prefix_compare(char *l, char *r, size_t prefix_size);
 
 void recover_L0(struct db_descriptor *db_desc);

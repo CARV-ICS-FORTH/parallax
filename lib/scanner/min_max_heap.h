@@ -13,10 +13,9 @@
 // limitations under the License.
 #pragma once
 #include "../btree/btree.h"
+#include <stdbool.h>
 #include <stdint.h>
-
 enum sh_heap_type { MIN_HEAP, MAX_HEAP };
-enum sh_heap_status { UNITIALIZED, INITIALIZED, EMPTY_HEAP = 4, GOT_HEAP = 5 };
 #define HEAP_SIZE 32
 
 struct sh_heap_node {
@@ -43,5 +42,5 @@ struct sh_heap {
 struct sh_heap *sh_alloc_heap(void);
 void sh_init_heap(struct sh_heap *heap, int active_tree, enum sh_heap_type heap_type);
 void sh_destroy_heap(struct sh_heap *heap);
-void sh_insert_heap_node(struct sh_heap *hp, struct sh_heap_node *nd);
-enum sh_heap_status sh_remove_top(struct sh_heap *hp, struct sh_heap_node *heap_node);
+void sh_insert_heap_node(struct sh_heap *heap, struct sh_heap_node *node);
+bool sh_remove_top(struct sh_heap *heap, struct sh_heap_node *node);

@@ -56,22 +56,27 @@ int prefix_compare(char *l, char *r, size_t prefix_size)
 void init_key_cmp(struct key_compare *key_cmp, void *key_buf, char key_format)
 {
 	key_cmp->is_NIL = key_buf == NULL;
+
 	if (key_cmp->is_NIL == 1)
 		return;
 
 	if (key_format == KV_FORMAT) {
 		key_cmp->key_size = *(uint32_t *)key_buf;
 		key_cmp->key = (char *)key_buf + sizeof(uint32_t);
+		key_cmp->kv_dev_offt = UINT64_MAX;
 		key_cmp->key_format = KV_FORMAT;
-	} else if (key_format == KV_PREFIX) {
+		return;
+	}
+
+	if (key_format == KV_PREFIX) {
 		key_cmp->key_size = PREFIX_SIZE;
 		key_cmp->key = ((struct bt_leaf_entry *)key_buf)->prefix;
 		key_cmp->kv_dev_offt = ((struct bt_leaf_entry *)key_buf)->dev_offt;
 		key_cmp->key_format = KV_PREFIX;
-	} else {
-		log_fatal("Unknown key category, exiting");
-		BUG_ON();
+		return;
 	}
+	log_fatal("Unknown key category, exiting");
+	BUG_ON();
 }
 
 /**
@@ -82,9 +87,9 @@ void init_key_cmp(struct key_compare *key_cmp, void *key_buf, char key_format)
  * @param   query_key_len: query_key length again in encoded form
  */
 
-int64_t key_cmp(struct key_compare *key1, struct key_compare *key2)
+int key_cmp(struct key_compare *key1, struct key_compare *key2)
 {
-	int64_t ret;
+	int ret;
 	uint32_t size;
 	/*we need the left most entry*/
 	if (key2->is_NIL == 1)
@@ -94,9 +99,7 @@ int64_t key_cmp(struct key_compare *key1, struct key_compare *key2)
 		return -1;
 
 	if (key1->key_format == KV_FORMAT && key2->key_format == KV_FORMAT) {
-		size = key1->key_size;
-		if (size > key2->key_size)
-			size = key2->key_size;
+		size = key1->key_size <= key2->key_size ? key1->key_size : key2->key_size;
 
 		ret = memcmp(key1->key, key2->key, size);
 		if (ret != 0)
@@ -110,22 +113,19 @@ int64_t key_cmp(struct key_compare *key1, struct key_compare *key2)
 			ret = prefix_compare(key1->key, key2->key, PREFIX_SIZE);
 		else
 			ret = prefix_compare(key1->key, key2->key, key1->key_size);
-		if (ret == 0) {
-			/*we have a tie, prefix didn't help, fetch query_key form KV log*/
-			struct kv_format *key2f = (struct kv_format *)key2->kv_dev_offt;
+		if (!ret)
+			return ret;
+		/*we have a tie, prefix didn't help, fetch query_key form KV log*/
+		struct kv_format *key2f = (struct kv_format *)key2->kv_dev_offt;
 
-			size = key1->key_size;
-			if (size > key2f->key_size)
-				size = key2f->key_size;
+		size = key1->key_size <= key2f->key_size ? key1->key_size : key2f->key_size;
 
-			ret = memcmp(key1->key, key2f->key_buf, size);
+		ret = memcmp(key1->key, key2f->key_buf, size);
 
-			if (ret != 0)
-				return ret;
+		if (ret != 0)
+			return ret;
 
-			return key1->key_size - key2f->key_size;
-		}
-		return ret;
+		return key1->key_size - key2f->key_size;
 	}
 
 	if (key1->key_format == KV_PREFIX && key2->key_format == KV_FORMAT) {
@@ -134,21 +134,18 @@ int64_t key_cmp(struct key_compare *key1, struct key_compare *key2)
 		else // check here TODO
 			ret = prefix_compare(key1->key, key2->key, key2->key_size);
 
-		if (ret == 0) {
-			/* we have a tie, prefix didn't help, fetch query_key form KV log*/
-			struct kv_format *key1f = (struct kv_format *)key1->kv_dev_offt;
+		if (!ret)
+			return ret;
+		/* we have a tie, prefix didn't help, fetch query_key form KV log*/
+		struct kv_format *key1f = (struct kv_format *)key1->kv_dev_offt;
 
-			size = key2->key_size;
-			if (size > key1f->key_size)
-				size = key1f->key_size;
+		size = key1f->key_size < key2->key_size ? key1f->key_size : key2->key_size;
 
-			ret = memcmp(key1f->key_buf, key2->key, size);
-			if (ret != 0)
-				return ret;
+		ret = memcmp(key1f->key_buf, key2->key, size);
+		if (ret != 0)
+			return ret;
 
-			return key1f->key_size - key2->key_size;
-		}
-		return ret;
+		return key1f->key_size - key2->key_size;
 	}
 
 	/*KV_PREFIX and KV_PREFIX*/
@@ -159,10 +156,7 @@ int64_t key_cmp(struct key_compare *key1, struct key_compare *key2)
 	struct kv_format *key1f = (struct kv_format *)key1->kv_dev_offt;
 	struct kv_format *key2f = (struct kv_format *)key2->kv_dev_offt;
 
-	size = key2f->key_size;
-	if (size > key1f->key_size) {
-		size = key1f->key_size;
-	}
+	size = key1f->key_size < key2f->key_size ? key1f->key_size : key2f->key_size;
 
 	ret = memcmp(key1f->key_buf, key2f->key_buf, size);
 	if (ret != 0)
@@ -245,7 +239,7 @@ static void pr_read_log_tail(struct log_tail *tail)
 
 struct bt_kv_log_address bt_get_kv_log_address(struct log_descriptor *log_desc, uint64_t dev_offt)
 {
-	struct bt_kv_log_address reply = { .addr = NULL, .tail_id = 0, .in_tail = UINT8_MAX };
+	struct bt_kv_log_address reply = { .addr = NULL, .tail_id = 0, .in_tail = UINT8_MAX, .log_desc = NULL };
 	RWLOCK_RDLOCK(&log_desc->log_tail_buf_lock);
 
 	for (int i = 0; i < LOG_TAIL_NUM_BUFS; ++i) {
@@ -262,6 +256,7 @@ struct bt_kv_log_address bt_get_kv_log_address(struct log_descriptor *log_desc, 
 
 			reply.addr = &(log_desc->tail[i]->buf[dev_offt % SEGMENT_SIZE]);
 			reply.tail_id = i;
+			reply.log_desc = log_desc;
 			RWLOCK_UNLOCK(&log_desc->log_tail_buf_lock);
 			return reply;
 		}
@@ -1515,26 +1510,24 @@ int find_key_in_bloom_filter(db_descriptor *db_desc, int level_id, char *key)
 
 static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id, int tree_id)
 {
-	node_header *curr_node, *son_node = NULL;
+	node_header *son_node = NULL;
 	char *key_addr_in_leaf = NULL;
 	struct find_result ret_result;
-	lock_table *prev = NULL, *curr = NULL;
+	lock_table *prev = NULL;
+	lock_table *curr = NULL;
 	struct node_header *root = NULL;
 
 	struct db_descriptor *db_desc = get_op->db_desc;
-	if (db_desc->levels[level_id].root_w[tree_id] != NULL) {
-		/* log_info("Level %d with tree_id %d has root_w",level_id,tree_id); */
-		root = db_desc->levels[level_id].root_w[tree_id];
-	} else if (db_desc->levels[level_id].root_r[tree_id] != NULL) {
-		/* log_info("Level %d with tree_id %d has root_w",level_id,tree_id); */
-		root = db_desc->levels[level_id].root_r[tree_id];
-	} else {
-		/* log_info("Level %d is empty with tree_id %d",level_id,tree_id); */
-		/* if (RWLOCK_UNLOCK(&curr->rx_lock) != 0) */
-		/* 	BUG_ON(); */
+
+	if (db_desc->levels[level_id].root_w[tree_id] == NULL && db_desc->levels[level_id].root_r[tree_id] == NULL) {
 		get_op->found = 0;
 		return;
 	}
+
+	root = db_desc->levels[level_id].root_r[tree_id];
+
+	if (db_desc->levels[level_id].root_w[tree_id] != NULL)
+		root = db_desc->levels[level_id].root_w[tree_id];
 
 #if ENABLE_BLOOM_FILTERS
 	if (level_id > 0) {
@@ -1548,7 +1541,7 @@ static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id,
 	}
 #endif
 
-	curr_node = root;
+	node_header *curr_node = root;
 	if (curr_node->type == leafRootNode) {
 		curr = _find_position((const lock_table **)db_desc->levels[level_id].level_lock_table, curr_node);
 
@@ -1598,65 +1591,59 @@ static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id,
 	get_op->tombstone = ret_result.tombstone;
 
 deser:
-	if (ret_result.kv) {
-		struct bt_kv_log_address kv = { .addr = NULL, .tail_id = UINT8_MAX, .in_tail = 0 };
-		get_op->key_device_address = NULL;
-
-		if (ret_result.key_type == KV_INPLACE) {
-			kv.addr = REAL_ADDRESS(ret_result.kv);
-			get_op->key_device_address = ret_result.kv;
-		} else if (ret_result.key_type == KV_INLOG) {
-			key_addr_in_leaf = (char *)REAL_ADDRESS(*(uint64_t *)ret_result.kv);
-			if (key_addr_in_leaf == NULL) {
-				log_fatal("Encountered NULL pointer from KV in leaf");
-				BUG_ON();
-			}
-
-			if (!level_id)
-				kv = bt_get_kv_log_address(&db_desc->big_log, ABSOLUTE_ADDRESS(key_addr_in_leaf));
-			else
-				kv.addr = key_addr_in_leaf;
-
-			get_op->key_device_address = (char *)ABSOLUTE_ADDRESS(kv.addr);
-		} else {
-			log_fatal("Corrupted KV location");
-			BUG_ON();
-		}
-		assert(kv.addr);
-		uint32_t *value_size = (uint32_t *)(kv.addr + sizeof(uint32_t) + KEY_SIZE(kv.addr));
-		if (get_op->retrieve && !get_op->buffer_to_pack_kv) {
-			get_op->buffer_to_pack_kv = malloc(*value_size);
-
-			if (!get_op->buffer_to_pack_kv) {
-				log_fatal("Malloc failed");
-				BUG_ON();
-			}
-
-			get_op->size = *value_size;
-		}
-
-		//log_info("key size: %u key: %s value size: %u", KEY_SIZE(L.addr), L.addr + 4, *value_size);
-		//log_info("In tail?: %u which tail?: %u value size %u offt in buf: %llu", L.in_tail, L.tail_id,
-		//	 *value_size, ABSOLUTE_ADDRESS(get_op->value_device_address) % SEGMENT_SIZE);
-
-		if (get_op->retrieve && get_op->size <= *value_size) {
-			/*check if enough*/
-			memcpy(get_op->buffer_to_pack_kv,
-			       kv.addr + sizeof(uint32_t) + KEY_SIZE(kv.addr) + sizeof(uint32_t), *value_size);
-			get_op->buffer_overflow = 0;
-		} else
-			get_op->buffer_overflow = *value_size;
-
-		get_op->found = 1;
-		if (get_op->tombstone)
-			get_op->key_device_address = NULL;
-
-		if (kv.in_tail)
-			bt_done_with_value_log_address(&db_desc->big_log, &kv);
-	} else {
+	if (!ret_result.kv) {
 		get_op->found = 0;
+		goto exit;
+	}
+	get_op->found = 1;
+	struct bt_kv_log_address kv_pair = { .addr = NULL, .tail_id = UINT8_MAX, .in_tail = 0 };
+	get_op->key_device_address = NULL;
+
+	if (ret_result.key_type != KV_INPLACE && ret_result.key_type != KV_INLOG) {
+		log_fatal("Corrupted KV location");
+		BUG_ON();
 	}
 
+	if (ret_result.key_type == KV_INPLACE) {
+		kv_pair.addr = REAL_ADDRESS(ret_result.kv);
+		get_op->key_device_address = ret_result.kv;
+	} else if (ret_result.key_type == KV_INLOG) {
+		key_addr_in_leaf = (char *)REAL_ADDRESS(*(uint64_t *)ret_result.kv);
+		if (key_addr_in_leaf == NULL) {
+			log_fatal("Encountered NULL pointer from KV in leaf");
+			BUG_ON();
+		}
+
+		kv_pair.addr = key_addr_in_leaf;
+		if (!level_id)
+			kv_pair = bt_get_kv_log_address(&db_desc->big_log, ABSOLUTE_ADDRESS(key_addr_in_leaf));
+
+		get_op->key_device_address = (char *)ABSOLUTE_ADDRESS(kv_pair.addr);
+	}
+
+	assert(kv_pair.addr);
+	uint32_t value_size = VALUE_SIZE(kv_pair.addr + sizeof(uint32_t) + KEY_SIZE(kv_pair.addr));
+	if (get_op->retrieve && !get_op->buffer_to_pack_kv) {
+		get_op->buffer_to_pack_kv = malloc(value_size);
+		get_op->size = value_size;
+	}
+
+	if (get_op->retrieve && get_op->size > value_size)
+		get_op->buffer_overflow = 1;
+
+	if (get_op->retrieve && get_op->size <= value_size) {
+		memcpy(get_op->buffer_to_pack_kv,
+		       kv_pair.addr + sizeof(uint32_t) + KEY_SIZE(kv_pair.addr) + sizeof(uint32_t), value_size);
+		get_op->buffer_overflow = 0;
+	}
+
+	if (get_op->tombstone)
+		get_op->key_device_address = NULL;
+
+	if (kv_pair.in_tail)
+		bt_done_with_value_log_address(&db_desc->big_log, &kv_pair);
+
+exit:
 	if (RWLOCK_UNLOCK(&curr->rx_lock) != 0)
 		BUG_ON();
 
@@ -1980,7 +1967,10 @@ release_and_retry:
 					.key = (struct pivot_key *)split_res.middle_key,
 					.right_child = &right
 				};
-				index_insert_pivot(&ins_pivot_req);
+				if (!index_insert_pivot(&ins_pivot_req)) {
+					log_fatal("Cannot insert pivot!");
+					_exit(EXIT_FAILURE);
+				}
 				/*new write root of the tree*/
 				db_desc->levels[level_id].root_w[ins_req->metadata.tree_id] = (node_header *)new_root;
 				goto release_and_retry;
@@ -1992,7 +1982,10 @@ release_and_retry:
 								  .left_child = &left,
 								  .key = (struct pivot_key *)split_res.middle_key,
 								  .right_child = &right };
-			index_insert_pivot(&ins_pivot_req);
+			if (!index_insert_pivot(&ins_pivot_req)) {
+				log_fatal("Cannot insert pivot! pivot is %u", KEY_SIZE(ins_pivot_req.key));
+				_exit(EXIT_FAILURE);
+			}
 			goto release_and_retry;
 		}
 
@@ -2050,8 +2043,8 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 {
 	/*The array with the locks that belong to this thread from upper levels*/
 	lock_table *upper_level_nodes[MAX_HEIGHT];
-	node_header *son;
-	lock_table *lock;
+	node_header *son = NULL;
+	lock_table *lock = NULL;
 
 	db_descriptor *db_desc = ins_req->metadata.handle->db_desc;
 	uint32_t level_id = ins_req->metadata.level_id;
@@ -2100,6 +2093,7 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 
 	upper_level_nodes[size++] = lock;
 	son = db_desc->levels[level_id].root_w[ins_req->metadata.tree_id];
+	assert(son->height);
 	while (1) {
 		if (is_split_needed(son, ins_req, db_desc->levels[level_id].leaf_size)) {
 			/*failed needs split*/
@@ -2111,7 +2105,6 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 		uint64_t child_offt = index_binary_search((struct index_node *)son, ins_req->key_value_buf,
 							  ins_req->metadata.key_format);
 		son = (node_header *)REAL_ADDRESS(child_offt);
-
 		assert(son);
 
 		if (son->height == 0)

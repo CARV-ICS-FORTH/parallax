@@ -336,41 +336,32 @@ static void comp_get_next_key(struct comp_level_read_cursor *c)
 				c->offset += level_leaf_size;
 				c->state = COMP_CUR_CHECK_OFFT;
 				break;
-			} else {
-				struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(leaf);
-
-				c->category = slot_array[c->curr_leaf_entry].key_category;
-				c->cursor_key.tombstone = slot_array[c->curr_leaf_entry].tombstone;
-				char *kv_loc =
-					get_kv_offset(leaf, level_leaf_size, slot_array[c->curr_leaf_entry].index);
-				switch (c->category) {
-				case SMALL_INPLACE:
-				case MEDIUM_INPLACE: {
-					// Real key in KV_FORMAT
-					c->cursor_key.kv_inplace = fill_keybuf(
-						kv_loc, get_kv_format(slot_array[c->curr_leaf_entry].key_category));
-					break;
-				}
-				case MEDIUM_INLOG:
-				case BIG_INLOG: {
-					// fill_prefix(&c->cursor_key.P, kv_loc,
-					// slot_array[c->curr_leaf_entry].bitmap);
-					// c->category);
-					c->cursor_key.kv_inlog = (struct bt_leaf_entry *)kv_loc;
-					c->cursor_key.kv_inlog->dev_offt =
-						(uint64_t)REAL_ADDRESS(c->cursor_key.kv_inlog->dev_offt);
-					// log_info("prefix is %.12s dev_offt %llu",
-					// c->cursor_key.in_log->prefix,
-					//	 c->cursor_key.in_log->device_offt);
-					break;
-				}
-				default:
-					log_fatal("Cannot handle this category");
-					BUG_ON();
-				}
-				++c->curr_leaf_entry;
-				return;
 			}
+			struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(leaf);
+
+			c->category = slot_array[c->curr_leaf_entry].key_category;
+			c->cursor_key.tombstone = slot_array[c->curr_leaf_entry].tombstone;
+			char *kv_loc = get_kv_offset(leaf, level_leaf_size, slot_array[c->curr_leaf_entry].index);
+			switch (c->category) {
+			case SMALL_INPLACE:
+			case MEDIUM_INPLACE: {
+				// Real key in KV_FORMAT
+				c->cursor_key.kv_inplace =
+					fill_keybuf(kv_loc, get_kv_format(slot_array[c->curr_leaf_entry].key_category));
+				break;
+			}
+			case MEDIUM_INLOG:
+			case BIG_INLOG:
+				c->cursor_key.kv_inlog = (struct bt_leaf_entry *)kv_loc;
+				c->cursor_key.kv_inlog->dev_offt =
+					(uint64_t)REAL_ADDRESS(c->cursor_key.kv_inlog->dev_offt);
+				break;
+			default:
+				log_fatal("Cannot handle this category");
+				BUG_ON();
+			}
+			++c->curr_leaf_entry;
+			return;
 		}
 
 		case COMP_CUR_FIND_LEAF: {
@@ -737,21 +728,21 @@ static int comp_append_medium_L1(struct comp_level_write_cursor *c, struct comp_
 	log_op.metadata = &ins_req.metadata;
 	log_op.optype_tolog = insertOp;
 	log_op.ins_req = &ins_req;
-	// log_info("Appending to medium log during compaction");
-	char *log_location = append_key_value_to_log(&log_op);
-	out->kv_inlog = &out->kvsep;
-	if (ins_req.metadata.kv_size >= PREFIX_SIZE)
-		memcpy(out->kv_inlog, in->kv_inplace + sizeof(uint32_t), PREFIX_SIZE);
-	else {
-		memset(out->kv_inlog, 0x00, PREFIX_SIZE);
-		memcpy(out->kv_inlog, in->kv_inplace + sizeof(uint32_t), ins_req.metadata.kv_size);
-	}
 
+	char *log_location = append_key_value_to_log(&log_op);
+
+	if (KEY_SIZE(in->kv_inplace) >= PREFIX_SIZE)
+		memcpy(out->kvsep.prefix, in->kv_inplace + sizeof(uint32_t), PREFIX_SIZE);
+	else {
+		memset(out->kvsep.prefix, 0x00, PREFIX_SIZE);
+		memcpy(out->kvsep.prefix, in->kv_inplace + sizeof(uint32_t), KEY_SIZE(in->kv_inplace));
+	}
+	out->kvsep.dev_offt = (uint64_t)log_location;
 	out->kv_category = MEDIUM_INLOG;
 	out->kv_type = KV_INLOG;
-	out->kv_inlog->dev_offt = (uint64_t)log_location;
+	out->kv_inlog = &out->kvsep;
 	out->tombstone = 0;
-	//log_info("Compact key %s", ins_req.key_value_buf + 4);
+
 	return 1;
 }
 
@@ -786,6 +777,7 @@ static void comp_append_entry_to_leaf_node(struct comp_level_write_cursor *curso
 		//log_info("Appending key in_place %u:%s", write_leaf_args.key_value_size,
 		//	 write_leaf_args.key_value_buf + sizeof(uint32_t));
 		break;
+
 	case KV_INLOG:
 		kv_size = sizeof(struct bt_leaf_entry);
 		write_leaf_args.kv_dev_offt = curr_key->kv_inlog->dev_offt;
@@ -1190,9 +1182,11 @@ static void print_heap_node_key(struct sh_heap_node *nd)
 		log_debug("In place Key is %u:%s", *(uint32_t *)nd->KV, (char *)nd->KV + sizeof(uint32_t));
 		break;
 	case BIG_INLOG:
-	case MEDIUM_INLOG:
-		log_debug("In log Key prefix is %.12s device offt %lu", (char *)nd->KV,
-			  *(uint64_t *)(nd->KV + PREFIX_SIZE));
+	case MEDIUM_INLOG:;
+		char *full_key = (char *)((struct bt_leaf_entry *)nd->KV)->dev_offt;
+
+		log_debug("In log Key prefix is %.*s full key size: %u  full key data %.*s", PREFIX_SIZE,
+			  (char *)nd->KV, KEY_SIZE(full_key), KEY_SIZE(full_key), full_key + sizeof(uint32_t));
 		break;
 	default:
 		log_fatal("Unhandle/Unknown category");
@@ -1339,40 +1333,33 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 		comp_fill_heap_node(comp_req, l_src, &nd_src);
 	}
 
-	print_heap_node_key(&nd_src);
 	nd_src.db_desc = comp_req->db_desc;
 	sh_insert_heap_node(m_heap, &nd_src);
 	// init Li+1 cursor (if any)
 	if (l_dst) {
 		comp_fill_heap_node(comp_req, l_dst, &nd_dst);
-		log_debug("Initializing heap from DST read cursor level %u", comp_req->dst_level);
+		// log_debug("Initializing heap from DST read cursor level %u", comp_req->dst_level);
 		print_heap_node_key(&nd_dst);
 		nd_dst.db_desc = comp_req->db_desc;
 		sh_insert_heap_node(m_heap, &nd_dst);
 	}
-	// ############################################################################
-	enum sh_heap_status stat = GOT_HEAP;
 
-	do {
-		// TODO: Remove dirty
+	while (1) {
 		handle->db_desc->dirty = 0x01;
 		// This is to synchronize compactions with flush
 		RWLOCK_RDLOCK(&handle->db_desc->levels[comp_req->dst_level].guard_of_level.rx_lock);
-		stat = sh_remove_top(m_heap, &nd_min);
-
-		if (stat == EMPTY_HEAP) {
+		if (!sh_remove_top(m_heap, &nd_min)) {
 			RWLOCK_UNLOCK(&handle->db_desc->levels[comp_req->dst_level].guard_of_level.rx_lock);
 			break;
 		}
 
 		if (!nd_min.duplicate) {
-			struct comp_parallax_key key;
-			memset(&key, 0, sizeof(key));
+			struct comp_parallax_key key = { 0 };
+
 			comp_fill_parallax_key(&nd_min, &key);
 			comp_append_entry_to_leaf_node(merged_level, &key);
 		}
-		// log_info("level size
-		// %llu",comp_req->db_desc->levels[comp_req->dst_level].level_size[comp_req->dst_tree]);
+
 		/*refill from the appropriate level*/
 		if (nd_min.level_id == comp_req->src_level) {
 			if (nd_min.level_id == 0) {
@@ -1410,10 +1397,10 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 		}
 
 		RWLOCK_UNLOCK(&handle->db_desc->levels[comp_req->dst_level].guard_of_level.rx_lock);
-	} while (stat != EMPTY_HEAP);
+	}
 
 	if (level_src)
-		_close_compaction_buffer_scanner(level_src);
+		close_compaction_buffer_scanner(level_src);
 	else
 		free(l_src);
 

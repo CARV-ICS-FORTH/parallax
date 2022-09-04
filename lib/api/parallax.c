@@ -97,7 +97,7 @@ par_ret_code par_get(par_handle handle, struct par_key *key, struct par_value *v
 					   .kv_buf = kv_buf,
 					   .buffer_to_pack_kv = NULL,
 					   .size = 0,
-					   .buffer_overflow = 1,
+					   .buffer_overflow = 0,
 					   .found = 0,
 					   .tombstone = 0,
 					   .retrieve = 1 };
@@ -111,11 +111,11 @@ par_ret_code par_get(par_handle handle, struct par_key *key, struct par_value *v
 	if (malloced)
 		free(kv_buf);
 
-	if (get_op.buffer_overflow)
-		return PAR_GET_NOT_ENOUGH_BUFFER_SPACE;
-
 	if (!get_op.found)
 		return PAR_KEY_NOT_FOUND;
+
+	if (get_op.buffer_overflow)
+		return PAR_GET_NOT_ENOUGH_BUFFER_SPACE;
 
 	value->val_buffer = get_op.buffer_to_pack_kv;
 	value->val_size = get_op.size;
@@ -175,6 +175,7 @@ struct par_scanner {
 	char *kv_buf;
 };
 
+#define SMALLEST_KEY_BUFFER_SIZE (8)
 par_scanner par_init_scanner(par_handle handle, struct par_key *key, par_seek_mode mode)
 {
 	char tmp[PAR_MAX_PREALLOCATED_SIZE];
@@ -183,7 +184,7 @@ par_scanner par_init_scanner(par_handle handle, struct par_key *key, par_seek_mo
 		uint32_t key_size;
 		char key[];
 	};
-	char smallest_key[4] = { '\0' };
+	char smallest_key[SMALLEST_KEY_BUFFER_SIZE] = { 0 };
 	struct scannerHandle *sc = NULL;
 	struct par_scanner *par_s = NULL;
 	struct par_seek_key *seek_key = NULL;
@@ -200,7 +201,7 @@ par_scanner par_init_scanner(par_handle handle, struct par_key *key, par_seek_mo
 	case PAR_FETCH_FIRST: {
 		scanner_mode = GREATER_OR_EQUAL;
 		uint32_t *size = (uint32_t *)smallest_key;
-		*size = 1;
+		*size = 0;
 		//fill the seek_key with the smallest key of the region
 		seek_key = (struct par_seek_key *)tmp;
 		seek_key->key_size = *size;
@@ -208,7 +209,7 @@ par_scanner par_init_scanner(par_handle handle, struct par_key *key, par_seek_mo
 		goto init_scanner;
 	}
 	default:
-		fprintf(stderr, "Unknown seek scanner mode\n");
+		log_fatal("Unknown seek scanner mode");
 		return NULL;
 	}
 init_seek_key:
@@ -276,7 +277,7 @@ init_scanner:
 void par_close_scanner(par_scanner sc)
 {
 	struct par_scanner *par_s = (struct par_scanner *)sc;
-	closeScanner((struct scannerHandle *)par_s->sc);
+	close_scanner((struct scannerHandle *)par_s->sc);
 	if (par_s->allocated)
 		free(par_s->kv_buf);
 
@@ -287,8 +288,7 @@ int par_get_next(par_scanner sc)
 {
 	struct par_scanner *par_s = (struct par_scanner *)sc;
 	struct scannerHandle *scanner_hd = par_s->sc;
-	int32_t ret = getNext(scanner_hd);
-	if (ret == END_OF_DATABASE) {
+	if (!get_next(scanner_hd)) {
 		par_s->valid = 0;
 		return 0;
 	}

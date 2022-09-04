@@ -29,7 +29,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-int _init_level_scanner(level_scanner *level_sc, void *start_key, char seek_mode)
+int init_level_scanner(level_scanner *level_sc, void *start_key, char seek_mode)
 {
 	stack_init(&level_sc->stack);
 
@@ -101,7 +101,7 @@ void init_generic_scanner(struct scannerHandle *sc, struct db_handle *handle, vo
 		sc->LEVEL_SCANNERS[0][i].db = handle;
 		sc->LEVEL_SCANNERS[0][i].level_id = 0;
 		sc->LEVEL_SCANNERS[0][i].root = root;
-		retval = _init_level_scanner(&(sc->LEVEL_SCANNERS[0][i]), start_key, seek_flag);
+		retval = init_level_scanner(&(sc->LEVEL_SCANNERS[0][i]), start_key, seek_flag);
 
 		if (retval)
 			continue;
@@ -131,7 +131,7 @@ void init_generic_scanner(struct scannerHandle *sc, struct db_handle *handle, vo
 		sc->LEVEL_SCANNERS[level_id][tree_id].db = handle;
 		sc->LEVEL_SCANNERS[level_id][tree_id].level_id = level_id;
 		sc->LEVEL_SCANNERS[level_id][tree_id].root = root;
-		retval = _init_level_scanner(&sc->LEVEL_SCANNERS[level_id][tree_id], start_key, seek_flag);
+		retval = init_level_scanner(&sc->LEVEL_SCANNERS[level_id][tree_id], start_key, seek_flag);
 		if (retval == 0) {
 			sc->LEVEL_SCANNERS[level_id][tree_id].valid = 1;
 			nd.KV = sc->LEVEL_SCANNERS[level_id][tree_id].keyValue;
@@ -148,8 +148,8 @@ void init_generic_scanner(struct scannerHandle *sc, struct db_handle *handle, vo
 		}
 	}
 
-	if (sc->type_of_scanner == FORWARD_SCANNER && getNext(sc) == END_OF_DATABASE) {
-		log_warn("Reached end of database");
+	if (sc->type_of_scanner == FORWARD_SCANNER && !get_next(sc)) {
+		log_debug("Reached end of database");
 		sc->keyValue = NULL;
 	}
 }
@@ -214,37 +214,37 @@ static void read_unlock_node(struct level_scanner *level_sc, struct node_header 
 	}
 }
 
-void closeScanner(scannerHandle *sc)
+void close_scanner(scannerHandle *scanner)
 {
 	/*special care for L0*/
 	for (int i = 0; i < NUM_TREES_PER_LEVEL; i++) {
-		if (sc->LEVEL_SCANNERS[0][i].valid && sc->LEVEL_SCANNERS[0][i].dirty) {
+		if (scanner->LEVEL_SCANNERS[0][i].valid && scanner->LEVEL_SCANNERS[0][i].dirty) {
 			while (1) {
-				stackElementT stack_top = stack_pop(&(sc->LEVEL_SCANNERS[0][i].stack));
+				stackElementT stack_top = stack_pop(&(scanner->LEVEL_SCANNERS[0][i].stack));
 				if (stack_top.guard)
 					break;
-				read_unlock_node(&sc->LEVEL_SCANNERS[0][i], stack_top.node);
+				read_unlock_node(&scanner->LEVEL_SCANNERS[0][i], stack_top.node);
 			}
 		}
-		stack_destroy(&(sc->LEVEL_SCANNERS[0][i].stack));
+		stack_destroy(&(scanner->LEVEL_SCANNERS[0][i].stack));
 	}
 
 	for (int i = 1; i < MAX_LEVELS; i++) {
-		if (sc->LEVEL_SCANNERS[i][0].valid) {
-			stack_destroy(&(sc->LEVEL_SCANNERS[i][0].stack));
+		if (scanner->LEVEL_SCANNERS[i][0].valid) {
+			stack_destroy(&(scanner->LEVEL_SCANNERS[i][0].stack));
 		}
 	}
 	/*finally*/
-	if (sc->LEVEL_SCANNERS[0][0].dirty) {
+	if (scanner->LEVEL_SCANNERS[0][0].dirty) {
 		for (int i = 0; i < MAX_LEVELS; i++)
-			RWLOCK_UNLOCK(&sc->db->db_desc->levels[i].guard_of_level.rx_lock);
+			RWLOCK_UNLOCK(&scanner->db->db_desc->levels[i].guard_of_level.rx_lock);
 
-		__sync_fetch_and_sub(&sc->db->db_desc->levels[0].active_operations, 1);
+		__sync_fetch_and_sub(&scanner->db->db_desc->levels[0].active_operations, 1);
 	}
 
-	free_dups_list(&sc->heap.dups);
+	free_dups_list(&scanner->heap.dups);
 
-	free(sc);
+	free(scanner);
 }
 
 static void fill_compaction_scanner(struct level_scanner *level_sc, struct level_descriptor *level,
@@ -345,9 +345,6 @@ int32_t level_scanner_get_next(level_scanner *sc)
 			//log_debug("get_next kv");
 
 			if (++stack_element.idx >= stack_element.node->num_entries) {
-				//log_debug("Done with leaf from level %u Leaf: %lu idx is %d num_entries %d",
-				//	  sc->level_id, stack_element.node, stack_element.idx,
-				//	  stack_element.node->num_entries);
 				read_unlock_node(sc, stack_element.node);
 				status = POP_STACK;
 				break;
@@ -365,7 +362,7 @@ int32_t level_scanner_get_next(level_scanner *sc)
 
 			return PARALLAX_SUCCESS;
 
-		case PUSH_STACK: {
+		case PUSH_STACK:;
 			//log_debug("Pushing stack");
 			struct pivot_pointer *pivot = index_iterator_get_pivot_pointer(&stack_element.iterator);
 			stack_push(&sc->stack, stack_element);
@@ -381,7 +378,6 @@ int32_t level_scanner_get_next(level_scanner *sc)
 
 			index_iterator_init((struct index_node *)stack_element.node, &stack_element.iterator);
 			break;
-		}
 
 		case POP_STACK:
 			stack_element = stack_pop(&(sc->stack));
@@ -418,7 +414,7 @@ int32_t level_scanner_seek(level_scanner *level_sc, void *start_key_buf, SEEK_SC
 	if (!start_key) {
 		memset(zero_key_buf, 0x00, sizeof(zero_key_buf));
 		start_key = (struct pivot_key *)zero_key_buf;
-		start_key->size = 1;
+		start_key->size = 0;
 	}
 
 	/*
@@ -454,7 +450,6 @@ int32_t level_scanner_seek(level_scanner *level_sc, void *start_key_buf, SEEK_SC
 
 		if (!index_iterator_is_valid(&element.iterator)) {
 			log_fatal("Invalid index node iterator during seek");
-			assert(0);
 			BUG_ON();
 		}
 
@@ -472,7 +467,7 @@ int32_t level_scanner_seek(level_scanner *level_sc, void *start_key_buf, SEEK_SC
 
 	/*now perform binary search inside the leaf*/
 	db_descriptor *db_desc = level_sc->db->db_desc;
-	struct dl_bsearch_result dlresult = { .middle = 0, .status = INSERT, .op = DYNAMIC_LEAF_INSERT, .debug = 0 };
+	struct dl_bsearch_result dlresult = { .middle = 0, .status = INSERT, .op = DYNAMIC_LEAF_INSERT };
 	bt_insert_req req = { 0 };
 
 	req.key_value_buf = (char *)start_key;
@@ -485,6 +480,7 @@ int32_t level_scanner_seek(level_scanner *level_sc, void *start_key_buf, SEEK_SC
 	binary_search_dynamic_leaf((struct bt_dynamic_leaf_node *)node, db_desc->levels[level_id].leaf_size, &req,
 				   &dlresult);
 	assert(dlresult.status != ERROR);
+
 	element.idx = dlresult.middle;
 
 	stack_push(&level_sc->stack, element);
@@ -533,45 +529,43 @@ level_scanner *_init_compaction_buffer_scanner(db_handle *handle, int level_id, 
 	return level_sc;
 }
 
-void _close_compaction_buffer_scanner(level_scanner *level_sc)
+void close_compaction_buffer_scanner(level_scanner *level_sc)
 {
 	stack_destroy(&(level_sc->stack));
 	free(level_sc);
 }
 
-int32_t getNext(scannerHandle *sc)
+bool get_next(scannerHandle *scanner)
 {
 	while (1) {
-		struct sh_heap_node nd = { 0 };
+		struct sh_heap_node node = { 0 };
 
-		enum sh_heap_status stat = sh_remove_top(&sc->heap, &nd);
-		if (EMPTY_HEAP == stat)
-			return END_OF_DATABASE;
+		if (!sh_remove_top(&scanner->heap, &node))
+			return false;
 
-		sc->keyValue = nd.KV;
-		sc->kv_level_id = nd.level_id;
-		sc->kv_cat = sc->LEVEL_SCANNERS[nd.level_id][nd.active_tree].cat;
-		assert(sc->LEVEL_SCANNERS[nd.level_id][nd.active_tree].valid);
-		if (level_scanner_get_next(&(sc->LEVEL_SCANNERS[nd.level_id][nd.active_tree])) != END_OF_DATABASE) {
-			//TODO: use designated initializers for next_nd
-			struct sh_heap_node next_nd = { 0 };
-			next_nd.level_id = nd.level_id;
-			next_nd.active_tree = nd.active_tree;
-			next_nd.type = nd.type;
-			next_nd.cat = sc->LEVEL_SCANNERS[nd.level_id][nd.active_tree].cat;
-			next_nd.KV = sc->LEVEL_SCANNERS[nd.level_id][nd.active_tree].keyValue;
-			next_nd.kv_size = sc->LEVEL_SCANNERS[nd.level_id][nd.active_tree].kv_size;
-			next_nd.db_desc = sc->db->db_desc;
-			next_nd.tombstone = sc->LEVEL_SCANNERS[nd.level_id][nd.active_tree].tombstone;
-			sh_insert_heap_node(&sc->heap, &next_nd);
+		scanner->keyValue = node.KV;
+		scanner->kv_level_id = node.level_id;
+		scanner->kv_cat = scanner->LEVEL_SCANNERS[node.level_id][node.active_tree].cat;
+		assert(scanner->LEVEL_SCANNERS[node.level_id][node.active_tree].valid);
+		if (level_scanner_get_next(&(scanner->LEVEL_SCANNERS[node.level_id][node.active_tree])) !=
+		    END_OF_DATABASE) {
+			struct sh_heap_node next_node = { 0 };
+			next_node.level_id = node.level_id;
+			next_node.active_tree = node.active_tree;
+			next_node.type = node.type;
+			next_node.cat = scanner->LEVEL_SCANNERS[node.level_id][node.active_tree].cat;
+			next_node.KV = scanner->LEVEL_SCANNERS[node.level_id][node.active_tree].keyValue;
+			next_node.kv_size = scanner->LEVEL_SCANNERS[node.level_id][node.active_tree].kv_size;
+			next_node.db_desc = scanner->db->db_desc;
+			next_node.tombstone = scanner->LEVEL_SCANNERS[node.level_id][node.active_tree].tombstone;
+			sh_insert_heap_node(&scanner->heap, &next_node);
 		}
-		if (nd.duplicate == 1 || nd.tombstone == 1) {
+		if (node.duplicate == 1 || node.tombstone == 1) {
 			//log_warn("ommiting duplicate %s", (char *)nd.KV + 4);
 			continue;
 		}
-		return PARALLAX_SUCCESS;
+		return true;
 	}
-	//return END_OF_DATABASE;
 }
 
 #if MEASURE_SST_USED_SPACE

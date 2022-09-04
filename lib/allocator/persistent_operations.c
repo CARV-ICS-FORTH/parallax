@@ -821,10 +821,8 @@ static void get_next_log_segment(struct log_cursor *cursor)
 static struct kv_entry *get_next_log_entry(struct log_cursor *cursor)
 {
 start:
-	if (!cursor->valid) {
-		log_debug("sorry cursor not valid!");
+	if (!cursor->valid)
 		return NULL;
-	}
 	/*Advance cursor for future use*/
 	/*Are there enough bytes in segment?*/
 

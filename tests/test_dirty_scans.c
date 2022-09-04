@@ -226,7 +226,6 @@ static void scan_workload(struct workload_config_t *workload_config)
 
 		my_kv.k.size = k->key_size;
 		my_kv.k.data = k->key_buf;
-		//log_debug("Initializing scanner with key %.*s", my_kv.k.size, my_kv.k.data);
 		par_scanner my_scanner =
 			par_init_scanner(workload_config->handle, &my_kv.k, workload_config->seek_mode);
 
