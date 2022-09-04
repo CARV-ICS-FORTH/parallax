@@ -602,12 +602,8 @@ db_handle *internal_db_open(struct volume_descriptor *volume_desc, par_db_option
 		goto exit;
 	}
 
-	uint64_t level0_size = handle->db_options.options[LEVEL0_SIZE].value;
-	uint64_t growth_factor = handle->db_options.options[GROWTH_FACTOR].value;
-	uint64_t level_medium_inplace = handle->db_options.options[LEVEL_MEDIUM_INPLACE].value;
-
-	struct db_descriptor *db_desc = get_db_from_volume(volume_desc->volume_name, (char *)handle->db_options.db_name,
-							   handle->db_options.create_flag);
+	struct db_descriptor *db_desc =
+		get_db_from_volume(volume_desc->volume_name, (char *)db_options->db_name, db_options->create_flag);
 	if (!db_desc) {
 		char *fmt_string = NULL;
 		handle = NULL;
@@ -622,10 +618,15 @@ db_handle *internal_db_open(struct volume_descriptor *volume_desc, par_db_option
 		goto exit;
 	}
 
-	db_desc->level_medium_inplace = level_medium_inplace;
+	db_desc->level_medium_inplace = db_options->options[LEVEL_MEDIUM_INPLACE].value;
 	handle = calloc(1, sizeof(db_handle));
 	handle->db_desc = db_desc;
 	handle->volume_desc = db_desc->db_volume;
+	//deep copy db_options
+	memcpy(&handle->db_options, db_options, sizeof(struct par_db_options));
+
+	uint64_t level0_size = handle->db_options.options[LEVEL0_SIZE].value;
+	uint64_t growth_factor = handle->db_options.options[GROWTH_FACTOR].value;
 
 	handle->db_desc->levels[0].max_level_size = level0_size;
 	/*init soft state for all levels*/
