@@ -1,6 +1,6 @@
 #include "../tests/arg_parser.h"
 #include <log.h>
-#include <parallax.h>
+#include <parallax/parallax.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -55,8 +55,8 @@ void execute_put_request(par_handle hd, char *line)
 	memcpy(key_buf + sizeof(uint32_t), key, key_size);
 	*(uint32_t *)(key_buf + sizeof(uint32_t) + key_size) = value_size;
 	memcpy(key_buf + sizeof(uint32_t) + key_size + sizeof(uint32_t), value, value_size);
-
-	par_put_serialized(hd, key_buf);
+	char *error_message = NULL;
+	par_put_serialized(hd, key_buf, &error_message);
 }
 
 enum Op get_op(char *line)
@@ -105,12 +105,12 @@ par_handle open_db(const char *path)
 {
 	par_db_options db_options;
 	db_options.volume_name = (char *)path;
-	db_options.volume_start = 0;
-	db_options.volume_size = 0;
 	db_options.create_flag = PAR_CREATE_DB;
 	db_options.db_name = "tracer";
+	db_options.options = par_get_default_options();
 
-	par_handle handle = par_open(&db_options);
+	char *error_message = NULL;
+	par_handle handle = par_open(&db_options, &error_message);
 	return handle;
 }
 
@@ -132,7 +132,11 @@ int main(int argc, char **argv)
 	arg_parse(argc, argv, options, options_len);
 	arg_print_options(help_flag, options, options_len);
 	const char *path = get_option(options, 1);
-	par_format((char *)path, 128);
+	char *error_message = par_format((char *)path, 128);
+	if (error_message != NULL) {
+		log_fatal("Error message from par_format: %s", error_message);
+		exit(EXIT_FAILURE);
+	}
 	par_handle hd = open_db(path);
 
 	char *filename = get_option(options, 2);
