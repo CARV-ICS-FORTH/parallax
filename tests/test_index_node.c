@@ -19,6 +19,7 @@
   * index_node and check correctness for its children.
 **/
 
+#include "parallax/structures.h"
 #define ALPHABET_SIZE 26
 #define MAX_PIVOT_KEY_SIZE 200
 #define MAX_NODE_KEYS_NUM 500
@@ -28,6 +29,7 @@
 #include "arg_parser.h"
 #include <assert.h>
 #include <log.h>
+#include <parallax/parallax.h>
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
@@ -184,7 +186,16 @@ int main(int argc, char *argv[])
 	arg_print_options(help_flag, options, options_len);
 
 	char *error_message = NULL;
-	db_handle *handle = db_open(get_option(options, 1), "redo_undo_test", PAR_CREATE_DB, &error_message);
+	char *volume_name = get_option(options, 1);
+	char *db_name = "redo_undo_test";
+	struct par_options_desc *default_options = par_get_default_options();
+	struct par_db_options db_options = {
+		.volume_name = volume_name,
+		.db_name = db_name,
+		.create_flag = PAR_CREATE_DB,
+		default_options,
+	};
+	db_handle *handle = db_open(&db_options, &error_message);
 	unsigned char *alphabet = calloc(ALPHABET_SIZE, sizeof(char));
 	char letter = 'A';
 	for (uint32_t i = 0; i < ALPHABET_SIZE; ++i)
