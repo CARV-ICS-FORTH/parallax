@@ -602,9 +602,9 @@ db_handle *internal_db_open(struct volume_descriptor *volume_desc, par_db_option
 		goto exit;
 	}
 
-	uint64_t level0_size = 0;
-	uint64_t growth_factor = 0;
-	uint64_t level_medium_inplace = 0;
+	uint64_t level0_size = handle->db_options.options[LEVEL0_SIZE].value;
+	uint64_t growth_factor = handle->db_options.options[GROWTH_FACTOR].value;
+	uint64_t level_medium_inplace = handle->db_options.options[LEVEL_MEDIUM_INPLACE].value;
 
 	struct db_descriptor *db_desc = get_db_from_volume(volume_desc->volume_name, (char *)handle->db_options.db_name,
 							   handle->db_options.create_flag);
