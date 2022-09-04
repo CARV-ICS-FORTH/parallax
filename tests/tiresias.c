@@ -59,7 +59,7 @@ static void generate_random_value(char *value_buffer, uint32_t value_size, uint3
 static void put_workload(struct workload_config_t *workload_config)
 {
 	log_info("Starting population for %lu keys...", workload_config->total_keys);
-
+	char *error_message = NULL;
 	unsigned char key_buffer[MY_MAX_KEY_SIZE] = { 0 };
 	unsigned char value_buffer[MAX_KV_PAIR_SIZE] = { 0 };
 	uint64_t unique_keys = 0;
@@ -100,7 +100,7 @@ static void put_workload(struct workload_config_t *workload_config)
 		++unique_keys;
 		//log_debug("Inserting in store key size %u value size %u unique keys %lu", kv_pair.k.size,
 		//	  kv_pair.v.val_size, unique_keys);
-		par_put(workload_config->handle, &kv_pair);
+		par_put(workload_config->handle, &kv_pair, &error_message);
 		if (!(i % workload_config->progress_report))
 			log_info("Progress in population %lu keys", i);
 	}
@@ -241,13 +241,16 @@ int main(int argc, char **argv)
 		return (ret);
 	}
 
-	par_format(db_options.volume_name, 16);
+	char *error_message = par_format(db_options.volume_name, 16);
+	if (error_message) {
+		log_fatal("Error message from par_format: %s", error_message);
+		exit(EXIT_FAILURE);
+	}
 
 	db_options.db_name = "TIRESIAS";
-	db_options.volume_start = 0;
-	db_options.volume_size = 0;
 	db_options.create_flag = PAR_CREATE_DB;
-	par_handle hd = par_open(&db_options);
+	db_options.options = par_get_default_options();
+	par_handle hd = par_open(&db_options, &error_message);
 
 	struct workload_config_t workload_config = {
 		.handle = hd, .truth = truth, .total_keys = total_keys, .progress_report = 100000
@@ -259,7 +262,11 @@ int main(int argc, char **argv)
 
 	scan_workload(&workload_config);
 
-	par_close(hd);
+	error_message = par_close(hd);
+	if (error_message) {
+		log_fatal("Error message from par_close: %s", error_message);
+		exit(EXIT_FAILURE);
+	}
 	truth->close(truth, 0);
 
 	return 0;
