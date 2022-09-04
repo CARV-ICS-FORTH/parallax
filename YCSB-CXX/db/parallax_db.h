@@ -72,6 +72,7 @@ class ParallaxDB : public YCSBDB {
 		par_db_options db_options;
 		db_options.volume_name = (char *)pathname;
 		db_options.create_flag = PAR_CREATE_DB;
+		db_options.options = par_get_default_options();
 		dbs.clear();
 		for (int i = 0; i < db_num; ++i) {
 			std::string db_name = "data" + std::to_string(i) + ".dat";
