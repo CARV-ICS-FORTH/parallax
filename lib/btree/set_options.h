@@ -28,6 +28,12 @@ struct lib_option {
 	UT_hash_handle hh;
 };
 
+enum options { LEVEL0_SIZE = 0, GC_INTERVAL, GROWTH_FACTOR, MEDIUM_LOG_LRU_CACHE_SIZE, LEVEL_MEDIUM_INPLACE };
+
+struct options_desc {
+	uint64_t value;
+};
+
 int parse_options(struct lib_option **db_options);
 void check_option(const struct lib_option *db_options, const char *option_name, struct lib_option **opt_value);
 void destroy_options(struct lib_option *db_options);
