@@ -126,9 +126,6 @@ set(DEPENDENCIES log yaml libbloom)
 include_directories(${CMAKE_BINARY_DIR})
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/utilities)
 
-add_compile_definitions(
-  DB_CONFIG_FILE="${CMAKE_CURRENT_SOURCE_DIR}/options.yml")
-
 if(TREAT_WARNINGS_AS_ERRORS)
   set(CMAKE_C_FLAGS " -Werror ${CMAKE_C_FLAGS}")
   set(CMAKE_CXX_FLAGS " -Werror ${CMAKE_CXX_FLAGS}")
