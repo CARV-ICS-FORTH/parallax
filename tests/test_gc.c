@@ -134,7 +134,10 @@ int main(int argc, char *argv[])
 	char *path = get_option(options, 1);
 	num_keys = *(int *)get_option(options, 2);
 
-	par_db_options db_options = { .volume_name = path, .create_flag = PAR_CREATE_DB, .db_name = "testgc.db" };
+	par_db_options db_options = { .volume_name = path,
+				      .create_flag = PAR_CREATE_DB,
+				      .db_name = "testgc.db",
+				      .options = par_get_default_options() };
 	char *error_message = NULL;
 	par_handle handle = par_open(&db_options, &error_message);
 	if (error_message) {
