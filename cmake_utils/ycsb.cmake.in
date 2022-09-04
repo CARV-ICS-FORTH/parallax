@@ -10,23 +10,23 @@ file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/YCSB-CXX/run-ycsb.sh
 file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/YCSB-CXX/generate_workloads.py
      DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/YCSB-CXX/)
 
-file(COPY ${CMAKE_SOURCE_DIR}/YCSB-CXX/workloads
+file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/YCSB-CXX/workloads
      DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/YCSB-CXX/)
 
-file(COPY ${CMAKE_SOURCE_DIR}/YCSB-CXX/execution_plan.txt
+file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/YCSB-CXX/execution_plan.txt
      DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/YCSB-CXX/)
 
-file(COPY ${CMAKE_SOURCE_DIR}/scripts/ycsb/extract-data.sh
+file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/scripts/ycsb/extract-data.sh
      DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/YCSB-CXX/)
 
-file(COPY ${CMAKE_SOURCE_DIR}/scripts/ycsb/get_total_volume.sh
+file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/scripts/ycsb/get_total_volume.sh
      DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/YCSB-CXX/)
 
-file(COPY ${CMAKE_SOURCE_DIR}/scripts/ycsb/start_statistics.sh
+file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/scripts/ycsb/start_statistics.sh
      DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/YCSB-CXX/)
 
-file(COPY ${CMAKE_SOURCE_DIR}/scripts/ycsb/stop_statistics.sh
+file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/scripts/ycsb/stop_statistics.sh
      DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/YCSB-CXX/)
 
-file(COPY ${CMAKE_SOURCE_DIR}/options.yml
+file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/options.yml
      DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/YCSB-CXX/)

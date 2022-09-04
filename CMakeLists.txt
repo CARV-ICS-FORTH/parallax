@@ -16,8 +16,13 @@ option(DISABLE_LOGGING
        OFF)
 # Set a default build type if none was specified
 set(default_build_type "Release")
-if(EXISTS "${CMAKE_SOURCE_DIR}/.git")
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/.git")
   set(default_build_type "Debug")
+endif()
+
+# Parallax is a dependency
+if(NOT (${CMAKE_SOURCE_DIR} STREQUAL ${CMAKE_CURRENT_SOURCE_DIR}))
+  option(BUILD_TESTING "" OFF)
 endif()
 
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
@@ -46,7 +51,7 @@ include(cmake_utils/tests.cmake.in)
 include(cmake_utils/tracer.cmake.in)
 
 if(RUN_IWYU STREQUAL "ON")
-  file(COPY ${CMAKE_SOURCE_DIR}/scripts/CI/check-iwyu-output.py
+  file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/scripts/CI/check-iwyu-output.py
        DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
 endif()
 
@@ -119,7 +124,10 @@ endif()
 set(DEPENDENCIES log yaml libbloom)
 
 include_directories(${CMAKE_BINARY_DIR})
-include_directories(${CMAKE_SOURCE_DIR}/utilities)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/utilities)
+
+add_compile_definitions(
+  DB_CONFIG_FILE="${CMAKE_CURRENT_SOURCE_DIR}/options.yml")
 
 if(TREAT_WARNINGS_AS_ERRORS)
   set(CMAKE_C_FLAGS " -Werror ${CMAKE_C_FLAGS}")

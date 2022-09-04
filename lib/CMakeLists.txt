@@ -41,9 +41,11 @@ set(LIB_C_SOURCE_FILES
     scanner/scanner.c
     scanner/stack.c)
 
-list(APPEND LIB_C_SOURCE_FILES "${CMAKE_SOURCE_DIR}/utilities/spin_loop.c")
-list(APPEND LIB_C_SOURCE_FILES "${CMAKE_SOURCE_DIR}/utilities/list.c")
-list(APPEND LIB_C_SOURCE_FILES "${CMAKE_SOURCE_DIR}/utilities/dups_list.c")
+list(APPEND LIB_C_SOURCE_FILES
+     "$CACHE{parallax_SOURCE_DIR}/utilities/spin_loop.c")
+list(APPEND LIB_C_SOURCE_FILES "$CACHE{parallax_SOURCE_DIR}/utilities/list.c")
+list(APPEND LIB_C_SOURCE_FILES
+     "$CACHE{parallax_SOURCE_DIR}/utilities/dups_list.c")
 
 if("${CMAKE_BUILD_TYPE}" STREQUAL "Debug")
   set_source_files_properties(LIB_C_SOURCE_FILES PROPERTIES COMPILE_FLAGS
