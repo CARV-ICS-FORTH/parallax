@@ -574,31 +574,30 @@ static db_descriptor *get_db_from_volume(char *volume_name, char *db_name, par_d
 	return db_desc;
 }
 
-db_handle *internal_db_open(struct volume_descriptor *volume_desc, char *db_name, par_db_initializers create_flag,
-			    char **error_message)
+db_handle *internal_db_open(struct volume_descriptor *volume_desc, par_db_options *db_options, char **error_message)
 {
 	struct db_handle *handle = NULL;
 	const uint32_t leaf_size_per_level[10] = { LEVEL0_LEAF_SIZE, LEVEL1_LEAF_SIZE, LEVEL2_LEAF_SIZE,
 						   LEVEL3_LEAF_SIZE, LEVEL4_LEAF_SIZE, LEVEL5_LEAF_SIZE,
 						   LEVEL6_LEAF_SIZE, LEVEL7_LEAF_SIZE };
 	struct db_descriptor *db = NULL;
-	struct lib_option *dboptions = NULL;
 
-	log_info("Using Volume name = %s to open db with name = %s", volume_desc->volume_name, db_name);
+	log_info("Using Volume name = %s to open db with name = %s", volume_desc->volume_name, db_options->db_name);
 
-	parse_options(&dboptions);
 #if DISABLE_LOGGING
 	log_set_quiet(true);
 #endif
 	_Static_assert(sizeof(struct index_node) == INDEX_NODE_SIZE, "Index node is not page aligned");
 	_Static_assert(sizeof(struct segment_header) == 4096, "Segment header is not 4 KB");
-	db = klist_find_element_with_key(volume_desc->open_databases, db_name);
+	db = klist_find_element_with_key(volume_desc->open_databases, (char *)db_options->db_name);
 
 	if (db != NULL) {
-		create_error_message(error_message, "DB %s already open for volume", db_name);
+		create_error_message(error_message, "DB %s already open for volume", db_options->db_name);
 		handle = calloc(1, sizeof(struct db_handle));
 		handle->volume_desc = volume_desc;
 		handle->db_desc = db;
+		//deep copy db_options
+		memcpy(&handle->db_options, db_options, sizeof(struct par_db_options));
 		++handle->db_desc->reference_count;
 		goto exit;
 	}
@@ -607,29 +606,19 @@ db_handle *internal_db_open(struct volume_descriptor *volume_desc, char *db_name
 	uint64_t growth_factor = 0;
 	uint64_t level_medium_inplace = 0;
 
-	struct lib_option *option;
-
-	check_option(dboptions, "level0_size", &option);
-	level0_size = MB(option->value.count);
-
-	check_option(dboptions, "growth_factor", &option);
-	growth_factor = option->value.count;
-
-	check_option(dboptions, "level_medium_inplace", &option);
-	level_medium_inplace = option->value.count;
-
-	struct db_descriptor *db_desc = get_db_from_volume(volume_desc->volume_name, db_name, create_flag);
+	struct db_descriptor *db_desc = get_db_from_volume(volume_desc->volume_name, (char *)handle->db_options.db_name,
+							   handle->db_options.create_flag);
 	if (!db_desc) {
 		char *fmt_string = NULL;
 		handle = NULL;
 
-		if (PAR_CREATE_DB == create_flag)
+		if (PAR_CREATE_DB == handle->db_options.create_flag)
 			fmt_string = "Sorry no room for new DB %s";
 
-		if (PAR_DONOT_CREATE_DB == create_flag)
+		if (PAR_DONOT_CREATE_DB == handle->db_options.create_flag)
 			fmt_string = "DB %s not found instructed not to create a new one";
 
-		create_error_message(error_message, fmt_string, db_name);
+		create_error_message(error_message, fmt_string, handle->db_options.db_name);
 		goto exit;
 	}
 
@@ -709,22 +698,22 @@ db_handle *internal_db_open(struct volume_descriptor *volume_desc, char *db_name
 
 	MUTEX_INIT(&handle->db_desc->lock_log, NULL);
 
-	klist_add_first(volume_desc->open_databases, handle->db_desc, db_name, NULL);
+	klist_add_first(volume_desc->open_databases, handle->db_desc, handle->db_options.db_name, NULL);
 	handle->db_desc->db_state = DB_OPEN;
 
-	log_info("Opened DB %s starting its compaction daemon", db_name);
+	log_info("Opened DB %s starting its compaction daemon", handle->db_options.db_name);
 
 	sem_init(&handle->db_desc->compaction_daemon_interrupts, PTHREAD_PROCESS_PRIVATE, 0);
 
 	if (pthread_create(&(handle->db_desc->compaction_daemon), NULL, compaction_daemon, (void *)handle) != 0) {
-		log_fatal("Failed to start compaction_daemon for db %s", db_name);
+		log_fatal("Failed to start compaction_daemon for db %s", handle->db_options.db_name);
 		BUG_ON();
 	}
 
 	handle->db_desc->gc_scanning_db = false;
 	if (!volume_desc->gc_thread_spawned) {
 		if (pthread_create(&(handle->db_desc->gc_thread), NULL, gc_log_entries, (void *)handle) != 0) {
-			log_fatal("Failed to start garbage collection thread for db %s", db_name);
+			log_fatal("Failed to start garbage collection thread for db %s", handle->db_options.db_name);
 			BUG_ON();
 		}
 		++volume_desc->gc_thread_spawned;
@@ -738,22 +727,20 @@ db_handle *internal_db_open(struct volume_descriptor *volume_desc, char *db_name
 	recover_L0(handle->db_desc);
 
 exit:
-	destroy_options(dboptions);
-	dboptions = NULL;
 	return handle;
 }
 
-db_handle *db_open(char *volume_name, char *db_name, par_db_initializers create_flag, char **error_message)
+db_handle *db_open(par_db_options *db_options, char **error_message)
 {
 	MUTEX_LOCK(&init_lock);
-	struct volume_descriptor *volume_desc = mem_get_volume_desc(volume_name);
+	struct volume_descriptor *volume_desc = mem_get_volume_desc(db_options->volume_name);
 	if (!volume_desc) {
-		create_error_message(error_message, "Failed to open volume %s", volume_name);
+		create_error_message(error_message, "Failed to open volume %s", db_options->volume_name);
 		return NULL;
 	}
 	assert(volume_desc->open_databases);
 
-	db_handle *handle = internal_db_open(volume_desc, db_name, create_flag, error_message);
+	db_handle *handle = internal_db_open(volume_desc, db_options, error_message);
 
 	MUTEX_UNLOCK(&init_lock);
 	return handle;

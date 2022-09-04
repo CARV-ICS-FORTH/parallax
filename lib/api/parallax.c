@@ -42,8 +42,7 @@ char *par_format(char *device_name, uint32_t max_regions_num)
 par_handle par_open(par_db_options *db_options, char **error_message)
 {
 	if (db_options->create_flag == PAR_CREATE_DB || db_options->create_flag == PAR_DONOT_CREATE_DB) {
-		return (par_handle)db_open(db_options->volume_name, (char *)db_options->db_name,
-					   db_options->create_flag, error_message);
+		return (par_handle)db_open(db_options, error_message);
 	}
 
 	create_error_message(error_message, "Unknown create flag provided.");

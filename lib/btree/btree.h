@@ -309,6 +309,7 @@ typedef struct db_descriptor {
 } db_descriptor;
 
 typedef struct db_handle {
+	par_db_options db_options;
 	volume_descriptor *volume_desc;
 	db_descriptor *db_desc;
 } db_handle;
@@ -346,7 +347,7 @@ void pr_flush_L0(struct db_descriptor *db_desc, uint8_t tree_id);
 void pr_flush_compaction(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id);
 
 /*management operations*/
-db_handle *db_open(char *volume_name, char *db_name, par_db_initializers create_flag, char **error_message);
+db_handle *db_open(par_db_options *db_options, char **error_message);
 char *db_close(db_handle *handle);
 
 void *compaction_daemon(void *args);
