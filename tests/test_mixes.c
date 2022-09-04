@@ -70,7 +70,8 @@ static par_handle open_db(const char *path)
 {
 	par_db_options db_options = { .volume_name = (char *)path,
 				      .create_flag = PAR_CREATE_DB,
-				      .db_name = "testmedium.db" };
+				      .db_name = "testmedium.db",
+				      .options = par_get_default_options() };
 
 	char *error_message = NULL;
 	par_handle handle = par_open(&db_options, &error_message);
