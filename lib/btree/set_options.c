@@ -25,7 +25,6 @@
 #include <yaml.h>
 
 #define CONFIG_FILE "options.yml"
-#define NUM_OF_OPTIONS 5
 
 int parse_options(struct lib_option **db_options)
 {

@@ -1,6 +1,7 @@
 #ifndef PARALLAX_STRUCTURES_H_
 #define PARALLAX_STRUCTURES_H_
 
+#include "../../btree/set_options.h"
 #include <stdint.h>
 typedef void *par_handle;
 typedef void *par_scanner;
@@ -32,7 +33,7 @@ typedef struct par_db_options {
 	 * With PAR_DONOT_CREATE_DB the DB is not created if it exists.
 	 */
 	enum par_db_initializers create_flag;
-
+	struct options_desc options[NUM_OF_OPTIONS]; /*buffer containing the options' values*/
 } par_db_options;
 
 struct par_key {
