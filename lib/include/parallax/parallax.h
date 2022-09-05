@@ -80,9 +80,12 @@ void par_put_serialized(par_handle handle, char *serialized_key_value, char **er
  * it allocates the value if it is NULL and the client is responsible to release
  * the memory. Otherwise it copies the data to the existing data buffer provided
  * by the value pointer.
- * @return PAR_GET_NOT_ENOUGH_BUFFER_SPACE when the user provided buffer does not have enough space to store the value.
+ * @param handle DB handle provided by par_open.
+ * @param key to be searched.
+ * @param value buffer to be filled uppon get success.
+ * @param error_message Contains error message if call fails.
  */
-par_ret_code par_get(par_handle handle, struct par_key *key, struct par_value *value);
+void par_get(par_handle handle, struct par_key *key, struct par_value *value, char **error_message);
 
 /**
  * Searches for a key and returns if the key exists in the DB.
