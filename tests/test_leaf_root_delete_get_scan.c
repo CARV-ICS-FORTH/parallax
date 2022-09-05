@@ -66,7 +66,8 @@ int main(int argc, char *argv[])
 	}
 
 	struct par_value unused_value = { 0 };
-	if (par_get(handle, &key_value.k, &unused_value) != PAR_KEY_NOT_FOUND) {
+	par_get(handle, &key_value.k, &unused_value, &error_message);
+	if (error_message) {
 		log_fatal("Found key that should not exist!");
 		BUG_ON();
 	}

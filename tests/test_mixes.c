@@ -347,6 +347,7 @@ static void validate_random_size_of_kvs(par_handle hd, struct task task_info)
 /** Main retrieve-kvs logic*/
 static void read_all_static_kvs(par_handle handle, struct task task_info)
 {
+	char *error_message = NULL;
 	struct par_key_value my_kv = { 0 };
 	struct init_key_values init_info = {
 		.kv_size = 0, .key_prefix = NULL, .size_type = task_info.size_type, .kv_category = task_info.key_type
@@ -361,7 +362,8 @@ static void read_all_static_kvs(par_handle handle, struct task task_info)
 		sprintf(buf + strlen(init_info.key_prefix), "%llu", (long long unsigned)i);
 		my_kv.k.size = strlen(buf) + 1;
 		my_kv.k.data = buf;
-		if (par_get(handle, &my_kv.k, &my_kv.v) != PAR_SUCCESS) {
+		par_get(handle, &my_kv.k, &my_kv.v, &error_message);
+		if (error_message) {
 			log_fatal("Key %u:%s not found", my_kv.k.size, my_kv.k.data);
 			BUG_ON();
 		}

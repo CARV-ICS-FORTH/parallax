@@ -78,6 +78,7 @@ void validate_inserted_keys(par_handle hd)
 {
 	uint64_t i;
 	key *k = (key *)malloc(KV_SIZE);
+	char *error_message = NULL;
 	struct par_value v;
 	log_info("Starting population for %lu keys...", NUM_KEYS);
 
@@ -96,7 +97,8 @@ void validate_inserted_keys(par_handle hd)
 
 		struct par_key_value kv = { .k.data = (const char *)k->key_buf, .k.size = k->key_size };
 		memset(&v, 0, sizeof(struct par_value));
-		if (par_get(hd, &kv.k, &v) != PAR_SUCCESS) {
+		par_get(hd, &kv.k, &v, &error_message);
+		if (error_message) {
 			log_fatal("Key disappeared!");
 			exit(EXIT_FAILURE);
 		}

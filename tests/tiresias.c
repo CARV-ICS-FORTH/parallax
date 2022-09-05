@@ -130,6 +130,7 @@ static void locate_key(par_handle handle, DBT lookup_key)
 static void get_workload(struct workload_config_t *workload_config)
 {
 	log_info("Testing GETS now");
+	char *error_message = NULL;
 	DBC *cursorp = NULL;
 	DBT key = { 0 };
 	DBT data = { 0 };
@@ -144,12 +145,12 @@ static void get_workload(struct workload_config_t *workload_config)
 		struct par_key par_key = { .size = key.size, .data = key.data };
 		struct par_value value = { 0 };
 
-		int get_status = par_get(workload_config->handle, &par_key, &value);
-		if (get_status != PAR_SUCCESS) {
+		par_get(workload_config->handle, &par_key, &value, &error_message);
+		if (error_message) {
 			uint64_t insert_order = *(uint64_t *)data.data;
 			log_debug(
-				"Key is size: %u data: %.*s not found! keys found so far %lu code is %d insert order was %lu",
-				key.size, key.size, (char *)key.data, unique_keys, get_status, insert_order);
+				"Key is size: %u data: %.*s not found! keys found so far %lu error_message is %s insert order was %lu",
+				key.size, key.size, (char *)key.data, unique_keys, error_message, insert_order);
 			locate_key(workload_config->handle, key);
 			_exit(EXIT_FAILURE);
 		}

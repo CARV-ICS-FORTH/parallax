@@ -26,8 +26,10 @@ void execute_get_request(par_handle hd, char *line)
 	char *key = strtok_r(line, " ", &line);
 	struct par_key lookup_key = { .size = (uint32_t)key_size, .data = (const char *)key };
 	struct par_value lookup_value = { .val_buffer = NULL };
+	char *error_message = NULL;
 
-	if (par_get(hd, &lookup_key, &lookup_value) != PAR_SUCCESS) {
+	par_get(hd, &lookup_key, &lookup_value, &error_message);
+	if (error_message) {
 		log_fatal("Cannot find key %.*s", key_size, key);
 		_exit(EXIT_FAILURE);
 	}

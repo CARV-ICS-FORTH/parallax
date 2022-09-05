@@ -159,6 +159,7 @@ static void get_workload(struct workload_config_t *workload_config)
 {
 	struct par_key_value my_kv = { .k.size = 0, .k.data = NULL, .v.val_buffer = NULL };
 	struct key *k = calloc(1, KV_BUFFER_SIZE);
+	char *error_message = NULL;
 
 	log_info("Testing GETS now");
 	uint64_t key_count = 0;
@@ -170,7 +171,8 @@ static void get_workload(struct workload_config_t *workload_config)
 		my_kv.k.size = k->key_size;
 		my_kv.k.data = k->key_buf;
 		struct par_value my_value = { .val_buffer = NULL };
-		if (par_get(workload_config->handle, &my_kv.k, &my_value) != PAR_SUCCESS) {
+		par_get(workload_config->handle, &my_kv.k, &my_value, &error_message);
+		if (error_message) {
 			log_fatal("Key %u:%s not found", my_kv.k.size, my_kv.k.data);
 			_exit(EXIT_FAILURE);
 		}
@@ -194,7 +196,6 @@ static void get_workload(struct workload_config_t *workload_config)
 	log_info("Testing if gets value are sane");
 	char *key = "SanityCheck";
 	char *value = "Hello this is a sane test";
-	char *error_message = NULL;
 	my_kv.k.size = strlen(key) + 1;
 	my_kv.k.data = key;
 	my_kv.v.val_size = strlen(value) + 1;
@@ -206,7 +207,8 @@ static void get_workload(struct workload_config_t *workload_config)
 		exit(EXIT_FAILURE);
 	}
 	struct par_value my_value = { .val_buffer = NULL };
-	if (par_get(workload_config->handle, &my_kv.k, &my_value) != PAR_SUCCESS) {
+	par_get(workload_config->handle, &my_kv.k, &my_value, &error_message);
+	if (error_message) {
 		log_fatal("Key %u:%s not found", my_kv.k.size, my_kv.k.data);
 		_exit(EXIT_FAILURE);
 	}
