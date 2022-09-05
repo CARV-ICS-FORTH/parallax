@@ -123,7 +123,9 @@ class ParallaxDB : public YCSBDB {
 		struct par_key lookup_key = { .size = (uint32_t)key.length(), .data = (const char *)key.c_str() };
 		struct par_value lookup_value = { .val_buffer = NULL };
 
-		if (par_get(dbs[db_id], &lookup_key, &lookup_value) != PAR_SUCCESS) {
+		char *error_message = NULL;
+		par_get(dbs[db_id], &lookup_key, &lookup_value, &error_message);
+		if (error_message) {
 			std::cout << "[1]cannot find : " << key << " in DB " << db_id << std::endl;
 			return 0;
 			exit(EXIT_FAILURE);
@@ -226,7 +228,9 @@ class ParallaxDB : public YCSBDB {
 						      .data = (const char *)key.c_str() };
 			struct par_value lookup_value = { .val_buffer = NULL };
 
-			if (par_get(dbs[db_id], &lookup_key, &lookup_value) != PAR_SUCCESS) {
+			char *error_message = NULL;
+			par_get(dbs[db_id], &lookup_key, &lookup_value, &error_message);
+			if (error_message) {
 				std::cout << "[1]cannot find : " << key << " in DB " << db_id << std::endl;
 				assert(0);
 				exit(EXIT_FAILURE);
