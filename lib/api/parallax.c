@@ -93,11 +93,11 @@ static inline int par_serialize_to_kv_format(struct par_key *key, char **buf, ui
 	return ret;
 }
 
-par_ret_code par_get(par_handle handle, struct par_key *key, struct par_value *value)
+void par_get(par_handle handle, struct par_key *key, struct par_value *value, char **error_message)
 {
+	free_error_message(error_message);
 	if (value == NULL) {
-		log_warn("value cannot be NULL");
-		return PAR_FAILURE;
+		create_error_message(error_message, "value cannot be NULL");
 	}
 
 	/*Serialize user key in KV_FORMAT*/
@@ -127,14 +127,13 @@ par_ret_code par_get(par_handle handle, struct par_key *key, struct par_value *v
 		free(kv_buf);
 
 	if (!get_op.found)
-		return PAR_KEY_NOT_FOUND;
+		create_error_message(error_message, "key not found");
 
 	if (get_op.buffer_overflow)
-		return PAR_GET_NOT_ENOUGH_BUFFER_SPACE;
+		create_error_message(error_message, "not enough buffer space");
 
 	value->val_buffer = get_op.buffer_to_pack_kv;
 	value->val_size = get_op.size;
-	return PAR_SUCCESS;
 }
 
 par_ret_code par_exists(par_handle handle, struct par_key *key)
