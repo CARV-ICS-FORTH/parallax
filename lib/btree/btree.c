@@ -992,10 +992,11 @@ struct par_put_metadata insert_key_value(db_handle *handle, void *key, void *val
 
 	uint32_t kv_size = sizeof(key_size) + sizeof(value_size) + key_size + value_size;
 	/*prepare the request*/
-	*(uint32_t *)key_buf = key_size;
-	memcpy(key_buf + sizeof(uint32_t), key, key_size);
-	*(uint32_t *)(key_buf + sizeof(uint32_t) + key_size) = value_size;
-	memcpy(key_buf + sizeof(uint32_t) + key_size + sizeof(uint32_t), value, value_size);
+	*(uint32_t *)key_buf = key_size; // |key_size
+	*(uint32_t *)(key_buf + sizeof(uint32_t)) = value_size; //|key_size | value_size
+	memcpy(key_buf + sizeof(uint32_t) + sizeof(uint32_t), key, key_size); // |key_size | value_size | key
+	memcpy(key_buf + sizeof(uint32_t) + sizeof(uint32_t) + key_size, value,
+	       value_size); // |key_size | value_suze | key | value |
 	ins_req.metadata.handle = handle;
 	ins_req.key_value_buf = key_buf;
 	ins_req.metadata.kv_size = kv_size;
