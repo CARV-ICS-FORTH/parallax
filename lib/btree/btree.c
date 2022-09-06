@@ -1103,8 +1103,8 @@ static void pr_copy_kv_to_tail(struct pr_log_ticket *ticket)
 		memcpy(&ticket->tail->buf[offt], &ticket->lsn, sizeof(struct log_sequence_number));
 		offt += sizeof(struct log_sequence_number);
 
-		ticket->op_size = sizeof(ticket->data_size->key_len) + ticket->data_size->key_len +
-				  sizeof(ticket->data_size->value_len) + ticket->data_size->value_len;
+		ticket->op_size = sizeof(ticket->data_size->key_len) + sizeof(ticket->data_size->value_len) +
+				  ticket->data_size->key_len + ticket->data_size->value_len;
 		// log_info("Copying ta log offt %llu in buf %u bytes %u", ticket->log_offt,
 		// offt_in_seg, ticket->op_size);
 
@@ -1124,7 +1124,8 @@ static void pr_copy_kv_to_tail(struct pr_log_ticket *ticket)
 		ticket->op_size = sizeof(struct log_sequence_number) + sizeof(struct bt_delete_marker);
 
 		// Append the deleted key
-		memcpy(&ticket->tail->buf[offt], ticket->req->ins_req->key_value_buf + sizeof(uint32_t), dm.key_size);
+		memcpy(&ticket->tail->buf[offt],
+		       ticket->req->ins_req->key_value_buf + sizeof(uint32_t) + sizeof(uint32_t), dm.key_size);
 		ticket->op_size += ticket->data_size->key_len;
 		break;
 	}
