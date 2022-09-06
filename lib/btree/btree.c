@@ -997,6 +997,9 @@ struct par_put_metadata insert_key_value(db_handle *handle, void *key, void *val
 	memcpy(key_buf + sizeof(uint32_t) + sizeof(uint32_t), key, key_size); // |key_size | value_size | key
 	memcpy(key_buf + sizeof(uint32_t) + sizeof(uint32_t) + key_size, value,
 	       value_size); // |key_size | value_suze | key | value |
+	log_debug("|%u | %u | %s | %s |", *(uint32_t *)key_buf, *(uint32_t *)(key_buf + sizeof(uint32_t)),
+		  (char *)key_buf + 2 * sizeof(uint32_t),
+		  (char *)key_buf + sizeof(uint32_t) + sizeof(uint32_t) + key_size);
 	ins_req.metadata.handle = handle;
 	ins_req.key_value_buf = key_buf;
 	ins_req.metadata.kv_size = kv_size;
@@ -1050,20 +1053,19 @@ void extract_keyvalue_size(log_operation *req, metadata_tologop *data_size)
 	switch (req->optype_tolog) {
 	case insertOp:
 		if (req->metadata->key_format == KV_FORMAT) {
-			data_size->key_len = *(uint32_t *)req->ins_req->key_value_buf;
-			data_size->value_len =
-				*(uint32_t *)(req->ins_req->key_value_buf + sizeof(uint32_t) + (data_size->key_len));
+			data_size->key_len = GET_KEY_SIZE(req->ins_req->key_value_buf);
+			data_size->value_len = GET_VALUE_SIZE(req->ins_req->key_value_buf);
 			data_size->kv_size = req->metadata->kv_size;
 		} else {
-			data_size->key_len = *(uint32_t *)*(uint64_t *)(req->ins_req->key_value_buf + PREFIX_SIZE);
+			data_size->key_len =
+				GET_KEY_SIZE((char *)*(uint64_t *)(req->ins_req->key_value_buf + PREFIX_SIZE));
 			data_size->value_len =
-				*(uint32_t *)((char *)(*(uint64_t *)(req->ins_req->key_value_buf + PREFIX_SIZE)) +
-					      sizeof(uint32_t) + (data_size->key_len));
+				GET_VALUE_SIZE((char *)(*(uint64_t *)(req->ins_req->key_value_buf + PREFIX_SIZE)));
 			data_size->kv_size = data_size->key_len + data_size->value_len + sizeof(data_size->key_len) * 2;
 		}
 		break;
 	case deleteOp:
-		data_size->key_len = *(uint32_t *)req->ins_req->key_value_buf;
+		data_size->key_len = GET_KEY_SIZE(req->ins_req->key_value_buf);
 		data_size->value_len = 0;
 		data_size->kv_size = sizeof(struct bt_delete_marker) + data_size->key_len;
 		break;
