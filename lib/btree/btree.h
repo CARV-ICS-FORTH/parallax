@@ -517,3 +517,8 @@ lock_table *_find_position(const lock_table **table, node_header *node);
 #define LESS_THAN_ZERO -1
 #define GREATER_THAN_ZERO 1
 #define EQUAL_TO_ZERO 0
+
+#define GET_KEY_SIZE(KV_BUF) (*(uint32_t *)(KV_BUF))
+#define GET_VALUE_SIZE(KV_BUF) (*(uint32_t *)(KV_BUF + sizeof(uint32_t)))
+#define GET_KEY_OFFSET(KV_BUF) (sizeof(uint32_t) + sizeof(uint32_t) + KV_BUF)
+#define GET_VALUE_OFFSET(KV_BUF, KEY_SIZE) (sizeof(uint32_t) + sizeof(uint32_t) + KEY_SIZE + KV_BUF)
