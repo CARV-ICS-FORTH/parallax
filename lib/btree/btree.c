@@ -997,9 +997,9 @@ struct par_put_metadata insert_key_value(db_handle *handle, void *key, void *val
 	memcpy(key_buf + sizeof(uint32_t) + sizeof(uint32_t), key, key_size); // |key_size | value_size | key
 	memcpy(key_buf + sizeof(uint32_t) + sizeof(uint32_t) + key_size, value,
 	       value_size); // |key_size | value_suze | key | value |
-	log_debug("|%u | %u | %s | %s |", *(uint32_t *)key_buf, *(uint32_t *)(key_buf + sizeof(uint32_t)),
-		  (char *)key_buf + 2 * sizeof(uint32_t),
-		  (char *)key_buf + sizeof(uint32_t) + sizeof(uint32_t) + key_size);
+	log_debug("|%u | %u | %s | |", *(uint32_t *)key_buf, *(uint32_t *)(key_buf + sizeof(uint32_t)),
+		  (char *)key_buf + 2 * sizeof(uint32_t));
+	//(char *)key_buf + sizeof(uint32_t) + sizeof(uint32_t) + key_size);
 	ins_req.metadata.handle = handle;
 	ins_req.key_value_buf = key_buf;
 	ins_req.metadata.kv_size = kv_size;
@@ -1487,9 +1487,9 @@ int find_key_in_bloom_filter(db_descriptor *db_desc, int level_id, char *key)
 {
 #if ENABLE_BLOOM_FILTERS
 	char prefix_key[PREFIX_SIZE];
-	if (*(uint32_t *)key < PREFIX_SIZE) {
+	if (GET_KEY_SIZE(key) < PREFIX_SIZE) {
 		memset(prefix_key, 0x00, PREFIX_SIZE);
-		memcpy(prefix_key, key + sizeof(uint32_t), *(uint32_t *)key);
+		memcpy(prefix_key, key + sizeof(uint32_t) + sizeof(uint32_t), GET_KEY_SIZE(key));
 		return bloom_check(&db_desc->levels[level_id].bloom_filter[0], prefix_key, PREFIX_SIZE);
 	} else
 		return bloom_check(&db_desc->levels[level_id].bloom_filter[0], key + sizeof(uint32_t), PREFIX_SIZE);
