@@ -5,7 +5,7 @@
 struct splice {
 	uint32_t key_size;
 	uint32_t value_size;
-	char data[];
+	char data[]; //kv payload
 };
 
 uint32_t get_key_size(struct splice *key);
