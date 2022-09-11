@@ -1541,8 +1541,9 @@ static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id,
 		if (RWLOCK_RDLOCK(&curr->rx_lock) != 0)
 			BUG_ON();
 
-		ret_result = find_key_in_dynamic_leaf((struct bt_dynamic_leaf_node *)curr_node, db_desc,
-						      get_op->kv_buf + sizeof(uint32_t), *(uint32_t *)get_op->kv_buf,
+		uint32_t key_size = GET_KEY_SIZE(get_op->kv_buf);
+		void *key = GET_KEY_OFFSET(get_op->kv_buf);
+		ret_result = find_key_in_dynamic_leaf((struct bt_dynamic_leaf_node *)curr_node, db_desc, key, key_size,
 						      level_id);
 		get_op->tombstone = ret_result.tombstone;
 		goto deser;
@@ -1579,8 +1580,10 @@ static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id,
 	if (RWLOCK_UNLOCK(&prev->rx_lock) != 0)
 		BUG_ON();
 
-	ret_result = find_key_in_dynamic_leaf((struct bt_dynamic_leaf_node *)curr_node, db_desc,
-					      get_op->kv_buf + sizeof(uint32_t), *(uint32_t *)get_op->kv_buf, level_id);
+	uint32_t key_size = GET_KEY_SIZE(get_op->kv_buf);
+	void *key = GET_KEY_OFFSET(get_op->kv_buf);
+	ret_result =
+		find_key_in_dynamic_leaf((struct bt_dynamic_leaf_node *)curr_node, db_desc, key, key_size, level_id);
 	get_op->tombstone = ret_result.tombstone;
 
 deser:
