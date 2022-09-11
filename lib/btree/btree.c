@@ -1586,6 +1586,7 @@ static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id,
 		find_key_in_dynamic_leaf((struct bt_dynamic_leaf_node *)curr_node, db_desc, key, key_size, level_id);
 	get_op->tombstone = ret_result.tombstone;
 
+// TODO: The meaning of deser is not clear enough, rename accordingly
 deser:
 	if (!ret_result.kv) {
 		get_op->found = 0;
