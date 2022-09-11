@@ -63,8 +63,8 @@ void init_key_cmp(struct key_compare *key_cmp, void *key_buf, char key_format)
 		return;
 
 	if (key_format == KV_FORMAT) {
-		key_cmp->key_size = *(uint32_t *)key_buf;
-		key_cmp->key = (char *)key_buf + sizeof(uint32_t) + sizeof(uint32_t);
+		key_cmp->key_size = GET_KEY_SIZE(key_buf);
+		key_cmp->key = (char *)GET_KEY_OFFSET(key_buf);
 		key_cmp->kv_dev_offt = UINT64_MAX;
 		key_cmp->key_format = KV_FORMAT;
 		return;
