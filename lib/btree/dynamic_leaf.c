@@ -210,15 +210,14 @@ void binary_search_dynamic_leaf(const struct bt_dynamic_leaf_node *leaf, uint32_
 		}
 
 		if (KEY_SIZE(req->key_value_buf) >= PREFIX_SIZE) {
-			ret = prefix_compare(leaf_key_prefix.prefix, req->key_value_buf + sizeof(uint32_t),
-					     PREFIX_SIZE);
+			ret = prefix_compare(leaf_key_prefix.prefix, GET_KEY_OFFSET(req->key_value_buf), PREFIX_SIZE);
 			goto check_comparison;
 		}
 
 		/*Case we have a key in KV_FORMAT encoding that IS smaller than PREFIX_SIZE*/
 
 		char padded_lookupkey_prefix[PREFIX_SIZE] = { 0 };
-		memcpy(padded_lookupkey_prefix, req->key_value_buf + sizeof(uint32_t), KEY_SIZE(req->key_value_buf));
+		memcpy(padded_lookupkey_prefix, GET_KEY_OFFSET(req->key_value_buf), KEY_SIZE(req->key_value_buf));
 		ret = prefix_compare(leaf_key_prefix.prefix, padded_lookupkey_prefix, PREFIX_SIZE);
 
 	check_comparison:
