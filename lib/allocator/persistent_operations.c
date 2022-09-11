@@ -660,15 +660,14 @@ void prepare_cursor_op(struct log_cursor *cursor)
 	struct bt_delete_marker *dm = (struct bt_delete_marker *)get_position_in_segment(cursor);
 
 	if (dm->marker_id != BT_DELETE_MARKER_ID) {
-		cursor->entry.par_key = (struct splice *)get_position_in_segment(cursor);
-		cursor->offt_in_segment += get_key_size_with_metadata(cursor->entry.par_key);
-		cursor->entry.par_value = (struct splice *)get_position_in_segment(cursor);
-		cursor->offt_in_segment += get_value_size_with_metadata(cursor->entry.par_value);
+		cursor->entry.par_kv = (struct splice *)get_position_in_segment(cursor);
+		cursor->offt_in_segment += get_key_size_with_metadata(cursor->entry.par_kv);
+		cursor->offt_in_segment += get_value_size_with_metadata(cursor->entry.par_kv);
 		cursor->tombstone = 0;
 	} else {
 		cursor->offt_in_segment += sizeof(dm->marker_id);
-		cursor->entry.par_key = (struct splice *)get_position_in_segment(cursor);
-		cursor->offt_in_segment += get_key_size_with_metadata(cursor->entry.par_key);
+		cursor->entry.par_kv = (struct splice *)get_position_in_segment(cursor);
+		cursor->offt_in_segment += get_key_size_with_metadata(cursor->entry.par_kv);
 		cursor->tombstone = 1;
 	}
 }
