@@ -631,8 +631,7 @@ static struct segment_array *find_N_last_blobs(struct db_descriptor *db_desc, ui
 
 struct kv_entry {
 	uint64_t lsn;
-	struct splice *par_key;
-	struct splice *par_value;
+	struct splice *par_kv;
 };
 
 struct log_cursor {
@@ -865,13 +864,13 @@ void recover_L0(struct db_descriptor *db_desc)
 			choice = BIG_LOG;
 
 		char *error_message = NULL;
+		void *key = kvs[choice]->par_kv->data;
+		void *value = kvs[choice]->par_kv->data + kvs[choice]->par_kv->key_size;
 		if (!cursor[choice]->tombstone)
-			insert_key_value(&hd, kvs[choice]->par_key->data, kvs[choice]->par_value->data,
-					 kvs[choice]->par_key->size, kvs[choice]->par_value->size, insertOp,
-					 error_message);
+			insert_key_value(&hd, key, value, kvs[choice]->par_kv->key_size,
+					 kvs[choice]->par_kv->value_size, insertOp, error_message);
 		else
-			insert_key_value(&hd, kvs[choice]->par_key->data, "empty", kvs[choice]->par_key->size, 0,
-					 deleteOp, error_message);
+			insert_key_value(&hd, key, "empty", kvs[choice]->par_kv->key_size, 0, deleteOp, error_message);
 
 		if (error_message) {
 			log_fatal("Insert failed reason = %s, exiting", error_message);
