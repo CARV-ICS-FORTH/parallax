@@ -85,7 +85,7 @@ void fill_prefix(struct prefix *key, char *key_loc, enum kv_entry_location key_t
 	case KV_INPLACE: {
 		struct splice *key_buf = (struct splice *)key_loc;
 		key->prefix = key_buf->data;
-		key->len = MIN(key_buf->size, PREFIX_SIZE);
+		key->len = MIN(key_buf->key_size, PREFIX_SIZE);
 		break;
 	}
 	case KV_INLOG:
@@ -193,9 +193,9 @@ void binary_search_dynamic_leaf(const struct bt_dynamic_leaf_node *leaf, uint32_
 
 		/*Initialized leaf key prefix either inside the index or the padded_prefix case*/
 		struct splice *key_buf = (struct splice *)get_kv_offset(leaf, leaf_size, offset_in_leaf);
-		if (get_kv_format(slot_array[middle].key_category) == KV_INPLACE && key_buf->size < PREFIX_SIZE) {
+		if (get_kv_format(slot_array[middle].key_category) == KV_INPLACE && key_buf->key_size < PREFIX_SIZE) {
 			memset(padded_leaf_prefix, 0x00, PREFIX_SIZE);
-			memcpy(padded_leaf_prefix, key_buf->data, key_buf->size);
+			memcpy(padded_leaf_prefix, key_buf->data, key_buf->key_size);
 			leaf_key_prefix.prefix = padded_leaf_prefix;
 			leaf_key_prefix.len = PREFIX_SIZE;
 		} else

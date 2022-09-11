@@ -3,7 +3,8 @@
 
 #include <stdint.h>
 struct splice {
-	uint32_t size;
+	uint32_t key_size;
+	uint32_t value_size;
 	char data[];
 };
 
