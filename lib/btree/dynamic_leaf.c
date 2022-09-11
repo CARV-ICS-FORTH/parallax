@@ -180,7 +180,7 @@ void binary_search_dynamic_leaf(const struct bt_dynamic_leaf_node *leaf, uint32_
 		int32_t middle = (start + end) / 2;
 		if (middle < 0 || middle >= numberOfEntriesInNode) {
 			result->status = ERROR;
-			assert(0);
+			BUG_ON();
 			return;
 		}
 
