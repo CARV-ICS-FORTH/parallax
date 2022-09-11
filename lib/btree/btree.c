@@ -1619,7 +1619,7 @@ deser:
 	}
 
 	assert(kv_pair.addr);
-	uint32_t value_size = VALUE_SIZE(kv_pair.addr + sizeof(uint32_t) + KEY_SIZE(kv_pair.addr));
+	uint32_t value_size = GET_VALUE_SIZE(kv_pair.addr);
 	if (get_op->retrieve && !get_op->buffer_to_pack_kv) {
 		get_op->buffer_to_pack_kv = malloc(value_size);
 		get_op->size = value_size;
@@ -1629,8 +1629,7 @@ deser:
 		get_op->buffer_overflow = 1;
 
 	if (get_op->retrieve && get_op->size <= value_size) {
-		memcpy(get_op->buffer_to_pack_kv,
-		       kv_pair.addr + sizeof(uint32_t) + KEY_SIZE(kv_pair.addr) + sizeof(uint32_t), value_size);
+		memcpy(get_op->buffer_to_pack_kv, GET_VALUE_OFFSET(kv_pair.addr, KEY_SIZE(kv_pair.addr)), value_size);
 		get_op->buffer_overflow = 0;
 	}
 
