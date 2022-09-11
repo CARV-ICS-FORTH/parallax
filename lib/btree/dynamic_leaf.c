@@ -203,6 +203,7 @@ void binary_search_dynamic_leaf(const struct bt_dynamic_leaf_node *leaf, uint32_
 				    get_kv_format(slot_array[middle].key_category));
 
 		/* Next we check the look up key*/
+		// TODO: Possible BUG, we are comparing leaf_key_prefix.prefix (a.k.a. a key) with the key_value_buf which follows key_size key format
 		if (req->metadata.key_format == KV_PREFIX) {
 			ret = prefix_compare(leaf_key_prefix.prefix, req->key_value_buf, PREFIX_SIZE);
 			goto check_comparison;
