@@ -75,8 +75,9 @@ void move_kv_pairs_to_new_segment(struct db_handle handle, stack *marks)
 		ins_req.metadata.level_id = 0;
 		ins_req.metadata.special_split = 0;
 		ins_req.metadata.tombstone = 0;
-		int key_size = *(uint32_t *)kv_address;
-		int value_size = *(uint32_t *)(kv_address + 4 + key_size);
+		int key_size = GET_KEY_SIZE(kv_address);
+		int value_size = GET_VALUE_SIZE(kv_address);
+		//TODO:(@geostyl) 8 is a magic number, i think this denotes to lsn, make it a define or something
 		ins_req.metadata.kv_size = key_size + 8 + value_size;
 		ins_req.metadata.key_format = KV_FORMAT;
 		ins_req.metadata.cat = BIG_INLOG;
@@ -94,7 +95,7 @@ int8_t find_deleted_kv_pairs_in_segment(struct db_handle handle, struct gc_segme
 {
 	struct gc_segment_descriptor iter_log_segment = *log_seg;
 	char *log_segment_in_device = REAL_ADDRESS(log_seg->segment_dev_offt);
-	struct splice *key;
+	struct splice *kv;
 	uint64_t checked_segment_chunk = sizeof(struct log_sequence_number);
 	uint64_t segment_data = LOG_DATA_OFFSET;
 	int key_value_size;
@@ -103,16 +104,14 @@ int8_t find_deleted_kv_pairs_in_segment(struct db_handle handle, struct gc_segme
 	iter_log_segment.log_segment_in_memory += sizeof(struct log_sequence_number);
 	log_segment_in_device += sizeof(struct log_sequence_number);
 
-	key = (struct splice *)iter_log_segment.log_segment_in_memory;
-	key_value_size = sizeof(key->size) * 2;
+	kv = (struct splice *)iter_log_segment.log_segment_in_memory;
+	key_value_size = sizeof(kv->key_size) * 2;
 	marks->size = 0;
 
 	while (checked_segment_chunk < segment_data) {
-		key = (struct splice *)iter_log_segment.log_segment_in_memory;
-		struct splice *value =
-			(struct splice *)(VALUE_SIZE_OFFSET(key->size, iter_log_segment.log_segment_in_memory));
+		kv = (struct splice *)iter_log_segment.log_segment_in_memory;
 
-		if (!key->size)
+		if (!kv->key_size)
 			break;
 
 		struct lookup_operation get_op = { .db_desc = handle.db_desc,
@@ -120,7 +119,7 @@ int8_t find_deleted_kv_pairs_in_segment(struct db_handle handle, struct gc_segme
 						   .size = 0,
 						   .buffer_to_pack_kv = NULL,
 						   .buffer_overflow = 0,
-						   .kv_buf = (char *)key,
+						   .kv_buf = (char *)kv,
 						   .retrieve = 0 };
 		find_key(&get_op);
 
@@ -129,11 +128,13 @@ int8_t find_deleted_kv_pairs_in_segment(struct db_handle handle, struct gc_segme
 		else
 			push_stack(marks, iter_log_segment.log_segment_in_memory);
 
-		if (key->size != 0) {
-			uint32_t bytes_to_move = key->size + value->size + key_value_size + 8;
+		if (kv->key_size != 0) {
+			//TODO:(@geostyl) 8 is a magic number, i think this denotes to lsn, make it a define or something
+			uint32_t bytes_to_move = kv->key_size + kv->value_size + key_value_size + 8;
 			iter_log_segment.log_segment_in_memory += bytes_to_move;
 			log_segment_in_device += bytes_to_move;
-			checked_segment_chunk += key->size + value->size + key_value_size + 8;
+			//TODO:(@geostyl) 8 is a magic number, i think this denotes to lsn, make it a define or something
+			checked_segment_chunk += kv->key_size + kv->value_size + key_value_size + 8;
 		} else
 			break;
 	}

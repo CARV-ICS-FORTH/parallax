@@ -692,21 +692,22 @@ void write_data_in_dynamic_leaf(struct write_dynamic_leaf_args *args)
 			struct splice *key = (struct splice *)key_value_buf;
 			assert(args->kv_dev_offt != 0);
 			leaf->header.leaf_log_size += append_bt_leaf_entry_inplace(dest, args->kv_dev_offt, key->data,
-										   MIN(key->size, PREFIX_SIZE));
+										   MIN(key->key_size, PREFIX_SIZE));
 		}
 #if MEDIUM_LOG_UNSORTED
 		else if (args->level_id == 0 && args->cat == MEDIUM_INLOG && kv_format == KV_FORMAT) {
 			assert(args->kv_dev_offt != 0);
 			leaf->header.leaf_log_size += append_bt_leaf_entry_inplace(dest, args->kv_dev_offt, key->data,
-										   MIN(key->size, PREFIX_SIZE));
+										   MIN(key->key_size, PREFIX_SIZE));
 		}
 #endif
 		else {
 
 			if (kv_format == KV_FORMAT) {
 				struct splice *key = (struct splice *)key_value_buf;
-				leaf->header.leaf_log_size += append_bt_leaf_entry_inplace(
-					dest, ABSOLUTE_ADDRESS(key_value_buf), key->data, MIN(key->size, PREFIX_SIZE));
+				leaf->header.leaf_log_size +=
+					append_bt_leaf_entry_inplace(dest, ABSOLUTE_ADDRESS(key_value_buf), key->data,
+								     MIN(key->key_size, PREFIX_SIZE));
 			} else {
 				leaf->header.leaf_log_size += append_bt_leaf_entry_inplace(
 					dest, ABSOLUTE_ADDRESS(serialized->dev_offt), serialized->prefix, PREFIX_SIZE);
