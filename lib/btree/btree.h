@@ -508,9 +508,10 @@ lock_table *_find_position(const lock_table **table, node_header *node);
 #define REAL_ADDRESS(X) ((X) ? (void *)(MAPPED + (uint64_t)(X)) : BUG_ON())
 #define KEY_OFFSET(KEY_SIZE, KV_BUF) (sizeof(uint32_t) + KV_BUF)
 #define VALUE_SIZE_OFFSET(KEY_SIZE, KEY) (sizeof(uint32_t) + KEY_SIZE + KEY)
-#define SERIALIZE_KEY(buf, key, key_size) \
-	*(uint32_t *)buf = key_size;      \
-	memcpy(buf + sizeof(uint32_t), key, key_size)
+#define SERIALIZE_KEY(buf, key, key_size)                           \
+	*(uint32_t *)buf = key_size;                                \
+	*(uint32_t *)((char *)buf + sizeof(uint32_t)) = UINT32_MAX; \
+	memcpy((char *)buf + sizeof(uint32_t) + sizeof(uint32_t), key, key_size)
 #define KV_MAX_SIZE (4096 + 8)
 #define likely(x) __builtin_expect((x), 1)
 #define unlikely(x) __builtin_expect((x), 0)

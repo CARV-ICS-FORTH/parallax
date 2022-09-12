@@ -117,7 +117,7 @@ struct find_result find_key_in_dynamic_leaf(const struct bt_dynamic_leaf_node *l
 					    uint32_t key_size, int level_id)
 {
 	bt_insert_req req;
-	char buf[MAX_KEY_SIZE + sizeof(uint32_t)];
+	char buf[MAX_KEY_SIZE + sizeof(uint32_t) + sizeof(uint32_t)];
 	struct dl_bsearch_result result = { .middle = 0, .status = INSERT, .op = DYNAMIC_LEAF_FIND };
 	struct find_result ret_result = { .kv = NULL, .key_type = KV_INPLACE, .kv_category = BIG_INLOG, .tombstone = 0 };
 	struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(leaf);
@@ -215,7 +215,6 @@ void binary_search_dynamic_leaf(const struct bt_dynamic_leaf_node *leaf, uint32_
 		}
 
 		/*Case we have a key in KV_FORMAT encoding that IS smaller than PREFIX_SIZE*/
-
 		char padded_lookupkey_prefix[PREFIX_SIZE] = { 0 };
 		memcpy(padded_lookupkey_prefix, GET_KEY_OFFSET(req->key_value_buf), KEY_SIZE(req->key_value_buf));
 		ret = prefix_compare(leaf_key_prefix.prefix, padded_lookupkey_prefix, PREFIX_SIZE);

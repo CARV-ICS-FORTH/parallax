@@ -19,6 +19,7 @@
 #include "../scanner/scanner.h"
 #include <log.h>
 #include <stddef.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -83,13 +84,19 @@ static inline int par_serialize_to_kv_format(struct par_key *key, char **buf, ui
 {
 	int ret = 0;
 	uint32_t key_size = sizeof(uint32_t) + key->size;
-	if (key_size > buf_size) {
-		*buf = malloc(key_size);
+	uint32_t value_size = UINT32_MAX;
+	uint32_t get_op_payload_size = key_size + sizeof(uint32_t);
+	if (get_op_payload_size > buf_size) {
+		*buf = malloc(get_op_payload_size);
 		ret = 1;
 	}
 	char *kv_buf = *buf;
+	// key_size
 	memcpy(&kv_buf[0], &key->size, sizeof(uint32_t));
-	memcpy(&kv_buf[sizeof(uint32_t)], key->data, key->size);
+	// value size
+	memcpy(&kv_buf[sizeof(uint32_t)], &value_size, sizeof(uint32_t));
+	// key payload
+	memcpy(&kv_buf[sizeof(uint32_t) + sizeof(uint32_t)], key->data, key->size);
 	return ret;
 }
 
