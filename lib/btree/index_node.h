@@ -167,6 +167,14 @@ struct pivot_key *index_iterator_get_pivot_key(struct index_node_iterator *itera
 
 struct pivot_pointer *index_iterator_get_pivot_pointer(struct index_node_iterator *iterator);
 
+/**
+  * compares a look up key following the lookup key format with an index key (pivot key)
+  * @param index_key: the index key to be compared
+  * @param lookup_key: the key being searched against the index node
+  * @param lookup_key_format: the format the lookup_key follows
+  */
+int index_key_cmp(struct pivot_key *index_key, char *lookup_key, enum KV_type lookup_key_format);
+
 #define PIVOT_KEY_SIZE(X) ((X) ? (X)->size + sizeof(*X) : BUG_ON_UINT32T())
 #define PIVOT_SIZE(X) (PIVOT_KEY_SIZE(X) + sizeof(struct pivot_pointer))
 #define INDEX_PIVOT_ADDRESS(X, Y) ((uint64_t)(X) + (Y))

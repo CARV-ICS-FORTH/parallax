@@ -592,6 +592,8 @@ struct bt_rebalance_result split_dynamic_leaf(struct bt_dynamic_leaf_node *leaf,
 	seg_free_leaf_node(db_desc, level_id, req->metadata.tree_id, (leaf_node *)old_leaf);
 	free(split_buffer);
 
+	log_debug("middle key propoted is : %u, %s", *(uint32_t *)rep.middle_key, rep.middle_key + sizeof(uint32_t));
+
 	return rep;
 }
 
@@ -673,6 +675,8 @@ struct bt_rebalance_result special_split_dynamic_leaf(struct bt_dynamic_leaf_nod
 		rep.stat = LEAF_NODE_SPLITTED;
 
 	seg_free_leaf_node(db_desc, level_id, req->metadata.tree_id, (leaf_node *)old_leaf);
+
+	log_debug("middle key propoted is : %u, %s", *(uint32_t *)rep.middle_key, rep.middle_key + sizeof(uint32_t));
 	return rep;
 }
 

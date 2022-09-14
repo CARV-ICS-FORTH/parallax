@@ -1,5 +1,6 @@
 #include "index_node.h"
 #include "../common/common.h"
+#include "btree.h"
 #include "segment_allocator.h"
 #include <assert.h>
 #include <log.h>
@@ -107,15 +108,10 @@ static int32_t index_search_get_pos(struct index_node *node, void *lookup_key, e
 	while (start <= end) {
 		middle = (start + end) / 2;
 
-		struct key_compare pivot_cmp = { 0 };
-		struct key_compare lookup_key_cmp = { 0 };
 		struct pivot_key *p_key = (struct pivot_key *)INDEX_PIVOT_ADDRESS(node, slot_array[middle].pivot);
-		init_key_cmp(&pivot_cmp, p_key, KV_FORMAT);
-		init_key_cmp(&lookup_key_cmp, lookup_key, lookup_key_format);
 
 		/*At zero position we have a guard or -oo*/
-		comparison_return_value = key_cmp(&pivot_cmp, &lookup_key_cmp);
-
+		comparison_return_value = index_key_cmp(p_key, (char *)lookup_key, lookup_key_format);
 		if (0 == comparison_return_value) {
 			*exact_match = true;
 			return middle;
@@ -370,4 +366,39 @@ struct bt_rebalance_result index_split_node(struct index_node *node, bt_insert_r
 	result.right_child->height = node->header.height;
 	result.stat = INDEX_NODE_SPLITTED;
 	return result;
+}
+
+int index_key_cmp(struct pivot_key *index_key, char *lookup_key, enum KV_type lookup_key_format)
+{
+	uint32_t size = 0;
+	int ret = 0;
+
+	if (lookup_key_format == KV_FORMAT) {
+		size = index_key->size <= GET_KEY_SIZE(lookup_key) ? index_key->size : GET_KEY_SIZE(lookup_key);
+		ret = memcmp(index_key->data, GET_KEY_OFFSET(lookup_key), size);
+		if (ret != 0)
+			return ret;
+		return index_key->size - GET_KEY_SIZE(lookup_key);
+	}
+
+	/* lookup_key is KV_PREFIX */
+	struct bt_leaf_entry *kv_seperated_kvbuf = (struct bt_leaf_entry *)lookup_key;
+	if (index_key->size >= PREFIX_SIZE)
+		ret = prefix_compare(index_key->data, kv_seperated_kvbuf->prefix, PREFIX_SIZE);
+	else
+		ret = prefix_compare(index_key->data, kv_seperated_kvbuf->prefix, index_key->size);
+
+	if (!ret)
+		return ret;
+
+	/*we have a tie, prefix didn't help, fetch query_key form KV log*/
+	struct kv_format *kv_formated_kvbuf = (struct kv_format *)kv_seperated_kvbuf->dev_offt;
+	size = index_key->size <= kv_formated_kvbuf->key_size ? index_key->size : kv_formated_kvbuf->key_size;
+
+	ret = memcmp(index_key->data, kv_formated_kvbuf->key_buf, size);
+
+	if (ret != 0)
+		return ret;
+
+	return index_key->size - kv_formated_kvbuf->key_size;
 }
