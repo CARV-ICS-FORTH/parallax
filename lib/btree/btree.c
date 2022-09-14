@@ -1924,7 +1924,7 @@ release_and_retry:
 	while (1) {
 		/*Check if father is safe it should be*/
 		if (is_split_needed(son, ins_req, db_desc->levels[level_id].leaf_size)) {
-			/*Overflow split*/
+			/*Overflow split for index nodes*/
 			if (son->height > 0) {
 				split_res = index_split_node((struct index_node *)son, ins_req);
 				/*node has splitted, free it*/
