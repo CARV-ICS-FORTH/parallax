@@ -323,9 +323,13 @@ void print_all_keys(const struct bt_dynamic_leaf_node *leaf, uint32_t leaf_size)
 	/* log_info("number of entries %d", leaf->header.num_entries); */
 	assert(leaf->header.num_entries < 500);
 	for (unsigned i = 0; i < leaf->header.num_entries; ++i) {
-		char *key = fill_keybuf(get_kv_offset(leaf, leaf_size, slot_array[i].index), slot_array[i].kv_loc);
-		assert(KEY_SIZE(key) < 30);
-		log_debug("Key %*s", KEY_SIZE(key), key + 4);
+		char *key = fill_keybuf(get_kv_offset(leaf, leaf_size, slot_array[i].index),
+					get_kv_format(slot_array[i].key_category));
+		if (KEY_SIZE(key) >= MAX_KEY_SIZE) {
+			log_debug("%u %u", KEY_SIZE(key), i);
+		}
+		assert(KEY_SIZE(key) < MAX_KEY_SIZE);
+		log_debug("Key %*s", KEY_SIZE(key), key + 8);
 		/* log_info("offset in leaf %d ADDR %llu Size%d key %s\n", slot_array[i].index, get_kv_offset(leaf, leaf_size, slot_array[i].index),KEY_SIZE(key), key + 4); */
 	}
 	/* log_info("--------------------------------------------"); */

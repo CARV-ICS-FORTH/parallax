@@ -1857,7 +1857,7 @@ static uint8_t concurrent_insert(bt_insert_req *ins_req)
 	/*The array with the locks that belong to this thread from upper levels*/
 	lock_table *upper_level_nodes[MAX_HEIGHT];
 	struct bt_rebalance_result split_res;
-	lock_table *lock;
+	lock_table *lock = NULL;
 
 	db_descriptor *db_desc = ins_req->metadata.handle->db_desc;
 	uint8_t level_id = ins_req->metadata.level_id;
