@@ -33,7 +33,7 @@
 
 #define MAX_HEIGHT 9
 
-enum KV_type { KV_FORMAT = 19, KV_PREFIX = 20 };
+enum KV_type { KV_FORMAT = 19, KV_PREFIX = 20, INDEX_KEY_TYPE = 21 };
 
 struct lookup_operation {
 	struct db_descriptor *db_desc; /*in variable*/

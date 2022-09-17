@@ -519,8 +519,8 @@ struct bt_rebalance_result split_dynamic_leaf(struct bt_dynamic_leaf_node *leaf,
 	}
 
 	uint32_t key_size = GET_KEY_SIZE(L.addr);
+	memcpy(rep.middle_key + sizeof(uint32_t), GET_KEY_OFFSET(L.addr), key_size); // key
 	*(uint32_t *)rep.middle_key = key_size; // key_size
-	memcpy(rep.middle_key + sizeof(key_size), GET_KEY_OFFSET(L.addr), key_size); // key
 	assert(key_size + sizeof(key_size) <= sizeof(rep.middle_key));
 
 	if (L.in_tail) {
@@ -863,9 +863,9 @@ int8_t insert_in_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, bt_insert_req *
 				BUG_ON();
 			}
 
-			int key_size = *(uint32_t *)kv;
-			int value_size = *(uint32_t *)(kv + 4 + key_size);
-			int kv_size = key_size + value_size + 2 * sizeof(uint32_t);
+			uint32_t key_size = GET_KEY_SIZE(kv);
+			uint32_t value_size = GET_VALUE_SIZE(kv);
+			uint32_t kv_size = key_size + value_size + 2 * sizeof(uint32_t);
 			leaf->header.fragmentation += kv_size;
 		}
 		write_data_in_dynamic_leaf(&write_leaf_args);

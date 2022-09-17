@@ -196,8 +196,8 @@ static bool index_internal_insert_pivot(struct insert_pivot_req *ins_pivot_req, 
 	struct index_slot_array_entry *slot_array = index_get_slot_array(ins_pivot_req->node);
 	if (!is_append) {
 		bool exact_match = false;
-		position =
-			index_search_get_pos(ins_pivot_req->node, (void *)ins_pivot_req->key, KV_FORMAT, &exact_match);
+		position = index_search_get_pos(ins_pivot_req->node, (void *)ins_pivot_req->key, INDEX_KEY_TYPE,
+						&exact_match);
 		assert(position >= 0);
 
 		//TODO refactor this and move it inside index_search_get_pos
@@ -381,24 +381,34 @@ int index_key_cmp(struct pivot_key *index_key, char *lookup_key, enum KV_type lo
 		return index_key->size - GET_KEY_SIZE(lookup_key);
 	}
 
-	/* lookup_key is KV_PREFIX */
-	struct bt_leaf_entry *kv_seperated_kvbuf = (struct bt_leaf_entry *)lookup_key;
-	if (index_key->size >= PREFIX_SIZE)
-		ret = prefix_compare(index_key->data, kv_seperated_kvbuf->prefix, PREFIX_SIZE);
-	else
-		ret = prefix_compare(index_key->data, kv_seperated_kvbuf->prefix, index_key->size);
+	if (lookup_key_format == KV_PREFIX) {
+		struct bt_leaf_entry *kv_seperated_kvbuf = (struct bt_leaf_entry *)lookup_key;
+		if (index_key->size >= PREFIX_SIZE)
+			ret = prefix_compare(index_key->data, kv_seperated_kvbuf->prefix, PREFIX_SIZE);
+		else
+			ret = prefix_compare(index_key->data, kv_seperated_kvbuf->prefix, index_key->size);
 
-	if (!ret)
-		return ret;
+		if (!ret)
+			return ret;
 
-	/*we have a tie, prefix didn't help, fetch query_key form KV log*/
-	struct kv_format *kv_formated_kvbuf = (struct kv_format *)kv_seperated_kvbuf->dev_offt;
-	size = index_key->size <= kv_formated_kvbuf->key_size ? index_key->size : kv_formated_kvbuf->key_size;
+		/*we have a tie, prefix didn't help, fetch query_key form KV log*/
+		struct kv_format *kv_formated_kvbuf = (struct kv_format *)kv_seperated_kvbuf->dev_offt;
+		size = index_key->size <= kv_formated_kvbuf->key_size ? index_key->size : kv_formated_kvbuf->key_size;
 
-	ret = memcmp(index_key->data, kv_formated_kvbuf->key_buf, size);
+		ret = memcmp(index_key->data, kv_formated_kvbuf->key_buf, size);
 
+		if (ret != 0)
+			return ret;
+
+		return index_key->size - kv_formated_kvbuf->key_size;
+	}
+
+	/* lookup_key is INDEX_KEY_TYPE
+	 * this should only(!) happend when we are inserting and new key into an index node (after a split) */
+	struct pivot_key *p_key = (struct pivot_key *)(lookup_key);
+	size = index_key->size <= p_key->size ? index_key->size : p_key->size;
+	ret = memcmp(index_key->data, p_key->data, size);
 	if (ret != 0)
 		return ret;
-
-	return index_key->size - kv_formated_kvbuf->key_size;
+	return index_key->size - p_key->size;
 }
