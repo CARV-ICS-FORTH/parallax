@@ -267,7 +267,9 @@ static void index_internal_iterator_init(struct index_node *node, struct index_n
 		return;
 
 	bool unused_match = false;
-	iterator->position = index_search_get_pos(node, key, KV_FORMAT, &unused_match);
+	// TODO: (@geostyl) @gesalous you should definetly review this
+	// We take a pivot_key as key so we should compare it like an index_key_type (?)
+	iterator->position = index_search_get_pos(node, key, INDEX_KEY_TYPE, &unused_match);
 }
 
 void index_iterator_init_with_key(struct index_node *node, struct index_node_iterator *iterator, struct pivot_key *key)
