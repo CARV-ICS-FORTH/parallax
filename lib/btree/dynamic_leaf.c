@@ -210,7 +210,7 @@ void binary_search_dynamic_leaf(const struct bt_dynamic_leaf_node *leaf, uint32_
 			goto check_comparison;
 		}
 
-		if (KEY_SIZE(req->key_value_buf) >= PREFIX_SIZE) {
+		if (GET_KEY_SIZE(req->key_value_buf) >= PREFIX_SIZE) {
 			ret = prefix_compare(leaf_key_prefix.prefix, GET_KEY_OFFSET(req->key_value_buf), PREFIX_SIZE);
 			goto check_comparison;
 		}
@@ -772,8 +772,8 @@ int reorganize_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, uint32_t leaf_siz
 					    get_kv_format(slot_array[i].key_category));
 
 		if (get_kv_format(slot_array[i].key_category) == KV_INPLACE) {
-			uint32_t key_size = KEY_SIZE(key_buf);
-			uint32_t value_size = VALUE_SIZE(key_buf + sizeof(uint32_t) + key_size);
+			uint32_t key_size = GET_KEY_SIZE(key_buf);
+			uint32_t value_size = GET_VALUE_SIZE(key_buf);
 			uint32_t key_buf_size = (2 * sizeof(uint32_t)) + key_size + value_size;
 			assert(slot_array[i].key_category == SMALL_INPLACE ||
 			       slot_array[i].key_category == MEDIUM_INPLACE);

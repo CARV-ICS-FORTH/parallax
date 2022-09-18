@@ -77,8 +77,7 @@ void move_kv_pairs_to_new_segment(struct db_handle handle, stack *marks)
 		ins_req.metadata.tombstone = 0;
 		int key_size = GET_KEY_SIZE(kv_address);
 		int value_size = GET_VALUE_SIZE(kv_address);
-		//TODO:(@geostyl) 8 is a magic number, i think this denotes to lsn, make it a define or something
-		ins_req.metadata.kv_size = key_size + 8 + value_size;
+		ins_req.metadata.kv_size = sizeof(uint32_t) + sizeof(uint32_t) + key_size + value_size;
 		ins_req.metadata.key_format = KV_FORMAT;
 		ins_req.metadata.cat = BIG_INLOG;
 		char *error_message = btree_insert_key_value(&ins_req);
@@ -104,8 +103,7 @@ int8_t find_deleted_kv_pairs_in_segment(struct db_handle handle, struct gc_segme
 	iter_log_segment.log_segment_in_memory += sizeof(struct log_sequence_number);
 	log_segment_in_device += sizeof(struct log_sequence_number);
 
-	kv = (struct splice *)iter_log_segment.log_segment_in_memory;
-	key_value_size = sizeof(kv->key_size) * 2;
+	key_value_size = sizeof(uint32_t) * 2;
 	marks->size = 0;
 
 	while (checked_segment_chunk < segment_data) {
