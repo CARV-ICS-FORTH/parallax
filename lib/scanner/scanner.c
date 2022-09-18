@@ -289,8 +289,8 @@ static void fill_normal_scanner(struct level_scanner *level_sc, struct level_des
 	switch (get_kv_format(slot_array[position].key_category)) {
 	case KV_INPLACE: {
 		level_sc->keyValue = get_kv_offset(dlnode, level->leaf_size, slot_array[position].index);
-		uint32_t key_size = KEY_SIZE(level_sc->keyValue);
-		uint32_t value_size = VALUE_SIZE(level_sc->keyValue + sizeof(uint32_t) + key_size);
+		uint32_t key_size = GET_KEY_SIZE(level_sc->keyValue);
+		uint32_t value_size = GET_VALUE_SIZE(level_sc->keyValue);
 		level_sc->kv_size = sizeof(key_size) + sizeof(value_size) + key_size + value_size;
 		level_sc->kv_format = KV_FORMAT;
 		level_sc->cat = slot_array[position].key_category;
@@ -306,8 +306,8 @@ static void fill_normal_scanner(struct level_scanner *level_sc, struct level_des
 		level_sc->keyValue = (void *)level_sc->kv_entry.dev_offt;
 
 		if (level_sc->level_id) {
-			uint32_t key_size = KEY_SIZE(level_sc->keyValue);
-			uint32_t value_size = VALUE_SIZE(level_sc->keyValue + sizeof(uint32_t) + key_size);
+			uint32_t key_size = GET_KEY_SIZE(level_sc->keyValue);
+			uint32_t value_size = GET_VALUE_SIZE(level_sc->keyValue);
 			level_sc->kv_size = sizeof(key_size) + sizeof(value_size) + key_size + value_size;
 		} else
 			level_sc->kv_size = UINT32_MAX;
@@ -469,8 +469,17 @@ int32_t level_scanner_seek(level_scanner *level_sc, void *start_key_buf, SEEK_SC
 	struct dl_bsearch_result dlresult = { .middle = 0, .status = INSERT, .op = DYNAMIC_LEAF_INSERT };
 	bt_insert_req req = { 0 };
 
-	req.key_value_buf = (char *)start_key;
-	req.metadata.kv_size = PIVOT_KEY_SIZE(start_key);
+	char *kv_formated_start_key = calloc(1, PIVOT_KEY_SIZE(start_key) + sizeof(uint32_t));
+	*(uint32_t *)kv_formated_start_key = start_key->size;
+	*(uint32_t *)(kv_formated_start_key + sizeof(uint32_t)) = UINT32_MAX;
+	memcpy(GET_KEY_OFFSET(kv_formated_start_key), start_key->data, start_key->size);
+	req.key_value_buf = kv_formated_start_key;
+	//req.key_value_buf = (char *)start_key;
+	// constructing a kv_formated buffer containing key_size | value_size(UINT32_MAX) | key_buf
+	// binary saerch of dynamic leaf acceptes only kv_formated or kv_prefixed keys, but the start_key of the scanner
+	// follows the key_size | key format
+	// TODO: (@geostyl) make the binary search aware of the scanner format?
+	req.metadata.kv_size = PIVOT_KEY_SIZE(start_key) + sizeof(uint32_t);
 	db_handle handle = { .db_desc = db_desc, .volume_desc = NULL };
 	req.metadata.handle = &handle;
 	req.metadata.key_format = KV_FORMAT;
