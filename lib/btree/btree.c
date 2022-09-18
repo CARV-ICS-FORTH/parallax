@@ -973,7 +973,7 @@ static char *insert_error_handling(db_handle *handle, uint32_t key_size, uint32_
 
 	return NULL;
 }
-uint32_t counter = 0;
+
 struct par_put_metadata insert_key_value(db_handle *handle, void *key, void *value, uint32_t key_size,
 					 uint32_t value_size, request_type op_type, char *error_message)
 {
@@ -997,8 +997,8 @@ struct par_put_metadata insert_key_value(db_handle *handle, void *key, void *val
 	memcpy(key_buf + sizeof(uint32_t) + sizeof(uint32_t), key, key_size); // |key_size | value_size | key
 	memcpy(key_buf + sizeof(uint32_t) + sizeof(uint32_t) + key_size, value,
 	       value_size); // |key_size | value_suze | key | value |
-	log_debug("|%u | %u | %s | |", *(uint32_t *)key_buf, *(uint32_t *)(key_buf + sizeof(uint32_t)),
-		  (char *)key_buf + 2 * sizeof(uint32_t));
+	//log_debug("|%u | %u | %s | |", *(uint32_t *)key_buf, *(uint32_t *)(key_buf + sizeof(uint32_t)),
+	//  (char *)key_buf + 2 * sizeof(uint32_t));
 	//(char *)key_buf + sizeof(uint32_t) + sizeof(uint32_t) + key_size);
 	ins_req.metadata.handle = handle;
 	ins_req.key_value_buf = key_buf;
@@ -1016,11 +1016,7 @@ struct par_put_metadata insert_key_value(db_handle *handle, void *key, void *val
 	 * is the active_tree after acquiring the guard lock of the region.
 	 */
 
-	if (counter == 553) {
-		log_debug("debug time");
-	}
 	error_message = btree_insert_key_value(&ins_req);
-	counter++;
 	return ins_req.metadata.put_op_metadata;
 }
 

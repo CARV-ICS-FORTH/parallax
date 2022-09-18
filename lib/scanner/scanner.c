@@ -255,13 +255,12 @@ static void fill_compaction_scanner(struct level_scanner *level_sc, struct level
 	switch (get_kv_format(slot_array[position].key_category)) {
 	case KV_INPLACE: {
 		level_sc->keyValue = get_kv_offset(dlnode, level->leaf_size, slot_array[position].index);
-		uint32_t key_size = KEY_SIZE(level_sc->keyValue);
-		uint32_t value_size = VALUE_SIZE(level_sc->keyValue + sizeof(uint32_t) + key_size);
+		uint32_t key_size = GET_KEY_SIZE(level_sc->keyValue);
+		uint32_t value_size = GET_VALUE_SIZE(level_sc->keyValue);
 		level_sc->kv_format = KV_FORMAT;
 		level_sc->cat = slot_array[position].key_category;
 		level_sc->tombstone = slot_array[position].tombstone;
 		level_sc->kv_size = sizeof(key_size) + sizeof(value_size) + key_size + value_size;
-
 		break;
 	}
 	case KV_INLOG: {
@@ -461,7 +460,7 @@ int32_t level_scanner_seek(level_scanner *level_sc, void *start_key_buf, SEEK_SC
 	}
 	assert(node->type == leafNode || node->type == leafRootNode);
 
-	/*Whole path root to leaf is locked. Now set the element for the leaf node*/
+	/*Whole path root to leaf is locked and inserted into the stack. Now set the element for the leaf node*/
 	memset(&element, 0x00, sizeof(element));
 	element.node = node;
 
@@ -471,7 +470,6 @@ int32_t level_scanner_seek(level_scanner *level_sc, void *start_key_buf, SEEK_SC
 	bt_insert_req req = { 0 };
 
 	req.key_value_buf = (char *)start_key;
-
 	req.metadata.kv_size = PIVOT_KEY_SIZE(start_key);
 	db_handle handle = { .db_desc = db_desc, .volume_desc = NULL };
 	req.metadata.handle = &handle;

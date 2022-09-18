@@ -703,8 +703,8 @@ static int comp_append_medium_L1(struct comp_level_write_cursor *c, struct comp_
 	ins_req.metadata.handle = c->handle;
 	ins_req.metadata.log_offset = 0;
 
-	ins_req.metadata.kv_size = sizeof(uint32_t) + KEY_SIZE(in->kv_inplace);
-	ins_req.metadata.kv_size += VALUE_SIZE(in->kv_inplace + ins_req.metadata.kv_size) + sizeof(uint32_t);
+	ins_req.metadata.kv_size = sizeof(uint32_t) + sizeof(uint32_t); // key_size | value_size
+	ins_req.metadata.kv_size += GET_KEY_SIZE(in->kv_inplace) + GET_VALUE_SIZE(in->kv_inplace); // key | value
 	ins_req.metadata.cat = MEDIUM_INLOG;
 	ins_req.metadata.level_id = c->level_id;
 	ins_req.metadata.tree_id = 1;
@@ -731,11 +731,11 @@ static int comp_append_medium_L1(struct comp_level_write_cursor *c, struct comp_
 
 	char *log_location = append_key_value_to_log(&log_op);
 
-	if (KEY_SIZE(in->kv_inplace) >= PREFIX_SIZE)
-		memcpy(out->kvsep.prefix, in->kv_inplace + sizeof(uint32_t), PREFIX_SIZE);
+	if (GET_KEY_SIZE(in->kv_inplace) >= PREFIX_SIZE)
+		memcpy(out->kvsep.prefix, GET_KEY_OFFSET(in->kv_inplace), PREFIX_SIZE);
 	else {
 		memset(out->kvsep.prefix, 0x00, PREFIX_SIZE);
-		memcpy(out->kvsep.prefix, in->kv_inplace + sizeof(uint32_t), KEY_SIZE(in->kv_inplace));
+		memcpy(out->kvsep.prefix, GET_KEY_OFFSET(in->kv_inplace), GET_KEY_SIZE(in->kv_inplace));
 	}
 	out->kvsep.dev_offt = (uint64_t)log_location;
 	out->kv_category = MEDIUM_INLOG;
@@ -765,8 +765,8 @@ static void comp_append_entry_to_leaf_node(struct comp_level_write_cursor *curso
 	write_leaf_args.level_medium_inplace = cursor->handle->db_desc->level_medium_inplace;
 	switch (curr_key->kv_type) {
 	case KV_INPLACE:
-		kv_size = sizeof(uint32_t) + KEY_SIZE(curr_key->kv_inplace);
-		kv_size += VALUE_SIZE(curr_key->kv_inplace + kv_size) + sizeof(uint32_t);
+		kv_size = sizeof(uint32_t) + sizeof(uint32_t); // key_size | value_size
+		kv_size += GET_KEY_SIZE(curr_key->kv_inplace) + GET_VALUE_SIZE(curr_key->kv_inplace); // key | value
 		write_leaf_args.kv_dev_offt = 0;
 		write_leaf_args.key_value_size = kv_size;
 		write_leaf_args.level_id = cursor->level_id;
@@ -796,11 +796,12 @@ static void comp_append_entry_to_leaf_node(struct comp_level_write_cursor *curso
 	if (write_leaf_args.cat == MEDIUM_INLOG &&
 	    write_leaf_args.level_id == cursor->handle->db_desc->level_medium_inplace) {
 		write_leaf_args.key_value_buf = fetch_kv_from_LRU(&write_leaf_args, cursor);
-		assert(KEY_SIZE(write_leaf_args.key_value_buf) <= MAX_KEY_SIZE);
+		assert(GET_KEY_SIZE(write_leaf_args.key_value_buf) <= MAX_KEY_SIZE);
 		write_leaf_args.cat = MEDIUM_INPLACE;
 
-		kv_size = sizeof(uint32_t) + KEY_SIZE(write_leaf_args.key_value_buf);
-		kv_size += VALUE_SIZE(write_leaf_args.key_value_buf + kv_size) + sizeof(uint32_t);
+		kv_size = sizeof(uint32_t) + sizeof(uint32_t); // key_size | value_size
+		kv_size += GET_KEY_SIZE(write_leaf_args.key_value_buf) +
+			   GET_VALUE_SIZE(write_leaf_args.key_value_buf); // key | value
 		write_leaf_args.key_value_size = kv_size;
 		curr_key->kv_type = KV_INPLACE;
 		curr_key->kv_category = MEDIUM_INPLACE;
@@ -850,30 +851,32 @@ static void comp_append_entry_to_leaf_node(struct comp_level_write_cursor *curso
 		// log_info("keys are %llu for level %u",
 		// c->handle->db_desc->levels[c->level_id].level_size[1],
 		//	 c->level_id);
+
+		// constructing the pivot key out of the keys, pivot key follows different format than KV_PREFIX/KV_FORMAT
+		// first retrieve the kv_formated kv
+		char *kv_formated_kv = NULL;
 		if (append_to_medium_log)
-			comp_append_pivot_to_index(1, cursor, left_leaf_offt, (struct pivot_key *)kv->kv_inplace,
-						   right_leaf_offt);
+			kv_formated_kv = kv->kv_inplace;
 		else {
 			switch (write_leaf_args.kv_format) {
 			case KV_FORMAT:
-				comp_append_pivot_to_index(1, cursor, left_leaf_offt,
-							   (struct pivot_key *)write_leaf_args.key_value_buf,
-							   right_leaf_offt);
+				kv_formated_kv = write_leaf_args.key_value_buf;
 				break;
 			case KV_PREFIX:
 				if (cursor->level_id == 1 && curr_key->kv_category == MEDIUM_INPLACE)
-					comp_append_pivot_to_index(1, cursor, left_leaf_offt,
-								   (struct pivot_key *)curr_key->kv_inplace,
-								   right_leaf_offt);
+					kv_formated_kv = curr_key->kv_inplace;
 				else {
 					// do a page fault to find the pivot
-					char *pivot_addr = (char *)curr_key->kv_inlog->dev_offt;
-					comp_append_pivot_to_index(1, cursor, left_leaf_offt,
-								   (struct pivot_key *)pivot_addr, right_leaf_offt);
+					kv_formated_kv = (char *)curr_key->kv_inlog->dev_offt;
 				}
 				break;
 			}
 		}
+		struct pivot_key new_pivot;
+		new_pivot.size = GET_KEY_SIZE(kv_formated_kv);
+		memcpy(new_pivot.data, GET_KEY_OFFSET(kv_formated_kv), new_pivot.size);
+
+		comp_append_pivot_to_index(1, cursor, left_leaf_offt, &new_pivot, right_leaf_offt);
 	}
 }
 
@@ -1138,8 +1141,8 @@ static void comp_fill_heap_node(struct compaction_request *comp_req, struct comp
 	case MEDIUM_INPLACE:
 		nd->type = KV_FORMAT;
 		nd->KV = cur->cursor_key.kv_inplace;
-		nd->kv_size = sizeof(uint32_t) + KEY_SIZE(nd->KV);
-		nd->kv_size += VALUE_SIZE(nd->KV + nd->kv_size) + sizeof(uint32_t);
+		nd->kv_size = sizeof(uint32_t) + sizeof(uint32_t); // key_size | value_size
+		nd->kv_size += GET_KEY_SIZE(nd->KV) + GET_VALUE_SIZE(nd->KV); // key | value
 		break;
 	case BIG_INLOG:
 	case MEDIUM_INLOG:
@@ -1312,9 +1315,10 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 	if (comp_roots.dst_root)
 		log_debug("Dst [%u][%u] size = %lu", comp_req->dst_level, 0,
 			  handle->db_desc->levels[comp_req->dst_level].level_size[0]);
-	else
-		log_debug("Empty dst [%u][%u]", comp_req->dst_level, 0);
-
+	else {
+		log_debug("Empty dst [%u][%u]", comp_req->dst_level,
+			  0); // TODO: (@geostyl) do we really need this 0 as second argument?
+	}
 	// initialize and fill min_heap properly
 	struct sh_heap *m_heap = sh_alloc_heap();
 	sh_init_heap(m_heap, comp_req->src_level, MIN_HEAP);
@@ -1358,7 +1362,6 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 
 		if (!nd_min.duplicate) {
 			struct comp_parallax_key key = { 0 };
-
 			comp_fill_parallax_key(&nd_min, &key);
 			comp_append_entry_to_leaf_node(merged_level, &key);
 		}
