@@ -997,9 +997,6 @@ struct par_put_metadata insert_key_value(db_handle *handle, void *key, void *val
 	memcpy(key_buf + sizeof(uint32_t) + sizeof(uint32_t), key, key_size); // |key_size | value_size | key
 	memcpy(key_buf + sizeof(uint32_t) + sizeof(uint32_t) + key_size, value,
 	       value_size); // |key_size | value_suze | key | value |
-	//log_debug("|%u | %u | %s | |", *(uint32_t *)key_buf, *(uint32_t *)(key_buf + sizeof(uint32_t)),
-	//  (char *)key_buf + 2 * sizeof(uint32_t));
-	//(char *)key_buf + sizeof(uint32_t) + sizeof(uint32_t) + key_size);
 	ins_req.metadata.handle = handle;
 	ins_req.key_value_buf = key_buf;
 	ins_req.metadata.kv_size = kv_size;

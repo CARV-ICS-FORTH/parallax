@@ -394,21 +394,21 @@ static void validate_kvs(par_handle hd, struct test_info v_info)
 	/*first stage
 	 * check if num of inserted  keys == num_key using scanners
 	*/
-	//scanner_validate_number_of_kvs(hd, v_info.num_keys);
+	scanner_validate_number_of_kvs(hd, v_info.num_keys);
 	/* second stage
 	 * validate that the sizes of keys are correctx
 	*/
 	log_info("Validating static size of small kvs");
 	struct task task_info = { .from = 0, .to = small_num_keys / 2, .key_type = SMALL, .size_type = STATIC };
-	//validate_static_size_of_kvs(hd, task_info);
+	validate_static_size_of_kvs(hd, task_info);
 	log_info("Validating static size of medium kvs");
 	task_info.to = medium_num_keys / 2;
 	task_info.key_type = MEDIUM;
-	//validate_static_size_of_kvs(hd, task_info);
+	validate_static_size_of_kvs(hd, task_info);
 	log_info("Validating static size of large kvs");
 	task_info.to = large_num_keys / 2;
 	task_info.key_type = BIG;
-	//validate_static_size_of_kvs(hd, task_info);
+	validate_static_size_of_kvs(hd, task_info);
 
 	/* third stage
 	 * validate that random kvs exist in the correct size category
@@ -417,15 +417,15 @@ static void validate_kvs(par_handle hd, struct test_info v_info)
 	task_info.to = small_num_keys / 2;
 	task_info.size_type = RANDOM;
 	task_info.key_type = SMALL;
-	//validate_random_size_of_kvs(hd, task_info);
+	validate_random_size_of_kvs(hd, task_info);
 	log_info("Validating random size of medium kvs");
 	task_info.to = medium_num_keys / 2;
 	task_info.key_type = MEDIUM;
-	//validate_random_size_of_kvs(hd, task_info);
+	validate_random_size_of_kvs(hd, task_info);
 	log_info("Validating random size of large kvs");
 	task_info.to = large_num_keys / 2;
 	task_info.key_type = BIG;
-	//validate_random_size_of_kvs(hd, task_info);
+	validate_random_size_of_kvs(hd, task_info);
 
 	/* forth stage
 	 * validate that all keys exist and have the correct size with par_get
