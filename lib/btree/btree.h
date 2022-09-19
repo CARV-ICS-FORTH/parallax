@@ -477,7 +477,7 @@ struct par_put_metadata insert_key_value(db_handle *handle, void *key, void *val
 
 /**
  * Inserts a serialized key value pair by using the buffer provided by the user.
- * The format of the key value pair is | key_size | key | value_size | value |, where {key,value}_size is uint32_t.
+ * The format of the key value pair is | key_size | value_size | key |  value |, where {key,value}_sizes are uint32_t.
  * @param handle
  * @param serialized_key_value is a buffer containing the serialized key value pair.
  * @return Returns the error message if any otherwise NULL on success.

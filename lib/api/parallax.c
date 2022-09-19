@@ -74,6 +74,12 @@ void par_put(par_handle handle, struct par_key_value *key_value, char **error_me
 			 key_value->k.size, key_value->v.val_size, insertOp, *error_message);
 }
 
+/**
+ * Execute a put request of the key given a kv_formated key_value
+ * @param handle, the db handle that we initiated with db open
+ * @param serialized_key_value, the kv_formated key to be inserted
+ * @param error_message, possible error message uppon a failure in the insert path
+ * */
 void par_put_serialized(par_handle handle, char *serialized_key_value, char **error_message)
 {
 	free_error_message(error_message);
@@ -340,17 +346,16 @@ int par_is_valid(par_scanner sc)
 struct par_key par_get_key(par_scanner sc)
 {
 	struct par_scanner *par_s = (struct par_scanner *)sc;
-	struct par_key key = { .size = *(uint32_t *)par_s->kv_buf, .data = par_s->kv_buf + sizeof(uint32_t) };
+	struct par_key key = { .size = GET_KEY_SIZE(par_s->kv_buf), .data = GET_KEY_OFFSET(par_s->kv_buf) };
 	return key;
 }
 
 struct par_value par_get_value(par_scanner sc)
 {
 	struct par_scanner *par_s = (struct par_scanner *)sc;
-	char *value = par_s->kv_buf + *(uint32_t *)par_s->kv_buf + sizeof(uint32_t);
-	struct par_value val = { .val_size = *(uint32_t *)value,
-				 .val_buffer = value + sizeof(uint32_t),
-				 .val_buffer_size = *(uint32_t *)value };
+	struct par_value val = { .val_size = GET_VALUE_SIZE(par_s->kv_buf),
+				 .val_buffer = GET_VALUE_OFFSET(par_s->kv_buf, GET_KEY_SIZE(par_s->kv_buf)),
+				 .val_buffer_size = GET_VALUE_SIZE(par_s->kv_buf) };
 
 	return val;
 }

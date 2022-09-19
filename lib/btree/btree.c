@@ -1026,9 +1026,9 @@ struct par_put_metadata serialized_insert_key_value(db_handle *handle, const cha
 				  .metadata.key_format = KV_FORMAT,
 				  .metadata.append_to_log = 1 };
 
-	uint32_t key_size = KEY_SIZE(serialized_key_value);
-	uint32_t value_size = VALUE_SIZE(serialized_key_value + key_size + sizeof(key_size));
-	uint32_t kv_size = sizeof(uint32_t) + key_size + sizeof(uint32_t) + value_size;
+	uint32_t key_size = GET_KEY_SIZE(serialized_key_value);
+	uint32_t value_size = GET_VALUE_SIZE(serialized_key_value);
+	uint32_t kv_size = sizeof(uint32_t) + sizeof(uint32_t) + key_size + value_size;
 
 	error_message = insert_error_handling(handle, key_size, value_size);
 	if (error_message) {

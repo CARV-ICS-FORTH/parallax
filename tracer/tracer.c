@@ -54,9 +54,9 @@ void execute_put_request(par_handle hd, char *line)
 
 	/*prepare the request*/
 	*(uint32_t *)key_buf = key_size;
-	memcpy(key_buf + sizeof(uint32_t), key, key_size);
-	*(uint32_t *)(key_buf + sizeof(uint32_t) + key_size) = value_size;
-	memcpy(key_buf + sizeof(uint32_t) + key_size + sizeof(uint32_t), value, value_size);
+	*(uint32_t *)(key_buf + sizeof(uint32_t)) = value_size;
+	memcpy(key_buf + sizeof(uint32_t) + sizeof(uint32_t), key, key_size);
+	memcpy(key_buf + sizeof(uint32_t) + sizeof(uint32_t) + sizeof(uint32_t), value, value_size);
 	char *error_message = NULL;
 	par_put_serialized(hd, key_buf, &error_message);
 }

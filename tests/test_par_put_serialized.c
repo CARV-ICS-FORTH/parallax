@@ -41,14 +41,11 @@ int main(int argc, char *argv[])
 	}
 
 	char serialized_key_value[1024] = { 0 };
-	char *serialize_kv = serialized_key_value;
-	*(uint32_t *)serialize_kv = 10;
-	serialize_kv += 4;
-	strcpy(serialize_kv, "abcdabcda");
-	serialize_kv += 10;
-	*(uint32_t *)serialize_kv = 1;
-	serialize_kv += 4;
-	*serialize_kv = 'a';
+	char *serialized_kv = serialized_key_value;
+	*(uint32_t *)serialized_kv = 10; // key_size
+	*(uint32_t *)(serialized_kv + sizeof(uint32_t)) = 1; // value_size
+	strcpy(serialized_kv + sizeof(uint32_t) + sizeof(uint32_t), "abcdabcda"); // key
+	strcpy(serialized_kv + sizeof(uint32_t) + sizeof(uint32_t) + strlen("abcdabcda") + 1, "a"); // value
 
 	par_put_serialized(handle, serialized_key_value, &error_message);
 	if (error_message) {
