@@ -854,10 +854,8 @@ static void comp_append_entry_to_leaf_node(struct comp_level_write_cursor *curso
 
 		// constructing the pivot key out of the keys, pivot key follows different format than KV_PREFIX/KV_FORMAT
 		// first retrieve the kv_formated kv
-		char *kv_formated_kv = NULL;
-		if (append_to_medium_log)
-			kv_formated_kv = kv->kv_inplace;
-		else {
+		char *kv_formated_kv = kv->kv_inplace;
+		if (!append_to_medium_log) {
 			switch (write_leaf_args.kv_format) {
 			case KV_FORMAT:
 				kv_formated_kv = write_leaf_args.key_value_buf;
@@ -870,6 +868,8 @@ static void comp_append_entry_to_leaf_node(struct comp_level_write_cursor *curso
 					kv_formated_kv = (char *)curr_key->kv_inlog->dev_offt;
 				}
 				break;
+			default:
+				BUG_ON();
 			}
 		}
 		struct pivot_key new_pivot;
