@@ -872,11 +872,12 @@ static void comp_append_entry_to_leaf_node(struct comp_level_write_cursor *curso
 				BUG_ON();
 			}
 		}
-		struct pivot_key new_pivot;
-		new_pivot.size = GET_KEY_SIZE(kv_formated_kv);
-		memcpy(new_pivot.data, GET_KEY_OFFSET(kv_formated_kv), new_pivot.size);
+		//create a pivot key based on the pivot key format | key_size | key | out of the kv_formated key
+		char *new_pivot = malloc(GET_KEY_SIZE(kv_formated_kv) + sizeof(uint32_t));
+		*(uint32_t *)new_pivot = GET_KEY_SIZE(kv_formated_kv);
+		memcpy(new_pivot + sizeof(uint32_t), GET_KEY_OFFSET(kv_formated_kv), GET_KEY_SIZE(kv_formated_kv));
 
-		comp_append_pivot_to_index(1, cursor, left_leaf_offt, &new_pivot, right_leaf_offt);
+		comp_append_pivot_to_index(1, cursor, left_leaf_offt, (struct pivot_key *)new_pivot, right_leaf_offt);
 	}
 }
 
