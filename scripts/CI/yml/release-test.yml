@@ -342,3 +342,14 @@ release_tracer:
         - make tracer;cd tracer;
         - ctest -R ^tracer$
     needs: [release_build_gcc, release_build_clang]
+
+release_tiresias:
+    image: carvicsforth/arch_carv:latest
+    stage: release_test
+    <<: *release_build_commands
+    tags:
+        - kubernetes
+    script:
+        - make tiresias;cd tests;
+        - ctest -R ^tiresias$
+    needs: [release_build_gcc, release_build_clang]

@@ -381,3 +381,14 @@ debug_tracer:
         - make tracer;cd tracer;
         - ctest -R ^tracer$
     needs: [debug_build_gcc, debug_build_clang]
+
+debug_tiresias:
+    image: carvicsforth/arch_carv:latest
+    stage: debug_test
+    <<: *debug_build_commands
+    tags:
+        - kubernetes
+    script:
+        - make tiresias;cd tests;
+        - ctest -R ^tiresias$
+    needs: [debug_build_gcc, debug_build_clang]
