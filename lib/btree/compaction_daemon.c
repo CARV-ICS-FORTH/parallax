@@ -730,11 +730,12 @@ static int comp_append_medium_L1(struct comp_level_write_cursor *c, struct comp_
 
 	char *log_location = append_key_value_to_log(&log_op);
 
-	if (GET_KEY_SIZE(in->kv_inplace) >= PREFIX_SIZE)
-		memcpy(out->kvsep.prefix, GET_KEY_OFFSET(in->kv_inplace), PREFIX_SIZE);
+	if (get_key_size((struct splice *)in->kv_inplace) >= PREFIX_SIZE)
+		memcpy(out->kvsep.prefix, get_key_offset_in_kv((struct splice *)in->kv_inplace), PREFIX_SIZE);
 	else {
 		memset(out->kvsep.prefix, 0x00, PREFIX_SIZE);
-		memcpy(out->kvsep.prefix, GET_KEY_OFFSET(in->kv_inplace), GET_KEY_SIZE(in->kv_inplace));
+		memcpy(out->kvsep.prefix, get_key_offset_in_kv((struct splice *)in->kv_inplace),
+		       get_key_size((struct splice *)in->kv_inplace));
 	}
 	out->kvsep.dev_offt = (uint64_t)log_location;
 	out->kv_category = MEDIUM_INLOG;
@@ -794,7 +795,7 @@ static void comp_append_entry_to_leaf_node(struct comp_level_write_cursor *curso
 	if (write_leaf_args.cat == MEDIUM_INLOG &&
 	    write_leaf_args.level_id == cursor->handle->db_desc->level_medium_inplace) {
 		write_leaf_args.key_value_buf = fetch_kv_from_LRU(&write_leaf_args, cursor);
-		assert(GET_KEY_SIZE(write_leaf_args.key_value_buf) <= MAX_KEY_SIZE);
+		assert(get_key_size((struct splice *)write_leaf_args.key_value_buf) <= MAX_KEY_SIZE);
 		write_leaf_args.cat = MEDIUM_INPLACE;
 
 		kv_size = get_kv_size((struct splice *)write_leaf_args.key_value_buf);
@@ -869,9 +870,10 @@ static void comp_append_entry_to_leaf_node(struct comp_level_write_cursor *curso
 			}
 		}
 		//create a pivot key based on the pivot key format | key_size | key | out of the kv_formated key
-		char *new_pivot = malloc(GET_KEY_SIZE(kv_formated_kv) + sizeof(uint32_t));
-		*(uint32_t *)new_pivot = GET_KEY_SIZE(kv_formated_kv);
-		memcpy(new_pivot + sizeof(uint32_t), GET_KEY_OFFSET(kv_formated_kv), GET_KEY_SIZE(kv_formated_kv));
+		char *new_pivot = malloc(get_key_size((struct splice *)kv_formated_kv) + sizeof(uint32_t));
+		*(uint32_t *)new_pivot = get_key_size((struct splice *)kv_formated_kv);
+		memcpy(new_pivot + sizeof(uint32_t), get_key_offset_in_kv((struct splice *)kv_formated_kv),
+		       get_key_size((struct splice *)kv_formated_kv));
 
 		comp_append_pivot_to_index(1, cursor, left_leaf_offt, (struct pivot_key *)new_pivot, right_leaf_offt);
 	}
@@ -1186,7 +1188,8 @@ static void print_heap_node_key(struct sh_heap_node *nd)
 		char *full_key = (char *)((struct bt_leaf_entry *)nd->KV)->dev_offt;
 
 		log_debug("In log Key prefix is %.*s full key size: %u  full key data %.*s", PREFIX_SIZE,
-			  (char *)nd->KV, KEY_SIZE(full_key), KEY_SIZE(full_key), full_key + sizeof(uint32_t));
+			  (char *)nd->KV, get_key_size((struct splice *)full_key),
+			  get_key_size((struct splice *)full_key), get_key_offset_in_kv((struct splice *)full_key));
 		break;
 	default:
 		log_fatal("Unhandle/Unknown category");

@@ -64,8 +64,8 @@ void init_key_cmp(struct key_compare *key_cmp, void *key_buf, char key_format)
 		return;
 
 	if (key_format == KV_FORMAT) {
-		key_cmp->key_size = GET_KEY_SIZE(key_buf);
-		key_cmp->key = (char *)GET_KEY_OFFSET(key_buf);
+		key_cmp->key_size = get_key_size((struct splice *)key_buf);
+		key_cmp->key = get_key_offset_in_kv((struct splice *)key_buf);
 		key_cmp->kv_dev_offt = UINT64_MAX;
 		key_cmp->key_format = KV_FORMAT;
 		return;
@@ -995,7 +995,7 @@ struct par_put_metadata insert_key_value(db_handle *handle, void *key, void *val
 	set_key_size((struct splice *)key_buf, key_size);
 	set_value_size((struct splice *)key_buf, value_size);
 	memcpy(get_key_offset_in_kv((struct splice *)key_buf), key, key_size);
-	memcpy(get_value_offset_in_kv((struct splice *)key_buf), value,
+	memcpy(get_value_offset_in_kv((struct splice *)key_buf, get_key_size((struct splice *)key_buf)), value,
 	       value_size); // |key_size | value_suze | key | value |
 	ins_req.metadata.handle = handle;
 	ins_req.key_value_buf = key_buf;
@@ -1537,8 +1537,8 @@ static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id,
 		if (RWLOCK_RDLOCK(&curr->rx_lock) != 0)
 			BUG_ON();
 
-		uint32_t key_size = GET_KEY_SIZE(get_op->kv_buf);
-		void *key = GET_KEY_OFFSET(get_op->kv_buf);
+		uint32_t key_size = get_key_size((struct splice *)get_op->kv_buf);
+		void *key = get_key_offset_in_kv((struct splice *)get_op->kv_buf);
 		ret_result = find_key_in_dynamic_leaf((struct bt_dynamic_leaf_node *)curr_node, db_desc, key, key_size,
 						      level_id);
 		get_op->tombstone = ret_result.tombstone;
@@ -1576,8 +1576,8 @@ static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id,
 	if (RWLOCK_UNLOCK(&prev->rx_lock) != 0)
 		BUG_ON();
 
-	uint32_t key_size = GET_KEY_SIZE(get_op->kv_buf);
-	void *key = GET_KEY_OFFSET(get_op->kv_buf);
+	uint32_t key_size = get_key_size((struct splice *)get_op->kv_buf);
+	void *key = get_key_offset_in_kv((struct splice *)get_op->kv_buf);
 	ret_result =
 		find_key_in_dynamic_leaf((struct bt_dynamic_leaf_node *)curr_node, db_desc, key, key_size, level_id);
 	get_op->tombstone = ret_result.tombstone;
@@ -1615,7 +1615,7 @@ deser:
 	}
 
 	assert(kv_pair.addr);
-	uint32_t value_size = GET_VALUE_SIZE(kv_pair.addr);
+	uint32_t value_size = get_value_size((struct splice *)kv_pair.addr);
 	if (get_op->retrieve && !get_op->buffer_to_pack_kv) {
 		get_op->buffer_to_pack_kv = malloc(value_size);
 		get_op->size = value_size;
@@ -1625,7 +1625,10 @@ deser:
 		get_op->buffer_overflow = 1;
 
 	if (get_op->retrieve && get_op->size <= value_size) {
-		memcpy(get_op->buffer_to_pack_kv, GET_VALUE_OFFSET(kv_pair.addr, KEY_SIZE(kv_pair.addr)), value_size);
+		memcpy(get_op->buffer_to_pack_kv,
+		       get_value_offset_in_kv((struct splice *)kv_pair.addr,
+					      get_key_size((struct splice *)kv_pair.addr)),
+		       value_size);
 		get_op->buffer_overflow = 0;
 	}
 
@@ -1973,7 +1976,8 @@ release_and_retry:
 								  .key = (struct pivot_key *)split_res.middle_key,
 								  .right_child = &right };
 			if (!index_insert_pivot(&ins_pivot_req)) {
-				log_fatal("Cannot insert pivot! pivot is %u", KEY_SIZE(ins_pivot_req.key));
+				log_fatal("Cannot insert pivot! pivot is %u",
+					  get_key_size((struct splice *)ins_pivot_req.key));
 				_exit(EXIT_FAILURE);
 			}
 			goto release_and_retry;

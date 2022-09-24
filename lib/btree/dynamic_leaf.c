@@ -209,14 +209,16 @@ void binary_search_dynamic_leaf(const struct bt_dynamic_leaf_node *leaf, uint32_
 			goto check_comparison;
 		}
 
-		if (GET_KEY_SIZE(req->key_value_buf) >= PREFIX_SIZE) {
-			ret = prefix_compare(leaf_key_prefix.prefix, GET_KEY_OFFSET(req->key_value_buf), PREFIX_SIZE);
+		if (get_key_size((struct splice *)req->key_value_buf) >= PREFIX_SIZE) {
+			ret = prefix_compare(leaf_key_prefix.prefix,
+					     get_key_offset_in_kv((struct splice *)req->key_value_buf), PREFIX_SIZE);
 			goto check_comparison;
 		}
 
 		/*Case we have a key in KV_FORMAT encoding that IS smaller than PREFIX_SIZE*/
 		char padded_lookupkey_prefix[PREFIX_SIZE] = { 0 };
-		memcpy(padded_lookupkey_prefix, GET_KEY_OFFSET(req->key_value_buf), KEY_SIZE(req->key_value_buf));
+		memcpy(padded_lookupkey_prefix, get_key_offset_in_kv((struct splice *)req->key_value_buf),
+		       get_key_size((struct splice *)req->key_value_buf));
 		ret = prefix_compare(leaf_key_prefix.prefix, padded_lookupkey_prefix, PREFIX_SIZE);
 
 	check_comparison:
@@ -344,7 +346,8 @@ void print_dynamic_leaf(const struct bt_dynamic_leaf_node *leaf, uint32_t leaf_s
 		char *key = fill_keybuf(get_kv_offset(leaf, leaf_size, slot_array[i].index),
 					get_kv_format(slot_array[i].key_category));
 		log_info("offset in leaf %d ADDR %p Size%d key %s\n", slot_array[i].index,
-			 (void *)get_kv_offset(leaf, leaf_size, slot_array[i].index), KEY_SIZE(key), key + 4);
+			 (void *)get_kv_offset(leaf, leaf_size, slot_array[i].index),
+			 get_key_size((struct splice *)key), get_key_offset_in_kv((struct splice *)key));
 	}
 	log_info("2--------------------------------------------");
 }
@@ -503,7 +506,7 @@ struct bt_rebalance_result split_dynamic_leaf(struct bt_dynamic_leaf_node *leaf,
 	case MEDIUM_INLOG:
 		L = bt_get_kv_log_address(&req->metadata.handle->db_desc->medium_log, ABSOLUTE_ADDRESS(middle_key_buf));
 		//log_info("Pivot is %u:%s",*(uint32_t*)L.addr,L.addr+4);
-		assert(GET_KEY_SIZE(L.addr) < 25);
+		assert(get_key_size((struct splice *)L.addr) < 25);
 		break;
 #endif
 	case BIG_INLOG:
@@ -629,12 +632,12 @@ struct bt_rebalance_result special_split_dynamic_leaf(struct bt_dynamic_leaf_nod
 	} else
 		middle_key_buf = fill_keybuf(key_loc, get_kv_format(slot_array[split_point].key_category));
 
-	assert(GET_KEY_SIZE(middle_key_buf) < 40);
+	assert(get_key_size((struct splice *)middle_key_buf) < 40);
 
 	/*TODO: (geostyl) provide a SET_KEY_SIZE like function/macro*/
 	set_pivot_key_size((struct pivot_key *)rep.middle_key, get_kv_size((struct splice *)middle_key_buf));
-	memcpy(((struct pivot_key *)&rep.middle_key)->data, GET_KEY_OFFSET(middle_key_buf),
-	       GET_KEY_SIZE(rep.middle_key)); // key
+	memcpy(((struct pivot_key *)&rep.middle_key)->data, get_key_offset_in_kv((struct splice *)middle_key_buf),
+	       get_key_size((struct splice *)rep.middle_key)); // key
 
 	right_leaf = rep.right_dlchild;
 	/*Copy pointers + prefixes*/

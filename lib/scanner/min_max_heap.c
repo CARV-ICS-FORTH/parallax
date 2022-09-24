@@ -16,6 +16,7 @@
 #include "../btree/btree.h"
 #include "../btree/conf.h"
 #include "../common/common.h"
+#include "../common/common_functions.h"
 #include <assert.h>
 #include <log.h>
 #include <stdint.h>
@@ -37,9 +38,9 @@ static void push_back_duplicate_kv(struct sh_heap *heap, struct sh_heap_node *hp
 	switch (hp_node->type) {
 	case KV_FORMAT:
 		memset(&local.prefix, 0x00, PREFIX_SIZE);
-		uint32_t key_size = GET_KEY_SIZE(hp_node->KV);
+		uint32_t key_size = get_key_size((struct splice *)hp_node->KV);
 		int size = key_size < PREFIX_SIZE ? key_size : PREFIX_SIZE;
-		memcpy(&local.prefix, GET_KEY_OFFSET(hp_node->KV), size);
+		memcpy(&local.prefix, get_key_offset_in_kv((struct splice *)hp_node->KV), size);
 		local.dev_offt = (uint64_t)hp_node->KV;
 		keyvalue = &local;
 		break;
@@ -54,9 +55,9 @@ static void push_back_duplicate_kv(struct sh_heap *heap, struct sh_heap_node *hp
 	uint64_t segment_offset =
 		ABSOLUTE_ADDRESS(keyvalue->dev_offt) - (ABSOLUTE_ADDRESS(keyvalue->dev_offt) % SEGMENT_SIZE);
 	char *kv = (char *)keyvalue->dev_offt;
-	uint32_t key_size = GET_KEY_SIZE(kv);
+	uint32_t key_size = get_key_size((struct splice *)kv);
 	assert(key_size <= MAX_KEY_SIZE);
-	uint32_t value_size = GET_VALUE_SIZE(kv);
+	uint32_t value_size = get_value_size((struct splice *)kv);
 	struct dups_node *node = find_element(heap->dups, (uint64_t)REAL_ADDRESS(segment_offset));
 
 	if (node)

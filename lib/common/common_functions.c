@@ -25,11 +25,10 @@ uint32_t get_value_size_with_metadata(struct splice *kv)
 // TODO (geostyl) FIXME add proper documentation
 uint32_t get_kv_metadata_size(void)
 {
-	// size of key_size + value_size of splice
-	// this assert will fail if key_size or value_size change in splcie.
 	uint32_t kv_metadata_size = sizeof(struct splice);
-	uint32_t expected_metadata_size = sizeof(uint32_t) + sizeof(uint32_t);
-	assert(kv_metadata_size == expected_metadata_size);
+	// size of key_size + value_size of splice
+	// this assert will fail if key_size or value_size change in splice.
+	assert(kv_metadata_size == sizeof(uint32_t) + sizeof(uint32_t));
 
 	return kv_metadata_size;
 }
@@ -53,9 +52,9 @@ char *get_key_offset_in_kv(struct splice *kv)
 {
 	return kv->data;
 }
-char *get_value_offset_in_kv(struct splice *kv)
+char *get_value_offset_in_kv(struct splice *kv, uint32_t key_size)
 {
-	return kv->data + kv->key_size;
+	return kv->data + key_size;
 }
 
 uint32_t get_key_size_kv_seperated(struct kv_seperation_splice *kv)

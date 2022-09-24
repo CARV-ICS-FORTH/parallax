@@ -501,12 +501,8 @@ void recover_L0(struct db_descriptor *db_desc);
 lock_table *_find_position(const lock_table **table, node_header *node);
 
 #define MIN(x, y) ((x > y) ? (y) : (x))
-#define KEY_SIZE(x) (*(uint32_t *)(x))
-#define VALUE_SIZE(x) KEY_SIZE(x)
 #define ABSOLUTE_ADDRESS(X) (((uint64_t)(X)) - MAPPED)
 #define REAL_ADDRESS(X) ((X) ? (void *)(MAPPED + (uint64_t)(X)) : BUG_ON())
-#define KEY_OFFSET(KEY_SIZE, KV_BUF) (sizeof(uint32_t) + KV_BUF)
-#define VALUE_SIZE_OFFSET(KEY_SIZE, KEY) (sizeof(uint32_t) + KEY_SIZE + KEY)
 #define SERIALIZE_KEY(buf, key, key_size)                           \
 	*(uint32_t *)buf = key_size;                                \
 	*(uint32_t *)((char *)buf + sizeof(uint32_t)) = UINT32_MAX; \
@@ -517,8 +513,3 @@ lock_table *_find_position(const lock_table **table, node_header *node);
 #define LESS_THAN_ZERO -1
 #define GREATER_THAN_ZERO 1
 #define EQUAL_TO_ZERO 0
-
-#define GET_KEY_SIZE(KV_BUF) (*(uint32_t *)(KV_BUF))
-#define GET_VALUE_SIZE(KV_BUF) (*(uint32_t *)(KV_BUF + sizeof(uint32_t)))
-#define GET_KEY_OFFSET(KV_BUF) (sizeof(uint32_t) + sizeof(uint32_t) + (char *)KV_BUF)
-#define GET_VALUE_OFFSET(KV_BUF, KEY_SIZE) (sizeof(uint32_t) + sizeof(uint32_t) + KEY_SIZE + (char *)KV_BUF)

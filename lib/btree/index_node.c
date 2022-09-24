@@ -1,5 +1,6 @@
 #include "index_node.h"
 #include "../common/common.h"
+#include "../common/common_functions.h"
 #include "btree.h"
 #include "segment_allocator.h"
 #include <assert.h>
@@ -376,11 +377,13 @@ int index_key_cmp(struct pivot_key *index_key, char *lookup_key, enum KV_type lo
 	int ret = 0;
 
 	if (lookup_key_format == KV_FORMAT) {
-		size = index_key->size <= GET_KEY_SIZE(lookup_key) ? index_key->size : GET_KEY_SIZE(lookup_key);
-		ret = memcmp(index_key->data, GET_KEY_OFFSET(lookup_key), size);
+		size = index_key->size <= get_key_size((struct splice *)lookup_key) ?
+			       index_key->size :
+			       get_key_size((struct splice *)lookup_key);
+		ret = memcmp(index_key->data, get_key_offset_in_kv((struct splice *)lookup_key), size);
 		if (ret != 0)
 			return ret;
-		return index_key->size - GET_KEY_SIZE(lookup_key);
+		return index_key->size - get_key_size((struct splice *)lookup_key);
 	}
 
 	/* lookup_key is INDEX_KEY_TYPE
