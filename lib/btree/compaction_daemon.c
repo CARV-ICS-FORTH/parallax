@@ -1264,9 +1264,6 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 		RWLOCK_WRLOCK(&handle->db_desc->levels[0].guard_of_level.rx_lock);
 		spin_loop(&handle->db_desc->levels[0].active_operations, 0);
 		pr_flush_log_tail(comp_req->db_desc, &comp_req->db_desc->big_log);
-#if MEDIUM_LOG_UNSORTED
-		pr_flush_log_tail(comp_req->db_desc, &comp_req->db_desc->medium_log);
-#endif
 		RWLOCK_UNLOCK(&handle->db_desc->levels[0].guard_of_level.rx_lock);
 
 		log_debug("Initializing L0 scanner");
@@ -1455,12 +1452,6 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 	memset(&ld->bloom_filter[1], 0x00, sizeof(struct bloom));
 #endif
 
-#if !MEDIUM_LOG_UNSORTED
-	if (comp_req->dst_level == 1) {
-		log_info("Flushing medium log");
-		pr_flush_log_tail(comp_req->db_desc, &comp_req->db_desc->medium_log);
-	}
-#endif
 	/*Finally persist compaction */
 	pr_flush_compaction(comp_req->db_desc, comp_req->dst_level, comp_req->dst_tree);
 	log_debug("Flushed compaction[%u][%u] successfully", comp_req->dst_level, comp_req->dst_tree);

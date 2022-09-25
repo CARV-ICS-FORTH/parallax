@@ -230,16 +230,6 @@ void binary_search_dynamic_leaf(const struct bt_dynamic_leaf_node *leaf, uint32_
 
 			leaf_key_buf = fill_keybuf(kv_offset, get_kv_format(slot_array[middle].key_category));
 			switch (slot_array[middle].key_category) {
-#if MEDIUM_LOG_UNSORTED
-			case MEDIUM_INLOG:
-				if (req->metadata.level_id)
-					L.addr = (void *)leaf_key_buf;
-				else
-					L = bt_get_kv_log_address(&req->metadata.handle->db_desc->medium_log,
-								  ABSOLUTE_ADDRESS(leaf_key_buf));
-				L.log_desc = &req->metadata.handle->db_desc->medium_log;
-				break;
-#endif
 				//Stub for big log direct IO, this function is called now
 				//only in L0
 			case BIG_INLOG:
@@ -502,13 +492,6 @@ struct bt_rebalance_result split_dynamic_leaf(struct bt_dynamic_leaf_node *leaf,
 	//only in L0
 	struct bt_kv_log_address L = { .addr = NULL, .in_tail = 0, .tail_id = UINT8_MAX };
 	switch (slot_array[leaf->header.num_entries / 2].key_category) {
-#if MEDIUM_LOG_UNSORTED
-	case MEDIUM_INLOG:
-		L = bt_get_kv_log_address(&req->metadata.handle->db_desc->medium_log, ABSOLUTE_ADDRESS(middle_key_buf));
-		//log_info("Pivot is %u:%s",*(uint32_t*)L.addr,L.addr+4);
-		assert(get_key_size((struct splice *)L.addr) < 25);
-		break;
-#endif
 	case BIG_INLOG:
 		L = bt_get_kv_log_address(&req->metadata.handle->db_desc->big_log, ABSOLUTE_ADDRESS(middle_key_buf));
 		break;
@@ -524,7 +507,6 @@ struct bt_rebalance_result split_dynamic_leaf(struct bt_dynamic_leaf_node *leaf,
 
 	if (L.in_tail) {
 		struct log_descriptor *log_desc = NULL;
-		//#if MEDIUM_LOG_UNSORTED
 		switch (slot_array[leaf->header.num_entries / 2].key_category) {
 		case BIG_INLOG:
 			log_desc = &req->metadata.handle->db_desc->big_log;
@@ -708,16 +690,7 @@ void write_data_in_dynamic_leaf(struct write_dynamic_leaf_args *args)
 			assert(args->kv_dev_offt != 0);
 			leaf->header.leaf_log_size += append_bt_leaf_entry_inplace(dest, args->kv_dev_offt, key->data,
 										   MIN(key->key_size, PREFIX_SIZE));
-		}
-#if MEDIUM_LOG_UNSORTED
-		else if (args->level_id == 0 && args->cat == MEDIUM_INLOG && kv_format == KV_FORMAT) {
-			assert(args->kv_dev_offt != 0);
-			leaf->header.leaf_log_size += append_bt_leaf_entry_inplace(dest, args->kv_dev_offt, key->data,
-										   MIN(key->key_size, PREFIX_SIZE));
-		}
-#endif
-		else {
-
+		} else {
 			if (kv_format == KV_FORMAT) {
 				struct splice *key = (struct splice *)key_value_buf;
 				leaf->header.leaf_log_size +=

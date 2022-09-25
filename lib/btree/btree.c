@@ -939,11 +939,7 @@ enum kv_category calculate_KV_category(uint32_t key_size, uint32_t value_size, r
 	if (kv_ratio >= 0.0 && kv_ratio < 0.02)
 		category = BIG_INLOG;
 	else if (kv_ratio >= 0.02 && kv_ratio <= 0.2)
-#if MEDIUM_LOG_UNSORTED
-		category = MEDIUM_INLOG;
-#else
 		category = MEDIUM_INPLACE;
-#endif
 	return category;
 }
 
@@ -1438,15 +1434,6 @@ void *append_key_value_to_log(log_operation *req)
 	}
 	case MEDIUM_INLOG: {
 		uint8_t level_id = req->metadata->level_id;
-#if MEDIUM_LOG_UNSORTED
-		if (level_id) {
-			log_fatal("KV separation allowed for medium only for L0!");
-			BUG_ON();
-		} else {
-			log_metadata.log_desc = &handle->db_desc->medium_log;
-			return bt_append_to_log_direct_IO(req, &log_metadata, &data_size);
-		}
-#else
 		if (level_id == 0) {
 			log_fatal("MEDIUM_INLOG not allowed for level_id 0!");
 			BUG_ON();
@@ -1454,7 +1441,6 @@ void *append_key_value_to_log(log_operation *req)
 			log_metadata.log_desc = &handle->db_desc->medium_log;
 			return bt_append_to_log_direct_IO(req, &log_metadata, &data_size);
 		}
-#endif
 	}
 	case BIG_INLOG:
 		log_metadata.log_desc = &handle->db_desc->big_log;
@@ -1722,10 +1708,6 @@ int insert_KV_at_leaf(bt_insert_req *ins_req, node_header *leaf)
 
 	ins_req->kv_dev_offt = 0;
 	if (append_tolog) {
-#if !MEDIUM_LOG_UNSORTED
-		assert(ins_req->metadata.cat != MEDIUM_INLOG);
-#endif
-
 		log_operation append_op = { .metadata = &ins_req->metadata,
 					    .optype_tolog = insertOp,
 					    .ins_req = ins_req };
@@ -1738,14 +1720,6 @@ int insert_KV_at_leaf(bt_insert_req *ins_req, node_header *leaf)
 		case MEDIUM_INPLACE:
 			append_key_value_to_log(&append_op);
 			break;
-#if MEDIUM_LOG_UNSORTED
-		case MEDIUM_INLOG: {
-			void *addr = append_key_value_to_log(&append_op);
-			ins_req->kv_dev_offt = ABSOLUTE_ADDRESS(addr);
-			assert(ins_req->kv_dev_offt != 0);
-			break;
-		}
-#endif
 		case BIG_INLOG: {
 			void *addr = append_key_value_to_log(&append_op);
 			ins_req->kv_dev_offt = ABSOLUTE_ADDRESS(addr);
