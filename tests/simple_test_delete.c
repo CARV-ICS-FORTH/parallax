@@ -85,7 +85,7 @@ void get_all_keys(par_handle hd)
 		par_key.size = k->key_size;
 
 		if (par_exists(hd, &par_key) != PAR_SUCCESS) {
-			log_info("ERROR key not found!");
+			log_fatal("ERROR key not found!");
 			exit(EXIT_FAILURE);
 		}
 	}

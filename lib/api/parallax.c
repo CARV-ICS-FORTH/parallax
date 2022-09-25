@@ -157,11 +157,7 @@ par_ret_code par_exists(par_handle handle, struct par_key *key)
 	char *kv_buf = buf;
 	int malloced = par_serialize_to_kv_format(key, &kv_buf, PAR_MAX_PREALLOCATED_SIZE);
 
-	memcpy(&kv_buf[0], &key->size, sizeof(uint32_t));
-	memcpy(&kv_buf[sizeof(uint32_t)], key->data, key->size);
-
 	struct db_handle *hd = (struct db_handle *)handle;
-
 	/*Prepare lookup reply*/
 	struct lookup_operation get_op = { .db_desc = hd->db_desc,
 					   .kv_buf = kv_buf,
