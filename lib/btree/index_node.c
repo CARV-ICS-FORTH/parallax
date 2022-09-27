@@ -25,7 +25,7 @@ static struct index_slot_array_entry *index_get_slot_array(struct index_node *no
 void index_add_guard(struct index_node *node, uint64_t child_node_dev_offt)
 {
 	char guard_buf[sizeof(struct pivot_key) + INDEX_GUARD_SIZE + sizeof(struct pivot_pointer)] = { 0 };
-	struct pivot_key *guard = (struct pivot_key *)&guard_buf[0];
+	struct pivot_key *guard = (struct pivot_key *)guard_buf;
 	guard->size = INDEX_GUARD_SIZE;
 	struct pivot_pointer *guard_pointer = index_get_pivot_pointer(guard);
 	guard_pointer->child_offt = child_node_dev_offt;
@@ -85,7 +85,8 @@ static uint32_t index_get_next_pivot_offt_in_node(struct index_node *node, struc
 
 bool index_is_split_needed(struct index_node *node, uint32_t max_pivot_size)
 {
-	max_pivot_size += sizeof(uint32_t) + sizeof(struct pivot_pointer) + sizeof(struct index_slot_array_entry);
+	max_pivot_size +=
+		sizeof(struct pivot_key) + sizeof(struct pivot_pointer) + sizeof(struct index_slot_array_entry);
 	return index_get_remaining_space(node) < max_pivot_size;
 }
 
