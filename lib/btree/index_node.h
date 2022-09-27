@@ -35,7 +35,9 @@ struct index_slot_array_entry {
 
 struct index_node {
 	struct node_header header;
-	char rest_space[INDEX_NODE_SIZE - sizeof(struct node_header)];
+	struct {
+		char rest_space[INDEX_NODE_SIZE - sizeof(struct node_header)];
+	};
 } __attribute__((packed));
 
 enum add_guard_option { INVALID_GUARD_STATE = 0, ADD_GUARD, DO_NOT_ADD_GUARD };
