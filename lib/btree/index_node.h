@@ -5,6 +5,7 @@
 #include "conf.h"
 #include <stdbool.h>
 #include <stdint.h>
+#include <stdlib.h>
 
 struct pivot_key {
 	uint32_t size;
@@ -162,6 +163,8 @@ void index_iterator_init(struct index_node *node, struct index_node_iterator *it
   * @param key: Key to position itself
   */
 void index_iterator_init_with_key(struct index_node *node, struct index_node_iterator *iterator, struct pivot_key *key);
+
+void fill_smallest_possible_pivot(char *buffer, int size);
 
 uint8_t index_iterator_is_valid(struct index_node_iterator *iterator);
 

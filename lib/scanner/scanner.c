@@ -403,14 +403,13 @@ int32_t level_scanner_seek(level_scanner *level_sc, void *start_key_buf, SEEK_SC
 
 	struct pivot_key *start_key = start_key_buf;
 
+#define SMALLEST_POSSIBLE_PIVOT_SIZE 16
 	// cppcheck-suppress variableScope
-	char zero_key_buf[16];
+	char smallest_possible_pivot[SMALLEST_POSSIBLE_PIVOT_SIZE];
 	if (!start_key) {
-		memset(zero_key_buf, 0x00, sizeof(zero_key_buf));
-		start_key = (struct pivot_key *)zero_key_buf;
-		start_key->size = 0;
+		fill_smallest_possible_pivot(smallest_possible_pivot, SMALLEST_POSSIBLE_PIVOT_SIZE);
+		start_key = (struct pivot_key *)smallest_possible_pivot;
 	}
-
 	/*
    * For L0 already safe we have read lock of guard lock else its just a root_r
    * of levels >= 1
@@ -437,7 +436,6 @@ int32_t level_scanner_seek(level_scanner *level_sc, void *start_key_buf, SEEK_SC
 	stackElementT element = { .guard = 0, .idx = INT32_MAX, .node = NULL, .iterator = { 0 } };
 
 	struct node_header *node = level_sc->root;
-
 	while (node->type != leafNode && node->type != leafRootNode) {
 		element.node = node;
 		index_iterator_init_with_key((struct index_node *)element.node, &element.iterator, start_key);
