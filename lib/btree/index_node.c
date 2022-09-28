@@ -10,7 +10,7 @@
 #include <string.h>
 #include <unistd.h>
 
-#define INDEX_GUARD_SIZE 0
+#define INDEX_GUARD_SIZE 1
 
 static struct pivot_pointer *index_get_pivot_pointer(struct pivot_key *key)
 {
@@ -105,7 +105,6 @@ static int32_t index_search_get_pos(struct index_node *node, void *lookup_key, e
 	int32_t end = node->header.num_entries - 1;
 
 	int32_t middle = 0;
-
 	struct index_slot_array_entry *slot_array = index_get_slot_array(node);
 
 	while (start <= end) {
@@ -386,7 +385,7 @@ int index_key_cmp(struct pivot_key *index_key, char *lookup_key, enum KV_type lo
 			return ret;
 		return index_key->size - get_key_size(key);
 	}
-
+	assert(lookup_key_format != KV_PREFIX);
 	/* lookup_key is INDEX_KEY_TYPE
 	 * this should only(!) happend when we are inserting and new key into an index node (after a split) */
 	struct pivot_key *p_key = (struct pivot_key *)(lookup_key);
@@ -416,15 +415,15 @@ void set_pivot_key(struct pivot_key *pivot, void *key, uint32_t key_size)
 {
 	memcpy(pivot->data, key, key_size);
 }
-
 void fill_smallest_possible_pivot(char *buffer, int size)
 {
-	if (size < (int)sizeof(struct pivot_pointer) + INDEX_GUARD_SIZE) {
-		log_fatal("Buffer too small cannot respresent the -oo pivot key");
-		_exit(EXIT_FAILURE);
-	}
+       if (size < (int)sizeof(struct pivot_pointer) + INDEX_GUARD_SIZE) {
+               log_fatal("Buffer too small cannot respresent the -oo pivot key");
+               _exit(EXIT_FAILURE);
+       }
 
-	memset(buffer, 0x00, size);
-	struct pivot_key *minus_infinity = (struct pivot_key *)buffer;
-	minus_infinity->size = INDEX_GUARD_SIZE;
+       memset(buffer, 0x00, size);
+       struct pivot_key *minus_infinity = (struct pivot_key *)buffer;
+       minus_infinity->size = INDEX_GUARD_SIZE;
 }
+

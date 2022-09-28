@@ -463,7 +463,7 @@ int32_t level_scanner_seek(level_scanner *level_sc, void *start_key_buf, SEEK_SC
 	bt_insert_req req = { 0 };
 
 	// constructing a kv_formated buffer containing key_size | value_size(UINT32_MAX) | key_buf
-	// binary saerch of dynamic leaf acceptes only kv_formated or kv_prefixed keys, but the start_key of the scanner
+	// binary saerch of dynamic leaf accepts only kv_formated or kv_prefixed keys, but the start_key of the scanner
 	// follows the key_size | key format
 	// TODO: (@geostyl) make the binary search aware of the scanner format?
 	char *kv_formated_start_key = calloc(1, PIVOT_KEY_SIZE(start_key) + sizeof(uint32_t));

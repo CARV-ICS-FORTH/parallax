@@ -24,6 +24,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 #define PAR_MAX_PREALLOCATED_SIZE 256
 #define NUM_OF_OPTIONS 5
 
@@ -195,101 +196,81 @@ struct par_scanner {
 	char *kv_buf;
 };
 
-#define SMALLEST_KEY_BUFFER_SIZE (8)
 par_scanner par_init_scanner(par_handle handle, struct par_key *key, par_seek_mode mode)
 {
-	char tmp[PAR_MAX_PREALLOCATED_SIZE];
-	struct db_handle *hd = (struct db_handle *)handle;
-	struct par_seek_key {
-		uint32_t key_size;
-		char key[];
-	};
-	char smallest_key[SMALLEST_KEY_BUFFER_SIZE] = { 0 };
-	struct scannerHandle *sc = NULL;
-	struct par_scanner *par_s = NULL;
-	struct par_seek_key *seek_key = NULL;
-	char free_seek_key = 0;
+	if (key && key->size + sizeof(uint32_t) > PAR_MAX_PREALLOCATED_SIZE) {
+		log_fatal("Cannot serialize key buffer of size %d B too small to fit %lu", PAR_MAX_PREALLOCATED_SIZE,
+			  key->size + sizeof(uint32_t));
+		_exit(EXIT_FAILURE);
+	}
+
+	char seek_key_buffer[PAR_MAX_PREALLOCATED_SIZE];
+
+	struct pivot_key *seek_key = (struct pivot_key *)seek_key_buffer;
 
 	enum SEEK_SCANNER_MODE scanner_mode = 0;
 	switch (mode) {
 	case PAR_GREATER:
 		scanner_mode = GREATER;
-		goto init_seek_key;
+		seek_key->size = key->size;
+		memcpy(seek_key->data, key->data, key->size);
+		break;
 	case PAR_GREATER_OR_EQUAL:
+		seek_key->size = key->size;
+		memcpy(seek_key->data, key->data, key->size);
 		scanner_mode = GREATER_OR_EQUAL;
-		goto init_seek_key;
-	case PAR_FETCH_FIRST: {
+		break;
+	case PAR_FETCH_FIRST:
 		scanner_mode = GREATER_OR_EQUAL;
-		uint32_t *size = (uint32_t *)smallest_key;
-		*size = 0;
-		//fill the seek_key with the smallest key of the region
-		seek_key = (struct par_seek_key *)tmp;
-		seek_key->key_size = *size;
-		memcpy(seek_key->key, smallest_key, *size);
-		goto init_scanner;
-	}
+		fill_smallest_possible_pivot(seek_key_buffer, PAR_MAX_PREALLOCATED_SIZE);
+		break;
 	default:
 		log_fatal("Unknown seek scanner mode");
 		return NULL;
 	}
-init_seek_key:
-	if (key->size + sizeof(uint32_t) > PAR_MAX_PREALLOCATED_SIZE) {
-		seek_key = (struct par_seek_key *)calloc(1, sizeof(struct par_seek_key) + key->size);
-		free_seek_key = 1;
-	} else
-		seek_key = (struct par_seek_key *)tmp;
 
-	seek_key->key_size = key->size;
-	memcpy(seek_key->key, key->data, key->size);
+	struct scannerHandle *scanner = (struct scannerHandle *)calloc(1, sizeof(struct scannerHandle));
 
-init_scanner:
-	sc = (struct scannerHandle *)calloc(1, sizeof(struct scannerHandle));
-
-	if (!sc) {
+	if (!scanner) {
 		log_fatal("Calloc did not return memory!");
 		return NULL;
 	}
 
-	par_s = (struct par_scanner *)calloc(1, sizeof(struct par_scanner));
-	if (!par_s) {
-		log_fatal("Calloc did not return memory!");
+	struct par_scanner *p_scanner = (struct par_scanner *)calloc(1, sizeof(struct par_scanner));
+
+	struct db_handle *internal_db_handle = (struct db_handle *)handle;
+	scanner->type_of_scanner = FORWARD_SCANNER;
+	init_dirty_scanner(scanner, internal_db_handle, seek_key, scanner_mode);
+	p_scanner->sc = scanner;
+	p_scanner->allocated = 0;
+	p_scanner->buf_size = PAR_MAX_PREALLOCATED_SIZE;
+	p_scanner->kv_buf = p_scanner->buf;
+
+	p_scanner->valid = 1;
+	if (scanner->keyValue == NULL) {
+		p_scanner->valid = 0;
 		return NULL;
 	}
 
-	sc->type_of_scanner = FORWARD_SCANNER;
-	init_dirty_scanner(sc, hd, seek_key, scanner_mode);
-	par_s->sc = sc;
-	par_s->allocated = 0;
-	par_s->buf_size = PAR_MAX_PREALLOCATED_SIZE;
-	par_s->kv_buf = par_s->buf;
+	struct bt_kv_log_address log_address = { .addr = scanner->keyValue, .tail_id = UINT8_MAX, .in_tail = 0 };
+	if (!scanner->kv_level_id && BIG_INLOG == scanner->kv_cat)
+		log_address =
+			bt_get_kv_log_address(&scanner->db->db_desc->big_log, ABSOLUTE_ADDRESS(scanner->keyValue));
 
-	// Now check what we got
-	if (sc->keyValue == NULL)
-		par_s->valid = 0;
-	else {
-		par_s->valid = 1;
-
-		struct bt_kv_log_address log_address = { .addr = sc->keyValue, .tail_id = UINT8_MAX, .in_tail = 0 };
-		if (!sc->kv_level_id && BIG_INLOG == sc->kv_cat)
-			log_address = bt_get_kv_log_address(&sc->db->db_desc->big_log, ABSOLUTE_ADDRESS(sc->keyValue));
-
-		uint32_t kv_size = get_kv_size((struct splice *)log_address.addr);
-		if (kv_size > par_s->buf_size) {
-			//log_info("Space not enougn needing %u got %u", kv_size, par_s->buf_size);
-			if (par_s->allocated)
-				free(par_s->kv_buf);
-			par_s->buf_size = kv_size;
-			par_s->allocated = 1;
-			par_s->kv_buf = calloc(1, par_s->buf_size);
-		}
-		memcpy(par_s->kv_buf, log_address.addr, kv_size);
-		if (log_address.in_tail)
-			bt_done_with_value_log_address(&sc->db->db_desc->big_log, &log_address);
+	uint32_t kv_size = get_kv_size((struct splice *)log_address.addr);
+	if (kv_size > p_scanner->buf_size) {
+		//log_info("Space not enougn needing %u got %u", kv_size, par_s->buf_size);
+		if (p_scanner->allocated)
+			free(p_scanner->kv_buf);
+		p_scanner->buf_size = kv_size;
+		p_scanner->allocated = 1;
+		p_scanner->kv_buf = calloc(1, p_scanner->buf_size);
 	}
+	memcpy(p_scanner->kv_buf, log_address.addr, kv_size);
+	if (log_address.in_tail)
+		bt_done_with_value_log_address(&scanner->db->db_desc->big_log, &log_address);
 
-	if (free_seek_key)
-		free(seek_key);
-	return (par_scanner)par_s;
+	return p_scanner;
 }
 
 void par_close_scanner(par_scanner sc)
