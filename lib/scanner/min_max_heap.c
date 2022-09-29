@@ -80,7 +80,7 @@ static int sh_solve_tie(struct sh_heap *heap, struct sh_heap_node *nd_1, struct 
 	nd_1->duplicate = 0;
 	nd_2->duplicate = 1;
 	/*Is it an L0 conflict?*/
-	if (!nd_1->level_id && !nd_2->level_id) {
+	if (0 == nd_1->level_id && 0 == nd_2->level_id) {
 		/*largest epoch wins*/
 		if (nd_1->epoch < nd_2->epoch) {
 			nd_1->duplicate = 1;
@@ -111,16 +111,7 @@ static int sh_prefix_compare(struct key_compare *key1, struct key_compare *key2)
 {
 	uint32_t size = key1->key_size <= key2->key_size ? key1->key_size : key2->key_size;
 	size = size < PREFIX_SIZE ? size : PREFIX_SIZE;
-
-	int ret = memcmp(key1->key, key2->key, size);
-
-	if (ret)
-		return ret;
-
-	if (PREFIX_SIZE == size)
-		return 0;
-
-	return key1->key_size - key2->key_size;
+	return memcmp(key1->key, key2->key, size);
 }
 
 /**
