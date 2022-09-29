@@ -522,7 +522,7 @@ level_scanner *_init_compaction_buffer_scanner(db_handle *handle, int level_id, 
 	level_sc->type = COMPACTION_BUFFER_SCANNER;
 
 	if (level_scanner_seek(level_sc, start_key, GREATER_OR_EQUAL) == END_OF_DATABASE) {
-		log_info("empty internal buffer during compaction operation, is that possible?");
+		log_warn("empty internal buffer during compaction operation, is that possible?");
 		return NULL;
 	}
 	return level_sc;
@@ -559,8 +559,8 @@ bool get_next(scannerHandle *scanner)
 			next_node.tombstone = scanner->LEVEL_SCANNERS[node.level_id][node.active_tree].tombstone;
 			sh_insert_heap_node(&scanner->heap, &next_node);
 		}
-		if (node.duplicate == 1 || node.tombstone == 1) {
-			//log_warn("ommiting duplicate %s", (char *)nd.KV + 4);
+		if (node.duplicate || node.tombstone) {
+			//log_warn("ommiting duplicate %s", (char *)node.KV + 4);
 			continue;
 		}
 		return true;
