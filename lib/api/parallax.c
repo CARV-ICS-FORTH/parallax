@@ -18,6 +18,7 @@
 #include "../btree/set_options.h"
 #include "../common/common_functions.h"
 #include "../scanner/scanner.h"
+#include <assert.h>
 #include <log.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -249,7 +250,7 @@ par_scanner par_init_scanner(par_handle handle, struct par_key *key, par_seek_mo
 	p_scanner->valid = 1;
 	if (scanner->keyValue == NULL) {
 		p_scanner->valid = 0;
-		return NULL;
+		return p_scanner;
 	}
 
 	struct bt_kv_log_address log_address = { .addr = scanner->keyValue, .tail_id = UINT8_MAX, .in_tail = 0 };
@@ -275,6 +276,7 @@ par_scanner par_init_scanner(par_handle handle, struct par_key *key, par_seek_mo
 
 void par_close_scanner(par_scanner sc)
 {
+	assert(sc);
 	struct par_scanner *par_s = (struct par_scanner *)sc;
 	close_scanner((struct scannerHandle *)par_s->sc);
 	if (par_s->allocated)
@@ -316,7 +318,7 @@ int par_get_next(par_scanner sc)
 int par_is_valid(par_scanner sc)
 {
 	struct par_scanner *par_s = (struct par_scanner *)sc;
-	return par_s->valid;
+	return NULL == par_s ? 0 : par_s->valid;
 }
 
 struct par_key par_get_key(par_scanner sc)
