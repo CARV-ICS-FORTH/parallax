@@ -923,11 +923,13 @@ void wait_for_available_level0_tree(db_handle *handle, uint8_t level_id, uint8_t
 enum kv_category calculate_KV_category(uint32_t key_size, uint32_t value_size, request_type op_type)
 {
 	assert(op_type == insertOp || op_type == deleteOp);
-	assert(key_size && value_size);
 
-	if (op_type == deleteOp)
+	if (op_type == deleteOp) {
+		assert(key_size && 0 == value_size);
 		return SMALL_INPLACE;
+	}
 
+	assert(key_size && value_size);
 	/*We always use as nominator the smallest value of the pair <key size, value size>*/
 	double kv_ratio = ((double)key_size) / value_size;
 	if (value_size < key_size)
