@@ -768,9 +768,11 @@ char *db_close(db_handle *handle)
 	// otherwise we could leave this db in an undefined state where it will never close.
 	// Scenario is -> db_close is called while gc is having a reference to the db and
 	// when it decreases the reference the handle is never closed.
-	while (handle->db_desc->gc_scanning_db)
-		sleep(50);
-
+	while (handle->db_desc->gc_scanning_db) {
+		MUTEX_UNLOCK(&init_lock);
+		sleep(1);
+		MUTEX_LOCK(&init_lock);
+	}
 	if (handle->db_desc->reference_count < 0) {
 		log_fatal("Negative referece count for DB %s", handle->db_desc->db_superblock->db_name);
 		BUG_ON();
