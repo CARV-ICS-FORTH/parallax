@@ -614,7 +614,8 @@ static struct segment_array *find_N_last_blobs(struct db_descriptor *db_desc, ui
 	}
 
 	close_allocation_log_cursor(log_cursor);
-	struct blob_entry *current_entry, *tmp;
+	struct blob_entry *current_entry = NULL;
+	struct blob_entry *tmp = NULL;
 
 	if (garbage_bytes_for_blobs) {
 		validate_garbage_blob_bytes(garbage_bytes_for_blobs);
@@ -656,20 +657,21 @@ static char *get_position_in_segment(struct log_cursor *cursor)
 void prepare_cursor_op(struct log_cursor *cursor)
 {
 	cursor->entry.lsn = *(uint64_t *)get_position_in_segment(cursor);
-	cursor->offt_in_segment += sizeof(uint64_t);
-	struct bt_delete_marker *dm = (struct bt_delete_marker *)get_position_in_segment(cursor);
+	cursor->offt_in_segment += LSN_SIZE;
+	struct bt_delete_marker *delete_marker = (struct bt_delete_marker *)get_position_in_segment(cursor);
 
-	if (dm->marker_id != BT_DELETE_MARKER_ID) {
-		cursor->entry.par_kv = (struct splice *)get_position_in_segment(cursor);
-		cursor->offt_in_segment += get_key_size_with_metadata(cursor->entry.par_kv);
-		cursor->offt_in_segment += get_value_size_with_metadata(cursor->entry.par_kv);
-		cursor->tombstone = 0;
-	} else {
-		cursor->offt_in_segment += sizeof(dm->marker_id);
+	if (delete_marker->marker_id == BT_DELETE_MARKER_ID) {
+		cursor->offt_in_segment += sizeof(delete_marker->marker_id);
 		cursor->entry.par_kv = (struct splice *)get_position_in_segment(cursor);
 		cursor->offt_in_segment += get_key_size_with_metadata(cursor->entry.par_kv);
 		cursor->tombstone = 1;
+		return;
 	}
+
+	cursor->entry.par_kv = (struct splice *)get_position_in_segment(cursor);
+	cursor->offt_in_segment += get_key_size_with_metadata(cursor->entry.par_kv);
+	cursor->offt_in_segment += get_value_size_with_metadata(cursor->entry.par_kv);
+	cursor->tombstone = 0;
 }
 
 static void init_pos_log_cursor_in_segment(struct db_descriptor *db_desc, struct log_cursor *cursor)
@@ -678,14 +680,15 @@ static void init_pos_log_cursor_in_segment(struct db_descriptor *db_desc, struct
 		cursor->valid = 0;
 		return;
 	}
-
 	cursor->valid = 1;
+
 	//cursor->curr_segment = REAL_ADDRESS(cursor->log_segments->segments[cursor->log_segments->entry_id]);
 	if (!read_dev_offt_into_buffer((char *)cursor->segment_in_mem_buffer, 0, cursor->segment_in_mem_size,
 				       cursor->log_segments->segments[cursor->log_segments->entry_id],
 				       db_desc->db_volume->vol_fd)) {
 		log_fatal("Failed to read dev offt: %lu",
 			  cursor->log_segments->segments[cursor->log_segments->entry_id]);
+		_exit(EXIT_FAILURE);
 	}
 
 	/*Cornercases*/
@@ -693,7 +696,7 @@ static void init_pos_log_cursor_in_segment(struct db_descriptor *db_desc, struct
 	case SMALL_LOG:
 		cursor->offt_in_segment = db_desc->small_log_start_offt_in_segment;
 		if (cursor->log_segments->segments[cursor->log_segments->entry_id] == cursor->log_tail_dev_offt) {
-			if (cursor->log_size % SEGMENT_SIZE == sizeof(struct segment_header)) {
+			if (cursor->log_size % (uint64_t)SEGMENT_SIZE == sizeof(struct segment_header)) {
 				/*Nothing to parse*/
 				log_info("Nothing to parse in the small log");
 				cursor->valid = 0;
@@ -818,12 +821,13 @@ start:
 	uint32_t remaining_bytes_in_segment = 0;
 	int is_tail = cursor->log_segments->segments[cursor->log_segments->entry_id] == cursor->log_tail_dev_offt;
 
-	remaining_bytes_in_segment = SEGMENT_SIZE - ((uint64_t)cursor->offt_in_segment);
+	remaining_bytes_in_segment = (uint64_t)SEGMENT_SIZE - ((uint64_t)cursor->offt_in_segment);
 	if (is_tail)
-		remaining_bytes_in_segment = (cursor->log_size % SEGMENT_SIZE) - ((uint64_t)cursor->offt_in_segment);
+		remaining_bytes_in_segment =
+			(cursor->log_size % (uint64_t)SEGMENT_SIZE) - ((uint64_t)cursor->offt_in_segment);
 
 	char *pos_in_segment = get_position_in_segment(cursor);
-	if (remaining_bytes_in_segment < sizeof(uint32_t) || 0 == *(uint32_t *)pos_in_segment) {
+	if (remaining_bytes_in_segment < GET_MIN_POSSIBLE_KV_SIZE() || 0 == *(uint32_t *)pos_in_segment) {
 		cursor->offt_in_segment += remaining_bytes_in_segment;
 		get_next_log_segment(cursor);
 		goto start;
@@ -836,40 +840,44 @@ start:
 
 void recover_L0(struct db_descriptor *db_desc)
 {
-	db_handle hd = { .db_desc = db_desc, .volume_desc = db_desc->db_volume };
-	struct log_cursor *cursor[LOG_TYPES_COUNT];
+	db_handle db_hanle = { .db_desc = db_desc, .volume_desc = db_desc->db_volume };
+	struct log_cursor *cursor[LOG_TYPES_COUNT] = { 0 };
 
 	assert(db_desc->small_log_start_segment_dev_offt == db_desc->small_log.head_dev_offt);
 	cursor[SMALL_LOG] = init_log_cursor(db_desc, SMALL_LOG);
-	log_info("Small log cursor status: %u", cursor[SMALL_LOG]->valid);
+	log_debug("Small log cursor status: %u", cursor[SMALL_LOG]->valid);
 	cursor[BIG_LOG] = init_log_cursor(db_desc, BIG_LOG);
-	log_info("Big log cursor status: %u", cursor[BIG_LOG]->valid);
+	log_debug("Big log cursor status: %u", cursor[BIG_LOG]->valid);
 
 	struct kv_entry *kvs[LOG_TYPES_COUNT];
 	kvs[SMALL_LOG] = &cursor[SMALL_LOG]->entry;
 	kvs[BIG_LOG] = &cursor[BIG_LOG]->entry;
 
-	enum log_type choice;
+	enum log_type choice = 0;
 	while (1) {
 		if (!cursor[SMALL_LOG]->valid && !cursor[BIG_LOG]->valid)
 			break;
-		else if (!cursor[SMALL_LOG]->valid)
+		choice = BIG_LOG;
+		if (!cursor[SMALL_LOG]->valid)
 			choice = BIG_LOG;
 		else if (!cursor[BIG_LOG]->valid)
 			choice = SMALL_LOG;
 		else if (cursor[SMALL_LOG]->entry.lsn < cursor[BIG_LOG]->entry.lsn)
 			choice = SMALL_LOG;
-		else
-			choice = BIG_LOG;
 
 		char *error_message = NULL;
-		void *key = kvs[choice]->par_kv->data;
-		void *value = kvs[choice]->par_kv->data + kvs[choice]->par_kv->key_size;
+		void *key = get_key_offset_in_kv(kvs[choice]->par_kv);
+		void *value = get_value_offset_in_kv(kvs[choice]->par_kv, kvs[choice]->par_kv->key_size);
+
 		if (!cursor[choice]->tombstone)
-			insert_key_value(&hd, key, value, kvs[choice]->par_kv->key_size,
+			insert_key_value(&db_hanle, key, value, kvs[choice]->par_kv->key_size,
 					 kvs[choice]->par_kv->value_size, insertOp, error_message);
-		else
-			insert_key_value(&hd, key, "empty", kvs[choice]->par_kv->key_size, 0, deleteOp, error_message);
+		else {
+			log_debug("Tombstone for key %.*s", get_key_size((struct splice *)kvs[choice]),
+				  get_key_offset_in_kv((struct splice *)kvs[choice]));
+			insert_key_value(&db_hanle, key, NULL, kvs[choice]->par_kv->key_size, 0, deleteOp,
+					 error_message);
+		}
 
 		if (error_message) {
 			log_fatal("Insert failed reason = %s, exiting", error_message);
