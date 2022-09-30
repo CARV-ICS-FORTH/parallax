@@ -244,7 +244,6 @@ static void delete_workload(struct workload_config_t *workload_config)
 
 int main(int argc, char **argv)
 {
-	disable_gc();
 	int help_flag = 0;
 
 	struct wrap_option options[] = {
