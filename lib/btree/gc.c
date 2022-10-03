@@ -113,7 +113,7 @@ int8_t find_deleted_kv_pairs_in_segment(struct db_handle handle, struct gc_segme
 						   .size = 0,
 						   .buffer_to_pack_kv = NULL,
 						   .buffer_overflow = 0,
-						   .kv_buf = (char *)kv,
+						   .key_buf = (char *)kv,
 						   .retrieve = 0 };
 		find_key(&get_op);
 

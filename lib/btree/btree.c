@@ -1462,7 +1462,7 @@ static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id,
 	lock_table *prev = NULL;
 	lock_table *curr = NULL;
 	struct node_header *root = NULL;
-	struct splice *search_kv_buf = (struct splice *)get_op->kv_buf;
+	struct splice *search_kv_buf = (struct splice *)get_op->key_buf;
 	struct db_descriptor *db_desc = get_op->db_desc;
 
 	if (db_desc->levels[level_id].root_w[tree_id] == NULL && db_desc->levels[level_id].root_r[tree_id] == NULL) {

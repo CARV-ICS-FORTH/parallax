@@ -89,12 +89,11 @@ void par_put_serialized(par_handle handle, char *serialized_key_value, char **er
 	serialized_insert_key_value((db_handle *)handle, serialized_key_value, *error_message);
 }
 
-static inline int par_serialize_to_kv_format(struct par_key *key, char **buf, uint32_t buf_size)
+static inline int par_serialize_to_key_format(struct par_key *key, char **buf, uint32_t buf_size)
 {
 	int ret = 0;
 	uint32_t key_size = sizeof(key->size) + key->size;
-	uint32_t value_size = UINT32_MAX;
-	uint32_t get_op_payload_size = key_size + sizeof(value_size);
+	uint32_t get_op_payload_size = key_size;
 	if (get_op_payload_size > buf_size) {
 		*buf = malloc(get_op_payload_size);
 		ret = 1;
@@ -102,10 +101,8 @@ static inline int par_serialize_to_kv_format(struct par_key *key, char **buf, ui
 	char *kv_buf = *buf;
 	// key_size
 	memcpy(&kv_buf[0], &key->size, sizeof(key->size));
-	// value size
-	memcpy(&kv_buf[sizeof(key->size)], &value_size, sizeof(key->size));
 	// key payload
-	memcpy(&kv_buf[sizeof(key->size) + sizeof(value_size)], key->data, key->size);
+	memcpy(&kv_buf[sizeof(key->size)], key->data, key->size);
 	return ret;
 }
 
@@ -118,14 +115,14 @@ void par_get(par_handle handle, struct par_key *key, struct par_value *value, ch
 
 	/*Serialize user key in KV_FORMAT*/
 	char buf[PAR_MAX_PREALLOCATED_SIZE];
-	char *kv_buf = buf;
-	int malloced = par_serialize_to_kv_format(key, &kv_buf, PAR_MAX_PREALLOCATED_SIZE);
+	char *key_buf = buf;
+	int malloced = par_serialize_to_key_format(key, &key_buf, PAR_MAX_PREALLOCATED_SIZE);
 
 	struct db_handle *hd = (struct db_handle *)handle;
 
 	/*Prepare lookup reply*/
 	struct lookup_operation get_op = { .db_desc = hd->db_desc,
-					   .kv_buf = kv_buf,
+					   .key_buf = key_buf,
 					   .buffer_to_pack_kv = NULL,
 					   .size = 0,
 					   .buffer_overflow = 0,
@@ -140,7 +137,7 @@ void par_get(par_handle handle, struct par_key *key, struct par_value *value, ch
 
 	find_key(&get_op);
 	if (malloced)
-		free(kv_buf);
+		free(key_buf);
 
 	if (!get_op.found)
 		create_error_message(error_message, "key not found");
@@ -156,13 +153,13 @@ par_ret_code par_exists(par_handle handle, struct par_key *key)
 {
 	/*Serialize user key in KV_FORMAT*/
 	char buf[PAR_MAX_PREALLOCATED_SIZE];
-	char *kv_buf = buf;
-	int malloced = par_serialize_to_kv_format(key, &kv_buf, PAR_MAX_PREALLOCATED_SIZE);
+	char *key_buf = buf;
+	int malloced = par_serialize_to_key_format(key, &key_buf, PAR_MAX_PREALLOCATED_SIZE);
 
 	struct db_handle *hd = (struct db_handle *)handle;
 	/*Prepare lookup reply*/
 	struct lookup_operation get_op = { .db_desc = hd->db_desc,
-					   .kv_buf = kv_buf,
+					   .key_buf = key_buf,
 					   .buffer_to_pack_kv = NULL,
 					   .size = 0,
 					   .buffer_overflow = 1,
@@ -171,7 +168,7 @@ par_ret_code par_exists(par_handle handle, struct par_key *key)
 
 	find_key(&get_op);
 	if (malloced)
-		free(kv_buf);
+		free(key_buf);
 
 	if (!get_op.found)
 		return PAR_KEY_NOT_FOUND;
