@@ -15,8 +15,8 @@
 #include "../../utilities/dups_list.h"
 #include "../btree/btree.h"
 #include "../btree/conf.h"
+#include "../btree/kv_pairs.h"
 #include "../common/common.h"
-#include "../common/kv_pairs.h"
 #include <assert.h>
 #include <log.h>
 #include <stdint.h>

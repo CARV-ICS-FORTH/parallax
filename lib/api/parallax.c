@@ -15,8 +15,8 @@
 #include "../include/parallax/parallax.h"
 #include "../allocator/kv_format.h"
 #include "../btree/btree.h"
+#include "../btree/kv_pairs.h"
 #include "../btree/set_options.h"
-#include "../common/kv_pairs.h"
 #include "../scanner/scanner.h"
 #include <assert.h>
 #include <log.h>

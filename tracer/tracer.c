@@ -1,4 +1,4 @@
-#include "../lib/common/kv_pairs.h"
+#include "../lib/btree/kv_pairs.h"
 #include "../tests/arg_parser.h"
 #include <log.h>
 #include <parallax/parallax.h>
