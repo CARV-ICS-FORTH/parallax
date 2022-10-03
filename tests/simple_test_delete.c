@@ -95,12 +95,11 @@ void get_all_keys(par_handle hd)
 
 void delete_half_keys(par_handle hd)
 {
-	uint64_t i;
-	key *k = (key *)malloc(KV_SIZE);
-	struct par_key par_key;
+	key *k = (key *)calloc(1, KV_SIZE);
 
 	log_info("Delete started");
-	for (i = TOTAL_KEYS; i < (TOTAL_KEYS + NUM_KEYS / 2); i++) {
+	for (uint64_t i = TOTAL_KEYS; i < (TOTAL_KEYS + NUM_KEYS / 2); i++) {
+		struct par_key par_key = { 0 };
 		memcpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
 		sprintf(k->key_buf + strlen(KEY_PREFIX), "%llu", (long long unsigned)i);
 		k->key_size = strlen(k->key_buf) + 1;
@@ -114,25 +113,23 @@ void delete_half_keys(par_handle hd)
 		char *error_message = NULL;
 		par_delete(hd, &par_key, &error_message);
 		if (error_message) {
-			log_info("ERROR key not found! %s", error_message);
+			log_fatal("key %s not found!", error_message);
 			free(error_message);
-			exit(EXIT_FAILURE);
+			_exit(EXIT_FAILURE);
 		}
 	}
-	sleep(5);
 	free(k);
-	log_info("Delete finished");
+	log_info("Success! Delete finished");
 }
 
 void get_all_valid_keys(par_handle hd)
 {
-	uint64_t i;
 	key *k = (key *)calloc(1, KV_SIZE);
-	uint64_t count = 0;
-	struct par_key par_key;
+	uint64_t num_of_keys_not_found = 0;
 
 	log_info("Search for all keys");
-	for (i = TOTAL_KEYS; i < (TOTAL_KEYS + NUM_KEYS / 2); i++) {
+	for (uint64_t i = TOTAL_KEYS; i < (TOTAL_KEYS + NUM_KEYS / 2); i++) {
+		struct par_key par_key = { 0 };
 		memcpy(k->key_buf + 4, KEY_PREFIX, strlen(KEY_PREFIX));
 		sprintf(k->key_buf + 4 + strlen(KEY_PREFIX), "%llu", (long long unsigned)i);
 		k->key_size = strlen(&k->key_buf[4]) + 1;
@@ -146,13 +143,14 @@ void get_all_valid_keys(par_handle hd)
 		if (par_exists(hd, &par_key) == PAR_KEY_NOT_FOUND) {
 			/* log_info("%d", get_op.tombstone); */
 			/* BREAKPOINT; */
-			++count;
+			++num_of_keys_not_found;
 		}
 
 		/* assert(get_op.tombstone); */
 		/* assert(get_op.found); */
 	}
-	for (i = ((TOTAL_KEYS + NUM_KEYS / 2)); i < (TOTAL_KEYS + NUM_KEYS); i++) {
+	for (uint64_t i = ((TOTAL_KEYS + NUM_KEYS / 2)); i < (TOTAL_KEYS + NUM_KEYS); i++) {
+		struct par_key par_key = { 0 };
 		memcpy(k->key_buf + 4, KEY_PREFIX, strlen(KEY_PREFIX));
 		sprintf(k->key_buf + 4 + strlen(KEY_PREFIX), "%llu", (long long unsigned)i);
 		k->key_size = strlen(&k->key_buf[4]) + 1;
@@ -163,22 +161,20 @@ void get_all_valid_keys(par_handle hd)
 
 		par_key.data = &k->key_buf[4];
 		par_key.size = k->key_size;
-		if (par_exists(hd, &par_key) == PAR_SUCCESS) {
-			/* log_info("%s found %d", &k->key_buf[4], get_op.found); */
-			/* log_info("%d", get_op.tombstone); */
-			/* exit(EXIT_FAILURE); */
-			/* ++count; */
-		} else {
-			count++;
-		}
+		if (par_exists(hd, &par_key) == PAR_KEY_NOT_FOUND)
+			num_of_keys_not_found++;
 
 		/* assert(get_op.tombstone); */
 		/* assert(get_op.found); */
 	}
 
 	free(k);
-	log_info("Searching finished %lu", count);
-	assert(count == NUM_KEYS / 2);
+
+	if (num_of_keys_not_found != NUM_KEYS / 2) {
+		log_fatal("Searching finished not found keys %lu out of a population of %lu", num_of_keys_not_found,
+			  NUM_KEYS);
+		_exit(EXIT_FAILURE);
+	}
 }
 
 void scan_all_valid_keys(par_handle hd)
@@ -285,7 +281,7 @@ int main(int argc, char *argv[])
 	log_info("----------------------------------CLOSE FINISH--------------------------------------");
 	handle = par_open(&db_options, &error_message);
 	if (error_message) {
-		log_fatal("%s", error_message);
+		log_fatal("par_open() failed with message: %s", error_message);
 		free(error_message);
 		return EXIT_FAILURE;
 	}
