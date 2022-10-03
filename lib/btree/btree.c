@@ -980,8 +980,7 @@ struct par_put_metadata insert_key_value(db_handle *handle, void *key, void *val
 					 uint32_t value_size, request_type op_type, char *error_message)
 {
 	bt_insert_req ins_req = { 0 };
-	char __tmp[KV_MAX_SIZE];
-	char *key_buf = __tmp;
+	char kv_pair[KV_MAX_SIZE];
 
 	error_message = insert_error_handling(handle, key_size, value_size);
 	if (error_message) {
@@ -993,21 +992,22 @@ struct par_put_metadata insert_key_value(db_handle *handle, void *key, void *val
 	}
 
 	/*prepare the request*/
-	set_key_size((struct splice *)key_buf, key_size);
-	set_value_size((struct splice *)key_buf, value_size);
-	memcpy(get_key_offset_in_kv((struct splice *)key_buf), key, key_size);
-	memcpy(get_value_offset_in_kv((struct splice *)key_buf, get_key_size((struct splice *)key_buf)), value,
-	       value_size);
+
+	ins_req.metadata.put_op_metadata.key_value_category = ins_req.metadata.cat;
 	ins_req.metadata.handle = handle;
-	ins_req.key_value_buf = key_buf;
+	ins_req.key_value_buf = kv_pair;
+	ins_req.metadata.tombstone = op_type == deleteOp;
+	ins_req.metadata.tombstone ? set_tombstone((struct splice *)ins_req.key_value_buf) :
+				     set_non_tombstone((struct splice *)ins_req.key_value_buf);
+	set_key((struct splice *)kv_pair, key, key_size);
+	set_value((struct splice *)kv_pair, value, value_size);
+	ins_req.metadata.cat = calculate_KV_category(key_size, value_size, op_type);
 	ins_req.metadata.level_id = 0;
 	ins_req.metadata.key_format = KV_FORMAT;
 	ins_req.metadata.append_to_log = 1;
 	ins_req.metadata.gc_request = 0;
 	ins_req.metadata.special_split = 0;
-	ins_req.metadata.tombstone = op_type == deleteOp;
-	ins_req.metadata.cat = calculate_KV_category(key_size, value_size, op_type);
-	ins_req.metadata.put_op_metadata.key_value_category = ins_req.metadata.cat;
+
 	/*
 	 * Note for L0 inserts since active_tree changes dynamically we decide which
 	 * is the active_tree after acquiring the guard lock of the region.
@@ -1045,30 +1045,16 @@ struct par_put_metadata serialized_insert_key_value(db_handle *handle, const cha
 
 void extract_keyvalue_size(log_operation *req, metadata_tologop *data_size)
 {
-	switch (req->optype_tolog) {
-	case insertOp:
-		if (req->metadata->key_format == KV_FORMAT) {
-			data_size->key_len = get_key_size((struct splice *)req->ins_req->key_value_buf);
-			data_size->value_len = get_value_size((struct splice *)req->ins_req->key_value_buf);
-			data_size->kv_size = get_kv_size((struct splice *)req->ins_req->key_value_buf);
-		} else {
-			data_size->key_len =
-				get_key_size_kv_seperated((struct kv_seperation_splice *)req->ins_req->key_value_buf);
-			data_size->value_len =
-				get_value_size_kv_seperated((struct kv_seperation_splice *)req->ins_req->key_value_buf);
-			data_size->kv_size =
-				get_kv_size_kv_seperated((struct kv_seperation_splice *)req->ins_req->key_value_buf);
-		}
-		break;
-	case deleteOp:
+	if (req->metadata->key_format == KV_FORMAT) {
 		data_size->key_len = get_key_size((struct splice *)req->ins_req->key_value_buf);
-		data_size->value_len = 0;
-		data_size->kv_size = sizeof(struct bt_delete_marker) + data_size->key_len;
-		break;
-	default:
-		log_fatal("Trying to append unknown operation in log! ");
-		BUG_ON();
+		data_size->value_len = get_value_size((struct splice *)req->ins_req->key_value_buf);
+		data_size->kv_size = get_kv_size((struct splice *)req->ins_req->key_value_buf);
+		return;
 	}
+
+	data_size->key_len = get_key_size_kv_seperated((struct kv_seperation_splice *)req->ins_req->key_value_buf);
+	data_size->value_len = get_value_size_kv_seperated((struct kv_seperation_splice *)req->ins_req->key_value_buf);
+	data_size->kv_size = get_kv_size_kv_seperated((struct kv_seperation_splice *)req->ins_req->key_value_buf);
 }
 
 //######################################################################################################
@@ -1094,48 +1080,30 @@ static void pr_copy_kv_to_tail(struct pr_log_ticket *ticket)
 	uint64_t offset_in_seg = ticket->log_offt % (uint64_t)SEGMENT_SIZE;
 	uint64_t offt = offset_in_seg;
 	switch (ticket->req->optype_tolog) {
-	case insertOp: {
+	case insertOp:
+	case deleteOp: {
 		// first the lsn
 		memcpy(&ticket->tail->buf[offt], &ticket->lsn, LSN_SIZE);
 		offt += LSN_SIZE;
-
-		ticket->op_size = sizeof(ticket->data_size->key_len) + sizeof(ticket->data_size->value_len) +
-				  ticket->data_size->key_len + ticket->data_size->value_len;
-		// log_info("Copying ta log offt %llu in buf %u bytes %u", ticket->log_offt,
-		// offt_in_seg, ticket->op_size);
-
-		memcpy(&ticket->tail->buf[offt], ticket->req->ins_req->key_value_buf, ticket->op_size);
-		ticket->op_size += LSN_SIZE;
+		struct splice *kv_pair_dst = (struct splice *)&ticket->tail->buf[offt];
+		struct splice *kv_pair_src = (struct splice *)ticket->req->ins_req->key_value_buf;
+		ticket->req->optype_tolog == insertOp ? set_non_tombstone(kv_pair_dst) : set_tombstone(kv_pair_dst);
+		set_key(kv_pair_dst, get_key_offset_in_kv(kv_pair_src), get_key_size(kv_pair_src));
+		set_value(kv_pair_dst, get_value_offset_in_kv(kv_pair_src, get_key_size(kv_pair_src)),
+			  get_value_size(kv_pair_src));
+		ticket->op_size = LSN_SIZE + get_kv_size(kv_pair_dst);
 		break;
 	}
-	case deleteOp: {
-		struct bt_delete_marker dm = { .marker_id = BT_DELETE_MARKER_ID,
-					       .key_size = ticket->data_size->key_len };
-
-		// Append the LSN + the delete marker
-		memcpy(&ticket->tail->buf[offt], &ticket->lsn, LSN_SIZE);
-		offt += LSN_SIZE;
-		memcpy(&ticket->tail->buf[offt], &dm, sizeof(struct bt_delete_marker));
-		offt += sizeof(struct bt_delete_marker);
-		ticket->op_size = LSN_SIZE + sizeof(struct bt_delete_marker);
-
-		// Append the deleted key
-		memcpy(&ticket->tail->buf[offt],
-		       get_key_offset_in_kv((struct splice *)ticket->req->ins_req->key_value_buf), dm.key_size);
-		ticket->op_size += ticket->data_size->key_len;
-		break;
-	}
-	case paddingOp: {
-		if (offset_in_seg == 0)
-			ticket->op_size = 0;
-		else {
-			ticket->op_size = SEGMENT_SIZE - offset_in_seg;
+	case paddingOp:
+		ticket->op_size = 0;
+		if (offset_in_seg) {
+			ticket->op_size = (uint64_t)SEGMENT_SIZE - offset_in_seg;
 			//log_info("Time for padding for log_offset %llu offt in seg %llu pad bytes %u ",
 			//	 ticket->log_offt, offt_in_seg, ticket->op_size);
 			memset(&ticket->tail->buf[offset_in_seg], 0, ticket->op_size);
 		}
 		break;
-	}
+
 	default:
 		log_fatal("Unknown op");
 		BUG_ON();
@@ -1146,7 +1114,7 @@ static void pr_copy_kv_to_tail(struct pr_log_ticket *ticket)
 	while (remaining > 0) {
 		uint32_t chunk_id = curr_offt_in_seg / LOG_CHUNK_SIZE;
 		int64_t offt_in_chunk = curr_offt_in_seg - (chunk_id * LOG_CHUNK_SIZE);
-		int64_t bytes = LOG_CHUNK_SIZE - offt_in_chunk;
+		int64_t bytes = (uint64_t)LOG_CHUNK_SIZE - offt_in_chunk;
 		if (remaining < bytes)
 			bytes = remaining;
 

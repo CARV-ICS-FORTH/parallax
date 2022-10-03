@@ -18,6 +18,7 @@
 #include "../common/kv_pairs.h"
 #include "device_structures.h"
 #include "log_structures.h"
+#include "parallax/structures.h"
 #include "redo_undo_log.h"
 #include "uthash.h"
 #include "volume_manager.h"
@@ -658,20 +659,11 @@ void prepare_cursor_op(struct log_cursor *cursor)
 {
 	cursor->entry.lsn = *(uint64_t *)get_position_in_segment(cursor);
 	cursor->offt_in_segment += LSN_SIZE;
-	struct bt_delete_marker *delete_marker = (struct bt_delete_marker *)get_position_in_segment(cursor);
-
-	if (delete_marker->marker_id == BT_DELETE_MARKER_ID) {
-		cursor->offt_in_segment += sizeof(delete_marker->marker_id);
-		cursor->entry.par_kv = (struct splice *)get_position_in_segment(cursor);
-		cursor->offt_in_segment += get_key_size_with_metadata(cursor->entry.par_kv);
-		cursor->tombstone = 1;
-		return;
-	}
+	struct splice *kv_pair = (struct splice *)get_position_in_segment(cursor);
 
 	cursor->entry.par_kv = (struct splice *)get_position_in_segment(cursor);
-	cursor->offt_in_segment += get_key_size_with_metadata(cursor->entry.par_kv);
-	cursor->offt_in_segment += get_value_size_with_metadata(cursor->entry.par_kv);
-	cursor->tombstone = 0;
+	cursor->tombstone = is_a_tombstone_kv_pair(kv_pair) ? 1 : 0;
+	cursor->offt_in_segment += get_kv_size(cursor->entry.par_kv);
 }
 
 static void init_pos_log_cursor_in_segment(struct db_descriptor *db_desc, struct log_cursor *cursor)
@@ -866,18 +858,13 @@ void recover_L0(struct db_descriptor *db_desc)
 			choice = SMALL_LOG;
 
 		char *error_message = NULL;
+		uint32_t key_size = get_key_size(kvs[choice]->par_kv);
 		void *key = get_key_offset_in_kv(kvs[choice]->par_kv);
+		uint32_t value_size = get_value_size(kvs[choice]->par_kv);
 		void *value = get_value_offset_in_kv(kvs[choice]->par_kv, kvs[choice]->par_kv->key_size);
 
-		if (!cursor[choice]->tombstone)
-			insert_key_value(&db_hanle, key, value, kvs[choice]->par_kv->key_size,
-					 kvs[choice]->par_kv->value_size, insertOp, error_message);
-		else {
-			log_debug("Tombstone for key %.*s", get_key_size((struct splice *)kvs[choice]),
-				  get_key_offset_in_kv((struct splice *)kvs[choice]));
-			insert_key_value(&db_hanle, key, NULL, kvs[choice]->par_kv->key_size, 0, deleteOp,
-					 error_message);
-		}
+		request_type op_type = cursor[choice]->tombstone ? deleteOp : insertOp;
+		insert_key_value(&db_hanle, key, value, key_size, value_size, op_type, error_message);
 
 		if (error_message) {
 			log_fatal("Insert failed reason = %s, exiting", error_message);

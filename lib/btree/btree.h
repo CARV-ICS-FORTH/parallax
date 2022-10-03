@@ -460,7 +460,6 @@ typedef struct metadata_tologop {
 	uint32_t kv_size;
 } metadata_tologop;
 
-#define BT_DELETE_MARKER_ID 0xFFFFFFFF
 struct bt_delete_marker {
 	uint32_t marker_id;
 	uint32_t key_size;
