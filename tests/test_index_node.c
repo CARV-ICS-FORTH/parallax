@@ -19,6 +19,7 @@
   * index_node and check correctness for its children.
 **/
 
+#include "btree/btree.h"
 #include "parallax/structures.h"
 #define ALPHABET_SIZE 26
 #define MAX_PIVOT_KEY_SIZE 200
@@ -61,7 +62,7 @@ static void verify_pivots(struct index_node *node, struct pivot_key **pivot, uin
 	guard->size = 1;
 	guard->data[0] = 0x00;
 
-	uint64_t child_offt = index_binary_search(node, guard, KV_FORMAT);
+	uint64_t child_offt = index_binary_search(node, guard, INDEX_KEY_TYPE);
 	uint64_t expected_value = base;
 	if (child_offt != expected_value) {
 		log_fatal("i = %u Child offt corrupted shoud be %lu but its value is %lu", 0, expected_value,
@@ -71,7 +72,7 @@ static void verify_pivots(struct index_node *node, struct pivot_key **pivot, uin
 
 	for (uint32_t i = 0; i < num_node_keys; ++i) {
 		//log_debug("Look up key is %.*s", pivot[i]->size, pivot[i]->data);
-		child_offt = index_binary_search(node, pivot[i], KV_FORMAT);
+		child_offt = index_binary_search(node, pivot[i], INDEX_KEY_TYPE);
 		expected_value = base + i + 1;
 		//log_debug("i = %u expected %lu got %lu lookup key %.*s", i, expected_value, child_offt, pivot[i]->size,
 		//	  pivot[i]->data);

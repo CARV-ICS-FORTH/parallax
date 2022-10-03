@@ -204,17 +204,17 @@ par_scanner par_init_scanner(par_handle handle, struct par_key *key, par_seek_mo
 
 	char seek_key_buffer[PAR_MAX_PREALLOCATED_SIZE];
 
-	struct pivot_key *seek_key = (struct pivot_key *)seek_key_buffer;
+	struct key_splice *seek_key = (struct key_splice *)seek_key_buffer;
 
 	enum SEEK_SCANNER_MODE scanner_mode = 0;
 	switch (mode) {
 	case PAR_GREATER:
 		scanner_mode = GREATER;
-		seek_key->size = key->size;
+		seek_key->key_size = key->size;
 		memcpy(seek_key->data, key->data, key->size);
 		break;
 	case PAR_GREATER_OR_EQUAL:
-		seek_key->size = key->size;
+		seek_key->key_size = key->size;
 		memcpy(seek_key->data, key->data, key->size);
 		scanner_mode = GREATER_OR_EQUAL;
 		break;

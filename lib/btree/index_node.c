@@ -374,6 +374,7 @@ struct bt_rebalance_result index_split_node(struct index_node *node, bt_insert_r
 
 int index_key_cmp(struct pivot_key *index_key, char *lookup_key, enum KV_type lookup_key_format)
 {
+	assert(lookup_key_format != KV_PREFIX);
 	uint32_t size = 0;
 	int ret = 0;
 
@@ -385,15 +386,24 @@ int index_key_cmp(struct pivot_key *index_key, char *lookup_key, enum KV_type lo
 			return ret;
 		return index_key->size - get_key_size(key);
 	}
-	assert(lookup_key_format != KV_PREFIX);
-	/* lookup_key is INDEX_KEY_TYPE
-	 * this should only(!) happend when we are inserting and new key into an index node (after a split) */
-	struct pivot_key *p_key = (struct pivot_key *)(lookup_key);
-	size = index_key->size <= p_key->size ? index_key->size : p_key->size;
+
+	if (lookup_key_format == INDEX_KEY_TYPE) {
+		/* this should only(!) happend when we are inserting and new key into an index node (after a split) */
+		struct pivot_key *p_key = (struct pivot_key *)(lookup_key);
+		size = index_key->size <= p_key->size ? index_key->size : p_key->size;
+		ret = memcmp(index_key->data, p_key->data, size);
+		if (ret != 0)
+			return ret;
+		return index_key->size - p_key->size;
+	}
+
+	/* lookup_key is KEY_TYPE*/
+	struct key_splice *p_key = (struct key_splice *)(lookup_key);
+	size = index_key->size <= p_key->key_size ? index_key->size : p_key->key_size;
 	ret = memcmp(index_key->data, p_key->data, size);
 	if (ret != 0)
 		return ret;
-	return index_key->size - p_key->size;
+	return index_key->size - p_key->key_size;
 }
 
 uint32_t get_pivot_key_size(struct pivot_key *pivot)

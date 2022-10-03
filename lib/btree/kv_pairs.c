@@ -97,3 +97,13 @@ void set_tombstone(struct splice *kv_pair)
 {
 	kv_pair->value_size = DELETE_MARKER_ID;
 }
+
+uint32_t get_key_size_of_key_splice(struct key_splice *key)
+{
+	return key->key_size;
+}
+
+char *get_key_offset_of_key_splice(struct key_splice *key)
+{
+	return key->data;
+}

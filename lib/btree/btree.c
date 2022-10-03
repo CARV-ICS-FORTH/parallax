@@ -1462,8 +1462,8 @@ static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id,
 	lock_table *prev = NULL;
 	lock_table *curr = NULL;
 	struct node_header *root = NULL;
-	struct splice *search_kv_buf = (struct splice *)get_op->key_buf;
 	struct db_descriptor *db_desc = get_op->db_desc;
+	struct key_splice *search_key_buf = (struct key_splice *)get_op->key_buf;
 
 	if (db_desc->levels[level_id].root_w[tree_id] == NULL && db_desc->levels[level_id].root_r[tree_id] == NULL) {
 		get_op->found = 0;
@@ -1487,6 +1487,7 @@ static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id,
 	}
 #endif
 
+	/* TODO: (@geostyl) do we need this if here? i think its reduntant*/
 	node_header *curr_node = root;
 	if (curr_node->type == leafRootNode) {
 		curr = _find_position((const lock_table **)db_desc->levels[level_id].level_lock_table, curr_node);
@@ -1494,8 +1495,8 @@ static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id,
 		if (RWLOCK_RDLOCK(&curr->rx_lock) != 0)
 			BUG_ON();
 
-		uint32_t key_size = get_key_size(search_kv_buf);
-		void *key = get_key_offset_in_kv(search_kv_buf);
+		uint32_t key_size = get_key_size_of_key_splice(search_key_buf);
+		void *key = get_key_offset_of_key_splice(search_key_buf);
 		ret_result = find_key_in_dynamic_leaf((struct bt_dynamic_leaf_node *)curr_node, db_desc, key, key_size,
 						      level_id);
 		get_op->tombstone = ret_result.tombstone;
@@ -1513,7 +1514,7 @@ static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id,
 				BUG_ON();
 
 		uint64_t child_offset =
-			index_binary_search((struct index_node *)curr_node, (char *)search_kv_buf, KV_FORMAT);
+			index_binary_search((struct index_node *)curr_node, (char *)search_key_buf, KEY_TYPE);
 		son_node = (void *)REAL_ADDRESS(child_offset);
 
 		prev = curr;
@@ -1534,8 +1535,8 @@ static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id,
 	if (RWLOCK_UNLOCK(&prev->rx_lock) != 0)
 		BUG_ON();
 
-	uint32_t key_size = get_key_size(search_kv_buf);
-	void *key = get_key_offset_in_kv(search_kv_buf);
+	uint32_t key_size = get_key_size_of_key_splice(search_key_buf);
+	void *key = get_key_offset_of_key_splice(search_key_buf);
 	ret_result =
 		find_key_in_dynamic_leaf((struct bt_dynamic_leaf_node *)curr_node, db_desc, key, key_size, level_id);
 	get_op->tombstone = ret_result.tombstone;
@@ -1620,7 +1621,6 @@ void find_key(struct lookup_operation *get_op)
 
 	while (1) {
 		/*first look the current active tree of the level*/
-
 		get_op->found = 0;
 		get_op->tombstone = 0;
 		lookup_in_tree(get_op, 0, tree_id);

@@ -32,7 +32,7 @@
 #define LSN_SIZE sizeof(uint64_t)
 #define MAX_HEIGHT 9
 
-enum KV_type { KV_FORMAT, KV_PREFIX, INDEX_KEY_TYPE };
+enum KV_type { KV_FORMAT, KV_PREFIX, INDEX_KEY_TYPE, KEY_TYPE };
 
 struct lookup_operation {
 	struct db_descriptor *db_desc; /*in variable*/
@@ -497,6 +497,7 @@ lock_table *_find_position(const lock_table **table, node_header *node);
 #define MIN(x, y) ((x > y) ? (y) : (x))
 #define ABSOLUTE_ADDRESS(X) (((uint64_t)(X)) - MAPPED)
 #define REAL_ADDRESS(X) ((X) ? (void *)(MAPPED + (uint64_t)(X)) : BUG_ON())
+/*TODO: (@geostyl) i think we should figure out a better way to write this*/
 #define SERIALIZE_KEY(buf, key, key_size)                           \
 	*(uint32_t *)buf = key_size;                                \
 	*(uint32_t *)((char *)buf + sizeof(uint32_t)) = UINT32_MAX; \

@@ -121,4 +121,8 @@ bool is_a_tombstone_kv_pair(struct splice *kv_pair);
 void set_tombstone(struct splice *kv_pair);
 
 void set_non_tombstone(struct splice *kv_pair);
+
+uint32_t get_key_size_of_key_splice(struct key_splice *key);
+
+char *get_key_offset_of_key_splice(struct key_splice *key);
 #endif // KV_PAIRS_H_
