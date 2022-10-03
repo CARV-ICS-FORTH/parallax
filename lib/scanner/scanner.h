@@ -29,7 +29,7 @@ typedef enum SEEK_SCANNER_MODE { GREATER = 5, GREATER_OR_EQUAL = 6, FETCH_FIRST 
 typedef enum SCANNER_TYPE { FORWARD_SCANNER = 1 } SCANNER_TYPE;
 
 typedef struct level_scanner {
-	struct bt_leaf_entry kv_entry;
+	struct kv_seperation_splice kv_entry;
 	db_handle *db;
 	stackT stack;
 	node_header *root; /*root of the tree when the cursor was initialized/reset, related to CPAAS-188*/

@@ -32,8 +32,8 @@ static void push_back_duplicate_kv(struct sh_heap *heap, struct sh_heap_node *hp
 	if (hp_node->cat != BIG_INLOG)
 		return;
 
-	struct bt_leaf_entry local;
-	struct bt_leaf_entry *keyvalue = NULL;
+	struct kv_seperation_splice local;
+	struct kv_seperation_splice *keyvalue = NULL;
 
 	switch (hp_node->type) {
 	case KV_FORMAT:
@@ -46,7 +46,7 @@ static void push_back_duplicate_kv(struct sh_heap *heap, struct sh_heap_node *hp
 		keyvalue = &local;
 		break;
 	case KV_PREFIX:
-		keyvalue = (struct bt_leaf_entry *)hp_node->KV;
+		keyvalue = (struct kv_seperation_splice *)hp_node->KV;
 		break;
 	default:
 		log_info("Unhandled KV type");

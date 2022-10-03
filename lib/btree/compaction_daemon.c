@@ -353,7 +353,7 @@ static void comp_get_next_key(struct comp_level_read_cursor *c)
 			}
 			case MEDIUM_INLOG:
 			case BIG_INLOG:
-				c->cursor_key.kv_inlog = (struct bt_leaf_entry *)kv_loc;
+				c->cursor_key.kv_inlog = (struct kv_seperation_splice *)kv_loc;
 				c->cursor_key.kv_inlog->dev_offt =
 					(uint64_t)REAL_ADDRESS(c->cursor_key.kv_inlog->dev_offt);
 				break;
@@ -777,7 +777,7 @@ static void comp_append_entry_to_leaf_node(struct comp_level_write_cursor *curso
 		break;
 
 	case KV_INLOG:
-		kv_size = sizeof(struct bt_leaf_entry);
+		kv_size = sizeof(struct kv_seperation_splice);
 		write_leaf_args.kv_dev_offt = curr_key->kv_inlog->dev_offt;
 		write_leaf_args.key_value_buf = (char *)curr_key->kv_inlog;
 		write_leaf_args.key_value_size = kv_size;
@@ -1147,7 +1147,7 @@ static void comp_fill_heap_node(struct compaction_request *comp_req, struct comp
 		// log_info("Prefix %.12s dev_offt %llu", cur->cursor_key.in_log->prefix,
 		//	 cur->cursor_key.in_log->device_offt);
 		nd->KV = (char *)cur->cursor_key.kv_inlog;
-		nd->kv_size = sizeof(struct bt_leaf_entry);
+		nd->kv_size = sizeof(struct kv_seperation_splice);
 		break;
 	default:
 		log_fatal("UNKNOWN_LOG_CATEGORY");
@@ -1168,7 +1168,7 @@ static void comp_fill_parallax_key(struct sh_heap_node *nd, struct comp_parallax
 		break;
 	case BIG_INLOG:
 	case MEDIUM_INLOG:
-		curr_key->kv_inlog = (struct bt_leaf_entry *)nd->KV;
+		curr_key->kv_inlog = (struct kv_seperation_splice *)nd->KV;
 		curr_key->kv_type = KV_INLOG;
 		break;
 	default:
@@ -1187,7 +1187,7 @@ static void print_heap_node_key(struct sh_heap_node *nd)
 		break;
 	case BIG_INLOG:
 	case MEDIUM_INLOG:;
-		struct splice *full_key = (struct splice *)((struct bt_leaf_entry *)nd->KV)->dev_offt;
+		struct splice *full_key = (struct splice *)((struct kv_seperation_splice *)nd->KV)->dev_offt;
 
 		log_debug("In log Key prefix is %.*s full key size: %u  full key data %.*s", PREFIX_SIZE,
 			  (char *)nd->KV, get_key_size(full_key), get_key_size(full_key),

@@ -106,11 +106,6 @@ typedef struct node_header {
 
 } __attribute__((packed)) node_header;
 
-struct bt_leaf_entry {
-	char prefix[PREFIX_SIZE];
-	uint64_t dev_offt;
-} __attribute__((packed));
-
 struct bt_leaf_entry_bitmap {
 	unsigned char bitmap; // This bitmap informs us which kv_entry is available to store data in the static leaf.
 };
@@ -138,7 +133,7 @@ struct key_compare {
 #define LEAF_NODE_REMAIN (LEAF_NODE_SIZE - sizeof(struct node_header))
 
 #define LN_ITEM_SIZE (sizeof(uint64_t) + (PREFIX_SIZE * sizeof(char)))
-#define KV_LEAF_ENTRY (sizeof(struct bt_leaf_entry) + sizeof(struct bt_static_leaf_slot_array) + (1 / CHAR_BIT))
+#define KV_LEAF_ENTRY (sizeof(struct kv_seperation_splice) + sizeof(struct bt_static_leaf_slot_array) + (1 / CHAR_BIT))
 #define LN_LENGTH ((LEAF_NODE_REMAIN) / (KV_LEAF_ENTRY))
 
 struct kv_format {

@@ -263,14 +263,14 @@ static void fill_compaction_scanner(struct level_scanner *level_sc, struct level
 		break;
 	}
 	case KV_INLOG: {
-		struct bt_leaf_entry *kv_entry =
-			(struct bt_leaf_entry *)get_kv_offset(dlnode, level->leaf_size, slot_array[position].index);
+		struct kv_seperation_splice *kv_entry = (struct kv_seperation_splice *)get_kv_offset(
+			dlnode, level->leaf_size, slot_array[position].index);
 		level_sc->kv_entry = *kv_entry;
 		level_sc->kv_entry.dev_offt = (uint64_t)REAL_ADDRESS(kv_entry->dev_offt);
 		level_sc->keyValue = (char *)&level_sc->kv_entry;
 		level_sc->cat = slot_array[position].key_category;
 		level_sc->tombstone = slot_array[position].tombstone;
-		level_sc->kv_size = sizeof(struct bt_leaf_entry);
+		level_sc->kv_size = sizeof(struct kv_seperation_splice);
 		level_sc->kv_format = KV_PREFIX;
 		break;
 	}
@@ -295,8 +295,8 @@ static void fill_normal_scanner(struct level_scanner *level_sc, struct level_des
 		break;
 	}
 	case KV_INLOG: {
-		struct bt_leaf_entry *kv_entry =
-			(struct bt_leaf_entry *)get_kv_offset(dlnode, level->leaf_size, slot_array[position].index);
+		struct kv_seperation_splice *kv_entry = (struct kv_seperation_splice *)get_kv_offset(
+			dlnode, level->leaf_size, slot_array[position].index);
 		level_sc->kv_entry = *kv_entry;
 		level_sc->kv_format = KV_FORMAT;
 		level_sc->kv_entry.dev_offt = (uint64_t)REAL_ADDRESS(kv_entry->dev_offt);
