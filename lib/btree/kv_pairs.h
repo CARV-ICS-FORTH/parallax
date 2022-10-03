@@ -18,6 +18,12 @@ struct kv_seperation_splice {
 	uint64_t dev_offt;
 } __attribute__((packed));
 
+// This struct defines the key abstraction of the system and it's irrelevant from splice format
+struct key_splice {
+	uint32_t key_size;
+	char data[];
+} __attribute__((packed));
+
 #define GET_MIN_POSSIBLE_KV_SIZE() (sizeof(uint32_t) + 1)
 
 /**
