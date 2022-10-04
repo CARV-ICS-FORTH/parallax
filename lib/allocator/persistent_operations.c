@@ -819,7 +819,8 @@ start:
 			(cursor->log_size % (uint64_t)SEGMENT_SIZE) - ((uint64_t)cursor->offt_in_segment);
 
 	char *pos_in_segment = get_position_in_segment(cursor);
-	if (remaining_bytes_in_segment < GET_MIN_POSSIBLE_KV_SIZE() || 0 == *(uint32_t *)pos_in_segment) {
+	struct splice *kv_pair = (struct splice *)pos_in_segment;
+	if (remaining_bytes_in_segment < GET_MIN_POSSIBLE_KV_SIZE() || 0 == get_key_size(kv_pair)) {
 		cursor->offt_in_segment += remaining_bytes_in_segment;
 		get_next_log_segment(cursor);
 		goto start;
