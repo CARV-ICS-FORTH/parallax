@@ -58,6 +58,7 @@ char *par_close(par_handle handle)
 	return db_close((db_handle *)handle);
 }
 
+// cppcheck-suppress unusedFunction
 enum kv_category get_kv_category(uint32_t key_size, uint32_t value_size, request_type operation, char **error_message)
 {
 	free_error_message(error_message);

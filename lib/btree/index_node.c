@@ -411,6 +411,7 @@ uint32_t get_pivot_key_size(struct pivot_key *pivot)
 	return pivot->size;
 }
 
+// cppcheck-suppress unusedFunction
 char *get_offset_of_pivot_key(struct pivot_key *pivot)
 {
 	return pivot->data;

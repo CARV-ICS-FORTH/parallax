@@ -283,6 +283,7 @@ void bt_done_with_value_log_address(struct log_descriptor *log_desc, struct bt_k
 	__sync_fetch_and_sub(&log_desc->tail[L->tail_id]->pending_readers, 1);
 }
 
+// cppcheck-suppress unusedFunction
 struct bt_kv_log_address bt_get_kv_medium_log_address(struct log_descriptor *log_desc, uint64_t dev_offt)
 {
 	struct bt_kv_log_address reply = { .addr = NULL, .tail_id = 0, .in_tail = UINT8_MAX };

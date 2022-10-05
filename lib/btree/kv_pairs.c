@@ -6,6 +6,7 @@ inline uint32_t get_key_size(struct splice *kv_pair)
 	return kv_pair->key_size;
 }
 
+// cppcheck-suppress unusedFunction
 inline uint32_t get_key_size_with_metadata(struct splice *kv_pair)
 {
 	return sizeof(kv_pair->key_size) + kv_pair->key_size;
@@ -16,6 +17,7 @@ inline uint32_t get_value_size(struct splice *kv_pair)
 	return is_a_tombstone_kv_pair(kv_pair) ? 0 : kv_pair->value_size;
 }
 
+// cppcheck-suppress unusedFunction
 inline uint32_t get_value_size_with_metadata(struct splice *kv_pair)
 {
 	return sizeof(kv_pair->value_size) + get_value_size(kv_pair);
