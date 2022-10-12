@@ -7,6 +7,8 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+struct index_node;
+
 struct pivot_key {
 	uint32_t size;
 	char data[];
@@ -32,13 +34,6 @@ struct insert_pivot_req {
 
 struct index_slot_array_entry {
 	uint16_t pivot;
-} __attribute__((packed));
-
-struct index_node {
-	struct node_header header;
-	struct {
-		char rest_space[INDEX_NODE_SIZE - sizeof(struct node_header)];
-	};
 } __attribute__((packed));
 
 enum add_guard_option { INVALID_GUARD_STATE = 0, ADD_GUARD, DO_NOT_ADD_GUARD };
@@ -221,6 +216,20 @@ char *get_offset_of_pivot_key(struct pivot_key *pivot);
   * @param key_size: the key_size of the key to be set
   */
 void set_pivot_key(struct pivot_key *pivot, void *key, uint32_t key_size);
+
+/**
+  * returns a pointer to the node's node->header memory location
+  * @param node: an index_node
+  */
+struct node_header *index_node_get_header(struct index_node *node);
+/**
+  * returns the sizeof(struct index_node)
+  */
+uint64_t index_node_get_size(void);
+/**
+  * asserts that the sizeof(struct index_node == INDEX_NODE_SIZE)
+  */
+void validate_index_node_size(void);
 
 #define PIVOT_KEY_SIZE(X) ((X) ? (X)->size + sizeof(*X) : BUG_ON_UINT32T())
 #define PIVOT_SIZE(X) (PIVOT_KEY_SIZE(X) + sizeof(struct pivot_pointer))

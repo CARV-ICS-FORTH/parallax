@@ -591,7 +591,7 @@ db_handle *internal_db_open(struct volume_descriptor *volume_desc, par_db_option
 #if DISABLE_LOGGING
 	log_set_quiet(true);
 #endif
-	_Static_assert(sizeof(struct index_node) == INDEX_NODE_SIZE, "Index node is not page aligned");
+	validate_index_node_size();
 	_Static_assert(sizeof(struct segment_header) == 4096, "Segment header is not 4 KB");
 	db = klist_find_element_with_key(volume_desc->open_databases, (char *)db_options->db_name);
 
@@ -1893,7 +1893,8 @@ release_and_retry:
 
 				index_init_node(ADD_GUARD, new_root, rootNode);
 
-				new_root->header.height = db_desc->levels[ins_req->metadata.level_id]
+				struct node_header *new_root_header = index_node_get_header(new_root);
+				new_root_header->height = db_desc->levels[ins_req->metadata.level_id]
 								  .root_w[ins_req->metadata.tree_id]
 								  ->height +
 							  1;

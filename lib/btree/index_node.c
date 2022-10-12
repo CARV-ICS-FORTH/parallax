@@ -12,6 +12,28 @@
 
 #define INDEX_GUARD_SIZE 1
 
+struct index_node {
+	struct node_header header;
+	struct {
+		char rest_space[INDEX_NODE_SIZE - sizeof(struct node_header)];
+	};
+} __attribute__((packed));
+
+struct node_header *index_node_get_header(struct index_node *node)
+{
+	return &node->header;
+}
+
+uint64_t index_node_get_size(void)
+{
+	return sizeof(struct index_node);
+}
+
+void validate_index_node_size(void)
+{
+	_Static_assert(sizeof(struct index_node) == INDEX_NODE_SIZE, "Index node is not page aligned");
+}
+
 static struct pivot_pointer *index_get_pivot_pointer(struct pivot_key *key)
 {
 	return (struct pivot_pointer *)&((char *)key)[PIVOT_KEY_SIZE(key)];
