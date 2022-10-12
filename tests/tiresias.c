@@ -60,7 +60,7 @@ static void generate_random_value(char *value_buffer, uint32_t value_size, uint3
 static void put_workload(struct workload_config_t *workload_config)
 {
 	log_info("Starting population for %lu keys...", workload_config->total_keys);
-	char *error_message = NULL;
+	const char *error_message = NULL;
 	unsigned char key_buffer[MY_MAX_KEY_SIZE] = { 0 };
 	unsigned char value_buffer[MAX_KV_PAIR_SIZE] = { 0 };
 	uint64_t unique_keys = 0;
@@ -111,7 +111,7 @@ static void put_workload(struct workload_config_t *workload_config)
 
 static void locate_key(par_handle handle, DBT lookup_key)
 {
-	char *error_message = NULL;
+	const char *error_message = NULL;
 	par_scanner scanner = par_init_scanner(handle, NULL, PAR_FETCH_FIRST, &error_message);
 	while (par_is_valid(scanner)) {
 		struct par_key fetched_key = par_get_key(scanner);
@@ -132,7 +132,7 @@ static void locate_key(par_handle handle, DBT lookup_key)
 static void get_workload(struct workload_config_t *workload_config)
 {
 	log_info("Testing GETS now");
-	char *error_message = NULL;
+	const char *error_message = NULL;
 	DBC *cursorp = NULL;
 	DBT key = { 0 };
 	DBT data = { 0 };
@@ -181,7 +181,7 @@ static void get_workload(struct workload_config_t *workload_config)
 static void scan_workload(struct workload_config_t *workload_config)
 {
 	log_info("Now, testing SCANS");
-	char *error_message = NULL;
+	const char *error_message = NULL;
 	par_scanner scanner = par_init_scanner(workload_config->handle, NULL, PAR_FETCH_FIRST, &error_message);
 	uint64_t unique_keys = 0;
 	for (; par_is_valid(scanner); ++unique_keys)
@@ -199,7 +199,7 @@ static void delete_workload(struct workload_config_t *workload_config)
 {
 	log_info("Now, testing Deletes");
 
-	char *error_message = NULL;
+	const char *error_message = NULL;
 	DBC *cursorp = NULL;
 	DBT key = { 0 };
 	DBT data = { 0 };
@@ -230,7 +230,7 @@ static void delete_workload(struct workload_config_t *workload_config)
 
 		par_get(workload_config->handle, &par_key, &value, &error_message);
 		if (error_message) {
-			free(error_message);
+			free((char *)error_message);
 			error_message = NULL;
 			continue;
 		}
@@ -295,7 +295,7 @@ int main(int argc, char **argv)
 		return (ret);
 	}
 
-	char *error_message = par_format(db_options.volume_name, 16);
+	const char *error_message = par_format(db_options.volume_name, 16);
 	if (error_message) {
 		log_fatal("Error message from par_format: %s", error_message);
 		exit(EXIT_FAILURE);

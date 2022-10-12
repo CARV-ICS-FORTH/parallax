@@ -25,11 +25,11 @@ int main(int argc, char *argv[])
 				      .create_flag = PAR_CREATE_DB,
 				      .db_name = "test_leaf_root_delete_get_scan.db",
 				      .options = par_get_default_options() };
-	char *error_message = NULL;
+	const char *error_message = NULL;
 	par_handle handle = par_open(&db_options, &error_message);
 	if (error_message) {
 		log_fatal("%s", error_message);
-		free(error_message);
+		free((char *)error_message);
 		return EXIT_FAILURE;
 	}
 	struct par_key_value key_value;
@@ -41,7 +41,7 @@ int main(int argc, char *argv[])
 	par_put(handle, &key_value, &error_message);
 	if (error_message) {
 		log_fatal("Par put failed %s!", error_message);
-		free(error_message);
+		free((char *)error_message);
 		BUG_ON();
 	}
 
@@ -53,7 +53,7 @@ int main(int argc, char *argv[])
 	par_put(handle, &key_value, &error_message);
 	if (error_message) {
 		log_fatal("Par put failed! %s", error_message);
-		free(error_message);
+		free((char *)error_message);
 		BUG_ON();
 	}
 
@@ -61,7 +61,7 @@ int main(int argc, char *argv[])
 
 	if (error_message) {
 		log_fatal("Par put failed! %s", error_message);
-		free(error_message);
+		free((char *)error_message);
 		BUG_ON();
 	}
 
@@ -71,7 +71,7 @@ int main(int argc, char *argv[])
 		log_fatal("Found key %.*s that should not exist!", key_value.k.size, key_value.k.data);
 		BUG_ON();
 	}
-	free(error_message);
+	free((char *)error_message);
 	key_value.k.data = "";
 	key_value.k.size = 1;
 
@@ -96,7 +96,7 @@ int main(int argc, char *argv[])
 	error_message = par_close(handle);
 	if (error_message) {
 		log_fatal("%s", error_message);
-		free(error_message);
+		free((char *)error_message);
 		return EXIT_FAILURE;
 	}
 	return 0;

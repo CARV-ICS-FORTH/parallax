@@ -62,11 +62,11 @@ void serially_insert_keys(par_handle hd)
 					    .v.val_buffer = v->value_buf,
 					    .v.val_size = v->value_size };
 
-		char *error_message = NULL;
+		const char *error_message = NULL;
 		par_put(hd, &kv, &error_message);
 		if (error_message) {
 			log_fatal("Put failed %s ! ", error_message);
-			free(error_message);
+			free((char *)error_message);
 			exit(EXIT_FAILURE);
 		}
 	}
@@ -78,7 +78,7 @@ void validate_inserted_keys(par_handle hd)
 {
 	uint64_t i;
 	key *k = (key *)malloc(KV_SIZE);
-	char *error_message = NULL;
+	const char *error_message = NULL;
 	struct par_value v;
 	log_info("Starting population for %lu keys...", NUM_KEYS);
 
@@ -139,11 +139,11 @@ int main(int argc, char *argv[])
 				      .create_flag = PAR_CREATE_DB,
 				      .db_name = "testgc.db",
 				      .options = par_get_default_options() };
-	char *error_message = NULL;
+	const char *error_message = NULL;
 	par_handle handle = par_open(&db_options, &error_message);
 	if (error_message) {
 		log_fatal("%s", error_message);
-		free(error_message);
+		free((char *)error_message);
 		return EXIT_FAILURE;
 	}
 

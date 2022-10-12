@@ -186,7 +186,7 @@ int main(int argc, char *argv[])
 	arg_parse(argc, argv, options, options_len);
 	arg_print_options(help_flag, options, options_len);
 
-	char *error_message = NULL;
+	const char *error_message = NULL;
 	char *volume_name = get_option(options, 1);
 	char *db_name = "redo_undo_test";
 	struct par_options_desc *default_options = par_get_default_options();

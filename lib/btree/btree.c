@@ -578,7 +578,8 @@ static db_descriptor *get_db_from_volume(char *volume_name, char *db_name, par_d
 	return db_desc;
 }
 
-db_handle *internal_db_open(struct volume_descriptor *volume_desc, par_db_options *db_options, char **error_message)
+db_handle *internal_db_open(struct volume_descriptor *volume_desc, par_db_options *db_options,
+			    const char **error_message)
 {
 	struct db_handle *handle = NULL;
 	const uint32_t leaf_size_per_level[10] = { LEVEL0_LEAF_SIZE, LEVEL1_LEAF_SIZE, LEVEL2_LEAF_SIZE,
@@ -735,7 +736,7 @@ exit:
 	return handle;
 }
 
-db_handle *db_open(par_db_options *db_options, char **error_message)
+db_handle *db_open(par_db_options *db_options, const char **error_message)
 {
 	MUTEX_LOCK(&init_lock);
 	struct volume_descriptor *volume_desc = mem_get_volume_desc(db_options->volume_name);
@@ -751,9 +752,9 @@ db_handle *db_open(par_db_options *db_options, char **error_message)
 	return handle;
 }
 
-char *db_close(db_handle *handle)
+const char *db_close(db_handle *handle)
 {
-	char *error_message = NULL;
+	const char *error_message = NULL;
 	MUTEX_LOCK(&init_lock);
 	/*verify that this is a valid db*/
 	int not_valid_db = klist_find_element_with_key(handle->volume_desc->open_databases,
@@ -950,9 +951,9 @@ enum kv_category calculate_KV_category(uint32_t key_size, uint32_t value_size, r
 	return category;
 }
 
-static char *insert_error_handling(db_handle *handle, uint32_t key_size, uint32_t value_size)
+static const char *insert_error_handling(db_handle *handle, uint32_t key_size, uint32_t value_size)
 {
-	char *error_message = NULL;
+	const char *error_message = NULL;
 	if (DB_IS_CLOSING == handle->db_desc->db_state) {
 		create_error_message(&error_message, "DB: %s is closing", handle->db_desc->db_superblock->db_name);
 		return error_message;
@@ -979,7 +980,7 @@ static char *insert_error_handling(db_handle *handle, uint32_t key_size, uint32_
 }
 
 struct par_put_metadata insert_key_value(db_handle *handle, void *key, void *value, uint32_t key_size,
-					 uint32_t value_size, request_type op_type, char *error_message)
+					 uint32_t value_size, request_type op_type, const char *error_message)
 {
 	bt_insert_req ins_req = { 0 };
 	char kv_pair[KV_MAX_SIZE];
@@ -1020,7 +1021,7 @@ struct par_put_metadata insert_key_value(db_handle *handle, void *key, void *val
 }
 
 struct par_put_metadata serialized_insert_key_value(db_handle *handle, const char *serialized_key_value,
-						    char *error_message)
+						    const char *error_message)
 {
 	bt_insert_req ins_req = { .metadata.handle = handle,
 				  .key_value_buf = (char *)serialized_key_value,
@@ -1424,7 +1425,7 @@ void *append_key_value_to_log(log_operation *req)
 	}
 }
 
-char *btree_insert_key_value(bt_insert_req *ins_req)
+const char *btree_insert_key_value(bt_insert_req *ins_req)
 {
 	ins_req->metadata.handle->db_desc->dirty = 1;
 

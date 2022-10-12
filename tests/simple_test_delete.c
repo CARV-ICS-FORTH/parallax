@@ -52,11 +52,11 @@ void serially_insert_keys(par_handle hd)
 		key_value.k.data = k->key_buf;
 		key_value.v.val_buffer = v->value_buf;
 		key_value.v.val_size = v->value_size;
-		char *error_message = NULL;
+		const char *error_message = NULL;
 		par_put(hd, &key_value, &error_message);
 		if (error_message) {
 			log_fatal("Put failed %s", error_message);
-			free(error_message);
+			free((char *)error_message);
 			BUG_ON();
 		}
 	}
@@ -110,11 +110,11 @@ void delete_half_keys(par_handle hd)
 		if (i % 10000 == 0)
 			log_info("%s", k->key_buf);
 
-		char *error_message = NULL;
+		const char *error_message = NULL;
 		par_delete(hd, &par_key, &error_message);
 		if (error_message) {
 			log_fatal("key %s not found!", error_message);
-			free(error_message);
+			free((char *)error_message);
 			_exit(EXIT_FAILURE);
 		}
 	}
@@ -199,7 +199,7 @@ void scan_all_valid_keys(par_handle hd)
 		if (!my_scanner) {
 			par_key.size = k->key_size;
 			par_key.data = &k->key_buf[4];
-			char *error_message = NULL;
+			const char *error_message = NULL;
 			my_scanner = par_init_scanner(hd, &par_key, PAR_GREATER_OR_EQUAL, &error_message);
 
 			if (!par_is_valid(my_scanner)) {
@@ -258,12 +258,12 @@ int main(int argc, char *argv[])
 				      .create_flag = PAR_CREATE_DB,
 				      .db_name = "test.db",
 				      .options = par_get_default_options() };
-	char *error_message = NULL;
+	const char *error_message = NULL;
 	par_handle handle = par_open(&db_options, &error_message);
 
 	if (error_message) {
 		log_fatal("%s", error_message);
-		free(error_message);
+		free((char *)error_message);
 		return EXIT_FAILURE;
 	}
 
@@ -275,7 +275,7 @@ int main(int argc, char *argv[])
 
 	if (error_message) {
 		log_fatal("%s", error_message);
-		free(error_message);
+		free((char *)error_message);
 		return EXIT_FAILURE;
 	}
 
@@ -283,7 +283,7 @@ int main(int argc, char *argv[])
 	handle = par_open(&db_options, &error_message);
 	if (error_message) {
 		log_fatal("par_open() failed with message: %s", error_message);
-		free(error_message);
+		free((char *)error_message);
 		return EXIT_FAILURE;
 	}
 
@@ -293,7 +293,7 @@ int main(int argc, char *argv[])
 
 	if (error_message) {
 		log_fatal("%s", error_message);
-		free(error_message);
+		free((char *)error_message);
 		return EXIT_FAILURE;
 	}
 	return 0;

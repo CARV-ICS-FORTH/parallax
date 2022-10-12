@@ -27,7 +27,7 @@ void execute_get_request(par_handle hd, char *line)
 	char *key = strtok_r(line, " ", &line);
 	struct par_key lookup_key = { .size = (uint32_t)key_size, .data = (const char *)key };
 	struct par_value lookup_value = { .val_buffer = NULL };
-	char *error_message = NULL;
+	const char *error_message = NULL;
 
 	par_get(hd, &lookup_key, &lookup_value, &error_message);
 	if (error_message) {
@@ -59,7 +59,7 @@ void execute_put_request(par_handle hd, char *line)
 	set_value_size(kv_buf, key_size);
 	set_key(kv_buf, key, key_size);
 	set_value(kv_buf, value, value_size);
-	char *error_message = NULL;
+	const char *error_message = NULL;
 	par_put_serialized(hd, key_buf, &error_message);
 }
 
@@ -113,7 +113,7 @@ par_handle open_db(const char *path)
 	db_options.db_name = "tracer";
 	db_options.options = par_get_default_options();
 
-	char *error_message = NULL;
+	const char *error_message = NULL;
 	par_handle handle = par_open(&db_options, &error_message);
 	return handle;
 }
@@ -136,7 +136,7 @@ int main(int argc, char **argv)
 	arg_parse(argc, argv, options, options_len);
 	arg_print_options(help_flag, options, options_len);
 	const char *path = get_option(options, 1);
-	char *error_message = par_format((char *)path, 128);
+	const char *error_message = par_format((char *)path, 128);
 	if (error_message != NULL) {
 		log_fatal("Error message from par_format: %s", error_message);
 		exit(EXIT_FAILURE);

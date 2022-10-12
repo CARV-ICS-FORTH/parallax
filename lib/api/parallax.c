@@ -29,21 +29,12 @@
 #define PAR_MAX_PREALLOCATED_SIZE 256
 #define NUM_OF_OPTIONS 5
 
-/*
- * Frees an error message, it is a runtime check if the pointer is not NULL.
- * @param error_message A pointer to the error message.
- */
-static void free_error_message(char **error_message)
-{
-	if (*error_message)
-		free(*error_message);
-}
 char *par_format(char *device_name, uint32_t max_regions_num)
 {
 	return kvf_init_parallax(device_name, max_regions_num);
 }
 
-par_handle par_open(par_db_options *db_options, char **error_message)
+par_handle par_open(par_db_options *db_options, const char **error_message)
 {
 	if (db_options->create_flag == PAR_CREATE_DB || db_options->create_flag == PAR_DONOT_CREATE_DB) {
 		return (par_handle)db_open(db_options, error_message);
@@ -53,15 +44,15 @@ par_handle par_open(par_db_options *db_options, char **error_message)
 	return NULL;
 }
 
-char *par_close(par_handle handle)
+const char *par_close(par_handle handle)
 {
 	return db_close((db_handle *)handle);
 }
 
 // cppcheck-suppress unusedFunction
-enum kv_category get_kv_category(uint32_t key_size, uint32_t value_size, request_type operation, char **error_message)
+enum kv_category get_kv_category(uint32_t key_size, uint32_t value_size, request_type operation,
+				 const char **error_message)
 {
-	free_error_message(error_message);
 	if (paddingOp == operation || unknownOp == operation) {
 		create_error_message(error_message, "Unknown operation provided %d", operation);
 		return BIG_INLOG;
@@ -70,10 +61,8 @@ enum kv_category get_kv_category(uint32_t key_size, uint32_t value_size, request
 	return calculate_KV_category(key_size, value_size, operation);
 }
 
-void par_put(par_handle handle, struct par_key_value *key_value, char **error_message)
+void par_put(par_handle handle, struct par_key_value *key_value, const char **error_message)
 {
-	free_error_message(error_message);
-
 	insert_key_value((db_handle *)handle, (char *)key_value->k.data, (char *)key_value->v.val_buffer,
 			 key_value->k.size, key_value->v.val_size, insertOp, *error_message);
 }
@@ -84,9 +73,8 @@ void par_put(par_handle handle, struct par_key_value *key_value, char **error_me
  * @param serialized_key_value, the kv_formated key to be inserted
  * @param error_message, possible error message upon a failure in the insert path
  * */
-void par_put_serialized(par_handle handle, char *serialized_key_value, char **error_message)
+void par_put_serialized(par_handle handle, char *serialized_key_value, const char **error_message)
 {
-	free_error_message(error_message);
 	serialized_insert_key_value((db_handle *)handle, serialized_key_value, *error_message);
 }
 
@@ -105,9 +93,8 @@ static inline int par_serialize_to_key_format(struct par_key *key, char **buf, u
 	return ret;
 }
 
-void par_get(par_handle handle, struct par_key *key, struct par_value *value, char **error_message)
+void par_get(par_handle handle, struct par_key *key, struct par_value *value, const char **error_message)
 {
-	free_error_message(error_message);
 	if (value == NULL) {
 		create_error_message(error_message, "value cannot be NULL");
 	}
@@ -175,9 +162,8 @@ par_ret_code par_exists(par_handle handle, struct par_key *key)
 	return PAR_SUCCESS;
 }
 
-void par_delete(par_handle handle, struct par_key *key, char **error_message)
+void par_delete(par_handle handle, struct par_key *key, const char **error_message)
 {
-	free_error_message(error_message);
 	struct db_handle *hd = (struct db_handle *)handle;
 	insert_key_value(hd, (void *)key->data, "empty", key->size, 0, deleteOp, *error_message);
 }
@@ -193,9 +179,8 @@ struct par_scanner {
 	char *kv_buf;
 };
 
-par_scanner par_init_scanner(par_handle handle, struct par_key *key, par_seek_mode mode, char **error_message)
+par_scanner par_init_scanner(par_handle handle, struct par_key *key, par_seek_mode mode, const char **error_message)
 {
-	free_error_message(error_message);
 	if (key && key->size + sizeof(key->size) > PAR_MAX_PREALLOCATED_SIZE) {
 		create_error_message(error_message, "Can serialize key buffer, buffer to small");
 		return NULL;

@@ -119,9 +119,9 @@ static void kvf_write_buffer(int fd, char *buffer, ssize_t start, ssize_t size, 
 	}
 }
 
-char *kvf_init_parallax(char *device_name, uint32_t max_regions_num)
+const char *kvf_init_parallax(char *device_name, uint32_t max_regions_num)
 {
-	char *error_message = NULL;
+	const char *error_message = NULL;
 	off64_t device_size = 0;
 
 	log_info("Opening Volume %s", device_name);
@@ -276,7 +276,7 @@ char *kvf_init_parallax(char *device_name, uint32_t max_regions_num)
 int main(int argc, char **argv)
 {
 	struct parse_options options = kvf_parse_options(argc, argv);
-	char *error = kvf_init_parallax(options.device_name, options.max_regions_num);
+	const char *error = kvf_init_parallax(options.device_name, options.max_regions_num);
 	SAFE_FREE_PTR(options.device_name);
 
 	if (error) {

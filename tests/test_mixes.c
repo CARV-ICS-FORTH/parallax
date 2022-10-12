@@ -73,11 +73,11 @@ static par_handle open_db(const char *path)
 				      .db_name = "testmedium.db",
 				      .options = par_get_default_options() };
 
-	char *error_message = NULL;
+	const char *error_message = NULL;
 	par_handle handle = par_open(&db_options, &error_message);
 	if (error_message) {
 		log_fatal("%s", error_message);
-		free(error_message);
+		free((char *)error_message);
 		_Exit(EXIT_FAILURE);
 	}
 
@@ -170,11 +170,11 @@ static void populate_db(par_handle hd, struct task task_info)
 					    .v.val_buffer = v->value_buf,
 					    .v.val_size = v->value_size };
 
-		char *error_message = NULL;
+		const char *error_message = NULL;
 		par_put(hd, &kv, &error_message);
 		if (error_message) {
 			log_fatal("Put failed! %s", error_message);
-			free(error_message);
+			free((char *)error_message);
 			BUG_ON();
 		}
 		free(k);
@@ -231,7 +231,7 @@ static void insert_keys(par_handle handle, struct test_info info)
 static void scanner_validate_number_of_kvs(par_handle hd, uint64_t num_keys)
 {
 	uint64_t key_count = 0;
-	char *error_message = NULL;
+	const char *error_message = NULL;
 	par_scanner sc = par_init_scanner(hd, NULL, PAR_FETCH_FIRST, &error_message);
 	assert(par_is_valid(sc));
 
@@ -295,7 +295,7 @@ static void validate_static_size_of_kvs(par_handle hd, struct task task_info)
 	sprintf((char *)k.data + strlen(init_info.key_prefix), "%llu", (long long unsigned)0);
 	k.size = strlen(k.data) + 1;
 
-	char *error_message = NULL;
+	const char *error_message = NULL;
 	par_scanner sc = par_init_scanner(hd, &k, PAR_GREATER_OR_EQUAL, &error_message);
 	assert(par_is_valid(sc));
 
@@ -330,7 +330,7 @@ static void validate_random_size_of_kvs(par_handle hd, struct task task_info)
 
 	k.size = strlen(k.data) + 1;
 
-	char *error_message = NULL;
+	const char *error_message = NULL;
 	par_scanner sc = par_init_scanner(hd, &k, PAR_GREATER_OR_EQUAL, &error_message);
 	assert(par_is_valid(sc));
 
@@ -355,7 +355,7 @@ static void validate_random_size_of_kvs(par_handle hd, struct task task_info)
 /** Main retrieve-kvs logic*/
 static void read_all_static_kvs(par_handle handle, struct task task_info)
 {
-	char *error_message = NULL;
+	const char *error_message = NULL;
 	struct par_key_value my_kv = { 0 };
 	struct init_key_values init_info = {
 		.kv_size = 0, .key_prefix = NULL, .size_type = task_info.size_type, .kv_category = task_info.key_type
@@ -490,10 +490,10 @@ int main(int argc, char *argv[])
 
 	/*sum of percentages must be equal 100*/
 	assert(medium_kvs_percentage + small_kvs_percentage + big_kvs_percentage == 100);
-	char *error_message = par_format((char *)path, 128);
+	const char *error_message = par_format((char *)path, 128);
 	if (error_message) {
 		log_fatal("%s", error_message);
-		free(error_message);
+		free((char *)error_message);
 		return EXIT_FAILURE;
 	}
 
@@ -519,7 +519,7 @@ int main(int argc, char *argv[])
 	error_message = par_close(handle);
 	if (error_message) {
 		log_fatal("%s", error_message);
-		free(error_message);
+		free((char *)error_message);
 		return EXIT_FAILURE;
 	}
 	log_info("test successfull");
