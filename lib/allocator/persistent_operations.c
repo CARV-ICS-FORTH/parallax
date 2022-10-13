@@ -870,7 +870,6 @@ void recover_L0(struct db_descriptor *db_desc)
 
 		if (error_message) {
 			log_fatal("Insert failed reason = %s, exiting", error_message);
-			free(error_message);
 			BUG_ON();
 		}
 

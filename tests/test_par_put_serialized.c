@@ -26,7 +26,6 @@ int main(int argc, char *argv[])
 	const char *error_message = par_format(path, MAX_REGIONS);
 	if (error_message) {
 		log_fatal("%s", error_message);
-		free((char *)error_message);
 		return EXIT_FAILURE;
 	}
 
@@ -37,7 +36,6 @@ int main(int argc, char *argv[])
 	par_handle handle = par_open(&db_options, &error_message);
 	if (error_message) {
 		log_fatal("%s", error_message);
-		free((char *)error_message);
 		return EXIT_FAILURE;
 	}
 
@@ -51,7 +49,6 @@ int main(int argc, char *argv[])
 	par_put_serialized(handle, serialized_key_value, &error_message);
 	if (error_message) {
 		log_fatal("%s", error_message);
-		free((char *)error_message);
 		return EXIT_FAILURE;
 	}
 
@@ -59,7 +56,6 @@ int main(int argc, char *argv[])
 
 	if (error_message) {
 		log_fatal("%s", error_message);
-		free((char *)error_message);
 		return EXIT_FAILURE;
 	}
 	return EXIT_SUCCESS;

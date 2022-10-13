@@ -77,7 +77,6 @@ static par_handle open_db(const char *path)
 	par_handle handle = par_open(&db_options, &error_message);
 	if (error_message) {
 		log_fatal("%s", error_message);
-		free((char *)error_message);
 		_Exit(EXIT_FAILURE);
 	}
 
@@ -174,7 +173,6 @@ static void populate_db(par_handle hd, struct task task_info)
 		par_put(hd, &kv, &error_message);
 		if (error_message) {
 			log_fatal("Put failed! %s", error_message);
-			free((char *)error_message);
 			BUG_ON();
 		}
 		free(k);
@@ -493,7 +491,6 @@ int main(int argc, char *argv[])
 	const char *error_message = par_format((char *)path, 128);
 	if (error_message) {
 		log_fatal("%s", error_message);
-		free((char *)error_message);
 		return EXIT_FAILURE;
 	}
 
@@ -519,7 +516,6 @@ int main(int argc, char *argv[])
 	error_message = par_close(handle);
 	if (error_message) {
 		log_fatal("%s", error_message);
-		free((char *)error_message);
 		return EXIT_FAILURE;
 	}
 	log_info("test successfull");

@@ -40,7 +40,7 @@ par_handle par_open(par_db_options *db_options, const char **error_message)
 		return (par_handle)db_open(db_options, error_message);
 	}
 
-	create_error_message(error_message, "Unknown create flag provided.");
+	*error_message = "Unknown create flag provided.";
 	return NULL;
 }
 
@@ -53,7 +53,7 @@ enum kv_category get_kv_category(uint32_t key_size, uint32_t value_size, request
 				 const char **error_message)
 {
 	if (paddingOp == operation || unknownOp == operation) {
-		create_error_message(error_message, "Unknown operation provided %d", operation);
+		*error_message = "Unknown operation provided %d";
 		return BIG_INLOG;
 	}
 
@@ -95,7 +95,7 @@ static inline int par_serialize_to_key_format(struct par_key *key, char **buf, u
 void par_get(par_handle handle, struct par_key *key, struct par_value *value, const char **error_message)
 {
 	if (value == NULL) {
-		create_error_message(error_message, "value cannot be NULL");
+		*error_message = "value cannot be NULL";
 	}
 
 	/*Serialize user key in KV_FORMAT*/
@@ -125,10 +125,10 @@ void par_get(par_handle handle, struct par_key *key, struct par_value *value, co
 		free(key_buf);
 
 	if (!get_op.found)
-		create_error_message(error_message, "key not found");
+		*error_message = "key not found";
 
 	if (get_op.buffer_overflow)
-		create_error_message(error_message, "not enough buffer space");
+		*error_message = "not enough buffer space";
 
 	value->val_buffer = get_op.buffer_to_pack_kv;
 	value->val_size = get_op.size;
@@ -181,7 +181,7 @@ struct par_scanner {
 par_scanner par_init_scanner(par_handle handle, struct par_key *key, par_seek_mode mode, const char **error_message)
 {
 	if (key && key->size + sizeof(key->size) > PAR_MAX_PREALLOCATED_SIZE) {
-		create_error_message(error_message, "Can serialize key buffer, buffer to small");
+		*error_message = "Can serialize key buffer, buffer to small";
 		return NULL;
 	}
 
@@ -206,7 +206,7 @@ par_scanner par_init_scanner(par_handle handle, struct par_key *key, par_seek_mo
 		fill_smallest_possible_pivot(seek_key_buffer, PAR_MAX_PREALLOCATED_SIZE);
 		break;
 	default:
-		create_error_message(error_message, "Unknown seek scanner mode");
+		*error_message = "Unknown seek scanner mode";
 		return NULL;
 	}
 

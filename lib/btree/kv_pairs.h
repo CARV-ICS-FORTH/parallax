@@ -125,4 +125,6 @@ char *get_key_splice_key_offset(struct key_splice *key);
 
 void set_key_size_of_key_splice(struct key_splice *key, uint32_t key_size);
 void set_key_splice_key_offset(struct key_splice *key, char *key_buf);
+
+struct splice transform_keysplice_to_splice(struct key_splice *key);
 #endif // KV_PAIRS_H_

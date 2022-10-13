@@ -82,7 +82,6 @@ class ParallaxDB : public YCSBDB {
 
 			if (error_message != nullptr) {
 				std::cerr << error_message << std::endl;
-				free((char *)error_message);
 				_Exit(EXIT_FAILURE);
 			}
 
@@ -96,7 +95,6 @@ class ParallaxDB : public YCSBDB {
 			const char *error_message = par_close(dbs[i]);
 			if (error_message != nullptr) {
 				std::cerr << error_message << std::endl;
-				free((char *)error_message);
 				_Exit(EXIT_FAILURE);
 			}
 		}
@@ -330,7 +328,6 @@ class ParallaxDB : public YCSBDB {
 		par_put(dbs[db_id], &KV_pair, &error_message);
 		if (error_message != nullptr) {
 			std::cerr << error_message << std::endl;
-			free((char *)error_message);
 			exit(EXIT_FAILURE);
 		}
 #if 0

@@ -158,7 +158,6 @@ int main(int argc, char *argv[])
 	par_handle handle = par_open(&db_options, &error_message);
 	if (error_message) {
 		log_fatal("%s", error_message);
-		free((char *)error_message);
 		return EXIT_FAILURE;
 	}
 
@@ -193,7 +192,6 @@ int main(int argc, char *argv[])
 	handle = db_open(&db_options, &error_message);
 	if (error_message) {
 		log_fatal("%s", error_message);
-		free((char *)error_message);
 		return EXIT_FAILURE;
 	}
 	pthread_join(validator_thread, NULL);

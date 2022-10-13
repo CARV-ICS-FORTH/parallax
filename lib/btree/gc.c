@@ -81,7 +81,6 @@ void move_kv_pairs_to_new_segment(struct db_handle handle, stack *marks)
 
 		if (error_message) {
 			log_fatal("Insert failed %s", error_message);
-			free((char *)error_message);
 			BUG_ON();
 		}
 	}

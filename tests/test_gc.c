@@ -66,7 +66,6 @@ void serially_insert_keys(par_handle hd)
 		par_put(hd, &kv, &error_message);
 		if (error_message) {
 			log_fatal("Put failed %s ! ", error_message);
-			free((char *)error_message);
 			exit(EXIT_FAILURE);
 		}
 	}
@@ -143,7 +142,6 @@ int main(int argc, char *argv[])
 	par_handle handle = par_open(&db_options, &error_message);
 	if (error_message) {
 		log_fatal("%s", error_message);
-		free((char *)error_message);
 		return EXIT_FAILURE;
 	}
 

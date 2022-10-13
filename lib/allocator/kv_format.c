@@ -128,14 +128,14 @@ const char *kvf_init_parallax(char *device_name, uint32_t max_regions_num)
 	/* open the device */
 	int fd = open(device_name, O_RDWR);
 	if (fd < 0) {
-		create_error_message(&error_message, "Failed to open %s", device_name);
+		error_message = "Failed to open %s";
 		return error_message;
 	}
 
 	device_size = lseek64(fd, 0, SEEK_END);
 
 	if (-1 == device_size) {
-		create_error_message(&error_message, "Failed to determine volume size");
+		error_message = "Failed to determine volume size";
 		perror("ioctl");
 		return error_message;
 	}
@@ -143,8 +143,7 @@ const char *kvf_init_parallax(char *device_name, uint32_t max_regions_num)
 	log_info("Found volume of %ld MB", device_size / MB(1));
 
 	if (device_size < MIN_VOLUME_SIZE) {
-		create_error_message(&error_message, "Sorry minimum supported volume size is %ld GB actual size %ld GB",
-				     MIN_VOLUME_SIZE / GB(1), device_size / GB(1));
+		error_message = "Sorry minimum supported volume size is %ld GB actual size %ld GB";
 		return error_message;
 	}
 
@@ -170,8 +169,7 @@ const char *kvf_init_parallax(char *device_name, uint32_t max_regions_num)
 		 unmapped_bytes / KB(1));
 
 	if (mapped_device_size % SEGMENT_SIZE) {
-		create_error_message(&error_message,
-				     "Something went wrong actual_device_size should be a multiple of SEGMENT_SIZE");
+		error_message = "Something went wrong actual_device_size should be a multiple of SEGMENT_SIZE";
 		return error_message;
 	}
 
@@ -185,8 +183,7 @@ const char *kvf_init_parallax(char *device_name, uint32_t max_regions_num)
 	}
 
 	if (registry_size_in_bits % bits_in_page) {
-		create_error_message(&error_message, "Ownership registry must be a multiple of 4 KB its value %lu",
-				     registry_size_in_bits);
+		error_message = "Ownership registry must be a multiple of 4 KB its value %lu";
 		return error_message;
 	}
 	uint64_t registry_size_in_bytes = registry_size_in_bits / 8;
@@ -224,7 +221,7 @@ const char *kvf_init_parallax(char *device_name, uint32_t max_regions_num)
 	}
 
 	if (fsync(fd)) {
-		create_error_message(&error_message, "Failed to sync volume: %s metadata", device_name);
+		error_message = "Failed to sync volume: %s metadata";
 		perror("Reason:");
 		return error_message;
 	}
@@ -258,13 +255,13 @@ const char *kvf_init_parallax(char *device_name, uint32_t max_regions_num)
 	SAFE_FREE_PTR(S);
 
 	if (fsync(fd)) {
-		create_error_message(&error_message, "Failed to sync volume: %s metadata", device_name);
+		error_message = "Failed to sync volume: %s metadata";
 		perror("Reason:");
 		return error_message;
 	}
 
 	if (close(fd)) {
-		create_error_message(&error_message, "Failed to close file %s", device_name);
+		error_message = "Failed to close file %s";
 		return error_message;
 	}
 

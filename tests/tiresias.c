@@ -230,7 +230,6 @@ static void delete_workload(struct workload_config_t *workload_config)
 
 		par_get(workload_config->handle, &par_key, &value, &error_message);
 		if (error_message) {
-			free((char *)error_message);
 			error_message = NULL;
 			continue;
 		}

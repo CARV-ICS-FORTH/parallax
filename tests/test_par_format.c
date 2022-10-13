@@ -23,7 +23,6 @@ int main(int argc, char *argv[])
 	char *error_message = par_format(get_option(options, 1), MAX_REGIONS);
 	if (error_message) {
 		log_fatal("%s", error_message);
-		free(error_message);
 		return EXIT_FAILURE;
 	}
 

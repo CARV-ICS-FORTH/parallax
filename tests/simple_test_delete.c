@@ -56,7 +56,6 @@ void serially_insert_keys(par_handle hd)
 		par_put(hd, &key_value, &error_message);
 		if (error_message) {
 			log_fatal("Put failed %s", error_message);
-			free((char *)error_message);
 			BUG_ON();
 		}
 	}
@@ -114,7 +113,6 @@ void delete_half_keys(par_handle hd)
 		par_delete(hd, &par_key, &error_message);
 		if (error_message) {
 			log_fatal("key %s not found!", error_message);
-			free((char *)error_message);
 			_exit(EXIT_FAILURE);
 		}
 	}
@@ -263,7 +261,6 @@ int main(int argc, char *argv[])
 
 	if (error_message) {
 		log_fatal("%s", error_message);
-		free((char *)error_message);
 		return EXIT_FAILURE;
 	}
 
@@ -275,7 +272,6 @@ int main(int argc, char *argv[])
 
 	if (error_message) {
 		log_fatal("%s", error_message);
-		free((char *)error_message);
 		return EXIT_FAILURE;
 	}
 
@@ -283,7 +279,6 @@ int main(int argc, char *argv[])
 	handle = par_open(&db_options, &error_message);
 	if (error_message) {
 		log_fatal("par_open() failed with message: %s", error_message);
-		free((char *)error_message);
 		return EXIT_FAILURE;
 	}
 
@@ -293,7 +288,6 @@ int main(int argc, char *argv[])
 
 	if (error_message) {
 		log_fatal("%s", error_message);
-		free((char *)error_message);
 		return EXIT_FAILURE;
 	}
 	return 0;

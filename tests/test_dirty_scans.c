@@ -144,7 +144,6 @@ static void put_workload(struct workload_config_t *workload_config, const char *
 		par_put(workload_config->handle, &my_kv, &error_message);
 		if (error_message) {
 			log_fatal("Insert failed %s", error_message);
-			free((char *)error_message);
 			exit(EXIT_FAILURE);
 		}
 
@@ -203,7 +202,6 @@ static void get_workload(struct workload_config_t *workload_config)
 	par_put(workload_config->handle, &my_kv, &error_message);
 	if (error_message) {
 		log_fatal("Insert failed %s", error_message);
-		free((char *)error_message);
 		exit(EXIT_FAILURE);
 	}
 	struct par_value my_value = { .val_buffer = NULL };
@@ -366,7 +364,6 @@ int main(int argc, char **argv)
 		error_message = par_format(db_options.volume_name, 16);
 		if (error_message) {
 			log_fatal("%s", error_message);
-			free((char *)error_message);
 			return EXIT_FAILURE;
 		}
 	}
@@ -374,7 +371,6 @@ int main(int argc, char **argv)
 
 	if (error_message) {
 		log_fatal("%s", error_message);
-		free((char *)error_message);
 		return EXIT_FAILURE;
 	}
 
@@ -409,7 +405,6 @@ int main(int argc, char **argv)
 	error_message = par_close(hd);
 	if (error_message) {
 		log_fatal("%s", error_message);
-		free((char *)error_message);
 		return EXIT_FAILURE;
 	}
 	return 0;

@@ -598,7 +598,7 @@ db_handle *internal_db_open(struct volume_descriptor *volume_desc, par_db_option
 	db = klist_find_element_with_key(volume_desc->open_databases, (char *)db_options->db_name);
 
 	if (db != NULL) {
-		create_error_message(error_message, "DB %s already open for volume", db_options->db_name);
+		*error_message = "DB already open for volume";
 		handle = calloc(1, sizeof(struct db_handle));
 		handle->volume_desc = volume_desc;
 		handle->db_desc = db;
@@ -611,16 +611,14 @@ db_handle *internal_db_open(struct volume_descriptor *volume_desc, par_db_option
 	struct db_descriptor *db_desc =
 		get_db_from_volume(volume_desc->volume_name, (char *)db_options->db_name, db_options->create_flag);
 	if (!db_desc) {
-		char *fmt_string = NULL;
 		handle = NULL;
 
 		if (PAR_CREATE_DB == db_options->create_flag)
-			fmt_string = "Sorry no room for new DB %s";
+			*error_message = "Sorry no room for new DB";
 
 		if (PAR_DONOT_CREATE_DB == db_options->create_flag)
-			fmt_string = "DB %s not found instructed not to create a new one";
+			*error_message = "DB not found instructed not to create a new one";
 
-		create_error_message(error_message, fmt_string, db_options->db_name);
 		goto exit;
 	}
 
@@ -742,7 +740,7 @@ db_handle *db_open(par_db_options *db_options, const char **error_message)
 	MUTEX_LOCK(&init_lock);
 	struct volume_descriptor *volume_desc = mem_get_volume_desc(db_options->volume_name);
 	if (!volume_desc) {
-		create_error_message(error_message, "Failed to open volume %s", db_options->volume_name);
+		*error_message = "Failed to open volume %s";
 		return NULL;
 	}
 	assert(volume_desc->open_databases);
@@ -762,8 +760,7 @@ const char *db_close(db_handle *handle)
 						       handle->db_desc->db_superblock->db_name) == NULL;
 
 	if (not_valid_db) {
-		create_error_message(&error_message, "Received close for db: %s that is not listed as open",
-				     handle->db_desc->db_superblock->db_name);
+		error_message = "Received close for db that is not listed as open";
 		goto finish;
 	}
 
@@ -782,8 +779,7 @@ const char *db_close(db_handle *handle)
 		BUG_ON();
 	}
 	if (handle->db_desc->reference_count > 0) {
-		create_error_message(&error_message, "Sorry more guys uses this DB: %s remaining guys %d",
-				     handle->db_desc->db_superblock->db_name, handle->db_desc->reference_count);
+		error_message = "Sorry more guys uses this DB";
 		MUTEX_UNLOCK(&init_lock);
 		return error_message;
 	}
@@ -956,24 +952,23 @@ static const char *insert_error_handling(db_handle *handle, uint32_t key_size, u
 {
 	const char *error_message = NULL;
 	if (DB_IS_CLOSING == handle->db_desc->db_state) {
-		create_error_message(&error_message, "DB: %s is closing", handle->db_desc->db_superblock->db_name);
+		error_message = "DB: %s is closing";
 		return error_message;
 	}
 
 	if (key_size > MAX_KEY_SIZE) {
-		create_error_message(&error_message, "Provided key %u Keys > %ld bytes are not supported", key_size,
-				     MAX_KEY_SIZE);
+		error_message = "Provided key %u Keys > %ld bytes are not supported";
 		return error_message;
 	}
 
 	if (!key_size) {
-		create_error_message(&error_message, "Trying to enter a zero sized key? Not valid!");
+		error_message = "Trying to enter a zero sized key? Not valid!";
 		return error_message;
 	}
 
 	uint32_t kv_size = sizeof(uint32_t) + key_size + sizeof(uint32_t) + value_size;
 	if (kv_size > KV_MAX_SIZE) {
-		create_error_message(&error_message, "KV size > 4KB buffer overflow! KV size = %u", kv_size);
+		error_message = "KV size > 4KB buffer overflow!";
 		return error_message;
 	}
 
@@ -1434,7 +1429,7 @@ const char *btree_insert_key_value(bt_insert_req *ins_req)
 	if (writers_join_as_readers(ins_req) == PAR_SUCCESS)
 		;
 	else if (concurrent_insert(ins_req) != PAR_SUCCESS)
-		create_error_message(&ins_req->metadata.error_message, "Insert failed");
+		ins_req->metadata.error_message = "Insert failed";
 
 	return ins_req->metadata.error_message;
 }
