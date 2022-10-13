@@ -14,6 +14,7 @@
 #include "btree.h"
 #include "../allocator/device_structures.h"
 #include "../allocator/log_structures.h"
+#include "../allocator/lsn.h"
 #include "../allocator/redo_undo_log.h"
 #include "../allocator/volume_manager.h"
 #include "../btree/kv_pairs.h"
@@ -412,7 +413,7 @@ static void init_fresh_logs(struct db_descriptor *db_desc)
 	seg_in_mem->segment_id = 0;
 	seg_in_mem->prev_segment = NULL;
 	seg_in_mem->next_segment = NULL;
-	db_desc->lsn = 0;
+	reset_lsn(&db_desc->root_lsn);
 }
 
 static void init_fresh_db(struct db_descriptor *db_desc)
@@ -471,7 +472,7 @@ static void recover_logs(db_descriptor *db_desc)
 	db_desc->big_log.tail_dev_offt = db_desc->db_superblock->big_log_tail_offt;
 	db_desc->big_log.size = db_desc->db_superblock->big_log_size;
 	init_log_buffer(&db_desc->big_log, BIG_LOG);
-	db_desc->lsn = db_desc->db_superblock->lsn;
+	db_desc->root_lsn = db_desc->db_superblock->last_lsn;
 }
 
 static void restore_db(struct db_descriptor *db_desc, uint32_t region_idx)
@@ -1066,7 +1067,7 @@ struct pr_log_ticket {
 	struct log_tail *tail;
 	struct log_operation *req;
 	struct metadata_tologop *data_size;
-	uint64_t lsn;
+	struct lsn lsn;
 	uint64_t log_offt;
 	// out var
 	uint64_t IO_start_offt;
@@ -1086,15 +1087,15 @@ static void pr_copy_kv_to_tail(struct pr_log_ticket *ticket)
 	case insertOp:
 	case deleteOp: {
 		// first the lsn
-		memcpy(&ticket->tail->buf[offt], &ticket->lsn, LSN_SIZE);
-		offt += LSN_SIZE;
+		memcpy(&ticket->tail->buf[offt], &ticket->lsn, get_lsn_size());
+		offt += get_lsn_size();
 		struct splice *kv_pair_dst = (struct splice *)&ticket->tail->buf[offt];
 		struct splice *kv_pair_src = (struct splice *)ticket->req->ins_req->key_value_buf;
 		ticket->req->optype_tolog == insertOp ? set_non_tombstone(kv_pair_dst) : set_tombstone(kv_pair_dst);
 		set_key(kv_pair_dst, get_key_offset_in_kv(kv_pair_src), get_key_size(kv_pair_src));
 		set_value(kv_pair_dst, get_value_offset_in_kv(kv_pair_src, get_key_size(kv_pair_src)),
 			  get_value_size(kv_pair_src));
-		ticket->op_size = LSN_SIZE + get_kv_size(kv_pair_dst);
+		ticket->op_size = get_lsn_size() + get_kv_size(kv_pair_dst);
 		break;
 	}
 	case paddingOp:
@@ -1296,7 +1297,7 @@ static void *bt_append_to_log_direct_IO(struct log_operation *req, struct log_to
 	struct pr_log_ticket pad_ticket = { .log_offt = 0, .IO_start_offt = 0, .IO_size = 0 };
 	char *addr_inlog = NULL;
 	uint32_t available_space_in_log = 0;
-	uint32_t reserve_needed_space = LSN_SIZE + data_size->kv_size;
+	uint32_t reserve_needed_space = get_lsn_size() + data_size->kv_size;
 
 	MUTEX_LOCK(&handle->db_desc->lock_log);
 
@@ -1311,7 +1312,7 @@ static void *bt_append_to_log_direct_IO(struct log_operation *req, struct log_to
 	//log_info("Direct IO in log kv size is %u log size %u avail space %u", data_size->kv_size,
 	//	 log_metadata->log_desc->size, available_space_in_log);
 	if (req->metadata->tombstone)
-		reserve_needed_space = LSN_SIZE + sizeof(struct bt_delete_marker) + data_size->key_len;
+		reserve_needed_space = get_lsn_size() + sizeof(struct bt_delete_marker) + data_size->key_len;
 
 	if (available_space_in_log < reserve_needed_space) {
 		uint32_t curr_tail_id = log_metadata->log_desc->curr_tail_id;
@@ -1363,14 +1364,15 @@ static void *bt_append_to_log_direct_IO(struct log_operation *req, struct log_to
 	log_kv_entry_ticket.data_size = data_size;
 	log_kv_entry_ticket.tail = log_metadata->log_desc->tail[tail_id % LOG_TAIL_NUM_BUFS];
 	log_kv_entry_ticket.log_offt = log_metadata->log_desc->size;
-	log_kv_entry_ticket.lsn = __sync_fetch_and_add(&handle->db_desc->lsn, 1);
+
+	log_kv_entry_ticket.lsn = increase_lsn(&handle->db_desc->root_lsn);
 	/*Where we *will* store it on the device*/
 	struct segment_header *device_location = REAL_ADDRESS(log_metadata->log_desc->tail_dev_offt);
 	addr_inlog = (void *)((uint64_t)device_location + (log_metadata->log_desc->size % SEGMENT_SIZE));
 
 	req->metadata->log_offset = log_metadata->log_desc->size;
 	req->metadata->put_op_metadata.offset_in_log = req->metadata->log_offset;
-	req->metadata->put_op_metadata.lsn = log_kv_entry_ticket.lsn;
+	req->metadata->put_op_metadata.lsn = lsn_to_int64(&log_kv_entry_ticket.lsn);
 	log_metadata->log_desc->size += reserve_needed_space;
 	MUTEX_UNLOCK(&handle->db_desc->lock_log);
 
@@ -1381,7 +1383,7 @@ static void *bt_append_to_log_direct_IO(struct log_operation *req, struct log_to
 	pr_copy_kv_to_tail(&log_kv_entry_ticket);
 	pr_do_log_IO(&log_kv_entry_ticket);
 
-	return addr_inlog + LSN_SIZE;
+	return addr_inlog + get_lsn_size();
 }
 
 void *append_key_value_to_log(log_operation *req)

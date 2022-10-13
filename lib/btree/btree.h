@@ -12,7 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#pragma once
+#ifndef _BTREE_H
+#define _BTREE_H
 #include "../allocator/log_structures.h"
 #include "../allocator/volume_manager.h"
 #include "../include/parallax/parallax.h"
@@ -30,7 +31,6 @@
 #include <stdint.h>
 #include <stdlib.h>
 #define PREFIX_SIZE 12
-#define LSN_SIZE sizeof(uint64_t)
 #define MAX_HEIGHT 9
 
 enum KV_type { KV_FORMAT, KV_PREFIX, INDEX_KEY_TYPE, KEY_TYPE };
@@ -282,7 +282,7 @@ typedef struct db_descriptor {
 	struct log_descriptor big_log;
 	struct log_descriptor medium_log;
 	struct log_descriptor small_log;
-	uint64_t lsn;
+	struct lsn root_lsn;
 	// A hash table containing every segment that has at least 1 byte of garbage data in the large log.
 	struct large_log_segment_gc_entry *segment_ht;
 	uint64_t gc_last_segment_id;
@@ -504,3 +504,4 @@ lock_table *_find_position(const lock_table **table, node_header *node);
 #define LESS_THAN_ZERO -1
 #define GREATER_THAN_ZERO 1
 #define EQUAL_TO_ZERO 0
+#endif

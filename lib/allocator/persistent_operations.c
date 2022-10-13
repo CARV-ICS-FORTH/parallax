@@ -18,6 +18,7 @@
 #include "../common/common.h"
 #include "device_structures.h"
 #include "log_structures.h"
+#include "lsn.h"
 #include "parallax/structures.h"
 #include "redo_undo_log.h"
 #include "uthash.h"
@@ -325,7 +326,7 @@ void pr_unlock_db_superblock(struct db_descriptor *db_desc)
 
 void pr_flush_db_superblock(struct db_descriptor *db_desc)
 {
-	db_desc->db_superblock->lsn = db_desc->lsn;
+	db_desc->db_superblock->last_lsn = db_desc->root_lsn;
 	uint64_t superblock_offt =
 		sizeof(struct superblock) + (sizeof(struct pr_db_superblock) * db_desc->db_superblock->id);
 	ssize_t total_bytes_written = 0;
@@ -352,7 +353,7 @@ static void pr_print_db_superblock(struct pr_db_superblock *superblock)
 		 superblock->medium_log_tail_offt, superblock->medium_log_size);
 	log_info("L0 L0_recovery_log log head_dev_offt: %lu tail_dev_offt: %lu size: %lu",
 		 superblock->small_log_head_offt, superblock->small_log_tail_offt, superblock->small_log_size);
-	log_info("latest LSN: %lu", superblock->lsn);
+	log_info("latest LSN: %lu", lsn_to_int64(&superblock->last_lsn));
 	log_info("Recovery of L0_recovery_log starts from segment_dev_offt: %lu offt_in_seg: %lu",
 		 superblock->small_log_start_segment_dev_offt, superblock->small_log_offt_in_start_segment);
 	log_info("Recovery of Big log starts from segment_dev_offt: %lu offt_in_seg: %lu",
@@ -632,7 +633,7 @@ static struct segment_array *find_N_last_blobs(struct db_descriptor *db_desc, ui
 }
 
 struct kv_entry {
-	uint64_t lsn;
+	struct lsn lsn;
 	struct splice *par_kv;
 };
 
@@ -657,8 +658,8 @@ static char *get_position_in_segment(struct log_cursor *cursor)
 
 void prepare_cursor_op(struct log_cursor *cursor)
 {
-	cursor->entry.lsn = *(uint64_t *)get_position_in_segment(cursor);
-	cursor->offt_in_segment += LSN_SIZE;
+	cursor->entry.lsn = *(struct lsn *)get_position_in_segment(cursor);
+	cursor->offt_in_segment += get_lsn_size();
 	struct splice *kv_pair = (struct splice *)get_position_in_segment(cursor);
 
 	cursor->entry.par_kv = (struct splice *)get_position_in_segment(cursor);
@@ -855,7 +856,7 @@ void recover_L0(struct db_descriptor *db_desc)
 			choice = BIG_LOG;
 		else if (!cursor[BIG_LOG]->valid)
 			choice = SMALL_LOG;
-		else if (cursor[SMALL_LOG]->entry.lsn < cursor[BIG_LOG]->entry.lsn)
+		else if (compare_lsns(&cursor[SMALL_LOG]->entry.lsn, &cursor[BIG_LOG]->entry.lsn) < 0)
 			choice = SMALL_LOG;
 
 		char *error_message = NULL;

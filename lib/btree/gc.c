@@ -92,12 +92,12 @@ int8_t find_deleted_kv_pairs_in_segment(struct db_handle handle, struct gc_segme
 	struct gc_segment_descriptor iter_log_segment = *log_seg;
 	char *log_segment_in_device = REAL_ADDRESS(log_seg->segment_dev_offt);
 	struct splice *kv = NULL;
-	uint64_t checked_segment_chunk = LSN_SIZE;
+	uint64_t checked_segment_chunk = get_lsn_size();
 	uint64_t segment_data = LOG_DATA_OFFSET;
 	int garbage_collect_segment = 0;
 
-	iter_log_segment.log_segment_in_memory += LSN_SIZE;
-	log_segment_in_device += LSN_SIZE;
+	iter_log_segment.log_segment_in_memory += get_lsn_size();
+	log_segment_in_device += get_lsn_size();
 
 	uint32_t key_value_size = get_kv_metadata_size();
 	marks->size = 0;
@@ -123,10 +123,10 @@ int8_t find_deleted_kv_pairs_in_segment(struct db_handle handle, struct gc_segme
 			push_stack(marks, iter_log_segment.log_segment_in_memory);
 
 		if (kv->key_size) {
-			uint32_t bytes_to_move = kv->key_size + kv->value_size + key_value_size + LSN_SIZE;
+			uint32_t bytes_to_move = kv->key_size + kv->value_size + key_value_size + get_lsn_size();
 			iter_log_segment.log_segment_in_memory += bytes_to_move;
 			log_segment_in_device += bytes_to_move;
-			checked_segment_chunk += kv->key_size + kv->value_size + key_value_size + LSN_SIZE;
+			checked_segment_chunk += kv->key_size + kv->value_size + key_value_size + get_lsn_size();
 		} else
 			break;
 	}

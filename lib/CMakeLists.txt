@@ -22,6 +22,7 @@ option(
   OFF)
 
 set(LIB_C_SOURCE_FILES
+    allocator/lsn.c
     allocator/allocator.c
     allocator/kv_format.c
     allocator/redo_undo_log.c
