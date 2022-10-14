@@ -110,6 +110,7 @@ bool index_is_split_needed(struct index_node *node, uint32_t max_pivot_size)
 {
 	max_pivot_size +=
 		sizeof(struct pivot_key) + sizeof(struct pivot_pointer) + sizeof(struct index_slot_array_entry);
+
 	return index_get_remaining_space(node) < max_pivot_size;
 }
 
@@ -422,7 +423,7 @@ int index_key_cmp(struct pivot_key *index_key, char *lookup_key, enum KV_type lo
 	return ret != 0 ? ret : (int)(index_key->size - p_key->key_size);
 }
 
-uint32_t get_pivot_key_size(struct pivot_key *pivot)
+int32_t get_pivot_key_size(struct pivot_key *pivot)
 {
 	return pivot->size;
 }
@@ -433,12 +434,12 @@ char *get_offset_of_pivot_key(struct pivot_key *pivot)
 	return pivot->data;
 }
 
-void set_pivot_key_size(struct pivot_key *pivot, uint32_t key_size)
+void set_pivot_key_size(struct pivot_key *pivot, int32_t key_size)
 {
 	pivot->size = key_size;
 }
 
-void set_pivot_key(struct pivot_key *pivot, void *key, uint32_t key_size)
+void set_pivot_key(struct pivot_key *pivot, void *key, int32_t key_size)
 {
 	memcpy(pivot->data, key, key_size);
 }

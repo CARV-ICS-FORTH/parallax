@@ -10,7 +10,7 @@
 struct index_node;
 
 struct pivot_key {
-	uint32_t size;
+	int32_t size;
 	char data[];
 } __attribute__((packed));
 
@@ -119,7 +119,7 @@ bool index_is_split_needed(struct index_node *node, uint32_t max_pivot_size);
 
 /**
   * Search index node and returns the pivot associated with the lookup key. The pivot entry consists of
-  * uint32_t pivot_size and data and the device offset to the node which should be visitted next. Doing the operation
+  * int32_t pivot_size and data and the device offset to the node which should be visitted next. Doing the operation
   * pivot_key + PIVOT_KEY_SIZE we get the pivot pointer.
   */
 struct pivot_pointer *index_search_get_pivot(struct index_node *node, void *lookup_key, enum KV_type lookup_key_format);
@@ -196,14 +196,14 @@ int index_key_cmp(struct pivot_key *index_key, char *lookup_key, enum KV_type lo
   * returns the key_size of a given pivot_key
   * @param pivot: the given pivot_key
   */
-uint32_t get_pivot_key_size(struct pivot_key *pivot);
+int32_t get_pivot_key_size(struct pivot_key *pivot);
 
 /**
   * sets the key_size of a given pivot_key
   * @param pivot: the given pivot_key
   * @param key_size: the key size to be set
   */
-void set_pivot_key_size(struct pivot_key *pivot, uint32_t key_size);
+void set_pivot_key_size(struct pivot_key *pivot, int32_t key_size);
 /**
   * returns the offset where the pivot_key starts
   * @param pivot: the given pivot_key
@@ -215,7 +215,7 @@ char *get_offset_of_pivot_key(struct pivot_key *pivot);
   * @param key: the key to be set
   * @param key_size: the key_size of the key to be set
   */
-void set_pivot_key(struct pivot_key *pivot, void *key, uint32_t key_size);
+void set_pivot_key(struct pivot_key *pivot, void *key, int32_t key_size);
 
 /**
   * returns a pointer to the node's node->header memory location

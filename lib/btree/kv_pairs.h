@@ -3,13 +3,13 @@
 #include <stdbool.h>
 #include <stdint.h>
 #define PREFIX_SIZE 12
-#define DELETE_MARKER_ID (UINT32_MAX)
-#define GET_MIN_POSSIBLE_KV_SIZE() (sizeof(uint32_t) + 1)
+#define DELETE_MARKER_ID (INT32_MAX)
+#define GET_MIN_POSSIBLE_KV_SIZE() (sizeof(int32_t) + 1)
 
 // KVs in Parallax follow | key_size | value_size | key | value | layout
 struct splice {
-	uint32_t key_size;
-	uint32_t value_size;
+	int32_t key_size;
+	int32_t value_size;
 	char data[];
 } __attribute__((packed));
 
@@ -20,7 +20,7 @@ struct kv_seperation_splice {
 
 // This struct defines the key abstraction of the system and it's irrelevant from splice format
 struct key_splice {
-	uint32_t key_size;
+	int32_t key_size;
 	char data[];
 } __attribute__((packed));
 
@@ -29,37 +29,37 @@ struct key_splice {
  * @param key: a KV_FORMATED key
  * @return key size
  */
-uint32_t get_key_size(struct splice *kv_pair);
+int32_t get_key_size(struct splice *kv_pair);
 /**
  * Returns the key_size + metadata given a splice formated key
  * @param key: a spliced (KV_FORMATED) key ptr
  */
-uint32_t get_key_size_with_metadata(struct splice *kv_pair);
+int32_t get_key_size_with_metadata(struct splice *kv_pair);
 /**
  * Returns the value_size given a splice formated key
  * @param value: a spliced (KV_FORMATED) kv ptr
  */
-uint32_t get_value_size(struct splice *kv_pair);
+int32_t get_value_size(struct splice *kv_pair);
 /**
  * Calculates the value_size  + metadata given a splice formated key
  * @param value: a spliced (KV_FORMATED) kv ptr
  */
-uint32_t get_value_size_with_metadata(struct splice *kv_pair);
+int32_t get_value_size_with_metadata(struct splice *kv_pair);
 /**
  * Calculates sizeof(splice.value_size) + sizeof(splice.key_size)
  */
-uint32_t get_kv_metadata_size(void);
+int32_t get_kv_metadata_size(void);
 /**
  * Calculates the kv size given a splice formated kv
  * @param kv: a spliced (KV_FORMATED) kv ptr
  */
-uint32_t get_kv_size(struct splice *kv_pair);
+int32_t get_kv_size(struct splice *kv_pair);
 /**
  * Sets the key size given a splice formated kv
  * @param kv: a spliced (KV_FORMATED) kv ptr, where key_size will be set
  * @param key_size: the new size to be set
  */
-void set_key_size(struct splice *kv_pair, uint32_t key_size);
+void set_key_size(struct splice *kv_pair, int32_t key_size);
 
 /**
   * Copies the key buffer to the kv pair
@@ -67,14 +67,14 @@ void set_key_size(struct splice *kv_pair, uint32_t key_size);
   * @param key_size: size of the key buffer
   * @parama key: pointer to the key buffer
   */
-void set_key(struct splice *kv_pair, char *key, uint32_t key_size);
+void set_key(struct splice *kv_pair, char *key, int32_t key_size);
 
 /**
  * Sets the value size given a splice formated kv
  * @param kv: a spliced (KV_FORMATED) kv ptr, where value_size will be set
  * @param value_size: the new size to be set
  */
-void set_value_size(struct splice *kv_pair, uint32_t value_size);
+void set_value_size(struct splice *kv_pair, int32_t value_size);
 
 /**
   * Copies the value buffer to the kv pair
@@ -82,7 +82,7 @@ void set_value_size(struct splice *kv_pair, uint32_t value_size);
   * @param key_size: size of the key buffer
   * @parama key: pointer to the key buffer
   */
-void set_value(struct splice *kv_pair, char *value, uint32_t value_size);
+void set_value(struct splice *kv_pair, char *value, int32_t value_size);
 
 /**
  * Calculates the starting offset of the key part of a given splice kv
@@ -94,22 +94,22 @@ char *get_key_offset_in_kv(struct splice *kv_pair);
  * @param kv: a spliced (KV_FORMATED) kv ptr, from which the key is retrieved
  * @param key_size: the key size of this kv
  */
-char *get_value_offset_in_kv(struct splice *kv_pair, uint32_t key_size);
+char *get_value_offset_in_kv(struct splice *kv_pair, int32_t key_size);
 /**
  * Calculates the key_size of the actual struct splice kv following the ptr of the  kv_seperated kv
  * @param kv: a kv-seperated splice kv ptr
  */
-uint32_t get_kv_seperated_key_size(struct kv_seperation_splice *kv_pair);
+int32_t get_kv_seperated_key_size(struct kv_seperation_splice *kv_pair);
 /**
  * Calculates the value_size of the actual struct splice kv following the ptr of the  kv_seperated kv
  * @param kv: a kv-seperated splice kv ptr
  */
-uint32_t get_kv_seperated_value_size(struct kv_seperation_splice *kv_pair);
+int32_t get_kv_seperated_value_size(struct kv_seperation_splice *kv_pair);
 /**
  * Calculates the kv_size of the actual struct splice kv following the ptr of the  kv_seperated kv
  * @param kv: a kv-seperated splice kv ptr
  */
-uint32_t get_kv_seperated_kv_size(struct kv_seperation_splice *kv_pair);
+int32_t get_kv_seperated_kv_size(struct kv_seperation_splice *kv_pair);
 
 /**
   * Examines a KV pair to see if it is a delete marker
@@ -120,10 +120,10 @@ void set_tombstone(struct splice *kv_pair);
 
 void set_non_tombstone(struct splice *kv_pair);
 
-uint32_t get_key_splice_key_size(struct key_splice *key);
+int32_t get_key_splice_key_size(struct key_splice *key);
 char *get_key_splice_key_offset(struct key_splice *key);
 
-void set_key_size_of_key_splice(struct key_splice *key, uint32_t key_size);
+void set_key_size_of_key_splice(struct key_splice *key, int32_t key_size);
 void set_key_splice_key_offset(struct key_splice *key, char *key_buf);
 
 struct splice transform_keysplice_to_splice(struct key_splice *key);

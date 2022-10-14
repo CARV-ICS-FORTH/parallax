@@ -631,8 +631,9 @@ void write_data_in_dynamic_leaf(struct write_dynamic_leaf_args *args)
 int reorganize_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, uint32_t leaf_size, bt_insert_req *req)
 {
 	enum kv_category cat = req->metadata.cat;
-	unsigned kv_size = (cat == BIG_INLOG || cat == MEDIUM_INLOG) ? sizeof(struct kv_seperation_splice) :
-								       get_kv_size((struct splice *)req->key_value_buf);
+	uint32_t kv_size = (cat == BIG_INLOG || cat == MEDIUM_INLOG) ?
+				   sizeof(struct kv_seperation_splice) :
+				   (uint32_t)get_kv_size((struct splice *)req->key_value_buf);
 
 	if (leaf->header.fragmentation <= kv_size || req->metadata.level_id != 0)
 		return 0;

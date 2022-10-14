@@ -41,13 +41,13 @@ static void create_pivot(struct pivot_key *pivot, uint32_t pivot_num, const unsi
 			 uint32_t alphabet_size)
 {
 	sprintf(pivot->data, "%u", pivot_num);
-	uint32_t prefix_size = strlen(pivot->data);
+	int32_t prefix_size = strlen(pivot->data);
 	pivot->size = (rand() % MAX_PIVOT_KEY_SIZE);
 
 	if (pivot->size <= prefix_size)
 		pivot->size = prefix_size + 1;
 
-	for (uint32_t i = prefix_size; i < pivot->size; ++i) {
+	for (int32_t i = prefix_size; i < pivot->size; ++i) {
 		pivot->data[i] = alphabet[rand() % alphabet_size];
 	}
 }

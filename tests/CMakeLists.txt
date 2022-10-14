@@ -95,8 +95,6 @@ if(BUILD_TESTING)
   target_link_libraries(test_categories "${PROJECT_NAME}" ${DEPENDENCIES})
   add_test(NAME test_categories COMMAND $<TARGET_FILE:test_categories>)
 
-
-
   set_source_files_properties(test_sanitizers.c COMPILE_FLAGS "-O0")
   add_executable(test_sanitizers test_sanitizers.c)
   add_test(NAME test_sanitizers COMMAND $<TARGET_FILE:test_sanitizers>)
