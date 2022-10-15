@@ -126,7 +126,7 @@ struct find_result find_key_in_dynamic_leaf(const struct bt_dynamic_leaf_node *l
 	uint32_t leaf_size = db_desc->levels[level_id].leaf_size;
 
 	assert(buf != NULL);
-	SERIALIZE_KEY(buf, key, key_size);
+	serialize_key(buf, key, key_size);
 
 	memset(&req, 0x00, sizeof(req));
 	req.key_value_buf = buf;

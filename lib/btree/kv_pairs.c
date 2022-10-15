@@ -117,3 +117,11 @@ inline void set_key_splice_key_offset(struct key_splice *key, char *key_buf)
 {
 	memcpy(get_key_splice_key_offset(key), key_buf, get_key_splice_key_size(key));
 }
+
+void serialize_key(char *buf, void *key, uint32_t key_size)
+{
+	struct splice *kv_splice = (struct splice *)buf;
+	set_key_size(kv_splice, key_size);
+	set_value_size(kv_splice, INT32_MAX);
+	set_key(kv_splice, (char *)key, key_size);
+}

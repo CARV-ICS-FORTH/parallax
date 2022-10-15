@@ -493,11 +493,6 @@ lock_table *_find_position(const lock_table **table, node_header *node);
 #define MIN(x, y) ((x > y) ? (y) : (x))
 #define ABSOLUTE_ADDRESS(X) (((uint64_t)(X)) - MAPPED)
 #define REAL_ADDRESS(X) ((X) ? (void *)(MAPPED + (uint64_t)(X)) : BUG_ON())
-/*TODO: (@geostyl) i think we should figure out a better way to write this*/
-#define SERIALIZE_KEY(buf, key, key_size)                           \
-	*(uint32_t *)buf = key_size;                                \
-	*(uint32_t *)((char *)buf + sizeof(uint32_t)) = UINT32_MAX; \
-	memcpy((char *)buf + sizeof(uint32_t) + sizeof(uint32_t), key, key_size)
 #define KV_MAX_SIZE (4096 + 8)
 #define likely(x) __builtin_expect((x), 1)
 #define unlikely(x) __builtin_expect((x), 0)
