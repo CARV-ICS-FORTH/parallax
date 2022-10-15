@@ -90,6 +90,7 @@ int8_t find_deleted_kv_pairs_in_segment(struct db_handle handle, struct gc_segme
 {
 	struct gc_segment_descriptor iter_log_segment = *log_seg;
 	char *log_segment_in_device = REAL_ADDRESS(log_seg->segment_dev_offt);
+	char buf[MAX_KEY_SIZE + get_kv_metadata_size()];
 	struct splice *kv = NULL;
 	uint64_t checked_segment_chunk = get_lsn_size();
 	uint64_t segment_data = LOG_DATA_OFFSET;
@@ -104,15 +105,16 @@ int8_t find_deleted_kv_pairs_in_segment(struct db_handle handle, struct gc_segme
 	while (checked_segment_chunk < segment_data) {
 		kv = (struct splice *)iter_log_segment.log_segment_in_memory;
 
-		if (!kv->key_size)
+		if (!kv->key_size || checked_segment_chunk - segment_data < GET_MIN_POSSIBLE_KV_SIZE())
 			break;
 
+		serialize_kv_splice_to_key_splice(buf, kv);
 		struct lookup_operation get_op = { .db_desc = handle.db_desc,
 						   .found = 0,
 						   .size = 0,
 						   .buffer_to_pack_kv = NULL,
 						   .buffer_overflow = 0,
-						   .key_buf = (char *)kv,
+						   .key_buf = buf,
 						   .retrieve = 0 };
 		find_key(&get_op);
 

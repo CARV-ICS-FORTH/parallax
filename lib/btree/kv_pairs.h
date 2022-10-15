@@ -127,6 +127,6 @@ void set_key_size_of_key_splice(struct key_splice *key, int32_t key_size);
 void set_key_splice_key_offset(struct key_splice *key, char *key_buf);
 
 void serialize_key(char *buf, void *key, uint32_t key_size);
+void serialize_kv_splice_to_key_splice(char *buf, struct splice *kv);
 
-struct splice transform_keysplice_to_splice(struct key_splice *key);
 #endif // KV_PAIRS_H_
