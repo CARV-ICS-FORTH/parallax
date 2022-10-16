@@ -18,6 +18,7 @@
 #include "../btree/dynamic_leaf.h"
 #include "../btree/index_node.h"
 #include "../common/common.h"
+#include "../common/common_functions.h"
 #include "../utilities/dups_list.h"
 #include "min_max_heap.h"
 #include "stack.h"
@@ -469,16 +470,16 @@ int32_t level_scanner_seek(level_scanner *level_sc, void *start_key_buf, SEEK_SC
 	struct dl_bsearch_result dlresult = { .middle = 0, .status = INSERT, .op = DYNAMIC_LEAF_INSERT };
 	bt_insert_req req = { 0 };
 
-	char *kv_formated_start_key = calloc(1, PIVOT_KEY_SIZE(start_key) + sizeof(uint32_t));
-	*(uint32_t *)kv_formated_start_key = start_key->size;
-	*(uint32_t *)(kv_formated_start_key + sizeof(uint32_t)) = UINT32_MAX;
-	memcpy(GET_KEY_OFFSET(kv_formated_start_key), start_key->data, start_key->size);
-	req.key_value_buf = kv_formated_start_key;
-	//req.key_value_buf = (char *)start_key;
 	// constructing a kv_formated buffer containing key_size | value_size(UINT32_MAX) | key_buf
 	// binary saerch of dynamic leaf acceptes only kv_formated or kv_prefixed keys, but the start_key of the scanner
 	// follows the key_size | key format
 	// TODO: (@geostyl) make the binary search aware of the scanner format?
+	char *kv_formated_start_key = calloc(1, PIVOT_KEY_SIZE(start_key) + sizeof(uint32_t));
+	set_key_size((struct splice *)kv_formated_start_key, get_pivot_key_size((struct pivot_key *)start_key));
+	set_value_size((struct splice *)kv_formated_start_key, UINT32_MAX);
+	memcpy(get_key_offset_in_kv((struct splice *)kv_formated_start_key), start_key->data, start_key->size);
+	req.key_value_buf = kv_formated_start_key;
+	//req.key_value_buf = (char *)start_key;
 	req.metadata.kv_size = PIVOT_KEY_SIZE(start_key) + sizeof(uint32_t);
 	db_handle handle = { .db_desc = db_desc, .volume_desc = NULL };
 	req.metadata.handle = &handle;
