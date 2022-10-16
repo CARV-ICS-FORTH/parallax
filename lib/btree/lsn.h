@@ -4,7 +4,7 @@
 #include <stdlib.h>
 
 struct lsn {
-	int64_t uuid;
+	int64_t id;
 };
 
 size_t get_lsn_size(void);

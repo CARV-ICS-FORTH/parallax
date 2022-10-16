@@ -19,8 +19,8 @@
   * index_node and check correctness for its children.
 **/
 
-#include "btree/btree.h"
 #include "parallax/structures.h"
+#include <btree/btree.h>
 #define ALPHABET_SIZE 26
 #define MAX_PIVOT_KEY_SIZE 200
 #define MAX_NODE_KEYS_NUM 500

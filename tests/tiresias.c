@@ -11,8 +11,8 @@
 // limitations under the License.
 #include "../btree/conf.h"
 #include "arg_parser.h"
-#include "btree/gc.h"
 #include <assert.h>
+#include <btree/gc.h>
 #include <db.h>
 #include <log.h>
 #include <parallax/parallax.h>

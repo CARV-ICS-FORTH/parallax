@@ -12,12 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef _DEVICE_STRUCTURES_H
-#define _DEVICE_STRUCTURES_H
+#ifndef DEVICE_STRUCTURES_H
+#define DEVICE_STRUCTURES_H
 #define ALLOW_RAW_VOLUMES 1
 #define MIN_VOLUME_SIZE (8 * 1024 * 1024 * 1024L)
 #include "../btree/conf.h"
-#include "lsn.h"
+#include "../btree/lsn.h"
 #include <pthread.h>
 #include <stdint.h>
 
@@ -114,4 +114,4 @@ struct pr_ownership_registry {
 	uint32_t size;
 	char persistent_bitmap[];
 };
-#endif
+#endif // DEVICE_STRUCTURES_H

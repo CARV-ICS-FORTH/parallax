@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef _BTREE_H
-#define _BTREE_H
+#ifndef BTREE_H
+#define BTREE_H
 #include "../allocator/log_structures.h"
 #include "../allocator/volume_manager.h"
 #include "../include/parallax/parallax.h"
@@ -504,4 +504,4 @@ lock_table *_find_position(const lock_table **table, node_header *node);
 #define LESS_THAN_ZERO -1
 #define GREATER_THAN_ZERO 1
 #define EQUAL_TO_ZERO 0
-#endif
+#endif // BTREE_H

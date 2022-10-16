@@ -14,7 +14,6 @@
 #include "btree.h"
 #include "../allocator/device_structures.h"
 #include "../allocator/log_structures.h"
-#include "../allocator/lsn.h"
 #include "../allocator/redo_undo_log.h"
 #include "../allocator/volume_manager.h"
 #include "../btree/kv_pairs.h"
@@ -25,6 +24,7 @@
 #include "dynamic_leaf.h"
 #include "gc.h"
 #include "index_node.h"
+#include "lsn.h"
 #include "segment_allocator.h"
 #include "set_options.h"
 

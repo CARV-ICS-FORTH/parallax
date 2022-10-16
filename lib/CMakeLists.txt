@@ -22,7 +22,6 @@ option(
   OFF)
 
 set(LIB_C_SOURCE_FILES
-    allocator/lsn.c
     allocator/allocator.c
     allocator/kv_format.c
     allocator/redo_undo_log.c
@@ -38,6 +37,7 @@ set(LIB_C_SOURCE_FILES
     btree/segment_allocator.c
     btree/set_options.c
     btree/kv_pairs.c
+    btree/lsn.c
     common/common.c
     scanner/min_max_heap.c
     scanner/scanner.c
