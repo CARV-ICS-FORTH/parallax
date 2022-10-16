@@ -256,12 +256,10 @@ static void fill_compaction_scanner(struct level_scanner *level_sc, struct level
 	switch (get_kv_format(slot_array[position].key_category)) {
 	case KV_INPLACE: {
 		level_sc->keyValue = get_kv_offset(dlnode, level->leaf_size, slot_array[position].index);
-		uint32_t key_size = get_key_size((struct splice *)level_sc->keyValue);
-		uint32_t value_size = get_value_size((struct splice *)level_sc->keyValue);
 		level_sc->kv_format = KV_FORMAT;
 		level_sc->cat = slot_array[position].key_category;
 		level_sc->tombstone = slot_array[position].tombstone;
-		level_sc->kv_size = sizeof(key_size) + sizeof(value_size) + key_size + value_size;
+		level_sc->kv_size = get_kv_size((struct splice *)level_sc->keyValue);
 		break;
 	}
 	case KV_INLOG: {
@@ -290,9 +288,7 @@ static void fill_normal_scanner(struct level_scanner *level_sc, struct level_des
 	switch (get_kv_format(slot_array[position].key_category)) {
 	case KV_INPLACE: {
 		level_sc->keyValue = get_kv_offset(dlnode, level->leaf_size, slot_array[position].index);
-		uint32_t key_size = get_key_size((struct splice *)level_sc->keyValue);
-		uint32_t value_size = get_value_size((struct splice *)level_sc->keyValue);
-		level_sc->kv_size = sizeof(key_size) + sizeof(value_size) + key_size + value_size;
+		level_sc->kv_size = get_kv_size((struct splice *)level_sc->keyValue);
 		level_sc->kv_format = KV_FORMAT;
 		level_sc->cat = slot_array[position].key_category;
 		level_sc->tombstone = slot_array[position].tombstone;
@@ -306,11 +302,9 @@ static void fill_normal_scanner(struct level_scanner *level_sc, struct level_des
 		level_sc->kv_entry.dev_offt = (uint64_t)REAL_ADDRESS(kv_entry->dev_offt);
 		level_sc->keyValue = (void *)level_sc->kv_entry.dev_offt;
 
-		if (level_sc->level_id) {
-			uint32_t key_size = get_key_size((struct splice *)level_sc->keyValue);
-			uint32_t value_size = get_value_size((struct splice *)level_sc->keyValue);
-			level_sc->kv_size = sizeof(key_size) + sizeof(value_size) + key_size + value_size;
-		} else
+		if (level_sc->level_id)
+			level_sc->kv_size = get_kv_size((struct splice *)level_sc->keyValue);
+		else
 			level_sc->kv_size = UINT32_MAX;
 		level_sc->cat = slot_array[position].key_category;
 		level_sc->tombstone = slot_array[position].tombstone;

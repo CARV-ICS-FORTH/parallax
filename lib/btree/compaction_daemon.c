@@ -729,13 +729,12 @@ static int comp_append_medium_L1(struct comp_level_write_cursor *c, struct comp_
 	log_op.ins_req = &ins_req;
 
 	char *log_location = append_key_value_to_log(&log_op);
-
-	if (get_key_size((struct splice *)in->kv_inplace) >= PREFIX_SIZE)
-		memcpy(out->kvsep.prefix, get_key_offset_in_kv((struct splice *)in->kv_inplace), PREFIX_SIZE);
+	struct splice *kv_inplace = (struct splice *)in->kv_inplace;
+	if (get_key_size(kv_inplace) >= PREFIX_SIZE)
+		memcpy(out->kvsep.prefix, get_key_offset_in_kv(kv_inplace), PREFIX_SIZE);
 	else {
 		memset(out->kvsep.prefix, 0x00, PREFIX_SIZE);
-		memcpy(out->kvsep.prefix, get_key_offset_in_kv((struct splice *)in->kv_inplace),
-		       get_key_size((struct splice *)in->kv_inplace));
+		memcpy(out->kvsep.prefix, get_key_offset_in_kv(kv_inplace), get_key_size(kv_inplace));
 	}
 	out->kvsep.dev_offt = (uint64_t)log_location;
 	out->kv_category = MEDIUM_INLOG;
@@ -870,10 +869,12 @@ static void comp_append_entry_to_leaf_node(struct comp_level_write_cursor *curso
 			}
 		}
 		//create a pivot key based on the pivot key format | key_size | key | out of the kv_formated key
-		char *new_pivot = malloc(get_key_size((struct splice *)kv_formated_kv) + sizeof(uint32_t));
-		*(uint32_t *)new_pivot = get_key_size((struct splice *)kv_formated_kv);
-		memcpy(new_pivot + sizeof(uint32_t), get_key_offset_in_kv((struct splice *)kv_formated_kv),
-		       get_key_size((struct splice *)kv_formated_kv));
+		struct splice *kv_buf = (struct splice *)kv_formated_kv;
+		uint32_t key_size = get_key_size(kv_buf);
+		uint32_t key_metadata_size = sizeof(get_key_size(kv_buf));
+		struct pivot_key *new_pivot = (struct pivot_key *)calloc(1, key_size + key_metadata_size);
+		set_pivot_key_size(new_pivot, key_size);
+		set_pivot_key(new_pivot, get_key_offset_in_kv(kv_buf), key_size);
 
 		comp_append_pivot_to_index(1, cursor, left_leaf_offt, (struct pivot_key *)new_pivot, right_leaf_offt);
 	}
@@ -1180,16 +1181,17 @@ static void print_heap_node_key(struct sh_heap_node *nd)
 {
 	switch (nd->cat) {
 	case SMALL_INPLACE:
-	case MEDIUM_INPLACE:
-		log_debug("In place Key is %u:%s", *(uint32_t *)nd->KV, (char *)nd->KV + sizeof(uint32_t));
+	case MEDIUM_INPLACE:;
+		struct splice *kv = (struct splice *)nd->KV;
+		log_debug("In place Key is %u:%s", get_key_size(kv), get_key_offset_in_kv(kv));
 		break;
 	case BIG_INLOG:
 	case MEDIUM_INLOG:;
-		char *full_key = (char *)((struct bt_leaf_entry *)nd->KV)->dev_offt;
+		struct splice *full_key = (struct splice *)((struct bt_leaf_entry *)nd->KV)->dev_offt;
 
 		log_debug("In log Key prefix is %.*s full key size: %u  full key data %.*s", PREFIX_SIZE,
-			  (char *)nd->KV, get_key_size((struct splice *)full_key),
-			  get_key_size((struct splice *)full_key), get_key_offset_in_kv((struct splice *)full_key));
+			  (char *)nd->KV, get_key_size(full_key), get_key_size(full_key),
+			  get_key_offset_in_kv(full_key));
 		break;
 	default:
 		log_fatal("Unhandle/Unknown category");

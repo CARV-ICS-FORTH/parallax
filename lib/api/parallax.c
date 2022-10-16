@@ -345,18 +345,18 @@ int par_is_valid(par_scanner sc)
 struct par_key par_get_key(par_scanner sc)
 {
 	struct par_scanner *par_s = (struct par_scanner *)sc;
-	struct par_key key = { .size = get_key_size((struct splice *)par_s->kv_buf),
-			       .data = get_key_offset_in_kv((struct splice *)par_s->kv_buf) };
+	struct splice *kv_buf = (struct splice *)par_s->kv_buf;
+	struct par_key key = { .size = get_key_size(kv_buf), .data = get_key_offset_in_kv(kv_buf) };
 	return key;
 }
 
 struct par_value par_get_value(par_scanner sc)
 {
 	struct par_scanner *par_s = (struct par_scanner *)sc;
-	struct par_value val = { .val_size = get_value_size((struct splice *)par_s->kv_buf),
-				 .val_buffer = get_value_offset_in_kv((struct splice *)par_s->kv_buf,
-								      get_key_size((struct splice *)par_s->kv_buf)),
-				 .val_buffer_size = get_value_size((struct splice *)par_s->kv_buf) };
+	struct splice *kv_buf = (struct splice *)par_s->kv_buf;
+	struct par_value val = { .val_size = get_value_size(kv_buf),
+				 .val_buffer = get_value_offset_in_kv(kv_buf, get_key_size(kv_buf)),
+				 .val_buffer_size = get_value_size(kv_buf) };
 
 	return val;
 }

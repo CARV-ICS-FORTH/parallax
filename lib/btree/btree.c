@@ -64,8 +64,9 @@ void init_key_cmp(struct key_compare *key_cmp, void *key_buf, char key_format)
 		return;
 
 	if (key_format == KV_FORMAT) {
-		key_cmp->key_size = get_key_size((struct splice *)key_buf);
-		key_cmp->key = get_key_offset_in_kv((struct splice *)key_buf);
+		struct splice *key = (struct splice *)key_buf;
+		key_cmp->key_size = get_key_size(key);
+		key_cmp->key = get_key_offset_in_kv(key);
 		key_cmp->kv_dev_offt = UINT64_MAX;
 		key_cmp->key_format = KV_FORMAT;
 		return;
@@ -992,7 +993,7 @@ struct par_put_metadata insert_key_value(db_handle *handle, void *key, void *val
 	set_value_size((struct splice *)key_buf, value_size);
 	memcpy(get_key_offset_in_kv((struct splice *)key_buf), key, key_size);
 	memcpy(get_value_offset_in_kv((struct splice *)key_buf, get_key_size((struct splice *)key_buf)), value,
-	       value_size); // |key_size | value_suze | key | value |
+	       value_size);
 	ins_req.metadata.handle = handle;
 	ins_req.key_value_buf = key_buf;
 	ins_req.metadata.level_id = 0;
@@ -1491,7 +1492,7 @@ static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id,
 	lock_table *prev = NULL;
 	lock_table *curr = NULL;
 	struct node_header *root = NULL;
-
+	struct splice *search_kv_buf = (struct splice *)get_op->kv_buf;
 	struct db_descriptor *db_desc = get_op->db_desc;
 
 	if (db_desc->levels[level_id].root_w[tree_id] == NULL && db_desc->levels[level_id].root_r[tree_id] == NULL) {
@@ -1523,8 +1524,8 @@ static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id,
 		if (RWLOCK_RDLOCK(&curr->rx_lock) != 0)
 			BUG_ON();
 
-		uint32_t key_size = get_key_size((struct splice *)get_op->kv_buf);
-		void *key = get_key_offset_in_kv((struct splice *)get_op->kv_buf);
+		uint32_t key_size = get_key_size(search_kv_buf);
+		void *key = get_key_offset_in_kv(search_kv_buf);
 		ret_result = find_key_in_dynamic_leaf((struct bt_dynamic_leaf_node *)curr_node, db_desc, key, key_size,
 						      level_id);
 		get_op->tombstone = ret_result.tombstone;
@@ -1541,7 +1542,8 @@ static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id,
 			if (RWLOCK_UNLOCK(&prev->rx_lock) != 0)
 				BUG_ON();
 
-		uint64_t child_offset = index_binary_search((struct index_node *)curr_node, get_op->kv_buf, KV_FORMAT);
+		uint64_t child_offset =
+			index_binary_search((struct index_node *)curr_node, (char *)search_kv_buf, KV_FORMAT);
 		son_node = (void *)REAL_ADDRESS(child_offset);
 
 		prev = curr;
@@ -1562,8 +1564,8 @@ static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id,
 	if (RWLOCK_UNLOCK(&prev->rx_lock) != 0)
 		BUG_ON();
 
-	uint32_t key_size = get_key_size((struct splice *)get_op->kv_buf);
-	void *key = get_key_offset_in_kv((struct splice *)get_op->kv_buf);
+	uint32_t key_size = get_key_size(search_kv_buf);
+	void *key = get_key_offset_in_kv(search_kv_buf);
 	ret_result =
 		find_key_in_dynamic_leaf((struct bt_dynamic_leaf_node *)curr_node, db_desc, key, key_size, level_id);
 	get_op->tombstone = ret_result.tombstone;
@@ -1601,7 +1603,8 @@ deser:
 	}
 
 	assert(kv_pair.addr);
-	uint32_t value_size = get_value_size((struct splice *)kv_pair.addr);
+	struct splice *kv_buf = (struct splice *)kv_pair.addr;
+	uint32_t value_size = get_value_size(kv_buf);
 	if (get_op->retrieve && !get_op->buffer_to_pack_kv) {
 		get_op->buffer_to_pack_kv = malloc(value_size);
 		get_op->size = value_size;
@@ -1611,10 +1614,7 @@ deser:
 		get_op->buffer_overflow = 1;
 
 	if (get_op->retrieve && get_op->size <= value_size) {
-		memcpy(get_op->buffer_to_pack_kv,
-		       get_value_offset_in_kv((struct splice *)kv_pair.addr,
-					      get_key_size((struct splice *)kv_pair.addr)),
-		       value_size);
+		memcpy(get_op->buffer_to_pack_kv, get_value_offset_in_kv(kv_buf, get_key_size(kv_buf)), value_size);
 		get_op->buffer_overflow = 0;
 	}
 

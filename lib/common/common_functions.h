@@ -2,6 +2,8 @@
 #define COMMON_FUNCTIONS_H_
 #include <stdint.h>
 #define PREFIX_SIZE 12
+
+// KVs in Parallax follow | key_size | value_size | key | value | layout
 struct splice {
 	uint32_t key_size;
 	uint32_t value_size;

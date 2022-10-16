@@ -377,13 +377,12 @@ int index_key_cmp(struct pivot_key *index_key, char *lookup_key, enum KV_type lo
 	int ret = 0;
 
 	if (lookup_key_format == KV_FORMAT) {
-		size = index_key->size <= get_key_size((struct splice *)lookup_key) ?
-			       index_key->size :
-			       get_key_size((struct splice *)lookup_key);
-		ret = memcmp(index_key->data, get_key_offset_in_kv((struct splice *)lookup_key), size);
+		struct splice *key = (struct splice *)lookup_key;
+		size = index_key->size <= get_key_size(key) ? index_key->size : get_key_size(key);
+		ret = memcmp(index_key->data, get_key_offset_in_kv(key), size);
 		if (ret != 0)
 			return ret;
-		return index_key->size - get_key_size((struct splice *)lookup_key);
+		return index_key->size - get_key_size(key);
 	}
 
 	/* lookup_key is INDEX_KEY_TYPE
