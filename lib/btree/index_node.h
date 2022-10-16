@@ -164,12 +164,29 @@ void index_iterator_init(struct index_node *node, struct index_node_iterator *it
   */
 void index_iterator_init_with_key(struct index_node *node, struct index_node_iterator *iterator, struct pivot_key *key);
 
+/**
+  * initializes the smallest pivot key which has some = INDEX_GUARD_SIZE and payload 0x00
+  * @param buffer: smallest pivot to be constructed
+  * @param size: size of the buffer
+  */
 void fill_smallest_possible_pivot(char *buffer, int size);
 
+/**
+  * checks if the position of an index iterator is less that the number of entries inside the index node
+  * @param iterator: an iteration pointing to an index node
+  */
 uint8_t index_iterator_is_valid(struct index_node_iterator *iterator);
 
+/**
+  * returns the pivot key of where the index iterator is pointing;
+  * @param iterator: an iteration pointing to an index node
+  */
 struct pivot_key *index_iterator_get_pivot_key(struct index_node_iterator *iterator);
 
+/**
+  * returns the pivot pointer a.k.a. the child of this pivot
+  * @param iterator: an iteration pointing to an index node
+  */
 struct pivot_pointer *index_iterator_get_pivot_pointer(struct index_node_iterator *iterator);
 
 /**
