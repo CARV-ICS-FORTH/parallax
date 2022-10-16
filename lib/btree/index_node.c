@@ -414,3 +414,23 @@ int index_key_cmp(struct pivot_key *index_key, char *lookup_key, enum KV_type lo
 		return ret;
 	return index_key->size - p_key->size;
 }
+
+uint32_t get_pivot_key_size(struct pivot_key *pivot)
+{
+	return pivot->size;
+}
+
+char *get_offset_of_pivot_key(struct pivot_key *pivot)
+{
+	return pivot->data;
+}
+
+void set_pivot_key_size(struct pivot_key *pivot, uint32_t key_size)
+{
+	pivot->size = key_size;
+}
+
+void set_pivot_key(struct pivot_key *pivot, void *key, uint32_t key_size)
+{
+	memcpy(pivot->data, key, key_size);
+}

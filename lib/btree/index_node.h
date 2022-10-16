@@ -9,7 +9,7 @@
 struct pivot_key {
 	uint32_t size;
 	char data[];
-};
+} __attribute__((packed));
 
 struct pivot_pointer {
 	uint64_t child_offt;
@@ -174,6 +174,31 @@ struct pivot_pointer *index_iterator_get_pivot_pointer(struct index_node_iterato
   * @param lookup_key_format: the format the lookup_key follows
   */
 int index_key_cmp(struct pivot_key *index_key, char *lookup_key, enum KV_type lookup_key_format);
+
+/**
+  * returns the key_size of a given pivot_key
+  * @param pivot: the given pivot_key
+  */
+uint32_t get_pivot_key_size(struct pivot_key *pivot);
+
+/**
+  * sets the key_size of a given pivot_key
+  * @param pivot: the given pivot_key
+  * @param key_size: the key size to be set
+  */
+void set_pivot_key_size(struct pivot_key *pivot, uint32_t key_size);
+/**
+  * returns the offset where the pivot_key starts
+  * @param pivot: the given pivot_key
+  */
+char *get_offset_of_pivot_key(struct pivot_key *pivot);
+/**
+  * sets the key of a given pivot_key
+  * @param pivot: the given pivot_key
+  * @param key: the key to be set
+  * @param key_size: the key_size of the key to be set
+  */
+void set_pivot_key(struct pivot_key *pivot, void *key, uint32_t key_size);
 
 #define PIVOT_KEY_SIZE(X) ((X) ? (X)->size + sizeof(*X) : BUG_ON_UINT32T())
 #define PIVOT_SIZE(X) (PIVOT_KEY_SIZE(X) + sizeof(struct pivot_pointer))
