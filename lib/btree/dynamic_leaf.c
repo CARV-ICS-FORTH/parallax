@@ -498,9 +498,11 @@ struct bt_rebalance_result split_dynamic_leaf(struct bt_dynamic_leaf_node *leaf,
 		break;
 	}
 
-	uint32_t key_size = get_key_size((struct splice *)L.addr);
+	struct splice *kv_splice = (struct splice *)L.addr;
+
+	uint32_t key_size = get_key_size(kv_splice);
 	set_pivot_key_size((struct pivot_key *)rep.middle_key, key_size); // key_size
-	set_pivot_key((struct pivot_key *)rep.middle_key, get_key_offset_in_kv((struct splice *)L.addr), key_size);
+	set_pivot_key((struct pivot_key *)rep.middle_key, get_key_offset_in_kv(kv_splice), key_size);
 	assert(key_size + sizeof(key_size) <= sizeof(rep.middle_key));
 
 	if (L.in_tail) {
@@ -657,8 +659,6 @@ struct bt_rebalance_result special_split_dynamic_leaf(struct bt_dynamic_leaf_nod
 
 	seg_free_leaf_node(db_desc, level_id, req->metadata.tree_id, (leaf_node *)old_leaf);
 
-	log_debug("middle key propoted is : %u, %s", get_pivot_key_size((struct pivot_key *)rep.middle_key),
-		  get_offset_of_pivot_key((struct pivot_key *)rep.middle_key));
 	return rep;
 }
 

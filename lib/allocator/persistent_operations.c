@@ -832,7 +832,7 @@ start:
 
 void recover_L0(struct db_descriptor *db_desc)
 {
-	db_handle db_hanle = { .db_desc = db_desc, .volume_desc = db_desc->db_volume };
+	db_handle handle = { .db_desc = db_desc, .volume_desc = db_desc->db_volume };
 	struct log_cursor *cursor[LOG_TYPES_COUNT] = { 0 };
 
 	assert(db_desc->small_log_start_segment_dev_offt == db_desc->small_log.head_dev_offt);
@@ -845,7 +845,7 @@ void recover_L0(struct db_descriptor *db_desc)
 	kvs[SMALL_LOG] = &cursor[SMALL_LOG]->entry;
 	kvs[BIG_LOG] = &cursor[BIG_LOG]->entry;
 
-	enum log_type choice = 0;
+	enum log_type choice = SMALL_LOG;
 	while (1) {
 		if (!cursor[SMALL_LOG]->valid && !cursor[BIG_LOG]->valid)
 			break;
@@ -864,7 +864,7 @@ void recover_L0(struct db_descriptor *db_desc)
 		void *value = get_value_offset_in_kv(kvs[choice]->par_kv, kvs[choice]->par_kv->key_size);
 
 		request_type op_type = cursor[choice]->tombstone ? deleteOp : insertOp;
-		insert_key_value(&db_hanle, key, value, key_size, value_size, op_type, error_message);
+		insert_key_value(&handle, key, value, key_size, value_size, op_type, error_message);
 
 		if (error_message) {
 			log_fatal("Insert failed reason = %s, exiting", error_message);

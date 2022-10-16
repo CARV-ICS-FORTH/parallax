@@ -1311,9 +1311,9 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 	if (comp_roots.dst_root)
 		log_debug("Dst [%u][%u] size = %lu", comp_req->dst_level, 0,
 			  handle->db_desc->levels[comp_req->dst_level].level_size[0]);
-	else {
+	else
 		log_debug("Empty dst [%u]", comp_req->dst_level);
-	}
+
 	// initialize and fill min_heap properly
 	struct sh_heap *m_heap = sh_alloc_heap();
 	sh_init_heap(m_heap, comp_req->src_level, MIN_HEAP);

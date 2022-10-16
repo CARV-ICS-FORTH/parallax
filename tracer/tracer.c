@@ -54,10 +54,11 @@ void execute_put_request(par_handle hd, char *line)
 	char *value = strtok_r(line, " ", &line);
 
 	/*prepare the request*/
-	set_key_size((struct splice *)key_buf, key_size);
-	set_value_size((struct splice *)key_buf, key_size);
-	memcpy(get_key_offset_in_kv((struct splice *)key_buf), key, key_size);
-	memcpy(get_value_offset_in_kv((struct splice *)key_buf, key_size), value, value_size);
+	struct splice *kv_buf = (struct splice *)key_buf;
+	set_key_size(kv_buf, key_size);
+	set_value_size(kv_buf, key_size);
+	memcpy(get_key_offset_in_kv(kv_buf), key, key_size);
+	memcpy(get_value_offset_in_kv(kv_buf, key_size), value, value_size);
 	char *error_message = NULL;
 	par_put_serialized(hd, key_buf, &error_message);
 }

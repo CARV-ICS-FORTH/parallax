@@ -69,10 +69,9 @@ enum kv_category get_kv_category(uint32_t key_size, uint32_t value_size, request
 void par_put(par_handle handle, struct par_key_value *key_value, char **error_message);
 
 /**
- * Inserts a serialized key value pair by using the buffer provided by the
- * user. @param serialized_key_value is a buffer containing the serialized key
- * value pair. The format of the key value pair is | key_size | key |
- * value_size | value |, where {key,value}_size is uint32_t.
+ * Inserts a serialized key value pair by using the buffer provided by the user.
+ * @param serialized_key_value is a buffer containing the serialized key value pair. The format of the key value pair is | key_size | key | value_size | value |
+ * where {key,value}_size is uint32_t.
  */
 void par_put_serialized(par_handle handle, char *serialized_key_value, char **error_message);
 

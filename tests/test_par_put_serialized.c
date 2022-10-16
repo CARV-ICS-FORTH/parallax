@@ -45,8 +45,8 @@ int main(int argc, char *argv[])
 	struct splice *serialized_kv = (struct splice *)serialized_key_value;
 	set_key_size(serialized_kv, 10);
 	set_value_size(serialized_kv, 2);
-	memcpy(get_key_offset_in_kv(serialized_kv), "abcdabcda", 10);
-	memcpy(get_value_offset_in_kv(serialized_kv, 10), "a", 2);
+	strcpy(get_key_offset_in_kv(serialized_kv), "abcdabcda");
+	strcpy(get_value_offset_in_kv(serialized_kv, 10), "a");
 
 	par_put_serialized(handle, serialized_key_value, &error_message);
 	if (error_message) {

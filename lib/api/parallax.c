@@ -81,7 +81,7 @@ void par_put(par_handle handle, struct par_key_value *key_value, char **error_me
  * Execute a put request of the key given a kv_formated key_value
  * @param handle, the db handle that we initiated with db open
  * @param serialized_key_value, the kv_formated key to be inserted
- * @param error_message, possible error message uppon a failure in the insert path
+ * @param error_message, possible error message upon a failure in the insert path
  * */
 void par_put_serialized(par_handle handle, char *serialized_key_value, char **error_message)
 {
@@ -92,8 +92,8 @@ void par_put_serialized(par_handle handle, char *serialized_key_value, char **er
 static inline int par_serialize_to_key_format(struct par_key *key, char **buf, uint32_t buf_size)
 {
 	int ret = 0;
-	uint32_t key_size = sizeof(key->size) + key->size;
-	uint32_t get_op_payload_size = key_size;
+	uint32_t key_size_with_metadata = sizeof(key->size) + key->size;
+	uint32_t get_op_payload_size = key_size_with_metadata;
 	if (get_op_payload_size > buf_size) {
 		*buf = malloc(get_op_payload_size);
 		ret = 1;
@@ -228,12 +228,6 @@ par_scanner par_init_scanner(par_handle handle, struct par_key *key, par_seek_mo
 	}
 
 	struct scannerHandle *scanner = (struct scannerHandle *)calloc(1, sizeof(struct scannerHandle));
-
-	if (!scanner) {
-		log_fatal("Calloc did not return memory!");
-		return NULL;
-	}
-
 	struct par_scanner *p_scanner = (struct par_scanner *)calloc(1, sizeof(struct par_scanner));
 
 	struct db_handle *internal_db_handle = (struct db_handle *)handle;

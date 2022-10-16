@@ -433,6 +433,6 @@ void fill_smallest_possible_pivot(char *buffer, int size)
 	}
 
 	memset(buffer, 0x00, size);
-	struct pivot_key *minus_infinity = (struct pivot_key *)buffer;
-	minus_infinity->size = INDEX_GUARD_SIZE;
+	struct pivot_key *smallest_key = (struct pivot_key *)buffer;
+	smallest_key->size = INDEX_GUARD_SIZE;
 }

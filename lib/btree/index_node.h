@@ -173,7 +173,7 @@ struct pivot_key *index_iterator_get_pivot_key(struct index_node_iterator *itera
 struct pivot_pointer *index_iterator_get_pivot_pointer(struct index_node_iterator *iterator);
 
 /**
-  * compares a look up key following the lookup key format with an index key (pivot key)
+  * Compares a look up key following the lookup key format with an index key (pivot key)
   * @param index_key: the index key to be compared
   * @param lookup_key: the key being searched against the index node
   * @param lookup_key_format: the format the lookup_key follows
