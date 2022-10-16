@@ -9,6 +9,7 @@ if(BUILD_TESTING)
       test_scans.c
       test_dirty_scans.c
       test_options.c
+      test_categories.c
       test_sanitizers.c
       simple_test_delete.c
       test_gc.c
@@ -89,6 +90,12 @@ if(BUILD_TESTING)
   add_executable(test_options test_options.c)
   target_link_libraries(test_options "${PROJECT_NAME}" ${DEPENDENCIES})
   add_test(NAME test_options COMMAND $<TARGET_FILE:test_options>)
+
+  add_executable(test_categories test_categories.c)
+  target_link_libraries(test_categories "${PROJECT_NAME}" ${DEPENDENCIES})
+  add_test(NAME test_categories COMMAND $<TARGET_FILE:test_categories>)
+
+
 
   set_source_files_properties(test_sanitizers.c COMPILE_FLAGS "-O0")
   add_executable(test_sanitizers test_sanitizers.c)
