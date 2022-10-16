@@ -662,7 +662,7 @@ void prepare_cursor_op(struct log_cursor *cursor)
 	struct splice *kv_pair = (struct splice *)get_position_in_segment(cursor);
 
 	cursor->entry.par_kv = (struct splice *)get_position_in_segment(cursor);
-	cursor->tombstone = is_a_tombstone_kv_pair(kv_pair) ? 1 : 0;
+	cursor->tombstone = is_tombstone_kv_pair(kv_pair) ? 1 : 0;
 	cursor->offt_in_segment += get_kv_size(cursor->entry.par_kv);
 }
 
@@ -864,7 +864,7 @@ void recover_L0(struct db_descriptor *db_desc)
 		uint32_t value_size = get_value_size(kvs[choice]->par_kv);
 		void *value = get_value_offset_in_kv(kvs[choice]->par_kv, kvs[choice]->par_kv->key_size);
 
-		request_type op_type = cursor[choice]->tombstone ? deleteOp : insertOp;
+		request_type op_type = !cursor[choice]->tombstone ? insertOp : deleteOp;
 		insert_key_value(&handle, key, value, key_size, value_size, op_type, error_message);
 
 		if (error_message) {

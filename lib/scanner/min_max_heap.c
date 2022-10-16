@@ -32,7 +32,7 @@ static void push_back_duplicate_kv(struct sh_heap *heap, struct sh_heap_node *hp
 	if (hp_node->cat != BIG_INLOG)
 		return;
 
-	struct kv_seperation_splice local;
+	struct kv_seperation_splice local = { 0 };
 	struct kv_seperation_splice *keyvalue = NULL;
 
 	switch (hp_node->type) {

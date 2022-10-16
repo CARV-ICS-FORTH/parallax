@@ -401,9 +401,7 @@ int index_key_cmp(struct pivot_key *index_key, char *lookup_key, enum KV_type lo
 	struct key_splice *p_key = (struct key_splice *)(lookup_key);
 	size = index_key->size <= p_key->key_size ? index_key->size : p_key->key_size;
 	ret = memcmp(index_key->data, p_key->data, size);
-	if (ret != 0)
-		return ret;
-	return index_key->size - p_key->key_size;
+	return ret != 0 ? ret : index_key->size - p_key->key_size;
 }
 
 uint32_t get_pivot_key_size(struct pivot_key *pivot)

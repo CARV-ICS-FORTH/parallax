@@ -1054,9 +1054,9 @@ void extract_keyvalue_size(log_operation *req, metadata_tologop *data_size)
 		return;
 	}
 
-	data_size->key_len = get_key_size_kv_seperated((struct kv_seperation_splice *)req->ins_req->key_value_buf);
-	data_size->value_len = get_value_size_kv_seperated((struct kv_seperation_splice *)req->ins_req->key_value_buf);
-	data_size->kv_size = get_kv_size_kv_seperated((struct kv_seperation_splice *)req->ins_req->key_value_buf);
+	data_size->key_len = get_kv_seperated_key_size((struct kv_seperation_splice *)req->ins_req->key_value_buf);
+	data_size->value_len = get_kv_seperated_value_size((struct kv_seperation_splice *)req->ins_req->key_value_buf);
+	data_size->kv_size = get_kv_seperated_kv_size((struct kv_seperation_splice *)req->ins_req->key_value_buf);
 }
 
 //######################################################################################################
@@ -1497,8 +1497,8 @@ static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id,
 		if (RWLOCK_RDLOCK(&curr->rx_lock) != 0)
 			BUG_ON();
 
-		uint32_t key_size = get_key_size_of_key_splice(search_key_buf);
-		void *key = get_key_offset_of_key_splice(search_key_buf);
+		uint32_t key_size = get_key_splice_key_size(search_key_buf);
+		void *key = get_key_splice_key_offset(search_key_buf);
 		ret_result = find_key_in_dynamic_leaf((struct bt_dynamic_leaf_node *)curr_node, db_desc, key, key_size,
 						      level_id);
 		get_op->tombstone = ret_result.tombstone;
@@ -1537,8 +1537,8 @@ static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id,
 	if (RWLOCK_UNLOCK(&prev->rx_lock) != 0)
 		BUG_ON();
 
-	uint32_t key_size = get_key_size_of_key_splice(search_key_buf);
-	void *key = get_key_offset_of_key_splice(search_key_buf);
+	uint32_t key_size = get_key_splice_key_size(search_key_buf);
+	void *key = get_key_splice_key_offset(search_key_buf);
 	ret_result =
 		find_key_in_dynamic_leaf((struct bt_dynamic_leaf_node *)curr_node, db_desc, key, key_size, level_id);
 	get_op->tombstone = ret_result.tombstone;

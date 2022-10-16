@@ -100,10 +100,8 @@ static inline int par_serialize_to_key_format(struct par_key *key, char **buf, u
 		ret = 1;
 	}
 	struct key_splice *kv_buf = (struct key_splice *)*buf;
-	// key_size
 	set_key_size_of_key_splice(kv_buf, key->size);
-	// key payload
-	set_key_offset_of_key_splice(kv_buf, (char *)key->data);
+	set_key_splice_key_offset(kv_buf, (char *)key->data);
 	return ret;
 }
 

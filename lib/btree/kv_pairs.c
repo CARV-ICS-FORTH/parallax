@@ -14,7 +14,7 @@ inline uint32_t get_key_size_with_metadata(struct splice *kv_pair)
 
 inline uint32_t get_value_size(struct splice *kv_pair)
 {
-	return is_a_tombstone_kv_pair(kv_pair) ? 0 : kv_pair->value_size;
+	return is_tombstone_kv_pair(kv_pair) ? 0 : kv_pair->value_size;
 }
 
 // cppcheck-suppress unusedFunction
@@ -54,7 +54,7 @@ inline void set_value_size(struct splice *kv_pair, uint32_t value_size)
 
 inline void set_value(struct splice *kv_pair, char *value, uint32_t value_size)
 {
-	if (is_a_tombstone_kv_pair(kv_pair))
+	if (is_tombstone_kv_pair(kv_pair))
 		return;
 	kv_pair->value_size = value_size;
 	memcpy(get_value_offset_in_kv(kv_pair, kv_pair->key_size), value, value_size);
@@ -67,27 +67,27 @@ inline char *get_key_offset_in_kv(struct splice *kv_pair)
 
 inline char *get_value_offset_in_kv(struct splice *kv_pair, uint32_t key_size)
 {
-	return is_a_tombstone_kv_pair(kv_pair) ? NULL : kv_pair->data + key_size;
+	return is_tombstone_kv_pair(kv_pair) ? NULL : kv_pair->data + key_size;
 }
 
-inline uint32_t get_key_size_kv_seperated(struct kv_seperation_splice *kv_pair)
+inline uint32_t get_kv_seperated_key_size(struct kv_seperation_splice *kv_pair)
 {
 	return get_key_size((struct splice *)kv_pair->dev_offt);
 }
 
-inline uint32_t get_value_size_kv_seperated(struct kv_seperation_splice *kv_pair)
+inline uint32_t get_kv_seperated_value_size(struct kv_seperation_splice *kv_pair)
 {
 	return get_value_size((struct splice *)kv_pair->dev_offt);
 }
 
-inline uint32_t get_kv_size_kv_seperated(struct kv_seperation_splice *kv_pair)
+inline uint32_t get_kv_seperated_kv_size(struct kv_seperation_splice *kv_pair)
 {
 	return get_kv_size((struct splice *)kv_pair->dev_offt);
 }
 
-inline bool is_a_tombstone_kv_pair(struct splice *kv_pair)
+inline bool is_tombstone_kv_pair(struct splice *kv_pair)
 {
-	return DELETE_MARKER_ID == kv_pair->value_size ? true : false;
+	return DELETE_MARKER_ID == kv_pair->value_size;
 }
 
 inline void set_non_tombstone(struct splice *kv_pair)
@@ -100,12 +100,12 @@ void set_tombstone(struct splice *kv_pair)
 	kv_pair->value_size = DELETE_MARKER_ID;
 }
 
-uint32_t get_key_size_of_key_splice(struct key_splice *key)
+uint32_t get_key_splice_key_size(struct key_splice *key)
 {
 	return key->key_size;
 }
 
-char *get_key_offset_of_key_splice(struct key_splice *key)
+char *get_key_splice_key_offset(struct key_splice *key)
 {
 	return key->data;
 }
@@ -115,7 +115,7 @@ void set_key_size_of_key_splice(struct key_splice *key, uint32_t key_size)
 	key->key_size = key_size;
 }
 
-void set_key_offset_of_key_splice(struct key_splice *key, char *key_buf)
+void set_key_splice_key_offset(struct key_splice *key, char *key_buf)
 {
-	memcpy(get_key_offset_of_key_splice(key), key_buf, get_key_size_of_key_splice(key));
+	memcpy(get_key_splice_key_offset(key), key_buf, get_key_splice_key_size(key));
 }

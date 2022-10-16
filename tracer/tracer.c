@@ -57,8 +57,8 @@ void execute_put_request(par_handle hd, char *line)
 	struct splice *kv_buf = (struct splice *)key_buf;
 	set_key_size(kv_buf, key_size);
 	set_value_size(kv_buf, key_size);
-	memcpy(get_key_offset_in_kv(kv_buf), key, key_size);
-	memcpy(get_value_offset_in_kv(kv_buf, key_size), value, value_size);
+	set_key(kv_buf, key, key_size);
+	set_value(kv_buf, value, value_size);
 	char *error_message = NULL;
 	par_put_serialized(hd, key_buf, &error_message);
 }

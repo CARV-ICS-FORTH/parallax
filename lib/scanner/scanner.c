@@ -464,12 +464,12 @@ int32_t level_scanner_seek(level_scanner *level_sc, void *start_key_buf, SEEK_SC
 	// binary saerch of dynamic leaf accepts only kv_formated or kv_prefixed keys, but the start_key of the scanner
 	// follows the key_size | key format
 	// TODO: (@geostyl) make the binary search aware of the scanner format?
-	char *kv_formated_start_key = calloc(1, PIVOT_KEY_SIZE(start_key) + sizeof(uint32_t));
-	set_key_size((struct splice *)kv_formated_start_key, get_pivot_key_size((struct pivot_key *)start_key));
-	set_value_size((struct splice *)kv_formated_start_key, UINT32_MAX);
-	memcpy(get_key_offset_in_kv((struct splice *)kv_formated_start_key), start_key->data, start_key->size);
-	req.key_value_buf = kv_formated_start_key;
-	//req.key_value_buf = (char *)start_key;
+	struct splice *kv_formated_start_key = (struct splice *)calloc(1, PIVOT_KEY_SIZE(start_key) + sizeof(uint32_t));
+	set_key_size(kv_formated_start_key, get_pivot_key_size((struct pivot_key *)start_key));
+	set_value_size(kv_formated_start_key, UINT32_MAX);
+	set_key(kv_formated_start_key, start_key->data, start_key->size);
+	req.key_value_buf = (char *)kv_formated_start_key;
+
 	db_handle handle = { .db_desc = db_desc, .volume_desc = NULL };
 	req.metadata.handle = &handle;
 	req.metadata.key_format = KV_FORMAT;
