@@ -1,3 +1,4 @@
+#include "../lib/common/common_functions.h"
 #include "../tests/arg_parser.h"
 #include <log.h>
 #include <parallax/parallax.h>
@@ -53,10 +54,10 @@ void execute_put_request(par_handle hd, char *line)
 	char *value = strtok_r(line, " ", &line);
 
 	/*prepare the request*/
-	*(uint32_t *)key_buf = key_size;
-	*(uint32_t *)(key_buf + sizeof(uint32_t)) = value_size;
-	memcpy(key_buf + sizeof(uint32_t) + sizeof(uint32_t), key, key_size);
-	memcpy(key_buf + sizeof(uint32_t) + sizeof(uint32_t) + sizeof(uint32_t), value, value_size);
+	set_key_size((struct splice *)key_buf, key_size);
+	set_value_size((struct splice *)key_buf, key_size);
+	memcpy(get_key_offset_in_kv((struct splice *)key_buf), key, key_size);
+	memcpy(get_value_offset_in_kv((struct splice *)key_buf), value, value_size);
 	char *error_message = NULL;
 	par_put_serialized(hd, key_buf, &error_message);
 }

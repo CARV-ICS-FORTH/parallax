@@ -17,6 +17,7 @@
 #include "../allocator/redo_undo_log.h"
 #include "../allocator/volume_manager.h"
 #include "../common/common.h"
+#include "../common/common_functions.h"
 #include "../include/parallax/parallax.h"
 #include "../include/parallax/structures.h"
 #include "conf.h"
@@ -992,10 +993,10 @@ struct par_put_metadata insert_key_value(db_handle *handle, void *key, void *val
 
 	uint32_t kv_size = sizeof(key_size) + sizeof(value_size) + key_size + value_size;
 	/*prepare the request*/
-	*(uint32_t *)key_buf = key_size; // |key_size
-	*(uint32_t *)(key_buf + sizeof(uint32_t)) = value_size; //|key_size | value_size
-	memcpy(key_buf + sizeof(uint32_t) + sizeof(uint32_t), key, key_size); // |key_size | value_size | key
-	memcpy(key_buf + sizeof(uint32_t) + sizeof(uint32_t) + key_size, value,
+	set_key_size((struct splice *)key_buf, key_size);
+	set_value_size((struct splice *)key_buf, value_size);
+	memcpy(get_key_offset_in_kv((struct splice *)key_buf), key, key_size);
+	memcpy(get_value_offset_in_kv((struct splice *)key_buf), value,
 	       value_size); // |key_size | value_suze | key | value |
 	ins_req.metadata.handle = handle;
 	ins_req.key_value_buf = key_buf;
@@ -1026,9 +1027,9 @@ struct par_put_metadata serialized_insert_key_value(db_handle *handle, const cha
 				  .metadata.key_format = KV_FORMAT,
 				  .metadata.append_to_log = 1 };
 
-	uint32_t key_size = GET_KEY_SIZE(serialized_key_value);
-	uint32_t value_size = GET_VALUE_SIZE(serialized_key_value);
-	uint32_t kv_size = sizeof(uint32_t) + sizeof(uint32_t) + key_size + value_size;
+	uint32_t key_size = get_key_size((struct splice *)serialized_key_value);
+	uint32_t value_size = get_value_size((struct splice *)serialized_key_value);
+	uint32_t kv_size = get_kv_size((struct splice *)serialized_key_value);
 
 	error_message = insert_error_handling(handle, key_size, value_size);
 	if (error_message) {
@@ -1050,19 +1051,20 @@ void extract_keyvalue_size(log_operation *req, metadata_tologop *data_size)
 	switch (req->optype_tolog) {
 	case insertOp:
 		if (req->metadata->key_format == KV_FORMAT) {
-			data_size->key_len = GET_KEY_SIZE(req->ins_req->key_value_buf);
-			data_size->value_len = GET_VALUE_SIZE(req->ins_req->key_value_buf);
+			data_size->key_len = get_key_size((struct splice *)req->ins_req->key_value_buf);
+			data_size->value_len = get_value_size((struct splice *)req->ins_req->key_value_buf);
 			data_size->kv_size = req->metadata->kv_size;
 		} else {
 			data_size->key_len =
-				GET_KEY_SIZE((char *)*(uint64_t *)(req->ins_req->key_value_buf + PREFIX_SIZE));
+				get_key_size_kv_seperated((struct kv_seperation_splice *)req->ins_req->key_value_buf);
 			data_size->value_len =
-				GET_VALUE_SIZE((char *)(*(uint64_t *)(req->ins_req->key_value_buf + PREFIX_SIZE)));
-			data_size->kv_size = data_size->key_len + data_size->value_len + sizeof(data_size->key_len) * 2;
+				get_value_size_kv_seperated((struct kv_seperation_splice *)req->ins_req->key_value_buf);
+			data_size->kv_size =
+				get_kv_size_kv_seperated((struct kv_seperation_splice *)req->ins_req->key_value_buf);
 		}
 		break;
 	case deleteOp:
-		data_size->key_len = GET_KEY_SIZE(req->ins_req->key_value_buf);
+		data_size->key_len = get_key_size((struct splice *)req->ins_req->key_value_buf);
 		data_size->value_len = 0;
 		data_size->kv_size = sizeof(struct bt_delete_marker) + data_size->key_len;
 		break;
@@ -1122,7 +1124,7 @@ static void pr_copy_kv_to_tail(struct pr_log_ticket *ticket)
 
 		// Append the deleted key
 		memcpy(&ticket->tail->buf[offt],
-		       ticket->req->ins_req->key_value_buf + sizeof(uint32_t) + sizeof(uint32_t), dm.key_size);
+		       get_key_offset_in_kv((struct splice *)ticket->req->ins_req->key_value_buf), dm.key_size);
 		ticket->op_size += ticket->data_size->key_len;
 		break;
 	}
@@ -1484,12 +1486,13 @@ int find_key_in_bloom_filter(db_descriptor *db_desc, int level_id, char *key)
 {
 #if ENABLE_BLOOM_FILTERS
 	char prefix_key[PREFIX_SIZE];
-	if (GET_KEY_SIZE(key) < PREFIX_SIZE) {
+	if (get_key_size((struct splice *)key) < PREFIX_SIZE) {
 		memset(prefix_key, 0x00, PREFIX_SIZE);
-		memcpy(prefix_key, key + sizeof(uint32_t) + sizeof(uint32_t), GET_KEY_SIZE(key));
+		memcpy(prefix_key, get_key_offset_in_kv((struct splice *)key), get_key_size((struct splice *)key));
 		return bloom_check(&db_desc->levels[level_id].bloom_filter[0], prefix_key, PREFIX_SIZE);
 	} else
-		return bloom_check(&db_desc->levels[level_id].bloom_filter[0], key + sizeof(uint32_t), PREFIX_SIZE);
+		return bloom_check(&db_desc->levels[level_id].bloom_filter[0],
+				   get_key_offset_in_kv((struct splice *)key), PREFIX_SIZE);
 #else
 	(void)db_desc;
 	(void)level_id;
@@ -1583,7 +1586,7 @@ static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id,
 		find_key_in_dynamic_leaf((struct bt_dynamic_leaf_node *)curr_node, db_desc, key, key_size, level_id);
 	get_op->tombstone = ret_result.tombstone;
 
-// TODO: The meaning of deser is not clear enough, rename accordingly
+// TODO The meaning of deser is not clear enough, rename accordingly
 deser:
 	if (!ret_result.kv) {
 		get_op->found = 0;

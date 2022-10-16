@@ -16,6 +16,7 @@
 #include "../allocator/kv_format.h"
 #include "../btree/btree.h"
 #include "../btree/set_options.h"
+#include "../common/common_functions.h"
 #include "../scanner/scanner.h"
 #include <log.h>
 #include <stddef.h>
@@ -276,8 +277,7 @@ init_scanner:
 		if (!sc->kv_level_id && BIG_INLOG == sc->kv_cat)
 			log_address = bt_get_kv_log_address(&sc->db->db_desc->big_log, ABSOLUTE_ADDRESS(sc->keyValue));
 
-		uint32_t kv_size = sizeof(uint32_t) + sizeof(uint32_t) + GET_KEY_SIZE(log_address.addr) +
-				   GET_VALUE_SIZE(log_address.addr);
+		uint32_t kv_size = get_kv_size((struct splice *)log_address.addr);
 		if (kv_size > par_s->buf_size) {
 			//log_info("Space not enougn needing %u got %u", kv_size, par_s->buf_size);
 			if (par_s->allocated)
@@ -320,8 +320,7 @@ int par_get_next(par_scanner sc)
 		log_address = bt_get_kv_log_address(&scanner_hd->db->db_desc->big_log,
 						    ABSOLUTE_ADDRESS(scanner_hd->keyValue));
 
-	uint32_t kv_size = sizeof(uint32_t) + sizeof(uint32_t); //key_siez | value_size
-	kv_size += GET_KEY_SIZE(log_address.addr) + GET_VALUE_SIZE(log_address.addr);
+	uint32_t kv_size = get_kv_size((struct splice *)log_address.addr);
 	if (kv_size > par_s->buf_size) {
 		//log_info("Space not enough needing %u got %u", kv_size, par_s->buf_size);
 		if (par_s->allocated)
