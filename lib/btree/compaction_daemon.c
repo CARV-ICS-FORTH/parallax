@@ -21,6 +21,7 @@
 #include "../allocator/redo_undo_log.h"
 #include "../allocator/volume_manager.h"
 #include "../common/common.h"
+#include "../common/common_functions.h"
 #include "../scanner/min_max_heap.h"
 #include "../scanner/scanner.h"
 #include "btree.h"
@@ -703,8 +704,7 @@ static int comp_append_medium_L1(struct comp_level_write_cursor *c, struct comp_
 	ins_req.metadata.handle = c->handle;
 	ins_req.metadata.log_offset = 0;
 
-	ins_req.metadata.kv_size = sizeof(uint32_t) + sizeof(uint32_t); // key_size | value_size
-	ins_req.metadata.kv_size += GET_KEY_SIZE(in->kv_inplace) + GET_VALUE_SIZE(in->kv_inplace); // key | value
+	ins_req.metadata.kv_size = get_kv_size((struct splice *)in->kv_inplace);
 	ins_req.metadata.cat = MEDIUM_INLOG;
 	ins_req.metadata.level_id = c->level_id;
 	ins_req.metadata.tree_id = 1;
@@ -765,8 +765,7 @@ static void comp_append_entry_to_leaf_node(struct comp_level_write_cursor *curso
 	write_leaf_args.level_medium_inplace = cursor->handle->db_desc->level_medium_inplace;
 	switch (curr_key->kv_type) {
 	case KV_INPLACE:
-		kv_size = sizeof(uint32_t) + sizeof(uint32_t); // key_size | value_size
-		kv_size += GET_KEY_SIZE(curr_key->kv_inplace) + GET_VALUE_SIZE(curr_key->kv_inplace); // key | value
+		kv_size = get_kv_size((struct splice *)curr_key->kv_inplace);
 		write_leaf_args.kv_dev_offt = 0;
 		write_leaf_args.key_value_size = kv_size;
 		write_leaf_args.level_id = cursor->level_id;
@@ -799,9 +798,7 @@ static void comp_append_entry_to_leaf_node(struct comp_level_write_cursor *curso
 		assert(GET_KEY_SIZE(write_leaf_args.key_value_buf) <= MAX_KEY_SIZE);
 		write_leaf_args.cat = MEDIUM_INPLACE;
 
-		kv_size = sizeof(uint32_t) + sizeof(uint32_t); // key_size | value_size
-		kv_size += GET_KEY_SIZE(write_leaf_args.key_value_buf) +
-			   GET_VALUE_SIZE(write_leaf_args.key_value_buf); // key | value
+		kv_size = get_kv_size((struct splice *)write_leaf_args.key_value_buf);
 		write_leaf_args.key_value_size = kv_size;
 		curr_key->kv_type = KV_INPLACE;
 		curr_key->kv_category = MEDIUM_INPLACE;
@@ -1126,8 +1123,6 @@ static void swap_levels(struct level_descriptor *src, struct level_descriptor *d
 	}
 	// dst->root_r[dst_active_tree] = src->root_r[src_active_tree];
 	src->root_r[src_active_tree] = NULL;
-
-	return;
 }
 
 static void comp_fill_heap_node(struct compaction_request *comp_req, struct comp_level_read_cursor *cur,
@@ -1142,8 +1137,7 @@ static void comp_fill_heap_node(struct compaction_request *comp_req, struct comp
 	case MEDIUM_INPLACE:
 		nd->type = KV_FORMAT;
 		nd->KV = cur->cursor_key.kv_inplace;
-		nd->kv_size = sizeof(uint32_t) + sizeof(uint32_t); // key_size | value_size
-		nd->kv_size += GET_KEY_SIZE(nd->KV) + GET_VALUE_SIZE(nd->KV); // key | value
+		nd->kv_size = get_kv_size((struct splice *)nd->KV);
 		break;
 	case BIG_INLOG:
 	case MEDIUM_INLOG:
@@ -1317,8 +1311,7 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 		log_debug("Dst [%u][%u] size = %lu", comp_req->dst_level, 0,
 			  handle->db_desc->levels[comp_req->dst_level].level_size[0]);
 	else {
-		log_debug("Empty dst [%u][%u]", comp_req->dst_level,
-			  0); // TODO: (@geostyl) do we really need this 0 as second argument?
+		log_debug("Empty dst [%u]", comp_req->dst_level);
 	}
 	// initialize and fill min_heap properly
 	struct sh_heap *m_heap = sh_alloc_heap();
