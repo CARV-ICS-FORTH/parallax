@@ -1,4 +1,4 @@
-#include "common_functions.h"
+#include "kv_pairs.h"
 #include <assert.h>
 
 inline uint32_t get_key_size(struct splice *kv)

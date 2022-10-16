@@ -14,7 +14,7 @@
 
 #include "dynamic_leaf.h"
 #include "../common/common.h"
-#include "../common/common_functions.h"
+#include "../common/kv_pairs.h"
 #include "btree.h"
 #include "conf.h"
 #include "index_node.h"

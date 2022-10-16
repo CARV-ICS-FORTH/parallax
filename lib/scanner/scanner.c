@@ -18,7 +18,7 @@
 #include "../btree/dynamic_leaf.h"
 #include "../btree/index_node.h"
 #include "../common/common.h"
-#include "../common/common_functions.h"
+#include "../common/kv_pairs.h"
 #include "../utilities/dups_list.h"
 #include "min_max_heap.h"
 #include "stack.h"
@@ -301,11 +301,9 @@ static void fill_normal_scanner(struct level_scanner *level_sc, struct level_des
 		level_sc->kv_format = KV_FORMAT;
 		level_sc->kv_entry.dev_offt = (uint64_t)REAL_ADDRESS(kv_entry->dev_offt);
 		level_sc->keyValue = (void *)level_sc->kv_entry.dev_offt;
-
+		level_sc->kv_size = UINT32_MAX;
 		if (level_sc->level_id)
 			level_sc->kv_size = get_kv_size((struct splice *)level_sc->keyValue);
-		else
-			level_sc->kv_size = UINT32_MAX;
 		level_sc->cat = slot_array[position].key_category;
 		level_sc->tombstone = slot_array[position].tombstone;
 		break;

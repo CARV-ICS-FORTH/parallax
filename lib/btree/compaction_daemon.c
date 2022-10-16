@@ -21,7 +21,7 @@
 #include "../allocator/redo_undo_log.h"
 #include "../allocator/volume_manager.h"
 #include "../common/common.h"
-#include "../common/common_functions.h"
+#include "../common/kv_pairs.h"
 #include "../scanner/min_max_heap.h"
 #include "../scanner/scanner.h"
 #include "btree.h"

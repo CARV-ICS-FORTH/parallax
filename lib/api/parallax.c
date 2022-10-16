@@ -16,7 +16,7 @@
 #include "../allocator/kv_format.h"
 #include "../btree/btree.h"
 #include "../btree/set_options.h"
-#include "../common/common_functions.h"
+#include "../common/kv_pairs.h"
 #include "../scanner/scanner.h"
 #include <assert.h>
 #include <log.h>

@@ -15,7 +15,7 @@
 #include "../btree/conf.h"
 #include "../btree/gc.h"
 #include "../common/common.h"
-#include "../common/common_functions.h"
+#include "../common/kv_pairs.h"
 #include "device_structures.h"
 #include "log_structures.h"
 #include "redo_undo_log.h"

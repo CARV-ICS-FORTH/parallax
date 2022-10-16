@@ -16,7 +16,7 @@
 #include "../btree/btree.h"
 #include "../btree/conf.h"
 #include "../common/common.h"
-#include "../common/common_functions.h"
+#include "../common/kv_pairs.h"
 #include <assert.h>
 #include <log.h>
 #include <stdint.h>

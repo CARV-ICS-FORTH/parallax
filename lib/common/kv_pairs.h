@@ -1,5 +1,5 @@
-#ifndef COMMON_FUNCTIONS_H_
-#define COMMON_FUNCTIONS_H_
+#ifndef KV_PAIRS_H_
+#define KV_PAIRS_H_
 #include <stdint.h>
 #define PREFIX_SIZE 12
 
@@ -83,4 +83,4 @@ uint32_t get_value_size_kv_seperated(struct kv_seperation_splice *kv);
  * @param kv: a kv-seperated splice kv ptr
  */
 uint32_t get_kv_size_kv_seperated(struct kv_seperation_splice *kv);
-#endif // COMMON_FUNCTIONS_H_
+#endif // KV_PAIRS_H_

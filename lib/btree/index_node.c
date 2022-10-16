@@ -1,6 +1,6 @@
 #include "index_node.h"
 #include "../common/common.h"
-#include "../common/common_functions.h"
+#include "../common/kv_pairs.h"
 #include "btree.h"
 #include "segment_allocator.h"
 #include <assert.h>
