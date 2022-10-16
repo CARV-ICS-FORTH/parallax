@@ -430,7 +430,7 @@ enum bt_rebalance_retcode {
 
 struct bt_rebalance_result {
 	//8 bytes for the key size + value_size and 255 Bytes for the key
-	char middle_key[MAX_KEY_SIZE + sizeof(struct splice)];
+	char middle_key[MAX_KEY_SIZE];
 	union {
 		node_header *left_child;
 		struct index_node *left_ichild;

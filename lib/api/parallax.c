@@ -98,11 +98,11 @@ static inline int par_serialize_to_key_format(struct par_key *key, char **buf, u
 		*buf = malloc(get_op_payload_size);
 		ret = 1;
 	}
-	char *kv_buf = *buf;
+	struct key_splice *kv_buf = (struct key_splice *)*buf;
 	// key_size
-	memcpy(&kv_buf[0], &key->size, sizeof(key->size));
+	set_key_size_of_key_splice(kv_buf, key->size);
 	// key payload
-	memcpy(&kv_buf[sizeof(key->size)], key->data, key->size);
+	set_key_offset_of_key_splice(kv_buf, (char *)key->data);
 	return ret;
 }
 

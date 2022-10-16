@@ -107,3 +107,13 @@ char *get_key_offset_of_key_splice(struct key_splice *key)
 {
 	return key->data;
 }
+
+void set_key_size_of_key_splice(struct key_splice *key, uint32_t key_size)
+{
+	key->key_size = key_size;
+}
+
+void set_key_offset_of_key_splice(struct key_splice *key, char *key_buf)
+{
+	memcpy(get_key_offset_of_key_splice(key), key_buf, get_key_size_of_key_splice(key));
+}
