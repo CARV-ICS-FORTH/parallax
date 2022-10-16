@@ -92,20 +92,20 @@ void par_put_serialized(par_handle handle, char *serialized_key_value, char **er
 static inline int par_serialize_to_kv_format(struct par_key *key, char **buf, uint32_t buf_size)
 {
 	int ret = 0;
-	uint32_t key_size = sizeof(uint32_t) + key->size;
+	uint32_t key_size = sizeof(key->size) + key->size;
 	uint32_t value_size = UINT32_MAX;
-	uint32_t get_op_payload_size = key_size + sizeof(uint32_t);
+	uint32_t get_op_payload_size = key_size + sizeof(value_size);
 	if (get_op_payload_size > buf_size) {
 		*buf = malloc(get_op_payload_size);
 		ret = 1;
 	}
 	char *kv_buf = *buf;
 	// key_size
-	memcpy(&kv_buf[0], &key->size, sizeof(uint32_t));
+	memcpy(&kv_buf[0], &key->size, sizeof(key->size));
 	// value size
-	memcpy(&kv_buf[sizeof(uint32_t)], &value_size, sizeof(uint32_t));
+	memcpy(&kv_buf[sizeof(key->size)], &value_size, sizeof(key->size));
 	// key payload
-	memcpy(&kv_buf[sizeof(uint32_t) + sizeof(uint32_t)], key->data, key->size);
+	memcpy(&kv_buf[sizeof(key->size) + sizeof(value_size)], key->data, key->size);
 	return ret;
 }
 

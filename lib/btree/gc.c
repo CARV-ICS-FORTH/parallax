@@ -123,12 +123,10 @@ int8_t find_deleted_kv_pairs_in_segment(struct db_handle handle, struct gc_segme
 			push_stack(marks, iter_log_segment.log_segment_in_memory);
 
 		if (kv->key_size) {
-			//TODO:(@geostyl) 8 is a magic number, i think this denotes to lsn, make it a define or something
-			uint32_t bytes_to_move = kv->key_size + kv->value_size + key_value_size + 8;
+			uint32_t bytes_to_move = kv->key_size + kv->value_size + key_value_size + LSN_SIZE;
 			iter_log_segment.log_segment_in_memory += bytes_to_move;
 			log_segment_in_device += bytes_to_move;
-			//TODO:(@geostyl) 8 is a magic number, i think this denotes to lsn, make it a define or something
-			checked_segment_chunk += kv->key_size + kv->value_size + key_value_size + 8;
+			checked_segment_chunk += kv->key_size + kv->value_size + key_value_size + LSN_SIZE;
 		} else
 			break;
 	}

@@ -417,13 +417,12 @@ void set_pivot_key(struct pivot_key *pivot, void *key, uint32_t key_size)
 }
 void fill_smallest_possible_pivot(char *buffer, int size)
 {
-       if (size < (int)sizeof(struct pivot_pointer) + INDEX_GUARD_SIZE) {
-               log_fatal("Buffer too small cannot respresent the -oo pivot key");
-               _exit(EXIT_FAILURE);
-       }
+	if (size < (int)sizeof(struct pivot_pointer) + INDEX_GUARD_SIZE) {
+		log_fatal("Buffer too small cannot respresent the -oo pivot key");
+		_exit(EXIT_FAILURE);
+	}
 
-       memset(buffer, 0x00, size);
-       struct pivot_key *minus_infinity = (struct pivot_key *)buffer;
-       minus_infinity->size = INDEX_GUARD_SIZE;
+	memset(buffer, 0x00, size);
+	struct pivot_key *minus_infinity = (struct pivot_key *)buffer;
+	minus_infinity->size = INDEX_GUARD_SIZE;
 }
-

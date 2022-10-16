@@ -30,7 +30,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #define PREFIX_SIZE 12
-
+#define LSN_SIZE sizeof(uint64_t)
 #define MAX_HEIGHT 9
 
 enum KV_type { KV_FORMAT, KV_PREFIX, INDEX_KEY_TYPE };
