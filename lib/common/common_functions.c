@@ -1,4 +1,5 @@
 #include "common_functions.h"
+#include <assert.h>
 
 uint32_t get_key_size(struct splice *kv)
 {
@@ -22,9 +23,20 @@ uint32_t get_value_size_with_metadata(struct splice *kv)
 
 // Returns the size of a kv_formated kv
 // TODO (geostyl) FIXME add proper documentation
+uint32_t get_kv_metadata_size(void)
+{
+	// size of key_size + value_size of splice
+	// this assert will fail if key_size or value_size change in splcie.
+	uint32_t kv_metadata_size = sizeof(struct splice);
+	uint32_t expected_metadata_size = sizeof(uint32_t) + sizeof(uint32_t);
+	assert(kv_metadata_size == expected_metadata_size);
+
+	return kv_metadata_size;
+}
+
 uint32_t get_kv_size(struct splice *kv)
 {
-	return kv->key_size + kv->value_size + sizeof(uint32_t) + sizeof(uint32_t);
+	return kv->key_size + kv->value_size + get_kv_metadata_size();
 }
 
 void set_key_size(struct splice *kv, uint32_t key_size)

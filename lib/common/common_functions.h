@@ -6,7 +6,7 @@ struct splice {
 	uint32_t key_size;
 	uint32_t value_size;
 	char data[]; //kv payload
-};
+} __attribute__((packed));
 
 // TODO (@geostyl) should we replace all the bt_leaf_entry structs with this one?
 struct kv_seperation_splice {
@@ -19,6 +19,7 @@ uint32_t get_key_size_with_metadata(struct splice *key);
 uint32_t get_value_size(struct splice *value);
 uint32_t get_value_size_with_metadata(struct splice *value);
 
+uint32_t get_kv_metadata_size(void);
 uint32_t get_kv_size(struct splice *kv);
 void set_key_size(struct splice *kv, uint32_t key_size);
 void set_value_size(struct splice *kv, uint32_t value_size);

@@ -118,7 +118,7 @@ struct find_result find_key_in_dynamic_leaf(const struct bt_dynamic_leaf_node *l
 					    uint32_t key_size, int level_id)
 {
 	bt_insert_req req;
-	char buf[MAX_KEY_SIZE + sizeof(uint32_t) + sizeof(uint32_t)];
+	char buf[MAX_KEY_SIZE + get_kv_metadata_size()];
 	struct dl_bsearch_result result = { .middle = 0, .status = INSERT, .op = DYNAMIC_LEAF_FIND };
 	struct find_result ret_result = { .kv = NULL, .key_type = KV_INPLACE, .kv_category = BIG_INLOG, .tombstone = 0 };
 	struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(leaf);
@@ -204,7 +204,6 @@ void binary_search_dynamic_leaf(const struct bt_dynamic_leaf_node *leaf, uint32_
 				    get_kv_format(slot_array[middle].key_category));
 
 		/* Next we check the look up key*/
-		// TODO: Possible BUG, we are comparing leaf_key_prefix.prefix (a.k.a. a key) with the key_value_buf which follows key_size key format
 		if (req->metadata.key_format == KV_PREFIX) {
 			ret = prefix_compare(leaf_key_prefix.prefix, req->key_value_buf, PREFIX_SIZE);
 			goto check_comparison;
@@ -326,9 +325,7 @@ void print_all_keys(const struct bt_dynamic_leaf_node *leaf, uint32_t leaf_size)
 	for (unsigned i = 0; i < leaf->header.num_entries; ++i) {
 		char *key = fill_keybuf(get_kv_offset(leaf, leaf_size, slot_array[i].index),
 					get_kv_format(slot_array[i].key_category));
-		if (KEY_SIZE(key) >= MAX_KEY_SIZE) {
-			log_debug("%u %u", KEY_SIZE(key), i);
-		}
+
 		assert(KEY_SIZE(key) < MAX_KEY_SIZE);
 		log_debug("Key %*s", KEY_SIZE(key), key + 8);
 		/* log_info("offset in leaf %d ADDR %llu Size%d key %s\n", slot_array[i].index, get_kv_offset(leaf, leaf_size, slot_array[i].index),KEY_SIZE(key), key + 4); */
@@ -477,9 +474,7 @@ struct bt_rebalance_result split_dynamic_leaf(struct bt_dynamic_leaf_node *leaf,
 		key_buf = fill_keybuf(get_kv_offset(leaf, leaf_size, slot_array[i].index),
 				      get_kv_format(slot_array[i].key_category));
 		if (get_kv_format(slot_array[i].key_category) == KV_INPLACE) {
-			uint32_t key_size = GET_KEY_SIZE(key_buf);
-			uint32_t value_size = GET_VALUE_SIZE(key_buf);
-			key_buf_size = 2 * sizeof(uint32_t) + key_size + value_size;
+			key_buf_size = get_kv_size((struct splice *)key_buf);
 			left_leaf->header.leaf_log_size += key_buf_size;
 			leaf_log_tail -= key_buf_size;
 			memcpy(leaf_log_tail, key_buf, key_buf_size);
@@ -519,9 +514,9 @@ struct bt_rebalance_result split_dynamic_leaf(struct bt_dynamic_leaf_node *leaf,
 		break;
 	}
 
-	uint32_t key_size = GET_KEY_SIZE(L.addr);
-	memcpy(rep.middle_key + sizeof(uint32_t), GET_KEY_OFFSET(L.addr), key_size); // key
-	*(uint32_t *)rep.middle_key = key_size; // key_size
+	uint32_t key_size = get_key_size((struct splice *)L.addr);
+	set_pivot_key_size((struct pivot_key *)rep.middle_key, key_size); // key_size
+	set_pivot_key((struct pivot_key *)rep.middle_key, get_key_offset_in_kv((struct splice *)L.addr), key_size);
 	assert(key_size + sizeof(key_size) <= sizeof(rep.middle_key));
 
 	if (L.in_tail) {
@@ -551,9 +546,7 @@ struct bt_rebalance_result split_dynamic_leaf(struct bt_dynamic_leaf_node *leaf,
 		key_buf = fill_keybuf(get_kv_offset(leaf, leaf_size, slot_array[i].index),
 				      get_kv_format(slot_array[i].key_category));
 		if (get_kv_format(slot_array[i].key_category) == KV_INPLACE) {
-			key_size = GET_KEY_SIZE(key_buf);
-			uint32_t value_size = GET_VALUE_SIZE(key_buf);
-			key_buf_size = 2 * sizeof(uint32_t) + key_size + value_size;
+			key_buf_size = get_kv_size((struct splice *)key_buf);
 			leaf_log_tail -= key_buf_size;
 			right_leaf->header.leaf_log_size += key_buf_size;
 			memcpy(leaf_log_tail, key_buf, key_buf_size);
@@ -633,14 +626,15 @@ struct bt_rebalance_result special_split_dynamic_leaf(struct bt_dynamic_leaf_nod
 		struct bt_kv_log_address L =
 			bt_get_kv_medium_log_address(&req->metadata.handle->db_desc->medium_log, kv->dev_offt);
 		middle_key_buf = L.addr;
-	} else {
+	} else
 		middle_key_buf = fill_keybuf(key_loc, get_kv_format(slot_array[split_point].key_category));
-	}
+
 	assert(GET_KEY_SIZE(middle_key_buf) < 40);
 
 	/*TODO: (geostyl) provide a SET_KEY_SIZE like function/macro*/
-	GET_KEY_SIZE(rep.middle_key) = GET_KEY_SIZE(middle_key_buf); // key_size
-	memcpy(&rep.middle_key[4], GET_KEY_OFFSET(middle_key_buf), GET_KEY_SIZE(rep.middle_key)); // key
+	set_pivot_key_size((struct pivot_key *)rep.middle_key, get_kv_size((struct splice *)middle_key_buf));
+	memcpy(((struct pivot_key *)&rep.middle_key)->data, GET_KEY_OFFSET(middle_key_buf),
+	       GET_KEY_SIZE(rep.middle_key)); // key
 
 	right_leaf = rep.right_dlchild;
 	/*Copy pointers + prefixes*/
@@ -651,9 +645,7 @@ struct bt_rebalance_result special_split_dynamic_leaf(struct bt_dynamic_leaf_nod
 			      get_kv_format(slot_array[split_point].key_category));
 
 	if (get_kv_format(slot_array[split_point].key_category) == KV_INPLACE) {
-		uint32_t key_size = GET_KEY_SIZE(key_buf);
-		uint32_t value_size = GET_VALUE_SIZE(key_buf);
-		uint32_t key_buf_size = 2 * sizeof(uint32_t) + key_size + value_size;
+		uint32_t key_buf_size = get_kv_size((struct splice *)key_buf);
 		leaf_log_tail -= key_buf_size;
 		right_leaf->header.leaf_log_size += key_buf_size;
 		memcpy(leaf_log_tail, key_buf, key_buf_size);
@@ -681,7 +673,8 @@ struct bt_rebalance_result special_split_dynamic_leaf(struct bt_dynamic_leaf_nod
 
 	seg_free_leaf_node(db_desc, level_id, req->metadata.tree_id, (leaf_node *)old_leaf);
 
-	log_debug("middle key propoted is : %u, %s", *(uint32_t *)rep.middle_key, rep.middle_key + sizeof(uint32_t));
+	log_debug("middle key propoted is : %u, %s", get_pivot_key_size((struct pivot_key *)rep.middle_key),
+		  get_offset_of_pivot_key((struct pivot_key *)rep.middle_key));
 	return rep;
 }
 
@@ -772,9 +765,7 @@ int reorganize_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, uint32_t leaf_siz
 					    get_kv_format(slot_array[i].key_category));
 
 		if (get_kv_format(slot_array[i].key_category) == KV_INPLACE) {
-			uint32_t key_size = GET_KEY_SIZE(key_buf);
-			uint32_t value_size = GET_VALUE_SIZE(key_buf);
-			uint32_t key_buf_size = (2 * sizeof(uint32_t)) + key_size + value_size;
+			uint32_t key_buf_size = get_kv_size((struct splice *)key_buf);
 			assert(slot_array[i].key_category == SMALL_INPLACE ||
 			       slot_array[i].key_category == MEDIUM_INPLACE);
 			leaf->header.leaf_log_size += key_buf_size;
@@ -864,9 +855,7 @@ int8_t insert_in_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, bt_insert_req *
 				BUG_ON();
 			}
 
-			uint32_t key_size = GET_KEY_SIZE(kv);
-			uint32_t value_size = GET_VALUE_SIZE(kv);
-			uint32_t kv_size = key_size + value_size + 2 * sizeof(uint32_t);
+			uint32_t kv_size = get_kv_size((struct splice *)kv);
 			leaf->header.fragmentation += kv_size;
 		}
 		write_data_in_dynamic_leaf(&write_leaf_args);
