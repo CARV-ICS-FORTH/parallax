@@ -383,28 +383,6 @@ int index_key_cmp(struct pivot_key *index_key, char *lookup_key, enum KV_type lo
 		return index_key->size - GET_KEY_SIZE(lookup_key);
 	}
 
-	if (lookup_key_format == KV_PREFIX) {
-		struct bt_leaf_entry *kv_seperated_kvbuf = (struct bt_leaf_entry *)lookup_key;
-		if (index_key->size >= PREFIX_SIZE)
-			ret = prefix_compare(index_key->data, kv_seperated_kvbuf->prefix, PREFIX_SIZE);
-		else
-			ret = prefix_compare(index_key->data, kv_seperated_kvbuf->prefix, index_key->size);
-
-		if (!ret)
-			return ret;
-
-		/*we have a tie, prefix didn't help, fetch query_key form KV log*/
-		struct kv_format *kv_formated_kvbuf = (struct kv_format *)kv_seperated_kvbuf->dev_offt;
-		size = index_key->size <= kv_formated_kvbuf->key_size ? index_key->size : kv_formated_kvbuf->key_size;
-
-		ret = memcmp(index_key->data, kv_formated_kvbuf->key_buf, size);
-
-		if (ret != 0)
-			return ret;
-
-		return index_key->size - kv_formated_kvbuf->key_size;
-	}
-
 	/* lookup_key is INDEX_KEY_TYPE
 	 * this should only(!) happend when we are inserting and new key into an index node (after a split) */
 	struct pivot_key *p_key = (struct pivot_key *)(lookup_key);
