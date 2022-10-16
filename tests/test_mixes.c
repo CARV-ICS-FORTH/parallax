@@ -231,7 +231,8 @@ static void insert_keys(par_handle handle, struct test_info info)
 static void scanner_validate_number_of_kvs(par_handle hd, uint64_t num_keys)
 {
 	uint64_t key_count = 0;
-	par_scanner sc = par_init_scanner(hd, NULL, PAR_FETCH_FIRST);
+	char *error_message = NULL;
+	par_scanner sc = par_init_scanner(hd, NULL, PAR_FETCH_FIRST, &error_message);
 	assert(par_is_valid(sc));
 
 	while (par_is_valid(sc)) {
@@ -294,7 +295,8 @@ static void validate_static_size_of_kvs(par_handle hd, struct task task_info)
 	sprintf((char *)k.data + strlen(init_info.key_prefix), "%llu", (long long unsigned)0);
 	k.size = strlen(k.data) + 1;
 
-	par_scanner sc = par_init_scanner(hd, &k, PAR_GREATER_OR_EQUAL);
+	char *error_message = NULL;
+	par_scanner sc = par_init_scanner(hd, &k, PAR_GREATER_OR_EQUAL, &error_message);
 	assert(par_is_valid(sc));
 
 	if (!check_correctness_of_size(sc, task_info.key_type, task_info.size_type)) {
@@ -328,7 +330,8 @@ static void validate_random_size_of_kvs(par_handle hd, struct task task_info)
 
 	k.size = strlen(k.data) + 1;
 
-	par_scanner sc = par_init_scanner(hd, &k, PAR_GREATER_OR_EQUAL);
+	char *error_message = NULL;
+	par_scanner sc = par_init_scanner(hd, &k, PAR_GREATER_OR_EQUAL, &error_message);
 	assert(par_is_valid(sc));
 
 	if (!check_correctness_of_size(sc, task_info.key_type, task_info.size_type)) {

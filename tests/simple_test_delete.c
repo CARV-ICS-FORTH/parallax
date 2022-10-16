@@ -199,7 +199,8 @@ void scan_all_valid_keys(par_handle hd)
 		if (!my_scanner) {
 			par_key.size = k->key_size;
 			par_key.data = &k->key_buf[4];
-			my_scanner = par_init_scanner(hd, &par_key, PAR_GREATER_OR_EQUAL);
+			char *error_message = NULL;
+			my_scanner = par_init_scanner(hd, &par_key, PAR_GREATER_OR_EQUAL, &error_message);
 
 			if (!par_is_valid(my_scanner)) {
 				log_fatal("Nothing found! it shouldn't!");

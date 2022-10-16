@@ -103,7 +103,7 @@ void par_delete(par_handle handle, struct par_key *key, char **error_message);
  * an active scanner no updates or insers can be performed in the DB. We will add other types of scanner with
  * relaxed semantics for higher concurrency soon
  */
-par_scanner par_init_scanner(par_handle handle, struct par_key *key, par_seek_mode mode);
+par_scanner par_init_scanner(par_handle handle, struct par_key *key, par_seek_mode mode, char **error_message);
 void par_close_scanner(par_scanner sc);
 
 /**

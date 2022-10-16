@@ -75,7 +75,8 @@ int main(int argc, char *argv[])
 	key_value.k.data = "";
 	key_value.k.size = 1;
 
-	par_scanner scanner = par_init_scanner(handle, &key_value.k, PAR_GREATER_OR_EQUAL);
+	error_message = NULL;
+	par_scanner scanner = par_init_scanner(handle, &key_value.k, PAR_GREATER_OR_EQUAL, &error_message);
 	if (!par_is_valid(scanner)) {
 		log_fatal("Nothing found! it shouldn't!");
 		BUG_ON();

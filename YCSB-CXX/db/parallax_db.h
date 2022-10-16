@@ -199,7 +199,9 @@ class ParallaxDB : public YCSBDB {
 		struct par_key_value KV_pair = { .k = { .size = (uint32_t)key.length(), .data = key.c_str() },
 						 .v = { .val_buffer = NULL } };
 
-		par_scanner sc = par_init_scanner(dbs[hash_fn(key) % db_num], &KV_pair.k, PAR_GREATER_OR_EQUAL);
+		char *error_message = NULL;
+		par_scanner sc =
+			par_init_scanner(dbs[hash_fn(key) % db_num], &KV_pair.k, PAR_GREATER_OR_EQUAL, &error_message);
 		if (!par_is_valid(sc)) {
 			printf("sc is not initisalized after initialization... exiting\n");
 			exit(EXIT_FAILURE);

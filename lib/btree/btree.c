@@ -958,7 +958,7 @@ static char *insert_error_handling(db_handle *handle, uint32_t key_size, uint32_
 	}
 
 	if (key_size > MAX_KEY_SIZE) {
-		create_error_message(&error_message, "Provided key %u Keys > %d bytes are not supported", key_size,
+		create_error_message(&error_message, "Provided key %u Keys > %ld bytes are not supported", key_size,
 				     MAX_KEY_SIZE);
 		return error_message;
 	}

@@ -194,12 +194,12 @@ struct par_scanner {
 	char *kv_buf;
 };
 
-par_scanner par_init_scanner(par_handle handle, struct par_key *key, par_seek_mode mode)
+par_scanner par_init_scanner(par_handle handle, struct par_key *key, par_seek_mode mode, char **error_message)
 {
-	if (key && key->size + sizeof(uint32_t) > PAR_MAX_PREALLOCATED_SIZE) {
-		log_fatal("Cannot serialize key buffer of size %d B too small to fit %lu", PAR_MAX_PREALLOCATED_SIZE,
-			  key->size + sizeof(uint32_t));
-		_exit(EXIT_FAILURE);
+	free_error_message(error_message);
+	if (key && key->size + sizeof(key->size) > PAR_MAX_PREALLOCATED_SIZE) {
+		create_error_message(error_message, "Can serialize key buffer, buffer to small");
+		return NULL;
 	}
 
 	char seek_key_buffer[PAR_MAX_PREALLOCATED_SIZE];
@@ -223,7 +223,7 @@ par_scanner par_init_scanner(par_handle handle, struct par_key *key, par_seek_mo
 		fill_smallest_possible_pivot(seek_key_buffer, PAR_MAX_PREALLOCATED_SIZE);
 		break;
 	default:
-		log_fatal("Unknown seek scanner mode");
+		create_error_message(error_message, "Unknown seek scanner mode");
 		return NULL;
 	}
 

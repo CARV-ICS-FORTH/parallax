@@ -111,7 +111,8 @@ static void put_workload(struct workload_config_t *workload_config)
 
 static void locate_key(par_handle handle, DBT lookup_key)
 {
-	par_scanner scanner = par_init_scanner(handle, NULL, PAR_FETCH_FIRST);
+	char *error_message = NULL;
+	par_scanner scanner = par_init_scanner(handle, NULL, PAR_FETCH_FIRST, &error_message);
 	while (par_is_valid(scanner)) {
 		struct par_key fetched_key = par_get_key(scanner);
 
@@ -180,7 +181,8 @@ static void get_workload(struct workload_config_t *workload_config)
 static void scan_workload(struct workload_config_t *workload_config)
 {
 	log_info("Now, testing SCANS");
-	par_scanner scanner = par_init_scanner(workload_config->handle, NULL, PAR_FETCH_FIRST);
+	char *error_message = NULL;
+	par_scanner scanner = par_init_scanner(workload_config->handle, NULL, PAR_FETCH_FIRST, &error_message);
 	uint64_t unique_keys = 0;
 	for (; par_is_valid(scanner); ++unique_keys)
 		par_get_next(scanner);
