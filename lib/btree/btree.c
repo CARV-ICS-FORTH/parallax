@@ -1726,7 +1726,7 @@ int insert_KV_at_leaf(bt_insert_req *ins_req, node_header *leaf)
 
 struct bt_rebalance_result split_leaf(bt_insert_req *req, leaf_node *node)
 {
-	split_dl *split_functions[2] = { split_dynamic_leaf, special_split_dynamic_leaf };
+	split_dl *split_functions[1] = { split_dynamic_leaf };
 	int level_id = req->metadata.level_id;
 
 	uint32_t leaf_size = req->metadata.handle->db_desc->levels[level_id].leaf_size;
