@@ -75,7 +75,6 @@ void move_kv_pairs_to_new_segment(struct db_handle handle, stack *marks)
 		ins_req.metadata.level_id = 0;
 		ins_req.metadata.special_split = 0;
 		ins_req.metadata.tombstone = 0;
-		ins_req.metadata.kv_size = get_kv_size((struct splice *)kv_address);
 		ins_req.metadata.key_format = KV_FORMAT;
 		ins_req.metadata.cat = BIG_INLOG;
 		char *error_message = btree_insert_key_value(&ins_req);

@@ -480,7 +480,6 @@ int32_t level_scanner_seek(level_scanner *level_sc, void *start_key_buf, SEEK_SC
 	memcpy(get_key_offset_in_kv((struct splice *)kv_formated_start_key), start_key->data, start_key->size);
 	req.key_value_buf = kv_formated_start_key;
 	//req.key_value_buf = (char *)start_key;
-	req.metadata.kv_size = PIVOT_KEY_SIZE(start_key) + sizeof(uint32_t);
 	db_handle handle = { .db_desc = db_desc, .volume_desc = NULL };
 	req.metadata.handle = &handle;
 	req.metadata.key_format = KV_FORMAT;

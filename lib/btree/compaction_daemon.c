@@ -704,7 +704,6 @@ static int comp_append_medium_L1(struct comp_level_write_cursor *c, struct comp_
 	ins_req.metadata.handle = c->handle;
 	ins_req.metadata.log_offset = 0;
 
-	ins_req.metadata.kv_size = get_kv_size((struct splice *)in->kv_inplace);
 	ins_req.metadata.cat = MEDIUM_INLOG;
 	ins_req.metadata.level_id = c->level_id;
 	ins_req.metadata.tree_id = 1;

@@ -738,7 +738,7 @@ int reorganize_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, uint32_t leaf_siz
 {
 	enum kv_category cat = req->metadata.cat;
 	unsigned kv_size = (cat == BIG_INLOG || cat == MEDIUM_INLOG) ? sizeof(struct bt_leaf_entry) :
-								       req->metadata.kv_size;
+								       get_kv_size((struct splice *)req->key_value_buf);
 
 	if (leaf->header.fragmentation <= kv_size || req->metadata.level_id != 0)
 		return 0;
@@ -802,16 +802,17 @@ int reorganize_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, uint32_t leaf_siz
 
 int8_t insert_in_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, bt_insert_req *req, level_descriptor *level)
 {
-	struct write_dynamic_leaf_args write_leaf_args = { .leaf = leaf,
-							   .key_value_buf = req->key_value_buf,
-							   .kv_dev_offt = req->kv_dev_offt,
-							   .key_value_size = req->metadata.kv_size,
-							   .level_id = level->level_id,
-							   .kv_format = req->metadata.key_format,
-							   .level_medium_inplace =
-								   req->metadata.handle->db_desc->level_medium_inplace,
-							   .cat = req->metadata.cat,
-							   .tombstone = req->metadata.tombstone };
+	struct write_dynamic_leaf_args write_leaf_args = {
+		.leaf = leaf,
+		.key_value_buf = req->key_value_buf,
+		.kv_dev_offt = req->kv_dev_offt,
+		.key_value_size = get_kv_size((struct splice *)req->key_value_buf),
+		.level_id = level->level_id,
+		.kv_format = req->metadata.key_format,
+		.level_medium_inplace = req->metadata.handle->db_desc->level_medium_inplace,
+		.cat = req->metadata.cat,
+		.tombstone = req->metadata.tombstone
+	};
 	struct dl_bsearch_result bsearch = { .middle = 0, .status = INSERT, .op = DYNAMIC_LEAF_INSERT };
 	char *leaf_log_tail = get_leaf_log_offset(leaf, level->leaf_size);
 

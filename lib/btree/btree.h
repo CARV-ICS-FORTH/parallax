@@ -365,7 +365,6 @@ typedef struct bt_mutate_req {
 	uint64_t segment_id;
 	uint64_t end_of_log;
 	uint32_t log_padding;
-	uint32_t kv_size;
 	enum kv_category cat;
 	uint8_t level_id;
 	/*only for inserts >= level_1*/

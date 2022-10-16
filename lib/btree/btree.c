@@ -991,7 +991,6 @@ struct par_put_metadata insert_key_value(db_handle *handle, void *key, void *val
 		return invalid_put_metadata;
 	}
 
-	uint32_t kv_size = sizeof(key_size) + sizeof(value_size) + key_size + value_size;
 	/*prepare the request*/
 	set_key_size((struct splice *)key_buf, key_size);
 	set_value_size((struct splice *)key_buf, value_size);
@@ -1000,7 +999,6 @@ struct par_put_metadata insert_key_value(db_handle *handle, void *key, void *val
 	       value_size); // |key_size | value_suze | key | value |
 	ins_req.metadata.handle = handle;
 	ins_req.key_value_buf = key_buf;
-	ins_req.metadata.kv_size = kv_size;
 	ins_req.metadata.level_id = 0;
 	ins_req.metadata.key_format = KV_FORMAT;
 	ins_req.metadata.append_to_log = 1;
@@ -1029,7 +1027,6 @@ struct par_put_metadata serialized_insert_key_value(db_handle *handle, const cha
 
 	uint32_t key_size = get_key_size((struct splice *)serialized_key_value);
 	uint32_t value_size = get_value_size((struct splice *)serialized_key_value);
-	uint32_t kv_size = get_kv_size((struct splice *)serialized_key_value);
 
 	error_message = insert_error_handling(handle, key_size, value_size);
 	if (error_message) {
@@ -1039,7 +1036,6 @@ struct par_put_metadata serialized_insert_key_value(db_handle *handle, const cha
 								 .key_value_category = SMALL_INPLACE };
 		return invalid_put_metadata;
 	}
-	ins_req.metadata.kv_size = kv_size;
 	ins_req.metadata.cat = calculate_KV_category(key_size, value_size, insertOp);
 
 	error_message = btree_insert_key_value(&ins_req);
@@ -1053,7 +1049,7 @@ void extract_keyvalue_size(log_operation *req, metadata_tologop *data_size)
 		if (req->metadata->key_format == KV_FORMAT) {
 			data_size->key_len = get_key_size((struct splice *)req->ins_req->key_value_buf);
 			data_size->value_len = get_value_size((struct splice *)req->ins_req->key_value_buf);
-			data_size->kv_size = req->metadata->kv_size;
+			data_size->kv_size = get_kv_size((struct splice *)req->ins_req->key_value_buf);
 		} else {
 			data_size->key_len =
 				get_key_size_kv_seperated((struct kv_seperation_splice *)req->ins_req->key_value_buf);
@@ -1773,7 +1769,7 @@ int insert_KV_at_leaf(bt_insert_req *ins_req, node_header *leaf)
 					     sizeof(struct bt_leaf_entry));
 		} else {
 			__sync_fetch_and_add(&(ins_req->metadata.handle->db_desc->levels[level_id].level_size[tree_id]),
-					     ins_req->metadata.kv_size);
+					     get_kv_size((struct splice *)ins_req->key_value_buf));
 		}
 	}
 
@@ -1843,7 +1839,7 @@ int is_split_needed(void *node, bt_insert_req *req, uint32_t leaf_size)
 
 	struct split_level_leaf split_metadata = { .leaf = node,
 						   .leaf_size = leaf_size,
-						   .kv_size = req->metadata.kv_size,
+						   .kv_size = get_kv_size((struct splice *)req->key_value_buf),
 						   .level_id = req->metadata.level_id,
 						   .level_medium_inplace =
 							   req->metadata.handle->db_desc->level_medium_inplace,
