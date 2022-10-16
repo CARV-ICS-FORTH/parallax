@@ -4,15 +4,15 @@
 #include <stdint.h>
 #define PREFIX_SIZE 12
 #define DELETE_MARKER_ID (UINT32_MAX)
+#define GET_MIN_POSSIBLE_KV_SIZE() (sizeof(uint32_t) + 1)
 
 // KVs in Parallax follow | key_size | value_size | key | value | layout
 struct splice {
 	uint32_t key_size;
 	uint32_t value_size;
-	char data[]; //kv payload
+	char data[];
 } __attribute__((packed));
 
-// TODO (@geostyl) should we replace all the bt_leaf_entry structs with this one? @gesalous yes
 struct kv_seperation_splice {
 	char prefix[PREFIX_SIZE];
 	uint64_t dev_offt;
@@ -23,8 +23,6 @@ struct key_splice {
 	uint32_t key_size;
 	char data[];
 } __attribute__((packed));
-
-#define GET_MIN_POSSIBLE_KV_SIZE() (sizeof(uint32_t) + 1)
 
 /**
  * Calculates key_size given a splice formated key

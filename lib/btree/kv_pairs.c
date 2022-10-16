@@ -23,8 +23,6 @@ inline uint32_t get_value_size_with_metadata(struct splice *kv_pair)
 	return sizeof(kv_pair->value_size) + get_value_size(kv_pair);
 }
 
-// Returns the size of a kv_pair_formated kv_pair
-// TODO (geostyl) FIXME add proper documentation
 inline uint32_t get_kv_metadata_size(void)
 {
 	uint32_t kv_pair_metadata_size = sizeof(struct splice);
@@ -95,27 +93,27 @@ inline void set_non_tombstone(struct splice *kv_pair)
 	kv_pair->value_size = 0;
 }
 
-void set_tombstone(struct splice *kv_pair)
+inline void set_tombstone(struct splice *kv_pair)
 {
 	kv_pair->value_size = DELETE_MARKER_ID;
 }
 
-uint32_t get_key_splice_key_size(struct key_splice *key)
+inline uint32_t get_key_splice_key_size(struct key_splice *key)
 {
 	return key->key_size;
 }
 
-char *get_key_splice_key_offset(struct key_splice *key)
+inline char *get_key_splice_key_offset(struct key_splice *key)
 {
 	return key->data;
 }
 
-void set_key_size_of_key_splice(struct key_splice *key, uint32_t key_size)
+inline void set_key_size_of_key_splice(struct key_splice *key, uint32_t key_size)
 {
 	key->key_size = key_size;
 }
 
-void set_key_splice_key_offset(struct key_splice *key, char *key_buf)
+inline void set_key_splice_key_offset(struct key_splice *key, char *key_buf)
 {
 	memcpy(get_key_splice_key_offset(key), key_buf, get_key_splice_key_size(key));
 }
