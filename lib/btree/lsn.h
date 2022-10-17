@@ -1,5 +1,5 @@
-#ifndef _LSN_H
-#define _LSN_H
+#ifndef LSN_H
+#define LSN_H
 #include <stdint.h>
 #include <stdlib.h>
 
