@@ -99,7 +99,7 @@ static uint32_t insert_and_verify_pivots(db_handle *handle, unsigned char *alpha
 
 	/*insert in ascending order*/
 	struct index_node *node = NULL;
-	posix_memalign((void **)&node, 4096, INDEX_NODE_SIZE);
+	posix_memalign((void **)&node, 4096, index_node_get_size());
 
 	index_init_node(ADD_GUARD, node, internalNode);
 	uint32_t num_node_keys = 0;

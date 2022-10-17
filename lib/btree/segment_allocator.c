@@ -19,6 +19,7 @@
 #include "../allocator/volume_manager.h"
 #include "../common/common.h"
 #include "conf.h"
+#include "index_node.h"
 #include <assert.h>
 #include <log.h>
 #include <stdlib.h>
@@ -175,7 +176,7 @@ struct segment_header *get_segment_for_lsm_level_IO(struct db_descriptor *db_des
 struct index_node *seg_get_index_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id, char reason)
 {
 	(void)reason;
-	struct index_node *ptr = (struct index_node *)get_space(db_desc, level_id, tree_id, INDEX_NODE_SIZE);
+	struct index_node *ptr = (struct index_node *)get_space(db_desc, level_id, tree_id, index_node_get_size());
 
 	return ptr;
 }

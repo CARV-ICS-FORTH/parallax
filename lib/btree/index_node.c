@@ -11,6 +11,7 @@
 #include <unistd.h>
 
 #define INDEX_GUARD_SIZE 1
+#define INDEX_NODE_SIZE (8192)
 
 struct index_node {
 	struct node_header header;

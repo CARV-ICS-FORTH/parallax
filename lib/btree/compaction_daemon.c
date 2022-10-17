@@ -185,8 +185,8 @@ static void comp_write_segment(char *buffer, uint64_t dev_offt, uint32_t buf_off
 			if (n->type == paddedSpace)
 				break;
 			assert(n->type == rootNode || n->type == internalNode);
-			n = (struct node_header *)((char *)n + INDEX_NODE_SIZE);
-			decoded += (INDEX_NODE_SIZE);
+			n = (struct node_header *)((char *)n + index_node_get_size());
+			decoded += index_node_get_size();
 		}
 		break;
 	}
@@ -379,7 +379,7 @@ static void comp_get_next_key(struct comp_level_read_cursor *c)
 			case rootNode:
 			case internalNode:
 				/*log_info("Found an internal");*/
-				c->offset += INDEX_NODE_SIZE;
+				c->offset += index_node_get_size();
 				c->state = COMP_CUR_CHECK_OFFT;
 				goto fsm_entry;
 
@@ -486,7 +486,7 @@ static void comp_get_space(struct comp_level_write_cursor *c, uint32_t height, n
 		else
 			remaining_space = SEGMENT_SIZE - (c->segment_offt[height] % SEGMENT_SIZE);
 
-		if (remaining_space < INDEX_NODE_SIZE) {
+		if (remaining_space < index_node_get_size()) {
 			if (remaining_space > 0) {
 				*(uint32_t *)(&c->segment_buf[height][c->segment_offt[height] % SEGMENT_SIZE]) =
 					paddedSpace;
@@ -516,7 +516,7 @@ static void comp_get_space(struct comp_level_write_cursor *c, uint32_t height, n
 		}
 		c->last_index[height] =
 			(struct index_node *)&c->segment_buf[height][c->segment_offt[height] % SEGMENT_SIZE];
-		c->segment_offt[height] += INDEX_NODE_SIZE;
+		c->segment_offt[height] += index_node_get_size();
 		break;
 	}
 	default:
@@ -586,7 +586,7 @@ static void comp_close_write_cursor(struct comp_level_write_cursor *c)
 				//log_info("Marking padded space for %u segment offt %llu", i, c->segment_offt[0]);
 				*type = paddedSpace;
 			} else if (i > 0 && c->segment_offt[i] % SEGMENT_SIZE != 0) {
-				type = (uint32_t *)(((char *)c->last_index[i]) + INDEX_NODE_SIZE);
+				type = (uint32_t *)(((char *)c->last_index[i]) + index_node_get_size());
 				// log_info("Marking padded space for %u segment offt %llu entries of
 				// last node %llu", i,
 				//	 c->segment_offt[i], c->last_index[i]->header.num_entries);
