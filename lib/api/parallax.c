@@ -232,7 +232,7 @@ par_scanner par_init_scanner(par_handle handle, struct par_key *key, par_seek_mo
 		log_address =
 			bt_get_kv_log_address(&scanner->db->db_desc->big_log, ABSOLUTE_ADDRESS(scanner->keyValue));
 
-	uint32_t kv_size = get_kv_size((struct splice *)log_address.addr);
+	uint32_t kv_size = get_kv_size((struct kv_splice *)log_address.addr);
 	if (kv_size > p_scanner->buf_size) {
 		//log_info("Space not enougn needing %u got %u", kv_size, par_s->buf_size);
 		if (p_scanner->allocated)
@@ -273,7 +273,7 @@ int par_get_next(par_scanner sc)
 		log_address = bt_get_kv_log_address(&scanner_hd->db->db_desc->big_log,
 						    ABSOLUTE_ADDRESS(scanner_hd->keyValue));
 
-	uint32_t kv_size = get_kv_size((struct splice *)log_address.addr);
+	uint32_t kv_size = get_kv_size((struct kv_splice *)log_address.addr);
 	if (kv_size > par_s->buf_size) {
 		//log_info("Space not enough needing %u got %u", kv_size, par_s->buf_size);
 		if (par_s->allocated)
@@ -298,7 +298,7 @@ int par_is_valid(par_scanner sc)
 struct par_key par_get_key(par_scanner sc)
 {
 	struct par_scanner *par_s = (struct par_scanner *)sc;
-	struct splice *kv_buf = (struct splice *)par_s->kv_buf;
+	struct kv_splice *kv_buf = (struct kv_splice *)par_s->kv_buf;
 	struct par_key key = { .size = get_key_size(kv_buf), .data = get_key_offset_in_kv(kv_buf) };
 	return key;
 }
@@ -306,7 +306,7 @@ struct par_key par_get_key(par_scanner sc)
 struct par_value par_get_value(par_scanner sc)
 {
 	struct par_scanner *par_s = (struct par_scanner *)sc;
-	struct splice *kv_buf = (struct splice *)par_s->kv_buf;
+	struct kv_splice *kv_buf = (struct kv_splice *)par_s->kv_buf;
 	struct par_value val = { .val_size = get_value_size(kv_buf),
 				 .val_buffer = get_value_offset_in_kv(kv_buf, get_key_size(kv_buf)),
 				 .val_buffer_size = get_value_size(kv_buf) };

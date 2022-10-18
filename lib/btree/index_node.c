@@ -399,7 +399,7 @@ int index_key_cmp(struct pivot_key *index_key, char *lookup_key, enum KV_type lo
 	int ret = 0;
 
 	if (lookup_key_format == KV_FORMAT) {
-		struct splice *key = (struct splice *)lookup_key;
+		struct kv_splice *key = (struct kv_splice *)lookup_key;
 		size = index_key->size <= get_key_size(key) ? index_key->size : get_key_size(key);
 		ret = memcmp(index_key->data, get_key_offset_in_kv(key), size);
 		return ret != 0 ? ret : index_key->size - get_key_size(key);

@@ -259,7 +259,7 @@ static void fill_compaction_scanner(struct level_scanner *level_sc, struct level
 		level_sc->kv_format = KV_FORMAT;
 		level_sc->cat = slot_array[position].key_category;
 		level_sc->tombstone = slot_array[position].tombstone;
-		level_sc->kv_size = get_kv_size((struct splice *)level_sc->keyValue);
+		level_sc->kv_size = get_kv_size((struct kv_splice *)level_sc->keyValue);
 		break;
 	}
 	case KV_INLOG: {
@@ -288,7 +288,7 @@ static void fill_normal_scanner(struct level_scanner *level_sc, struct level_des
 	switch (get_kv_format(slot_array[position].key_category)) {
 	case KV_INPLACE: {
 		level_sc->keyValue = get_kv_offset(dlnode, level->leaf_size, slot_array[position].index);
-		level_sc->kv_size = get_kv_size((struct splice *)level_sc->keyValue);
+		level_sc->kv_size = get_kv_size((struct kv_splice *)level_sc->keyValue);
 		level_sc->kv_format = KV_FORMAT;
 		level_sc->cat = slot_array[position].key_category;
 		level_sc->tombstone = slot_array[position].tombstone;
@@ -303,7 +303,7 @@ static void fill_normal_scanner(struct level_scanner *level_sc, struct level_des
 		level_sc->keyValue = (void *)level_sc->kv_entry.dev_offt;
 		level_sc->kv_size = UINT32_MAX;
 		if (level_sc->level_id)
-			level_sc->kv_size = get_kv_size((struct splice *)level_sc->keyValue);
+			level_sc->kv_size = get_kv_size((struct kv_splice *)level_sc->keyValue);
 		level_sc->cat = slot_array[position].key_category;
 		level_sc->tombstone = slot_array[position].tombstone;
 		break;
@@ -464,7 +464,8 @@ int32_t level_scanner_seek(level_scanner *level_sc, void *start_key_buf, SEEK_SC
 	// binary saerch of dynamic leaf accepts only kv_formated or kv_prefixed keys, but the start_key of the scanner
 	// follows the key_size | key format
 	// TODO: (@geostyl) make the binary search aware of the scanner format?
-	struct splice *kv_formated_start_key = (struct splice *)calloc(1, PIVOT_KEY_SIZE(start_key) + sizeof(uint32_t));
+	struct kv_splice *kv_formated_start_key =
+		(struct kv_splice *)calloc(1, PIVOT_KEY_SIZE(start_key) + sizeof(uint32_t));
 	set_key_size(kv_formated_start_key, get_pivot_key_size((struct pivot_key *)start_key));
 	set_value_size(kv_formated_start_key, UINT32_MAX);
 	set_key(kv_formated_start_key, start_key->data, start_key->size);

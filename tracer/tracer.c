@@ -54,7 +54,7 @@ void execute_put_request(par_handle hd, char *line)
 	char *value = strtok_r(line, " ", &line);
 
 	/*prepare the request*/
-	struct splice *kv_buf = (struct splice *)key_buf;
+	struct kv_splice *kv_buf = (struct kv_splice *)key_buf;
 	set_key_size(kv_buf, key_size);
 	set_value_size(kv_buf, key_size);
 	set_key(kv_buf, key, key_size);

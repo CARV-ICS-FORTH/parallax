@@ -91,7 +91,7 @@ int8_t find_deleted_kv_pairs_in_segment(struct db_handle handle, struct gc_segme
 	struct gc_segment_descriptor iter_log_segment = *log_seg;
 	char *log_segment_in_device = REAL_ADDRESS(log_seg->segment_dev_offt);
 	char buf[MAX_KEY_SIZE + get_kv_metadata_size()];
-	struct splice *kv = NULL;
+	struct kv_splice *kv = NULL;
 	uint64_t checked_segment_chunk = get_lsn_size();
 	uint64_t segment_data = LOG_DATA_OFFSET;
 	int garbage_collect_segment = 0;
@@ -103,7 +103,7 @@ int8_t find_deleted_kv_pairs_in_segment(struct db_handle handle, struct gc_segme
 	marks->size = 0;
 
 	while (checked_segment_chunk < segment_data) {
-		kv = (struct splice *)iter_log_segment.log_segment_in_memory;
+		kv = (struct kv_splice *)iter_log_segment.log_segment_in_memory;
 
 		if (!kv->key_size || checked_segment_chunk - segment_data < GET_MIN_POSSIBLE_KV_SIZE())
 			break;

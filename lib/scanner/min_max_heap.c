@@ -38,7 +38,7 @@ static void push_back_duplicate_kv(struct sh_heap *heap, struct sh_heap_node *hp
 	switch (hp_node->type) {
 	case KV_FORMAT:
 		memset(&local.prefix, 0x00, PREFIX_SIZE);
-		struct splice *kv = (struct splice *)hp_node->KV;
+		struct kv_splice *kv = (struct kv_splice *)hp_node->KV;
 		uint32_t key_size = get_key_size(kv);
 		int size = key_size < PREFIX_SIZE ? key_size : PREFIX_SIZE;
 		memcpy(&local.prefix, get_key_offset_in_kv(kv), size);
@@ -55,7 +55,7 @@ static void push_back_duplicate_kv(struct sh_heap *heap, struct sh_heap_node *hp
 
 	uint64_t segment_offset =
 		ABSOLUTE_ADDRESS(keyvalue->dev_offt) - (ABSOLUTE_ADDRESS(keyvalue->dev_offt) % SEGMENT_SIZE);
-	struct splice *kv = (struct splice *)keyvalue->dev_offt;
+	struct kv_splice *kv = (struct kv_splice *)keyvalue->dev_offt;
 	assert(get_key_size(kv) <= MAX_KEY_SIZE);
 	struct dups_node *node = find_element(heap->dups, (uint64_t)REAL_ADDRESS(segment_offset));
 

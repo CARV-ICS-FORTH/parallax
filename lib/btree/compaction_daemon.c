@@ -729,7 +729,7 @@ static int comp_append_medium_L1(struct comp_level_write_cursor *c, struct comp_
 	log_op.ins_req = &ins_req;
 
 	char *log_location = append_key_value_to_log(&log_op);
-	struct splice *kv_inplace = (struct splice *)in->kv_inplace;
+	struct kv_splice *kv_inplace = (struct kv_splice *)in->kv_inplace;
 	if (get_key_size(kv_inplace) >= PREFIX_SIZE)
 		memcpy(out->kvsep.prefix, get_key_offset_in_kv(kv_inplace), PREFIX_SIZE);
 	else {
@@ -764,7 +764,7 @@ static void comp_append_entry_to_leaf_node(struct comp_level_write_cursor *curso
 	write_leaf_args.level_medium_inplace = cursor->handle->db_desc->level_medium_inplace;
 	switch (curr_key->kv_type) {
 	case KV_INPLACE:
-		kv_size = get_kv_size((struct splice *)curr_key->kv_inplace);
+		kv_size = get_kv_size((struct kv_splice *)curr_key->kv_inplace);
 		write_leaf_args.kv_dev_offt = 0;
 		write_leaf_args.key_value_size = kv_size;
 		write_leaf_args.level_id = cursor->level_id;
@@ -794,10 +794,10 @@ static void comp_append_entry_to_leaf_node(struct comp_level_write_cursor *curso
 	if (write_leaf_args.cat == MEDIUM_INLOG &&
 	    write_leaf_args.level_id == cursor->handle->db_desc->level_medium_inplace) {
 		write_leaf_args.key_value_buf = fetch_kv_from_LRU(&write_leaf_args, cursor);
-		assert(get_key_size((struct splice *)write_leaf_args.key_value_buf) <= MAX_KEY_SIZE);
+		assert(get_key_size((struct kv_splice *)write_leaf_args.key_value_buf) <= MAX_KEY_SIZE);
 		write_leaf_args.cat = MEDIUM_INPLACE;
 
-		kv_size = get_kv_size((struct splice *)write_leaf_args.key_value_buf);
+		kv_size = get_kv_size((struct kv_splice *)write_leaf_args.key_value_buf);
 		write_leaf_args.key_value_size = kv_size;
 		curr_key->kv_type = KV_INPLACE;
 		curr_key->kv_category = MEDIUM_INPLACE;
@@ -869,7 +869,7 @@ static void comp_append_entry_to_leaf_node(struct comp_level_write_cursor *curso
 			}
 		}
 		//create a pivot key based on the pivot key format | key_size | key | out of the kv_formated key
-		struct splice *kv_buf = (struct splice *)kv_formated_kv;
+		struct kv_splice *kv_buf = (struct kv_splice *)kv_formated_kv;
 		int32_t key_size_with_metadata_size = get_key_size_with_metadata(kv_buf);
 		int32_t key_size = get_key_size(kv_buf);
 		struct pivot_key *new_pivot = (struct pivot_key *)calloc(1, key_size_with_metadata_size);
@@ -1139,7 +1139,7 @@ static void comp_fill_heap_node(struct compaction_request *comp_req, struct comp
 	case MEDIUM_INPLACE:
 		nd->type = KV_FORMAT;
 		nd->KV = cur->cursor_key.kv_inplace;
-		nd->kv_size = get_kv_size((struct splice *)nd->KV);
+		nd->kv_size = get_kv_size((struct kv_splice *)nd->KV);
 		break;
 	case BIG_INLOG:
 	case MEDIUM_INLOG:
@@ -1182,12 +1182,12 @@ static void print_heap_node_key(struct sh_heap_node *nd)
 	switch (nd->cat) {
 	case SMALL_INPLACE:
 	case MEDIUM_INPLACE:;
-		struct splice *kv = (struct splice *)nd->KV;
+		struct kv_splice *kv = (struct kv_splice *)nd->KV;
 		log_debug("In place Key is %u:%s", get_key_size(kv), get_key_offset_in_kv(kv));
 		break;
 	case BIG_INLOG:
 	case MEDIUM_INLOG:;
-		struct splice *full_key = (struct splice *)((struct kv_seperation_splice *)nd->KV)->dev_offt;
+		struct kv_splice *full_key = (struct kv_splice *)((struct kv_seperation_splice *)nd->KV)->dev_offt;
 
 		log_debug("In log Key prefix is %.*s full key size: %u  full key data %.*s", PREFIX_SIZE,
 			  (char *)nd->KV, get_key_size(full_key), get_key_size(full_key),

@@ -40,7 +40,7 @@ int main(int argc, char *argv[])
 	}
 
 	char serialized_key_value[1024] = { 0 };
-	struct splice *serialized_kv = (struct splice *)serialized_key_value;
+	struct kv_splice *serialized_kv = (struct kv_splice *)serialized_key_value;
 	set_key_size(serialized_kv, 10);
 	set_value_size(serialized_kv, 2);
 	set_key(serialized_kv, "abcdabcda", 10);

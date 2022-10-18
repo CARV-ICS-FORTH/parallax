@@ -634,7 +634,7 @@ static struct segment_array *find_N_last_blobs(struct db_descriptor *db_desc, ui
 
 struct kv_entry {
 	struct lsn lsn;
-	struct splice *par_kv;
+	struct kv_splice *par_kv;
 };
 
 struct log_cursor {
@@ -660,9 +660,9 @@ void prepare_cursor_op(struct log_cursor *cursor)
 {
 	cursor->entry.lsn = *(struct lsn *)get_position_in_segment(cursor);
 	cursor->offt_in_segment += get_lsn_size();
-	struct splice *kv_pair = (struct splice *)get_position_in_segment(cursor);
+	struct kv_splice *kv_pair = (struct kv_splice *)get_position_in_segment(cursor);
 
-	cursor->entry.par_kv = (struct splice *)get_position_in_segment(cursor);
+	cursor->entry.par_kv = (struct kv_splice *)get_position_in_segment(cursor);
 	cursor->tombstone = is_tombstone_kv_pair(kv_pair) ? 1 : 0;
 	cursor->offt_in_segment += get_kv_size(cursor->entry.par_kv);
 }
@@ -820,7 +820,7 @@ start:
 			(cursor->log_size % (uint64_t)SEGMENT_SIZE) - ((uint64_t)cursor->offt_in_segment);
 
 	char *pos_in_segment = get_position_in_segment(cursor);
-	struct splice *kv_pair = (struct splice *)pos_in_segment;
+	struct kv_splice *kv_pair = (struct kv_splice *)pos_in_segment;
 	if (remaining_bytes_in_segment < GET_MIN_POSSIBLE_KV_SIZE() || 0 == get_key_size(kv_pair)) {
 		cursor->offt_in_segment += remaining_bytes_in_segment;
 		get_next_log_segment(cursor);
