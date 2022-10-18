@@ -226,10 +226,6 @@ struct node_header *index_node_get_header(struct index_node *node);
   * returns the sizeof(struct index_node)
   */
 uint64_t index_node_get_size(void);
-/**
-  * asserts that the sizeof(struct index_node == INDEX_NODE_SIZE)
-  */
-void validate_index_node_size(void);
 
 #define PIVOT_KEY_SIZE(X) ((X) ? (X)->size + sizeof(*X) : BUG_ON_UINT32T())
 #define PIVOT_SIZE(X) (PIVOT_KEY_SIZE(X) + sizeof(struct pivot_pointer))

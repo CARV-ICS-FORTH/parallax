@@ -99,7 +99,7 @@ int8_t find_deleted_kv_pairs_in_segment(struct db_handle handle, struct gc_segme
 	iter_log_segment.log_segment_in_memory += get_lsn_size();
 	log_segment_in_device += get_lsn_size();
 
-	uint32_t key_value_size = get_kv_metadata_size();
+	int32_t key_value_size = get_kv_metadata_size();
 	marks->size = 0;
 
 	while (checked_segment_chunk < segment_data) {
@@ -124,7 +124,7 @@ int8_t find_deleted_kv_pairs_in_segment(struct db_handle handle, struct gc_segme
 			push_stack(marks, iter_log_segment.log_segment_in_memory);
 
 		if (kv->key_size) {
-			uint32_t bytes_to_move = kv->key_size + kv->value_size + key_value_size + get_lsn_size();
+			int32_t bytes_to_move = kv->key_size + kv->value_size + key_value_size + get_lsn_size();
 			iter_log_segment.log_segment_in_memory += bytes_to_move;
 			log_segment_in_device += bytes_to_move;
 			checked_segment_chunk += kv->key_size + kv->value_size + key_value_size + get_lsn_size();

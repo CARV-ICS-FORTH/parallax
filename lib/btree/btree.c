@@ -593,7 +593,7 @@ db_handle *internal_db_open(struct volume_descriptor *volume_desc, par_db_option
 #if DISABLE_LOGGING
 	log_set_quiet(true);
 #endif
-	validate_index_node_size();
+	index_node_get_size();
 	_Static_assert(sizeof(struct segment_header) == 4096, "Segment header is not 4 KB");
 	db = klist_find_element_with_key(volume_desc->open_databases, (char *)db_options->db_name);
 
@@ -966,7 +966,7 @@ static const char *insert_error_handling(db_handle *handle, uint32_t key_size, u
 		return error_message;
 	}
 
-	uint32_t kv_size = sizeof(uint32_t) + key_size + sizeof(uint32_t) + value_size;
+	uint32_t kv_size = key_size + value_size + get_kv_metadata_size();
 	if (kv_size > KV_MAX_SIZE) {
 		error_message = "KV size > 4KB buffer overflow!";
 		return error_message;
@@ -975,8 +975,8 @@ static const char *insert_error_handling(db_handle *handle, uint32_t key_size, u
 	return NULL;
 }
 
-struct par_put_metadata insert_key_value(db_handle *handle, void *key, void *value, uint32_t key_size,
-					 uint32_t value_size, request_type op_type, const char *error_message)
+struct par_put_metadata insert_key_value(db_handle *handle, void *key, void *value, int32_t key_size,
+					 int32_t value_size, request_type op_type, const char *error_message)
 {
 	bt_insert_req ins_req = { 0 };
 	char kv_pair[KV_MAX_SIZE];
@@ -1025,8 +1025,8 @@ struct par_put_metadata serialized_insert_key_value(db_handle *handle, const cha
 				  .metadata.key_format = KV_FORMAT,
 				  .metadata.append_to_log = 1 };
 
-	uint32_t key_size = get_key_size((struct splice *)serialized_key_value);
-	uint32_t value_size = get_value_size((struct splice *)serialized_key_value);
+	int32_t key_size = get_key_size((struct splice *)serialized_key_value);
+	int32_t value_size = get_value_size((struct splice *)serialized_key_value);
 
 	error_message = insert_error_handling(handle, key_size, value_size);
 	if (error_message) {
@@ -1535,7 +1535,7 @@ static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id,
 	if (RWLOCK_UNLOCK(&prev->rx_lock) != 0)
 		BUG_ON();
 
-	uint32_t key_size = get_key_splice_key_size(search_key_buf);
+	int32_t key_size = get_key_splice_key_size(search_key_buf);
 	void *key = get_key_splice_key_offset(search_key_buf);
 	ret_result =
 		find_key_in_dynamic_leaf((struct bt_dynamic_leaf_node *)curr_node, db_desc, key, key_size, level_id);
@@ -1575,7 +1575,7 @@ deser:
 
 	assert(kv_pair.addr);
 	struct splice *kv_buf = (struct splice *)kv_pair.addr;
-	uint32_t value_size = get_value_size(kv_buf);
+	int32_t value_size = get_value_size(kv_buf);
 	if (get_op->retrieve && !get_op->buffer_to_pack_kv) {
 		get_op->buffer_to_pack_kv = malloc(value_size);
 		get_op->size = value_size;

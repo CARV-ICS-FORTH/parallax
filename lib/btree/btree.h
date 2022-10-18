@@ -40,7 +40,7 @@ struct lookup_operation {
 	char *key_buf; /*in variable*/
 	char *buffer_to_pack_kv; /*in-out variable*/
 	char *key_device_address; /*out variable*/
-	uint32_t size; /*in-out variable*/
+	int32_t size; /*in-out variable*/
 	uint8_t buffer_overflow : 1; /*out variable*/
 	uint8_t found : 1; /*out variable*/
 	uint8_t tombstone : 1;
@@ -461,8 +461,8 @@ struct bt_delete_marker {
 	char key[];
 };
 
-struct par_put_metadata insert_key_value(db_handle *handle, void *key, void *value, uint32_t key_size,
-					 uint32_t value_size, request_type op_type, const char *error_message);
+struct par_put_metadata insert_key_value(db_handle *handle, void *key, void *value, int32_t key_size,
+					 int32_t value_size, request_type op_type, const char *error_message);
 
 /**
  * Inserts a serialized key value pair by using the buffer provided by the user.

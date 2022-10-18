@@ -49,7 +49,7 @@ const char *par_close(par_handle handle)
 	return db_close((db_handle *)handle);
 }
 
-enum kv_category get_kv_category(uint32_t key_size, uint32_t value_size, request_type operation,
+enum kv_category get_kv_category(int32_t key_size, int32_t value_size, request_type operation,
 				 const char **error_message)
 {
 	if (paddingOp == operation || unknownOp == operation) {
@@ -77,11 +77,11 @@ void par_put_serialized(par_handle handle, char *serialized_key_value, const cha
 	serialized_insert_key_value((db_handle *)handle, serialized_key_value, *error_message);
 }
 
-static inline int par_serialize_to_key_format(struct par_key *key, char **buf, uint32_t buf_size)
+static inline int par_serialize_to_key_format(struct par_key *key, char **buf, int32_t buf_size)
 {
 	int ret = 0;
-	uint32_t key_size_with_metadata = sizeof(key->size) + key->size;
-	uint32_t get_op_payload_size = key_size_with_metadata;
+	int32_t key_size_with_metadata = sizeof(key->size) + key->size;
+	int32_t get_op_payload_size = key_size_with_metadata;
 	if (get_op_payload_size > buf_size) {
 		*buf = malloc(get_op_payload_size);
 		ret = 1;

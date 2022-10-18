@@ -318,7 +318,7 @@ void print_all_keys(const struct bt_dynamic_leaf_node *leaf, uint32_t leaf_size)
 					get_kv_format(slot_array[i].key_category));
 
 		assert(KEY_SIZE(key) < MAX_KEY_SIZE);
-		log_debug("Key %*s", KEY_SIZE(key), key + 8);
+		log_debug("Key %*s", KEY_SIZE(key), key + get_lsn_size());
 		/* log_info("offset in leaf %d ADDR %llu Size%d key %s\n", slot_array[i].index, get_kv_offset(leaf, leaf_size, slot_array[i].index),KEY_SIZE(key), key + 4); */
 	}
 	/* log_info("--------------------------------------------"); */

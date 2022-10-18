@@ -870,9 +870,9 @@ static void comp_append_entry_to_leaf_node(struct comp_level_write_cursor *curso
 		}
 		//create a pivot key based on the pivot key format | key_size | key | out of the kv_formated key
 		struct splice *kv_buf = (struct splice *)kv_formated_kv;
-		uint32_t key_size = get_key_size(kv_buf);
-		uint32_t key_metadata_size = sizeof(get_key_size(kv_buf));
-		struct pivot_key *new_pivot = (struct pivot_key *)calloc(1, key_size + key_metadata_size);
+		int32_t key_size_with_metadata_size = get_key_size_with_metadata(kv_buf);
+		int32_t key_size = get_key_size(kv_buf);
+		struct pivot_key *new_pivot = (struct pivot_key *)calloc(1, key_size_with_metadata_size);
 		set_pivot_key_size(new_pivot, key_size);
 		set_pivot_key(new_pivot, get_key_offset_in_kv(kv_buf), key_size);
 

@@ -58,7 +58,7 @@ typedef enum par_ret_code {
  * @param op_type Operation to execute valid operation insertOp, deleteOp.
  * @return On success return the KV category.
  */
-enum kv_category get_kv_category(uint32_t key_size, uint32_t value_size, request_type operation,
+enum kv_category get_kv_category(int32_t key_size, int32_t value_size, request_type operation,
 				 const char **error_message);
 
 /**

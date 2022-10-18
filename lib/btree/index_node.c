@@ -27,12 +27,8 @@ struct node_header *index_node_get_header(struct index_node *node)
 
 uint64_t index_node_get_size(void)
 {
-	return sizeof(struct index_node);
-}
-
-void validate_index_node_size(void)
-{
 	_Static_assert(sizeof(struct index_node) == INDEX_NODE_SIZE, "Index node is not page aligned");
+	return sizeof(struct index_node);
 }
 
 static struct pivot_pointer *index_get_pivot_pointer(struct pivot_key *key)
@@ -399,14 +395,14 @@ struct bt_rebalance_result index_split_node(struct index_node *node, bt_insert_r
 int index_key_cmp(struct pivot_key *index_key, char *lookup_key, enum KV_type lookup_key_format)
 {
 	assert(lookup_key_format != KV_PREFIX);
-	uint32_t size = 0;
+	int32_t size = 0;
 	int ret = 0;
 
 	if (lookup_key_format == KV_FORMAT) {
 		struct splice *key = (struct splice *)lookup_key;
 		size = index_key->size <= get_key_size(key) ? index_key->size : get_key_size(key);
 		ret = memcmp(index_key->data, get_key_offset_in_kv(key), size);
-		return ret != 0 ? ret : (int)(index_key->size - get_key_size(key));
+		return ret != 0 ? ret : index_key->size - get_key_size(key);
 	}
 
 	if (lookup_key_format == INDEX_KEY_TYPE) {
@@ -414,14 +410,14 @@ int index_key_cmp(struct pivot_key *index_key, char *lookup_key, enum KV_type lo
 		struct pivot_key *p_key = (struct pivot_key *)(lookup_key);
 		size = index_key->size <= p_key->size ? index_key->size : p_key->size;
 		ret = memcmp(index_key->data, p_key->data, size);
-		return ret != 0 ? ret : (int)(index_key->size - p_key->size);
+		return ret != 0 ? ret : index_key->size - p_key->size;
 	}
 
 	/* lookup_key is KEY_TYPE*/
 	struct key_splice *p_key = (struct key_splice *)(lookup_key);
 	size = index_key->size <= p_key->key_size ? index_key->size : p_key->key_size;
 	ret = memcmp(index_key->data, p_key->data, size);
-	return ret != 0 ? ret : (int)(index_key->size - p_key->key_size);
+	return ret != 0 ? ret : index_key->size - p_key->key_size;
 }
 
 int32_t get_pivot_key_size(struct pivot_key *pivot)
