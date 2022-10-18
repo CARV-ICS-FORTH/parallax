@@ -317,8 +317,8 @@ void print_all_keys(const struct bt_dynamic_leaf_node *leaf, uint32_t leaf_size)
 		char *key = fill_keybuf(get_kv_offset(leaf, leaf_size, slot_array[i].index),
 					get_kv_format(slot_array[i].key_category));
 
-		assert(KEY_SIZE(key) < MAX_KEY_SIZE);
-		log_debug("Key %*s", KEY_SIZE(key), key + get_lsn_size());
+		assert(get_key_size(key) < MAX_KEY_SIZE);
+		log_debug("Key %*s", get_key_size(key), key + get_lsn_size());
 		/* log_info("offset in leaf %d ADDR %llu Size%d key %s\n", slot_array[i].index, get_kv_offset(leaf, leaf_size, slot_array[i].index),KEY_SIZE(key), key + 4); */
 	}
 	/* log_info("--------------------------------------------"); */
@@ -416,7 +416,7 @@ int is_dynamic_leaf_full(struct split_level_leaf split_metadata)
 		leaf_log_size += split_metadata.kv_size;
 		break;
 	case KV_INLOG:
-		leaf_log_size += sizeof(struct kv_seperation_splice);
+		leaf_log_size += get_kv_seperated_splice_size();
 		break;
 	default:
 		assert(0);
@@ -471,10 +471,10 @@ struct bt_rebalance_result split_dynamic_leaf(struct bt_dynamic_leaf_node *leaf,
 			leaf_log_tail -= key_buf_size;
 			memcpy(leaf_log_tail, key_buf, key_buf_size);
 		} else if (get_kv_format(slot_array[i].key_category) == KV_INLOG) {
-			left_leaf->header.leaf_log_size += sizeof(struct kv_seperation_splice);
-			leaf_log_tail -= sizeof(struct kv_seperation_splice);
+			left_leaf->header.leaf_log_size += get_kv_seperated_splice_size();
+			leaf_log_tail -= get_kv_seperated_splice_size();
 			memcpy(leaf_log_tail, get_kv_offset(leaf, leaf_size, slot_array[i].index),
-			       sizeof(struct kv_seperation_splice));
+			       get_kv_seperated_splice_size());
 		}
 
 		left_leaf_slot_array[j].index = left_leaf->header.leaf_log_size;
@@ -537,10 +537,10 @@ struct bt_rebalance_result split_dynamic_leaf(struct bt_dynamic_leaf_node *leaf,
 			right_leaf->header.leaf_log_size += key_buf_size;
 			memcpy(leaf_log_tail, key_buf, key_buf_size);
 		} else if (get_kv_format(slot_array[i].key_category) == KV_INLOG) {
-			right_leaf->header.leaf_log_size += sizeof(struct kv_seperation_splice);
-			leaf_log_tail -= sizeof(struct kv_seperation_splice);
+			right_leaf->header.leaf_log_size += get_kv_seperated_splice_size();
+			leaf_log_tail -= get_kv_seperated_splice_size();
 			memcpy(leaf_log_tail, get_kv_offset(leaf, leaf_size, slot_array[i].index),
-			       sizeof(struct kv_seperation_splice));
+			       get_kv_seperated_splice_size());
 		}
 
 		right_leaf_slot_array[j].index = right_leaf->header.leaf_log_size;
@@ -632,8 +632,8 @@ int reorganize_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, uint32_t leaf_siz
 {
 	enum kv_category cat = req->metadata.cat;
 	uint32_t kv_size = (cat == BIG_INLOG || cat == MEDIUM_INLOG) ?
-				   sizeof(struct kv_seperation_splice) :
-				   (uint32_t)get_kv_size((struct kv_splice *)req->key_value_buf);
+				   get_kv_seperated_splice_size() :
+				   get_kv_size((struct kv_splice *)req->key_value_buf);
 
 	if (leaf->header.fragmentation <= kv_size || req->metadata.level_id != 0)
 		return 0;
@@ -667,12 +667,12 @@ int reorganize_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, uint32_t leaf_siz
 			leaf_log_tail -= key_buf_size;
 			memcpy(leaf_log_tail, key_buf, key_buf_size);
 		} else if (get_kv_format(slot_array[i].key_category) == KV_INLOG) {
-			leaf->header.leaf_log_size += sizeof(struct kv_seperation_splice);
-			leaf_log_tail -= sizeof(struct kv_seperation_splice);
+			leaf->header.leaf_log_size += get_kv_seperated_splice_size();
+			leaf_log_tail -= get_kv_seperated_splice_size();
 			assert(slot_array[i].key_category != SMALL_INPLACE &&
 			       slot_array[i].key_category != MEDIUM_INPLACE);
 			memcpy(leaf_log_tail, get_kv_offset(reorganize_buffer, leaf_size, slot_array[i].index),
-			       sizeof(struct kv_seperation_splice));
+			       get_kv_seperated_splice_size());
 		}
 
 		leaf_slot_array[i].index = leaf->header.leaf_log_size;
@@ -741,7 +741,7 @@ int8_t insert_in_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, bt_insert_req *
 		struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(leaf);
 		if (slot_array[bsearch.middle].key_category == BIG_INLOG ||
 		    slot_array[bsearch.middle].key_category == MEDIUM_INLOG)
-			leaf->header.fragmentation += sizeof(struct kv_seperation_splice);
+			leaf->header.fragmentation += get_kv_seperated_splice_size();
 		else {
 			char *kv = fill_keybuf(get_kv_offset(leaf, level->leaf_size, slot_array[bsearch.middle].index),
 					       get_kv_format(slot_array[bsearch.middle].key_category));

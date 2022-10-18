@@ -3,7 +3,6 @@
 #include <stdbool.h>
 #include <stdint.h>
 #define PREFIX_SIZE 12
-#define DELETE_MARKER_ID (INT32_MAX)
 #define GET_MIN_POSSIBLE_KV_SIZE() (sizeof(int32_t) + 1)
 
 // KVs in Parallax follow | key_size | value_size | key | value | layout
@@ -110,6 +109,10 @@ int32_t get_kv_seperated_value_size(struct kv_seperation_splice *kv_pair);
  * @param kv: a kv-seperated splice kv ptr
  */
 int32_t get_kv_seperated_kv_size(struct kv_seperation_splice *kv_pair);
+/**
+ * Returns the size of kv_seperation splice
+ */
+int32_t get_kv_seperated_splice_size(void);
 
 /**
   * Examines a KV pair to see if it is a delete marker

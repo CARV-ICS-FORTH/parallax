@@ -270,7 +270,7 @@ static void fill_compaction_scanner(struct level_scanner *level_sc, struct level
 		level_sc->keyValue = (char *)&level_sc->kv_entry;
 		level_sc->cat = slot_array[position].key_category;
 		level_sc->tombstone = slot_array[position].tombstone;
-		level_sc->kv_size = sizeof(struct kv_seperation_splice);
+		level_sc->kv_size = get_kv_seperated_splice_size();
 		level_sc->kv_format = KV_PREFIX;
 		break;
 	}

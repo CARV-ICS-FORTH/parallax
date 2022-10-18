@@ -207,7 +207,7 @@ static void calculate_metadata_offsets(uint32_t bitmap_entries, uint32_t slot_ar
 static void init_leaf_sizes_perlevel(level_descriptor *level)
 {
 	double kv_leaf_entry =
-		sizeof(struct kv_seperation_splice) + sizeof(struct bt_static_leaf_slot_array) + (1 / CHAR_BIT);
+		get_kv_seperated_splice_size() + sizeof(struct bt_static_leaf_slot_array) + (1 / CHAR_BIT);
 	double numentries_without_metadata = 0;
 	uint32_t bitmap_entries = 0;
 	uint32_t slot_array_entries = 0;
@@ -218,7 +218,7 @@ static void init_leaf_sizes_perlevel(level_descriptor *level)
 	slot_array_entries = numentries_without_metadata;
 	kv_entries = (level->leaf_size - sizeof(struct bt_static_leaf_node) - bitmap_entries -
 		      (slot_array_entries * sizeof(struct bt_static_leaf_slot_array))) /
-		     sizeof(struct kv_seperation_splice);
+		     get_kv_seperated_splice_size();
 	calculate_metadata_offsets(bitmap_entries, slot_array_entries, kv_entries, &level->leaf_offsets);
 }
 
@@ -1710,10 +1710,10 @@ int insert_KV_at_leaf(bt_insert_req *ins_req, node_header *leaf)
 
 		if (cat == MEDIUM_INPLACE && level_id == 0) {
 			__sync_fetch_and_add(&(ins_req->metadata.handle->db_desc->levels[level_id].level_size[tree_id]),
-					     sizeof(struct kv_seperation_splice));
+					     get_kv_seperated_splice_size());
 		} else if (measure_level_used_space || medium_inlog) {
 			__sync_fetch_and_add(&(ins_req->metadata.handle->db_desc->levels[level_id].level_size[tree_id]),
-					     sizeof(struct kv_seperation_splice));
+					     get_kv_seperated_splice_size());
 		} else {
 			__sync_fetch_and_add(&(ins_req->metadata.handle->db_desc->levels[level_id].level_size[tree_id]),
 					     get_kv_size((struct kv_splice *)ins_req->key_value_buf));

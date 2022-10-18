@@ -731,15 +731,15 @@ static int comp_append_medium_L1(struct comp_level_write_cursor *c, struct comp_
 	char *log_location = append_key_value_to_log(&log_op);
 	struct kv_splice *kv_inplace = (struct kv_splice *)in->kv_inplace;
 	if (get_key_size(kv_inplace) >= PREFIX_SIZE)
-		memcpy(out->kvsep.prefix, get_key_offset_in_kv(kv_inplace), PREFIX_SIZE);
+		memcpy(out->kv_sep.prefix, get_key_offset_in_kv(kv_inplace), PREFIX_SIZE);
 	else {
-		memset(out->kvsep.prefix, 0x00, PREFIX_SIZE);
-		memcpy(out->kvsep.prefix, get_key_offset_in_kv(kv_inplace), get_key_size(kv_inplace));
+		memset(out->kv_sep.prefix, 0x00, PREFIX_SIZE);
+		memcpy(out->kv_sep.prefix, get_key_offset_in_kv(kv_inplace), get_key_size(kv_inplace));
 	}
-	out->kvsep.dev_offt = (uint64_t)log_location;
+	out->kv_sep.dev_offt = (uint64_t)log_location;
 	out->kv_category = MEDIUM_INLOG;
 	out->kv_type = KV_INLOG;
-	out->kv_inlog = &out->kvsep;
+	out->kv_inlog = &out->kv_sep;
 	out->tombstone = 0;
 
 	return 1;
@@ -777,7 +777,7 @@ static void comp_append_entry_to_leaf_node(struct comp_level_write_cursor *curso
 		break;
 
 	case KV_INLOG:
-		kv_size = sizeof(struct kv_seperation_splice);
+		kv_size = get_kv_seperated_splice_size();
 		write_leaf_args.kv_dev_offt = curr_key->kv_inlog->dev_offt;
 		write_leaf_args.key_value_buf = (char *)curr_key->kv_inlog;
 		write_leaf_args.key_value_size = kv_size;
@@ -1147,7 +1147,7 @@ static void comp_fill_heap_node(struct compaction_request *comp_req, struct comp
 		// log_info("Prefix %.12s dev_offt %llu", cur->cursor_key.in_log->prefix,
 		//	 cur->cursor_key.in_log->device_offt);
 		nd->KV = (char *)cur->cursor_key.kv_inlog;
-		nd->kv_size = sizeof(struct kv_seperation_splice);
+		nd->kv_size = get_kv_seperated_splice_size();
 		break;
 	default:
 		log_fatal("UNKNOWN_LOG_CATEGORY");

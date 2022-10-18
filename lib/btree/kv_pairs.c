@@ -1,6 +1,9 @@
 #include "kv_pairs.h"
 #include <assert.h>
 #include <string.h>
+
+#define DELETE_MARKER_ID (INT32_MAX)
+
 inline int32_t get_key_size(struct kv_splice *kv_pair)
 {
 	return kv_pair->key_size;
@@ -81,6 +84,11 @@ inline int32_t get_kv_seperated_value_size(struct kv_seperation_splice *kv_pair)
 inline int32_t get_kv_seperated_kv_size(struct kv_seperation_splice *kv_pair)
 {
 	return get_kv_size((struct kv_splice *)kv_pair->dev_offt);
+}
+
+inline int32_t get_kv_seperated_splice_size(void)
+{
+	return sizeof(struct kv_seperation_splice);
 }
 
 inline bool is_tombstone_kv_pair(struct kv_splice *kv_pair)
