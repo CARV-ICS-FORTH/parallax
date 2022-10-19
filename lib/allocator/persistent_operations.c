@@ -326,7 +326,8 @@ void pr_unlock_db_superblock(struct db_descriptor *db_desc)
 
 void pr_flush_db_superblock(struct db_descriptor *db_desc)
 {
-	db_desc->db_superblock->last_lsn = db_desc->root_lsn;
+	int64_t last_lsn_id = lsn_factory_get_ticket(&db_desc->lsn_factory);
+	set_lsn_id(&db_desc->db_superblock->last_lsn, last_lsn_id);
 	uint64_t superblock_offt =
 		sizeof(struct superblock) + (sizeof(struct pr_db_superblock) * db_desc->db_superblock->id);
 	ssize_t total_bytes_written = 0;

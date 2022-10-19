@@ -413,7 +413,7 @@ static void init_fresh_logs(struct db_descriptor *db_desc)
 	seg_in_mem->segment_id = 0;
 	seg_in_mem->prev_segment = NULL;
 	seg_in_mem->next_segment = NULL;
-	reset_lsn(&db_desc->root_lsn);
+	db_desc->lsn_factory = lsn_factory_init(0);
 }
 
 static void init_fresh_db(struct db_descriptor *db_desc)
@@ -472,7 +472,8 @@ static void recover_logs(db_descriptor *db_desc)
 	db_desc->big_log.tail_dev_offt = db_desc->db_superblock->big_log_tail_offt;
 	db_desc->big_log.size = db_desc->db_superblock->big_log_size;
 	init_log_buffer(&db_desc->big_log, BIG_LOG);
-	db_desc->root_lsn = db_desc->db_superblock->last_lsn;
+	int64_t last_lsn_id = get_lsn_id(&db_desc->db_superblock->last_lsn);
+	db_desc->lsn_factory = lsn_factory_init(last_lsn_id);
 }
 
 static void restore_db(struct db_descriptor *db_desc, uint32_t region_idx)
@@ -1360,7 +1361,7 @@ static void *bt_append_to_log_direct_IO(struct log_operation *req, struct log_to
 	log_kv_entry_ticket.tail = log_metadata->log_desc->tail[tail_id % LOG_TAIL_NUM_BUFS];
 	log_kv_entry_ticket.log_offt = log_metadata->log_desc->size;
 
-	log_kv_entry_ticket.lsn = increase_lsn(&handle->db_desc->root_lsn);
+	log_kv_entry_ticket.lsn = increase_lsn(&handle->db_desc->lsn_factory);
 	/*Where we *will* store it on the device*/
 	struct segment_header *device_location = REAL_ADDRESS(log_metadata->log_desc->tail_dev_offt);
 	addr_inlog = (void *)((uint64_t)device_location + (log_metadata->log_desc->size % SEGMENT_SIZE));
