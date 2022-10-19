@@ -11,7 +11,7 @@ inline int64_t compare_lsns(struct lsn *left, struct lsn *right)
 	return left->id - right->id;
 }
 
-inline int64_t lsn_to_int64(struct lsn *lsn)
+inline int64_t get_lsn_id(struct lsn *lsn)
 {
 	return lsn->id;
 }

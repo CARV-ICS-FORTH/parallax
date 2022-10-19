@@ -1367,7 +1367,7 @@ static void *bt_append_to_log_direct_IO(struct log_operation *req, struct log_to
 
 	req->metadata->log_offset = log_metadata->log_desc->size;
 	req->metadata->put_op_metadata.offset_in_log = req->metadata->log_offset;
-	req->metadata->put_op_metadata.lsn = lsn_to_int64(&log_kv_entry_ticket.lsn);
+	req->metadata->put_op_metadata.lsn = get_lsn_id(&log_kv_entry_ticket.lsn);
 	log_metadata->log_desc->size += reserve_needed_space;
 	MUTEX_UNLOCK(&handle->db_desc->lock_log);
 

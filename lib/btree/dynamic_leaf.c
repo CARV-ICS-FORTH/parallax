@@ -118,7 +118,7 @@ struct find_result find_key_in_dynamic_leaf(const struct bt_dynamic_leaf_node *l
 					    uint32_t key_size, int level_id)
 {
 	bt_insert_req req;
-	char buf[MAX_KEY_SIZE + get_kv_metadata_size()];
+	char buf[MAX_KEY_SIZE];
 	struct dl_bsearch_result result = { .middle = 0, .status = INSERT, .op = DYNAMIC_LEAF_FIND };
 	struct find_result ret_result = { .kv = NULL, .key_type = KV_INPLACE, .kv_category = BIG_INLOG, .tombstone = 0 };
 	struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(leaf);

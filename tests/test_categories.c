@@ -11,11 +11,11 @@ int main(void)
 		exit(EXIT_FAILURE);
 	}
 	if (get_kv_category(5, 150, insertOp, &error_message) != MEDIUM_INPLACE) {
-		log_debug("A medium sized key is not labeled as MEDIUM_INPLACE");
+		log_fatal("A medium sized key is not labeled as MEDIUM_INPLACE");
 		exit(EXIT_FAILURE);
 	}
 	if (get_kv_category(5, 1500, insertOp, &error_message) != BIG_INLOG) {
-		log_debug("A large sized key is not labeled as BIG_INLOG");
+		log_fatal("A large sized key is not labeled as BIG_INLOG");
 		exit(EXIT_FAILURE);
 	}
 	return 0;

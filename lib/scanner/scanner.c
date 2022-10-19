@@ -400,8 +400,6 @@ int32_t level_scanner_seek(level_scanner *level_sc, void *start_key_buf, SEEK_SC
 	uint32_t level_id = level_sc->level_id;
 
 	struct pivot_key *start_key = start_key_buf;
-
-#define SMALLEST_POSSIBLE_PIVOT_SIZE 16
 	// cppcheck-suppress variableScope
 	char smallest_possible_pivot[SMALLEST_POSSIBLE_PIVOT_SIZE];
 	if (!start_key) {

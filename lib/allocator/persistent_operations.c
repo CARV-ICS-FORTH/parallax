@@ -353,7 +353,7 @@ static void pr_print_db_superblock(struct pr_db_superblock *superblock)
 		 superblock->medium_log_tail_offt, superblock->medium_log_size);
 	log_info("L0 L0_recovery_log log head_dev_offt: %lu tail_dev_offt: %lu size: %lu",
 		 superblock->small_log_head_offt, superblock->small_log_tail_offt, superblock->small_log_size);
-	log_info("latest LSN: %lu", lsn_to_int64(&superblock->last_lsn));
+	log_info("latest LSN: %lu", get_lsn_id(&superblock->last_lsn));
 	log_info("Recovery of L0_recovery_log starts from segment_dev_offt: %lu offt_in_seg: %lu",
 		 superblock->small_log_start_segment_dev_offt, superblock->small_log_offt_in_start_segment);
 	log_info("Recovery of Big log starts from segment_dev_offt: %lu offt_in_seg: %lu",
@@ -663,7 +663,7 @@ void prepare_cursor_op(struct log_cursor *cursor)
 	struct kv_splice *kv_pair = (struct kv_splice *)get_position_in_segment(cursor);
 
 	cursor->entry.par_kv = (struct kv_splice *)get_position_in_segment(cursor);
-	cursor->tombstone = is_tombstone_kv_pair(kv_pair) ? 1 : 0;
+	cursor->tombstone = is_tombstone_kv_pair(kv_pair);
 	cursor->offt_in_segment += get_kv_size(cursor->entry.par_kv);
 }
 

@@ -7,6 +7,8 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+#define SMALLEST_POSSIBLE_PIVOT_SIZE 16
+
 struct index_node;
 
 struct pivot_key {
