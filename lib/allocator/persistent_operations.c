@@ -811,7 +811,7 @@ start:
 	/*Advance cursor for future use*/
 	/*Are there enough bytes in segment?*/
 
-	uint32_t remaining_bytes_in_segment = 0;
+	int32_t remaining_bytes_in_segment = 0;
 	int is_tail = cursor->log_segments->segments[cursor->log_segments->entry_id] == cursor->log_tail_dev_offt;
 
 	remaining_bytes_in_segment = (uint64_t)SEGMENT_SIZE - ((uint64_t)cursor->offt_in_segment);
@@ -821,7 +821,7 @@ start:
 
 	char *pos_in_segment = get_position_in_segment(cursor);
 	struct kv_splice *kv_pair = (struct kv_splice *)pos_in_segment;
-	if (remaining_bytes_in_segment < GET_MIN_POSSIBLE_KV_SIZE() || 0 == get_key_size(kv_pair)) {
+	if (remaining_bytes_in_segment < get_min_possible_kv_size() || 0 == get_key_size(kv_pair)) {
 		cursor->offt_in_segment += remaining_bytes_in_segment;
 		get_next_log_segment(cursor);
 		goto start;

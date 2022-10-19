@@ -3,7 +3,6 @@
 #include <stdbool.h>
 #include <stdint.h>
 #define PREFIX_SIZE 12
-#define GET_MIN_POSSIBLE_KV_SIZE() (sizeof(int32_t) + 1)
 
 // KVs in Parallax follow | key_size | value_size | key | value | layout
 struct kv_splice {
@@ -131,5 +130,7 @@ void set_key_splice_key_offset(struct key_splice *key, char *key_buf);
 
 void serialize_key(char *buf, void *key, uint32_t key_size);
 void serialize_kv_splice_to_key_splice(char *buf, struct kv_splice *kv_pair);
+
+int32_t get_min_possible_kv_size(void);
 
 #endif // KV_PAIRS_H_
