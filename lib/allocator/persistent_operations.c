@@ -848,11 +848,10 @@ void recover_L0(struct db_descriptor *db_desc)
 	kvs[SMALL_LOG] = &cursor[SMALL_LOG]->entry;
 	kvs[BIG_LOG] = &cursor[BIG_LOG]->entry;
 
-	enum log_type choice = SMALL_LOG;
 	while (1) {
 		if (!cursor[SMALL_LOG]->valid && !cursor[BIG_LOG]->valid)
 			break;
-		choice = BIG_LOG;
+		enum log_type choice = BIG_LOG;
 		if (!cursor[SMALL_LOG]->valid)
 			choice = BIG_LOG;
 		else if (!cursor[BIG_LOG]->valid)

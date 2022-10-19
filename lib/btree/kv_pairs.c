@@ -133,11 +133,11 @@ void serialize_key(char *buf, void *key, uint32_t key_size)
 	set_key(kv_splice, (char *)key, key_size);
 }
 
-void serialize_kv_splice_to_key_splice(char *buf, struct kv_splice *kv)
+void serialize_kv_splice_to_key_splice(char *buf, struct kv_splice *kv_pair)
 {
 	struct key_splice *key_splice = (struct key_splice *)buf;
-	int32_t key_size = get_key_size(kv);
-	char *key = get_key_offset_in_kv(kv);
+	int32_t key_size = get_key_size(kv_pair);
+	char *key = get_key_offset_in_kv(kv_pair);
 	set_key_size_of_key_splice(key_splice, key_size);
 	memcpy(get_key_splice_key_offset(key_splice), key, key_size);
 }

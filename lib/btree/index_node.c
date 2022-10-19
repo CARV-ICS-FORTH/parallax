@@ -401,7 +401,7 @@ int index_key_cmp(struct pivot_key *index_key, char *lookup_key, enum KV_type lo
 	if (lookup_key_format == KV_FORMAT) {
 		struct kv_splice *key = (struct kv_splice *)lookup_key;
 		size = index_key->size <= get_key_size(key) ? index_key->size : get_key_size(key);
-		ret = memcmp(index_key->data, get_key_offset_in_kv(key), size);
+		ret = memcmp(get_offset_of_pivot_key(index_key), get_key_offset_in_kv(key), size);
 		return ret != 0 ? ret : index_key->size - get_key_size(key);
 	}
 
@@ -409,14 +409,14 @@ int index_key_cmp(struct pivot_key *index_key, char *lookup_key, enum KV_type lo
 		/* this should only(!) happend when we are inserting and new key into an index node (after a split) */
 		struct pivot_key *p_key = (struct pivot_key *)(lookup_key);
 		size = index_key->size <= p_key->size ? index_key->size : p_key->size;
-		ret = memcmp(index_key->data, p_key->data, size);
+		ret = memcmp(get_offset_of_pivot_key(index_key), get_offset_of_pivot_key(p_key), size);
 		return ret != 0 ? ret : index_key->size - p_key->size;
 	}
 
 	/* lookup_key is KEY_TYPE*/
 	struct key_splice *p_key = (struct key_splice *)(lookup_key);
 	size = index_key->size <= p_key->key_size ? index_key->size : p_key->key_size;
-	ret = memcmp(index_key->data, p_key->data, size);
+	ret = memcmp(get_offset_of_pivot_key(index_key), get_key_splice_key_offset(p_key), size);
 	return ret != 0 ? ret : index_key->size - p_key->key_size;
 }
 
@@ -425,7 +425,6 @@ int32_t get_pivot_key_size(struct pivot_key *pivot)
 	return pivot->size;
 }
 
-// cppcheck-suppress unusedFunction
 char *get_offset_of_pivot_key(struct pivot_key *pivot)
 {
 	return pivot->data;

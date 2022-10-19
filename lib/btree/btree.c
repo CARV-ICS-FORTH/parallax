@@ -285,34 +285,6 @@ void bt_done_with_value_log_address(struct log_descriptor *log_desc, struct bt_k
 }
 
 // cppcheck-suppress unusedFunction
-struct bt_kv_log_address bt_get_kv_medium_log_address(struct log_descriptor *log_desc, uint64_t dev_offt)
-{
-	struct bt_kv_log_address reply = { .addr = NULL, .tail_id = 0, .in_tail = UINT8_MAX };
-	assert(dev_offt != 0);
-	for (int i = 0; i < LOG_TAIL_NUM_BUFS; ++i) {
-		if (log_desc->tail[i]->free)
-			continue;
-
-		if (dev_offt >= log_desc->tail[i]->start && dev_offt <= log_desc->tail[i]->end) {
-			reply.in_tail = 1;
-			// log_info("KV at tail! offt %llu in the device or %llu", dev_offt,
-			// dev_offt % SEGMENT_SIZE);
-			reply.addr = &log_desc->tail[i]->buf[dev_offt % SEGMENT_SIZE];
-			reply.tail_id = i;
-			return reply;
-		}
-		// log_info("KV NOT at tail %d! DB: %s offt %llu start %llu end %llu", i,
-		// db_desc->db_name, dev_offt,
-		//	 db_desc->log_tail_buf[i]->start, db_desc->log_tail_buf[i]->end);
-	}
-
-	reply.in_tail = 0;
-	reply.addr = REAL_ADDRESS(dev_offt);
-	reply.tail_id = UINT8_MAX;
-	return reply;
-}
-
-// cppcheck-suppress unusedFunction
 void init_level_bloom_filters(db_descriptor *db_desc, int level_id, int tree_id)
 {
 #if ENABLE_BLOOM_FILTERS
@@ -1012,7 +984,8 @@ struct par_put_metadata insert_key_value(db_handle *handle, void *key, void *val
 	 * Note for L0 inserts since active_tree changes dynamically we decide which
 	 * is the active_tree after acquiring the guard lock of the region.
 	 */
-
+	// cppcheck-suppress uselessAssignmentPtrArg
+	// cppcheck-suppress unreadVariable
 	error_message = btree_insert_key_value(&ins_req);
 	return ins_req.metadata.put_op_metadata;
 }
@@ -1039,6 +1012,8 @@ struct par_put_metadata serialized_insert_key_value(db_handle *handle, const cha
 	}
 	ins_req.metadata.cat = calculate_KV_category(key_size, value_size, insertOp);
 
+	// cppcheck-suppress uselessAssignmentPtrArg
+	// cppcheck-suppress unreadVariable
 	error_message = btree_insert_key_value(&ins_req);
 	return ins_req.metadata.put_op_metadata;
 }
@@ -1730,7 +1705,7 @@ struct bt_rebalance_result split_leaf(bt_insert_req *req, leaf_node *node)
 	int level_id = req->metadata.level_id;
 
 	uint32_t leaf_size = req->metadata.handle->db_desc->levels[level_id].leaf_size;
-	// cppcheck-suppress legacyUninitvar
+	// cppcheck-suppression uninitvar
 	return split_functions[req->metadata.special_split]((struct bt_dynamic_leaf_node *)node, leaf_size, req);
 }
 

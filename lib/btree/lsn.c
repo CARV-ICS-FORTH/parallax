@@ -47,4 +47,3 @@ inline int64_t lsn_factory_get_ticket(struct lsn_factory *lsn_factory)
 {
 	return lsn_factory->ticket_id;
 }
-

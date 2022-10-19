@@ -96,6 +96,7 @@ void par_get(par_handle handle, struct par_key *key, struct par_value *value, co
 {
 	if (value == NULL) {
 		*error_message = "value cannot be NULL";
+		return;
 	}
 
 	/*Serialize user key in KV_FORMAT*/
@@ -115,10 +116,8 @@ void par_get(par_handle handle, struct par_key *key, struct par_value *value, co
 					   .tombstone = 0,
 					   .retrieve = 1 };
 
-	if (value->val_buffer != NULL) {
-		get_op.buffer_to_pack_kv = (char *)value->val_buffer;
-		get_op.size = value->val_buffer_size;
-	}
+	get_op.buffer_to_pack_kv = (char *)value->val_buffer;
+	get_op.size = value->val_buffer_size;
 
 	find_key(&get_op);
 	if (malloced)
