@@ -94,7 +94,6 @@ int8_t find_deleted_kv_pairs_in_segment(struct db_handle handle, struct gc_segme
 	struct kv_splice *kv = NULL;
 	int64_t checked_segment_chunk = get_lsn_size();
 	int64_t segment_data = LOG_DATA_OFFSET;
-	int garbage_collect_segment = 0;
 
 	iter_log_segment.log_segment_in_memory += get_lsn_size();
 	log_segment_in_device += get_lsn_size();
@@ -118,9 +117,7 @@ int8_t find_deleted_kv_pairs_in_segment(struct db_handle handle, struct gc_segme
 						   .retrieve = 0 };
 		find_key(&get_op);
 
-		if (!get_op.found || log_segment_in_device != get_op.key_device_address)
-			garbage_collect_segment = 1;
-		else
+		if (get_op.found && log_segment_in_device == get_op.key_device_address)
 			push_stack(marks, iter_log_segment.log_segment_in_memory);
 
 		if (kv->key_size) {
@@ -134,12 +131,9 @@ int8_t find_deleted_kv_pairs_in_segment(struct db_handle handle, struct gc_segme
 
 	assert(marks->size < STACK_SIZE);
 
-	if (garbage_collect_segment) {
-		move_kv_pairs_to_new_segment(handle, marks);
-		gc_executed = 1;
-		return 1;
-	}
-	return 0;
+	move_kv_pairs_to_new_segment(handle, marks);
+	gc_executed = 1;
+	return 1;
 }
 
 // read a segment and store it into segment_buf

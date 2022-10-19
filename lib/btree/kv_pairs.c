@@ -9,7 +9,6 @@ inline int32_t get_key_size(struct kv_splice *kv_pair)
 	return kv_pair->key_size;
 }
 
-// cppcheck-suppress unusedFunction
 inline int32_t get_key_size_with_metadata(struct kv_splice *kv_pair)
 {
 	return sizeof(kv_pair->key_size) + kv_pair->key_size;

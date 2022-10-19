@@ -50,9 +50,4 @@ struct lsn increase_lsn(struct lsn_factory *lsn_factory);
  * @param lsn_factory: a ptr to the lsn_factory from which we are retrieving its current value
  * */
 int64_t lsn_factory_get_ticket(struct lsn_factory *lsn_factory);
-/**
- * reset the factory's ticket(id) to 0
- * @param lsn_factory: a ptr to a struct lsn_factory
- * */
-void reset_lsn_factory(struct lsn_factory *lsn_factory);
 #endif
