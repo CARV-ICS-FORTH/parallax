@@ -36,6 +36,11 @@ void set_lsn_id(struct lsn *lsn, int64_t ticket);
  * */
 void reset_lsn(struct lsn *lsn);
 /**
+ * reset the lsn_factory ticket(id) to 0
+ * @param lsn_factory: a ptr to a struct lsn_factory
+ * */
+void reset_lsn_factory(struct lsn_factory *lsn_factory);
+/**
  * creates an lsn_factory object and initializes its starting ticket value with the param
  * @param starting_ticket: the starting point from which the factory will continue producing new tickets(id)
  * */

@@ -26,10 +26,16 @@ inline void reset_lsn(struct lsn *lsn)
 	lsn->id = 0;
 }
 
-struct lsn_factory lsn_factory_init(int64_t starting_ticket)
+inline struct lsn_factory lsn_factory_init(int64_t starting_ticket)
 {
 	struct lsn_factory new_lsn_factory = { .ticket_id = starting_ticket };
 	return new_lsn_factory;
+}
+
+// cppcheck-suppress unusedFunction
+inline void reset_lsn_factory(struct lsn_factory *lsn_factory)
+{
+	lsn_factory->ticket_id = 0;
 }
 
 inline int64_t lsn_factory_increase_ticket(struct lsn_factory *lsn_factory)
