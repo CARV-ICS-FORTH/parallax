@@ -16,6 +16,7 @@
 #include "../btree/kv_pairs.h"
 #include "../common/common.h"
 #include "btree.h"
+#include "btree_node.h"
 #include "conf.h"
 #include "index_node.h"
 #include "segment_allocator.h"

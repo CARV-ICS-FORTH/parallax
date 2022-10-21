@@ -16,7 +16,6 @@
 #include "../common/common.h"
 #include "conf.h"
 #include "parallax/structures.h"
-#include "set_options.h"
 #include <assert.h>
 #include <log.h>
 #include <stdio.h>

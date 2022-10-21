@@ -1,6 +1,5 @@
 #define _GNU_SOURCE
 #include "common.h"
-#include "common_macros.h"
 #include <execinfo.h>
 #include <log.h>
 #include <stdio.h>

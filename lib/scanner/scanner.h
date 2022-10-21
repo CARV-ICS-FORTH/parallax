@@ -10,11 +10,14 @@
 // distributed under the License is distributed on an "AS IS" BASIS,
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
-
-#pragma once
+#ifndef SCANNER_H
+#define SCANNER_H
 #include "../btree/btree.h"
+#include "../btree/btree_node.h"
 #include "../btree/conf.h"
+#include "../btree/kv_pairs.h"
 #include "min_max_heap.h"
+#include "parallax/structures.h"
 #include "stack.h"
 #include <stdbool.h>
 #include <stdint.h>
@@ -75,4 +78,5 @@ void close_compaction_buffer_scanner(level_scanner *level_sc);
 void close_dirty_scanner(scannerHandle *sc);
 #if MEASURE_SST_USED_SPACE
 void perf_measure_leaf_capacity(db_handle *hd, int level_id);
+#endif
 #endif

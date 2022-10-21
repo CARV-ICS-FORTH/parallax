@@ -16,9 +16,11 @@
 #define BTREE_H
 #include "../allocator/log_structures.h"
 #include "../allocator/volume_manager.h"
+#include "../common/common.h"
 #include "btree_node.h"
 #include "conf.h"
 #include "kv_pairs.h"
+#include "lsn.h"
 #include "parallax/structures.h"
 #include <stdbool.h>
 

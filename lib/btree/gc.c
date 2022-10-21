@@ -20,10 +20,13 @@
 #include "../common/common.h"
 #include "btree.h"
 #include "conf.h"
+#include "lsn.h"
+#include "parallax/structures.h"
 #include <assert.h>
 #include <list.h>
 #include <log.h>
 #include <pthread.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>

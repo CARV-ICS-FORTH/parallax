@@ -21,7 +21,7 @@
  * This is the interface for a stack of characters.
  */
 #pragma once
-#include "../btree/btree.h"
+#include "../btree/btree_node.h"
 #include "../btree/index_node.h"
 #include <stdint.h>
 #define MAX_SIZE 64

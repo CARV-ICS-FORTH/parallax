@@ -15,6 +15,7 @@
 #define _GNU_SOURCE
 #include "../btree/btree.h"
 #include "../btree/conf.h"
+#include "../btree/lsn.h"
 #include "../common/common.h"
 #include "../utilities/list.h"
 #include "device_structures.h"

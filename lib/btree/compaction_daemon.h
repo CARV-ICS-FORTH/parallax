@@ -1,8 +1,11 @@
-#ifndef COMPACTION_DAEMON_H_
-#define COMPACTION_DAEMON_H_
+#ifndef COMPACTION_DAEMON_H
+#define COMPACTION_DAEMON_H
 #include "btree.h"
+#include "btree_node.h"
 #include "conf.h"
 #include "dynamic_leaf.h"
+#include "kv_pairs.h"
+#include "parallax/structures.h"
 #include <stdint.h>
 #include <uthash.h>
 

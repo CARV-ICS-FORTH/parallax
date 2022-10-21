@@ -1,5 +1,4 @@
 #include "kv_pairs.h"
-#include <assert.h>
 #include <string.h>
 
 #define DELETE_MARKER_ID (INT32_MAX)
