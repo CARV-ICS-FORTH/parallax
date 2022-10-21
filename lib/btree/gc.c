@@ -20,7 +20,6 @@
 #include "../common/common.h"
 #include "btree.h"
 #include "conf.h"
-#include "set_options.h"
 #include <assert.h>
 #include <list.h>
 #include <log.h>

@@ -14,8 +14,6 @@
 #include "index_node.h"
 #include "../btree/kv_pairs.h"
 #include "../common/common.h"
-#include "btree.h"
-#include "segment_allocator.h"
 #include <assert.h>
 #include <log.h>
 #include <stdbool.h>
