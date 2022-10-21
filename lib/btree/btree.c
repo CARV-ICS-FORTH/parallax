@@ -26,10 +26,8 @@
 #include "index_node.h"
 #include "lsn.h"
 #include "segment_allocator.h"
-#include "set_options.h"
 
 #include <assert.h>
-#include <inttypes.h>
 #include <list.h>
 #include <log.h>
 #include <pthread.h>
