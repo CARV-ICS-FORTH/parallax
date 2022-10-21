@@ -380,21 +380,10 @@ typedef struct bt_insert_req {
 	uint64_t kv_dev_offt;
 } bt_insert_req;
 
-typedef struct bt_delete_request {
-	bt_mutate_req metadata;
-	struct index_node *parent;
-	struct leaf_node *self;
-	uint64_t offset; /*offset in my parent*/
-	void *key_buf;
-} bt_delete_request;
-
 typedef struct log_operation {
 	bt_mutate_req *metadata;
 	request_type optype_tolog;
-	union {
-		bt_insert_req *ins_req;
-		bt_delete_request *del_req;
-	};
+	bt_insert_req *ins_req;
 } log_operation;
 
 /**
