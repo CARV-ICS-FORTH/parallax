@@ -1280,10 +1280,6 @@ static void *bt_append_to_log_direct_IO(struct log_operation *req, struct log_to
 
 	uint32_t num_chunks = SEGMENT_SIZE / LOG_CHUNK_SIZE;
 	int segment_change = 0;
-	//log_info("Direct IO in log kv size is %u log size %u avail space %u", data_size->kv_size,
-	//	 log_metadata->log_desc->size, available_space_in_log);
-	if (req->metadata->tombstone)
-		reserve_needed_space = get_lsn_size() + sizeof(struct bt_delete_marker) + data_size->key_len;
 
 	if (available_space_in_log < reserve_needed_space) {
 		uint32_t curr_tail_id = log_metadata->log_desc->curr_tail_id;

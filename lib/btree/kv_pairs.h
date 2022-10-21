@@ -48,7 +48,7 @@ int32_t get_value_size_with_metadata(struct kv_splice *kv_pair);
  */
 int32_t get_kv_metadata_size(void);
 /**
- * Calculates the kv size given a splice formated kv
+ * Calculates the key value pair size (with its metadata) for KV_FORMAT
  * @param kv: a spliced (KV_FORMATED) kv ptr
  */
 int32_t get_kv_size(struct kv_splice *kv_pair);

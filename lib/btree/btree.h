@@ -442,12 +442,6 @@ typedef struct metadata_tologop {
 	uint32_t kv_size;
 } metadata_tologop;
 
-struct bt_delete_marker {
-	uint32_t marker_id;
-	uint32_t key_size;
-	char key[];
-};
-
 struct par_put_metadata insert_key_value(db_handle *handle, void *key, void *value, int32_t key_size,
 					 int32_t value_size, request_type op_type, const char *error_message);
 
