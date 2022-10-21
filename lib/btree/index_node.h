@@ -18,7 +18,6 @@
 #include "kv_pairs.h"
 #include <stdbool.h>
 #include <stdint.h>
-#include <stdlib.h>
 
 #define SMALLEST_POSSIBLE_PIVOT_SIZE 16
 
