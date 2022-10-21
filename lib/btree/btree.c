@@ -1771,7 +1771,7 @@ static uint8_t concurrent_insert(bt_insert_req *ins_req)
 {
 	/*The array with the locks that belong to this thread from upper levels*/
 	lock_table *upper_level_nodes[MAX_HEIGHT];
-	struct bt_rebalance_result split_res;
+
 	lock_table *lock = NULL;
 
 	db_descriptor *db_desc = ins_req->metadata.handle->db_desc;
@@ -1839,9 +1839,25 @@ release_and_retry:
 	while (1) {
 		/*Check if father is safe it should be*/
 		if (is_split_needed(son, ins_req, db_desc->levels[level_id].leaf_size)) {
+			struct bt_rebalance_result split_res = { 0 };
 			/*Overflow split for index nodes*/
 			if (son->height > 0) {
-				split_res = index_split_node((struct index_node *)son, ins_req);
+				split_res.left_child = (struct node_header *)seg_get_index_node(
+					ins_req->metadata.handle->db_desc, ins_req->metadata.level_id,
+					ins_req->metadata.tree_id, 0);
+
+				split_res.right_child = (node_header *)seg_get_index_node(
+					ins_req->metadata.handle->db_desc, ins_req->metadata.level_id,
+					ins_req->metadata.tree_id, 0);
+
+				struct index_node_split_request index_split_req = {
+					.node = (struct index_node *)son,
+					.left_child = (struct index_node *)split_res.left_child,
+					.right_child = (struct index_node *)split_res.right_child
+				};
+				struct index_node_split_reply index_split_rep = { .pivot_buf = split_res.middle_key,
+										  .pivot_buf_size = MAX_KEY_SIZE };
+				index_split_node(&index_split_req, &index_split_rep);
 				/*node has splitted, free it*/
 				seg_free_index_node(ins_req->metadata.handle->db_desc, level_id,
 						    ins_req->metadata.tree_id, (struct index_node *)son);

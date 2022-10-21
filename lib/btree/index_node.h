@@ -1,3 +1,16 @@
+// Copyright [2021] [FORTH-ICS]
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 #ifndef INDEX_NODE_H
 #define INDEX_NODE_H
 #include "../common/common.h"
@@ -32,6 +45,17 @@ struct insert_pivot_req {
 	struct pivot_pointer *left_child;
 	struct pivot_key *key;
 	struct pivot_pointer *right_child;
+};
+
+struct index_node_split_request {
+	struct index_node *node;
+	struct index_node *left_child;
+	struct index_node *right_child;
+};
+
+struct index_node_split_reply {
+	char *pivot_buf;
+	uint32_t pivot_buf_size;
 };
 
 struct index_slot_array_entry {
@@ -143,7 +167,7 @@ uint64_t index_binary_search(struct index_node *node, void *lookup_key, enum KV_
 /**
  * Splits an index node into two child index nodes.
  */
-struct bt_rebalance_result index_split_node(struct index_node *node, bt_insert_req *ins_req);
+void index_split_node(struct index_node_split_request *request, struct index_node_split_reply *reply);
 
 /**
  * Iterators for parsing index nodes. Compaction, scanner, and other future

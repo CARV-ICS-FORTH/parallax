@@ -19,6 +19,7 @@
   * index_node and check correctness for its children.
 **/
 
+#include "btree/segment_allocator.h"
 #include "parallax/structures.h"
 #include <btree/btree.h>
 #define ALPHABET_SIZE 26
@@ -147,9 +148,16 @@ static uint32_t insert_and_verify_pivots(db_handle *handle, unsigned char *alpha
 
 	log_info("Now testing splits ...");
 
-	bt_insert_req ins_req = { 0 };
-	ins_req.metadata.handle = handle;
-	struct bt_rebalance_result split_res = index_split_node(node, &ins_req);
+	struct bt_rebalance_result split_res = {
+		.left_child = (struct node_header *)seg_get_index_node(handle->db_desc, 0, 0, 0),
+		.right_child = (struct node_header *)seg_get_index_node(handle->db_desc, 0, 0, 0)
+	};
+	struct index_node_split_request request = { .node = node,
+						    .left_child = (struct index_node *)split_res.left_child,
+						    .right_child = (struct index_node *)split_res.right_child };
+	struct index_node_split_reply reply = { .pivot_buf = split_res.middle_key, .pivot_buf_size = MAX_KEY_SIZE };
+
+	index_split_node(&request, &reply);
 
 	log_info("Testing left child... num entries: %d", split_res.left_child->num_entries);
 	verify_pivots((struct index_node *)split_res.left_child, pivot, split_res.left_child->num_entries - 1,

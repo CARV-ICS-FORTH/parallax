@@ -1,3 +1,16 @@
+// Copyright [2021] [FORTH-ICS]
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 #include "index_node.h"
 #include "../btree/kv_pairs.h"
 #include "../common/common.h"
@@ -331,22 +344,22 @@ struct pivot_key *index_iterator_get_pivot_key(struct index_node_iterator *itera
 	return iterator->key;
 }
 
-struct bt_rebalance_result index_split_node(struct index_node *node, bt_insert_req *ins_req)
+void index_split_node(struct index_node_split_request *request, struct index_node_split_reply *reply)
 {
-	struct bt_rebalance_result result = { 0 };
+	// struct bt_rebalance_result result = { 0 };
 
-	result.left_child = (struct node_header *)seg_get_index_node(
-		ins_req->metadata.handle->db_desc, ins_req->metadata.level_id, ins_req->metadata.tree_id, 0);
+	// result.left_child = (struct node_header *)seg_get_index_node(
+	// 	ins_req->metadata.handle->db_desc, ins_req->metadata.level_id, ins_req->metadata.tree_id, 0);
 
 	struct index_node_iterator iterator = { 0 };
-	index_iterator_init(node, &iterator);
+	index_iterator_init(request->node, &iterator);
 	struct pivot_key *piv_key = index_iterator_get_pivot_key(&iterator);
-	index_init_node(DO_NOT_ADD_GUARD, (struct index_node *)result.left_child, internalNode);
+	index_init_node(DO_NOT_ADD_GUARD, request->left_child, internalNode);
 
 	int32_t curr_entry = 0;
 
-	while (index_iterator_is_valid(&iterator) && curr_entry < node->header.num_entries / 2) {
-		struct insert_pivot_req ins_pivot_req = { .node = (struct index_node *)result.left_child,
+	while (index_iterator_is_valid(&iterator) && curr_entry < request->node->header.num_entries / 2) {
+		struct insert_pivot_req ins_pivot_req = { .node = request->left_child,
 							  .key = piv_key,
 							  .right_child = index_get_pivot_pointer(piv_key) };
 
@@ -358,22 +371,28 @@ struct bt_rebalance_result index_split_node(struct index_node *node, bt_insert_r
 		piv_key = index_iterator_get_pivot_key(&iterator);
 	}
 
-	struct index_slot_array_entry *slot_array = index_get_slot_array(node);
-	struct pivot_key *middle_key = (struct pivot_key *)INDEX_PIVOT_ADDRESS(node, slot_array[curr_entry].pivot);
-	memcpy(&result.middle_key, middle_key, PIVOT_KEY_SIZE(middle_key));
+	struct index_slot_array_entry *slot_array = index_get_slot_array(request->node);
+	struct pivot_key *middle_key =
+		(struct pivot_key *)INDEX_PIVOT_ADDRESS(request->node, slot_array[curr_entry].pivot);
+	// memcpy(&middle_key, middle_key, PIVOT_KEY_SIZE(middle_key));
+	if (reply->pivot_buf_size < PIVOT_KEY_SIZE(middle_key)) {
+		log_fatal("Buffer overflow in split index node");
+		_exit(EXIT_FAILURE);
+	}
+	memcpy(reply->pivot_buf, middle_key, PIVOT_KEY_SIZE(middle_key));
 
-	result.right_child = (node_header *)seg_get_index_node(
-		ins_req->metadata.handle->db_desc, ins_req->metadata.level_id, ins_req->metadata.tree_id, 0);
+	// result.right_child = (node_header *)seg_get_index_node(
+	// 	ins_req->metadata.handle->db_desc, ins_req->metadata.level_id, ins_req->metadata.tree_id, 0);
 
-	index_init_node(DO_NOT_ADD_GUARD, (struct index_node *)result.right_child, internalNode);
+	index_init_node(DO_NOT_ADD_GUARD, (struct index_node *)request->right_child, internalNode);
 	struct pivot_pointer *pivotp = index_get_pivot_pointer(middle_key);
-	index_add_guard((struct index_node *)result.right_child, pivotp->child_offt);
+	index_add_guard(request->right_child, pivotp->child_offt);
 
 	++curr_entry;
-	while (index_iterator_is_valid(&iterator) && curr_entry < node->header.num_entries) {
+	while (index_iterator_is_valid(&iterator) && curr_entry < request->node->header.num_entries) {
 		piv_key = index_iterator_get_pivot_key(&iterator);
 
-		struct insert_pivot_req ins_pivot_req = { .node = (struct index_node *)result.right_child,
+		struct insert_pivot_req ins_pivot_req = { .node = (struct index_node *)request->right_child,
 							  .key = piv_key,
 							  .right_child = index_get_pivot_pointer(piv_key) };
 
@@ -383,13 +402,13 @@ struct bt_rebalance_result index_split_node(struct index_node *node, bt_insert_r
 		}
 		++curr_entry;
 	}
-	assert(curr_entry == node->header.num_entries);
+	assert(curr_entry == request->node->header.num_entries);
 
 	/*set node heights*/
-	result.left_child->height = node->header.height;
-	result.right_child->height = node->header.height;
-	result.stat = INDEX_NODE_SPLITTED;
-	return result;
+	request->left_child->header.height = request->node->header.height;
+	request->right_child->header.height = request->node->header.height;
+	// result.stat = INDEX_NODE_SPLITTED;
+	// return result;
 }
 
 int index_key_cmp(struct pivot_key *index_key, char *lookup_key, enum KV_type lookup_key_format)
