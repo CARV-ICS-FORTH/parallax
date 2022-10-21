@@ -3,6 +3,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #define PREFIX_SIZE 12
+enum KV_type { KV_FORMAT, KV_PREFIX, INDEX_KEY_TYPE, KEY_TYPE };
 
 // KVs in Parallax follow | key_size | value_size | key | value | layout
 struct kv_splice {

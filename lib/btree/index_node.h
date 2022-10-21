@@ -1,8 +1,8 @@
 #ifndef INDEX_NODE_H
 #define INDEX_NODE_H
 #include "../common/common.h"
-#include "btree.h"
-#include "conf.h"
+#include "btree_node.h"
+#include "kv_pairs.h"
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>

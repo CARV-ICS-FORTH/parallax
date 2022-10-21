@@ -33,8 +33,6 @@
 #define PREFIX_SIZE 12
 #define MAX_HEIGHT 9
 
-enum KV_type { KV_FORMAT, KV_PREFIX, INDEX_KEY_TYPE, KEY_TYPE };
-
 struct lookup_operation {
 	struct db_descriptor *db_desc; /*in variable*/
 	char *key_buf; /*in variable*/
