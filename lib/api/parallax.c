@@ -22,10 +22,8 @@
 #include <log.h>
 #include <stddef.h>
 #include <stdint.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 #define PAR_MAX_PREALLOCATED_SIZE 256
 #define NUM_OF_OPTIONS 5
 

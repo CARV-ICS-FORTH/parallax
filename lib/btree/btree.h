@@ -16,7 +16,7 @@
 #define BTREE_H
 #include "../allocator/log_structures.h"
 #include "../allocator/volume_manager.h"
-#include "../include/parallax/parallax.h"
+#include "btree_node.h"
 #include "conf.h"
 #include "kv_pairs.h"
 #include "parallax/structures.h"
@@ -48,15 +48,6 @@ struct lookup_operation {
 };
 
 enum db_status { DB_START_COMPACTION_DAEMON, DB_OPEN, DB_TERMINATE_COMPACTION_DAEMON, DB_IS_CLOSING };
-
-typedef enum {
-	leafNode = 590675399,
-	internalNode = 790393380,
-	rootNode = 742729384,
-	leafRootNode = 748939994, /*special case for a newly created tree*/
-	paddedSpace = 55400000,
-	invalid
-} nodeType_t;
 
 /*descriptor describing a compaction operation and its current status*/
 typedef enum {
