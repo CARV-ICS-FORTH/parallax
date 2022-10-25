@@ -12,6 +12,7 @@
 #include "../btree/conf.h"
 #include "arg_parser.h"
 #include <assert.h>
+#include <btree/gc.h>
 #include <db.h>
 #include <log.h>
 #include <parallax/parallax.h>
@@ -59,7 +60,7 @@ static void generate_random_value(char *value_buffer, uint32_t value_size, uint3
 static void put_workload(struct workload_config_t *workload_config)
 {
 	log_info("Starting population for %lu keys...", workload_config->total_keys);
-	char *error_message = NULL;
+	const char *error_message = NULL;
 	unsigned char key_buffer[MY_MAX_KEY_SIZE] = { 0 };
 	unsigned char value_buffer[MAX_KV_PAIR_SIZE] = { 0 };
 	uint64_t unique_keys = 0;
@@ -110,7 +111,8 @@ static void put_workload(struct workload_config_t *workload_config)
 
 static void locate_key(par_handle handle, DBT lookup_key)
 {
-	par_scanner scanner = par_init_scanner(handle, NULL, PAR_FETCH_FIRST);
+	const char *error_message = NULL;
+	par_scanner scanner = par_init_scanner(handle, NULL, PAR_FETCH_FIRST, &error_message);
 	while (par_is_valid(scanner)) {
 		struct par_key fetched_key = par_get_key(scanner);
 
@@ -130,7 +132,7 @@ static void locate_key(par_handle handle, DBT lookup_key)
 static void get_workload(struct workload_config_t *workload_config)
 {
 	log_info("Testing GETS now");
-	char *error_message = NULL;
+	const char *error_message = NULL;
 	DBC *cursorp = NULL;
 	DBT key = { 0 };
 	DBT data = { 0 };
@@ -163,7 +165,8 @@ static void get_workload(struct workload_config_t *workload_config)
 			_exit(EXIT_FAILURE);
 		}
 		free(value.val_buffer);
-		++unique_keys;
+		if (0 == ++unique_keys % 10000)
+			log_info("Progress: Retrieved %lu keys", unique_keys);
 	}
 	log_debug("KV pairs found are %lu", unique_keys);
 	if (ret != DB_NOTFOUND) {
@@ -178,7 +181,8 @@ static void get_workload(struct workload_config_t *workload_config)
 static void scan_workload(struct workload_config_t *workload_config)
 {
 	log_info("Now, testing SCANS");
-	par_scanner scanner = par_init_scanner(workload_config->handle, NULL, PAR_FETCH_FIRST);
+	const char *error_message = NULL;
+	par_scanner scanner = par_init_scanner(workload_config->handle, NULL, PAR_FETCH_FIRST, &error_message);
 	uint64_t unique_keys = 0;
 	for (; par_is_valid(scanner); ++unique_keys)
 		par_get_next(scanner);
@@ -189,6 +193,54 @@ static void scan_workload(struct workload_config_t *workload_config)
 		_exit(EXIT_FAILURE);
 	}
 	log_info("Testing SCANS Successful");
+}
+
+static void delete_workload(struct workload_config_t *workload_config)
+{
+	log_info("Now, testing Deletes");
+
+	const char *error_message = NULL;
+	DBC *cursorp = NULL;
+	DBT key = { 0 };
+	DBT data = { 0 };
+	/* Database open omitted for clarity */
+	/* Get a cursor */
+	workload_config->truth->cursor(workload_config->truth, NULL, &cursorp, 0);
+
+	int ret = cursorp->get(cursorp, &key, &data, DB_NEXT);
+	for (; ret == 0; ret = cursorp->get(cursorp, &key, &data, DB_NEXT)) {
+		struct par_key par_key = { .size = key.size, .data = key.data };
+		par_delete(workload_config->handle, &par_key, &error_message);
+		if (error_message) {
+			log_fatal("Key is size: %u data: %.*s deletion failed!", key.size, key.size, (char *)key.data);
+			_exit(EXIT_FAILURE);
+		}
+	}
+	cursorp->close(cursorp);
+	/*Verify that all deleted keys cannot be found through par_get() operation*/
+	uint64_t keys_checked = 0;
+	workload_config->truth->cursor(workload_config->truth, NULL, &cursorp, 0);
+	ret = cursorp->get(cursorp, &key, &data, DB_NEXT);
+	for (; ret == 0; ret = cursorp->get(cursorp, &key, &data, DB_NEXT)) {
+		struct par_key par_key = { .size = key.size, .data = key.data };
+		struct par_value value = { 0 };
+
+		if (0 == ++keys_checked % 10000)
+			log_info("Progress: Checked %lu keys", keys_checked);
+
+		par_get(workload_config->handle, &par_key, &value, &error_message);
+		if (error_message) {
+			error_message = NULL;
+			continue;
+		}
+		log_fatal(
+			"Key is size: %u data: %.*s value size %u found! (It shouldn't since we have deleted it!) keys checked so far %lu",
+			key.size, key.size, (char *)key.data, data.size, keys_checked);
+		_exit(EXIT_FAILURE);
+	}
+	workload_config->total_keys = 0;
+	scan_workload(workload_config);
+	log_info("Test Deletes Successful");
 }
 
 int main(int argc, char **argv)
@@ -242,7 +294,7 @@ int main(int argc, char **argv)
 		return (ret);
 	}
 
-	char *error_message = par_format(db_options.volume_name, 16);
+	const char *error_message = par_format(db_options.volume_name, 16);
 	if (error_message) {
 		log_fatal("Error message from par_format: %s", error_message);
 		exit(EXIT_FAILURE);
@@ -262,6 +314,8 @@ int main(int argc, char **argv)
 	get_workload(&workload_config);
 
 	scan_workload(&workload_config);
+
+	delete_workload(&workload_config);
 
 	error_message = par_close(hd);
 	if (error_message) {

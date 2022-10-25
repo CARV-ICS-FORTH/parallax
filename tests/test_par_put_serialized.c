@@ -1,5 +1,6 @@
 #include "arg_parser.h"
-#include "log.h"
+#include <btree/kv_pairs.h>
+#include <log.h>
 #include <parallax/parallax.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -22,10 +23,9 @@ int main(int argc, char *argv[])
 	arg_print_options(help_flag, options, options_len);
 
 	char *path = get_option(options, 1);
-	char *error_message = par_format(path, MAX_REGIONS);
+	const char *error_message = par_format(path, MAX_REGIONS);
 	if (error_message) {
 		log_fatal("%s", error_message);
-		free(error_message);
 		return EXIT_FAILURE;
 	}
 
@@ -36,24 +36,19 @@ int main(int argc, char *argv[])
 	par_handle handle = par_open(&db_options, &error_message);
 	if (error_message) {
 		log_fatal("%s", error_message);
-		free(error_message);
 		return EXIT_FAILURE;
 	}
 
 	char serialized_key_value[1024] = { 0 };
-	char *serialize_kv = serialized_key_value;
-	*(uint32_t *)serialize_kv = 10;
-	serialize_kv += 4;
-	strcpy(serialize_kv, "abcdabcda");
-	serialize_kv += 10;
-	*(uint32_t *)serialize_kv = 1;
-	serialize_kv += 4;
-	*serialize_kv = 'a';
+	struct kv_splice *serialized_kv = (struct kv_splice *)serialized_key_value;
+	set_key_size(serialized_kv, 10);
+	set_value_size(serialized_kv, 2);
+	set_key(serialized_kv, "abcdabcda", 10);
+	set_value(serialized_kv, "a", 2);
 
 	par_put_serialized(handle, serialized_key_value, &error_message);
 	if (error_message) {
 		log_fatal("%s", error_message);
-		free(error_message);
 		return EXIT_FAILURE;
 	}
 
@@ -61,7 +56,6 @@ int main(int argc, char *argv[])
 
 	if (error_message) {
 		log_fatal("%s", error_message);
-		free(error_message);
 		return EXIT_FAILURE;
 	}
 	return EXIT_SUCCESS;

@@ -12,12 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#pragma once
+#ifndef BTREE_H
+#define BTREE_H
 #include "../allocator/log_structures.h"
 #include "../allocator/volume_manager.h"
 #include "../common/common.h"
-#include "../include/parallax/parallax.h"
+#include "btree_node.h"
 #include "conf.h"
+#include "kv_pairs.h"
+#include "lsn.h"
 #include "parallax/structures.h"
 #include <stdbool.h>
 
@@ -30,17 +33,14 @@
 #include <stdint.h>
 #include <stdlib.h>
 #define PREFIX_SIZE 12
-
 #define MAX_HEIGHT 9
-
-enum KV_type { KV_FORMAT = 19, KV_PREFIX = 20 };
 
 struct lookup_operation {
 	struct db_descriptor *db_desc; /*in variable*/
-	char *kv_buf; /*in variable*/
+	char *key_buf; /*in variable*/
 	char *buffer_to_pack_kv; /*in-out variable*/
 	char *key_device_address; /*out variable*/
-	uint32_t size; /*in-out variable*/
+	int32_t size; /*in-out variable*/
 	uint8_t buffer_overflow : 1; /*out variable*/
 	uint8_t found : 1; /*out variable*/
 	uint8_t tombstone : 1;
@@ -48,15 +48,6 @@ struct lookup_operation {
 };
 
 enum db_status { DB_START_COMPACTION_DAEMON, DB_OPEN, DB_TERMINATE_COMPACTION_DAEMON, DB_IS_CLOSING };
-
-typedef enum {
-	leafNode = 590675399,
-	internalNode = 790393380,
-	rootNode = 742729384,
-	leafRootNode = 748939994, /*special case for a newly created tree*/
-	paddedSpace = 55400000,
-	invalid
-} nodeType_t;
 
 /*descriptor describing a compaction operation and its current status*/
 typedef enum {
@@ -85,32 +76,6 @@ typedef struct IN_log_header {
 	void *next;
 } IN_log_header;
 
-/*leaf or internal node metadata, place always in the first 4KB data block*/
-typedef struct node_header {
-	/*internal or leaf node*/
-	nodeType_t type;
-	/*0 are leaves, 1 are Bottom Internal nodes, and then we have
-  INs and root*/
-	int32_t height;
-	uint64_t fragmentation;
-	union {
-		/*data log info, KV log for leaves private for index*/
-		/* Used by index nodes */
-		uint64_t key_log_size;
-		/* Used in dynamic leaves */
-		uint32_t leaf_log_size;
-	};
-	int32_t num_entries;
-	/*pad to be exacly one cache line*/
-	char pad[36];
-
-} __attribute__((packed)) node_header;
-
-struct bt_leaf_entry {
-	char prefix[PREFIX_SIZE];
-	uint64_t dev_offt;
-} __attribute__((packed));
-
 struct bt_leaf_entry_bitmap {
 	unsigned char bitmap; // This bitmap informs us which kv_entry is available to store data in the static leaf.
 };
@@ -138,7 +103,7 @@ struct key_compare {
 #define LEAF_NODE_REMAIN (LEAF_NODE_SIZE - sizeof(struct node_header))
 
 #define LN_ITEM_SIZE (sizeof(uint64_t) + (PREFIX_SIZE * sizeof(char)))
-#define KV_LEAF_ENTRY (sizeof(struct bt_leaf_entry) + sizeof(struct bt_static_leaf_slot_array) + (1 / CHAR_BIT))
+#define KV_LEAF_ENTRY (sizeof(struct kv_seperation_splice) + sizeof(struct bt_static_leaf_slot_array) + (1 / CHAR_BIT))
 #define LN_LENGTH ((LEAF_NODE_REMAIN) / (KV_LEAF_ENTRY))
 
 struct kv_format {
@@ -246,7 +211,6 @@ struct bt_kv_log_address {
 	uint8_t tail_id;
 };
 
-struct bt_kv_log_address bt_get_kv_medium_log_address(struct log_descriptor *log_desc, uint64_t dev_offt);
 struct bt_kv_log_address bt_get_kv_log_address(struct log_descriptor *log_desc, uint64_t dev_offt);
 void bt_done_with_value_log_address(struct log_descriptor *log_desc, struct bt_kv_log_address *L);
 
@@ -287,7 +251,7 @@ typedef struct db_descriptor {
 	struct log_descriptor big_log;
 	struct log_descriptor medium_log;
 	struct log_descriptor small_log;
-	uint64_t lsn;
+	struct lsn_factory lsn_factory;
 	// A hash table containing every segment that has at least 1 byte of garbage data in the large log.
 	struct large_log_segment_gc_entry *segment_ht;
 	uint64_t gc_last_segment_id;
@@ -347,8 +311,8 @@ void pr_flush_L0(struct db_descriptor *db_desc, uint8_t tree_id);
 void pr_flush_compaction(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id);
 
 /*management operations*/
-db_handle *db_open(par_db_options *db_options, char **error_message);
-char *db_close(db_handle *handle);
+db_handle *db_open(par_db_options *db_options, const char **error_message);
+const char *db_close(db_handle *handle);
 
 void *compaction_daemon(void *args);
 
@@ -356,7 +320,7 @@ typedef struct bt_mutate_req {
 	struct par_put_metadata put_op_metadata;
 	db_handle *handle;
 	uint64_t *reorganized_leaf_pos_INnode;
-	char *error_message;
+	const char *error_message;
 	/*offset in log where the kv was written*/
 	uint64_t log_offset;
 	/*info for cases of segment_full_event*/
@@ -365,7 +329,6 @@ typedef struct bt_mutate_req {
 	uint64_t segment_id;
 	uint64_t end_of_log;
 	uint32_t log_padding;
-	uint32_t kv_size;
 	enum kv_category cat;
 	uint8_t level_id;
 	/*only for inserts >= level_1*/
@@ -387,21 +350,10 @@ typedef struct bt_insert_req {
 	uint64_t kv_dev_offt;
 } bt_insert_req;
 
-typedef struct bt_delete_request {
-	bt_mutate_req metadata;
-	struct index_node *parent;
-	struct leaf_node *self;
-	uint64_t offset; /*offset in my parent*/
-	void *key_buf;
-} bt_delete_request;
-
 typedef struct log_operation {
 	bt_mutate_req *metadata;
 	request_type optype_tolog;
-	union {
-		bt_insert_req *ins_req;
-		bt_delete_request *del_req;
-	};
+	bt_insert_req *ins_req;
 } log_operation;
 
 /**
@@ -435,8 +387,7 @@ enum bt_rebalance_retcode {
 };
 
 struct bt_rebalance_result {
-	//4 bytes for the key size and 255 Bytes for the key
-	char middle_key[MAX_KEY_SIZE + sizeof(uint32_t)];
+	char middle_key[MAX_KEY_SIZE];
 	union {
 		node_header *left_child;
 		struct index_node *left_ichild;
@@ -461,30 +412,19 @@ typedef struct metadata_tologop {
 	uint32_t kv_size;
 } metadata_tologop;
 
-#define BT_DELETE_MARKER_ID 0xFFFFFFFF
-struct bt_delete_marker {
-	uint32_t marker_id;
-	uint32_t key_size;
-	char key[];
-};
-
-struct log_sequence_number {
-	uint64_t id;
-};
-
-struct par_put_metadata insert_key_value(db_handle *handle, void *key, void *value, uint32_t key_size,
-					 uint32_t value_size, request_type op_type, char *error_message);
+struct par_put_metadata insert_key_value(db_handle *handle, void *key, void *value, int32_t key_size,
+					 int32_t value_size, request_type op_type, const char *error_message);
 
 /**
  * Inserts a serialized key value pair by using the buffer provided by the user.
- * The format of the key value pair is | key_size | key | value_size | value |, where {key,value}_size is uint32_t.
+ * The format of the key value pair is | key_size | value_size | key |  value |, where {key,value}_sizes are uint32_t.
  * @param handle
  * @param serialized_key_value is a buffer containing the serialized key value pair.
  * @return Returns the error message if any otherwise NULL on success.
  * */
 struct par_put_metadata serialized_insert_key_value(db_handle *handle, const char *serialized_key_value,
-						    char *error_message);
-char *btree_insert_key_value(bt_insert_req *ins_req) __attribute__((warn_unused_result));
+						    const char *error_message);
+const char *btree_insert_key_value(bt_insert_req *ins_req) __attribute__((warn_unused_result));
 
 void *append_key_value_to_log(log_operation *req);
 void find_key(struct lookup_operation *get_op);
@@ -502,18 +442,12 @@ void recover_L0(struct db_descriptor *db_desc);
 lock_table *_find_position(const lock_table **table, node_header *node);
 
 #define MIN(x, y) ((x > y) ? (y) : (x))
-#define KEY_SIZE(x) (*(uint32_t *)(x))
-#define VALUE_SIZE(x) KEY_SIZE(x)
 #define ABSOLUTE_ADDRESS(X) (((uint64_t)(X)) - MAPPED)
 #define REAL_ADDRESS(X) ((X) ? (void *)(MAPPED + (uint64_t)(X)) : BUG_ON())
-#define KEY_OFFSET(KEY_SIZE, KV_BUF) (sizeof(uint32_t) + KV_BUF)
-#define VALUE_SIZE_OFFSET(KEY_SIZE, KEY) (sizeof(uint32_t) + KEY_SIZE + KEY)
-#define SERIALIZE_KEY(buf, key, key_size) \
-	*(uint32_t *)buf = key_size;      \
-	memcpy(buf + 4, key, key_size)
 #define KV_MAX_SIZE (4096 + 8)
 #define likely(x) __builtin_expect((x), 1)
 #define unlikely(x) __builtin_expect((x), 0)
 #define LESS_THAN_ZERO -1
 #define GREATER_THAN_ZERO 1
 #define EQUAL_TO_ZERO 0
+#endif // BTREE_H

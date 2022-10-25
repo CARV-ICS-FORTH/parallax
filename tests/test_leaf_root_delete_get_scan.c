@@ -25,11 +25,10 @@ int main(int argc, char *argv[])
 				      .create_flag = PAR_CREATE_DB,
 				      .db_name = "test_leaf_root_delete_get_scan.db",
 				      .options = par_get_default_options() };
-	char *error_message = NULL;
+	const char *error_message = NULL;
 	par_handle handle = par_open(&db_options, &error_message);
 	if (error_message) {
 		log_fatal("%s", error_message);
-		free(error_message);
 		return EXIT_FAILURE;
 	}
 	struct par_key_value key_value;
@@ -41,7 +40,6 @@ int main(int argc, char *argv[])
 	par_put(handle, &key_value, &error_message);
 	if (error_message) {
 		log_fatal("Par put failed %s!", error_message);
-		free(error_message);
 		BUG_ON();
 	}
 
@@ -53,7 +51,6 @@ int main(int argc, char *argv[])
 	par_put(handle, &key_value, &error_message);
 	if (error_message) {
 		log_fatal("Par put failed! %s", error_message);
-		free(error_message);
 		BUG_ON();
 	}
 
@@ -61,23 +58,23 @@ int main(int argc, char *argv[])
 
 	if (error_message) {
 		log_fatal("Par put failed! %s", error_message);
-		free(error_message);
 		BUG_ON();
 	}
 
 	struct par_value unused_value = { 0 };
 	par_get(handle, &key_value.k, &unused_value, &error_message);
-	if (error_message) {
-		log_fatal("Found key that should not exist!");
+	if (!error_message) {
+		log_fatal("Found key %.*s that should not exist!", key_value.k.size, key_value.k.data);
 		BUG_ON();
 	}
 	key_value.k.data = "";
 	key_value.k.size = 1;
 
-	par_scanner scanner = par_init_scanner(handle, &key_value.k, PAR_GREATER_OR_EQUAL);
+	error_message = NULL;
+	par_scanner scanner = par_init_scanner(handle, &key_value.k, PAR_GREATER_OR_EQUAL, &error_message);
 	if (!par_is_valid(scanner)) {
 		log_fatal("Nothing found! it shouldn't!");
-		exit(EXIT_FAILURE);
+		BUG_ON();
 	}
 	struct par_key keyptr = par_get_key(scanner);
 	if (strncmp(keyptr.data, "/", strlen("/"))) {
@@ -94,7 +91,6 @@ int main(int argc, char *argv[])
 	error_message = par_close(handle);
 	if (error_message) {
 		log_fatal("%s", error_message);
-		free(error_message);
 		return EXIT_FAILURE;
 	}
 	return 0;

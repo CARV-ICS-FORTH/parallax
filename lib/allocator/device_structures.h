@@ -12,10 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#pragma once
+#ifndef DEVICE_STRUCTURES_H
+#define DEVICE_STRUCTURES_H
 #define ALLOW_RAW_VOLUMES 1
 #define MIN_VOLUME_SIZE (8 * 1024 * 1024 * 1024L)
 #include "../btree/conf.h"
+#include "../btree/lsn.h"
 #include <pthread.h>
 #include <stdint.h>
 
@@ -38,7 +40,7 @@ struct pr_db_entry {
 	uint64_t small_log_head_offt;
 	uint64_t small_log_tail_offt;
 	uint64_t small_log_size;
-	uint64_t lsn;
+	struct lsn lsn;
 	uint32_t valid;
 }; // 768 bytes or 12 cache lines
 
@@ -97,7 +99,7 @@ struct pr_db_superblock {
 	uint64_t small_log_offt_in_start_segment;
 	uint64_t big_log_start_segment_dev_offt;
 	uint64_t big_log_offt_in_start_segment;
-	uint64_t lsn;
+	struct lsn last_lsn;
 	uint32_t db_name_size;
 	uint32_t id; //in the array
 	uint32_t valid;
@@ -112,5 +114,4 @@ struct pr_ownership_registry {
 	uint32_t size;
 	char persistent_bitmap[];
 };
-
-//</new_persistent_design>
+#endif // DEVICE_STRUCTURES_H

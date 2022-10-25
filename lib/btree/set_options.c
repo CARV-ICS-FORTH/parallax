@@ -15,7 +15,6 @@
 #define ENABLE_OPTIONS_OUTPUT 0
 #include "set_options.h"
 #include "../common/common.h"
-#include "conf.h"
 #include <log.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -145,7 +144,6 @@ static void write_options(struct lib_option *db_options)
 		fprintf(f, "%s %llu\n", current_option->name, current_option->value.count);
 	}
 }
-#endif
 
 void destroy_options(struct lib_option *db_options)
 {
@@ -158,3 +156,4 @@ void destroy_options(struct lib_option *db_options)
 		free(current_option); /* optional- if you want to free  */
 	}
 }
+#endif

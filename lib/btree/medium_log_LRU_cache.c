@@ -16,7 +16,6 @@
 #include "../common/common.h"
 #include "conf.h"
 #include "parallax/structures.h"
-#include "set_options.h"
 #include <assert.h>
 #include <log.h>
 #include <stdio.h>
@@ -99,34 +98,6 @@ void move_node_to_tail(struct chunk_list *list, const struct chunk_listnode *nod
 	pfront->next = NULL;
 	list->tail->next = pfront;
 	list->tail = pfront;
-}
-
-// cppcheck-suppress unusedFunction
-void print_list(struct chunk_list *list)
-{
-	assert(list != NULL);
-	struct chunk_listnode *iter;
-	uint32_t i = 1;
-
-	log_info("[");
-	for (iter = list->head; iter != NULL; iter = iter->next) {
-		log_info("%lu, ", iter->chunk_offt);
-		i++;
-	}
-	log_info("]");
-	log_info("list size %d , i %d", list->size, i);
-}
-
-// cppcheck-suppress unusedFunction
-void print_hash_table(struct chunk_hash_entry **hash_table)
-{
-	struct chunk_hash_entry *current_entry, *tmp;
-	uint64_t i = 0;
-	log_info("HashTable:");
-	HASH_ITER(hh, *(hash_table), current_entry, tmp)
-	{
-		log_info("%lu: %lu", i, current_entry->chunk_offt);
-	}
 }
 
 struct chunk_LRU_cache *init_LRU(struct db_handle *handle)

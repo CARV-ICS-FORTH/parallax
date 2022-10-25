@@ -140,11 +140,10 @@ static void put_workload(struct workload_config_t *workload_config, const char *
 			my_kv.v.val_buffer_size = KV_BUFFER_SIZE / 2;
 			my_kv.v.val_buffer = value_payload;
 		}
-		char *error_message = NULL;
+		const char *error_message = NULL;
 		par_put(workload_config->handle, &my_kv, &error_message);
 		if (error_message) {
 			log_fatal("Insert failed %s", error_message);
-			free(error_message);
 			exit(EXIT_FAILURE);
 		}
 
@@ -159,7 +158,7 @@ static void get_workload(struct workload_config_t *workload_config)
 {
 	struct par_key_value my_kv = { .k.size = 0, .k.data = NULL, .v.val_buffer = NULL };
 	struct key *k = calloc(1, KV_BUFFER_SIZE);
-	char *error_message = NULL;
+	const char *error_message = NULL;
 
 	log_info("Testing GETS now");
 	uint64_t key_count = 0;
@@ -203,7 +202,6 @@ static void get_workload(struct workload_config_t *workload_config)
 	par_put(workload_config->handle, &my_kv, &error_message);
 	if (error_message) {
 		log_fatal("Insert failed %s", error_message);
-		free(error_message);
 		exit(EXIT_FAILURE);
 	}
 	struct par_value my_value = { .val_buffer = NULL };
@@ -240,8 +238,9 @@ static void scan_workload(struct workload_config_t *workload_config)
 
 		my_kv.k.size = k->key_size;
 		my_kv.k.data = k->key_buf;
+		const char *error_message = NULL;
 		par_scanner my_scanner =
-			par_init_scanner(workload_config->handle, &my_kv.k, workload_config->seek_mode);
+			par_init_scanner(workload_config->handle, &my_kv.k, workload_config->seek_mode, &error_message);
 
 		if (!par_is_valid(my_scanner)) {
 			log_fatal("Nothing found! it shouldn't!");
@@ -359,13 +358,12 @@ int main(int argc, char **argv)
 				      .db_name = "scan_test",
 				      .create_flag = PAR_CREATE_DB,
 				      .options = par_get_default_options() };
-	char *error_message = NULL;
+	const char *error_message = NULL;
 
 	if (strcmp(workload, workload_tags[Load]) == 0 || strcmp(workload, workload_tags[All]) == 0) {
 		error_message = par_format(db_options.volume_name, 16);
 		if (error_message) {
 			log_fatal("%s", error_message);
-			free(error_message);
 			return EXIT_FAILURE;
 		}
 	}
@@ -373,7 +371,6 @@ int main(int argc, char **argv)
 
 	if (error_message) {
 		log_fatal("%s", error_message);
-		free(error_message);
 		return EXIT_FAILURE;
 	}
 
@@ -408,7 +405,6 @@ int main(int argc, char **argv)
 	error_message = par_close(hd);
 	if (error_message) {
 		log_fatal("%s", error_message);
-		free(error_message);
 		return EXIT_FAILURE;
 	}
 	return 0;

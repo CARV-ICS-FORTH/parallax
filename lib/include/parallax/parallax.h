@@ -34,7 +34,7 @@ char *par_format(char *device_name, uint32_t max_regions_num) __attribute__((war
  * @return Returns a par_handle to perform operations in the DB.
  * @retval NULL The function failed check @p error_message to find the reason it failed. NON-NULL The function ran successfully.
  */
-par_handle par_open(par_db_options *db_options, char **error_message);
+par_handle par_open(par_db_options *db_options, const char **error_message);
 
 /**
  * Closes the DB referenced by handle. Syncs data to the file or device before exiting.
@@ -42,7 +42,7 @@ par_handle par_open(par_db_options *db_options, char **error_message);
  * @return Error message in case of failure.
  */
 
-char *par_close(par_handle handle) __attribute__((warn_unused_result));
+const char *par_close(par_handle handle) __attribute__((warn_unused_result));
 /*This will be removed before merging the public api*/
 typedef enum par_ret_code {
 	PAR_SUCCESS = 0,
@@ -58,7 +58,8 @@ typedef enum par_ret_code {
  * @param op_type Operation to execute valid operation insertOp, deleteOp.
  * @return On success return the KV category.
  */
-enum kv_category get_kv_category(uint32_t key_size, uint32_t value_size, request_type operation, char **error_message);
+enum kv_category get_kv_category(int32_t key_size, int32_t value_size, request_type operation,
+				 const char **error_message);
 
 /**
  * Inserts the key in the DB if it does not exist else this becomes an update internally.
@@ -66,14 +67,14 @@ enum kv_category get_kv_category(uint32_t key_size, uint32_t value_size, request
  * @param key_value KV to insert.
  * @param error_message Contains error message if call fails.
  */
-void par_put(par_handle handle, struct par_key_value *key_value, char **error_message);
+void par_put(par_handle handle, struct par_key_value *key_value, const char **error_message);
 
 /**
  * Inserts a serialized key value pair by using the buffer provided by the user.
- * @param serialized_key_value is a buffer containing the serialized key value pair.
- * The format of the key value pair is | key_size | key | value_size | value |, where {key,value}_size is uint32_t.
+ * @param serialized_key_value is a buffer containing the serialized key value pair. The format of the key value pair is | key_size | key | value_size | value |
+ * where {key,value}_size is uint32_t.
  */
-void par_put_serialized(par_handle handle, char *serialized_key_value, char **error_message);
+void par_put_serialized(par_handle handle, char *serialized_key_value, const char **error_message);
 
 /**
  * Takes as input a key and searches for it. If the key exists in the DB, then
@@ -85,7 +86,7 @@ void par_put_serialized(par_handle handle, char *serialized_key_value, char **er
  * @param value buffer to be filled uppon get success.
  * @param error_message Contains error message if call fails.
  */
-void par_get(par_handle handle, struct par_key *key, struct par_value *value, char **error_message);
+void par_get(par_handle handle, struct par_key *key, struct par_value *value, const char **error_message);
 
 /**
  * Searches for a key and returns if the key exists in the DB.
@@ -95,7 +96,7 @@ par_ret_code par_exists(par_handle handle, struct par_key *key);
 /**
  * Deletes an existing key in the DB.
  */
-void par_delete(par_handle handle, struct par_key *key, char **error_message);
+void par_delete(par_handle handle, struct par_key *key, const char **error_message);
 
 /**
  * scanner API. At the current state scanner supports snapshot isolation. The lifetime of a scanner start with
@@ -103,7 +104,7 @@ void par_delete(par_handle handle, struct par_key *key, char **error_message);
  * an active scanner no updates or insers can be performed in the DB. We will add other types of scanner with
  * relaxed semantics for higher concurrency soon
  */
-par_scanner par_init_scanner(par_handle handle, struct par_key *key, par_seek_mode mode);
+par_scanner par_init_scanner(par_handle handle, struct par_key *key, par_seek_mode mode, const char **error_message);
 void par_close_scanner(par_scanner sc);
 
 /**

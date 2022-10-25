@@ -11,8 +11,11 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-#pragma once
-#include "../btree/btree.h"
+#ifndef MIN_MAX_HEAP_H
+#define MIN_MAX_HEAP_H
+
+#include "../btree/kv_pairs.h"
+#include "parallax/structures.h"
 #include <stdbool.h>
 #include <stdint.h>
 enum sh_heap_type { MIN_HEAP, MAX_HEAP };
@@ -44,3 +47,4 @@ void sh_init_heap(struct sh_heap *heap, int active_tree, enum sh_heap_type heap_
 void sh_destroy_heap(struct sh_heap *heap);
 void sh_insert_heap_node(struct sh_heap *heap, struct sh_heap_node *node);
 bool sh_remove_top(struct sh_heap *heap, struct sh_heap_node *node);
+#endif

@@ -15,6 +15,7 @@
 #define _GNU_SOURCE
 #include "../btree/btree.h"
 #include "../btree/conf.h"
+#include "../btree/lsn.h"
 #include "../common/common.h"
 #include "../utilities/list.h"
 #include "device_structures.h"
@@ -130,7 +131,7 @@ static uint8_t init_db_superblock(struct pr_db_superblock *db_superblock, const 
 	db_superblock->db_name_size = db_name_size;
 	db_superblock->id = db_id; //in the array
 	db_superblock->valid = 1;
-	db_superblock->lsn = 0;
+	reset_lsn(&db_superblock->last_lsn);
 	return 1;
 }
 

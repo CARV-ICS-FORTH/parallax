@@ -36,8 +36,9 @@ set(LIB_C_SOURCE_FILES
     btree/medium_log_LRU_cache.c
     btree/segment_allocator.c
     btree/set_options.c
+    btree/kv_pairs.c
+    btree/lsn.c
     common/common.c
-    common/common_functions.c
     scanner/min_max_heap.c
     scanner/scanner.c
     scanner/stack.c)

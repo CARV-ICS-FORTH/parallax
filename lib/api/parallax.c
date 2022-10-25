@@ -15,101 +15,101 @@
 #include "../include/parallax/parallax.h"
 #include "../allocator/kv_format.h"
 #include "../btree/btree.h"
+#include "../btree/conf.h"
+#include "../btree/index_node.h"
+#include "../btree/kv_pairs.h"
 #include "../btree/set_options.h"
 #include "../scanner/scanner.h"
+#include "parallax/structures.h"
+#include <assert.h>
 #include <log.h>
 #include <stddef.h>
-#include <stdio.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #define PAR_MAX_PREALLOCATED_SIZE 256
 #define NUM_OF_OPTIONS 5
 
-/*
- * Frees an error message, it is a runtime check if the pointer is not NULL.
- * @param error_message A pointer to the error message.
- */
-static void free_error_message(char **error_message)
-{
-	if (*error_message)
-		free(*error_message);
-}
 char *par_format(char *device_name, uint32_t max_regions_num)
 {
 	return kvf_init_parallax(device_name, max_regions_num);
 }
 
-par_handle par_open(par_db_options *db_options, char **error_message)
+par_handle par_open(par_db_options *db_options, const char **error_message)
 {
 	if (db_options->create_flag == PAR_CREATE_DB || db_options->create_flag == PAR_DONOT_CREATE_DB) {
 		return (par_handle)db_open(db_options, error_message);
 	}
 
-	create_error_message(error_message, "Unknown create flag provided.");
+	*error_message = "Unknown create flag provided.";
 	return NULL;
 }
 
-char *par_close(par_handle handle)
+const char *par_close(par_handle handle)
 {
 	return db_close((db_handle *)handle);
 }
 
-enum kv_category get_kv_category(uint32_t key_size, uint32_t value_size, request_type operation, char **error_message)
+enum kv_category get_kv_category(int32_t key_size, int32_t value_size, request_type operation,
+				 const char **error_message)
 {
-	free_error_message(error_message);
 	if (paddingOp == operation || unknownOp == operation) {
-		create_error_message(error_message, "Unknown operation provided %d", operation);
+		*error_message = "Unknown operation provided %d";
 		return BIG_INLOG;
 	}
 
 	return calculate_KV_category(key_size, value_size, operation);
 }
 
-void par_put(par_handle handle, struct par_key_value *key_value, char **error_message)
+void par_put(par_handle handle, struct par_key_value *key_value, const char **error_message)
 {
-	free_error_message(error_message);
-
 	insert_key_value((db_handle *)handle, (char *)key_value->k.data, (char *)key_value->v.val_buffer,
 			 key_value->k.size, key_value->v.val_size, insertOp, *error_message);
 }
 
-void par_put_serialized(par_handle handle, char *serialized_key_value, char **error_message)
+/**
+ * Execute a put request of the key given a kv_formated key_value
+ * @param handle, the db handle that we initiated with db open
+ * @param serialized_key_value, the kv_formated key to be inserted
+ * @param error_message, possible error message upon a failure in the insert path
+ * */
+void par_put_serialized(par_handle handle, char *serialized_key_value, const char **error_message)
 {
-	free_error_message(error_message);
 	serialized_insert_key_value((db_handle *)handle, serialized_key_value, *error_message);
 }
 
-static inline int par_serialize_to_kv_format(struct par_key *key, char **buf, uint32_t buf_size)
+static inline int par_serialize_to_key_format(struct par_key *key, char **buf, int32_t buf_size)
 {
 	int ret = 0;
-	uint32_t key_size = sizeof(uint32_t) + key->size;
-	if (key_size > buf_size) {
-		*buf = malloc(key_size);
+	int32_t key_size_with_metadata = sizeof(key->size) + key->size;
+	int32_t get_op_payload_size = key_size_with_metadata;
+	if (get_op_payload_size > buf_size) {
+		*buf = malloc(get_op_payload_size);
 		ret = 1;
 	}
-	char *kv_buf = *buf;
-	memcpy(&kv_buf[0], &key->size, sizeof(uint32_t));
-	memcpy(&kv_buf[sizeof(uint32_t)], key->data, key->size);
+	struct key_splice *kv_buf = (struct key_splice *)*buf;
+	set_key_size_of_key_splice(kv_buf, key->size);
+	set_key_splice_key_offset(kv_buf, (char *)key->data);
 	return ret;
 }
 
-void par_get(par_handle handle, struct par_key *key, struct par_value *value, char **error_message)
+void par_get(par_handle handle, struct par_key *key, struct par_value *value, const char **error_message)
 {
-	free_error_message(error_message);
 	if (value == NULL) {
-		create_error_message(error_message, "value cannot be NULL");
+		*error_message = "value cannot be NULL";
+		return;
 	}
 
 	/*Serialize user key in KV_FORMAT*/
 	char buf[PAR_MAX_PREALLOCATED_SIZE];
-	char *kv_buf = buf;
-	int malloced = par_serialize_to_kv_format(key, &kv_buf, PAR_MAX_PREALLOCATED_SIZE);
+	char *key_buf = buf;
+	int malloced = par_serialize_to_key_format(key, &key_buf, PAR_MAX_PREALLOCATED_SIZE);
 
 	struct db_handle *hd = (struct db_handle *)handle;
 
 	/*Prepare lookup reply*/
 	struct lookup_operation get_op = { .db_desc = hd->db_desc,
-					   .kv_buf = kv_buf,
+					   .key_buf = key_buf,
 					   .buffer_to_pack_kv = NULL,
 					   .size = 0,
 					   .buffer_overflow = 0,
@@ -117,20 +117,18 @@ void par_get(par_handle handle, struct par_key *key, struct par_value *value, ch
 					   .tombstone = 0,
 					   .retrieve = 1 };
 
-	if (value->val_buffer != NULL) {
-		get_op.buffer_to_pack_kv = (char *)value->val_buffer;
-		get_op.size = value->val_buffer_size;
-	}
+	get_op.buffer_to_pack_kv = (char *)value->val_buffer;
+	get_op.size = value->val_buffer_size;
 
 	find_key(&get_op);
 	if (malloced)
-		free(kv_buf);
+		free(key_buf);
 
 	if (!get_op.found)
-		create_error_message(error_message, "key not found");
+		*error_message = "key not found";
 
 	if (get_op.buffer_overflow)
-		create_error_message(error_message, "not enough buffer space");
+		*error_message = "not enough buffer space";
 
 	value->val_buffer = get_op.buffer_to_pack_kv;
 	value->val_size = get_op.size;
@@ -140,17 +138,13 @@ par_ret_code par_exists(par_handle handle, struct par_key *key)
 {
 	/*Serialize user key in KV_FORMAT*/
 	char buf[PAR_MAX_PREALLOCATED_SIZE];
-	char *kv_buf = buf;
-	int malloced = par_serialize_to_kv_format(key, &kv_buf, PAR_MAX_PREALLOCATED_SIZE);
-
-	memcpy(&kv_buf[0], &key->size, sizeof(uint32_t));
-	memcpy(&kv_buf[sizeof(uint32_t)], key->data, key->size);
+	char *key_buf = buf;
+	int malloced = par_serialize_to_key_format(key, &key_buf, PAR_MAX_PREALLOCATED_SIZE);
 
 	struct db_handle *hd = (struct db_handle *)handle;
-
 	/*Prepare lookup reply*/
 	struct lookup_operation get_op = { .db_desc = hd->db_desc,
-					   .kv_buf = kv_buf,
+					   .key_buf = key_buf,
 					   .buffer_to_pack_kv = NULL,
 					   .size = 0,
 					   .buffer_overflow = 1,
@@ -159,7 +153,7 @@ par_ret_code par_exists(par_handle handle, struct par_key *key)
 
 	find_key(&get_op);
 	if (malloced)
-		free(kv_buf);
+		free(key_buf);
 
 	if (!get_op.found)
 		return PAR_KEY_NOT_FOUND;
@@ -167,9 +161,8 @@ par_ret_code par_exists(par_handle handle, struct par_key *key)
 	return PAR_SUCCESS;
 }
 
-void par_delete(par_handle handle, struct par_key *key, char **error_message)
+void par_delete(par_handle handle, struct par_key *key, const char **error_message)
 {
-	free_error_message(error_message);
 	struct db_handle *hd = (struct db_handle *)handle;
 	insert_key_value(hd, (void *)key->data, "empty", key->size, 0, deleteOp, *error_message);
 }
@@ -185,107 +178,79 @@ struct par_scanner {
 	char *kv_buf;
 };
 
-#define SMALLEST_KEY_BUFFER_SIZE (8)
-par_scanner par_init_scanner(par_handle handle, struct par_key *key, par_seek_mode mode)
+par_scanner par_init_scanner(par_handle handle, struct par_key *key, par_seek_mode mode, const char **error_message)
 {
-	char tmp[PAR_MAX_PREALLOCATED_SIZE];
-	struct db_handle *hd = (struct db_handle *)handle;
-	struct par_seek_key {
-		uint32_t key_size;
-		char key[];
-	};
-	char smallest_key[SMALLEST_KEY_BUFFER_SIZE] = { 0 };
-	struct scannerHandle *sc = NULL;
-	struct par_scanner *par_s = NULL;
-	struct par_seek_key *seek_key = NULL;
-	char free_seek_key = 0;
+	if (key && key->size + sizeof(key->size) > PAR_MAX_PREALLOCATED_SIZE) {
+		*error_message = "Can serialize key buffer, buffer to small";
+		return NULL;
+	}
+
+	char seek_key_buffer[PAR_MAX_PREALLOCATED_SIZE];
+
+	struct key_splice *seek_key = (struct key_splice *)seek_key_buffer;
 
 	enum SEEK_SCANNER_MODE scanner_mode = 0;
 	switch (mode) {
 	case PAR_GREATER:
 		scanner_mode = GREATER;
-		goto init_seek_key;
+		seek_key->key_size = key->size;
+		memcpy(seek_key->data, key->data, key->size);
+		break;
 	case PAR_GREATER_OR_EQUAL:
+		seek_key->key_size = key->size;
+		memcpy(seek_key->data, key->data, key->size);
 		scanner_mode = GREATER_OR_EQUAL;
-		goto init_seek_key;
-	case PAR_FETCH_FIRST: {
+		break;
+	case PAR_FETCH_FIRST:
 		scanner_mode = GREATER_OR_EQUAL;
-		uint32_t *size = (uint32_t *)smallest_key;
-		*size = 0;
-		//fill the seek_key with the smallest key of the region
-		seek_key = (struct par_seek_key *)tmp;
-		seek_key->key_size = *size;
-		memcpy(seek_key->key, smallest_key, *size);
-		goto init_scanner;
-	}
+		fill_smallest_possible_pivot(seek_key_buffer, PAR_MAX_PREALLOCATED_SIZE);
+		break;
 	default:
-		log_fatal("Unknown seek scanner mode");
-		return NULL;
-	}
-init_seek_key:
-	if (key->size + sizeof(uint32_t) > PAR_MAX_PREALLOCATED_SIZE) {
-		seek_key = (struct par_seek_key *)calloc(1, sizeof(struct par_seek_key) + key->size);
-		free_seek_key = 1;
-	} else
-		seek_key = (struct par_seek_key *)tmp;
-
-	seek_key->key_size = key->size;
-	memcpy(seek_key->key, key->data, key->size);
-
-init_scanner:
-	sc = (struct scannerHandle *)calloc(1, sizeof(struct scannerHandle));
-
-	if (!sc) {
-		log_fatal("Calloc did not return memory!");
+		*error_message = "Unknown seek scanner mode";
 		return NULL;
 	}
 
-	par_s = (struct par_scanner *)calloc(1, sizeof(struct par_scanner));
-	if (!par_s) {
-		log_fatal("Calloc did not return memory!");
-		return NULL;
+	struct scannerHandle *scanner = (struct scannerHandle *)calloc(1, sizeof(struct scannerHandle));
+	struct par_scanner *p_scanner = (struct par_scanner *)calloc(1, sizeof(struct par_scanner));
+
+	struct db_handle *internal_db_handle = (struct db_handle *)handle;
+	scanner->type_of_scanner = FORWARD_SCANNER;
+	init_dirty_scanner(scanner, internal_db_handle, seek_key, scanner_mode);
+	p_scanner->sc = scanner;
+	p_scanner->allocated = 0;
+	p_scanner->buf_size = PAR_MAX_PREALLOCATED_SIZE;
+	p_scanner->kv_buf = p_scanner->buf;
+
+	p_scanner->valid = 1;
+	if (scanner->keyValue == NULL) {
+		p_scanner->valid = 0;
+		return p_scanner;
 	}
 
-	sc->type_of_scanner = FORWARD_SCANNER;
-	init_dirty_scanner(sc, hd, seek_key, scanner_mode);
-	par_s->sc = sc;
-	par_s->allocated = 0;
-	par_s->buf_size = PAR_MAX_PREALLOCATED_SIZE;
-	par_s->kv_buf = par_s->buf;
+	struct bt_kv_log_address log_address = { .addr = scanner->keyValue, .tail_id = UINT8_MAX, .in_tail = 0 };
+	if (!scanner->kv_level_id && BIG_INLOG == scanner->kv_cat)
+		log_address =
+			bt_get_kv_log_address(&scanner->db->db_desc->big_log, ABSOLUTE_ADDRESS(scanner->keyValue));
 
-	// Now check what we got
-	if (sc->keyValue == NULL)
-		par_s->valid = 0;
-	else {
-		par_s->valid = 1;
-
-		struct bt_kv_log_address log_address = { .addr = sc->keyValue, .tail_id = UINT8_MAX, .in_tail = 0 };
-		if (!sc->kv_level_id && BIG_INLOG == sc->kv_cat)
-			log_address = bt_get_kv_log_address(&sc->db->db_desc->big_log, ABSOLUTE_ADDRESS(sc->keyValue));
-
-		uint32_t kv_size = KEY_SIZE(log_address.addr) + sizeof(struct kv_format);
-		struct kv_format *v = (struct kv_format *)((uint64_t)log_address.addr + kv_size);
-		kv_size += (v->key_size + sizeof(struct kv_format));
-		if (kv_size > par_s->buf_size) {
-			//log_info("Space not enougn needing %u got %u", kv_size, par_s->buf_size);
-			if (par_s->allocated)
-				free(par_s->kv_buf);
-			par_s->buf_size = kv_size;
-			par_s->allocated = 1;
-			par_s->kv_buf = calloc(1, par_s->buf_size);
-		}
-		memcpy(par_s->kv_buf, log_address.addr, kv_size);
-		if (log_address.in_tail)
-			bt_done_with_value_log_address(&sc->db->db_desc->big_log, &log_address);
+	uint32_t kv_size = get_kv_size((struct kv_splice *)log_address.addr);
+	if (kv_size > p_scanner->buf_size) {
+		//log_info("Space not enougn needing %u got %u", kv_size, par_s->buf_size);
+		if (p_scanner->allocated)
+			free(p_scanner->kv_buf);
+		p_scanner->buf_size = kv_size;
+		p_scanner->allocated = 1;
+		p_scanner->kv_buf = calloc(1, p_scanner->buf_size);
 	}
+	memcpy(p_scanner->kv_buf, log_address.addr, kv_size);
+	if (log_address.in_tail)
+		bt_done_with_value_log_address(&scanner->db->db_desc->big_log, &log_address);
 
-	if (free_seek_key)
-		free(seek_key);
-	return (par_scanner)par_s;
+	return p_scanner;
 }
 
 void par_close_scanner(par_scanner sc)
 {
+	assert(sc);
 	struct par_scanner *par_s = (struct par_scanner *)sc;
 	close_scanner((struct scannerHandle *)par_s->sc);
 	if (par_s->allocated)
@@ -308,9 +273,7 @@ int par_get_next(par_scanner sc)
 		log_address = bt_get_kv_log_address(&scanner_hd->db->db_desc->big_log,
 						    ABSOLUTE_ADDRESS(scanner_hd->keyValue));
 
-	uint32_t kv_size = KEY_SIZE(log_address.addr) + sizeof(struct kv_format);
-	struct kv_format *v = (struct kv_format *)((uint64_t)log_address.addr + kv_size);
-	kv_size += v->key_size + sizeof(struct kv_format);
+	uint32_t kv_size = get_kv_size((struct kv_splice *)log_address.addr);
 	if (kv_size > par_s->buf_size) {
 		//log_info("Space not enough needing %u got %u", kv_size, par_s->buf_size);
 		if (par_s->allocated)
@@ -329,23 +292,24 @@ int par_get_next(par_scanner sc)
 int par_is_valid(par_scanner sc)
 {
 	struct par_scanner *par_s = (struct par_scanner *)sc;
-	return par_s->valid;
+	return NULL == par_s ? 0 : par_s->valid;
 }
 
 struct par_key par_get_key(par_scanner sc)
 {
 	struct par_scanner *par_s = (struct par_scanner *)sc;
-	struct par_key key = { .size = *(uint32_t *)par_s->kv_buf, .data = par_s->kv_buf + sizeof(uint32_t) };
+	struct kv_splice *kv_buf = (struct kv_splice *)par_s->kv_buf;
+	struct par_key key = { .size = get_key_size(kv_buf), .data = get_key_offset_in_kv(kv_buf) };
 	return key;
 }
 
 struct par_value par_get_value(par_scanner sc)
 {
 	struct par_scanner *par_s = (struct par_scanner *)sc;
-	char *value = par_s->kv_buf + *(uint32_t *)par_s->kv_buf + sizeof(uint32_t);
-	struct par_value val = { .val_size = *(uint32_t *)value,
-				 .val_buffer = value + sizeof(uint32_t),
-				 .val_buffer_size = *(uint32_t *)value };
+	struct kv_splice *kv_buf = (struct kv_splice *)par_s->kv_buf;
+	struct par_value val = { .val_size = get_value_size(kv_buf),
+				 .val_buffer = get_value_offset_in_kv(kv_buf, get_key_size(kv_buf)),
+				 .val_buffer_size = get_value_size(kv_buf) };
 
 	return val;
 }

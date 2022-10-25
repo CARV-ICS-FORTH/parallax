@@ -145,7 +145,7 @@ int main(int argc, char *argv[])
 	log_info("RUL_SEGMENT_MAX_ENTRIES = %lu", RUL_SEGMENT_MAX_ENTRIES);
 
 	disable_gc();
-	char *error_message = NULL;
+	const char *error_message = NULL;
 	char *volume_name = get_option(options, 1);
 	char *db_name = "redo_undo_test";
 	struct par_options_desc *default_options = par_get_default_options();
@@ -158,7 +158,6 @@ int main(int argc, char *argv[])
 	par_handle handle = par_open(&db_options, &error_message);
 	if (error_message) {
 		log_fatal("%s", error_message);
-		free(error_message);
 		return EXIT_FAILURE;
 	}
 
@@ -193,7 +192,6 @@ int main(int argc, char *argv[])
 	handle = db_open(&db_options, &error_message);
 	if (error_message) {
 		log_fatal("%s", error_message);
-		free(error_message);
 		return EXIT_FAILURE;
 	}
 	pthread_join(validator_thread, NULL);

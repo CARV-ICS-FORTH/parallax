@@ -1,6 +1,5 @@
 #define _GNU_SOURCE
 #include "common.h"
-#include "common_macros.h"
 #include <execinfo.h>
 #include <log.h>
 #include <stdio.h>
@@ -44,15 +43,4 @@ __attribute__((noreturn)) void *BUG_ON(void)
 __attribute__((noreturn)) uint32_t BUG_ON_UINT32T(void)
 {
 	print_stack_trace();
-}
-
-CHECK_PRINTF_FORMATTING void create_error_message(char **error_message, const char *fmt, ...)
-{
-	va_list user_arguments;
-	if (*error_message) {
-		SAFE_FREE_PTR(error_message);
-	}
-	va_start(user_arguments, fmt);
-	asprintf(error_message, fmt, user_arguments);
-	va_end(user_arguments);
 }

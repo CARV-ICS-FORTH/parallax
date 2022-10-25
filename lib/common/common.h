@@ -14,6 +14,6 @@
 __attribute__((noreturn)) void *BUG_ON(void);
 __attribute__((noreturn)) uint32_t BUG_ON_UINT32T(void);
 
-CHECK_PRINTF_FORMATTING void create_error_message(char **error_message, const char *fmt, ...);
+CHECK_PRINTF_FORMATTING void create_error_message(const char **error_message, const char *fmt, ...);
 
 #endif // COMMON_H_

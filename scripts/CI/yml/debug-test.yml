@@ -25,6 +25,17 @@ test_options:
         - ./test_options
     needs: [debug_build_gcc, debug_build_clang]
 
+test_categories:
+    image: carvicsforth/ubuntu_carv:latest
+    stage: debug_test
+    <<: *debug_build_commands
+    script:
+        - make test_categories;cd tests;
+        - ./test_categories
+    needs: [debug_build_gcc, debug_build_clang]
+
+
+
 test_sanitizers:
     image: carvicsforth/ubuntu_carv:latest
     stage: debug_test
@@ -380,4 +391,15 @@ debug_tracer:
     script:
         - make tracer;cd tracer;
         - ctest -R ^tracer$
+    needs: [debug_build_gcc, debug_build_clang]
+
+debug_tiresias:
+    image: carvicsforth/arch_carv:latest
+    stage: debug_test
+    <<: *debug_build_commands
+    tags:
+        - kubernetes
+    script:
+        - make tiresias;cd tests;
+        - ctest -R ^tiresias$
     needs: [debug_build_gcc, debug_build_clang]

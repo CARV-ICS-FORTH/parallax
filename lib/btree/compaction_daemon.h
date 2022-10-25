@@ -1,8 +1,11 @@
-#ifndef COMPACTION_DAEMON_H_
-#define COMPACTION_DAEMON_H_
+#ifndef COMPACTION_DAEMON_H
+#define COMPACTION_DAEMON_H
 #include "btree.h"
+#include "btree_node.h"
 #include "conf.h"
 #include "dynamic_leaf.h"
+#include "kv_pairs.h"
+#include "parallax/structures.h"
 #include <stdint.h>
 #include <uthash.h>
 
@@ -43,10 +46,10 @@ enum comp_level_read_cursor_state {
 
 struct comp_parallax_key {
 	union {
-		struct bt_leaf_entry *kv_inlog;
+		struct kv_seperation_splice *kv_inlog;
 		char *kv_inplace;
 	};
-	struct bt_leaf_entry kvsep;
+	struct kv_seperation_splice kv_sep;
 	enum kv_category kv_category;
 	enum kv_entry_location kv_type;
 	uint8_t tombstone : 1;
