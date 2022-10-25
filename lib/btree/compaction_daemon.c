@@ -43,6 +43,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <uthash.h>
+// IWYU pragma: no_forward_declare index_node
 
 static void comp_medium_log_set_max_segment_id(struct comp_level_write_cursor *c)
 {

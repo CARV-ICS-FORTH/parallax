@@ -19,22 +19,22 @@
   * index_node and check correctness for its children.
 **/
 
-#include "btree/segment_allocator.h"
-#include "parallax/structures.h"
+#include "arg_parser.h"
+#include <assert.h>
 #include <btree/btree.h>
+#include <btree/index_node.h>
+#include <btree/segment_allocator.h>
+#include <log.h>
+#include <parallax/parallax.h>
+#include <parallax/structures.h>
+#include <stdio.h>
+#include <string.h>
+#include <unistd.h>
+
 #define ALPHABET_SIZE 26
 #define MAX_PIVOT_KEY_SIZE 200
 #define MAX_NODE_KEYS_NUM 500
 #define PIVOT_BASE 1000
-
-#include "../lib/btree/index_node.h"
-#include "arg_parser.h"
-#include <assert.h>
-#include <log.h>
-#include <parallax/parallax.h>
-#include <stdio.h>
-#include <string.h>
-#include <unistd.h>
 
 enum pivot_generation_style { ASCENDING = 1, DESCENDING, RANDOM };
 

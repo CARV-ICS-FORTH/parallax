@@ -23,6 +23,8 @@
 #include <assert.h>
 #include <log.h>
 #include <stdlib.h>
+// IWYU pragma: no_forward_declare index_node
+
 struct link_segments_metadata {
 	level_descriptor *level_desc;
 	segment_header *new_segment;

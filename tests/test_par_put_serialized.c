@@ -1,6 +1,6 @@
 #include "arg_parser.h"
-#include "log.h"
 #include <btree/kv_pairs.h>
+#include <log.h>
 #include <parallax/parallax.h>
 #include <stdio.h>
 #include <stdlib.h>

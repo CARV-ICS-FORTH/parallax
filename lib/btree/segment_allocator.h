@@ -18,6 +18,8 @@
 #include "btree.h"
 #include "btree_node.h"
 #include <stdint.h>
+// IWYU pragma: no_forward_declare index_node
+
 /*functions for index nodes*/
 struct index_node *seg_get_index_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id, char reason);
 
