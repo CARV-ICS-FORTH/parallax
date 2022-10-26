@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 #include "kv_pairs.h"
+#include "key_splice.h"
 #include <string.h>
 
 #define DELETE_MARKER_ID (INT32_MAX)
@@ -115,26 +116,6 @@ inline void set_non_tombstone(struct kv_splice *kv_pair)
 inline void set_tombstone(struct kv_splice *kv_pair)
 {
 	kv_pair->value_size = DELETE_MARKER_ID;
-}
-
-inline int32_t get_key_splice_key_size(struct key_splice *key)
-{
-	return key->key_size;
-}
-
-inline char *get_key_splice_key_offset(struct key_splice *key)
-{
-	return key->data;
-}
-
-inline void set_key_size_of_key_splice(struct key_splice *key, int32_t key_size)
-{
-	key->key_size = key_size;
-}
-
-inline void set_key_splice_key_offset(struct key_splice *key, char *key_buf)
-{
-	memcpy(get_key_splice_key_offset(key), key_buf, get_key_splice_key_size(key));
 }
 
 void serialize_key(char *buf, void *key, uint32_t key_size)

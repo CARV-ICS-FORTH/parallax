@@ -37,6 +37,7 @@ set(LIB_C_SOURCE_FILES
     btree/segment_allocator.c
     btree/set_options.c
     btree/kv_pairs.c
+    btree/key_splice.c
     btree/lsn.c
     common/common.c
     scanner/min_max_heap.c

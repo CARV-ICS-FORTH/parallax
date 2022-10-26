@@ -1441,7 +1441,7 @@ static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id,
 	lock_table *curr = NULL;
 	struct node_header *root = NULL;
 	struct db_descriptor *db_desc = get_op->db_desc;
-	struct key_splice *search_key_buf = (struct key_splice *)get_op->key_buf;
+	key_splice_t search_key_buf = get_op->key_splice;
 
 	if (db_desc->levels[level_id].root_w[tree_id] == NULL && db_desc->levels[level_id].root_r[tree_id] == NULL) {
 		get_op->found = 0;

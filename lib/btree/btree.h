@@ -19,6 +19,7 @@
 #include "../common/common.h"
 #include "btree_node.h"
 #include "conf.h"
+#include "key_splice.h"
 #include "kv_pairs.h"
 #include "lsn.h"
 #include "parallax/structures.h"
@@ -37,7 +38,7 @@
 
 struct lookup_operation {
 	struct db_descriptor *db_desc; /*in variable*/
-	char *key_buf; /*in variable*/
+	key_splice_t key_splice;
 	char *buffer_to_pack_kv; /*in-out variable*/
 	char *key_device_address; /*out variable*/
 	int32_t size; /*in-out variable*/

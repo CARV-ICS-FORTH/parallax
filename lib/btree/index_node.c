@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 #include "index_node.h"
+#include "../btree/key_splice.h"
 #include "../btree/kv_pairs.h"
 #include "../common/common.h"
 #include <assert.h>
@@ -431,10 +432,11 @@ int index_key_cmp(struct pivot_key *index_key, char *lookup_key, enum KV_type lo
 	}
 
 	/* lookup_key is KEY_TYPE*/
-	struct key_splice *p_key = (struct key_splice *)(lookup_key);
-	size = index_key->size <= p_key->key_size ? index_key->size : p_key->key_size;
+	key_splice_t p_key = (key_splice_t)(lookup_key);
+	int32_t p_key_size = get_key_splice_key_size(p_key);
+	size = index_key->size <= p_key_size ? index_key->size : p_key_size;
 	ret = memcmp(get_offset_of_pivot_key(index_key), get_key_splice_key_offset(p_key), size);
-	return ret != 0 ? ret : index_key->size - p_key->key_size;
+	return ret != 0 ? ret : index_key->size - p_key_size;
 }
 
 int32_t get_pivot_key_size(struct pivot_key *pivot)

@@ -30,12 +30,6 @@ struct kv_seperation_splice {
 	uint64_t dev_offt;
 } __attribute__((packed));
 
-// This struct defines the key abstraction of the system and it's irrelevant from splice format
-struct key_splice {
-	int32_t key_size;
-	char data[];
-} __attribute__((packed));
-
 /**
  * Calculates key_size given a splice formated key
  * @param key: a KV_FORMATED key
@@ -135,12 +129,6 @@ bool is_tombstone_kv_pair(struct kv_splice *kv_pair);
 void set_tombstone(struct kv_splice *kv_pair);
 
 void set_non_tombstone(struct kv_splice *kv_pair);
-
-int32_t get_key_splice_key_size(struct key_splice *key);
-char *get_key_splice_key_offset(struct key_splice *key);
-
-void set_key_size_of_key_splice(struct key_splice *key, int32_t key_size);
-void set_key_splice_key_offset(struct key_splice *key, char *key_buf);
 
 void serialize_key(char *buf, void *key, uint32_t key_size);
 void serialize_kv_splice_to_key_splice(char *buf, struct kv_splice *kv_pair);

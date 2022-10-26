@@ -17,6 +17,7 @@
 #include "../btree/btree.h"
 #include "../btree/conf.h"
 #include "../btree/index_node.h"
+#include "../btree/key_splice.h"
 #include "../btree/kv_pairs.h"
 #include "../btree/set_options.h"
 #include "../scanner/scanner.h"
@@ -102,14 +103,14 @@ void par_get(par_handle handle, struct par_key *key, struct par_value *value, co
 
 	/*Serialize user key in KV_FORMAT*/
 	char buf[PAR_MAX_PREALLOCATED_SIZE];
-	char *key_buf = buf;
-	int malloced = par_serialize_to_key_format(key, &key_buf, PAR_MAX_PREALLOCATED_SIZE);
+	bool malloced = false;
+	key_splice_t key_splice =
+		create_key_splice((char *)key->data, key->size, buf, PAR_MAX_PREALLOCATED_SIZE, &malloced);
 
 	struct db_handle *hd = (struct db_handle *)handle;
 
 	/*Prepare lookup reply*/
 	struct lookup_operation get_op = { .db_desc = hd->db_desc,
-					   .key_buf = key_buf,
 					   .buffer_to_pack_kv = NULL,
 					   .size = 0,
 					   .buffer_overflow = 0,
@@ -122,7 +123,7 @@ void par_get(par_handle handle, struct par_key *key, struct par_value *value, co
 
 	find_key(&get_op);
 	if (malloced)
-		free(key_buf);
+		free(key_splice);
 
 	if (!get_op.found)
 		*error_message = "key not found";
@@ -172,13 +173,14 @@ par_ret_code par_exists(par_handle handle, struct par_key *key)
 {
 	/*Serialize user key in KV_FORMAT*/
 	char buf[PAR_MAX_PREALLOCATED_SIZE];
-	char *key_buf = buf;
-	int malloced = par_serialize_to_key_format(key, &key_buf, PAR_MAX_PREALLOCATED_SIZE);
+	bool malloced = false;
+	key_splice_t key_splice =
+		create_key_splice((char *)key->data, key->size, buf, PAR_MAX_PREALLOCATED_SIZE, &malloced);
 
 	struct db_handle *hd = (struct db_handle *)handle;
 	/*Prepare lookup reply*/
 	struct lookup_operation get_op = { .db_desc = hd->db_desc,
-					   .key_buf = key_buf,
+					   .key_splice = key_splice,
 					   .buffer_to_pack_kv = NULL,
 					   .size = 0,
 					   .buffer_overflow = 1,
@@ -187,7 +189,7 @@ par_ret_code par_exists(par_handle handle, struct par_key *key)
 
 	find_key(&get_op);
 	if (malloced)
-		free(key_buf);
+		free(key_splice);
 
 	if (!get_op.found)
 		return PAR_KEY_NOT_FOUND;
@@ -221,23 +223,22 @@ par_scanner par_init_scanner(par_handle handle, struct par_key *key, par_seek_mo
 
 	char seek_key_buffer[PAR_MAX_PREALLOCATED_SIZE];
 
-	struct key_splice *seek_key = (struct key_splice *)seek_key_buffer;
-
+	key_splice_t seek_key_splice = NULL;
+	bool malloced = false;
 	enum SEEK_SCANNER_MODE scanner_mode = 0;
 	switch (mode) {
 	case PAR_GREATER:
 		scanner_mode = GREATER;
-		seek_key->key_size = key->size;
-		memcpy(seek_key->data, key->data, key->size);
+		seek_key_splice = create_key_splice((char *)key->data, key->size, seek_key_buffer,
+						    PAR_MAX_PREALLOCATED_SIZE, &malloced);
 		break;
 	case PAR_GREATER_OR_EQUAL:
-		seek_key->key_size = key->size;
-		memcpy(seek_key->data, key->data, key->size);
-		scanner_mode = GREATER_OR_EQUAL;
+		seek_key_splice = create_key_splice((char *)key->data, key->size, seek_key_buffer,
+						    PAR_MAX_PREALLOCATED_SIZE, &malloced);
 		break;
 	case PAR_FETCH_FIRST:
 		scanner_mode = GREATER_OR_EQUAL;
-		fill_smallest_possible_pivot(seek_key_buffer, PAR_MAX_PREALLOCATED_SIZE);
+		seek_key_splice = create_smallest_key(seek_key_buffer, PAR_MAX_PREALLOCATED_SIZE, &malloced);
 		break;
 	default:
 		*error_message = "Unknown seek scanner mode";
@@ -249,7 +250,10 @@ par_scanner par_init_scanner(par_handle handle, struct par_key *key, par_seek_mo
 
 	struct db_handle *internal_db_handle = (struct db_handle *)handle;
 	scanner->type_of_scanner = FORWARD_SCANNER;
-	init_dirty_scanner(scanner, internal_db_handle, seek_key, scanner_mode);
+	init_dirty_scanner(scanner, internal_db_handle, seek_key_splice, scanner_mode);
+	if (malloced)
+		free(seek_key_splice);
+	seek_key_splice = NULL;
 	p_scanner->sc = scanner;
 	p_scanner->allocated = 0;
 	p_scanner->buf_size = PAR_MAX_PREALLOCATED_SIZE;
