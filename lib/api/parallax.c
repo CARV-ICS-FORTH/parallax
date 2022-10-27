@@ -101,16 +101,16 @@ void par_get(par_handle handle, struct par_key *key, struct par_value *value, co
 		return;
 	}
 
-	/*Serialize user key in KV_FORMAT*/
-	char buf[PAR_MAX_PREALLOCATED_SIZE];
+	/*Serialize user key in KEY_SPLICE*/
+	char buf[MAX_KEY_SPLICE_SIZE];
 	bool malloced = false;
-	key_splice_t key_splice =
-		create_key_splice((char *)key->data, key->size, buf, PAR_MAX_PREALLOCATED_SIZE, &malloced);
+	key_splice_t key_splice = create_key_splice((char *)key->data, key->size, buf, sizeof(buf), &malloced);
 
 	struct db_handle *hd = (struct db_handle *)handle;
 
 	/*Prepare lookup reply*/
 	struct lookup_operation get_op = { .db_desc = hd->db_desc,
+					   .key_splice = key_splice,
 					   .buffer_to_pack_kv = NULL,
 					   .size = 0,
 					   .buffer_overflow = 0,

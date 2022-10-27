@@ -635,7 +635,7 @@ static void comp_close_write_cursor(struct comp_level_write_cursor *c)
 }
 
 static void comp_append_pivot_to_index(int32_t height, struct comp_level_write_cursor *c, uint64_t left_node_offt,
-				       struct pivot_key *pivot, uint64_t right_node_offt)
+				       key_splice_t pivot_splice, uint64_t right_node_offt)
 {
 	//log_debug("Append pivot %.*s left child offt %lu right child offt %lu", pivot->size, pivot->data,
 	//	  left_node_offt, right_node_offt);
@@ -652,14 +652,13 @@ static void comp_append_pivot_to_index(int32_t height, struct comp_level_write_c
 
 	struct pivot_pointer right = { .child_offt = right_node_offt };
 
-	struct insert_pivot_req ins_pivot_req = { .node = node, .key = pivot, .right_child = &right };
+	struct insert_pivot_req ins_pivot_req = { .node = node, .key_splice = pivot_splice, .right_child = &right };
 	while (!index_append_pivot(&ins_pivot_req)) {
 		uint32_t offt_l = comp_calc_offt_in_seg(c->segment_buf[height], (char *)c->last_index[height]);
 		uint64_t left_index_offt = c->last_segment_btree_level_offt[height] + offt_l;
 
-		struct pivot_key *pivot_copy = index_remove_last_pivot_key(node);
-		struct pivot_pointer *piv_pointer =
-			(struct pivot_pointer *)&((char *)pivot_copy)[PIVOT_KEY_SIZE(pivot_copy)];
+		key_splice_t pivot_copy_splice = index_remove_last_pivot_key(node);
+		struct pivot_pointer *piv_pointer = index_get_pivot_pointer(pivot_copy_splice);
 		comp_get_space(c, height, internalNode);
 		ins_pivot_req.node = (struct index_node *)c->last_index[height];
 		index_init_node(DO_NOT_ADD_GUARD, ins_pivot_req.node, internalNode);
@@ -669,8 +668,8 @@ static void comp_append_pivot_to_index(int32_t height, struct comp_level_write_c
 		/*last leaf updated*/
 		uint32_t offt_r = comp_calc_offt_in_seg(c->segment_buf[height], (char *)c->last_index[height]);
 		uint64_t right_index_offt = c->last_segment_btree_level_offt[height] + offt_r;
-		comp_append_pivot_to_index(height + 1, c, left_index_offt, pivot_copy, right_index_offt);
-		free(pivot_copy);
+		comp_append_pivot_to_index(height + 1, c, left_index_offt, pivot_copy_splice, right_index_offt);
+		free(pivot_copy_splice);
 	}
 }
 
@@ -796,7 +795,7 @@ static void comp_append_entry_to_leaf_node(struct comp_level_write_cursor *curso
 	if (write_leaf_args.cat == MEDIUM_INLOG &&
 	    write_leaf_args.level_id == cursor->handle->db_desc->level_medium_inplace) {
 		write_leaf_args.key_value_buf = fetch_kv_from_LRU(&write_leaf_args, cursor);
-		assert(get_key_size((struct kv_splice *)write_leaf_args.key_value_buf) <= MAX_KEY_SIZE);
+		assert(get_key_size((struct kv_splice *)write_leaf_args.key_value_buf) <= MAX_KEY_SPLICE_SIZE);
 		write_leaf_args.cat = MEDIUM_INPLACE;
 
 		kv_size = get_kv_size((struct kv_splice *)write_leaf_args.key_value_buf);
@@ -873,12 +872,12 @@ static void comp_append_entry_to_leaf_node(struct comp_level_write_cursor *curso
 		//create a pivot key based on the pivot key format | key_size | key | out of the kv_formated key
 		struct kv_splice *kv_buf = (struct kv_splice *)kv_formated_kv;
 		int32_t key_size_with_metadata_size = get_key_size_with_metadata(kv_buf);
-		int32_t key_size = get_key_size(kv_buf);
-		struct pivot_key *new_pivot = (struct pivot_key *)calloc(1, key_size_with_metadata_size);
-		set_pivot_key_size(new_pivot, key_size);
-		set_pivot_key(new_pivot, get_key_offset_in_kv(kv_buf), key_size);
 
-		comp_append_pivot_to_index(1, cursor, left_leaf_offt, (struct pivot_key *)new_pivot, right_leaf_offt);
+		char *new_pivot_buf = calloc(1UL, key_size_with_metadata_size);
+		serialize_kv_splice_to_key_splice(new_pivot_buf, kv_buf);
+		key_splice_t new_pivot_splice = (key_splice_t)new_pivot_buf;
+
+		comp_append_pivot_to_index(1, cursor, left_leaf_offt, new_pivot_splice, right_leaf_offt);
 	}
 }
 

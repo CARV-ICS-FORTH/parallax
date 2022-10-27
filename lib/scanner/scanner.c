@@ -31,7 +31,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
+#include <unistd.h>
 int init_level_scanner(level_scanner *level_sc, void *start_key, char seek_mode)
 {
 	stack_init(&level_sc->stack);
@@ -401,12 +401,17 @@ int32_t level_scanner_seek(level_scanner *level_sc, void *start_key_buf, SEEK_SC
 {
 	uint32_t level_id = level_sc->level_id;
 
-	struct pivot_key *start_key = start_key_buf;
+	key_splice_t start_key_splice = start_key_buf;
 	// cppcheck-suppress variableScope
 	char smallest_possible_pivot[SMALLEST_POSSIBLE_PIVOT_SIZE];
-	if (!start_key) {
-		fill_smallest_possible_pivot(smallest_possible_pivot, SMALLEST_POSSIBLE_PIVOT_SIZE);
-		start_key = (struct pivot_key *)smallest_possible_pivot;
+	if (!start_key_splice) {
+		bool malloced = false;
+		start_key_splice =
+			create_smallest_key(smallest_possible_pivot, SMALLEST_POSSIBLE_PIVOT_SIZE, &malloced);
+		if (malloced) {
+			log_fatal("Buffer not large enough to create smallest possible key_splice");
+			_exit(EXIT_FAILURE);
+		}
 	}
 	/*
    * For L0 already safe we have read lock of guard lock else its just a root_r
@@ -436,7 +441,7 @@ int32_t level_scanner_seek(level_scanner *level_sc, void *start_key_buf, SEEK_SC
 	struct node_header *node = level_sc->root;
 	while (node->type != leafNode && node->type != leafRootNode) {
 		element.node = node;
-		index_iterator_init_with_key((struct index_node *)element.node, &element.iterator, start_key);
+		index_iterator_init_with_key((struct index_node *)element.node, &element.iterator, start_key_splice);
 
 		if (!index_iterator_is_valid(&element.iterator)) {
 			log_fatal("Invalid index node iterator during seek");
@@ -464,11 +469,12 @@ int32_t level_scanner_seek(level_scanner *level_sc, void *start_key_buf, SEEK_SC
 	// binary saerch of dynamic leaf accepts only kv_formated or kv_prefixed keys, but the start_key of the scanner
 	// follows the key_size | key format
 	// TODO: (@geostyl) make the binary search aware of the scanner format?
-	struct kv_splice *kv_formated_start_key =
-		(struct kv_splice *)calloc(1, PIVOT_KEY_SIZE(start_key) + sizeof(uint32_t));
-	set_key_size(kv_formated_start_key, get_pivot_key_size((struct pivot_key *)start_key));
+	size_t key_splice_size = get_key_splice_key_size(start_key_splice) + get_kv_metadata_size();
+	struct kv_splice *kv_formated_start_key = (struct kv_splice *)calloc(1UL, key_splice_size);
+	set_key_size(kv_formated_start_key, get_key_splice_key_size(start_key_splice));
 	set_value_size(kv_formated_start_key, UINT32_MAX);
-	set_key(kv_formated_start_key, start_key->data, start_key->size);
+	set_key(kv_formated_start_key, get_key_splice_key_offset(start_key_splice),
+		get_key_splice_key_size(start_key_splice));
 	req.key_value_buf = (char *)kv_formated_start_key;
 
 	db_handle handle = { .db_desc = db_desc, .volume_desc = NULL };

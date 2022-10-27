@@ -92,7 +92,7 @@ int8_t find_deleted_kv_pairs_in_segment(struct db_handle handle, struct gc_segme
 {
 	struct gc_segment_descriptor iter_log_segment = *log_seg;
 	char *log_segment_in_device = REAL_ADDRESS(log_seg->segment_dev_offt);
-	char buf[MAX_KEY_SIZE];
+	char buf[MAX_KEY_SPLICE_SIZE];
 	struct kv_splice *kv = NULL;
 	int64_t checked_segment_chunk = get_lsn_size();
 	int64_t segment_data = LOG_DATA_OFFSET;

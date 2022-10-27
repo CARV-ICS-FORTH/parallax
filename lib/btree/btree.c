@@ -1761,7 +1761,7 @@ int is_split_needed(void *node, bt_insert_req *req, uint32_t leaf_size)
 	uint8_t level_id = req->metadata.level_id;
 
 	if (height != 0)
-		return index_is_split_needed((struct index_node *)node, MAX_KEY_SIZE);
+		return index_is_split_needed((struct index_node *)node, MAX_KEY_SPLICE_SIZE);
 
 	enum kv_entry_location key_type = KV_INPLACE;
 
@@ -1869,7 +1869,7 @@ release_and_retry:
 					.right_child = (struct index_node *)split_res.right_child
 				};
 				struct index_node_split_reply index_split_rep = { .pivot_buf = split_res.middle_key,
-										  .pivot_buf_size = MAX_KEY_SIZE };
+										  .pivot_buf_size = MAX_PIVOT_SIZE };
 				index_split_node(&index_split_req, &index_split_rep);
 				/*node has splitted, free it*/
 				seg_free_index_node(ins_req->metadata.handle->db_desc, level_id,
@@ -1900,12 +1900,11 @@ release_and_retry:
 
 				struct pivot_pointer left = { .child_offt = ABSOLUTE_ADDRESS(split_res.left_child) };
 				struct pivot_pointer right = { .child_offt = ABSOLUTE_ADDRESS(split_res.right_child) };
-				struct insert_pivot_req ins_pivot_req = {
-					.node = new_root,
-					.left_child = &left,
-					.key = (struct pivot_key *)split_res.middle_key,
-					.right_child = &right
-				};
+				struct insert_pivot_req ins_pivot_req = { .node = new_root,
+									  .left_child = &left,
+									  .key_splice =
+										  (key_splice_t)split_res.middle_key,
+									  .right_child = &right };
 				if (!index_insert_pivot(&ins_pivot_req)) {
 					log_fatal("Cannot insert pivot!");
 					_exit(EXIT_FAILURE);
@@ -1919,11 +1918,11 @@ release_and_retry:
 			struct pivot_pointer right = { .child_offt = ABSOLUTE_ADDRESS(split_res.right_child) };
 			struct insert_pivot_req ins_pivot_req = { .node = (struct index_node *)father,
 								  .left_child = &left,
-								  .key = (struct pivot_key *)split_res.middle_key,
+								  .key_splice = (key_splice_t)split_res.middle_key,
 								  .right_child = &right };
 			if (!index_insert_pivot(&ins_pivot_req)) {
 				log_fatal("Cannot insert pivot! pivot is %u",
-					  get_key_size((struct kv_splice *)ins_pivot_req.key));
+					  get_key_splice_key_size(ins_pivot_req.key_splice));
 				_exit(EXIT_FAILURE);
 			}
 			goto release_and_retry;

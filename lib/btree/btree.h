@@ -19,6 +19,7 @@
 #include "../common/common.h"
 #include "btree_node.h"
 #include "conf.h"
+#include "index_node.h"
 #include "key_splice.h"
 #include "kv_pairs.h"
 #include "lsn.h"
@@ -389,7 +390,7 @@ enum bt_rebalance_retcode {
 };
 
 struct bt_rebalance_result {
-	char middle_key[MAX_KEY_SIZE];
+	char middle_key[MAX_PIVOT_SIZE];
 	union {
 		node_header *left_child;
 		struct index_node *left_ichild;

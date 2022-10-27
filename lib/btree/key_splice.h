@@ -16,13 +16,18 @@
 #include <stdbool.h>
 #include <stdint.h>
 typedef struct key_splice *key_splice_t;
+#define SMALLEST_KEY_SPLICE_SIZE (sizeof(int32_t) + 1)
+#define MAX_KEY_SIZE 255
+#define MAX_KEY_SPLICE_SIZE (MAX_KEY_SIZE + sizeof(int32_t))
 #define T int32_t
 extern key_splice_t create_key_splice(char *key, int32_t key_size, char *buffer, int32_t buffer_size, bool *malloced);
 extern key_splice_t create_smallest_key(char *buffer, int32_t buffer_size, bool *malloced);
 extern T get_key_splice_key_size(key_splice_t key);
+extern T get_key_splice_metadata_size(void);
 extern char *get_key_splice_key_offset(key_splice_t key);
 
 extern void set_key_size_of_key_splice(key_splice_t key, T key_size);
 extern void set_key_splice_key_offset(key_splice_t key, char *key_buf);
+uint32_t get_key_splice_max_size(void);
 #undef T
 #endif

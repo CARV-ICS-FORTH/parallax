@@ -119,7 +119,7 @@ struct find_result find_key_in_dynamic_leaf(const struct bt_dynamic_leaf_node *l
 					    uint32_t key_size, int level_id)
 {
 	bt_insert_req req;
-	char buf[MAX_KEY_SIZE];
+	char buf[MAX_KEY_SIZE + sizeof(struct kv_splice)];
 	struct dl_bsearch_result result = { .middle = 0, .status = INSERT, .op = DYNAMIC_LEAF_FIND };
 	struct find_result ret_result = { .kv = NULL, .key_type = KV_INPLACE, .kv_category = BIG_INLOG, .tombstone = 0 };
 	struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(leaf);
@@ -318,7 +318,7 @@ void print_all_keys(const struct bt_dynamic_leaf_node *leaf, uint32_t leaf_size)
 		char *key = fill_keybuf(get_kv_offset(leaf, leaf_size, slot_array[i].index),
 					get_kv_format(slot_array[i].key_category));
 
-		assert(get_key_size(key) < MAX_KEY_SIZE);
+		assert(get_key_size(key) < MAX_KEY_SPLICE_SIZE);
 		log_debug("Key %*s", get_key_size(key), key + get_lsn_size());
 		/* log_info("offset in leaf %d ADDR %llu Size%d key %s\n", slot_array[i].index, get_kv_offset(leaf, leaf_size, slot_array[i].index),KEY_SIZE(key), key + 4); */
 	}
@@ -502,10 +502,7 @@ struct bt_rebalance_result split_dynamic_leaf(struct bt_dynamic_leaf_node *leaf,
 
 	struct kv_splice *kv_splice = (struct kv_splice *)L.addr;
 
-	uint32_t key_size = get_key_size(kv_splice);
-	set_pivot_key_size((struct pivot_key *)rep.middle_key, key_size); // key_size
-	set_pivot_key((struct pivot_key *)rep.middle_key, get_key_offset_in_kv(kv_splice), key_size);
-	assert(key_size + sizeof(key_size) <= sizeof(rep.middle_key));
+	serialize_kv_splice_to_key_splice(rep.middle_key, kv_splice);
 
 	if (L.in_tail) {
 		struct log_descriptor *log_desc = NULL;

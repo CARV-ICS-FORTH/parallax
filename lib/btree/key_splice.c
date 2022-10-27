@@ -12,11 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 #include "key_splice.h"
+#include <assert.h>
 #include <log.h>
 #include <stdlib.h>
 #include <string.h>
 #define T int32_t
 #define T_MAX INT32_MAX
+#define KV_SPLICE_MAX_KEY_SIZE 255UL
 // This struct defines the key abstraction of the system and it's irrelevant from splice format
 struct key_splice {
 	T key_size;
@@ -35,8 +37,10 @@ extern key_splice_t create_key_splice(char *key, int32_t key_size, char *buffer,
 		return NULL;
 	}
 	key_splice_t key_splice = (key_splice_t)buffer;
-	if (sizeof(struct key_splice) + key_size >= buffer_size) {
-		log_debug("Buffer is not large enough to host a key_splice");
+	if (sizeof(struct key_splice) + key_size > buffer_size) {
+		log_debug("Buffer is not large enough to host a key_splice needs: %lu has: %u",
+			  sizeof(struct key_splice) + key_size, buffer_size);
+		assert(0);
 		key_splice = calloc(1UL, sizeof(struct key_splice) + key_size);
 		*malloced = true;
 	}
@@ -69,6 +73,16 @@ inline void set_key_size_of_key_splice(key_splice_t key, T key_size)
 inline void set_key_splice_key_offset(key_splice_t key, char *key_buf)
 {
 	memcpy(get_key_splice_key_offset(key), key_buf, get_key_splice_key_size(key));
+}
+
+inline T get_key_splice_metadata_size(void)
+{
+	return sizeof(struct key_splice);
+}
+
+uint32_t get_key_splice_max_size(void)
+{
+	return KV_SPLICE_MAX_KEY_SIZE + sizeof(struct key_splice);
 }
 #undef T
 #undef T_MAX
