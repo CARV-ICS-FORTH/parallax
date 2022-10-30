@@ -962,8 +962,6 @@ struct par_put_metadata insert_key_value(db_handle *handle, void *key, void *val
 	}
 
 	/*prepare the request*/
-
-	ins_req.metadata.put_op_metadata.key_value_category = ins_req.metadata.cat;
 	ins_req.metadata.handle = handle;
 	ins_req.key_value_buf = kv_pair;
 	ins_req.metadata.tombstone = op_type == deleteOp;
@@ -972,6 +970,7 @@ struct par_put_metadata insert_key_value(db_handle *handle, void *key, void *val
 	set_key((struct kv_splice *)kv_pair, key, key_size);
 	set_value((struct kv_splice *)kv_pair, value, value_size);
 	ins_req.metadata.cat = calculate_KV_category(key_size, value_size, op_type);
+	ins_req.metadata.put_op_metadata.key_value_category = ins_req.metadata.cat;
 	ins_req.metadata.level_id = 0;
 	ins_req.metadata.key_format = KV_FORMAT;
 	ins_req.metadata.append_to_log = 1;
@@ -1009,6 +1008,7 @@ struct par_put_metadata serialized_insert_key_value(db_handle *handle, const cha
 		return invalid_put_metadata;
 	}
 	ins_req.metadata.cat = calculate_KV_category(key_size, value_size, insertOp);
+	ins_req.metadata.put_op_metadata.key_value_category = ins_req.metadata.cat;
 
 	// cppcheck-suppress uselessAssignmentPtrArg
 	// cppcheck-suppress unreadVariable

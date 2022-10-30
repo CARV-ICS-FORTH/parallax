@@ -67,14 +67,14 @@ enum kv_category get_kv_category(int32_t key_size, int32_t value_size, request_t
  * @param key_value KV to insert.
  * @param error_message Contains error message if call fails.
  */
-void par_put(par_handle handle, struct par_key_value *key_value, const char **error_message);
+struct par_put_metadata par_put(par_handle handle, struct par_key_value *key_value, const char **error_message);
 
 /**
  * Inserts a serialized key value pair by using the buffer provided by the user.
  * @param serialized_key_value is a buffer containing the serialized key value pair. The format of the key value pair is | key_size | key | value_size | value |
  * where {key,value}_size is uint32_t.
  */
-void par_put_serialized(par_handle handle, char *serialized_key_value, const char **error_message);
+struct par_put_metadata par_put_serialized(par_handle handle, char *serialized_key_value, const char **error_message);
 
 /**
  * Takes as input a key and searches for it. If the key exists in the DB, then

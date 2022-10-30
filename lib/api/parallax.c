@@ -61,10 +61,10 @@ enum kv_category get_kv_category(int32_t key_size, int32_t value_size, request_t
 	return calculate_KV_category(key_size, value_size, operation);
 }
 
-void par_put(par_handle handle, struct par_key_value *key_value, const char **error_message)
+struct par_put_metadata par_put(par_handle handle, struct par_key_value *key_value, const char **error_message)
 {
-	insert_key_value((db_handle *)handle, (char *)key_value->k.data, (char *)key_value->v.val_buffer,
-			 key_value->k.size, key_value->v.val_size, insertOp, *error_message);
+	return insert_key_value((db_handle *)handle, (char *)key_value->k.data, (char *)key_value->v.val_buffer,
+				key_value->k.size, key_value->v.val_size, insertOp, *error_message);
 }
 
 /**
@@ -73,9 +73,9 @@ void par_put(par_handle handle, struct par_key_value *key_value, const char **er
  * @param serialized_key_value, the kv_formated key to be inserted
  * @param error_message, possible error message upon a failure in the insert path
  * */
-void par_put_serialized(par_handle handle, char *serialized_key_value, const char **error_message)
+struct par_put_metadata par_put_serialized(par_handle handle, char *serialized_key_value, const char **error_message)
 {
-	serialized_insert_key_value((db_handle *)handle, serialized_key_value, *error_message);
+	return serialized_insert_key_value((db_handle *)handle, serialized_key_value, *error_message);
 }
 
 static inline int par_serialize_to_key_format(struct par_key *key, char **buf, int32_t buf_size)
