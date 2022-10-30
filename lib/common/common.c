@@ -39,8 +39,3 @@ __attribute__((noreturn)) void *BUG_ON(void)
 {
 	print_stack_trace();
 }
-
-__attribute__((noreturn)) uint32_t BUG_ON_UINT32T(void)
-{
-	print_stack_trace();
-}

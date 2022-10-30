@@ -37,7 +37,8 @@ extern key_splice_t create_key_splice(char *key, int32_t key_size, char *buffer,
 		return NULL;
 	}
 	key_splice_t key_splice = (key_splice_t)buffer;
-	if (sizeof(struct key_splice) + key_size > buffer_size) {
+	uint32_t key_splice_size = sizeof(struct key_splice) + key_size;
+	if ((int32_t)key_splice_size > buffer_size) {
 		log_debug("Buffer is not large enough to host a key_splice needs: %lu has: %u",
 			  sizeof(struct key_splice) + key_size, buffer_size);
 		assert(0);
@@ -80,6 +81,7 @@ inline T get_key_splice_metadata_size(void)
 	return sizeof(struct key_splice);
 }
 
+// cppcheck-suppress unusedFunction
 uint32_t get_key_splice_max_size(void)
 {
 	return KV_SPLICE_MAX_KEY_SIZE + sizeof(struct key_splice);

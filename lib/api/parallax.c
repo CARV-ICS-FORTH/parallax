@@ -16,7 +16,6 @@
 #include "../allocator/kv_format.h"
 #include "../btree/btree.h"
 #include "../btree/conf.h"
-#include "../btree/index_node.h"
 #include "../btree/key_splice.h"
 #include "../btree/kv_pairs.h"
 #include "../btree/set_options.h"
@@ -24,6 +23,7 @@
 #include "parallax/structures.h"
 #include <assert.h>
 #include <log.h>
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -77,21 +77,6 @@ struct par_put_metadata par_put(par_handle handle, struct par_key_value *key_val
 struct par_put_metadata par_put_serialized(par_handle handle, char *serialized_key_value, const char **error_message)
 {
 	return serialized_insert_key_value((db_handle *)handle, serialized_key_value, *error_message);
-}
-
-static inline int par_serialize_to_key_format(struct par_key *key, char **buf, int32_t buf_size)
-{
-	int ret = 0;
-	int32_t key_size_with_metadata = sizeof(key->size) + key->size;
-	int32_t get_op_payload_size = key_size_with_metadata;
-	if (get_op_payload_size > buf_size) {
-		*buf = malloc(get_op_payload_size);
-		ret = 1;
-	}
-	struct key_splice *kv_buf = (struct key_splice *)*buf;
-	set_key_size_of_key_splice(kv_buf, key->size);
-	set_key_splice_key_offset(kv_buf, (char *)key->data);
-	return ret;
 }
 
 void par_get(par_handle handle, struct par_key *key, struct par_value *value, const char **error_message)

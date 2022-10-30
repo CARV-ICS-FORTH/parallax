@@ -13,7 +13,6 @@
 // limitations under the License.
 #ifndef INDEX_NODE_H
 #define INDEX_NODE_H
-#include "../common/common.h"
 #include "btree_node.h"
 #include "key_splice.h"
 #include "kv_pairs.h"
@@ -145,7 +144,7 @@ bool index_is_split_needed(index_node_t node, uint32_t max_pivot_size);
   * int32_t pivot_size and data and the device offset to the node which should be visitted next. Doing the operation
   * pivot_key + PIVOT_KEY_SIZE we get the pivot pointer.
   */
-struct pivot_pointer *index_search_get_pivot(struct index_node *node, void *lookup_key, enum KV_type lookup_key_format);
+struct pivot_pointer *index_search_get_pivot(index_node_t node, void *lookup_key, enum KV_type lookup_key_format);
 
 /**
   * Removes last  pivot_key followd by the pivot pointer from node. The

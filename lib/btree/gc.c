@@ -20,6 +20,7 @@
 #include "../common/common.h"
 #include "btree.h"
 #include "conf.h"
+#include "key_splice.h"
 #include "lsn.h"
 #include "parallax/structures.h"
 #include <assert.h>

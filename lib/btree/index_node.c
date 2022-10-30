@@ -18,7 +18,6 @@
 #include <assert.h>
 #include <log.h>
 #include <stdbool.h>
-#include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
@@ -398,7 +397,7 @@ void index_split_node(struct index_node_split_request *request, struct index_nod
 	key_splice_t middle_key_splice = get_index_key_splice(request->node, slot_array[curr_entry].pivot);
 	// memcpy(&middle_key, middle_key, PIVOT_KEY_SIZE(middle_key));
 	if (reply->pivot_buf_size < get_pivot_size(middle_key_splice)) {
-		log_fatal("Buffer overflow in split index node provided buffer size is %u pivot size is %u",
+		log_fatal("Buffer overflow in split index node provided buffer size is %u pivot size is %lu",
 			  reply->pivot_buf_size, get_pivot_size(middle_key_splice));
 		log_fatal("Middle key is size:%u key-data:%.*s", get_key_splice_key_size(middle_key_splice),
 			  get_key_splice_key_size(middle_key_splice), get_key_splice_key_offset(middle_key_splice));

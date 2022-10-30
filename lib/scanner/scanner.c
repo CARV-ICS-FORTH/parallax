@@ -18,6 +18,7 @@
 #include "../btree/conf.h"
 #include "../btree/dynamic_leaf.h"
 #include "../btree/index_node.h"
+#include "../btree/key_splice.h"
 #include "../btree/kv_pairs.h"
 #include "../common/common.h"
 #include "../include/parallax/parallax.h"

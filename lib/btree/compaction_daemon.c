@@ -29,6 +29,7 @@
 #include "dynamic_leaf.h"
 #include "gc.h"
 #include "index_node.h"
+#include "key_splice.h"
 #include "medium_log_LRU_cache.h"
 #include "segment_allocator.h"
 #include <assert.h>
@@ -795,7 +796,7 @@ static void comp_append_entry_to_leaf_node(struct comp_level_write_cursor *curso
 	if (write_leaf_args.cat == MEDIUM_INLOG &&
 	    write_leaf_args.level_id == cursor->handle->db_desc->level_medium_inplace) {
 		write_leaf_args.key_value_buf = fetch_kv_from_LRU(&write_leaf_args, cursor);
-		assert(get_key_size((struct kv_splice *)write_leaf_args.key_value_buf) <= MAX_KEY_SPLICE_SIZE);
+		assert(get_key_size((struct kv_splice *)write_leaf_args.key_value_buf) <= (int32_t)MAX_KEY_SPLICE_SIZE);
 		write_leaf_args.cat = MEDIUM_INPLACE;
 
 		kv_size = get_kv_size((struct kv_splice *)write_leaf_args.key_value_buf);

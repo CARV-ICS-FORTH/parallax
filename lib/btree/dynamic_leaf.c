@@ -17,8 +17,7 @@
 #include "../common/common.h"
 #include "btree.h"
 #include "btree_node.h"
-#include "conf.h"
-#include "index_node.h"
+#include "key_splice.h"
 #include "segment_allocator.h"
 #include <assert.h>
 #include <log.h>

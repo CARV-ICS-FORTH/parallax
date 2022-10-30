@@ -17,6 +17,7 @@
 #include "../allocator/log_structures.h"
 #include "btree.h"
 #include "btree_node.h"
+#include "index_node.h"
 #include <stdint.h>
 // IWYU pragma: no_forward_declare index_node
 
