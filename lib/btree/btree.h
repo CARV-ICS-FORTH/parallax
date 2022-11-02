@@ -26,7 +26,6 @@
 #include <semaphore.h>
 #include <stdbool.h>
 #include <stdint.h>
-#define MAX_HEIGHT 9
 
 struct lookup_operation {
 	struct db_descriptor *db_desc; /*in variable*/
