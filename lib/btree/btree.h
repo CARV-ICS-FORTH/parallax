@@ -291,9 +291,9 @@ struct bt_rebalance_result {
 };
 
 typedef struct metadata_tologop {
-	uint32_t key_len;
-	uint32_t value_len;
-	uint32_t kv_size;
+	int32_t key_len;
+	int32_t value_len;
+	int32_t kv_size;
 } metadata_tologop;
 
 struct par_put_metadata insert_key_value(db_handle *handle, void *key, void *value, int32_t key_size,

@@ -24,6 +24,7 @@ enum KV_type { KV_FORMAT, KV_PREFIX, INDEX_KEY_TYPE, KEY_TYPE };
 struct kv_splice {
 	int32_t key_size;
 	int32_t value_size;
+	int8_t sizes_tail;
 	char data[];
 } __attribute__((packed));
 
