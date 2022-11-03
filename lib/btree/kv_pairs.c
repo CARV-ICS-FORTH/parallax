@@ -49,6 +49,12 @@ inline int32_t get_kv_size(struct kv_splice *kv_pair)
 	return get_key_size(kv_pair) + get_value_size(kv_pair) + get_kv_metadata_size();
 }
 
+inline int32_t get_tail_size(void)
+{
+	struct kv_splice kv_pair = { 0 };
+	return sizeof(kv_pair.sizes_tail);
+}
+
 inline void set_key_size(struct kv_splice *kv_pair, int32_t key_size)
 {
 	kv_pair->key_size = key_size;

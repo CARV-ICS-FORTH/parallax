@@ -142,6 +142,10 @@ int32_t get_kv_metadata_size(void);
  */
 int32_t get_kv_size(struct kv_splice *kv_pair);
 /**
+ * Returns the size of the tails (size_tail/payload_tail)
+ */
+int32_t get_tail_size(void);
+/**
  * Sets the key size given a splice formated kv
  * @param kv: a spliced (KV_FORMATED) kv ptr, where key_size will be set
  * @param key_size: the new size to be set
