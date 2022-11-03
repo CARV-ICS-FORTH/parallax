@@ -175,6 +175,9 @@ void set_value_size(struct kv_splice *kv_pair, int32_t value_size);
   */
 void set_value(struct kv_splice *kv_pair, char *value, int32_t value_size);
 
+void set_sizes_tail(struct kv_splice *kv_pair, uint8_t tail);
+void set_payload_tail(struct kv_splice *kv_pair, uint8_t tail);
+
 /**
  * Calculates the starting offset of the key part of a given splice kv
  * @param kv: a spliced (KV_FORMATED) kv ptr, from which the key is retrieved

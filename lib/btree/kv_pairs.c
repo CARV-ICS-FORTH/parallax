@@ -104,17 +104,12 @@ inline void set_tombstone(struct kv_splice *kv_pair)
 	kv_pair->value_size = DELETE_MARKER_ID;
 }
 
-inline void set_sizes_tail(struct kv_splice *kv_pair, int32_t sizes_tail)
-{
-	kv_pair->sizes_tail = sizes_tail;
-}
-
 void serialize_key(char *buf, void *key, uint32_t key_size)
 {
 	struct kv_splice *kv_splice = (struct kv_splice *)buf;
 	set_key_size(kv_splice, key_size);
 	set_value_size(kv_splice, INT32_MAX);
-	set_sizes_tail(kv_splice, INT32_MAX);
+	set_sizes_tail(kv_splice, INT8_MAX);
 	set_key(kv_splice, (char *)key, key_size);
 }
 
@@ -285,4 +280,16 @@ int32_t kv_splice_base_calculate_size(struct kv_splice_base *splice)
 char *kv_splice_base_get_reference(struct kv_splice_base *splice)
 {
 	return (kv_splice_base_is_in_place(splice)) ? (char *)splice->kv_splice : (char *)splice->kv_sep2;
+}
+inline void set_sizes_tail(struct kv_splice *kv_pair, uint8_t tail)
+{
+	kv_pair->sizes_tail = tail;
+}
+
+inline void set_payload_tail(struct kv_splice *kv_pair, uint8_t tail)
+{
+	char *payload = kv_pair->data;
+	int32_t key_size = get_key_size(kv_pair);
+	int32_t value_size = get_value_size(kv_pair);
+	payload[key_size + value_size] = tail;
 }
