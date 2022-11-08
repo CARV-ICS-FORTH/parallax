@@ -1,6 +1,7 @@
 #include "arg_parser.h"
 #include <log.h>
 #include <parallax/parallax.h>
+#include <btree/gc.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -9,6 +10,7 @@
 
 static par_handle open_db(const char *path)
 {
+	disable_gc();
 	par_db_options db_options;
 	const char *error_message = NULL;
 	db_options.db_name = "TIRESIAS";

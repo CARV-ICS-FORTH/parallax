@@ -53,3 +53,9 @@ inline int64_t lsn_factory_get_ticket(struct lsn_factory *lsn_factory)
 {
 	return lsn_factory->ticket_id;
 }
+
+struct lsn get_max_lsn(void)
+{
+	struct lsn max_lsn = { .id = INT64_MAX };
+	return max_lsn;
+}

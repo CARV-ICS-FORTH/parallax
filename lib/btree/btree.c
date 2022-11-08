@@ -966,7 +966,7 @@ struct par_put_metadata insert_key_value(db_handle *handle, void *key, void *val
 	ins_req.key_value_buf = kv_pair;
 	ins_req.metadata.tombstone = op_type == deleteOp;
 	ins_req.metadata.tombstone ? set_tombstone((struct kv_splice *)ins_req.key_value_buf) :
-				     set_non_tombstone((struct kv_splice *)ins_req.key_value_buf);
+					   set_non_tombstone((struct kv_splice *)ins_req.key_value_buf);
 	set_key((struct kv_splice *)kv_pair, key, key_size);
 	set_value((struct kv_splice *)kv_pair, value, value_size);
 	ins_req.metadata.cat = calculate_KV_category(key_size, value_size, op_type);
@@ -1330,14 +1330,22 @@ static void *bt_append_to_log_direct_IO(struct log_operation *req, struct log_to
 	log_kv_entry_ticket.tail = log_metadata->log_desc->tail[tail_id % LOG_TAIL_NUM_BUFS];
 	log_kv_entry_ticket.log_offt = log_metadata->log_desc->size;
 
-	log_kv_entry_ticket.lsn = increase_lsn(&handle->db_desc->lsn_factory);
+	if (req->is_compaction)
+		log_kv_entry_ticket.lsn = get_max_lsn();
+	else
+		log_kv_entry_ticket.lsn = increase_lsn(&handle->db_desc->lsn_factory);
+
 	/*Where we *will* store it on the device*/
 	struct segment_header *device_location = REAL_ADDRESS(log_metadata->log_desc->tail_dev_offt);
 	addr_inlog = (void *)((uint64_t)device_location + (log_metadata->log_desc->size % SEGMENT_SIZE));
 
 	req->metadata->log_offset = log_metadata->log_desc->size;
 	req->metadata->put_op_metadata.offset_in_log = req->metadata->log_offset;
-	req->metadata->put_op_metadata.lsn = get_lsn_id(&log_kv_entry_ticket.lsn);
+	if (req->is_compaction) {
+		struct lsn max_lsn = get_max_lsn();
+		req->metadata->put_op_metadata.lsn = get_lsn_id(&max_lsn);
+	} else
+		req->metadata->put_op_metadata.lsn = get_lsn_id(&log_kv_entry_ticket.lsn);
 	log_metadata->log_desc->size += reserve_needed_space;
 	MUTEX_UNLOCK(&handle->db_desc->lock_log);
 
@@ -1650,7 +1658,8 @@ int insert_KV_at_leaf(bt_insert_req *ins_req, node_header *leaf)
 	if (append_tolog) {
 		log_operation append_op = { .metadata = &ins_req->metadata,
 					    .optype_tolog = insertOp,
-					    .ins_req = ins_req };
+					    .ins_req = ins_req,
+					    .is_compaction = false };
 
 		if (ins_req->metadata.tombstone == 1)
 			append_op.optype_tolog = deleteOp;

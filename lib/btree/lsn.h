@@ -55,4 +55,8 @@ struct lsn increase_lsn(struct lsn_factory *lsn_factory);
  * @param lsn_factory: a ptr to the lsn_factory from which we are retrieving its current value
  * */
 int64_t lsn_factory_get_ticket(struct lsn_factory *lsn_factory);
+/**
+  * returns an lsn object containing the biggest lsn possible
+  * */
+struct lsn get_max_lsn(void);
 #endif

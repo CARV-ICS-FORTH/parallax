@@ -354,6 +354,7 @@ typedef struct log_operation {
 	bt_mutate_req *metadata;
 	request_type optype_tolog;
 	bt_insert_req *ins_req;
+	bool is_compaction;
 } log_operation;
 
 /**

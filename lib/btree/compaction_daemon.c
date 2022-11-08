@@ -728,6 +728,7 @@ static int comp_append_medium_L1(struct comp_level_write_cursor *c, struct comp_
 	log_op.metadata = &ins_req.metadata;
 	log_op.optype_tolog = insertOp;
 	log_op.ins_req = &ins_req;
+	log_op.is_compaction = true;
 
 	char *log_location = append_key_value_to_log(&log_op);
 	struct kv_splice *kv_inplace = (struct kv_splice *)in->kv_inplace;

@@ -634,7 +634,7 @@ int reorganize_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, uint32_t leaf_siz
 	enum kv_category cat = req->metadata.cat;
 	uint32_t kv_size = (cat == BIG_INLOG || cat == MEDIUM_INLOG) ?
 				   get_kv_seperated_splice_size() :
-				   get_kv_size((struct kv_splice *)req->key_value_buf);
+					 get_kv_size((struct kv_splice *)req->key_value_buf);
 
 	if (leaf->header.fragmentation <= kv_size || req->metadata.level_id != 0)
 		return 0;
