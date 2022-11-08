@@ -353,3 +353,14 @@ release_tiresias:
         - make tiresias;cd tests;
         - ctest -R ^tiresias$
     needs: [release_build_gcc, release_build_clang]
+
+release_test_par_put_metadata:
+    image: carvicsforth/arch_carv:latest
+    stage: release_test
+    <<: *release_build_commands
+    tags:
+        - kubernetes
+    script:
+        - make test_par_put_metadata;cd tests;
+        - ctest -R ^test_par_put_metadata$
+    needs: [release_build_gcc, release_build_clang]

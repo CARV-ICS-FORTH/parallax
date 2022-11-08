@@ -403,3 +403,14 @@ debug_tiresias:
         - make tiresias;cd tests;
         - ctest -R ^tiresias$
     needs: [debug_build_gcc, debug_build_clang]
+
+debug_test_par_put_metadata:
+    image: carvicsforth/arch_carv:latest
+    stage: debug_test
+    <<: *debug_build_commands
+    tags:
+        - kubernetes
+    script:
+        - make test_par_put_metadata;cd tests;
+        - ctest -R ^test_par_put_metadata$
+    needs: [debug_build_gcc, debug_build_clang]

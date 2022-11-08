@@ -172,5 +172,13 @@ if(BUILD_TESTING)
   add_test(NAME test_par_put_serialized
            COMMAND $<TARGET_FILE:test_par_put_serialized> --file=${FILEPATH})
 
+  add_executable(test_par_put_metadata test_par_put_metadata.c arg_parser.c)
+  target_link_libraries(test_par_put_metadata "${PROJECT_NAME}"
+                        ${DEPENDENCIES})
+  add_test(NAME test_par_put_metadata
+           COMMAND $<TARGET_FILE:test_par_put_metadata> --file=${FILEPATH} --num_of_kvs=1000000)
+
+
+
   add_subdirectory(Surrogates)
 endif()
