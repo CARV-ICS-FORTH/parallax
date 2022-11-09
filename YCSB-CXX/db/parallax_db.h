@@ -231,7 +231,8 @@ class ParallaxDB : public YCSBDB {
 			const char *error_message = NULL;
 			par_get(dbs[db_id], &lookup_key, &lookup_value, &error_message);
 			if (error_message) {
-				std::cout << "[1]cannot find : " << key << " in DB " << db_id << std::endl;
+				std::cout << "[1]cannot find : " << key << " in DB " << db_id
+					  << "got error: " << error_message << std::endl;
 				assert(0);
 				exit(EXIT_FAILURE);
 			}

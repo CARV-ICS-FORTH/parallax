@@ -569,7 +569,8 @@ db_handle *internal_db_open(struct volume_descriptor *volume_desc, par_db_option
 	db = klist_find_element_with_key(volume_desc->open_databases, (char *)db_options->db_name);
 
 	if (db != NULL) {
-		*error_message = "DB already open for volume";
+		*error_message = calloc(1, 100);
+		sprintf((char *)*error_message, "DB already open for volume %s", db_options->db_name);
 		handle = calloc(1, sizeof(struct db_handle));
 		handle->volume_desc = volume_desc;
 		handle->db_desc = db;
@@ -731,7 +732,9 @@ const char *db_close(db_handle *handle)
 						       handle->db_desc->db_superblock->db_name) == NULL;
 
 	if (not_valid_db) {
-		error_message = "Received close for db that is not listed as open";
+		error_message = calloc(1, 200);
+		sprintf((char *)error_message, "Received close for db %s that is not listed as open",
+			handle->db_desc->db_superblock->db_name);
 		goto finish;
 	}
 
@@ -921,25 +924,26 @@ enum kv_category calculate_KV_category(uint32_t key_size, uint32_t value_size, r
 
 static const char *insert_error_handling(db_handle *handle, uint32_t key_size, uint32_t value_size)
 {
-	const char *error_message = NULL;
 	if (DB_IS_CLOSING == handle->db_desc->db_state) {
-		error_message = "DB: %s is closing";
+		char *error_message = calloc(1, 100);
+		sprintf(error_message, "DB: %s is closing", handle->db_desc->db_superblock->db_name);
 		return error_message;
 	}
 
 	if (key_size > MAX_KEY_SIZE) {
-		error_message = "Provided key %u Keys > %ld bytes are not supported";
+		char *error_message = calloc(1, 100);
+		sprintf(error_message, "Provided key %u Keys > %d bytes are not supported", key_size, MAX_KEY_SIZE);
 		return error_message;
 	}
 
 	if (!key_size) {
-		error_message = "Trying to enter a zero sized key? Not valid!";
+		const char *error_message = "Trying to enter a zero sized key? Not valid!";
 		return error_message;
 	}
 
 	uint32_t kv_size = key_size + value_size + get_kv_metadata_size();
 	if (kv_size > KV_MAX_SIZE) {
-		error_message = "KV size > 4KB buffer overflow!";
+		const char *error_message = "KV size > 4KB buffer overflow!";
 		return error_message;
 	}
 
@@ -966,7 +970,7 @@ struct par_put_metadata insert_key_value(db_handle *handle, void *key, void *val
 	ins_req.key_value_buf = kv_pair;
 	ins_req.metadata.tombstone = op_type == deleteOp;
 	ins_req.metadata.tombstone ? set_tombstone((struct kv_splice *)ins_req.key_value_buf) :
-					   set_non_tombstone((struct kv_splice *)ins_req.key_value_buf);
+				     set_non_tombstone((struct kv_splice *)ins_req.key_value_buf);
 	set_key((struct kv_splice *)kv_pair, key, key_size);
 	set_value((struct kv_splice *)kv_pair, value, value_size);
 	ins_req.metadata.cat = calculate_KV_category(key_size, value_size, op_type);
