@@ -970,7 +970,7 @@ struct par_put_metadata insert_key_value(db_handle *handle, void *key, void *val
 	ins_req.key_value_buf = kv_pair;
 	ins_req.metadata.tombstone = op_type == deleteOp;
 	ins_req.metadata.tombstone ? set_tombstone((struct kv_splice *)ins_req.key_value_buf) :
-				     set_non_tombstone((struct kv_splice *)ins_req.key_value_buf);
+					   set_non_tombstone((struct kv_splice *)ins_req.key_value_buf);
 	set_key((struct kv_splice *)kv_pair, key, key_size);
 	set_value((struct kv_splice *)kv_pair, value, value_size);
 	ins_req.metadata.cat = calculate_KV_category(key_size, value_size, op_type);

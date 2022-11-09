@@ -1,7 +1,7 @@
 #include "arg_parser.h"
+#include <btree/gc.h>
 #include <log.h>
 #include <parallax/parallax.h>
-#include <btree/gc.h>
 #include <stdio.h>
 #include <stdlib.h>
 
