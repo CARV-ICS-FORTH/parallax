@@ -14,13 +14,93 @@
 
 #include "medium_log_LRU_cache.h"
 #include "../common/common.h"
+#include "compaction_worker.h"
 #include "conf.h"
 #include "parallax/structures.h"
 #include <assert.h>
 #include <log.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include <uthash.h>
+
+void fetch_segment_chunk(struct comp_level_write_cursor *w_cursor, uint64_t log_chunk_dev_offt, char *segment_buf,
+			 ssize_t size)
+{
+	off_t dev_offt = log_chunk_dev_offt;
+	ssize_t bytes_to_read = 0;
+
+	while (bytes_to_read < size) {
+		ssize_t bytes = pread(w_cursor->handle->db_desc->db_volume->vol_fd, &segment_buf[bytes_to_read],
+				      size - bytes_to_read, dev_offt + bytes_to_read);
+		if (bytes == -1) {
+			log_fatal("Failed to read error code");
+			perror("Error");
+			BUG_ON();
+		}
+		bytes_to_read += bytes;
+	}
+
+	if (w_cursor->level_id != w_cursor->handle->db_desc->level_medium_inplace)
+		return;
+
+	uint64_t segment_dev_offt = log_chunk_dev_offt - (log_chunk_dev_offt % SEGMENT_SIZE);
+
+	struct medium_log_segment_map *entry = NULL;
+	//log_debug("Searching segment offt: %lu log chunk offt %lu mod %lu", segment_dev_offt, log_chunk_dev_offt,
+	//	  log_chunk_dev_offt % SEGMENT_SIZE);
+	HASH_FIND_PTR(w_cursor->medium_log_segment_map, &segment_dev_offt, entry);
+
+	/*Never seen it before*/
+	bool found = true;
+
+	if (!entry) {
+		entry = calloc(1, sizeof(*entry));
+		entry->dev_offt = segment_dev_offt;
+		found = false;
+	}
+
+	/*Already seen and set its id, nothing to do*/
+	if (found && entry->id != UINT64_MAX)
+		return;
+
+	entry->dev_offt = segment_dev_offt;
+	entry->id = UINT64_MAX;
+
+	if (0 == log_chunk_dev_offt % SEGMENT_SIZE) {
+		struct segment_header *segment = (struct segment_header *)segment_buf;
+		entry->id = segment->segment_id;
+	}
+
+	if (!found)
+		HASH_ADD_PTR(w_cursor->medium_log_segment_map, dev_offt, entry);
+}
+
+char *fetch_kv_from_LRU(struct write_dynamic_leaf_args *args, struct comp_level_write_cursor *w_cursor)
+{
+	char *segment_chunk = NULL, *kv_in_seg = NULL;
+	uint64_t segment_offset, which_chunk, segment_chunk_offt;
+	segment_offset = ABSOLUTE_ADDRESS(args->kv_dev_offt) - (ABSOLUTE_ADDRESS(args->kv_dev_offt) % SEGMENT_SIZE);
+
+	which_chunk = (ABSOLUTE_ADDRESS(args->kv_dev_offt) % SEGMENT_SIZE) / LOG_CHUNK_SIZE;
+
+	segment_chunk_offt = segment_offset + (which_chunk * LOG_CHUNK_SIZE);
+
+	if (!chunk_exists_in_LRU(w_cursor->medium_log_LRU_cache, segment_chunk_offt)) {
+		if (posix_memalign((void **)&segment_chunk, ALIGNMENT_SIZE, LOG_CHUNK_SIZE + KB(4)) != 0) {
+			log_fatal("MEMALIGN FAILED");
+			BUG_ON();
+		}
+		fetch_segment_chunk(w_cursor, segment_chunk_offt, segment_chunk, LOG_CHUNK_SIZE + KB(4));
+		add_to_LRU(w_cursor->medium_log_LRU_cache, segment_chunk_offt, segment_chunk);
+	} else
+		segment_chunk = get_chunk_from_LRU(w_cursor->medium_log_LRU_cache, segment_chunk_offt);
+
+	kv_in_seg =
+		&segment_chunk[(ABSOLUTE_ADDRESS(args->kv_dev_offt) % SEGMENT_SIZE) - (which_chunk * LOG_CHUNK_SIZE)];
+
+	return kv_in_seg;
+}
 
 struct chunk_list *create_list(void)
 {
@@ -72,8 +152,8 @@ void move_node_to_tail(struct chunk_list *list, const struct chunk_listnode *nod
 	assert(list != NULL);
 	assert(node != NULL);
 
-	struct chunk_listnode *pfront, *pback;
-	pback = NULL;
+	struct chunk_listnode *pfront = NULL;
+	struct chunk_listnode *pback = NULL;
 
 	for (pfront = list->head; pfront != node; pback = pfront, pfront = pfront->next)
 		;

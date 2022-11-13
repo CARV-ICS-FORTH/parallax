@@ -15,6 +15,8 @@
 #ifndef MEDIUM_LOG_CACHE_H
 #define MEDIUM_LOG_CACHE_H
 #include "btree.h"
+#include "dynamic_leaf.h"
+#include "level_write_cursor.h"
 #include <stdint.h>
 #include <uthash.h>
 struct chunk_list {
@@ -50,5 +52,8 @@ void add_to_LRU(struct chunk_LRU_cache *chunk_cache, uint64_t chunk_offt, char *
 int chunk_exists_in_LRU(struct chunk_LRU_cache *chunk_cache, uint64_t chunk_offt);
 char *get_chunk_from_LRU(struct chunk_LRU_cache *chunk_cache, uint64_t chunk_offt);
 void destroy_LRU(struct chunk_LRU_cache *chunk_cache);
+void fetch_segment_chunk(struct comp_level_write_cursor *w_cursor, uint64_t log_chunk_dev_offt, char *segment_buf,
+			 ssize_t size);
+char *fetch_kv_from_LRU(struct write_dynamic_leaf_args *args, struct comp_level_write_cursor *w_cursor);
 
 #endif

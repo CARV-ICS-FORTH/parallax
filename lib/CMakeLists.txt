@@ -31,6 +31,9 @@ set(LIB_C_SOURCE_FILES
     btree/btree.c
     btree/index_node.c
     btree/compaction_daemon.c
+    btree/compaction_worker.c
+    btree/level_read_cursor.c
+    btree/level_write_cursor.c
     btree/dynamic_leaf.c
     btree/gc.c
     btree/medium_log_LRU_cache.c
