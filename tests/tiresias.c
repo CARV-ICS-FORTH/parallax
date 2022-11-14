@@ -10,7 +10,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 #include "../btree/conf.h"
-#include "../btree/kv_pairs.h"
+#include "../btree/key_splice.h"
 #include "arg_parser.h"
 #include "btree/key_splice.h"
 #include <assert.h>
@@ -188,7 +188,7 @@ static void *get_workload(void *config)
 		else {
 			malloced = 0;
 			struct key_splice *key_serialized =
-				(struct key_splice *)calloc(1, key.size + key_splice_get_metadata_size());
+				(struct key_splice *)calloc(1UL, key.size + key_splice_get_metadata_size());
 			key_splice_set_key_size(key_serialized, key.size);
 			key_splice_set_key_offset(key_serialized, (char *)key.data);
 			value.val_buffer_size = 4096;
