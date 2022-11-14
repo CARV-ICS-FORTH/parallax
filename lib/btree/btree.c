@@ -1554,22 +1554,28 @@ deser:
 	assert(kv_pair.addr);
 	struct kv_splice *kv_buf = (struct kv_splice *)kv_pair.addr;
 	int32_t value_size = get_value_size(kv_buf);
-	if (get_op->retrieve && !get_op->buffer_to_pack_kv) {
-		get_op->buffer_to_pack_kv = malloc(value_size);
-		get_op->size = value_size;
-	}
 
-	if (get_op->retrieve && get_op->size > value_size)
-		get_op->buffer_overflow = 1;
-
-	if (get_op->retrieve && get_op->size <= value_size) {
-		memcpy(get_op->buffer_to_pack_kv, get_value_offset_in_kv(kv_buf, get_key_size(kv_buf)), value_size);
-		get_op->buffer_overflow = 0;
-	}
-
-	if (get_op->tombstone)
+	get_op->buffer_overflow = 0;
+	if (get_op->tombstone) {
 		get_op->key_device_address = NULL;
+		goto check_if_done_with_value_log;
+	}
 
+	if (!get_op->retrieve)
+		goto check_if_done_with_value_log;
+
+	if (get_op->buffer_to_pack_kv && value_size > get_op->size) {
+		get_op->buffer_overflow = 1;
+		goto check_if_done_with_value_log;
+	}
+
+	if (!get_op->buffer_to_pack_kv)
+		get_op->buffer_to_pack_kv = calloc(1UL, value_size);
+
+	memcpy(get_op->buffer_to_pack_kv, get_value_offset_in_kv(kv_buf, get_key_size(kv_buf)), value_size);
+	get_op->size = value_size;
+
+check_if_done_with_value_log:
 	if (kv_pair.in_tail)
 		bt_done_with_value_log_address(&db_desc->big_log, &kv_pair);
 

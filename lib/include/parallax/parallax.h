@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef PARALLAX_H_
-#define PARALLAX_H_
+#ifndef PARALLAX_H
+#define PARALLAX_H
 
 #include "structures.h"
 #include <stdint.h>
@@ -89,6 +89,18 @@ struct par_put_metadata par_put_serialized(par_handle handle, char *serialized_k
 void par_get(par_handle handle, struct par_key *key, struct par_value *value, const char **error_message);
 
 /**
+ * Takes as input a key and searches for it. If the key exists in the DB, then
+ * it allocates the value if it is NULL and the client is responsible to release
+ * the memory. Otherwise it copies the data to the existing data buffer provided
+ * by the value pointer.
+ * @param handle DB handle provided by par_open.
+ * @param serialized key to be searched.
+ * @param value buffer to be filled uppon get success.
+ * @param error_message Contains error message if call fails.
+ */
+void par_get_serialized(par_handle handle, char *key_serialized, struct par_value *value, const char **error_message);
+
+/**
  * Searches for a key and returns if the key exists in the DB.
  */
 par_ret_code par_exists(par_handle handle, struct par_key *key);
@@ -140,4 +152,4 @@ par_ret_code par_sync(par_handle handle);
  */
 struct par_options_desc *par_get_default_options(void);
 
-#endif // PARALLAX_H_
+#endif // PARALLAX_H

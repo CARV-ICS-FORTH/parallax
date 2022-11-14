@@ -134,6 +134,40 @@ void par_get(par_handle handle, struct par_key *key, struct par_value *value, co
 	value->val_size = get_op.size;
 }
 
+void par_get_serialized(par_handle handle, char *key_serialized, struct par_value *value, const char **error_message)
+{
+	if (value == NULL) {
+		*error_message = "value cannot be NULL";
+		return;
+	}
+
+	struct db_handle *hd = (struct db_handle *)handle;
+
+	/*Prepare lookup reply*/
+	struct lookup_operation get_op = { .db_desc = hd->db_desc,
+					   .key_buf = (char *)key_serialized,
+					   .buffer_to_pack_kv = NULL,
+					   .size = 0,
+					   .buffer_overflow = 0,
+					   .found = 0,
+					   .tombstone = 0,
+					   .retrieve = 1 };
+
+	get_op.buffer_to_pack_kv = (char *)value->val_buffer;
+	get_op.size = value->val_buffer_size;
+
+	find_key(&get_op);
+
+	if (!get_op.found)
+		*error_message = "key not found";
+
+	if (get_op.buffer_overflow)
+		*error_message = "not enough buffer space";
+
+	value->val_buffer = get_op.buffer_to_pack_kv;
+	value->val_size = get_op.size;
+}
+
 par_ret_code par_exists(par_handle handle, struct par_key *key)
 {
 	/*Serialize user key in KV_FORMAT*/

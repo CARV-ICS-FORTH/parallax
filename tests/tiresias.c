@@ -10,6 +10,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 #include "../btree/conf.h"
+#include "../btree/kv_pairs.h"
 #include "arg_parser.h"
 #include <assert.h>
 #include <btree/gc.h>
@@ -146,8 +147,21 @@ static void get_workload(struct workload_config_t *workload_config)
 	for (; ret == 0; ret = cursorp->get(cursorp, &key, &data, DB_NEXT)) {
 		struct par_key par_key = { .size = key.size, .data = key.data };
 		struct par_value value = { 0 };
+		bool malloced = 1;
+		if (unique_keys < workload_config->total_keys / 2)
+			par_get(workload_config->handle, &par_key, &value, &error_message);
+		else {
+			malloced = 0;
+			char buf[4096];
+			struct key_splice *key_serialized =
+				(struct key_splice *)calloc(1, key.size + sizeof(struct key_splice));
+			set_key_size_of_key_splice(key_serialized, key.size);
+			set_key_splice_key_offset(key_serialized, (char *)key.data);
+			value.val_buffer_size = 4096;
+			value.val_buffer = buf;
+			par_get_serialized(workload_config->handle, (char *)key_serialized, &value, &error_message);
+		}
 
-		par_get(workload_config->handle, &par_key, &value, &error_message);
 		if (error_message) {
 			uint64_t insert_order = *(uint64_t *)data.data;
 			log_debug(
@@ -164,7 +178,9 @@ static void get_workload(struct workload_config_t *workload_config)
 			log_fatal("Value data do not match");
 			_exit(EXIT_FAILURE);
 		}
-		free(value.val_buffer);
+
+		if (malloced)
+			free(value.val_buffer);
 		if (0 == ++unique_keys % 10000)
 			log_info("Progress: Retrieved %lu keys", unique_keys);
 	}
