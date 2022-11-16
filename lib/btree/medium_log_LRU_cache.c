@@ -24,7 +24,7 @@
 #include <unistd.h>
 #include <uthash.h>
 
-void fetch_segment_chunk(struct comp_level_write_cursor *w_cursor, uint64_t log_chunk_dev_offt, char *segment_buf,
+void fetch_segment_chunk(struct WCURSOR_level_write_cursor *w_cursor, uint64_t log_chunk_dev_offt, char *segment_buf,
 			 ssize_t size)
 {
 	off_t dev_offt = log_chunk_dev_offt;
@@ -76,7 +76,7 @@ void fetch_segment_chunk(struct comp_level_write_cursor *w_cursor, uint64_t log_
 		HASH_ADD_PTR(w_cursor->medium_log_segment_map, dev_offt, entry);
 }
 
-char *fetch_kv_from_LRU(struct write_dynamic_leaf_args *args, struct comp_level_write_cursor *w_cursor)
+char *fetch_kv_from_LRU(struct write_dynamic_leaf_args *args, struct WCURSOR_level_write_cursor *w_cursor)
 {
 	char *segment_chunk = NULL, *kv_in_seg = NULL;
 	uint64_t segment_offset, which_chunk, segment_chunk_offt;

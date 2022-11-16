@@ -122,6 +122,30 @@ int32_t get_kv_seperated_kv_size(struct kv_seperation_splice *kv_pair);
 int32_t get_kv_seperated_splice_size(void);
 
 /**
+ * Returns the starting address of the buffer that stores the prefix
+ * @param Pointer to the kv_seperated kv_pair
+ */
+char *get_kv_seperated_prefix(struct kv_seperation_splice *kv_pair);
+
+/**
+ * Return the size of the PREFIX
+ */
+uint32_t get_kv_seperated_prefix_size(void);
+
+/**
+ * Returns the device offset where this kv_seperation_splice is actually stored
+ * @param Pointer to the kv_seperated_kv_pair
+*/
+uint64_t get_kv_seperated_device_offt(struct kv_seperation_splice *kv_pair);
+
+/**
+ * Sets the device offset where this kv_seperation_splice is actually stored
+ * @param Pointer to the kv_seperated_kv_pair
+ * @param The device offset to set
+*/
+void set_kv_seperated_device_offt(struct kv_seperation_splice *kv_pair, uint64_t dev_offt);
+
+/**
   * Examines a KV pair to see if it is a delete marker
   */
 bool is_tombstone_kv_pair(struct kv_splice *kv_pair);

@@ -41,34 +41,6 @@ static void choose_compaction_roots(struct db_handle *handle, struct compaction_
 		comp_roots->dst_root = handle->db_desc->levels[comp_req->dst_level].root_r[0];
 }
 
-static void comp_fill_heap_node(struct compaction_request *comp_req, struct comp_level_read_cursor *cur,
-				struct sh_heap_node *h_node)
-{
-	h_node->level_id = cur->level_id;
-	h_node->active_tree = comp_req->src_tree;
-	h_node->cat = cur->category;
-	h_node->tombstone = cur->cursor_key.tombstone;
-	switch (h_node->cat) {
-	case SMALL_INPLACE:
-	case MEDIUM_INPLACE:
-		h_node->type = KV_FORMAT;
-		h_node->KV = cur->cursor_key.kv_inplace;
-		h_node->kv_size = get_kv_size((struct kv_splice *)h_node->KV);
-		break;
-	case BIG_INLOG:
-	case MEDIUM_INLOG:
-		h_node->type = KV_PREFIX;
-		// log_info("Prefix %.12s dev_offt %llu", cur->cursor_key.in_log->prefix,
-		//	 cur->cursor_key.in_log->device_offt);
-		h_node->KV = (char *)cur->cursor_key.kv_inlog;
-		h_node->kv_size = get_kv_seperated_splice_size();
-		break;
-	default:
-		log_fatal("UNKNOWN_LOG_CATEGORY");
-		BUG_ON();
-	}
-}
-
 static void comp_fill_parallax_key(struct sh_heap_node *h_node, struct comp_parallax_key *curr_key)
 {
 	curr_key->kv_category = h_node->cat;
@@ -77,7 +49,7 @@ static void comp_fill_parallax_key(struct sh_heap_node *h_node, struct comp_para
 	switch (h_node->cat) {
 	case SMALL_INPLACE:
 	case MEDIUM_INPLACE:
-		curr_key->kv_inplace = h_node->KV;
+		curr_key->kv_in_place = (struct kv_splice *)h_node->KV;
 		curr_key->kv_type = KV_INPLACE;
 		break;
 	case BIG_INLOG:
@@ -166,7 +138,7 @@ static void mark_segment_space(db_handle *handle, struct dups_list *list, uint8_
 	}
 }
 
-static void comp_medium_log_set_max_segment_id(struct comp_level_write_cursor *c)
+static void comp_medium_log_set_max_segment_id(struct WCURSOR_level_write_cursor *c)
 {
 	uint64_t max_segment_id = 0;
 	uint64_t max_segment_offt = 0;
@@ -231,171 +203,109 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 	struct compaction_roots comp_roots = { .src_root = NULL, .dst_root = NULL };
 
 	choose_compaction_roots(handle, comp_req, &comp_roots);
-	/*used for L0 only as src*/
-	struct level_scanner *level_src = NULL;
-	struct comp_level_read_cursor *l_src = NULL;
-	struct comp_level_read_cursor *l_dst = NULL;
-	struct comp_level_write_cursor *merged_level = NULL;
 
+	struct RCURSOR_level_read_cursor *src_rcursor = NULL;
 	if (comp_req->src_level == 0) {
 		RWLOCK_WRLOCK(&handle->db_desc->levels[0].guard_of_level.rx_lock);
 		spin_loop(&handle->db_desc->levels[0].active_operations, 0);
 		pr_flush_log_tail(comp_req->db_desc, &comp_req->db_desc->big_log);
+	}
+
+	src_rcursor =
+		RCURSOR_init_cursor(handle, comp_req->src_level, comp_req->src_tree, comp_req->volume_desc->vol_fd);
+
+	if (0 == comp_req->src_level)
 		RWLOCK_UNLOCK(&handle->db_desc->levels[0].guard_of_level.rx_lock);
 
-		log_debug("Initializing L0 scanner");
-		level_src = _init_compaction_buffer_scanner(handle, comp_req->src_level, comp_roots.src_root, NULL);
-	} else {
-		if (posix_memalign((void **)&l_src, ALIGNMENT, sizeof(struct comp_level_read_cursor)) != 0) {
-			log_fatal("Posix memalign failed");
-			perror("Reason: ");
-			BUG_ON();
-		}
-		comp_init_read_cursor(l_src, handle, comp_req->src_level, 0, FD);
-		comp_get_next_key(l_src);
-		assert(!l_src->end_of_level);
-	}
-
-	if (comp_roots.dst_root) {
-		if (posix_memalign((void **)&l_dst, ALIGNMENT, sizeof(struct comp_level_read_cursor)) != 0) {
-			log_fatal("Posix memalign failed");
-			perror("Reason: ");
-			BUG_ON();
-		}
-		comp_init_read_cursor(l_dst, handle, comp_req->dst_level, 0, FD);
-		comp_get_next_key(l_dst);
-		assert(!l_dst->end_of_level);
-	}
+	struct RCURSOR_level_read_cursor *dst_rcursor =
+		NULL == comp_roots.dst_root ?
+			NULL :
+			RCURSOR_init_cursor(handle, comp_req->dst_level, 0, comp_req->volume_desc->vol_fd);
 
 	log_debug("Initializing write cursor for level %u", comp_req->dst_level);
-	if (posix_memalign((void **)&merged_level, ALIGNMENT, sizeof(struct comp_level_write_cursor)) != 0) {
-		log_fatal("Posix memalign failed");
-		perror("Reason: ");
-		BUG_ON();
-	}
+	struct WCURSOR_level_write_cursor *new_level =
+		WCURSOR_init_write_cursor(handle, comp_req->dst_level, handle->db_desc->db_volume->vol_fd);
 
 	assert(0 == handle->db_desc->levels[comp_req->dst_level].offset[comp_req->dst_tree]);
-	comp_init_write_cursor(merged_level, handle, comp_req->dst_level, FD);
 
 	//initialize LRU cache for storing chunks of segments when medium log goes in place
-	if (merged_level->level_id == handle->db_desc->level_medium_inplace)
-		merged_level->medium_log_LRU_cache = init_LRU(handle);
+	if (new_level->level_id == handle->db_desc->level_medium_inplace)
+		new_level->medium_log_LRU_cache = init_LRU(handle);
 
 	log_debug("Src [%u][%u] size = %lu", comp_req->src_level, comp_req->src_tree,
 		  handle->db_desc->levels[comp_req->src_level].level_size[comp_req->src_tree]);
-	if (comp_roots.dst_root)
-		log_debug("Dst [%u][%u] size = %lu", comp_req->dst_level, 0,
-			  handle->db_desc->levels[comp_req->dst_level].level_size[0]);
-	else
-		log_debug("Empty dst [%u]", comp_req->dst_level);
+
+	NULL == comp_roots.dst_root ? log_debug("Empty dst [%u]", comp_req->dst_level) :
+				      log_debug("Dst [%u][%u] size = %lu", comp_req->dst_level, 0,
+						handle->db_desc->levels[comp_req->dst_level].level_size[0]);
 
 	// initialize and fill min_heap properly
 	struct sh_heap *m_heap = sh_alloc_heap();
 	sh_init_heap(m_heap, comp_req->src_level, MIN_HEAP);
-	struct sh_heap_node nd_src = { .KV = NULL, .level_id = 0, .active_tree = 0, .duplicate = 0, .type = KV_PREFIX };
-	struct sh_heap_node nd_dst = { .KV = NULL, .level_id = 0, .active_tree = 0, .duplicate = 0, .type = KV_PREFIX };
-	struct sh_heap_node nd_min = { .KV = NULL, .level_id = 0, .active_tree = 0, .duplicate = 0, .type = KV_PREFIX };
+	struct sh_heap_node src_heap_node = {
+		.KV = NULL, .level_id = 0, .active_tree = 0, .duplicate = 0, .type = KV_PREFIX
+	};
+	struct sh_heap_node dst_heap_node = {
+		.KV = NULL, .level_id = 0, .active_tree = 0, .duplicate = 0, .type = KV_PREFIX
+	};
+	struct sh_heap_node min_heap_node = {
+		.KV = NULL, .level_id = 0, .active_tree = 0, .duplicate = 0, .type = KV_PREFIX
+	};
 	// init Li cursor
-	if (level_src) {
-		nd_src.KV = level_src->keyValue;
-		nd_src.level_id = comp_req->src_level;
-		nd_src.type = level_src->kv_format;
-		nd_src.cat = level_src->cat;
-		nd_src.kv_size = level_src->kv_size;
-		nd_src.tombstone = level_src->tombstone;
-		nd_src.active_tree = comp_req->src_tree;
-		log_debug("Initializing heap from SRC L0");
-	} else {
-		log_debug("Initializing heap from SRC read cursor level %u with key:", comp_req->src_level);
-		comp_fill_heap_node(comp_req, l_src, &nd_src);
-	}
+	WCURSOR_fill_heap_node(src_rcursor, &src_heap_node);
+	sh_insert_heap_node(m_heap, &src_heap_node);
 
-	nd_src.db_desc = comp_req->db_desc;
-	sh_insert_heap_node(m_heap, &nd_src);
 	// init Li+1 cursor (if any)
-	if (l_dst) {
-		comp_fill_heap_node(comp_req, l_dst, &nd_dst);
-		// log_debug("Initializing heap from DST read cursor level %u", comp_req->dst_level);
-		print_heap_node_key(&nd_dst);
-		nd_dst.db_desc = comp_req->db_desc;
-		sh_insert_heap_node(m_heap, &nd_dst);
+	if (dst_rcursor) {
+		WCURSOR_fill_heap_node(dst_rcursor, &dst_heap_node);
+		sh_insert_heap_node(m_heap, &dst_heap_node);
 	}
 
 	while (1) {
 		handle->db_desc->dirty = 0x01;
 		// This is to synchronize compactions with flush
 		RWLOCK_RDLOCK(&handle->db_desc->levels[comp_req->dst_level].guard_of_level.rx_lock);
-		if (!sh_remove_top(m_heap, &nd_min)) {
+
+		if (!sh_remove_top(m_heap, &min_heap_node)) {
 			RWLOCK_UNLOCK(&handle->db_desc->levels[comp_req->dst_level].guard_of_level.rx_lock);
 			break;
 		}
 
-		if (!nd_min.duplicate) {
+		if (!min_heap_node.duplicate) {
 			struct comp_parallax_key key = { 0 };
-			comp_fill_parallax_key(&nd_min, &key);
-			comp_append_entry_to_leaf_node(merged_level, &key);
+			comp_fill_parallax_key(&min_heap_node, &key);
+			WCURSOR_append_entry_to_leaf_node(new_level, &key);
 		}
 
 		/*refill from the appropriate level*/
-		if (nd_min.level_id == comp_req->src_level) {
-			if (nd_min.level_id == 0) {
-				if (level_scanner_get_next(level_src) != END_OF_DATABASE) {
-					// log_info("Refilling from L0");
-					nd_min.KV = level_src->keyValue;
-					nd_min.level_id = comp_req->src_level;
-					nd_min.type = level_src->kv_format;
-					nd_min.cat = level_src->cat;
-					nd_min.tombstone = level_src->tombstone;
-					nd_min.kv_size = level_src->kv_size;
-					nd_min.active_tree = comp_req->src_tree;
-					nd_min.db_desc = comp_req->db_desc;
-					sh_insert_heap_node(m_heap, &nd_min);
-				}
-
-			} else {
-				comp_get_next_key(l_src);
-				if (!l_src->end_of_level) {
-					comp_fill_heap_node(comp_req, l_src, &nd_min);
-					// log_info("Refilling from SRC level read cursor");
-					nd_min.db_desc = comp_req->db_desc;
-					sh_insert_heap_node(m_heap, &nd_min);
-				}
-			}
-		} else if (l_dst) {
-			comp_get_next_key(l_dst);
-			if (!l_dst->end_of_level) {
-				comp_fill_heap_node(comp_req, l_dst, &nd_min);
-				// log_info("Refilling from DST level read cursor key is %s",
-				// nd_min.KV + 4);
-				nd_min.db_desc = comp_req->db_desc;
-				sh_insert_heap_node(m_heap, &nd_min);
-			}
+		if (min_heap_node.level_id == comp_req->src_level && RCURSOR_get_next_kv(src_rcursor)) {
+			WCURSOR_fill_heap_node(src_rcursor, &src_heap_node);
+			sh_insert_heap_node(m_heap, &src_heap_node);
+		} else if (min_heap_node.level_id == comp_req->dst_level && dst_rcursor &&
+			   RCURSOR_get_next_kv(dst_rcursor)) {
+			WCURSOR_fill_heap_node(dst_rcursor, &dst_heap_node);
+			sh_insert_heap_node(m_heap, &dst_heap_node);
 		}
 
 		RWLOCK_UNLOCK(&handle->db_desc->levels[comp_req->dst_level].guard_of_level.rx_lock);
 	}
 
-	if (level_src)
-		close_compaction_buffer_scanner(level_src);
-	else
-		free(l_src);
-
-	if (comp_roots.dst_root)
-		free(l_dst);
+	RCURSOR_close_cursor(src_rcursor);
+	RCURSOR_close_cursor(dst_rcursor);
 
 	mark_segment_space(handle, m_heap->dups, comp_req->dst_level, 1);
-	comp_close_write_cursor(merged_level);
-
+	WCURSOR_close_write_cursor(new_level);
 	sh_destroy_heap(m_heap);
-	merged_level->handle->db_desc->levels[comp_req->dst_level].root_w[1] =
-		(struct node_header *)REAL_ADDRESS(merged_level->root_offt);
-	assert(merged_level->handle->db_desc->levels[comp_req->dst_level].root_w[1]->type == rootNode);
 
-	if (merged_level->level_id == handle->db_desc->level_medium_inplace) {
-		comp_medium_log_set_max_segment_id(merged_level);
-		destroy_LRU(merged_level->medium_log_LRU_cache);
+	new_level->handle->db_desc->levels[comp_req->dst_level].root_w[1] =
+		(struct node_header *)REAL_ADDRESS(new_level->root_offt);
+	assert(new_level->handle->db_desc->levels[comp_req->dst_level].root_w[1]->type == rootNode);
+
+	if (new_level->level_id == handle->db_desc->level_medium_inplace) {
+		comp_medium_log_set_max_segment_id(new_level);
+		destroy_LRU(new_level->medium_log_LRU_cache);
 	}
-	free(merged_level);
+	free(new_level);
 
 	/***************************************************************/
 	struct level_descriptor *ld = &comp_req->db_desc->levels[comp_req->dst_level];
@@ -405,7 +315,7 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 
 	uint64_t space_freed = 0;
 	/*Free L_(i+1)*/
-	if (l_dst) {
+	if (dst_rcursor) {
 		uint64_t txn_id = comp_req->db_desc->levels[comp_req->dst_level].allocation_txn_id[comp_req->dst_tree];
 		/*free dst (L_i+1) level*/
 		space_freed = seg_free_level(comp_req->db_desc, txn_id, comp_req->dst_level, 0);

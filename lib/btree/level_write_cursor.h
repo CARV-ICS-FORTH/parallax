@@ -5,7 +5,7 @@
 #include "level_cursor.h"
 #include <stdint.h>
 
-struct comp_level_write_cursor {
+struct WCURSOR_level_write_cursor {
 	char segment_buf[MAX_HEIGHT][SEGMENT_SIZE];
 	uint64_t segment_offt[MAX_HEIGHT];
 	uint64_t first_segment_btree_level_offt[MAX_HEIGHT];
@@ -22,7 +22,8 @@ struct comp_level_write_cursor {
 	int fd;
 };
 
-extern void comp_init_write_cursor(struct comp_level_write_cursor *c, struct db_handle *handle, int level_id, int fd);
-extern void comp_append_entry_to_leaf_node(struct comp_level_write_cursor *cursor, struct comp_parallax_key *kv);
-extern void comp_close_write_cursor(struct comp_level_write_cursor *w_cursor);
+extern struct WCURSOR_level_write_cursor *WCURSOR_init_write_cursor(db_handle *handle, int level_id, int file_desc);
+extern bool WCURSOR_append_entry_to_leaf_node(struct WCURSOR_level_write_cursor *cursor,
+					      struct comp_parallax_key *kv_pair);
+extern void WCURSOR_close_write_cursor(struct WCURSOR_level_write_cursor *w_cursor);
 #endif

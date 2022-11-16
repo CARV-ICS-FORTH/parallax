@@ -103,6 +103,26 @@ inline int32_t get_kv_seperated_splice_size(void)
 	return sizeof(struct kv_seperation_splice);
 }
 
+inline char *get_kv_seperated_prefix(struct kv_seperation_splice *kv_pair)
+{
+	return NULL != kv_pair ? kv_pair->prefix : NULL;
+}
+
+inline uint64_t get_kv_seperated_device_offt(struct kv_seperation_splice *kv_pair)
+{
+	return NULL != kv_pair ? kv_pair->dev_offt : UINT64_MAX;
+}
+
+inline void set_kv_seperated_device_offt(struct kv_seperation_splice *kv_pair, uint64_t dev_offt)
+{
+	NULL != kv_pair ? kv_pair->dev_offt = dev_offt : dev_offt;
+}
+
+inline uint32_t get_kv_seperated_prefix_size(void)
+{
+	return PREFIX_SIZE;
+}
+
 inline bool is_tombstone_kv_pair(struct kv_splice *kv_pair)
 {
 	return DELETE_MARKER_ID == kv_pair->value_size;
