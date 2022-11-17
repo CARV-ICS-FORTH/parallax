@@ -37,7 +37,7 @@ if(BUILD_TESTING)
   if(BDB_LIBRARY AND NOT ${BDB_PATH} STREQUAL "")
 
     add_test(NAME tiresias COMMAND $<TARGET_FILE:tiresias> --file=${FILEPATH}
-                                   --num_of_kvs=4000000 --BDB_path=${BDB_PATH})
+                                   --num_of_kvs=4000000 --BDB_file=${BDB_PATH})
     add_executable(tiresias tiresias.c arg_parser.c)
     target_link_libraries(tiresias "${PROJECT_NAME}" ${DEPENDENCIES}
                           ${BDB_LIBRARY})
