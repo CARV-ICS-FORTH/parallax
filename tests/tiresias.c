@@ -58,7 +58,35 @@ static void generate_random_value(char *value_buffer, uint32_t value_size, uint3
 		value_buffer[i] = rand() % 256;
 }
 
-static void put_workload(struct workload_config_t *workload_config)
+static void populate_from_BDB(struct workload_config_t *workload_config)
+{
+	DBC *cursorp = NULL;
+	DBT BDB_key = { 0 };
+	DBT BDB_value = { 0 };
+	/* Database open omitted for clarity */
+	/* Get a cursor */
+	workload_config->truth->cursor(workload_config->truth, NULL, &cursorp, 0);
+
+	/* Iterate over the database, retrieving each record in turn. */
+	int ret = cursorp->get(cursorp, &BDB_key, &BDB_value, DB_NEXT);
+	int num_keys = 0;
+	for (; ret == 0; ret = cursorp->get(cursorp, &BDB_key, &BDB_value, DB_NEXT), ++num_keys) {
+		struct par_key_value kv_pair = { 0 };
+		kv_pair.k.size = BDB_key.size;
+		kv_pair.k.data = BDB_key.data;
+		kv_pair.v.val_size = BDB_value.size;
+		kv_pair.v.val_buffer = BDB_value.data;
+		const char *error_message = NULL;
+		par_put(workload_config->handle, &kv_pair, &error_message);
+
+		if (!(num_keys % workload_config->progress_report))
+			log_info("Progress in population %d keys", num_keys);
+	}
+	log_info("Population ended Successfully! :-)");
+	workload_config->total_keys = num_keys;
+}
+
+static void populate_randomly(struct workload_config_t *workload_config)
 {
 	log_info("Starting population for %lu keys...", workload_config->total_keys);
 	const char *error_message = NULL;
@@ -273,12 +301,17 @@ int main(int argc, char **argv)
 		  "--num_of_kvs=number, parameter that specifies the number of operation the test will execute.",
 		  NULL,
 		  INTEGER },
+		{ { "BDB_file", optional_argument, 0, 'a' },
+		  "--BDB_file=path to a prepopulated BerkeleyDB (BDB), parameter that specifies the BDB that the test uses as the source of truth.",
+		  NULL,
+		  STRING },
 		{ { 0, 0, 0, 0 }, "End of arguments", NULL, INTEGER }
 	};
 
-	unsigned options_len = (sizeof(options) / sizeof(struct wrap_option));
+	unsigned optional_args_len = 0;
+	unsigned options_len = sizeof(options) / sizeof(struct wrap_option);
 	log_debug("Options len %u", options_len);
-	arg_parse(argc, argv, options, options_len);
+	arg_parse(argc, argv, options, options_len - optional_args_len);
 	arg_print_options(help_flag, options, options_len);
 	uint64_t total_keys = *(int *)get_option(options, 2);
 	log_debug("Total keys %lu", total_keys);
@@ -287,14 +320,8 @@ int main(int argc, char **argv)
 	par_db_options db_options = { 0 };
 	db_options.volume_name = get_option(options, 1);
 	log_debug("Volume name %s", db_options.volume_name);
-	char truth_db[4096] = { 0 };
-	memcpy(truth_db, db_options.volume_name, strlen(db_options.volume_name));
-	uint32_t idx = strlen(truth_db);
-	for (; truth_db[idx] != '/'; idx--)
-		;
 
-	truth_db[idx++] = '/';
-	strcpy(&truth_db[idx], "TIRESIAS");
+	char *truth_db = get_option(options, 3);
 	log_info("BerkeleyDB path is %s", truth_db);
 	/*First open source of truth BerkeleyDB database*/
 	DB *truth = { 0 };
@@ -304,28 +331,41 @@ int main(int argc, char **argv)
 		_exit(EXIT_FAILURE);
 	}
 
-	ret = truth->open(truth, NULL, truth_db, NULL, DB_BTREE, DB_CREATE | DB_TRUNCATE, 0);
-	if (ret) {
-		truth->err(truth, ret, "Database open failed: %s", "truth.db");
-		return (ret);
+	bool truth_db_exists = false;
+	ret = truth->open(truth, NULL, truth_db, NULL, DB_BTREE, /*DB_CREATE | DB_TRUNCATE*/ 0, 0);
+	if (0 == ret) {
+		log_info("BDB %s already exists, not  populating it again", truth_db);
+		truth_db_exists = true;
+	}
+
+	if (!truth_db_exists) {
+		ret = truth->open(truth, NULL, truth_db, NULL, DB_BTREE, DB_CREATE, 0);
+		if (ret) {
+			truth->err(truth, ret, "Database open failed: %s", "truth.db");
+			return (ret);
+		}
+		log_info("Created BDB %s already exists, going to populate as well", truth_db);
 	}
 
 	const char *error_message = par_format(db_options.volume_name, 16);
 	if (error_message) {
 		log_fatal("Error message from par_format: %s", error_message);
-		exit(EXIT_FAILURE);
+		_exit(EXIT_FAILURE);
 	}
 
 	db_options.db_name = "TIRESIAS";
 	db_options.create_flag = PAR_CREATE_DB;
 	db_options.options = par_get_default_options();
-	par_handle hd = par_open(&db_options, &error_message);
+	par_handle parallax_db = par_open(&db_options, &error_message);
 
 	struct workload_config_t workload_config = {
-		.handle = hd, .truth = truth, .total_keys = total_keys, .progress_report = 100000
+		.handle = parallax_db, .truth = truth, .total_keys = total_keys, .progress_report = 100000
 	};
 
-	put_workload(&workload_config);
+	if (truth_db_exists)
+		populate_from_BDB(&workload_config);
+	else
+		populate_randomly(&workload_config);
 
 	get_workload(&workload_config);
 
@@ -333,10 +373,10 @@ int main(int argc, char **argv)
 
 	delete_workload(&workload_config);
 
-	error_message = par_close(hd);
+	error_message = par_close(parallax_db);
 	if (error_message) {
 		log_fatal("Error message from par_close: %s", error_message);
-		exit(EXIT_FAILURE);
+		_exit(EXIT_FAILURE);
 	}
 	truth->close(truth, 0);
 

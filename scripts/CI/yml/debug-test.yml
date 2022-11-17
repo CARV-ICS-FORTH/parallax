@@ -3,7 +3,7 @@
     before_script:
         - ./scripts/CI/create_mbbd.sh
         - mkdir -p build;cd build
-        - cmake ..
+        - cmake .. -DBDB_PATH=/BDB/TIRESIAS
     after_script:
         - ./scripts/CI/destroy_mbbd.sh
 
