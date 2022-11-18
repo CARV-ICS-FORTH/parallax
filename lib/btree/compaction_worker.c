@@ -54,7 +54,7 @@ static void comp_fill_parallax_key(struct sh_heap_node *h_node, struct comp_para
 		break;
 	case BIG_INLOG:
 	case MEDIUM_INLOG:
-		curr_key->kv_inlog = (struct kv_seperation_splice *)h_node->KV;
+		curr_key->kv_inlog = *(struct kv_seperation_splice *)h_node->KV;
 		curr_key->kv_type = KV_INLOG;
 		break;
 	default:
@@ -63,6 +63,7 @@ static void comp_fill_parallax_key(struct sh_heap_node *h_node, struct comp_para
 	}
 }
 
+#if 0
 static void print_heap_node_key(struct sh_heap_node *h_node)
 {
 	switch (h_node->cat) {
@@ -84,6 +85,7 @@ static void print_heap_node_key(struct sh_heap_node *h_node)
 		BUG_ON();
 	}
 }
+#endif
 
 static void mark_segment_space(db_handle *handle, struct dups_list *list, uint8_t level_id, uint8_t tree_id)
 {
@@ -204,6 +206,7 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 
 	choose_compaction_roots(handle, comp_req, &comp_roots);
 
+	assert(0 == handle->db_desc->levels[comp_req->dst_level].offset[comp_req->dst_tree]);
 	struct RCURSOR_level_read_cursor *src_rcursor = NULL;
 	if (comp_req->src_level == 0) {
 		RWLOCK_WRLOCK(&handle->db_desc->levels[0].guard_of_level.rx_lock);
@@ -211,8 +214,9 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 		pr_flush_log_tail(comp_req->db_desc, &comp_req->db_desc->big_log);
 	}
 
-	src_rcursor =
-		RCURSOR_init_cursor(handle, comp_req->src_level, comp_req->src_tree, comp_req->volume_desc->vol_fd);
+	assert(0 == handle->db_desc->levels[comp_req->dst_level].offset[comp_req->dst_tree]);
+	src_rcursor = RCURSOR_init_cursor(handle, comp_req->src_level, comp_req->src_tree,
+					  handle->db_desc->db_volume->vol_fd);
 
 	if (0 == comp_req->src_level)
 		RWLOCK_UNLOCK(&handle->db_desc->levels[0].guard_of_level.rx_lock);
@@ -221,12 +225,11 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 		NULL == comp_roots.dst_root ?
 			NULL :
 			RCURSOR_init_cursor(handle, comp_req->dst_level, 0, comp_req->volume_desc->vol_fd);
-
-	log_debug("Initializing write cursor for level %u", comp_req->dst_level);
-	struct WCURSOR_level_write_cursor *new_level =
-		WCURSOR_init_write_cursor(handle, comp_req->dst_level, handle->db_desc->db_volume->vol_fd);
-
 	assert(0 == handle->db_desc->levels[comp_req->dst_level].offset[comp_req->dst_tree]);
+
+	log_debug("Initializing write cursor for level [%u][%u]", comp_req->dst_level, comp_req->dst_tree);
+	struct WCURSOR_level_write_cursor *new_level = WCURSOR_init_write_cursor(
+		comp_req->dst_level, handle, comp_req->dst_tree, handle->db_desc->db_volume->vol_fd);
 
 	//initialize LRU cache for storing chunks of segments when medium log goes in place
 	if (new_level->level_id == handle->db_desc->level_medium_inplace)
@@ -281,7 +284,7 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 		if (min_heap_node.level_id == comp_req->src_level && RCURSOR_get_next_kv(src_rcursor)) {
 			WCURSOR_fill_heap_node(src_rcursor, &src_heap_node);
 			sh_insert_heap_node(m_heap, &src_heap_node);
-		} else if (min_heap_node.level_id == comp_req->dst_level && dst_rcursor &&
+		} else if (dst_rcursor && min_heap_node.level_id == comp_req->dst_level &&
 			   RCURSOR_get_next_kv(dst_rcursor)) {
 			WCURSOR_fill_heap_node(dst_rcursor, &dst_heap_node);
 			sh_insert_heap_node(m_heap, &dst_heap_node);
@@ -294,8 +297,10 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 	RCURSOR_close_cursor(dst_rcursor);
 
 	mark_segment_space(handle, m_heap->dups, comp_req->dst_level, 1);
-	WCURSOR_close_write_cursor(new_level);
+
 	sh_destroy_heap(m_heap);
+	WCURSOR_flush_write_cursor(new_level);
+	assert(new_level->root_offt);
 
 	new_level->handle->db_desc->levels[comp_req->dst_level].root_w[1] =
 		(struct node_header *)REAL_ADDRESS(new_level->root_offt);
@@ -305,7 +310,6 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 		comp_medium_log_set_max_segment_id(new_level);
 		destroy_LRU(new_level->medium_log_LRU_cache);
 	}
-	free(new_level);
 
 	/***************************************************************/
 	struct level_descriptor *ld = &comp_req->db_desc->levels[comp_req->dst_level];
@@ -366,6 +370,8 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 	ld->root_r[1] = NULL;
 
 	unlock_to_update_levels_after_compaction(comp_req);
+
+	WCURSOR_close_write_cursor(new_level);
 }
 
 static void swap_levels(struct level_descriptor *src, struct level_descriptor *dst, int src_active_tree,

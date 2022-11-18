@@ -34,7 +34,7 @@ static void WCURSOR_fill_heap_node_from_device(struct RCURSOR_level_read_cursor 
 		h_node->type = KV_PREFIX;
 		// log_info("Prefix %.12s dev_offt %llu", cur->cursor_key.in_log->prefix,
 		//	 cur->cursor_key.in_log->device_offt);
-		h_node->KV = (char *)r_cursor->cursor_key.kv_inlog;
+		h_node->KV = (char *)&r_cursor->cursor_key.kv_inlog;
 		h_node->kv_size = get_kv_seperated_splice_size();
 		break;
 	default:
@@ -65,6 +65,7 @@ struct RCURSOR_level_read_cursor *RCURSOR_init_cursor(db_handle *handle, uint32_
 		if (NULL == root)
 			root = r_cursor->handle->db_desc->levels[0].root_r[tree_id];
 
+		r_cursor->L0_cursor = calloc(1UL, sizeof(struct RCURSOR_L0_cursor));
 		r_cursor->L0_cursor->L0_scanner = _init_compaction_buffer_scanner(handle, level_id, root, NULL);
 		return r_cursor;
 	}
@@ -75,7 +76,7 @@ struct RCURSOR_level_read_cursor *RCURSOR_init_cursor(db_handle *handle, uint32_
 		perror("Reason: ");
 		BUG_ON();
 	}
-	memset(r_cursor->device_cursor, 0x00, sizeof(struct RCURSOR_device_cursor));
+	memset(r_cursor->device_cursor, 0xFF, sizeof(struct RCURSOR_device_cursor));
 
 	r_cursor->device_cursor->fd = file_desc;
 	r_cursor->device_cursor->offset = 0;
@@ -192,9 +193,9 @@ static bool RCURSOR_get_next_kv_from_device(struct RCURSOR_level_read_cursor *r_
 			}
 			case MEDIUM_INLOG:
 			case BIG_INLOG:
-				r_cursor->cursor_key.kv_inlog = (struct kv_seperation_splice *)kv_loc;
-				r_cursor->cursor_key.kv_inlog->dev_offt =
-					(uint64_t)REAL_ADDRESS(r_cursor->cursor_key.kv_inlog->dev_offt);
+				r_cursor->cursor_key.kv_inlog = *(struct kv_seperation_splice *)kv_loc;
+				r_cursor->cursor_key.kv_inlog.dev_offt =
+					(uint64_t)REAL_ADDRESS(r_cursor->cursor_key.kv_inlog.dev_offt);
 				break;
 			default:
 				log_fatal("Cannot handle this category");
@@ -264,12 +265,10 @@ void RCURSOR_close_cursor(struct RCURSOR_level_read_cursor *r_cursor)
 
 	if (0 == r_cursor->level_id) {
 		close_compaction_buffer_scanner(r_cursor->L0_cursor->L0_scanner);
-		memset(r_cursor, 0x00, sizeof(struct RCURSOR_level_read_cursor));
+		free(r_cursor->L0_cursor);
 		free(r_cursor);
 		return;
 	}
-	memset(r_cursor, 0x00, sizeof(struct RCURSOR_device_cursor));
 	free(r_cursor->device_cursor);
-	memset(r_cursor, 0x00, sizeof(struct RCURSOR_level_read_cursor));
 	free(r_cursor);
 }

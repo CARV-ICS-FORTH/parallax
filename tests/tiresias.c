@@ -163,6 +163,7 @@ static void *get_workload(void *config)
 {
 	struct workload_config_t *workload_config = config;
 	log_info("Testing GETS now");
+
 	const char *error_message = NULL;
 	DBC *cursorp = NULL;
 	DBT key = { 0 };

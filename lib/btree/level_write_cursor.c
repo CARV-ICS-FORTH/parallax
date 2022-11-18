@@ -177,7 +177,8 @@ static void WCURSOR_get_space(struct WCURSOR_level_write_cursor *w_cursor, uint3
 	}
 }
 
-struct WCURSOR_level_write_cursor *WCURSOR_init_write_cursor(struct db_handle *handle, int level_id, int file_desc)
+struct WCURSOR_level_write_cursor *WCURSOR_init_write_cursor(int level_id, struct db_handle *handle, int tree_id,
+							     int file_desc)
 {
 	struct WCURSOR_level_write_cursor *w_cursor = NULL;
 	if (posix_memalign((void **)&w_cursor, ALIGNMENT, sizeof(struct WCURSOR_level_write_cursor)) != 0) {
@@ -187,10 +188,12 @@ struct WCURSOR_level_write_cursor *WCURSOR_init_write_cursor(struct db_handle *h
 	}
 	memset(w_cursor, 0x00, sizeof(struct WCURSOR_level_write_cursor));
 	w_cursor->level_id = level_id;
+	w_cursor->tree_id = tree_id;
 	w_cursor->tree_height = 0;
 	w_cursor->fd = file_desc;
 	w_cursor->handle = handle;
 
+	assert(0 == handle->db_desc->levels[w_cursor->level_id].offset[w_cursor->tree_id]);
 	WCURSOR_get_space(w_cursor, 0, leafNode);
 	assert(w_cursor->last_segment_btree_level_offt[0]);
 	w_cursor->first_segment_btree_level_offt[0] = w_cursor->last_segment_btree_level_offt[0];
@@ -201,6 +204,7 @@ struct WCURSOR_level_write_cursor *WCURSOR_init_write_cursor(struct db_handle *h
 		w_cursor->first_segment_btree_level_offt[i] = w_cursor->last_segment_btree_level_offt[i];
 		assert(w_cursor->last_segment_btree_level_offt[i]);
 	}
+	return w_cursor;
 }
 
 #if 0
@@ -264,7 +268,7 @@ static uint32_t WCURSOR_calc_offt_in_seg(char *buffer_start, char *addr)
 	return (end - start) % SEGMENT_SIZE;
 }
 
-void WCURSOR_close_write_cursor(struct WCURSOR_level_write_cursor *w_cursor)
+void WCURSOR_flush_write_cursor(struct WCURSOR_level_write_cursor *w_cursor)
 {
 	uint32_t level_leaf_size = w_cursor->handle->db_desc->levels[w_cursor->level_id].leaf_size;
 	for (int32_t i = 0; i < MAX_HEIGHT; ++i) {
@@ -323,11 +327,15 @@ void WCURSOR_close_write_cursor(struct WCURSOR_level_write_cursor *w_cursor)
 				      SEGMENT_SIZE, w_cursor->fd);
 	}
 
-	memset(w_cursor, 0x00, sizeof(struct WCURSOR_level_write_cursor));
-	free(w_cursor);
 #if 0
 	assert_level_segments(c->handle->db_desc, c->level_id, 1);
 #endif
+}
+
+extern void WCURSOR_close_write_cursor(struct WCURSOR_level_write_cursor *w_cursor)
+{
+	memset(w_cursor, 0x00, sizeof(struct WCURSOR_level_write_cursor));
+	free(w_cursor);
 }
 
 static void WCURSOR_append_pivot_to_index(int32_t height, struct WCURSOR_level_write_cursor *c, uint64_t left_node_offt,
@@ -381,15 +389,17 @@ static void WCURSOR_init_medium_log(struct db_descriptor *db_desc, uint8_t level
 	seg_in_mem->segment_id = 0;
 	seg_in_mem->prev_segment = NULL;
 	seg_in_mem->next_segment = NULL;
+	log_debug("Done initializing medium log");
 }
 
-static int WCURSOR_append_medium_L1(struct WCURSOR_level_write_cursor *w_cursor, struct comp_parallax_key *in_key,
-				    struct comp_parallax_key *out_key)
+static struct comp_parallax_key WCURSOR_append_medium_L1(struct WCURSOR_level_write_cursor *w_cursor,
+							 struct comp_parallax_key *in_key)
 {
+	struct comp_parallax_key medium_inlog_kv = { 0 };
 	if (w_cursor->level_id != 1)
-		return 0;
+		return medium_inlog_kv;
 	if (in_key->kv_category != MEDIUM_INPLACE)
-		return 0;
+		return medium_inlog_kv;
 
 	struct db_descriptor *db_desc = w_cursor->handle->db_desc;
 	if (db_desc->medium_log.head_dev_offt == 0 && db_desc->medium_log.tail_dev_offt == 0 &&
@@ -419,33 +429,31 @@ static int WCURSOR_append_medium_L1(struct WCURSOR_level_write_cursor *w_cursor,
 	ins_req.metadata.end_of_log = 0;
 	ins_req.metadata.log_padding = 0;
 
-	struct log_operation log_op;
-	log_op.metadata = &ins_req.metadata;
-	log_op.optype_tolog = insertOp;
-	log_op.ins_req = &ins_req;
-	log_op.is_compaction = true;
+	struct log_operation log_op = { log_op.metadata = &ins_req.metadata, log_op.optype_tolog = insertOp,
+					log_op.ins_req = &ins_req, log_op.is_compaction = true };
 
 	char *log_location = append_key_value_to_log(&log_op);
-	struct kv_splice *kv_in_place = (struct kv_splice *)in_key->kv_in_place;
-	if (get_key_size(kv_in_place) >= PREFIX_SIZE)
-		memcpy(get_kv_seperated_prefix(out_key->kv_inlog), get_key_offset_in_kv(kv_in_place),
-		       get_kv_seperated_prefix_size());
-	else {
-		memset(get_kv_seperated_prefix(out_key->kv_inlog), 0x00, get_kv_seperated_prefix_size());
-		memcpy(get_kv_seperated_prefix(out_key->kv_inlog), get_key_offset_in_kv(kv_in_place),
-		       get_key_size(kv_in_place));
-	}
-	set_kv_seperated_device_offt(out_key->kv_inlog, (uint64_t)log_location);
-	out_key->kv_category = MEDIUM_INLOG;
-	out_key->kv_type = KV_INLOG;
-	out_key->tombstone = 0;
 
-	return 1;
+	uint32_t copy_size = get_kv_seperated_prefix_size();
+	if (get_key_size(in_key->kv_in_place) < get_kv_seperated_prefix_size()) {
+		memset(get_kv_seperated_prefix(&medium_inlog_kv.kv_inlog), 0x00, get_kv_seperated_prefix_size());
+		copy_size = get_key_size(in_key->kv_in_place);
+	}
+
+	memcpy(get_kv_seperated_prefix(&medium_inlog_kv.kv_inlog), get_key_offset_in_kv(in_key->kv_in_place),
+	       copy_size);
+	set_kv_seperated_device_offt(&medium_inlog_kv.kv_inlog, (uint64_t)log_location);
+
+	medium_inlog_kv.kv_category = MEDIUM_INLOG;
+	medium_inlog_kv.kv_type = KV_INLOG;
+	medium_inlog_kv.tombstone = 0;
+
+	return medium_inlog_kv;
 }
 
 bool WCURSOR_append_entry_to_leaf_node(struct WCURSOR_level_write_cursor *cursor, struct comp_parallax_key *kv_pair)
 {
-	struct comp_parallax_key trans_medium = { 0 };
+	struct comp_parallax_key medium_kv_inlog = { 0 };
 	struct write_dynamic_leaf_args write_leaf_args = { 0 };
 	struct comp_parallax_key *curr_key = kv_pair;
 	uint64_t left_leaf_offt = 0;
@@ -454,8 +462,9 @@ bool WCURSOR_append_entry_to_leaf_node(struct WCURSOR_level_write_cursor *cursor
 	uint32_t kv_size = 0;
 	uint8_t append_to_medium_log = 0;
 
-	if (WCURSOR_append_medium_L1(cursor, kv_pair, &trans_medium)) {
-		curr_key = &trans_medium;
+	if (cursor->level_id == 1 && kv_pair->kv_category == MEDIUM_INPLACE) {
+		medium_kv_inlog = WCURSOR_append_medium_L1(cursor, kv_pair);
+		curr_key = &medium_kv_inlog;
 		append_to_medium_log = 1;
 	}
 
@@ -476,8 +485,8 @@ bool WCURSOR_append_entry_to_leaf_node(struct WCURSOR_level_write_cursor *cursor
 
 	case KV_INLOG:
 		kv_size = get_kv_seperated_splice_size();
-		write_leaf_args.kv_dev_offt = curr_key->kv_inlog->dev_offt;
-		write_leaf_args.key_value_buf = (char *)curr_key->kv_inlog;
+		write_leaf_args.kv_dev_offt = curr_key->kv_inlog.dev_offt;
+		write_leaf_args.key_value_buf = (char *)&curr_key->kv_inlog;
 		write_leaf_args.key_value_size = kv_size;
 		write_leaf_args.level_id = cursor->level_id;
 		write_leaf_args.kv_format = KV_PREFIX;
@@ -559,7 +568,7 @@ bool WCURSOR_append_entry_to_leaf_node(struct WCURSOR_level_write_cursor *cursor
 				kv_formated_kv = (char *)curr_key->kv_in_place;
 			else {
 				// do a page fault to find the pivot
-				kv_formated_kv = (char *)get_kv_seperated_device_offt(curr_key->kv_inlog);
+				kv_formated_kv = (char *)get_kv_seperated_device_offt(&curr_key->kv_inlog);
 			}
 			break;
 		default:

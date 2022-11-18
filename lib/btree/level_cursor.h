@@ -7,7 +7,7 @@ struct comp_parallax_key {
 	enum kv_entry_location kv_type;
 	uint8_t tombstone;
 	union {
-		struct kv_seperation_splice *kv_inlog;
+		struct kv_seperation_splice kv_inlog;
 		struct kv_splice *kv_in_place;
 	};
 };
