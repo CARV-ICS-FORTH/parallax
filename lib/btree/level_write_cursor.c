@@ -334,7 +334,7 @@ void wcursor_flush_write_cursor(struct wcursor_level_write_cursor *w_cursor)
 #endif
 }
 
-extern void wcursor_close_write_cursor(struct wcursor_level_write_cursor *w_cursor)
+void wcursor_close_write_cursor(struct wcursor_level_write_cursor *w_cursor)
 {
 	memset(w_cursor, 0x00, sizeof(struct wcursor_level_write_cursor));
 	free(w_cursor);
