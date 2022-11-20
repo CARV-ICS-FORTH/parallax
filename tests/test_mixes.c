@@ -390,7 +390,7 @@ static void read_all_static_kvs(par_handle handle, struct task task_info)
 		my_kv.v.val_buffer = buf;
 		par_get(handle, &my_kv.k, &my_kv.v, &error_message);
 		if (error_message) {
-			log_fatal("Key %u:%s not found", my_kv.k.size, my_kv.k.data);
+			log_fatal("Key %u:%s not found error message is %s", my_kv.k.size, my_kv.k.data, error_message);
 			BUG_ON();
 		}
 	}
