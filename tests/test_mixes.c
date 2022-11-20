@@ -368,6 +368,8 @@ static void read_all_static_kvs(par_handle handle, struct task task_info)
 		sprintf(buf + strlen(init_info.key_prefix), "%llu", (long long unsigned)i);
 		my_kv.k.size = strlen(buf) + 1;
 		my_kv.k.data = buf;
+		my_kv.v.val_buffer_size = LARGE_KV_SIZE;
+		my_kv.v.val_buffer = buf;
 		par_get(handle, &my_kv.k, &my_kv.v, &error_message);
 		if (error_message) {
 			log_fatal("Key %u:%s not found", my_kv.k.size, my_kv.k.data);
