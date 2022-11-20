@@ -14,10 +14,11 @@ option(BUILD_SHARED_LIBS
 option(DISABLE_LOGGING
        "Disable all logging from parallax excluding kv_format.parallax output."
        OFF)
-option(
-  ENABLE_FLTO
-  "Enable FLTO compilation for Parallax and its dependencies. At the moment this only supports GCC."
-  OFF)
+# Set a default build type if none was specified
+set(default_build_type "Release")
+#if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/.git")
+#  set(default_build_type "Debug")
+#endif()
 
 # Parallax is a dependency
 if(NOT (${CMAKE_SOURCE_DIR} STREQUAL ${CMAKE_CURRENT_SOURCE_DIR}))
@@ -33,6 +34,8 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "Debug" "Release"
                                                "MinSizeRel" "RelWithDebInfo")
 endif()
+
+message(STATUS "build type is '${default_build_type}' and cmake build type is '${CMAKE_BUILD_TYPE}'.")
 
 if(DISABLE_LOGGING)
   add_definitions(-DDISABLE_LOGGING)
