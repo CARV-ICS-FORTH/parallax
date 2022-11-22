@@ -118,7 +118,7 @@ inline void set_kv_seperated_device_offt(struct kv_seperation_splice *kv_pair, u
 	NULL != kv_pair ? kv_pair->dev_offt = dev_offt : dev_offt;
 }
 
-inline uint32_t get_kv_seperated_prefix_size(void)
+inline int32_t get_kv_seperated_prefix_size(void)
 {
 	return PREFIX_SIZE;
 }

@@ -130,7 +130,7 @@ char *get_kv_seperated_prefix(struct kv_seperation_splice *kv_pair);
 /**
  * Return the size of the PREFIX
  */
-uint32_t get_kv_seperated_prefix_size(void);
+int32_t get_kv_seperated_prefix_size(void);
 
 /**
  * Returns the device offset where this kv_seperation_splice is actually stored
