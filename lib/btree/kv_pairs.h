@@ -37,11 +37,6 @@ struct kv_seperation_splice {
  */
 int32_t get_key_size(struct kv_splice *kv_pair);
 /**
- * Returns the key_size + metadata given a splice formated key
- * @param key: a spliced (KV_FORMATED) key ptr
- */
-int32_t get_key_size_with_metadata(struct kv_splice *kv_pair);
-/**
  * Returns the value_size given a splice formated key
  * @param value: a spliced (KV_FORMATED) kv ptr
  */

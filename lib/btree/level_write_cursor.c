@@ -89,7 +89,7 @@ static void WCURSOR_get_space(struct WCURSOR_level_write_cursor *w_cursor, uint3
 	switch (type) {
 	case leafNode:
 	case leafRootNode: {
-		uint32_t remaining_space = remaining_space = SEGMENT_SIZE - w_cursor->segment_offt[0] % SEGMENT_SIZE;
+		uint32_t remaining_space = SEGMENT_SIZE - w_cursor->segment_offt[0] % SEGMENT_SIZE;
 		if (w_cursor->segment_offt[0] == 0 || w_cursor->segment_offt[0] % SEGMENT_SIZE == 0)
 			remaining_space = 0;
 

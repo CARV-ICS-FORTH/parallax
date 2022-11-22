@@ -22,11 +22,6 @@ inline int32_t get_key_size(struct kv_splice *kv_pair)
 	return kv_pair->key_size;
 }
 
-inline int32_t get_key_size_with_metadata(struct kv_splice *kv_pair)
-{
-	return sizeof(kv_pair->key_size) + kv_pair->key_size;
-}
-
 inline int32_t get_value_size(struct kv_splice *kv_pair)
 {
 	return is_tombstone_kv_pair(kv_pair) ? 0 : kv_pair->value_size;

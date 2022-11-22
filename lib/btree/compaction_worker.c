@@ -22,11 +22,11 @@ struct compaction_roots {
 static void choose_compaction_roots(struct db_handle *handle, struct compaction_request *comp_req,
 				    struct compaction_roots *comp_roots)
 {
+	comp_roots->src_root = handle->db_desc->levels[comp_req->src_level].root_r[comp_req->src_tree];
 	if (handle->db_desc->levels[comp_req->src_level].root_w[comp_req->src_tree] != NULL)
 		comp_roots->src_root = handle->db_desc->levels[comp_req->src_level].root_w[comp_req->src_tree];
-	else if (handle->db_desc->levels[comp_req->src_level].root_r[comp_req->src_tree] != NULL)
-		comp_roots->src_root = handle->db_desc->levels[comp_req->src_level].root_r[comp_req->src_tree];
-	else {
+
+	if (!comp_roots->src_root) {
 		log_fatal("NULL src root for compaction from level's tree [%u][%u] to "
 			  "level's tree[%u][%u] for db %s",
 			  comp_req->src_level, comp_req->src_tree, comp_req->dst_level, comp_req->dst_tree,
@@ -34,11 +34,9 @@ static void choose_compaction_roots(struct db_handle *handle, struct compaction_
 		BUG_ON();
 	}
 
-	comp_roots->dst_root = NULL;
+	comp_roots->dst_root = handle->db_desc->levels[comp_req->dst_level].root_r[0];
 	if (handle->db_desc->levels[comp_req->dst_level].root_w[0] != NULL)
 		comp_roots->dst_root = handle->db_desc->levels[comp_req->dst_level].root_w[0];
-	else if (handle->db_desc->levels[comp_req->dst_level].root_r[0] != NULL)
-		comp_roots->dst_root = handle->db_desc->levels[comp_req->dst_level].root_r[0];
 }
 
 static void comp_fill_parallax_key(struct sh_heap_node *h_node, struct comp_parallax_key *curr_key)
