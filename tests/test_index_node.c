@@ -19,18 +19,22 @@
   * index_node and check correctness for its children.
 **/
 
+#include "arg_parser.h"
+#include <assert.h>
+#include <btree/btree.h>
+#include <btree/index_node.h>
+#include <btree/segment_allocator.h>
+#include <log.h>
+#include <parallax/parallax.h>
+#include <parallax/structures.h>
+#include <stdio.h>
+#include <string.h>
+#include <unistd.h>
+
 #define ALPHABET_SIZE 26
 #define MAX_PIVOT_KEY_SIZE 200
 #define MAX_NODE_KEYS_NUM 500
 #define PIVOT_BASE 1000
-
-#include "../lib/btree/index_node.h"
-#include "arg_parser.h"
-#include <assert.h>
-#include <log.h>
-#include <stdio.h>
-#include <string.h>
-#include <unistd.h>
 
 enum pivot_generation_style { ASCENDING = 1, DESCENDING, RANDOM };
 
@@ -38,13 +42,13 @@ static void create_pivot(struct pivot_key *pivot, uint32_t pivot_num, const unsi
 			 uint32_t alphabet_size)
 {
 	sprintf(pivot->data, "%u", pivot_num);
-	uint32_t prefix_size = strlen(pivot->data);
+	int32_t prefix_size = strlen(pivot->data);
 	pivot->size = (rand() % MAX_PIVOT_KEY_SIZE);
 
 	if (pivot->size <= prefix_size)
 		pivot->size = prefix_size + 1;
 
-	for (uint32_t i = prefix_size; i < pivot->size; ++i) {
+	for (int32_t i = prefix_size; i < pivot->size; ++i) {
 		pivot->data[i] = alphabet[rand() % alphabet_size];
 	}
 }
@@ -59,7 +63,7 @@ static void verify_pivots(struct index_node *node, struct pivot_key **pivot, uin
 	guard->size = 1;
 	guard->data[0] = 0x00;
 
-	uint64_t child_offt = index_binary_search(node, guard, KV_FORMAT);
+	uint64_t child_offt = index_binary_search(node, guard, INDEX_KEY_TYPE);
 	uint64_t expected_value = base;
 	if (child_offt != expected_value) {
 		log_fatal("i = %u Child offt corrupted shoud be %lu but its value is %lu", 0, expected_value,
@@ -69,7 +73,7 @@ static void verify_pivots(struct index_node *node, struct pivot_key **pivot, uin
 
 	for (uint32_t i = 0; i < num_node_keys; ++i) {
 		//log_debug("Look up key is %.*s", pivot[i]->size, pivot[i]->data);
-		child_offt = index_binary_search(node, pivot[i], KV_FORMAT);
+		child_offt = index_binary_search(node, pivot[i], INDEX_KEY_TYPE);
 		expected_value = base + i + 1;
 		//log_debug("i = %u expected %lu got %lu lookup key %.*s", i, expected_value, child_offt, pivot[i]->size,
 		//	  pivot[i]->data);
@@ -96,7 +100,7 @@ static uint32_t insert_and_verify_pivots(db_handle *handle, unsigned char *alpha
 
 	/*insert in ascending order*/
 	struct index_node *node = NULL;
-	posix_memalign((void **)&node, 4096, INDEX_NODE_SIZE);
+	posix_memalign((void **)&node, 4096, index_node_get_size());
 
 	index_init_node(ADD_GUARD, node, internalNode);
 	uint32_t num_node_keys = 0;
@@ -144,9 +148,16 @@ static uint32_t insert_and_verify_pivots(db_handle *handle, unsigned char *alpha
 
 	log_info("Now testing splits ...");
 
-	bt_insert_req ins_req = { 0 };
-	ins_req.metadata.handle = handle;
-	struct bt_rebalance_result split_res = index_split_node(node, &ins_req);
+	struct bt_rebalance_result split_res = {
+		.left_child = (struct node_header *)seg_get_index_node(handle->db_desc, 0, 0, 0),
+		.right_child = (struct node_header *)seg_get_index_node(handle->db_desc, 0, 0, 0)
+	};
+	struct index_node_split_request request = { .node = node,
+						    .left_child = (struct index_node *)split_res.left_child,
+						    .right_child = (struct index_node *)split_res.right_child };
+	struct index_node_split_reply reply = { .pivot_buf = split_res.middle_key, .pivot_buf_size = MAX_KEY_SIZE };
+
+	index_split_node(&request, &reply);
 
 	log_info("Testing left child... num entries: %d", split_res.left_child->num_entries);
 	verify_pivots((struct index_node *)split_res.left_child, pivot, split_res.left_child->num_entries - 1,
@@ -183,7 +194,17 @@ int main(int argc, char *argv[])
 	arg_parse(argc, argv, options, options_len);
 	arg_print_options(help_flag, options, options_len);
 
-	db_handle *handle = db_open(get_option(options, 1), 0, UINT64_MAX, "redo_undo_test", CREATE_DB);
+	const char *error_message = NULL;
+	char *volume_name = get_option(options, 1);
+	char *db_name = "redo_undo_test";
+	struct par_options_desc *default_options = par_get_default_options();
+	struct par_db_options db_options = {
+		.volume_name = volume_name,
+		.db_name = db_name,
+		.create_flag = PAR_CREATE_DB,
+		default_options,
+	};
+	db_handle *handle = db_open(&db_options, &error_message);
 	unsigned char *alphabet = calloc(ALPHABET_SIZE, sizeof(char));
 	char letter = 'A';
 	for (uint32_t i = 0; i < ALPHABET_SIZE; ++i)

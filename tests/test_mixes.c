@@ -1,3 +1,4 @@
+#include "allocator/volume_manager.h"
 #include "arg_parser.h"
 #include <assert.h>
 #include <btree/btree.h>
@@ -5,7 +6,7 @@
 #include <fcntl.h>
 #include <linux/fs.h>
 #include <log.h>
-#include <parallax.h>
+#include <parallax/parallax.h>
 #include <scanner/scanner.h>
 #include <stdlib.h>
 #include <string.h>
@@ -67,14 +68,18 @@ struct random_sizes random_sizes_table[NUMBER_OF_KV_CATEGORIES];
 
 static par_handle open_db(const char *path)
 {
-	par_db_options db_options;
-	db_options.volume_name = (char *)path;
-	db_options.volume_start = 0;
-	db_options.volume_size = 0;
-	db_options.create_flag = PAR_CREATE_DB;
-	db_options.db_name = "testmedium.db";
+	par_db_options db_options = { .volume_name = (char *)path,
+				      .create_flag = PAR_CREATE_DB,
+				      .db_name = "testmedium.db",
+				      .options = par_get_default_options() };
 
-	par_handle handle = par_open(&db_options);
+	const char *error_message = NULL;
+	par_handle handle = par_open(&db_options, &error_message);
+	if (error_message) {
+		log_fatal("%s", error_message);
+		_Exit(EXIT_FAILURE);
+	}
+
 	return handle;
 }
 
@@ -159,8 +164,15 @@ static void populate_db(par_handle hd, struct task task_info)
 		v->value_size = init_info.kv_size - ((2 * sizeof(uint32_t)) + k->key_size);
 		memset(v->value_buf, 0, v->value_size);
 
-		if (par_put_serialized(hd, (char *)k) != PAR_SUCCESS) {
-			log_fatal("Put failed!");
+		struct par_key_value kv = { .k.data = (const char *)k->key_buf,
+					    .k.size = k->key_size,
+					    .v.val_buffer = v->value_buf,
+					    .v.val_size = v->value_size };
+
+		const char *error_message = NULL;
+		par_put(hd, &kv, &error_message);
+		if (error_message) {
+			log_fatal("Put failed! %s", error_message);
 			BUG_ON();
 		}
 		free(k);
@@ -217,7 +229,8 @@ static void insert_keys(par_handle handle, struct test_info info)
 static void scanner_validate_number_of_kvs(par_handle hd, uint64_t num_keys)
 {
 	uint64_t key_count = 0;
-	par_scanner sc = par_init_scanner(hd, NULL, PAR_FETCH_FIRST);
+	const char *error_message = NULL;
+	par_scanner sc = par_init_scanner(hd, NULL, PAR_FETCH_FIRST, &error_message);
 	assert(par_is_valid(sc));
 
 	while (par_is_valid(sc)) {
@@ -280,7 +293,8 @@ static void validate_static_size_of_kvs(par_handle hd, struct task task_info)
 	sprintf((char *)k.data + strlen(init_info.key_prefix), "%llu", (long long unsigned)0);
 	k.size = strlen(k.data) + 1;
 
-	par_scanner sc = par_init_scanner(hd, &k, PAR_GREATER_OR_EQUAL);
+	const char *error_message = NULL;
+	par_scanner sc = par_init_scanner(hd, &k, PAR_GREATER_OR_EQUAL, &error_message);
 	assert(par_is_valid(sc));
 
 	if (!check_correctness_of_size(sc, task_info.key_type, task_info.size_type)) {
@@ -314,7 +328,8 @@ static void validate_random_size_of_kvs(par_handle hd, struct task task_info)
 
 	k.size = strlen(k.data) + 1;
 
-	par_scanner sc = par_init_scanner(hd, &k, PAR_GREATER_OR_EQUAL);
+	const char *error_message = NULL;
+	par_scanner sc = par_init_scanner(hd, &k, PAR_GREATER_OR_EQUAL, &error_message);
 	assert(par_is_valid(sc));
 
 	if (!check_correctness_of_size(sc, task_info.key_type, task_info.size_type)) {
@@ -338,6 +353,7 @@ static void validate_random_size_of_kvs(par_handle hd, struct task task_info)
 /** Main retrieve-kvs logic*/
 static void read_all_static_kvs(par_handle handle, struct task task_info)
 {
+	const char *error_message = NULL;
 	struct par_key_value my_kv = { 0 };
 	struct init_key_values init_info = {
 		.kv_size = 0, .key_prefix = NULL, .size_type = task_info.size_type, .kv_category = task_info.key_type
@@ -352,7 +368,10 @@ static void read_all_static_kvs(par_handle handle, struct task task_info)
 		sprintf(buf + strlen(init_info.key_prefix), "%llu", (long long unsigned)i);
 		my_kv.k.size = strlen(buf) + 1;
 		my_kv.k.data = buf;
-		if (par_get(handle, &my_kv.k, &my_kv.v) != PAR_SUCCESS) {
+		my_kv.v.val_buffer_size = LARGE_KV_SIZE;
+		my_kv.v.val_buffer = buf;
+		par_get(handle, &my_kv.k, &my_kv.v, &error_message);
+		if (error_message) {
 			log_fatal("Key %u:%s not found", my_kv.k.size, my_kv.k.data);
 			BUG_ON();
 		}
@@ -471,7 +490,12 @@ int main(int argc, char *argv[])
 
 	/*sum of percentages must be equal 100*/
 	assert(medium_kvs_percentage + small_kvs_percentage + big_kvs_percentage == 100);
-	par_format((char *)path, 128);
+	const char *error_message = par_format((char *)path, 128);
+	if (error_message) {
+		log_fatal("%s", error_message);
+		return EXIT_FAILURE;
+	}
+
 	par_handle handle = open_db(path);
 
 	random_sizes_table[SMALL].min = 5;
@@ -491,7 +515,11 @@ int main(int argc, char *argv[])
 	/*validate the poppulated db phase*/
 	validate_kvs(handle, t_info);
 
-	par_close(handle);
+	error_message = par_close(handle);
+	if (error_message) {
+		log_fatal("%s", error_message);
+		return EXIT_FAILURE;
+	}
 	log_info("test successfull");
 	return 0;
 }

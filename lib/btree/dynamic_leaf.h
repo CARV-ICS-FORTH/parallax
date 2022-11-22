@@ -12,8 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#pragma once
+#ifndef DYNAMIC_LEAF_H
+#define DYNAMIC_LEAF_H
 #include "btree.h"
+#include "parallax/structures.h"
 #include <stdint.h>
 
 enum bt_dynamic_leaf_operation { DYNAMIC_LEAF_INSERT = 0, DYNAMIC_LEAF_FIND = 1 };
@@ -92,3 +94,4 @@ char *get_kv_offset(const struct bt_dynamic_leaf_node *leaf, const uint32_t leaf
 typedef struct bt_rebalance_result split_dl(struct bt_dynamic_leaf_node *leaf, uint32_t leaf_size, bt_insert_req *req);
 
 enum kv_entry_location get_kv_format(enum kv_category kv_category);
+#endif

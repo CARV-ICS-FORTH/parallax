@@ -16,16 +16,18 @@
 #include "../allocator/log_structures.h"
 #include "../allocator/redo_undo_log.h"
 #include "../allocator/volume_manager.h"
+#include "../btree/kv_pairs.h"
 #include "../common/common.h"
+#include "../include/parallax/parallax.h"
+#include "../include/parallax/structures.h"
 #include "conf.h"
 #include "dynamic_leaf.h"
 #include "gc.h"
 #include "index_node.h"
+#include "lsn.h"
 #include "segment_allocator.h"
-#include "set_options.h"
 
 #include <assert.h>
-#include <inttypes.h>
 #include <list.h>
 #include <log.h>
 #include <pthread.h>
@@ -61,8 +63,9 @@ void init_key_cmp(struct key_compare *key_cmp, void *key_buf, char key_format)
 		return;
 
 	if (key_format == KV_FORMAT) {
-		key_cmp->key_size = *(uint32_t *)key_buf;
-		key_cmp->key = (char *)key_buf + sizeof(uint32_t);
+		struct kv_splice *key = (struct kv_splice *)key_buf;
+		key_cmp->key_size = get_key_size(key);
+		key_cmp->key = get_key_offset_in_kv(key);
 		key_cmp->kv_dev_offt = UINT64_MAX;
 		key_cmp->key_format = KV_FORMAT;
 		return;
@@ -70,8 +73,8 @@ void init_key_cmp(struct key_compare *key_cmp, void *key_buf, char key_format)
 
 	if (key_format == KV_PREFIX) {
 		key_cmp->key_size = PREFIX_SIZE;
-		key_cmp->key = ((struct bt_leaf_entry *)key_buf)->prefix;
-		key_cmp->kv_dev_offt = ((struct bt_leaf_entry *)key_buf)->dev_offt;
+		key_cmp->key = ((struct kv_seperation_splice *)key_buf)->prefix;
+		key_cmp->kv_dev_offt = ((struct kv_seperation_splice *)key_buf)->dev_offt;
 		key_cmp->key_format = KV_PREFIX;
 		return;
 	}
@@ -201,7 +204,8 @@ static void calculate_metadata_offsets(uint32_t bitmap_entries, uint32_t slot_ar
 
 static void init_leaf_sizes_perlevel(level_descriptor *level)
 {
-	double kv_leaf_entry = sizeof(struct bt_leaf_entry) + sizeof(struct bt_static_leaf_slot_array) + (1 / CHAR_BIT);
+	double kv_leaf_entry =
+		get_kv_seperated_splice_size() + sizeof(struct bt_static_leaf_slot_array) + (1 / CHAR_BIT);
 	double numentries_without_metadata = 0;
 	uint32_t bitmap_entries = 0;
 	uint32_t slot_array_entries = 0;
@@ -212,7 +216,7 @@ static void init_leaf_sizes_perlevel(level_descriptor *level)
 	slot_array_entries = numentries_without_metadata;
 	kv_entries = (level->leaf_size - sizeof(struct bt_static_leaf_node) - bitmap_entries -
 		      (slot_array_entries * sizeof(struct bt_static_leaf_slot_array))) /
-		     sizeof(struct bt_leaf_entry);
+		     get_kv_seperated_splice_size();
 	calculate_metadata_offsets(bitmap_entries, slot_array_entries, kv_entries, &level->leaf_offsets);
 }
 
@@ -276,33 +280,6 @@ void bt_done_with_value_log_address(struct log_descriptor *log_desc, struct bt_k
 {
 	assert(log_desc->tail[L->tail_id]->pending_readers > 0);
 	__sync_fetch_and_sub(&log_desc->tail[L->tail_id]->pending_readers, 1);
-}
-
-struct bt_kv_log_address bt_get_kv_medium_log_address(struct log_descriptor *log_desc, uint64_t dev_offt)
-{
-	struct bt_kv_log_address reply = { .addr = NULL, .tail_id = 0, .in_tail = UINT8_MAX };
-	assert(dev_offt != 0);
-	for (int i = 0; i < LOG_TAIL_NUM_BUFS; ++i) {
-		if (log_desc->tail[i]->free)
-			continue;
-
-		if (dev_offt >= log_desc->tail[i]->start && dev_offt <= log_desc->tail[i]->end) {
-			reply.in_tail = 1;
-			// log_info("KV at tail! offt %llu in the device or %llu", dev_offt,
-			// dev_offt % SEGMENT_SIZE);
-			reply.addr = &log_desc->tail[i]->buf[dev_offt % SEGMENT_SIZE];
-			reply.tail_id = i;
-			return reply;
-		}
-		// log_info("KV NOT at tail %d! DB: %s offt %llu start %llu end %llu", i,
-		// db_desc->db_name, dev_offt,
-		//	 db_desc->log_tail_buf[i]->start, db_desc->log_tail_buf[i]->end);
-	}
-
-	reply.in_tail = 0;
-	reply.addr = REAL_ADDRESS(dev_offt);
-	reply.tail_id = UINT8_MAX;
-	return reply;
 }
 
 // cppcheck-suppress unusedFunction
@@ -406,7 +383,7 @@ static void init_fresh_logs(struct db_descriptor *db_desc)
 	seg_in_mem->segment_id = 0;
 	seg_in_mem->prev_segment = NULL;
 	seg_in_mem->next_segment = NULL;
-	db_desc->lsn = 0;
+	db_desc->lsn_factory = lsn_factory_init(0);
 }
 
 static void init_fresh_db(struct db_descriptor *db_desc)
@@ -465,7 +442,8 @@ static void recover_logs(db_descriptor *db_desc)
 	db_desc->big_log.tail_dev_offt = db_desc->db_superblock->big_log_tail_offt;
 	db_desc->big_log.size = db_desc->db_superblock->big_log_size;
 	init_log_buffer(&db_desc->big_log, BIG_LOG);
-	db_desc->lsn = db_desc->db_superblock->lsn;
+	int64_t last_lsn_id = get_lsn_id(&db_desc->db_superblock->last_lsn);
+	db_desc->lsn_factory = lsn_factory_init(last_lsn_id);
 }
 
 static void restore_db(struct db_descriptor *db_desc, uint32_t region_idx)
@@ -528,17 +506,16 @@ static void restore_db(struct db_descriptor *db_desc, uint32_t region_idx)
 	recover_logs(db_desc);
 }
 
-static db_descriptor *get_db_from_volume(char *volume_name, char *db_name, char create_db)
+static db_descriptor *get_db_from_volume(char *volume_name, char *db_name, par_db_initializers create_db)
 {
 	struct db_descriptor *db_desc = NULL;
 	struct volume_descriptor *volume_desc = mem_get_volume_desc(volume_name);
 	struct pr_db_superblock *db_superblock = NULL;
 	uint8_t new_db = 0;
 
-	if (CREATE_DB == create_db)
-		db_superblock = get_db_superblock(volume_desc, db_name, strlen(db_name) + 1, 1, &new_db);
-	else
-		db_superblock = get_db_superblock(volume_desc, db_name, strlen(db_name) + 1, 0, &new_db);
+	//TODO Refactor get_db_superblock -> Takes too much arguments -> create a struct
+	db_superblock =
+		get_db_superblock(volume_desc, db_name, strlen(db_name) + 1, PAR_CREATE_DB == create_db, &new_db);
 
 	if (db_superblock) {
 		int ret = posix_memalign((void **)&db_desc, ALIGNMENT_SIZE, sizeof(struct db_descriptor));
@@ -560,99 +537,79 @@ static db_descriptor *get_db_from_volume(char *volume_name, char *db_name, char 
 			log_info("Initializing new DB: %s, initializing its allocation log", db_name);
 			rul_log_init(db_desc);
 			db_desc->levels[0].allocation_txn_id[0] = rul_start_txn(db_desc);
-			/*
-     * init_fresh_db allocates space for the L0_recovery log and large.
-     * As a result we need to acquire a txn_id for the L0
-    */
 
 			log_info("Got txn %lu for the initialization of Large and L0_recovery_logs of DB: %s",
 				 db_desc->levels[0].allocation_txn_id[0], db_name);
+
+			//init_fresh_db allocates space for the L0_recovery log and large.
+			//As a result we need to acquire a txn_id for the L0
 			init_fresh_db(db_desc);
 		}
 	} else
 		log_info("DB: %s NOT found", db_name);
 	return db_desc;
 }
-/*</new_persistent_design>*/
 
-db_handle *internal_db_open(struct volume_descriptor *volume_desc, uint64_t start, uint64_t size, char *db_name,
-			    char CREATE_FLAG)
+db_handle *internal_db_open(struct volume_descriptor *volume_desc, par_db_options *db_options,
+			    const char **error_message)
 {
 	struct db_handle *handle = NULL;
 	const uint32_t leaf_size_per_level[10] = { LEVEL0_LEAF_SIZE, LEVEL1_LEAF_SIZE, LEVEL2_LEAF_SIZE,
 						   LEVEL3_LEAF_SIZE, LEVEL4_LEAF_SIZE, LEVEL5_LEAF_SIZE,
 						   LEVEL6_LEAF_SIZE, LEVEL7_LEAF_SIZE };
 	struct db_descriptor *db = NULL;
-	struct lib_option *dboptions = NULL;
 
-	fprintf(stderr, "\n%s[%s:%s:%d](\"%s\", %" PRIu64 ", %" PRIu64 ", %s);%s\n", "\033[0;32m", __FILE__, __func__,
-		__LINE__, volume_desc->volume_name, start, size, db_name, "\033[0m");
+	log_info("Using Volume name = %s to open db with name = %s", volume_desc->volume_name, db_options->db_name);
 
-	parse_options(&dboptions);
 #if DISABLE_LOGGING
 	log_set_quiet(true);
 #endif
-	_Static_assert(sizeof(struct index_node) == INDEX_NODE_SIZE, "Index node is not page aligned");
+	index_node_get_size();
 	_Static_assert(sizeof(struct segment_header) == 4096, "Segment header is not 4 KB");
-	db = klist_find_element_with_key(volume_desc->open_databases, db_name);
+	db = klist_find_element_with_key(volume_desc->open_databases, (char *)db_options->db_name);
 
 	if (db != NULL) {
-		log_info("DB %s already open for volume", db_name);
+		*error_message = "DB already open";
 		handle = calloc(1, sizeof(struct db_handle));
-		memset(handle, 0x00, sizeof(db_handle));
 		handle->volume_desc = volume_desc;
 		handle->db_desc = db;
+		//deep copy db_options
+		memcpy(&handle->db_options, db_options, sizeof(struct par_db_options));
 		++handle->db_desc->reference_count;
 		goto exit;
 	}
 
-	uint64_t level0_size;
-	uint64_t growth_factor;
-	uint64_t level_medium_inplace;
-
-	struct lib_option *option;
-
-	check_option(dboptions, "level0_size", &option);
-	level0_size = MB(option->value.count);
-
-	check_option(dboptions, "growth_factor", &option);
-	growth_factor = option->value.count;
-
-	check_option(dboptions, "level_medium_inplace", &option);
-	level_medium_inplace = option->value.count;
-
-	struct db_descriptor *db_desc = get_db_from_volume(volume_desc->volume_name, db_name, CREATE_FLAG);
+	struct db_descriptor *db_desc =
+		get_db_from_volume(volume_desc->volume_name, (char *)db_options->db_name, db_options->create_flag);
 	if (!db_desc) {
-		if (CREATE_DB == CREATE_FLAG) {
-			log_warn("Sorry no room for new DB %s", db_name);
-			handle = NULL;
-			goto exit;
-		}
-		log_warn("DB %s not found instructed not to create a new one", db_name);
 		handle = NULL;
+
+		if (PAR_CREATE_DB == db_options->create_flag)
+			*error_message = "Sorry no room for new DB";
+
+		if (PAR_DONOT_CREATE_DB == db_options->create_flag)
+			*error_message = "DB not found instructed not to create a new one";
+
 		goto exit;
 	}
 
-	db_desc->level_medium_inplace = level_medium_inplace;
+	db_desc->level_medium_inplace = db_options->options[LEVEL_MEDIUM_INPLACE].value;
 	handle = calloc(1, sizeof(db_handle));
-	if (!handle) {
-		log_fatal("calloc failed");
-		BUG_ON();
-	}
-
-	/*Remove later*/
 	handle->db_desc = db_desc;
 	handle->volume_desc = db_desc->db_volume;
+	//deep copy db_options
+	memcpy(&handle->db_options, db_options, sizeof(struct par_db_options));
 
+	uint64_t level0_size = handle->db_options.options[LEVEL0_SIZE].value;
+	uint64_t growth_factor = handle->db_options.options[GROWTH_FACTOR].value;
+
+	handle->db_desc->levels[0].max_level_size = level0_size;
 	/*init soft state for all levels*/
-	for (uint8_t level_id = 0; level_id < MAX_LEVELS; level_id++) {
+	for (uint8_t level_id = 1; level_id < MAX_LEVELS; level_id++) {
 		init_leaf_sizes_perlevel(&handle->db_desc->levels[level_id]);
 
-		if (level_id != 0)
-			handle->db_desc->levels[level_id].max_level_size =
-				handle->db_desc->levels[level_id - 1].max_level_size * growth_factor;
-		else
-			handle->db_desc->levels[level_id].max_level_size = level0_size;
+		handle->db_desc->levels[level_id].max_level_size =
+			handle->db_desc->levels[level_id - 1].max_level_size * growth_factor;
 
 		log_info("DB:Level %d max_total_size %lu", level_id, handle->db_desc->levels[level_id].max_level_size);
 	}
@@ -717,21 +674,22 @@ db_handle *internal_db_open(struct volume_descriptor *volume_desc, uint64_t star
 
 	MUTEX_INIT(&handle->db_desc->lock_log, NULL);
 
-	klist_add_first(volume_desc->open_databases, handle->db_desc, db_name, NULL);
-	handle->db_desc->stat = DB_OPEN;
+	klist_add_first(volume_desc->open_databases, handle->db_desc, handle->db_options.db_name, NULL);
+	handle->db_desc->db_state = DB_OPEN;
 
-	log_info("Opened DB %s starting its compaction daemon", db_name);
+	log_info("Opened DB %s starting its compaction daemon", handle->db_options.db_name);
 
 	sem_init(&handle->db_desc->compaction_daemon_interrupts, PTHREAD_PROCESS_PRIVATE, 0);
 
 	if (pthread_create(&(handle->db_desc->compaction_daemon), NULL, compaction_daemon, (void *)handle) != 0) {
-		log_fatal("Failed to start compaction_daemon for db %s", db_name);
+		log_fatal("Failed to start compaction_daemon for db %s", handle->db_options.db_name);
 		BUG_ON();
 	}
 
+	handle->db_desc->gc_scanning_db = false;
 	if (!volume_desc->gc_thread_spawned) {
 		if (pthread_create(&(handle->db_desc->gc_thread), NULL, gc_log_entries, (void *)handle) != 0) {
-			log_fatal("Failed to start garbage collection thread for db %s", db_name);
+			log_fatal("Failed to start garbage collection thread for db %s", handle->db_options.db_name);
 			BUG_ON();
 		}
 		++volume_desc->gc_thread_spawned;
@@ -740,58 +698,61 @@ db_handle *internal_db_open(struct volume_descriptor *volume_desc, uint64_t star
 
 	/*get allocation transaction id for level-0*/
 	MUTEX_INIT(&handle->db_desc->flush_L0_lock, NULL);
-	//db_desc->levels[0].allocation_txn_id[db_desc->levels[0].active_tree] = rul_start_txn(db_desc);
 	pr_flush_L0(db_desc, db_desc->levels[0].active_tree);
 	db_desc->levels[0].allocation_txn_id[db_desc->levels[0].active_tree] = rul_start_txn(db_desc);
 	recover_L0(handle->db_desc);
 
 exit:
-	destroy_options(dboptions);
-	dboptions = NULL;
 	return handle;
 }
 
-db_handle *db_open(char *volumeName, uint64_t start, uint64_t size, char *db_name, char CREATE_FLAG)
+db_handle *db_open(par_db_options *db_options, const char **error_message)
 {
 	MUTEX_LOCK(&init_lock);
-
-	struct volume_descriptor *volume_desc = mem_get_volume_desc(volumeName);
+	struct volume_descriptor *volume_desc = mem_get_volume_desc(db_options->volume_name);
 	if (!volume_desc) {
-		log_fatal("Failed to open volume %s", volumeName);
-		BUG_ON();
+		*error_message = "Failed to open volume %s";
+		return NULL;
 	}
 	assert(volume_desc->open_databases);
-	/*retrieve gc db*/
 
-	db_handle *handle = internal_db_open(volume_desc, start, size, db_name, CREATE_FLAG);
+	db_handle *handle = internal_db_open(volume_desc, db_options, error_message);
 
 	MUTEX_UNLOCK(&init_lock);
 	return handle;
 }
 
-enum parallax_status db_close(db_handle *handle)
+const char *db_close(db_handle *handle)
 {
+	const char *error_message = NULL;
 	MUTEX_LOCK(&init_lock);
 	/*verify that this is a valid db*/
 	int not_valid_db = klist_find_element_with_key(handle->volume_desc->open_databases,
 						       handle->db_desc->db_superblock->db_name) == NULL;
 
 	if (not_valid_db) {
-		log_warn("Received close for db: %s that is not listed as open",
-			 handle->db_desc->db_superblock->db_name);
+		error_message = "Received close for db that is not listed as open";
 		goto finish;
 	}
 
 	--handle->db_desc->reference_count;
-
+	// We need to wait for the garbage collection thread to stop working on the db
+	// otherwise we could leave this db in an undefined state where it will never close.
+	// Scenario is -> db_close is called while gc is having a reference to the db and
+	// when it decreases the reference the handle is never closed.
+	while (handle->db_desc->gc_scanning_db) {
+		MUTEX_UNLOCK(&init_lock);
+		sleep(1);
+		MUTEX_LOCK(&init_lock);
+	}
 	if (handle->db_desc->reference_count < 0) {
 		log_fatal("Negative referece count for DB %s", handle->db_desc->db_superblock->db_name);
 		BUG_ON();
 	}
 	if (handle->db_desc->reference_count > 0) {
-		log_warn("Sorry more guys uses this DB: %s", handle->db_desc->db_superblock->db_name);
+		error_message = "Sorry more guys uses this DB";
 		MUTEX_UNLOCK(&init_lock);
-		return PARALLAX_SUCCESS;
+		return error_message;
 	}
 	/*Remove so it is not visible by the GC thread*/
 	if (!klist_remove_element(handle->volume_desc->open_databases, handle->db_desc)) {
@@ -804,7 +765,7 @@ enum parallax_status db_close(db_handle *handle)
 	/*New requests will eventually see that db is closing*/
 	/*wake up possible clients that are stack due to non-availability of L0*/
 	MUTEX_LOCK(&handle->db_desc->client_barrier_lock);
-	handle->db_desc->stat = DB_IS_CLOSING;
+	handle->db_desc->db_state = DB_IS_CLOSING;
 	if (pthread_cond_broadcast(&handle->db_desc->client_barrier) != 0) {
 		log_fatal("Failed to wake up stopped clients");
 		BUG_ON();
@@ -820,9 +781,9 @@ enum parallax_status db_close(db_handle *handle)
 		spin_loop(&(handle->db_desc->levels[level_id].active_operations), 0);
 	}
 
-	handle->db_desc->stat = DB_TERMINATE_COMPACTION_DAEMON;
+	handle->db_desc->db_state = DB_TERMINATE_COMPACTION_DAEMON;
 	sem_post(&handle->db_desc->compaction_daemon_interrupts);
-	while (handle->db_desc->stat != DB_IS_CLOSING)
+	while (handle->db_desc->db_state != DB_IS_CLOSING)
 		usleep(50);
 
 	log_info("Ok compaction daemon exited continuing the close sequence of DB:%s",
@@ -883,7 +844,7 @@ finish:
 
 	MUTEX_UNLOCK(&init_lock);
 	free(handle);
-	return PARALLAX_SUCCESS;
+	return error_message;
 }
 
 /**
@@ -932,11 +893,16 @@ void wait_for_available_level0_tree(db_handle *handle, uint8_t level_id, uint8_t
 	}
 }
 
-static enum kv_category calculate_KV_category(uint32_t key_size, uint32_t value_size, request_type op_type)
+enum kv_category calculate_KV_category(uint32_t key_size, uint32_t value_size, request_type op_type)
 {
-	if (op_type == deleteOp)
-		return SMALL_INPLACE;
+	assert(op_type == insertOp || op_type == deleteOp);
 
+	if (op_type == deleteOp) {
+		assert(key_size && 0 == value_size);
+		return SMALL_INPLACE;
+	}
+
+	assert(key_size && value_size);
 	/*We always use as nominator the smallest value of the pair <key size, value size>*/
 	double kv_ratio = ((double)key_size) / value_size;
 	if (value_size < key_size)
@@ -949,75 +915,80 @@ static enum kv_category calculate_KV_category(uint32_t key_size, uint32_t value_
 	if (kv_ratio >= 0.0 && kv_ratio < 0.02)
 		category = BIG_INLOG;
 	else if (kv_ratio >= 0.02 && kv_ratio <= 0.2)
-#if MEDIUM_LOG_UNSORTED
-		category = MEDIUM_INLOG;
-#else
 		category = MEDIUM_INPLACE;
-#endif
 	return category;
 }
 
-uint8_t insert_key_value(db_handle *handle, void *key, void *value, uint32_t key_size, uint32_t value_size,
-			 request_type op_type)
+static const char *insert_error_handling(db_handle *handle, uint32_t key_size, uint32_t value_size)
 {
-	bt_insert_req ins_req;
-	char __tmp[KV_MAX_SIZE];
-	char *key_buf = __tmp;
-
-	if (DB_IS_CLOSING == handle->db_desc->stat) {
-		log_warn("Sorry DB: %s is closing", handle->db_desc->db_superblock->db_name);
-		return PARALLAX_FAILURE;
+	const char *error_message = NULL;
+	if (DB_IS_CLOSING == handle->db_desc->db_state) {
+		error_message = "DB: is closing";
+		return error_message;
 	}
 
 	if (key_size > MAX_KEY_SIZE) {
-		log_fatal("Keys > %d bytes are not supported!", MAX_KEY_SIZE);
-		return PARALLAX_FAILURE;
+		error_message = "Provided key bigger than the MAX_KEY_SIZE Parallax support";
+		return error_message;
 	}
 
 	if (!key_size) {
-		log_fatal("Trying to enter a zero sized key? Not valid!");
-		BUG_ON();
+		error_message = "Trying to enter a zero sized key? Not valid!";
+		return error_message;
 	}
 
-	uint32_t kv_size = sizeof(uint32_t) + key_size + sizeof(uint32_t) + value_size /* + sizeof(uint64_t) */;
+	uint32_t kv_size = key_size + value_size + get_kv_metadata_size();
 	if (kv_size > KV_MAX_SIZE) {
-		log_fatal("Key buffer overflow %u", kv_size);
-		BUG_ON();
+		error_message = "KV size > 4KB buffer overflow!";
+		return error_message;
+	}
+
+	return NULL;
+}
+
+struct par_put_metadata insert_key_value(db_handle *handle, void *key, void *value, int32_t key_size,
+					 int32_t value_size, request_type op_type, const char *error_message)
+{
+	bt_insert_req ins_req = { 0 };
+	char kv_pair[KV_MAX_SIZE];
+
+	error_message = insert_error_handling(handle, key_size, value_size);
+	if (error_message) {
+		// construct an invalid par_put_metadata
+		struct par_put_metadata invalid_put_metadata = { .lsn = UINT64_MAX,
+								 .offset_in_log = UINT64_MAX,
+								 .key_value_category = SMALL_INPLACE };
+		return invalid_put_metadata;
 	}
 
 	/*prepare the request*/
-	*(uint32_t *)key_buf = key_size;
-	memcpy(key_buf + sizeof(uint32_t), key, key_size);
-	*(uint32_t *)(key_buf + sizeof(uint32_t) + key_size) = value_size;
-	memcpy(key_buf + sizeof(uint32_t) + key_size + sizeof(uint32_t), value, value_size);
 	ins_req.metadata.handle = handle;
-	ins_req.key_value_buf = key_buf;
-	ins_req.metadata.kv_size = kv_size;
+	ins_req.key_value_buf = kv_pair;
+	ins_req.metadata.tombstone = op_type == deleteOp;
+	ins_req.metadata.tombstone ? set_tombstone((struct kv_splice *)ins_req.key_value_buf) :
+				     set_non_tombstone((struct kv_splice *)ins_req.key_value_buf);
+	set_key((struct kv_splice *)kv_pair, key, key_size);
+	set_value((struct kv_splice *)kv_pair, value, value_size);
+	ins_req.metadata.cat = calculate_KV_category(key_size, value_size, op_type);
+	ins_req.metadata.put_op_metadata.key_value_category = ins_req.metadata.cat;
 	ins_req.metadata.level_id = 0;
 	ins_req.metadata.key_format = KV_FORMAT;
 	ins_req.metadata.append_to_log = 1;
 	ins_req.metadata.gc_request = 0;
 	ins_req.metadata.special_split = 0;
-	ins_req.metadata.tombstone = op_type == deleteOp;
-
-	ins_req.metadata.cat = calculate_KV_category(key_size, value_size, op_type);
 
 	/*
-* Note for L0 inserts since active_tree changes dynamically we decide which
-* is the active_tree after
-* acquiring the guard lock of the region
-* */
-
-	return _insert_key_value(&ins_req);
+	 * Note for L0 inserts since active_tree changes dynamically we decide which
+	 * is the active_tree after acquiring the guard lock of the region.
+	 */
+	// cppcheck-suppress uselessAssignmentPtrArg
+	// cppcheck-suppress unreadVariable
+	error_message = btree_insert_key_value(&ins_req);
+	return ins_req.metadata.put_op_metadata;
 }
 
-/**
- * Inserts a serialized key value pair by using the buffer provided by the user.
- * @param serialized_key_value is a buffer containing the serialized key value pair.
- * The format of the key value pair is | key_size | key | value_size | value |, where {key,value}_size is uint32_t.
- * */
-
-uint8_t serialized_insert_key_value(db_handle *handle, const char *serialized_key_value)
+struct par_put_metadata serialized_insert_key_value(db_handle *handle, const char *serialized_key_value,
+						    const char *error_message)
 {
 	bt_insert_req ins_req = { .metadata.handle = handle,
 				  .key_value_buf = (char *)serialized_key_value,
@@ -1025,56 +996,38 @@ uint8_t serialized_insert_key_value(db_handle *handle, const char *serialized_ke
 				  .metadata.key_format = KV_FORMAT,
 				  .metadata.append_to_log = 1 };
 
-	if (DB_IS_CLOSING == handle->db_desc->stat) {
-		log_warn("Sorry DB: %s is closing", handle->db_desc->db_superblock->db_name);
-		return PARALLAX_FAILURE;
-	}
+	int32_t key_size = get_key_size((struct kv_splice *)serialized_key_value);
+	int32_t value_size = get_value_size((struct kv_splice *)serialized_key_value);
 
-	uint32_t key_size = KEY_SIZE(serialized_key_value);
-	if (key_size > MAX_KEY_SIZE) {
-		log_info("Keys > %d bytes are not supported!", MAX_KEY_SIZE);
-		return PARALLAX_FAILURE;
+	error_message = insert_error_handling(handle, key_size, value_size);
+	if (error_message) {
+		// construct an invalid par_put_metadata
+		struct par_put_metadata invalid_put_metadata = { .lsn = UINT64_MAX,
+								 .offset_in_log = UINT64_MAX,
+								 .key_value_category = SMALL_INPLACE };
+		return invalid_put_metadata;
 	}
-	uint32_t value_size = VALUE_SIZE(serialized_key_value + key_size + sizeof(key_size));
-	uint32_t kv_size = sizeof(uint32_t) + key_size + sizeof(uint32_t) + value_size;
-
-	if (kv_size > KV_MAX_SIZE) {
-		log_fatal("Key buffer overflow %u", kv_size);
-		BUG_ON();
-	}
-
-	ins_req.metadata.kv_size = kv_size;
 	ins_req.metadata.cat = calculate_KV_category(key_size, value_size, insertOp);
+	ins_req.metadata.put_op_metadata.key_value_category = ins_req.metadata.cat;
 
-	return _insert_key_value(&ins_req);
+	// cppcheck-suppress uselessAssignmentPtrArg
+	// cppcheck-suppress unreadVariable
+	error_message = btree_insert_key_value(&ins_req);
+	return ins_req.metadata.put_op_metadata;
 }
 
 void extract_keyvalue_size(log_operation *req, metadata_tologop *data_size)
 {
-	switch (req->optype_tolog) {
-	case insertOp:
-		if (req->metadata->key_format == KV_FORMAT) {
-			data_size->key_len = *(uint32_t *)req->ins_req->key_value_buf;
-			data_size->value_len =
-				*(uint32_t *)(req->ins_req->key_value_buf + sizeof(uint32_t) + (data_size->key_len));
-			data_size->kv_size = req->metadata->kv_size;
-		} else {
-			data_size->key_len = *(uint32_t *)*(uint64_t *)(req->ins_req->key_value_buf + PREFIX_SIZE);
-			data_size->value_len =
-				*(uint32_t *)((char *)(*(uint64_t *)(req->ins_req->key_value_buf + PREFIX_SIZE)) +
-					      sizeof(uint32_t) + (data_size->key_len));
-			data_size->kv_size = data_size->key_len + data_size->value_len + sizeof(data_size->key_len) * 2;
-		}
-		break;
-	case deleteOp:
-		data_size->key_len = *(uint32_t *)req->ins_req->key_value_buf;
-		data_size->value_len = 0;
-		data_size->kv_size = sizeof(struct bt_delete_marker) + data_size->key_len;
-		break;
-	default:
-		log_fatal("Trying to append unknown operation in log! ");
-		BUG_ON();
+	if (req->metadata->key_format == KV_FORMAT) {
+		data_size->key_len = get_key_size((struct kv_splice *)req->ins_req->key_value_buf);
+		data_size->value_len = get_value_size((struct kv_splice *)req->ins_req->key_value_buf);
+		data_size->kv_size = get_kv_size((struct kv_splice *)req->ins_req->key_value_buf);
+		return;
 	}
+
+	data_size->key_len = get_kv_seperated_key_size((struct kv_seperation_splice *)req->ins_req->key_value_buf);
+	data_size->value_len = get_kv_seperated_value_size((struct kv_seperation_splice *)req->ins_req->key_value_buf);
+	data_size->kv_size = get_kv_seperated_kv_size((struct kv_seperation_splice *)req->ins_req->key_value_buf);
 }
 
 //######################################################################################################
@@ -1083,7 +1036,7 @@ struct pr_log_ticket {
 	struct log_tail *tail;
 	struct log_operation *req;
 	struct metadata_tologop *data_size;
-	struct log_sequence_number lsn;
+	struct lsn lsn;
 	uint64_t log_offt;
 	// out var
 	uint64_t IO_start_offt;
@@ -1097,50 +1050,33 @@ static void pr_copy_kv_to_tail(struct pr_log_ticket *ticket)
 		BUG_ON();
 	}
 
-	uint64_t offset_in_seg = ticket->log_offt % SEGMENT_SIZE;
+	uint64_t offset_in_seg = ticket->log_offt % (uint64_t)SEGMENT_SIZE;
 	uint64_t offt = offset_in_seg;
 	switch (ticket->req->optype_tolog) {
-	case insertOp: {
-		// first the lsn
-		memcpy(&ticket->tail->buf[offt], &ticket->lsn, sizeof(struct log_sequence_number));
-		offt += sizeof(struct log_sequence_number);
-
-		ticket->op_size = sizeof(ticket->data_size->key_len) + ticket->data_size->key_len +
-				  sizeof(ticket->data_size->value_len) + ticket->data_size->value_len;
-		// log_info("Copying ta log offt %llu in buf %u bytes %u", ticket->log_offt,
-		// offt_in_seg, ticket->op_size);
-
-		memcpy(&ticket->tail->buf[offt], ticket->req->ins_req->key_value_buf, ticket->op_size);
-		ticket->op_size += sizeof(struct log_sequence_number);
-		break;
-	}
+	case insertOp:
 	case deleteOp: {
-		struct bt_delete_marker dm = { .marker_id = BT_DELETE_MARKER_ID,
-					       .key_size = ticket->data_size->key_len };
-
-		// Append the LSN + the delete marker
-		memcpy(&ticket->tail->buf[offt], &ticket->lsn, sizeof(struct log_sequence_number));
-		offt += sizeof(struct log_sequence_number);
-		memcpy(&ticket->tail->buf[offt], &dm, sizeof(struct bt_delete_marker));
-		offt += sizeof(struct bt_delete_marker);
-		ticket->op_size = sizeof(struct log_sequence_number) + sizeof(struct bt_delete_marker);
-
-		// Append the deleted key
-		memcpy(&ticket->tail->buf[offt], ticket->req->ins_req->key_value_buf + sizeof(uint32_t), dm.key_size);
-		ticket->op_size += ticket->data_size->key_len;
+		// first the lsn
+		memcpy(&ticket->tail->buf[offt], &ticket->lsn, get_lsn_size());
+		offt += get_lsn_size();
+		struct kv_splice *kv_pair_dst = (struct kv_splice *)&ticket->tail->buf[offt];
+		struct kv_splice *kv_pair_src = (struct kv_splice *)ticket->req->ins_req->key_value_buf;
+		ticket->req->optype_tolog == insertOp ? set_non_tombstone(kv_pair_dst) : set_tombstone(kv_pair_dst);
+		set_key(kv_pair_dst, get_key_offset_in_kv(kv_pair_src), get_key_size(kv_pair_src));
+		set_value(kv_pair_dst, get_value_offset_in_kv(kv_pair_src, get_key_size(kv_pair_src)),
+			  get_value_size(kv_pair_src));
+		ticket->op_size = get_lsn_size() + get_kv_size(kv_pair_dst);
 		break;
 	}
-	case paddingOp: {
-		if (offset_in_seg == 0)
-			ticket->op_size = 0;
-		else {
-			ticket->op_size = SEGMENT_SIZE - offset_in_seg;
+	case paddingOp:
+		ticket->op_size = 0;
+		if (offset_in_seg) {
+			ticket->op_size = (uint64_t)SEGMENT_SIZE - offset_in_seg;
 			//log_info("Time for padding for log_offset %llu offt in seg %llu pad bytes %u ",
 			//	 ticket->log_offt, offt_in_seg, ticket->op_size);
 			memset(&ticket->tail->buf[offset_in_seg], 0, ticket->op_size);
 		}
 		break;
-	}
+
 	default:
 		log_fatal("Unknown op");
 		BUG_ON();
@@ -1151,7 +1087,7 @@ static void pr_copy_kv_to_tail(struct pr_log_ticket *ticket)
 	while (remaining > 0) {
 		uint32_t chunk_id = curr_offt_in_seg / LOG_CHUNK_SIZE;
 		int64_t offt_in_chunk = curr_offt_in_seg - (chunk_id * LOG_CHUNK_SIZE);
-		int64_t bytes = LOG_CHUNK_SIZE - offt_in_chunk;
+		int64_t bytes = (uint64_t)LOG_CHUNK_SIZE - offt_in_chunk;
 		if (remaining < bytes)
 			bytes = remaining;
 
@@ -1329,8 +1265,8 @@ static void *bt_append_to_log_direct_IO(struct log_operation *req, struct log_to
 	struct pr_log_ticket log_kv_entry_ticket = { .log_offt = 0, .IO_start_offt = 0, .IO_size = 0 };
 	struct pr_log_ticket pad_ticket = { .log_offt = 0, .IO_start_offt = 0, .IO_size = 0 };
 	char *addr_inlog = NULL;
-	uint32_t available_space_in_log;
-	uint32_t reserve_needed_space = sizeof(struct log_sequence_number) + data_size->kv_size;
+	uint32_t available_space_in_log = 0;
+	uint32_t reserve_needed_space = get_lsn_size() + data_size->kv_size;
 
 	MUTEX_LOCK(&handle->db_desc->lock_log);
 
@@ -1339,17 +1275,9 @@ static void *bt_append_to_log_direct_IO(struct log_operation *req, struct log_to
 		available_space_in_log = SEGMENT_SIZE;
 	else if (log_metadata->log_desc->size % SEGMENT_SIZE != 0)
 		available_space_in_log = SEGMENT_SIZE - (log_metadata->log_desc->size % SEGMENT_SIZE);
-	else
-		available_space_in_log = 0;
 
 	uint32_t num_chunks = SEGMENT_SIZE / LOG_CHUNK_SIZE;
 	int segment_change = 0;
-	//log_info("Direct IO in log kv size is %u log size %u avail space %u", data_size->kv_size,
-	//	 log_metadata->log_desc->size, available_space_in_log);
-	if (req->metadata->tombstone) {
-		reserve_needed_space =
-			sizeof(struct log_sequence_number) + sizeof(struct bt_delete_marker) + data_size->key_len;
-	}
 
 	if (available_space_in_log < reserve_needed_space) {
 		uint32_t curr_tail_id = log_metadata->log_desc->curr_tail_id;
@@ -1401,13 +1329,23 @@ static void *bt_append_to_log_direct_IO(struct log_operation *req, struct log_to
 	log_kv_entry_ticket.data_size = data_size;
 	log_kv_entry_ticket.tail = log_metadata->log_desc->tail[tail_id % LOG_TAIL_NUM_BUFS];
 	log_kv_entry_ticket.log_offt = log_metadata->log_desc->size;
-	log_kv_entry_ticket.lsn.id = __sync_fetch_and_add(&handle->db_desc->lsn, 1);
+
+	if (req->is_compaction)
+		log_kv_entry_ticket.lsn = get_max_lsn();
+	else
+		log_kv_entry_ticket.lsn = increase_lsn(&handle->db_desc->lsn_factory);
 
 	/*Where we *will* store it on the device*/
 	struct segment_header *device_location = REAL_ADDRESS(log_metadata->log_desc->tail_dev_offt);
 	addr_inlog = (void *)((uint64_t)device_location + (log_metadata->log_desc->size % SEGMENT_SIZE));
 
 	req->metadata->log_offset = log_metadata->log_desc->size;
+	req->metadata->put_op_metadata.offset_in_log = req->metadata->log_offset;
+	if (req->is_compaction) {
+		struct lsn max_lsn = get_max_lsn();
+		req->metadata->put_op_metadata.lsn = get_lsn_id(&max_lsn);
+	} else
+		req->metadata->put_op_metadata.lsn = get_lsn_id(&log_kv_entry_ticket.lsn);
 	log_metadata->log_desc->size += reserve_needed_space;
 	MUTEX_UNLOCK(&handle->db_desc->lock_log);
 
@@ -1418,17 +1356,15 @@ static void *bt_append_to_log_direct_IO(struct log_operation *req, struct log_to
 	pr_copy_kv_to_tail(&log_kv_entry_ticket);
 	pr_do_log_IO(&log_kv_entry_ticket);
 
-	return addr_inlog + sizeof(struct log_sequence_number);
+	return addr_inlog + get_lsn_size();
 }
 
 void *append_key_value_to_log(log_operation *req)
 {
-	struct log_towrite log_metadata;
-	struct metadata_tologop data_size;
+	struct log_towrite log_metadata = { .level_id = req->metadata->level_id, .status = req->metadata->cat };
+	struct metadata_tologop data_size = { 0 };
 	db_handle *handle = req->metadata->handle;
 
-	log_metadata.level_id = req->metadata->level_id;
-	log_metadata.status = req->metadata->cat;
 	extract_keyvalue_size(req, &data_size);
 
 	switch (log_metadata.status) {
@@ -1447,15 +1383,6 @@ void *append_key_value_to_log(log_operation *req)
 	}
 	case MEDIUM_INLOG: {
 		uint8_t level_id = req->metadata->level_id;
-#if MEDIUM_LOG_UNSORTED
-		if (level_id) {
-			log_fatal("KV separation allowed for medium only for L0!");
-			BUG_ON();
-		} else {
-			log_metadata.log_desc = &handle->db_desc->medium_log;
-			return bt_append_to_log_direct_IO(req, &log_metadata, &data_size);
-		}
-#else
 		if (level_id == 0) {
 			log_fatal("MEDIUM_INLOG not allowed for level_id 0!");
 			BUG_ON();
@@ -1463,7 +1390,6 @@ void *append_key_value_to_log(log_operation *req)
 			log_metadata.log_desc = &handle->db_desc->medium_log;
 			return bt_append_to_log_direct_IO(req, &log_metadata, &data_size);
 		}
-#endif
 	}
 	case BIG_INLOG:
 		log_metadata.log_desc = &handle->db_desc->big_log;
@@ -1474,19 +1400,16 @@ void *append_key_value_to_log(log_operation *req)
 	}
 }
 
-uint8_t _insert_key_value(bt_insert_req *ins_req)
+const char *btree_insert_key_value(bt_insert_req *ins_req)
 {
 	ins_req->metadata.handle->db_desc->dirty = 1;
-	uint8_t rc = PARALLAX_SUCCESS;
 
-	if (writers_join_as_readers(ins_req) == PARALLAX_SUCCESS) {
-		rc = PARALLAX_SUCCESS;
-	} else if (concurrent_insert(ins_req) != PARALLAX_SUCCESS) {
-		log_warn("insert failed!");
-		rc = PARALLAX_FAILURE;
-	}
+	if (writers_join_as_readers(ins_req) == PAR_SUCCESS)
+		;
+	else if (concurrent_insert(ins_req) != PAR_SUCCESS)
+		ins_req->metadata.error_message = "Insert failed";
 
-	return rc;
+	return ins_req->metadata.error_message;
 }
 
 // cppcheck-suppress unusedFunction
@@ -1494,12 +1417,13 @@ int find_key_in_bloom_filter(db_descriptor *db_desc, int level_id, char *key)
 {
 #if ENABLE_BLOOM_FILTERS
 	char prefix_key[PREFIX_SIZE];
-	if (*(uint32_t *)key < PREFIX_SIZE) {
+	if (get_key_size((struct splice *)key) < PREFIX_SIZE) {
 		memset(prefix_key, 0x00, PREFIX_SIZE);
-		memcpy(prefix_key, key + sizeof(uint32_t), *(uint32_t *)key);
+		memcpy(prefix_key, get_key_offset_in_kv((struct splice *)key), get_key_size((struct splice *)key));
 		return bloom_check(&db_desc->levels[level_id].bloom_filter[0], prefix_key, PREFIX_SIZE);
 	} else
-		return bloom_check(&db_desc->levels[level_id].bloom_filter[0], key + sizeof(uint32_t), PREFIX_SIZE);
+		return bloom_check(&db_desc->levels[level_id].bloom_filter[0],
+				   get_key_offset_in_kv((struct splice *)key), PREFIX_SIZE);
 #else
 	(void)db_desc;
 	(void)level_id;
@@ -1516,8 +1440,8 @@ static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id,
 	lock_table *prev = NULL;
 	lock_table *curr = NULL;
 	struct node_header *root = NULL;
-
 	struct db_descriptor *db_desc = get_op->db_desc;
+	struct key_splice *search_key_buf = (struct key_splice *)get_op->key_buf;
 
 	if (db_desc->levels[level_id].root_w[tree_id] == NULL && db_desc->levels[level_id].root_r[tree_id] == NULL) {
 		get_op->found = 0;
@@ -1541,6 +1465,7 @@ static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id,
 	}
 #endif
 
+	/* TODO: (@geostyl) do we need this if here? i think its reduntant*/
 	node_header *curr_node = root;
 	if (curr_node->type == leafRootNode) {
 		curr = _find_position((const lock_table **)db_desc->levels[level_id].level_lock_table, curr_node);
@@ -1548,8 +1473,9 @@ static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id,
 		if (RWLOCK_RDLOCK(&curr->rx_lock) != 0)
 			BUG_ON();
 
-		ret_result = find_key_in_dynamic_leaf((struct bt_dynamic_leaf_node *)curr_node, db_desc,
-						      get_op->kv_buf + sizeof(uint32_t), *(uint32_t *)get_op->kv_buf,
+		uint32_t key_size = get_key_splice_key_size(search_key_buf);
+		void *key = get_key_splice_key_offset(search_key_buf);
+		ret_result = find_key_in_dynamic_leaf((struct bt_dynamic_leaf_node *)curr_node, db_desc, key, key_size,
 						      level_id);
 		get_op->tombstone = ret_result.tombstone;
 		goto deser;
@@ -1565,7 +1491,8 @@ static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id,
 			if (RWLOCK_UNLOCK(&prev->rx_lock) != 0)
 				BUG_ON();
 
-		uint64_t child_offset = index_binary_search((struct index_node *)curr_node, get_op->kv_buf, KV_FORMAT);
+		uint64_t child_offset =
+			index_binary_search((struct index_node *)curr_node, (char *)search_key_buf, KEY_TYPE);
 		son_node = (void *)REAL_ADDRESS(child_offset);
 
 		prev = curr;
@@ -1586,10 +1513,13 @@ static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id,
 	if (RWLOCK_UNLOCK(&prev->rx_lock) != 0)
 		BUG_ON();
 
-	ret_result = find_key_in_dynamic_leaf((struct bt_dynamic_leaf_node *)curr_node, db_desc,
-					      get_op->kv_buf + sizeof(uint32_t), *(uint32_t *)get_op->kv_buf, level_id);
+	int32_t key_size = get_key_splice_key_size(search_key_buf);
+	void *key = get_key_splice_key_offset(search_key_buf);
+	ret_result =
+		find_key_in_dynamic_leaf((struct bt_dynamic_leaf_node *)curr_node, db_desc, key, key_size, level_id);
 	get_op->tombstone = ret_result.tombstone;
 
+// TODO The meaning of deser is not clear enough, rename accordingly
 deser:
 	if (!ret_result.kv) {
 		get_op->found = 0;
@@ -1622,24 +1552,30 @@ deser:
 	}
 
 	assert(kv_pair.addr);
-	uint32_t value_size = VALUE_SIZE(kv_pair.addr + sizeof(uint32_t) + KEY_SIZE(kv_pair.addr));
-	if (get_op->retrieve && !get_op->buffer_to_pack_kv) {
-		get_op->buffer_to_pack_kv = malloc(value_size);
-		get_op->size = value_size;
-	}
+	struct kv_splice *kv_buf = (struct kv_splice *)kv_pair.addr;
+	int32_t value_size = get_value_size(kv_buf);
 
-	if (get_op->retrieve && get_op->size > value_size)
-		get_op->buffer_overflow = 1;
-
-	if (get_op->retrieve && get_op->size <= value_size) {
-		memcpy(get_op->buffer_to_pack_kv,
-		       kv_pair.addr + sizeof(uint32_t) + KEY_SIZE(kv_pair.addr) + sizeof(uint32_t), value_size);
-		get_op->buffer_overflow = 0;
-	}
-
-	if (get_op->tombstone)
+	get_op->buffer_overflow = 0;
+	if (get_op->tombstone) {
 		get_op->key_device_address = NULL;
+		goto check_if_done_with_value_log;
+	}
 
+	if (!get_op->retrieve)
+		goto check_if_done_with_value_log;
+
+	if (get_op->buffer_to_pack_kv && value_size > get_op->size) {
+		get_op->buffer_overflow = 1;
+		goto check_if_done_with_value_log;
+	}
+
+	if (!get_op->buffer_to_pack_kv)
+		get_op->buffer_to_pack_kv = calloc(1UL, value_size);
+
+	memcpy(get_op->buffer_to_pack_kv, get_value_offset_in_kv(kv_buf, get_key_size(kv_buf)), value_size);
+	get_op->size = value_size;
+
+check_if_done_with_value_log:
 	if (kv_pair.in_tail)
 		bt_done_with_value_log_address(&db_desc->big_log, &kv_pair);
 
@@ -1652,7 +1588,7 @@ exit:
 
 void find_key(struct lookup_operation *get_op)
 {
-	if (DB_IS_CLOSING == get_op->db_desc->stat) {
+	if (DB_IS_CLOSING == get_op->db_desc->db_state) {
 		log_warn("Sorry DB: %s is closing", get_op->db_desc->db_superblock->db_name);
 		get_op->found = 0;
 		return;
@@ -1669,7 +1605,6 @@ void find_key(struct lookup_operation *get_op)
 
 	while (1) {
 		/*first look the current active tree of the level*/
-
 		get_op->found = 0;
 		get_op->tombstone = 0;
 		lookup_in_tree(get_op, 0, tree_id);
@@ -1727,32 +1662,19 @@ int insert_KV_at_leaf(bt_insert_req *ins_req, node_header *leaf)
 
 	ins_req->kv_dev_offt = 0;
 	if (append_tolog) {
-#if !MEDIUM_LOG_UNSORTED
-		assert(ins_req->metadata.cat != MEDIUM_INLOG);
-#endif
-
 		log_operation append_op = { .metadata = &ins_req->metadata,
 					    .optype_tolog = insertOp,
-					    .ins_req = ins_req };
+					    .ins_req = ins_req,
+					    .is_compaction = false };
 
 		if (ins_req->metadata.tombstone == 1)
 			append_op.optype_tolog = deleteOp;
 
 		switch (ins_req->metadata.cat) {
 		case SMALL_INPLACE:
-			append_key_value_to_log(&append_op);
-			break;
 		case MEDIUM_INPLACE:
 			append_key_value_to_log(&append_op);
 			break;
-#if MEDIUM_LOG_UNSORTED
-		case MEDIUM_INLOG: {
-			void *addr = append_key_value_to_log(&append_op);
-			ins_req->kv_dev_offt = ABSOLUTE_ADDRESS(addr);
-			assert(ins_req->kv_dev_offt != 0);
-			break;
-		}
-#endif
 		case BIG_INLOG: {
 			void *addr = append_key_value_to_log(&append_op);
 			ins_req->kv_dev_offt = ABSOLUTE_ADDRESS(addr);
@@ -1773,13 +1695,13 @@ int insert_KV_at_leaf(bt_insert_req *ins_req, node_header *leaf)
 
 		if (cat == MEDIUM_INPLACE && level_id == 0) {
 			__sync_fetch_and_add(&(ins_req->metadata.handle->db_desc->levels[level_id].level_size[tree_id]),
-					     sizeof(struct bt_leaf_entry));
+					     get_kv_seperated_splice_size());
 		} else if (measure_level_used_space || medium_inlog) {
 			__sync_fetch_and_add(&(ins_req->metadata.handle->db_desc->levels[level_id].level_size[tree_id]),
-					     sizeof(struct bt_leaf_entry));
+					     get_kv_seperated_splice_size());
 		} else {
 			__sync_fetch_and_add(&(ins_req->metadata.handle->db_desc->levels[level_id].level_size[tree_id]),
-					     ins_req->metadata.kv_size);
+					     get_kv_size((struct kv_splice *)ins_req->key_value_buf));
 		}
 	}
 
@@ -1788,11 +1710,11 @@ int insert_KV_at_leaf(bt_insert_req *ins_req, node_header *leaf)
 
 struct bt_rebalance_result split_leaf(bt_insert_req *req, leaf_node *node)
 {
-	split_dl *split_functions[2] = { split_dynamic_leaf, special_split_dynamic_leaf };
+	split_dl *split_functions[1] = { split_dynamic_leaf };
 	int level_id = req->metadata.level_id;
 
 	uint32_t leaf_size = req->metadata.handle->db_desc->levels[level_id].leaf_size;
-	// cppcheck-suppress legacyUninitvar
+	// cppcheck-suppression uninitvar
 	return split_functions[req->metadata.special_split]((struct bt_dynamic_leaf_node *)node, leaf_size, req);
 }
 
@@ -1849,7 +1771,7 @@ int is_split_needed(void *node, bt_insert_req *req, uint32_t leaf_size)
 
 	struct split_level_leaf split_metadata = { .leaf = node,
 						   .leaf_size = leaf_size,
-						   .kv_size = req->metadata.kv_size,
+						   .kv_size = get_kv_size((struct kv_splice *)req->key_value_buf),
 						   .level_id = req->metadata.level_id,
 						   .level_medium_inplace =
 							   req->metadata.handle->db_desc->level_medium_inplace,
@@ -1862,8 +1784,8 @@ static uint8_t concurrent_insert(bt_insert_req *ins_req)
 {
 	/*The array with the locks that belong to this thread from upper levels*/
 	lock_table *upper_level_nodes[MAX_HEIGHT];
-	struct bt_rebalance_result split_res;
-	lock_table *lock;
+
+	lock_table *lock = NULL;
 
 	db_descriptor *db_desc = ins_req->metadata.handle->db_desc;
 	uint8_t level_id = ins_req->metadata.level_id;
@@ -1930,9 +1852,25 @@ release_and_retry:
 	while (1) {
 		/*Check if father is safe it should be*/
 		if (is_split_needed(son, ins_req, db_desc->levels[level_id].leaf_size)) {
-			/*Overflow split*/
+			struct bt_rebalance_result split_res = { 0 };
+			/*Overflow split for index nodes*/
 			if (son->height > 0) {
-				split_res = index_split_node((struct index_node *)son, ins_req);
+				split_res.left_child = (struct node_header *)seg_get_index_node(
+					ins_req->metadata.handle->db_desc, ins_req->metadata.level_id,
+					ins_req->metadata.tree_id, 0);
+
+				split_res.right_child = (node_header *)seg_get_index_node(
+					ins_req->metadata.handle->db_desc, ins_req->metadata.level_id,
+					ins_req->metadata.tree_id, 0);
+
+				struct index_node_split_request index_split_req = {
+					.node = (struct index_node *)son,
+					.left_child = (struct index_node *)split_res.left_child,
+					.right_child = (struct index_node *)split_res.right_child
+				};
+				struct index_node_split_reply index_split_rep = { .pivot_buf = split_res.middle_key,
+										  .pivot_buf_size = MAX_KEY_SIZE };
+				index_split_node(&index_split_req, &index_split_rep);
 				/*node has splitted, free it*/
 				seg_free_index_node(ins_req->metadata.handle->db_desc, level_id,
 						    ins_req->metadata.tree_id, (struct index_node *)son);
@@ -1954,7 +1892,8 @@ release_and_retry:
 
 				index_init_node(ADD_GUARD, new_root, rootNode);
 
-				new_root->header.height = db_desc->levels[ins_req->metadata.level_id]
+				struct node_header *new_root_header = index_node_get_header(new_root);
+				new_root_header->height = db_desc->levels[ins_req->metadata.level_id]
 								  .root_w[ins_req->metadata.tree_id]
 								  ->height +
 							  1;
@@ -1983,7 +1922,8 @@ release_and_retry:
 								  .key = (struct pivot_key *)split_res.middle_key,
 								  .right_child = &right };
 			if (!index_insert_pivot(&ins_pivot_req)) {
-				log_fatal("Cannot insert pivot! pivot is %u", KEY_SIZE(ins_pivot_req.key));
+				log_fatal("Cannot insert pivot! pivot is %u",
+					  get_key_size((struct kv_splice *)ins_pivot_req.key));
 				_exit(EXIT_FAILURE);
 			}
 			goto release_and_retry;
@@ -1996,7 +1936,6 @@ release_and_retry:
 
 		struct pivot_pointer *son_pivot =
 			index_search_get_pivot(n_son, ins_req->key_value_buf, ins_req->metadata.key_format);
-		//log_debug("Visitting son at dev off %lu", son_pivot->child_offt);
 
 		father = son;
 		son = REAL_ADDRESS(son_pivot->child_offt);
@@ -2036,7 +1975,7 @@ release_and_retry:
 	/*Unlock remaining locks*/
 	_unlock_upper_levels(upper_level_nodes, size, release);
 	__sync_fetch_and_sub(num_level_writers, 1);
-	return PARALLAX_SUCCESS;
+	return PAR_SUCCESS;
 }
 
 static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
@@ -2079,7 +2018,7 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 	    db_desc->levels[level_id].root_w[ins_req->metadata.tree_id]->type == leafRootNode) {
 		_unlock_upper_levels(upper_level_nodes, size, release);
 		__sync_fetch_and_sub(num_level_writers, 1);
-		return PARALLAX_FAILURE;
+		return PAR_FAILURE;
 	}
 
 	/*acquire read lock of the current root*/
@@ -2099,7 +2038,7 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 			/*failed needs split*/
 			_unlock_upper_levels(upper_level_nodes, size, release);
 			__sync_fetch_and_sub(num_level_writers, 1);
-			return PARALLAX_FAILURE;
+			return PAR_FAILURE;
 		}
 
 		uint64_t child_offt = index_binary_search((struct index_node *)son, ins_req->key_value_buf,
@@ -2133,7 +2072,7 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 	if (is_split_needed(son, ins_req, db_desc->levels[level_id].leaf_size)) {
 		_unlock_upper_levels(upper_level_nodes, size, release);
 		__sync_fetch_and_sub(num_level_writers, 1);
-		return PARALLAX_FAILURE;
+		return PAR_FAILURE;
 	}
 
 	/*Succesfully reached a bin (bottom internal node)*/
@@ -2146,5 +2085,5 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 	/*Unlock remaining locks*/
 	_unlock_upper_levels(upper_level_nodes, size, release);
 	__sync_fetch_and_sub(num_level_writers, 1);
-	return PARALLAX_SUCCESS;
+	return PAR_SUCCESS;
 }

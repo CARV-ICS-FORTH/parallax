@@ -16,6 +16,7 @@
 #define NUM_OF_OWNERSHIP_REGISTRY_PAIRS (2)
 #include "../btree/conf.h"
 #include "../common/common.h"
+#include "../common/common_macros.h"
 #include "device_structures.h"
 #include "volume_manager.h"
 #include <fcntl.h>
@@ -45,6 +46,8 @@ struct parse_options {
 	uint32_t max_regions_num;
 };
 
+// TODO replace argument parsing with arg_parser from tests directory.
+// Maybe arg parser should become a standalone library
 static struct parse_options kvf_parse_options(int argc, char **argv)
 {
 	int i, j;
@@ -59,7 +62,7 @@ static struct parse_options kvf_parse_options(int argc, char **argv)
 
 	for (i = 1; i < argc; i += 2) {
 		for (j = 0; j < KVF_NUM_OPTIONS; ++j) {
-			if (strcmp(argv[i], kvf_options[j]) == 0) {
+			if (0 == strcmp(argv[i], kvf_options[j])) {
 				switch (j) {
 				case DEVICE:
 					if (i + 1 >= argc) {
@@ -84,12 +87,12 @@ static struct parse_options kvf_parse_options(int argc, char **argv)
 		}
 	}
 
-	if (kvf_device_name == NULL) {
+	if (NULL == kvf_device_name) {
 		log_fatal("Device name not specified help:\n %s", kvf_help);
 		BUG_ON();
 	}
 
-	if (kvf_max_regions_num == 0) {
+	if (0 == kvf_max_regions_num) {
 		log_fatal("Max region number not specified help:\n %s", kvf_help);
 		BUG_ON();
 	}
@@ -107,7 +110,7 @@ static void kvf_write_buffer(int fd, char *buffer, ssize_t start, ssize_t size, 
 	while (total_bytes_written < size) {
 		ssize_t bytes_written = pwrite(fd, &buffer[total_bytes_written], size - total_bytes_written,
 					       dev_offt + total_bytes_written);
-		if (bytes_written == -1) {
+		if (-1 == bytes_written) {
 			log_fatal("Failed to writed segment for leaf nodes reason follows");
 			perror("Reason");
 			BUG_ON();
@@ -116,31 +119,32 @@ static void kvf_write_buffer(int fd, char *buffer, ssize_t start, ssize_t size, 
 	}
 }
 
-void kvf_init_parallax(char *device_name, uint32_t max_regions_num)
+const char *kvf_init_parallax(char *device_name, uint32_t max_regions_num)
 {
+	const char *error_message = NULL;
 	off64_t device_size = 0;
+
 	log_info("Opening Volume %s", device_name);
 	/* open the device */
 	int fd = open(device_name, O_RDWR);
 	if (fd < 0) {
-		log_fatal("Failed to open %s", device_name);
-		perror("Reason:\n");
-		BUG_ON();
+		error_message = "Failed to open DB at the given path";
+		return error_message;
 	}
 
 	device_size = lseek64(fd, 0, SEEK_END);
 
-	if (device_size == -1) {
-		log_fatal("failed to determine volume size exiting...");
+	if (-1 == device_size) {
+		error_message = "Failed to determine volume size";
 		perror("ioctl");
-		BUG_ON();
+		return error_message;
 	}
-	log_info("Found volume of %ld MB", device_size / (1024 * 1024));
+
+	log_info("Found volume of %ld MB", device_size / MB(1));
 
 	if (device_size < MIN_VOLUME_SIZE) {
-		log_fatal("Sorry minimum supported volume size is %ld GB actual size %ld GB",
-			  MIN_VOLUME_SIZE / (1024 * 1024 * 1024), device_size / (1024 * 1024 * 1024));
-		BUG_ON();
+		error_message = "Sorry minimum supported volume size is %ld GB actual size %ld GB";
+		return error_message;
 	}
 
 	/*Initialize all region superblocks*/
@@ -150,24 +154,23 @@ void kvf_init_parallax(char *device_name, uint32_t max_regions_num)
 		kvf_write_buffer(fd, (char *)rs, 0, sizeof(struct pr_db_superblock), dev_offt);
 		dev_offt += sizeof(struct pr_db_superblock);
 	}
-	free(rs);
-	rs = NULL;
+	SAFE_FREE_PTR(rs);
 
 	/*Calculate each region's max size of ownership registry*/
 	uint64_t unmapped_bytes = SEGMENT_SIZE;
-	uint64_t mapped_device_size;
+	uint64_t mapped_device_size = 0;
 
 	if (device_size % SEGMENT_SIZE)
 		unmapped_bytes += (SEGMENT_SIZE - (device_size % SEGMENT_SIZE));
 
 	mapped_device_size = device_size - unmapped_bytes;
 
-	log_info("Mapped device size: %lu MB unmapped for alignment purposes: %lu KB",
-		 mapped_device_size / (1024 * 1024), unmapped_bytes / 1024);
+	log_info("Mapped device size: %lu MB unmapped for alignment purposes: %lu KB", mapped_device_size / MB(1),
+		 unmapped_bytes / KB(1));
 
 	if (mapped_device_size % SEGMENT_SIZE) {
-		log_fatal("Something went wrong actual_device_size should be a multiple of SEGMENT_SIZE");
-		BUG_ON();
+		error_message = "Something went wrong actual_device_size should be a multiple of SEGMENT_SIZE";
+		return error_message;
 	}
 
 	uint64_t registry_size_in_bits = mapped_device_size / SEGMENT_SIZE;
@@ -180,8 +183,8 @@ void kvf_init_parallax(char *device_name, uint32_t max_regions_num)
 	}
 
 	if (registry_size_in_bits % bits_in_page) {
-		log_fatal("ownership registry must be a multiple of 4 KB its value %lu", registry_size_in_bits);
-		BUG_ON();
+		error_message = "Ownership registry must be a multiple of 4 KB its value %lu";
+		return error_message;
 	}
 	uint64_t registry_size_in_bytes = registry_size_in_bits / 8;
 
@@ -201,8 +204,8 @@ void kvf_init_parallax(char *device_name, uint32_t max_regions_num)
 		metadata_size_in_bytes =
 			metadata_size_in_bytes + (SEGMENT_SIZE - (metadata_size_in_bytes % SEGMENT_SIZE));
 
-	log_info("Volume metadata size: %lu KB or %lu MB", metadata_size_in_bytes / 1024,
-		 metadata_size_in_bytes / (1024 * 1024));
+	log_info("Volume metadata size: %lu KB or %lu MB", metadata_size_in_bytes / KB(1),
+		 metadata_size_in_bytes / MB(1));
 
 	uint64_t metadata_size_in_bits = (metadata_size_in_bytes / SEGMENT_SIZE) * 8;
 	/*Now mark as reserved the space from the beginning of the volume that is for metadata purposes*/
@@ -218,17 +221,16 @@ void kvf_init_parallax(char *device_name, uint32_t max_regions_num)
 	}
 
 	if (fsync(fd)) {
-		log_fatal("Failed to sync volume: %s metadata", device_name);
+		error_message = "Failed to sync volume";
 		perror("Reason:");
-		BUG_ON();
+		return error_message;
 	}
-	free(registry_buffer);
-	registry_buffer = NULL;
+	SAFE_FREE_PTR(registry_buffer);
 
 	log_info("Per region ownership registry size: %lu B or %lu KB", registry_size_in_bytes,
-		 registry_size_in_bytes / 1024);
+		 registry_size_in_bytes / KB(1));
 	log_info("Total ownership registries size: %lu B or %lu KB", max_regions_num * 2 * registry_size_in_bytes,
-		 (max_regions_num * 2 * registry_size_in_bytes) / 1024);
+		 (max_regions_num * 2 * registry_size_in_bytes) / KB(1));
 
 	//Finally write accounting information
 	struct superblock *S = (struct superblock *)kvf_posix_calloc(sizeof(struct superblock));
@@ -243,25 +245,27 @@ void kvf_init_parallax(char *device_name, uint32_t max_regions_num)
 	S->unmappedSpace = device_size - mapped_device_size;
 	S->bitmap_size_in_words = registry_size_in_bits / 64;
 	kvf_write_buffer(fd, (char *)S, 0, sizeof(struct superblock), 0);
-	log_info("Size %lu B or %lu GB", S->volume_size, device_size / (1024 * 1024 * 1024));
+	log_info("Size %lu B or %lu GB", S->volume_size, device_size / GB(1));
 	log_info("In memory bitmap size in words %lu or %lu B and unmapped space in bytes: %lu",
 		 S->bitmap_size_in_words, S->bitmap_size_in_words * 8, S->unmappedSpace);
 	log_info(
 		"Volume %s metadata size in bytes: %lu or %lu MB. Padded space in metatata to be segment aligned %lu B",
-		device_name, S->volume_metadata_size, S->volume_metadata_size / (1024 * 1024), S->paddedSpace);
-	free(S);
-	S = NULL;
+		device_name, S->volume_metadata_size, S->volume_metadata_size / MB(1), S->paddedSpace);
+
+	SAFE_FREE_PTR(S);
 
 	if (fsync(fd)) {
-		log_fatal("Failed to sync volume: %s metadata", device_name);
+		error_message = "Failed to sync volume";
 		perror("Reason:");
-		BUG_ON();
+		return error_message;
 	}
 
 	if (close(fd)) {
-		log_fatal("Failed to close file %s", device_name);
-		BUG_ON();
+		error_message = "Failed to close file %s";
+		return error_message;
 	}
+
+	return NULL;
 }
 
 #ifdef STANDALONE_FORMAT
@@ -269,9 +273,14 @@ void kvf_init_parallax(char *device_name, uint32_t max_regions_num)
 int main(int argc, char **argv)
 {
 	struct parse_options options = kvf_parse_options(argc, argv);
-	kvf_init_parallax(options.device_name, options.max_regions_num);
-	free(options.device_name);
-	return 1;
+	const char *error = kvf_init_parallax(options.device_name, options.max_regions_num);
+	SAFE_FREE_PTR(options.device_name);
+
+	if (error) {
+		log_fatal("Parallax format failed with %s", error);
+		return 1;
+	}
+	return 0;
 }
 
 #endif

@@ -1,15 +1,16 @@
+#include "../lib/btree/kv_pairs.h"
 #include "../tests/arg_parser.h"
 #include <log.h>
-#include <parallax.h>
+#include <parallax/parallax.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 #define NUM_OF_OPS 2
 
-void execute_put_request(par_handle hd, char *line);
-void execute_get_request(par_handle hd, char *line);
-typedef void execute_task(par_handle hd, char *line);
+void execute_put_request(par_handle handle, char *line);
+void execute_get_request(par_handle handle, char *line);
+typedef void execute_task(par_handle handle, char *line);
 execute_task *const tracer_dispatcher[NUM_OF_OPS] = { execute_put_request, execute_get_request };
 enum Op { PUT = 0, GET };
 
@@ -18,7 +19,7 @@ enum Op { PUT = 0, GET };
  * @param hd, the db handle that we initiated with db open
  * @param line, a str with the line contents
  * */
-void execute_get_request(par_handle hd, char *line)
+void execute_get_request(par_handle handle, char *line)
 {
 	/*thats the operation, we dont need it*/
 	strtok_r(line, " ", &line);
@@ -26,8 +27,10 @@ void execute_get_request(par_handle hd, char *line)
 	char *key = strtok_r(line, " ", &line);
 	struct par_key lookup_key = { .size = (uint32_t)key_size, .data = (const char *)key };
 	struct par_value lookup_value = { .val_buffer = NULL };
+	const char *error_message = NULL;
 
-	if (par_get(hd, &lookup_key, &lookup_value) != PAR_SUCCESS) {
+	par_get(handle, &lookup_key, &lookup_value, &error_message);
+	if (error_message) {
 		log_fatal("Cannot find key %.*s", key_size, key);
 		_exit(EXIT_FAILURE);
 	}
@@ -39,7 +42,7 @@ void execute_get_request(par_handle hd, char *line)
  * @param hd, the db handle that we initiated with db open
  * @param line, a str with the line contents
  * */
-void execute_put_request(par_handle hd, char *line)
+void execute_put_request(par_handle handle, char *line)
 {
 	char _tmp[4096];
 	char *key_buf = _tmp;
@@ -51,12 +54,13 @@ void execute_put_request(par_handle hd, char *line)
 	char *value = strtok_r(line, " ", &line);
 
 	/*prepare the request*/
-	*(uint32_t *)key_buf = key_size;
-	memcpy(key_buf + sizeof(uint32_t), key, key_size);
-	*(uint32_t *)(key_buf + sizeof(uint32_t) + key_size) = value_size;
-	memcpy(key_buf + sizeof(uint32_t) + key_size + sizeof(uint32_t), value, value_size);
-
-	par_put_serialized(hd, key_buf);
+	struct kv_splice *kv_buf = (struct kv_splice *)key_buf;
+	set_key_size(kv_buf, key_size);
+	set_value_size(kv_buf, key_size);
+	set_key(kv_buf, key, key_size);
+	set_value(kv_buf, value, value_size);
+	const char *error_message = NULL;
+	par_put_serialized(handle, key_buf, &error_message);
 }
 
 enum Op get_op(char *line)
@@ -105,12 +109,12 @@ par_handle open_db(const char *path)
 {
 	par_db_options db_options;
 	db_options.volume_name = (char *)path;
-	db_options.volume_start = 0;
-	db_options.volume_size = 0;
 	db_options.create_flag = PAR_CREATE_DB;
 	db_options.db_name = "tracer";
+	db_options.options = par_get_default_options();
 
-	par_handle handle = par_open(&db_options);
+	const char *error_message = NULL;
+	par_handle handle = par_open(&db_options, &error_message);
 	return handle;
 }
 
@@ -132,7 +136,11 @@ int main(int argc, char **argv)
 	arg_parse(argc, argv, options, options_len);
 	arg_print_options(help_flag, options, options_len);
 	const char *path = get_option(options, 1);
-	par_format((char *)path, 128);
+	const char *error_message = par_format((char *)path, 128);
+	if (error_message != NULL) {
+		log_fatal("Error message from par_format: %s", error_message);
+		exit(EXIT_FAILURE);
+	}
 	par_handle hd = open_db(path);
 
 	char *filename = get_option(options, 2);

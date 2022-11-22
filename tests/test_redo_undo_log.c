@@ -14,6 +14,8 @@
 
 #include "arg_parser.h"
 #include "btree/gc.h"
+#include "parallax/parallax.h"
+#include "parallax/structures.h"
 #include <allocator/persistent_operations.h>
 #include <allocator/redo_undo_log.h>
 #include <allocator/volume_manager.h>
@@ -143,10 +145,24 @@ int main(int argc, char *argv[])
 	log_info("RUL_SEGMENT_MAX_ENTRIES = %lu", RUL_SEGMENT_MAX_ENTRIES);
 
 	disable_gc();
-	db_handle *handle = db_open(get_option(options, 1), 0, UINT64_MAX, "redo_undo_test", CREATE_DB);
+	const char *error_message = NULL;
+	char *volume_name = get_option(options, 1);
+	char *db_name = "redo_undo_test";
+	struct par_options_desc *default_options = par_get_default_options();
+	struct par_db_options db_options = {
+		.volume_name = volume_name,
+		.db_name = db_name,
+		.create_flag = PAR_CREATE_DB,
+		default_options,
+	};
+	par_handle handle = par_open(&db_options, &error_message);
+	if (error_message) {
+		log_fatal("%s", error_message);
+		return EXIT_FAILURE;
+	}
 
 	struct rul_worker_arg args;
-	args.db_desc = handle->db_desc;
+	args.db_desc = ((struct db_handle *)handle)->db_desc;
 	num_threads = *(uint32_t *)get_option(options, 2);
 	pthread_t workers[num_threads];
 	for (uint32_t i = 0; i < num_threads; ++i) {
@@ -160,7 +176,11 @@ int main(int argc, char *argv[])
 		pthread_join(workers[i], NULL);
 
 	log_info("Test done closing DB");
-	db_close(handle);
+	error_message = par_close(handle);
+	if (error_message != NULL) {
+		log_fatal("error message from par_close: %s", error_message);
+		exit(EXIT_FAILURE);
+	}
 
 	pthread_t validator_thread;
 	if (pthread_create(&validator_thread, NULL, validate_blobs_garbage_bytes, &num_threads) != 0) {
@@ -169,9 +189,17 @@ int main(int argc, char *argv[])
 	}
 
 	enable_validation_garbage_bytes();
-	handle = db_open(get_option(options, 1), 0, UINT64_MAX, "redo_undo_test", CREATE_DB);
+	handle = db_open(&db_options, &error_message);
+	if (error_message) {
+		log_fatal("%s", error_message);
+		return EXIT_FAILURE;
+	}
 	pthread_join(validator_thread, NULL);
-	db_close(handle);
+	error_message = par_close(handle);
+	if (error_message != NULL) {
+		log_fatal("error message from par_close: %s", error_message);
+		exit(EXIT_FAILURE);
+	}
 	disable_validation_garbage_bytes();
 
 	return 0;

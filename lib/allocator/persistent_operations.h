@@ -1,5 +1,7 @@
-#include <stdint.h>
+#ifndef PERSISTENT_OPERATIONS_H_
+#define PERSISTENT_OPERATIONS_H_
 
+#include <stdint.h>
 /**
  * \brief Returns number of garbage entries detected during the recovery of the redo undo log.
  * */
@@ -19,3 +21,5 @@ void enable_validation_garbage_bytes(void);
  * \brief Disables the counting for blobs garbage bytes when recovering redo_undo_log.
  * */
 void disable_validation_garbage_bytes(void);
+
+#endif // PERSISTENT_OPERATIONS_H_

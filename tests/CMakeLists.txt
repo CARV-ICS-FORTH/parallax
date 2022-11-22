@@ -9,6 +9,7 @@ if(BUILD_TESTING)
       test_scans.c
       test_dirty_scans.c
       test_options.c
+      test_categories.c
       test_sanitizers.c
       simple_test_delete.c
       test_gc.c
@@ -33,7 +34,10 @@ if(BUILD_TESTING)
     NAMES libdb.so
     PATHS ${bdb_LIB_PATHS})
 
-  if(BDB_LIBRARY)
+  if(BDB_LIBRARY AND NOT ${BDB_PATH} STREQUAL "")
+
+    add_test(NAME tiresias COMMAND $<TARGET_FILE:tiresias> --file=${FILEPATH}
+                                   --num_of_kvs=4000000 --BDB_file=${BDB_PATH})
     add_executable(tiresias tiresias.c arg_parser.c)
     target_link_libraries(tiresias "${PROJECT_NAME}" ${DEPENDENCIES}
                           ${BDB_LIBRARY})
@@ -86,6 +90,10 @@ if(BUILD_TESTING)
   add_executable(test_options test_options.c)
   target_link_libraries(test_options "${PROJECT_NAME}" ${DEPENDENCIES})
   add_test(NAME test_options COMMAND $<TARGET_FILE:test_options>)
+
+  add_executable(test_categories test_categories.c)
+  target_link_libraries(test_categories "${PROJECT_NAME}" ${DEPENDENCIES})
+  add_test(NAME test_categories COMMAND $<TARGET_FILE:test_categories>)
 
   set_source_files_properties(test_sanitizers.c COMPILE_FLAGS "-O0")
   add_executable(test_sanitizers test_sanitizers.c)
@@ -163,6 +171,12 @@ if(BUILD_TESTING)
                         ${DEPENDENCIES})
   add_test(NAME test_par_put_serialized
            COMMAND $<TARGET_FILE:test_par_put_serialized> --file=${FILEPATH})
+
+  add_executable(test_par_put_metadata test_par_put_metadata.c arg_parser.c)
+  target_link_libraries(test_par_put_metadata "${PROJECT_NAME}" ${DEPENDENCIES})
+  add_test(NAME test_par_put_metadata
+           COMMAND $<TARGET_FILE:test_par_put_metadata> --file=${FILEPATH}
+                   --num_of_kvs=1000000)
 
   add_subdirectory(Surrogates)
 endif()

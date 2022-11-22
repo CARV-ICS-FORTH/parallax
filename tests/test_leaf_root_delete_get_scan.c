@@ -1,7 +1,7 @@
 #include "arg_parser.h"
 #include <common/common.h>
 #include <log.h>
-#include <parallax.h>
+#include <parallax/parallax.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -22,20 +22,24 @@ int main(int argc, char *argv[])
 	arg_print_options(help_flag, options, options_len);
 
 	par_db_options db_options = { .volume_name = get_option(options, 1),
-				      .volume_start = 0,
-				      .volume_size = 0,
 				      .create_flag = PAR_CREATE_DB,
-				      .db_name = "test_leaf_root_delete_get_scan.db" };
-
-	par_handle handle = par_open(&db_options);
+				      .db_name = "test_leaf_root_delete_get_scan.db",
+				      .options = par_get_default_options() };
+	const char *error_message = NULL;
+	par_handle handle = par_open(&db_options, &error_message);
+	if (error_message) {
+		log_fatal("%s", error_message);
+		return EXIT_FAILURE;
+	}
 	struct par_key_value key_value;
 	key_value.k.data = "/";
 	key_value.k.size = strlen(key_value.k.data);
 	key_value.v.val_buffer = "16895|0|";
 	key_value.v.val_size = strlen(key_value.v.val_buffer);
 
-	if (par_put(handle, &key_value) != PAR_SUCCESS) {
-		log_fatal("Par put failed!");
+	par_put(handle, &key_value, &error_message);
+	if (error_message) {
+		log_fatal("Par put failed %s!", error_message);
 		BUG_ON();
 	}
 
@@ -44,28 +48,33 @@ int main(int argc, char *argv[])
 	key_value.v.val_buffer = "Content";
 	key_value.v.val_size = strlen(key_value.v.val_buffer);
 
-	if (par_put(handle, &key_value) != PAR_SUCCESS) {
-		log_fatal("Par put failed!");
+	par_put(handle, &key_value, &error_message);
+	if (error_message) {
+		log_fatal("Par put failed! %s", error_message);
 		BUG_ON();
 	}
 
-	if (par_delete(handle, &key_value.k) != PAR_SUCCESS) {
-		log_fatal("Par put failed!");
+	par_delete(handle, &key_value.k, &error_message);
+
+	if (error_message) {
+		log_fatal("Par put failed! %s", error_message);
 		BUG_ON();
 	}
 
 	struct par_value unused_value = { 0 };
-	if (par_get(handle, &key_value.k, &unused_value) != PAR_KEY_NOT_FOUND) {
-		log_fatal("Found key that should not exist!");
+	par_get(handle, &key_value.k, &unused_value, &error_message);
+	if (!error_message) {
+		log_fatal("Found key %.*s that should not exist!", key_value.k.size, key_value.k.data);
 		BUG_ON();
 	}
 	key_value.k.data = "";
 	key_value.k.size = 1;
 
-	par_scanner scanner = par_init_scanner(handle, &key_value.k, PAR_GREATER_OR_EQUAL);
+	error_message = NULL;
+	par_scanner scanner = par_init_scanner(handle, &key_value.k, PAR_GREATER_OR_EQUAL, &error_message);
 	if (!par_is_valid(scanner)) {
 		log_fatal("Nothing found! it shouldn't!");
-		exit(EXIT_FAILURE);
+		BUG_ON();
 	}
 	struct par_key keyptr = par_get_key(scanner);
 	if (strncmp(keyptr.data, "/", strlen("/"))) {
@@ -79,6 +88,10 @@ int main(int argc, char *argv[])
 		BUG_ON();
 	}
 	par_close_scanner(scanner);
-	par_close(handle);
+	error_message = par_close(handle);
+	if (error_message) {
+		log_fatal("%s", error_message);
+		return EXIT_FAILURE;
+	}
 	return 0;
 }

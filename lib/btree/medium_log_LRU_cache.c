@@ -15,7 +15,7 @@
 #include "medium_log_LRU_cache.h"
 #include "../common/common.h"
 #include "conf.h"
-#include "set_options.h"
+#include "parallax/structures.h"
 #include <assert.h>
 #include <log.h>
 #include <stdio.h>
@@ -100,45 +100,10 @@ void move_node_to_tail(struct chunk_list *list, const struct chunk_listnode *nod
 	list->tail = pfront;
 }
 
-// cppcheck-suppress unusedFunction
-void print_list(struct chunk_list *list)
+struct chunk_LRU_cache *init_LRU(struct db_handle *handle)
 {
-	assert(list != NULL);
-	struct chunk_listnode *iter;
-	uint32_t i = 1;
-
-	log_info("[");
-	for (iter = list->head; iter != NULL; iter = iter->next) {
-		log_info("%lu, ", iter->chunk_offt);
-		i++;
-	}
-	log_info("]");
-	log_info("list size %d , i %d", list->size, i);
-}
-
-// cppcheck-suppress unusedFunction
-void print_hash_table(struct chunk_hash_entry **hash_table)
-{
-	struct chunk_hash_entry *current_entry, *tmp;
-	uint64_t i = 0;
-	log_info("HashTable:");
-	HASH_ITER(hh, *(hash_table), current_entry, tmp)
-	{
-		log_info("%lu: %lu", i, current_entry->chunk_offt);
-	}
-}
-
-struct chunk_LRU_cache *init_LRU(void)
-{
-	struct lib_option *option;
-	uint64_t LRU_cache_size;
 	uint64_t chunk_size = KB(256);
-	struct lib_option *dboptions = NULL;
-
-	parse_options(&dboptions);
-
-	check_option(dboptions, "medium_log_LRU_cache_size", &option);
-	LRU_cache_size = MB(option->value.count);
+	uint64_t LRU_cache_size = handle->db_options.options[MEDIUM_LOG_LRU_CACHE_SIZE].value;
 
 	log_info("Init LRU with %lu chunks", LRU_cache_size / chunk_size);
 	struct chunk_LRU_cache *new_LRU = (struct chunk_LRU_cache *)calloc(1, sizeof(struct chunk_LRU_cache));

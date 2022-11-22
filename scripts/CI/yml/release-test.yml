@@ -3,7 +3,7 @@
     before_script:
         - ./scripts/CI/create_mbbd.sh
         - mkdir -p build;cd build
-        - cmake .. -DCMAKE_BUILD_TYPE="Release"
+        - cmake .. -DCMAKE_BUILD_TYPE="Release" -DBDB_PATH=/BDB/TIRESIAS
     after_script:
         - ./scripts/CI/destroy_mbbd.sh
 
@@ -341,4 +341,26 @@ release_tracer:
     script:
         - make tracer;cd tracer;
         - ctest -R ^tracer$
+    needs: [release_build_gcc, release_build_clang]
+
+release_tiresias:
+    image: carvicsforth/arch_carv:latest
+    stage: release_test
+    <<: *release_build_commands
+    tags:
+        - kubernetes
+    script:
+        - make tiresias;cd tests;
+        - ctest -R ^tiresias$
+    needs: [release_build_gcc, release_build_clang]
+
+release_test_par_put_metadata:
+    image: carvicsforth/arch_carv:latest
+    stage: release_test
+    <<: *release_build_commands
+    tags:
+        - kubernetes
+    script:
+        - make test_par_put_metadata;cd tests;
+        - ctest -R ^test_par_put_metadata$
     needs: [release_build_gcc, release_build_clang]

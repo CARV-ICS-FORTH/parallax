@@ -1,6 +1,8 @@
+#define _GNU_SOURCE
 #include "common.h"
 #include <execinfo.h>
 #include <log.h>
+#include <stdio.h>
 #include <stdlib.h>
 #define TRACE_SIZE 32
 
@@ -15,7 +17,8 @@ void stack_trace(void)
 
 	log_fatal("<<<<<<<<<[stack trace starts here]>>>>>>>>>");
 
-	for (int i = 0; i < trace_size; i++)
+	//Start index from 2 to ignore stack_trace() and BUG_ON() calls.
+	for (int i = 2; i < trace_size; i++)
 		log_fatal("%s", messages[i]);
 
 	log_fatal("<<<<<<<<<[stack trace ends here]>>>>>>>>>");
@@ -30,7 +33,8 @@ __attribute__((noreturn)) void print_stack_trace(void)
 }
 
 /** Prints a stack trace and terminates program execution.
- *  It returns void * to suppress compiler warnings in the future this function will return void.*/
+ *  It returns void * to suppress compiler warnings in the future this function will return void.
+ */
 __attribute__((noreturn)) void *BUG_ON(void)
 {
 	print_stack_trace();

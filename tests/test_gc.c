@@ -1,8 +1,8 @@
 #include "arg_parser.h"
-#include "parallax.h"
 #include <assert.h>
 #include <btree/gc.h>
 #include <log.h>
+#include <parallax/parallax.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
@@ -62,8 +62,10 @@ void serially_insert_keys(par_handle hd)
 					    .v.val_buffer = v->value_buf,
 					    .v.val_size = v->value_size };
 
-		if (par_put(hd, &kv) != PAR_SUCCESS) {
-			log_fatal("Put failed!");
+		const char *error_message = NULL;
+		par_put(hd, &kv, &error_message);
+		if (error_message) {
+			log_fatal("Put failed %s ! ", error_message);
 			exit(EXIT_FAILURE);
 		}
 	}
@@ -75,6 +77,7 @@ void validate_inserted_keys(par_handle hd)
 {
 	uint64_t i;
 	key *k = (key *)malloc(KV_SIZE);
+	const char *error_message = NULL;
 	struct par_value v;
 	log_info("Starting population for %lu keys...", NUM_KEYS);
 
@@ -93,7 +96,8 @@ void validate_inserted_keys(par_handle hd)
 
 		struct par_key_value kv = { .k.data = (const char *)k->key_buf, .k.size = k->key_size };
 		memset(&v, 0, sizeof(struct par_value));
-		if (par_get(hd, &kv.k, &v) != PAR_SUCCESS) {
+		par_get(hd, &kv.k, &v, &error_message);
+		if (error_message) {
 			log_fatal("Key disappeared!");
 			exit(EXIT_FAILURE);
 		}
@@ -130,15 +134,16 @@ int main(int argc, char *argv[])
 
 	char *path = get_option(options, 1);
 	num_keys = *(int *)get_option(options, 2);
-
-	par_db_options db_options;
-	db_options.volume_name = path;
-	db_options.volume_start = 0;
-	db_options.volume_size = 0;
-	db_options.create_flag = PAR_CREATE_DB;
-	db_options.db_name = "testgc.db";
-
-	par_handle handle = par_open(&db_options);
+	par_db_options db_options = { .volume_name = path,
+				      .create_flag = PAR_CREATE_DB,
+				      .db_name = "testgc.db",
+				      .options = par_get_default_options() };
+	const char *error_message = NULL;
+	par_handle handle = par_open(&db_options, &error_message);
+	if (error_message) {
+		log_fatal("%s", error_message);
+		return EXIT_FAILURE;
+	}
 
 	serially_insert_keys(handle);
 	validate_inserted_keys(handle);

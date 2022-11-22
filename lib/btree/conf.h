@@ -37,14 +37,12 @@
 #define NUM_TREES_PER_LEVEL (4)
 #define TOTAL_TREES (MAX_LEVELS * NUM_TREES_PER_LEVEL)
 #define DEVICE_BLOCK_SIZE (4096)
-#define MEDIUM_LOG_UNSORTED 0
-#define MAX_KEY_SIZE (255)
+#define MAX_KEY_SIZE (int32_t)(255 + sizeof(struct kv_splice)) //it safe to cast the uint32_t to int32_t here
 #define MAX_KV_IN_PLACE_SIZE (1024)
 
 #define WORD_SIZE (64)
 #define BREAKPOINT asm volatile("int3;");
 #define LEAF_NODE_SIZE (8192)
-#define INDEX_NODE_SIZE (8192)
 /*Buffering related tunables*/
 
 #define GB(x) ((x)*1024LU * 1024LU * 1024LU)

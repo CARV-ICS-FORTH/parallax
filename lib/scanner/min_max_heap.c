@@ -15,6 +15,7 @@
 #include "../../utilities/dups_list.h"
 #include "../btree/btree.h"
 #include "../btree/conf.h"
+#include "../btree/kv_pairs.h"
 #include "../common/common.h"
 #include <assert.h>
 #include <log.h>
@@ -31,20 +32,21 @@ static void push_back_duplicate_kv(struct sh_heap *heap, struct sh_heap_node *hp
 	if (hp_node->cat != BIG_INLOG)
 		return;
 
-	struct bt_leaf_entry local;
-	struct bt_leaf_entry *keyvalue = NULL;
+	struct kv_seperation_splice local = { 0 };
+	struct kv_seperation_splice *keyvalue = NULL;
 
 	switch (hp_node->type) {
 	case KV_FORMAT:
 		memset(&local.prefix, 0x00, PREFIX_SIZE);
-		uint32_t key_size = *(uint32_t *)hp_node->KV;
+		struct kv_splice *kv = (struct kv_splice *)hp_node->KV;
+		uint32_t key_size = get_key_size(kv);
 		int size = key_size < PREFIX_SIZE ? key_size : PREFIX_SIZE;
-		memcpy(&local.prefix, hp_node->KV + sizeof(uint32_t), size);
+		memcpy(&local.prefix, get_key_offset_in_kv(kv), size);
 		local.dev_offt = (uint64_t)hp_node->KV;
 		keyvalue = &local;
 		break;
 	case KV_PREFIX:
-		keyvalue = (struct bt_leaf_entry *)hp_node->KV;
+		keyvalue = (struct kv_seperation_splice *)hp_node->KV;
 		break;
 	default:
 		log_info("Unhandled KV type");
@@ -53,17 +55,14 @@ static void push_back_duplicate_kv(struct sh_heap *heap, struct sh_heap_node *hp
 
 	uint64_t segment_offset =
 		ABSOLUTE_ADDRESS(keyvalue->dev_offt) - (ABSOLUTE_ADDRESS(keyvalue->dev_offt) % SEGMENT_SIZE);
-	char *kv = (char *)keyvalue->dev_offt;
-	uint32_t key_size = *(uint32_t *)kv;
-	assert(key_size <= MAX_KEY_SIZE);
-	uint32_t value_size = *(uint32_t *)(kv + sizeof(uint32_t) + key_size);
+	struct kv_splice *kv = (struct kv_splice *)keyvalue->dev_offt;
+	assert(get_key_size(kv) <= MAX_KEY_SIZE);
 	struct dups_node *node = find_element(heap->dups, (uint64_t)REAL_ADDRESS(segment_offset));
 
 	if (node)
-		node->kv_size += key_size + value_size + (sizeof(uint32_t) * 2);
+		node->kv_size += get_kv_size(kv);
 	else
-		append_node(heap->dups, (uint64_t)REAL_ADDRESS(segment_offset),
-			    key_size + value_size + (sizeof(uint32_t) * 2));
+		append_node(heap->dups, (uint64_t)REAL_ADDRESS(segment_offset), get_kv_size(kv));
 }
 
 /**
@@ -81,7 +80,7 @@ static int sh_solve_tie(struct sh_heap *heap, struct sh_heap_node *nd_1, struct 
 	nd_1->duplicate = 0;
 	nd_2->duplicate = 1;
 	/*Is it an L0 conflict?*/
-	if (!nd_1->level_id && !nd_2->level_id) {
+	if (0 == nd_1->level_id && 0 == nd_2->level_id) {
 		/*largest epoch wins*/
 		if (nd_1->epoch < nd_2->epoch) {
 			nd_1->duplicate = 1;
@@ -112,16 +111,7 @@ static int sh_prefix_compare(struct key_compare *key1, struct key_compare *key2)
 {
 	uint32_t size = key1->key_size <= key2->key_size ? key1->key_size : key2->key_size;
 	size = size < PREFIX_SIZE ? size : PREFIX_SIZE;
-
-	int ret = memcmp(key1->key, key2->key, size);
-
-	if (ret)
-		return ret;
-
-	if (PREFIX_SIZE == size)
-		return 0;
-
-	return key1->key_size - key2->key_size;
+	return memcmp(key1->key, key2->key, size);
 }
 
 /**

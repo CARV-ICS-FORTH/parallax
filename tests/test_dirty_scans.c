@@ -12,7 +12,7 @@
 #include "arg_parser.h"
 #include <assert.h>
 #include <log.h>
-#include <parallax.h>
+#include <parallax/parallax.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -140,8 +140,13 @@ static void put_workload(struct workload_config_t *workload_config, const char *
 			my_kv.v.val_buffer_size = KV_BUFFER_SIZE / 2;
 			my_kv.v.val_buffer = value_payload;
 		}
-		//log_debug("key %.*s %u", my_kv.k.size, my_kv.k.data, my_kv.v.val_size);
-		par_put(workload_config->handle, &my_kv);
+		const char *error_message = NULL;
+		par_put(workload_config->handle, &my_kv, &error_message);
+		if (error_message) {
+			log_fatal("Insert failed %s", error_message);
+			exit(EXIT_FAILURE);
+		}
+
 		if (!(++key_count % workload_config->progress_report))
 			log_info("Progress in population %lu keys", key_count);
 	}
@@ -153,6 +158,7 @@ static void get_workload(struct workload_config_t *workload_config)
 {
 	struct par_key_value my_kv = { .k.size = 0, .k.data = NULL, .v.val_buffer = NULL };
 	struct key *k = calloc(1, KV_BUFFER_SIZE);
+	const char *error_message = NULL;
 
 	log_info("Testing GETS now");
 	uint64_t key_count = 0;
@@ -164,7 +170,8 @@ static void get_workload(struct workload_config_t *workload_config)
 		my_kv.k.size = k->key_size;
 		my_kv.k.data = k->key_buf;
 		struct par_value my_value = { .val_buffer = NULL };
-		if (par_get(workload_config->handle, &my_kv.k, &my_value) != PAR_SUCCESS) {
+		par_get(workload_config->handle, &my_kv.k, &my_value, &error_message);
+		if (error_message) {
 			log_fatal("Key %u:%s not found", my_kv.k.size, my_kv.k.data);
 			_exit(EXIT_FAILURE);
 		}
@@ -192,9 +199,14 @@ static void get_workload(struct workload_config_t *workload_config)
 	my_kv.k.data = key;
 	my_kv.v.val_size = strlen(value) + 1;
 	my_kv.v.val_buffer = value;
-	par_put(workload_config->handle, &my_kv);
+	par_put(workload_config->handle, &my_kv, &error_message);
+	if (error_message) {
+		log_fatal("Insert failed %s", error_message);
+		exit(EXIT_FAILURE);
+	}
 	struct par_value my_value = { .val_buffer = NULL };
-	if (par_get(workload_config->handle, &my_kv.k, &my_value) != PAR_SUCCESS) {
+	par_get(workload_config->handle, &my_kv.k, &my_value, &error_message);
+	if (error_message) {
 		log_fatal("Key %u:%s not found", my_kv.k.size, my_kv.k.data);
 		_exit(EXIT_FAILURE);
 	}
@@ -226,8 +238,9 @@ static void scan_workload(struct workload_config_t *workload_config)
 
 		my_kv.k.size = k->key_size;
 		my_kv.k.data = k->key_buf;
+		const char *error_message = NULL;
 		par_scanner my_scanner =
-			par_init_scanner(workload_config->handle, &my_kv.k, workload_config->seek_mode);
+			par_init_scanner(workload_config->handle, &my_kv.k, workload_config->seek_mode, &error_message);
 
 		if (!par_is_valid(my_scanner)) {
 			log_fatal("Nothing found! it shouldn't!");
@@ -341,15 +354,25 @@ int main(int argc, char **argv)
 	base = 100000000L;
 
 	log_info("Running workload %s", workload);
-	par_db_options db_options;
-	db_options.volume_name = get_option(options, 1);
-	if (strcmp(workload, workload_tags[Load]) == 0 || strcmp(workload, workload_tags[All]) == 0)
-		par_format(db_options.volume_name, 16);
-	db_options.db_name = "scan_test";
-	db_options.volume_start = 0;
-	db_options.volume_size = 0;
-	db_options.create_flag = PAR_CREATE_DB;
-	par_handle hd = par_open(&db_options);
+	par_db_options db_options = { .volume_name = get_option(options, 1),
+				      .db_name = "scan_test",
+				      .create_flag = PAR_CREATE_DB,
+				      .options = par_get_default_options() };
+	const char *error_message = NULL;
+
+	if (strcmp(workload, workload_tags[Load]) == 0 || strcmp(workload, workload_tags[All]) == 0) {
+		error_message = par_format(db_options.volume_name, 16);
+		if (error_message) {
+			log_fatal("%s", error_message);
+			return EXIT_FAILURE;
+		}
+	}
+	par_handle hd = par_open(&db_options, &error_message);
+
+	if (error_message) {
+		log_fatal("%s", error_message);
+		return EXIT_FAILURE;
+	}
 
 	struct workload_config_t workload_config = { .handle = hd,
 						     .base = base + 1,
@@ -379,7 +402,10 @@ int main(int argc, char **argv)
 		scan_workload(&workload_config);
 	}
 
-	par_close(hd);
-
+	error_message = par_close(hd);
+	if (error_message) {
+		log_fatal("%s", error_message);
+		return EXIT_FAILURE;
+	}
 	return 0;
 }

@@ -12,11 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#pragma once
+#ifndef PARALLAX_SET_OPTIONS_H
+#define PARALLAX_SET_OPTIONS_H
+#define NUM_OF_OPTIONS 5
 
 #include <uthash.h>
 
-enum option_type { LL, STRING };
+enum type_of_option { LL, STR };
 
 struct lib_option {
 	char *name;
@@ -24,10 +26,11 @@ struct lib_option {
 		char *name;
 		unsigned long long count;
 	} value;
-	enum option_type type;
+	enum type_of_option type;
 	UT_hash_handle hh;
 };
 
 int parse_options(struct lib_option **db_options);
 void check_option(const struct lib_option *db_options, const char *option_name, struct lib_option **opt_value);
 void destroy_options(struct lib_option *db_options);
+#endif // PARALLAX_SET_OPTIONS_H

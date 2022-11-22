@@ -16,7 +16,7 @@
 #include <assert.h>
 #include <fcntl.h>
 #include <log.h>
-#include <parallax.h>
+#include <parallax/parallax.h>
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -291,8 +291,8 @@ int main(int argc, char **argv)
 
 	db_options.volume_start = 0;
 	db_options.volume_name = argv[1];
-
 	db_options.create_flag = PAR_CREATE_DB;
+	db_options.options = par_get_default_options();
 
 	par_handle hd;
 	for (int i = 0; i < NUM_TESTERS; i++) {
@@ -317,7 +317,11 @@ int main(int argc, char **argv)
 	}
 
 	free(s_args);
-	par_close(hd);
+	char * error_message = par_close(hd);
+	if(error_message){
+		log_fatal("%s",error_message);
+		return EXIT_FAILURE;
+	}
 	log_info("All tests successfull");
 #endif
 }

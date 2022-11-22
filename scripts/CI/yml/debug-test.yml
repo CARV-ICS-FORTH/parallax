@@ -3,7 +3,7 @@
     before_script:
         - ./scripts/CI/create_mbbd.sh
         - mkdir -p build;cd build
-        - cmake ..
+        - cmake .. -DBDB_PATH=/BDB/TIRESIAS
     after_script:
         - ./scripts/CI/destroy_mbbd.sh
 
@@ -24,6 +24,17 @@ test_options:
         - make test_options;cd tests;
         - ./test_options
     needs: [debug_build_gcc, debug_build_clang]
+
+test_categories:
+    image: carvicsforth/ubuntu_carv:latest
+    stage: debug_test
+    <<: *debug_build_commands
+    script:
+        - make test_categories;cd tests;
+        - ./test_categories
+    needs: [debug_build_gcc, debug_build_clang]
+
+
 
 test_sanitizers:
     image: carvicsforth/ubuntu_carv:latest
@@ -380,4 +391,26 @@ debug_tracer:
     script:
         - make tracer;cd tracer;
         - ctest -R ^tracer$
+    needs: [debug_build_gcc, debug_build_clang]
+
+debug_tiresias:
+    image: carvicsforth/arch_carv:latest
+    stage: debug_test
+    <<: *debug_build_commands
+    tags:
+        - kubernetes
+    script:
+        - make tiresias;cd tests;
+        - ctest -R ^tiresias$
+    needs: [debug_build_gcc, debug_build_clang]
+
+debug_test_par_put_metadata:
+    image: carvicsforth/arch_carv:latest
+    stage: debug_test
+    <<: *debug_build_commands
+    tags:
+        - kubernetes
+    script:
+        - make test_par_put_metadata;cd tests;
+        - ctest -R ^test_par_put_metadata$
     needs: [debug_build_gcc, debug_build_clang]

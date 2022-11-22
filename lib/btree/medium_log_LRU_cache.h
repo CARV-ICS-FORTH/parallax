@@ -12,11 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef MEDIUM_LOG_CACHE_H_
-#define MEDIUM_LOG_CACHE_H_
+#ifndef MEDIUM_LOG_CACHE_H
+#define MEDIUM_LOG_CACHE_H
+#include "btree.h"
 #include <stdint.h>
 #include <uthash.h>
-
 struct chunk_list {
 	struct chunk_listnode *head;
 	struct chunk_listnode *tail;
@@ -45,10 +45,10 @@ struct chunk_LRU_cache {
 	uint64_t hash_table_capacity;
 };
 
-struct chunk_LRU_cache *init_LRU(void);
+struct chunk_LRU_cache *init_LRU(db_handle *handle);
 void add_to_LRU(struct chunk_LRU_cache *chunk_cache, uint64_t chunk_offt, char *chunk_buf);
 int chunk_exists_in_LRU(struct chunk_LRU_cache *chunk_cache, uint64_t chunk_offt);
 char *get_chunk_from_LRU(struct chunk_LRU_cache *chunk_cache, uint64_t chunk_offt);
 void destroy_LRU(struct chunk_LRU_cache *chunk_cache);
 
-#endif // SEGMENT_LRU_CACHE_H_
+#endif

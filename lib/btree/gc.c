@@ -16,13 +16,17 @@
 #include "gc.h"
 #include "../allocator/log_structures.h"
 #include "../allocator/volume_manager.h"
+#include "../btree/kv_pairs.h"
 #include "../common/common.h"
 #include "btree.h"
-#include "set_options.h"
+#include "conf.h"
+#include "lsn.h"
+#include "parallax/structures.h"
 #include <assert.h>
 #include <list.h>
 #include <log.h>
 #include <pthread.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -73,12 +77,14 @@ void move_kv_pairs_to_new_segment(struct db_handle handle, stack *marks)
 		ins_req.metadata.level_id = 0;
 		ins_req.metadata.special_split = 0;
 		ins_req.metadata.tombstone = 0;
-		int key_size = *(uint32_t *)kv_address;
-		int value_size = *(uint32_t *)(kv_address + 4 + key_size);
-		ins_req.metadata.kv_size = key_size + 8 + value_size;
 		ins_req.metadata.key_format = KV_FORMAT;
 		ins_req.metadata.cat = BIG_INLOG;
-		_insert_key_value(&ins_req);
+		const char *error_message = btree_insert_key_value(&ins_req);
+
+		if (error_message) {
+			log_fatal("Insert failed %s", error_message);
+			BUG_ON();
+		}
 	}
 }
 
@@ -86,58 +92,50 @@ int8_t find_deleted_kv_pairs_in_segment(struct db_handle handle, struct gc_segme
 {
 	struct gc_segment_descriptor iter_log_segment = *log_seg;
 	char *log_segment_in_device = REAL_ADDRESS(log_seg->segment_dev_offt);
-	struct splice *key;
-	uint64_t checked_segment_chunk = sizeof(struct log_sequence_number);
-	uint64_t segment_data = LOG_DATA_OFFSET;
-	int key_value_size;
-	int garbage_collect_segment = 0;
+	char buf[MAX_KEY_SIZE];
+	struct kv_splice *kv = NULL;
+	int64_t checked_segment_chunk = get_lsn_size();
+	int64_t segment_data = LOG_DATA_OFFSET;
 
-	iter_log_segment.log_segment_in_memory += sizeof(struct log_sequence_number);
-	log_segment_in_device += sizeof(struct log_sequence_number);
+	iter_log_segment.log_segment_in_memory += get_lsn_size();
+	log_segment_in_device += get_lsn_size();
 
-	key = (struct splice *)iter_log_segment.log_segment_in_memory;
-	key_value_size = sizeof(key->size) * 2;
+	int32_t key_value_size = get_kv_metadata_size();
 	marks->size = 0;
 
 	while (checked_segment_chunk < segment_data) {
-		key = (struct splice *)iter_log_segment.log_segment_in_memory;
-		struct splice *value =
-			(struct splice *)(VALUE_SIZE_OFFSET(key->size, iter_log_segment.log_segment_in_memory));
+		kv = (struct kv_splice *)iter_log_segment.log_segment_in_memory;
 
-		if (!key->size)
+		if (!kv->key_size || checked_segment_chunk - segment_data < get_min_possible_kv_size())
 			break;
 
+		serialize_kv_splice_to_key_splice(buf, kv);
 		struct lookup_operation get_op = { .db_desc = handle.db_desc,
 						   .found = 0,
 						   .size = 0,
 						   .buffer_to_pack_kv = NULL,
 						   .buffer_overflow = 0,
-						   .kv_buf = (char *)key,
+						   .key_buf = buf,
 						   .retrieve = 0 };
 		find_key(&get_op);
 
-		if (!get_op.found || log_segment_in_device != get_op.key_device_address)
-			garbage_collect_segment = 1;
-		else
+		if (get_op.found && log_segment_in_device == get_op.key_device_address)
 			push_stack(marks, iter_log_segment.log_segment_in_memory);
 
-		if (key->size != 0) {
-			uint32_t bytes_to_move = key->size + value->size + key_value_size + 8;
+		if (kv->key_size) {
+			int32_t bytes_to_move = kv->key_size + kv->value_size + key_value_size + get_lsn_size();
 			iter_log_segment.log_segment_in_memory += bytes_to_move;
 			log_segment_in_device += bytes_to_move;
-			checked_segment_chunk += key->size + value->size + key_value_size + 8;
+			checked_segment_chunk += kv->key_size + kv->value_size + key_value_size + get_lsn_size();
 		} else
 			break;
 	}
 
 	assert(marks->size < STACK_SIZE);
 
-	if (garbage_collect_segment) {
-		move_kv_pairs_to_new_segment(handle, marks);
-		gc_executed = 1;
-		return 1;
-	}
-	return 0;
+	move_kv_pairs_to_new_segment(handle, marks);
+	gc_executed = 1;
+	return 1;
 }
 
 // read a segment and store it into segment_buf
@@ -227,12 +225,10 @@ void *gc_log_entries(void *hd)
 	struct timespec ts;
 	uint64_t gc_interval;
 	stack *marks;
-	struct lib_option *option;
 	struct db_handle *handle = (struct db_handle *)hd;
 	db_descriptor *db_desc;
 	volume_descriptor *volume_desc = handle->volume_desc;
 	struct klist_node *region;
-	struct lib_option *dboptions = NULL;
 
 	if (!gc_active)
 		pthread_exit(NULL);
@@ -245,9 +241,7 @@ void *gc_log_entries(void *hd)
 
 	pthread_setname_np(pthread_self(), "gcd");
 
-	parse_options(&dboptions);
-	check_option(dboptions, "gc_interval", &option);
-	gc_interval = option->value.count;
+	gc_interval = handle->db_options.options[GC_INTERVAL].value;
 
 	log_debug("Starting garbage collection thread");
 
@@ -282,12 +276,14 @@ void *gc_log_entries(void *hd)
 
 			db_desc = (db_descriptor *)region->data;
 			++db_desc->reference_count;
+			db_desc->gc_scanning_db = true;
 			MUTEX_UNLOCK(&init_lock);
 
 			scan_db(db_desc, volume_desc, marks);
 
 			MUTEX_LOCK(&init_lock);
 			--db_desc->reference_count;
+			db_desc->gc_scanning_db = false;
 		}
 	}
 
