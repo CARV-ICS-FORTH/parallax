@@ -131,7 +131,7 @@ void par_get_serialized(par_handle handle, char *key_serialized, struct par_valu
 
 	/*Prepare lookup reply*/
 	struct lookup_operation get_op = { .db_desc = hd->db_desc,
-					   .key_buf = (char *)key_serialized,
+					   .key_splice = (struct key_splice *)key_serialized,
 					   .buffer_to_pack_kv = NULL,
 					   .size = 0,
 					   .buffer_overflow = 0,

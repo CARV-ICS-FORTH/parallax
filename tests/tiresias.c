@@ -12,6 +12,7 @@
 #include "../btree/conf.h"
 #include "../btree/kv_pairs.h"
 #include "arg_parser.h"
+#include "btree/key_splice.h"
 #include <assert.h>
 #include <btree/gc.h>
 #include <db.h>
@@ -178,16 +179,17 @@ static void *get_workload(void *config)
 		struct par_key par_key = { .size = key.size, .data = key.data };
 		struct par_value value = { 0 };
 		bool malloced = 1;
+		char get_buf[4096];
 		if (unique_keys < workload_config->total_keys / 2)
 			par_get(workload_config->handle, &par_key, &value, &error_message);
 		else {
 			malloced = 0;
 			struct key_splice *key_serialized =
-				(struct key_splice *)calloc(1, key.size + sizeof(struct key_splice));
+				(struct key_splice *)calloc(1, key.size + get_key_splice_metadata_size());
 			set_key_size_of_key_splice(key_serialized, key.size);
 			set_key_splice_key_offset(key_serialized, (char *)key.data);
 			value.val_buffer_size = 4096;
-			value.val_buffer = buf;
+			value.val_buffer = get_buf;
 			par_get_serialized(workload_config->handle, (char *)key_serialized, &value, &error_message);
 		}
 
