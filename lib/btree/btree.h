@@ -393,7 +393,7 @@ struct bt_rebalance_result {
 	char middle_key[MAX_PIVOT_SIZE];
 	union {
 		node_header *left_child;
-		struct index_node *left_ichild;
+		index_node_t left_ichild;
 		leaf_node *left_lchild;
 		struct bt_static_leaf_node *left_slchild;
 		struct bt_dynamic_leaf_node *left_dlchild;
@@ -401,7 +401,7 @@ struct bt_rebalance_result {
 
 	union {
 		node_header *right_child;
-		struct index_node *right_ichild;
+		index_node_t right_ichild;
 		leaf_node *right_lchild;
 		struct bt_static_leaf_node *right_slchild;
 		struct bt_dynamic_leaf_node *right_dlchild;

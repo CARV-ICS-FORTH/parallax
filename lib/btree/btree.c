@@ -1491,8 +1491,7 @@ static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id,
 			if (RWLOCK_UNLOCK(&prev->rx_lock) != 0)
 				BUG_ON();
 
-		uint64_t child_offset =
-			index_binary_search((struct index_node *)curr_node, (char *)search_key_buf, KEY_TYPE);
+		uint64_t child_offset = index_binary_search((index_node_t)curr_node, (char *)search_key_buf, KEY_TYPE);
 		son_node = (void *)REAL_ADDRESS(child_offset);
 
 		prev = curr;
@@ -1761,7 +1760,7 @@ int is_split_needed(void *node, bt_insert_req *req, uint32_t leaf_size)
 	uint8_t level_id = req->metadata.level_id;
 
 	if (height != 0)
-		return index_is_split_needed((struct index_node *)node, MAX_KEY_SPLICE_SIZE);
+		return index_is_split_needed((index_node_t)node, MAX_KEY_SPLICE_SIZE);
 
 	enum kv_entry_location key_type = KV_INPLACE;
 
@@ -1864,16 +1863,16 @@ release_and_retry:
 					ins_req->metadata.tree_id, 0);
 
 				struct index_node_split_request index_split_req = {
-					.node = (struct index_node *)son,
-					.left_child = (struct index_node *)split_res.left_child,
-					.right_child = (struct index_node *)split_res.right_child
+					.node = (index_node_t)son,
+					.left_child = (index_node_t)split_res.left_child,
+					.right_child = (index_node_t)split_res.right_child
 				};
 				struct index_node_split_reply index_split_rep = { .pivot_buf = split_res.middle_key,
 										  .pivot_buf_size = MAX_PIVOT_SIZE };
 				index_split_node(&index_split_req, &index_split_rep);
 				/*node has splitted, free it*/
 				seg_free_index_node(ins_req->metadata.handle->db_desc, level_id,
-						    ins_req->metadata.tree_id, (struct index_node *)son);
+						    ins_req->metadata.tree_id, (index_node_t)son);
 				// free_logical_node(&(req->allocator_desc), son);
 			} else if (0 == son->height) {
 				if (reorganize_dynamic_leaf((struct bt_dynamic_leaf_node *)son,
@@ -1887,8 +1886,8 @@ release_and_retry:
 
 			if (NULL == father) {
 				/*Root was splitted*/
-				struct index_node *new_root = (struct index_node *)seg_get_index_node(
-					ins_req->metadata.handle->db_desc, level_id, ins_req->metadata.tree_id, -1);
+				index_node_t new_root = seg_get_index_node(ins_req->metadata.handle->db_desc, level_id,
+									   ins_req->metadata.tree_id, -1);
 
 				index_init_node(ADD_GUARD, new_root, rootNode);
 
@@ -1916,7 +1915,7 @@ release_and_retry:
 			/*Insert pivot at father*/
 			struct pivot_pointer left = { .child_offt = ABSOLUTE_ADDRESS(split_res.left_child) };
 			struct pivot_pointer right = { .child_offt = ABSOLUTE_ADDRESS(split_res.right_child) };
-			struct insert_pivot_req ins_pivot_req = { .node = (struct index_node *)father,
+			struct insert_pivot_req ins_pivot_req = { .node = (index_node_t)father,
 								  .left_child = &left,
 								  .key_splice = (key_splice_t)split_res.middle_key,
 								  .right_child = &right };
@@ -1931,7 +1930,7 @@ release_and_retry:
 		if (son->height == 0)
 			break;
 
-		struct index_node *n_son = (struct index_node *)son;
+		index_node_t n_son = (index_node_t)son;
 
 		struct pivot_pointer *son_pivot =
 			index_search_get_pivot(n_son, ins_req->key_value_buf, ins_req->metadata.key_format);
@@ -2040,8 +2039,8 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 			return PAR_FAILURE;
 		}
 
-		uint64_t child_offt = index_binary_search((struct index_node *)son, ins_req->key_value_buf,
-							  ins_req->metadata.key_format);
+		uint64_t child_offt =
+			index_binary_search((index_node_t)son, ins_req->key_value_buf, ins_req->metadata.key_format);
 		son = (node_header *)REAL_ADDRESS(child_offt);
 		assert(son);
 

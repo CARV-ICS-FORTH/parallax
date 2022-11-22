@@ -1,9 +1,11 @@
 #ifndef LEVEL_READ_CURSOR_H
 #define LEVEL_READ_CURSOR_H
+#include "../scanner/min_max_heap.h"
 #include "../scanner/scanner.h"
 #include "btree.h"
 #include "conf.h"
 #include "level_cursor.h"
+#include <stdbool.h>
 #include <stdint.h>
 
 typedef enum RCURSOR_cursor_state {

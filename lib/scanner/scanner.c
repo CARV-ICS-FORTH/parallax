@@ -371,7 +371,7 @@ int32_t level_scanner_get_next(level_scanner *sc)
 				break;
 			}
 
-			index_iterator_init((struct index_node *)stack_element.node, &stack_element.iterator);
+			index_iterator_init((index_node_t)stack_element.node, &stack_element.iterator);
 			break;
 
 		case POP_STACK:
@@ -442,7 +442,7 @@ int32_t level_scanner_seek(level_scanner *level_sc, void *start_key_buf, SEEK_SC
 	struct node_header *node = level_sc->root;
 	while (node->type != leafNode && node->type != leafRootNode) {
 		element.node = node;
-		index_iterator_init_with_key((struct index_node *)element.node, &element.iterator, start_key_splice);
+		index_iterator_init_with_key((index_node_t)element.node, &element.iterator, start_key_splice);
 
 		if (!index_iterator_is_valid(&element.iterator)) {
 			log_fatal("Invalid index node iterator during seek");
@@ -583,7 +583,7 @@ void perf_preorder_count_leaf_capacity(level_descriptor *level, node_header *roo
 	}
 
 	node_header *node;
-	struct index_node *inode = (struct index_node *)root;
+	index_node_t *inode = (index_node_t)root;
 	for (uint64_t i = 0; i < root->num_entries; i++) {
 		node = REAL_ADDRESS(inode->p[i].left[0]);
 		perf_preorder_count_leaf_capacity(level, node);

@@ -1,8 +1,11 @@
 #include "level_write_cursor.h"
 #include "../allocator/device_structures.h"
 #include "../allocator/log_structures.h"
+#include "../common/common.h"
+#include "btree_node.h"
 #include "dynamic_leaf.h"
 #include "index_node.h"
+#include "key_splice.h"
 #include "kv_pairs.h"
 #include "level_cursor.h"
 #include "medium_log_LRU_cache.h"
@@ -10,9 +13,10 @@
 #include "segment_allocator.h"
 #include <assert.h>
 #include <log.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-
 static void WCURSOR_write_segment(char *buffer, uint64_t dev_offt, uint32_t buf_offt, uint32_t size, int fd)
 {
 #if 0
@@ -134,8 +138,7 @@ static void WCURSOR_get_space(struct WCURSOR_level_write_cursor *w_cursor, uint3
 	}
 	case internalNode:
 	case rootNode: {
-		uint32_t remaining_space = remaining_space =
-			SEGMENT_SIZE - (w_cursor->segment_offt[height] % SEGMENT_SIZE);
+		uint32_t remaining_space = SEGMENT_SIZE - (w_cursor->segment_offt[height] % SEGMENT_SIZE);
 		if (w_cursor->segment_offt[height] == 0 || w_cursor->segment_offt[height] % SEGMENT_SIZE == 0)
 			remaining_space = 0;
 
@@ -169,8 +172,7 @@ static void WCURSOR_get_space(struct WCURSOR_level_write_cursor *w_cursor, uint3
 			current_segment_mem_buffer->nodetype = type;
 		}
 		w_cursor->last_index[height] =
-			(struct index_node *)&w_cursor
-				->segment_buf[height][w_cursor->segment_offt[height] % SEGMENT_SIZE];
+			(index_node_t)&w_cursor->segment_buf[height][w_cursor->segment_offt[height] % SEGMENT_SIZE];
 		w_cursor->segment_offt[height] += index_node_get_size();
 		break;
 	}
@@ -203,7 +205,7 @@ struct WCURSOR_level_write_cursor *WCURSOR_init_write_cursor(int level_id, struc
 
 	for (int i = 1; i < MAX_HEIGHT; ++i) {
 		WCURSOR_get_space(w_cursor, i, internalNode);
-		index_init_node(DO_NOT_ADD_GUARD, (struct index_node *)w_cursor->last_index[i], internalNode);
+		index_init_node(DO_NOT_ADD_GUARD, (index_node_t)w_cursor->last_index[i], internalNode);
 		w_cursor->first_segment_btree_level_offt[i] = w_cursor->last_segment_btree_level_offt[i];
 		assert(w_cursor->last_segment_btree_level_offt[i]);
 	}
@@ -301,7 +303,7 @@ void WCURSOR_flush_write_cursor(struct WCURSOR_level_write_cursor *w_cursor)
 		if (i == w_cursor->tree_height) {
 			log_debug("Merged level has a height off %u", w_cursor->tree_height);
 
-			if (!index_set_type((struct index_node *)w_cursor->last_index[i], rootNode)) {
+			if (!index_set_type((index_node_t)w_cursor->last_index[i], rootNode)) {
 				log_fatal("Error setting node type");
 				BUG_ON();
 			}
@@ -350,7 +352,7 @@ static void WCURSOR_append_pivot_to_index(int32_t height, struct WCURSOR_level_w
 	if (c->tree_height < height)
 		c->tree_height = height;
 
-	struct index_node *node = (struct index_node *)c->last_index[height];
+	index_node_t node = (index_node_t)c->last_index[height];
 
 	if (index_is_empty(node)) {
 		index_add_guard(node, left_node_offt);
@@ -367,7 +369,7 @@ static void WCURSOR_append_pivot_to_index(int32_t height, struct WCURSOR_level_w
 		key_splice_t pivot_copy_splice = index_remove_last_pivot_key(node);
 		struct pivot_pointer *piv_pointer = index_get_pivot_pointer(pivot_copy_splice);
 		WCURSOR_get_space(c, height, internalNode);
-		ins_pivot_req.node = (struct index_node *)c->last_index[height];
+		ins_pivot_req.node = (index_node_t)c->last_index[height];
 		index_init_node(DO_NOT_ADD_GUARD, ins_pivot_req.node, internalNode);
 		index_add_guard(ins_pivot_req.node, piv_pointer->child_offt);
 		index_set_height(ins_pivot_req.node, height);

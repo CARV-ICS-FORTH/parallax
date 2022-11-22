@@ -22,13 +22,13 @@
 // IWYU pragma: no_forward_declare index_node
 
 /*functions for index nodes*/
-struct index_node *seg_get_index_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id, char reason);
+index_node_t seg_get_index_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id, char reason);
 
-struct index_node *seg_get_index_node_header(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id);
+index_node_t seg_get_index_node_header(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id);
 
 void seg_free_index_node_header(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id, node_header *node);
 
-void seg_free_index_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id, struct index_node *inode);
+void seg_free_index_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id, index_node_t inode);
 
 /*function for leaf nodes*/
 leaf_node *seg_get_leaf_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id);

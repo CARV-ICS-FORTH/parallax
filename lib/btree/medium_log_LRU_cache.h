@@ -15,8 +15,6 @@
 #ifndef MEDIUM_LOG_CACHE_H
 #define MEDIUM_LOG_CACHE_H
 #include "btree.h"
-#include "dynamic_leaf.h"
-#include "level_write_cursor.h"
 #include <stdint.h>
 #include <sys/types.h>
 #include <uthash.h>

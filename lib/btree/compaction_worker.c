@@ -1,10 +1,18 @@
 #define _GNU_SOURCE
 #include "compaction_worker.h"
 #include "../allocator/redo_undo_log.h"
+#include "../allocator/volume_manager.h"
+#include "../common/common.h"
 #include "../lib/allocator/device_structures.h"
+#include "../scanner/min_max_heap.h"
 #include "../utilities/dups_list.h"
 #include "../utilities/spin_loop.h"
+#include "btree_node.h"
+#include "conf.h"
+#include "dynamic_leaf.h"
 #include "gc.h"
+#include "kv_pairs.h"
+#include "level_cursor.h"
 #include "level_read_cursor.h"
 #include "level_write_cursor.h"
 #include "medium_log_LRU_cache.h"
@@ -13,6 +21,9 @@
 #include <assert.h>
 #include <log.h>
 #include <pthread.h>
+#include <semaphore.h>
+#include <stdlib.h>
+#include <string.h>
 
 struct compaction_roots {
 	struct node_header *src_root;
