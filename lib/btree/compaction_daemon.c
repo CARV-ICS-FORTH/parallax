@@ -15,36 +15,22 @@
 #define _GNU_SOURCE
 
 #include "compaction_daemon.h"
-#include "../../utilities/dups_list.h"
 #include "../allocator/device_structures.h"
 #include "../allocator/log_structures.h"
 #include "../allocator/redo_undo_log.h"
-#include "../allocator/volume_manager.h"
-#include "../btree/kv_pairs.h"
 #include "../common/common.h"
-#include "../scanner/min_max_heap.h"
-#include "../scanner/scanner.h"
 #include "btree.h"
+#include "btree_node.h"
 #include "compaction_worker.h"
 #include "conf.h"
-#include "dynamic_leaf.h"
-#include "gc.h"
-#include "index_node.h"
-#include "key_splice.h"
-#include "medium_log_LRU_cache.h"
-#include "segment_allocator.h"
 #include <assert.h>
 #include <log.h>
 #include <pthread.h>
 #include <semaphore.h>
 #include <spin_loop.h>
-#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
-#include <uthash.h>
 // IWYU pragma: no_forward_declare index_node
 
 void *compaction_daemon(void *args)

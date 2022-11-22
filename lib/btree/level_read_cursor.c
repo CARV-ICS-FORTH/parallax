@@ -1,7 +1,16 @@
 #include "level_read_cursor.h"
+#include "../common/common.h"
+#include "../scanner/min_max_heap.h"
+#include "../scanner/scanner.h"
+#include "btree_node.h"
+#include "dynamic_leaf.h"
 #include "index_node.h"
+#include "kv_pairs.h"
+#include "parallax/structures.h"
 #include <assert.h>
 #include <log.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 

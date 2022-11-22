@@ -1,7 +1,7 @@
 #define _GNU_SOURCE
 #include "compaction_worker.h"
 #include "../allocator/redo_undo_log.h"
-#include "../scanner/scanner.h"
+#include "../lib/allocator/device_structures.h"
 #include "../utilities/dups_list.h"
 #include "../utilities/spin_loop.h"
 #include "gc.h"

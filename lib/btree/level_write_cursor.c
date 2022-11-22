@@ -1,9 +1,12 @@
 #include "level_write_cursor.h"
+#include "../allocator/device_structures.h"
+#include "../allocator/log_structures.h"
 #include "dynamic_leaf.h"
 #include "index_node.h"
 #include "kv_pairs.h"
 #include "level_cursor.h"
 #include "medium_log_LRU_cache.h"
+#include "parallax/structures.h"
 #include "segment_allocator.h"
 #include <assert.h>
 #include <log.h>

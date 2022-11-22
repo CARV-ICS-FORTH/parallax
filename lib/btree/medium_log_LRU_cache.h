@@ -18,7 +18,11 @@
 #include "dynamic_leaf.h"
 #include "level_write_cursor.h"
 #include <stdint.h>
+#include <sys/types.h>
 #include <uthash.h>
+struct WCURSOR_level_write_cursor;
+struct write_dynamic_leaf_args;
+
 struct chunk_list {
 	struct chunk_listnode *head;
 	struct chunk_listnode *tail;

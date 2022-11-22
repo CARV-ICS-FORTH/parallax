@@ -1,6 +1,7 @@
 #ifndef COMPACTION_WORKER_H
 #define COMPACTION_WORKER_H
 #include "btree.h"
+#include "parallax/structures.h"
 #include <stdint.h>
 #include <uthash.h>
 
