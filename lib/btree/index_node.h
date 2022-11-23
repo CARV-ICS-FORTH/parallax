@@ -21,7 +21,7 @@
 
 #define SMALLEST_POSSIBLE_PIVOT_SIZE 16
 #define MAX_PIVOT_SIZE (MAX_KEY_SPLICE_SIZE + sizeof(struct pivot_pointer))
-
+struct key_splice;
 struct index_node;
 
 struct pivot_pointer {

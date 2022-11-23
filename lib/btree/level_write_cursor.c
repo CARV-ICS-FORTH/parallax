@@ -1,6 +1,7 @@
 #include "level_write_cursor.h"
 #include "../allocator/device_structures.h"
 #include "../allocator/log_structures.h"
+#include "../allocator/volume_manager.h"
 #include "../common/common.h"
 #include "btree_node.h"
 #include "dynamic_leaf.h"
@@ -17,6 +18,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+
+struct index_node;
+struct key_splice;
 static void wcursor_write_segment(char *buffer, uint64_t dev_offt, uint32_t buf_offt, uint32_t size, int fd)
 {
 #if 0

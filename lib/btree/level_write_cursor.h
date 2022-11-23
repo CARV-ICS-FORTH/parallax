@@ -2,10 +2,9 @@
 #define LEVEL_WRITE_CURSOR_H
 #include "btree.h"
 #include "conf.h"
-#include "index_node.h"
-#include "level_cursor.h"
 #include <stdbool.h>
 #include <stdint.h>
+struct comp_parallax_key;
 struct wcursor_level_write_cursor {
 	char segment_buf[MAX_HEIGHT][SEGMENT_SIZE];
 	uint64_t segment_offt[MAX_HEIGHT];

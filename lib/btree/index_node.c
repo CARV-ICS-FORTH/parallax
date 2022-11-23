@@ -21,6 +21,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+struct key_splice;
 
 #define INDEX_NODE_SIZE (8192)
 

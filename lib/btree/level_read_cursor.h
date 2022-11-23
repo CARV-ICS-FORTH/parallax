@@ -1,13 +1,12 @@
 #ifndef LEVEL_READ_CURSOR_H
 #define LEVEL_READ_CURSOR_H
-#include "../scanner/min_max_heap.h"
 #include "../scanner/scanner.h"
 #include "btree.h"
 #include "conf.h"
 #include "level_cursor.h"
 #include <stdbool.h>
 #include <stdint.h>
-
+struct sh_heap_node;
 enum rcursor_state {
 	COMP_CUR_INIT,
 	COMP_CUR_FIND_LEAF,

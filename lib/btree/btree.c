@@ -24,6 +24,7 @@
 #include "dynamic_leaf.h"
 #include "gc.h"
 #include "index_node.h"
+#include "key_splice.h"
 #include "lsn.h"
 #include "segment_allocator.h"
 
