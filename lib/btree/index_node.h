@@ -22,7 +22,7 @@
 #define MAX_PIVOT_SIZE (MAX_KEY_SPLICE_SIZE + sizeof(struct pivot_pointer))
 struct key_splice;
 struct index_node;
-
+struct key_splice;
 struct pivot_pointer {
 	uint64_t child_offt;
 };

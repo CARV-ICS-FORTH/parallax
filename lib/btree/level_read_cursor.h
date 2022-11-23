@@ -6,6 +6,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 struct sh_heap_node;
+
 enum rcursor_state {
 	COMP_CUR_INIT,
 	COMP_CUR_FIND_LEAF,
