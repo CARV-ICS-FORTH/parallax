@@ -174,13 +174,13 @@ struct segment_header *get_segment_for_lsm_level_IO(struct db_descriptor *db_des
 	return new_segment;
 }
 
-index_node_t seg_get_index_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id, char reason)
+struct index_node *seg_get_index_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id, char reason)
 {
 	(void)reason;
 	return get_space(db_desc, level_id, tree_id, index_node_get_size());
 }
 
-void seg_free_index_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id, index_node_t inode)
+void seg_free_index_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id, struct index_node *inode)
 {
 	//leave for future use
 	(void)db_desc;

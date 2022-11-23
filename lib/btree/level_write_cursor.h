@@ -2,15 +2,16 @@
 #define LEVEL_WRITE_CURSOR_H
 #include "btree.h"
 #include "conf.h"
+#include "index_node.h"
 #include "level_cursor.h"
 #include <stdbool.h>
 #include <stdint.h>
-struct WCURSOR_level_write_cursor {
+struct wcursor_level_write_cursor {
 	char segment_buf[MAX_HEIGHT][SEGMENT_SIZE];
 	uint64_t segment_offt[MAX_HEIGHT];
 	uint64_t first_segment_btree_level_offt[MAX_HEIGHT];
 	uint64_t last_segment_btree_level_offt[MAX_HEIGHT];
-	index_node_t last_index[MAX_HEIGHT];
+	struct index_node *last_index[MAX_HEIGHT];
 	struct bt_dynamic_leaf_node *last_leaf;
 	struct chunk_LRU_cache *medium_log_LRU_cache;
 	struct medium_log_segment_map *medium_log_segment_map;
@@ -23,10 +24,31 @@ struct WCURSOR_level_write_cursor {
 	int fd;
 };
 
-extern struct WCURSOR_level_write_cursor *WCURSOR_init_write_cursor(int level_id, struct db_handle *handle, int tree_id,
-								    int file_desc);
-extern bool WCURSOR_append_entry_to_leaf_node(struct WCURSOR_level_write_cursor *cursor,
-					      struct comp_parallax_key *kv_pair);
-extern void WCURSOR_flush_write_cursor(struct WCURSOR_level_write_cursor *w_cursor);
-extern void WCURSOR_close_write_cursor(struct WCURSOR_level_write_cursor *w_cursor);
+/**
+ * @brief Creates a level cursor to write a new level which is the result of a compaction.
+ * @param level_id the id of the level that we write.
+ * @param handle the descriptor of the database.
+ * @param tree_id the id within the level where we need to store the new index.
+ * @returns a pointer to the cursor.
+ */
+struct wcursor_level_write_cursor *wcursor_init_write_cursor(int level_id, struct db_handle *handle, int tree_id);
+
+/**
+ * @brief Appends a new KV pair into the level.
+ * @param cursor pointer to the write cursor
+ * @param kv_pair the kv_pair to insert in the level.
+ * @returns true if success otherwise false on failure.
+ */
+bool wcursor_append_KV_pair(struct wcursor_level_write_cursor *cursor, struct comp_parallax_key *kv_pair);
+
+/**
+ * @brief Flushes any in memory state of the cursor to the device.
+ */
+void wcursor_flush_write_cursor(struct wcursor_level_write_cursor *w_cursor);
+
+/**
+ * @brief Flushes any pending in memory state to the device and releases any
+ * resources associated with the cursor.
+ */
+void wcursor_close_write_cursor(struct wcursor_level_write_cursor *w_cursor);
 #endif

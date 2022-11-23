@@ -18,7 +18,7 @@
 #include <stdint.h>
 #include <sys/types.h>
 #include <uthash.h>
-struct WCURSOR_level_write_cursor;
+struct wcursor_level_write_cursor;
 struct write_dynamic_leaf_args;
 
 struct chunk_list {
@@ -54,8 +54,8 @@ void add_to_LRU(struct chunk_LRU_cache *chunk_cache, uint64_t chunk_offt, char *
 int chunk_exists_in_LRU(struct chunk_LRU_cache *chunk_cache, uint64_t chunk_offt);
 char *get_chunk_from_LRU(struct chunk_LRU_cache *chunk_cache, uint64_t chunk_offt);
 void destroy_LRU(struct chunk_LRU_cache *chunk_cache);
-void fetch_segment_chunk(struct WCURSOR_level_write_cursor *w_cursor, uint64_t log_chunk_dev_offt, char *segment_buf,
+void fetch_segment_chunk(struct wcursor_level_write_cursor *w_cursor, uint64_t log_chunk_dev_offt, char *segment_buf,
 			 ssize_t size);
-char *fetch_kv_from_LRU(struct write_dynamic_leaf_args *args, struct WCURSOR_level_write_cursor *w_cursor);
+char *fetch_kv_from_LRU(struct write_dynamic_leaf_args *args, struct wcursor_level_write_cursor *w_cursor);
 
 #endif

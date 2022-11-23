@@ -25,7 +25,8 @@ struct key_splice {
 	char data[];
 } __attribute__((packed));
 
-extern key_splice_t create_key_splice(char *key, int32_t key_size, char *buffer, int32_t buffer_size, bool *malloced)
+extern struct key_splice *key_splice_create(char *key, int32_t key_size, char *buffer, int32_t buffer_size,
+					    bool *malloced)
 {
 	*malloced = false;
 	if (key_size >= T_MAX) {
@@ -36,12 +37,11 @@ extern key_splice_t create_key_splice(char *key, int32_t key_size, char *buffer,
 		log_debug("Possible overflow buffer_size is %d max size is %d", key_size, T_MAX);
 		return NULL;
 	}
-	key_splice_t key_splice = (key_splice_t)buffer;
+	struct key_splice *key_splice = (struct key_splice *)buffer;
 	uint32_t key_splice_size = sizeof(struct key_splice) + key_size;
 	if ((int32_t)key_splice_size > buffer_size) {
-		log_debug("Buffer is not large enough to host a key_splice needs: %lu has: %u",
-			  sizeof(struct key_splice) + key_size, buffer_size);
-		assert(0);
+		// log_debug("Buffer is not large enough to host a key_splice needs: %lu has: %u",
+		// 	  sizeof(struct key_splice) + key_size, buffer_size);
 		key_splice = calloc(1UL, sizeof(struct key_splice) + key_size);
 		*malloced = true;
 	}
@@ -49,40 +49,40 @@ extern key_splice_t create_key_splice(char *key, int32_t key_size, char *buffer,
 	memcpy(key_splice->data, key, key_size);
 	return key_splice;
 }
-key_splice_t create_smallest_key(char *buffer, int32_t buffer_size, bool *malloced)
+struct key_splice *key_splice_create_smallest(char *buffer, int32_t buffer_size, bool *malloced)
 {
 	char key[8] = { 0 };
 	int32_t key_size = 1;
-	return create_key_splice(key, key_size, buffer, buffer_size, malloced);
+	return key_splice_create(key, key_size, buffer, buffer_size, malloced);
 }
 
-inline T get_key_splice_key_size(key_splice_t key)
+inline T key_splice_get_key_size(struct key_splice *key)
 {
 	return key->key_size;
 }
 
-inline char *get_key_splice_key_offset(key_splice_t key)
+inline char *key_splice_get_key_offset(struct key_splice *key)
 {
 	return key->data;
 }
 
-inline void set_key_size_of_key_splice(key_splice_t key, T key_size)
+inline void key_splice_set_key_size(struct key_splice *key, T key_size)
 {
 	key->key_size = key_size;
 }
 
-inline void set_key_splice_key_offset(key_splice_t key, char *key_buf)
+inline void key_splice_set_key_offset(struct key_splice *key, char *key_buf)
 {
-	memcpy(get_key_splice_key_offset(key), key_buf, get_key_splice_key_size(key));
+	memcpy(key_splice_get_key_offset(key), key_buf, key_splice_get_key_size(key));
 }
 
-inline T get_key_splice_metadata_size(void)
+inline T key_splice_get_metadata_size(void)
 {
 	return sizeof(struct key_splice);
 }
 
 // cppcheck-suppress unusedFunction
-uint32_t get_key_splice_max_size(void)
+uint32_t key_splice_get_max_size(void)
 {
 	return KV_SPLICE_MAX_KEY_SIZE + sizeof(struct key_splice);
 }

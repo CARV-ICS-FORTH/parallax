@@ -22,5 +22,14 @@ struct medium_log_segment_map {
 	uint64_t dev_offt;
 	UT_hash_handle hh;
 };
+
+/**
+ * @brief compaction_worker executes compaction function in the context of a
+ * pthread. It compacts two levels and writes the resulting level in the
+ * device. Src level can be either in memory (L0) or on the device. Dst level
+ * is always on the device.
+ * @param compaction_request contains the necessary info for performing the
+ * compaction.
+ */
 extern void *compaction(void *compaction_request);
 #endif

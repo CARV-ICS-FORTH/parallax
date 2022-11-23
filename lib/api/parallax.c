@@ -89,7 +89,7 @@ void par_get(par_handle handle, struct par_key *key, struct par_value *value, co
 	/*Serialize user key in KEY_SPLICE*/
 	char buf[MAX_KEY_SPLICE_SIZE];
 	bool malloced = false;
-	key_splice_t key_splice = create_key_splice((char *)key->data, key->size, buf, sizeof(buf), &malloced);
+	struct key_splice *key_splice = key_splice_create((char *)key->data, key->size, buf, sizeof(buf), &malloced);
 
 	struct db_handle *hd = (struct db_handle *)handle;
 
@@ -159,8 +159,8 @@ par_ret_code par_exists(par_handle handle, struct par_key *key)
 	/*Serialize user key in KV_FORMAT*/
 	char buf[PAR_MAX_PREALLOCATED_SIZE];
 	bool malloced = false;
-	key_splice_t key_splice =
-		create_key_splice((char *)key->data, key->size, buf, PAR_MAX_PREALLOCATED_SIZE, &malloced);
+	struct key_splice *key_splice =
+		key_splice_create((char *)key->data, key->size, buf, PAR_MAX_PREALLOCATED_SIZE, &malloced);
 
 	struct db_handle *hd = (struct db_handle *)handle;
 	/*Prepare lookup reply*/
@@ -208,22 +208,22 @@ par_scanner par_init_scanner(par_handle handle, struct par_key *key, par_seek_mo
 
 	char seek_key_buffer[PAR_MAX_PREALLOCATED_SIZE];
 
-	key_splice_t seek_key_splice = NULL;
+	struct key_splice *seek_key_splice = NULL;
 	bool malloced = false;
 	enum SEEK_SCANNER_MODE scanner_mode = 0;
 	switch (mode) {
 	case PAR_GREATER:
 		scanner_mode = GREATER;
-		seek_key_splice = create_key_splice((char *)key->data, key->size, seek_key_buffer,
+		seek_key_splice = key_splice_create((char *)key->data, key->size, seek_key_buffer,
 						    PAR_MAX_PREALLOCATED_SIZE, &malloced);
 		break;
 	case PAR_GREATER_OR_EQUAL:
-		seek_key_splice = create_key_splice((char *)key->data, key->size, seek_key_buffer,
+		seek_key_splice = key_splice_create((char *)key->data, key->size, seek_key_buffer,
 						    PAR_MAX_PREALLOCATED_SIZE, &malloced);
 		break;
 	case PAR_FETCH_FIRST:
 		scanner_mode = GREATER_OR_EQUAL;
-		seek_key_splice = create_smallest_key(seek_key_buffer, PAR_MAX_PREALLOCATED_SIZE, &malloced);
+		seek_key_splice = key_splice_create_smallest(seek_key_buffer, PAR_MAX_PREALLOCATED_SIZE, &malloced);
 		break;
 	default:
 		*error_message = "Unknown seek scanner mode";

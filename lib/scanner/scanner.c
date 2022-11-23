@@ -371,7 +371,7 @@ int32_t level_scanner_get_next(level_scanner *sc)
 				break;
 			}
 
-			index_iterator_init((index_node_t)stack_element.node, &stack_element.iterator);
+			index_iterator_init((struct index_node *)stack_element.node, &stack_element.iterator);
 			break;
 
 		case POP_STACK:
@@ -402,13 +402,13 @@ int32_t level_scanner_seek(level_scanner *level_sc, void *start_key_buf, SEEK_SC
 {
 	uint32_t level_id = level_sc->level_id;
 
-	key_splice_t start_key_splice = start_key_buf;
+	struct key_splice *start_key_splice = start_key_buf;
 	// cppcheck-suppress variableScope
 	char smallest_possible_pivot[SMALLEST_POSSIBLE_PIVOT_SIZE];
 	if (!start_key_splice) {
 		bool malloced = false;
 		start_key_splice =
-			create_smallest_key(smallest_possible_pivot, SMALLEST_POSSIBLE_PIVOT_SIZE, &malloced);
+			key_splice_create_smallest(smallest_possible_pivot, SMALLEST_POSSIBLE_PIVOT_SIZE, &malloced);
 		if (malloced) {
 			log_fatal("Buffer not large enough to create smallest possible key_splice");
 			_exit(EXIT_FAILURE);
@@ -442,7 +442,7 @@ int32_t level_scanner_seek(level_scanner *level_sc, void *start_key_buf, SEEK_SC
 	struct node_header *node = level_sc->root;
 	while (node->type != leafNode && node->type != leafRootNode) {
 		element.node = node;
-		index_iterator_init_with_key((index_node_t)element.node, &element.iterator, start_key_splice);
+		index_iterator_init_with_key((struct index_node *)element.node, &element.iterator, start_key_splice);
 
 		if (!index_iterator_is_valid(&element.iterator)) {
 			log_fatal("Invalid index node iterator during seek");
@@ -470,12 +470,12 @@ int32_t level_scanner_seek(level_scanner *level_sc, void *start_key_buf, SEEK_SC
 	// binary saerch of dynamic leaf accepts only kv_formated or kv_prefixed keys, but the start_key of the scanner
 	// follows the key_size | key format
 	// TODO: (@geostyl) make the binary search aware of the scanner format?
-	size_t key_splice_size = get_key_splice_key_size(start_key_splice) + get_kv_metadata_size();
+	size_t key_splice_size = key_splice_get_key_size(start_key_splice) + get_kv_metadata_size();
 	struct kv_splice *kv_formated_start_key = (struct kv_splice *)calloc(1UL, key_splice_size);
-	set_key_size(kv_formated_start_key, get_key_splice_key_size(start_key_splice));
+	set_key_size(kv_formated_start_key, key_splice_get_key_size(start_key_splice));
 	set_value_size(kv_formated_start_key, UINT32_MAX);
-	set_key(kv_formated_start_key, get_key_splice_key_offset(start_key_splice),
-		get_key_splice_key_size(start_key_splice));
+	set_key(kv_formated_start_key, key_splice_get_key_offset(start_key_splice),
+		key_splice_get_key_size(start_key_splice));
 	req.key_value_buf = (char *)kv_formated_start_key;
 
 	db_handle handle = { .db_desc = db_desc, .volume_desc = NULL };
@@ -583,7 +583,7 @@ void perf_preorder_count_leaf_capacity(level_descriptor *level, node_header *roo
 	}
 
 	node_header *node;
-	index_node_t *inode = (index_node_t)root;
+	struct index_node *inode = (struct index_node *)root;
 	for (uint64_t i = 0; i < root->num_entries; i++) {
 		node = REAL_ADDRESS(inode->p[i].left[0]);
 		perf_preorder_count_leaf_capacity(level, node);

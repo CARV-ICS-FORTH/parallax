@@ -42,28 +42,28 @@ uint64_t index_node_get_size(void)
 	return sizeof(struct index_node);
 }
 
-struct pivot_pointer *index_get_pivot_pointer(key_splice_t key_splice)
+struct pivot_pointer *index_get_pivot_pointer(struct key_splice *key_splice)
 {
-	uint32_t key_size = get_key_splice_key_size(key_splice) + get_key_splice_metadata_size();
+	uint32_t key_size = key_splice_get_key_size(key_splice) + key_splice_get_metadata_size();
 	return (struct pivot_pointer *)((char *)key_splice + key_size);
 }
 
-static struct index_slot_array_entry *index_get_slot_array(index_node_t node)
+static struct index_slot_array_entry *index_get_slot_array(struct index_node *node)
 {
 	char *node_array = (char *)node;
 	return (struct index_slot_array_entry *)&node_array[sizeof(struct node_header)];
 }
 
-static inline size_t get_pivot_size(key_splice_t pivot_splice)
+static inline size_t get_pivot_size(struct key_splice *pivot_splice)
 {
-	return sizeof(struct pivot_pointer) + get_key_splice_key_size(pivot_splice) + get_key_splice_metadata_size();
+	return sizeof(struct pivot_pointer) + key_splice_get_key_size(pivot_splice) + key_splice_get_metadata_size();
 }
 
-void index_add_guard(index_node_t node, uint64_t child_node_dev_offt)
+void index_add_guard(struct index_node *node, uint64_t child_node_dev_offt)
 {
 	char guard_buf[SMALLEST_KEY_SPLICE_SIZE + sizeof(struct pivot_pointer)] = { 0 };
 	bool malloced = false;
-	key_splice_t guard_splice = create_smallest_key(guard_buf, SMALLEST_KEY_SPLICE_SIZE, &malloced);
+	struct key_splice *guard_splice = key_splice_create_smallest(guard_buf, SMALLEST_KEY_SPLICE_SIZE, &malloced);
 	if (malloced) {
 		log_fatal("Guard buffer for index node is not enough");
 		_exit(EXIT_FAILURE);
@@ -80,12 +80,12 @@ void index_add_guard(index_node_t node, uint64_t child_node_dev_offt)
 	slot_array[0].pivot = node->header.key_log_size;
 }
 
-bool index_is_empty(index_node_t node)
+bool index_is_empty(struct index_node *node)
 {
 	return node->header.num_entries == 0;
 }
 
-void index_init_node(enum add_guard_option option, index_node_t node, nodeType_t type)
+void index_init_node(enum add_guard_option option, struct index_node *node, nodeType_t type)
 {
 	if (option != ADD_GUARD && option != DO_NOT_ADD_GUARD) {
 		log_fatal("Unknown guard option");
@@ -116,7 +116,7 @@ static uint32_t index_get_remaining_space(struct index_node *node)
 	return right_border_dev_offt - left_border_dev_offt;
 }
 
-static uint32_t index_get_next_pivot_offt_in_node(index_node_t node, key_splice_t key_splice)
+static uint32_t index_get_next_pivot_offt_in_node(struct index_node *node, struct key_splice *key_splice)
 {
 	uint32_t remaining_space = index_get_remaining_space(node);
 	uint32_t pivot_size = get_pivot_size(key_splice);
@@ -125,17 +125,17 @@ static uint32_t index_get_next_pivot_offt_in_node(index_node_t node, key_splice_
 	return remaining_space <= size_needed ? 0 : node->header.key_log_size - pivot_size;
 }
 
-bool index_is_split_needed(index_node_t node, uint32_t max_pivot_size)
+bool index_is_split_needed(struct index_node *node, uint32_t max_pivot_size)
 {
 	max_pivot_size +=
-		get_key_splice_metadata_size() + sizeof(struct pivot_pointer) + sizeof(struct index_slot_array_entry);
+		key_splice_get_metadata_size() + sizeof(struct pivot_pointer) + sizeof(struct index_slot_array_entry);
 
 	return index_get_remaining_space(node) < max_pivot_size;
 }
 
-static inline key_splice_t get_index_key_splice(index_node_t node, uint16_t offset)
+static inline struct key_splice *get_index_key_splice(struct index_node *node, uint16_t offset)
 {
-	return (key_splice_t)((uint64_t)node + offset);
+	return (struct key_splice *)((uint64_t)node + offset);
 }
 
 /**
@@ -157,7 +157,7 @@ static int32_t index_search_get_pos(struct index_node *node, void *lookup_key, e
 	while (start <= end) {
 		middle = (start + end) / 2;
 
-		key_splice_t index_splice = get_index_key_splice(node, slot_array[middle].pivot);
+		struct key_splice *index_splice = get_index_key_splice(node, slot_array[middle].pivot);
 		// log_debug("Comparing index key size %u -- %s with look up key %s",
 		// 	  get_key_splice_key_size(index_splice), get_key_splice_key_offset(index_splice),
 		// 	  get_key_splice_key_offset(lookup_key));
@@ -178,7 +178,7 @@ static int32_t index_search_get_pos(struct index_node *node, void *lookup_key, e
 	return comparison_return_value > 0 ? middle - 1 : middle;
 }
 
-bool index_set_type(index_node_t node, const nodeType_t node_type)
+bool index_set_type(struct index_node *node, const nodeType_t node_type)
 {
 	if (!node)
 		return false;
@@ -189,14 +189,14 @@ bool index_set_type(index_node_t node, const nodeType_t node_type)
 	return true;
 }
 
-void index_set_height(index_node_t node, int32_t height)
+void index_set_height(struct index_node *node, int32_t height)
 {
 	if (!node)
 		BUG_ON();
 	node->header.height = height;
 }
 
-key_splice_t index_remove_last_pivot_key(index_node_t node)
+struct key_splice *index_remove_last_pivot_key(struct index_node *node)
 {
 	if (!node)
 		return NULL;
@@ -204,34 +204,35 @@ key_splice_t index_remove_last_pivot_key(index_node_t node)
 		return NULL;
 	int32_t position = node->header.num_entries - 1;
 	struct index_slot_array_entry *slot_array = index_get_slot_array(node);
-	key_splice_t index_splice = get_index_key_splice(node, slot_array[position].pivot);
+	struct key_splice *index_splice = get_index_key_splice(node, slot_array[position].pivot);
 	size_t pivot_size = get_pivot_size(index_splice);
-	key_splice_t pivot_copy = calloc(1UL, pivot_size);
+	struct key_splice *pivot_copy = calloc(1UL, pivot_size);
 	memcpy(pivot_copy, index_splice, pivot_size);
 	--node->header.num_entries;
 	return pivot_copy;
 }
 
-static key_splice_t index_search_get_full_pivot(index_node_t node, void *lookup_key, enum KV_type lookup_key_format)
+static struct key_splice *index_search_get_full_pivot(struct index_node *node, void *lookup_key,
+						      enum KV_type lookup_key_format)
 {
 	bool unused = false; // Created here to call the function
 	int32_t position = index_search_get_pos(node, lookup_key, lookup_key_format, &unused);
 
 	struct index_slot_array_entry *slot_array = index_get_slot_array(node);
-	key_splice_t pivot_splice = get_index_key_splice(node, slot_array[position].pivot);
+	struct key_splice *pivot_splice = get_index_key_splice(node, slot_array[position].pivot);
 
 	return pivot_splice;
 }
 
-struct pivot_pointer *index_search_get_pivot(index_node_t node, void *lookup_key, enum KV_type lookup_key_format)
+struct pivot_pointer *index_search_get_pivot(struct index_node *node, void *lookup_key, enum KV_type lookup_key_format)
 {
-	key_splice_t pivot_splice = index_search_get_full_pivot(node, lookup_key, lookup_key_format);
+	struct key_splice *pivot_splice = index_search_get_full_pivot(node, lookup_key, lookup_key_format);
 	return index_get_pivot_pointer(pivot_splice);
 }
 
 uint64_t index_binary_search(struct index_node *node, void *lookup_key, enum KV_type lookup_key_format)
 {
-	key_splice_t index_key_splice = index_search_get_full_pivot(node, lookup_key, lookup_key_format);
+	struct key_splice *index_key_splice = index_search_get_full_pivot(node, lookup_key, lookup_key_format);
 	struct pivot_pointer *piv_pointer = index_get_pivot_pointer(index_key_splice);
 	return piv_pointer->child_offt;
 }
@@ -256,8 +257,8 @@ static bool index_internal_insert_pivot(struct insert_pivot_req *ins_pivot_req, 
 		//so we should move the error reporting inside the function.
 		if (exact_match) {
 			log_fatal("Key  %.*s already present in index node",
-				  get_key_splice_key_size(ins_pivot_req->key_splice),
-				  get_key_splice_key_offset(ins_pivot_req->key_splice));
+				  key_splice_get_key_size(ins_pivot_req->key_splice),
+				  key_splice_get_key_offset(ins_pivot_req->key_splice));
 			BUG_ON();
 		}
 
@@ -267,7 +268,7 @@ static bool index_internal_insert_pivot(struct insert_pivot_req *ins_pivot_req, 
 				sizeof(struct index_slot_array_entry));
 
 		/*Update in-place the left_child. This is ok because we call this function for L0 which is in memory*/
-		key_splice_t left_pivot_key_splice =
+		struct key_splice *left_pivot_key_splice =
 			get_index_key_splice(ins_pivot_req->node, slot_array[position].pivot);
 		// log_debug("Victim key is size: %u key-data: %.*s position: %d num entries %d",
 		// 	  get_key_splice_key_size(left_pivot_key_splice),
@@ -280,7 +281,7 @@ static bool index_internal_insert_pivot(struct insert_pivot_req *ins_pivot_req, 
 
 	/*append the actual pivot --> <key_size><key><pivot>*/
 	char *pivot_address = (char *)ins_pivot_req->node;
-	size_t pivot_key_size = get_key_splice_key_size(ins_pivot_req->key_splice) + get_key_splice_metadata_size();
+	size_t pivot_key_size = key_splice_get_key_size(ins_pivot_req->key_splice) + key_splice_get_metadata_size();
 	memcpy(&pivot_address[pivot_offt_in_node], ins_pivot_req->key_splice, pivot_key_size);
 	memcpy(pivot_address + pivot_offt_in_node + pivot_key_size, ins_pivot_req->right_child,
 	       sizeof(*ins_pivot_req->right_child));
@@ -306,7 +307,7 @@ bool index_insert_pivot(struct insert_pivot_req *ins_pivot_req)
 }
 
 static void index_internal_iterator_init(struct index_node *node, struct index_node_iterator *iterator,
-					 key_splice_t key_splice)
+					 struct key_splice *key_splice)
 {
 	iterator->node = node;
 
@@ -329,7 +330,8 @@ static void index_internal_iterator_init(struct index_node *node, struct index_n
 	iterator->position = index_search_get_pos(node, key_splice, INDEX_KEY_TYPE, &unused_match);
 }
 
-void index_iterator_init_with_key(index_node_t node, struct index_node_iterator *iterator, key_splice_t key_splice)
+void index_iterator_init_with_key(struct index_node *node, struct index_node_iterator *iterator,
+				  struct key_splice *key_splice)
 {
 	index_internal_iterator_init(node, iterator, key_splice);
 }
@@ -346,12 +348,12 @@ uint8_t index_iterator_is_valid(struct index_node_iterator *iterator)
 
 struct pivot_pointer *index_iterator_get_pivot_pointer(struct index_node_iterator *iterator)
 {
-	key_splice_t piv_key_splice = index_iterator_get_pivot_key(iterator);
+	struct key_splice *piv_key_splice = index_iterator_get_pivot_key(iterator);
 	struct pivot_pointer *piv_pointer = index_get_pivot_pointer(piv_key_splice);
 	return piv_pointer;
 }
 
-key_splice_t index_iterator_get_pivot_key(struct index_node_iterator *iterator)
+struct key_splice *index_iterator_get_pivot_key(struct index_node_iterator *iterator)
 {
 	if (!iterator)
 		BUG_ON();
@@ -375,7 +377,7 @@ void index_split_node(struct index_node_split_request *request, struct index_nod
 
 	struct index_node_iterator iterator = { 0 };
 	index_iterator_init(request->node, &iterator);
-	key_splice_t piv_key_splice = index_iterator_get_pivot_key(&iterator);
+	struct key_splice *piv_key_splice = index_iterator_get_pivot_key(&iterator);
 	index_init_node(DO_NOT_ADD_GUARD, request->left_child, internalNode);
 
 	int32_t curr_entry = 0;
@@ -394,13 +396,13 @@ void index_split_node(struct index_node_split_request *request, struct index_nod
 	}
 
 	struct index_slot_array_entry *slot_array = index_get_slot_array(request->node);
-	key_splice_t middle_key_splice = get_index_key_splice(request->node, slot_array[curr_entry].pivot);
+	struct key_splice *middle_key_splice = get_index_key_splice(request->node, slot_array[curr_entry].pivot);
 	// memcpy(&middle_key, middle_key, PIVOT_KEY_SIZE(middle_key));
 	if (reply->pivot_buf_size < get_pivot_size(middle_key_splice)) {
 		log_fatal("Buffer overflow in split index node provided buffer size is %u pivot size is %lu",
 			  reply->pivot_buf_size, get_pivot_size(middle_key_splice));
-		log_fatal("Middle key is size:%u key-data:%.*s", get_key_splice_key_size(middle_key_splice),
-			  get_key_splice_key_size(middle_key_splice), get_key_splice_key_offset(middle_key_splice));
+		log_fatal("Middle key is size:%u key-data:%.*s", key_splice_get_key_size(middle_key_splice),
+			  key_splice_get_key_size(middle_key_splice), key_splice_get_key_offset(middle_key_splice));
 		assert(0);
 		_exit(EXIT_FAILURE);
 	}
@@ -436,7 +438,7 @@ void index_split_node(struct index_node_split_request *request, struct index_nod
 	// return result;
 }
 
-int index_key_cmp(key_splice_t index_key_splice, char *lookup_key, enum KV_type lookup_key_format)
+int index_key_cmp(struct key_splice *index_key_splice, char *lookup_key, enum KV_type lookup_key_format)
 {
 	assert(lookup_key_format != KV_PREFIX);
 	int32_t size = 0;
@@ -444,30 +446,30 @@ int index_key_cmp(key_splice_t index_key_splice, char *lookup_key, enum KV_type 
 
 	if (lookup_key_format == KV_FORMAT) {
 		struct kv_splice *key = (struct kv_splice *)lookup_key;
-		size = get_key_splice_key_size(index_key_splice) <= get_key_size(key) ?
-			       get_key_splice_key_size(index_key_splice) :
+		size = key_splice_get_key_size(index_key_splice) <= get_key_size(key) ?
+			       key_splice_get_key_size(index_key_splice) :
 			       get_key_size(key);
-		ret = memcmp(get_key_splice_key_offset(index_key_splice), get_key_offset_in_kv(key), size);
-		return ret != 0 ? ret : get_key_splice_key_size(index_key_splice) - get_key_size(key);
+		ret = memcmp(key_splice_get_key_offset(index_key_splice), get_key_offset_in_kv(key), size);
+		return ret != 0 ? ret : key_splice_get_key_size(index_key_splice) - get_key_size(key);
 	}
 
 	if (lookup_key_format == INDEX_KEY_TYPE) {
 		/* this should only(!) happend when we are inserting and new key into an index node (after a split) */
-		key_splice_t p_key_splice = (key_splice_t)(lookup_key);
-		size = get_key_splice_key_size(index_key_splice) <= get_key_splice_key_size(p_key_splice) ?
-			       get_key_splice_key_size(index_key_splice) :
-			       get_key_splice_key_size(p_key_splice);
-		ret = memcmp(get_key_splice_key_offset(index_key_splice), get_key_splice_key_offset(p_key_splice),
+		struct key_splice *p_key_splice = (struct key_splice *)(lookup_key);
+		size = key_splice_get_key_size(index_key_splice) <= key_splice_get_key_size(p_key_splice) ?
+			       key_splice_get_key_size(index_key_splice) :
+			       key_splice_get_key_size(p_key_splice);
+		ret = memcmp(key_splice_get_key_offset(index_key_splice), key_splice_get_key_offset(p_key_splice),
 			     size);
 		return ret != 0 ? ret :
-				  get_key_splice_key_size(index_key_splice) - get_key_splice_key_size(p_key_splice);
+				  key_splice_get_key_size(index_key_splice) - key_splice_get_key_size(p_key_splice);
 	}
 
 	/* lookup_key is KEY_TYPE*/
-	key_splice_t p_key = (key_splice_t)(lookup_key);
-	int32_t p_key_size = get_key_splice_key_size(p_key);
-	size = get_key_splice_key_size(index_key_splice) <= p_key_size ? get_key_splice_key_size(index_key_splice) :
+	struct key_splice *p_key = (struct key_splice *)(lookup_key);
+	int32_t p_key_size = key_splice_get_key_size(p_key);
+	size = key_splice_get_key_size(index_key_splice) <= p_key_size ? key_splice_get_key_size(index_key_splice) :
 									 p_key_size;
-	ret = memcmp(get_key_splice_key_offset(index_key_splice), get_key_splice_key_offset(p_key), size);
-	return ret != 0 ? ret : get_key_splice_key_size(index_key_splice) - p_key_size;
+	ret = memcmp(key_splice_get_key_offset(index_key_splice), key_splice_get_key_offset(p_key), size);
+	return ret != 0 ? ret : key_splice_get_key_size(index_key_splice) - p_key_size;
 }

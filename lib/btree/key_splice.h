@@ -15,19 +15,72 @@
 #define KEY_SPLICE_H
 #include <stdbool.h>
 #include <stdint.h>
-typedef struct key_splice *key_splice_t;
+struct key_splice;
 #define SMALLEST_KEY_SPLICE_SIZE (sizeof(int32_t) + 1)
 #define MAX_KEY_SIZE 255
 #define MAX_KEY_SPLICE_SIZE (MAX_KEY_SIZE + sizeof(int32_t))
-#define T int32_t
-extern key_splice_t create_key_splice(char *key, int32_t key_size, char *buffer, int32_t buffer_size, bool *malloced);
-extern key_splice_t create_smallest_key(char *buffer, int32_t buffer_size, bool *malloced);
-extern T get_key_splice_key_size(key_splice_t key);
-extern T get_key_splice_metadata_size(void);
-extern char *get_key_splice_key_offset(key_splice_t key);
 
-extern void set_key_size_of_key_splice(key_splice_t key, T key_size);
-extern void set_key_splice_key_offset(key_splice_t key, char *key_buf);
-uint32_t get_key_splice_max_size(void);
-#undef T
+/**
+ * @brief Creates a key_splice object. It has two modes: If a buffer is large
+ * enough to host the key_splice it uses this buffer and sets malloced to
+ * false. If the buffer does not have enough space it allocates a new buffer
+ * that is large enough to host the key_splice and sets malloced to true.
+ * @param key that key_splice will store.
+ * @param key_size the size of the key.
+ * @param buffer pointer to the buffer that will host the key_splice. If the
+ * application wants to force create_key_splice to allocate a buffer set it to
+ * null.
+ * @param The size of the provided buffer. If the application wants to force
+ * create_key_splice to allocate a buffer set it to 0.
+ * @param malloced in/out variable that indicates if create_key_splice has
+ * allocated a buffer because the provided buffer was not large enough to host
+ * the key_splice.
+ */
+struct key_splice *key_splice_create(char *key, int32_t key_size, char *buffer, int32_t buffer_size, bool *malloced);
+
+/**
+ * @brief Creates the smallest possible key_splice. If the provided is large
+ * enough it uses it to store the key_splice. Otherwise, it internally
+ * allocates a buffer and sets malloced to true.
+ * @param buffer the buffer to store the key_splice. If application want to
+ * force allocation set it to NULL.
+ * @param buffer_size the size of the provided buffer to host the key_splice.
+ * If the application wants to force allocation set it to 0.
+ * @param malloced in/out variable that indicates if create_key_splice has
+ * allocated a buffer because the provided buffer was not large enough to host
+ */
+struct key_splice *key_splice_create_smallest(char *buffer, int32_t buffer_size, bool *malloced);
+
+/**
+ * @brief Returns the size of the key
+ * @param pointer to the key_splice.
+ * @returns the size of the kye.
+ */
+int32_t key_splice_get_key_size(struct key_splice *key);
+
+/**
+ * @brief Returns the additional size of the metadata that key_splice uses
+ * internally to store a key. It is useful in cases when an application wants
+ * to calculate the real size of a key_splice for a given key that it needs to
+ * store.
+ * @return the size of the metadata.
+ */
+int32_t key_splice_get_metadata_size(void);
+
+/**
+ * @bries returns the pointer inside the key_splice where the actual key is stored.
+ * @param key pointer to the key_splice.
+ * @returns a pointer inside the key_splice where the key starts
+ */
+char *key_splice_get_key_offset(struct key_splice *key);
+
+/**
+ * @bries Sets the size of the key_splice.
+ * @param key pointer to the key_splice.
+ * @param key_size the size of the key to set.
+ */
+void key_splice_set_key_size(struct key_splice *key, int32_t key_size);
+
+void key_splice_set_key_offset(struct key_splice *key, char *key_buf);
+uint32_t key_splice_get_max_size(void);
 #endif

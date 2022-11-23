@@ -17,7 +17,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-static void WCURSOR_write_segment(char *buffer, uint64_t dev_offt, uint32_t buf_offt, uint32_t size, int fd)
+static void wcursor_write_segment(char *buffer, uint64_t dev_offt, uint32_t buf_offt, uint32_t size, int fd)
 {
 #if 0
 	struct node_header *n = (struct node_header *)&buffer[sizeof(struct segment_header)];
@@ -55,7 +55,6 @@ static void WCURSOR_write_segment(char *buffer, uint64_t dev_offt, uint32_t buf_
 		}
 		if (padded)
 			break;
-		assert(num_leaves == 255);
 		break;
 	}
 	case paddedSpace:
@@ -77,7 +76,7 @@ static void WCURSOR_write_segment(char *buffer, uint64_t dev_offt, uint32_t buf_
 	}
 }
 
-static void WCURSOR_init_dynamic_leaf(struct bt_dynamic_leaf_node *leaf)
+static void wcursor_init_dynamic_leaf(struct bt_dynamic_leaf_node *leaf)
 {
 	leaf->header.type = leafNode;
 	leaf->header.num_entries = 0;
@@ -87,7 +86,7 @@ static void WCURSOR_init_dynamic_leaf(struct bt_dynamic_leaf_node *leaf)
 	leaf->header.height = 0;
 }
 
-static void WCURSOR_get_space(struct WCURSOR_level_write_cursor *w_cursor, uint32_t height, nodeType_t type)
+static void wcursor_get_space(struct wcursor_level_write_cursor *w_cursor, uint32_t height, nodeType_t type)
 {
 	assert(height < MAX_HEIGHT);
 
@@ -117,7 +116,7 @@ static void WCURSOR_get_space(struct WCURSOR_level_write_cursor *w_cursor, uint3
 
 				assert(new_device_segment);
 				assert(current_segment_mem_buffer->next_segment);
-				WCURSOR_write_segment(w_cursor->segment_buf[0],
+				wcursor_write_segment(w_cursor->segment_buf[0],
 						      w_cursor->last_segment_btree_level_offt[0], 0, SEGMENT_SIZE,
 						      w_cursor->fd);
 			}
@@ -132,7 +131,7 @@ static void WCURSOR_get_space(struct WCURSOR_level_write_cursor *w_cursor, uint3
 		w_cursor->last_leaf =
 			(struct bt_dynamic_leaf_node
 				 *)(&w_cursor->segment_buf[0][(w_cursor->segment_offt[0] % SEGMENT_SIZE)]);
-		WCURSOR_init_dynamic_leaf(w_cursor->last_leaf);
+		wcursor_init_dynamic_leaf(w_cursor->last_leaf);
 		w_cursor->segment_offt[0] += level_leaf_size;
 		break;
 	}
@@ -160,7 +159,7 @@ static void WCURSOR_get_space(struct WCURSOR_level_write_cursor *w_cursor, uint3
 				assert(new_device_segment);
 				assert(current_segment_mem_buffer->next_segment);
 
-				WCURSOR_write_segment(w_cursor->segment_buf[height],
+				wcursor_write_segment(w_cursor->segment_buf[height],
 						      w_cursor->last_segment_btree_level_offt[height], 0, SEGMENT_SIZE,
 						      w_cursor->fd);
 			}
@@ -172,7 +171,8 @@ static void WCURSOR_get_space(struct WCURSOR_level_write_cursor *w_cursor, uint3
 			current_segment_mem_buffer->nodetype = type;
 		}
 		w_cursor->last_index[height] =
-			(index_node_t)&w_cursor->segment_buf[height][w_cursor->segment_offt[height] % SEGMENT_SIZE];
+			(struct index_node *)&w_cursor
+				->segment_buf[height][w_cursor->segment_offt[height] % SEGMENT_SIZE];
 		w_cursor->segment_offt[height] += index_node_get_size();
 		break;
 	}
@@ -182,30 +182,29 @@ static void WCURSOR_get_space(struct WCURSOR_level_write_cursor *w_cursor, uint3
 	}
 }
 
-struct WCURSOR_level_write_cursor *WCURSOR_init_write_cursor(int level_id, struct db_handle *handle, int tree_id,
-							     int file_desc)
+struct wcursor_level_write_cursor *wcursor_init_write_cursor(int level_id, struct db_handle *handle, int tree_id)
 {
-	struct WCURSOR_level_write_cursor *w_cursor = NULL;
-	if (posix_memalign((void **)&w_cursor, ALIGNMENT, sizeof(struct WCURSOR_level_write_cursor)) != 0) {
+	struct wcursor_level_write_cursor *w_cursor = NULL;
+	if (posix_memalign((void **)&w_cursor, ALIGNMENT, sizeof(struct wcursor_level_write_cursor)) != 0) {
 		log_fatal("Posix memalign failed");
 		perror("Reason: ");
 		BUG_ON();
 	}
-	memset(w_cursor, 0x00, sizeof(struct WCURSOR_level_write_cursor));
+	memset(w_cursor, 0x00, sizeof(struct wcursor_level_write_cursor));
 	w_cursor->level_id = level_id;
 	w_cursor->tree_id = tree_id;
 	w_cursor->tree_height = 0;
-	w_cursor->fd = file_desc;
+	w_cursor->fd = handle->db_desc->db_volume->vol_fd;
 	w_cursor->handle = handle;
 
 	assert(0 == handle->db_desc->levels[w_cursor->level_id].offset[w_cursor->tree_id]);
-	WCURSOR_get_space(w_cursor, 0, leafNode);
+	wcursor_get_space(w_cursor, 0, leafNode);
 	assert(w_cursor->last_segment_btree_level_offt[0]);
 	w_cursor->first_segment_btree_level_offt[0] = w_cursor->last_segment_btree_level_offt[0];
 
 	for (int i = 1; i < MAX_HEIGHT; ++i) {
-		WCURSOR_get_space(w_cursor, i, internalNode);
-		index_init_node(DO_NOT_ADD_GUARD, (index_node_t)w_cursor->last_index[i], internalNode);
+		wcursor_get_space(w_cursor, i, internalNode);
+		index_init_node(DO_NOT_ADD_GUARD, (struct index_node *)w_cursor->last_index[i], internalNode);
 		w_cursor->first_segment_btree_level_offt[i] = w_cursor->last_segment_btree_level_offt[i];
 		assert(w_cursor->last_segment_btree_level_offt[i]);
 	}
@@ -259,7 +258,7 @@ static void assert_level_segments(db_descriptor *db_desc, uint8_t level_id, uint
 }
 #endif
 
-static uint32_t WCURSOR_calc_offt_in_seg(char *buffer_start, char *addr)
+static uint32_t wcursor_calc_offt_in_seg(char *buffer_start, char *addr)
 {
 	uint64_t start = (uint64_t)buffer_start;
 	uint64_t end = (uint64_t)addr;
@@ -273,7 +272,7 @@ static uint32_t WCURSOR_calc_offt_in_seg(char *buffer_start, char *addr)
 	return (end - start) % SEGMENT_SIZE;
 }
 
-void WCURSOR_flush_write_cursor(struct WCURSOR_level_write_cursor *w_cursor)
+void wcursor_flush_write_cursor(struct wcursor_level_write_cursor *w_cursor)
 {
 	uint32_t level_leaf_size = w_cursor->handle->db_desc->levels[w_cursor->level_id].leaf_size;
 	for (int32_t i = 0; i < MAX_HEIGHT; ++i) {
@@ -288,9 +287,6 @@ void WCURSOR_flush_write_cursor(struct WCURSOR_level_write_cursor *w_cursor)
 				*type = paddedSpace;
 			} else if (i > 0 && w_cursor->segment_offt[i] % SEGMENT_SIZE != 0) {
 				type = (uint32_t *)(((char *)w_cursor->last_index[i]) + index_node_get_size());
-				// log_info("Marking padded space for %u segment offt %llu entries of
-				// last node %llu", i,
-				//	 c->segment_offt[i], c->last_index[i]->header.num_entries);
 				*type = paddedSpace;
 			}
 		} else {
@@ -303,21 +299,18 @@ void WCURSOR_flush_write_cursor(struct WCURSOR_level_write_cursor *w_cursor)
 		if (i == w_cursor->tree_height) {
 			log_debug("Merged level has a height off %u", w_cursor->tree_height);
 
-			if (!index_set_type((index_node_t)w_cursor->last_index[i], rootNode)) {
+			if (!index_set_type((struct index_node *)w_cursor->last_index[i], rootNode)) {
 				log_fatal("Error setting node type");
 				BUG_ON();
 			}
 			uint32_t offt =
-				WCURSOR_calc_offt_in_seg(w_cursor->segment_buf[i], (char *)w_cursor->last_index[i]);
+				wcursor_calc_offt_in_seg(w_cursor->segment_buf[i], (char *)w_cursor->last_index[i]);
 			w_cursor->root_offt = w_cursor->last_segment_btree_level_offt[i] + offt;
 			w_cursor->handle->db_desc->levels[w_cursor->level_id].root_r[1] =
 				REAL_ADDRESS(w_cursor->root_offt);
 		}
 
 		struct segment_header *segment_in_mem_buffer = (struct segment_header *)w_cursor->segment_buf[i];
-		//segment_in_mem_buffer->segment_id = c->segment_id_cnt++;
-		//assert(c->segment_id_cnt != 251);
-		/* segment_in_mem_buffer->nodetype = paddedSpace; */
 
 		if (MAX_HEIGHT - 1 == i) {
 			w_cursor->handle->db_desc->levels[w_cursor->level_id].last_segment[1] =
@@ -328,7 +321,7 @@ void WCURSOR_flush_write_cursor(struct WCURSOR_level_write_cursor *w_cursor)
 			assert(w_cursor->last_segment_btree_level_offt[i + 1]);
 			segment_in_mem_buffer->next_segment = (void *)w_cursor->first_segment_btree_level_offt[i + 1];
 		}
-		WCURSOR_write_segment(w_cursor->segment_buf[i], w_cursor->last_segment_btree_level_offt[i], 0,
+		wcursor_write_segment(w_cursor->segment_buf[i], w_cursor->last_segment_btree_level_offt[i], 0,
 				      SEGMENT_SIZE, w_cursor->fd);
 	}
 
@@ -337,14 +330,14 @@ void WCURSOR_flush_write_cursor(struct WCURSOR_level_write_cursor *w_cursor)
 #endif
 }
 
-extern void WCURSOR_close_write_cursor(struct WCURSOR_level_write_cursor *w_cursor)
+extern void wcursor_close_write_cursor(struct wcursor_level_write_cursor *w_cursor)
 {
-	memset(w_cursor, 0x00, sizeof(struct WCURSOR_level_write_cursor));
+	memset(w_cursor, 0x00, sizeof(struct wcursor_level_write_cursor));
 	free(w_cursor);
 }
 
-static void WCURSOR_append_pivot_to_index(int32_t height, struct WCURSOR_level_write_cursor *c, uint64_t left_node_offt,
-					  key_splice_t pivot, uint64_t right_node_offt)
+static void wcursor_append_pivot_to_index(int32_t height, struct wcursor_level_write_cursor *c, uint64_t left_node_offt,
+					  struct key_splice *pivot, uint64_t right_node_offt)
 {
 	//log_debug("Append pivot %.*s left child offt %lu right child offt %lu", pivot->size, pivot->data,
 	//	  left_node_offt, right_node_offt);
@@ -352,7 +345,7 @@ static void WCURSOR_append_pivot_to_index(int32_t height, struct WCURSOR_level_w
 	if (c->tree_height < height)
 		c->tree_height = height;
 
-	index_node_t node = (index_node_t)c->last_index[height];
+	struct index_node *node = (struct index_node *)c->last_index[height];
 
 	if (index_is_empty(node)) {
 		index_add_guard(node, left_node_offt);
@@ -363,26 +356,26 @@ static void WCURSOR_append_pivot_to_index(int32_t height, struct WCURSOR_level_w
 
 	struct insert_pivot_req ins_pivot_req = { .node = node, .key_splice = pivot, .right_child = &right };
 	while (!index_append_pivot(&ins_pivot_req)) {
-		uint32_t offt_l = WCURSOR_calc_offt_in_seg(c->segment_buf[height], (char *)c->last_index[height]);
+		uint32_t offt_l = wcursor_calc_offt_in_seg(c->segment_buf[height], (char *)c->last_index[height]);
 		uint64_t left_index_offt = c->last_segment_btree_level_offt[height] + offt_l;
 
-		key_splice_t pivot_copy_splice = index_remove_last_pivot_key(node);
+		struct key_splice *pivot_copy_splice = index_remove_last_pivot_key(node);
 		struct pivot_pointer *piv_pointer = index_get_pivot_pointer(pivot_copy_splice);
-		WCURSOR_get_space(c, height, internalNode);
-		ins_pivot_req.node = (index_node_t)c->last_index[height];
+		wcursor_get_space(c, height, internalNode);
+		ins_pivot_req.node = (struct index_node *)c->last_index[height];
 		index_init_node(DO_NOT_ADD_GUARD, ins_pivot_req.node, internalNode);
 		index_add_guard(ins_pivot_req.node, piv_pointer->child_offt);
 		index_set_height(ins_pivot_req.node, height);
 
 		/*last leaf updated*/
-		uint32_t offt_r = WCURSOR_calc_offt_in_seg(c->segment_buf[height], (char *)c->last_index[height]);
+		uint32_t offt_r = wcursor_calc_offt_in_seg(c->segment_buf[height], (char *)c->last_index[height]);
 		uint64_t right_index_offt = c->last_segment_btree_level_offt[height] + offt_r;
-		WCURSOR_append_pivot_to_index(height + 1, c, left_index_offt, pivot_copy_splice, right_index_offt);
+		wcursor_append_pivot_to_index(height + 1, c, left_index_offt, pivot_copy_splice, right_index_offt);
 		free(pivot_copy_splice);
 	}
 }
 
-static void WCURSOR_init_medium_log(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
+static void wcursor_init_medium_log(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
 {
 	log_debug("Initializing medium log for db: %s", db_desc->db_superblock->db_name);
 	struct segment_header *segment = seg_get_raw_log_segment(db_desc, MEDIUM_LOG, level_id, tree_id);
@@ -397,7 +390,7 @@ static void WCURSOR_init_medium_log(struct db_descriptor *db_desc, uint8_t level
 	log_debug("Done initializing medium log");
 }
 
-static struct comp_parallax_key WCURSOR_append_medium_L1(struct WCURSOR_level_write_cursor *w_cursor,
+static struct comp_parallax_key wcursor_append_medium_L1(struct wcursor_level_write_cursor *w_cursor,
 							 struct comp_parallax_key *in_key)
 {
 	struct comp_parallax_key medium_inlog_kv = { 0 };
@@ -409,7 +402,7 @@ static struct comp_parallax_key WCURSOR_append_medium_L1(struct WCURSOR_level_wr
 	struct db_descriptor *db_desc = w_cursor->handle->db_desc;
 	if (db_desc->medium_log.head_dev_offt == 0 && db_desc->medium_log.tail_dev_offt == 0 &&
 	    db_desc->medium_log.size == 0) {
-		WCURSOR_init_medium_log(w_cursor->handle->db_desc, w_cursor->level_id, 1);
+		wcursor_init_medium_log(w_cursor->handle->db_desc, w_cursor->level_id, 1);
 	}
 	struct bt_insert_req ins_req;
 	ins_req.metadata.handle = w_cursor->handle;
@@ -456,7 +449,7 @@ static struct comp_parallax_key WCURSOR_append_medium_L1(struct WCURSOR_level_wr
 	return medium_inlog_kv;
 }
 
-bool WCURSOR_append_entry_to_leaf_node(struct WCURSOR_level_write_cursor *cursor, struct comp_parallax_key *kv_pair)
+bool wcursor_append_KV_pair(struct wcursor_level_write_cursor *cursor, struct comp_parallax_key *kv_pair)
 {
 	struct comp_parallax_key medium_kv_inlog = { 0 };
 	struct write_dynamic_leaf_args write_leaf_args = { 0 };
@@ -468,7 +461,7 @@ bool WCURSOR_append_entry_to_leaf_node(struct WCURSOR_level_write_cursor *cursor
 	uint8_t append_to_medium_log = 0;
 
 	if (cursor->level_id == 1 && kv_pair->kv_category == MEDIUM_INPLACE) {
-		medium_kv_inlog = WCURSOR_append_medium_L1(cursor, kv_pair);
+		medium_kv_inlog = wcursor_append_medium_L1(cursor, kv_pair);
 		curr_key = &medium_kv_inlog;
 		append_to_medium_log = 1;
 	}
@@ -533,11 +526,11 @@ bool WCURSOR_append_entry_to_leaf_node(struct WCURSOR_level_write_cursor *cursor
 	if (is_dynamic_leaf_full(split_metadata)) {
 		// log_info("Time for a split!");
 		/*keep current aka left leaf offt*/
-		uint32_t offt_l = WCURSOR_calc_offt_in_seg(cursor->segment_buf[0], (char *)cursor->last_leaf);
+		uint32_t offt_l = wcursor_calc_offt_in_seg(cursor->segment_buf[0], (char *)cursor->last_leaf);
 		left_leaf_offt = cursor->last_segment_btree_level_offt[0] + offt_l;
-		WCURSOR_get_space(cursor, 0, leafNode);
+		wcursor_get_space(cursor, 0, leafNode);
 		/*last leaf updated*/
-		uint32_t offt_r = WCURSOR_calc_offt_in_seg(cursor->segment_buf[0], (char *)cursor->last_leaf);
+		uint32_t offt_r = wcursor_calc_offt_in_seg(cursor->segment_buf[0], (char *)cursor->last_leaf);
 		right_leaf_offt = cursor->last_segment_btree_level_offt[0] + offt_r;
 		new_leaf = 1;
 	}
@@ -583,9 +576,9 @@ bool WCURSOR_append_entry_to_leaf_node(struct WCURSOR_level_write_cursor *cursor
 	//create a pivot key based on the pivot key format | key_size | key | out of the kv_formated key
 	struct kv_splice *kv_buf = (struct kv_splice *)kv_formated_kv;
 	bool malloced = false;
-	key_splice_t new_pivot =
-		create_key_splice(get_key_offset_in_kv(kv_buf), get_key_size(kv_buf), NULL, 0, &malloced);
+	struct key_splice *new_pivot =
+		key_splice_create(get_key_offset_in_kv(kv_buf), get_key_size(kv_buf), NULL, 0, &malloced);
 
-	WCURSOR_append_pivot_to_index(1, cursor, left_leaf_offt, new_pivot, right_leaf_offt);
+	wcursor_append_pivot_to_index(1, cursor, left_leaf_offt, new_pivot, right_leaf_offt);
 	return true;
 }

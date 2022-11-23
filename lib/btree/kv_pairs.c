@@ -146,8 +146,8 @@ void serialize_kv_splice_to_key_splice(char *buf, struct kv_splice *kv_pair)
 	struct key_splice *key_splice = (struct key_splice *)buf;
 	int32_t key_size = get_key_size(kv_pair);
 	char *key = get_key_offset_in_kv(kv_pair);
-	set_key_size_of_key_splice(key_splice, key_size);
-	memcpy(get_key_splice_key_offset(key_splice), key, key_size);
+	key_splice_set_key_size(key_splice, key_size);
+	memcpy(key_splice_get_key_offset(key_splice), key, key_size);
 }
 
 int32_t get_min_possible_kv_size(void)

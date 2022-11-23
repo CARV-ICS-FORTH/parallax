@@ -39,8 +39,8 @@
 
 enum pivot_generation_style { ASCENDING = 1, DESCENDING, RANDOM };
 
-static key_splice_t create_pivot(char *pivot_buf, int pivot_buf_size, const unsigned char *alphabet, uint32_t pivot_num,
-				 uint32_t alphabet_size)
+static struct key_splice *create_pivot(char *pivot_buf, int pivot_buf_size, const unsigned char *alphabet,
+				       uint32_t pivot_num, uint32_t alphabet_size)
 {
 	char pivot_data[256] = { 0 };
 	if (snprintf(pivot_data, sizeof(pivot_data), "%u", pivot_num) < 0) {
@@ -58,7 +58,8 @@ static key_splice_t create_pivot(char *pivot_buf, int pivot_buf_size, const unsi
 	for (int32_t i = prefix_size; i < pivot_size; ++i) {
 		pivot_data[i] = alphabet[rand() % alphabet_size];
 	}
-	key_splice_t new_key_splice = create_key_splice(pivot_data, pivot_size, pivot_buf, pivot_buf_size, &malloced);
+	struct key_splice *new_key_splice =
+		key_splice_create(pivot_data, pivot_size, pivot_buf, pivot_buf_size, &malloced);
 	if (malloced) {
 		log_fatal("Buffer is not large enough");
 		_exit(EXIT_FAILURE);
@@ -68,7 +69,8 @@ static key_splice_t create_pivot(char *pivot_buf, int pivot_buf_size, const unsi
 	return new_key_splice;
 }
 
-static void verify_pivots(index_node_t node, key_splice_t *pivot_splice, uint32_t num_node_keys, uint32_t base)
+static void verify_pivots(struct index_node *node, struct key_splice **pivot_splice, uint32_t num_node_keys,
+			  uint32_t base)
 {
 	/*
    * Verify that you can find all keys and their respective children are
@@ -76,7 +78,7 @@ static void verify_pivots(index_node_t node, key_splice_t *pivot_splice, uint32_
   */
 	char guard_buf[256] = { 0 };
 	bool malloced = false;
-	key_splice_t guard_splice = create_smallest_key(guard_buf, sizeof guard_buf, &malloced);
+	struct key_splice *guard_splice = key_splice_create_smallest(guard_buf, sizeof guard_buf, &malloced);
 	if (malloced) {
 		log_fatal("Buffer not large enough");
 		_exit(EXIT_FAILURE);
@@ -106,7 +108,7 @@ static void verify_pivots(index_node_t node, key_splice_t *pivot_splice, uint32_
 
 static uint32_t insert_and_verify_pivots(db_handle *handle, unsigned char *alphabet, uint32_t size)
 {
-	key_splice_t *pivot = calloc(MAX_NODE_KEYS_NUM, sizeof(key_splice_t));
+	struct key_splice **pivot = calloc(MAX_NODE_KEYS_NUM, sizeof(struct key_splice *));
 
 	/*Create pivots counter as prefix random size and body*/
 	for (uint32_t i = 0; i < MAX_NODE_KEYS_NUM; ++i) {
@@ -133,13 +135,13 @@ static uint32_t insert_and_verify_pivots(db_handle *handle, unsigned char *alpha
 		if (!index_insert_pivot(&ins_pivot_req)) {
 			log_warn(
 				"Failed to insert pivot %.*s after %u pivots because node is full don't worry proceeding to the next step",
-				get_key_splice_key_size((key_splice_t)pivot[num_node_keys]),
-				get_key_splice_key_offset((key_splice_t)pivot[num_node_keys]), num_node_keys);
+				key_splice_get_key_size((struct key_splice *)pivot[num_node_keys]),
+				key_splice_get_key_offset((struct key_splice *)pivot[num_node_keys]), num_node_keys);
 			break;
 		}
-		log_debug("Success inserting key size %u %.*s", get_key_splice_key_size(pivot[num_node_keys]),
-			  get_key_splice_key_size(pivot[num_node_keys]),
-			  get_key_splice_key_offset(pivot[num_node_keys]));
+		log_debug("Success inserting key size %u %.*s", key_splice_get_key_size(pivot[num_node_keys]),
+			  key_splice_get_key_size(pivot[num_node_keys]),
+			  key_splice_get_key_offset(pivot[num_node_keys]));
 	}
 
 	verify_pivots(node, pivot, num_node_keys, PIVOT_BASE);
@@ -153,7 +155,7 @@ static uint32_t insert_and_verify_pivots(db_handle *handle, unsigned char *alpha
 		struct pivot_pointer right_child = { .child_offt = (uint64_t)PIVOT_BASE + i + 1 };
 
 		//log_debug("Descending order %u pivot %.*s", i, pivot[i]->size, pivot[i]->data);
-		assert(get_key_splice_key_size(pivot[i]) < 250);
+		assert(key_splice_get_key_size(pivot[i]) < 250);
 
 		struct insert_pivot_req ins_pivot_req = {
 			.node = node, .left_child = &left_child, .key_splice = pivot[i], .right_child = &right_child

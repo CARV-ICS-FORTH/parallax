@@ -186,9 +186,9 @@ static void *get_workload(void *config)
 		else {
 			malloced = 0;
 			struct key_splice *key_serialized =
-				(struct key_splice *)calloc(1, key.size + get_key_splice_metadata_size());
-			set_key_size_of_key_splice(key_serialized, key.size);
-			set_key_splice_key_offset(key_serialized, (char *)key.data);
+				(struct key_splice *)calloc(1, key.size + key_splice_get_metadata_size());
+			key_splice_set_key_size(key_serialized, key.size);
+			key_splice_set_key_offset(key_serialized, (char *)key.data);
 			value.val_buffer_size = 4096;
 			value.val_buffer = get_buf;
 			par_get_serialized(workload_config->handle, (char *)key_serialized, &value, &error_message);

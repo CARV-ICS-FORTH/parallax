@@ -14,7 +14,7 @@
 #include <string.h>
 #include <unistd.h>
 
-static void WCURSOR_fill_heap_node_from_L0(struct RCURSOR_level_read_cursor *r_cursor, struct sh_heap_node *heap_node)
+static void wcursor_fill_heap_node_from_L0(struct rcursor_level_read_cursor *r_cursor, struct sh_heap_node *heap_node)
 {
 	heap_node->KV = r_cursor->L0_cursor->L0_scanner->keyValue;
 	heap_node->level_id = r_cursor->level_id;
@@ -25,7 +25,7 @@ static void WCURSOR_fill_heap_node_from_L0(struct RCURSOR_level_read_cursor *r_c
 	heap_node->active_tree = r_cursor->tree_id;
 }
 
-static void WCURSOR_fill_heap_node_from_device(struct RCURSOR_level_read_cursor *r_cursor, struct sh_heap_node *h_node)
+static void wcursor_fill_heap_node_from_device(struct rcursor_level_read_cursor *r_cursor, struct sh_heap_node *h_node)
 {
 	h_node->level_id = r_cursor->level_id;
 	h_node->active_tree = r_cursor->tree_id;
@@ -52,17 +52,17 @@ static void WCURSOR_fill_heap_node_from_device(struct RCURSOR_level_read_cursor 
 	}
 }
 
-void WCURSOR_fill_heap_node(struct RCURSOR_level_read_cursor *r_cursor, struct sh_heap_node *h_node)
+void wcursor_fill_heap_node(struct rcursor_level_read_cursor *r_cursor, struct sh_heap_node *h_node)
 {
 	h_node->db_desc = r_cursor->handle->db_desc;
-	0 == r_cursor->level_id ? WCURSOR_fill_heap_node_from_L0(r_cursor, h_node) :
-				  WCURSOR_fill_heap_node_from_device(r_cursor, h_node);
+	0 == r_cursor->level_id ? wcursor_fill_heap_node_from_L0(r_cursor, h_node) :
+				  wcursor_fill_heap_node_from_device(r_cursor, h_node);
 }
 
-struct RCURSOR_level_read_cursor *RCURSOR_init_cursor(db_handle *handle, uint32_t level_id, uint32_t tree_id,
+struct rcursor_level_read_cursor *rcursor_init_cursor(db_handle *handle, uint32_t level_id, uint32_t tree_id,
 						      int file_desc)
 {
-	struct RCURSOR_level_read_cursor *r_cursor = calloc(1UL, sizeof(struct RCURSOR_level_read_cursor));
+	struct rcursor_level_read_cursor *r_cursor = calloc(1UL, sizeof(struct rcursor_level_read_cursor));
 
 	r_cursor->level_id = level_id;
 	r_cursor->tree_id = tree_id;
@@ -74,37 +74,37 @@ struct RCURSOR_level_read_cursor *RCURSOR_init_cursor(db_handle *handle, uint32_
 		if (NULL == root)
 			root = r_cursor->handle->db_desc->levels[0].root_r[tree_id];
 
-		r_cursor->L0_cursor = calloc(1UL, sizeof(struct RCURSOR_L0_cursor));
+		r_cursor->L0_cursor = calloc(1UL, sizeof(struct rcursor_L0_cursor));
 		r_cursor->L0_cursor->L0_scanner = _init_compaction_buffer_scanner(handle, level_id, root, NULL);
 		return r_cursor;
 	}
 
 	r_cursor->device_cursor = NULL;
-	if (posix_memalign((void **)&r_cursor->device_cursor, ALIGNMENT, sizeof(struct RCURSOR_device_cursor)) != 0) {
+	if (posix_memalign((void **)&r_cursor->device_cursor, ALIGNMENT, sizeof(struct rcursor_device_cursor)) != 0) {
 		log_fatal("Posix memalign failed");
 		perror("Reason: ");
 		BUG_ON();
 	}
-	memset(r_cursor->device_cursor, 0xFF, sizeof(struct RCURSOR_device_cursor));
+	memset(r_cursor->device_cursor, 0xFF, sizeof(struct rcursor_device_cursor));
 
 	r_cursor->device_cursor->fd = file_desc;
 	r_cursor->device_cursor->offset = 0;
 	r_cursor->device_cursor->curr_segment = NULL;
 	r_cursor->device_cursor->curr_leaf_entry = 0;
 	r_cursor->device_cursor->state = COMP_CUR_FETCH_NEXT_SEGMENT;
-	RCURSOR_get_next_kv(r_cursor);
+	rcursor_get_next_kv(r_cursor);
 	return r_cursor;
 }
 
-static bool RCURSOR_get_next_KV_from_L0(struct RCURSOR_level_read_cursor *r_cursor)
+static bool rcursor_get_next_KV_from_L0(struct rcursor_level_read_cursor *r_cursor)
 {
 	bool ret = END_OF_DATABASE == level_scanner_get_next(r_cursor->L0_cursor->L0_scanner) ? false : true;
 	return ret;
 }
 
-static bool RCURSOR_get_next_kv_from_device(struct RCURSOR_level_read_cursor *r_cursor)
+static bool rcursor_get_next_kv_from_device(struct rcursor_level_read_cursor *r_cursor)
 {
-	struct RCURSOR_device_cursor *device_cursor = r_cursor->device_cursor;
+	struct rcursor_device_cursor *device_cursor = r_cursor->device_cursor;
 
 	uint32_t level_leaf_size = r_cursor->handle->db_desc->levels[r_cursor->level_id].leaf_size;
 	if (r_cursor->is_end_of_level)
@@ -257,17 +257,17 @@ static bool RCURSOR_get_next_kv_from_device(struct RCURSOR_level_read_cursor *r_
 	}
 }
 
-bool RCURSOR_get_next_kv(struct RCURSOR_level_read_cursor *r_cursor)
+bool rcursor_get_next_kv(struct rcursor_level_read_cursor *r_cursor)
 {
 	if (NULL == r_cursor) {
 		log_fatal("NULL cursor!");
 		BUG_ON();
 	}
-	return 0 == r_cursor->level_id ? RCURSOR_get_next_KV_from_L0(r_cursor) :
-					 RCURSOR_get_next_kv_from_device(r_cursor);
+	return 0 == r_cursor->level_id ? rcursor_get_next_KV_from_L0(r_cursor) :
+					 rcursor_get_next_kv_from_device(r_cursor);
 }
 
-void RCURSOR_close_cursor(struct RCURSOR_level_read_cursor *r_cursor)
+void rcursor_close_cursor(struct rcursor_level_read_cursor *r_cursor)
 {
 	if (NULL == r_cursor)
 		return;

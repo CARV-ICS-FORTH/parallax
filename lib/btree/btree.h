@@ -39,7 +39,7 @@
 
 struct lookup_operation {
 	struct db_descriptor *db_desc; /*in variable*/
-	key_splice_t key_splice;
+	struct key_splice *key_splice;
 	char *buffer_to_pack_kv; /*in-out variable*/
 	char *key_device_address; /*out variable*/
 	int32_t size; /*in-out variable*/
@@ -393,7 +393,7 @@ struct bt_rebalance_result {
 	char middle_key[MAX_PIVOT_SIZE];
 	union {
 		node_header *left_child;
-		index_node_t left_ichild;
+		struct index_node *left_ichild;
 		leaf_node *left_lchild;
 		struct bt_static_leaf_node *left_slchild;
 		struct bt_dynamic_leaf_node *left_dlchild;
@@ -401,7 +401,7 @@ struct bt_rebalance_result {
 
 	union {
 		node_header *right_child;
-		index_node_t right_ichild;
+		struct index_node *right_ichild;
 		leaf_node *right_lchild;
 		struct bt_static_leaf_node *right_slchild;
 		struct bt_dynamic_leaf_node *right_dlchild;
