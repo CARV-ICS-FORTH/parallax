@@ -132,18 +132,6 @@ void bt_done_with_value_log_address(struct log_descriptor *log_desc, struct bt_k
 	__sync_fetch_and_sub(&log_desc->tail[L->tail_id]->pending_readers, 1);
 }
 
-// cppcheck-suppress unusedFunction
-void init_level_bloom_filters(db_descriptor *db_desc, int level_id, int tree_id)
-{
-#if ENABLE_BLOOM_FILTERS
-	memset(&db_desc->levels[level_id].bloom_filter[tree_id], 0x00, sizeof(struct bloom));
-#else
-	(void)db_desc;
-	(void)level_id;
-	(void)tree_id;
-#endif
-}
-
 static void destroy_log_buffer(struct log_descriptor *log_desc)
 {
 	for (uint32_t i = 0; i < LOG_TAIL_NUM_BUFS; ++i)
@@ -524,9 +512,6 @@ db_handle *internal_db_open(struct volume_descriptor *volume_desc, par_db_option
 		for (uint8_t tree_id = 0; tree_id < NUM_TREES_PER_LEVEL; tree_id++) {
 			bt_set_db_status(handle->db_desc, BT_NO_COMPACTION, level_id, tree_id);
 			handle->db_desc->levels[level_id].epoch[tree_id] = 0;
-#if ENABLE_BLOOM_FILTERS
-			init_level_bloom_filters(db_desc, level_id, tree_id);
-#endif
 		}
 	}
 
@@ -1274,25 +1259,13 @@ const char *btree_insert_key_value(bt_insert_req *ins_req)
 	return ins_req->metadata.error_message;
 }
 
-// cppcheck-suppress unusedFunction
-int find_key_in_bloom_filter(db_descriptor *db_desc, int level_id, char *key)
-{
 #if ENABLE_BLOOM_FILTERS
-	char prefix_key[PREFIX_SIZE];
-	if (get_key_size((struct splice *)key) < PREFIX_SIZE) {
-		memset(prefix_key, 0x00, PREFIX_SIZE);
-		memcpy(prefix_key, get_key_offset_in_kv((struct splice *)key), get_key_size((struct splice *)key));
-		return bloom_check(&db_desc->levels[level_id].bloom_filter[0], prefix_key, PREFIX_SIZE);
-	} else
-		return bloom_check(&db_desc->levels[level_id].bloom_filter[0],
-				   get_key_offset_in_kv((struct splice *)key), PREFIX_SIZE);
-#else
-	(void)db_desc;
-	(void)level_id;
-	(void)key;
-#endif
-	return -1;
+static inline bool check_if_key_exists(struct bloom *bloom_filter, struct key_splice *key)
+{
+	return 1 == bloom_check(bloom_filter, key_splice_get_key_offset(key), key_splice_get_key_size(key)) ? true :
+													      false;
 }
+#endif
 
 static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id, int tree_id)
 {
@@ -1318,15 +1291,12 @@ static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id,
 	}
 
 #if ENABLE_BLOOM_FILTERS
-	if (level_id > 0) {
-		int check = find_key_in_bloom_filter(db_desc, level_id, key);
+	bool check = level_id > 0 ? true :
+				    check_if_key_exists(db_desc->levels[level_id].bloom_desc[0].bloom_filter,
+							get_op->key_splice);
 
-		if (0 == check)
-			return rep;
-		else if (-1 != check) {
-			BUG_ON();
-		}
-	}
+	if (!check)
+		return;
 #endif
 
 	/* TODO: (@geostyl) do we need this if here? i think its reduntant*/

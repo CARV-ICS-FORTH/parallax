@@ -91,9 +91,16 @@ typedef struct lock_table {
 	char pad[8];
 } lock_table;
 
+#ifdef ENABLE_BLOOM_FILTERS
+struct bloom_desc {
+	struct bloom *bloom_filter;
+	uint64_t bloom_file_hash;
+};
+#endif
+
 typedef struct level_descriptor {
 #if ENABLE_BLOOM_FILTERS
-	struct bloom bloom_filter[NUM_TREES_PER_LEVEL];
+	struct bloom_desc bloom_desc[NUM_TREES_PER_LEVEL];
 #endif
 	pthread_t compaction_thread[NUM_TREES_PER_LEVEL];
 	lock_table *level_lock_table[MAX_HEIGHT];
@@ -123,6 +130,7 @@ typedef struct level_descriptor {
 	/*info for trimming medium_log, used only in L_{n-1}*/
 	uint64_t medium_in_place_max_segment_id;
 	uint64_t medium_in_place_segment_dev_offt;
+	int32_t num_level_keys[NUM_TREES_PER_LEVEL];
 	uint32_t leaf_size;
 	volatile enum level_compaction_status tree_status[NUM_TREES_PER_LEVEL];
 	uint8_t active_tree;

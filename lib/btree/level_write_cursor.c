@@ -3,6 +3,8 @@
 #include "../allocator/log_structures.h"
 #include "../allocator/volume_manager.h"
 #include "../common/common.h"
+#include "../lib/allocator/djb2.h"
+#include "bloom.h"
 #include "btree_node.h"
 #include "dynamic_leaf.h"
 #include "index_node.h"
@@ -16,13 +18,15 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/time.h>
 #include <unistd.h>
 
 struct index_node;
 struct key_splice;
-static void wcursor_write_segment(char *buffer, uint64_t dev_offt, uint32_t buf_offt, uint32_t size, int fd)
-{
+
 #if 0
+static void wcursor_assert_node(void)
+{
 	struct node_header *n = (struct node_header *)&buffer[sizeof(struct segment_header)];
 	switch (n->type) {
 	case rootNode:
@@ -65,7 +69,12 @@ static void wcursor_write_segment(char *buffer, uint64_t dev_offt, uint32_t buf_
 	default:
 			BUG_ON();
 	}
+
+}
 #endif
+
+static void wcursor_write_segment(char *buffer, uint64_t dev_offt, uint32_t buf_offt, uint32_t size, int fd)
+{
 	ssize_t total_bytes_written = buf_offt;
 	while (total_bytes_written < size) {
 		ssize_t bytes_written = pwrite(fd, &buffer[total_bytes_written], size - total_bytes_written,
@@ -200,6 +209,20 @@ struct wcursor_level_write_cursor *wcursor_init_write_cursor(int level_id, struc
 		w_cursor->first_segment_btree_level_offt[i] = w_cursor->last_segment_btree_level_offt[i];
 		assert(w_cursor->last_segment_btree_level_offt[i]);
 	}
+
+#ifdef ENABLE_BLOOM_FILTERS
+	if (NULL != handle->db_desc->levels[w_cursor->level_id].bloom_desc[w_cursor->tree_id].bloom_filter) {
+		log_fatal("Bloom for the destination must be NULL");
+		_exit(EXIT_FAILURE);
+	}
+
+	int32_t total_keys = handle->db_desc->levels[w_cursor->level_id].num_level_keys[w_cursor->tree_id];
+	if (w_cursor->level_id > 1)
+		total_keys += handle->db_desc->levels[w_cursor->level_id - 1].num_level_keys[w_cursor->tree_id];
+	handle->db_desc->levels[w_cursor->level_id].bloom_desc[w_cursor->tree_id].bloom_filter =
+		bloom_init2(total_keys, (double)192745.0143212);
+#endif
+
 	return w_cursor;
 }
 
@@ -264,6 +287,33 @@ static uint32_t wcursor_calc_offt_in_seg(char *buffer_start, char *addr)
 	return (end - start) % SEGMENT_SIZE;
 }
 
+/**
+ * @brief Allocates and creates a filename where Parallax stores its bloom filter
+ * @param level_id where this bloom filter belongs
+ * @param db_name the name of the db
+ */
+static uint64_t wcursor_create_bloom_filter_file_hash(uint8_t level_id, char *db_name)
+{
+	size_t str_len = strlen(db_name);
+	unsigned long timestamp = 0;
+	if (sizeof(level_id) + str_len + sizeof(timestamp) > BLOOM_BUFFER_SIZE) {
+		log_fatal("Buffer overflow");
+		_exit(EXIT_FAILURE);
+	}
+	char bloom_buffer[BLOOM_BUFFER_SIZE] = { 0 };
+
+	memcpy(bloom_buffer, &level_id, sizeof(level_id));
+
+	memcpy(&bloom_buffer[sizeof(level_id)], db_name, str_len);
+
+	struct timeval timeval;
+	gettimeofday(&timeval, NULL);
+	timestamp = 1000000 * timeval.tv_sec + timeval.tv_usec;
+	memcpy(&bloom_buffer[sizeof(level_id) + str_len], &timestamp, sizeof(timestamp));
+
+	return djb2_hash((const unsigned char *)bloom_buffer, str_len + sizeof(level_id) + sizeof(timestamp));
+}
+
 void wcursor_flush_write_cursor(struct wcursor_level_write_cursor *w_cursor)
 {
 	uint32_t level_leaf_size = w_cursor->handle->db_desc->levels[w_cursor->level_id].leaf_size;
@@ -317,6 +367,31 @@ void wcursor_flush_write_cursor(struct wcursor_level_write_cursor *w_cursor)
 		wcursor_write_segment(w_cursor->segment_buf[i], w_cursor->last_segment_btree_level_offt[i], 0,
 				      SEGMENT_SIZE, w_cursor->fd);
 	}
+
+#ifdef ENABLE_BLOOM_FILTERS
+
+	uint64_t bloom_file_hash = wcursor_create_bloom_filter_file_hash(
+		w_cursor->level_id, w_cursor->handle->db_desc->db_superblock->db_name);
+	char bloom_name[BLOOM_BUFFER_SIZE];
+	if (snprintf(bloom_name, BLOOM_BUFFER_SIZE, "%lx", bloom_file_hash) < 0) {
+		log_fatal("Failed to create a valid bloom file name for db %s and level_id %u",
+			  w_cursor->handle->db_desc->db_superblock->db_name, w_cursor->level_id);
+		_exit(EXIT_FAILURE);
+	}
+
+	char *full_bloom_name = calloc(1UL, strlen(bloom_name) + strlen(PARALLAX_FOLDER) + 1);
+	if (0 !=
+	    bloom_persist(
+		    w_cursor->handle->db_desc->levels[w_cursor->level_id].bloom_desc[w_cursor->tree_id].bloom_filter,
+		    -1)) {
+		log_fatal("Failed to persist bloom filter for db:%s and level_id: %u",
+			  w_cursor->handle->db_desc->db_superblock->db_name, w_cursor->level_id);
+		_exit(EXIT_FAILURE);
+	}
+	w_cursor->handle->db_desc->levels[w_cursor->level_id].bloom_desc[w_cursor->tree_id].bloom_file_hash =
+		bloom_file_hash;
+	free(full_bloom_name);
+#endif
 
 #if 0
 	assert_level_segments(c->handle->db_desc, c->level_id, 1);

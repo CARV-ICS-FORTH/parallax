@@ -185,6 +185,24 @@ static void unlock_to_update_levels_after_compaction(struct compaction_request *
 	}
 }
 
+static bool comp_delete_bloom_file(char *db_name, uint64_t bloom_file_hash)
+{
+#define FILENAME_SIZE 128
+	char bloom_name[FILENAME_SIZE];
+	if (snprintf(bloom_name, FILENAME_SIZE, "%lx", bloom_file_hash) < 0) {
+		log_fatal("Failed to create a valid bloom file name for db %s", db_name);
+		return false;
+	}
+
+	char *full_bloom_name = calloc(1UL, strlen(bloom_name) + strlen(PARALLAX_FOLDER) + 1);
+	if (remove(full_bloom_name) < 0) {
+		log_fatal("Failed to delete file: %s", full_bloom_name);
+		perror("Reason:");
+		return false;
+	}
+	return true;
+}
+
 static void compact_level_direct_IO(struct db_handle *handle, struct compaction_request *comp_req)
 {
 	struct compaction_roots comp_roots = { .src_root = NULL, .dst_root = NULL };
@@ -310,17 +328,28 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 		  comp_req->db_desc->db_superblock->db_name, comp_req->src_level);
 	seg_zero_level(hd.db_desc, comp_req->src_level, comp_req->src_tree);
 
-#if ENABLE_BLOOM_FILTERS
-	if (dst_root) {
-		log_debug("Freeing previous bloom filter for dst level %u", comp_req->dst_level);
-		bloom_free(&handle.db_desc->levels[comp_req->src_level].bloom_filter[0]);
-	}
-	ld->bloom_filter[0] = ld->bloom_filter[1];
-	memset(&ld->bloom_filter[1], 0x00, sizeof(struct bloom));
-#endif
-
 	/*Finally persist compaction */
 	pr_flush_compaction(comp_req->db_desc, comp_req->dst_level, comp_req->dst_tree);
+
+#if ENABLE_BLOOM_FILTERS
+	if (NULL != handle->db_desc->levels[comp_req->src_level].bloom_desc[0].bloom_filter) {
+		log_debug("Freeing bloom filter for src level %u (Now is empty)", comp_req->src_level);
+		bloom_free(handle->db_desc->levels[comp_req->src_level].bloom_desc[0].bloom_filter);
+		comp_delete_bloom_file(handle->db_desc->db_superblock->db_name,
+				       handle->db_desc->levels[comp_req->src_level].bloom_desc[0].bloom_file_hash);
+		handle->db_desc->levels[comp_req->src_level].bloom_desc[0].bloom_filter = NULL;
+	}
+	if (NULL != handle->db_desc->levels[comp_req->dst_level].bloom_desc[0].bloom_filter) {
+		log_debug("Freeing bloom filter for dst level %u (Going to update it soon)", comp_req->dst_level);
+		bloom_free(handle->db_desc->levels[comp_req->dst_level].bloom_desc[0].bloom_filter);
+		comp_delete_bloom_file(handle->db_desc->db_superblock->db_name,
+				       handle->db_desc->levels[comp_req->dst_level].bloom_desc[0].bloom_file_hash);
+		handle->db_desc->levels[comp_req->dst_level].bloom_desc[0].bloom_filter = NULL;
+	}
+	dest_level->bloom_desc[0] = dest_level->bloom_desc[1];
+	memset(&dest_level->bloom_desc[1], 0x00, sizeof(dest_level->bloom_desc[1]));
+#endif
+
 	log_debug("Flushed compaction[%u][%u] successfully", comp_req->dst_level, comp_req->dst_tree);
 	/*set L'_(i+1) as L_(i+1)*/
 	dest_level->first_segment[0] = dest_level->first_segment[1];
@@ -396,8 +425,8 @@ static void compact_with_empty_destination_level(struct compaction_request *comp
 
 #if ENABLE_BLOOM_FILTERS
 	log_info("Swapping also bloom filter");
-	leveld_dst->bloom_filter[0] = leveld_src->bloom_filter[0];
-	memset(&leveld_src->bloom_filter[0], 0x00, sizeof(struct bloom));
+	leveld_dst->bloom_desc[0] = leveld_src->bloom_desc[0];
+	memset(&leveld_src->bloom_desc[0], 0x00, sizeof(leveld_src->bloom_desc[0]));
 #endif
 	unlock_to_update_levels_after_compaction(comp_req);
 
