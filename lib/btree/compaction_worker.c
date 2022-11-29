@@ -193,13 +193,18 @@ static bool comp_delete_bloom_file(char *db_name, uint64_t bloom_file_hash)
 		log_fatal("Failed to create a valid bloom file name for db %s", db_name);
 		return false;
 	}
+	char *full_bloom_name = calloc(1UL, strlen(bloom_name) + strlen(PARALLAX_FOLDER) + strlen(".bloom") + 1);
+	memcpy(full_bloom_name, PARALLAX_FOLDER, strlen(PARALLAX_FOLDER));
+	memcpy(&full_bloom_name[strlen(PARALLAX_FOLDER)], bloom_name, strlen(bloom_name));
+	memcpy(&full_bloom_name[strlen(PARALLAX_FOLDER) + strlen(bloom_name)], ".bloom", strlen(".bloom"));
 
-	char *full_bloom_name = calloc(1UL, strlen(bloom_name) + strlen(PARALLAX_FOLDER) + 1);
 	if (remove(full_bloom_name) < 0) {
 		log_fatal("Failed to delete file: %s", full_bloom_name);
 		perror("Reason:");
+		free(full_bloom_name);
 		return false;
 	}
+	free(full_bloom_name);
 	return true;
 }
 
@@ -334,14 +339,14 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 #if ENABLE_BLOOM_FILTERS
 	if (NULL != handle->db_desc->levels[comp_req->src_level].bloom_desc[0].bloom_filter) {
 		log_debug("Freeing bloom filter for src level %u (Now is empty)", comp_req->src_level);
-		bloom_free(handle->db_desc->levels[comp_req->src_level].bloom_desc[0].bloom_filter);
+		bloom_free2(handle->db_desc->levels[comp_req->src_level].bloom_desc[0].bloom_filter);
 		comp_delete_bloom_file(handle->db_desc->db_superblock->db_name,
 				       handle->db_desc->levels[comp_req->src_level].bloom_desc[0].bloom_file_hash);
 		handle->db_desc->levels[comp_req->src_level].bloom_desc[0].bloom_filter = NULL;
 	}
 	if (NULL != handle->db_desc->levels[comp_req->dst_level].bloom_desc[0].bloom_filter) {
 		log_debug("Freeing bloom filter for dst level %u (Going to update it soon)", comp_req->dst_level);
-		bloom_free(handle->db_desc->levels[comp_req->dst_level].bloom_desc[0].bloom_filter);
+		bloom_free2(handle->db_desc->levels[comp_req->dst_level].bloom_desc[0].bloom_filter);
 		comp_delete_bloom_file(handle->db_desc->db_superblock->db_name,
 				       handle->db_desc->levels[comp_req->dst_level].bloom_desc[0].bloom_file_hash);
 		handle->db_desc->levels[comp_req->dst_level].bloom_desc[0].bloom_filter = NULL;

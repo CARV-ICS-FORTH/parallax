@@ -1262,8 +1262,13 @@ const char *btree_insert_key_value(bt_insert_req *ins_req)
 #if ENABLE_BLOOM_FILTERS
 static inline bool check_if_key_exists(struct bloom *bloom_filter, struct key_splice *key)
 {
-	return 1 == bloom_check(bloom_filter, key_splice_get_key_offset(key), key_splice_get_key_size(key)) ? true :
-													      false;
+	int ret = bloom_check(bloom_filter, key_splice_get_key_offset(key), key_splice_get_key_size(key));
+	if (-1 == ret) {
+		log_fatal("Bloom filter not initialized");
+		assert(0);
+	}
+
+	return 1 == ret ? true : false;
 }
 #endif
 
@@ -1291,9 +1296,9 @@ static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id,
 	}
 
 #if ENABLE_BLOOM_FILTERS
-	bool check = level_id > 0 ? true :
-				    check_if_key_exists(db_desc->levels[level_id].bloom_desc[0].bloom_filter,
-							get_op->key_splice);
+	bool check = level_id == 0 ? true :
+				     check_if_key_exists(db_desc->levels[level_id].bloom_desc[0].bloom_filter,
+							 get_op->key_splice);
 
 	if (!check)
 		return;
