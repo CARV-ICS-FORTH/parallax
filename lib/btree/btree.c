@@ -603,6 +603,16 @@ db_handle *internal_db_open(struct volume_descriptor *volume_desc, par_db_option
 
 	uint64_t level0_size = handle->db_options.options[LEVEL0_SIZE].value;
 	uint64_t growth_factor = handle->db_options.options[GROWTH_FACTOR].value;
+	uint64_t primary_mode = handle->db_options.options[PRIMARY_MODE].value;
+	uint64_t replica_mode = handle->db_options.options[REPLICA_MODE].value;
+	if (primary_mode == replica_mode) {
+		*error_message = "A DB must be set to either primary or replica mode";
+		return NULL;
+	}
+
+	/*if the db is a replica, the gc must be scheduled by the primary*/
+	if (replica_mode)
+		disable_gc();
 
 	handle->db_desc->levels[0].max_level_size = level0_size;
 	/*init soft state for all levels*/
@@ -952,7 +962,11 @@ struct par_put_metadata insert_key_value(db_handle *handle, void *key, void *val
 {
 	bt_insert_req ins_req = { 0 };
 	char kv_pair[KV_MAX_SIZE];
-
+	uint64_t is_db_replica = handle->db_options.options[REPLICA_MODE].value;
+	if (is_db_replica) {
+		log_fatal("Cannot insert in a replica DB, exiting..");
+		BUG_ON();
+	}
 	error_message = insert_error_handling(handle, key_size, value_size);
 	if (error_message) {
 		// construct an invalid par_put_metadata
@@ -991,6 +1005,11 @@ struct par_put_metadata insert_key_value(db_handle *handle, void *key, void *val
 struct par_put_metadata serialized_insert_key_value(db_handle *handle, const char *serialized_key_value,
 						    const char *error_message)
 {
+	uint64_t is_db_replica = handle->db_options.options[REPLICA_MODE].value;
+	if (is_db_replica) {
+		log_fatal("Cannot insert in a replica DB, exiting..");
+		BUG_ON();
+	}
 	bt_insert_req ins_req = { .metadata.handle = handle,
 				  .key_value_buf = (char *)serialized_key_value,
 				  .metadata.level_id = 0,

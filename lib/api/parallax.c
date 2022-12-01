@@ -29,7 +29,7 @@
 #include <stdlib.h>
 #include <string.h>
 #define PAR_MAX_PREALLOCATED_SIZE 256
-#define NUM_OF_OPTIONS 5
+#define NUM_OF_OPTIONS 7
 
 char *par_format(char *device_name, uint32_t max_regions_num)
 {
@@ -376,12 +376,20 @@ struct par_options_desc *par_get_default_options(void)
 	check_option(dboptions, "gc_interval", &option);
 	uint64_t gc_interval = option->value.count;
 
+	check_option(dboptions, "primary_mode", &option);
+	uint64_t primary_mode = option->value.count;
+
+	check_option(dboptions, "replica_mode", &option);
+	uint64_t replica_mode = option->value.count;
+
 	//fill default_db_options based on the default values
 	default_db_options[LEVEL0_SIZE].value = level0_size;
 	default_db_options[GROWTH_FACTOR].value = growth_factor;
 	default_db_options[LEVEL_MEDIUM_INPLACE].value = level_medium_inplace;
 	default_db_options[MEDIUM_LOG_LRU_CACHE_SIZE].value = LRU_cache_size;
 	default_db_options[GC_INTERVAL].value = gc_interval;
+	default_db_options[PRIMARY_MODE].value = primary_mode;
+	default_db_options[REPLICA_MODE].value = replica_mode;
 
 	return default_db_options;
 }

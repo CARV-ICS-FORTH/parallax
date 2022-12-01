@@ -29,7 +29,9 @@ typedef enum {
 	GC_INTERVAL,
 	GROWTH_FACTOR,
 	MEDIUM_LOG_LRU_CACHE_SIZE,
-	LEVEL_MEDIUM_INPLACE
+	LEVEL_MEDIUM_INPLACE,
+	PRIMARY_MODE,
+	REPLICA_MODE
 } par_options;
 
 struct par_options_desc {
