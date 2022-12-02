@@ -933,6 +933,10 @@ enum kv_category calculate_KV_category(uint32_t key_size, uint32_t value_size, r
 static const char *insert_error_handling(db_handle *handle, uint32_t key_size, uint32_t value_size)
 {
 	const char *error_message = NULL;
+	if (handle->db_options.options[REPLICA_MODE].value) {
+		error_message = "Cannot insert in replica mode";
+		return error_message;
+	}
 	if (DB_IS_CLOSING == handle->db_desc->db_state) {
 		error_message = "DB: is closing";
 		return error_message;
@@ -962,11 +966,6 @@ struct par_put_metadata insert_key_value(db_handle *handle, void *key, void *val
 {
 	bt_insert_req ins_req = { 0 };
 	char kv_pair[KV_MAX_SIZE];
-	uint64_t is_db_replica = handle->db_options.options[REPLICA_MODE].value;
-	if (is_db_replica) {
-		log_fatal("Cannot insert in a replica DB, exiting..");
-		BUG_ON();
-	}
 	error_message = insert_error_handling(handle, key_size, value_size);
 	if (error_message) {
 		// construct an invalid par_put_metadata
@@ -1005,11 +1004,6 @@ struct par_put_metadata insert_key_value(db_handle *handle, void *key, void *val
 struct par_put_metadata serialized_insert_key_value(db_handle *handle, const char *serialized_key_value,
 						    const char *error_message)
 {
-	uint64_t is_db_replica = handle->db_options.options[REPLICA_MODE].value;
-	if (is_db_replica) {
-		log_fatal("Cannot insert in a replica DB, exiting..");
-		BUG_ON();
-	}
 	bt_insert_req ins_req = { .metadata.handle = handle,
 				  .key_value_buf = (char *)serialized_key_value,
 				  .metadata.level_id = 0,
