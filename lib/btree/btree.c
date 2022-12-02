@@ -933,10 +933,6 @@ enum kv_category calculate_KV_category(uint32_t key_size, uint32_t value_size, r
 static const char *insert_error_handling(db_handle *handle, uint32_t key_size, uint32_t value_size)
 {
 	const char *error_message = NULL;
-	if (handle->db_options.options[REPLICA_MODE].value) {
-		error_message = "Cannot insert in replica mode";
-		return error_message;
-	}
 	if (DB_IS_CLOSING == handle->db_desc->db_state) {
 		error_message = "DB: is closing";
 		return error_message;

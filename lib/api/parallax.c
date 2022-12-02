@@ -64,6 +64,13 @@ enum kv_category get_kv_category(int32_t key_size, int32_t value_size, request_t
 
 struct par_put_metadata par_put(par_handle handle, struct par_key_value *key_value, const char **error_message)
 {
+	db_handle *dbhandle = (db_handle *)handle;
+	uint64_t is_db_replica = dbhandle->db_options.options[REPLICA_MODE].value;
+	if (is_db_replica) {
+		*error_message = "Cannot insert in when DB, DB is a replica";
+		struct par_put_metadata invalid_put_metadata = { 0 };
+		return invalid_put_metadata;
+	}
 	return insert_key_value((db_handle *)handle, (char *)key_value->k.data, (char *)key_value->v.val_buffer,
 				key_value->k.size, key_value->v.val_size, insertOp, *error_message);
 }
