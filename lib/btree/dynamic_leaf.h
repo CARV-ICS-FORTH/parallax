@@ -82,9 +82,6 @@ int is_dynamic_leaf_full(struct split_level_leaf split_metadata);
 struct bt_rebalance_result split_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, uint32_t leaf_size,
 					      bt_insert_req *req);
 
-struct bt_rebalance_result special_split_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, uint32_t leaf_size,
-						      bt_insert_req *req);
-
 int reorganize_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, uint32_t leaf_size, bt_insert_req *req);
 struct bt_rebalance_result blsm_split_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, uint32_t leaf_size,
 						   bt_insert_req *req);

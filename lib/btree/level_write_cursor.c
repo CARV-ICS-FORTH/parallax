@@ -418,7 +418,6 @@ static struct comp_parallax_key wcursor_append_medium_L1(struct wcursor_level_wr
 	ins_req.metadata.append_to_log = 1;
 	ins_req.metadata.gc_request = 0;
 	ins_req.metadata.recovery_request = 0;
-	ins_req.metadata.special_split = 0;
 	ins_req.metadata.key_format = KV_FORMAT;
 	ins_req.metadata.tombstone = 0;
 	ins_req.key_value_buf = (char *)in_key->kv_in_place;

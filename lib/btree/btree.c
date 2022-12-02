@@ -985,7 +985,6 @@ struct par_put_metadata insert_key_value(db_handle *handle, void *key, void *val
 	ins_req.metadata.key_format = KV_FORMAT;
 	ins_req.metadata.append_to_log = 1;
 	ins_req.metadata.gc_request = 0;
-	ins_req.metadata.special_split = 0;
 
 	/*
 	 * Note for L0 inserts since active_tree changes dynamically we decide which
@@ -1720,12 +1719,10 @@ int insert_KV_at_leaf(bt_insert_req *ins_req, node_header *leaf)
 
 struct bt_rebalance_result split_leaf(bt_insert_req *req, leaf_node *node)
 {
-	split_dl *split_functions[1] = { split_dynamic_leaf };
 	int level_id = req->metadata.level_id;
-
 	uint32_t leaf_size = req->metadata.handle->db_desc->levels[level_id].leaf_size;
-	// cppcheck-suppression uninitvar
-	return split_functions[req->metadata.special_split]((struct bt_dynamic_leaf_node *)node, leaf_size, req);
+
+	return split_dynamic_leaf((struct bt_dynamic_leaf_node *)node, leaf_size, req);
 }
 
 uint64_t par_hash(uint64_t x)

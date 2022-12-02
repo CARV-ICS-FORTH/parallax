@@ -76,7 +76,6 @@ void move_kv_pairs_to_new_segment(struct db_handle handle, stack *marks)
 		ins_req.metadata.gc_request = 1;
 		ins_req.metadata.recovery_request = 0;
 		ins_req.metadata.level_id = 0;
-		ins_req.metadata.special_split = 0;
 		ins_req.metadata.tombstone = 0;
 		ins_req.metadata.key_format = KV_FORMAT;
 		ins_req.metadata.cat = BIG_INLOG;

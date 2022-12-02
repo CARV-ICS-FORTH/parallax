@@ -339,7 +339,6 @@ typedef struct bt_mutate_req {
 	uint8_t recovery_request : 1;
 	/*needed for distributed version of Kreon*/
 	uint8_t segment_full_event : 1;
-	uint8_t special_split : 1;
 	uint8_t tombstone : 1;
 	char key_format;
 } bt_mutate_req;
