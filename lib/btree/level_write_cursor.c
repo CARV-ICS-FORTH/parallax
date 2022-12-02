@@ -5,7 +5,7 @@
 #include "../allocator/volume_manager.h"
 #include "../common/common.h"
 #include "../lib/allocator/djb2.h"
-#include "bloom.h"
+#include "bloom_filter.h"
 #include "btree_node.h"
 #include "dynamic_leaf.h"
 #include "index_node.h"
@@ -22,7 +22,6 @@
 #include <string.h>
 #include <sys/time.h>
 #include <unistd.h>
-#define WCURSOR_11_BITS_PER_ELEMENT 0.0043484747805937
 struct index_node;
 struct key_splice;
 
@@ -212,23 +211,10 @@ struct wcursor_level_write_cursor *wcursor_init_write_cursor(int level_id, struc
 		assert(w_cursor->last_segment_btree_level_offt[i]);
 	}
 
-#ifdef ENABLE_BLOOM_FILTERS
-	if (NULL != handle->db_desc->levels[w_cursor->level_id].bloom_desc[w_cursor->tree_id].bloom_filter) {
-		log_fatal("Bloom for the destination must be NULL");
-		_exit(EXIT_FAILURE);
-	}
-
-	int32_t total_keys = handle->db_desc->levels[w_cursor->level_id].num_level_keys[w_cursor->tree_id];
-	if (w_cursor->level_id > 1)
-		total_keys += handle->db_desc->levels[w_cursor->level_id - 1].num_level_keys[w_cursor->tree_id];
-	if (0 == total_keys)
-		total_keys = handle->db_desc->levels[0].max_level_size / 33;
-	handle->db_desc->levels[w_cursor->level_id].bloom_desc[w_cursor->tree_id].bloom_filter =
-		bloom_init2(total_keys, WCURSOR_11_BITS_PER_ELEMENT);
-	log_debug("Initialized bloom filter for total keys %d", total_keys);
-	bloom_print(handle->db_desc->levels[w_cursor->level_id].bloom_desc[w_cursor->tree_id].bloom_filter);
-	assert(handle->db_desc->levels[w_cursor->level_id].bloom_desc[w_cursor->tree_id].bloom_filter != NULL);
-#endif
+	// #ifdef ENABLE_BLOOM_FILTERS
+	handle->db_desc->levels[w_cursor->level_id].bloom_desc[w_cursor->tree_id] =
+		pbf_create(handle->db_desc, w_cursor->level_id, w_cursor->tree_id);
+	// #endif
 
 	return w_cursor;
 }
@@ -294,33 +280,6 @@ static uint32_t wcursor_calc_offt_in_seg(char *buffer_start, char *addr)
 	return (end - start) % SEGMENT_SIZE;
 }
 
-/**
- * @brief Allocates and creates a filename where Parallax stores its bloom filter
- * @param level_id where this bloom filter belongs
- * @param db_name the name of the db
- */
-static uint64_t wcursor_create_bloom_filter_file_hash(uint8_t level_id, char *db_name)
-{
-	size_t str_len = strlen(db_name);
-	unsigned long timestamp = 0;
-	if (sizeof(level_id) + str_len + sizeof(timestamp) > BLOOM_BUFFER_SIZE) {
-		log_fatal("Buffer overflow");
-		_exit(EXIT_FAILURE);
-	}
-	char bloom_buffer[BLOOM_BUFFER_SIZE] = { 0 };
-
-	memcpy(bloom_buffer, &level_id, sizeof(level_id));
-
-	memcpy(&bloom_buffer[sizeof(level_id)], db_name, str_len);
-
-	struct timeval timeval;
-	gettimeofday(&timeval, NULL);
-	timestamp = 1000000 * timeval.tv_sec + timeval.tv_usec;
-	memcpy(&bloom_buffer[sizeof(level_id) + str_len], &timestamp, sizeof(timestamp));
-
-	return djb2_hash((const unsigned char *)bloom_buffer, str_len + sizeof(level_id) + sizeof(timestamp));
-}
-
 void wcursor_flush_write_cursor(struct wcursor_level_write_cursor *w_cursor)
 {
 	uint32_t level_leaf_size = w_cursor->handle->db_desc->levels[w_cursor->level_id].leaf_size;
@@ -375,46 +334,13 @@ void wcursor_flush_write_cursor(struct wcursor_level_write_cursor *w_cursor)
 				      SEGMENT_SIZE, w_cursor->fd);
 	}
 
-#ifdef ENABLE_BLOOM_FILTERS
-	uint64_t bloom_file_hash = wcursor_create_bloom_filter_file_hash(
-		w_cursor->level_id, w_cursor->handle->db_desc->db_superblock->db_name);
-	char bloom_name[BLOOM_BUFFER_SIZE];
-	if (snprintf(bloom_name, BLOOM_BUFFER_SIZE, "%lx", bloom_file_hash) < 0) {
-		log_fatal("Failed to create a valid bloom file name for db %s and level_id %u",
-			  w_cursor->handle->db_desc->db_superblock->db_name, w_cursor->level_id);
+	// #ifdef ENABLE_BLOOM_FILTERS
+	if (!pbf_persist_bloom_filter(
+		    w_cursor->handle->db_desc->levels[w_cursor->level_id].bloom_desc[w_cursor->tree_id])) {
+		log_fatal("Failed to write bloom filter");
 		_exit(EXIT_FAILURE);
 	}
-
-	char *full_bloom_name = calloc(1UL, strlen(bloom_name) + strlen(PARALLAX_FOLDER) + strlen(".bloom") + 1);
-	memcpy(full_bloom_name, PARALLAX_FOLDER, strlen(PARALLAX_FOLDER));
-	memcpy(&full_bloom_name[strlen(PARALLAX_FOLDER)], bloom_name, strlen(bloom_name));
-	memcpy(&full_bloom_name[strlen(PARALLAX_FOLDER) + strlen(bloom_name)], ".bloom", strlen(".bloom"));
-	log_debug("Persisting bloom filter to file: %s", full_bloom_name);
-	int bloom_file_desc =
-		open(full_bloom_name, O_WRONLY | O_CREAT | O_APPEND | O_DIRECT | O_CLOEXEC, S_IWUSR | S_IRUSR);
-
-	if (bloom_file_desc == -1) {
-		log_fatal("Failed to open file %s", full_bloom_name);
-		perror("Reason");
-	}
-
-	if (bloom_persist(
-		    w_cursor->handle->db_desc->levels[w_cursor->level_id].bloom_desc[w_cursor->tree_id].bloom_filter,
-		    bloom_file_desc)) {
-		log_fatal("Failed to persist bloom filter for db:%s and level_id: %u",
-			  w_cursor->handle->db_desc->db_superblock->db_name, w_cursor->level_id);
-		_exit(EXIT_FAILURE);
-	}
-	w_cursor->handle->db_desc->levels[w_cursor->level_id].bloom_desc[w_cursor->tree_id].bloom_file_hash =
-		bloom_file_hash;
-
-	if (close(bloom_file_desc) < 0) {
-		log_fatal("Failed to close bloom filter file: %s", full_bloom_name);
-		perror("Reason");
-		_exit(EXIT_FAILURE);
-	}
-	free(full_bloom_name);
-#endif
+	// #endif
 
 #if 0
 	assert_level_segments(c->handle->db_desc, c->level_id, 1);
@@ -568,17 +494,9 @@ bool wcursor_append_KV_pair(struct wcursor_level_write_cursor *cursor, struct kv
 	}
 
 	cursor->handle->db_desc->levels[cursor->level_id].level_size[1] += kv_splice_base_get_size(&new_splice);
-#if ENABLE_BLOOM_FILTERS
-	// if (KV_FORMAT == write_leaf_args.kv_format) {
-	// 	log_debug("Adding KV format key size:%d data:%s value size: %d in bloom filter",
-	// 		  get_key_size((struct kv_splice *)write_leaf_args.key_value_buf),
-	// 		  get_key_offset_in_kv((struct kv_splice *)write_leaf_args.key_value_buf),
-	// 		  get_value_size((struct kv_splice *)write_leaf_args.key_value_buf));
-	// }
-
-	int bloom_stat =
-		bloom_add(cursor->handle->db_desc->levels[cursor->level_id].bloom_desc[cursor->tree_id].bloom_filter,
-			  kv_splice_base_get_key_buf(&new_splice), kv_splice_base_get_key_size(&new_splice));
+	int bloom_stat = pbf_bloom_add(cursor->handle->db_desc->levels[cursor->level_id].bloom_desc[cursor->tree_id],
+				       kv_splice_base_get_key_buf(&new_splice),
+				       kv_splice_base_get_key_size(&new_splice));
 
 	if (0 == bloom_stat) {
 		log_fatal(
@@ -587,7 +505,6 @@ bool wcursor_append_KV_pair(struct wcursor_level_write_cursor *cursor, struct kv
 	}
 	/*XXX TODO XXX Leakage here of level, add an API call to level to do this operation*/
 	++cursor->handle->db_desc->levels[cursor->level_id].num_level_keys[cursor->tree_id];
-#endif
 	if (!new_leaf)
 		return true;
 

@@ -20,6 +20,7 @@
 #include "../common/common.h"
 #include "../include/parallax/parallax.h"
 #include "../include/parallax/structures.h"
+#include "bloom_filter.h"
 #include "btree_node.h"
 #include "conf.h"
 #include "dynamic_leaf.h"
@@ -344,6 +345,20 @@ static void restore_db(struct db_descriptor *db_desc, uint32_t region_idx)
 	recover_logs(db_desc);
 }
 
+static void db_recover_bloom_filters(struct db_descriptor *db_desc)
+{
+	for (int i = 1; i < MAX_LEVELS; i++) {
+		for (int j = 0; j < NUM_TREES_PER_LEVEL; j++) {
+			if (0 == db_desc->db_superblock->bloom_filter_valid[i][j]) {
+				db_desc->levels[i].bloom_desc[j] = NULL;
+				continue;
+			}
+			db_desc->levels[i].bloom_desc[j] = pbf_recover_bloom_filter(
+				db_desc, i, j, db_desc->db_superblock->bloom_filter_hash[i][j]);
+		}
+	}
+}
+
 static db_descriptor *get_db_from_volume(char *volume_name, char *db_name, par_db_initializers create_db)
 {
 	struct db_descriptor *db_desc = NULL;
@@ -550,6 +565,7 @@ db_handle *internal_db_open(struct volume_descriptor *volume_desc, par_db_option
 	MUTEX_INIT(&handle->db_desc->flush_L0_lock, NULL);
 	pr_flush_L0(db_desc, db_desc->levels[0].active_tree);
 	db_desc->levels[0].allocation_txn_id[db_desc->levels[0].active_tree] = rul_start_txn(db_desc);
+	db_recover_bloom_filters(db_desc);
 	recover_L0(handle->db_desc);
 
 exit:
@@ -1259,19 +1275,6 @@ const char *btree_insert_key_value(bt_insert_req *ins_req)
 	return ins_req->metadata.error_message;
 }
 
-#if ENABLE_BLOOM_FILTERS
-static inline bool check_if_key_exists(struct bloom *bloom_filter, struct key_splice *key)
-{
-	int ret = bloom_check(bloom_filter, key_splice_get_key_offset(key), key_splice_get_key_size(key));
-	if (-1 == ret) {
-		log_fatal("Bloom filter not initialized");
-		assert(0);
-	}
-
-	return 1 == ret ? true : false;
-}
-#endif
-
 static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id, int tree_id)
 {
 	struct node_header *son_node = NULL;
@@ -1295,14 +1298,15 @@ static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id,
 		return;
 	}
 
-#if ENABLE_BLOOM_FILTERS
+	// #if ENABLE_BLOOM_FILTERS
 	bool check = level_id == 0 ? true :
-				     check_if_key_exists(db_desc->levels[level_id].bloom_desc[0].bloom_filter,
-							 get_op->key_splice);
+				     pbf_check(db_desc->levels[level_id].bloom_desc[0],
+					       key_splice_get_key_offset(get_op->key_splice),
+					       key_splice_get_key_size(get_op->key_splice));
 
 	if (!check)
 		return;
-#endif
+	// #endif
 
 	/* TODO: (@geostyl) do we need this if here? i think its reduntant*/
 	// struct find_result ret_result = { 0 };

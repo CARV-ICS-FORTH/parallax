@@ -11,6 +11,7 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+#include "../btree/bloom_filter.h"
 #include "../btree/btree.h"
 #include "../btree/conf.h"
 #include "../btree/gc.h"
@@ -89,6 +90,21 @@ static void pr_flush_allocation_log_and_level_info(struct db_descriptor *db_desc
 	pr_flush_db_superblock(db_desc);
 }
 
+static void pr_update_bloom_info(db_descriptor *db_desc)
+{
+	for (uint8_t i = 0; i < MAX_LEVELS; i++) {
+		for (uint8_t j = 0; j < NUM_TREES_PER_LEVEL; j++) {
+			if (NULL == db_desc->levels[i].bloom_desc[j]) {
+				db_desc->db_superblock->bloom_filter_hash[i][j] = UINT64_MAX;
+				db_desc->db_superblock->bloom_filter_valid[i][j] = 0;
+			} else {
+				db_desc->db_superblock->bloom_filter_hash[i][j] =
+					pbf_get_bf_file_hash(db_desc->levels[i].bloom_desc[j]);
+				db_desc->db_superblock->bloom_filter_valid[i][j] = 1;
+			}
+		}
+	}
+}
 /**
  * Persists L0 key value pairs in storage making it recoverable.
  * @param db_desc is the descriptor of the db
@@ -326,6 +342,7 @@ void pr_unlock_db_superblock(struct db_descriptor *db_desc)
 
 void pr_flush_db_superblock(struct db_descriptor *db_desc)
 {
+	pr_update_bloom_info(db_desc);
 	int64_t last_lsn_id = lsn_factory_get_ticket(&db_desc->lsn_factory);
 	set_lsn_id(&db_desc->db_superblock->last_lsn, last_lsn_id);
 	uint64_t superblock_offt =

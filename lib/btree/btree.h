@@ -100,7 +100,7 @@ struct bloom_desc {
 
 typedef struct level_descriptor {
 #if ENABLE_BLOOM_FILTERS
-	struct bloom_desc bloom_desc[NUM_TREES_PER_LEVEL];
+	struct pbf_desc *bloom_desc[NUM_TREES_PER_LEVEL];
 #endif
 	pthread_t compaction_thread[NUM_TREES_PER_LEVEL];
 	lock_table *level_lock_table[MAX_HEIGHT];
