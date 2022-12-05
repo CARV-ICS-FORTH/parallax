@@ -189,38 +189,6 @@ static void init_level_locktable(db_descriptor *database, uint8_t level_id)
 	}
 }
 
-static void calculate_metadata_offsets(uint32_t bitmap_entries, uint32_t slot_array_entries, uint32_t kv_entries,
-				       struct leaf_node_metadata *leaf_level)
-{
-	leaf_level->bitmap_entries = bitmap_entries;
-	leaf_level->bitmap_offset = sizeof(struct bt_static_leaf_node);
-	leaf_level->slot_array_entries = slot_array_entries;
-	leaf_level->slot_array_offset =
-		leaf_level->bitmap_offset + (bitmap_entries * sizeof(struct bt_leaf_entry_bitmap));
-	leaf_level->kv_entries = kv_entries;
-	leaf_level->kv_entries_offset = leaf_level->bitmap_offset +
-					(bitmap_entries * sizeof(struct bt_leaf_entry_bitmap)) +
-					(slot_array_entries * sizeof(struct bt_static_leaf_slot_array));
-}
-
-static void init_leaf_sizes_perlevel(level_descriptor *level)
-{
-	double kv_leaf_entry =
-		get_kv_seperated_splice_size() + sizeof(struct bt_static_leaf_slot_array) + (1 / CHAR_BIT);
-	double numentries_without_metadata = 0;
-	uint32_t bitmap_entries = 0;
-	uint32_t slot_array_entries = 0;
-	uint32_t kv_entries = 0;
-
-	numentries_without_metadata = (level->leaf_size - sizeof(struct bt_static_leaf_node)) / kv_leaf_entry;
-	bitmap_entries = (numentries_without_metadata / CHAR_BIT) + 1;
-	slot_array_entries = numentries_without_metadata;
-	kv_entries = (level->leaf_size - sizeof(struct bt_static_leaf_node) - bitmap_entries -
-		      (slot_array_entries * sizeof(struct bt_static_leaf_slot_array))) /
-		     get_kv_seperated_splice_size();
-	calculate_metadata_offsets(bitmap_entries, slot_array_entries, kv_entries, &level->leaf_offsets);
-}
-
 static void destroy_level_locktable(db_descriptor *database, uint8_t level_id)
 {
 	for (uint8_t i = 0; i < MAX_HEIGHT; ++i)
@@ -617,8 +585,6 @@ db_handle *internal_db_open(struct volume_descriptor *volume_desc, par_db_option
 	handle->db_desc->levels[0].max_level_size = level0_size;
 	/*init soft state for all levels*/
 	for (uint8_t level_id = 1; level_id < MAX_LEVELS; level_id++) {
-		init_leaf_sizes_perlevel(&handle->db_desc->levels[level_id]);
-
 		handle->db_desc->levels[level_id].max_level_size =
 			handle->db_desc->levels[level_id - 1].max_level_size * growth_factor;
 

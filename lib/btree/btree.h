@@ -75,10 +75,6 @@ struct bt_leaf_entry_bitmap {
 	unsigned char bitmap; // This bitmap informs us which kv_entry is available to store data in the static leaf.
 };
 
-struct bt_static_leaf_slot_array {
-	uint32_t index;
-};
-
 struct bt_dynamic_leaf_slot_array {
 	// The index points to the location of the kv pair in the leaf.
 	uint16_t index : 13;
@@ -98,10 +94,6 @@ struct key_compare {
 struct kv_format {
 	uint32_t key_size;
 	char key_buf[];
-} __attribute__((packed));
-
-struct bt_static_leaf_node {
-	struct node_header header;
 } __attribute__((packed));
 
 struct bt_dynamic_leaf_node {
@@ -165,7 +157,7 @@ typedef struct level_descriptor {
 	lock_table guard_of_level;
 	uint64_t level_size[NUM_TREES_PER_LEVEL];
 	uint64_t max_level_size;
-	struct leaf_node_metadata leaf_offsets;
+	// struct leaf_node_metadata leaf_offsets;
 	volatile segment_header *medium_log_head;
 	volatile segment_header *medium_log_tail;
 	uint64_t medium_log_size;
