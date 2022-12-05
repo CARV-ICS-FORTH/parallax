@@ -49,7 +49,7 @@ static uint8_t concurrent_insert(bt_insert_req *ins_req);
 
 void assert_index_node(node_header *node);
 
-struct bt_rebalance_result split_leaf(bt_insert_req *req, leaf_node *node);
+struct bt_rebalance_result split_leaf(bt_insert_req *req, struct bt_dynamic_leaf_node *node);
 
 int prefix_compare(char *l, char *r, size_t prefix_size)
 {
@@ -1717,7 +1717,7 @@ int insert_KV_at_leaf(bt_insert_req *ins_req, node_header *leaf)
 	return ret;
 }
 
-struct bt_rebalance_result split_leaf(bt_insert_req *req, leaf_node *node)
+struct bt_rebalance_result split_leaf(bt_insert_req *req, struct bt_dynamic_leaf_node *node)
 {
 	int level_id = req->metadata.level_id;
 	uint32_t leaf_size = req->metadata.handle->db_desc->levels[level_id].leaf_size;
@@ -1838,11 +1838,11 @@ release_and_retry:
 
 			log_debug("Allocating new active tree %d for level id %d", ins_req->metadata.tree_id, level_id);
 
-			leaf_node *t = seg_get_leaf_node(ins_req->metadata.handle->db_desc, level_id,
-							 ins_req->metadata.tree_id);
+			struct bt_dynamic_leaf_node *new_leaf = seg_get_leaf_node(ins_req->metadata.handle->db_desc,
+										  level_id, ins_req->metadata.tree_id);
 
-			t->header.type = leafRootNode;
-			db_desc->levels[level_id].root_w[ins_req->metadata.tree_id] = (node_header *)t;
+			new_leaf->header.type = leafRootNode;
+			db_desc->levels[level_id].root_w[ins_req->metadata.tree_id] = (node_header *)new_leaf;
 		}
 	}
 	/*acquiring lock of the current root*/
@@ -1886,7 +1886,7 @@ release_and_retry:
 				if (reorganize_dynamic_leaf((struct bt_dynamic_leaf_node *)son,
 							    db_desc->levels[level_id].leaf_size, ins_req))
 					goto release_and_retry;
-				split_res = split_leaf(ins_req, (leaf_node *)son);
+				split_res = split_leaf(ins_req, (struct bt_dynamic_leaf_node *)son);
 			} else {
 				log_fatal("Negative height? come on");
 				BUG_ON();

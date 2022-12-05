@@ -95,12 +95,6 @@ struct key_compare {
 	uint8_t is_NIL;
 };
 
-#define LEAF_NODE_REMAIN (LEAF_NODE_SIZE - sizeof(struct node_header))
-
-#define LN_ITEM_SIZE (sizeof(uint64_t) + (PREFIX_SIZE * sizeof(char)))
-#define KV_LEAF_ENTRY (sizeof(struct kv_seperation_splice) + sizeof(struct bt_static_leaf_slot_array) + (1 / CHAR_BIT))
-#define LN_LENGTH ((LEAF_NODE_REMAIN) / (KV_LEAF_ENTRY))
-
 struct kv_format {
 	uint32_t key_size;
 	char key_buf[];
@@ -113,13 +107,6 @@ struct bt_static_leaf_node {
 struct bt_dynamic_leaf_node {
 	struct node_header header;
 } __attribute__((packed));
-
-typedef struct leaf_node {
-	struct node_header header;
-	uint64_t pointer[LN_LENGTH];
-	char prefix[LN_LENGTH][PREFIX_SIZE];
-	char __pad[LEAF_NODE_SIZE - sizeof(struct node_header) - (LN_LENGTH * LN_ITEM_SIZE)];
-} __attribute__((packed)) leaf_node;
 
 enum bsearch_status { INSERT = 0, FOUND = 1, ERROR = 2 };
 
@@ -386,17 +373,13 @@ struct bt_rebalance_result {
 	union {
 		node_header *left_child;
 		struct index_node *left_ichild;
-		leaf_node *left_lchild;
-		struct bt_static_leaf_node *left_slchild;
-		struct bt_dynamic_leaf_node *left_dlchild;
+		struct bt_dynamic_leaf_node *left_leaf_child;
 	};
 
 	union {
 		node_header *right_child;
 		struct index_node *right_ichild;
-		leaf_node *right_lchild;
-		struct bt_static_leaf_node *right_slchild;
-		struct bt_dynamic_leaf_node *right_dlchild;
+		struct bt_dynamic_leaf_node *right_leaf_child;
 	};
 	enum bt_rebalance_retcode stat;
 };

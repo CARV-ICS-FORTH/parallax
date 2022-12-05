@@ -451,7 +451,7 @@ struct bt_rebalance_result split_dynamic_leaf(struct bt_dynamic_leaf_node *leaf,
 
 	memcpy(split_buffer, leaf, leaf_size);
 	slot_array = get_slot_array_offset((struct bt_dynamic_leaf_node *)split_buffer);
-	left_leaf = rep.left_dlchild = leaf;
+	left_leaf = rep.left_leaf_child = leaf;
 	leaf = (struct bt_dynamic_leaf_node *)split_buffer;
 	/*Fix left leaf metadata*/
 	left_leaf->header.type = leafNode;
@@ -483,7 +483,7 @@ struct bt_rebalance_result split_dynamic_leaf(struct bt_dynamic_leaf_node *leaf,
 	}
 
 	/*Fix Right leaf metadata*/
-	rep.right_dlchild = seg_get_dynamic_leaf_node(db_desc, level_id, req->metadata.tree_id);
+	rep.right_leaf_child = seg_get_dynamic_leaf_node(db_desc, level_id, req->metadata.tree_id);
 	middle_key_buf = fill_keybuf(get_kv_offset(leaf, leaf_size, slot_array[leaf->header.num_entries / 2].index),
 				     get_kv_format(slot_array[leaf->header.num_entries / 2].key_category));
 
@@ -521,7 +521,7 @@ struct bt_rebalance_result split_dynamic_leaf(struct bt_dynamic_leaf_node *leaf,
 	}
 	//Stub end
 
-	right_leaf = rep.right_dlchild;
+	right_leaf = rep.right_leaf_child;
 	/*Copy pointers + prefixes*/
 	leaf_log_tail = get_leaf_log_offset(right_leaf, leaf_size);
 	right_leaf_slot_array = get_slot_array_offset(right_leaf);
@@ -545,11 +545,11 @@ struct bt_rebalance_result split_dynamic_leaf(struct bt_dynamic_leaf_node *leaf,
 		right_leaf_slot_array[j].tombstone = slot_array[i].tombstone;
 	}
 
-	rep.left_dlchild->header.height = leaf->header.height;
-	rep.left_dlchild->header.num_entries = leaf->header.num_entries / 2;
+	rep.left_leaf_child->header.height = leaf->header.height;
+	rep.left_leaf_child->header.num_entries = leaf->header.num_entries / 2;
 
-	rep.right_dlchild->header.num_entries = leaf->header.num_entries - (leaf->header.num_entries / 2);
-	rep.right_dlchild->header.type = leafNode;
+	rep.right_leaf_child->header.num_entries = leaf->header.num_entries - (leaf->header.num_entries / 2);
+	rep.right_leaf_child->header.type = leafNode;
 
 #ifdef DEBUG_DYNAMIC_LEAF
 	validate_dynamic_leaf(left_leaf, level, 0, 0);
@@ -559,7 +559,7 @@ struct bt_rebalance_result split_dynamic_leaf(struct bt_dynamic_leaf_node *leaf,
 #endif
 
 	if (leaf->header.type == leafRootNode) {
-		rep.left_dlchild->header.type = leafNode;
+		rep.left_leaf_child->header.type = leafNode;
 		rep.stat = LEAF_ROOT_NODE_SPLITTED;
 	} else
 		rep.stat = LEAF_NODE_SPLITTED;
@@ -570,7 +570,7 @@ struct bt_rebalance_result split_dynamic_leaf(struct bt_dynamic_leaf_node *leaf,
 	print_all_keys(right_leaf, leaf_size);
 #endif
 
-	seg_free_leaf_node(db_desc, level_id, req->metadata.tree_id, (leaf_node *)old_leaf);
+	seg_free_leaf_node(db_desc, level_id, req->metadata.tree_id, (struct bt_dynamic_leaf_node *)old_leaf);
 	free(split_buffer);
 
 	//log_debug("middle key propoted is : %u, %s", *(uint32_t *)rep.middle_key, rep.middle_key + sizeof(uint32_t));
