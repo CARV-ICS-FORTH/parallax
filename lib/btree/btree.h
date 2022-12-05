@@ -71,12 +71,6 @@ typedef struct segment_header {
 	nodeType_t nodetype;
 } __attribute__((packed, aligned(4096))) segment_header;
 
-/*Note IN stands for Internal Node*/
-typedef struct IN_log_header {
-	nodeType_t type;
-	void *next;
-} IN_log_header;
-
 struct bt_leaf_entry_bitmap {
 	unsigned char bitmap; // This bitmap informs us which kv_entry is available to store data in the static leaf.
 };
