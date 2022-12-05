@@ -14,11 +14,14 @@
 
 #include "../include/parallax/parallax.h"
 #include "../allocator/kv_format.h"
+#include "../allocator/log_structures.h"
+#include "../allocator/persistent_operations.h"
 #include "../btree/btree.h"
 #include "../btree/conf.h"
 #include "../btree/key_splice.h"
 #include "../btree/kv_pairs.h"
 #include "../btree/set_options.h"
+#include "../common/common.h"
 #include "../include/parallax/structures.h"
 #include "../scanner/scanner.h"
 #include <assert.h>
@@ -189,6 +192,29 @@ par_ret_code par_exists(par_handle handle, struct par_key *key)
 		return PAR_KEY_NOT_FOUND;
 
 	return PAR_SUCCESS;
+}
+
+// cppcheck-suppress unusedFunction
+void flush_segment_in_log(par_handle handle, int8_t *buf, int32_t buf_size, enum log_category log_cat,
+			  const char **error_message)
+{
+	if (buf_size != SEGMENT_SIZE) {
+		*error_message = "buf size must be equal to SEGMENT_SIZE";
+		return;
+	}
+
+	db_handle *dbhandle = (db_handle *)handle;
+	uint64_t is_db_replica = dbhandle->db_options.options[REPLICA_MODE].value;
+	if (is_db_replica) {
+		log_fatal("Cannot flush in memory buffers to logs in primary mode");
+		BUG_ON();
+	}
+
+	enum log_type log_type = SMALL_LOG;
+	if (log_cat == BIG) {
+		log_type = BIG_LOG;
+	}
+	add_and_flush_segment_in_log(dbhandle, buf, buf_size, log_type);
 }
 
 void par_delete(par_handle handle, struct par_key *key, const char **error_message)

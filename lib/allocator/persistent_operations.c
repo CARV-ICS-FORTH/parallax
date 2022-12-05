@@ -19,12 +19,23 @@
 #include "../btree/gc.h"
 #include "../btree/kv_pairs.h"
 #include "../btree/lsn.h"
+#include "../btree/segment_allocator.h"
+#include "../common/common.h"
+#include "device_structures.h"
+#include "log_structures.h"
+#include "parallax/structures.h"
 #include "redo_undo_log.h"
+#include "uthash.h"
+#include "volume_manager.h"
 #include <assert.h>
 #include <log.h>
+#include <pthread.h>
 #include <spin_loop.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
 
 // IWYU pragma: no_forward_declare node_header
@@ -886,4 +897,50 @@ void recover_L0(struct db_descriptor *db_desc)
 	}
 	close_log_cursor(cursor[SMALL_LOG]);
 	close_log_cursor(cursor[BIG_LOG]);
+}
+
+void add_and_flush_segment_in_log(db_handle *dbhandle, int8_t *buf, int32_t buf_size, enum log_type log_cat)
+{
+	struct log_descriptor log_desc = dbhandle->db_desc->small_log;
+	if (log_cat == BIG_LOG)
+		log_desc = dbhandle->db_desc->big_log;
+
+	//for send index level_id = 0, tree_id = 0
+	struct segment_header *new_segment = seg_get_raw_log_segment(dbhandle->db_desc, log_desc.log_type, 0, 0);
+	if (!new_segment) {
+		log_fatal("Cannot allocate memory from the device!");
+		BUG_ON();
+	}
+
+	uint64_t next_tail_seg_offt = ABSOLUTE_ADDRESS(new_segment);
+	if (!next_tail_seg_offt) {
+		log_fatal("No space for new segment");
+		BUG_ON();
+	}
+
+	struct segment_header *curr_tail_seg = REAL_ADDRESS(dbhandle->db_desc->small_log.tail_dev_offt);
+	new_segment->segment_id = curr_tail_seg->segment_id + 1;
+	new_segment->next_segment = NULL;
+	new_segment->prev_segment = (void *)log_desc.tail_dev_offt;
+	log_desc.tail_dev_offt = next_tail_seg_offt;
+	/*position to the end of the new log*/
+	log_desc.size += SEGMENT_SIZE;
+
+	//persist buffer
+	ssize_t total_bytes_written = 0;
+	ssize_t size = buf_size;
+	while (total_bytes_written < size) {
+		ssize_t bytes_written = pwrite(dbhandle->db_desc->db_volume->vol_fd, &buf[total_bytes_written],
+					       size - total_bytes_written,
+					       log_desc.tail_dev_offt + total_bytes_written);
+		if (bytes_written == -1) {
+			log_fatal("Failed to write LOG_CHUNK reason follows");
+			perror("Reason");
+			BUG_ON();
+		}
+		total_bytes_written += bytes_written;
+	}
+
+	//flush to apply changes in superblock
+	pr_flush_db_superblock(dbhandle->db_desc);
 }

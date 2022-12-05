@@ -16,6 +16,7 @@ enum kv_category {
 	BIG_INLOG,
 };
 
+enum log_category { L0_RECOVERY = 0, MEDIUM, BIG };
 /**
  *	In case more operations are tracked in the log in the future such as transactions
  *	you will need to change the request_type enumerator and the log_operation struct.

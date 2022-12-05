@@ -109,6 +109,20 @@ void par_get_serialized(par_handle handle, char *key_serialized, struct par_valu
 par_ret_code par_exists(par_handle handle, struct par_key *key);
 
 /**
+ * Takes an in-memory buffer and flushes it to the L0 recovery log
+ * The buffer size must be equal to Parallax's segment size. Also, the buffer must be padded with 0 indicating
+ * the "not used" space at the end of a buffer.
+ * The DB must be opend in replica mode
+ * @param handle: DB handle provided by par_open
+ * @param buf: the in-memory buffer to be flushed
+ * @param buf_size: the in-memory buffer size
+ * @param log_cat: the category of the log to flush into
+ * @param error_message: Contains error message of call fails
+ */
+void flush_segment_in_log(par_handle handle, int8_t *buf, int32_t buf_size, enum log_category log_cat,
+			  const char **error_message);
+
+/**
  * Deletes an existing key in the DB.
  */
 void par_delete(par_handle handle, struct par_key *key, const char **error_message);

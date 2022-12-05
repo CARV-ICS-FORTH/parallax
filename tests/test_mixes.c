@@ -37,7 +37,7 @@ typedef struct value {
 	char value_buf[];
 } value;
 
-enum kv_type { SMALL, MEDIUM, BIG };
+enum kv_type { SMALLKV, MEDIUMKV, BIGKV };
 enum kv_size_type { RANDOM, STATIC };
 
 struct task {
@@ -105,20 +105,20 @@ void init_kv(struct init_key_values *init_info)
 		char *random_kv_prefix;
 	};
 	struct init_values init_values_buffer[NUMBER_OF_KV_CATEGORIES];
-	init_values_buffer[SMALL].random_kv_prefix = strdup(SMALL_KEY_PREFIX);
-	init_values_buffer[SMALL].static_kv_prefix = strdup(SMALL_STATIC_SIZE_PREFIX);
-	init_values_buffer[SMALL].static_kv_size = SMALL_KV_SIZE;
-	init_values_buffer[SMALL].random_kv_size = generate_random_size(SMALL);
+	init_values_buffer[SMALLKV].random_kv_prefix = strdup(SMALL_KEY_PREFIX);
+	init_values_buffer[SMALLKV].static_kv_prefix = strdup(SMALL_STATIC_SIZE_PREFIX);
+	init_values_buffer[SMALLKV].static_kv_size = SMALL_KV_SIZE;
+	init_values_buffer[SMALLKV].random_kv_size = generate_random_size(SMALLKV);
 
-	init_values_buffer[MEDIUM].random_kv_prefix = strdup(MEDIUM_KEY_PREFIX);
-	init_values_buffer[MEDIUM].static_kv_prefix = strdup(MEDIUM_STATIC_SIZE_PREFIX);
-	init_values_buffer[MEDIUM].static_kv_size = MEDIUM_KV_SIZE;
-	init_values_buffer[MEDIUM].random_kv_size = generate_random_size(MEDIUM);
+	init_values_buffer[MEDIUMKV].random_kv_prefix = strdup(MEDIUM_KEY_PREFIX);
+	init_values_buffer[MEDIUMKV].static_kv_prefix = strdup(MEDIUM_STATIC_SIZE_PREFIX);
+	init_values_buffer[MEDIUMKV].static_kv_size = MEDIUM_KV_SIZE;
+	init_values_buffer[MEDIUMKV].random_kv_size = generate_random_size(MEDIUMKV);
 
-	init_values_buffer[BIG].random_kv_prefix = strdup(LARGE_KEY_PREFIX);
-	init_values_buffer[BIG].static_kv_prefix = strdup(LARGE_STATIC_SIZE_PREFIX);
-	init_values_buffer[BIG].static_kv_size = LARGE_KV_SIZE;
-	init_values_buffer[BIG].random_kv_size = generate_random_size(BIG);
+	init_values_buffer[BIGKV].random_kv_prefix = strdup(LARGE_KEY_PREFIX);
+	init_values_buffer[BIGKV].static_kv_prefix = strdup(LARGE_STATIC_SIZE_PREFIX);
+	init_values_buffer[BIGKV].static_kv_size = LARGE_KV_SIZE;
+	init_values_buffer[BIGKV].random_kv_size = generate_random_size(BIGKV);
 
 	if (init_info->size_type == STATIC) {
 		init_info->kv_size = init_values_buffer[init_info->kv_category].static_kv_size;
@@ -202,15 +202,15 @@ static void insert_keys(par_handle handle, struct test_info info)
 	uint64_t big_kvs_num = (info.num_keys * info.big_kv_percentage) / 100;
 
 	struct task population_info_small = {
-		.hd = handle, .from = 0, .to = small_kvs_num / 2, .key_type = SMALL, .size_type = STATIC
+		.hd = handle, .from = 0, .to = small_kvs_num / 2, .key_type = SMALLKV, .size_type = STATIC
 	};
 
 	struct task population_info_medium = {
-		.hd = handle, .from = 0, .to = medium_kvs_num / 2, .key_type = MEDIUM, .size_type = STATIC
+		.hd = handle, .from = 0, .to = medium_kvs_num / 2, .key_type = MEDIUMKV, .size_type = STATIC
 	};
 
 	struct task population_info_big = {
-		.hd = handle, .from = 0, .to = big_kvs_num / 2, .key_type = BIG, .size_type = STATIC
+		.hd = handle, .from = 0, .to = big_kvs_num / 2, .key_type = BIGKV, .size_type = STATIC
 	};
 
 	pthread_t small, medium, big;
@@ -440,13 +440,13 @@ static void validate_kvs(par_handle hd, struct test_info v_info)
 
 	/* first : stage validate that the sizes of keys are correct	*/
 	struct task task_info_small = {
-		.hd = hd, .from = 0, .to = small_num_keys / 2, .key_type = SMALL, .size_type = STATIC
+		.hd = hd, .from = 0, .to = small_num_keys / 2, .key_type = SMALLKV, .size_type = STATIC
 	};
 	struct task task_info_medium = {
-		.hd = hd, .from = 0, .to = medium_num_keys / 2, .key_type = MEDIUM, .size_type = STATIC
+		.hd = hd, .from = 0, .to = medium_num_keys / 2, .key_type = MEDIUMKV, .size_type = STATIC
 	};
 	struct task task_info_big = {
-		.hd = hd, .from = 0, .to = large_num_keys / 2, .key_type = BIG, .size_type = STATIC
+		.hd = hd, .from = 0, .to = large_num_keys / 2, .key_type = BIGKV, .size_type = STATIC
 	};
 
 	pthread_t small, medium, big;
@@ -537,11 +537,11 @@ int main(int argc, char *argv[])
 
 	par_handle handle = open_db(path);
 
-	random_sizes_table[SMALL].min = 5;
-	random_sizes_table[SMALL].max = 100;
-	random_sizes_table[MEDIUM].min = 101;
-	random_sizes_table[MEDIUM].max = 1024;
-	random_sizes_table[BIG].min = 1025;
+	random_sizes_table[SMALLKV].min = 5;
+	random_sizes_table[SMALLKV].max = 100;
+	random_sizes_table[MEDIUMKV].min = 101;
+	random_sizes_table[MEDIUMKV].max = 1024;
+	random_sizes_table[BIGKV].min = 1025;
 	random_sizes_table[BIG].max = KV_MAX_SIZE;
 
 	struct test_info t_info = { .small_kv_percentage = small_kvs_percentage,
