@@ -30,6 +30,7 @@
 #include "lsn.h"
 #include "segment_allocator.h"
 
+#include "../allocator/persistent_operations.h"
 #include <assert.h>
 #include <list.h>
 #include <log.h>

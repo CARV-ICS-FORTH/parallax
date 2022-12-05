@@ -17,6 +17,7 @@
 #include "compaction_daemon.h"
 #include "../allocator/device_structures.h"
 #include "../allocator/log_structures.h"
+#include "../allocator/persistent_operations.h"
 #include "../allocator/redo_undo_log.h"
 #include "../common/common.h"
 #include "btree.h"

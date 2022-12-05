@@ -1,5 +1,6 @@
 #define _GNU_SOURCE
 #include "compaction_worker.h"
+#include "../allocator/persistent_operations.h"
 #include "../allocator/redo_undo_log.h"
 #include "../allocator/volume_manager.h"
 #include "../common/common.h"

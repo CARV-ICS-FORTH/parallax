@@ -16,6 +16,7 @@
 #include "../btree/conf.h"
 #include "../common/common.h"
 #include "device_structures.h"
+#include "persistent_operations.h"
 #include "volume_manager.h"
 
 #include <aio.h>

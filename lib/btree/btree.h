@@ -214,12 +214,6 @@ struct log_recovery_metadata {
 
 void pr_flush_log_tail(struct db_descriptor *db_desc, struct log_descriptor *log_desc);
 void init_log_buffer(struct log_descriptor *log_desc, enum log_type log_type);
-void pr_read_db_superblock(struct db_descriptor *db_desc);
-void pr_flush_db_superblock(struct db_descriptor *db_desc);
-void pr_lock_db_superblock(struct db_descriptor *db_desc);
-void pr_unlock_db_superblock(struct db_descriptor *db_desc);
-void pr_flush_L0(struct db_descriptor *db_desc, uint8_t tree_id);
-void pr_flush_compaction(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id);
 
 /*management operations*/
 db_handle *db_open(par_db_options *db_options, const char **error_message);

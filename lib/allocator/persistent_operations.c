@@ -11,6 +11,7 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+#include "persistent_operations.h"
 #include "../btree/bloom_filter.h"
 #include "../btree/btree.h"
 #include "../btree/btree_node.h"
@@ -18,22 +19,12 @@
 #include "../btree/gc.h"
 #include "../btree/kv_pairs.h"
 #include "../btree/lsn.h"
-#include "../common/common.h"
-#include "device_structures.h"
-#include "log_structures.h"
-#include "parallax/structures.h"
 #include "redo_undo_log.h"
-#include "uthash.h"
-#include "volume_manager.h"
 #include <assert.h>
 #include <log.h>
-#include <pthread.h>
 #include <spin_loop.h>
 #include <stdbool.h>
 #include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 #include <unistd.h>
 
 // IWYU pragma: no_forward_declare node_header
@@ -312,12 +303,6 @@ update_superblock:
 	rul_apply_txn_buf_freeops_and_destroy(db_desc, txn_id);
 }
 
-/**
- * Persists the results of a compaction from Li to Li+1 where i >= 1.
- * @param db_desc the descriptor of the database @param level_id the id of
- * level i+1
- * @param tree_id
- */
 void pr_flush_compaction(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
 {
 	if (level_id == 1) {
@@ -536,10 +521,10 @@ void disable_validation_garbage_bytes(void)
 }
 
 /**
- * \brief Counts the found garbage bytes during the recovery of the redo undo log.
+ * Counts the found garbage bytes during the recovery of the redo undo log.
  * Requires a call to \ref enable_validation_garbage_bytes before calling it otherwise instantly returns.
- * */
-void validate_garbage_blob_bytes(struct large_log_segment_gc_entry *test_garbage_bytes_list)
+ */
+static void validate_garbage_blob_bytes(struct large_log_segment_gc_entry *test_garbage_bytes_list)
 {
 	if (!enable_validate_garbage_blob_bytes)
 		return;
@@ -684,7 +669,7 @@ static char *get_position_in_segment(struct log_cursor *cursor)
 	return &cursor->segment_in_mem_buffer[cursor->offt_in_segment];
 }
 
-void prepare_cursor_op(struct log_cursor *cursor)
+static void prepare_cursor_op(struct log_cursor *cursor)
 {
 	cursor->entry.lsn = *(struct lsn *)get_position_in_segment(cursor);
 	cursor->offt_in_segment += get_lsn_size();
