@@ -566,7 +566,7 @@ db_handle *internal_db_open(struct volume_descriptor *volume_desc, par_db_option
 	pr_flush_L0(db_desc, db_desc->levels[0].active_tree);
 	db_desc->levels[0].allocation_txn_id[db_desc->levels[0].active_tree] = rul_start_txn(db_desc);
 	db_recover_bloom_filters(handle);
-	recover_L0(handle->db_desc);
+	pr_recover_L0(handle->db_desc);
 
 exit:
 	return handle;

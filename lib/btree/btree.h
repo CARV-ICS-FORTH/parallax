@@ -318,7 +318,6 @@ void *append_key_value_to_log(struct log_operation *req);
 void find_key(struct lookup_operation *get_op);
 int8_t delete_key(db_handle *handle, void *key, uint32_t size);
 
-void recover_L0(struct db_descriptor *db_desc);
 void bt_set_db_status(struct db_descriptor *db_desc, enum level_compaction_status comp_status, uint8_t level_id,
 		      uint8_t tree_id);
 

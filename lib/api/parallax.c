@@ -195,7 +195,7 @@ par_ret_code par_exists(par_handle handle, struct par_key *key)
 }
 
 // cppcheck-suppress unusedFunction
-void flush_segment_in_log(par_handle handle, int8_t *buf, int32_t buf_size, enum log_category log_cat,
+void par_flush_segment_in_log(par_handle handle, char *buf, int32_t buf_size, enum log_category log_cat,
 			  const char **error_message)
 {
 	if (buf_size != SEGMENT_SIZE) {
@@ -205,7 +205,7 @@ void flush_segment_in_log(par_handle handle, int8_t *buf, int32_t buf_size, enum
 
 	db_handle *dbhandle = (db_handle *)handle;
 	uint64_t is_db_replica = dbhandle->db_options.options[REPLICA_MODE].value;
-	if (is_db_replica) {
+	if (!is_db_replica) {
 		log_fatal("Cannot flush in memory buffers to logs in primary mode");
 		BUG_ON();
 	}
@@ -214,7 +214,7 @@ void flush_segment_in_log(par_handle handle, int8_t *buf, int32_t buf_size, enum
 	if (log_cat == BIG) {
 		log_type = BIG_LOG;
 	}
-	add_and_flush_segment_in_log(dbhandle, buf, buf_size, log_type);
+	pr_add_and_flush_segment_in_log(dbhandle, buf, buf_size, log_type);
 }
 
 void par_delete(par_handle handle, struct par_key *key, const char **error_message)

@@ -856,7 +856,7 @@ start:
 	return &cursor->entry;
 }
 
-void recover_L0(struct db_descriptor *db_desc)
+void pr_recover_L0(struct db_descriptor *db_desc)
 {
 	db_handle handle = { .db_desc = db_desc, .volume_desc = db_desc->db_volume };
 	struct log_cursor *cursor[LOG_TYPES_COUNT] = { 0 };
@@ -899,7 +899,7 @@ void recover_L0(struct db_descriptor *db_desc)
 	close_log_cursor(cursor[BIG_LOG]);
 }
 
-void add_and_flush_segment_in_log(db_handle *dbhandle, int8_t *buf, int32_t buf_size, enum log_type log_cat)
+void pr_add_and_flush_segment_in_log(db_handle *dbhandle, char *buf, int32_t buf_size, enum log_type log_cat)
 {
 	struct log_descriptor log_desc = dbhandle->db_desc->small_log;
 	if (log_cat == BIG_LOG)
@@ -918,10 +918,11 @@ void add_and_flush_segment_in_log(db_handle *dbhandle, int8_t *buf, int32_t buf_
 		BUG_ON();
 	}
 
-	struct segment_header *curr_tail_seg = REAL_ADDRESS(dbhandle->db_desc->small_log.tail_dev_offt);
-	new_segment->segment_id = curr_tail_seg->segment_id + 1;
-	new_segment->next_segment = NULL;
-	new_segment->prev_segment = (void *)log_desc.tail_dev_offt;
+	struct segment_header *curr_tail_seg = REAL_ADDRESS(log_desc.tail_dev_offt);
+	struct segment_header *in_mem_segment_buf = (struct segment_header *)buf;
+	in_mem_segment_buf->segment_id = curr_tail_seg->segment_id + 1;
+	in_mem_segment_buf->next_segment = NULL;
+	in_mem_segment_buf->prev_segment = (void *)log_desc.tail_dev_offt;
 	log_desc.tail_dev_offt = next_tail_seg_offt;
 	/*position to the end of the new log*/
 	log_desc.size += SEGMENT_SIZE;

@@ -119,7 +119,7 @@ par_ret_code par_exists(par_handle handle, struct par_key *key);
  * @param log_cat: the category of the log to flush into
  * @param error_message: Contains error message of call fails
  */
-void flush_segment_in_log(par_handle handle, int8_t *buf, int32_t buf_size, enum log_category log_cat,
+void par_flush_segment_in_log(par_handle handle, char *buf, int32_t buf_size, enum log_category log_cat,
 			  const char **error_message);
 
 /**
