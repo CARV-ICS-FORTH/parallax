@@ -47,6 +47,22 @@ struct log_info {
 	uint64_t size;
 };
 
+static void flush_segment_in_log(int fd, uint64_t file_offset, char *segment_buffer, int32_t segment_size)
+{
+	ssize_t total_bytes_written = 0;
+	ssize_t size = segment_size;
+	while (total_bytes_written < size) {
+		ssize_t bytes_written = pwrite(fd, &segment_buffer[total_bytes_written], size - total_bytes_written,
+					       file_offset + total_bytes_written);
+		if (bytes_written == -1) {
+			log_fatal("Failed to write LOG_CHUNK reason follows");
+			perror("Reason");
+			BUG_ON();
+		}
+		total_bytes_written += bytes_written;
+	}
+}
+
 /**
  *<new_persistent_design>*/
 static void pr_flush_allocation_log_and_level_info(struct db_descriptor *db_desc, uint8_t src_level_id,
@@ -927,20 +943,7 @@ void pr_add_and_flush_segment_in_log(db_handle *dbhandle, char *buf, int32_t buf
 	/*position to the end of the new log*/
 	log_desc.size += SEGMENT_SIZE;
 
-	//persist buffer
-	ssize_t total_bytes_written = 0;
-	ssize_t size = buf_size;
-	while (total_bytes_written < size) {
-		ssize_t bytes_written = pwrite(dbhandle->db_desc->db_volume->vol_fd, &buf[total_bytes_written],
-					       size - total_bytes_written,
-					       log_desc.tail_dev_offt + total_bytes_written);
-		if (bytes_written == -1) {
-			log_fatal("Failed to write LOG_CHUNK reason follows");
-			perror("Reason");
-			BUG_ON();
-		}
-		total_bytes_written += bytes_written;
-	}
+	flush_segment_in_log(dbhandle->db_desc->db_volume->vol_fd, log_desc.tail_dev_offt, buf, buf_size);
 
 	//flush to apply changes in superblock
 	pr_flush_db_superblock(dbhandle->db_desc);

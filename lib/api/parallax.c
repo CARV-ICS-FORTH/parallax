@@ -196,7 +196,7 @@ par_ret_code par_exists(par_handle handle, struct par_key *key)
 
 // cppcheck-suppress unusedFunction
 void par_flush_segment_in_log(par_handle handle, char *buf, int32_t buf_size, enum log_category log_cat,
-			  const char **error_message)
+			      const char **error_message)
 {
 	if (buf_size != SEGMENT_SIZE) {
 		*error_message = "buf size must be equal to SEGMENT_SIZE";
