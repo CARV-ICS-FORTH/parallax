@@ -53,5 +53,5 @@ void pr_flush_compaction(struct db_descriptor *db_desc, uint8_t level_id, uint8_
 
 void pr_recover_L0(struct db_descriptor *db_desc);
 
-void pr_add_and_flush_segment_in_log(db_handle *dbhandle, char *buf, int32_t buf_size, enum log_type log_cat);
+uint64_t pr_add_and_flush_segment_in_log(db_handle *dbhandle, char *buf, int32_t buf_size, enum log_type log_cat);
 #endif // PERSISTENT_OPERATIONS_H_

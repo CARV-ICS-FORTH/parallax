@@ -195,12 +195,12 @@ par_ret_code par_exists(par_handle handle, struct par_key *key)
 }
 
 // cppcheck-suppress unusedFunction
-void par_flush_segment_in_log(par_handle handle, char *buf, int32_t buf_size, enum log_category log_cat,
-			      const char **error_message)
+uint64_t par_flush_segment_in_log(par_handle handle, char *buf, int32_t buf_size, enum log_category log_cat,
+				  const char **error_message)
 {
 	if (buf_size != SEGMENT_SIZE) {
 		*error_message = "buf size must be equal to SEGMENT_SIZE";
-		return;
+		return UINT64_MAX;
 	}
 
 	db_handle *dbhandle = (db_handle *)handle;
@@ -214,7 +214,7 @@ void par_flush_segment_in_log(par_handle handle, char *buf, int32_t buf_size, en
 	if (log_cat == BIG) {
 		log_type = BIG_LOG;
 	}
-	pr_add_and_flush_segment_in_log(dbhandle, buf, buf_size, log_type);
+	return pr_add_and_flush_segment_in_log(dbhandle, buf, buf_size, log_type);
 }
 
 void par_delete(par_handle handle, struct par_key *key, const char **error_message)

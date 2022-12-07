@@ -915,7 +915,7 @@ void pr_recover_L0(struct db_descriptor *db_desc)
 	close_log_cursor(cursor[BIG_LOG]);
 }
 
-void pr_add_and_flush_segment_in_log(db_handle *dbhandle, char *buf, int32_t buf_size, enum log_type log_cat)
+uint64_t pr_add_and_flush_segment_in_log(db_handle *dbhandle, char *buf, int32_t buf_size, enum log_type log_cat)
 {
 	struct log_descriptor log_desc = dbhandle->db_desc->small_log;
 	if (log_cat == BIG_LOG)
@@ -947,4 +947,6 @@ void pr_add_and_flush_segment_in_log(db_handle *dbhandle, char *buf, int32_t buf
 
 	//flush to apply changes in superblock
 	pr_flush_db_superblock(dbhandle->db_desc);
+
+	return next_tail_seg_offt;
 }
