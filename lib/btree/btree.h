@@ -17,6 +17,7 @@
 #include "../allocator/log_structures.h"
 #include "../allocator/volume_manager.h"
 #include "../common/common.h"
+#include "../parallax_callbacks/parallax_callbacks.h"
 #include "btree_node.h"
 #include "conf.h"
 #include "index_node.h"
@@ -152,6 +153,7 @@ typedef struct db_descriptor {
 	uint32_t db_superblock_idx;
 	/*</new_persistent_design>*/
 
+	parallax_callbacks_t parallax_callbacks;
 	pthread_cond_t client_barrier;
 	pthread_cond_t compaction_cond;
 	pthread_mutex_t compaction_structs_lock;

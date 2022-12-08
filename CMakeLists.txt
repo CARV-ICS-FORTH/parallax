@@ -16,9 +16,8 @@ option(DISABLE_LOGGING
        OFF)
 # Set a default build type if none was specified
 set(default_build_type "Release")
-#if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/.git")
-#  set(default_build_type "Debug")
-#endif()
+# if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/.git") set(default_build_type "Debug")
+# endif()
 
 # Parallax is a dependency
 if(NOT (${CMAKE_SOURCE_DIR} STREQUAL ${CMAKE_CURRENT_SOURCE_DIR}))
@@ -35,7 +34,10 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
                                                "MinSizeRel" "RelWithDebInfo")
 endif()
 
-message(STATUS "build type is '${default_build_type}' and cmake build type is '${CMAKE_BUILD_TYPE}'.")
+message(
+  STATUS
+    "build type is '${default_build_type}' and cmake build type is '${CMAKE_BUILD_TYPE}'."
+)
 
 if(DISABLE_LOGGING)
   add_definitions(-DDISABLE_LOGGING)

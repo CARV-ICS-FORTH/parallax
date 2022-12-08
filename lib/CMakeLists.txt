@@ -46,7 +46,8 @@ set(LIB_C_SOURCE_FILES
     common/common.c
     scanner/min_max_heap.c
     scanner/scanner.c
-    scanner/stack.c)
+    scanner/stack.c
+    parallax_callbacks/parallax_callbacks.c)
 
 list(APPEND LIB_C_SOURCE_FILES
      "$CACHE{parallax_SOURCE_DIR}/utilities/spin_loop.c")

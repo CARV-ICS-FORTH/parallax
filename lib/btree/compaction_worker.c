@@ -365,6 +365,8 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 static void swap_levels(struct level_descriptor *src, struct level_descriptor *dst, int src_active_tree,
 			int dst_active_tree)
 {
+	//TODO: geostyl callback
+	log_debug("TEBIS CALLBACK FUNCTION, SEGMENT IS FULL!");
 	dst->first_segment[dst_active_tree] = src->first_segment[src_active_tree];
 	src->first_segment[src_active_tree] = NULL;
 
