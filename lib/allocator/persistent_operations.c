@@ -945,8 +945,5 @@ uint64_t pr_add_and_flush_segment_in_log(db_handle *dbhandle, char *buf, int32_t
 
 	flush_segment_in_log(dbhandle->db_desc->db_volume->vol_fd, log_desc.tail_dev_offt, buf, buf_size);
 
-	//flush to apply changes in superblock
-	pr_flush_db_superblock(dbhandle->db_desc);
-
 	return next_tail_seg_offt;
 }
