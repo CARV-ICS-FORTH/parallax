@@ -366,7 +366,6 @@ static void swap_levels(struct level_descriptor *src, struct level_descriptor *d
 			int dst_active_tree)
 {
 	//TODO: geostyl callback
-	log_debug("TEBIS CALLBACK FUNCTION, SEGMENT IS FULL!");
 	dst->first_segment[dst_active_tree] = src->first_segment[src_active_tree];
 	src->first_segment[src_active_tree] = NULL;
 

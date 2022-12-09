@@ -53,7 +53,6 @@ void *compaction_daemon(void *args)
 			return NULL;
 		}
 		//TODO: geostyl callback
-		log_debug("TEBIS CALLBACK FUNCTION, START OF COMPACTION!");
 		struct level_descriptor *level_0 = &handle->db_desc->levels[0];
 		struct level_descriptor *src_level = &handle->db_desc->levels[1];
 

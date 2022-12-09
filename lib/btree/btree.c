@@ -31,6 +31,7 @@
 #include "segment_allocator.h"
 
 #include "../allocator/persistent_operations.h"
+#include "../include/parallax/structures.h"
 #include "../parallax_callbacks/parallax_callbacks.h"
 #include <assert.h>
 #include <list.h>
@@ -875,6 +876,9 @@ struct par_put_metadata serialized_insert_key_value(db_handle *handle, const cha
 	}
 	ins_req.metadata.cat = calculate_KV_category(key_size, value_size, op_type);
 	ins_req.metadata.put_op_metadata.key_value_category = ins_req.metadata.cat;
+	ins_req.metadata.put_op_metadata.log_type = L0_RECOVERY;
+	ins_req.metadata.put_op_metadata.flush_segment_event = 0;
+	ins_req.metadata.put_op_metadata.flush_segment_offt = UINT64_MAX;
 
 	// Even if the user requested not to append to log, if the KV belongs to the big category
 	// the system will break if we do not append so we force it here.
@@ -1169,7 +1173,13 @@ static void *bt_append_to_log_direct_IO(struct log_operation *req, struct log_to
 
 	if (available_space_in_log < reserve_needed_space) {
 		//TODO: geostyl callback
-		log_debug("TEBIS CALLBACK FUNCTION, SEGMENT IS FULL!");
+		req->ins_req->metadata.put_op_metadata.flush_segment_event = 1;
+		req->ins_req->metadata.put_op_metadata.flush_segment_offt = log_metadata->log_desc->tail_dev_offt;
+		enum log_category log_type = L0_RECOVERY;
+		if (log_metadata->log_desc->log_type == BIG_LOG)
+			log_type = BIG;
+		req->ins_req->metadata.put_op_metadata.log_type = log_type;
+
 		uint32_t curr_tail_id = log_metadata->log_desc->curr_tail_id;
 		//log_info("Segment change avail space %u kv size %u",available_space_in_log,data_size->kv_size);
 		// pad with zeroes remaining bytes in segment

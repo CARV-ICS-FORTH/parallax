@@ -81,6 +81,9 @@ struct par_key_value {
 struct par_put_metadata {
 	uint64_t lsn; // Log sequence number of KV when it was appended in the log.
 	uint64_t offset_in_log; // Offset in the L0 Recovery or Large Log.
+	uint8_t flush_segment_event;
+	uint64_t flush_segment_offt;
+	enum log_category log_type;
 	enum kv_category key_value_category;
 };
 #endif // PARALLAX_STRUCTURES_H_
