@@ -6,3 +6,9 @@ file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/scripts/tests/test_sanitizers.sh
 
 file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/scripts/tests/test_dirty_scans.sh
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tests/)
+
+file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/tests/run_test.sh
+  DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tests/)
+
+file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/tests/run_test.sh
+  DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/YCSB-CXX/)

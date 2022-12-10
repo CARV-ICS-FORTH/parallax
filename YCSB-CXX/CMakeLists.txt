@@ -16,60 +16,66 @@ if(ARRAY_COMPARE)
 endif()
 
 if(BUILD_TESTING)
-  find_program(BASH_PROGRAM bash)
-
-  if(NOT BASH_PROGRAM)
-    message(FATAL_ERROR "Bash executable not found")
-  endif()
-
   set(RECORD_COUNT 400000)
   set(OPERATION_COUNT 400000)
-  add_test(
-    test_larged
-    ${BASH_PROGRAM}
-    ${CMAKE_CURRENT_SOURCE_DIR}/run-ycsb.sh
-    ${FILEPATH}
-    ${RECORD_COUNT}
-    ${OPERATION_COUNT}
-    ld)
-  add_test(
-    test_large
-    ${BASH_PROGRAM}
-    ${CMAKE_CURRENT_SOURCE_DIR}/run-ycsb.sh
-    ${FILEPATH}
-    ${RECORD_COUNT}
-    ${OPERATION_COUNT}
-    l)
-  add_test(
-    test_mediumd
-    ${BASH_PROGRAM}
-    ${CMAKE_CURRENT_SOURCE_DIR}/run-ycsb.sh
-    ${FILEPATH}
-    ${RECORD_COUNT}
-    ${OPERATION_COUNT}
-    md)
-  add_test(
-    test_medium
-    ${BASH_PROGRAM}
-    ${CMAKE_CURRENT_SOURCE_DIR}/run-ycsb.sh
-    ${FILEPATH}
-    ${RECORD_COUNT}
-    ${OPERATION_COUNT}
-    m)
-  add_test(
-    test_smalld
-    ${BASH_PROGRAM}
-    ${CMAKE_CURRENT_SOURCE_DIR}/run-ycsb.sh
-    ${FILEPATH}
-    ${RECORD_COUNT}
-    ${OPERATION_COUNT}
-    sd)
-  add_test(
+
+  add_parallax_test(
+    NAME
     test_small
-    ${BASH_PROGRAM}
+    COMMAND
+    run_test.sh
     ${CMAKE_CURRENT_SOURCE_DIR}/run-ycsb.sh
-    ${FILEPATH}
     ${RECORD_COUNT}
     ${OPERATION_COUNT}
     s)
+
+  add_parallax_test(
+    NAME
+    test_medium
+    COMMAND
+    run_test.sh
+    ${CMAKE_CURRENT_SOURCE_DIR}/run-ycsb.sh
+    ${RECORD_COUNT}
+    ${OPERATION_COUNT}
+    m)
+
+  add_parallax_test(
+    NAME
+    test_large
+    COMMAND
+    run_test.sh
+    ${CMAKE_CURRENT_SOURCE_DIR}/run-ycsb.sh
+    ${RECORD_COUNT}
+    ${OPERATION_COUNT}
+    l)
+
+  add_parallax_test(
+    NAME
+    test_smalld
+    COMMAND
+    run_test.sh
+    ${CMAKE_CURRENT_SOURCE_DIR}/run-ycsb.sh
+    ${RECORD_COUNT}
+    ${OPERATION_COUNT}
+    sd)
+
+  add_parallax_test(
+    NAME
+    test_mediumd
+    COMMAND
+    run_test.sh
+    ${CMAKE_CURRENT_SOURCE_DIR}/run-ycsb.sh
+    ${RECORD_COUNT}
+    ${OPERATION_COUNT}
+    md)
+
+  add_parallax_test(
+    NAME
+    test_larged
+    COMMAND
+    run_test.sh
+    ${CMAKE_CURRENT_SOURCE_DIR}/run-ycsb.sh
+    ${RECORD_COUNT}
+    ${OPERATION_COUNT}
+    ld)
 endif()
