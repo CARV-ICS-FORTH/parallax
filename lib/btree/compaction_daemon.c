@@ -52,7 +52,6 @@ void *compaction_daemon(void *args)
 			db_desc->db_state = DB_IS_CLOSING;
 			return NULL;
 		}
-		//TODO: geostyl callback
 		struct level_descriptor *level_0 = &handle->db_desc->levels[0];
 		struct level_descriptor *src_level = &handle->db_desc->levels[1];
 
@@ -132,6 +131,13 @@ void *compaction_daemon(void *args)
 			/*Start a compaction from L0 to L1. Flush L0 prior to compaction from L0 to L1*/
 			log_debug("Flushing L0 for region:%s tree:[0][%u]", db_desc->db_superblock->db_name,
 				  comp_req->src_tree);
+			//TODO: geostyl callback
+			parallax_callbacks_t par_callbacks = db_desc->parallax_callbacks;
+			if (are_parallax_callbacks_set(par_callbacks)) {
+				struct parallax_callback_funcs par_cb = parallax_get_callbacks(par_callbacks);
+				void *context = parallax_get_context(par_callbacks);
+				par_cb.compaction_started_cb(context, 0);
+			}
 			pr_flush_L0(db_desc, comp_req->src_tree);
 			db_desc->levels[1].allocation_txn_id[1] = rul_start_txn(db_desc);
 			comp_req->dst_tree = 1;
@@ -176,6 +182,14 @@ void *compaction_daemon(void *args)
 						rul_start_txn(db_desc);
 
 					assert(db_desc->levels[level_id].root[0] != NULL);
+					//TODO: geostyl callback
+					parallax_callbacks_t par_callbacks = db_desc->parallax_callbacks;
+					if (are_parallax_callbacks_set(par_callbacks)) {
+						struct parallax_callback_funcs par_cb =
+							parallax_get_callbacks(par_callbacks);
+						void *context = parallax_get_context(par_callbacks);
+						par_cb.compaction_started_cb(context, level_id);
+					}
 					if (pthread_create(&db_desc->levels[comp_req_p->dst_level]
 								    .compaction_thread[comp_req_p->dst_tree],
 							   NULL, compaction, comp_req_p) != 0) {

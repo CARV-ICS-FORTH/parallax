@@ -1097,7 +1097,8 @@ static void bt_add_segment_to_log(struct db_descriptor *db_desc, struct log_desc
 static void bt_add_blob(struct db_descriptor *db_desc, struct log_descriptor *log_desc, uint8_t level_id,
 			uint8_t tree_id)
 {
-	if (is_parallax_set(db_desc->parallax_callbacks)) {
+	if (are_parallax_callbacks_set(db_desc->parallax_callbacks) &&
+	    parallax_get_callbacks(db_desc->parallax_callbacks).segment_is_full_cb) {
 		struct parallax_callback_funcs parallax_callbacks = parallax_get_callbacks(db_desc->parallax_callbacks);
 		void *context = parallax_get_context(db_desc->parallax_callbacks);
 
@@ -1142,7 +1143,8 @@ static void *bt_append_to_log_direct_IO(struct log_operation *req, struct log_to
 					struct metadata_tologop *data_size)
 {
 	db_handle *handle = req->metadata->handle;
-	if (is_parallax_set(handle->db_desc->parallax_callbacks)) {
+	if (are_parallax_callbacks_set(handle->db_desc->parallax_callbacks) &&
+	    parallax_get_callbacks(handle->db_desc->parallax_callbacks).segment_is_full_cb) {
 		struct parallax_callback_funcs parallax_callbacks =
 			parallax_get_callbacks(handle->db_desc->parallax_callbacks);
 		void *context = parallax_get_context(handle->db_desc->parallax_callbacks);

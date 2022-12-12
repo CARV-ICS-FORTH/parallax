@@ -110,7 +110,7 @@ par_ret_code par_exists(par_handle handle, struct par_key *key);
 
 /**
  * Only for Tebis-Parallax use
- * Takes an in-memory buffer and flushes it to the L0 recovery log
+ * Takes an in-memory buffer and flushes it to the appropriate log
  * The buffer size must be equal to Parallax's segment size. Also, the buffer must be padded with 0 indicating
  * the "not used" space at the end of a buffer.
  * The DB must be opend in replica mode
@@ -122,7 +122,12 @@ par_ret_code par_exists(par_handle handle, struct par_key *key);
  */
 uint64_t par_flush_segment_in_log(par_handle handle, char *buf, int32_t buf_size, enum log_category log_cat,
 				  const char **error_message);
-
+/**
+ * Flushes Parallax superblock
+ * in order for buffer to be persisted, the buffers must be flushed (par_flush_segment_in_log)
+ * @param hande: DB handle proviced by par_open
+ */
+void par_flush_superblock(par_handle handle);
 /**
  * Only for Tebis-Parallax use
  * Every compaction is associated with a transaction ID in Parallax

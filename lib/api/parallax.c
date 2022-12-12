@@ -447,3 +447,9 @@ struct par_options_desc *par_get_default_options(void)
 
 	return default_db_options;
 }
+
+void par_flush_superblock(par_handle handle)
+{
+	struct db_handle *dbhandle = (struct db_handle *)handle;
+	pr_flush_db_superblock(dbhandle->db_desc);
+}

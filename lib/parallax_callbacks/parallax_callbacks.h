@@ -8,7 +8,7 @@
 */
 struct parallax_callback_funcs {
 	void (*segment_is_full_cb)(void *context, uint64_t seg_offt, enum log_category log_type);
-	void (*compaction_started_cb)(void *context);
+	void (*compaction_started_cb)(void *context, uint32_t src_level_id);
 	void (*compaction_ended_cb)(void *context);
 	void (*swap_levels_cb)(void *context);
 	void (*comp_write_cursor_flush_segment_cb)(void *context);
@@ -37,6 +37,6 @@ void *parallax_get_context(parallax_callbacks_t parallax_cb);
 /**
  * return if the send index functionality is set or not
 */
-int8_t is_parallax_set(parallax_callbacks_t parallax_cb);
+int8_t are_parallax_callbacks_set(parallax_callbacks_t parallax_cb);
 
 #endif // parallax_CALLBACKS_H

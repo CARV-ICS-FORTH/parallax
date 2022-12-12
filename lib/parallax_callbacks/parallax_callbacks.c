@@ -9,8 +9,9 @@ struct parallax_callbacks {
 void parallax_init_callbacks(par_handle dbhandle, struct parallax_callback_funcs *parallax_callbacks, void *context)
 {
 	struct db_handle *handle = (struct db_handle *)dbhandle;
+	handle->db_desc->parallax_callbacks = (struct parallax_callbacks *)calloc(1, sizeof(struct parallax_callbacks));
+
 	struct parallax_callbacks *parallax_cb = (struct parallax_callbacks *)handle->db_desc->parallax_callbacks;
-	parallax_cb = (struct parallax_callbacks *)calloc(1, sizeof(struct parallax_callbacks));
 
 	// set the callbacks
 	if (parallax_callbacks->segment_is_full_cb)
@@ -46,7 +47,7 @@ void *parallax_get_context(parallax_callbacks_t parallax_cb)
 	return parallax_obj->context;
 }
 
-int8_t is_parallax_set(parallax_callbacks_t parallax_cb)
+int8_t are_parallax_callbacks_set(parallax_callbacks_t parallax_cb)
 {
 	struct parallax_callbacks *parallax_obj = (struct parallax_callbacks *)parallax_cb;
 	if (parallax_obj)
