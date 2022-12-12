@@ -1,11 +1,8 @@
 ---
 .release_build_commands: &release_build_commands
     before_script:
-        - ./scripts/CI/create_mbbd.sh
         - mkdir -p build;cd build
         - cmake .. -DCMAKE_BUILD_TYPE="Release" -DBDB_PATH=/BDB/TIRESIAS
-    after_script:
-        - ./scripts/CI/destroy_mbbd.sh
 
 release_test_ycsb_larged:
     image: carvicsforth/arch_carv:latest

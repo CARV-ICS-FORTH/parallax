@@ -20,7 +20,12 @@ export NVME0=path
 NVME0 should not contain a trailing / as the cmake configuration appends a trailing slash when creating the filepaths for the tests.
 
 If you want to run a specific test, you must specify its name using a regex.  
-For example to run YCSB with the larged workload (test_larged):
+
+First you need to determine the test (and the test name) you want to run. To list all the test names run the following command:
+
+```ctest -N```
+
+For example to run YCSB with the larged workload (test_larged) execute the following command:
 
 ```
 ctest -R ^test_larged$
