@@ -15,6 +15,7 @@
 #ifndef DYNAMIC_LEAF_H
 #define DYNAMIC_LEAF_H
 #include "btree.h"
+#include "kv_pairs.h"
 #include "parallax/structures.h"
 #include <stdint.h>
 
@@ -91,4 +92,17 @@ char *get_kv_offset(const struct bt_dynamic_leaf_node *leaf, const uint32_t leaf
 typedef struct bt_rebalance_result split_dl(struct bt_dynamic_leaf_node *leaf, uint32_t leaf_size, bt_insert_req *req);
 
 enum kv_entry_location get_kv_format(enum kv_category kv_category);
+//gesalous
+
+bool dl_insert_in_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, struct kv_general_splice *general_splice,
+			       bool is_tombstone);
+
+struct kv_general_splice dl_find_kv_in_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, char *key, int32_t key_size,
+						    const char **error);
+
+struct kv_general_splice dl_split_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, struct bt_dynamic_leaf_node *left,
+					       struct bt_dynamic_leaf_node *right);
+void dl_reorganize_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, struct bt_dynamic_leaf_node *target);
+void dl_init_leaf_node(struct bt_dynamic_leaf_node *node, uint32_t leaf_size);
+
 #endif

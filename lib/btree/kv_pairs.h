@@ -13,6 +13,7 @@
 // limitations under the License.
 #ifndef KV_PAIRS_H
 #define KV_PAIRS_H
+#include "../include/parallax/structures.h"
 #include <stdbool.h>
 #include <stdint.h>
 #define PREFIX_SIZE 12
@@ -29,6 +30,40 @@ struct kv_seperation_splice {
 	char prefix[PREFIX_SIZE];
 	uint64_t dev_offt;
 } __attribute__((packed));
+
+struct kv_seperation_splice2 {
+	uint64_t value_offt;
+	int32_t key_size;
+	char key[];
+} __attribute__((packed));
+
+struct kv_general_splice {
+	enum kv_category cat;
+	union {
+		struct kv_splice *kv_splice;
+		struct kv_seperation_splice2 *kv_sep2;
+	};
+};
+
+/**
+ * @brief Returns a pointer to the key
+ * @param kv_sep2 pointer to the splice
+ * @return pointer to the key
+ */
+char *kv_sep2_get_key(struct kv_seperation_splice2 *kv_sep2);
+
+/**
+ * @brief Returns the size of the key
+ */
+int32_t kv_sep2_get_key_size(struct kv_seperation_splice2 *kv_sep2);
+uint64_t kv_sep2_get_value_offt(struct kv_seperation_splice2 *kv_sep2);
+int32_t kv_sep2_calculate_total_size(struct kv_seperation_splice2 *kv_sep2);
+bool kv_sep2_serialize(struct kv_seperation_splice2 *splice, char *dest, int32_t dest_size);
+void kv_splice_serialize(struct kv_splice *splice, char *dest);
+struct kv_seperation_splice2 *kv_sep2_create(int32_t key_size, char *key, uint64_t value_offt);
+
+struct kv_splice *kv_splice_create(int32_t key_size, char *key, int32_t value_size, char *value);
+int32_t kv_general_splice_get_size(struct kv_general_splice *splice);
 
 /**
  * Calculates key_size given a splice formated key

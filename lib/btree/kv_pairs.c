@@ -13,7 +13,12 @@
 // limitations under the License.
 #include "kv_pairs.h"
 #include "key_splice.h"
+#include "parallax/structures.h"
+#include <assert.h>
+#include <log.h>
+#include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #define DELETE_MARKER_ID (INT32_MAX)
 
@@ -153,4 +158,80 @@ void serialize_kv_splice_to_key_splice(char *buf, struct kv_splice *kv_pair)
 int32_t get_min_possible_kv_size(void)
 {
 	return sizeof(int32_t) + 1;
+}
+//gesalous
+
+char *kv_sep2_get_key(struct kv_seperation_splice2 *kv_sep2)
+{
+	return kv_sep2->key;
+}
+
+int32_t kv_sep2_get_key_size(struct kv_seperation_splice2 *kv_sep2)
+{
+	return kv_sep2->key_size;
+}
+
+uint64_t kv_sep2_get_value_offt(struct kv_seperation_splice2 *kv_sep2)
+{
+	return kv_sep2->value_offt;
+}
+
+int32_t kv_sep2_calculate_total_size(struct kv_seperation_splice2 *kv_sep2)
+{
+	return sizeof(kv_sep2->key_size) + kv_sep2->key_size + sizeof(kv_sep2->value_offt);
+}
+
+bool kv_sep2_serialize(struct kv_seperation_splice2 *splice, char *dest, int32_t dest_size)
+{
+	if (kv_sep2_calculate_total_size(splice) > dest_size) {
+		log_warn("Denied serialization to avoid buffer overflow");
+		return false;
+	}
+	uint32_t idx = 0;
+	memcpy(dest, &splice->value_offt, sizeof(splice->value_offt));
+	idx += sizeof(splice->value_offt);
+	memcpy(&dest[idx], &splice->key_size, sizeof(splice->key_size));
+	idx += sizeof(splice->key_size);
+	memcpy(&dest[idx], splice->key, splice->key_size);
+
+	return true;
+}
+
+struct kv_seperation_splice2 *kv_sep2_create(int32_t key_size, char *key, uint64_t value_offt)
+{
+	struct kv_seperation_splice2 *kv_sep2 = calloc(1UL, sizeof(struct kv_seperation_splice2) + key_size);
+	kv_sep2->key_size = key_size;
+	kv_sep2->value_offt = value_offt;
+	memcpy(kv_sep2->key, key, key_size);
+
+	return kv_sep2;
+}
+
+struct kv_splice *kv_splice_create(int32_t key_size, char *key, int32_t value_size, char *value)
+{
+	struct kv_splice *kv_splice = calloc(1UL, sizeof(*kv_splice) + key_size + value_size);
+	kv_splice->key_size = key_size;
+	kv_splice->value_size = value_size;
+	memcpy(kv_splice->data, key, key_size);
+	memcpy(&kv_splice->data[key_size], value, value_size);
+	return kv_splice;
+}
+
+void kv_splice_serialize(struct kv_splice *splice, char *dest)
+{
+	uint32_t idx = 0;
+	memcpy(dest, &splice->key_size, sizeof(splice->key_size));
+	idx += sizeof(splice->key_size);
+	memcpy(&dest[idx], &splice->value_size, sizeof(splice->value_size));
+	idx += sizeof(splice->value_size);
+	memcpy(&dest[idx], splice->data, splice->key_size + splice->value_size);
+}
+
+int32_t kv_general_splice_get_size(struct kv_general_splice *splice)
+{
+	if (splice->cat == SMALL_INPLACE || splice->cat == MEDIUM_INPLACE)
+		return get_kv_size(splice->kv_splice);
+	if (splice->cat == MEDIUM_INLOG || splice->cat == BIG_INLOG)
+		return kv_sep2_calculate_total_size(splice->kv_sep2);
+	return -1;
 }
