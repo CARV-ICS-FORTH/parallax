@@ -15,11 +15,11 @@
 #define BTREE_NODE_H
 #include <stdint.h>
 typedef enum {
-	leafNode = 590675399,
-	internalNode = 790393380,
-	rootNode = 742729384,
-	leafRootNode = 748939994, /*special case for a newly created tree*/
-	paddedSpace = 55400000,
+	leafNode = 0,
+	internalNode,
+	rootNode,
+	leafRootNode, /*special case for a newly created tree*/
+	paddedSpace,
 	invalid
 } nodeType_t;
 
@@ -34,13 +34,13 @@ typedef struct node_header {
 	union {
 		/*data log info, KV log for leaves private for index*/
 		/* Used by index nodes */
-		uint64_t key_log_size;
+		uint16_t key_log_size;
 		/* Used in dynamic leaves */
 		uint32_t leaf_log_size;
 	};
 	int32_t num_entries;
 	/*pad to be exacly one cache line*/
-	char pad[36];
+	char pad[42];
 
 } __attribute__((packed)) node_header;
 #endif
