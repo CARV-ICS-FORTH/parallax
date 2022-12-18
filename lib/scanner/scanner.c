@@ -24,6 +24,7 @@
 #include "../include/parallax/parallax.h"
 #include "../utilities/dups_list.h"
 #include "min_max_heap.h"
+#include "parallax/structures.h"
 #include "stack.h"
 #include <assert.h>
 #include <errno.h>
@@ -285,35 +286,48 @@ static void fill_compaction_scanner(struct level_scanner *level_sc, struct level
 static void fill_normal_scanner(struct level_scanner *level_sc, struct level_descriptor *level,
 				struct node_header *node, int32_t position)
 {
-	struct bt_dynamic_leaf_node *dlnode = (struct bt_dynamic_leaf_node *)node;
-	struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(dlnode);
+	//gesalous new dynamic leaf
+	struct kv_general_splice splice = dl_get_general_splice((struct bt_dynamic_leaf_node *)node, position);
+	level_sc->keyValue = (char *)splice.kv_splice;
+	if (splice.cat == MEDIUM_INLOG || splice.cat == BIG_INLOG) {
+		uint64_t value_offt = kv_sep2_get_value_offt(splice.kv_sep2);
+		level_sc->keyValue = (char *)REAL_ADDRESS(value_offt);
+	}
+	level_sc->kv_size = get_kv_size((struct kv_splice *)level_sc->keyValue);
+	level_sc->kv_format = KV_FORMAT;
+	level_sc->cat = splice.cat;
+	level_sc->tombstone = splice.is_tombstone;
 
-	switch (get_kv_format(slot_array[position].key_category)) {
-	case KV_INPLACE: {
-		level_sc->keyValue = get_kv_offset(dlnode, level->leaf_size, slot_array[position].index);
-		level_sc->kv_size = get_kv_size((struct kv_splice *)level_sc->keyValue);
-		level_sc->kv_format = KV_FORMAT;
-		level_sc->cat = slot_array[position].key_category;
-		level_sc->tombstone = slot_array[position].tombstone;
-		break;
-	}
-	case KV_INLOG: {
-		struct kv_seperation_splice *kv_entry = (struct kv_seperation_splice *)get_kv_offset(
-			dlnode, level->leaf_size, slot_array[position].index);
-		level_sc->kv_entry = *kv_entry;
-		level_sc->kv_format = KV_FORMAT;
-		level_sc->kv_entry.dev_offt = (uint64_t)REAL_ADDRESS(kv_entry->dev_offt);
-		level_sc->keyValue = (void *)level_sc->kv_entry.dev_offt;
-		level_sc->kv_size = UINT32_MAX;
-		if (level_sc->level_id)
-			level_sc->kv_size = get_kv_size((struct kv_splice *)level_sc->keyValue);
-		level_sc->cat = slot_array[position].key_category;
-		level_sc->tombstone = slot_array[position].tombstone;
-		break;
-	}
-	default:
-		BUG_ON();
-	}
+	//old school
+	// struct bt_dynamic_leaf_node *dlnode = (struct bt_dynamic_leaf_node *)node;
+	// struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(dlnode);
+
+	// switch (get_kv_format(slot_array[position].key_category)) {
+	// case KV_INPLACE: {
+	// 	level_sc->keyValue = get_kv_offset(dlnode, level->leaf_size, slot_array[position].index);
+	// 	level_sc->kv_size = get_kv_size((struct kv_splice *)level_sc->keyValue);
+	// 	level_sc->kv_format = KV_FORMAT;
+	// 	level_sc->cat = slot_array[position].key_category;
+	// 	level_sc->tombstone = slot_array[position].tombstone;
+	// 	break;
+	// }
+	// case KV_INLOG: {
+	// 	struct kv_seperation_splice *kv_entry = (struct kv_seperation_splice *)get_kv_offset(
+	// 		dlnode, level->leaf_size, slot_array[position].index);
+	// 	level_sc->kv_entry = *kv_entry;
+	// 	level_sc->kv_format = KV_FORMAT;
+	// 	level_sc->kv_entry.dev_offt = (uint64_t)REAL_ADDRESS(kv_entry->dev_offt);
+	// 	level_sc->keyValue = (void *)level_sc->kv_entry.dev_offt;
+	// 	level_sc->kv_size = UINT32_MAX;
+	// 	if (level_sc->level_id)
+	// 		level_sc->kv_size = get_kv_size((struct kv_splice *)level_sc->keyValue);
+	// 	level_sc->cat = slot_array[position].key_category;
+	// 	level_sc->tombstone = slot_array[position].tombstone;
+	// 	break;
+	// }
+	// default:
+	// 	BUG_ON();
+	// }
 }
 
 int32_t level_scanner_get_next(level_scanner *sc)
@@ -462,39 +476,45 @@ int32_t level_scanner_seek(level_scanner *level_sc, void *start_key_buf, SEEK_SC
 	element.node = node;
 
 	/*now perform binary search inside the leaf*/
-	db_descriptor *db_desc = level_sc->db->db_desc;
-	struct dl_bsearch_result dlresult = { .middle = 0, .status = INSERT, .op = DYNAMIC_LEAF_INSERT };
-	bt_insert_req req = { 0 };
+	//old school
+	// struct dl_bsearch_result dlresult = { .middle = 0, .status = INSERT, .op = DYNAMIC_LEAF_INSERT };
+	// bt_insert_req req = { 0 };
 
 	// constructing a kv_formated buffer containing key_size | value_size(UINT32_MAX) | key_buf
 	// binary saerch of dynamic leaf accepts only kv_formated or kv_prefixed keys, but the start_key of the scanner
 	// follows the key_size | key format
 	// TODO: (@geostyl) make the binary search aware of the scanner format?
-	size_t key_splice_size = key_splice_get_key_size(start_key_splice) + get_kv_metadata_size();
-	struct kv_splice *kv_formated_start_key = (struct kv_splice *)calloc(1UL, key_splice_size);
-	set_key_size(kv_formated_start_key, key_splice_get_key_size(start_key_splice));
-	set_value_size(kv_formated_start_key, UINT32_MAX);
-	set_key(kv_formated_start_key, key_splice_get_key_offset(start_key_splice),
-		key_splice_get_key_size(start_key_splice));
-	req.key_value_buf = (char *)kv_formated_start_key;
+	// size_t key_splice_size = key_splice_get_key_size(start_key_splice) + get_kv_metadata_size();
+	// struct kv_splice *kv_formated_start_key = (struct kv_splice *)calloc(1UL, key_splice_size);
+	// set_key_size(kv_formated_start_key, key_splice_get_key_size(start_key_splice));
+	// set_value_size(kv_formated_start_key, UINT32_MAX);
+	// set_key(kv_formated_start_key, key_splice_get_key_offset(start_key_splice),
+	// 	key_splice_get_key_size(start_key_splice));
+	// req.key_value_buf = (char *)kv_formated_start_key;
 
-	db_handle handle = { .db_desc = db_desc, .volume_desc = NULL };
-	req.metadata.handle = &handle;
-	req.metadata.key_format = KV_FORMAT;
-	req.metadata.level_id = level_sc->level_id;
-	binary_search_dynamic_leaf((struct bt_dynamic_leaf_node *)node, db_desc->levels[level_id].leaf_size, &req,
-				   &dlresult);
-	assert(dlresult.status != ERROR);
+	// db_handle handle = { .db_desc = db_desc, .volume_desc = NULL };
+	// req.metadata.handle = &handle;
+	// req.metadata.key_format = KV_FORMAT;
+	// req.metadata.level_id = level_sc->level_id;
+	// binary_search_dynamic_leaf((struct bt_dynamic_leaf_node *)node, db_desc->levels[level_id].leaf_size, &req,
+	// 			   &dlresult);
+	// assert(dlresult.status != ERROR);
 
-	element.idx = dlresult.middle;
+	bool exact_match = false;
+	element.idx = dl_search_get_pos((struct bt_dynamic_leaf_node *)node,
+					key_splice_get_key_offset(start_key_splice),
+					key_splice_get_key_size(start_key_splice), &exact_match);
+	if (element.idx == -1)
+		element.idx = 0;
 
 	stack_push(&level_sc->stack, element);
 
-	if ((mode == GREATER && FOUND == dlresult.status) || element.idx >= node->num_entries) {
+	if ((mode == GREATER && exact_match) || element.idx >= node->num_entries) {
 		if (END_OF_DATABASE == level_scanner_get_next(level_sc))
 			return END_OF_DATABASE;
 	}
 
+	db_descriptor *db_desc = level_sc->db->db_desc;
 	element = stack_pop(&level_sc->stack);
 	if (level_sc->type == COMPACTION_BUFFER_SCANNER)
 		fill_compaction_scanner(level_sc, &db_desc->levels[level_sc->level_id], element.node, element.idx);

@@ -95,14 +95,18 @@ enum kv_entry_location get_kv_format(enum kv_category kv_category);
 //gesalous
 
 bool dl_insert_in_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, struct kv_general_splice *general_splice,
-			       bool is_tombstone);
+			       bool is_tombstone, bool *exact_match);
 
 struct kv_general_splice dl_find_kv_in_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, char *key, int32_t key_size,
 						    const char **error);
 
 struct kv_general_splice dl_split_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, struct bt_dynamic_leaf_node *left,
 					       struct bt_dynamic_leaf_node *right);
+bool dl_is_reorganize_possible(struct bt_dynamic_leaf_node *leaf, int32_t kv_size);
 void dl_reorganize_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, struct bt_dynamic_leaf_node *target);
 void dl_init_leaf_node(struct bt_dynamic_leaf_node *node, uint32_t leaf_size);
+bool dl_is_leaf_full(struct bt_dynamic_leaf_node *leaf, int32_t kv_size);
+int32_t dl_search_get_pos(struct bt_dynamic_leaf_node *leaf, char *key, int32_t key_size, bool *exact_match);
+struct kv_general_splice dl_get_general_splice(struct bt_dynamic_leaf_node *leaf, int32_t position);
 
 #endif

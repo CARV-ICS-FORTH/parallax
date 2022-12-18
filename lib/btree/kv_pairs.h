@@ -19,6 +19,8 @@
 #define PREFIX_SIZE 12
 enum KV_type { KV_FORMAT, KV_PREFIX, INDEX_KEY_TYPE, KEY_TYPE };
 
+#define KV_SEP2_MAX_SIZE 512 //(sizeof(uint64_t) + sizeof(int32_t) + MAX_KEY_SIZE)
+
 // KVs in Parallax follow | key_size | value_size | key | value | layout
 struct kv_splice {
 	int32_t key_size;
@@ -39,6 +41,7 @@ struct kv_seperation_splice2 {
 
 struct kv_general_splice {
 	enum kv_category cat;
+	bool is_tombstone;
 	union {
 		struct kv_splice *kv_splice;
 		struct kv_seperation_splice2 *kv_sep2;
@@ -57,13 +60,20 @@ char *kv_sep2_get_key(struct kv_seperation_splice2 *kv_sep2);
  */
 int32_t kv_sep2_get_key_size(struct kv_seperation_splice2 *kv_sep2);
 uint64_t kv_sep2_get_value_offt(struct kv_seperation_splice2 *kv_sep2);
-int32_t kv_sep2_calculate_total_size(struct kv_seperation_splice2 *kv_sep2);
+int32_t kv_sep2_get_total_size(struct kv_seperation_splice2 *kv_sep2);
 bool kv_sep2_serialize(struct kv_seperation_splice2 *splice, char *dest, int32_t dest_size);
 void kv_splice_serialize(struct kv_splice *splice, char *dest);
-struct kv_seperation_splice2 *kv_sep2_create(int32_t key_size, char *key, uint64_t value_offt);
+struct kv_seperation_splice2 *kv_sep2_alloc_and_create(int32_t key_size, char *key, uint64_t value_offt);
+struct kv_seperation_splice2 *kv_sep2_create(int32_t key_size, char *key, uint64_t value_offt, char *buf,
+					     int32_t buf_size);
 
 struct kv_splice *kv_splice_create(int32_t key_size, char *key, int32_t value_size, char *value);
 int32_t kv_general_splice_get_size(struct kv_general_splice *splice);
+int32_t kv_general_splice_get_key_size(struct kv_general_splice *splice);
+char *kv_general_splice_get_key_buf(struct kv_general_splice *splice);
+int kv_general_splice_compare(struct kv_general_splice *sp1, struct kv_general_splice *sp2);
+int32_t kv_general_splice_calculate_size(struct kv_general_splice *general_splice);
+char *kv_general_splice_get_reference(struct kv_general_splice *splice);
 
 /**
  * Calculates key_size given a splice formated key
@@ -188,5 +198,8 @@ void serialize_key(char *buf, void *key, uint32_t key_size);
 void serialize_kv_splice_to_key_splice(char *buf, struct kv_splice *kv_pair);
 
 int32_t get_min_possible_kv_size(void);
+
+int32_t kv_splice_calculate_size(int32_t key_size, int32_t value_size);
+int32_t kv_sep2_calculate_size(int32_t key_size);
 
 #endif // KV_PAIRS_H_

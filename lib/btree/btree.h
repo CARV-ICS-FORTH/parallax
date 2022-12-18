@@ -77,10 +77,10 @@ struct bt_leaf_entry_bitmap {
 
 struct bt_dynamic_leaf_slot_array {
 	// The index points to the location of the kv pair in the leaf.
-	uint16_t index : 13;
 	uint16_t key_category : 2;
 	// Tombstone notifies if the key is deleted.
 	uint16_t tombstone : 1;
+	uint16_t index : 13;
 };
 
 struct key_compare {
@@ -325,9 +325,9 @@ typedef struct bt_insert_req {
 
 typedef struct log_operation {
 	bt_mutate_req *metadata;
-	request_type optype_tolog;
+	request_type optype_tolog; //enum insertOp, deleteOp
 	bt_insert_req *ins_req;
-	bool is_compaction;
+	bool is_compaction; //To identify medium log cases
 } log_operation;
 
 /**

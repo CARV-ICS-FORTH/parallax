@@ -29,7 +29,7 @@ struct kv_seperation_splice2 *tlf_generate_in_log_kv(void)
 	for (uint32_t i = 0; i < key_size; ++i)
 		key[i] = rand() % 255;
 	uint64_t value_offt = rand() % UINT64_MAX;
-	return kv_sep2_create(key_size, key, value_offt);
+	return kv_sep2_alloc_and_create(key_size, key, value_offt);
 }
 
 struct hash_entry {
@@ -129,7 +129,8 @@ int main(int argc, char **argv)
 			splice.kv_sep2 = tlf_generate_in_log_kv();
 			splice.cat = MEDIUM_INLOG;
 		}
-		bool ret = dl_insert_in_dynamic_leaf(leaf, &splice, false);
+		bool exact_match = false;
+		bool ret = dl_insert_in_dynamic_leaf(leaf, &splice, false, &exact_match);
 		if (!ret)
 			break;
 		struct hash_entry *hentry = calloc(1UL, sizeof(*hentry));

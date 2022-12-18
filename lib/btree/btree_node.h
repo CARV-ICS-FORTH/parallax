@@ -30,17 +30,17 @@ typedef struct node_header {
 	/*0 are leaves, 1 are Bottom Internal nodes, and then we have
   INs and root*/
 	int32_t height;
-	uint64_t fragmentation;
+	int32_t fragmentation;
 	union {
 		/*data log info, KV log for leaves private for index*/
 		/* Used by index nodes */
 		uint16_t key_log_size;
 		/* Used in dynamic leaves */
-		uint32_t leaf_log_size;
+		uint16_t leaf_log_size;
 	};
 	int32_t num_entries;
 	/*pad to be exacly one cache line*/
-	char pad[42];
+	char pad[46];
 
 } __attribute__((packed)) node_header;
 #endif
