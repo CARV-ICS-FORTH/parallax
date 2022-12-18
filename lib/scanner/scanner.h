@@ -31,7 +31,7 @@ typedef enum SEEK_SCANNER_MODE { GREATER = 5, GREATER_OR_EQUAL = 6, FETCH_FIRST 
 
 typedef enum SCANNER_TYPE { FORWARD_SCANNER = 1 } SCANNER_TYPE;
 
-typedef struct level_scanner {
+struct level_scanner {
 	struct kv_seperation_splice kv_entry;
 	db_handle *db;
 	stackT stack;
@@ -45,10 +45,10 @@ typedef struct level_scanner {
 	uint8_t valid : 1;
 	uint8_t dirty : 1;
 	uint8_t tombstone : 1;
-} level_scanner;
+};
 
 typedef struct scannerHandle {
-	level_scanner LEVEL_SCANNERS[MAX_LEVELS][NUM_TREES_PER_LEVEL];
+	struct level_scanner LEVEL_SCANNERS[MAX_LEVELS][NUM_TREES_PER_LEVEL];
 	struct sh_heap heap;
 	db_handle *db;
 	void *keyValue;
@@ -58,8 +58,8 @@ typedef struct scannerHandle {
 	SCANNER_TYPE type_of_scanner;
 } scannerHandle;
 
-int32_t level_scanner_seek(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER_MODE mode);
-int32_t level_scanner_get_next(level_scanner *sc);
+int32_t level_scanner_seek(struct level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER_MODE mode);
+int32_t level_scanner_get_next(struct level_scanner *sc);
 void init_dirty_scanner(scannerHandle *sc, db_handle *handle, void *start_key, char seek_flag);
 void close_scanner(scannerHandle *scanner);
 
@@ -72,9 +72,10 @@ void seek_to_last(scannerHandle *sc, db_handle *handle);
 */
 bool get_next(scannerHandle *scanner);
 
-level_scanner *_init_compaction_buffer_scanner(db_handle *handle, int level_id, node_header *node, void *start_key);
+struct level_scanner *_init_compaction_buffer_scanner(db_handle *handle, int level_id, node_header *node,
+						      void *start_key);
 
-void close_compaction_buffer_scanner(level_scanner *level_sc);
+void close_compaction_buffer_scanner(struct level_scanner *level_sc);
 void close_dirty_scanner(scannerHandle *sc);
 #if MEASURE_SST_USED_SPACE
 void perf_measure_leaf_capacity(db_handle *hd, int level_id);

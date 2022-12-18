@@ -34,7 +34,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-int init_level_scanner(level_scanner *level_sc, void *start_key, char seek_mode)
+int init_level_scanner(struct level_scanner *level_sc, void *start_key, char seek_mode)
 {
 	stack_init(&level_sc->stack);
 
@@ -330,7 +330,7 @@ static void fill_normal_scanner(struct level_scanner *level_sc, struct level_des
 	// }
 }
 
-int32_t level_scanner_get_next(level_scanner *sc)
+int32_t level_scanner_get_next(struct level_scanner *sc)
 {
 	enum level_scanner_status_t { GET_NEXT_KV = 1, POP_STACK, PUSH_STACK };
 
@@ -412,7 +412,7 @@ int32_t level_scanner_get_next(level_scanner *sc)
 	return PAR_SUCCESS;
 }
 
-int32_t level_scanner_seek(level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER_MODE mode)
+int32_t level_scanner_seek(struct level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER_MODE mode)
 {
 	uint32_t level_id = level_sc->level_id;
 
@@ -533,9 +533,10 @@ int32_t level_scanner_seek(level_scanner *level_sc, void *start_key_buf, SEEK_SC
  * to eliminate the duplicates and apply the free operations (applying twice a
  * free operation for the same address may result in CORRUPTION :-S
  */
-level_scanner *_init_compaction_buffer_scanner(db_handle *handle, int level_id, node_header *node, void *start_key)
+struct level_scanner *_init_compaction_buffer_scanner(db_handle *handle, int level_id, node_header *node,
+						      void *start_key)
 {
-	level_scanner *level_sc = calloc(1, sizeof(level_scanner));
+	struct level_scanner *level_sc = calloc(1UL, sizeof(struct level_scanner));
 	if (!level_sc) {
 		log_fatal("Calloc failed");
 		BUG_ON();
@@ -554,7 +555,7 @@ level_scanner *_init_compaction_buffer_scanner(db_handle *handle, int level_id, 
 	return level_sc;
 }
 
-void close_compaction_buffer_scanner(level_scanner *level_sc)
+void close_compaction_buffer_scanner(struct level_scanner *level_sc)
 {
 	stack_destroy(&(level_sc->stack));
 	free(level_sc);

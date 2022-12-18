@@ -26,7 +26,7 @@ struct rcursor_device_cursor {
 };
 
 struct rcursor_L0_cursor {
-	level_scanner *L0_scanner;
+	struct level_scanner *L0_scanner;
 };
 
 struct rcursor_level_read_cursor {
