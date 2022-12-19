@@ -123,6 +123,14 @@ uint64_t par_flush_segment_in_log(par_handle handle, char *buf, int32_t buf_size
 				  const char **error_message);
 
 /**
+ * Every compaction is associated with a transaction ID in Parallax
+ * The function initializes a new transaction ID for the upcoming transaction, for the specified level_id & tree_id
+ * @param handle: DB handle provided by par_open
+ * @param level_id: The destination level_id
+ * @param tree_id: the destination tree_id for the specified level_id */
+void par_init_compaction_id(par_handle handle, uint32_t level_id, uint32_t tree_id);
+
+/**
  * Deletes an existing key in the DB.
  */
 void par_delete(par_handle handle, struct par_key *key, const char **error_message);
