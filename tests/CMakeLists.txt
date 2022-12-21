@@ -17,7 +17,8 @@ if(BUILD_TESTING)
       test_leaf_root_delete_get_scan.c
       test_region_allocations.c
       test_par_format.c
-      test_par_put_serialized.c)
+      test_par_put_serialized.c
+      test_wcursors_append_segment.c)
 
   set_source_files_properties(${LIB_TEST_FILES} COMPILE_FLAGS "-O3")
 
@@ -161,6 +162,19 @@ if(BUILD_TESTING)
   target_link_libraries(test_gc "${PROJECT_NAME}")
   add_parallax_test(NAME test_gc COMMAND run_test.sh test_gc
                     --num_of_kvs=1000000)
+
+  if(BDB_LIBRARY AND NOT ${BDB_PATH} STREQUAL "")
+
+    add_test(
+      NAME test_wcursors_append_segment
+      COMMAND $<TARGET_FILE:test_wcursors_append_segment> --file=${FILEPATH}
+              --num_of_kvs=1000000 --BDB_file=${BDB_PATH})
+    add_executable(test_wcursors_append_segment test_wcursors_append_segment.c
+                                                arg_parser.c)
+    target_link_libraries(test_wcursors_append_segment "${PROJECT_NAME}"
+                          ${DEPENDENCIES} ${BDB_LIBRARY})
+
+  endif()
 
   add_executable(test_mixes test_mixes.c arg_parser.c)
   target_link_libraries(test_mixes "${PROJECT_NAME}")

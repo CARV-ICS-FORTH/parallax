@@ -344,3 +344,14 @@ release_test_par_put_metadata:
         - make test_par_put_metadata;cd tests;
         - ctest -R ^test_par_put_metadata$
     needs: [release_build_gcc, release_build_clang]
+
+release_test_level_write_cursors:
+    image: carvicsforth/arch_carv:latest
+    stage: release_test
+    <<: *release_build_commands
+    tags:
+        - kubernetes
+    script:
+        - make test_wcursors_append_segment;cd tests;
+        - ctest -R ^test_wcursors_append_segment$
+    needs: [release_build_gcc, release_build_clang]
