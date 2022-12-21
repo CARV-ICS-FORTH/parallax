@@ -56,4 +56,19 @@ uint64_t wcursor_get_current_root(struct wcursor_level_write_cursor *w_cursor);
  * resources associated with the cursor.
  */
 void wcursor_close_write_cursor(struct wcursor_level_write_cursor *w_cursor);
+
+/**
+ * @brief Appends a new prepopulated segment to the segment list specified by height
+ * @param cursor: pointer to a write cursor
+ * @param height: level of the cursor's index
+ * @param buf: starting offset of the segment
+ * @param buf_size: size of the segment
+ */
+void wcursor_append_segment(struct wcursor_level_write_cursor *wcursor, int32_t height, char *buf, uint32_t buf_size);
+
+/**
+ * @brief: stich all level's segment lists into one
+ * @param: wcursor: pointer to a write cursor */
+
+void wcursor_stitch_segments(struct wcursor_level_write_cursor *wcursor);
 #endif

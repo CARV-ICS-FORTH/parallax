@@ -33,6 +33,7 @@ struct wcursor_level_write_cursor {
 	uint64_t last_segment_btree_level_offt[MAX_HEIGHT];
 	struct index_node *last_index[MAX_HEIGHT];
 	struct leaf_node *last_leaf;
+	int8_t segment_buf_is_init[MAX_HEIGHT];
 	struct medium_log_LRU_cache *medium_log_LRU_cache;
 	uint64_t root_offt;
 	uint64_t segment_id_cnt;
@@ -122,8 +123,11 @@ static void wcursor_get_space(struct wcursor_level_write_cursor *w_cursor, uint3
 
 		if (remaining_space < level_leaf_size) {
 			if (remaining_space > 0) {
-				*(uint32_t *)&w_cursor->segment_buf[0][w_cursor->segment_offt[0] % SEGMENT_SIZE] =
-					paddedSpace;
+				struct node_header *padded_node =
+					(struct node_header *)(&w_cursor->segment_buf[0][w_cursor->segment_offt[0] %
+											 SEGMENT_SIZE]);
+				padded_node->height = 0;
+				padded_node->type = paddedSpace;
 				w_cursor->segment_offt[0] += remaining_space;
 			}
 
@@ -163,8 +167,12 @@ static void wcursor_get_space(struct wcursor_level_write_cursor *w_cursor, uint3
 
 		if (remaining_space < index_node_get_size()) {
 			if (remaining_space > 0) {
-				*(uint32_t *)(&w_cursor->segment_buf[height][w_cursor->segment_offt[height] %
-									     SEGMENT_SIZE]) = paddedSpace;
+				struct node_header *padded_node =
+					(struct node_header
+						 *)(&w_cursor->segment_buf[height][w_cursor->segment_offt[height] %
+										   SEGMENT_SIZE]);
+				padded_node->height = height;
+				padded_node->type = paddedSpace;
 				w_cursor->segment_offt[height] += remaining_space;
 			}
 
@@ -188,6 +196,7 @@ static void wcursor_get_space(struct wcursor_level_write_cursor *w_cursor, uint3
 			w_cursor->segment_offt[height] += sizeof(struct segment_header);
 			w_cursor->last_segment_btree_level_offt[height] = ABSOLUTE_ADDRESS(new_device_segment);
 			current_segment_mem_buffer->segment_id = w_cursor->segment_id_cnt++;
+
 			current_segment_mem_buffer->nodetype = type;
 		}
 		w_cursor->last_index[height] =
@@ -241,6 +250,8 @@ struct wcursor_level_write_cursor *wcursor_init_write_cursor(uint8_t level_id, s
 
 	for (int i = 1; i < MAX_HEIGHT; ++i) {
 		wcursor_get_space(w_cursor, i, internalNode);
+		struct node_header *node = (struct node_header *)w_cursor->last_index[i];
+		node->height = i;
 		index_init_node(DO_NOT_ADD_GUARD, (struct index_node *)w_cursor->last_index[i], internalNode);
 		w_cursor->first_segment_btree_level_offt[i] = w_cursor->last_segment_btree_level_offt[i];
 		assert(w_cursor->last_segment_btree_level_offt[i]);
@@ -322,26 +333,30 @@ void wcursor_flush_write_cursor(struct wcursor_level_write_cursor *w_cursor)
 {
 	uint32_t level_leaf_size = w_cursor->handle->db_desc->levels[w_cursor->level_id].leaf_size;
 	for (int32_t i = 0; i < MAX_HEIGHT; ++i) {
-		uint32_t *type;
 		//log_debug("i = %u tree height: %u", i, c->tree_height);
 
 		if (i <= w_cursor->tree_height) {
 			assert(w_cursor->segment_offt[i] > 4096);
 			if (i == 0 && w_cursor->segment_offt[i] % SEGMENT_SIZE != 0) {
-				type = (uint32_t *)((uint64_t)w_cursor->last_leaf + level_leaf_size);
-				//log_info("Marking padded space for %u segment offt %llu", i, c->segment_offt[0]);
-				*type = paddedSpace;
+				struct node_header *padded_node =
+					(struct node_header *)((uint64_t)w_cursor->last_leaf + level_leaf_size);
+				padded_node->type = paddedSpace;
+				padded_node->height = i;
 			} else if (i > 0 && w_cursor->segment_offt[i] % SEGMENT_SIZE != 0) {
-				type = (uint32_t *)(((char *)w_cursor->last_index[i]) + index_node_get_size());
-				*type = paddedSpace;
+				struct node_header *padded_node =
+					(struct node_header *)(((char *)w_cursor->last_index[i]) +
+							       index_node_get_size());
+				padded_node->type = paddedSpace;
+				padded_node->height = i;
 			}
 		} else {
-			type = (uint32_t *)&w_cursor->segment_buf[i][sizeof(struct segment_header)];
-			*type = paddedSpace;
-			//log_debug("Marking full padded space for level_id %u tree height %u", c->level_id,
-			//	  c->tree_height);
+			struct node_header *padded_node =
+				(struct node_header *)&w_cursor->segment_buf[i][sizeof(struct segment_header)];
+			padded_node->type = paddedSpace;
+			padded_node->height = i;
 		}
 
+		/* set the root of the new index */
 		if (i == w_cursor->tree_height) {
 			log_debug("Merged level has a height off %u", w_cursor->tree_height);
 
@@ -368,6 +383,7 @@ void wcursor_flush_write_cursor(struct wcursor_level_write_cursor *w_cursor)
 			assert(w_cursor->last_segment_btree_level_offt[i + 1]);
 			segment_in_mem_buffer->next_segment = (void *)w_cursor->first_segment_btree_level_offt[i + 1];
 		}
+
 		wcursor_write_segment(w_cursor->segment_buf[i], w_cursor->last_segment_btree_level_offt[i], 0,
 				      SEGMENT_SIZE, w_cursor->fd);
 	}
@@ -573,4 +589,48 @@ void wcursor_set_LRU_cache(struct wcursor_level_write_cursor *w_cursor, struct m
 struct medium_log_LRU_cache *wcursor_get_LRU_cache(struct wcursor_level_write_cursor *w_cursor)
 {
 	return w_cursor->medium_log_LRU_cache;
+}
+
+void wcursor_append_segment(struct wcursor_level_write_cursor *wcursor, int32_t height, char *buf, uint32_t buf_size)
+{
+	assert(wcursor);
+	assert(buf_size == SEGMENT_SIZE);
+
+	if (wcursor->segment_buf_is_init[height]) {
+		// flush in mem segment to free the space for the next one
+		struct segment_header *new_device_segment =
+			get_segment_for_lsm_level_IO(wcursor->handle->db_desc, wcursor->level_id, 1);
+		uint64_t new_device_segment_offt = ABSOLUTE_ADDRESS(new_device_segment);
+		assert(new_device_segment && new_device_segment_offt);
+
+		struct segment_header *current_in_mem_segment = (struct segment_header *)wcursor->segment_buf[height];
+		current_in_mem_segment->next_segment = (void *)new_device_segment_offt;
+
+		wcursor_write_segment((char *)current_in_mem_segment, wcursor->last_segment_btree_level_offt[height], 0,
+				      buf_size, wcursor->fd);
+
+		wcursor->last_segment_btree_level_offt[height] = new_device_segment_offt;
+	}
+
+	memcpy((char *)wcursor->segment_buf[height], buf, buf_size);
+	wcursor->segment_buf_is_init[height] = 1;
+}
+
+void wcursor_stitch_segments(struct wcursor_level_write_cursor *wcursor)
+{
+	for (int i = 0; i < MAX_HEIGHT; ++i) {
+		struct segment_header *curr_in_mem_segment = (struct segment_header *)wcursor->segment_buf[i];
+		if (MAX_HEIGHT - 1 == i) {
+			wcursor->handle->db_desc->levels[wcursor->level_id].last_segment[1] =
+				REAL_ADDRESS(wcursor->last_segment_btree_level_offt[i]);
+			assert(wcursor->last_segment_btree_level_offt[i]);
+			curr_in_mem_segment->next_segment = NULL;
+		} else {
+			assert(wcursor->last_segment_btree_level_offt[i + 1]);
+			curr_in_mem_segment->next_segment = (void *)wcursor->first_segment_btree_level_offt[i + 1];
+		}
+
+		wcursor_write_segment((char *)curr_in_mem_segment, wcursor->last_segment_btree_level_offt[i], 0,
+				      SEGMENT_SIZE, wcursor->fd);
+	}
 }
