@@ -279,7 +279,7 @@ char *kv_general_splice_get_key_buf(struct kv_general_splice *splice)
 	return NULL;
 }
 
-static void kv_general_fill_key(struct kv_general_splice *splice, char **key, int32_t *key_size)
+static void kv_general_splice_fill_key(struct kv_general_splice *splice, char **key, int32_t *key_size)
 {
 	if (splice->cat == SMALL_INPLACE || splice->cat == MEDIUM_INPLACE) {
 		*key = get_key_offset_in_kv(splice->kv_splice);
@@ -300,11 +300,11 @@ int kv_general_splice_compare(struct kv_general_splice *sp1, struct kv_general_s
 {
 	char *key1 = NULL;
 	int32_t key_size1 = -1;
-	kv_general_fill_key(sp1, &key1, &key_size1);
+	kv_general_splice_fill_key(sp1, &key1, &key_size1);
 
 	char *key2 = NULL;
 	int32_t key_size2 = -1;
-	kv_general_fill_key(sp2, &key2, &key_size2);
+	kv_general_splice_fill_key(sp2, &key2, &key_size2);
 
 	int ret = memcmp(key1, key2, key_size1 <= key_size2 ? key_size1 : key_size2);
 	return ret == 0 ? key_size1 - key_size2 : ret;
