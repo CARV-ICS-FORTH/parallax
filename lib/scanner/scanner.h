@@ -32,19 +32,29 @@ typedef enum SEEK_SCANNER_MODE { GREATER = 5, GREATER_OR_EQUAL = 6, FETCH_FIRST 
 typedef enum SCANNER_TYPE { FORWARD_SCANNER = 1 } SCANNER_TYPE;
 
 struct level_scanner {
-	struct kv_seperation_splice kv_entry;
+	//gesalous new dynamic leaf
+	struct kv_general_splice splice;
 	db_handle *db;
 	stackT stack;
-	node_header *root; /*root of the tree when the cursor was initialized/reset, related to CPAAS-188*/
-	char *keyValue;
-	uint32_t kv_format;
-	enum kv_category cat;
-	uint32_t kv_size;
-	uint32_t level_id;
+	node_header *root;
 	int32_t type;
+	uint8_t level_id;
 	uint8_t valid : 1;
 	uint8_t dirty : 1;
-	uint8_t tombstone : 1;
+	//old school
+	// struct kv_seperation_splice kv_entry;
+	// db_handle *db;
+	// stackT stack;
+	// node_header *root; /*root of the tree when the cursor was initialized/reset, related to CPAAS-188*/
+	// char *keyValue;
+	// uint32_t kv_format;
+	// enum kv_category cat;
+	// uint32_t kv_size;
+	// uint32_t level_id;
+	// int32_t type;
+
+	// uint8_t dirty : 1;
+	// uint8_t tombstone : 1;
 };
 
 typedef struct scannerHandle {

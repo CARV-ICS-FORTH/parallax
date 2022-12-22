@@ -38,8 +38,9 @@ void fetch_segment_chunk(struct wcursor_level_write_cursor *w_cursor, uint64_t l
 		ssize_t bytes = pread(w_cursor->handle->db_desc->db_volume->vol_fd, &segment_buf[bytes_to_read],
 				      size - bytes_to_read, dev_offt + bytes_to_read);
 		if (bytes == -1) {
-			log_fatal("Failed to read error code");
+			log_fatal("Failed to read error code dev offt was: %lu", dev_offt);
 			perror("Error");
+			assert(0);
 			BUG_ON();
 		}
 		bytes_to_read += bytes;
@@ -80,13 +81,20 @@ void fetch_segment_chunk(struct wcursor_level_write_cursor *w_cursor, uint64_t l
 		HASH_ADD_PTR(w_cursor->medium_log_segment_map, dev_offt, entry);
 }
 
-char *fetch_kv_from_LRU(struct write_dynamic_leaf_args *args, struct wcursor_level_write_cursor *w_cursor)
+//gesalous new dynamic leaf
+char *fetch_kv_from_LRU(struct wcursor_level_write_cursor *w_cursor, uint64_t kv_dev_offt)
 {
 	char *segment_chunk = NULL, *kv_in_seg = NULL;
 	uint64_t segment_offset, which_chunk, segment_chunk_offt;
-	segment_offset = ABSOLUTE_ADDRESS(args->kv_dev_offt) - (ABSOLUTE_ADDRESS(args->kv_dev_offt) % SEGMENT_SIZE);
+	//gesalous new dynamic leaf
+	segment_offset = kv_dev_offt - (kv_dev_offt % SEGMENT_SIZE);
+	//old school
+	// segment_offset = ABSOLUTE_ADDRESS(kv_dev_offt) - (ABSOLUTE_ADDRESS(kv_dev_offt) % SEGMENT_SIZE);
 
-	which_chunk = (ABSOLUTE_ADDRESS(args->kv_dev_offt) % SEGMENT_SIZE) / LOG_CHUNK_SIZE;
+	//gesalous new dynamic_leaf
+	which_chunk = (kv_dev_offt % SEGMENT_SIZE) / LOG_CHUNK_SIZE;
+	//old school
+	// which_chunk = (ABSOLUTE_ADDRESS(kv_dev_offt) % SEGMENT_SIZE) / LOG_CHUNK_SIZE;
 
 	segment_chunk_offt = segment_offset + (which_chunk * LOG_CHUNK_SIZE);
 
@@ -99,12 +107,41 @@ char *fetch_kv_from_LRU(struct write_dynamic_leaf_args *args, struct wcursor_lev
 		add_to_LRU(w_cursor->medium_log_LRU_cache, segment_chunk_offt, segment_chunk);
 	} else
 		segment_chunk = get_chunk_from_LRU(w_cursor->medium_log_LRU_cache, segment_chunk_offt);
+	//gesalous new dynamic leaf
+	kv_in_seg = &segment_chunk[(kv_dev_offt % SEGMENT_SIZE) - (which_chunk * LOG_CHUNK_SIZE)];
 
-	kv_in_seg =
-		&segment_chunk[(ABSOLUTE_ADDRESS(args->kv_dev_offt) % SEGMENT_SIZE) - (which_chunk * LOG_CHUNK_SIZE)];
+	//old school
+	// kv_in_seg = &segment_chunk[(ABSOLUTE_ADDRESS(kv_dev_offt) % SEGMENT_SIZE) - (which_chunk * LOG_CHUNK_SIZE)];
 
 	return kv_in_seg;
 }
+
+//old school
+// char *fetch_kv_from_LRU(struct write_dynamic_leaf_args *args, struct wcursor_level_write_cursor *w_cursor)
+// {
+// 	char *segment_chunk = NULL, *kv_in_seg = NULL;
+// 	uint64_t segment_offset, which_chunk, segment_chunk_offt;
+// 	segment_offset = ABSOLUTE_ADDRESS(args->kv_dev_offt) - (ABSOLUTE_ADDRESS(args->kv_dev_offt) % SEGMENT_SIZE);
+
+// 	which_chunk = (ABSOLUTE_ADDRESS(args->kv_dev_offt) % SEGMENT_SIZE) / LOG_CHUNK_SIZE;
+
+// 	segment_chunk_offt = segment_offset + (which_chunk * LOG_CHUNK_SIZE);
+
+// 	if (!chunk_exists_in_LRU(w_cursor->medium_log_LRU_cache, segment_chunk_offt)) {
+// 		if (posix_memalign((void **)&segment_chunk, ALIGNMENT_SIZE, LOG_CHUNK_SIZE + KB(4)) != 0) {
+// 			log_fatal("MEMALIGN FAILED");
+// 			BUG_ON();
+// 		}
+// 		fetch_segment_chunk(w_cursor, segment_chunk_offt, segment_chunk, LOG_CHUNK_SIZE + KB(4));
+// 		add_to_LRU(w_cursor->medium_log_LRU_cache, segment_chunk_offt, segment_chunk);
+// 	} else
+// 		segment_chunk = get_chunk_from_LRU(w_cursor->medium_log_LRU_cache, segment_chunk_offt);
+
+// 	kv_in_seg =
+// 		&segment_chunk[(ABSOLUTE_ADDRESS(args->kv_dev_offt) % SEGMENT_SIZE) - (which_chunk * LOG_CHUNK_SIZE)];
+
+// 	return kv_in_seg;
+// }
 
 struct chunk_list *create_list(void)
 {

@@ -22,16 +22,24 @@ enum sh_heap_type { MIN_HEAP, MAX_HEAP };
 #define HEAP_SIZE 32
 
 struct sh_heap_node {
-	char *KV;
+	//gesalous new dynamic leaf
+	struct kv_general_splice splice;
 	struct db_descriptor *db_desc;
 	uint64_t epoch;
-	uint32_t kv_size;
 	uint8_t level_id;
 	uint8_t active_tree;
-	uint8_t duplicate;
-	uint8_t tombstone : 1;
-	enum KV_type type;
-	enum kv_category cat;
+	uint8_t duplicate : 1;
+	//old school
+	// char *KV;
+	// struct db_descriptor *db_desc;
+	// uint64_t epoch;
+	// uint32_t kv_size;
+	// uint8_t level_id;
+	// uint8_t active_tree;
+	// uint8_t duplicate;
+	// uint8_t tombstone : 1;
+	// enum KV_type type;
+	// enum kv_category cat;
 };
 
 struct sh_heap {

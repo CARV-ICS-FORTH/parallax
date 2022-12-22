@@ -31,40 +31,55 @@
 
 static void push_back_duplicate_kv(struct sh_heap *heap, struct sh_heap_node *hp_node)
 {
-	if (hp_node->cat != BIG_INLOG)
+	//gesalous new dynamic leaf
+	if (hp_node->splice.cat != BIG_INLOG)
 		return;
 
-	struct kv_seperation_splice local = { 0 };
-	struct kv_seperation_splice *keyvalue = NULL;
+	uint64_t kv_offt = kv_sep2_get_value_offt(hp_node->splice.kv_sep2);
 
-	switch (hp_node->type) {
-	case KV_FORMAT:
-		memset(&local.prefix, 0x00, PREFIX_SIZE);
-		struct kv_splice *kv = (struct kv_splice *)hp_node->KV;
-		uint32_t key_size = get_key_size(kv);
-		int size = key_size < PREFIX_SIZE ? key_size : PREFIX_SIZE;
-		memcpy(&local.prefix, get_key_offset_in_kv(kv), size);
-		local.dev_offt = (uint64_t)hp_node->KV;
-		keyvalue = &local;
-		break;
-	case KV_PREFIX:
-		keyvalue = (struct kv_seperation_splice *)hp_node->KV;
-		break;
-	default:
-		log_info("Unhandled KV type");
-		_Exit(EXIT_FAILURE);
-	}
-
-	uint64_t segment_offset =
-		ABSOLUTE_ADDRESS(keyvalue->dev_offt) - (ABSOLUTE_ADDRESS(keyvalue->dev_offt) % SEGMENT_SIZE);
-	struct kv_splice *kv = (struct kv_splice *)keyvalue->dev_offt;
-	assert(get_key_size(kv) <= (int32_t)MAX_KEY_SPLICE_SIZE);
+	uint64_t segment_offset = kv_offt - (kv_offt % SEGMENT_SIZE);
 	struct dups_node *node = find_element(heap->dups, (uint64_t)REAL_ADDRESS(segment_offset));
 
+	struct kv_splice *splice = REAL_ADDRESS(kv_offt);
 	if (node)
-		node->kv_size += get_kv_size(kv);
+		node->kv_size += get_kv_size(splice);
 	else
-		append_node(heap->dups, (uint64_t)REAL_ADDRESS(segment_offset), get_kv_size(kv));
+		append_node(heap->dups, (uint64_t)REAL_ADDRESS(segment_offset), get_kv_size(splice));
+	//old school
+	// if (hp_node->cat != BIG_INLOG)
+	// 	return;
+
+	// struct kv_seperation_splice local = { 0 };
+	// struct kv_seperation_splice *keyvalue = NULL;
+
+	// switch (hp_node->type) {
+	// case KV_FORMAT:
+	// 	memset(&local.prefix, 0x00, PREFIX_SIZE);
+	// 	struct kv_splice *kv = (struct kv_splice *)hp_node->KV;
+	// 	uint32_t key_size = get_key_size(kv);
+	// 	int size = key_size < PREFIX_SIZE ? key_size : PREFIX_SIZE;
+	// 	memcpy(&local.prefix, get_key_offset_in_kv(kv), size);
+	// 	local.dev_offt = (uint64_t)hp_node->KV;
+	// 	keyvalue = &local;
+	// 	break;
+	// case KV_PREFIX:
+	// 	keyvalue = (struct kv_seperation_splice *)hp_node->KV;
+	// 	break;
+	// default:
+	// 	log_info("Unhandled KV type");
+	// 	_Exit(EXIT_FAILURE);
+	// }
+
+	// uint64_t segment_offset =
+	// 	ABSOLUTE_ADDRESS(keyvalue->dev_offt) - (ABSOLUTE_ADDRESS(keyvalue->dev_offt) % SEGMENT_SIZE);
+	// struct kv_splice *kv = (struct kv_splice *)keyvalue->dev_offt;
+	// assert(get_key_size(kv) <= (int32_t)MAX_KEY_SPLICE_SIZE);
+	// struct dups_node *node = find_element(heap->dups, (uint64_t)REAL_ADDRESS(segment_offset));
+
+	// if (node)
+	// 	node->kv_size += get_kv_size(kv);
+	// else
+	// 	append_node(heap->dups, (uint64_t)REAL_ADDRESS(segment_offset), get_kv_size(kv));
 }
 
 /**
@@ -106,15 +121,16 @@ static int sh_solve_tie(struct sh_heap *heap, struct sh_heap_node *nd_1, struct 
 	return ret;
 }
 
-/**
- * Compares only the prefixes of two keys. In case of a tie it returns 0
- */
-static int sh_prefix_compare(struct key_compare *key1, struct key_compare *key2)
-{
-	uint32_t size = key1->key_size <= key2->key_size ? key1->key_size : key2->key_size;
-	size = size < PREFIX_SIZE ? size : PREFIX_SIZE;
-	return memcmp(key1->key, key2->key, size);
-}
+//old school
+// /**
+//  * Compares only the prefixes of two keys. In case of a tie it returns 0
+//  */
+// static int sh_prefix_compare(struct key_compare *key1, struct key_compare *key2)
+// {
+// 	uint32_t size = key1->key_size <= key2->key_size ? key1->key_size : key2->key_size;
+// 	size = size < PREFIX_SIZE ? size : PREFIX_SIZE;
+// 	return memcmp(key1->key, key2->key, size);
+// }
 
 /**
  * The comparator function used from the min max heap to compare node
@@ -124,20 +140,9 @@ static int sh_prefix_compare(struct key_compare *key1, struct key_compare *key2)
  */
 static int sh_cmp_heap_nodes(struct sh_heap *hp, struct sh_heap_node *nd_1, struct sh_heap_node *nd_2)
 {
-	//gesalous new dynamice leaf
-	struct kv_general_splice splice1 = { .cat = nd_1->cat };
-	if (splice1.cat == SMALL_INPLACE || splice1.cat == MEDIUM_INPLACE)
-		splice1.kv_splice = (struct kv_splice *)nd_1->KV;
-	if (splice1.cat == MEDIUM_INLOG || splice1.cat == BIG_INLOG)
-		splice1.kv_sep2 = (struct kv_seperation_splice2 *)nd_1->KV;
+	//gesalous new dynamic leaf
 
-	struct kv_general_splice splice2 = { .cat = nd_2->cat };
-	if (splice2.cat == SMALL_INPLACE || splice2.cat == MEDIUM_INPLACE)
-		splice2.kv_splice = (struct kv_splice *)nd_2->KV;
-	if (splice2.cat == MEDIUM_INLOG || splice2.cat == BIG_INLOG)
-		splice2.kv_sep2 = (struct kv_seperation_splice2 *)nd_2->KV;
-
-	int ret = kv_general_splice_compare(&splice1, &splice2);
+	int ret = kv_general_splice_compare(&nd_1->splice, &nd_2->splice);
 	return ret ? ret : sh_solve_tie(hp, nd_1, nd_2);
 
 	//old school

@@ -1,3 +1,4 @@
+#if 0
 #ifndef LEVEL_CURSOR_H
 #define LEVEL_CURSOR_H
 #include "dynamic_leaf.h"
@@ -11,4 +12,5 @@ struct comp_parallax_key {
 		struct kv_splice *kv_in_place;
 	};
 };
+#endif
 #endif

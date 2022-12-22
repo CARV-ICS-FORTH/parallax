@@ -56,6 +56,10 @@ char *get_chunk_from_LRU(struct chunk_LRU_cache *chunk_cache, uint64_t chunk_off
 void destroy_LRU(struct chunk_LRU_cache *chunk_cache);
 void fetch_segment_chunk(struct wcursor_level_write_cursor *w_cursor, uint64_t log_chunk_dev_offt, char *segment_buf,
 			 ssize_t size);
-char *fetch_kv_from_LRU(struct write_dynamic_leaf_args *args, struct wcursor_level_write_cursor *w_cursor);
+
+//gesalous new dynamic leaf
+char *fetch_kv_from_LRU(struct wcursor_level_write_cursor *w_cursor, uint64_t kv_dev_offt);
+//old school
+// char *fetch_kv_from_LRU(struct write_dynamic_leaf_args *args, struct wcursor_level_write_cursor *w_cursor);
 
 #endif

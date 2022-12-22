@@ -50,27 +50,28 @@ static void choose_compaction_roots(struct db_handle *handle, struct compaction_
 		comp_roots->dst_root = handle->db_desc->levels[comp_req->dst_level].root_w[0];
 }
 
-static void comp_fill_parallax_key(struct sh_heap_node *h_node, struct comp_parallax_key *curr_key)
-{
-	curr_key->kv_category = h_node->cat;
-	curr_key->tombstone = h_node->tombstone;
-	assert(h_node->KV);
-	switch (h_node->cat) {
-	case SMALL_INPLACE:
-	case MEDIUM_INPLACE:
-		curr_key->kv_in_place = (struct kv_splice *)h_node->KV;
-		curr_key->kv_type = KV_INPLACE;
-		break;
-	case BIG_INLOG:
-	case MEDIUM_INLOG:
-		curr_key->kv_inlog = *(struct kv_seperation_splice *)h_node->KV;
-		curr_key->kv_type = KV_INLOG;
-		break;
-	default:
-		log_info("Unhandle/Unknown category");
-		BUG_ON();
-	}
-}
+//old school
+// static void comp_fill_parallax_key(struct sh_heap_node *h_node, struct comp_parallax_key *curr_key)
+// {
+// 	curr_key->kv_category = h_node->cat;
+// 	curr_key->tombstone = h_node->tombstone;
+// 	assert(h_node->KV);
+// 	switch (h_node->cat) {
+// 	case SMALL_INPLACE:
+// 	case MEDIUM_INPLACE:
+// 		curr_key->kv_in_place = (struct kv_splice *)h_node->KV;
+// 		curr_key->kv_type = KV_INPLACE;
+// 		break;
+// 	case BIG_INLOG:
+// 	case MEDIUM_INLOG:
+// 		curr_key->kv_inlog = *(struct kv_seperation_splice *)h_node->KV;
+// 		curr_key->kv_type = KV_INLOG;
+// 		break;
+// 	default:
+// 		log_info("Unhandle/Unknown category");
+// 		BUG_ON();
+// 	}
+// }
 
 #if 0
 static void print_heap_node_key(struct sh_heap_node *h_node)
@@ -254,15 +255,9 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 	// initialize and fill min_heap properly
 	struct sh_heap *m_heap = sh_alloc_heap();
 	sh_init_heap(m_heap, comp_req->src_level, MIN_HEAP);
-	struct sh_heap_node src_heap_node = {
-		.KV = NULL, .level_id = 0, .active_tree = 0, .duplicate = 0, .type = KV_PREFIX
-	};
-	struct sh_heap_node dst_heap_node = {
-		.KV = NULL, .level_id = 0, .active_tree = 0, .duplicate = 0, .type = KV_PREFIX
-	};
-	struct sh_heap_node min_heap_node = {
-		.KV = NULL, .level_id = 0, .active_tree = 0, .duplicate = 0, .type = KV_PREFIX
-	};
+	struct sh_heap_node src_heap_node = { 0 };
+	struct sh_heap_node dst_heap_node = { 0 };
+	struct sh_heap_node min_heap_node = { 0 };
 	// init Li cursor
 	wcursor_fill_heap_node(src_rcursor, &src_heap_node);
 	sh_insert_heap_node(m_heap, &src_heap_node);
@@ -284,9 +279,9 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 		}
 
 		if (!min_heap_node.duplicate) {
-			struct comp_parallax_key key = { 0 };
-			comp_fill_parallax_key(&min_heap_node, &key);
-			wcursor_append_KV_pair(new_level, &key);
+			// struct comp_parallax_key key = { 0 };
+			// comp_fill_parallax_key(&min_heap_node, &key);
+			wcursor_append_KV_pair(new_level, &min_heap_node.splice);
 		}
 
 		/*refill from the appropriate level*/

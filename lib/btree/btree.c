@@ -1427,6 +1427,10 @@ static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id,
 
 	if (db_desc->levels[level_id].root_w[tree_id] != NULL)
 		root = db_desc->levels[level_id].root_w[tree_id];
+	if (!root) {
+		get_op->found = 0;
+		return;
+	}
 
 #if ENABLE_BLOOM_FILTERS
 	if (level_id > 0) {
@@ -1477,10 +1481,10 @@ static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id,
 	// 	prev = curr;
 	// 	curr_node = son_node;
 	// }
-	if (NULL == curr_node) {
-		get_op->found = 0;
-		return;
-	}
+	// if (NULL == curr_node) {
+	// 	get_op->found = 0;
+	// 	return;
+	// }
 
 	while (curr_node) {
 		if (curr_node->type == leafNode || curr_node->type == leafRootNode)
@@ -1493,8 +1497,14 @@ static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id,
 		if (prev && RWLOCK_UNLOCK(&prev->rx_lock) != 0)
 			BUG_ON();
 
-		uint64_t child_offset =
-			index_binary_search((struct index_node *)curr_node, (char *)search_key_buf, KEY_TYPE);
+		//gesalous new dynamic leaf
+		uint64_t child_offset = index_binary_search((struct index_node *)curr_node,
+							    key_splice_get_key_offset(search_key_buf),
+							    key_splice_get_key_size(search_key_buf));
+
+		//old school
+		// uint64_t child_offset =
+		// 	index_binary_search((struct index_node *)curr_node, (char *)search_key_buf, KEY_TYPE);
 		son_node = (void *)REAL_ADDRESS(child_offset);
 
 		prev = curr;
@@ -1520,9 +1530,9 @@ static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id,
 	struct kv_general_splice splice =
 		dl_find_kv_in_dynamic_leaf((struct bt_dynamic_leaf_node *)curr_node, key, key_size, &error);
 	if (error != NULL) {
-		log_debug("Key %.*s not found with error message %s", key_size, (char *)key, error);
+		// log_debug("Key %.*s not found with error message %s", key_size, (char *)key, error);
 		get_op->found = 0;
-		return;
+		goto release_leaf_lock;
 	}
 
 	//old school
@@ -1598,6 +1608,7 @@ check_if_done_with_value_log:
 	if (kv_pair.in_tail)
 		bt_done_with_value_log_address(&db_desc->big_log, &kv_pair);
 
+release_leaf_lock:
 	if (curr && RWLOCK_UNLOCK(&curr->rx_lock) != 0)
 		BUG_ON();
 
@@ -1925,7 +1936,7 @@ int is_split_needed(void *node, bt_insert_req *req, uint32_t leaf_size)
 static uint8_t concurrent_insert(bt_insert_req *ins_req)
 {
 	/*The array with the locks that belong to this thread from upper levels*/
-	lock_table *upper_level_nodes[MAX_HEIGHT];
+	lock_table *upper_level_nodes[MAX_HEIGHT] = { 0 };
 
 	lock_table *lock = NULL;
 
@@ -2085,8 +2096,13 @@ release_and_retry:
 
 		struct index_node *n_son = (struct index_node *)son;
 
+		//gesalous new dynamic leaf
+		struct kv_splice *splice = (struct kv_splice *)ins_req->key_value_buf;
 		struct pivot_pointer *son_pivot =
-			index_search_get_pivot(n_son, ins_req->key_value_buf, ins_req->metadata.key_format);
+			index_search_get_pivot(n_son, get_key_offset_in_kv(splice), get_key_size(splice));
+		//old school
+		// struct pivot_pointer *son_pivot =
+		// 	index_search_get_pivot(n_son, ins_req->key_value_buf, ins_req->metadata.key_format);
 
 		father = son;
 		son = REAL_ADDRESS(son_pivot->child_offt);
@@ -2183,7 +2199,7 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 
 	upper_level_nodes[size++] = lock;
 	son = db_desc->levels[level_id].root_w[ins_req->metadata.tree_id];
-	assert(son->height);
+	assert(son->height > 0);
 	while (1) {
 		if (is_split_needed(son, ins_req, db_desc->levels[level_id].leaf_size)) {
 			/*failed needs split*/
@@ -2192,8 +2208,13 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 			return PAR_FAILURE;
 		}
 
-		uint64_t child_offt = index_binary_search((struct index_node *)son, ins_req->key_value_buf,
-							  ins_req->metadata.key_format);
+		//gesalous new dynamic leaf
+		struct kv_splice *splice = (struct kv_splice *)ins_req->key_value_buf;
+		uint64_t child_offt = index_binary_search((struct index_node *)son, get_key_offset_in_kv(splice),
+							  get_key_size(splice));
+		//old school
+		// uint64_t child_offt = index_binary_search((struct index_node *)son, ins_req->key_value_buf,
+		// 					  ins_req->metadata.key_format);
 		son = (node_header *)REAL_ADDRESS(child_offt);
 		assert(son);
 
@@ -2220,16 +2241,12 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 		BUG_ON();
 	}
 
+check_if_leaf_is_safe:
+	assert(son->height == 0);
 	if (is_split_needed(son, ins_req, db_desc->levels[level_id].leaf_size)) {
 		_unlock_upper_levels(upper_level_nodes, size, release);
 		__sync_fetch_and_sub(num_level_writers, 1);
 		return PAR_FAILURE;
-	}
-
-	/*Succesfully reached a bin (bottom internal node)*/
-	if (son->height != 0) {
-		log_fatal("FATAL son corrupted");
-		BUG_ON();
 	}
 
 	insert_KV_at_leaf(ins_req, son);
