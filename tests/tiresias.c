@@ -146,15 +146,12 @@ static void locate_key(par_handle handle, DBT lookup_key)
 	while (par_is_valid(scanner)) {
 		struct par_key fetched_key = par_get_key(scanner);
 
-		if (fetched_key.size == lookup_key.size && memcmp(fetched_key.data, lookup_key.data, 12) == 0)
-			log_info("Fetched key %u %.*s", fetched_key.size, fetched_key.size, fetched_key.data);
-		if (fetched_key.size != lookup_key.size ||
-		    memcmp(fetched_key.data, lookup_key.data, lookup_key.size) != 0) {
-			par_get_next(scanner);
-			continue;
+		if (fetched_key.size == lookup_key.size &&
+		    memcmp(fetched_key.data, lookup_key.data, fetched_key.size) == 0) {
+			log_info("Found key %u %.*s", lookup_key.size, lookup_key.size, (char *)lookup_key.data);
+			return;
 		}
-		log_info("Found key %u %.*s", lookup_key.size, lookup_key.size, (char *)lookup_key.data);
-		return;
+		par_get_next(scanner);
 	}
 	log_info("Not Found key %u %.*s", lookup_key.size, lookup_key.size, (char *)lookup_key.data);
 }
