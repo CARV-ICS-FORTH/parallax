@@ -815,7 +815,6 @@ int32_t dl_search_get_pos(struct bt_dynamic_leaf_node *leaf, char *key, int32_t 
 	int32_t end = leaf->header.num_entries - 1;
 
 	int32_t middle = 0;
-
 	while (start <= end) {
 		middle = (start + end) / 2;
 
@@ -834,12 +833,16 @@ int32_t dl_search_get_pos(struct bt_dynamic_leaf_node *leaf, char *key, int32_t 
 
 		if (0 == cmp_return_value && leaf_key_size == key_size) {
 			*exact_match = true;
+			// log_debug("Found at Leaf is %p num entries %d pos is %d", (void *)leaf,
+			// 	  leaf->header.num_entries, middle);
 			return middle;
 		}
 
-		if (0 == cmp_return_value)
+		if (0 == cmp_return_value) {
+			// log_debug("Partial match leaf key size: %d leaf key %.*s | lookup key size %d lookup key %.*s",
+			// 	  leaf_key_size, leaf_key_size, leaf_key, key_size, key_size, key);
 			cmp_return_value = leaf_key_size - key_size;
-
+		}
 		if (cmp_return_value > 0)
 			end = middle - 1;
 		else
@@ -880,6 +883,7 @@ static uint16_t dl_append_data_splice_in_dynamic_leaf(struct bt_dynamic_leaf_nod
 	int32_t kv_size = kv_general_splice_calculate_size(general_splice);
 	if (dl_is_leaf_full(leaf, kv_size)) {
 		log_warn("Leaf is full cannot serve request");
+		assert(0);
 		return 0;
 	}
 	assert(leaf->header.leaf_log_size > kv_size);
