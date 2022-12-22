@@ -64,8 +64,8 @@ static struct key_splice *create_pivot(char *pivot_buf, int pivot_buf_size, cons
 		log_fatal("Buffer is not large enough");
 		_exit(EXIT_FAILURE);
 	}
-	// log_debug("Created key with size %d and data %.*s", get_key_splice_key_size(new_key_splice),
-	// 	  get_key_splice_key_size(new_key_splice), get_key_splice_key_offset(new_key_splice));
+	// log_debug("Created key with size %d and data %.*s", key_splice_get_key_size(new_key_splice),
+	// 	  key_splice_get_key_size(new_key_splice), key_splice_get_key_offset(new_key_splice));
 	return new_key_splice;
 }
 
@@ -84,17 +84,19 @@ static void verify_pivots(struct index_node *node, struct key_splice **pivot_spl
 		_exit(EXIT_FAILURE);
 	}
 
-	uint64_t child_offt = index_binary_search(node, guard_splice, INDEX_KEY_TYPE);
+	uint64_t child_offt = index_binary_search(node, key_splice_get_key_offset(guard_splice),
+						  key_splice_get_key_size(guard_splice));
 	uint64_t expected_value = base;
 	if (child_offt != expected_value) {
-		log_fatal("i = %u Child offt corrupted shoud be %lu but its value is %lu", 0, expected_value,
+		log_fatal("i = %u Child offt corrupted should be %lu but its value is %lu", 0, expected_value,
 			  child_offt);
 		_exit(EXIT_FAILURE);
 	}
 
 	for (uint32_t i = 0; i < num_node_keys; ++i) {
 		//log_debug("Look up key is %.*s", pivot[i]->size, pivot[i]->data);
-		child_offt = index_binary_search(node, pivot_splice[i], INDEX_KEY_TYPE);
+		child_offt = index_binary_search(node, key_splice_get_key_offset(pivot_splice[i]),
+						 key_splice_get_key_size(pivot_splice[i]));
 		expected_value = base + i + 1;
 		//log_debug("i = %u expected %lu got %lu lookup key %.*s", i, expected_value, child_offt, pivot[i]->size,
 		//	  pivot[i]->data);
@@ -115,7 +117,8 @@ static uint32_t insert_and_verify_pivots(db_handle *handle, unsigned char *alpha
 		pivot[i] = calloc(1UL, 512);
 		pivot[i] = create_pivot((char *)pivot[i], 512, alphabet, PIVOT_BASE + i, size);
 
-		//log_debug("Created pivot key size %u %.*s", pivot[i]->size, pivot[i]->size, pivot[i]->data);
+		// log_debug("Created pivot key size %u %.*s", key_splice_get_key_size(pivot[i]),
+		// 	  key_splice_get_key_size(pivot[i]), key_splice_get_key_offset(pivot[i]));
 	}
 
 	/*insert in ascending order*/
@@ -132,6 +135,9 @@ static uint32_t insert_and_verify_pivots(db_handle *handle, unsigned char *alpha
 							  .left_child = &left_child,
 							  .key_splice = pivot[num_node_keys],
 							  .right_child = &right_child };
+		log_debug("Inserting pivot key size %u %.*s", key_splice_get_key_size(pivot[num_node_keys]),
+			  key_splice_get_key_size(pivot[num_node_keys]),
+			  key_splice_get_key_offset(pivot[num_node_keys]));
 		if (!index_insert_pivot(&ins_pivot_req)) {
 			log_warn(
 				"Failed to insert pivot %.*s after %u pivots because node is full don't worry proceeding to the next step",
