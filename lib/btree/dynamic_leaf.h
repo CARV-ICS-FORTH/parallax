@@ -96,6 +96,8 @@ enum kv_entry_location get_kv_format(enum kv_category kv_category);
 
 bool dl_insert_in_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, struct kv_general_splice *general_splice,
 			       bool is_tombstone, bool *exact_match);
+bool dl_append_splice_in_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, struct kv_general_splice *general_splice,
+				      bool is_tombstone);
 
 struct kv_general_splice dl_find_kv_in_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, char *key, int32_t key_size,
 						    const char **error);
