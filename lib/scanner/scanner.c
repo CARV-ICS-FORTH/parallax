@@ -111,14 +111,7 @@ void init_generic_scanner(struct scannerHandle *sc, struct db_handle *handle, vo
 		if (retval)
 			continue;
 		sc->LEVEL_SCANNERS[0][i].valid = 1;
-		//gesalous new dynamic leaf
 		nd.splice = sc->LEVEL_SCANNERS[0][i].splice;
-		//old school
-		// nd.KV = sc->LEVEL_SCANNERS[0][i].keyValue;
-		// nd.kv_size = sc->LEVEL_SCANNERS[0][i].kv_size;
-		// nd.type = KV_FORMAT;
-		// nd.tombstone = sc->LEVEL_SCANNERS[0][i].tombstone;
-		// nd.cat = sc->LEVEL_SCANNERS[0][i].cat;
 		nd.level_id = 0;
 		nd.active_tree = i;
 		nd.db_desc = handle->db_desc;
@@ -143,13 +136,7 @@ void init_generic_scanner(struct scannerHandle *sc, struct db_handle *handle, vo
 		retval = init_level_scanner(&sc->LEVEL_SCANNERS[level_id][tree_id], start_key, seek_flag);
 		if (retval == 0) {
 			sc->LEVEL_SCANNERS[level_id][tree_id].valid = 1;
-			//gesalous new dynamic leaf
 			nd.splice = sc->LEVEL_SCANNERS[level_id][tree_id].splice;
-			//old school
-			// nd.KV = sc->LEVEL_SCANNERS[level_id][tree_id].keyValue;
-			// nd.kv_size = sc->LEVEL_SCANNERS[level_id][tree_id].kv_size;
-			// nd.type = KV_FORMAT;
-			// nd.tombstone = sc->LEVEL_SCANNERS[level_id][tree_id].tombstone;
 			nd.level_id = level_id;
 			nd.active_tree = tree_id;
 			nd.db_desc = handle->db_desc;
@@ -259,89 +246,14 @@ void close_scanner(scannerHandle *scanner)
 	free(scanner);
 }
 
-static void fill_compaction_scanner(struct level_scanner *level_sc, struct level_descriptor *level,
-				    struct node_header *node, int32_t position)
-{
-	//gesalous new dynamic leaf
-	level_sc->splice = dl_get_general_splice((struct bt_dynamic_leaf_node *)node, position);
-	//old school
-	// struct bt_dynamic_leaf_node *dlnode = (struct bt_dynamic_leaf_node *)node;
-	// struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(dlnode);
-	// switch (get_kv_format(slot_array[position].key_category)) {
-	// case KV_INPLACE: {
-	// 	level_sc->keyValue = get_kv_offset(dlnode, level->leaf_size, slot_array[position].index);
-	// 	level_sc->kv_format = KV_FORMAT;
-	// 	level_sc->cat = slot_array[position].key_category;
-	// 	level_sc->tombstone = slot_array[position].tombstone;
-	// 	level_sc->kv_size = get_kv_size((struct kv_splice *)level_sc->keyValue);
-	// 	break;
-	// }
-	// case KV_INLOG: {
-	// 	struct kv_seperation_splice *kv_entry = (struct kv_seperation_splice *)get_kv_offset(
-	// 		dlnode, level->leaf_size, slot_array[position].index);
-	// 	level_sc->kv_entry = *kv_entry;
-	// 	level_sc->kv_entry.dev_offt = (uint64_t)REAL_ADDRESS(kv_entry->dev_offt);
-	// 	level_sc->keyValue = (char *)&level_sc->kv_entry;
-	// 	level_sc->cat = slot_array[position].key_category;
-	// 	level_sc->tombstone = slot_array[position].tombstone;
-	// 	level_sc->kv_size = get_kv_seperated_splice_size();
-	// 	level_sc->kv_format = KV_PREFIX;
-	// 	break;
-	// }
-	// default:
-	// 	BUG_ON();
-	// }
-}
-
-static void fill_normal_scanner(struct level_scanner *level_sc, struct level_descriptor *level,
-				struct node_header *node, int32_t position)
-{
-	//gesalous new dynamic leaf
-	level_sc->splice = dl_get_general_splice((struct bt_dynamic_leaf_node *)node, position);
-
-	//old school
-	// struct bt_dynamic_leaf_node *dlnode = (struct bt_dynamic_leaf_node *)node;
-	// struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(dlnode);
-
-	// switch (get_kv_format(slot_array[position].key_category)) {
-	// case KV_INPLACE: {
-	// 	level_sc->keyValue = get_kv_offset(dlnode, level->leaf_size, slot_array[position].index);
-	// 	level_sc->kv_size = get_kv_size((struct kv_splice *)level_sc->keyValue);
-	// 	level_sc->kv_format = KV_FORMAT;
-	// 	level_sc->cat = slot_array[position].key_category;
-	// 	level_sc->tombstone = slot_array[position].tombstone;
-	// 	break;
-	// }
-	// case KV_INLOG: {
-	// 	struct kv_seperation_splice *kv_entry = (struct kv_seperation_splice *)get_kv_offset(
-	// 		dlnode, level->leaf_size, slot_array[position].index);
-	// 	level_sc->kv_entry = *kv_entry;
-	// 	level_sc->kv_format = KV_FORMAT;
-	// 	level_sc->kv_entry.dev_offt = (uint64_t)REAL_ADDRESS(kv_entry->dev_offt);
-	// 	level_sc->keyValue = (void *)level_sc->kv_entry.dev_offt;
-	// 	level_sc->kv_size = UINT32_MAX;
-	// 	if (level_sc->level_id)
-	// 		level_sc->kv_size = get_kv_size((struct kv_splice *)level_sc->keyValue);
-	// 	level_sc->cat = slot_array[position].key_category;
-	// 	level_sc->tombstone = slot_array[position].tombstone;
-	// 	break;
-	// }
-	// default:
-	// 	BUG_ON();
-	// }
-}
-
-int32_t level_scanner_get_next(struct level_scanner *sc)
+int32_t level_scanner_get_next(struct level_scanner *level_scanner)
 {
 	enum level_scanner_status_t { GET_NEXT_KV = 1, POP_STACK, PUSH_STACK };
 
-	stackElementT stack_element = stack_pop(&(sc->stack)); /*get the element*/
+	stackElementT stack_element = stack_pop(&(level_scanner->stack)); /*get the element*/
 
-	if (stack_element.guard) {
-		//old school
-		// sc->keyValue = NULL;
+	if (stack_element.guard)
 		return END_OF_DATABASE;
-	}
 
 	if (stack_element.node->type != leafNode && stack_element.node->type != leafRootNode) {
 		log_fatal("Corrupted scanner stack, top element should be a leaf node");
@@ -356,31 +268,27 @@ int32_t level_scanner_get_next(struct level_scanner *sc)
 			//log_debug("get_next kv");
 
 			if (++stack_element.idx >= stack_element.node->num_entries) {
-				read_unlock_node(sc, stack_element.node);
+				read_unlock_node(level_scanner, stack_element.node);
 				status = POP_STACK;
 				break;
 			}
 
-			if (COMPACTION_BUFFER_SCANNER == sc->type)
-				fill_compaction_scanner(sc, &sc->db->db_desc->levels[sc->level_id], stack_element.node,
-							stack_element.idx);
-			else
-				fill_normal_scanner(sc, &sc->db->db_desc->levels[sc->level_id], stack_element.node,
-						    stack_element.idx);
+			level_scanner->splice =
+				dl_get_general_splice((struct dl_leaf_node *)stack_element.node, stack_element.idx);
 			//log_debug("Get next Returning Leaf:%lu idx is %d num_entries %d", stack_element.node,
 			//	  stack_element.idx, stack_element.node->num_entries);
-			stack_push(&sc->stack, stack_element);
+			stack_push(&level_scanner->stack, stack_element);
 
 			return PAR_SUCCESS;
 
 		case PUSH_STACK:;
 			//log_debug("Pushing stack");
 			struct pivot_pointer *pivot = index_iterator_get_pivot_pointer(&stack_element.iterator);
-			stack_push(&sc->stack, stack_element);
+			stack_push(&level_scanner->stack, stack_element);
 			memset(&stack_element, 0x00, sizeof(stack_element));
 			stack_element.node = REAL_ADDRESS(pivot->child_offt);
 
-			read_lock_node(sc, stack_element.node);
+			read_lock_node(level_scanner, stack_element.node);
 			if (stack_element.node->type == leafNode || stack_element.node->type == leafRootNode) {
 				stack_element.idx = -1;
 				status = GET_NEXT_KV;
@@ -391,7 +299,7 @@ int32_t level_scanner_get_next(struct level_scanner *sc)
 			break;
 
 		case POP_STACK:
-			stack_element = stack_pop(&(sc->stack));
+			stack_element = stack_pop(&(level_scanner->stack));
 
 			if (stack_element.guard)
 				return END_OF_DATABASE;
@@ -402,7 +310,7 @@ int32_t level_scanner_get_next(struct level_scanner *sc)
 				//log_debug("Proceeding with the next pivot of node: %lu", stack_element.node);
 			} else {
 				//log_debug("Done with index node unlock");
-				read_unlock_node(sc, stack_element.node);
+				read_unlock_node(level_scanner, stack_element.node);
 			}
 			break;
 		default:
@@ -414,11 +322,8 @@ int32_t level_scanner_get_next(struct level_scanner *sc)
 	return PAR_SUCCESS;
 }
 
-int32_t level_scanner_seek(struct level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER_MODE mode)
+int32_t level_scanner_seek(struct level_scanner *level_sc, struct key_splice *start_key_splice, SEEK_SCANNER_MODE mode)
 {
-	uint32_t level_id = level_sc->level_id;
-
-	struct key_splice *start_key_splice = start_key_buf;
 	// cppcheck-suppress variableScope
 	char smallest_possible_pivot[SMALLEST_POSSIBLE_PIVOT_SIZE];
 	if (!start_key_splice) {
@@ -478,33 +383,9 @@ int32_t level_scanner_seek(struct level_scanner *level_sc, void *start_key_buf, 
 	element.node = node;
 
 	/*now perform binary search inside the leaf*/
-	//old school
-	// struct dl_bsearch_result dlresult = { .middle = 0, .status = INSERT, .op = DYNAMIC_LEAF_INSERT };
-	// bt_insert_req req = { 0 };
-
-	// constructing a kv_formated buffer containing key_size | value_size(UINT32_MAX) | key_buf
-	// binary saerch of dynamic leaf accepts only kv_formated or kv_prefixed keys, but the start_key of the scanner
-	// follows the key_size | key format
-	// TODO: (@geostyl) make the binary search aware of the scanner format?
-	// size_t key_splice_size = key_splice_get_key_size(start_key_splice) + get_kv_metadata_size();
-	// struct kv_splice *kv_formated_start_key = (struct kv_splice *)calloc(1UL, key_splice_size);
-	// set_key_size(kv_formated_start_key, key_splice_get_key_size(start_key_splice));
-	// set_value_size(kv_formated_start_key, UINT32_MAX);
-	// set_key(kv_formated_start_key, key_splice_get_key_offset(start_key_splice),
-	// 	key_splice_get_key_size(start_key_splice));
-	// req.key_value_buf = (char *)kv_formated_start_key;
-
-	// db_handle handle = { .db_desc = db_desc, .volume_desc = NULL };
-	// req.metadata.handle = &handle;
-	// req.metadata.key_format = KV_FORMAT;
-	// req.metadata.level_id = level_sc->level_id;
-	// binary_search_dynamic_leaf((struct bt_dynamic_leaf_node *)node, db_desc->levels[level_id].leaf_size, &req,
-	// 			   &dlresult);
-	// assert(dlresult.status != ERROR);
 
 	bool exact_match = false;
-	element.idx = dl_search_get_pos((struct bt_dynamic_leaf_node *)node,
-					key_splice_get_key_offset(start_key_splice),
+	element.idx = dl_search_get_pos((struct dl_leaf_node *)node, key_splice_get_key_offset(start_key_splice),
 					key_splice_get_key_size(start_key_splice), &exact_match);
 	if (element.idx == -1)
 		element.idx = 0;
@@ -516,12 +397,9 @@ int32_t level_scanner_seek(struct level_scanner *level_sc, void *start_key_buf, 
 			return END_OF_DATABASE;
 	}
 
-	db_descriptor *db_desc = level_sc->db->db_desc;
 	element = stack_pop(&level_sc->stack);
-	if (level_sc->type == COMPACTION_BUFFER_SCANNER)
-		fill_compaction_scanner(level_sc, &db_desc->levels[level_sc->level_id], element.node, element.idx);
-	else
-		fill_normal_scanner(level_sc, &db_desc->levels[level_sc->level_id], element.node, element.idx);
+
+	level_sc->splice = dl_get_general_splice((struct dl_leaf_node *)element.node, element.idx);
 
 	stack_push(&level_sc->stack, element);
 	return PAR_SUCCESS;
@@ -571,16 +449,12 @@ bool get_next(scannerHandle *scanner)
 		if (!sh_remove_top(&scanner->heap, &node))
 			return false;
 
-		//gesalous new dynamic leaf
 		scanner->keyValue = node.splice.kv_splice;
 		if (node.splice.cat == MEDIUM_INLOG || node.splice.cat == BIG_INLOG) {
 			uint64_t kv_dev_offt = kv_sep2_get_value_offt(node.splice.kv_sep2);
 			scanner->keyValue = REAL_ADDRESS(kv_dev_offt);
 		}
 		scanner->kv_cat = node.splice.cat;
-		//old school
-		// scanner->keyValue = node.KV;
-		// scanner->kv_cat = scanner->LEVEL_SCANNERS[node.level_id][node.active_tree].cat;
 		scanner->kv_level_id = node.level_id;
 
 		assert(scanner->LEVEL_SCANNERS[node.level_id][node.active_tree].valid);
@@ -590,14 +464,7 @@ bool get_next(scannerHandle *scanner)
 			next_node.level_id = node.level_id;
 			next_node.active_tree = node.active_tree;
 			next_node.db_desc = scanner->db->db_desc;
-			//gesalous new dynamic leaf
 			next_node.splice = scanner->LEVEL_SCANNERS[node.level_id][node.active_tree].splice;
-			//old school
-			// next_node.type = node.type;
-			// next_node.cat = scanner->LEVEL_SCANNERS[node.level_id][node.active_tree].cat;
-			// next_node.KV = scanner->LEVEL_SCANNERS[node.level_id][node.active_tree].keyValue;
-			// next_node.kv_size = scanner->LEVEL_SCANNERS[node.level_id][node.active_tree].kv_size;
-			// next_node.tombstone = scanner->LEVEL_SCANNERS[node.level_id][node.active_tree].tombstone;
 			sh_insert_heap_node(&scanner->heap, &next_node);
 		}
 		if (node.duplicate || node.splice.is_tombstone) {

@@ -34,10 +34,7 @@ struct rcursor_level_read_cursor {
 	uint8_t level_id;
 	uint8_t tree_id;
 	bool is_end_of_level;
-	//gesalous new dynamic leaf
 	struct kv_general_splice splice;
-	//old school
-	// struct comp_parallax_key cursor_key;
 	db_handle *handle;
 	union {
 		struct rcursor_device_cursor *device_cursor;

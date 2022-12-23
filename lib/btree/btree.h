@@ -75,14 +75,6 @@ struct bt_leaf_entry_bitmap {
 	unsigned char bitmap; // This bitmap informs us which kv_entry is available to store data in the static leaf.
 };
 
-struct bt_dynamic_leaf_slot_array {
-	// The index points to the location of the kv pair in the leaf.
-	uint16_t key_category : 2;
-	// Tombstone notifies if the key is deleted.
-	uint16_t tombstone : 1;
-	uint16_t index : 13;
-};
-
 struct key_compare {
 	char *key;
 	uint64_t kv_dev_offt;
@@ -94,10 +86,6 @@ struct key_compare {
 struct kv_format {
 	uint32_t key_size;
 	char key_buf[];
-} __attribute__((packed));
-
-struct bt_dynamic_leaf_node {
-	struct node_header header;
 } __attribute__((packed));
 
 enum bsearch_status { INSERT = 0, FOUND = 1, ERROR = 2 };
@@ -365,13 +353,13 @@ struct bt_rebalance_result {
 	union {
 		node_header *left_child;
 		struct index_node *left_ichild;
-		struct bt_dynamic_leaf_node *left_leaf_child;
+		struct dl_leaf_node *left_leaf_child;
 	};
 
 	union {
 		node_header *right_child;
 		struct index_node *right_ichild;
-		struct bt_dynamic_leaf_node *right_leaf_child;
+		struct dl_leaf_node *right_leaf_child;
 	};
 	enum bt_rebalance_retcode stat;
 };

@@ -50,29 +50,6 @@ static void choose_compaction_roots(struct db_handle *handle, struct compaction_
 		comp_roots->dst_root = handle->db_desc->levels[comp_req->dst_level].root_w[0];
 }
 
-//old school
-// static void comp_fill_parallax_key(struct sh_heap_node *h_node, struct comp_parallax_key *curr_key)
-// {
-// 	curr_key->kv_category = h_node->cat;
-// 	curr_key->tombstone = h_node->tombstone;
-// 	assert(h_node->KV);
-// 	switch (h_node->cat) {
-// 	case SMALL_INPLACE:
-// 	case MEDIUM_INPLACE:
-// 		curr_key->kv_in_place = (struct kv_splice *)h_node->KV;
-// 		curr_key->kv_type = KV_INPLACE;
-// 		break;
-// 	case BIG_INLOG:
-// 	case MEDIUM_INLOG:
-// 		curr_key->kv_inlog = *(struct kv_seperation_splice *)h_node->KV;
-// 		curr_key->kv_type = KV_INLOG;
-// 		break;
-// 	default:
-// 		log_info("Unhandle/Unknown category");
-// 		BUG_ON();
-// 	}
-// }
-
 #if 0
 static void print_heap_node_key(struct sh_heap_node *h_node)
 {

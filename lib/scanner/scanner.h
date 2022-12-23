@@ -32,7 +32,6 @@ typedef enum SEEK_SCANNER_MODE { GREATER = 5, GREATER_OR_EQUAL = 6, FETCH_FIRST 
 typedef enum SCANNER_TYPE { FORWARD_SCANNER = 1 } SCANNER_TYPE;
 
 struct level_scanner {
-	//gesalous new dynamic leaf
 	struct kv_general_splice splice;
 	db_handle *db;
 	stackT stack;
@@ -41,20 +40,6 @@ struct level_scanner {
 	uint8_t level_id;
 	uint8_t valid : 1;
 	uint8_t dirty : 1;
-	//old school
-	// struct kv_seperation_splice kv_entry;
-	// db_handle *db;
-	// stackT stack;
-	// node_header *root; /*root of the tree when the cursor was initialized/reset, related to CPAAS-188*/
-	// char *keyValue;
-	// uint32_t kv_format;
-	// enum kv_category cat;
-	// uint32_t kv_size;
-	// uint32_t level_id;
-	// int32_t type;
-
-	// uint8_t dirty : 1;
-	// uint8_t tombstone : 1;
 };
 
 typedef struct scannerHandle {
@@ -68,7 +53,7 @@ typedef struct scannerHandle {
 	SCANNER_TYPE type_of_scanner;
 } scannerHandle;
 
-int32_t level_scanner_seek(struct level_scanner *level_sc, void *start_key_buf, SEEK_SCANNER_MODE mode);
+int32_t level_scanner_seek(struct level_scanner *level_sc, struct key_splice *start_key_splice, SEEK_SCANNER_MODE mode);
 int32_t level_scanner_get_next(struct level_scanner *sc);
 void init_dirty_scanner(scannerHandle *sc, db_handle *handle, void *start_key, char seek_flag);
 void close_scanner(scannerHandle *scanner);

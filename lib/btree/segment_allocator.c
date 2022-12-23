@@ -19,11 +19,13 @@
 #include "../allocator/volume_manager.h"
 #include "../common/common.h"
 #include "conf.h"
+#include "dynamic_leaf.h"
 #include "index_node.h"
 #include <assert.h>
 #include <log.h>
 #include <stdlib.h>
 // IWYU pragma: no_forward_declare index_node
+struct dl_leaf_node;
 
 struct link_segments_metadata {
 	level_descriptor *level_desc;
@@ -189,41 +191,20 @@ void seg_free_index_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_
 	(void)inode;
 }
 
-struct bt_dynamic_leaf_node *seg_get_leaf_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
+struct dl_leaf_node *seg_get_leaf_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
 {
 	struct level_descriptor *level_desc = &db_desc->levels[level_id];
-	struct bt_dynamic_leaf_node *leaf =
-		(struct bt_dynamic_leaf_node *)get_space(db_desc, level_id, tree_id, level_desc->leaf_size);
-
-	leaf->header.type = leafNode;
-	leaf->header.num_entries = 0;
-	leaf->header.fragmentation = 0;
-
-	leaf->header.key_log_size = 0; /*unused also*/
-	leaf->header.height = 0;
-
+	struct dl_leaf_node *leaf = (struct dl_leaf_node *)get_space(db_desc, level_id, tree_id, level_desc->leaf_size);
 	return leaf;
 }
 
-struct bt_dynamic_leaf_node *init_leaf_node(struct bt_dynamic_leaf_node *leaf)
-{
-	leaf->header.type = leafNode;
-	leaf->header.num_entries = 0;
-	leaf->header.fragmentation = 0;
-
-	leaf->header.leaf_log_size = 0;
-	leaf->header.height = 0;
-	return leaf;
-}
-
-struct bt_dynamic_leaf_node *seg_get_dynamic_leaf_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
+struct dl_leaf_node *seg_get_dynamic_leaf_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
 {
 	struct level_descriptor *level_desc = &db_desc->levels[level_id];
-	return init_leaf_node(get_space(db_desc, level_id, tree_id, level_desc->leaf_size));
+	return get_space(db_desc, level_id, tree_id, level_desc->leaf_size);
 }
 
-void seg_free_leaf_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id,
-			struct bt_dynamic_leaf_node *leaf)
+void seg_free_leaf_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id, struct dl_leaf_node *leaf)
 {
 	//leave for future use
 	(void)db_desc;

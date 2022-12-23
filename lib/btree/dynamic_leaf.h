@@ -15,100 +15,124 @@
 #ifndef DYNAMIC_LEAF_H
 #define DYNAMIC_LEAF_H
 #include "btree.h"
+#include "btree_node.h"
 #include "kv_pairs.h"
 #include "parallax/structures.h"
 #include <stdint.h>
+struct dl_leaf_node;
 
-enum bt_dynamic_leaf_operation { DYNAMIC_LEAF_INSERT = 0, DYNAMIC_LEAF_FIND = 1 };
+/**
+ * @brief Inserts (in sorted orderd) a kv_general_splice in the leaf node.
+ * @param leaf pointer to the actual leaf node
+ * @param general_splice pointer to the splice object
+ * @param is_tombstone indicates if the splice is a tombstone
+ * @returns true on success false on failure. The operation may fail
+ * if the leaf node does not have adequate space to store the splice
+ */
+bool dl_insert_in_dynamic_leaf(struct dl_leaf_node *leaf, struct kv_general_splice *general_splice, bool is_tombstone,
+			       bool *exact_match);
 
-enum kv_entry_location { UNKNOWN_CATEGORY = -1, KV_INPLACE = 0, KV_INLOG = 1 };
-
-struct find_result {
-	char *kv;
-	enum kv_entry_location key_type;
-	enum kv_category kv_category;
-	uint8_t tombstone : 1;
-};
-
-struct dl_bsearch_result {
-	int middle;
-	enum bsearch_status status;
-	enum bt_dynamic_leaf_operation op;
-	uint32_t tombstone : 1;
-};
-
-struct prefix {
-	char *prefix;
-	uint32_t len;
-};
-
-struct write_dynamic_leaf_args {
-	struct bt_dynamic_leaf_node *leaf;
-	char *dest;
-	char *key_value_buf;
-	uint64_t kv_dev_offt;
-	uint32_t key_value_size;
-	uint32_t middle;
-	uint32_t tombstone : 1;
-	unsigned int level_id;
-	unsigned int level_medium_inplace;
-	int kv_format;
-	enum kv_category cat;
-};
-
-struct split_level_leaf {
-	struct bt_dynamic_leaf_node *leaf;
-	uint32_t leaf_size;
-	uint32_t kv_size;
-	unsigned int level_id;
-	unsigned int level_medium_inplace;
-	enum kv_entry_location key_type;
-	enum kv_category cat;
-};
-
-char *get_leaf_log_offset(const struct bt_dynamic_leaf_node *leaf, const uint32_t leaf_size);
-void write_data_in_dynamic_leaf(struct write_dynamic_leaf_args *args);
-
-char *fill_keybuf(char *key_loc, enum kv_entry_location key_type);
-void fill_prefix(struct prefix *key, char *key_loc, enum kv_entry_location key_type);
-
-int8_t insert_in_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, bt_insert_req *req, level_descriptor *level);
-struct find_result find_key_in_dynamic_leaf(const struct bt_dynamic_leaf_node *leaf, db_descriptor *db_desc, void *key,
-					    uint32_t key_size, int level_id);
-void binary_search_dynamic_leaf(const struct bt_dynamic_leaf_node *leaf, uint32_t leaf_size, bt_insert_req *req,
-				struct dl_bsearch_result *result);
-
-int is_dynamic_leaf_full(struct split_level_leaf split_metadata);
-
-struct bt_rebalance_result split_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, uint32_t leaf_size,
-					      bt_insert_req *req);
-
-int reorganize_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, uint32_t leaf_size, bt_insert_req *req);
-struct bt_rebalance_result blsm_split_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, uint32_t leaf_size,
-						   bt_insert_req *req);
-struct bt_dynamic_leaf_slot_array *get_slot_array_offset(const struct bt_dynamic_leaf_node *leaf);
-char *get_kv_offset(const struct bt_dynamic_leaf_node *leaf, const uint32_t leaf_size, const uint32_t kv_offset);
-
-typedef struct bt_rebalance_result split_dl(struct bt_dynamic_leaf_node *leaf, uint32_t leaf_size, bt_insert_req *req);
-
-enum kv_entry_location get_kv_format(enum kv_category kv_category);
-//gesalous
-
-bool dl_insert_in_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, struct kv_general_splice *general_splice,
-			       bool is_tombstone, bool *exact_match);
-bool dl_append_splice_in_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, struct kv_general_splice *general_splice,
+/**
+ * @brief Appends a kv_general_splice in the leaf node.
+ * @param leaf pointer to the actual leaf node
+ * @param general_splice pointer to the splice object
+ * @param is_tombstone indicates if the splice is a tombstone
+ * @returns true on success false on failure. The operation may fail
+ * if the leaf node does not have adequate space to store the splice
+ */
+bool dl_append_splice_in_dynamic_leaf(struct dl_leaf_node *leaf, struct kv_general_splice *general_splice,
 				      bool is_tombstone);
 
-struct kv_general_splice dl_find_kv_in_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, char *key, int32_t key_size,
+/**
+ * @brief Returns a kv splice associated with the key.
+ * @param leaf pointer to the leaf node
+ * @param key pointer to the key
+ * @param key_size size of the key in bytes
+ * @param error points to an error message in case of a failure.
+ * @returns On success (exact match) it returns a kv_general_splice object and
+ * sets *error to NULL. If the key is not found inside the leaf or in case of
+ * other error it sets *error to the appropriate message.
+ */
+struct kv_general_splice dl_find_kv_in_dynamic_leaf(struct dl_leaf_node *leaf, char *key, int32_t key_size,
 						    const char **error);
 
-struct kv_general_splice dl_split_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, struct bt_dynamic_leaf_node *left,
-					       struct bt_dynamic_leaf_node *right);
-bool dl_is_reorganize_possible(struct bt_dynamic_leaf_node *leaf, int32_t kv_size);
-void dl_reorganize_dynamic_leaf(struct bt_dynamic_leaf_node *leaf, struct bt_dynamic_leaf_node *target);
-void dl_init_leaf_node(struct bt_dynamic_leaf_node *node, uint32_t leaf_size);
-bool dl_is_leaf_full(struct bt_dynamic_leaf_node *leaf, int32_t kv_size);
-int32_t dl_search_get_pos(struct bt_dynamic_leaf_node *leaf, char *key, int32_t key_size, bool *exact_match);
-struct kv_general_splice dl_get_general_splice(struct bt_dynamic_leaf_node *leaf, int32_t position);
+/**
+ * @brief Splits the contents of leaf node equally to left and right nodes. In
+ * particular, it will place the first N/2 entries of leaf to left and the
+ * remaining to the right. If left and right accidentally have any content it
+ * will be erased by this operation.
+ * @param leaf pointer to the leaf node
+ * @param left pointer to the left the node
+ * @param right pointer to the right node
+ * @returns On success it returns a kv_general_splice with the middle key that
+ * btree uses as a pivot to the index node. Caution the kv_general_spice
+ * contains internaly a reference to the KV pair. The application must copy the
+ * contents of the splice in the index node. On failure it returns a zeroed
+ * kv_general_splice.
+ */
+struct kv_general_splice dl_split_dynamic_leaf(struct dl_leaf_node *leaf, struct dl_leaf_node *left,
+					       struct dl_leaf_node *right);
+/**
+ * @brief Returns if the overflow in the leaf to insert a kv_size splice can be
+ * handled through reorganization of the leaf due to fragmented space.
+ * @param leaf pointer to the leaf node
+ * @param kv_size the size of the splice that causes the overflow.
+ * @return true if the leaf can host the splice after reorganization otherwise
+ * false.
+ */
+bool dl_is_reorganize_possible(struct dl_leaf_node *leaf, int32_t kv_size);
 
+/**
+ * @brief Copies the valid kv splices to the target leaf node. If target leaf
+ * node accidentally has contents it will be erased by this operation.
+ * @param leaf pointer to the leafd node
+ * @param target pointer to the target node
+ */
+void dl_reorganize_dynamic_leaf(struct dl_leaf_node *leaf, struct dl_leaf_node *target);
+
+/**
+ * @brief Initializes the contents of the leaf node. If the leaf node has data
+ * they will be erased.
+ * @param node pointer to the leaf
+ * @param leaf_size the size of the leaf node
+ */
+void dl_init_leaf_node(struct dl_leaf_node *leaf, uint32_t leaf_size);
+
+/**
+ * @brief Returns if the leaf can store kv_splice of kv_size or it will cause
+ * an overflow.
+ * @param leaf pointer to the leaf node.
+ * @param kv_size the size of the kv_splice that we want to store.
+ * @returns true if the leaf has adequate space to store the kv pair otherwise
+ * false.
+ */
+bool dl_is_leaf_full(struct dl_leaf_node *leaf, int32_t kv_size);
+
+/**
+ * @brief Returns the position inside the leaf where the key should by inserted.
+ * @param leaf pointer to the leaf node
+ * @param key pointer to the key
+ * @param key_size size of the key in bytes
+ * @param exact_match pointer to a boolean flag. If there is an exact match it
+ * sets it to true otherwise it sets it to false.
+ */
+int32_t dl_search_get_pos(struct dl_leaf_node *leaf, char *key, int32_t key_size, bool *exact_match);
+
+/**
+ * @brief Returns the splice store at the specified position.
+ * @param leaf pointer to the leaf node
+ * @param position the position which splice we want to retrieve
+ */
+struct kv_general_splice dl_get_general_splice(struct dl_leaf_node *leaf, int32_t position);
+/**
+ * @brief Sets the type of the node
+ * @param leaf pointer to the leaf node
+ * @param node_type the type of the node
+ */
+void dl_set_leaf_node_type(struct dl_leaf_node *leaf, nodeType_t node_type);
+/**
+ * @brief Returns the number of the entries in the leaf
+ * @param pointer to the leaf node
+ */
+int32_t dl_get_leaf_num_entries(struct dl_leaf_node *leaf);
 #endif

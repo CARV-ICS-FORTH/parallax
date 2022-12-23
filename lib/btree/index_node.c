@@ -455,43 +455,4 @@ void index_split_node(struct index_node_split_request *request, struct index_nod
 	/*set node heights*/
 	request->left_child->header.height = request->node->header.height;
 	request->right_child->header.height = request->node->header.height;
-	// result.stat = INDEX_NODE_SPLITTED;
-	// return result;
 }
-
-//old school
-// int index_key_cmp(struct key_splice *index_key_splice, char *lookup_key, enum KV_type lookup_key_format)
-// {
-// 	assert(lookup_key_format != KV_PREFIX);
-// 	int32_t size = 0;
-// 	int ret = 0;
-
-// 	if (lookup_key_format == KV_FORMAT) {
-// 		struct kv_splice *key = (struct kv_splice *)lookup_key;
-// 		size = key_splice_get_key_size(index_key_splice) <= get_key_size(key) ?
-// 			       key_splice_get_key_size(index_key_splice) :
-// 			       get_key_size(key);
-// 		ret = memcmp(key_splice_get_key_offset(index_key_splice), get_key_offset_in_kv(key), size);
-// 		return ret != 0 ? ret : key_splice_get_key_size(index_key_splice) - get_key_size(key);
-// 	}
-
-// 	if (lookup_key_format == INDEX_KEY_TYPE) {
-// 		/* this should only(!) happend when we are inserting and new key into an index node (after a split) */
-// 		struct key_splice *p_key_splice = (struct key_splice *)(lookup_key);
-// 		size = key_splice_get_key_size(index_key_splice) <= key_splice_get_key_size(p_key_splice) ?
-// 			       key_splice_get_key_size(index_key_splice) :
-// 			       key_splice_get_key_size(p_key_splice);
-// 		ret = memcmp(key_splice_get_key_offset(index_key_splice), key_splice_get_key_offset(p_key_splice),
-// 			     size);
-// 		return ret != 0 ? ret :
-// 				  key_splice_get_key_size(index_key_splice) - key_splice_get_key_size(p_key_splice);
-// 	}
-
-// 	/* lookup_key is KEY_TYPE*/
-// 	struct key_splice *p_key = (struct key_splice *)(lookup_key);
-// 	int32_t p_key_size = key_splice_get_key_size(p_key);
-// 	size = key_splice_get_key_size(index_key_splice) <= p_key_size ? key_splice_get_key_size(index_key_splice) :
-// 									 p_key_size;
-// 	ret = memcmp(key_splice_get_key_offset(index_key_splice), key_splice_get_key_offset(p_key), size);
-// 	return ret != 0 ? ret : key_splice_get_key_size(index_key_splice) - p_key_size;
-// }

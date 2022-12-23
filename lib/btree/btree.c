@@ -50,7 +50,7 @@ static uint8_t concurrent_insert(bt_insert_req *ins_req);
 
 void assert_index_node(node_header *node);
 
-// struct bt_rebalance_result split_leaf(bt_insert_req *req, struct bt_dynamic_leaf_node *node);
+// struct bt_rebalance_result split_leaf(bt_insert_req *req, struct dl_leaf_node *node);
 
 int prefix_compare(char *l, char *r, size_t prefix_size)
 {
@@ -646,8 +646,7 @@ db_handle *internal_db_open(struct volume_descriptor *volume_desc, par_db_option
 	_Static_assert(BIG_INLOG < 4, "KV categories number cannot be "
 				      "stored in 2 bits, increase "
 				      "key_category");
-	_Static_assert(sizeof(struct bt_dynamic_leaf_slot_array) == 2,
-		       "Dynamic slot array is not 2 bytes, are you sure you want to continue?");
+
 	_Static_assert(sizeof(struct segment_header) == 4096, "Segment header not page aligned!");
 	_Static_assert(LOG_TAIL_NUM_BUFS >= 2, "Minimum number of in memory log buffers!");
 
@@ -1412,7 +1411,7 @@ int find_key_in_bloom_filter(db_descriptor *db_desc, int level_id, char *key)
 static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id, int tree_id)
 {
 	node_header *son_node = NULL;
-	char *key_addr_in_leaf = NULL;
+	// char *key_addr_in_leaf = NULL;
 
 	struct node_header *root = NULL;
 	struct db_descriptor *db_desc = get_op->db_desc;
@@ -1445,46 +1444,10 @@ static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id,
 #endif
 
 	/* TODO: (@geostyl) do we need this if here? i think its reduntant*/
-	struct find_result ret_result = { 0 };
+	// struct find_result ret_result = { 0 };
 	lock_table *prev = NULL;
 	lock_table *curr = NULL;
 	node_header *curr_node = root;
-	//old school
-	// if (curr_node->type == leafRootNode) {
-	// 	curr = _find_position((const lock_table **)db_desc->levels[level_id].level_lock_table, curr_node);
-
-	// 	if (RWLOCK_RDLOCK(&curr->rx_lock) != 0)
-	// 		BUG_ON();
-
-	// 	uint32_t key_size = key_splice_get_key_size(search_key_buf);
-	// 	void *key = key_splice_get_key_offset(search_key_buf);
-	// 	ret_result = find_key_in_dynamic_leaf((struct bt_dynamic_leaf_node *)curr_node, db_desc, key, key_size,
-	// 					      level_id);
-	// 	get_op->tombstone = ret_result.tombstone;
-	// 	goto deser;
-	// }
-
-	// while (curr_node && curr_node->type != leafNode) {
-	// 	curr = _find_position((const lock_table **)db_desc->levels[level_id].level_lock_table, curr_node);
-
-	// 	if (RWLOCK_RDLOCK(&curr->rx_lock) != 0)
-	// 		BUG_ON();
-
-	// 	if (prev)
-	// 		if (RWLOCK_UNLOCK(&prev->rx_lock) != 0)
-	// 			BUG_ON();
-
-	// 	uint64_t child_offset =
-	// 		index_binary_search((struct index_node *)curr_node, (char *)search_key_buf, KEY_TYPE);
-	// 	son_node = (void *)REAL_ADDRESS(child_offset);
-
-	// 	prev = curr;
-	// 	curr_node = son_node;
-	// }
-	// if (NULL == curr_node) {
-	// 	get_op->found = 0;
-	// 	return;
-	// }
 
 	while (curr_node) {
 		if (curr_node->type == leafNode || curr_node->type == leafRootNode)
@@ -1497,14 +1460,10 @@ static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id,
 		if (prev && RWLOCK_UNLOCK(&prev->rx_lock) != 0)
 			BUG_ON();
 
-		//gesalous new dynamic leaf
 		uint64_t child_offset = index_binary_search((struct index_node *)curr_node,
 							    key_splice_get_key_offset(search_key_buf),
 							    key_splice_get_key_size(search_key_buf));
 
-		//old school
-		// uint64_t child_offset =
-		// 	index_binary_search((struct index_node *)curr_node, (char *)search_key_buf, KEY_TYPE);
 		son_node = (void *)REAL_ADDRESS(child_offset);
 
 		prev = curr;
@@ -1522,55 +1481,20 @@ static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id,
 
 	int32_t key_size = key_splice_get_key_size(search_key_buf);
 	void *key = key_splice_get_key_offset(search_key_buf);
-	//old school
-	// ret_result =
-	// 	find_key_in_dynamic_leaf((struct bt_dynamic_leaf_node *)curr_node, db_desc, key, key_size, level_id);
-	// get_op->tombstone = ret_result.tombstone;
 	const char *error = NULL;
 	struct kv_general_splice splice =
-		dl_find_kv_in_dynamic_leaf((struct bt_dynamic_leaf_node *)curr_node, key, key_size, &error);
+		dl_find_kv_in_dynamic_leaf((struct dl_leaf_node *)curr_node, key, key_size, &error);
 	if (error != NULL) {
 		// log_debug("Key %.*s not found with error message %s", key_size, (char *)key, error);
 		get_op->found = 0;
 		goto release_leaf_lock;
 	}
 
-	//old school
-	// TODO The meaning of deser is not clear enough, rename accordingly
-	// // deser:
-	// if (!ret_result.kv) {
-	// 	get_op->found = 0;
-	// 	goto exit;
-	// }
 	get_op->found = 1;
 	get_op->key_device_address = NULL;
 	get_op->tombstone = splice.is_tombstone;
 	struct bt_kv_log_address kv_pair = { .addr = NULL, .tail_id = UINT8_MAX, .in_tail = 0 };
 
-	//old school
-	// if (ret_result.key_type != KV_INPLACE && ret_result.key_type != KV_INLOG) {
-	// 	log_fatal("Corrupted KV location");
-	// 	BUG_ON();
-	// }
-
-	// if (ret_result.key_type == KV_INPLACE) {
-	// 	kv_pair.addr = REAL_ADDRESS(ret_result.kv);
-	// 	get_op->key_device_address = ret_result.kv;
-	// } else if (ret_result.key_type == KV_INLOG) {
-	// 	key_addr_in_leaf = (char *)REAL_ADDRESS(*(uint64_t *)ret_result.kv);
-	// 	if (key_addr_in_leaf == NULL) {
-	// 		log_fatal("Encountered NULL pointer from KV in leaf");
-	// 		BUG_ON();
-	// 	}
-
-	// 	kv_pair.addr = key_addr_in_leaf;
-	// 	if (!level_id)
-	// 		kv_pair = bt_get_kv_log_address(&db_desc->big_log, ABSOLUTE_ADDRESS(key_addr_in_leaf));
-
-	// 	get_op->key_device_address = (char *)ABSOLUTE_ADDRESS(kv_pair.addr);
-	// }
-
-	// assert(kv_pair.addr);
 	kv_pair.addr = (char *)splice.kv_splice;
 	if (splice.cat == MEDIUM_INLOG || splice.cat == BIG_INLOG) {
 		uint64_t value_offt = kv_sep2_get_value_offt(splice.kv_sep2);
@@ -1685,70 +1609,6 @@ int insert_KV_at_leaf(bt_insert_req *ins_req, node_header *leaf)
 	uint8_t level_id = ins_req->metadata.level_id;
 	uint8_t tree_id = ins_req->metadata.tree_id;
 
-	//old school
-	// db_descriptor *db_desc = ins_req->metadata.handle->db_desc;
-	// enum kv_category cat = ins_req->metadata.cat;
-	// int ret = -1;
-	// int append_tolog = ins_req->metadata.append_to_log;
-	// ins_req->kv_dev_offt = 0;
-	// if (append_tolog) {
-	// 	log_operation append_op = { .metadata = &ins_req->metadata,
-	// 				    .optype_tolog = insertOp,
-	// 				    .ins_req = ins_req,
-	// 				    .is_compaction = false };
-
-	// 	if (ins_req->metadata.tombstone == 1)
-	// 		append_op.optype_tolog = deleteOp;
-
-	// 	switch (ins_req->metadata.cat) {
-	// 	case SMALL_INPLACE:
-	// 	case MEDIUM_INPLACE:
-	// 		append_key_value_to_log(&append_op);
-	// 		break;
-	// 	case BIG_INLOG: {
-	// 		void *addr = append_key_value_to_log(&append_op);
-	// 		ins_req->kv_dev_offt = ABSOLUTE_ADDRESS(addr);
-	// 		assert(ins_req->kv_dev_offt != 0);
-	// 		break;
-	// 	}
-	// 	default:
-	// 		ins_req->key_value_buf = append_key_value_to_log(&append_op);
-	// 		break;
-	// 	}
-	// }
-	// ret = insert_in_dynamic_leaf((struct bt_dynamic_leaf_node *)leaf, ins_req, &db_desc->levels[level_id]);
-	// if (ret == INSERT) {
-	// 	int measure_level_used_space = cat == BIG_INLOG;
-	// 	int medium_inlog = cat == MEDIUM_INLOG && level_id != db_desc->level_medium_inplace;
-
-	// 	if (cat == MEDIUM_INPLACE && level_id == 0) {
-	// 		__sync_fetch_and_add(&(ins_req->metadata.handle->db_desc->levels[level_id].level_size[tree_id]),
-	// 				     get_kv_seperated_splice_size());
-	// 	} else if (measure_level_used_space || medium_inlog) {
-	// 		__sync_fetch_and_add(&(ins_req->metadata.handle->db_desc->levels[level_id].level_size[tree_id]),
-	// 				     get_kv_seperated_splice_size());
-	// 	} else {
-	// 		__sync_fetch_and_add(&(ins_req->metadata.handle->db_desc->levels[level_id].level_size[tree_id]),
-	// 				     get_kv_size((struct kv_splice *)ins_req->key_value_buf));
-	// 	}
-	// }
-	// int measure_level_used_space = cat == BIG_INLOG;
-	// int medium_inlog = cat == MEDIUM_INLOG && level_id != db_desc->level_medium_inplace;
-
-	// if (cat == MEDIUM_INPLACE && level_id == 0) {
-	// 	__sync_fetch_and_add(&(ins_req->metadata.handle->db_desc->levels[level_id].level_size[tree_id]),
-	// 			     get_kv_seperated_splice_size());
-	// } else if (measure_level_used_space || medium_inlog) {
-	// 	__sync_fetch_and_add(&(ins_req->metadata.handle->db_desc->levels[level_id].level_size[tree_id]),
-	// 			     get_kv_seperated_splice_size());
-	// } else {
-	// 	__sync_fetch_and_add(&(ins_req->metadata.handle->db_desc->levels[level_id].level_size[tree_id]),
-	// 			     get_kv_size((struct kv_splice *)ins_req->key_value_buf));
-	// }
-
-	// return ret;
-	// gesalous new dynamic leaf
-
 	char *log_address = NULL;
 	if (ins_req->metadata.append_to_log) {
 		log_operation append_op = { .metadata = &ins_req->metadata,
@@ -1779,7 +1639,7 @@ int insert_KV_at_leaf(bt_insert_req *ins_req, node_header *leaf)
 	}
 
 	bool exact_match = false;
-	if (!dl_insert_in_dynamic_leaf((struct bt_dynamic_leaf_node *)leaf, &splice, ins_req->metadata.tombstone,
+	if (!dl_insert_in_dynamic_leaf((struct dl_leaf_node *)leaf, &splice, ins_req->metadata.tombstone,
 				       &exact_match)) {
 		log_fatal("Inserting at leaf failed probably due to overflow");
 		assert(0);
@@ -1793,12 +1653,12 @@ int insert_KV_at_leaf(bt_insert_req *ins_req, node_header *leaf)
 	return INSERT;
 }
 
-// struct bt_rebalance_result split_leaf(bt_insert_req *req, struct bt_dynamic_leaf_node *node)
+// struct bt_rebalance_result split_leaf(bt_insert_req *req, struct dl_leaf_node *node)
 // {
 // 	int level_id = req->metadata.level_id;
 // 	uint32_t leaf_size = req->metadata.handle->db_desc->levels[level_id].leaf_size;
 
-// 	return split_dynamic_leaf((struct bt_dynamic_leaf_node *)node, leaf_size, req);
+// 	return split_dynamic_leaf((struct dl_leaf_node *)node, leaf_size, req);
 // }
 
 uint64_t par_hash(uint64_t x)
@@ -1835,7 +1695,6 @@ void _unlock_upper_levels(lock_table *node[], unsigned size, unsigned release)
 		}
 }
 
-//gesalous new dynamic leaf
 static int32_t bt_calculate_splice_size(enum kv_category cat, struct kv_splice *kv_splice)
 {
 	if (cat == SMALL_INPLACE || cat == MEDIUM_INPLACE)
@@ -1846,13 +1705,12 @@ static int32_t bt_calculate_splice_size(enum kv_category cat, struct kv_splice *
 	_exit(EXIT_FAILURE);
 }
 
-//gesalous new dynamic leaf
-static bool bt_reorganize_leaf(struct bt_dynamic_leaf_node *leaf, bt_insert_req *req)
+static bool bt_reorganize_leaf(struct dl_leaf_node *leaf, bt_insert_req *req)
 {
 	if (!dl_is_reorganize_possible(leaf, bt_calculate_splice_size(req->metadata.cat,
 								      (struct kv_splice *)req->key_value_buf)))
 		return false;
-	struct bt_dynamic_leaf_node *target =
+	struct dl_leaf_node *target =
 		calloc(1UL, req->metadata.handle->db_desc->levels[req->metadata.level_id].leaf_size);
 	dl_init_leaf_node(target, req->metadata.handle->db_desc->levels[req->metadata.level_id].leaf_size);
 	dl_reorganize_dynamic_leaf(leaf, target);
@@ -1861,9 +1719,7 @@ static bool bt_reorganize_leaf(struct bt_dynamic_leaf_node *leaf, bt_insert_req 
 	return true;
 }
 
-//gesalous new dynamic leaf
-static void bt_split_leaf(struct bt_dynamic_leaf_node *leaf, bt_insert_req *req,
-			  struct bt_rebalance_result *split_result)
+static void bt_split_leaf(struct dl_leaf_node *leaf, bt_insert_req *req, struct bt_rebalance_result *split_result)
 {
 	split_result->left_leaf_child =
 		seg_get_dynamic_leaf_node(req->metadata.handle->db_desc, req->metadata.level_id, req->metadata.tree_id);
@@ -1892,7 +1748,6 @@ static void bt_split_leaf(struct bt_dynamic_leaf_node *leaf, bt_insert_req *req,
 	}
 }
 
-//gesalous new dynamic leaf
 int is_split_needed(void *node, bt_insert_req *req, uint32_t leaf_size)
 {
 	assert(node);
@@ -1903,7 +1758,6 @@ int is_split_needed(void *node, bt_insert_req *req, uint32_t leaf_size)
 	if (height != 0)
 		return index_is_split_needed((struct index_node *)node, MAX_KEY_SPLICE_SIZE);
 
-	//gesalous new dynamic leaf
 	int32_t kv_size = 0;
 	if (req->metadata.cat == SMALL_INPLACE || req->metadata.cat == MEDIUM_INPLACE)
 		kv_size = kv_splice_calculate_size(get_key_size((struct kv_splice *)req->key_value_buf),
@@ -1912,25 +1766,6 @@ int is_split_needed(void *node, bt_insert_req *req, uint32_t leaf_size)
 	if (req->metadata.cat == BIG_INLOG || req->metadata.cat == MEDIUM_INLOG)
 		kv_size = kv_sep2_calculate_size(get_key_size((struct kv_splice *)req->key_value_buf));
 	return dl_is_leaf_full(node, kv_size);
-
-	//old school
-	// enum kv_category cat = req->metadata.cat;
-	// uint8_t level_id = req->metadata.level_id;
-	// enum kv_entry_location key_type = KV_INPLACE;
-
-	// if ((cat == MEDIUM_INLOG && level_id != req->metadata.handle->db_desc->level_medium_inplace) ||
-	//     cat == BIG_INLOG)
-	// 	key_type = KV_INLOG;
-
-	// struct split_level_leaf split_metadata = { .leaf = node,
-	// 					   .leaf_size = leaf_size,
-	// 					   .kv_size = get_kv_size((struct kv_splice *)req->key_value_buf),
-	// 					   .level_id = req->metadata.level_id,
-	// 					   .level_medium_inplace =
-	// 						   req->metadata.handle->db_desc->level_medium_inplace,
-	// 					   .key_type = key_type,
-	// 					   .cat = cat };
-	// return is_dynamic_leaf_full(split_metadata);
 }
 
 static uint8_t concurrent_insert(bt_insert_req *ins_req)
@@ -1984,10 +1819,10 @@ release_and_retry:
 
 			log_debug("Allocating new active tree %d for level id %d", ins_req->metadata.tree_id, level_id);
 
-			struct bt_dynamic_leaf_node *new_leaf = seg_get_leaf_node(ins_req->metadata.handle->db_desc,
-										  level_id, ins_req->metadata.tree_id);
+			struct dl_leaf_node *new_leaf = seg_get_leaf_node(ins_req->metadata.handle->db_desc, level_id,
+									  ins_req->metadata.tree_id);
 			dl_init_leaf_node(new_leaf, ins_req->metadata.handle->db_desc->levels[level_id].leaf_size);
-			new_leaf->header.type = leafRootNode;
+			dl_set_leaf_node_type(new_leaf, leafRootNode);
 			db_desc->levels[level_id].root_w[ins_req->metadata.tree_id] = (node_header *)new_leaf;
 		}
 	}
@@ -2029,18 +1864,10 @@ release_and_retry:
 						    ins_req->metadata.tree_id, (struct index_node *)son);
 				// free_logical_node(&(req->allocator_desc), son);
 			} else if (0 == son->height) {
-				//gesalous new dynamic leaf
-				if (bt_reorganize_leaf((struct bt_dynamic_leaf_node *)son, ins_req))
+				if (bt_reorganize_leaf((struct dl_leaf_node *)son, ins_req))
 					goto release_and_retry;
 
-				//old school
-				// if (reorganize_dynamic_leaf((struct bt_dynamic_leaf_node *)son,
-				// 			    db_desc->levels[level_id].leaf_size, ins_req))
-				// goto release_and_retry;
-				//gesalous new dynamic leaf
-				bt_split_leaf((struct bt_dynamic_leaf_node *)son, ins_req, &split_res);
-				//old school
-				// split_res = split_leaf(ins_req, (struct bt_dynamic_leaf_node *)son);
+				bt_split_leaf((struct dl_leaf_node *)son, ins_req, &split_res);
 			} else {
 				log_fatal("Negative height? come on");
 				BUG_ON();
@@ -2096,13 +1923,9 @@ release_and_retry:
 
 		struct index_node *n_son = (struct index_node *)son;
 
-		//gesalous new dynamic leaf
 		struct kv_splice *splice = (struct kv_splice *)ins_req->key_value_buf;
 		struct pivot_pointer *son_pivot =
 			index_search_get_pivot(n_son, get_key_offset_in_kv(splice), get_key_size(splice));
-		//old school
-		// struct pivot_pointer *son_pivot =
-		// 	index_search_get_pivot(n_son, ins_req->key_value_buf, ins_req->metadata.key_format);
 
 		father = son;
 		son = REAL_ADDRESS(son_pivot->child_offt);
@@ -2208,13 +2031,9 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 			return PAR_FAILURE;
 		}
 
-		//gesalous new dynamic leaf
 		struct kv_splice *splice = (struct kv_splice *)ins_req->key_value_buf;
 		uint64_t child_offt = index_binary_search((struct index_node *)son, get_key_offset_in_kv(splice),
 							  get_key_size(splice));
-		//old school
-		// uint64_t child_offt = index_binary_search((struct index_node *)son, ins_req->key_value_buf,
-		// 					  ins_req->metadata.key_format);
 		son = (node_header *)REAL_ADDRESS(child_offt);
 		assert(son);
 
@@ -2241,7 +2060,6 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 		BUG_ON();
 	}
 
-check_if_leaf_is_safe:
 	assert(son->height == 0);
 	if (is_split_needed(son, ins_req, db_desc->levels[level_id].leaf_size)) {
 		_unlock_upper_levels(upper_level_nodes, size, release);

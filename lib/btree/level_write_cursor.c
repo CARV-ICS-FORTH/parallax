@@ -80,16 +80,6 @@ static void wcursor_write_segment(char *buffer, uint64_t dev_offt, uint32_t buf_
 	}
 }
 
-static void wcursor_init_dynamic_leaf(struct bt_dynamic_leaf_node *leaf)
-{
-	leaf->header.type = leafNode;
-	leaf->header.num_entries = 0;
-	leaf->header.fragmentation = 0;
-
-	leaf->header.leaf_log_size = 0;
-	leaf->header.height = 0;
-}
-
 static void wcursor_get_space(struct wcursor_level_write_cursor *w_cursor, uint32_t height, nodeType_t type)
 {
 	assert(height < MAX_HEIGHT);
@@ -133,9 +123,7 @@ static void wcursor_get_space(struct wcursor_level_write_cursor *w_cursor, uint3
 			current_segment_mem_buffer->nodetype = type;
 		}
 		w_cursor->last_leaf =
-			(struct bt_dynamic_leaf_node
-				 *)(&w_cursor->segment_buf[0][(w_cursor->segment_offt[0] % SEGMENT_SIZE)]);
-		wcursor_init_dynamic_leaf(w_cursor->last_leaf);
+			(struct dl_leaf_node *)(&w_cursor->segment_buf[0][(w_cursor->segment_offt[0] % SEGMENT_SIZE)]);
 		w_cursor->segment_offt[0] += level_leaf_size;
 		break;
 	}
@@ -394,24 +382,13 @@ static void wcursor_init_medium_log(struct db_descriptor *db_desc, uint8_t level
 	log_debug("Done initializing medium log");
 }
 
-//gesalous new dynamic leaf
 static struct kv_general_splice wcursor_append_medium_L1(struct wcursor_level_write_cursor *w_cursor,
 							 struct kv_general_splice *splice, char *kv_sep_buf,
 							 int32_t kv_sep_buf_size)
 
-//old school
-// static struct comp_parallax_key wcursor_append_medium_L1(struct wcursor_level_write_cursor *w_cursor,
-// 							 struct comp_parallax_key *in_key)
 {
-	//gesalous new dynamic leaf
 	if (w_cursor->level_id != 1 || splice->cat != MEDIUM_INPLACE)
 		return *splice;
-	//old school
-	// struct comp_parallax_key medium_inlog_kv = { 0 };
-	// if (w_cursor->level_id != 1)
-	// 	return *splice;
-	// if (splice->cat!= MEDIUM_INPLACE)
-	// 	return *splice;
 
 	struct db_descriptor *db_desc = w_cursor->handle->db_desc;
 	if (db_desc->medium_log.head_dev_offt == 0 && db_desc->medium_log.tail_dev_offt == 0 &&
@@ -445,93 +422,24 @@ static struct kv_general_splice wcursor_append_medium_L1(struct wcursor_level_wr
 
 	char *log_location = append_key_value_to_log(&log_op);
 
-	//gesalous new dynamic leaf
 	struct kv_general_splice kv_sep = {
 		.cat = MEDIUM_INLOG,
 		.kv_sep2 = kv_sep2_create(kv_general_splice_get_key_size(splice), kv_general_splice_get_key_buf(splice),
 					  ABSOLUTE_ADDRESS(log_location), kv_sep_buf, kv_sep_buf_size)
 	};
 	return kv_sep;
-
-	//old school
-	// uint32_t copy_size = get_kv_seperated_prefix_size();
-	// if (get_key_size(in_key->kv_in_place) < get_kv_seperated_prefix_size()) {
-	// 	memset(get_kv_seperated_prefix(&medium_inlog_kv.kv_inlog), 0x00, get_kv_seperated_prefix_size());
-	// 	copy_size = get_key_size(in_key->kv_in_place);
-	// }
-
-	// memcpy(get_kv_seperated_prefix(&medium_inlog_kv.kv_inlog), get_key_offset_in_kv(in_key->kv_in_place),
-	//        copy_size);
-	// set_kv_seperated_device_offt(&medium_inlog_kv.kv_inlog, (uint64_t)log_location);
-
-	// medium_inlog_kv.kv_category = MEDIUM_INLOG;
-	// medium_inlog_kv.kv_type = KV_INLOG;
-	// medium_inlog_kv.tombstone = 0;
-
-	// return medium_inlog_kv;
 }
 
-//old school
-// bool wcursor_append_KV_pair(struct wcursor_level_write_cursor *cursor, struct comp_parallax_key *kv_pair)
 bool wcursor_append_KV_pair(struct wcursor_level_write_cursor *cursor, struct kv_general_splice *splice)
 {
-	//old school
-	// struct comp_parallax_key medium_kv_inlog = { 0 };
-	// struct comp_parallax_key *curr_key = kv_pair;
-	// struct write_dynamic_leaf_args write_leaf_args = { 0 };
-
 	uint64_t left_leaf_offt = 0;
 	uint64_t right_leaf_offt = 0;
-	//old school
-	// uint32_t level_leaf_size = cursor->handle->db_desc->levels[cursor->level_id].leaf_size;
-	// uint32_t kv_size = 0;
-	// uint8_t append_to_medium_log = 0;
 
 	struct kv_general_splice new_splice = *splice;
 
-	//gesalous new dynamic leaf
 	char kv_sep_buf[KV_SEP2_MAX_SIZE];
 	if (cursor->level_id == 1 && splice->cat == MEDIUM_INPLACE)
 		new_splice = wcursor_append_medium_L1(cursor, splice, kv_sep_buf, KV_SEP2_MAX_SIZE);
-	//old school
-	// if (cursor->level_id == 1 && kv_pair->kv_category == MEDIUM_INPLACE) {
-	// 	medium_kv_inlog = wcursor_append_medium_L1(cursor, kv_pair);
-	// 	curr_key = &medium_kv_inlog;
-	// 	append_to_medium_log = 1;
-	// }
-
-	//old school
-	// write_leaf_args.level_medium_inplace = cursor->handle->db_desc->level_medium_inplace;
-	// switch (curr_key->kv_type) {
-	// case KV_INPLACE:
-	// 	kv_size = get_kv_size((struct kv_splice *)curr_key->kv_in_place);
-	// 	write_leaf_args.kv_dev_offt = 0;
-	// 	write_leaf_args.key_value_size = kv_size;
-	// 	write_leaf_args.level_id = cursor->level_id;
-	// 	write_leaf_args.kv_format = KV_FORMAT;
-	// 	write_leaf_args.cat = curr_key->kv_category;
-	// 	write_leaf_args.key_value_buf = (char *)curr_key->kv_in_place;
-	// 	write_leaf_args.tombstone = curr_key->tombstone;
-	// 	//log_info("Appending key in_place %u:%s", write_leaf_args.key_value_size,
-	// 	//	 write_leaf_args.key_value_buf + sizeof(uint32_t));
-	// 	break;
-
-	// case KV_INLOG:
-	// 	kv_size = get_kv_seperated_splice_size();
-	// 	write_leaf_args.kv_dev_offt = curr_key->kv_inlog.dev_offt;
-	// 	write_leaf_args.key_value_buf = (char *)&curr_key->kv_inlog;
-	// 	write_leaf_args.key_value_size = kv_size;
-	// 	write_leaf_args.level_id = cursor->level_id;
-	// 	write_leaf_args.kv_format = KV_PREFIX;
-	// 	write_leaf_args.cat = curr_key->kv_category;
-	// 	write_leaf_args.tombstone = curr_key->tombstone;
-	// 	break;
-	// default:
-	// 	log_fatal("Unknown key_type (IN_PLACE,IN_LOG) instead got %u", curr_key->kv_type);
-	// 	BUG_ON();
-	// }
-
-	//gesalous new dynamic leaf
 	if (new_splice.cat == MEDIUM_INLOG && cursor->level_id == cursor->handle->db_desc->level_medium_inplace) {
 		new_splice.cat = MEDIUM_INPLACE;
 		new_splice.kv_splice =
@@ -543,25 +451,6 @@ bool wcursor_append_KV_pair(struct wcursor_level_write_cursor *cursor, struct kv
 		__sync_fetch_and_add(&cursor->handle->db_desc->count_medium_inplace, 1);
 #endif
 	}
-	//old school
-	// 	if (write_leaf_args.cat == MEDIUM_INLOG &&
-	// 	    write_leaf_args.level_id == cursor->handle->db_desc->level_medium_inplace) {
-	// 		write_leaf_args.key_value_buf = fetch_kv_from_LRU(&write_leaf_args, cursor);
-	// 		assert(get_key_size((struct kv_splice *)write_leaf_args.key_value_buf) <= MAX_KEY_SIZE);
-	// 		write_leaf_args.cat = MEDIUM_INPLACE;
-
-	// 		kv_size = get_kv_size((struct kv_splice *)write_leaf_args.key_value_buf);
-	// 		write_leaf_args.key_value_size = kv_size;
-	// 		curr_key->kv_type = KV_INPLACE;
-	// 		curr_key->kv_category = MEDIUM_INPLACE;
-	// 		curr_key->kv_in_place = (struct kv_splice *)write_leaf_args.key_value_buf;
-	// 		write_leaf_args.kv_format = KV_FORMAT;
-	// #if MEASURE_MEDIUM_INPLACE
-	// 		__sync_fetch_and_add(&cursor->handle->db_desc->count_medium_inplace, 1);
-	// #endif
-	// 	}
-
-	//gesalous new dynamic leaf
 	bool new_leaf = false;
 	if (dl_is_leaf_full(cursor->last_leaf, kv_general_splice_get_size(&new_splice))) {
 		// log_debug("Time for a split! cannot host key of size %d", kv_general_splice_get_key_size(&new_splice));
@@ -592,69 +481,4 @@ bool wcursor_append_KV_pair(struct wcursor_level_write_cursor *cursor, struct kv
 	wcursor_append_pivot_to_index(1, cursor, left_leaf_offt, new_pivot, right_leaf_offt);
 
 	return true;
-
-	//old school
-	// struct split_level_leaf split_metadata = { .leaf = cursor->last_leaf,
-	// 					   .leaf_size = level_leaf_size,
-	// 					   .kv_size = kv_size,
-	// 					   .level_id = cursor->level_id,
-	// 					   .key_type = curr_key->kv_type,
-	// 					   .cat = curr_key->kv_category,
-	// 					   .level_medium_inplace =
-	// 						   cursor->handle->db_desc->level_medium_inplace };
-
-	// int new_leaf = 0;
-	// if (is_dynamic_leaf_full(split_metadata)) {
-	// 	// log_info("Time for a split!");
-	// 	/*keep current aka left leaf offt*/
-	// 	uint32_t offt_l = wcursor_calc_offt_in_seg(cursor->segment_buf[0], (char *)cursor->last_leaf);
-	// 	left_leaf_offt = cursor->last_segment_btree_level_offt[0] + offt_l;
-	// 	wcursor_get_space(cursor, 0, leafNode);
-	// 	/*last leaf updated*/
-	// 	uint32_t offt_r = wcursor_calc_offt_in_seg(cursor->segment_buf[0], (char *)cursor->last_leaf);
-	// 	right_leaf_offt = cursor->last_segment_btree_level_offt[0] + offt_r;
-	// 	new_leaf = 1;
-	// }
-
-	// write_leaf_args.leaf = cursor->last_leaf;
-	// write_leaf_args.dest = get_leaf_log_offset(cursor->last_leaf, level_leaf_size);
-	// write_leaf_args.middle = cursor->last_leaf->header.num_entries;
-
-	// write_data_in_dynamic_leaf(&write_leaf_args);
-	// just append and leave
-	// ++cursor->last_leaf->header.num_entries;
-#if ENABLE_BLOOM_FILTERS
-// TODO XXX
-#endif
-	// TODO SIZE
-	// cursor->handle->db_desc->levels[cursor->level_id].level_size[1] += write_leaf_args.key_value_size;
-	// if (!new_leaf)
-	// 	return true;
-
-	// char *kv_formated_kv = (char *)kv_pair->kv_in_place;
-	// if (!append_to_medium_log) {
-	// 	switch (write_leaf_args.kv_format) {
-	// 	case KV_FORMAT:
-	// 		kv_formated_kv = write_leaf_args.key_value_buf;
-	// 		break;
-	// 	case KV_PREFIX:
-	// 		if (cursor->level_id == 1 && curr_key->kv_category == MEDIUM_INPLACE)
-	// 			kv_formated_kv = (char *)curr_key->kv_in_place;
-	// 		else {
-	// 			// do a page fault to find the pivot
-	// 			kv_formated_kv = (char *)get_kv_seperated_device_offt(&curr_key->kv_inlog);
-	// 		}
-	// 		break;
-	// 	default:
-	// 		BUG_ON();
-	// 	}
-	// }
-	// //create a pivot key based on the pivot key format | key_size | key | out of the kv_formated key
-	// struct kv_splice *kv_buf = (struct kv_splice *)kv_formated_kv;
-	// bool malloced = false;
-	// struct key_splice *new_pivot =
-	// 	key_splice_create(get_key_offset_in_kv(kv_buf), get_key_size(kv_buf), NULL, 0, &malloced);
-
-	// wcursor_append_pivot_to_index(1, cursor, left_leaf_offt, new_pivot, right_leaf_offt);
-	// return true;
 }
