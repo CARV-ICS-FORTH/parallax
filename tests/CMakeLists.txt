@@ -247,5 +247,4 @@ if(BUILD_TESTING)
   add_parallax_test(NAME test_par_put_metadata COMMAND run_test.sh
                     test_par_put_metadata --num_of_kvs=1000000)
 
-  add_subdirectory(Surrogates)
 endif()
