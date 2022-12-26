@@ -64,11 +64,6 @@ void wcursor_close_write_cursor(struct wcursor_level_write_cursor *w_cursor);
  * @param buf: starting offset of the segment
  * @param buf_size: size of the segment
  */
-void wcursor_append_segment(struct wcursor_level_write_cursor *wcursor, int32_t height, char *buf, uint32_t buf_size);
-
-/**
- * @brief: stich all level's segment lists into one
- * @param: wcursor: pointer to a write cursor */
-
-void wcursor_stitch_segments(struct wcursor_level_write_cursor *wcursor);
+void wcursor_append_index_segment(struct wcursor_level_write_cursor *wcursor, int32_t height, char *buf,
+				  uint32_t buf_size, uint8_t is_last_segment);
 #endif

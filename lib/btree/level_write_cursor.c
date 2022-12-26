@@ -591,46 +591,44 @@ struct medium_log_LRU_cache *wcursor_get_LRU_cache(struct wcursor_level_write_cu
 	return w_cursor->medium_log_LRU_cache;
 }
 
-void wcursor_append_segment(struct wcursor_level_write_cursor *wcursor, int32_t height, char *buf, uint32_t buf_size)
+static void wcursor_stich_level(struct wcursor_level_write_cursor *wcursor, int32_t height, char *buf,
+				uint32_t buf_size)
+{
+	struct segment_header *curr_in_mem_segment = (struct segment_header *)buf;
+	if (MAX_HEIGHT - 1 == height) {
+		wcursor->handle->db_desc->levels[wcursor->level_id].last_segment[1] =
+			REAL_ADDRESS(wcursor->last_segment_btree_level_offt[height]);
+		assert(wcursor->last_segment_btree_level_offt[height]);
+		curr_in_mem_segment->next_segment = NULL;
+	} else {
+		assert(wcursor->last_segment_btree_level_offt[height + 1]);
+		curr_in_mem_segment->next_segment = (void *)wcursor->first_segment_btree_level_offt[height + 1];
+	}
+
+	wcursor_write_segment(buf, wcursor->last_segment_btree_level_offt[height], 0, buf_size, wcursor->fd);
+}
+
+void wcursor_append_index_segment(struct wcursor_level_write_cursor *wcursor, int32_t height, char *buf,
+				  uint32_t buf_size, uint8_t is_last_segment)
 {
 	assert(wcursor);
 	assert(buf_size == SEGMENT_SIZE);
 
-	if (wcursor->segment_buf_is_init[height]) {
-		// flush in mem segment to free the space for the next one
-		struct segment_header *new_device_segment =
-			get_segment_for_lsm_level_IO(wcursor->handle->db_desc, wcursor->level_id, 1);
-		uint64_t new_device_segment_offt = ABSOLUTE_ADDRESS(new_device_segment);
-		assert(new_device_segment && new_device_segment_offt);
-
-		struct segment_header *current_in_mem_segment = (struct segment_header *)wcursor->segment_buf[height];
-		current_in_mem_segment->next_segment = (void *)new_device_segment_offt;
-
-		wcursor_write_segment((char *)current_in_mem_segment, wcursor->last_segment_btree_level_offt[height], 0,
-				      buf_size, wcursor->fd);
-
-		wcursor->last_segment_btree_level_offt[height] = new_device_segment_offt;
+	if (is_last_segment) {
+		wcursor_stich_level(wcursor, height, buf, buf_size);
+		return;
 	}
 
-	memcpy((char *)wcursor->segment_buf[height], buf, buf_size);
-	wcursor->segment_buf_is_init[height] = 1;
-}
+	struct segment_header *new_device_segment =
+		get_segment_for_lsm_level_IO(wcursor->handle->db_desc, wcursor->level_id, 1);
+	uint64_t new_device_segment_offt = ABSOLUTE_ADDRESS(new_device_segment);
+	assert(new_device_segment && new_device_segment_offt);
 
-void wcursor_stitch_segments(struct wcursor_level_write_cursor *wcursor)
-{
-	for (int i = 0; i < MAX_HEIGHT; ++i) {
-		struct segment_header *curr_in_mem_segment = (struct segment_header *)wcursor->segment_buf[i];
-		if (MAX_HEIGHT - 1 == i) {
-			wcursor->handle->db_desc->levels[wcursor->level_id].last_segment[1] =
-				REAL_ADDRESS(wcursor->last_segment_btree_level_offt[i]);
-			assert(wcursor->last_segment_btree_level_offt[i]);
-			curr_in_mem_segment->next_segment = NULL;
-		} else {
-			assert(wcursor->last_segment_btree_level_offt[i + 1]);
-			curr_in_mem_segment->next_segment = (void *)wcursor->first_segment_btree_level_offt[i + 1];
-		}
+	struct segment_header *current_in_mem_segment = (struct segment_header *)buf;
+	current_in_mem_segment->next_segment = (void *)new_device_segment_offt;
 
-		wcursor_write_segment((char *)curr_in_mem_segment, wcursor->last_segment_btree_level_offt[i], 0,
-				      SEGMENT_SIZE, wcursor->fd);
-	}
+	wcursor_write_segment((char *)current_in_mem_segment, wcursor->last_segment_btree_level_offt[height], 0,
+			      buf_size, wcursor->fd);
+
+	wcursor->last_segment_btree_level_offt[height] = new_device_segment_offt;
 }

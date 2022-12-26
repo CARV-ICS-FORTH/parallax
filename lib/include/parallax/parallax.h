@@ -109,6 +109,7 @@ void par_get_serialized(par_handle handle, char *key_serialized, struct par_valu
 par_ret_code par_exists(par_handle handle, struct par_key *key);
 
 /**
+ * Only for Tebis-Parallax use
  * Takes an in-memory buffer and flushes it to the L0 recovery log
  * The buffer size must be equal to Parallax's segment size. Also, the buffer must be padded with 0 indicating
  * the "not used" space at the end of a buffer.
@@ -123,6 +124,7 @@ uint64_t par_flush_segment_in_log(par_handle handle, char *buf, int32_t buf_size
 				  const char **error_message);
 
 /**
+ * Only for Tebis-Parallax use
  * Every compaction is associated with a transaction ID in Parallax
  * The function initializes a new transaction ID for the upcoming transaction, for the specified level_id & tree_id
  * @param handle: DB handle provided by par_open
