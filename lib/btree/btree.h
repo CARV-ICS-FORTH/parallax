@@ -71,23 +71,6 @@ typedef struct segment_header {
 	nodeType_t nodetype;
 } __attribute__((packed, aligned(4096))) segment_header;
 
-struct bt_leaf_entry_bitmap {
-	unsigned char bitmap; // This bitmap informs us which kv_entry is available to store data in the static leaf.
-};
-
-struct key_compare {
-	char *key;
-	uint64_t kv_dev_offt;
-	uint32_t key_size;
-	enum KV_type key_format;
-	uint8_t is_NIL;
-};
-
-struct kv_format {
-	uint32_t key_size;
-	char key_buf[];
-} __attribute__((packed));
-
 enum bsearch_status { INSERT = 0, FOUND = 1, ERROR = 2 };
 
 /* Possible options for these defines are multiples of 4KB but they should not be more than BUFFER_SEGMENT_SIZE*/
@@ -111,15 +94,6 @@ typedef struct lock_table {
 	pthread_rwlock_t rx_lock;
 	char pad[8];
 } lock_table;
-
-struct leaf_node_metadata {
-	uint32_t bitmap_entries;
-	uint32_t bitmap_offset;
-	uint32_t slot_array_entries;
-	uint32_t slot_array_offset;
-	uint32_t kv_entries;
-	uint32_t kv_entries_offset;
-};
 
 struct compaction_pairs {
 	int16_t src_level;
@@ -145,7 +119,6 @@ typedef struct level_descriptor {
 	lock_table guard_of_level;
 	uint64_t level_size[NUM_TREES_PER_LEVEL];
 	uint64_t max_level_size;
-	// struct leaf_node_metadata leaf_offsets;
 	volatile segment_header *medium_log_head;
 	volatile segment_header *medium_log_tail;
 	uint64_t medium_log_size;
