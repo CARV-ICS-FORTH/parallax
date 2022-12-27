@@ -83,46 +83,6 @@ inline char *get_value_offset_in_kv(struct kv_splice *kv_pair, int32_t key_size)
 	return is_tombstone_kv_pair(kv_pair) ? NULL : kv_pair->data + key_size;
 }
 
-inline int32_t get_kv_seperated_key_size(struct kv_seperation_splice *kv_pair)
-{
-	return get_key_size((struct kv_splice *)kv_pair->dev_offt);
-}
-
-inline int32_t get_kv_seperated_value_size(struct kv_seperation_splice *kv_pair)
-{
-	return get_value_size((struct kv_splice *)kv_pair->dev_offt);
-}
-
-inline int32_t get_kv_seperated_kv_size(struct kv_seperation_splice *kv_pair)
-{
-	return get_kv_size((struct kv_splice *)kv_pair->dev_offt);
-}
-
-inline int32_t get_kv_seperated_splice_size(void)
-{
-	return sizeof(struct kv_seperation_splice);
-}
-
-inline char *get_kv_seperated_prefix(struct kv_seperation_splice *kv_pair)
-{
-	return NULL != kv_pair ? kv_pair->prefix : NULL;
-}
-
-inline uint64_t get_kv_seperated_device_offt(struct kv_seperation_splice *kv_pair)
-{
-	return NULL != kv_pair ? kv_pair->dev_offt : UINT64_MAX;
-}
-
-inline void set_kv_seperated_device_offt(struct kv_seperation_splice *kv_pair, uint64_t dev_offt)
-{
-	NULL != kv_pair ? kv_pair->dev_offt = dev_offt : dev_offt;
-}
-
-inline int32_t get_kv_seperated_prefix_size(void)
-{
-	return PREFIX_SIZE;
-}
-
 inline bool is_tombstone_kv_pair(struct kv_splice *kv_pair)
 {
 	return DELETE_MARKER_ID == kv_pair->value_size;
@@ -223,7 +183,8 @@ struct kv_seperation_splice2 *kv_sep2_alloc_and_create(int32_t key_size, char *k
 
 int32_t kv_splice_calculate_size(int32_t key_size, int32_t value_size)
 {
-	return key_size + value_size + sizeof(struct kv_seperation_splice);
+	// return key_size + value_size + sizeof(struct kv_seperation_splice);
+	return key_size + value_size + sizeof(struct kv_splice);
 }
 
 int32_t kv_sep2_calculate_size(int32_t key_size)

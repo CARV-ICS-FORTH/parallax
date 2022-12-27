@@ -50,127 +50,6 @@ static uint8_t concurrent_insert(bt_insert_req *ins_req);
 
 void assert_index_node(node_header *node);
 
-// struct bt_rebalance_result split_leaf(bt_insert_req *req, struct dl_leaf_node *node);
-
-int prefix_compare(char *l, char *r, size_t prefix_size)
-{
-	return memcmp(l, r, prefix_size);
-}
-
-void init_key_cmp(struct key_compare *key_cmp, void *key_buf, char key_format)
-{
-	key_cmp->is_NIL = key_buf == NULL;
-
-	if (key_cmp->is_NIL == 1)
-		return;
-
-	if (key_format == KV_FORMAT) {
-		struct kv_splice *key = (struct kv_splice *)key_buf;
-		key_cmp->key_size = get_key_size(key);
-		key_cmp->key = get_key_offset_in_kv(key);
-		key_cmp->kv_dev_offt = UINT64_MAX;
-		key_cmp->key_format = KV_FORMAT;
-		return;
-	}
-
-	if (key_format == KV_PREFIX) {
-		key_cmp->key_size = PREFIX_SIZE;
-		key_cmp->key = ((struct kv_seperation_splice *)key_buf)->prefix;
-		key_cmp->kv_dev_offt = ((struct kv_seperation_splice *)key_buf)->dev_offt;
-		key_cmp->key_format = KV_PREFIX;
-		return;
-	}
-	log_fatal("Unknown key category, exiting");
-	BUG_ON();
-}
-
-/**
- * @param   index_key: address of the index_key
- * @param   index_key_len: length of the index_key in encoded form first 2
- * significant bytes row_key_size least 2 significant bytes quallifier size
- * @param   query_key: address of query_key
- * @param   query_key_len: query_key length again in encoded form
- */
-
-int key_cmp(struct key_compare *key1, struct key_compare *key2)
-{
-	assert(0);
-	int ret;
-	uint32_t size;
-	/*we need the left most entry*/
-	if (key2->is_NIL == 1)
-		return 1;
-
-	if (key1->is_NIL == 1)
-		return -1;
-
-	if (key1->key_format == KV_FORMAT && key2->key_format == KV_FORMAT) {
-		size = key1->key_size <= key2->key_size ? key1->key_size : key2->key_size;
-
-		ret = memcmp(key1->key, key2->key, size);
-		if (ret != 0)
-			return ret;
-
-		return key1->key_size - key2->key_size;
-	}
-
-	if (key1->key_format == KV_FORMAT && key2->key_format == KV_PREFIX) {
-		if (key1->key_size >= PREFIX_SIZE)
-			ret = prefix_compare(key1->key, key2->key, PREFIX_SIZE);
-		else
-			ret = prefix_compare(key1->key, key2->key, key1->key_size);
-		if (!ret)
-			return ret;
-		/*we have a tie, prefix didn't help, fetch query_key form KV log*/
-		struct kv_format *key2f = (struct kv_format *)key2->kv_dev_offt;
-
-		size = key1->key_size <= key2f->key_size ? key1->key_size : key2f->key_size;
-
-		ret = memcmp(key1->key, key2f->key_buf, size);
-
-		if (ret != 0)
-			return ret;
-
-		return key1->key_size - key2f->key_size;
-	}
-
-	if (key1->key_format == KV_PREFIX && key2->key_format == KV_FORMAT) {
-		if (key2->key_size >= PREFIX_SIZE)
-			ret = prefix_compare(key1->key, key2->key, PREFIX_SIZE);
-		else // check here TODO
-			ret = prefix_compare(key1->key, key2->key, key2->key_size);
-
-		if (!ret)
-			return ret;
-		/* we have a tie, prefix didn't help, fetch query_key form KV log*/
-		struct kv_format *key1f = (struct kv_format *)key1->kv_dev_offt;
-
-		size = key1f->key_size < key2->key_size ? key1f->key_size : key2->key_size;
-
-		ret = memcmp(key1f->key_buf, key2->key, size);
-		if (ret != 0)
-			return ret;
-
-		return key1f->key_size - key2->key_size;
-	}
-
-	/*KV_PREFIX and KV_PREFIX*/
-	ret = prefix_compare(key1->key, key2->key, PREFIX_SIZE);
-	if (ret != 0)
-		return ret;
-	/*full comparison*/
-	struct kv_format *key1f = (struct kv_format *)key1->kv_dev_offt;
-	struct kv_format *key2f = (struct kv_format *)key2->kv_dev_offt;
-
-	size = key1f->key_size < key2f->key_size ? key1f->key_size : key2f->key_size;
-
-	ret = memcmp(key1f->key_buf, key2f->key_buf, size);
-	if (ret != 0)
-		return ret;
-
-	return key1f->key_size - key2f->key_size;
-}
-
 static void init_level_locktable(db_descriptor *database, uint8_t level_id)
 {
 	for (unsigned int i = 0; i < MAX_HEIGHT; ++i) {
@@ -994,16 +873,13 @@ struct par_put_metadata serialized_insert_key_value(db_handle *handle, const cha
 
 void extract_keyvalue_size(log_operation *req, metadata_tologop *data_size)
 {
-	if (req->metadata->key_format == KV_FORMAT) {
-		data_size->key_len = get_key_size((struct kv_splice *)req->ins_req->key_value_buf);
-		data_size->value_len = get_value_size((struct kv_splice *)req->ins_req->key_value_buf);
-		data_size->kv_size = get_kv_size((struct kv_splice *)req->ins_req->key_value_buf);
-		return;
+	if (req->metadata->key_format != KV_FORMAT) {
+		log_fatal("Cannot handle this type of format");
+		_exit(EXIT_FAILURE);
 	}
-
-	data_size->key_len = get_kv_seperated_key_size((struct kv_seperation_splice *)req->ins_req->key_value_buf);
-	data_size->value_len = get_kv_seperated_value_size((struct kv_seperation_splice *)req->ins_req->key_value_buf);
-	data_size->kv_size = get_kv_seperated_kv_size((struct kv_seperation_splice *)req->ins_req->key_value_buf);
+	data_size->key_len = get_key_size((struct kv_splice *)req->ins_req->key_value_buf);
+	data_size->value_len = get_value_size((struct kv_splice *)req->ins_req->key_value_buf);
+	data_size->kv_size = get_kv_size((struct kv_splice *)req->ins_req->key_value_buf);
 }
 
 //######################################################################################################
