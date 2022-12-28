@@ -45,7 +45,7 @@ if(BUILD_TESTING)
       COMMAND
       run_test.sh
       tiresias
-      --num_of_kvs=4000000
+      --num_of_kvs=1000000
       --BDB_file=${BDB_PATH})
   endif()
 
@@ -57,8 +57,8 @@ if(BUILD_TESTING)
     COMMAND
     run_test.sh
     test_dirty_scans
-    --num_of_kvs=4000000
-    --scan_size=30
+    --num_of_kvs=1000000
+    --scan_size=5
     --workload=All_scan_greater
     --kv_mix=sd)
 
@@ -68,8 +68,8 @@ if(BUILD_TESTING)
     COMMAND
     run_test.sh
     test_dirty_scans
-    --num_of_kvs=4000000
-    --scan_size=30
+    --num_of_kvs=1000000
+    --scan_size=5
     --workload=All
     --kv_mix=s)
 
@@ -79,8 +79,8 @@ if(BUILD_TESTING)
     COMMAND
     run_test.sh
     test_dirty_scans
-    --num_of_kvs=4000000
-    --scan_size=30
+    --num_of_kvs=1000000
+    --scan_size=5
     --workload=All
     --kv_mix=m)
 
@@ -90,8 +90,8 @@ if(BUILD_TESTING)
     COMMAND
     run_test.sh
     test_dirty_scans
-    --num_of_kvs=4000000
-    --scan_size=30
+    --num_of_kvs=1000000
+    --scan_size=5
     --workload=All
     --kv_mix=l)
 
@@ -101,8 +101,8 @@ if(BUILD_TESTING)
     COMMAND
     run_test.sh
     test_dirty_scans
-    --num_of_kvs=4000000
-    --scan_size=30
+    --num_of_kvs=1000000
+    --scan_size=5
     --workload=All
     --kv_mix=sd)
 
@@ -112,8 +112,8 @@ if(BUILD_TESTING)
     COMMAND
     run_test.sh
     test_dirty_scans
-    --num_of_kvs=4000000
-    --scan_size=30
+    --num_of_kvs=1000000
+    --scan_size=5
     --workload=All
     --kv_mix=md)
 
@@ -123,8 +123,8 @@ if(BUILD_TESTING)
     COMMAND
     run_test.sh
     test_dirty_scans
-    --num_of_kvs=4000000
-    --scan_size=30
+    --num_of_kvs=1000000
+    --scan_size=5
     --workload=All
     --kv_mix=ld)
 

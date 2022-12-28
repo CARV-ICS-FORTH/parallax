@@ -17,11 +17,11 @@
 #include <db.h>
 #include <log.h>
 #include <parallax/parallax.h>
+#include <pthread.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 #define MAX_KV_PAIR_SIZE 4096
 #define MY_MAX_KEY_SIZE 255
 
@@ -158,8 +158,9 @@ static void locate_key(par_handle handle, DBT lookup_key)
 	log_info("Not Found key %u %.*s", lookup_key.size, lookup_key.size, (char *)lookup_key.data);
 }
 
-static void get_workload(struct workload_config_t *workload_config)
+static void *get_workload(void *config)
 {
+	struct workload_config_t *workload_config = config;
 	log_info("Testing GETS now");
 	const char *error_message = NULL;
 	DBC *cursorp = NULL;
@@ -196,15 +197,15 @@ static void get_workload(struct workload_config_t *workload_config)
 				"Key is size: %u data: %.*s not found! keys found so far %lu error_message is %s insert order was %lu",
 				key.size, key.size, (char *)key.data, unique_keys, error_message, insert_order);
 			locate_key(workload_config->handle, key);
-			_exit(EXIT_FAILURE);
+			_Exit(EXIT_FAILURE);
 		}
 		if (value.val_size != data.size) {
 			log_fatal("Value sizes mismatch waited %u got %u", data.size, value.val_size);
-			_exit(EXIT_FAILURE);
+			_Exit(EXIT_FAILURE);
 		}
 		if (memcmp(value.val_buffer, data.data, data.size) != 0) {
 			log_fatal("Value data do not match");
-			_exit(EXIT_FAILURE);
+			_Exit(EXIT_FAILURE);
 		}
 
 		if (malloced)
@@ -215,15 +216,17 @@ static void get_workload(struct workload_config_t *workload_config)
 	log_debug("KV pairs found are %lu", unique_keys);
 	if (ret != DB_NOTFOUND) {
 		workload_config->truth->err(workload_config->truth, ret, "DB not found");
-		_exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 
 	cursorp->close(cursorp);
 	log_info("Testing GETS DONE!");
+	pthread_exit(NULL);
 }
 
-static void scan_workload(struct workload_config_t *workload_config)
+static void *scan_workload(void *config)
 {
+	struct workload_config_t *workload_config = config;
 	log_info("Now, testing SCANS");
 	const char *error_message = NULL;
 	par_scanner scanner = par_init_scanner(workload_config->handle, NULL, PAR_FETCH_FIRST, &error_message);
@@ -234,9 +237,10 @@ static void scan_workload(struct workload_config_t *workload_config)
 	par_close_scanner(scanner);
 	if (workload_config->total_keys != unique_keys) {
 		log_fatal("Scanner lost keys expected %lu found %lu", workload_config->total_keys, unique_keys);
-		_exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 	log_info("Testing SCANS Successful");
+	pthread_exit(NULL);
 }
 
 static void delete_workload(struct workload_config_t *workload_config)
@@ -257,7 +261,7 @@ static void delete_workload(struct workload_config_t *workload_config)
 		par_delete(workload_config->handle, &par_key, &error_message);
 		if (error_message) {
 			log_fatal("Key is size: %u data: %.*s deletion failed!", key.size, key.size, (char *)key.data);
-			_exit(EXIT_FAILURE);
+			_Exit(EXIT_FAILURE);
 		}
 	}
 	cursorp->close(cursorp);
@@ -280,7 +284,7 @@ static void delete_workload(struct workload_config_t *workload_config)
 		log_fatal(
 			"Key is size: %u data: %.*s value size %u found! (It shouldn't since we have deleted it!) keys checked so far %lu",
 			key.size, key.size, (char *)key.data, data.size, keys_checked);
-		_exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 	workload_config->total_keys = 0;
 	scan_workload(workload_config);
@@ -292,7 +296,7 @@ int main(int argc, char **argv)
 	int help_flag = 0;
 
 	struct wrap_option options[] = {
-		{ { "help", no_argument, &help_flag, 1 }, "Prints valid arguments for test_medium.", NULL, INTEGER },
+		{ { "help", no_argument, &help_flag, 1 }, "Prints valid arguments for tiresias.", NULL, INTEGER },
 		{ { "file", required_argument, 0, 'a' },
 		  "--file=path to file of db, parameter that specifies the target where parallax is going to run.",
 		  NULL,
@@ -328,7 +332,7 @@ int main(int argc, char **argv)
 	int ret = db_create(&truth, NULL, 0);
 	if (ret) {
 		truth->err(truth, ret, "Database open failed: %s", "truth.db");
-		_exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 
 	bool truth_db_exists = false;
@@ -350,7 +354,7 @@ int main(int argc, char **argv)
 	const char *error_message = par_format(db_options.volume_name, 16);
 	if (error_message) {
 		log_fatal("Error message from par_format: %s", error_message);
-		_exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 
 	db_options.db_name = "TIRESIAS";
@@ -367,16 +371,20 @@ int main(int argc, char **argv)
 	else
 		populate_randomly(&workload_config);
 
-	get_workload(&workload_config);
+	pthread_t get_thread;
+	pthread_t scan_thread;
 
-	scan_workload(&workload_config);
+	pthread_create(&get_thread, NULL, get_workload, &workload_config);
+	pthread_create(&scan_thread, NULL, scan_workload, &workload_config);
+	pthread_join(get_thread, NULL);
+	pthread_join(scan_thread, NULL);
 
 	delete_workload(&workload_config);
 
 	error_message = par_close(parallax_db);
 	if (error_message) {
 		log_fatal("Error message from par_close: %s", error_message);
-		_exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 	truth->close(truth, 0);
 

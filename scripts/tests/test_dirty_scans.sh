@@ -18,8 +18,8 @@ else
 	fi
 fi
 
-readonly NUM_OF_KVS=4000000
-readonly SCAN_SIZE=30
+readonly NUM_OF_KVS=1000000
+readonly SCAN_SIZE=5
 
 fallocate -l 16G "$FILE"
 echo "Running workload $KV_MIX with par_close!"
