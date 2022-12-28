@@ -29,10 +29,7 @@ if(BUILD_TESTING)
   add_executable(test_dirty_scans test_dirty_scans.c arg_parser.c)
   target_link_libraries(test_dirty_scans "${PROJECT_NAME}" ${DEPENDENCIES})
 
-  find_library(
-    BDB_LIBRARY
-    NAMES libdb.so
-    PATHS ${bdb_LIB_PATHS})
+  find_library(BDB_LIBRARY NAMES libdb.so)
 
   if(BDB_LIBRARY AND NOT ${BDB_PATH} STREQUAL "")
 
@@ -170,7 +167,7 @@ if(BUILD_TESTING)
     COMMAND
     run_test.sh
     test_mixes
-    --num_of_kvs=1000000
+    --num_of_kvs=400000
     --small_kv_percentage=0
     --medium_kv_percentage=100
     --big_kv_percentage=0)
@@ -181,7 +178,7 @@ if(BUILD_TESTING)
     COMMAND
     run_test.sh
     test_mixes
-    --num_of_kvs=1000000
+    --num_of_kvs=400000
     --small_kv_percentage=99
     --medium_kv_percentage=1
     --big_kv_percentage=0)
@@ -192,7 +189,7 @@ if(BUILD_TESTING)
     COMMAND
     run_test.sh
     test_mixes
-    --num_of_kvs=1000000
+    --num_of_kvs=400000
     --medium_kv_percentage=50
     --small_kv_percentage=45
     --big_kv_percentage=5)
@@ -245,6 +242,6 @@ if(BUILD_TESTING)
   add_executable(test_par_put_metadata test_par_put_metadata.c arg_parser.c)
   target_link_libraries(test_par_put_metadata "${PROJECT_NAME}" ${DEPENDENCIES})
   add_parallax_test(NAME test_par_put_metadata COMMAND run_test.sh
-                    test_par_put_metadata --num_of_kvs=1000000)
+                    test_par_put_metadata --num_of_kvs=400000)
 
 endif()

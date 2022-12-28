@@ -7,7 +7,7 @@ if(BUILD_TESTING)
   add_executable(tracer tracer.c ../tests/arg_parser.c)
   target_link_libraries(tracer "${PROJECT_NAME}" ${DEPENDENCIES})
 
-  add_test(NAME tracer COMMAND ./tracer --file=${FILEPATH}
-                               --tracefile=../../tracer/dummy_tracefile.txt)
+  add_parallax_test(NAME tracer COMMAND ./tracer
+                    --tracefile=${CMAKE_CURRENT_SOURCE_DIR}/dummy_tracefile.txt)
 
 endif()

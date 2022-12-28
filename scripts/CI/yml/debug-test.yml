@@ -4,15 +4,6 @@
         - mkdir -p build;cd build
         - cmake .. -DBDB_PATH=/BDB/TIRESIAS
 
-test_surrogates:
-    image: carvicsforth/ubuntu_carv:latest
-    stage: debug_test
-    <<: *debug_build_commands
-    script:
-        - make SurrogateTUsTest;cd tests/Surrogates;
-        - ./SurrogateTUsTest
-    needs: [debug_build_gcc, debug_build_clang]
-
 test_options:
     image: carvicsforth/ubuntu_carv:latest
     stage: debug_test
