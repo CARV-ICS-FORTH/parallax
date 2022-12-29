@@ -21,21 +21,20 @@ if(BUILD_TESTING)
   set_source_files_properties(${LIB_TEST_FILES} COMPILE_FLAGS "-O3")
 
   add_executable(test_index_node test_index_node.c arg_parser.c)
-  target_link_libraries(test_index_node "${PROJECT_NAME}" ${DEPENDENCIES})
+  target_link_libraries(test_index_node "${PROJECT_NAME}")
 
   add_executable(test_scans test_scans.c)
-  target_link_libraries(test_scans "${PROJECT_NAME}" ${DEPENDENCIES})
+  target_link_libraries(test_scans "${PROJECT_NAME}")
 
   add_executable(test_dirty_scans test_dirty_scans.c arg_parser.c)
-  target_link_libraries(test_dirty_scans "${PROJECT_NAME}" ${DEPENDENCIES})
+  target_link_libraries(test_dirty_scans "${PROJECT_NAME}")
 
   find_library(BDB_LIBRARY NAMES libdb.so)
 
   if(BDB_LIBRARY AND NOT ${BDB_PATH} STREQUAL "")
-
+    message("Tiresias will be built.")
     add_executable(tiresias tiresias.c arg_parser.c)
-    target_link_libraries(tiresias "${PROJECT_NAME}" ${DEPENDENCIES}
-                          ${BDB_LIBRARY})
+    target_link_libraries(tiresias "${PROJECT_NAME}" ${BDB_LIBRARY})
     add_parallax_test(
       NAME
       tiresias
@@ -139,14 +138,14 @@ if(BUILD_TESTING)
                     test_dirty_scans.sh ld)
 
   add_executable(test_recovery test_recovery.c)
-  target_link_libraries(test_recovery "${PROJECT_NAME}" ${DEPENDENCIES})
+  target_link_libraries(test_recovery "${PROJECT_NAME}")
 
   add_executable(test_options test_options.c)
-  target_link_libraries(test_options "${PROJECT_NAME}" ${DEPENDENCIES})
+  target_link_libraries(test_options "${PROJECT_NAME}")
   add_parallax_test(NAME test_options COMMAND run_test.sh test_options)
 
   add_executable(test_categories test_categories.c)
-  target_link_libraries(test_categories "${PROJECT_NAME}" ${DEPENDENCIES})
+  target_link_libraries(test_categories "${PROJECT_NAME}")
   add_parallax_test(NAME test_categories COMMAND run_test.sh test_categories)
 
   set_source_files_properties(test_sanitizers.c COMPILE_FLAGS "-O0")
@@ -154,12 +153,12 @@ if(BUILD_TESTING)
   add_parallax_test(NAME test_sanitizers COMMAND run_test.sh test_sanitizers)
 
   add_executable(test_gc test_gc.c arg_parser.c)
-  target_link_libraries(test_gc "${PROJECT_NAME}" ${DEPENDENCIES})
+  target_link_libraries(test_gc "${PROJECT_NAME}")
   add_parallax_test(NAME test_gc COMMAND run_test.sh test_gc
                     --num_of_kvs=1000000)
 
   add_executable(test_mixes test_mixes.c arg_parser.c)
-  target_link_libraries(test_mixes "${PROJECT_NAME}" ${DEPENDENCIES})
+  target_link_libraries(test_mixes "${PROJECT_NAME}")
 
   add_parallax_test(
     NAME
@@ -195,15 +194,14 @@ if(BUILD_TESTING)
     --big_kv_percentage=5)
 
   add_executable(simple_test_delete simple_test_delete.c arg_parser.c)
-  target_link_libraries(simple_test_delete "${PROJECT_NAME}" ${DEPENDENCIES})
+  target_link_libraries(simple_test_delete "${PROJECT_NAME}")
   add_parallax_test(NAME simple_test_delete COMMAND run_test.sh
                     simple_test_delete --num_of_kvs=1000000)
 
   add_executable(
     test_leaf_root_delete_get_scan test_leaf_root_delete_get_scan.c
                                    arg_parser.c ../lib/common/common.c)
-  target_link_libraries(test_leaf_root_delete_get_scan "${PROJECT_NAME}"
-                        ${DEPENDENCIES})
+  target_link_libraries(test_leaf_root_delete_get_scan "${PROJECT_NAME}")
 
   add_parallax_test(NAME test_leaf_root_delete_get_scan COMMAND run_test.sh
                     test_leaf_root_delete_get_scan)
@@ -212,8 +210,7 @@ if(BUILD_TESTING)
     test_region_allocations
     test_region_allocations.c ../lib/allocator/allocator.c
     ../lib/allocator/djb2.c ../lib/allocator/redo_undo_log.c)
-  target_link_libraries(test_region_allocations "${PROJECT_NAME}"
-                        ${DEPENDENCIES})
+  target_link_libraries(test_region_allocations "${PROJECT_NAME}")
   add_parallax_test(NAME test_region_allocations COMMAND
                     $<TARGET_FILE:test_region_allocations>)
 
@@ -221,7 +218,7 @@ if(BUILD_TESTING)
     test_redo_undo_log
     test_redo_undo_log.c ../lib/allocator/allocator.c ../lib/allocator/djb2.c
     ../lib/allocator/redo_undo_log.c arg_parser.c)
-  target_link_libraries(test_redo_undo_log "${PROJECT_NAME}" ${DEPENDENCIES})
+  target_link_libraries(test_redo_undo_log "${PROJECT_NAME}")
   add_parallax_test(NAME test_redo_undo_log COMMAND run_test.sh
                     test_redo_undo_log --num_threads=4)
 
@@ -230,17 +227,16 @@ if(BUILD_TESTING)
                     test_optional_logging)
 
   add_executable(test_par_format test_par_format.c arg_parser.c)
-  target_link_libraries(test_par_format "${PROJECT_NAME}" ${DEPENDENCIES})
+  target_link_libraries(test_par_format "${PROJECT_NAME}")
   add_parallax_test(NAME test_par_format COMMAND run_test.sh test_par_format)
 
   add_executable(test_par_put_serialized test_par_put_serialized.c arg_parser.c)
-  target_link_libraries(test_par_put_serialized "${PROJECT_NAME}"
-                        ${DEPENDENCIES})
+  target_link_libraries(test_par_put_serialized "${PROJECT_NAME}")
   add_parallax_test(NAME test_par_put_serialized COMMAND run_test.sh
                     test_par_put_serialized)
 
   add_executable(test_par_put_metadata test_par_put_metadata.c arg_parser.c)
-  target_link_libraries(test_par_put_metadata "${PROJECT_NAME}" ${DEPENDENCIES})
+  target_link_libraries(test_par_put_metadata "${PROJECT_NAME}")
   add_parallax_test(NAME test_par_put_metadata COMMAND run_test.sh
                     test_par_put_metadata --num_of_kvs=400000)
 

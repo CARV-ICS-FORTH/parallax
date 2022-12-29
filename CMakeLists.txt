@@ -14,6 +14,10 @@ option(BUILD_SHARED_LIBS
 option(DISABLE_LOGGING
        "Disable all logging from parallax excluding kv_format.parallax output."
        OFF)
+option(
+  ENABLE_FLTO
+  "Enable FLTO compilation for Parallax and its dependencies. At the moment this only supports GCC."
+  OFF)
 
 # Parallax is a dependency
 if(NOT (${CMAKE_SOURCE_DIR} STREQUAL ${CMAKE_CURRENT_SOURCE_DIR}))
@@ -126,8 +130,8 @@ include_directories(${CMAKE_BINARY_DIR})
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/utilities)
 
 if(TREAT_WARNINGS_AS_ERRORS)
-  set(CMAKE_C_FLAGS " -Werror ${CMAKE_C_FLAGS}")
-  set(CMAKE_CXX_FLAGS " -Werror ${CMAKE_CXX_FLAGS}")
+  string(APPEND CMAKE_C_FLAGS " -Werror")
+  string(APPEND CMAKE_CXX_FLAGS " -Werror")
 endif()
 
 string(
@@ -143,19 +147,20 @@ string(
 string(APPEND CMAKE_CXX_FLAGS " -pipe")
 include(cmake_utils/check-compiler-flags.cmake.in)
 
-# if(NOT (CMAKE_C_COMPILER_ID STREQUAL "Clang" AND CMAKE_CXX_COMPILER_ID
-# STREQUAL "Clang")) string(APPEND CMAKE_C_FLAGS " -flto") string(APPEND
-# CMAKE_CXX_FLAGS " -flto") endif()
+if(NOT (CMAKE_C_COMPILER_ID STREQUAL "Clang" AND CMAKE_CXX_COMPILER_ID STREQUAL
+                                                 "Clang") AND ${ENABLE_FLTO})
+  message("FLTO is enabled!")
+  string(APPEND CMAKE_C_FLAGS " -flto=auto")
+  string(APPEND CMAKE_CXX_FLAGS " -flto=auto")
+  set(CMAKE_AR "gcc-ar")
+endif()
 
-set(CMAKE_C_FLAGS_DEBUG "-ggdb3 -Og -gz ${CMAKE_C_FLAGS_DEBUG}")
-set(CMAKE_C_FLAGS_RELEASE
-    "${CMAKE_C_FLAGS_RELEASE} -funit-at-a-time -O2 -finline-functions -DNDEBUG")
-
-set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -std=gnu++11 -Wall")
-
-set(CMAKE_EXE_LINKER_FLAGS
-    "${CMAKE_EXE_LINKER_FLAGS} -Wl,--no-as-needed -lrt -lm -pthread -lnuma -lutil"
-)
+string(APPEND CMAKE_C_FLAGS_DEBUG " -ggdb3 -Og -gz")
+string(APPEND CMAKE_C_FLAGS_RELEASE
+       " -funit-at-a-time -O2 -finline-functions -DNDEBUG")
+string(APPEND CMAKE_CXX_FLAGS_RELEASE " -std=gnu++11 -Wall")
+string(APPEND CMAKE_EXE_LINKER_FLAGS
+       " -Wl,--no-as-needed -lrt -lm -pthread -lnuma -lutil")
 
 add_subdirectory(lib)
 add_subdirectory(YCSB-CXX)
