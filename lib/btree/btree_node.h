@@ -15,7 +15,7 @@
 #define BTREE_NODE_H
 #include <stdint.h>
 typedef enum {
-	leafNode = 0,
+	leafNode = 12,
 	internalNode,
 	rootNode,
 	leafRootNode, /*special case for a newly created tree*/
