@@ -387,8 +387,9 @@ int32_t level_scanner_seek(struct level_scanner *level_sc, struct key_splice *st
 	bool exact_match = false;
 	element.idx = dl_search_get_pos((struct dl_leaf_node *)node, key_splice_get_key_offset(start_key_splice),
 					key_splice_get_key_size(start_key_splice), &exact_match);
-	if (element.idx == -1)
-		element.idx = 0;
+
+	if (!exact_match)
+		++element.idx;
 
 	stack_push(&level_sc->stack, element);
 
@@ -400,7 +401,9 @@ int32_t level_scanner_seek(struct level_scanner *level_sc, struct key_splice *st
 	element = stack_pop(&level_sc->stack);
 
 	level_sc->splice = dl_get_general_splice((struct dl_leaf_node *)element.node, element.idx);
-
+	// log_debug("Level scanner seek reached splice %.*s at idx %d node entries %d",
+	// 	  kv_general_splice_get_key_size(&level_sc->splice), kv_general_splice_get_key_buf(&level_sc->splice),
+	// 	  element.idx, element.node->num_entries);
 	stack_push(&level_sc->stack, element);
 	return PAR_SUCCESS;
 }
