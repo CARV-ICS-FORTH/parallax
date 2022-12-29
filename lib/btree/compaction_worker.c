@@ -7,6 +7,7 @@
 #include "../scanner/min_max_heap.h"
 #include "../utilities/dups_list.h"
 #include "../utilities/spin_loop.h"
+#include "btree.h"
 #include "btree_node.h"
 #include "conf.h"
 #include "dynamic_leaf.h"
@@ -255,11 +256,8 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 			break;
 		}
 
-		if (!min_heap_node.duplicate) {
-			// struct comp_parallax_key key = { 0 };
-			// comp_fill_parallax_key(&min_heap_node, &key);
+		if (!min_heap_node.duplicate)
 			wcursor_append_KV_pair(new_level, &min_heap_node.splice);
-		}
 
 		/*refill from the appropriate level*/
 		if (min_heap_node.level_id == comp_req->src_level && rcursor_get_next_kv(src_rcursor)) {
@@ -293,7 +291,7 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 	}
 
 	/***************************************************************/
-	struct level_descriptor *ld = &comp_req->db_desc->levels[comp_req->dst_level];
+	struct level_descriptor *dest_level = &comp_req->db_desc->levels[comp_req->dst_level];
 	struct db_handle hd = { .db_desc = comp_req->db_desc, .volume_desc = comp_req->volume_desc };
 
 	lock_to_update_levels_after_compaction(comp_req);
@@ -328,27 +326,27 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 	pr_flush_compaction(comp_req->db_desc, comp_req->dst_level, comp_req->dst_tree);
 	log_debug("Flushed compaction[%u][%u] successfully", comp_req->dst_level, comp_req->dst_tree);
 	/*set L'_(i+1) as L_(i+1)*/
-	ld->first_segment[0] = ld->first_segment[1];
-	ld->first_segment[1] = NULL;
-	ld->last_segment[0] = ld->last_segment[1];
-	ld->last_segment[1] = NULL;
-	ld->offset[0] = ld->offset[1];
-	ld->offset[1] = 0;
+	dest_level->first_segment[0] = dest_level->first_segment[1];
+	dest_level->first_segment[1] = NULL;
+	dest_level->last_segment[0] = dest_level->last_segment[1];
+	dest_level->last_segment[1] = NULL;
+	dest_level->offset[0] = dest_level->offset[1];
+	dest_level->offset[1] = 0;
 
-	if (ld->root_w[1] != NULL)
-		ld->root_r[0] = ld->root_w[1];
-	else if (ld->root_r[1] != NULL)
-		ld->root_r[0] = ld->root_r[1];
+	if (dest_level->root_w[1] != NULL)
+		dest_level->root_r[0] = dest_level->root_w[1];
+	else if (dest_level->root_r[1] != NULL)
+		dest_level->root_r[0] = dest_level->root_r[1];
 	else {
 		log_fatal("Where is the root?");
 		BUG_ON();
 	}
 
-	ld->root_w[0] = NULL;
-	ld->level_size[0] = ld->level_size[1];
-	ld->level_size[1] = 0;
-	ld->root_w[1] = NULL;
-	ld->root_r[1] = NULL;
+	dest_level->root_w[0] = NULL;
+	dest_level->level_size[0] = dest_level->level_size[1];
+	dest_level->level_size[1] = 0;
+	dest_level->root_w[1] = NULL;
+	dest_level->root_r[1] = NULL;
 
 	unlock_to_update_levels_after_compaction(comp_req);
 
@@ -426,14 +424,9 @@ void *compaction(void *compaction_request)
 	handle.volume_desc = comp_req->volume_desc;
 	memcpy(&handle.db_options, comp_req->db_options, sizeof(struct par_db_options));
 	// optimization check if level below is empty
-	struct node_header *dst_root = NULL;
-	if (handle.db_desc->levels[comp_req->dst_level].root_w[0] != NULL)
-		dst_root = handle.db_desc->levels[comp_req->dst_level].root_w[0];
-	else if (handle.db_desc->levels[comp_req->dst_level].root_r[0] != NULL)
+	struct node_header *dst_root = handle.db_desc->levels[comp_req->dst_level].root_w[0];
+	if (dst_root == NULL)
 		dst_root = handle.db_desc->levels[comp_req->dst_level].root_r[0];
-	else {
-		dst_root = NULL;
-	}
 
 	if (comp_req->src_level == 0 || comp_req->dst_level == handle.db_desc->level_medium_inplace || dst_root)
 		compact_level_direct_IO(&handle, comp_req);
@@ -443,9 +436,10 @@ void *compaction(void *compaction_request)
 	log_debug("DONE Compaction from level's tree [%u][%u] to level's tree[%u][%u] "
 		  "cleaning src level",
 		  comp_req->src_level, comp_req->src_tree, comp_req->dst_level, comp_req->dst_tree);
-
-	db_desc->levels[comp_req->src_level].tree_status[comp_req->src_tree] = NO_COMPACTION;
-	db_desc->levels[comp_req->dst_level].tree_status[0] = NO_COMPACTION;
+	bt_set_db_status(&db_desc->levels[comp_req->src_level].tree_status[comp_req->src_tree], BT_NO_COMPACTION);
+	bt_set_db_status(&db_desc->levels[comp_req->dst_level].tree_status[0], BT_NO_COMPACTION);
+	// db_desc->levels[comp_req->src_level].tree_status[comp_req->src_tree] = NO_COMPACTION;
+	// db_desc->levels[comp_req->dst_level].tree_status[0] = NO_COMPACTION;
 
 	/*wake up clients*/
 	if (comp_req->src_level == 0) {

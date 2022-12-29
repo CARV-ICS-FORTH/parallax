@@ -52,8 +52,8 @@ enum db_status { DB_START_COMPACTION_DAEMON, DB_OPEN, DB_TERMINATE_COMPACTION_DA
 
 /*descriptor describing a compaction operation and its current status*/
 typedef enum {
-	NO_COMPACTION = 0,
-	COMPACTION_IN_PROGRESS = 1,
+	BT_NO_COMPACTION = 128,
+	BT_COMPACTION_IN_PROGRESS,
 } level_0_tree_status;
 
 /*
@@ -133,7 +133,7 @@ typedef struct level_descriptor {
 	uint64_t medium_in_place_max_segment_id;
 	uint64_t medium_in_place_segment_dev_offt;
 	uint32_t leaf_size;
-	char tree_status[NUM_TREES_PER_LEVEL];
+	uint64_t tree_status[NUM_TREES_PER_LEVEL];
 	uint8_t active_tree;
 	uint8_t level_id;
 	char in_recovery_mode;
@@ -362,6 +362,7 @@ void find_key(struct lookup_operation *get_op);
 int8_t delete_key(db_handle *handle, void *key, uint32_t size);
 
 void recover_L0(struct db_descriptor *db_desc);
+void bt_set_db_status(uint64_t *status, uint64_t new_status);
 
 lock_table *_find_position(const lock_table **table, node_header *node);
 

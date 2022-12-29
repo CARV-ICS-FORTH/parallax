@@ -400,6 +400,16 @@ static db_descriptor *get_db_from_volume(char *volume_name, char *db_name, par_d
 	return db_desc;
 }
 
+void bt_set_db_status(uint64_t *status, uint64_t new_status)
+{
+	while (1) {
+		uint64_t old_status = *status;
+		bool ret = __sync_bool_compare_and_swap(status, old_status, new_status);
+		if (ret)
+			break;
+	}
+}
+
 db_handle *internal_db_open(struct volume_descriptor *volume_desc, par_db_options *db_options,
 			    const char **error_message)
 {
@@ -514,7 +524,8 @@ db_handle *internal_db_open(struct volume_descriptor *volume_desc, par_db_option
 		db_desc->levels[level_id].count_compactions = 0;
 #endif
 		for (uint8_t tree_id = 0; tree_id < NUM_TREES_PER_LEVEL; tree_id++) {
-			handle->db_desc->levels[level_id].tree_status[tree_id] = NO_COMPACTION;
+			bt_set_db_status(&handle->db_desc->levels[level_id].tree_status[tree_id], BT_NO_COMPACTION);
+			// handle->db_desc->levels[level_id].tree_status[tree_id] = NO_COMPACTION;
 			handle->db_desc->levels[level_id].epoch[tree_id] = 0;
 #if ENABLE_BLOOM_FILTERS
 			init_level_bloom_filters(db_desc, level_id, tree_id);
@@ -607,7 +618,7 @@ const char *db_close(db_handle *handle)
 		BUG_ON();
 	}
 	if (handle->db_desc->reference_count > 0) {
-		error_message = "Sorry more guys uses this DB";
+		error_message = "Sorry more guys use this DB";
 		MUTEX_UNLOCK(&init_lock);
 		return error_message;
 	}
@@ -617,7 +628,7 @@ const char *db_close(db_handle *handle)
 		BUG_ON();
 	}
 
-	log_info("Closing DB: %s\n", handle->db_desc->db_superblock->db_name);
+	log_warn("Closing DB: %s\n", handle->db_desc->db_superblock->db_name);
 
 	/*New requests will eventually see that db is closing*/
 	/*wake up possible clients that are stack due to non-availability of L0*/
@@ -628,8 +639,6 @@ const char *db_close(db_handle *handle)
 		BUG_ON();
 	}
 	MUTEX_UNLOCK(&handle->db_desc->client_barrier_lock);
-
-	/*stop log appenders*/
 
 	/*stop all writers at all levels and wait for all clients to complete their operations.*/
 
@@ -652,26 +661,28 @@ const char *db_close(db_handle *handle)
 
 	/*Level 0 compactions*/
 	for (uint8_t i = 0; i < NUM_TREES_PER_LEVEL; ++i) {
-		if (handle->db_desc->levels[0].tree_status[i] == COMPACTION_IN_PROGRESS) {
-			i = 0;
-			usleep(500);
-			continue;
+		// if (handle->db_desc->levels[0].tree_status[i] == COMPACTION_IN_PROGRESS) {
+		while (BT_NO_COMPACTION != handle->db_desc->levels[0].tree_status[i]) {
+			log_debug("Compaction pending for level: %u tree_id: %u", 0, i);
+			usleep(50);
 		}
 	}
 
-	log_info("All L0 compactions done");
+	log_debug("All L0 compactions done");
 
 	/*wait for all other pending compactions to finish*/
 	for (uint8_t i = 1; i < MAX_LEVELS; i++) {
-		if (COMPACTION_IN_PROGRESS == handle->db_desc->levels[i].tree_status[0]) {
-			i = 1;
+		// if (COMPACTION_IN_PROGRESS == handle->db_desc->levels[i].tree_status[0]) {
+		while (BT_NO_COMPACTION != handle->db_desc->levels[i].tree_status[0]) {
+			log_debug("Compaction pending for level: %u tree_id: %u", i, 0);
 			usleep(500);
-			continue;
 		}
 	}
-	pr_flush_L0(handle->db_desc, handle->db_desc->levels[0].active_tree);
 
-	log_info("All pending compactions done for DB:%s", handle->db_desc->db_superblock->db_name);
+	log_warn("All pending compactions done for DB:%s", handle->db_desc->db_superblock->db_name);
+	log_debug("Flushing L0 ....");
+	pr_flush_L0(handle->db_desc, handle->db_desc->levels[0].active_tree);
+	log_debug("Flushing L0 ....");
 
 	destroy_log_buffer(&handle->db_desc->big_log);
 	destroy_log_buffer(&handle->db_desc->medium_log);
@@ -1589,6 +1600,7 @@ static bool bt_reorganize_leaf(struct dl_leaf_node *leaf, bt_insert_req *req)
 	struct dl_leaf_node *target =
 		calloc(1UL, req->metadata.handle->db_desc->levels[req->metadata.level_id].leaf_size);
 	dl_init_leaf_node(target, req->metadata.handle->db_desc->levels[req->metadata.level_id].leaf_size);
+	dl_set_leaf_node_type(target, dl_get_leaf_node_type(leaf));
 	dl_reorganize_dynamic_leaf(leaf, target);
 	memcpy(leaf, target, req->metadata.handle->db_desc->levels[req->metadata.level_id].leaf_size);
 	free(target);
@@ -1709,7 +1721,6 @@ release_and_retry:
 		log_fatal("ERROR locking");
 		BUG_ON();
 	}
-
 	upper_level_nodes[size++] = lock;
 	son = db_desc->levels[level_id].root_w[ins_req->metadata.tree_id];
 
@@ -1794,8 +1805,10 @@ release_and_retry:
 			goto release_and_retry;
 		}
 
-		if (son->height == 0)
+		if (son->height == 0) {
+			assert(son->type == leafNode || son->type == leafRootNode);
 			break;
+		}
 
 		struct index_node *n_son = (struct index_node *)son;
 
@@ -1811,11 +1824,11 @@ release_and_retry:
 		lock = _find_position(
 			(const lock_table **)ins_req->metadata.handle->db_desc->levels[level_id].level_lock_table, son);
 
-		upper_level_nodes[size++] = lock;
 		if (RWLOCK_WRLOCK(&lock->rx_lock) != 0) {
 			log_fatal("ERROR unlocking reason follows rc");
 			BUG_ON();
 		}
+		upper_level_nodes[size++] = lock;
 
 		/*Node lock acquired */
 		ins_req->metadata.reorganized_leaf_pos_INnode = (uint64_t *)son_pivot;
@@ -1829,8 +1842,13 @@ release_and_retry:
 		}
 	}
 	/*Succesfully reached a bin (bottom internal node)*/
-	if (son->type != leafRootNode)
+	if (son->type != leafRootNode) {
+		if (size - 1 != release)
+			log_debug("locks taken size %d released %d root height is %d root type %d", size, release,
+				  db_desc->levels[level_id].root_w[ins_req->metadata.tree_id]->height,
+				  db_desc->levels[level_id].root_w[ins_req->metadata.tree_id]->type);
 		assert((size - 1) - release == 0);
+	}
 
 	if (son->height != 0) {
 		log_fatal("FATAL son corrupted");
