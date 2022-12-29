@@ -50,6 +50,7 @@ if(BUILD_TESTING)
   endif()
 
   add_parallax_test(NAME test_index_node COMMAND run_test.sh test_index_node)
+  add_parallax_test(NAME test_leaf_node COMMAND run_test.sh test_leaf_node)
 
   add_parallax_test(
     NAME
