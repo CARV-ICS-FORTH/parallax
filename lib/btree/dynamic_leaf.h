@@ -130,6 +130,14 @@ struct kv_general_splice dl_get_general_splice(struct dl_leaf_node *leaf, int32_
  * @param node_type the type of the node
  */
 void dl_set_leaf_node_type(struct dl_leaf_node *leaf, nodeType_t node_type);
+
+/**
+ * @brief Returns the type of the node
+ * @param leaf pointer to the leaf node
+ * @param node_type the type of the node
+ */
+nodeType_t dl_get_leaf_node_type(struct dl_leaf_node *leaf);
+
 /**
  * @brief Returns the number of the entries in the leaf
  * @param pointer to the leaf node

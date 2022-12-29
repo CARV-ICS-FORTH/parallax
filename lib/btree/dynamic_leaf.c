@@ -116,8 +116,10 @@ int32_t dl_search_get_pos(struct dl_leaf_node *leaf, char *key, int32_t key_size
 		}
 
 		if (0 == cmp_return_value) {
-			// log_debug("Partial match leaf key size: %d leaf key %.*s | lookup key size %d lookup key %.*s",
-			// 	  leaf_key_size, leaf_key_size, leaf_key, key_size, key_size, key);
+			// log_debug(
+			// 	"Partial match leaf key size: %d leaf key %.*s | lookup key size %d lookup key %.*s middle %d leaf entries %d",
+			// 	leaf_key_size, leaf_key_size, leaf_key, key_size, key_size, key, middle,
+			// 	leaf->header.num_entries);
 			cmp_return_value = leaf_key_size - key_size;
 		}
 		if (cmp_return_value > 0)
@@ -195,8 +197,10 @@ bool dl_insert_in_dynamic_leaf(struct dl_leaf_node *leaf, struct kv_general_spli
 			       bool *exact_match)
 {
 	if (dl_is_leaf_full(leaf, kv_general_splice_calculate_size(splice))) {
-		log_fatal("Cannot server request leaf will overflow");
-		_exit(EXIT_FAILURE);
+		log_warn("Cannot serve request leaf will overflow");
+		// assert(0);
+		// _exit(EXIT_FAILURE);
+		return false;
 	}
 	// if (!dl_check_leaf(leaf)) {
 	// 	log_debug("Faulting splice is %d %s leaf entries = %d", kv_general_splice_get_key_size(splice),
@@ -365,12 +369,18 @@ void dl_init_leaf_node(struct dl_leaf_node *leaf, uint32_t leaf_size)
 	_Static_assert(sizeof(struct dl_slot_array) == 2,
 		       "Dynamic slot array is not 2 bytes, are you sure you want to continue?");
 	memset(leaf, 0x00, leaf_size);
+	dl_set_leaf_node_type(leaf, leafNode);
 	leaf->header.leaf_log_size = leaf_size;
 }
 
 inline void dl_set_leaf_node_type(struct dl_leaf_node *leaf, nodeType_t node_type)
 {
 	leaf->header.type = node_type;
+}
+
+inline nodeType_t dl_get_leaf_node_type(struct dl_leaf_node *leaf)
+{
+	return leaf->header.type;
 }
 
 inline int32_t dl_get_leaf_num_entries(struct dl_leaf_node *leaf)
