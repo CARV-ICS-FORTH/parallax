@@ -22,13 +22,10 @@
 #include "index_node.h"
 #include "lsn.h"
 #include "parallax/structures.h"
-#include <stdbool.h>
-
-#if ENABLE_BLOOM_FILTERS
 #include <bloom.h>
-#endif
 #include <pthread.h>
 #include <semaphore.h>
+#include <stdbool.h>
 #include <stdint.h>
 #define MAX_HEIGHT 9
 
@@ -99,9 +96,7 @@ struct bloom_desc {
 #endif
 
 typedef struct level_descriptor {
-#if ENABLE_BLOOM_FILTERS
 	struct pbf_desc *bloom_desc[NUM_TREES_PER_LEVEL];
-#endif
 	pthread_t compaction_thread[NUM_TREES_PER_LEVEL];
 	lock_table *level_lock_table[MAX_HEIGHT];
 	struct node_header *root_r[NUM_TREES_PER_LEVEL];
