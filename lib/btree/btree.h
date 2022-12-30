@@ -95,7 +95,7 @@ struct bloom_desc {
 };
 #endif
 
-typedef struct level_descriptor {
+struct level_descriptor {
 	struct pbf_desc *bloom_desc[NUM_TREES_PER_LEVEL];
 	pthread_t compaction_thread[NUM_TREES_PER_LEVEL];
 	lock_table *level_lock_table[MAX_HEIGHT];
@@ -131,7 +131,7 @@ typedef struct level_descriptor {
 	uint8_t active_tree;
 	uint8_t level_id;
 	char in_recovery_mode;
-} level_descriptor;
+};
 
 struct bt_kv_log_address {
 	char *addr;
@@ -144,7 +144,7 @@ struct bt_kv_log_address bt_get_kv_log_address(struct log_descriptor *log_desc, 
 void bt_done_with_value_log_address(struct log_descriptor *log_desc, struct bt_kv_log_address *L);
 
 typedef struct db_descriptor {
-	level_descriptor levels[MAX_LEVELS];
+	struct level_descriptor levels[MAX_LEVELS];
 #if MEASURE_MEDIUM_INPLACE
 	uint64_t count_medium_inplace;
 #endif

@@ -29,7 +29,7 @@
 // IWYU pragma: no_forward_declare leaf_node
 
 struct link_segments_metadata {
-	level_descriptor *level_desc;
+	struct level_descriptor *level_desc;
 	segment_header *new_segment;
 	uint64_t segment_id;
 	uint64_t available_space;
@@ -58,7 +58,7 @@ static void seg_free_segment(struct db_descriptor *db_desc, uint64_t txn_id, uin
 
 static uint64_t link_memory_segments(struct link_segments_metadata *req)
 {
-	level_descriptor *level_desc = req->level_desc;
+	struct level_descriptor *level_desc = req->level_desc;
 	segment_header *new_segment = req->new_segment;
 	uint64_t available_space = req->available_space;
 	uint64_t segment_id = req->segment_id;
