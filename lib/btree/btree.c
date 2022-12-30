@@ -429,7 +429,7 @@ db_handle *internal_db_open(struct volume_descriptor *volume_desc, par_db_option
 
 	if (db != NULL) {
 		*error_message = "DB already open";
-		handle = calloc(1, sizeof(struct db_handle));
+		handle = calloc(1UL, sizeof(struct db_handle));
 		handle->volume_desc = volume_desc;
 		handle->db_desc = db;
 		//deep copy db_options
