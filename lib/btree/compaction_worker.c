@@ -171,6 +171,8 @@ static void lock_to_update_levels_after_compaction(struct compaction_request *co
 	}
 	spin_loop(&comp_req->db_desc->levels[comp_req->src_level].active_operations, 0);
 	spin_loop(&comp_req->db_desc->levels[comp_req->dst_level].active_operations, 0);
+
+	MUTEX_LOCK(&comp_req->db_desc->flush_L0_lock);
 }
 
 static void unlock_to_update_levels_after_compaction(struct compaction_request *comp_req)
@@ -184,6 +186,7 @@ static void unlock_to_update_levels_after_compaction(struct compaction_request *
 		log_fatal("Failed to acquire guard lock");
 		BUG_ON();
 	}
+	MUTEX_UNLOCK(&comp_req->db_desc->flush_L0_lock);
 }
 
 static void compact_level_direct_IO(struct db_handle *handle, struct compaction_request *comp_req)
@@ -301,26 +304,27 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 		/*free dst (L_i+1) level*/
 		space_freed = seg_free_level(comp_req->db_desc, txn_id, comp_req->dst_level, 0);
 
-		log_debug("Freed space %lu MB from db:%s destination level %u", space_freed / (1024 * 1024L),
+		log_debug("Freed space %lu MB from DB:%s destination level %u", space_freed / (1024 * 1024L),
 			  comp_req->db_desc->db_superblock->db_name, comp_req->dst_level);
 	}
 	/*Free and zero L_i*/
 	uint64_t txn_id = comp_req->db_desc->levels[comp_req->dst_level].allocation_txn_id[comp_req->dst_tree];
 	space_freed = seg_free_level(hd.db_desc, txn_id, comp_req->src_level, comp_req->src_tree);
-	log_debug("Freed space %lu MB from db:%s source level %u", space_freed / (1024 * 1024L),
+	log_debug("Freed space %lu MB from DB:%s source level %u", space_freed / (1024 * 1024L),
 		  comp_req->db_desc->db_superblock->db_name, comp_req->src_level);
 	seg_zero_level(hd.db_desc, comp_req->src_level, comp_req->src_tree);
 
 	/*Finally persist compaction */
 	pr_flush_compaction(comp_req->db_desc, comp_req->dst_level, comp_req->dst_tree);
 
-	// #if ENABLE_BLOOM_FILTERS
-	if (NULL != handle->db_desc->levels[comp_req->src_level].bloom_desc[0])
+	if (handle->db_desc->levels[comp_req->src_level].bloom_desc[0]) {
 		pbf_destroy_bloom_filter(handle->db_desc->levels[comp_req->src_level].bloom_desc[0]);
+		handle->db_desc->levels[comp_req->src_level].bloom_desc[0] = NULL;
+	}
 
-	if (NULL != handle->db_desc->levels[comp_req->dst_level].bloom_desc[0]) {
+	if (dest_level->bloom_desc[0]) {
 		log_debug("Freeing bloom filter for dst level %u (Going to update it soon)", comp_req->dst_level);
-		pbf_destroy_bloom_filter(handle->db_desc->levels[comp_req->src_level].bloom_desc[0]);
+		pbf_destroy_bloom_filter(dest_level->bloom_desc[0]);
 	}
 	dest_level->bloom_desc[0] = dest_level->bloom_desc[1];
 	dest_level->bloom_desc[1] = NULL;
@@ -388,26 +392,26 @@ static void compact_with_empty_destination_level(struct compaction_request *comp
 
 	lock_to_update_levels_after_compaction(comp_req);
 
-	struct level_descriptor *leveld_src = &comp_req->db_desc->levels[comp_req->src_level];
-	struct level_descriptor *leveld_dst = &comp_req->db_desc->levels[comp_req->dst_level];
+	struct level_descriptor *src_level = &comp_req->db_desc->levels[comp_req->src_level];
+	struct level_descriptor *dst_level = &comp_req->db_desc->levels[comp_req->dst_level];
 
-	swap_levels(leveld_src, leveld_dst, comp_req->src_tree, 1);
+	swap_levels(src_level, dst_level, comp_req->src_tree, 1);
 
 	pr_flush_compaction(comp_req->db_desc, comp_req->dst_level, comp_req->dst_tree);
-	swap_levels(leveld_dst, leveld_dst, 1, 0);
+	swap_levels(dst_level, dst_level, 1, 0);
 	log_debug("Flushed compaction (Swap levels) successfully from src[%u][%u] to dst[%u][%u]", comp_req->src_level,
 		  comp_req->src_tree, comp_req->dst_level, comp_req->dst_tree);
 
-	// #if ENABLE_BLOOM_FILTERS
 	log_debug("Swapping also bloom filter");
-	leveld_dst->bloom_desc[0] = leveld_src->bloom_desc[0];
+	dst_level->bloom_desc[0] = src_level->bloom_desc[0];
+	src_level->bloom_desc[0] = NULL;
 	// #endif
 	unlock_to_update_levels_after_compaction(comp_req);
 
 	log_debug("Swapped levels %d to %d successfully", comp_req->src_level, comp_req->dst_level);
-	log_debug("After swapping src tree[%d][%d] size is %lu", comp_req->src_level, 0, leveld_src->level_size[0]);
-	log_debug("After swapping dst tree[%d][%d] size is %lu", comp_req->dst_level, 0, leveld_dst->level_size[0]);
-	assert(leveld_dst->first_segment != NULL);
+	log_debug("After swapping src tree[%d][%d] size is %lu", comp_req->src_level, 0, src_level->level_size[0]);
+	log_debug("After swapping dst tree[%d][%d] size is %lu", comp_req->dst_level, 0, dst_level->level_size[0]);
+	assert(dst_level->first_segment != NULL);
 }
 
 void *compaction(void *compaction_request)
