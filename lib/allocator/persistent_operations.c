@@ -97,11 +97,11 @@ static void pr_update_bloom_info(db_descriptor *db_desc)
 			if (NULL == db_desc->levels[i].bloom_desc[j]) {
 				db_desc->db_superblock->bloom_filter_hash[i][j] = UINT64_MAX;
 				db_desc->db_superblock->bloom_filter_valid[i][j] = 0;
-			} else {
-				db_desc->db_superblock->bloom_filter_hash[i][j] =
-					pbf_get_bf_file_hash(db_desc->levels[i].bloom_desc[j]);
-				db_desc->db_superblock->bloom_filter_valid[i][j] = 1;
+				continue;
 			}
+			db_desc->db_superblock->bloom_filter_hash[i][j] =
+				pbf_get_bf_file_hash(db_desc->levels[i].bloom_desc[j]);
+			db_desc->db_superblock->bloom_filter_valid[i][j] = 1;
 		}
 	}
 }
