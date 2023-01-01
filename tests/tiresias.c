@@ -166,6 +166,7 @@ static void *get_workload(void *config)
 	DBC *cursorp = NULL;
 	DBT key = { 0 };
 	DBT data = { 0 };
+	char buf[4096];
 	/* Database open omitted for clarity */
 	/* Get a cursor */
 	workload_config->truth->cursor(workload_config->truth, NULL, &cursorp, 0);
@@ -181,7 +182,6 @@ static void *get_workload(void *config)
 			par_get(workload_config->handle, &par_key, &value, &error_message);
 		else {
 			malloced = 0;
-			char buf[4096];
 			struct key_splice *key_serialized =
 				(struct key_splice *)calloc(1, key.size + sizeof(struct key_splice));
 			set_key_size_of_key_splice(key_serialized, key.size);
@@ -255,8 +255,8 @@ static void delete_workload(struct workload_config_t *workload_config)
 	/* Get a cursor */
 	workload_config->truth->cursor(workload_config->truth, NULL, &cursorp, 0);
 
-	int ret = cursorp->get(cursorp, &key, &data, DB_NEXT);
-	for (; ret == 0; ret = cursorp->get(cursorp, &key, &data, DB_NEXT)) {
+	for (int ret = cursorp->get(cursorp, &key, &data, DB_NEXT); ret == 0;
+	     ret = cursorp->get(cursorp, &key, &data, DB_NEXT)) {
 		struct par_key par_key = { .size = key.size, .data = key.data };
 		par_delete(workload_config->handle, &par_key, &error_message);
 		if (error_message) {
@@ -268,8 +268,8 @@ static void delete_workload(struct workload_config_t *workload_config)
 	/*Verify that all deleted keys cannot be found through par_get() operation*/
 	uint64_t keys_checked = 0;
 	workload_config->truth->cursor(workload_config->truth, NULL, &cursorp, 0);
-	ret = cursorp->get(cursorp, &key, &data, DB_NEXT);
-	for (; ret == 0; ret = cursorp->get(cursorp, &key, &data, DB_NEXT)) {
+	for (int ret = cursorp->get(cursorp, &key, &data, DB_NEXT); ret == 0;
+	     ret = cursorp->get(cursorp, &key, &data, DB_NEXT)) {
 		struct par_key par_key = { .size = key.size, .data = key.data };
 		struct par_value value = { 0 };
 
@@ -287,7 +287,9 @@ static void delete_workload(struct workload_config_t *workload_config)
 		_Exit(EXIT_FAILURE);
 	}
 	workload_config->total_keys = 0;
-	scan_workload(workload_config);
+	pthread_t scan_thread;
+	pthread_create(&scan_thread, NULL, scan_workload, workload_config);
+	pthread_join(scan_thread, NULL);
 	log_info("Test Deletes Successful");
 }
 
@@ -387,6 +389,5 @@ int main(int argc, char **argv)
 		_Exit(EXIT_FAILURE);
 	}
 	truth->close(truth, 0);
-
 	return 0;
 }

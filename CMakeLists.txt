@@ -147,12 +147,14 @@ string(
 string(APPEND CMAKE_CXX_FLAGS " -pipe")
 include(cmake_utils/check-compiler-flags.cmake.in)
 
-if(NOT (CMAKE_C_COMPILER_ID STREQUAL "Clang" AND CMAKE_CXX_COMPILER_ID STREQUAL
-                                                 "Clang") AND ${ENABLE_FLTO})
+if(ENABLE_FLTO)
   message("FLTO is enabled!")
   string(APPEND CMAKE_C_FLAGS " -flto=auto")
   string(APPEND CMAKE_CXX_FLAGS " -flto=auto")
-  set(CMAKE_AR "gcc-ar")
+  if(NOT (CMAKE_C_COMPILER_ID STREQUAL "Clang" AND CMAKE_CXX_COMPILER_ID
+                                                   STREQUAL "Clang"))
+    set(CMAKE_AR "gcc-ar")
+  endif()
 endif()
 
 string(APPEND CMAKE_C_FLAGS_DEBUG " -ggdb3 -Og -gz")
