@@ -2,7 +2,7 @@
 set -euo pipefail
 # This script takes the path to a file the recordcount and operationcount and generates the ycsb workloads. Finally it runs ycsb
 # Invocation command ./run-ycsb.sh /path/to/file recordcount operationcount
-if [ "$#" -ne 4 ]; then
+if [ "$#" -lt 4 ]; then
 	echo "./run-ycsb.sh /path/to/file recordcount operationcount workload"
 	exit 1
 fi

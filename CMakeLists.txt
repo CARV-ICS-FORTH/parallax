@@ -14,11 +14,10 @@ option(BUILD_SHARED_LIBS
 option(DISABLE_LOGGING
        "Disable all logging from parallax excluding kv_format.parallax output."
        OFF)
-# Set a default build type if none was specified
-set(default_build_type "Release")
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/.git")
-  set(default_build_type "Debug")
-endif()
+option(
+  ENABLE_FLTO
+  "Enable FLTO compilation for Parallax and its dependencies. At the moment this only supports GCC."
+  OFF)
 
 # Parallax is a dependency
 if(NOT (${CMAKE_SOURCE_DIR} STREQUAL ${CMAKE_CURRENT_SOURCE_DIR}))
@@ -26,11 +25,9 @@ if(NOT (${CMAKE_SOURCE_DIR} STREQUAL ${CMAKE_CURRENT_SOURCE_DIR}))
 endif()
 
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
-  message(
-    STATUS
-      "Setting build type to '${default_build_type}' as none was specified.")
+  message(STATUS "Setting build type to Debug as none was specified.")
   set(CMAKE_BUILD_TYPE
-      "${default_build_type}"
+      "Debug"
       CACHE STRING "Choose the type of build." FORCE)
   # Set the possible values of build type for cmake-gui
   set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "Debug" "Release"
@@ -49,6 +46,12 @@ include(cmake_utils/mkfs.cmake.in)
 include(cmake_utils/ycsb.cmake.in)
 include(cmake_utils/tests.cmake.in)
 include(cmake_utils/tracer.cmake.in)
+
+set(FILENAME_NUMBER
+    "0"
+    CACHE INTERNAL
+          "Internal cmake variable to generate unique filenames for tests")
+include(cmake_utils/generate_test_names.cmake.in)
 
 if(RUN_IWYU STREQUAL "ON")
   file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/scripts/CI/check-iwyu-output.py
@@ -127,8 +130,8 @@ include_directories(${CMAKE_BINARY_DIR})
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/utilities)
 
 if(TREAT_WARNINGS_AS_ERRORS)
-  set(CMAKE_C_FLAGS " -Werror ${CMAKE_C_FLAGS}")
-  set(CMAKE_CXX_FLAGS " -Werror ${CMAKE_CXX_FLAGS}")
+  string(APPEND CMAKE_C_FLAGS " -Werror")
+  string(APPEND CMAKE_CXX_FLAGS " -Werror")
 endif()
 
 string(
@@ -144,23 +147,22 @@ string(
 string(APPEND CMAKE_CXX_FLAGS " -pipe")
 include(cmake_utils/check-compiler-flags.cmake.in)
 
-set(DEVICE_PATH $ENV{NVME0})
-set(CI_JOB_ID $ENV{CI_JOB_ID})
-set(FILEPATH "${DEVICE_PATH}/${CI_JOB_ID}/kv_store.dat")
+if(ENABLE_FLTO)
+  message("FLTO is enabled!")
+  string(APPEND CMAKE_C_FLAGS " -flto=auto")
+  string(APPEND CMAKE_CXX_FLAGS " -flto=auto")
+  if(NOT (CMAKE_C_COMPILER_ID STREQUAL "Clang" AND CMAKE_CXX_COMPILER_ID
+                                                   STREQUAL "Clang"))
+    set(CMAKE_AR "gcc-ar")
+  endif()
+endif()
 
-# if(NOT (CMAKE_C_COMPILER_ID STREQUAL "Clang" AND CMAKE_CXX_COMPILER_ID
-# STREQUAL "Clang")) string(APPEND CMAKE_C_FLAGS " -flto") string(APPEND
-# CMAKE_CXX_FLAGS " -flto") endif()
-
-set(CMAKE_C_FLAGS_DEBUG "-ggdb3 -Og -gz ${CMAKE_C_FLAGS_DEBUG}")
-set(CMAKE_C_FLAGS_RELEASE
-    "${CMAKE_C_FLAGS_RELEASE} -funit-at-a-time -O2 -finline-functions -DNDEBUG")
-
-set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -std=gnu++11 -Wall")
-
-set(CMAKE_EXE_LINKER_FLAGS
-    "${CMAKE_EXE_LINKER_FLAGS} -Wl,--no-as-needed -lrt -lm -pthread -lnuma -lutil"
-)
+string(APPEND CMAKE_C_FLAGS_DEBUG " -ggdb3 -Og -gz")
+string(APPEND CMAKE_C_FLAGS_RELEASE
+       " -funit-at-a-time -O2 -finline-functions -DNDEBUG")
+string(APPEND CMAKE_CXX_FLAGS_RELEASE " -std=gnu++11 -Wall")
+string(APPEND CMAKE_EXE_LINKER_FLAGS
+       " -Wl,--no-as-needed -lrt -lm -pthread -lnuma -lutil")
 
 add_subdirectory(lib)
 add_subdirectory(YCSB-CXX)

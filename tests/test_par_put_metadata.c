@@ -47,12 +47,9 @@ static void insert_keys(par_handle handle, int64_t num_of_keys)
 
 		kv_pair.k.size = rand() % (MY_MAX_KEY_SIZE + 1);
 
-		// if (kv_pair.k.size <= 12) {
-		// 	kv_pair.k.size = 14;
-		// }
-
 		if (!kv_pair.k.size)
 			kv_pair.k.size++;
+
 		kv_pair.v.val_size = rand() % (MAX_KV_PAIR_SIZE - (kv_pair.k.size + sizeof(uint32_t)));
 		if (kv_pair.v.val_size < 4)
 			kv_pair.v.val_size = 4;
@@ -62,14 +59,18 @@ static void insert_keys(par_handle handle, int64_t num_of_keys)
 		generate_random_value((char *)value_buffer, kv_pair.v.val_size, i);
 		kv_pair.v.val_buffer = (char *)value_buffer;
 
-		//log_debug("Inserting in store key size %u value size %u unique keys %lu", kv_pair.k.size,
-		//	  kv_pair.v.val_size, unique_keys);
 		const char *error_message = NULL;
 		struct par_put_metadata metadata = par_put(handle, &kv_pair, &error_message);
+
+		if (error_message) {
+			log_fatal("Error message from par_close: %s", error_message);
+			_Exit(EXIT_FAILURE);
+		}
+
 		if (metadata.lsn != correct_lsn) {
-			log_fatal("Wrong sequenting on lsn returned from par put, got %ld expected %ld", metadata.lsn,
+			log_fatal("Wrong lsn sequence returned from par_put, got %ld expected %ld", metadata.lsn,
 				  correct_lsn);
-			exit(EXIT_FAILURE);
+			_Exit(EXIT_FAILURE);
 		}
 		correct_lsn += 1;
 	}
@@ -80,7 +81,10 @@ int main(int argc, char *argv[])
 {
 	int help_flag = 0;
 	struct wrap_option options[] = {
-		{ { "help", no_argument, &help_flag, 1 }, "Prints valid arguments for test_medium.", NULL, INTEGER },
+		{ { "help", no_argument, &help_flag, 1 },
+		  "Prints valid arguments for test_par_put_metadata.",
+		  NULL,
+		  INTEGER },
 		{ { "file", required_argument, 0, 'a' },
 		  "--file=path to file of db, parameter that specifies the target where parallax is going to run.",
 		  NULL,
@@ -101,7 +105,7 @@ int main(int argc, char *argv[])
 	const char *error_message = par_format((char *)path, 128);
 	if (error_message) {
 		log_fatal("Error message from par_format: %s", error_message);
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 	par_handle handle = open_db(path);
 
@@ -110,7 +114,7 @@ int main(int argc, char *argv[])
 	error_message = par_close(handle);
 	if (error_message) {
 		log_fatal("Error message from par_close: %s", error_message);
-		exit(EXIT_FAILURE);
+		_Exit(EXIT_FAILURE);
 	}
 	log_info("test successfull");
 	return 0;

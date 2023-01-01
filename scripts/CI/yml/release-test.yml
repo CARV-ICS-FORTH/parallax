@@ -1,11 +1,8 @@
 ---
 .release_build_commands: &release_build_commands
     before_script:
-        - ./scripts/CI/create_mbbd.sh
         - mkdir -p build;cd build
-        - cmake .. -DCMAKE_BUILD_TYPE="Release" -DBDB_PATH=/BDB/TIRESIAS
-    after_script:
-        - ./scripts/CI/destroy_mbbd.sh
+        - cmake .. -DCMAKE_BUILD_TYPE="Release" -DBDB_PATH=/BDB/TIRESIAS -DENABLE_FLTO=ON
 
 release_test_ycsb_larged:
     image: carvicsforth/arch_carv:latest
@@ -81,7 +78,6 @@ release_test_gc:
         - kubernetes
     script:
         - make test_gc;make kv_format.parallax;cd tests;
-        - ./mkfs.sh "$NVME0/$CI_JOB_ID"/kv_store.dat 128
         - ctest -R ^test_gc$
     needs: [release_build_gcc, release_build_clang]
 
@@ -93,7 +89,6 @@ release_test_dirty_scans_small:
         - kubernetes
     script:
         - make test_dirty_scans;make kv_format.parallax;cd tests;
-        - ./mkfs.sh "$NVME0/$CI_JOB_ID"/kv_store.dat 128
         - ctest -R ^test_dirty_scans_small$
     needs: [release_build_gcc, release_build_clang]
 
@@ -105,7 +100,6 @@ release_test_dirty_scans_medium:
         - kubernetes
     script:
         - make test_dirty_scans;make kv_format.parallax;cd tests;
-        - ./mkfs.sh "$NVME0/$CI_JOB_ID"/kv_store.dat 128
         - ctest -R ^test_dirty_scans_medium$
     needs: [release_build_gcc, release_build_clang]
 
@@ -117,7 +111,6 @@ release_test_dirty_scans_large:
         - kubernetes
     script:
         - make test_dirty_scans;make kv_format.parallax;cd tests;
-        - ./mkfs.sh "$NVME0/$CI_JOB_ID"/kv_store.dat 128
         - ctest -R ^test_dirty_scans_large$
     needs: [release_build_gcc, release_build_clang]
 
@@ -129,7 +122,6 @@ release_test_dirty_scans_smalld:
         - kubernetes
     script:
         - make test_dirty_scans;make kv_format.parallax;cd tests;
-        - ./mkfs.sh "$NVME0/$CI_JOB_ID"/kv_store.dat 128
         - ctest -R ^test_dirty_scans_smalld$
     needs: [release_build_gcc, release_build_clang]
 
@@ -141,7 +133,6 @@ release_test_dirty_scans_smalld_greater:
         - kubernetes
     script:
         - make test_dirty_scans;make kv_format.parallax;cd tests;
-        - ./mkfs.sh "$NVME0/$CI_JOB_ID"/kv_store.dat 128
         - ctest -R ^test_dirty_scans_sd_greater$
     needs: [release_build_gcc, release_build_clang]
 
@@ -153,7 +144,6 @@ release_test_dirty_scans_mediumd:
         - kubernetes
     script:
         - make test_dirty_scans;make kv_format.parallax;cd tests;
-        - ./mkfs.sh "$NVME0/$CI_JOB_ID"/kv_store.dat 128
         - ctest -R ^test_dirty_scans_mediumd$
     needs: [release_build_gcc, release_build_clang]
 
@@ -165,7 +155,6 @@ release_test_dirty_scans_larged:
         - kubernetes
     script:
         - make test_dirty_scans;make kv_format.parallax;cd tests;
-        - ./mkfs.sh "$NVME0/$CI_JOB_ID"/kv_store.dat 128
         - ctest -R ^test_dirty_scans_larged$
     needs: [release_build_gcc, release_build_clang]
 
@@ -177,7 +166,6 @@ release_test_dirty_scans_smallp:
         - kubernetes
     script:
         - make test_dirty_scans;make kv_format.parallax;cd tests;
-        - ./mkfs.sh "$NVME0/$CI_JOB_ID"/kv_store.dat 128
         - ctest -R ^test_dirty_scans_smallp$
     needs: [release_build_gcc, release_build_clang]
 
@@ -189,7 +177,6 @@ release_test_dirty_scans_mediump:
         - kubernetes
     script:
         - make test_dirty_scans;make kv_format.parallax;cd tests;
-        - ./mkfs.sh "$NVME0/$CI_JOB_ID"/kv_store.dat 128
         - ctest -R ^test_dirty_scans_mediump$
     needs: [release_build_gcc, release_build_clang]
 
@@ -201,7 +188,6 @@ release_test_dirty_scans_largep:
         - kubernetes
     script:
         - make test_dirty_scans;make kv_format.parallax;cd tests;
-        - ./mkfs.sh "$NVME0/$CI_JOB_ID"/kv_store.dat 128
         - ctest -R ^test_dirty_scans_largep$
     needs: [release_build_gcc, release_build_clang]
 
@@ -213,7 +199,6 @@ release_test_dirty_scans_smalldp:
         - kubernetes
     script:
         - make test_dirty_scans;make kv_format.parallax;cd tests;
-        - ./mkfs.sh "$NVME0/$CI_JOB_ID"/kv_store.dat 128
         - ctest -R ^test_dirty_scans_smalldp$
     needs: [release_build_gcc, release_build_clang]
 
@@ -225,7 +210,6 @@ release_test_dirty_scans_mediumdp:
         - kubernetes
     script:
         - make test_dirty_scans;make kv_format.parallax;cd tests;
-        - ./mkfs.sh "$NVME0/$CI_JOB_ID"/kv_store.dat 128
         - ctest -R ^test_dirty_scans_mediumdp$
     needs: [release_build_gcc, release_build_clang]
 
@@ -237,7 +221,6 @@ release_test_dirty_scans_largedp:
         - kubernetes
     script:
         - make test_dirty_scans;make kv_format.parallax;cd tests;
-        - ./mkfs.sh "$NVME0/$CI_JOB_ID"/kv_store.dat 128
         - ctest -R ^test_dirty_scans_largedp$
     needs: [release_build_gcc, release_build_clang]
 
@@ -249,7 +232,6 @@ release_simple_test_delete:
         - kubernetes
     script:
         - make simple_test_delete;make kv_format.parallax;cd tests;
-        - ./mkfs.sh "$NVME0/$CI_JOB_ID"/kv_store.dat 128
         - ctest -R ^simple_test_delete$
     needs: [release_build_gcc, release_build_clang]
 
@@ -261,7 +243,6 @@ release_leaf_root_delete_get_scan:
         - kubernetes
     script:
         - make test_leaf_root_delete_get_scan;make kv_format.parallax;cd tests;
-        - ./mkfs.sh "$NVME0/$CI_JOB_ID"/kv_store.dat 128
         - ctest -R ^test_leaf_root_delete_get_scan$
     needs: [release_build_gcc, release_build_clang]
 
@@ -273,7 +254,6 @@ release_test_redo_undo_log:
         - kubernetes
     script:
         - make test_redo_undo_log;make kv_format.parallax;cd tests;
-        - ./mkfs.sh "$NVME0/$CI_JOB_ID"/kv_store.dat 128
         - ctest -R ^test_redo_undo_log$
     needs: [release_build_gcc, release_build_clang]
 

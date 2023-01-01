@@ -1,0 +1,26 @@
+function(generate_test_names)
+  math(EXPR incremented_value "$CACHE{FILENAME_NUMBER} + 1" OUTPUT_FORMAT DECIMAL)
+  set(FILENAME_NUMBER "${incremented_value}" CACHE INTERNAL "Internal cmake variable to generate unique filenames for tests")
+  set(FILENAME "${incremented_value}" PARENT_SCOPE)
+endfunction()
+
+macro(add_parallax_test)
+  set(DEVICE_PATH $ENV{NVME0})
+  set(CI_JOB_ID $ENV{CI_JOB_ID})
+  generate_test_names()
+
+  #If no filesystem path is detected the current directory is used to create tests.
+  if("${DEVICE_PATH}" STREQUAL "")
+    set(DEVICE_PATH ".")
+  endif()
+
+  #Auto detect if we are in a CI environment or developing locally.
+  if("${CI_JOB_ID}" STREQUAL "")
+    set(FILEPATH "${DEVICE_PATH}/${FILENAME}")
+  else()
+    set(FILEPATH "${DEVICE_PATH}/${CI_JOB_ID}/kv_store.dat")
+  endif()
+
+  set(CUSTOM_ARGV "${ARGV};--file=${FILEPATH}")
+  add_test(${CUSTOM_ARGV})
+endmacro()

@@ -1,5 +1,5 @@
-#include "allocator/volume_manager.h"
 #include "arg_parser.h"
+#include <allocator/volume_manager.h>
 #include <assert.h>
 #include <btree/btree.h>
 #include <common/common.h>
@@ -7,11 +7,13 @@
 #include <linux/fs.h>
 #include <log.h>
 #include <parallax/parallax.h>
+#include <parallax/structures.h>
+#include <pthread.h>
 #include <scanner/scanner.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
-#include <unistd.h>
+
 #define SMALL_KEY_PREFIX "ts"
 #define MEDIUM_KEY_PREFIX "tmmmmmmmmmmm"
 #define LARGE_KEY_PREFIX "tl"
@@ -39,8 +41,10 @@ enum kv_type { SMALL, MEDIUM, BIG };
 enum kv_size_type { RANDOM, STATIC };
 
 struct task {
+	par_handle hd;
 	uint64_t from;
 	uint64_t to;
+	uint64_t count_num_keys;
 	enum kv_type key_type;
 	enum kv_size_type size_type;
 };
@@ -49,7 +53,7 @@ struct test_info {
 	uint64_t num_keys;
 	uint64_t small_kv_percentage;
 	uint64_t medium_kv_percentage;
-	uint64_t large_kv_percentage;
+	uint64_t big_kv_percentage;
 };
 
 struct init_key_values {
@@ -146,13 +150,15 @@ static uint64_t space_needed_for_the_kv(uint64_t kv_size, char *key_prefix, uint
 }
 
 /** Main insert logic for populating the db with a kv category*/
-static void populate_db(par_handle hd, struct task task_info)
+static void *populate_db(void *task)
 {
-	for (uint64_t i = task_info.from; i < task_info.to; ++i) {
+	struct task *task_info = task;
+	par_handle hd = task_info->hd;
+	for (uint64_t i = task_info->from; i < task_info->to; ++i) {
 		struct init_key_values init_info = { .kv_size = 0,
 						     .key_prefix = NULL,
-						     .size_type = task_info.size_type,
-						     .kv_category = task_info.key_type };
+						     .size_type = task_info->size_type,
+						     .kv_category = task_info->key_type };
 		init_kv(&init_info);
 		init_info.kv_size = space_needed_for_the_kv(init_info.kv_size, init_info.key_prefix, i);
 		key *k = (key *)calloc(1, init_info.kv_size);
@@ -179,6 +185,7 @@ static void populate_db(par_handle hd, struct task task_info)
 		free(init_info.key_prefix);
 	}
 	log_info("Population ended");
+	pthread_exit(NULL);
 }
 
 /**
@@ -192,57 +199,43 @@ static void insert_keys(par_handle handle, struct test_info info)
 {
 	uint64_t small_kvs_num = (info.num_keys * info.small_kv_percentage) / 100;
 	uint64_t medium_kvs_num = (info.num_keys * info.medium_kv_percentage) / 100;
-	uint64_t big_kvs_num = (info.num_keys * info.large_kv_percentage) / 100;
+	uint64_t big_kvs_num = (info.num_keys * info.big_kv_percentage) / 100;
 
-	log_info("populating %lu medium static size keys..", medium_kvs_num / 2);
-	struct task population_info = { .from = 0, .to = medium_kvs_num / 2, .key_type = MEDIUM, .size_type = STATIC };
-	populate_db(handle, population_info);
-	log_info("populating %lu large static size keys..", big_kvs_num / 2);
-	population_info.to = big_kvs_num / 2;
-	population_info.key_type = BIG;
-	populate_db(handle, population_info);
-	log_info("populating %lu small static size keys..", small_kvs_num / 2);
-	population_info.to = small_kvs_num / 2;
-	population_info.key_type = SMALL;
-	populate_db(handle, population_info);
+	struct task population_info_small = {
+		.hd = handle, .from = 0, .to = small_kvs_num / 2, .key_type = SMALL, .size_type = STATIC
+	};
 
-	log_info("population %lu large random size keys..", big_kvs_num / 2);
-	population_info.to = big_kvs_num / 2;
-	population_info.key_type = BIG;
-	population_info.size_type = RANDOM;
-	populate_db(handle, population_info);
-	log_info("population %lu small random size keys..", small_kvs_num / 2);
-	population_info.to = small_kvs_num / 2;
-	population_info.key_type = SMALL;
-	populate_db(handle, population_info);
-	log_info("population %lu medium random size keys..", medium_kvs_num / 2);
-	population_info.to = medium_kvs_num / 2;
-	population_info.key_type = MEDIUM;
-	populate_db(handle, population_info);
-}
+	struct task population_info_medium = {
+		.hd = handle, .from = 0, .to = medium_kvs_num / 2, .key_type = MEDIUM, .size_type = STATIC
+	};
 
-/**
- * This function validates the total number of kvs using scanners and asserts that all kvs are present
- * @param handle is an initialised par_handle
- * @param num_keys are the total number of kvcs that we want this scanner to validate
- * */
-static void scanner_validate_number_of_kvs(par_handle hd, uint64_t num_keys)
-{
-	uint64_t key_count = 0;
-	const char *error_message = NULL;
-	par_scanner sc = par_init_scanner(hd, NULL, PAR_FETCH_FIRST, &error_message);
-	assert(par_is_valid(sc));
+	struct task population_info_big = {
+		.hd = handle, .from = 0, .to = big_kvs_num / 2, .key_type = BIG, .size_type = STATIC
+	};
 
-	while (par_is_valid(sc)) {
-		++key_count;
-		par_get_next(sc);
-	}
+	pthread_t small, medium, big;
+	pthread_create(&small, NULL, populate_db, &population_info_small);
+	pthread_create(&medium, NULL, populate_db, &population_info_medium);
+	pthread_create(&big, NULL, populate_db, &population_info_big);
+	pthread_join(small, NULL);
+	pthread_join(medium, NULL);
+	pthread_join(big, NULL);
 
-	if (key_count != num_keys) {
-		log_fatal("Scanner did not found all keys. Phase one of validator failed...");
-		BUG_ON();
-	}
-	par_close_scanner(sc);
+	pthread_join(small, NULL);
+	pthread_join(medium, NULL);
+	pthread_join(big, NULL);
+	log_info("All categories with the static configuration are populated.");
+
+	population_info_small.size_type = RANDOM;
+	population_info_medium.size_type = RANDOM;
+	population_info_big.size_type = RANDOM;
+	pthread_create(&small, NULL, populate_db, &population_info_small);
+	pthread_create(&medium, NULL, populate_db, &population_info_medium);
+	pthread_create(&big, NULL, populate_db, &population_info_big);
+	pthread_join(small, NULL);
+	pthread_join(medium, NULL);
+	pthread_join(big, NULL);
+	log_info("All categories with the random configuration are populated.");
 }
 
 /**
@@ -251,7 +244,7 @@ static void scanner_validate_number_of_kvs(par_handle hd, uint64_t num_keys)
  * @param size_type indicates if the size category is either RANDOM or STATIC
  * @param kv_cateogry_size indicates if the kv category is SMALL|MEDIUM|BIG
  * */
-static unsigned int scanner_kv_size(par_scanner sc, enum kv_size_type size_type, uint32_t kv_category_size)
+static int scanner_kv_size(par_scanner sc, enum kv_size_type size_type, uint32_t kv_category_size)
 {
 	/*we can't know the the random generated size*/
 	if (size_type == RANDOM)
@@ -275,15 +268,22 @@ static int check_correctness_of_size(par_scanner sc, enum kv_type key_type, enum
 	return scanner_kv_size(sc, size_type, kv_sizes[key_type]);
 }
 
-static void validate_static_size_of_kvs(par_handle hd, struct task task_info)
+/**
+ ** Validate size of all static kvs.
+ * @param *task Contains a task info struct.
+ */
+static void *validate_static_size_of_kvs(void *task)
 {
+	struct task *task_info = task;
+	par_handle hd = task_info->hd;
 	struct par_key k = { 0 };
 
 	/*this is an empty category dont try to validate anything*/
-	if (task_info.from == task_info.to)
-		return;
+	if (task_info->from == task_info->to)
+		pthread_exit(NULL);
+
 	struct init_key_values init_info = {
-		.kv_size = 0, .key_prefix = NULL, .size_type = STATIC, .kv_category = task_info.key_type
+		.kv_size = 0, .key_prefix = NULL, .size_type = STATIC, .kv_category = task_info->key_type
 	};
 
 	init_kv(&init_info);
@@ -297,27 +297,37 @@ static void validate_static_size_of_kvs(par_handle hd, struct task task_info)
 	par_scanner sc = par_init_scanner(hd, &k, PAR_GREATER_OR_EQUAL, &error_message);
 	assert(par_is_valid(sc));
 
-	if (!check_correctness_of_size(sc, task_info.key_type, task_info.size_type)) {
+	if (!check_correctness_of_size(sc, task_info->key_type, task_info->size_type)) {
 		log_fatal("Found a kv that has size out of its category range");
 		BUG_ON();
 	}
 
-	for (uint64_t i = task_info.from + 1; i < task_info.to; ++i) {
+	++task_info->count_num_keys;
+	for (uint64_t i = task_info->from + 1; i < task_info->to; ++i) {
 		par_get_next(sc);
-		if (!check_correctness_of_size(sc, task_info.key_type, task_info.size_type)) {
+		if (!check_correctness_of_size(sc, task_info->key_type, task_info->size_type)) {
 			log_fatal("Found a KV that has size out of its category range");
 			BUG_ON();
 		}
+
+		++task_info->count_num_keys;
 	}
 	par_close_scanner(sc);
 	free((void *)k.data);
+	pthread_exit(NULL);
 }
 
-static void validate_random_size_of_kvs(par_handle hd, struct task task_info)
+/**
+ ** Validate size of all random kvs.
+ * @param *task Contains a task info struct.
+ */
+static void *validate_random_size_of_kvs(void *task)
 {
+	struct task *task_info = task;
+	par_handle hd = task_info->hd;
 	struct par_key k = { 0 };
 	struct init_key_values init_info = {
-		.kv_size = 0, .key_prefix = NULL, .size_type = RANDOM, .kv_category = task_info.key_type
+		.kv_size = 0, .key_prefix = NULL, .size_type = RANDOM, .kv_category = task_info->key_type
 	};
 
 	init_kv(&init_info);
@@ -332,25 +342,33 @@ static void validate_random_size_of_kvs(par_handle hd, struct task task_info)
 	par_scanner sc = par_init_scanner(hd, &k, PAR_GREATER_OR_EQUAL, &error_message);
 	assert(par_is_valid(sc));
 
-	if (!check_correctness_of_size(sc, task_info.key_type, task_info.size_type)) {
+	if (!check_correctness_of_size(sc, task_info->key_type, task_info->size_type)) {
 		log_fatal("found a kv with size out of its category range");
 		BUG_ON();
 	}
 
-	for (uint64_t i = task_info.from + 1; i < task_info.to; ++i) {
+	++task_info->count_num_keys;
+	for (uint64_t i = task_info->from + 1; i < task_info->to; ++i) {
 		par_get_next(sc);
 		assert(par_is_valid(sc));
 
-		if (!check_correctness_of_size(sc, task_info.key_type, task_info.size_type)) {
+		if (!check_correctness_of_size(sc, task_info->key_type, task_info->size_type)) {
 			log_fatal("found a kv with size out of its category range");
 			BUG_ON();
 		}
+
+		++task_info->count_num_keys;
 	}
 	par_close_scanner(sc);
 	free((void *)k.data);
+	pthread_exit(NULL);
 }
 
-/** Main retrieve-kvs logic*/
+/**
+ ** Reads all kvs using the get API.
+ * @param handle Db handle
+ * @param task_info Metadata to fetch kvs
+ */
 static void read_all_static_kvs(par_handle handle, struct task task_info)
 {
 	const char *error_message = NULL;
@@ -380,82 +398,77 @@ static void read_all_static_kvs(par_handle handle, struct task task_info)
 }
 
 /**
- * Function validating the already populated kvs
+ * Function validating a populated database.
  * @param hd is an initialised par_handle
  * @param v_info contains informations about the validation process like the different percetages of kc categories
- * First it scans the whole db to ensure that the number of the inserted keys are equal to the benchmark size
- * After it validates each static size kv category using scanners
- * Then it validates each random size kv category using scanners
- * Finally it retrieves all static size kvs using par_get to ensure that the kvs are correct
+ * First, it validates each static size kv category using scanners. Also, it counts the number of keys it found.
+ * Then it validates each random size kv category using scanners. Also, it counts the number of keys it found.
+ * Then it checks that the number of keys is equal to the number of the inserted keys.
+ * Finally, it retrieves all static size kvs using par_get to ensure that the kvs are correct.
  * */
 static void validate_kvs(par_handle hd, struct test_info v_info)
 {
 	uint64_t small_num_keys = (v_info.num_keys * v_info.small_kv_percentage) / 100;
 	uint64_t medium_num_keys = (v_info.num_keys * v_info.medium_kv_percentage) / 100;
-	uint64_t large_num_keys = (v_info.num_keys * v_info.large_kv_percentage) / 100;
+	uint64_t large_num_keys = (v_info.num_keys * v_info.big_kv_percentage) / 100;
 
-	/*first stage
-	 * check if num of inserted  keys == num_key using scanners
-	*/
-	scanner_validate_number_of_kvs(hd, v_info.num_keys);
-	/* second stage
-	 * validate that the sizes of keys are correctx
-	*/
-	log_info("Validating static size of small kvs");
-	struct task task_info = { .from = 0, .to = small_num_keys / 2, .key_type = SMALL, .size_type = STATIC };
-	validate_static_size_of_kvs(hd, task_info);
-	log_info("Validating static size of medium kvs");
-	task_info.to = medium_num_keys / 2;
-	task_info.key_type = MEDIUM;
-	validate_static_size_of_kvs(hd, task_info);
-	log_info("Validating static size of large kvs");
-	task_info.to = large_num_keys / 2;
-	task_info.key_type = BIG;
-	validate_static_size_of_kvs(hd, task_info);
+	/* first : stage validate that the sizes of keys are correct	*/
+	struct task task_info_small = {
+		.hd = hd, .from = 0, .to = small_num_keys / 2, .key_type = SMALL, .size_type = STATIC
+	};
+	struct task task_info_medium = {
+		.hd = hd, .from = 0, .to = medium_num_keys / 2, .key_type = MEDIUM, .size_type = STATIC
+	};
+	struct task task_info_big = {
+		.hd = hd, .from = 0, .to = large_num_keys / 2, .key_type = BIG, .size_type = STATIC
+	};
 
-	/* third stage
-	 * validate that random kvs exist in the correct size category
-	 */
-	log_info("Validating random size of small kvs");
-	task_info.to = small_num_keys / 2;
-	task_info.size_type = RANDOM;
-	task_info.key_type = SMALL;
-	validate_random_size_of_kvs(hd, task_info);
-	log_info("Validating random size of medium kvs");
-	task_info.to = medium_num_keys / 2;
-	task_info.key_type = MEDIUM;
-	validate_random_size_of_kvs(hd, task_info);
-	log_info("Validating random size of large kvs");
-	task_info.to = large_num_keys / 2;
-	task_info.key_type = BIG;
-	validate_random_size_of_kvs(hd, task_info);
+	pthread_t small, medium, big;
+	pthread_create(&small, NULL, validate_static_size_of_kvs, &task_info_small);
+	pthread_create(&medium, NULL, validate_static_size_of_kvs, &task_info_medium);
+	pthread_create(&big, NULL, validate_static_size_of_kvs, &task_info_big);
+	pthread_join(small, NULL);
+	pthread_join(medium, NULL);
+	pthread_join(big, NULL);
 
-	/* forth stage
-	 * validate that all keys exist and have the correct size with par_get
-	 */
-	log_info("Validating %lu medium static size keys...", medium_num_keys / 2);
-	task_info.to = medium_num_keys / 2;
-	task_info.size_type = STATIC;
-	task_info.key_type = MEDIUM;
-	read_all_static_kvs(hd, task_info);
-	log_info("Validating %lu big static size keys...", large_num_keys / 2);
-	task_info.to = large_num_keys / 2;
-	task_info.key_type = BIG;
-	read_all_static_kvs(hd, task_info);
-	log_info("Validating %lu small static size keys...", small_num_keys / 2);
-	task_info.to = small_num_keys / 2;
-	task_info.key_type = SMALL;
-	read_all_static_kvs(hd, task_info);
+	log_info("Validated static kv sizes!");
+
+	/* second stage : validate that random kvs exist in the correct size category. */
+	task_info_small.size_type = RANDOM;
+	task_info_medium.size_type = RANDOM;
+	task_info_big.size_type = RANDOM;
+	pthread_create(&small, NULL, validate_random_size_of_kvs, &task_info_small);
+	pthread_create(&medium, NULL, validate_random_size_of_kvs, &task_info_medium);
+	pthread_create(&big, NULL, validate_random_size_of_kvs, &task_info_big);
+	pthread_join(small, NULL);
+	pthread_join(medium, NULL);
+	pthread_join(big, NULL);
+
+	uint64_t num_keys =
+		task_info_small.count_num_keys + task_info_medium.count_num_keys + task_info_big.count_num_keys;
+	if (num_keys != v_info.num_keys) {
+		log_fatal("Error keys lost found=%lu sum=%lu", num_keys, v_info.num_keys);
+		_Exit(EXIT_FAILURE);
+	}
+	log_info("Validated random kv sizes!");
+
+	/* third stage : validate that all keys exist and have the correct size with par_get */
+	task_info_small.size_type = STATIC;
+	task_info_medium.size_type = STATIC;
+	task_info_big.size_type = STATIC;
+	read_all_static_kvs(hd, task_info_small);
+	read_all_static_kvs(hd, task_info_medium);
+	read_all_static_kvs(hd, task_info_big);
 }
 
 /**
- * test_mixes inserts and validates(with scans and reads), random size and static size kvs using the public api of Parallax
+ * test_mixes inserts and validates(with scans and gets), random and static size kvs using the public api of Parallax.
  * */
 int main(int argc, char *argv[])
 {
 	int help_flag = 0;
 	struct wrap_option options[] = {
-		{ { "help", no_argument, &help_flag, 1 }, "Prints valid arguments for test_medium.", NULL, INTEGER },
+		{ { "help", no_argument, &help_flag, 1 }, "Prints valid arguments for test_mixes.", NULL, INTEGER },
 		{ { "file", required_argument, 0, 'a' },
 		  "--file=path to file of db, parameter that specifies the target where parallax is going to run.",
 		  NULL,
@@ -507,7 +520,7 @@ int main(int argc, char *argv[])
 
 	struct test_info t_info = { .small_kv_percentage = small_kvs_percentage,
 				    .medium_kv_percentage = medium_kvs_percentage,
-				    .large_kv_percentage = big_kvs_percentage,
+				    .big_kv_percentage = big_kvs_percentage,
 				    .num_keys = num_of_keys };
 
 	/*populate the db phase*/
