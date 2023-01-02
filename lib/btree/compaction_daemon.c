@@ -136,7 +136,7 @@ void *compaction_daemon(void *args)
 			if (are_parallax_callbacks_set(par_callbacks)) {
 				struct parallax_callback_funcs par_cb = parallax_get_callbacks(par_callbacks);
 				void *context = parallax_get_context(par_callbacks);
-				par_cb.compaction_started_cb(context, 0);
+				par_cb.compaction_started_cb(context, 0, 1);
 			}
 			pr_flush_L0(db_desc, comp_req->src_tree);
 			db_desc->levels[1].allocation_txn_id[1] = rul_start_txn(db_desc);
@@ -188,7 +188,7 @@ void *compaction_daemon(void *args)
 						struct parallax_callback_funcs par_cb =
 							parallax_get_callbacks(par_callbacks);
 						void *context = parallax_get_context(par_callbacks);
-						par_cb.compaction_started_cb(context, level_id);
+						par_cb.compaction_started_cb(context, level_id, comp_req_p->dst_tree);
 					}
 					if (pthread_create(&db_desc->levels[comp_req_p->dst_level]
 								    .compaction_thread[comp_req_p->dst_tree],

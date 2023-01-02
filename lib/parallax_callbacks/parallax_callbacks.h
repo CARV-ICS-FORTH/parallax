@@ -8,10 +8,10 @@
 */
 struct parallax_callback_funcs {
 	void (*segment_is_full_cb)(void *context, uint64_t seg_offt, enum log_category log_type);
-	void (*compaction_started_cb)(void *context, uint32_t src_level_id);
+	void (*compaction_started_cb)(void *context, uint32_t src_level_id, uint8_t dst_tree_id);
 	void (*compaction_ended_cb)(void *context, uint32_t src_level_id);
-	void (*swap_levels_cb)(void *context);
-	void (*comp_write_cursor_flush_segment_cb)(void *context);
+	void (*swap_levels_cb)(void *context, uint32_t src_level_id);
+	void (*comp_write_cursor_flush_segment_cb)(void *context, uint32_t level_id, uint32_t height, uint32_t tree_id);
 };
 
 typedef struct parallax_callbacks *parallax_callbacks_t;
