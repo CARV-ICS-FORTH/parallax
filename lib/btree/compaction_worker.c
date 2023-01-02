@@ -32,9 +32,7 @@ struct compaction_roots {
 static void choose_compaction_roots(struct db_handle *handle, struct compaction_request *comp_req,
 				    struct compaction_roots *comp_roots)
 {
-	comp_roots->src_root = handle->db_desc->levels[comp_req->src_level].root_r[comp_req->src_tree];
-	if (handle->db_desc->levels[comp_req->src_level].root_w[comp_req->src_tree] != NULL)
-		comp_roots->src_root = handle->db_desc->levels[comp_req->src_level].root_w[comp_req->src_tree];
+	comp_roots->src_root = handle->db_desc->levels[comp_req->src_level].root[comp_req->src_tree];
 
 	if (!comp_roots->src_root) {
 		log_fatal("NULL src root for compaction from level's tree [%u][%u] to "
@@ -43,10 +41,7 @@ static void choose_compaction_roots(struct db_handle *handle, struct compaction_
 			  handle->db_desc->db_superblock->db_name);
 		BUG_ON();
 	}
-
-	comp_roots->dst_root = handle->db_desc->levels[comp_req->dst_level].root_r[0];
-	if (handle->db_desc->levels[comp_req->dst_level].root_w[0] != NULL)
-		comp_roots->dst_root = handle->db_desc->levels[comp_req->dst_level].root_w[0];
+	comp_roots->dst_root = handle->db_desc->levels[comp_req->dst_level].root[0];
 }
 
 #if 0
@@ -282,9 +277,9 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 	wcursor_flush_write_cursor(new_level);
 	assert(new_level->root_offt);
 
-	new_level->handle->db_desc->levels[comp_req->dst_level].root_w[1] =
+	new_level->handle->db_desc->levels[comp_req->dst_level].root[1] =
 		(struct node_header *)REAL_ADDRESS(new_level->root_offt);
-	assert(new_level->handle->db_desc->levels[comp_req->dst_level].root_w[1]->type == rootNode);
+	assert(new_level->handle->db_desc->levels[comp_req->dst_level].root[1]->type == rootNode);
 
 	if (new_level->level_id == handle->db_desc->level_medium_inplace) {
 		comp_medium_log_set_max_segment_id(new_level);
@@ -338,20 +333,11 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 	dest_level->offset[0] = dest_level->offset[1];
 	dest_level->offset[1] = 0;
 
-	if (dest_level->root_w[1] != NULL)
-		dest_level->root_r[0] = dest_level->root_w[1];
-	else if (dest_level->root_r[1] != NULL)
-		dest_level->root_r[0] = dest_level->root_r[1];
-	else {
-		log_fatal("Where is the root?");
-		BUG_ON();
-	}
+	dest_level->root[0] = dest_level->root[1];
+	dest_level->root[1] = NULL;
 
-	dest_level->root_w[0] = NULL;
 	dest_level->level_size[0] = dest_level->level_size[1];
 	dest_level->level_size[1] = 0;
-	dest_level->root_w[1] = NULL;
-	dest_level->root_r[1] = NULL;
 
 	unlock_to_update_levels_after_compaction(comp_req);
 
@@ -373,17 +359,17 @@ static void swap_levels(struct level_descriptor *src, struct level_descriptor *d
 	dst->level_size[dst_active_tree] = src->level_size[src_active_tree];
 	src->level_size[src_active_tree] = 0;
 
-	while (!__sync_bool_compare_and_swap(&dst->root_w[dst_active_tree], dst->root_w[dst_active_tree],
-					     src->root_w[src_active_tree])) {
+	while (!__sync_bool_compare_and_swap(&dst->root[dst_active_tree], dst->root[dst_active_tree],
+					     src->root[src_active_tree])) {
 	}
 	// dst->root_w[dst_active_tree] = src->root_w[src_active_tree];
-	src->root_w[src_active_tree] = NULL;
+	src->root[src_active_tree] = NULL;
 
-	while (!__sync_bool_compare_and_swap(&dst->root_r[dst_active_tree], dst->root_r[dst_active_tree],
-					     src->root_r[src_active_tree])) {
-	}
-	// dst->root_r[dst_active_tree] = src->root_r[src_active_tree];
-	src->root_r[src_active_tree] = NULL;
+	// while (!__sync_bool_compare_and_swap(&dst->root[dst_active_tree], dst->root[dst_active_tree],
+	// 				     src->root[src_active_tree])) {
+	// }
+	// // dst->root_r[dst_active_tree] = src->root_r[src_active_tree];
+	// src->root[src_active_tree] = NULL;
 }
 
 static void compact_with_empty_destination_level(struct compaction_request *comp_req)
@@ -428,9 +414,7 @@ void *compaction(void *compaction_request)
 	handle.volume_desc = comp_req->volume_desc;
 	memcpy(&handle.db_options, comp_req->db_options, sizeof(struct par_db_options));
 	// optimization check if level below is empty
-	struct node_header *dst_root = handle.db_desc->levels[comp_req->dst_level].root_w[0];
-	if (dst_root == NULL)
-		dst_root = handle.db_desc->levels[comp_req->dst_level].root_r[0];
+	struct node_header *dst_root = handle.db_desc->levels[comp_req->dst_level].root[0];
 
 	if (comp_req->src_level == 0 || comp_req->dst_level == handle.db_desc->level_medium_inplace || dst_root)
 		compact_level_direct_IO(&handle, comp_req);

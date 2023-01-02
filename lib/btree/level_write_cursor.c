@@ -313,7 +313,7 @@ void wcursor_flush_write_cursor(struct wcursor_level_write_cursor *w_cursor)
 			uint32_t offt =
 				wcursor_calc_offt_in_seg(w_cursor->segment_buf[i], (char *)w_cursor->last_index[i]);
 			w_cursor->root_offt = w_cursor->last_segment_btree_level_offt[i] + offt;
-			w_cursor->handle->db_desc->levels[w_cursor->level_id].root_r[1] =
+			w_cursor->handle->db_desc->levels[w_cursor->level_id].root[1] =
 				REAL_ADDRESS(w_cursor->root_offt);
 		}
 

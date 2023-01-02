@@ -289,6 +289,5 @@ void seg_zero_level(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tre
 	db_desc->levels[level_id].first_segment[tree_id] = NULL;
 	db_desc->levels[level_id].last_segment[tree_id] = NULL;
 	db_desc->levels[level_id].offset[tree_id] = 0;
-	db_desc->levels[level_id].root_r[tree_id] = NULL;
-	db_desc->levels[level_id].root_w[tree_id] = NULL;
+	db_desc->levels[level_id].root[tree_id] = NULL;
 }

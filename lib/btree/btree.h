@@ -99,8 +99,7 @@ struct level_descriptor {
 	struct pbf_desc *bloom_desc[NUM_TREES_PER_LEVEL];
 	pthread_t compaction_thread[NUM_TREES_PER_LEVEL];
 	lock_table *level_lock_table[MAX_HEIGHT];
-	struct node_header *root_r[NUM_TREES_PER_LEVEL];
-	struct node_header *root_w[NUM_TREES_PER_LEVEL];
+	struct node_header *root[NUM_TREES_PER_LEVEL];
 	pthread_mutex_t level_allocation_lock;
 	segment_header *first_segment[NUM_TREES_PER_LEVEL];
 	segment_header *last_segment[NUM_TREES_PER_LEVEL];

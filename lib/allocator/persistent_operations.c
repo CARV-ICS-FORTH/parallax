@@ -66,7 +66,7 @@ static void pr_flush_allocation_log_and_level_info(struct db_descriptor *db_desc
 	if (dst_level_id) {
 		/*new info about my level*/
 		db_desc->db_superblock->root_r[dst_level_id][0] =
-			ABSOLUTE_ADDRESS(db_desc->levels[dst_level_id].root_r[tree_id]);
+			ABSOLUTE_ADDRESS(db_desc->levels[dst_level_id].root[tree_id]);
 
 		db_desc->db_superblock->first_segment[dst_level_id][0] =
 			ABSOLUTE_ADDRESS(db_desc->levels[dst_level_id].first_segment[tree_id]);
@@ -81,10 +81,10 @@ static void pr_flush_allocation_log_and_level_info(struct db_descriptor *db_desc
 
 		db_desc->db_superblock->level_size[dst_level_id][0] = db_desc->levels[dst_level_id].level_size[tree_id];
 		log_debug("Writing root[%u][%u] = %p", dst_level_id, tree_id,
-			  (void *)db_desc->levels[dst_level_id].root_r[tree_id]);
+			  (void *)db_desc->levels[dst_level_id].root[tree_id]);
 
 		db_desc->db_superblock->root_r[dst_level_id][0] =
-			ABSOLUTE_ADDRESS(db_desc->levels[dst_level_id].root_r[tree_id]);
+			ABSOLUTE_ADDRESS(db_desc->levels[dst_level_id].root[tree_id]);
 	}
 
 	pr_flush_db_superblock(db_desc);

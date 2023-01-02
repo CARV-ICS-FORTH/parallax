@@ -41,9 +41,7 @@ bool level_scanner_init(struct level_scanner *level_scanner, db_handle *database
 	level_scanner->db = database;
 	level_scanner->level_id = level_id;
 	level_scanner->is_compaction_scanner = false;
-	level_scanner->root = database->db_desc->levels[level_id].root_w[tree_id] != NULL ?
-				      database->db_desc->levels[level_id].root_w[tree_id] :
-				      database->db_desc->levels[level_id].root_r[tree_id];
+	level_scanner->root = database->db_desc->levels[level_id].root[tree_id];
 
 	return true;
 }
@@ -307,9 +305,7 @@ void scanner_init(struct scanner *scanner, db_handle *database, void *start_key,
 			if (level_id > 0 && tree_id > 0)
 				continue;
 
-			struct node_header *root = database->db_desc->levels[level_id].root_w[tree_id] != NULL ?
-							   database->db_desc->levels[level_id].root_w[tree_id] :
-							   database->db_desc->levels[level_id].root_r[tree_id];
+			struct node_header *root = database->db_desc->levels[level_id].root[tree_id];
 
 			if (!root)
 				continue;

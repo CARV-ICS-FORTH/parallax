@@ -133,8 +133,7 @@ void *compaction_daemon(void *args)
 			pr_flush_L0(db_desc, comp_req->src_tree);
 			db_desc->levels[1].allocation_txn_id[1] = rul_start_txn(db_desc);
 			comp_req->dst_tree = 1;
-			assert(db_desc->levels[0].root_w[comp_req->src_tree] != NULL ||
-			       db_desc->levels[0].root_r[comp_req->src_tree] != NULL);
+			assert(db_desc->levels[0].root[comp_req->src_tree] != NULL);
 			if (pthread_create(&db_desc->levels[0].compaction_thread[comp_req->src_tree], NULL, compaction,
 					   comp_req) != 0) {
 				log_fatal("Failed to start compaction");
@@ -174,8 +173,7 @@ void *compaction_daemon(void *args)
 					db_desc->levels[comp_req_p->dst_level].allocation_txn_id[comp_req_p->dst_tree] =
 						rul_start_txn(db_desc);
 
-					assert(db_desc->levels[level_id].root_w[0] != NULL ||
-					       db_desc->levels[level_id].root_r[0] != NULL);
+					assert(db_desc->levels[level_id].root[0] != NULL);
 					if (pthread_create(&db_desc->levels[comp_req_p->dst_level]
 								    .compaction_thread[comp_req_p->dst_tree],
 							   NULL, compaction, comp_req_p) != 0) {
