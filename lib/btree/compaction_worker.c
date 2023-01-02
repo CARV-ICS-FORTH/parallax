@@ -305,6 +305,13 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 	struct db_handle hd = { .db_desc = comp_req->db_desc, .volume_desc = comp_req->volume_desc };
 
 	lock_to_update_levels_after_compaction(comp_req);
+	/*TODO: closing compaction callback*/
+	parallax_callbacks_t par_callbacks = comp_req->db_desc->parallax_callbacks;
+	if (are_parallax_callbacks_set(par_callbacks)) {
+		struct parallax_callback_funcs par_cb = parallax_get_callbacks(par_callbacks);
+		void *context = parallax_get_context(par_callbacks);
+		par_cb.compaction_ended_cb(context, comp_req->src_level);
+	}
 
 	uint64_t space_freed = 0;
 	(void)space_freed;
