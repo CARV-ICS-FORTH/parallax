@@ -284,12 +284,12 @@ typedef struct bt_insert_req {
 	uint64_t kv_dev_offt;
 } bt_insert_req;
 
-typedef struct log_operation {
+struct log_operation {
 	bt_mutate_req *metadata;
 	request_type optype_tolog; //enum insertOp, deleteOp
 	bt_insert_req *ins_req;
 	bool is_compaction; //To identify medium log cases
-} log_operation;
+};
 
 /**
  * Returns the category of the KV based on its key-value size and the operation to perform.
@@ -357,7 +357,7 @@ struct par_put_metadata serialized_insert_key_value(db_handle *handle, const cha
 						    const char *error_message);
 const char *btree_insert_key_value(bt_insert_req *ins_req) __attribute__((warn_unused_result));
 
-void *append_key_value_to_log(log_operation *req);
+void *append_key_value_to_log(struct log_operation *req);
 void find_key(struct lookup_operation *get_op);
 int8_t delete_key(db_handle *handle, void *key, uint32_t size);
 

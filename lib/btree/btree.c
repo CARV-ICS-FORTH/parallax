@@ -882,7 +882,7 @@ struct par_put_metadata serialized_insert_key_value(db_handle *handle, const cha
 	return ins_req.metadata.put_op_metadata;
 }
 
-void extract_keyvalue_size(log_operation *req, metadata_tologop *data_size)
+void extract_keyvalue_size(struct log_operation *req, metadata_tologop *data_size)
 {
 	if (req->metadata->key_format != KV_FORMAT) {
 		log_fatal("Cannot handle this type of format");
@@ -1147,7 +1147,7 @@ static void *bt_append_to_log_direct_IO(struct log_operation *req, struct log_to
 		//log_info("Segment change avail space %u kv size %u",available_space_in_log,data_size->kv_size);
 		// pad with zeroes remaining bytes in segment
 		if (available_space_in_log > 0) {
-			log_operation pad_op = { .metadata = NULL, .optype_tolog = paddingOp, .ins_req = NULL };
+			struct log_operation pad_op = { .metadata = NULL, .optype_tolog = paddingOp, .ins_req = NULL };
 			pad_ticket.req = &pad_op;
 			pad_ticket.data_size = NULL;
 			pad_ticket.tail = log_metadata->log_desc->tail[curr_tail_id % LOG_TAIL_NUM_BUFS];
@@ -1222,7 +1222,7 @@ static void *bt_append_to_log_direct_IO(struct log_operation *req, struct log_to
 	return addr_inlog + get_lsn_size();
 }
 
-void *append_key_value_to_log(log_operation *req)
+void *append_key_value_to_log(struct log_operation *req)
 {
 	struct log_towrite log_metadata = { .level_id = req->metadata->level_id, .status = req->metadata->cat };
 	struct metadata_tologop data_size = { 0 };
@@ -1498,10 +1498,10 @@ int insert_KV_at_leaf(bt_insert_req *ins_req, node_header *leaf)
 
 	char *log_address = NULL;
 	if (ins_req->metadata.append_to_log) {
-		log_operation append_op = { .metadata = &ins_req->metadata,
-					    .optype_tolog = insertOp,
-					    .ins_req = ins_req,
-					    .is_compaction = false };
+		struct log_operation append_op = { .metadata = &ins_req->metadata,
+						   .optype_tolog = insertOp,
+						   .ins_req = ins_req,
+						   .is_compaction = false };
 		if (ins_req->metadata.tombstone)
 			append_op.optype_tolog = deleteOp;
 		log_address = append_key_value_to_log(&append_op);
