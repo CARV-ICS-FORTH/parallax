@@ -98,14 +98,6 @@ inline void set_tombstone(struct kv_splice *kv_pair)
 	kv_pair->value_size = DELETE_MARKER_ID;
 }
 
-void serialize_key(char *buf, void *key, uint32_t key_size)
-{
-	struct kv_splice *kv_splice = (struct kv_splice *)buf;
-	set_key_size(kv_splice, key_size);
-	set_value_size(kv_splice, INT32_MAX);
-	set_key(kv_splice, (char *)key, key_size);
-}
-
 void serialize_kv_splice_to_key_splice(char *buf, struct kv_splice *kv_pair)
 {
 	struct key_splice *key_splice = (struct key_splice *)buf;

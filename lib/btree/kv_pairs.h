@@ -183,17 +183,32 @@ char *get_key_offset_in_kv(struct kv_splice *kv_pair);
 char *get_value_offset_in_kv(struct kv_splice *kv_pair, int32_t key_size);
 
 /**
-  * Examines a KV pair to see if it is a delete marker
+  * @brief Examines a KV pair to see if it is a delete marker
   */
 bool is_tombstone_kv_pair(struct kv_splice *kv_pair);
 
+/**
+ * @brief Characterizes a splice as a tombstone.
+ * @param kv_pair pointer to splice object
+ */
 void set_tombstone(struct kv_splice *kv_pair);
 
+/**
+ * @brief characterizes a kv_pair as a non tombstone.
+ * @param kv_pair pointer to splice object
+ */
 void set_non_tombstone(struct kv_splice *kv_pair);
 
-void serialize_key(char *buf, void *key, uint32_t key_size);
+/**
+ * @brief serializes the key part of a kv_splice to a key_splice
+ * @param buf
+ */
 void serialize_kv_splice_to_key_splice(char *buf, struct kv_splice *kv_pair);
 
+/**
+ * @brief Returns the size (data+metadata) of the minimum size of a kv pair in
+ * Parallax
+ */
 uint32_t get_min_possible_kv_size(void);
 
 uint32_t kv_splice_calculate_size(int32_t key_size, int32_t value_size);
