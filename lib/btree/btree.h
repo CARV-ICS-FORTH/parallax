@@ -51,10 +51,10 @@ struct lookup_operation {
 enum db_status { DB_START_COMPACTION_DAEMON, DB_OPEN, DB_TERMINATE_COMPACTION_DAEMON, DB_IS_CLOSING };
 
 /*descriptor describing a compaction operation and its current status*/
-typedef enum {
+enum level_compaction_status {
 	BT_NO_COMPACTION = 128,
 	BT_COMPACTION_IN_PROGRESS,
-} level_0_tree_status;
+};
 
 /*
  * header of segment is 4K. L0 and KV log segments are chained in a linked list
