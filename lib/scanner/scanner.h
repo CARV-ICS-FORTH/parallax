@@ -35,7 +35,7 @@ struct level_scanner {
 	struct kv_general_splice splice;
 	db_handle *db;
 	stackT stack;
-	node_header *root;
+	struct node_header *root;
 	int32_t type;
 	uint8_t level_id;
 	uint8_t valid : 1;
@@ -67,7 +67,7 @@ void seek_to_last(scannerHandle *sc, db_handle *handle);
 */
 bool get_next(scannerHandle *scanner);
 
-struct level_scanner *_init_compaction_buffer_scanner(db_handle *handle, int level_id, node_header *node,
+struct level_scanner *_init_compaction_buffer_scanner(db_handle *handle, int level_id, struct node_header *node,
 						      void *start_key);
 
 void close_compaction_buffer_scanner(struct level_scanner *level_sc);

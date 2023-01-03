@@ -48,7 +48,7 @@ const uint32_t size_per_height[MAX_HEIGHT] = { 8192, 4096, 2048, 1024, 512, 256,
 static uint8_t writers_join_as_readers(bt_insert_req *ins_req);
 static uint8_t concurrent_insert(bt_insert_req *ins_req);
 
-void assert_index_node(node_header *node);
+void assert_index_node(struct node_header *node);
 
 static void init_level_locktable(db_descriptor *database, uint8_t level_id)
 {
@@ -342,7 +342,7 @@ static void restore_db(struct db_descriptor *db_desc, uint32_t region_idx)
 			/*finally the roots*/
 			if (superblock->root_r[level_id][tree_id] != 0)
 				db_desc->levels[level_id].root_r[tree_id] =
-					(node_header *)REAL_ADDRESS(superblock->root_r[level_id][tree_id]);
+					(struct node_header *)REAL_ADDRESS(superblock->root_r[level_id][tree_id]);
 			else
 				db_desc->levels[level_id].root_r[tree_id] = NULL;
 
@@ -1297,7 +1297,7 @@ int find_key_in_bloom_filter(db_descriptor *db_desc, int level_id, char *key)
 
 static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id, int tree_id)
 {
-	node_header *son_node = NULL;
+	struct node_header *son_node = NULL;
 	// char *key_addr_in_leaf = NULL;
 
 	struct node_header *root = NULL;
@@ -1334,7 +1334,7 @@ static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id,
 	// struct find_result ret_result = { 0 };
 	lock_table *prev = NULL;
 	lock_table *curr = NULL;
-	node_header *curr_node = root;
+	struct node_header *curr_node = root;
 
 	while (curr_node) {
 		if (curr_node->type == leafNode || curr_node->type == leafRootNode)
@@ -1491,7 +1491,7 @@ finish:
 		get_op->found = 0;
 }
 
-int insert_KV_at_leaf(bt_insert_req *ins_req, node_header *leaf)
+int insert_KV_at_leaf(bt_insert_req *ins_req, struct node_header *leaf)
 {
 	uint8_t level_id = ins_req->metadata.level_id;
 	uint8_t tree_id = ins_req->metadata.tree_id;
@@ -1556,7 +1556,7 @@ uint64_t par_hash(uint64_t x)
 	return x;
 }
 
-lock_table *_find_position(const lock_table **table, node_header *node)
+lock_table *_find_position(const lock_table **table, struct node_header *node)
 {
 	assert(node);
 	if (node->height < 0 || node->height >= MAX_HEIGHT) {
@@ -1640,7 +1640,7 @@ int is_split_needed(void *node, bt_insert_req *req, uint32_t leaf_size)
 {
 	assert(node);
 	(void)leaf_size;
-	node_header *header = (node_header *)node;
+	struct node_header *header = (struct node_header *)node;
 	uint32_t height = header->height;
 
 	if (height != 0)
@@ -1698,8 +1698,8 @@ release_and_retry:
 	/*mark your presence*/
 	__sync_fetch_and_add(num_level_writers, 1);
 
-	node_header *son = NULL;
-	node_header *father = NULL;
+	struct node_header *son = NULL;
+	struct node_header *father = NULL;
 
 	if (db_desc->levels[level_id].root_w[ins_req->metadata.tree_id] == NULL) {
 		if (db_desc->levels[level_id].root_r[ins_req->metadata.tree_id] == NULL) {
@@ -1711,7 +1711,7 @@ release_and_retry:
 									  ins_req->metadata.tree_id);
 			dl_init_leaf_node(new_leaf, ins_req->metadata.handle->db_desc->levels[level_id].leaf_size);
 			dl_set_leaf_node_type(new_leaf, leafRootNode);
-			db_desc->levels[level_id].root_w[ins_req->metadata.tree_id] = (node_header *)new_leaf;
+			db_desc->levels[level_id].root_w[ins_req->metadata.tree_id] = (struct node_header *)new_leaf;
 		}
 	}
 	/*acquiring lock of the current root*/
@@ -1734,7 +1734,7 @@ release_and_retry:
 					ins_req->metadata.handle->db_desc, ins_req->metadata.level_id,
 					ins_req->metadata.tree_id, 0);
 
-				split_res.right_child = (node_header *)seg_get_index_node(
+				split_res.right_child = (struct node_header *)seg_get_index_node(
 					ins_req->metadata.handle->db_desc, ins_req->metadata.level_id,
 					ins_req->metadata.tree_id, 0);
 
@@ -1786,7 +1786,8 @@ release_and_retry:
 					_exit(EXIT_FAILURE);
 				}
 				/*new write root of the tree*/
-				db_desc->levels[level_id].root_w[ins_req->metadata.tree_id] = (node_header *)new_root;
+				db_desc->levels[level_id].root_w[ins_req->metadata.tree_id] =
+					(struct node_header *)new_root;
 				goto release_and_retry;
 			}
 			/*Insert pivot at father*/
@@ -1866,7 +1867,7 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 {
 	/*The array with the locks that belong to this thread from upper levels*/
 	lock_table *upper_level_nodes[MAX_HEIGHT];
-	node_header *son = NULL;
+	struct node_header *son = NULL;
 	lock_table *lock = NULL;
 
 	db_descriptor *db_desc = ins_req->metadata.handle->db_desc;
@@ -1928,7 +1929,7 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 		struct kv_splice *splice = (struct kv_splice *)ins_req->key_value_buf;
 		uint64_t child_offt = index_binary_search((struct index_node *)son, get_key_offset_in_kv(splice),
 							  get_key_size(splice));
-		son = (node_header *)REAL_ADDRESS(child_offt);
+		son = (struct node_header *)REAL_ADDRESS(child_offt);
 		assert(son);
 
 		if (son->height == 0)

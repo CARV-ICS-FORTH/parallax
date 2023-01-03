@@ -149,7 +149,7 @@ bool dl_is_leaf_full(struct dl_leaf_node *leaf, int32_t kv_size)
 	uint8_t *left_border = (uint8_t *)leaf + sizeof(struct node_header) +
 			       ((leaf->header.num_entries + 1) * sizeof(struct dl_slot_array));
 
-	uint8_t *right_border = (uint8_t *)leaf + leaf->header.leaf_log_size;
+	uint8_t *right_border = (uint8_t *)leaf + leaf->header.log_size;
 	right_border -= kv_size;
 	// log_debug("kv_size %d right_border %lu left border %lu", kv_size, right_border, left_border);
 	return right_border > left_border ? false : true;
@@ -164,16 +164,16 @@ static uint16_t dl_append_data_splice_in_dynamic_leaf(struct dl_leaf_node *leaf,
 		assert(0);
 		return 0;
 	}
-	assert(leaf->header.leaf_log_size > kv_size);
-	leaf->header.leaf_log_size -= kv_size;
+	assert(leaf->header.log_size > kv_size);
+	leaf->header.log_size -= kv_size;
 	char *src = (char *)leaf;
-	char *dest = &src[leaf->header.leaf_log_size];
+	char *dest = &src[leaf->header.log_size];
 	if (general_splice->cat == SMALL_INPLACE || general_splice->cat == MEDIUM_INPLACE)
 		kv_splice_serialize(general_splice->kv_splice, dest);
 	if (general_splice->cat == BIG_INLOG || general_splice->cat == MEDIUM_INLOG)
 		kv_sep2_serialize(general_splice->kv_sep2, dest, kv_size);
 
-	return leaf->header.leaf_log_size;
+	return leaf->header.log_size;
 }
 
 bool dl_append_splice_in_dynamic_leaf(struct dl_leaf_node *leaf, struct kv_general_splice *general_splice,
@@ -370,7 +370,7 @@ void dl_init_leaf_node(struct dl_leaf_node *leaf, uint32_t leaf_size)
 		       "Dynamic slot array is not 2 bytes, are you sure you want to continue?");
 	memset(leaf, 0x00, leaf_size);
 	dl_set_leaf_node_type(leaf, leafNode);
-	leaf->header.leaf_log_size = leaf_size;
+	leaf->header.log_size = leaf_size;
 }
 
 inline void dl_set_leaf_node_type(struct dl_leaf_node *leaf, nodeType_t node_type)

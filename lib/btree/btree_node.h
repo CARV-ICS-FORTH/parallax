@@ -24,23 +24,17 @@ typedef enum {
 } nodeType_t;
 
 /*leaf or internal node metadata, place always in the first 4KB data block*/
-typedef struct node_header {
+struct node_header {
 	/*internal or leaf node*/
 	nodeType_t type;
 	/*0 are leaves, 1 are Bottom Internal nodes, and then we have
   INs and root*/
 	int32_t height;
 	int32_t fragmentation;
-	union {
-		/*data log info, KV log for leaves private for index*/
-		/* Used by index nodes */
-		uint16_t key_log_size;
-		/* Used in dynamic leaves */
-		uint16_t leaf_log_size;
-	};
 	int32_t num_entries;
+	uint16_t log_size;
 	/*pad to be exacly one cache line*/
-	char pad[46];
+	char pad[18];
 
-} __attribute__((packed)) node_header;
+} __attribute__((packed));
 #endif

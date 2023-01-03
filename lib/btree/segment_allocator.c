@@ -98,7 +98,7 @@ static void *get_space(struct db_descriptor *db_desc, uint8_t level_id, uint8_t 
 
 	struct link_segments_metadata req = { .level_desc = level_desc, .tree_id = tree_id };
 	segment_header *new_segment = NULL;
-	node_header *node = NULL;
+	struct node_header *node = NULL;
 	uint32_t available_space;
 	uint64_t offset_in_segment = 0;
 	uint64_t segment_id;
@@ -139,7 +139,7 @@ static void *get_space(struct db_descriptor *db_desc, uint8_t level_id, uint8_t 
 		offset_in_segment = link_memory_segments(&req);
 	}
 
-	node = (node_header *)((uint64_t)level_desc->last_segment[tree_id] + offset_in_segment);
+	node = (struct node_header *)((uint64_t)level_desc->last_segment[tree_id] + offset_in_segment);
 	assert(node);
 	level_desc->offset[tree_id] += size;
 	MUTEX_UNLOCK(&level_desc->level_allocation_lock);

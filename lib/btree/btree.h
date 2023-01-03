@@ -106,8 +106,8 @@ typedef struct level_descriptor {
 #endif
 	pthread_t compaction_thread[NUM_TREES_PER_LEVEL];
 	lock_table *level_lock_table[MAX_HEIGHT];
-	node_header *root_r[NUM_TREES_PER_LEVEL];
-	node_header *root_w[NUM_TREES_PER_LEVEL];
+	struct node_header *root_r[NUM_TREES_PER_LEVEL];
+	struct node_header *root_w[NUM_TREES_PER_LEVEL];
 	pthread_mutex_t level_allocation_lock;
 	segment_header *first_segment[NUM_TREES_PER_LEVEL];
 	segment_header *last_segment[NUM_TREES_PER_LEVEL];
@@ -324,13 +324,13 @@ enum bt_rebalance_retcode {
 struct bt_rebalance_result {
 	char middle_key[MAX_PIVOT_SIZE];
 	union {
-		node_header *left_child;
+		struct node_header *left_child;
 		struct index_node *left_ichild;
 		struct dl_leaf_node *left_leaf_child;
 	};
 
 	union {
-		node_header *right_child;
+		struct node_header *right_child;
 		struct index_node *right_ichild;
 		struct dl_leaf_node *right_leaf_child;
 	};
@@ -364,7 +364,7 @@ int8_t delete_key(db_handle *handle, void *key, uint32_t size);
 void recover_L0(struct db_descriptor *db_desc);
 void bt_set_db_status(uint64_t *status, uint64_t new_status);
 
-lock_table *_find_position(const lock_table **table, node_header *node);
+lock_table *_find_position(const lock_table **table, struct node_header *node);
 
 #define MIN(x, y) ((x > y) ? (y) : (x))
 #define ABSOLUTE_ADDRESS(X) (((uint64_t)(X)) - MAPPED)

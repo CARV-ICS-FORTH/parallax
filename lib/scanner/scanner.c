@@ -416,7 +416,7 @@ int32_t level_scanner_seek(struct level_scanner *level_sc, struct key_splice *st
  * to eliminate the duplicates and apply the free operations (applying twice a
  * free operation for the same address may result in CORRUPTION :-S
  */
-struct level_scanner *_init_compaction_buffer_scanner(db_handle *handle, int level_id, node_header *node,
+struct level_scanner *_init_compaction_buffer_scanner(db_handle *handle, int level_id, struct node_header *node,
 						      void *start_key)
 {
 	struct level_scanner *level_sc = calloc(1UL, sizeof(struct level_scanner));

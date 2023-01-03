@@ -74,11 +74,11 @@ void index_add_guard(struct index_node *node, uint64_t child_node_dev_offt)
 	size_t pivot_size = index_get_pivot_size(guard_splice);
 	char *pivot_addr = &((char *)node)[INDEX_NODE_SIZE - pivot_size];
 	memcpy(pivot_addr, guard_splice, pivot_size);
-	assert(node->header.key_log_size == INDEX_NODE_SIZE);
-	node->header.key_log_size -= pivot_size;
+	assert(node->header.log_size == INDEX_NODE_SIZE);
+	node->header.log_size -= pivot_size;
 	node->header.num_entries = 1;
 	struct index_slot_array_entry *slot_array = index_get_slot_array(node);
-	slot_array[0].pivot = node->header.key_log_size;
+	slot_array[0].pivot = node->header.log_size;
 }
 
 bool index_is_empty(struct index_node *node)
@@ -100,7 +100,7 @@ void index_init_node(enum add_guard_option option, struct index_node *node, node
 	node->header.fragmentation = 0;
 
 	/*private key log for index nodes, these are unnecessary now will be deleted*/
-	node->header.key_log_size = INDEX_NODE_SIZE;
+	node->header.log_size = INDEX_NODE_SIZE;
 	if (ADD_GUARD == option)
 		index_add_guard(node, UINT64_MAX);
 }
@@ -111,7 +111,7 @@ static uint32_t index_get_remaining_space(struct index_node *node)
 	uint64_t left_border_dev_offt =
 		sizeof(struct node_header) + (node->header.num_entries * sizeof(struct index_slot_array_entry));
 	/*What is the value of the right border if we append the pivot?*/
-	uint64_t right_border_dev_offt = node->header.key_log_size;
+	uint64_t right_border_dev_offt = node->header.log_size;
 	assert(right_border_dev_offt >= left_border_dev_offt);
 
 	return right_border_dev_offt - left_border_dev_offt;
@@ -123,7 +123,7 @@ static uint32_t index_get_next_pivot_offt_in_node(struct index_node *node, struc
 	uint32_t pivot_size = index_get_pivot_size(key_splice);
 	uint32_t size_needed = pivot_size + sizeof(struct index_slot_array_entry);
 	//log_debug("Remaining space %u pivot_size: %lu", remaining_space, PIVOT_SIZE(key));
-	return remaining_space <= size_needed ? 0 : node->header.key_log_size - pivot_size;
+	return remaining_space <= size_needed ? 0 : node->header.log_size - pivot_size;
 }
 
 bool index_is_split_needed(struct index_node *node, uint32_t max_pivot_size)
@@ -303,9 +303,9 @@ static bool index_internal_insert_pivot(struct insert_pivot_req *ins_pivot_req, 
 	memcpy(&pivot_address[pivot_offt_in_node], ins_pivot_req->key_splice, pivot_key_size);
 	memcpy(pivot_address + pivot_offt_in_node + pivot_key_size, ins_pivot_req->right_child,
 	       sizeof(*ins_pivot_req->right_child));
-	ins_pivot_req->node->header.key_log_size -= pivot_key_size + sizeof(*ins_pivot_req->right_child);
+	ins_pivot_req->node->header.log_size -= pivot_key_size + sizeof(*ins_pivot_req->right_child);
 
-	slot_array[position + 1].pivot = ins_pivot_req->node->header.key_log_size;
+	slot_array[position + 1].pivot = ins_pivot_req->node->header.log_size;
 
 	++ins_pivot_req->node->header.num_entries;
 
