@@ -165,7 +165,6 @@ static void *get_workload(void *config)
 	DBC *cursorp = NULL;
 	DBT key = { 0 };
 	DBT data = { 0 };
-	char buf[4096];
 	/* Database open omitted for clarity */
 	/* Get a cursor */
 	workload_config->truth->cursor(workload_config->truth, NULL, &cursorp, 0);

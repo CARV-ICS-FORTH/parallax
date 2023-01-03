@@ -19,7 +19,7 @@
 #define PREFIX_SIZE 12
 enum KV_type { KV_FORMAT, KV_PREFIX, INDEX_KEY_TYPE, KEY_TYPE };
 
-#define KV_SEP2_MAX_SIZE 512 //(sizeof(uint64_t) + sizeof(int32_t) + MAX_KEY_SIZE)
+#define KV_SEP2_MAX_SIZE (sizeof(uint64_t) + sizeof(int32_t) + MAX_KEY_SIZE)
 
 struct kv_splice {
 	int32_t key_size;
@@ -100,7 +100,7 @@ struct kv_seperation_splice2 *kv_sep2_alloc_and_create(int32_t key_size, char *k
  * @returns reference to the kv_sep2 object or NULL in case of a failure
  */
 struct kv_seperation_splice2 *kv_sep2_create(int32_t key_size, char *key, uint64_t value_offt, char *buf,
-					     int32_t buf_size);
+					     uint32_t buf_size);
 
 /**
  * @brief Calculates the storage space needed to encode a key of size key_size
@@ -109,7 +109,7 @@ struct kv_seperation_splice2 *kv_sep2_create(int32_t key_size, char *key, uint64
  * object.
  * @returns the storage size needed
  */
-int32_t kv_sep2_calculate_size(int32_t key_size);
+uint32_t kv_sep2_calculate_size(int32_t key_size);
 
 void kv_splice_serialize(struct kv_splice *splice, char *dest);
 
@@ -194,9 +194,9 @@ void set_non_tombstone(struct kv_splice *kv_pair);
 void serialize_key(char *buf, void *key, uint32_t key_size);
 void serialize_kv_splice_to_key_splice(char *buf, struct kv_splice *kv_pair);
 
-int32_t get_min_possible_kv_size(void);
+uint32_t get_min_possible_kv_size(void);
 
-int32_t kv_splice_calculate_size(int32_t key_size, int32_t value_size);
+uint32_t kv_splice_calculate_size(int32_t key_size, int32_t value_size);
 
 /**
  * @brief Compares the keys of two splices

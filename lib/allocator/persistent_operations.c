@@ -813,7 +813,7 @@ start:
 	/*Advance cursor for future use*/
 	/*Are there enough bytes in segment?*/
 
-	int32_t remaining_bytes_in_segment = 0;
+	uint32_t remaining_bytes_in_segment = 0;
 	int is_tail = cursor->log_segments->segments[cursor->log_segments->entry_id] == cursor->log_tail_dev_offt;
 
 	remaining_bytes_in_segment = (uint64_t)SEGMENT_SIZE - ((uint64_t)cursor->offt_in_segment);

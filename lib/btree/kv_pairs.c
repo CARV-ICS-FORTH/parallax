@@ -115,11 +115,10 @@ void serialize_kv_splice_to_key_splice(char *buf, struct kv_splice *kv_pair)
 	memcpy(key_splice_get_key_offset(key_splice), key, key_size);
 }
 
-int32_t get_min_possible_kv_size(void)
+uint32_t get_min_possible_kv_size(void)
 {
 	return sizeof(int32_t) + 1;
 }
-//gesalous
 
 char *kv_sep2_get_key(struct kv_seperation_splice2 *kv_sep2)
 {
@@ -159,7 +158,7 @@ bool kv_sep2_serialize(struct kv_seperation_splice2 *splice, char *dest, int32_t
 }
 
 struct kv_seperation_splice2 *kv_sep2_create(int32_t key_size, char *key, uint64_t value_offt, char *buf,
-					     int32_t buf_size)
+					     uint32_t buf_size)
 {
 	assert(key_size > 0);
 	if (buf_size < sizeof(struct kv_seperation_splice2) + key_size) {
@@ -181,13 +180,12 @@ struct kv_seperation_splice2 *kv_sep2_alloc_and_create(int32_t key_size, char *k
 	return kv_sep2_create(key_size, key, value_offt, buf, sizeof(struct kv_seperation_splice2) + key_size);
 }
 
-int32_t kv_splice_calculate_size(int32_t key_size, int32_t value_size)
+uint32_t kv_splice_calculate_size(int32_t key_size, int32_t value_size)
 {
-	// return key_size + value_size + sizeof(struct kv_seperation_splice);
 	return key_size + value_size + sizeof(struct kv_splice);
 }
 
-int32_t kv_sep2_calculate_size(int32_t key_size)
+uint32_t kv_sep2_calculate_size(int32_t key_size)
 {
 	return key_size + sizeof(struct kv_seperation_splice2);
 }
@@ -212,49 +210,44 @@ void kv_splice_serialize(struct kv_splice *splice, char *dest)
 	idx += sizeof(splice->value_size);
 	memcpy(&dest[idx], splice->data, get_key_size(splice) + get_value_size(splice));
 }
+
+static inline bool kv_general_splice_is_in_place(struct kv_general_splice *splice)
+{
+	if (splice->cat == SMALL_INPLACE || splice->cat == MEDIUM_INPLACE)
+		return true;
+	if (splice->cat == MEDIUM_INLOG || splice->cat == BIG_INLOG)
+		return false;
+	log_fatal("Corrupted kv category");
+	_exit(EXIT_FAILURE);
+}
 // kv general splice methods
 int32_t kv_general_splice_get_size(struct kv_general_splice *splice)
 {
-	if (splice->cat == SMALL_INPLACE || splice->cat == MEDIUM_INPLACE)
-		return get_kv_size(splice->kv_splice);
-	if (splice->cat == MEDIUM_INLOG || splice->cat == BIG_INLOG)
-		return kv_sep2_get_total_size(splice->kv_sep2);
-	return -1;
+	return kv_general_splice_is_in_place(splice) ? get_kv_size(splice->kv_splice) :
+						       kv_sep2_get_total_size(splice->kv_sep2);
 }
 
 int32_t kv_general_splice_get_key_size(struct kv_general_splice *splice)
 {
-	if (splice->cat == SMALL_INPLACE || splice->cat == MEDIUM_INPLACE)
-		return get_key_size(splice->kv_splice);
-	if (splice->cat == MEDIUM_INLOG || splice->cat == BIG_INLOG)
-		return kv_sep2_get_key_size(splice->kv_sep2);
-	return -1;
+	return kv_general_splice_is_in_place(splice) ? get_key_size(splice->kv_splice) :
+						       kv_sep2_get_key_size(splice->kv_sep2);
 }
 
 char *kv_general_splice_get_key_buf(struct kv_general_splice *splice)
 {
-	if (splice->cat == SMALL_INPLACE || splice->cat == MEDIUM_INPLACE)
-		return get_key_offset_in_kv(splice->kv_splice);
-	if (splice->cat == MEDIUM_INLOG || splice->cat == BIG_INLOG)
-		return kv_sep2_get_key(splice->kv_sep2);
-	return NULL;
+	return kv_general_splice_is_in_place(splice) ? get_key_offset_in_kv(splice->kv_splice) :
+						       kv_sep2_get_key(splice->kv_sep2);
 }
 
 static void kv_general_splice_fill_key(struct kv_general_splice *splice, char **key, int32_t *key_size)
 {
-	if (splice->cat == SMALL_INPLACE || splice->cat == MEDIUM_INPLACE) {
+	if (kv_general_splice_is_in_place(splice)) {
 		*key = get_key_offset_in_kv(splice->kv_splice);
 		*key_size = get_key_size(splice->kv_splice);
 		return;
 	}
-
-	if (splice->cat == MEDIUM_INLOG || splice->cat == BIG_INLOG) {
-		*key = kv_sep2_get_key(splice->kv_sep2);
-		*key_size = kv_sep2_get_key_size(splice->kv_sep2);
-		return;
-	}
-	*key = NULL;
-	*key_size = -1;
+	*key = kv_sep2_get_key(splice->kv_sep2);
+	*key_size = kv_sep2_get_key_size(splice->kv_sep2);
 }
 
 int kv_general_splice_compare(struct kv_general_splice *sp1, struct kv_general_splice *sp2)
@@ -271,21 +264,13 @@ int kv_general_splice_compare(struct kv_general_splice *sp1, struct kv_general_s
 	return ret == 0 ? key_size1 - key_size2 : ret;
 }
 
-int32_t kv_general_splice_calculate_size(struct kv_general_splice *general_splice)
+int32_t kv_general_splice_calculate_size(struct kv_general_splice *splice)
 {
-	if (general_splice->cat == SMALL_INPLACE || general_splice->cat == MEDIUM_INPLACE)
-		return get_kv_size(general_splice->kv_splice);
-	if (general_splice->cat == MEDIUM_INLOG || general_splice->cat == BIG_INLOG)
-		return kv_sep2_get_total_size(general_splice->kv_sep2);
-	return -1;
+	return kv_general_splice_is_in_place(splice) ? get_kv_size(splice->kv_splice) :
+						       kv_sep2_get_total_size(splice->kv_sep2);
 }
 
 char *kv_general_splice_get_reference(struct kv_general_splice *splice)
 {
-	if (splice->cat == SMALL_INPLACE || splice->cat == MEDIUM_INPLACE)
-		return (char *)splice->kv_splice;
-	if (splice->cat == MEDIUM_INLOG || splice->cat == BIG_INLOG)
-		return (char *)splice->kv_sep2;
-	log_fatal("Corrupted kv category");
-	_exit(EXIT_FAILURE);
+	return (kv_general_splice_is_in_place(splice)) ? (char *)splice->kv_splice : (char *)splice->kv_sep2;
 }
