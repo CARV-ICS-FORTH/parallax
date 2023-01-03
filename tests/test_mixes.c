@@ -268,6 +268,14 @@ static int check_correctness_of_size(par_scanner sc, enum kv_type key_type, enum
 	return scanner_kv_size(sc, size_type, kv_sizes[key_type]);
 }
 
+static bool does_category_prefix_match(struct par_key *par_key, struct init_key_values *init_info)
+{
+	if (par_key->size < strlen(init_info->key_prefix))
+		return false;
+	if (0 != memcmp(par_key->data, init_info->key_prefix, strlen(init_info->key_prefix)))
+		return false;
+	return true;
+}
 /**
  ** Validate size of all static kvs.
  * @param *task Contains a task info struct.
@@ -275,27 +283,33 @@ static int check_correctness_of_size(par_scanner sc, enum kv_type key_type, enum
 static void *validate_static_size_of_kvs(void *task)
 {
 	struct task *task_info = task;
-	par_handle hd = task_info->hd;
-	struct par_key k = { 0 };
+	par_handle parallax_db = task_info->hd;
+	struct par_key parallax_key = { 0 };
 
 	/*this is an empty category dont try to validate anything*/
-	if (task_info->from == task_info->to)
+	if (task_info->from == task_info->to) {
+		task_info->count_num_keys = 0;
 		pthread_exit(NULL);
+	}
 
 	struct init_key_values init_info = {
 		.kv_size = 0, .key_prefix = NULL, .size_type = STATIC, .kv_category = task_info->key_type
 	};
 
 	init_kv(&init_info);
-	k.data = (char *)calloc(1, init_info.kv_size);
+	parallax_key.data = (char *)calloc(1UL, init_info.kv_size);
 
-	memcpy((char *)k.data, init_info.key_prefix, strlen(init_info.key_prefix));
-	sprintf((char *)k.data + strlen(init_info.key_prefix), "%llu", (long long unsigned)0);
-	k.size = strlen(k.data) + 1;
+	memcpy((char *)parallax_key.data, init_info.key_prefix, strlen(init_info.key_prefix));
+	sprintf((char *)parallax_key.data + strlen(init_info.key_prefix), "%llu", (long long unsigned)0);
+	parallax_key.size = strlen(parallax_key.data) + 1;
 
 	const char *error_message = NULL;
-	par_scanner sc = par_init_scanner(hd, &k, PAR_GREATER_OR_EQUAL, &error_message);
+	par_scanner sc = par_init_scanner(parallax_db, &parallax_key, PAR_GREATER_OR_EQUAL, &error_message);
 	assert(par_is_valid(sc));
+
+	struct par_key par_key = par_get_key(sc);
+	if (!does_category_prefix_match(&par_key, &init_info))
+		goto exit;
 
 	if (!check_correctness_of_size(sc, task_info->key_type, task_info->size_type)) {
 		log_fatal("Found a kv that has size out of its category range");
@@ -305,6 +319,10 @@ static void *validate_static_size_of_kvs(void *task)
 	++task_info->count_num_keys;
 	for (uint64_t i = task_info->from + 1; i < task_info->to; ++i) {
 		par_get_next(sc);
+		par_key = par_get_key(sc);
+		if (!does_category_prefix_match(&par_key, &init_info))
+			goto exit;
+
 		if (!check_correctness_of_size(sc, task_info->key_type, task_info->size_type)) {
 			log_fatal("Found a KV that has size out of its category range");
 			BUG_ON();
@@ -312,8 +330,9 @@ static void *validate_static_size_of_kvs(void *task)
 
 		++task_info->count_num_keys;
 	}
+exit:
 	par_close_scanner(sc);
-	free((void *)k.data);
+	free((void *)parallax_key.data);
 	pthread_exit(NULL);
 }
 
@@ -339,27 +358,34 @@ static void *validate_random_size_of_kvs(void *task)
 	k.size = strlen(k.data) + 1;
 
 	const char *error_message = NULL;
-	par_scanner sc = par_init_scanner(hd, &k, PAR_GREATER_OR_EQUAL, &error_message);
-	assert(par_is_valid(sc));
+	par_scanner parallax_scanner = par_init_scanner(hd, &k, PAR_GREATER_OR_EQUAL, &error_message);
+	assert(par_is_valid(parallax_scanner));
 
-	if (!check_correctness_of_size(sc, task_info->key_type, task_info->size_type)) {
+	struct par_key par_key = par_get_key(parallax_scanner);
+	if (!does_category_prefix_match(&par_key, &init_info))
+		goto exit;
+	if (!check_correctness_of_size(parallax_scanner, task_info->key_type, task_info->size_type)) {
 		log_fatal("found a kv with size out of its category range");
 		BUG_ON();
 	}
 
 	++task_info->count_num_keys;
 	for (uint64_t i = task_info->from + 1; i < task_info->to; ++i) {
-		par_get_next(sc);
-		assert(par_is_valid(sc));
+		par_get_next(parallax_scanner);
+		assert(par_is_valid(parallax_scanner));
+		par_key = par_get_key(parallax_scanner);
+		if (!does_category_prefix_match(&par_key, &init_info))
+			goto exit;
 
-		if (!check_correctness_of_size(sc, task_info->key_type, task_info->size_type)) {
+		if (!check_correctness_of_size(parallax_scanner, task_info->key_type, task_info->size_type)) {
 			log_fatal("found a kv with size out of its category range");
 			BUG_ON();
 		}
 
 		++task_info->count_num_keys;
 	}
-	par_close_scanner(sc);
+exit:
+	par_close_scanner(parallax_scanner);
 	free((void *)k.data);
 	pthread_exit(NULL);
 }
@@ -496,7 +522,7 @@ int main(int argc, char *argv[])
 	arg_parse(argc, argv, options, options_len);
 	arg_print_options(help_flag, options, options_len);
 	const char *path = get_option(options, 1);
-	const uint64_t num_of_keys = *(uint64_t *)get_option(options, 2);
+	const uint64_t num_of_keys = *(int *)get_option(options, 2);
 	const uint32_t medium_kvs_percentage = *(int *)get_option(options, 3);
 	const uint32_t small_kvs_percentage = *(int *)get_option(options, 4);
 	const uint32_t big_kvs_percentage = *(int *)get_option(options, 5);
