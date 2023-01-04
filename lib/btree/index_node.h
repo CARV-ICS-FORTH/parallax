@@ -158,7 +158,7 @@ struct key_splice *index_remove_last_pivot_key(struct index_node *node);
  * Performs binary search in an index node and returns the device offt of the
  * children node that we need to follow
  */
-uint64_t index_binary_search(struct index_node *node, char *lookup_key, int32_t key_size);
+uint64_t index_binary_search(struct index_node *node, char *lookup_key, int32_t lookup_key_size);
 
 /**
  * Splits an index node into two child index nodes.
