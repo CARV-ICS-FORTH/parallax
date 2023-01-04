@@ -525,7 +525,6 @@ db_handle *internal_db_open(struct volume_descriptor *volume_desc, par_db_option
 #endif
 		for (uint8_t tree_id = 0; tree_id < NUM_TREES_PER_LEVEL; tree_id++) {
 			bt_set_db_status(&handle->db_desc->levels[level_id].tree_status[tree_id], BT_NO_COMPACTION);
-			// handle->db_desc->levels[level_id].tree_status[tree_id] = NO_COMPACTION;
 			handle->db_desc->levels[level_id].epoch[tree_id] = 0;
 #if ENABLE_BLOOM_FILTERS
 			init_level_bloom_filters(db_desc, level_id, tree_id);
@@ -1636,17 +1635,16 @@ static void bt_split_leaf(struct dl_leaf_node *leaf, bt_insert_req *req, struct 
 	}
 }
 
-int is_split_needed(void *node, bt_insert_req *req, uint32_t leaf_size)
+int is_split_needed(void *node, bt_insert_req *req)
 {
 	assert(node);
-	(void)leaf_size;
 	struct node_header *header = (struct node_header *)node;
 	uint32_t height = header->height;
 
 	if (height != 0)
 		return index_is_split_needed((struct index_node *)node, MAX_KEY_SPLICE_SIZE);
 
-	int32_t kv_size = 0;
+	uint32_t kv_size = 0;
 	if (req->metadata.cat == SMALL_INPLACE || req->metadata.cat == MEDIUM_INPLACE)
 		kv_size = kv_splice_calculate_size(get_key_size((struct kv_splice *)req->key_value_buf),
 						   get_value_size((struct kv_splice *)req->key_value_buf));
@@ -1726,7 +1724,7 @@ release_and_retry:
 
 	while (1) {
 		/*Check if father is safe it should be*/
-		if (is_split_needed(son, ins_req, db_desc->levels[level_id].leaf_size)) {
+		if (is_split_needed(son, ins_req)) {
 			struct bt_rebalance_result split_res = { 0 };
 			/*Overflow split for index nodes*/
 			if (son->height > 0) {
@@ -1837,7 +1835,7 @@ release_and_retry:
 		/*if the node is not safe hold its ancestor's lock else release locks from
     ancestors */
 
-		if (!is_split_needed(son, ins_req, db_desc->levels[level_id].leaf_size)) {
+		if (!is_split_needed(son, ins_req)) {
 			_unlock_upper_levels(upper_level_nodes, size - 1, release);
 			release = size - 1;
 		}
@@ -1919,7 +1917,7 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 	son = db_desc->levels[level_id].root_w[ins_req->metadata.tree_id];
 	assert(son->height > 0);
 	while (1) {
-		if (is_split_needed(son, ins_req, db_desc->levels[level_id].leaf_size)) {
+		if (is_split_needed(son, ins_req)) {
 			/*failed needs split*/
 			_unlock_upper_levels(upper_level_nodes, size, release);
 			__sync_fetch_and_sub(num_level_writers, 1);
@@ -1956,7 +1954,7 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 	}
 
 	assert(son->height == 0);
-	if (is_split_needed(son, ins_req, db_desc->levels[level_id].leaf_size)) {
+	if (is_split_needed(son, ins_req)) {
 		_unlock_upper_levels(upper_level_nodes, size, release);
 		__sync_fetch_and_sub(num_level_writers, 1);
 		return PAR_FAILURE;

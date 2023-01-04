@@ -65,10 +65,8 @@ void *compaction_daemon(void *args)
 				/*mark them as compacting L0*/
 
 				bt_set_db_status(&level_0->tree_status[L0_tree], BT_COMPACTION_IN_PROGRESS);
-				// level_0->tree_status[L0_tree] = COMPACTION_IN_PROGRESS;
 				/*mark them as compacting L1*/
 				bt_set_db_status(&src_level->tree_status[L1_tree], BT_COMPACTION_IN_PROGRESS);
-				// src_level->tree_status[L1_tree] = COMPACTION_IN_PROGRESS;
 
 				/*start a compaction*/
 				comp_req = (struct compaction_request *)calloc(1UL, sizeof(struct compaction_request));
@@ -159,8 +157,6 @@ void *compaction_daemon(void *args)
 				    dst_level->level_size[tree_2] < dst_level->max_level_size) {
 					bt_set_db_status(&src_level->tree_status[tree_1], BT_COMPACTION_IN_PROGRESS);
 					bt_set_db_status(&dst_level->tree_status[tree_2], BT_COMPACTION_IN_PROGRESS);
-					// src_level->tree_status[tree_1] = COMPACTION_IN_PROGRESS;
-					// dst_level->tree_status[tree_2] = COMPACTION_IN_PROGRESS;
 					/*start a compaction*/
 					struct compaction_request *comp_req_p = (struct compaction_request *)calloc(
 						1, sizeof(struct compaction_request));

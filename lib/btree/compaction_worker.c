@@ -438,8 +438,6 @@ void *compaction(void *compaction_request)
 		  comp_req->src_level, comp_req->src_tree, comp_req->dst_level, comp_req->dst_tree);
 	bt_set_db_status(&db_desc->levels[comp_req->src_level].tree_status[comp_req->src_tree], BT_NO_COMPACTION);
 	bt_set_db_status(&db_desc->levels[comp_req->dst_level].tree_status[0], BT_NO_COMPACTION);
-	// db_desc->levels[comp_req->src_level].tree_status[comp_req->src_tree] = NO_COMPACTION;
-	// db_desc->levels[comp_req->dst_level].tree_status[0] = NO_COMPACTION;
 
 	/*wake up clients*/
 	if (comp_req->src_level == 0) {

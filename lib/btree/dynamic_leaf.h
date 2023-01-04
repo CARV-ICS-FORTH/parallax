@@ -106,7 +106,7 @@ void dl_init_leaf_node(struct dl_leaf_node *leaf, uint32_t leaf_size);
  * @returns true if the leaf has adequate space to store the kv pair otherwise
  * false.
  */
-bool dl_is_leaf_full(struct dl_leaf_node *leaf, int32_t kv_size);
+bool dl_is_leaf_full(struct dl_leaf_node *leaf, uint32_t kv_size);
 
 /**
  * @brief Returns the position inside the leaf where the key should by inserted.

@@ -144,7 +144,7 @@ struct kv_general_splice dl_find_kv_in_dynamic_leaf(struct dl_leaf_node *leaf, c
 	return kv_not_found;
 }
 
-bool dl_is_leaf_full(struct dl_leaf_node *leaf, int32_t kv_size)
+bool dl_is_leaf_full(struct dl_leaf_node *leaf, uint32_t kv_size)
 {
 	uint8_t *left_border = (uint8_t *)leaf + sizeof(struct node_header) +
 			       ((leaf->header.num_entries + 1) * sizeof(struct dl_slot_array));

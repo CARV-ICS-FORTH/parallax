@@ -287,11 +287,6 @@ static bool index_internal_insert_pivot(struct insert_pivot_req *ins_pivot_req, 
 		/*Update in-place the left_child. This is ok because we call this function for L0 which is in memory*/
 		struct key_splice *left_pivot_key_splice =
 			index_get_key_splice(ins_pivot_req->node, slot_array[position].pivot);
-		// log_debug("Victim key is size: %u key-data: %.*s position: %d num entries %d",
-		// 	  key_splice_get_key_size(left_pivot_key_splice),
-		// 	  key_splice_get_key_size(left_pivot_key_splice),
-		// 	  key_splice_get_key_offset(left_pivot_key_splice), position,
-		// 	  ins_pivot_req->node->header.num_entries);
 
 		struct pivot_pointer *left = index_get_pivot_pointer(left_pivot_key_splice);
 		*left = *ins_pivot_req->left_child;
