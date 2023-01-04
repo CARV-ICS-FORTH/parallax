@@ -591,6 +591,8 @@ db_handle *db_open(par_db_options *db_options, const char **error_message)
 const char *db_close(db_handle *handle)
 {
 	const char *error_message = NULL;
+	if (!handle)
+		return "NULL db_handle are you serious?";
 	MUTEX_LOCK(&init_lock);
 	/*verify that this is a valid db*/
 	int not_valid_db = klist_find_element_with_key(handle->volume_desc->open_databases,
