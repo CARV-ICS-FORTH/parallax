@@ -402,12 +402,9 @@ static db_descriptor *get_db_from_volume(char *volume_name, char *db_name, par_d
 
 void bt_set_db_status(uint64_t *status, uint64_t new_status)
 {
-	while (1) {
-		uint64_t old_status = *status;
-		bool ret = __sync_bool_compare_and_swap(status, old_status, new_status);
-		if (ret)
-			break;
-	}
+	for (uint64_t old_status = *status; !__sync_bool_compare_and_swap(status, old_status, new_status);
+	     old_status = *status)
+		;
 }
 
 db_handle *internal_db_open(struct volume_descriptor *volume_desc, par_db_options *db_options,
