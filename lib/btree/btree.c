@@ -463,6 +463,8 @@ db_handle *internal_db_open(struct volume_descriptor *volume_desc, par_db_option
 	uint64_t replica_mode = handle->db_options.options[REPLICA_MODE].value;
 	if (primary_mode == replica_mode) {
 		*error_message = "A DB must be set to either primary or replica mode";
+		free(handle);
+		handle = NULL;
 		return NULL;
 	}
 
@@ -1504,7 +1506,9 @@ int insert_KV_at_leaf(bt_insert_req *ins_req, struct node_header *leaf)
 	}
 
 	struct kv_splice_base splice = { 0 };
-	char kv_sep2_buf[KV_SEP2_MAX_SIZE] = { 0 };
+	//cppcheck-suppress variableScope
+	char kv_sep2_buf[KV_SEP2_MAX_SIZE];
+
 	splice.cat = ins_req->metadata.cat;
 	splice.is_tombstone = ins_req->metadata.tombstone;
 	splice.kv_splice = (struct kv_splice *)ins_req->key_value_buf;
