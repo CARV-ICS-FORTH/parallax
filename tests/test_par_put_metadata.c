@@ -102,7 +102,7 @@ int main(int argc, char *argv[])
 	arg_parse(argc, argv, options, options_len);
 	arg_print_options(help_flag, options, options_len);
 	const char *path = get_option(options, 1);
-	const int64_t num_of_keys = *(int *)get_option(options, 2);
+	const int num_of_keys = *(int *)get_option(options, 2);
 
 	const char *error_message = par_format((char *)path, 128);
 	if (error_message) {
