@@ -14,10 +14,9 @@
 
 #ifndef DYNAMIC_LEAF_H
 #define DYNAMIC_LEAF_H
-#include "btree.h"
 #include "btree_node.h"
 #include "kv_pairs.h"
-#include "parallax/structures.h"
+#include <stdbool.h>
 #include <stdint.h>
 struct dl_leaf_node;
 

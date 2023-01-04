@@ -13,15 +13,13 @@
 #ifndef SCANNER_H
 #define SCANNER_H
 #include "../btree/btree.h"
-#include "../btree/btree_node.h"
 #include "../btree/conf.h"
 #include "../btree/kv_pairs.h"
 #include "min_max_heap.h"
-#include "parallax/structures.h"
 #include "stack.h"
 #include <stdbool.h>
 #include <stdint.h>
-
+struct key_splice;
 enum seek_scanner_mode { GREATER = 5, GREATER_OR_EQUAL = 6, FETCH_FIRST };
 
 struct level_scanner {

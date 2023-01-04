@@ -17,7 +17,6 @@
 #include "../common/common.h"
 #include "compaction_worker.h"
 #include "conf.h"
-#include "dynamic_leaf.h"
 #include "level_write_cursor.h"
 #include "parallax/structures.h"
 #include <assert.h>

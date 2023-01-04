@@ -15,7 +15,6 @@
 #define MIN_MAX_HEAP_H
 
 #include "../btree/kv_pairs.h"
-#include "parallax/structures.h"
 #include <stdbool.h>
 #include <stdint.h>
 enum sh_heap_type { MIN_HEAP, MAX_HEAP };

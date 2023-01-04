@@ -15,7 +15,6 @@
 #include "../../utilities/dups_list.h"
 #include "../btree/btree.h"
 #include "../btree/conf.h"
-#include "../btree/key_splice.h"
 #include "../btree/kv_pairs.h"
 #include "../common/common.h"
 #include "../include/parallax/structures.h"
@@ -23,7 +22,6 @@
 #include <log.h>
 #include <stdint.h>
 #include <stdlib.h>
-#include <string.h>
 
 #define LCHILD(x) ((2 * x) + 1)
 #define RCHILD(x) ((2 * x) + 2)

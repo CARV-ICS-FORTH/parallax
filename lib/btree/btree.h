@@ -20,7 +20,6 @@
 #include "btree_node.h"
 #include "conf.h"
 #include "index_node.h"
-#include "kv_pairs.h"
 #include "lsn.h"
 #include "parallax/structures.h"
 #include <stdbool.h>
@@ -28,11 +27,9 @@
 #if ENABLE_BLOOM_FILTERS
 #include <bloom.h>
 #endif
-#include <limits.h>
 #include <pthread.h>
 #include <semaphore.h>
 #include <stdint.h>
-#include <stdlib.h>
 #define PREFIX_SIZE 12
 #define MAX_HEIGHT 9
 

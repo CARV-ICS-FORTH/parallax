@@ -5,8 +5,6 @@
 #include "btree_node.h"
 #include "dynamic_leaf.h"
 #include "index_node.h"
-#include "kv_pairs.h"
-#include "parallax/structures.h"
 #include <assert.h>
 #include <log.h>
 #include <stdio.h>

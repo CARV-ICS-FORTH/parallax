@@ -16,9 +16,9 @@
 #define SEGMENT_ALLOCATOR_H
 #include "../allocator/log_structures.h"
 #include "btree.h"
-#include "btree_node.h"
 #include "index_node.h"
 #include <stdint.h>
+struct node_header;
 // IWYU pragma: no_forward_declare index_node
 
 /*functions for index nodes*/

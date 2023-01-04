@@ -13,7 +13,6 @@
 // limitations under the License.
 #include "index_node.h"
 #include "../btree/key_splice.h"
-#include "../btree/kv_pairs.h"
 #include "../common/common.h"
 #include <assert.h>
 #include <log.h>

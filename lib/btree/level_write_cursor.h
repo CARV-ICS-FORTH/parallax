@@ -4,7 +4,8 @@
 #include "conf.h"
 #include <stdbool.h>
 #include <stdint.h>
-struct comp_parallax_key;
+struct kv_splice_base;
+
 struct wcursor_level_write_cursor {
 	char segment_buf[MAX_HEIGHT][SEGMENT_SIZE];
 	uint64_t segment_offt[MAX_HEIGHT];

@@ -8,7 +8,6 @@
 #include "index_node.h"
 #include "key_splice.h"
 #include "kv_pairs.h"
-#include "level_cursor.h"
 #include "medium_log_LRU_cache.h"
 #include "parallax/structures.h"
 #include "segment_allocator.h"

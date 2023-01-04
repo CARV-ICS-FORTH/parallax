@@ -21,7 +21,6 @@
 #include "../btree/key_splice.h"
 #include "../btree/kv_pairs.h"
 #include "../common/common.h"
-#include "../include/parallax/parallax.h"
 #include "../include/parallax/structures.h"
 #include "../utilities/dups_list.h"
 #include "min_max_heap.h"
@@ -34,7 +33,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-
+struct key_splice;
 bool level_scanner_init(struct level_scanner *level_scanner, db_handle *database, uint8_t level_id, uint8_t tree_id)
 {
 	memset(level_scanner, 0x00, sizeof(*level_scanner));

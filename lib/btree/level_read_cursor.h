@@ -1,10 +1,8 @@
 #ifndef LEVEL_READ_CURSOR_H
 #define LEVEL_READ_CURSOR_H
-#include "../scanner/scanner.h"
 #include "btree.h"
 #include "conf.h"
 #include "kv_pairs.h"
-#include "level_cursor.h"
 #include <stdbool.h>
 #include <stdint.h>
 struct sh_heap_node;

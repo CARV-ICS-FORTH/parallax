@@ -18,15 +18,14 @@
 #include "../allocator/redo_undo_log.h"
 #include "../allocator/volume_manager.h"
 #include "../common/common.h"
+#include "btree_node.h"
 #include "conf.h"
-#include "dynamic_leaf.h"
 #include "index_node.h"
 #include <assert.h>
 #include <log.h>
 #include <stdint.h>
 #include <stdlib.h>
 // IWYU pragma: no_forward_declare index_node
-struct dl_leaf_node;
 
 struct link_segments_metadata {
 	level_descriptor *level_desc;

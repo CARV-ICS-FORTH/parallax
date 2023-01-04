@@ -19,7 +19,6 @@
 #include <sys/types.h>
 #include <uthash.h>
 struct wcursor_level_write_cursor;
-struct write_dynamic_leaf_args;
 
 struct chunk_list {
 	struct chunk_listnode *head;
