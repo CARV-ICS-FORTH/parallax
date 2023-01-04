@@ -35,9 +35,10 @@ extern struct key_splice *key_splice_create(char *key, int32_t key_size, char *b
 		log_debug("Possible overflow buffer_size is %d max size is %d", key_size, T_MAX);
 		return NULL;
 	}
+
 	struct key_splice *key_splice = (struct key_splice *)buffer;
 	uint32_t key_splice_size = sizeof(struct key_splice) + key_size;
-	if ((int32_t)key_splice_size > buffer_size) {
+	if (!buffer || (int32_t)key_splice_size > buffer_size) {
 		// log_debug("Buffer is not large enough to host a key_splice needs: %lu has: %u",
 		// 	  sizeof(struct key_splice) + key_size, buffer_size);
 		key_splice = calloc(1UL, sizeof(struct key_splice) + key_size);
