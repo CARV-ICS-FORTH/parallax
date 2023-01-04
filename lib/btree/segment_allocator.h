@@ -36,8 +36,6 @@ struct dl_leaf_node *seg_get_leaf_node(struct db_descriptor *db_desc, uint8_t le
 
 struct dl_leaf_node *seg_get_leaf_node_header(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id);
 
-void seg_free_leaf_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id, struct dl_leaf_node *leaf);
-
 struct dl_leaf_node *seg_get_dynamic_leaf_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id);
 /*log related*/
 segment_header *seg_get_raw_log_segment(struct db_descriptor *db_desc, enum log_type log_type, uint8_t level_id,

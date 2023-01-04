@@ -46,10 +46,6 @@ struct rcursor_level_read_cursor *rcursor_init_cursor(db_handle *handle, uint32_
 	r_cursor->is_end_of_level = false;
 
 	if (0 == level_id) {
-		struct node_header *root = r_cursor->handle->db_desc->levels[0].root_w[tree_id];
-		if (NULL == root)
-			root = r_cursor->handle->db_desc->levels[0].root_r[tree_id];
-
 		r_cursor->L0_cursor = calloc(1UL, sizeof(struct rcursor_L0_cursor));
 		r_cursor->L0_cursor->L0_scanner = level_scanner_init_compaction_scanner(handle, level_id, tree_id);
 		return r_cursor;

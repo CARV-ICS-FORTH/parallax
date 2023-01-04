@@ -94,7 +94,7 @@ static void read_unlock_node(struct level_scanner *level_sc, struct node_header 
 	}
 }
 
-bool level_scanner_seek(struct level_scanner *level_sc, struct key_splice *start_key_splice,
+bool level_scanner_seek(struct level_scanner *level_scanner, struct key_splice *start_key_splice,
 			enum seek_scanner_mode seek_mode)
 {
 	// cppcheck-suppress variableScope
@@ -112,28 +112,28 @@ bool level_scanner_seek(struct level_scanner *level_sc, struct key_splice *start
    * For L0 already safe we have read lock of guard lock else its just a root_r
    * of levels >= 1
 	 */
-	read_lock_node(level_sc, level_sc->root);
+	read_lock_node(level_scanner, level_scanner->root);
 
-	if (!level_sc->root) {
-		read_unlock_node(level_sc, level_sc->root);
+	if (!level_scanner->root) {
+		read_unlock_node(level_scanner, level_scanner->root);
 		return false;
 	}
 
-	if (level_sc->root->type == leafRootNode && level_sc->root->num_entries == 0) {
+	if (level_scanner->root->type == leafRootNode && level_scanner->root->num_entries == 0) {
 		/*we seek in an empty tree*/
-		read_unlock_node(level_sc, level_sc->root);
+		read_unlock_node(level_scanner, level_scanner->root);
 		return false;
 	}
 
 	/*Drop all paths*/
-	stack_reset(&(level_sc->stack));
+	stack_reset(&(level_scanner->stack));
 	/*Insert stack guard*/
 	stackElementT guard_element = { .guard = 1, .idx = 0, .node = NULL, .iterator = { 0 } };
-	stack_push(&(level_sc->stack), guard_element);
+	stack_push(&(level_scanner->stack), guard_element);
 
 	stackElementT element = { .guard = 0, .idx = INT32_MAX, .node = NULL, .iterator = { 0 } };
 
-	struct node_header *node = level_sc->root;
+	struct node_header *node = level_scanner->root;
 	while (node->type != leafNode && node->type != leafRootNode) {
 		element.node = node;
 		index_iterator_init_with_key((struct index_node *)element.node, &element.iterator, start_key_splice);
@@ -144,10 +144,10 @@ bool level_scanner_seek(struct level_scanner *level_sc, struct key_splice *start
 		}
 
 		struct pivot_pointer *piv_pointer = index_iterator_get_pivot_pointer(&element.iterator);
-		stack_push(&(level_sc->stack), element);
+		stack_push(&(level_scanner->stack), element);
 
 		node = REAL_ADDRESS(piv_pointer->child_offt);
-		read_lock_node(level_sc, node);
+		read_lock_node(level_scanner, node);
 	}
 	assert(node->type == leafNode || node->type == leafRootNode);
 
@@ -164,20 +164,20 @@ bool level_scanner_seek(struct level_scanner *level_sc, struct key_splice *start
 	if (!exact_match)
 		++element.idx;
 
-	stack_push(&level_sc->stack, element);
+	stack_push(&level_scanner->stack, element);
 
 	if ((seek_mode == GREATER && exact_match) || element.idx >= node->num_entries) {
-		if (!level_scanner_get_next(level_sc))
+		if (!level_scanner_get_next(level_scanner))
 			return false;
 	}
 
-	element = stack_pop(&level_sc->stack);
+	element = stack_pop(&level_scanner->stack);
 
-	level_sc->splice = dl_get_general_splice((struct dl_leaf_node *)element.node, element.idx);
+	level_scanner->splice = dl_get_general_splice((struct dl_leaf_node *)element.node, element.idx);
 	// log_debug("Level scanner seek reached splice %.*s at idx %d node entries %d",
 	// 	  kv_splice_base_get_key_size(&level_sc->splice), kv_splice_base_get_key_buf(&level_sc->splice),
 	// 	  element.idx, element.node->num_entries);
-	stack_push(&level_sc->stack, element);
+	stack_push(&level_scanner->stack, element);
 	return true;
 }
 

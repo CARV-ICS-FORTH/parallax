@@ -81,6 +81,8 @@ bool tlf_verify_keys(struct hash_entry *root, struct kv_splice_base *pivot, stru
 
 	HASH_ITER(hh, root, current_entry, tmp)
 	{
+		if (!current_entry)
+			return false;
 		const char *error = NULL;
 		if (current_entry->hsplice.cat == SMALL_INPLACE || current_entry->hsplice.cat == MEDIUM_INPLACE) {
 			key = get_key_offset_in_kv(current_entry->hsplice.kv_splice);
@@ -125,7 +127,7 @@ int main(int argc, char **argv)
 		if (choice <= 6) {
 			splice.kv_splice = tlf_generate_in_place_kv();
 			splice.cat = SMALL_INPLACE;
-		} else if (choice > 6) {
+		} else {
 			splice.kv_sep2 = tlf_generate_in_log_kv();
 			splice.cat = MEDIUM_INLOG;
 		}

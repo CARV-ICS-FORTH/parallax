@@ -522,7 +522,7 @@ int main(int argc, char *argv[])
 	arg_parse(argc, argv, options, options_len);
 	arg_print_options(help_flag, options, options_len);
 	const char *path = get_option(options, 1);
-	const uint64_t num_of_keys = *(int *)get_option(options, 2);
+	const int num_of_keys = *(int *)get_option(options, 2);
 	const uint32_t medium_kvs_percentage = *(int *)get_option(options, 3);
 	const uint32_t small_kvs_percentage = *(int *)get_option(options, 4);
 	const uint32_t big_kvs_percentage = *(int *)get_option(options, 5);
