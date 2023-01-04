@@ -29,7 +29,7 @@ struct dl_leaf_node;
  * @returns true on success false on failure. The operation may fail
  * if the leaf node does not have adequate space to store the splice
  */
-bool dl_insert_in_dynamic_leaf(struct dl_leaf_node *leaf, struct kv_splice_base *general_splice, bool is_tombstone,
+bool dl_insert_in_dynamic_leaf(struct dl_leaf_node *leaf, struct kv_splice_base *splice, bool is_tombstone,
 			       bool *exact_match);
 
 /**
