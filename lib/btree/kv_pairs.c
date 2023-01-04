@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 #include "kv_pairs.h"
+#include "../include/parallax/structures.h"
 #include "key_splice.h"
-#include "parallax/structures.h"
 #include <assert.h>
 #include <log.h>
 #include <stdlib.h>
@@ -203,7 +203,7 @@ void kv_splice_serialize(struct kv_splice *splice, char *dest)
 	memcpy(&dest[idx], splice->data, get_key_size(splice) + get_value_size(splice));
 }
 
-static inline bool kv_general_splice_is_in_place(struct kv_general_splice *splice)
+static inline bool kv_splice_base_is_in_place(struct kv_splice_base *splice)
 {
 	if (splice->cat == SMALL_INPLACE || splice->cat == MEDIUM_INPLACE)
 		return true;
@@ -213,27 +213,27 @@ static inline bool kv_general_splice_is_in_place(struct kv_general_splice *splic
 	_exit(EXIT_FAILURE);
 }
 // kv general splice methods
-int32_t kv_general_splice_get_size(struct kv_general_splice *splice)
+int32_t kv_splice_base_get_size(struct kv_splice_base *splice)
 {
-	return kv_general_splice_is_in_place(splice) ? get_kv_size(splice->kv_splice) :
-						       kv_sep2_get_total_size(splice->kv_sep2);
+	return kv_splice_base_is_in_place(splice) ? get_kv_size(splice->kv_splice) :
+						    kv_sep2_get_total_size(splice->kv_sep2);
 }
 
-int32_t kv_general_splice_get_key_size(struct kv_general_splice *splice)
+int32_t kv_splice_base_get_key_size(struct kv_splice_base *splice)
 {
-	return kv_general_splice_is_in_place(splice) ? get_key_size(splice->kv_splice) :
-						       kv_sep2_get_key_size(splice->kv_sep2);
+	return kv_splice_base_is_in_place(splice) ? get_key_size(splice->kv_splice) :
+						    kv_sep2_get_key_size(splice->kv_sep2);
 }
 
-char *kv_general_splice_get_key_buf(struct kv_general_splice *splice)
+char *kv_splice_base_get_key_buf(struct kv_splice_base *splice)
 {
-	return kv_general_splice_is_in_place(splice) ? get_key_offset_in_kv(splice->kv_splice) :
-						       kv_sep2_get_key(splice->kv_sep2);
+	return kv_splice_base_is_in_place(splice) ? get_key_offset_in_kv(splice->kv_splice) :
+						    kv_sep2_get_key(splice->kv_sep2);
 }
 
-static void kv_general_splice_fill_key(struct kv_general_splice *splice, char **key, int32_t *key_size)
+static void kv_splice_base_fill_key(struct kv_splice_base *splice, char **key, int32_t *key_size)
 {
-	if (kv_general_splice_is_in_place(splice)) {
+	if (kv_splice_base_is_in_place(splice)) {
 		*key = get_key_offset_in_kv(splice->kv_splice);
 		*key_size = get_key_size(splice->kv_splice);
 		return;
@@ -242,27 +242,27 @@ static void kv_general_splice_fill_key(struct kv_general_splice *splice, char **
 	*key_size = kv_sep2_get_key_size(splice->kv_sep2);
 }
 
-int kv_general_splice_compare(struct kv_general_splice *sp1, struct kv_general_splice *sp2)
+int kv_splice_base_compare(struct kv_splice_base *sp1, struct kv_splice_base *sp2)
 {
 	char *key1 = NULL;
 	int32_t key_size1 = -1;
-	kv_general_splice_fill_key(sp1, &key1, &key_size1);
+	kv_splice_base_fill_key(sp1, &key1, &key_size1);
 
 	char *key2 = NULL;
 	int32_t key_size2 = -1;
-	kv_general_splice_fill_key(sp2, &key2, &key_size2);
+	kv_splice_base_fill_key(sp2, &key2, &key_size2);
 
 	int ret = memcmp(key1, key2, key_size1 <= key_size2 ? key_size1 : key_size2);
 	return ret == 0 ? key_size1 - key_size2 : ret;
 }
 
-int32_t kv_general_splice_calculate_size(struct kv_general_splice *splice)
+int32_t kv_splice_base_calculate_size(struct kv_splice_base *splice)
 {
-	return kv_general_splice_is_in_place(splice) ? get_kv_size(splice->kv_splice) :
-						       kv_sep2_get_total_size(splice->kv_sep2);
+	return kv_splice_base_is_in_place(splice) ? get_kv_size(splice->kv_splice) :
+						    kv_sep2_get_total_size(splice->kv_sep2);
 }
 
-char *kv_general_splice_get_reference(struct kv_general_splice *splice)
+char *kv_splice_base_get_reference(struct kv_splice_base *splice)
 {
-	return (kv_general_splice_is_in_place(splice)) ? (char *)splice->kv_splice : (char *)splice->kv_sep2;
+	return (kv_splice_base_is_in_place(splice)) ? (char *)splice->kv_splice : (char *)splice->kv_sep2;
 }

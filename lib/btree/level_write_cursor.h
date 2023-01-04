@@ -38,8 +38,7 @@ struct wcursor_level_write_cursor *wcursor_init_write_cursor(int level_id, struc
  * @param kv_pair the kv_pair to insert in the level.
  * @returns true if success otherwise false on failure.
  */
-// bool wcursor_append_KV_pair(struct wcursor_level_write_cursor *cursor, struct comp_parallax_key *kv_pair);
-bool wcursor_append_KV_pair(struct wcursor_level_write_cursor *cursor, struct kv_general_splice *splice);
+bool wcursor_append_KV_pair(struct wcursor_level_write_cursor *cursor, struct kv_splice_base *splice);
 
 /**
  * @brief Flushes any in memory state of the cursor to the device.

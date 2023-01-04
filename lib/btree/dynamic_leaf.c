@@ -48,9 +48,9 @@ struct dl_slot_array *dl_get_slot_array_offset(const struct dl_leaf_node *leaf)
 	return (struct dl_slot_array *)(((char *)leaf) + sizeof(struct dl_leaf_node));
 }
 
-struct kv_general_splice dl_get_general_splice(struct dl_leaf_node *leaf, int32_t position)
+struct kv_splice_base dl_get_general_splice(struct dl_leaf_node *leaf, int32_t position)
 {
-	struct kv_general_splice general_splice = { 0 };
+	struct kv_splice_base general_splice = { 0 };
 	struct dl_slot_array *slot_array = dl_get_slot_array_offset(leaf);
 	general_splice.cat = slot_array[position].key_category;
 	general_splice.is_tombstone = slot_array[position].tombstone;
@@ -66,7 +66,7 @@ struct kv_general_splice dl_get_general_splice(struct dl_leaf_node *leaf, int32_
 	return general_splice;
 }
 
-static void dl_fill_key_from_general_splice(struct kv_general_splice *general_splice, char **key, int32_t *key_size)
+static void dl_fill_key_from_general_splice(struct kv_splice_base *general_splice, char **key, int32_t *key_size)
 {
 	if (general_splice->cat == SMALL_INPLACE || general_splice->cat == MEDIUM_INPLACE) {
 		*key = get_key_offset_in_kv(general_splice->kv_splice);
@@ -95,7 +95,7 @@ int32_t dl_search_get_pos(struct dl_leaf_node *leaf, char *key, int32_t key_size
 	while (start <= end) {
 		middle = (start + end) / 2;
 
-		struct kv_general_splice leaf_splice = dl_get_general_splice(leaf, middle);
+		struct kv_splice_base leaf_splice = dl_get_general_splice(leaf, middle);
 
 		/*At zero position we have a guard or -oo*/
 		char *leaf_key = NULL;
@@ -131,10 +131,10 @@ int32_t dl_search_get_pos(struct dl_leaf_node *leaf, char *key, int32_t key_size
 	return cmp_return_value > 0 ? middle - 1 : middle;
 }
 
-struct kv_general_splice dl_find_kv_in_dynamic_leaf(struct dl_leaf_node *leaf, char *key, int32_t key_size,
-						    const char **error)
+struct kv_splice_base dl_find_kv_in_dynamic_leaf(struct dl_leaf_node *leaf, char *key, int32_t key_size,
+						 const char **error)
 {
-	struct kv_general_splice kv_not_found = { 0 };
+	struct kv_splice_base kv_not_found = { 0 };
 	bool exact_match = false;
 	int32_t pos = dl_search_get_pos(leaf, key, key_size, &exact_match);
 
@@ -155,10 +155,9 @@ bool dl_is_leaf_full(struct dl_leaf_node *leaf, uint32_t kv_size)
 	return right_border > left_border ? false : true;
 }
 
-static uint16_t dl_append_data_splice_in_dynamic_leaf(struct dl_leaf_node *leaf,
-						      struct kv_general_splice *general_splice)
+static uint16_t dl_append_data_splice_in_dynamic_leaf(struct dl_leaf_node *leaf, struct kv_splice_base *general_splice)
 {
-	int32_t kv_size = kv_general_splice_calculate_size(general_splice);
+	int32_t kv_size = kv_splice_base_calculate_size(general_splice);
 	if (dl_is_leaf_full(leaf, kv_size)) {
 		log_warn("Leaf is full cannot serve request");
 		assert(0);
@@ -176,7 +175,7 @@ static uint16_t dl_append_data_splice_in_dynamic_leaf(struct dl_leaf_node *leaf,
 	return leaf->header.log_size;
 }
 
-bool dl_append_splice_in_dynamic_leaf(struct dl_leaf_node *leaf, struct kv_general_splice *general_splice,
+bool dl_append_splice_in_dynamic_leaf(struct dl_leaf_node *leaf, struct kv_splice_base *general_splice,
 				      bool is_tombstone)
 {
 	uint16_t offt = dl_append_data_splice_in_dynamic_leaf(leaf, general_splice);
@@ -193,21 +192,21 @@ bool dl_append_splice_in_dynamic_leaf(struct dl_leaf_node *leaf, struct kv_gener
 	return true;
 }
 
-bool dl_insert_in_dynamic_leaf(struct dl_leaf_node *leaf, struct kv_general_splice *splice, bool is_tombstone,
+bool dl_insert_in_dynamic_leaf(struct dl_leaf_node *leaf, struct kv_splice_base *splice, bool is_tombstone,
 			       bool *exact_match)
 {
-	if (dl_is_leaf_full(leaf, kv_general_splice_calculate_size(splice))) {
+	if (dl_is_leaf_full(leaf, kv_splice_base_calculate_size(splice))) {
 		log_warn("Cannot serve request leaf will overflow");
 		// assert(0);
 		// _exit(EXIT_FAILURE);
 		return false;
 	}
 	// if (!dl_check_leaf(leaf)) {
-	// 	log_debug("Faulting splice is %d %s leaf entries = %d", kv_general_splice_get_key_size(splice),
-	// 		  kv_general_splice_get_key_buf(splice), leaf->header.num_entries);
+	// 	log_debug("Faulting splice is %d %s leaf entries = %d", kv_splice_base_get_key_size(splice),
+	// 		  kv_splice_base_get_key_buf(splice), leaf->header.num_entries);
 	// 	assert(0);
 	// }
-	int32_t kv_size = kv_general_splice_calculate_size(splice);
+	int32_t kv_size = kv_splice_base_calculate_size(splice);
 	if (dl_is_leaf_full(leaf, kv_size))
 		return false;
 
@@ -219,8 +218,8 @@ bool dl_insert_in_dynamic_leaf(struct dl_leaf_node *leaf, struct kv_general_spli
 	int32_t pos = dl_search_get_pos(leaf, key, key_size, exact_match);
 	struct dl_slot_array *slot_array = dl_get_slot_array_offset(leaf);
 	if (*exact_match) {
-		struct kv_general_splice updated_kv = dl_get_general_splice(leaf, pos);
-		leaf->header.fragmentation += kv_general_splice_get_size(&updated_kv);
+		struct kv_splice_base updated_kv = dl_get_general_splice(leaf, pos);
+		leaf->header.fragmentation += kv_splice_base_get_size(&updated_kv);
 	} else {
 		size_t bytes_to_move = (leaf->header.num_entries - (pos + 1)) * sizeof(struct dl_slot_array);
 		// log_debug("Moving slot array from pos %d to pos %d gona move %lu bytes entris in leaf %d", pos + 1,
@@ -244,7 +243,7 @@ bool dl_insert_in_dynamic_leaf(struct dl_leaf_node *leaf, struct kv_general_spli
 	// if (!dl_check_leaf(leaf)) {
 	// 	log_debug(
 	// 		"Faulting splice is %d %s leaf entries = %d key was %.*s pos is %d num entries %d offt was %u",
-	// 		kv_general_splice_get_key_size(splice), kv_general_splice_get_key_buf(splice),
+	// 		kv_splice_base_get_key_size(splice), kv_splice_base_get_key_buf(splice),
 	// 		leaf->header.num_entries, key_size, key, pos, leaf->header.num_entries, offt);
 	// 	assert(0);
 	// }
@@ -252,7 +251,7 @@ bool dl_insert_in_dynamic_leaf(struct dl_leaf_node *leaf, struct kv_general_spli
 }
 
 struct dl_leaf_iterator {
-	struct kv_general_splice splice;
+	struct kv_splice_base splice;
 	struct dl_leaf_node *leaf;
 	int pos;
 };
@@ -282,10 +281,10 @@ static void dl_leaf_iterator_next(struct dl_leaf_iterator *iter)
 	++iter->pos;
 }
 
-static struct kv_general_splice dl_leaf_iterator_curr(struct dl_leaf_iterator *iter)
+static struct kv_splice_base dl_leaf_iterator_curr(struct dl_leaf_iterator *iter)
 {
 	if (!dl_is_leaf_iterator_valid(iter)) {
-		struct kv_general_splice splice = { 0 };
+		struct kv_splice_base splice = { 0 };
 		return splice;
 	}
 
@@ -297,13 +296,13 @@ static struct kv_general_splice dl_leaf_iterator_curr(struct dl_leaf_iterator *i
 // 	struct dl_leaf_iterator iter = { 0 };
 // 	dl_init_leaf_iterator(leaf, &iter, NULL, -1);
 // 	while (dl_is_leaf_iterator_valid(&iter)) {
-// 		struct kv_general_splice splice = dl_leaf_iterator_curr(&iter);
-// 		if (kv_general_splice_get_key_size(&splice) <= 0) {
+// 		struct kv_splice_base splice = dl_leaf_iterator_curr(&iter);
+// 		if (kv_splice_base_get_key_size(&splice) <= 0) {
 // 			log_debug("Assertion failed iterator pos %d  leaf entries: %d cat = %d", iter.pos,
 // 				  iter.leaf->header.num_entries, splice.cat);
 // 			return false;
 // 		}
-// 		if (kv_general_splice_get_key_size(&splice) > MAX_KEY_SIZE) {
+// 		if (kv_splice_base_get_key_size(&splice) > MAX_KEY_SIZE) {
 // 			log_debug("Assertion failed iterator pos %d", iter.pos);
 // 			assert(0);
 // 		}
@@ -312,8 +311,8 @@ static struct kv_general_splice dl_leaf_iterator_curr(struct dl_leaf_iterator *i
 // 	return true;
 // }
 
-struct kv_general_splice dl_split_dynamic_leaf(struct dl_leaf_node *leaf, struct dl_leaf_node *left,
-					       struct dl_leaf_node *right)
+struct kv_splice_base dl_split_dynamic_leaf(struct dl_leaf_node *leaf, struct dl_leaf_node *left,
+					    struct dl_leaf_node *right)
 {
 	struct dl_leaf_iterator iter = { 0 };
 	dl_init_leaf_iterator(leaf, &iter, NULL, -1);
@@ -325,17 +324,17 @@ struct kv_general_splice dl_split_dynamic_leaf(struct dl_leaf_node *leaf, struct
 			assert(0);
 			_exit(EXIT_FAILURE);
 		}
-		struct kv_general_splice splice = dl_leaf_iterator_curr(&iter);
+		struct kv_splice_base splice = dl_leaf_iterator_curr(&iter);
 		dl_append_splice_in_dynamic_leaf(left, &splice, slot_array[iter.pos].tombstone);
 		dl_leaf_iterator_next(&iter);
 	}
-	struct kv_general_splice pivot_splice = dl_get_general_splice(leaf, idx);
+	struct kv_splice_base pivot_splice = dl_get_general_splice(leaf, idx);
 	for (; idx < leaf->header.num_entries; idx++) {
 		if (!dl_is_leaf_iterator_valid(&iter)) {
 			log_fatal("This should not happen, probably corruption?");
 			_exit(EXIT_FAILURE);
 		}
-		struct kv_general_splice splice = dl_leaf_iterator_curr(&iter);
+		struct kv_splice_base splice = dl_leaf_iterator_curr(&iter);
 
 		dl_append_splice_in_dynamic_leaf(right, &splice, slot_array[iter.pos].tombstone);
 		dl_leaf_iterator_next(&iter);
@@ -358,7 +357,7 @@ void dl_reorganize_dynamic_leaf(struct dl_leaf_node *leaf, struct dl_leaf_node *
 			log_fatal("This should not happen, probably corruption?");
 			_exit(EXIT_FAILURE);
 		}
-		struct kv_general_splice splice = dl_leaf_iterator_curr(&iter);
+		struct kv_splice_base splice = dl_leaf_iterator_curr(&iter);
 		dl_append_splice_in_dynamic_leaf(target, &splice, slot_array[iter.pos].tombstone);
 		dl_leaf_iterator_next(&iter);
 	}

@@ -1,11 +1,11 @@
-#include "../btree/dynamic_leaf.h"
-#include "../btree/key_splice.h"
-#include "allocator/volume_manager.h"
-#include "btree/btree.h"
-#include "btree/kv_pairs.h"
-#include "parallax/structures.h"
+#include <allocator/volume_manager.h>
 #include <assert.h>
+#include <btree/btree.h>
+#include <btree/dynamic_leaf.h>
+#include <btree/key_splice.h>
+#include <btree/kv_pairs.h>
 #include <log.h>
+#include <parallax/structures.h>
 #include <stdint.h>
 #include <unistd.h>
 #include <uthash.h>
@@ -33,11 +33,11 @@ struct kv_seperation_splice2 *tlf_generate_in_log_kv(void)
 }
 
 struct hash_entry {
-	struct kv_general_splice hsplice;
+	struct kv_splice_base hsplice;
 	UT_hash_handle hh;
 };
 
-static void tlf_fill_key(struct kv_general_splice *pivot, char **key, int32_t *key_size)
+static void tlf_fill_key(struct kv_splice_base *pivot, char **key, int32_t *key_size)
 {
 	if (NULL == pivot) {
 		*key = NULL;
@@ -56,7 +56,7 @@ static void tlf_fill_key(struct kv_general_splice *pivot, char **key, int32_t *k
 	}
 }
 
-static int tlf_compare(struct kv_general_splice *key1_splice, struct kv_general_splice *key2_splice)
+static int tlf_compare(struct kv_splice_base *key1_splice, struct kv_splice_base *key2_splice)
 {
 	char *key1 = NULL;
 	int32_t key1_size = 0;
@@ -69,7 +69,7 @@ static int tlf_compare(struct kv_general_splice *key1_splice, struct kv_general_
 }
 
 enum tlf_group_check { TLF_CHECK_LEFT, TLF_CHECK_RIGHT, TLF_CHECK_ALL };
-bool tlf_verify_keys(struct hash_entry *root, struct kv_general_splice *pivot, struct dl_leaf_node *leaf,
+bool tlf_verify_keys(struct hash_entry *root, struct kv_splice_base *pivot, struct dl_leaf_node *leaf,
 		     enum tlf_group_check check)
 {
 	struct hash_entry *current_entry = NULL;
@@ -118,8 +118,8 @@ int main(int argc, char **argv)
 	dl_init_leaf_node(leaf, 8192UL);
 	uint32_t generated_keys_num = 0;
 
-	struct kv_general_splice splice = { 0 };
-	for (;;) {
+	struct kv_splice_base splice = { 0 };
+	while (1) {
 		uint32_t choice = generated_keys_num++ % 10;
 
 		if (choice <= 6) {
@@ -147,7 +147,7 @@ int main(int argc, char **argv)
 	dl_init_leaf_node(left, 8192UL);
 	struct dl_leaf_node *right = malloc(8192UL);
 	dl_init_leaf_node(right, 8192UL);
-	struct kv_general_splice pivot_splice = dl_split_dynamic_leaf(leaf, left, right);
+	struct kv_splice_base pivot_splice = dl_split_dynamic_leaf(leaf, left, right);
 	log_debug("Pivot splice is %d", get_key_size(pivot_splice.kv_splice));
 	char *pivot = NULL;
 	int32_t pivot_size = 0;

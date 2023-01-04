@@ -34,7 +34,7 @@ struct rcursor_level_read_cursor {
 	uint8_t level_id;
 	uint8_t tree_id;
 	bool is_end_of_level;
-	struct kv_general_splice splice;
+	struct kv_splice_base splice;
 	db_handle *handle;
 	union {
 		struct rcursor_device_cursor *device_cursor;

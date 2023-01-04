@@ -1,4 +1,4 @@
-// Copyright [2021] [FORTH-ICS, splice.cat]
+// Copyright [2021] [FORTH-ICS]
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -1365,7 +1365,7 @@ static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id,
 	int32_t key_size = key_splice_get_key_size(search_key_buf);
 	void *key = key_splice_get_key_offset(search_key_buf);
 	const char *error = NULL;
-	struct kv_general_splice splice =
+	struct kv_splice_base splice =
 		dl_find_kv_in_dynamic_leaf((struct dl_leaf_node *)curr_node, key, key_size, &error);
 	if (error != NULL) {
 		// log_debug("Key %.*s not found with error message %s", key_size, (char *)key, error);
@@ -1503,7 +1503,7 @@ int insert_KV_at_leaf(bt_insert_req *ins_req, struct node_header *leaf)
 		log_address = append_key_value_to_log(&append_op);
 	}
 
-	struct kv_general_splice splice = { 0 };
+	struct kv_splice_base splice = { 0 };
 	char kv_sep2_buf[KV_SEP2_MAX_SIZE] = { 0 };
 	splice.cat = ins_req->metadata.cat;
 	splice.is_tombstone = ins_req->metadata.tombstone;
@@ -1515,7 +1515,7 @@ int insert_KV_at_leaf(bt_insert_req *ins_req, struct node_header *leaf)
 		splice.kv_sep2 = kv_sep2_create(get_key_size(kv_splice), get_key_offset_in_kv(kv_splice), value_offt,
 						kv_sep2_buf, KV_SEP2_MAX_SIZE);
 	}
-	assert(kv_general_splice_get_key_size(&splice) > 0);
+	assert(kv_splice_base_get_key_size(&splice) > 0);
 
 	if (splice.cat == BIG_INLOG && !ins_req->metadata.append_to_log) {
 		splice.kv_sep2 = (struct kv_seperation_splice2 *)ins_req->key_value_buf;
@@ -1531,25 +1531,17 @@ int insert_KV_at_leaf(bt_insert_req *ins_req, struct node_header *leaf)
 
 	if (exact_match)
 		return -1;
-	int32_t kv_size = kv_general_splice_get_size(&splice);
+	int32_t kv_size = kv_splice_base_get_size(&splice);
 	__sync_fetch_and_add(&(ins_req->metadata.handle->db_desc->levels[level_id].level_size[tree_id]), kv_size);
 	return INSERT;
 }
 
-// struct bt_rebalance_result split_leaf(bt_insert_req *req, struct dl_leaf_node *node)
-// {
-// 	int level_id = req->metadata.level_id;
-// 	uint32_t leaf_size = req->metadata.handle->db_desc->levels[level_id].leaf_size;
-
-// 	return split_dynamic_leaf((struct dl_leaf_node *)node, leaf_size, req);
-// }
-
-uint64_t par_hash(uint64_t x)
+static uint64_t get_lock_position(uint64_t address)
 {
-	x = (x ^ (x >> 30)) * UINT64_C(0xbf58476d1ce4e5b9);
-	x = (x ^ (x >> 27)) * UINT64_C(0x94d049bb133111eb);
-	x = x ^ (x >> 31);
-	return x;
+	address = (address ^ (address >> 30)) * UINT64_C(0xbf58476d1ce4e5b9);
+	address = (address ^ (address >> 27)) * UINT64_C(0x94d049bb133111eb);
+	address = address ^ (address >> 31);
+	return address;
 }
 
 lock_table *_find_position(const lock_table **table, struct node_header *node)
@@ -1561,7 +1553,7 @@ lock_table *_find_position(const lock_table **table, struct node_header *node)
 		BUG_ON();
 	}
 
-	unsigned long position = par_hash((uint64_t)node) % size_per_height[node->height];
+	unsigned long position = get_lock_position((uint64_t)node) % size_per_height[node->height];
 	// log_info("node %llu height %d position %lu size of height %d", node,
 	// node->height, position, size_per_height[node->height]);
 	const lock_table *node_lock = table[node->height];
@@ -1580,11 +1572,17 @@ void _unlock_upper_levels(lock_table *node[], unsigned size, unsigned release)
 
 static int32_t bt_calculate_splice_size(enum kv_category cat, struct kv_splice *kv_splice)
 {
-	if (cat == SMALL_INPLACE || cat == MEDIUM_INPLACE)
+	switch (cat) {
+	case SMALL_INPLACE:
+	case MEDIUM_INPLACE:
 		return kv_splice_calculate_size(get_key_size(kv_splice), get_value_size(kv_splice));
-	if (cat == BIG_INLOG || cat == MEDIUM_INLOG)
+	case MEDIUM_INLOG:
+	case BIG_INLOG:
 		return kv_sep2_calculate_size(get_key_size(kv_splice));
-	log_fatal("Corrupted kv category");
+	default:
+		log_fatal("Corrupted kv category");
+	}
+
 	_exit(EXIT_FAILURE);
 }
 
@@ -1614,12 +1612,12 @@ static void bt_split_leaf(struct dl_leaf_node *leaf, bt_insert_req *req, struct 
 			  req->metadata.handle->db_desc->levels[req->metadata.level_id].leaf_size);
 	dl_init_leaf_node(split_result->right_leaf_child,
 			  req->metadata.handle->db_desc->levels[req->metadata.level_id].leaf_size);
-	struct kv_general_splice splice =
+	struct kv_splice_base splice =
 		dl_split_dynamic_leaf(leaf, split_result->left_leaf_child, split_result->right_leaf_child);
 
 	bool malloced = false;
-	struct key_splice *pivot_splice = key_splice_create(kv_general_splice_get_key_buf(&splice),
-							    kv_general_splice_get_key_size(&splice),
+	struct key_splice *pivot_splice = key_splice_create(kv_splice_base_get_key_buf(&splice),
+							    kv_splice_base_get_key_size(&splice),
 							    split_result->middle_key, MAX_PIVOT_SIZE, &malloced);
 
 	if (NULL == pivot_splice) {
@@ -1654,7 +1652,7 @@ int is_split_needed(void *node, bt_insert_req *req)
 static uint8_t concurrent_insert(bt_insert_req *ins_req)
 {
 	/*The array with the locks that belong to this thread from upper levels*/
-	lock_table *upper_level_nodes[MAX_HEIGHT] = { 0 };
+	lock_table *upper_level_nodes[MAX_HEIGHT];
 
 	lock_table *lock = NULL;
 

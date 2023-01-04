@@ -22,7 +22,7 @@ enum sh_heap_type { MIN_HEAP, MAX_HEAP };
 #define HEAP_SIZE 32
 
 struct sh_heap_node {
-	struct kv_general_splice splice;
+	struct kv_splice_base splice;
 	struct db_descriptor *db_desc;
 	uint64_t epoch;
 	uint8_t level_id;

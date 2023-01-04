@@ -22,25 +22,25 @@
 struct dl_leaf_node;
 
 /**
- * @brief Inserts (in sorted orderd) a kv_general_splice in the leaf node.
+ * @brief Inserts (in sorted orderd) a kv_splice_base in the leaf node.
  * @param leaf pointer to the actual leaf node
  * @param general_splice pointer to the splice object
  * @param is_tombstone indicates if the splice is a tombstone
  * @returns true on success false on failure. The operation may fail
  * if the leaf node does not have adequate space to store the splice
  */
-bool dl_insert_in_dynamic_leaf(struct dl_leaf_node *leaf, struct kv_general_splice *general_splice, bool is_tombstone,
+bool dl_insert_in_dynamic_leaf(struct dl_leaf_node *leaf, struct kv_splice_base *general_splice, bool is_tombstone,
 			       bool *exact_match);
 
 /**
- * @brief Appends a kv_general_splice in the leaf node.
+ * @brief Appends a kv_splice_base in the leaf node.
  * @param leaf pointer to the actual leaf node
  * @param general_splice pointer to the splice object
  * @param is_tombstone indicates if the splice is a tombstone
  * @returns true on success false on failure. The operation may fail
  * if the leaf node does not have adequate space to store the splice
  */
-bool dl_append_splice_in_dynamic_leaf(struct dl_leaf_node *leaf, struct kv_general_splice *general_splice,
+bool dl_append_splice_in_dynamic_leaf(struct dl_leaf_node *leaf, struct kv_splice_base *general_splice,
 				      bool is_tombstone);
 
 /**
@@ -49,12 +49,12 @@ bool dl_append_splice_in_dynamic_leaf(struct dl_leaf_node *leaf, struct kv_gener
  * @param key pointer to the key
  * @param key_size size of the key in bytes
  * @param error points to an error message in case of a failure.
- * @returns On success (exact match) it returns a kv_general_splice object and
+ * @returns On success (exact match) it returns a kv_splice_base object and
  * sets *error to NULL. If the key is not found inside the leaf or in case of
  * other error it sets *error to the appropriate message.
  */
-struct kv_general_splice dl_find_kv_in_dynamic_leaf(struct dl_leaf_node *leaf, char *key, int32_t key_size,
-						    const char **error);
+struct kv_splice_base dl_find_kv_in_dynamic_leaf(struct dl_leaf_node *leaf, char *key, int32_t key_size,
+						 const char **error);
 
 /**
  * @brief Splits the contents of leaf node equally to left and right nodes. In
@@ -64,14 +64,14 @@ struct kv_general_splice dl_find_kv_in_dynamic_leaf(struct dl_leaf_node *leaf, c
  * @param leaf pointer to the leaf node
  * @param left pointer to the left the node
  * @param right pointer to the right node
- * @returns On success it returns a kv_general_splice with the middle key that
+ * @returns On success it returns a kv_splice_base with the middle key that
  * btree uses as a pivot to the index node. Caution the kv_general_spice
  * contains internaly a reference to the KV pair. The application must copy the
  * contents of the splice in the index node. On failure it returns a zeroed
- * kv_general_splice.
+ * kv_splice_base.
  */
-struct kv_general_splice dl_split_dynamic_leaf(struct dl_leaf_node *leaf, struct dl_leaf_node *left,
-					       struct dl_leaf_node *right);
+struct kv_splice_base dl_split_dynamic_leaf(struct dl_leaf_node *leaf, struct dl_leaf_node *left,
+					    struct dl_leaf_node *right);
 /**
  * @brief Returns if the overflow in the leaf to insert a kv_size splice can be
  * handled through reorganization of the leaf due to fragmented space.
@@ -123,7 +123,7 @@ int32_t dl_search_get_pos(struct dl_leaf_node *leaf, char *key, int32_t key_size
  * @param leaf pointer to the leaf node
  * @param position the position which splice we want to retrieve
  */
-struct kv_general_splice dl_get_general_splice(struct dl_leaf_node *leaf, int32_t position);
+struct kv_splice_base dl_get_general_splice(struct dl_leaf_node *leaf, int32_t position);
 /**
  * @brief Sets the type of the node
  * @param leaf pointer to the leaf node

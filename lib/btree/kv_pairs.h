@@ -33,7 +33,7 @@ struct kv_seperation_splice2 {
 	char key[];
 } __attribute__((packed));
 
-struct kv_general_splice {
+struct kv_splice_base {
 	enum kv_category cat;
 	bool is_tombstone;
 	union {
@@ -220,38 +220,38 @@ uint32_t kv_splice_calculate_size(int32_t key_size, int32_t value_size);
  * @returns 0 if the keys of the splices are equal greater than zero if sp1 >
  * sp2 otherwise < 0.
  */
-int kv_general_splice_compare(struct kv_general_splice *sp1, struct kv_general_splice *sp2);
+int kv_splice_base_compare(struct kv_splice_base *sp1, struct kv_splice_base *sp2);
 
 /**
  * @bries Returns the size of the kv splice
  * @param pointer to the splice object
  * @returns the size of the splice in bytes
  */
-int32_t kv_general_splice_get_size(struct kv_general_splice *splice);
+int32_t kv_splice_base_get_size(struct kv_splice_base *splice);
 /**
  * @brief Returns the key size of the splice
  * @param splice pointer to the splice object
  * @returns the size of the object
  */
-int32_t kv_general_splice_get_key_size(struct kv_general_splice *splice);
+int32_t kv_splice_base_get_key_size(struct kv_splice_base *splice);
 
 /**
  * @brief Calculates the size of the splice
  * @param splice pointer to the splice object
  */
-int32_t kv_general_splice_calculate_size(struct kv_general_splice *splice);
+int32_t kv_splice_base_calculate_size(struct kv_splice_base *splice);
 
 /**
  * @brief Returns a reference to the start of the underlying (kv_sep2 or
  * kv_splice) object starts.
  * @param splice pointer to the splice object
  */
-char *kv_general_splice_get_reference(struct kv_general_splice *splice);
+char *kv_splice_base_get_reference(struct kv_splice_base *splice);
 
 /**
  * @brief Returns the start of the key buffer of the splice
  * @param splice pointer to the splice object
  */
-char *kv_general_splice_get_key_buf(struct kv_general_splice *splice);
+char *kv_splice_base_get_key_buf(struct kv_splice_base *splice);
 
 #endif // KV_PAIRS_H

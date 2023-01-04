@@ -32,7 +32,7 @@ typedef enum SEEK_SCANNER_MODE { GREATER = 5, GREATER_OR_EQUAL = 6, FETCH_FIRST 
 typedef enum SCANNER_TYPE { FORWARD_SCANNER = 1 } SCANNER_TYPE;
 
 struct level_scanner {
-	struct kv_general_splice splice;
+	struct kv_splice_base splice;
 	db_handle *db;
 	stackT stack;
 	struct node_header *root;

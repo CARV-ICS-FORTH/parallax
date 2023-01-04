@@ -18,7 +18,7 @@
 #include "../btree/key_splice.h"
 #include "../btree/kv_pairs.h"
 #include "../common/common.h"
-#include "parallax/structures.h"
+#include "../include/parallax/structures.h"
 #include <assert.h>
 #include <log.h>
 #include <stdint.h>
@@ -93,7 +93,7 @@ static int sh_solve_tie(struct sh_heap *heap, struct sh_heap_node *nd_1, struct 
  */
 static int sh_cmp_heap_nodes(struct sh_heap *hp, struct sh_heap_node *nd_1, struct sh_heap_node *nd_2)
 {
-	int ret = kv_general_splice_compare(&nd_1->splice, &nd_2->splice);
+	int ret = kv_splice_base_compare(&nd_1->splice, &nd_2->splice);
 	return ret ? ret : sh_solve_tie(hp, nd_1, nd_2);
 }
 /**

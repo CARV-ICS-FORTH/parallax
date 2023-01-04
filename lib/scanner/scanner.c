@@ -22,9 +22,9 @@
 #include "../btree/kv_pairs.h"
 #include "../common/common.h"
 #include "../include/parallax/parallax.h"
+#include "../include/parallax/structures.h"
 #include "../utilities/dups_list.h"
 #include "min_max_heap.h"
-#include "parallax/structures.h"
 #include "stack.h"
 #include <assert.h>
 #include <errno.h>
@@ -34,6 +34,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+
 int init_level_scanner(struct level_scanner *level_sc, void *start_key, char seek_mode)
 {
 	stack_init(&level_sc->stack);
@@ -402,7 +403,7 @@ int32_t level_scanner_seek(struct level_scanner *level_sc, struct key_splice *st
 
 	level_sc->splice = dl_get_general_splice((struct dl_leaf_node *)element.node, element.idx);
 	// log_debug("Level scanner seek reached splice %.*s at idx %d node entries %d",
-	// 	  kv_general_splice_get_key_size(&level_sc->splice), kv_general_splice_get_key_buf(&level_sc->splice),
+	// 	  kv_splice_base_get_key_size(&level_sc->splice), kv_splice_base_get_key_buf(&level_sc->splice),
 	// 	  element.idx, element.node->num_entries);
 	stack_push(&level_sc->stack, element);
 	return PAR_SUCCESS;

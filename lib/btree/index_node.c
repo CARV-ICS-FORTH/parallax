@@ -136,7 +136,7 @@ bool index_is_split_needed(struct index_node *node, uint32_t max_pivot_size)
 
 static inline struct key_splice *index_get_key_splice(struct index_node *node, uint16_t offset)
 {
-	return (struct key_splice *)((uint64_t)node + offset);
+	return (struct key_splice *)((uintptr_t)node + offset);
 }
 
 /**

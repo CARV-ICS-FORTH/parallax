@@ -383,9 +383,9 @@ static void wcursor_init_medium_log(struct db_descriptor *db_desc, uint8_t level
 	log_debug("Done initializing medium log");
 }
 
-static struct kv_general_splice wcursor_append_medium_L1(struct wcursor_level_write_cursor *w_cursor,
-							 struct kv_general_splice *splice, char *kv_sep_buf,
-							 int32_t kv_sep_buf_size)
+static struct kv_splice_base wcursor_append_medium_L1(struct wcursor_level_write_cursor *w_cursor,
+						      struct kv_splice_base *splice, char *kv_sep_buf,
+						      int32_t kv_sep_buf_size)
 
 {
 	if (w_cursor->level_id != 1 || splice->cat != MEDIUM_INPLACE)
@@ -408,7 +408,7 @@ static struct kv_general_splice wcursor_append_medium_L1(struct wcursor_level_wr
 	ins_req.metadata.recovery_request = 0;
 	ins_req.metadata.key_format = KV_FORMAT;
 	ins_req.metadata.tombstone = 0;
-	ins_req.key_value_buf = (char *)kv_general_splice_get_reference(splice);
+	ins_req.key_value_buf = (char *)kv_splice_base_get_reference(splice);
 	ins_req.metadata.reorganized_leaf_pos_INnode = NULL;
 	/*For Tebis-parallax currently*/
 	ins_req.metadata.segment_full_event = 0;
@@ -423,20 +423,20 @@ static struct kv_general_splice wcursor_append_medium_L1(struct wcursor_level_wr
 
 	char *log_location = append_key_value_to_log(&log_op);
 
-	struct kv_general_splice kv_sep = {
+	struct kv_splice_base kv_sep = {
 		.cat = MEDIUM_INLOG,
-		.kv_sep2 = kv_sep2_create(kv_general_splice_get_key_size(splice), kv_general_splice_get_key_buf(splice),
+		.kv_sep2 = kv_sep2_create(kv_splice_base_get_key_size(splice), kv_splice_base_get_key_buf(splice),
 					  ABSOLUTE_ADDRESS(log_location), kv_sep_buf, kv_sep_buf_size)
 	};
 	return kv_sep;
 }
 
-bool wcursor_append_KV_pair(struct wcursor_level_write_cursor *cursor, struct kv_general_splice *splice)
+bool wcursor_append_KV_pair(struct wcursor_level_write_cursor *cursor, struct kv_splice_base *splice)
 {
 	uint64_t left_leaf_offt = 0;
 	uint64_t right_leaf_offt = 0;
 
-	struct kv_general_splice new_splice = *splice;
+	struct kv_splice_base new_splice = *splice;
 
 	char kv_sep_buf[KV_SEP2_MAX_SIZE];
 	if (cursor->level_id == 1 && splice->cat == MEDIUM_INPLACE)
@@ -445,16 +445,16 @@ bool wcursor_append_KV_pair(struct wcursor_level_write_cursor *cursor, struct kv
 		new_splice.cat = MEDIUM_INPLACE;
 		new_splice.kv_splice =
 			(struct kv_splice *)fetch_kv_from_LRU(cursor, kv_sep2_get_value_offt(new_splice.kv_sep2));
-		assert(kv_general_splice_get_key_size(&new_splice) <= MAX_KEY_SIZE);
-		assert(kv_general_splice_get_key_size(&new_splice) > 0);
+		assert(kv_splice_base_get_key_size(&new_splice) <= MAX_KEY_SIZE);
+		assert(kv_splice_base_get_key_size(&new_splice) > 0);
 
 #if MEASURE_MEDIUM_INPLACE
 		__sync_fetch_and_add(&cursor->handle->db_desc->count_medium_inplace, 1);
 #endif
 	}
 	bool new_leaf = false;
-	if (dl_is_leaf_full(cursor->last_leaf, kv_general_splice_get_size(&new_splice))) {
-		// log_debug("Time for a split! cannot host key of size %d", kv_general_splice_get_key_size(&new_splice));
+	if (dl_is_leaf_full(cursor->last_leaf, kv_splice_base_get_size(&new_splice))) {
+		// log_debug("Time for a split! cannot host key of size %d", kv_splice_base_get_key_size(&new_splice));
 		uint32_t offt_l = wcursor_calc_offt_in_seg(cursor->segment_buf[0], (char *)cursor->last_leaf);
 		left_leaf_offt = cursor->last_segment_btree_level_offt[0] + offt_l;
 		wcursor_get_space(cursor, 0, leafNode);
@@ -469,14 +469,13 @@ bool wcursor_append_KV_pair(struct wcursor_level_write_cursor *cursor, struct kv
 		_exit(EXIT_FAILURE);
 	}
 
-	cursor->handle->db_desc->levels[cursor->level_id].level_size[1] += kv_general_splice_get_size(&new_splice);
+	cursor->handle->db_desc->levels[cursor->level_id].level_size[1] += kv_splice_base_get_size(&new_splice);
 	if (!new_leaf)
 		return true;
 
 	bool malloced = false;
-	struct key_splice *new_pivot = key_splice_create(kv_general_splice_get_key_buf(&new_splice),
-							 kv_general_splice_get_key_size(&new_splice), NULL, 0,
-							 &malloced);
+	struct key_splice *new_pivot = key_splice_create(kv_splice_base_get_key_buf(&new_splice),
+							 kv_splice_base_get_key_size(&new_splice), NULL, 0, &malloced);
 
 	assert(malloced);
 	wcursor_append_pivot_to_index(1, cursor, left_leaf_offt, new_pivot, right_leaf_offt);

@@ -23,6 +23,7 @@
 #include "index_node.h"
 #include <assert.h>
 #include <log.h>
+#include <stdint.h>
 #include <stdlib.h>
 // IWYU pragma: no_forward_declare index_node
 struct dl_leaf_node;
@@ -139,7 +140,7 @@ static void *get_space(struct db_descriptor *db_desc, uint8_t level_id, uint8_t 
 		offset_in_segment = link_memory_segments(&req);
 	}
 
-	node = (struct node_header *)((uint64_t)level_desc->last_segment[tree_id] + offset_in_segment);
+	node = (struct node_header *)((uintptr_t)level_desc->last_segment[tree_id] + offset_in_segment);
 	assert(node);
 	level_desc->offset[tree_id] += size;
 	MUTEX_UNLOCK(&level_desc->level_allocation_lock);
