@@ -51,7 +51,7 @@ struct rcursor_level_read_cursor *rcursor_init_cursor(db_handle *handle, uint32_
 			root = r_cursor->handle->db_desc->levels[0].root_r[tree_id];
 
 		r_cursor->L0_cursor = calloc(1UL, sizeof(struct rcursor_L0_cursor));
-		r_cursor->L0_cursor->L0_scanner = _init_compaction_buffer_scanner(handle, level_id, root, NULL);
+		r_cursor->L0_cursor->L0_scanner = level_scanner_init_compaction_scanner(handle, level_id, tree_id);
 		return r_cursor;
 	}
 
@@ -74,8 +74,7 @@ struct rcursor_level_read_cursor *rcursor_init_cursor(db_handle *handle, uint32_
 
 static bool rcursor_get_next_KV_from_L0(struct rcursor_level_read_cursor *r_cursor)
 {
-	bool ret = END_OF_DATABASE == level_scanner_get_next(r_cursor->L0_cursor->L0_scanner) ? false : true;
-	return ret;
+	return level_scanner_get_next(r_cursor->L0_cursor->L0_scanner);
 }
 
 static bool rcursor_get_next_kv_from_device(struct rcursor_level_read_cursor *r_cursor)
@@ -224,7 +223,7 @@ void rcursor_close_cursor(struct rcursor_level_read_cursor *r_cursor)
 		return;
 
 	if (0 == r_cursor->level_id) {
-		close_compaction_buffer_scanner(r_cursor->L0_cursor->L0_scanner);
+		level_scanner_close(r_cursor->L0_cursor->L0_scanner);
 		free(r_cursor->L0_cursor);
 		free(r_cursor);
 		return;

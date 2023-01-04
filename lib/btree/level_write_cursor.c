@@ -294,6 +294,7 @@ void wcursor_flush_write_cursor(struct wcursor_level_write_cursor *w_cursor)
 
 			if (!index_set_type((struct index_node *)w_cursor->last_index[i], rootNode)) {
 				log_fatal("Error setting node type");
+				assert(0);
 				BUG_ON();
 			}
 			uint32_t offt =
