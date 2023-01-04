@@ -91,6 +91,10 @@ void index_init_node(enum add_guard_option option, struct index_node *node, node
 		log_fatal("Unknown guard option");
 		BUG_ON();
 	}
+	if (!node) {
+		log_warn("Canno init a null node");
+		return;
+	}
 
 	node->header.type = type;
 	node->header.num_entries = 0;
