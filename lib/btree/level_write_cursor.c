@@ -419,7 +419,7 @@ static struct kv_splice_base wcursor_append_medium_L1(struct wcursor_level_write
 	ins_req.metadata.log_padding = 0;
 
 	struct log_operation log_op = { log_op.metadata = &ins_req.metadata, log_op.optype_tolog = insertOp,
-					log_op.ins_req = &ins_req, log_op.is_compaction = true };
+					log_op.ins_req = &ins_req, log_op.is_medium_log_append = true };
 
 	char *log_location = append_key_value_to_log(&log_op);
 

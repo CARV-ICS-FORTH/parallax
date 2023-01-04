@@ -10,6 +10,12 @@
 #include <unistd.h>
 #include <uthash.h>
 
+/**
+ * test_leaf_node randomly generates in place kv_pair and kv_seperated and
+ * stores them in a leaf node. Then it 1) verifies their existence 2) splits
+ * the leaf into two nodes and verify the existence of the kv pairs and 3)
+ * reorganizes the leaf node and checks if all kv pairs are present.
+ */
 struct kv_splice *tlf_generate_in_place_kv(void)
 {
 	char key[MAX_KEY_SIZE] = { 0 };

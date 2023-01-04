@@ -1191,7 +1191,7 @@ static void *bt_append_to_log_direct_IO(struct log_operation *req, struct log_to
 	log_kv_entry_ticket.tail = log_metadata->log_desc->tail[tail_id % LOG_TAIL_NUM_BUFS];
 	log_kv_entry_ticket.log_offt = log_metadata->log_desc->size;
 
-	if (req->is_compaction)
+	if (req->is_medium_log_append)
 		log_kv_entry_ticket.lsn = get_max_lsn();
 	else
 		log_kv_entry_ticket.lsn = increase_lsn(&handle->db_desc->lsn_factory);
@@ -1202,7 +1202,7 @@ static void *bt_append_to_log_direct_IO(struct log_operation *req, struct log_to
 
 	req->metadata->log_offset = log_metadata->log_desc->size;
 	req->metadata->put_op_metadata.offset_in_log = req->metadata->log_offset;
-	if (req->is_compaction) {
+	if (req->is_medium_log_append) {
 		struct lsn max_lsn = get_max_lsn();
 		req->metadata->put_op_metadata.lsn = get_lsn_id(&max_lsn);
 	} else
@@ -1499,7 +1499,7 @@ int insert_KV_at_leaf(bt_insert_req *ins_req, struct node_header *leaf)
 		struct log_operation append_op = { .metadata = &ins_req->metadata,
 						   .optype_tolog = insertOp,
 						   .ins_req = ins_req,
-						   .is_compaction = false };
+						   .is_medium_log_append = false };
 		if (ins_req->metadata.tombstone)
 			append_op.optype_tolog = deleteOp;
 		log_address = append_key_value_to_log(&append_op);
@@ -1574,7 +1574,7 @@ void _unlock_upper_levels(lock_table *node[], unsigned size, unsigned release)
 		}
 }
 
-static int32_t bt_calculate_splice_size(enum kv_category cat, struct kv_splice *kv_splice)
+static uint32_t bt_calculate_splice_size(enum kv_category cat, struct kv_splice *kv_splice)
 {
 	switch (cat) {
 	case SMALL_INPLACE:

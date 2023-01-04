@@ -30,7 +30,6 @@
 #include <pthread.h>
 #include <semaphore.h>
 #include <stdint.h>
-#define PREFIX_SIZE 12
 #define MAX_HEIGHT 9
 
 struct lookup_operation {
@@ -49,7 +48,7 @@ enum db_status { DB_START_COMPACTION_DAEMON, DB_OPEN, DB_TERMINATE_COMPACTION_DA
 
 /*descriptor describing a compaction operation and its current status*/
 enum level_compaction_status {
-	BT_NO_COMPACTION = 128,
+	BT_NO_COMPACTION = 1,
 	BT_COMPACTION_IN_PROGRESS,
 };
 
@@ -285,7 +284,7 @@ struct log_operation {
 	bt_mutate_req *metadata;
 	request_type optype_tolog; //enum insertOp, deleteOp
 	bt_insert_req *ins_req;
-	bool is_compaction; //To identify medium log cases
+	bool is_medium_log_append;
 };
 
 /**
