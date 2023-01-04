@@ -93,8 +93,8 @@ int8_t find_deleted_kv_pairs_in_segment(struct db_handle handle, struct gc_segme
 	struct gc_segment_descriptor iter_log_segment = *log_seg;
 	char *log_segment_in_device = REAL_ADDRESS(log_seg->segment_dev_offt);
 	char buf[MAX_KEY_SPLICE_SIZE];
-	struct kv_splice *kv = NULL;
-	int64_t checked_segment_chunk = get_lsn_size();
+	struct kv_splice *kv_pair = NULL;
+	int64_t bytes_checked_in_segment = get_lsn_size();
 	int64_t segment_data = LOG_DATA_OFFSET;
 
 	iter_log_segment.log_segment_in_memory += get_lsn_size();
@@ -103,13 +103,13 @@ int8_t find_deleted_kv_pairs_in_segment(struct db_handle handle, struct gc_segme
 	int32_t key_value_size = get_kv_metadata_size();
 	marks->size = 0;
 
-	while (checked_segment_chunk < segment_data) {
-		kv = (struct kv_splice *)iter_log_segment.log_segment_in_memory;
+	while (bytes_checked_in_segment < segment_data) {
+		kv_pair = (struct kv_splice *)iter_log_segment.log_segment_in_memory;
 
-		if (!kv->key_size || checked_segment_chunk - segment_data < get_min_possible_kv_size())
+		if (!kv_pair->key_size || segment_data - bytes_checked_in_segment < get_min_possible_kv_size())
 			break;
 
-		serialize_kv_splice_to_key_splice(buf, kv);
+		serialize_kv_splice_to_key_splice(buf, kv_pair);
 		struct lookup_operation get_op = { .db_desc = handle.db_desc,
 						   .found = 0,
 						   .size = 0,
@@ -122,11 +122,13 @@ int8_t find_deleted_kv_pairs_in_segment(struct db_handle handle, struct gc_segme
 		if (get_op.found && log_segment_in_device == get_op.key_device_address)
 			push_stack(marks, iter_log_segment.log_segment_in_memory);
 
-		if (kv->key_size) {
-			int32_t bytes_to_move = kv->key_size + kv->value_size + key_value_size + get_lsn_size();
+		if (kv_pair->key_size) {
+			int32_t bytes_to_move =
+				kv_pair->key_size + kv_pair->value_size + key_value_size + get_lsn_size();
 			iter_log_segment.log_segment_in_memory += bytes_to_move;
 			log_segment_in_device += bytes_to_move;
-			checked_segment_chunk += kv->key_size + kv->value_size + key_value_size + get_lsn_size();
+			bytes_checked_in_segment +=
+				kv_pair->key_size + kv_pair->value_size + key_value_size + get_lsn_size();
 		} else
 			break;
 	}
