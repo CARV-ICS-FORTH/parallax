@@ -451,7 +451,7 @@ db_handle *internal_db_open(struct volume_descriptor *volume_desc, par_db_option
 	}
 
 	db_desc->level_medium_inplace = db_options->options[LEVEL_MEDIUM_INPLACE].value;
-	handle = calloc(1, sizeof(db_handle));
+	handle = calloc(1UL, sizeof(db_handle));
 	handle->db_desc = db_desc;
 	handle->volume_desc = db_desc->db_volume;
 	//deep copy db_options

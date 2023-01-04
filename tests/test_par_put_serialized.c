@@ -34,7 +34,7 @@ int main(int argc, char *argv[])
 				      .db_name = "serialized_par_put.db",
 				      .options = par_get_default_options() };
 	par_handle handle = par_open(&db_options, &error_message);
-	if (error_message) {
+	if (NULL == handle || error_message) {
 		log_fatal("%s", error_message);
 		return EXIT_FAILURE;
 	}
