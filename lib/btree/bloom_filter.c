@@ -240,7 +240,7 @@ struct pbf_desc *pbf_recover_bloom_filter(db_handle *database_desc, uint8_t leve
 	db_descriptor *db_desc = database_desc->db_desc;
 	char *bloom_filter_folder = pbf_create_bloom_filter_folder(db_desc->db_volume->volume_name);
 	char *full_bloom_name = pbf_create_full_file_name(bloom_file_hash, bloom_filter_folder);
-	int bloom_file_desc = open(full_bloom_name, O_RDONLY | O_CREAT | O_DIRECT | O_CLOEXEC);
+	int bloom_file_desc = open(full_bloom_name, O_RDONLY | O_CREAT | O_DIRECT | O_CLOEXEC, 0600);
 
 	if (bloom_file_desc == -1) {
 		log_fatal("Failed to open file %s", full_bloom_name);
