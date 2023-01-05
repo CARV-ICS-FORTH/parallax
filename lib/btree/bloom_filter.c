@@ -13,12 +13,16 @@
 // limitations under the License.
 #define _GNU_SOURCE
 #include "bloom_filter.h"
+#include "../allocator/device_structures.h"
 #include "../allocator/djb2.h"
 #include "btree.h"
+#include "conf.h"
 #include <bloom.h>
 #include <fcntl.h>
 #include <log.h>
 #include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/time.h>
 #include <unistd.h>
@@ -93,7 +97,7 @@ static char *pbf_create_full_file_name(uint64_t bloom_file_hash)
 {
 	char bloom_name[PBF_BLOOM_BUFFER_SIZE] = { 0 };
 	if (snprintf(bloom_name, PBF_BLOOM_BUFFER_SIZE, "%lx", bloom_file_hash) < 0) {
-		return false;
+		return NULL;
 	}
 	char *full_bloom_name =
 		calloc(1UL, strlen(bloom_name) + strlen(PARALLAX_FOLDER) + strlen(PBF_BLOOM_FILE_SUFFIX) + 1);

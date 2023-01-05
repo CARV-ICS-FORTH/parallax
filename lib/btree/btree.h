@@ -22,7 +22,6 @@
 #include "index_node.h"
 #include "lsn.h"
 #include "parallax/structures.h"
-#include <bloom.h>
 #include <pthread.h>
 #include <semaphore.h>
 #include <stdbool.h>

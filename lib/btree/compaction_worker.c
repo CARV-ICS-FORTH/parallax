@@ -23,7 +23,7 @@
 #include <semaphore.h>
 #include <stdlib.h>
 #include <string.h>
-
+struct pbf_desc;
 struct compaction_roots {
 	struct node_header *src_root;
 	struct node_header *dst_root;

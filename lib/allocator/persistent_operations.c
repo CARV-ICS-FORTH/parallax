@@ -34,6 +34,7 @@
 #include <string.h>
 #include <unistd.h>
 struct node_header;
+struct pbf_desc;
 struct log_info {
 	uint64_t head_dev_offt;
 	uint64_t tail_dev_offt;

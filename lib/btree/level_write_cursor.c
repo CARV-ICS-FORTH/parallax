@@ -4,7 +4,6 @@
 #include "../allocator/log_structures.h"
 #include "../allocator/volume_manager.h"
 #include "../common/common.h"
-#include "../lib/allocator/djb2.h"
 #include "bloom_filter.h"
 #include "btree_node.h"
 #include "dynamic_leaf.h"
@@ -15,13 +14,12 @@
 #include "parallax/structures.h"
 #include "segment_allocator.h"
 #include <assert.h>
-#include <fcntl.h>
 #include <log.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/time.h>
 #include <unistd.h>
+struct pbf_desc;
 struct index_node;
 struct key_splice;
 
