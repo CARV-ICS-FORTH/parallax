@@ -205,14 +205,6 @@ typedef struct db_handle {
 	db_descriptor *db_desc;
 } db_handle;
 
-typedef struct recovery_request {
-	volume_descriptor *volume_desc;
-	db_descriptor *db_desc;
-	uint64_t big_log_start_offset;
-	uint64_t medium_log_start_offset;
-	uint64_t small_log_start_offset;
-} recovery_request;
-
 struct log_recovery_metadata {
 	segment_header *log_curr_segment;
 	uint64_t log_size;
@@ -220,12 +212,6 @@ struct log_recovery_metadata {
 	uint64_t curr_lsn;
 	uint64_t segment_id;
 	uint64_t prev_segment_id;
-};
-
-struct recovery_operator {
-	struct log_recovery_metadata big;
-	struct log_recovery_metadata medium;
-	struct log_recovery_metadata small;
 };
 
 void pr_flush_log_tail(struct db_descriptor *db_desc, struct log_descriptor *log_desc);

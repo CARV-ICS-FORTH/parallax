@@ -58,5 +58,4 @@
 #define MAX_HEIGHT 9
 
 #define BLOOM_BUFFER_SIZE (128U)
-#define PARALLAX_FOLDER "/tmp/nvme/"
 #endif
