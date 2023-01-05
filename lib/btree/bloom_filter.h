@@ -23,12 +23,12 @@ struct pbf_desc;
  * @brief Initializes a new bloom filter for the level. It approximates the
  * capacity of the bloom filter (aka the number of key value pairs that it will
  * address) based on the level size in keys
- * @param db_desc the descripto of the database
+ * @param database_desc the descripto of the database
  * @param level_id the id of the level
  * @param tree_id the tree in the level
  * @return reference to the object or NULL on failure.
  */
-struct pbf_desc *pbf_create(db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id);
+struct pbf_desc *pbf_create(db_handle *database_desc, uint8_t level_id, uint8_t tree_id);
 
 /**
  * @brief Writes a bloom filter to a file on disk
@@ -84,7 +84,7 @@ bool pbf_check(struct pbf_desc *bloom_filter, char *key, int32_t size);
  * on disk
  * @return the descriptor of the in-memory representation of the bloom filter.
  */
-struct pbf_desc *pbf_recover_bloom_filter(db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id,
+struct pbf_desc *pbf_recover_bloom_filter(db_handle *database_desc, uint8_t level_id, uint8_t tree_id,
 					  uint64_t bloom_file_hash);
 
 /**

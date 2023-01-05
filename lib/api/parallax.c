@@ -29,7 +29,6 @@
 #include <stdlib.h>
 #include <string.h>
 #define PAR_MAX_PREALLOCATED_SIZE 256
-#define NUM_OF_OPTIONS 7
 
 char *par_format(char *device_name, uint32_t max_regions_num)
 {
@@ -361,7 +360,7 @@ par_ret_code par_sync(par_handle handle)
 struct par_options_desc *par_get_default_options(void)
 {
 	struct par_options_desc *default_db_options =
-		(struct par_options_desc *)calloc(NUM_OF_OPTIONS, sizeof(struct par_options_desc));
+		(struct par_options_desc *)calloc(NUM_OF_CONFIGURATION_OPTIONS, sizeof(struct par_options_desc));
 
 	// parse the options from options.yml config file
 	struct lib_option *dboptions = NULL;
@@ -390,6 +389,9 @@ struct par_options_desc *par_get_default_options(void)
 	check_option(dboptions, "replica_mode", &option);
 	uint64_t replica_mode = option->value.count;
 
+	check_option(dboptions, "enable_bloom_filters", &option);
+	uint64_t enable_bloom_filters = option->value.count;
+
 	//fill default_db_options based on the default values
 	default_db_options[LEVEL0_SIZE].value = level0_size;
 	default_db_options[GROWTH_FACTOR].value = growth_factor;
@@ -398,6 +400,7 @@ struct par_options_desc *par_get_default_options(void)
 	default_db_options[GC_INTERVAL].value = gc_interval;
 	default_db_options[PRIMARY_MODE].value = primary_mode;
 	default_db_options[REPLICA_MODE].value = replica_mode;
+	default_db_options[ENABLE_BLOOM_FILTERS].value = enable_bloom_filters;
 
 	return default_db_options;
 }

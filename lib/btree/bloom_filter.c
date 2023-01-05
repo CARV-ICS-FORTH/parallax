@@ -56,11 +56,11 @@ static char *pbf_create_bloom_filter_folder(char *volume_name)
 	return bloom_filter_folder;
 }
 
-struct pbf_desc *pbf_create(db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
+struct pbf_desc *pbf_create(db_handle *database_desc, uint8_t level_id, uint8_t tree_id)
 {
-#if !ENABLE_BLOOM_FILTERS
-	return NULL;
-#endif
+	if (!database_desc->db_options.options[ENABLE_BLOOM_FILTERS].value)
+		return NULL;
+	db_descriptor *db_desc = database_desc->db_desc;
 
 	int32_t total_keys = db_desc->levels[level_id].num_level_keys[tree_id];
 
@@ -129,9 +129,9 @@ static char *pbf_create_full_file_name(uint64_t bloom_file_hash, char *bloom_fil
 
 bool pbf_persist_bloom_filter(struct pbf_desc *bloom_filter)
 {
-#if !ENABLE_BLOOM_FILTERS
-	return true;
-#endif
+	if (NULL == bloom_filter)
+		return true;
+
 	bool ret = false;
 
 	bloom_filter->bloom_file_hash = pbf_create_bloom_filter_file_hash(
@@ -170,9 +170,8 @@ exit:
 
 static bool bpf_delete_bloom_file(struct pbf_desc *bloom_filter)
 {
-#if !ENABLE_BLOOM_FILTERS
-	return true;
-#endif
+	if (NULL == bloom_filter)
+		return true;
 	char bloom_name[PBF_BLOOM_BUFFER_SIZE] = { 0 };
 	bool ret = false;
 	if (snprintf(bloom_name, PBF_BLOOM_BUFFER_SIZE, "%lx", bloom_filter->bloom_file_hash) < 0) {
@@ -197,9 +196,8 @@ exit:
 
 bool pbf_destroy_bloom_filter(struct pbf_desc *bloom_filter)
 {
-#if !ENABLE_BLOOM_FILTERS
-	return true;
-#endif
+	if (NULL == bloom_filter)
+		return true;
 	log_debug("Freeing bloom filter for src level %u (Now is empty)", bloom_filter->level_id);
 	bloom_free2(bloom_filter->bloom_filter);
 	if (!bpf_delete_bloom_file(bloom_filter)) {
@@ -214,32 +212,32 @@ bool pbf_destroy_bloom_filter(struct pbf_desc *bloom_filter)
 
 bool pbf_bloom_add(struct pbf_desc *bloom_filter, char *key, int32_t size)
 {
-#if !ENABLE_BLOOM_FILTERS
-	return true;
-#endif
+	if (NULL == bloom_filter)
+		return true;
+
 	int ret = bloom_add(bloom_filter->bloom_filter, key, size);
 	return ret == -1 ? false : true;
 }
 
 bool pbf_check(struct pbf_desc *bloom_filter, char *key, int32_t size)
 {
-#if !ENABLE_BLOOM_FILTERS
-	return true;
-#endif
+	if (NULL == bloom_filter)
+		return true;
+
 	int ret = bloom_check(bloom_filter->bloom_filter, key, size);
 	if (ret == -1) {
 		log_fatal("Corrupted/Non initialized bloom filter");
 		_exit(EXIT_FAILURE);
 	}
-	return 1 == ret ? true : false;
+	return 1 == ret;
 }
 
-struct pbf_desc *pbf_recover_bloom_filter(db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id,
+struct pbf_desc *pbf_recover_bloom_filter(db_handle *database_desc, uint8_t level_id, uint8_t tree_id,
 					  uint64_t bloom_file_hash)
 {
-#if !ENABLE_BLOOM_FILTERS
-	return NULL;
-#endif
+	if (!database_desc->db_options.options[ENABLE_BLOOM_FILTERS].value)
+		return NULL;
+	db_descriptor *db_desc = database_desc->db_desc;
 	char *bloom_filter_folder = pbf_create_bloom_filter_folder(db_desc->db_volume->volume_name);
 	char *full_bloom_name = pbf_create_full_file_name(bloom_file_hash, bloom_filter_folder);
 	int bloom_file_desc = open(full_bloom_name, O_RDONLY | O_CREAT | O_DIRECT | O_CLOEXEC);
@@ -262,8 +260,7 @@ struct pbf_desc *pbf_recover_bloom_filter(db_descriptor *db_desc, uint8_t level_
 
 uint64_t pbf_get_bf_file_hash(struct pbf_desc *bloom_filter)
 {
-#if !ENABLE_BLOOM_FILTERS
-	return UINT64_MAX;
-#endif
+	if (NULL == bloom_filter)
+		return UINT64_MAX;
 	return bloom_filter->bloom_file_hash;
 }

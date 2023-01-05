@@ -342,16 +342,16 @@ static void restore_db(struct db_descriptor *db_desc, uint32_t region_idx)
 	recover_logs(db_desc);
 }
 
-static void db_recover_bloom_filters(struct db_descriptor *db_desc)
+static void db_recover_bloom_filters(struct db_handle *database_desc)
 {
 	for (int i = 1; i < MAX_LEVELS; i++) {
 		for (int j = 0; j < NUM_TREES_PER_LEVEL; j++) {
-			if (0 == db_desc->db_superblock->bloom_filter_valid[i][j]) {
-				db_desc->levels[i].bloom_desc[j] = NULL;
+			if (0 == database_desc->db_desc->db_superblock->bloom_filter_valid[i][j]) {
+				database_desc->db_desc->levels[i].bloom_desc[j] = NULL;
 				continue;
 			}
-			db_desc->levels[i].bloom_desc[j] = pbf_recover_bloom_filter(
-				db_desc, i, j, db_desc->db_superblock->bloom_filter_hash[i][j]);
+			database_desc->db_desc->levels[i].bloom_desc[j] = pbf_recover_bloom_filter(
+				database_desc, i, j, database_desc->db_desc->db_superblock->bloom_filter_hash[i][j]);
 		}
 	}
 }
@@ -562,7 +562,7 @@ db_handle *internal_db_open(struct volume_descriptor *volume_desc, par_db_option
 	MUTEX_INIT(&handle->db_desc->flush_L0_lock, NULL);
 	pr_flush_L0(db_desc, db_desc->levels[0].active_tree);
 	db_desc->levels[0].allocation_txn_id[db_desc->levels[0].active_tree] = rul_start_txn(db_desc);
-	db_recover_bloom_filters(db_desc);
+	db_recover_bloom_filters(handle);
 	recover_L0(handle->db_desc);
 
 exit:

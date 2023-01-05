@@ -14,7 +14,6 @@
 
 #ifndef PARALLAX_SET_OPTIONS_H
 #define PARALLAX_SET_OPTIONS_H
-#define NUM_OF_OPTIONS 7
 
 #include <uthash.h>
 

@@ -210,7 +210,7 @@ struct wcursor_level_write_cursor *wcursor_init_write_cursor(int level_id, struc
 	}
 
 	handle->db_desc->levels[w_cursor->level_id].bloom_desc[w_cursor->tree_id] =
-		pbf_create(handle->db_desc, w_cursor->level_id, w_cursor->tree_id);
+		pbf_create(handle, w_cursor->level_id, w_cursor->tree_id);
 
 	return w_cursor;
 }
