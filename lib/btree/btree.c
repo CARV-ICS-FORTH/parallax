@@ -400,11 +400,10 @@ static db_descriptor *get_db_from_volume(char *volume_name, char *db_name, par_d
 	return db_desc;
 }
 
-void bt_set_db_status(uint64_t *status, uint64_t new_status)
+void bt_set_db_status(struct db_descriptor *db_desc, enum level_compaction_status comp_status, uint8_t level_id,
+		      uint8_t tree_id)
 {
-	for (uint64_t old_status = *status; !__sync_bool_compare_and_swap(status, old_status, new_status);
-	     old_status = *status)
-		;
+	db_desc->levels[level_id].tree_status[tree_id] = comp_status;
 }
 
 db_handle *internal_db_open(struct volume_descriptor *volume_desc, par_db_options *db_options,
@@ -523,7 +522,7 @@ db_handle *internal_db_open(struct volume_descriptor *volume_desc, par_db_option
 		db_desc->levels[level_id].count_compactions = 0;
 #endif
 		for (uint8_t tree_id = 0; tree_id < NUM_TREES_PER_LEVEL; tree_id++) {
-			bt_set_db_status(&handle->db_desc->levels[level_id].tree_status[tree_id], BT_NO_COMPACTION);
+			bt_set_db_status(handle->db_desc, BT_NO_COMPACTION, level_id, tree_id);
 			handle->db_desc->levels[level_id].epoch[tree_id] = 0;
 #if ENABLE_BLOOM_FILTERS
 			init_level_bloom_filters(db_desc, level_id, tree_id);

@@ -433,8 +433,8 @@ void *compaction(void *compaction_request)
 	log_debug("DONE Compaction from level's tree [%u][%u] to level's tree[%u][%u] "
 		  "cleaning src level",
 		  comp_req->src_level, comp_req->src_tree, comp_req->dst_level, comp_req->dst_tree);
-	bt_set_db_status(&db_desc->levels[comp_req->src_level].tree_status[comp_req->src_tree], BT_NO_COMPACTION);
-	bt_set_db_status(&db_desc->levels[comp_req->dst_level].tree_status[0], BT_NO_COMPACTION);
+	bt_set_db_status(db_desc, BT_NO_COMPACTION, comp_req->src_level, comp_req->src_tree);
+	bt_set_db_status(db_desc, BT_NO_COMPACTION, comp_req->dst_level, 0);
 
 	/*wake up clients*/
 	if (comp_req->src_level == 0) {

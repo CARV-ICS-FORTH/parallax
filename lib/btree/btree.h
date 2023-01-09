@@ -91,11 +91,6 @@ typedef struct lock_table {
 	char pad[8];
 } lock_table;
 
-struct compaction_pairs {
-	int16_t src_level;
-	int16_t dst_level;
-};
-
 typedef struct level_descriptor {
 #if ENABLE_BLOOM_FILTERS
 	struct bloom bloom_filter[NUM_TREES_PER_LEVEL];
@@ -129,7 +124,7 @@ typedef struct level_descriptor {
 	uint64_t medium_in_place_max_segment_id;
 	uint64_t medium_in_place_segment_dev_offt;
 	uint32_t leaf_size;
-	uint64_t tree_status[NUM_TREES_PER_LEVEL];
+	volatile enum level_compaction_status tree_status[NUM_TREES_PER_LEVEL];
 	uint8_t active_tree;
 	uint8_t level_id;
 	char in_recovery_mode;
@@ -358,7 +353,8 @@ void find_key(struct lookup_operation *get_op);
 int8_t delete_key(db_handle *handle, void *key, uint32_t size);
 
 void recover_L0(struct db_descriptor *db_desc);
-void bt_set_db_status(uint64_t *status, uint64_t new_status);
+void bt_set_db_status(struct db_descriptor *db_desc, enum level_compaction_status comp_status, uint8_t level_id,
+		      uint8_t tree_id);
 
 lock_table *_find_position(const lock_table **table, struct node_header *node);
 

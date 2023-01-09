@@ -26,6 +26,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 // IWYU pragma: no_forward_declare index_node
+// IWYU pragma: no_forward_declare dl_leaf_node
 
 struct link_segments_metadata {
 	level_descriptor *level_desc;
