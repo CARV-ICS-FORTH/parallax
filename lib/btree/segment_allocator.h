@@ -16,9 +16,9 @@
 #define SEGMENT_ALLOCATOR_H
 #include "../allocator/log_structures.h"
 #include "btree.h"
-#include "btree_node.h"
 #include "index_node.h"
 #include <stdint.h>
+struct node_header;
 // IWYU pragma: no_forward_declare index_node
 
 /*functions for index nodes*/
@@ -26,19 +26,17 @@ struct index_node *seg_get_index_node(struct db_descriptor *db_desc, uint8_t lev
 
 struct index_node *seg_get_index_node_header(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id);
 
-void seg_free_index_node_header(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id, node_header *node);
+void seg_free_index_node_header(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id,
+				struct node_header *node);
 
 void seg_free_index_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id, struct index_node *inode);
 
 /*function for leaf nodes*/
-leaf_node *seg_get_leaf_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id);
+struct leaf_node *seg_get_leaf_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id);
 
-leaf_node *seg_get_leaf_node_header(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id);
+struct leaf_node *seg_get_leaf_node_header(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id);
 
-void seg_free_leaf_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id, leaf_node *leaf);
-
-struct bt_dynamic_leaf_node *seg_get_dynamic_leaf_node(struct db_descriptor *db_desc, uint8_t level_id,
-						       uint8_t tree_id);
+struct leaf_node *seg_get_dynamic_leaf_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id);
 /*log related*/
 segment_header *seg_get_raw_log_segment(struct db_descriptor *db_desc, enum log_type log_type, uint8_t level_id,
 					uint8_t tree_id);

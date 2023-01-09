@@ -15,7 +15,6 @@
 #define INDEX_NODE_H
 #include "btree_node.h"
 #include "key_splice.h"
-#include "kv_pairs.h"
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -144,7 +143,7 @@ bool index_is_split_needed(struct index_node *node, uint32_t max_pivot_size);
   * int32_t pivot_size and data and the device offset to the node which should be visitted next. Doing the operation
   * pivot_key + PIVOT_KEY_SIZE we get the pivot pointer.
   */
-struct pivot_pointer *index_search_get_pivot(struct index_node *node, void *lookup_key, enum KV_type lookup_key_format);
+struct pivot_pointer *index_search_get_pivot(struct index_node *node, char *lookup_key, int32_t lookup_key_size);
 
 /**
   * Removes last  pivot_key followd by the pivot pointer from node. The
@@ -158,7 +157,7 @@ struct key_splice *index_remove_last_pivot_key(struct index_node *node);
  * Performs binary search in an index node and returns the device offt of the
  * children node that we need to follow
  */
-uint64_t index_binary_search(struct index_node *node, void *lookup_key, enum KV_type lookup_key_format);
+uint64_t index_binary_search(struct index_node *node, char *lookup_key, int32_t lookup_key_size);
 
 /**
  * Splits an index node into two child index nodes.
@@ -207,13 +206,6 @@ struct key_splice *index_iterator_get_pivot_key(struct index_node_iterator *iter
   */
 struct pivot_pointer *index_iterator_get_pivot_pointer(struct index_node_iterator *iterator);
 
-/**
-  * Compares a look up key following the lookup key format with an index key (pivot key)
-  * @param index_key: the index key to be compared
-  * @param lookup_key: the key being searched against the index node
-  * @param lookup_key_format: the format the lookup_key follows
-  */
-int index_key_cmp(struct key_splice *index_key_splice, char *lookup_key, enum KV_type lookup_key_format);
 /**
   * sets the key of a given pivot_key
   * @param pivot: the given pivot_key

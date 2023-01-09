@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 #include "../btree/btree.h"
-#include "../btree/btree_node.h"
 #include "../btree/conf.h"
 #include "../btree/gc.h"
 #include "../btree/kv_pairs.h"
@@ -33,7 +32,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-
+struct node_header;
 struct log_info {
 	uint64_t head_dev_offt;
 	uint64_t tail_dev_offt;
@@ -414,7 +413,7 @@ void pr_flush_log_tail(struct db_descriptor *db_desc, struct log_descriptor *log
 	start_offt = chunk_id * LOG_CHUNK_SIZE;
 
 	uint64_t end_offt = start_offt + LOG_CHUNK_SIZE;
-	log_info("Flushing log tail start_offt: %lu end_offt: %lu last tail %d", start_offt, end_offt, last_tail);
+	log_debug("Flushing log tail start_offt: %lu end_offt: %lu last tail %d", start_offt, end_offt, last_tail);
 	while (start_offt < end_offt) {
 		ssize_t bytes_written = pwrite(db_desc->db_volume->vol_fd, &log_desc->tail[last_tail]->buf[start_offt],
 					       end_offt - start_offt, log_desc->tail[last_tail]->dev_offt + start_offt);
@@ -457,7 +456,7 @@ static int add_segment_in_array(struct segment_array *segments, uint64_t dev_off
 static struct segment_array *find_N_last_small_log_segments(struct db_descriptor *db_desc)
 {
 	/*traverse small log and fill the segment array*/
-	log_info("Recovery of small log start from segment dev offt: %lu", db_desc->small_log_start_segment_dev_offt);
+	log_debug("Recovery of small log start from segment dev offt: %lu", db_desc->small_log_start_segment_dev_offt);
 	struct segment_header *first_recovery_segment = REAL_ADDRESS(db_desc->small_log_start_segment_dev_offt);
 	struct segment_array *segment_array = calloc(1, sizeof(struct segment_array));
 
@@ -546,8 +545,8 @@ static struct segment_array *find_N_last_blobs(struct db_descriptor *db_desc, ui
 	struct blob_entry *root_blob_entry = NULL;
 	struct large_log_segment_gc_entry *garbage_bytes_for_blobs = NULL;
 	struct large_log_segment_gc_entry *node = NULL;
-	log_info("Allocation log cursor for volume %s DB: %s", db_desc->db_volume->volume_name,
-		 db_desc->db_superblock->db_name);
+	log_debug("Allocation log cursor for volume %s DB: %s", db_desc->db_volume->volume_name,
+		  db_desc->db_superblock->db_name);
 	struct allocation_log_cursor *log_cursor =
 		init_allocation_log_cursor(db_desc->db_volume, db_desc->db_superblock);
 	struct segment_array *segments = calloc(1, sizeof(struct segment_array));
@@ -693,7 +692,7 @@ static void init_pos_log_cursor_in_segment(struct db_descriptor *db_desc, struct
 		if (cursor->log_segments->segments[cursor->log_segments->entry_id] == cursor->log_tail_dev_offt) {
 			if (cursor->log_size % (uint64_t)SEGMENT_SIZE == sizeof(struct segment_header)) {
 				/*Nothing to parse*/
-				log_info("Nothing to parse in the small log");
+				log_debug("Nothing to parse in the small log");
 				cursor->valid = 0;
 				return;
 			}
@@ -704,7 +703,7 @@ static void init_pos_log_cursor_in_segment(struct db_descriptor *db_desc, struct
 		if (cursor->log_segments->segments[cursor->log_segments->entry_id] == cursor->log_tail_dev_offt) {
 			if (cursor->log_size == 0) {
 				/*Nothing to parse*/
-				log_info("Nothing to parse in the big log");
+				log_debug("Nothing to parse in the big log");
 				cursor->valid = 0;
 				return;
 			}
@@ -735,16 +734,16 @@ static struct log_cursor *init_log_cursor(struct db_descriptor *db_desc, enum lo
 		cursor->log_size = db_desc->big_log.size;
 		cursor->log_segments = find_N_last_blobs(db_desc, db_desc->big_log_start_segment_dev_offt);
 		cursor->log_segments->entry_id = cursor->log_segments->size - 1;
-		log_info("Big log n_segments max size %u entries found %u entry_id %u", cursor->log_segments->size,
-			 cursor->log_segments->n_entries, cursor->log_segments->entry_id);
+		log_debug("Big log n_segments max size %u entries found %u entry_id %u", cursor->log_segments->size,
+			  cursor->log_segments->n_entries, cursor->log_segments->entry_id);
 		break;
 	case SMALL_LOG:
 		cursor->log_tail_dev_offt = db_desc->small_log.tail_dev_offt;
 		cursor->log_size = db_desc->small_log.size;
 		cursor->log_segments = find_N_last_small_log_segments(db_desc);
 		cursor->log_segments->entry_id = cursor->log_segments->size - cursor->log_segments->n_entries;
-		log_info("Small log n_segments max size %u entries found %u", cursor->log_segments->size,
-			 cursor->log_segments->n_entries);
+		log_debug("Small log n_segments max size %u entries found %u", cursor->log_segments->size,
+			  cursor->log_segments->n_entries);
 		break;
 	default:
 		log_fatal("Unknown/ Unsupported log type");
@@ -813,7 +812,7 @@ start:
 	/*Advance cursor for future use*/
 	/*Are there enough bytes in segment?*/
 
-	int32_t remaining_bytes_in_segment = 0;
+	uint32_t remaining_bytes_in_segment = 0;
 	int is_tail = cursor->log_segments->segments[cursor->log_segments->entry_id] == cursor->log_tail_dev_offt;
 
 	remaining_bytes_in_segment = (uint64_t)SEGMENT_SIZE - ((uint64_t)cursor->offt_in_segment);
@@ -839,6 +838,8 @@ void recover_L0(struct db_descriptor *db_desc)
 	db_handle handle = { .db_desc = db_desc, .volume_desc = db_desc->db_volume };
 	struct log_cursor *cursor[LOG_TYPES_COUNT] = { 0 };
 
+	log_debug("Small log start %lu head %lu", db_desc->small_log_start_segment_dev_offt,
+		  db_desc->small_log.head_dev_offt);
 	assert(db_desc->small_log_start_segment_dev_offt == db_desc->small_log.head_dev_offt);
 	cursor[SMALL_LOG] = init_log_cursor(db_desc, SMALL_LOG);
 	log_debug("Small log cursor status: %u", cursor[SMALL_LOG]->valid);

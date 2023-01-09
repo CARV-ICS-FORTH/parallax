@@ -15,14 +15,13 @@
 #include "../../utilities/dups_list.h"
 #include "../btree/btree.h"
 #include "../btree/conf.h"
-#include "../btree/key_splice.h"
 #include "../btree/kv_pairs.h"
 #include "../common/common.h"
+#include "../include/parallax/structures.h"
 #include <assert.h>
 #include <log.h>
 #include <stdint.h>
 #include <stdlib.h>
-#include <string.h>
 
 #define LCHILD(x) ((2 * x) + 1)
 #define RCHILD(x) ((2 * x) + 2)
@@ -30,40 +29,19 @@
 
 static void push_back_duplicate_kv(struct sh_heap *heap, struct sh_heap_node *hp_node)
 {
-	if (hp_node->cat != BIG_INLOG)
+	if (hp_node->splice.cat != BIG_INLOG)
 		return;
 
-	struct kv_seperation_splice local = { 0 };
-	struct kv_seperation_splice *keyvalue = NULL;
+	uint64_t kv_offt = kv_sep2_get_value_offt(hp_node->splice.kv_sep2);
 
-	switch (hp_node->type) {
-	case KV_FORMAT:
-		memset(&local.prefix, 0x00, PREFIX_SIZE);
-		struct kv_splice *kv = (struct kv_splice *)hp_node->KV;
-		uint32_t key_size = get_key_size(kv);
-		int size = key_size < PREFIX_SIZE ? key_size : PREFIX_SIZE;
-		memcpy(&local.prefix, get_key_offset_in_kv(kv), size);
-		local.dev_offt = (uint64_t)hp_node->KV;
-		keyvalue = &local;
-		break;
-	case KV_PREFIX:
-		keyvalue = (struct kv_seperation_splice *)hp_node->KV;
-		break;
-	default:
-		log_info("Unhandled KV type");
-		_Exit(EXIT_FAILURE);
-	}
-
-	uint64_t segment_offset =
-		ABSOLUTE_ADDRESS(keyvalue->dev_offt) - (ABSOLUTE_ADDRESS(keyvalue->dev_offt) % SEGMENT_SIZE);
-	struct kv_splice *kv = (struct kv_splice *)keyvalue->dev_offt;
-	assert(get_key_size(kv) <= (int32_t)MAX_KEY_SPLICE_SIZE);
+	uint64_t segment_offset = kv_offt - (kv_offt % SEGMENT_SIZE);
 	struct dups_node *node = find_element(heap->dups, (uint64_t)REAL_ADDRESS(segment_offset));
 
+	struct kv_splice *splice = REAL_ADDRESS(kv_offt);
 	if (node)
-		node->kv_size += get_kv_size(kv);
+		node->kv_size += get_kv_size(splice);
 	else
-		append_node(heap->dups, (uint64_t)REAL_ADDRESS(segment_offset), get_kv_size(kv));
+		append_node(heap->dups, (uint64_t)REAL_ADDRESS(segment_offset), get_kv_size(splice));
 }
 
 /**
@@ -106,16 +84,6 @@ static int sh_solve_tie(struct sh_heap *heap, struct sh_heap_node *nd_1, struct 
 }
 
 /**
- * Compares only the prefixes of two keys. In case of a tie it returns 0
- */
-static int sh_prefix_compare(struct key_compare *key1, struct key_compare *key2)
-{
-	uint32_t size = key1->key_size <= key2->key_size ? key1->key_size : key2->key_size;
-	size = size < PREFIX_SIZE ? size : PREFIX_SIZE;
-	return memcmp(key1->key, key2->key, size);
-}
-
-/**
  * The comparator function used from the min max heap to compare node
  * @param hp the pointer to the min max heap structure
  * @param nd_1 pointer to the heap node
@@ -123,47 +91,7 @@ static int sh_prefix_compare(struct key_compare *key1, struct key_compare *key2)
  */
 static int sh_cmp_heap_nodes(struct sh_heap *hp, struct sh_heap_node *nd_1, struct sh_heap_node *nd_2)
 {
-	struct key_compare key1_cmp = { 0 };
-	struct key_compare key2_cmp = { 0 };
-	init_key_cmp(&key1_cmp, nd_1->KV, nd_1->type);
-	init_key_cmp(&key2_cmp, nd_2->KV, nd_2->type);
-
-	/* We use a custom prefix_compare for the following reason. Default
-	 * key_comparator (key_cmp) for KV_PREFIX keys will fetch keys from storage
-	 * if prefix comparison equals 0. This means that for KV_PREFIX we need to
-	 * translate log pointers (if they belong to level 0) which is an expensive
-	 * operation. To avoid this, since this code is executed for compactions and
-	 * scans so it is in the critical path, we use a custom prefix_compare
-	 * function that stops only in prefix comparison.
-	 */
-	int ret = sh_prefix_compare(&key1_cmp, &key2_cmp);
-	if (ret)
-		return ret;
-
-	/* Going for full key comparison, we are going to end up in the full key comparator*/
-	struct bt_kv_log_address key1 = { 0 };
-	if (key1_cmp.key_format == KV_PREFIX) {
-		key1.addr = (char *)key1_cmp.kv_dev_offt;
-		if (nd_1->cat == BIG_INLOG && 0 == nd_1->level_id) {
-			key1 = bt_get_kv_log_address(&nd_1->db_desc->big_log, ABSOLUTE_ADDRESS(key1_cmp.kv_dev_offt));
-		}
-		init_key_cmp(&key1_cmp, key1.addr, KV_FORMAT);
-	}
-
-	struct bt_kv_log_address key2 = { 0 };
-	if (key2_cmp.key_format == KV_PREFIX) {
-		key2.addr = (char *)key2_cmp.kv_dev_offt;
-		if (nd_2->cat == BIG_INLOG && 0 == nd_2->level_id)
-			key2 = bt_get_kv_log_address(&nd_2->db_desc->big_log, ABSOLUTE_ADDRESS(key2_cmp.kv_dev_offt));
-		init_key_cmp(&key2_cmp, key2.addr, KV_FORMAT);
-	}
-
-	ret = key_cmp(&key1_cmp, &key2_cmp);
-	if (key1.in_tail)
-		bt_done_with_value_log_address(key1.log_desc, &key1);
-	if (key2.in_tail)
-		bt_done_with_value_log_address(key2.log_desc, &key2);
-
+	int ret = kv_splice_base_compare(&nd_1->splice, &nd_2->splice);
 	return ret ? ret : sh_solve_tie(hp, nd_1, nd_2);
 }
 /**

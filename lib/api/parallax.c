@@ -199,7 +199,7 @@ void par_delete(par_handle handle, struct par_key *key, const char **error_messa
 
 struct par_scanner {
 	char buf[PAR_MAX_PREALLOCATED_SIZE];
-	struct scannerHandle *sc;
+	struct scanner *sc;
 	uint32_t buf_size;
 	uint16_t allocated;
 	uint16_t valid;
@@ -209,7 +209,7 @@ struct par_scanner {
 par_scanner par_init_scanner(par_handle handle, struct par_key *key, par_seek_mode mode, const char **error_message)
 {
 	if (key && key->size + sizeof(key->size) > PAR_MAX_PREALLOCATED_SIZE) {
-		*error_message = "Can serialize key buffer, buffer to small";
+		*error_message = "Cannot serialize key buffer, buffer to small";
 		return NULL;
 	}
 
@@ -217,7 +217,7 @@ par_scanner par_init_scanner(par_handle handle, struct par_key *key, par_seek_mo
 
 	struct key_splice *seek_key_splice = NULL;
 	bool malloced = false;
-	enum SEEK_SCANNER_MODE scanner_mode = 0;
+	enum seek_scanner_mode scanner_mode = 0;
 	switch (mode) {
 	case PAR_GREATER:
 		scanner_mode = GREATER;
@@ -237,12 +237,12 @@ par_scanner par_init_scanner(par_handle handle, struct par_key *key, par_seek_mo
 		return NULL;
 	}
 
-	struct scannerHandle *scanner = (struct scannerHandle *)calloc(1, sizeof(struct scannerHandle));
+	struct scanner *scanner = (struct scanner *)calloc(1, sizeof(struct scanner));
 	struct par_scanner *p_scanner = (struct par_scanner *)calloc(1, sizeof(struct par_scanner));
 
 	struct db_handle *internal_db_handle = (struct db_handle *)handle;
-	scanner->type_of_scanner = FORWARD_SCANNER;
-	init_dirty_scanner(scanner, internal_db_handle, seek_key_splice, scanner_mode);
+
+	scanner_init(scanner, internal_db_handle, seek_key_splice, scanner_mode);
 	if (malloced)
 		free(seek_key_splice);
 	seek_key_splice = NULL;
@@ -253,6 +253,7 @@ par_scanner par_init_scanner(par_handle handle, struct par_key *key, par_seek_mo
 
 	p_scanner->valid = 1;
 	if (scanner->keyValue == NULL) {
+		log_debug("Null key value after init of scanner");
 		p_scanner->valid = 0;
 		return p_scanner;
 	}
@@ -282,7 +283,7 @@ void par_close_scanner(par_scanner sc)
 {
 	assert(sc);
 	struct par_scanner *par_s = (struct par_scanner *)sc;
-	close_scanner((struct scannerHandle *)par_s->sc);
+	scanner_close((struct scanner *)par_s->sc);
 	if (par_s->allocated)
 		free(par_s->kv_buf);
 
@@ -292,8 +293,8 @@ void par_close_scanner(par_scanner sc)
 int par_get_next(par_scanner sc)
 {
 	struct par_scanner *par_s = (struct par_scanner *)sc;
-	struct scannerHandle *scanner_hd = par_s->sc;
-	if (!get_next(scanner_hd)) {
+	struct scanner *scanner_hd = par_s->sc;
+	if (!scanner_get_next(scanner_hd)) {
 		par_s->valid = 0;
 		return 0;
 	}

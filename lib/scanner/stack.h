@@ -21,7 +21,6 @@
  * This is the interface for a stack of characters.
  */
 #pragma once
-#include "../btree/btree_node.h"
 #include "../btree/index_node.h"
 #include <stdint.h>
 #define MAX_SIZE 64
@@ -36,7 +35,7 @@
 
 typedef struct stackElementT {
 	struct index_node_iterator iterator;
-	node_header *node;
+	struct node_header *node;
 	int32_t idx;
 	uint8_t guard;
 } stackElementT;

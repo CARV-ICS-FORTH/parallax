@@ -5,8 +5,6 @@
 #include "btree_node.h"
 #include "dynamic_leaf.h"
 #include "index_node.h"
-#include "kv_pairs.h"
-#include "parallax/structures.h"
 #include <assert.h>
 #include <log.h>
 #include <stdio.h>
@@ -16,40 +14,16 @@
 
 static void wcursor_fill_heap_node_from_L0(struct rcursor_level_read_cursor *r_cursor, struct sh_heap_node *heap_node)
 {
-	heap_node->KV = r_cursor->L0_cursor->L0_scanner->keyValue;
 	heap_node->level_id = r_cursor->level_id;
-	heap_node->type = r_cursor->L0_cursor->L0_scanner->kv_format;
-	heap_node->cat = r_cursor->L0_cursor->L0_scanner->cat;
-	heap_node->kv_size = r_cursor->L0_cursor->L0_scanner->kv_size;
-	heap_node->tombstone = r_cursor->L0_cursor->L0_scanner->tombstone;
 	heap_node->active_tree = r_cursor->tree_id;
+	heap_node->splice = r_cursor->L0_cursor->L0_scanner->splice;
 }
 
 static void wcursor_fill_heap_node_from_device(struct rcursor_level_read_cursor *r_cursor, struct sh_heap_node *h_node)
 {
 	h_node->level_id = r_cursor->level_id;
 	h_node->active_tree = r_cursor->tree_id;
-	h_node->cat = r_cursor->cursor_key.kv_category;
-	h_node->tombstone = r_cursor->cursor_key.tombstone;
-	switch (h_node->cat) {
-	case SMALL_INPLACE:
-	case MEDIUM_INPLACE:
-		h_node->type = KV_FORMAT;
-		h_node->KV = (char *)r_cursor->cursor_key.kv_in_place;
-		h_node->kv_size = get_kv_size((struct kv_splice *)h_node->KV);
-		break;
-	case BIG_INLOG:
-	case MEDIUM_INLOG:
-		h_node->type = KV_PREFIX;
-		// log_info("Prefix %.12s dev_offt %llu", cur->cursor_key.in_log->prefix,
-		//	 cur->cursor_key.in_log->device_offt);
-		h_node->KV = (char *)&r_cursor->cursor_key.kv_inlog;
-		h_node->kv_size = get_kv_seperated_splice_size();
-		break;
-	default:
-		log_fatal("UNKNOWN_LOG_CATEGORY");
-		BUG_ON();
-	}
+	h_node->splice = r_cursor->splice;
 }
 
 void wcursor_fill_heap_node(struct rcursor_level_read_cursor *r_cursor, struct sh_heap_node *h_node)
@@ -70,12 +44,8 @@ struct rcursor_level_read_cursor *rcursor_init_cursor(db_handle *handle, uint32_
 	r_cursor->is_end_of_level = false;
 
 	if (0 == level_id) {
-		node_header *root = r_cursor->handle->db_desc->levels[0].root_w[tree_id];
-		if (NULL == root)
-			root = r_cursor->handle->db_desc->levels[0].root_r[tree_id];
-
 		r_cursor->L0_cursor = calloc(1UL, sizeof(struct rcursor_L0_cursor));
-		r_cursor->L0_cursor->L0_scanner = _init_compaction_buffer_scanner(handle, level_id, root, NULL);
+		r_cursor->L0_cursor->L0_scanner = level_scanner_init_compaction_scanner(handle, level_id, tree_id);
 		return r_cursor;
 	}
 
@@ -98,8 +68,7 @@ struct rcursor_level_read_cursor *rcursor_init_cursor(db_handle *handle, uint32_
 
 static bool rcursor_get_next_KV_from_L0(struct rcursor_level_read_cursor *r_cursor)
 {
-	bool ret = END_OF_DATABASE == level_scanner_get_next(r_cursor->L0_cursor->L0_scanner) ? false : true;
-	return ret;
+	return level_scanner_get_next(r_cursor->L0_cursor->L0_scanner);
 }
 
 static bool rcursor_get_next_kv_from_device(struct rcursor_level_read_cursor *r_cursor)
@@ -175,42 +144,17 @@ static bool rcursor_get_next_kv_from_device(struct rcursor_level_read_cursor *r_
 		}
 
 		case COMP_CUR_DECODE_KV: {
-			struct bt_dynamic_leaf_node *leaf =
-				(struct bt_dynamic_leaf_node *)((uint64_t)device_cursor->segment_buf +
-								(device_cursor->offset % SEGMENT_SIZE));
+			struct leaf_node *leaf = (struct leaf_node *)((uint64_t)device_cursor->segment_buf +
+								      (device_cursor->offset % SEGMENT_SIZE));
 			// slot array entry
-			if (device_cursor->curr_leaf_entry >= leaf->header.num_entries) {
+			if (device_cursor->curr_leaf_entry >= dl_get_leaf_num_entries(leaf)) {
 				// done with this leaf
 				device_cursor->curr_leaf_entry = 0;
 				device_cursor->offset += level_leaf_size;
 				device_cursor->state = COMP_CUR_CHECK_OFFT;
 				break;
 			}
-			struct bt_dynamic_leaf_slot_array *slot_array = get_slot_array_offset(leaf);
-
-			r_cursor->cursor_key.kv_category = slot_array[device_cursor->curr_leaf_entry].key_category;
-			r_cursor->cursor_key.tombstone = slot_array[device_cursor->curr_leaf_entry].tombstone;
-			char *kv_loc =
-				get_kv_offset(leaf, level_leaf_size, slot_array[device_cursor->curr_leaf_entry].index);
-			switch (r_cursor->cursor_key.kv_category) {
-			case SMALL_INPLACE:
-			case MEDIUM_INPLACE: {
-				// Real key in KV_FORMAT
-				r_cursor->cursor_key.kv_in_place = (struct kv_splice *)fill_keybuf(
-					kv_loc, get_kv_format(slot_array[device_cursor->curr_leaf_entry].key_category));
-				break;
-			}
-			case MEDIUM_INLOG:
-			case BIG_INLOG:
-				r_cursor->cursor_key.kv_inlog = *(struct kv_seperation_splice *)kv_loc;
-				r_cursor->cursor_key.kv_inlog.dev_offt =
-					(uint64_t)REAL_ADDRESS(r_cursor->cursor_key.kv_inlog.dev_offt);
-				break;
-			default:
-				log_fatal("Cannot handle this category");
-				BUG_ON();
-			}
-			++device_cursor->curr_leaf_entry;
+			r_cursor->splice = dl_get_general_splice(leaf, device_cursor->curr_leaf_entry++);
 			return true;
 		}
 
@@ -273,7 +217,7 @@ void rcursor_close_cursor(struct rcursor_level_read_cursor *r_cursor)
 		return;
 
 	if (0 == r_cursor->level_id) {
-		close_compaction_buffer_scanner(r_cursor->L0_cursor->L0_scanner);
+		level_scanner_close(r_cursor->L0_cursor->L0_scanner);
 		free(r_cursor->L0_cursor);
 		free(r_cursor);
 		return;

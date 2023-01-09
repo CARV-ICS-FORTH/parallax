@@ -18,12 +18,15 @@
 #include "../allocator/redo_undo_log.h"
 #include "../allocator/volume_manager.h"
 #include "../common/common.h"
+#include "btree_node.h"
 #include "conf.h"
 #include "index_node.h"
 #include <assert.h>
 #include <log.h>
+#include <stdint.h>
 #include <stdlib.h>
 // IWYU pragma: no_forward_declare index_node
+// IWYU pragma: no_forward_declare leaf_node
 
 struct link_segments_metadata {
 	level_descriptor *level_desc;
@@ -96,7 +99,7 @@ static void *get_space(struct db_descriptor *db_desc, uint8_t level_id, uint8_t 
 
 	struct link_segments_metadata req = { .level_desc = level_desc, .tree_id = tree_id };
 	segment_header *new_segment = NULL;
-	node_header *node = NULL;
+	struct node_header *node = NULL;
 	uint32_t available_space;
 	uint64_t offset_in_segment = 0;
 	uint64_t segment_id;
@@ -137,7 +140,7 @@ static void *get_space(struct db_descriptor *db_desc, uint8_t level_id, uint8_t 
 		offset_in_segment = link_memory_segments(&req);
 	}
 
-	node = (node_header *)((uint64_t)level_desc->last_segment[tree_id] + offset_in_segment);
+	node = (struct node_header *)((uintptr_t)level_desc->last_segment[tree_id] + offset_in_segment);
 	assert(node);
 	level_desc->offset[tree_id] += size;
 	MUTEX_UNLOCK(&level_desc->level_allocation_lock);
@@ -189,45 +192,17 @@ void seg_free_index_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_
 	(void)inode;
 }
 
-leaf_node *seg_get_leaf_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
+struct leaf_node *seg_get_leaf_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
 {
 	struct level_descriptor *level_desc = &db_desc->levels[level_id];
-	leaf_node *leaf = (leaf_node *)get_space(db_desc, level_id, tree_id, level_desc->leaf_size);
-
-	leaf->header.type = leafNode;
-	leaf->header.num_entries = 0;
-	leaf->header.fragmentation = 0;
-
-	leaf->header.key_log_size = 0; /*unused also*/
-	leaf->header.height = 0;
-
+	struct leaf_node *leaf = (struct leaf_node *)get_space(db_desc, level_id, tree_id, level_desc->leaf_size);
 	return leaf;
 }
 
-struct bt_dynamic_leaf_node *init_leaf_node(struct bt_dynamic_leaf_node *leaf)
-{
-	leaf->header.type = leafNode;
-	leaf->header.num_entries = 0;
-	leaf->header.fragmentation = 0;
-
-	leaf->header.leaf_log_size = 0;
-	leaf->header.height = 0;
-	return leaf;
-}
-
-struct bt_dynamic_leaf_node *seg_get_dynamic_leaf_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
+struct leaf_node *seg_get_dynamic_leaf_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
 {
 	struct level_descriptor *level_desc = &db_desc->levels[level_id];
-	return init_leaf_node(get_space(db_desc, level_id, tree_id, level_desc->leaf_size));
-}
-
-void seg_free_leaf_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id, leaf_node *leaf)
-{
-	//leave for future use
-	(void)db_desc;
-	(void)level_id;
-	(void)tree_id;
-	(void)leaf;
+	return get_space(db_desc, level_id, tree_id, level_desc->leaf_size);
 }
 
 segment_header *seg_get_raw_log_segment(struct db_descriptor *db_desc, enum log_type log_type, uint8_t level_id,

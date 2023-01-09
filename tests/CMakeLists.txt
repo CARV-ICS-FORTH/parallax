@@ -6,6 +6,7 @@ if(BUILD_TESTING)
       tiresias.c
       test_recovery.c
       test_index_node.c
+      test_leaf_node.c
       test_scans.c
       test_dirty_scans.c
       test_options.c
@@ -22,6 +23,9 @@ if(BUILD_TESTING)
 
   add_executable(test_index_node test_index_node.c arg_parser.c)
   target_link_libraries(test_index_node "${PROJECT_NAME}")
+
+  add_executable(test_leaf_node test_leaf_node.c arg_parser.c)
+  target_link_libraries(test_leaf_node "${PROJECT_NAME}")
 
   add_executable(test_scans test_scans.c)
   target_link_libraries(test_scans "${PROJECT_NAME}")
@@ -46,6 +50,7 @@ if(BUILD_TESTING)
   endif()
 
   add_parallax_test(NAME test_index_node COMMAND run_test.sh test_index_node)
+  add_parallax_test(NAME test_leaf_node COMMAND run_test.sh test_leaf_node)
 
   add_parallax_test(
     NAME

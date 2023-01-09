@@ -13,22 +13,107 @@
 // limitations under the License.
 #ifndef KV_PAIRS_H
 #define KV_PAIRS_H
+#include "../include/parallax/structures.h"
 #include <stdbool.h>
 #include <stdint.h>
 #define PREFIX_SIZE 12
 enum KV_type { KV_FORMAT, KV_PREFIX, INDEX_KEY_TYPE, KEY_TYPE };
 
-// KVs in Parallax follow | key_size | value_size | key | value | layout
+#define KV_SEP2_MAX_SIZE (sizeof(uint64_t) + sizeof(int32_t) + MAX_KEY_SIZE)
+
 struct kv_splice {
 	int32_t key_size;
 	int32_t value_size;
 	char data[];
 } __attribute__((packed));
 
-struct kv_seperation_splice {
-	char prefix[PREFIX_SIZE];
-	uint64_t dev_offt;
+struct kv_seperation_splice2 {
+	uint64_t value_offt;
+	int32_t key_size;
+	char key[];
 } __attribute__((packed));
+
+struct kv_splice_base {
+	enum kv_category cat;
+	bool is_tombstone;
+	union {
+		struct kv_splice *kv_splice;
+		struct kv_seperation_splice2 *kv_sep2;
+	};
+};
+
+/**
+ * @brief Returns a pointer to the key
+ * @param kv_sep2 pointer to the splice
+ * @return pointer to the key
+ */
+char *kv_sep2_get_key(struct kv_seperation_splice2 *kv_sep2);
+
+/**
+ * @brief Returns the size of the key for kv seperation splices
+ * @param kv_sep2 pointer to the seperation splice
+ * @returns the size of the key (without its metadata)
+ */
+int32_t kv_sep2_get_key_size(struct kv_seperation_splice2 *kv_sep2);
+
+/**
+ * @brief Returns the offset in the device where the splice has been stored. In
+ * the device the kv pair is stored in kv_splice format.
+ * @param kv_sep2 pointer to the splice object
+ * @returns the offset in the file/device where the splice is stored.
+ */
+uint64_t kv_sep2_get_value_offt(struct kv_seperation_splice2 *kv_sep2);
+
+/**
+ * @brief Returns the total size of the splice which includes also the size of its metadata.
+ * @param kv_sep2 pointer to the splice object
+ * @return the size of the splice
+ */
+int32_t kv_sep2_get_total_size(struct kv_seperation_splice2 *kv_sep2);
+
+/**
+ * @brief Serializes into dest buffer the splice object.
+ * @param splice pointer to the splice object
+ * @param dest pointer to the buffer
+ * @param dest_size sizeo of the buffer
+ * @returns true on success or false in failure because the buffer does not
+ * have adequate space.
+ */
+bool kv_sep2_serialize(struct kv_seperation_splice2 *splice, char *dest, int32_t dest_size);
+
+/**
+ * @brief Constructs a kv_sep2 object. Internally it allocates memory and constructs the object.
+ * @param key_size the size of the key in bytes.
+ * @param key pointer to the key buffer
+ * @param value_offt the offset in the file/device where the kv pair has been stored.
+ * @returns reference to the newly created object otherwise NULL on failure
+ */
+struct kv_seperation_splice2 *kv_sep2_alloc_and_create(int32_t key_size, char *key, uint64_t value_offt);
+
+/**
+ * @brief Constructs a splice and stores it in the buf buffer.
+ * @param key_size the size of the key
+ * @param key pointer to the key object
+ * @param value_offt the offset in the device where the kv pair has been stored
+ * @param buf the destination buffer which is used to store the object
+ * @param buf_size the size of the buffer.
+ * @returns reference to the kv_sep2 object or NULL in case of a failure
+ */
+struct kv_seperation_splice2 *kv_sep2_create(int32_t key_size, char *key, uint64_t value_offt, char *buf,
+					     uint32_t buf_size);
+
+/**
+ * @brief Calculates the storage space needed to encode a key of size key_size
+ * into a kv_sep object.
+ * @param key_size the sizeo of the key that we want to encode as a kv_sep
+ * object.
+ * @returns the storage size needed
+ */
+uint32_t kv_sep2_calculate_size(int32_t key_size);
+
+void kv_splice_serialize(struct kv_splice *splice, char *dest);
+
+struct kv_splice *kv_splice_create(int32_t key_size, char *key, int32_t value_size, char *value);
 
 /**
  * Calculates key_size given a splice formated key
@@ -96,62 +181,77 @@ char *get_key_offset_in_kv(struct kv_splice *kv_pair);
  * @param key_size: the key size of this kv
  */
 char *get_value_offset_in_kv(struct kv_splice *kv_pair, int32_t key_size);
-/**
- * Calculates the key_size of the actual struct splice kv following the ptr of the  kv_seperated kv
- * @param kv: a kv-seperated splice kv ptr
- */
-int32_t get_kv_seperated_key_size(struct kv_seperation_splice *kv_pair);
-/**
- * Calculates the value_size of the actual struct splice kv following the ptr of the  kv_seperated kv
- * @param kv: a kv-seperated splice kv ptr
- */
-int32_t get_kv_seperated_value_size(struct kv_seperation_splice *kv_pair);
-/**
- * Calculates the kv_size of the actual struct splice kv following the ptr of the  kv_seperated kv
- * @param kv: a kv-seperated splice kv ptr
- */
-int32_t get_kv_seperated_kv_size(struct kv_seperation_splice *kv_pair);
-/**
- * Returns the size of kv_seperation splice
- */
-int32_t get_kv_seperated_splice_size(void);
 
 /**
- * Returns the starting address of the buffer that stores the prefix
- * @param Pointer to the kv_seperated kv_pair
- */
-char *get_kv_seperated_prefix(struct kv_seperation_splice *kv_pair);
-
-/**
- * Return the size of the PREFIX
- */
-int32_t get_kv_seperated_prefix_size(void);
-
-/**
- * Returns the device offset where this kv_seperation_splice is actually stored
- * @param Pointer to the kv_seperated_kv_pair
-*/
-uint64_t get_kv_seperated_device_offt(struct kv_seperation_splice *kv_pair);
-
-/**
- * Sets the device offset where this kv_seperation_splice is actually stored
- * @param Pointer to the kv_seperated_kv_pair
- * @param The device offset to set
-*/
-void set_kv_seperated_device_offt(struct kv_seperation_splice *kv_pair, uint64_t dev_offt);
-
-/**
-  * Examines a KV pair to see if it is a delete marker
+  * @brief Examines a KV pair to see if it is a delete marker
   */
 bool is_tombstone_kv_pair(struct kv_splice *kv_pair);
 
+/**
+ * @brief Characterizes a splice as a tombstone.
+ * @param kv_pair pointer to splice object
+ */
 void set_tombstone(struct kv_splice *kv_pair);
 
+/**
+ * @brief characterizes a kv_pair as a non tombstone.
+ * @param kv_pair pointer to splice object
+ */
 void set_non_tombstone(struct kv_splice *kv_pair);
 
-void serialize_key(char *buf, void *key, uint32_t key_size);
+/**
+ * @brief serializes the key part of a kv_splice to a key_splice
+ * @param buf
+ */
 void serialize_kv_splice_to_key_splice(char *buf, struct kv_splice *kv_pair);
 
-int32_t get_min_possible_kv_size(void);
+/**
+ * @brief Returns the size (data+metadata) of the minimum size of a kv pair in
+ * Parallax
+ */
+uint32_t get_min_possible_kv_size(void);
 
-#endif // KV_PAIRS_H_
+uint32_t kv_splice_calculate_size(int32_t key_size, int32_t value_size);
+
+/**
+ * @brief Compares the keys of two splices
+ * @param sp1 pointer to splice 1
+ * @param sp2 pointer to splice 2
+ * @returns 0 if the keys of the splices are equal greater than zero if sp1 >
+ * sp2 otherwise < 0.
+ */
+int kv_splice_base_compare(struct kv_splice_base *sp1, struct kv_splice_base *sp2);
+
+/**
+ * @bries Returns the size of the kv splice
+ * @param pointer to the splice object
+ * @returns the size of the splice in bytes
+ */
+int32_t kv_splice_base_get_size(struct kv_splice_base *splice);
+/**
+ * @brief Returns the key size of the splice
+ * @param splice pointer to the splice object
+ * @returns the size of the object
+ */
+int32_t kv_splice_base_get_key_size(struct kv_splice_base *splice);
+
+/**
+ * @brief Calculates the size of the splice
+ * @param splice pointer to the splice object
+ */
+int32_t kv_splice_base_calculate_size(struct kv_splice_base *splice);
+
+/**
+ * @brief Returns a reference to the start of the underlying (kv_sep2 or
+ * kv_splice) object starts.
+ * @param splice pointer to the splice object
+ */
+char *kv_splice_base_get_reference(struct kv_splice_base *splice);
+
+/**
+ * @brief Returns the start of the key buffer of the splice
+ * @param splice pointer to the splice object
+ */
+char *kv_splice_base_get_key_buf(struct kv_splice_base *splice);
+
+#endif // KV_PAIRS_H

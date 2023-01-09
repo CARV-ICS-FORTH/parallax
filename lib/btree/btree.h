@@ -20,7 +20,6 @@
 #include "btree_node.h"
 #include "conf.h"
 #include "index_node.h"
-#include "kv_pairs.h"
 #include "lsn.h"
 #include "parallax/structures.h"
 #include <stdbool.h>
@@ -28,12 +27,9 @@
 #if ENABLE_BLOOM_FILTERS
 #include <bloom.h>
 #endif
-#include <limits.h>
 #include <pthread.h>
 #include <semaphore.h>
 #include <stdint.h>
-#include <stdlib.h>
-#define PREFIX_SIZE 12
 #define MAX_HEIGHT 9
 
 struct lookup_operation {
@@ -51,10 +47,10 @@ struct lookup_operation {
 enum db_status { DB_START_COMPACTION_DAEMON, DB_OPEN, DB_TERMINATE_COMPACTION_DAEMON, DB_IS_CLOSING };
 
 /*descriptor describing a compaction operation and its current status*/
-typedef enum {
-	NO_COMPACTION = 0,
-	COMPACTION_IN_PROGRESS = 1,
-} level_0_tree_status;
+enum level_compaction_status {
+	BT_NO_COMPACTION = 1,
+	BT_COMPACTION_IN_PROGRESS,
+};
 
 /*
  * header of segment is 4K. L0 and KV log segments are chained in a linked list
@@ -70,62 +66,6 @@ typedef struct segment_header {
 	uint64_t segment_end;
 	nodeType_t nodetype;
 } __attribute__((packed, aligned(4096))) segment_header;
-
-/*Note IN stands for Internal Node*/
-typedef struct IN_log_header {
-	nodeType_t type;
-	void *next;
-} IN_log_header;
-
-struct bt_leaf_entry_bitmap {
-	unsigned char bitmap; // This bitmap informs us which kv_entry is available to store data in the static leaf.
-};
-
-struct bt_static_leaf_slot_array {
-	uint32_t index;
-};
-
-struct bt_dynamic_leaf_slot_array {
-	// The index points to the location of the kv pair in the leaf.
-	uint16_t index : 13;
-	uint16_t key_category : 2;
-	// Tombstone notifies if the key is deleted.
-	uint16_t tombstone : 1;
-};
-
-struct key_compare {
-	char *key;
-	uint64_t kv_dev_offt;
-	uint32_t key_size;
-	enum KV_type key_format;
-	uint8_t is_NIL;
-};
-
-#define LEAF_NODE_REMAIN (LEAF_NODE_SIZE - sizeof(struct node_header))
-
-#define LN_ITEM_SIZE (sizeof(uint64_t) + (PREFIX_SIZE * sizeof(char)))
-#define KV_LEAF_ENTRY (sizeof(struct kv_seperation_splice) + sizeof(struct bt_static_leaf_slot_array) + (1 / CHAR_BIT))
-#define LN_LENGTH ((LEAF_NODE_REMAIN) / (KV_LEAF_ENTRY))
-
-struct kv_format {
-	uint32_t key_size;
-	char key_buf[];
-} __attribute__((packed));
-
-struct bt_static_leaf_node {
-	struct node_header header;
-} __attribute__((packed));
-
-struct bt_dynamic_leaf_node {
-	struct node_header header;
-} __attribute__((packed));
-
-typedef struct leaf_node {
-	struct node_header header;
-	uint64_t pointer[LN_LENGTH];
-	char prefix[LN_LENGTH][PREFIX_SIZE];
-	char __pad[LEAF_NODE_SIZE - sizeof(struct node_header) - (LN_LENGTH * LN_ITEM_SIZE)];
-} __attribute__((packed)) leaf_node;
 
 enum bsearch_status { INSERT = 0, FOUND = 1, ERROR = 2 };
 
@@ -151,28 +91,14 @@ typedef struct lock_table {
 	char pad[8];
 } lock_table;
 
-struct leaf_node_metadata {
-	uint32_t bitmap_entries;
-	uint32_t bitmap_offset;
-	uint32_t slot_array_entries;
-	uint32_t slot_array_offset;
-	uint32_t kv_entries;
-	uint32_t kv_entries_offset;
-};
-
-struct compaction_pairs {
-	int16_t src_level;
-	int16_t dst_level;
-};
-
 typedef struct level_descriptor {
 #if ENABLE_BLOOM_FILTERS
 	struct bloom bloom_filter[NUM_TREES_PER_LEVEL];
 #endif
 	pthread_t compaction_thread[NUM_TREES_PER_LEVEL];
 	lock_table *level_lock_table[MAX_HEIGHT];
-	node_header *root_r[NUM_TREES_PER_LEVEL];
-	node_header *root_w[NUM_TREES_PER_LEVEL];
+	struct node_header *root_r[NUM_TREES_PER_LEVEL];
+	struct node_header *root_w[NUM_TREES_PER_LEVEL];
 	pthread_mutex_t level_allocation_lock;
 	segment_header *first_segment[NUM_TREES_PER_LEVEL];
 	segment_header *last_segment[NUM_TREES_PER_LEVEL];
@@ -184,7 +110,6 @@ typedef struct level_descriptor {
 	lock_table guard_of_level;
 	uint64_t level_size[NUM_TREES_PER_LEVEL];
 	uint64_t max_level_size;
-	struct leaf_node_metadata leaf_offsets;
 	volatile segment_header *medium_log_head;
 	volatile segment_header *medium_log_tail;
 	uint64_t medium_log_size;
@@ -199,7 +124,7 @@ typedef struct level_descriptor {
 	uint64_t medium_in_place_max_segment_id;
 	uint64_t medium_in_place_segment_dev_offt;
 	uint32_t leaf_size;
-	char tree_status[NUM_TREES_PER_LEVEL];
+	volatile enum level_compaction_status tree_status[NUM_TREES_PER_LEVEL];
 	uint8_t active_tree;
 	uint8_t level_id;
 	char in_recovery_mode;
@@ -350,12 +275,12 @@ typedef struct bt_insert_req {
 	uint64_t kv_dev_offt;
 } bt_insert_req;
 
-typedef struct log_operation {
+struct log_operation {
 	bt_mutate_req *metadata;
-	request_type optype_tolog;
+	request_type optype_tolog; //enum insertOp, deleteOp
 	bt_insert_req *ins_req;
-	bool is_compaction;
-} log_operation;
+	bool is_medium_log_append;
+};
 
 /**
  * Returns the category of the KV based on its key-value size and the operation to perform.
@@ -390,19 +315,15 @@ enum bt_rebalance_retcode {
 struct bt_rebalance_result {
 	char middle_key[MAX_PIVOT_SIZE];
 	union {
-		node_header *left_child;
+		struct node_header *left_child;
 		struct index_node *left_ichild;
-		leaf_node *left_lchild;
-		struct bt_static_leaf_node *left_slchild;
-		struct bt_dynamic_leaf_node *left_dlchild;
+		struct leaf_node *left_leaf_child;
 	};
 
 	union {
-		node_header *right_child;
+		struct node_header *right_child;
 		struct index_node *right_ichild;
-		leaf_node *right_lchild;
-		struct bt_static_leaf_node *right_slchild;
-		struct bt_dynamic_leaf_node *right_dlchild;
+		struct leaf_node *right_leaf_child;
 	};
 	enum bt_rebalance_retcode stat;
 };
@@ -427,20 +348,15 @@ struct par_put_metadata serialized_insert_key_value(db_handle *handle, const cha
 						    const char *error_message);
 const char *btree_insert_key_value(bt_insert_req *ins_req) __attribute__((warn_unused_result));
 
-void *append_key_value_to_log(log_operation *req);
+void *append_key_value_to_log(struct log_operation *req);
 void find_key(struct lookup_operation *get_op);
 int8_t delete_key(db_handle *handle, void *key, uint32_t size);
 
-void init_key_cmp(struct key_compare *key_cmp, void *key_buf, char key_format);
-int key_cmp(struct key_compare *key1, struct key_compare *key2);
-int prefix_compare(char *l, char *r, size_t prefix_size);
-
 void recover_L0(struct db_descriptor *db_desc);
+void bt_set_db_status(struct db_descriptor *db_desc, enum level_compaction_status comp_status, uint8_t level_id,
+		      uint8_t tree_id);
 
-// void free_logical_node(allocator_descriptor *allocator_desc, node_header
-// *node_index);
-
-lock_table *_find_position(const lock_table **table, node_header *node);
+lock_table *_find_position(const lock_table **table, struct node_header *node);
 
 #define MIN(x, y) ((x > y) ? (y) : (x))
 #define ABSOLUTE_ADDRESS(X) (((uint64_t)(X)) - MAPPED)

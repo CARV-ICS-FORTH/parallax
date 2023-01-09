@@ -15,12 +15,11 @@
 #include <log.h>
 #include <stdlib.h>
 #include <string.h>
-#define T int32_t
 #define T_MAX INT32_MAX
 #define KV_SPLICE_MAX_KEY_SIZE 255UL
 // This struct defines the key abstraction of the system and it's irrelevant from splice format
 struct key_splice {
-	T key_size;
+	int32_t key_size;
 	char data[];
 } __attribute__((packed));
 
@@ -36,9 +35,10 @@ extern struct key_splice *key_splice_create(char *key, int32_t key_size, char *b
 		log_debug("Possible overflow buffer_size is %d max size is %d", key_size, T_MAX);
 		return NULL;
 	}
+
 	struct key_splice *key_splice = (struct key_splice *)buffer;
 	uint32_t key_splice_size = sizeof(struct key_splice) + key_size;
-	if ((int32_t)key_splice_size > buffer_size) {
+	if (!buffer || (int32_t)key_splice_size > buffer_size) {
 		// log_debug("Buffer is not large enough to host a key_splice needs: %lu has: %u",
 		// 	  sizeof(struct key_splice) + key_size, buffer_size);
 		key_splice = calloc(1UL, sizeof(struct key_splice) + key_size);
@@ -55,18 +55,20 @@ struct key_splice *key_splice_create_smallest(char *buffer, int32_t buffer_size,
 	return key_splice_create(key, key_size, buffer, buffer_size, malloced);
 }
 
-inline T key_splice_get_key_size(struct key_splice *key)
+inline int32_t key_splice_get_key_size(struct key_splice *key)
 {
-	return key->key_size;
+	return key == NULL ? -1 : key->key_size;
 }
 
 inline char *key_splice_get_key_offset(struct key_splice *key)
 {
-	return key->data;
+	return key == NULL ? NULL : key->data;
 }
 
-inline void key_splice_set_key_size(struct key_splice *key, T key_size)
+inline void key_splice_set_key_size(struct key_splice *key, int32_t key_size)
 {
+	if (!key)
+		return;
 	key->key_size = key_size;
 }
 
@@ -75,7 +77,7 @@ inline void key_splice_set_key_offset(struct key_splice *key, char *key_buf)
 	memcpy(key_splice_get_key_offset(key), key_buf, key_splice_get_key_size(key));
 }
 
-inline T key_splice_get_metadata_size(void)
+inline int32_t key_splice_get_metadata_size(void)
 {
 	return sizeof(struct key_splice);
 }
@@ -85,5 +87,4 @@ uint32_t key_splice_get_max_size(void)
 {
 	return KV_SPLICE_MAX_KEY_SIZE + sizeof(struct key_splice);
 }
-#undef T
 #undef T_MAX

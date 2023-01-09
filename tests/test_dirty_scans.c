@@ -263,7 +263,7 @@ static void scan_workload(struct workload_config_t *workload_config)
 		memset((void *)my_keyptr.data, 0x00, my_keyptr.size);
 
 		uint64_t scan_entries = 0;
-		for (uint64_t j = i + 2 + expected_offset; scan_entries <= workload_config->scan_size;
+		for (uint64_t j = i + 2 + expected_offset; scan_entries < workload_config->scan_size;
 		     j += workload_config->step) {
 			/*construct the key we expect*/
 			memcpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));

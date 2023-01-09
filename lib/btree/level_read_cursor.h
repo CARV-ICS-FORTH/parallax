@@ -1,9 +1,8 @@
 #ifndef LEVEL_READ_CURSOR_H
 #define LEVEL_READ_CURSOR_H
-#include "../scanner/scanner.h"
 #include "btree.h"
 #include "conf.h"
-#include "level_cursor.h"
+#include "kv_pairs.h"
 #include <stdbool.h>
 #include <stdint.h>
 struct sh_heap_node;
@@ -26,14 +25,14 @@ struct rcursor_device_cursor {
 };
 
 struct rcursor_L0_cursor {
-	level_scanner *L0_scanner;
+	struct level_scanner *L0_scanner;
 };
 
 struct rcursor_level_read_cursor {
-	uint32_t level_id;
-	uint32_t tree_id;
+	uint8_t level_id;
+	uint8_t tree_id;
 	bool is_end_of_level;
-	struct comp_parallax_key cursor_key;
+	struct kv_splice_base splice;
 	db_handle *handle;
 	union {
 		struct rcursor_device_cursor *device_cursor;
