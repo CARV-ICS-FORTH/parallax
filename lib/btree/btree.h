@@ -87,12 +87,10 @@ typedef struct lock_table {
 	char pad[8];
 } lock_table;
 
-#ifdef ENABLE_BLOOM_FILTERS
 struct bloom_desc {
 	struct bloom *bloom_filter;
 	uint64_t bloom_file_hash;
 };
-#endif
 
 struct level_descriptor {
 	struct pbf_desc *bloom_desc[NUM_TREES_PER_LEVEL];

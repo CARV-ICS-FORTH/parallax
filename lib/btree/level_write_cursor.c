@@ -330,13 +330,11 @@ void wcursor_flush_write_cursor(struct wcursor_level_write_cursor *w_cursor)
 				      SEGMENT_SIZE, w_cursor->fd);
 	}
 
-	// #ifdef ENABLE_BLOOM_FILTERS
 	if (!pbf_persist_bloom_filter(
 		    w_cursor->handle->db_desc->levels[w_cursor->level_id].bloom_desc[w_cursor->tree_id])) {
 		log_fatal("Failed to write bloom filter");
 		_exit(EXIT_FAILURE);
 	}
-	// #endif
 
 #if 0
 	assert_level_segments(c->handle->db_desc, c->level_id, 1);
