@@ -122,7 +122,7 @@ static void wcursor_get_space(struct wcursor_level_write_cursor *w_cursor, uint3
 			current_segment_mem_buffer->nodetype = type;
 		}
 		w_cursor->last_leaf =
-			(struct dl_leaf_node *)(&w_cursor->segment_buf[0][(w_cursor->segment_offt[0] % SEGMENT_SIZE)]);
+			(struct leaf_node *)(&w_cursor->segment_buf[0][(w_cursor->segment_offt[0] % SEGMENT_SIZE)]);
 		w_cursor->segment_offt[0] += level_leaf_size;
 		dl_init_leaf_node(w_cursor->last_leaf, level_leaf_size);
 		break;

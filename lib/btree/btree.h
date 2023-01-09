@@ -317,13 +317,13 @@ struct bt_rebalance_result {
 	union {
 		struct node_header *left_child;
 		struct index_node *left_ichild;
-		struct dl_leaf_node *left_leaf_child;
+		struct leaf_node *left_leaf_child;
 	};
 
 	union {
 		struct node_header *right_child;
 		struct index_node *right_ichild;
-		struct dl_leaf_node *right_leaf_child;
+		struct leaf_node *right_leaf_child;
 	};
 	enum bt_rebalance_retcode stat;
 };

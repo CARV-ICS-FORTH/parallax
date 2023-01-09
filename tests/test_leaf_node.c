@@ -75,7 +75,7 @@ static int tlf_compare(struct kv_splice_base *key1_splice, struct kv_splice_base
 }
 
 enum tlf_group_check { TLF_CHECK_LEFT, TLF_CHECK_RIGHT, TLF_CHECK_ALL };
-bool tlf_verify_keys(struct hash_entry *root, struct kv_splice_base *pivot, struct dl_leaf_node *leaf,
+bool tlf_verify_keys(struct hash_entry *root, struct kv_splice_base *pivot, struct leaf_node *leaf,
 		     enum tlf_group_check check)
 {
 	struct hash_entry *current_entry = NULL;
@@ -122,7 +122,7 @@ int main(int argc, char **argv)
 	(void)argc;
 	(void)argv;
 	struct hash_entry *root = NULL;
-	struct dl_leaf_node *leaf = malloc(8192UL);
+	struct leaf_node *leaf = malloc(8192UL);
 	dl_init_leaf_node(leaf, 8192UL);
 	uint32_t generated_keys_num = 0;
 
@@ -151,9 +151,9 @@ int main(int argc, char **argv)
 	tlf_verify_keys(root, NULL, leaf, TLF_CHECK_ALL);
 	log_info("All keys found great!");
 
-	struct dl_leaf_node *left = malloc(8192UL);
+	struct leaf_node *left = malloc(8192UL);
 	dl_init_leaf_node(left, 8192UL);
-	struct dl_leaf_node *right = malloc(8192UL);
+	struct leaf_node *right = malloc(8192UL);
 	dl_init_leaf_node(right, 8192UL);
 	struct kv_splice_base pivot_splice = dl_split_dynamic_leaf(leaf, left, right);
 	log_debug("Pivot splice is %d", get_key_size(pivot_splice.kv_splice));
@@ -169,7 +169,7 @@ int main(int argc, char **argv)
 	tlf_verify_keys(root, &pivot_splice, right, TLF_CHECK_RIGHT);
 
 	log_info("split leaf ok! found all keys");
-	struct dl_leaf_node *reorganized_leaf = malloc(8192UL);
+	struct leaf_node *reorganized_leaf = malloc(8192UL);
 	dl_init_leaf_node(reorganized_leaf, 8192UL);
 	dl_reorganize_dynamic_leaf(leaf, reorganized_leaf);
 	tlf_verify_keys(root, NULL, reorganized_leaf, TLF_CHECK_ALL);

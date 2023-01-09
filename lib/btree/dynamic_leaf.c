@@ -25,7 +25,7 @@
 #include <unistd.h>
 
 #if 0
-static bool dl_check_leaf(struct dl_leaf_node *leaf);
+static bool dl_check_leaf(struct leaf_node *leaf);
 #endif
 
 struct dl_slot_array {
@@ -36,16 +36,16 @@ struct dl_slot_array {
 	uint16_t index : 13;
 };
 
-struct dl_leaf_node {
+struct leaf_node {
 	struct node_header header;
 } __attribute__((packed));
 
-struct dl_slot_array *dl_get_slot_array_offset(const struct dl_leaf_node *leaf)
+struct dl_slot_array *dl_get_slot_array_offset(const struct leaf_node *leaf)
 {
-	return (struct dl_slot_array *)(((char *)leaf) + sizeof(struct dl_leaf_node));
+	return (struct dl_slot_array *)(((char *)leaf) + sizeof(struct leaf_node));
 }
 
-struct kv_splice_base dl_get_general_splice(struct dl_leaf_node *leaf, int32_t position)
+struct kv_splice_base dl_get_general_splice(struct leaf_node *leaf, int32_t position)
 {
 	struct kv_splice_base general_splice = { 0 };
 	struct dl_slot_array *slot_array = dl_get_slot_array_offset(leaf);
@@ -77,7 +77,7 @@ static void dl_fill_key_from_general_splice(struct kv_splice_base *general_splic
 	}
 }
 
-int32_t dl_search_get_pos(struct dl_leaf_node *leaf, char *key, int32_t key_size, bool *exact_match)
+int32_t dl_search_get_pos(struct leaf_node *leaf, char *key, int32_t key_size, bool *exact_match)
 {
 	*exact_match = false;
 
@@ -128,7 +128,7 @@ int32_t dl_search_get_pos(struct dl_leaf_node *leaf, char *key, int32_t key_size
 	return cmp_return_value > 0 ? middle - 1 : middle;
 }
 
-struct kv_splice_base dl_find_kv_in_dynamic_leaf(struct dl_leaf_node *leaf, char *key, int32_t key_size,
+struct kv_splice_base dl_find_kv_in_dynamic_leaf(struct leaf_node *leaf, char *key, int32_t key_size,
 						 const char **error)
 {
 	struct kv_splice_base kv_not_found = { 0 };
@@ -141,7 +141,7 @@ struct kv_splice_base dl_find_kv_in_dynamic_leaf(struct dl_leaf_node *leaf, char
 	return kv_not_found;
 }
 
-bool dl_is_leaf_full(struct dl_leaf_node *leaf, uint32_t kv_size)
+bool dl_is_leaf_full(struct leaf_node *leaf, uint32_t kv_size)
 {
 	uint8_t *left_border = (uint8_t *)leaf + sizeof(struct node_header) +
 			       ((leaf->header.num_entries + 1) * sizeof(struct dl_slot_array));
@@ -152,7 +152,7 @@ bool dl_is_leaf_full(struct dl_leaf_node *leaf, uint32_t kv_size)
 	return right_border > left_border ? false : true;
 }
 
-static uint16_t dl_append_data_splice_in_dynamic_leaf(struct dl_leaf_node *leaf, struct kv_splice_base *general_splice)
+static uint16_t dl_append_data_splice_in_dynamic_leaf(struct leaf_node *leaf, struct kv_splice_base *general_splice)
 {
 	int32_t kv_size = kv_splice_base_calculate_size(general_splice);
 	if (dl_is_leaf_full(leaf, kv_size)) {
@@ -172,8 +172,7 @@ static uint16_t dl_append_data_splice_in_dynamic_leaf(struct dl_leaf_node *leaf,
 	return leaf->header.log_size;
 }
 
-bool dl_append_splice_in_dynamic_leaf(struct dl_leaf_node *leaf, struct kv_splice_base *general_splice,
-				      bool is_tombstone)
+bool dl_append_splice_in_dynamic_leaf(struct leaf_node *leaf, struct kv_splice_base *general_splice, bool is_tombstone)
 {
 	uint16_t offt = dl_append_data_splice_in_dynamic_leaf(leaf, general_splice);
 	if (!offt) {
@@ -189,7 +188,7 @@ bool dl_append_splice_in_dynamic_leaf(struct dl_leaf_node *leaf, struct kv_splic
 	return true;
 }
 
-bool dl_insert_in_dynamic_leaf(struct dl_leaf_node *leaf, struct kv_splice_base *splice, bool is_tombstone,
+bool dl_insert_in_dynamic_leaf(struct leaf_node *leaf, struct kv_splice_base *splice, bool is_tombstone,
 			       bool *exact_match)
 {
 	if (dl_is_leaf_full(leaf, kv_splice_base_calculate_size(splice))) {
@@ -249,11 +248,11 @@ bool dl_insert_in_dynamic_leaf(struct dl_leaf_node *leaf, struct kv_splice_base 
 
 struct dl_leaf_iterator {
 	struct kv_splice_base splice;
-	struct dl_leaf_node *leaf;
+	struct leaf_node *leaf;
 	int pos;
 };
 
-static void dl_init_leaf_iterator(struct dl_leaf_node *leaf, struct dl_leaf_iterator *iter, char *key, int32_t key_size)
+static void dl_init_leaf_iterator(struct leaf_node *leaf, struct dl_leaf_iterator *iter, char *key, int32_t key_size)
 {
 	iter->leaf = leaf;
 	if (iter->leaf->header.num_entries <= 0) {
@@ -288,7 +287,7 @@ static struct kv_splice_base dl_leaf_iterator_curr(struct dl_leaf_iterator *iter
 	return dl_get_general_splice(iter->leaf, iter->pos);
 }
 
-// static bool dl_check_leaf(struct dl_leaf_node *leaf)
+// static bool dl_check_leaf(struct leaf_node *leaf)
 // {
 // 	struct dl_leaf_iterator iter = { 0 };
 // 	dl_init_leaf_iterator(leaf, &iter, NULL, -1);
@@ -308,8 +307,7 @@ static struct kv_splice_base dl_leaf_iterator_curr(struct dl_leaf_iterator *iter
 // 	return true;
 // }
 
-struct kv_splice_base dl_split_dynamic_leaf(struct dl_leaf_node *leaf, struct dl_leaf_node *left,
-					    struct dl_leaf_node *right)
+struct kv_splice_base dl_split_dynamic_leaf(struct leaf_node *leaf, struct leaf_node *left, struct leaf_node *right)
 {
 	struct dl_leaf_iterator iter = { 0 };
 	dl_init_leaf_iterator(leaf, &iter, NULL, -1);
@@ -339,12 +337,12 @@ struct kv_splice_base dl_split_dynamic_leaf(struct dl_leaf_node *leaf, struct dl
 	return pivot_splice;
 }
 
-inline bool dl_is_reorganize_possible(struct dl_leaf_node *leaf, int32_t kv_size)
+inline bool dl_is_reorganize_possible(struct leaf_node *leaf, int32_t kv_size)
 {
 	return leaf->header.fragmentation <= kv_size ? false : true;
 }
 
-void dl_reorganize_dynamic_leaf(struct dl_leaf_node *leaf, struct dl_leaf_node *target)
+void dl_reorganize_dynamic_leaf(struct leaf_node *leaf, struct leaf_node *target)
 {
 	struct dl_leaf_iterator iter = { 0 };
 	dl_init_leaf_iterator(leaf, &iter, NULL, -1);
@@ -360,7 +358,7 @@ void dl_reorganize_dynamic_leaf(struct dl_leaf_node *leaf, struct dl_leaf_node *
 	}
 }
 
-void dl_init_leaf_node(struct dl_leaf_node *leaf, uint32_t leaf_size)
+void dl_init_leaf_node(struct leaf_node *leaf, uint32_t leaf_size)
 {
 	_Static_assert(sizeof(struct dl_slot_array) == 2,
 		       "Dynamic slot array is not 2 bytes, are you sure you want to continue?");
@@ -369,17 +367,17 @@ void dl_init_leaf_node(struct dl_leaf_node *leaf, uint32_t leaf_size)
 	leaf->header.log_size = leaf_size;
 }
 
-inline void dl_set_leaf_node_type(struct dl_leaf_node *leaf, nodeType_t node_type)
+inline void dl_set_leaf_node_type(struct leaf_node *leaf, nodeType_t node_type)
 {
 	leaf->header.type = node_type;
 }
 
-inline nodeType_t dl_get_leaf_node_type(struct dl_leaf_node *leaf)
+inline nodeType_t dl_get_leaf_node_type(struct leaf_node *leaf)
 {
 	return leaf->header.type;
 }
 
-inline int32_t dl_get_leaf_num_entries(struct dl_leaf_node *leaf)
+inline int32_t dl_get_leaf_num_entries(struct leaf_node *leaf)
 {
 	return leaf->header.num_entries;
 }

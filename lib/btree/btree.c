@@ -1368,8 +1368,7 @@ static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id,
 	int32_t key_size = key_splice_get_key_size(search_key_buf);
 	void *key = key_splice_get_key_offset(search_key_buf);
 	const char *error = NULL;
-	struct kv_splice_base splice =
-		dl_find_kv_in_dynamic_leaf((struct dl_leaf_node *)curr_node, key, key_size, &error);
+	struct kv_splice_base splice = dl_find_kv_in_dynamic_leaf((struct leaf_node *)curr_node, key, key_size, &error);
 	if (error != NULL) {
 		// log_debug("Key %.*s not found with error message %s", key_size, (char *)key, error);
 		get_op->found = 0;
@@ -1527,8 +1526,7 @@ int insert_KV_at_leaf(bt_insert_req *ins_req, struct node_header *leaf)
 	}
 
 	bool exact_match = false;
-	if (!dl_insert_in_dynamic_leaf((struct dl_leaf_node *)leaf, &splice, ins_req->metadata.tombstone,
-				       &exact_match)) {
+	if (!dl_insert_in_dynamic_leaf((struct leaf_node *)leaf, &splice, ins_req->metadata.tombstone, &exact_match)) {
 		log_fatal("Inserting at leaf failed probably due to overflow");
 		assert(0);
 		BUG_ON();
@@ -1591,13 +1589,12 @@ static uint32_t bt_calculate_splice_size(enum kv_category cat, struct kv_splice 
 	_exit(EXIT_FAILURE);
 }
 
-static bool bt_reorganize_leaf(struct dl_leaf_node *leaf, bt_insert_req *req)
+static bool bt_reorganize_leaf(struct leaf_node *leaf, bt_insert_req *req)
 {
 	if (!dl_is_reorganize_possible(leaf, bt_calculate_splice_size(req->metadata.cat,
 								      (struct kv_splice *)req->key_value_buf)))
 		return false;
-	struct dl_leaf_node *target =
-		calloc(1UL, req->metadata.handle->db_desc->levels[req->metadata.level_id].leaf_size);
+	struct leaf_node *target = calloc(1UL, req->metadata.handle->db_desc->levels[req->metadata.level_id].leaf_size);
 	dl_init_leaf_node(target, req->metadata.handle->db_desc->levels[req->metadata.level_id].leaf_size);
 	dl_set_leaf_node_type(target, dl_get_leaf_node_type(leaf));
 	dl_reorganize_dynamic_leaf(leaf, target);
@@ -1606,7 +1603,7 @@ static bool bt_reorganize_leaf(struct dl_leaf_node *leaf, bt_insert_req *req)
 	return true;
 }
 
-static void bt_split_leaf(struct dl_leaf_node *leaf, bt_insert_req *req, struct bt_rebalance_result *split_result)
+static void bt_split_leaf(struct leaf_node *leaf, bt_insert_req *req, struct bt_rebalance_result *split_result)
 {
 	split_result->left_leaf_child =
 		seg_get_dynamic_leaf_node(req->metadata.handle->db_desc, req->metadata.level_id, req->metadata.tree_id);
@@ -1705,8 +1702,8 @@ release_and_retry:
 
 			log_debug("Allocating new active tree %d for level id %d", ins_req->metadata.tree_id, level_id);
 
-			struct dl_leaf_node *new_leaf = seg_get_leaf_node(ins_req->metadata.handle->db_desc, level_id,
-									  ins_req->metadata.tree_id);
+			struct leaf_node *new_leaf = seg_get_leaf_node(ins_req->metadata.handle->db_desc, level_id,
+								       ins_req->metadata.tree_id);
 			dl_init_leaf_node(new_leaf, ins_req->metadata.handle->db_desc->levels[level_id].leaf_size);
 			dl_set_leaf_node_type(new_leaf, leafRootNode);
 			db_desc->levels[level_id].root_w[ins_req->metadata.tree_id] = (struct node_header *)new_leaf;
@@ -1749,10 +1746,10 @@ release_and_retry:
 						    ins_req->metadata.tree_id, (struct index_node *)son);
 				// free_logical_node(&(req->allocator_desc), son);
 			} else if (0 == son->height) {
-				if (bt_reorganize_leaf((struct dl_leaf_node *)son, ins_req))
+				if (bt_reorganize_leaf((struct leaf_node *)son, ins_req))
 					goto release_and_retry;
 
-				bt_split_leaf((struct dl_leaf_node *)son, ins_req, &split_res);
+				bt_split_leaf((struct leaf_node *)son, ins_req, &split_res);
 			} else {
 				log_fatal("Negative height? come on");
 				BUG_ON();

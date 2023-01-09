@@ -26,7 +26,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 // IWYU pragma: no_forward_declare index_node
-// IWYU pragma: no_forward_declare dl_leaf_node
+// IWYU pragma: no_forward_declare leaf_node
 
 struct link_segments_metadata {
 	level_descriptor *level_desc;
@@ -192,14 +192,14 @@ void seg_free_index_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_
 	(void)inode;
 }
 
-struct dl_leaf_node *seg_get_leaf_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
+struct leaf_node *seg_get_leaf_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
 {
 	struct level_descriptor *level_desc = &db_desc->levels[level_id];
-	struct dl_leaf_node *leaf = (struct dl_leaf_node *)get_space(db_desc, level_id, tree_id, level_desc->leaf_size);
+	struct leaf_node *leaf = (struct leaf_node *)get_space(db_desc, level_id, tree_id, level_desc->leaf_size);
 	return leaf;
 }
 
-struct dl_leaf_node *seg_get_dynamic_leaf_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
+struct leaf_node *seg_get_dynamic_leaf_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
 {
 	struct level_descriptor *level_desc = &db_desc->levels[level_id];
 	return get_space(db_desc, level_id, tree_id, level_desc->leaf_size);

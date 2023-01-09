@@ -144,8 +144,8 @@ static bool rcursor_get_next_kv_from_device(struct rcursor_level_read_cursor *r_
 		}
 
 		case COMP_CUR_DECODE_KV: {
-			struct dl_leaf_node *leaf = (struct dl_leaf_node *)((uint64_t)device_cursor->segment_buf +
-									    (device_cursor->offset % SEGMENT_SIZE));
+			struct leaf_node *leaf = (struct leaf_node *)((uint64_t)device_cursor->segment_buf +
+								      (device_cursor->offset % SEGMENT_SIZE));
 			// slot array entry
 			if (device_cursor->curr_leaf_entry >= dl_get_leaf_num_entries(leaf)) {
 				// done with this leaf
