@@ -149,6 +149,16 @@ static void wcursor_get_space(struct wcursor_level_write_cursor *w_cursor, uint3
 				wcursor_write_segment(w_cursor->segment_buf[0],
 						      w_cursor->last_segment_btree_level_offt[0], 0, SEGMENT_SIZE,
 						      w_cursor->fd);
+
+				//TODO: geostyl callback
+				parallax_callbacks_t par_callbacks = w_cursor->handle->db_desc->parallax_callbacks;
+				if (are_parallax_callbacks_set(par_callbacks)) {
+					struct parallax_callback_funcs par_cb = parallax_get_callbacks(par_callbacks);
+					void *context = parallax_get_context(par_callbacks);
+					uint32_t src_level = w_cursor->level_id - 1;
+					par_cb.comp_write_cursor_flush_segment_cb(context, src_level, 0, SEGMENT_SIZE,
+										  0);
+				}
 			}
 
 			memset(&w_cursor->segment_buf[0][0], 0x00, sizeof(struct segment_header));
@@ -195,6 +205,16 @@ static void wcursor_get_space(struct wcursor_level_write_cursor *w_cursor, uint3
 				wcursor_write_segment(w_cursor->segment_buf[height],
 						      w_cursor->last_segment_btree_level_offt[height], 0, SEGMENT_SIZE,
 						      w_cursor->fd);
+
+				//TODO: geostyl callback
+				parallax_callbacks_t par_callbacks = w_cursor->handle->db_desc->parallax_callbacks;
+				if (are_parallax_callbacks_set(par_callbacks)) {
+					struct parallax_callback_funcs par_cb = parallax_get_callbacks(par_callbacks);
+					void *context = parallax_get_context(par_callbacks);
+					uint32_t src_level = w_cursor->level_id - 1;
+					par_cb.comp_write_cursor_flush_segment_cb(context, src_level, height,
+										  SEGMENT_SIZE, 0);
+				}
 			}
 
 			memset(&w_cursor->segment_buf[height][0], 0x00, sizeof(struct segment_header));
@@ -391,6 +411,15 @@ void wcursor_flush_write_cursor(struct wcursor_level_write_cursor *w_cursor)
 
 		wcursor_write_segment(w_cursor->segment_buf[i], w_cursor->last_segment_btree_level_offt[i], 0,
 				      SEGMENT_SIZE, w_cursor->fd);
+
+		//TODO: geostyl callback
+		parallax_callbacks_t par_callbacks = w_cursor->handle->db_desc->parallax_callbacks;
+		if (are_parallax_callbacks_set(par_callbacks)) {
+			struct parallax_callback_funcs par_cb = parallax_get_callbacks(par_callbacks);
+			void *context = parallax_get_context(par_callbacks);
+			uint32_t src_level = w_cursor->level_id - 1;
+			par_cb.comp_write_cursor_flush_segment_cb(context, src_level, i, SEGMENT_SIZE, 1);
+		}
 	}
 
 	if (!pbf_persist_bloom_filter(
