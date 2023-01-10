@@ -18,7 +18,8 @@ if(BUILD_TESTING)
       test_region_allocations.c
       test_par_format.c
       test_par_put_serialized.c
-      test_wcursors_append_segment.c)
+      test_wcursors_append_segment.c
+      test_wcursors_segment_buffers_cursor.c)
 
   set_source_files_properties(${LIB_TEST_FILES} COMPILE_FLAGS "-O3")
 
@@ -175,6 +176,14 @@ if(BUILD_TESTING)
                           ${DEPENDENCIES} ${BDB_LIBRARY})
 
   endif()
+
+  add_test(NAME test_wcursors_segment_buffers_cursor
+           COMMAND $<TARGET_FILE:test_wcursors_segment_buffers_cursor>
+                   --file=${FILEPATH})
+  add_executable(test_wcursors_segment_buffers_cursor
+                 test_wcursors_segment_buffers_cursor.c arg_parser.c)
+  target_link_libraries(test_wcursors_segment_buffers_cursor "${PROJECT_NAME}"
+                        ${DEPENDENCIES})
 
   add_executable(test_mixes test_mixes.c arg_parser.c)
   target_link_libraries(test_mixes "${PROJECT_NAME}")

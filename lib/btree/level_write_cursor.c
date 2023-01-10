@@ -44,6 +44,11 @@ struct wcursor_level_write_cursor {
 	int fd;
 };
 
+struct wcursor_segment_buffers_iterator {
+	int curr_i;
+	struct wcursor_level_write_cursor *wcursor;
+};
+
 #if 0
 static void wcursor_assert_node(void)
 {
@@ -631,4 +636,45 @@ void wcursor_append_index_segment(struct wcursor_level_write_cursor *wcursor, in
 			      buf_size, wcursor->fd);
 
 	wcursor->last_segment_btree_level_offt[height] = new_device_segment_offt;
+}
+
+wcursor_segment_buffers_iterator_t wcursor_segment_buffers_cursor_init(struct wcursor_level_write_cursor *wcursor)
+{
+	assert(wcursor);
+	struct wcursor_segment_buffers_iterator *new_cursor =
+		(struct wcursor_segment_buffers_iterator *)calloc(1, sizeof(struct wcursor_segment_buffers_iterator));
+	new_cursor->curr_i = 0;
+	new_cursor->wcursor = wcursor;
+	return new_cursor;
+}
+
+char *wcursor_segment_buffers_cursor_get_offt(wcursor_segment_buffers_iterator_t segment_buffers_cursor)
+{
+	struct wcursor_segment_buffers_iterator *cursor =
+		(struct wcursor_segment_buffers_iterator *)segment_buffers_cursor;
+
+	return cursor->wcursor->segment_buf[cursor->curr_i];
+}
+
+bool wcursor_segment_buffers_cursor_is_valid(wcursor_segment_buffers_iterator_t segment_buffers_cursor)
+{
+	struct wcursor_segment_buffers_iterator *cursor =
+		(struct wcursor_segment_buffers_iterator *)segment_buffers_cursor;
+	if (cursor->curr_i >= MAX_HEIGHT)
+		return false;
+	return true;
+}
+
+void wcursor_segment_buffers_cursor_close(wcursor_segment_buffers_iterator_t segment_buffers_cursor)
+{
+	struct wcursor_segment_buffers_iterator *cursor =
+		(struct wcursor_segment_buffers_iterator *)segment_buffers_cursor;
+	free(cursor);
+}
+
+void wcursor_segment_buffers_cursor_next(wcursor_segment_buffers_iterator_t segment_buffers_cursor)
+{
+	struct wcursor_segment_buffers_iterator *cursor =
+		(struct wcursor_segment_buffers_iterator *)segment_buffers_cursor;
+	++cursor->curr_i;
 }

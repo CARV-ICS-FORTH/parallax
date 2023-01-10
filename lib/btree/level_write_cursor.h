@@ -7,6 +7,8 @@ struct db_handle;
 struct medium_log_LRU_cache;
 struct wcursor_level_write_cursor;
 
+typedef struct wcursor_segment_buffers_iterator *wcursor_segment_buffers_iterator_t;
+
 /**
  * @brief Creates a level cursor to write a new level which is the result of a compaction.
  * @param level_id the id of the level that we write.
@@ -66,4 +68,31 @@ void wcursor_close_write_cursor(struct wcursor_level_write_cursor *w_cursor);
  */
 void wcursor_append_index_segment(struct wcursor_level_write_cursor *wcursor, int32_t height, char *buf,
 				  uint32_t buf_size, uint8_t is_last_segment);
+
+/**
+ *@brief Initializes a cursor that can parse the segment_buf field of the wcursor_level_write_cursor struct
+ *@param wcursor: the level_write_cursor from which the cursor will parse the segment_buf
+ */
+wcursor_segment_buffers_iterator_t wcursor_segment_buffers_cursor_init(struct wcursor_level_write_cursor *wcursor);
+/**
+ *@brief returns the offt of the current segment_buf
+ *@param segmnet_buffers_cursor the cursor from which we retrieve the current segment buffer offt
+ */
+char *wcursor_segment_buffers_cursor_get_offt(wcursor_segment_buffers_iterator_t segment_buffers_cursor);
+/**
+ *@brief returns if the cursor is valid (a.k.a. in bounds)
+ *@param segmnet_buffers_cursor the cursor from which we retrieve the current segment buffer offt
+*/
+bool wcursor_segment_buffers_cursor_is_valid(wcursor_segment_buffers_iterator_t segment_buffers_cursor);
+/**
+ *@brief closes and frees the cursor
+ *@param segmnet_buffers_cursor the cursor from which we retrieve the current segment buffer offt
+*/
+void wcursor_segment_buffers_cursor_close(wcursor_segment_buffers_iterator_t segment_buffers_cursor);
+/**
+ *@brief iterates the cursor to the next segment buffer
+ *@param segmnet_buffers_cursor the cursor from which we retrieve the current segment buffer offt
+*/
+void wcursor_segment_buffers_cursor_next(wcursor_segment_buffers_iterator_t segment_buffers_cursor);
+
 #endif
