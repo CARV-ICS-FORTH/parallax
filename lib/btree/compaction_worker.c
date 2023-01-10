@@ -229,6 +229,14 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 	struct wcursor_level_write_cursor *new_level =
 		wcursor_init_write_cursor(comp_req->dst_level, handle, comp_req->dst_tree);
 
+	//TODO: geostyl callback
+	parallax_callbacks_t par_callbacks = comp_req->db_desc->parallax_callbacks;
+	if (are_parallax_callbacks_set(par_callbacks)) {
+		struct parallax_callback_funcs par_cb = parallax_get_callbacks(par_callbacks);
+		void *context = parallax_get_context(par_callbacks);
+		par_cb.compaction_started_cb(context, comp_req->src_level, comp_req->dst_tree, new_level);
+	}
+
 	//initialize LRU cache for storing chunks of segments when medium log goes in place
 	if (wcursor_get_level_id(new_level) == handle->db_desc->level_medium_inplace)
 		wcursor_set_LRU_cache(new_level, mlog_cache_init_LRU(handle));
@@ -306,7 +314,7 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 
 	lock_to_update_levels_after_compaction(comp_req);
 	/*TODO: closing compaction callback*/
-	parallax_callbacks_t par_callbacks = comp_req->db_desc->parallax_callbacks;
+	par_callbacks = comp_req->db_desc->parallax_callbacks;
 	if (are_parallax_callbacks_set(par_callbacks)) {
 		struct parallax_callback_funcs par_cb = parallax_get_callbacks(par_callbacks);
 		void *context = parallax_get_context(par_callbacks);
