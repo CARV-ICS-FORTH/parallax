@@ -56,5 +56,4 @@
 #define MAX_ALLOCATION_TRIES (2)
 #define MAX_HEIGHT 9
 
-#define BLOOM_BUFFER_SIZE (128U)
 #endif

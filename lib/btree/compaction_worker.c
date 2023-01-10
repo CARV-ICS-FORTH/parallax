@@ -23,7 +23,7 @@
 #include <semaphore.h>
 #include <stdlib.h>
 #include <string.h>
-struct pbf_desc;
+// IWYU pragma: no_forward_declare pbf_desc
 struct compaction_roots {
 	struct node_header *src_root;
 	struct node_header *dst_root;
@@ -362,14 +362,7 @@ static void swap_levels(struct level_descriptor *src, struct level_descriptor *d
 	while (!__sync_bool_compare_and_swap(&dst->root[dst_active_tree], dst->root[dst_active_tree],
 					     src->root[src_active_tree])) {
 	}
-	// dst->root_w[dst_active_tree] = src->root_w[src_active_tree];
 	src->root[src_active_tree] = NULL;
-
-	// while (!__sync_bool_compare_and_swap(&dst->root[dst_active_tree], dst->root[dst_active_tree],
-	// 				     src->root[src_active_tree])) {
-	// }
-	// // dst->root_r[dst_active_tree] = src->root_r[src_active_tree];
-	// src->root[src_active_tree] = NULL;
 }
 
 static void compact_with_empty_destination_level(struct compaction_request *comp_req)

@@ -217,7 +217,7 @@ bool pbf_bloom_add(struct pbf_desc *bloom_filter, char *key, int32_t size)
 		return true;
 
 	int ret = bloom_add(bloom_filter->bloom_filter, key, size);
-	return ret == -1 ? false : true;
+	return !(ret == -1);
 }
 
 bool pbf_check(struct pbf_desc *bloom_filter, char *key, int32_t size)
@@ -230,7 +230,7 @@ bool pbf_check(struct pbf_desc *bloom_filter, char *key, int32_t size)
 		log_fatal("Corrupted/Non initialized bloom filter");
 		_exit(EXIT_FAILURE);
 	}
-	return 1 == ret;
+	return ret;
 }
 
 struct pbf_desc *pbf_recover_bloom_filter(db_handle *database_desc, uint8_t level_id, uint8_t tree_id,
@@ -261,7 +261,5 @@ struct pbf_desc *pbf_recover_bloom_filter(db_handle *database_desc, uint8_t leve
 
 uint64_t pbf_get_bf_file_hash(struct pbf_desc *bloom_filter)
 {
-	if (NULL == bloom_filter)
-		return UINT64_MAX;
-	return bloom_filter->bloom_file_hash;
+	return NULL == bloom_filter ? UINT64_MAX : bloom_filter->bloom_file_hash;
 }

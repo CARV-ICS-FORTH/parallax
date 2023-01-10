@@ -34,11 +34,6 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
                                                "MinSizeRel" "RelWithDebInfo")
 endif()
 
-message(
-  STATUS
-    "build type is '${default_build_type}' and cmake build type is '${CMAKE_BUILD_TYPE}'."
-)
-
 if(DISABLE_LOGGING)
   add_definitions(-DDISABLE_LOGGING)
 endif()

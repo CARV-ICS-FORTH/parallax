@@ -13,6 +13,7 @@
 // limitations under the License.
 #include "../btree/bloom_filter.h"
 #include "../btree/btree.h"
+#include "../btree/btree_node.h"
 #include "../btree/conf.h"
 #include "../btree/gc.h"
 #include "../btree/kv_pairs.h"
@@ -33,8 +34,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-struct node_header;
-struct pbf_desc;
+
+// IWYU pragma: no_forward_declare node_header
+// IWYU pragma: no_forward_declare pbf_desc
+
 struct log_info {
 	uint64_t head_dev_offt;
 	uint64_t tail_dev_offt;

@@ -1285,16 +1285,10 @@ static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id,
 		return;
 	}
 
-	bool check = level_id == 0 ? true :
-				     pbf_check(db_desc->levels[level_id].bloom_desc[0],
-					       key_splice_get_key_offset(get_op->key_splice),
-					       key_splice_get_key_size(get_op->key_splice));
-
-	if (!check)
+	if (!pbf_check(db_desc->levels[level_id].bloom_desc[0], key_splice_get_key_offset(get_op->key_splice),
+		       key_splice_get_key_size(get_op->key_splice)))
 		return;
 
-	/* TODO: (@geostyl) do we need this if here? i think its reduntant*/
-	// struct find_result ret_result = { 0 };
 	lock_table *prev = NULL;
 	lock_table *curr = NULL;
 	struct node_header *curr_node = root;

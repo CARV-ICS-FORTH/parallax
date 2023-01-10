@@ -369,10 +369,8 @@ bool scanner_get_next(struct scanner *scanner)
 	while (1) {
 		struct sh_heap_node node = { 0 };
 
-		if (!sh_remove_top(&scanner->heap, &node)) {
-			log_debug("Empty heap in scanner");
+		if (!sh_remove_top(&scanner->heap, &node))
 			return false;
-		}
 
 		scanner->keyValue = node.splice.kv_splice;
 		if (node.splice.cat == MEDIUM_INLOG || node.splice.cat == BIG_INLOG) {
