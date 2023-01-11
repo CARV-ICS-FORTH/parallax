@@ -133,12 +133,12 @@ static void test_wcursors_append_all_kvs(DB *BDB, struct wcursor_level_write_cur
 	for (; ret == 0; ret = cursorp->get(cursorp, &key, &data, DB_NEXT)) {
 		uint32_t key_size = key.size;
 		uint32_t value_size = data.size;
-		uint32_t kv_splice_metadata = get_kv_metadata_size();
+		uint32_t kv_splice_metadata = kv_splice_get_metadata_size();
 		struct kv_splice *kv_buf = (struct kv_splice *)calloc(1, key_size + value_size + kv_splice_metadata);
-		set_key(kv_buf, key.data, key.size);
-		set_key_size(kv_buf, key.size);
-		set_value(kv_buf, data.data, data.size);
-		set_value_size(kv_buf, data.size);
+		kv_splice_set_key(kv_buf, key.data, key.size);
+		kv_splice_set_key_size(kv_buf, key.size);
+		kv_splice_set_value(kv_buf, data.data, data.size);
+		kv_splice_set_value_size(kv_buf, data.size);
 
 		struct kv_splice_base par_key = { .cat = SMALL_INPLACE, .kv_splice = kv_buf };
 

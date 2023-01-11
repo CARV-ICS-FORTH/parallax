@@ -66,8 +66,8 @@ struct kv_splice_base dl_get_general_splice(struct leaf_node *leaf, int32_t posi
 static void dl_fill_key_from_general_splice(struct kv_splice_base *general_splice, char **key, int32_t *key_size)
 {
 	if (general_splice->cat == SMALL_INPLACE || general_splice->cat == MEDIUM_INPLACE) {
-		*key = get_key_offset_in_kv(general_splice->kv_splice);
-		*key_size = get_key_size(general_splice->kv_splice);
+		*key = kv_splice_get_key_offset_in_kv(general_splice->kv_splice);
+		*key_size = kv_splice_get_key_size(general_splice->kv_splice);
 	} else if (general_splice->cat == MEDIUM_INLOG || general_splice->cat == BIG_INLOG) {
 		*key = kv_sep2_get_key(general_splice->kv_sep2);
 		*key_size = kv_sep2_get_key_size(general_splice->kv_sep2);

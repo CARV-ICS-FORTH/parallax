@@ -52,8 +52,8 @@ static void tlf_fill_key(struct kv_splice_base *pivot, char **key, int32_t *key_
 	}
 
 	if (pivot->cat == SMALL_INPLACE || pivot->cat == MEDIUM_INPLACE) {
-		*key = get_key_offset_in_kv(pivot->kv_splice);
-		*key_size = get_key_size(pivot->kv_splice);
+		*key = kv_splice_get_key_offset_in_kv(pivot->kv_splice);
+		*key_size = kv_splice_get_key_size(pivot->kv_splice);
 	}
 
 	if (pivot->cat == BIG_INLOG || pivot->cat == MEDIUM_INLOG) {
@@ -91,8 +91,8 @@ bool tlf_verify_keys(struct hash_entry *root, struct kv_splice_base *pivot, stru
 			return false;
 		const char *error = NULL;
 		if (current_entry->hsplice.cat == SMALL_INPLACE || current_entry->hsplice.cat == MEDIUM_INPLACE) {
-			key = get_key_offset_in_kv(current_entry->hsplice.kv_splice);
-			key_size = get_key_size(current_entry->hsplice.kv_splice);
+			key = kv_splice_get_key_offset_in_kv(current_entry->hsplice.kv_splice);
+			key_size = kv_splice_get_key_size(current_entry->hsplice.kv_splice);
 		}
 		if (current_entry->hsplice.cat == BIG_INLOG || current_entry->hsplice.cat == MEDIUM_INLOG) {
 			key = kv_sep2_get_key(current_entry->hsplice.kv_sep2);
@@ -156,7 +156,7 @@ int main(int argc, char **argv)
 	struct leaf_node *right = malloc(8192UL);
 	dl_init_leaf_node(right, 8192UL);
 	struct kv_splice_base pivot_splice = dl_split_dynamic_leaf(leaf, left, right);
-	log_debug("Pivot splice is %d", get_key_size(pivot_splice.kv_splice));
+	log_debug("Pivot splice is %d", kv_splice_get_key_size(pivot_splice.kv_splice));
 	char *pivot = NULL;
 	int32_t pivot_size = 0;
 	tlf_fill_key(&pivot_splice, &pivot, &pivot_size);

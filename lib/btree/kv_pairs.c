@@ -16,115 +16,140 @@
 #include "key_splice.h"
 #include <assert.h>
 #include <log.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
-#define DELETE_MARKER_ID (INT32_MAX)
+// max value size reserved
+// value_size is 24 bytes with an int32_t type
+// so the maximum value size is ( 2 ^ 24 / 2 ) - 1 = 8388607
+#define DELETE_MARKER_ID (8388607)
 
-inline int32_t get_key_size(struct kv_splice *kv_pair)
+inline int32_t kv_splice_get_key_size(struct kv_splice *kv_pair)
 {
 	return kv_pair->key_size;
 }
 
-inline int32_t get_value_size(struct kv_splice *kv_pair)
+inline int32_t kv_splice_get_value_size(struct kv_splice *kv_pair)
 {
-	return is_tombstone_kv_pair(kv_pair) ? 0 : kv_pair->value_size;
+	return kv_splice_is_tombstone_kv_pair(kv_pair) ? 0 : kv_pair->value_size;
 }
 
 // cppcheck-suppress unusedFunction
-inline int32_t get_value_size_with_metadata(struct kv_splice *kv_pair)
+inline int32_t kv_splice_get_value_size_with_metadata(struct kv_splice *kv_pair)
 {
-	return sizeof(kv_pair->value_size) + get_value_size(kv_pair);
+	int32_t value_size = sizeof(struct kv_splice) - sizeof(kv_pair->key_size);
+	return value_size + kv_splice_get_value_size(kv_pair);
 }
 
-inline int32_t get_kv_metadata_size(void)
+inline int32_t kv_splice_get_kv_size(struct kv_splice *kv_pair)
 {
-	int32_t kv_pair_metadata_size = sizeof(struct kv_splice);
-	return kv_pair_metadata_size;
+	return kv_splice_get_key_size(kv_pair) + kv_splice_get_value_size(kv_pair) + kv_splice_get_metadata_size();
 }
 
-inline int32_t get_kv_size(struct kv_splice *kv_pair)
+inline int32_t kv_splice_get_tail_size(void)
 {
-	return get_key_size(kv_pair) + get_value_size(kv_pair) + get_kv_metadata_size();
+	return 1;
 }
 
-inline int32_t get_tail_size(void)
-{
-	struct kv_splice kv_pair = { 0 };
-	return sizeof(kv_pair.sizes_tail);
-}
-
-inline void set_key_size(struct kv_splice *kv_pair, int32_t key_size)
+inline void kv_splice_set_key_size(struct kv_splice *kv_pair, int32_t key_size)
 {
 	kv_pair->key_size = key_size;
 }
 
-inline void set_key(struct kv_splice *kv_pair, char *key, int32_t key_size)
+inline void kv_splice_set_key(struct kv_splice *kv_pair, char *key, int32_t key_size)
 {
 	kv_pair->key_size = key_size;
-	memcpy(get_key_offset_in_kv(kv_pair), key, key_size);
+	memcpy(kv_splice_get_key_offset_in_kv(kv_pair), key, key_size);
 }
 
-inline void set_value_size(struct kv_splice *kv_pair, int32_t value_size)
+inline void kv_splice_set_value_size(struct kv_splice *kv_pair, int32_t value_size)
 {
 	kv_pair->value_size = value_size;
 }
 
-inline void set_value(struct kv_splice *kv_pair, char *value, int32_t value_size)
+inline void kv_splice_set_value(struct kv_splice *kv_pair, char *value, int32_t value_size)
 {
-	if (is_tombstone_kv_pair(kv_pair))
+	if (kv_splice_is_tombstone_kv_pair(kv_pair))
 		return;
 	kv_pair->value_size = value_size;
-	memcpy(get_value_offset_in_kv(kv_pair, kv_pair->key_size), value, value_size);
+	memcpy(kv_splice_get_value_offset_in_kv(kv_pair, kv_pair->key_size), value, value_size);
 }
 
-inline char *get_key_offset_in_kv(struct kv_splice *kv_pair)
+inline char *kv_splice_get_key_offset_in_kv(struct kv_splice *kv_pair)
 {
 	return kv_pair->data;
 }
 
-inline char *get_value_offset_in_kv(struct kv_splice *kv_pair, int32_t key_size)
+inline char *kv_splice_get_value_offset_in_kv(struct kv_splice *kv_pair, int32_t key_size)
 {
-	return is_tombstone_kv_pair(kv_pair) ? NULL : kv_pair->data + key_size;
+	return kv_splice_is_tombstone_kv_pair(kv_pair) ? NULL : kv_pair->data + key_size;
 }
 
-inline bool is_tombstone_kv_pair(struct kv_splice *kv_pair)
+inline bool kv_splice_is_tombstone_kv_pair(struct kv_splice *kv_pair)
 {
 	return DELETE_MARKER_ID == kv_pair->value_size;
 }
 
-inline void set_non_tombstone(struct kv_splice *kv_pair)
+inline void kv_splice_set_non_tombstone(struct kv_splice *kv_pair)
 {
 	kv_pair->value_size = 0;
 }
 
-inline void set_tombstone(struct kv_splice *kv_pair)
+inline void kv_splice_set_tombstone(struct kv_splice *kv_pair)
 {
 	kv_pair->value_size = DELETE_MARKER_ID;
 }
 
-void serialize_key(char *buf, void *key, uint32_t key_size)
+uint32_t kv_splice_get_min_possible_kv_size(void)
 {
-	struct kv_splice *kv_splice = (struct kv_splice *)buf;
-	set_key_size(kv_splice, key_size);
-	set_value_size(kv_splice, INT32_MAX);
-	set_sizes_tail(kv_splice, INT8_MAX);
-	set_key(kv_splice, (char *)key, key_size);
+	return sizeof(int32_t) + 1;
 }
 
-void serialize_kv_splice_to_key_splice(char *buf, struct kv_splice *kv_pair)
+inline int32_t kv_splice_get_metadata_size(void)
+{
+	int32_t kv_pair_metadata_size = sizeof(struct kv_splice) + kv_splice_get_tail_size();
+	return kv_pair_metadata_size;
+}
+
+struct kv_splice *kv_splice_create(int32_t key_size, char *key, int32_t value_size, char *value)
+{
+	struct kv_splice *kv_splice = calloc(1UL, key_size + value_size + kv_splice_get_metadata_size());
+	kv_splice->key_size = key_size;
+	kv_splice->value_size = value_size;
+	memcpy(kv_splice->data, key, key_size);
+	memcpy(&kv_splice->data[key_size], value, value_size);
+	return kv_splice;
+}
+
+void kv_splice_serialize(struct kv_splice *splice, char *dest)
+{
+	uint32_t num_bytes = kv_splice_calculate_size(splice->key_size, splice->value_size);
+	assert(splice->key_size > 0);
+	//uint32_t idx = 0;
+	memcpy(dest, splice, num_bytes);
+	/*idx += sizeof(splice->key_size);
+	memcpy(&dest[idx], &splice->value_size, sizeof(splice->value_size));
+	idx += sizeof(splice->value_size);
+	memcpy(&dest[idx], splice->data, kv_splice_get_key_size(splice) + kv_splice_get_value_size(splice));
+	*/
+}
+
+void kv_splice_serialize_to_key_splice(char *buf, struct kv_splice *kv_pair)
 {
 	struct key_splice *key_splice = (struct key_splice *)buf;
-	int32_t key_size = get_key_size(kv_pair);
-	char *key = get_key_offset_in_kv(kv_pair);
+	int32_t key_size = kv_splice_get_key_size(kv_pair);
+	char *key = kv_splice_get_key_offset_in_kv(kv_pair);
 	key_splice_set_key_size(key_splice, key_size);
 	memcpy(key_splice_get_key_offset(key_splice), key, key_size);
 }
 
-uint32_t get_min_possible_kv_size(void)
+uint32_t kv_splice_calculate_size(int32_t key_size, int32_t value_size)
 {
-	return get_kv_metadata_size() + 1;
+	if (value_size == DELETE_MARKER_ID)
+		value_size = 0;
+	return key_size + value_size + kv_splice_get_metadata_size();
 }
 
 char *kv_sep2_get_key(struct kv_seperation_splice2 *kv_sep2)
@@ -187,35 +212,9 @@ struct kv_seperation_splice2 *kv_sep2_alloc_and_create(int32_t key_size, char *k
 	return kv_sep2_create(key_size, key, value_offt, buf, sizeof(struct kv_seperation_splice2) + key_size);
 }
 
-uint32_t kv_splice_calculate_size(int32_t key_size, int32_t value_size)
-{
-	return key_size + value_size + sizeof(struct kv_splice);
-}
-
 uint32_t kv_sep2_calculate_size(int32_t key_size)
 {
 	return key_size + sizeof(struct kv_seperation_splice2);
-}
-
-struct kv_splice *kv_splice_create(int32_t key_size, char *key, int32_t value_size, char *value)
-{
-	struct kv_splice *kv_splice = calloc(1UL, sizeof(*kv_splice) + key_size + value_size);
-	kv_splice->key_size = key_size;
-	kv_splice->value_size = value_size;
-	memcpy(kv_splice->data, key, key_size);
-	memcpy(&kv_splice->data[key_size], value, value_size);
-	return kv_splice;
-}
-
-void kv_splice_serialize(struct kv_splice *splice, char *dest)
-{
-	assert(splice->key_size > 0);
-	uint32_t idx = 0;
-	memcpy(dest, &splice->key_size, sizeof(splice->key_size));
-	idx += sizeof(splice->key_size);
-	memcpy(&dest[idx], &splice->value_size, sizeof(splice->value_size));
-	idx += sizeof(splice->value_size);
-	memcpy(&dest[idx], splice->data, get_key_size(splice) + get_value_size(splice));
 }
 
 static inline bool kv_splice_base_is_in_place(struct kv_splice_base *splice)
@@ -230,27 +229,27 @@ static inline bool kv_splice_base_is_in_place(struct kv_splice_base *splice)
 // kv general splice methods
 int32_t kv_splice_base_get_size(struct kv_splice_base *splice)
 {
-	return kv_splice_base_is_in_place(splice) ? get_kv_size(splice->kv_splice) :
+	return kv_splice_base_is_in_place(splice) ? kv_splice_get_kv_size(splice->kv_splice) :
 						    kv_sep2_get_total_size(splice->kv_sep2);
 }
 
 int32_t kv_splice_base_get_key_size(struct kv_splice_base *splice)
 {
-	return kv_splice_base_is_in_place(splice) ? get_key_size(splice->kv_splice) :
+	return kv_splice_base_is_in_place(splice) ? kv_splice_get_key_size(splice->kv_splice) :
 						    kv_sep2_get_key_size(splice->kv_sep2);
 }
 
 char *kv_splice_base_get_key_buf(struct kv_splice_base *splice)
 {
-	return kv_splice_base_is_in_place(splice) ? get_key_offset_in_kv(splice->kv_splice) :
+	return kv_splice_base_is_in_place(splice) ? kv_splice_get_key_offset_in_kv(splice->kv_splice) :
 						    kv_sep2_get_key(splice->kv_sep2);
 }
 
 static void kv_splice_base_fill_key(struct kv_splice_base *splice, char **key, int32_t *key_size)
 {
 	if (kv_splice_base_is_in_place(splice)) {
-		*key = get_key_offset_in_kv(splice->kv_splice);
-		*key_size = get_key_size(splice->kv_splice);
+		*key = kv_splice_get_key_offset_in_kv(splice->kv_splice);
+		*key_size = kv_splice_get_key_size(splice->kv_splice);
 		return;
 	}
 	*key = kv_sep2_get_key(splice->kv_sep2);
@@ -273,7 +272,7 @@ int kv_splice_base_compare(struct kv_splice_base *sp1, struct kv_splice_base *sp
 
 int32_t kv_splice_base_calculate_size(struct kv_splice_base *splice)
 {
-	return kv_splice_base_is_in_place(splice) ? get_kv_size(splice->kv_splice) :
+	return kv_splice_base_is_in_place(splice) ? kv_splice_get_kv_size(splice->kv_splice) :
 						    kv_sep2_get_total_size(splice->kv_sep2);
 }
 
@@ -283,13 +282,13 @@ char *kv_splice_base_get_reference(struct kv_splice_base *splice)
 }
 inline void set_sizes_tail(struct kv_splice *kv_pair, uint8_t tail)
 {
-	kv_pair->sizes_tail = tail;
+	kv_pair->value_size_metadata = tail;
 }
 
 inline void set_payload_tail(struct kv_splice *kv_pair, uint8_t tail)
 {
 	char *payload = kv_pair->data;
-	int32_t key_size = get_key_size(kv_pair);
-	int32_t value_size = get_value_size(kv_pair);
+	int32_t key_size = kv_splice_get_key_size(kv_pair);
+	int32_t value_size = kv_splice_get_value_size(kv_pair);
 	payload[key_size + value_size] = tail;
 }

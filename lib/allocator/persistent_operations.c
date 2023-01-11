@@ -703,8 +703,8 @@ static void prepare_cursor_op(struct log_cursor *cursor)
 	struct kv_splice *kv_pair = (struct kv_splice *)get_position_in_segment(cursor);
 
 	cursor->entry.par_kv = (struct kv_splice *)get_position_in_segment(cursor);
-	cursor->tombstone = is_tombstone_kv_pair(kv_pair);
-	cursor->offt_in_segment += get_kv_size(cursor->entry.par_kv);
+	cursor->tombstone = kv_splice_is_tombstone_kv_pair(kv_pair);
+	cursor->offt_in_segment += kv_splice_get_kv_size(cursor->entry.par_kv);
 }
 
 static void init_pos_log_cursor_in_segment(struct db_descriptor *db_desc, struct log_cursor *cursor)
@@ -861,7 +861,7 @@ start:
 
 	char *pos_in_segment = get_position_in_segment(cursor);
 	struct kv_splice *kv_pair = (struct kv_splice *)pos_in_segment;
-	if (remaining_bytes_in_segment < get_min_possible_kv_size() || 0 == get_key_size(kv_pair)) {
+	if (remaining_bytes_in_segment < kv_splice_get_min_possible_kv_size() || 0 == kv_splice_get_key_size(kv_pair)) {
 		cursor->offt_in_segment += remaining_bytes_in_segment;
 		get_next_log_segment(cursor);
 		goto start;

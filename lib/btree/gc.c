@@ -101,16 +101,17 @@ int8_t find_deleted_kv_pairs_in_segment(struct db_handle handle, struct gc_segme
 	iter_log_segment.log_segment_in_memory += get_lsn_size();
 	log_segment_in_device += get_lsn_size();
 
-	int32_t key_value_size = get_kv_metadata_size();
+	int32_t key_value_size = kv_splice_get_metadata_size();
 	marks->size = 0;
 
 	while (bytes_checked_in_segment < segment_data) {
 		kv_pair = (struct kv_splice *)iter_log_segment.log_segment_in_memory;
 
-		if (!kv_pair->key_size || segment_data - bytes_checked_in_segment < get_min_possible_kv_size())
+		if (!kv_pair->key_size ||
+		    segment_data - bytes_checked_in_segment < kv_splice_get_min_possible_kv_size())
 			break;
 
-		serialize_kv_splice_to_key_splice(buf, kv_pair);
+		kv_splice_serialize_to_key_splice(buf, kv_pair);
 		struct lookup_operation get_op = { .db_desc = handle.db_desc,
 						   .found = 0,
 						   .size = 0,

@@ -39,9 +39,9 @@ static void push_back_duplicate_kv(struct sh_heap *heap, struct sh_heap_node *hp
 
 	struct kv_splice *splice = REAL_ADDRESS(kv_offt);
 	if (node)
-		node->kv_size += get_kv_size(splice);
+		node->kv_size += kv_splice_get_kv_size(splice);
 	else
-		append_node(heap->dups, (uint64_t)REAL_ADDRESS(segment_offset), get_kv_size(splice));
+		append_node(heap->dups, (uint64_t)REAL_ADDRESS(segment_offset), kv_splice_get_kv_size(splice));
 }
 
 /**

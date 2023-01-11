@@ -807,7 +807,7 @@ static const char *insert_error_handling(db_handle *handle, uint32_t key_size, u
 		return error_message;
 	}
 
-	uint32_t kv_size = key_size + value_size + get_kv_metadata_size();
+	uint32_t kv_size = key_size + value_size + kv_splice_get_metadata_size();
 	if (kv_size > KV_MAX_SIZE) {
 		error_message = "KV size > 4KB buffer overflow!";
 		return error_message;
@@ -839,10 +839,19 @@ struct par_put_metadata insert_key_value(db_handle *handle, void *key, void *val
 	}
 
 	/*prepare the request*/
-	ins_req.metadata.tombstone ? set_tombstone((struct kv_splice *)ins_req.key_value_buf) :
-				     set_non_tombstone((struct kv_splice *)ins_req.key_value_buf);
-	set_key((struct kv_splice *)kv_pair, key, key_size);
-	set_value((struct kv_splice *)kv_pair, value, value_size);
+	ins_req.metadata.handle = handle;
+	ins_req.key_value_buf = kv_pair;
+	ins_req.metadata.tombstone = op_type == deleteOp;
+	ins_req.metadata.tombstone ? kv_splice_set_tombstone((struct kv_splice *)ins_req.key_value_buf) :
+				     kv_splice_set_non_tombstone((struct kv_splice *)ins_req.key_value_buf);
+	kv_splice_set_key((struct kv_splice *)kv_pair, key, key_size);
+	kv_splice_set_value((struct kv_splice *)kv_pair, value, value_size);
+	ins_req.metadata.cat = calculate_KV_category(key_size, value_size, op_type);
+	ins_req.metadata.put_op_metadata.key_value_category = ins_req.metadata.cat;
+	ins_req.metadata.level_id = 0;
+	ins_req.metadata.key_format = KV_FORMAT;
+	ins_req.metadata.append_to_log = 1;
+	ins_req.metadata.gc_request = 0;
 
 	/*
 	 * Note for L0 inserts since active_tree changes dynamically we decide which
@@ -863,8 +872,8 @@ struct par_put_metadata serialized_insert_key_value(db_handle *handle, const cha
 				  .metadata.key_format = KV_FORMAT,
 				  .metadata.append_to_log = append_to_log };
 
-	int32_t key_size = get_key_size((struct kv_splice *)serialized_key_value);
-	int32_t value_size = get_value_size((struct kv_splice *)serialized_key_value);
+	int32_t key_size = kv_splice_get_key_size((struct kv_splice *)serialized_key_value);
+	int32_t value_size = kv_splice_get_value_size((struct kv_splice *)serialized_key_value);
 
 	*error_message = insert_error_handling(handle, key_size, value_size);
 	if (*error_message) {
@@ -896,9 +905,9 @@ void extract_keyvalue_size(struct log_operation *req, metadata_tologop *data_siz
 		log_fatal("Cannot handle this type of format");
 		_exit(EXIT_FAILURE);
 	}
-	data_size->key_len = get_key_size((struct kv_splice *)req->ins_req->key_value_buf);
-	data_size->value_len = get_value_size((struct kv_splice *)req->ins_req->key_value_buf);
-	data_size->kv_size = get_kv_size((struct kv_splice *)req->ins_req->key_value_buf);
+	data_size->key_len = kv_splice_get_key_size((struct kv_splice *)req->ins_req->key_value_buf);
+	data_size->value_len = kv_splice_get_value_size((struct kv_splice *)req->ins_req->key_value_buf);
+	data_size->kv_size = kv_splice_get_kv_size((struct kv_splice *)req->ins_req->key_value_buf);
 }
 
 struct pr_log_ticket {
@@ -930,11 +939,14 @@ static void pr_copy_kv_to_tail(struct pr_log_ticket *ticket)
 		offt += get_lsn_size();
 		struct kv_splice *kv_pair_dst = (struct kv_splice *)&ticket->tail->buf[offt];
 		struct kv_splice *kv_pair_src = (struct kv_splice *)ticket->req->ins_req->key_value_buf;
-		ticket->req->optype_tolog == insertOp ? set_non_tombstone(kv_pair_dst) : set_tombstone(kv_pair_dst);
-		set_key(kv_pair_dst, get_key_offset_in_kv(kv_pair_src), get_key_size(kv_pair_src));
-		set_value(kv_pair_dst, get_value_offset_in_kv(kv_pair_src, get_key_size(kv_pair_src)),
-			  get_value_size(kv_pair_src));
-		ticket->op_size = get_lsn_size() + get_kv_size(kv_pair_dst);
+		ticket->req->optype_tolog == insertOp ? kv_splice_set_non_tombstone(kv_pair_dst) :
+							kv_splice_set_tombstone(kv_pair_dst);
+		kv_splice_set_key(kv_pair_dst, kv_splice_get_key_offset_in_kv(kv_pair_src),
+				  kv_splice_get_key_size(kv_pair_src));
+		kv_splice_set_value(kv_pair_dst,
+				    kv_splice_get_value_offset_in_kv(kv_pair_src, kv_splice_get_key_size(kv_pair_src)),
+				    kv_splice_get_value_size(kv_pair_src));
+		ticket->op_size = get_lsn_size() + kv_splice_get_kv_size(kv_pair_dst);
 		break;
 	}
 	case paddingOp:
@@ -1389,7 +1401,7 @@ static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id,
 			kv_pair = bt_get_kv_log_address(&db_desc->big_log, value_offt);
 	}
 
-	int32_t value_size = get_value_size((struct kv_splice *)kv_pair.addr);
+	int32_t value_size = kv_splice_get_value_size((struct kv_splice *)kv_pair.addr);
 
 	get_op->buffer_overflow = 0;
 	if (get_op->tombstone) {
@@ -1409,7 +1421,8 @@ static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id,
 		get_op->buffer_to_pack_kv = calloc(1UL, value_size);
 
 	memcpy(get_op->buffer_to_pack_kv,
-	       get_value_offset_in_kv((struct kv_splice *)kv_pair.addr, get_key_size((struct kv_splice *)kv_pair.addr)),
+	       kv_splice_get_value_offset_in_kv((struct kv_splice *)kv_pair.addr,
+						kv_splice_get_key_size((struct kv_splice *)kv_pair.addr)),
 	       value_size);
 	get_op->size = value_size;
 
@@ -1516,8 +1529,9 @@ int insert_KV_at_leaf(bt_insert_req *ins_req, struct node_header *leaf)
 	if (splice.cat == BIG_INLOG && ins_req->metadata.append_to_log) {
 		struct kv_splice *kv_splice = (struct kv_splice *)ins_req->key_value_buf;
 		uint64_t value_offt = ABSOLUTE_ADDRESS(log_address);
-		splice.kv_sep2 = kv_sep2_create(get_key_size(kv_splice), get_key_offset_in_kv(kv_splice), value_offt,
-						kv_sep2_buf, KV_SEP2_MAX_SIZE);
+		splice.kv_sep2 = kv_sep2_create(kv_splice_get_key_size(kv_splice),
+						kv_splice_get_key_offset_in_kv(kv_splice), value_offt, kv_sep2_buf,
+						KV_SEP2_MAX_SIZE);
 	}
 	assert(kv_splice_base_get_key_size(&splice) > 0);
 
@@ -1581,10 +1595,10 @@ static uint32_t bt_calculate_splice_size(enum kv_category cat, struct kv_splice 
 	switch (cat) {
 	case SMALL_INPLACE:
 	case MEDIUM_INPLACE:
-		return kv_splice_calculate_size(get_key_size(kv_splice), get_value_size(kv_splice));
+		return kv_splice_calculate_size(kv_splice_get_key_size(kv_splice), kv_splice_get_value_size(kv_splice));
 	case MEDIUM_INLOG:
 	case BIG_INLOG:
-		return kv_sep2_calculate_size(get_key_size(kv_splice));
+		return kv_sep2_calculate_size(kv_splice_get_key_size(kv_splice));
 	default:
 		log_fatal("Corrupted kv category");
 	}
@@ -1646,11 +1660,11 @@ int is_split_needed(void *node, bt_insert_req *req)
 
 	uint32_t kv_size = 0;
 	if (req->metadata.cat == SMALL_INPLACE || req->metadata.cat == MEDIUM_INPLACE)
-		kv_size = kv_splice_calculate_size(get_key_size((struct kv_splice *)req->key_value_buf),
-						   get_value_size((struct kv_splice *)req->key_value_buf));
+		kv_size = kv_splice_calculate_size(kv_splice_get_key_size((struct kv_splice *)req->key_value_buf),
+						   kv_splice_get_value_size((struct kv_splice *)req->key_value_buf));
 
 	if (req->metadata.cat == BIG_INLOG || req->metadata.cat == MEDIUM_INLOG)
-		kv_size = kv_sep2_calculate_size(get_key_size((struct kv_splice *)req->key_value_buf));
+		kv_size = kv_sep2_calculate_size(kv_splice_get_key_size((struct kv_splice *)req->key_value_buf));
 	return dl_is_leaf_full(node, kv_size);
 }
 
@@ -1810,8 +1824,8 @@ release_and_retry:
 		struct index_node *n_son = (struct index_node *)son;
 
 		struct kv_splice *splice = (struct kv_splice *)ins_req->key_value_buf;
-		struct pivot_pointer *son_pivot =
-			index_search_get_pivot(n_son, get_key_offset_in_kv(splice), get_key_size(splice));
+		struct pivot_pointer *son_pivot = index_search_get_pivot(n_son, kv_splice_get_key_offset_in_kv(splice),
+									 kv_splice_get_key_size(splice));
 
 		father = son;
 		son = REAL_ADDRESS(son_pivot->child_offt);
@@ -1919,8 +1933,9 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 		}
 
 		struct kv_splice *splice = (struct kv_splice *)ins_req->key_value_buf;
-		uint64_t child_offt = index_binary_search((struct index_node *)son, get_key_offset_in_kv(splice),
-							  get_key_size(splice));
+		uint64_t child_offt = index_binary_search((struct index_node *)son,
+							  kv_splice_get_key_offset_in_kv(splice),
+							  kv_splice_get_key_size(splice));
 		son = (struct node_header *)REAL_ADDRESS(child_offt);
 		assert(son);
 

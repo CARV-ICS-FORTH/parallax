@@ -16,15 +16,14 @@
 #include "../include/parallax/structures.h"
 #include <stdbool.h>
 #include <stdint.h>
-#define PREFIX_SIZE 12
 enum KV_type { KV_FORMAT, KV_PREFIX, INDEX_KEY_TYPE, KEY_TYPE };
 
 #define KV_SEP2_MAX_SIZE (sizeof(uint64_t) + sizeof(int32_t) + MAX_KEY_SIZE)
 
 struct kv_splice {
 	int32_t key_size;
-	int32_t value_size;
-	int8_t sizes_tail;
+	int32_t value_size : 24;
+	int32_t value_size_metadata : 8;
 	char data[];
 } __attribute__((packed));
 
@@ -121,36 +120,36 @@ struct kv_splice *kv_splice_create(int32_t key_size, char *key, int32_t value_si
  * @param key: a KV_FORMATED key
  * @return key size
  */
-int32_t get_key_size(struct kv_splice *kv_pair);
+int32_t kv_splice_get_key_size(struct kv_splice *kv_pair);
 /**
  * Returns the value_size given a splice formated key
  * @param value: a spliced (KV_FORMATED) kv ptr
  */
-int32_t get_value_size(struct kv_splice *kv_pair);
+int32_t kv_splice_get_value_size(struct kv_splice *kv_pair);
 /**
  * Calculates the value_size  + metadata given a splice formated key
  * @param value: a spliced (KV_FORMATED) kv ptr
  */
-int32_t get_value_size_with_metadata(struct kv_splice *kv_pair);
+int32_t kv_splice_get_value_size_with_metadata(struct kv_splice *kv_pair);
 /**
  * Calculates sizeof(splice.value_size) + sizeof(splice.key_size)
  */
-int32_t get_kv_metadata_size(void);
+int32_t kv_splice_get_metadata_size(void);
 /**
  * Calculates the key value pair size (with its metadata) for KV_FORMAT
  * @param kv: a spliced (KV_FORMATED) kv ptr
  */
-int32_t get_kv_size(struct kv_splice *kv_pair);
+int32_t kv_splice_get_kv_size(struct kv_splice *kv_pair);
 /**
  * Returns the size of the tails (size_tail/payload_tail)
  */
-int32_t get_tail_size(void);
+int32_t kv_splice_get_tail_size(void);
 /**
  * Sets the key size given a splice formated kv
  * @param kv: a spliced (KV_FORMATED) kv ptr, where key_size will be set
  * @param key_size: the new size to be set
  */
-void set_key_size(struct kv_splice *kv_pair, int32_t key_size);
+void kv_splice_set_key_size(struct kv_splice *kv_pair, int32_t key_size);
 
 /**
   * Copies the key buffer to the kv pair
@@ -158,14 +157,14 @@ void set_key_size(struct kv_splice *kv_pair, int32_t key_size);
   * @param key_size: size of the key buffer
   * @parama key: pointer to the key buffer
   */
-void set_key(struct kv_splice *kv_pair, char *key, int32_t key_size);
+void kv_splice_set_key(struct kv_splice *kv_pair, char *key, int32_t key_size);
 
 /**
  * Sets the value size given a splice formated kv
  * @param kv: a spliced (KV_FORMATED) kv ptr, where value_size will be set
  * @param value_size: the new size to be set
  */
-void set_value_size(struct kv_splice *kv_pair, int32_t value_size);
+void kv_splice_set_value_size(struct kv_splice *kv_pair, int32_t value_size);
 
 /**
   * Copies the value buffer to the kv pair
@@ -173,7 +172,7 @@ void set_value_size(struct kv_splice *kv_pair, int32_t value_size);
   * @param key_size: size of the key buffer
   * @parama key: pointer to the key buffer
   */
-void set_value(struct kv_splice *kv_pair, char *value, int32_t value_size);
+void kv_splice_set_value(struct kv_splice *kv_pair, char *value, int32_t value_size);
 
 void set_sizes_tail(struct kv_splice *kv_pair, uint8_t tail);
 void set_payload_tail(struct kv_splice *kv_pair, uint8_t tail);
@@ -182,42 +181,42 @@ void set_payload_tail(struct kv_splice *kv_pair, uint8_t tail);
  * Calculates the starting offset of the key part of a given splice kv
  * @param kv: a spliced (KV_FORMATED) kv ptr, from which the key is retrieved
  */
-char *get_key_offset_in_kv(struct kv_splice *kv_pair);
+char *kv_splice_get_key_offset_in_kv(struct kv_splice *kv_pair);
 /**
  * Calculates the starting offset of the value part of a given splice kv
  * @param kv: a spliced (KV_FORMATED) kv ptr, from which the key is retrieved
  * @param key_size: the key size of this kv
  */
-char *get_value_offset_in_kv(struct kv_splice *kv_pair, int32_t key_size);
+char *kv_splice_get_value_offset_in_kv(struct kv_splice *kv_pair, int32_t key_size);
 
 /**
   * @brief Examines a KV pair to see if it is a delete marker
   */
-bool is_tombstone_kv_pair(struct kv_splice *kv_pair);
+bool kv_splice_is_tombstone_kv_pair(struct kv_splice *kv_pair);
 
 /**
  * @brief Characterizes a splice as a tombstone.
  * @param kv_pair pointer to splice object
  */
-void set_tombstone(struct kv_splice *kv_pair);
+void kv_splice_set_tombstone(struct kv_splice *kv_pair);
 
 /**
  * @brief characterizes a kv_pair as a non tombstone.
  * @param kv_pair pointer to splice object
  */
-void set_non_tombstone(struct kv_splice *kv_pair);
+void kv_splice_set_non_tombstone(struct kv_splice *kv_pair);
 
 /**
  * @brief serializes the key part of a kv_splice to a key_splice
  * @param buf
  */
-void serialize_kv_splice_to_key_splice(char *buf, struct kv_splice *kv_pair);
+void kv_splice_serialize_to_key_splice(char *buf, struct kv_splice *kv_pair);
 
 /**
  * @brief Returns the size (data+metadata) of the minimum size of a kv pair in
  * Parallax
  */
-uint32_t get_min_possible_kv_size(void);
+uint32_t kv_splice_get_min_possible_kv_size(void);
 
 uint32_t kv_splice_calculate_size(int32_t key_size, int32_t value_size);
 

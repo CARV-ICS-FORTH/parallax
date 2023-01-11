@@ -41,10 +41,10 @@ int main(int argc, char *argv[])
 
 	char serialized_key_value[1024] = { 0 };
 	struct kv_splice *serialized_kv = (struct kv_splice *)serialized_key_value;
-	set_key_size(serialized_kv, 10);
-	set_value_size(serialized_kv, 2);
-	set_key(serialized_kv, "abcdabcda", 10);
-	set_value(serialized_kv, "a", 2);
+	kv_splice_set_key_size(serialized_kv, 10);
+	kv_splice_set_value_size(serialized_kv, 2);
+	kv_splice_set_key(serialized_kv, "abcdabcda", 10);
+	kv_splice_set_value(serialized_kv, "a", 2);
 
 	par_put_serialized(handle, serialized_key_value, &error_message, true);
 	if (error_message) {
