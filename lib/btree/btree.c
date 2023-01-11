@@ -20,6 +20,7 @@
 #include "../common/common.h"
 #include "../include/parallax/parallax.h"
 #include "../include/parallax/structures.h"
+#include "bloom_filter.h"
 #include "btree_node.h"
 #include "conf.h"
 #include "dynamic_leaf.h"
@@ -130,18 +131,6 @@ void bt_done_with_value_log_address(struct log_descriptor *log_desc, struct bt_k
 {
 	assert(log_desc->tail[L->tail_id]->pending_readers > 0);
 	__sync_fetch_and_sub(&log_desc->tail[L->tail_id]->pending_readers, 1);
-}
-
-// cppcheck-suppress unusedFunction
-void init_level_bloom_filters(db_descriptor *db_desc, int level_id, int tree_id)
-{
-#if ENABLE_BLOOM_FILTERS
-	memset(&db_desc->levels[level_id].bloom_filter[tree_id], 0x00, sizeof(struct bloom));
-#else
-	(void)db_desc;
-	(void)level_id;
-	(void)tree_id;
-#endif
 }
 
 static void destroy_log_buffer(struct log_descriptor *log_desc)
@@ -262,8 +251,7 @@ static void init_fresh_db(struct db_descriptor *db_desc)
 			db_desc->levels[level_id].level_size[tree_id] = 0;
 			superblock->level_size[level_id][tree_id] = 0;
 			/*finally the roots*/
-			db_desc->levels[level_id].root_r[tree_id] = NULL;
-			db_desc->levels[level_id].root_w[tree_id] = NULL;
+			db_desc->levels[level_id].root[tree_id] = NULL;
 			superblock->root_r[level_id][tree_id] = 0;
 		}
 	}
@@ -273,7 +261,7 @@ static void init_fresh_db(struct db_descriptor *db_desc)
 
 static void recover_logs(db_descriptor *db_desc)
 {
-	log_info("Recovering KV logs (small,medium,large) for DB: %s", db_desc->db_superblock->db_name);
+	log_debug("Recovering KV logs (small,medium,large) for DB: %s", db_desc->db_superblock->db_name);
 
 	// Small log
 	db_desc->small_log.head_dev_offt = db_desc->db_superblock->small_log_head_offt;
@@ -340,20 +328,32 @@ static void restore_db(struct db_descriptor *db_desc, uint32_t region_idx)
 			/*total keys*/
 			db_desc->levels[level_id].level_size[tree_id] = superblock->level_size[level_id][tree_id];
 			/*finally the roots*/
-			if (superblock->root_r[level_id][tree_id] != 0)
-				db_desc->levels[level_id].root_r[tree_id] =
+			db_desc->levels[level_id].root[tree_id] = NULL;
+			if (superblock->root_r[level_id][tree_id]) {
+				db_desc->levels[level_id].root[tree_id] =
 					(struct node_header *)REAL_ADDRESS(superblock->root_r[level_id][tree_id]);
-			else
-				db_desc->levels[level_id].root_r[tree_id] = NULL;
-
-			db_desc->levels[level_id].root_w[tree_id] = db_desc->levels[level_id].root_r[tree_id];
-			if (db_desc->levels[level_id].root_r[tree_id])
-				log_info("Restored root[%u][%u] = %p", level_id, tree_id,
-					 (void *)db_desc->levels[level_id].root_r[tree_id]);
+				log_debug("Level[%u] tree [%u] root is at %p offt in the device is %lu", level_id,
+					  tree_id, (void *)db_desc->levels[level_id].root[tree_id],
+					  superblock->root_r[level_id][tree_id]);
+			}
 		}
 	}
 
 	recover_logs(db_desc);
+}
+
+static void db_recover_bloom_filters(struct db_handle *database_desc)
+{
+	for (int i = 1; i < MAX_LEVELS; i++) {
+		for (int j = 0; j < NUM_TREES_PER_LEVEL; j++) {
+			if (0 == database_desc->db_desc->db_superblock->bloom_filter_valid[i][j]) {
+				database_desc->db_desc->levels[i].bloom_desc[j] = NULL;
+				continue;
+			}
+			database_desc->db_desc->levels[i].bloom_desc[j] = pbf_recover_bloom_filter(
+				database_desc, i, j, database_desc->db_desc->db_superblock->bloom_filter_hash[i][j]);
+		}
+	}
 }
 
 static db_descriptor *get_db_from_volume(char *volume_name, char *db_name, par_db_initializers create_db)
@@ -378,25 +378,25 @@ static db_descriptor *get_db_from_volume(char *volume_name, char *db_name, par_d
 		db_desc->db_superblock = db_superblock;
 
 		if (!new_db) {
-			log_info("Found DB: %s recovering its allocation log", db_name);
+			log_debug("Found DB: %s recovering its allocation log", db_name);
 			db_desc->dirty = 0;
 			rul_log_init(db_desc);
 			restore_db(db_desc, db_desc->db_superblock->id);
 		} else {
 			db_desc->dirty = 1;
-			log_info("Initializing new DB: %s, initializing its allocation log", db_name);
+			log_debug("Initializing new DB: %s, initializing its allocation log", db_name);
 			rul_log_init(db_desc);
 			db_desc->levels[0].allocation_txn_id[0] = rul_start_txn(db_desc);
 
-			log_info("Got txn %lu for the initialization of Large and L0_recovery_logs of DB: %s",
-				 db_desc->levels[0].allocation_txn_id[0], db_name);
+			log_debug("Got txn %lu for the initialization of Large and L0_recovery_logs of DB: %s",
+				  db_desc->levels[0].allocation_txn_id[0], db_name);
 
 			//init_fresh_db allocates space for the L0_recovery log and large.
 			//As a result we need to acquire a txn_id for the L0
 			init_fresh_db(db_desc);
 		}
 	} else
-		log_info("DB: %s NOT found", db_name);
+		log_warn("DB: %s NOT found", db_name);
 	return db_desc;
 }
 
@@ -426,7 +426,7 @@ db_handle *internal_db_open(struct volume_descriptor *volume_desc, par_db_option
 
 	if (db != NULL) {
 		*error_message = "DB already open";
-		handle = calloc(1, sizeof(struct db_handle));
+		handle = calloc(1UL, sizeof(struct db_handle));
 		handle->volume_desc = volume_desc;
 		handle->db_desc = db;
 		//deep copy db_options
@@ -524,9 +524,6 @@ db_handle *internal_db_open(struct volume_descriptor *volume_desc, par_db_option
 		for (uint8_t tree_id = 0; tree_id < NUM_TREES_PER_LEVEL; tree_id++) {
 			bt_set_db_status(handle->db_desc, BT_NO_COMPACTION, level_id, tree_id);
 			handle->db_desc->levels[level_id].epoch[tree_id] = 0;
-#if ENABLE_BLOOM_FILTERS
-			init_level_bloom_filters(db_desc, level_id, tree_id);
-#endif
 		}
 	}
 
@@ -565,6 +562,7 @@ db_handle *internal_db_open(struct volume_descriptor *volume_desc, par_db_option
 	MUTEX_INIT(&handle->db_desc->flush_L0_lock, NULL);
 	pr_flush_L0(db_desc, db_desc->levels[0].active_tree);
 	db_desc->levels[0].allocation_txn_id[db_desc->levels[0].active_tree] = rul_start_txn(db_desc);
+	db_recover_bloom_filters(handle);
 	recover_L0(handle->db_desc);
 
 exit:
@@ -1274,63 +1272,23 @@ const char *btree_insert_key_value(bt_insert_req *ins_req)
 	return ins_req->metadata.error_message;
 }
 
-// cppcheck-suppress unusedFunction
-int find_key_in_bloom_filter(db_descriptor *db_desc, int level_id, char *key)
-{
-#if ENABLE_BLOOM_FILTERS
-	char prefix_key[PREFIX_SIZE];
-	if (get_key_size((struct splice *)key) < PREFIX_SIZE) {
-		memset(prefix_key, 0x00, PREFIX_SIZE);
-		memcpy(prefix_key, get_key_offset_in_kv((struct splice *)key), get_key_size((struct splice *)key));
-		return bloom_check(&db_desc->levels[level_id].bloom_filter[0], prefix_key, PREFIX_SIZE);
-	} else
-		return bloom_check(&db_desc->levels[level_id].bloom_filter[0],
-				   get_key_offset_in_kv((struct splice *)key), PREFIX_SIZE);
-#else
-	(void)db_desc;
-	(void)level_id;
-	(void)key;
-#endif
-	return -1;
-}
-
 static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id, int tree_id)
 {
 	struct node_header *son_node = NULL;
-	// char *key_addr_in_leaf = NULL;
 
-	struct node_header *root = NULL;
 	struct db_descriptor *db_desc = get_op->db_desc;
 	struct key_splice *search_key_buf = get_op->key_splice;
 
-	if (db_desc->levels[level_id].root_w[tree_id] == NULL && db_desc->levels[level_id].root_r[tree_id] == NULL) {
-		get_op->found = 0;
-		return;
-	}
-
-	root = db_desc->levels[level_id].root_r[tree_id];
-
-	if (db_desc->levels[level_id].root_w[tree_id] != NULL)
-		root = db_desc->levels[level_id].root_w[tree_id];
+	struct node_header *root = db_desc->levels[level_id].root[tree_id];
 	if (!root) {
 		get_op->found = 0;
 		return;
 	}
 
-#if ENABLE_BLOOM_FILTERS
-	if (level_id > 0) {
-		int check = find_key_in_bloom_filter(db_desc, level_id, key);
+	if (!pbf_check(db_desc->levels[level_id].bloom_desc[0], key_splice_get_key_offset(get_op->key_splice),
+		       key_splice_get_key_size(get_op->key_splice)))
+		return;
 
-		if (0 == check)
-			return rep;
-		else if (-1 != check) {
-			BUG_ON();
-		}
-	}
-#endif
-
-	/* TODO: (@geostyl) do we need this if here? i think its reduntant*/
-	// struct find_result ret_result = { 0 };
 	lock_table *prev = NULL;
 	lock_table *curr = NULL;
 	struct node_header *curr_node = root;
@@ -1696,28 +1654,26 @@ release_and_retry:
 	struct node_header *son = NULL;
 	struct node_header *father = NULL;
 
-	if (db_desc->levels[level_id].root_w[ins_req->metadata.tree_id] == NULL) {
-		if (db_desc->levels[level_id].root_r[ins_req->metadata.tree_id] == NULL) {
-			/*we are allocating a new tree*/
+	if (db_desc->levels[level_id].root[ins_req->metadata.tree_id] == NULL) {
+		/*we are allocating a new tree*/
 
-			log_debug("Allocating new active tree %d for level id %d", ins_req->metadata.tree_id, level_id);
+		log_debug("Allocating new active tree %d for level id %d", ins_req->metadata.tree_id, level_id);
 
-			struct leaf_node *new_leaf = seg_get_leaf_node(ins_req->metadata.handle->db_desc, level_id,
-								       ins_req->metadata.tree_id);
-			dl_init_leaf_node(new_leaf, ins_req->metadata.handle->db_desc->levels[level_id].leaf_size);
-			dl_set_leaf_node_type(new_leaf, leafRootNode);
-			db_desc->levels[level_id].root_w[ins_req->metadata.tree_id] = (struct node_header *)new_leaf;
-		}
+		struct leaf_node *new_leaf =
+			seg_get_leaf_node(ins_req->metadata.handle->db_desc, level_id, ins_req->metadata.tree_id);
+		dl_init_leaf_node(new_leaf, ins_req->metadata.handle->db_desc->levels[level_id].leaf_size);
+		dl_set_leaf_node_type(new_leaf, leafRootNode);
+		db_desc->levels[level_id].root[ins_req->metadata.tree_id] = (struct node_header *)new_leaf;
 	}
 	/*acquiring lock of the current root*/
 	lock = _find_position((const lock_table **)db_desc->levels[level_id].level_lock_table,
-			      db_desc->levels[level_id].root_w[ins_req->metadata.tree_id]);
+			      db_desc->levels[level_id].root[ins_req->metadata.tree_id]);
 	if (RWLOCK_WRLOCK(&lock->rx_lock) != 0) {
 		log_fatal("ERROR locking");
 		BUG_ON();
 	}
 	upper_level_nodes[size++] = lock;
-	son = db_desc->levels[level_id].root_w[ins_req->metadata.tree_id];
+	son = db_desc->levels[level_id].root[ins_req->metadata.tree_id];
 
 	while (1) {
 		/*Check if father is safe it should be*/
@@ -1764,7 +1720,7 @@ release_and_retry:
 
 				struct node_header *new_root_header = index_node_get_header(new_root);
 				new_root_header->height = db_desc->levels[ins_req->metadata.level_id]
-								  .root_w[ins_req->metadata.tree_id]
+								  .root[ins_req->metadata.tree_id]
 								  ->height +
 							  1;
 
@@ -1781,7 +1737,7 @@ release_and_retry:
 					_exit(EXIT_FAILURE);
 				}
 				/*new write root of the tree*/
-				db_desc->levels[level_id].root_w[ins_req->metadata.tree_id] =
+				db_desc->levels[level_id].root[ins_req->metadata.tree_id] =
 					(struct node_header *)new_root;
 				goto release_and_retry;
 			}
@@ -1839,10 +1795,6 @@ release_and_retry:
 	}
 	/*Succesfully reached a bin (bottom internal node)*/
 	if (son->type != leafRootNode) {
-		if (size - 1 != release)
-			log_debug("locks taken size %d released %d root height is %d root type %d", size, release,
-				  db_desc->levels[level_id].root_w[ins_req->metadata.tree_id]->height,
-				  db_desc->levels[level_id].root_w[ins_req->metadata.tree_id]->type);
 		assert((size - 1) - release == 0);
 	}
 
@@ -1894,8 +1846,8 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 	__sync_fetch_and_add(num_level_writers, 1);
 	upper_level_nodes[size++] = guard_of_level;
 
-	if (db_desc->levels[level_id].root_w[ins_req->metadata.tree_id] == NULL ||
-	    db_desc->levels[level_id].root_w[ins_req->metadata.tree_id]->type == leafRootNode) {
+	if (db_desc->levels[level_id].root[ins_req->metadata.tree_id] == NULL ||
+	    db_desc->levels[level_id].root[ins_req->metadata.tree_id]->type == leafRootNode) {
 		_unlock_upper_levels(upper_level_nodes, size, release);
 		__sync_fetch_and_sub(num_level_writers, 1);
 		return PAR_FAILURE;
@@ -1903,7 +1855,7 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 
 	/*acquire read lock of the current root*/
 	lock = _find_position((const lock_table **)db_desc->levels[level_id].level_lock_table,
-			      db_desc->levels[level_id].root_w[ins_req->metadata.tree_id]);
+			      db_desc->levels[level_id].root[ins_req->metadata.tree_id]);
 
 	if (RWLOCK_RDLOCK(&lock->rx_lock) != 0) {
 		log_fatal("ERROR locking");
@@ -1911,7 +1863,7 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 	}
 
 	upper_level_nodes[size++] = lock;
-	son = db_desc->levels[level_id].root_w[ins_req->metadata.tree_id];
+	son = db_desc->levels[level_id].root[ins_req->metadata.tree_id];
 	assert(son->height > 0);
 	while (1) {
 		if (is_split_needed(son, ins_req)) {

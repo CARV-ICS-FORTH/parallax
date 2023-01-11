@@ -23,6 +23,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/time.h>
 #define MAX_KV_PAIR_SIZE 4096
 #define MY_MAX_KEY_SIZE 255
 
@@ -48,8 +49,9 @@ struct workload_config_t {
 
 static void generate_random_key(unsigned char *key_buffer, uint32_t key_size)
 {
-	for (uint32_t i = 0; i < key_size; i++)
-		key_buffer[i] = rand() % 256;
+	for (uint32_t i = 0; i < key_size; i++) {
+		key_buffer[i] = (rand() % 255) + 1;
+	}
 }
 
 static void generate_random_value(char *value_buffer, uint32_t value_size, uint32_t id)
@@ -109,6 +111,10 @@ static void populate_randomly(struct workload_config_t *workload_config)
 		if (kv_pair.v.val_size < 4)
 			kv_pair.v.val_size = 4;
 
+		//hack
+		kv_pair.k.size = 23;
+		kv_pair.v.val_size = 8;
+
 		generate_random_key(key_buffer, kv_pair.k.size);
 		kv_pair.k.data = (char *)key_buffer;
 		generate_random_value((char *)value_buffer, kv_pair.v.val_size, i);
@@ -129,8 +135,8 @@ static void populate_randomly(struct workload_config_t *workload_config)
 			continue;
 		}
 		++unique_keys;
-		//log_debug("Inserting in store key size %u value size %u unique keys %lu", kv_pair.k.size,
-		//	  kv_pair.v.val_size, unique_keys);
+		// log_debug("Inserting in store key size %u key: %s value size %u unique keys %lu", kv_pair.k.size,
+		// 	  kv_pair.k.data, kv_pair.v.val_size, unique_keys);
 		par_put(workload_config->handle, &kv_pair, &error_message);
 		if (!(i % workload_config->progress_report))
 			log_info("Progress in population %lu keys", i);
@@ -369,8 +375,12 @@ int main(int argc, char **argv)
 
 	if (truth_db_exists)
 		populate_from_BDB(&workload_config);
-	else
+	else {
+		struct timeval time;
+		gettimeofday(&time, NULL);
+		srand((time.tv_sec * 1000) + (time.tv_usec / 1000));
 		populate_randomly(&workload_config);
+	}
 
 	pthread_t get_thread;
 	pthread_t scan_thread;

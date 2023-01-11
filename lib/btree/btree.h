@@ -22,13 +22,9 @@
 #include "index_node.h"
 #include "lsn.h"
 #include "parallax/structures.h"
-#include <stdbool.h>
-
-#if ENABLE_BLOOM_FILTERS
-#include <bloom.h>
-#endif
 #include <pthread.h>
 #include <semaphore.h>
+#include <stdbool.h>
 #include <stdint.h>
 #define MAX_HEIGHT 9
 
@@ -91,14 +87,16 @@ typedef struct lock_table {
 	char pad[8];
 } lock_table;
 
-typedef struct level_descriptor {
-#if ENABLE_BLOOM_FILTERS
-	struct bloom bloom_filter[NUM_TREES_PER_LEVEL];
-#endif
+struct bloom_desc {
+	struct bloom *bloom_filter;
+	uint64_t bloom_file_hash;
+};
+
+struct level_descriptor {
+	struct pbf_desc *bloom_desc[NUM_TREES_PER_LEVEL];
 	pthread_t compaction_thread[NUM_TREES_PER_LEVEL];
 	lock_table *level_lock_table[MAX_HEIGHT];
-	struct node_header *root_r[NUM_TREES_PER_LEVEL];
-	struct node_header *root_w[NUM_TREES_PER_LEVEL];
+	struct node_header *root[NUM_TREES_PER_LEVEL];
 	pthread_mutex_t level_allocation_lock;
 	segment_header *first_segment[NUM_TREES_PER_LEVEL];
 	segment_header *last_segment[NUM_TREES_PER_LEVEL];
@@ -123,12 +121,13 @@ typedef struct level_descriptor {
 	/*info for trimming medium_log, used only in L_{n-1}*/
 	uint64_t medium_in_place_max_segment_id;
 	uint64_t medium_in_place_segment_dev_offt;
+	int32_t num_level_keys[NUM_TREES_PER_LEVEL];
 	uint32_t leaf_size;
 	volatile enum level_compaction_status tree_status[NUM_TREES_PER_LEVEL];
 	uint8_t active_tree;
 	uint8_t level_id;
 	char in_recovery_mode;
-} level_descriptor;
+};
 
 struct bt_kv_log_address {
 	char *addr;
@@ -141,7 +140,7 @@ struct bt_kv_log_address bt_get_kv_log_address(struct log_descriptor *log_desc, 
 void bt_done_with_value_log_address(struct log_descriptor *log_desc, struct bt_kv_log_address *L);
 
 typedef struct db_descriptor {
-	level_descriptor levels[MAX_LEVELS];
+	struct level_descriptor levels[MAX_LEVELS];
 #if MEASURE_MEDIUM_INPLACE
 	uint64_t count_medium_inplace;
 #endif
@@ -204,14 +203,6 @@ typedef struct db_handle {
 	db_descriptor *db_desc;
 } db_handle;
 
-typedef struct recovery_request {
-	volume_descriptor *volume_desc;
-	db_descriptor *db_desc;
-	uint64_t big_log_start_offset;
-	uint64_t medium_log_start_offset;
-	uint64_t small_log_start_offset;
-} recovery_request;
-
 struct log_recovery_metadata {
 	segment_header *log_curr_segment;
 	uint64_t log_size;
@@ -219,12 +210,6 @@ struct log_recovery_metadata {
 	uint64_t curr_lsn;
 	uint64_t segment_id;
 	uint64_t prev_segment_id;
-};
-
-struct recovery_operator {
-	struct log_recovery_metadata big;
-	struct log_recovery_metadata medium;
-	struct log_recovery_metadata small;
 };
 
 void pr_flush_log_tail(struct db_descriptor *db_desc, struct log_descriptor *log_desc);

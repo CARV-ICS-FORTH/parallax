@@ -13,7 +13,8 @@
 // limitations under the License.
 
 /*macros staff*/
-#pragma once
+#ifndef CONF_H
+#define CONF_H
 #define SPINLOCK_INIT(L, attr) pthread_spin_init(L, attr)
 #define SPIN_LOCK(L) pthread_spin_lock(L)
 #define SPIN_UNLOCK(L) pthread_spin_unlock(L)
@@ -53,4 +54,6 @@
 #define LOG_TAIL_NUM_BUFS (4)
 #define ALIGNMENT_SIZE (512)
 #define MAX_ALLOCATION_TRIES (2)
-#define ENABLE_BLOOM_FILTERS (0)
+#define MAX_HEIGHT 9
+
+#endif

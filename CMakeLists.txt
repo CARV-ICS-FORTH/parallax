@@ -82,7 +82,7 @@ FetchContent_Declare(
 
 FetchContent_Declare(
   libbloom
-  GIT_REPOSITORY https://github.com/innerout/libbloom
+  GIT_REPOSITORY https://github.com/gesalous/libbloom
   GIT_TAG cmake)
 
 FetchContent_GetProperties(log)
@@ -128,6 +128,9 @@ set(DEPENDENCIES log yaml libbloom)
 
 include_directories(${CMAKE_BINARY_DIR})
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/utilities)
+
+add_compile_definitions(
+  DB_CONFIG_FILE="${CMAKE_CURRENT_SOURCE_DIR}/options.yml")
 
 if(TREAT_WARNINGS_AS_ERRORS)
   string(APPEND CMAKE_C_FLAGS " -Werror")

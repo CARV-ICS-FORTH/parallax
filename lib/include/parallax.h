@@ -12,7 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#pragma once
+#ifndef PARALLAX_H
+#define PARALLAX_H
 #include <stdint.h>
 
 typedef void *par_handle;
@@ -34,6 +35,7 @@ typedef struct par_db_options {
 	const char *db_name; /*DB name*/
 	uint64_t volume_start; /* Base offset to the file or device to write data */
 	uint64_t volume_size; /* File or device size */
+	bool enable_bloom_filters;
 	/**
     *With PAR_CREATE_DB the DB if is created if it does not exist.
 		With PAR_DONOT_CREATE_DB the DB is not created if it exists
@@ -145,4 +147,4 @@ struct par_value par_get_value(par_scanner sc);
 */
 par_ret_code par_sync(par_handle handle);
 
-/* #endif // __PARALLAX_H_ */
+#endif //PARALLAX_H

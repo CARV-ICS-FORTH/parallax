@@ -1,8 +1,10 @@
+#define _GNU_SOURCE
 #include "level_write_cursor.h"
 #include "../allocator/device_structures.h"
 #include "../allocator/log_structures.h"
 #include "../allocator/volume_manager.h"
 #include "../common/common.h"
+#include "bloom_filter.h"
 #include "btree_node.h"
 #include "dynamic_leaf.h"
 #include "index_node.h"
@@ -17,12 +19,13 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+// IWYU pragma: no_forward_declare pbf_desc
+// IWYU pragma: no_forward_declare index_node
+// IWYU pragma: no_forward_declare key_splice
 
-struct index_node;
-struct key_splice;
-static void wcursor_write_segment(char *buffer, uint64_t dev_offt, uint32_t buf_offt, uint32_t size, int fd)
-{
 #if 0
+static void wcursor_assert_node(void)
+{
 	struct node_header *n = (struct node_header *)&buffer[sizeof(struct segment_header)];
 	switch (n->type) {
 	case rootNode:
@@ -65,7 +68,12 @@ static void wcursor_write_segment(char *buffer, uint64_t dev_offt, uint32_t buf_
 	default:
 			BUG_ON();
 	}
+
+}
 #endif
+
+static void wcursor_write_segment(char *buffer, uint64_t dev_offt, uint32_t buf_offt, uint32_t size, int fd)
+{
 	ssize_t total_bytes_written = buf_offt;
 	while (total_bytes_written < size) {
 		ssize_t bytes_written = pwrite(fd, &buffer[total_bytes_written], size - total_bytes_written,
@@ -200,6 +208,10 @@ struct wcursor_level_write_cursor *wcursor_init_write_cursor(int level_id, struc
 		w_cursor->first_segment_btree_level_offt[i] = w_cursor->last_segment_btree_level_offt[i];
 		assert(w_cursor->last_segment_btree_level_offt[i]);
 	}
+
+	handle->db_desc->levels[w_cursor->level_id].bloom_desc[w_cursor->tree_id] =
+		pbf_create(handle, w_cursor->level_id, w_cursor->tree_id);
+
 	return w_cursor;
 }
 
@@ -299,7 +311,7 @@ void wcursor_flush_write_cursor(struct wcursor_level_write_cursor *w_cursor)
 			uint32_t offt =
 				wcursor_calc_offt_in_seg(w_cursor->segment_buf[i], (char *)w_cursor->last_index[i]);
 			w_cursor->root_offt = w_cursor->last_segment_btree_level_offt[i] + offt;
-			w_cursor->handle->db_desc->levels[w_cursor->level_id].root_r[1] =
+			w_cursor->handle->db_desc->levels[w_cursor->level_id].root[1] =
 				REAL_ADDRESS(w_cursor->root_offt);
 		}
 
@@ -316,6 +328,12 @@ void wcursor_flush_write_cursor(struct wcursor_level_write_cursor *w_cursor)
 		}
 		wcursor_write_segment(w_cursor->segment_buf[i], w_cursor->last_segment_btree_level_offt[i], 0,
 				      SEGMENT_SIZE, w_cursor->fd);
+	}
+
+	if (!pbf_persist_bloom_filter(
+		    w_cursor->handle->db_desc->levels[w_cursor->level_id].bloom_desc[w_cursor->tree_id])) {
+		log_fatal("Failed to write bloom filter");
+		_exit(EXIT_FAILURE);
 	}
 
 #if 0
@@ -470,6 +488,17 @@ bool wcursor_append_KV_pair(struct wcursor_level_write_cursor *cursor, struct kv
 	}
 
 	cursor->handle->db_desc->levels[cursor->level_id].level_size[1] += kv_splice_base_get_size(&new_splice);
+	int bloom_stat = pbf_bloom_add(cursor->handle->db_desc->levels[cursor->level_id].bloom_desc[cursor->tree_id],
+				       kv_splice_base_get_key_buf(&new_splice),
+				       kv_splice_base_get_key_size(&new_splice));
+
+	if (0 == bloom_stat) {
+		log_fatal(
+			"Either collision in bloom filter (should not happen all keys in a compaction are unique) or general failure");
+		_exit(EXIT_FAILURE);
+	}
+	/*XXX TODO XXX Leakage here of level, add an API call to level to do this operation*/
+	++cursor->handle->db_desc->levels[cursor->level_id].num_level_keys[cursor->tree_id];
 	if (!new_leaf)
 		return true;
 
