@@ -19,9 +19,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-struct pbf_desc;
-struct index_node;
-struct key_splice;
+// IWYU pragma: no_forward_declare pbf_desc
+// IWYU pragma: no_forward_declare index_node
+// IWYU pragma: no_forward_declare key_splice
 
 #if 0
 static void wcursor_assert_node(void)
