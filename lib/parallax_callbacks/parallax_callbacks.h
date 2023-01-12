@@ -1,6 +1,6 @@
 #ifndef parallax_CALLBACKS_H
 #define parallax_CALLBACKS_H
-#include "../include/parallax/parallax.h"
+#include "parallax/structures.h"
 #include <stdint.h>
 
 struct wcursor_level_write_cursor;

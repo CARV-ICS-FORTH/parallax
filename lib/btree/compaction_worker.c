@@ -5,6 +5,7 @@
 #include "../allocator/volume_manager.h"
 #include "../common/common.h"
 #include "../lib/allocator/device_structures.h"
+#include "../parallax_callbacks/parallax_callbacks.h"
 #include "../scanner/min_max_heap.h"
 #include "../utilities/dups_list.h"
 #include "../utilities/spin_loop.h"

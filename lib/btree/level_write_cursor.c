@@ -3,6 +3,7 @@
 #include "../allocator/log_structures.h"
 #include "../allocator/volume_manager.h"
 #include "../common/common.h"
+#include "../parallax_callbacks/parallax_callbacks.h"
 #include "bloom_filter.h"
 #include "btree.h"
 #include "btree_node.h"
@@ -252,8 +253,8 @@ static int32_t wcursor_calculate_level_keys(struct db_descriptor *db_desc, uint8
 	return total_keys;
 }
 
-struct wcursor_level_write_cursor *wcursor_init_write_cursor(int level_id, struct db_handle *handle, int tree_id,
-							     bool enable_double_buffering)
+struct wcursor_level_write_cursor *wcursor_init_write_cursor(uint8_t level_id, struct db_handle *handle,
+							     uint8_t tree_id, bool enable_double_buffering)
 {
 	(void)enable_double_buffering;
 	struct wcursor_level_write_cursor *w_cursor = NULL;
@@ -707,4 +708,9 @@ void wcursor_segment_buffers_cursor_next(wcursor_segment_buffers_iterator_t segm
 	struct wcursor_segment_buffers_iterator *cursor =
 		(struct wcursor_segment_buffers_iterator *)segment_buffers_cursor;
 	++cursor->curr_i;
+}
+
+int wcursor_get_fd(struct wcursor_level_write_cursor *w_cursor)
+{
+	return w_cursor->fd;
 }

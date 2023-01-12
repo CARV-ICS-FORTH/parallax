@@ -195,11 +195,11 @@ static void test_wcursors_copy_segments(struct wcursor_level_write_cursor *wcurs
 	uint64_t tail_segment_offt = ABSOLUTE_ADDRESS(handle->db_desc->levels[level_id].last_segment[1]);
 	while (curr_segment_offt != tail_segment_offt) {
 		// copy segment
-		test_wcursors_fetch_segment(wcursor_segments->fd, buf, curr_segment_offt);
+		test_wcursors_fetch_segment(wcursor_get_fd(wcursor_segments), buf, curr_segment_offt);
 		struct segment_header *curr_segment_hdr = (struct segment_header *)buf;
 		curr_segment_offt = (uint64_t)curr_segment_hdr->next_segment;
 		// copy next segment aswell, we need to check if this segment is the last of this level
-		test_wcursors_fetch_segment(wcursor_segments->fd, next_buf, curr_segment_offt);
+		test_wcursors_fetch_segment(wcursor_get_fd(wcursor_segments), next_buf, curr_segment_offt);
 		// write segment
 		uint32_t height = test_wcursors_find_segment_height(buf);
 		uint32_t next_height = test_wcursors_find_segment_height(next_buf);
@@ -213,7 +213,7 @@ static void test_wcursors_copy_segments(struct wcursor_level_write_cursor *wcurs
 	}
 	assert(curr_segment_offt == tail_segment_offt);
 	// keep last segment in the array for the last segments
-	test_wcursors_fetch_segment(wcursor_segments->fd, buf, curr_segment_offt);
+	test_wcursors_fetch_segment(wcursor_get_fd(wcursor_segments), buf, curr_segment_offt);
 	memcpy(last_segment_offt_of_level[MAX_HEIGHT - 1], buf, SEGMENT_SIZE);
 
 	// link last segments with the level above and flush them

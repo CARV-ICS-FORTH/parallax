@@ -31,7 +31,6 @@
 #include "segment_allocator.h"
 
 #include "../allocator/persistent_operations.h"
-#include "../include/parallax/structures.h"
 #include "../parallax_callbacks/parallax_callbacks.h"
 #include <assert.h>
 #include <list.h>

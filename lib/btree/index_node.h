@@ -17,12 +17,11 @@
 #include "key_splice.h"
 #include <stdbool.h>
 #include <stdint.h>
+struct index_node;
+struct key_splice;
 
 #define SMALLEST_POSSIBLE_PIVOT_SIZE 16
 #define MAX_PIVOT_SIZE (MAX_KEY_SPLICE_SIZE + sizeof(struct pivot_pointer))
-struct key_splice;
-struct index_node;
-struct key_splice;
 struct pivot_pointer {
 	uint64_t child_offt;
 };
