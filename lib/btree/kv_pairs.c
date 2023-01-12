@@ -109,7 +109,7 @@ void serialize_kv_splice_to_key_splice(char *buf, struct kv_splice *kv_pair)
 
 uint32_t get_min_possible_kv_size(void)
 {
-	return sizeof(int32_t) + 1;
+	return get_kv_metadata_size() + 1;
 }
 
 char *kv_sep2_get_key(struct kv_seperation_splice2 *kv_sep2)
