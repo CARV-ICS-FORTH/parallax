@@ -16,10 +16,7 @@
 #define MEDIUM_LOG_CACHE_H
 #include "btree.h"
 #include <stdint.h>
-#include <sys/types.h>
-#include <uthash.h>
 struct medium_log_LRU_cache;
-struct wcursor_level_write_cursor;
 
 struct mlog_cache_max_segment_info {
 	uint64_t max_segment_id;

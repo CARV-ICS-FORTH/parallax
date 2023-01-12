@@ -1,27 +1,11 @@
 #ifndef LEVEL_WRITE_CURSOR_H
 #define LEVEL_WRITE_CURSOR_H
-#include "btree.h"
-#include "conf.h"
 #include <stdbool.h>
 #include <stdint.h>
 struct kv_splice_base;
-
-struct wcursor_level_write_cursor {
-	char segment_buf[MAX_HEIGHT][SEGMENT_SIZE];
-	uint64_t segment_offt[MAX_HEIGHT];
-	uint64_t first_segment_btree_level_offt[MAX_HEIGHT];
-	uint64_t last_segment_btree_level_offt[MAX_HEIGHT];
-	struct index_node *last_index[MAX_HEIGHT];
-	struct leaf_node *last_leaf;
-	struct medium_log_LRU_cache *medium_log_LRU_cache;
-	uint64_t root_offt;
-	uint64_t segment_id_cnt;
-	db_handle *handle;
-	uint32_t level_id;
-	uint32_t tree_id;
-	int32_t tree_height;
-	int fd;
-};
+struct db_handle;
+struct medium_log_LRU_cache;
+struct wcursor_level_write_cursor;
 
 /**
  * @brief Creates a level cursor to write a new level which is the result of a compaction.
@@ -30,7 +14,8 @@ struct wcursor_level_write_cursor {
  * @param tree_id the id within the level where we need to store the new index.
  * @returns a pointer to the cursor.
  */
-struct wcursor_level_write_cursor *wcursor_init_write_cursor(int level_id, struct db_handle *handle, int tree_id);
+struct wcursor_level_write_cursor *wcursor_init_write_cursor(uint8_t level_id, struct db_handle *handle,
+							     uint8_t tree_id);
 
 /**
  * @brief Appends a new KV pair into the level.
@@ -44,6 +29,27 @@ bool wcursor_append_KV_pair(struct wcursor_level_write_cursor *cursor, struct kv
  * @brief Flushes any in memory state of the cursor to the device.
  */
 void wcursor_flush_write_cursor(struct wcursor_level_write_cursor *w_cursor);
+
+/**
+ * @brief Returns a pointer to the medium log cache object used by this cursor
+ */
+struct medium_log_LRU_cache *wcursor_get_LRU_cache(struct wcursor_level_write_cursor *w_cursor);
+/**
+ * @brief Sets the cache of this cursor for the in place transfers of the medium log
+ * @param w_cursor pointer to the w_cursor object
+ * @param mcache pointer to the medium log cach object
+ */
+void wcursor_set_LRU_cache(struct wcursor_level_write_cursor *w_cursor, struct medium_log_LRU_cache *mcache);
+
+/**
+ * @brief Returns the id of the level this cursor belongs to
+ */
+uint8_t wcursor_get_level_id(struct wcursor_level_write_cursor *w_cursor);
+
+/**
+ * @brief Returns the location (offset) in the device where the root of the underlying B+tree.
+ */
+uint64_t wcursor_get_current_root(struct wcursor_level_write_cursor *w_cursor);
 
 /**
  * @brief Flushes any pending in memory state to the device and releases any

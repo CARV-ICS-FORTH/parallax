@@ -4,7 +4,6 @@
 #include "btree.h"
 #include "parallax/structures.h"
 #include <stdint.h>
-#include <uthash.h>
 struct compaction_request {
 	db_descriptor *db_desc;
 	volume_descriptor *volume_desc;

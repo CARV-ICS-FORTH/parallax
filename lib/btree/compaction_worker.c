@@ -16,14 +16,15 @@
 #include "level_write_cursor.h"
 #include "medium_log_LRU_cache.h"
 #include "segment_allocator.h"
-#include "uthash.h"
 #include <assert.h>
 #include <log.h>
 #include <pthread.h>
 #include <semaphore.h>
 #include <stdlib.h>
 #include <string.h>
+#include <uthash.h>
 // IWYU pragma: no_forward_declare pbf_desc
+// IWYU pragma: no_forward_declare wcursor_level_write_cursor
 struct compaction_roots {
 	struct node_header *src_root;
 	struct node_header *dst_root;
@@ -121,7 +122,8 @@ static void mark_segment_space(db_handle *handle, struct dups_list *list, uint8_
 	}
 }
 
-static void comp_medium_log_set_max_segment_id(struct wcursor_level_write_cursor *w_cursor)
+static void comp_medium_log_set_max_segment_id(struct wcursor_level_write_cursor *w_cursor,
+					       struct db_descriptor *db_desc)
 {
 	// uint64_t max_segment_id = 0;
 	// uint64_t max_segment_offt = 0;
@@ -147,8 +149,8 @@ static void comp_medium_log_set_max_segment_id(struct wcursor_level_write_cursor
 	// 	free(current_entry);
 	// }
 	struct mlog_cache_max_segment_info max_segment =
-		mlog_cache_find_max_segment_info(w_cursor->medium_log_LRU_cache);
-	struct level_descriptor *level_desc = &w_cursor->handle->db_desc->levels[w_cursor->level_id];
+		mlog_cache_find_max_segment_info(wcursor_get_LRU_cache(w_cursor));
+	struct level_descriptor *level_desc = &db_desc->levels[wcursor_get_level_id(w_cursor)];
 	level_desc->medium_in_place_max_segment_id = max_segment.max_segment_id;
 	level_desc->medium_in_place_segment_dev_offt = max_segment.max_segment_offt;
 	log_debug("Max segment id touched during medium transfer to in place is %lu and corresponding offt: %lu",
@@ -227,8 +229,8 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 		wcursor_init_write_cursor(comp_req->dst_level, handle, comp_req->dst_tree);
 
 	//initialize LRU cache for storing chunks of segments when medium log goes in place
-	if (new_level->level_id == handle->db_desc->level_medium_inplace)
-		new_level->medium_log_LRU_cache = mlog_cache_init_LRU(handle);
+	if (wcursor_get_level_id(new_level) == handle->db_desc->level_medium_inplace)
+		wcursor_set_LRU_cache(new_level, mlog_cache_init_LRU(handle));
 
 	log_debug("Src [%u][%u] size = %lu", comp_req->src_level, comp_req->src_tree,
 		  handle->db_desc->levels[comp_req->src_level].level_size[comp_req->src_tree]);
@@ -286,15 +288,16 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 
 	sh_destroy_heap(m_heap);
 	wcursor_flush_write_cursor(new_level);
-	assert(new_level->root_offt);
 
-	new_level->handle->db_desc->levels[comp_req->dst_level].root[1] =
-		(struct node_header *)REAL_ADDRESS(new_level->root_offt);
-	assert(new_level->handle->db_desc->levels[comp_req->dst_level].root[1]->type == rootNode);
+	uint64_t root_offt = wcursor_get_current_root(new_level);
+	assert(root_offt);
 
-	if (new_level->level_id == handle->db_desc->level_medium_inplace) {
-		comp_medium_log_set_max_segment_id(new_level);
-		mlog_cache_destroy_LRU(new_level->medium_log_LRU_cache);
+	handle->db_desc->levels[comp_req->dst_level].root[1] = (struct node_header *)REAL_ADDRESS(root_offt);
+	assert(handle->db_desc->levels[comp_req->dst_level].root[1]->type == rootNode);
+
+	if (wcursor_get_level_id(new_level) == handle->db_desc->level_medium_inplace) {
+		comp_medium_log_set_max_segment_id(new_level, handle->db_desc);
+		mlog_cache_destroy_LRU(wcursor_get_LRU_cache(new_level));
 	}
 
 	/***************************************************************/

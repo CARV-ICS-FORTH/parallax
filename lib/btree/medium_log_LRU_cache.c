@@ -15,9 +15,7 @@
 #include "medium_log_LRU_cache.h"
 #include "../allocator/volume_manager.h"
 #include "../common/common.h"
-#include "compaction_worker.h"
 #include "conf.h"
-#include "level_write_cursor.h"
 #include "parallax/structures.h"
 #include <assert.h>
 #include <log.h>

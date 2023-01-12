@@ -1,22 +1,22 @@
-#include "btree.h"
-#include <stdint.h>
-#define _GNU_SOURCE
+#include "level_write_cursor.h"
 #include "../allocator/device_structures.h"
 #include "../allocator/log_structures.h"
 #include "../allocator/volume_manager.h"
 #include "../common/common.h"
 #include "bloom_filter.h"
+#include "btree.h"
 #include "btree_node.h"
+#include "conf.h"
 #include "dynamic_leaf.h"
 #include "index_node.h"
 #include "key_splice.h"
 #include "kv_pairs.h"
-#include "level_write_cursor.h"
 #include "medium_log_LRU_cache.h"
 #include "parallax/structures.h"
 #include "segment_allocator.h"
 #include <assert.h>
 #include <log.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -25,6 +25,23 @@
 // IWYU pragma: no_forward_declare pbf_desc
 // IWYU pragma: no_forward_declare index_node
 // IWYU pragma: no_forward_declare key_splice
+
+struct wcursor_level_write_cursor {
+	char segment_buf[MAX_HEIGHT][SEGMENT_SIZE];
+	uint64_t segment_offt[MAX_HEIGHT];
+	uint64_t first_segment_btree_level_offt[MAX_HEIGHT];
+	uint64_t last_segment_btree_level_offt[MAX_HEIGHT];
+	struct index_node *last_index[MAX_HEIGHT];
+	struct leaf_node *last_leaf;
+	struct medium_log_LRU_cache *medium_log_LRU_cache;
+	uint64_t root_offt;
+	uint64_t segment_id_cnt;
+	db_handle *handle;
+	uint32_t level_id;
+	uint32_t tree_id;
+	int32_t tree_height;
+	int fd;
+};
 
 #if 0
 static void wcursor_assert_node(void)
@@ -201,7 +218,8 @@ static int32_t wcursor_calculate_level_keys(struct db_descriptor *db_desc, uint8
 	return total_keys;
 }
 
-struct wcursor_level_write_cursor *wcursor_init_write_cursor(int level_id, struct db_handle *handle, int tree_id)
+struct wcursor_level_write_cursor *wcursor_init_write_cursor(uint8_t level_id, struct db_handle *handle,
+							     uint8_t tree_id)
 {
 	struct wcursor_level_write_cursor *w_cursor = NULL;
 	if (posix_memalign((void **)&w_cursor, ALIGNMENT, sizeof(struct wcursor_level_write_cursor)) != 0) {
@@ -231,6 +249,10 @@ struct wcursor_level_write_cursor *wcursor_init_write_cursor(int level_id, struc
 	handle->db_desc->levels[w_cursor->level_id].bloom_desc[w_cursor->tree_id] =
 		pbf_create(handle, w_cursor->level_id,
 			   wcursor_calculate_level_keys(handle->db_desc, w_cursor->level_id), w_cursor->tree_id);
+
+	w_cursor->medium_log_LRU_cache = level_id == w_cursor->handle->db_desc->level_medium_inplace ?
+						 mlog_cache_init_LRU(w_cursor->handle) :
+						 NULL;
 
 	return w_cursor;
 }
@@ -530,4 +552,24 @@ bool wcursor_append_KV_pair(struct wcursor_level_write_cursor *cursor, struct kv
 	wcursor_append_pivot_to_index(1, cursor, left_leaf_offt, new_pivot, right_leaf_offt);
 
 	return true;
+}
+
+uint8_t wcursor_get_level_id(struct wcursor_level_write_cursor *w_cursor)
+{
+	return w_cursor->level_id;
+}
+
+uint64_t wcursor_get_current_root(struct wcursor_level_write_cursor *w_cursor)
+{
+	return w_cursor->root_offt;
+}
+
+void wcursor_set_LRU_cache(struct wcursor_level_write_cursor *w_cursor, struct medium_log_LRU_cache *mcache)
+{
+	w_cursor->medium_log_LRU_cache = mcache;
+}
+
+struct medium_log_LRU_cache *wcursor_get_LRU_cache(struct wcursor_level_write_cursor *w_cursor)
+{
+	return w_cursor->medium_log_LRU_cache;
 }
