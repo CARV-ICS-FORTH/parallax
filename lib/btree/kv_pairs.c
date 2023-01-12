@@ -21,10 +21,7 @@
 #include <string.h>
 #include <unistd.h>
 
-// max value size reserved
-// value_size is 24 bytes with an int32_t type
-// so the maximum value size is ( 2 ^ 24 / 2 ) - 1 = 8388607
-#define DELETE_MARKER_ID (8388607)
+#define DELETE_MARKER_ID (INT32_MAX)
 
 inline int32_t kv_splice_get_key_size(struct kv_splice *kv_pair)
 {
@@ -39,8 +36,7 @@ inline int32_t kv_splice_get_value_size(struct kv_splice *kv_pair)
 // cppcheck-suppress unusedFunction
 inline int32_t kv_splice_get_value_size_with_metadata(struct kv_splice *kv_pair)
 {
-	int32_t value_size = sizeof(struct kv_splice) - sizeof(kv_pair->key_size);
-	return value_size + kv_splice_get_value_size(kv_pair);
+	return sizeof(kv_pair->value_size) + kv_splice_get_value_size(kv_pair);
 }
 
 inline int32_t kv_splice_get_kv_size(struct kv_splice *kv_pair)
@@ -50,7 +46,7 @@ inline int32_t kv_splice_get_kv_size(struct kv_splice *kv_pair)
 
 inline int32_t kv_splice_get_tail_size(void)
 {
-	return 1;
+	return sizeof(uint8_t);
 }
 
 inline void kv_splice_set_key_size(struct kv_splice *kv_pair, int32_t key_size)
@@ -104,12 +100,16 @@ inline void kv_splice_set_tombstone(struct kv_splice *kv_pair)
 
 uint32_t kv_splice_get_min_possible_kv_size(void)
 {
-	return sizeof(int32_t) + 1;
+	return kv_splice_get_metadata_size() + 1;
 }
 
 inline int32_t kv_splice_get_metadata_size(void)
 {
+#if TEBIS_FORMAT
 	int32_t kv_pair_metadata_size = sizeof(struct kv_splice) + kv_splice_get_tail_size();
+#else
+	int32_t kv_pair_metadata_size = sizeof(struct kv_splice);
+#endif
 	return kv_pair_metadata_size;
 }
 
@@ -118,8 +118,14 @@ struct kv_splice *kv_splice_create(int32_t key_size, char *key, int32_t value_si
 	struct kv_splice *kv_splice = calloc(1UL, key_size + value_size + kv_splice_get_metadata_size());
 	kv_splice->key_size = key_size;
 	kv_splice->value_size = value_size;
+
 	memcpy(kv_splice->data, key, key_size);
 	memcpy(&kv_splice->data[key_size], value, value_size);
+#if TEBIS_FORMAT
+	set_sizes_tail(kv_splice, INT8_MAX);
+	set_payload_tail(kv_splice, INT8_MAX);
+#endif
+
 	return kv_splice;
 }
 
@@ -280,9 +286,11 @@ char *kv_splice_base_get_reference(struct kv_splice_base *splice)
 {
 	return (kv_splice_base_is_in_place(splice)) ? (char *)splice->kv_splice : (char *)splice->kv_sep2;
 }
+
+#if TEBIS_FORMAT
 inline void set_sizes_tail(struct kv_splice *kv_pair, uint8_t tail)
 {
-	kv_pair->value_size_metadata = tail;
+	kv_pair->tail_for_sizes = tail;
 }
 
 inline void set_payload_tail(struct kv_splice *kv_pair, uint8_t tail)
@@ -292,3 +300,4 @@ inline void set_payload_tail(struct kv_splice *kv_pair, uint8_t tail)
 	int32_t value_size = kv_splice_get_value_size(kv_pair);
 	payload[key_size + value_size] = tail;
 }
+#endif

@@ -14,6 +14,9 @@ option(BUILD_SHARED_LIBS
 option(DISABLE_LOGGING
        "Disable all logging from parallax excluding kv_format.parallax output."
        OFF)
+option(TEBIS_FORMAT
+       "BUild Parallax using Tebis-format"
+       OFF)
 # Set a default build type if none was specified
 set(default_build_type "Release")
 # if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/.git") set(default_build_type "Debug")
@@ -41,6 +44,10 @@ message(
 
 if(DISABLE_LOGGING)
   add_definitions(-DDISABLE_LOGGING)
+endif()
+
+if(TEBIS_FORMAT)
+  add_definitions(-DTEBIS_FORMAT)
 endif()
 
 include(FetchContent)

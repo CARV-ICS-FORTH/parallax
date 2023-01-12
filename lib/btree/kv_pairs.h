@@ -21,15 +21,24 @@ enum KV_type { KV_FORMAT, KV_PREFIX, INDEX_KEY_TYPE, KEY_TYPE };
 #define KV_SEP2_MAX_SIZE (sizeof(uint64_t) + sizeof(int32_t) + MAX_KEY_SIZE)
 
 struct kv_splice {
+#if TEBIS_FORMAT
+	int16_t key_size;
+	int32_t value_size;
+	int8_t tail_for_sizes;
+#else
 	int32_t key_size;
-	int32_t value_size : 24;
-	int32_t value_size_metadata : 8;
+	int32_t value_size;
+#endif
 	char data[];
 } __attribute__((packed));
 
 struct kv_seperation_splice2 {
 	uint64_t value_offt;
+#if TEBIS_FORMAT
+	int16_t key_size;
+#else
 	int32_t key_size;
+#endif
 	char key[];
 } __attribute__((packed));
 
