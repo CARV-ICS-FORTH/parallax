@@ -13,7 +13,7 @@ struct wcursor_level_write_cursor {
 	uint64_t last_segment_btree_level_offt[MAX_HEIGHT];
 	struct index_node *last_index[MAX_HEIGHT];
 	struct leaf_node *last_leaf;
-	struct chunk_LRU_cache *medium_log_LRU_cache;
+	struct medium_log_LRU_cache *medium_log_LRU_cache;
 	struct medium_log_segment_map *medium_log_segment_map;
 	uint64_t root_offt;
 	uint64_t segment_id_cnt;
