@@ -429,6 +429,9 @@ struct par_options_desc *par_get_default_options(void)
 	check_option(dboptions, "enable_bloom_filters", &option);
 	uint64_t enable_bloom_filters = option->value.count;
 
+	check_option(dboptions, "enable_compaction_double_buffering", &option);
+	uint64_t enable_compaction_double_buffering = option->value.count;
+
 	//fill default_db_options based on the default values
 	default_db_options[LEVEL0_SIZE].value = level0_size;
 	default_db_options[GROWTH_FACTOR].value = growth_factor;
@@ -438,6 +441,7 @@ struct par_options_desc *par_get_default_options(void)
 	default_db_options[PRIMARY_MODE].value = primary_mode;
 	default_db_options[REPLICA_MODE].value = replica_mode;
 	default_db_options[ENABLE_BLOOM_FILTERS].value = enable_bloom_filters;
+	default_db_options[ENABLE_COMPACTION_DOUBLE_BUFFERING].value = enable_compaction_double_buffering;
 
 	return default_db_options;
 }

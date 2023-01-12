@@ -37,7 +37,8 @@ static void test_wcursors_segment_buffers_cursor(par_handle handle)
 	uint32_t level_id = 4;
 	uint32_t tree_id = 1;
 	par_init_compaction_id(handle, level_id, tree_id);
-	struct wcursor_level_write_cursor *write_cursor_segments = wcursor_init_write_cursor(level_id, handle, tree_id);
+	struct wcursor_level_write_cursor *write_cursor_segments =
+		wcursor_init_write_cursor(level_id, handle, tree_id, true);
 	wcursor_segment_buffers_iterator_t segment_buffers_cursor =
 		wcursor_segment_buffers_cursor_init(write_cursor_segments);
 

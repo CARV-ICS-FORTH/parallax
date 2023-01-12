@@ -252,9 +252,10 @@ static int32_t wcursor_calculate_level_keys(struct db_descriptor *db_desc, uint8
 	return total_keys;
 }
 
-struct wcursor_level_write_cursor *wcursor_init_write_cursor(uint8_t level_id, struct db_handle *handle,
-							     uint8_t tree_id)
+struct wcursor_level_write_cursor *wcursor_init_write_cursor(int level_id, struct db_handle *handle, int tree_id,
+							     bool enable_double_buffering)
 {
+	(void)enable_double_buffering;
 	struct wcursor_level_write_cursor *w_cursor = NULL;
 	if (posix_memalign((void **)&w_cursor, ALIGNMENT, sizeof(struct wcursor_level_write_cursor)) != 0) {
 		log_fatal("Posix memalign failed");

@@ -227,7 +227,8 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 
 	log_debug("Initializing write cursor for level [%u][%u]", comp_req->dst_level, comp_req->dst_tree);
 	struct wcursor_level_write_cursor *new_level =
-		wcursor_init_write_cursor(comp_req->dst_level, handle, comp_req->dst_tree);
+		wcursor_init_write_cursor(comp_req->dst_level, handle, comp_req->dst_tree,
+					  handle->db_options.options[ENABLE_COMPACTION_DOUBLE_BUFFERING].value);
 
 	//TODO: geostyl callback
 	parallax_callbacks_t par_callbacks = comp_req->db_desc->parallax_callbacks;

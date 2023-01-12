@@ -228,7 +228,7 @@ static void test_wcursors_create_compaction_index_for_level(DB *BDB, par_handle 
 	log_info("Initialize a level write cursor for level 2");
 	uint32_t tree_id = 1;
 	par_init_compaction_id(handle, level_id, tree_id);
-	struct wcursor_level_write_cursor *write_cursor = wcursor_init_write_cursor(level_id, handle, tree_id);
+	struct wcursor_level_write_cursor *write_cursor = wcursor_init_write_cursor(level_id, handle, tree_id, true);
 	// append all KVs
 	log_info("Insert all key-values in BDB to the level write cursor..");
 	test_wcursors_append_all_kvs(BDB, write_cursor);
@@ -282,7 +282,8 @@ static void test_wcursors(DB *BDB, par_handle handle)
 	uint32_t level_id = 4;
 	uint32_t tree_id = 1;
 	par_init_compaction_id(handle, level_id, tree_id);
-	struct wcursor_level_write_cursor *write_cursor_segments = wcursor_init_write_cursor(level_id, handle, tree_id);
+	struct wcursor_level_write_cursor *write_cursor_segments =
+		wcursor_init_write_cursor(level_id, handle, tree_id, true);
 
 	log_info("Traverse level 2 index and populate all segments in level 4 cursor");
 	test_wcursors_copy_segments(write_cursor_segments, handle, 2);
