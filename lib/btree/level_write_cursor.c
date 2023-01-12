@@ -482,7 +482,7 @@ bool wcursor_append_KV_pair(struct wcursor_level_write_cursor *cursor, struct kv
 	if (new_splice.cat == MEDIUM_INLOG && cursor->level_id == cursor->handle->db_desc->level_medium_inplace) {
 		new_splice.cat = MEDIUM_INPLACE;
 		new_splice.kv_splice = (struct kv_splice *)mlog_cache_fetch_kv_from_LRU(
-			cursor, kv_sep2_get_value_offt(new_splice.kv_sep2));
+			cursor->medium_log_LRU_cache, kv_sep2_get_value_offt(new_splice.kv_sep2));
 		assert(kv_splice_base_get_key_size(&new_splice) <= MAX_KEY_SIZE);
 		assert(kv_splice_base_get_key_size(&new_splice) > 0);
 

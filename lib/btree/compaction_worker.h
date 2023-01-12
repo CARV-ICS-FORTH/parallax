@@ -17,12 +17,6 @@ struct compaction_request {
 	uint8_t dst_tree;
 };
 
-struct medium_log_segment_map {
-	uint64_t id;
-	uint64_t dev_offt;
-	UT_hash_handle hh;
-};
-
 /**
  * @brief compaction_worker executes compaction function in the context of a
  * pthread. It compacts two levels and writes the resulting level in the

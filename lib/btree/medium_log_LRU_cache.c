@@ -27,6 +27,12 @@
 #include <unistd.h>
 #include <uthash.h>
 
+struct medium_log_segment_map {
+	uint64_t id;
+	uint64_t dev_offt;
+	UT_hash_handle hh;
+};
+
 struct mlog_cache_chunk_list {
 	struct mlog_cache_chunk_listnode *head;
 	struct mlog_cache_chunk_listnode *tail;
@@ -53,7 +59,36 @@ struct medium_log_LRU_cache {
 	struct mlog_cache_chunk_list *chunks_list;
 	uint64_t hash_table_count;
 	uint64_t hash_table_capacity;
+	struct medium_log_segment_map *medium_log_segment_map;
+	int file_desc;
 };
+
+struct mlog_cache_max_segment_info mlog_cache_find_max_segment_info(struct medium_log_LRU_cache *chunk_cache)
+{
+	struct mlog_cache_max_segment_info max_segment = { 0 };
+
+	struct medium_log_segment_map *current_entry = NULL;
+	struct medium_log_segment_map *tmp = NULL;
+	HASH_ITER(hh, chunk_cache->medium_log_segment_map, current_entry, tmp)
+	{
+		/* Suprresses possible null pointer dereference of cppcheck*/
+		assert(current_entry);
+		uint64_t segment_id = current_entry->id;
+		if (UINT64_MAX == segment_id) {
+			struct segment_header *segment = REAL_ADDRESS(current_entry->dev_offt);
+			segment_id = segment->segment_id;
+		}
+
+		// cppcheck-suppress unsignedPositive
+		if (segment_id >= max_segment.max_segment_id) {
+			max_segment.max_segment_id = segment_id;
+			max_segment.max_segment_offt = current_entry->dev_offt;
+		}
+		HASH_DEL(chunk_cache->medium_log_segment_map, current_entry);
+		free(current_entry);
+	}
+	return max_segment;
+}
 
 int mlog_cache_chunk_exists_in_LRU(struct medium_log_LRU_cache *chunk_cache, uint64_t chunk_offt)
 {
@@ -65,15 +100,15 @@ int mlog_cache_chunk_exists_in_LRU(struct medium_log_LRU_cache *chunk_cache, uin
 	return chunk != NULL;
 }
 
-static void mlog_cache_fetch_chunk(struct wcursor_level_write_cursor *w_cursor, uint64_t log_chunk_dev_offt,
+static void mlog_cache_fetch_chunk(struct medium_log_LRU_cache *chunk_cache, uint64_t log_chunk_dev_offt,
 				   char *segment_buf, ssize_t size)
 {
 	off_t dev_offt = log_chunk_dev_offt;
 	ssize_t bytes_to_read = 0;
 
 	while (bytes_to_read < size) {
-		ssize_t bytes = pread(w_cursor->handle->db_desc->db_volume->vol_fd, &segment_buf[bytes_to_read],
-				      size - bytes_to_read, dev_offt + bytes_to_read);
+		ssize_t bytes = pread(chunk_cache->file_desc, &segment_buf[bytes_to_read], size - bytes_to_read,
+				      dev_offt + bytes_to_read);
 		if (bytes == -1) {
 			log_fatal("Failed to read error code dev offt was: %lu", dev_offt);
 			perror("Error");
@@ -83,15 +118,15 @@ static void mlog_cache_fetch_chunk(struct wcursor_level_write_cursor *w_cursor, 
 		bytes_to_read += bytes;
 	}
 
-	if (w_cursor->level_id != w_cursor->handle->db_desc->level_medium_inplace)
-		return;
+	// if (w_cursor->level_id != w_cursor->handle->db_desc->level_medium_inplace)
+	// 	return;
 
 	uint64_t segment_dev_offt = log_chunk_dev_offt - (log_chunk_dev_offt % SEGMENT_SIZE);
 
 	struct medium_log_segment_map *entry = NULL;
 	//log_debug("Searching segment offt: %lu log chunk offt %lu mod %lu", segment_dev_offt, log_chunk_dev_offt,
 	//	  log_chunk_dev_offt % SEGMENT_SIZE);
-	HASH_FIND_PTR(w_cursor->medium_log_segment_map, &segment_dev_offt, entry);
+	HASH_FIND_PTR(chunk_cache->medium_log_segment_map, &segment_dev_offt, entry);
 
 	/*Never seen it before*/
 	bool found = true;
@@ -115,10 +150,10 @@ static void mlog_cache_fetch_chunk(struct wcursor_level_write_cursor *w_cursor, 
 	}
 
 	if (!found)
-		HASH_ADD_PTR(w_cursor->medium_log_segment_map, dev_offt, entry);
+		HASH_ADD_PTR(chunk_cache->medium_log_segment_map, dev_offt, entry);
 }
 
-char *mlog_cache_fetch_kv_from_LRU(struct wcursor_level_write_cursor *w_cursor, uint64_t kv_dev_offt)
+char *mlog_cache_fetch_kv_from_LRU(struct medium_log_LRU_cache *chunk_cache, uint64_t kv_dev_offt)
 {
 	char *segment_chunk = NULL, *kv_in_seg = NULL;
 	uint64_t segment_offset, which_chunk, segment_chunk_offt;
@@ -128,15 +163,15 @@ char *mlog_cache_fetch_kv_from_LRU(struct wcursor_level_write_cursor *w_cursor, 
 
 	segment_chunk_offt = segment_offset + (which_chunk * LOG_CHUNK_SIZE);
 
-	if (!mlog_cache_chunk_exists_in_LRU(w_cursor->medium_log_LRU_cache, segment_chunk_offt)) {
+	if (!mlog_cache_chunk_exists_in_LRU(chunk_cache, segment_chunk_offt)) {
 		if (posix_memalign((void **)&segment_chunk, ALIGNMENT_SIZE, LOG_CHUNK_SIZE + KB(4)) != 0) {
 			log_fatal("MEMALIGN FAILED");
 			BUG_ON();
 		}
-		mlog_cache_fetch_chunk(w_cursor, segment_chunk_offt, segment_chunk, LOG_CHUNK_SIZE + KB(4));
-		mlog_cache_add_to_LRU(w_cursor->medium_log_LRU_cache, segment_chunk_offt, segment_chunk);
+		mlog_cache_fetch_chunk(chunk_cache, segment_chunk_offt, segment_chunk, LOG_CHUNK_SIZE + KB(4));
+		mlog_cache_add_to_LRU(chunk_cache, segment_chunk_offt, segment_chunk);
 	} else
-		segment_chunk = mlog_cache_get_chunk_from_LRU(w_cursor->medium_log_LRU_cache, segment_chunk_offt);
+		segment_chunk = mlog_cache_get_chunk_from_LRU(chunk_cache, segment_chunk_offt);
 	kv_in_seg = &segment_chunk[(kv_dev_offt % SEGMENT_SIZE) - (which_chunk * LOG_CHUNK_SIZE)];
 
 	return kv_in_seg;
@@ -228,22 +263,23 @@ struct medium_log_LRU_cache *mlog_cache_init_LRU(struct db_handle *handle)
 
 	log_info("Init LRU with %lu chunks", LRU_cache_size / chunk_size);
 	struct medium_log_LRU_cache *new_LRU =
-		(struct medium_log_LRU_cache *)calloc(1, sizeof(struct medium_log_LRU_cache));
+		(struct medium_log_LRU_cache *)calloc(1UL, sizeof(struct medium_log_LRU_cache));
 	if (new_LRU == NULL) {
 		log_info("Calloc returned NULL, not enough memory, exiting...");
 		BUG_ON();
 	}
 
 	new_LRU->chunks_hash_table =
-		(struct mlog_cache_chunk_hash_entry **)calloc(1, sizeof(struct mlog_cache_chunk_hash_entry *));
+		(struct mlog_cache_chunk_hash_entry **)calloc(1UL, sizeof(struct mlog_cache_chunk_hash_entry *));
 	if (new_LRU->chunks_hash_table == NULL) {
-		log_info("Calloc returned NULL, not enough memory, exiting...");
+		log_fatal("Calloc returned NULL, not enough memory, exiting...");
 		BUG_ON();
 	}
 
 	*(new_LRU->chunks_hash_table) = NULL; /* needed by uthash api */
 	new_LRU->hash_table_capacity = LRU_cache_size / chunk_size;
 	new_LRU->chunks_list = mlog_cache_create_list();
+	new_LRU->file_desc = handle->db_desc->db_volume->vol_fd;
 
 	return new_LRU;
 }

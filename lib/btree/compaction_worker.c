@@ -121,36 +121,38 @@ static void mark_segment_space(db_handle *handle, struct dups_list *list, uint8_
 	}
 }
 
-static void comp_medium_log_set_max_segment_id(struct wcursor_level_write_cursor *c)
+static void comp_medium_log_set_max_segment_id(struct wcursor_level_write_cursor *w_cursor)
 {
-	uint64_t max_segment_id = 0;
-	uint64_t max_segment_offt = 0;
+	// uint64_t max_segment_id = 0;
+	// uint64_t max_segment_offt = 0;
 
-	struct medium_log_segment_map *current_entry = NULL;
-	struct medium_log_segment_map *tmp = NULL;
-	HASH_ITER(hh, c->medium_log_segment_map, current_entry, tmp)
-	{
-		/* Suprresses possible null pointer dereference of cppcheck*/
-		assert(current_entry);
-		uint64_t segment_id = current_entry->id;
-		if (UINT64_MAX == segment_id) {
-			struct segment_header *segment = REAL_ADDRESS(current_entry->dev_offt);
-			segment_id = segment->segment_id;
-		}
+	// struct medium_log_segment_map *current_entry = NULL;
+	// struct medium_log_segment_map *tmp = NULL;
+	// HASH_ITER(hh, c->medium_log_segment_map, current_entry, tmp)
+	// {
+	// 	/* Suprresses possible null pointer dereference of cppcheck*/
+	// 	assert(current_entry);
+	// 	uint64_t segment_id = current_entry->id;
+	// 	if (UINT64_MAX == segment_id) {
+	// 		struct segment_header *segment = REAL_ADDRESS(current_entry->dev_offt);
+	// 		segment_id = segment->segment_id;
+	// 	}
 
-		// cppcheck-suppress unsignedPositive
-		if (segment_id >= max_segment_id) {
-			max_segment_id = segment_id;
-			max_segment_offt = current_entry->dev_offt;
-		}
-		HASH_DEL(c->medium_log_segment_map, current_entry);
-		free(current_entry);
-	}
-	struct level_descriptor *level_desc = &c->handle->db_desc->levels[c->level_id];
-	level_desc->medium_in_place_max_segment_id = max_segment_id;
-	level_desc->medium_in_place_segment_dev_offt = max_segment_offt;
+	// 	// cppcheck-suppress unsignedPositive
+	// 	if (segment_id >= max_segment_id) {
+	// 		max_segment_id = segment_id;
+	// 		max_segment_offt = current_entry->dev_offt;
+	// 	}
+	// 	HASH_DEL(c->medium_log_segment_map, current_entry);
+	// 	free(current_entry);
+	// }
+	struct mlog_cache_max_segment_info max_segment =
+		mlog_cache_find_max_segment_info(w_cursor->medium_log_LRU_cache);
+	struct level_descriptor *level_desc = &w_cursor->handle->db_desc->levels[w_cursor->level_id];
+	level_desc->medium_in_place_max_segment_id = max_segment.max_segment_id;
+	level_desc->medium_in_place_segment_dev_offt = max_segment.max_segment_offt;
 	log_debug("Max segment id touched during medium transfer to in place is %lu and corresponding offt: %lu",
-		  max_segment_id, max_segment_offt);
+		  max_segment.max_segment_id, max_segment.max_segment_offt);
 }
 
 static void lock_to_update_levels_after_compaction(struct compaction_request *comp_req)

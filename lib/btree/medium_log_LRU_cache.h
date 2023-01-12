@@ -21,11 +21,22 @@
 struct medium_log_LRU_cache;
 struct wcursor_level_write_cursor;
 
+struct mlog_cache_max_segment_info {
+	uint64_t max_segment_id;
+	uint64_t max_segment_offt;
+};
+
 struct medium_log_LRU_cache *mlog_cache_init_LRU(db_handle *handle);
 void mlog_cache_add_to_LRU(struct medium_log_LRU_cache *chunk_cache, uint64_t chunk_offt, char *chunk_buf);
 int mlog_cache_chunk_exists_in_LRU(struct medium_log_LRU_cache *chunk_cache, uint64_t chunk_offt);
 char *mlog_cache_get_chunk_from_LRU(struct medium_log_LRU_cache *chunk_cache, uint64_t chunk_offt);
 void mlog_cache_destroy_LRU(struct medium_log_LRU_cache *chunk_cache);
-char *mlog_cache_fetch_kv_from_LRU(struct wcursor_level_write_cursor *w_cursor, uint64_t kv_dev_offt);
+char *mlog_cache_fetch_kv_from_LRU(struct medium_log_LRU_cache *chunk_cache, uint64_t kv_dev_offt);
+
+/**
+ * @brief Returns the max segment id and its corresponding offset that this cache has touched.
+ * @param chunk_cache pointer to the cache object
+ */
+struct mlog_cache_max_segment_info mlog_cache_find_max_segment_info(struct medium_log_LRU_cache *chunk_cache);
 
 #endif
