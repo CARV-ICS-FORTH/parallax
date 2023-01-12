@@ -184,6 +184,15 @@ static void unlock_to_update_levels_after_compaction(struct compaction_request *
 	MUTEX_UNLOCK(&comp_req->db_desc->flush_L0_lock);
 }
 
+static void comp_zero_level(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
+{
+	db_desc->levels[level_id].level_size[tree_id] = 0;
+	db_desc->levels[level_id].first_segment[tree_id] = NULL;
+	db_desc->levels[level_id].last_segment[tree_id] = NULL;
+	db_desc->levels[level_id].offset[tree_id] = 0;
+	db_desc->levels[level_id].root[tree_id] = NULL;
+	db_desc->levels[level_id].num_level_keys[tree_id] = 0;
+}
 static void compact_level_direct_IO(struct db_handle *handle, struct compaction_request *comp_req)
 {
 	struct compaction_roots comp_roots = { .src_root = NULL, .dst_root = NULL };
@@ -307,7 +316,7 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 	space_freed = seg_free_level(hd.db_desc, txn_id, comp_req->src_level, comp_req->src_tree);
 	log_debug("Freed space %lu MB from DB:%s source level %u", space_freed / (1024 * 1024L),
 		  comp_req->db_desc->db_superblock->db_name, comp_req->src_level);
-	seg_zero_level(hd.db_desc, comp_req->src_level, comp_req->src_tree);
+	comp_zero_level(hd.db_desc, comp_req->src_level, comp_req->src_tree);
 
 	/*Finally persist compaction */
 	pr_flush_compaction(comp_req->db_desc, comp_req->dst_level, comp_req->dst_tree);
@@ -338,6 +347,8 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 
 	dest_level->level_size[0] = dest_level->level_size[1];
 	dest_level->level_size[1] = 0;
+	dest_level->num_level_keys[0] = dest_level->num_level_keys[1];
+	dest_level->num_level_keys[1] = 0;
 
 	unlock_to_update_levels_after_compaction(comp_req);
 

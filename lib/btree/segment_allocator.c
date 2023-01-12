@@ -282,12 +282,3 @@ uint64_t seg_free_level(struct db_descriptor *db_desc, uint64_t txn_id, uint8_t 
 	}
 	return space_freed;
 }
-
-void seg_zero_level(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
-{
-	db_desc->levels[level_id].level_size[tree_id] = 0;
-	db_desc->levels[level_id].first_segment[tree_id] = NULL;
-	db_desc->levels[level_id].last_segment[tree_id] = NULL;
-	db_desc->levels[level_id].offset[tree_id] = 0;
-	db_desc->levels[level_id].root[tree_id] = NULL;
-}

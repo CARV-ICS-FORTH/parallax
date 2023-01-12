@@ -18,6 +18,7 @@
 #include "../allocator/volume_manager.h"
 #include "../include/parallax/structures.h"
 #include "btree.h"
+#include <assert.h>
 #include <bloom.h>
 #include <fcntl.h>
 #include <log.h>
@@ -27,7 +28,7 @@
 #include <string.h>
 #include <sys/time.h>
 #include <unistd.h>
-#define PBF_MAGIC_SMALL_KV_SIZE (33)
+
 #define PBF_11_BITS_PER_ELEMENT 0.0043484747805937
 #define PBF_BLOOM_BUFFER_SIZE (128U)
 #define PBF_BLOOM_FILE_SUFFIX ".bloom"
@@ -57,19 +58,11 @@ static char *pbf_create_bloom_filter_folder(char *volume_name)
 	return bloom_filter_folder;
 }
 
-struct pbf_desc *pbf_create(db_handle *database_desc, uint8_t level_id, uint8_t tree_id)
+struct pbf_desc *pbf_create(db_handle *database_desc, uint8_t level_id, int32_t total_keys, uint8_t tree_id)
 {
 	if (!database_desc->db_options.options[ENABLE_BLOOM_FILTERS].value)
 		return NULL;
 	db_descriptor *db_desc = database_desc->db_desc;
-
-	int32_t total_keys = db_desc->levels[level_id].num_level_keys[tree_id];
-
-	if (0 == total_keys && 1 == level_id)
-		total_keys = db_desc->levels[0].max_level_size / PBF_MAGIC_SMALL_KV_SIZE;
-
-	if (level_id > 1)
-		total_keys += db_desc->levels[level_id - 1].num_level_keys[tree_id];
 
 	struct pbf_desc *bloom_desc = calloc(1UL, sizeof(*bloom_desc));
 	bloom_desc->bloom_filter_folder = pbf_create_bloom_filter_folder(db_desc->db_volume->volume_name);
@@ -80,9 +73,10 @@ struct pbf_desc *pbf_create(db_handle *database_desc, uint8_t level_id, uint8_t 
 	bloom_desc->tree_id = tree_id;
 	bloom_desc->is_valid = true;
 	bloom_desc->bloom_filter = bloom_init2(total_keys, PBF_11_BITS_PER_ELEMENT);
+	assert(bloom_desc->bloom_filter);
 
-	// log_debug("Initialized bloom filter for total keys %d", total_keys);
-	// bloom_print(handle->db_desc->levels[w_cursor->level_id].bloom_desc[w_cursor->tree_id].bloom_filter);
+	// bloom_print(bloom_desc->bloom_filter);
+
 	return bloom_desc;
 }
 

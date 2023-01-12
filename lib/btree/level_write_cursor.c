@@ -1,5 +1,6 @@
+#include "btree.h"
+#include <stdint.h>
 #define _GNU_SOURCE
-#include "level_write_cursor.h"
 #include "../allocator/device_structures.h"
 #include "../allocator/log_structures.h"
 #include "../allocator/volume_manager.h"
@@ -10,6 +11,7 @@
 #include "index_node.h"
 #include "key_splice.h"
 #include "kv_pairs.h"
+#include "level_write_cursor.h"
 #include "medium_log_LRU_cache.h"
 #include "parallax/structures.h"
 #include "segment_allocator.h"
@@ -19,6 +21,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#define WCURSOR_MAGIC_SMALL_KV_SIZE (33)
 // IWYU pragma: no_forward_declare pbf_desc
 // IWYU pragma: no_forward_declare index_node
 // IWYU pragma: no_forward_declare key_splice
@@ -182,6 +185,22 @@ static void wcursor_get_space(struct wcursor_level_write_cursor *w_cursor, uint3
 	}
 }
 
+static int32_t wcursor_calculate_level_keys(struct db_descriptor *db_desc, uint8_t level_id)
+{
+	assert(level_id > 0);
+	uint8_t tree_id = 0; /*Always caclulate the immutable aka 0 tree of the level*/
+	int32_t total_keys = db_desc->levels[level_id].num_level_keys[tree_id];
+
+	if (0 == total_keys && 1 == level_id)
+		total_keys = db_desc->levels[0].max_level_size / WCURSOR_MAGIC_SMALL_KV_SIZE;
+
+	if (level_id > 1) {
+		total_keys += db_desc->levels[level_id - 1].num_level_keys[tree_id];
+	}
+	log_debug("Total keys of level %u are %d", level_id, total_keys);
+	return total_keys;
+}
+
 struct wcursor_level_write_cursor *wcursor_init_write_cursor(int level_id, struct db_handle *handle, int tree_id)
 {
 	struct wcursor_level_write_cursor *w_cursor = NULL;
@@ -210,7 +229,8 @@ struct wcursor_level_write_cursor *wcursor_init_write_cursor(int level_id, struc
 	}
 
 	handle->db_desc->levels[w_cursor->level_id].bloom_desc[w_cursor->tree_id] =
-		pbf_create(handle, w_cursor->level_id, w_cursor->tree_id);
+		pbf_create(handle, w_cursor->level_id,
+			   wcursor_calculate_level_keys(handle->db_desc, w_cursor->level_id), w_cursor->tree_id);
 
 	return w_cursor;
 }
