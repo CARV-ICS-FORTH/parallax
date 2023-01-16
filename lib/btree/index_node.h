@@ -222,4 +222,6 @@ struct node_header *index_node_get_header(struct index_node *node);
   * returns the sizeof(struct index_node)
   */
 uint64_t index_node_get_size(void);
+
+void index_node_print(struct index_node *node);
 #endif
