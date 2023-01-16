@@ -23,12 +23,18 @@
 #include <string.h>
 #include <unistd.h>
 #define WCURSOR_MAGIC_SMALL_KV_SIZE (33)
+#define WCURSOR_ALIGNMNENT (4096UL)
 // IWYU pragma: no_forward_declare pbf_desc
 // IWYU pragma: no_forward_declare index_node
 // IWYU pragma: no_forward_declare key_splice
 
+struct wcursor_seg_buf {
+	char buffer[SEGMENT_SIZE];
+	uint64_t status;
+} __attribute__((aligned(4096)));
+
 struct wcursor_level_write_cursor {
-	char segment_buf[MAX_HEIGHT][SEGMENT_SIZE];
+	struct wcursor_seg_buf *segment_buffer;
 	uint64_t segment_offt[MAX_HEIGHT];
 	uint64_t first_segment_btree_level_offt[MAX_HEIGHT];
 	uint64_t last_segment_btree_level_offt[MAX_HEIGHT];
@@ -39,16 +45,63 @@ struct wcursor_level_write_cursor {
 	uint64_t root_offt;
 	uint64_t segment_id_cnt;
 	db_handle *handle;
-	uint32_t level_id;
-	uint32_t tree_id;
 	int32_t tree_height;
 	int fd;
+	uint32_t num_rows;
+	uint32_t num_columns;
+	uint32_t clock[MAX_HEIGHT];
+	uint8_t level_id;
+	uint8_t tree_id;
 };
 
 struct wcursor_segment_buffers_iterator {
 	int curr_i;
 	struct wcursor_level_write_cursor *wcursor;
 };
+
+static void wcursor_seg_buf_array_init(uint32_t num_rows, struct wcursor_level_write_cursor *w_cursor,
+				       uint32_t num_columns)
+{
+	w_cursor->num_rows = num_rows;
+	w_cursor->num_columns = num_columns;
+	if (posix_memalign((void **)&w_cursor->segment_buffer, WCURSOR_ALIGNMNENT,
+			   w_cursor->num_rows * w_cursor->num_columns * sizeof(struct wcursor_seg_buf))) {
+		log_fatal("Failed to allocate a segment buffer for the level_write_cursor");
+		_exit(EXIT_FAILURE);
+	}
+	memset(w_cursor->segment_buffer, 0x00,
+	       w_cursor->num_rows * w_cursor->num_columns * sizeof(struct wcursor_seg_buf));
+}
+
+static struct wcursor_seg_buf *wcursor_get_buf(struct wcursor_level_write_cursor *w_cursor, uint32_t row_id)
+{
+	uint32_t col_id = w_cursor->clock[row_id] % w_cursor->num_columns;
+
+	return &w_cursor->segment_buffer[row_id * w_cursor->num_columns + col_id];
+}
+
+static void wcursor_increase_clock(struct wcursor_level_write_cursor *w_cursor, uint32_t height)
+{
+	++w_cursor->clock[height];
+}
+
+static void wcursor_seg_buf_destroy(struct wcursor_level_write_cursor *w_cursor)
+{
+	free(w_cursor->segment_buffer);
+}
+
+static char *wcursor_get_current_node(struct wcursor_level_write_cursor *w_cursor, int32_t height, uint32_t offt)
+{
+	struct wcursor_seg_buf *seg_buf = wcursor_get_buf(w_cursor, height);
+	return &seg_buf->buffer[offt];
+}
+
+static void wcursor_seg_buf_zero(struct wcursor_level_write_cursor *w_cursor, uint32_t height, uint32_t offt,
+				 uint32_t num_bytes)
+{
+	struct wcursor_seg_buf *buf = wcursor_get_buf(w_cursor, height);
+	memset(&buf->buffer[offt], 0x00, num_bytes);
+}
 
 #if 0
 static void wcursor_assert_node(void)
@@ -99,12 +152,15 @@ static void wcursor_assert_node(void)
 }
 #endif
 
-static void wcursor_write_segment(char *buffer, uint64_t dev_offt, uint32_t buf_offt, uint32_t size, int fd)
+static void wcursor_write_segment(struct wcursor_level_write_cursor *w_cursor, uint32_t height, uint64_t dev_offt,
+				  uint32_t buf_offt, uint32_t size)
 {
+	assert(height < MAX_HEIGHT);
+	struct wcursor_seg_buf *seg_buf = wcursor_get_buf(w_cursor, height);
 	ssize_t total_bytes_written = buf_offt;
 	while (total_bytes_written < size) {
-		ssize_t bytes_written = pwrite(fd, &buffer[total_bytes_written], size - total_bytes_written,
-					       dev_offt + total_bytes_written);
+		ssize_t bytes_written = pwrite(wcursor_get_fd(w_cursor), &seg_buf->buffer[total_bytes_written],
+					       size - total_bytes_written, dev_offt + total_bytes_written);
 		if (bytes_written == -1) {
 			log_fatal("Failed to writed segment for leaf nodes reason follows");
 			perror("Reason");
@@ -114,127 +170,61 @@ static void wcursor_write_segment(char *buffer, uint64_t dev_offt, uint32_t buf_
 	}
 }
 
-static void wcursor_get_space(struct wcursor_level_write_cursor *w_cursor, uint32_t height, nodeType_t type)
+static void wcursor_write_index_segment(struct wcursor_level_write_cursor *w_cursor, uint32_t height)
 {
+	//Caution this is the device offset where we will write the next segment in the next iteration of the process
+	struct segment_header *new_device_segment =
+		get_segment_for_lsm_level_IO(w_cursor->handle->db_desc, w_cursor->level_id, 1);
+	assert(new_device_segment);
+
+	struct segment_header *segment = (struct segment_header *)wcursor_get_buf(w_cursor, height);
+
+	segment->next_segment = (void *)ABSOLUTE_ADDRESS(new_device_segment);
+	segment->segment_id = w_cursor->segment_id_cnt++;
+
+	wcursor_write_segment(w_cursor, height, w_cursor->last_segment_btree_level_offt[height], 0, SEGMENT_SIZE);
+
+	//TODO: geostyl callback
+	parallax_callbacks_t par_callbacks = w_cursor->handle->db_desc->parallax_callbacks;
+	if (are_parallax_callbacks_set(par_callbacks)) {
+		struct parallax_callback_funcs par_cb = parallax_get_callbacks(par_callbacks);
+		void *context = parallax_get_context(par_callbacks);
+		uint32_t src_level = w_cursor->level_id - 1;
+		par_cb.comp_write_cursor_flush_segment_cb(context, src_level, 0, SEGMENT_SIZE, 0);
+	}
+	wcursor_increase_clock(w_cursor, height);
+	wcursor_seg_buf_zero(w_cursor, height, 0, sizeof(struct segment_header));
+
+	w_cursor->last_segment_btree_level_offt[height] = ABSOLUTE_ADDRESS(new_device_segment);
+	w_cursor->segment_offt[height] += sizeof(struct segment_header);
+}
+
+static char *wcursor_get_space(struct wcursor_level_write_cursor *w_cursor, uint32_t height, size_t size)
+{
+retry:
 	assert(height < MAX_HEIGHT);
+	assert(0 == SEGMENT_SIZE % size);
 
-	struct level_descriptor *level_desc = &w_cursor->handle->db_desc->levels[w_cursor->level_id];
-	uint32_t level_leaf_size = level_desc->leaf_size;
-	switch (type) {
-	case leafNode:
-	case leafRootNode: {
-		uint32_t remaining_space = SEGMENT_SIZE - w_cursor->segment_offt[0] % SEGMENT_SIZE;
-		if (w_cursor->segment_offt[0] == 0 || w_cursor->segment_offt[0] % SEGMENT_SIZE == 0)
-			remaining_space = 0;
+	assert(w_cursor->segment_offt[height] != 0);
 
-		if (remaining_space < level_leaf_size) {
-			if (remaining_space > 0) {
-				struct node_header *padded_node =
-					(struct node_header *)(&w_cursor->segment_buf[0][w_cursor->segment_offt[0] %
-											 SEGMENT_SIZE]);
-				padded_node->height = 0;
-				padded_node->type = paddedSpace;
-				w_cursor->segment_offt[0] += remaining_space;
-			}
-
-			struct segment_header *new_device_segment =
-				get_segment_for_lsm_level_IO(w_cursor->handle->db_desc, w_cursor->level_id, 1);
-			struct segment_header *current_segment_mem_buffer =
-				(struct segment_header *)&w_cursor->segment_buf[0][0];
-
-			if (w_cursor->segment_offt[height] != 0) {
-				current_segment_mem_buffer->next_segment = (void *)ABSOLUTE_ADDRESS(new_device_segment);
-
-				assert(new_device_segment);
-				assert(current_segment_mem_buffer->next_segment);
-				wcursor_write_segment(w_cursor->segment_buf[0],
-						      w_cursor->last_segment_btree_level_offt[0], 0, SEGMENT_SIZE,
-						      w_cursor->fd);
-
-				//TODO: geostyl callback
-				parallax_callbacks_t par_callbacks = w_cursor->handle->db_desc->parallax_callbacks;
-				if (are_parallax_callbacks_set(par_callbacks)) {
-					struct parallax_callback_funcs par_cb = parallax_get_callbacks(par_callbacks);
-					void *context = parallax_get_context(par_callbacks);
-					uint32_t src_level = w_cursor->level_id - 1;
-					par_cb.comp_write_cursor_flush_segment_cb(context, src_level, 0, SEGMENT_SIZE,
-										  0);
-				}
-			}
-
-			memset(&w_cursor->segment_buf[0][0], 0x00, sizeof(struct segment_header));
-
-			w_cursor->last_segment_btree_level_offt[0] = ABSOLUTE_ADDRESS(new_device_segment);
-			w_cursor->segment_offt[0] = sizeof(struct segment_header);
-			current_segment_mem_buffer->segment_id = w_cursor->segment_id_cnt++;
-			current_segment_mem_buffer->nodetype = type;
-		}
-		w_cursor->last_leaf =
-			(struct leaf_node *)(&w_cursor->segment_buf[0][(w_cursor->segment_offt[0] % SEGMENT_SIZE)]);
-		w_cursor->segment_offt[0] += level_leaf_size;
-		dl_init_leaf_node(w_cursor->last_leaf, level_leaf_size);
-		break;
+	uint32_t remaining_space = w_cursor->segment_offt[height] % SEGMENT_SIZE ?
+					   SEGMENT_SIZE - (w_cursor->segment_offt[height] % SEGMENT_SIZE) :
+						 0;
+	if (remaining_space >= size) {
+		char *item = wcursor_get_current_node(w_cursor, height, w_cursor->segment_offt[height] % SEGMENT_SIZE);
+		w_cursor->segment_offt[height] += size;
+		return item;
 	}
-	case internalNode:
-	case rootNode: {
-		uint32_t remaining_space = SEGMENT_SIZE - (w_cursor->segment_offt[height] % SEGMENT_SIZE);
-		if (w_cursor->segment_offt[height] == 0 || w_cursor->segment_offt[height] % SEGMENT_SIZE == 0)
-			remaining_space = 0;
 
-		if (remaining_space < index_node_get_size()) {
-			if (remaining_space > 0) {
-				struct node_header *padded_node =
-					(struct node_header
-						 *)(&w_cursor->segment_buf[height][w_cursor->segment_offt[height] %
-										   SEGMENT_SIZE]);
-				padded_node->height = height;
-				padded_node->type = paddedSpace;
-				w_cursor->segment_offt[height] += remaining_space;
-			}
-
-			struct segment_header *new_device_segment =
-				get_segment_for_lsm_level_IO(w_cursor->handle->db_desc, w_cursor->level_id, 1);
-			struct segment_header *current_segment_mem_buffer =
-				(struct segment_header *)&w_cursor->segment_buf[height][0];
-
-			if (w_cursor->segment_offt[height] != 0) {
-				current_segment_mem_buffer->next_segment = (void *)ABSOLUTE_ADDRESS(new_device_segment);
-
-				assert(new_device_segment);
-				assert(current_segment_mem_buffer->next_segment);
-
-				wcursor_write_segment(w_cursor->segment_buf[height],
-						      w_cursor->last_segment_btree_level_offt[height], 0, SEGMENT_SIZE,
-						      w_cursor->fd);
-
-				//TODO: geostyl callback
-				parallax_callbacks_t par_callbacks = w_cursor->handle->db_desc->parallax_callbacks;
-				if (are_parallax_callbacks_set(par_callbacks)) {
-					struct parallax_callback_funcs par_cb = parallax_get_callbacks(par_callbacks);
-					void *context = parallax_get_context(par_callbacks);
-					uint32_t src_level = w_cursor->level_id - 1;
-					par_cb.comp_write_cursor_flush_segment_cb(context, src_level, height,
-										  SEGMENT_SIZE, 0);
-				}
-			}
-
-			memset(&w_cursor->segment_buf[height][0], 0x00, sizeof(struct segment_header));
-			w_cursor->segment_offt[height] += sizeof(struct segment_header);
-			w_cursor->last_segment_btree_level_offt[height] = ABSOLUTE_ADDRESS(new_device_segment);
-			current_segment_mem_buffer->segment_id = w_cursor->segment_id_cnt++;
-
-			current_segment_mem_buffer->nodetype = type;
-		}
-		w_cursor->last_index[height] =
-			(struct index_node *)&w_cursor
-				->segment_buf[height][w_cursor->segment_offt[height] % SEGMENT_SIZE];
-		w_cursor->segment_offt[height] += index_node_get_size();
-		break;
+	if (remaining_space > 0) {
+		struct node_header *padded_node = (struct node_header *)wcursor_get_current_node(
+			w_cursor, height, w_cursor->segment_offt[height] % SEGMENT_SIZE);
+		padded_node->height = height;
+		padded_node->type = paddedSpace;
+		w_cursor->segment_offt[height] += remaining_space;
 	}
-	default:
-		log_fatal("Wrong type");
-		BUG_ON();
-	}
+	wcursor_write_index_segment(w_cursor, height);
+	goto retry;
 }
 
 static int32_t wcursor_calculate_level_keys(struct db_descriptor *db_desc, uint8_t level_id)
@@ -249,14 +239,13 @@ static int32_t wcursor_calculate_level_keys(struct db_descriptor *db_desc, uint8
 	if (level_id > 1) {
 		total_keys += db_desc->levels[level_id - 1].num_level_keys[tree_id];
 	}
-	log_debug("Total keys of level %u are %d", level_id, total_keys);
+	// log_debug("Total keys of level %u are %d", level_id, total_keys);
 	return total_keys;
 }
 
 struct wcursor_level_write_cursor *wcursor_init_write_cursor(uint8_t level_id, struct db_handle *handle,
 							     uint8_t tree_id, bool enable_double_buffering)
 {
-	(void)enable_double_buffering;
 	struct wcursor_level_write_cursor *w_cursor = NULL;
 	if (posix_memalign((void **)&w_cursor, ALIGNMENT, sizeof(struct wcursor_level_write_cursor)) != 0) {
 		log_fatal("Posix memalign failed");
@@ -270,18 +259,33 @@ struct wcursor_level_write_cursor *wcursor_init_write_cursor(uint8_t level_id, s
 	w_cursor->fd = handle->db_desc->db_volume->vol_fd;
 	w_cursor->handle = handle;
 
+	wcursor_seg_buf_array_init(MAX_HEIGHT, w_cursor, enable_double_buffering ? 2 : 1);
+
 	assert(0 == handle->db_desc->levels[w_cursor->level_id].offset[w_cursor->tree_id]);
-	wcursor_get_space(w_cursor, 0, leafNode);
+
+	struct segment_header *segment = get_segment_for_lsm_level_IO(handle->db_desc, level_id, tree_id);
+	w_cursor->last_segment_btree_level_offt[0] = ABSOLUTE_ADDRESS(segment);
 	assert(w_cursor->last_segment_btree_level_offt[0]);
-	w_cursor->first_segment_btree_level_offt[0] = w_cursor->last_segment_btree_level_offt[0];
+
+	w_cursor->segment_offt[0] = sizeof(struct segment_header);
+	w_cursor->last_leaf =
+		(struct leaf_node *)wcursor_get_space(w_cursor, 0, handle->db_desc->levels[level_id].leaf_size);
+	dl_init_leaf_node(w_cursor->last_leaf, handle->db_desc->levels[level_id].leaf_size);
+
+	w_cursor->first_segment_btree_level_offt[0] = w_cursor->last_segment_btree_level_offt[0] =
+		ABSOLUTE_ADDRESS(segment);
 
 	for (int i = 1; i < MAX_HEIGHT; ++i) {
-		wcursor_get_space(w_cursor, i, internalNode);
-		struct node_header *node = (struct node_header *)w_cursor->last_index[i];
-		node->height = i;
-		index_init_node(DO_NOT_ADD_GUARD, (struct index_node *)w_cursor->last_index[i], internalNode);
-		w_cursor->first_segment_btree_level_offt[i] = w_cursor->last_segment_btree_level_offt[i];
+		w_cursor->segment_offt[i] = sizeof(struct segment_header);
+		segment = get_segment_for_lsm_level_IO(handle->db_desc, level_id, tree_id);
+		w_cursor->last_segment_btree_level_offt[i] = ABSOLUTE_ADDRESS(segment);
+		w_cursor->first_segment_btree_level_offt[i] = w_cursor->last_segment_btree_level_offt[i] =
+			ABSOLUTE_ADDRESS(segment);
 		assert(w_cursor->last_segment_btree_level_offt[i]);
+		w_cursor->last_index[i] = (struct index_node *)wcursor_get_space(w_cursor, i, index_node_get_size());
+
+		index_set_height(w_cursor->last_index[i], i);
+		index_init_node(DO_NOT_ADD_GUARD, (struct index_node *)w_cursor->last_index[i], internalNode);
 	}
 
 	handle->db_desc->levels[w_cursor->level_id].bloom_desc[w_cursor->tree_id] =
@@ -336,19 +340,21 @@ static void assert_level_segments(db_descriptor *db_desc, uint8_t level_id, uint
 
 	measure_level_bytes += SEGMENT_SIZE;
 
-	log_debug("Measured %lu offset in level %lu", measure_level_bytes, db_desc->levels[level_id].offset[tree_id]);
 	assert(segment == db_desc->levels[level_id].last_segment[tree_id]);
 	assert(measure_level_bytes == db_desc->levels[level_id].offset[tree_id]);
 }
 #endif
 
-static uint32_t wcursor_calc_offt_in_seg(char *buffer_start, char *addr)
+static uint32_t wcursor_calc_offt_in_seg(struct wcursor_level_write_cursor *w_cursor, int32_t height, char *addr)
 {
-	uint64_t start = (uint64_t)buffer_start;
+	struct wcursor_seg_buf *seg_buf = wcursor_get_buf(w_cursor, height);
+	uint64_t start = (uint64_t)seg_buf->buffer;
 	uint64_t end = (uint64_t)addr;
+	// log_debug("start is %lu end is %lu", start, end);
 
 	if (end < start) {
 		log_fatal("End should be greater than start!");
+		assert(0);
 		BUG_ON();
 	}
 	assert(end - start < SEGMENT_SIZE);
@@ -359,9 +365,8 @@ static uint32_t wcursor_calc_offt_in_seg(char *buffer_start, char *addr)
 void wcursor_flush_write_cursor(struct wcursor_level_write_cursor *w_cursor)
 {
 	uint32_t level_leaf_size = w_cursor->handle->db_desc->levels[w_cursor->level_id].leaf_size;
-	for (int32_t i = 0; i < MAX_HEIGHT; ++i) {
-		//log_debug("i = %u tree height: %u", i, c->tree_height);
 
+	for (int32_t i = 0; i < MAX_HEIGHT; ++i) {
 		if (i <= w_cursor->tree_height) {
 			assert(w_cursor->segment_offt[i] > 4096);
 			if (i == 0 && w_cursor->segment_offt[i] % SEGMENT_SIZE != 0) {
@@ -377,8 +382,8 @@ void wcursor_flush_write_cursor(struct wcursor_level_write_cursor *w_cursor)
 				padded_node->height = i;
 			}
 		} else {
-			struct node_header *padded_node =
-				(struct node_header *)&w_cursor->segment_buf[i][sizeof(struct segment_header)];
+			struct node_header *padded_node = (struct node_header *)wcursor_get_current_node(
+				w_cursor, i, sizeof(struct segment_header));
 			padded_node->type = paddedSpace;
 			padded_node->height = i;
 		}
@@ -392,14 +397,14 @@ void wcursor_flush_write_cursor(struct wcursor_level_write_cursor *w_cursor)
 				assert(0);
 				BUG_ON();
 			}
-			uint32_t offt =
-				wcursor_calc_offt_in_seg(w_cursor->segment_buf[i], (char *)w_cursor->last_index[i]);
+
+			uint32_t offt = wcursor_calc_offt_in_seg(w_cursor, i, (char *)w_cursor->last_index[i]);
+			assert(offt < SEGMENT_SIZE);
 			w_cursor->root_offt = w_cursor->last_segment_btree_level_offt[i] + offt;
-			w_cursor->handle->db_desc->levels[w_cursor->level_id].root[1] =
-				REAL_ADDRESS(w_cursor->root_offt);
 		}
 
-		struct segment_header *segment_in_mem_buffer = (struct segment_header *)w_cursor->segment_buf[i];
+		struct wcursor_seg_buf *segment_buf = wcursor_get_buf(w_cursor, i);
+		struct segment_header *segment_in_mem_buffer = (struct segment_header *)segment_buf->buffer;
 
 		if (MAX_HEIGHT - 1 == i) {
 			w_cursor->handle->db_desc->levels[w_cursor->level_id].last_segment[1] =
@@ -411,8 +416,7 @@ void wcursor_flush_write_cursor(struct wcursor_level_write_cursor *w_cursor)
 			segment_in_mem_buffer->next_segment = (void *)w_cursor->first_segment_btree_level_offt[i + 1];
 		}
 
-		wcursor_write_segment(w_cursor->segment_buf[i], w_cursor->last_segment_btree_level_offt[i], 0,
-				      SEGMENT_SIZE, w_cursor->fd);
+		wcursor_write_segment(w_cursor, i, w_cursor->last_segment_btree_level_offt[i], 0, SEGMENT_SIZE);
 
 		//TODO: geostyl callback
 		parallax_callbacks_t par_callbacks = w_cursor->handle->db_desc->parallax_callbacks;
@@ -437,20 +441,21 @@ void wcursor_flush_write_cursor(struct wcursor_level_write_cursor *w_cursor)
 
 void wcursor_close_write_cursor(struct wcursor_level_write_cursor *w_cursor)
 {
+	wcursor_seg_buf_destroy(w_cursor);
 	memset(w_cursor, 0x00, sizeof(struct wcursor_level_write_cursor));
 	free(w_cursor);
 }
 
-static void wcursor_append_pivot_to_index(int32_t height, struct wcursor_level_write_cursor *c, uint64_t left_node_offt,
-					  struct key_splice *pivot, uint64_t right_node_offt)
+static void wcursor_append_pivot_to_index(int32_t height, struct wcursor_level_write_cursor *w_cursor,
+					  uint64_t left_node_offt, struct key_splice *pivot, uint64_t right_node_offt)
 {
 	//log_debug("Append pivot %.*s left child offt %lu right child offt %lu", pivot->size, pivot->data,
 	//	  left_node_offt, right_node_offt);
 
-	if (c->tree_height < height)
-		c->tree_height = height;
+	if (w_cursor->tree_height < height)
+		w_cursor->tree_height = height;
 
-	struct index_node *node = (struct index_node *)c->last_index[height];
+	struct index_node *node = (struct index_node *)w_cursor->last_index[height];
 
 	if (index_is_empty(node)) {
 		index_add_guard(node, left_node_offt);
@@ -461,21 +466,24 @@ static void wcursor_append_pivot_to_index(int32_t height, struct wcursor_level_w
 
 	struct insert_pivot_req ins_pivot_req = { .node = node, .key_splice = pivot, .right_child = &right };
 	while (!index_append_pivot(&ins_pivot_req)) {
-		uint32_t offt_l = wcursor_calc_offt_in_seg(c->segment_buf[height], (char *)c->last_index[height]);
-		uint64_t left_index_offt = c->last_segment_btree_level_offt[height] + offt_l;
+		uint32_t offt_l = wcursor_calc_offt_in_seg(w_cursor, height, (char *)w_cursor->last_index[height]);
+		uint64_t left_index_offt = w_cursor->last_segment_btree_level_offt[height] + offt_l;
 
 		struct key_splice *pivot_copy_splice = index_remove_last_pivot_key(node);
 		struct pivot_pointer *piv_pointer = index_get_pivot_pointer(pivot_copy_splice);
-		wcursor_get_space(c, height, internalNode);
-		ins_pivot_req.node = (struct index_node *)c->last_index[height];
-		index_init_node(DO_NOT_ADD_GUARD, ins_pivot_req.node, internalNode);
+		w_cursor->last_index[height] =
+			(struct index_node *)wcursor_get_space(w_cursor, height, index_node_get_size());
+
+		index_init_node(DO_NOT_ADD_GUARD, w_cursor->last_index[height], internalNode);
+		ins_pivot_req.node = (struct index_node *)w_cursor->last_index[height];
 		index_add_guard(ins_pivot_req.node, piv_pointer->child_offt);
 		index_set_height(ins_pivot_req.node, height);
 
 		/*last leaf updated*/
-		uint32_t offt_r = wcursor_calc_offt_in_seg(c->segment_buf[height], (char *)c->last_index[height]);
-		uint64_t right_index_offt = c->last_segment_btree_level_offt[height] + offt_r;
-		wcursor_append_pivot_to_index(height + 1, c, left_index_offt, pivot_copy_splice, right_index_offt);
+		uint32_t offt_r = wcursor_calc_offt_in_seg(w_cursor, height, (char *)w_cursor->last_index[height]);
+		uint64_t right_index_offt = w_cursor->last_segment_btree_level_offt[height] + offt_r;
+		wcursor_append_pivot_to_index(height + 1, w_cursor, left_index_offt, pivot_copy_splice,
+					      right_index_offt);
 		free(pivot_copy_splice);
 	}
 }
@@ -543,7 +551,7 @@ static struct kv_splice_base wcursor_append_medium_L1(struct wcursor_level_write
 	return kv_sep;
 }
 
-bool wcursor_append_KV_pair(struct wcursor_level_write_cursor *cursor, struct kv_splice_base *splice)
+bool wcursor_append_KV_pair(struct wcursor_level_write_cursor *w_cursor, struct kv_splice_base *splice)
 {
 	uint64_t left_leaf_offt = 0;
 	uint64_t right_leaf_offt = 0;
@@ -551,12 +559,14 @@ bool wcursor_append_KV_pair(struct wcursor_level_write_cursor *cursor, struct kv
 	struct kv_splice_base new_splice = *splice;
 
 	char kv_sep_buf[KV_SEP2_MAX_SIZE];
-	if (cursor->level_id == 1 && splice->cat == MEDIUM_INPLACE)
-		new_splice = wcursor_append_medium_L1(cursor, splice, kv_sep_buf, KV_SEP2_MAX_SIZE);
-	if (new_splice.cat == MEDIUM_INLOG && cursor->level_id == cursor->handle->db_desc->level_medium_inplace) {
+
+	if (w_cursor->level_id == 1 && splice->cat == MEDIUM_INPLACE)
+		new_splice = wcursor_append_medium_L1(w_cursor, splice, kv_sep_buf, KV_SEP2_MAX_SIZE);
+
+	if (new_splice.cat == MEDIUM_INLOG && w_cursor->level_id == w_cursor->handle->db_desc->level_medium_inplace) {
 		new_splice.cat = MEDIUM_INPLACE;
 		new_splice.kv_splice = (struct kv_splice *)mlog_cache_fetch_kv_from_LRU(
-			cursor->medium_log_LRU_cache, kv_sep2_get_value_offt(new_splice.kv_sep2));
+			w_cursor->medium_log_LRU_cache, kv_sep2_get_value_offt(new_splice.kv_sep2));
 		assert(kv_splice_base_get_key_size(&new_splice) <= MAX_KEY_SIZE);
 		assert(kv_splice_base_get_key_size(&new_splice) > 0);
 
@@ -565,26 +575,27 @@ bool wcursor_append_KV_pair(struct wcursor_level_write_cursor *cursor, struct kv
 #endif
 	}
 	bool new_leaf = false;
-	if (dl_is_leaf_full(cursor->last_leaf, kv_splice_base_get_size(&new_splice))) {
-		// log_debug("Time for a split! cannot host key of size %d", kv_splice_base_get_key_size(&new_splice));
-		uint32_t offt_l = wcursor_calc_offt_in_seg(cursor->segment_buf[0], (char *)cursor->last_leaf);
-		left_leaf_offt = cursor->last_segment_btree_level_offt[0] + offt_l;
-		wcursor_get_space(cursor, 0, leafNode);
+	if (dl_is_leaf_full(w_cursor->last_leaf, kv_splice_base_get_size(&new_splice))) {
+		uint32_t offt_l = wcursor_calc_offt_in_seg(w_cursor, 0, (char *)w_cursor->last_leaf);
+		left_leaf_offt = w_cursor->last_segment_btree_level_offt[0] + offt_l;
+		w_cursor->last_leaf = (struct leaf_node *)wcursor_get_space(
+			w_cursor, 0, w_cursor->handle->db_desc->levels[w_cursor->level_id].leaf_size);
+		dl_init_leaf_node(w_cursor->last_leaf, w_cursor->handle->db_desc->levels[w_cursor->level_id].leaf_size);
 		/*last leaf updated*/
-		uint32_t offt_r = wcursor_calc_offt_in_seg(cursor->segment_buf[0], (char *)cursor->last_leaf);
-		right_leaf_offt = cursor->last_segment_btree_level_offt[0] + offt_r;
-		dl_init_leaf_node(cursor->last_leaf, cursor->handle->db_desc->levels[cursor->level_id].leaf_size);
+		uint32_t offt_r = wcursor_calc_offt_in_seg(w_cursor, 0, (char *)w_cursor->last_leaf);
+		right_leaf_offt = w_cursor->last_segment_btree_level_offt[0] + offt_r;
+
 		new_leaf = true;
 	}
-	if (!dl_append_splice_in_dynamic_leaf(cursor->last_leaf, &new_splice, new_splice.is_tombstone)) {
+	if (!dl_append_splice_in_dynamic_leaf(w_cursor->last_leaf, &new_splice, new_splice.is_tombstone)) {
 		log_fatal("Append in leaf failed (It shouldn't at this point)");
 		_exit(EXIT_FAILURE);
 	}
 
-	cursor->handle->db_desc->levels[cursor->level_id].level_size[1] += kv_splice_base_get_size(&new_splice);
-	int bloom_stat = pbf_bloom_add(cursor->handle->db_desc->levels[cursor->level_id].bloom_desc[cursor->tree_id],
-				       kv_splice_base_get_key_buf(&new_splice),
-				       kv_splice_base_get_key_size(&new_splice));
+	w_cursor->handle->db_desc->levels[w_cursor->level_id].level_size[1] += kv_splice_base_get_size(&new_splice);
+	int bloom_stat =
+		pbf_bloom_add(w_cursor->handle->db_desc->levels[w_cursor->level_id].bloom_desc[w_cursor->tree_id],
+			      kv_splice_base_get_key_buf(&new_splice), kv_splice_base_get_key_size(&new_splice));
 
 	if (0 == bloom_stat) {
 		log_fatal(
@@ -592,7 +603,7 @@ bool wcursor_append_KV_pair(struct wcursor_level_write_cursor *cursor, struct kv
 		_exit(EXIT_FAILURE);
 	}
 	/*XXX TODO XXX Leakage here of level, add an API call to level to do this operation*/
-	++cursor->handle->db_desc->levels[cursor->level_id].num_level_keys[cursor->tree_id];
+	++w_cursor->handle->db_desc->levels[w_cursor->level_id].num_level_keys[w_cursor->tree_id];
 	if (!new_leaf)
 		return true;
 
@@ -601,9 +612,8 @@ bool wcursor_append_KV_pair(struct wcursor_level_write_cursor *cursor, struct kv
 							 kv_splice_base_get_key_size(&new_splice), NULL, 0, &malloced);
 
 	assert(malloced);
-	wcursor_append_pivot_to_index(1, cursor, left_leaf_offt, new_pivot, right_leaf_offt);
+	wcursor_append_pivot_to_index(1, w_cursor, left_leaf_offt, new_pivot, right_leaf_offt);
 	free(new_pivot);
-
 	return true;
 }
 
@@ -627,21 +637,21 @@ struct medium_log_LRU_cache *wcursor_get_LRU_cache(struct wcursor_level_write_cu
 	return w_cursor->medium_log_LRU_cache;
 }
 
-static void wcursor_stich_level(struct wcursor_level_write_cursor *wcursor, int32_t height, char *buf,
+static void wcursor_stich_level(struct wcursor_level_write_cursor *w_cursor, int32_t height, char *buf,
 				uint32_t buf_size)
 {
 	struct segment_header *curr_in_mem_segment = (struct segment_header *)buf;
 	if (MAX_HEIGHT - 1 == height) {
-		wcursor->handle->db_desc->levels[wcursor->level_id].last_segment[1] =
-			REAL_ADDRESS(wcursor->last_segment_btree_level_offt[height]);
-		assert(wcursor->last_segment_btree_level_offt[height]);
+		w_cursor->handle->db_desc->levels[w_cursor->level_id].last_segment[1] =
+			REAL_ADDRESS(w_cursor->last_segment_btree_level_offt[height]);
+		assert(w_cursor->last_segment_btree_level_offt[height]);
 		curr_in_mem_segment->next_segment = NULL;
 	} else {
-		assert(wcursor->last_segment_btree_level_offt[height + 1]);
-		curr_in_mem_segment->next_segment = (void *)wcursor->first_segment_btree_level_offt[height + 1];
+		assert(w_cursor->last_segment_btree_level_offt[height + 1]);
+		curr_in_mem_segment->next_segment = (void *)w_cursor->first_segment_btree_level_offt[height + 1];
 	}
 
-	wcursor_write_segment(buf, wcursor->last_segment_btree_level_offt[height], 0, buf_size, wcursor->fd);
+	wcursor_write_segment(w_cursor, height, w_cursor->last_segment_btree_level_offt[height], 0, buf_size);
 }
 
 void wcursor_append_index_segment(struct wcursor_level_write_cursor *wcursor, int32_t height, char *buf,
@@ -663,9 +673,7 @@ void wcursor_append_index_segment(struct wcursor_level_write_cursor *wcursor, in
 	struct segment_header *current_in_mem_segment = (struct segment_header *)buf;
 	current_in_mem_segment->next_segment = (void *)new_device_segment_offt;
 
-	wcursor_write_segment((char *)current_in_mem_segment, wcursor->last_segment_btree_level_offt[height], 0,
-			      buf_size, wcursor->fd);
-
+	wcursor_write_segment(wcursor, height, wcursor->last_segment_btree_level_offt[height], 0, buf_size);
 	wcursor->last_segment_btree_level_offt[height] = new_device_segment_offt;
 }
 
@@ -684,7 +692,8 @@ char *wcursor_segment_buffers_cursor_get_offt(wcursor_segment_buffers_iterator_t
 	struct wcursor_segment_buffers_iterator *cursor =
 		(struct wcursor_segment_buffers_iterator *)segment_buffers_cursor;
 
-	return cursor->wcursor->segment_buf[cursor->curr_i];
+	struct wcursor_seg_buf *seg_buf = wcursor_get_buf(cursor->wcursor, cursor->curr_i);
+	return seg_buf->buffer;
 }
 
 bool wcursor_segment_buffers_cursor_is_valid(wcursor_segment_buffers_iterator_t segment_buffers_cursor)
