@@ -889,7 +889,10 @@ void recover_L0(struct db_descriptor *db_desc)
 		void *value = get_value_offset_in_kv(kvs[choice]->par_kv, kvs[choice]->par_kv->key_size);
 
 		request_type op_type = !cursor[choice]->tombstone ? insertOp : deleteOp;
-		insert_key_value(&handle, key, value, key_size, value_size, op_type, &error_message);
+		if (op_type == insertOp)
+			serialized_insert_key_value(&handle, (const char *)kvs[choice]->par_kv, &error_message, false);
+		else
+			insert_key_value(&handle, key, value, key_size, value_size, op_type, &error_message);
 
 		if (error_message) {
 			log_fatal("Insert failed reason = %s, exiting", error_message);
