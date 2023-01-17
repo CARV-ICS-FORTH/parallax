@@ -727,3 +727,15 @@ int wcursor_get_fd(struct wcursor_level_write_cursor *w_cursor)
 {
 	return w_cursor->fd;
 }
+
+char *wcursor_get_segment_buffer_offt(struct wcursor_level_write_cursor *w_cursor)
+{
+	assert(w_cursor);
+	return (char *)w_cursor->segment_buffer;
+}
+
+uint32_t wcursor_get_segment_buffer_size(struct wcursor_level_write_cursor *w_cursor)
+{
+	assert(w_cursor);
+	return sizeof(struct wcursor_seg_buf) * w_cursor->num_rows * w_cursor->num_columns;
+}

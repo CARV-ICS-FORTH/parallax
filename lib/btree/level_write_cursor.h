@@ -100,4 +100,7 @@ void wcursor_segment_buffers_cursor_close(wcursor_segment_buffers_iterator_t seg
 */
 void wcursor_segment_buffers_cursor_next(wcursor_segment_buffers_iterator_t segment_buffers_cursor);
 
+char *wcursor_get_segment_buffer_offt(struct wcursor_level_write_cursor *w_cursor);
+uint32_t wcursor_get_segment_buffer_size(struct wcursor_level_write_cursor *w_cursor);
+
 #endif
