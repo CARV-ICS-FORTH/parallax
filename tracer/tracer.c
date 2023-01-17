@@ -60,7 +60,7 @@ void execute_put_request(par_handle handle, char *line)
 	set_key(kv_buf, key, key_size);
 	set_value(kv_buf, value, value_size);
 	const char *error_message = NULL;
-	par_put_serialized(handle, key_buf, &error_message);
+	par_put_serialized(handle, key_buf, &error_message, true);
 }
 
 enum Op get_op(char *line)

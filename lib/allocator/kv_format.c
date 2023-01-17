@@ -201,7 +201,9 @@ const char *kvf_init_parallax(char *device_name, uint32_t max_regions_num)
 	log_info("Found volume of %ld MB", device_size / MB(1));
 
 	if (device_size < MIN_VOLUME_SIZE) {
-		error_message = "Sorry minimum supported volume size is %ld GB actual size %ld GB";
+		log_fatal("Error minimum supported volume is %ld GB but the actual size is %ld", MIN_VOLUME_SIZE,
+			  device_size / MB(1));
+		error_message = "Provide volume less than the minimum supported size";
 		return error_message;
 	}
 
@@ -241,7 +243,9 @@ const char *kvf_init_parallax(char *device_name, uint32_t max_regions_num)
 	}
 
 	if (registry_size_in_bits % bits_in_page) {
-		error_message = "Ownership registry must be a multiple of 4 KB its value %lu";
+		log_fatal("Ownership registry must be a multiple of 4 KB its value %lu",
+			  registry_size_in_bits % bits_in_page);
+		error_message = "Ownership registry must be a multiple of 4 KB its value";
 		return error_message;
 	}
 	uint64_t registry_size_in_bytes = registry_size_in_bits / 8;
@@ -320,7 +324,7 @@ const char *kvf_init_parallax(char *device_name, uint32_t max_regions_num)
 	}
 
 	if (close(fd)) {
-		error_message = "Failed to close file %s";
+		error_message = "Failed to close file";
 		return error_message;
 	}
 

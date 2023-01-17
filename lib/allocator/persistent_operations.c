@@ -882,14 +882,14 @@ void recover_L0(struct db_descriptor *db_desc)
 		else if (compare_lsns(&cursor[SMALL_LOG]->entry.lsn, &cursor[BIG_LOG]->entry.lsn) < 0)
 			choice = SMALL_LOG;
 
-		char *error_message = NULL;
+		const char *error_message = NULL;
 		int32_t key_size = get_key_size(kvs[choice]->par_kv);
 		void *key = get_key_offset_in_kv(kvs[choice]->par_kv);
 		int32_t value_size = get_value_size(kvs[choice]->par_kv);
 		void *value = get_value_offset_in_kv(kvs[choice]->par_kv, kvs[choice]->par_kv->key_size);
 
 		request_type op_type = !cursor[choice]->tombstone ? insertOp : deleteOp;
-		insert_key_value(&handle, key, value, key_size, value_size, op_type, error_message);
+		insert_key_value(&handle, key, value, key_size, value_size, op_type, &error_message);
 
 		if (error_message) {
 			log_fatal("Insert failed reason = %s, exiting", error_message);
