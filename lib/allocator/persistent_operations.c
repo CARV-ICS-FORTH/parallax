@@ -220,6 +220,8 @@ static void pr_flush_L0_to_L1(struct db_descriptor *db_desc, uint8_t level_id, u
 	log_debug("Head segment id %lu", head->segment_id);
 
 	uint64_t bytes_freed = 0;
+	(void)bytes_freed;
+
 	if (tail != head) {
 		struct segment_header *curr = REAL_ADDRESS(tail->prev_segment);
 		while (1) {
@@ -278,6 +280,8 @@ static void pr_flush_Lmax_to_Ln(struct db_descriptor *db_desc, uint8_t level_id,
 	struct segment_header *trim_end_segment = REAL_ADDRESS(level_desc->medium_in_place_segment_dev_offt);
 	struct segment_header *head = REAL_ADDRESS(db_desc->medium_log.head_dev_offt);
 	uint64_t bytes_freed = 0;
+	(void)bytes_freed;
+
 	for (struct segment_header *curr_trim_segment = REAL_ADDRESS(trim_end_segment->prev_segment);;
 	     curr_trim_segment = REAL_ADDRESS(curr_trim_segment->prev_segment)) {
 		struct rul_log_entry log_entry = { .dev_offt = ABSOLUTE_ADDRESS(curr_trim_segment),
@@ -368,9 +372,10 @@ void pr_flush_db_superblock(struct db_descriptor *db_desc)
 
 static void pr_print_db_superblock(struct pr_db_superblock *superblock)
 {
+	(void)superblock;
 	log_info("DB name: %s id in the volume's superblock array: %u valid: %u", superblock->db_name, superblock->id,
 		 superblock->valid);
-	log_info("Large log head_dev_offt: %lu tail_dev_offt: %lu size: %lu", superblock->big_log_head_offt,
+	log_info("BIG log head_dev_offt: %lu tail_dev_offt: %lu size: %lu", superblock->big_log_head_offt,
 		 superblock->big_log_tail_offt, superblock->big_log_size);
 	log_info("Medium log head_dev_offt: %lu tail_dev_offt: %lu size: %lu", superblock->medium_log_head_offt,
 		 superblock->medium_log_tail_offt, superblock->medium_log_size);
@@ -379,7 +384,7 @@ static void pr_print_db_superblock(struct pr_db_superblock *superblock)
 	log_info("latest LSN: %lu", get_lsn_id(&superblock->last_lsn));
 	log_info("Recovery of L0_recovery_log starts from segment_dev_offt: %lu offt_in_seg: %lu",
 		 superblock->small_log_start_segment_dev_offt, superblock->small_log_offt_in_start_segment);
-	log_info("Recovery of Big log starts from segment_dev_offt: %lu offt_in_seg: %lu",
+	log_info("Recovery of BIG log starts from segment_dev_offt: %lu offt_in_seg: %lu",
 		 superblock->big_log_start_segment_dev_offt, superblock->big_log_offt_in_start_segment);
 #if 0
   for (uint32_t level_id = 0; level_id < MAX_LEVELS; ++level_id) {

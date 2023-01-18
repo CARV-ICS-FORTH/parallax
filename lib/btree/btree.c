@@ -395,8 +395,10 @@ static db_descriptor *get_db_from_volume(char *volume_name, char *db_name, par_d
 			//As a result we need to acquire a txn_id for the L0
 			init_fresh_db(db_desc);
 		}
-	} else
+	} else {
 		log_warn("DB: %s NOT found", db_name);
+	}
+
 	return db_desc;
 }
 
@@ -1507,8 +1509,7 @@ static uint64_t get_lock_position(uint64_t address)
 
 lock_table *_find_position(const lock_table **table, struct node_header *node)
 {
-	assert(node);
-	if (node->height < 0 || node->height >= MAX_HEIGHT) {
+	if (!node || node->height < 0 || node->height >= MAX_HEIGHT) {
 		log_fatal("MAX_HEIGHT exceeded %d rearrange values in size_per_height array ", node->height);
 		assert(0);
 		BUG_ON();

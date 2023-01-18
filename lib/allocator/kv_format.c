@@ -60,6 +60,7 @@ static struct parse_options kvf_parse_options(int argc, char **argv)
 	char *kvf_options[] = { "--device", "--max_regions_num", "--per_region_log_size" };
 	char *kvf_help = "Usage ./kv_format <options> Where options include:\n --device <device name>,\n \
 	--max_regions_num <Maximum number of regions to host> \n";
+	(void)kvf_help;
 
 	for (i = 1; i < argc; i += 2) {
 		for (j = 0; j < KVF_NUM_OPTIONS; ++j) {

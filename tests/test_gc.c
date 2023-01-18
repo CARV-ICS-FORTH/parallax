@@ -54,8 +54,9 @@ void serially_insert_keys(par_handle hd)
 		memset(v->value_buf, 0xDD, v->value_size);
 		*(uint64_t *)v->value_buf = insert_counter++;
 
-		if (i % 10000 == 0)
+		if (i % 10000 == 0) {
 			log_info("%s", k->key_buf);
+		}
 
 		struct par_key_value kv = { .k.data = (const char *)k->key_buf,
 					    .k.size = k->key_size,
@@ -91,8 +92,9 @@ void validate_inserted_keys(par_handle hd)
 		val->value_size = KV_SIZE - ((2 * sizeof(key)) + k->key_size);
 		memset(val->value_buf, 0xDD, val->value_size);
 		*(uint64_t *)val->value_buf = get_counter++;
-		if (i % 10000 == 0)
+		if (i % 10000 == 0) {
 			log_info("%s", k->key_buf);
+		}
 
 		struct par_key_value kv = { .k.data = (const char *)k->key_buf, .k.size = k->key_size };
 		memset(&v, 0, sizeof(struct par_value));

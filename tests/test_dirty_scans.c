@@ -147,8 +147,9 @@ static void put_workload(struct workload_config_t *workload_config, const char *
 			exit(EXIT_FAILURE);
 		}
 
-		if (!(++key_count % workload_config->progress_report))
+		if (!(++key_count % workload_config->progress_report)) {
 			log_info("Progress in population %lu keys", key_count);
+		}
 	}
 	log_info("Population ended Successfully! :-)");
 	free(k);
@@ -186,8 +187,9 @@ static void get_workload(struct workload_config_t *workload_config)
 		k->key_buf[0] = 0;
 		free(my_value.val_buffer);
 		my_value.val_buffer = NULL;
-		if (!(++key_count % workload_config->progress_report))
+		if (!(++key_count % workload_config->progress_report)) {
 			log_info("<Get no %lu> done", i);
+		}
 	}
 
 	log_info("Testing GETS DONE!");
@@ -286,8 +288,9 @@ static void scan_workload(struct workload_config_t *workload_config)
 			++scan_entries;
 		}
 
-		if (!(++key_count % workload_config->progress_report))
+		if (!(++key_count % workload_config->progress_report)) {
 			log_info("</Scan no %lu> done", i);
+		}
 
 		par_close_scanner(my_scanner);
 	}
