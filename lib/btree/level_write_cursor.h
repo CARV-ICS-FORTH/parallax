@@ -65,16 +65,6 @@ int wcursor_get_fd(struct wcursor_level_write_cursor *w_cursor);
 void wcursor_close_write_cursor(struct wcursor_level_write_cursor *w_cursor);
 
 /**
- * @brief Appends a new prepopulated segment to the segment list specified by height
- * @param cursor: pointer to a write cursor
- * @param height: level of the cursor's index
- * @param buf: starting offset of the segment
- * @param buf_size: size of the segment
- */
-void wcursor_append_index_segment(struct wcursor_level_write_cursor *wcursor, int32_t height, char *buf,
-				  bool is_last_segment);
-
-/**
  *@brief Initializes a cursor that can parse the segment_buf field of the wcursor_level_write_cursor struct
  *@param wcursor: the level_write_cursor from which the cursor will parse the segment_buf
  */

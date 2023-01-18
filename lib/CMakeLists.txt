@@ -34,6 +34,7 @@ set(LIB_C_SOURCE_FILES
     btree/compaction_worker.c
     btree/level_read_cursor.c
     btree/level_write_cursor.c
+    btree/level_write_appender.c
     btree/bloom_filter.c
     btree/dynamic_leaf.c
     btree/gc.c

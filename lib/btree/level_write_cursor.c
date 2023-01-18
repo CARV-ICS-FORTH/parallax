@@ -171,7 +171,6 @@ static void wcursor_assert_node(void)
 static void wcursor_write_segment(struct wcursor_level_write_cursor *w_cursor, uint32_t height, uint64_t dev_offt,
 				  uint32_t buf_offt, uint32_t size)
 {
-	log_debug("flushing segment at offt %lu", dev_offt);
 	assert(height < MAX_HEIGHT);
 	struct wcursor_seg_buf *seg_buf = wcursor_get_buf(w_cursor, height);
 	ssize_t total_bytes_written = buf_offt;
@@ -383,10 +382,6 @@ static void wcursor_stich_level(struct wcursor_level_write_cursor *w_cursor, int
 			REAL_ADDRESS(w_cursor->last_segment_btree_level_offt[height]);
 		assert(w_cursor->last_segment_btree_level_offt[height]);
 		segment->next_segment = NULL;
-
-		log_debug("first seg offt %lu last seg offt %lu",
-			  (uint64_t)w_cursor->handle->db_desc->levels[w_cursor->level_id].first_segment[1],
-			  (uint64_t)w_cursor->handle->db_desc->levels[w_cursor->level_id].last_segment[1]);
 		return;
 	}
 	assert(w_cursor->last_segment_btree_level_offt[height + 1]);
@@ -670,8 +665,6 @@ void wcursor_append_index_segment(struct wcursor_level_write_cursor *wcursor, in
 	struct segment_header *current_in_mem_segment = (struct segment_header *)buf;
 	current_in_mem_segment->next_segment = (void *)new_device_segment_offt;
 
-	log_debug("Writing lats segment to %lu", wcursor->last_segment_btree_level_offt[height]);
-	log_debug("Writing first segment to %lu", wcursor->first_segment_btree_level_offt[height]);
 	wcursor_write_segment(wcursor, height, wcursor->last_segment_btree_level_offt[height], 0, SEGMENT_SIZE);
 	wcursor->last_segment_btree_level_offt[height] = new_device_segment_offt;
 }

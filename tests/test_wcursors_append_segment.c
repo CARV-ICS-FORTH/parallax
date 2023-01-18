@@ -10,6 +10,7 @@
 #include "allocator/persistent_operations.h"
 #include "arg_parser.h"
 // #include "btree/level_cursor.h"
+#include "btree/level_write_appender.h"
 #include "btree/level_write_cursor.h"
 #include "parallax/structures.h"
 #include <assert.h>
@@ -170,8 +171,7 @@ static uint32_t test_wcursors_find_segment_height(char *buf)
 	return node_type->height;
 }
 
-static void test_wcursors_copy_segments(struct wcursor_level_write_cursor *wcursor_segments, par_handle dbhandle,
-					uint32_t level_id)
+static void test_wcursors_copy_segments(level_write_appender_t wappender, par_handle dbhandle, uint32_t level_id)
 {
 	struct db_handle *handle = (struct db_handle *)dbhandle;
 	char *buf = NULL;
@@ -196,37 +196,39 @@ static void test_wcursors_copy_segments(struct wcursor_level_write_cursor *wcurs
 	uint64_t curr_segment_offt = ABSOLUTE_ADDRESS(handle->db_desc->levels[level_id].first_segment[1]);
 	uint64_t tail_segment_offt = ABSOLUTE_ADDRESS(handle->db_desc->levels[level_id].last_segment[1]);
 	while (curr_segment_offt != tail_segment_offt) {
-		log_debug("fetched segment from %lu", curr_segment_offt);
 		// copy segment
-		test_wcursors_fetch_segment(wcursor_get_fd(wcursor_segments), buf, curr_segment_offt);
-		BREAKPOINT;
-
+		test_wcursors_fetch_segment(wappender_get_fd(wappender), buf, curr_segment_offt);
 		struct segment_header *curr_segment_hdr = (struct segment_header *)buf;
 
-		//curr_segment_offt = (uint64_t)curr_segment_hdr->next_segment;
+		curr_segment_offt = (uint64_t)curr_segment_hdr->next_segment;
 		// copy next segment aswell, we need to check if this segment is the last of this level
-		//test_wcursors_fetch_segment(wcursor_get_fd(wcursor_segments), next_buf, curr_segment_offt);
+		test_wcursors_fetch_segment(wappender_get_fd(wappender), next_buf, curr_segment_offt);
 		// write segment
 		uint32_t height = test_wcursors_find_segment_height(buf);
-		//uint32_t next_height = test_wcursors_find_segment_height(next_buf);
-		//assert(height < MAX_HEIGHT && next_height < MAX_HEIGHT);
-		//if (height != next_height) {
-		//	log_debug("Diaforetiko height");
-		// last segment for level height, store in into the buffer
-		//	memcpy(last_segment_of_level[height], buf, SEGMENT_SIZE);
-		//	continue;
-		//}
-		wcursor_append_index_segment(wcursor_segments, height, buf, false);
-		return;
+		uint32_t next_height = test_wcursors_find_segment_height(next_buf);
+		assert(height < MAX_HEIGHT && next_height < MAX_HEIGHT);
+		if (height != next_height) {
+			// last segment for level height, store in into the buffer
+			memcpy(last_segment_of_level[height], buf, SEGMENT_SIZE);
+			continue;
+		}
+		struct wappender_append_index_segment_params params = {
+			.height = height, .buffer = buf, .buffer_size = SEGMENT_SIZE, .is_last_segment = 0
+		};
+		wappender_append_index_segment(wappender, params);
 	}
 	assert(curr_segment_offt == tail_segment_offt);
 	// keep last segment in the array for the last segments
-	test_wcursors_fetch_segment(wcursor_get_fd(wcursor_segments), buf, curr_segment_offt);
+	test_wcursors_fetch_segment(wappender_get_fd(wappender), buf, curr_segment_offt);
 	memcpy(last_segment_of_level[MAX_HEIGHT - 1], buf, SEGMENT_SIZE);
 
 	// link last segments with the level above and flush them
 	for (int i = 0; i < MAX_HEIGHT; i++) {
-		wcursor_append_index_segment(wcursor_segments, i, last_segment_of_level[i], true);
+		struct wappender_append_index_segment_params params = { .height = i,
+									.buffer = last_segment_of_level[i],
+									.buffer_size = SEGMENT_SIZE,
+									.is_last_segment = 1 };
+		wappender_append_index_segment(wappender, params);
 	}
 }
 
@@ -236,7 +238,7 @@ static void test_wcursors_create_compaction_index_for_level(DB *BDB, par_handle 
 	log_info("Initialize a level write cursor for level 2");
 	uint32_t tree_id = 1;
 	par_init_compaction_id(handle, level_id, tree_id);
-	struct wcursor_level_write_cursor *write_cursor = wcursor_init_write_cursor(level_id, handle, tree_id, true);
+	struct wcursor_level_write_cursor *write_cursor = wcursor_init_write_cursor(level_id, handle, tree_id, false);
 	// append all KVs
 	log_info("Insert all key-values in BDB to the level write cursor..");
 	test_wcursors_append_all_kvs(BDB, write_cursor);
@@ -246,7 +248,7 @@ static void test_wcursors_create_compaction_index_for_level(DB *BDB, par_handle 
 	log_info("Index for level 2 is constructed, cursor closed");
 }
 
-static void test_wcursors_validate_segments(par_handle handle, struct wcursor_level_write_cursor *wcursor)
+static void test_wcursors_validate_segments(par_handle handle)
 {
 	// memcmp all segments
 	struct db_handle *dbhandle = (struct db_handle *)handle;
@@ -255,14 +257,8 @@ static void test_wcursors_validate_segments(par_handle handle, struct wcursor_le
 	struct segment_header *curr_segment_level_4 = dbhandle->db_desc->levels[4].first_segment[1];
 	struct segment_header *last_segment_level_4 = dbhandle->db_desc->levels[4].last_segment[1];
 	while (curr_segment_level_2 != last_segment_level_2) {
-		log_debug("ldmasl,mads");
-		char *segment_payload_level_2 = (char *)++curr_segment_level_2;
-		char *segment_payload_level_4 = (char *)++curr_segment_level_4;
-		log_debug("segment id level 2 %lu %lu %u, segment id level 4 %lu %lu %u",
-			  curr_segment_level_2->segment_id, curr_segment_level_2->segment_end,
-			  curr_segment_level_2->nodetype, curr_segment_level_4->segment_id,
-			  curr_segment_level_4->segment_end, curr_segment_level_4->nodetype);
-
+		char *segment_payload_level_2 = (char *)curr_segment_level_2 + sizeof(struct segment_header);
+		char *segment_payload_level_4 = (char *)curr_segment_level_4 + sizeof(struct segment_header);
 		int ret = memcmp(segment_payload_level_2, segment_payload_level_4,
 				 SEGMENT_SIZE - sizeof(struct segment_header));
 		if (0 != ret) {
@@ -294,14 +290,15 @@ static void test_wcursors(DB *BDB, par_handle handle)
 	uint32_t level_id = 4;
 	uint32_t tree_id = 1;
 	par_init_compaction_id(handle, level_id, tree_id);
-	struct wcursor_level_write_cursor *write_cursor_segments =
-		wcursor_init_write_cursor(level_id, handle, tree_id, true);
+	level_write_appender_t wappender = wappender_init(handle, tree_id, level_id);
 
 	log_info("Traverse level 2 index and populate all segments in level 4 cursor");
-	test_wcursors_copy_segments(write_cursor_segments, handle, 2);
+	test_wcursors_copy_segments(wappender, handle, 2);
+
+	wappender_close(wappender);
 
 	log_info("Validate that all segments are equal in both indexes");
-	test_wcursors_validate_segments(handle, write_cursor_segments);
+	test_wcursors_validate_segments(handle);
 }
 
 int main(int argc, char **argv)
