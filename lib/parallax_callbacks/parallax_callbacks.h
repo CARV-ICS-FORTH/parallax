@@ -14,7 +14,7 @@ struct parallax_callback_funcs {
 	void (*compaction_ended_cb)(void *context, uint32_t src_level_id);
 	void (*swap_levels_cb)(void *context, uint32_t src_level_id);
 	void (*comp_write_cursor_flush_segment_cb)(void *context, uint32_t level_id, uint32_t height, uint32_t buf_size,
-						   int is_last_segment);
+						   uint32_t clock);
 };
 
 typedef struct parallax_callbacks *parallax_callbacks_t;
