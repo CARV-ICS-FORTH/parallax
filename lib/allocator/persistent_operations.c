@@ -29,6 +29,7 @@
 #include <log.h>
 #include <pthread.h>
 #include <spin_loop.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>

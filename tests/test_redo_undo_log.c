@@ -163,7 +163,7 @@ int main(int argc, char *argv[])
 
 	struct rul_worker_arg args;
 	args.db_desc = ((struct db_handle *)handle)->db_desc;
-	num_threads = *(uint32_t *)get_option(options, 2);
+	num_threads = *(int *)get_option(options, 2);
 	pthread_t workers[num_threads];
 	for (uint32_t i = 0; i < num_threads; ++i) {
 		if (pthread_create(&workers[i], NULL, rul_worker, &args) != 0) {
