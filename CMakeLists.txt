@@ -17,12 +17,7 @@ option(DISABLE_LOGGING
 option(TEBIS_FORMAT
        "BUild Parallax using Tebis-format"
        OFF)
-# Set a default build type if none was specified
-set(default_build_type "Release")
-# if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/.git") set(default_build_type "Debug")
-# endif()
 
-# Parallax is a dependency
 if(NOT (${CMAKE_SOURCE_DIR} STREQUAL ${CMAKE_CURRENT_SOURCE_DIR}))
   option(BUILD_TESTING "" OFF)
 endif()
@@ -36,6 +31,8 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "Debug" "Release"
                                                "MinSizeRel" "RelWithDebInfo")
 endif()
+
+
 
 message(
   STATUS

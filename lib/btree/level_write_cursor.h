@@ -72,7 +72,7 @@ void wcursor_close_write_cursor(struct wcursor_level_write_cursor *w_cursor);
  * @param buf_size: size of the segment
  */
 void wcursor_append_index_segment(struct wcursor_level_write_cursor *wcursor, int32_t height, char *buf,
-				  uint32_t buf_size, uint8_t is_last_segment);
+				  bool is_last_segment);
 
 /**
  *@brief Initializes a cursor that can parse the segment_buf field of the wcursor_level_write_cursor struct
@@ -100,7 +100,7 @@ void wcursor_segment_buffers_cursor_close(wcursor_segment_buffers_iterator_t seg
 */
 void wcursor_segment_buffers_cursor_next(wcursor_segment_buffers_iterator_t segment_buffers_cursor);
 
-char *wcursor_get_segment_buffer_offt(struct wcursor_level_write_cursor *w_cursor);
-uint32_t wcursor_get_segment_buffer_size(struct wcursor_level_write_cursor *w_cursor);
+char *wcursor_get_cursor_buffer(struct wcursor_level_write_cursor *w_cursor, uint32_t row_id, uint32_t col_id);
 
+uint32_t wcursor_get_segment_buffer_size(struct wcursor_level_write_cursor *w_cursor);
 #endif
