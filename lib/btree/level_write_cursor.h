@@ -93,4 +93,10 @@ void wcursor_segment_buffers_cursor_next(wcursor_segment_buffers_iterator_t segm
 char *wcursor_get_cursor_buffer(struct wcursor_level_write_cursor *w_cursor, uint32_t row_id, uint32_t col_id);
 
 uint32_t wcursor_get_segment_buffer_size(struct wcursor_level_write_cursor *w_cursor);
+
+uint32_t wcursor_get_number_of_rows(struct wcursor_level_write_cursor *w_cursor);
+
+uint32_t wcursor_get_number_of_cols(struct wcursor_level_write_cursor *w_cursor);
+
+uint32_t wcursor_get_compaction_index_entry_size(struct wcursor_level_write_cursor *w_cursor);
 #endif

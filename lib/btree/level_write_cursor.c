@@ -731,3 +731,21 @@ uint32_t wcursor_get_segment_buffer_size(struct wcursor_level_write_cursor *w_cu
 	assert(w_cursor);
 	return sizeof(struct wcursor_seg_buf) * w_cursor->num_rows * w_cursor->num_columns;
 }
+
+uint32_t wcursor_get_number_of_rows(struct wcursor_level_write_cursor *w_cursor)
+{
+	assert(w_cursor);
+	return w_cursor->num_rows;
+}
+
+uint32_t wcursor_get_number_of_cols(struct wcursor_level_write_cursor *w_cursor)
+{
+	assert(w_cursor);
+	return w_cursor->num_columns;
+}
+
+uint32_t wcursor_get_compaction_index_entry_size(struct wcursor_level_write_cursor *w_cursor)
+{
+	assert(w_cursor);
+	return sizeof(w_cursor->segment_buffer->buffer);
+}

@@ -185,6 +185,15 @@ if(BUILD_TESTING)
   target_link_libraries(test_wcursors_segment_buffers_cursor "${PROJECT_NAME}"
                         ${DEPENDENCIES})
 
+
+  add_test(NAME test_wcursors_api
+           COMMAND $<TARGET_FILE:test_wcursors_api>
+                   --file=${FILEPATH})
+  add_executable(test_wcursors_api
+                 test_wcursors_api.c arg_parser.c)
+  target_link_libraries(test_wcursors_api "${PROJECT_NAME}"
+                        ${DEPENDENCIES})
+
   add_executable(test_mixes test_mixes.c arg_parser.c)
   target_link_libraries(test_mixes "${PROJECT_NAME}")
 
