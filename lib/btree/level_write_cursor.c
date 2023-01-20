@@ -46,7 +46,7 @@
 struct wcursor_seg_buf {
 	char buffer[SEGMENT_SIZE];
 #if TEBIS_FORMAT
-	uint64_t status[TEBIX_MAX_BACKUPS];
+	char status[TEBIX_MAX_BACKUPS][WCURSOR_ALIGNMNENT];
 #else
 	uint64_t status;
 #endif
@@ -210,7 +210,7 @@ static void wcursor_write_index_segment(struct wcursor_level_write_cursor *w_cur
 		struct parallax_callback_funcs par_cb = parallax_get_callbacks(par_callbacks);
 		void *context = parallax_get_context(par_callbacks);
 		uint32_t src_level = w_cursor->level_id - 1;
-		par_cb.comp_write_cursor_flush_segment_cb(context, src_level, 0, SEGMENT_SIZE, 0);
+		par_cb.comp_write_cursor_flush_segment_cb(context, w_cursor, src_level, 0, SEGMENT_SIZE, 0);
 	}
 	wcursor_increase_clock(w_cursor, height);
 	wcursor_seg_buf_zero(w_cursor, height, 0, sizeof(struct segment_header));
@@ -435,7 +435,8 @@ void wcursor_flush_write_cursor(struct wcursor_level_write_cursor *w_cursor)
 			struct parallax_callback_funcs par_cb = parallax_get_callbacks(par_callbacks);
 			void *context = parallax_get_context(par_callbacks);
 			uint32_t src_level = w_cursor->level_id - 1;
-			par_cb.comp_write_cursor_flush_segment_cb(context, src_level, height, SEGMENT_SIZE, 1);
+			par_cb.comp_write_cursor_flush_segment_cb(context, w_cursor, src_level, height, SEGMENT_SIZE,
+								  1);
 		}
 	}
 
@@ -749,3 +750,18 @@ uint32_t wcursor_get_compaction_index_entry_size(struct wcursor_level_write_curs
 	assert(w_cursor);
 	return sizeof(w_cursor->segment_buffer->buffer);
 }
+
+#if TEBIS_FORMAT
+uint32_t wcursor_segment_buffer_status_size(struct wcursor_level_write_cursor *w_cursor)
+{
+	assert(w_cursor);
+	return sizeof(w_cursor->segment_buffer->status[0]);
+}
+
+char *wcursor_segment_buffer_get_status_addr(struct wcursor_level_write_cursor *w_cursor, uint32_t replica_id)
+{
+	assert(w_cursor);
+	return w_cursor->segment_buffer->status[replica_id];
+}
+
+#endif
