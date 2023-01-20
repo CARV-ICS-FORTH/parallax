@@ -45,7 +45,11 @@
 
 struct wcursor_seg_buf {
 	char buffer[SEGMENT_SIZE];
+#if TEBIS_FORMAT
+	uint64_t status[TEBIX_MAX_BACKUPS];
+#else
 	uint64_t status;
+#endif
 } __attribute__((aligned(4096)));
 
 struct wcursor_level_write_cursor {

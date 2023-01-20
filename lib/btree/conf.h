@@ -39,6 +39,7 @@
 #define TOTAL_TREES (MAX_LEVELS * NUM_TREES_PER_LEVEL)
 #define DEVICE_BLOCK_SIZE (4096)
 #define MAX_KV_IN_PLACE_SIZE (1024)
+#define TEBIX_MAX_BACKUPS 4
 
 #define WORD_SIZE (64)
 #define BREAKPOINT asm volatile("int3;");
