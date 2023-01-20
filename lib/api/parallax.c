@@ -84,7 +84,8 @@ struct par_put_metadata par_put(par_handle handle, struct par_key_value *key_val
 struct par_put_metadata par_put_serialized(par_handle handle, char *serialized_key_value, const char **error_message,
 					   bool append_to_log)
 {
-	return serialized_insert_key_value((db_handle *)handle, serialized_key_value, error_message, append_to_log);
+	return serialized_insert_key_value((db_handle *)handle, serialized_key_value, append_to_log, insertOp,
+					   error_message);
 }
 
 void par_get(par_handle handle, struct par_key *key, struct par_value *value, const char **error_message)

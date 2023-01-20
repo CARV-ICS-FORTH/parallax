@@ -329,7 +329,9 @@ struct par_put_metadata insert_key_value(db_handle *handle, void *key, void *val
  * @return Returns the error message if any otherwise NULL on success.
  * */
 struct par_put_metadata serialized_insert_key_value(db_handle *handle, const char *serialized_key_value,
-						    const char **error_message, bool append_to_log);
+						    bool append_to_log, request_type op_type,
+						    const char **error_message);
+
 const char *btree_insert_key_value(bt_insert_req *ins_req) __attribute__((warn_unused_result));
 
 void *append_key_value_to_log(struct log_operation *req);

@@ -850,10 +850,12 @@ struct par_put_metadata insert_key_value(db_handle *handle, void *key, void *val
 }
 
 struct par_put_metadata serialized_insert_key_value(db_handle *handle, const char *serialized_key_value,
-						    const char **error_message, bool append_to_log)
+						    bool append_to_log, request_type op_type,
+						    const char **error_message)
 {
 	bt_insert_req ins_req = { .metadata.handle = handle,
 				  .key_value_buf = (char *)serialized_key_value,
+				  .metadata.tombstone = op_type == deleteOp,
 				  .metadata.level_id = 0,
 				  .metadata.key_format = KV_FORMAT,
 				  .metadata.append_to_log = append_to_log };
@@ -869,7 +871,7 @@ struct par_put_metadata serialized_insert_key_value(db_handle *handle, const cha
 								 .key_value_category = SMALL_INPLACE };
 		return invalid_put_metadata;
 	}
-	ins_req.metadata.cat = calculate_KV_category(key_size, value_size, insertOp);
+	ins_req.metadata.cat = calculate_KV_category(key_size, value_size, op_type);
 	ins_req.metadata.put_op_metadata.key_value_category = ins_req.metadata.cat;
 
 	// Even if the user requested not to append to log, if the KV belongs to the big category
