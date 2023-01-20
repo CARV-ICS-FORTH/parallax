@@ -1509,7 +1509,11 @@ static uint64_t get_lock_position(uint64_t address)
 
 lock_table *_find_position(const lock_table **table, struct node_header *node)
 {
-	if (!node || node->height < 0 || node->height >= MAX_HEIGHT) {
+	if (unlikely(!node)) {
+		log_fatal("Provided NULL node to acquire lock!");
+		BUG_ON();
+	}
+	if (unlikely(node->height < 0 || node->height >= MAX_HEIGHT)) {
 		log_fatal("MAX_HEIGHT exceeded %d rearrange values in size_per_height array ", node->height);
 		assert(0);
 		BUG_ON();
