@@ -91,7 +91,7 @@ uint32_t count_entries(void)
 
 void *validate_blobs_garbage_bytes(void *args)
 {
-	uint32_t num_threads = *(uint32_t *)args;
+	uint32_t num_threads = *(int *)args;
 	uint32_t garbage_entries;
 	uint32_t garbage_bytes;
 

@@ -511,8 +511,8 @@ static struct segment_array *find_N_last_small_log_segments(struct db_descriptor
 }
 
 /*Variables responsible to expose internal stats to tests!*/
-static uint32_t count_garbage_entries = 0;
-static uint32_t count_garbage_bytes = 0;
+static volatile uint32_t count_garbage_entries = 0;
+static volatile uint32_t count_garbage_bytes = 0;
 static uint8_t enable_validate_garbage_blob_bytes = 0;
 
 uint32_t get_garbage_entries(void)
