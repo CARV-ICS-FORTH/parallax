@@ -11,3 +11,4 @@ __pycache__/
 docs/html
 docs/xml
 docs/latex
+*.tmp

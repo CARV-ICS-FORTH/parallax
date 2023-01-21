@@ -235,9 +235,8 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 	log_debug("Src [%u][%u] size = %lu", comp_req->src_level, comp_req->src_tree,
 		  handle->db_desc->levels[comp_req->src_level].level_size[comp_req->src_tree]);
 
-	NULL == comp_roots.dst_root ? log_debug("Empty dst [%u]", comp_req->dst_level) :
-				      log_debug("Dst [%u][%u] size = %lu", comp_req->dst_level, 0,
-						handle->db_desc->levels[comp_req->dst_level].level_size[0]);
+	log_debug("Dst [%u][%u] size = %lu", comp_req->dst_level, 0,
+		  handle->db_desc->levels[comp_req->dst_level].level_size[0]);
 
 	// initialize and fill min_heap properly
 	struct sh_heap *m_heap = sh_alloc_heap();
@@ -307,6 +306,8 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 	lock_to_update_levels_after_compaction(comp_req);
 
 	uint64_t space_freed = 0;
+	(void)space_freed;
+
 	/*Free L_(i+1)*/
 	if (dst_rcursor) {
 		uint64_t txn_id = comp_req->db_desc->levels[comp_req->dst_level].allocation_txn_id[comp_req->dst_tree];

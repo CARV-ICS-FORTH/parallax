@@ -395,8 +395,10 @@ static db_descriptor *get_db_from_volume(char *volume_name, char *db_name, par_d
 			//As a result we need to acquire a txn_id for the L0
 			init_fresh_db(db_desc);
 		}
-	} else
+	} else {
 		log_warn("DB: %s NOT found", db_name);
+	}
+
 	return db_desc;
 }
 
@@ -812,12 +814,20 @@ static const char *insert_error_handling(db_handle *handle, uint32_t key_size, u
 }
 
 struct par_put_metadata insert_key_value(db_handle *handle, void *key, void *value, int32_t key_size,
-					 int32_t value_size, request_type op_type, const char *error_message)
+					 int32_t value_size, request_type op_type, const char **error_message)
 {
-	bt_insert_req ins_req = { 0 };
 	char kv_pair[KV_MAX_SIZE];
-	error_message = insert_error_handling(handle, key_size, value_size);
-	if (error_message) {
+	bt_insert_req ins_req = {
+		.metadata.handle = handle,
+		.key_value_buf = kv_pair,
+		.metadata.tombstone = op_type == deleteOp,
+		.metadata.put_op_metadata.key_value_category = ins_req.metadata.cat,
+		.metadata.cat = calculate_KV_category(key_size, value_size, op_type),
+		.metadata.key_format = KV_FORMAT,
+		.metadata.append_to_log = 1,
+	};
+	*error_message = insert_error_handling(handle, key_size, value_size);
+	if (*error_message) {
 		// construct an invalid par_put_metadata
 		struct par_put_metadata invalid_put_metadata = { .lsn = UINT64_MAX,
 								 .offset_in_log = UINT64_MAX,
@@ -826,56 +836,51 @@ struct par_put_metadata insert_key_value(db_handle *handle, void *key, void *val
 	}
 
 	/*prepare the request*/
-	ins_req.metadata.handle = handle;
-	ins_req.key_value_buf = kv_pair;
-	ins_req.metadata.tombstone = op_type == deleteOp;
 	ins_req.metadata.tombstone ? set_tombstone((struct kv_splice *)ins_req.key_value_buf) :
 				     set_non_tombstone((struct kv_splice *)ins_req.key_value_buf);
 	set_key((struct kv_splice *)kv_pair, key, key_size);
 	set_value((struct kv_splice *)kv_pair, value, value_size);
-	ins_req.metadata.cat = calculate_KV_category(key_size, value_size, op_type);
-	ins_req.metadata.put_op_metadata.key_value_category = ins_req.metadata.cat;
-	ins_req.metadata.level_id = 0;
-	ins_req.metadata.key_format = KV_FORMAT;
-	ins_req.metadata.append_to_log = 1;
-	ins_req.metadata.gc_request = 0;
 
 	/*
 	 * Note for L0 inserts since active_tree changes dynamically we decide which
 	 * is the active_tree after acquiring the guard lock of the region.
 	 */
-	// cppcheck-suppress uselessAssignmentPtrArg
-	// cppcheck-suppress unreadVariable
-	error_message = btree_insert_key_value(&ins_req);
+	*error_message = btree_insert_key_value(&ins_req);
 	return ins_req.metadata.put_op_metadata;
 }
 
 struct par_put_metadata serialized_insert_key_value(db_handle *handle, const char *serialized_key_value,
-						    const char *error_message)
+						    bool append_to_log, request_type op_type,
+						    const char **error_message)
 {
 	bt_insert_req ins_req = { .metadata.handle = handle,
 				  .key_value_buf = (char *)serialized_key_value,
+				  .metadata.tombstone = op_type == deleteOp,
 				  .metadata.level_id = 0,
 				  .metadata.key_format = KV_FORMAT,
-				  .metadata.append_to_log = 1 };
+				  .metadata.append_to_log = append_to_log };
 
 	int32_t key_size = get_key_size((struct kv_splice *)serialized_key_value);
 	int32_t value_size = get_value_size((struct kv_splice *)serialized_key_value);
 
-	error_message = insert_error_handling(handle, key_size, value_size);
-	if (error_message) {
+	*error_message = insert_error_handling(handle, key_size, value_size);
+	if (*error_message) {
 		// construct an invalid par_put_metadata
 		struct par_put_metadata invalid_put_metadata = { .lsn = UINT64_MAX,
 								 .offset_in_log = UINT64_MAX,
 								 .key_value_category = SMALL_INPLACE };
 		return invalid_put_metadata;
 	}
-	ins_req.metadata.cat = calculate_KV_category(key_size, value_size, insertOp);
+	ins_req.metadata.cat = calculate_KV_category(key_size, value_size, op_type);
 	ins_req.metadata.put_op_metadata.key_value_category = ins_req.metadata.cat;
 
-	// cppcheck-suppress uselessAssignmentPtrArg
-	// cppcheck-suppress unreadVariable
-	error_message = btree_insert_key_value(&ins_req);
+	// Even if the user requested not to append to log, if the KV belongs to the big category
+	// the system will break if we do not append so we force it here.
+	if (BIG_INLOG == ins_req.metadata.cat) {
+		ins_req.metadata.append_to_log = 1;
+	}
+
+	*error_message = btree_insert_key_value(&ins_req);
 	return ins_req.metadata.put_op_metadata;
 }
 
@@ -890,7 +895,6 @@ void extract_keyvalue_size(struct log_operation *req, metadata_tologop *data_siz
 	data_size->kv_size = get_kv_size((struct kv_splice *)req->ins_req->key_value_buf);
 }
 
-//######################################################################################################
 struct pr_log_ticket {
 	// in var
 	struct log_tail *tail;
@@ -1267,9 +1271,9 @@ const char *btree_insert_key_value(bt_insert_req *ins_req)
 	if (writers_join_as_readers(ins_req) == PAR_SUCCESS)
 		;
 	else if (concurrent_insert(ins_req) != PAR_SUCCESS)
-		ins_req->metadata.error_message = "Insert failed";
+		return "Could not append even after using the coarse grained protocol!";
 
-	return ins_req->metadata.error_message;
+	return NULL;
 }
 
 static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id, int tree_id)
@@ -1297,7 +1301,7 @@ static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id,
 		if (curr_node->type == leafNode || curr_node->type == leafRootNode)
 			break;
 
-		curr = _find_position((const lock_table **)db_desc->levels[level_id].level_lock_table, curr_node);
+		curr = find_lock_position((const lock_table **)db_desc->levels[level_id].level_lock_table, curr_node);
 		if (RWLOCK_RDLOCK(&curr->rx_lock) != 0)
 			BUG_ON();
 
@@ -1315,7 +1319,7 @@ static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id,
 	}
 
 	// prev = curr;
-	curr = _find_position((const lock_table **)db_desc->levels[level_id].level_lock_table, curr_node);
+	curr = find_lock_position((const lock_table **)db_desc->levels[level_id].level_lock_table, curr_node);
 	if (RWLOCK_RDLOCK(&curr->rx_lock) != 0) {
 		BUG_ON();
 	}
@@ -1505,10 +1509,13 @@ static uint64_t get_lock_position(uint64_t address)
 	return address;
 }
 
-lock_table *_find_position(const lock_table **table, struct node_header *node)
+lock_table *find_lock_position(const lock_table **table, struct node_header *node)
 {
-	assert(node);
-	if (node->height < 0 || node->height >= MAX_HEIGHT) {
+	if (unlikely(!node)) {
+		log_fatal("Provided NULL node to acquire lock!");
+		BUG_ON();
+	}
+	if (unlikely(node->height < 0 || node->height >= MAX_HEIGHT)) {
 		log_fatal("MAX_HEIGHT exceeded %d rearrange values in size_per_height array ", node->height);
 		assert(0);
 		BUG_ON();
@@ -1666,8 +1673,8 @@ release_and_retry:
 		db_desc->levels[level_id].root[ins_req->metadata.tree_id] = (struct node_header *)new_leaf;
 	}
 	/*acquiring lock of the current root*/
-	lock = _find_position((const lock_table **)db_desc->levels[level_id].level_lock_table,
-			      db_desc->levels[level_id].root[ins_req->metadata.tree_id]);
+	lock = find_lock_position((const lock_table **)db_desc->levels[level_id].level_lock_table,
+				  db_desc->levels[level_id].root[ins_req->metadata.tree_id]);
 	if (RWLOCK_WRLOCK(&lock->rx_lock) != 0) {
 		log_fatal("ERROR locking");
 		BUG_ON();
@@ -1773,7 +1780,7 @@ release_and_retry:
 		assert(son);
 
 		/*Take the lock of the next node before its traversal*/
-		lock = _find_position(
+		lock = find_lock_position(
 			(const lock_table **)ins_req->metadata.handle->db_desc->levels[level_id].level_lock_table, son);
 
 		if (RWLOCK_WRLOCK(&lock->rx_lock) != 0) {
@@ -1854,8 +1861,8 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 	}
 
 	/*acquire read lock of the current root*/
-	lock = _find_position((const lock_table **)db_desc->levels[level_id].level_lock_table,
-			      db_desc->levels[level_id].root[ins_req->metadata.tree_id]);
+	lock = find_lock_position((const lock_table **)db_desc->levels[level_id].level_lock_table,
+				  db_desc->levels[level_id].root[ins_req->metadata.tree_id]);
 
 	if (RWLOCK_RDLOCK(&lock->rx_lock) != 0) {
 		log_fatal("ERROR locking");
@@ -1882,7 +1889,7 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 		if (son->height == 0)
 			break;
 		/*Acquire the lock of the next node before its traversal*/
-		lock = _find_position((const lock_table **)db_desc->levels[level_id].level_lock_table, son);
+		lock = find_lock_position((const lock_table **)db_desc->levels[level_id].level_lock_table, son);
 		upper_level_nodes[size++] = lock;
 
 		if (RWLOCK_RDLOCK(&lock->rx_lock) != 0) {
@@ -1894,7 +1901,7 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 		release = size - 1;
 	}
 
-	lock = _find_position((const lock_table **)db_desc->levels[level_id].level_lock_table, son);
+	lock = find_lock_position((const lock_table **)db_desc->levels[level_id].level_lock_table, son);
 	upper_level_nodes[size++] = lock;
 
 	if (RWLOCK_WRLOCK(&lock->rx_lock) != 0) {

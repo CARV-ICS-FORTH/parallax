@@ -44,8 +44,9 @@ static void insert_keys(par_handle handle, int64_t num_of_keys)
 	unsigned char value_buffer[MAX_KV_PAIR_SIZE] = { 0 };
 	for (int64_t i = 0; i < num_of_keys; i++) {
 		struct par_key_value kv_pair = { 0 };
-		if (i && 0 == i % 10000)
+		if (i && 0 == i % 10000) {
 			log_info("Progress: inserted %ld kv pairs so far", i);
+		}
 
 		kv_pair.k.size = rand() % (MY_MAX_KEY_SIZE + 1);
 

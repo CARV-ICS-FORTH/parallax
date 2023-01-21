@@ -19,8 +19,8 @@
 #include "../btree/key_splice.h"
 #include "../btree/kv_pairs.h"
 #include "../btree/set_options.h"
+#include "../include/parallax/structures.h"
 #include "../scanner/scanner.h"
-#include "parallax/structures.h"
 #include <assert.h>
 #include <log.h>
 #include <stdbool.h>
@@ -66,12 +66,12 @@ struct par_put_metadata par_put(par_handle handle, struct par_key_value *key_val
 	db_handle *dbhandle = (db_handle *)handle;
 	uint64_t is_db_replica = dbhandle->db_options.options[REPLICA_MODE].value;
 	if (is_db_replica) {
-		*error_message = "Cannot insert in when DB, DB is a replica";
+		*error_message = "DB is in replica mode, insert cannot procceed!";
 		struct par_put_metadata invalid_put_metadata = { 0 };
 		return invalid_put_metadata;
 	}
 	return insert_key_value((db_handle *)handle, (char *)key_value->k.data, (char *)key_value->v.val_buffer,
-				key_value->k.size, key_value->v.val_size, insertOp, *error_message);
+				key_value->k.size, key_value->v.val_size, insertOp, error_message);
 }
 
 /**
@@ -79,10 +79,13 @@ struct par_put_metadata par_put(par_handle handle, struct par_key_value *key_val
  * @param handle, the db handle that we initiated with db open
  * @param serialized_key_value, the kv_formated key to be inserted
  * @param error_message, possible error message upon a failure in the insert path
+ * @param append_to_log, True
  * */
-struct par_put_metadata par_put_serialized(par_handle handle, char *serialized_key_value, const char **error_message)
+struct par_put_metadata par_put_serialized(par_handle handle, char *serialized_key_value, const char **error_message,
+					   bool append_to_log)
 {
-	return serialized_insert_key_value((db_handle *)handle, serialized_key_value, *error_message);
+	return serialized_insert_key_value((db_handle *)handle, serialized_key_value, append_to_log, insertOp,
+					   error_message);
 }
 
 void par_get(par_handle handle, struct par_key *key, struct par_value *value, const char **error_message)
@@ -191,7 +194,7 @@ par_ret_code par_exists(par_handle handle, struct par_key *key)
 void par_delete(par_handle handle, struct par_key *key, const char **error_message)
 {
 	struct db_handle *hd = (struct db_handle *)handle;
-	insert_key_value(hd, (void *)key->data, "empty", key->size, 0, deleteOp, *error_message);
+	insert_key_value(hd, (void *)key->data, "empty", key->size, 0, deleteOp, error_message);
 }
 
 /*scanner staff*/

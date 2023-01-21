@@ -306,7 +306,7 @@ void replay_db_allocation_log(struct volume_descriptor *volume_desc, struct pr_d
 	/*DBs view of the volume initally everything as don't know not mine*/
 	memset(mem_bitmap, 0xFF, mem_bitmap_size);
 	struct pr_region_allocation_log *allocation_log = &superblock->allocation_log;
-
+	(void)allocation_log;
 	/* log_info("Allocation log of DB: %s head %lu tail %lu size %lu", superblock->db_name, */
 	/* 	 allocation_log->head_dev_offt, allocation_log->tail_dev_offt, allocation_log->size); */
 
@@ -736,14 +736,15 @@ int read_dev_offt_into_buffer(char *buffer, const uint32_t start, const uint32_t
 /**
  * Prints volume's superblock info
  */
-static void mem_print_volume_info(struct superblock *S, char *volume_name)
+static void mem_print_volume_info(struct superblock *superblock, char *volume_name)
 {
+	(void)superblock;
+	(void)volume_name;
 	log_info("<Volume %s info>", volume_name);
-	log_info("Volume size in GB: %lu", S->volume_size / (1024 * 1024 * 1024));
-	log_info("Able to host up to %u regions useful space in GB: %lu", S->max_regions_num,
-		 (S->volume_size - (S->volume_metadata_size + S->unmappedSpace)) / (1024 * 1024 * 1024));
-	log_info("Unmapped space %lu", S->unmappedSpace);
-	log_info("</Volume %s info>", volume_name);
+	log_info("Volume size in GB: %lu", superblock->volume_size / GB(1));
+	log_info("Able to host up to %u regions useful space in GB: %lu", superblock->max_regions_num,
+		 (superblock->volume_size - (superblock->volume_metadata_size + superblock->unmappedSpace)) / GB(1));
+	log_info("Unmapped space %lu", superblock->unmappedSpace);
 }
 
 /**

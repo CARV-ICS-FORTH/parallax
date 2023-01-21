@@ -59,6 +59,7 @@ void push_stack(stack *marks, void *addr)
 	marks->valid_pairs[marks->size++] = addr;
 	assert(marks->size != STACK_SIZE);
 }
+
 void move_kv_pairs_to_new_segment(struct db_handle handle, stack *marks)
 {
 	bt_insert_req ins_req;
@@ -82,7 +83,7 @@ void move_kv_pairs_to_new_segment(struct db_handle handle, stack *marks)
 		const char *error_message = btree_insert_key_value(&ins_req);
 
 		if (error_message) {
-			log_fatal("Insert failed %s", error_message);
+			log_fatal("Insert failed! %s", error_message);
 			BUG_ON();
 		}
 	}

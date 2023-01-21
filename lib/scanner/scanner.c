@@ -52,7 +52,7 @@ static void read_lock_node(struct level_scanner *level_scanner, struct node_head
 		return;
 
 	struct lock_table *lock =
-		_find_position((const lock_table **)level_scanner->db->db_desc->levels[0].level_lock_table, node);
+		find_lock_position((const lock_table **)level_scanner->db->db_desc->levels[0].level_lock_table, node);
 	int ret = 0;
 	if ((ret = RWLOCK_RDLOCK(&lock->rx_lock)) != 0) {
 		switch (ret) {
@@ -84,7 +84,7 @@ static void read_unlock_node(struct level_scanner *level_sc, struct node_header 
 		return;
 
 	struct lock_table *lock =
-		_find_position((const lock_table **)level_sc->db->db_desc->levels[0].level_lock_table, node);
+		find_lock_position((const lock_table **)level_sc->db->db_desc->levels[0].level_lock_table, node);
 	if (RWLOCK_UNLOCK(&lock->rx_lock) != 0) {
 		log_fatal("ERROR locking");
 		BUG_ON();

@@ -16,6 +16,7 @@
 #define PARALLAX_H
 
 #include "structures.h"
+#include <stdbool.h>
 #include <stdint.h>
 
 /**
@@ -73,8 +74,10 @@ struct par_put_metadata par_put(par_handle handle, struct par_key_value *key_val
  * Inserts a serialized key value pair by using the buffer provided by the user.
  * @param serialized_key_value is a buffer containing the serialized key value pair. The format of the key value pair is | key_size | key | value_size | value |
  * where {key,value}_size is uint32_t.
+ * @param append_to_log. True to append to log and False not to append. In case the key-value belongs to the big category it will always be appended to the log.
  */
-struct par_put_metadata par_put_serialized(par_handle handle, char *serialized_key_value, const char **error_message);
+struct par_put_metadata par_put_serialized(par_handle handle, char *serialized_key_value, const char **error_message,
+					   bool append_to_log);
 
 /**
  * Takes as input a key and searches for it. If the key exists in the DB, then

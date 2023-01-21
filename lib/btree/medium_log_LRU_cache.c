@@ -77,7 +77,6 @@ struct mlog_cache_max_segment_info mlog_cache_find_max_segment_info(struct mediu
 			segment_id = segment->segment_id;
 		}
 
-		// cppcheck-suppress unsignedPositive
 		if (segment_id >= max_segment.max_segment_id) {
 			max_segment.max_segment_id = segment_id;
 			max_segment.max_segment_offt = current_entry->dev_offt;
