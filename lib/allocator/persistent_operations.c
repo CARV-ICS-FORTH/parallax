@@ -883,16 +883,11 @@ void recover_L0(struct db_descriptor *db_desc)
 		enum log_type choice = BIG_LOG;
 		if (!cursor[SMALL_LOG]->valid)
 			choice = BIG_LOG;
-		else if (!cursor[BIG_LOG]->valid)
-			choice = SMALL_LOG;
-		else if (compare_lsns(&cursor[SMALL_LOG]->entry.lsn, &cursor[BIG_LOG]->entry.lsn) < 0)
+		else if (!cursor[BIG_LOG]->valid ||
+			 compare_lsns(&cursor[SMALL_LOG]->entry.lsn, &cursor[BIG_LOG]->entry.lsn) < 0)
 			choice = SMALL_LOG;
 
 		const char *error_message = NULL;
-		/* int32_t key_size = get_key_size(kvs[choice]->par_kv); */
-		/* void *key = get_key_offset_in_kv(kvs[choice]->par_kv); */
-		/* int32_t value_size = get_value_size(kvs[choice]->par_kv); */
-		/* void *value = get_value_offset_in_kv(kvs[choice]->par_kv, kvs[choice]->par_kv->key_size); */
 
 		request_type op_type = !cursor[choice]->tombstone ? insertOp : deleteOp;
 		serialized_insert_key_value(&handle, (const char *)kvs[choice]->par_kv, false, op_type, &error_message);

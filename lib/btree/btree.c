@@ -1301,7 +1301,7 @@ static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id,
 		if (curr_node->type == leafNode || curr_node->type == leafRootNode)
 			break;
 
-		curr = _find_position((const lock_table **)db_desc->levels[level_id].level_lock_table, curr_node);
+		curr = find_lock_position((const lock_table **)db_desc->levels[level_id].level_lock_table, curr_node);
 		if (RWLOCK_RDLOCK(&curr->rx_lock) != 0)
 			BUG_ON();
 
@@ -1319,7 +1319,7 @@ static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id,
 	}
 
 	// prev = curr;
-	curr = _find_position((const lock_table **)db_desc->levels[level_id].level_lock_table, curr_node);
+	curr = find_lock_position((const lock_table **)db_desc->levels[level_id].level_lock_table, curr_node);
 	if (RWLOCK_RDLOCK(&curr->rx_lock) != 0) {
 		BUG_ON();
 	}
@@ -1509,7 +1509,7 @@ static uint64_t get_lock_position(uint64_t address)
 	return address;
 }
 
-lock_table *_find_position(const lock_table **table, struct node_header *node)
+lock_table *find_lock_position(const lock_table **table, struct node_header *node)
 {
 	if (unlikely(!node)) {
 		log_fatal("Provided NULL node to acquire lock!");
@@ -1673,8 +1673,8 @@ release_and_retry:
 		db_desc->levels[level_id].root[ins_req->metadata.tree_id] = (struct node_header *)new_leaf;
 	}
 	/*acquiring lock of the current root*/
-	lock = _find_position((const lock_table **)db_desc->levels[level_id].level_lock_table,
-			      db_desc->levels[level_id].root[ins_req->metadata.tree_id]);
+	lock = find_lock_position((const lock_table **)db_desc->levels[level_id].level_lock_table,
+				  db_desc->levels[level_id].root[ins_req->metadata.tree_id]);
 	if (RWLOCK_WRLOCK(&lock->rx_lock) != 0) {
 		log_fatal("ERROR locking");
 		BUG_ON();
@@ -1780,7 +1780,7 @@ release_and_retry:
 		assert(son);
 
 		/*Take the lock of the next node before its traversal*/
-		lock = _find_position(
+		lock = find_lock_position(
 			(const lock_table **)ins_req->metadata.handle->db_desc->levels[level_id].level_lock_table, son);
 
 		if (RWLOCK_WRLOCK(&lock->rx_lock) != 0) {
@@ -1861,8 +1861,8 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 	}
 
 	/*acquire read lock of the current root*/
-	lock = _find_position((const lock_table **)db_desc->levels[level_id].level_lock_table,
-			      db_desc->levels[level_id].root[ins_req->metadata.tree_id]);
+	lock = find_lock_position((const lock_table **)db_desc->levels[level_id].level_lock_table,
+				  db_desc->levels[level_id].root[ins_req->metadata.tree_id]);
 
 	if (RWLOCK_RDLOCK(&lock->rx_lock) != 0) {
 		log_fatal("ERROR locking");
@@ -1889,7 +1889,7 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 		if (son->height == 0)
 			break;
 		/*Acquire the lock of the next node before its traversal*/
-		lock = _find_position((const lock_table **)db_desc->levels[level_id].level_lock_table, son);
+		lock = find_lock_position((const lock_table **)db_desc->levels[level_id].level_lock_table, son);
 		upper_level_nodes[size++] = lock;
 
 		if (RWLOCK_RDLOCK(&lock->rx_lock) != 0) {
@@ -1901,7 +1901,7 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 		release = size - 1;
 	}
 
-	lock = _find_position((const lock_table **)db_desc->levels[level_id].level_lock_table, son);
+	lock = find_lock_position((const lock_table **)db_desc->levels[level_id].level_lock_table, son);
 	upper_level_nodes[size++] = lock;
 
 	if (RWLOCK_WRLOCK(&lock->rx_lock) != 0) {

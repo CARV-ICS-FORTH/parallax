@@ -281,21 +281,6 @@ struct log_towrite {
 	enum kv_category status;
 };
 
-enum bt_rebalance_retcode {
-	NO_REBALANCE_NEEDED = 0,
-	/* Return codes for splits */
-	LEAF_ROOT_NODE_SPLITTED,
-	LEAF_NODE_SPLITTED,
-	INDEX_NODE_SPLITTED,
-	/* Return codes for deletes */
-	ROTATE_WITH_LEFT,
-	ROTATE_WITH_RIGHT,
-	ROTATE_IMPOSSIBLE_TRY_TO_MERGE,
-	MERGE_WITH_LEFT,
-	MERGE_WITH_RIGHT,
-	MERGE_IMPOSSIBLE_FATAL,
-};
-
 struct bt_rebalance_result {
 	char middle_key[MAX_PIVOT_SIZE];
 	union {
@@ -309,7 +294,6 @@ struct bt_rebalance_result {
 		struct index_node *right_ichild;
 		struct leaf_node *right_leaf_child;
 	};
-	enum bt_rebalance_retcode stat;
 };
 
 typedef struct metadata_tologop {
@@ -326,6 +310,8 @@ struct par_put_metadata insert_key_value(db_handle *handle, void *key, void *val
  * The format of the key value pair is | key_size | value_size | key |  value |, where {key,value}_sizes are uint32_t.
  * @param handle
  * @param serialized_key_value is a buffer containing the serialized key value pair.
+ * @param append_to_log True to append the entry to the log, False not to. In case the kv belongs to the big category it is always appended.
+ * @param op_type Defines the operation delete or put.
  * @return Returns the error message if any otherwise NULL on success.
  * */
 struct par_put_metadata serialized_insert_key_value(db_handle *handle, const char *serialized_key_value,
@@ -342,15 +328,11 @@ void recover_L0(struct db_descriptor *db_desc);
 void bt_set_db_status(struct db_descriptor *db_desc, enum level_compaction_status comp_status, uint8_t level_id,
 		      uint8_t tree_id);
 
-lock_table *_find_position(const lock_table **table, struct node_header *node);
+lock_table *find_lock_position(const lock_table **table, struct node_header *node);
 
-#define MIN(x, y) ((x > y) ? (y) : (x))
 #define ABSOLUTE_ADDRESS(X) (((uint64_t)(X)) - MAPPED)
 #define REAL_ADDRESS(X) ((X) ? (void *)(MAPPED + (uint64_t)(X)) : BUG_ON())
 #define KV_MAX_SIZE (4096 + 8)
 #define likely(x) __builtin_expect((x), 1)
 #define unlikely(x) __builtin_expect((x), 0)
-#define LESS_THAN_ZERO -1
-#define GREATER_THAN_ZERO 1
-#define EQUAL_TO_ZERO 0
 #endif // BTREE_H
