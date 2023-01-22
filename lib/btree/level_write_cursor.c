@@ -17,6 +17,7 @@
 #include "../allocator/log_structures.h"
 #include "../allocator/volume_manager.h"
 #include "../common/common.h"
+#include "../include/parallax/structures.h"
 #include "../parallax_callbacks/parallax_callbacks.h"
 #include "bloom_filter.h"
 #include "btree.h"
@@ -31,6 +32,7 @@
 #include "segment_allocator.h"
 #include <assert.h>
 #include <log.h>
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -38,7 +40,6 @@
 #include <string.h>
 #include <unistd.h>
 #define WCURSOR_MAGIC_SMALL_KV_SIZE (33)
-#define WCURSOR_ALIGNMNENT (4096UL)
 // IWYU pragma: no_forward_declare pbf_desc
 // IWYU pragma: no_forward_declare index_node
 // IWYU pragma: no_forward_declare key_splice
@@ -46,7 +47,7 @@
 struct wcursor_seg_buf {
 	char buffer[SEGMENT_SIZE];
 #if TEBIS_FORMAT
-	char status[TEBIX_MAX_BACKUPS][WCURSOR_ALIGNMNENT];
+	volatile char status[TEBIS_MAX_BACKUPS][WCURSOR_ALIGNMNENT];
 #else
 	uint64_t status;
 #endif
@@ -69,6 +70,12 @@ struct wcursor_level_write_cursor {
 	int fd;
 	uint32_t num_rows;
 	uint32_t num_columns;
+#if TEBIS_FORMAT
+	uint32_t number_of_replicas;
+	uint32_t last_flush_request_height;
+	uint32_t last_flush_request_clock;
+	bool have_send_flush_request;
+#endif
 	uint32_t clock[MAX_HEIGHT];
 	uint8_t level_id;
 	uint8_t tree_id;
@@ -78,6 +85,69 @@ struct wcursor_segment_buffers_iterator {
 	int curr_i;
 	struct wcursor_level_write_cursor *wcursor;
 };
+
+static struct wcursor_seg_buf *wcursor_get_buf(struct wcursor_level_write_cursor *w_cursor, uint32_t row_id)
+{
+	uint32_t col_id = w_cursor->clock[row_id] % w_cursor->num_columns;
+
+	return &w_cursor->segment_buffer[row_id * w_cursor->num_columns + col_id];
+}
+
+static struct wcursor_seg_buf *wcursor_get_buf_with_coordinates(struct wcursor_level_write_cursor *w_cursor,
+								uint32_t row_id, uint32_t col_id)
+{
+	return &w_cursor->segment_buffer[row_id * w_cursor->num_columns + col_id];
+}
+
+#ifdef TEBIS_FORMAT
+static void wcursor_init_status_buffers(struct wcursor_level_write_cursor *w_cursor, uint32_t num_rows,
+					uint32_t num_columns)
+{
+	for (uint32_t i = 0; i < num_rows; ++i) {
+		for (uint32_t j = 0; j < num_columns; ++j) {
+			struct wcursor_seg_buf *seg_buf = wcursor_get_buf_with_coordinates(w_cursor, i, j);
+			for (uint32_t backup_id = 0; backup_id < w_cursor->number_of_replicas; ++backup_id) {
+				*(volatile uint64_t *)seg_buf->status[backup_id] = WCURSOR_STATUS_OK;
+			}
+		}
+	}
+	w_cursor->have_send_flush_request = false;
+}
+
+static void wcursor_invalidate_status_buffer(struct wcursor_level_write_cursor *w_cursor, uint32_t height,
+					     uint32_t clock)
+{
+	struct wcursor_seg_buf *seg_buf = &w_cursor->segment_buffer[height * w_cursor->num_columns + clock];
+	for (uint32_t i = 0; i < w_cursor->number_of_replicas; ++i) {
+		*(volatile uint64_t *)seg_buf->status[i] = 0;
+	}
+}
+
+void wcursor_spin_for_buffer_status(struct wcursor_level_write_cursor *wcursor)
+{
+	if (!wcursor->have_send_flush_request)
+		return;
+
+	struct wcursor_seg_buf *active_seg_buf = wcursor_get_buf_with_coordinates(
+		wcursor, wcursor->last_flush_request_height, wcursor->last_flush_request_clock);
+	for (uint32_t i = 0; i < wcursor->number_of_replicas; ++i) {
+		volatile uint64_t *backup_status = (volatile uint64_t *)active_seg_buf->status[i];
+		while (*backup_status != WCURSOR_STATUS_OK) { /*spin*/
+			;
+		}
+	}
+
+	//TODO: geostyl callback
+	parallax_callbacks_t par_callbacks = wcursor->handle->db_desc->parallax_callbacks;
+	if (are_parallax_callbacks_set(par_callbacks)) {
+		struct parallax_callback_funcs par_cb = parallax_get_callbacks(par_callbacks);
+		void *context = parallax_get_context(par_callbacks);
+		uint32_t src_level = wcursor->level_id - 1;
+		uint32_t clock_id = wcursor->last_flush_request_clock % wcursor->num_columns;
+		par_cb.comp_write_cursor_got_flush_replies_cb(context, src_level, clock_id);
+	}
+}
+#endif
 
 static void wcursor_seg_buf_array_init(uint32_t num_rows, struct wcursor_level_write_cursor *w_cursor,
 				       uint32_t num_columns)
@@ -91,13 +161,10 @@ static void wcursor_seg_buf_array_init(uint32_t num_rows, struct wcursor_level_w
 	}
 	memset(w_cursor->segment_buffer, 0x00,
 	       w_cursor->num_rows * w_cursor->num_columns * sizeof(struct wcursor_seg_buf));
-}
-
-static struct wcursor_seg_buf *wcursor_get_buf(struct wcursor_level_write_cursor *w_cursor, uint32_t row_id)
-{
-	uint32_t col_id = w_cursor->clock[row_id] % w_cursor->num_columns;
-
-	return &w_cursor->segment_buffer[row_id * w_cursor->num_columns + col_id];
+#if TEBIS_FORMAT
+	/*init statuses to STATUS OK for the first time*/
+	wcursor_init_status_buffers(w_cursor, num_rows, num_columns);
+#endif
 }
 
 static void wcursor_increase_clock(struct wcursor_level_write_cursor *w_cursor, uint32_t height)
@@ -192,6 +259,9 @@ static void wcursor_write_segment(struct wcursor_level_write_cursor *w_cursor, u
 
 static void wcursor_write_index_segment(struct wcursor_level_write_cursor *w_cursor, uint32_t height)
 {
+#if TEBIS_FORMAT
+	wcursor_spin_for_buffer_status(w_cursor);
+#endif
 	//Caution this is the device offset where we will write the next segment in the next iteration of the process
 	struct segment_header *new_device_segment =
 		get_segment_for_lsm_level_IO(w_cursor->handle->db_desc, w_cursor->level_id, 1);
@@ -203,14 +273,21 @@ static void wcursor_write_index_segment(struct wcursor_level_write_cursor *w_cur
 	segment->segment_id = w_cursor->segment_id_cnt++;
 
 	wcursor_write_segment(w_cursor, height, w_cursor->last_segment_btree_level_offt[height], 0, SEGMENT_SIZE);
-
+#if TEBIS_FORMAT
+	w_cursor->last_flush_request_height = height;
+	w_cursor->last_flush_request_clock = w_cursor->clock[height] % w_cursor->num_columns;
+	w_cursor->have_send_flush_request = true;
+	wcursor_invalidate_status_buffer(w_cursor, height, w_cursor->clock[height] % w_cursor->num_columns);
+#endif
 	//TODO: geostyl callback
 	parallax_callbacks_t par_callbacks = w_cursor->handle->db_desc->parallax_callbacks;
 	if (are_parallax_callbacks_set(par_callbacks)) {
 		struct parallax_callback_funcs par_cb = parallax_get_callbacks(par_callbacks);
 		void *context = parallax_get_context(par_callbacks);
 		uint32_t src_level = w_cursor->level_id - 1;
-		par_cb.comp_write_cursor_flush_segment_cb(context, w_cursor, src_level, 0, SEGMENT_SIZE, 0);
+		par_cb.comp_write_cursor_flush_segment_cb(context, w_cursor, src_level,
+							  w_cursor->last_flush_request_height, SEGMENT_SIZE,
+							  w_cursor->last_flush_request_clock, false);
 	}
 	wcursor_increase_clock(w_cursor, height);
 	wcursor_seg_buf_zero(w_cursor, height, 0, sizeof(struct segment_header));
@@ -282,6 +359,10 @@ struct wcursor_level_write_cursor *wcursor_init_write_cursor(uint8_t level_id, s
 	wcursor_seg_buf_array_init(MAX_HEIGHT, w_cursor, enable_double_buffering ? 2 : 1);
 
 	assert(0 == handle->db_desc->levels[w_cursor->level_id].offset[w_cursor->tree_id]);
+#if TEBIS_FORMAT
+	assert(w_cursor->num_columns == 2);
+	w_cursor->number_of_replicas = w_cursor->handle->db_options.options[NUMBER_OF_REPLICAS].value;
+#endif
 
 	for (uint32_t height = 0; height < MAX_HEIGHT; ++height) {
 		w_cursor->segment_offt[height] = sizeof(struct segment_header);
@@ -293,7 +374,7 @@ struct wcursor_level_write_cursor *wcursor_init_write_cursor(uint8_t level_id, s
 		w_cursor->last_node[height] = (struct node_header *)wcursor_get_space(
 			w_cursor, height,
 			height == 0 ? w_cursor->handle->db_desc->levels[w_cursor->level_id].leaf_size :
-				      index_node_get_size());
+					    index_node_get_size());
 
 		if (0 == height) {
 			dl_init_leaf_node((struct leaf_node *)w_cursor->last_node[height],
@@ -394,8 +475,10 @@ static void wcursor_stich_level(struct wcursor_level_write_cursor *w_cursor, int
 
 void wcursor_flush_write_cursor(struct wcursor_level_write_cursor *w_cursor)
 {
+#if TEBIS_FORMAT
+	wcursor_spin_for_buffer_status(w_cursor);
+#endif
 	uint32_t level_leaf_size = w_cursor->handle->db_desc->levels[w_cursor->level_id].leaf_size;
-
 	for (int32_t height = 0; height < MAX_HEIGHT; ++height) {
 		// if (height <= w_cursor->tree_height) {
 		assert(w_cursor->segment_offt[height] > 4096);
@@ -428,15 +511,21 @@ void wcursor_flush_write_cursor(struct wcursor_level_write_cursor *w_cursor)
 		wcursor_stich_level(w_cursor, height, segment_in_mem_buffer);
 		wcursor_write_segment(w_cursor, height, w_cursor->last_segment_btree_level_offt[height], 0,
 				      SEGMENT_SIZE);
-
+#if TEBIS_FORMAT
+		w_cursor->last_flush_request_height = height;
+		w_cursor->last_flush_request_clock = w_cursor->clock[height] % w_cursor->num_columns;
+		wcursor_invalidate_status_buffer(w_cursor, w_cursor->last_flush_request_height,
+						 w_cursor->last_flush_request_clock);
+#endif
 		//TODO: geostyl callback
 		parallax_callbacks_t par_callbacks = w_cursor->handle->db_desc->parallax_callbacks;
 		if (are_parallax_callbacks_set(par_callbacks)) {
 			struct parallax_callback_funcs par_cb = parallax_get_callbacks(par_callbacks);
 			void *context = parallax_get_context(par_callbacks);
 			uint32_t src_level = w_cursor->level_id - 1;
-			par_cb.comp_write_cursor_flush_segment_cb(context, w_cursor, src_level, height, SEGMENT_SIZE,
-								  1);
+			par_cb.comp_write_cursor_flush_segment_cb(context, w_cursor, src_level,
+								  w_cursor->last_flush_request_height, SEGMENT_SIZE,
+								  w_cursor->last_flush_request_clock, true);
 		}
 	}
 
@@ -651,29 +740,6 @@ struct medium_log_LRU_cache *wcursor_get_LRU_cache(struct wcursor_level_write_cu
 	return w_cursor->medium_log_LRU_cache;
 }
 
-void wcursor_append_index_segment(struct wcursor_level_write_cursor *wcursor, int32_t height, char *buf,
-				  bool is_last_segment)
-{
-	assert(wcursor);
-
-	if (is_last_segment) {
-		wcursor_stich_level(wcursor, height, (struct segment_header *)buf);
-		wcursor_write_segment(wcursor, height, wcursor->last_segment_btree_level_offt[height], 0, SEGMENT_SIZE);
-		return;
-	}
-
-	struct segment_header *new_device_segment =
-		get_segment_for_lsm_level_IO(wcursor->handle->db_desc, wcursor->level_id, 1);
-	uint64_t new_device_segment_offt = ABSOLUTE_ADDRESS(new_device_segment);
-	assert(new_device_segment && new_device_segment_offt);
-
-	struct segment_header *current_in_mem_segment = (struct segment_header *)buf;
-	current_in_mem_segment->next_segment = (void *)new_device_segment_offt;
-
-	wcursor_write_segment(wcursor, height, wcursor->last_segment_btree_level_offt[height], 0, SEGMENT_SIZE);
-	wcursor->last_segment_btree_level_offt[height] = new_device_segment_offt;
-}
-
 wcursor_segment_buffers_iterator_t wcursor_segment_buffers_cursor_init(struct wcursor_level_write_cursor *wcursor)
 {
 	assert(wcursor);
@@ -758,10 +824,12 @@ uint32_t wcursor_segment_buffer_status_size(struct wcursor_level_write_cursor *w
 	return sizeof(w_cursor->segment_buffer->status[0]);
 }
 
-char *wcursor_segment_buffer_get_status_addr(struct wcursor_level_write_cursor *w_cursor, uint32_t replica_id)
+volatile char *wcursor_segment_buffer_get_status_addr(struct wcursor_level_write_cursor *w_cursor, uint32_t height,
+						      uint32_t clock_id, uint32_t replica_id)
 {
 	assert(w_cursor);
-	return w_cursor->segment_buffer->status[replica_id];
+	struct wcursor_seg_buf *segment_buffer = wcursor_get_buf_with_coordinates(w_cursor, height, clock_id);
+	return segment_buffer->status[replica_id];
 }
 
 #endif

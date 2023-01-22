@@ -6,4 +6,5 @@ level_medium_inplace: 3
 primary_mode: 1
 replica_mode: 0
 enable_bloom_filters: 0
-enable_compaction_double_buffering: 0
+enable_compaction_double_buffering: 1
+number_of_replicas: 0

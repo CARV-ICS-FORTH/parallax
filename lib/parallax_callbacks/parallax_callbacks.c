@@ -45,6 +45,10 @@ void parallax_init_callbacks(par_handle dbhandle, struct parallax_callback_funcs
 		parallax_cb->parallax_callback_functions.comp_write_cursor_flush_segment_cb =
 			parallax_callbacks->comp_write_cursor_flush_segment_cb;
 
+	if (parallax_callbacks->comp_write_cursor_got_flush_replies_cb)
+		parallax_cb->parallax_callback_functions.comp_write_cursor_got_flush_replies_cb =
+			parallax_callbacks->comp_write_cursor_got_flush_replies_cb;
+
 	// set context
 	parallax_cb->context = context;
 }
