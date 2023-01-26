@@ -75,6 +75,7 @@ struct wcursor_level_write_cursor {
 	uint32_t last_flush_request_height;
 	uint32_t last_flush_request_clock;
 	bool have_send_flush_request;
+	bool spin_for_replies;
 #endif
 	uint32_t clock[MAX_HEIGHT];
 	uint8_t level_id;
@@ -162,8 +163,10 @@ static void wcursor_seg_buf_array_init(uint32_t num_rows, struct wcursor_level_w
 	memset(w_cursor->segment_buffer, 0x00,
 	       w_cursor->num_rows * w_cursor->num_columns * sizeof(struct wcursor_seg_buf));
 #if TEBIS_FORMAT
-	/*init statuses to STATUS OK for the first time*/
-	wcursor_init_status_buffers(w_cursor, num_rows, num_columns);
+	if (w_cursor->spin_for_replies) {
+		/*init statuses to STATUS OK for the first time*/
+		wcursor_init_status_buffers(w_cursor, num_rows, num_columns);
+	}
 #endif
 }
 
@@ -260,7 +263,8 @@ static void wcursor_write_segment(struct wcursor_level_write_cursor *w_cursor, u
 static void wcursor_write_index_segment(struct wcursor_level_write_cursor *w_cursor, uint32_t height)
 {
 #if TEBIS_FORMAT
-	wcursor_spin_for_buffer_status(w_cursor);
+	if (w_cursor->spin_for_replies)
+		wcursor_spin_for_buffer_status(w_cursor);
 #endif
 	//Caution this is the device offset where we will write the next segment in the next iteration of the process
 	struct segment_header *new_device_segment =
@@ -274,20 +278,25 @@ static void wcursor_write_index_segment(struct wcursor_level_write_cursor *w_cur
 
 	wcursor_write_segment(w_cursor, height, w_cursor->last_segment_btree_level_offt[height], 0, SEGMENT_SIZE);
 #if TEBIS_FORMAT
-	w_cursor->last_flush_request_height = height;
-	w_cursor->last_flush_request_clock = w_cursor->clock[height] % w_cursor->num_columns;
-	w_cursor->have_send_flush_request = true;
-	wcursor_invalidate_status_buffer(w_cursor, height, w_cursor->clock[height] % w_cursor->num_columns);
+
+	if (w_cursor->spin_for_replies) {
+		w_cursor->last_flush_request_height = height;
+		w_cursor->last_flush_request_clock = w_cursor->clock[height] % w_cursor->num_columns;
+		w_cursor->have_send_flush_request = true;
+		wcursor_invalidate_status_buffer(w_cursor, height, w_cursor->clock[height] % w_cursor->num_columns);
+		log_debug("Set last flush height and clock %u %u", w_cursor->last_flush_request_height,
+			  w_cursor->last_flush_request_clock);
 #endif
-	//TODO: geostyl callback
-	parallax_callbacks_t par_callbacks = w_cursor->handle->db_desc->parallax_callbacks;
-	if (are_parallax_callbacks_set(par_callbacks)) {
-		struct parallax_callback_funcs par_cb = parallax_get_callbacks(par_callbacks);
-		void *context = parallax_get_context(par_callbacks);
-		uint32_t src_level = w_cursor->level_id - 1;
-		par_cb.comp_write_cursor_flush_segment_cb(context, w_cursor, src_level,
-							  w_cursor->last_flush_request_height, SEGMENT_SIZE,
-							  w_cursor->last_flush_request_clock, false);
+		//TODO: geostyl callback
+		parallax_callbacks_t par_callbacks = w_cursor->handle->db_desc->parallax_callbacks;
+		if (are_parallax_callbacks_set(par_callbacks)) {
+			struct parallax_callback_funcs par_cb = parallax_get_callbacks(par_callbacks);
+			void *context = parallax_get_context(par_callbacks);
+			uint32_t src_level = w_cursor->level_id - 1;
+			par_cb.comp_write_cursor_flush_segment_cb(context, w_cursor, src_level,
+								  w_cursor->last_flush_request_height, SEGMENT_SIZE,
+								  w_cursor->last_flush_request_clock, false);
+		}
 	}
 	wcursor_increase_clock(w_cursor, height);
 	wcursor_seg_buf_zero(w_cursor, height, 0, sizeof(struct segment_header));
@@ -362,6 +371,14 @@ struct wcursor_level_write_cursor *wcursor_init_write_cursor(uint8_t level_id, s
 #if TEBIS_FORMAT
 	assert(w_cursor->num_columns == 2);
 	w_cursor->number_of_replicas = w_cursor->handle->db_options.options[NUMBER_OF_REPLICAS].value;
+	w_cursor->spin_for_replies = false;
+	if (w_cursor->handle->db_options.options[WCURSOR_SPIN_FOR_FLUSH_REPLIES].value) {
+		// when spinning for replies double buffering in write cursor should be enabled and there should
+		// be some replicas available
+		assert(w_cursor->handle->db_options.options[ENABLE_COMPACTION_DOUBLE_BUFFERING].value);
+		assert(w_cursor->handle->db_options.options[NUMBER_OF_REPLICAS].value > 0);
+		w_cursor->spin_for_replies = true;
+	}
 #endif
 
 	for (uint32_t height = 0; height < MAX_HEIGHT; ++height) {

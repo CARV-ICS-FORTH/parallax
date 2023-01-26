@@ -446,6 +446,7 @@ struct par_options_desc *par_get_default_options(void)
 	default_db_options[ENABLE_BLOOM_FILTERS].value = enable_bloom_filters;
 	default_db_options[ENABLE_COMPACTION_DOUBLE_BUFFERING].value = enable_compaction_double_buffering;
 	default_db_options[NUMBER_OF_REPLICAS].value = number_of_replicas;
+	default_db_options[WCURSOR_SPIN_FOR_FLUSH_REPLIES].value = 0;
 
 	return default_db_options;
 }

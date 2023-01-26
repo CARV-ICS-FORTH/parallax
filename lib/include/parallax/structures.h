@@ -36,6 +36,10 @@ typedef enum {
 	ENABLE_BLOOM_FILTERS,
 	ENABLE_COMPACTION_DOUBLE_BUFFERING,
 	NUMBER_OF_REPLICAS,
+	WCURSOR_SPIN_FOR_FLUSH_REPLIES, // Always initialized to 0,
+	// this fields enables Parallax to spin for replies from backups when using double buffering.
+	// This must be set only when Parallax is used in a distributed enviroment with double buffering on
+	// and following the *Tebis* logic
 	NUM_OF_CONFIGURATION_OPTIONS
 } par_options;
 
