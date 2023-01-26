@@ -46,8 +46,8 @@ level_write_appender_t wappender_init(struct db_handle *handle, uint8_t tree_id,
 	return appender;
 }
 
-static void wappender_write_segment(struct level_write_appender *appender,
-				    struct wappender_append_index_segment_params params)
+static uint64_t wappender_write_segment(struct level_write_appender *appender,
+					struct wappender_append_index_segment_params params)
 {
 	ssize_t total_bytes_written = 0;
 	while (total_bytes_written < params.buffer_size) {
@@ -61,6 +61,7 @@ static void wappender_write_segment(struct level_write_appender *appender,
 		}
 		total_bytes_written += bytes_written;
 	}
+	return appender->last_segment_offt[params.height];
 }
 
 static void wappender_stich_level(level_write_appender_t appender, struct wappender_append_index_segment_params params)
@@ -78,16 +79,16 @@ static void wappender_stich_level(level_write_appender_t appender, struct wappen
 	curr_in_mem_segment->next_segment = (void *)appender->first_segment_offt[params.height + 1];
 }
 
-void wappender_append_index_segment(level_write_appender_t appender,
-				    struct wappender_append_index_segment_params params)
+uint64_t wappender_append_index_segment(level_write_appender_t appender,
+					struct wappender_append_index_segment_params params)
 {
 	assert(appender);
 	assert(params.buffer_size == SEGMENT_SIZE);
 
 	if (params.is_last_segment) {
 		wappender_stich_level(appender, params);
-		wappender_write_segment(appender, params);
-		return;
+		uint64_t last_flushed_segment_offt = wappender_write_segment(appender, params);
+		return last_flushed_segment_offt;
 	}
 
 	struct segment_header *new_device_segment =
@@ -98,8 +99,9 @@ void wappender_append_index_segment(level_write_appender_t appender,
 	struct segment_header *current_in_mem_segment = (struct segment_header *)params.buffer;
 	current_in_mem_segment->next_segment = (void *)new_device_segment_offt;
 
-	wappender_write_segment(appender, params);
+	uint64_t last_flushed_segment_offt = wappender_write_segment(appender, params);
 	appender->last_segment_offt[params.height] = new_device_segment_offt;
+	return last_flushed_segment_offt;
 }
 
 void wappender_close(level_write_appender_t appender)
