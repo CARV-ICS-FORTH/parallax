@@ -10,7 +10,8 @@ struct wcursor_level_write_cursor;
 */
 struct parallax_callback_funcs {
 	void (*segment_is_full_cb)(void *context, uint64_t seg_offt, enum log_category log_type);
-	void (*compaction_started_cb)(void *context, uint32_t src_level_id, uint8_t dst_tree_id,
+	void (*compaction_started_cb)(void *context, uint64_t small_log_tail_dev, uint64_t big_log_tail_dev,
+				      uint32_t src_level_id, uint8_t dst_tree_id,
 				      struct wcursor_level_write_cursor *wcursor);
 	void (*compaction_ended_cb)(void *context, uint32_t src_level_id);
 	void (*swap_levels_cb)(void *context, uint32_t src_level_id);

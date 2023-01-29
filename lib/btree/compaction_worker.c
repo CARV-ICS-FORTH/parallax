@@ -236,7 +236,14 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 	if (are_parallax_callbacks_set(par_callbacks)) {
 		struct parallax_callback_funcs par_cb = parallax_get_callbacks(par_callbacks);
 		void *context = parallax_get_context(par_callbacks);
-		par_cb.compaction_started_cb(context, comp_req->src_level, comp_req->dst_tree, new_level);
+		uint64_t small_log_tail_dev_offt = UINT64_MAX;
+		uint64_t big_log_tail_dev_offt = UINT64_MAX;
+		if (!comp_req->src_level) {
+			small_log_tail_dev_offt = handle->db_desc->small_log.tail_dev_offt;
+			big_log_tail_dev_offt = handle->db_desc->big_log.tail_dev_offt;
+		}
+		par_cb.compaction_started_cb(context, small_log_tail_dev_offt, big_log_tail_dev_offt,
+					     comp_req->src_level, comp_req->dst_tree, new_level);
 	}
 
 	//initialize LRU cache for storing chunks of segments when medium log goes in place
