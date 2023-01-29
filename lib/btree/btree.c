@@ -1154,19 +1154,6 @@ static void *bt_append_to_log_direct_IO(struct log_operation *req, struct log_to
 					struct metadata_tologop *data_size)
 {
 	db_handle *handle = req->metadata->handle;
-	if (are_parallax_callbacks_set(handle->db_desc->parallax_callbacks) &&
-	    parallax_get_callbacks(handle->db_desc->parallax_callbacks).segment_is_full_cb) {
-		struct parallax_callback_funcs parallax_callbacks =
-			parallax_get_callbacks(handle->db_desc->parallax_callbacks);
-		void *context = parallax_get_context(handle->db_desc->parallax_callbacks);
-
-		uint64_t segment_tail_device_offt = log_metadata->log_desc->tail_dev_offt;
-		enum log_category log_type = L0_RECOVERY;
-		if (log_metadata->log_desc->log_type == BIG_LOG)
-			log_type = BIG;
-		parallax_callbacks.segment_is_full_cb(context, segment_tail_device_offt, log_type);
-	}
-
 	struct pr_log_ticket log_kv_entry_ticket = { .log_offt = 0, .IO_start_offt = 0, .IO_size = 0 };
 	struct pr_log_ticket pad_ticket = { .log_offt = 0, .IO_start_offt = 0, .IO_size = 0 };
 	char *addr_inlog = NULL;
@@ -1186,6 +1173,18 @@ static void *bt_append_to_log_direct_IO(struct log_operation *req, struct log_to
 
 	if (available_space_in_log < reserve_needed_space) {
 		//TODO: geostyl callback
+		if (are_parallax_callbacks_set(handle->db_desc->parallax_callbacks) &&
+		    parallax_get_callbacks(handle->db_desc->parallax_callbacks).segment_is_full_cb) {
+			struct parallax_callback_funcs parallax_callbacks =
+				parallax_get_callbacks(handle->db_desc->parallax_callbacks);
+			void *context = parallax_get_context(handle->db_desc->parallax_callbacks);
+
+			uint64_t segment_tail_device_offt = log_metadata->log_desc->tail_dev_offt;
+			enum log_category log_type = L0_RECOVERY;
+			if (log_metadata->log_desc->log_type == BIG_LOG)
+				log_type = BIG;
+			parallax_callbacks.segment_is_full_cb(context, segment_tail_device_offt, log_type);
+		}
 		req->ins_req->metadata.put_op_metadata.flush_segment_event = 1;
 		req->ins_req->metadata.put_op_metadata.flush_segment_offt = log_metadata->log_desc->tail_dev_offt;
 		enum log_category log_type = L0_RECOVERY;
