@@ -387,6 +387,11 @@ struct key_splice *index_iterator_get_pivot_key(struct index_node_iterator *iter
 	return iterator->key_splice;
 }
 
+bool index_iterator_next(struct index_node_iterator *iterator)
+{
+	return ++iterator->position < iterator->num_entries;
+}
+
 void index_split_node(struct index_node_split_request *request, struct index_node_split_reply *reply)
 {
 	// struct bt_rebalance_result result = { 0 };

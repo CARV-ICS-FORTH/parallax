@@ -194,6 +194,12 @@ struct key_splice *fill_smallest_possible_pivot(char *buffer, int size);
 uint8_t index_iterator_is_valid(struct index_node_iterator *iterator);
 
 /**
+ * proceed index iterator to the next position in the index node
+ * @param iterator: an iteration pointing to an index node
+ */
+bool index_iterator_next(struct index_node_iterator *iterator);
+
+/**
   * returns the pivot key of where the index iterator is pointing;
   * @param iterator: an iteration pointing to an index node
   */

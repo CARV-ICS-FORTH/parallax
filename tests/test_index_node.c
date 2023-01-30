@@ -175,6 +175,22 @@ static uint32_t insert_and_verify_pivots(db_handle *handle, unsigned char *alpha
 	verify_pivots(node, pivot, num_node_keys, PIVOT_BASE);
 	log_info("Success insert pivots with descending order test!");
 
+	log_info("Now testing iterators");
+	struct index_node_iterator *index_iterator =
+		(struct index_node_iterator *)calloc(1, sizeof(struct index_node_iterator));
+	index_iterator_init(node, index_iterator);
+	uint32_t num_of_pivots_found_with_iter = 0; //1 for the starting position
+	while (index_iterator_next(index_iterator))
+		++num_of_pivots_found_with_iter;
+
+	if (num_of_pivots_found_with_iter != num_node_keys) {
+		log_fatal("Index iterator found %u pivots out of %u", num_of_pivots_found_with_iter, num_node_keys);
+		assert(0);
+		_exit(EXIT_FAILURE);
+	}
+
+	log_info("Success finding all pivots with and index iterator");
+
 	log_info("Now testing splits ...");
 
 	struct bt_rebalance_result split_res = {
