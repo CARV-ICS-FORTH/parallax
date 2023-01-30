@@ -293,7 +293,9 @@ static void wcursor_write_index_segment(struct wcursor_level_write_cursor *w_cur
 			struct parallax_callback_funcs par_cb = parallax_get_callbacks(par_callbacks);
 			void *context = parallax_get_context(par_callbacks);
 			uint32_t src_level = w_cursor->level_id - 1;
-			par_cb.comp_write_cursor_flush_segment_cb(context, w_cursor, src_level,
+			par_cb.comp_write_cursor_flush_segment_cb(context,
+								  w_cursor->last_segment_btree_level_offt[height],
+								  w_cursor, src_level,
 								  w_cursor->last_flush_request_height, SEGMENT_SIZE,
 								  w_cursor->last_flush_request_clock, false);
 		}
@@ -540,7 +542,9 @@ void wcursor_flush_write_cursor(struct wcursor_level_write_cursor *w_cursor)
 			struct parallax_callback_funcs par_cb = parallax_get_callbacks(par_callbacks);
 			void *context = parallax_get_context(par_callbacks);
 			uint32_t src_level = w_cursor->level_id - 1;
-			par_cb.comp_write_cursor_flush_segment_cb(context, w_cursor, src_level,
+			par_cb.comp_write_cursor_flush_segment_cb(context,
+								  w_cursor->last_segment_btree_level_offt[height],
+								  w_cursor, src_level,
 								  w_cursor->last_flush_request_height, SEGMENT_SIZE,
 								  w_cursor->last_flush_request_clock, true);
 		}

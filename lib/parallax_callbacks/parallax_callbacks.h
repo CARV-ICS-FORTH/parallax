@@ -15,9 +15,9 @@ struct parallax_callback_funcs {
 				      struct wcursor_level_write_cursor *wcursor);
 	void (*compaction_ended_cb)(void *context, uint32_t src_level_id);
 	void (*swap_levels_cb)(void *context, uint32_t src_level_id);
-	void (*comp_write_cursor_flush_segment_cb)(void *context, struct wcursor_level_write_cursor *wcursor,
-						   uint32_t level_id, uint32_t height, uint32_t buf_size,
-						   uint32_t clock, bool is_last);
+	void (*comp_write_cursor_flush_segment_cb)(void *context, uint64_t starting_segment_offt,
+						   struct wcursor_level_write_cursor *wcursor, uint32_t level_id,
+						   uint32_t height, uint32_t buf_size, uint32_t clock, bool is_last);
 	void (*comp_write_cursor_got_flush_replies_cb)(void *context, uint32_t src_level_id, uint32_t clock_id);
 };
 
