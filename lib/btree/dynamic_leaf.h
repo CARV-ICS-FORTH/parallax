@@ -20,6 +20,11 @@
 #include <stdint.h>
 struct leaf_node;
 
+struct leaf_iterator {
+	struct kv_splice_base splice;
+	struct leaf_node *leaf;
+	int pos;
+};
 /**
  * @brief Inserts (in sorted orderd) a kv_splice_base in the leaf node.
  * @param leaf pointer to the actual leaf node
@@ -140,4 +145,32 @@ nodeType_t dl_get_leaf_node_type(struct leaf_node *leaf);
  * @param pointer to the leaf node
  */
 int32_t dl_get_leaf_num_entries(struct leaf_node *leaf);
+
+/**
+ * @brief initializes a dynamic leaf cursor at the position of the key provided. To get the first key in leaf
+ * key must be NULL and key_size = -1
+ * @param leaf: pointer to the leaf node
+ * @param iter: pointer to a leaf iterator
+ * @param key: key from which the iterator will begin its traversal
+ * @param key_size: the size of the key
+ */
+void dl_init_leaf_iterator(struct leaf_node *leaf, struct leaf_iterator *iter, char *key, int32_t key_size);
+
+/**
+ * @brief function returning if the iterator is within bounds
+ * @param iter: pointer to a leaf iterator
+ */
+bool dl_is_leaf_iterator_valid(struct leaf_iterator *iter);
+
+/**
+ * @brief proceeds the iterator to the next key, this should be checked with the assocated valid function aswell
+ * @param iter: pointer to a leaf iterator
+ */
+void dl_leaf_iterator_next(struct leaf_iterator *iter);
+
+/**
+ * @brief retursn the current kv pointed by the iterator
+ * @param iter: pointer to a leaf iterator
+ */
+struct kv_splice_base dl_leaf_iterator_curr(struct leaf_iterator *iter);
 #endif

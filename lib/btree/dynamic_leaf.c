@@ -246,13 +246,7 @@ bool dl_insert_in_dynamic_leaf(struct leaf_node *leaf, struct kv_splice_base *sp
 	return true;
 }
 
-struct dl_leaf_iterator {
-	struct kv_splice_base splice;
-	struct leaf_node *leaf;
-	int pos;
-};
-
-static void dl_init_leaf_iterator(struct leaf_node *leaf, struct dl_leaf_iterator *iter, char *key, int32_t key_size)
+void dl_init_leaf_iterator(struct leaf_node *leaf, struct leaf_iterator *iter, char *key, int32_t key_size)
 {
 	iter->leaf = leaf;
 	if (iter->leaf->header.num_entries <= 0) {
@@ -267,17 +261,17 @@ static void dl_init_leaf_iterator(struct leaf_node *leaf, struct dl_leaf_iterato
 	iter->splice = dl_get_general_splice(leaf, iter->pos);
 }
 
-static bool dl_is_leaf_iterator_valid(struct dl_leaf_iterator *iter)
+bool dl_is_leaf_iterator_valid(struct leaf_iterator *iter)
 {
 	return iter->leaf->header.num_entries > 0 && iter->pos < iter->leaf->header.num_entries;
 }
 
-static void dl_leaf_iterator_next(struct dl_leaf_iterator *iter)
+void dl_leaf_iterator_next(struct leaf_iterator *iter)
 {
 	++iter->pos;
 }
 
-static struct kv_splice_base dl_leaf_iterator_curr(struct dl_leaf_iterator *iter)
+struct kv_splice_base dl_leaf_iterator_curr(struct leaf_iterator *iter)
 {
 	if (!dl_is_leaf_iterator_valid(iter)) {
 		struct kv_splice_base splice = { 0 };
@@ -309,7 +303,7 @@ static struct kv_splice_base dl_leaf_iterator_curr(struct dl_leaf_iterator *iter
 
 struct kv_splice_base dl_split_dynamic_leaf(struct leaf_node *leaf, struct leaf_node *left, struct leaf_node *right)
 {
-	struct dl_leaf_iterator iter = { 0 };
+	struct leaf_iterator iter = { 0 };
 	dl_init_leaf_iterator(leaf, &iter, NULL, -1);
 	struct dl_slot_array *slot_array = dl_get_slot_array_offset(leaf);
 	int32_t idx = 0;
@@ -344,7 +338,7 @@ inline bool dl_is_reorganize_possible(struct leaf_node *leaf, int32_t kv_size)
 
 void dl_reorganize_dynamic_leaf(struct leaf_node *leaf, struct leaf_node *target)
 {
-	struct dl_leaf_iterator iter = { 0 };
+	struct leaf_iterator iter = { 0 };
 	dl_init_leaf_iterator(leaf, &iter, NULL, -1);
 	struct dl_slot_array *slot_array = dl_get_slot_array_offset(leaf);
 	for (int32_t i = 0; i < leaf->header.num_entries; i++) {
