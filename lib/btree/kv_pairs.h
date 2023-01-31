@@ -74,6 +74,13 @@ int32_t kv_sep2_get_key_size(struct kv_seperation_splice2 *kv_sep2);
 uint64_t kv_sep2_get_value_offt(struct kv_seperation_splice2 *kv_sep2);
 
 /**
+ * @brief Sets the offset to the specified value_offt
+ * @param kv_sep2 pinter to the splice object
+ * @param value_offt the new offset to be set
+ */
+void kv_sep2_set_value_offt(struct kv_seperation_splice2 *kv_sep2, uint64_t value_offt);
+
+/**
  * @brief Returns the total size of the splice which includes also the size of its metadata.
  * @param kv_sep2 pointer to the splice object
  * @return the size of the splice

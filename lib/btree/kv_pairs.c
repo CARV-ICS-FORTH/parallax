@@ -173,6 +173,11 @@ uint64_t kv_sep2_get_value_offt(struct kv_seperation_splice2 *kv_sep2)
 	return kv_sep2->value_offt;
 }
 
+void kv_sep2_set_value_offt(struct kv_seperation_splice2 *kv_sep2, uint64_t value_offt)
+{
+	kv_sep2->value_offt = value_offt;
+}
+
 int32_t kv_sep2_get_total_size(struct kv_seperation_splice2 *kv_sep2)
 {
 	return sizeof(kv_sep2->key_size) + kv_sep2->key_size + sizeof(kv_sep2->value_offt);
