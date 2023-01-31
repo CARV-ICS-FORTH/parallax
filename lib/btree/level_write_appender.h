@@ -25,8 +25,8 @@ struct wappender_append_index_segment_params {
  *@brief Given a buffer, the function appends the buffer in the compaction index approprietly.
  *@oaram appender: An initialized level_write_appender object
  *@param params: an initialized struct wappender_appender_index_segment params with metadata for the buffer to be inserted in the compaction index
- *@returns the starting offset of the segment that was flushed*/
-uint64_t wappender_append_index_segment(level_write_appender_t appender, struct wappender_append_index_segment_params);
+ */
+void wappender_append_index_segment(level_write_appender_t appender, struct wappender_append_index_segment_params);
 
 /**
  *@brief Closes and frees the space if an initialized level_write_appender object
@@ -39,5 +39,12 @@ void wappender_close(level_write_appender_t appender);
  *@param appender: the object from which the file descriptor is retrieved
  */
 int wappender_get_fd(level_write_appender_t appender);
+
+/**
+ * @brief retursn the last segment offt for the specific height segment list. (which is the segment to be written)
+ * @param appender: An initialized level_write_appender object
+ * @param height: The height from which the last segment offt is retrieved
+ */
+uint64_t wappender_get_last_segment_offt(level_write_appender_t appender, uint32_t height);
 
 #endif // LEVEL_WRITE_APPENDER_H
