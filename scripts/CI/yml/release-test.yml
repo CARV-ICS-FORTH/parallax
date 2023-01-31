@@ -2,7 +2,7 @@
 .release_build_commands: &release_build_commands
     before_script:
         - mkdir -p build;cd build
-        - cmake .. -DCMAKE_BUILD_TYPE="Release" -DBDB_PATH=/BDB/TIRESIAS -DENABLE_FLTO=ON
+        - cmake .. -DCMAKE_BUILD_TYPE="Release" -DBDB_PATH=/BDB/TIRESIAS -DENABLE_FLTO=ON -DTEBIS_FORMAT=ON
 
 release_test_ycsb_larged:
     image: carvicsforth/arch_carv:latest

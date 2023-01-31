@@ -359,6 +359,12 @@ void dl_init_leaf_node(struct leaf_node *leaf, uint32_t leaf_size)
 	memset(leaf, 0x00, leaf_size);
 	dl_set_leaf_node_type(leaf, leafNode);
 	leaf->header.log_size = leaf_size;
+	leaf->header.node_size = leaf_size;
+}
+
+uint32_t dl_leaf_get_node_size(struct leaf_node *leaf)
+{
+	return leaf->header.node_size;
 }
 
 inline void dl_set_leaf_node_type(struct leaf_node *leaf, nodeType_t node_type)

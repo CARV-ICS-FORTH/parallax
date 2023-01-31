@@ -173,4 +173,10 @@ void dl_leaf_iterator_next(struct leaf_iterator *iter);
  * @param iter: pointer to a leaf iterator
  */
 struct kv_splice_base dl_leaf_iterator_curr(struct leaf_iterator *iter);
+
+/**
+ * @brief returs the node size of the leaf
+ * @param leaf: pointers to a leaf structure
+ */
+uint32_t dl_leaf_get_node_size(struct leaf_node *leaf);
 #endif

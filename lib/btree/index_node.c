@@ -101,6 +101,7 @@ void index_init_node(enum add_guard_option option, struct index_node *node, node
 
 	node->header.height = -1;
 	node->header.fragmentation = 0;
+	node->header.node_size = sizeof(struct index_node);
 
 	/*private key log for index nodes, these are unnecessary now will be deleted*/
 	node->header.log_size = INDEX_NODE_SIZE;

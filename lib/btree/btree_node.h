@@ -32,9 +32,10 @@ struct node_header {
 	int32_t height;
 	int32_t fragmentation;
 	int32_t num_entries;
+	uint32_t node_size;
 	uint16_t log_size;
 	/*pad to be exacly one cache line*/
-	char pad[18];
+	char pad[14];
 
 } __attribute__((packed));
 #endif

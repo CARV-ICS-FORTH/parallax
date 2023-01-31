@@ -2,7 +2,7 @@
 .debug_build_commands: &debug_build_commands
     before_script:
         - mkdir -p build;cd build
-        - cmake .. -DBDB_PATH=/BDB/TIRESIAS
+        - cmake .. -DBDB_PATH=/BDB/TIRESIAS -DTEBIS_FORMAT=ON
 
 test_options:
     image: carvicsforth/ubuntu_carv:latest
