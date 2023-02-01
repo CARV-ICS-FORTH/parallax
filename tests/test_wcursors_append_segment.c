@@ -118,7 +118,7 @@ static par_handle test_wcursors_open_parallax(struct wrap_option *options)
 	db_options.options[REPLICA_MODE].value = 1;
 	db_options.options[PRIMARY_MODE].value = 0;
 	db_options.options[ENABLE_BLOOM_FILTERS].value = 0;
-	db_options.options[ENABLE_COMPACTION_DOUBLE_BUFFERING].value = 0;
+	db_options.options[ENABLE_COMPACTION_DOUBLE_BUFFERING].value = 1;
 	par_handle parallax_db = par_open(&db_options, &error_message);
 	return parallax_db;
 }
@@ -184,7 +184,6 @@ static void test_wcursors_copy_segments(level_write_appender_t wappender, par_ha
 		log_fatal("poxix mem aligned failed");
 		assert(0);
 	}
-
 	char *last_segment_of_level[MAX_HEIGHT];
 	for (int i = 0; i < MAX_HEIGHT; i++) {
 		if (posix_memalign((void **)&last_segment_of_level[i], ALIGNMENT_SIZE, SEGMENT_SIZE)) {
@@ -207,14 +206,17 @@ static void test_wcursors_copy_segments(level_write_appender_t wappender, par_ha
 		uint32_t height = test_wcursors_find_segment_height(buf);
 		uint32_t next_height = test_wcursors_find_segment_height(next_buf);
 		assert(height < MAX_HEIGHT && next_height < MAX_HEIGHT);
+		uint64_t new_allocated_segment = wappender_allocate_space(wappender);
 		if (height != next_height) {
 			// last segment for level height, store in into the buffer
 			memcpy(last_segment_of_level[height], buf, SEGMENT_SIZE);
 			continue;
 		}
-		struct wappender_append_index_segment_params params = {
-			.height = height, .buffer = buf, .buffer_size = SEGMENT_SIZE, .is_last_segment = 0
-		};
+		struct wappender_append_index_segment_params params = { .height = height,
+									.buffer = buf,
+									.buffer_size = SEGMENT_SIZE,
+									.is_last_segment = 0,
+									.next_device_offt = new_allocated_segment };
 		wappender_append_index_segment(wappender, params);
 	}
 	assert(curr_segment_offt == tail_segment_offt);
@@ -227,18 +229,21 @@ static void test_wcursors_copy_segments(level_write_appender_t wappender, par_ha
 		struct wappender_append_index_segment_params params = { .height = i,
 									.buffer = last_segment_of_level[i],
 									.buffer_size = SEGMENT_SIZE,
-									.is_last_segment = 1 };
+									.is_last_segment = 1,
+									.next_device_offt = UINT64_MAX };
 		wappender_append_index_segment(wappender, params);
 	}
 }
 
 static void test_wcursors_create_compaction_index_for_level(DB *BDB, par_handle handle, uint32_t level_id)
 {
+	struct db_handle *db = (struct db_handle *)handle;
 	// init wcursor
 	log_info("Initialize a level write cursor for level 2");
 	uint32_t tree_id = 1;
 	par_init_compaction_id(handle, level_id, tree_id);
-	struct wcursor_level_write_cursor *write_cursor = wcursor_init_write_cursor(level_id, handle, tree_id, false);
+	struct wcursor_level_write_cursor *write_cursor = wcursor_init_write_cursor(
+		level_id, handle, tree_id, db->db_options.options[ENABLE_COMPACTION_DOUBLE_BUFFERING].value);
 	// append all KVs
 	log_info("Insert all key-values in BDB to the level write cursor..");
 	test_wcursors_append_all_kvs(BDB, write_cursor);

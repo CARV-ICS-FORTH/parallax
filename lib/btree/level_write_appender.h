@@ -16,8 +16,9 @@ level_write_appender_t wappender_init(struct db_handle *handle, uint8_t tree_id,
 
 // parameters of function wappender_append_index_segment
 struct wappender_append_index_segment_params {
-	uint32_t height;
+	uint64_t next_device_offt;
 	char *buffer;
+	uint32_t height;
 	uint32_t buffer_size;
 	bool is_last_segment;
 };
@@ -47,4 +48,5 @@ int wappender_get_fd(level_write_appender_t appender);
  */
 uint64_t wappender_get_last_segment_offt(level_write_appender_t appender, uint32_t height);
 
+uint64_t wappender_allocate_space(level_write_appender_t appender);
 #endif // LEVEL_WRITE_APPENDER_H

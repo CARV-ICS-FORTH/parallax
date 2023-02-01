@@ -94,13 +94,13 @@ static struct wcursor_seg_buf *wcursor_get_buf(struct wcursor_level_write_cursor
 	return &w_cursor->segment_buffer[row_id * w_cursor->num_columns + col_id];
 }
 
+#ifdef TEBIS_FORMAT
 static struct wcursor_seg_buf *wcursor_get_buf_with_coordinates(struct wcursor_level_write_cursor *w_cursor,
 								uint32_t row_id, uint32_t col_id)
 {
 	return &w_cursor->segment_buffer[row_id * w_cursor->num_columns + col_id];
 }
 
-#ifdef TEBIS_FORMAT
 static void wcursor_init_status_buffers(struct wcursor_level_write_cursor *w_cursor, uint32_t num_rows,
 					uint32_t num_columns)
 {
@@ -286,7 +286,7 @@ static void wcursor_write_index_segment(struct wcursor_level_write_cursor *w_cur
 		wcursor_invalidate_status_buffer(w_cursor, height, w_cursor->clock[height] % w_cursor->num_columns);
 		log_debug("Set last flush height and clock %u %u", w_cursor->last_flush_request_height,
 			  w_cursor->last_flush_request_clock);
-#endif
+
 		//TODO: geostyl callback
 		parallax_callbacks_t par_callbacks = w_cursor->handle->db_desc->parallax_callbacks;
 		if (are_parallax_callbacks_set(par_callbacks)) {
@@ -300,6 +300,7 @@ static void wcursor_write_index_segment(struct wcursor_level_write_cursor *w_cur
 								  w_cursor->last_flush_request_clock, false);
 		}
 	}
+#endif
 	wcursor_increase_clock(w_cursor, height);
 	wcursor_seg_buf_zero(w_cursor, height, 0, sizeof(struct segment_header));
 
@@ -535,7 +536,7 @@ void wcursor_flush_write_cursor(struct wcursor_level_write_cursor *w_cursor)
 		w_cursor->last_flush_request_clock = w_cursor->clock[height] % w_cursor->num_columns;
 		wcursor_invalidate_status_buffer(w_cursor, w_cursor->last_flush_request_height,
 						 w_cursor->last_flush_request_clock);
-#endif
+
 		//TODO: geostyl callback
 		parallax_callbacks_t par_callbacks = w_cursor->handle->db_desc->parallax_callbacks;
 		if (are_parallax_callbacks_set(par_callbacks)) {
@@ -548,6 +549,8 @@ void wcursor_flush_write_cursor(struct wcursor_level_write_cursor *w_cursor)
 								  w_cursor->last_flush_request_height, SEGMENT_SIZE,
 								  w_cursor->last_flush_request_clock, true);
 		}
+
+#endif
 	}
 
 	if (!pbf_persist_bloom_filter(
@@ -837,7 +840,6 @@ uint32_t wcursor_get_compaction_index_entry_size(struct wcursor_level_write_curs
 	assert(w_cursor);
 	return sizeof(w_cursor->segment_buffer->buffer);
 }
-
 #if TEBIS_FORMAT
 uint32_t wcursor_segment_buffer_status_size(struct wcursor_level_write_cursor *w_cursor)
 {
@@ -852,5 +854,4 @@ volatile char *wcursor_segment_buffer_get_status_addr(struct wcursor_level_write
 	struct wcursor_seg_buf *segment_buffer = wcursor_get_buf_with_coordinates(w_cursor, height, clock_id);
 	return segment_buffer->status[replica_id];
 }
-
 #endif
