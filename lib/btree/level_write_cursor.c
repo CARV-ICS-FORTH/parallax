@@ -840,7 +840,7 @@ uint32_t wcursor_get_compaction_index_entry_size(struct wcursor_level_write_curs
 	assert(w_cursor);
 	return sizeof(w_cursor->segment_buffer->buffer);
 }
-#if TEBIS_FORMAT
+
 uint32_t wcursor_segment_buffer_status_size(struct wcursor_level_write_cursor *w_cursor)
 {
 	assert(w_cursor);
@@ -854,4 +854,3 @@ volatile char *wcursor_segment_buffer_get_status_addr(struct wcursor_level_write
 	struct wcursor_seg_buf *segment_buffer = wcursor_get_buf_with_coordinates(w_cursor, height, clock_id);
 	return segment_buffer->status[replica_id];
 }
-#endif

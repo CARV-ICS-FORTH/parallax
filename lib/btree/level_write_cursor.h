@@ -99,11 +99,10 @@ uint32_t wcursor_get_number_of_rows(struct wcursor_level_write_cursor *w_cursor)
 uint32_t wcursor_get_number_of_cols(struct wcursor_level_write_cursor *w_cursor);
 
 uint32_t wcursor_get_compaction_index_entry_size(struct wcursor_level_write_cursor *w_cursor);
-#if TEBIS_FORMAT
+
 uint32_t wcursor_segment_buffer_status_size(struct wcursor_level_write_cursor *w_cursor);
 
 volatile char *wcursor_segment_buffer_get_status_addr(struct wcursor_level_write_cursor *w_cursor, uint32_t height,
 						      uint32_t clock_id, uint32_t replica_id);
-#endif
 void wcursor_spin_for_buffer_status(struct wcursor_level_write_cursor *wcursor);
 #endif
