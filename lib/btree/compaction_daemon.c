@@ -70,15 +70,8 @@ void *compaction_daemon(void *args)
 				bt_set_db_status(db_desc, BT_COMPACTION_IN_PROGRESS, 1, L1_tree);
 
 				/*start a compaction*/
-				comp_req = (struct compaction_request *)calloc(1UL, sizeof(struct compaction_request));
-				assert(comp_req);
-				comp_req->db_desc = handle->db_desc;
-				comp_req->volume_desc = handle->volume_desc;
-				comp_req->db_options = &handle->db_options;
-				comp_req->src_level = 0;
-				comp_req->src_tree = L0_tree;
-				comp_req->dst_level = 1;
-				comp_req->dst_tree = 1;
+				comp_req = compaction_create_req(handle->db_desc, &handle->db_options, UINT64_MAX,
+								 UINT64_MAX, 0, L0_tree, 1, 1);
 				if (++next_L0_tree_to_compact >= NUM_TREES_PER_LEVEL)
 					next_L0_tree_to_compact = 0;
 			}
@@ -130,13 +123,13 @@ void *compaction_daemon(void *args)
 		if (comp_req) {
 			/*Start a compaction from L0 to L1. Flush L0 prior to compaction from L0 to L1*/
 			log_debug("Flushing L0 for region:%s tree:[0][%u]", db_desc->db_superblock->db_name,
-				  comp_req->src_tree);
-			pr_flush_L0(db_desc, comp_req->src_tree);
+				  compaction_get_src_tree(comp_req));
+			pr_flush_L0(db_desc, compaction_get_src_tree(comp_req));
 			db_desc->levels[1].allocation_txn_id[1] = rul_start_txn(db_desc);
-			comp_req->dst_tree = 1;
-			assert(db_desc->levels[0].root[comp_req->src_tree] != NULL);
-			if (pthread_create(&db_desc->levels[0].compaction_thread[comp_req->src_tree], NULL, compaction,
-					   comp_req) != 0) {
+			compaction_set_dst_tree(comp_req, 1);
+			assert(db_desc->levels[0].root[compaction_get_src_tree(comp_req)] != NULL);
+			if (pthread_create(&db_desc->levels[0].compaction_thread[compaction_get_src_tree(comp_req)],
+					   NULL, compaction, comp_req) != 0) {
 				log_fatal("Failed to start compaction");
 				BUG_ON();
 			}
@@ -157,27 +150,20 @@ void *compaction_daemon(void *args)
 				    dst_level->level_size[tree_2] < dst_level->max_level_size) {
 					bt_set_db_status(db_desc, BT_COMPACTION_IN_PROGRESS, level_id, tree_1);
 					bt_set_db_status(db_desc, BT_COMPACTION_IN_PROGRESS, level_id + 1, tree_2);
-					/*start a compaction*/
-					struct compaction_request *comp_req_p = (struct compaction_request *)calloc(
-						1, sizeof(struct compaction_request));
-					assert(comp_req_p);
-					comp_req_p->db_desc = db_desc;
-					comp_req_p->volume_desc = handle->volume_desc;
-					comp_req_p->db_options = &handle->db_options;
-					comp_req_p->src_level = level_id;
-					comp_req_p->src_tree = tree_1;
-					comp_req_p->dst_level = level_id + 1;
-
-					comp_req_p->dst_tree = 1;
+					struct compaction_request *comp_req_p =
+						compaction_create_req(db_desc, &handle->db_options, UINT64_MAX,
+								      UINT64_MAX, level_id, tree_1, level_id + 1, 1);
 
 					/*Acquire a txn_id for the allocations of the compaction*/
-					db_desc->levels[comp_req_p->dst_level].allocation_txn_id[comp_req_p->dst_tree] =
+					db_desc->levels[compaction_get_dst_level(comp_req_p)]
+						.allocation_txn_id[compaction_get_dst_tree(comp_req_p)] =
 						rul_start_txn(db_desc);
 
 					assert(db_desc->levels[level_id].root[0] != NULL);
-					if (pthread_create(&db_desc->levels[comp_req_p->dst_level]
-								    .compaction_thread[comp_req_p->dst_tree],
-							   NULL, compaction, comp_req_p) != 0) {
+					if (pthread_create(
+						    &db_desc->levels[compaction_get_dst_level(comp_req_p)]
+							     .compaction_thread[compaction_get_dst_tree(comp_req_p)],
+						    NULL, compaction, comp_req_p) != 0) {
 						log_fatal("Failed to start compaction");
 						BUG_ON();
 					}
