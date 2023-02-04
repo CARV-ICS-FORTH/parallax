@@ -437,12 +437,15 @@ static void swap_levels(struct level_descriptor *src, struct level_descriptor *d
 static void compact_with_empty_destination_level(struct compaction_request *comp_req)
 {
 	log_debug("Empty level %d time for an optimization :-)", comp_req->dst_level);
-	/*TODO: swap levels callback*/
-	parallax_callbacks_t par_callbacks = comp_req->db_desc->parallax_callbacks;
-	if (are_parallax_callbacks_set(par_callbacks)) {
-		struct parallax_callback_funcs par_cb = parallax_get_callbacks(par_callbacks);
-		void *context = parallax_get_context(par_callbacks);
-		par_cb.swap_levels_cb(context, comp_req->src_level);
+
+	if (comp_req->db_options->options[PRIMARY_MODE].value) {
+		/*TODO: swap levels callback*/
+		parallax_callbacks_t par_callbacks = comp_req->db_desc->parallax_callbacks;
+		if (are_parallax_callbacks_set(par_callbacks)) {
+			struct parallax_callback_funcs par_cb = parallax_get_callbacks(par_callbacks);
+			void *context = parallax_get_context(par_callbacks);
+			par_cb.swap_levels_cb(context, comp_req->src_level, comp_req->src_tree);
+		}
 	}
 
 	lock_to_update_levels_after_compaction(comp_req);
@@ -527,7 +530,13 @@ void compaction_close(struct compaction_request *comp_req)
 		if (are_parallax_callbacks_set(par_callbacks)) {
 			struct parallax_callback_funcs par_cb = parallax_get_callbacks(par_callbacks);
 			void *context = parallax_get_context(par_callbacks);
-			par_cb.compaction_ended_cb(context, comp_req->src_level);
+			assert(hd.db_desc->levels[comp_req->dst_level].first_segment[1]);
+			assert(hd.db_desc->levels[comp_req->dst_level].last_segment[1]);
+			par_cb.compaction_ended_cb(
+				context, comp_req->src_level,
+				ABSOLUTE_ADDRESS(hd.db_desc->levels[comp_req->dst_level].first_segment[1]),
+				ABSOLUTE_ADDRESS(hd.db_desc->levels[comp_req->dst_level].last_segment[1]),
+				ABSOLUTE_ADDRESS(hd.db_desc->levels[comp_req->dst_level].root[1]));
 		}
 	}
 
