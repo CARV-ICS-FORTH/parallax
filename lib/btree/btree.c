@@ -1142,76 +1142,83 @@ static void *bt_append_to_log_direct_IO(struct log_operation *req, struct log_to
 	MUTEX_LOCK(&handle->db_desc->lock_log);
 
 	/*append data part in the data log*/
-	available_space_in_log = log_metadata->log_desc->size % SEGMENT_SIZE != 0 ?
-					 SEGMENT_SIZE - (log_metadata->log_desc->size % SEGMENT_SIZE) :
-					 SEGMENT_SIZE;
+	if (log_metadata->log_desc->size == 0)
+		available_space_in_log = SEGMENT_SIZE;
+	else if (log_metadata->log_desc->size % SEGMENT_SIZE != 0)
+		available_space_in_log = SEGMENT_SIZE - (log_metadata->log_desc->size % SEGMENT_SIZE);
 
 	uint32_t num_chunks = SEGMENT_SIZE / LOG_CHUNK_SIZE;
 	int segment_change = 0;
 
-	if (available_space_in_log >= reserve_needed_space)
-		goto get_segment;
-	//TODO: geostyl callback
-	if (log_metadata->log_desc->log_type == MEDIUM_LOG &&
-	    are_parallax_callbacks_set(handle->db_desc->parallax_callbacks) &&
-	    parallax_get_callbacks(handle->db_desc->parallax_callbacks).segment_is_full_cb) {
-		struct parallax_callback_funcs parallax_callbacks =
-			parallax_get_callbacks(handle->db_desc->parallax_callbacks);
-		void *context = parallax_get_context(handle->db_desc->parallax_callbacks);
+	if (available_space_in_log < reserve_needed_space) {
+		//TODO: geostyl callback
+		if (log_metadata->log_desc->log_type == MEDIUM_LOG &&
+		    are_parallax_callbacks_set(handle->db_desc->parallax_callbacks) &&
+		    parallax_get_callbacks(handle->db_desc->parallax_callbacks).segment_is_full_cb) {
+			struct parallax_callback_funcs parallax_callbacks =
+				parallax_get_callbacks(handle->db_desc->parallax_callbacks);
+			void *context = parallax_get_context(handle->db_desc->parallax_callbacks);
 
-		uint64_t segment_tail_device_offt = log_metadata->log_desc->tail_dev_offt;
-		parallax_callbacks.segment_is_full_cb(context, segment_tail_device_offt, SEGMENT_SIZE, MEDIUM);
-	} else {
-		req->ins_req->metadata.put_op_metadata.flush_segment_event = 1;
-		req->ins_req->metadata.put_op_metadata.flush_segment_offt = log_metadata->log_desc->tail_dev_offt;
-		enum log_category log_type = L0_RECOVERY;
-		if (log_metadata->log_desc->log_type == BIG_LOG)
-			log_type = BIG;
-		req->ins_req->metadata.put_op_metadata.log_type = log_type;
+			uint64_t segment_tail_device_offt = log_metadata->log_desc->tail_dev_offt;
+			enum log_category log_type = L0_RECOVERY;
+			if (log_metadata->log_desc->log_type == BIG_LOG)
+				log_type = BIG;
+			parallax_callbacks.segment_is_full_cb(context, segment_tail_device_offt, SEGMENT_SIZE,
+							      log_type);
+		} else {
+			req->ins_req->metadata.put_op_metadata.flush_segment_event = 1;
+			req->ins_req->metadata.put_op_metadata.flush_segment_offt =
+				log_metadata->log_desc->tail_dev_offt;
+			enum log_category log_type = L0_RECOVERY;
+			if (log_metadata->log_desc->log_type == BIG_LOG)
+				log_type = BIG;
+			req->ins_req->metadata.put_op_metadata.log_type = log_type;
+		}
+
+		uint32_t curr_tail_id = log_metadata->log_desc->curr_tail_id;
+		//log_info("Segment change avail space %u kv size %u",available_space_in_log,data_size->kv_size);
+		// pad with zeroes remaining bytes in segment
+		if (available_space_in_log > 0) {
+			struct log_operation pad_op = { .metadata = NULL, .optype_tolog = paddingOp, .ins_req = NULL };
+			pad_ticket.req = &pad_op;
+			pad_ticket.data_size = NULL;
+			pad_ticket.tail = log_metadata->log_desc->tail[curr_tail_id % LOG_TAIL_NUM_BUFS];
+			pad_ticket.log_offt = log_metadata->log_desc->size;
+			pr_copy_kv_to_tail(&pad_ticket);
+		}
+
+		// log_info("Resetting segment start %llu end %llu ...",
+		// ticket->tail->start, ticket->tail->end);
+		// Wait for all chunk IOs to finish to characterize it free
+		uint32_t next_tail_id = ++curr_tail_id;
+		struct log_tail *next_tail = log_metadata->log_desc->tail[next_tail_id % LOG_TAIL_NUM_BUFS];
+
+		if (!next_tail->free)
+			wait_for_value(&next_tail->IOs_completed_in_tail, num_chunks);
+		RWLOCK_WRLOCK(&log_metadata->log_desc->log_tail_buf_lock);
+		wait_for_value(&next_tail->pending_readers, 0);
+
+		log_metadata->log_desc->size += available_space_in_log;
+
+		switch (log_metadata->log_desc->log_type) {
+		case BIG_LOG:
+			bt_add_blob(handle->db_desc, log_metadata->log_desc, req->metadata->level_id,
+				    req->metadata->tree_id);
+			break;
+		case MEDIUM_LOG:
+		case SMALL_LOG:
+			bt_add_segment_to_log(handle->db_desc, log_metadata->log_desc, req->metadata->level_id,
+					      req->metadata->tree_id);
+			break;
+		default:
+			log_fatal("Unknown category");
+			BUG_ON();
+		}
+
+		segment_change = 1;
+		RWLOCK_UNLOCK(&log_metadata->log_desc->log_tail_buf_lock);
 	}
-	uint32_t curr_tail_id = log_metadata->log_desc->curr_tail_id;
-	//log_info("Segment change avail space %u kv size %u",available_space_in_log,data_size->kv_size);
-	// pad with zeroes remaining bytes in segment
-	if (available_space_in_log > 0) {
-		struct log_operation pad_op = { .metadata = NULL, .optype_tolog = paddingOp, .ins_req = NULL };
-		pad_ticket.req = &pad_op;
-		pad_ticket.data_size = NULL;
-		pad_ticket.tail = log_metadata->log_desc->tail[curr_tail_id % LOG_TAIL_NUM_BUFS];
-		pad_ticket.log_offt = log_metadata->log_desc->size;
-		pr_copy_kv_to_tail(&pad_ticket);
-	}
 
-	// log_info("Resetting segment start %llu end %llu ...",
-	// ticket->tail->start, ticket->tail->end);
-	// Wait for all chunk IOs to finish to characterize it free
-	uint32_t next_tail_id = ++curr_tail_id;
-	struct log_tail *next_tail = log_metadata->log_desc->tail[next_tail_id % LOG_TAIL_NUM_BUFS];
-
-	if (!next_tail->free)
-		wait_for_value(&next_tail->IOs_completed_in_tail, num_chunks);
-	RWLOCK_WRLOCK(&log_metadata->log_desc->log_tail_buf_lock);
-	wait_for_value(&next_tail->pending_readers, 0);
-
-	log_metadata->log_desc->size += available_space_in_log;
-
-	switch (log_metadata->log_desc->log_type) {
-	case BIG_LOG:
-		bt_add_blob(handle->db_desc, log_metadata->log_desc, req->metadata->level_id, req->metadata->tree_id);
-		break;
-	case MEDIUM_LOG:
-	case SMALL_LOG:
-		bt_add_segment_to_log(handle->db_desc, log_metadata->log_desc, req->metadata->level_id,
-				      req->metadata->tree_id);
-		break;
-	default:
-		log_fatal("Unknown category");
-		BUG_ON();
-	}
-
-	segment_change = 1;
-	RWLOCK_UNLOCK(&log_metadata->log_desc->log_tail_buf_lock);
-
-get_segment:;
 	uint32_t tail_id = log_metadata->log_desc->curr_tail_id;
 	log_kv_entry_ticket.req = req;
 	log_kv_entry_ticket.data_size = data_size;
