@@ -613,21 +613,6 @@ static void wcursor_append_pivot_to_index(int32_t height, struct wcursor_level_w
 	}
 }
 
-static void wcursor_init_medium_log(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
-{
-	log_debug("Initializing medium log for db: %s", db_desc->db_superblock->db_name);
-	struct segment_header *segment = seg_get_raw_log_segment(db_desc, MEDIUM_LOG, level_id, tree_id);
-	db_desc->medium_log.head_dev_offt = ABSOLUTE_ADDRESS(segment);
-	db_desc->medium_log.tail_dev_offt = db_desc->medium_log.head_dev_offt;
-	db_desc->medium_log.size = sizeof(segment_header);
-	init_log_buffer(&db_desc->medium_log, MEDIUM_LOG);
-	struct segment_header *seg_in_mem = (struct segment_header *)db_desc->medium_log.tail[0]->buf;
-	seg_in_mem->segment_id = 0;
-	seg_in_mem->prev_segment = NULL;
-	seg_in_mem->next_segment = NULL;
-	log_debug("Done initializing medium log");
-}
-
 static struct kv_splice_base wcursor_append_medium_L1(struct wcursor_level_write_cursor *w_cursor,
 						      struct kv_splice_base *splice, char *kv_sep_buf,
 						      int32_t kv_sep_buf_size)
@@ -636,11 +621,6 @@ static struct kv_splice_base wcursor_append_medium_L1(struct wcursor_level_write
 	if (w_cursor->level_id != 1 || splice->cat != MEDIUM_INPLACE)
 		return *splice;
 
-	struct db_descriptor *db_desc = w_cursor->handle->db_desc;
-	if (db_desc->medium_log.head_dev_offt == 0 && db_desc->medium_log.tail_dev_offt == 0 &&
-	    db_desc->medium_log.size == 0) {
-		wcursor_init_medium_log(w_cursor->handle->db_desc, w_cursor->level_id, 1);
-	}
 	struct bt_insert_req ins_req;
 	ins_req.metadata.handle = w_cursor->handle;
 	ins_req.metadata.log_offset = 0;
@@ -844,13 +824,24 @@ uint32_t wcursor_get_compaction_index_entry_size(struct wcursor_level_write_curs
 uint32_t wcursor_segment_buffer_status_size(struct wcursor_level_write_cursor *w_cursor)
 {
 	assert(w_cursor);
+#if TEBIS_FORMAT
 	return sizeof(w_cursor->segment_buffer->status[0]);
+#else
+	return UINT32_MAX;
+#endif
 }
 
 volatile char *wcursor_segment_buffer_get_status_addr(struct wcursor_level_write_cursor *w_cursor, uint32_t height,
 						      uint32_t clock_id, uint32_t replica_id)
 {
 	assert(w_cursor);
+#if TEBIS_FORMAT
 	struct wcursor_seg_buf *segment_buffer = wcursor_get_buf_with_coordinates(w_cursor, height, clock_id);
 	return segment_buffer->status[replica_id];
+#else
+	(void)height;
+	(void)clock_id;
+	(void)replica_id;
+	return NULL;
+#endif
 }
