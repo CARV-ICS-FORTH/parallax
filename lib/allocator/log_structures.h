@@ -11,11 +11,14 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-
-#pragma once
+#ifndef LOG_STRUCTURES_H
+#define LOG_STRUCTURES_H
 #include "../btree/conf.h"
 #include <pthread.h>
+#include <stdbool.h>
 #include <stdint.h>
+
+struct log_buffer_iterator;
 
 enum log_type { SMALL_LOG = 0, MEDIUM_LOG, BIG_LOG, LOG_TYPES_COUNT };
 struct log_tail {
@@ -40,3 +43,10 @@ struct log_descriptor {
 	uint64_t curr_tail_id;
 	enum log_type log_type;
 };
+
+struct log_buffer_iterator *log_buffer_iterator_init(struct log_descriptor *log_desc);
+bool log_buffer_iterator_next(struct log_buffer_iterator *iter);
+bool log_buffer_iterator_is_valid(struct log_buffer_iterator *iter);
+char *log_buffer_iterator_get_buffer(struct log_buffer_iterator *iter);
+
+#endif // LOG_STRUCTURES_H

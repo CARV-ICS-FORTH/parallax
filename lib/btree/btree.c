@@ -1949,3 +1949,17 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 	__sync_fetch_and_sub(num_level_writers, 1);
 	return PAR_SUCCESS;
 }
+
+struct log_descriptor *db_desc_get_log_desc(struct db_descriptor *db_desc, enum log_type type)
+{
+	assert(db_desc);
+	if (type == SMALL_LOG)
+		return &db_desc->small_log;
+	if (type == MEDIUM_LOG)
+		return &db_desc->medium_log;
+	if (type == BIG_LOG)
+		return &db_desc->big_log;
+
+	log_fatal("Corrupted log type");
+	_exit(EXIT_FAILURE);
+}

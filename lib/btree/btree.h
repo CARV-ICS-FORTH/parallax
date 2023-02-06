@@ -324,6 +324,8 @@ void bt_set_db_status(struct db_descriptor *db_desc, enum level_compaction_statu
 
 lock_table *find_lock_position(const lock_table **table, struct node_header *node);
 
+char *db_desc_get_log_buffer(struct db_descriptor *db_desc, enum log_type type);
+
 #define ABSOLUTE_ADDRESS(X) (((uint64_t)(X)) - MAPPED)
 #define REAL_ADDRESS(X) ((X) ? (void *)(MAPPED + (uint64_t)(X)) : BUG_ON())
 #define KV_MAX_SIZE (4096 + 8)
