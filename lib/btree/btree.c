@@ -712,45 +712,51 @@ finish:
  *  this functions blocks clients from writing in any of the level 0 roots.
  *  Assumes that the caller has acquired rwlock of level 0.
  *  @param level_id The level in the LSM tree.
+ *  @param block if set to true the context of the thread blocks on the semaphore.
+ *  If set to false it does not block and returns PAR_FAILURE
  *  @param rwlock If 1 locks the guard of level 0 as a read lock. If 0 locks the guard of level 0 as a write lock.
  *  */
-void wait_for_available_level0_tree(db_handle *handle, uint8_t level_id, uint8_t rwlock)
+static bool is_level0_available(struct db_descriptor *db_desc, uint8_t level_id, bool abort_on_compaction,
+				uint8_t rwlock)
 {
 	if (level_id > 0)
-		return;
+		return true;
 
-	int active_tree = handle->db_desc->levels[0].active_tree;
+	int active_tree = db_desc->levels[0].active_tree;
 
 	uint8_t relock = 0;
-	while (handle->db_desc->levels[0].level_size[active_tree] > handle->db_desc->levels[0].max_level_size) {
-		active_tree = handle->db_desc->levels[0].active_tree;
-		if (handle->db_desc->levels[0].level_size[active_tree] > handle->db_desc->levels[0].max_level_size) {
+	while (db_desc->levels[0].level_size[active_tree] > db_desc->levels[0].max_level_size) {
+		active_tree = db_desc->levels[0].active_tree;
+		if (db_desc->levels[0].level_size[active_tree] > db_desc->levels[0].max_level_size) {
 			if (!relock) {
 				/* Release the lock of level 0 to allow compactions to progress. */
-				RWLOCK_UNLOCK(&handle->db_desc->levels[0].guard_of_level.rx_lock);
+				RWLOCK_UNLOCK(&db_desc->levels[0].guard_of_level.rx_lock);
 				relock = 1;
 			}
 
-			MUTEX_LOCK(&handle->db_desc->client_barrier_lock);
-			sem_post(&handle->db_desc->compaction_daemon_interrupts);
+			MUTEX_LOCK(&db_desc->client_barrier_lock);
+			sem_post(&db_desc->compaction_daemon_interrupts);
 
-			if (pthread_cond_wait(&handle->db_desc->client_barrier,
-					      &handle->db_desc->client_barrier_lock) != 0) {
+			if (abort_on_compaction) {
+				MUTEX_UNLOCK(&db_desc->client_barrier_lock);
+				return false;
+			}
+
+			if (pthread_cond_wait(&db_desc->client_barrier, &db_desc->client_barrier_lock) != 0) {
 				log_fatal("failed to throttle");
 				BUG_ON();
 			}
 		}
-		active_tree = handle->db_desc->levels[0].active_tree;
-		MUTEX_UNLOCK(&handle->db_desc->client_barrier_lock);
+		active_tree = db_desc->levels[0].active_tree;
+		MUTEX_UNLOCK(&db_desc->client_barrier_lock);
 	}
 
 	/* Reacquire the lock of level 0 to access it safely. */
-	if (relock) {
-		if (rwlock == 1)
-			RWLOCK_RDLOCK(&handle->db_desc->levels[0].guard_of_level.rx_lock);
-		else
-			RWLOCK_WRLOCK(&handle->db_desc->levels[0].guard_of_level.rx_lock);
-	}
+	if (relock)
+		rwlock == 1 ? RWLOCK_RDLOCK(&db_desc->levels[0].guard_of_level.rx_lock) :
+			      RWLOCK_WRLOCK(&db_desc->levels[0].guard_of_level.rx_lock);
+
+	return true;
 }
 
 enum kv_category calculate_KV_category(uint32_t key_size, uint32_t value_size, request_type op_type)
@@ -852,7 +858,7 @@ struct par_put_metadata insert_key_value(db_handle *handle, void *key, void *val
 }
 
 struct par_put_metadata serialized_insert_key_value(db_handle *handle, const char *serialized_key_value,
-						    bool append_to_log, request_type op_type,
+						    bool append_to_log, request_type op_type, bool abort_on_compaction,
 						    const char **error_message)
 {
 	bt_insert_req ins_req = { .metadata.handle = handle,
@@ -860,7 +866,8 @@ struct par_put_metadata serialized_insert_key_value(db_handle *handle, const cha
 				  .metadata.tombstone = op_type == deleteOp,
 				  .metadata.level_id = 0,
 				  .metadata.key_format = KV_FORMAT,
-				  .metadata.append_to_log = append_to_log };
+				  .metadata.append_to_log = append_to_log,
+				  .abort_on_compaction = abort_on_compaction };
 
 	int32_t key_size = kv_splice_get_key_size((struct kv_splice *)serialized_key_value);
 	int32_t value_size = kv_splice_get_value_size((struct kv_splice *)serialized_key_value);
@@ -1678,7 +1685,12 @@ release_and_retry:
 		BUG_ON();
 	}
 
-	wait_for_available_level0_tree(ins_req->metadata.handle, level_id, 0);
+	bool avail = is_level0_available(ins_req->metadata.handle->db_desc, level_id, ins_req->abort_on_compaction, 0);
+	if (ins_req->abort_on_compaction && !avail)
+		return PAR_FAILURE;
+	if (!avail)
+		log_fatal("Failue cannot write to Level-0");
+
 	/*now look which is the active_tree of L0*/
 	if (ins_req->metadata.level_id == 0)
 		ins_req->metadata.tree_id = ins_req->metadata.handle->db_desc->levels[0].active_tree;
@@ -1874,7 +1886,11 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 		BUG_ON();
 	}
 
-	wait_for_available_level0_tree(ins_req->metadata.handle, level_id, 1);
+	bool avail = is_level0_available(ins_req->metadata.handle->db_desc, level_id, ins_req->abort_on_compaction, 1);
+	if (ins_req->abort_on_compaction && !avail)
+		return PAR_FAILURE;
+	if (!avail)
+		log_fatal("Failue cannot write to Level-0");
 	/*now look which is the active_tree of L0*/
 	if (ins_req->metadata.level_id == 0)
 		ins_req->metadata.tree_id = ins_req->metadata.handle->db_desc->levels[0].active_tree;

@@ -902,7 +902,8 @@ void pr_recover_L0(struct db_descriptor *db_desc)
 		const char *error_message = NULL;
 
 		request_type op_type = !cursor[choice]->tombstone ? insertOp : deleteOp;
-		serialized_insert_key_value(&handle, (const char *)kvs[choice]->par_kv, false, op_type, &error_message);
+		serialized_insert_key_value(&handle, (const char *)kvs[choice]->par_kv, false, op_type, false,
+					    &error_message);
 
 		if (error_message) {
 			log_fatal("Insert failed reason = %s, exiting", error_message);

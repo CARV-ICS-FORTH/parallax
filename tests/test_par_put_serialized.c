@@ -46,7 +46,7 @@ int main(int argc, char *argv[])
 	kv_splice_set_key(serialized_kv, "abcdabcda", 10);
 	kv_splice_set_value(serialized_kv, "a", 2);
 
-	par_put_serialized(handle, serialized_key_value, &error_message, true);
+	par_put_serialized(handle, serialized_key_value, &error_message, false, true);
 	if (error_message) {
 		log_fatal("%s", error_message);
 		return EXIT_FAILURE;

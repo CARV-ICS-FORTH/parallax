@@ -72,12 +72,18 @@ struct par_put_metadata par_put(par_handle handle, struct par_key_value *key_val
 
 /**
  * Inserts a serialized key value pair by using the buffer provided by the user.
- * @param serialized_key_value is a buffer containing the serialized key value pair. The format of the key value pair is | key_size | key | value_size | value |
- * where {key,value}_size is uint32_t.
- * @param append_to_log. True to append to log and False not to append. In case the key-value belongs to the big category it will always be appended to the log.
+ * @param serialized_key_value is a buffer containing the serialized key value
+ * pair. The format of the key value pair is | key_size | key | value_size |
+ * value | where {key,value}_size is uint32_t.
+ * @param append_to_log. True to append to log and False not to append. In case
+ * the key-value belongs to the big category it will always be appended to the
+ * log.
+ * @param abort_on_compaction. If set to true the calling thread aborts the
+ * operation if it cannot be served due to a pending L0->L1 compaction. If set
+ * to false it blocks until L0 is available.
  */
 struct par_put_metadata par_put_serialized(par_handle handle, char *serialized_key_value, const char **error_message,
-					   bool append_to_log);
+					   bool append_to_log, bool abort_on_compaction);
 
 /**
  * Takes as input a key and searches for it. If the key exists in the DB, then

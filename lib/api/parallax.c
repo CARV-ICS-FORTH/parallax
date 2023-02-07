@@ -78,18 +78,11 @@ struct par_put_metadata par_put(par_handle handle, struct par_key_value *key_val
 				key_value->k.size, key_value->v.val_size, insertOp, error_message);
 }
 
-/**
- * Execute a put request of the key given a kv_formated key_value
- * @param handle, the db handle that we initiated with db open
- * @param serialized_key_value, the kv_formated key to be inserted
- * @param error_message, possible error message upon a failure in the insert path
- * @param append_to_log, True
- * */
 struct par_put_metadata par_put_serialized(par_handle handle, char *serialized_key_value, const char **error_message,
-					   bool append_to_log)
+					   bool append_to_log, bool abort_on_compaction)
 {
 	return serialized_insert_key_value((db_handle *)handle, serialized_key_value, append_to_log, insertOp,
-					   error_message);
+					   abort_on_compaction, error_message);
 }
 
 void par_get(par_handle handle, struct par_key *key, struct par_value *value, const char **error_message)

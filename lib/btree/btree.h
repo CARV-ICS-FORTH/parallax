@@ -241,7 +241,7 @@ typedef struct bt_mutate_req {
 	uint8_t append_to_log : 1;
 	uint8_t gc_request : 1;
 	uint8_t recovery_request : 1;
-	/*needed for distributed version of Kreon*/
+	/*needed for distributed version of Tebis*/
 	uint8_t segment_full_event : 1;
 	uint8_t tombstone : 1;
 	char key_format;
@@ -252,6 +252,7 @@ typedef struct bt_insert_req {
 	char *key_value_buf;
 	//Used in some cases where the KV has been written
 	uint64_t kv_dev_offt;
+	bool abort_on_compaction;
 } bt_insert_req;
 
 struct log_operation {
@@ -307,10 +308,13 @@ struct par_put_metadata insert_key_value(db_handle *handle, void *key, void *val
  * @param serialized_key_value is a buffer containing the serialized key value pair.
  * @param append_to_log True to append the entry to the log, False not to. In case the kv belongs to the big category it is always appended.
  * @param op_type Defines the operation delete or put.
+ * @param abort_on_compaction If set to true the operation is aborted in case
+ * it cannot be fullfilled due to a pending L0->L1 compaction. be completed due
+ * to a pending L0 compaction
  * @return Returns the error message if any otherwise NULL on success.
  * */
 struct par_put_metadata serialized_insert_key_value(db_handle *handle, const char *serialized_key_value,
-						    bool append_to_log, request_type op_type,
+						    bool append_to_log, request_type op_type, bool abort_on_compaction,
 						    const char **error_message);
 
 const char *btree_insert_key_value(bt_insert_req *ins_req) __attribute__((warn_unused_result));
