@@ -164,35 +164,33 @@ if(BUILD_TESTING)
   add_parallax_test(NAME test_gc COMMAND run_test.sh test_gc
                     --num_of_kvs=1000000)
 
-  if(BDB_LIBRARY AND NOT ${BDB_PATH} STREQUAL "")
+  if(TEBIS_FORMAT)
+    if(BDB_LIBRARY AND NOT ${BDB_PATH} STREQUAL "")
 
-    add_test(
-      NAME test_wcursors_append_segment
-      COMMAND $<TARGET_FILE:test_wcursors_append_segment> --file=${FILEPATH}
-              --num_of_kvs=1000000 --BDB_file=${BDB_PATH})
-    add_executable(test_wcursors_append_segment test_wcursors_append_segment.c
-                                                arg_parser.c)
-    target_link_libraries(test_wcursors_append_segment "${PROJECT_NAME}"
-                          ${DEPENDENCIES} ${BDB_LIBRARY})
+      add_test(
+        NAME test_wcursors_append_segment
+        COMMAND $<TARGET_FILE:test_wcursors_append_segment> --file=${FILEPATH}
+                --num_of_kvs=1000000 --BDB_file=${BDB_PATH})
+      add_executable(test_wcursors_append_segment test_wcursors_append_segment.c
+                                                  arg_parser.c)
+      target_link_libraries(test_wcursors_append_segment "${PROJECT_NAME}"
+                            ${DEPENDENCIES} ${BDB_LIBRARY})
+    endif()
+
+    add_test(NAME test_wcursors_segment_buffers_cursor
+             COMMAND $<TARGET_FILE:test_wcursors_segment_buffers_cursor>
+                     --file=${FILEPATH})
+    add_executable(test_wcursors_segment_buffers_cursor
+                   test_wcursors_segment_buffers_cursor.c arg_parser.c)
+    target_link_libraries(test_wcursors_segment_buffers_cursor
+                          "${PROJECT_NAME}" ${DEPENDENCIES})
+
+    add_test(NAME test_wcursors_api COMMAND $<TARGET_FILE:test_wcursors_api>
+                                            --file=${FILEPATH})
+    add_executable(test_wcursors_api test_wcursors_api.c arg_parser.c)
+    target_link_libraries(test_wcursors_api "${PROJECT_NAME}" ${DEPENDENCIES})
 
   endif()
-
-  add_test(NAME test_wcursors_segment_buffers_cursor
-           COMMAND $<TARGET_FILE:test_wcursors_segment_buffers_cursor>
-                   --file=${FILEPATH})
-  add_executable(test_wcursors_segment_buffers_cursor
-                 test_wcursors_segment_buffers_cursor.c arg_parser.c)
-  target_link_libraries(test_wcursors_segment_buffers_cursor "${PROJECT_NAME}"
-                        ${DEPENDENCIES})
-
-
-  add_test(NAME test_wcursors_api
-           COMMAND $<TARGET_FILE:test_wcursors_api>
-                   --file=${FILEPATH})
-  add_executable(test_wcursors_api
-                 test_wcursors_api.c arg_parser.c)
-  target_link_libraries(test_wcursors_api "${PROJECT_NAME}"
-                        ${DEPENDENCIES})
 
   add_executable(test_mixes test_mixes.c arg_parser.c)
   target_link_libraries(test_mixes "${PROJECT_NAME}")
