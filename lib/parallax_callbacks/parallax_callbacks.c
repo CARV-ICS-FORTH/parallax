@@ -31,6 +31,10 @@ void parallax_init_callbacks(par_handle dbhandle, struct parallax_callback_funcs
 	if (parallax_callbacks->segment_is_full_cb)
 		parallax_cb->parallax_callback_functions.segment_is_full_cb = parallax_callbacks->segment_is_full_cb;
 
+	if (parallax_callbacks->spin_for_medium_log_flush)
+		parallax_cb->parallax_callback_functions.spin_for_medium_log_flush =
+			parallax_callbacks->spin_for_medium_log_flush;
+
 	if (parallax_callbacks->compaction_started_cb)
 		parallax_cb->parallax_callback_functions.compaction_started_cb =
 			parallax_callbacks->compaction_started_cb;

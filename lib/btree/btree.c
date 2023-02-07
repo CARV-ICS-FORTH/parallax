@@ -1160,11 +1160,8 @@ static void *bt_append_to_log_direct_IO(struct log_operation *req, struct log_to
 			void *context = parallax_get_context(handle->db_desc->parallax_callbacks);
 
 			uint64_t segment_tail_device_offt = log_metadata->log_desc->tail_dev_offt;
-			enum log_category log_type = L0_RECOVERY;
-			if (log_metadata->log_desc->log_type == BIG_LOG)
-				log_type = BIG;
-			parallax_callbacks.segment_is_full_cb(context, segment_tail_device_offt, SEGMENT_SIZE,
-							      log_type);
+			parallax_callbacks.segment_is_full_cb(context, segment_tail_device_offt, NULL, SEGMENT_SIZE,
+							      UINT32_MAX, MEDIUM_LOG);
 		} else {
 			req->ins_req->metadata.put_op_metadata.flush_segment_event = 1;
 			req->ins_req->metadata.put_op_metadata.flush_segment_offt =

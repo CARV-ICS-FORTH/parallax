@@ -1,5 +1,6 @@
 #ifndef parallax_CALLBACKS_H
 #define parallax_CALLBACKS_H
+#include "../allocator/log_structures.h"
 #include "parallax/structures.h"
 #include <stdbool.h>
 #include <stdint.h>
@@ -9,7 +10,9 @@ struct wcursor_level_write_cursor;
  * Call back functions related to various parallax events
 */
 struct parallax_callback_funcs {
-	void (*segment_is_full_cb)(void *context, uint64_t seg_offt, uint32_t segment_size, enum log_category log_type);
+	void (*segment_is_full_cb)(void *context, uint64_t seg_offt, char *segment_buffer_addr, uint32_t segment_size,
+				   uint32_t chunk_id, enum log_type log_type);
+	void (*spin_for_medium_log_flush)(void *context, uint32_t chunk_id);
 	void (*compaction_started_cb)(void *context, uint64_t small_log_tail_dev, uint64_t big_log_tail_dev,
 				      uint32_t src_level_id, uint8_t dst_tree_id,
 				      struct wcursor_level_write_cursor *wcursor);
