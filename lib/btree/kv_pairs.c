@@ -254,7 +254,7 @@ int32_t kv_splice_base_get_value_size(struct kv_splice_base *splice)
 {
 	assert(splice);
 	return kv_splice_base_is_kv_format(splice) ? kv_splice_get_value_size(splice->kv_splice) :
-						     sizeof(splice->kv_sep2->value_offt);
+						     (int32_t)sizeof(splice->kv_sep2->value_offt);
 }
 
 char *kv_splice_base_get_key_buf(struct kv_splice_base *splice)

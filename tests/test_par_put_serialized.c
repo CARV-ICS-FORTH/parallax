@@ -50,9 +50,8 @@ int main(int argc, char *argv[])
 	struct kv_splice_base splice_base = { .kv_cat = SMALL_INPLACE,
 					      .kv_type = KV_FORMAT,
 					      .kv_splice = serialized_kv };
-
 	error_message = NULL;
-	par_put_serialized(handle, serialized_key_value, &error_message, false, true);
+	par_put_serialized(handle, (char *)&splice_base, &error_message, false, true);
 	if (error_message) {
 		log_fatal("%s", error_message);
 		return EXIT_FAILURE;
