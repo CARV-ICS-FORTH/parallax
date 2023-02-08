@@ -986,11 +986,6 @@ static void pr_do_log_chunk_IO(struct pr_log_ticket *ticket)
 	uint32_t chunk_id = offt_in_seg / LOG_CHUNK_SIZE;
 	uint32_t num_chunks = SEGMENT_SIZE / LOG_CHUNK_SIZE;
 	int do_IO;
-	if (chunk_id == 0) {
-		log_info("OK TO BRIKA");
-		assert(0);
-	}
-
 	(void)num_chunks;
 	assert(chunk_id != num_chunks);
 
@@ -1019,6 +1014,14 @@ static void pr_do_log_chunk_IO(struct pr_log_ticket *ticket)
 	// log_info("IO time, start %llu size %llu segment dev_offt %llu offt in seg
 	// %llu", total_bytes_written, size,
 	//	 ticket->tail->dev_segment_offt, ticket->IO_start_offt);
+	parallax_callbacks_t par_callbacks = comp_req->db_desc->parallax_callbacks;
+	if (are_parallax_callbacks_set(par_callbacks)) {
+		struct parallax_callback_funcs par_cb = parallax_get_callbacks(par_callbacks);
+		void *context = parallax_get_context(par_callbacks);
+		par_cb.segment_is_full_cb(context, ticket->tail->dev_offt, ticket->IO_start_offt,
+					  &ticket->tail->buf[ticket->IO_start_offt], size);
+	}
+
 	while (total_bytes_written < size) {
 		ssize_t bytes_written = pwrite(ticket->tail->fd,
 					       &ticket->tail->buf[ticket->IO_start_offt + total_bytes_written],
@@ -1179,20 +1182,12 @@ static void *bt_append_to_log_direct_IO(struct log_operation *req, struct log_to
 
 	uint32_t num_chunks = SEGMENT_SIZE / LOG_CHUNK_SIZE;
 	int segment_change = 0;
+	flush_medium_log = false;
 
 	if (available_space_in_log < reserve_needed_space) {
-		//TODO: geostyl callback
-		if (log_metadata->log_desc->log_type == MEDIUM_LOG &&
-		    are_parallax_callbacks_set(handle->db_desc->parallax_callbacks) &&
-		    parallax_get_callbacks(handle->db_desc->parallax_callbacks).segment_is_full_cb) {
-			struct parallax_callback_funcs parallax_callbacks =
-				parallax_get_callbacks(handle->db_desc->parallax_callbacks);
-			void *context = parallax_get_context(handle->db_desc->parallax_callbacks);
-
-			uint64_t segment_tail_device_offt = log_metadata->log_desc->tail_dev_offt;
-			parallax_callbacks.segment_is_full_cb(context, segment_tail_device_offt, NULL, SEGMENT_SIZE,
-							      UINT32_MAX, MEDIUM_LOG);
-		} else {
+		if (log_metadata->log_desc->log_type == MEDIUM_LOG)
+			flush_medium_log = true;
+		else {
 			req->ins_req->metadata.put_op_metadata.flush_segment_event = 1;
 			req->ins_req->metadata.put_op_metadata.flush_segment_offt =
 				log_metadata->log_desc->tail_dev_offt;
