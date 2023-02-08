@@ -10,7 +10,7 @@ struct wcursor_level_write_cursor;
 struct parallax_callback_funcs {
 	void (*segment_is_full_cb)(void *context, uint64_t segment_offt, uint64_t IO_starting_offt, uint32_t IO_size,
 				   uint32_t chunk_id, uint32_t tail_id);
-	void (*spin_for_medium_log_flush)(void *context, uint32_t chunk_id);
+	void (*spin_for_medium_log_flush)(void *context, uint32_t tail_id);
 	void (*compaction_started_cb)(void *context, uint64_t small_log_tail_dev, uint64_t big_log_tail_dev,
 				      uint32_t src_level_id, uint8_t dst_tree_id,
 				      struct wcursor_level_write_cursor *wcursor);

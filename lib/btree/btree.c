@@ -1045,7 +1045,7 @@ static void pr_do_log_chunk_IO(struct pr_log_ticket *ticket)
 	if (are_parallax_callbacks_set(par_callbacks) && ticket->log_type == MEDIUM_LOG) {
 		struct parallax_callback_funcs par_cb = parallax_get_callbacks(par_callbacks);
 		void *context = parallax_get_context(par_callbacks);
-		par_cb.spin_for_medium_log_flush(context, chunk_id);
+		par_cb.spin_for_medium_log_flush(context, ticket->tail_id);
 	}
 	__sync_fetch_and_add(&ticket->tail->IOs_completed_in_tail, 1);
 
