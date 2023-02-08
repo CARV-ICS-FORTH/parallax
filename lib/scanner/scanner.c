@@ -373,11 +373,11 @@ bool scanner_get_next(struct scanner *scanner)
 			return false;
 
 		scanner->keyValue = node.splice.kv_splice;
-		if (node.splice.cat == MEDIUM_INLOG || node.splice.cat == BIG_INLOG) {
+		if (node.splice.kv_type == KV_PREFIX) {
 			uint64_t kv_dev_offt = kv_sep2_get_value_offt(node.splice.kv_sep2);
 			scanner->keyValue = REAL_ADDRESS(kv_dev_offt);
 		}
-		scanner->kv_cat = node.splice.cat;
+		scanner->kv_cat = node.splice.kv_cat;
 		scanner->kv_level_id = node.level_id;
 
 		assert(scanner->level_scanner[node.level_id][node.active_tree].valid);

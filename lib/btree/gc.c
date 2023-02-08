@@ -72,10 +72,12 @@ void move_kv_pairs_to_new_segment(struct db_handle handle, stack *marks)
 		// struct splice *value = (struct splice *)(kv_address +
 		// VALUE_SIZE_OFFSET(key->size));
 		ins_req.metadata.handle = &handle;
-		ins_req.key_value_buf = kv_address;
+		struct kv_splice_base splice_base = { .kv_cat = BIG_INLOG,
+						      .kv_type = KV_FORMAT,
+						      .kv_splice = (struct kv_splice *)kv_address };
+		ins_req.splice_base = &splice_base;
 		ins_req.metadata.append_to_log = 1;
 		ins_req.metadata.gc_request = 1;
-		ins_req.metadata.recovery_request = 0;
 		ins_req.metadata.level_id = 0;
 		ins_req.metadata.tombstone = 0;
 		ins_req.metadata.key_format = KV_FORMAT;

@@ -225,7 +225,7 @@ void *compaction_daemon(void *args);
 typedef struct bt_mutate_req {
 	struct par_put_metadata put_op_metadata;
 	db_handle *handle;
-	uint64_t *reorganized_leaf_pos_INnode;
+	// uint64_t *reorganized_leaf_pos_INnode;
 	/*offset in log where the kv was written*/
 	uint64_t log_offset;
 	/*info for cases of segment_full_event*/
@@ -240,16 +240,14 @@ typedef struct bt_mutate_req {
 	uint8_t tree_id;
 	uint8_t append_to_log : 1;
 	uint8_t gc_request : 1;
-	uint8_t recovery_request : 1;
-	/*needed for distributed version of Tebis*/
-	uint8_t segment_full_event : 1;
 	uint8_t tombstone : 1;
-	char key_format;
+	char key_format; //obsolete
 } bt_mutate_req;
 
 typedef struct bt_insert_req {
 	bt_mutate_req metadata;
-	char *key_value_buf;
+	// char *key_value_buf;
+	struct kv_splice_base *splice_base;
 	//Used in some cases where the KV has been written
 	uint64_t kv_dev_offt;
 	bool abort_on_compaction;
@@ -316,7 +314,7 @@ struct par_put_metadata insert_key_value(db_handle *handle, void *key, void *val
  * to a pending L0 compaction
  * @return Returns the error message if any otherwise NULL on success.
  * */
-struct par_put_metadata serialized_insert_key_value(db_handle *handle, const char *serialized_key_value,
+struct par_put_metadata serialized_insert_key_value(db_handle *handle, struct kv_splice_base *splice_base,
 						    bool append_to_log, request_type op_type, bool abort_on_compaction,
 						    const char **error_message);
 

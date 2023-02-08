@@ -614,12 +614,12 @@ static void wcursor_append_pivot_to_index(int32_t height, struct wcursor_level_w
 }
 
 static struct kv_splice_base wcursor_append_medium_L1(struct wcursor_level_write_cursor *w_cursor,
-						      struct kv_splice_base *splice, char *kv_sep_buf,
+						      struct kv_splice_base *splice_base, char *kv_sep_buf,
 						      int32_t kv_sep_buf_size)
 
 {
-	if (w_cursor->level_id != 1 || splice->cat != MEDIUM_INPLACE)
-		return *splice;
+	if (w_cursor->level_id != 1 || splice_base->kv_cat != MEDIUM_INPLACE)
+		return *splice_base;
 
 	struct bt_insert_req ins_req;
 	ins_req.metadata.handle = w_cursor->handle;
@@ -630,13 +630,11 @@ static struct kv_splice_base wcursor_append_medium_L1(struct wcursor_level_write
 	ins_req.metadata.tree_id = 1;
 	ins_req.metadata.append_to_log = 1;
 	ins_req.metadata.gc_request = 0;
-	ins_req.metadata.recovery_request = 0;
 	ins_req.metadata.key_format = KV_FORMAT;
 	ins_req.metadata.tombstone = 0;
-	ins_req.key_value_buf = (char *)kv_splice_base_get_reference(splice);
-	ins_req.metadata.reorganized_leaf_pos_INnode = NULL;
+	ins_req.splice_base = splice_base;
 	/*For Tebis-parallax currently*/
-	ins_req.metadata.segment_full_event = 0;
+	// ins_req.metadata.segment_full_event = 0;
 	ins_req.metadata.log_segment_addr = 0;
 	ins_req.metadata.log_offset_full_event = 0;
 	ins_req.metadata.segment_id = 0;
@@ -648,11 +646,12 @@ static struct kv_splice_base wcursor_append_medium_L1(struct wcursor_level_write
 
 	char *log_location = append_key_value_to_log(&log_op);
 
-	struct kv_splice_base kv_sep = {
-		.cat = MEDIUM_INLOG,
-		.kv_sep2 = kv_sep2_create(kv_splice_base_get_key_size(splice), kv_splice_base_get_key_buf(splice),
-					  ABSOLUTE_ADDRESS(log_location), kv_sep_buf, kv_sep_buf_size)
-	};
+	struct kv_splice_base kv_sep = { .kv_cat = MEDIUM_INLOG,
+					 .kv_type = KV_PREFIX,
+					 .kv_sep2 = kv_sep2_create(kv_splice_base_get_key_size(splice_base),
+								   kv_splice_base_get_key_buf(splice_base),
+								   ABSOLUTE_ADDRESS(log_location), kv_sep_buf,
+								   kv_sep_buf_size) };
 	return kv_sep;
 }
 
@@ -665,11 +664,13 @@ bool wcursor_append_KV_pair(struct wcursor_level_write_cursor *w_cursor, struct 
 
 	char kv_sep_buf[KV_SEP2_MAX_SIZE];
 
-	if (w_cursor->level_id == 1 && splice->cat == MEDIUM_INPLACE)
+	if (w_cursor->level_id == 1 && splice->kv_cat == MEDIUM_INPLACE)
 		new_splice = wcursor_append_medium_L1(w_cursor, splice, kv_sep_buf, KV_SEP2_MAX_SIZE);
 
-	if (new_splice.cat == MEDIUM_INLOG && w_cursor->level_id == w_cursor->handle->db_desc->level_medium_inplace) {
-		new_splice.cat = MEDIUM_INPLACE;
+	if (new_splice.kv_cat == MEDIUM_INLOG &&
+	    w_cursor->level_id == w_cursor->handle->db_desc->level_medium_inplace) {
+		new_splice.kv_cat = MEDIUM_INPLACE;
+		new_splice.kv_type = KV_FORMAT;
 		new_splice.kv_splice = (struct kv_splice *)mlog_cache_fetch_kv_from_LRU(
 			w_cursor->medium_log_LRU_cache, kv_sep2_get_value_offt(new_splice.kv_sep2));
 		assert(kv_splice_base_get_key_size(&new_splice) <= MAX_KEY_SIZE);

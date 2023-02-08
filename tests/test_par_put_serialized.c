@@ -1,4 +1,6 @@
 #include "arg_parser.h"
+#include "btree/btree.h"
+#include "parallax/structures.h"
 #include <btree/kv_pairs.h>
 #include <log.h>
 #include <parallax/parallax.h>
@@ -45,7 +47,11 @@ int main(int argc, char *argv[])
 	kv_splice_set_value_size(serialized_kv, 2);
 	kv_splice_set_key(serialized_kv, "abcdabcda", 10);
 	kv_splice_set_value(serialized_kv, "a", 2);
+	struct kv_splice_base splice_base = { .kv_cat = SMALL_INPLACE,
+					      .kv_type = KV_FORMAT,
+					      .kv_splice = serialized_kv };
 
+	error_message = NULL;
 	par_put_serialized(handle, serialized_key_value, &error_message, false, true);
 	if (error_message) {
 		log_fatal("%s", error_message);

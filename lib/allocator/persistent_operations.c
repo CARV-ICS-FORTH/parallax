@@ -756,9 +756,16 @@ static void init_pos_log_cursor_in_segment(struct db_descriptor *db_desc, struct
 	prepare_cursor_op(cursor);
 }
 
+static uint64_t log_cursor_calc_splice_dev_offt(struct log_cursor *log_cursor, struct kv_splice *splice)
+{
+	assert(log_cursor && splice);
+	return log_cursor->log_segments->segments[log_cursor->log_segments->entry_id] +
+	       ((uint64_t)splice - (uint64_t)log_cursor->segment_in_mem_buffer);
+}
+
 static struct log_cursor *init_log_cursor(struct db_descriptor *db_desc, enum log_type type)
 {
-	struct log_cursor *cursor = calloc(1, sizeof(struct log_cursor));
+	struct log_cursor *cursor = calloc(1UL, sizeof(struct log_cursor));
 	cursor->segment_in_mem_size = SEGMENT_SIZE;
 	cursor->db_desc = db_desc;
 	cursor->type = type;
@@ -901,9 +908,29 @@ void pr_recover_L0(struct db_descriptor *db_desc)
 
 		const char *error_message = NULL;
 
+		//cppcheck-suppress variableScope
+		char kv_sep2_buf[KV_SEP2_MAX_SIZE];
+		struct kv_splice_base splice_base = { .kv_cat = SMALL_INPLACE,
+						      .kv_type = KV_FORMAT,
+						      .kv_splice = cursor[choice]->entry.par_kv };
+		if (BIG_LOG == choice) {
+			splice_base.kv_sep2 =
+				kv_sep2_create(kv_splice_get_key_size(splice_base.kv_splice),
+					       kv_splice_get_key_offset_in_kv(splice_base.kv_splice),
+					       log_cursor_calc_splice_dev_offt(cursor[choice], kvs[choice]->par_kv),
+					       kv_sep2_buf, KV_SEP2_MAX_SIZE);
+			splice_base.kv_type = KV_PREFIX;
+			splice_base.kv_cat = BIG_INLOG;
+			// //dbg
+			// uint64_t value_offt = kv_sep2_get_value_offt(splice_base.kv_sep2);
+			// struct kv_splice *dbg_splice = REAL_ADDRESS(value_offt);
+			// assert(kv_splice_get_key_size(dbg_splice) <= MAX_KEY_SIZE);
+		}
+
 		request_type op_type = !cursor[choice]->tombstone ? insertOp : deleteOp;
-		serialized_insert_key_value(&handle, (const char *)kvs[choice]->par_kv, false, op_type, false,
-					    &error_message);
+		//old school
+		// serialized_insert_key_value(&handle, kvs[choice]->par_kv, false, op_type, false, &error_message);
+		serialized_insert_key_value(&handle, &splice_base, false, op_type, false, &error_message);
 
 		if (error_message) {
 			log_fatal("Insert failed reason = %s, exiting", error_message);

@@ -32,6 +32,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 #define PAR_MAX_PREALLOCATED_SIZE 256
 
 char *par_format(char *device_name, uint32_t max_regions_num)
@@ -81,8 +82,8 @@ struct par_put_metadata par_put(par_handle handle, struct par_key_value *key_val
 struct par_put_metadata par_put_serialized(par_handle handle, char *serialized_key_value, const char **error_message,
 					   bool append_to_log, bool abort_on_compaction)
 {
-	return serialized_insert_key_value((db_handle *)handle, serialized_key_value, append_to_log, insertOp,
-					   abort_on_compaction, error_message);
+	return serialized_insert_key_value((db_handle *)handle, (struct kv_splice_base *)serialized_key_value,
+					   append_to_log, insertOp, abort_on_compaction, error_message);
 }
 
 void par_get(par_handle handle, struct par_key *key, struct par_value *value, const char **error_message)

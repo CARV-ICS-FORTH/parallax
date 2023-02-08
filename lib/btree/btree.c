@@ -815,16 +815,6 @@ static const char *insert_error_handling(db_handle *handle, uint32_t key_size, u
 struct par_put_metadata insert_key_value(db_handle *handle, void *key, void *value, int32_t key_size,
 					 int32_t value_size, request_type op_type, const char **error_message)
 {
-	char kv_pair[KV_MAX_SIZE];
-	bt_insert_req ins_req = {
-		.metadata.handle = handle,
-		.key_value_buf = kv_pair,
-		.metadata.tombstone = op_type == deleteOp,
-		.metadata.put_op_metadata.key_value_category = ins_req.metadata.cat,
-		.metadata.cat = calculate_KV_category(key_size, value_size, op_type),
-		.metadata.key_format = KV_FORMAT,
-		.metadata.append_to_log = 1,
-	};
 	*error_message = insert_error_handling(handle, key_size, value_size);
 	if (*error_message) {
 		// construct an invalid par_put_metadata
@@ -834,43 +824,53 @@ struct par_put_metadata insert_key_value(db_handle *handle, void *key, void *val
 		return invalid_put_metadata;
 	}
 
-	/*prepare the request*/
-	ins_req.metadata.handle = handle;
-	ins_req.key_value_buf = kv_pair;
-	ins_req.metadata.tombstone = op_type == deleteOp;
-	ins_req.metadata.tombstone ? kv_splice_set_tombstone((struct kv_splice *)ins_req.key_value_buf) :
-				     kv_splice_set_non_tombstone((struct kv_splice *)ins_req.key_value_buf);
-	kv_splice_set_key((struct kv_splice *)kv_pair, key, key_size);
-	kv_splice_set_value((struct kv_splice *)kv_pair, value, value_size);
-	ins_req.metadata.cat = calculate_KV_category(key_size, value_size, op_type);
-	ins_req.metadata.put_op_metadata.key_value_category = ins_req.metadata.cat;
-	ins_req.metadata.level_id = 0;
-	ins_req.metadata.key_format = KV_FORMAT;
-	ins_req.metadata.append_to_log = 1;
-	ins_req.metadata.gc_request = 0;
+	bt_insert_req ins_req = { .metadata.handle = handle,
+				  .metadata.tombstone = op_type == deleteOp,
+				  .metadata.put_op_metadata.key_value_category = ins_req.metadata.cat,
+				  .metadata.cat = calculate_KV_category(key_size, value_size, op_type),
+				  .metadata.key_format = KV_FORMAT,
+				  .metadata.level_id = 0,
+				  .metadata.append_to_log = 1,
+				  .metadata.gc_request = 0 };
 
-	/*
-	 * Note for L0 inserts since active_tree changes dynamically we decide which
-	 * is the active_tree after acquiring the guard lock of the region.
-	 */
+	char kv_pair_buf[KV_MAX_SIZE];
+	struct kv_splice *kv_pair = (struct kv_splice *)kv_pair_buf;
+	kv_splice_set_key((struct kv_splice *)kv_pair, key, key_size);
+
+	if (ins_req.metadata.tombstone)
+		kv_splice_set_tombstone(kv_pair);
+	else {
+		kv_splice_set_non_tombstone(kv_pair);
+		kv_splice_set_value((struct kv_splice *)kv_pair, value, value_size);
+	}
+
+	struct kv_splice_base splice_base = { .kv_type = KV_FORMAT,
+					      .kv_cat = ins_req.metadata.cat,
+					      .kv_splice = kv_pair };
+
+	ins_req.splice_base = &splice_base;
+
+	// Note for L0 inserts since active_tree changes dynamically we decide which
+	// is the active_tree after acquiring the guard lock of the region.
+
 	*error_message = btree_insert_key_value(&ins_req);
 	return ins_req.metadata.put_op_metadata;
 }
 
-struct par_put_metadata serialized_insert_key_value(db_handle *handle, const char *serialized_key_value,
+struct par_put_metadata serialized_insert_key_value(db_handle *handle, struct kv_splice_base *splice_base,
 						    bool append_to_log, request_type op_type, bool abort_on_compaction,
 						    const char **error_message)
 {
 	bt_insert_req ins_req = { .metadata.handle = handle,
-				  .key_value_buf = (char *)serialized_key_value,
+				  .splice_base = splice_base,
 				  .metadata.tombstone = op_type == deleteOp,
 				  .metadata.level_id = 0,
 				  .metadata.key_format = KV_FORMAT,
 				  .metadata.append_to_log = append_to_log,
 				  .abort_on_compaction = abort_on_compaction };
 
-	int32_t key_size = kv_splice_get_key_size((struct kv_splice *)serialized_key_value);
-	int32_t value_size = kv_splice_get_value_size((struct kv_splice *)serialized_key_value);
+	int32_t key_size = kv_splice_base_get_key_size(ins_req.splice_base);
+	int32_t value_size = kv_splice_base_get_value_size(ins_req.splice_base);
 
 	*error_message = insert_error_handling(handle, key_size, value_size);
 	if (*error_message) {
@@ -898,13 +898,13 @@ struct par_put_metadata serialized_insert_key_value(db_handle *handle, const cha
 
 void extract_keyvalue_size(struct log_operation *req, metadata_tologop *data_size)
 {
-	if (req->metadata->key_format != KV_FORMAT) {
+	if (req->ins_req->splice_base->kv_type != KV_FORMAT) {
 		log_fatal("Cannot handle this type of format");
 		_exit(EXIT_FAILURE);
 	}
-	data_size->key_len = kv_splice_get_key_size((struct kv_splice *)req->ins_req->key_value_buf);
-	data_size->value_len = kv_splice_get_value_size((struct kv_splice *)req->ins_req->key_value_buf);
-	data_size->kv_size = kv_splice_get_kv_size((struct kv_splice *)req->ins_req->key_value_buf);
+	data_size->key_len = kv_splice_get_key_size((struct kv_splice *)req->ins_req->splice_base->kv_splice);
+	data_size->value_len = kv_splice_get_value_size((struct kv_splice *)req->ins_req->splice_base->kv_splice);
+	data_size->kv_size = kv_splice_get_kv_size((struct kv_splice *)req->ins_req->splice_base->kv_splice);
 }
 
 struct pr_log_ticket {
@@ -933,12 +933,16 @@ static void pr_copy_kv_to_tail(struct pr_log_ticket *ticket)
 	uint64_t offt = offset_in_seg;
 	switch (ticket->req->optype_tolog) {
 	case insertOp:
-	case deleteOp: {
+	case deleteOp:
 		// first the lsn
 		memcpy(&ticket->tail->buf[offt], &ticket->lsn, get_lsn_size());
 		offt += get_lsn_size();
+		if (ticket->req->ins_req->splice_base->kv_type != KV_FORMAT) {
+			log_fatal("Appending KV_PREFIX staff in logs is not allowed!");
+			_exit(EXIT_FAILURE);
+		}
 		struct kv_splice *kv_pair_dst = (struct kv_splice *)&ticket->tail->buf[offt];
-		struct kv_splice *kv_pair_src = (struct kv_splice *)ticket->req->ins_req->key_value_buf;
+		struct kv_splice *kv_pair_src = ticket->req->ins_req->splice_base->kv_splice;
 		ticket->req->optype_tolog == insertOp ? kv_splice_set_non_tombstone(kv_pair_dst) :
 							kv_splice_set_tombstone(kv_pair_dst);
 		kv_splice_set_key(kv_pair_dst, kv_splice_get_key_offset_in_kv(kv_pair_src),
@@ -948,7 +952,7 @@ static void pr_copy_kv_to_tail(struct pr_log_ticket *ticket)
 				    kv_splice_get_value_size(kv_pair_src));
 		ticket->op_size = get_lsn_size() + kv_splice_get_kv_size(kv_pair_dst);
 		break;
-	}
+
 	case paddingOp:
 		ticket->op_size = 0;
 		if (offset_in_seg) {
@@ -1408,7 +1412,7 @@ static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id,
 	struct bt_kv_log_address kv_pair = { .addr = NULL, .tail_id = UINT8_MAX, .in_tail = 0 };
 
 	kv_pair.addr = (char *)splice.kv_splice;
-	if (splice.cat == MEDIUM_INLOG || splice.cat == BIG_INLOG) {
+	if (splice.kv_cat == MEDIUM_INLOG || splice.kv_cat == BIG_INLOG) {
 		uint64_t value_offt = kv_sep2_get_value_offt(splice.kv_sep2);
 		if (level_id > 0)
 			kv_pair.addr = REAL_ADDRESS(value_offt);
@@ -1533,29 +1537,24 @@ int insert_KV_at_leaf(bt_insert_req *ins_req, struct node_header *leaf)
 		log_address = append_key_value_to_log(&append_op);
 	}
 
-	struct kv_splice_base splice = { 0 };
 	//cppcheck-suppress variableScope
 	char kv_sep2_buf[KV_SEP2_MAX_SIZE];
 
-	splice.cat = ins_req->metadata.cat;
-	splice.is_tombstone = ins_req->metadata.tombstone;
-	splice.kv_splice = (struct kv_splice *)ins_req->key_value_buf;
-
-	if (splice.cat == BIG_INLOG && ins_req->metadata.append_to_log) {
-		struct kv_splice *kv_splice = (struct kv_splice *)ins_req->key_value_buf;
+	if (ins_req->splice_base->kv_cat == BIG_INLOG && ins_req->splice_base->kv_type == KV_FORMAT &&
+	    ins_req->metadata.append_to_log) {
 		uint64_t value_offt = ABSOLUTE_ADDRESS(log_address);
-		splice.kv_sep2 = kv_sep2_create(kv_splice_get_key_size(kv_splice),
-						kv_splice_get_key_offset_in_kv(kv_splice), value_offt, kv_sep2_buf,
-						KV_SEP2_MAX_SIZE);
-	}
-	assert(kv_splice_base_get_key_size(&splice) > 0);
+		ins_req->splice_base->kv_sep2 =
+			kv_sep2_create(kv_splice_get_key_size(ins_req->splice_base->kv_splice),
+				       kv_splice_get_key_offset_in_kv(ins_req->splice_base->kv_splice), value_offt,
+				       kv_sep2_buf, KV_SEP2_MAX_SIZE);
 
-	if (splice.cat == BIG_INLOG && !ins_req->metadata.append_to_log) {
-		splice.kv_sep2 = (struct kv_seperation_splice2 *)ins_req->key_value_buf;
+		ins_req->splice_base->kv_type = KV_PREFIX;
 	}
+	assert(kv_splice_base_get_key_size(ins_req->splice_base) > 0);
 
 	bool exact_match = false;
-	if (!dl_insert_in_dynamic_leaf((struct leaf_node *)leaf, &splice, ins_req->metadata.tombstone, &exact_match)) {
+	if (!dl_insert_in_dynamic_leaf((struct leaf_node *)leaf, ins_req->splice_base, ins_req->metadata.tombstone,
+				       &exact_match)) {
 		log_fatal("Inserting at leaf failed probably due to overflow");
 		assert(0);
 		BUG_ON();
@@ -1563,7 +1562,7 @@ int insert_KV_at_leaf(bt_insert_req *ins_req, struct node_header *leaf)
 
 	if (exact_match)
 		return -1;
-	int32_t kv_size = kv_splice_base_get_size(&splice);
+	int32_t kv_size = kv_splice_base_get_size(ins_req->splice_base);
 	__sync_fetch_and_add(&(ins_req->metadata.handle->db_desc->levels[level_id].level_size[tree_id]), kv_size);
 	return INSERT;
 }
@@ -1605,32 +1604,16 @@ void _unlock_upper_levels(lock_table *node[], unsigned size, unsigned release)
 		}
 }
 
-static uint32_t bt_calculate_splice_size(enum kv_category cat, struct kv_splice *kv_splice)
+static bool bt_reorganize_leaf(struct leaf_node *leaf, bt_insert_req *ins_req)
 {
-	switch (cat) {
-	case SMALL_INPLACE:
-	case MEDIUM_INPLACE:
-		return kv_splice_calculate_size(kv_splice_get_key_size(kv_splice), kv_splice_get_value_size(kv_splice));
-	case MEDIUM_INLOG:
-	case BIG_INLOG:
-		return kv_sep2_calculate_size(kv_splice_get_key_size(kv_splice));
-	default:
-		log_fatal("Corrupted kv category");
-	}
-
-	_exit(EXIT_FAILURE);
-}
-
-static bool bt_reorganize_leaf(struct leaf_node *leaf, bt_insert_req *req)
-{
-	if (!dl_is_reorganize_possible(leaf, bt_calculate_splice_size(req->metadata.cat,
-								      (struct kv_splice *)req->key_value_buf)))
+	if (!dl_is_reorganize_possible(leaf, kv_splice_base_calculate_size(ins_req->splice_base)))
 		return false;
-	struct leaf_node *target = calloc(1UL, req->metadata.handle->db_desc->levels[req->metadata.level_id].leaf_size);
-	dl_init_leaf_node(target, req->metadata.handle->db_desc->levels[req->metadata.level_id].leaf_size);
+	struct leaf_node *target =
+		calloc(1UL, ins_req->metadata.handle->db_desc->levels[ins_req->metadata.level_id].leaf_size);
+	dl_init_leaf_node(target, ins_req->metadata.handle->db_desc->levels[ins_req->metadata.level_id].leaf_size);
 	dl_set_leaf_node_type(target, dl_get_leaf_node_type(leaf));
 	dl_reorganize_dynamic_leaf(leaf, target);
-	memcpy(leaf, target, req->metadata.handle->db_desc->levels[req->metadata.level_id].leaf_size);
+	memcpy(leaf, target, ins_req->metadata.handle->db_desc->levels[ins_req->metadata.level_id].leaf_size);
 	free(target);
 	return true;
 }
@@ -1664,7 +1647,7 @@ static void bt_split_leaf(struct leaf_node *leaf, bt_insert_req *req, struct bt_
 	}
 }
 
-int is_split_needed(void *node, bt_insert_req *req)
+int is_split_needed(void *node, bt_insert_req *ins_req)
 {
 	assert(node);
 	struct node_header *header = (struct node_header *)node;
@@ -1673,13 +1656,7 @@ int is_split_needed(void *node, bt_insert_req *req)
 	if (height != 0)
 		return index_is_split_needed((struct index_node *)node, MAX_KEY_SPLICE_SIZE);
 
-	uint32_t kv_size = 0;
-	if (req->metadata.cat == SMALL_INPLACE || req->metadata.cat == MEDIUM_INPLACE)
-		kv_size = kv_splice_calculate_size(kv_splice_get_key_size((struct kv_splice *)req->key_value_buf),
-						   kv_splice_get_value_size((struct kv_splice *)req->key_value_buf));
-
-	if (req->metadata.cat == BIG_INLOG || req->metadata.cat == MEDIUM_INLOG)
-		kv_size = kv_sep2_calculate_size(kv_splice_get_key_size((struct kv_splice *)req->key_value_buf));
+	uint32_t kv_size = kv_splice_base_calculate_size(ins_req->splice_base);
 	return dl_is_leaf_full(node, kv_size);
 }
 
@@ -1843,9 +1820,9 @@ release_and_retry:
 
 		struct index_node *n_son = (struct index_node *)son;
 
-		struct kv_splice *splice = (struct kv_splice *)ins_req->key_value_buf;
-		struct pivot_pointer *son_pivot = index_search_get_pivot(n_son, kv_splice_get_key_offset_in_kv(splice),
-									 kv_splice_get_key_size(splice));
+		struct kv_splice_base *splice_base = ins_req->splice_base;
+		struct pivot_pointer *son_pivot = index_search_get_pivot(n_son, kv_splice_base_get_key_buf(splice_base),
+									 kv_splice_base_get_key_size(splice_base));
 
 		father = son;
 		son = REAL_ADDRESS(son_pivot->child_offt);
@@ -1861,8 +1838,7 @@ release_and_retry:
 		}
 		upper_level_nodes[size++] = lock;
 
-		/*Node lock acquired */
-		ins_req->metadata.reorganized_leaf_pos_INnode = (uint64_t *)son_pivot;
+		// /*Node lock acquired */
 
 		/*if the node is not safe hold its ancestor's lock else release locks from
     ancestors */
@@ -1956,10 +1932,10 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 			return PAR_FAILURE;
 		}
 
-		struct kv_splice *splice = (struct kv_splice *)ins_req->key_value_buf;
+		struct kv_splice_base *splice_base = ins_req->splice_base;
 		uint64_t child_offt = index_binary_search((struct index_node *)son,
-							  kv_splice_get_key_offset_in_kv(splice),
-							  kv_splice_get_key_size(splice));
+							  kv_splice_base_get_key_buf(splice_base),
+							  kv_splice_base_get_key_size(splice_base));
 		son = (struct node_header *)REAL_ADDRESS(child_offt);
 		assert(son);
 

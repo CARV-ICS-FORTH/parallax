@@ -29,7 +29,7 @@
 
 static void push_back_duplicate_kv(struct sh_heap *heap, struct sh_heap_node *hp_node)
 {
-	if (hp_node->splice.cat != BIG_INLOG)
+	if (hp_node->splice.kv_cat != BIG_INLOG)
 		return;
 
 	uint64_t kv_offt = kv_sep2_get_value_offt(hp_node->splice.kv_sep2);

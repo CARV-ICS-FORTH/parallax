@@ -143,7 +143,7 @@ static void test_wcursors_append_all_kvs(DB *BDB, struct wcursor_level_write_cur
 		kv_splice_set_value(kv_buf, data.data, data.size);
 		kv_splice_set_value_size(kv_buf, data.size);
 
-		struct kv_splice_base par_key = { .cat = SMALL_INPLACE, .kv_splice = kv_buf };
+		struct kv_splice_base par_key = { .kv_cat = SMALL_INPLACE, .kv_type = KV_FORMAT, .kv_splice = kv_buf };
 
 		wcursor_append_KV_pair(wcursor, &par_key);
 	}

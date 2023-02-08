@@ -16,7 +16,7 @@
 #include "../include/parallax/structures.h"
 #include <stdbool.h>
 #include <stdint.h>
-enum KV_type { KV_FORMAT, KV_PREFIX, INDEX_KEY_TYPE, KEY_TYPE };
+enum KV_type { KV_FORMAT = 1, KV_PREFIX };
 
 #define KV_SEP2_MAX_SIZE (sizeof(uint64_t) + sizeof(int32_t) + MAX_KEY_SIZE)
 
@@ -43,12 +43,13 @@ struct kv_seperation_splice2 {
 } __attribute__((packed));
 
 struct kv_splice_base {
-	enum kv_category cat;
-	bool is_tombstone;
+	enum kv_category kv_cat;
+	enum KV_type kv_type;
 	union {
 		struct kv_splice *kv_splice;
 		struct kv_seperation_splice2 *kv_sep2;
 	};
+	bool is_tombstone;
 };
 
 /**
@@ -257,6 +258,7 @@ int32_t kv_splice_base_get_size(struct kv_splice_base *splice);
  * @returns the size of the object
  */
 int32_t kv_splice_base_get_key_size(struct kv_splice_base *splice);
+int32_t kv_splice_base_get_value_size(struct kv_splice_base *splice);
 
 /**
  * @brief Calculates the size of the splice
@@ -276,5 +278,6 @@ char *kv_splice_base_get_reference(struct kv_splice_base *splice);
  * @param splice pointer to the splice object
  */
 char *kv_splice_base_get_key_buf(struct kv_splice_base *splice);
+void kv_splice_base_serialize(struct kv_splice_base *splice_base, char *dest, int32_t dest_size);
 
 #endif // KV_PAIRS_H

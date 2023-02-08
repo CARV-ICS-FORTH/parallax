@@ -51,12 +51,14 @@ static void tlf_fill_key(struct kv_splice_base *pivot, char **key, int32_t *key_
 		return;
 	}
 
-	if (pivot->cat == SMALL_INPLACE || pivot->cat == MEDIUM_INPLACE) {
+	if (pivot->kv_cat == SMALL_INPLACE || pivot->kv_cat == MEDIUM_INPLACE) {
+		pivot->kv_type = KV_FORMAT;
 		*key = kv_splice_get_key_offset_in_kv(pivot->kv_splice);
 		*key_size = kv_splice_get_key_size(pivot->kv_splice);
 	}
 
-	if (pivot->cat == BIG_INLOG || pivot->cat == MEDIUM_INLOG) {
+	if (pivot->kv_cat == BIG_INLOG || pivot->kv_cat == MEDIUM_INLOG) {
+		pivot->kv_type = KV_PREFIX;
 		*key = kv_sep2_get_key(pivot->kv_sep2);
 		*key_size = kv_sep2_get_key_size(pivot->kv_sep2);
 	}
@@ -90,11 +92,11 @@ bool tlf_verify_keys(struct hash_entry *root, struct kv_splice_base *pivot, stru
 		if (!current_entry)
 			return false;
 		const char *error = NULL;
-		if (current_entry->hsplice.cat == SMALL_INPLACE || current_entry->hsplice.cat == MEDIUM_INPLACE) {
+		if (current_entry->hsplice.kv_cat == SMALL_INPLACE || current_entry->hsplice.kv_cat == MEDIUM_INPLACE) {
 			key = kv_splice_get_key_offset_in_kv(current_entry->hsplice.kv_splice);
 			key_size = kv_splice_get_key_size(current_entry->hsplice.kv_splice);
 		}
-		if (current_entry->hsplice.cat == BIG_INLOG || current_entry->hsplice.cat == MEDIUM_INLOG) {
+		if (current_entry->hsplice.kv_cat == BIG_INLOG || current_entry->hsplice.kv_cat == MEDIUM_INLOG) {
 			key = kv_sep2_get_key(current_entry->hsplice.kv_sep2);
 			key_size = kv_sep2_get_key_size(current_entry->hsplice.kv_sep2);
 		}
@@ -132,10 +134,12 @@ int main(int argc, char **argv)
 
 		if (choice <= 6) {
 			splice.kv_splice = tlf_generate_in_place_kv();
-			splice.cat = SMALL_INPLACE;
+			splice.kv_cat = SMALL_INPLACE;
+			splice.kv_type = KV_FORMAT;
 		} else {
 			splice.kv_sep2 = tlf_generate_in_log_kv();
-			splice.cat = MEDIUM_INLOG;
+			splice.kv_cat = MEDIUM_INLOG;
+			splice.kv_type = KV_PREFIX;
 		}
 		bool exact_match = false;
 		bool ret = dl_insert_in_dynamic_leaf(leaf, &splice, false, &exact_match);
@@ -162,7 +166,7 @@ int main(int argc, char **argv)
 	tlf_fill_key(&pivot_splice, &pivot, &pivot_size);
 	assert(pivot != NULL);
 
-	log_info("Split done pivot size is %d cat is %d", pivot_size, pivot_splice.cat);
+	log_info("Split done pivot size is %d cat is %d", pivot_size, pivot_splice.kv_cat);
 	log_info("Split done actual pivot is %.*s", pivot_size, pivot);
 
 	tlf_verify_keys(root, &pivot_splice, left, TLF_CHECK_LEFT);

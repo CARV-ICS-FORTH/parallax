@@ -49,13 +49,15 @@ struct kv_splice_base dl_get_general_splice(struct leaf_node *leaf, int32_t posi
 {
 	struct kv_splice_base general_splice = { 0 };
 	struct dl_slot_array *slot_array = dl_get_slot_array_offset(leaf);
-	general_splice.cat = slot_array[position].key_category;
+	general_splice.kv_cat = slot_array[position].key_category;
 	general_splice.is_tombstone = slot_array[position].tombstone;
 	uint8_t *kv_addr = (uint8_t *)leaf + slot_array[position].index;
-	if (general_splice.cat == SMALL_INPLACE || general_splice.cat == MEDIUM_INPLACE)
+	if (general_splice.kv_cat == SMALL_INPLACE || general_splice.kv_cat == MEDIUM_INPLACE) {
 		general_splice.kv_splice = (struct kv_splice *)kv_addr;
-	else if (general_splice.cat == MEDIUM_INLOG || general_splice.cat == BIG_INLOG) {
+		general_splice.kv_type = KV_FORMAT;
+	} else if (general_splice.kv_cat == MEDIUM_INLOG || general_splice.kv_cat == BIG_INLOG) {
 		general_splice.kv_sep2 = (struct kv_seperation_splice2 *)kv_addr;
+		general_splice.kv_type = KV_PREFIX;
 	} else {
 		log_fatal("Unknown kv category");
 		BUG_ON();
@@ -65,10 +67,10 @@ struct kv_splice_base dl_get_general_splice(struct leaf_node *leaf, int32_t posi
 
 static void dl_fill_key_from_general_splice(struct kv_splice_base *general_splice, char **key, int32_t *key_size)
 {
-	if (general_splice->cat == SMALL_INPLACE || general_splice->cat == MEDIUM_INPLACE) {
+	if (general_splice->kv_cat == SMALL_INPLACE || general_splice->kv_cat == MEDIUM_INPLACE) {
 		*key = kv_splice_get_key_offset_in_kv(general_splice->kv_splice);
 		*key_size = kv_splice_get_key_size(general_splice->kv_splice);
-	} else if (general_splice->cat == MEDIUM_INLOG || general_splice->cat == BIG_INLOG) {
+	} else if (general_splice->kv_cat == MEDIUM_INLOG || general_splice->kv_cat == BIG_INLOG) {
 		*key = kv_sep2_get_key(general_splice->kv_sep2);
 		*key_size = kv_sep2_get_key_size(general_splice->kv_sep2);
 	} else {
@@ -164,10 +166,7 @@ static uint16_t dl_append_data_splice_in_dynamic_leaf(struct leaf_node *leaf, st
 	leaf->header.log_size -= kv_size;
 	char *src = (char *)leaf;
 	char *dest = &src[leaf->header.log_size];
-	if (general_splice->cat == SMALL_INPLACE || general_splice->cat == MEDIUM_INPLACE)
-		kv_splice_serialize(general_splice->kv_splice, dest);
-	if (general_splice->cat == BIG_INLOG || general_splice->cat == MEDIUM_INLOG)
-		kv_sep2_serialize(general_splice->kv_sep2, dest, kv_size);
+	kv_splice_base_serialize(general_splice, dest, kv_size);
 
 	return leaf->header.log_size;
 }
@@ -184,7 +183,7 @@ bool dl_append_splice_in_dynamic_leaf(struct leaf_node *leaf, struct kv_splice_b
 	slot_array[leaf->header.num_entries].tombstone = 0;
 	if (is_tombstone)
 		slot_array[leaf->header.num_entries].tombstone = 1;
-	slot_array[leaf->header.num_entries++].key_category = general_splice->cat;
+	slot_array[leaf->header.num_entries++].key_category = general_splice->kv_cat;
 	return true;
 }
 
@@ -235,7 +234,7 @@ bool dl_insert_in_dynamic_leaf(struct leaf_node *leaf, struct kv_splice_base *sp
 	}
 	slot_array[pos].index = offt;
 	slot_array[pos].tombstone = is_tombstone ? 1 : 0;
-	slot_array[pos].key_category = splice->cat;
+	slot_array[pos].key_category = splice->kv_cat;
 	// if (!dl_check_leaf(leaf)) {
 	// 	log_debug(
 	// 		"Faulting splice is %d %s leaf entries = %d key was %.*s pos is %d num entries %d offt was %u",
