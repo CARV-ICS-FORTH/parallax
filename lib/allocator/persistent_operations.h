@@ -54,4 +54,9 @@ void pr_flush_compaction(struct db_descriptor *db_desc, uint8_t level_id, uint8_
 void pr_recover_L0(struct db_descriptor *db_desc);
 
 uint64_t pr_add_and_flush_segment_in_log(db_handle *dbhandle, char *buf, int32_t buf_size, enum log_type log_cat);
+
+uint64_t pr_allocate_segment_for_log(struct db_descriptor *db_desc, struct log_descriptor *log_desc, uint8_t level_id,
+				     uint8_t tree_id);
+void pr_append_segment_to_log(struct log_descriptor *log_desc, char *buf, uint64_t next_tail_offt);
+void pr_flush_buffer_to_log(struct log_descriptor *log_desc, uint64_t IO_start_offt, char *buf, uint32_t buf_size);
 #endif // PERSISTENT_OPERATIONS_H_

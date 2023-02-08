@@ -948,3 +948,54 @@ uint64_t pr_add_and_flush_segment_in_log(db_handle *dbhandle, char *buf, int32_t
 
 	return next_tail_seg_offt;
 }
+
+uint64_t pr_allocate_segment_for_log(struct db_descriptor *db_desc, struct log_descriptor *log_desc, uint8_t level_id,
+				     uint8_t tree_id)
+{
+	assert(db_desc && log_desc);
+	struct segment_header *new_segment = seg_get_raw_log_segment(db_desc, log_desc->log_type, level_id, tree_id);
+	if (!new_segment) {
+		log_fatal("Cannot allocate memory from the device!");
+		BUG_ON();
+	}
+
+	uint64_t next_tail_seg_offt = ABSOLUTE_ADDRESS(new_segment);
+
+	if (!next_tail_seg_offt) {
+		log_fatal("No space for new segment");
+		BUG_ON();
+	}
+	return next_tail_seg_offt;
+}
+
+void pr_append_segment_to_log(struct log_descriptor *log_desc, char *buf, uint64_t next_tail_offt)
+{
+	assert(log_desc);
+	struct segment_header *next_tail_segment = (struct segment_header *)buf;
+	next_tail_segment->next_segment = NULL;
+	next_tail_segment->prev_segment = (void *)log_desc->tail_dev_offt;
+	next_tail_segment->segment_id = log_desc->curr_tail_id + 1;
+	log_desc->tail_dev_offt = next_tail_offt;
+	log_desc->size += sizeof(segment_header);
+	log_desc->curr_tail_id = next_tail_segment->segment_id;
+}
+
+void pr_flush_buffer_to_log(struct log_descriptor *log_desc, uint64_t IO_start_offt, char *buf, uint32_t buf_size)
+{
+	assert(log_desc);
+	ssize_t total_bytes_written = 0;
+	ssize_t size = buf_size;
+	// log_info("IO time, start %llu size %llu segment dev_offt %llu offt in seg
+	// %llu", total_bytes_written, size,
+	//	 ticket->tail->dev_segment_offt, ticket->IO_start_offt);
+	while (total_bytes_written < size) {
+		ssize_t bytes_written = pwrite(FD, &buf[total_bytes_written], size - total_bytes_written,
+					       log_desc->tail_dev_offt + IO_start_offt + total_bytes_written);
+		if (bytes_written == -1) {
+			log_fatal("Failed to write LOG_CHUNK reason follows");
+			perror("Reason");
+			BUG_ON();
+		}
+		total_bytes_written += bytes_written;
+	}
+}
