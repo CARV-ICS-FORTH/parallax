@@ -986,6 +986,10 @@ static void pr_do_log_chunk_IO(struct pr_log_ticket *ticket)
 	uint32_t chunk_id = offt_in_seg / LOG_CHUNK_SIZE;
 	uint32_t num_chunks = SEGMENT_SIZE / LOG_CHUNK_SIZE;
 	int do_IO;
+	if (chunk_id == 0) {
+		log_info("OK TO BRIKA");
+		assert(0);
+	}
 
 	(void)num_chunks;
 	assert(chunk_id != num_chunks);
@@ -1134,6 +1138,25 @@ static void bt_add_blob(struct db_descriptor *db_desc, struct log_descriptor *lo
 	next_tail->dev_offt = ABSOLUTE_ADDRESS(next_tail_seg);
 	next_tail->free = 0;
 	log_desc->curr_tail_id = next_tail_id;
+}
+
+uint64_t allocate_segment_for_log(struct db_descriptor *db_desc, struct log_descriptor *log_desc, uint8_t level_id,
+				  uint8_t tree_id)
+{
+	assert(db_desc && log_desc);
+	struct segment_header *new_segment = seg_get_raw_log_segment(db_desc, log_desc->log_type, level_id, tree_id);
+	if (!new_segment) {
+		log_fatal("Cannot allocate memory from the device!");
+		BUG_ON();
+	}
+
+	uint64_t next_tail_seg_offt = ABSOLUTE_ADDRESS(new_segment);
+
+	if (!next_tail_seg_offt) {
+		log_fatal("No space for new segment");
+		BUG_ON();
+	}
+	return next_tail_seg_offt;
 }
 
 static void *bt_append_to_log_direct_IO(struct log_operation *req, struct log_towrite *log_metadata,
