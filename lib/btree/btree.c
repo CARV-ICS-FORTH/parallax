@@ -913,7 +913,10 @@ struct pr_log_ticket {
 	struct log_operation *req;
 	struct metadata_tologop *data_size;
 	struct lsn lsn;
+	struct db_descriptor *db_desc;
 	uint64_t log_offt;
+	uint32_t tail_id;
+	enum log_type log_type;
 	// out var
 	uint64_t IO_start_offt;
 	uint32_t IO_size;
@@ -1014,12 +1017,12 @@ static void pr_do_log_chunk_IO(struct pr_log_ticket *ticket)
 	// log_info("IO time, start %llu size %llu segment dev_offt %llu offt in seg
 	// %llu", total_bytes_written, size,
 	//	 ticket->tail->dev_segment_offt, ticket->IO_start_offt);
-	parallax_callbacks_t par_callbacks = comp_req->db_desc->parallax_callbacks;
-	if (are_parallax_callbacks_set(par_callbacks)) {
+	parallax_callbacks_t par_callbacks = ticket->db_desc->parallax_callbacks;
+	if (are_parallax_callbacks_set(par_callbacks) && ticket->log_type == MEDIUM_LOG) {
 		struct parallax_callback_funcs par_cb = parallax_get_callbacks(par_callbacks);
 		void *context = parallax_get_context(par_callbacks);
-		par_cb.segment_is_full_cb(context, ticket->tail->dev_offt, ticket->IO_start_offt,
-					  &ticket->tail->buf[ticket->IO_start_offt], size);
+		par_cb.segment_is_full_cb(context, ticket->tail->dev_offt, ticket->IO_start_offt, size, chunk_id,
+					  ticket->tail_id);
 	}
 
 	while (total_bytes_written < size) {
@@ -1033,6 +1036,12 @@ static void pr_do_log_chunk_IO(struct pr_log_ticket *ticket)
 			BUG_ON();
 		}
 		total_bytes_written += bytes_written;
+	}
+	par_callbacks = ticket->db_desc->parallax_callbacks;
+	if (are_parallax_callbacks_set(par_callbacks) && ticket->log_type == MEDIUM_LOG) {
+		struct parallax_callback_funcs par_cb = parallax_get_callbacks(par_callbacks);
+		void *context = parallax_get_context(par_callbacks);
+		par_cb.spin_for_medium_log_flush(context, chunk_id);
 	}
 	__sync_fetch_and_add(&ticket->tail->IOs_completed_in_tail, 1);
 
@@ -1182,12 +1191,9 @@ static void *bt_append_to_log_direct_IO(struct log_operation *req, struct log_to
 
 	uint32_t num_chunks = SEGMENT_SIZE / LOG_CHUNK_SIZE;
 	int segment_change = 0;
-	flush_medium_log = false;
 
 	if (available_space_in_log < reserve_needed_space) {
-		if (log_metadata->log_desc->log_type == MEDIUM_LOG)
-			flush_medium_log = true;
-		else {
+		if (log_metadata->log_desc->log_type == SMALL_LOG || log_metadata->log_desc->log_type == BIG_LOG) {
 			req->ins_req->metadata.put_op_metadata.flush_segment_event = 1;
 			req->ins_req->metadata.put_op_metadata.flush_segment_offt =
 				log_metadata->log_desc->tail_dev_offt;
@@ -1205,7 +1211,10 @@ static void *bt_append_to_log_direct_IO(struct log_operation *req, struct log_to
 			pad_ticket.req = &pad_op;
 			pad_ticket.data_size = NULL;
 			pad_ticket.tail = log_metadata->log_desc->tail[curr_tail_id % LOG_TAIL_NUM_BUFS];
+			pad_ticket.tail_id = curr_tail_id % LOG_TAIL_NUM_BUFS;
+			pad_ticket.log_type = log_metadata->log_desc->log_type;
 			pad_ticket.log_offt = log_metadata->log_desc->size;
+			pad_ticket.db_desc = handle->db_desc;
 			pr_copy_kv_to_tail(&pad_ticket);
 		}
 
@@ -1246,6 +1255,9 @@ static void *bt_append_to_log_direct_IO(struct log_operation *req, struct log_to
 	log_kv_entry_ticket.data_size = data_size;
 	log_kv_entry_ticket.tail = log_metadata->log_desc->tail[tail_id % LOG_TAIL_NUM_BUFS];
 	log_kv_entry_ticket.log_offt = log_metadata->log_desc->size;
+	log_kv_entry_ticket.tail_id = tail_id % LOG_TAIL_NUM_BUFS;
+	log_kv_entry_ticket.log_type = log_metadata->log_desc->log_type;
+	log_kv_entry_ticket.db_desc = handle->db_desc;
 
 	if (req->is_medium_log_append)
 		log_kv_entry_ticket.lsn = get_max_lsn();
