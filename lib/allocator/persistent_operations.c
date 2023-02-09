@@ -928,8 +928,6 @@ void pr_recover_L0(struct db_descriptor *db_desc)
 		}
 
 		request_type op_type = !cursor[choice]->tombstone ? insertOp : deleteOp;
-		//old school
-		// serialized_insert_key_value(&handle, kvs[choice]->par_kv, false, op_type, false, &error_message);
 		serialized_insert_key_value(&handle, &splice_base, false, op_type, false, &error_message);
 
 		if (error_message) {

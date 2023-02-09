@@ -20,7 +20,6 @@
 #include "../allocator/persistent_operations.h"
 #include "../allocator/redo_undo_log.h"
 #include "../common/common.h"
-#include "btree.h"
 #include "compaction_worker.h"
 #include "conf.h"
 #include <assert.h>
@@ -34,17 +33,65 @@
 struct node_header;
 // IWYU pragma: no_forward_declare index_node
 
-void *compaction_daemon(void *args)
+struct compaction_daemon {
+	pthread_mutex_t barrier_lock;
+	pthread_cond_t barrier;
+	sem_t compaction_daemon_interrupts;
+	db_handle *db_handle;
+	int next_L0_tree_to_compact;
+	bool do_not_issue_L0_compactions;
+};
+
+struct compaction_daemon *compactiond_create(struct db_handle *handle, bool do_not_issue_L0_compactions)
 {
-	struct db_handle *handle = (struct db_handle *)args;
+	struct compaction_daemon *daemon = calloc(1UL, sizeof(struct compaction_daemon));
+	daemon->db_handle = handle;
+	daemon->do_not_issue_L0_compactions = do_not_issue_L0_compactions;
+	daemon->next_L0_tree_to_compact = 0;
+	pthread_mutex_init(&daemon->barrier_lock, NULL);
+	sem_init(&daemon->compaction_daemon_interrupts, 0, 0);
+	pthread_cond_init(&daemon->barrier, NULL);
+	return daemon;
+}
+
+static struct compaction_request *compactiond_compact_L0(struct compaction_daemon *daemon, uint8_t L0_tree_id,
+							 uint8_t L1_tree_id)
+{
+	struct level_descriptor *level_0 = &daemon->db_handle->db_desc->levels[0];
+	struct level_descriptor *level_1 = &daemon->db_handle->db_desc->levels[1];
+	if (level_0->tree_status[L0_tree_id] != BT_NO_COMPACTION)
+		return NULL;
+
+	if (level_0->level_size[L0_tree_id] < level_0->max_level_size)
+		return NULL;
+
+	if (level_1->tree_status[L1_tree_id] != BT_NO_COMPACTION)
+		return NULL;
+
+	if (level_1->level_size[L1_tree_id] >= level_1->max_level_size)
+		return NULL;
+
+	bt_set_db_status(daemon->db_handle->db_desc, BT_COMPACTION_IN_PROGRESS, 0, L0_tree_id);
+	/*mark them as compacting L1*/
+	bt_set_db_status(daemon->db_handle->db_desc, BT_COMPACTION_IN_PROGRESS, 1, L1_tree_id);
+
+	/*start a compaction*/
+	return compaction_create_req(daemon->db_handle->db_desc, &daemon->db_handle->db_options, UINT64_MAX, UINT64_MAX,
+				     0, L0_tree_id, 1, 1);
+}
+
+static void *compactiond_run(void *args)
+{
+	struct compaction_daemon *daemon = (struct compaction_daemon *)args;
+	assert(daemon);
+	struct db_handle *handle = daemon->db_handle;
 	struct db_descriptor *db_desc = handle->db_desc;
 	struct compaction_request *comp_req = NULL;
 	pthread_setname_np(pthread_self(), "compactiond");
 
-	int next_L0_tree_to_compact = 0;
 	while (1) {
-		/*special care for Level 0 to 1*/
-		sem_wait(&db_desc->compaction_daemon_interrupts);
+		sem_wait(&daemon->compaction_daemon_interrupts);
+
 		if (db_desc->db_state == DB_TERMINATE_COMPACTION_DAEMON) {
 			log_warn("Compaction daemon instructed to exit because DB %s is closing, "
 				 "Bye bye!...",
@@ -52,30 +99,31 @@ void *compaction_daemon(void *args)
 			db_desc->db_state = DB_IS_CLOSING;
 			return NULL;
 		}
-		struct level_descriptor *level_0 = &handle->db_desc->levels[0];
+		// struct level_descriptor *level_0 = &handle->db_desc->levels[0];
 		struct level_descriptor *src_level = &handle->db_desc->levels[1];
 
-		int L0_tree = next_L0_tree_to_compact;
-		// is level-0 full and not already compacting?
-		if (level_0->tree_status[L0_tree] == BT_NO_COMPACTION &&
-		    level_0->level_size[L0_tree] >= level_0->max_level_size) {
-			// Can I issue a compaction to L1?
-			int L1_tree = 0;
-			if (src_level->tree_status[L1_tree] == BT_NO_COMPACTION &&
-			    src_level->level_size[L1_tree] < src_level->max_level_size) {
-				/*mark them as compacting L0*/
+		// int L0_tree = next_L0_tree_to_compact;
+		// int L1_tree = 0;
+		comp_req = compactiond_compact_L0(daemon, daemon->next_L0_tree_to_compact % NUM_TREES_PER_LEVEL, 0);
+		if (comp_req)
+			++daemon->next_L0_tree_to_compact;
+		// if (level_0->tree_status[next_L0_tree_to_compact % NUM_TREES_PER_LEVEL] == BT_NO_COMPACTION &&
+		//     level_0->level_size[next_L0_tree_to_compact % NUM_TREES_PER_LEVEL] >= level_0->max_level_size &&
+		//     src_level->tree_status[L1_tree] == BT_NO_COMPACTION &&
+		//     src_level->level_size[L1_tree] < src_level->max_level_size) {
+		// 	/*mark them as compacting L0*/
 
-				bt_set_db_status(db_desc, BT_COMPACTION_IN_PROGRESS, 0, L0_tree);
-				/*mark them as compacting L1*/
-				bt_set_db_status(db_desc, BT_COMPACTION_IN_PROGRESS, 1, L1_tree);
+		// 	bt_set_db_status(db_desc, BT_COMPACTION_IN_PROGRESS, 0,
+		// 			 next_L0_tree_to_compact % NUM_TREES_PER_LEVEL);
+		// 	/*mark them as compacting L1*/
+		// 	bt_set_db_status(db_desc, BT_COMPACTION_IN_PROGRESS, 1, L1_tree);
 
-				/*start a compaction*/
-				comp_req = compaction_create_req(handle->db_desc, &handle->db_options, UINT64_MAX,
-								 UINT64_MAX, 0, L0_tree, 1, 1);
-				if (++next_L0_tree_to_compact >= NUM_TREES_PER_LEVEL)
-					next_L0_tree_to_compact = 0;
-			}
-		}
+		// 	/*start a compaction*/
+		// 	comp_req = compaction_create_req(handle->db_desc, &handle->db_options, UINT64_MAX, UINT64_MAX,
+		// 					 0, next_L0_tree_to_compact++ % NUM_TREES_PER_LEVEL, 1, 1);
+		// 	// if (++next_L0_tree_to_compact >= NUM_TREES_PER_LEVEL)
+		// 	// 	next_L0_tree_to_compact = 0;
+		// }
 		/*can I set a different active tree for L0*/
 		int active_tree = db_desc->levels[0].active_tree;
 		if (db_desc->levels[0].tree_status[active_tree] == BT_COMPACTION_IN_PROGRESS) {
@@ -111,12 +159,12 @@ void *compaction_daemon(void *args)
 					BUG_ON();
 				}
 
-				MUTEX_LOCK(&db_desc->client_barrier_lock);
-				if (pthread_cond_broadcast(&db_desc->client_barrier) != 0) {
+				MUTEX_LOCK(&daemon->barrier_lock);
+				if (pthread_cond_broadcast(&daemon->barrier) != 0) {
 					log_fatal("Failed to wake up stopped clients");
 					BUG_ON();
 				}
-				MUTEX_UNLOCK(&db_desc->client_barrier_lock);
+				MUTEX_UNLOCK(&daemon->barrier_lock);
 			}
 		}
 
@@ -171,4 +219,53 @@ void *compaction_daemon(void *args)
 			}
 		}
 	}
+}
+
+bool compactiond_start(struct compaction_daemon *daemon, pthread_t *context)
+{
+	assert(daemon && context);
+	if (pthread_create(context, NULL, compactiond_run, daemon) != 0) {
+		log_fatal("Failed to start compaction_daemon for db %s", daemon->db_handle->db_options.db_name);
+		BUG_ON();
+	}
+	return true;
+}
+
+void compactiond_wait(struct compaction_daemon *daemon)
+{
+	MUTEX_LOCK(&daemon->barrier_lock);
+
+	if (pthread_cond_wait(&daemon->barrier, &daemon->barrier_lock) != 0) {
+		log_fatal("failed to throttle");
+		BUG_ON();
+	}
+	MUTEX_UNLOCK(&daemon->barrier_lock);
+}
+
+void compactiond_notify_all(struct compaction_daemon *daemon)
+{
+	assert(daemon);
+	MUTEX_LOCK(&daemon->barrier_lock);
+	if (pthread_cond_broadcast(&daemon->barrier) != 0) {
+		log_fatal("Failed to wake up stopped clients");
+		BUG_ON();
+	}
+	MUTEX_UNLOCK(&daemon->barrier_lock);
+}
+
+void compactiond_interrupt(struct compaction_daemon *daemon)
+{
+	assert(daemon);
+	sem_post(&daemon->compaction_daemon_interrupts);
+}
+
+void compactiond_close(struct compaction_daemon *daemon)
+{
+	assert(daemon);
+	if (pthread_cond_destroy(&daemon->barrier) != 0) {
+		log_fatal("Failed to destroy condition variable");
+		perror("pthread_cond_destroy() error");
+		BUG_ON();
+	}
+	free(daemon);
 }

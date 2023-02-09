@@ -22,6 +22,7 @@
 #include "../include/parallax/structures.h"
 #include "bloom_filter.h"
 #include "btree_node.h"
+#include "compaction_daemon.h"
 #include "conf.h"
 #include "dynamic_leaf.h"
 #include "gc.h"
@@ -476,11 +477,6 @@ db_handle *internal_db_open(struct volume_descriptor *volume_desc, par_db_option
 	}
 	handle->db_desc->levels[MAX_LEVELS - 1].max_level_size = UINT64_MAX;
 	handle->db_desc->reference_count = 1;
-
-	MUTEX_INIT(&handle->db_desc->compaction_lock, NULL);
-	MUTEX_INIT(&handle->db_desc->compaction_structs_lock, NULL);
-	MUTEX_INIT(&handle->db_desc->segment_ht_lock, NULL);
-	pthread_cond_init(&handle->db_desc->compaction_cond, NULL);
 	handle->db_desc->blocked_clients = 0;
 	handle->db_desc->compaction_count = 0;
 	handle->db_desc->is_compaction_daemon_sleeping = 0;
@@ -488,15 +484,6 @@ db_handle *internal_db_open(struct volume_descriptor *volume_desc, par_db_option
 #if MEASURE_MEDIUM_INPLACE
 	db_desc->count_medium_inplace = 0;
 #endif
-
-	if (sem_init(&handle->db_desc->compaction_sem, 0, 0) != 0) {
-		log_fatal("Semaphore cannot be initialized");
-		BUG_ON();
-	}
-	if (sem_init(&handle->db_desc->compaction_daemon_sem, 0, 0) != 0) {
-		log_fatal("FATAL semaphore cannot be initialized");
-		BUG_ON();
-	}
 
 	for (uint8_t level_id = 0; level_id < MAX_LEVELS; ++level_id) {
 		RWLOCK_INIT(&handle->db_desc->levels[level_id].guard_of_level.rx_lock, NULL);
@@ -535,13 +522,8 @@ db_handle *internal_db_open(struct volume_descriptor *volume_desc, par_db_option
 	handle->db_desc->db_state = DB_OPEN;
 
 	log_info("Opened DB %s starting its compaction daemon", handle->db_options.db_name);
-
-	sem_init(&handle->db_desc->compaction_daemon_interrupts, PTHREAD_PROCESS_PRIVATE, 0);
-
-	if (pthread_create(&(handle->db_desc->compaction_daemon), NULL, compaction_daemon, (void *)handle) != 0) {
-		log_fatal("Failed to start compaction_daemon for db %s", handle->db_options.db_name);
-		BUG_ON();
-	}
+	handle->db_desc->compactiond = compactiond_create(handle, false);
+	compactiond_start(handle->db_desc->compactiond, &handle->db_desc->compactiond_cnxt);
 
 	handle->db_desc->gc_scanning_db = false;
 	if (!volume_desc->gc_thread_spawned) {
@@ -624,13 +606,8 @@ const char *db_close(db_handle *handle)
 
 	/*New requests will eventually see that db is closing*/
 	/*wake up possible clients that are stack due to non-availability of L0*/
-	MUTEX_LOCK(&handle->db_desc->client_barrier_lock);
 	handle->db_desc->db_state = DB_IS_CLOSING;
-	if (pthread_cond_broadcast(&handle->db_desc->client_barrier) != 0) {
-		log_fatal("Failed to wake up stopped clients");
-		BUG_ON();
-	}
-	MUTEX_UNLOCK(&handle->db_desc->client_barrier_lock);
+	compactiond_notify_all(handle->db_desc->compactiond);
 
 	/*stop all writers at all levels and wait for all clients to complete their operations.*/
 
@@ -640,7 +617,8 @@ const char *db_close(db_handle *handle)
 	}
 
 	handle->db_desc->db_state = DB_TERMINATE_COMPACTION_DAEMON;
-	sem_post(&handle->db_desc->compaction_daemon_interrupts);
+	compactiond_interrupt(handle->db_desc->compactiond);
+
 	while (handle->db_desc->db_state != DB_IS_CLOSING)
 		usleep(50);
 
@@ -692,12 +670,9 @@ const char *db_close(db_handle *handle)
 		}
 		destroy_level_locktable(handle->db_desc, i);
 	}
-	// memset(handle->db_desc, 0x00, sizeof(struct db_descriptor));
-	if (pthread_cond_destroy(&handle->db_desc->client_barrier) != 0) {
-		log_fatal("Failed to destroy condition variable");
-		perror("pthread_cond_destroy() error");
-		BUG_ON();
-	}
+
+	compactiond_close(handle->db_desc->compactiond);
+	handle->db_desc->compactiond = NULL;
 
 	free(handle->db_desc);
 finish:
@@ -734,21 +709,12 @@ static bool is_level0_available(struct db_descriptor *db_desc, uint8_t level_id,
 				relock = 1;
 			}
 
-			MUTEX_LOCK(&db_desc->client_barrier_lock);
-			sem_post(&db_desc->compaction_daemon_interrupts);
-
-			if (abort_on_compaction) {
-				MUTEX_UNLOCK(&db_desc->client_barrier_lock);
+			compactiond_interrupt(db_desc->compactiond);
+			if (abort_on_compaction)
 				return false;
-			}
-
-			if (pthread_cond_wait(&db_desc->client_barrier, &db_desc->client_barrier_lock) != 0) {
-				log_fatal("failed to throttle");
-				BUG_ON();
-			}
+			compactiond_wait(db_desc->compactiond);
 		}
 		active_tree = db_desc->levels[0].active_tree;
-		MUTEX_UNLOCK(&db_desc->client_barrier_lock);
 	}
 
 	/* Reacquire the lock of level 0 to access it safely. */

@@ -145,34 +145,25 @@ typedef struct db_descriptor {
 	uint64_t count_medium_inplace;
 #endif
 
-	/*<new_persistent_design>*/
 	pthread_mutex_t db_superblock_lock;
 	struct rul_log_descriptor *allocation_log;
 	struct volume_descriptor *db_volume;
 	struct pr_db_superblock *db_superblock;
 	uint32_t db_superblock_idx;
-	/*</new_persistent_design>*/
+	struct compaction_daemon *compactiond;
 
 	parallax_callbacks_t parallax_callbacks;
-	pthread_cond_t client_barrier;
-	pthread_cond_t compaction_cond;
-	pthread_mutex_t compaction_structs_lock;
-	pthread_mutex_t compaction_lock;
 	pthread_mutex_t lock_log;
-	pthread_mutex_t client_barrier_lock;
+
 	pthread_mutex_t segment_ht_lock;
 
-	/*<new_persistent_design>*/
 	pthread_mutex_t flush_L0_lock;
-	/*</new_persistent_design>*/
-
-	sem_t compaction_daemon_interrupts;
-	sem_t compaction_sem;
-	sem_t compaction_daemon_sem;
+	// sem_t compaction_sem;
+	// sem_t compaction_daemon_sem;
 	uint64_t blocked_clients;
 	uint64_t compaction_count;
-	pthread_t compaction_thread;
-	pthread_t compaction_daemon;
+	// pthread_t compaction_thread;
+	pthread_t compactiond_cnxt;
 	pthread_t gc_thread;
 	struct log_descriptor big_log;
 	struct log_descriptor medium_log;

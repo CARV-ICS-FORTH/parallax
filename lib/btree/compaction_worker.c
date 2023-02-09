@@ -12,6 +12,7 @@
 #include "bloom_filter.h"
 #include "btree.h"
 #include "btree_node.h"
+#include "compaction_daemon.h"
 #include "conf.h"
 #include "gc.h"
 #include "level_read_cursor.h"
@@ -499,18 +500,11 @@ void *compaction(void *compaction_request)
 	bt_set_db_status(db_desc, BT_NO_COMPACTION, comp_req->src_level, comp_req->src_tree);
 	bt_set_db_status(db_desc, BT_NO_COMPACTION, comp_req->dst_level, 0);
 
-	/*wake up clients*/
-	if (comp_req->src_level == 0) {
-		log_debug("src level %d dst level %d src_tree %d dst_tree %d", comp_req->src_level, comp_req->dst_level,
-			  comp_req->src_tree, comp_req->dst_tree);
-		MUTEX_LOCK(&comp_req->db_desc->client_barrier_lock);
-		if (pthread_cond_broadcast(&db_desc->client_barrier) != 0) {
-			log_fatal("Failed to wake up stopped clients");
-			BUG_ON();
-		}
-	}
-	MUTEX_UNLOCK(&db_desc->client_barrier_lock);
-	sem_post(&db_desc->compaction_daemon_interrupts);
+	if (comp_req->src_level == 0)
+		/*wake up clients*/
+		compactiond_notify_all(comp_req->db_desc->compactiond);
+
+	compactiond_interrupt(comp_req->db_desc->compactiond);
 	free(comp_req);
 	return NULL;
 }
