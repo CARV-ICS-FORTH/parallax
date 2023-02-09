@@ -192,11 +192,6 @@ par_ret_code par_exists(par_handle handle, struct par_key *key)
 uint64_t par_flush_segment_in_log(par_handle handle, char *buf, int32_t buf_size, enum log_category log_cat,
 				  const char **error_message)
 {
-	if (buf_size != SEGMENT_SIZE) {
-		*error_message = "buf size must be equal to SEGMENT_SIZE";
-		return UINT64_MAX;
-	}
-
 	db_handle *dbhandle = (db_handle *)handle;
 	uint64_t is_db_replica = dbhandle->db_options.options[REPLICA_MODE].value;
 	if (!is_db_replica) {
