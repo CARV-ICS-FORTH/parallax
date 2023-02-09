@@ -1,8 +1,13 @@
 #include "level_write_appender.h"
+#include "../allocator/volume_manager.h"
+#include "../common/common.h"
 #include "btree.h"
+#include "conf.h"
 #include "segment_allocator.h"
 #include <assert.h>
 #include <log.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 

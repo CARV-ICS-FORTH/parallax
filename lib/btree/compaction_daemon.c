@@ -22,6 +22,7 @@
 #include "../common/common.h"
 #include "compaction_worker.h"
 #include "conf.h"
+#include "parallax/structures.h"
 #include <assert.h>
 #include <log.h>
 #include <pthread.h>

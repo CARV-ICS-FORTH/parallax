@@ -32,7 +32,6 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 #define PAR_MAX_PREALLOCATED_SIZE 256
 
 char *par_format(char *device_name, uint32_t max_regions_num)

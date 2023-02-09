@@ -13,12 +13,8 @@
 // limitations under the License.
 
 #include "level_write_cursor.h"
-#include "../allocator/device_structures.h"
-#include "../allocator/log_structures.h"
 #include "../allocator/volume_manager.h"
 #include "../common/common.h"
-#include "../include/parallax/structures.h"
-#include "../parallax_callbacks/parallax_callbacks.h"
 #include "bloom_filter.h"
 #include "btree.h"
 #include "btree_node.h"
@@ -33,7 +29,6 @@
 #include <assert.h>
 #include <log.h>
 #include <stdbool.h>
-#include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>

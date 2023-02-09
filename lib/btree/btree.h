@@ -24,9 +24,9 @@
 #include "lsn.h"
 #include "parallax/structures.h"
 #include <pthread.h>
-#include <semaphore.h>
 #include <stdbool.h>
 #include <stdint.h>
+struct kv_splice_base;
 
 struct lookup_operation {
 	struct db_descriptor *db_desc; /*in variable*/

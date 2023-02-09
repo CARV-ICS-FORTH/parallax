@@ -1,9 +1,7 @@
 #ifndef LEVEL_WRITE_APPENDER_H
 #define LEVEL_WRITE_APPENDER_H
-#include "btree.h"
-#include <stdbool.h>
 #include <stdint.h>
-
+struct db_handle;
 typedef struct level_write_appender *level_write_appender_t;
 
 /**

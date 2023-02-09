@@ -1,8 +1,6 @@
 #ifndef COMPACTION_WORKER_H
 #define COMPACTION_WORKER_H
-#include "../allocator/volume_manager.h"
 #include "btree.h"
-#include "parallax/structures.h"
 #include <stdint.h>
 struct compaction_request;
 struct par_db_options;

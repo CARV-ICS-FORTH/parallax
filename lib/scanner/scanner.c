@@ -21,7 +21,6 @@
 #include "../btree/key_splice.h"
 #include "../btree/kv_pairs.h"
 #include "../common/common.h"
-#include "../include/parallax/structures.h"
 #include "../utilities/dups_list.h"
 #include "min_max_heap.h"
 #include "stack.h"

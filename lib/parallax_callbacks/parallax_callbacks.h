@@ -1,6 +1,5 @@
 #ifndef parallax_CALLBACKS_H
 #define parallax_CALLBACKS_H
-#include "../allocator/log_structures.h"
 #include "parallax/structures.h"
 #include <stdbool.h>
 #include <stdint.h>

@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 #include "log_structures.h"
+#include "../btree/conf.h"
 #include <assert.h>
 #include <stdbool.h>
 #include <stdlib.h>

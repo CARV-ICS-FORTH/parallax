@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 #include "kv_pairs.h"
-#include "../include/parallax/structures.h"
 #include "key_splice.h"
 #include <assert.h>
 #include <log.h>
