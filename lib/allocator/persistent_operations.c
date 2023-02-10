@@ -1010,6 +1010,7 @@ void pr_flush_buffer_to_log(struct log_descriptor *log_desc, uint64_t IO_start_o
 	assert(log_desc);
 	ssize_t total_bytes_written = 0;
 	ssize_t size = buf_size;
+	log_desc->size += buf_size;
 	// log_info("IO time, start %llu size %llu segment dev_offt %llu offt in seg
 	// %llu", total_bytes_written, size,
 	//	 ticket->tail->dev_segment_offt, ticket->IO_start_offt);
