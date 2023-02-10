@@ -189,8 +189,7 @@ par_ret_code par_exists(par_handle handle, struct par_key *key)
 }
 
 // cppcheck-suppress unusedFunction
-uint64_t par_flush_segment_in_log(par_handle handle, char *buf, int32_t buf_size, enum log_category log_cat,
-				  const char **error_message)
+uint64_t par_flush_segment_in_log(par_handle handle, char *buf, int32_t buf_size, enum log_category log_cat)
 {
 	db_handle *dbhandle = (db_handle *)handle;
 	uint64_t is_db_replica = dbhandle->db_options.options[REPLICA_MODE].value;

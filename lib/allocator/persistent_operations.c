@@ -47,12 +47,12 @@ struct log_info {
 	uint64_t size;
 };
 
-static void flush_segment_in_log(int fd, uint64_t file_offset, char *segment_buffer, int32_t segment_size)
+static void flush_segment_in_log(int fd, uint64_t file_offset, char *buffer, int32_t buffer_size)
 {
 	ssize_t total_bytes_written = 0;
-	ssize_t size = segment_size;
+	ssize_t size = buffer_size;
 	while (total_bytes_written < size) {
-		ssize_t bytes_written = pwrite(fd, &segment_buffer[total_bytes_written], size - total_bytes_written,
+		ssize_t bytes_written = pwrite(fd, &buffer[total_bytes_written], size - total_bytes_written,
 					       file_offset + total_bytes_written);
 		if (bytes_written == -1) {
 			log_fatal("Failed to write LOG_CHUNK reason follows");
@@ -967,7 +967,7 @@ uint64_t pr_add_and_flush_segment_in_log(db_handle *dbhandle, char *buf, int32_t
 	in_mem_segment_buf->prev_segment = (void *)log_desc.tail_dev_offt;
 	log_desc.tail_dev_offt = next_tail_seg_offt;
 	/*position to the end of the new log*/
-	log_desc.size += SEGMENT_SIZE;
+	log_desc.size += buf_size;
 
 	flush_segment_in_log(dbhandle->db_desc->db_volume->vol_fd, log_desc.tail_dev_offt, buf, buf_size);
 
