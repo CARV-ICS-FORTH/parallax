@@ -1006,11 +1006,12 @@ void pr_append_segment_to_log(struct log_descriptor *log_desc, char *buf, uint64
 	log_desc->curr_tail_id = next_tail_segment->segment_id;
 }
 
-void pr_flush_buffer_to_log(struct log_descriptor *log_desc, uint64_t IO_start_offt, char *buf, uint32_t buf_size)
+void pr_flush_buffer_to_log(struct log_descriptor *log_desc, uint64_t IO_start_offt, uint32_t IO_size, char *buf,
+			    uint32_t buf_size)
 {
 	assert(log_desc);
 	ssize_t total_bytes_written = 0;
-	ssize_t size = buf_size;
+	ssize_t size = IO_size;
 	log_desc->size += buf_size;
 	// log_info("IO time, start %llu size %llu segment dev_offt %llu offt in seg
 	// %llu", total_bytes_written, size,
