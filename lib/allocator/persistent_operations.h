@@ -53,7 +53,13 @@ void pr_flush_compaction(struct db_descriptor *db_desc, uint8_t level_id, uint8_
 
 void pr_recover_L0(struct db_descriptor *db_desc);
 
-uint64_t pr_add_and_flush_segment_in_log(db_handle *dbhandle, char *buf, int32_t buf_size, enum log_type log_cat);
+/**
+ * Adds and flushes the contets of buf to the associated log_cat log
+ * The size of the flush is equal to IO_size while the buf_size is for keeping the log accounting.
+ * This happends becauase the buf_size may not be a mutliple to alignment size.
+ */
+uint64_t pr_add_and_flush_segment_in_log(db_handle *dbhandle, char *buf, int32_t buf_size, uint32_t IO_size,
+					 enum log_type log_cat);
 
 uint64_t pr_allocate_segment_for_log(struct db_descriptor *db_desc, struct log_descriptor *log_desc, uint8_t level_id,
 				     uint8_t tree_id);

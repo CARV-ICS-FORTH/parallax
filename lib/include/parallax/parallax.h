@@ -123,10 +123,12 @@ par_ret_code par_exists(par_handle handle, struct par_key *key);
  * @param handle: DB handle provided by par_open
  * @param buf: the in-memory buffer to be flushed
  * @param buf_size: the in-memory buffer size
+ * @param IO_size: the size of the IO which is the closest ALIGNMENT_SIZE multiple of buf_size
  * @param log_cat: the category of the log to flush into
  * @param error_message: Contains error message of call fails
  */
-uint64_t par_flush_segment_in_log(par_handle handle, char *buf, int32_t buf_size, enum log_category log_cat);
+uint64_t par_flush_segment_in_log(par_handle handle, char *buf, int32_t buf_size, uint32_t IO_size,
+				  enum log_category log_cat);
 /**
  * Flushes Parallax superblock
  * in order for buffer to be persisted, the buffers must be flushed (par_flush_segment_in_log)

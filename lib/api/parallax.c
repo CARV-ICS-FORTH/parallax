@@ -189,7 +189,8 @@ par_ret_code par_exists(par_handle handle, struct par_key *key)
 }
 
 // cppcheck-suppress unusedFunction
-uint64_t par_flush_segment_in_log(par_handle handle, char *buf, int32_t buf_size, enum log_category log_cat)
+uint64_t par_flush_segment_in_log(par_handle handle, char *buf, int32_t buf_size, uint32_t IO_size,
+				  enum log_category log_cat)
 {
 	db_handle *dbhandle = (db_handle *)handle;
 	uint64_t is_db_replica = dbhandle->db_options.options[REPLICA_MODE].value;
@@ -202,7 +203,7 @@ uint64_t par_flush_segment_in_log(par_handle handle, char *buf, int32_t buf_size
 	if (log_cat == BIG) {
 		log_type = BIG_LOG;
 	}
-	return pr_add_and_flush_segment_in_log(dbhandle, buf, buf_size, log_type);
+	return pr_add_and_flush_segment_in_log(dbhandle, buf, buf_size, IO_size, log_type);
 }
 
 void par_init_compaction_id(par_handle handle, uint32_t level_id, uint32_t tree_id)
