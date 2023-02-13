@@ -469,7 +469,7 @@ static void compact_with_empty_destination_level(struct compaction_request *comp
 
 	swap_levels(src_level, dst_level, comp_req->src_tree, 1);
 
-	pr_flush_compaction(comp_req->db_desc, comp_req->dst_level, comp_req->dst_tree);
+	pr_flush_compaction(comp_req->db_desc, comp_req->db_options, comp_req->dst_level, comp_req->dst_tree);
 	swap_levels(dst_level, dst_level, 1, 0);
 	log_debug("Flushed compaction (Swap levels) successfully from src[%u][%u] to dst[%u][%u]", comp_req->src_level,
 		  comp_req->src_tree, comp_req->dst_level, comp_req->dst_tree);
@@ -565,7 +565,7 @@ void compaction_close(struct compaction_request *comp_req)
 	comp_zero_level(hd.db_desc, comp_req->src_level, comp_req->src_tree);
 
 	/*Finally persist compaction */
-	pr_flush_compaction(comp_req->db_desc, comp_req->dst_level, comp_req->dst_tree);
+	pr_flush_compaction(comp_req->db_desc, comp_req->db_options, comp_req->dst_level, comp_req->dst_tree);
 
 	if (comp_req->db_desc->levels[comp_req->src_level].bloom_desc[0]) {
 		pbf_destroy_bloom_filter(comp_req->db_desc->levels[comp_req->src_level].bloom_desc[0]);

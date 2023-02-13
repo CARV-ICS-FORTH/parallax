@@ -209,7 +209,8 @@ void pr_flush_L0(struct db_descriptor *db_desc, uint8_t tree_id)
 	rul_apply_txn_buf_freeops_and_destroy(db_desc, txn_id);
 }
 
-static void pr_flush_L0_to_L1(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
+static void pr_flush_L0_to_L1(struct db_descriptor *db_desc, struct par_db_options *db_options, uint8_t level_id,
+			      uint8_t tree_id)
 {
 	struct log_info medium_log;
 
@@ -221,7 +222,8 @@ static void pr_flush_L0_to_L1(struct db_descriptor *db_desc, uint8_t level_id, u
 	medium_log.tail_dev_offt = db_desc->medium_log.tail_dev_offt;
 	medium_log.size = db_desc->medium_log.size;
 	/*Flush medium log*/
-	pr_flush_log_tail(db_desc, &db_desc->medium_log);
+	if (db_options->options[PRIMARY_MODE].value)
+		pr_flush_log_tail(db_desc, &db_desc->medium_log);
 	pr_lock_db_superblock(db_desc);
 	uint64_t txn_id = db_desc->levels[level_id].allocation_txn_id[tree_id];
 
@@ -330,10 +332,11 @@ update_superblock:
 	rul_apply_txn_buf_freeops_and_destroy(db_desc, txn_id);
 }
 
-void pr_flush_compaction(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
+void pr_flush_compaction(struct db_descriptor *db_desc, struct par_db_options *dboptions, uint8_t level_id,
+			 uint8_t tree_id)
 {
 	if (level_id == 1) {
-		pr_flush_L0_to_L1(db_desc, level_id, tree_id);
+		pr_flush_L0_to_L1(db_desc, dboptions, level_id, tree_id);
 		return;
 	}
 
