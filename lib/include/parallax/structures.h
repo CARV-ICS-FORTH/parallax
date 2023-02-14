@@ -40,6 +40,8 @@ typedef enum {
 	// this fields enables Parallax to spin for replies from backups when using double buffering.
 	// This must be set only when Parallax is used in a distributed enviroment with double buffering on
 	// and following the *Tebis* logic
+	REPLICA_BUILD_INDEX,
+	REPLICA_SEND_INDEX,
 	NUM_OF_CONFIGURATION_OPTIONS
 } par_options;
 

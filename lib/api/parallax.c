@@ -414,6 +414,12 @@ struct par_options_desc *par_get_default_options(void)
 	check_option(dboptions, "replica_mode", &option);
 	uint64_t replica_mode = option->value.count;
 
+	check_option(dboptions, "replica_build_index", &option);
+	uint64_t replica_build_index = option->value.count;
+
+	check_option(dboptions, "replica_send_index", &option);
+	uint64_t replica_send_index = option->value.count;
+
 	check_option(dboptions, "enable_bloom_filters", &option);
 	uint64_t enable_bloom_filters = option->value.count;
 
@@ -434,6 +440,8 @@ struct par_options_desc *par_get_default_options(void)
 	default_db_options[ENABLE_BLOOM_FILTERS].value = enable_bloom_filters;
 	default_db_options[ENABLE_COMPACTION_DOUBLE_BUFFERING].value = enable_compaction_double_buffering;
 	default_db_options[NUMBER_OF_REPLICAS].value = number_of_replicas;
+	default_db_options[REPLICA_BUILD_INDEX].value = replica_build_index;
+	default_db_options[REPLICA_SEND_INDEX].value = replica_send_index;
 	default_db_options[WCURSOR_SPIN_FOR_FLUSH_REPLIES].value = 0;
 
 	return default_db_options;

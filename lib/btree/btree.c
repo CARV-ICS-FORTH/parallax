@@ -456,8 +456,16 @@ db_handle *internal_db_open(struct volume_descriptor *volume_desc, par_db_option
 	uint64_t growth_factor = handle->db_options.options[GROWTH_FACTOR].value;
 	uint64_t primary_mode = handle->db_options.options[PRIMARY_MODE].value;
 	uint64_t replica_mode = handle->db_options.options[REPLICA_MODE].value;
+	uint64_t replica_build_index = handle->db_options.options[REPLICA_BUILD_INDEX].value;
+	uint64_t replica_send_index = handle->db_options.options[REPLICA_SEND_INDEX].value;
 	if (primary_mode == replica_mode) {
 		*error_message = "A DB must be set to either primary or replica mode";
+		free(handle);
+		handle = NULL;
+		return NULL;
+	}
+	if (replica_mode && replica_build_index && replica_send_index) {
+		*error_message = "A replica DB must be set to build_index or send_index mode";
 		free(handle);
 		handle = NULL;
 		return NULL;
@@ -720,7 +728,7 @@ static bool is_level0_available(struct db_descriptor *db_desc, uint8_t level_id,
 	/* Reacquire the lock of level 0 to access it safely. */
 	if (relock)
 		rwlock == 1 ? RWLOCK_RDLOCK(&db_desc->levels[0].guard_of_level.rx_lock) :
-			      RWLOCK_WRLOCK(&db_desc->levels[0].guard_of_level.rx_lock);
+				    RWLOCK_WRLOCK(&db_desc->levels[0].guard_of_level.rx_lock);
 
 	return true;
 }
@@ -910,7 +918,7 @@ static void pr_copy_kv_to_tail(struct pr_log_ticket *ticket)
 		struct kv_splice *kv_pair_dst = (struct kv_splice *)&ticket->tail->buf[offt];
 		struct kv_splice *kv_pair_src = ticket->req->ins_req->splice_base->kv_splice;
 		ticket->req->optype_tolog == insertOp ? kv_splice_set_non_tombstone(kv_pair_dst) :
-							kv_splice_set_tombstone(kv_pair_dst);
+							      kv_splice_set_tombstone(kv_pair_dst);
 		kv_splice_set_key(kv_pair_dst, kv_splice_get_key_offset_in_kv(kv_pair_src),
 				  kv_splice_get_key_size(kv_pair_src));
 		kv_splice_set_value(kv_pair_dst,

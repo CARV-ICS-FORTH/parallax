@@ -222,7 +222,7 @@ static void pr_flush_L0_to_L1(struct db_descriptor *db_desc, struct par_db_optio
 	medium_log.tail_dev_offt = db_desc->medium_log.tail_dev_offt;
 	medium_log.size = db_desc->medium_log.size;
 	/*Flush medium log*/
-	if (db_options->options[PRIMARY_MODE].value)
+	if (db_options->options[PRIMARY_MODE].value || db_options->options[REPLICA_BUILD_INDEX].value)
 		pr_flush_log_tail(db_desc, &db_desc->medium_log);
 	pr_lock_db_superblock(db_desc);
 	uint64_t txn_id = db_desc->levels[level_id].allocation_txn_id[tree_id];
