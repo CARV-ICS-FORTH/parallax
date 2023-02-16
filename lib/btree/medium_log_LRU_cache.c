@@ -216,6 +216,7 @@ static void mlog_cache_remove_first(struct mlog_cache_chunk_list *list)
 	struct mlog_cache_chunk_listnode *pfront = list->head;
 	list->head = list->head->next;
 	--list->size;
+	free(pfront->chunk_buf);
 	free(pfront);
 }
 
@@ -366,6 +367,7 @@ static void mlog_cache_free_LRU_list(struct mlog_cache_chunk_list *list)
 	while (pfront != NULL) {
 		pback = pfront;
 		pfront = pfront->next;
+		free(pback->chunk_buf);
 		free(pback);
 	}
 }

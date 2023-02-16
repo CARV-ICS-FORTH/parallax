@@ -276,7 +276,10 @@ uint64_t seg_free_level(struct db_descriptor *db_desc, uint64_t txn_id, uint8_t 
 				assert(temp_segment);
 				space_freed += SEGMENT_SIZE;
 			}
+			free(curr_segment);
+			space_freed += SEGMENT_SIZE;
 			free(temp_segment);
+			space_freed += SEGMENT_SIZE;
 		} else
 			free(curr_segment);
 	}
