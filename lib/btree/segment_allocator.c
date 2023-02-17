@@ -234,54 +234,36 @@ segment_header *seg_get_raw_log_segment(struct db_descriptor *db_desc, enum log_
 
 uint64_t seg_free_level(struct db_descriptor *db_desc, uint64_t txn_id, uint8_t level_id, uint8_t tree_id)
 {
-	segment_header *curr_segment = db_desc->levels[level_id].first_segment[tree_id];
-	segment_header *temp_segment;
-	uint64_t space_freed = 0;
-
+	struct segment_header *curr_segment = db_desc->levels[level_id].first_segment[tree_id];
 	if (!curr_segment) {
-		log_warn("Cannot free an empty level");
+		log_debug("Level [%u][%u] is free nothing to do", level_id, tree_id);
 		return 0;
 	}
 
-	log_debug("Freeing up level %u for db %s", level_id, db_desc->db_superblock->db_name);
+	uint64_t space_freed = 0;
 
-	if (level_id != 0) {
-		while (1) {
-			//log_info("Freeing level segment %llu", ABSOLUTE_ADDRESS(curr_segment));
-			seg_free_segment(db_desc, txn_id, ABSOLUTE_ADDRESS(curr_segment));
-			space_freed += SEGMENT_SIZE;
-			if (NULL == curr_segment->next_segment)
-				break;
-			curr_segment = REAL_ADDRESS(curr_segment->next_segment);
-		}
-		assert(space_freed == db_desc->levels[level_id].offset[0]);
-
-	} else {
-		/*Finally L0 index in memory*/
-		curr_segment = db_desc->levels[level_id].first_segment[tree_id];
-
-		if (!curr_segment) {
-			log_warn("Nothing to do for level[%u][%u] because it is empty", level_id, tree_id);
-			return 0;
-		}
-
-		if (curr_segment->next_segment) {
-			temp_segment = REAL_ADDRESS(curr_segment->next_segment);
-			/* log_info("Level id to free %d %d", level_id,curr_segment->in_mem); */
-			while (temp_segment->next_segment != NULL) {
-				/* log_info("COUNT  %d %llu", curr_segment->segment_id, curr_segment->next_segment); */
-				free(curr_segment);
-				curr_segment = temp_segment;
-				temp_segment = REAL_ADDRESS(temp_segment->next_segment);
-				assert(temp_segment);
-				space_freed += SEGMENT_SIZE;
-			}
-			free(curr_segment);
-			space_freed += SEGMENT_SIZE;
-			free(temp_segment);
-			space_freed += SEGMENT_SIZE;
-		} else
-			free(curr_segment);
+	while (level_id && curr_segment) {
+		seg_free_segment(db_desc, txn_id, ABSOLUTE_ADDRESS(curr_segment));
+		space_freed += SEGMENT_SIZE;
+		curr_segment = NULL == curr_segment->next_segment ? NULL : REAL_ADDRESS(curr_segment->next_segment);
 	}
+
+	if (level_id) {
+		log_debug("Freed device level %u for db %s", level_id, db_desc->db_superblock->db_name);
+		assert(space_freed == db_desc->levels[level_id].offset[0]);
+		return space_freed;
+	}
+
+	while (curr_segment) {
+		struct segment_header *stale_seg = curr_segment;
+		curr_segment = stale_seg->next_segment == NULL ? NULL : REAL_ADDRESS(stale_seg->next_segment);
+		free(stale_seg);
+		space_freed += SEGMENT_SIZE;
+	}
+
+	log_debug("Freed in-memory L0 level [%u][%u] for db %s", level_id, tree_id, db_desc->db_superblock->db_name);
+	assert(space_freed == db_desc->levels[level_id].offset[tree_id] % SEGMENT_SIZE ?
+		       db_desc->levels[level_id].offset[tree_id] :
+			     db_desc->levels[level_id].offset[tree_id] / SEGMENT_SIZE + SEGMENT_SIZE);
 	return space_freed;
 }
