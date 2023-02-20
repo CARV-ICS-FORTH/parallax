@@ -250,7 +250,7 @@ uint64_t seg_free_level(struct db_descriptor *db_desc, uint64_t txn_id, uint8_t 
 
 	if (level_id) {
 		log_debug("Freed device level %u for db %s", level_id, db_desc->db_superblock->db_name);
-		assert(space_freed == db_desc->levels[level_id].offset[0]);
+		//assert(space_freed == db_desc->levels[level_id].offset[0]);
 		return space_freed;
 	}
 

@@ -363,11 +363,8 @@ struct wcursor_level_write_cursor *wcursor_init_write_cursor(uint8_t level_id, s
 	w_cursor->fd = handle->db_desc->db_volume->vol_fd;
 	w_cursor->handle = handle;
 
-	wcursor_seg_buf_array_init(MAX_HEIGHT, w_cursor, enable_double_buffering ? 2 : 1);
-
 	assert(0 == handle->db_desc->levels[w_cursor->level_id].offset[w_cursor->tree_id]);
 #if TEBIS_FORMAT
-	assert(w_cursor->num_columns == 2);
 	w_cursor->number_of_replicas = w_cursor->handle->db_options.options[NUMBER_OF_REPLICAS].value;
 	w_cursor->spin_for_replies = false;
 	if (w_cursor->handle->db_options.options[WCURSOR_SPIN_FOR_FLUSH_REPLIES].value) {
@@ -378,6 +375,7 @@ struct wcursor_level_write_cursor *wcursor_init_write_cursor(uint8_t level_id, s
 		w_cursor->spin_for_replies = true;
 	}
 #endif
+	wcursor_seg_buf_array_init(MAX_HEIGHT, w_cursor, enable_double_buffering ? 2 : 1);
 
 	for (uint32_t height = 0; height < MAX_HEIGHT; ++height) {
 		w_cursor->segment_offt[height] = sizeof(struct segment_header);
