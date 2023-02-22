@@ -20,6 +20,7 @@ struct parallax_callback_funcs {
 						   struct wcursor_level_write_cursor *wcursor, uint32_t level_id,
 						   uint32_t height, uint32_t buf_size, uint32_t clock, bool is_last);
 	void (*comp_write_cursor_got_flush_replies_cb)(void *context, uint32_t src_level_id, uint32_t clock_id);
+	void (*build_index_L0_compaction_started_cb)(void *context);
 };
 
 typedef struct parallax_callbacks *parallax_callbacks_t;

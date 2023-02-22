@@ -177,6 +177,16 @@ static void *compactiond_run(void *args)
 			db_desc->levels[1].allocation_txn_id[1] = rul_start_txn(db_desc);
 			compaction_set_dst_tree(comp_req, 1);
 			assert(db_desc->levels[0].root[compaction_get_src_tree(comp_req)] != NULL);
+
+			//TODO: geostyl callback
+			parallax_callbacks_t par_callbacks = db_desc->parallax_callbacks;
+			if (are_parallax_callbacks_set(par_callbacks) &&
+			    handle->db_options.options[PRIMARY_MODE].value) {
+				struct parallax_callback_funcs par_cb = parallax_get_callbacks(par_callbacks);
+				void *context = parallax_get_context(par_callbacks);
+				par_cb.build_index_L0_compaction_started_cb(context);
+			}
+
 			if (pthread_create(&db_desc->levels[0].compaction_thread[compaction_get_src_tree(comp_req)],
 					   NULL, compaction, comp_req) != 0) {
 				log_fatal("Failed to start compaction");

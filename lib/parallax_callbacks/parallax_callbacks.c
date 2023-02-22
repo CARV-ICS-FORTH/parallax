@@ -53,6 +53,10 @@ void parallax_init_callbacks(par_handle dbhandle, struct parallax_callback_funcs
 		parallax_cb->parallax_callback_functions.comp_write_cursor_got_flush_replies_cb =
 			parallax_callbacks->comp_write_cursor_got_flush_replies_cb;
 
+	if (parallax_callbacks->build_index_L0_compaction_started_cb)
+		parallax_cb->parallax_callback_functions.build_index_L0_compaction_started_cb =
+			parallax_callbacks->build_index_L0_compaction_started_cb;
+
 	// set context
 	parallax_cb->context = context;
 }
