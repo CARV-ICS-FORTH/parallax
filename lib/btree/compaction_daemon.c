@@ -13,13 +13,13 @@
 // limitations under the License.
 
 #define _GNU_SOURCE
-
-#include "compaction_daemon.h"
+#include "btree.h"
 #include "../allocator/device_structures.h"
 #include "../allocator/log_structures.h"
 #include "../allocator/persistent_operations.h"
 #include "../allocator/redo_undo_log.h"
 #include "../common/common.h"
+#include "compaction_daemon.h"
 #include "compaction_worker.h"
 #include "conf.h"
 #include "parallax/structures.h"
@@ -280,4 +280,13 @@ void compactiond_close(struct compaction_daemon *daemon)
 		BUG_ON();
 	}
 	free(daemon);
+}
+
+void compactiond_force_L0_compaction(struct compaction_daemon *daemon)
+{
+	assert(daemon);
+	struct level_descriptor *level_0 = &daemon->db_handle->db_desc->levels[0];
+	int tree_id = daemon->next_L0_tree_to_compact % NUM_TREES_PER_LEVEL;
+	level_0->level_size[tree_id] = level_0->max_level_size;
+	compactiond_interrupt(daemon);
 }
