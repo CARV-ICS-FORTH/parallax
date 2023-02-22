@@ -323,7 +323,7 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 
 	comp_req->dst_rcursor = NULL == comp_roots.dst_root ?
 					NULL :
-					rcursor_init_cursor(handle, compaction_get_dst_level(comp_req), 0,
+					      rcursor_init_cursor(handle, compaction_get_dst_level(comp_req), 0,
 							    compaction_get_vol_fd(comp_req));
 	assert(0 ==
 	       handle->db_desc->levels[compaction_get_dst_level(comp_req)].offset[compaction_get_dst_tree(comp_req)]);
@@ -345,9 +345,10 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 			small_log_tail_dev_offt = handle->db_desc->small_log.tail_dev_offt;
 			big_log_tail_dev_offt = handle->db_desc->big_log.tail_dev_offt;
 		}
-		par_cb.compaction_started_cb(context, small_log_tail_dev_offt, big_log_tail_dev_offt,
-					     compaction_get_src_level(comp_req), compaction_get_src_tree(comp_req),
-					     comp_req->wcursor);
+		if (par_cb.compaction_started_cb)
+			par_cb.compaction_started_cb(context, small_log_tail_dev_offt, big_log_tail_dev_offt,
+						     compaction_get_src_level(comp_req),
+						     compaction_get_src_tree(comp_req), comp_req->wcursor);
 	}
 
 	//initialize LRU cache for storing chunks of segments when medium log goes in place
@@ -358,7 +359,7 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 		  handle->db_desc->levels[comp_req->src_level].level_size[compaction_get_src_tree(comp_req)]);
 
 	NULL == comp_roots.dst_root ? log_debug("Empty dst [%u]", compaction_get_dst_level(comp_req)) :
-				      log_debug("Dst [%u][%u] size = %lu", comp_req->dst_level, 0,
+					    log_debug("Dst [%u][%u] size = %lu", comp_req->dst_level, 0,
 						handle->db_desc->levels[comp_req->dst_level].level_size[0]);
 
 	// initialize and fill min_heap properly
@@ -458,7 +459,8 @@ static void compact_with_empty_destination_level(struct compaction_request *comp
 		if (are_parallax_callbacks_set(par_callbacks)) {
 			struct parallax_callback_funcs par_cb = parallax_get_callbacks(par_callbacks);
 			void *context = parallax_get_context(par_callbacks);
-			par_cb.swap_levels_cb(context, comp_req->src_level, comp_req->src_tree);
+			if (par_cb.swap_levels_cb)
+				par_cb.swap_levels_cb(context, comp_req->src_level, comp_req->src_tree);
 		}
 	}
 
@@ -539,11 +541,12 @@ void compaction_close(struct compaction_request *comp_req)
 			void *context = parallax_get_context(par_callbacks);
 			assert(hd.db_desc->levels[comp_req->dst_level].first_segment[1]);
 			assert(hd.db_desc->levels[comp_req->dst_level].last_segment[1]);
-			par_cb.compaction_ended_cb(
-				context, comp_req->src_level,
-				ABSOLUTE_ADDRESS(hd.db_desc->levels[comp_req->dst_level].first_segment[1]),
-				ABSOLUTE_ADDRESS(hd.db_desc->levels[comp_req->dst_level].last_segment[1]),
-				ABSOLUTE_ADDRESS(hd.db_desc->levels[comp_req->dst_level].root[1]));
+			if (par_cb.compaction_ended_cb)
+				par_cb.compaction_ended_cb(
+					context, comp_req->src_level,
+					ABSOLUTE_ADDRESS(hd.db_desc->levels[comp_req->dst_level].first_segment[1]),
+					ABSOLUTE_ADDRESS(hd.db_desc->levels[comp_req->dst_level].last_segment[1]),
+					ABSOLUTE_ADDRESS(hd.db_desc->levels[comp_req->dst_level].root[1]));
 		}
 	}
 

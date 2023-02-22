@@ -140,7 +140,8 @@ void wcursor_spin_for_buffer_status(struct wcursor_level_write_cursor *wcursor)
 		void *context = parallax_get_context(par_callbacks);
 		uint32_t src_level = wcursor->level_id - 1;
 		uint32_t clock_id = wcursor->last_flush_request_clock % wcursor->num_columns;
-		par_cb.comp_write_cursor_got_flush_replies_cb(context, src_level, clock_id);
+		if (par_cb.comp_write_cursor_got_flush_replies_cb)
+			par_cb.comp_write_cursor_got_flush_replies_cb(context, src_level, clock_id);
 	}
 }
 #endif
@@ -288,11 +289,11 @@ static void wcursor_write_index_segment(struct wcursor_level_write_cursor *w_cur
 			struct parallax_callback_funcs par_cb = parallax_get_callbacks(par_callbacks);
 			void *context = parallax_get_context(par_callbacks);
 			uint32_t src_level = w_cursor->level_id - 1;
-			par_cb.comp_write_cursor_flush_segment_cb(context,
-								  w_cursor->last_segment_btree_level_offt[height],
-								  w_cursor, src_level,
-								  w_cursor->last_flush_request_height, SEGMENT_SIZE,
-								  w_cursor->last_flush_request_clock, false);
+			if (par_cb.comp_write_cursor_flush_segment_cb)
+				par_cb.comp_write_cursor_flush_segment_cb(
+					context, w_cursor->last_segment_btree_level_offt[height], w_cursor, src_level,
+					w_cursor->last_flush_request_height, SEGMENT_SIZE,
+					w_cursor->last_flush_request_clock, false);
 		}
 	}
 #endif
@@ -536,11 +537,11 @@ void wcursor_flush_write_cursor(struct wcursor_level_write_cursor *w_cursor)
 			struct parallax_callback_funcs par_cb = parallax_get_callbacks(par_callbacks);
 			void *context = parallax_get_context(par_callbacks);
 			uint32_t src_level = w_cursor->level_id - 1;
-			par_cb.comp_write_cursor_flush_segment_cb(context,
-								  w_cursor->last_segment_btree_level_offt[height],
-								  w_cursor, src_level,
-								  w_cursor->last_flush_request_height, SEGMENT_SIZE,
-								  w_cursor->last_flush_request_clock, true);
+			if (par_cb.comp_write_cursor_flush_segment_cb)
+				par_cb.comp_write_cursor_flush_segment_cb(
+					context, w_cursor->last_segment_btree_level_offt[height], w_cursor, src_level,
+					w_cursor->last_flush_request_height, SEGMENT_SIZE,
+					w_cursor->last_flush_request_clock, true);
 		}
 
 #endif

@@ -184,7 +184,8 @@ static void *compactiond_run(void *args)
 			    handle->db_options.options[PRIMARY_MODE].value) {
 				struct parallax_callback_funcs par_cb = parallax_get_callbacks(par_callbacks);
 				void *context = parallax_get_context(par_callbacks);
-				par_cb.build_index_L0_compaction_started_cb(context);
+				if (par_cb.build_index_L0_compaction_started_cb)
+					par_cb.build_index_L0_compaction_started_cb(context);
 			}
 
 			if (pthread_create(&db_desc->levels[0].compaction_thread[compaction_get_src_tree(comp_req)],
