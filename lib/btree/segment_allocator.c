@@ -264,6 +264,6 @@ uint64_t seg_free_level(struct db_descriptor *db_desc, uint64_t txn_id, uint8_t 
 	log_debug("Freed in-memory L0 level [%u][%u] for db %s", level_id, tree_id, db_desc->db_superblock->db_name);
 	assert(space_freed == db_desc->levels[level_id].offset[tree_id] % SEGMENT_SIZE ?
 		       db_desc->levels[level_id].offset[tree_id] :
-			     db_desc->levels[level_id].offset[tree_id] / SEGMENT_SIZE + SEGMENT_SIZE);
+		       db_desc->levels[level_id].offset[tree_id] / SEGMENT_SIZE + SEGMENT_SIZE);
 	return space_freed;
 }

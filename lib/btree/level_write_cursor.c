@@ -252,7 +252,7 @@ struct wcursor_level_write_cursor *wcursor_init_write_cursor(uint8_t level_id, s
 
 	w_cursor->medium_log_LRU_cache = level_id == w_cursor->handle->db_desc->level_medium_inplace ?
 						 mlog_cache_init_LRU(w_cursor->handle) :
-						       NULL;
+						 NULL;
 
 	return w_cursor;
 }

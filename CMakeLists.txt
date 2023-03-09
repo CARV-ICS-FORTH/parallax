@@ -162,7 +162,7 @@ endif()
 
 string(APPEND CMAKE_C_FLAGS_DEBUG " -ggdb3 -Og -gz")
 string(APPEND CMAKE_C_FLAGS_RELEASE
-       " -funit-at-a-time -O2 -finline-functions -DNDEBUG")
+       " -O2 -finline-functions -DNDEBUG")
 string(APPEND CMAKE_CXX_FLAGS_RELEASE " -std=gnu++11 -Wall")
 string(APPEND CMAKE_EXE_LINKER_FLAGS
        " -Wl,--no-as-needed -lrt -lm -pthread -lnuma -lutil")
