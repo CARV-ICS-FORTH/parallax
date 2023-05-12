@@ -1,7 +1,7 @@
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 include_directories(${CMAKE_SOURCE_DIR}/lib)
 
-if(BUILD_TESTING)
+if(PARALLAX_BUILD_TESTING)
   set(LIB_TEST_FILES
       tiresias.c
       test_recovery.c
