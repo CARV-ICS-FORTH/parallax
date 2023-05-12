@@ -14,12 +14,11 @@ option(BUILD_SHARED_LIBS
 option(DISABLE_LOGGING
        "Disable all logging from parallax excluding kv_format.parallax output."
        OFF)
-option(TEBIS_FORMAT
-       "BUild Parallax using Tebis-format"
-       OFF)
+option(TEBIS_FORMAT "BUild Parallax using Tebis-format" OFF)
+option(PARALLAX_BUILD_TESTING "" ON)
 
 if(NOT (${CMAKE_SOURCE_DIR} STREQUAL ${CMAKE_CURRENT_SOURCE_DIR}))
-  option(BUILD_TESTING "" OFF)
+  set(PARALLAX_BUILD_TESTING OFF)
 endif()
 
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
@@ -31,8 +30,6 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "Debug" "Release"
                                                "MinSizeRel" "RelWithDebInfo")
 endif()
-
-
 
 message(
   STATUS
@@ -170,8 +167,7 @@ if(ENABLE_FLTO)
 endif()
 
 string(APPEND CMAKE_C_FLAGS_DEBUG " -ggdb3 -Og -gz")
-string(APPEND CMAKE_C_FLAGS_RELEASE
-       " -O2 -finline-functions -DNDEBUG")
+string(APPEND CMAKE_C_FLAGS_RELEASE " -O2 -finline-functions -DNDEBUG")
 string(APPEND CMAKE_CXX_FLAGS_RELEASE " -std=gnu++11 -Wall")
 string(APPEND CMAKE_EXE_LINKER_FLAGS
        " -Wl,--no-as-needed -lrt -lm -pthread -lnuma -lutil")
@@ -211,8 +207,9 @@ if(NOT TARGET uninstall)
     "${CMAKE_CURRENT_BINARY_DIR}/cmake_uninstall.cmake" IMMEDIATE @ONLY)
 
   add_custom_target(
-    parallax-uninstall COMMAND ${CMAKE_COMMAND} -P
-                      ${CMAKE_CURRENT_BINARY_DIR}/cmake_uninstall.cmake)
+    parallax-uninstall
+    COMMAND ${CMAKE_COMMAND} -P
+            ${CMAKE_CURRENT_BINARY_DIR}/cmake_uninstall.cmake)
 endif()
 
 # This should be left at the end of the CMakeLists otherwise the generation of
