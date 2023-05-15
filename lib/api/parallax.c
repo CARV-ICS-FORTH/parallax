@@ -54,6 +54,16 @@ const char *par_close(par_handle handle)
 	return db_close((db_handle *)handle);
 }
 
+char *par_get_db_name(par_handle handle, const char **error_message)
+{
+	if (!handle) {
+		*error_message = "NULL file handle.";
+		return NULL;
+	}
+	db_handle *dbhandle = (db_handle *)handle;
+	return dbhandle->db_desc->db_superblock->db_name;
+}
+
 enum kv_category get_kv_category(int32_t key_size, int32_t value_size, request_type operation,
 				 const char **error_message)
 {

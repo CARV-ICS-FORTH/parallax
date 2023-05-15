@@ -38,6 +38,14 @@ char *par_format(char *device_name, uint32_t max_regions_num) __attribute__((war
 par_handle par_open(par_db_options *db_options, const char **error_message);
 
 /**
+ * @brief Return the name of the parallax db
+ * @param handle the db handle
+ * @param error_message In case of an error it contains the failure reason
+ * @return A pointer to a C string containing the db name otherwise NULL
+ */
+char *par_get_db_name(par_handle handle, const char **error_message);
+
+/**
  * Closes the DB referenced by handle. Syncs data to the file or device before exiting.
  * @param handle Handle returned by \ref par_open.
  * @return Error message in case of failure.
