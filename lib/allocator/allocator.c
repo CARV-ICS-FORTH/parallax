@@ -72,7 +72,7 @@ off64_t mount_volume(char *volume_name, int64_t start, int64_t unused_size)
 #endif
 
 	if (MAPPED == 0) {
-		log_info("Opening Volume %s", volume_name);
+		log_debug("Opening Volume %s", volume_name);
 		/* open the device */
 		FD = open(volume_name, O_RDWR | O_DIRECT | O_DSYNC);
 		if (FD < 0) {
@@ -82,7 +82,7 @@ off64_t mount_volume(char *volume_name, int64_t start, int64_t unused_size)
 		}
 
 		device_size = lseek64(FD, 0, SEEK_END);
-		log_info("Found device of %ld bytes", device_size);
+		log_debug("Found device of %ld bytes", device_size);
 		if (device_size == -1) {
 			log_fatal("failed to determine volume size exiting...");
 			perror("ioctl");
@@ -95,7 +95,7 @@ off64_t mount_volume(char *volume_name, int64_t start, int64_t unused_size)
 			BUG_ON();
 		}
 
-		log_info("Creating virtual address space offset %lld size %ld\n", (long long)start, device_size);
+		log_debug("Creating virtual address space offset %lld size %ld\n", (long long)start, device_size);
 		/*mmap the device*/
 
 		char *addr_space = NULL;
@@ -358,7 +358,7 @@ static void recover_allocator_bitmap(struct volume_descriptor *volume_desc)
 
 	for (uint32_t i = 0; i < max_regions; ++i) {
 		if (volume_desc->pr_regions->db[i].valid) {
-			log_info("Replaying allocation log for DB: %s", volume_desc->pr_regions->db[i].db_name);
+			log_debug("Replaying allocation log for DB: %s", volume_desc->pr_regions->db[i].db_name);
 			replay_db_allocation_log(volume_desc, &volume_desc->pr_regions->db[i]);
 		}
 	}
@@ -382,8 +382,8 @@ struct pr_db_superblock *get_db_superblock(struct volume_descriptor *volume_desc
 		if (volume_desc->pr_regions->db[i].db_name_size == db_name_size) {
 			if (memcmp(volume_desc->pr_regions->db[i].db_name, db_name, db_name_size) == 0) {
 				/* DB Found*/
-				log_info("Found region %s at index %u of the region superblock array",
-					 volume_desc->pr_regions->db[i].db_name, i);
+				log_debug("Found region %s at index %u of the region superblock array",
+					  volume_desc->pr_regions->db[i].db_name, i);
 				db = &volume_desc->pr_regions->db[i];
 				goto exit;
 			}
@@ -740,11 +740,11 @@ static void mem_print_volume_info(struct superblock *superblock, char *volume_na
 {
 	(void)superblock;
 	(void)volume_name;
-	log_info("<Volume %s info>", volume_name);
-	log_info("Volume size in GB: %lu", superblock->volume_size / GB(1));
-	log_info("Able to host up to %u regions useful space in GB: %lu", superblock->max_regions_num,
-		 (superblock->volume_size - (superblock->volume_metadata_size + superblock->unmappedSpace)) / GB(1));
-	log_info("Unmapped space %lu", superblock->unmappedSpace);
+	log_debug("<Volume %s info>", volume_name);
+	log_debug("Volume size in GB: %lu", superblock->volume_size / GB(1));
+	log_debug("Able to host up to %u regions useful space in GB: %lu", superblock->max_regions_num,
+		  (superblock->volume_size - (superblock->volume_metadata_size + superblock->unmappedSpace)) / GB(1));
+	log_debug("Unmapped space %lu", superblock->unmappedSpace);
 }
 
 /**
@@ -769,7 +769,7 @@ void mem_init_superblock_array(struct volume_descriptor *volume_desc)
 		log_fatal("Failed to read volume's region superblocks!");
 		BUG_ON();
 	}
-	log_info("Restored %s region superblocks in memory", volume_desc->volume_name);
+	log_debug("Restored %s region superblocks in memory", volume_desc->volume_name);
 }
 
 /**
@@ -859,7 +859,7 @@ static volume_descriptor *mem_init_volume(char *volume_name)
 		log_fatal("ownership registry must be a multiple of 4 KB its value %lu", registry_size_in_bits);
 		BUG_ON();
 	}
-	log_info("Unmapped bits %u registry_size_in_bits %lu", unmapped_bits, registry_size_in_bits);
+	log_debug("Unmapped bits %u registry_size_in_bits %lu", unmapped_bits, registry_size_in_bits);
 	char *registry_buffer = (char *)volume_desc->mem_volume_bitmap;
 	for (uint64_t i = registry_size_in_bits - 1; i >= registry_size_in_bits - unmapped_bits; --i) {
 		uint64_t idx = i / 8;
@@ -872,7 +872,7 @@ static volume_descriptor *mem_init_volume(char *volume_name)
 		assert(0);
 		BUG_ON();
 	}
-	log_info("Recovering ownership registry... XXX TODO XXX");
+	log_debug("Recovering ownership registry... XXX TODO XXX");
 
 	volume_desc->open_databases = klist_init();
 	return volume_desc;
@@ -890,7 +890,7 @@ struct volume_descriptor *mem_get_volume_desc(char *volume_name)
 	HASH_FIND_PTR(volume_map, &hash_key, volume);
 
 	if (NULL == volume) {
-		log_info("Volume %s not open creating/initializing new volume ...", volume_name);
+		log_debug("Volume %s not open creating/initializing new volume ...", volume_name);
 		volume = calloc(1, sizeof(struct volume_map_entry));
 
 		if (!volume) {
