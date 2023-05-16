@@ -323,7 +323,7 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 
 	comp_req->dst_rcursor = NULL == comp_roots.dst_root ?
 					NULL :
-					      rcursor_init_cursor(handle, compaction_get_dst_level(comp_req), 0,
+					rcursor_init_cursor(handle, compaction_get_dst_level(comp_req), 0,
 							    compaction_get_vol_fd(comp_req));
 	assert(0 ==
 	       handle->db_desc->levels[compaction_get_dst_level(comp_req)].offset[compaction_get_dst_tree(comp_req)]);
@@ -358,9 +358,11 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 	log_debug("Src [%u][%u] size = %lu", compaction_get_src_level(comp_req), compaction_get_src_tree(comp_req),
 		  handle->db_desc->levels[comp_req->src_level].level_size[compaction_get_src_tree(comp_req)]);
 
-	NULL == comp_roots.dst_root ? log_debug("Empty dst [%u]", compaction_get_dst_level(comp_req)) :
-					    log_debug("Dst [%u][%u] size = %lu", comp_req->dst_level, 0,
-						handle->db_desc->levels[comp_req->dst_level].level_size[0]);
+	if (NULL == comp_roots.dst_root)
+		log_debug("Empty dst [%u]", compaction_get_dst_level(comp_req));
+	else
+		log_debug("Dst [%u][%u] size = %lu", comp_req->dst_level, 0,
+			  handle->db_desc->levels[comp_req->dst_level].level_size[0]);
 
 	// initialize and fill min_heap properly
 	struct sh_heap *m_heap = sh_alloc_heap();
