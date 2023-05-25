@@ -528,6 +528,7 @@ void wcursor_flush_write_cursor(struct wcursor_level_write_cursor *w_cursor)
 #if TEBIS_FORMAT
 		w_cursor->last_flush_request_height = height;
 		w_cursor->last_flush_request_clock = w_cursor->clock[height] % w_cursor->num_columns;
+		w_cursor->have_send_flush_request = true;
 		wcursor_invalidate_status_buffer(w_cursor, w_cursor->last_flush_request_height,
 						 w_cursor->last_flush_request_clock);
 
