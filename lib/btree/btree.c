@@ -728,7 +728,7 @@ static bool is_level0_available(struct db_descriptor *db_desc, uint8_t level_id,
 	/* Reacquire the lock of level 0 to access it safely. */
 	if (relock)
 		rwlock == 1 ? RWLOCK_RDLOCK(&db_desc->levels[0].guard_of_level.rx_lock) :
-				    RWLOCK_WRLOCK(&db_desc->levels[0].guard_of_level.rx_lock);
+			      RWLOCK_WRLOCK(&db_desc->levels[0].guard_of_level.rx_lock);
 
 	return true;
 }
@@ -918,7 +918,7 @@ static void pr_copy_kv_to_tail(struct pr_log_ticket *ticket)
 		struct kv_splice *kv_pair_dst = (struct kv_splice *)&ticket->tail->buf[offt];
 		struct kv_splice *kv_pair_src = ticket->req->ins_req->splice_base->kv_splice;
 		ticket->req->optype_tolog == insertOp ? kv_splice_set_non_tombstone(kv_pair_dst) :
-							      kv_splice_set_tombstone(kv_pair_dst);
+							kv_splice_set_tombstone(kv_pair_dst);
 		kv_splice_set_key(kv_pair_dst, kv_splice_get_key_offset_in_kv(kv_pair_src),
 				  kv_splice_get_key_size(kv_pair_src));
 		kv_splice_set_value(kv_pair_dst,
