@@ -416,12 +416,11 @@ db_handle *internal_db_open(struct volume_descriptor *volume_desc, par_db_option
 #if DISABLE_LOGGING
 	log_set_quiet(true);
 #endif
-	index_node_get_size();
 	_Static_assert(sizeof(struct segment_header) == 4096, "Segment header is not 4 KB");
 	db = klist_find_element_with_key(volume_desc->open_databases, (char *)db_options->db_name);
 
 	if (db != NULL) {
-		*error_message = "DB already open";
+		//DB already open
 		handle = calloc(1UL, sizeof(struct db_handle));
 		handle->volume_desc = volume_desc;
 		handle->db_desc = db;
@@ -481,7 +480,7 @@ db_handle *internal_db_open(struct volume_descriptor *volume_desc, par_db_option
 		handle->db_desc->levels[level_id].max_level_size =
 			handle->db_desc->levels[level_id - 1].max_level_size * growth_factor;
 
-		log_info("DB:Level %d max_total_size %lu", level_id, handle->db_desc->levels[level_id].max_level_size);
+		// log_debug("DB:Level %d max_total_size %lu", level_id, handle->db_desc->levels[level_id].max_level_size);
 	}
 	handle->db_desc->levels[MAX_LEVELS - 1].max_level_size = UINT64_MAX;
 	handle->db_desc->reference_count = 1;
@@ -682,6 +681,7 @@ const char *db_close(db_handle *handle)
 	compactiond_close(handle->db_desc->compactiond);
 	handle->db_desc->compactiond = NULL;
 
+	memset(handle->db_desc, 0x00, sizeof(*handle->db_desc));
 	free(handle->db_desc);
 finish:
 
@@ -854,7 +854,7 @@ struct par_put_metadata serialized_insert_key_value(db_handle *handle, struct kv
 								 .key_value_category = SMALL_INPLACE };
 		return invalid_put_metadata;
 	}
-	ins_req.metadata.cat = calculate_KV_category(key_size, value_size, op_type);
+	ins_req.metadata.cat = splice_base->kv_cat; //calculate_KV_category(key_size, value_size, op_type);
 	ins_req.metadata.put_op_metadata.key_value_category = ins_req.metadata.cat;
 	ins_req.metadata.put_op_metadata.log_type = L0_RECOVERY;
 	ins_req.metadata.put_op_metadata.flush_segment_event = 0;
@@ -862,7 +862,7 @@ struct par_put_metadata serialized_insert_key_value(db_handle *handle, struct kv
 
 	// Even if the user requested not to append to log, if the KV belongs to the big category
 	// the system will break if we do not append so we force it here.
-	if (BIG_INLOG == ins_req.metadata.cat) {
+	if (BIG_INLOG == ins_req.metadata.cat && KV_FORMAT == ins_req.splice_base->kv_type) {
 		ins_req.metadata.append_to_log = 1;
 	}
 
@@ -1538,6 +1538,7 @@ int insert_KV_at_leaf(bt_insert_req *ins_req, struct node_header *leaf)
 
 	if (exact_match)
 		return -1;
+
 	int32_t kv_size = kv_splice_base_get_size(ins_req->splice_base);
 	__sync_fetch_and_add(&(ins_req->metadata.handle->db_desc->levels[level_id].level_size[tree_id]), kv_size);
 	return INSERT;
