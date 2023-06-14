@@ -24,8 +24,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/time.h>
-#define MAX_KV_PAIR_SIZE 4096
-#define MY_MAX_KEY_SIZE 255
+#define TIRESIAS_KV_SIZE (KV_MAX_SIZE - (MAX_KEY_SIZE + 8))
+#define TIRESIAS_KEY_SIZE MAX_KEY_SIZE
 
 /**
  * This test uses a BerkeleyDB key value store as the source of truth. We use
@@ -63,6 +63,8 @@ static void generate_random_value(char *value_buffer, uint32_t value_size, uint3
 
 static void populate_from_BDB(struct workload_config_t *workload_config)
 {
+	log_fatal("populate_from_BDB");
+	_exit(EXIT_FAILURE);
 	DBC *cursorp = NULL;
 	DBT BDB_key = { 0 };
 	DBT BDB_value = { 0 };
@@ -81,6 +83,10 @@ static void populate_from_BDB(struct workload_config_t *workload_config)
 		kv_pair.v.val_buffer = BDB_value.data;
 		const char *error_message = NULL;
 		par_put(workload_config->handle, &kv_pair, &error_message);
+		if (error_message) {
+			log_fatal("Test failed with message: %s", error_message);
+			_exit(EXIT_FAILURE);
+		}
 
 		if (!(num_keys % workload_config->progress_report))
 			log_info("Progress in population %d keys", num_keys);
@@ -93,13 +99,13 @@ static void populate_randomly(struct workload_config_t *workload_config)
 {
 	log_info("Starting population for %lu keys...", workload_config->total_keys);
 	const char *error_message = NULL;
-	unsigned char key_buffer[MY_MAX_KEY_SIZE] = { 0 };
-	unsigned char value_buffer[MAX_KV_PAIR_SIZE] = { 0 };
+	unsigned char key_buffer[TIRESIAS_KEY_SIZE] = { 0 };
+	unsigned char value_buffer[TIRESIAS_KV_SIZE] = { 0 };
 	uint64_t unique_keys = 0;
 	for (uint64_t i = 0; i < workload_config->total_keys; i++) {
 		struct par_key_value kv_pair = { 0 };
 
-		kv_pair.k.size = rand() % (MY_MAX_KEY_SIZE + 1);
+		kv_pair.k.size = rand() % (TIRESIAS_KEY_SIZE + 1);
 
 		// if (kv_pair.k.size <= 12) {
 		// 	kv_pair.k.size = 14;
@@ -107,13 +113,9 @@ static void populate_randomly(struct workload_config_t *workload_config)
 
 		if (!kv_pair.k.size)
 			kv_pair.k.size++;
-		kv_pair.v.val_size = rand() % (MAX_KV_PAIR_SIZE - (kv_pair.k.size + sizeof(uint32_t)));
+		kv_pair.v.val_size = rand() % (TIRESIAS_KV_SIZE - (kv_pair.k.size + sizeof(uint32_t)));
 		if (kv_pair.v.val_size < 4)
 			kv_pair.v.val_size = 4;
-
-		//hack
-		kv_pair.k.size = 23;
-		kv_pair.v.val_size = 8;
 
 		generate_random_key(key_buffer, kv_pair.k.size);
 		kv_pair.k.data = (char *)key_buffer;
@@ -138,6 +140,10 @@ static void populate_randomly(struct workload_config_t *workload_config)
 		// log_debug("Inserting in store key size %u key: %s value size %u unique keys %lu", kv_pair.k.size,
 		// 	  kv_pair.k.data, kv_pair.v.val_size, unique_keys);
 		par_put(workload_config->handle, &kv_pair, &error_message);
+		if (error_message) {
+			log_fatal("Test failed with message: %s", error_message);
+			_exit(EXIT_FAILURE);
+		}
 		if (!(i % workload_config->progress_report))
 			log_info("Progress in population %lu keys", i);
 	}
@@ -182,7 +188,7 @@ static void *get_workload(void *config)
 		struct par_key par_key = { .size = key.size, .data = key.data };
 		struct par_value value = { 0 };
 		bool malloced = 1;
-		char get_buf[4096];
+		char get_buf[TIRESIAS_KV_SIZE];
 		if (unique_keys < workload_config->total_keys / 2)
 			par_get(workload_config->handle, &par_key, &value, &error_message);
 		else {
@@ -191,12 +197,13 @@ static void *get_workload(void *config)
 				(struct key_splice *)calloc(1UL, key.size + key_splice_get_metadata_size());
 			key_splice_set_key_size(key_serialized, key.size);
 			key_splice_set_key_offset(key_serialized, (char *)key.data);
-			value.val_buffer_size = 4096;
+			value.val_buffer_size = TIRESIAS_KV_SIZE;
 			value.val_buffer = get_buf;
 			par_get_serialized(workload_config->handle, (char *)key_serialized, &value, &error_message);
 		}
 
 		if (error_message) {
+			log_fatal("Parallax returned the following error: %s", error_message);
 			uint64_t insert_order = *(uint64_t *)data.data;
 			log_debug(
 				"Key is size: %u data: %.*s not found! keys found so far %lu error_message is %s insert order was %lu",
