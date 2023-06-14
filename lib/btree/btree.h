@@ -324,7 +324,6 @@ char *db_desc_get_log_buffer(struct db_descriptor *db_desc, enum log_type type);
 
 #define ABSOLUTE_ADDRESS(X) (((uint64_t)(X)) - MAPPED)
 #define REAL_ADDRESS(X) ((X) ? (void *)(MAPPED + (uint64_t)(X)) : BUG_ON())
-#define KV_MAX_SIZE (4096 + 8)
 #define likely(x) __builtin_expect((x), 1)
 #define unlikely(x) __builtin_expect((x), 0)
 #endif // BTREE_H

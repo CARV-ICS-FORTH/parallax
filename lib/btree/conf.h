@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-/*macros staff*/
 #ifndef CONF_H
 #define CONF_H
 #define SPINLOCK_INIT(L, attr) pthread_spin_init(L, attr)
@@ -58,5 +57,6 @@
 #define ALIGNMENT_SIZE (512)
 #define MAX_ALLOCATION_TRIES (2)
 #define MAX_HEIGHT 9
+#define KV_MAX_SIZE 16384 //(4096 + 8)
 
 #endif
