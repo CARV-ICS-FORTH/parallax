@@ -1629,11 +1629,17 @@ int is_split_needed(void *node, bt_insert_req *ins_req)
 	assert(node);
 	struct node_header *header = (struct node_header *)node;
 	uint32_t height = header->height;
-
+	if (ins_req->metadata.level_id > 0) {
+		log_fatal("Valid only of L0!");
+		_exit(EXIT_FAILURE);
+	}
 	if (height != 0)
 		return index_is_split_needed((struct index_node *)node, MAX_KEY_SPLICE_SIZE);
 
 	uint32_t kv_size = kv_splice_base_calculate_size(ins_req->splice_base);
+	if (BIG_INLOG == ins_req->splice_base->kv_cat)
+		kv_size = kv_sep2_calculate_size(kv_splice_base_get_key_size(ins_req->splice_base));
+
 	return dl_is_leaf_full(node, kv_size);
 }
 
