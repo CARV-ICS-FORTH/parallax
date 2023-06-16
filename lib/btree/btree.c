@@ -414,8 +414,10 @@ db_handle *internal_db_open(struct volume_descriptor *volume_desc, par_db_option
 	log_info("Using Volume name = %s to open db with name = %s", volume_desc->volume_name, db_options->db_name);
 
 #if DISABLE_LOGGING
-	log_set_quiet(true);
+	log_set_level(LOG_INFO);
+	// log_set_quiet(true);
 #endif
+
 	_Static_assert(sizeof(struct segment_header) == 4096, "Segment header is not 4 KB");
 	db = klist_find_element_with_key(volume_desc->open_databases, (char *)db_options->db_name);
 
