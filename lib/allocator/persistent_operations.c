@@ -903,10 +903,10 @@ void pr_recover_L0(struct db_descriptor *db_desc)
 		if (!cursor[SMALL_LOG]->valid && !cursor[BIG_LOG]->valid)
 			break;
 		enum log_type choice = BIG_LOG;
-		if (!cursor[SMALL_LOG]->valid)
-			choice = BIG_LOG;
-		else if (!cursor[BIG_LOG]->valid ||
-			 compare_lsns(&cursor[SMALL_LOG]->entry.lsn, &cursor[BIG_LOG]->entry.lsn) < 0)
+		if (!cursor[BIG_LOG]->valid)
+			choice = SMALL_LOG;
+		if ((cursor[BIG_LOG]->valid && cursor[SMALL_LOG]->valid) ||
+		    compare_lsns(&cursor[SMALL_LOG]->entry.lsn, &cursor[BIG_LOG]->entry.lsn) < 0)
 			choice = SMALL_LOG;
 
 		const char *error_message = NULL;
