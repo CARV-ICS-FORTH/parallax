@@ -742,8 +742,9 @@ static void init_pos_log_cursor_in_segment(struct db_descriptor *db_desc, struct
 		break;
 	case BIG_LOG:
 		cursor->offt_in_segment = db_desc->big_log_start_offt_in_segment;
+		log_debug("First offset of big log is: %lu", cursor->offt_in_segment);
 		if (cursor->log_segments->segments[cursor->log_segments->entry_id] == cursor->log_tail_dev_offt) {
-			if (cursor->log_size == 0) {
+			if (cursor->log_size % SEGMENT_SIZE == cursor->offt_in_segment) {
 				/*Nothing to parse*/
 				log_debug("Nothing to parse in the big log");
 				cursor->valid = 0;
@@ -817,8 +818,8 @@ static void get_next_log_segment(struct log_cursor *cursor)
 	switch (cursor->type) {
 	case BIG_LOG:
 		--cursor->log_segments->entry_id;
-		//log_info("BIG LOG entry id: %d n_entries: %u size : %u", cursor->log_segments->entry_id,
-		//	 cursor->log_segments->n_entries, cursor->log_segments->size);
+		// log_debug("BIG LOG entry id: %d n_entries: %u size : %u", cursor->log_segments->entry_id,
+		// 	  cursor->log_segments->n_entries, cursor->log_segments->size);
 		if (cursor->log_segments->entry_id < cursor->log_segments->size - cursor->log_segments->n_entries) {
 			cursor->valid = 0;
 			return;
@@ -865,9 +866,12 @@ start:
 	int is_tail = cursor->log_segments->segments[cursor->log_segments->entry_id] == cursor->log_tail_dev_offt;
 
 	remaining_bytes_in_segment = (uint64_t)SEGMENT_SIZE - ((uint64_t)cursor->offt_in_segment);
+
 	if (is_tail)
 		remaining_bytes_in_segment =
 			(cursor->log_size % (uint64_t)SEGMENT_SIZE) - ((uint64_t)cursor->offt_in_segment);
+	// log_debug("remaining_bytes_in_segment = %u is_tail?: %s", remaining_bytes_in_segment, is_tail ? "YES" : "NO");
+	// log_debug("log size: %lu offt_in_segment: %lu", cursor->log_size, cursor->offt_in_segment);
 
 	char *pos_in_segment = get_position_in_segment(cursor);
 	struct kv_splice *kv_pair = (struct kv_splice *)pos_in_segment;
@@ -905,7 +909,7 @@ void pr_recover_L0(struct db_descriptor *db_desc)
 		enum log_type choice = BIG_LOG;
 		if (!cursor[BIG_LOG]->valid)
 			choice = SMALL_LOG;
-		if ((cursor[BIG_LOG]->valid && cursor[SMALL_LOG]->valid) ||
+		if ((cursor[BIG_LOG]->valid && cursor[SMALL_LOG]->valid) &&
 		    compare_lsns(&cursor[SMALL_LOG]->entry.lsn, &cursor[BIG_LOG]->entry.lsn) < 0)
 			choice = SMALL_LOG;
 
@@ -916,6 +920,9 @@ void pr_recover_L0(struct db_descriptor *db_desc)
 		struct kv_splice_base splice_base = { .kv_cat = SMALL_INPLACE,
 						      .kv_type = KV_FORMAT,
 						      .kv_splice = cursor[choice]->entry.par_kv };
+
+		assert(kv_splice_base_get_key_size(&splice_base) <= MAX_KEY_SIZE);
+
 		if (BIG_LOG == choice) {
 			splice_base.kv_sep2 =
 				kv_sep2_create(kv_splice_get_key_size(splice_base.kv_splice),
