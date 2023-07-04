@@ -200,6 +200,11 @@ void pr_flush_L0(struct db_descriptor *db_desc, uint8_t tree_id)
 	db_desc->db_superblock->small_log_offt_in_start_segment = db_desc->small_log_start_offt_in_segment;
 	db_desc->db_superblock->big_log_start_segment_dev_offt = db_desc->big_log_start_segment_dev_offt;
 	db_desc->db_superblock->big_log_offt_in_start_segment = db_desc->big_log_start_offt_in_segment;
+	/*Handles the case where a freshly created DB flushes its superblock without having performed 
+   * any operation yet to its medium log*/
+	db_desc->db_superblock->medium_log_head_offt = db_desc->medium_log.head_dev_offt;
+	db_desc->db_superblock->medium_log_tail_offt = db_desc->medium_log.tail_dev_offt;
+	db_desc->db_superblock->medium_log_size = db_desc->medium_log.size;
 	/*flush db superblock*/
 	pr_flush_db_superblock(db_desc);
 
@@ -420,20 +425,20 @@ static void pr_print_db_superblock(struct pr_db_superblock *superblock)
 void pr_read_db_superblock(struct db_descriptor *db_desc)
 {
 	//where is my superblock
-	ssize_t total_bytes_written = 0;
+	ssize_t total_bytes_read = 0;
 	ssize_t size = sizeof(struct pr_db_superblock);
 	uint64_t superblock_offt =
 		sizeof(struct superblock) + (sizeof(struct pr_db_superblock) * db_desc->db_superblock->id);
 
-	while (total_bytes_written < size) {
-		ssize_t bytes_written = pwrite(db_desc->db_volume->vol_fd, db_desc->db_superblock,
-					       size - total_bytes_written, superblock_offt + total_bytes_written);
-		if (bytes_written == -1) {
+	while (total_bytes_read < size) {
+		ssize_t bytes_read = pread(db_desc->db_volume->vol_fd, db_desc->db_superblock, size - total_bytes_read,
+					   superblock_offt + total_bytes_read);
+		if (bytes_read == -1) {
 			log_fatal("Failed to read region's %s superblock", db_desc->db_superblock->db_name);
 			perror("Reason");
 			BUG_ON();
 		}
-		total_bytes_written += bytes_written;
+		total_bytes_read += bytes_read;
 	}
 	pr_print_db_superblock(db_desc->db_superblock);
 }
