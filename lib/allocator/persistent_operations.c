@@ -200,7 +200,7 @@ void pr_flush_L0(struct db_descriptor *db_desc, uint8_t tree_id)
 	db_desc->db_superblock->small_log_offt_in_start_segment = db_desc->small_log_start_offt_in_segment;
 	db_desc->db_superblock->big_log_start_segment_dev_offt = db_desc->big_log_start_segment_dev_offt;
 	db_desc->db_superblock->big_log_offt_in_start_segment = db_desc->big_log_start_offt_in_segment;
-	/*Handles the case where a freshly created DB flushes its superblock without having performed 
+	/*Handles the case where a freshly created DB flushes its superblock without having performed
    * any operation yet to its medium log*/
 	db_desc->db_superblock->medium_log_head_offt = db_desc->medium_log.head_dev_offt;
 	db_desc->db_superblock->medium_log_tail_offt = db_desc->medium_log.tail_dev_offt;
@@ -406,20 +406,6 @@ static void pr_print_db_superblock(struct pr_db_superblock *superblock)
 		 superblock->small_log_start_segment_dev_offt, superblock->small_log_offt_in_start_segment);
 	log_info("Recovery of BIG log starts from segment_dev_offt: %lu offt_in_seg: %lu",
 		 superblock->big_log_start_segment_dev_offt, superblock->big_log_offt_in_start_segment);
-#if 0
-  for (uint32_t level_id = 0; level_id < MAX_LEVELS; ++level_id) {
-		for (uint32_t tree_id = 0; tree_id < NUM_TREES_PER_LEVEL; ++tree_id) {
-			log_info("Tree[%u][%u] root dev_offt = %llu", level_id, tree_id,
-				 superblock->root_r[level_id][tree_id]);
-			log_info("Tree[%u][%u] first_segment_dev_offt = %llu", level_id, tree_id,
-				 superblock->first_segment[level_id][tree_id]);
-			log_info("Tree[%u][%u] last_segment_dev_offt = %llu", level_id, tree_id,
-				 superblock->last_segment[level_id][tree_id]);
-			log_info("Tree[%u][%u] level size = %llu", level_id, tree_id,
-				 superblock->level_size[level_id][tree_id]);
-		}
-	}
-#endif
 }
 
 void pr_read_db_superblock(struct db_descriptor *db_desc)

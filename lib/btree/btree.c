@@ -177,7 +177,7 @@ void init_log_buffer(struct log_descriptor *log_desc, enum log_type log_type)
 	for (; i < n_chunks; ++i) {
 		log_desc->tail[0]->bytes_in_chunk[i] = LOG_CHUNK_SIZE;
 		++log_desc->tail[0]->IOs_completed_in_tail;
-		log_info("bytes_in_chunk[%u] = %u", i, log_desc->tail[0]->bytes_in_chunk[i]);
+		log_debug("bytes_in_chunk[%u] = %u", i, log_desc->tail[0]->bytes_in_chunk[i]);
 	}
 	if (offt_in_seg > 0 && offt_in_seg % LOG_CHUNK_SIZE != 0) {
 		log_desc->tail[0]->bytes_in_chunk[i] = offt_in_seg % LOG_CHUNK_SIZE;
