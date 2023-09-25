@@ -14,7 +14,9 @@
 
 #ifndef PARALLAX_H
 #define PARALLAX_H
-
+#ifdef __cplusplus
+extern "C" {
+#endif
 #include "structures.h"
 #include <stdbool.h>
 #include <stdint.h>
@@ -198,5 +200,7 @@ par_ret_code par_sync(par_handle handle);
  * @retval Array with NUM_OF_OPTIONS sizeo of struct options_desc
  */
 struct par_options_desc *par_get_default_options(void);
-
+#ifdef __cplusplus
+}
+#endif
 #endif // PARALLAX_H

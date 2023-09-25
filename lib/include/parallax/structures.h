@@ -1,6 +1,8 @@
 #ifndef PARALLAX_STRUCTURES_H_
 #define PARALLAX_STRUCTURES_H_
-
+#ifdef __cplusplus
+extern "C" {
+#endif
 #include <stdint.h>
 typedef void *par_handle;
 typedef void *par_scanner;
@@ -94,4 +96,8 @@ struct par_put_metadata {
 	enum log_category log_type;
 	enum kv_category key_value_category;
 };
+
+#ifdef __cplusplus
+}
+#endif
 #endif // PARALLAX_STRUCTURES_H_
