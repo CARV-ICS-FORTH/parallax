@@ -356,6 +356,10 @@ static db_descriptor *get_db_from_volume(char *volume_name, char *db_name, par_d
 	struct volume_descriptor *volume_desc = mem_get_volume_desc(volume_name);
 	struct pr_db_superblock *db_superblock = NULL;
 	uint8_t new_db = 0;
+	if (strlen(db_name) > MAX_DB_NAME_SIZE) {
+		log_fatal("DB name too large max supported: %u B current: %lu B", MAX_DB_NAME_SIZE, strlen(db_name));
+		_exit(EXIT_FAILURE);
+	}
 
 	//TODO Refactor get_db_superblock -> Takes too much arguments -> create a struct
 	db_superblock =
