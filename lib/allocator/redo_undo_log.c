@@ -361,6 +361,7 @@ uint64_t rul_start_txn(struct db_descriptor *db_desc)
 {
 	struct rul_log_descriptor *log_desc = db_desc->allocation_log;
 	uint64_t txn_id = __sync_fetch_and_add(&log_desc->txn_id, 1);
+	log_info("Staring transaction %lu", txn_id);
 
 	/*check if (accidentally) txn exists already*/
 	struct rul_transaction *transaction;
@@ -414,7 +415,7 @@ struct rul_log_info rul_flush_txn(struct db_descriptor *db_desc, uint64_t txn_id
 {
 	struct rul_log_info info = { .head_dev_offt = 0, .tail_dev_offt = 0, .size = 0, .txn_id = 0 };
 	struct rul_log_descriptor *log_desc = db_desc->allocation_log;
-	struct rul_transaction *transaction;
+	struct rul_transaction *transaction = NULL;
 
 	MUTEX_LOCK(&log_desc->trans_map_lock);
 	HASH_FIND_PTR(log_desc->trans_map, &txn_id, transaction);

@@ -27,6 +27,7 @@
 #include "../scanner/scanner.h"
 #include <assert.h>
 #include <log.h>
+#include <spin_loop.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -382,10 +383,14 @@ struct par_value par_get_value(par_scanner sc)
 // cppcheck-suppress unusedFunction
 par_ret_code par_sync(par_handle handle)
 {
-	log_fatal("Currently developing persistency..");
-	(void)handle;
-	//_Exit(EXIT_FAILURE);
-	return PAR_FAILURE;
+	struct db_handle *parallax = (struct db_handle *)handle;
+	RWLOCK_WRLOCK(&parallax->db_desc->levels[0].guard_of_level.rx_lock);
+	spin_loop(&(parallax->db_desc->levels[0].active_operations), 0);
+	uint8_t active_tree = parallax->db_desc->levels[0].active_tree;
+	pr_flush_L0(parallax->db_desc, active_tree);
+	parallax->db_desc->levels[0].allocation_txn_id[active_tree] = rul_start_txn(parallax->db_desc);
+	RWLOCK_UNLOCK(&parallax->db_desc->levels[0].guard_of_level.rx_lock);
+	return PAR_SUCCESS;
 }
 
 /**
