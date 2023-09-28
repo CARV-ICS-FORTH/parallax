@@ -47,6 +47,8 @@ struct log_info {
 	uint64_t size;
 };
 
+#define ALIGN_UP(number, alignment) (((number) + (alignment)-1) / (alignment) * (alignment))
+
 static void flush_segment_in_log(int fd, uint64_t file_offset, char *buffer, int32_t IO_size)
 {
 	ssize_t total_bytes_written = 0;
@@ -442,18 +444,28 @@ void pr_flush_log_tail(struct db_descriptor *db_desc, struct log_descriptor *log
 	for (uint32_t i = 0; i < chunk_id; ++i)
 		wait_for_value(&log_desc->tail[last_tail]->bytes_in_chunk[i], LOG_CHUNK_SIZE);
 
-	uint64_t start_offt;
-	start_offt = chunk_id * LOG_CHUNK_SIZE;
+	uint64_t start_offt = chunk_id * LOG_CHUNK_SIZE;
 
-	uint64_t end_offt = start_offt + LOG_CHUNK_SIZE;
+	//uint64_t end_offt = start_offt + LOG_CHUNK_SIZE;
+	uint64_t bytes_to_write =
+		start_offt + (log_desc->size % LOG_CHUNK_SIZE ? log_desc->size % LOG_CHUNK_SIZE : LOG_CHUNK_SIZE);
+
+	bytes_to_write = ALIGN_UP(bytes_to_write, 512);
+
+	uint64_t end_offt = start_offt + bytes_to_write;
+
+	if (fprintf(stderr, "Bytes to write: %lu\n", bytes_to_write) < 0)
+		_exit(EXIT_FAILURE);
+
 	log_debug("Flushing log tail start_offt: %lu end_offt: %lu last tail %d", start_offt, end_offt, last_tail);
+
 	while (start_offt < end_offt) {
 		ssize_t bytes_written = pwrite(db_desc->db_volume->vol_fd, &log_desc->tail[last_tail]->buf[start_offt],
 					       end_offt - start_offt, log_desc->tail[last_tail]->dev_offt + start_offt);
 
 		if (bytes_written == -1) {
 			log_fatal("Failed to write LOG_CHUNK reason follows");
-			perror("Reason");
+			perror("Reason pwrite failed:");
 			BUG_ON();
 		}
 		start_offt += bytes_written;
