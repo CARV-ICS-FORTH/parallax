@@ -26,9 +26,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/types.h>
 #include <unistd.h>
 #include <uthash.h>
 
+#define RUL_ALIGN_UP(number, alignment) (((number) + (alignment)-1) / (alignment) * (alignment))
 /**
  * Writes synchronously to the device a chunk from a log segment.
  * */
@@ -56,8 +58,15 @@ static void rul_flush_log_chunk(struct db_descriptor *db_desc, uint32_t chunk_id
 		}
 	}
 
-	ssize_t size = RUL_LOG_CHUNK_SIZE_IN_BYTES;
+	//ssize_t size = RUL_LOG_CHUNK_SIZE_IN_BYTES;
+	ssize_t size = (db_desc->allocation_log->size % RUL_LOG_CHUNK_SIZE_IN_BYTES ?
+				db_desc->allocation_log->size % RUL_LOG_CHUNK_SIZE_IN_BYTES :
+				RUL_LOG_CHUNK_SIZE_IN_BYTES);
+
+	size = RUL_ALIGN_UP(size, 512);
+
 	ssize_t dev_offt = log_desc->tail_dev_offt + (chunk_id * RUL_LOG_CHUNK_SIZE_IN_BYTES);
+
 	ssize_t total_bytes_written = 0;
 
 	while (total_bytes_written < size) {

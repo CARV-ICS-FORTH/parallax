@@ -447,15 +447,11 @@ void pr_flush_log_tail(struct db_descriptor *db_desc, struct log_descriptor *log
 	uint64_t start_offt = chunk_id * LOG_CHUNK_SIZE;
 
 	//uint64_t end_offt = start_offt + LOG_CHUNK_SIZE;
-	uint64_t bytes_to_write =
-		start_offt + (log_desc->size % LOG_CHUNK_SIZE ? log_desc->size % LOG_CHUNK_SIZE : LOG_CHUNK_SIZE);
+	uint64_t bytes_to_write = (log_desc->size % LOG_CHUNK_SIZE ? log_desc->size % LOG_CHUNK_SIZE : LOG_CHUNK_SIZE);
 
 	bytes_to_write = ALIGN_UP(bytes_to_write, 512);
 
 	uint64_t end_offt = start_offt + bytes_to_write;
-
-	if (fprintf(stderr, "Bytes to write: %lu\n", bytes_to_write) < 0)
-		_exit(EXIT_FAILURE);
 
 	log_debug("Flushing log tail start_offt: %lu end_offt: %lu last tail %d", start_offt, end_offt, last_tail);
 
