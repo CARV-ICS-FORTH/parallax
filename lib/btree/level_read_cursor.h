@@ -15,32 +15,6 @@ enum rcursor_state {
 	COMP_CUR_CHECK_OFFT
 };
 
-struct rcursor_device_cursor {
-	char segment_buf[SEGMENT_SIZE];
-	uint64_t device_offt;
-	uint64_t offset;
-	segment_header *curr_segment;
-	int32_t curr_leaf_entry;
-	int fd;
-	enum rcursor_state state;
-};
-
-struct rcursor_L0_cursor {
-	struct level_scanner *L0_scanner;
-};
-
-struct rcursor_level_read_cursor {
-	uint8_t level_id;
-	uint8_t tree_id;
-	bool is_end_of_level;
-	struct kv_splice_base splice;
-	db_handle *handle;
-	union {
-		struct rcursor_device_cursor *device_cursor;
-		struct rcursor_L0_cursor *L0_cursor;
-	};
-};
-
 /**
  * @brief rcursor_cursor_init creates a level cursor to iterate the KV pairs
  * of a level. Level cursor can either iterate L0 which is in memory or device
