@@ -380,3 +380,13 @@ inline int32_t dl_get_leaf_num_entries(struct leaf_node *leaf)
 {
 	return leaf->header.num_entries;
 }
+
+struct kv_splice_base dl_get_last_splice(struct leaf_node *leaf)
+{
+	struct kv_splice_base splice = { 0 };
+	if (0 == leaf->header.num_entries)
+		return splice;
+
+	splice = dl_get_general_splice(leaf, leaf->header.num_entries - 1);
+	return splice;
+}

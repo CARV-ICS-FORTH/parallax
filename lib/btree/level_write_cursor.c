@@ -650,6 +650,45 @@ static struct kv_splice_base wcursor_append_medium_L1(struct wcursor_level_write
 	return kv_sep;
 }
 
+static struct key_splice *wcursor_create_pivot(struct kv_splice_base *last_splice, struct kv_splice_base *new_splice)
+{
+	int32_t key_left_len = kv_splice_base_get_key_size(last_splice);
+	const char *key_left = kv_splice_base_get_key_buf(last_splice);
+	int32_t key_right_len = kv_splice_base_get_key_size(new_splice);
+	const char *key_right = kv_splice_base_get_key_buf(new_splice);
+	int32_t min_len = key_left_len < key_right_len ? key_left_len : key_right_len;
+
+	// Find the common prefix length
+	int32_t idx = 0;
+	for (; idx < min_len && key_left[idx] == key_right[idx]; ++idx)
+		;
+
+	if (idx == key_left_len || idx == key_right_len) {
+		//just use the new_splice as pivot do not bother
+		bool malloced = false;
+		struct key_splice *pivot = key_splice_create(kv_splice_base_get_key_buf(new_splice),
+							     kv_splice_base_get_key_size(new_splice), NULL, 0,
+							     &malloced);
+		// log_debug("Just returning the last splice: %.*s no room for optimization ok!",
+		// 	  key_splice_get_key_size(pivot), key_splice_get_key_offset(pivot));
+		return pivot;
+	}
+
+	char pivot_buf[MAX_KEY_SIZE] = { 0 };
+	memcpy(pivot_buf, key_left, idx);
+	// Add an extra character
+
+	pivot_buf[idx] = (key_left[idx] + 1 < key_right[idx]) ? key_left[idx] + 1 : key_right[idx];
+	bool malloced = false;
+	struct key_splice *pivot = key_splice_create(pivot_buf, idx+1, NULL, 0, &malloced);
+	// log_debug("Created optimized pivot %.*s optimization ok! last_splice is: %.*s and new_splice: %.*s",
+	// 	  key_splice_get_key_size(pivot), key_splice_get_key_offset(pivot),
+	// 	  kv_splice_base_get_key_size(last_splice), kv_splice_base_get_key_buf(last_splice),
+	// 	  kv_splice_base_get_key_size(new_splice), kv_splice_base_get_key_buf(new_splice));
+
+	return pivot;
+}
+
 bool wcursor_append_KV_pair(struct wcursor_level_write_cursor *w_cursor, struct kv_splice_base *splice)
 {
 	uint64_t left_leaf_offt = 0;
@@ -676,7 +715,12 @@ bool wcursor_append_KV_pair(struct wcursor_level_write_cursor *w_cursor, struct 
 #endif
 	}
 	bool new_leaf = false;
+	struct key_splice *pivot = NULL;
 	if (dl_is_leaf_full((struct leaf_node *)w_cursor->last_node[0], kv_splice_base_get_size(&new_splice))) {
+		struct kv_splice_base last = dl_get_last_splice((struct leaf_node *)w_cursor->last_node[0]);
+
+		pivot = wcursor_create_pivot(&last, &new_splice);
+
 		uint32_t offt_l = wcursor_calc_offt_in_seg(w_cursor, 0, (char *)w_cursor->last_node[0]);
 		left_leaf_offt = w_cursor->last_segment_btree_level_offt[0] + offt_l;
 		w_cursor->last_node[0] = (struct node_header *)wcursor_get_space(
@@ -710,15 +754,17 @@ bool wcursor_append_KV_pair(struct wcursor_level_write_cursor *w_cursor, struct 
 	if (!new_leaf)
 		return true;
 
-	bool malloced = false;
-	struct key_splice *new_pivot = key_splice_create(kv_splice_base_get_key_buf(&new_splice),
-							 kv_splice_base_get_key_size(&new_splice), NULL, 0, &malloced);
+	// bool malloced = false;
+	// struct key_splice *new_pivot = key_splice_create(kv_splice_base_get_key_buf(&pivot),
+	// 						 kv_splice_base_get_key_size(&new_splice), NULL, 0, &malloced);
 
-	assert(malloced);
-	wcursor_append_pivot_to_index(1, w_cursor, left_leaf_offt, new_pivot, right_leaf_offt);
-	free(new_pivot);
+	// assert(malloced);
+	wcursor_append_pivot_to_index(1, w_cursor, left_leaf_offt, pivot, right_leaf_offt);
+	free(pivot);
 	return true;
 }
+
+
 
 uint8_t wcursor_get_level_id(struct wcursor_level_write_cursor *w_cursor)
 {
