@@ -360,7 +360,7 @@ void rul_log_init(struct db_descriptor *db_desc)
 	log_desc->curr_segment_entry = n_entries_in_tail;
 	log_desc->curr_chunk_id = n_entries_in_tail / RUL_LOG_CHUNK_MAX_ENTRIES;
 	log_desc->curr_chunk_entry = n_entries_in_tail % RUL_LOG_CHUNK_MAX_ENTRIES;
-	log_info(
+	log_debug(
 		"State of the allocation log of DB:%s head_dev_offt: %lu tail_dev_offt: %lu size: %lu curr_chunk_id: %u curr_chunk_entry: %u, curr_segment_entry: %u",
 		db_desc->db_superblock->db_name, log_desc->head_dev_offt, log_desc->tail_dev_offt, log_desc->size,
 		log_desc->curr_chunk_id, log_desc->curr_chunk_entry, log_desc->curr_segment_entry);
@@ -370,7 +370,7 @@ uint64_t rul_start_txn(struct db_descriptor *db_desc)
 {
 	struct rul_log_descriptor *log_desc = db_desc->allocation_log;
 	uint64_t txn_id = __sync_fetch_and_add(&log_desc->txn_id, 1);
-	log_info("Staring transaction %lu", txn_id);
+	log_debug("Staring transaction %lu", txn_id);
 
 	/*check if (accidentally) txn exists already*/
 	struct rul_transaction *transaction;

@@ -134,7 +134,6 @@ if(NOT libbloom_POPULATED)
   FetchContent_MakeAvailable(libbloom)
 endif()
 
-
 set(DEPENDENCIES log yaml libbloom)
 
 # Find pthread library
@@ -153,7 +152,9 @@ list(APPEND DEPENDENCIES "${LIBNUMA}")
 find_library(LIBUTIL util REQUIRED)
 list(APPEND DEPENDENCIES "${LIBUTIL}")
 
-
+if(CMAKE_BUILD_TYPE STREQUAL "Release")
+  add_definitions(-DLOG_LEVEL_RELEASE)
+endif()
 
 include_directories(${CMAKE_BINARY_DIR})
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/utilities)
@@ -192,8 +193,8 @@ endif()
 string(APPEND CMAKE_C_FLAGS_DEBUG " -ggdb3 -Og -gz")
 string(APPEND CMAKE_C_FLAGS_RELEASE " -O2 -finline-functions -DNDEBUG")
 string(APPEND CMAKE_CXX_FLAGS_RELEASE " -std=gnu++11 -Wall")
-# string(APPEND CMAKE_EXE_LINKER_FLAGS
-#        " -Wl,--no-as-needed -lrt -lm -pthread -lnuma -lutil")
+# string(APPEND CMAKE_EXE_LINKER_FLAGS " -Wl,--no-as-needed -lrt -lm -pthread
+# -lnuma -lutil")
 string(APPEND CMAKE_EXE_LINKER_FLAGS " -Wl,--no-as-needed")
 
 add_subdirectory(lib)

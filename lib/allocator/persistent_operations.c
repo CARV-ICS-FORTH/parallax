@@ -395,19 +395,19 @@ void pr_flush_db_superblock(struct db_descriptor *db_desc)
 static void pr_print_db_superblock(struct pr_db_superblock *superblock)
 {
 	(void)superblock;
-	log_info("DB name: %s id in the volume's superblock array: %u valid: %u", superblock->db_name, superblock->id,
-		 superblock->valid);
-	log_info("BIG log head_dev_offt: %lu tail_dev_offt: %lu size: %lu", superblock->big_log_head_offt,
-		 superblock->big_log_tail_offt, superblock->big_log_size);
-	log_info("Medium log head_dev_offt: %lu tail_dev_offt: %lu size: %lu", superblock->medium_log_head_offt,
-		 superblock->medium_log_tail_offt, superblock->medium_log_size);
-	log_info("L0 L0_recovery_log log head_dev_offt: %lu tail_dev_offt: %lu size: %lu",
-		 superblock->small_log_head_offt, superblock->small_log_tail_offt, superblock->small_log_size);
-	log_info("latest LSN: %lu", get_lsn_id(&superblock->last_lsn));
-	log_info("Recovery of L0_recovery_log starts from segment_dev_offt: %lu offt_in_seg: %lu",
-		 superblock->small_log_start_segment_dev_offt, superblock->small_log_offt_in_start_segment);
-	log_info("Recovery of BIG log starts from segment_dev_offt: %lu offt_in_seg: %lu",
-		 superblock->big_log_start_segment_dev_offt, superblock->big_log_offt_in_start_segment);
+	log_debug("DB name: %s id in the volume's superblock array: %u valid: %u", superblock->db_name, superblock->id,
+		  superblock->valid);
+	log_debug("BIG log head_dev_offt: %lu tail_dev_offt: %lu size: %lu", superblock->big_log_head_offt,
+		  superblock->big_log_tail_offt, superblock->big_log_size);
+	log_debug("Medium log head_dev_offt: %lu tail_dev_offt: %lu size: %lu", superblock->medium_log_head_offt,
+		  superblock->medium_log_tail_offt, superblock->medium_log_size);
+	log_debug("L0 L0_recovery_log log head_dev_offt: %lu tail_dev_offt: %lu size: %lu",
+		  superblock->small_log_head_offt, superblock->small_log_tail_offt, superblock->small_log_size);
+	log_debug("latest LSN: %lu", get_lsn_id(&superblock->last_lsn));
+	log_debug("Recovery of L0_recovery_log starts from segment_dev_offt: %lu offt_in_seg: %lu",
+		  superblock->small_log_start_segment_dev_offt, superblock->small_log_offt_in_start_segment);
+	log_debug("Recovery of BIG log starts from segment_dev_offt: %lu offt_in_seg: %lu",
+		  superblock->big_log_start_segment_dev_offt, superblock->big_log_offt_in_start_segment);
 }
 
 void pr_read_db_superblock(struct db_descriptor *db_desc)

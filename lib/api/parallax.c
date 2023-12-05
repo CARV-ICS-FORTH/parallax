@@ -42,6 +42,10 @@ char *par_format(char *device_name, uint32_t max_regions_num)
 
 par_handle par_open(par_db_options *db_options, const char **error_message)
 {
+#ifdef LOG_LEVEL_RELEASE
+	log_set_level(2);
+#endif
+
 	if (db_options->create_flag == PAR_CREATE_DB || db_options->create_flag == PAR_DONOT_CREATE_DB) {
 		return (par_handle)db_open(db_options, error_message);
 	}

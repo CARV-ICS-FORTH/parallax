@@ -415,11 +415,10 @@ db_handle *internal_db_open(struct volume_descriptor *volume_desc, par_db_option
 						   LEVEL6_LEAF_SIZE, LEVEL7_LEAF_SIZE };
 	struct db_descriptor *db = NULL;
 
-	log_info("Using Volume name = %s to open db with name = %s", volume_desc->volume_name, db_options->db_name);
+	log_debug("Using Volume name = %s to open db with name = %s", volume_desc->volume_name, db_options->db_name);
 
 #if DISABLE_LOGGING
-	log_set_level(LOG_INFO);
-	// log_set_quiet(true);
+	log_set_quiet(true);
 #endif
 
 	_Static_assert(sizeof(struct segment_header) == 4096, "Segment header is not 4 KB");
@@ -534,7 +533,7 @@ db_handle *internal_db_open(struct volume_descriptor *volume_desc, par_db_option
 	klist_add_first(volume_desc->open_databases, handle->db_desc, handle->db_options.db_name, NULL);
 	handle->db_desc->db_state = DB_OPEN;
 
-	log_info("Opened DB %s starting its compaction daemon", handle->db_options.db_name);
+	log_debug("Opened DB %s starting its compaction daemon", handle->db_options.db_name);
 	handle->db_desc->compactiond = compactiond_create(handle, false);
 	compactiond_start(handle->db_desc->compactiond, &handle->db_desc->compactiond_cnxt);
 
