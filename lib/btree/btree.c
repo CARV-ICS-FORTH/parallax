@@ -307,14 +307,14 @@ static void restore_db(struct db_descriptor *db_desc, uint32_t region_idx)
 					(segment_header *)REAL_ADDRESS(superblock->last_segment[level_id][tree_id]);
 
 				db_desc->levels[level_id].offset[tree_id] = superblock->offset[level_id][tree_id];
-				log_info("Superblock of db: %s first_segment dev offt: %lu", superblock->db_name,
-					 superblock->first_segment[level_id][tree_id]);
-				log_info("Restoring level[%u][%u] first segment %p last segment: %p size: %lu",
-					 level_id, tree_id, (void *)db_desc->levels[level_id].first_segment[tree_id],
-					 (void *)db_desc->levels[level_id].last_segment[tree_id],
-					 db_desc->levels[level_id].offset[tree_id]);
+				log_debug("Superblock of db: %s first_segment dev offt: %lu", superblock->db_name,
+					  superblock->first_segment[level_id][tree_id]);
+				log_debug("Restoring level[%u][%u] first segment %p last segment: %p size: %lu",
+					  level_id, tree_id, (void *)db_desc->levels[level_id].first_segment[tree_id],
+					  (void *)db_desc->levels[level_id].last_segment[tree_id],
+					  db_desc->levels[level_id].offset[tree_id]);
 			} else {
-				//log_info("Restoring EMPTY level[%u][%u]", level_id, tree_id);
+				//log_debug("Restoring EMPTY level[%u][%u]", level_id, tree_id);
 				db_desc->levels[level_id].first_segment[tree_id] = NULL;
 				db_desc->levels[level_id].last_segment[tree_id] = NULL;
 				db_desc->levels[level_id].offset[tree_id] = 0;
@@ -634,8 +634,8 @@ const char *db_close(db_handle *handle)
 	while (handle->db_desc->db_state != DB_IS_CLOSING)
 		usleep(50);
 
-	log_info("Ok compaction daemon exited continuing the close sequence of DB:%s",
-		 handle->db_desc->db_superblock->db_name);
+	log_debug("Ok compaction daemon exited continuing the close sequence of DB:%s",
+		  handle->db_desc->db_superblock->db_name);
 
 	/* Release the locks for all levels to allow pending compactions to complete. */
 	for (uint8_t level_id = 0; level_id < MAX_LEVELS; level_id++)
@@ -1326,6 +1326,23 @@ const char *btree_insert_key_value(bt_insert_req *ins_req)
 	return NULL;
 }
 
+static inline struct lock_table *bt_reader_visit_node(db_descriptor *db_desc, struct node_header *node,
+						      struct lock_table *prev_lock, uint32_t level_id)
+{
+	if (level_id)
+		return NULL;
+
+	struct lock_table *curr_lock =
+		find_lock_position((const lock_table **)db_desc->levels[level_id].level_lock_table, node);
+	if (RWLOCK_RDLOCK(&curr_lock->rx_lock) != 0)
+		BUG_ON();
+
+	if (prev_lock && RWLOCK_UNLOCK(&prev_lock->rx_lock) != 0)
+		BUG_ON();
+
+	return curr_lock;
+}
+
 static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id, int tree_id)
 {
 	struct node_header *son_node = NULL;
@@ -1343,20 +1360,25 @@ static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id,
 		       key_splice_get_key_size(get_op->key_splice)))
 		return;
 
-	lock_table *prev = NULL;
-	lock_table *curr = NULL;
+	lock_table *prev_lock = NULL;
+	lock_table *curr_lock = NULL;
 	struct node_header *curr_node = root;
 
 	while (curr_node) {
 		if (curr_node->type == leafNode || curr_node->type == leafRootNode)
 			break;
 
-		curr = find_lock_position((const lock_table **)db_desc->levels[level_id].level_lock_table, curr_node);
-		if (RWLOCK_RDLOCK(&curr->rx_lock) != 0)
-			BUG_ON();
+		//No locking needed for the device levels >= 1
+		curr_lock = bt_reader_visit_node(db_desc, curr_node, prev_lock, level_id);
+		// if (0 == level_id) {
+		// 	curr_lock = find_lock_position((const lock_table **)db_desc->levels[level_id].level_lock_table,
+		// 				       curr_node);
+		// 	if (RWLOCK_RDLOCK(&curr_lock->rx_lock) != 0)
+		// 		BUG_ON();
 
-		if (prev && RWLOCK_UNLOCK(&prev->rx_lock) != 0)
-			BUG_ON();
+		// 	if (prev_lock && RWLOCK_UNLOCK(&prev_lock->rx_lock) != 0)
+		// 		BUG_ON();
+		// }
 
 		uint64_t child_offset = index_binary_search((struct index_node *)curr_node,
 							    key_splice_get_key_offset(search_key_buf),
@@ -1364,18 +1386,22 @@ static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id,
 
 		son_node = (void *)REAL_ADDRESS(child_offset);
 
-		prev = curr;
+		prev_lock = curr_lock;
 		curr_node = son_node;
 	}
 
-	// prev = curr;
-	curr = find_lock_position((const lock_table **)db_desc->levels[level_id].level_lock_table, curr_node);
-	if (RWLOCK_RDLOCK(&curr->rx_lock) != 0) {
-		BUG_ON();
-	}
+	//No locking needed for the device levels >= 1
+	curr_lock = bt_reader_visit_node(db_desc, curr_node, prev_lock, level_id);
+	// if (0 == level_id) {
+	// 	curr_lock =
+	// 		find_lock_position((const lock_table **)db_desc->levels[level_id].level_lock_table, curr_node);
+	// 	if (RWLOCK_RDLOCK(&curr_lock->rx_lock) != 0) {
+	// 		BUG_ON();
+	// 	}
 
-	if (prev && RWLOCK_UNLOCK(&prev->rx_lock) != 0)
-		BUG_ON();
+	// 	if (prev_lock && RWLOCK_UNLOCK(&prev_lock->rx_lock) != 0)
+	// 		BUG_ON();
+	// }
 
 	int32_t key_size = key_splice_get_key_size(search_key_buf);
 	void *key = key_splice_get_key_offset(search_key_buf);
@@ -1431,7 +1457,7 @@ check_if_done_with_value_log:
 		bt_done_with_value_log_address(&db_desc->big_log, &kv_pair);
 
 release_leaf_lock:
-	if (curr && RWLOCK_UNLOCK(&curr->rx_lock) != 0)
+	if (0 == level_id && curr_lock && RWLOCK_UNLOCK(&curr_lock->rx_lock) != 0)
 		BUG_ON();
 
 	__sync_fetch_and_sub(&db_desc->levels[level_id].active_operations, 1);
@@ -1454,6 +1480,7 @@ void find_key(struct lookup_operation *get_op)
 	uint8_t tree_id = db_desc->levels[0].active_tree;
 	uint8_t base = tree_id;
 
+	/*Level-0 search logic we look trees of L0 from newer to oldest*/
 	while (1) {
 		/*first look the current active tree of the level*/
 		get_op->found = 0;
@@ -1476,6 +1503,7 @@ void find_key(struct lookup_operation *get_op)
 	if (RWLOCK_UNLOCK(&db_desc->levels[0].guard_of_level.rx_lock) != 0)
 		BUG_ON();
 	__sync_fetch_and_sub(&db_desc->levels[0].active_operations, 1);
+
 	/*search the rest trees of the level*/
 	for (uint8_t level_id = 1; level_id < MAX_LEVELS; ++level_id) {
 		if (RWLOCK_RDLOCK(&db_desc->levels[level_id].guard_of_level.rx_lock) != 0)

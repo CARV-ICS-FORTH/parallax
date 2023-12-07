@@ -259,11 +259,11 @@ struct medium_log_LRU_cache *mlog_cache_init_LRU(struct db_handle *handle)
 	uint64_t chunk_size = KB(256);
 	uint64_t LRU_cache_size = handle->db_options.options[MEDIUM_LOG_LRU_CACHE_SIZE].value;
 
-	log_info("Init LRU with %lu chunks", LRU_cache_size / chunk_size);
+	log_debug("Init LRU with %lu chunks", LRU_cache_size / chunk_size);
 	struct medium_log_LRU_cache *new_LRU =
 		(struct medium_log_LRU_cache *)calloc(1UL, sizeof(struct medium_log_LRU_cache));
 	if (new_LRU == NULL) {
-		log_info("Calloc returned NULL, not enough memory, exiting...");
+		log_fatal("Calloc returned NULL, not enough memory, exiting...");
 		BUG_ON();
 	}
 
@@ -360,10 +360,9 @@ static void mlog_cache_free_LRU_hashtable(struct mlog_cache_chunk_hash_entry **h
 static void mlog_cache_free_LRU_list(struct mlog_cache_chunk_list *list)
 {
 	assert(list != NULL);
-	struct mlog_cache_chunk_listnode *pfront, *pback;
 
-	pfront = list->head;
-	pback = NULL;
+	struct mlog_cache_chunk_listnode *pfront = list->head;
+	struct mlog_cache_chunk_listnode *pback = NULL;
 	while (pfront != NULL) {
 		pback = pfront;
 		pfront = pfront->next;
@@ -376,7 +375,7 @@ void mlog_cache_destroy_LRU(struct medium_log_LRU_cache *chunk_cache)
 {
 	assert(chunk_cache != NULL);
 
-	log_info("Compaction done! Destroying the LRU for medium log to in place");
+	log_debug("Compaction done! Destroying the LRU for medium log to in place");
 	mlog_cache_free_LRU_hashtable(chunk_cache->chunks_hash_table);
 	mlog_cache_free_LRU_list(chunk_cache->chunks_list);
 	free(chunk_cache->chunks_list);
