@@ -351,7 +351,9 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 
 	choose_compaction_roots(handle, comp_req, &comp_roots);
 
-	assert(0 == handle->db_desc->levels[comp_req->dst_level].offset[comp_req->dst_tree]);
+	// assert(0 == handle->db_desc->levels[comp_req->dst_level].offset[comp_req->dst_tree]);
+	// new staff
+	assert(0 == level_get_offset(handle->db_desc->dev_levels[comp_req->dst_level], comp_req->dst_tree));
 	comp_req->src_rcursor = NULL;
 	if (comp_req->src_level == 0) {
 		RWLOCK_WRLOCK(&handle->db_desc->L0.guard_of_level.rx_lock);
@@ -359,8 +361,10 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 		pr_flush_log_tail(comp_req->db_desc, &comp_req->db_desc->big_log);
 	}
 
-	assert(0 ==
-	       handle->db_desc->levels[compaction_get_dst_level(comp_req)].offset[compaction_get_dst_tree(comp_req)]);
+	// assert(0 ==
+	//        handle->db_desc->levels[compaction_get_dst_level(comp_req)].offset[compaction_get_dst_tree(comp_req)]);
+	//new staff
+	assert(0 == level_get_offset(handle->db_desc->dev_levels[comp_req->dst_level], comp_req->dst_tree));
 	comp_req->src_rcursor = rcursor_init_cursor(handle, compaction_get_src_level(comp_req),
 						    compaction_get_src_tree(comp_req), compaction_get_vol_fd(comp_req));
 
@@ -371,8 +375,10 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 					NULL :
 					rcursor_init_cursor(handle, compaction_get_dst_level(comp_req), 0,
 							    compaction_get_vol_fd(comp_req));
-	assert(0 ==
-	       handle->db_desc->levels[compaction_get_dst_level(comp_req)].offset[compaction_get_dst_tree(comp_req)]);
+	// assert(0 ==
+	//        handle->db_desc->levels[compaction_get_dst_level(comp_req)].offset[compaction_get_dst_tree(comp_req)]);
+	//new staff
+	assert(0 == level_get_offset(handle->db_desc->dev_levels[comp_req->dst_level], comp_req->dst_tree));
 
 	log_debug("Initializing write cursor for level [%u][%u]", compaction_get_dst_level(comp_req),
 		  compaction_get_dst_tree(comp_req));
@@ -476,7 +482,9 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 	// handle->db_desc->levels[comp_req->dst_level].root[1] = (struct node_header *)REAL_ADDRESS(root_offt);
 	// new staff
 	level_set_root(handle->db_desc->dev_levels[comp_req->dst_level], 1, REAL_ADDRESS(root_offt));
-	assert(handle->db_desc->levels[comp_req->dst_level].root[1]->type == rootNode);
+	// assert(handle->db_desc->levels[comp_req->dst_level].root[1]->type == rootNode);
+	//new staff
+	assert(level_get_root(handle->db_desc->dev_levels[comp_req->dst_level], 1)->type == rootNode);
 
 	if (wcursor_get_level_id(comp_req->wcursor) == handle->db_desc->level_medium_inplace) {
 		comp_medium_log_set_max_segment_id(comp_req->wcursor, handle->db_desc);
@@ -556,7 +564,10 @@ static void compact_with_empty_destination_level(struct compaction_request *comp
 	log_debug("Swapped levels %d to %d successfully", comp_req->src_level, comp_req->dst_level);
 	// log_debug("After swapping src tree[%d][%d] size is %lu", comp_req->src_level, 0, src_level->level_size[0]);
 	// log_debug("After swapping dst tree[%d][%d] size is %lu", comp_req->dst_level, 0, dst_level->level_size[0]);
-	assert(dst_level->first_segment != NULL);
+	// assert(dst_level->first_segment != NULL);
+	// new staff
+	assert(level_get_index_first_seg(comp_req->db_desc->dev_levels[comp_req->dst_level], comp_req->dst_tree) !=
+	       NULL);
 }
 
 void *compaction(void *compaction_request)
@@ -615,8 +626,11 @@ void compaction_close(struct compaction_request *comp_req)
 		if (are_parallax_callbacks_set(par_callbacks)) {
 			struct parallax_callback_funcs par_cb = parallax_get_callbacks(par_callbacks);
 			void *context = parallax_get_context(par_callbacks);
-			assert(hd.db_desc->levels[comp_req->dst_level].first_segment[1]);
-			assert(hd.db_desc->levels[comp_req->dst_level].last_segment[1]);
+			// assert(hd.db_desc->levels[comp_req->dst_level].first_segment[1]);
+			// assert(hd.db_desc->levels[comp_req->dst_level].last_segment[1]);
+			// new staff
+			assert(level_get_index_first_seg(hd.db_desc->dev_levels[comp_req->dst_level], 1));
+			assert(level_get_index_last_seg(hd.db_desc->dev_levels[comp_req->dst_level], 1));
 			if (par_cb.compaction_ended_cb) {
 				uint64_t first = ABSOLUTE_ADDRESS(
 					level_get_index_first_seg(hd.db_desc->dev_levels[comp_req->dst_level], 1));

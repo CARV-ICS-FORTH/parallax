@@ -118,8 +118,12 @@ static bool rcursor_get_next_kv_from_device(struct rcursor_level_read_cursor *r_
 					     r_cursor->tree_id)) {
 				log_debug("Done read level %u", r_cursor->level_id);
 				r_cursor->is_end_of_level = true;
+				// assert(device_cursor->offset ==
+				//        r_cursor->handle->db_desc->levels[r_cursor->level_id].offset[r_cursor->tree_id]);
+				//        new staff
 				assert(device_cursor->offset ==
-				       r_cursor->handle->db_desc->levels[r_cursor->level_id].offset[r_cursor->tree_id]);
+				       level_get_offset(r_cursor->handle->db_desc->dev_levels[r_cursor->level_id],
+							r_cursor->tree_id));
 				return false;
 			}
 			if (device_cursor->offset % SEGMENT_SIZE == 0)
@@ -138,9 +142,14 @@ static bool rcursor_get_next_kv_from_device(struct rcursor_level_read_cursor *r_
 					r_cursor->handle->db_desc->dev_levels[r_cursor->level_id], r_cursor->tree_id);
 			} else {
 				if (device_cursor->curr_segment->next_segment == NULL) {
+					// assert((uint64_t)device_cursor->curr_segment ==
+					//        (uint64_t)r_cursor->handle->db_desc->levels[r_cursor->level_id]
+					// 	       .last_segment[r_cursor->tree_id]);
+					// 	      new staff
 					assert((uint64_t)device_cursor->curr_segment ==
-					       (uint64_t)r_cursor->handle->db_desc->levels[r_cursor->level_id]
-						       .last_segment[r_cursor->tree_id]);
+					       (uint64_t)level_get_index_last_seg(
+						       r_cursor->handle->db_desc->dev_levels[r_cursor->level_id],
+						       r_cursor->tree_id));
 					log_debug("Done reading level %u cursor offset %lu total offt %lu",
 						  r_cursor->level_id, device_cursor->offset,
 						  // r_cursor->handle->db_desc->levels[r_cursor->level_id]
@@ -149,9 +158,15 @@ static bool rcursor_get_next_kv_from_device(struct rcursor_level_read_cursor *r_
 						  level_get_offset(
 							  r_cursor->handle->db_desc->dev_levels[r_cursor->level_id],
 							  r_cursor->tree_id));
+					// assert(device_cursor->offset ==
+					//        r_cursor->handle->db_desc->levels[r_cursor->level_id]
+					// 	       .offset[r_cursor->tree_id]);
+					// 	       new staff
 					assert(device_cursor->offset ==
-					       r_cursor->handle->db_desc->levels[r_cursor->level_id]
-						       .offset[r_cursor->tree_id]);
+					       level_get_offset(
+						       r_cursor->handle->db_desc->dev_levels[r_cursor->level_id],
+						       r_cursor->tree_id));
+
 					device_cursor->state = COMP_CUR_CHECK_OFFT;
 					//TODO replace goto with continue;
 					//TODO Rename device_offt

@@ -87,7 +87,7 @@ struct device_level *level_create_fresh(uint32_t level_id, uint32_t l0_size, uin
 }
 
 struct device_level *level_restore_from_device(uint32_t level_id, struct pr_db_superblock *superblock,
-					       uint32_t num_trees, struct db_handle *db_handle, uint64_t l0_size,
+					       uint32_t num_trees, db_handle *database, uint64_t l0_size,
 					       uint32_t growth_factor)
 {
 	/*restore now persistent state of all levels*/
@@ -111,7 +111,7 @@ struct device_level *level_restore_from_device(uint32_t level_id, struct pr_db_s
 			level->bloom_desc[tree_id] = NULL;
 			continue;
 		}
-		level->bloom_desc[tree_id] = pbf_recover_bloom_filter(db_handle, (uint8_t)level_id, (uint8_t)tree_id,
+		level->bloom_desc[tree_id] = pbf_recover_bloom_filter(database, (uint8_t)level_id, (uint8_t)tree_id,
 								      superblock->bloom_filter_hash[level_id][tree_id]);
 	}
 
@@ -259,7 +259,7 @@ void level_save_to_superblock(struct device_level *level, struct pr_db_superbloc
 	db_superblock->first_segment[dst_level_id][0] = ABSOLUTE_ADDRESS(level->first_segment[tree_id]);
 
 	log_debug("Persist %u first was %lu", dst_level_id, ABSOLUTE_ADDRESS(level->first_segment[tree_id]));
-	assert(db_desc->levels[dst_level_id].first_segment[tree_id]);
+	assert(level[dst_level_id].first_segment[tree_id]);
 
 	db_superblock->last_segment[dst_level_id][0] = ABSOLUTE_ADDRESS(level->last_segment[tree_id]);
 

@@ -188,7 +188,7 @@ static void *compactiond_run(void *args)
 			// new staff
 			level_set_txn_id(db_desc->dev_levels[1], 1, rul_start_txn(db_desc));
 			compaction_set_dst_tree(comp_req, 1);
-			assert(db_desc->levels[0].root[compaction_get_src_tree(comp_req)] != NULL);
+			assert(db_desc->L0.root[compaction_get_src_tree(comp_req)] != NULL);
 
 			//TODO: geostyl callback
 			parallax_callbacks_t par_callbacks = db_desc->parallax_callbacks;

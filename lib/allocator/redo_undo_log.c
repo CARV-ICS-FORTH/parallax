@@ -403,6 +403,7 @@ void rul_add_entry_in_txn_buf(struct db_descriptor *db_desc, struct rul_log_entr
 
 	if (transaction == NULL) {
 		log_fatal("Txn %lu not found!", txn_id);
+		assert(0);
 		BUG_ON();
 	}
 	MUTEX_UNLOCK(&log_desc->trans_map_lock);
