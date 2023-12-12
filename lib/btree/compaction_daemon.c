@@ -13,15 +13,16 @@
 // limitations under the License.
 
 #define _GNU_SOURCE
-#include "btree.h"
+#include "compaction_daemon.h"
 #include "../allocator/device_structures.h"
 #include "../allocator/log_structures.h"
 #include "../allocator/persistent_operations.h"
 #include "../allocator/redo_undo_log.h"
 #include "../common/common.h"
-#include "compaction_daemon.h"
+#include "btree.h"
 #include "compaction_worker.h"
 #include "conf.h"
+#include "device_level.h"
 #include "parallax/structures.h"
 #include <assert.h>
 #include <log.h>
@@ -58,18 +59,28 @@ struct compaction_daemon *compactiond_create(struct db_handle *handle, bool do_n
 static struct compaction_request *compactiond_compact_L0(struct compaction_daemon *daemon, uint8_t L0_tree_id,
 							 uint8_t L1_tree_id)
 {
-	struct level_descriptor *level_0 = &daemon->db_handle->db_desc->levels[0];
-	struct level_descriptor *level_1 = &daemon->db_handle->db_desc->levels[1];
+	// struct level_descriptor *level_0 = &daemon->db_handle->db_desc->levels[0];
+	// struct level_descriptor *level_1 = &daemon->db_handle->db_desc->levels[1];
+	// new staff
+	struct level_descriptor *level_0 = &daemon->db_handle->db_desc->L0;
+	struct device_level *level_1 = daemon->db_handle->db_desc->dev_levels[1];
+
 	if (level_0->tree_status[L0_tree_id] != BT_NO_COMPACTION)
 		return NULL;
 
 	if (level_0->level_size[L0_tree_id] < level_0->max_level_size)
 		return NULL;
 
-	if (level_1->tree_status[L1_tree_id] != BT_NO_COMPACTION)
+	// if (level_1->tree_status[L1_tree_id] != BT_NO_COMPACTION)
+	// 	return NULL;
+	// 	new staff
+	if (level_is_compacting(daemon->db_handle->db_desc->dev_levels[1]))
 		return NULL;
 
-	if (level_1->level_size[L1_tree_id] >= level_1->max_level_size)
+	// if (level_1->level_size[L1_tree_id] >= level_1->max_level_size)
+	// 	return NULL;
+	// 	new staff
+	if (level_has_overflow(level_1, L1_tree_id))
 		return NULL;
 
 	bt_set_db_status(daemon->db_handle->db_desc, BT_COMPACTION_IN_PROGRESS, 0, L0_tree_id);
@@ -101,7 +112,6 @@ static void *compactiond_run(void *args)
 			return NULL;
 		}
 		// struct level_descriptor *level_0 = &handle->db_desc->levels[0];
-		struct level_descriptor *src_level = &handle->db_desc->levels[1];
 
 		// int L0_tree = next_L0_tree_to_compact;
 		// int L1_tree = 0;
@@ -126,16 +136,16 @@ static void *compactiond_run(void *args)
 		// 	// 	next_L0_tree_to_compact = 0;
 		// }
 		/*can I set a different active tree for L0*/
-		int active_tree = db_desc->levels[0].active_tree;
-		if (db_desc->levels[0].tree_status[active_tree] == BT_COMPACTION_IN_PROGRESS) {
+		int active_tree = db_desc->L0.active_tree;
+		if (db_desc->L0.tree_status[active_tree] == BT_COMPACTION_IN_PROGRESS) {
 			int next_active_tree = active_tree != (NUM_TREES_PER_LEVEL - 1) ? active_tree + 1 : 0;
-			if (db_desc->levels[0].tree_status[next_active_tree] == BT_NO_COMPACTION) {
+			if (db_desc->L0.tree_status[next_active_tree] == BT_NO_COMPACTION) {
 				/*Acquire guard lock and wait writers to finish*/
-				if (RWLOCK_WRLOCK(&db_desc->levels[0].guard_of_level.rx_lock)) {
+				if (RWLOCK_WRLOCK(&db_desc->L0.guard_of_level.rx_lock)) {
 					log_fatal("Failed to acquire guard lock");
 					BUG_ON();
 				}
-				spin_loop(&(db_desc->levels[0].active_operations), 0);
+				spin_loop(&(db_desc->L0.active_operations), 0);
 				/*fill L0 recovery log  info*/
 				db_desc->small_log_start_segment_dev_offt = db_desc->small_log.tail_dev_offt;
 				log_debug("Setting db_desc->small_log_start_segment_dev_offt to %lu",
@@ -147,15 +157,15 @@ static void *compactiond_run(void *args)
 				db_desc->big_log_start_offt_in_segment = db_desc->big_log.size % SEGMENT_SIZE;
 				/*done now atomically change active tree*/
 
-				db_desc->levels[0].active_tree = next_active_tree;
-				db_desc->levels[0].scanner_epoch += 1;
-				db_desc->levels[0].epoch[active_tree] = db_desc->levels[0].scanner_epoch;
+				db_desc->L0.active_tree = next_active_tree;
+				db_desc->L0.scanner_epoch += 1;
+				db_desc->L0.epoch[active_tree] = db_desc->L0.scanner_epoch;
 				log_debug("Next active tree %u for L0 of DB: %s", next_active_tree,
 					  db_desc->db_superblock->db_name);
 				/*Acquire a new transaction id for the next_active_tree*/
-				db_desc->levels[0].allocation_txn_id[next_active_tree] = rul_start_txn(db_desc);
+				db_desc->L0.allocation_txn_id[next_active_tree] = rul_start_txn(db_desc);
 				/*Release guard lock*/
-				if (RWLOCK_UNLOCK(&db_desc->levels[0].guard_of_level.rx_lock)) {
+				if (RWLOCK_UNLOCK(&db_desc->L0.guard_of_level.rx_lock)) {
 					log_fatal("Failed to acquire guard lock");
 					BUG_ON();
 				}
@@ -174,7 +184,9 @@ static void *compactiond_run(void *args)
 			log_debug("Flushing L0 for region:%s tree:[0][%u]", db_desc->db_superblock->db_name,
 				  compaction_get_src_tree(comp_req));
 			pr_flush_L0(db_desc, compaction_get_src_tree(comp_req));
-			db_desc->levels[1].allocation_txn_id[1] = rul_start_txn(db_desc);
+			// db_desc->levels[1].allocation_txn_id[1] = rul_start_txn(db_desc);
+			// new staff
+			level_set_txn_id(db_desc->dev_levels[1], 1, rul_start_txn(db_desc));
 			compaction_set_dst_tree(comp_req, 1);
 			assert(db_desc->levels[0].root[compaction_get_src_tree(comp_req)] != NULL);
 
@@ -188,8 +200,8 @@ static void *compactiond_run(void *args)
 					par_cb.build_index_L0_compaction_started_cb(context);
 			}
 
-			if (pthread_create(&db_desc->levels[0].compaction_thread[compaction_get_src_tree(comp_req)],
-					   NULL, compaction, comp_req) != 0) {
+			if (pthread_create(&db_desc->L0.compaction_thread[compaction_get_src_tree(comp_req)], NULL,
+					   compaction, comp_req) != 0) {
 				log_fatal("Failed to start compaction");
 				BUG_ON();
 			}
@@ -197,38 +209,57 @@ static void *compactiond_run(void *args)
 		}
 
 		// rest of levels
-		for (int level_id = 1; level_id < MAX_LEVELS - 1; ++level_id) {
-			src_level = &db_desc->levels[level_id];
-			struct level_descriptor *dst_level = &db_desc->levels[level_id + 1];
+		for (uint8_t level_id = 1; level_id < MAX_LEVELS - 1; ++level_id) {
+			// if (src_level->tree_status[tree_1] == BT_NO_COMPACTION &&
+			//     src_level->level_size[tree_1] >= src_level->max_level_size) {
+			// 	uint8_t tree_2 = 0;
+
+			// 	if (dst_level->tree_status[tree_2] == BT_NO_COMPACTION &&
+			// 	    dst_level->level_size[tree_2] < dst_level->max_level_size) {
+			// 		bt_set_db_status(db_desc, BT_COMPACTION_IN_PROGRESS, level_id, tree_1);
+			// 		bt_set_db_status(db_desc, BT_COMPACTION_IN_PROGRESS, level_id + 1, tree_2);
+			// 		struct compaction_request *comp_req_p =
+			// 			compaction_create_req(db_desc, &handle->db_options, UINT64_MAX,
+			// 					      UINT64_MAX, level_id, tree_1, level_id + 1, 1);
+
+			// 		/*Acquire a txn_id for the allocations of the compaction*/
+			// 		db_desc->levels[compaction_get_dst_level(comp_req_p)]
+			// 			.allocation_txn_id[compaction_get_dst_tree(comp_req_p)] =
+			// 			rul_start_txn(db_desc);
+
+			// 		assert(db_desc->levels[level_id].root[0] != NULL);
+			// 		if (pthread_create(
+			// 			    &db_desc->levels[compaction_get_dst_level(comp_req_p)]
+			// 				     .compaction_thread[compaction_get_dst_tree(comp_req_p)],
+			// 			    NULL, compaction, comp_req_p) != 0) {
+			// 			log_fatal("Failed to start compaction");
+			// 			BUG_ON();
+			// 		}
+			// 	}
+			// }
+			// new staff
+			struct device_level *src_level = db_desc->dev_levels[level_id];
+			struct device_level *dst_level = db_desc->dev_levels[level_id + 1];
 			uint8_t tree_1 = 0;
+			if (level_is_compacting(src_level))
+				continue;
+			if (false == level_has_overflow(src_level, tree_1))
+				continue;
+			if (level_is_compacting(dst_level))
+				continue;
+			if (false == level_has_overflow(dst_level, tree_1))
+				continue;
 
-			if (src_level->tree_status[tree_1] == BT_NO_COMPACTION &&
-			    src_level->level_size[tree_1] >= src_level->max_level_size) {
-				uint8_t tree_2 = 0;
+			struct compaction_request *comp_req_p = compaction_create_req(db_desc, &handle->db_options,
+										      UINT64_MAX, UINT64_MAX, level_id,
+										      tree_1, level_id + 1, 1);
 
-				if (dst_level->tree_status[tree_2] == BT_NO_COMPACTION &&
-				    dst_level->level_size[tree_2] < dst_level->max_level_size) {
-					bt_set_db_status(db_desc, BT_COMPACTION_IN_PROGRESS, level_id, tree_1);
-					bt_set_db_status(db_desc, BT_COMPACTION_IN_PROGRESS, level_id + 1, tree_2);
-					struct compaction_request *comp_req_p =
-						compaction_create_req(db_desc, &handle->db_options, UINT64_MAX,
-								      UINT64_MAX, level_id, tree_1, level_id + 1, 1);
+			/*Acquire a txn_id for the allocations of the compaction*/
+			level_set_txn_id(db_desc->dev_levels[compaction_get_dst_level(comp_req)], 1,
+					 rul_start_txn(db_desc));
 
-					/*Acquire a txn_id for the allocations of the compaction*/
-					db_desc->levels[compaction_get_dst_level(comp_req_p)]
-						.allocation_txn_id[compaction_get_dst_tree(comp_req_p)] =
-						rul_start_txn(db_desc);
-
-					assert(db_desc->levels[level_id].root[0] != NULL);
-					if (pthread_create(
-						    &db_desc->levels[compaction_get_dst_level(comp_req_p)]
-							     .compaction_thread[compaction_get_dst_tree(comp_req_p)],
-						    NULL, compaction, comp_req_p) != 0) {
-						log_fatal("Failed to start compaction");
-						BUG_ON();
-					}
-				}
-			}
+			level_start_comp_thread(db_desc->dev_levels[compaction_get_dst_level(comp_req_p)],
+						compaction_get_dst_tree(comp_req_p), compaction, comp_req_p);
 		}
 	}
 }
@@ -285,7 +316,7 @@ void compactiond_close(struct compaction_daemon *daemon)
 void compactiond_force_L0_compaction(struct compaction_daemon *daemon)
 {
 	assert(daemon);
-	struct level_descriptor *level_0 = &daemon->db_handle->db_desc->levels[0];
+	struct level_descriptor *level_0 = &daemon->db_handle->db_desc->L0;
 	int tree_id = daemon->next_L0_tree_to_compact % NUM_TREES_PER_LEVEL;
 	level_0->level_size[tree_id] = level_0->max_level_size;
 	compactiond_interrupt(daemon);

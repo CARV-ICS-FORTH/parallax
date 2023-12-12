@@ -11,7 +11,6 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-
 #include "level_write_cursor.h"
 #include "../allocator/volume_manager.h"
 #include "../common/common.h"
@@ -19,6 +18,7 @@
 #include "btree.h"
 #include "btree_node.h"
 #include "conf.h"
+#include "device_level.h"
 #include "dynamic_leaf.h"
 #include "index_node.h"
 #include "key_splice.h"
@@ -263,8 +263,11 @@ static void wcursor_write_index_segment(struct wcursor_level_write_cursor *w_cur
 		wcursor_spin_for_buffer_status(w_cursor);
 #endif
 	//Caution this is the device offset where we will write the next segment in the next iteration of the process
-	struct segment_header *new_device_segment =
-		get_segment_for_lsm_level_IO(w_cursor->handle->db_desc, w_cursor->level_id, 1);
+	// struct segment_header *new_device_segment =
+	// 	get_segment_for_lsm_level_IO(w_cursor->handle->db_desc, w_cursor->level_id, 1);
+	// 	new staff
+	struct segment_header *new_device_segment = level_allocate_segment(
+		w_cursor->handle->db_desc->dev_levels[w_cursor->level_id], 1, w_cursor->handle->db_desc);
 	assert(new_device_segment);
 
 	struct segment_header *segment = (struct segment_header *)wcursor_get_buf(w_cursor, height);
@@ -314,7 +317,7 @@ retry:
 
 	uint32_t remaining_space = w_cursor->segment_offt[height] % SEGMENT_SIZE ?
 					   SEGMENT_SIZE - (w_cursor->segment_offt[height] % SEGMENT_SIZE) :
-						 0;
+					   0;
 	if (remaining_space >= size) {
 		char *item = wcursor_get_current_node(w_cursor, height, w_cursor->segment_offt[height] % SEGMENT_SIZE);
 		w_cursor->segment_offt[height] += size;
@@ -332,17 +335,23 @@ retry:
 	goto retry;
 }
 
-static int32_t wcursor_calculate_level_keys(struct db_descriptor *db_desc, uint8_t level_id)
+static int64_t wcursor_calculate_level_keys(struct db_descriptor *db_desc, uint8_t level_id)
 {
 	assert(level_id > 0);
 	uint8_t tree_id = 0; /*Always caclulate the immutable aka 0 tree of the level*/
-	int32_t total_keys = db_desc->levels[level_id].num_level_keys[tree_id];
+	// int32_t total_keys = db_desc->levels[level_id].num_level_keys[tree_id];
+	// new staff
+	int64_t total_keys = level_get_num_KV_pairs(db_desc->dev_levels[level_id], tree_id);
 
 	if (0 == total_keys && 1 == level_id)
-		total_keys = db_desc->levels[0].max_level_size / WCURSOR_MAGIC_SMALL_KV_SIZE;
+		// total_keys = db_desc->levels[0].max_level_size / WCURSOR_MAGIC_SMALL_KV_SIZE;
+		// new staff
+		total_keys = db_desc->L0.max_level_size / WCURSOR_MAGIC_SMALL_KV_SIZE;
 
 	if (level_id > 1) {
-		total_keys += db_desc->levels[level_id - 1].num_level_keys[tree_id];
+		// total_keys += db_desc->levels[level_id - 1].num_level_keys[tree_id];
+		//new staff
+		total_keys += level_get_num_KV_pairs(db_desc->dev_levels[level_id - 1], tree_id);
 	}
 	// log_debug("Total keys of level %u are %d", level_id, total_keys);
 	return total_keys;
@@ -380,28 +389,38 @@ struct wcursor_level_write_cursor *wcursor_init_write_cursor(uint8_t level_id, s
 
 	for (uint32_t height = 0; height < MAX_HEIGHT; ++height) {
 		w_cursor->segment_offt[height] = sizeof(struct segment_header);
-		struct segment_header *segment = get_segment_for_lsm_level_IO(handle->db_desc, level_id, tree_id);
+		// struct segment_header *segment = get_segment_for_lsm_level_IO(handle->db_desc, level_id, tree_id);
+		// new segment
+		struct segment_header *segment =
+			level_allocate_segment(handle->db_desc->dev_levels[level_id], tree_id, handle->db_desc);
 		w_cursor->last_segment_btree_level_offt[height] = ABSOLUTE_ADDRESS(segment);
 		w_cursor->first_segment_btree_level_offt[height] = w_cursor->last_segment_btree_level_offt[height] =
 			ABSOLUTE_ADDRESS(segment);
 		assert(w_cursor->last_segment_btree_level_offt[height]);
 		w_cursor->last_node[height] = (struct node_header *)wcursor_get_space(
 			w_cursor, height,
-			height == 0 ? w_cursor->handle->db_desc->levels[w_cursor->level_id].leaf_size :
-					    index_node_get_size());
+			// height == 0 ? w_cursor->handle->db_desc->levels[w_cursor->level_id].leaf_size :
+			// 		    index_node_get_size());
+			// 		    new staff
+			height == 0 ? LEAF_NODE_SIZE : index_node_get_size());
 
 		if (0 == height) {
 			dl_init_leaf_node((struct leaf_node *)w_cursor->last_node[height],
-					  handle->db_desc->levels[level_id].leaf_size);
+					  // handle->db_desc->levels[level_id].leaf_size);
+					  // new staff
+					  LEAF_NODE_SIZE);
 			continue;
 		}
 		index_set_height((struct index_node *)w_cursor->last_node[height], height);
 		index_init_node(DO_NOT_ADD_GUARD, (struct index_node *)w_cursor->last_node[height], internalNode);
 	}
 
-	handle->db_desc->levels[w_cursor->level_id].bloom_desc[w_cursor->tree_id] =
-		pbf_create(handle, w_cursor->level_id,
-			   wcursor_calculate_level_keys(handle->db_desc, w_cursor->level_id), w_cursor->tree_id);
+	// handle->db_desc->levels[w_cursor->level_id].bloom_desc[w_cursor->tree_id] =
+	// 	pbf_create(handle, w_cursor->level_id,
+	// 		   wcursor_calculate_level_keys(handle->db_desc, w_cursor->level_id), w_cursor->tree_id);
+	// new staff
+	level_create_bf(handle->db_desc->dev_levels[w_cursor->level_id], tree_id,
+			wcursor_calculate_level_keys(handle->db_desc, w_cursor->level_id), handle);
 
 	w_cursor->medium_log_LRU_cache = level_id == w_cursor->handle->db_desc->level_medium_inplace ?
 						 mlog_cache_init_LRU(w_cursor->handle) :
@@ -477,8 +496,11 @@ static void wcursor_stich_level(struct wcursor_level_write_cursor *w_cursor, int
 				struct segment_header *segment)
 {
 	if (MAX_HEIGHT - 1 == height) {
-		w_cursor->handle->db_desc->levels[w_cursor->level_id].last_segment[1] =
-			REAL_ADDRESS(w_cursor->last_segment_btree_level_offt[height]);
+		// w_cursor->handle->db_desc->levels[w_cursor->level_id].last_segment[1] =
+		// 	REAL_ADDRESS(w_cursor->last_segment_btree_level_offt[height]);
+		// 	new staff
+		level_set_index_last_seg(w_cursor->handle->db_desc->dev_levels[w_cursor->level_id],
+					 REAL_ADDRESS(w_cursor->last_segment_btree_level_offt[height]), 1);
 		assert(w_cursor->last_segment_btree_level_offt[height]);
 		segment->next_segment = NULL;
 		return;
@@ -492,7 +514,8 @@ void wcursor_flush_write_cursor(struct wcursor_level_write_cursor *w_cursor)
 #if TEBIS_FORMAT
 	wcursor_spin_for_buffer_status(w_cursor);
 #endif
-	uint32_t level_leaf_size = w_cursor->handle->db_desc->levels[w_cursor->level_id].leaf_size;
+	// uint32_t level_leaf_size = w_cursor->handle->db_desc->levels[w_cursor->level_id].leaf_size;
+	uint32_t level_leaf_size = LEAF_NODE_SIZE;
 	for (int32_t height = 0; height < MAX_HEIGHT; ++height) {
 		// if (height <= w_cursor->tree_height) {
 		assert(w_cursor->segment_offt[height] > 4096);
@@ -548,11 +571,13 @@ void wcursor_flush_write_cursor(struct wcursor_level_write_cursor *w_cursor)
 #endif
 	}
 
-	if (!pbf_persist_bloom_filter(
-		    w_cursor->handle->db_desc->levels[w_cursor->level_id].bloom_desc[w_cursor->tree_id])) {
-		log_fatal("Failed to write bloom filter");
-		_exit(EXIT_FAILURE);
-	}
+	// if (!pbf_persist_bloom_filter(
+	// 	    w_cursor->handle->db_desc->levels[w_cursor->level_id].bloom_desc[w_cursor->tree_id])) {
+	// 	log_fatal("Failed to write bloom filter");
+	// 	_exit(EXIT_FAILURE);
+	// }
+	//new staff
+	level_persist_bf(w_cursor->handle->db_desc->dev_levels[w_cursor->level_id], w_cursor->tree_id);
 
 #if 0
 	assert_level_segments(c->handle->db_desc, c->level_id, 1);
@@ -680,7 +705,7 @@ static struct key_splice *wcursor_create_pivot(struct kv_splice_base *last_splic
 
 	pivot_buf[idx] = (key_left[idx] + 1 < key_right[idx]) ? key_left[idx] + 1 : key_right[idx];
 	bool malloced = false;
-	struct key_splice *pivot = key_splice_create(pivot_buf, idx+1, NULL, 0, &malloced);
+	struct key_splice *pivot = key_splice_create(pivot_buf, idx + 1, NULL, 0, &malloced);
 	// log_debug("Created optimized pivot %.*s optimization ok! last_splice is: %.*s and new_splice: %.*s",
 	// 	  key_splice_get_key_size(pivot), key_splice_get_key_offset(pivot),
 	// 	  kv_splice_base_get_key_size(last_splice), kv_splice_base_get_key_buf(last_splice),
@@ -724,9 +749,13 @@ bool wcursor_append_KV_pair(struct wcursor_level_write_cursor *w_cursor, struct 
 		uint32_t offt_l = wcursor_calc_offt_in_seg(w_cursor, 0, (char *)w_cursor->last_node[0]);
 		left_leaf_offt = w_cursor->last_segment_btree_level_offt[0] + offt_l;
 		w_cursor->last_node[0] = (struct node_header *)wcursor_get_space(
-			w_cursor, 0, w_cursor->handle->db_desc->levels[w_cursor->level_id].leaf_size);
+			// w_cursor, 0, w_cursor->handle->db_desc->levels[w_cursor->level_id].leaf_size);
+			// new leaf
+			w_cursor, 0, LEAF_NODE_SIZE);
 		dl_init_leaf_node((struct leaf_node *)w_cursor->last_node[0],
-				  w_cursor->handle->db_desc->levels[w_cursor->level_id].leaf_size);
+				  // w_cursor->handle->db_desc->levels[w_cursor->level_id].leaf_size);
+				  //new leaf
+				  LEAF_NODE_SIZE);
 		/*last leaf updated*/
 		uint32_t offt_r = wcursor_calc_offt_in_seg(w_cursor, 0, (char *)w_cursor->last_node[0]);
 		right_leaf_offt = w_cursor->last_segment_btree_level_offt[0] + offt_r;
@@ -739,18 +768,27 @@ bool wcursor_append_KV_pair(struct wcursor_level_write_cursor *w_cursor, struct 
 		_exit(EXIT_FAILURE);
 	}
 
-	w_cursor->handle->db_desc->levels[w_cursor->level_id].level_size[1] += kv_splice_base_get_size(&new_splice);
-	int bloom_stat =
-		pbf_bloom_add(w_cursor->handle->db_desc->levels[w_cursor->level_id].bloom_desc[w_cursor->tree_id],
-			      kv_splice_base_get_key_buf(&new_splice), kv_splice_base_get_key_size(&new_splice));
+	// w_cursor->handle->db_desc->levels[w_cursor->level_id].level_size[1] += kv_splice_base_get_size(&new_splice);
+	// new staff
+	level_increase_size(w_cursor->handle->db_desc->dev_levels[w_cursor->level_id],
+			    kv_splice_base_get_size(&new_splice), 1);
+	// int bloom_stat =
+	// 	pbf_bloom_add(w_cursor->handle->db_desc->levels[w_cursor->level_id].bloom_desc[w_cursor->tree_id],
+	// 		      kv_splice_base_get_key_buf(&new_splice), kv_splice_base_get_key_size(&new_splice));
 
-	if (0 == bloom_stat) {
-		log_fatal(
-			"Either collision in bloom filter (should not happen all keys in a compaction are unique) or general failure");
-		_exit(EXIT_FAILURE);
-	}
-	/*XXX TODO XXX Leakage here of level, add an API call to level to do this operation*/
-	++w_cursor->handle->db_desc->levels[w_cursor->level_id].num_level_keys[w_cursor->tree_id];
+	// if (0 == bloom_stat) {
+	// 	log_fatal(
+	// 		"Either collision in bloom filter (should not happen all keys in a compaction are unique) or general failure");
+	// 	_exit(EXIT_FAILURE);
+	// }
+	// new staff
+	level_add_key_to_bf(w_cursor->handle->db_desc->dev_levels[w_cursor->level_id], w_cursor->tree_id,
+			    kv_splice_base_get_key_buf(&new_splice), kv_splice_base_get_key_size(&new_splice));
+
+	// ++w_cursor->handle->db_desc->levels[w_cursor->level_id].num_level_keys[w_cursor->tree_id];
+	// new staff
+	level_inc_num_keys(w_cursor->handle->db_desc->dev_levels[w_cursor->level_id], w_cursor->tree_id, 1);
+
 	if (!new_leaf)
 		return true;
 
@@ -763,8 +801,6 @@ bool wcursor_append_KV_pair(struct wcursor_level_write_cursor *w_cursor, struct 
 	free(pivot);
 	return true;
 }
-
-
 
 uint8_t wcursor_get_level_id(struct wcursor_level_write_cursor *w_cursor)
 {

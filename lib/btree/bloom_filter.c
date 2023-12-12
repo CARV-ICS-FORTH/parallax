@@ -58,7 +58,7 @@ static char *pbf_create_bloom_filter_folder(char *volume_name)
 	return bloom_filter_folder;
 }
 
-struct pbf_desc *pbf_create(db_handle *database_desc, uint8_t level_id, int32_t total_keys, uint8_t tree_id)
+struct pbf_desc *pbf_create(db_handle *database_desc, uint8_t level_id, int64_t total_keys, uint8_t tree_id)
 {
 	if (!database_desc->db_options.options[ENABLE_BLOOM_FILTERS].value)
 		return NULL;

@@ -16,6 +16,7 @@
 #include "../btree/btree.h"
 #include "../btree/btree_node.h"
 #include "../btree/conf.h"
+#include "../btree/device_level.h"
 #include "../btree/gc.h"
 #include "../btree/kv_pairs.h"
 #include "../btree/lsn.h"
@@ -49,12 +50,12 @@ struct log_info {
 
 #define ALIGN_UP(number, alignment) (((number) + (alignment)-1) / (alignment) * (alignment))
 
-static void flush_segment_in_log(int fd, uint64_t file_offset, char *buffer, int32_t IO_size)
+static void flush_segment_in_log(int file_desc, uint64_t file_offset, char *buffer, int32_t IO_size)
 {
 	ssize_t total_bytes_written = 0;
 	ssize_t size = IO_size;
 	while (total_bytes_written < size) {
-		ssize_t bytes_written = pwrite(fd, &buffer[total_bytes_written], size - total_bytes_written,
+		ssize_t bytes_written = pwrite(file_desc, &buffer[total_bytes_written], size - total_bytes_written,
 					       file_offset + total_bytes_written);
 		if (bytes_written == -1) {
 			log_fatal("Failed to write LOG_CHUNK reason follows");
@@ -71,7 +72,10 @@ static void pr_flush_allocation_log_and_level_info(struct db_descriptor *db_desc
 						   uint8_t dst_level_id, uint8_t tree_id)
 {
 	/*Flush my allocations*/
-	struct rul_log_info rul_log = rul_flush_txn(db_desc, db_desc->levels[dst_level_id].allocation_txn_id[tree_id]);
+	// struct rul_log_info rul_log = rul_flush_txn(db_desc, db_desc->levels[dst_level_id].allocation_txn_id[tree_id]);
+	// new staff
+	struct rul_log_info rul_log =
+		rul_flush_txn(db_desc, level_get_txn_id(db_desc->dev_levels[dst_level_id], tree_id));
 	/*new info about allocation_log*/
 	db_desc->db_superblock->allocation_log.head_dev_offt = rul_log.head_dev_offt;
 	db_desc->db_superblock->allocation_log.tail_dev_offt = rul_log.tail_dev_offt;
@@ -89,27 +93,29 @@ static void pr_flush_allocation_log_and_level_info(struct db_descriptor *db_desc
 	}
 
 	if (dst_level_id) {
-		/*new info about my level*/
-		db_desc->db_superblock->root_r[dst_level_id][0] =
-			ABSOLUTE_ADDRESS(db_desc->levels[dst_level_id].root[tree_id]);
+		// /*new info about my level*/
+		// db_desc->db_superblock->root_r[dst_level_id][0] =
+		// 	ABSOLUTE_ADDRESS(db_desc->levels[dst_level_id].root[tree_id]);
 
-		db_desc->db_superblock->first_segment[dst_level_id][0] =
-			ABSOLUTE_ADDRESS(db_desc->levels[dst_level_id].first_segment[tree_id]);
-		log_debug("Persist %u first was %lu", dst_level_id,
-			  ABSOLUTE_ADDRESS(db_desc->levels[dst_level_id].first_segment[tree_id]));
-		assert(db_desc->levels[dst_level_id].first_segment[tree_id]);
+		// db_desc->db_superblock->first_segment[dst_level_id][0] =
+		// 	ABSOLUTE_ADDRESS(db_desc->levels[dst_level_id].first_segment[tree_id]);
+		// log_debug("Persist %u first was %lu", dst_level_id,
+		// 	  ABSOLUTE_ADDRESS(db_desc->levels[dst_level_id].first_segment[tree_id]));
+		// assert(db_desc->levels[dst_level_id].first_segment[tree_id]);
 
-		db_desc->db_superblock->last_segment[dst_level_id][0] =
-			ABSOLUTE_ADDRESS(db_desc->levels[dst_level_id].last_segment[tree_id]);
+		// db_desc->db_superblock->last_segment[dst_level_id][0] =
+		// 	ABSOLUTE_ADDRESS(db_desc->levels[dst_level_id].last_segment[tree_id]);
 
-		db_desc->db_superblock->offset[dst_level_id][0] = db_desc->levels[dst_level_id].offset[tree_id];
+		// db_desc->db_superblock->offset[dst_level_id][0] = db_desc->levels[dst_level_id].offset[tree_id];
 
-		db_desc->db_superblock->level_size[dst_level_id][0] = db_desc->levels[dst_level_id].level_size[tree_id];
-		log_debug("Writing root[%u][%u] = %p", dst_level_id, tree_id,
-			  (void *)db_desc->levels[dst_level_id].root[tree_id]);
+		// db_desc->db_superblock->level_size[dst_level_id][0] = db_desc->levels[dst_level_id].level_size[tree_id];
+		// log_debug("Writing root[%u][%u] = %p", dst_level_id, tree_id,
+		// 	  (void *)db_desc->levels[dst_level_id].root[tree_id]);
 
-		db_desc->db_superblock->root_r[dst_level_id][0] =
-			ABSOLUTE_ADDRESS(db_desc->levels[dst_level_id].root[tree_id]);
+		// db_desc->db_superblock->root_r[dst_level_id][0] =
+		// 	ABSOLUTE_ADDRESS(db_desc->levels[dst_level_id].root[tree_id]);
+		//  new staff
+		level_save_to_superblock(db_desc->dev_levels[dst_level_id], db_desc->db_superblock, tree_id);
 	}
 
 	pr_flush_db_superblock(db_desc);
@@ -117,18 +123,21 @@ static void pr_flush_allocation_log_and_level_info(struct db_descriptor *db_desc
 
 static void pr_update_bloom_info(db_descriptor *db_desc)
 {
-	for (uint8_t i = 0; i < MAX_LEVELS; i++) {
-		for (uint8_t j = 0; j < NUM_TREES_PER_LEVEL; j++) {
-			if (NULL == db_desc->levels[i].bloom_desc[j]) {
-				db_desc->db_superblock->bloom_filter_hash[i][j] = UINT64_MAX;
-				db_desc->db_superblock->bloom_filter_valid[i][j] = 0;
-				continue;
-			}
-			db_desc->db_superblock->bloom_filter_hash[i][j] =
-				pbf_get_bf_file_hash(db_desc->levels[i].bloom_desc[j]);
-			db_desc->db_superblock->bloom_filter_valid[i][j] = 1;
-		}
-	}
+	// for (uint8_t i = 0; i < MAX_LEVELS; i++) {
+	// 	for (uint8_t j = 0; j < NUM_TREES_PER_LEVEL; j++) {
+	// 		if (NULL == db_desc->levels[i].bloom_desc[j]) {
+	// 			db_desc->db_superblock->bloom_filter_hash[i][j] = UINT64_MAX;
+	// 			db_desc->db_superblock->bloom_filter_valid[i][j] = 0;
+	// 			continue;
+	// 		}
+	// 		db_desc->db_superblock->bloom_filter_hash[i][j] =
+	// 			pbf_get_bf_file_hash(db_desc->levels[i].bloom_desc[j]);
+	// 		db_desc->db_superblock->bloom_filter_valid[i][j] = 1;
+	// 	}
+	// }
+	// new staff
+	for (uint8_t level_id = 1; level_id < MAX_LEVELS; level_id++)
+		level_save_bf_info_to_superblock(db_desc->dev_levels[level_id], db_desc->db_superblock);
 }
 /**
  * Persists L0 key value pairs in storage making it recoverable.
@@ -177,7 +186,9 @@ void pr_flush_L0(struct db_descriptor *db_desc, uint8_t tree_id)
 	/*Flush L0 recovery log*/
 	pr_flush_log_tail(db_desc, &db_desc->small_log);
 
-	uint64_t txn_id = db_desc->levels[0].allocation_txn_id[tree_id];
+	// uint64_t txn_id = db_desc->levels[0].allocation_txn_id[tree_id];
+	//new staff
+	uint64_t txn_id = db_desc->L0.allocation_txn_id[tree_id];
 
 	/*time to write superblock*/
 	pr_lock_db_superblock(db_desc);
@@ -232,7 +243,11 @@ static void pr_flush_L0_to_L1(struct db_descriptor *db_desc, struct par_db_optio
 	if (db_options->options[PRIMARY_MODE].value || db_options->options[REPLICA_BUILD_INDEX].value)
 		pr_flush_log_tail(db_desc, &db_desc->medium_log);
 	pr_lock_db_superblock(db_desc);
-	uint64_t txn_id = db_desc->levels[level_id].allocation_txn_id[tree_id];
+
+	// uint64_t txn_id = db_desc->levels[level_id].allocation_txn_id[tree_id];
+	// new staff
+	uint64_t txn_id = 0 == level_id ? db_desc->L0.allocation_txn_id[tree_id] :
+					  level_get_txn_id(db_desc->dev_levels[level_id], tree_id);
 
 	/*medium log info*/
 	db_desc->db_superblock->medium_log_head_offt = medium_log.head_dev_offt;
@@ -292,42 +307,47 @@ static void pr_flush_L0_to_L1(struct db_descriptor *db_desc, struct par_db_optio
 static void pr_flush_Lmax_to_Ln(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
 {
 	log_debug("Flushing Lmax to Ln!");
-	struct level_descriptor *level_desc = &db_desc->levels[level_id];
+	// struct level_descriptor *level_desc = &db_desc->levels[level_id];
+	// uint64_t txn_id = db_desc->levels[level_id].allocation_txn_id[tree_id];
+	// new staff
+	struct device_level *level_desc = db_desc->dev_levels[level_id];
+	uint64_t txn_id = level_get_txn_id(db_desc->dev_levels[level_id], tree_id);
 
-	uint64_t txn_id = db_desc->levels[level_id].allocation_txn_id[tree_id];
 	/*trim medium log*/
 
-	uint64_t new_medium_log_head_offt = db_desc->medium_log.head_dev_offt;
+	//   uint64_t new_medium_log_head_offt = db_desc->medium_log.head_dev_offt;
 
-	if (0 == level_desc->medium_in_place_segment_dev_offt ||
-	    level_desc->medium_in_place_segment_dev_offt == db_desc->medium_log.head_dev_offt)
-		goto update_superblock;
+	// 	if (0 == level_desc->medium_in_place_segment_dev_offt ||
+	// 	    level_desc->medium_in_place_segment_dev_offt == db_desc->medium_log.head_dev_offt)
+	// 		goto update_superblock;
 
-	new_medium_log_head_offt = level_desc->medium_in_place_segment_dev_offt;
-	struct segment_header *trim_end_segment = REAL_ADDRESS(level_desc->medium_in_place_segment_dev_offt);
-	struct segment_header *head = REAL_ADDRESS(db_desc->medium_log.head_dev_offt);
-	uint64_t bytes_freed = 0;
-	(void)bytes_freed;
+	// 	new_medium_log_head_offt = level_desc->medium_in_place_segment_dev_offt;
+	// 	struct segment_header *trim_end_segment = REAL_ADDRESS(level_desc->medium_in_place_segment_dev_offt);
+	// 	struct segment_header *head = REAL_ADDRESS(db_desc->medium_log.head_dev_offt);
+	// 	uint64_t bytes_freed = 0;
+	// 	(void)bytes_freed;
 
-	for (struct segment_header *curr_trim_segment = REAL_ADDRESS(trim_end_segment->prev_segment);;
-	     curr_trim_segment = REAL_ADDRESS(curr_trim_segment->prev_segment)) {
-		struct rul_log_entry log_entry = { .dev_offt = ABSOLUTE_ADDRESS(curr_trim_segment),
-						   .txn_id = txn_id,
-						   .op_type = RUL_FREE,
-						   .size = SEGMENT_SIZE };
-		rul_add_entry_in_txn_buf(db_desc, &log_entry);
-		bytes_freed += SEGMENT_SIZE;
-		if (curr_trim_segment->segment_id == head->segment_id)
-			break;
-	}
-	level_desc->medium_in_place_segment_dev_offt = 0;
-	level_desc->medium_in_place_max_segment_id = 0;
+	// 	for (struct segment_header *curr_trim_segment = REAL_ADDRESS(trim_end_segment->prev_segment);;
+	// 	     curr_trim_segment = REAL_ADDRESS(curr_trim_segment->prev_segment)) {
+	// 		struct rul_log_entry log_entry = { .dev_offt = ABSOLUTE_ADDRESS(curr_trim_segment),
+	// 						   .txn_id = txn_id,
+	// 						   .op_type = RUL_FREE,
+	// 						   .size = SEGMENT_SIZE };
+	// 		rul_add_entry_in_txn_buf(db_desc, &log_entry);
+	// 		bytes_freed += SEGMENT_SIZE;
+	// 		if (curr_trim_segment->segment_id == head->segment_id)
+	// 			break;
+	// 	}
+	// 	level_desc->medium_in_place_segment_dev_offt = 0;
+	// 	level_desc->medium_in_place_max_segment_id = 0;
 
-	log_debug("*** Freed a total of %lu MB bytes from trimming medium log head %lu tail %lu size %lu ***",
-		  bytes_freed / (1024 * 1024L), db_desc->db_superblock->small_log_head_offt,
-		  db_desc->db_superblock->small_log_tail_offt, db_desc->db_superblock->small_log_size);
+	// 	log_debug("*** Freed a total of %lu MB bytes from trimming medium log head %lu tail %lu size %lu ***",
+	// 		  bytes_freed / (1024 * 1024L), db_desc->db_superblock->small_log_head_offt,
+	// 		  db_desc->db_superblock->small_log_tail_offt, db_desc->db_superblock->small_log_size);
 
-update_superblock:
+	// update_superblock:
+	// new staff
+	uint64_t new_medium_log_head_offt = level_trim_medium_log(db_desc->dev_levels[level_id], tree_id, db_desc);
 
 	pr_lock_db_superblock(db_desc);
 	/*new info about medium log after trim operation*/
@@ -352,7 +372,9 @@ void pr_flush_compaction(struct db_descriptor *db_desc, struct par_db_options *d
 		return;
 	}
 
-	uint64_t txn_id = db_desc->levels[level_id].allocation_txn_id[tree_id];
+	// uint64_t txn_id = db_desc->levels[level_id].allocation_txn_id[tree_id];
+	uint64_t txn_id = 0 == level_id ? db_desc->L0.allocation_txn_id[tree_id] :
+					  level_get_txn_id(db_desc->dev_levels[level_id], tree_id);
 	pr_lock_db_superblock(db_desc);
 
 	pr_flush_allocation_log_and_level_info(db_desc, level_id - 1, level_id, tree_id);

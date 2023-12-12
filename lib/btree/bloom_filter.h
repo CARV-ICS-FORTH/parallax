@@ -30,7 +30,7 @@ struct pbf_desc;
  * @param tree_id the tree in the level
  * @return reference to the object or NULL on failure.
  */
-struct pbf_desc *pbf_create(db_handle *database_desc, uint8_t level_id, int32_t total_keys, uint8_t tree_id);
+struct pbf_desc *pbf_create(db_handle *database_desc, uint8_t level_id, int64_t total_keys, uint8_t tree_id);
 
 /**
  * @brief Writes a bloom filter to a file on disk

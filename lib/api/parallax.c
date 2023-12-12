@@ -11,7 +11,6 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-
 #include "../include/parallax/parallax.h"
 #include "../allocator/kv_format.h"
 #include "../allocator/log_structures.h"
@@ -19,6 +18,7 @@
 #include "../allocator/redo_undo_log.h"
 #include "../btree/btree.h"
 #include "../btree/conf.h"
+#include "../btree/device_level.h"
 #include "../btree/key_splice.h"
 #include "../btree/kv_pairs.h"
 #include "../btree/set_options.h"
@@ -225,7 +225,12 @@ void par_init_compaction_id(par_handle handle, uint32_t level_id, uint32_t tree_
 {
 	db_handle *dbhandle = (db_handle *)handle;
 	/*Acquire a txn_id for the allocations of the compaction*/
-	dbhandle->db_desc->levels[level_id].allocation_txn_id[tree_id] = rul_start_txn(dbhandle->db_desc);
+	// dbhandle->db_desc->levels[level_id].allocation_txn_id[tree_id] = rul_start_txn(dbhandle->db_desc);
+	// new staff
+	if (0 == level_id)
+		dbhandle->db_desc->L0.allocation_txn_id[tree_id] = rul_start_txn(dbhandle->db_desc);
+	else
+		level_set_txn_id(dbhandle->db_desc->dev_levels[level_id], tree_id, rul_start_txn(dbhandle->db_desc));
 }
 
 void par_delete(par_handle handle, struct par_key *key, const char **error_message)
@@ -388,12 +393,19 @@ struct par_value par_get_value(par_scanner sc)
 par_ret_code par_sync(par_handle handle)
 {
 	struct db_handle *parallax = (struct db_handle *)handle;
-	RWLOCK_WRLOCK(&parallax->db_desc->levels[0].guard_of_level.rx_lock);
-	spin_loop(&(parallax->db_desc->levels[0].active_operations), 0);
-	uint8_t active_tree = parallax->db_desc->levels[0].active_tree;
+	// RWLOCK_WRLOCK(&parallax->db_desc->levels[0].guard_of_level.rx_lock);
+	// spin_loop(&(parallax->db_desc->levels[0].active_operations), 0);
+	// uint8_t active_tree = parallax->db_desc->levels[0].active_tree;
+	// pr_flush_L0(parallax->db_desc, active_tree);
+	// parallax->db_desc->levels[0].allocation_txn_id[active_tree] = rul_start_txn(parallax->db_desc);
+	// RWLOCK_UNLOCK(&parallax->db_desc->levels[0].guard_of_level.rx_lock);
+	// new staff
+	RWLOCK_WRLOCK(&parallax->db_desc->L0.guard_of_level.rx_lock);
+	spin_loop(&(parallax->db_desc->L0.active_operations), 0);
+	uint8_t active_tree = parallax->db_desc->L0.active_tree;
 	pr_flush_L0(parallax->db_desc, active_tree);
-	parallax->db_desc->levels[0].allocation_txn_id[active_tree] = rul_start_txn(parallax->db_desc);
-	RWLOCK_UNLOCK(&parallax->db_desc->levels[0].guard_of_level.rx_lock);
+	parallax->db_desc->L0.allocation_txn_id[active_tree] = rul_start_txn(parallax->db_desc);
+	RWLOCK_UNLOCK(&parallax->db_desc->L0.guard_of_level.rx_lock);
 	return PAR_SUCCESS;
 }
 
