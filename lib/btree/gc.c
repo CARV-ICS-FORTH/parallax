@@ -135,7 +135,7 @@ int8_t find_deleted_kv_pairs_in_segment(struct db_handle handle, struct gc_segme
 			// bytes_checked_in_segment +=
 			// 	kv_pair->key_size + kv_pair->value_size + key_value_size + get_lsn_size();
 			// 	new staff
-			bytes_checked_in_segment += kv_splice_get_kv_size(kv_pair);
+			bytes_checked_in_segment += (kv_splice_get_kv_size(kv_pair) + get_lsn_size());
 		} else
 			break;
 	}

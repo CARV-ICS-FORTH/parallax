@@ -307,7 +307,7 @@ static void recover_logs(db_descriptor *db_desc)
 	db_desc->lsn_factory = lsn_factory_init(last_lsn_id);
 }
 
-static void restore_db(struct db_descriptor *db_desc, uint32_t region_idx)
+static void restore_db(struct db_descriptor *db_desc, uint32_t region_idx, struct par_db_options *options)
 {
 	/*First, calculate superblock offt and read it in memory*/
 	db_desc->db_superblock_idx = region_idx;
@@ -363,9 +363,14 @@ static void restore_db(struct db_descriptor *db_desc, uint32_t region_idx)
 	// }
 	// new staff
 	memset(&db_desc->L0, 0x0, sizeof(db_desc->L0));
-	struct db_handle db = { .db_desc = db_desc, .volume_desc = db_desc->db_volume };
+	struct db_handle parallax_db = { .db_desc = db_desc,
+					 .volume_desc = db_desc->db_volume,
+					 .db_options = *options };
 	for (uint8_t level_id = 1; level_id < MAX_LEVELS; level_id++)
-		level_restore_from_device(level_id, superblock, NUM_TREES_PER_LEVEL, &db, LEVEL0_SIZE, GROWTH_FACTOR);
+		db_desc->dev_levels[level_id] = level_restore_from_device(level_id, superblock, NUM_TREES_PER_LEVEL,
+									  &parallax_db,
+									  options->options[LEVEL0_SIZE].value,
+									  options->options[GROWTH_FACTOR].value);
 
 	recover_logs(db_desc);
 }
@@ -415,7 +420,7 @@ static db_descriptor *get_db_from_volume(char *volume_name, char *db_name, struc
 			log_debug("Found DB: %s recovering its allocation log", db_name);
 			db_desc->dirty = 0;
 			rul_log_init(db_desc);
-			restore_db(db_desc, db_desc->db_superblock->id);
+			restore_db(db_desc, db_desc->db_superblock->id, options);
 		} else {
 			db_desc->dirty = 1;
 			log_debug("Initializing new DB: %s, initializing its allocation log", db_name);

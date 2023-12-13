@@ -50,11 +50,10 @@ struct device_level {
 
 struct device_level *level_create_fresh(uint32_t level_id, uint32_t l0_size, uint32_t growth_factor)
 {
+	log_debug("L0 size = %u B and growth_factor = %u", l0_size, growth_factor);
 	struct device_level *level = calloc(1UL, sizeof(struct device_level));
 	level->level_id = level_id;
-	for (uint32_t tree_id = 0; tree_id < NUM_TREES_PER_LEVEL; tree_id++) {
-		level->compaction_in_progress = false;
-	}
+	level->compaction_in_progress = false;
 
 	RWLOCK_INIT(&level->guard_of_level.rx_lock, NULL);
 	MUTEX_INIT(&level->level_allocation_lock, NULL);
@@ -275,6 +274,8 @@ bool level_does_key_exist(struct device_level *level, struct key_splice *key_spl
 
 uint8_t level_enter_as_reader(struct device_level *level)
 {
+	assert(level);
+	assert(level->level_id > 0);
 	RWLOCK_RDLOCK(&level->guard_of_level.rx_lock);
 	__sync_fetch_and_add(&level->active_operations, 1);
 	return UINT8_MAX;
@@ -282,6 +283,8 @@ uint8_t level_enter_as_reader(struct device_level *level)
 
 uint8_t level_leave_as_reader(struct device_level *level)
 {
+	if (!level) //empty level
+		return UINT8_MAX;
 	RWLOCK_UNLOCK(&level->guard_of_level.rx_lock);
 	__sync_fetch_and_sub(&level->active_operations, 1);
 	return UINT8_MAX;
