@@ -750,6 +750,8 @@ const char *db_close(db_handle *handle)
 	for (uint8_t tree_id = 0; tree_id < NUM_TREES_PER_LEVEL; ++tree_id)
 		seg_free_L0(handle->db_desc, tree_id);
 
+	destroy_L0_locktable(handle->db_desc);
+
 	// for (uint8_t i = 0; i < MAX_LEVELS; ++i) {
 	// 	if (pthread_rwlock_destroy(&handle->db_desc->levels[i].guard_of_level.rx_lock)) {
 	// 		log_fatal("Failed to destroy guard of level lock");
@@ -1208,14 +1210,13 @@ static void bt_add_segment_to_log(struct db_descriptor *db_desc, struct log_desc
 	log_desc->curr_tail_id = next_tail_id;
 }
 
-static void bt_add_blob(struct db_descriptor *db_desc, struct log_descriptor *log_desc, uint8_t level_id,
-			uint8_t tree_id)
+static void bt_add_blob(struct db_descriptor *db_desc, struct log_descriptor *log_desc, uint8_t L0_tree_id)
 {
 	uint32_t curr_tail_id = log_desc->curr_tail_id;
 	uint32_t next_tail_id = ++curr_tail_id;
 
 	struct segment_header *next_tail_seg =
-		seg_get_raw_log_segment(db_desc, log_desc->log_type, db_desc->L0.allocation_txn_id[tree_id]);
+		seg_get_raw_log_segment(db_desc, log_desc->log_type, db_desc->L0.allocation_txn_id[L0_tree_id]);
 
 	if (!next_tail_seg) {
 		log_fatal("No space for new segment");
@@ -1330,8 +1331,7 @@ static void *bt_append_to_log_direct_IO(struct log_operation *req, struct log_to
 
 		switch (log_metadata->log_desc->log_type) {
 		case BIG_LOG:
-			bt_add_blob(handle->db_desc, log_metadata->log_desc, req->metadata->level_id,
-				    req->metadata->tree_id);
+			bt_add_blob(handle->db_desc, log_metadata->log_desc, req->metadata->tree_id);
 			break;
 		case MEDIUM_LOG:
 		case SMALL_LOG:

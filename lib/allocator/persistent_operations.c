@@ -1003,25 +1003,6 @@ uint64_t pr_add_and_flush_segment_in_log(db_handle *dbhandle, char *buf, int32_t
 	return next_tail_seg_offt;
 }
 
-uint64_t pr_allocate_segment_for_log(struct db_descriptor *db_desc, struct log_descriptor *log_desc, uint8_t level_id,
-				     uint8_t tree_id, uint64_t txn_id)
-{
-	assert(db_desc && log_desc);
-	struct segment_header *new_segment = seg_get_raw_log_segment(db_desc, log_desc->log_type, txn_id);
-	if (!new_segment) {
-		log_fatal("Cannot allocate memory from the device!");
-		BUG_ON();
-	}
-
-	uint64_t next_tail_seg_offt = ABSOLUTE_ADDRESS(new_segment);
-
-	if (!next_tail_seg_offt) {
-		log_fatal("No space for new segment");
-		BUG_ON();
-	}
-	return next_tail_seg_offt;
-}
-
 void pr_append_segment_to_log(struct log_descriptor *log_desc, char *buf, uint64_t next_tail_offt)
 {
 	assert(log_desc);
