@@ -109,8 +109,9 @@ int8_t find_deleted_kv_pairs_in_segment(struct db_handle handle, struct gc_segme
 	while (bytes_checked_in_segment < segment_data) {
 		kv_pair = (struct kv_splice *)iter_log_segment.log_segment_in_memory;
 
-		if (!kv_pair->key_size ||
-		    segment_data - bytes_checked_in_segment < kv_splice_get_min_possible_kv_size())
+		if (segment_data - bytes_checked_in_segment < kv_splice_get_min_possible_kv_size())
+			break;
+		if (!kv_pair->key_size)
 			break;
 
 		kv_splice_serialize_to_key_splice(buf, kv_pair);
@@ -131,8 +132,10 @@ int8_t find_deleted_kv_pairs_in_segment(struct db_handle handle, struct gc_segme
 				kv_pair->key_size + kv_pair->value_size + key_value_size + get_lsn_size();
 			iter_log_segment.log_segment_in_memory += bytes_to_move;
 			log_segment_in_device += bytes_to_move;
-			bytes_checked_in_segment +=
-				kv_pair->key_size + kv_pair->value_size + key_value_size + get_lsn_size();
+			// bytes_checked_in_segment +=
+			// 	kv_pair->key_size + kv_pair->value_size + key_value_size + get_lsn_size();
+			// 	new staff
+			bytes_checked_in_segment += kv_splice_get_kv_size(kv_pair);
 		} else
 			break;
 	}

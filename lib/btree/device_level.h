@@ -104,9 +104,8 @@ uint8_t level_enter_as_reader(struct device_level *level);
 void level_leave_as_writer(struct device_level *level);
 uint8_t level_leave_as_reader(struct device_level *level);
 
-uint32_t level_get_active_tree(struct device_level *level);
-
-bool level_set_compaction_status(struct device_level *level, enum level_compaction_status stat, uint32_t tree_id);
+void level_set_comp_in_progress(struct device_level *level);
+bool level_set_compaction_done(struct device_level *level);
 
 bool level_is_compacting(struct device_level *level);
 
@@ -118,7 +117,7 @@ bool level_has_overflow(struct device_level *level, uint32_t tree_id);
 
 typedef void *compaction_func(void *compaction_request);
 
-bool level_start_comp_thread(struct device_level *level, uint32_t tree_id, compaction_func func, void *args);
+bool level_start_comp_thread(struct device_level *level, compaction_func func, void *args);
 
 bool level_set_medium_in_place_seg_id(struct device_level *level, uint64_t segment_id);
 

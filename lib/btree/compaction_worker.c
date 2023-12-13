@@ -206,10 +206,7 @@ static void mark_segment_space(db_handle *handle, struct dups_list *list, uint8_
 		assert(list_iter->kv_size > 0);
 		if (search_segment) {
 			// If the segment is already in the hash table just increase the garbage bytes.
-			log_debug("Duplicate kv offt %lu initial total size: %u", segment_dev_offt,
-				  search_segment->garbage_bytes);
 			search_segment->garbage_bytes += list_iter->kv_size;
-			log_debug("Duplicate kv offt %lu size: %lu", segment_dev_offt, list_iter->kv_size);
 			assert(search_segment->garbage_bytes < SEGMENT_SIZE);
 		} else {
 			// This is the first time we detect garbage bytes in this segment,
@@ -606,8 +603,12 @@ void *compaction(void *compaction_request)
 	log_debug("DONE Compaction from level's tree [%u][%u] to level's tree[%u][%u] "
 		  "cleaning src level",
 		  comp_req->src_level, comp_req->src_tree, comp_req->dst_level, comp_req->dst_tree);
-	bt_set_db_status(db_desc, BT_NO_COMPACTION, comp_req->src_level, comp_req->src_tree);
-	bt_set_db_status(db_desc, BT_NO_COMPACTION, comp_req->dst_level, 0);
+	if (0 == comp_req->src_level)
+		bt_set_db_status(db_desc, BT_NO_COMPACTION, comp_req->src_level, comp_req->src_tree);
+	else
+		level_set_compaction_done(db_desc->dev_levels[comp_req->src_level]);
+
+	level_set_compaction_done(db_desc->dev_levels[comp_req->dst_level]);
 
 	if (comp_req->src_level == 0)
 		/*wake up clients*/

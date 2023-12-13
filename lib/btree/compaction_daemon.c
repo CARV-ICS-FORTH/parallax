@@ -84,8 +84,7 @@ static struct compaction_request *compactiond_compact_L0(struct compaction_daemo
 		return NULL;
 
 	bt_set_db_status(daemon->db_handle->db_desc, BT_COMPACTION_IN_PROGRESS, 0, L0_tree_id);
-	/*mark them as compacting L1*/
-	bt_set_db_status(daemon->db_handle->db_desc, BT_COMPACTION_IN_PROGRESS, 1, L1_tree_id);
+	level_set_comp_in_progress(daemon->db_handle->db_desc->dev_levels[1]);
 
 	/*start a compaction*/
 	return compaction_create_req(daemon->db_handle->db_desc, &daemon->db_handle->db_options, UINT64_MAX, UINT64_MAX,
@@ -138,7 +137,7 @@ static void *compactiond_run(void *args)
 		/*can I set a different active tree for L0*/
 		int active_tree = db_desc->L0.active_tree;
 		if (db_desc->L0.tree_status[active_tree] == BT_COMPACTION_IN_PROGRESS) {
-			int next_active_tree = active_tree != (NUM_TREES_PER_LEVEL - 1) ? active_tree + 1 : 0;
+			int next_active_tree = active_tree < NUM_TREES_PER_LEVEL - 1 ? active_tree + 1 : 0;
 			if (db_desc->L0.tree_status[next_active_tree] == BT_NO_COMPACTION) {
 				/*Acquire guard lock and wait writers to finish*/
 				if (RWLOCK_WRLOCK(&db_desc->L0.guard_of_level.rx_lock)) {
@@ -245,15 +244,15 @@ static void *compactiond_run(void *args)
 				continue;
 			if (level_is_compacting(dst_level))
 				continue;
-			level_set_compaction_status(db_desc->dev_levels[level_id], BT_COMPACTION_IN_PROGRESS, 0);
-			level_set_compaction_status(db_desc->dev_levels[level_id + 1], BT_COMPACTION_IN_PROGRESS, 0);
+			level_set_comp_in_progress(db_desc->dev_levels[level_id]);
+			level_set_comp_in_progress(db_desc->dev_levels[level_id + 1]);
 
 			//compaction request will get a txn in its constructor
 			struct compaction_request *comp_req_p = compaction_create_req(
 				db_desc, &handle->db_options, UINT64_MAX, UINT64_MAX, level_id, 0, level_id + 1, 1);
 
-			level_start_comp_thread(db_desc->dev_levels[compaction_get_dst_level(comp_req_p)],
-						compaction_get_dst_tree(comp_req_p), compaction, comp_req_p);
+			level_start_comp_thread(db_desc->dev_levels[compaction_get_dst_level(comp_req_p)], compaction,
+						comp_req_p);
 		}
 	}
 }

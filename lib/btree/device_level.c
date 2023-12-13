@@ -25,17 +25,16 @@ struct level_lock {
 };
 
 struct device_level {
-	struct pbf_desc *bloom_desc[NUM_TREES_PER_LEVEL];
-	pthread_t compaction_thread[NUM_TREES_PER_LEVEL];
-	// struct level_lock *level_lock_table[MAX_HEIGHT];
-	struct node_header *root[NUM_TREES_PER_LEVEL];
-	pthread_mutex_t level_allocation_lock;
 	struct segment_header *first_segment[NUM_TREES_PER_LEVEL];
 	struct segment_header *last_segment[NUM_TREES_PER_LEVEL];
 	uint64_t offset[NUM_TREES_PER_LEVEL];
-	// uint64_t allocation_txn_id[NUM_TREES_PER_LEVEL];
-	struct level_lock guard_of_level;
+	struct node_header *root[NUM_TREES_PER_LEVEL];
+	struct pbf_desc *bloom_desc[NUM_TREES_PER_LEVEL];
 	uint64_t level_size[NUM_TREES_PER_LEVEL];
+	int64_t num_level_keys[NUM_TREES_PER_LEVEL];
+	pthread_t compaction_thread;
+	struct level_lock guard_of_level;
+	pthread_mutex_t level_allocation_lock;
 	uint64_t max_level_size;
 	volatile struct segment_header *medium_log_head;
 	volatile struct segment_header *medium_log_tail;
@@ -44,10 +43,7 @@ struct device_level {
 	/*info for trimming medium_log, used only in L_{n-1}*/
 	uint64_t medium_in_place_max_segment_id;
 	uint64_t medium_in_place_segment_dev_offt;
-	int64_t num_level_keys[NUM_TREES_PER_LEVEL];
-	uint32_t leaf_size;
-	volatile enum level_compaction_status tree_status[NUM_TREES_PER_LEVEL];
-	// uint8_t active_tree;
+	bool compaction_in_progress;
 	uint8_t level_id;
 	char in_recovery_mode;
 };
@@ -57,12 +53,11 @@ struct device_level *level_create_fresh(uint32_t level_id, uint32_t l0_size, uin
 	struct device_level *level = calloc(1UL, sizeof(struct device_level));
 	level->level_id = level_id;
 	for (uint32_t tree_id = 0; tree_id < NUM_TREES_PER_LEVEL; tree_id++) {
-		level->tree_status[tree_id] = BT_NO_COMPACTION;
+		level->compaction_in_progress = false;
 	}
 
 	RWLOCK_INIT(&level->guard_of_level.rx_lock, NULL);
 	MUTEX_INIT(&level->level_allocation_lock, NULL);
-	level->leaf_size = LEAF_NODE_SIZE;
 
 	level->max_level_size = l0_size;
 	if (0 == level_id)
@@ -216,24 +211,14 @@ void level_leave_as_writer(struct device_level *level)
 	RWLOCK_UNLOCK(&level->guard_of_level.rx_lock);
 }
 
-void level_set_comp_status(struct device_level *level, enum level_compaction_status status, uint32_t tree_id)
+void level_set_comp_in_progress(struct device_level *level)
 {
-	level->tree_status[tree_id] = status;
-}
-
-inline uint32_t level_get_active_tree(struct device_level *level)
-{
-	(void)level;
-	return UINT32_MAX;
+	level->compaction_in_progress = true;
 }
 
 inline bool level_is_compacting(struct device_level *level)
 {
-	for (uint32_t i = 0; i < NUM_TREES_PER_LEVEL; i++) {
-		if (level->tree_status[i] == BT_COMPACTION_IN_PROGRESS)
-			return true;
-	}
-	return false;
+	return level->compaction_in_progress;
 }
 
 void level_destroy(struct device_level *level)
@@ -277,11 +262,9 @@ void level_save_bf_info_to_superblock(struct device_level *level, struct pr_db_s
 	}
 }
 
-inline bool level_set_compaction_status(struct device_level *level, enum level_compaction_status stat, uint32_t tree_id)
+inline bool level_set_compaction_done(struct device_level *level)
 {
-	assert(0 == tree_id);
-	level->tree_status[tree_id] = stat;
-	return true;
+	return !(level->compaction_in_progress = false);
 }
 
 bool level_does_key_exist(struct device_level *level, struct key_splice *key_splice)
@@ -311,10 +294,13 @@ bool level_has_overflow(struct device_level *level, uint32_t tree_id)
 	return level->level_size[tree_id] >= level->max_level_size;
 }
 
-bool level_start_comp_thread(struct device_level *level, uint32_t tree_id, compaction_func func, void *args)
+bool level_start_comp_thread(struct device_level *level, compaction_func func, void *args)
 {
-	level_set_comp_status(level, tree_id, BT_COMPACTION_IN_PROGRESS);
-	if (pthread_create(&level->compaction_thread[tree_id], NULL, func, args) != 0) {
+	if (!level->compaction_in_progress) {
+		log_fatal("Trying to start a compaction without prior setting level status to compacting... E R R O R");
+		_exit(EXIT_FAILURE);
+	}
+	if (pthread_create(&level->compaction_thread, NULL, func, args) != 0) {
 		log_fatal("Failed to start compaction");
 		BUG_ON();
 	}

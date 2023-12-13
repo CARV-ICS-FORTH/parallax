@@ -977,8 +977,7 @@ uint64_t pr_add_and_flush_segment_in_log(db_handle *dbhandle, char *buf, int32_t
 		log_desc = dbhandle->db_desc->big_log;
 
 	//for send index level_id = 0, tree_id = 0
-	struct segment_header *new_segment =
-		seg_get_raw_log_segment(dbhandle->db_desc, log_desc.log_type, 0, 0, txn_id);
+	struct segment_header *new_segment = seg_get_raw_log_segment(dbhandle->db_desc, log_desc.log_type, txn_id);
 	if (!new_segment) {
 		log_fatal("Cannot allocate memory from the device!");
 		BUG_ON();
@@ -1008,8 +1007,7 @@ uint64_t pr_allocate_segment_for_log(struct db_descriptor *db_desc, struct log_d
 				     uint8_t tree_id, uint64_t txn_id)
 {
 	assert(db_desc && log_desc);
-	struct segment_header *new_segment =
-		seg_get_raw_log_segment(db_desc, log_desc->log_type, level_id, tree_id, txn_id);
+	struct segment_header *new_segment = seg_get_raw_log_segment(db_desc, log_desc->log_type, txn_id);
 	if (!new_segment) {
 		log_fatal("Cannot allocate memory from the device!");
 		BUG_ON();

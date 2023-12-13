@@ -252,6 +252,8 @@ struct log_operation {
 	bt_mutate_req *metadata;
 	request_type optype_tolog; //enum insertOp, deleteOp
 	bt_insert_req *ins_req;
+	//new staff
+	uint64_t txn_id;
 	bool is_medium_log_append;
 };
 

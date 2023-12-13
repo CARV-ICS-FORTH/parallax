@@ -219,8 +219,7 @@ struct leaf_node *seg_get_dynamic_leaf_node(struct db_descriptor *db_desc, uint8
 	return get_space(db_desc, level_id, tree_id, level0->leaf_size);
 }
 
-segment_header *seg_get_raw_log_segment(struct db_descriptor *db_desc, enum log_type log_type, uint8_t level_id,
-					uint8_t tree_id, uint64_t txn_id)
+segment_header *seg_get_raw_log_segment(struct db_descriptor *db_desc, enum log_type log_type, uint64_t txn_id)
 {
 	enum rul_op_type op_type;
 	switch (log_type) {
