@@ -192,7 +192,7 @@ static void init_fresh_logs(struct db_descriptor *db_desc)
 {
 	log_debug("Initializing KV logs (small,medium,large) for DB: %s", db_desc->db_superblock->db_name);
 	// Large log
-	struct segment_header *s = seg_get_raw_log_segment(db_desc, BIG_LOG, 0, 0);
+	struct segment_header *s = seg_get_raw_log_segment(db_desc, BIG_LOG, 0, 0, db_desc->L0.allocation_txn_id[0]);
 	db_desc->big_log.head_dev_offt = ABSOLUTE_ADDRESS(s);
 	db_desc->big_log.tail_dev_offt = db_desc->big_log.head_dev_offt;
 	db_desc->big_log.size = 0;
@@ -201,14 +201,14 @@ static void init_fresh_logs(struct db_descriptor *db_desc)
 	init_log_buffer(&db_desc->big_log, BIG_LOG);
 	log_debug("BIG_LOG head %lu", db_desc->big_log.head_dev_offt);
 
-	s = seg_get_raw_log_segment(db_desc, MEDIUM_LOG, 0, 0);
+	s = seg_get_raw_log_segment(db_desc, MEDIUM_LOG, 0, 0, db_desc->L0.allocation_txn_id[0]);
 	db_desc->medium_log.head_dev_offt = ABSOLUTE_ADDRESS(s);
 	db_desc->medium_log.tail_dev_offt = db_desc->medium_log.head_dev_offt;
 	db_desc->medium_log.size = sizeof(segment_header);
 	init_log_buffer(&db_desc->medium_log, MEDIUM_LOG);
 
 	// Small log
-	s = seg_get_raw_log_segment(db_desc, SMALL_LOG, 0, 0);
+	s = seg_get_raw_log_segment(db_desc, SMALL_LOG, 0, 0, db_desc->L0.allocation_txn_id[0]);
 	db_desc->small_log.head_dev_offt = ABSOLUTE_ADDRESS(s);
 	db_desc->small_log.tail_dev_offt = db_desc->small_log.head_dev_offt;
 	db_desc->small_log.size = sizeof(segment_header);
@@ -1161,9 +1161,14 @@ static void pr_do_log_IO(struct pr_log_ticket *ticket)
 static void bt_add_segment_to_log(struct db_descriptor *db_desc, struct log_descriptor *log_desc, uint8_t level_id,
 				  uint8_t tree_id)
 {
+	if (0 != level_id) {
+		log_fatal("Only for level-0");
+		_exit(EXIT_FAILURE);
+	}
 	uint32_t curr_tail_id = log_desc->curr_tail_id;
 	uint32_t next_tail_id = curr_tail_id + 1;
-	struct segment_header *new_segment = seg_get_raw_log_segment(db_desc, log_desc->log_type, level_id, tree_id);
+	struct segment_header *new_segment = seg_get_raw_log_segment(db_desc, log_desc->log_type, level_id, tree_id,
+								     db_desc->L0.allocation_txn_id[tree_id]);
 
 	if (!new_segment) {
 		log_fatal("Cannot allocate memory from the device!");
@@ -1211,7 +1216,8 @@ static void bt_add_blob(struct db_descriptor *db_desc, struct log_descriptor *lo
 	uint32_t curr_tail_id = log_desc->curr_tail_id;
 	uint32_t next_tail_id = ++curr_tail_id;
 
-	struct segment_header *next_tail_seg = seg_get_raw_log_segment(db_desc, log_desc->log_type, level_id, tree_id);
+	struct segment_header *next_tail_seg = seg_get_raw_log_segment(db_desc, log_desc->log_type, level_id, tree_id,
+								       db_desc->L0.allocation_txn_id[tree_id]);
 
 	if (!next_tail_seg) {
 		log_fatal("No space for new segment");
@@ -1241,8 +1247,13 @@ static void bt_add_blob(struct db_descriptor *db_desc, struct log_descriptor *lo
 uint64_t allocate_segment_for_log(struct db_descriptor *db_desc, struct log_descriptor *log_desc, uint8_t level_id,
 				  uint8_t tree_id)
 {
+	if (0 != level_id) {
+		log_fatal("Level-0 use only");
+		_exit(EXIT_FAILURE);
+	}
 	assert(db_desc && log_desc);
-	struct segment_header *new_segment = seg_get_raw_log_segment(db_desc, log_desc->log_type, level_id, tree_id);
+	struct segment_header *new_segment = seg_get_raw_log_segment(db_desc, log_desc->log_type, level_id, tree_id,
+								     db_desc->L0.allocation_txn_id[tree_id]);
 	if (!new_segment) {
 		log_fatal("Cannot allocate memory from the device!");
 		BUG_ON();

@@ -17,7 +17,8 @@ typedef struct wcursor_segment_buffers_iterator *wcursor_segment_buffers_iterato
  * @returns a pointer to the cursor.
  */
 struct wcursor_level_write_cursor *wcursor_init_write_cursor(uint8_t level_id, struct db_handle *handle,
-							     uint8_t tree_id, bool enable_double_buffering);
+							     uint8_t tree_id, bool enable_double_buffering,
+							     uint64_t txn_id);
 
 /**
  * @brief Appends a new KV pair into the level.

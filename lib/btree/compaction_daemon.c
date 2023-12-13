@@ -186,7 +186,6 @@ static void *compactiond_run(void *args)
 			pr_flush_L0(db_desc, compaction_get_src_tree(comp_req));
 			// db_desc->levels[1].allocation_txn_id[1] = rul_start_txn(db_desc);
 			// new staff
-			level_set_txn_id(db_desc->dev_levels[1], 1, rul_start_txn(db_desc));
 			compaction_set_dst_tree(comp_req, 1);
 			assert(db_desc->L0.root[compaction_get_src_tree(comp_req)] != NULL);
 
@@ -240,24 +239,18 @@ static void *compactiond_run(void *args)
 			// new staff
 			struct device_level *src_level = db_desc->dev_levels[level_id];
 			struct device_level *dst_level = db_desc->dev_levels[level_id + 1];
-			uint8_t tree_1 = 0;
-			if (level_is_compacting(src_level))
+			if (false == level_has_overflow(src_level, 0))
 				continue;
-			if (false == level_has_overflow(src_level, tree_1))
+			if (level_is_compacting(src_level))
 				continue;
 			if (level_is_compacting(dst_level))
 				continue;
-			if (false == level_has_overflow(dst_level, tree_1))
-				continue;
+			level_set_compaction_status(db_desc->dev_levels[level_id], BT_COMPACTION_IN_PROGRESS, 0);
+			level_set_compaction_status(db_desc->dev_levels[level_id + 1], BT_COMPACTION_IN_PROGRESS, 0);
 
-			struct compaction_request *comp_req_p = compaction_create_req(db_desc, &handle->db_options,
-										      UINT64_MAX, UINT64_MAX, level_id,
-										      tree_1, level_id + 1, 1);
-
-			/*Acquire a txn_id for the allocations of the compaction*/
-			uint64_t txn_id = rul_start_txn(db_desc);
-			level_set_txn_id(db_desc->dev_levels[compaction_get_src_level(comp_req_p)], 0, txn_id);
-			level_set_txn_id(db_desc->dev_levels[compaction_get_dst_level(comp_req_p)], 1, txn_id);
+			//compaction request will get a txn in its constructor
+			struct compaction_request *comp_req_p = compaction_create_req(
+				db_desc, &handle->db_options, UINT64_MAX, UINT64_MAX, level_id, 0, level_id + 1, 1);
 
 			level_start_comp_thread(db_desc->dev_levels[compaction_get_dst_level(comp_req_p)],
 						compaction_get_dst_tree(comp_req_p), compaction, comp_req_p);

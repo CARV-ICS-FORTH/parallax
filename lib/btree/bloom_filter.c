@@ -73,6 +73,7 @@ struct pbf_desc *pbf_create(db_handle *database_desc, uint8_t level_id, int64_t 
 	bloom_desc->tree_id = tree_id;
 	bloom_desc->is_valid = true;
 	bloom_desc->bloom_filter = bloom_init2(total_keys, PBF_11_BITS_PER_ELEMENT);
+	log_debug("Total keys are for the bf = %ld", total_keys);
 	assert(bloom_desc->bloom_filter);
 
 	// bloom_print(bloom_desc->bloom_filter);

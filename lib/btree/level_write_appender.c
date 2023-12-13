@@ -7,6 +7,7 @@
 #include <../btree/device_level.h>
 #include <assert.h>
 #include <log.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -14,6 +15,7 @@
 
 struct level_write_appender {
 	struct db_handle *handle;
+	uint64_t txn_id;
 	uint32_t level_id;
 	int fd;
 };
@@ -59,7 +61,7 @@ uint64_t wappender_allocate_space(level_write_appender_t appender)
 	// 	get_segment_for_lsm_level_IO(appender->handle->db_desc, appender->level_id, 1);
 	// 	new staff
 	struct segment_header *new_device_segment = level_allocate_segment(
-		appender->handle->db_desc->dev_levels[appender->level_id], 1, appender->handle->db_desc);
+		appender->handle->db_desc->dev_levels[appender->level_id], 1, appender->handle->db_desc, UINT64_MAX);
 	uint64_t new_device_segment_offt = ABSOLUTE_ADDRESS(new_device_segment);
 	assert(new_device_segment && new_device_segment_offt);
 	return new_device_segment_offt;

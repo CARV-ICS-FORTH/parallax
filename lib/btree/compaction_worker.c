@@ -11,6 +11,7 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+
 #define _GNU_SOURCE
 #include "compaction_worker.h"
 #include "../allocator/log_structures.h"
@@ -38,6 +39,7 @@
 #include <assert.h>
 #include <log.h>
 #include <pthread.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
@@ -51,6 +53,8 @@ struct compaction_request {
 	struct rcursor_level_read_cursor *src_rcursor;
 	struct rcursor_level_read_cursor *dst_rcursor;
 	struct wcursor_level_write_cursor *wcursor;
+	//new staff
+	uint64_t txn_id;
 	uint64_t l0_start;
 	uint64_t l0_end;
 	uint8_t src_level;
@@ -77,6 +81,8 @@ struct compaction_request *compaction_create_req(db_descriptor *db_desc, par_db_
 	compaction_req->src_tree = src_tree;
 	compaction_req->dst_level = dst_level;
 	compaction_req->dst_tree = dst_tree;
+	//new staff
+	compaction_req->txn_id = rul_start_txn(db_desc);
 	return compaction_req;
 }
 
@@ -180,7 +186,8 @@ static void print_heap_node_key(struct sh_heap_node *h_node)
 }
 #endif
 
-static void mark_segment_space(db_handle *handle, struct dups_list *list, uint8_t level_id, uint8_t tree_id)
+static void mark_segment_space(db_handle *handle, struct dups_list *list, uint8_t level_id, uint8_t tree_id,
+			       uint64_t txn_id)
 {
 	struct dups_node *list_iter;
 	struct dups_list *calculate_diffs;
@@ -199,7 +206,10 @@ static void mark_segment_space(db_handle *handle, struct dups_list *list, uint8_
 		assert(list_iter->kv_size > 0);
 		if (search_segment) {
 			// If the segment is already in the hash table just increase the garbage bytes.
+			log_debug("Duplicate kv offt %lu initial total size: %u", segment_dev_offt,
+				  search_segment->garbage_bytes);
 			search_segment->garbage_bytes += list_iter->kv_size;
+			log_debug("Duplicate kv offt %lu size: %lu", segment_dev_offt, list_iter->kv_size);
 			assert(search_segment->garbage_bytes < SEGMENT_SIZE);
 		} else {
 			// This is the first time we detect garbage bytes in this segment,
@@ -226,8 +236,7 @@ static void mark_segment_space(db_handle *handle, struct dups_list *list, uint8_
 	     persist_blob_metadata = persist_blob_metadata->next) {
 		// uint64_t txn_id = handle->db_desc->levels[level_id].allocation_txn_id[tree_id];
 		// new staff
-		uint64_t txn_id = 0 == level_id ? handle->db_desc->L0.allocation_txn_id[tree_id] :
-						  level_get_txn_id(handle->db_desc->dev_levels[level_id], tree_id);
+		// txn_id is a function parameter
 		struct rul_log_entry entry = { .dev_offt = persist_blob_metadata->dev_offt,
 					       .txn_id = txn_id,
 					       .op_type = BLOB_GARBAGE_BYTES,
@@ -383,9 +392,9 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 
 	log_debug("Initializing write cursor for level [%u][%u]", compaction_get_dst_level(comp_req),
 		  compaction_get_dst_tree(comp_req));
-	comp_req->wcursor =
-		wcursor_init_write_cursor(compaction_get_dst_level(comp_req), handle, compaction_get_dst_tree(comp_req),
-					  handle->db_options.options[ENABLE_COMPACTION_DOUBLE_BUFFERING].value);
+	comp_req->wcursor = wcursor_init_write_cursor(
+		compaction_get_dst_level(comp_req), handle, compaction_get_dst_tree(comp_req),
+		handle->db_options.options[ENABLE_COMPACTION_DOUBLE_BUFFERING].value, comp_req->txn_id);
 
 	//TODO: geostyl callback
 	parallax_callbacks_t par_callbacks = comp_req->db_desc->parallax_callbacks;
@@ -419,7 +428,7 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 		log_debug("Empty dst [%u]", compaction_get_dst_level(comp_req));
 	else
 		log_debug("Dst [%u][%u] size = %lu", comp_req->dst_level, 0,
-			  level_get_size(comp_req->db_desc->dev_levels[comp_req->dst_level], comp_req->dst_tree));
+			  level_get_size(comp_req->db_desc->dev_levels[comp_req->dst_level], 0));
 
 	// initialize and fill min_heap properly
 	struct sh_heap *m_heap = sh_alloc_heap();
@@ -472,7 +481,7 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 	rcursor_close_cursor(comp_req->src_rcursor);
 	rcursor_close_cursor(comp_req->dst_rcursor);
 
-	mark_segment_space(handle, m_heap->dups, comp_req->dst_level, 1);
+	mark_segment_space(handle, m_heap->dups, comp_req->dst_level, 1, comp_req->txn_id);
 
 	sh_destroy_heap(m_heap);
 	wcursor_flush_write_cursor(comp_req->wcursor);
@@ -548,11 +557,12 @@ static void compact_with_empty_destination_level(struct compaction_request *comp
 	struct device_level *dst_level = comp_req->db_desc->dev_levels[comp_req->dst_level];
 	level_swap(dst_level, comp_req->dst_tree, src_level, comp_req->src_tree);
 
-	pr_flush_compaction(comp_req->db_desc, comp_req->db_options, comp_req->dst_level, comp_req->dst_tree);
+	pr_flush_compaction(comp_req->db_desc, comp_req->db_options, comp_req->dst_level, comp_req->dst_tree,
+			    comp_req->txn_id);
 
 	// swap_levels(dst_level, dst_level, 1, 0);
 	// new staff
-	level_swap(dst_level, 1, dst_level, 0);
+	level_swap(dst_level, 0, dst_level, 1);
 	log_debug("Flushed compaction (Swap levels) successfully from src[%u][%u] to dst[%u][%u]", comp_req->src_level,
 		  comp_req->src_tree, comp_req->dst_level, comp_req->dst_tree);
 
@@ -567,8 +577,7 @@ static void compact_with_empty_destination_level(struct compaction_request *comp
 	// log_debug("After swapping dst tree[%d][%d] size is %lu", comp_req->dst_level, 0, dst_level->level_size[0]);
 	// assert(dst_level->first_segment != NULL);
 	// new staff
-	assert(level_get_index_first_seg(comp_req->db_desc->dev_levels[comp_req->dst_level], comp_req->dst_tree) !=
-	       NULL);
+	assert(level_get_index_first_seg(comp_req->db_desc->dev_levels[comp_req->dst_level], 0) != NULL);
 }
 
 void *compaction(void *compaction_request)
@@ -656,7 +665,8 @@ void compaction_close(struct compaction_request *comp_req)
 		// uint64_t txn_id = comp_req->db_desc->levels[comp_req->dst_level].allocation_txn_id[comp_req->dst_tree];
 		// space_freed = seg_free_level(comp_req->db_desc, txn_id, comp_req->dst_level, 0);
 		// new staff
-		level_free_space(comp_req->db_desc->dev_levels[comp_req->dst_level], 0, comp_req->db_desc);
+		level_free_space(comp_req->db_desc->dev_levels[comp_req->dst_level], 0, comp_req->db_desc,
+				 comp_req->txn_id);
 
 		// log_debug("Freed space %lu MB from DB:%s destination level %u", space_freed / (1024 * 1024L),
 		// 	  comp_req->db_desc->db_superblock->db_name, comp_req->dst_level);
@@ -664,16 +674,18 @@ void compaction_close(struct compaction_request *comp_req)
 	/*Free and zero L_i*/
 	// uint64_t txn_id = comp_req->db_desc->levels[comp_req->dst_level].allocation_txn_id[comp_req->dst_tree];
 	//new level
-	space_freed = 0 == comp_req->src_level ? seg_free_L0(hd.db_desc, compaction_get_src_tree(comp_req)) :
-						 level_free_space(comp_req->db_desc->dev_levels[comp_req->src_level],
-								  comp_req->src_tree, comp_req->db_desc);
+	space_freed = 0 == comp_req->src_level ?
+			      seg_free_L0(hd.db_desc, compaction_get_src_tree(comp_req)) :
+			      level_free_space(comp_req->db_desc->dev_levels[comp_req->src_level], comp_req->src_tree,
+					       comp_req->db_desc, comp_req->txn_id);
 
 	log_debug("Freed space %lu MB from DB:%s source level %u", space_freed / (1024 * 1024L),
 		  comp_req->db_desc->db_superblock->db_name, comp_req->src_level);
 	comp_zero_level(hd.db_desc, comp_req->src_level, comp_req->src_tree);
 
 	/*Finally persist compaction */
-	pr_flush_compaction(comp_req->db_desc, comp_req->db_options, comp_req->dst_level, comp_req->dst_tree);
+	pr_flush_compaction(comp_req->db_desc, comp_req->db_options, comp_req->dst_level, comp_req->dst_tree,
+			    comp_req->txn_id);
 
 	// if (comp_req->db_desc->levels[comp_req->src_level].bloom_desc[0]) {
 	// 	pbf_destroy_bloom_filter(comp_req->db_desc->levels[comp_req->src_level].bloom_desc[0]);

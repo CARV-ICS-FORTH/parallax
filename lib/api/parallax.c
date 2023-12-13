@@ -218,7 +218,7 @@ uint64_t par_flush_segment_in_log(par_handle handle, char *buf, int32_t buf_size
 	if (log_cat == BIG) {
 		log_type = BIG_LOG;
 	}
-	return pr_add_and_flush_segment_in_log(dbhandle, buf, buf_size, IO_size, log_type);
+	return pr_add_and_flush_segment_in_log(dbhandle, buf, buf_size, IO_size, log_type, UINT64_MAX);
 }
 
 void par_init_compaction_id(par_handle handle, uint32_t level_id, uint32_t tree_id)
@@ -229,8 +229,6 @@ void par_init_compaction_id(par_handle handle, uint32_t level_id, uint32_t tree_
 	// new staff
 	if (0 == level_id)
 		dbhandle->db_desc->L0.allocation_txn_id[tree_id] = rul_start_txn(dbhandle->db_desc);
-	else
-		level_set_txn_id(dbhandle->db_desc->dev_levels[level_id], tree_id, rul_start_txn(dbhandle->db_desc));
 }
 
 void par_delete(par_handle handle, struct par_key *key, const char **error_message)

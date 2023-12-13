@@ -33,23 +33,13 @@ struct device_level {
 	struct segment_header *first_segment[NUM_TREES_PER_LEVEL];
 	struct segment_header *last_segment[NUM_TREES_PER_LEVEL];
 	uint64_t offset[NUM_TREES_PER_LEVEL];
-	/*needed for L0 scanner tiering colission*/
-	// uint64_t epoch[NUM_TREES_PER_LEVEL];
-	// uint64_t scanner_epoch;
-	uint64_t allocation_txn_id[NUM_TREES_PER_LEVEL];
+	// uint64_t allocation_txn_id[NUM_TREES_PER_LEVEL];
 	struct level_lock guard_of_level;
 	uint64_t level_size[NUM_TREES_PER_LEVEL];
 	uint64_t max_level_size;
 	volatile struct segment_header *medium_log_head;
 	volatile struct segment_header *medium_log_tail;
 	uint64_t medium_log_size;
-#if MEASURE_SST_USED_SPACE
-	double avg_leaf_used_space;
-	double leaf_used_space;
-	/*segments info per level*/
-	double count_leaves;
-	double count_compactions;
-#endif
 	int64_t active_operations;
 	/*info for trimming medium_log, used only in L_{n-1}*/
 	uint64_t medium_in_place_max_segment_id;
@@ -119,16 +109,16 @@ struct device_level *level_restore_from_device(uint32_t level_id, struct pr_db_s
 	return level;
 }
 
-inline uint64_t level_get_txn_id(struct device_level *level, uint32_t tree_id)
-{
-	return level->allocation_txn_id[tree_id];
-}
+// inline uint64_t level_get_txn_id(struct device_level *level, uint32_t tree_id)
+// {
+// 	return level->allocation_txn_id[tree_id];
+// }
 
-inline void level_set_txn_id(struct device_level *level, uint32_t tree_id, uint64_t txn_id)
-{
-	log_debug("---------------> Setting txn id Level[%u][%u] = %lu", level->level_id, tree_id, txn_id);
-	level->allocation_txn_id[tree_id] = txn_id;
-}
+// inline void level_set_txn_id(struct device_level *level, uint32_t tree_id, uint64_t txn_id)
+// {
+// 	log_debug("---------------> Setting txn id Level[%u][%u] = %lu", level->level_id, tree_id, txn_id);
+// 	level->allocation_txn_id[tree_id] = txn_id;
+// }
 
 inline struct node_header *level_get_root(struct device_level *level, uint32_t tree_id)
 {
@@ -181,13 +171,12 @@ static inline bool level_is_medium_log_trimmable(struct device_level *level, uin
 		       true;
 }
 
-uint64_t level_trim_medium_log(struct device_level *level, uint32_t tree_id, struct db_descriptor *db_desc)
+uint64_t level_trim_medium_log(struct device_level *level, uint32_t tree_id, struct db_descriptor *db_desc,
+			       uint64_t txn_id)
 {
 	uint64_t new_medium_log_head_offt = level->medium_in_place_segment_dev_offt;
 	if (false == level_is_medium_log_trimmable(level, db_desc->medium_log.head_dev_offt))
 		return new_medium_log_head_offt;
-
-	uint64_t txn_id = level_get_txn_id(level, tree_id);
 
 	struct segment_header *trim_end_segment = REAL_ADDRESS(level->medium_in_place_segment_dev_offt);
 	struct segment_header *head = REAL_ADDRESS(db_desc->medium_log.head_dev_offt);
@@ -290,6 +279,7 @@ void level_save_bf_info_to_superblock(struct device_level *level, struct pr_db_s
 
 inline bool level_set_compaction_status(struct device_level *level, enum level_compaction_status stat, uint32_t tree_id)
 {
+	assert(0 == tree_id);
 	level->tree_status[tree_id] = stat;
 	return true;
 }
@@ -374,11 +364,13 @@ bool level_swap(struct device_level *level_dst, uint32_t tree_dst, struct device
 	level_dst->level_size[tree_dst] = level_src->level_size[tree_src];
 	level_src->level_size[tree_src] = 0;
 
+	level_dst->num_level_keys[tree_dst] = level_src->num_level_keys[tree_src];
+	level_src->num_level_keys[tree_src] = 0;
+
 	level_dst->bloom_desc[tree_dst] = level_src->bloom_desc[tree_src];
 	level_src->bloom_desc[tree_src] = NULL;
 
 	level_dst->root[tree_dst] = level_src->root[tree_src];
-
 	level_src->root[tree_src] = NULL;
 
 	return true;
@@ -393,8 +385,9 @@ bool level_destroy_bf(struct device_level *level, uint32_t tree_id)
 	return true;
 }
 
-uint64_t level_get_num_KV_pairs(struct device_level *level, uint32_t tree_id)
+int64_t level_get_num_KV_pairs(struct device_level *level, uint32_t tree_id)
 {
+	assert(0 == tree_id);
 	return level->num_level_keys[tree_id];
 }
 
@@ -416,18 +409,19 @@ bool level_persist_bf(struct device_level *level, uint32_t tree_id)
 bool level_increase_size(struct device_level *level, uint32_t size, uint32_t tree_id)
 {
 	level->level_size[tree_id] += size;
+	// log_debug("Level_size[%u][%u] = %lu", level->level_id, tree_id, level->level_size[tree_id]);
 	return true;
 }
 
 struct segment_header *level_allocate_segment(struct device_level *level, uint8_t tree_id,
-					      struct db_descriptor *db_desc)
+					      struct db_descriptor *db_desc, uint64_t txn_id)
 {
 	if (0 == level->level_id) {
 		log_fatal("This fuction is only for device levels");
 		_exit(EXIT_FAILURE);
 	}
 
-	uint64_t seg_offt = seg_allocate_segment(db_desc, level->allocation_txn_id[tree_id]);
+	uint64_t seg_offt = seg_allocate_segment(db_desc, txn_id);
 	//log_info("Allocated level segment %llu", seg_offt);
 	struct segment_header *new_segment = (struct segment_header *)REAL_ADDRESS(seg_offt);
 	if (!new_segment) {
@@ -456,6 +450,7 @@ bool level_add_key_to_bf(struct device_level *level, uint32_t tree_id, char *key
 
 int64_t level_inc_num_keys(struct device_level *level, uint32_t tree_id, uint32_t num_keys)
 {
+	// log_debug("Num level[%u][%u] keys are %ld", level->level_id, tree_id, level->num_level_keys[tree_id]);
 	return level->num_level_keys[tree_id] += num_keys;
 }
 
@@ -465,7 +460,7 @@ bool level_set_index_last_seg(struct device_level *level, struct segment_header 
 	return true;
 }
 
-uint64_t level_free_space(struct device_level *level, uint32_t tree_id, struct db_descriptor *db_desc)
+uint64_t level_free_space(struct device_level *level, uint32_t tree_id, struct db_descriptor *db_desc, uint64_t txn_id)
 {
 	if (0 == level->level_id) {
 		log_fatal("Only for device levels");
@@ -482,7 +477,7 @@ uint64_t level_free_space(struct device_level *level, uint32_t tree_id, struct d
 	uint64_t space_freed = 0;
 
 	while (curr_segment) {
-		seg_free_segment(db_desc, level->allocation_txn_id[tree_id], ABSOLUTE_ADDRESS(curr_segment));
+		seg_free_segment(db_desc, txn_id, ABSOLUTE_ADDRESS(curr_segment));
 		space_freed += SEGMENT_SIZE;
 		curr_segment = NULL == curr_segment->next_segment ? NULL : REAL_ADDRESS(curr_segment->next_segment);
 	}

@@ -61,6 +61,7 @@ struct wcursor_level_write_cursor {
 	uint64_t root_offt;
 	uint64_t segment_id_cnt;
 	db_handle *handle;
+	uint64_t txn_id;
 	int32_t tree_height;
 	int fd;
 	uint32_t num_rows;
@@ -266,8 +267,9 @@ static void wcursor_write_index_segment(struct wcursor_level_write_cursor *w_cur
 	// struct segment_header *new_device_segment =
 	// 	get_segment_for_lsm_level_IO(w_cursor->handle->db_desc, w_cursor->level_id, 1);
 	// 	new staff
-	struct segment_header *new_device_segment = level_allocate_segment(
-		w_cursor->handle->db_desc->dev_levels[w_cursor->level_id], 1, w_cursor->handle->db_desc);
+	struct segment_header *new_device_segment =
+		level_allocate_segment(w_cursor->handle->db_desc->dev_levels[w_cursor->level_id], 1,
+				       w_cursor->handle->db_desc, w_cursor->txn_id);
 	assert(new_device_segment);
 
 	struct segment_header *segment = (struct segment_header *)wcursor_get_buf(w_cursor, height);
@@ -358,7 +360,8 @@ static int64_t wcursor_calculate_level_keys(struct db_descriptor *db_desc, uint8
 }
 
 struct wcursor_level_write_cursor *wcursor_init_write_cursor(uint8_t level_id, struct db_handle *handle,
-							     uint8_t tree_id, bool enable_double_buffering)
+							     uint8_t tree_id, bool enable_double_buffering,
+							     uint64_t txn_id)
 {
 	struct wcursor_level_write_cursor *w_cursor = NULL;
 	if (posix_memalign((void **)&w_cursor, ALIGNMENT, sizeof(struct wcursor_level_write_cursor)) != 0) {
@@ -367,6 +370,7 @@ struct wcursor_level_write_cursor *wcursor_init_write_cursor(uint8_t level_id, s
 		BUG_ON();
 	}
 	memset(w_cursor, 0x00, sizeof(struct wcursor_level_write_cursor));
+	w_cursor->txn_id = txn_id;
 	w_cursor->level_id = level_id;
 	w_cursor->tree_id = tree_id;
 	w_cursor->tree_height = 0;
@@ -393,8 +397,8 @@ struct wcursor_level_write_cursor *wcursor_init_write_cursor(uint8_t level_id, s
 		w_cursor->segment_offt[height] = sizeof(struct segment_header);
 		// struct segment_header *segment = get_segment_for_lsm_level_IO(handle->db_desc, level_id, tree_id);
 		// new segment
-		struct segment_header *segment =
-			level_allocate_segment(handle->db_desc->dev_levels[level_id], tree_id, handle->db_desc);
+		struct segment_header *segment = level_allocate_segment(handle->db_desc->dev_levels[level_id], tree_id,
+									handle->db_desc, w_cursor->txn_id);
 		w_cursor->last_segment_btree_level_offt[height] = ABSOLUTE_ADDRESS(segment);
 		w_cursor->first_segment_btree_level_offt[height] = w_cursor->last_segment_btree_level_offt[height] =
 			ABSOLUTE_ADDRESS(segment);

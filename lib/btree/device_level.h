@@ -24,8 +24,8 @@ void level_save_bf_info_to_superblock(struct device_level *level, struct pr_db_s
   *@param tree_id id of tree
   *@return the id of the inflight transaction
 */
-uint64_t level_get_txn_id(struct device_level *level, uint32_t tree_id);
-void level_set_txn_id(struct device_level *level, uint32_t tree_id, uint64_t txn_id);
+// uint64_t level_get_txn_id(struct device_level *level, uint32_t tree_id);
+// void level_set_txn_id(struct device_level *level, uint32_t tree_id, uint64_t txn_id);
 
 /**
   * @brief Returns the root of tree_id in the level.
@@ -96,7 +96,8 @@ uint64_t level_get_size(struct device_level *level, uint32_t tree_id);
 
 struct pbf_desc *level_get_bloom(struct device_level *level, uint32_t tree_id);
 
-uint64_t level_trim_medium_log(struct device_level *level, uint32_t tree_id, struct db_descriptor *db_desc);
+uint64_t level_trim_medium_log(struct device_level *level, uint32_t tree_id, struct db_descriptor *db_desc,
+			       uint64_t txn_id);
 
 uint8_t level_enter_as_writer(struct device_level *level);
 uint8_t level_enter_as_reader(struct device_level *level);
@@ -133,11 +134,11 @@ bool level_create_bf(struct device_level *level, uint32_t tree_id, int64_t num_k
 bool level_persist_bf(struct device_level *level, uint32_t tree_id);
 bool level_add_key_to_bf(struct device_level *level, uint32_t tree_id, char *key, uint32_t key_size);
 
-uint64_t level_get_num_KV_pairs(struct device_level *level, uint32_t tree_id);
+int64_t level_get_num_KV_pairs(struct device_level *level, uint32_t tree_id);
 bool level_increase_size(struct device_level *level, uint32_t size, uint32_t tree_id);
 
 int64_t level_inc_num_keys(struct device_level *level, uint32_t tree_id, uint32_t num_keys);
 struct segment_header *level_allocate_segment(struct device_level *level, uint8_t tree_id,
-					      struct db_descriptor *db_desc);
-uint64_t level_free_space(struct device_level *level, uint32_t tree_id, struct db_descriptor *db_desc);
+					      struct db_descriptor *db_desc, uint64_t txn_id);
+uint64_t level_free_space(struct device_level *level, uint32_t tree_id, struct db_descriptor *db_desc, uint64_t txn_id);
 #endif

@@ -50,7 +50,7 @@ void pr_unlock_db_superblock(struct db_descriptor *db_desc);
  * @param tree_id
  */
 void pr_flush_compaction(struct db_descriptor *db_desc, struct par_db_options *db_options, uint8_t level_id,
-			 uint8_t tree_id);
+			 uint8_t tree_id, uint64_t txn_id);
 
 void pr_recover_L0(struct db_descriptor *db_desc);
 
@@ -60,10 +60,10 @@ void pr_recover_L0(struct db_descriptor *db_desc);
  * This happends becauase the buf_size may not be a mutliple to alignment size.
  */
 uint64_t pr_add_and_flush_segment_in_log(db_handle *dbhandle, char *buf, int32_t buf_size, uint32_t IO_size,
-					 enum log_type log_cat);
+					 enum log_type log_cat, uint64_t txn_id);
 
 uint64_t pr_allocate_segment_for_log(struct db_descriptor *db_desc, struct log_descriptor *log_desc, uint8_t level_id,
-				     uint8_t tree_id);
+				     uint8_t tree_id, uint64_t txn_id);
 void pr_append_segment_to_log(struct log_descriptor *log_desc, char *buf, uint64_t next_tail_offt);
 void pr_flush_buffer_to_log(struct log_descriptor *log_desc, uint64_t IO_start_offt, uint32_t IO_size, char *buf,
 			    uint32_t buf_size);

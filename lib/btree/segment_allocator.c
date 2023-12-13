@@ -220,7 +220,7 @@ struct leaf_node *seg_get_dynamic_leaf_node(struct db_descriptor *db_desc, uint8
 }
 
 segment_header *seg_get_raw_log_segment(struct db_descriptor *db_desc, enum log_type log_type, uint8_t level_id,
-					uint8_t tree_id)
+					uint8_t tree_id, uint64_t txn_id)
 {
 	enum rul_op_type op_type;
 	switch (log_type) {
@@ -238,8 +238,8 @@ segment_header *seg_get_raw_log_segment(struct db_descriptor *db_desc, enum log_
 		BUG_ON();
 	}
 	//new staff
-	uint64_t txn_id = 0 == level_id ? db_desc->L0.allocation_txn_id[tree_id] :
-					  level_get_txn_id(db_desc->dev_levels[level_id], tree_id);
+	//txn_id is passed
+
 	struct rul_log_entry log_entry = { .dev_offt = mem_allocate(db_desc->db_volume, SEGMENT_SIZE),
 					   .txn_id = txn_id,
 					   .op_type = op_type,

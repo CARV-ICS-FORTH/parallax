@@ -69,13 +69,12 @@ static void flush_segment_in_log(int file_desc, uint64_t file_offset, char *buff
 /**
  *<new_persistent_design>*/
 static void pr_flush_allocation_log_and_level_info(struct db_descriptor *db_desc, uint8_t src_level_id,
-						   uint8_t dst_level_id, uint8_t tree_id)
+						   uint8_t dst_level_id, uint8_t tree_id, uint64_t txn_id)
 {
 	/*Flush my allocations*/
 	// struct rul_log_info rul_log = rul_flush_txn(db_desc, db_desc->levels[dst_level_id].allocation_txn_id[tree_id]);
 	// new staff
-	struct rul_log_info rul_log =
-		rul_flush_txn(db_desc, level_get_txn_id(db_desc->dev_levels[dst_level_id], tree_id));
+	struct rul_log_info rul_log = rul_flush_txn(db_desc, txn_id);
 	/*new info about allocation_log*/
 	db_desc->db_superblock->allocation_log.head_dev_offt = rul_log.head_dev_offt;
 	db_desc->db_superblock->allocation_log.tail_dev_offt = rul_log.tail_dev_offt;
@@ -228,7 +227,7 @@ void pr_flush_L0(struct db_descriptor *db_desc, uint8_t tree_id)
 }
 
 static void pr_flush_L0_to_L1(struct db_descriptor *db_desc, struct par_db_options *db_options, uint8_t level_id,
-			      uint8_t tree_id)
+			      uint8_t tree_id, uint64_t txn_id)
 {
 	struct log_info medium_log;
 
@@ -246,8 +245,7 @@ static void pr_flush_L0_to_L1(struct db_descriptor *db_desc, struct par_db_optio
 
 	// uint64_t txn_id = db_desc->levels[level_id].allocation_txn_id[tree_id];
 	// new staff
-	uint64_t txn_id = 0 == level_id ? db_desc->L0.allocation_txn_id[tree_id] :
-					  level_get_txn_id(db_desc->dev_levels[level_id], tree_id);
+	// txn id is in compreq
 
 	/*medium log info*/
 	db_desc->db_superblock->medium_log_head_offt = medium_log.head_dev_offt;
@@ -295,7 +293,7 @@ static void pr_flush_L0_to_L1(struct db_descriptor *db_desc, struct par_db_optio
 	db_desc->db_superblock->big_log_start_segment_dev_offt = db_desc->big_log_start_segment_dev_offt;
 	db_desc->db_superblock->big_log_offt_in_start_segment = db_desc->big_log_start_offt_in_segment;
 
-	pr_flush_allocation_log_and_level_info(db_desc, level_id - 1, level_id, tree_id);
+	pr_flush_allocation_log_and_level_info(db_desc, level_id - 1, level_id, tree_id, txn_id);
 	pr_unlock_db_superblock(db_desc);
 	rul_apply_txn_buf_freeops_and_destroy(db_desc, txn_id);
 }
@@ -304,14 +302,13 @@ static void pr_flush_L0_to_L1(struct db_descriptor *db_desc, struct par_db_optio
 * Flushes compaction from level Lmax where the medium KV pairs are transferred
 * from the medium log to in-place
 */
-static void pr_flush_Lmax_to_Ln(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
+static void pr_flush_Lmax_to_Ln(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id, uint64_t txn_id)
 {
 	log_debug("Flushing Lmax to Ln!");
 	// struct level_descriptor *level_desc = &db_desc->levels[level_id];
 	// uint64_t txn_id = db_desc->levels[level_id].allocation_txn_id[tree_id];
 	// new staff
-	struct device_level *level_desc = db_desc->dev_levels[level_id];
-	uint64_t txn_id = level_get_txn_id(db_desc->dev_levels[level_id], tree_id);
+	// pass the txn_id
 
 	/*trim medium log*/
 
@@ -347,37 +344,37 @@ static void pr_flush_Lmax_to_Ln(struct db_descriptor *db_desc, uint8_t level_id,
 
 	// update_superblock:
 	// new staff
-	uint64_t new_medium_log_head_offt = level_trim_medium_log(db_desc->dev_levels[level_id], tree_id, db_desc);
+	uint64_t new_medium_log_head_offt =
+		level_trim_medium_log(db_desc->dev_levels[level_id], tree_id, db_desc, txn_id);
 
 	pr_lock_db_superblock(db_desc);
 	/*new info about medium log after trim operation*/
 	db_desc->medium_log.head_dev_offt = db_desc->db_superblock->medium_log_head_offt = new_medium_log_head_offt;
 
-	pr_flush_allocation_log_and_level_info(db_desc, level_id - 1, level_id, tree_id);
+	pr_flush_allocation_log_and_level_info(db_desc, level_id - 1, level_id, tree_id, txn_id);
 
 	pr_unlock_db_superblock(db_desc);
 	rul_apply_txn_buf_freeops_and_destroy(db_desc, txn_id);
 }
 
 void pr_flush_compaction(struct db_descriptor *db_desc, struct par_db_options *dboptions, uint8_t level_id,
-			 uint8_t tree_id)
+			 uint8_t tree_id, uint64_t txn_id)
 {
 	if (level_id == 1) {
-		pr_flush_L0_to_L1(db_desc, dboptions, level_id, tree_id);
+		pr_flush_L0_to_L1(db_desc, dboptions, level_id, tree_id, txn_id);
 		return;
 	}
 
 	if (level_id == db_desc->level_medium_inplace) {
-		pr_flush_Lmax_to_Ln(db_desc, level_id, tree_id);
+		pr_flush_Lmax_to_Ln(db_desc, level_id, tree_id, txn_id);
 		return;
 	}
 
 	// uint64_t txn_id = db_desc->levels[level_id].allocation_txn_id[tree_id];
-	uint64_t txn_id = 0 == level_id ? db_desc->L0.allocation_txn_id[tree_id] :
-					  level_get_txn_id(db_desc->dev_levels[level_id], tree_id);
+	// new staff pass the txn_id
 	pr_lock_db_superblock(db_desc);
 
-	pr_flush_allocation_log_and_level_info(db_desc, level_id - 1, level_id, tree_id);
+	pr_flush_allocation_log_and_level_info(db_desc, level_id - 1, level_id, tree_id, txn_id);
 
 	pr_unlock_db_superblock(db_desc);
 	rul_apply_txn_buf_freeops_and_destroy(db_desc, txn_id);
@@ -973,14 +970,15 @@ void pr_recover_L0(struct db_descriptor *db_desc)
 }
 
 uint64_t pr_add_and_flush_segment_in_log(db_handle *dbhandle, char *buf, int32_t buf_size, uint32_t IO_size,
-					 enum log_type log_cat)
+					 enum log_type log_cat, uint64_t txn_id)
 {
 	struct log_descriptor log_desc = dbhandle->db_desc->small_log;
 	if (log_cat == BIG_LOG)
 		log_desc = dbhandle->db_desc->big_log;
 
 	//for send index level_id = 0, tree_id = 0
-	struct segment_header *new_segment = seg_get_raw_log_segment(dbhandle->db_desc, log_desc.log_type, 0, 0);
+	struct segment_header *new_segment =
+		seg_get_raw_log_segment(dbhandle->db_desc, log_desc.log_type, 0, 0, txn_id);
 	if (!new_segment) {
 		log_fatal("Cannot allocate memory from the device!");
 		BUG_ON();
@@ -1007,10 +1005,11 @@ uint64_t pr_add_and_flush_segment_in_log(db_handle *dbhandle, char *buf, int32_t
 }
 
 uint64_t pr_allocate_segment_for_log(struct db_descriptor *db_desc, struct log_descriptor *log_desc, uint8_t level_id,
-				     uint8_t tree_id)
+				     uint8_t tree_id, uint64_t txn_id)
 {
 	assert(db_desc && log_desc);
-	struct segment_header *new_segment = seg_get_raw_log_segment(db_desc, log_desc->log_type, level_id, tree_id);
+	struct segment_header *new_segment =
+		seg_get_raw_log_segment(db_desc, log_desc->log_type, level_id, tree_id, txn_id);
 	if (!new_segment) {
 		log_fatal("Cannot allocate memory from the device!");
 		BUG_ON();
