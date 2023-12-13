@@ -33,8 +33,6 @@ void disable_validation_garbage_bytes(void);
  */
 void pr_flush_L0(struct db_descriptor *db_desc, uint8_t tree_id);
 
-void pr_flush_log_tail(struct db_descriptor *db_desc, struct log_descriptor *log_desc);
-
 void pr_read_db_superblock(struct db_descriptor *db_desc);
 
 void pr_flush_db_superblock(struct db_descriptor *db_desc);

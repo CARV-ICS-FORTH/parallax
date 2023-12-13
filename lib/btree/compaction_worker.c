@@ -159,7 +159,7 @@ static void choose_compaction_roots(struct db_handle *handle, struct compaction_
 	// comp_roots->dst_root = handle->db_desc->levels[comp_req->dst_level].root[0];
 	//new staff
 	comp_roots->dst_root = level_get_root(handle->db_desc->dev_levels[comp_req->dst_level], 0);
-	log_debug("Root for level[%u][%u] = %lu", comp_req->dst_level, 0, comp_roots->dst_root);
+	log_debug("Root for level[%u][%u] = %lu", comp_req->dst_level, 0, (uint64_t)comp_roots->dst_root);
 }
 
 #if 0
@@ -186,8 +186,7 @@ static void print_heap_node_key(struct sh_heap_node *h_node)
 }
 #endif
 
-static void mark_segment_space(db_handle *handle, struct dups_list *list, uint8_t level_id, uint8_t tree_id,
-			       uint64_t txn_id)
+static void mark_segment_space(db_handle *handle, struct dups_list *list, uint64_t txn_id)
 {
 	struct dups_node *list_iter;
 	struct dups_list *calculate_diffs;
@@ -478,7 +477,7 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 	rcursor_close_cursor(comp_req->src_rcursor);
 	rcursor_close_cursor(comp_req->dst_rcursor);
 
-	mark_segment_space(handle, m_heap->dups, comp_req->dst_level, 1, comp_req->txn_id);
+	mark_segment_space(handle, m_heap->dups, comp_req->txn_id);
 
 	sh_destroy_heap(m_heap);
 	wcursor_flush_write_cursor(comp_req->wcursor);

@@ -260,7 +260,6 @@ static void pr_flush_L0_to_L1(struct db_descriptor *db_desc, struct par_db_optio
 	log_debug("Head segment id %lu", head->segment_id);
 
 	uint64_t bytes_freed = 0;
-	(void)bytes_freed;
 
 	if (tail != head) {
 		struct segment_header *curr = REAL_ADDRESS(tail->prev_segment);
