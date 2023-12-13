@@ -48,7 +48,7 @@ uint64_t seg_allocate_segment(struct db_descriptor *db_desc, uint64_t txn_id)
 	return log_entry.dev_offt;
 }
 
-static void seg_free_segment(struct db_descriptor *db_desc, uint64_t txn_id, uint64_t seg_offt)
+void seg_free_segment(struct db_descriptor *db_desc, uint64_t txn_id, uint64_t seg_offt)
 {
 	struct rul_log_entry log_entry = {
 		.dev_offt = seg_offt, .txn_id = txn_id, .op_type = RUL_FREE, .size = SEGMENT_SIZE
@@ -249,33 +249,32 @@ segment_header *seg_get_raw_log_segment(struct db_descriptor *db_desc, enum log_
 	return segment;
 }
 
-uint64_t seg_free_level(struct db_descriptor *db_desc, uint64_t txn_id, uint8_t level_id, uint8_t tree_id)
+// uint64_t seg_free_L0(struct db_descriptor *db_desc, uint64_t txn_id, uint8_t level_id, uint8_t tree_id)
+// new staff
+uint64_t seg_free_L0(struct db_descriptor *db_desc, uint8_t tree_id)
 {
-	if (0 != level_id) {
-		log_fatal("Only for Level-0");
-		_exit(EXIT_FAILURE);
-	}
 	// struct segment_header *curr_segment = db_desc->levels[level_id].first_segment[tree_id];
 	// new staff
 	struct segment_header *curr_segment = db_desc->L0.first_segment[tree_id];
 	if (!curr_segment) {
-		log_debug("Level [%u][%u] is free nothing to do", level_id, tree_id);
+		log_debug("Level [%u][%u] is free nothing to do", 0, tree_id);
 		return 0;
 	}
 
 	uint64_t space_freed = 0;
 
-	while (level_id && curr_segment) {
-		seg_free_segment(db_desc, txn_id, ABSOLUTE_ADDRESS(curr_segment));
-		space_freed += SEGMENT_SIZE;
-		curr_segment = NULL == curr_segment->next_segment ? NULL : REAL_ADDRESS(curr_segment->next_segment);
-	}
+	// while (level_id && curr_segment) {
+	// 	seg_free_segment(db_desc, txn_id, ABSOLUTE_ADDRESS(curr_segment));
+	// 	space_freed += SEGMENT_SIZE;
+	// 	curr_segment = NULL == curr_segment->next_segment ? NULL : REAL_ADDRESS(curr_segment->next_segment);
+	// }
 
-	if (level_id) {
-		log_debug("Freed device level %u for db %s", level_id, db_desc->db_superblock->db_name);
-		//assert(space_freed == db_desc->levels[level_id].offset[0]);
-		return space_freed;
-	}
+	// if (level_id) {
+	// 	log_debug("Freed device level %u for db %s", level_id, db_desc->db_superblock->db_name);
+	// 	//assert(space_freed == db_desc->levels[level_id].offset[0]);
+	// 	return space_freed;
+	// }
+	// new staff ommits the previous block
 
 	while (curr_segment) {
 		struct segment_header *stale_seg = curr_segment;
@@ -284,7 +283,7 @@ uint64_t seg_free_level(struct db_descriptor *db_desc, uint64_t txn_id, uint8_t 
 		space_freed += SEGMENT_SIZE;
 	}
 
-	log_debug("Freed in-memory L0 level [%u][%u] for db %s", level_id, tree_id, db_desc->db_superblock->db_name);
+	log_debug("Freed in-memory L0 level [%u][%u] for db %s", 0, tree_id, db_desc->db_superblock->db_name);
 	// assert(space_freed == db_desc->levels[level_id].offset[tree_id] % SEGMENT_SIZE ?
 	// 	       db_desc->levels[level_id].offset[tree_id] :
 	// 	       db_desc->levels[level_id].offset[tree_id] / SEGMENT_SIZE + SEGMENT_SIZE);

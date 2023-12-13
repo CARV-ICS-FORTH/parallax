@@ -223,7 +223,7 @@ static void init_fresh_logs(struct db_descriptor *db_desc)
 	db_desc->lsn_factory = lsn_factory_init(0);
 }
 
-static void init_fresh_db(struct db_descriptor *db_desc)
+static void init_fresh_db(struct db_descriptor *db_desc, struct par_db_options *options)
 {
 	struct pr_db_superblock *superblock = db_desc->db_superblock;
 
@@ -254,10 +254,30 @@ static void init_fresh_db(struct db_descriptor *db_desc)
 	// 	}
 	// }
 	// new staff
-	memset(&db_desc->L0, 0x00, sizeof(db_desc->L0));
-	for (uint8_t level_id = 1; level_id < MAX_LEVELS; ++level_id) {
-		db_desc->dev_levels[level_id] = level_create_fresh(level_id, LEVEL0_SIZE, GROWTH_FACTOR);
+	// L0 first
+
+	for (uint8_t tree_id = 0; tree_id < NUM_TREES_PER_LEVEL; ++tree_id) {
+		db_desc->L0.level_size[tree_id] = 0;
+		/*segments info per level*/
+		db_desc->L0.first_segment[tree_id] = 0;
+		superblock->first_segment[0][tree_id] = 0;
+
+		db_desc->L0.last_segment[tree_id] = 0;
+		superblock->last_segment[0][tree_id] = 0;
+
+		db_desc->L0.offset[tree_id] = 0;
+		superblock->offset[0][tree_id] = 0;
+
+		/*total keys*/
+		db_desc->L0.level_size[tree_id] = 0;
+		superblock->level_size[0][tree_id] = 0;
+		/*finally the roots*/
+		db_desc->L0.root[tree_id] = NULL;
+		superblock->root_r[0][tree_id] = 0;
 	}
+	for (uint8_t level_id = 1; level_id < MAX_LEVELS; ++level_id)
+		db_desc->dev_levels[level_id] = level_create_fresh(level_id, options->options[LEVEL0_SIZE].value,
+								   options->options[GROWTH_FACTOR].value);
 
 	init_fresh_logs(db_desc);
 }
@@ -366,7 +386,7 @@ static void restore_db(struct db_descriptor *db_desc, uint32_t region_idx)
 // new staff
 // do nothing device_levels does it
 
-static db_descriptor *get_db_from_volume(char *volume_name, char *db_name, par_db_initializers create_db)
+static db_descriptor *get_db_from_volume(char *volume_name, char *db_name, struct par_db_options *options)
 {
 	struct db_descriptor *db_desc = NULL;
 	struct volume_descriptor *volume_desc = mem_get_volume_desc(volume_name);
@@ -378,8 +398,8 @@ static db_descriptor *get_db_from_volume(char *volume_name, char *db_name, par_d
 	}
 
 	//TODO Refactor get_db_superblock -> Takes too much arguments -> create a struct
-	db_superblock =
-		get_db_superblock(volume_desc, db_name, strlen(db_name) + 1, PAR_CREATE_DB == create_db, &new_db);
+	db_superblock = get_db_superblock(volume_desc, db_name, strlen(db_name) + 1,
+					  PAR_CREATE_DB == options->create_flag, &new_db);
 
 	if (db_superblock) {
 		int ret = posix_memalign((void **)&db_desc, ALIGNMENT_SIZE, sizeof(struct db_descriptor));
@@ -410,7 +430,7 @@ static db_descriptor *get_db_from_volume(char *volume_name, char *db_name, par_d
 
 			//init_fresh_db allocates space for the L0_recovery log and large.
 			//As a result we need to acquire a txn_id for the L0
-			init_fresh_db(db_desc);
+			init_fresh_db(db_desc, options);
 		}
 	} else {
 		log_warn("DB: %s NOT found", db_name);
@@ -458,7 +478,7 @@ db_handle *internal_db_open(struct volume_descriptor *volume_desc, par_db_option
 	}
 
 	struct db_descriptor *db_desc =
-		get_db_from_volume(volume_desc->volume_name, (char *)db_options->db_name, db_options->create_flag);
+		get_db_from_volume(volume_desc->volume_name, (char *)db_options->db_name, db_options);
 	if (!db_desc) {
 		handle = NULL;
 
@@ -724,7 +744,7 @@ const char *db_close(db_handle *handle)
 
 	/*free L0*/
 	for (uint8_t tree_id = 0; tree_id < NUM_TREES_PER_LEVEL; ++tree_id)
-		seg_free_level(handle->db_desc, 0, 0, tree_id);
+		seg_free_L0(handle->db_desc, tree_id);
 
 	// for (uint8_t i = 0; i < MAX_LEVELS; ++i) {
 	// 	if (pthread_rwlock_destroy(&handle->db_desc->levels[i].guard_of_level.rx_lock)) {
@@ -1563,8 +1583,12 @@ void find_key(struct lookup_operation *get_op)
 	struct db_descriptor *db_desc = get_op->db_desc;
 	/*again special care for L0*/
 	// Acquiring guard lock for level 0
-	if (RWLOCK_RDLOCK(&db_desc->L0.guard_of_level.rx_lock) != 0)
+	int error = RWLOCK_RDLOCK(&db_desc->L0.guard_of_level.rx_lock);
+	if (error != 0) {
+		log_debug("Error got: %d", error);
+		perror("Reason:");
 		BUG_ON();
+	}
 	__sync_fetch_and_add(&db_desc->L0.active_operations, 1);
 	uint8_t tree_id = db_desc->L0.active_tree;
 	uint8_t base = tree_id;
@@ -1577,15 +1601,14 @@ void find_key(struct lookup_operation *get_op)
 		lookup_in_tree(get_op, 0, tree_id);
 
 		if (get_op->found) {
-			if (RWLOCK_UNLOCK(&db_desc->L0.guard_of_level.rx_lock) != 0)
-				BUG_ON();
-			__sync_fetch_and_sub(&db_desc->L0.active_operations, 1);
-
+			// if (RWLOCK_UNLOCK(&db_desc->L0.guard_of_level.rx_lock) != 0)
+			// 	BUG_ON();
+			// __sync_fetch_and_sub(&db_desc->L0.active_operations, 1);
 			// goto finish;
+			// new staff
 			break;
 		}
-		++tree_id;
-		if (tree_id >= NUM_TREES_PER_LEVEL)
+		if (++tree_id >= NUM_TREES_PER_LEVEL)
 			tree_id = 0;
 		if (tree_id == base)
 			break;

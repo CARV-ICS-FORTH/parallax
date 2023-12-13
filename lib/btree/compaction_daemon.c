@@ -255,8 +255,9 @@ static void *compactiond_run(void *args)
 										      tree_1, level_id + 1, 1);
 
 			/*Acquire a txn_id for the allocations of the compaction*/
-			level_set_txn_id(db_desc->dev_levels[compaction_get_dst_level(comp_req)], 1,
-					 rul_start_txn(db_desc));
+			uint64_t txn_id = rul_start_txn(db_desc);
+			level_set_txn_id(db_desc->dev_levels[compaction_get_src_level(comp_req_p)], 0, txn_id);
+			level_set_txn_id(db_desc->dev_levels[compaction_get_dst_level(comp_req_p)], 1, txn_id);
 
 			level_start_comp_thread(db_desc->dev_levels[compaction_get_dst_level(comp_req_p)],
 						compaction_get_dst_tree(comp_req_p), compaction, comp_req_p);

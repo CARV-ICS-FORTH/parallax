@@ -153,6 +153,7 @@ static void choose_compaction_roots(struct db_handle *handle, struct compaction_
 	// comp_roots->dst_root = handle->db_desc->levels[comp_req->dst_level].root[0];
 	//new staff
 	comp_roots->dst_root = level_get_root(handle->db_desc->dev_levels[comp_req->dst_level], 0);
+	log_debug("Root for level[%u][%u] = %lu", comp_req->dst_level, 0, comp_roots->dst_root);
 }
 
 #if 0
@@ -436,17 +437,17 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 		sh_insert_heap_node(m_heap, &dst_heap_node);
 	}
 
+	level_enter_as_reader(handle->db_desc->dev_levels[comp_req->dst_level]);
 	while (1) {
 		handle->db_desc->dirty = 0x01;
 		// This is to synchronize compactions with flush
 		// RWLOCK_RDLOCK(&handle->db_desc->levels[comp_req->dst_level].guard_of_level.rx_lock);
 		// new staff
-		level_enter_as_reader(handle->db_desc->dev_levels[comp_req->dst_level]);
 
 		if (!sh_remove_top(m_heap, &min_heap_node)) {
 			// RWLOCK_UNLOCK(&handle->db_desc->levels[comp_req->dst_level].guard_of_level.rx_lock);
 			// new staff
-			goto exit;
+			break;
 		}
 
 		if (!min_heap_node.duplicate)
@@ -462,11 +463,11 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 			sh_insert_heap_node(m_heap, &dst_heap_node);
 		}
 
-	exit:
+		// exit:
 		// RWLOCK_UNLOCK(&handle->db_desc->levels[comp_req->dst_level].guard_of_level.rx_lock);
 		// new staff
-		level_leave_as_reader(handle->db_desc->dev_levels[comp_req->dst_level]);
 	}
+	level_leave_as_reader(handle->db_desc->dev_levels[comp_req->dst_level]);
 
 	rcursor_close_cursor(comp_req->src_rcursor);
 	rcursor_close_cursor(comp_req->dst_rcursor);
@@ -653,21 +654,20 @@ void compaction_close(struct compaction_request *comp_req)
 	/*Free L_(i+1)*/
 	if (comp_req->dst_rcursor) {
 		// uint64_t txn_id = comp_req->db_desc->levels[comp_req->dst_level].allocation_txn_id[comp_req->dst_tree];
+		// space_freed = seg_free_level(comp_req->db_desc, txn_id, comp_req->dst_level, 0);
 		// new staff
-		uint64_t txn_id =
-			level_get_txn_id(comp_req->db_desc->dev_levels[comp_req->dst_level], comp_req->dst_tree);
-		/*free dst (L_i+1) level*/
-		space_freed = seg_free_level(comp_req->db_desc, txn_id, comp_req->dst_level, 0);
+		level_free_space(comp_req->db_desc->dev_levels[comp_req->dst_level], 0, comp_req->db_desc);
 
-		log_debug("Freed space %lu MB from DB:%s destination level %u", space_freed / (1024 * 1024L),
-			  comp_req->db_desc->db_superblock->db_name, comp_req->dst_level);
+		// log_debug("Freed space %lu MB from DB:%s destination level %u", space_freed / (1024 * 1024L),
+		// 	  comp_req->db_desc->db_superblock->db_name, comp_req->dst_level);
 	}
 	/*Free and zero L_i*/
 	// uint64_t txn_id = comp_req->db_desc->levels[comp_req->dst_level].allocation_txn_id[comp_req->dst_tree];
 	//new level
-	uint64_t txn_id = level_get_txn_id(comp_req->db_desc->dev_levels[comp_req->dst_level], comp_req->dst_tree);
+	space_freed = 0 == comp_req->src_level ? seg_free_L0(hd.db_desc, compaction_get_src_tree(comp_req)) :
+						 level_free_space(comp_req->db_desc->dev_levels[comp_req->src_level],
+								  comp_req->src_tree, comp_req->db_desc);
 
-	space_freed = seg_free_level(hd.db_desc, txn_id, comp_req->src_level, compaction_get_src_tree(comp_req));
 	log_debug("Freed space %lu MB from DB:%s source level %u", space_freed / (1024 * 1024L),
 		  comp_req->db_desc->db_superblock->db_name, comp_req->src_level);
 	comp_zero_level(hd.db_desc, comp_req->src_level, comp_req->src_tree);

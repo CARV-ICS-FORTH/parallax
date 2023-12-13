@@ -42,8 +42,9 @@ segment_header *seg_get_raw_log_segment(struct db_descriptor *db_desc, enum log_
 					uint8_t tree_id);
 
 uint64_t seg_allocate_segment(struct db_descriptor *db_desc, uint64_t txn_id);
+void seg_free_segment(struct db_descriptor *db_desc, uint64_t txn_id, uint64_t seg_offt);
 
 // struct segment_header *get_segment_for_lsm_level_IO(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id);
 
-uint64_t seg_free_level(struct db_descriptor *db_desc, uint64_t txn_id, uint8_t level_id, uint8_t tree_id);
+uint64_t seg_free_L0(struct db_descriptor *db_desc, uint8_t tree_id);
 #endif

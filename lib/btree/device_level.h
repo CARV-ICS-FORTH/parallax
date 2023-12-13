@@ -139,4 +139,5 @@ bool level_increase_size(struct device_level *level, uint32_t size, uint32_t tre
 int64_t level_inc_num_keys(struct device_level *level, uint32_t tree_id, uint32_t num_keys);
 struct segment_header *level_allocate_segment(struct device_level *level, uint8_t tree_id,
 					      struct db_descriptor *db_desc);
+uint64_t level_free_space(struct device_level *level, uint32_t tree_id, struct db_descriptor *db_desc);
 #endif

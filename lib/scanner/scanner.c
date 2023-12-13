@@ -303,8 +303,9 @@ void scanner_init(struct scanner *scanner, db_handle *database, void *start_key,
 	// new staff
 	RWLOCK_RDLOCK(&database->db_desc->L0.guard_of_level.rx_lock);
 	__sync_fetch_and_add(&database->db_desc->L0.active_operations, 1);
+
 	for (int i = 1; i < MAX_LEVELS; i++)
-		level_enter_as_writer(database->db_desc->dev_levels[i]);
+		level_enter_as_reader(database->db_desc->dev_levels[i]);
 
 	memset(scanner, 0x00, sizeof(*scanner));
 
@@ -374,6 +375,7 @@ void scanner_close(struct scanner *scanner)
 	//__sync_fetch_and_sub(&scanner->db->db_desc->levels[0].active_operations, 1);
 	// 	new staff
 	RWLOCK_UNLOCK(&scanner->db->db_desc->L0.guard_of_level.rx_lock);
+	__sync_fetch_and_sub(&scanner->db->db_desc->L0.active_operations, 1);
 	for (int i = 1; i < MAX_LEVELS; i++)
 		level_leave_as_reader(scanner->db->db_desc->dev_levels[i]);
 

@@ -137,9 +137,12 @@ static bool rcursor_get_next_kv_from_device(struct rcursor_level_read_cursor *r_
 			if (device_cursor->curr_segment == NULL) {
 				// device_cursor->curr_segment = r_cursor->handle->db_desc->levels[r_cursor->level_id]
 				// 				      .first_segment[r_cursor->tree_id];
-				// 				      new staff
+				//new staff
 				device_cursor->curr_segment = level_get_index_first_seg(
 					r_cursor->handle->db_desc->dev_levels[r_cursor->level_id], r_cursor->tree_id);
+				log_debug("Curr segment of cursor is %lu offset is %lu", device_cursor->curr_segment,
+					  level_get_offset(r_cursor->handle->db_desc->dev_levels[r_cursor->level_id],
+							   r_cursor->tree_id));
 			} else {
 				if (device_cursor->curr_segment->next_segment == NULL) {
 					// assert((uint64_t)device_cursor->curr_segment ==

@@ -83,6 +83,7 @@ struct device_level *level_create_fresh(uint32_t level_id, uint32_t l0_size, uin
 	}
 	for (uint32_t i = 1; i <= level_id; i++)
 		level->max_level_size = level->max_level_size * growth_factor;
+	log_debug("Level_id: %u has max level size of: %lu", level_id, level->max_level_size);
 	return level;
 }
 
@@ -125,6 +126,7 @@ inline uint64_t level_get_txn_id(struct device_level *level, uint32_t tree_id)
 
 inline void level_set_txn_id(struct device_level *level, uint32_t tree_id, uint64_t txn_id)
 {
+	log_debug("---------------> Setting txn id Level[%u][%u] = %lu", level->level_id, tree_id, txn_id);
 	level->allocation_txn_id[tree_id] = txn_id;
 }
 
@@ -259,7 +261,7 @@ void level_save_to_superblock(struct device_level *level, struct pr_db_superbloc
 	db_superblock->first_segment[dst_level_id][0] = ABSOLUTE_ADDRESS(level->first_segment[tree_id]);
 
 	log_debug("Persist %u first was %lu", dst_level_id, ABSOLUTE_ADDRESS(level->first_segment[tree_id]));
-	assert(level[dst_level_id].first_segment[tree_id]);
+	assert(level->first_segment[tree_id]);
 
 	db_superblock->last_segment[dst_level_id][0] = ABSOLUTE_ADDRESS(level->last_segment[tree_id]);
 
@@ -314,6 +316,8 @@ uint8_t level_leave_as_reader(struct device_level *level)
 
 bool level_has_overflow(struct device_level *level, uint32_t tree_id)
 {
+	// log_debug("Level: %u current size: %lu max_size: %lu", level->level_id, level->level_size[tree_id],
+	// 	  level->max_level_size);
 	return level->level_size[tree_id] >= level->max_level_size;
 }
 
@@ -435,6 +439,8 @@ struct segment_header *level_allocate_segment(struct device_level *level, uint8_
 		level->offset[tree_id] += SEGMENT_SIZE;
 	else {
 		level->offset[tree_id] = SEGMENT_SIZE;
+		log_debug("Set first segment of level_id: %u tree_id: %u to %lu", level->level_id, tree_id,
+			  new_segment);
 		level->first_segment[tree_id] = new_segment;
 		level->last_segment[tree_id] = NULL;
 	}
@@ -450,11 +456,37 @@ bool level_add_key_to_bf(struct device_level *level, uint32_t tree_id, char *key
 
 int64_t level_inc_num_keys(struct device_level *level, uint32_t tree_id, uint32_t num_keys)
 {
-	return ++level->num_level_keys[tree_id];
+	return level->num_level_keys[tree_id] += num_keys;
 }
 
 bool level_set_index_last_seg(struct device_level *level, struct segment_header *segment, uint32_t tree_id)
 {
 	level->last_segment[tree_id] = segment;
 	return true;
+}
+
+uint64_t level_free_space(struct device_level *level, uint32_t tree_id, struct db_descriptor *db_desc)
+{
+	if (0 == level->level_id) {
+		log_fatal("Only for device levels");
+		_exit(EXIT_FAILURE);
+	}
+	// struct segment_header *curr_segment = db_desc->levels[level_id].first_segment[tree_id];
+	// new staff
+	struct segment_header *curr_segment = level->first_segment[tree_id];
+	if (!curr_segment) {
+		log_debug("Level [%u][%u] is free nothing to do", level->level_id, tree_id);
+		return 0;
+	}
+
+	uint64_t space_freed = 0;
+
+	while (curr_segment) {
+		seg_free_segment(db_desc, level->allocation_txn_id[tree_id], ABSOLUTE_ADDRESS(curr_segment));
+		space_freed += SEGMENT_SIZE;
+		curr_segment = NULL == curr_segment->next_segment ? NULL : REAL_ADDRESS(curr_segment->next_segment);
+	}
+
+	log_debug("Freed device level %u for db %s", level->level_id, db_desc->db_superblock->db_name);
+	return space_freed;
 }
