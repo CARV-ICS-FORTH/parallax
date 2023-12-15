@@ -27,7 +27,6 @@
 #include <stdbool.h>
 #include <stdint.h>
 struct kv_splice_base;
-struct device_level;
 
 struct lookup_operation {
 	struct db_descriptor *db_desc; /*in variable*/

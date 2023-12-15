@@ -14,7 +14,6 @@
 #include "level_write_cursor.h"
 #include "../allocator/volume_manager.h"
 #include "../common/common.h"
-#include "bloom_filter.h"
 #include "btree.h"
 #include "btree_node.h"
 #include "conf.h"
@@ -25,7 +24,6 @@
 #include "kv_pairs.h"
 #include "medium_log_LRU_cache.h"
 #include "parallax/structures.h"
-#include "segment_allocator.h"
 #include <assert.h>
 #include <log.h>
 #include <stdbool.h>

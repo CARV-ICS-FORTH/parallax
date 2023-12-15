@@ -19,7 +19,6 @@
 #include "../common/common.h"
 #include "btree_node.h"
 #include "conf.h"
-#include "device_level.h"
 #include "index_node.h"
 #include <assert.h>
 #include <log.h>

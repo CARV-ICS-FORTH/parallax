@@ -18,12 +18,12 @@
 #include "../allocator/redo_undo_log.h"
 #include "../btree/btree.h"
 #include "../btree/conf.h"
-#include "../btree/device_level.h"
 #include "../btree/key_splice.h"
 #include "../btree/kv_pairs.h"
 #include "../btree/set_options.h"
 #include "../common/common.h"
 #include "../include/parallax/structures.h"
+#include "../lib/allocator/device_structures.h"
 #include "../scanner/scanner.h"
 #include <assert.h>
 #include <log.h>

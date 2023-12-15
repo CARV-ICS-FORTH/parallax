@@ -12,9 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 #include "persistent_operations.h"
-#include "../btree/bloom_filter.h"
 #include "../btree/btree.h"
-#include "../btree/btree_node.h"
 #include "../btree/conf.h"
 #include "../btree/device_level.h"
 #include "../btree/gc.h"
@@ -30,7 +28,6 @@
 #include "volume_manager.h"
 #include <assert.h>
 #include <log.h>
-#include <pthread.h>
 #include <spin_loop.h>
 #include <stdbool.h>
 #include <stdint.h>

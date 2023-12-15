@@ -3,16 +3,17 @@
 #include "../scanner/min_max_heap.h"
 #include "../scanner/scanner.h"
 #include "btree_node.h"
+#include "conf.h"
 #include "device_level.h"
 #include "dynamic_leaf.h"
 #include "index_node.h"
+#include "kv_pairs.h"
 #include <assert.h>
 #include <log.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-
 struct rcursor_device_cursor {
 	char segment_buf[SEGMENT_SIZE];
 	uint64_t device_offt;
@@ -137,10 +138,11 @@ static bool rcursor_get_next_kv_from_device(struct rcursor_level_read_cursor *r_
 			if (device_cursor->curr_segment == NULL) {
 				// device_cursor->curr_segment = r_cursor->handle->db_desc->levels[r_cursor->level_id]
 				// 				      .first_segment[r_cursor->tree_id];
-				//new staff
+				// new staff
 				device_cursor->curr_segment = level_get_index_first_seg(
 					r_cursor->handle->db_desc->dev_levels[r_cursor->level_id], r_cursor->tree_id);
-				log_debug("Curr segment of cursor is %lu offset is %lu", device_cursor->curr_segment,
+				log_debug("Curr segment of cursor is %p offset is %lu",
+					  (void *)device_cursor->curr_segment,
 					  level_get_offset(r_cursor->handle->db_desc->dev_levels[r_cursor->level_id],
 							   r_cursor->tree_id));
 			} else {

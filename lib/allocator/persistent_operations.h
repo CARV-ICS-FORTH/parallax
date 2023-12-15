@@ -4,6 +4,7 @@
 #include "../btree/btree.h"
 #include "log_structures.h"
 #include <stdint.h>
+struct par_db_options;
 /**
  * Returns number of garbage entries detected during the recovery of the redo undo log.
  */

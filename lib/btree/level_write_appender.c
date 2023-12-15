@@ -3,7 +3,6 @@
 #include "../common/common.h"
 #include "btree.h"
 #include "conf.h"
-#include "segment_allocator.h"
 #include <../btree/device_level.h>
 #include <assert.h>
 #include <log.h>

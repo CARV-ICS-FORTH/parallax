@@ -20,7 +20,6 @@
 #include "../common/common.h"
 #include "../include/parallax/parallax.h"
 #include "../include/parallax/structures.h"
-#include "bloom_filter.h"
 #include "btree_node.h"
 #include "compaction_daemon.h"
 #include "conf.h"

@@ -1,21 +1,22 @@
 #include "device_level.h"
 #include "../allocator/device_structures.h"
+#include "../allocator/log_structures.h"
 #include "../allocator/redo_undo_log.h"
+#include "../common/common.h"
 #include "../utilities/spin_loop.h"
 #include "bloom_filter.h"
 #include "btree.h"
-#include "compaction_daemon.h"
 #include "conf.h"
+#include "key_splice.h"
 #include "segment_allocator.h"
 #include <assert.h>
-#include <bloom.h>
 #include <log.h>
 #include <pthread.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <unistd.h>
-struct segment_header;
-struct pbf_desc;
+struct key_splice;
+struct node_header;
 
 extern const uint32_t *const size_per_height;
 
@@ -423,7 +424,7 @@ struct segment_header *level_allocate_segment(struct device_level *level, uint8_
 	else {
 		level->offset[tree_id] = SEGMENT_SIZE;
 		log_debug("Set first segment of level_id: %u tree_id: %u to %lu", level->level_id, tree_id,
-			  new_segment);
+			  (uint64_t)new_segment);
 		level->first_segment[tree_id] = new_segment;
 		level->last_segment[tree_id] = NULL;
 	}

@@ -19,6 +19,7 @@
 #include "../allocator/persistent_operations.h"
 #include "../allocator/redo_undo_log.h"
 #include "../common/common.h"
+#include "../lib/parallax_callbacks/parallax_callbacks.h"
 #include "btree.h"
 #include "compaction_worker.h"
 #include "conf.h"
@@ -32,7 +33,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-struct node_header;
+
 // IWYU pragma: no_forward_declare index_node
 
 struct compaction_daemon {
