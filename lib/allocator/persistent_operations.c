@@ -340,8 +340,7 @@ static void pr_flush_Lmax_to_Ln(struct db_descriptor *db_desc, uint8_t level_id,
 
 	// update_superblock:
 	// new staff
-	uint64_t new_medium_log_head_offt =
-		level_trim_medium_log(db_desc->dev_levels[level_id], tree_id, db_desc, txn_id);
+	uint64_t new_medium_log_head_offt = level_trim_medium_log(db_desc->dev_levels[level_id], db_desc, txn_id);
 
 	pr_lock_db_superblock(db_desc);
 	/*new info about medium log after trim operation*/

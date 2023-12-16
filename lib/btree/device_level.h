@@ -115,8 +115,7 @@ uint64_t level_get_size(struct device_level *level, uint32_t tree_id);
 
 struct pbf_desc *level_get_bloom(struct device_level *level, uint32_t tree_id);
 
-uint64_t level_trim_medium_log(struct device_level *level, uint32_t tree_id, struct db_descriptor *db_desc,
-			       uint64_t txn_id);
+uint64_t level_trim_medium_log(struct device_level *level, struct db_descriptor *db_desc, uint64_t txn_id);
 
 uint8_t level_enter_as_writer(struct device_level *level);
 void level_leave_as_writer(struct device_level *level);

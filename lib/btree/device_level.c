@@ -166,8 +166,7 @@ static inline bool level_is_medium_log_trimmable(struct device_level *level, uin
 		       true;
 }
 
-uint64_t level_trim_medium_log(struct device_level *level, uint32_t tree_id, struct db_descriptor *db_desc,
-			       uint64_t txn_id)
+uint64_t level_trim_medium_log(struct device_level *level, struct db_descriptor *db_desc, uint64_t txn_id)
 {
 	uint64_t new_medium_log_head_offt = level->medium_in_place_segment_dev_offt;
 	if (false == level_is_medium_log_trimmable(level, db_desc->medium_log.head_dev_offt))
