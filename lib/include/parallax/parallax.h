@@ -152,7 +152,7 @@ void par_flush_superblock(par_handle handle);
  * @param handle: DB handle provided by par_open
  * @param level_id: The destination level_id
  * @param tree_id: the destination tree_id for the specified level_id */
-void par_init_compaction_id(par_handle handle, uint32_t level_id, uint32_t tree_id);
+uint64_t par_init_compaction_id(par_handle handle);
 
 /**
  * Deletes an existing key in the DB.

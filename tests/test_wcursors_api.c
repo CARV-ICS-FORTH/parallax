@@ -36,8 +36,9 @@ static void test_wcursors_api(par_handle handle)
 	log_info("Initialize a level write cursor for level 4");
 	uint32_t level_id = 4;
 	uint32_t tree_id = 1;
-	par_init_compaction_id(handle, level_id, tree_id);
-	struct wcursor_level_write_cursor *write_cursor = wcursor_init_write_cursor(level_id, handle, tree_id, true);
+	uint64_t txn_id = par_init_compaction_id(handle);
+	struct wcursor_level_write_cursor *write_cursor =
+		wcursor_init_write_cursor(level_id, handle, tree_id, true, txn_id);
 
 	assert(wcursor_get_number_of_rows(write_cursor) == MAX_HEIGHT);
 	assert(wcursor_get_number_of_cols(write_cursor) == 2);

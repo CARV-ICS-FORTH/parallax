@@ -221,14 +221,13 @@ uint64_t par_flush_segment_in_log(par_handle handle, char *buf, int32_t buf_size
 	return pr_add_and_flush_segment_in_log(dbhandle, buf, buf_size, IO_size, log_type, UINT64_MAX);
 }
 
-void par_init_compaction_id(par_handle handle, uint32_t level_id, uint32_t tree_id)
+uint64_t par_init_compaction_id(par_handle handle)
 {
 	db_handle *dbhandle = (db_handle *)handle;
 	/*Acquire a txn_id for the allocations of the compaction*/
 	// dbhandle->db_desc->levels[level_id].allocation_txn_id[tree_id] = rul_start_txn(dbhandle->db_desc);
 	// new staff
-	if (0 == level_id)
-		dbhandle->db_desc->L0.allocation_txn_id[tree_id] = rul_start_txn(dbhandle->db_desc);
+	return rul_start_txn(dbhandle->db_desc);
 }
 
 void par_delete(par_handle handle, struct par_key *key, const char **error_message)
