@@ -257,29 +257,31 @@ static void pr_flush_L0_to_L1(struct db_descriptor *db_desc, struct par_db_optio
 	log_debug("Head segment id %lu", head->segment_id);
 
 	uint64_t bytes_freed = 0;
+	(void)bytes_freed; //supress warning in release build
 
-	if (tail != head) {
-		struct segment_header *curr = REAL_ADDRESS(tail->prev_segment);
-		while (1) {
-			struct rul_log_entry log_entry = { .dev_offt = ABSOLUTE_ADDRESS(curr),
-							   .txn_id = txn_id,
-							   .op_type = RUL_FREE,
-							   .size = SEGMENT_SIZE };
-			log_debug("Triming L0 recovery log segment:%lu curr segment id:%lu", log_entry.dev_offt,
-				  curr->segment_id);
-			rul_add_entry_in_txn_buf(db_desc, &log_entry);
-			bytes_freed += SEGMENT_SIZE;
+	if (tail == head)
+		goto write_logs_info; /*nothing to trim*/
 
-			if (curr->segment_id == head->segment_id)
-				break;
-			curr = REAL_ADDRESS(curr->prev_segment);
-		}
+	struct segment_header *curr = REAL_ADDRESS(tail->prev_segment);
+	while (1) {
+		struct rul_log_entry log_entry = {
+			.dev_offt = ABSOLUTE_ADDRESS(curr), .txn_id = txn_id, .op_type = RUL_FREE, .size = SEGMENT_SIZE
+		};
+		log_debug("Triming L0 recovery log segment:%lu curr segment id:%lu", log_entry.dev_offt,
+			  curr->segment_id);
+		rul_add_entry_in_txn_buf(db_desc, &log_entry);
+		bytes_freed += SEGMENT_SIZE;
+
+		if (curr->segment_id == head->segment_id)
+			break;
+		curr = REAL_ADDRESS(curr->prev_segment);
 	}
 
 	log_debug("Freed a total of %lu MB bytes from trimming L0 recovery log head %lu tail %lu size %lu ***",
 		  bytes_freed / (1024 * 1024), db_desc->db_superblock->small_log_head_offt,
 		  db_desc->db_superblock->small_log_tail_offt, db_desc->db_superblock->small_log_size);
 
+write_logs_info:;
 	db_desc->small_log.head_dev_offt = db_desc->db_superblock->small_log_head_offt =
 		db_desc->db_superblock->small_log_start_segment_dev_offt;
 
