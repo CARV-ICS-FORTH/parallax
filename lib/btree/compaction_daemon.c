@@ -307,6 +307,7 @@ void compactiond_close(struct compaction_daemon *daemon)
 	free(daemon);
 }
 
+// cppcheck-suppress unusedFunction
 void compactiond_force_L0_compaction(struct compaction_daemon *daemon)
 {
 	assert(daemon);

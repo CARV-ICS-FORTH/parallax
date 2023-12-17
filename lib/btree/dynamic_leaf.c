@@ -82,8 +82,7 @@ static void dl_fill_key_from_general_splice(struct kv_splice_base *general_splic
 int32_t dl_search_get_pos(struct leaf_node *leaf, char *key, int32_t key_size, bool *exact_match)
 {
 	*exact_match = false;
-
-	if (leaf->header.num_entries == 0)
+	if (NULL == leaf || leaf->header.num_entries == 0)
 		return -1;
 
 	int32_t cmp_return_value = 0;
@@ -361,6 +360,7 @@ void dl_init_leaf_node(struct leaf_node *leaf, uint32_t leaf_size)
 	leaf->header.node_size = leaf_size;
 }
 
+// cppcheck-suppress unusedFunction
 uint32_t dl_leaf_get_node_size(struct leaf_node *leaf)
 {
 	return leaf->header.node_size;

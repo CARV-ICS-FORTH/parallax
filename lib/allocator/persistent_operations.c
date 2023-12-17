@@ -16,6 +16,7 @@
 #include "../btree/conf.h"
 #include "../btree/device_level.h"
 #include "../btree/gc.h"
+#include "../btree/key_splice.h"
 #include "../btree/kv_pairs.h"
 #include "../btree/lsn.h"
 #include "../btree/segment_allocator.h"
@@ -999,9 +1000,10 @@ uint64_t pr_add_and_flush_segment_in_log(db_handle *dbhandle, char *buf, int32_t
 
 	return next_tail_seg_offt;
 }
-
+// cppcheck-suppress unusedFunction
 void pr_append_segment_to_log(struct log_descriptor *log_desc, char *buf, uint64_t next_tail_offt)
 {
+	//Tebis uses it
 	assert(log_desc);
 	struct segment_header *next_tail_segment = (struct segment_header *)buf;
 	next_tail_segment->next_segment = NULL;
@@ -1012,9 +1014,11 @@ void pr_append_segment_to_log(struct log_descriptor *log_desc, char *buf, uint64
 	log_desc->curr_tail_id = next_tail_segment->segment_id;
 }
 
+// cppcheck-suppress unusedFunction
 void pr_flush_buffer_to_log(struct log_descriptor *log_desc, uint64_t IO_start_offt, uint32_t IO_size, char *buf,
 			    uint32_t buf_size)
 {
+	//Tebis uses it
 	assert(log_desc);
 	ssize_t total_bytes_written = 0;
 	ssize_t size = IO_size;

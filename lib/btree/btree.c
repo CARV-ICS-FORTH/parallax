@@ -1247,29 +1247,29 @@ static void bt_add_blob(struct db_descriptor *db_desc, struct log_descriptor *lo
 	log_desc->curr_tail_id = next_tail_id;
 }
 
-uint64_t allocate_segment_for_log(struct db_descriptor *db_desc, struct log_descriptor *log_desc, uint8_t level_id,
-				  uint8_t tree_id)
-{
-	if (0 != level_id) {
-		log_fatal("Level-0 use only");
-		_exit(EXIT_FAILURE);
-	}
-	assert(db_desc && log_desc);
-	struct segment_header *new_segment =
-		seg_get_raw_log_segment(db_desc, log_desc->log_type, db_desc->L0.allocation_txn_id[tree_id]);
-	if (!new_segment) {
-		log_fatal("Cannot allocate memory from the device!");
-		BUG_ON();
-	}
+// uint64_t allocate_segment_for_log(struct db_descriptor *db_desc, struct log_descriptor *log_desc, uint8_t level_id,
+// 				  uint8_t tree_id)
+// {
+// 	if (0 != level_id) {
+// 		log_fatal("Level-0 use only");
+// 		_exit(EXIT_FAILURE);
+// 	}
+// 	assert(db_desc && log_desc);
+// 	struct segment_header *new_segment =
+// 		seg_get_raw_log_segment(db_desc, log_desc->log_type, db_desc->L0.allocation_txn_id[tree_id]);
+// 	if (!new_segment) {
+// 		log_fatal("Cannot allocate memory from the device!");
+// 		BUG_ON();
+// 	}
 
-	uint64_t next_tail_seg_offt = ABSOLUTE_ADDRESS(new_segment);
+// 	uint64_t next_tail_seg_offt = ABSOLUTE_ADDRESS(new_segment);
 
-	if (!next_tail_seg_offt) {
-		log_fatal("No space for new segment");
-		BUG_ON();
-	}
-	return next_tail_seg_offt;
-}
+// 	if (!next_tail_seg_offt) {
+// 		log_fatal("No space for new segment");
+// 		BUG_ON();
+// 	}
+// 	return next_tail_seg_offt;
+// }
 
 static void *bt_append_to_log_direct_IO(struct log_operation *req, struct log_towrite *log_metadata,
 					struct metadata_tologop *data_size)
@@ -1476,21 +1476,17 @@ static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id,
 
 	// struct node_header *root = db_desc->levels[level_id].root[tree_id];
 	// new staff
-	struct node_header *root = 0 == level_id ? db_desc->L0.root[tree_id] :
-						   level_get_root(db_desc->dev_levels[level_id], tree_id);
-	if (!root) {
+	struct node_header *curr_node = 0 == level_id ? db_desc->L0.root[tree_id] :
+							level_get_root(db_desc->dev_levels[level_id], tree_id);
+	if (NULL == curr_node) {
 		get_op->found = 0;
 		return;
 	}
 
 	lock_table *prev_lock = NULL;
 	lock_table *curr_lock = NULL;
-	struct node_header *curr_node = root;
 
-	while (curr_node) {
-		if (curr_node->type == leafNode || curr_node->type == leafRootNode)
-			break;
-
+	while (curr_node->type != leafNode && curr_node->type != leafRootNode) {
 		//No locking needed for the device levels >= 1
 		curr_lock = bt_reader_visit_node(db_desc, curr_node, prev_lock, level_id);
 		// if (0 == level_id) {
@@ -2130,16 +2126,16 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 	return PAR_SUCCESS;
 }
 
-struct log_descriptor *db_desc_get_log_desc(struct db_descriptor *db_desc, enum log_type type)
-{
-	assert(db_desc);
-	if (type == SMALL_LOG)
-		return &db_desc->small_log;
-	if (type == MEDIUM_LOG)
-		return &db_desc->medium_log;
-	if (type == BIG_LOG)
-		return &db_desc->big_log;
+// struct log_descriptor *db_desc_get_log_desc(struct db_descriptor *db_desc, enum log_type type)
+// {
+// 	assert(db_desc);
+// 	if (type == SMALL_LOG)
+// 		return &db_desc->small_log;
+// 	if (type == MEDIUM_LOG)
+// 		return &db_desc->medium_log;
+// 	if (type == BIG_LOG)
+// 		return &db_desc->big_log;
 
-	log_fatal("Corrupted log type");
-	_exit(EXIT_FAILURE);
-}
+// 	log_fatal("Corrupted log type");
+// 	_exit(EXIT_FAILURE);
+// }

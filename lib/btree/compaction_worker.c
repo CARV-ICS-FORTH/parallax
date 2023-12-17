@@ -25,6 +25,7 @@
 #include "../utilities/dups_list.h"
 #include "../utilities/spin_loop.h"
 #include "btree.h"
+#include "btree_node.h"
 #include "compaction_daemon.h"
 #include "conf.h"
 #include "device_level.h"
@@ -114,6 +115,7 @@ uint8_t compaction_get_src_tree(struct compaction_request *comp_req)
 	return comp_req->src_tree;
 }
 
+// cppcheck-suppress unusedFunction
 void compaction_destroy_req(struct compaction_request *comp_req)
 {
 	assert(comp_req);

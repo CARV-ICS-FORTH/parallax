@@ -14,6 +14,7 @@
 #include "level_write_cursor.h"
 #include "../allocator/volume_manager.h"
 #include "../common/common.h"
+#include "../parallax_callbacks/parallax_callbacks.h"
 #include "btree.h"
 #include "btree_node.h"
 #include "conf.h"
@@ -839,6 +840,7 @@ wcursor_segment_buffers_iterator_t wcursor_segment_buffers_cursor_init(struct wc
 	return new_cursor;
 }
 
+// cppcheck-suppress unusedFunction
 char *wcursor_segment_buffers_cursor_get_offt(wcursor_segment_buffers_iterator_t segment_buffers_cursor)
 {
 	struct wcursor_segment_buffers_iterator *cursor =
@@ -876,12 +878,14 @@ int wcursor_get_fd(struct wcursor_level_write_cursor *w_cursor)
 	return w_cursor->fd;
 }
 
+// cppcheck-suppress unusedFunction
 char *wcursor_get_cursor_buffer(struct wcursor_level_write_cursor *w_cursor, uint32_t row_id, uint32_t col_id)
 {
 	assert(w_cursor);
 	return (char *)&w_cursor->segment_buffer[row_id * w_cursor->num_columns + col_id];
 }
 
+// cppcheck-suppress unusedFunction
 uint32_t wcursor_get_segment_buffer_size(struct wcursor_level_write_cursor *w_cursor)
 {
 	assert(w_cursor);
@@ -906,6 +910,7 @@ uint32_t wcursor_get_compaction_index_entry_size(struct wcursor_level_write_curs
 	return sizeof(w_cursor->segment_buffer->buffer);
 }
 
+// cppcheck-suppress unusedFunction
 uint32_t wcursor_segment_buffer_status_size(struct wcursor_level_write_cursor *w_cursor)
 {
 	assert(w_cursor);
@@ -916,6 +921,7 @@ uint32_t wcursor_segment_buffer_status_size(struct wcursor_level_write_cursor *w
 #endif
 }
 
+// cppcheck-suppress unusedFunction
 volatile char *wcursor_segment_buffer_get_status_addr(struct wcursor_level_write_cursor *w_cursor, uint32_t height,
 						      uint32_t clock_id, uint32_t replica_id)
 {

@@ -120,6 +120,7 @@ inline struct node_header *level_get_root(struct device_level *level, uint32_t t
 	return level->root[tree_id];
 }
 
+// cppcheck-suppress unusedFunction
 inline uint64_t level_get_root_dev_offt(struct device_level *level, uint32_t tree_id)
 {
 	struct node_header *root = level_get_root(level, tree_id);
@@ -131,6 +132,7 @@ inline struct segment_header *level_get_index_first_seg(struct device_level *lev
 	return level->first_segment[tree_id];
 }
 
+// cppcheck-suppress unusedFunction
 inline uint64_t level_get_index_first_seg_offt(struct device_level *level, uint32_t tree_id)
 {
 	struct segment_header *first = level_get_index_first_seg(level, tree_id);
@@ -142,6 +144,7 @@ inline struct segment_header *level_get_index_last_seg(struct device_level *leve
 	return level->last_segment[tree_id];
 }
 
+// cppcheck-suppress unusedFunction
 inline uint64_t level_get_index_last_seg_offt(struct device_level *level, uint32_t tree_id)
 {
 	struct segment_header *last = level_get_index_last_seg(level, tree_id);

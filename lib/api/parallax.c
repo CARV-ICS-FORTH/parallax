@@ -59,6 +59,7 @@ const char *par_close(par_handle handle)
 	return db_close((db_handle *)handle);
 }
 
+// cppcheck-suppress unusedFunction
 char *par_get_db_name(par_handle handle, const char **error_message)
 {
 	if (!handle) {
@@ -475,6 +476,7 @@ struct par_options_desc *par_get_default_options(void)
 	return default_db_options;
 }
 
+// cppcheck-suppress unusedFunction
 void par_flush_superblock(par_handle handle)
 {
 	struct db_handle *dbhandle = (struct db_handle *)handle;

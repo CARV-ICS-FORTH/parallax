@@ -172,6 +172,7 @@ uint64_t kv_sep2_get_value_offt(struct kv_seperation_splice2 *kv_sep2)
 	return kv_sep2->value_offt;
 }
 
+// cppcheck-suppress unusedFunction
 void kv_sep2_set_value_offt(struct kv_seperation_splice2 *kv_sep2, uint64_t value_offt)
 {
 	kv_sep2->value_offt = value_offt;
@@ -298,6 +299,7 @@ int32_t kv_splice_base_calculate_size(struct kv_splice_base *splice)
 						     kv_sep2_get_total_size(splice->kv_sep2);
 }
 
+// cppcheck-suppress unusedFunction
 char *kv_splice_base_get_reference(struct kv_splice_base *splice)
 {
 	return (kv_splice_base_is_kv_format(splice)) ? (char *)splice->kv_splice : (char *)splice->kv_sep2;

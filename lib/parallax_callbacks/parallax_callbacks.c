@@ -20,6 +20,7 @@ struct parallax_callbacks {
 	void *context;
 };
 
+// cppcheck-suppress unusedFunction
 void parallax_init_callbacks(par_handle dbhandle, struct parallax_callback_funcs *parallax_callbacks, void *context)
 {
 	struct db_handle *handle = (struct db_handle *)dbhandle;

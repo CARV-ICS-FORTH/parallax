@@ -256,8 +256,9 @@ struct log_operation {
 	bool is_medium_log_append;
 };
 
-uint64_t allocate_segment_for_log(struct db_descriptor *db_desc, struct log_descriptor *log_desc, uint8_t level_id,
-				  uint8_t tree_id);
+// uint64_t allocate_segment_for_log(struct db_descriptor *db_desc, struct log_descriptor *log_desc, uint8_t level_id,
+// 				  uint8_t tree_id);
+//new staff obsolete after the introduction of device level object
 
 /**
  * Returns the category of the KV based on its key-value size and the operation to perform.
