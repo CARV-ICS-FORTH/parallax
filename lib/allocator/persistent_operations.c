@@ -29,13 +29,15 @@
 #include "volume_manager.h"
 #include <assert.h>
 #include <log.h>
+#include <pthread.h>
 #include <spin_loop.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
+
+struct device_level;
 
 // IWYU pragma: no_forward_declare node_header
 // IWYU pragma: no_forward_declare pbf_desc
@@ -355,11 +357,11 @@ static void pr_flush_Lmax_to_Ln(struct db_descriptor *db_desc, uint8_t level_id,
 	rul_apply_txn_buf_freeops_and_destroy(db_desc, txn_id);
 }
 
-void pr_flush_compaction(struct db_descriptor *db_desc, struct par_db_options *dboptions, uint8_t level_id,
+void pr_flush_compaction(struct db_descriptor *db_desc, struct par_db_options *db_options, uint8_t level_id,
 			 uint8_t tree_id, uint64_t txn_id)
 {
 	if (level_id == 1) {
-		pr_flush_L0_to_L1(db_desc, dboptions, level_id, tree_id, txn_id);
+		pr_flush_L0_to_L1(db_desc, db_options, level_id, tree_id, txn_id);
 		return;
 	}
 
@@ -464,7 +466,8 @@ void pr_flush_log_tail(struct db_descriptor *db_desc, struct log_descriptor *log
 	uint64_t start_offt = chunk_id * LOG_CHUNK_SIZE;
 
 	//uint64_t end_offt = start_offt + LOG_CHUNK_SIZE;
-	uint64_t bytes_to_write = (log_desc->size % LOG_CHUNK_SIZE ? log_desc->size % LOG_CHUNK_SIZE : LOG_CHUNK_SIZE);
+	uint64_t bytes_to_write =
+		(log_desc->size % LOG_CHUNK_SIZE ? (log_desc->size % LOG_CHUNK_SIZE) : LOG_CHUNK_SIZE);
 
 	bytes_to_write = ALIGN_UP(bytes_to_write, 512);
 
@@ -994,6 +997,7 @@ uint64_t pr_add_and_flush_segment_in_log(db_handle *dbhandle, char *buf, int32_t
 	in_mem_segment_buf->prev_segment = (void *)log_desc.tail_dev_offt;
 	log_desc.tail_dev_offt = next_tail_seg_offt;
 	/*position to the end of the new log*/
+	// cppcheck-suppress unreadVariable
 	log_desc.size += buf_size;
 
 	flush_segment_in_log(dbhandle->db_desc->db_volume->vol_fd, log_desc.tail_dev_offt, buf, IO_size);

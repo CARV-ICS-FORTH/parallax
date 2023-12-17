@@ -464,6 +464,7 @@ void index_split_node(struct index_node_split_request *request, struct index_nod
 // cppcheck-suppress unusedFunction
 void index_node_print(struct index_node *node)
 {
+	(void)node;
 	log_info("Node num entries %u fragmentation: %d height: %d", node->header.num_entries,
 		 node->header.fragmentation, node->header.height);
 }

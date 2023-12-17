@@ -45,7 +45,7 @@
 #include <uthash.h>
 // IWYU pragma: no_forward_declare pbf_desc
 // IWYU pragma: no_forward_declare wcursor_level_write_cursor
-
+struct device_level;
 struct compaction_request {
 	db_descriptor *db_desc;
 	par_db_options *db_options;

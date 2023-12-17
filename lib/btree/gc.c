@@ -62,12 +62,10 @@ void push_stack(stack *marks, void *addr)
 
 void move_kv_pairs_to_new_segment(struct db_handle handle, stack *marks)
 {
-	bt_insert_req ins_req;
-	char *kv_address;
-	int i;
+	bt_insert_req ins_req = { 0 };
 
-	for (i = 0; i < marks->size; ++i, ++handle.db_desc->gc_keys_transferred) {
-		kv_address = marks->valid_pairs[i];
+	for (int i = 0; i < marks->size; ++i, ++handle.db_desc->gc_keys_transferred) {
+		char *kv_address = marks->valid_pairs[i];
 		// struct splice *key = (struct splice *)kv_address;
 		// struct splice *value = (struct splice *)(kv_address +
 		// VALUE_SIZE_OFFSET(key->size));

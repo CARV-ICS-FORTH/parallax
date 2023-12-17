@@ -14,7 +14,6 @@
 #include "level_write_cursor.h"
 #include "../allocator/volume_manager.h"
 #include "../common/common.h"
-#include "../parallax_callbacks/parallax_callbacks.h"
 #include "btree.h"
 #include "btree_node.h"
 #include "conf.h"
@@ -33,6 +32,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+
+struct device_level;
 #define WCURSOR_MAGIC_SMALL_KV_SIZE (33)
 // IWYU pragma: no_forward_declare pbf_desc
 // IWYU pragma: no_forward_declare index_node
@@ -127,7 +128,7 @@ void wcursor_spin_for_buffer_status(struct wcursor_level_write_cursor *wcursor)
 	struct wcursor_seg_buf *active_seg_buf = wcursor_get_buf_with_coordinates(
 		wcursor, wcursor->last_flush_request_height, wcursor->last_flush_request_clock);
 	for (uint32_t i = 0; i < wcursor->number_of_replicas; ++i) {
-		volatile uint64_t *backup_status = (volatile uint64_t *)active_seg_buf->status[i];
+		volatile const uint64_t *backup_status = (volatile uint64_t *)active_seg_buf->status[i];
 		while (*backup_status != WCURSOR_STATUS_OK) { /*spin*/
 			;
 		}
@@ -317,7 +318,7 @@ retry:
 	assert(w_cursor->segment_offt[height] != 0);
 
 	uint32_t remaining_space = w_cursor->segment_offt[height] % SEGMENT_SIZE ?
-					   SEGMENT_SIZE - (w_cursor->segment_offt[height] % SEGMENT_SIZE) :
+					   (SEGMENT_SIZE - (w_cursor->segment_offt[height] % SEGMENT_SIZE)) :
 					   0;
 	if (remaining_space >= size) {
 		char *item = wcursor_get_current_node(w_cursor, height, w_cursor->segment_offt[height] % SEGMENT_SIZE);

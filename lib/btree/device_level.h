@@ -29,7 +29,7 @@ struct device_level *level_create_fresh(uint32_t level_id, uint32_t l0_size, uin
  * XXXTODOXXX This function could instead be a deserialize function from a buffer
  */
 struct device_level *level_restore_from_device(uint32_t level_id, struct pr_db_superblock *superblock,
-					       uint32_t num_trees, struct db_handle *db_handle, uint64_t l0_size,
+					       uint32_t num_trees, struct db_handle *database, uint64_t l0_size,
 					       uint32_t growth_factor);
 
 /**

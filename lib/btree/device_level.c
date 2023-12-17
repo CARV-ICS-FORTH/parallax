@@ -22,6 +22,7 @@ extern const uint32_t *const size_per_height;
 
 struct level_lock {
 	pthread_rwlock_t rx_lock;
+	// cppcheck-suppress unusedStructMember
 	char pad[8];
 };
 

@@ -22,11 +22,11 @@ struct wcursor_level_write_cursor *wcursor_init_write_cursor(uint8_t level_id, s
 
 /**
  * @brief Appends a new KV pair into the level.
- * @param cursor pointer to the write cursor
+ * @param w_cursor pointer to the write cursor
  * @param kv_pair the kv_pair to insert in the level.
  * @returns true if success otherwise false on failure.
  */
-bool wcursor_append_KV_pair(struct wcursor_level_write_cursor *cursor, struct kv_splice_base *splice);
+bool wcursor_append_KV_pair(struct wcursor_level_write_cursor *w_cursor, struct kv_splice_base *splice);
 
 /**
  * @brief Flushes any in memory state of the cursor to the device.

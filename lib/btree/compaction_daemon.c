@@ -33,7 +33,8 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-
+struct device_level;
+struct node_header;
 // IWYU pragma: no_forward_declare index_node
 
 struct compaction_daemon {

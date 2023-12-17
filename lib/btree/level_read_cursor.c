@@ -14,6 +14,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+
+struct device_level;
+
 struct rcursor_device_cursor {
 	char segment_buf[SEGMENT_SIZE];
 	uint64_t device_offt;
