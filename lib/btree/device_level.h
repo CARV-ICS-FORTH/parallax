@@ -113,24 +113,83 @@ uint64_t level_get_offset(struct device_level *level, uint32_t tree_id);
   */
 uint64_t level_get_size(struct device_level *level, uint32_t tree_id);
 
+/**
+ * @brief Returns the bloom filter for this level
+ * @param level pointer to the level object
+ * @param tree_id tree_id (out of the NUM_TREES_PER_LEVEL)
+ * @return pointer to the bloom filter or NULL on failure
+ */
 struct pbf_desc *level_get_bloom(struct device_level *level, uint32_t tree_id);
 
+/**
+ * @brief Trims medium log
+ * @param level pointer to the level object
+ * @param db_desc pointer to the db object
+ * @param txn_id Txn id associated with the free and allocate space operations
+ * @return Number of bytes freed
+ */
 uint64_t level_trim_medium_log(struct device_level *level, struct db_descriptor *db_desc, uint64_t txn_id);
 
+/**
+ * @brief function to ensure exclusive access in a level
+ * @param level pointer to the level object
+ * @param Returns UINT8_MAX on success
+ */
 uint8_t level_enter_as_writer(struct device_level *level);
+
+/**
+ * @brief Function to release the lock of the device level
+ * @param level pointer to the level object
+ */
 void level_leave_as_writer(struct device_level *level);
+
+/**
+ * @brief Ensure only readers are at the level
+ * @param level pointer to the level object
+ * @return ticket id
+ */
 uint8_t level_enter_as_reader(struct device_level *level);
+
+/**
+ * @brief Let level available for exclusive access if needed
+ * @param level pointer to the level object
+ * @param ticket_id ticket obtain from call to level_enter_as_reader
+ * @return UINT8_MAX on success
+ */
 uint8_t level_leave_as_reader(struct device_level *level, uint8_t ticket_id);
 
+/**
+ * @brief Set the state of this level as compaction in progress
+ * @param level pointer to the level object
+ */
 void level_set_comp_in_progress(struct device_level *level);
+
+/**
+ * @brief Sets the state of this level as not compacting
+ * @level pointer to the level object
+ * @return true on SUCCESS false on FAILURE
+ */
 bool level_set_compaction_done(struct device_level *level);
 
+/**
+ * @brief Returns if this level is currently compacting
+ * or not.
+ * @param level pointer to the level object
+ * @return true if it is compacting otherwise false
+ */
 bool level_is_compacting(struct device_level *level);
 
+/**
+ * @brief Releases only the memory of the level object
+ * (not its data)
+ * @param level pointer to the level object
+ */
 void level_destroy(struct device_level *level);
 
 /**
  * @brief Checks the bloom filter of the level if the key is present
+ * @param level pointer to the level object
+ *
  */
 bool level_does_key_exist(struct device_level *level, struct key_splice *key_splice);
 
@@ -155,9 +214,18 @@ bool level_set_medium_in_place_seg_offt(struct device_level *level, uint64_t seg
 
 /**
  * @brief Zero out an entire level
+ * @param pointer to the level object
+ * @param tree_id id of the tree (out of the NUM_TREES_PER_LEVEL)
+ * @return TRUE on success
 */
 bool level_zero(struct device_level *level, uint32_t tree_id);
 
+/**
+ * @brief Sets the root of the level
+ * @param level pointer to the level object
+ * @tree_id id of tree out of the NUM_TREES_PER_LEVEL
+ * @node pointer to the new root of the level
+ */
 bool level_set_root(struct device_level *level, uint32_t tree_id, struct node_header *node);
 
 bool level_swap(struct device_level *level_dst, uint32_t tree_dst, struct device_level *level_src, uint32_t tree_src);
@@ -173,5 +241,12 @@ bool level_increase_size(struct device_level *level, uint32_t size, uint32_t tre
 int64_t level_inc_num_keys(struct device_level *level, uint32_t tree_id, uint32_t num_keys);
 struct segment_header *level_allocate_segment(struct device_level *level, uint8_t tree_id,
 					      struct db_descriptor *db_desc, uint64_t txn_id);
+
+/**
+* @brief Frees all the index segments of the level
+  * @param level pointer to the level object
+  * @param tree_id out of the NUM_TREES_PER_LEVEL
+  * @param db_desc pointer to the db the level belongs
+  */
 uint64_t level_free_space(struct device_level *level, uint32_t tree_id, struct db_descriptor *db_desc, uint64_t txn_id);
 #endif
