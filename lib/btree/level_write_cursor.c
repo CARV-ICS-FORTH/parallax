@@ -263,10 +263,6 @@ static void wcursor_write_index_segment(struct wcursor_level_write_cursor *w_cur
 	if (w_cursor->spin_for_replies)
 		wcursor_spin_for_buffer_status(w_cursor);
 #endif
-	//Caution this is the device offset where we will write the next segment in the next iteration of the process
-	// struct segment_header *new_device_segment =
-	// 	get_segment_for_lsm_level_IO(w_cursor->handle->db_desc, w_cursor->level_id, 1);
-	// 	new staff
 	struct segment_header *new_device_segment =
 		level_allocate_segment(w_cursor->handle->db_desc->dev_levels[w_cursor->level_id], 1,
 				       w_cursor->handle->db_desc, w_cursor->txn_id);
@@ -341,20 +337,16 @@ static int64_t wcursor_calculate_level_keys(struct db_descriptor *db_desc, uint8
 {
 	assert(level_id > 0);
 	uint8_t tree_id = 0; /*Always caclulate the immutable aka 0 tree of the level*/
-	// int32_t total_keys = db_desc->levels[level_id].num_level_keys[tree_id];
-	// new staff
 	int64_t total_keys = level_get_num_KV_pairs(db_desc->dev_levels[level_id], tree_id);
 
-	if (0 == total_keys && 1 == level_id)
-		// total_keys = db_desc->levels[0].max_level_size / WCURSOR_MAGIC_SMALL_KV_SIZE;
-		// new staff
+	if (0 == total_keys && 1 == level_id) {
 		total_keys = db_desc->L0.max_level_size / WCURSOR_MAGIC_SMALL_KV_SIZE;
+	}
 
 	if (level_id > 1) {
-		// total_keys += db_desc->levels[level_id - 1].num_level_keys[tree_id];
-		//new staff
 		total_keys += level_get_num_KV_pairs(db_desc->dev_levels[level_id - 1], tree_id);
 	}
+	assert(total_keys);
 	// log_debug("Total keys of level %u are %d", level_id, total_keys);
 	return total_keys;
 }
@@ -377,8 +369,6 @@ struct wcursor_level_write_cursor *wcursor_init_write_cursor(uint8_t level_id, s
 	w_cursor->fd = handle->db_desc->db_volume->vol_fd;
 	w_cursor->handle = handle;
 
-	// assert(0 == handle->db_desc->levels[w_cursor->level_id].offset[w_cursor->tree_id]);
-	// new staff
 	assert(0 == level_get_offset(handle->db_desc->dev_levels[w_cursor->level_id], w_cursor->tree_id));
 #if TEBIS_FORMAT
 	w_cursor->number_of_replicas = w_cursor->handle->db_options.options[NUMBER_OF_REPLICAS].value;
@@ -404,27 +394,16 @@ struct wcursor_level_write_cursor *wcursor_init_write_cursor(uint8_t level_id, s
 			ABSOLUTE_ADDRESS(segment);
 		assert(w_cursor->last_segment_btree_level_offt[height]);
 		w_cursor->last_node[height] = (struct node_header *)wcursor_get_space(
-			w_cursor, height,
-			// height == 0 ? w_cursor->handle->db_desc->levels[w_cursor->level_id].leaf_size :
-			// 		    index_node_get_size());
-			// 		    new staff
-			height == 0 ? LEAF_NODE_SIZE : index_node_get_size());
+			w_cursor, height, height == 0 ? LEAF_NODE_SIZE : index_node_get_size());
 
 		if (0 == height) {
-			dl_init_leaf_node((struct leaf_node *)w_cursor->last_node[height],
-					  // handle->db_desc->levels[level_id].leaf_size);
-					  // new staff
-					  LEAF_NODE_SIZE);
+			dl_init_leaf_node((struct leaf_node *)w_cursor->last_node[height], LEAF_NODE_SIZE);
 			continue;
 		}
 		index_set_height((struct index_node *)w_cursor->last_node[height], height);
 		index_init_node(DO_NOT_ADD_GUARD, (struct index_node *)w_cursor->last_node[height], internalNode);
 	}
 
-	// handle->db_desc->levels[w_cursor->level_id].bloom_desc[w_cursor->tree_id] =
-	// 	pbf_create(handle, w_cursor->level_id,
-	// 		   wcursor_calculate_level_keys(handle->db_desc, w_cursor->level_id), w_cursor->tree_id);
-	// new staff
 	level_create_bf(handle->db_desc->dev_levels[w_cursor->level_id], tree_id,
 			wcursor_calculate_level_keys(handle->db_desc, w_cursor->level_id), handle);
 
@@ -502,9 +481,6 @@ static void wcursor_stich_level(struct wcursor_level_write_cursor *w_cursor, int
 				struct segment_header *segment)
 {
 	if (MAX_HEIGHT - 1 == height) {
-		// w_cursor->handle->db_desc->levels[w_cursor->level_id].last_segment[1] =
-		// 	REAL_ADDRESS(w_cursor->last_segment_btree_level_offt[height]);
-		// 	new staff
 		level_set_index_last_seg(w_cursor->handle->db_desc->dev_levels[w_cursor->level_id],
 					 REAL_ADDRESS(w_cursor->last_segment_btree_level_offt[height]), 1);
 		assert(w_cursor->last_segment_btree_level_offt[height]);
@@ -577,12 +553,6 @@ void wcursor_flush_write_cursor(struct wcursor_level_write_cursor *w_cursor)
 #endif
 	}
 
-	// if (!pbf_persist_bloom_filter(
-	// 	    w_cursor->handle->db_desc->levels[w_cursor->level_id].bloom_desc[w_cursor->tree_id])) {
-	// 	log_fatal("Failed to write bloom filter");
-	// 	_exit(EXIT_FAILURE);
-	// }
-	//new staff
 	level_persist_bf(w_cursor->handle->db_desc->dev_levels[w_cursor->level_id], w_cursor->tree_id);
 
 #if 0
@@ -777,25 +747,11 @@ bool wcursor_append_KV_pair(struct wcursor_level_write_cursor *w_cursor, struct 
 		_exit(EXIT_FAILURE);
 	}
 
-	// w_cursor->handle->db_desc->levels[w_cursor->level_id].level_size[1] += kv_splice_base_get_size(&new_splice);
-	// new staff
 	level_increase_size(w_cursor->handle->db_desc->dev_levels[w_cursor->level_id],
 			    kv_splice_base_get_size(&new_splice), 1);
-	// int bloom_stat =
-	// 	pbf_bloom_add(w_cursor->handle->db_desc->levels[w_cursor->level_id].bloom_desc[w_cursor->tree_id],
-	// 		      kv_splice_base_get_key_buf(&new_splice), kv_splice_base_get_key_size(&new_splice));
-
-	// if (0 == bloom_stat) {
-	// 	log_fatal(
-	// 		"Either collision in bloom filter (should not happen all keys in a compaction are unique) or general failure");
-	// 	_exit(EXIT_FAILURE);
-	// }
-	// new staff
 	level_add_key_to_bf(w_cursor->handle->db_desc->dev_levels[w_cursor->level_id], w_cursor->tree_id,
 			    kv_splice_base_get_key_buf(&new_splice), kv_splice_base_get_key_size(&new_splice));
 
-	// ++w_cursor->handle->db_desc->levels[w_cursor->level_id].num_level_keys[w_cursor->tree_id];
-	// new staff
 	level_inc_num_keys(w_cursor->handle->db_desc->dev_levels[w_cursor->level_id], w_cursor->tree_id, 1);
 
 	if (!new_leaf)

@@ -226,8 +226,6 @@ uint64_t par_init_compaction_id(par_handle handle)
 {
 	db_handle *dbhandle = (db_handle *)handle;
 	/*Acquire a txn_id for the allocations of the compaction*/
-	// dbhandle->db_desc->levels[level_id].allocation_txn_id[tree_id] = rul_start_txn(dbhandle->db_desc);
-	// new staff
 	return rul_start_txn(dbhandle->db_desc);
 }
 
@@ -391,13 +389,6 @@ struct par_value par_get_value(par_scanner sc)
 par_ret_code par_sync(par_handle handle)
 {
 	struct db_handle *parallax = (struct db_handle *)handle;
-	// RWLOCK_WRLOCK(&parallax->db_desc->levels[0].guard_of_level.rx_lock);
-	// spin_loop(&(parallax->db_desc->levels[0].active_operations), 0);
-	// uint8_t active_tree = parallax->db_desc->levels[0].active_tree;
-	// pr_flush_L0(parallax->db_desc, active_tree);
-	// parallax->db_desc->levels[0].allocation_txn_id[active_tree] = rul_start_txn(parallax->db_desc);
-	// RWLOCK_UNLOCK(&parallax->db_desc->levels[0].guard_of_level.rx_lock);
-	// new staff
 	RWLOCK_WRLOCK(&parallax->db_desc->L0.guard_of_level.rx_lock);
 	spin_loop(&(parallax->db_desc->L0.active_operations), 0);
 	uint8_t active_tree = parallax->db_desc->L0.active_tree;

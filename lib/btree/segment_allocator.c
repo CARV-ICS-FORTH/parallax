@@ -95,14 +95,11 @@ static void set_link_segments_metadata(struct link_segments_metadata *req, segme
 
 static void *get_space(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id, uint32_t size)
 {
-	//new staff
 	if (0 != level_id) {
 		log_fatal("Allocations only for Level-0");
 		_exit(EXIT_FAILURE);
 	}
 
-	// struct level_descriptor *level_desc = &db_desc->levels[level_id];
-	// new staff
 	struct level_descriptor *level_desc = &db_desc->L0;
 
 	struct link_segments_metadata req = { .level_desc = level_desc, .tree_id = tree_id };
@@ -202,8 +199,6 @@ void seg_free_index_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_
 
 struct leaf_node *seg_get_leaf_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
 {
-	// struct level_descriptor *level_desc = &db_desc->levels[level_id];
-	// new staff
 	struct level_descriptor *level0 = &db_desc->L0;
 
 	struct leaf_node *leaf = (struct leaf_node *)get_space(db_desc, level_id, tree_id, level0->leaf_size);
@@ -212,8 +207,6 @@ struct leaf_node *seg_get_leaf_node(struct db_descriptor *db_desc, uint8_t level
 
 struct leaf_node *seg_get_dynamic_leaf_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
 {
-	// struct level_descriptor *level_desc = &db_desc->levels[level_id];
-	//new staff
 	struct level_descriptor *level0 = &db_desc->L0;
 	return get_space(db_desc, level_id, tree_id, level0->leaf_size);
 }
@@ -235,8 +228,6 @@ segment_header *seg_get_raw_log_segment(struct db_descriptor *db_desc, enum log_
 		log_fatal("Unknown log type");
 		BUG_ON();
 	}
-	//new staff
-	//txn_id is passed
 
 	struct rul_log_entry log_entry = { .dev_offt = mem_allocate(db_desc->db_volume, SEGMENT_SIZE),
 					   .txn_id = txn_id,
@@ -247,12 +238,8 @@ segment_header *seg_get_raw_log_segment(struct db_descriptor *db_desc, enum log_
 	return segment;
 }
 
-// uint64_t seg_free_L0(struct db_descriptor *db_desc, uint64_t txn_id, uint8_t level_id, uint8_t tree_id)
-// new staff
 uint64_t seg_free_L0(struct db_descriptor *db_desc, uint8_t tree_id)
 {
-	// struct segment_header *curr_segment = db_desc->levels[level_id].first_segment[tree_id];
-	// new staff
 	struct segment_header *curr_segment = db_desc->L0.first_segment[tree_id];
 	if (!curr_segment) {
 		log_debug("Level [%u][%u] is free nothing to do", 0, tree_id);
@@ -260,19 +247,6 @@ uint64_t seg_free_L0(struct db_descriptor *db_desc, uint8_t tree_id)
 	}
 
 	uint64_t space_freed = 0;
-
-	// while (level_id && curr_segment) {
-	// 	seg_free_segment(db_desc, txn_id, ABSOLUTE_ADDRESS(curr_segment));
-	// 	space_freed += SEGMENT_SIZE;
-	// 	curr_segment = NULL == curr_segment->next_segment ? NULL : REAL_ADDRESS(curr_segment->next_segment);
-	// }
-
-	// if (level_id) {
-	// 	log_debug("Freed device level %u for db %s", level_id, db_desc->db_superblock->db_name);
-	// 	//assert(space_freed == db_desc->levels[level_id].offset[0]);
-	// 	return space_freed;
-	// }
-	// new staff ommits the previous block
 
 	while (curr_segment) {
 		struct segment_header *stale_seg = curr_segment;
@@ -282,10 +256,6 @@ uint64_t seg_free_L0(struct db_descriptor *db_desc, uint8_t tree_id)
 	}
 
 	log_debug("Freed in-memory L0 level [%u][%u] for db %s", 0, tree_id, db_desc->db_superblock->db_name);
-	// assert(space_freed == db_desc->levels[level_id].offset[tree_id] % SEGMENT_SIZE ?
-	// 	       db_desc->levels[level_id].offset[tree_id] :
-	// 	       db_desc->levels[level_id].offset[tree_id] / SEGMENT_SIZE + SEGMENT_SIZE);
-	//new staff
 	assert(space_freed == db_desc->L0.offset[tree_id] % SEGMENT_SIZE ?
 		       db_desc->L0.offset[tree_id] :
 		       db_desc->L0.offset[tree_id] / SEGMENT_SIZE + SEGMENT_SIZE);

@@ -61,9 +61,6 @@ struct compaction_daemon *compactiond_create(struct db_handle *handle, bool do_n
 static struct compaction_request *compactiond_compact_L0(struct compaction_daemon *daemon, uint8_t L0_tree_id,
 							 uint8_t L1_tree_id)
 {
-	// struct level_descriptor *level_0 = &daemon->db_handle->db_desc->levels[0];
-	// struct level_descriptor *level_1 = &daemon->db_handle->db_desc->levels[1];
-	// new staff
 	struct level_descriptor *level_0 = &daemon->db_handle->db_desc->L0;
 	struct device_level *level_1 = daemon->db_handle->db_desc->dev_levels[1];
 
@@ -73,15 +70,9 @@ static struct compaction_request *compactiond_compact_L0(struct compaction_daemo
 	if (level_0->level_size[L0_tree_id] < level_0->max_level_size)
 		return NULL;
 
-	// if (level_1->tree_status[L1_tree_id] != BT_NO_COMPACTION)
-	// 	return NULL;
-	// 	new staff
 	if (level_is_compacting(daemon->db_handle->db_desc->dev_levels[1]))
 		return NULL;
 
-	// if (level_1->level_size[L1_tree_id] >= level_1->max_level_size)
-	// 	return NULL;
-	// 	new staff
 	if (level_has_overflow(level_1, L1_tree_id))
 		return NULL;
 
@@ -185,8 +176,6 @@ static void *compactiond_run(void *args)
 			log_debug("Flushing L0 for region:%s tree:[0][%u]", db_desc->db_superblock->db_name,
 				  compaction_get_src_tree(comp_req));
 			pr_flush_L0(db_desc, compaction_get_src_tree(comp_req));
-			// db_desc->levels[1].allocation_txn_id[1] = rul_start_txn(db_desc);
-			// new staff
 			compaction_set_dst_tree(comp_req, 1);
 			assert(db_desc->L0.root[compaction_get_src_tree(comp_req)] != NULL);
 
@@ -210,34 +199,6 @@ static void *compactiond_run(void *args)
 
 		// rest of levels
 		for (uint8_t level_id = 1; level_id < MAX_LEVELS - 1; ++level_id) {
-			// if (src_level->tree_status[tree_1] == BT_NO_COMPACTION &&
-			//     src_level->level_size[tree_1] >= src_level->max_level_size) {
-			// 	uint8_t tree_2 = 0;
-
-			// 	if (dst_level->tree_status[tree_2] == BT_NO_COMPACTION &&
-			// 	    dst_level->level_size[tree_2] < dst_level->max_level_size) {
-			// 		bt_set_db_status(db_desc, BT_COMPACTION_IN_PROGRESS, level_id, tree_1);
-			// 		bt_set_db_status(db_desc, BT_COMPACTION_IN_PROGRESS, level_id + 1, tree_2);
-			// 		struct compaction_request *comp_req_p =
-			// 			compaction_create_req(db_desc, &handle->db_options, UINT64_MAX,
-			// 					      UINT64_MAX, level_id, tree_1, level_id + 1, 1);
-
-			// 		/*Acquire a txn_id for the allocations of the compaction*/
-			// 		db_desc->levels[compaction_get_dst_level(comp_req_p)]
-			// 			.allocation_txn_id[compaction_get_dst_tree(comp_req_p)] =
-			// 			rul_start_txn(db_desc);
-
-			// 		assert(db_desc->levels[level_id].root[0] != NULL);
-			// 		if (pthread_create(
-			// 			    &db_desc->levels[compaction_get_dst_level(comp_req_p)]
-			// 				     .compaction_thread[compaction_get_dst_tree(comp_req_p)],
-			// 			    NULL, compaction, comp_req_p) != 0) {
-			// 			log_fatal("Failed to start compaction");
-			// 			BUG_ON();
-			// 		}
-			// 	}
-			// }
-			// new staff
 			struct device_level *src_level = db_desc->dev_levels[level_id];
 			struct device_level *dst_level = db_desc->dev_levels[level_id + 1];
 			if (false == level_has_overflow(src_level, 0))

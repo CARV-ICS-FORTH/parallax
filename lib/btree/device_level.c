@@ -236,7 +236,7 @@ uint8_t level_enter_as_writer(struct device_level *level)
 
 void level_leave_as_writer(struct device_level *level)
 {
-	for (uint8_t ticket_id = 0; ticket_id < LEVEL_ENTRY_POINTS; ticket_id++) 
+	for (uint8_t ticket_id = 0; ticket_id < LEVEL_ENTRY_POINTS; ticket_id++)
 		RWLOCK_UNLOCK(&level->guards[ticket_id].rx_lock);
 	// RWLOCK_UNLOCK(&level->guard_of_level.rx_lock);
 }

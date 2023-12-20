@@ -130,9 +130,6 @@ int8_t find_deleted_kv_pairs_in_segment(struct db_handle handle, struct gc_segme
 				kv_pair->key_size + kv_pair->value_size + key_value_size + get_lsn_size();
 			iter_log_segment.log_segment_in_memory += bytes_to_move;
 			log_segment_in_device += bytes_to_move;
-			// bytes_checked_in_segment +=
-			// 	kv_pair->key_size + kv_pair->value_size + key_value_size + get_lsn_size();
-			// 	new staff
 			bytes_checked_in_segment += (kv_splice_get_kv_size(kv_pair) + get_lsn_size());
 		} else
 			break;

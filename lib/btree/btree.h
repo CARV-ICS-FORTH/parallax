@@ -140,8 +140,6 @@ struct bt_kv_log_address bt_get_kv_log_address(struct log_descriptor *log_desc, 
 void bt_done_with_value_log_address(struct log_descriptor *log_desc, struct bt_kv_log_address *L);
 
 typedef struct db_descriptor {
-	// struct level_descriptor levels[MAX_LEVELS];
-	//new staff
 	struct level_descriptor L0;
 	struct device_level *dev_levels[MAX_LEVELS];
 #if MEASURE_MEDIUM_INPLACE
@@ -251,14 +249,9 @@ struct log_operation {
 	bt_mutate_req *metadata;
 	request_type optype_tolog; //enum insertOp, deleteOp
 	bt_insert_req *ins_req;
-	//new staff
 	uint64_t txn_id;
 	bool is_medium_log_append;
 };
-
-// uint64_t allocate_segment_for_log(struct db_descriptor *db_desc, struct log_descriptor *log_desc, uint8_t level_id,
-// 				  uint8_t tree_id);
-//new staff obsolete after the introduction of device level object
 
 /**
  * Returns the category of the KV based on its key-value size and the operation to perform.
