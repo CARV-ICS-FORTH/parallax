@@ -12,11 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 #include "persistent_operations.h"
-#include "../btree/bloom_filter.h"
 #include "../btree/btree.h"
-#include "../btree/btree_node.h"
 #include "../btree/conf.h"
+#include "../btree/device_level.h"
 #include "../btree/gc.h"
+#include "../btree/key_splice.h"
 #include "../btree/kv_pairs.h"
 #include "../btree/lsn.h"
 #include "../btree/segment_allocator.h"
@@ -38,6 +38,8 @@
 #include <string.h>
 #include <unistd.h>
 
+struct device_level;
+
 // IWYU pragma: no_forward_declare node_header
 // IWYU pragma: no_forward_declare pbf_desc
 
@@ -49,12 +51,12 @@ struct log_info {
 
 #define ALIGN_UP(number, alignment) (((number) + (alignment)-1) / (alignment) * (alignment))
 
-static void flush_segment_in_log(int fd, uint64_t file_offset, char *buffer, int32_t IO_size)
+static void flush_segment_in_log(int file_desc, uint64_t file_offset, char *buffer, int32_t IO_size)
 {
 	ssize_t total_bytes_written = 0;
 	ssize_t size = IO_size;
 	while (total_bytes_written < size) {
-		ssize_t bytes_written = pwrite(fd, &buffer[total_bytes_written], size - total_bytes_written,
+		ssize_t bytes_written = pwrite(file_desc, &buffer[total_bytes_written], size - total_bytes_written,
 					       file_offset + total_bytes_written);
 		if (bytes_written == -1) {
 			log_fatal("Failed to write LOG_CHUNK reason follows");
@@ -68,10 +70,10 @@ static void flush_segment_in_log(int fd, uint64_t file_offset, char *buffer, int
 /**
  *<new_persistent_design>*/
 static void pr_flush_allocation_log_and_level_info(struct db_descriptor *db_desc, uint8_t src_level_id,
-						   uint8_t dst_level_id, uint8_t tree_id)
+						   uint8_t dst_level_id, uint8_t tree_id, uint64_t txn_id)
 {
 	/*Flush my allocations*/
-	struct rul_log_info rul_log = rul_flush_txn(db_desc, db_desc->levels[dst_level_id].allocation_txn_id[tree_id]);
+	struct rul_log_info rul_log = rul_flush_txn(db_desc, txn_id);
 	/*new info about allocation_log*/
 	db_desc->db_superblock->allocation_log.head_dev_offt = rul_log.head_dev_offt;
 	db_desc->db_superblock->allocation_log.tail_dev_offt = rul_log.tail_dev_offt;
@@ -88,47 +90,16 @@ static void pr_flush_allocation_log_and_level_info(struct db_descriptor *db_desc
 		db_desc->db_superblock->root_r[src_level_id][0] = 0;
 	}
 
-	if (dst_level_id) {
-		/*new info about my level*/
-		db_desc->db_superblock->root_r[dst_level_id][0] =
-			ABSOLUTE_ADDRESS(db_desc->levels[dst_level_id].root[tree_id]);
-
-		db_desc->db_superblock->first_segment[dst_level_id][0] =
-			ABSOLUTE_ADDRESS(db_desc->levels[dst_level_id].first_segment[tree_id]);
-		log_debug("Persist %u first was %lu", dst_level_id,
-			  ABSOLUTE_ADDRESS(db_desc->levels[dst_level_id].first_segment[tree_id]));
-		assert(db_desc->levels[dst_level_id].first_segment[tree_id]);
-
-		db_desc->db_superblock->last_segment[dst_level_id][0] =
-			ABSOLUTE_ADDRESS(db_desc->levels[dst_level_id].last_segment[tree_id]);
-
-		db_desc->db_superblock->offset[dst_level_id][0] = db_desc->levels[dst_level_id].offset[tree_id];
-
-		db_desc->db_superblock->level_size[dst_level_id][0] = db_desc->levels[dst_level_id].level_size[tree_id];
-		log_debug("Writing root[%u][%u] = %p", dst_level_id, tree_id,
-			  (void *)db_desc->levels[dst_level_id].root[tree_id]);
-
-		db_desc->db_superblock->root_r[dst_level_id][0] =
-			ABSOLUTE_ADDRESS(db_desc->levels[dst_level_id].root[tree_id]);
-	}
+	if (dst_level_id)
+		level_save_to_superblock(db_desc->dev_levels[dst_level_id], db_desc->db_superblock, tree_id);
 
 	pr_flush_db_superblock(db_desc);
 }
 
 static void pr_update_bloom_info(db_descriptor *db_desc)
 {
-	for (uint8_t i = 0; i < MAX_LEVELS; i++) {
-		for (uint8_t j = 0; j < NUM_TREES_PER_LEVEL; j++) {
-			if (NULL == db_desc->levels[i].bloom_desc[j]) {
-				db_desc->db_superblock->bloom_filter_hash[i][j] = UINT64_MAX;
-				db_desc->db_superblock->bloom_filter_valid[i][j] = 0;
-				continue;
-			}
-			db_desc->db_superblock->bloom_filter_hash[i][j] =
-				pbf_get_bf_file_hash(db_desc->levels[i].bloom_desc[j]);
-			db_desc->db_superblock->bloom_filter_valid[i][j] = 1;
-		}
-	}
+	for (uint8_t level_id = 1; level_id < MAX_LEVELS; level_id++)
+		level_save_bf_info_to_superblock(db_desc->dev_levels[level_id], db_desc->db_superblock);
 }
 /**
  * Persists L0 key value pairs in storage making it recoverable.
@@ -177,7 +148,7 @@ void pr_flush_L0(struct db_descriptor *db_desc, uint8_t tree_id)
 	/*Flush L0 recovery log*/
 	pr_flush_log_tail(db_desc, &db_desc->small_log);
 
-	uint64_t txn_id = db_desc->levels[0].allocation_txn_id[tree_id];
+	uint64_t txn_id = db_desc->L0.allocation_txn_id[tree_id];
 
 	/*time to write superblock*/
 	pr_lock_db_superblock(db_desc);
@@ -217,7 +188,7 @@ void pr_flush_L0(struct db_descriptor *db_desc, uint8_t tree_id)
 }
 
 static void pr_flush_L0_to_L1(struct db_descriptor *db_desc, struct par_db_options *db_options, uint8_t level_id,
-			      uint8_t tree_id)
+			      uint8_t tree_id, uint64_t txn_id)
 {
 	struct log_info medium_log;
 
@@ -232,7 +203,8 @@ static void pr_flush_L0_to_L1(struct db_descriptor *db_desc, struct par_db_optio
 	if (db_options->options[PRIMARY_MODE].value || db_options->options[REPLICA_BUILD_INDEX].value)
 		pr_flush_log_tail(db_desc, &db_desc->medium_log);
 	pr_lock_db_superblock(db_desc);
-	uint64_t txn_id = db_desc->levels[level_id].allocation_txn_id[tree_id];
+
+	// txn id is in compreq
 
 	/*medium log info*/
 	db_desc->db_superblock->medium_log_head_offt = medium_log.head_dev_offt;
@@ -247,30 +219,31 @@ static void pr_flush_L0_to_L1(struct db_descriptor *db_desc, struct par_db_optio
 	log_debug("Head segment id %lu", head->segment_id);
 
 	uint64_t bytes_freed = 0;
-	(void)bytes_freed;
+	(void)bytes_freed; //supress warning in release build
 
-	if (tail != head) {
-		struct segment_header *curr = REAL_ADDRESS(tail->prev_segment);
-		while (1) {
-			struct rul_log_entry log_entry = { .dev_offt = ABSOLUTE_ADDRESS(curr),
-							   .txn_id = txn_id,
-							   .op_type = RUL_FREE,
-							   .size = SEGMENT_SIZE };
-			log_debug("Triming L0 recovery log segment:%lu curr segment id:%lu", log_entry.dev_offt,
-				  curr->segment_id);
-			rul_add_entry_in_txn_buf(db_desc, &log_entry);
-			bytes_freed += SEGMENT_SIZE;
+	if (tail == head)
+		goto write_logs_info; /*nothing to trim*/
 
-			if (curr->segment_id == head->segment_id)
-				break;
-			curr = REAL_ADDRESS(curr->prev_segment);
-		}
+	struct segment_header *curr = REAL_ADDRESS(tail->prev_segment);
+	while (1) {
+		struct rul_log_entry log_entry = {
+			.dev_offt = ABSOLUTE_ADDRESS(curr), .txn_id = txn_id, .op_type = RUL_FREE, .size = SEGMENT_SIZE
+		};
+		log_debug("Triming L0 recovery log segment:%lu curr segment id:%lu", log_entry.dev_offt,
+			  curr->segment_id);
+		rul_add_entry_in_txn_buf(db_desc, &log_entry);
+		bytes_freed += SEGMENT_SIZE;
+
+		if (curr->segment_id == head->segment_id)
+			break;
+		curr = REAL_ADDRESS(curr->prev_segment);
 	}
 
 	log_debug("Freed a total of %lu MB bytes from trimming L0 recovery log head %lu tail %lu size %lu ***",
 		  bytes_freed / (1024 * 1024), db_desc->db_superblock->small_log_head_offt,
 		  db_desc->db_superblock->small_log_tail_offt, db_desc->db_superblock->small_log_size);
 
+write_logs_info:;
 	db_desc->small_log.head_dev_offt = db_desc->db_superblock->small_log_head_offt =
 		db_desc->db_superblock->small_log_start_segment_dev_offt;
 
@@ -280,7 +253,7 @@ static void pr_flush_L0_to_L1(struct db_descriptor *db_desc, struct par_db_optio
 	db_desc->db_superblock->big_log_start_segment_dev_offt = db_desc->big_log_start_segment_dev_offt;
 	db_desc->db_superblock->big_log_offt_in_start_segment = db_desc->big_log_start_offt_in_segment;
 
-	pr_flush_allocation_log_and_level_info(db_desc, level_id - 1, level_id, tree_id);
+	pr_flush_allocation_log_and_level_info(db_desc, level_id - 1, level_id, tree_id, txn_id);
 	pr_unlock_db_superblock(db_desc);
 	rul_apply_txn_buf_freeops_and_destroy(db_desc, txn_id);
 }
@@ -289,73 +262,37 @@ static void pr_flush_L0_to_L1(struct db_descriptor *db_desc, struct par_db_optio
 * Flushes compaction from level Lmax where the medium KV pairs are transferred
 * from the medium log to in-place
 */
-static void pr_flush_Lmax_to_Ln(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
+static void pr_flush_Lmax_to_Ln(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id, uint64_t txn_id)
 {
 	log_debug("Flushing Lmax to Ln!");
-	struct level_descriptor *level_desc = &db_desc->levels[level_id];
-
-	uint64_t txn_id = db_desc->levels[level_id].allocation_txn_id[tree_id];
-	/*trim medium log*/
-
-	uint64_t new_medium_log_head_offt = db_desc->medium_log.head_dev_offt;
-
-	if (0 == level_desc->medium_in_place_segment_dev_offt ||
-	    level_desc->medium_in_place_segment_dev_offt == db_desc->medium_log.head_dev_offt)
-		goto update_superblock;
-
-	new_medium_log_head_offt = level_desc->medium_in_place_segment_dev_offt;
-	struct segment_header *trim_end_segment = REAL_ADDRESS(level_desc->medium_in_place_segment_dev_offt);
-	struct segment_header *head = REAL_ADDRESS(db_desc->medium_log.head_dev_offt);
-	uint64_t bytes_freed = 0;
-	(void)bytes_freed;
-
-	for (struct segment_header *curr_trim_segment = REAL_ADDRESS(trim_end_segment->prev_segment);;
-	     curr_trim_segment = REAL_ADDRESS(curr_trim_segment->prev_segment)) {
-		struct rul_log_entry log_entry = { .dev_offt = ABSOLUTE_ADDRESS(curr_trim_segment),
-						   .txn_id = txn_id,
-						   .op_type = RUL_FREE,
-						   .size = SEGMENT_SIZE };
-		rul_add_entry_in_txn_buf(db_desc, &log_entry);
-		bytes_freed += SEGMENT_SIZE;
-		if (curr_trim_segment->segment_id == head->segment_id)
-			break;
-	}
-	level_desc->medium_in_place_segment_dev_offt = 0;
-	level_desc->medium_in_place_max_segment_id = 0;
-
-	log_debug("*** Freed a total of %lu MB bytes from trimming medium log head %lu tail %lu size %lu ***",
-		  bytes_freed / (1024 * 1024L), db_desc->db_superblock->small_log_head_offt,
-		  db_desc->db_superblock->small_log_tail_offt, db_desc->db_superblock->small_log_size);
-
-update_superblock:
+	uint64_t new_medium_log_head_offt = level_trim_medium_log(db_desc->dev_levels[level_id], db_desc, txn_id);
 
 	pr_lock_db_superblock(db_desc);
 	/*new info about medium log after trim operation*/
 	db_desc->medium_log.head_dev_offt = db_desc->db_superblock->medium_log_head_offt = new_medium_log_head_offt;
 
-	pr_flush_allocation_log_and_level_info(db_desc, level_id - 1, level_id, tree_id);
+	pr_flush_allocation_log_and_level_info(db_desc, level_id - 1, level_id, tree_id, txn_id);
 
 	pr_unlock_db_superblock(db_desc);
 	rul_apply_txn_buf_freeops_and_destroy(db_desc, txn_id);
 }
 
-void pr_flush_compaction(struct db_descriptor *db_desc, struct par_db_options *dboptions, uint8_t level_id,
-			 uint8_t tree_id)
+void pr_flush_compaction(struct db_descriptor *db_desc, struct par_db_options *db_options, uint8_t level_id,
+			 uint8_t tree_id, uint64_t txn_id)
 {
 	if (level_id == 1) {
-		pr_flush_L0_to_L1(db_desc, dboptions, level_id, tree_id);
+		pr_flush_L0_to_L1(db_desc, db_options, level_id, tree_id, txn_id);
 		return;
 	}
 
 	if (level_id == db_desc->level_medium_inplace) {
-		pr_flush_Lmax_to_Ln(db_desc, level_id, tree_id);
+		pr_flush_Lmax_to_Ln(db_desc, level_id, tree_id, txn_id);
 		return;
 	}
 
-	uint64_t txn_id = db_desc->levels[level_id].allocation_txn_id[tree_id];
 	pr_lock_db_superblock(db_desc);
 
-	pr_flush_allocation_log_and_level_info(db_desc, level_id - 1, level_id, tree_id);
+	pr_flush_allocation_log_and_level_info(db_desc, level_id - 1, level_id, tree_id, txn_id);
 
 	pr_unlock_db_superblock(db_desc);
 	rul_apply_txn_buf_freeops_and_destroy(db_desc, txn_id);
@@ -447,7 +384,8 @@ void pr_flush_log_tail(struct db_descriptor *db_desc, struct log_descriptor *log
 	uint64_t start_offt = chunk_id * LOG_CHUNK_SIZE;
 
 	//uint64_t end_offt = start_offt + LOG_CHUNK_SIZE;
-	uint64_t bytes_to_write = (log_desc->size % LOG_CHUNK_SIZE ? log_desc->size % LOG_CHUNK_SIZE : LOG_CHUNK_SIZE);
+	uint64_t bytes_to_write =
+		(log_desc->size % LOG_CHUNK_SIZE ? (log_desc->size % LOG_CHUNK_SIZE) : LOG_CHUNK_SIZE);
 
 	bytes_to_write = ALIGN_UP(bytes_to_write, 512);
 
@@ -951,14 +889,14 @@ void pr_recover_L0(struct db_descriptor *db_desc)
 }
 
 uint64_t pr_add_and_flush_segment_in_log(db_handle *dbhandle, char *buf, int32_t buf_size, uint32_t IO_size,
-					 enum log_type log_cat)
+					 enum log_type log_cat, uint64_t txn_id)
 {
 	struct log_descriptor log_desc = dbhandle->db_desc->small_log;
 	if (log_cat == BIG_LOG)
 		log_desc = dbhandle->db_desc->big_log;
 
 	//for send index level_id = 0, tree_id = 0
-	struct segment_header *new_segment = seg_get_raw_log_segment(dbhandle->db_desc, log_desc.log_type, 0, 0);
+	struct segment_header *new_segment = seg_get_raw_log_segment(dbhandle->db_desc, log_desc.log_type, txn_id);
 	if (!new_segment) {
 		log_fatal("Cannot allocate memory from the device!");
 		BUG_ON();
@@ -977,34 +915,17 @@ uint64_t pr_add_and_flush_segment_in_log(db_handle *dbhandle, char *buf, int32_t
 	in_mem_segment_buf->prev_segment = (void *)log_desc.tail_dev_offt;
 	log_desc.tail_dev_offt = next_tail_seg_offt;
 	/*position to the end of the new log*/
+	// cppcheck-suppress unreadVariable
 	log_desc.size += buf_size;
 
 	flush_segment_in_log(dbhandle->db_desc->db_volume->vol_fd, log_desc.tail_dev_offt, buf, IO_size);
 
 	return next_tail_seg_offt;
 }
-
-uint64_t pr_allocate_segment_for_log(struct db_descriptor *db_desc, struct log_descriptor *log_desc, uint8_t level_id,
-				     uint8_t tree_id)
-{
-	assert(db_desc && log_desc);
-	struct segment_header *new_segment = seg_get_raw_log_segment(db_desc, log_desc->log_type, level_id, tree_id);
-	if (!new_segment) {
-		log_fatal("Cannot allocate memory from the device!");
-		BUG_ON();
-	}
-
-	uint64_t next_tail_seg_offt = ABSOLUTE_ADDRESS(new_segment);
-
-	if (!next_tail_seg_offt) {
-		log_fatal("No space for new segment");
-		BUG_ON();
-	}
-	return next_tail_seg_offt;
-}
-
+// cppcheck-suppress unusedFunction
 void pr_append_segment_to_log(struct log_descriptor *log_desc, char *buf, uint64_t next_tail_offt)
 {
+	//Tebis uses it
 	assert(log_desc);
 	struct segment_header *next_tail_segment = (struct segment_header *)buf;
 	next_tail_segment->next_segment = NULL;
@@ -1015,9 +936,11 @@ void pr_append_segment_to_log(struct log_descriptor *log_desc, char *buf, uint64
 	log_desc->curr_tail_id = next_tail_segment->segment_id;
 }
 
+// cppcheck-suppress unusedFunction
 void pr_flush_buffer_to_log(struct log_descriptor *log_desc, uint64_t IO_start_offt, uint32_t IO_size, char *buf,
 			    uint32_t buf_size)
 {
+	//Tebis uses it
 	assert(log_desc);
 	ssize_t total_bytes_written = 0;
 	ssize_t size = IO_size;

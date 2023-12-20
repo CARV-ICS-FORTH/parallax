@@ -17,15 +17,16 @@ typedef struct wcursor_segment_buffers_iterator *wcursor_segment_buffers_iterato
  * @returns a pointer to the cursor.
  */
 struct wcursor_level_write_cursor *wcursor_init_write_cursor(uint8_t level_id, struct db_handle *handle,
-							     uint8_t tree_id, bool enable_double_buffering);
+							     uint8_t tree_id, bool enable_double_buffering,
+							     uint64_t txn_id);
 
 /**
  * @brief Appends a new KV pair into the level.
- * @param cursor pointer to the write cursor
+ * @param w_cursor pointer to the write cursor
  * @param kv_pair the kv_pair to insert in the level.
  * @returns true if success otherwise false on failure.
  */
-bool wcursor_append_KV_pair(struct wcursor_level_write_cursor *cursor, struct kv_splice_base *splice);
+bool wcursor_append_KV_pair(struct wcursor_level_write_cursor *w_cursor, struct kv_splice_base *splice);
 
 /**
  * @brief Flushes any in memory state of the cursor to the device.

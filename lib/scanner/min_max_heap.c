@@ -38,10 +38,15 @@ static void push_back_duplicate_kv(struct sh_heap *heap, struct sh_heap_node *hp
 	struct dups_node *node = find_element(heap->dups, (uint64_t)REAL_ADDRESS(segment_offset));
 
 	struct kv_splice *splice = REAL_ADDRESS(kv_offt);
-	if (node)
+	if (node) {
+		// log_debug("Duplicate found size of splice = %u", kv_splice_get_kv_size(splice));
+		assert(kv_splice_get_kv_size(splice) <= KV_MAX_SIZE);
 		node->kv_size += kv_splice_get_kv_size(splice);
-	else
+	} else {
+		// log_debug("Duplicate new size of splice = %u", kv_splice_get_kv_size(splice));
 		append_node(heap->dups, (uint64_t)REAL_ADDRESS(segment_offset), kv_splice_get_kv_size(splice));
+		assert(kv_splice_get_kv_size(splice) <= KV_MAX_SIZE);
+	}
 }
 
 /**

@@ -3,14 +3,19 @@
 #include "../scanner/min_max_heap.h"
 #include "../scanner/scanner.h"
 #include "btree_node.h"
+#include "conf.h"
+#include "device_level.h"
 #include "dynamic_leaf.h"
 #include "index_node.h"
+#include "kv_pairs.h"
 #include <assert.h>
 #include <log.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+
+struct device_level;
 
 struct rcursor_device_cursor {
 	char segment_buf[SEGMENT_SIZE];
@@ -101,7 +106,7 @@ static bool rcursor_get_next_kv_from_device(struct rcursor_level_read_cursor *r_
 {
 	struct rcursor_device_cursor *device_cursor = r_cursor->device_cursor;
 
-	uint32_t level_leaf_size = r_cursor->handle->db_desc->levels[r_cursor->level_id].leaf_size;
+	uint32_t level_leaf_size = LEAF_NODE_SIZE;
 	if (r_cursor->is_end_of_level)
 		return false;
 	while (1) {
@@ -109,11 +114,13 @@ static bool rcursor_get_next_kv_from_device(struct rcursor_level_read_cursor *r_
 		switch (device_cursor->state) {
 		case COMP_CUR_CHECK_OFFT: {
 			if (device_cursor->offset >=
-			    r_cursor->handle->db_desc->levels[r_cursor->level_id].offset[r_cursor->tree_id]) {
+			    level_get_offset(r_cursor->handle->db_desc->dev_levels[r_cursor->level_id],
+					     r_cursor->tree_id)) {
 				log_debug("Done read level %u", r_cursor->level_id);
 				r_cursor->is_end_of_level = true;
 				assert(device_cursor->offset ==
-				       r_cursor->handle->db_desc->levels[r_cursor->level_id].offset[r_cursor->tree_id]);
+				       level_get_offset(r_cursor->handle->db_desc->dev_levels[r_cursor->level_id],
+							r_cursor->tree_id));
 				return false;
 			}
 			if (device_cursor->offset % SEGMENT_SIZE == 0)
@@ -125,20 +132,28 @@ static bool rcursor_get_next_kv_from_device(struct rcursor_level_read_cursor *r_
 
 		case COMP_CUR_FETCH_NEXT_SEGMENT: {
 			if (device_cursor->curr_segment == NULL) {
-				device_cursor->curr_segment = r_cursor->handle->db_desc->levels[r_cursor->level_id]
-								      .first_segment[r_cursor->tree_id];
+				device_cursor->curr_segment = level_get_index_first_seg(
+					r_cursor->handle->db_desc->dev_levels[r_cursor->level_id], r_cursor->tree_id);
+				log_debug("Curr segment of cursor is %p offset is %lu",
+					  (void *)device_cursor->curr_segment,
+					  level_get_offset(r_cursor->handle->db_desc->dev_levels[r_cursor->level_id],
+							   r_cursor->tree_id));
 			} else {
 				if (device_cursor->curr_segment->next_segment == NULL) {
 					assert((uint64_t)device_cursor->curr_segment ==
-					       (uint64_t)r_cursor->handle->db_desc->levels[r_cursor->level_id]
-						       .last_segment[r_cursor->tree_id]);
+					       (uint64_t)level_get_index_last_seg(
+						       r_cursor->handle->db_desc->dev_levels[r_cursor->level_id],
+						       r_cursor->tree_id));
 					log_debug("Done reading level %u cursor offset %lu total offt %lu",
 						  r_cursor->level_id, device_cursor->offset,
-						  r_cursor->handle->db_desc->levels[r_cursor->level_id]
-							  .offset[r_cursor->tree_id]);
+						  level_get_offset(
+							  r_cursor->handle->db_desc->dev_levels[r_cursor->level_id],
+							  r_cursor->tree_id));
 					assert(device_cursor->offset ==
-					       r_cursor->handle->db_desc->levels[r_cursor->level_id]
-						       .offset[r_cursor->tree_id]);
+					       level_get_offset(
+						       r_cursor->handle->db_desc->dev_levels[r_cursor->level_id],
+						       r_cursor->tree_id));
+
 					device_cursor->state = COMP_CUR_CHECK_OFFT;
 					//TODO replace goto with continue;
 					//TODO Rename device_offt
@@ -213,7 +228,8 @@ static bool rcursor_get_next_kv_from_device(struct rcursor_level_read_cursor *r_
 				log_fatal("Faulty read cursor of level %u Wrong node type %u offset "
 					  "was %lu total level offset %lu faulty segment offt: %lu",
 					  r_cursor->level_id, type, device_cursor->offset,
-					  r_cursor->handle->db_desc->levels[r_cursor->level_id].offset[0],
+					  level_get_offset(r_cursor->handle->db_desc->dev_levels[r_cursor->level_id],
+							   0),
 					  ABSOLUTE_ADDRESS(device_cursor->curr_segment));
 				BUG_ON();
 			}

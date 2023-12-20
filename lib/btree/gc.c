@@ -62,12 +62,10 @@ void push_stack(stack *marks, void *addr)
 
 void move_kv_pairs_to_new_segment(struct db_handle handle, stack *marks)
 {
-	bt_insert_req ins_req;
-	char *kv_address;
-	int i;
+	bt_insert_req ins_req = { 0 };
 
-	for (i = 0; i < marks->size; ++i, ++handle.db_desc->gc_keys_transferred) {
-		kv_address = marks->valid_pairs[i];
+	for (int i = 0; i < marks->size; ++i, ++handle.db_desc->gc_keys_transferred) {
+		char *kv_address = marks->valid_pairs[i];
 		// struct splice *key = (struct splice *)kv_address;
 		// struct splice *value = (struct splice *)(kv_address +
 		// VALUE_SIZE_OFFSET(key->size));
@@ -109,8 +107,9 @@ int8_t find_deleted_kv_pairs_in_segment(struct db_handle handle, struct gc_segme
 	while (bytes_checked_in_segment < segment_data) {
 		kv_pair = (struct kv_splice *)iter_log_segment.log_segment_in_memory;
 
-		if (!kv_pair->key_size ||
-		    segment_data - bytes_checked_in_segment < kv_splice_get_min_possible_kv_size())
+		if (segment_data - bytes_checked_in_segment < kv_splice_get_min_possible_kv_size())
+			break;
+		if (!kv_pair->key_size)
 			break;
 
 		kv_splice_serialize_to_key_splice(buf, kv_pair);
@@ -131,8 +130,7 @@ int8_t find_deleted_kv_pairs_in_segment(struct db_handle handle, struct gc_segme
 				kv_pair->key_size + kv_pair->value_size + key_value_size + get_lsn_size();
 			iter_log_segment.log_segment_in_memory += bytes_to_move;
 			log_segment_in_device += bytes_to_move;
-			bytes_checked_in_segment +=
-				kv_pair->key_size + kv_pair->value_size + key_value_size + get_lsn_size();
+			bytes_checked_in_segment += (kv_splice_get_kv_size(kv_pair) + get_lsn_size());
 		} else
 			break;
 	}

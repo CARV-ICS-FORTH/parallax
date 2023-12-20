@@ -58,5 +58,5 @@
 #define MAX_ALLOCATION_TRIES (2)
 #define MAX_HEIGHT 9
 #define KV_MAX_SIZE 16384 //(4096 + 8)
-
+#define LEVEL_ENTRY_POINTS 8
 #endif

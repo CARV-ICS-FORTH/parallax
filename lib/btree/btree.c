@@ -20,10 +20,10 @@
 #include "../common/common.h"
 #include "../include/parallax/parallax.h"
 #include "../include/parallax/structures.h"
-#include "bloom_filter.h"
 #include "btree_node.h"
 #include "compaction_daemon.h"
 #include "conf.h"
+#include "device_level.h"
 #include "dynamic_leaf.h"
 #include "gc.h"
 #include "index_node.h"
@@ -54,30 +54,30 @@ static uint8_t concurrent_insert(bt_insert_req *ins_req);
 
 void assert_index_node(struct node_header *node);
 
-static void init_level_locktable(db_descriptor *database, uint8_t level_id)
+static void init_L0_locktable(db_descriptor *database)
 {
 	for (unsigned int i = 0; i < MAX_HEIGHT; ++i) {
-		if (posix_memalign((void **)&database->levels[level_id].level_lock_table[i], 4096,
+		if (posix_memalign((void **)&database->L0.level_lock_table[i], 4096,
 				   sizeof(lock_table) * size_per_height[i]) != 0) {
 			log_fatal("memalign failed");
 			BUG_ON();
 		}
 
-		lock_table *init = database->levels[level_id].level_lock_table[i];
+		lock_table *init = database->L0.level_lock_table[i];
 
 		for (unsigned int j = 0; j < size_per_height[i]; ++j) {
 			if (RWLOCK_INIT(&init[j].rx_lock, NULL) != 0) {
-				log_fatal("failed to initialize lock_table for level %u lock", level_id);
+				log_fatal("failed to initialize lock_table for level %u lock", 0);
 				BUG_ON();
 			}
 		}
 	}
 }
 
-static void destroy_level_locktable(db_descriptor *database, uint8_t level_id)
+static void destroy_L0_locktable(db_descriptor *database)
 {
 	for (uint8_t i = 0; i < MAX_HEIGHT; ++i)
-		free(database->levels[level_id].level_lock_table[i]);
+		free(database->L0.level_lock_table[i]);
 }
 
 static void pr_read_log_tail(struct log_tail *tail)
@@ -188,8 +188,8 @@ static void init_fresh_logs(struct db_descriptor *db_desc)
 {
 	log_debug("Initializing KV logs (small,medium,large) for DB: %s", db_desc->db_superblock->db_name);
 	// Large log
-	struct segment_header *s = seg_get_raw_log_segment(db_desc, BIG_LOG, 0, 0);
-	db_desc->big_log.head_dev_offt = ABSOLUTE_ADDRESS(s);
+	struct segment_header *segment = seg_get_raw_log_segment(db_desc, BIG_LOG, db_desc->L0.allocation_txn_id[0]);
+	db_desc->big_log.head_dev_offt = ABSOLUTE_ADDRESS(segment);
 	db_desc->big_log.tail_dev_offt = db_desc->big_log.head_dev_offt;
 	db_desc->big_log.size = 0;
 	db_desc->big_log_start_segment_dev_offt = db_desc->big_log.tail_dev_offt;
@@ -197,15 +197,15 @@ static void init_fresh_logs(struct db_descriptor *db_desc)
 	init_log_buffer(&db_desc->big_log, BIG_LOG);
 	log_debug("BIG_LOG head %lu", db_desc->big_log.head_dev_offt);
 
-	s = seg_get_raw_log_segment(db_desc, MEDIUM_LOG, 0, 0);
-	db_desc->medium_log.head_dev_offt = ABSOLUTE_ADDRESS(s);
+	segment = seg_get_raw_log_segment(db_desc, MEDIUM_LOG, db_desc->L0.allocation_txn_id[0]);
+	db_desc->medium_log.head_dev_offt = ABSOLUTE_ADDRESS(segment);
 	db_desc->medium_log.tail_dev_offt = db_desc->medium_log.head_dev_offt;
 	db_desc->medium_log.size = sizeof(segment_header);
 	init_log_buffer(&db_desc->medium_log, MEDIUM_LOG);
 
 	// Small log
-	s = seg_get_raw_log_segment(db_desc, SMALL_LOG, 0, 0);
-	db_desc->small_log.head_dev_offt = ABSOLUTE_ADDRESS(s);
+	segment = seg_get_raw_log_segment(db_desc, SMALL_LOG, db_desc->L0.allocation_txn_id[0]);
+	db_desc->small_log.head_dev_offt = ABSOLUTE_ADDRESS(segment);
 	db_desc->small_log.tail_dev_offt = db_desc->small_log.head_dev_offt;
 	db_desc->small_log.size = sizeof(segment_header);
 	db_desc->small_log_start_segment_dev_offt = db_desc->small_log.tail_dev_offt;
@@ -219,36 +219,32 @@ static void init_fresh_logs(struct db_descriptor *db_desc)
 	db_desc->lsn_factory = lsn_factory_init(0);
 }
 
-static void init_fresh_db(struct db_descriptor *db_desc)
+static void init_fresh_db(struct db_descriptor *db_desc, struct par_db_options *options)
 {
 	struct pr_db_superblock *superblock = db_desc->db_superblock;
 
-	/*init now state for all levels*/
-	for (uint8_t level_id = 0; level_id < MAX_LEVELS; ++level_id) {
-		db_desc->levels[level_id].level_size[0] = 0;
-		db_desc->levels[level_id].level_size[1] = 0;
+	for (uint8_t tree_id = 0; tree_id < NUM_TREES_PER_LEVEL; ++tree_id) {
+		db_desc->L0.level_size[tree_id] = 0;
+		/*segments info per level*/
+		db_desc->L0.first_segment[tree_id] = 0;
+		superblock->first_segment[0][tree_id] = 0;
 
-		for (uint8_t tree_id = 0; tree_id < NUM_TREES_PER_LEVEL; ++tree_id) {
-			db_desc->levels[level_id].level_size[tree_id] = 0;
-			/*segments info per level*/
+		db_desc->L0.last_segment[tree_id] = 0;
+		superblock->last_segment[0][tree_id] = 0;
 
-			db_desc->levels[level_id].first_segment[tree_id] = 0;
-			superblock->first_segment[level_id][tree_id] = 0;
+		db_desc->L0.offset[tree_id] = 0;
+		superblock->offset[0][tree_id] = 0;
 
-			db_desc->levels[level_id].last_segment[tree_id] = 0;
-			superblock->last_segment[level_id][tree_id] = 0;
-
-			db_desc->levels[level_id].offset[tree_id] = 0;
-			superblock->offset[level_id][tree_id] = 0;
-
-			/*total keys*/
-			db_desc->levels[level_id].level_size[tree_id] = 0;
-			superblock->level_size[level_id][tree_id] = 0;
-			/*finally the roots*/
-			db_desc->levels[level_id].root[tree_id] = NULL;
-			superblock->root_r[level_id][tree_id] = 0;
-		}
+		/*total keys*/
+		db_desc->L0.level_size[tree_id] = 0;
+		superblock->level_size[0][tree_id] = 0;
+		/*finally the roots*/
+		db_desc->L0.root[tree_id] = NULL;
+		superblock->root_r[0][tree_id] = 0;
 	}
+	for (uint8_t level_id = 1; level_id < MAX_LEVELS; ++level_id)
+		db_desc->dev_levels[level_id] = level_create_fresh(level_id, options->options[LEVEL0_SIZE].value,
+								   options->options[GROWTH_FACTOR].value);
 
 	init_fresh_logs(db_desc);
 }
@@ -278,7 +274,7 @@ static void recover_logs(db_descriptor *db_desc)
 	db_desc->lsn_factory = lsn_factory_init(last_lsn_id);
 }
 
-static void restore_db(struct db_descriptor *db_desc, uint32_t region_idx)
+static void restore_db(struct db_descriptor *db_desc, uint32_t region_idx, struct par_db_options *options)
 {
 	/*First, calculate superblock offt and read it in memory*/
 	db_desc->db_superblock_idx = region_idx;
@@ -291,66 +287,20 @@ static void restore_db(struct db_descriptor *db_desc, uint32_t region_idx)
 	struct pr_db_superblock *superblock = db_desc->db_superblock;
 
 	/*restore now persistent state of all levels*/
-	for (uint8_t level_id = 0; level_id < MAX_LEVELS; level_id++) {
-		db_desc->levels[level_id].level_size[0] = 0;
-		db_desc->levels[level_id].level_size[1] = 0;
-
-		for (uint8_t tree_id = 0; tree_id < NUM_TREES_PER_LEVEL; tree_id++) {
-			db_desc->levels[level_id].level_size[tree_id] = 0;
-			db_desc->levels[level_id].epoch[tree_id] = 0;
-			/*segments info per level*/
-			if (superblock->first_segment[level_id][tree_id] != 0) {
-				db_desc->levels[level_id].first_segment[tree_id] =
-					(segment_header *)REAL_ADDRESS(superblock->first_segment[level_id][tree_id]);
-
-				db_desc->levels[level_id].last_segment[tree_id] =
-					(segment_header *)REAL_ADDRESS(superblock->last_segment[level_id][tree_id]);
-
-				db_desc->levels[level_id].offset[tree_id] = superblock->offset[level_id][tree_id];
-				log_debug("Superblock of db: %s first_segment dev offt: %lu", superblock->db_name,
-					  superblock->first_segment[level_id][tree_id]);
-				log_debug("Restoring level[%u][%u] first segment %p last segment: %p size: %lu",
-					  level_id, tree_id, (void *)db_desc->levels[level_id].first_segment[tree_id],
-					  (void *)db_desc->levels[level_id].last_segment[tree_id],
-					  db_desc->levels[level_id].offset[tree_id]);
-			} else {
-				//log_debug("Restoring EMPTY level[%u][%u]", level_id, tree_id);
-				db_desc->levels[level_id].first_segment[tree_id] = NULL;
-				db_desc->levels[level_id].last_segment[tree_id] = NULL;
-				db_desc->levels[level_id].offset[tree_id] = 0;
-			}
-			/*total keys*/
-			db_desc->levels[level_id].level_size[tree_id] = superblock->level_size[level_id][tree_id];
-			/*finally the roots*/
-			db_desc->levels[level_id].root[tree_id] = NULL;
-			if (superblock->root_r[level_id][tree_id]) {
-				db_desc->levels[level_id].root[tree_id] =
-					(struct node_header *)REAL_ADDRESS(superblock->root_r[level_id][tree_id]);
-				log_debug("Level[%u] tree [%u] root is at %p offt in the device is %lu", level_id,
-					  tree_id, (void *)db_desc->levels[level_id].root[tree_id],
-					  superblock->root_r[level_id][tree_id]);
-			}
-		}
-	}
+	memset(&db_desc->L0, 0x0, sizeof(db_desc->L0));
+	struct db_handle parallax_db = { .db_desc = db_desc,
+					 .volume_desc = db_desc->db_volume,
+					 .db_options = *options };
+	for (uint8_t level_id = 1; level_id < MAX_LEVELS; level_id++)
+		db_desc->dev_levels[level_id] = level_restore_from_device(level_id, superblock, NUM_TREES_PER_LEVEL,
+									  &parallax_db,
+									  options->options[LEVEL0_SIZE].value,
+									  options->options[GROWTH_FACTOR].value);
 
 	recover_logs(db_desc);
 }
 
-static void db_recover_bloom_filters(struct db_handle *database_desc)
-{
-	for (int i = 1; i < MAX_LEVELS; i++) {
-		for (int j = 0; j < NUM_TREES_PER_LEVEL; j++) {
-			if (0 == database_desc->db_desc->db_superblock->bloom_filter_valid[i][j]) {
-				database_desc->db_desc->levels[i].bloom_desc[j] = NULL;
-				continue;
-			}
-			database_desc->db_desc->levels[i].bloom_desc[j] = pbf_recover_bloom_filter(
-				database_desc, i, j, database_desc->db_desc->db_superblock->bloom_filter_hash[i][j]);
-		}
-	}
-}
-
-static db_descriptor *get_db_from_volume(char *volume_name, char *db_name, par_db_initializers create_db)
+static db_descriptor *get_db_from_volume(char *volume_name, char *db_name, struct par_db_options *options)
 {
 	struct db_descriptor *db_desc = NULL;
 	struct volume_descriptor *volume_desc = mem_get_volume_desc(volume_name);
@@ -362,8 +312,8 @@ static db_descriptor *get_db_from_volume(char *volume_name, char *db_name, par_d
 	}
 
 	//TODO Refactor get_db_superblock -> Takes too much arguments -> create a struct
-	db_superblock =
-		get_db_superblock(volume_desc, db_name, strlen(db_name) + 1, PAR_CREATE_DB == create_db, &new_db);
+	db_superblock = get_db_superblock(volume_desc, db_name, strlen(db_name) + 1,
+					  PAR_CREATE_DB == options->create_flag, &new_db);
 
 	if (db_superblock) {
 		int ret = posix_memalign((void **)&db_desc, ALIGNMENT_SIZE, sizeof(struct db_descriptor));
@@ -379,19 +329,18 @@ static db_descriptor *get_db_from_volume(char *volume_name, char *db_name, par_d
 			log_debug("Found DB: %s recovering its allocation log", db_name);
 			db_desc->dirty = 0;
 			rul_log_init(db_desc);
-			restore_db(db_desc, db_desc->db_superblock->id);
+			restore_db(db_desc, db_desc->db_superblock->id, options);
 		} else {
 			db_desc->dirty = 1;
 			log_debug("Initializing new DB: %s, initializing its allocation log", db_name);
 			rul_log_init(db_desc);
-			db_desc->levels[0].allocation_txn_id[0] = rul_start_txn(db_desc);
-
+			db_desc->L0.allocation_txn_id[0] = rul_start_txn(db_desc);
 			log_debug("Got txn %lu for the initialization of Large and L0_recovery_logs of DB: %s",
-				  db_desc->levels[0].allocation_txn_id[0], db_name);
+				  db_desc->L0.allocation_txn_id[0], db_name);
 
 			//init_fresh_db allocates space for the L0_recovery log and large.
 			//As a result we need to acquire a txn_id for the L0
-			init_fresh_db(db_desc);
+			init_fresh_db(db_desc, options);
 		}
 	} else {
 		log_warn("DB: %s NOT found", db_name);
@@ -403,7 +352,12 @@ static db_descriptor *get_db_from_volume(char *volume_name, char *db_name, par_d
 void bt_set_db_status(struct db_descriptor *db_desc, enum level_compaction_status comp_status, uint8_t level_id,
 		      uint8_t tree_id)
 {
-	db_desc->levels[level_id].tree_status[tree_id] = comp_status;
+	if (0 != level_id) {
+		log_fatal("Only for level-0");
+		assert(0);
+		_exit(EXIT_FAILURE);
+	}
+	db_desc->L0.tree_status[tree_id] = comp_status;
 }
 
 db_handle *internal_db_open(struct volume_descriptor *volume_desc, par_db_options *db_options,
@@ -436,7 +390,7 @@ db_handle *internal_db_open(struct volume_descriptor *volume_desc, par_db_option
 	}
 
 	struct db_descriptor *db_desc =
-		get_db_from_volume(volume_desc->volume_name, (char *)db_options->db_name, db_options->create_flag);
+		get_db_from_volume(volume_desc->volume_name, (char *)db_options->db_name, db_options);
 	if (!db_desc) {
 		handle = NULL;
 
@@ -457,7 +411,7 @@ db_handle *internal_db_open(struct volume_descriptor *volume_desc, par_db_option
 	memcpy(&handle->db_options, db_options, sizeof(struct par_db_options));
 
 	uint64_t level0_size = handle->db_options.options[LEVEL0_SIZE].value;
-	uint64_t growth_factor = handle->db_options.options[GROWTH_FACTOR].value;
+	// uint64_t growth_factor = handle->db_options.options[GROWTH_FACTOR].value;
 	uint64_t primary_mode = handle->db_options.options[PRIMARY_MODE].value;
 	uint64_t replica_mode = handle->db_options.options[REPLICA_MODE].value;
 	uint64_t replica_build_index = handle->db_options.options[REPLICA_BUILD_INDEX].value;
@@ -478,16 +432,8 @@ db_handle *internal_db_open(struct volume_descriptor *volume_desc, par_db_option
 	/*if the db is a replica, the gc must be scheduled by the primary*/
 	if (replica_mode)
 		disable_gc();
+	handle->db_desc->L0.max_level_size = level0_size;
 
-	handle->db_desc->levels[0].max_level_size = level0_size;
-	/*init soft state for all levels*/
-	for (uint8_t level_id = 1; level_id < MAX_LEVELS; level_id++) {
-		handle->db_desc->levels[level_id].max_level_size =
-			handle->db_desc->levels[level_id - 1].max_level_size * growth_factor;
-
-		// log_debug("DB:Level %d max_total_size %lu", level_id, handle->db_desc->levels[level_id].max_level_size);
-	}
-	handle->db_desc->levels[MAX_LEVELS - 1].max_level_size = UINT64_MAX;
 	handle->db_desc->reference_count = 1;
 	handle->db_desc->blocked_clients = 0;
 	handle->db_desc->compaction_count = 0;
@@ -497,28 +443,20 @@ db_handle *internal_db_open(struct volume_descriptor *volume_desc, par_db_option
 	db_desc->count_medium_inplace = 0;
 #endif
 
-	for (uint8_t level_id = 0; level_id < MAX_LEVELS; ++level_id) {
-		RWLOCK_INIT(&handle->db_desc->levels[level_id].guard_of_level.rx_lock, NULL);
-		MUTEX_INIT(&handle->db_desc->levels[level_id].level_allocation_lock, NULL);
-		init_level_locktable(handle->db_desc, level_id);
-		memset(handle->db_desc->levels[level_id].level_size, 0, sizeof(uint64_t) * NUM_TREES_PER_LEVEL);
-		handle->db_desc->levels[level_id].medium_log_size = 0;
-		handle->db_desc->levels[level_id].active_operations = 0;
-		/*check again which tree should be active*/
-		handle->db_desc->levels[level_id].active_tree = 0;
-		handle->db_desc->levels[level_id].level_id = level_id;
-		handle->db_desc->levels[level_id].leaf_size = leaf_size_per_level[level_id];
-		handle->db_desc->levels[level_id].scanner_epoch = 0;
-#if MEASURE_SST_USED_SPACE
-		db_desc->levels[level_id].avg_leaf_used_space = 0;
-		db_desc->levels[level_id].leaf_used_space = 0;
-		db_desc->levels[level_id].count_leaves = 0;
-		db_desc->levels[level_id].count_compactions = 0;
-#endif
-		for (uint8_t tree_id = 0; tree_id < NUM_TREES_PER_LEVEL; tree_id++) {
-			bt_set_db_status(handle->db_desc, BT_NO_COMPACTION, level_id, tree_id);
-			handle->db_desc->levels[level_id].epoch[tree_id] = 0;
-		}
+	RWLOCK_INIT(&handle->db_desc->L0.guard_of_level.rx_lock, NULL);
+	MUTEX_INIT(&handle->db_desc->L0.level_allocation_lock, NULL);
+	init_L0_locktable(handle->db_desc);
+	memset(handle->db_desc->L0.level_size, 0, sizeof(uint64_t) * NUM_TREES_PER_LEVEL);
+	handle->db_desc->L0.medium_log_size = 0;
+	handle->db_desc->L0.active_operations = 0;
+	/*check again which tree should be active*/
+	handle->db_desc->L0.active_tree = 0;
+	handle->db_desc->L0.level_id = 0;
+	handle->db_desc->L0.leaf_size = leaf_size_per_level[0];
+	handle->db_desc->L0.scanner_epoch = 0;
+	for (uint8_t tree_id = 0; tree_id < NUM_TREES_PER_LEVEL; tree_id++) {
+		bt_set_db_status(handle->db_desc, BT_NO_COMPACTION, 0, tree_id);
+		handle->db_desc->L0.epoch[tree_id] = 0;
 	}
 
 	_Static_assert(BIG_INLOG < 4, "KV categories number cannot be "
@@ -549,9 +487,8 @@ db_handle *internal_db_open(struct volume_descriptor *volume_desc, par_db_option
 
 	/*get allocation transaction id for level-0*/
 	MUTEX_INIT(&handle->db_desc->flush_L0_lock, NULL);
-	pr_flush_L0(db_desc, db_desc->levels[0].active_tree);
-	db_desc->levels[0].allocation_txn_id[db_desc->levels[0].active_tree] = rul_start_txn(db_desc);
-	db_recover_bloom_filters(handle);
+	pr_flush_L0(db_desc, db_desc->L0.active_tree);
+	db_desc->L0.allocation_txn_id[db_desc->L0.active_tree] = rul_start_txn(db_desc);
 	pr_recover_L0(handle->db_desc);
 
 exit:
@@ -621,12 +558,10 @@ const char *db_close(db_handle *handle)
 	handle->db_desc->db_state = DB_IS_CLOSING;
 	compactiond_notify_all(handle->db_desc->compactiond);
 
-	/*stop all writers at all levels and wait for all clients to complete their operations.*/
-
-	for (uint8_t level_id = 0; level_id < MAX_LEVELS; level_id++) {
-		RWLOCK_WRLOCK(&handle->db_desc->levels[level_id].guard_of_level.rx_lock);
-		spin_loop(&(handle->db_desc->levels[level_id].active_operations), 0);
-	}
+	RWLOCK_WRLOCK(&handle->db_desc->L0.guard_of_level.rx_lock);
+	spin_loop(&(handle->db_desc->L0.active_operations), 0);
+	for (uint8_t level_id = 1; level_id < MAX_LEVELS; level_id++)
+		level_enter_as_writer(handle->db_desc->dev_levels[level_id]);
 
 	handle->db_desc->db_state = DB_TERMINATE_COMPACTION_DAEMON;
 	compactiond_interrupt(handle->db_desc->compactiond);
@@ -638,32 +573,30 @@ const char *db_close(db_handle *handle)
 		  handle->db_desc->db_superblock->db_name);
 
 	/* Release the locks for all levels to allow pending compactions to complete. */
-	for (uint8_t level_id = 0; level_id < MAX_LEVELS; level_id++)
-		RWLOCK_UNLOCK(&handle->db_desc->levels[level_id].guard_of_level.rx_lock);
+	RWLOCK_UNLOCK(&handle->db_desc->L0.guard_of_level.rx_lock);
+	for (uint8_t level_id = 1; level_id < MAX_LEVELS; level_id++)
+		level_leave_as_writer(handle->db_desc->dev_levels[level_id]);
 
 	/*Level 0 compactions*/
 	for (uint8_t i = 0; i < NUM_TREES_PER_LEVEL; ++i) {
-		// if (handle->db_desc->levels[0].tree_status[i] == COMPACTION_IN_PROGRESS) {
-		while (BT_NO_COMPACTION != handle->db_desc->levels[0].tree_status[i]) {
+		while (BT_NO_COMPACTION != handle->db_desc->L0.tree_status[i]) {
 			log_debug("Compaction pending for level: %u tree_id: %u", 0, i);
 			usleep(50);
 		}
 	}
-
 	log_debug("All L0 compactions done");
 
 	/*wait for all other pending compactions to finish*/
-	for (uint8_t i = 1; i < MAX_LEVELS; i++) {
-		// if (COMPACTION_IN_PROGRESS == handle->db_desc->levels[i].tree_status[0]) {
-		while (BT_NO_COMPACTION != handle->db_desc->levels[i].tree_status[0]) {
-			log_debug("Compaction pending for level: %u tree_id: %u", i, 0);
+	for (uint8_t level_id = 1; level_id < MAX_LEVELS; level_id++) {
+		while (level_is_compacting(handle->db_desc->dev_levels[level_id])) {
+			log_debug("Compaction pending for level: %u tree_id: %u", level_id, 0);
 			usleep(500);
 		}
 	}
 
 	log_warn("All pending compactions done for DB:%s", handle->db_desc->db_superblock->db_name);
 	log_debug("Flushing L0 ....");
-	pr_flush_L0(handle->db_desc, handle->db_desc->levels[0].active_tree);
+	pr_flush_L0(handle->db_desc, handle->db_desc->L0.active_tree);
 	log_debug("Flushing L0 ....");
 
 	destroy_log_buffer(&handle->db_desc->big_log);
@@ -673,15 +606,12 @@ const char *db_close(db_handle *handle)
 
 	/*free L0*/
 	for (uint8_t tree_id = 0; tree_id < NUM_TREES_PER_LEVEL; ++tree_id)
-		seg_free_level(handle->db_desc, 0, 0, tree_id);
+		seg_free_L0(handle->db_desc, tree_id);
 
-	for (uint8_t i = 0; i < MAX_LEVELS; ++i) {
-		if (pthread_rwlock_destroy(&handle->db_desc->levels[i].guard_of_level.rx_lock)) {
-			log_fatal("Failed to destroy guard of level lock");
-			BUG_ON();
-		}
-		destroy_level_locktable(handle->db_desc, i);
-	}
+	destroy_L0_locktable(handle->db_desc);
+
+	for (uint8_t level_id = 1; level_id < MAX_LEVELS; ++level_id)
+		level_destroy(handle->db_desc->dev_levels[level_id]);
 
 	compactiond_close(handle->db_desc->compactiond);
 	handle->db_desc->compactiond = NULL;
@@ -710,15 +640,15 @@ static bool is_level0_available(struct db_descriptor *db_desc, uint8_t level_id,
 	if (level_id > 0)
 		return true;
 
-	int active_tree = db_desc->levels[0].active_tree;
+	int active_tree = db_desc->L0.active_tree;
 
 	uint8_t relock = 0;
-	while (db_desc->levels[0].level_size[active_tree] > db_desc->levels[0].max_level_size) {
-		active_tree = db_desc->levels[0].active_tree;
-		if (db_desc->levels[0].level_size[active_tree] > db_desc->levels[0].max_level_size) {
+	while (db_desc->L0.level_size[active_tree] > db_desc->L0.max_level_size) {
+		active_tree = db_desc->L0.active_tree;
+		if (db_desc->L0.level_size[active_tree] > db_desc->L0.max_level_size) {
 			if (!relock) {
 				/* Release the lock of level 0 to allow compactions to progress. */
-				RWLOCK_UNLOCK(&db_desc->levels[0].guard_of_level.rx_lock);
+				RWLOCK_UNLOCK(&db_desc->L0.guard_of_level.rx_lock);
 				relock = 1;
 			}
 
@@ -727,14 +657,13 @@ static bool is_level0_available(struct db_descriptor *db_desc, uint8_t level_id,
 				return false;
 			compactiond_wait(db_desc->compactiond);
 		}
-		active_tree = db_desc->levels[0].active_tree;
+		active_tree = db_desc->L0.active_tree;
 	}
 
 	/* Reacquire the lock of level 0 to access it safely. */
 	if (relock)
-		rwlock == 1 ? RWLOCK_RDLOCK(&db_desc->levels[0].guard_of_level.rx_lock) :
-			      RWLOCK_WRLOCK(&db_desc->levels[0].guard_of_level.rx_lock);
-
+		rwlock == 1 ? RWLOCK_RDLOCK(&db_desc->L0.guard_of_level.rx_lock) :
+			      RWLOCK_WRLOCK(&db_desc->L0.guard_of_level.rx_lock);
 	return true;
 }
 
@@ -1057,12 +986,11 @@ static void pr_do_log_IO(struct pr_log_ticket *ticket)
 	ticket->op_size = op_size;
 }
 
-static void bt_add_segment_to_log(struct db_descriptor *db_desc, struct log_descriptor *log_desc, uint8_t level_id,
-				  uint8_t tree_id)
+static void bt_add_segment_to_log(struct db_descriptor *db_desc, struct log_descriptor *log_desc, uint64_t txn_id)
 {
 	uint32_t curr_tail_id = log_desc->curr_tail_id;
 	uint32_t next_tail_id = curr_tail_id + 1;
-	struct segment_header *new_segment = seg_get_raw_log_segment(db_desc, log_desc->log_type, level_id, tree_id);
+	struct segment_header *new_segment = seg_get_raw_log_segment(db_desc, log_desc->log_type, txn_id);
 
 	if (!new_segment) {
 		log_fatal("Cannot allocate memory from the device!");
@@ -1104,13 +1032,13 @@ static void bt_add_segment_to_log(struct db_descriptor *db_desc, struct log_desc
 	log_desc->curr_tail_id = next_tail_id;
 }
 
-static void bt_add_blob(struct db_descriptor *db_desc, struct log_descriptor *log_desc, uint8_t level_id,
-			uint8_t tree_id)
+static void bt_add_blob(struct db_descriptor *db_desc, struct log_descriptor *log_desc, uint8_t L0_tree_id)
 {
 	uint32_t curr_tail_id = log_desc->curr_tail_id;
 	uint32_t next_tail_id = ++curr_tail_id;
 
-	struct segment_header *next_tail_seg = seg_get_raw_log_segment(db_desc, log_desc->log_type, level_id, tree_id);
+	struct segment_header *next_tail_seg =
+		seg_get_raw_log_segment(db_desc, log_desc->log_type, db_desc->L0.allocation_txn_id[L0_tree_id]);
 
 	if (!next_tail_seg) {
 		log_fatal("No space for new segment");
@@ -1137,24 +1065,29 @@ static void bt_add_blob(struct db_descriptor *db_desc, struct log_descriptor *lo
 	log_desc->curr_tail_id = next_tail_id;
 }
 
-uint64_t allocate_segment_for_log(struct db_descriptor *db_desc, struct log_descriptor *log_desc, uint8_t level_id,
-				  uint8_t tree_id)
-{
-	assert(db_desc && log_desc);
-	struct segment_header *new_segment = seg_get_raw_log_segment(db_desc, log_desc->log_type, level_id, tree_id);
-	if (!new_segment) {
-		log_fatal("Cannot allocate memory from the device!");
-		BUG_ON();
-	}
+// uint64_t allocate_segment_for_log(struct db_descriptor *db_desc, struct log_descriptor *log_desc, uint8_t level_id,
+// 				  uint8_t tree_id)
+// {
+// 	if (0 != level_id) {
+// 		log_fatal("Level-0 use only");
+// 		_exit(EXIT_FAILURE);
+// 	}
+// 	assert(db_desc && log_desc);
+// 	struct segment_header *new_segment =
+// 		seg_get_raw_log_segment(db_desc, log_desc->log_type, db_desc->L0.allocation_txn_id[tree_id]);
+// 	if (!new_segment) {
+// 		log_fatal("Cannot allocate memory from the device!");
+// 		BUG_ON();
+// 	}
 
-	uint64_t next_tail_seg_offt = ABSOLUTE_ADDRESS(new_segment);
+// 	uint64_t next_tail_seg_offt = ABSOLUTE_ADDRESS(new_segment);
 
-	if (!next_tail_seg_offt) {
-		log_fatal("No space for new segment");
-		BUG_ON();
-	}
-	return next_tail_seg_offt;
-}
+// 	if (!next_tail_seg_offt) {
+// 		log_fatal("No space for new segment");
+// 		BUG_ON();
+// 	}
+// 	return next_tail_seg_offt;
+// }
 
 static void *bt_append_to_log_direct_IO(struct log_operation *req, struct log_towrite *log_metadata,
 					struct metadata_tologop *data_size)
@@ -1192,7 +1125,9 @@ static void *bt_append_to_log_direct_IO(struct log_operation *req, struct log_to
 		//log_info("Segment change avail space %u kv size %u",available_space_in_log,data_size->kv_size);
 		// pad with zeroes remaining bytes in segment
 		if (available_space_in_log > 0) {
-			struct log_operation pad_op = { .metadata = NULL, .optype_tolog = paddingOp, .ins_req = NULL };
+			struct log_operation pad_op = {
+				.metadata = NULL, .optype_tolog = paddingOp, .ins_req = NULL, .txn_id = req->txn_id
+			};
 			pad_ticket.req = &pad_op;
 			pad_ticket.data_size = NULL;
 			pad_ticket.tail = log_metadata->log_desc->tail[curr_tail_id % LOG_TAIL_NUM_BUFS];
@@ -1218,13 +1153,11 @@ static void *bt_append_to_log_direct_IO(struct log_operation *req, struct log_to
 
 		switch (log_metadata->log_desc->log_type) {
 		case BIG_LOG:
-			bt_add_blob(handle->db_desc, log_metadata->log_desc, req->metadata->level_id,
-				    req->metadata->tree_id);
+			bt_add_blob(handle->db_desc, log_metadata->log_desc, req->metadata->tree_id);
 			break;
 		case MEDIUM_LOG:
 		case SMALL_LOG:
-			bt_add_segment_to_log(handle->db_desc, log_metadata->log_desc, req->metadata->level_id,
-					      req->metadata->tree_id);
+			bt_add_segment_to_log(handle->db_desc, log_metadata->log_desc, req->txn_id);
 			break;
 		default:
 			log_fatal("Unknown category");
@@ -1332,8 +1265,7 @@ static inline struct lock_table *bt_reader_visit_node(db_descriptor *db_desc, st
 	if (level_id)
 		return NULL;
 
-	struct lock_table *curr_lock =
-		find_lock_position((const lock_table **)db_desc->levels[level_id].level_lock_table, node);
+	struct lock_table *curr_lock = find_lock_position((const lock_table **)db_desc->L0.level_lock_table, node);
 	if (RWLOCK_RDLOCK(&curr_lock->rx_lock) != 0)
 		BUG_ON();
 
@@ -1350,24 +1282,20 @@ static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id,
 	struct db_descriptor *db_desc = get_op->db_desc;
 	struct key_splice *search_key_buf = get_op->key_splice;
 
-	struct node_header *root = db_desc->levels[level_id].root[tree_id];
-	if (!root) {
+	if (level_id && !level_does_key_exist(db_desc->dev_levels[level_id], get_op->key_splice))
+		return;
+
+	struct node_header *curr_node = 0 == level_id ? db_desc->L0.root[tree_id] :
+							level_get_root(db_desc->dev_levels[level_id], tree_id);
+	if (NULL == curr_node) {
 		get_op->found = 0;
 		return;
 	}
 
-	if (!pbf_check(db_desc->levels[level_id].bloom_desc[0], key_splice_get_key_offset(get_op->key_splice),
-		       key_splice_get_key_size(get_op->key_splice)))
-		return;
-
 	lock_table *prev_lock = NULL;
 	lock_table *curr_lock = NULL;
-	struct node_header *curr_node = root;
 
-	while (curr_node) {
-		if (curr_node->type == leafNode || curr_node->type == leafRootNode)
-			break;
-
+	while (curr_node->type != leafNode && curr_node->type != leafRootNode) {
 		//No locking needed for the device levels >= 1
 		curr_lock = bt_reader_visit_node(db_desc, curr_node, prev_lock, level_id);
 		// if (0 == level_id) {
@@ -1460,7 +1388,7 @@ release_leaf_lock:
 	if (0 == level_id && curr_lock && RWLOCK_UNLOCK(&curr_lock->rx_lock) != 0)
 		BUG_ON();
 
-	__sync_fetch_and_sub(&db_desc->levels[level_id].active_operations, 1);
+	// __sync_fetch_and_sub(&db_desc->levels[level_id].active_operations, 1);
 }
 
 void find_key(struct lookup_operation *get_op)
@@ -1474,10 +1402,14 @@ void find_key(struct lookup_operation *get_op)
 	struct db_descriptor *db_desc = get_op->db_desc;
 	/*again special care for L0*/
 	// Acquiring guard lock for level 0
-	if (RWLOCK_RDLOCK(&db_desc->levels[0].guard_of_level.rx_lock) != 0)
+	int error = RWLOCK_RDLOCK(&db_desc->L0.guard_of_level.rx_lock);
+	if (error != 0) {
+		log_debug("Error got: %d", error);
+		perror("Reason:");
 		BUG_ON();
-	__sync_fetch_and_add(&db_desc->levels[0].active_operations, 1);
-	uint8_t tree_id = db_desc->levels[0].active_tree;
+	}
+	__sync_fetch_and_add(&db_desc->L0.active_operations, 1);
+	uint8_t tree_id = db_desc->L0.active_tree;
 	uint8_t base = tree_id;
 
 	/*Level-0 search logic we look trees of L0 from newer to oldest*/
@@ -1487,60 +1419,56 @@ void find_key(struct lookup_operation *get_op)
 		get_op->tombstone = 0;
 		lookup_in_tree(get_op, 0, tree_id);
 
-		if (get_op->found) {
-			if (RWLOCK_UNLOCK(&db_desc->levels[0].guard_of_level.rx_lock) != 0)
-				BUG_ON();
-			__sync_fetch_and_sub(&db_desc->levels[0].active_operations, 1);
-
-			goto finish;
-		}
-		++tree_id;
-		if (tree_id >= NUM_TREES_PER_LEVEL)
+		if (get_op->found)
+			break;
+		if (++tree_id >= NUM_TREES_PER_LEVEL)
 			tree_id = 0;
 		if (tree_id == base)
 			break;
 	}
-	if (RWLOCK_UNLOCK(&db_desc->levels[0].guard_of_level.rx_lock) != 0)
-		BUG_ON();
-	__sync_fetch_and_sub(&db_desc->levels[0].active_operations, 1);
 
-	/*search the rest trees of the level*/
-	for (uint8_t level_id = 1; level_id < MAX_LEVELS; ++level_id) {
-		if (RWLOCK_RDLOCK(&db_desc->levels[level_id].guard_of_level.rx_lock) != 0)
-			BUG_ON();
-		__sync_fetch_and_add(&db_desc->levels[level_id].active_operations, 1);
+	if (RWLOCK_UNLOCK(&db_desc->L0.guard_of_level.rx_lock) != 0)
+		BUG_ON();
+	__sync_fetch_and_sub(&db_desc->L0.active_operations, 1);
+
+	/*search device levels*/
+	for (uint8_t level_id = 1; level_id < MAX_LEVELS && false == get_op->found; ++level_id) {
+		uint8_t ticket_id = level_enter_as_reader(db_desc->dev_levels[level_id]);
 
 		get_op->found = 0;
 		get_op->tombstone = 0;
 		lookup_in_tree(get_op, level_id, 0);
+		level_leave_as_reader(db_desc->dev_levels[level_id], ticket_id);
 		if (get_op->found) {
-			if (RWLOCK_UNLOCK(&db_desc->levels[level_id].guard_of_level.rx_lock) != 0)
-				BUG_ON();
-			__sync_fetch_and_sub(&db_desc->levels[level_id].active_operations, 1);
+			// if (RWLOCK_UNLOCK(&db_desc->levels[level_id].guard_of_level.rx_lock) != 0)
+			// 	BUG_ON();
+			// __sync_fetch_and_sub(&db_desc->levels[level_id].active_operations, 1);
 
-			goto finish;
+			break;
 		}
-		if (RWLOCK_UNLOCK(&db_desc->levels[level_id].guard_of_level.rx_lock) != 0)
-			BUG_ON();
-		__sync_fetch_and_sub(&db_desc->levels[level_id].active_operations, 1);
+		// if (RWLOCK_UNLOCK(&db_desc->levels[level_id].guard_of_level.rx_lock) != 0)
+		// 	BUG_ON();
+		// __sync_fetch_and_sub(&db_desc->levels[level_id].active_operations, 1);
 	}
 
-finish:
 	if (get_op->found && get_op->tombstone)
 		get_op->found = 0;
 }
 
 int insert_KV_at_leaf(bt_insert_req *ins_req, struct node_header *leaf)
 {
-	uint8_t level_id = ins_req->metadata.level_id;
+	// uint8_t level_id = ins_req->metadata.level_id;
 	uint8_t tree_id = ins_req->metadata.tree_id;
 
 	char *log_address = NULL;
 	if (ins_req->metadata.append_to_log) {
-		struct log_operation append_op = { .metadata = &ins_req->metadata,
-						   .optype_tolog = insertOp,
-						   .ins_req = ins_req,
-						   .is_medium_log_append = false };
+		struct log_operation append_op = {
+			.metadata = &ins_req->metadata,
+			.optype_tolog = insertOp,
+			.ins_req = ins_req,
+			.is_medium_log_append = false,
+			.txn_id = ins_req->metadata.handle->db_desc->L0.allocation_txn_id[ins_req->metadata.tree_id]
+		};
 		if (ins_req->metadata.tombstone)
 			append_op.optype_tolog = deleteOp;
 		log_address = append_key_value_to_log(&append_op);
@@ -1573,7 +1501,8 @@ int insert_KV_at_leaf(bt_insert_req *ins_req, struct node_header *leaf)
 		return -1;
 
 	int32_t kv_size = kv_splice_base_get_size(ins_req->splice_base);
-	__sync_fetch_and_add(&(ins_req->metadata.handle->db_desc->levels[level_id].level_size[tree_id]), kv_size);
+	// This function executes only for L0
+	__sync_fetch_and_add(&(ins_req->metadata.handle->db_desc->L0.level_size[tree_id]), kv_size);
 	return INSERT;
 }
 
@@ -1618,12 +1547,12 @@ static bool bt_reorganize_leaf(struct leaf_node *leaf, bt_insert_req *ins_req)
 {
 	if (!dl_is_reorganize_possible(leaf, kv_splice_base_calculate_size(ins_req->splice_base)))
 		return false;
-	struct leaf_node *target =
-		calloc(1UL, ins_req->metadata.handle->db_desc->levels[ins_req->metadata.level_id].leaf_size);
-	dl_init_leaf_node(target, ins_req->metadata.handle->db_desc->levels[ins_req->metadata.level_id].leaf_size);
+	// 	This function executes only for L0
+	struct leaf_node *target = calloc(1UL, ins_req->metadata.handle->db_desc->L0.leaf_size);
+	dl_init_leaf_node(target, ins_req->metadata.handle->db_desc->L0.leaf_size);
 	dl_set_leaf_node_type(target, dl_get_leaf_node_type(leaf));
 	dl_reorganize_dynamic_leaf(leaf, target);
-	memcpy(leaf, target, ins_req->metadata.handle->db_desc->levels[ins_req->metadata.level_id].leaf_size);
+	memcpy(leaf, target, ins_req->metadata.handle->db_desc->L0.leaf_size);
 	free(target);
 	return true;
 }
@@ -1634,11 +1563,9 @@ static void bt_split_leaf(struct leaf_node *leaf, bt_insert_req *req, struct bt_
 		seg_get_dynamic_leaf_node(req->metadata.handle->db_desc, req->metadata.level_id, req->metadata.tree_id);
 	split_result->right_leaf_child =
 		seg_get_dynamic_leaf_node(req->metadata.handle->db_desc, req->metadata.level_id, req->metadata.tree_id);
-
-	dl_init_leaf_node(split_result->left_leaf_child,
-			  req->metadata.handle->db_desc->levels[req->metadata.level_id].leaf_size);
-	dl_init_leaf_node(split_result->right_leaf_child,
-			  req->metadata.handle->db_desc->levels[req->metadata.level_id].leaf_size);
+	// This function executes only for L0
+	dl_init_leaf_node(split_result->left_leaf_child, req->metadata.handle->db_desc->L0.leaf_size);
+	dl_init_leaf_node(split_result->right_leaf_child, req->metadata.handle->db_desc->L0.leaf_size);
 	struct kv_splice_base splice =
 		dl_split_dynamic_leaf(leaf, split_result->left_leaf_child, split_result->right_leaf_child);
 
@@ -1685,8 +1612,9 @@ static uint8_t concurrent_insert(bt_insert_req *ins_req)
 
 	db_descriptor *db_desc = ins_req->metadata.handle->db_desc;
 	uint8_t level_id = ins_req->metadata.level_id;
-	lock_table *guard_of_level = &(db_desc->levels[level_id].guard_of_level);
-	int64_t *num_level_writers = &db_desc->levels[level_id].active_operations;
+	//This function executes only for L0
+	lock_table *guard_of_level = &(db_desc->L0.guard_of_level);
+	int64_t *num_level_writers = &db_desc->L0.active_operations;
 
 	unsigned release = 0;
 	unsigned size = 0;
@@ -1716,7 +1644,7 @@ release_and_retry:
 
 	/*now look which is the active_tree of L0*/
 	if (ins_req->metadata.level_id == 0)
-		ins_req->metadata.tree_id = ins_req->metadata.handle->db_desc->levels[0].active_tree;
+		ins_req->metadata.tree_id = ins_req->metadata.handle->db_desc->L0.active_tree;
 
 	/*level's guard lock aquired*/
 	upper_level_nodes[size++] = guard_of_level;
@@ -1726,26 +1654,26 @@ release_and_retry:
 	struct node_header *son = NULL;
 	struct node_header *father = NULL;
 
-	if (db_desc->levels[level_id].root[ins_req->metadata.tree_id] == NULL) {
+	if (db_desc->L0.root[ins_req->metadata.tree_id] == NULL) {
 		/*we are allocating a new tree*/
 
 		log_debug("Allocating new active tree %d for level id %d", ins_req->metadata.tree_id, level_id);
 
 		struct leaf_node *new_leaf =
 			seg_get_leaf_node(ins_req->metadata.handle->db_desc, level_id, ins_req->metadata.tree_id);
-		dl_init_leaf_node(new_leaf, ins_req->metadata.handle->db_desc->levels[level_id].leaf_size);
+		dl_init_leaf_node(new_leaf, ins_req->metadata.handle->db_desc->L0.leaf_size);
 		dl_set_leaf_node_type(new_leaf, leafRootNode);
-		db_desc->levels[level_id].root[ins_req->metadata.tree_id] = (struct node_header *)new_leaf;
+		db_desc->L0.root[ins_req->metadata.tree_id] = (struct node_header *)new_leaf;
 	}
 	/*acquiring lock of the current root*/
-	lock = find_lock_position((const lock_table **)db_desc->levels[level_id].level_lock_table,
-				  db_desc->levels[level_id].root[ins_req->metadata.tree_id]);
+	lock = find_lock_position((const lock_table **)db_desc->L0.level_lock_table,
+				  db_desc->L0.root[ins_req->metadata.tree_id]);
 	if (RWLOCK_WRLOCK(&lock->rx_lock) != 0) {
 		log_fatal("ERROR locking");
 		BUG_ON();
 	}
 	upper_level_nodes[size++] = lock;
-	son = db_desc->levels[level_id].root[ins_req->metadata.tree_id];
+	son = db_desc->L0.root[ins_req->metadata.tree_id];
 
 	while (1) {
 		/*Check if father is safe it should be*/
@@ -1791,10 +1719,7 @@ release_and_retry:
 				index_init_node(ADD_GUARD, new_root, rootNode);
 
 				struct node_header *new_root_header = index_node_get_header(new_root);
-				new_root_header->height = db_desc->levels[ins_req->metadata.level_id]
-								  .root[ins_req->metadata.tree_id]
-								  ->height +
-							  1;
+				new_root_header->height = db_desc->L0.root[ins_req->metadata.tree_id]->height + 1;
 
 				struct pivot_pointer left = { .child_offt = ABSOLUTE_ADDRESS(split_res.left_child) };
 				struct pivot_pointer right = { .child_offt = ABSOLUTE_ADDRESS(split_res.right_child) };
@@ -1809,8 +1734,7 @@ release_and_retry:
 					_exit(EXIT_FAILURE);
 				}
 				/*new write root of the tree*/
-				db_desc->levels[level_id].root[ins_req->metadata.tree_id] =
-					(struct node_header *)new_root;
+				db_desc->L0.root[ins_req->metadata.tree_id] = (struct node_header *)new_root;
 				goto release_and_retry;
 			}
 			/*Insert pivot at father*/
@@ -1845,8 +1769,8 @@ release_and_retry:
 		assert(son);
 
 		/*Take the lock of the next node before its traversal*/
-		lock = find_lock_position(
-			(const lock_table **)ins_req->metadata.handle->db_desc->levels[level_id].level_lock_table, son);
+		lock = find_lock_position((const lock_table **)ins_req->metadata.handle->db_desc->L0.level_lock_table,
+					  son);
 
 		if (RWLOCK_WRLOCK(&lock->rx_lock) != 0) {
 			log_fatal("ERROR unlocking reason follows rc");
@@ -1890,8 +1814,8 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 
 	db_descriptor *db_desc = ins_req->metadata.handle->db_desc;
 	uint32_t level_id = ins_req->metadata.level_id;
-	lock_table *guard_of_level = &db_desc->levels[level_id].guard_of_level;
-	int64_t *num_level_writers = &db_desc->levels[level_id].active_operations;
+	lock_table *guard_of_level = &db_desc->L0.guard_of_level;
+	int64_t *num_level_writers = &db_desc->L0.active_operations;
 
 	unsigned size = 0;
 	unsigned release = 0;
@@ -1915,22 +1839,22 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 		log_fatal("Failue cannot write to Level-0");
 	/*now look which is the active_tree of L0*/
 	if (ins_req->metadata.level_id == 0)
-		ins_req->metadata.tree_id = ins_req->metadata.handle->db_desc->levels[0].active_tree;
+		ins_req->metadata.tree_id = ins_req->metadata.handle->db_desc->L0.active_tree;
 
 	/*mark your presence*/
 	__sync_fetch_and_add(num_level_writers, 1);
 	upper_level_nodes[size++] = guard_of_level;
 
-	if (db_desc->levels[level_id].root[ins_req->metadata.tree_id] == NULL ||
-	    db_desc->levels[level_id].root[ins_req->metadata.tree_id]->type == leafRootNode) {
+	if (db_desc->L0.root[ins_req->metadata.tree_id] == NULL ||
+	    db_desc->L0.root[ins_req->metadata.tree_id]->type == leafRootNode) {
 		_unlock_upper_levels(upper_level_nodes, size, release);
 		__sync_fetch_and_sub(num_level_writers, 1);
 		return PAR_FAILURE;
 	}
 
 	/*acquire read lock of the current root*/
-	lock = find_lock_position((const lock_table **)db_desc->levels[level_id].level_lock_table,
-				  db_desc->levels[level_id].root[ins_req->metadata.tree_id]);
+	lock = find_lock_position((const lock_table **)db_desc->L0.level_lock_table,
+				  db_desc->L0.root[ins_req->metadata.tree_id]);
 
 	if (RWLOCK_RDLOCK(&lock->rx_lock) != 0) {
 		log_fatal("ERROR locking");
@@ -1938,7 +1862,7 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 	}
 
 	upper_level_nodes[size++] = lock;
-	son = db_desc->levels[level_id].root[ins_req->metadata.tree_id];
+	son = db_desc->L0.root[ins_req->metadata.tree_id];
 	assert(son->height > 0);
 	while (1) {
 		if (is_split_needed(son, ins_req)) {
@@ -1958,7 +1882,7 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 		if (son->height == 0)
 			break;
 		/*Acquire the lock of the next node before its traversal*/
-		lock = find_lock_position((const lock_table **)db_desc->levels[level_id].level_lock_table, son);
+		lock = find_lock_position((const lock_table **)db_desc->L0.level_lock_table, son);
 		upper_level_nodes[size++] = lock;
 
 		if (RWLOCK_RDLOCK(&lock->rx_lock) != 0) {
@@ -1970,7 +1894,7 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 		release = size - 1;
 	}
 
-	lock = find_lock_position((const lock_table **)db_desc->levels[level_id].level_lock_table, son);
+	lock = find_lock_position((const lock_table **)db_desc->L0.level_lock_table, son);
 	upper_level_nodes[size++] = lock;
 
 	if (RWLOCK_WRLOCK(&lock->rx_lock) != 0) {
@@ -1992,16 +1916,16 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 	return PAR_SUCCESS;
 }
 
-struct log_descriptor *db_desc_get_log_desc(struct db_descriptor *db_desc, enum log_type type)
-{
-	assert(db_desc);
-	if (type == SMALL_LOG)
-		return &db_desc->small_log;
-	if (type == MEDIUM_LOG)
-		return &db_desc->medium_log;
-	if (type == BIG_LOG)
-		return &db_desc->big_log;
+// struct log_descriptor *db_desc_get_log_desc(struct db_descriptor *db_desc, enum log_type type)
+// {
+// 	assert(db_desc);
+// 	if (type == SMALL_LOG)
+// 		return &db_desc->small_log;
+// 	if (type == MEDIUM_LOG)
+// 		return &db_desc->medium_log;
+// 	if (type == BIG_LOG)
+// 		return &db_desc->big_log;
 
-	log_fatal("Corrupted log type");
-	_exit(EXIT_FAILURE);
-}
+// 	log_fatal("Corrupted log type");
+// 	_exit(EXIT_FAILURE);
+// }

@@ -11,7 +11,6 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-
 #include "../include/parallax/parallax.h"
 #include "../allocator/kv_format.h"
 #include "../allocator/log_structures.h"
@@ -24,6 +23,7 @@
 #include "../btree/set_options.h"
 #include "../common/common.h"
 #include "../include/parallax/structures.h"
+#include "../lib/allocator/device_structures.h"
 #include "../scanner/scanner.h"
 #include <assert.h>
 #include <log.h>
@@ -59,6 +59,7 @@ const char *par_close(par_handle handle)
 	return db_close((db_handle *)handle);
 }
 
+// cppcheck-suppress unusedFunction
 char *par_get_db_name(par_handle handle, const char **error_message)
 {
 	if (!handle) {
@@ -218,14 +219,14 @@ uint64_t par_flush_segment_in_log(par_handle handle, char *buf, int32_t buf_size
 	if (log_cat == BIG) {
 		log_type = BIG_LOG;
 	}
-	return pr_add_and_flush_segment_in_log(dbhandle, buf, buf_size, IO_size, log_type);
+	return pr_add_and_flush_segment_in_log(dbhandle, buf, buf_size, IO_size, log_type, UINT64_MAX);
 }
 
-void par_init_compaction_id(par_handle handle, uint32_t level_id, uint32_t tree_id)
+uint64_t par_init_compaction_id(par_handle handle)
 {
 	db_handle *dbhandle = (db_handle *)handle;
 	/*Acquire a txn_id for the allocations of the compaction*/
-	dbhandle->db_desc->levels[level_id].allocation_txn_id[tree_id] = rul_start_txn(dbhandle->db_desc);
+	return rul_start_txn(dbhandle->db_desc);
 }
 
 void par_delete(par_handle handle, struct par_key *key, const char **error_message)
@@ -388,12 +389,12 @@ struct par_value par_get_value(par_scanner sc)
 par_ret_code par_sync(par_handle handle)
 {
 	struct db_handle *parallax = (struct db_handle *)handle;
-	RWLOCK_WRLOCK(&parallax->db_desc->levels[0].guard_of_level.rx_lock);
-	spin_loop(&(parallax->db_desc->levels[0].active_operations), 0);
-	uint8_t active_tree = parallax->db_desc->levels[0].active_tree;
+	RWLOCK_WRLOCK(&parallax->db_desc->L0.guard_of_level.rx_lock);
+	spin_loop(&(parallax->db_desc->L0.active_operations), 0);
+	uint8_t active_tree = parallax->db_desc->L0.active_tree;
 	pr_flush_L0(parallax->db_desc, active_tree);
-	parallax->db_desc->levels[0].allocation_txn_id[active_tree] = rul_start_txn(parallax->db_desc);
-	RWLOCK_UNLOCK(&parallax->db_desc->levels[0].guard_of_level.rx_lock);
+	parallax->db_desc->L0.allocation_txn_id[active_tree] = rul_start_txn(parallax->db_desc);
+	RWLOCK_UNLOCK(&parallax->db_desc->L0.guard_of_level.rx_lock);
 	return PAR_SUCCESS;
 }
 
@@ -466,6 +467,7 @@ struct par_options_desc *par_get_default_options(void)
 	return default_db_options;
 }
 
+// cppcheck-suppress unusedFunction
 void par_flush_superblock(par_handle handle)
 {
 	struct db_handle *dbhandle = (struct db_handle *)handle;

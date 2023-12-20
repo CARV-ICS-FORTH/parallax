@@ -77,6 +77,7 @@ struct scanner {
 	void *keyValue;
 	int32_t type; /*to be removed also*/
 	int32_t kv_level_id;
+	uint8_t tickets[LEVEL_ENTRY_POINTS];
 	uint8_t kv_cat;
 };
 

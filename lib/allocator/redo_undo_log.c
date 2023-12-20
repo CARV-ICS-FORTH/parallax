@@ -26,7 +26,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/types.h>
 #include <unistd.h>
 #include <uthash.h>
 
@@ -60,7 +59,7 @@ static void rul_flush_log_chunk(struct db_descriptor *db_desc, uint32_t chunk_id
 
 	//ssize_t size = RUL_LOG_CHUNK_SIZE_IN_BYTES;
 	ssize_t size = (db_desc->allocation_log->size % RUL_LOG_CHUNK_SIZE_IN_BYTES ?
-				db_desc->allocation_log->size % RUL_LOG_CHUNK_SIZE_IN_BYTES :
+				(db_desc->allocation_log->size % RUL_LOG_CHUNK_SIZE_IN_BYTES) :
 				RUL_LOG_CHUNK_SIZE_IN_BYTES);
 
 	size = RUL_ALIGN_UP(size, 512);
@@ -403,6 +402,7 @@ void rul_add_entry_in_txn_buf(struct db_descriptor *db_desc, struct rul_log_entr
 
 	if (transaction == NULL) {
 		log_fatal("Txn %lu not found!", txn_id);
+		assert(0);
 		BUG_ON();
 	}
 	MUTEX_UNLOCK(&log_desc->trans_map_lock);

@@ -22,7 +22,7 @@ struct log_buffer_iterator {
 	uint32_t curr_buf;
 	bool is_valid;
 };
-
+// cppcheck-suppress unusedFunction
 struct log_buffer_iterator *log_buffer_iterator_init(struct log_descriptor *log_desc)
 {
 	struct log_buffer_iterator *iter = (struct log_buffer_iterator *)calloc(1, sizeof(struct log_buffer_iterator));
@@ -32,18 +32,21 @@ struct log_buffer_iterator *log_buffer_iterator_init(struct log_descriptor *log_
 	return iter;
 }
 
+// cppcheck-suppress unusedFunction
 bool log_buffer_iterator_next(struct log_buffer_iterator *iter)
 {
 	assert(iter);
 	return ++iter->curr_buf < LOG_TAIL_NUM_BUFS ? true : false;
 }
 
+// cppcheck-suppress unusedFunction
 bool log_buffer_iterator_is_valid(struct log_buffer_iterator *iter)
 {
 	assert(iter);
 	return iter->curr_buf < LOG_TAIL_NUM_BUFS ? true : false;
 }
 
+// cppcheck-suppress unusedFunction
 char *log_buffer_iterator_get_buffer(struct log_buffer_iterator *iter)
 {
 	assert(iter);

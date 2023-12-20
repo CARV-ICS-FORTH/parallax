@@ -1,12 +1,10 @@
 #ifndef LEVEL_READ_CURSOR_H
 #define LEVEL_READ_CURSOR_H
 #include "btree.h"
-#include "conf.h"
-#include "kv_pairs.h"
 #include <stdbool.h>
 #include <stdint.h>
 struct sh_heap_node;
-
+struct rcursor_level_read_cursor;
 enum rcursor_state {
 	COMP_CUR_INIT,
 	COMP_CUR_FIND_LEAF,

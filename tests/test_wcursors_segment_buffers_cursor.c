@@ -1,4 +1,5 @@
 #include "allocator/persistent_operations.h"
+#include "allocator/redo_undo_log.h"
 #include "arg_parser.h"
 #include "btree/level_write_cursor.h"
 #include <assert.h>
@@ -36,9 +37,11 @@ static void test_wcursors_segment_buffers_cursor(par_handle handle)
 	log_info("Initialize a level write cursor for level 4");
 	uint32_t level_id = 4;
 	uint32_t tree_id = 1;
-	par_init_compaction_id(handle, level_id, tree_id);
+	// par_init_compaction_id(handle, level_id, tree_id);
+	// new staff
+	uint64_t txn_id = par_init_compaction_id(handle);
 	struct wcursor_level_write_cursor *write_cursor_segments =
-		wcursor_init_write_cursor(level_id, handle, tree_id, true);
+		wcursor_init_write_cursor(level_id, handle, tree_id, true, txn_id);
 	wcursor_segment_buffers_iterator_t segment_buffers_cursor =
 		wcursor_segment_buffers_cursor_init(write_cursor_segments);
 
