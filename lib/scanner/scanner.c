@@ -43,8 +43,6 @@ bool level_scanner_init(struct level_scanner *level_scanner, db_handle *database
 	level_scanner->db = database;
 	level_scanner->level_id = level_id;
 	level_scanner->is_compaction_scanner = false;
-	// level_scanner->root = database->db_desc->levels[level_id].root[tree_id];
-	// new staff
 	level_scanner->root = 0 == level_id ? database->db_desc->L0.root[tree_id] :
 					      level_get_root(database->db_desc->dev_levels[level_id], tree_id);
 
@@ -57,8 +55,6 @@ static void read_lock_node(struct level_scanner *level_scanner, struct node_head
 		return;
 
 	struct lock_table *lock =
-		// find_lock_position((const lock_table **)level_scanner->db->db_desc->levels[0].level_lock_table, node);
-		// new staff
 		find_lock_position((const lock_table **)level_scanner->db->db_desc->L0.level_lock_table, node);
 	int ret = 0;
 	if ((ret = RWLOCK_RDLOCK(&lock->rx_lock)) != 0) {
@@ -91,8 +87,6 @@ static void read_unlock_node(struct level_scanner *level_sc, struct node_header 
 		return;
 
 	struct lock_table *lock =
-		// find_lock_position((const lock_table **)level_sc->db->db_desc->levels[0].level_lock_table, node);
-		// new staff
 		find_lock_position((const lock_table **)level_sc->db->db_desc->L0.level_lock_table, node);
 	if (RWLOCK_UNLOCK(&lock->rx_lock) != 0) {
 		log_fatal("ERROR locking");
@@ -298,22 +292,16 @@ void scanner_init(struct scanner *scanner, db_handle *database, void *start_key,
 		return;
 	}
 
-	// for (int i = 0; i < MAX_LEVELS; i++)
-	// 	RWLOCK_RDLOCK(&database->db_desc->levels[i].guard_of_level.rx_lock);
-	// __sync_fetch_and_add(&database->db_desc->levels[0].active_operations, 1);
-	// new staff
 	RWLOCK_RDLOCK(&database->db_desc->L0.guard_of_level.rx_lock);
 	__sync_fetch_and_add(&database->db_desc->L0.active_operations, 1);
 
 	for (int i = 1; i < MAX_LEVELS; i++)
-		level_enter_as_reader(database->db_desc->dev_levels[i]);
+		scanner->tickets[i] = level_enter_as_reader(database->db_desc->dev_levels[i]);
 
 	memset(scanner, 0x00, sizeof(*scanner));
 
 	scanner->db = database;
 
-	// sh_init_heap(&scanner->heap, database->db_desc->levels[0].active_tree, MIN_HEAP);
-	//new staff
 	sh_init_heap(&scanner->heap, database->db_desc->L0.active_tree, MIN_HEAP);
 
 	for (int level_id = 0; level_id < MAX_LEVELS; ++level_id) {
@@ -321,8 +309,6 @@ void scanner_init(struct scanner *scanner, db_handle *database, void *start_key,
 			if (level_id > 0 && tree_id > 0)
 				continue;
 
-			// struct node_header *root = database->db_desc->levels[level_id].root[tree_id];
-			// new staff
 			struct node_header *root =
 				0 == level_id ? database->db_desc->L0.root[tree_id] :
 						level_get_root(database->db_desc->dev_levels[level_id], tree_id);
@@ -340,8 +326,6 @@ void scanner_init(struct scanner *scanner, db_handle *database, void *start_key,
 			heap_node.level_id = level_id;
 			heap_node.active_tree = tree_id;
 			heap_node.db_desc = database->db_desc;
-			// heap_node.epoch = level_id == 0 ? database->db_desc->levels[0].epoch[tree_id] : UINT64_MAX;
-			// new staff
 			heap_node.epoch = level_id == 0 ? database->db_desc->L0.epoch[tree_id] : UINT64_MAX;
 			// log_debug("Initializing scanner with splice size: %d data %s from level_id %u tree_id %u",
 			// 	  kv_general_splice_get_key_size(&heap_node.splice),
@@ -371,14 +355,10 @@ void scanner_close(struct scanner *scanner)
 		stack_destroy(&(scanner->level_scanner[0][i].stack));
 	}
 
-	// for (int i = 0; i < MAX_LEVELS; i++)
-	// 	RWLOCK_UNLOCK(&scanner->db->db_desc->levels[i].guard_of_level.rx_lock);
-	//__sync_fetch_and_sub(&scanner->db->db_desc->levels[0].active_operations, 1);
-	// 	new staff
 	RWLOCK_UNLOCK(&scanner->db->db_desc->L0.guard_of_level.rx_lock);
 	__sync_fetch_and_sub(&scanner->db->db_desc->L0.active_operations, 1);
 	for (int i = 1; i < MAX_LEVELS; i++)
-		level_leave_as_reader(scanner->db->db_desc->dev_levels[i]);
+		level_leave_as_reader(scanner->db->db_desc->dev_levels[i], scanner->tickets[i]);
 
 	free_dups_list(&scanner->heap.dups);
 

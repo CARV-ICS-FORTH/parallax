@@ -1,3 +1,4 @@
+
 #include "device_level.h"
 #include "../allocator/device_structures.h"
 #include "../allocator/log_structures.h"
@@ -17,8 +18,12 @@
 #include <unistd.h>
 struct key_splice;
 struct node_header;
-
 extern const uint32_t *const size_per_height;
+
+struct level_counter {
+	int64_t active_operations;
+	char pad[64 - sizeof(uint64_t)];
+};
 
 struct level_lock {
 	pthread_rwlock_t rx_lock;
@@ -35,13 +40,16 @@ struct device_level {
 	uint64_t level_size[NUM_TREES_PER_LEVEL];
 	int64_t num_level_keys[NUM_TREES_PER_LEVEL];
 	pthread_t compaction_thread;
-	struct level_lock guard_of_level;
+
 	pthread_mutex_t level_allocation_lock;
 	uint64_t max_level_size;
 	volatile struct segment_header *medium_log_head;
 	volatile struct segment_header *medium_log_tail;
 	uint64_t medium_log_size;
-	int64_t active_operations;
+	// struct level_lock guard_of_level;
+	// int64_t active_operations;
+	struct level_counter active_ops[LEVEL_ENTRY_POINTS];
+	struct level_lock guards[LEVEL_ENTRY_POINTS];
 	/*info for trimming medium_log, used only in L_{n-1}*/
 	uint64_t medium_in_place_max_segment_id;
 	uint64_t medium_in_place_segment_dev_offt;
@@ -57,7 +65,8 @@ struct device_level *level_create_fresh(uint32_t level_id, uint32_t l0_size, uin
 	level->level_id = level_id;
 	level->compaction_in_progress = false;
 
-	RWLOCK_INIT(&level->guard_of_level.rx_lock, NULL);
+	for (int i = 0; i < LEVEL_ENTRY_POINTS; i++)
+		RWLOCK_INIT(&level->guards[i].rx_lock, NULL);
 	MUTEX_INIT(&level->level_allocation_lock, NULL);
 
 	level->max_level_size = l0_size;
@@ -202,16 +211,55 @@ uint64_t level_trim_medium_log(struct device_level *level, struct db_descriptor 
 	return new_medium_log_head_offt;
 }
 
+static unsigned long long level_get_tsc(void)
+{
+#ifdef __x86_64__
+	unsigned int low;
+	unsigned int high;
+	__asm__ volatile("rdtsc" : "=a"(low), "=d"(high));
+	return ((unsigned long long)high << 32) | low;
+#else
+	return pthread_self();
+#endif
+}
+
 uint8_t level_enter_as_writer(struct device_level *level)
 {
-	RWLOCK_WRLOCK(&level->guard_of_level.rx_lock);
-	spin_loop(&level->active_operations, 0);
+	for (uint8_t ticket_id = 0; ticket_id < LEVEL_ENTRY_POINTS; ticket_id++) {
+		RWLOCK_WRLOCK(&level->guards[ticket_id].rx_lock);
+		spin_loop(&level->active_ops[ticket_id].active_operations, 0);
+	}
+	// RWLOCK_WRLOCK(&level->guard_of_level.rx_lock);
+	// spin_loop(&level->active_operations, 0);
 	return UINT8_MAX;
 }
 
 void level_leave_as_writer(struct device_level *level)
 {
-	RWLOCK_UNLOCK(&level->guard_of_level.rx_lock);
+	for (uint8_t ticket_id = 0; ticket_id < LEVEL_ENTRY_POINTS; ticket_id++) 
+		RWLOCK_UNLOCK(&level->guards[ticket_id].rx_lock);
+	// RWLOCK_UNLOCK(&level->guard_of_level.rx_lock);
+}
+
+uint8_t level_enter_as_reader(struct device_level *level)
+{
+	if (!level) //empty level
+		return UINT8_MAX;
+	assert(level->level_id > 0);
+	uint8_t counter_id = level_get_tsc() % LEVEL_ENTRY_POINTS;
+	RWLOCK_RDLOCK(&level->guards[counter_id].rx_lock);
+	__sync_fetch_and_add(&level->active_ops[counter_id].active_operations, 1);
+	RWLOCK_UNLOCK(&level->guards[counter_id].rx_lock);
+	return counter_id;
+}
+
+uint8_t level_leave_as_reader(struct device_level *level, uint8_t ticket_id)
+{
+	if (!level) //empty level
+		return UINT8_MAX;
+	// RWLOCK_UNLOCK(&level->guard_of_level.rx_lock);
+	__sync_fetch_and_sub(&level->active_ops[ticket_id].active_operations, 1);
+	return UINT8_MAX;
 }
 
 void level_set_comp_in_progress(struct device_level *level)
@@ -274,24 +322,6 @@ bool level_does_key_exist(struct device_level *level, struct key_splice *key_spl
 {
 	return pbf_check(level->bloom_desc[0], key_splice_get_key_offset(key_splice),
 			 key_splice_get_key_size(key_splice));
-}
-
-uint8_t level_enter_as_reader(struct device_level *level)
-{
-	assert(level);
-	assert(level->level_id > 0);
-	RWLOCK_RDLOCK(&level->guard_of_level.rx_lock);
-	__sync_fetch_and_add(&level->active_operations, 1);
-	return UINT8_MAX;
-}
-
-uint8_t level_leave_as_reader(struct device_level *level)
-{
-	if (!level) //empty level
-		return UINT8_MAX;
-	RWLOCK_UNLOCK(&level->guard_of_level.rx_lock);
-	__sync_fetch_and_sub(&level->active_operations, 1);
-	return UINT8_MAX;
 }
 
 bool level_has_overflow(struct device_level *level, uint32_t tree_id)
@@ -371,6 +401,7 @@ bool level_swap(struct device_level *level_dst, uint32_t tree_dst, struct device
 
 bool level_destroy_bf(struct device_level *level, uint32_t tree_id)
 {
+	// log_debug("Bloom for level[%u][%u] is  %p", level->level_id, tree_id, (void *)level->bloom_desc[tree_id]);
 	if (!level->bloom_desc[tree_id])
 		return true;
 	pbf_destroy_bloom_filter(level->bloom_desc[tree_id]);
@@ -459,8 +490,6 @@ uint64_t level_free_space(struct device_level *level, uint32_t tree_id, struct d
 		log_fatal("Only for device levels");
 		_exit(EXIT_FAILURE);
 	}
-	// struct segment_header *curr_segment = db_desc->levels[level_id].first_segment[tree_id];
-	// new staff
 	struct segment_header *curr_segment = level->first_segment[tree_id];
 	if (!curr_segment) {
 		log_debug("Level [%u][%u] is free nothing to do", level->level_id, tree_id);

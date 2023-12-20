@@ -120,7 +120,7 @@ uint64_t level_trim_medium_log(struct device_level *level, struct db_descriptor 
 uint8_t level_enter_as_writer(struct device_level *level);
 void level_leave_as_writer(struct device_level *level);
 uint8_t level_enter_as_reader(struct device_level *level);
-uint8_t level_leave_as_reader(struct device_level *level);
+uint8_t level_leave_as_reader(struct device_level *level, uint8_t ticket_id);
 
 void level_set_comp_in_progress(struct device_level *level);
 bool level_set_compaction_done(struct device_level *level);
