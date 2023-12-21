@@ -295,10 +295,10 @@ void scanner_init(struct scanner *scanner, db_handle *database, void *start_key,
 	RWLOCK_RDLOCK(&database->db_desc->L0.guard_of_level.rx_lock);
 	__sync_fetch_and_add(&database->db_desc->L0.active_operations, 1);
 
+	memset(scanner, 0x00, sizeof(*scanner));
+
 	for (int i = 1; i < MAX_LEVELS; i++)
 		scanner->tickets[i] = level_enter_as_reader(database->db_desc->dev_levels[i]);
-
-	memset(scanner, 0x00, sizeof(*scanner));
 
 	scanner->db = database;
 
