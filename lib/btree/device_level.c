@@ -1,4 +1,3 @@
-
 #include "device_level.h"
 #include "../allocator/device_structures.h"
 #include "../allocator/log_structures.h"
@@ -246,11 +245,12 @@ uint8_t level_enter_as_reader(struct device_level *level)
 	if (!level) //empty level
 		return UINT8_MAX;
 	assert(level->level_id > 0);
-	uint8_t counter_id = level_get_tsc() % LEVEL_ENTRY_POINTS;
-	RWLOCK_RDLOCK(&level->guards[counter_id].rx_lock);
-	__sync_fetch_and_add(&level->active_ops[counter_id].active_operations, 1);
-	RWLOCK_UNLOCK(&level->guards[counter_id].rx_lock);
-	return counter_id;
+	uint8_t ticket_id = level_get_tsc() % LEVEL_ENTRY_POINTS;
+	RWLOCK_RDLOCK(&level->guards[ticket_id].rx_lock);
+	assert(level->active_ops[ticket_id].active_operations >= 0);
+	__sync_fetch_and_add(&level->active_ops[ticket_id].active_operations, 1);
+	RWLOCK_UNLOCK(&level->guards[ticket_id].rx_lock);
+	return ticket_id;
 }
 
 uint8_t level_leave_as_reader(struct device_level *level, uint8_t ticket_id)
@@ -259,6 +259,7 @@ uint8_t level_leave_as_reader(struct device_level *level, uint8_t ticket_id)
 		return UINT8_MAX;
 	// RWLOCK_UNLOCK(&level->guard_of_level.rx_lock);
 	__sync_fetch_and_sub(&level->active_ops[ticket_id].active_operations, 1);
+	assert(level->active_ops[ticket_id].active_operations >= 0);
 	return UINT8_MAX;
 }
 
