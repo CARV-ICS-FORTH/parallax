@@ -59,4 +59,5 @@
 #define MAX_HEIGHT 9
 #define KV_MAX_SIZE 16384 //(4096 + 8)
 #define LEVEL_ENTRY_POINTS 8
+#define COMPACTION_STATS 1
 #endif

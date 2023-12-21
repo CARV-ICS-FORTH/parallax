@@ -41,6 +41,9 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#if COMPACTION_STATS
+#include <time.h>
+#endif
 #include <unistd.h>
 #include <uthash.h>
 // IWYU pragma: no_forward_declare pbf_desc
@@ -311,6 +314,11 @@ static void comp_zero_level(struct db_descriptor *db_desc, uint8_t level_id, uin
 
 static void compact_level_direct_IO(struct db_handle *handle, struct compaction_request *comp_req)
 {
+#if COMPACTION_STATS
+	time_t start = time(NULL);
+	uint64_t num_keys = 0;
+#endif
+
 	struct compaction_roots comp_roots = { .src_root = NULL, .dst_root = NULL };
 
 	choose_compaction_roots(handle, comp_req, &comp_roots);
@@ -396,7 +404,9 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 		handle->db_desc->dirty = 0x01;
 		if (!sh_remove_top(m_heap, &min_heap_node))
 			break;
-
+#if COMPACTION_STATS
+		num_keys++;
+#endif
 		if (!min_heap_node.duplicate)
 			wcursor_append_KV_pair(comp_req->wcursor, &min_heap_node.splice);
 
@@ -433,6 +443,14 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 	compaction_close(comp_req);
 
 	wcursor_close_write_cursor(comp_req->wcursor);
+
+#if COMPACTION_STATS
+	time_t end = time(NULL);
+	double time_diff = difftime(end, start);
+	log_info(
+		"Compaction from level: %u to level: %u took: %lf seconds total kv pairs: %lu throughput (KV pairs/s): %lf",
+		comp_req->src_level, comp_req->dst_tree, time_diff, num_keys, num_keys / time_diff);
+#endif
 }
 
 static void compact_with_empty_destination_level(struct compaction_request *comp_req)
