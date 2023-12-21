@@ -23,7 +23,7 @@ struct rcursor_device_cursor {
 	uint64_t offset;
 	segment_header *curr_segment;
 	int32_t curr_leaf_entry;
-	int fd;
+	int file_desc;
 	enum rcursor_state state;
 };
 
@@ -43,25 +43,25 @@ struct rcursor_level_read_cursor {
 	};
 };
 
-static void wcursor_fill_heap_node_from_L0(struct rcursor_level_read_cursor *r_cursor, struct sh_heap_node *heap_node)
+static void rcursor_fill_heap_node_from_L0(struct rcursor_level_read_cursor *r_cursor, struct sh_heap_node *heap_node)
 {
 	heap_node->level_id = r_cursor->level_id;
 	heap_node->active_tree = r_cursor->tree_id;
 	heap_node->splice = r_cursor->L0_cursor->L0_scanner->splice;
 }
 
-static void wcursor_fill_heap_node_from_device(struct rcursor_level_read_cursor *r_cursor, struct sh_heap_node *h_node)
+static void rcursor_fill_heap_node_from_device(struct rcursor_level_read_cursor *r_cursor, struct sh_heap_node *h_node)
 {
 	h_node->level_id = r_cursor->level_id;
 	h_node->active_tree = r_cursor->tree_id;
 	h_node->splice = r_cursor->splice;
 }
 
-void wcursor_fill_heap_node(struct rcursor_level_read_cursor *r_cursor, struct sh_heap_node *h_node)
+void rcursor_fill_heap_node(struct rcursor_level_read_cursor *r_cursor, struct sh_heap_node *h_node)
 {
 	h_node->db_desc = r_cursor->handle->db_desc;
-	0 == r_cursor->level_id ? wcursor_fill_heap_node_from_L0(r_cursor, h_node) :
-				  wcursor_fill_heap_node_from_device(r_cursor, h_node);
+	0 == r_cursor->level_id ? rcursor_fill_heap_node_from_L0(r_cursor, h_node) :
+				  rcursor_fill_heap_node_from_device(r_cursor, h_node);
 }
 
 struct rcursor_level_read_cursor *rcursor_init_cursor(db_handle *handle, uint32_t level_id, uint32_t tree_id,
@@ -88,7 +88,7 @@ struct rcursor_level_read_cursor *rcursor_init_cursor(db_handle *handle, uint32_
 	}
 	memset(r_cursor->device_cursor, 0xFF, sizeof(struct rcursor_device_cursor));
 
-	r_cursor->device_cursor->fd = file_desc;
+	r_cursor->device_cursor->file_desc = file_desc;
 	r_cursor->device_cursor->offset = 0;
 	r_cursor->device_cursor->curr_segment = NULL;
 	r_cursor->device_cursor->curr_leaf_entry = 0;
@@ -170,7 +170,7 @@ static bool rcursor_get_next_kv_from_device(struct rcursor_level_read_cursor *r_
 			//	log_info("Reading level segment from dev_offt: %llu", dev_offt);
 			ssize_t bytes_read = 0; //sizeof(struct segment_header);
 			while (bytes_read < SEGMENT_SIZE) {
-				ssize_t bytes = pread(device_cursor->fd, &device_cursor->segment_buf[bytes_read],
+				ssize_t bytes = pread(device_cursor->file_desc, &device_cursor->segment_buf[bytes_read],
 						      SEGMENT_SIZE - bytes_read, dev_offt + bytes_read);
 				if (-1 == bytes) {
 					log_fatal("Failed to read error code");

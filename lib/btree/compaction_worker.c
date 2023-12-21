@@ -383,12 +383,12 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 	struct sh_heap_node dst_heap_node = { 0 };
 	struct sh_heap_node min_heap_node = { 0 };
 	// init Li cursor
-	wcursor_fill_heap_node(comp_req->src_rcursor, &src_heap_node);
+	rcursor_fill_heap_node(comp_req->src_rcursor, &src_heap_node);
 	sh_insert_heap_node(m_heap, &src_heap_node);
 
 	// init Li+1 cursor (if any)
 	if (comp_req->dst_rcursor) {
-		wcursor_fill_heap_node(comp_req->dst_rcursor, &dst_heap_node);
+		rcursor_fill_heap_node(comp_req->dst_rcursor, &dst_heap_node);
 		sh_insert_heap_node(m_heap, &dst_heap_node);
 	}
 
@@ -402,11 +402,11 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 
 		/*refill from the appropriate level*/
 		if (min_heap_node.level_id == comp_req->src_level && rcursor_get_next_kv(comp_req->src_rcursor)) {
-			wcursor_fill_heap_node(comp_req->src_rcursor, &src_heap_node);
+			rcursor_fill_heap_node(comp_req->src_rcursor, &src_heap_node);
 			sh_insert_heap_node(m_heap, &src_heap_node);
 		} else if (comp_req->dst_rcursor && min_heap_node.level_id == comp_req->dst_level &&
 			   rcursor_get_next_kv(comp_req->dst_rcursor)) {
-			wcursor_fill_heap_node(comp_req->dst_rcursor, &dst_heap_node);
+			rcursor_fill_heap_node(comp_req->dst_rcursor, &dst_heap_node);
 			sh_insert_heap_node(m_heap, &dst_heap_node);
 		}
 	}

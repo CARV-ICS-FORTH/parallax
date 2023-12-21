@@ -36,7 +36,7 @@ bool rcursor_get_next_kv(struct rcursor_level_read_cursor *r_cursor);
 /**
  * @brief Fills a heap node with the current KV pair that the cursor is positioned to.
  */
-void wcursor_fill_heap_node(struct rcursor_level_read_cursor *r_cursor, struct sh_heap_node *h_node);
+void rcursor_fill_heap_node(struct rcursor_level_read_cursor *r_cursor, struct sh_heap_node *h_node);
 
 /**
  * @brief Closes cursor and releases any associated resources.
