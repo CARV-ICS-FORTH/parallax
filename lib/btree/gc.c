@@ -146,7 +146,7 @@ int8_t find_deleted_kv_pairs_in_segment(struct db_handle handle, struct gc_segme
 static void fetch_segment(struct log_segment *segment_buf, uint64_t segment_offt)
 {
 	off_t dev_offt = segment_offt;
-	ssize_t bytes_to_read = 0;
+	size_t bytes_to_read = 0;
 
 	assert(segment_offt % SEGMENT_SIZE == 0);
 

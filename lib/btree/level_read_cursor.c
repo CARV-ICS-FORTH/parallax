@@ -168,7 +168,7 @@ static bool rcursor_get_next_kv_from_device(struct rcursor_level_read_cursor *r_
 
 			off_t dev_offt = ABSOLUTE_ADDRESS(device_cursor->curr_segment);
 			//	log_info("Reading level segment from dev_offt: %llu", dev_offt);
-			ssize_t bytes_read = 0; //sizeof(struct segment_header);
+			size_t bytes_read = 0; //sizeof(struct segment_header);
 			while (bytes_read < SEGMENT_SIZE) {
 				ssize_t bytes = pread(device_cursor->file_desc, &device_cursor->segment_buf[bytes_read],
 						      SEGMENT_SIZE - bytes_read, dev_offt + bytes_read);
@@ -184,7 +184,7 @@ static bool rcursor_get_next_kv_from_device(struct rcursor_level_read_cursor *r_
 			break;
 		}
 
-		case COMP_CUR_DECODE_KV: {
+		case COMP_CUR_DECODE_KV:;
 			struct leaf_node *leaf = (struct leaf_node *)((uint64_t)device_cursor->segment_buf +
 								      (device_cursor->offset % SEGMENT_SIZE));
 			// slot array entry
@@ -197,7 +197,6 @@ static bool rcursor_get_next_kv_from_device(struct rcursor_level_read_cursor *r_
 			}
 			r_cursor->splice = dl_get_general_splice(leaf, device_cursor->curr_leaf_entry++);
 			return true;
-		}
 
 		case COMP_CUR_FIND_LEAF: {
 			/*read four bytes to check what is the node format*/

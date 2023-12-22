@@ -82,7 +82,7 @@ static void destroy_L0_locktable(db_descriptor *database)
 
 static void pr_read_log_tail(struct log_tail *tail)
 {
-	ssize_t bytes_read = 0;
+	size_t bytes_read = 0;
 	while (bytes_read < SEGMENT_SIZE) {
 		ssize_t bytes =
 			pread(tail->fd, &tail->buf[bytes_read], SEGMENT_SIZE - bytes_read, tail->dev_offt + bytes_read);
@@ -1020,7 +1020,7 @@ static void bt_add_segment_to_log(struct db_descriptor *db_desc, struct log_desc
 	/*position the log to the newly added block*/
 	log_desc->size += sizeof(segment_header);
 	// Reset tail for new use
-	for (int j = 0; j < (SEGMENT_SIZE / LOG_CHUNK_SIZE); ++j)
+	for (uint64_t j = 0; j < (SEGMENT_SIZE / LOG_CHUNK_SIZE); ++j)
 		next_tail->bytes_in_chunk[j] = 0;
 
 	next_tail->IOs_completed_in_tail = 0;
@@ -1054,7 +1054,7 @@ static void bt_add_blob(struct db_descriptor *db_desc, struct log_descriptor *lo
 	log_desc->tail_dev_offt = ABSOLUTE_ADDRESS(next_tail_seg);
 
 	// Reset tail for new use
-	for (int j = 0; j < (SEGMENT_SIZE / LOG_CHUNK_SIZE); ++j)
+	for (uint64_t j = 0; j < (SEGMENT_SIZE / LOG_CHUNK_SIZE); ++j)
 		next_tail->bytes_in_chunk[j] = 0;
 
 	next_tail->IOs_completed_in_tail = 0;

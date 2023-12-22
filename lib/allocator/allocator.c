@@ -584,7 +584,7 @@ uint64_t mem_allocate(struct volume_descriptor *volume_desc, uint64_t num_bytes)
 		goto exit;
 	}
 	if (num_bytes % SEGMENT_SIZE != 0) {
-		log_warn("Allocation size: %lu not a multiple of SEGMENT_SIZE: %u", num_bytes, SEGMENT_SIZE);
+		log_warn("Allocation size: %lu not a multiple of SEGMENT_SIZE: %lu", num_bytes, SEGMENT_SIZE);
 		base_addr = 0;
 		goto exit;
 	}
