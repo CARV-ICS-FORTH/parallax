@@ -42,7 +42,7 @@
 #include <stdlib.h>
 #include <string.h>
 #if COMPACTION_STATS
-#include <time.h>
+#include <sys/time.h>
 #endif
 #include <unistd.h>
 #include <uthash.h>
@@ -314,11 +314,6 @@ static void comp_zero_level(struct db_descriptor *db_desc, uint8_t level_id, uin
 
 static void compact_level_direct_IO(struct db_handle *handle, struct compaction_request *comp_req)
 {
-#if COMPACTION_STATS
-	time_t start = time(NULL);
-	uint64_t num_keys = 0;
-#endif
-
 	struct compaction_roots comp_roots = { .src_root = NULL, .dst_root = NULL };
 
 	choose_compaction_roots(handle, comp_req, &comp_roots);
@@ -384,6 +379,12 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 		log_debug("Dst [%u][%u] size = %lu", comp_req->dst_level, 0,
 			  level_get_size(comp_req->db_desc->dev_levels[comp_req->dst_level], 0));
 
+#if COMPACTION_STATS
+	struct timeval start, end;
+	gettimeofday(&start, NULL);
+	uint64_t num_keys = 0;
+#endif
+
 	// initialize and fill min_heap properly
 	struct sh_heap *m_heap = sh_alloc_heap();
 	sh_init_heap(m_heap, comp_req->src_level, MIN_HEAP);
@@ -429,6 +430,18 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 	sh_destroy_heap(m_heap);
 	wcursor_flush_write_cursor(comp_req->wcursor);
 
+#if COMPACTION_STATS
+	gettimeofday(&end, NULL);
+	double time_taken_usec = ((end.tv_sec - start.tv_sec) * 1000000) + (double)(end.tv_usec - start.tv_usec);
+	double time_taken = time_taken_usec / 1000000;
+	if (comp_req->src_level) {
+		log_info(
+			"Compaction from level: %u to level: %u took: [%lf seconds  or %lf usec] total kv pairs: %lu throughput (KV pairs/s): %lf",
+			comp_req->src_level, comp_req->dst_level, time_taken, time_taken_usec, num_keys,
+			num_keys / time_taken);
+	}
+#endif
+
 	uint64_t root_offt = wcursor_get_current_root(comp_req->wcursor);
 	assert(root_offt);
 
@@ -443,14 +456,6 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 	compaction_close(comp_req);
 
 	wcursor_close_write_cursor(comp_req->wcursor);
-
-#if COMPACTION_STATS
-	time_t end = time(NULL);
-	double time_diff = difftime(end, start);
-	log_info(
-		"Compaction from level: %u to level: %u took: %lf seconds total kv pairs: %lu throughput (KV pairs/s): %lf",
-		comp_req->src_level, comp_req->dst_tree, time_diff, num_keys, num_keys / time_diff);
-#endif
 }
 
 static void compact_with_empty_destination_level(struct compaction_request *comp_req)
