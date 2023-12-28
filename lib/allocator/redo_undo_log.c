@@ -369,7 +369,7 @@ uint64_t rul_start_txn(struct db_descriptor *db_desc)
 {
 	struct rul_log_descriptor *log_desc = db_desc->allocation_log;
 	uint64_t txn_id = __sync_fetch_and_add(&log_desc->txn_id, 1);
-	log_debug("Staring transaction %lu", txn_id);
+	// log_debug("Staring transaction %lu", txn_id);
 
 	/*check if (accidentally) txn exists already*/
 	struct rul_transaction *transaction;
