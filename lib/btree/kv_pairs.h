@@ -18,26 +18,35 @@
 #include <stdint.h>
 enum KV_type { KV_FORMAT = 1, KV_PREFIX };
 
-#define KV_SEP2_MAX_SIZE (sizeof(uint64_t) + sizeof(int32_t) + MAX_KEY_SIZE)
+#define KV_SEP2_MAX_SIZE (sizeof(struct kv_splice_meta) + sizeof(int16_t) + sizeof(uint64_t) + MAX_KEY_SIZE)
 
+struct kv_splice_meta {
+	uint16_t kv_format : 1;
+	uint16_t tombstone : 1;
+	uint16_t kv_cat : 2;
+	uint16_t unreserved : 12;
+};
 struct kv_splice {
 #if TEBIS_FORMAT
 	int16_t key_size;
 	int32_t value_size;
 	int8_t tail_for_sizes;
 #else
-	int32_t key_size;
+	struct kv_splice_meta meta;
+	int16_t key_size;
 	int32_t value_size;
 #endif
 	char data[];
 } __attribute__((packed));
 
 struct kv_seperation_splice2 {
-	uint64_t value_offt;
+	// uint64_t value_offt;
 #if TEBIS_FORMAT
 	int16_t key_size;
 #else
-	int32_t key_size;
+	struct kv_splice_meta meta;
+	int16_t key_size;
+	uint64_t value_offt;
 #endif
 	char key[];
 } __attribute__((packed));
@@ -52,6 +61,13 @@ struct kv_splice_base {
 	bool is_tombstone;
 };
 
+
+enum kv_category kv_meta_get_cat(struct kv_splice_meta *meta);
+bool kv_meta_set_cat(struct kv_splice_meta *meta, enum kv_category cat);
+bool kv_meta_is_tombstone(struct kv_splice_meta *meta);
+bool kv_meta_set_tombstone(struct kv_splice_meta *meta, bool val);
+bool kv_meta_is_kv_format(struct kv_splice_meta *meta);
+bool kv_meta_set_kv_format(struct kv_splice_meta *meta, bool val);
 /**
  * @brief Returns a pointer to the key
  * @param kv_sep2 pointer to the splice

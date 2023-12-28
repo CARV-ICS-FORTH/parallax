@@ -21,6 +21,40 @@
 #include <unistd.h>
 
 #define DELETE_MARKER_ID (INT32_MAX)
+#define VALUE_OFFT_SIZE sizeof(uint64_t)
+
+inline enum kv_category kv_meta_get_cat(struct kv_splice_meta *meta)
+{
+	return meta->kv_cat;
+}
+
+inline bool kv_meta_is_tombstone(struct kv_splice_meta *meta)
+{
+	return meta->tombstone;
+}
+
+inline bool kv_meta_is_kv_format(struct kv_splice_meta *meta)
+{
+	return meta->kv_format;
+}
+
+inline bool kv_meta_set_cat(struct kv_splice_meta *meta, enum kv_category cat)
+{
+	meta->kv_cat = cat;
+	return true;
+}
+
+inline bool kv_meta_set_tombstone(struct kv_splice_meta *meta, bool val)
+{
+	meta->tombstone = val;
+  return true;
+}
+
+inline bool kv_meta_set_kv_format(struct kv_splice_meta *meta, bool val)
+{
+  meta->kv_format = val;
+  return true;
+}
 
 inline int32_t kv_splice_get_key_size(struct kv_splice *kv_pair)
 {
@@ -180,7 +214,8 @@ void kv_sep2_set_value_offt(struct kv_seperation_splice2 *kv_sep2, uint64_t valu
 
 int32_t kv_sep2_get_total_size(struct kv_seperation_splice2 *kv_sep2)
 {
-	return sizeof(kv_sep2->key_size) + kv_sep2->key_size + sizeof(kv_sep2->value_offt);
+	// return sizeof(kv_sep2->key_size) + kv_sep2->key_size + sizeof(kv_sep2->value_offt);
+	return sizeof(*kv_sep2) + kv_sep2->key_size;
 }
 
 bool kv_sep2_serialize(struct kv_seperation_splice2 *splice, char *dest, int32_t dest_size)
@@ -190,13 +225,16 @@ bool kv_sep2_serialize(struct kv_seperation_splice2 *splice, char *dest, int32_t
 		return false;
 	}
 	assert(splice->key_size > 0);
+	// uint32_t idx = 0;
+	// memcpy(dest, &splice->value_offt, sizeof(splice->value_offt));
+	// idx += sizeof(splice->value_offt);
+	// memcpy(&dest[idx], &splice->key_size, sizeof(splice->key_size));
+	// idx += sizeof(splice->key_size);
+	// memcpy(&dest[idx], splice->key, splice->key_size);
 	uint32_t idx = 0;
-	memcpy(dest, &splice->value_offt, sizeof(splice->value_offt));
-	idx += sizeof(splice->value_offt);
-	memcpy(&dest[idx], &splice->key_size, sizeof(splice->key_size));
-	idx += sizeof(splice->key_size);
+	memcpy(dest, splice, sizeof(*splice));
+	idx += sizeof(*splice);
 	memcpy(&dest[idx], splice->key, splice->key_size);
-
 	return true;
 }
 
@@ -253,8 +291,10 @@ int32_t kv_splice_base_get_key_size(struct kv_splice_base *splice)
 int32_t kv_splice_base_get_value_size(struct kv_splice_base *splice)
 {
 	assert(splice);
+	// return kv_splice_base_is_kv_format(splice) ? kv_splice_get_value_size(splice->kv_splice) :
+	// 					     (int32_t)sizeof(splice->kv_sep2->value_offt);
 	return kv_splice_base_is_kv_format(splice) ? kv_splice_get_value_size(splice->kv_splice) :
-						     (int32_t)sizeof(splice->kv_sep2->value_offt);
+						     (int32_t)VALUE_OFFT_SIZE;
 }
 
 char *kv_splice_base_get_key_buf(struct kv_splice_base *splice)
