@@ -27,6 +27,8 @@ struct level_scanner {
 	db_handle *db;
 	stackT stack;
 	struct node_header *root;
+	struct level_leaf_api *leaf_api;
+	struct level_index_api *index_api;
 	uint8_t level_id;
 	bool is_compaction_scanner;
 	uint8_t valid;

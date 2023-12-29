@@ -7,7 +7,10 @@
 #include "bloom_filter.h"
 #include "btree.h"
 #include "conf.h"
+#include "dev_index.h"
+#include "dev_leaf.h"
 #include "key_splice.h"
+#include "kv_pairs.h"
 #include "segment_allocator.h"
 #include <assert.h>
 #include <log.h>
@@ -52,6 +55,8 @@ struct device_level {
 	/*info for trimming medium_log, used only in L_{n-1}*/
 	uint64_t medium_in_place_max_segment_id;
 	uint64_t medium_in_place_segment_dev_offt;
+	struct level_leaf_api level_leaf_api;
+	struct level_index_api level_index_api;
 	bool compaction_in_progress;
 	uint8_t level_id;
 	char in_recovery_mode;
@@ -59,7 +64,6 @@ struct device_level {
 
 struct device_level *level_create_fresh(uint32_t level_id, uint32_t l0_size, uint32_t growth_factor)
 {
-	log_debug("L0 size = %u B and growth_factor = %u", l0_size, growth_factor);
 	struct device_level *level = calloc(1UL, sizeof(struct device_level));
 	level->level_id = level_id;
 	level->compaction_in_progress = false;
@@ -78,6 +82,11 @@ struct device_level *level_create_fresh(uint32_t level_id, uint32_t l0_size, uin
 	for (uint32_t i = 1; i <= level_id; i++)
 		level->max_level_size = level->max_level_size * growth_factor;
 	log_debug("Level_id: %u has max level size of: %lu", level_id, level->max_level_size);
+
+	log_debug("Registering leaf_api of level: %u", level->level_id);
+	dev_leaf_register(&level->level_leaf_api);
+	log_debug("Registering index_api of level: %u", level->level_id);
+	dev_idx_register(&level->level_index_api);
 	return level;
 }
 
@@ -97,8 +106,10 @@ struct device_level *level_restore_from_device(uint32_t level_id, struct pr_db_s
 		level->last_segment[tree_id] =
 			(segment_header *)REAL_ADDRESS(superblock->last_segment[level_id][tree_id]);
 		level->offset[tree_id] = superblock->offset[level_id][tree_id];
-		/*total keys*/
+		/*level size in B*/
 		level->level_size[tree_id] = superblock->level_size[level_id][tree_id];
+		/*level keys*/
+		level->num_level_keys[tree_id] = superblock->num_level_keys[level_id][tree_id];
 		/*finally the roots*/
 		level->root[tree_id] = REAL_ADDRESS(superblock->root_r[level_id][tree_id]);
 
@@ -294,6 +305,9 @@ void level_save_to_superblock(struct device_level *level, struct pr_db_superbloc
 	db_superblock->offset[dst_level_id][0] = level->offset[tree_id];
 
 	db_superblock->level_size[dst_level_id][0] = level->level_size[tree_id];
+
+	db_superblock->num_level_keys[dst_level_id][0] = level->num_level_keys[tree_id];
+
 	log_debug("Writing root[%u][%u] = %p", dst_level_id, tree_id, (void *)level->root[tree_id]);
 
 	db_superblock->root_r[dst_level_id][0] = ABSOLUTE_ADDRESS(level->root[tree_id]);
@@ -507,4 +521,89 @@ uint64_t level_free_space(struct device_level *level, uint32_t tree_id, struct d
 
 	log_debug("Freed device level %u for db %s", level->level_id, db_desc->db_superblock->db_name);
 	return space_freed;
+}
+
+struct level_leaf_api *level_get_leaf_api(struct device_level *level)
+{
+	return &level->level_leaf_api;
+}
+
+struct level_index_api *level_get_index_api(struct device_level *level)
+{
+	return &level->level_index_api;
+}
+
+bool level_lookup(struct device_level *level, struct lookup_operation *get_op, int tree_id)
+{
+	uint8_t ticket_id = level_enter_as_reader(level);
+	get_op->found = 0;
+	get_op->key_device_address = NULL;
+
+	if (!level_does_key_exist(level, get_op->key_splice))
+		goto done;
+
+	struct node_header *son_node = NULL;
+
+	struct key_splice *search_key_buf = get_op->key_splice;
+	struct node_header *curr_node = level_get_root(level, tree_id);
+
+	if (NULL == curr_node) //empty level
+		goto done;
+
+	while (curr_node->type != leafNode && curr_node->type != leafRootNode) {
+		//No locking needed for the device levels >= 1
+		uint64_t child_offset = index_binary_search((struct index_node *)curr_node,
+							    key_splice_get_key_offset(search_key_buf),
+							    key_splice_get_key_size(search_key_buf));
+
+		son_node = (void *)REAL_ADDRESS(child_offset);
+
+		curr_node = son_node;
+	}
+
+	//No locking needed for the device levels >= 1
+
+	int32_t key_size = key_splice_get_key_size(search_key_buf);
+	void *key = key_splice_get_key_offset(search_key_buf);
+	const char *error = NULL;
+	struct kv_splice_base splice =
+		(*level->level_leaf_api.leaf_find)((struct leaf_node *)curr_node, key, key_size, &error);
+	if (error != NULL) {
+		// log_debug("Key %.*s not found with error message %s", key_size, (char *)key, error);
+		goto done;
+	}
+
+	get_op->tombstone = splice.is_tombstone;
+	if (get_op->tombstone)
+		goto done;
+
+	get_op->found = 1;
+
+	struct bt_kv_log_address kv_pair = { .addr = NULL, .tail_id = UINT8_MAX, .in_tail = 0 };
+
+	kv_pair.addr = (char *)splice.kv_splice;
+	if (splice.kv_cat == MEDIUM_INLOG || splice.kv_cat == BIG_INLOG) {
+		uint64_t value_offt = kv_sep2_get_value_offt(splice.kv_sep2);
+		kv_pair.addr = REAL_ADDRESS(value_offt);
+	}
+
+	int32_t value_size = kv_splice_get_value_size((struct kv_splice *)kv_pair.addr);
+
+	get_op->buffer_overflow = 0;
+
+	if (get_op->buffer_to_pack_kv && value_size > get_op->size)
+		get_op->buffer_overflow = 1;
+
+	if (!get_op->buffer_to_pack_kv)
+		get_op->buffer_to_pack_kv = calloc(1UL, value_size);
+
+	memcpy(get_op->buffer_to_pack_kv,
+	       kv_splice_get_value_offset_in_kv((struct kv_splice *)kv_pair.addr,
+						kv_splice_get_key_size((struct kv_splice *)kv_pair.addr)),
+	       value_size);
+	get_op->size = value_size;
+
+done:
+	level_leave_as_reader(level, ticket_id);
+	return get_op->found;
 }

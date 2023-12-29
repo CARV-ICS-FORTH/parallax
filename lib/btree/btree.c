@@ -1433,22 +1433,11 @@ void find_key(struct lookup_operation *get_op)
 
 	/*search device levels*/
 	for (uint8_t level_id = 1; level_id < MAX_LEVELS && false == get_op->found; ++level_id) {
-		uint8_t ticket_id = level_enter_as_reader(db_desc->dev_levels[level_id]);
-
-		get_op->found = 0;
-		get_op->tombstone = 0;
-		lookup_in_tree(get_op, level_id, 0);
-		level_leave_as_reader(db_desc->dev_levels[level_id], ticket_id);
-		if (get_op->found) {
-			// if (RWLOCK_UNLOCK(&db_desc->levels[level_id].guard_of_level.rx_lock) != 0)
-			// 	BUG_ON();
-			// __sync_fetch_and_sub(&db_desc->levels[level_id].active_operations, 1);
-
+		level_lookup(db_desc->dev_levels[level_id], get_op, 0);
+		if (get_op->tombstone)
 			break;
-		}
-		// if (RWLOCK_UNLOCK(&db_desc->levels[level_id].guard_of_level.rx_lock) != 0)
-		// 	BUG_ON();
-		// __sync_fetch_and_sub(&db_desc->levels[level_id].active_operations, 1);
+		if (get_op->found)
+			break;
 	}
 
 	if (get_op->found && get_op->tombstone)

@@ -22,6 +22,9 @@ struct rcursor_device_cursor {
 	uint64_t device_offt;
 	uint64_t offset;
 	segment_header *curr_segment;
+	struct leaf_node *leaf;
+	struct level_leaf_api *leaf_api;
+	struct level_index_api *index_api;
 	int32_t curr_leaf_entry;
 	int file_desc;
 	enum rcursor_state state;
@@ -86,8 +89,12 @@ struct rcursor_level_read_cursor *rcursor_init_cursor(db_handle *handle, uint32_
 		perror("Reason: ");
 		BUG_ON();
 	}
-	memset(r_cursor->device_cursor, 0xFF, sizeof(struct rcursor_device_cursor));
+	memset(r_cursor->device_cursor, 0x00, sizeof(struct rcursor_device_cursor));
 
+	r_cursor->device_cursor->leaf_api =
+		level_get_leaf_api(r_cursor->handle->db_desc->dev_levels[r_cursor->level_id]);
+	r_cursor->device_cursor->index_api =
+		level_get_index_api(r_cursor->handle->db_desc->dev_levels[r_cursor->level_id]);
 	r_cursor->device_cursor->file_desc = file_desc;
 	r_cursor->device_cursor->offset = 0;
 	r_cursor->device_cursor->curr_segment = NULL;
@@ -102,11 +109,11 @@ static bool rcursor_get_next_KV_from_L0(struct rcursor_level_read_cursor *r_curs
 	return level_scanner_get_next(r_cursor->L0_cursor->L0_scanner);
 }
 
-static bool rcursor_get_next_kv_from_device(struct rcursor_level_read_cursor *r_cursor)
+static bool rcursor_get_next_leaf_from_device(struct rcursor_level_read_cursor *r_cursor)
 {
 	struct rcursor_device_cursor *device_cursor = r_cursor->device_cursor;
 
-	uint32_t level_leaf_size = LEAF_NODE_SIZE;
+	// uint32_t level_leaf_size = LEAF_NODE_SIZE;
 	if (r_cursor->is_end_of_level)
 		return false;
 	while (1) {
@@ -184,21 +191,21 @@ static bool rcursor_get_next_kv_from_device(struct rcursor_level_read_cursor *r_
 			break;
 		}
 
-		case COMP_CUR_DECODE_KV:;
-			struct leaf_node *leaf = (struct leaf_node *)((uint64_t)device_cursor->segment_buf +
-								      (device_cursor->offset % SEGMENT_SIZE));
-			// slot array entry
-			if (device_cursor->curr_leaf_entry >= dl_get_leaf_num_entries(leaf)) {
-				// done with this leaf
-				device_cursor->curr_leaf_entry = 0;
-				device_cursor->offset += level_leaf_size;
-				device_cursor->state = COMP_CUR_CHECK_OFFT;
-				break;
-			}
-			r_cursor->splice = dl_get_general_splice(leaf, device_cursor->curr_leaf_entry++);
-			return true;
+			// case COMP_CUR_DECODE_KV:;
+			// 	device_cursor->leaf =
+			// 		(struct leaf_node *)&device_cursor->segment_buf[device_cursor->offset % SEGMENT_SIZE];
+			// 	// slot array entry
+			// 	if (device_cursor->curr_leaf_entry >= dl_get_leaf_num_entries(device_cursor->leaf)) {
+			// 		// done with this leaf
+			// 		device_cursor->curr_leaf_entry = 0;
+			// 		device_cursor->offset += level_leaf_size;
+			// 		device_cursor->state = COMP_CUR_CHECK_OFFT;
+			// 		break;
+			// 	}
+			// 	r_cursor->splice = dl_get_general_splice(device_cursor->leaf, device_cursor->curr_leaf_entry++);
+			// 	return true;
 
-		case COMP_CUR_FIND_LEAF: {
+		case COMP_CUR_FIND_LEAF:;
 			/*read four bytes to check what is the node format*/
 			nodeType_t type =
 				*(uint32_t *)(&device_cursor->segment_buf[device_cursor->offset % SEGMENT_SIZE]);
@@ -207,13 +214,19 @@ static bool rcursor_get_next_kv_from_device(struct rcursor_level_read_cursor *r_
 			case leafRootNode:
 				//__sync_fetch_and_add(&leaves, 1);
 				//log_info("Found a leaf!");
-				device_cursor->state = COMP_CUR_DECODE_KV;
-				goto fsm_entry;
+				device_cursor->leaf = (struct leaf_node *)&device_cursor
+							      ->segment_buf[device_cursor->offset % SEGMENT_SIZE];
 
+				device_cursor->offset += LEAF_NODE_SIZE;
+				device_cursor->state = COMP_CUR_CHECK_OFFT;
+				device_cursor->curr_leaf_entry = 0;
+				return true;
+				// device_cursor->state = COMP_CUR_DECODE_KV;
+				// goto fsm_entry;
 			case rootNode:
 			case internalNode:
 				/*log_info("Found an internal");*/
-				device_cursor->offset += index_node_get_size();
+				device_cursor->offset += device_cursor->index_api->index_get_node_size();
 				device_cursor->state = COMP_CUR_CHECK_OFFT;
 				goto fsm_entry;
 
@@ -231,15 +244,30 @@ static bool rcursor_get_next_kv_from_device(struct rcursor_level_read_cursor *r_
 							   0),
 					  ABSOLUTE_ADDRESS(device_cursor->curr_segment));
 				BUG_ON();
-			}
 
-			break;
-		}
+				break;
+			}
 		default:
 			log_fatal("Error state");
 			BUG_ON();
 		}
 	}
+}
+
+static bool rcursor_get_next_kv_from_device(struct rcursor_level_read_cursor *r_cursor)
+{
+	struct rcursor_device_cursor *device_cursor = r_cursor->device_cursor;
+
+	if (NULL == device_cursor->leaf ||
+	    device_cursor->curr_leaf_entry >= (*device_cursor->leaf_api->leaf_get_entries)(device_cursor->leaf)) {
+		if (false == rcursor_get_next_leaf_from_device(r_cursor))
+			return false;
+		device_cursor->curr_leaf_entry = 0;
+	}
+
+	r_cursor->splice =
+		(*device_cursor->leaf_api->leaf_get_splice)(device_cursor->leaf, device_cursor->curr_leaf_entry++);
+	return true;
 }
 
 bool rcursor_get_next_kv(struct rcursor_level_read_cursor *r_cursor)

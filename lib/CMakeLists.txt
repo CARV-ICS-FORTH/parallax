@@ -39,6 +39,8 @@ set(LIB_C_SOURCE_FILES
     btree/bloom_filter.c
     btree/dynamic_leaf.c
     btree/device_level.c
+    btree/dev_leaf.c
+    btree/dev_index.c
     btree/gc.c
     btree/medium_log_LRU_cache.c
     btree/segment_allocator.c

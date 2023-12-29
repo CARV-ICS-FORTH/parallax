@@ -46,6 +46,13 @@ bool level_scanner_init(struct level_scanner *level_scanner, db_handle *database
 	level_scanner->root = 0 == level_id ? database->db_desc->L0.root[tree_id] :
 					      level_get_root(database->db_desc->dev_levels[level_id], tree_id);
 
+	level_scanner->leaf_api = NULL;
+	level_scanner->index_api = NULL;
+	if (level_id) {
+		level_scanner->leaf_api = level_get_leaf_api(database->db_desc->dev_levels[level_id]);
+		level_scanner->index_api = level_get_index_api(database->db_desc->dev_levels[level_id]);
+	}
+
 	return true;
 }
 
@@ -136,7 +143,12 @@ bool level_scanner_seek(struct level_scanner *level_scanner, struct key_splice *
 	struct node_header *node = level_scanner->root;
 	while (node->type != leafNode && node->type != leafRootNode) {
 		element.node = node;
-		index_iterator_init_with_key((struct index_node *)element.node, &element.iterator, start_key_splice);
+
+		0 == level_scanner->level_id ?
+			index_iterator_init_with_key((struct index_node *)element.node, &element.iterator,
+						     start_key_splice) :
+			(*level_scanner->index_api->index_init_iter_key)((struct index_node *)element.node,
+									 &element.iterator, start_key_splice);
 
 		if (!index_iterator_is_valid(&element.iterator)) {
 			log_fatal("Invalid index node iterator during seek");
@@ -158,8 +170,13 @@ bool level_scanner_seek(struct level_scanner *level_scanner, struct key_splice *
 	/*now perform binary search inside the leaf*/
 
 	bool exact_match = false;
-	element.idx = dl_search_get_pos((struct leaf_node *)node, key_splice_get_key_offset(start_key_splice),
-					key_splice_get_key_size(start_key_splice), &exact_match);
+	element.idx = level_scanner->level_id ?
+			      (*level_scanner->leaf_api->leaf_get_pos)((struct leaf_node *)node,
+								       key_splice_get_key_offset(start_key_splice),
+								       key_splice_get_key_size(start_key_splice),
+								       &exact_match) :
+			      dl_search_get_pos((struct leaf_node *)node, key_splice_get_key_offset(start_key_splice),
+						key_splice_get_key_size(start_key_splice), &exact_match);
 
 	if (!exact_match)
 		++element.idx;
@@ -173,7 +190,10 @@ bool level_scanner_seek(struct level_scanner *level_scanner, struct key_splice *
 
 	element = stack_pop(&level_scanner->stack);
 
-	level_scanner->splice = dl_get_general_splice((struct leaf_node *)element.node, element.idx);
+	level_scanner->splice =
+		level_scanner->level_id ?
+			(*level_scanner->leaf_api->leaf_get_splice)((struct leaf_node *)element.node, element.idx) :
+			dl_get_general_splice((struct leaf_node *)element.node, element.idx);
 	// log_debug("Level scanner seek reached splice %.*s at idx %d node entries %d",
 	// 	  kv_splice_base_get_key_size(&level_sc->splice), kv_splice_base_get_key_buf(&level_sc->splice),
 	// 	  element.idx, element.node->num_entries);
@@ -209,7 +229,11 @@ bool level_scanner_get_next(struct level_scanner *level_scanner)
 			}
 
 			level_scanner->splice =
-				dl_get_general_splice((struct leaf_node *)stack_element.node, stack_element.idx);
+				level_scanner->level_id ?
+					(*level_scanner->leaf_api->leaf_get_splice)(
+						(struct leaf_node *)stack_element.node, stack_element.idx) :
+					dl_get_general_splice((struct leaf_node *)stack_element.node,
+							      stack_element.idx);
 			// log_debug("Get next Returning Leaf:%lu idx is %d num_entries %d", stack_element.node,
 			// 	  stack_element.idx, stack_element.node->num_entries);
 			stack_push(&level_scanner->stack, stack_element);

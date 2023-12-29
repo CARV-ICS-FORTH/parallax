@@ -61,6 +61,8 @@ struct wcursor_level_write_cursor {
 	uint64_t root_offt;
 	uint64_t segment_id_cnt;
 	db_handle *handle;
+	struct level_leaf_api *leaf_api;
+	struct level_index_api *index_api;
 	uint64_t txn_id;
 	int32_t tree_height;
 	int fd;
@@ -369,6 +371,9 @@ struct wcursor_level_write_cursor *wcursor_init_write_cursor(uint8_t level_id, s
 	w_cursor->fd = handle->db_desc->db_volume->vol_fd;
 	w_cursor->handle = handle;
 
+	w_cursor->leaf_api = level_get_leaf_api(handle->db_desc->dev_levels[level_id]);
+	w_cursor->index_api = level_get_index_api(handle->db_desc->dev_levels[level_id]);
+
 	assert(0 == level_get_offset(handle->db_desc->dev_levels[w_cursor->level_id], w_cursor->tree_id));
 #if TEBIS_FORMAT
 	w_cursor->number_of_replicas = w_cursor->handle->db_options.options[NUMBER_OF_REPLICAS].value;
@@ -394,14 +399,16 @@ struct wcursor_level_write_cursor *wcursor_init_write_cursor(uint8_t level_id, s
 			ABSOLUTE_ADDRESS(segment);
 		assert(w_cursor->last_segment_btree_level_offt[height]);
 		w_cursor->last_node[height] = (struct node_header *)wcursor_get_space(
-			w_cursor, height, height == 0 ? LEAF_NODE_SIZE : index_node_get_size());
+			w_cursor, height, height == 0 ? LEAF_NODE_SIZE : w_cursor->index_api->index_get_node_size());
 
 		if (0 == height) {
-			dl_init_leaf_node((struct leaf_node *)w_cursor->last_node[height], LEAF_NODE_SIZE);
+			(*w_cursor->leaf_api->leaf_init)((struct leaf_node *)w_cursor->last_node[height],
+							 LEAF_NODE_SIZE);
 			continue;
 		}
-		index_set_height((struct index_node *)w_cursor->last_node[height], height);
-		index_init_node(DO_NOT_ADD_GUARD, (struct index_node *)w_cursor->last_node[height], internalNode);
+		w_cursor->index_api->index_set_height((struct index_node *)w_cursor->last_node[height], height);
+		w_cursor->index_api->index_init_node(DO_NOT_ADD_GUARD, (struct index_node *)w_cursor->last_node[height],
+						     internalNode);
 	}
 
 	level_create_bf(handle->db_desc->dev_levels[w_cursor->level_id], tree_id,
@@ -506,14 +513,16 @@ void wcursor_flush_write_cursor(struct wcursor_level_write_cursor *w_cursor)
 			(struct node_header *)wcursor_get_current_node(w_cursor, height, sizeof(struct segment_header));
 		if (height <= w_cursor->tree_height && w_cursor->segment_offt[height] % SEGMENT_SIZE != 0)
 			padded_node = (struct node_header *)((uint64_t)w_cursor->last_node[height] +
-							     (height ? index_node_get_size() : level_leaf_size));
+							     (height ? w_cursor->index_api->index_get_node_size() :
+								       level_leaf_size));
 		padded_node->type = paddedSpace;
 		padded_node->height = height;
 		/* set the root of the new index */
 		if (height == w_cursor->tree_height) {
 			log_debug("Merged level has a height off %u", w_cursor->tree_height);
 
-			if (!index_set_type((struct index_node *)w_cursor->last_node[height], rootNode)) {
+			if (!w_cursor->index_api->index_set_type((struct index_node *)w_cursor->last_node[height],
+								 rootNode)) {
 				log_fatal("Error setting node type");
 				assert(0);
 				BUG_ON();
@@ -578,22 +587,22 @@ static void wcursor_append_pivot_to_index(int32_t height, struct wcursor_level_w
 
 	struct index_node *node = (struct index_node *)w_cursor->last_node[height];
 
-	if (index_is_empty(node)) {
-		index_add_guard(node, left_node_offt);
-		index_set_height(node, height);
+	if (w_cursor->index_api->index_is_empty(node)) {
+		w_cursor->index_api->index_add_guard(node, left_node_offt);
+		w_cursor->index_api->index_set_height(node, height);
 	}
 
 	struct pivot_pointer right = { .child_offt = right_node_offt };
 
 	struct insert_pivot_req ins_pivot_req = { .node = node, .key_splice = pivot, .right_child = &right };
-	while (!index_append_pivot(&ins_pivot_req)) {
+	while (!w_cursor->index_api->index_append_pivot(&ins_pivot_req)) {
 		uint32_t offt_l = wcursor_calc_offt_in_seg(w_cursor, height, (char *)w_cursor->last_node[height]);
 		uint64_t left_index_offt = w_cursor->last_segment_btree_level_offt[height] + offt_l;
 
-		struct key_splice *pivot_copy_splice = index_remove_last_pivot_key(node);
-		struct pivot_pointer *piv_pointer = index_get_pivot_pointer(pivot_copy_splice);
-		w_cursor->last_node[height] =
-			(struct node_header *)wcursor_get_space(w_cursor, height, index_node_get_size());
+		struct key_splice *pivot_copy_splice = w_cursor->index_api->index_remove_last_key(node);
+		struct pivot_pointer *piv_pointer = w_cursor->index_api->index_get_pivot(pivot_copy_splice);
+		w_cursor->last_node[height] = (struct node_header *)wcursor_get_space(
+			w_cursor, height, w_cursor->index_api->index_get_node_size());
 
 		index_init_node(DO_NOT_ADD_GUARD, (struct index_node *)w_cursor->last_node[height], internalNode);
 		ins_pivot_req.node = (struct index_node *)w_cursor->last_node[height];
@@ -720,29 +729,29 @@ bool wcursor_append_KV_pair(struct wcursor_level_write_cursor *w_cursor, struct 
 	}
 	bool new_leaf = false;
 	struct key_splice *pivot = NULL;
-	if (dl_is_leaf_full((struct leaf_node *)w_cursor->last_node[0], kv_splice_base_get_size(&new_splice))) {
-		struct kv_splice_base last = dl_get_last_splice((struct leaf_node *)w_cursor->last_node[0]);
+	if ((*w_cursor->leaf_api->leaf_is_full)((struct leaf_node *)w_cursor->last_node[0],
+						kv_splice_base_get_size(&new_splice))) {
+		struct kv_splice_base last =
+			(*w_cursor->leaf_api->leaf_get_last)((struct leaf_node *)w_cursor->last_node[0]);
 
 		pivot = wcursor_create_pivot(&last, &new_splice);
 
 		uint32_t offt_l = wcursor_calc_offt_in_seg(w_cursor, 0, (char *)w_cursor->last_node[0]);
 		left_leaf_offt = w_cursor->last_segment_btree_level_offt[0] + offt_l;
-		w_cursor->last_node[0] = (struct node_header *)wcursor_get_space(
-			// w_cursor, 0, w_cursor->handle->db_desc->levels[w_cursor->level_id].leaf_size);
-			// new leaf
-			w_cursor, 0, LEAF_NODE_SIZE);
-		dl_init_leaf_node((struct leaf_node *)w_cursor->last_node[0],
-				  // w_cursor->handle->db_desc->levels[w_cursor->level_id].leaf_size);
-				  //new leaf
-				  LEAF_NODE_SIZE);
+		w_cursor->last_node[0] = (struct node_header *)wcursor_get_space(w_cursor, 0, LEAF_NODE_SIZE);
+		(*w_cursor->leaf_api->leaf_init)((struct leaf_node *)w_cursor->last_node[0],
+						 // w_cursor->handle->db_desc->levels[w_cursor->level_id].leaf_size);
+						 //new leaf
+						 LEAF_NODE_SIZE);
 		/*last leaf updated*/
 		uint32_t offt_r = wcursor_calc_offt_in_seg(w_cursor, 0, (char *)w_cursor->last_node[0]);
 		right_leaf_offt = w_cursor->last_segment_btree_level_offt[0] + offt_r;
 
 		new_leaf = true;
 	}
-	if (!dl_append_splice_in_dynamic_leaf((struct leaf_node *)w_cursor->last_node[0], &new_splice,
-					      new_splice.is_tombstone)) {
+
+	if (!(*w_cursor->leaf_api->leaf_append)((struct leaf_node *)w_cursor->last_node[0], &new_splice,
+						new_splice.is_tombstone)) {
 		log_fatal("Append in leaf failed (It shouldn't at this point)");
 		_exit(EXIT_FAILURE);
 	}
