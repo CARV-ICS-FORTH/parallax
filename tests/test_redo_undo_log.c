@@ -139,7 +139,7 @@ int main(int argc, char *argv[])
 	log_info("Configuration is :");
 
 	log_info("RUL_LOG_CHUNK_NUM = %lu", RUL_LOG_CHUNK_NUM);
-	log_info("RUL_SEGMENT_FOOTER_SIZE_IN_BYTES = %u", RUL_SEGMENT_FOOTER_SIZE_IN_BYTES);
+	log_info("RUL_SEGMENT_FOOTER_SIZE_IN_BYTES = %lu", RUL_SEGMENT_FOOTER_SIZE_IN_BYTES);
 	log_info("RUL_LOG_CHUNK_SIZE_IN_BYTES = %lu", RUL_LOG_CHUNK_SIZE_IN_BYTES);
 	log_info("RUL_LOG_CHUNK_MAX_ENTRIES = %lu", RUL_LOG_CHUNK_MAX_ENTRIES);
 	log_info("RUL_SEGMENT_MAX_ENTRIES = %lu", RUL_SEGMENT_MAX_ENTRIES);

@@ -1,4 +1,4 @@
-// Copyright [1] [FORTH-ICS]
+// Copyright [2021] [FORTH-ICS]
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -29,16 +29,18 @@ static bool devl_check_leaf(struct leaf_node *leaf);
 #endif
 
 struct devl_slot_array {
-	// The index points to the location of the kv pair in the leaf.
-	uint16_t key_category : 2;
-	// Tombstone notifies if the key is deleted.
-	uint16_t tombstone : 1;
-	uint16_t index : 13;
+	uint16_t index;
 };
 
 struct leaf_node {
 	struct node_header header;
 } __attribute__((packed));
+
+struct leaf_iterator {
+	struct kv_splice_base splice;
+	struct leaf_node *leaf;
+	int pos;
+};
 
 static struct devl_slot_array *devl_get_slot_array_offset(const struct leaf_node *leaf)
 {
@@ -49,8 +51,12 @@ static struct kv_splice_base devl_get_general_splice(struct leaf_node *leaf, int
 {
 	struct kv_splice_base general_splice = { 0 };
 	struct devl_slot_array *slot_array = devl_get_slot_array_offset(leaf);
-	general_splice.kv_cat = slot_array[position].key_category;
-	general_splice.is_tombstone = slot_array[position].tombstone;
+
+	char *leaf_buf = (char *)leaf;
+	general_splice.kv_cat = kv_meta_get_cat((struct kv_splice_meta *)&leaf_buf[slot_array[position].index]);
+	general_splice.is_tombstone =
+		kv_meta_is_tombstone((struct kv_splice_meta *)&leaf_buf[slot_array[position].index]);
+
 	uint8_t *kv_addr = (uint8_t *)leaf + slot_array[position].index;
 	if (general_splice.kv_cat == SMALL_INPLACE || general_splice.kv_cat == MEDIUM_INPLACE) {
 		general_splice.kv_splice = (struct kv_splice *)kv_addr;
@@ -177,70 +183,14 @@ static bool devl_append_splice_in_dynamic_leaf(struct leaf_node *leaf, struct kv
 		log_fatal("Leaf is full cannot serve request to avoid overflow (it shouldn't at this point)");
 		_exit(EXIT_FAILURE);
 	}
+
 	struct devl_slot_array *slot_array = devl_get_slot_array_offset(leaf);
-	slot_array[leaf->header.num_entries].index = offt;
-	slot_array[leaf->header.num_entries].tombstone = 0;
-	if (is_tombstone)
-		slot_array[leaf->header.num_entries].tombstone = 1;
-	slot_array[leaf->header.num_entries++].key_category = general_splice->kv_cat;
+	char *leaf_buf = (char *)leaf;
+	slot_array[leaf->header.num_entries++].index = offt;
+	kv_meta_set_tombstone((struct kv_splice_meta *)&leaf_buf[offt], is_tombstone);
+	kv_meta_set_cat((struct kv_splice_meta *)&leaf_buf[offt], general_splice->kv_cat);
 	return true;
 }
-
-// static bool devl_insert_in_dynamic_leaf(struct leaf_node *leaf, struct kv_splice_base *splice, bool is_tombstone,
-// 			       bool *exact_match)
-// {
-// 	log_info("-->");
-//   assert(0);
-// 	return false;
-// }
-
-// static void devl_init_leaf_iterator(struct leaf_node *leaf, struct leaf_iterator *iter, char *key, int32_t key_size)
-// {
-// 	log_info("-->");
-// 	assert(0);
-// }
-
-// static bool devl_is_leaf_iterator_valid(struct leaf_iterator *iter)
-// {
-// 	log_info("-->");
-// 	assert(0);
-// 	return false;
-// }
-
-// static void devl_leaf_iterator_next(struct leaf_iterator *iter)
-// {
-// 	log_info("-->");
-// 	assert(0);
-// }
-
-// static struct kv_splice_base devl_leaf_iterator_curr(struct leaf_iterator *iter)
-// {
-// 	log_info("-->");
-// 	assert(0);
-// 	struct kv_splice_base splice = { 0 };
-// 	return splice;
-// }
-
-// static struct kv_splice_base devl_split_dynamic_leaf(struct leaf_node *leaf, struct leaf_node *left, struct leaf_node *right)
-// {
-// 	log_info("-->");
-// 	assert(0);
-// 	struct kv_splice_base pivot_splice = {0};
-// 	return pivot_splice;
-// }
-
-// static inline bool devl_is_reorganize_possible(struct leaf_node *leaf, int32_t kv_size)
-// {
-// 	log_info("-->");
-// 	assert(0);
-// 	return false;
-// }
-
-// static void devl_reorganize_dynamic_leaf(struct leaf_node *leaf, struct leaf_node *target)
-// {
-// 	log_info("-->");
-// 	assert(0);
-// }
 
 static inline void devl_set_leaf_node_type(struct leaf_node *leaf, nodeType_t node_type)
 {
@@ -289,6 +239,51 @@ static struct kv_splice_base devl_get_last_splice(struct leaf_node *leaf)
 	return splice;
 }
 
+/*iterators*/
+static struct leaf_iterator *devl_leaf_create_empty_iter(void)
+{
+	return calloc(1UL, sizeof(struct leaf_iterator));
+}
+
+static void devl_leaf_destroy_iter(struct leaf_iterator *iter)
+{
+	free(iter);
+}
+
+static bool devl_leaf_iter_first(struct leaf_node *leaf, struct leaf_iterator *iter)
+{
+	iter->leaf = leaf;
+	iter->pos = 0;
+	return iter->pos < leaf->header.num_entries;
+}
+
+static bool devl_leaf_seek_iter(struct leaf_node *leaf, struct leaf_iterator *iter, char *key, int32_t key_size)
+{
+	bool exact_match = false;
+	iter->leaf = leaf;
+	iter->pos = devl_search_get_pos(leaf, key, key_size, &exact_match);
+	if (!exact_match)
+		iter->pos++;
+
+	return exact_match;
+}
+
+static bool devl_leaf_is_iter_valid(struct leaf_iterator *iter)
+{
+	return iter->pos < iter->leaf->header.num_entries;
+}
+
+static bool devl_leaf_iter_next(struct leaf_iterator *iter)
+{
+	return ++iter->pos < iter->leaf->header.num_entries;
+}
+
+static struct kv_splice_base devl_leaf_iter_curr(struct leaf_iterator *iter)
+{
+	struct kv_splice_base splice = { .kv_cat = INT32_MAX };
+	return devl_leaf_is_iter_valid(iter) ? devl_get_general_splice(iter->leaf, iter->pos) : splice;
+}
+
 bool dev_leaf_register(struct level_leaf_api *leaf_api)
 {
 	leaf_api->leaf_append = devl_append_splice_in_dynamic_leaf;
@@ -299,10 +294,6 @@ bool dev_leaf_register(struct level_leaf_api *leaf_api)
 
 	leaf_api->leaf_is_full = devl_is_leaf_full;
 
-	leaf_api->leaf_get_pos = devl_search_get_pos;
-
-	leaf_api->leaf_get_splice = devl_get_general_splice;
-
 	leaf_api->leaf_set_type = devl_set_leaf_node_type;
 
 	leaf_api->leaf_get_type = devl_get_leaf_node_type;
@@ -312,6 +303,14 @@ bool dev_leaf_register(struct level_leaf_api *leaf_api)
 	leaf_api->leaf_get_size = devl_leaf_get_node_size;
 
 	leaf_api->leaf_get_last = devl_get_last_splice;
+	/*iterator staff*/
+	leaf_api->leaf_create_empty_iter = devl_leaf_create_empty_iter;
+	leaf_api->leaf_destroy_iter = devl_leaf_destroy_iter;
+	leaf_api->leaf_seek_first = devl_leaf_iter_first;
+	leaf_api->leaf_seek_iter = devl_leaf_seek_iter;
+	leaf_api->leaf_is_iter_valid = devl_leaf_is_iter_valid;
+	leaf_api->leaf_iter_next = devl_leaf_iter_next;
+	leaf_api->leaf_iter_curr = devl_leaf_iter_curr;
 
 	return true;
 }

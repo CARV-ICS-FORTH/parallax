@@ -48,9 +48,11 @@ bool level_scanner_init(struct level_scanner *level_scanner, db_handle *database
 
 	level_scanner->leaf_api = NULL;
 	level_scanner->index_api = NULL;
+	level_scanner->leaf_iter = NULL;
 	if (level_id) {
 		level_scanner->leaf_api = level_get_leaf_api(database->db_desc->dev_levels[level_id]);
 		level_scanner->index_api = level_get_index_api(database->db_desc->dev_levels[level_id]);
+		level_scanner->leaf_iter = level_scanner->leaf_api->leaf_create_empty_iter();
 	}
 
 	return true;
@@ -63,25 +65,7 @@ static void read_lock_node(struct level_scanner *level_scanner, struct node_head
 
 	struct lock_table *lock =
 		find_lock_position((const lock_table **)level_scanner->db->db_desc->L0.level_lock_table, node);
-	int ret = 0;
-	if ((ret = RWLOCK_RDLOCK(&lock->rx_lock)) != 0) {
-		switch (ret) {
-		case EBUSY:
-			log_fatal("EBUSY");
-			break;
-		case EINVAL:
-			log_fatal("EINVAL");
-			break;
-		case EAGAIN:
-			log_fatal("EAGAIN");
-			break;
-		case EDEADLK:
-			log_fatal("EDEADLK");
-			break;
-		default:
-			break;
-		}
-
+	if ((RWLOCK_RDLOCK(&lock->rx_lock)) != 0) {
 		log_fatal("ERROR locking");
 		perror("Reason");
 		BUG_ON();
@@ -170,30 +154,32 @@ bool level_scanner_seek(struct level_scanner *level_scanner, struct key_splice *
 	/*now perform binary search inside the leaf*/
 
 	bool exact_match = false;
-	element.idx = level_scanner->level_id ?
-			      (*level_scanner->leaf_api->leaf_get_pos)((struct leaf_node *)node,
-								       key_splice_get_key_offset(start_key_splice),
-								       key_splice_get_key_size(start_key_splice),
-								       &exact_match) :
-			      dl_search_get_pos((struct leaf_node *)node, key_splice_get_key_offset(start_key_splice),
+	if (level_scanner->level_id) {
+		exact_match = (*level_scanner->leaf_api->leaf_seek_iter)((struct leaf_node *)node,
+									 level_scanner->leaf_iter,
+									 key_splice_get_key_offset(start_key_splice),
+									 key_splice_get_key_size(start_key_splice));
+		element.idx = 0;
+	} else {
+		element.idx = dl_search_get_pos((struct leaf_node *)node, key_splice_get_key_offset(start_key_splice),
 						key_splice_get_key_size(start_key_splice), &exact_match);
-
-	if (!exact_match)
-		++element.idx;
+		element.idx = exact_match ? element.idx : element.idx + 1;
+	}
 
 	stack_push(&level_scanner->stack, element);
 
-	if ((seek_mode == GREATER && exact_match) || element.idx >= node->num_entries) {
+	if ((seek_mode == GREATER && exact_match) || level_scanner->level_id ?
+		    !(*level_scanner->leaf_api->leaf_is_iter_valid)(level_scanner->leaf_iter) :
+		    element.idx >= node->num_entries) {
 		if (!level_scanner_get_next(level_scanner))
 			return false;
 	}
 
 	element = stack_pop(&level_scanner->stack);
 
-	level_scanner->splice =
-		level_scanner->level_id ?
-			(*level_scanner->leaf_api->leaf_get_splice)((struct leaf_node *)element.node, element.idx) :
-			dl_get_general_splice((struct leaf_node *)element.node, element.idx);
+	level_scanner->splice = level_scanner->level_id ?
+					(*level_scanner->leaf_api->leaf_iter_curr)(level_scanner->leaf_iter) :
+					dl_get_general_splice((struct leaf_node *)element.node, element.idx);
 	// log_debug("Level scanner seek reached splice %.*s at idx %d node entries %d",
 	// 	  kv_splice_base_get_key_size(&level_sc->splice), kv_splice_base_get_key_buf(&level_sc->splice),
 	// 	  element.idx, element.node->num_entries);
@@ -203,7 +189,7 @@ bool level_scanner_seek(struct level_scanner *level_scanner, struct key_splice *
 
 bool level_scanner_get_next(struct level_scanner *level_scanner)
 {
-	enum level_scanner_status_t { GET_NEXT_KV = 1, POP_STACK, PUSH_STACK };
+	enum level_scanner_status_t { GET_NEXT_KV = 1, SEEK_DEV_LEVEL_SCANNER, POP_STACK, PUSH_STACK };
 
 	stackElementT stack_element = stack_pop(&(level_scanner->stack)); /*get the element*/
 
@@ -220,18 +206,29 @@ bool level_scanner_get_next(struct level_scanner *level_scanner)
 	while (1) {
 		switch (status) {
 		case GET_NEXT_KV:
-			//log_debug("get_next kv");
 
-			if (++stack_element.idx >= stack_element.node->num_entries) {
+			if (0 == level_scanner->level_id && ++stack_element.idx >= stack_element.node->num_entries) {
 				read_unlock_node(level_scanner, stack_element.node);
 				status = POP_STACK;
 				break;
 			}
 
+			if (level_scanner->level_id) {
+				if (false ==
+				    ((-1 == stack_element.idx) ?
+					     (*level_scanner->leaf_api->leaf_seek_first)(
+						     (struct leaf_node *)stack_element.node, level_scanner->leaf_iter) :
+					     (*level_scanner->leaf_api->leaf_iter_next)(level_scanner->leaf_iter))) {
+					// read_unlock_node(level_scanner, stack_element.node);
+					status = POP_STACK;
+					break;
+				}
+				stack_element.idx = 0;
+			}
+
 			level_scanner->splice =
 				level_scanner->level_id ?
-					(*level_scanner->leaf_api->leaf_get_splice)(
-						(struct leaf_node *)stack_element.node, stack_element.idx) :
+					(*level_scanner->leaf_api->leaf_iter_curr)(level_scanner->leaf_iter) :
 					dl_get_general_splice((struct leaf_node *)stack_element.node,
 							      stack_element.idx);
 			// log_debug("Get next Returning Leaf:%lu idx is %d num_entries %d", stack_element.node,
@@ -248,7 +245,7 @@ bool level_scanner_get_next(struct level_scanner *level_scanner)
 			stack_element.node = REAL_ADDRESS(pivot->child_offt);
 
 			read_lock_node(level_scanner, stack_element.node);
-			if (stack_element.node->type == leafNode || stack_element.node->type == leafRootNode) {
+			if ((stack_element.node->type == leafNode || stack_element.node->type == leafRootNode)) {
 				stack_element.idx = -1;
 				status = GET_NEXT_KV;
 				break;
@@ -300,6 +297,9 @@ struct level_scanner *level_scanner_init_compaction_scanner(db_handle *database,
 
 void level_scanner_close(struct level_scanner *level_scanner)
 {
+	if (level_scanner->level_id)
+		(*level_scanner->leaf_api->leaf_destroy_iter)(level_scanner->leaf_iter);
+
 	stack_destroy(&(level_scanner->stack));
 	free(level_scanner);
 }

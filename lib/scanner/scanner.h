@@ -29,6 +29,7 @@ struct level_scanner {
 	struct node_header *root;
 	struct level_leaf_api *leaf_api;
 	struct level_index_api *index_api;
+	struct leaf_iterator *leaf_iter;
 	uint8_t level_id;
 	bool is_compaction_scanner;
 	uint8_t valid;

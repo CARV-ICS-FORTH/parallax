@@ -28,10 +28,6 @@ typedef void (*level_leaf_init)(struct leaf_node *leaf, uint32_t leaf_size);
 
 typedef bool (*level_leaf_is_full)(struct leaf_node *leaf, uint32_t kv_size);
 
-typedef int32_t (*level_leaf_get_pos)(struct leaf_node *leaf, char *key, int32_t key_size, bool *exact_match);
-
-typedef struct kv_splice_base (*level_leaf_get_splice)(struct leaf_node *leaf, int32_t position);
-
 typedef void (*level_leaf_set_type)(struct leaf_node *leaf, nodeType_t node_type);
 
 typedef nodeType_t (*level_leaf_get_type)(struct leaf_node *leaf);
@@ -44,8 +40,25 @@ typedef uint32_t (*level_leaf_get_size)(struct leaf_node *leaf);
 
 typedef struct kv_splice_base (*level_leaf_get_last)(struct leaf_node *leaf);
 
-/*level index functions*/
+//<leaf iterators>
+typedef struct leaf_iterator *(*level_leaf_iter_create)(void);
 
+/*return true if there is an exact match*/
+typedef bool (*level_leaf_iter_first)(struct leaf_node *leaf, struct leaf_iterator *iter);
+
+typedef bool (*level_leaf_iter_seek)(struct leaf_node *leaf, struct leaf_iterator *iter, char *key, int32_t key_size);
+
+typedef void (*level_leaf_iter_destroy)(struct leaf_iterator *iter);
+
+typedef bool (*level_leaf_iter_is_valid)(struct leaf_iterator *iter);
+
+/*returns false if after advancing the iterator is out of bounds*/
+typedef bool (*level_leaf_iter_next)(struct leaf_iterator *iter);
+
+typedef struct kv_splice_base (*level_leaf_iter_curr)(struct leaf_iterator *iter);
+//</leaf iterators>
+
+/*level index functions*/
 typedef struct pivot_pointer *(*level_index_get_pivot)(struct key_splice *key_splice);
 
 typedef void (*level_index_init_node)(enum add_guard_option option, struct index_node *node, nodeType_t type);
@@ -84,10 +97,6 @@ struct level_leaf_api {
 
 	level_leaf_is_full leaf_is_full;
 
-	level_leaf_get_pos leaf_get_pos;
-
-	level_leaf_get_splice leaf_get_splice;
-
 	level_leaf_set_type leaf_set_type;
 
 	level_leaf_get_type leaf_get_type;
@@ -97,6 +106,20 @@ struct level_leaf_api {
 	level_leaf_get_size leaf_get_size;
 
 	level_leaf_get_last leaf_get_last;
+	/*iterator staff*/
+	level_leaf_iter_create leaf_create_empty_iter;
+
+	level_leaf_iter_destroy leaf_destroy_iter;
+
+	level_leaf_iter_first leaf_seek_first;
+
+	level_leaf_iter_seek leaf_seek_iter;
+
+	level_leaf_iter_is_valid leaf_is_iter_valid;
+
+	level_leaf_iter_next leaf_iter_next;
+
+	level_leaf_iter_curr leaf_iter_curr;
 };
 
 struct level_index_api {
