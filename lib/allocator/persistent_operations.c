@@ -1,5 +1,4 @@
 // Copyright [2021] [FORTH-ICS]
-//
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -39,7 +38,6 @@
 #include <unistd.h>
 
 struct device_level;
-
 // IWYU pragma: no_forward_declare node_header
 // IWYU pragma: no_forward_declare pbf_desc
 
@@ -807,12 +805,20 @@ start:
 	if (is_tail)
 		remaining_bytes_in_segment =
 			(cursor->log_size % (uint64_t)SEGMENT_SIZE) - ((uint64_t)cursor->offt_in_segment);
-	// log_debug("remaining_bytes_in_segment = %u is_tail?: %s", remaining_bytes_in_segment, is_tail ? "YES" : "NO");
+
+	//  log_debug("remaining_bytes_in_segment = %u is_tail?: %s", remaining_bytes_in_segment, is_tail ? "YES" : "NO");
 	// log_debug("log size: %lu offt_in_segment: %lu", cursor->log_size, cursor->offt_in_segment);
 
-	char *pos_in_segment = get_position_in_segment(cursor);
-	struct kv_splice *kv_pair = (struct kv_splice *)pos_in_segment;
-	if (remaining_bytes_in_segment < kv_splice_get_min_possible_kv_size() || 0 == kv_splice_get_key_size(kv_pair)) {
+	if (remaining_bytes_in_segment < kv_splice_get_min_possible_kv_size() + get_lsn_size()) {
+		cursor->offt_in_segment += remaining_bytes_in_segment;
+		get_next_log_segment(cursor);
+		goto start;
+	}
+
+	struct kv_splice *kv_pair = (struct kv_splice *)&get_position_in_segment(cursor)[get_lsn_size()];
+	// log_debug("kv splice key size: %u",kv_splice_get_key_size(kv_pair));
+
+	if (0 == kv_splice_get_key_size(kv_pair)) {
 		cursor->offt_in_segment += remaining_bytes_in_segment;
 		get_next_log_segment(cursor);
 		goto start;
