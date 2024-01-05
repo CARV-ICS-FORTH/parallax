@@ -29,13 +29,10 @@ struct node_header {
 	nodeType_t type;
 	/*0 are leaves, 1 are Bottom Internal nodes, and then we have
   INs and root*/
-	int32_t height;
-	int32_t fragmentation;
-	int32_t num_entries;
-	uint32_t node_size;
+	int16_t height;
+	int16_t fragmentation;
+	int16_t num_entries;
+	uint16_t node_size;
 	uint16_t log_size;
-	/*pad to be exacly one cache line*/
-	char pad[14];
-
 } __attribute__((packed));
 #endif
