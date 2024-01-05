@@ -17,6 +17,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 enum KV_type { KV_FORMAT = 1, KV_PREFIX };
+#define KV_META_MAX_PREV_SIZE (2 << 12)
 
 #define KV_SEP2_MAX_SIZE (sizeof(struct kv_splice_meta) + sizeof(int16_t) + sizeof(uint64_t) + MAX_KEY_SIZE)
 
@@ -25,7 +26,7 @@ struct kv_splice_meta {
 	uint16_t tombstone : 1;
 	uint16_t kv_cat : 2;
 	uint16_t unreserved : 12;
-};
+} __attribute__((packed));
 struct kv_splice {
 #if TEBIS_FORMAT
 	int16_t key_size;
@@ -61,13 +62,15 @@ struct kv_splice_base {
 	bool is_tombstone;
 };
 
-
 enum kv_category kv_meta_get_cat(struct kv_splice_meta *meta);
 bool kv_meta_set_cat(struct kv_splice_meta *meta, enum kv_category cat);
 bool kv_meta_is_tombstone(struct kv_splice_meta *meta);
 bool kv_meta_set_tombstone(struct kv_splice_meta *meta, bool val);
 bool kv_meta_is_kv_format(struct kv_splice_meta *meta);
 bool kv_meta_set_kv_format(struct kv_splice_meta *meta, bool val);
+
+bool kv_meta_set_prev_kv_size(struct kv_splice_meta *meta, uint16_t size);
+uint16_t kv_meta_get_prev_kv_size(struct kv_splice_meta *meta);
 /**
  * @brief Returns a pointer to the key
  * @param kv_sep2 pointer to the splice

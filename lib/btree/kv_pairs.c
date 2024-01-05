@@ -15,6 +15,7 @@
 #include "key_splice.h"
 #include <assert.h>
 #include <log.h>
+#include <signal.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -47,17 +48,33 @@ inline bool kv_meta_set_cat(struct kv_splice_meta *meta, enum kv_category cat)
 inline bool kv_meta_set_tombstone(struct kv_splice_meta *meta, bool val)
 {
 	meta->tombstone = val;
-  return true;
+	return true;
 }
 
 inline bool kv_meta_set_kv_format(struct kv_splice_meta *meta, bool val)
 {
-  meta->kv_format = val;
-  return true;
+	meta->kv_format = val;
+	return true;
+}
+
+inline bool kv_meta_set_prev_kv_size(struct kv_splice_meta *meta, uint16_t size)
+{
+	if (size > KV_META_MAX_PREV_SIZE) {
+		log_fatal("Overflow");
+		_exit(EXIT_FAILURE);
+	}
+	meta->unreserved = size;
+	return true;
+}
+
+inline uint16_t kv_meta_get_prev_kv_size(struct kv_splice_meta *meta)
+{
+	return meta->unreserved;
 }
 
 inline int32_t kv_splice_get_key_size(struct kv_splice *kv_pair)
 {
+	// assert(kv_pair->key_size > 0);
 	return kv_pair->key_size;
 }
 
@@ -74,6 +91,10 @@ inline int32_t kv_splice_get_value_size_with_metadata(struct kv_splice *kv_pair)
 
 inline int32_t kv_splice_get_kv_size(struct kv_splice *kv_pair)
 {
+	// log_debug("Splice size is %u key_size: %u value_size: %u",
+	// 	  kv_splice_get_key_size(kv_pair) + kv_splice_get_value_size(kv_pair) + kv_splice_get_metadata_size(),
+	// 	  kv_splice_get_key_size(kv_pair), kv_splice_get_value_size(kv_pair));
+	//  log_debug("Key is: %s",kv_splice_get_key_offset_in_kv(kv_pair));
 	return kv_splice_get_key_size(kv_pair) + kv_splice_get_value_size(kv_pair) + kv_splice_get_metadata_size();
 }
 
@@ -164,7 +185,7 @@ struct kv_splice *kv_splice_create(int32_t key_size, char *key, int32_t value_si
 
 void kv_splice_serialize(struct kv_splice *splice, char *dest)
 {
-	uint32_t num_bytes = kv_splice_calculate_size(splice->key_size, splice->value_size);
+	uint32_t num_bytes = kv_splice_get_kv_size(splice);
 	assert(splice->key_size > 0);
 	//uint32_t idx = 0;
 	memcpy(dest, splice, num_bytes);
@@ -231,6 +252,7 @@ bool kv_sep2_serialize(struct kv_seperation_splice2 *splice, char *dest, int32_t
 	// memcpy(&dest[idx], &splice->key_size, sizeof(splice->key_size));
 	// idx += sizeof(splice->key_size);
 	// memcpy(&dest[idx], splice->key, splice->key_size);
+
 	uint32_t idx = 0;
 	memcpy(dest, splice, sizeof(*splice));
 	idx += sizeof(*splice);
@@ -328,6 +350,9 @@ int kv_splice_base_compare(struct kv_splice_base *sp1, struct kv_splice_base *sp
 	char *key2 = NULL;
 	int32_t key_size2 = -1;
 	kv_splice_base_fill_key(sp2, &key2, &key_size2);
+
+	assert(key_size1 >= 0);
+	assert(key_size2 >= 0);
 
 	int ret = memcmp(key1, key2, key_size1 <= key_size2 ? key_size1 : key_size2);
 	return ret == 0 ? key_size1 - key_size2 : ret;
