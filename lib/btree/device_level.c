@@ -9,6 +9,7 @@
 #include "conf.h"
 #include "dev_index.h"
 #include "dev_leaf.h"
+#include "fractal_leaf.h"
 #include "key_splice.h"
 #include "kv_pairs.h"
 #include "segment_allocator.h"
@@ -81,11 +82,10 @@ struct device_level *level_create_fresh(uint32_t level_id, uint32_t l0_size, uin
 	}
 	for (uint32_t i = 1; i <= level_id; i++)
 		level->max_level_size = level->max_level_size * growth_factor;
-	log_debug("Level_id: %u has max level size of: %lu", level_id, level->max_level_size);
+	// log_debug("Level_id: %u has max level size of: %lu", level_id, level->max_level_size);
 
-	log_debug("Registering leaf_api of level: %u", level->level_id);
 	dev_leaf_register(&level->level_leaf_api);
-	log_debug("Registering index_api of level: %u", level->level_id);
+	// frac_leaf_register(&level->level_leaf_api);
 	dev_idx_register(&level->level_index_api);
 	return level;
 }
@@ -568,10 +568,9 @@ bool level_lookup(struct device_level *level, struct lookup_operation *get_op, i
 	const char *error = NULL;
 	struct kv_splice_base splice =
 		(*level->level_leaf_api.leaf_find)((struct leaf_node *)curr_node, key, key_size, &error);
-	if (error != NULL) {
-		// log_debug("Key %.*s not found with error message %s", key_size, (char *)key, error);
+
+	if (error != NULL)
 		goto done;
-	}
 
 	get_op->tombstone = splice.is_tombstone;
 	if (get_op->tombstone)
