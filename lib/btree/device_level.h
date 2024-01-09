@@ -18,6 +18,7 @@ struct index_node_iterator;
 struct leaf_node;
 struct leaf_iterator;
 struct lookup_operation;
+struct level_scanner_dev;
 /*level leaf functions signatures*/
 typedef bool (*level_leaf_append)(struct leaf_node *leaf, struct kv_splice_base *general_splice, bool is_tombstone);
 
@@ -34,14 +35,18 @@ typedef nodeType_t (*level_leaf_get_type)(struct leaf_node *leaf);
 
 typedef int32_t (*level_leaf_get_entries)(struct leaf_node *leaf);
 
-typedef struct kv_splice_base (*level_leaf_iter_curr)(struct leaf_iterator *iter);
-
 typedef uint32_t (*level_leaf_get_size)(struct leaf_node *leaf);
 
 typedef struct kv_splice_base (*level_leaf_get_last)(struct leaf_node *leaf);
 
+typedef bool (*level_leaf_set_next_leaf_offt)(struct leaf_node *leaf, uint64_t leaf_offt);
+
+typedef uint64_t (*level_leaf_get_next_leaf_offt)(struct leaf_node *leaf);
+
 //<leaf iterators>
 typedef struct leaf_iterator *(*level_leaf_iter_create)(void);
+
+typedef struct kv_splice_base (*level_leaf_iter_curr)(struct leaf_iterator *iter);
 
 /*return true if there is an exact match*/
 typedef bool (*level_leaf_iter_first)(struct leaf_node *leaf, struct leaf_iterator *iter);
@@ -75,6 +80,9 @@ typedef bool (*level_index_append_pivot)(struct insert_pivot_req *ins_pivot_req)
 
 typedef struct key_splice *(*level_index_remove_last_pivot_key)(struct index_node *node);
 
+typedef uint64_t (*level_index_search)(struct index_node *node, char *lookup_key, int32_t lookup_key_size);
+
+//iterator staff
 typedef void (*level_index_init_iter)(struct index_node *node, struct index_node_iterator *iterator);
 
 typedef void (*level_index_init_iter_key)(struct index_node *node, struct index_node_iterator *iterator,
@@ -106,6 +114,10 @@ struct level_leaf_api {
 	level_leaf_get_size leaf_get_size;
 
 	level_leaf_get_last leaf_get_last;
+
+	level_leaf_set_next_leaf_offt leaf_set_next_offt;
+
+	level_leaf_get_next_leaf_offt leaf_get_next_offt;
 	/*iterator staff*/
 	level_leaf_iter_create leaf_create_empty_iter;
 
@@ -138,6 +150,8 @@ struct level_index_api {
 	level_index_append_pivot index_append_pivot;
 
 	level_index_remove_last_pivot_key index_remove_last_key;
+
+	level_index_search index_search;
 
 	level_index_init_iter index_init_iter;
 
@@ -384,6 +398,8 @@ int64_t level_inc_num_keys(struct device_level *level, uint32_t tree_id, uint32_
 struct segment_header *level_allocate_segment(struct device_level *level, uint8_t tree_id,
 					      struct db_descriptor *db_desc, uint64_t txn_id);
 
+struct segment_header *level_add_segment(struct device_level *level, uint8_t tree_id, uint64_t seg_offt);
+
 /**
 * @brief Frees all the index segments of the level
   * @param level pointer to the level object
@@ -397,4 +413,44 @@ struct level_leaf_api *level_get_leaf_api(struct device_level *level);
 struct level_index_api *level_get_index_api(struct device_level *level);
 
 bool level_lookup(struct device_level *level, struct lookup_operation *get_op, int tree_id);
+
+//level scanner staff
+/**
+ * @brief Initializes a scanner for the device level.
+ * @param database pointer to the database object
+ * @param level_id id of the level to create a scanner
+ * @param tree_id id of the tree within the level to create the scanner
+ * @return pointer to the level_scanner_dev object or NULL on failure
+*/
+struct level_scanner_dev *level_scanner_dev_init(db_handle *database, uint8_t level_id, uint8_t tree_id);
+/**
+  * @brief Seeks to a key greater or equal to the start_key_splice.
+  * @param dev_level_scanner pointer to the dev_level_scanner object
+  * @param start_key_splice pointer to the splice to seek for
+  * @return true on success or false in no keey greater or equal to the start_key_splice
+  * is found
+*/
+bool level_scanner_dev_seek(struct level_scanner_dev *dev_level_scanner, struct key_splice *start_key_splice);
+
+/**
+ * @brief Fills the kv_splice_base with the current value of the position of the iterator.
+ * @param dev_level_scanner pointer to the scanner obj
+ * @param splice the splice to be filled
+ * @return true on success false on failure
+*/
+bool level_scanner_curr(struct level_scanner_dev *dev_level_scanner, struct kv_splice_base *splice);
+
+/**
+  * @brief Moves the iterators
+  * @param dev_level_scanner pointer to the scanner object
+  * @return true on success false if end of database has been reached
+*/
+bool level_scanner_dev_next(struct level_scanner_dev *dev_level_scanner);
+
+/**
+  * @brief Destorys the dev_level_scanner object
+  * @param dev_level_scanner pointer to the scanner object
+  * @returns true on success false on failure
+*/
+bool level_scanner_dev_close(struct level_scanner_dev *dev_level_scanner);
 #endif

@@ -281,6 +281,28 @@ static void dev_idx_iterator_init_with_key(struct index_node *node, struct index
 	dev_idx_internal_iterator_init(node, iterator, key_splice);
 }
 
+static struct key_splice *dev_idx_search_get_full_pivot(struct index_node *node, char *lookup_key,
+							int32_t lookup_key_size)
+{
+	assert(lookup_key_size > 0);
+	assert(lookup_key_size <= MAX_KEY_SIZE);
+	bool unused = false; // Created here to call the function
+	int32_t position = dev_idx_search_get_pos(node, lookup_key, lookup_key_size, &unused);
+
+	struct dev_idx_slot_array_entry *slot_array = dev_idx_get_slot_array(node);
+	struct key_splice *pivot_splice = dev_idx_get_key_splice(node, slot_array[position].pivot);
+
+	return pivot_splice;
+}
+
+uint64_t dev_idx_binary_search(struct index_node *node, char *lookup_key, int32_t lookup_key_size)
+{
+	assert(lookup_key_size > 0);
+	assert(lookup_key_size <= MAX_KEY_SIZE);
+	struct key_splice *index_key_splice = dev_idx_search_get_full_pivot(node, lookup_key, lookup_key_size);
+	struct pivot_pointer *piv_pointer = index_get_pivot_pointer(index_key_splice);
+	return piv_pointer->child_offt;
+}
 // cppcheck-suppress unusedFunction
 void dex_idx_node_print(struct index_node *node)
 {
@@ -306,6 +328,8 @@ bool dev_idx_register(struct level_index_api *index_api)
 	index_api->index_append_pivot = dev_idx_append_pivot;
 
 	index_api->index_remove_last_key = dev_idx_remove_last_pivot_key;
+
+	index_api->index_search = dev_idx_binary_search;
 
 	index_api->index_init_iter_key = dev_idx_iterator_init_with_key;
 

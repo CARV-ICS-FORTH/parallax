@@ -37,6 +37,7 @@ typedef enum {
 
 struct leaf_node {
 	struct node_header header;
+	uint64_t next_leaf_offt;
 	uint16_t counters[FRAC_SIZE];
 } __attribute__((packed));
 
@@ -358,6 +359,16 @@ static struct kv_splice_base frac_get_last_splice(struct leaf_node *leaf)
 	return splice;
 }
 
+static bool frac_set_next_leaf_offt(struct leaf_node *leaf, uint64_t leaf_offt)
+{
+	leaf->next_leaf_offt = leaf_offt;
+	return true;
+}
+
+static uint64_t frac_get_next_leaf_offt(struct leaf_node *leaf)
+{
+	return leaf->next_leaf_offt;
+}
 /*iterators*/
 struct leaf_iterator *frac_leaf_create_empty_iter(void)
 {
@@ -449,6 +460,10 @@ bool frac_leaf_register(struct level_leaf_api *leaf_api)
 	leaf_api->leaf_get_size = frac_leaf_get_node_size;
 
 	leaf_api->leaf_get_last = frac_get_last_splice;
+
+	leaf_api->leaf_set_next_offt = frac_set_next_leaf_offt;
+
+	leaf_api->leaf_get_next_offt = frac_get_next_leaf_offt;
 	/*iterator staff*/
 	leaf_api->leaf_create_empty_iter = frac_leaf_create_empty_iter;
 	leaf_api->leaf_destroy_iter = frac_leaf_destroy_iter;

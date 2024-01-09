@@ -24,6 +24,7 @@
 #include "kv_pairs.h"
 #include "medium_log_LRU_cache.h"
 #include "parallax/structures.h"
+#include "segment_allocator.h"
 #include <assert.h>
 #include <log.h>
 #include <stdbool.h>
@@ -52,8 +53,19 @@ struct wcursor_level_write_cursor {
 	struct wcursor_seg_buf *segment_buffer;
 	uint64_t segment_offt[MAX_HEIGHT];
 	uint64_t first_segment_btree_level_offt[MAX_HEIGHT];
+	/**
+   * @brief this is the offset in the device where
+   * the system will write the in-memory segment buffer
+   * when it is full
+   */
 	uint64_t last_segment_btree_level_offt[MAX_HEIGHT];
 	struct node_header *last_node[MAX_HEIGHT];
+	/**
+   * @brief To keep sibling pointers between the B+-tree
+   * leaves we need to know a priori where the subsequent
+   * leaf segment will be written
+   */
+	uint64_t leaf_preallocated_segment;
 	// struct index_node *last_index[MAX_HEIGHT];
 	// struct leaf_node *last_leaf;
 	int8_t segment_buf_is_init[MAX_HEIGHT];
@@ -265,9 +277,16 @@ static void wcursor_write_index_segment(struct wcursor_level_write_cursor *w_cur
 	if (w_cursor->spin_for_replies)
 		wcursor_spin_for_buffer_status(w_cursor);
 #endif
-	struct segment_header *new_device_segment =
-		level_allocate_segment(w_cursor->handle->db_desc->dev_levels[w_cursor->level_id], 1,
-				       w_cursor->handle->db_desc, w_cursor->txn_id);
+	struct segment_header *new_device_segment = NULL;
+	if (0 == height) {
+		new_device_segment = REAL_ADDRESS(w_cursor->leaf_preallocated_segment);
+		level_add_segment(w_cursor->handle->db_desc->dev_levels[w_cursor->level_id], w_cursor->tree_id,
+				  w_cursor->leaf_preallocated_segment);
+		w_cursor->leaf_preallocated_segment = seg_allocate_segment(w_cursor->handle->db_desc, w_cursor->txn_id);
+	} else
+		new_device_segment = level_allocate_segment(w_cursor->handle->db_desc->dev_levels[w_cursor->level_id],
+							    1, w_cursor->handle->db_desc, w_cursor->txn_id);
+
 	assert(new_device_segment);
 
 	struct segment_header *segment = (struct segment_header *)wcursor_get_buf(w_cursor, height);
@@ -294,7 +313,7 @@ static void wcursor_write_index_segment(struct wcursor_level_write_cursor *w_cur
 			uint32_t src_level = w_cursor->level_id - 1;
 			if (par_cb.comp_write_cursor_flush_segment_cb)
 				par_cb.comp_write_cursor_flush_segment_cb(
-					context, w_cursor->last_segment_btree_level_offt[height], w_cursor, src_level,
+					context, w_cursor last_segment_btree_level_offt[height], w_cursor, src_level,
 					w_cursor->last_flush_request_height, SEGMENT_SIZE,
 					w_cursor->last_flush_request_clock, false);
 		}
@@ -307,6 +326,27 @@ static void wcursor_write_index_segment(struct wcursor_level_write_cursor *w_cur
 	w_cursor->segment_offt[height] += sizeof(struct segment_header);
 }
 
+static uint64_t wcursor_get_next_leaf_offt(struct wcursor_level_write_cursor *w_cursor, size_t size)
+{
+	uint32_t remaining_space = w_cursor->segment_offt[0] % SEGMENT_SIZE ?
+					   (SEGMENT_SIZE - (w_cursor->segment_offt[0] % SEGMENT_SIZE)) :
+					   0;
+
+	if (remaining_space >= size) {
+		uint32_t offt_in_seg = w_cursor->segment_offt[0] % SEGMENT_SIZE;
+		return w_cursor->last_segment_btree_level_offt[0] + offt_in_seg;
+	}
+	return w_cursor->leaf_preallocated_segment + sizeof(struct segment_header);
+}
+
+/**
+ * @brief Allocates the desire space in the current segment. If there is no sufficient space
+ * it pads it (if needed) and returns NULL.
+ * @param w_cursor pointer to the write cursor object
+ * @param height indicates for which height of B+-tree we need more space
+ * @param size in B of the space needed.
+ * @return pointer to the next node
+*/
 static char *wcursor_get_space(struct wcursor_level_write_cursor *w_cursor, uint32_t height, size_t size)
 {
 retry:
@@ -417,6 +457,9 @@ struct wcursor_level_write_cursor *wcursor_init_write_cursor(uint8_t level_id, s
 	w_cursor->medium_log_LRU_cache = level_id == w_cursor->handle->db_desc->level_medium_inplace ?
 						 mlog_cache_init_LRU(w_cursor->handle) :
 						 NULL;
+	//preallocate for the leaves to maintain next pointers
+	w_cursor->leaf_preallocated_segment = seg_allocate_segment(w_cursor->handle->db_desc, w_cursor->txn_id);
+	// log_debug("First preallocated segment is at offt: %lu", w_cursor->leaf_preallocated_segment);
 
 	return w_cursor;
 }
@@ -503,7 +546,8 @@ void wcursor_flush_write_cursor(struct wcursor_level_write_cursor *w_cursor)
 #if TEBIS_FORMAT
 	wcursor_spin_for_buffer_status(w_cursor);
 #endif
-	// uint32_t level_leaf_size = w_cursor->handle->db_desc->levels[w_cursor->level_id].leaf_size;
+	//We did not use it at the end of the day, free it
+	seg_free_segment(w_cursor->handle->db_desc, w_cursor->txn_id, w_cursor->leaf_preallocated_segment);
 	uint32_t level_leaf_size = LEAF_NODE_SIZE;
 	for (int32_t height = 0; height < MAX_HEIGHT; ++height) {
 		// if (height <= w_cursor->tree_height) {
@@ -738,15 +782,19 @@ bool wcursor_append_KV_pair(struct wcursor_level_write_cursor *w_cursor, struct 
 
 		uint32_t offt_l = wcursor_calc_offt_in_seg(w_cursor, 0, (char *)w_cursor->last_node[0]);
 		left_leaf_offt = w_cursor->last_segment_btree_level_offt[0] + offt_l;
+
+		//1. keep the offt of the previous leaf
+		struct leaf_node *semilast_leaf = (struct leaf_node *)w_cursor->last_node[0];
+		uint64_t next_leaf_offt = wcursor_get_next_leaf_offt(w_cursor, LEAF_NODE_SIZE);
+		(*w_cursor->leaf_api->leaf_set_next_offt)(semilast_leaf, next_leaf_offt);
+		// log_debug("Set next leaf offt to: %lu",next_leaf_offt);
+
 		w_cursor->last_node[0] = (struct node_header *)wcursor_get_space(w_cursor, 0, LEAF_NODE_SIZE);
-		(*w_cursor->leaf_api->leaf_init)((struct leaf_node *)w_cursor->last_node[0],
-						 // w_cursor->handle->db_desc->levels[w_cursor->level_id].leaf_size);
-						 //new leaf
-						 LEAF_NODE_SIZE);
-		/*last leaf updated*/
 		uint32_t offt_r = wcursor_calc_offt_in_seg(w_cursor, 0, (char *)w_cursor->last_node[0]);
 		right_leaf_offt = w_cursor->last_segment_btree_level_offt[0] + offt_r;
-
+		//2. done set the next leaf offt, so now we have a B-link tree!
+		(*w_cursor->leaf_api->leaf_init)((struct leaf_node *)w_cursor->last_node[0], LEAF_NODE_SIZE);
+		(*w_cursor->leaf_api->leaf_set_next_offt)((struct leaf_node *)w_cursor->last_node[0], 0);
 		new_leaf = true;
 	}
 

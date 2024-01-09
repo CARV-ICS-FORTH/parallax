@@ -38,30 +38,29 @@ struct key_splice;
 
 bool level_scanner_init(struct level_scanner *level_scanner, db_handle *database, uint8_t level_id, uint8_t tree_id)
 {
+	assert(0 == level_id);
 	memset(level_scanner, 0x00, sizeof(*level_scanner));
 	stack_init(&level_scanner->stack);
 	level_scanner->db = database;
 	level_scanner->level_id = level_id;
 	level_scanner->is_compaction_scanner = false;
-	level_scanner->root = 0 == level_id ? database->db_desc->L0.root[tree_id] :
-					      level_get_root(database->db_desc->dev_levels[level_id], tree_id);
+	level_scanner->root = database->db_desc->L0.root[tree_id];
 
-	level_scanner->leaf_api = NULL;
-	level_scanner->index_api = NULL;
-	level_scanner->leaf_iter = NULL;
-	if (level_id) {
-		level_scanner->leaf_api = level_get_leaf_api(database->db_desc->dev_levels[level_id]);
-		level_scanner->index_api = level_get_index_api(database->db_desc->dev_levels[level_id]);
-		level_scanner->leaf_iter = level_scanner->leaf_api->leaf_create_empty_iter();
-	}
+	// level_scanner->leaf_api = NULL;
+	// level_scanner->index_api = NULL;
+	// level_scanner->leaf_iter = NULL;
+	// if (level_id) {
+	// 	level_scanner->leaf_api = level_get_leaf_api(database->db_desc->dev_levels[level_id]);
+	// 	level_scanner->index_api = level_get_index_api(database->db_desc->dev_levels[level_id]);
+	// 	level_scanner->leaf_iter = level_scanner->leaf_api->leaf_create_empty_iter();
+	// }
 
 	return true;
 }
 
 static void read_lock_node(struct level_scanner *level_scanner, struct node_header *node)
 {
-	if (level_scanner->level_id > 0)
-		return;
+	assert(0 == level_scanner->level_id);
 
 	struct lock_table *lock =
 		find_lock_position((const lock_table **)level_scanner->db->db_desc->L0.level_lock_table, node);
@@ -72,13 +71,12 @@ static void read_lock_node(struct level_scanner *level_scanner, struct node_head
 	}
 }
 
-static void read_unlock_node(struct level_scanner *level_sc, struct node_header *node)
+static void read_unlock_node(struct level_scanner *level_scanner, struct node_header *node)
 {
-	if (level_sc->level_id > 0)
-		return;
+	assert(0 == level_scanner->level_id);
 
 	struct lock_table *lock =
-		find_lock_position((const lock_table **)level_sc->db->db_desc->L0.level_lock_table, node);
+		find_lock_position((const lock_table **)level_scanner->db->db_desc->L0.level_lock_table, node);
 	if (RWLOCK_UNLOCK(&lock->rx_lock) != 0) {
 		log_fatal("ERROR locking");
 		BUG_ON();
@@ -128,11 +126,7 @@ bool level_scanner_seek(struct level_scanner *level_scanner, struct key_splice *
 	while (node->type != leafNode && node->type != leafRootNode) {
 		element.node = node;
 
-		0 == level_scanner->level_id ?
-			index_iterator_init_with_key((struct index_node *)element.node, &element.iterator,
-						     start_key_splice) :
-			(*level_scanner->index_api->index_init_iter_key)((struct index_node *)element.node,
-									 &element.iterator, start_key_splice);
+		index_iterator_init_with_key((struct index_node *)element.node, &element.iterator, start_key_splice);
 
 		if (!index_iterator_is_valid(&element.iterator)) {
 			log_fatal("Invalid index node iterator during seek");
@@ -154,32 +148,20 @@ bool level_scanner_seek(struct level_scanner *level_scanner, struct key_splice *
 	/*now perform binary search inside the leaf*/
 
 	bool exact_match = false;
-	if (level_scanner->level_id) {
-		exact_match = (*level_scanner->leaf_api->leaf_seek_iter)((struct leaf_node *)node,
-									 level_scanner->leaf_iter,
-									 key_splice_get_key_offset(start_key_splice),
-									 key_splice_get_key_size(start_key_splice));
-		element.idx = 0;
-	} else {
-		element.idx = dl_search_get_pos((struct leaf_node *)node, key_splice_get_key_offset(start_key_splice),
-						key_splice_get_key_size(start_key_splice), &exact_match);
-		element.idx = exact_match ? element.idx : element.idx + 1;
-	}
+	element.idx = dl_search_get_pos((struct leaf_node *)node, key_splice_get_key_offset(start_key_splice),
+					key_splice_get_key_size(start_key_splice), &exact_match);
+	element.idx = exact_match ? element.idx : element.idx + 1;
 
 	stack_push(&level_scanner->stack, element);
 
-	if ((seek_mode == GREATER && exact_match) || level_scanner->level_id ?
-		    !(*level_scanner->leaf_api->leaf_is_iter_valid)(level_scanner->leaf_iter) :
-		    element.idx >= node->num_entries) {
+	if ((seek_mode == GREATER && exact_match) || element.idx >= node->num_entries) {
 		if (!level_scanner_get_next(level_scanner))
 			return false;
 	}
 
 	element = stack_pop(&level_scanner->stack);
 
-	level_scanner->splice = level_scanner->level_id ?
-					(*level_scanner->leaf_api->leaf_iter_curr)(level_scanner->leaf_iter) :
-					dl_get_general_splice((struct leaf_node *)element.node, element.idx);
+	level_scanner->splice = dl_get_general_splice((struct leaf_node *)element.node, element.idx);
 	// log_debug("Level scanner seek reached splice %.*s at idx %d node entries %d",
 	// 	  kv_splice_base_get_key_size(&level_sc->splice), kv_splice_base_get_key_buf(&level_sc->splice),
 	// 	  element.idx, element.node->num_entries);
@@ -213,24 +195,8 @@ bool level_scanner_get_next(struct level_scanner *level_scanner)
 				break;
 			}
 
-			if (level_scanner->level_id) {
-				if (false ==
-				    ((-1 == stack_element.idx) ?
-					     (*level_scanner->leaf_api->leaf_seek_first)(
-						     (struct leaf_node *)stack_element.node, level_scanner->leaf_iter) :
-					     (*level_scanner->leaf_api->leaf_iter_next)(level_scanner->leaf_iter))) {
-					// read_unlock_node(level_scanner, stack_element.node);
-					status = POP_STACK;
-					break;
-				}
-				stack_element.idx = 0;
-			}
-
 			level_scanner->splice =
-				level_scanner->level_id ?
-					(*level_scanner->leaf_api->leaf_iter_curr)(level_scanner->leaf_iter) :
-					dl_get_general_splice((struct leaf_node *)stack_element.node,
-							      stack_element.idx);
+				dl_get_general_splice((struct leaf_node *)stack_element.node, stack_element.idx);
 			// log_debug("Get next Returning Leaf:%lu idx is %d num_entries %d", stack_element.node,
 			// 	  stack_element.idx, stack_element.node->num_entries);
 			stack_push(&level_scanner->stack, stack_element);
@@ -297,13 +263,12 @@ struct level_scanner *level_scanner_init_compaction_scanner(db_handle *database,
 
 void level_scanner_close(struct level_scanner *level_scanner)
 {
-	if (level_scanner->level_id)
-		(*level_scanner->leaf_api->leaf_destroy_iter)(level_scanner->leaf_iter);
-
 	stack_destroy(&(level_scanner->stack));
 	free(level_scanner);
 }
 
+//*
+//XXX TODO XXX start_key is actually a key splice please fix the API call
 void scanner_init(struct scanner *scanner, db_handle *database, void *start_key, enum seek_scanner_mode seek_flag)
 {
 	if (scanner == NULL) {
@@ -316,10 +281,10 @@ void scanner_init(struct scanner *scanner, db_handle *database, void *start_key,
 		return;
 	}
 
+	// memset(scanner, 0x00, sizeof(*scanner));
+
 	RWLOCK_RDLOCK(&database->db_desc->L0.guard_of_level.rx_lock);
 	__sync_fetch_and_add(&database->db_desc->L0.active_operations, 1);
-
-	memset(scanner, 0x00, sizeof(*scanner));
 
 	for (int i = 1; i < MAX_LEVELS; i++)
 		scanner->tickets[i] = level_enter_as_reader(database->db_desc->dev_levels[i]);
@@ -328,34 +293,47 @@ void scanner_init(struct scanner *scanner, db_handle *database, void *start_key,
 
 	sh_init_heap(&scanner->heap, database->db_desc->L0.active_tree, MIN_HEAP);
 
-	for (int level_id = 0; level_id < MAX_LEVELS; ++level_id) {
-		for (int tree_id = 0; tree_id < NUM_TREES_PER_LEVEL; ++tree_id) {
-			if (level_id > 0 && tree_id > 0)
-				continue;
+	for (int tree_id = 0; tree_id < NUM_TREES_PER_LEVEL; ++tree_id) {
+		struct node_header *root = database->db_desc->L0.root[tree_id];
+		if (!root)
+			continue;
+		level_scanner_init(&scanner->L0_scanner[tree_id], database, 0, tree_id);
 
-			struct node_header *root =
-				0 == level_id ? database->db_desc->L0.root[tree_id] :
-						level_get_root(database->db_desc->dev_levels[level_id], tree_id);
+		if (!level_scanner_seek(&scanner->L0_scanner[tree_id], start_key, seek_flag))
+			continue;
 
-			if (!root)
-				continue;
-			level_scanner_init(&scanner->level_scanner[level_id][tree_id], database, level_id, tree_id);
+		scanner->L0_scanner[tree_id].valid = 1;
+		struct sh_heap_node heap_node = { 0 };
+		heap_node.splice = scanner->L0_scanner[tree_id].splice;
+		heap_node.level_id = 0;
+		heap_node.active_tree = tree_id;
+		heap_node.db_desc = database->db_desc;
+		heap_node.epoch = database->db_desc->L0.epoch[tree_id];
+		// log_debug("Initializing scanner with splice size: %d data %s from level_id %u tree_id %u",
+		// 	  kv_general_splice_get_key_size(&heap_node.splice),
+		// 	  kv_general_splice_get_key_buf(&heap_node.splice), level_id, tree_id);
+		sh_insert_heap_node(&scanner->heap, &heap_node);
+	}
 
-			if (!level_scanner_seek(&scanner->level_scanner[level_id][tree_id], start_key, seek_flag))
-				continue;
-
-			scanner->level_scanner[level_id][tree_id].valid = 1;
-			struct sh_heap_node heap_node = { 0 };
-			heap_node.splice = scanner->level_scanner[level_id][tree_id].splice;
-			heap_node.level_id = level_id;
-			heap_node.active_tree = tree_id;
-			heap_node.db_desc = database->db_desc;
-			heap_node.epoch = level_id == 0 ? database->db_desc->L0.epoch[tree_id] : UINT64_MAX;
-			// log_debug("Initializing scanner with splice size: %d data %s from level_id %u tree_id %u",
-			// 	  kv_general_splice_get_key_size(&heap_node.splice),
-			// 	  kv_general_splice_get_key_buf(&heap_node.splice), level_id, tree_id);
-			sh_insert_heap_node(&scanner->heap, &heap_node);
+	//Fill from the device levels
+	scanner->dev_scanner[0] = NULL;
+	for (uint8_t level_id = 1; level_id < MAX_LEVELS; level_id++) {
+		if (NULL == level_get_root(database->db_desc->dev_levels[level_id], 0)) {
+			scanner->dev_scanner[level_id] = NULL;
+			continue;
 		}
+		scanner->dev_scanner[level_id] = level_scanner_dev_init(scanner->db, level_id, 0);
+		level_scanner_dev_seek(scanner->dev_scanner[level_id], start_key);
+
+		struct sh_heap_node heap_node = { 0 };
+		bool success = level_scanner_curr(scanner->dev_scanner[level_id], &heap_node.splice);
+		if (!success)
+			continue;
+		heap_node.level_id = level_id;
+		heap_node.active_tree = 0;
+		heap_node.db_desc = database->db_desc;
+		heap_node.epoch = UINT64_MAX;
+		sh_insert_heap_node(&scanner->heap, &heap_node);
 	}
 
 	if (!scanner_get_next(scanner)) {
@@ -367,22 +345,26 @@ void scanner_init(struct scanner *scanner, db_handle *database, void *start_key,
 void scanner_close(struct scanner *scanner)
 {
 	/*special care for L0*/
-	for (int i = 0; i < NUM_TREES_PER_LEVEL; i++) {
-		if (scanner->level_scanner[0][i].valid) {
+	for (int tree_id = 0; tree_id < NUM_TREES_PER_LEVEL; tree_id++) {
+		if (scanner->L0_scanner[tree_id].valid) {
 			while (1) {
-				stackElementT stack_top = stack_pop(&(scanner->level_scanner[0][i].stack));
+				stackElementT stack_top = stack_pop(&(scanner->L0_scanner[tree_id].stack));
 				if (stack_top.guard)
 					break;
-				read_unlock_node(&scanner->level_scanner[0][i], stack_top.node);
+				read_unlock_node(&scanner->L0_scanner[tree_id], stack_top.node);
 			}
 		}
-		stack_destroy(&(scanner->level_scanner[0][i].stack));
+		stack_destroy(&(scanner->L0_scanner[tree_id].stack));
 	}
 
 	RWLOCK_UNLOCK(&scanner->db->db_desc->L0.guard_of_level.rx_lock);
 	__sync_fetch_and_sub(&scanner->db->db_desc->L0.active_operations, 1);
-	for (int i = 1; i < MAX_LEVELS; i++)
-		level_leave_as_reader(scanner->db->db_desc->dev_levels[i], scanner->tickets[i]);
+
+	for (uint32_t level_id = 1; level_id < MAX_LEVELS; level_id++) {
+		level_leave_as_reader(scanner->db->db_desc->dev_levels[level_id], scanner->tickets[level_id]);
+		if (scanner->dev_scanner[level_id])
+			level_scanner_dev_close(scanner->dev_scanner[level_id]);
+	}
 
 	free_dups_list(&scanner->heap.dups);
 
@@ -405,14 +387,22 @@ bool scanner_get_next(struct scanner *scanner)
 		scanner->kv_cat = node.splice.kv_cat;
 		scanner->kv_level_id = node.level_id;
 
-		assert(scanner->level_scanner[node.level_id][node.active_tree].valid);
-		if (level_scanner_get_next(&scanner->level_scanner[node.level_id][node.active_tree])) {
+		// assert(scanner->level_scanner[node.level_id][node.active_tree].valid);
+		//refill
+		bool refill = 0 == node.level_id ? level_scanner_get_next(&scanner->L0_scanner[node.active_tree]) :
+						   level_scanner_dev_next(scanner->dev_scanner[node.level_id]);
+		if (refill) {
 			struct sh_heap_node next_node = { 0 };
 			next_node.level_id = node.level_id;
 			next_node.active_tree = node.active_tree;
 			next_node.db_desc = scanner->db->db_desc;
-			next_node.splice = scanner->level_scanner[node.level_id][node.active_tree].splice;
-			sh_insert_heap_node(&scanner->heap, &next_node);
+			bool ret = true;
+			if (0 == node.level_id)
+				next_node.splice = scanner->L0_scanner[node.active_tree].splice;
+			else
+				ret = level_scanner_curr(scanner->dev_scanner[node.level_id], &next_node.splice);
+			if (ret)
+				sh_insert_heap_node(&scanner->heap, &next_node);
 		}
 		if (node.duplicate || node.splice.is_tombstone) {
 			// log_warn("ommiting duplicate");

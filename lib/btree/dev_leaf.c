@@ -34,6 +34,7 @@ struct devl_slot_array {
 
 struct leaf_node {
 	struct node_header header;
+	uint64_t next_leaf_offt;
 } __attribute__((packed));
 
 struct leaf_iterator {
@@ -108,7 +109,7 @@ static int32_t devl_search_get_pos(struct leaf_node *leaf, char *key, int32_t ke
 		// log_debug(
 		// 	"Comparing leaf key size: %d leaf key data %.*s  pos is %d with look up key size: %d key data %.*s",
 		// 	leaf_key_size, leaf_key_size, leaf_key, middle, key_size, key_size, key);
-		assert(leaf_key_size > 0);
+		// assert(leaf_key_size > 0);
 
 		cmp_return_value = memcmp(leaf_key, key, key_size <= leaf_key_size ? key_size : leaf_key_size);
 
@@ -150,7 +151,7 @@ static struct kv_splice_base devl_find_kv_in_dynamic_leaf(struct leaf_node *leaf
 
 static bool devl_is_leaf_full(struct leaf_node *leaf, uint32_t kv_size)
 {
-	uint8_t *left_border = (uint8_t *)leaf + sizeof(struct node_header) +
+	uint8_t *left_border = (uint8_t *)leaf + sizeof(struct leaf_node) +
 			       ((leaf->header.num_entries + 1) * sizeof(struct devl_slot_array));
 
 	uint8_t *right_border = (uint8_t *)leaf + leaf->header.log_size;
@@ -239,6 +240,16 @@ static struct kv_splice_base devl_get_last_splice(struct leaf_node *leaf)
 	return splice;
 }
 
+static bool devl_set_next_leaf_offt(struct leaf_node *leaf, uint64_t leaf_offt)
+{
+	leaf->next_leaf_offt = leaf_offt;
+	return true;
+}
+
+static uint64_t devl_get_next_leaf_offt(struct leaf_node *leaf)
+{
+	return leaf->next_leaf_offt;
+}
 /*iterators*/
 static struct leaf_iterator *devl_leaf_create_empty_iter(void)
 {
@@ -303,6 +314,10 @@ bool dev_leaf_register(struct level_leaf_api *leaf_api)
 	leaf_api->leaf_get_size = devl_leaf_get_node_size;
 
 	leaf_api->leaf_get_last = devl_get_last_splice;
+
+	leaf_api->leaf_set_next_offt = devl_set_next_leaf_offt;
+
+	leaf_api->leaf_get_next_offt = devl_get_next_leaf_offt;
 	/*iterator staff*/
 	leaf_api->leaf_create_empty_iter = devl_leaf_create_empty_iter;
 	leaf_api->leaf_destroy_iter = devl_leaf_destroy_iter;

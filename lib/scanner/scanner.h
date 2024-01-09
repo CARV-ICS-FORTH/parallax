@@ -27,9 +27,9 @@ struct level_scanner {
 	db_handle *db;
 	stackT stack;
 	struct node_header *root;
-	struct level_leaf_api *leaf_api;
-	struct level_index_api *index_api;
-	struct leaf_iterator *leaf_iter;
+	// struct level_leaf_api *leaf_api;
+	// struct level_index_api *index_api;
+	// struct leaf_iterator *leaf_iter;
 	uint8_t level_id;
 	bool is_compaction_scanner;
 	uint8_t valid;
@@ -74,7 +74,9 @@ struct level_scanner *level_scanner_init_compaction_scanner(db_handle *database,
 void level_scanner_close(struct level_scanner *level_scanner);
 
 struct scanner {
-	struct level_scanner level_scanner[MAX_LEVELS][NUM_TREES_PER_LEVEL];
+	// struct level_scanner level_scanner[MAX_LEVELS][NUM_TREES_PER_LEVEL];
+	struct level_scanner L0_scanner[NUM_TREES_PER_LEVEL];
+	struct level_scanner_dev *dev_scanner[MAX_LEVELS];
 	struct sh_heap heap;
 	db_handle *db;
 	void *keyValue;
