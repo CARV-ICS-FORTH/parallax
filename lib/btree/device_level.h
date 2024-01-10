@@ -14,7 +14,7 @@ struct segment_header;
 
 struct kv_splice_base;
 struct index_node;
-struct index_node_iterator;
+// struct index_node_iterator;
 struct leaf_node;
 struct leaf_iterator;
 struct lookup_operation;
@@ -82,12 +82,6 @@ typedef struct key_splice *(*level_index_remove_last_pivot_key)(struct index_nod
 
 typedef uint64_t (*level_index_search)(struct index_node *node, char *lookup_key, int32_t lookup_key_size);
 
-//iterator staff
-typedef void (*level_index_init_iter)(struct index_node *node, struct index_node_iterator *iterator);
-
-typedef void (*level_index_init_iter_key)(struct index_node *node, struct index_node_iterator *iterator,
-					  struct key_splice *key_splice);
-
 typedef struct key_splice (*level_fill_smallest_possible_pivot)(char *buffer, int size);
 
 typedef void (*level_index_set_pivot_key)(struct key_splice *pivot_splice, void *key, int32_t key_size);
@@ -95,6 +89,12 @@ typedef void (*level_index_set_pivot_key)(struct key_splice *pivot_splice, void 
 typedef struct node_header *(*level_index_get_header)(struct index_node *node);
 
 typedef uint64_t (*level_index_get_node_size)(void);
+
+// //iterator staff
+// typedef void (*level_index_init_iter)(struct index_node *node, struct index_node_iterator *iterator);
+
+// typedef void (*level_index_init_iter_key)(struct index_node *node, struct index_node_iterator *iterator,
+// 					  struct key_splice *key_splice);
 
 struct level_leaf_api {
 	level_leaf_append leaf_append;
@@ -153,9 +153,9 @@ struct level_index_api {
 
 	level_index_search index_search;
 
-	level_index_init_iter index_init_iter;
+	// level_index_init_iter index_init_iter;
 
-	level_index_init_iter_key index_init_iter_key;
+	// level_index_init_iter_key index_init_iter_key;
 
 	level_fill_smallest_possible_pivot index_fill_pivot;
 

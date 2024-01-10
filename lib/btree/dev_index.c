@@ -250,36 +250,36 @@ static bool dev_idx_append_pivot(struct insert_pivot_req *ins_pivot_req)
 	return dev_idx_internal_insert_pivot(ins_pivot_req, 1);
 }
 
-static void dev_idx_internal_iterator_init(struct index_node *node, struct index_node_iterator *iterator,
-					   struct key_splice *key_splice)
-{
-	iterator->node = node;
+// static void dev_idx_internal_iterator_init(struct index_node *node, struct index_node_iterator *iterator,
+// 					   struct key_splice *key_splice)
+// {
+// 	iterator->node = node;
 
-	iterator->num_entries = node->header.num_entries;
+// 	iterator->num_entries = node->header.num_entries;
 
-	if (node->header.num_entries <= 0) {
-		iterator->key_splice = NULL;
-		return;
-	}
+// 	if (node->header.num_entries <= 0) {
+// 		iterator->key_splice = NULL;
+// 		return;
+// 	}
 
-	iterator->key_splice = NULL;
+// 	iterator->key_splice = NULL;
 
-	iterator->position = 0;
-	if (!key_splice)
-		return;
+// 	iterator->position = 0;
+// 	if (!key_splice)
+// 		return;
 
-	bool unused_match = false;
-	// TODO: (@geostyl) @gesalous you should definetly review this
-	// We take a pivot_key as key so we should compare it like an index_key_type (?)
-	iterator->position = dev_idx_search_get_pos(node, key_splice_get_key_offset(key_splice),
-						    key_splice_get_key_size(key_splice), &unused_match);
-}
+// 	bool unused_match = false;
+// 	// TODO: (@geostyl) @gesalous you should definetly review this
+// 	// We take a pivot_key as key so we should compare it like an index_key_type (?)
+// 	iterator->position = dev_idx_search_get_pos(node, key_splice_get_key_offset(key_splice),
+// 						    key_splice_get_key_size(key_splice), &unused_match);
+// }
 
-static void dev_idx_iterator_init_with_key(struct index_node *node, struct index_node_iterator *iterator,
-					   struct key_splice *key_splice)
-{
-	dev_idx_internal_iterator_init(node, iterator, key_splice);
-}
+// static void dev_idx_iterator_init_with_key(struct index_node *node, struct index_node_iterator *iterator,
+// 					   struct key_splice *key_splice)
+// {
+// 	dev_idx_internal_iterator_init(node, iterator, key_splice);
+// }
 
 static struct key_splice *dev_idx_search_get_full_pivot(struct index_node *node, char *lookup_key,
 							int32_t lookup_key_size)
@@ -331,7 +331,7 @@ bool dev_idx_register(struct level_index_api *index_api)
 
 	index_api->index_search = dev_idx_binary_search;
 
-	index_api->index_init_iter_key = dev_idx_iterator_init_with_key;
+	// index_api->index_init_iter_key = dev_idx_iterator_init_with_key;
 
 	index_api->index_set_pivot_key = NULL;
 

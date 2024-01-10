@@ -648,10 +648,11 @@ static void wcursor_append_pivot_to_index(int32_t height, struct wcursor_level_w
 		w_cursor->last_node[height] = (struct node_header *)wcursor_get_space(
 			w_cursor, height, w_cursor->index_api->index_get_node_size());
 
-		index_init_node(DO_NOT_ADD_GUARD, (struct index_node *)w_cursor->last_node[height], internalNode);
+		(*w_cursor->index_api->index_init_node)(DO_NOT_ADD_GUARD,
+							(struct index_node *)w_cursor->last_node[height], internalNode);
 		ins_pivot_req.node = (struct index_node *)w_cursor->last_node[height];
-		index_add_guard(ins_pivot_req.node, piv_pointer->child_offt);
-		index_set_height(ins_pivot_req.node, height);
+		(*w_cursor->index_api->index_add_guard)(ins_pivot_req.node, piv_pointer->child_offt);
+		(*w_cursor->index_api->index_set_height)(ins_pivot_req.node, height);
 
 		/*last leaf updated*/
 		uint32_t offt_r = wcursor_calc_offt_in_seg(w_cursor, height, (char *)w_cursor->last_node[height]);
