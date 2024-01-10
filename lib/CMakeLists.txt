@@ -41,6 +41,7 @@ set(LIB_C_SOURCE_FILES
     btree/device_level.c
     btree/dev_leaf.c
     btree/fractal_leaf.c
+    btree/fractal_index.c
     btree/dev_index.c
     btree/gc.c
     btree/medium_log_LRU_cache.c

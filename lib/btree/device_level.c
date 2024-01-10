@@ -10,6 +10,7 @@
 #include "conf.h"
 #include "dev_index.h"
 #include "dev_leaf.h"
+#include "fractal_index.h"
 #include "fractal_leaf.h"
 #include "key_splice.h"
 #include "kv_pairs.h"
@@ -85,9 +86,10 @@ struct device_level *level_create_fresh(uint32_t level_id, uint32_t l0_size, uin
 		level->max_level_size = level->max_level_size * growth_factor;
 	// log_debug("Level_id: %u has max level size of: %lu", level_id, level->max_level_size);
 
-	// dev_leaf_register(&level->level_leaf_api);
-	frac_leaf_register(&level->level_leaf_api);
+	dev_leaf_register(&level->level_leaf_api);
 	dev_idx_register(&level->level_index_api);
+	// frac_leaf_register(&level->level_leaf_api);
+	// frac_idx_register(&level->level_index_api);
 	return level;
 }
 
