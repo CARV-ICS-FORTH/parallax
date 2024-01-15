@@ -270,6 +270,9 @@ if(PARALLAX_BUILD_TESTING)
   add_executable(test_wal test_wal.c)
   target_link_libraries(test_wal "${PROJECT_NAME}")
 
+  add_executable(test_level_protocol test_level_protocol.c)
+  target_link_libraries(test_level_protocol "${PROJECT_NAME}")
+
   add_executable(test_par_format test_par_format.c arg_parser.c)
   target_link_libraries(test_par_format "${PROJECT_NAME}")
   add_parallax_test(NAME test_par_format COMMAND run_test.sh test_par_format)
