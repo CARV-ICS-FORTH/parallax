@@ -43,6 +43,7 @@ set(LIB_C_SOURCE_FILES
     btree/fractal_leaf.c
     btree/fractal_index.c
     btree/dev_index.c
+    btree/sst.c
     btree/gc.c
     btree/medium_log_LRU_cache.c
     btree/segment_allocator.c

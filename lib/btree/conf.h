@@ -45,6 +45,7 @@
 #define WORD_SIZE (64)
 #define BREAKPOINT asm volatile("int3;");
 #define LEAF_NODE_SIZE (8192)
+#define INDEX_NODE_SIZE (8192)
 /*Buffering related tunables*/
 
 #define GB(x) ((x)*1024LU * 1024LU * 1024LU)
@@ -58,6 +59,6 @@
 #define MAX_ALLOCATION_TRIES (2)
 #define MAX_HEIGHT 9
 #define KV_MAX_SIZE 16384 //(4096 + 8)
-#define LEVEL_ENTRY_POINTS 8
+#define LEVEL_ENTRY_POINTS 16
 #define COMPACTION_STATS 0
 #endif

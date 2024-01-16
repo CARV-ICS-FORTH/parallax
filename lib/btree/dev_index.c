@@ -25,8 +25,6 @@
 #include <unistd.h>
 struct key_splice;
 
-#define INDEX_NODE_SIZE (8192)
-
 struct index_node {
 	struct node_header header;
 	struct {

@@ -25,7 +25,6 @@
 #include <unistd.h>
 struct key_splice;
 
-#define INDEX_NODE_SIZE (8192)
 #define FRAC_IDX_BLOCK_SIZE 256UL
 
 typedef enum {

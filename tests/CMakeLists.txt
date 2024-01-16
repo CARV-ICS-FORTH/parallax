@@ -4,6 +4,7 @@ include_directories(${CMAKE_SOURCE_DIR}/lib)
 if(PARALLAX_BUILD_TESTING)
   set(LIB_TEST_FILES
       tiresias.c
+      manto.c
       test_recovery.c
       test_index_node.c
       test_leaf_node.c
@@ -42,7 +43,7 @@ if(PARALLAX_BUILD_TESTING)
   find_library(BDB_LIBRARY NAMES libdb.so)
 
   if(BDB_LIBRARY AND NOT ${BDB_PATH} STREQUAL "")
-    message("Tiresias will be built.")
+    message("Tiresias and Manto tests will be built.")
     add_executable(tiresias tiresias.c arg_parser.c)
     target_link_libraries(tiresias "${PROJECT_NAME}" ${BDB_LIBRARY})
     add_parallax_test(
@@ -53,6 +54,8 @@ if(PARALLAX_BUILD_TESTING)
       tiresias
       --num_of_kvs=1000000
       --BDB_file=${BDB_PATH})
+    add_executable(manto manto.c)
+    target_link_libraries(manto "${PROJECT_NAME}" ${BDB_LIBRARY})
   endif()
 
   add_parallax_test(NAME test_index_node COMMAND run_test.sh test_index_node)
