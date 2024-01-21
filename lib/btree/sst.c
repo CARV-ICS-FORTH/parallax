@@ -44,6 +44,7 @@ struct sst {
 
 uint32_t sst_meta_get_first_leaf_relative_offt(struct sst_meta *sst)
 {
+	(void)sst;
 	return SST_METADATA_SIZE;
 }
 

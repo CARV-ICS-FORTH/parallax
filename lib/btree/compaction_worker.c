@@ -22,6 +22,7 @@
 #include "../lib/allocator/device_structures.h"
 #include "../parallax_callbacks/parallax_callbacks.h"
 #include "../scanner/min_max_heap.h"
+#include "../scanner/scanner.h"
 #include "../utilities/dups_list.h"
 #include "../utilities/spin_loop.h"
 #include "btree.h"
@@ -52,8 +53,12 @@ struct device_level;
 struct compaction_request {
 	db_descriptor *db_desc;
 	par_db_options *db_options;
-	struct rcursor_level_read_cursor *src_rcursor;
-	struct rcursor_level_read_cursor *dst_rcursor;
+	// struct rcursor_level_read_cursor *dst_rcursor;
+	union {
+		struct level_scanner *L0_scanner;
+		struct level_compaction_scanner *src_scanner;
+	};
+	struct level_compaction_scanner *dst_scanner;
 	struct wcursor_level_write_cursor *wcursor;
 	uint64_t txn_id;
 	uint64_t l0_start;
@@ -312,32 +317,54 @@ static void comp_zero_level(struct db_descriptor *db_desc, uint8_t level_id, uin
 		level_zero(db_desc->dev_levels[level_id], tree_id);
 }
 
+static bool comp_fill_src_heap_node(struct compaction_request *comp_req, struct sh_heap_node *heap_node)
+{
+	heap_node->db_desc = comp_req->db_desc;
+	heap_node->level_id = comp_req->src_level;
+	heap_node->active_tree = comp_req->src_level == 0 ? comp_req->src_tree : 0;
+	if (0 == comp_req->src_level)
+		heap_node->splice = comp_req->L0_scanner->splice;
+	else
+		level_comp_scanner_get_curr(comp_req->src_scanner, &heap_node->splice);
+
+	return true;
+}
+
+static void comp_fill_dst_heap_node(struct compaction_request *comp_req, struct sh_heap_node *heap_node)
+{
+	heap_node->db_desc = comp_req->db_desc;
+	heap_node->level_id = comp_req->dst_level;
+	heap_node->active_tree = comp_req->dst_tree;
+	level_comp_scanner_get_curr(comp_req->dst_scanner, &heap_node->splice);
+}
+
 static void compact_level_direct_IO(struct db_handle *handle, struct compaction_request *comp_req)
 {
 	struct compaction_roots comp_roots = { .src_root = NULL, .dst_root = NULL };
 
 	choose_compaction_roots(handle, comp_req, &comp_roots);
 
-	assert(0 == level_get_offset(handle->db_desc->dev_levels[comp_req->dst_level], comp_req->dst_tree));
-	comp_req->src_rcursor = NULL;
-	if (comp_req->src_level == 0) {
+	bool is_src_L0 = comp_req->src_level == 0;
+	if (is_src_L0) {
 		RWLOCK_WRLOCK(&handle->db_desc->L0.guard_of_level.rx_lock);
 		spin_loop(&handle->db_desc->L0.active_operations, 0);
 		pr_flush_log_tail(comp_req->db_desc, &comp_req->db_desc->big_log);
-	}
-
-	assert(0 == level_get_offset(handle->db_desc->dev_levels[comp_req->dst_level], comp_req->dst_tree));
-	comp_req->src_rcursor = rcursor_init_cursor(handle, compaction_get_src_level(comp_req),
-						    compaction_get_src_tree(comp_req), compaction_get_vol_fd(comp_req));
-
-	if (0 == compaction_get_src_level(comp_req))
+		comp_req->L0_scanner =
+			level_scanner_init_compaction_scanner(handle, comp_req->src_level, comp_req->src_tree);
 		RWLOCK_UNLOCK(&handle->db_desc->L0.guard_of_level.rx_lock);
+	} else
 
-	comp_req->dst_rcursor = NULL == comp_roots.dst_root ?
-					NULL :
-					rcursor_init_cursor(handle, compaction_get_dst_level(comp_req), 0,
-							    compaction_get_vol_fd(comp_req));
+		comp_req->src_scanner = level_comp_scanner_init(handle->db_desc->dev_levels[comp_req->src_level],
+								comp_req->src_tree, SST_SIZE,
+								handle->db_desc->db_volume->vol_fd);
+
+	//Sanity check we perform a compaction in an empty tree of the dst level
 	assert(0 == level_get_offset(handle->db_desc->dev_levels[comp_req->dst_level], comp_req->dst_tree));
+	comp_req->dst_scanner = NULL == comp_roots.dst_root ?
+					NULL :
+					level_comp_scanner_init(handle->db_desc->dev_levels[comp_req->dst_level],
+								comp_req->dst_tree, SST_SIZE,
+								handle->db_desc->db_volume->vol_fd);
 
 	log_debug("Initializing write cursor for level [%u][%u]", compaction_get_dst_level(comp_req),
 		  compaction_get_dst_tree(comp_req));
@@ -392,17 +419,16 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 	struct sh_heap_node dst_heap_node = { 0 };
 	struct sh_heap_node min_heap_node = { 0 };
 	// init Li cursor
-	rcursor_fill_heap_node(comp_req->src_rcursor, &src_heap_node);
+	comp_fill_src_heap_node(comp_req, &src_heap_node);
 	sh_insert_heap_node(m_heap, &src_heap_node);
 
 	// init Li+1 cursor (if any)
-	if (comp_req->dst_rcursor) {
-		rcursor_fill_heap_node(comp_req->dst_rcursor, &dst_heap_node);
+	if (comp_req->dst_scanner) {
+		comp_fill_dst_heap_node(comp_req, &src_heap_node);
 		sh_insert_heap_node(m_heap, &dst_heap_node);
 	}
 
 	while (1) {
-		handle->db_desc->dirty = 0x01;
 		if (!sh_remove_top(m_heap, &min_heap_node))
 			break;
 #if COMPACTION_STATS
@@ -412,18 +438,28 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 			wcursor_append_KV_pair(comp_req->wcursor, &min_heap_node.splice);
 
 		/*refill from the appropriate level*/
-		if (min_heap_node.level_id == comp_req->src_level && rcursor_get_next_kv(comp_req->src_rcursor)) {
-			rcursor_fill_heap_node(comp_req->src_rcursor, &src_heap_node);
+
+		if (min_heap_node.level_id == comp_req->src_level) {
+			bool has_next = comp_req->src_level == 0 ? level_scanner_get_next(comp_req->L0_scanner) :
+								   level_comp_scanner_next(comp_req->src_scanner);
+			if (false == has_next)
+				continue;
+			comp_fill_src_heap_node(comp_req, &src_heap_node);
 			sh_insert_heap_node(m_heap, &src_heap_node);
-		} else if (comp_req->dst_rcursor && min_heap_node.level_id == comp_req->dst_level &&
-			   rcursor_get_next_kv(comp_req->dst_rcursor)) {
-			rcursor_fill_heap_node(comp_req->dst_rcursor, &dst_heap_node);
+		} else if (comp_req->dst_scanner && min_heap_node.level_id == comp_req->dst_level &&
+			   level_comp_scanner_next(comp_req->dst_scanner)) {
+			comp_fill_dst_heap_node(comp_req, &dst_heap_node);
 			sh_insert_heap_node(m_heap, &dst_heap_node);
 		}
 	}
+	handle->db_desc->dirty = 0x01;
 
-	rcursor_close_cursor(comp_req->src_rcursor);
-	rcursor_close_cursor(comp_req->dst_rcursor);
+	if (comp_req->src_level == 0)
+		level_scanner_close(comp_req->L0_scanner);
+	else
+		level_comp_scanner_close(comp_req->src_scanner);
+	if (comp_req->dst_scanner)
+		level_comp_scanner_close(comp_req->dst_scanner);
 
 	mark_segment_space(handle, m_heap->dups, comp_req->txn_id);
 
@@ -571,7 +607,7 @@ void compaction_close(struct compaction_request *comp_req)
 
 	uint64_t space_freed = 0;
 	/*Free L_(i+1)*/
-	if (comp_req->dst_rcursor)
+	if (comp_req->dst_scanner)
 		level_free_space(comp_req->db_desc->dev_levels[comp_req->dst_level], 0, comp_req->db_desc,
 				 comp_req->txn_id);
 	/*Free and zero L_i*/

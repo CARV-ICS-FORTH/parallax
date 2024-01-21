@@ -28,7 +28,6 @@
 #define MAX_VOLUME_NAME 256
 #define MANTO_KV_SIZE 512
 #define MANTO_KEY_SIZE 30 //MAX_KEY_SIZE
-#define SST_SIZE 2097152UL
 #define MAX_SSTS 256UL
 struct workload_config {
 	par_handle handle;

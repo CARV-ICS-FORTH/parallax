@@ -52,6 +52,7 @@
 #define MB(x) ((x)*1024LU * 1024LU)
 #define KB(x) ((x)*1024LU)
 #define SEGMENT_SIZE (2 * 1024UL * 1024UL)
+#define SST_SIZE SEGMENT_SIZE
 #define ALIGNMENT SEGMENT_SIZE
 #define LOG_CHUNK_SIZE (256 * 1024UL)
 #define LOG_TAIL_NUM_BUFS (4)
