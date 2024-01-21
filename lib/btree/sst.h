@@ -5,6 +5,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 struct sst;
+struct sst_meta;
 struct sst_iter;
 struct kv_splice;
 struct key_splice;
@@ -18,6 +19,13 @@ struct sst *sst_create(uint32_t size, uint64_t txn_id, db_handle *handle, uint32
 bool sst_append_KV_pair(struct sst *sst, struct kv_splice_base *splice);
 bool sst_flush(struct sst *sst);
 bool sst_remove(struct sst *sst, uint64_t txn_id);
-struct pbf *sst_get_bloom_filter(struct sst *sst);
-struct leaf_node *level_get_leaf(struct sst *sst, struct key_splice *key_splice);
+bool sst_close(struct sst *sst);
+//sst meta staff follow
+struct sst_meta *sst_get_meta(struct sst *sst);
+struct leaf_node *sst_meta_get_leaf(struct sst_meta *sst, struct key_splice *key_splice);
+uint64_t sst_meta_get_first_leaf_offt(struct sst_meta *sst);
+struct key_splice *sst_meta_get_first_guard(struct sst_meta *sst);
+struct key_splice *sst_meta_get_last_guard(struct sst_meta *sst);
+size_t sst_meta_get_size(struct sst_meta *sst);
+uint64_t sst_meta_get_root(struct sst_meta *meta);
 #endif

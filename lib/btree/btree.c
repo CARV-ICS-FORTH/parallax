@@ -1282,8 +1282,8 @@ static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id,
 	struct db_descriptor *db_desc = get_op->db_desc;
 	struct key_splice *search_key_buf = get_op->key_splice;
 
-	if (level_id && !level_does_key_exist(db_desc->dev_levels[level_id], get_op->key_splice))
-		return;
+	// if (level_id && !level_does_key_exist(db_desc->dev_levels[level_id], get_op->key_splice))
+	// 	return;
 
 	struct node_header *curr_node = 0 == level_id ? db_desc->L0.root[tree_id] :
 							level_get_root(db_desc->dev_levels[level_id], tree_id);

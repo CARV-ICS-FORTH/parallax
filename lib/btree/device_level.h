@@ -19,6 +19,8 @@ struct leaf_node;
 struct leaf_iterator;
 struct lookup_operation;
 struct level_scanner_dev;
+struct sst;
+struct sst_meta;
 /*level leaf functions signatures*/
 typedef bool (*level_leaf_append)(struct leaf_node *leaf, struct kv_splice_base *general_splice, bool is_tombstone);
 
@@ -414,6 +416,9 @@ struct level_index_api *level_get_index_api(struct device_level *level);
 
 bool level_lookup(struct device_level *level, struct lookup_operation *get_op, int tree_id);
 
+//sst staff
+bool level_add_ssts(struct device_level *level, int num_ssts, struct sst_meta *ssts[], uint32_t tree_id);
+
 //level scanner staff
 /**
  * @brief Initializes a scanner for the device level.
@@ -453,4 +458,5 @@ bool level_scanner_dev_next(struct level_scanner_dev *dev_level_scanner);
   * @returns true on success false on failure
 */
 bool level_scanner_dev_close(struct level_scanner_dev *dev_level_scanner);
+
 #endif

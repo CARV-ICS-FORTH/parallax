@@ -1,4 +1,4 @@
-/**
+/*
  * Manto test (sister of Tiresia) simulates all the steps that take place in incremental compaction.
  * The test generates a set of SST objects, generates sorted KV pairs and appends them. Then,
  * it calls the compact method of the level object, which takes this SSTs merge-sorts them,
@@ -7,10 +7,15 @@
  * end similar to Tiresias it uses BerkeleyDB as the source of truth.
  */
 #include "../btree/key_splice.h"
+#include "../lib/allocator/redo_undo_log.h"
 #include "../lib/btree/conf.h"
+#include "../lib/btree/device_level.h"
 #include "../lib/btree/sst.h"
+#include "btree/btree.h"
 #include "btree/kv_pairs.h"
 #include "btree/sst.h"
+#include "parallax/structures.h"
+#include "scanner/scanner.h"
 #include <assert.h>
 #include <db.h>
 #include <log.h>
@@ -21,14 +26,15 @@
 #include <string.h>
 #include <unistd.h>
 #define MAX_VOLUME_NAME 256
-#define MANTO_KV_SIZE 4096
-#define MANTO_KEY_SIZE MAX_KEY_SIZE
+#define MANTO_KV_SIZE 512
+#define MANTO_KEY_SIZE 30 //MAX_KEY_SIZE
 #define SST_SIZE 2097152UL
-
+#define MAX_SSTS 256UL
 struct workload_config {
 	par_handle handle;
 	DB *truth;
 	uint64_t total_keys;
+	uint64_t txn_id;
 	uint32_t progress_report;
 };
 
@@ -50,7 +56,6 @@ static void populate_randomly_bdb(struct workload_config *workload_config)
 {
 	log_info("Manto: generating random kv pairs and inserting them to BerkeleyDB total keys are: %lu...",
 		 workload_config->total_keys);
-	const char *error_message = NULL;
 	unsigned char key_buffer[MANTO_KEY_SIZE] = { 0 };
 	unsigned char value_buffer[MANTO_KV_SIZE] = { 0 };
 	uint64_t unique_keys = 0;
@@ -100,7 +105,7 @@ int generateRandom(int min, int max)
 	return rand() % (max - min + 1) + min;
 }
 
-static struct sst *create_ssts(struct workload_config *workload, int num_ssts)
+static bool create_ssts(struct workload_config *workload, int num_ssts, struct sst_meta *ssts[])
 {
 	DBC *cursor = NULL;
 	DBT key;
@@ -114,31 +119,159 @@ static struct sst *create_ssts(struct workload_config *workload, int num_ssts)
 		_exit(EXIT_FAILURE);
 	}
 
-	struct sst **ssts = calloc(num_ssts, sizeof(struct sst *));
 	int sst_id = 0;
-	ssts[sst_id] = sst_create(SST_SIZE);
+
+	struct sst *curr_sst = sst_create(SST_SIZE, workload->txn_id, workload->handle, 1, NULL);
 	// Iterate over the keys
 	uint32_t num_kv_pairs = 0;
 	while (cursor->c_get(cursor, &key, &value, DB_NEXT) == 0) {
 		struct kv_splice *splice = kv_splice_create(key.size, key.data, value.size, value.data);
-		while (false == sst_append_KV_pair(ssts[sst_id], splice)) {
+		struct kv_splice_base splice_base = {
+			.kv_splice = splice, .kv_cat = SMALL_INPLACE, .kv_type = KV_FORMAT, .is_tombstone = false
+		};
+		while (false == sst_append_KV_pair(curr_sst, &splice_base)) {
+			sst_flush(curr_sst);
+			log_debug("Created SST no: %d", sst_id);
+			ssts[sst_id] = sst_get_meta(curr_sst);
+			sst_close(curr_sst);
 			if (++sst_id >= num_ssts) {
-				log_warn("Did not manage to fit all KV pairs in %d SSTs of size: %lu kv pairs are: %u",
-					 num_ssts, SST_SIZE, num_kv_pairs);
-				free(splice);
-				goto exit;
+				log_fatal(
+					"Did not manage to fit all KV pairs in %d SSTs of size: %lu kv pairs are: %u increase num SSTs or reduce num KVs",
+					num_ssts, SST_SIZE, num_kv_pairs);
+				_exit(EXIT_FAILURE);
 			}
-			ssts[sst_id] = sst_create(SST_SIZE);
+			//ok get first and last splice to update the guards
+			curr_sst = sst_create(SST_SIZE, workload->txn_id, workload->handle, 1, NULL);
 		}
 		++num_kv_pairs;
 		free(splice);
-		log_debug("Key: %.*s, Value size: %d\n", (int)key.size, (char *)key.data, (int)value.size);
+		// log_debug("Key: %.*s, Value size: %d\n", (int)key.size, (char *)key.data, (int)value.size);
 	}
+	sst_flush(curr_sst);
+	log_debug("Created SST no: %d", sst_id);
+	ssts[sst_id] = sst_get_meta(curr_sst);
+	sst_close(curr_sst);
 exit:
-	free(ssts);
 	// Close the cursor
 	cursor->c_close(cursor);
-	return NULL;
+
+	return true;
+}
+
+bool populate_mem_guards(struct device_level *level, int num_ssts, struct sst_meta *ssts[])
+{
+	int actual_ssts = 0;
+	for (; actual_ssts < num_ssts && ssts[actual_ssts] != NULL; actual_ssts++)
+		;
+	log_debug("---> SSTs created are: %d out of %d", actual_ssts, num_ssts);
+	level_add_ssts(level, actual_ssts, ssts, 1);
+	return true;
+}
+
+bool verify_scanner(struct workload_config *workload, uint8_t level_id, int32_t tree_id)
+{
+	DBC *cursor = NULL;
+	DBT key;
+	DBT value;
+	memset(&key, 0, sizeof(key));
+	memset(&value, 0, sizeof(value));
+	// Open a cursor for the database
+	if (workload->truth->cursor(workload->truth, NULL, &cursor, 0) != 0) {
+		log_fatal("Failed to open BerkeleyDB cursor");
+		_exit(EXIT_FAILURE);
+	}
+	struct level_scanner_dev *scanner = level_scanner_dev_init(workload->handle, level_id, tree_id);
+	level_scanner_dev_seek(scanner, NULL);
+	// Iterate over the keys
+	uint32_t num_kv_pairs = 0;
+	while (cursor->c_get(cursor, &key, &value, DB_NEXT) == 0 && num_kv_pairs < workload->total_keys) {
+		struct kv_splice_base splice;
+		if (false == level_scanner_curr(scanner, &splice)) {
+			log_fatal("Scanned ended too soon lost keys");
+			_exit(EXIT_FAILURE);
+		}
+		uint32_t value_size = kv_splice_base_get_value_size(&splice);
+		uint32_t key_size = kv_splice_base_get_key_size(&splice);
+		char *parallax_key = kv_splice_base_get_key_buf(&splice);
+
+		if (key_size != key.size) {
+			log_fatal("Key sizes mismatch expected: %u got: %u", key.size, key_size);
+		}
+
+		if (0 != memcmp(key.data, parallax_key, key_size < key.size ? key_size : key.size)) {
+			log_fatal("key mismatch waited %.*s ----> got %.*s", key.size, (char *)key.data, key_size,
+				  parallax_key);
+			_exit(EXIT_FAILURE);
+		}
+
+		//Now check the value
+		if (value_size != value.size) {
+			log_fatal("Values mismatch expected: %u got: %u", value.size, value_size);
+			_exit(EXIT_FAILURE);
+		}
+		if (++num_kv_pairs && 0 == num_kv_pairs % workload->progress_report)
+			log_debug("Scanner: Found up to key no: %u", num_kv_pairs);
+		level_scanner_dev_next(scanner);
+	}
+	if (workload->total_keys != num_kv_pairs) {
+		log_fatal("Test failed found %u keys expected: %lu keys", num_kv_pairs, workload->total_keys);
+		_exit(EXIT_FAILURE);
+	}
+	// Close the cursor
+	cursor->c_close(cursor);
+	return true;
+}
+
+bool verify_keys(struct workload_config *workload, struct device_level *level, int32_t tree_id)
+{
+	DBC *cursor = NULL;
+	DBT key;
+	DBT value;
+	memset(&key, 0, sizeof(key));
+	memset(&value, 0, sizeof(value));
+	// Open a cursor for the database
+	if (workload->truth->cursor(workload->truth, NULL, &cursor, 0) != 0) {
+		log_fatal("Failed to open BerkeleyDB cursor");
+		log_debug("Going to next leaf...");
+		_exit(EXIT_FAILURE);
+	}
+
+	// Iterate over the keys
+	uint32_t num_kv_pairs = 0;
+	while (cursor->c_get(cursor, &key, &value, DB_NEXT) == 0 && num_kv_pairs < workload->total_keys) {
+		bool malloced = false;
+		struct key_splice *key_splice = key_splice_create(key.data, key.size, NULL, 0, &malloced);
+		assert(malloced);
+
+		struct lookup_operation get_op = { .key_splice = key_splice, .retrieve = 1 };
+		if (false == level_lookup(level, &get_op, tree_id)) {
+			log_fatal("Lookup: Failed to find key: %.*s", key.size, (char *)key.data);
+			_exit(EXIT_FAILURE);
+		}
+		//Now check the value
+		if (value.size != get_op.size) {
+			log_fatal("Values mismatch expected: %u got: %u", value.size, get_op.size);
+			_exit(EXIT_FAILURE);
+		}
+
+		if (0 != memcmp(value.data, get_op.buffer_to_pack_kv, value.size)) {
+			log_fatal("Value corruption");
+			_exit(EXIT_FAILURE);
+		}
+
+		if (malloced)
+			free(key_splice);
+		free(get_op.buffer_to_pack_kv);
+		if (++num_kv_pairs && 0 == num_kv_pairs % workload->progress_report)
+			log_debug("Found up to key no: %u", num_kv_pairs);
+	}
+	if (workload->total_keys != num_kv_pairs) {
+		log_fatal("Test failed found %u keys expected: %lu keys", num_kv_pairs, workload->total_keys);
+		_exit(EXIT_FAILURE);
+	}
+	// Close the cursor
+	cursor->c_close(cursor);
+	return true;
 }
 
 int main(int argc, char *argv[])
@@ -202,13 +335,26 @@ int main(int argc, char *argv[])
 	par_handle parallax_db = par_open(&db_options, &error_message);
 
 	// Generate and print keys
+
 	struct workload_config workload = {
-		.handle = NULL, .truth = truthDB, .total_keys = num_of_kvs, .progress_report = 100000
+		.handle = parallax_db,
+		.truth = truthDB,
+		.total_keys = num_of_kvs,
+		.progress_report = 10000,
 	};
+	db_handle *internal_db = (db_handle *)workload.handle;
+
+	workload.txn_id = rul_start_txn(internal_db->db_desc);
 	populate_randomly_bdb(&workload);
 	log_debug("num_of_ssts = %u", num_of_ssts);
-	create_ssts(&workload, num_of_ssts);
+	struct sst_meta *ssts[MAX_SSTS] = { 0 };
+	create_ssts(&workload, num_of_ssts, ssts);
+
+	populate_mem_guards(internal_db->db_desc->dev_levels[1], MAX_SSTS, ssts);
+	verify_keys(&workload, internal_db->db_desc->dev_levels[1], 1);
+	verify_scanner(&workload, 1, 1);
 
 	truthDB->close(truthDB, 0);
+	log_info("Manto, sister of Tiresias, passed successfully!");
 	return 0;
 }

@@ -17,6 +17,10 @@ option(DISABLE_LOGGING
 option(TEBIS_FORMAT "BUild Parallax using Tebis-format" OFF)
 option(PARALLAX_BUILD_TESTING "" ON)
 
+# Include directories for the library's header files (assuming they are in the
+# default /usr/local/include)
+include_directories(${CMAKE_INSTALL_PREFIX}/include)
+
 if(NOT (${CMAKE_SOURCE_DIR} STREQUAL ${CMAKE_CURRENT_SOURCE_DIR}))
   set(PARALLAX_BUILD_TESTING OFF)
 endif()
@@ -95,16 +99,36 @@ FetchContent_Declare(
   GIT_REPOSITORY https://github.com/gesalous/libbloom
   GIT_TAG cmake)
 
+# add Minos for memory guards
+FetchContent_Declare(
+  minos # Recommendation: Stick close to the original name.
+  GIT_REPOSITORY https://github.com/gesalous/minos
+  GIT_TAG parallax_fixes)
+
+FetchContent_GetProperties(minos)
 FetchContent_GetProperties(log)
 FetchContent_GetProperties(yaml)
 FetchContent_GetProperties(uthash)
 FetchContent_GetProperties(cmake-scripts)
 FetchContent_GetProperties(libbloom)
 
+if(NOT cmake-scripts_POPULATED)
+  FetchContent_Populate(cmake-scripts)
+  FetchContent_MakeAvailable(cmake-scripts)
+  include(${cmake-scripts_SOURCE_DIR}/sanitizers.cmake)
+endif()
+
 if(NOT log_POPULATED)
   FetchContent_Populate(log)
   add_subdirectory(${log_SOURCE_DIR} ${log_BINARY_DIR})
   FetchContent_MakeAvailable(log)
+endif()
+
+if(NOT minos_POPULATED)
+  FetchContent_Populate(minos)
+  add_subdirectory(${minos_SOURCE_DIR} ${minos_BINARY_DIR})
+  include_directories(${minos_SOURCE_DIR}/include)
+  FetchContent_MakeAvailable(minos)
 endif()
 
 if(NOT yaml_POPULATED)
@@ -121,12 +145,6 @@ if(NOT uthash_POPULATED)
   FetchContent_MakeAvailable(uthash)
 endif()
 
-if(NOT cmake-scripts_POPULATED)
-  FetchContent_Populate(cmake-scripts)
-  FetchContent_MakeAvailable(cmake-scripts)
-  include(${cmake-scripts_SOURCE_DIR}/sanitizers.cmake)
-endif()
-
 if(NOT libbloom_POPULATED)
   FetchContent_Populate(libbloom)
   add_subdirectory(${libbloom_SOURCE_DIR} ${libbloom_BINARY_DIR})
@@ -134,7 +152,7 @@ if(NOT libbloom_POPULATED)
   FetchContent_MakeAvailable(libbloom)
 endif()
 
-set(DEPENDENCIES log yaml libbloom)
+set(DEPENDENCIES log yaml libbloom minos)
 
 # Find pthread library
 find_package(Threads REQUIRED)
