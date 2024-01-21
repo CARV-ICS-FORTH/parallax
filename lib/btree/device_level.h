@@ -428,6 +428,7 @@ bool level_add_ssts(struct device_level *level, int num_ssts, struct sst_meta *s
  * @return pointer to the level_scanner_dev object or NULL on failure
 */
 struct level_scanner_dev *level_scanner_dev_init(db_handle *database, uint8_t level_id, uint8_t tree_id);
+
 /**
   * @brief Seeks to a key greater or equal to the start_key_splice.
   * @param dev_level_scanner pointer to the dev_level_scanner object
@@ -459,4 +460,34 @@ bool level_scanner_dev_next(struct level_scanner_dev *dev_level_scanner);
 */
 bool level_scanner_dev_close(struct level_scanner_dev *dev_level_scanner);
 
+/**
+  * @brief Initializes a level_compaction_scanner. Its main differences with
+  * level_scanner are 1) it uses direct_IO (no shared cache) and 2) supports
+  * only iterating the whole level (no seek operation) . Its purpose is to be
+  * used by the compaction worker to compact a level with full compaction.
+  * @param level pointer to the level object
+  * @param tree_id id of the tree of the level that it will iterate
+  * @return pointer to the level_compaction scanner or NULL on failure
+ */
+struct level_compaction_scanner *level_comp_scanner_init(struct device_level *level, uint8_t tree_id, uint32_t sst_size,
+							 int fd);
+
+/**
+ * @brief moves the cursor one posistion.
+ * @param comp_scanner pointer to the compaction scanner object
+ * @return true on success false if the end of level has reached
+ */
+
+bool level_comp_scanner_next(struct level_compaction_scanner *comp_scanner);
+/**
+ * @brief Returns a reference to the current splice
+ * @param comp_scanner pointer to the compaction scanner object
+ * @return pointer to the kv_splice_base object or NULL if the scanner is invalid
+ */
+bool level_comp_scanner_get_curr(struct level_compaction_scanner *scanner, struct kv_splice_base *splice);
+
+/**
+ * @brief Closes the scanner and frees all resources
+ */
+bool level_comp_scanner_close(struct level_compaction_scanner *comp_scanner);
 #endif

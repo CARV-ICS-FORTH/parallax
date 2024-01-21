@@ -46,7 +46,7 @@ static void generate_random_key(unsigned char *key_buffer, uint32_t key_size)
 	}
 }
 
-static void generate_random_value(char *value_buffer, uint32_t value_size, uint32_t id)
+static void generate_random_value(char *value_buffer, uint32_t value_size)
 {
 	for (uint32_t i = sizeof(uint64_t); i < value_size; i++)
 		value_buffer[i] = rand() % 256;
@@ -72,7 +72,7 @@ static void populate_randomly_bdb(struct workload_config *workload_config)
 
 		generate_random_key(key_buffer, kv_pair.k.size);
 		kv_pair.k.data = (char *)key_buffer;
-		generate_random_value((char *)value_buffer, kv_pair.v.val_size, i);
+		generate_random_value((char *)value_buffer, kv_pair.v.val_size);
 		kv_pair.v.val_buffer = (char *)value_buffer;
 
 		DBT truth_key = { 0 };
@@ -151,7 +151,6 @@ static bool create_ssts(struct workload_config *workload, int num_ssts, struct s
 	log_debug("Created SST no: %d", sst_id);
 	ssts[sst_id] = sst_get_meta(curr_sst);
 	sst_close(curr_sst);
-exit:
 	// Close the cursor
 	cursor->c_close(cursor);
 
@@ -212,6 +211,64 @@ bool verify_scanner(struct workload_config *workload, uint8_t level_id, int32_t 
 		if (++num_kv_pairs && 0 == num_kv_pairs % workload->progress_report)
 			log_debug("Scanner: Found up to key no: %u", num_kv_pairs);
 		level_scanner_dev_next(scanner);
+	}
+	if (workload->total_keys != num_kv_pairs) {
+		log_fatal("Test failed found %u keys expected: %lu keys", num_kv_pairs, workload->total_keys);
+		_exit(EXIT_FAILURE);
+	}
+	// Close the cursor
+	cursor->c_close(cursor);
+	return true;
+}
+
+bool verify_comp_scanner(struct workload_config *workload, uint8_t level_id, int32_t tree_id)
+{
+	DBC *cursor = NULL;
+	DBT key;
+	DBT value;
+	memset(&key, 0, sizeof(key));
+	memset(&value, 0, sizeof(value));
+	struct db_handle *handle = (struct db_handle *)workload->handle;
+	// Open a cursor for the database
+	if (workload->truth->cursor(workload->truth, NULL, &cursor, 0) != 0) {
+		log_fatal("Failed to open BerkeleyDB cursor");
+		_exit(EXIT_FAILURE);
+	}
+	struct level_compaction_scanner *scanner = level_comp_scanner_init(
+		handle->db_desc->dev_levels[level_id], tree_id, SST_SIZE, handle->db_desc->db_volume->vol_fd);
+
+	// Iterate over the keys
+	uint32_t num_kv_pairs = 0;
+	while (cursor->c_get(cursor, &key, &value, DB_NEXT) == 0 && num_kv_pairs < workload->total_keys) {
+		struct kv_splice_base splice;
+		if (false == level_comp_scanner_get_curr(scanner, &splice)) {
+			log_fatal("Comp Scanner ended too soon lost keys");
+			_exit(EXIT_FAILURE);
+		}
+		uint32_t value_size = kv_splice_base_get_value_size(&splice);
+		uint32_t key_size = kv_splice_base_get_key_size(&splice);
+		char *parallax_key = kv_splice_base_get_key_buf(&splice);
+
+		if (key_size != key.size) {
+			log_fatal("Key sizes mismatch expected: %u got: %u", key.size, key_size);
+		}
+
+		if (0 != memcmp(key.data, parallax_key, key_size < key.size ? key_size : key.size)) {
+			log_fatal("key mismatch waited %.*s ----> got %.*s", key.size, (char *)key.data, key_size,
+				  parallax_key);
+			_exit(EXIT_FAILURE);
+		}
+
+		//Now check the value
+		if (value_size != value.size) {
+			log_fatal("Values mismatch expected: %u got: %u", value.size, value_size);
+			_exit(EXIT_FAILURE);
+		}
+		if (++num_kv_pairs && 0 == num_kv_pairs % workload->progress_report)
+			log_debug("Comp Scanner: Found up to key no: %u", num_kv_pairs);
+
+		if (level_comp_scanner_next(scanner) == false)
+			break;
 	}
 	if (workload->total_keys != num_kv_pairs) {
 		log_fatal("Test failed found %u keys expected: %lu keys", num_kv_pairs, workload->total_keys);
@@ -353,6 +410,7 @@ int main(int argc, char *argv[])
 	populate_mem_guards(internal_db->db_desc->dev_levels[1], MAX_SSTS, ssts);
 	verify_keys(&workload, internal_db->db_desc->dev_levels[1], 1);
 	verify_scanner(&workload, 1, 1);
+	verify_comp_scanner(&workload, 1, 1);
 
 	truthDB->close(truthDB, 0);
 	log_info("Manto, sister of Tiresias, passed successfully!");

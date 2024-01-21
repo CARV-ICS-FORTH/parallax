@@ -16,11 +16,13 @@
 #include "kv_pairs.h"
 #include "segment_allocator.h"
 #include "sst.h"
+#include <asm-generic/errno.h>
 #include <assert.h>
 #include <log.h>
 #include <minos.h>
 #include <pthread.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
 struct key_splice;
@@ -665,6 +667,7 @@ done:
 //staff about device level scanners
 struct level_scanner_dev {
 	db_handle *db;
+	char *IO_buffer;
 	struct device_level *level;
 	struct node_header *root;
 	struct level_leaf_api *leaf_api;
@@ -764,10 +767,10 @@ bool level_scanner_dev_next(struct level_scanner_dev *dev_level_scanner)
 		return ret;
 	uint64_t next_leaf_offt = (*dev_level_scanner->leaf_api->leaf_get_next_offt)(dev_level_scanner->leaf);
 	if (0 == next_leaf_offt) {
-		log_debug("Done with the currest SST let's go to the next");
+		// log_debug("Done with the currest SST let's go to the next");
 		next_leaf_offt = level_scanner_find_next_leaf(dev_level_scanner);
 		if (0 == next_leaf_offt) {
-			log_debug("Done with the level");
+			// log_debug("Done with the level");
 			return false;
 		}
 	}
@@ -797,5 +800,91 @@ bool level_add_ssts(struct device_level *level, int num_ssts, struct sst_meta *s
 	}
 
 	level_leave_as_writer(level);
+	return true;
+}
+
+//compaction scanner staff
+struct level_compaction_scanner {
+	struct minos_iterator iter;
+	char *IO_buffer;
+	struct sst_meta *meta;
+	struct device_level *level;
+	struct leaf_node *curr_leaf;
+	struct leaf_iterator *leaf_iter;
+	struct level_leaf_api *leaf_api;
+	uint32_t sst_size;
+	uint32_t relative_leaf_offt;
+	int fd;
+};
+
+static bool level_comp_scanner_read_sst(struct level_compaction_scanner *comp_scanner)
+{
+	ssize_t total_bytes_read = 0;
+	while (total_bytes_read < comp_scanner->sst_size) {
+		ssize_t read = pread(comp_scanner->fd, &comp_scanner->IO_buffer[total_bytes_read],
+				     comp_scanner->sst_size - total_bytes_read,
+				     sst_meta_get_dev_offt(comp_scanner->meta) + total_bytes_read);
+		if (-1 == read) {
+			log_fatal("Failed to read SST");
+			perror("Reason:");
+			_exit(EXIT_FAILURE);
+		}
+		total_bytes_read += read;
+	}
+	return true;
+}
+
+struct level_compaction_scanner *level_comp_scanner_init(struct device_level *level, uint8_t tree_id, uint32_t sst_size,
+							 int file_desc)
+{
+	struct level_compaction_scanner *comp_scanner = calloc(1UL, sizeof(struct level_compaction_scanner));
+	posix_memalign((void **)&comp_scanner->IO_buffer, ALIGNMENT, sst_size);
+	comp_scanner->sst_size = sst_size;
+	comp_scanner->fd = file_desc;
+	minos_iter_seek_first(&comp_scanner->iter, level->guard_table[tree_id]);
+	comp_scanner->meta = comp_scanner->iter.iter_node->kv->value;
+	level_comp_scanner_read_sst(comp_scanner);
+	comp_scanner->relative_leaf_offt = sst_meta_get_first_leaf_relative_offt(comp_scanner->meta);
+	comp_scanner->leaf_api = &level->level_leaf_api;
+	comp_scanner->curr_leaf = (struct leaf_node *)&comp_scanner->IO_buffer[comp_scanner->relative_leaf_offt];
+	comp_scanner->leaf_iter = (*comp_scanner->leaf_api->leaf_create_empty_iter)();
+	(*comp_scanner->leaf_api->leaf_seek_first)(comp_scanner->curr_leaf, comp_scanner->leaf_iter);
+	return comp_scanner;
+}
+
+bool level_comp_scanner_next(struct level_compaction_scanner *comp_scanner)
+{
+	bool val = (*comp_scanner->leaf_api->leaf_iter_next)(comp_scanner->leaf_iter);
+	if (val)
+		return true;
+
+	if (sst_meta_get_next_relative_leaf_offt(&comp_scanner->relative_leaf_offt, comp_scanner->IO_buffer)) {
+		comp_scanner->curr_leaf =
+			(struct leaf_node *)&comp_scanner->IO_buffer[comp_scanner->relative_leaf_offt];
+		(*comp_scanner->leaf_api->leaf_seek_first)(comp_scanner->curr_leaf, comp_scanner->leaf_iter);
+		return true;
+	}
+	minos_iter_get_next(&comp_scanner->iter);
+	if (false == minos_iter_is_valid(&comp_scanner->iter))
+		return false;
+	comp_scanner->meta = comp_scanner->iter.iter_node->kv->value;
+	level_comp_scanner_read_sst(comp_scanner);
+	comp_scanner->relative_leaf_offt = sst_meta_get_first_leaf_relative_offt(comp_scanner->meta);
+	comp_scanner->curr_leaf = (struct leaf_node *)&comp_scanner->IO_buffer[comp_scanner->relative_leaf_offt];
+	(*comp_scanner->leaf_api->leaf_seek_first)(comp_scanner->curr_leaf, comp_scanner->leaf_iter);
+	return true;
+}
+
+bool level_comp_scanner_get_curr(struct level_compaction_scanner *comp_scanner, struct kv_splice_base *splice)
+{
+	*splice = (*comp_scanner->leaf_api->leaf_iter_curr)(comp_scanner->leaf_iter);
+	return true;
+}
+
+bool level_comp_scanner_close(struct level_compaction_scanner *comp_scanner)
+{
+	free(comp_scanner->leaf_iter);
+	free(comp_scanner->IO_buffer);
+	free(comp_scanner);
 	return true;
 }

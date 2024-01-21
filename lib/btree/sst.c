@@ -42,9 +42,26 @@ struct sst {
 	uint32_t tree_id;
 };
 
-uint64_t sst_meta_get_root(struct sst_meta *meta)
+uint32_t sst_meta_get_first_leaf_relative_offt(struct sst_meta *sst)
 {
-	return meta->root_offt;
+	return SST_METADATA_SIZE;
+}
+
+bool sst_meta_get_next_relative_leaf_offt(uint32_t *offt, char *sst_buffer)
+{
+	*offt += LEAF_NODE_SIZE;
+	struct node_header *node = (struct node_header *)&sst_buffer[*offt];
+	return node->type == leafNode || node->type == leafRootNode ? true : false;
+}
+
+inline uint64_t sst_meta_get_dev_offt(struct sst_meta *sst)
+{
+	return sst->sst_dev_offt;
+}
+
+uint64_t sst_meta_get_root(struct sst_meta *sst)
+{
+	return sst->root_offt;
 }
 
 inline uint64_t sst_meta_get_first_leaf_offt(struct sst_meta *sst)
@@ -301,17 +318,6 @@ static uint32_t sst_calc_offt(struct sst *sst, char *addr)
 	}
 	// log_debug("Relative offset of root inside the SST is: %lu",end-start);
 	return end - start;
-}
-
-static uint64_t sst_get_next_leaf_offt(struct sst *sst, size_t size)
-{
-	uint32_t remaining_space = sst->last_index_offt - sst->last_leaf_offt;
-
-	if (remaining_space >= size) {
-		uint32_t leaf_offt = sst->meta->sst_dev_offt + sst->last_leaf_offt;
-		return leaf_offt;
-	}
-	return UINT64_MAX;
 }
 
 static bool sst_append_pivot_to_index(int32_t height, struct sst *sst, uint64_t left_node_offt,
