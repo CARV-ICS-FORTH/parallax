@@ -191,112 +191,6 @@ static void apply_db_allocations_to_allocator_bitmap(struct volume_descriptor *v
 	}
 }
 
-struct allocation_log_cursor *init_allocation_log_cursor(struct volume_descriptor *volume_desc,
-							 struct pr_db_superblock *db_superblock)
-{
-	struct allocation_log_cursor *cursor = calloc(1, sizeof(struct allocation_log_cursor));
-	if (!cursor) {
-		log_fatal("Failed to allocate memory");
-		BUG_ON();
-	}
-	cursor->volume_desc = volume_desc;
-	cursor->db_superblock = db_superblock;
-	cursor->segment = NULL;
-	cursor->chunks_in_segment = 0;
-	cursor->curr_chunk_id = 0;
-	cursor->chunk_entries = 0;
-	cursor->curr_entry_in_chunk = 0;
-	cursor->state = GET_HEAD;
-	cursor->valid = 1;
-	return cursor;
-}
-
-struct rul_log_entry *get_next_allocation_log_entry(struct allocation_log_cursor *cursor)
-{
-	struct pr_region_allocation_log *allocation_log = &cursor->db_superblock->allocation_log;
-	while (1) {
-		switch (cursor->state) {
-		case GET_HEAD:
-			if (!allocation_log->head_dev_offt) {
-				cursor->segment = NULL;
-				cursor->state = EXIT;
-				cursor->valid = 0;
-				break;
-			}
-			cursor->segment = REAL_ADDRESS(allocation_log->head_dev_offt);
-			cursor->state = CALCULATE_CHUNKS_IN_SEGMENT;
-			break;
-		case GET_NEXT_SEGMENT:
-			assert(REAL_ADDRESS(allocation_log->tail_dev_offt));
-			if (cursor->segment == REAL_ADDRESS(allocation_log->tail_dev_offt)) {
-				cursor->segment = NULL;
-				cursor->valid = 0;
-				cursor->state = EXIT;
-				break;
-			}
-			cursor->segment = REAL_ADDRESS(cursor->segment->next_seg_offt);
-			cursor->state = CALCULATE_CHUNKS_IN_SEGMENT;
-			break;
-		case GET_NEXT_CHUNK:
-			++cursor->curr_chunk_id;
-			if (cursor->curr_chunk_id >= cursor->chunks_in_segment) {
-				cursor->state = GET_NEXT_SEGMENT;
-				break;
-			}
-
-			cursor->state = CALCULATE_CHUNK_ENTRIES;
-			break;
-		case CALCULATE_CHUNKS_IN_SEGMENT: {
-			cursor->chunks_in_segment = RUL_LOG_CHUNK_NUM;
-
-			uint8_t last_segment = cursor->segment == REAL_ADDRESS(allocation_log->tail_dev_offt);
-			if (last_segment) {
-				uint32_t last_segment_size = allocation_log->size % SEGMENT_SIZE;
-				cursor->chunks_in_segment = last_segment_size / RUL_LOG_CHUNK_SIZE_IN_BYTES;
-				cursor->chunks_in_segment += last_segment_size % RUL_LOG_CHUNK_SIZE_IN_BYTES != 0;
-			}
-
-			cursor->curr_chunk_id = 0;
-			cursor->state = CALCULATE_CHUNK_ENTRIES;
-			break;
-		}
-		case CALCULATE_CHUNK_ENTRIES:
-			cursor->chunk_entries = RUL_LOG_CHUNK_MAX_ENTRIES;
-
-			uint8_t last_segment = cursor->segment == REAL_ADDRESS(allocation_log->tail_dev_offt);
-			if (last_segment && cursor->curr_chunk_id == cursor->chunks_in_segment - 1) {
-				uint32_t last_chunk_size = (allocation_log->size % SEGMENT_SIZE) -
-							   (cursor->curr_chunk_id * RUL_LOG_CHUNK_SIZE_IN_BYTES);
-				assert(0 == last_chunk_size % sizeof(struct rul_log_entry));
-				cursor->chunk_entries = last_chunk_size / sizeof(struct rul_log_entry);
-			}
-
-			cursor->curr_entry_in_chunk = 0;
-			cursor->state = GET_NEXT_ENTRY;
-			break;
-
-		case GET_NEXT_ENTRY:
-			if (cursor->curr_entry_in_chunk >= cursor->chunk_entries) {
-				cursor->state = GET_NEXT_CHUNK;
-				break;
-			}
-			return &cursor->segment->chunk[cursor->curr_chunk_id][cursor->curr_entry_in_chunk++];
-		case EXIT:
-			cursor->segment = NULL;
-			cursor->valid = 0;
-			return NULL;
-		default:
-			log_fatal("Unknown state in redo undo log!");
-			BUG_ON();
-		}
-	}
-}
-
-void close_allocation_log_cursor(struct allocation_log_cursor *cursor)
-{
-	free(cursor);
-}
-
 void replay_db_allocation_log(struct volume_descriptor *volume_desc, struct pr_db_superblock *superblock)
 {
 	uint32_t mem_bitmap_size = volume_desc->mem_volume_bitmap_size * sizeof(uint64_t);
@@ -309,10 +203,10 @@ void replay_db_allocation_log(struct volume_descriptor *volume_desc, struct pr_d
 	/* log_info("Allocation log of DB: %s head %lu tail %lu size %lu", superblock->db_name, */
 	/* 	 allocation_log->head_dev_offt, allocation_log->tail_dev_offt, allocation_log->size); */
 
-	struct allocation_log_cursor *log_cursor = init_allocation_log_cursor(volume_desc, superblock);
+	struct rul_cursor *log_cursor = rul_cursor_init(volume_desc, superblock);
 	struct rul_log_entry *log_entry;
 
-	while ((log_entry = get_next_allocation_log_entry(log_cursor))) {
+	while ((log_entry = rul_cursor_get_next(log_cursor))) {
 		uint64_t bit_distance = log_entry->dev_offt / SEGMENT_SIZE;
 		uint64_t byte_id = bit_distance / 8;
 		uint8_t bit_id = bit_distance % 8;
@@ -345,7 +239,7 @@ void replay_db_allocation_log(struct volume_descriptor *volume_desc, struct pr_d
 		}
 	}
 
-	close_allocation_log_cursor(log_cursor);
+	rul_close_cursor(log_cursor);
 	apply_db_allocations_to_allocator_bitmap(volume_desc, mem_bitmap, mem_bitmap_size);
 	free(mem_bitmap);
 }

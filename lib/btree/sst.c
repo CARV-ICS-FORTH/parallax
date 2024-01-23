@@ -1,4 +1,5 @@
 #include "sst.h"
+#include "../allocator/redo_undo_log.h"
 #include "btree.h"
 #include "btree_node.h"
 #include "conf.h"
@@ -42,10 +43,25 @@ struct sst {
 	uint32_t tree_id;
 };
 
+inline uint32_t sst_meta_get_level_id(struct sst_meta *sst)
+{
+	return sst->level_id;
+}
+
 uint32_t sst_meta_get_first_leaf_relative_offt(struct sst_meta *sst)
 {
 	(void)sst;
 	return SST_METADATA_SIZE;
+}
+
+static uint64_t sst_allocate_space(struct sst *sst)
+{
+	struct rul_log_entry log_entry = { .dev_offt = mem_allocate(sst->db_handle->db_desc->db_volume, SST_SIZE),
+					   .txn_id = sst->txn_id,
+					   .op_type = RUL_ALLOCATE_SST,
+					   .size = SST_SIZE };
+	rul_add_entry_in_txn_buf(sst->db_handle->db_desc, &log_entry);
+	return log_entry.dev_offt;
 }
 
 bool sst_meta_get_next_relative_leaf_offt(uint32_t *offt, char *sst_buffer)
@@ -204,7 +220,7 @@ struct sst *sst_create(uint32_t sst_size, uint64_t txn_id, db_handle *handle, ui
 	sst->last_index_offt = sst_size;
 	sst->last_leaf_offt = SST_METADATA_SIZE;
 	sst->meta->level_id = level_id;
-	sst->meta->sst_dev_offt = seg_allocate_segment(sst->db_handle->db_desc, sst->txn_id);
+	sst->meta->sst_dev_offt = sst_allocate_space(sst);
 	sst->meta->sst_size = sst_size;
 
 	sst->leaf_api = level_get_leaf_api(handle->db_desc->dev_levels[level_id]);

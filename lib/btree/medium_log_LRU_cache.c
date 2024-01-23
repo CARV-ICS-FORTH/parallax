@@ -373,7 +373,8 @@ static void mlog_cache_free_LRU_list(struct mlog_cache_chunk_list *list)
 
 void mlog_cache_destroy_LRU(struct medium_log_LRU_cache *chunk_cache)
 {
-	assert(chunk_cache != NULL);
+	if (chunk_cache == NULL)
+		return;
 
 	log_debug("Compaction done! Destroying the LRU for medium log to in place");
 	mlog_cache_free_LRU_hashtable(chunk_cache->chunks_hash_table);

@@ -403,13 +403,43 @@ int main(int argc, char *argv[])
 	workload.txn_id = rul_start_txn(internal_db->db_desc);
 	populate_randomly_bdb(&workload);
 	log_debug("num_of_ssts = %u", num_of_ssts);
+
 	struct sst_meta *ssts[MAX_SSTS] = { 0 };
 	create_ssts(&workload, num_of_ssts, ssts);
-
 	populate_mem_guards(internal_db->db_desc->dev_levels[1], MAX_SSTS, ssts);
+
 	verify_keys(&workload, internal_db->db_desc->dev_levels[1], 1);
 	verify_scanner(&workload, 1, 1);
 	verify_comp_scanner(&workload, 1, 1);
+	level_free_space(internal_db->db_desc->dev_levels[1], 1, internal_db->db_desc, workload.txn_id);
+	rul_flush_txn(internal_db->db_desc, workload.txn_id);
+	rul_apply_txn_buf_freeops_and_destroy(internal_db->db_desc, workload.txn_id);
+	log_debug("First round successful population and deletion of level");
+	log_debug("Second round population WITHOUT deletion");
+	//done again
+	workload.txn_id = rul_start_txn(internal_db->db_desc);
+
+	memset(ssts, 0x00, sizeof(ssts));
+	create_ssts(&workload, num_of_ssts, ssts);
+	populate_mem_guards(internal_db->db_desc->dev_levels[1], MAX_SSTS, ssts);
+
+	verify_keys(&workload, internal_db->db_desc->dev_levels[1], 1);
+	verify_scanner(&workload, 1, 1);
+	verify_comp_scanner(&workload, 1, 1);
+	rul_flush_txn(internal_db->db_desc, workload.txn_id);
+	rul_apply_txn_buf_freeops_and_destroy(internal_db->db_desc, workload.txn_id);
+	par_flush_superblock(workload.handle);
+
+	log_debug("Second round SUCCESS, closing DB...");
+	if (par_close(workload.handle)) {
+		log_fatal("Failed to close ParallaxDB");
+	}
+	log_debug("Close SUCCESS opening DB...");
+	workload.handle = parallax_db = par_open(&db_options, &error_message);
+	internal_db = (db_handle *)workload.handle;
+	log_debug("Opened DB verifying keys....");
+	verify_keys(&workload, internal_db->db_desc->dev_levels[1], 0);
+	verify_scanner(&workload, 1, 0);
 
 	truthDB->close(truthDB, 0);
 	log_info("Manto, sister of Tiresias, passed successfully!");

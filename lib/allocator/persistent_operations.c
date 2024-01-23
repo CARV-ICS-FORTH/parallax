@@ -524,8 +524,7 @@ static struct segment_array *find_N_last_blobs(struct db_descriptor *db_desc, ui
 	struct large_log_segment_gc_entry *node = NULL;
 	log_debug("Allocation log cursor for volume %s DB: %s", db_desc->db_volume->volume_name,
 		  db_desc->db_superblock->db_name);
-	struct allocation_log_cursor *log_cursor =
-		init_allocation_log_cursor(db_desc->db_volume, db_desc->db_superblock);
+	struct rul_cursor *log_cursor = rul_cursor_init(db_desc->db_volume, db_desc->db_superblock);
 	struct segment_array *segments = calloc(1, sizeof(struct segment_array));
 	segments->segments = calloc(PR_CURSOR_MAX_SEGMENTS_SIZE, sizeof(uint64_t));
 	segments->size = PR_CURSOR_MAX_SEGMENTS_SIZE;
@@ -534,7 +533,7 @@ static struct segment_array *find_N_last_blobs(struct db_descriptor *db_desc, ui
 
 	struct blob_entry *b_entry;
 	while (1) {
-		struct rul_log_entry *log_entry = get_next_allocation_log_entry(log_cursor);
+		struct rul_log_entry *log_entry = rul_cursor_get_next(log_cursor);
 		if (!log_entry)
 			break;
 
@@ -555,16 +554,17 @@ static struct segment_array *find_N_last_blobs(struct db_descriptor *db_desc, ui
 		case RUL_MEDIUM_LOG_ALLOCATE:
 		case RUL_SMALL_LOG_ALLOCATE:
 		case RUL_ALLOCATE:
+		case RUL_ALLOCATE_SST:
 			//log_info("Found allocation for other logs not BIG");
 			break;
 		case RUL_LOG_FREE:
-		case RUL_FREE: {
+		case RUL_FREE:
+		case RUL_FREE_SST:
 			//log_info("Found free operation");
 			HASH_FIND_PTR(root_blob_entry, &log_entry->dev_offt, b_entry);
 			if (b_entry != NULL)
 				segments->segments[b_entry->array_id] = 0;
 			break;
-		}
 		case BLOB_GARBAGE_BYTES:
 			assert(log_entry->blob_garbage_bytes > 0 && log_entry->blob_garbage_bytes < SEGMENT_SIZE);
 			HASH_FIND(hh, garbage_bytes_for_blobs, &log_entry->dev_offt, sizeof(log_entry->dev_offt), node);
@@ -593,7 +593,7 @@ static struct segment_array *find_N_last_blobs(struct db_descriptor *db_desc, ui
 		}
 	}
 
-	close_allocation_log_cursor(log_cursor);
+	rul_close_cursor(log_cursor);
 	struct blob_entry *current_entry = NULL;
 	struct blob_entry *tmp = NULL;
 

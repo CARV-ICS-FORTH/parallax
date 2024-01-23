@@ -213,6 +213,8 @@ void level_save_bf_info_to_superblock(struct device_level *level, struct pr_db_s
 */
 struct node_header *level_get_root(struct device_level *level, uint32_t tree_id);
 
+bool level_is_empty(struct device_level *level, uint32_t tree_id);
+
 /**
   * @brief Returns the device offset of the root of tree_id in the level.
   * Each level can have up to NUM_TREES_PER_LEVEL TREES.
@@ -418,6 +420,7 @@ bool level_lookup(struct device_level *level, struct lookup_operation *get_op, i
 
 //sst staff
 bool level_add_ssts(struct device_level *level, int num_ssts, struct sst_meta *ssts[], uint32_t tree_id);
+bool level_remove_sst(struct device_level *level, struct sst_meta *sst, uint32_t tree_id);
 
 //level scanner staff
 /**

@@ -28,6 +28,7 @@ struct key_splice *sst_meta_get_first_guard(struct sst_meta *sst);
 struct key_splice *sst_meta_get_last_guard(struct sst_meta *sst);
 uint64_t sst_meta_get_dev_offt(struct sst_meta *sst);
 size_t sst_meta_get_size(struct sst_meta *sst);
+uint32_t sst_meta_get_level_id(struct sst_meta *sst);
 uint64_t sst_meta_get_root(struct sst_meta *sst);
 uint32_t sst_meta_get_first_leaf_relative_offt(struct sst_meta *sst);
 bool sst_meta_get_next_relative_leaf_offt(uint32_t *offt, char *sst_buffer);

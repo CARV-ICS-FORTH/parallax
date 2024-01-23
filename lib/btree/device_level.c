@@ -41,6 +41,7 @@ struct level_lock {
 };
 
 struct device_level {
+	//old school
 	struct segment_header *first_segment[NUM_TREES_PER_LEVEL];
 	struct segment_header *last_segment[NUM_TREES_PER_LEVEL];
 	uint64_t offset[NUM_TREES_PER_LEVEL];
@@ -152,6 +153,11 @@ inline struct node_header *level_get_root(struct device_level *level, uint32_t t
 	assert(0);
 	_exit(EXIT_FAILURE);
 	return level->root[tree_id];
+}
+
+bool level_is_empty(struct device_level *level, uint32_t tree_id)
+{
+	return level->guard_table[tree_id] == NULL ? true : minos_is_empty(level->guard_table[tree_id]);
 }
 
 // cppcheck-suppress unusedFunction
@@ -513,28 +519,43 @@ bool level_set_index_last_seg(struct device_level *level, struct segment_header 
 	return true;
 }
 
+struct args {
+	db_descriptor *db_desc;
+	uint64_t txn_id;
+};
+static bool level_free_sst(void *value, void *cnxt)
+{
+	struct sst_meta *meta = (struct sst_meta *)value;
+	struct args *args = cnxt;
+	struct rul_log_entry log_entry = { .dev_offt = sst_meta_get_dev_offt(meta),
+					   .txn_id = args->txn_id,
+					   .op_type = RUL_FREE_SST,
+					   .size = sst_meta_get_size(meta) };
+	rul_add_entry_in_txn_buf(args->db_desc, &log_entry);
+	return true;
+}
+
 uint64_t level_free_space(struct device_level *level, uint32_t tree_id, struct db_descriptor *db_desc, uint64_t txn_id)
 {
-	if (0 == level->level_id) {
-		log_fatal("Only for device levels");
-		_exit(EXIT_FAILURE);
-	}
-	struct segment_header *curr_segment = level->first_segment[tree_id];
-	if (!curr_segment) {
-		log_debug("Level [%u][%u] is free nothing to do", level->level_id, tree_id);
-		return 0;
-	}
+	struct args args = { .db_desc = db_desc, .txn_id = txn_id };
+	uint32_t sst_num_freed = minos_free(level->guard_table[tree_id], level_free_sst, &args);
+	level->guard_table[tree_id] = NULL;
+	// struct segment_header *curr_segment = level->first_segment[tree_id];
+	// if (!curr_segment) {
+	// 	log_debug("Level [%u][%u] is free nothing to do", level->level_id, tree_id);
+	// 	return 0;
+	// }
 
-	uint64_t space_freed = 0;
+	// uint64_t space_freed = 0;
 
-	while (curr_segment) {
-		seg_free_segment(db_desc, txn_id, ABSOLUTE_ADDRESS(curr_segment));
-		space_freed += SEGMENT_SIZE;
-		curr_segment = NULL == curr_segment->next_segment ? NULL : REAL_ADDRESS(curr_segment->next_segment);
-	}
+	// while (curr_segment) {
+	// 	seg_free_segment(db_desc, txn_id, ABSOLUTE_ADDRESS(curr_segment));
+	// 	space_freed += SEGMENT_SIZE;
+	// 	curr_segment = NULL == curr_segment->next_segment ? NULL : REAL_ADDRESS(curr_segment->next_segment);
+	// }
 
-	log_debug("Freed device level %u for db %s", level->level_id, db_desc->db_superblock->db_name);
-	return space_freed;
+	// log_debug("Freed device level %u for db %s", level->level_id, db_desc->db_superblock->db_name);
+	return sst_num_freed * SST_SIZE;
 }
 
 struct level_leaf_api *level_get_leaf_api(struct device_level *level)
@@ -555,16 +576,17 @@ struct level_index_api *level_get_index_api(struct device_level *level)
 static struct leaf_node *level_get_leaf(struct device_level *level, struct key_splice *key_splice, uint8_t tree_id)
 {
 	assert(key_splice_get_key_offset(key_splice));
-	// log_debug("Searching leaf for key: %.*s size: %d at tree_id: %u", key_splice_get_key_size(key_splice),
+	// log_debug("Searching appropriate leaf for key: %.*s size: %d at tree_id: %u", key_splice_get_key_size(key_splice),
 	//    key_splice_get_key_offset(key_splice), key_splice_get_key_size(key_splice),tree_id);
 	struct minos_iterator iter;
 	bool exact_match = false;
 	bool valid = minos_iter_seek_equal_or_imm_less(&iter, level->guard_table[tree_id],
 						       key_splice_get_key_size(key_splice),
 						       key_splice_get_key_offset(key_splice), &exact_match);
-	struct sst_meta *meta = NULL;
 
-	meta = valid ? iter.iter_node->kv->value : NULL;
+	struct sst_meta *meta = valid ? iter.iter_node->kv->value : NULL;
+	if (NULL == meta)
+		return NULL;
 	struct key_splice *first = sst_meta_get_first_guard(meta);
 	struct key_splice *last = sst_meta_get_last_guard(meta);
 	if (memcmp(key_splice_get_key_offset(key_splice), key_splice_get_key_offset(last),
@@ -580,9 +602,6 @@ static struct leaf_node *level_get_leaf(struct device_level *level, struct key_s
 	// log_debug("SST responsible has first key: %.*s and last key %.*s root offt at: %lu", key_splice_get_key_size(first),
 	//    key_splice_get_key_offset(first), key_splice_get_key_size(last), key_splice_get_key_offset(last),
 	//    sst_meta_get_root(meta));
-
-	if (NULL == meta) //empty level
-		return NULL;
 
 	struct node_header *son_node = NULL;
 	uint64_t root_offt = sst_meta_get_root(meta);
@@ -788,6 +807,10 @@ bool level_scanner_dev_close(struct level_scanner_dev *dev_level_scanner)
 bool level_add_ssts(struct device_level *level, int num_ssts, struct sst_meta *ssts[], uint32_t tree_id)
 {
 	level_enter_as_writer(level);
+
+	if (level->guard_table[tree_id] == NULL)
+		level->guard_table[tree_id] = minos_init();
+
 	for (int i = 0; i < num_ssts; i++) {
 		struct key_splice *first = sst_meta_get_first_guard(ssts[i]);
 		log_debug("Adding in guard table key: %.*s size: %d tree_id: %u", key_splice_get_key_size(first),
@@ -801,6 +824,19 @@ bool level_add_ssts(struct device_level *level, int num_ssts, struct sst_meta *s
 
 	level_leave_as_writer(level);
 	return true;
+}
+
+bool level_remove_sst(struct device_level *level, struct sst_meta *sst, uint32_t tree_id)
+{
+	level_enter_as_writer(level);
+	struct key_splice *first = sst_meta_get_first_guard(sst);
+	log_debug("Removing key from guard table: %.*s size: %d tree_id: %u", key_splice_get_key_size(first),
+		  key_splice_get_key_offset(first), key_splice_get_key_size(first), tree_id);
+	bool ret = minos_delete(level->guard_table[tree_id], key_splice_get_key_offset(first),
+				key_splice_get_key_size(first));
+
+	level_leave_as_writer(level);
+	return ret;
 }
 
 //compaction scanner staff

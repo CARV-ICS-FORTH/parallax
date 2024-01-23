@@ -488,9 +488,11 @@ void rul_apply_txn_buf_freeops_and_destroy(struct db_descriptor *db_desc, uint64
 			switch (curr->txn_entry[i].op_type) {
 			case RUL_FREE:
 			case RUL_LOG_FREE:
+			case RUL_FREE_SST:
 				mem_free_segment(db_desc->db_volume, curr->txn_entry[i].dev_offt);
 				break;
 			case RUL_ALLOCATE:
+			case RUL_ALLOCATE_SST:
 			case RUL_LARGE_LOG_ALLOCATE:
 			case RUL_MEDIUM_LOG_ALLOCATE:
 			case RUL_SMALL_LOG_ALLOCATE:
@@ -511,4 +513,124 @@ void rul_apply_txn_buf_freeops_and_destroy(struct db_descriptor *db_desc, uint64
 	HASH_DEL(log_desc->trans_map, transaction);
 	MUTEX_UNLOCK(&log_desc->trans_map_lock);
 	free(transaction);
+}
+
+struct rul_cursor *rul_cursor_init(struct volume_descriptor *volume_desc, struct pr_db_superblock *db_superblock)
+{
+	struct rul_cursor *cursor = calloc(1, sizeof(struct rul_cursor));
+	if (!cursor) {
+		log_fatal("Failed to allocate memory");
+		BUG_ON();
+	}
+	cursor->volume_desc = volume_desc;
+	cursor->db_superblock = db_superblock;
+	cursor->segment = NULL;
+	cursor->chunks_in_segment = 0;
+	cursor->curr_chunk_id = 0;
+	cursor->chunk_entries = 0;
+	cursor->curr_entry_in_chunk = 0;
+	cursor->state = GET_HEAD;
+	cursor->valid = 1;
+	return cursor;
+}
+
+struct rul_log_entry *rul_cursor_get_next(struct rul_cursor *cursor)
+{
+	struct pr_region_allocation_log *allocation_log = &cursor->db_superblock->allocation_log;
+	while (1) {
+		switch (cursor->state) {
+		case GET_HEAD:
+			if (!allocation_log->head_dev_offt) {
+				cursor->segment = NULL;
+				cursor->state = EXIT;
+				cursor->valid = 0;
+				break;
+			}
+			cursor->segment = REAL_ADDRESS(allocation_log->head_dev_offt);
+			cursor->state = CALCULATE_CHUNKS_IN_SEGMENT;
+			break;
+		case GET_NEXT_SEGMENT:
+			assert(REAL_ADDRESS(allocation_log->tail_dev_offt));
+			if (cursor->segment == REAL_ADDRESS(allocation_log->tail_dev_offt)) {
+				cursor->segment = NULL;
+				cursor->valid = 0;
+				cursor->state = EXIT;
+				break;
+			}
+			cursor->segment = REAL_ADDRESS(cursor->segment->next_seg_offt);
+			cursor->state = CALCULATE_CHUNKS_IN_SEGMENT;
+			break;
+		case GET_NEXT_CHUNK:
+			++cursor->curr_chunk_id;
+			if (cursor->curr_chunk_id >= cursor->chunks_in_segment) {
+				cursor->state = GET_NEXT_SEGMENT;
+				break;
+			}
+
+			cursor->state = CALCULATE_CHUNK_ENTRIES;
+			break;
+		case CALCULATE_CHUNKS_IN_SEGMENT: {
+			cursor->chunks_in_segment = RUL_LOG_CHUNK_NUM;
+
+			uint8_t last_segment = cursor->segment == REAL_ADDRESS(allocation_log->tail_dev_offt);
+			if (last_segment) {
+				uint32_t last_segment_size = allocation_log->size % SEGMENT_SIZE;
+				cursor->chunks_in_segment = last_segment_size / RUL_LOG_CHUNK_SIZE_IN_BYTES;
+				cursor->chunks_in_segment += last_segment_size % RUL_LOG_CHUNK_SIZE_IN_BYTES != 0;
+			}
+
+			cursor->curr_chunk_id = 0;
+			cursor->state = CALCULATE_CHUNK_ENTRIES;
+			break;
+		}
+		case CALCULATE_CHUNK_ENTRIES:
+			cursor->chunk_entries = RUL_LOG_CHUNK_MAX_ENTRIES;
+
+			uint8_t last_segment = cursor->segment == REAL_ADDRESS(allocation_log->tail_dev_offt);
+			if (last_segment && cursor->curr_chunk_id == cursor->chunks_in_segment - 1) {
+				uint32_t last_chunk_size = (allocation_log->size % SEGMENT_SIZE) -
+							   (cursor->curr_chunk_id * RUL_LOG_CHUNK_SIZE_IN_BYTES);
+				assert(0 == last_chunk_size % sizeof(struct rul_log_entry));
+				cursor->chunk_entries = last_chunk_size / sizeof(struct rul_log_entry);
+			}
+
+			cursor->curr_entry_in_chunk = 0;
+			cursor->state = GET_NEXT_ENTRY;
+			break;
+
+		case GET_NEXT_ENTRY:
+			if (cursor->curr_entry_in_chunk >= cursor->chunk_entries) {
+				cursor->state = GET_NEXT_CHUNK;
+				break;
+			}
+			return &cursor->segment->chunk[cursor->curr_chunk_id][cursor->curr_entry_in_chunk++];
+		case EXIT:
+			cursor->segment = NULL;
+			cursor->valid = 0;
+			return NULL;
+		default:
+			log_fatal("Unknown state in redo undo log!");
+			BUG_ON();
+		}
+	}
+}
+
+void rul_close_cursor(struct rul_cursor *cursor)
+{
+	free(cursor);
+}
+
+bool rul_replay_mem_guards(struct volume_descriptor *volume_desc, struct pr_db_superblock *db_superblock,
+			   process_entry process, void *cnxt)
+{
+	struct rul_cursor *cursor = rul_cursor_init(volume_desc, db_superblock);
+	for (struct rul_log_entry *entry = rul_cursor_get_next(cursor); entry != NULL;
+	     entry = rul_cursor_get_next(cursor)) {
+		log_debug("Found type: %d", entry->op_type);
+		if (entry->op_type != RUL_ALLOCATE_SST && entry->op_type != RUL_FREE_SST)
+			continue;
+		(*process)(entry, cnxt);
+	}
+	log_debug("Done recovering mem_guards");
+	return true;
 }

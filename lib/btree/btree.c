@@ -29,10 +29,12 @@
 #include "index_node.h"
 #include "key_splice.h"
 #include "lsn.h"
+#include "minos.h"
 #include "segment_allocator.h"
 
 #include "../allocator/persistent_operations.h"
 #include "../parallax_callbacks/parallax_callbacks.h"
+#include "sst.h"
 #include <assert.h>
 #include <list.h>
 #include <log.h>
@@ -274,6 +276,27 @@ static void recover_logs(db_descriptor *db_desc)
 	db_desc->lsn_factory = lsn_factory_init(last_lsn_id);
 }
 
+static bool process_mem_guard(struct rul_log_entry *entry, void *cnxt)
+{
+	struct db_descriptor *db_desc = cnxt;
+	struct sst_meta *meta = REAL_ADDRESS(entry->dev_offt);
+	if (entry->op_type == RUL_ALLOCATE_SST) {
+		level_add_ssts(db_desc->dev_levels[sst_meta_get_level_id(meta)], 1, &meta, 0);
+	}
+	if (entry->op_type == RUL_FREE_SST)
+		level_remove_sst(db_desc->dev_levels[sst_meta_get_level_id(meta)], meta, 0);
+
+	return true;
+}
+
+static bool recover_mem_guards(struct db_descriptor *db_desc)
+{
+	log_debug("\n<recovering mem guard>");
+	rul_replay_mem_guards(db_desc->db_volume, db_desc->db_superblock, process_mem_guard, db_desc);
+	log_debug("\n</recovering mem guard>");
+	return true;
+}
+
 static void restore_db(struct db_descriptor *db_desc, uint32_t region_idx, struct par_db_options *options)
 {
 	/*First, calculate superblock offt and read it in memory*/
@@ -330,6 +353,7 @@ static db_descriptor *get_db_from_volume(char *volume_name, char *db_name, struc
 			db_desc->dirty = 0;
 			rul_log_init(db_desc);
 			restore_db(db_desc, db_desc->db_superblock->id, options);
+			recover_mem_guards(db_desc);
 		} else {
 			db_desc->dirty = 1;
 			log_debug("Initializing new DB: %s, initializing its allocation log", db_name);
