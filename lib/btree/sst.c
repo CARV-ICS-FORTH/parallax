@@ -461,13 +461,6 @@ bool sst_append_splice(struct sst *sst, struct kv_splice_base *splice)
 		_exit(EXIT_FAILURE);
 	}
 
-	level_increase_size(sst->db_handle->db_desc->dev_levels[sst->meta->level_id],
-			    kv_splice_base_get_size(&new_splice), 1);
-	// level_add_key_to_bf(w_cursor->handle->db_desc->dev_levels[w_cursor->level_id], w_cursor->tree_id,
-	// 		    kv_splice_base_get_key_buf(&new_splice), kv_splice_base_get_key_size(&new_splice));
-
-	level_inc_num_keys(sst->db_handle->db_desc->dev_levels[sst->meta->level_id], sst->tree_id, 1);
-
 	if (0 == sst->meta->first_guard_size)
 		sst_set_first_guard(sst, &new_splice);
 

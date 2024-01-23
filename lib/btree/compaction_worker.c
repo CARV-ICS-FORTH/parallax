@@ -343,6 +343,25 @@ static void comp_fill_dst_heap_node(struct compaction_request *comp_req, struct 
 	level_comp_scanner_get_curr(comp_req->dst_scanner, &heap_node->splice);
 }
 
+#define COMP_MAGIC_SMALL_KV_SIZE (33)
+static int64_t comp_calculate_level_keys(struct db_descriptor *db_desc, uint8_t level_id)
+{
+	assert(level_id > 0);
+	uint8_t tree_id = 0; /*Always caclulate the immutable aka 0 tree of the level*/
+	int64_t total_keys = level_get_num_KV_pairs(db_desc->dev_levels[level_id], tree_id);
+
+	if (0 == total_keys && 1 == level_id) {
+		total_keys = db_desc->L0.max_level_size / COMP_MAGIC_SMALL_KV_SIZE;
+	}
+
+	if (level_id > 1) {
+		total_keys += level_get_num_KV_pairs(db_desc->dev_levels[level_id - 1], tree_id);
+	}
+	assert(total_keys);
+	// log_debug("Total keys of level %u are %d", level_id, total_keys);
+	return total_keys;
+}
+
 static void compact_level_direct_IO(struct db_handle *handle, struct compaction_request *comp_req)
 {
 	struct compaction_roots comp_roots = { .src_root = NULL, .dst_root = NULL };
@@ -365,12 +384,11 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 								handle->db_desc->db_volume->vol_fd);
 
 	//Sanity check we perform a compaction in an empty tree of the dst level
-	assert(0 == level_get_offset(handle->db_desc->dev_levels[comp_req->dst_level], comp_req->dst_tree));
+	// assert(0 == level_get_offset(handle->db_desc->dev_levels[comp_req->dst_level], comp_req->dst_tree));
 	comp_req->dst_scanner = level_is_empty(handle->db_desc->dev_levels[comp_req->dst_level], 0) ?
 					NULL :
-					level_comp_scanner_init(handle->db_desc->dev_levels[comp_req->dst_level],
-								comp_req->dst_tree, SST_SIZE,
-								handle->db_desc->db_volume->vol_fd);
+					level_comp_scanner_init(handle->db_desc->dev_levels[comp_req->dst_level], 0,
+								SST_SIZE, handle->db_desc->db_volume->vol_fd);
 
 	//old school
 	// log_debug("Initializing write cursor for level [%u][%u]", compaction_get_dst_level(comp_req),
@@ -401,6 +419,9 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 	//old school
 	// if (wcursor_get_level_id(comp_req->wcursor) == handle->db_desc->level_medium_inplace)
 	// 	wcursor_set_LRU_cache(comp_req->wcursor, mlog_cache_init_LRU(handle));
+
+	level_create_bf(handle->db_desc->dev_levels[comp_req->dst_level], comp_req->dst_tree,
+			comp_calculate_level_keys(handle->db_desc, comp_req->dst_level), handle);
 	struct medium_log_LRU_cache *mlog_cache =
 		comp_req->dst_level == handle->db_desc->level_medium_inplace ? mlog_cache_init_LRU(handle) : NULL;
 	comp_req->curr_sst = sst_create(SST_SIZE, comp_req->txn_id, handle, comp_req->dst_level, mlog_cache);
@@ -436,7 +457,7 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 
 	// init Li+1 cursor (if any)
 	if (comp_req->dst_scanner) {
-		comp_fill_dst_heap_node(comp_req, &src_heap_node);
+		comp_fill_dst_heap_node(comp_req, &dst_heap_node);
 		sh_insert_heap_node(m_heap, &dst_heap_node);
 	}
 
@@ -452,8 +473,19 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 			if (NULL == comp_req->curr_sst)
 				comp_req->curr_sst =
 					sst_create(SST_SIZE, comp_req->txn_id, handle, comp_req->dst_level, mlog_cache);
-			if (sst_append_KV_pair(comp_req->curr_sst, &min_heap_node.splice))
+			if (sst_append_KV_pair(comp_req->curr_sst, &min_heap_node.splice)) {
+				level_add_key_to_bf(handle->db_desc->dev_levels[comp_req->dst_level],
+						    comp_req->dst_tree,
+						    kv_splice_base_get_key_buf(&min_heap_node.splice),
+						    kv_splice_base_get_key_size(&min_heap_node.splice));
+				level_increase_size(handle->db_desc->dev_levels[comp_req->dst_level],
+						    kv_splice_base_get_size(&min_heap_node.splice), 1);
+
+				level_inc_num_keys(handle->db_desc->dev_levels[comp_req->dst_level], comp_req->dst_tree,
+						   1);
+
 				break;
+			}
 			sst_flush(comp_req->curr_sst);
 			struct sst_meta *meta = sst_get_meta(comp_req->curr_sst);
 			level_add_ssts(handle->db_desc->dev_levels[comp_req->dst_level], 1, &meta, comp_req->dst_tree);
@@ -485,6 +517,8 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 		comp_req->curr_sst = NULL;
 	}
 	handle->db_desc->dirty = 0x01;
+
+	level_persist_bf(handle->db_desc->dev_levels[comp_req->dst_level], comp_req->dst_tree);
 
 	if (comp_req->src_level == 0)
 		level_scanner_close(comp_req->L0_scanner);
@@ -567,7 +601,7 @@ static void compact_with_empty_destination_level(struct compaction_request *comp
 	unlock_to_update_levels_after_compaction(comp_req);
 
 	log_debug("Swapped levels %d to %d successfully", comp_req->src_level, comp_req->dst_level);
-	assert(level_get_index_first_seg(comp_req->db_desc->dev_levels[comp_req->dst_level], 0) != NULL);
+	// assert(level_get_index_first_seg(comp_req->db_desc->dev_levels[comp_req->dst_level], 0) != NULL);
 }
 
 void *compaction(void *compaction_request)
@@ -627,16 +661,16 @@ void compaction_close(struct compaction_request *comp_req)
 		if (are_parallax_callbacks_set(par_callbacks)) {
 			struct parallax_callback_funcs par_cb = parallax_get_callbacks(par_callbacks);
 			void *context = parallax_get_context(par_callbacks);
-			assert(level_get_index_first_seg(hd.db_desc->dev_levels[comp_req->dst_level], 1));
-			assert(level_get_index_last_seg(hd.db_desc->dev_levels[comp_req->dst_level], 1));
+			// assert(level_get_index_first_seg(hd.db_desc->dev_levels[comp_req->dst_level], 1));
+			// assert(level_get_index_last_seg(hd.db_desc->dev_levels[comp_req->dst_level], 1));
 			if (par_cb.compaction_ended_cb) {
-				uint64_t first = ABSOLUTE_ADDRESS(
-					level_get_index_first_seg(hd.db_desc->dev_levels[comp_req->dst_level], 1));
-				uint64_t last = ABSOLUTE_ADDRESS(
-					level_get_index_last_seg(hd.db_desc->dev_levels[comp_req->dst_level], 1));
-				uint64_t root = ABSOLUTE_ADDRESS(
-					level_get_root(hd.db_desc->dev_levels[comp_req->dst_level], 1));
-				par_cb.compaction_ended_cb(context, comp_req->src_level, first, last, root);
+				// uint64_t first = ABSOLUTE_ADDRESS(
+				// 	level_get_index_first_seg(hd.db_desc->dev_levels[comp_req->dst_level], 1));
+				// uint64_t last = ABSOLUTE_ADDRESS(
+				// 	level_get_index_last_seg(hd.db_desc->dev_levels[comp_req->dst_level], 1));
+				// uint64_t root = ABSOLUTE_ADDRESS(
+				// 	level_get_root(hd.db_desc->dev_levels[comp_req->dst_level], 1));
+				// par_cb.compaction_ended_cb(context, comp_req->src_level, first, last, root);
 			}
 		}
 	}

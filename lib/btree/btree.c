@@ -229,20 +229,21 @@ static void init_fresh_db(struct db_descriptor *db_desc, struct par_db_options *
 		db_desc->L0.level_size[tree_id] = 0;
 		/*segments info per level*/
 		db_desc->L0.first_segment[tree_id] = 0;
-		superblock->first_segment[0][tree_id] = 0;
+		//Old school
+		// superblock->first_segment[0][tree_id] = 0;
 
 		db_desc->L0.last_segment[tree_id] = 0;
-		superblock->last_segment[0][tree_id] = 0;
+		// superblock->last_segment[0][tree_id] = 0;
 
 		db_desc->L0.offset[tree_id] = 0;
-		superblock->offset[0][tree_id] = 0;
+		// superblock->offset[0][tree_id] = 0;
 
 		/*total keys*/
 		db_desc->L0.level_size[tree_id] = 0;
 		superblock->level_size[0][tree_id] = 0;
 		/*finally the roots*/
 		db_desc->L0.root[tree_id] = NULL;
-		superblock->root_r[0][tree_id] = 0;
+		// superblock->root_r[0][tree_id] = 0;
 	}
 	for (uint8_t level_id = 1; level_id < MAX_LEVELS; ++level_id)
 		db_desc->dev_levels[level_id] = level_create_fresh(level_id, options->options[LEVEL0_SIZE].value,
@@ -1286,6 +1287,7 @@ const char *btree_insert_key_value(bt_insert_req *ins_req)
 static inline struct lock_table *bt_reader_visit_node(db_descriptor *db_desc, struct node_header *node,
 						      struct lock_table *prev_lock, uint32_t level_id)
 {
+	assert(level_id == 0);
 	if (level_id)
 		return NULL;
 
@@ -1308,9 +1310,8 @@ static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id,
 
 	// if (level_id && !level_does_key_exist(db_desc->dev_levels[level_id], get_op->key_splice))
 	// 	return;
-
-	struct node_header *curr_node = 0 == level_id ? db_desc->L0.root[tree_id] :
-							level_get_root(db_desc->dev_levels[level_id], tree_id);
+	assert(0 == level_id);
+	struct node_header *curr_node = db_desc->L0.root[tree_id];
 	if (NULL == curr_node) {
 		get_op->found = 0;
 		return;
@@ -1320,7 +1321,6 @@ static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id,
 	lock_table *curr_lock = NULL;
 
 	while (curr_node->type != leafNode && curr_node->type != leafRootNode) {
-		//No locking needed for the device levels >= 1
 		curr_lock = bt_reader_visit_node(db_desc, curr_node, prev_lock, level_id);
 		// if (0 == level_id) {
 		// 	curr_lock = find_lock_position((const lock_table **)db_desc->levels[level_id].level_lock_table,

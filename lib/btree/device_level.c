@@ -42,10 +42,10 @@ struct level_lock {
 
 struct device_level {
 	//old school
-	struct segment_header *first_segment[NUM_TREES_PER_LEVEL];
-	struct segment_header *last_segment[NUM_TREES_PER_LEVEL];
-	uint64_t offset[NUM_TREES_PER_LEVEL];
-	struct node_header *root[NUM_TREES_PER_LEVEL];
+	// struct segment_header *first_segment[NUM_TREES_PER_LEVEL];
+	// struct segment_header *last_segment[NUM_TREES_PER_LEVEL];
+	// uint64_t offset[NUM_TREES_PER_LEVEL];
+	// struct node_header *root[NUM_TREES_PER_LEVEL];
 	struct pbf_desc *bloom_desc[NUM_TREES_PER_LEVEL];
 	uint64_t level_size[NUM_TREES_PER_LEVEL];
 	int64_t num_level_keys[NUM_TREES_PER_LEVEL];
@@ -56,10 +56,7 @@ struct device_level {
 	volatile struct segment_header *medium_log_head;
 	volatile struct segment_header *medium_log_tail;
 	uint64_t medium_log_size;
-	// struct level_lock guard_of_level;
-	// int64_t active_operations;
-	struct level_counter active_ops[LEVEL_ENTRY_POINTS];
-	struct level_lock guards[LEVEL_ENTRY_POINTS];
+
 	/*info for trimming medium_log, used only in L_{n-1}*/
 	uint64_t medium_in_place_max_segment_id;
 	uint64_t medium_in_place_segment_dev_offt;
@@ -69,6 +66,8 @@ struct device_level {
 	bool compaction_in_progress;
 	uint8_t level_id;
 	char in_recovery_mode;
+	struct level_lock guards[LEVEL_ENTRY_POINTS];
+	struct level_counter active_ops[LEVEL_ENTRY_POINTS];
 };
 
 struct device_level *level_create_fresh(uint32_t level_id, uint32_t l0_size, uint32_t growth_factor)
@@ -77,8 +76,10 @@ struct device_level *level_create_fresh(uint32_t level_id, uint32_t l0_size, uin
 	level->level_id = level_id;
 	level->compaction_in_progress = false;
 
-	for (int i = 0; i < LEVEL_ENTRY_POINTS; i++)
+	for (int i = 0; i < LEVEL_ENTRY_POINTS; i++) {
 		RWLOCK_INIT(&level->guards[i].rx_lock, NULL);
+		level->active_ops[i].active_operations = 0;
+	}
 	MUTEX_INIT(&level->level_allocation_lock, NULL);
 
 	level->max_level_size = l0_size;
@@ -110,20 +111,20 @@ struct device_level *level_restore_from_device(uint32_t level_id, struct pr_db_s
 	struct device_level *level = level_create_fresh(level_id, l0_size, growth_factor);
 
 	for (uint32_t tree_id = 0; tree_id < num_trees; tree_id++) {
-		if (0 == superblock->first_segment[level_id][tree_id])
-			continue; //empty level
-		//
-		level->first_segment[tree_id] =
-			(segment_header *)REAL_ADDRESS(superblock->first_segment[level_id][tree_id]);
-		level->last_segment[tree_id] =
-			(segment_header *)REAL_ADDRESS(superblock->last_segment[level_id][tree_id]);
-		level->offset[tree_id] = superblock->offset[level_id][tree_id];
+		// if (0 == superblock->first_segment[level_id][tree_id])
+		// 	continue; //empty level
+		//Old school
+		// level->first_segment[tree_id] =
+		// 	(segment_header *)REAL_ADDRESS(superblock->first_segment[level_id][tree_id]);
+		// level->last_segment[tree_id] =
+		// 	(segment_header *)REAL_ADDRESS(superblock->last_segment[level_id][tree_id]);
+		// level->offset[tree_id] = superblock->offset[level_id][tree_id];
 		/*level size in B*/
 		level->level_size[tree_id] = superblock->level_size[level_id][tree_id];
 		/*level keys*/
 		level->num_level_keys[tree_id] = superblock->num_level_keys[level_id][tree_id];
-		/*finally the roots*/
-		level->root[tree_id] = REAL_ADDRESS(superblock->root_r[level_id][tree_id]);
+		//Old school
+		// level->root[tree_id] = REAL_ADDRESS(superblock->root_r[level_id][tree_id]);
 
 		if (0 == superblock->bloom_filter_valid[level_id][tree_id]) {
 			level->bloom_desc[tree_id] = NULL;
@@ -136,24 +137,14 @@ struct device_level *level_restore_from_device(uint32_t level_id, struct pr_db_s
 	return level;
 }
 
-// inline uint64_t level_get_txn_id(struct device_level *level, uint32_t tree_id)
+//Old school
+// inline struct node_header *level_get_root(struct device_level *level, uint32_t tree_id)
 // {
-// 	return level->allocation_txn_id[tree_id];
+// 	log_fatal("Should not use this method with SSTs");
+// 	assert(0);
+// 	_exit(EXIT_FAILURE);
+// 	return level->root[tree_id];
 // }
-
-// inline void level_set_txn_id(struct device_level *level, uint32_t tree_id, uint64_t txn_id)
-// {
-// 	log_debug("---------------> Setting txn id Level[%u][%u] = %lu", level->level_id, tree_id, txn_id);
-// 	level->allocation_txn_id[tree_id] = txn_id;
-// }
-
-inline struct node_header *level_get_root(struct device_level *level, uint32_t tree_id)
-{
-	log_fatal("Should not use this method with SSTs");
-	assert(0);
-	_exit(EXIT_FAILURE);
-	return level->root[tree_id];
-}
 
 bool level_is_empty(struct device_level *level, uint32_t tree_id)
 {
@@ -161,40 +152,45 @@ bool level_is_empty(struct device_level *level, uint32_t tree_id)
 }
 
 // cppcheck-suppress unusedFunction
-inline uint64_t level_get_root_dev_offt(struct device_level *level, uint32_t tree_id)
-{
-	struct node_header *root = level_get_root(level, tree_id);
-	return ABSOLUTE_ADDRESS(root);
-}
-
-inline struct segment_header *level_get_index_first_seg(struct device_level *level, uint32_t tree_id)
-{
-	return level->first_segment[tree_id];
-}
-
-// cppcheck-suppress unusedFunction
-inline uint64_t level_get_index_first_seg_offt(struct device_level *level, uint32_t tree_id)
-{
-	struct segment_header *first = level_get_index_first_seg(level, tree_id);
-	return ABSOLUTE_ADDRESS(first);
-}
-
-inline struct segment_header *level_get_index_last_seg(struct device_level *level, uint32_t tree_id)
-{
-	return level->last_segment[tree_id];
-}
+// Old school
+// inline uint64_t level_get_root_dev_offt(struct device_level *level, uint32_t tree_id)
+// {
+// 	struct node_header *root = level_get_root(level, tree_id);
+// 	return ABSOLUTE_ADDRESS(root);
+// }
+//Old school
+// inline struct segment_header *level_get_index_first_seg(struct device_level *level, uint32_t tree_id)
+// {
+// 	return level->first_segment[tree_id];
+// }
 
 // cppcheck-suppress unusedFunction
-inline uint64_t level_get_index_last_seg_offt(struct device_level *level, uint32_t tree_id)
-{
-	struct segment_header *last = level_get_index_last_seg(level, tree_id);
-	return ABSOLUTE_ADDRESS(last);
-}
+// Old school
+// inline uint64_t level_get_index_first_seg_offt(struct device_level *level, uint32_t tree_id)
+// {
+// 	struct segment_header *first = level_get_index_first_seg(level, tree_id);
+// 	return ABSOLUTE_ADDRESS(first);
+// }
 
-inline uint64_t level_get_offset(struct device_level *level, uint32_t tree_id)
-{
-	return level->offset[tree_id];
-}
+//Old school
+// inline struct segment_header *level_get_index_last_seg(struct device_level *level, uint32_t tree_id)
+// {
+// 	return level->last_segment[tree_id];
+// }
+
+// cppcheck-suppress unusedFunction
+//Old school
+// inline uint64_t level_get_index_last_seg_offt(struct device_level *level, uint32_t tree_id)
+// {
+// 	struct segment_header *last = level_get_index_last_seg(level, tree_id);
+// 	return ABSOLUTE_ADDRESS(last);
+// }
+
+//Old school
+// inline uint64_t level_get_offset(struct device_level *level, uint32_t tree_id)
+// {
+// 	return level->offset[tree_id];
+// }
 
 inline uint64_t level_get_size(struct device_level *level, uint32_t tree_id)
 {
@@ -273,12 +269,12 @@ void level_leave_as_writer(struct device_level *level)
 
 uint8_t level_enter_as_reader(struct device_level *level)
 {
+	assert(level);
 	if (!level) //empty level
 		return UINT8_MAX;
 	assert(level->level_id > 0);
 	uint8_t ticket_id = level_get_tsc() % LEVEL_ENTRY_POINTS;
 	RWLOCK_RDLOCK(&level->guards[ticket_id].rx_lock);
-	assert(level->active_ops[ticket_id].active_operations >= 0);
 	__sync_fetch_and_add(&level->active_ops[ticket_id].active_operations, 1);
 	RWLOCK_UNLOCK(&level->guards[ticket_id].rx_lock);
 	return ticket_id;
@@ -286,11 +282,16 @@ uint8_t level_enter_as_reader(struct device_level *level)
 
 uint8_t level_leave_as_reader(struct device_level *level, uint8_t ticket_id)
 {
+	assert(level);
 	if (!level) //empty level
 		return UINT8_MAX;
 	// RWLOCK_UNLOCK(&level->guard_of_level.rx_lock);
 	__sync_fetch_and_sub(&level->active_ops[ticket_id].active_operations, 1);
-	assert(level->active_ops[ticket_id].active_operations >= 0);
+	// if (level->active_ops[ticket_id].active_operations != 0) {
+	// 	log_debug("Active ops for ticket_id: %u and level %u are: %ld", ticket_id, level->level_id,
+	// 		  level->active_ops[ticket_id].active_operations);
+	// 	assert(0);
+	// }
 	return UINT8_MAX;
 }
 
@@ -312,25 +313,22 @@ void level_destroy(struct device_level *level)
 void level_save_to_superblock(struct device_level *level, struct pr_db_superblock *db_superblock, uint32_t tree_id)
 {
 	uint32_t dst_level_id = level->level_id;
-	/*new info about my level*/
-	db_superblock->root_r[dst_level_id][0] = ABSOLUTE_ADDRESS(level->root[tree_id]);
+	//Old school
+	// db_superblock->root_r[dst_level_id][0] = ABSOLUTE_ADDRESS(level->root[tree_id]);
 
-	db_superblock->first_segment[dst_level_id][0] = ABSOLUTE_ADDRESS(level->first_segment[tree_id]);
+	// db_superblock->first_segment[dst_level_id][0] = ABSOLUTE_ADDRESS(level->first_segment[tree_id]);
 
-	log_debug("Persist %u first was %lu", dst_level_id, ABSOLUTE_ADDRESS(level->first_segment[tree_id]));
-	assert(level->first_segment[tree_id]);
+	// log_debug("Persist %u first was %lu", dst_level_id, ABSOLUTE_ADDRESS(level->first_segment[tree_id]));
+	// assert(level->first_segment[tree_id]);
 
-	db_superblock->last_segment[dst_level_id][0] = ABSOLUTE_ADDRESS(level->last_segment[tree_id]);
+	// db_superblock->last_segment[dst_level_id][0] = ABSOLUTE_ADDRESS(level->last_segment[tree_id]);
 
-	db_superblock->offset[dst_level_id][0] = level->offset[tree_id];
+	// db_superblock->offset[dst_level_id][0] = level->offset[tree_id];
+	// log_debug("Writing root[%u][%u] = %p", dst_level_id, tree_id, (void *)level->root[tree_id]);
+	//db_superblock->root_r[dst_level_id][0] = ABSOLUTE_ADDRESS(level->root[tree_id]);
 
 	db_superblock->level_size[dst_level_id][0] = level->level_size[tree_id];
-
 	db_superblock->num_level_keys[dst_level_id][0] = level->num_level_keys[tree_id];
-
-	log_debug("Writing root[%u][%u] = %p", dst_level_id, tree_id, (void *)level->root[tree_id]);
-
-	db_superblock->root_r[dst_level_id][0] = ABSOLUTE_ADDRESS(level->root[tree_id]);
 }
 
 void level_save_bf_info_to_superblock(struct device_level *level, struct pr_db_superblock *db_superblock)
@@ -394,30 +392,33 @@ bool level_set_medium_in_place_seg_offt(struct device_level *level, uint64_t seg
 bool level_zero(struct device_level *level, uint32_t tree_id)
 {
 	level->level_size[tree_id] = 0;
-	level->first_segment[tree_id] = NULL;
-	level->last_segment[tree_id] = NULL;
-	level->offset[tree_id] = 0;
-	level->root[tree_id] = NULL;
+	// level->first_segment[tree_id] = NULL;
+	// level->last_segment[tree_id] = NULL;
+	// level->offset[tree_id] = 0;
+	// level->root[tree_id] = NULL;
 	level->num_level_keys[tree_id] = 0;
+	level->guard_table[tree_id] = NULL;
 	return true;
 }
 
-bool level_set_root(struct device_level *level, uint32_t tree_id, struct node_header *node)
-{
-	level->root[tree_id] = node;
-	return true;
-}
+//Old school
+// bool level_set_root(struct device_level *level, uint32_t tree_id, struct node_header *node)
+// {
+// 	level->root[tree_id] = node;
+// 	return true;
+// }
 
 bool level_swap(struct device_level *level_dst, uint32_t tree_dst, struct device_level *level_src, uint32_t tree_src)
 {
-	level_dst->first_segment[tree_dst] = level_src->first_segment[tree_src];
-	level_src->first_segment[tree_src] = NULL;
+	//Old school
+	// level_dst->first_segment[tree_dst] = level_src->first_segment[tree_src];
+	// level_src->first_segment[tree_src] = NULL;
 
-	level_dst->last_segment[tree_dst] = level_src->last_segment[tree_src];
-	level_src->last_segment[tree_src] = NULL;
+	// level_dst->last_segment[tree_dst] = level_src->last_segment[tree_src];
+	// level_src->last_segment[tree_src] = NULL;
 
-	level_dst->offset[tree_dst] = level_src->offset[tree_src];
-	level_src->offset[tree_src] = 0;
+	// level_dst->offset[tree_dst] = level_src->offset[tree_src];
+	// level_src->offset[tree_src] = 0;
 
 	level_dst->level_size[tree_dst] = level_src->level_size[tree_src];
 	level_src->level_size[tree_src] = 0;
@@ -427,9 +428,12 @@ bool level_swap(struct device_level *level_dst, uint32_t tree_dst, struct device
 
 	level_dst->bloom_desc[tree_dst] = level_src->bloom_desc[tree_src];
 	level_src->bloom_desc[tree_src] = NULL;
+	level_dst->guard_table[tree_dst] = level_src->guard_table[tree_src];
+	level_src->guard_table[tree_src] = NULL;
 
-	level_dst->root[tree_dst] = level_src->root[tree_src];
-	level_src->root[tree_src] = NULL;
+	//Old school
+	// level_dst->root[tree_dst] = level_src->root[tree_src];
+	// level_src->root[tree_src] = NULL;
 
 	return true;
 }
@@ -472,34 +476,36 @@ bool level_increase_size(struct device_level *level, uint32_t size, uint32_t tre
 	return true;
 }
 
-struct segment_header *level_add_segment(struct device_level *level, uint8_t tree_id, uint64_t seg_offt)
-{
-	assert(seg_offt > 0);
-	struct segment_header *new_segment = (struct segment_header *)REAL_ADDRESS(seg_offt);
-	if (!new_segment) {
-		log_fatal("Failed to allocate space for new segment level");
-		BUG_ON();
-	}
+//Old school
+// struct segment_header *level_add_segment(struct device_level *level, uint8_t tree_id, uint64_t seg_offt)
+// {
+// 	assert(seg_offt > 0);
+// 	struct segment_header *new_segment = (struct segment_header *)REAL_ADDRESS(seg_offt);
+// 	if (!new_segment) {
+// 		log_fatal("Failed to allocate space for new segment level");
+// 		BUG_ON();
+// 	}
 
-	if (level->offset[tree_id])
-		level->offset[tree_id] += SEGMENT_SIZE;
-	else {
-		level->offset[tree_id] = SEGMENT_SIZE;
-		log_debug("Set first segment of level_id: %u tree_id: %u to %lu", level->level_id, tree_id,
-			  (uint64_t)new_segment);
-		level->first_segment[tree_id] = new_segment;
-		level->last_segment[tree_id] = NULL;
-	}
+// 	if (level->offset[tree_id])
+// 		level->offset[tree_id] += SEGMENT_SIZE;
+// 	else {
+// 		level->offset[tree_id] = SEGMENT_SIZE;
+// 		log_debug("Set first segment of level_id: %u tree_id: %u to %lu", level->level_id, tree_id,
+// 			  (uint64_t)new_segment);
+// 		level->first_segment[tree_id] = new_segment;
+// 		level->last_segment[tree_id] = NULL;
+// 	}
 
-	return new_segment;
-}
+// 	return new_segment;
+// }
 
-struct segment_header *level_allocate_segment(struct device_level *level, uint8_t tree_id,
-					      struct db_descriptor *db_desc, uint64_t txn_id)
-{
-	uint64_t seg_offt = seg_allocate_segment(db_desc, txn_id);
-	return level_add_segment(level, tree_id, seg_offt);
-}
+//Old school
+// struct segment_header *level_allocate_segment(struct device_level *level, uint8_t tree_id,
+// 					      struct db_descriptor *db_desc, uint64_t txn_id)
+// {
+// 	uint64_t seg_offt = seg_allocate_segment(db_desc, txn_id);
+// 	return level_add_segment(level, tree_id, seg_offt);
+// }
 
 bool level_add_key_to_bf(struct device_level *level, uint32_t tree_id, char *key, uint32_t key_size)
 {
@@ -513,11 +519,12 @@ int64_t level_inc_num_keys(struct device_level *level, uint32_t tree_id, uint32_
 	return level->num_level_keys[tree_id] += num_keys;
 }
 
-bool level_set_index_last_seg(struct device_level *level, struct segment_header *segment, uint32_t tree_id)
-{
-	level->last_segment[tree_id] = segment;
-	return true;
-}
+//Old school
+// bool level_set_index_last_seg(struct device_level *level, struct segment_header *segment, uint32_t tree_id)
+// {
+// 	level->last_segment[tree_id] = segment;
+// 	return true;
+// }
 
 struct args {
 	db_descriptor *db_desc;
@@ -587,17 +594,17 @@ static struct leaf_node *level_get_leaf(struct device_level *level, struct key_s
 	struct sst_meta *meta = valid ? iter.iter_node->kv->value : NULL;
 	if (NULL == meta)
 		return NULL;
-	struct key_splice *first = sst_meta_get_first_guard(meta);
-	struct key_splice *last = sst_meta_get_last_guard(meta);
-	if (memcmp(key_splice_get_key_offset(key_splice), key_splice_get_key_offset(last),
-		   key_splice_get_key_size(key_splice)) > 0) {
-		log_fatal("Got wrong sst for splice: %.*s last splice is %.*s", key_splice_get_key_size(key_splice),
-			  key_splice_get_key_offset(key_splice), key_splice_get_key_size(last),
-			  key_splice_get_key_offset(last));
-		log_fatal("Got wrong sst first guard splice is %.*s", key_splice_get_key_size(first),
-			  key_splice_get_key_offset(first));
-		_exit(EXIT_FAILURE);
-	}
+	// struct key_splice *first = sst_meta_get_first_guard(meta);
+	// struct key_splice *last = sst_meta_get_last_guard(meta);
+	// if (memcmp(key_splice_get_key_offset(key_splice), key_splice_get_key_offset(last),
+	// 	   key_splice_get_key_size(key_splice)) > 0) {
+	// 	log_fatal("Got wrong sst for splice: %.*s last splice is %.*s", key_splice_get_key_size(key_splice),
+	// 		  key_splice_get_key_offset(key_splice), key_splice_get_key_size(last),
+	// 		  key_splice_get_key_offset(last));
+	// 	log_fatal("Got wrong sst first guard splice is %.*s", key_splice_get_key_size(first),
+	// 		  key_splice_get_key_offset(first));
+	// 	_exit(EXIT_FAILURE);
+	// }
 	//debug
 	// log_debug("SST responsible has first key: %.*s and last key %.*s root offt at: %lu", key_splice_get_key_size(first),
 	//    key_splice_get_key_offset(first), key_splice_get_key_size(last), key_splice_get_key_offset(last),
@@ -627,13 +634,17 @@ bool level_lookup(struct device_level *level, struct lookup_operation *get_op, i
 	uint8_t ticket_id = level_enter_as_reader(level);
 	get_op->found = 0;
 	get_op->key_device_address = NULL;
-	if (!level_does_key_exist(level, get_op->key_splice)) {
+
+	if (level_is_empty(level, tree_id))
 		goto done;
-	}
+
+	if (!level_does_key_exist(level, get_op->key_splice))
+		goto done;
+
 	struct leaf_node *curr_node = level_get_leaf(level, get_op->key_splice, tree_id);
 
 	if (NULL == curr_node) {
-		log_debug("Level is empty");
+		// log_debug("Level %u does not have the key",level->level_id);
 		goto done;
 	}
 
@@ -716,8 +727,15 @@ struct level_scanner_dev *level_scanner_dev_init(db_handle *database, uint8_t le
 
 bool level_scanner_dev_seek(struct level_scanner_dev *dev_level_scanner, struct key_splice *start_key_splice)
 {
+	if (start_key_splice == NULL) {
+		log_fatal("start key cannot be NULL");
+		_exit(EXIT_FAILURE);
+	}
 	struct leaf_node *leaf = NULL;
-	if (!start_key_splice) {
+	char smallest = 0;
+	bool is_smallest = key_splice_get_key_size(start_key_splice) == 1 &&
+			   0 == memcmp(key_splice_get_key_offset(start_key_splice), &smallest, 1);
+	if (is_smallest) {
 		struct minos_iterator iter;
 		log_debug("Scanner tree_id: %u", dev_level_scanner->tree_id);
 		minos_iter_seek_first(&iter, dev_level_scanner->level->guard_table[dev_level_scanner->tree_id]);
@@ -727,7 +745,8 @@ bool level_scanner_dev_seek(struct level_scanner_dev *dev_level_scanner, struct 
 		log_debug("Done fetching first SST with key: %.*s", key_splice_get_key_size(start_key_splice),
 			  key_splice_get_key_offset(start_key_splice));
 	} else {
-		log_debug("Fetching next SST");
+		log_debug("Fetching next SST for start key: %.*s", key_splice_get_key_size(start_key_splice),
+			  key_splice_get_key_offset(start_key_splice));
 		leaf = level_get_leaf(dev_level_scanner->level, start_key_splice, dev_level_scanner->tree_id);
 	}
 	// cppcheck-suppress variableScope
@@ -742,6 +761,11 @@ bool level_scanner_dev_seek(struct level_scanner_dev *dev_level_scanner, struct 
 	// 	}
 	// }
 	// struct leaf_node *leaf = level_get_leaf(dev_level_scanner->level, start_key_splice, dev_level_scanner->tree_id);
+	if (NULL == leaf) {
+		log_debug("Nothing more from level: %u, tree: %u", dev_level_scanner->level->level_id,
+			  dev_level_scanner->tree_id);
+		return false;
+	}
 	dev_level_scanner->leaf = leaf;
 	return (*dev_level_scanner->leaf_api->leaf_seek_iter)(leaf, dev_level_scanner->leaf_iter,
 							      key_splice_get_key_offset(start_key_splice),

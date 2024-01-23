@@ -82,8 +82,8 @@ struct scanner {
 	void *keyValue;
 	int32_t type; /*to be removed also*/
 	int32_t kv_level_id;
-	uint8_t tickets[LEVEL_ENTRY_POINTS];
 	uint8_t kv_cat;
+	uint64_t tickets[MAX_LEVELS];
 };
 
 void scanner_init(struct scanner *scanner, struct db_handle *database, void *start_key,

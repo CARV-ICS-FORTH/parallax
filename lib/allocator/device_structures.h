@@ -81,10 +81,12 @@ struct pr_region_allocation_log {
 struct pr_db_superblock {
 	char db_name[MAX_DB_NAME_SIZE];
 	struct pr_region_allocation_log allocation_log;
-	uint64_t root_r[MAX_LEVELS][NUM_TREES_PER_LEVEL];
-	uint64_t first_segment[MAX_LEVELS][NUM_TREES_PER_LEVEL];
-	uint64_t last_segment[MAX_LEVELS][NUM_TREES_PER_LEVEL];
-	uint64_t offset[MAX_LEVELS][NUM_TREES_PER_LEVEL];
+
+	//Old school
+	// uint64_t root_r[MAX_LEVELS][NUM_TREES_PER_LEVEL];
+	// uint64_t first_segment[MAX_LEVELS][NUM_TREES_PER_LEVEL];
+	// uint64_t last_segment[MAX_LEVELS][NUM_TREES_PER_LEVEL];
+	// uint64_t offset[MAX_LEVELS][NUM_TREES_PER_LEVEL];
 	uint64_t level_size[MAX_LEVELS][NUM_TREES_PER_LEVEL];
 	uint64_t num_level_keys[MAX_LEVELS][NUM_TREES_PER_LEVEL];
 	uint64_t bloom_filter_hash[MAX_LEVELS][NUM_TREES_PER_LEVEL];

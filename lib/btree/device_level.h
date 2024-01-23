@@ -211,7 +211,8 @@ void level_save_bf_info_to_superblock(struct device_level *level, struct pr_db_s
   *@param tree_id id of tree
   *@return the root of the tree or NULL if it is empty
 */
-struct node_header *level_get_root(struct device_level *level, uint32_t tree_id);
+//Old school
+// struct node_header *level_get_root(struct device_level *level, uint32_t tree_id);
 
 bool level_is_empty(struct device_level *level, uint32_t tree_id);
 
@@ -230,7 +231,8 @@ uint64_t level_get_root_dev_offt(struct device_level *level, uint32_t tree_id);
   * @param tree_id id of the tree
   * @return pointer to the segment or NULL if empty
   */
-struct segment_header *level_get_index_first_seg(struct device_level *level, uint32_t tree_id);
+//Old school
+// struct segment_header *level_get_index_first_seg(struct device_level *level, uint32_t tree_id);
 
 /**
   * @brief Returns the offset in the device where the first segment of the index resides.
@@ -238,7 +240,8 @@ struct segment_header *level_get_index_first_seg(struct device_level *level, uin
   * @param tree_id id of the tree
   * @return pointer to the segment or NULL if empty
   */
-uint64_t level_get_index_first_seg_offt(struct device_level *level, uint32_t tree_id);
+//Old school
+// uint64_t level_get_index_first_seg_offt(struct device_level *level, uint32_t tree_id);
 
 /**
   * @brief Returns pointer to the last segment of the index.
@@ -246,9 +249,11 @@ uint64_t level_get_index_first_seg_offt(struct device_level *level, uint32_t tre
   * @param tree_id id of the tree
   * @return pointer to the segment or NULL if empty
   */
-struct segment_header *level_get_index_last_seg(struct device_level *level, uint32_t tree_id);
+//Old school
+// struct segment_header *level_get_index_last_seg(struct device_level *level, uint32_t tree_id);
 
-bool level_set_index_last_seg(struct device_level *level, struct segment_header *segment, uint32_t tree_id);
+//Old school
+// bool level_set_index_last_seg(struct device_level *level, struct segment_header *segment, uint32_t tree_id);
 
 /**
   * @brief Returns the offset in the device where the last segment of the index resides.
@@ -256,14 +261,16 @@ bool level_set_index_last_seg(struct device_level *level, struct segment_header 
   * @param tree_id id of the tree
   * @return pointer to the segment or NULL if empty
   */
-uint64_t level_get_index_last_seg_offt(struct device_level *level, uint32_t tree_id);
+//Old school
+// uint64_t level_get_index_last_seg_offt(struct device_level *level, uint32_t tree_id);
 
 /**
 * @brief Return the offset? of the level.
   * @param level pointer to the level object
   * @param tree_id id of the tree
   */
-uint64_t level_get_offset(struct device_level *level, uint32_t tree_id);
+//Old school
+// uint64_t level_get_offset(struct device_level *level, uint32_t tree_id);
 
 /**
 * @brief Returns the size of the level in terms of B of key-value pairs
@@ -399,10 +406,13 @@ int64_t level_get_num_KV_pairs(struct device_level *level, uint32_t tree_id);
 bool level_increase_size(struct device_level *level, uint32_t size, uint32_t tree_id);
 
 int64_t level_inc_num_keys(struct device_level *level, uint32_t tree_id, uint32_t num_keys);
-struct segment_header *level_allocate_segment(struct device_level *level, uint8_t tree_id,
-					      struct db_descriptor *db_desc, uint64_t txn_id);
 
-struct segment_header *level_add_segment(struct device_level *level, uint8_t tree_id, uint64_t seg_offt);
+//Old school
+// struct segment_header *level_allocate_segment(struct device_level *level, uint8_t tree_id,
+// 					      struct db_descriptor *db_desc, uint64_t txn_id);
+
+//Old school
+// struct segment_header *level_add_segment(struct device_level *level, uint8_t tree_id, uint64_t seg_offt);
 
 /**
 * @brief Frees all the index segments of the level
