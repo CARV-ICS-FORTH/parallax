@@ -457,7 +457,7 @@ static struct leaf_node *level_get_leaf(struct device_level *level, struct sst_m
 {
 	assert(key_splice_get_key_offset(key_splice));
 	struct node_header *son_node = NULL;
-	uint64_t root_offt = sst_meta_get_root(meta);
+	uint64_t root_offt = sst_meta_get_root_offt(meta);
 	struct node_header *curr_node = REAL_ADDRESS(root_offt);
 	assert(curr_node->type == rootNode || curr_node->type == leafRootNode);
 	// log_debug("Root has height: %u and num entries: %u", curr_node->height, curr_node->num_entries);

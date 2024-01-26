@@ -76,7 +76,7 @@ inline uint64_t sst_meta_get_dev_offt(struct sst_meta *sst)
 	return sst->sst_dev_offt;
 }
 
-uint64_t sst_meta_get_root(struct sst_meta *sst)
+uint64_t sst_meta_get_root_offt(struct sst_meta *sst)
 {
 	return sst->root_offt;
 }
@@ -468,14 +468,6 @@ bool sst_flush(struct sst *sst)
 
 bool sst_close(struct sst *sst)
 {
-	free(sst->IO_buffer);
-	free(sst);
-	return true;
-}
-
-bool sst_remove(struct sst *sst, uint64_t txn_id)
-{
-	seg_free_segment(sst->db_handle->db_desc, txn_id, sst->meta->sst_dev_offt);
 	free(sst->IO_buffer);
 	free(sst);
 	return true;
