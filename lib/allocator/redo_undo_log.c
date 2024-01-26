@@ -626,11 +626,9 @@ bool rul_replay_mem_guards(struct volume_descriptor *volume_desc, struct pr_db_s
 	struct rul_cursor *cursor = rul_cursor_init(volume_desc, db_superblock);
 	for (struct rul_log_entry *entry = rul_cursor_get_next(cursor); entry != NULL;
 	     entry = rul_cursor_get_next(cursor)) {
-		log_debug("Found type: %d", entry->op_type);
 		if (entry->op_type != RUL_ALLOCATE_SST && entry->op_type != RUL_FREE_SST)
 			continue;
 		(*process)(entry, cnxt);
 	}
-	log_debug("Done recovering mem_guards");
 	return true;
 }

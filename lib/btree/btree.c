@@ -1,4 +1,4 @@
-// Copyright [2021] [FORTH-ICS]
+/// Copyright [2021] [FORTH-ICS]
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -35,6 +35,7 @@
 #include "../allocator/persistent_operations.h"
 #include "../parallax_callbacks/parallax_callbacks.h"
 #include "sst.h"
+#include "uthash.h"
 #include <assert.h>
 #include <list.h>
 #include <log.h>
@@ -277,24 +278,53 @@ static void recover_logs(db_descriptor *db_desc)
 	db_desc->lsn_factory = lsn_factory_init(last_lsn_id);
 }
 
-static bool process_mem_guard(struct rul_log_entry *entry, void *cnxt)
-{
-	struct db_descriptor *db_desc = cnxt;
-	struct sst_meta *meta = REAL_ADDRESS(entry->dev_offt);
-	if (entry->op_type == RUL_ALLOCATE_SST) {
-		level_add_ssts(db_desc->dev_levels[sst_meta_get_level_id(meta)], 1, &meta, 0);
-	}
-	if (entry->op_type == RUL_FREE_SST)
-		level_remove_sst(db_desc->dev_levels[sst_meta_get_level_id(meta)], meta, 0);
+struct sst_offt_table {
+	uint64_t dev_offt;
+	UT_hash_handle hh;
+};
 
+static bool process_mem_guard(struct rul_log_entry *entry, void *_cnxt)
+{
+	struct minos *root = _cnxt;
+	if (entry->op_type == RUL_ALLOCATE_SST) {
+		struct minos_insert_request ins_req = { .key = &entry->dev_offt,
+							.key_size = sizeof(entry->dev_offt),
+							.value = &entry->dev_offt,
+							.value_size = sizeof(entry->dev_offt) };
+		minos_insert(root, &ins_req);
+		log_debug("Added sst_dev offt: %lu as valid", entry->dev_offt);
+	}
+
+	if (entry->op_type == RUL_FREE_SST) {
+		bool ret = minos_delete(root, (char *)&entry->dev_offt, sizeof(entry->dev_offt));
+		log_debug("Deleted sst_dev offt: %lu as valid", entry->dev_offt);
+		assert(ret);
+	}
+
+	return true;
+}
+
+static bool add_sst_callback(void *value, void *cnxt)
+{
+	uint64_t dev_offt = *(uint64_t *)value;
+	struct db_descriptor *db_desc = cnxt;
+	struct sst_meta *meta = REAL_ADDRESS(dev_offt);
+	uint32_t level_id = sst_meta_get_level_id(meta);
+	assert(level_id > 0);
+	assert(level_id < MAX_LEVELS);
+	level_add_ssts(db_desc->dev_levels[level_id], 1, &meta, 0);
+	// struct key_splice *first = sst_meta_get_first_guard(meta);
+	// struct key_splice *last = sst_meta_get_last_guard(meta);
+	// log_debug("Added SST first: %.*s last: %.*s in level: %u", key_splice_get_key_size(first),
+	//    key_splice_get_key_offset(first), key_splice_get_key_size(last), key_splice_get_key_offset(last), level_id);
 	return true;
 }
 
 static bool recover_mem_guards(struct db_descriptor *db_desc)
 {
-	log_debug("\n<recovering mem guard>");
-	rul_replay_mem_guards(db_desc->db_volume, db_desc->db_superblock, process_mem_guard, db_desc);
-	log_debug("\n</recovering mem guard>");
+	struct minos *root = minos_init();
+	rul_replay_mem_guards(db_desc->db_volume, db_desc->db_superblock, process_mem_guard, root);
+	minos_free(root, add_sst_callback, db_desc);
 	return true;
 }
 

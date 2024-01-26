@@ -197,8 +197,6 @@ bool level_scanner_get_next(struct level_scanner *level_scanner)
 
 			level_scanner->splice =
 				dl_get_general_splice((struct leaf_node *)stack_element.node, stack_element.idx);
-			// log_debug("Get next Returning Leaf:%lu idx is %d num_entries %d", stack_element.node,
-			// 	  stack_element.idx, stack_element.node->num_entries);
 			stack_push(&level_scanner->stack, stack_element);
 
 			return true;
@@ -271,7 +269,6 @@ void level_scanner_close(struct level_scanner *level_scanner)
 //XXX TODO XXX start_key is actually a key splice please fix the API call
 void scanner_init(struct scanner *scanner, db_handle *database, void *start_key, enum seek_scanner_mode seek_flag)
 {
-	log_debug("Initiliazing scanner: %p", (void *)scanner);
 	if (scanner == NULL) {
 		log_fatal("NULL scannerHandle?");
 		BUG_ON();
@@ -300,7 +297,7 @@ void scanner_init(struct scanner *scanner, db_handle *database, void *start_key,
 			continue;
 		level_scanner_init(&scanner->L0_scanner[tree_id], database, 0, tree_id);
 
-		if (!level_scanner_seek(&scanner->L0_scanner[tree_id], start_key, seek_flag))
+		if (!level_scanner_seek(&scanner->L0_scanner[tree_id], start_key, seek_flag == GREATER))
 			continue;
 
 		scanner->L0_scanner[tree_id].valid = 1;
@@ -329,7 +326,7 @@ void scanner_init(struct scanner *scanner, db_handle *database, void *start_key,
 			continue;
 		}
 		scanner->dev_scanner[level_id] = level_scanner_dev_init(scanner->db, level_id, 0);
-		bool success = level_scanner_dev_seek(scanner->dev_scanner[level_id], start_key);
+		bool success = level_scanner_dev_seek(scanner->dev_scanner[level_id], start_key, seek_flag == GREATER);
 		if (!success) {
 			level_scanner_dev_close(scanner->dev_scanner[level_id]);
 			scanner->dev_scanner[level_id] = NULL;
@@ -337,7 +334,7 @@ void scanner_init(struct scanner *scanner, db_handle *database, void *start_key,
 		}
 
 		struct sh_heap_node heap_node = { 0 };
-		success = level_scanner_curr(scanner->dev_scanner[level_id], &heap_node.splice);
+		success = level_scanner_dev_curr(scanner->dev_scanner[level_id], &heap_node.splice);
 		if (!success) {
 			level_scanner_dev_close(scanner->dev_scanner[level_id]);
 			scanner->dev_scanner[level_id] = NULL;
@@ -359,7 +356,6 @@ void scanner_init(struct scanner *scanner, db_handle *database, void *start_key,
 
 void scanner_close(struct scanner *scanner)
 {
-	log_debug("Closing scanner: %p", (void *)scanner);
 	/*special care for L0*/
 	for (int tree_id = 0; tree_id < NUM_TREES_PER_LEVEL; tree_id++) {
 		if (scanner->L0_scanner[tree_id].valid) {
@@ -416,7 +412,7 @@ bool scanner_get_next(struct scanner *scanner)
 			if (0 == node.level_id)
 				next_node.splice = scanner->L0_scanner[node.active_tree].splice;
 			else
-				ret = level_scanner_curr(scanner->dev_scanner[node.level_id], &next_node.splice);
+				ret = level_scanner_dev_curr(scanner->dev_scanner[node.level_id], &next_node.splice);
 			if (ret)
 				sh_insert_heap_node(&scanner->heap, &next_node);
 		}

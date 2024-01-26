@@ -10,6 +10,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 #include "arg_parser.h"
+#include "scanner/scanner.h"
 #include <assert.h>
 #include <log.h>
 #include <parallax/parallax.h>
@@ -280,8 +281,10 @@ static void scan_workload(struct workload_config_t *workload_config)
 			my_keyptr = par_get_key(my_scanner);
 
 			if (memcmp(k->key_buf, my_keyptr.data, my_keyptr.size) != 0) {
-				log_fatal("Test failed for i: %lu key %.*s not found scanner instead returned %.*s",
-					  scan_entries, k->key_size, k->key_buf, my_keyptr.size, my_keyptr.data);
+				log_fatal(
+					"Test failed for i: %lu key %.*s not found scanner instead returned %.*s seek mode is: %s",
+					scan_entries, k->key_size, k->key_buf, my_keyptr.size, my_keyptr.data,
+					workload_config->seek_mode == PAR_GREATER ? "GREATER" : "GREATER_OR_EQUAL");
 				_exit(EXIT_FAILURE);
 			}
 			memset((void *)my_keyptr.data, 0x00, my_keyptr.size);

@@ -216,6 +216,7 @@ void replay_db_allocation_log(struct volume_descriptor *volume_desc, struct pr_d
 		case RUL_LARGE_LOG_ALLOCATE:
 		case RUL_MEDIUM_LOG_ALLOCATE:
 		case RUL_SMALL_LOG_ALLOCATE:
+		case RUL_ALLOCATE_SST:
 		case RUL_ALLOCATE:
 			//log_info("Marking dev_offt: %llu as RESERVED txn_id: %llu", log_entry->dev_offt,
 			//	 log_entry->txn_id);
@@ -224,6 +225,7 @@ void replay_db_allocation_log(struct volume_descriptor *volume_desc, struct pr_d
 
 		case RUL_LOG_FREE:
 		case RUL_FREE:
+		case RUL_FREE_SST:
 			//log_info("Marking dev_offt: %llu as FREE txn_id: %llu", log_entry->dev_offt, log_entry->txn_id);
 			SET_BIT(&mem_bitmap[byte_id], bit_id);
 			break;

@@ -13,6 +13,7 @@
 #include "../btree/key_splice.h"
 #include "arg_parser.h"
 #include "btree/key_splice.h"
+#include "parallax/structures.h"
 #include <assert.h>
 #include <btree/gc.h>
 #include <db.h>
@@ -50,7 +51,8 @@ struct workload_config_t {
 static void generate_random_key(unsigned char *key_buffer, uint32_t key_size)
 {
 	for (uint32_t i = 0; i < key_size; i++) {
-		key_buffer[i] = (rand() % 255) + 1;
+		// key_buffer[i] = (rand() % 255) + 1;
+		key_buffer[i] = 96 + (rand() % 25) + 1;
 	}
 }
 
@@ -374,6 +376,7 @@ int main(int argc, char **argv)
 	db_options.db_name = "TIRESIAS";
 	db_options.create_flag = PAR_CREATE_DB;
 	db_options.options = par_get_default_options();
+	db_options.options[ENABLE_BLOOM_FILTERS].value = 1;
 	par_handle parallax_db = par_open(&db_options, &error_message);
 
 	struct workload_config_t workload_config = {
@@ -393,8 +396,9 @@ int main(int argc, char **argv)
 	pthread_t scan_thread;
 
 	pthread_create(&get_thread, NULL, get_workload, &workload_config);
-	pthread_create(&scan_thread, NULL, scan_workload, &workload_config);
 	pthread_join(get_thread, NULL);
+
+	pthread_create(&scan_thread, NULL, scan_workload, &workload_config);
 	pthread_join(scan_thread, NULL);
 
 	delete_workload(&workload_config);

@@ -265,7 +265,7 @@ static bool devl_leaf_iter_first(struct leaf_node *leaf, struct leaf_iterator *i
 {
 	iter->leaf = leaf;
 	iter->pos = 0;
-	return iter->pos < leaf->header.num_entries;
+	return leaf->header.num_entries > 0;
 }
 
 static bool devl_leaf_seek_iter(struct leaf_node *leaf, struct leaf_iterator *iter, char *key, int32_t key_size)

@@ -90,7 +90,7 @@ struct key_splice *sst_meta_get_first_guard(struct sst_meta *sst)
 {
 	if (0 == sst->first_guard_size) {
 		log_debug("First guard has not been set, what are you trying to read?");
-		assert(0);
+		BUG_ON();
 		_exit(EXIT_FAILURE);
 		return NULL;
 	}
@@ -136,7 +136,6 @@ static bool sst_set_first_guard(struct sst *sst, struct kv_splice_base *kv_pair)
 	key_splice_create(kv_splice_base_get_key_buf(kv_pair), kv_splice_base_get_key_size(kv_pair),
 			  &meta_buf[sizeof(struct sst_meta)], sst->meta->first_guard_size, &malloced);
 	assert(malloced == false);
-	log_debug("Set first guard of SST");
 	return true;
 }
 
@@ -169,7 +168,6 @@ static bool sst_set_last_guard(struct sst *sst, struct kv_splice_base *kv_pair)
 			  &meta_buf[sizeof(struct sst_meta) + sst->meta->first_guard_size], sst->meta->last_guard_size,
 			  &malloced);
 	assert(malloced == false);
-	log_debug("Added last guard in SST");
 	return true;
 }
 
@@ -212,6 +210,7 @@ struct sst *sst_create(uint32_t sst_size, uint64_t txn_id, db_handle *handle, ui
 		perror("Reason: ");
 		_exit(EXIT_FAILURE);
 	}
+	memset(sst->IO_buffer, 0x00, sst_size);
 	sst->db_handle = handle;
 	sst->txn_id = txn_id;
 	sst->medium_log_LRU_cache = medium_log_LRU_cache;
@@ -237,50 +236,6 @@ struct sst *sst_create(uint32_t sst_size, uint64_t txn_id, db_handle *handle, ui
 	}
 
 	return sst;
-}
-
-static struct kv_splice_base sst_append_medium_L1(struct sst *sst, struct kv_splice_base *splice_base, char *kv_sep_buf,
-						  int32_t kv_sep_buf_size)
-
-{
-	if (sst->meta->level_id != 1 || splice_base->kv_cat != MEDIUM_INPLACE)
-		return *splice_base;
-
-	struct bt_insert_req ins_req;
-	ins_req.metadata.handle = sst->db_handle;
-	ins_req.metadata.log_offset = 0;
-
-	ins_req.metadata.cat = MEDIUM_INLOG;
-	ins_req.metadata.level_id = sst->meta->level_id;
-	ins_req.metadata.tree_id = 1;
-	ins_req.metadata.append_to_log = 1;
-	ins_req.metadata.gc_request = 0;
-	ins_req.metadata.key_format = KV_FORMAT;
-	ins_req.metadata.tombstone = 0;
-	ins_req.splice_base = splice_base;
-	/*For Tebis-parallax currently*/
-	// ins_req.metadata.segment_full_event = 0;
-	ins_req.metadata.log_segment_addr = 0;
-	ins_req.metadata.log_offset_full_event = 0;
-	ins_req.metadata.segment_id = 0;
-	ins_req.metadata.end_of_log = 0;
-	ins_req.metadata.log_padding = 0;
-
-	struct log_operation log_op = { .metadata = &ins_req.metadata,
-					.optype_tolog = insertOp,
-					.ins_req = &ins_req,
-					.is_medium_log_append = true,
-					.txn_id = sst->txn_id };
-
-	char *log_location = append_key_value_to_log(&log_op);
-
-	struct kv_splice_base kv_sep = { .kv_cat = MEDIUM_INLOG,
-					 .kv_type = KV_PREFIX,
-					 .kv_sep2 = kv_sep2_create(kv_splice_base_get_key_size(splice_base),
-								   kv_splice_base_get_key_buf(splice_base),
-								   ABSOLUTE_ADDRESS(log_location), kv_sep_buf,
-								   kv_sep_buf_size) };
-	return kv_sep;
 }
 
 static struct key_splice *sst_create_pivot(struct kv_splice_base *last_splice, struct kv_splice_base *new_splice)
@@ -326,14 +281,11 @@ static uint32_t sst_calc_offt(struct sst *sst, char *addr)
 {
 	uint64_t start = (uint64_t)sst->IO_buffer;
 	uint64_t end = (uint64_t)addr;
-	// log_debug("start is %lu end is %lu", start, end);
 
 	if (end < start) {
 		log_fatal("End should be greater than start!");
-		assert(0);
 		BUG_ON();
 	}
-	// log_debug("Relative offset of root inside the SST is: %lu",end-start);
 	return end - start;
 }
 
@@ -375,21 +327,22 @@ static bool sst_append_pivot_to_index(int32_t height, struct sst *sst, uint64_t 
 		(*sst->index_api->index_add_guard)(ins_pivot_req.node, piv_pointer->child_offt);
 		(*sst->index_api->index_set_height)(ins_pivot_req.node, height);
 
-		/*last leaf updated*/
+		/*last node updated*/
 		uint32_t offt_r = sst_calc_offt(sst, (char *)sst->last_node[height]);
 		uint64_t right_index_offt = sst->meta->sst_dev_offt + offt_r;
-
 		if (false ==
 		    sst_append_pivot_to_index(height + 1, sst, left_index_offt, pivot_copy_splice, right_index_offt)) {
-			//** Failed to add pivot, ok just rollback staff **
+			log_debug("Append pivot in higher tree level failed, rolling back");
 			sst->last_node[height] = backup;
 			struct insert_pivot_req restore = { .node = (struct index_node *)sst->last_node[height],
 							    .right_child = piv_pointer,
 							    .key_splice = pivot_copy_splice };
 			(*sst->index_api->index_append_pivot)(&restore);
+
+			free(pivot_copy_splice);
+			return false;
 		}
 		free(pivot_copy_splice);
-		return false;
 	}
 	return true;
 }
@@ -399,41 +352,42 @@ bool sst_append_splice(struct sst *sst, struct kv_splice_base *splice)
 	uint64_t left_leaf_offt = 0;
 	uint64_t right_leaf_offt = 0;
 
-	struct kv_splice_base new_splice = *splice;
-	bool append_to_medium = false;
+	// struct kv_splice_base new_splice = *splice;
+	// bool append_to_medium = false;
 
-	char kv_sep_buf[KV_SEP2_MAX_SIZE];
+	// 	char kv_sep_buf[KV_SEP2_MAX_SIZE];
 
-	if (sst->meta->level_id == 1 && splice->kv_cat == MEDIUM_INPLACE)
-		new_splice = sst_append_medium_L1(sst, splice, kv_sep_buf, KV_SEP2_MAX_SIZE);
+	// 	if (sst->meta->level_id == 1 && splice->kv_cat == MEDIUM_INPLACE){
+	// 		*splice = sst_append_medium_L1(sst, splice, kv_sep_buf, KV_SEP2_MAX_SIZE);
+	//   }
 
-	if (new_splice.kv_cat == MEDIUM_INLOG && sst->meta->level_id == sst->db_handle->db_desc->level_medium_inplace) {
-		new_splice.kv_cat = MEDIUM_INPLACE;
-		new_splice.kv_type = KV_FORMAT;
-		new_splice.kv_splice = (struct kv_splice *)mlog_cache_fetch_kv_from_LRU(
-			sst->medium_log_LRU_cache, kv_sep2_get_value_offt(new_splice.kv_sep2));
-		assert(kv_splice_base_get_key_size(&new_splice) <= MAX_KEY_SIZE);
-		assert(kv_splice_base_get_key_size(&new_splice) > 0);
-		append_to_medium = true;
-
-#if MEASURE_MEDIUM_INPLACE
-		__sync_fetch_and_add(&cursor->handle->db_desc->count_medium_inplace, 1);
-#endif
-	}
+	// 	if (splice->kv_cat == MEDIUM_INLOG && sst->meta->level_id == sst->db_handle->db_desc->level_medium_inplace) {
+	// 		splice->kv_cat = MEDIUM_INPLACE;
+	// 		splice->kv_type = KV_FORMAT;
+	// 		splice->kv_splice = (struct kv_splice *)mlog_cache_fetch_kv_from_LRU(
+	// 			sst->medium_log_LRU_cache, kv_sep2_get_value_offt(splice->kv_sep2));
+	// 		assert(kv_splice_base_get_key_size(splice) <= MAX_KEY_SIZE);
+	// 		assert(kv_splice_base_get_key_size(splice) > 0);
+	// 		// append_to_medium = true;
+	// #if MEASURE_MEDIUM_INPLACE
+	// 		__sync_fetch_and_add(&cursor->handle->db_desc->count_medium_inplace, 1);
+	// #endif
+	// 	}
 	bool new_leaf = false;
 	struct node_header *last_node_backup = NULL;
 	struct key_splice *pivot = NULL;
-	if ((*sst->leaf_api->leaf_is_full)((struct leaf_node *)sst->last_node[0],
-					   kv_splice_base_get_size(&new_splice))) {
+	if ((*sst->leaf_api->leaf_is_full)((struct leaf_node *)sst->last_node[0], kv_splice_base_get_size(splice))) {
 		struct node_header *new_node = (struct node_header *)sst_get_space(sst, LEAF_NODE_SIZE, true);
 		if (NULL == new_node) {
+			// if (append_to_medium)
+			// 	*splice = new_splice;
 			log_debug("Oops no more space for leaf nodes");
 			return false; //abort no more space
 		}
 
 		struct kv_splice_base last = (*sst->leaf_api->leaf_get_last)((struct leaf_node *)sst->last_node[0]);
 
-		pivot = sst_create_pivot(&last, &new_splice);
+		pivot = sst_create_pivot(&last, splice);
 
 		uint32_t offt_l = sst_calc_offt(sst, (char *)sst->last_node[0]);
 		left_leaf_offt = sst->meta->sst_dev_offt + offt_l;
@@ -455,23 +409,20 @@ bool sst_append_splice(struct sst *sst, struct kv_splice_base *splice)
 		new_leaf = true;
 	}
 
-	if (!(*sst->leaf_api->leaf_append)((struct leaf_node *)sst->last_node[0], &new_splice,
-					   new_splice.is_tombstone)) {
+	if (!(*sst->leaf_api->leaf_append)((struct leaf_node *)sst->last_node[0], splice, splice->is_tombstone)) {
 		log_fatal("Append in leaf failed (It shouldn't at this point)");
 		_exit(EXIT_FAILURE);
 	}
 
 	if (0 == sst->meta->first_guard_size)
-		sst_set_first_guard(sst, &new_splice);
+		sst_set_first_guard(sst, splice);
 
 	if (!new_leaf)
 		return true;
 	bool ret = sst_append_pivot_to_index(1, sst, left_leaf_offt, pivot, right_leaf_offt);
 	if (false == ret) { //rollback logic
 		sst->last_node[0] = last_node_backup;
-		log_debug("Ooops failed to append");
-		if (append_to_medium)
-			*splice = new_splice;
+		log_debug("Ooops failed to append in pivot no more space in SST");
 	}
 	free(pivot);
 
@@ -485,8 +436,6 @@ bool sst_append_KV_pair(struct sst *sst, struct kv_splice_base *splice)
 
 bool sst_flush(struct sst *sst)
 {
-	log_debug("<Flushing sst...>");
-
 	struct leaf_node *last_leaf = (struct leaf_node *)sst->last_node[0];
 	struct kv_splice_base last_splice = (*sst->leaf_api->leaf_get_last)(last_leaf);
 	sst_set_last_guard(sst, &last_splice);
@@ -500,8 +449,7 @@ bool sst_flush(struct sst *sst)
 	}
 	log_debug("B+tree in SST has height of: %d num entries: %u", height, sst->last_node[height]->num_entries);
 	sst->meta->root_offt = sst->meta->sst_dev_offt + sst_calc_offt(sst, (char *)sst->last_node[height]);
-	sst->last_node[height]->type = rootNode;
-	log_debug("SST dev offt: %lu and root is at: %lu", sst->meta->sst_dev_offt, sst->meta->root_offt);
+	sst->last_node[height]->type = height == 0 ? leafRootNode : rootNode;
 	memcpy(sst->IO_buffer, sst->meta, sst_meta_get_size(sst->meta));
 
 	ssize_t total_bytes_written = 0;
@@ -517,7 +465,6 @@ bool sst_flush(struct sst *sst)
 		}
 		total_bytes_written += bytes_written;
 	}
-	log_debug("</Flushing sst...> Done!");
 	return true;
 }
 

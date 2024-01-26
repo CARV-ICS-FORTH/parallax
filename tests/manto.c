@@ -179,12 +179,12 @@ bool verify_scanner(struct workload_config *workload, uint8_t level_id, int32_t 
 		_exit(EXIT_FAILURE);
 	}
 	struct level_scanner_dev *scanner = level_scanner_dev_init(workload->handle, level_id, tree_id);
-	level_scanner_dev_seek(scanner, NULL);
+	level_scanner_dev_seek(scanner, NULL, false);
 	// Iterate over the keys
 	uint32_t num_kv_pairs = 0;
 	while (cursor->c_get(cursor, &key, &value, DB_NEXT) == 0 && num_kv_pairs < workload->total_keys) {
 		struct kv_splice_base splice;
-		if (false == level_scanner_curr(scanner, &splice)) {
+		if (false == level_scanner_dev_curr(scanner, &splice)) {
 			log_fatal("Scanned ended too soon lost keys");
 			_exit(EXIT_FAILURE);
 		}

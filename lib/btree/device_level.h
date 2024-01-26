@@ -449,7 +449,8 @@ struct level_scanner_dev *level_scanner_dev_init(db_handle *database, uint8_t le
   * @return true on success or false in no keey greater or equal to the start_key_splice
   * is found
 */
-bool level_scanner_dev_seek(struct level_scanner_dev *dev_level_scanner, struct key_splice *start_key_splice);
+bool level_scanner_dev_seek(struct level_scanner_dev *dev_level_scanner, struct key_splice *start_key_splice,
+			    bool is_greater);
 
 /**
  * @brief Fills the kv_splice_base with the current value of the position of the iterator.
@@ -457,7 +458,7 @@ bool level_scanner_dev_seek(struct level_scanner_dev *dev_level_scanner, struct 
  * @param splice the splice to be filled
  * @return true on success false on failure
 */
-bool level_scanner_curr(struct level_scanner_dev *dev_level_scanner, struct kv_splice_base *splice);
+bool level_scanner_dev_curr(struct level_scanner_dev *dev_level_scanner, struct kv_splice_base *splice);
 
 /**
   * @brief Moves the iterators
