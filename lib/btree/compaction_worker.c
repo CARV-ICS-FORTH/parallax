@@ -33,8 +33,6 @@
 #include "gc.h"
 #include "key_splice.h"
 #include "kv_pairs.h"
-#include "level_read_cursor.h"
-#include "level_write_cursor.h"
 #include "medium_log_LRU_cache.h"
 #include "minos.h"
 #include "parallax/structures.h"
