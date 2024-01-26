@@ -470,7 +470,7 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 		sh_insert_heap_node(m_heap, &dst_heap_node);
 	}
 
-	comp_req->curr_sst = sst_create(SST_SIZE, comp_req->txn_id, handle, comp_req->dst_level, mlog_cache);
+	comp_req->curr_sst = sst_create(SST_SIZE, comp_req->txn_id, handle, comp_req->dst_level);
 	char kv_sep_buf[KV_SEP2_MAX_SIZE];
 
 	while (sh_remove_top(m_heap, &min_heap_node)) {
@@ -511,7 +511,7 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 			struct sst_meta *meta = sst_get_meta(comp_req->curr_sst);
 			level_add_ssts(handle->db_desc->dev_levels[comp_req->dst_level], 1, &meta, comp_req->dst_tree);
 			sst_close(comp_req->curr_sst);
-			comp_req->curr_sst = sst_create(SST_SIZE, comp_req->txn_id, handle, comp_req->dst_level, NULL);
+			comp_req->curr_sst = sst_create(SST_SIZE, comp_req->txn_id, handle, comp_req->dst_level);
 		}
 		//BFs and level keys accounting
 		level_add_key_to_bf(handle->db_desc->dev_levels[comp_req->dst_level], comp_req->dst_tree,

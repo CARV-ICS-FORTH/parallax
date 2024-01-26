@@ -198,8 +198,7 @@ static char *sst_get_space(struct sst *sst, size_t size, bool is_leaf)
 	return &sst->IO_buffer[sst->last_index_offt];
 }
 
-struct sst *sst_create(uint32_t sst_size, uint64_t txn_id, db_handle *handle, uint32_t level_id,
-		       struct medium_log_LRU_cache *medium_log_LRU_cache)
+struct sst *sst_create(uint32_t sst_size, uint64_t txn_id, db_handle *handle, uint32_t level_id)
 {
 	struct sst *sst = calloc(1UL, sizeof(struct sst));
 	sst->meta = calloc(1UL, sizeof(struct sst_meta));
@@ -213,7 +212,6 @@ struct sst *sst_create(uint32_t sst_size, uint64_t txn_id, db_handle *handle, ui
 	memset(sst->IO_buffer, 0x00, sst_size);
 	sst->db_handle = handle;
 	sst->txn_id = txn_id;
-	sst->medium_log_LRU_cache = medium_log_LRU_cache;
 
 	sst->meta->level_id = level_id;
 	sst->last_index_offt = sst_size;

@@ -14,8 +14,7 @@ struct pbf;
 struct db_descriptor;
 struct medium_log_LRU_cache;
 
-struct sst *sst_create(uint32_t size, uint64_t txn_id, db_handle *handle, uint32_t level_id,
-		       struct medium_log_LRU_cache *medium_log_LRU_cache);
+struct sst *sst_create(uint32_t size, uint64_t txn_id, db_handle *handle, uint32_t level_id);
 bool sst_append_KV_pair(struct sst *sst, struct kv_splice_base *splice);
 bool sst_flush(struct sst *sst);
 bool sst_remove(struct sst *sst, uint64_t txn_id);

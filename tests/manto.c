@@ -120,7 +120,7 @@ static bool create_ssts(struct workload_config *workload, int num_ssts, struct s
 
 	int sst_id = 0;
 
-	struct sst *curr_sst = sst_create(SST_SIZE, workload->txn_id, workload->handle, 1, NULL);
+	struct sst *curr_sst = sst_create(SST_SIZE, workload->txn_id, workload->handle, 1);
 	// Iterate over the keys
 	uint32_t num_kv_pairs = 0;
 	while (cursor->c_get(cursor, &key, &value, DB_NEXT) == 0) {
@@ -140,7 +140,7 @@ static bool create_ssts(struct workload_config *workload, int num_ssts, struct s
 				_exit(EXIT_FAILURE);
 			}
 			//ok get first and last splice to update the guards
-			curr_sst = sst_create(SST_SIZE, workload->txn_id, workload->handle, 1, NULL);
+			curr_sst = sst_create(SST_SIZE, workload->txn_id, workload->handle, 1);
 		}
 		++num_kv_pairs;
 		free(splice);
