@@ -10,13 +10,10 @@
 #include "conf.h"
 #include "dev_index.h"
 #include "dev_leaf.h"
-#include "fractal_index.h"
-#include "fractal_leaf.h"
 #include "key_splice.h"
 #include "kv_pairs.h"
-#include "segment_allocator.h"
+#include "parallax/structures.h"
 #include "sst.h"
-#include <asm-generic/errno.h>
 #include <assert.h>
 #include <log.h>
 #include <minos.h>
@@ -27,7 +24,6 @@
 #include <string.h>
 #include <unistd.h>
 struct key_splice;
-struct node_header;
 extern const uint32_t *const size_per_height;
 
 struct level_counter {

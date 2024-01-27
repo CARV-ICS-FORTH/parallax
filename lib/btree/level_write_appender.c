@@ -3,7 +3,6 @@
 #include "../common/common.h"
 #include "btree.h"
 #include "conf.h"
-#include <../btree/device_level.h>
 #include <assert.h>
 #include <log.h>
 #include <stdint.h>
@@ -11,7 +10,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-struct device_level;
 struct level_write_appender {
 	struct db_handle *handle;
 	uint64_t txn_id;

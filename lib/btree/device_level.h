@@ -2,24 +2,21 @@
 #define DEVICE_LEVEL_H
 #include "btree.h"
 #include "btree_node.h"
+#include "index_node.h"
+#include "key_splice.h"
+#include "kv_pairs.h"
 #include <stdbool.h>
 #include <stdint.h>
+struct level_compaction_scanner;
 struct pr_db_superblock;
-struct db_handle;
 struct device_level;
-struct db_descriptor;
 struct key_splice;
-struct node_header;
-struct segment_header;
 
-struct kv_splice_base;
 struct index_node;
 // struct index_node_iterator;
 struct leaf_node;
 struct leaf_iterator;
-struct lookup_operation;
 struct level_scanner_dev;
-struct sst;
 struct sst_meta;
 /*level leaf functions signatures*/
 typedef bool (*level_leaf_append)(struct leaf_node *leaf, struct kv_splice_base *general_splice, bool is_tombstone);

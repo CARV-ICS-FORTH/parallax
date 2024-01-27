@@ -13,9 +13,9 @@
 // limitations under the License.
 #include "kv_pairs.h"
 #include "key_splice.h"
+#include "parallax/structures.h"
 #include <assert.h>
 #include <log.h>
-#include <signal.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>

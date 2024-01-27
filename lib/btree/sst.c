@@ -1,5 +1,7 @@
 #include "sst.h"
 #include "../allocator/redo_undo_log.h"
+#include "../allocator/volume_manager.h"
+#include "../common/common.h"
 #include "btree.h"
 #include "btree_node.h"
 #include "conf.h"
@@ -7,8 +9,6 @@
 #include "index_node.h"
 #include "key_splice.h"
 #include "kv_pairs.h"
-#include "medium_log_LRU_cache.h"
-#include "segment_allocator.h"
 #include <assert.h>
 #include <log.h>
 #include <stdint.h>
@@ -16,8 +16,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-struct leaf_node;
-
 #define SST_METADATA_SIZE 4096UL
 
 struct sst_meta {

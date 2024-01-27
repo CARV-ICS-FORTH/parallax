@@ -11,15 +11,14 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-
 #include "../btree/kv_pairs.h"
-#include "../common/common.h"
 #include "btree_node.h"
 #include "conf.h"
 #include "device_level.h"
 #include "parallax/structures.h"
 #include <assert.h>
 #include <log.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>

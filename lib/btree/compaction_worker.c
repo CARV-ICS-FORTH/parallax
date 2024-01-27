@@ -14,7 +14,6 @@
 
 #define _GNU_SOURCE
 #include "compaction_worker.h"
-#include "../allocator/log_structures.h"
 #include "../allocator/persistent_operations.h"
 #include "../allocator/redo_undo_log.h"
 #include "../allocator/volume_manager.h"
@@ -26,7 +25,6 @@
 #include "../utilities/dups_list.h"
 #include "../utilities/spin_loop.h"
 #include "btree.h"
-#include "btree_node.h"
 #include "compaction_daemon.h"
 #include "conf.h"
 #include "device_level.h"
@@ -34,16 +32,17 @@
 #include "key_splice.h"
 #include "kv_pairs.h"
 #include "medium_log_LRU_cache.h"
-#include "minos.h"
 #include "parallax/structures.h"
 #include "segment_allocator.h"
 #include "sst.h"
 #include <assert.h>
 #include <log.h>
 #include <pthread.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+struct medium_log_LRU_cache;
 #if COMPACTION_STATS
 #include <sys/time.h>
 #endif
@@ -51,7 +50,6 @@
 #include <uthash.h>
 // IWYU pragma: no_forward_declare pbf_desc
 // IWYU pragma: no_forward_declare wcursor_level_write_cursor
-struct device_level;
 struct compaction_request {
 	db_descriptor *db_desc;
 	par_db_options *db_options;
@@ -680,6 +678,7 @@ void compaction_close(struct compaction_request *comp_req)
 		if (are_parallax_callbacks_set(par_callbacks)) {
 			struct parallax_callback_funcs par_cb = parallax_get_callbacks(par_callbacks);
 			void *context = parallax_get_context(par_callbacks);
+			(void)context;
 			// assert(level_get_index_first_seg(hd.db_desc->dev_levels[comp_req->dst_level], 1));
 			// assert(level_get_index_last_seg(hd.db_desc->dev_levels[comp_req->dst_level], 1));
 			if (par_cb.compaction_ended_cb) {

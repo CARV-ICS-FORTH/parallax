@@ -3,16 +3,12 @@
 #include "btree.h"
 #include "medium_log_LRU_cache.h"
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 struct sst;
 struct sst_meta;
-struct sst_iter;
 struct kv_splice;
-struct key_splice;
-struct device_level;
-struct pbf;
-struct db_descriptor;
-struct medium_log_LRU_cache;
+struct kv_splice_base;
 
 /**
  *@brief Creates an SST object.

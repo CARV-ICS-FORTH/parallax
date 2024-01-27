@@ -14,6 +14,7 @@
 #include "../btree/conf.h"
 #include "../btree/key_splice.h"
 #include "../common/common.h"
+#include "btree_node.h"
 #include "device_level.h"
 #include "index_node.h"
 #include <assert.h>

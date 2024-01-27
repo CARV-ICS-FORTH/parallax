@@ -26,14 +26,12 @@
 #include "min_max_heap.h"
 #include "stack.h"
 #include <assert.h>
-#include <errno.h>
 #include <log.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-struct device_level;
 struct key_splice;
 
 bool level_scanner_init(struct level_scanner *level_scanner, db_handle *database, uint8_t level_id, uint8_t tree_id)

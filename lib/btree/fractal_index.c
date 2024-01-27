@@ -14,6 +14,7 @@
 #include "../btree/conf.h"
 #include "../btree/key_splice.h"
 #include "../common/common.h"
+#include "btree_node.h"
 #include "device_level.h"
 #include "index_node.h"
 #include <assert.h>
@@ -385,7 +386,6 @@ static uint16_t frac_idx_seek(struct index_node *node, char *key, int32_t key_si
 	struct index_pivot *pivot = NULL;
 	struct key_splice *key_splice = NULL;
 	uint16_t pivot_idx_b = node->counters[FRAC_IDX_FIRST_PIVOT_OFFT];
-	uint32_t loops = 0;
 	for (; frac_idx_get_pivot(node, &pivot, pivot_idx);) {
 		key_splice = (struct key_splice *)&node_buf[pivot_idx];
 		// log_debug("Found key splice: %.*s of size: %u", key_splice_get_key_size(key_splice),
@@ -404,8 +404,6 @@ static uint16_t frac_idx_seek(struct index_node *node, char *key, int32_t key_si
 			return pivot_idx;
 		}
 		uint16_t prev_size = pivot->prev_size;
-		// log_debug("Prev size = %u",prev_size);
-		++loops;
 		if (prev_size == 0) {
 			// log_debug("Prev size is 0 end of the road node num entries: %u ret: %d loops: %u",
 			// 	  node->header.num_entries, ret,loops);
