@@ -1,13 +1,11 @@
 #ifndef SST_H
 #define SST_H
 #include "btree.h"
-#include "medium_log_LRU_cache.h"
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 struct sst;
 struct sst_meta;
-struct kv_splice;
 struct kv_splice_base;
 
 /**

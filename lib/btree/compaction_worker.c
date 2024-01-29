@@ -20,8 +20,8 @@
 #include "../common/common.h"
 #include "../lib/allocator/device_structures.h"
 #include "../parallax_callbacks/parallax_callbacks.h"
+#include "../scanner/L0_scanner.h"
 #include "../scanner/min_max_heap.h"
-#include "../scanner/scanner.h"
 #include "../utilities/dups_list.h"
 #include "../utilities/spin_loop.h"
 #include "btree.h"
@@ -55,7 +55,7 @@ struct compaction_request {
 	par_db_options *db_options;
 	// struct rcursor_level_read_cursor *dst_rcursor;
 	union {
-		struct level_scanner *L0_scanner;
+		struct L0_scanner *L0_scanner;
 		struct level_compaction_scanner *src_scanner;
 	};
 	struct level_compaction_scanner *dst_scanner;
@@ -393,7 +393,7 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 		spin_loop(&handle->db_desc->L0.active_operations, 0);
 		pr_flush_log_tail(comp_req->db_desc, &comp_req->db_desc->big_log);
 		comp_req->L0_scanner =
-			level_scanner_init_compaction_scanner(handle, comp_req->src_level, comp_req->src_tree);
+			L0_scanner_init_compaction_scanner(handle, comp_req->src_level, comp_req->src_tree);
 		RWLOCK_UNLOCK(&handle->db_desc->L0.guard_of_level.rx_lock);
 	} else
 
@@ -520,7 +520,7 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 
 	refill:
 		if (min_heap_node.level_id == comp_req->src_level) {
-			bool has_next = comp_req->src_level == 0 ? level_scanner_get_next(comp_req->L0_scanner) :
+			bool has_next = comp_req->src_level == 0 ? L0_scanner_get_next(comp_req->L0_scanner) :
 								   level_comp_scanner_next(comp_req->src_scanner);
 			if (false == has_next)
 				continue;
@@ -543,7 +543,7 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 	level_persist_bf(handle->db_desc->dev_levels[comp_req->dst_level], comp_req->dst_tree);
 
 	if (comp_req->src_level == 0)
-		level_scanner_close(comp_req->L0_scanner);
+		L0_scanner_close(comp_req->L0_scanner);
 	else
 		level_comp_scanner_close(comp_req->src_scanner);
 	if (comp_req->dst_scanner)

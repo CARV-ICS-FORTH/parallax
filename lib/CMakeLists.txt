@@ -53,6 +53,7 @@ set(LIB_C_SOURCE_FILES
     common/common.c
     scanner/min_max_heap.c
     scanner/scanner.c
+    scanner/L0_scanner.c
     scanner/stack.c
     parallax_callbacks/parallax_callbacks.c)
 

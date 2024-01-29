@@ -24,6 +24,7 @@
 #include "../common/common.h"
 #include "../include/parallax/structures.h"
 #include "../lib/allocator/device_structures.h"
+#include "../lib/scanner/scanner_mode.h"
 #include "../scanner/scanner.h"
 #include <assert.h>
 #include <log.h>
@@ -282,7 +283,7 @@ par_scanner par_init_scanner(par_handle handle, struct par_key *key, par_seek_mo
 
 	struct db_handle *internal_db_handle = (struct db_handle *)handle;
 
-	scanner_init(scanner, internal_db_handle, seek_key_splice, scanner_mode);
+	scanner_seek(scanner, internal_db_handle, seek_key_splice, scanner_mode);
 	if (malloced)
 		free(seek_key_splice);
 	seek_key_splice = NULL;
