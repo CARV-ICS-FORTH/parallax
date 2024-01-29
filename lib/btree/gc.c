@@ -135,7 +135,7 @@ int8_t find_deleted_kv_pairs_in_segment(struct db_handle handle, struct gc_segme
 			break;
 	}
 
-	assert(marks->size < STACK_SIZE);
+	assert(marks->size < (int)STACK_SIZE);
 
 	move_kv_pairs_to_new_segment(handle, marks);
 	gc_executed = 1;

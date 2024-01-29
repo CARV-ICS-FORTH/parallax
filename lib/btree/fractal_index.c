@@ -69,7 +69,10 @@ static struct pivot_pointer *frac_idx_get_pivot_pointer(struct key_splice *key_s
 {
 	char *buf = (char *)key_splice;
 	struct index_pivot *pivot = (struct index_pivot *)&buf[frac_idx_calculate_splice_size(key_splice)];
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Waddress-of-packed-member"
 	return &pivot->pivot_pointer;
+#pragma GCC diagnostic pop
 }
 
 static bool frac_idx_is_empty(struct index_node *node)
