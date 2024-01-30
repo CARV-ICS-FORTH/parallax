@@ -34,7 +34,6 @@ struct bench_info {
 	uint64_t num_dbs;
 	uint64_t num_kv_pairs;
 	uint32_t num_threads;
-	int fd;
 };
 
 struct thr_args {
@@ -115,7 +114,12 @@ int main(int argc, char *argv[])
 		}
 	}
 
-	if (parallax_volume == NULL || num_kv_pairs == 0 || num_threads == 0 || num_dbs == 0) {
+	if (num_kv_pairs == 0 || num_threads == 0 || num_dbs == 0) {
+		printf("Usage: %s -parallax_volume <parallax_volume_value> -num_kv_pairs <num_kv_pairs_value> -num_threads <num_threads_value> -num_dbs <number of dbs> \n",
+		       argv[0]);
+		_exit(EXIT_FAILURE);
+	}
+	if (parallax_volume == NULL) {
 		printf("Usage: %s -parallax_volume <parallax_volume_value> -num_kv_pairs <num_kv_pairs_value> -num_threads <num_threads_value> -num_dbs <number of dbs> \n",
 		       argv[0]);
 		_exit(EXIT_FAILURE);
@@ -169,7 +173,7 @@ int main(int argc, char *argv[])
 		thr_args[thr_id].bench_info = &bench_info;
 		if (pthread_create(&threads[thr_id], NULL, do_wal_IO, &thr_args[thr_id]) != 0) {
 			perror("pthread_create");
-			return EXIT_FAILURE;
+			_exit(EXIT_FAILURE);
 		}
 	}
 

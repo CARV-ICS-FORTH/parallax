@@ -278,11 +278,6 @@ static void recover_logs(db_descriptor *db_desc)
 	db_desc->lsn_factory = lsn_factory_init(last_lsn_id);
 }
 
-struct sst_offt_table {
-	uint64_t dev_offt;
-	UT_hash_handle hh;
-};
-
 static bool process_mem_guard(struct rul_log_entry *entry, void *_cnxt)
 {
 	struct minos *root = _cnxt;
@@ -297,6 +292,7 @@ static bool process_mem_guard(struct rul_log_entry *entry, void *_cnxt)
 
 	if (entry->op_type == RUL_FREE_SST) {
 		bool ret = minos_delete(root, (char *)&entry->dev_offt, sizeof(entry->dev_offt));
+		assert(ret);
 		log_debug("Deleted sst_dev offt: %lu as valid", entry->dev_offt);
 		assert(ret);
 	}

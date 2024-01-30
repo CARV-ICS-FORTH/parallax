@@ -47,6 +47,7 @@ uint64_t seg_allocate_segment(struct db_descriptor *db_desc, uint64_t txn_id)
 	return log_entry.dev_offt;
 }
 
+// cppcheck-suppress unusedFunction
 void seg_free_segment(struct db_descriptor *db_desc, uint64_t txn_id, uint64_t seg_offt)
 {
 	struct rul_log_entry log_entry = {

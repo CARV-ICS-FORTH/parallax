@@ -25,7 +25,8 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-
+struct device_level;
+struct node_header;
 //*
 //XXX TODO XXX start_key is actually a key splice please fix the API call
 void scanner_seek(struct scanner *scanner, db_handle *database, void *start_key, enum seek_scanner_mode seek_flag)

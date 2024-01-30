@@ -390,11 +390,13 @@ inline nodeType_t dl_get_leaf_node_type(struct leaf_node *leaf)
 	return leaf->header.type;
 }
 
+// cppcheck-suppress unusedFunction
 inline int32_t dl_get_leaf_num_entries(struct leaf_node *leaf)
 {
 	return leaf->header.num_entries;
 }
 
+// cppcheck-suppress unusedFunction
 struct kv_splice_base dl_get_last_splice(struct leaf_node *leaf)
 {
 	struct kv_splice_base splice = { 0 };

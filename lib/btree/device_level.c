@@ -18,17 +18,17 @@
 #include <log.h>
 #include <minos.h>
 #include <pthread.h>
+#include <stdalign.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 struct key_splice;
-extern const uint32_t *const size_per_height;
+struct pbf_desc;
 
-struct level_counter {
+alignas(64) struct level_counter {
 	int64_t active_operations;
-	char pad[64 - sizeof(uint64_t)];
 };
 
 struct level_lock {
@@ -540,14 +540,12 @@ done:
 //staff about device level scanners
 struct level_scanner_dev {
 	db_handle *db;
-	char *IO_buffer;
 	struct device_level *level;
 	struct node_header *root;
 	struct level_leaf_api *leaf_api;
 	struct level_index_api *index_api;
 	struct leaf_iterator *leaf_iter;
 	struct leaf_node *leaf;
-	struct sst_meta *curr_sst;
 	struct minos_iterator sst_iter;
 	uint8_t level_id;
 	uint8_t tree_id;

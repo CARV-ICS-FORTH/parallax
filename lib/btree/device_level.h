@@ -427,6 +427,7 @@ bool level_lookup(struct device_level *level, struct lookup_operation *get_op, i
 
 //sst staff
 bool level_add_ssts(struct device_level *level, int num_ssts, struct sst_meta *ssts[], uint32_t tree_id);
+// cppcheck-suppress unusedFunction
 bool level_remove_sst(struct device_level *level, struct sst_meta *sst, uint32_t tree_id);
 
 //level scanner staff
@@ -495,7 +496,7 @@ bool level_comp_scanner_next(struct level_compaction_scanner *comp_scanner);
  * @param comp_scanner pointer to the compaction scanner object
  * @return pointer to the kv_splice_base object or NULL if the scanner is invalid
  */
-bool level_comp_scanner_get_curr(struct level_compaction_scanner *scanner, struct kv_splice_base *splice);
+bool level_comp_scanner_get_curr(struct level_compaction_scanner *comp_scanner, struct kv_splice_base *splice);
 
 /**
  * @brief Closes the scanner and frees all resources

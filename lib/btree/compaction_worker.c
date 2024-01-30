@@ -43,6 +43,8 @@
 #include <stdlib.h>
 #include <string.h>
 struct medium_log_LRU_cache;
+struct device_level;
+struct node_header;
 #if COMPACTION_STATS
 #include <sys/time.h>
 #endif
@@ -70,11 +72,6 @@ struct compaction_request {
 	uint8_t dst_tree;
 };
 
-struct compaction_roots {
-	struct node_header *src_root;
-	struct node_header *dst_root;
-};
-
 struct compaction_request *compaction_create_req(db_descriptor *db_desc, par_db_options *db_options, uint64_t l0_start,
 						 uint64_t l0_end, uint8_t src_level, uint8_t src_tree,
 						 uint8_t dst_level, uint8_t dst_tree)
@@ -96,12 +93,6 @@ uint8_t compaction_get_dst_level(struct compaction_request *comp_req)
 {
 	assert(comp_req);
 	return comp_req->dst_level;
-}
-
-uint8_t compaction_get_dst_tree(struct compaction_request *comp_req)
-{
-	assert(comp_req);
-	return comp_req->dst_tree;
 }
 
 void compaction_set_dst_tree(struct compaction_request *comp_req, uint8_t tree_id)
@@ -127,12 +118,6 @@ void compaction_destroy_req(struct compaction_request *comp_req)
 {
 	assert(comp_req);
 	free(comp_req);
-}
-
-int compaction_get_vol_fd(struct compaction_request *comp_req)
-{
-	assert(comp_req);
-	return comp_req->db_desc->db_volume->vol_fd;
 }
 
 struct volume_descriptor *compaction_get_volume_desc(struct compaction_request *comp_req)

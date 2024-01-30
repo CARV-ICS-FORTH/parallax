@@ -192,6 +192,7 @@ static int32_t index_search_get_pos(struct index_node *node, char *lookup_key, i
 	return comparison_return_value > 0 ? middle - 1 : middle;
 }
 
+// cppcheck-suppress unusedFunction
 bool index_set_type(struct index_node *node, const nodeType_t node_type)
 {
 	if (!node)
@@ -210,6 +211,7 @@ void index_set_height(struct index_node *node, int32_t height)
 	node->header.height = height;
 }
 
+// cppcheck-suppress unusedFunction
 struct key_splice *index_remove_last_pivot_key(struct index_node *node)
 {
 	if (!node)

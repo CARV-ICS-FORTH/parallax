@@ -205,6 +205,7 @@ void kv_splice_serialize_to_key_splice(char *buf, struct kv_splice *kv_pair)
 	memcpy(key_splice_get_key_offset(key_splice), key, key_size);
 }
 
+// cppcheck-suppress unusedFunction
 uint32_t kv_splice_calculate_size(int32_t key_size, int32_t value_size)
 {
 	if (value_size == DELETE_MARKER_ID)

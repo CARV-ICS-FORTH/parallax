@@ -58,9 +58,9 @@ static void rul_flush_log_chunk(struct db_descriptor *db_desc, uint32_t chunk_id
 	}
 
 	//ssize_t size = RUL_LOG_CHUNK_SIZE_IN_BYTES;
-	ssize_t size = (db_desc->allocation_log->size % RUL_LOG_CHUNK_SIZE_IN_BYTES ?
-				(db_desc->allocation_log->size % RUL_LOG_CHUNK_SIZE_IN_BYTES) :
-				RUL_LOG_CHUNK_SIZE_IN_BYTES);
+	ssize_t size = (db_desc->allocation_log->size % RUL_LOG_CHUNK_SIZE_IN_BYTES) ?
+			       (db_desc->allocation_log->size % RUL_LOG_CHUNK_SIZE_IN_BYTES) :
+			       RUL_LOG_CHUNK_SIZE_IN_BYTES;
 
 	size = RUL_ALIGN_UP(size, 512);
 

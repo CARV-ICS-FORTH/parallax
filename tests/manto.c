@@ -98,12 +98,6 @@ static void populate_randomly_bdb(struct workload_config *workload_config)
 	log_info("Population of BerkeleyDB ended successfully! :-) keys: %ld", workload_config->total_keys);
 }
 
-// Function to generate a random number between min and max (inclusive)
-int generateRandom(int min, int max)
-{
-	return rand() % (max - min + 1) + min;
-}
-
 static bool create_ssts(struct workload_config *workload, int num_ssts, struct sst_meta *ssts[])
 {
 	DBC *cursor = NULL;
@@ -435,7 +429,7 @@ int main(int argc, char *argv[])
 		log_fatal("Failed to close ParallaxDB");
 	}
 	log_debug("Close SUCCESS opening DB...");
-	workload.handle = parallax_db = par_open(&db_options, &error_message);
+	workload.handle = par_open(&db_options, &error_message);
 	internal_db = (db_handle *)workload.handle;
 	log_debug("Opened DB verifying keys....");
 	verify_keys(&workload, internal_db->db_desc->dev_levels[1], 0);

@@ -17,6 +17,7 @@
 #include <string.h>
 #include <unistd.h>
 struct key_splice;
+struct device_level;
 #define SST_METADATA_SIZE 4096UL
 
 struct sst_meta {
@@ -98,6 +99,7 @@ struct key_splice *sst_meta_get_first_guard(struct sst_meta *sst)
 	return first_splice;
 }
 
+// cppcheck-suppress unusedFunction
 struct key_splice *sst_meta_get_last_guard(struct sst_meta *sst)
 {
 	if (!sst->last_guard_size)
@@ -197,27 +199,27 @@ static char *sst_get_space(struct sst *sst, size_t size, bool is_leaf)
 	return &sst->IO_buffer[sst->last_index_offt];
 }
 
-struct sst *sst_create(uint32_t sst_size, uint64_t txn_id, db_handle *handle, uint32_t level_id)
+struct sst *sst_create(uint32_t size, uint64_t txn_id, db_handle *handle, uint32_t level_id)
 {
 	struct sst *sst = calloc(1UL, sizeof(struct sst));
 	sst->meta = calloc(1UL, sizeof(struct sst_meta));
 
 	// log_debug("Allocating an I/O sst buffer of size: %u",sst_size);
-	if (posix_memalign((void **)&sst->IO_buffer, ALIGNMENT, sst_size) != 0) {
+	if (posix_memalign((void **)&sst->IO_buffer, ALIGNMENT, size) != 0) {
 		log_fatal("Posix memalign failed");
 		perror("Reason: ");
 		_exit(EXIT_FAILURE);
 	}
-	memset(sst->IO_buffer, 0x00, sst_size);
+	memset(sst->IO_buffer, 0x00, size);
 	sst->db_handle = handle;
 	sst->txn_id = txn_id;
 
 	sst->meta->level_id = level_id;
-	sst->last_index_offt = sst_size;
+	sst->last_index_offt = size;
 	sst->last_leaf_offt = SST_METADATA_SIZE;
 	sst->meta->level_id = level_id;
 	sst->meta->sst_dev_offt = sst_allocate_space(sst);
-	sst->meta->sst_size = sst_size;
+	sst->meta->sst_size = size;
 
 	sst->leaf_api = level_get_leaf_api(handle->db_desc->dev_levels[level_id]);
 	sst->index_api = level_get_index_api(handle->db_desc->dev_levels[level_id]);
@@ -442,9 +444,11 @@ bool sst_flush(struct sst *sst)
 	for (; height >= 0; height--) {
 		if (0 == sst->last_node[height]->num_entries)
 			continue;
+		log_debug("B+tree in SST has height of: %d num entries: %u", height,
+			  sst->last_node[height]->num_entries);
 		break;
 	}
-	log_debug("B+tree in SST has height of: %d num entries: %u", height, sst->last_node[height]->num_entries);
+
 	sst->meta->root_offt = sst->meta->sst_dev_offt + sst_calc_offt(sst, (char *)sst->last_node[height]);
 	sst->last_node[height]->type = height == 0 ? leafRootNode : rootNode;
 	memcpy(sst->IO_buffer, sst->meta, sst_meta_get_size(sst->meta));

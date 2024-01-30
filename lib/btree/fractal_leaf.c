@@ -68,7 +68,6 @@ static uint32_t frac_leaf_get_node_size(struct leaf_node *leaf)
 void frac_init_leaf(struct leaf_node *leaf, uint32_t leaf_size)
 {
 	frac_set_leaf_node_type(leaf, leafNode);
-	leaf->header.node_size = LEAF_NODE_SIZE;
 	leaf->header.log_size = leaf_size;
 	leaf->header.node_size = leaf_size;
 
@@ -200,18 +199,18 @@ static bool frac_is_leaf_full(struct leaf_node *leaf, uint32_t kv_size)
 {
 	// log_debug("FRAC_TAIL_OFFT: %u FRAC_PIVOT_TAIL_OFFT: %u kv_size: %u", leaf->counters[FRAC_TAIL_OFFT],
 	//    leaf->counters[FRAC_PIVOT_TAIL_OFFT], kv_size);
-	bool ret = false;
 	if (leaf->counters[FRAC_LEAF_FULL] || (leaf->counters[FRAC_TAIL_OFFT] <= leaf->counters[FRAC_PIVOT_TAIL_OFFT]))
-		ret = true;
-	else
-		ret = leaf->counters[FRAC_TAIL_OFFT] - leaf->counters[FRAC_PIVOT_TAIL_OFFT] < kv_size;
+		return true;
+	uint32_t remaining_space = leaf->counters[FRAC_TAIL_OFFT] <= leaf->counters[FRAC_PIVOT_TAIL_OFFT] ?
+					   0 :
+					   leaf->counters[FRAC_TAIL_OFFT] - leaf->counters[FRAC_PIVOT_TAIL_OFFT];
 	// if (ret)
 	// 	log_debug("Full leaf num entries are: %u remaing space is %u frac_tail_offt: %u pivot_tail_offt: %u",
 	// 		  leaf->header.num_entries,
 	// 		  leaf->counters[FRAC_TAIL_OFFT] - leaf->counters[FRAC_PIVOT_TAIL_OFFT],
 	// 		  leaf->counters[FRAC_TAIL_OFFT], leaf->counters[FRAC_PIVOT_TAIL_OFFT]);
 
-	return ret;
+	return remaining_space >= kv_size;
 }
 
 static bool frac_create_pivot(struct kv_splice_base *last_splice, struct kv_splice_base *new_splice,
@@ -440,6 +439,7 @@ struct kv_splice_base frac_leaf_iter_curr(struct leaf_iterator *iter)
 	return iter->curr_splice;
 }
 
+// cppcheck-suppress unusedFunction
 bool frac_leaf_register(struct level_leaf_api *leaf_api)
 {
 	leaf_api->leaf_append = frac_append_splice_in_leaf;
