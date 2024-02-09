@@ -429,7 +429,7 @@ uint64_t frac_idx_search(struct index_node *node, char *lookup_key, int32_t look
 }
 
 // cppcheck-suppress unusedFunction
-void dex_idx_node_print(struct index_node *node)
+void frac_idx_node_print(struct index_node *node)
 {
 	(void)node;
 	log_info("Node num entries %u fragmentation: %d height: %d", node->header.num_entries,
