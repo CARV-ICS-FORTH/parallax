@@ -288,7 +288,7 @@ static void comp_zero_level(struct db_descriptor *db_desc, uint8_t level_id, uin
 
 static bool comp_fill_src_heap_node(struct compaction_request *comp_req, struct sh_heap_node *heap_node)
 {
-	heap_node->db_desc = comp_req->db_desc;
+	// heap_node->db_desc = comp_req->db_desc;
 	heap_node->level_id = comp_req->src_level;
 	heap_node->active_tree = comp_req->src_level == 0 ? comp_req->src_tree : 0;
 	if (0 == comp_req->src_level)
@@ -301,7 +301,7 @@ static bool comp_fill_src_heap_node(struct compaction_request *comp_req, struct 
 
 static void comp_fill_dst_heap_node(struct compaction_request *comp_req, struct sh_heap_node *heap_node)
 {
-	heap_node->db_desc = comp_req->db_desc;
+	// heap_node->db_desc = comp_req->db_desc;
 	heap_node->level_id = comp_req->dst_level;
 	heap_node->active_tree = comp_req->dst_tree;
 	level_comp_scanner_get_curr(comp_req->dst_scanner, &heap_node->splice);
@@ -439,7 +439,7 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 
 	// initialize and fill min_heap properly
 	struct sh_heap *m_heap = sh_alloc_heap();
-	sh_init_heap(m_heap, comp_req->src_level, MIN_HEAP);
+	sh_init_heap(m_heap, comp_req->src_level, MIN_HEAP, comp_req->db_desc);
 	struct sh_heap_node src_heap_node = { 0 };
 	struct sh_heap_node dst_heap_node = { 0 };
 	struct sh_heap_node min_heap_node = { 0 };

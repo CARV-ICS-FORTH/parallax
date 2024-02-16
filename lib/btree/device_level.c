@@ -26,9 +26,12 @@
 #include <unistd.h>
 struct key_splice;
 struct pbf_desc;
+#define DEVICE_LEVEL_CACHE_LINE_SIZE 64
 
-alignas(64) struct level_counter {
+struct level_counter {
 	int64_t active_operations;
+	// cppcheck-suppress unusedStructMember
+	char pad[DEVICE_LEVEL_CACHE_LINE_SIZE - sizeof(int64_t)];
 };
 
 struct level_lock {

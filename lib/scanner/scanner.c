@@ -51,7 +51,7 @@ void scanner_seek(struct scanner *scanner, db_handle *database, void *start_key,
 
 	scanner->db = database;
 
-	sh_init_heap(&scanner->heap, database->db_desc->L0.active_tree, MIN_HEAP);
+	sh_init_heap(&scanner->heap, database->db_desc->L0.active_tree, MIN_HEAP, database->db_desc);
 
 	for (int tree_id = 0; tree_id < NUM_TREES_PER_LEVEL; ++tree_id) {
 		struct node_header *root = database->db_desc->L0.root[tree_id];
@@ -67,7 +67,7 @@ void scanner_seek(struct scanner *scanner, db_handle *database, void *start_key,
 		heap_node.splice = scanner->L0_scanner[tree_id].splice;
 		heap_node.level_id = 0;
 		heap_node.active_tree = tree_id;
-		heap_node.db_desc = database->db_desc;
+		// heap_node.db_desc = database->db_desc;
 		heap_node.epoch = database->db_desc->L0.epoch[tree_id];
 		// log_debug("Initializing scanner with splice size: %d data %s from level_id %u tree_id %u",
 		// 	  kv_general_splice_get_key_size(&heap_node.splice),
@@ -105,7 +105,7 @@ void scanner_seek(struct scanner *scanner, db_handle *database, void *start_key,
 
 		heap_node.level_id = level_id;
 		heap_node.active_tree = 0;
-		heap_node.db_desc = database->db_desc;
+		// heap_node.db_desc = database->db_desc;
 		heap_node.epoch = UINT64_MAX;
 		sh_insert_heap_node(&scanner->heap, &heap_node);
 	}
@@ -169,7 +169,7 @@ bool scanner_get_next(struct scanner *scanner)
 			struct sh_heap_node next_node = { 0 };
 			next_node.level_id = node.level_id;
 			next_node.active_tree = node.active_tree;
-			next_node.db_desc = scanner->db->db_desc;
+			// next_node.db_desc = scanner->db->db_desc;
 			bool ret = true;
 			if (0 == node.level_id)
 				next_node.splice = scanner->L0_scanner[node.active_tree].splice;

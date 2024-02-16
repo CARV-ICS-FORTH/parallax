@@ -110,8 +110,9 @@ struct sh_heap *sh_alloc_heap(void)
 /*
  * Function to initialize the min heap
  */
-void sh_init_heap(struct sh_heap *heap, int active_tree, enum sh_heap_type heap_type)
+void sh_init_heap(struct sh_heap *heap, int active_tree, enum sh_heap_type heap_type, db_descriptor *db_desc)
 {
+	heap->db_desc = db_desc;
 	heap->heap_size = 0;
 	heap->dups = init_dups_list();
 	(void)active_tree;

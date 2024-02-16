@@ -199,18 +199,21 @@ static bool frac_is_leaf_full(struct leaf_node *leaf, uint32_t kv_size)
 {
 	// log_debug("FRAC_TAIL_OFFT: %u FRAC_PIVOT_TAIL_OFFT: %u kv_size: %u", leaf->counters[FRAC_TAIL_OFFT],
 	//    leaf->counters[FRAC_PIVOT_TAIL_OFFT], kv_size);
+	//  log_debug("Is leaf full from previous round? %s",leaf->counters[FRAC_LEAF_FULL]?"yes":"no");
+
 	if (leaf->counters[FRAC_LEAF_FULL] || (leaf->counters[FRAC_TAIL_OFFT] <= leaf->counters[FRAC_PIVOT_TAIL_OFFT]))
 		return true;
+
 	uint32_t remaining_space = leaf->counters[FRAC_TAIL_OFFT] <= leaf->counters[FRAC_PIVOT_TAIL_OFFT] ?
 					   0 :
 					   leaf->counters[FRAC_TAIL_OFFT] - leaf->counters[FRAC_PIVOT_TAIL_OFFT];
 	// if (ret)
-	// 	log_debug("Full leaf num entries are: %u remaing space is %u frac_tail_offt: %u pivot_tail_offt: %u",
-	// 		  leaf->header.num_entries,
-	// 		  leaf->counters[FRAC_TAIL_OFFT] - leaf->counters[FRAC_PIVOT_TAIL_OFFT],
-	// 		  leaf->counters[FRAC_TAIL_OFFT], leaf->counters[FRAC_PIVOT_TAIL_OFFT]);
+	// log_debug("Full leaf num entries are: %u remaing space is %u frac_tail_offt: %u pivot_tail_offt: %u",
+	// 	  leaf->header.num_entries,
+	// 	  leaf->counters[FRAC_TAIL_OFFT] - leaf->counters[FRAC_PIVOT_TAIL_OFFT],
+	// 	  leaf->counters[FRAC_TAIL_OFFT], leaf->counters[FRAC_PIVOT_TAIL_OFFT]);
 
-	return remaining_space >= kv_size;
+	return remaining_space < kv_size;
 }
 
 static bool frac_create_pivot(struct kv_splice_base *last_splice, struct kv_splice_base *new_splice,
@@ -292,7 +295,6 @@ bool frac_append_splice_in_leaf(struct leaf_node *leaf, struct kv_splice_base *g
 	// log_debug("Kv size is %d",kv_size);
 	if (frac_is_leaf_full(leaf, kv_size)) {
 		log_warn("Leaf is full cannot serve request");
-		assert(0);
 		return false;
 	}
 	char *leaf_buf = (char *)leaf;

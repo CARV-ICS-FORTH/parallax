@@ -128,18 +128,12 @@ static void *get_space(struct db_descriptor *db_desc, uint8_t level_id, uint8_t 
 					   (level_desc->offset[tree_id] % SEGMENT_SIZE));
 			*pad = paddedSpace;
 		}
-		/*we need to go to the actual allocator to get space*/
-		if (level_desc->level_id != 0) {
-			new_segment = (segment_header *)REAL_ADDRESS(
-				seg_allocate_segment(db_desc, level_desc->allocation_txn_id[tree_id]));
-			req.in_mem = 0;
-		} else {
-			if (posix_memalign((void **)&new_segment, ALIGNMENT, SEGMENT_SIZE) != 0) {
-				log_fatal("MEMALIGN FAILED");
-				BUG_ON();
-			}
-			req.in_mem = 1;
+
+		if (posix_memalign((void **)&new_segment, ALIGNMENT, SEGMENT_SIZE) != 0) {
+			log_fatal("MEMALIGN FAILED");
+			BUG_ON();
 		}
+		req.in_mem = 1;
 
 		assert(new_segment);
 		set_link_segments_metadata(&req, new_segment, segment_id, available_space);
@@ -152,36 +146,6 @@ static void *get_space(struct db_descriptor *db_desc, uint8_t level_id, uint8_t 
 	MUTEX_UNLOCK(&level_desc->level_allocation_lock);
 	return node;
 }
-
-/*
- * We use this function to allocate space only for the lsm levels during compaction
-*/
-// struct segment_header *get_segment_for_lsm_level_IO(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
-// {
-// 	struct level_descriptor *level_desc = &db_desc->levels[level_id];
-
-// 	if (level_desc->level_id == 0) {
-// 		log_warn("Not allowed this kind of allocations for L0!");
-// 		return NULL;
-// 	}
-// 	uint64_t seg_offt = seg_allocate_segment(db_desc, db_desc->levels[level_id].allocation_txn_id[tree_id]);
-// 	//log_info("Allocated level segment %llu", seg_offt);
-// 	struct segment_header *new_segment = (struct segment_header *)REAL_ADDRESS(seg_offt);
-// 	if (!new_segment) {
-// 		log_fatal("Failed to allocate space for new segment level");
-// 		BUG_ON();
-// 	}
-
-// 	if (level_desc->offset[tree_id])
-// 		level_desc->offset[tree_id] += SEGMENT_SIZE;
-// 	else {
-// 		level_desc->offset[tree_id] = SEGMENT_SIZE;
-// 		level_desc->first_segment[tree_id] = new_segment;
-// 		level_desc->last_segment[tree_id] = NULL;
-// 	}
-
-// 	return new_segment;
-// }
 
 struct index_node *seg_get_index_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id, char reason)
 {
