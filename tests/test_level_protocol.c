@@ -135,11 +135,10 @@ int main(int argc, char *argv[])
 	// Calculate the elapsed time in microseconds
 	long long elapsedTime = endTimestamp - startTimestamp;
 	double throughput = (double)num_keys / (elapsedTime / 1000000.0);
+	(void)throughput;
 	// Display the results
 	log_info("Elapsed Time: %lld microseconds\n", elapsedTime);
 	log_info("Throughput %lf ops/s\n", throughput);
-
-	// Your program logic goes here
 
 	return 0;
 }

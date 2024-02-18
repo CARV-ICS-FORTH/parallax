@@ -1655,8 +1655,11 @@ release_and_retry:
 	bool avail = is_level0_available(ins_req->metadata.handle->db_desc, level_id, ins_req->abort_on_compaction, 0);
 	if (ins_req->abort_on_compaction && !avail)
 		return PAR_FAILURE;
-	if (!avail)
-		log_fatal("Failue cannot write to Level-0");
+
+	if (!avail) {
+		log_fatal("Failure cannot write to Level-0");
+		_exit(EXIT_FAILURE);
+	}
 
 	/*now look which is the active_tree of L0*/
 	if (ins_req->metadata.level_id == 0)
@@ -1851,8 +1854,11 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 	bool avail = is_level0_available(ins_req->metadata.handle->db_desc, level_id, ins_req->abort_on_compaction, 1);
 	if (ins_req->abort_on_compaction && !avail)
 		return PAR_FAILURE;
-	if (!avail)
+
+	if (!avail) {
 		log_fatal("Failue cannot write to Level-0");
+		_exit(EXIT_FAILURE);
+	}
 	/*now look which is the active_tree of L0*/
 	if (ins_req->metadata.level_id == 0)
 		ins_req->metadata.tree_id = ins_req->metadata.handle->db_desc->L0.active_tree;
