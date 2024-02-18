@@ -19,7 +19,7 @@
 #include <stdint.h>
 enum sh_heap_type { MIN_HEAP, MAX_HEAP };
 #define HEAP_SIZE 32
-
+struct db_descriptor;
 struct sh_heap_node {
 	struct kv_splice_base splice;
 	uint64_t epoch;

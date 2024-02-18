@@ -75,7 +75,6 @@ static void *do_wal_IO(void *arg)
 						 .metadata.append_to_log = 1,
 						 .metadata.gc_request = 0 };
 		ins_req.splice_base = &kv_splice_base;
-		struct bt_mutate_req mutate = { .append_to_log = 1 };
 		struct log_operation log_op = { 0 };
 		// log_op.metadata = &mutate;
 		// log_op.metadata->handle = thr_args->bench_info->dbs[db_id];
@@ -119,13 +118,14 @@ int main(int argc, char *argv[])
 		       argv[0]);
 		_exit(EXIT_FAILURE);
 	}
+
 	if (parallax_volume == NULL) {
 		printf("Usage: %s -parallax_volume <parallax_volume_value> -num_kv_pairs <num_kv_pairs_value> -num_threads <num_threads_value> -num_dbs <number of dbs> \n",
 		       argv[0]);
 		_exit(EXIT_FAILURE);
-	}
-	CHECK(fprintf(stderr, "-->test_wal: parallax_volume: %s, num_kv_pairs: %lu, and num_threads: %lu\n",
-		      parallax_volume, num_kv_pairs, num_threads));
+	} else
+		CHECK(fprintf(stderr, "-->test_wal: parallax_volume: %s, num_kv_pairs: %lu, and num_threads: %lu\n",
+			      parallax_volume, num_kv_pairs, num_threads));
 
 	const char *error = par_format(parallax_volume, 128);
 	if (error) {
@@ -195,5 +195,8 @@ int main(int argc, char *argv[])
 
 	CHECK(fprintf(stderr, "Total execution time: %f seconds\n", execution_time));
 	CHECK(fprintf(stderr, "Throughput: %lf append kv_pairs/s\n", throughput));
+
+	free(bench_info.dbs);
+	free(bench_info.txn_ids);
 	return EXIT_SUCCESS;
 }

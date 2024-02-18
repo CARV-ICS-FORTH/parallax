@@ -37,16 +37,6 @@ struct link_segments_metadata {
 	int in_mem;
 };
 
-uint64_t seg_allocate_segment(struct db_descriptor *db_desc, uint64_t txn_id)
-{
-	struct rul_log_entry log_entry = { .dev_offt = mem_allocate(db_desc->db_volume, SEGMENT_SIZE),
-					   .txn_id = txn_id,
-					   .op_type = RUL_ALLOCATE,
-					   .size = SEGMENT_SIZE };
-	rul_add_entry_in_txn_buf(db_desc, &log_entry);
-	return log_entry.dev_offt;
-}
-
 // cppcheck-suppress unusedFunction
 void seg_free_segment(struct db_descriptor *db_desc, uint64_t txn_id, uint64_t seg_offt)
 {

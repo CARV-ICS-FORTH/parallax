@@ -52,6 +52,7 @@ static void wappender_write_segment(struct level_write_appender *appender,
 
 uint64_t wappender_allocate_space(level_write_appender_t appender)
 {
+	(void)appender;
 	assert(appender);
 	log_fatal("Function unimplemented XXX TODO XXX");
 	_exit(EXIT_FAILURE);

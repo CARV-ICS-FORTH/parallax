@@ -209,7 +209,6 @@ static void devl_init_leaf_node(struct leaf_node *leaf, uint32_t leaf_size)
 	leaf->header.node_size = leaf_size;
 }
 
-// cppcheck-suppress unusedFunction
 static uint32_t devl_leaf_get_node_size(struct leaf_node *leaf)
 {
 	(void)leaf;

@@ -59,7 +59,6 @@ static inline void frac_set_leaf_node_type(struct leaf_node *leaf, nodeType_t no
 	leaf->header.type = node_type;
 }
 
-// cppcheck-suppress unusedFunction
 static uint32_t frac_leaf_get_node_size(struct leaf_node *leaf)
 {
 	return leaf->header.node_size;
@@ -204,9 +203,7 @@ static bool frac_is_leaf_full(struct leaf_node *leaf, uint32_t kv_size)
 	if (leaf->counters[FRAC_LEAF_FULL] || (leaf->counters[FRAC_TAIL_OFFT] <= leaf->counters[FRAC_PIVOT_TAIL_OFFT]))
 		return true;
 
-	uint32_t remaining_space = leaf->counters[FRAC_TAIL_OFFT] <= leaf->counters[FRAC_PIVOT_TAIL_OFFT] ?
-					   0 :
-					   leaf->counters[FRAC_TAIL_OFFT] - leaf->counters[FRAC_PIVOT_TAIL_OFFT];
+	uint32_t remaining_space = leaf->counters[FRAC_TAIL_OFFT] - leaf->counters[FRAC_PIVOT_TAIL_OFFT];
 	// if (ret)
 	// log_debug("Full leaf num entries are: %u remaing space is %u frac_tail_offt: %u pivot_tail_offt: %u",
 	// 	  leaf->header.num_entries,

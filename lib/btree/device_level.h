@@ -482,7 +482,7 @@ bool level_scanner_dev_close(struct level_scanner_dev *dev_level_scanner);
   * @return pointer to the level_compaction scanner or NULL on failure
  */
 struct level_compaction_scanner *level_comp_scanner_init(struct device_level *level, uint8_t tree_id, uint32_t sst_size,
-							 int fd);
+							 int file_desc);
 
 /**
  * @brief moves the cursor one posistion.

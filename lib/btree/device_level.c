@@ -18,7 +18,6 @@
 #include <log.h>
 #include <minos.h>
 #include <pthread.h>
-#include <stdalign.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -690,6 +689,7 @@ bool level_add_ssts(struct device_level *level, int num_ssts, struct sst_meta *s
 	return true;
 }
 
+// cppcheck-suppress unusedFunction
 bool level_remove_sst(struct device_level *level, struct sst_meta *sst, uint32_t tree_id)
 {
 	level_enter_as_writer(level);

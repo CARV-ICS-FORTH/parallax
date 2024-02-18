@@ -425,7 +425,7 @@ uint64_t frac_idx_search(struct index_node *node, char *lookup_key, int32_t look
 	uint16_t pivot_idx = frac_idx_seek(node, lookup_key, lookup_key_size, &exact_match);
 	struct index_pivot *pivot = NULL;
 	frac_idx_get_pivot(node, &pivot, pivot_idx);
-	return pivot->pivot_pointer.child_offt;
+	return pivot ? pivot->pivot_pointer.child_offt : UINT64_MAX;
 }
 
 // cppcheck-suppress unusedFunction

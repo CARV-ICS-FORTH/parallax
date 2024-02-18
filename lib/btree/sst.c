@@ -91,8 +91,6 @@ struct key_splice *sst_meta_get_first_guard(struct sst_meta *sst)
 	if (0 == sst->first_guard_size) {
 		log_debug("First guard has not been set, what are you trying to read?");
 		BUG_ON();
-		_exit(EXIT_FAILURE);
-		return NULL;
 	}
 	char *sst_meta_buf = (char *)sst;
 	struct key_splice *first_splice = (struct key_splice *)&sst_meta_buf[sizeof(struct sst_meta)];

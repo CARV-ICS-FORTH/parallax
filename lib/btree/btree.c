@@ -35,7 +35,6 @@
 #include "../allocator/persistent_operations.h"
 #include "../parallax_callbacks/parallax_callbacks.h"
 #include "sst.h"
-#include "uthash.h"
 #include <assert.h>
 #include <list.h>
 #include <log.h>
@@ -292,7 +291,10 @@ static bool process_mem_guard(struct rul_log_entry *entry, void *_cnxt)
 
 	if (entry->op_type == RUL_FREE_SST) {
 		bool ret = minos_delete(root, (char *)&entry->dev_offt, sizeof(entry->dev_offt));
-		assert(ret);
+		if (false == ret) {
+			log_fatal("sst should be there");
+			_exit(EXIT_FAILURE);
+		}
 		log_debug("Deleted sst_dev offt: %lu as valid", entry->dev_offt);
 		assert(ret);
 	}
