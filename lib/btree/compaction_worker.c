@@ -352,11 +352,9 @@ static struct kv_splice_base comp_append_medium_L1(db_handle *handle, struct kv_
 	ins_req.metadata.end_of_log = 0;
 	ins_req.metadata.log_padding = 0;
 
-	struct log_operation log_op = { .metadata = &ins_req.metadata,
-					.optype_tolog = insertOp,
-					.ins_req = &ins_req,
-					.is_medium_log_append = true,
-					.txn_id = txn_id };
+	struct log_operation log_op = {
+		.optype_tolog = insertOp, .ins_req = &ins_req, .is_medium_log_append = true, .txn_id = txn_id
+	};
 
 	char *log_location = append_key_value_to_log(&log_op);
 

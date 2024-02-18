@@ -77,8 +77,8 @@ static void *do_wal_IO(void *arg)
 		ins_req.splice_base = &kv_splice_base;
 		struct bt_mutate_req mutate = { .append_to_log = 1 };
 		struct log_operation log_op = { 0 };
-		log_op.metadata = &mutate;
-		log_op.metadata->handle = thr_args->bench_info->dbs[db_id];
+		// log_op.metadata = &mutate;
+		// log_op.metadata->handle = thr_args->bench_info->dbs[db_id];
 		log_op.optype_tolog = insertOp;
 		log_op.txn_id = thr_args->bench_info->txn_ids[db_id];
 		log_op.ins_req = &ins_req;

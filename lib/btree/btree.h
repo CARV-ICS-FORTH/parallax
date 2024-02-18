@@ -246,7 +246,7 @@ typedef struct bt_insert_req {
 } bt_insert_req;
 
 struct log_operation {
-	bt_mutate_req *metadata;
+	// bt_mutate_req *metadata;
 	request_type optype_tolog; //enum insertOp, deleteOp
 	bt_insert_req *ins_req;
 	uint64_t txn_id;

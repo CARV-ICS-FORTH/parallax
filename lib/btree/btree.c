@@ -1119,7 +1119,7 @@ static void bt_add_blob(struct db_descriptor *db_desc, struct log_descriptor *lo
 static void *bt_append_to_log_direct_IO(struct log_operation *req, struct log_descriptor *log_desc,
 					struct metadata_tologop *data_size)
 {
-	db_handle *handle = req->metadata->handle;
+	db_handle *handle = req->ins_req->metadata.handle;
 	struct pr_log_ticket log_kv_entry_ticket = { .log_offt = 0, .IO_start_offt = 0, .IO_size = 0 };
 	struct pr_log_ticket pad_ticket = { .log_offt = 0, .IO_start_offt = 0, .IO_size = 0 };
 	char *addr_inlog = NULL;
@@ -1151,9 +1151,9 @@ static void *bt_append_to_log_direct_IO(struct log_operation *req, struct log_de
 		//log_info("Segment change avail space %u kv size %u",available_space_in_log,data_size->kv_size);
 		// pad with zeroes remaining bytes in segment
 		if (available_space_in_log > 0) {
-			struct log_operation pad_op = {
-				.metadata = NULL, .optype_tolog = paddingOp, .ins_req = NULL, .txn_id = req->txn_id
-			};
+			struct log_operation pad_op = { .optype_tolog = paddingOp,
+							.ins_req = NULL,
+							.txn_id = req->txn_id };
 			pad_ticket.req = &pad_op;
 			pad_ticket.data_size = NULL;
 			pad_ticket.tail = log_desc->tail[curr_tail_id % LOG_TAIL_NUM_BUFS];
@@ -1179,7 +1179,7 @@ static void *bt_append_to_log_direct_IO(struct log_operation *req, struct log_de
 
 		switch (log_desc->log_type) {
 		case BIG_LOG:
-			bt_add_blob(handle->db_desc, log_desc, req->metadata->tree_id);
+			bt_add_blob(handle->db_desc, log_desc, req->ins_req->metadata.tree_id);
 			break;
 		case MEDIUM_LOG:
 		case SMALL_LOG:
@@ -1212,13 +1212,13 @@ static void *bt_append_to_log_direct_IO(struct log_operation *req, struct log_de
 	struct segment_header *device_location = REAL_ADDRESS(log_desc->tail_dev_offt);
 	addr_inlog = (void *)((uint64_t)device_location + (log_desc->size % SEGMENT_SIZE));
 
-	req->metadata->log_offset = log_desc->size;
-	req->metadata->put_op_metadata.offset_in_log = req->metadata->log_offset;
+	req->ins_req->metadata.log_offset = log_desc->size;
+	req->ins_req->metadata.put_op_metadata.offset_in_log = req->ins_req->metadata.log_offset;
 	if (req->is_medium_log_append) {
 		struct lsn max_lsn = get_max_lsn();
-		req->metadata->put_op_metadata.lsn = get_lsn_id(&max_lsn);
+		req->ins_req->metadata.put_op_metadata.lsn = get_lsn_id(&max_lsn);
 	} else
-		req->metadata->put_op_metadata.lsn = get_lsn_id(&log_kv_entry_ticket.lsn);
+		req->ins_req->metadata.put_op_metadata.lsn = get_lsn_id(&log_kv_entry_ticket.lsn);
 	log_desc->size += reserve_needed_space;
 	MUTEX_UNLOCK(&handle->db_desc->lock_log);
 
@@ -1236,16 +1236,16 @@ void *append_key_value_to_log(struct log_operation *req)
 {
 	// struct log_towrite log_metadata = { .level_id = req->metadata->level_id, .status = req->metadata->cat };
 	struct metadata_tologop data_size = { 0 };
-	db_handle *handle = req->metadata->handle;
+	db_handle *handle = req->ins_req->metadata.handle;
 
 	extract_keyvalue_size(req, &data_size);
 
-	switch (req->metadata->cat) {
+	switch (req->ins_req->metadata.cat) {
 	case SMALL_INPLACE:
 		// log_metadata.log_desc = &handle->db_desc->small_log;
 		return bt_append_to_log_direct_IO(req, &handle->db_desc->small_log, &data_size);
 	case MEDIUM_INPLACE: {
-		uint8_t level_id = req->metadata->level_id;
+		uint8_t level_id = req->ins_req->metadata.level_id;
 		if (level_id) {
 			log_fatal("Append for MEDIUM_INPLACE for level_id > 0 ? Not allowed");
 			BUG_ON();
@@ -1255,7 +1255,7 @@ void *append_key_value_to_log(struct log_operation *req)
 		}
 	}
 	case MEDIUM_INLOG: {
-		uint8_t level_id = req->metadata->level_id;
+		uint8_t level_id = req->ins_req->metadata.level_id;
 		if (level_id == 0) {
 			log_fatal("MEDIUM_INLOG not allowed for level_id 0!");
 			BUG_ON();
@@ -1268,7 +1268,7 @@ void *append_key_value_to_log(struct log_operation *req)
 		// log_metadata.log_desc = &handle->db_desc->big_log;
 		return bt_append_to_log_direct_IO(req, &handle->db_desc->big_log, &data_size);
 	default:
-		log_fatal("Unknown category %u", req->metadata->cat);
+		log_fatal("Unknown category %u", req->ins_req->metadata.cat);
 		BUG_ON();
 	}
 }
@@ -1477,7 +1477,7 @@ int insert_KV_at_leaf(bt_insert_req *ins_req, struct node_header *leaf)
 	char *log_address = NULL;
 	if (ins_req->metadata.append_to_log) {
 		struct log_operation append_op = {
-			.metadata = &ins_req->metadata,
+			// .metadata = &ins_req->metadata,
 			.optype_tolog = insertOp,
 			.ins_req = ins_req,
 			.is_medium_log_append = false,
