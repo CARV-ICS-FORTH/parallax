@@ -262,11 +262,11 @@ struct log_operation {
  */
 enum kv_category calculate_KV_category(uint32_t key_size, uint32_t value_size, request_type op_type);
 
-struct log_towrite {
-	struct log_descriptor *log_desc;
-	int level_id;
-	enum kv_category status;
-};
+// struct log_towrite {
+// 	struct log_descriptor *log_desc;
+// 	int level_id;
+// 	enum kv_category status;
+// };
 
 struct bt_rebalance_result {
 	char middle_key[MAX_PIVOT_SIZE];

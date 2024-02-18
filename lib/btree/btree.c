@@ -1116,7 +1116,7 @@ static void bt_add_blob(struct db_descriptor *db_desc, struct log_descriptor *lo
 	log_desc->curr_tail_id = next_tail_id;
 }
 
-static void *bt_append_to_log_direct_IO(struct log_operation *req, struct log_towrite *log_metadata,
+static void *bt_append_to_log_direct_IO(struct log_operation *req, struct log_descriptor *log_desc,
 					struct metadata_tologop *data_size)
 {
 	db_handle *handle = req->metadata->handle;
@@ -1129,26 +1129,25 @@ static void *bt_append_to_log_direct_IO(struct log_operation *req, struct log_to
 	MUTEX_LOCK(&handle->db_desc->lock_log);
 
 	/*append data part in the data log*/
-	if (log_metadata->log_desc->size == 0)
+	if (log_desc->size == 0)
 		available_space_in_log = SEGMENT_SIZE;
-	else if (log_metadata->log_desc->size % SEGMENT_SIZE != 0)
-		available_space_in_log = SEGMENT_SIZE - (log_metadata->log_desc->size % SEGMENT_SIZE);
+	else if (log_desc->size % SEGMENT_SIZE != 0)
+		available_space_in_log = SEGMENT_SIZE - (log_desc->size % SEGMENT_SIZE);
 
 	uint32_t num_chunks = SEGMENT_SIZE / LOG_CHUNK_SIZE;
 	int segment_change = 0;
 
 	if (available_space_in_log < reserve_needed_space) {
-		if (log_metadata->log_desc->log_type == SMALL_LOG || log_metadata->log_desc->log_type == BIG_LOG) {
+		if (log_desc->log_type == SMALL_LOG || log_desc->log_type == BIG_LOG) {
 			req->ins_req->metadata.put_op_metadata.flush_segment_event = 1;
-			req->ins_req->metadata.put_op_metadata.flush_segment_offt =
-				log_metadata->log_desc->tail_dev_offt;
+			req->ins_req->metadata.put_op_metadata.flush_segment_offt = log_desc->tail_dev_offt;
 			enum log_category log_type = L0_RECOVERY;
-			if (log_metadata->log_desc->log_type == BIG_LOG)
+			if (log_desc->log_type == BIG_LOG)
 				log_type = BIG;
 			req->ins_req->metadata.put_op_metadata.log_type = log_type;
 		}
 
-		uint32_t curr_tail_id = log_metadata->log_desc->curr_tail_id;
+		uint32_t curr_tail_id = log_desc->curr_tail_id;
 		//log_info("Segment change avail space %u kv size %u",available_space_in_log,data_size->kv_size);
 		// pad with zeroes remaining bytes in segment
 		if (available_space_in_log > 0) {
@@ -1157,10 +1156,10 @@ static void *bt_append_to_log_direct_IO(struct log_operation *req, struct log_to
 			};
 			pad_ticket.req = &pad_op;
 			pad_ticket.data_size = NULL;
-			pad_ticket.tail = log_metadata->log_desc->tail[curr_tail_id % LOG_TAIL_NUM_BUFS];
+			pad_ticket.tail = log_desc->tail[curr_tail_id % LOG_TAIL_NUM_BUFS];
 			pad_ticket.tail_id = curr_tail_id % LOG_TAIL_NUM_BUFS;
-			pad_ticket.log_type = log_metadata->log_desc->log_type;
-			pad_ticket.log_offt = log_metadata->log_desc->size;
+			pad_ticket.log_type = log_desc->log_type;
+			pad_ticket.log_offt = log_desc->size;
 			pad_ticket.db_desc = handle->db_desc;
 			pr_copy_kv_to_tail(&pad_ticket);
 		}
@@ -1169,22 +1168,22 @@ static void *bt_append_to_log_direct_IO(struct log_operation *req, struct log_to
 		// ticket->tail->start, ticket->tail->end);
 		// Wait for all chunk IOs to finish to characterize it free
 		uint32_t next_tail_id = ++curr_tail_id;
-		struct log_tail *next_tail = log_metadata->log_desc->tail[next_tail_id % LOG_TAIL_NUM_BUFS];
+		struct log_tail *next_tail = log_desc->tail[next_tail_id % LOG_TAIL_NUM_BUFS];
 
 		if (!next_tail->free)
 			wait_for_value(&next_tail->IOs_completed_in_tail, num_chunks);
-		RWLOCK_WRLOCK(&log_metadata->log_desc->log_tail_buf_lock);
+		RWLOCK_WRLOCK(&log_desc->log_tail_buf_lock);
 		wait_for_value(&next_tail->pending_readers, 0);
 
-		log_metadata->log_desc->size += available_space_in_log;
+		log_desc->size += available_space_in_log;
 
-		switch (log_metadata->log_desc->log_type) {
+		switch (log_desc->log_type) {
 		case BIG_LOG:
-			bt_add_blob(handle->db_desc, log_metadata->log_desc, req->metadata->tree_id);
+			bt_add_blob(handle->db_desc, log_desc, req->metadata->tree_id);
 			break;
 		case MEDIUM_LOG:
 		case SMALL_LOG:
-			bt_add_segment_to_log(handle->db_desc, log_metadata->log_desc, req->txn_id);
+			bt_add_segment_to_log(handle->db_desc, log_desc, req->txn_id);
 			break;
 		default:
 			log_fatal("Unknown category");
@@ -1192,16 +1191,16 @@ static void *bt_append_to_log_direct_IO(struct log_operation *req, struct log_to
 		}
 
 		segment_change = 1;
-		RWLOCK_UNLOCK(&log_metadata->log_desc->log_tail_buf_lock);
+		RWLOCK_UNLOCK(&log_desc->log_tail_buf_lock);
 	}
 
-	uint32_t tail_id = log_metadata->log_desc->curr_tail_id;
+	uint32_t tail_id = log_desc->curr_tail_id;
 	log_kv_entry_ticket.req = req;
 	log_kv_entry_ticket.data_size = data_size;
-	log_kv_entry_ticket.tail = log_metadata->log_desc->tail[tail_id % LOG_TAIL_NUM_BUFS];
-	log_kv_entry_ticket.log_offt = log_metadata->log_desc->size;
+	log_kv_entry_ticket.tail = log_desc->tail[tail_id % LOG_TAIL_NUM_BUFS];
+	log_kv_entry_ticket.log_offt = log_desc->size;
 	log_kv_entry_ticket.tail_id = tail_id % LOG_TAIL_NUM_BUFS;
-	log_kv_entry_ticket.log_type = log_metadata->log_desc->log_type;
+	log_kv_entry_ticket.log_type = log_desc->log_type;
 	log_kv_entry_ticket.db_desc = handle->db_desc;
 
 	if (req->is_medium_log_append)
@@ -1210,17 +1209,17 @@ static void *bt_append_to_log_direct_IO(struct log_operation *req, struct log_to
 		log_kv_entry_ticket.lsn = increase_lsn(&handle->db_desc->lsn_factory);
 
 	/*Where we *will* store it on the device*/
-	struct segment_header *device_location = REAL_ADDRESS(log_metadata->log_desc->tail_dev_offt);
-	addr_inlog = (void *)((uint64_t)device_location + (log_metadata->log_desc->size % SEGMENT_SIZE));
+	struct segment_header *device_location = REAL_ADDRESS(log_desc->tail_dev_offt);
+	addr_inlog = (void *)((uint64_t)device_location + (log_desc->size % SEGMENT_SIZE));
 
-	req->metadata->log_offset = log_metadata->log_desc->size;
+	req->metadata->log_offset = log_desc->size;
 	req->metadata->put_op_metadata.offset_in_log = req->metadata->log_offset;
 	if (req->is_medium_log_append) {
 		struct lsn max_lsn = get_max_lsn();
 		req->metadata->put_op_metadata.lsn = get_lsn_id(&max_lsn);
 	} else
 		req->metadata->put_op_metadata.lsn = get_lsn_id(&log_kv_entry_ticket.lsn);
-	log_metadata->log_desc->size += reserve_needed_space;
+	log_desc->size += reserve_needed_space;
 	MUTEX_UNLOCK(&handle->db_desc->lock_log);
 
 	if (segment_change && available_space_in_log > 0) {
@@ -1235,24 +1234,24 @@ static void *bt_append_to_log_direct_IO(struct log_operation *req, struct log_to
 
 void *append_key_value_to_log(struct log_operation *req)
 {
-	struct log_towrite log_metadata = { .level_id = req->metadata->level_id, .status = req->metadata->cat };
+	// struct log_towrite log_metadata = { .level_id = req->metadata->level_id, .status = req->metadata->cat };
 	struct metadata_tologop data_size = { 0 };
 	db_handle *handle = req->metadata->handle;
 
 	extract_keyvalue_size(req, &data_size);
 
-	switch (log_metadata.status) {
+	switch (req->metadata->cat) {
 	case SMALL_INPLACE:
-		log_metadata.log_desc = &handle->db_desc->small_log;
-		return bt_append_to_log_direct_IO(req, &log_metadata, &data_size);
+		// log_metadata.log_desc = &handle->db_desc->small_log;
+		return bt_append_to_log_direct_IO(req, &handle->db_desc->small_log, &data_size);
 	case MEDIUM_INPLACE: {
 		uint8_t level_id = req->metadata->level_id;
 		if (level_id) {
 			log_fatal("Append for MEDIUM_INPLACE for level_id > 0 ? Not allowed");
 			BUG_ON();
 		} else {
-			log_metadata.log_desc = &handle->db_desc->small_log;
-			return bt_append_to_log_direct_IO(req, &log_metadata, &data_size);
+			// log_metadata.log_desc = &handle->db_desc->small_log;
+			return bt_append_to_log_direct_IO(req, &handle->db_desc->small_log, &data_size);
 		}
 	}
 	case MEDIUM_INLOG: {
@@ -1261,15 +1260,15 @@ void *append_key_value_to_log(struct log_operation *req)
 			log_fatal("MEDIUM_INLOG not allowed for level_id 0!");
 			BUG_ON();
 		} else {
-			log_metadata.log_desc = &handle->db_desc->medium_log;
-			return bt_append_to_log_direct_IO(req, &log_metadata, &data_size);
+			// log_metadata.log_desc = &handle->db_desc->medium_log;
+			return bt_append_to_log_direct_IO(req, &handle->db_desc->medium_log, &data_size);
 		}
 	}
 	case BIG_INLOG:
-		log_metadata.log_desc = &handle->db_desc->big_log;
-		return bt_append_to_log_direct_IO(req, &log_metadata, &data_size);
+		// log_metadata.log_desc = &handle->db_desc->big_log;
+		return bt_append_to_log_direct_IO(req, &handle->db_desc->big_log, &data_size);
 	default:
-		log_fatal("Unknown category %u", log_metadata.status);
+		log_fatal("Unknown category %u", req->metadata->cat);
 		BUG_ON();
 	}
 }
