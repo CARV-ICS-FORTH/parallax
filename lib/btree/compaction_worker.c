@@ -416,12 +416,10 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 	struct medium_log_LRU_cache *mlog_cache =
 		comp_req->dst_level == handle->db_desc->level_medium_inplace ? mlog_cache_init_LRU(handle) : NULL;
 
-	uint64_t level_size = 0 == comp_req->src_level ?
-				      handle->db_desc->L0.level_size[compaction_get_src_tree(comp_req)] :
-				      level_get_size(handle->db_desc->dev_levels[comp_req->src_level],
-						     compaction_get_src_tree(comp_req));
 	log_debug("Src [%u][%u] size = %lu", compaction_get_src_level(comp_req), compaction_get_src_tree(comp_req),
-		  level_size);
+		  0 == comp_req->src_level ? handle->db_desc->L0.level_size[compaction_get_src_tree(comp_req)] :
+					     level_get_size(handle->db_desc->dev_levels[comp_req->src_level],
+							    compaction_get_src_tree(comp_req)));
 
 	if (level_is_empty(handle->db_desc->dev_levels[comp_req->dst_level], comp_req->dst_tree))
 		log_debug("Empty dst [%u]", comp_req->dst_level);
@@ -688,7 +686,7 @@ void compaction_close(struct compaction_request *comp_req)
 			      seg_free_L0(hd.db_desc, compaction_get_src_tree(comp_req)) :
 			      level_free_space(comp_req->db_desc->dev_levels[comp_req->src_level], comp_req->src_tree,
 					       comp_req->db_desc, comp_req->txn_id);
-
+	(void)space_freed;
 	log_debug("Freed space %lu MB from DB:%s source level %u", space_freed / (1024 * 1024L),
 		  comp_req->db_desc->db_superblock->db_name, comp_req->src_level);
 	comp_zero_level(hd.db_desc, comp_req->src_level, comp_req->src_tree);
