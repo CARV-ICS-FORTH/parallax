@@ -29,7 +29,7 @@
 // IWYU pragma: no_forward_declare leaf_node
 
 struct link_segments_metadata {
-	struct level_descriptor *level_desc;
+	struct L0_descriptor *level_desc;
 	segment_header *new_segment;
 	uint64_t segment_id;
 	uint64_t available_space;
@@ -59,7 +59,7 @@ void seg_free_segment(struct db_descriptor *db_desc, uint64_t txn_id, uint64_t s
 
 static uint64_t link_memory_segments(struct link_segments_metadata *req)
 {
-	struct level_descriptor *level_desc = req->level_desc;
+	struct L0_descriptor *level_desc = req->level_desc;
 	segment_header *new_segment = req->new_segment;
 	uint64_t available_space = req->available_space;
 	uint64_t segment_id = req->segment_id;
@@ -101,7 +101,7 @@ static void *get_space(struct db_descriptor *db_desc, uint8_t level_id, uint8_t 
 		_exit(EXIT_FAILURE);
 	}
 
-	struct level_descriptor *level_desc = &db_desc->L0;
+	struct L0_descriptor *level_desc = &db_desc->L0;
 
 	struct link_segments_metadata req = { .level_desc = level_desc, .tree_id = tree_id };
 	segment_header *new_segment = NULL;
@@ -164,7 +164,7 @@ void seg_free_index_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_
 
 struct leaf_node *seg_get_leaf_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
 {
-	struct level_descriptor *level0 = &db_desc->L0;
+	struct L0_descriptor *level0 = &db_desc->L0;
 
 	struct leaf_node *leaf = (struct leaf_node *)get_space(db_desc, level_id, tree_id, level0->leaf_size);
 	return leaf;
@@ -172,7 +172,7 @@ struct leaf_node *seg_get_leaf_node(struct db_descriptor *db_desc, uint8_t level
 
 struct leaf_node *seg_get_dynamic_leaf_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
 {
-	struct level_descriptor *level0 = &db_desc->L0;
+	struct L0_descriptor *level0 = &db_desc->L0;
 	return get_space(db_desc, level_id, tree_id, level0->leaf_size);
 }
 

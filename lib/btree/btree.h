@@ -92,8 +92,8 @@ struct bloom_desc {
 	uint64_t bloom_file_hash;
 };
 
-struct level_descriptor {
-	struct pbf_desc *bloom_desc[NUM_TREES_PER_LEVEL];
+struct L0_descriptor {
+	// struct pbf_desc *bloom_desc[NUM_TREES_PER_LEVEL];
 	pthread_t compaction_thread[NUM_TREES_PER_LEVEL];
 	lock_table *level_lock_table[MAX_HEIGHT];
 	struct node_header *root[NUM_TREES_PER_LEVEL];
@@ -140,7 +140,7 @@ struct bt_kv_log_address bt_get_kv_log_address(struct log_descriptor *log_desc, 
 void bt_done_with_value_log_address(struct log_descriptor *log_desc, struct bt_kv_log_address *L);
 
 typedef struct db_descriptor {
-	struct level_descriptor L0;
+	struct L0_descriptor L0;
 	struct device_level *dev_levels[MAX_LEVELS];
 #if MEASURE_MEDIUM_INPLACE
 	uint64_t count_medium_inplace;

@@ -62,7 +62,7 @@ struct compaction_daemon *compactiond_create(struct db_handle *handle, bool do_n
 static struct compaction_request *compactiond_compact_L0(struct compaction_daemon *daemon, uint8_t L0_tree_id,
 							 uint8_t L1_tree_id)
 {
-	struct level_descriptor *level_0 = &daemon->db_handle->db_desc->L0;
+	struct L0_descriptor *level_0 = &daemon->db_handle->db_desc->L0;
 	struct device_level *level_1 = daemon->db_handle->db_desc->dev_levels[1];
 
 	if (level_0->tree_status[L0_tree_id] != BT_NO_COMPACTION)
@@ -274,7 +274,7 @@ void compactiond_close(struct compaction_daemon *daemon)
 void compactiond_force_L0_compaction(struct compaction_daemon *daemon)
 {
 	assert(daemon);
-	struct level_descriptor *level_0 = &daemon->db_handle->db_desc->L0;
+	struct L0_descriptor *level_0 = &daemon->db_handle->db_desc->L0;
 	int tree_id = daemon->next_L0_tree_to_compact % NUM_TREES_PER_LEVEL;
 	level_0->level_size[tree_id] = level_0->max_level_size;
 	compactiond_interrupt(daemon);

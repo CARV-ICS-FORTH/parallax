@@ -1116,30 +1116,6 @@ static void bt_add_blob(struct db_descriptor *db_desc, struct log_descriptor *lo
 	log_desc->curr_tail_id = next_tail_id;
 }
 
-// uint64_t allocate_segment_for_log(struct db_descriptor *db_desc, struct log_descriptor *log_desc, uint8_t level_id,
-// 				  uint8_t tree_id)
-// {
-// 	if (0 != level_id) {
-// 		log_fatal("Level-0 use only");
-// 		_exit(EXIT_FAILURE);
-// 	}
-// 	assert(db_desc && log_desc);
-// 	struct segment_header *new_segment =
-// 		seg_get_raw_log_segment(db_desc, log_desc->log_type, db_desc->L0.allocation_txn_id[tree_id]);
-// 	if (!new_segment) {
-// 		log_fatal("Cannot allocate memory from the device!");
-// 		BUG_ON();
-// 	}
-
-// 	uint64_t next_tail_seg_offt = ABSOLUTE_ADDRESS(new_segment);
-
-// 	if (!next_tail_seg_offt) {
-// 		log_fatal("No space for new segment");
-// 		BUG_ON();
-// 	}
-// 	return next_tail_seg_offt;
-// }
-
 static void *bt_append_to_log_direct_IO(struct log_operation *req, struct log_towrite *log_metadata,
 					struct metadata_tologop *data_size)
 {
