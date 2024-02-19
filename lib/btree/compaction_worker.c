@@ -421,11 +421,8 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 					     level_get_size(handle->db_desc->dev_levels[comp_req->src_level],
 							    compaction_get_src_tree(comp_req)));
 
-	if (level_is_empty(handle->db_desc->dev_levels[comp_req->dst_level], comp_req->dst_tree))
-		log_debug("Empty dst [%u]", comp_req->dst_level);
-	else
-		log_debug("Dst [%u][%u] size = %lu", comp_req->dst_level, 0,
-			  level_get_size(comp_req->db_desc->dev_levels[comp_req->dst_level], 0));
+	log_debug("Dst level[%u][%u] size = %lu", comp_req->dst_level, 0,
+		  level_get_size(comp_req->db_desc->dev_levels[comp_req->dst_level], 0));
 
 #if COMPACTION_STATS
 	struct timeval start, end;

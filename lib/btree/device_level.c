@@ -127,7 +127,7 @@ bool level_is_empty(struct device_level *level, uint32_t tree_id)
 
 inline uint64_t level_get_size(struct device_level *level, uint32_t tree_id)
 {
-	return level->level_size[tree_id];
+	return level_is_empty(level, tree_id) ? 0 : level->level_size[tree_id];
 }
 
 static inline bool level_is_medium_log_trimmable(struct device_level *level, uint64_t medium_log_head_offt)
