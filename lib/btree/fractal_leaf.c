@@ -56,6 +56,8 @@ struct leaf_pivot {
 
 static inline void frac_set_leaf_node_type(struct leaf_node *leaf, nodeType_t node_type)
 {
+	if (NULL == leaf)
+		return;
 	leaf->header.type = node_type;
 }
 
@@ -66,6 +68,9 @@ static uint32_t frac_leaf_get_node_size(struct leaf_node *leaf)
 
 void frac_init_leaf(struct leaf_node *leaf, uint32_t leaf_size)
 {
+	if (NULL == leaf)
+		return;
+
 	frac_set_leaf_node_type(leaf, leafNode);
 	leaf->header.log_size = leaf_size;
 	leaf->header.node_size = leaf_size;
