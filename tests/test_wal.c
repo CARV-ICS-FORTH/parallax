@@ -1,5 +1,5 @@
 #include "../lib/btree/btree.h"
-#include "allocator/redo_undo_log.h"
+#include "allocator/region_log.h"
 #include "btree/kv_pairs.h"
 #include "parallax/parallax.h"
 #include "parallax/structures.h"
@@ -152,7 +152,7 @@ int main(int argc, char *argv[])
 			CHECK(fprintf(stderr, "Failed to open db. Reason: %s\n", error));
 			_exit(EXIT_FAILURE);
 		}
-		bench_info.txn_ids[i] = rul_start_txn(bench_info.dbs[i]->db_desc);
+		bench_info.txn_ids[i] = regl_start_txn(bench_info.dbs[i]->db_desc);
 	}
 
 	bench_info.num_kv_pairs = num_kv_pairs;

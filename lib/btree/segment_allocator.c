@@ -14,7 +14,7 @@
 #include "segment_allocator.h"
 #include "../allocator/device_structures.h"
 #include "../allocator/log_structures.h"
-#include "../allocator/redo_undo_log.h"
+#include "../allocator/region_log.h"
 #include "../allocator/volume_manager.h"
 #include "../common/common.h"
 #include "btree_node.h"
@@ -40,11 +40,11 @@ struct link_segments_metadata {
 // cppcheck-suppress unusedFunction
 void seg_free_segment(struct db_descriptor *db_desc, uint64_t txn_id, uint64_t seg_offt)
 {
-	struct rul_log_entry log_entry = {
-		.dev_offt = seg_offt, .txn_id = txn_id, .op_type = RUL_FREE, .size = SEGMENT_SIZE
+	struct regl_log_entry log_entry = {
+		.dev_offt = seg_offt, .txn_id = txn_id, .op_type = REGL_FREE, .size = SEGMENT_SIZE
 	};
 
-	rul_add_entry_in_txn_buf(db_desc, &log_entry);
+	regl_add_entry_in_txn_buf(db_desc, &log_entry);
 }
 
 static uint64_t link_memory_segments(struct link_segments_metadata *req)
@@ -168,27 +168,27 @@ struct leaf_node *seg_get_dynamic_leaf_node(struct db_descriptor *db_desc, uint8
 
 segment_header *seg_get_raw_log_segment(struct db_descriptor *db_desc, enum log_type log_type, uint64_t txn_id)
 {
-	enum rul_op_type op_type;
+	enum regl_op_type op_type;
 	switch (log_type) {
 	case BIG_LOG:
-		op_type = RUL_LARGE_LOG_ALLOCATE;
+		op_type = REGL_LARGE_LOG_ALLOCATE;
 		break;
 	case MEDIUM_LOG:
-		op_type = RUL_MEDIUM_LOG_ALLOCATE;
+		op_type = REGL_MEDIUM_LOG_ALLOCATE;
 		break;
 	case SMALL_LOG:
-		op_type = RUL_SMALL_LOG_ALLOCATE;
+		op_type = REGL_SMALL_LOG_ALLOCATE;
 		break;
 	default:
 		log_fatal("Unknown log type");
 		BUG_ON();
 	}
 
-	struct rul_log_entry log_entry = { .dev_offt = mem_allocate(db_desc->db_volume, SEGMENT_SIZE),
-					   .txn_id = txn_id,
-					   .op_type = op_type,
-					   .size = SEGMENT_SIZE };
-	rul_add_entry_in_txn_buf(db_desc, &log_entry);
+	struct regl_log_entry log_entry = { .dev_offt = mem_allocate(db_desc->db_volume, SEGMENT_SIZE),
+					    .txn_id = txn_id,
+					    .op_type = op_type,
+					    .size = SEGMENT_SIZE };
+	regl_add_entry_in_txn_buf(db_desc, &log_entry);
 	segment_header *segment = (segment_header *)REAL_ADDRESS(log_entry.dev_offt);
 	return segment;
 }

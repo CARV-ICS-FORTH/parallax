@@ -253,18 +253,18 @@ if(PARALLAX_BUILD_TESTING)
   add_executable(
     test_region_allocations
     test_region_allocations.c ../lib/allocator/allocator.c
-    ../lib/allocator/djb2.c ../lib/allocator/redo_undo_log.c)
+    ../lib/allocator/djb2.c ../lib/allocator/region_log.c)
   target_link_libraries(test_region_allocations "${PROJECT_NAME}")
-  add_parallax_test(NAME test_region_allocations COMMAND
-                    $<TARGET_FILE:test_region_allocations>)
+  add_parallax_test(NAME test_region_allocations COMMAND run_test.sh
+                    test_region_allocations /tmp/nvme/kv_store.dat)
 
   add_executable(
-    test_redo_undo_log
-    test_redo_undo_log.c ../lib/allocator/allocator.c ../lib/allocator/djb2.c
-    ../lib/allocator/redo_undo_log.c arg_parser.c)
-  target_link_libraries(test_redo_undo_log "${PROJECT_NAME}")
-  add_parallax_test(NAME test_redo_undo_log COMMAND run_test.sh
-                    test_redo_undo_log --num_threads=4)
+    test_region_log
+    test_region_log.c ../lib/allocator/allocator.c ../lib/allocator/djb2.c
+    ../lib/allocator/region_log.c arg_parser.c)
+  target_link_libraries(test_region_log "${PROJECT_NAME}")
+  add_parallax_test(NAME test_region_log COMMAND run_test.sh test_region_log
+                    --num_threads=4)
 
   add_executable(test_optional_logging test_optional_logging.c)
   add_parallax_test(NAME test_optional_logging COMMAND run_test.sh

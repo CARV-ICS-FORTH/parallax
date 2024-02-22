@@ -15,7 +15,7 @@
 #define _GNU_SOURCE
 #include "compaction_worker.h"
 #include "../allocator/persistent_operations.h"
-#include "../allocator/redo_undo_log.h"
+#include "../allocator/region_log.h"
 #include "../allocator/volume_manager.h"
 #include "../common/common.h"
 #include "../lib/allocator/device_structures.h"
@@ -85,7 +85,7 @@ struct compaction_request *compaction_create_req(db_descriptor *db_desc, par_db_
 	compaction_req->src_tree = src_tree;
 	compaction_req->dst_level = dst_level;
 	compaction_req->dst_tree = dst_tree;
-	compaction_req->txn_id = rul_start_txn(db_desc);
+	compaction_req->txn_id = regl_start_txn(db_desc);
 	return compaction_req;
 }
 
@@ -200,11 +200,11 @@ static void mark_segment_space(db_handle *handle, struct dups_list *list, uint64
 
 	for (struct dups_node *persist_blob_metadata = calculate_diffs->head; persist_blob_metadata;
 	     persist_blob_metadata = persist_blob_metadata->next) {
-		struct rul_log_entry entry = { .dev_offt = persist_blob_metadata->dev_offt,
-					       .txn_id = txn_id,
-					       .op_type = BLOB_GARBAGE_BYTES,
-					       .blob_garbage_bytes = persist_blob_metadata->kv_size };
-		rul_add_entry_in_txn_buf(handle->db_desc, &entry);
+		struct regl_log_entry entry = { .dev_offt = persist_blob_metadata->dev_offt,
+						.txn_id = txn_id,
+						.op_type = BLOB_GARBAGE_BYTES,
+						.blob_garbage_bytes = persist_blob_metadata->kv_size };
+		regl_add_entry_in_txn_buf(handle->db_desc, &entry);
 	}
 }
 

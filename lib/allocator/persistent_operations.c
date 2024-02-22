@@ -23,7 +23,7 @@
 #include "device_structures.h"
 #include "log_structures.h"
 #include "parallax/structures.h"
-#include "redo_undo_log.h"
+#include "region_log.h"
 #include "uthash.h"
 #include "volume_manager.h"
 #include <assert.h>
@@ -70,7 +70,7 @@ static void pr_flush_allocation_log_and_level_info(struct db_descriptor *db_desc
 						   uint8_t dst_level_id, uint8_t tree_id, uint64_t txn_id)
 {
 	/*Flush my allocations*/
-	struct rul_log_info rul_log = rul_flush_txn(db_desc, txn_id);
+	struct regl_log_info rul_log = regl_flush_txn(db_desc, txn_id);
 	/*new info about allocation_log*/
 	db_desc->db_superblock->allocation_log.head_dev_offt = rul_log.head_dev_offt;
 	db_desc->db_superblock->allocation_log.tail_dev_offt = rul_log.tail_dev_offt;
@@ -147,7 +147,7 @@ void pr_flush_L0(struct db_descriptor *db_desc, uint8_t tree_id)
 	pr_lock_db_superblock(db_desc);
 	/*Flush my allocations*/
 
-	struct rul_log_info rul_log = rul_flush_txn(db_desc, txn_id);
+	struct regl_log_info rul_log = regl_flush_txn(db_desc, txn_id);
 	/*new info about large*/
 	db_desc->db_superblock->big_log_head_offt = large_log.head_dev_offt;
 	db_desc->db_superblock->big_log_tail_offt = large_log.tail_dev_offt;
@@ -177,7 +177,7 @@ void pr_flush_L0(struct db_descriptor *db_desc, uint8_t tree_id)
 	pr_unlock_db_superblock(db_desc);
 
 	MUTEX_UNLOCK(&db_desc->flush_L0_lock);
-	rul_apply_txn_buf_freeops_and_destroy(db_desc, txn_id);
+	regl_apply_txn_buf_freeops_and_destroy(db_desc, txn_id);
 }
 
 static void pr_flush_L0_to_L1(struct db_descriptor *db_desc, struct par_db_options *db_options, uint8_t level_id,
@@ -219,12 +219,12 @@ static void pr_flush_L0_to_L1(struct db_descriptor *db_desc, struct par_db_optio
 
 	struct segment_header *curr = REAL_ADDRESS(tail->prev_segment);
 	while (1) {
-		struct rul_log_entry log_entry = {
-			.dev_offt = ABSOLUTE_ADDRESS(curr), .txn_id = txn_id, .op_type = RUL_FREE, .size = SEGMENT_SIZE
+		struct regl_log_entry log_entry = {
+			.dev_offt = ABSOLUTE_ADDRESS(curr), .txn_id = txn_id, .op_type = REGL_FREE, .size = SEGMENT_SIZE
 		};
 		log_debug("Triming L0 recovery log segment:%lu curr segment id:%lu", log_entry.dev_offt,
 			  curr->segment_id);
-		rul_add_entry_in_txn_buf(db_desc, &log_entry);
+		regl_add_entry_in_txn_buf(db_desc, &log_entry);
 		bytes_freed += SEGMENT_SIZE;
 
 		if (curr->segment_id == head->segment_id)
@@ -248,7 +248,7 @@ write_logs_info:;
 
 	pr_flush_allocation_log_and_level_info(db_desc, level_id - 1, level_id, tree_id, txn_id);
 	pr_unlock_db_superblock(db_desc);
-	rul_apply_txn_buf_freeops_and_destroy(db_desc, txn_id);
+	regl_apply_txn_buf_freeops_and_destroy(db_desc, txn_id);
 }
 
 /**
@@ -267,7 +267,7 @@ static void pr_flush_Lmax_to_Ln(struct db_descriptor *db_desc, uint8_t level_id,
 	pr_flush_allocation_log_and_level_info(db_desc, level_id - 1, level_id, tree_id, txn_id);
 
 	pr_unlock_db_superblock(db_desc);
-	rul_apply_txn_buf_freeops_and_destroy(db_desc, txn_id);
+	regl_apply_txn_buf_freeops_and_destroy(db_desc, txn_id);
 }
 
 void pr_flush_compaction(struct db_descriptor *db_desc, struct par_db_options *db_options, uint8_t level_id,
@@ -288,7 +288,7 @@ void pr_flush_compaction(struct db_descriptor *db_desc, struct par_db_options *d
 	pr_flush_allocation_log_and_level_info(db_desc, level_id - 1, level_id, tree_id, txn_id);
 
 	pr_unlock_db_superblock(db_desc);
-	rul_apply_txn_buf_freeops_and_destroy(db_desc, txn_id);
+	regl_apply_txn_buf_freeops_and_destroy(db_desc, txn_id);
 }
 
 void pr_lock_db_superblock(struct db_descriptor *db_desc)
@@ -519,7 +519,7 @@ static struct segment_array *find_N_last_blobs(struct db_descriptor *db_desc, ui
 	struct large_log_segment_gc_entry *node = NULL;
 	log_debug("Allocation log cursor for volume %s DB: %s", db_desc->db_volume->volume_name,
 		  db_desc->db_superblock->db_name);
-	struct rul_cursor *log_cursor = rul_cursor_init(db_desc->db_volume, db_desc->db_superblock);
+	struct regl_cursor *log_cursor = regl_cursor_init(db_desc->db_volume, db_desc->db_superblock);
 	struct segment_array *segments = calloc(1, sizeof(struct segment_array));
 	segments->segments = calloc(PR_CURSOR_MAX_SEGMENTS_SIZE, sizeof(uint64_t));
 	segments->size = PR_CURSOR_MAX_SEGMENTS_SIZE;
@@ -528,12 +528,12 @@ static struct segment_array *find_N_last_blobs(struct db_descriptor *db_desc, ui
 
 	struct blob_entry *b_entry;
 	while (1) {
-		struct rul_log_entry *log_entry = rul_cursor_get_next(log_cursor);
+		struct regl_log_entry *log_entry = regl_cursor_get_next(log_cursor);
 		if (!log_entry)
 			break;
 
 		switch (log_entry->op_type) {
-		case RUL_LARGE_LOG_ALLOCATE:
+		case REGL_LARGE_LOG_ALLOCATE:
 			//log_info("Found allocation for BIG log");
 			if (log_entry->dev_offt == start_segment_offt)
 				start_tracing_segments = 1;
@@ -546,15 +546,15 @@ static struct segment_array *find_N_last_blobs(struct db_descriptor *db_desc, ui
 			b_entry->array_id = add_segment_in_array(segments, log_entry->dev_offt);
 			HASH_ADD_PTR(root_blob_entry, dev_offt, b_entry);
 			break;
-		case RUL_MEDIUM_LOG_ALLOCATE:
-		case RUL_SMALL_LOG_ALLOCATE:
-		case RUL_ALLOCATE:
-		case RUL_ALLOCATE_SST:
+		case REGL_MEDIUM_LOG_ALLOCATE:
+		case REGL_SMALL_LOG_ALLOCATE:
+		case REGL_ALLOCATE:
+		case REGL_ALLOCATE_SST:
 			//log_info("Found allocation for other logs not BIG");
 			break;
-		case RUL_LOG_FREE:
-		case RUL_FREE:
-		case RUL_FREE_SST:
+		case REGL_LOG_FREE:
+		case REGL_FREE:
+		case REGL_FREE_SST:
 			//log_info("Found free operation");
 			HASH_FIND_PTR(root_blob_entry, &log_entry->dev_offt, b_entry);
 			if (b_entry != NULL)
@@ -588,7 +588,7 @@ static struct segment_array *find_N_last_blobs(struct db_descriptor *db_desc, ui
 		}
 	}
 
-	rul_close_cursor(log_cursor);
+	regl_close_cursor(log_cursor);
 	struct blob_entry *current_entry = NULL;
 	struct blob_entry *tmp = NULL;
 

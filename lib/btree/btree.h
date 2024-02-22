@@ -147,7 +147,7 @@ typedef struct db_descriptor {
 #endif
 
 	pthread_mutex_t db_superblock_lock;
-	struct rul_log_descriptor *allocation_log;
+	struct regl_log_descriptor *allocation_log;
 	struct volume_descriptor *db_volume;
 	struct pr_db_superblock *db_superblock;
 	uint32_t db_superblock_idx;

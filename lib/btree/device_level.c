@@ -1,7 +1,7 @@
 #include "device_level.h"
 #include "../allocator/device_structures.h"
 #include "../allocator/log_structures.h"
-#include "../allocator/redo_undo_log.h"
+#include "../allocator/region_log.h"
 #include "../common/common.h"
 #include "../utilities/spin_loop.h"
 #include "bloom_filter.h"
@@ -151,11 +151,11 @@ uint64_t level_trim_medium_log(struct device_level *level, struct db_descriptor 
 
 	for (struct segment_header *curr_trim_segment = REAL_ADDRESS(trim_end_segment->prev_segment);;
 	     curr_trim_segment = REAL_ADDRESS(curr_trim_segment->prev_segment)) {
-		struct rul_log_entry log_entry = { .dev_offt = ABSOLUTE_ADDRESS(curr_trim_segment),
-						   .txn_id = txn_id,
-						   .op_type = RUL_FREE,
-						   .size = SEGMENT_SIZE };
-		rul_add_entry_in_txn_buf(db_desc, &log_entry);
+		struct regl_log_entry log_entry = { .dev_offt = ABSOLUTE_ADDRESS(curr_trim_segment),
+						    .txn_id = txn_id,
+						    .op_type = REGL_FREE,
+						    .size = SEGMENT_SIZE };
+		regl_add_entry_in_txn_buf(db_desc, &log_entry);
 		bytes_freed += SEGMENT_SIZE;
 		if (curr_trim_segment->segment_id == head->segment_id)
 			break;
@@ -382,11 +382,11 @@ static bool level_free_sst(void *value, void *cnxt)
 {
 	struct sst_meta *meta = (struct sst_meta *)value;
 	struct args *args = cnxt;
-	struct rul_log_entry log_entry = { .dev_offt = sst_meta_get_dev_offt(meta),
-					   .txn_id = args->txn_id,
-					   .op_type = RUL_FREE_SST,
-					   .size = sst_meta_get_size(meta) };
-	rul_add_entry_in_txn_buf(args->db_desc, &log_entry);
+	struct regl_log_entry log_entry = { .dev_offt = sst_meta_get_dev_offt(meta),
+					    .txn_id = args->txn_id,
+					    .op_type = REGL_FREE_SST,
+					    .size = sst_meta_get_size(meta) };
+	regl_add_entry_in_txn_buf(args->db_desc, &log_entry);
 	return true;
 }
 

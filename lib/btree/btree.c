@@ -14,7 +14,7 @@
 #include "btree.h"
 #include "../allocator/device_structures.h"
 #include "../allocator/log_structures.h"
-#include "../allocator/redo_undo_log.h"
+#include "../allocator/region_log.h"
 #include "../allocator/volume_manager.h"
 #include "../btree/kv_pairs.h"
 #include "../common/common.h"
@@ -277,10 +277,10 @@ static void recover_logs(db_descriptor *db_desc)
 	db_desc->lsn_factory = lsn_factory_init(last_lsn_id);
 }
 
-static bool process_mem_guard(struct rul_log_entry *entry, void *_cnxt)
+static bool process_mem_guard(struct regl_log_entry *entry, void *_cnxt)
 {
 	struct minos *root = _cnxt;
-	if (entry->op_type == RUL_ALLOCATE_SST) {
+	if (entry->op_type == REGL_ALLOCATE_SST) {
 		struct minos_insert_request ins_req = { .key = &entry->dev_offt,
 							.key_size = sizeof(entry->dev_offt),
 							.value = &entry->dev_offt,
@@ -289,7 +289,7 @@ static bool process_mem_guard(struct rul_log_entry *entry, void *_cnxt)
 		log_debug("Added sst_dev offt: %lu as valid", entry->dev_offt);
 	}
 
-	if (entry->op_type == RUL_FREE_SST) {
+	if (entry->op_type == REGL_FREE_SST) {
 		bool ret = minos_delete(root, (char *)&entry->dev_offt, sizeof(entry->dev_offt));
 		if (false == ret) {
 			log_fatal("sst should be there");
@@ -321,7 +321,7 @@ static bool add_sst_callback(void *value, void *cnxt)
 static bool recover_mem_guards(struct db_descriptor *db_desc)
 {
 	struct minos *root = minos_init();
-	rul_replay_mem_guards(db_desc->db_volume, db_desc->db_superblock, process_mem_guard, root);
+	regl_replay_mem_guards(db_desc->db_volume, db_desc->db_superblock, process_mem_guard, root);
 	minos_free(root, add_sst_callback, db_desc);
 	return true;
 }
@@ -380,14 +380,14 @@ static db_descriptor *get_db_from_volume(char *volume_name, char *db_name, struc
 		if (!new_db) {
 			log_debug("Found DB: %s recovering its allocation log", db_name);
 			db_desc->dirty = 0;
-			rul_log_init(db_desc);
+			regl_log_init(db_desc);
 			restore_db(db_desc, db_desc->db_superblock->id, options);
 			recover_mem_guards(db_desc);
 		} else {
 			db_desc->dirty = 1;
 			log_debug("Initializing new DB: %s, initializing its allocation log", db_name);
-			rul_log_init(db_desc);
-			db_desc->L0.allocation_txn_id[0] = rul_start_txn(db_desc);
+			regl_log_init(db_desc);
+			db_desc->L0.allocation_txn_id[0] = regl_start_txn(db_desc);
 			log_debug("Got txn %lu for the initialization of Large and L0_recovery_logs of DB: %s",
 				  db_desc->L0.allocation_txn_id[0], db_name);
 
@@ -541,7 +541,7 @@ db_handle *internal_db_open(struct volume_descriptor *volume_desc, par_db_option
 	/*get allocation transaction id for level-0*/
 	MUTEX_INIT(&handle->db_desc->flush_L0_lock, NULL);
 	pr_flush_L0(db_desc, db_desc->L0.active_tree);
-	db_desc->L0.allocation_txn_id[db_desc->L0.active_tree] = rul_start_txn(db_desc);
+	db_desc->L0.allocation_txn_id[db_desc->L0.active_tree] = regl_start_txn(db_desc);
 	pr_recover_L0(handle->db_desc);
 
 exit:
@@ -655,7 +655,7 @@ const char *db_close(db_handle *handle)
 	destroy_log_buffer(&handle->db_desc->big_log);
 	destroy_log_buffer(&handle->db_desc->medium_log);
 	destroy_log_buffer(&handle->db_desc->small_log);
-	rul_log_destroy(handle->db_desc);
+	regl_log_destroy(handle->db_desc);
 
 	/*free L0*/
 	for (uint8_t tree_id = 0; tree_id < NUM_TREES_PER_LEVEL; ++tree_id)

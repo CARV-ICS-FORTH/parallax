@@ -17,7 +17,7 @@
 #include "../allocator/device_structures.h"
 #include "../allocator/log_structures.h"
 #include "../allocator/persistent_operations.h"
-#include "../allocator/redo_undo_log.h"
+#include "../allocator/region_log.h"
 #include "../common/common.h"
 #include "../lib/parallax_callbacks/parallax_callbacks.h"
 #include "btree.h"
@@ -156,7 +156,7 @@ static void *compactiond_run(void *args)
 				log_debug("Next active tree %u for L0 of DB: %s", next_active_tree,
 					  db_desc->db_superblock->db_name);
 				/*Acquire a new transaction id for the next_active_tree*/
-				db_desc->L0.allocation_txn_id[next_active_tree] = rul_start_txn(db_desc);
+				db_desc->L0.allocation_txn_id[next_active_tree] = regl_start_txn(db_desc);
 				/*Release guard lock*/
 				if (RWLOCK_UNLOCK(&db_desc->L0.guard_of_level.rx_lock)) {
 					log_fatal("Failed to acquire guard lock");

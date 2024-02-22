@@ -25,7 +25,7 @@ set(LIB_C_SOURCE_FILES
     allocator/allocator.c
     allocator/log_structures.c
     allocator/kv_format.c
-    allocator/redo_undo_log.c
+    allocator/region_log.c
     allocator/persistent_operations.c
     allocator/djb2.c
     api/parallax.c

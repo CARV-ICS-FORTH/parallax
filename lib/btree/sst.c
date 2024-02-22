@@ -1,5 +1,5 @@
 #include "sst.h"
-#include "../allocator/redo_undo_log.h"
+#include "../allocator/region_log.h"
 #include "../allocator/volume_manager.h"
 #include "../common/common.h"
 #include "btree.h"
@@ -56,11 +56,11 @@ uint32_t sst_meta_get_first_leaf_relative_offt(struct sst_meta *sst)
 
 static uint64_t sst_allocate_space(struct sst *sst)
 {
-	struct rul_log_entry log_entry = { .dev_offt = mem_allocate(sst->db_handle->db_desc->db_volume, SST_SIZE),
-					   .txn_id = sst->txn_id,
-					   .op_type = RUL_ALLOCATE_SST,
-					   .size = SST_SIZE };
-	rul_add_entry_in_txn_buf(sst->db_handle->db_desc, &log_entry);
+	struct regl_log_entry log_entry = { .dev_offt = mem_allocate(sst->db_handle->db_desc->db_volume, SST_SIZE),
+					    .txn_id = sst->txn_id,
+					    .op_type = REGL_ALLOCATE_SST,
+					    .size = SST_SIZE };
+	regl_add_entry_in_txn_buf(sst->db_handle->db_desc, &log_entry);
 	return log_entry.dev_offt;
 }
 
