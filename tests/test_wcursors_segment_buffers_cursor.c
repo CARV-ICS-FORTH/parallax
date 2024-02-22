@@ -1,5 +1,5 @@
 #include "allocator/persistent_operations.h"
-#include "allocator/redo_undo_log.h"
+#include "allocator/region_log.h"
 #include "arg_parser.h"
 // #include "btree/level_write_cursor.h"
 #include <assert.h>

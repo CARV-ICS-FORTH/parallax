@@ -311,7 +311,7 @@ void regl_log_init(struct db_descriptor *db_desc)
 
 	struct regl_log_descriptor *log_desc;
 	if (posix_memalign((void **)&log_desc, ALIGNMENT, sizeof(struct regl_log_descriptor)) != 0) {
-		log_fatal("Failed to allocate redo_undo_log descriptor buffer");
+		log_fatal("Failed to allocate region_log descriptor buffer");
 		BUG_ON();
 	}
 	memset(log_desc, 0x00, sizeof(struct regl_log_descriptor));

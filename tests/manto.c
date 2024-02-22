@@ -7,7 +7,7 @@
  * end similar to Tiresias it uses BerkeleyDB as the source of truth.
  */
 #include "../btree/key_splice.h"
-#include "../lib/allocator/redo_undo_log.h"
+#include "../lib/allocator/region_log.h"
 #include "../lib/btree/conf.h"
 #include "../lib/btree/device_level.h"
 #include "../lib/btree/sst.h"
@@ -394,7 +394,7 @@ int main(int argc, char *argv[])
 	};
 	db_handle *internal_db = (db_handle *)workload.handle;
 
-	workload.txn_id = rul_start_txn(internal_db->db_desc);
+	workload.txn_id = regl_start_txn(internal_db->db_desc);
 	populate_randomly_bdb(&workload);
 	log_debug("num_of_ssts = %u", num_of_ssts);
 
@@ -406,12 +406,12 @@ int main(int argc, char *argv[])
 	verify_scanner(&workload, 1, 1);
 	verify_comp_scanner(&workload, 1, 1);
 	level_free_space(internal_db->db_desc->dev_levels[1], 1, internal_db->db_desc, workload.txn_id);
-	rul_flush_txn(internal_db->db_desc, workload.txn_id);
-	rul_apply_txn_buf_freeops_and_destroy(internal_db->db_desc, workload.txn_id);
+	regl_flush_txn(internal_db->db_desc, workload.txn_id);
+	regl_apply_txn_buf_freeops_and_destroy(internal_db->db_desc, workload.txn_id);
 	log_debug("First round successful population and deletion of level");
 	log_debug("Second round population WITHOUT deletion");
 	//done again
-	workload.txn_id = rul_start_txn(internal_db->db_desc);
+	workload.txn_id = regl_start_txn(internal_db->db_desc);
 
 	memset(ssts, 0x00, sizeof(ssts));
 	create_ssts(&workload, num_of_ssts, ssts);
@@ -420,8 +420,8 @@ int main(int argc, char *argv[])
 	verify_keys(&workload, internal_db->db_desc->dev_levels[1], 1);
 	verify_scanner(&workload, 1, 1);
 	verify_comp_scanner(&workload, 1, 1);
-	rul_flush_txn(internal_db->db_desc, workload.txn_id);
-	rul_apply_txn_buf_freeops_and_destroy(internal_db->db_desc, workload.txn_id);
+	regl_flush_txn(internal_db->db_desc, workload.txn_id);
+	regl_apply_txn_buf_freeops_and_destroy(internal_db->db_desc, workload.txn_id);
 	par_flush_superblock(workload.handle);
 
 	log_debug("Second round SUCCESS, closing DB...");
