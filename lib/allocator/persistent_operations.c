@@ -79,13 +79,8 @@ static void pr_flush_allocation_log_and_level_info(struct db_descriptor *db_desc
 
 	/*zero out Li*/
 	if (src_level_id) {
-		//Old school
-		// db_desc->db_superblock->root_r[src_level_id][0] = 0;
-		// db_desc->db_superblock->first_segment[src_level_id][0] = 0;
-		// db_desc->db_superblock->last_segment[src_level_id][0] = 0;
-		// db_desc->db_superblock->offset[src_level_id][0] = 0;
-		// db_desc->db_superblock->root_r[src_level_id][0] = 0;
 		db_desc->db_superblock->level_size[src_level_id][0] = 0;
+		db_desc->db_superblock->num_level_keys[src_level_id][0] = 0;
 	}
 
 	if (dst_level_id)
