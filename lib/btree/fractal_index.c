@@ -14,6 +14,7 @@
 #include "../btree/conf.h"
 #include "../btree/key_splice.h"
 #include "../common/common.h"
+#include "btree_node.h"
 #include "device_level.h"
 #include "index_node.h"
 #include <assert.h>
@@ -25,7 +26,6 @@
 #include <unistd.h>
 struct key_splice;
 
-#define INDEX_NODE_SIZE (8192)
 #define FRAC_IDX_BLOCK_SIZE 256UL
 
 typedef enum {
@@ -69,7 +69,10 @@ static struct pivot_pointer *frac_idx_get_pivot_pointer(struct key_splice *key_s
 {
 	char *buf = (char *)key_splice;
 	struct index_pivot *pivot = (struct index_pivot *)&buf[frac_idx_calculate_splice_size(key_splice)];
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Waddress-of-packed-member"
 	return &pivot->pivot_pointer;
+#pragma GCC diagnostic pop
 }
 
 static bool frac_idx_is_empty(struct index_node *node)
@@ -356,10 +359,9 @@ static uint16_t frac_idx_seek(struct index_node *node, char *key, int32_t key_si
 	uint16_t guard_offt_b = 0;
 
 	struct index_guard *guard = (struct index_guard *)&node_buf[guard_offt_a];
-	int ret = 0;
 	// log_debug("Searching node: %p num guards are: %u", (void *)node, node->counters[FRAC_IDX_NUM_GUARDS]);
 	for (uint32_t i = 0; i < node->counters[FRAC_IDX_NUM_GUARDS]; i++) {
-		ret = frac_idx_comparator(guard->key, key, guard->size, key_size);
+		int ret = frac_idx_comparator(guard->key, key, guard->size, key_size);
 		// log_debug("guard key: %.*s guard_key_size: %u key_size: %u ret = %d", guard->size, guard->key,
 		// 	  guard->size, key_size, ret);
 
@@ -386,13 +388,12 @@ static uint16_t frac_idx_seek(struct index_node *node, char *key, int32_t key_si
 	struct index_pivot *pivot = NULL;
 	struct key_splice *key_splice = NULL;
 	uint16_t pivot_idx_b = node->counters[FRAC_IDX_FIRST_PIVOT_OFFT];
-	uint32_t loops = 0;
 	for (; frac_idx_get_pivot(node, &pivot, pivot_idx);) {
 		key_splice = (struct key_splice *)&node_buf[pivot_idx];
 		// log_debug("Found key splice: %.*s of size: %u", key_splice_get_key_size(key_splice),
 		// 	  key_splice_get_key_offset(key_splice), key_splice_get_key_size(key_splice));
-		ret = frac_idx_comparator(key_splice_get_key_offset(key_splice), key,
-					  key_splice_get_key_size(key_splice), key_size);
+		int ret = frac_idx_comparator(key_splice_get_key_offset(key_splice), key,
+					      key_splice_get_key_size(key_splice), key_size);
 
 		if (ret > 0) {
 			//follow the previous, we have the guard so no worries
@@ -405,8 +406,6 @@ static uint16_t frac_idx_seek(struct index_node *node, char *key, int32_t key_si
 			return pivot_idx;
 		}
 		uint16_t prev_size = pivot->prev_size;
-		// log_debug("Prev size = %u",prev_size);
-		++loops;
 		if (prev_size == 0) {
 			// log_debug("Prev size is 0 end of the road node num entries: %u ret: %d loops: %u",
 			// 	  node->header.num_entries, ret,loops);
@@ -426,17 +425,18 @@ uint64_t frac_idx_search(struct index_node *node, char *lookup_key, int32_t look
 	uint16_t pivot_idx = frac_idx_seek(node, lookup_key, lookup_key_size, &exact_match);
 	struct index_pivot *pivot = NULL;
 	frac_idx_get_pivot(node, &pivot, pivot_idx);
-	return pivot->pivot_pointer.child_offt;
+	return pivot ? pivot->pivot_pointer.child_offt : UINT64_MAX;
 }
 
 // cppcheck-suppress unusedFunction
-void dex_idx_node_print(struct index_node *node)
+void frac_idx_node_print(struct index_node *node)
 {
 	(void)node;
 	log_info("Node num entries %u fragmentation: %d height: %d", node->header.num_entries,
 		 node->header.fragmentation, node->header.height);
 }
 
+// cppcheck-suppress unusedFunction
 bool frac_idx_register(struct level_index_api *index_api)
 {
 	index_api->index_get_pivot = frac_idx_get_pivot_pointer;

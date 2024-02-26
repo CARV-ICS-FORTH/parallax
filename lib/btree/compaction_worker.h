@@ -11,8 +11,6 @@ struct compaction_request *compaction_create_req(db_descriptor *db_desc, struct 
 
 void compaction_destroy_req(struct compaction_request *);
 
-uint8_t compaction_get_dst_tree(struct compaction_request *comp_req);
-
 void compaction_set_dst_tree(struct compaction_request *comp_req, uint8_t tree_id);
 
 uint8_t compaction_get_dst_level(struct compaction_request *comp_req);

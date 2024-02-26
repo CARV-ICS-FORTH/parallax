@@ -15,7 +15,7 @@
 #include "../allocator/kv_format.h"
 #include "../allocator/log_structures.h"
 #include "../allocator/persistent_operations.h"
-#include "../allocator/redo_undo_log.h"
+#include "../allocator/region_log.h"
 #include "../btree/btree.h"
 #include "../btree/conf.h"
 #include "../btree/key_splice.h"
@@ -24,6 +24,7 @@
 #include "../common/common.h"
 #include "../include/parallax/structures.h"
 #include "../lib/allocator/device_structures.h"
+#include "../lib/scanner/scanner_mode.h"
 #include "../scanner/scanner.h"
 #include <assert.h>
 #include <log.h>
@@ -226,7 +227,7 @@ uint64_t par_init_compaction_id(par_handle handle)
 {
 	db_handle *dbhandle = (db_handle *)handle;
 	/*Acquire a txn_id for the allocations of the compaction*/
-	return rul_start_txn(dbhandle->db_desc);
+	return regl_start_txn(dbhandle->db_desc);
 }
 
 void par_delete(par_handle handle, struct par_key *key, const char **error_message)
@@ -282,7 +283,7 @@ par_scanner par_init_scanner(par_handle handle, struct par_key *key, par_seek_mo
 
 	struct db_handle *internal_db_handle = (struct db_handle *)handle;
 
-	scanner_init(scanner, internal_db_handle, seek_key_splice, scanner_mode);
+	scanner_seek(scanner, internal_db_handle, seek_key_splice, scanner_mode);
 	if (malloced)
 		free(seek_key_splice);
 	seek_key_splice = NULL;
@@ -393,7 +394,7 @@ par_ret_code par_sync(par_handle handle)
 	spin_loop(&(parallax->db_desc->L0.active_operations), 0);
 	uint8_t active_tree = parallax->db_desc->L0.active_tree;
 	pr_flush_L0(parallax->db_desc, active_tree);
-	parallax->db_desc->L0.allocation_txn_id[active_tree] = rul_start_txn(parallax->db_desc);
+	parallax->db_desc->L0.allocation_txn_id[active_tree] = regl_start_txn(parallax->db_desc);
 	RWLOCK_UNLOCK(&parallax->db_desc->L0.guard_of_level.rx_lock);
 	return PAR_SUCCESS;
 }
@@ -467,7 +468,6 @@ struct par_options_desc *par_get_default_options(void)
 	return default_db_options;
 }
 
-// cppcheck-suppress unusedFunction
 void par_flush_superblock(par_handle handle)
 {
 	struct db_handle *dbhandle = (struct db_handle *)handle;

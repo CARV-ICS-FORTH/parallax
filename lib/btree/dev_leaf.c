@@ -19,6 +19,7 @@
 #include "parallax/structures.h"
 #include <assert.h>
 #include <log.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -208,7 +209,6 @@ static void devl_init_leaf_node(struct leaf_node *leaf, uint32_t leaf_size)
 	leaf->header.node_size = leaf_size;
 }
 
-// cppcheck-suppress unusedFunction
 static uint32_t devl_leaf_get_node_size(struct leaf_node *leaf)
 {
 	(void)leaf;
@@ -265,7 +265,7 @@ static bool devl_leaf_iter_first(struct leaf_node *leaf, struct leaf_iterator *i
 {
 	iter->leaf = leaf;
 	iter->pos = 0;
-	return iter->pos < leaf->header.num_entries;
+	return leaf->header.num_entries > 0;
 }
 
 static bool devl_leaf_seek_iter(struct leaf_node *leaf, struct leaf_iterator *iter, char *key, int32_t key_size)

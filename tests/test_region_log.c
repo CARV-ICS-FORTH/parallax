@@ -17,7 +17,7 @@
 #include "parallax/parallax.h"
 #include "parallax/structures.h"
 #include <allocator/persistent_operations.h>
-#include <allocator/redo_undo_log.h>
+#include <allocator/region_log.h>
 #include <allocator/volume_manager.h>
 #include <btree/btree.h>
 #include <common/common.h>
@@ -26,8 +26,8 @@
 #include <pthread.h>
 #include <stdlib.h>
 
-#define RUL_TRANSACTION_SIZE (3457)
-#define RUL_TRANSACTION_NUM (1239)
+#define REGL_TRANSACTION_SIZE (3457)
+#define REGL_TRANSACTION_NUM (1239)
 #define GARBAGE_BYTES 128
 
 struct rul_worker_arg {
@@ -42,31 +42,31 @@ static void *rul_worker(void *args)
 	uint64_t dev_offt = 0;
 	uint64_t fake_dev_offt = 1;
 
-	for (uint32_t i = 0; i < RUL_TRANSACTION_NUM; ++i) {
-		uint64_t txn_id = rul_start_txn(db_desc);
+	for (uint32_t i = 0; i < REGL_TRANSACTION_NUM; ++i) {
+		uint64_t txn_id = regl_start_txn(db_desc);
 		//log_info("Starting trans %lu", my_txn_id);
-		for (uint32_t j = 0; j < RUL_TRANSACTION_SIZE; ++j) {
-			struct rul_log_entry log_entry = { 0 };
+		for (uint32_t j = 0; j < REGL_TRANSACTION_SIZE; ++j) {
+			struct regl_log_entry log_entry = { 0 };
 			log_entry.size = SEGMENT_SIZE;
 			log_entry.txn_id = txn_id;
 			if (0 == j % 3) {
 				dev_offt = mem_allocate(db_desc->db_volume, SEGMENT_SIZE);
 				log_entry.dev_offt = dev_offt;
-				log_entry.op_type = RUL_LARGE_LOG_ALLOCATE;
+				log_entry.op_type = REGL_LARGE_LOG_ALLOCATE;
 			} else if (1 == j % 3) {
 				mem_free_segment(db_desc->db_volume, dev_offt);
 				log_entry.dev_offt = dev_offt;
-				log_entry.op_type = RUL_FREE;
+				log_entry.op_type = REGL_FREE;
 			} else {
 				log_entry.dev_offt = fake_dev_offt++;
 				log_entry.op_type = BLOB_GARBAGE_BYTES;
 				log_entry.blob_garbage_bytes = GARBAGE_BYTES;
 			}
-			rul_add_entry_in_txn_buf(db_desc, &log_entry);
+			regl_add_entry_in_txn_buf(db_desc, &log_entry);
 		}
 
 		pr_lock_db_superblock(db_desc);
-		struct rul_log_info rul_log = rul_flush_txn(db_desc, txn_id);
+		struct regl_log_info rul_log = regl_flush_txn(db_desc, txn_id);
 
 		db_desc->db_superblock->allocation_log.head_dev_offt = rul_log.head_dev_offt;
 		db_desc->db_superblock->allocation_log.tail_dev_offt = rul_log.tail_dev_offt;
@@ -81,8 +81,8 @@ static void *rul_worker(void *args)
 uint32_t count_entries(void)
 {
 	uint32_t count = 0;
-	for (uint32_t i = 0; i < RUL_TRANSACTION_NUM; ++i)
-		for (uint32_t j = 0; j < RUL_TRANSACTION_SIZE; ++j)
+	for (uint32_t i = 0; i < REGL_TRANSACTION_NUM; ++i)
+		for (uint32_t j = 0; j < REGL_TRANSACTION_SIZE; ++j)
 			if (2 == j % 3)
 				++count;
 
@@ -138,11 +138,11 @@ int main(int argc, char *argv[])
 	arg_print_options(help_flag, options, options_len);
 	log_info("Configuration is :");
 
-	log_info("RUL_LOG_CHUNK_NUM = %lu", RUL_LOG_CHUNK_NUM);
-	log_info("RUL_SEGMENT_FOOTER_SIZE_IN_BYTES = %lu", RUL_SEGMENT_FOOTER_SIZE_IN_BYTES);
-	log_info("RUL_LOG_CHUNK_SIZE_IN_BYTES = %lu", RUL_LOG_CHUNK_SIZE_IN_BYTES);
-	log_info("RUL_LOG_CHUNK_MAX_ENTRIES = %lu", RUL_LOG_CHUNK_MAX_ENTRIES);
-	log_info("RUL_SEGMENT_MAX_ENTRIES = %lu", RUL_SEGMENT_MAX_ENTRIES);
+	log_info("RUL_LOG_CHUNK_NUM = %lu", REGL_LOG_CHUNK_NUM);
+	log_info("RUL_SEGMENT_FOOTER_SIZE_IN_BYTES = %lu", REGL_SEGMENT_FOOTER_SIZE_IN_BYTES);
+	log_info("RUL_LOG_CHUNK_SIZE_IN_BYTES = %lu", REGL_LOG_CHUNK_SIZE_IN_BYTES);
+	log_info("RUL_LOG_CHUNK_MAX_ENTRIES = %lu", REGL_LOG_CHUNK_MAX_ENTRIES);
+	log_info("RUL_SEGMENT_MAX_ENTRIES = %lu", REGL_SEGMENT_MAX_ENTRIES);
 
 	disable_gc();
 	const char *error_message = NULL;

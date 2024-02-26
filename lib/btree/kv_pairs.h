@@ -27,13 +27,14 @@ struct kv_splice_meta {
 	uint16_t kv_cat : 2;
 	uint16_t unreserved : 12;
 } __attribute__((packed));
+
 struct kv_splice {
+	struct kv_splice_meta meta;
 #if TEBIS_FORMAT
 	int16_t key_size;
 	int32_t value_size;
 	int8_t tail_for_sizes;
 #else
-	struct kv_splice_meta meta;
 	int16_t key_size;
 	int32_t value_size;
 #endif
@@ -42,10 +43,11 @@ struct kv_splice {
 
 struct kv_seperation_splice2 {
 	// uint64_t value_offt;
+	struct kv_splice_meta meta;
 #if TEBIS_FORMAT
 	int16_t key_size;
+	uint64_t value_offt; //oops
 #else
-	struct kv_splice_meta meta;
 	int16_t key_size;
 	uint64_t value_offt;
 #endif

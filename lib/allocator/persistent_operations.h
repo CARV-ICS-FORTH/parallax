@@ -16,12 +16,12 @@ uint32_t get_garbage_entries(void);
 uint32_t get_garbage_bytes(void);
 
 /**
- * Triggers the counting for blobs garbage bytes when recovering redo_undo_log.
+ * Triggers the counting for blobs garbage bytes when recovering region_log.
  */
 void enable_validation_garbage_bytes(void);
 
 /**
- * Disables the counting for blobs garbage bytes when recovering redo_undo_log.
+ * Disables the counting for blobs garbage bytes when recovering region_log.
  */
 void disable_validation_garbage_bytes(void);
 

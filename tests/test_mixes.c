@@ -179,6 +179,7 @@ static void *populate_db(void *task)
 		par_put(hd, &kv, &error_message);
 		if (error_message) {
 			log_fatal("Put failed! %s", error_message);
+			log_fatal("Key size is: %u Value is: %u", k->key_size, v->value_size);
 			BUG_ON();
 		}
 		free(k);

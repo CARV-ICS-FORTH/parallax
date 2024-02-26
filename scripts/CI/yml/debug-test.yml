@@ -286,15 +286,15 @@ debug_leaf_root_delete_get_scan:
         - ctest -R ^test_leaf_root_delete_get_scan$
     needs: [debug_build_gcc, debug_build_clang]
 
-debug_test_redo_undo_log:
+debug_test_region_log:
     image: carvicsforth/arch_carv:latest
     stage: debug_test
     <<: *debug_build_commands
     tags:
         - kubernetes
     script:
-        - make test_redo_undo_log;make kv_format.parallax;cd tests;
-        - ctest -R ^test_redo_undo_log$
+        - make test_region_log;make kv_format.parallax;cd tests;
+        - ctest -R ^test_region_log$
     needs: [debug_build_gcc, debug_build_clang]
 
 debug_test_par_format:

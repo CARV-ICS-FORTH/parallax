@@ -1,4 +1,4 @@
-// Copyright [2021] [FORTH-ICS]
+/// Copyright [2021] [FORTH-ICS]
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
 #include "btree.h"
 #include "../allocator/device_structures.h"
 #include "../allocator/log_structures.h"
-#include "../allocator/redo_undo_log.h"
+#include "../allocator/region_log.h"
 #include "../allocator/volume_manager.h"
 #include "../btree/kv_pairs.h"
 #include "../common/common.h"
@@ -29,10 +29,12 @@
 #include "index_node.h"
 #include "key_splice.h"
 #include "lsn.h"
+#include "minos.h"
 #include "segment_allocator.h"
 
 #include "../allocator/persistent_operations.h"
 #include "../parallax_callbacks/parallax_callbacks.h"
+#include "sst.h"
 #include <assert.h>
 #include <list.h>
 #include <log.h>
@@ -227,20 +229,21 @@ static void init_fresh_db(struct db_descriptor *db_desc, struct par_db_options *
 		db_desc->L0.level_size[tree_id] = 0;
 		/*segments info per level*/
 		db_desc->L0.first_segment[tree_id] = 0;
-		superblock->first_segment[0][tree_id] = 0;
+		//Old school
+		// superblock->first_segment[0][tree_id] = 0;
 
 		db_desc->L0.last_segment[tree_id] = 0;
-		superblock->last_segment[0][tree_id] = 0;
+		// superblock->last_segment[0][tree_id] = 0;
 
 		db_desc->L0.offset[tree_id] = 0;
-		superblock->offset[0][tree_id] = 0;
+		// superblock->offset[0][tree_id] = 0;
 
 		/*total keys*/
 		db_desc->L0.level_size[tree_id] = 0;
 		superblock->level_size[0][tree_id] = 0;
 		/*finally the roots*/
 		db_desc->L0.root[tree_id] = NULL;
-		superblock->root_r[0][tree_id] = 0;
+		// superblock->root_r[0][tree_id] = 0;
 	}
 	for (uint8_t level_id = 1; level_id < MAX_LEVELS; ++level_id)
 		db_desc->dev_levels[level_id] = level_create_fresh(level_id, options->options[LEVEL0_SIZE].value,
@@ -272,6 +275,55 @@ static void recover_logs(db_descriptor *db_desc)
 	init_log_buffer(&db_desc->big_log, BIG_LOG);
 	int64_t last_lsn_id = get_lsn_id(&db_desc->db_superblock->last_lsn);
 	db_desc->lsn_factory = lsn_factory_init(last_lsn_id);
+}
+
+static bool process_mem_guard(struct regl_log_entry *entry, void *_cnxt)
+{
+	struct minos *root = _cnxt;
+	if (entry->op_type == REGL_ALLOCATE_SST) {
+		struct minos_insert_request ins_req = { .key = &entry->dev_offt,
+							.key_size = sizeof(entry->dev_offt),
+							.value = &entry->dev_offt,
+							.value_size = sizeof(entry->dev_offt) };
+		minos_insert(root, &ins_req);
+		log_debug("Added sst_dev offt: %lu as valid", entry->dev_offt);
+	}
+
+	if (entry->op_type == REGL_FREE_SST) {
+		bool ret = minos_delete(root, (char *)&entry->dev_offt, sizeof(entry->dev_offt));
+		if (false == ret) {
+			log_fatal("sst should be there");
+			_exit(EXIT_FAILURE);
+		}
+		log_debug("Deleted sst_dev offt: %lu as valid", entry->dev_offt);
+		assert(ret);
+	}
+
+	return true;
+}
+
+static bool add_sst_callback(void *value, void *cnxt)
+{
+	uint64_t dev_offt = *(uint64_t *)value;
+	struct db_descriptor *db_desc = cnxt;
+	struct sst_meta *meta = REAL_ADDRESS(dev_offt);
+	uint32_t level_id = sst_meta_get_level_id(meta);
+	assert(level_id > 0);
+	assert(level_id < MAX_LEVELS);
+	level_add_ssts(db_desc->dev_levels[level_id], 1, &meta, 0);
+	// struct key_splice *first = sst_meta_get_first_guard(meta);
+	// struct key_splice *last = sst_meta_get_last_guard(meta);
+	// log_debug("Added SST first: %.*s last: %.*s in level: %u", key_splice_get_key_size(first),
+	//    key_splice_get_key_offset(first), key_splice_get_key_size(last), key_splice_get_key_offset(last), level_id);
+	return true;
+}
+
+static bool recover_mem_guards(struct db_descriptor *db_desc)
+{
+	struct minos *root = minos_init();
+	regl_replay_mem_guards(db_desc->db_volume, db_desc->db_superblock, process_mem_guard, root);
+	minos_free(root, add_sst_callback, db_desc);
+	return true;
 }
 
 static void restore_db(struct db_descriptor *db_desc, uint32_t region_idx, struct par_db_options *options)
@@ -328,13 +380,14 @@ static db_descriptor *get_db_from_volume(char *volume_name, char *db_name, struc
 		if (!new_db) {
 			log_debug("Found DB: %s recovering its allocation log", db_name);
 			db_desc->dirty = 0;
-			rul_log_init(db_desc);
+			regl_log_init(db_desc);
 			restore_db(db_desc, db_desc->db_superblock->id, options);
+			recover_mem_guards(db_desc);
 		} else {
 			db_desc->dirty = 1;
 			log_debug("Initializing new DB: %s, initializing its allocation log", db_name);
-			rul_log_init(db_desc);
-			db_desc->L0.allocation_txn_id[0] = rul_start_txn(db_desc);
+			regl_log_init(db_desc);
+			db_desc->L0.allocation_txn_id[0] = regl_start_txn(db_desc);
 			log_debug("Got txn %lu for the initialization of Large and L0_recovery_logs of DB: %s",
 				  db_desc->L0.allocation_txn_id[0], db_name);
 
@@ -488,7 +541,7 @@ db_handle *internal_db_open(struct volume_descriptor *volume_desc, par_db_option
 	/*get allocation transaction id for level-0*/
 	MUTEX_INIT(&handle->db_desc->flush_L0_lock, NULL);
 	pr_flush_L0(db_desc, db_desc->L0.active_tree);
-	db_desc->L0.allocation_txn_id[db_desc->L0.active_tree] = rul_start_txn(db_desc);
+	db_desc->L0.allocation_txn_id[db_desc->L0.active_tree] = regl_start_txn(db_desc);
 	pr_recover_L0(handle->db_desc);
 
 exit:
@@ -602,7 +655,7 @@ const char *db_close(db_handle *handle)
 	destroy_log_buffer(&handle->db_desc->big_log);
 	destroy_log_buffer(&handle->db_desc->medium_log);
 	destroy_log_buffer(&handle->db_desc->small_log);
-	rul_log_destroy(handle->db_desc);
+	regl_log_destroy(handle->db_desc);
 
 	/*free L0*/
 	for (uint8_t tree_id = 0; tree_id < NUM_TREES_PER_LEVEL; ++tree_id)
@@ -1065,34 +1118,10 @@ static void bt_add_blob(struct db_descriptor *db_desc, struct log_descriptor *lo
 	log_desc->curr_tail_id = next_tail_id;
 }
 
-// uint64_t allocate_segment_for_log(struct db_descriptor *db_desc, struct log_descriptor *log_desc, uint8_t level_id,
-// 				  uint8_t tree_id)
-// {
-// 	if (0 != level_id) {
-// 		log_fatal("Level-0 use only");
-// 		_exit(EXIT_FAILURE);
-// 	}
-// 	assert(db_desc && log_desc);
-// 	struct segment_header *new_segment =
-// 		seg_get_raw_log_segment(db_desc, log_desc->log_type, db_desc->L0.allocation_txn_id[tree_id]);
-// 	if (!new_segment) {
-// 		log_fatal("Cannot allocate memory from the device!");
-// 		BUG_ON();
-// 	}
-
-// 	uint64_t next_tail_seg_offt = ABSOLUTE_ADDRESS(new_segment);
-
-// 	if (!next_tail_seg_offt) {
-// 		log_fatal("No space for new segment");
-// 		BUG_ON();
-// 	}
-// 	return next_tail_seg_offt;
-// }
-
-static void *bt_append_to_log_direct_IO(struct log_operation *req, struct log_towrite *log_metadata,
+static void *bt_append_to_log_direct_IO(struct log_operation *req, struct log_descriptor *log_desc,
 					struct metadata_tologop *data_size)
 {
-	db_handle *handle = req->metadata->handle;
+	db_handle *handle = req->ins_req->metadata.handle;
 	struct pr_log_ticket log_kv_entry_ticket = { .log_offt = 0, .IO_start_offt = 0, .IO_size = 0 };
 	struct pr_log_ticket pad_ticket = { .log_offt = 0, .IO_start_offt = 0, .IO_size = 0 };
 	char *addr_inlog = NULL;
@@ -1102,38 +1131,37 @@ static void *bt_append_to_log_direct_IO(struct log_operation *req, struct log_to
 	MUTEX_LOCK(&handle->db_desc->lock_log);
 
 	/*append data part in the data log*/
-	if (log_metadata->log_desc->size == 0)
+	if (log_desc->size == 0)
 		available_space_in_log = SEGMENT_SIZE;
-	else if (log_metadata->log_desc->size % SEGMENT_SIZE != 0)
-		available_space_in_log = SEGMENT_SIZE - (log_metadata->log_desc->size % SEGMENT_SIZE);
+	else if (log_desc->size % SEGMENT_SIZE != 0)
+		available_space_in_log = SEGMENT_SIZE - (log_desc->size % SEGMENT_SIZE);
 
 	uint32_t num_chunks = SEGMENT_SIZE / LOG_CHUNK_SIZE;
 	int segment_change = 0;
 
 	if (available_space_in_log < reserve_needed_space) {
-		if (log_metadata->log_desc->log_type == SMALL_LOG || log_metadata->log_desc->log_type == BIG_LOG) {
+		if (log_desc->log_type == SMALL_LOG || log_desc->log_type == BIG_LOG) {
 			req->ins_req->metadata.put_op_metadata.flush_segment_event = 1;
-			req->ins_req->metadata.put_op_metadata.flush_segment_offt =
-				log_metadata->log_desc->tail_dev_offt;
+			req->ins_req->metadata.put_op_metadata.flush_segment_offt = log_desc->tail_dev_offt;
 			enum log_category log_type = L0_RECOVERY;
-			if (log_metadata->log_desc->log_type == BIG_LOG)
+			if (log_desc->log_type == BIG_LOG)
 				log_type = BIG;
 			req->ins_req->metadata.put_op_metadata.log_type = log_type;
 		}
 
-		uint32_t curr_tail_id = log_metadata->log_desc->curr_tail_id;
+		uint32_t curr_tail_id = log_desc->curr_tail_id;
 		//log_info("Segment change avail space %u kv size %u",available_space_in_log,data_size->kv_size);
 		// pad with zeroes remaining bytes in segment
 		if (available_space_in_log > 0) {
-			struct log_operation pad_op = {
-				.metadata = NULL, .optype_tolog = paddingOp, .ins_req = NULL, .txn_id = req->txn_id
-			};
+			struct log_operation pad_op = { .optype_tolog = paddingOp,
+							.ins_req = NULL,
+							.txn_id = req->txn_id };
 			pad_ticket.req = &pad_op;
 			pad_ticket.data_size = NULL;
-			pad_ticket.tail = log_metadata->log_desc->tail[curr_tail_id % LOG_TAIL_NUM_BUFS];
+			pad_ticket.tail = log_desc->tail[curr_tail_id % LOG_TAIL_NUM_BUFS];
 			pad_ticket.tail_id = curr_tail_id % LOG_TAIL_NUM_BUFS;
-			pad_ticket.log_type = log_metadata->log_desc->log_type;
-			pad_ticket.log_offt = log_metadata->log_desc->size;
+			pad_ticket.log_type = log_desc->log_type;
+			pad_ticket.log_offt = log_desc->size;
 			pad_ticket.db_desc = handle->db_desc;
 			pr_copy_kv_to_tail(&pad_ticket);
 		}
@@ -1142,22 +1170,22 @@ static void *bt_append_to_log_direct_IO(struct log_operation *req, struct log_to
 		// ticket->tail->start, ticket->tail->end);
 		// Wait for all chunk IOs to finish to characterize it free
 		uint32_t next_tail_id = ++curr_tail_id;
-		struct log_tail *next_tail = log_metadata->log_desc->tail[next_tail_id % LOG_TAIL_NUM_BUFS];
+		struct log_tail *next_tail = log_desc->tail[next_tail_id % LOG_TAIL_NUM_BUFS];
 
 		if (!next_tail->free)
 			wait_for_value(&next_tail->IOs_completed_in_tail, num_chunks);
-		RWLOCK_WRLOCK(&log_metadata->log_desc->log_tail_buf_lock);
+		RWLOCK_WRLOCK(&log_desc->log_tail_buf_lock);
 		wait_for_value(&next_tail->pending_readers, 0);
 
-		log_metadata->log_desc->size += available_space_in_log;
+		log_desc->size += available_space_in_log;
 
-		switch (log_metadata->log_desc->log_type) {
+		switch (log_desc->log_type) {
 		case BIG_LOG:
-			bt_add_blob(handle->db_desc, log_metadata->log_desc, req->metadata->tree_id);
+			bt_add_blob(handle->db_desc, log_desc, req->ins_req->metadata.tree_id);
 			break;
 		case MEDIUM_LOG:
 		case SMALL_LOG:
-			bt_add_segment_to_log(handle->db_desc, log_metadata->log_desc, req->txn_id);
+			bt_add_segment_to_log(handle->db_desc, log_desc, req->txn_id);
 			break;
 		default:
 			log_fatal("Unknown category");
@@ -1165,16 +1193,16 @@ static void *bt_append_to_log_direct_IO(struct log_operation *req, struct log_to
 		}
 
 		segment_change = 1;
-		RWLOCK_UNLOCK(&log_metadata->log_desc->log_tail_buf_lock);
+		RWLOCK_UNLOCK(&log_desc->log_tail_buf_lock);
 	}
 
-	uint32_t tail_id = log_metadata->log_desc->curr_tail_id;
+	uint32_t tail_id = log_desc->curr_tail_id;
 	log_kv_entry_ticket.req = req;
 	log_kv_entry_ticket.data_size = data_size;
-	log_kv_entry_ticket.tail = log_metadata->log_desc->tail[tail_id % LOG_TAIL_NUM_BUFS];
-	log_kv_entry_ticket.log_offt = log_metadata->log_desc->size;
+	log_kv_entry_ticket.tail = log_desc->tail[tail_id % LOG_TAIL_NUM_BUFS];
+	log_kv_entry_ticket.log_offt = log_desc->size;
 	log_kv_entry_ticket.tail_id = tail_id % LOG_TAIL_NUM_BUFS;
-	log_kv_entry_ticket.log_type = log_metadata->log_desc->log_type;
+	log_kv_entry_ticket.log_type = log_desc->log_type;
 	log_kv_entry_ticket.db_desc = handle->db_desc;
 
 	if (req->is_medium_log_append)
@@ -1183,17 +1211,17 @@ static void *bt_append_to_log_direct_IO(struct log_operation *req, struct log_to
 		log_kv_entry_ticket.lsn = increase_lsn(&handle->db_desc->lsn_factory);
 
 	/*Where we *will* store it on the device*/
-	struct segment_header *device_location = REAL_ADDRESS(log_metadata->log_desc->tail_dev_offt);
-	addr_inlog = (void *)((uint64_t)device_location + (log_metadata->log_desc->size % SEGMENT_SIZE));
+	struct segment_header *device_location = REAL_ADDRESS(log_desc->tail_dev_offt);
+	addr_inlog = (void *)((uint64_t)device_location + (log_desc->size % SEGMENT_SIZE));
 
-	req->metadata->log_offset = log_metadata->log_desc->size;
-	req->metadata->put_op_metadata.offset_in_log = req->metadata->log_offset;
+	req->ins_req->metadata.log_offset = log_desc->size;
+	req->ins_req->metadata.put_op_metadata.offset_in_log = req->ins_req->metadata.log_offset;
 	if (req->is_medium_log_append) {
 		struct lsn max_lsn = get_max_lsn();
-		req->metadata->put_op_metadata.lsn = get_lsn_id(&max_lsn);
+		req->ins_req->metadata.put_op_metadata.lsn = get_lsn_id(&max_lsn);
 	} else
-		req->metadata->put_op_metadata.lsn = get_lsn_id(&log_kv_entry_ticket.lsn);
-	log_metadata->log_desc->size += reserve_needed_space;
+		req->ins_req->metadata.put_op_metadata.lsn = get_lsn_id(&log_kv_entry_ticket.lsn);
+	log_desc->size += reserve_needed_space;
 	MUTEX_UNLOCK(&handle->db_desc->lock_log);
 
 	if (segment_change && available_space_in_log > 0) {
@@ -1208,41 +1236,41 @@ static void *bt_append_to_log_direct_IO(struct log_operation *req, struct log_to
 
 void *append_key_value_to_log(struct log_operation *req)
 {
-	struct log_towrite log_metadata = { .level_id = req->metadata->level_id, .status = req->metadata->cat };
+	// struct log_towrite log_metadata = { .level_id = req->metadata->level_id, .status = req->metadata->cat };
 	struct metadata_tologop data_size = { 0 };
-	db_handle *handle = req->metadata->handle;
+	db_handle *handle = req->ins_req->metadata.handle;
 
 	extract_keyvalue_size(req, &data_size);
 
-	switch (log_metadata.status) {
+	switch (req->ins_req->metadata.cat) {
 	case SMALL_INPLACE:
-		log_metadata.log_desc = &handle->db_desc->small_log;
-		return bt_append_to_log_direct_IO(req, &log_metadata, &data_size);
+		// log_metadata.log_desc = &handle->db_desc->small_log;
+		return bt_append_to_log_direct_IO(req, &handle->db_desc->small_log, &data_size);
 	case MEDIUM_INPLACE: {
-		uint8_t level_id = req->metadata->level_id;
+		uint8_t level_id = req->ins_req->metadata.level_id;
 		if (level_id) {
 			log_fatal("Append for MEDIUM_INPLACE for level_id > 0 ? Not allowed");
 			BUG_ON();
 		} else {
-			log_metadata.log_desc = &handle->db_desc->small_log;
-			return bt_append_to_log_direct_IO(req, &log_metadata, &data_size);
+			// log_metadata.log_desc = &handle->db_desc->small_log;
+			return bt_append_to_log_direct_IO(req, &handle->db_desc->small_log, &data_size);
 		}
 	}
 	case MEDIUM_INLOG: {
-		uint8_t level_id = req->metadata->level_id;
+		uint8_t level_id = req->ins_req->metadata.level_id;
 		if (level_id == 0) {
 			log_fatal("MEDIUM_INLOG not allowed for level_id 0!");
 			BUG_ON();
 		} else {
-			log_metadata.log_desc = &handle->db_desc->medium_log;
-			return bt_append_to_log_direct_IO(req, &log_metadata, &data_size);
+			// log_metadata.log_desc = &handle->db_desc->medium_log;
+			return bt_append_to_log_direct_IO(req, &handle->db_desc->medium_log, &data_size);
 		}
 	}
 	case BIG_INLOG:
-		log_metadata.log_desc = &handle->db_desc->big_log;
-		return bt_append_to_log_direct_IO(req, &log_metadata, &data_size);
+		// log_metadata.log_desc = &handle->db_desc->big_log;
+		return bt_append_to_log_direct_IO(req, &handle->db_desc->big_log, &data_size);
 	default:
-		log_fatal("Unknown category %u", log_metadata.status);
+		log_fatal("Unknown category %u", req->ins_req->metadata.cat);
 		BUG_ON();
 	}
 }
@@ -1262,6 +1290,7 @@ const char *btree_insert_key_value(bt_insert_req *ins_req)
 static inline struct lock_table *bt_reader_visit_node(db_descriptor *db_desc, struct node_header *node,
 						      struct lock_table *prev_lock, uint32_t level_id)
 {
+	assert(level_id == 0);
 	if (level_id)
 		return NULL;
 
@@ -1282,11 +1311,10 @@ static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id,
 	struct db_descriptor *db_desc = get_op->db_desc;
 	struct key_splice *search_key_buf = get_op->key_splice;
 
-	if (level_id && !level_does_key_exist(db_desc->dev_levels[level_id], get_op->key_splice))
-		return;
-
-	struct node_header *curr_node = 0 == level_id ? db_desc->L0.root[tree_id] :
-							level_get_root(db_desc->dev_levels[level_id], tree_id);
+	// if (level_id && !level_does_key_exist(db_desc->dev_levels[level_id], get_op->key_splice))
+	// 	return;
+	assert(0 == level_id);
+	struct node_header *curr_node = db_desc->L0.root[tree_id];
 	if (NULL == curr_node) {
 		get_op->found = 0;
 		return;
@@ -1296,7 +1324,6 @@ static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id,
 	lock_table *curr_lock = NULL;
 
 	while (curr_node->type != leafNode && curr_node->type != leafRootNode) {
-		//No locking needed for the device levels >= 1
 		curr_lock = bt_reader_visit_node(db_desc, curr_node, prev_lock, level_id);
 		// if (0 == level_id) {
 		// 	curr_lock = find_lock_position((const lock_table **)db_desc->levels[level_id].level_lock_table,
@@ -1452,7 +1479,7 @@ int insert_KV_at_leaf(bt_insert_req *ins_req, struct node_header *leaf)
 	char *log_address = NULL;
 	if (ins_req->metadata.append_to_log) {
 		struct log_operation append_op = {
-			.metadata = &ins_req->metadata,
+			// .metadata = &ins_req->metadata,
 			.optype_tolog = insertOp,
 			.ins_req = ins_req,
 			.is_medium_log_append = false,
@@ -1628,8 +1655,11 @@ release_and_retry:
 	bool avail = is_level0_available(ins_req->metadata.handle->db_desc, level_id, ins_req->abort_on_compaction, 0);
 	if (ins_req->abort_on_compaction && !avail)
 		return PAR_FAILURE;
-	if (!avail)
-		log_fatal("Failue cannot write to Level-0");
+
+	if (!avail) {
+		log_fatal("Failure cannot write to Level-0");
+		_exit(EXIT_FAILURE);
+	}
 
 	/*now look which is the active_tree of L0*/
 	if (ins_req->metadata.level_id == 0)
@@ -1824,8 +1854,11 @@ static uint8_t writers_join_as_readers(bt_insert_req *ins_req)
 	bool avail = is_level0_available(ins_req->metadata.handle->db_desc, level_id, ins_req->abort_on_compaction, 1);
 	if (ins_req->abort_on_compaction && !avail)
 		return PAR_FAILURE;
-	if (!avail)
+
+	if (!avail) {
 		log_fatal("Failue cannot write to Level-0");
+		_exit(EXIT_FAILURE);
+	}
 	/*now look which is the active_tree of L0*/
 	if (ins_req->metadata.level_id == 0)
 		ins_req->metadata.tree_id = ins_req->metadata.handle->db_desc->L0.active_tree;

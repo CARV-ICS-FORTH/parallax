@@ -92,8 +92,8 @@ struct bloom_desc {
 	uint64_t bloom_file_hash;
 };
 
-struct level_descriptor {
-	struct pbf_desc *bloom_desc[NUM_TREES_PER_LEVEL];
+struct L0_descriptor {
+	// struct pbf_desc *bloom_desc[NUM_TREES_PER_LEVEL];
 	pthread_t compaction_thread[NUM_TREES_PER_LEVEL];
 	lock_table *level_lock_table[MAX_HEIGHT];
 	struct node_header *root[NUM_TREES_PER_LEVEL];
@@ -140,14 +140,14 @@ struct bt_kv_log_address bt_get_kv_log_address(struct log_descriptor *log_desc, 
 void bt_done_with_value_log_address(struct log_descriptor *log_desc, struct bt_kv_log_address *L);
 
 typedef struct db_descriptor {
-	struct level_descriptor L0;
+	struct L0_descriptor L0;
 	struct device_level *dev_levels[MAX_LEVELS];
 #if MEASURE_MEDIUM_INPLACE
 	uint64_t count_medium_inplace;
 #endif
 
 	pthread_mutex_t db_superblock_lock;
-	struct rul_log_descriptor *allocation_log;
+	struct regl_log_descriptor *allocation_log;
 	struct volume_descriptor *db_volume;
 	struct pr_db_superblock *db_superblock;
 	uint32_t db_superblock_idx;
@@ -246,7 +246,7 @@ typedef struct bt_insert_req {
 } bt_insert_req;
 
 struct log_operation {
-	bt_mutate_req *metadata;
+	// bt_mutate_req *metadata;
 	request_type optype_tolog; //enum insertOp, deleteOp
 	bt_insert_req *ins_req;
 	uint64_t txn_id;
@@ -261,12 +261,6 @@ struct log_operation {
  * @return On success return the KV category.
  */
 enum kv_category calculate_KV_category(uint32_t key_size, uint32_t value_size, request_type op_type);
-
-struct log_towrite {
-	struct log_descriptor *log_desc;
-	int level_id;
-	enum kv_category status;
-};
 
 struct bt_rebalance_result {
 	char middle_key[MAX_PIVOT_SIZE];

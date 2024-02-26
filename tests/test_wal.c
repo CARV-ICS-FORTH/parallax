@@ -1,5 +1,5 @@
 #include "../lib/btree/btree.h"
-#include "allocator/redo_undo_log.h"
+#include "allocator/region_log.h"
 #include "btree/kv_pairs.h"
 #include "parallax/parallax.h"
 #include "parallax/structures.h"
@@ -34,7 +34,6 @@ struct bench_info {
 	uint64_t num_dbs;
 	uint64_t num_kv_pairs;
 	uint32_t num_threads;
-	int fd;
 };
 
 struct thr_args {
@@ -76,10 +75,9 @@ static void *do_wal_IO(void *arg)
 						 .metadata.append_to_log = 1,
 						 .metadata.gc_request = 0 };
 		ins_req.splice_base = &kv_splice_base;
-		struct bt_mutate_req mutate = { .append_to_log = 1 };
 		struct log_operation log_op = { 0 };
-		log_op.metadata = &mutate;
-		log_op.metadata->handle = thr_args->bench_info->dbs[db_id];
+		// log_op.metadata = &mutate;
+		// log_op.metadata->handle = thr_args->bench_info->dbs[db_id];
 		log_op.optype_tolog = insertOp;
 		log_op.txn_id = thr_args->bench_info->txn_ids[db_id];
 		log_op.ins_req = &ins_req;
@@ -115,13 +113,19 @@ int main(int argc, char *argv[])
 		}
 	}
 
-	if (parallax_volume == NULL || num_kv_pairs == 0 || num_threads == 0 || num_dbs == 0) {
+	if (num_kv_pairs == 0 || num_threads == 0 || num_dbs == 0) {
 		printf("Usage: %s -parallax_volume <parallax_volume_value> -num_kv_pairs <num_kv_pairs_value> -num_threads <num_threads_value> -num_dbs <number of dbs> \n",
 		       argv[0]);
 		_exit(EXIT_FAILURE);
 	}
-	CHECK(fprintf(stderr, "-->test_wal: parallax_volume: %s, num_kv_pairs: %lu, and num_threads: %lu\n",
-		      parallax_volume, num_kv_pairs, num_threads));
+
+	if (parallax_volume == NULL) {
+		printf("Usage: %s -parallax_volume <parallax_volume_value> -num_kv_pairs <num_kv_pairs_value> -num_threads <num_threads_value> -num_dbs <number of dbs> \n",
+		       argv[0]);
+		_exit(EXIT_FAILURE);
+	} else
+		CHECK(fprintf(stderr, "-->test_wal: parallax_volume: %s, num_kv_pairs: %lu, and num_threads: %lu\n",
+			      parallax_volume, num_kv_pairs, num_threads));
 
 	const char *error = par_format(parallax_volume, 128);
 	if (error) {
@@ -148,7 +152,7 @@ int main(int argc, char *argv[])
 			CHECK(fprintf(stderr, "Failed to open db. Reason: %s\n", error));
 			_exit(EXIT_FAILURE);
 		}
-		bench_info.txn_ids[i] = rul_start_txn(bench_info.dbs[i]->db_desc);
+		bench_info.txn_ids[i] = regl_start_txn(bench_info.dbs[i]->db_desc);
 	}
 
 	bench_info.num_kv_pairs = num_kv_pairs;
@@ -169,7 +173,7 @@ int main(int argc, char *argv[])
 		thr_args[thr_id].bench_info = &bench_info;
 		if (pthread_create(&threads[thr_id], NULL, do_wal_IO, &thr_args[thr_id]) != 0) {
 			perror("pthread_create");
-			return EXIT_FAILURE;
+			_exit(EXIT_FAILURE);
 		}
 	}
 
@@ -191,5 +195,8 @@ int main(int argc, char *argv[])
 
 	CHECK(fprintf(stderr, "Total execution time: %f seconds\n", execution_time));
 	CHECK(fprintf(stderr, "Throughput: %lf append kv_pairs/s\n", throughput));
+
+	free(bench_info.dbs);
+	free(bench_info.txn_ids);
 	return EXIT_SUCCESS;
 }

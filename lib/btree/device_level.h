@@ -2,23 +2,22 @@
 #define DEVICE_LEVEL_H
 #include "btree.h"
 #include "btree_node.h"
+#include "index_node.h"
+#include "key_splice.h"
+#include "kv_pairs.h"
 #include <stdbool.h>
 #include <stdint.h>
+struct level_compaction_scanner;
 struct pr_db_superblock;
-struct db_handle;
 struct device_level;
-struct db_descriptor;
 struct key_splice;
-struct node_header;
-struct segment_header;
 
-struct kv_splice_base;
 struct index_node;
 // struct index_node_iterator;
 struct leaf_node;
 struct leaf_iterator;
-struct lookup_operation;
 struct level_scanner_dev;
+struct sst_meta;
 /*level leaf functions signatures*/
 typedef bool (*level_leaf_append)(struct leaf_node *leaf, struct kv_splice_base *general_splice, bool is_tombstone);
 
@@ -209,7 +208,10 @@ void level_save_bf_info_to_superblock(struct device_level *level, struct pr_db_s
   *@param tree_id id of tree
   *@return the root of the tree or NULL if it is empty
 */
-struct node_header *level_get_root(struct device_level *level, uint32_t tree_id);
+//Old school
+// struct node_header *level_get_root(struct device_level *level, uint32_t tree_id);
+
+bool level_is_empty(struct device_level *level, uint32_t tree_id);
 
 /**
   * @brief Returns the device offset of the root of tree_id in the level.
@@ -226,7 +228,8 @@ uint64_t level_get_root_dev_offt(struct device_level *level, uint32_t tree_id);
   * @param tree_id id of the tree
   * @return pointer to the segment or NULL if empty
   */
-struct segment_header *level_get_index_first_seg(struct device_level *level, uint32_t tree_id);
+//Old school
+// struct segment_header *level_get_index_first_seg(struct device_level *level, uint32_t tree_id);
 
 /**
   * @brief Returns the offset in the device where the first segment of the index resides.
@@ -234,7 +237,8 @@ struct segment_header *level_get_index_first_seg(struct device_level *level, uin
   * @param tree_id id of the tree
   * @return pointer to the segment or NULL if empty
   */
-uint64_t level_get_index_first_seg_offt(struct device_level *level, uint32_t tree_id);
+//Old school
+// uint64_t level_get_index_first_seg_offt(struct device_level *level, uint32_t tree_id);
 
 /**
   * @brief Returns pointer to the last segment of the index.
@@ -242,9 +246,11 @@ uint64_t level_get_index_first_seg_offt(struct device_level *level, uint32_t tre
   * @param tree_id id of the tree
   * @return pointer to the segment or NULL if empty
   */
-struct segment_header *level_get_index_last_seg(struct device_level *level, uint32_t tree_id);
+//Old school
+// struct segment_header *level_get_index_last_seg(struct device_level *level, uint32_t tree_id);
 
-bool level_set_index_last_seg(struct device_level *level, struct segment_header *segment, uint32_t tree_id);
+//Old school
+// bool level_set_index_last_seg(struct device_level *level, struct segment_header *segment, uint32_t tree_id);
 
 /**
   * @brief Returns the offset in the device where the last segment of the index resides.
@@ -252,14 +258,16 @@ bool level_set_index_last_seg(struct device_level *level, struct segment_header 
   * @param tree_id id of the tree
   * @return pointer to the segment or NULL if empty
   */
-uint64_t level_get_index_last_seg_offt(struct device_level *level, uint32_t tree_id);
+//Old school
+// uint64_t level_get_index_last_seg_offt(struct device_level *level, uint32_t tree_id);
 
 /**
 * @brief Return the offset? of the level.
   * @param level pointer to the level object
   * @param tree_id id of the tree
   */
-uint64_t level_get_offset(struct device_level *level, uint32_t tree_id);
+//Old school
+// uint64_t level_get_offset(struct device_level *level, uint32_t tree_id);
 
 /**
 * @brief Returns the size of the level in terms of B of key-value pairs
@@ -395,10 +403,13 @@ int64_t level_get_num_KV_pairs(struct device_level *level, uint32_t tree_id);
 bool level_increase_size(struct device_level *level, uint32_t size, uint32_t tree_id);
 
 int64_t level_inc_num_keys(struct device_level *level, uint32_t tree_id, uint32_t num_keys);
-struct segment_header *level_allocate_segment(struct device_level *level, uint8_t tree_id,
-					      struct db_descriptor *db_desc, uint64_t txn_id);
 
-struct segment_header *level_add_segment(struct device_level *level, uint8_t tree_id, uint64_t seg_offt);
+//Old school
+// struct segment_header *level_allocate_segment(struct device_level *level, uint8_t tree_id,
+// 					      struct db_descriptor *db_desc, uint64_t txn_id);
+
+//Old school
+// struct segment_header *level_add_segment(struct device_level *level, uint8_t tree_id, uint64_t seg_offt);
 
 /**
 * @brief Frees all the index segments of the level
@@ -414,6 +425,11 @@ struct level_index_api *level_get_index_api(struct device_level *level);
 
 bool level_lookup(struct device_level *level, struct lookup_operation *get_op, int tree_id);
 
+//sst staff
+bool level_add_ssts(struct device_level *level, int num_ssts, struct sst_meta *ssts[], uint32_t tree_id);
+// cppcheck-suppress unusedFunction
+bool level_remove_sst(struct device_level *level, struct sst_meta *sst, uint32_t tree_id);
+
 //level scanner staff
 /**
  * @brief Initializes a scanner for the device level.
@@ -423,6 +439,7 @@ bool level_lookup(struct device_level *level, struct lookup_operation *get_op, i
  * @return pointer to the level_scanner_dev object or NULL on failure
 */
 struct level_scanner_dev *level_scanner_dev_init(db_handle *database, uint8_t level_id, uint8_t tree_id);
+
 /**
   * @brief Seeks to a key greater or equal to the start_key_splice.
   * @param dev_level_scanner pointer to the dev_level_scanner object
@@ -430,7 +447,8 @@ struct level_scanner_dev *level_scanner_dev_init(db_handle *database, uint8_t le
   * @return true on success or false in no keey greater or equal to the start_key_splice
   * is found
 */
-bool level_scanner_dev_seek(struct level_scanner_dev *dev_level_scanner, struct key_splice *start_key_splice);
+bool level_scanner_dev_seek(struct level_scanner_dev *dev_level_scanner, struct key_splice *start_key_splice,
+			    bool is_greater);
 
 /**
  * @brief Fills the kv_splice_base with the current value of the position of the iterator.
@@ -438,7 +456,7 @@ bool level_scanner_dev_seek(struct level_scanner_dev *dev_level_scanner, struct 
  * @param splice the splice to be filled
  * @return true on success false on failure
 */
-bool level_scanner_curr(struct level_scanner_dev *dev_level_scanner, struct kv_splice_base *splice);
+bool level_scanner_dev_curr(struct level_scanner_dev *dev_level_scanner, struct kv_splice_base *splice);
 
 /**
   * @brief Moves the iterators
@@ -453,4 +471,35 @@ bool level_scanner_dev_next(struct level_scanner_dev *dev_level_scanner);
   * @returns true on success false on failure
 */
 bool level_scanner_dev_close(struct level_scanner_dev *dev_level_scanner);
+
+/**
+  * @brief Initializes a level_compaction_scanner. Its main differences with
+  * level_scanner are 1) it uses direct_IO (no shared cache) and 2) supports
+  * only iterating the whole level (no seek operation) . Its purpose is to be
+  * used by the compaction worker to compact a level with full compaction.
+  * @param level pointer to the level object
+  * @param tree_id id of the tree of the level that it will iterate
+  * @return pointer to the level_compaction scanner or NULL on failure
+ */
+struct level_compaction_scanner *level_comp_scanner_init(struct device_level *level, uint8_t tree_id, uint32_t sst_size,
+							 int file_desc);
+
+/**
+ * @brief moves the cursor one posistion.
+ * @param comp_scanner pointer to the compaction scanner object
+ * @return true on success false if the end of level has reached
+ */
+
+bool level_comp_scanner_next(struct level_compaction_scanner *comp_scanner);
+/**
+ * @brief Returns a reference to the current splice
+ * @param comp_scanner pointer to the compaction scanner object
+ * @return pointer to the kv_splice_base object or NULL if the scanner is invalid
+ */
+bool level_comp_scanner_get_curr(struct level_compaction_scanner *comp_scanner, struct kv_splice_base *splice);
+
+/**
+ * @brief Closes the scanner and frees all resources
+ */
+bool level_comp_scanner_close(struct level_compaction_scanner *comp_scanner);
 #endif

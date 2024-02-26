@@ -14,7 +14,7 @@
 #include "segment_allocator.h"
 #include "../allocator/device_structures.h"
 #include "../allocator/log_structures.h"
-#include "../allocator/redo_undo_log.h"
+#include "../allocator/region_log.h"
 #include "../allocator/volume_manager.h"
 #include "../common/common.h"
 #include "btree_node.h"
@@ -29,7 +29,7 @@
 // IWYU pragma: no_forward_declare leaf_node
 
 struct link_segments_metadata {
-	struct level_descriptor *level_desc;
+	struct L0_descriptor *level_desc;
 	segment_header *new_segment;
 	uint64_t segment_id;
 	uint64_t available_space;
@@ -37,28 +37,19 @@ struct link_segments_metadata {
 	int in_mem;
 };
 
-uint64_t seg_allocate_segment(struct db_descriptor *db_desc, uint64_t txn_id)
-{
-	struct rul_log_entry log_entry = { .dev_offt = mem_allocate(db_desc->db_volume, SEGMENT_SIZE),
-					   .txn_id = txn_id,
-					   .op_type = RUL_ALLOCATE,
-					   .size = SEGMENT_SIZE };
-	rul_add_entry_in_txn_buf(db_desc, &log_entry);
-	return log_entry.dev_offt;
-}
-
+// cppcheck-suppress unusedFunction
 void seg_free_segment(struct db_descriptor *db_desc, uint64_t txn_id, uint64_t seg_offt)
 {
-	struct rul_log_entry log_entry = {
-		.dev_offt = seg_offt, .txn_id = txn_id, .op_type = RUL_FREE, .size = SEGMENT_SIZE
+	struct regl_log_entry log_entry = {
+		.dev_offt = seg_offt, .txn_id = txn_id, .op_type = REGL_FREE, .size = SEGMENT_SIZE
 	};
 
-	rul_add_entry_in_txn_buf(db_desc, &log_entry);
+	regl_add_entry_in_txn_buf(db_desc, &log_entry);
 }
 
 static uint64_t link_memory_segments(struct link_segments_metadata *req)
 {
-	struct level_descriptor *level_desc = req->level_desc;
+	struct L0_descriptor *level_desc = req->level_desc;
 	segment_header *new_segment = req->new_segment;
 	uint64_t available_space = req->available_space;
 	uint64_t segment_id = req->segment_id;
@@ -100,7 +91,7 @@ static void *get_space(struct db_descriptor *db_desc, uint8_t level_id, uint8_t 
 		_exit(EXIT_FAILURE);
 	}
 
-	struct level_descriptor *level_desc = &db_desc->L0;
+	struct L0_descriptor *level_desc = &db_desc->L0;
 
 	struct link_segments_metadata req = { .level_desc = level_desc, .tree_id = tree_id };
 	segment_header *new_segment = NULL;
@@ -127,18 +118,12 @@ static void *get_space(struct db_descriptor *db_desc, uint8_t level_id, uint8_t 
 					   (level_desc->offset[tree_id] % SEGMENT_SIZE));
 			*pad = paddedSpace;
 		}
-		/*we need to go to the actual allocator to get space*/
-		if (level_desc->level_id != 0) {
-			new_segment = (segment_header *)REAL_ADDRESS(
-				seg_allocate_segment(db_desc, level_desc->allocation_txn_id[tree_id]));
-			req.in_mem = 0;
-		} else {
-			if (posix_memalign((void **)&new_segment, ALIGNMENT, SEGMENT_SIZE) != 0) {
-				log_fatal("MEMALIGN FAILED");
-				BUG_ON();
-			}
-			req.in_mem = 1;
+
+		if (posix_memalign((void **)&new_segment, ALIGNMENT, SEGMENT_SIZE) != 0) {
+			log_fatal("MEMALIGN FAILED");
+			BUG_ON();
 		}
+		req.in_mem = 1;
 
 		assert(new_segment);
 		set_link_segments_metadata(&req, new_segment, segment_id, available_space);
@@ -151,36 +136,6 @@ static void *get_space(struct db_descriptor *db_desc, uint8_t level_id, uint8_t 
 	MUTEX_UNLOCK(&level_desc->level_allocation_lock);
 	return node;
 }
-
-/*
- * We use this function to allocate space only for the lsm levels during compaction
-*/
-// struct segment_header *get_segment_for_lsm_level_IO(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
-// {
-// 	struct level_descriptor *level_desc = &db_desc->levels[level_id];
-
-// 	if (level_desc->level_id == 0) {
-// 		log_warn("Not allowed this kind of allocations for L0!");
-// 		return NULL;
-// 	}
-// 	uint64_t seg_offt = seg_allocate_segment(db_desc, db_desc->levels[level_id].allocation_txn_id[tree_id]);
-// 	//log_info("Allocated level segment %llu", seg_offt);
-// 	struct segment_header *new_segment = (struct segment_header *)REAL_ADDRESS(seg_offt);
-// 	if (!new_segment) {
-// 		log_fatal("Failed to allocate space for new segment level");
-// 		BUG_ON();
-// 	}
-
-// 	if (level_desc->offset[tree_id])
-// 		level_desc->offset[tree_id] += SEGMENT_SIZE;
-// 	else {
-// 		level_desc->offset[tree_id] = SEGMENT_SIZE;
-// 		level_desc->first_segment[tree_id] = new_segment;
-// 		level_desc->last_segment[tree_id] = NULL;
-// 	}
-
-// 	return new_segment;
-// }
 
 struct index_node *seg_get_index_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id, char reason)
 {
@@ -199,7 +154,7 @@ void seg_free_index_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_
 
 struct leaf_node *seg_get_leaf_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
 {
-	struct level_descriptor *level0 = &db_desc->L0;
+	struct L0_descriptor *level0 = &db_desc->L0;
 
 	struct leaf_node *leaf = (struct leaf_node *)get_space(db_desc, level_id, tree_id, level0->leaf_size);
 	return leaf;
@@ -207,33 +162,33 @@ struct leaf_node *seg_get_leaf_node(struct db_descriptor *db_desc, uint8_t level
 
 struct leaf_node *seg_get_dynamic_leaf_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
 {
-	struct level_descriptor *level0 = &db_desc->L0;
+	struct L0_descriptor *level0 = &db_desc->L0;
 	return get_space(db_desc, level_id, tree_id, level0->leaf_size);
 }
 
 segment_header *seg_get_raw_log_segment(struct db_descriptor *db_desc, enum log_type log_type, uint64_t txn_id)
 {
-	enum rul_op_type op_type;
+	enum regl_op_type op_type;
 	switch (log_type) {
 	case BIG_LOG:
-		op_type = RUL_LARGE_LOG_ALLOCATE;
+		op_type = REGL_LARGE_LOG_ALLOCATE;
 		break;
 	case MEDIUM_LOG:
-		op_type = RUL_MEDIUM_LOG_ALLOCATE;
+		op_type = REGL_MEDIUM_LOG_ALLOCATE;
 		break;
 	case SMALL_LOG:
-		op_type = RUL_SMALL_LOG_ALLOCATE;
+		op_type = REGL_SMALL_LOG_ALLOCATE;
 		break;
 	default:
 		log_fatal("Unknown log type");
 		BUG_ON();
 	}
 
-	struct rul_log_entry log_entry = { .dev_offt = mem_allocate(db_desc->db_volume, SEGMENT_SIZE),
-					   .txn_id = txn_id,
-					   .op_type = op_type,
-					   .size = SEGMENT_SIZE };
-	rul_add_entry_in_txn_buf(db_desc, &log_entry);
+	struct regl_log_entry log_entry = { .dev_offt = mem_allocate(db_desc->db_volume, SEGMENT_SIZE),
+					    .txn_id = txn_id,
+					    .op_type = op_type,
+					    .size = SEGMENT_SIZE };
+	regl_add_entry_in_txn_buf(db_desc, &log_entry);
 	segment_header *segment = (segment_header *)REAL_ADDRESS(log_entry.dev_offt);
 	return segment;
 }

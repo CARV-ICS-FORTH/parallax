@@ -130,7 +130,7 @@ int main(void)
 	struct leaf_iterator *iter = frac_leaf_create_empty_iter();
 	for (int seek_id = 0; seek_id < num_keys; seek_id += 2) {
 		log_debug("<seek> no: %d out of %d num keys", seek_id, num_keys);
-		bool found = frac_leaf_seek_iter(leaf_for_iter, iter, keys[seek_id], strlen(keys[seek_id]) + 1);
+		frac_leaf_seek_iter(leaf_for_iter, iter, keys[seek_id], strlen(keys[seek_id]) + 1);
 		// if (found) {
 		// 	log_fatal("Key[%d] %s found it shouldn't!", seek_id, keys[seek_id]);
 		// 	_exit(EXIT_FAILURE);

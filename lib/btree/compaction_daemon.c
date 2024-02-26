@@ -17,7 +17,7 @@
 #include "../allocator/device_structures.h"
 #include "../allocator/log_structures.h"
 #include "../allocator/persistent_operations.h"
-#include "../allocator/redo_undo_log.h"
+#include "../allocator/region_log.h"
 #include "../common/common.h"
 #include "../lib/parallax_callbacks/parallax_callbacks.h"
 #include "btree.h"
@@ -33,6 +33,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+
 struct device_level;
 struct node_header;
 // IWYU pragma: no_forward_declare index_node
@@ -61,7 +62,7 @@ struct compaction_daemon *compactiond_create(struct db_handle *handle, bool do_n
 static struct compaction_request *compactiond_compact_L0(struct compaction_daemon *daemon, uint8_t L0_tree_id,
 							 uint8_t L1_tree_id)
 {
-	struct level_descriptor *level_0 = &daemon->db_handle->db_desc->L0;
+	struct L0_descriptor *level_0 = &daemon->db_handle->db_desc->L0;
 	struct device_level *level_1 = daemon->db_handle->db_desc->dev_levels[1];
 
 	if (level_0->tree_status[L0_tree_id] != BT_NO_COMPACTION)
@@ -155,7 +156,7 @@ static void *compactiond_run(void *args)
 				log_debug("Next active tree %u for L0 of DB: %s", next_active_tree,
 					  db_desc->db_superblock->db_name);
 				/*Acquire a new transaction id for the next_active_tree*/
-				db_desc->L0.allocation_txn_id[next_active_tree] = rul_start_txn(db_desc);
+				db_desc->L0.allocation_txn_id[next_active_tree] = regl_start_txn(db_desc);
 				/*Release guard lock*/
 				if (RWLOCK_UNLOCK(&db_desc->L0.guard_of_level.rx_lock)) {
 					log_fatal("Failed to acquire guard lock");
@@ -273,7 +274,7 @@ void compactiond_close(struct compaction_daemon *daemon)
 void compactiond_force_L0_compaction(struct compaction_daemon *daemon)
 {
 	assert(daemon);
-	struct level_descriptor *level_0 = &daemon->db_handle->db_desc->L0;
+	struct L0_descriptor *level_0 = &daemon->db_handle->db_desc->L0;
 	int tree_id = daemon->next_L0_tree_to_compact % NUM_TREES_PER_LEVEL;
 	level_0->level_size[tree_id] = level_0->max_level_size;
 	compactiond_interrupt(daemon);

@@ -246,15 +246,15 @@ release_leaf_root_delete_get_scan:
         - ctest -R ^test_leaf_root_delete_get_scan$
     needs: [release_build_gcc, release_build_clang]
 
-release_test_redo_undo_log:
+release_test_region_log:
     image: carvicsforth/arch_carv:latest
     stage: release_test
     <<: *release_build_commands
     tags:
         - kubernetes
     script:
-        - make test_redo_undo_log;make kv_format.parallax;cd tests;
-        - ctest -R ^test_redo_undo_log$
+        - make test_region_log;make kv_format.parallax;cd tests;
+        - ctest -R ^test_region_log$
     needs: [release_build_gcc, release_build_clang]
 
 release_test_par_format:

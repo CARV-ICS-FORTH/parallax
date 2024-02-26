@@ -25,7 +25,7 @@ set(LIB_C_SOURCE_FILES
     allocator/allocator.c
     allocator/log_structures.c
     allocator/kv_format.c
-    allocator/redo_undo_log.c
+    allocator/region_log.c
     allocator/persistent_operations.c
     allocator/djb2.c
     api/parallax.c
@@ -33,8 +33,7 @@ set(LIB_C_SOURCE_FILES
     btree/index_node.c
     btree/compaction_daemon.c
     btree/compaction_worker.c
-    btree/level_read_cursor.c
-    btree/level_write_cursor.c
+    # btree/level_read_cursor.c btree/level_write_cursor.c
     btree/level_write_appender.c
     btree/bloom_filter.c
     btree/dynamic_leaf.c
@@ -43,6 +42,7 @@ set(LIB_C_SOURCE_FILES
     btree/fractal_leaf.c
     btree/fractal_index.c
     btree/dev_index.c
+    btree/sst.c
     btree/gc.c
     btree/medium_log_LRU_cache.c
     btree/segment_allocator.c
@@ -53,6 +53,7 @@ set(LIB_C_SOURCE_FILES
     common/common.c
     scanner/min_max_heap.c
     scanner/scanner.c
+    scanner/L0_scanner.c
     scanner/stack.c
     parallax_callbacks/parallax_callbacks.c)
 
