@@ -374,14 +374,14 @@ int64_t level_inc_num_keys(struct device_level *level, uint32_t tree_id, uint32_
 	return level->num_level_keys[tree_id] += num_keys;
 }
 
-struct args {
+struct level_free_sst_cb_args {
 	db_descriptor *db_desc;
 	uint64_t txn_id;
 };
 static bool level_free_sst(void *value, void *cnxt)
 {
 	struct sst_meta *meta = (struct sst_meta *)value;
-	struct args *args = cnxt;
+	struct level_free_sst_cb_args *args = cnxt;
 	struct regl_log_entry log_entry = { .dev_offt = sst_meta_get_dev_offt(meta),
 					    .txn_id = args->txn_id,
 					    .op_type = REGL_FREE_SST,
@@ -392,7 +392,7 @@ static bool level_free_sst(void *value, void *cnxt)
 
 uint64_t level_free_space(struct device_level *level, uint32_t tree_id, struct db_descriptor *db_desc, uint64_t txn_id)
 {
-	struct args args = { .db_desc = db_desc, .txn_id = txn_id };
+	struct level_free_sst_cb_args args = { .db_desc = db_desc, .txn_id = txn_id };
 	uint32_t sst_num_freed = minos_free(level->guard_table[tree_id], level_free_sst, &args);
 	level->guard_table[tree_id] = NULL;
 	return sst_num_freed * SST_SIZE;

@@ -12,7 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#pragma once
+#ifndef GC_H
+#define GC_H
 #include "conf.h"
 #include <stdint.h>
 #include <uthash.h>
@@ -43,3 +44,4 @@ struct large_log_segment_gc_entry {
 void *gc_log_entries(void *hd);
 uint8_t is_gc_executed(void);
 void disable_gc(void);
+#endif

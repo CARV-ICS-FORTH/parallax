@@ -55,14 +55,12 @@ struct node_header;
 struct compaction_request {
 	db_descriptor *db_desc;
 	par_db_options *db_options;
-	// struct rcursor_level_read_cursor *dst_rcursor;
 	union {
 		struct L0_scanner *L0_scanner;
 		struct level_compaction_scanner *src_scanner;
 	};
 	struct level_compaction_scanner *dst_scanner;
 	struct sst *curr_sst;
-	// struct wcursor_level_write_cursor *wcursor;
 	uint64_t txn_id;
 	uint64_t l0_start;
 	uint64_t l0_end;
@@ -407,9 +405,6 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 	// }
 
 	//initialize LRU cache for storing chunks of segments when medium log goes in place
-	//old school
-	// if (wcursor_get_level_id(comp_req->wcursor) == handle->db_desc->level_medium_inplace)
-	// 	wcursor_set_LRU_cache(comp_req->wcursor, mlog_cache_init_LRU(handle));
 
 	level_create_bf(handle->db_desc->dev_levels[comp_req->dst_level], comp_req->dst_tree,
 			comp_calculate_level_keys(handle->db_desc, comp_req->dst_level), handle);
@@ -530,9 +525,6 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 	mark_segment_space(handle, m_heap->dups, comp_req->txn_id);
 
 	sh_destroy_heap(m_heap);
-	//old school
-	// wcursor_flush_write_cursor(comp_req->wcursor);
-
 #if COMPACTION_STATS
 	gettimeofday(&end, NULL);
 	double time_taken_usec = ((end.tv_sec - start.tv_sec) * 1000000) + (double)(end.tv_usec - start.tv_usec);
@@ -544,22 +536,10 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 			num_keys / time_taken);
 	}
 #endif
-	//old school
-	// uint64_t root_offt = wcursor_get_current_root(comp_req->wcursor);
-	// assert(root_offt);
-	//  level_set_root(handle->db_desc->dev_levels[comp_req->dst_level], 1, REAL_ADDRESS(root_offt));
-	// assert(level_get_root(handle->db_desc->dev_levels[comp_req->dst_level], 1)->type == rootNode);
-
-	// if (wcursor_get_level_id(comp_req->wcursor) == handle->db_desc->level_medium_inplace) {
-	// 	comp_medium_log_set_max_segment_id(comp_req->wcursor, handle->db_desc);
-	// 	mlog_cache_destroy_LRU(wcursor_get_LRU_cache(comp_req->wcursor));
-	// }
 	comp_medium_log_set_max_segment_id(mlog_cache, handle->db_desc, comp_req->dst_level);
 	mlog_cache_destroy_LRU(mlog_cache);
 
 	compaction_close(comp_req);
-	//old school
-	// wcursor_close_write_cursor(comp_req->wcursor);
 }
 
 static void compact_with_empty_destination_level(struct compaction_request *comp_req)
@@ -612,8 +592,6 @@ void *compaction(void *compaction_request)
 	handle.db_desc = compaction_get_db_desc(comp_req);
 	handle.volume_desc = compaction_get_volume_desc(comp_req);
 	memcpy(&handle.db_options, comp_req->db_options, sizeof(struct par_db_options));
-	//old school
-	// struct node_header *dst_root = level_get_root(handle.db_desc->dev_levels[comp_req->dst_level], 0);
 
 	if (comp_req->src_level == 0 || comp_req->dst_level == handle.db_desc->level_medium_inplace ||
 	    !level_is_empty(handle.db_desc->dev_levels[comp_req->dst_level], 0))
