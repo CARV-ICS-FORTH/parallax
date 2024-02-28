@@ -95,83 +95,101 @@ if(RUN_IWYU STREQUAL "ON")
 endif()
 
 set(FETCHCONTENT_QUIET FALSE)
-FetchContent_Declare(
-  log
-  GIT_REPOSITORY https://github.com/innerout/log.c.git
-  GIT_PROGRESS TRUE)
+set(STATIC_DEPS_PATH
+    "${CMAKE_SOURCE_DIR}/static_deps"
+    CACHE PATH "Path to the static dependencies")
+option(USE_LOCAL_DEPS "Use local dependencies instead of fetching them" OFF)
 
-FetchContent_Declare(
-  yaml
-  GIT_REPOSITORY https://github.com/yaml/libyaml
-  GIT_PROGRESS TRUE)
+if(NOT USE_LOCAL_DEPS)
+  FetchContent_Declare(
+    log
+    GIT_REPOSITORY https://github.com/innerout/log.c.git
+    GIT_PROGRESS TRUE)
 
-FetchContent_Declare(
-  uthash
-  GIT_REPOSITORY https://github.com/troydhanson/uthash
-  GIT_PROGRESS TRUE)
+  FetchContent_Declare(
+    yaml
+    GIT_REPOSITORY https://github.com/yaml/libyaml
+    GIT_PROGRESS TRUE)
 
-FetchContent_Declare(
-  cmake-scripts
-  GIT_REPOSITORY https://github.com/StableCoder/cmake-scripts.git
-  GIT_TAG main
-  GIT_PROGRESS TRUE)
+  FetchContent_Declare(
+    uthash
+    GIT_REPOSITORY https://github.com/troydhanson/uthash
+    GIT_PROGRESS TRUE)
 
-FetchContent_Declare(
-  libbloom
-  GIT_REPOSITORY https://github.com/gesalous/libbloom
-  GIT_TAG cmake)
+  FetchContent_Declare(
+    cmake-scripts
+    GIT_REPOSITORY https://github.com/StableCoder/cmake-scripts.git
+    GIT_TAG main
+    GIT_PROGRESS TRUE)
 
-# add Minos for memory guards
-FetchContent_Declare(
-  minos # Recommendation: Stick close to the original name.
-  GIT_REPOSITORY https://github.com/gesalous/minos
-  GIT_TAG parallax_fixes)
+  FetchContent_Declare(
+    libbloom
+    GIT_REPOSITORY https://github.com/gesalous/libbloom
+    GIT_TAG cmake)
 
-FetchContent_GetProperties(minos)
-FetchContent_GetProperties(log)
-FetchContent_GetProperties(yaml)
-FetchContent_GetProperties(uthash)
-FetchContent_GetProperties(cmake-scripts)
-FetchContent_GetProperties(libbloom)
+  # add Minos for memory guards
+  FetchContent_Declare(
+    minos # Recommendation: Stick close to the original name.
+    GIT_REPOSITORY https://github.com/gesalous/minos
+    GIT_TAG parallax_fixes)
 
-if(NOT cmake-scripts_POPULATED)
-  FetchContent_Populate(cmake-scripts)
-  FetchContent_MakeAvailable(cmake-scripts)
-  include(${cmake-scripts_SOURCE_DIR}/sanitizers.cmake)
-endif()
+  FetchContent_GetProperties(minos)
+  FetchContent_GetProperties(log)
+  FetchContent_GetProperties(yaml)
+  FetchContent_GetProperties(uthash)
+  FetchContent_GetProperties(cmake-scripts)
+  FetchContent_GetProperties(libbloom)
 
-if(NOT log_POPULATED)
-  FetchContent_Populate(log)
-  add_subdirectory(${log_SOURCE_DIR} ${log_BINARY_DIR})
-  FetchContent_MakeAvailable(log)
-endif()
+  if(NOT cmake-scripts_POPULATED)
+    FetchContent_Populate(cmake-scripts)
+    FetchContent_MakeAvailable(cmake-scripts)
+    include(${cmake-scripts_SOURCE_DIR}/sanitizers.cmake)
+  endif()
 
-if(NOT minos_POPULATED)
-  FetchContent_Populate(minos)
-  add_subdirectory(${minos_SOURCE_DIR} ${minos_BINARY_DIR})
-  include_directories(${minos_SOURCE_DIR}/include)
-  FetchContent_MakeAvailable(minos)
-endif()
+  if(NOT log_POPULATED)
+    FetchContent_Populate(log)
+    add_subdirectory(${log_SOURCE_DIR} ${log_BINARY_DIR})
+    FetchContent_MakeAvailable(log)
+  endif()
 
-if(NOT yaml_POPULATED)
-  FetchContent_Populate(yaml)
-  add_subdirectory(${yaml_SOURCE_DIR} ${yaml_BINARY_DIR})
-  FetchContent_MakeAvailable(yaml)
-endif()
+  if(NOT minos_POPULATED)
+    FetchContent_Populate(minos)
+    add_subdirectory(${minos_SOURCE_DIR} ${minos_BINARY_DIR})
+    include_directories(${minos_SOURCE_DIR}/include)
+    FetchContent_MakeAvailable(minos)
+  endif()
 
-# Do not add uthash in the DEPENDENCIES variable. Uthash is a special case
-# because it is a header only library & does not support cmake.
-if(NOT uthash_POPULATED)
-  FetchContent_Populate(uthash)
-  include_directories(${uthash_SOURCE_DIR}/src)
-  FetchContent_MakeAvailable(uthash)
-endif()
+  if(NOT yaml_POPULATED)
+    FetchContent_Populate(yaml)
+    add_subdirectory(${yaml_SOURCE_DIR} ${yaml_BINARY_DIR})
+    FetchContent_MakeAvailable(yaml)
+  endif()
 
-if(NOT libbloom_POPULATED)
-  FetchContent_Populate(libbloom)
-  add_subdirectory(${libbloom_SOURCE_DIR} ${libbloom_BINARY_DIR})
-  include_directories(${libbloom_SOURCE_DIR}/include)
-  FetchContent_MakeAvailable(libbloom)
+  # Do not add uthash in the DEPENDENCIES variable. Uthash is a special case
+  # because it is a header only library & does not support cmake.
+  if(NOT uthash_POPULATED)
+    FetchContent_Populate(uthash)
+    include_directories(${uthash_SOURCE_DIR}/src)
+    FetchContent_MakeAvailable(uthash)
+  endif()
+
+  if(NOT libbloom_POPULATED)
+    FetchContent_Populate(libbloom)
+    add_subdirectory(${libbloom_SOURCE_DIR} ${libbloom_BINARY_DIR})
+    include_directories(${libbloom_SOURCE_DIR}/include)
+    FetchContent_MakeAvailable(libbloom)
+  endif()
+else()
+  # Assuming local dependencies are placed in a 'deps' directory
+  # Adjust paths as necessary
+  include_directories(${STATIC_DEPS_PATH}/log.c/include
+                      ${PROJECT_SOURCE_DIR}/static_deps/log.c/src)
+  add_subdirectory(${STATIC_DEPS_PATH}/libyaml yaml)
+  include_directories(${STATIC_DEPS_PATH}/uthash/src uthash)
+  include_directories(${STATIC_DEPS_PATH}/cmake-scripts cmake-scripts)
+  add_subdirectory(${STATIC_DEPS_PATH}/libbloom libbloom)
+  include_directories(${STATIC_DEPS_PATH}/libbloom/include)
+  add_subdirectory(${STATIC_DEPS_PATH}/minos minos)
 endif()
 
 set(DEPENDENCIES log yaml libbloom minos)

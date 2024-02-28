@@ -44,7 +44,11 @@ static unsigned long long get_tsc(void)
 {
 	unsigned int low;
 	unsigned int high;
+#ifdef __x86_64
 	__asm__ volatile("rdtsc" : "=a"(low), "=d"(high));
+#else
+	return 1;
+#endif
 	return ((unsigned long long)high << 32) | low;
 }
 
