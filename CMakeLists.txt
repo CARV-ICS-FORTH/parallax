@@ -180,10 +180,10 @@ if(NOT USE_LOCAL_DEPS)
     FetchContent_MakeAvailable(libbloom)
   endif()
 else()
-  # Assuming local dependencies are placed in a 'deps' directory
-  # Adjust paths as necessary
-  include_directories(${STATIC_DEPS_PATH}/log.c/include
-                      ${PROJECT_SOURCE_DIR}/static_deps/log.c/src)
+  # Assuming local dependencies are placed in a 'deps' directory Adjust paths as
+  # necessary
+  include_directories(${STATIC_DEPS_PATH}/log.c/include)
+  add_subdirectory(${STATIC_DEPS_PATH}/log.c log)
   add_subdirectory(${STATIC_DEPS_PATH}/libyaml yaml)
   include_directories(${STATIC_DEPS_PATH}/uthash/src uthash)
   include_directories(${STATIC_DEPS_PATH}/cmake-scripts cmake-scripts)
