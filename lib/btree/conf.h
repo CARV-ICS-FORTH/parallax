@@ -51,11 +51,15 @@
 #define GB(x) ((x)*1024LU * 1024LU * 1024LU)
 #define MB(x) ((x)*1024LU * 1024LU)
 #define KB(x) ((x)*1024LU)
-#define SEGMENT_SIZE (2 * 1024UL * 1024UL)
+#ifndef ALIGNMENT_SIZE
+#define ALIGNMENT_SIZE (512UL)
+#endif
+#ifndef SEGMENT_SIZE
+#define SEGMENT_SIZE (2097152UL)
+#endif
 #define SST_SIZE SEGMENT_SIZE
 #define LOG_CHUNK_SIZE (256 * 1024UL)
 #define LOG_TAIL_NUM_BUFS (4)
-#define ALIGNMENT_SIZE (512)
 #define MAX_ALLOCATION_TRIES (2)
 #define MAX_HEIGHT 9
 #define KV_MAX_SIZE 16384 //(4096 + 8)

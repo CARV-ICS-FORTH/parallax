@@ -9,6 +9,28 @@ project(
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
+if(NOT DEFINED ALIGNMENT_SIZE)
+  set(ALIGNMENT_SIZE "512UL") # Set without UL suffix if not defined
+else()
+  # Append UL suffix if not already present
+  string(REGEX MATCH "[0-9]+UL" HAS_UL_SUFFIX "${ALIGNMENT_SIZE}")
+  if(NOT HAS_UL_SUFFIX)
+    set(ALIGNMENT_SIZE "${ALIGNMENT_SIZE}UL")
+  endif()
+endif()
+add_definitions(-DALIGNMENT_SIZE=${ALIGNMENT_SIZE})
+
+if(NOT DEFINED SEGMENT_SIZE)
+  set(SEGMENT_SIZE "2097152UL") # Set without UL suffix if not defined
+else()
+  # Append UL suffix if not already present
+  string(REGEX MATCH "[0-9]+UL" HAS_UL_SUFFIX "${SEGMENT_SIZE}")
+  if(NOT HAS_UL_SUFFIX)
+    set(SEGMENT_SIZE "${SEGMENT_SIZE}UL")
+  endif()
+endif()
+add_definitions(-DSEGMENT_SIZE=${SEGMENT_SIZE})
+
 option(BUILD_SHARED_LIBS
        "Build shared libraries (.dll/.so) instead of static ones (.lib/.a)" OFF)
 option(DISABLE_LOGGING
