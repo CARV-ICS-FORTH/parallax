@@ -309,8 +309,8 @@ void regl_log_init(struct db_descriptor *db_desc)
 	_Static_assert(sizeof(struct regl_log_segment) == SEGMENT_SIZE,
 		       "Redo undo log segment not equal to SEGMENT_SIZE!");
 
-	struct regl_log_descriptor *log_desc;
-	if (posix_memalign((void **)&log_desc, ALIGNMENT, sizeof(struct regl_log_descriptor)) != 0) {
+	struct regl_log_descriptor *log_desc = NULL;
+	if (posix_memalign((void **)&log_desc, ALIGNMENT_SIZE, sizeof(struct regl_log_descriptor)) != 0) {
 		log_fatal("Failed to allocate region_log descriptor buffer");
 		BUG_ON();
 	}

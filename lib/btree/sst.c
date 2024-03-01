@@ -203,7 +203,7 @@ struct sst *sst_create(uint32_t size, uint64_t txn_id, db_handle *handle, uint32
 	sst->meta = calloc(1UL, sizeof(struct sst_meta));
 
 	// log_debug("Allocating an I/O sst buffer of size: %u",sst_size);
-	if (posix_memalign((void **)&sst->IO_buffer, ALIGNMENT, size) != 0) {
+	if (posix_memalign((void **)&sst->IO_buffer, ALIGNMENT_SIZE, size) != 0) {
 		log_fatal("Posix memalign failed");
 		perror("Reason: ");
 		_exit(EXIT_FAILURE);

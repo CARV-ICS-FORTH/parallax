@@ -119,7 +119,7 @@ static void *get_space(struct db_descriptor *db_desc, uint8_t level_id, uint8_t 
 			*pad = paddedSpace;
 		}
 
-		if (posix_memalign((void **)&new_segment, ALIGNMENT, SEGMENT_SIZE) != 0) {
+		if (posix_memalign((void **)&new_segment, ALIGNMENT_SIZE, SEGMENT_SIZE) != 0) {
 			log_fatal("MEMALIGN FAILED");
 			BUG_ON();
 		}

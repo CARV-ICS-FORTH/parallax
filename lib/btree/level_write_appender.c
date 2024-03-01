@@ -20,7 +20,7 @@ struct level_write_appender {
 level_write_appender_t wappender_init(struct db_handle *handle, uint8_t level_id)
 {
 	struct level_write_appender *appender = NULL;
-	if (posix_memalign((void **)&appender, ALIGNMENT, sizeof(struct level_write_appender)) != 0) {
+	if (posix_memalign((void **)&appender, ALIGNMENT_SIZE, sizeof(struct level_write_appender)) != 0) {
 		log_fatal("Posix memalign failed");
 		perror("Reason: ");
 		BUG_ON();

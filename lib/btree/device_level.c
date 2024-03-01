@@ -738,7 +738,7 @@ struct level_compaction_scanner *level_comp_scanner_init(struct device_level *le
 							 int file_desc)
 {
 	struct level_compaction_scanner *comp_scanner = calloc(1UL, sizeof(struct level_compaction_scanner));
-	posix_memalign((void **)&comp_scanner->IO_buffer, ALIGNMENT, sst_size);
+	posix_memalign((void **)&comp_scanner->IO_buffer, ALIGNMENT_SIZE, sst_size);
 	comp_scanner->sst_size = sst_size;
 	comp_scanner->fd = file_desc;
 	minos_iter_seek_first(&comp_scanner->iter, level->guard_table[tree_id]);
