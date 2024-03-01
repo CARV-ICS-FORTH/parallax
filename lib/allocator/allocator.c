@@ -461,7 +461,7 @@ static uint64_t mem_bitmap_translate_word_to_offt(struct volume_descriptor *volu
 
 	// log_info("Word is %u start bit %u end bit %u", b->word_id, b->start_bit,
 	// b->end_bit);
-	uint64_t bytes_per_word = MEM_WORD_SIZE_IN_BITS * SEGMENT_SIZE;
+	uint64_t bytes_per_word = MEM_WORD_SIZE_IN_BITS * SEGMENT_SIZE * 1UL;
 	uint64_t dev_offt = (bytes_per_word * b->word_id) + (b->start_bit * SEGMENT_SIZE);
 	// dev_offt += volume_desc->my_superblock.volume_metadata_size;
 	// log_info("Now is Dev offt = %llu volume_metadata_size %llu", dev_offt,
