@@ -51,12 +51,19 @@
 #define GB(x) ((x)*1024LU * 1024LU * 1024LU)
 #define MB(x) ((x)*1024LU * 1024LU)
 #define KB(x) ((x)*1024LU)
+
 #ifndef ALIGNMENT_SIZE
 #define ALIGNMENT_SIZE (512UL)
 #endif
+
 #ifndef SEGMENT_SIZE
 #define SEGMENT_SIZE (2097152UL)
 #endif
+
+#ifndef USE_DIRECT_IO
+#define USE_DIRECT_IO 1
+#endif
+
 #define SST_SIZE SEGMENT_SIZE
 #define LOG_CHUNK_SIZE (256 * 1024UL)
 #define LOG_TAIL_NUM_BUFS (4)

@@ -31,6 +31,13 @@ else()
 endif()
 add_definitions(-DSEGMENT_SIZE=${SEGMENT_SIZE})
 
+if(NOT DEFINED USE_DIRECT_IO)
+  set(USE_DIRECT_IO "1")
+else()
+  set(USE_DIRECT_IO "0")
+endif()
+add_definitions(-DUSE_DIRECT_IO=${USE_DIRECT_IO})
+
 option(BUILD_SHARED_LIBS
        "Build shared libraries (.dll/.so) instead of static ones (.lib/.a)" OFF)
 option(DISABLE_LOGGING
