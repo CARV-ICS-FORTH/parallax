@@ -136,7 +136,15 @@ static void kvf_delete_bloom_filter_files(char *device_name)
 		return;
 	}
 
-	char *dir_name = strdup(device_name);
+	char *dir_name = calloc(1UL, strlen(device_name) + 3); //to capture all cases
+	uint32_t start_idx = 0;
+	if (device_name[0] != '/') {
+		start_idx = 2;
+		dir_name[0] = '.';
+		dir_name[1] = '/';
+	}
+	memcpy(&dir_name[start_idx], device_name, strlen(device_name));
+
 	size_t idx = strlen(dir_name);
 	while (idx != 0) {
 		if (dir_name[idx] == '/') {
