@@ -10,6 +10,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 #include "arg_parser.h"
+#include "scanner/scanner.h"
 #include <assert.h>
 #include <log.h>
 #include <parallax/parallax.h>
@@ -147,8 +148,9 @@ static void put_workload(struct workload_config_t *workload_config, const char *
 			exit(EXIT_FAILURE);
 		}
 
-		if (!(++key_count % workload_config->progress_report))
+		if (!(++key_count % workload_config->progress_report)) {
 			log_info("Progress in population %lu keys", key_count);
+		}
 	}
 	log_info("Population ended Successfully! :-)");
 	free(k);
@@ -186,8 +188,9 @@ static void get_workload(struct workload_config_t *workload_config)
 		k->key_buf[0] = 0;
 		free(my_value.val_buffer);
 		my_value.val_buffer = NULL;
-		if (!(++key_count % workload_config->progress_report))
+		if (!(++key_count % workload_config->progress_report)) {
 			log_info("<Get no %lu> done", i);
+		}
 	}
 
 	log_info("Testing GETS DONE!");
@@ -263,7 +266,7 @@ static void scan_workload(struct workload_config_t *workload_config)
 		memset((void *)my_keyptr.data, 0x00, my_keyptr.size);
 
 		uint64_t scan_entries = 0;
-		for (uint64_t j = i + 2 + expected_offset; scan_entries <= workload_config->scan_size;
+		for (uint64_t j = i + 2 + expected_offset; scan_entries < workload_config->scan_size;
 		     j += workload_config->step) {
 			/*construct the key we expect*/
 			memcpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
@@ -278,16 +281,19 @@ static void scan_workload(struct workload_config_t *workload_config)
 			my_keyptr = par_get_key(my_scanner);
 
 			if (memcmp(k->key_buf, my_keyptr.data, my_keyptr.size) != 0) {
-				log_fatal("Test failed for i: %lu key %.*s not found scanner instead returned %.*s",
-					  scan_entries, k->key_size, k->key_buf, my_keyptr.size, my_keyptr.data);
+				log_fatal(
+					"Test failed for i: %lu key %.*s not found scanner instead returned %.*s seek mode is: %s",
+					scan_entries, k->key_size, k->key_buf, my_keyptr.size, my_keyptr.data,
+					workload_config->seek_mode == PAR_GREATER ? "GREATER" : "GREATER_OR_EQUAL");
 				_exit(EXIT_FAILURE);
 			}
 			memset((void *)my_keyptr.data, 0x00, my_keyptr.size);
 			++scan_entries;
 		}
 
-		if (!(++key_count % workload_config->progress_report))
+		if (!(++key_count % workload_config->progress_report)) {
 			log_info("</Scan no %lu> done", i);
+		}
 
 		par_close_scanner(my_scanner);
 	}

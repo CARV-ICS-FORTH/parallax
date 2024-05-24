@@ -111,28 +111,6 @@ a given bitmap-zone or not.*/
 	volatile char snap_preemption;
 } volume_descriptor;
 
-enum allocation_log_cursor_state {
-	CALCULATE_CHUNKS_IN_SEGMENT,
-	CALCULATE_CHUNK_ENTRIES,
-	GET_NEXT_SEGMENT,
-	GET_NEXT_CHUNK,
-	GET_NEXT_ENTRY,
-	GET_HEAD,
-	EXIT
-};
-
-struct allocation_log_cursor {
-	struct volume_descriptor *volume_desc;
-	struct pr_db_superblock *db_superblock;
-	struct rul_log_segment *segment;
-	uint32_t chunks_in_segment;
-	uint32_t curr_chunk_id;
-	uint32_t chunk_entries;
-	uint32_t curr_entry_in_chunk;
-	enum allocation_log_cursor_state state;
-	uint8_t valid : 1;
-};
-
 struct volume_descriptor *mem_get_volume_desc(char *volume_name);
 
 uint64_t mem_allocate(struct volume_descriptor *volume_desc, uint64_t num_bytes);
@@ -141,13 +119,6 @@ void mem_free_segment(struct volume_descriptor *volume_desc, uint64_t dev_offt);
 
 struct pr_db_superblock *get_db_superblock(struct volume_descriptor *volume_desc, const char *db_name,
 					   uint32_t db_name_size, uint8_t allocate, uint8_t *new_db);
-
-struct allocation_log_cursor *init_allocation_log_cursor(struct volume_descriptor *volume_desc,
-							 struct pr_db_superblock *db_superblock);
-
-void close_allocation_log_cursor(struct allocation_log_cursor *cursor);
-
-struct rul_log_entry *get_next_allocation_log_entry(struct allocation_log_cursor *cursor);
 
 /**
   * Reads size bytes from the device/file dev_offt into the in memory buffer.

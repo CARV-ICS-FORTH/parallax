@@ -3,7 +3,7 @@ debug_build_gcc:
     stage: debug_build
     script:
         - mkdir -p build;cd build
-        - cmake .. -DCMAKE_BUILD_TYPE=Debug -DTREAT_WARNINGS_AS_ERRORS=True
+        - cmake .. -DCMAKE_BUILD_TYPE=Debug -DTREAT_WARNINGS_AS_ERRORS=True -DTEBIS_FORMAT=ON
         - make all
     needs: []
 
@@ -11,7 +11,7 @@ debug_build_clang:
     stage: debug_build
     script:
         - mkdir -p build;cd build
-        - cmake .. -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DTREAT_WARNINGS_AS_ERRORS=True
+        - cmake .. -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DTREAT_WARNINGS_AS_ERRORS=True -DTEBIS_FORMAT=ON
         - make all
     needs: []
 
@@ -21,7 +21,7 @@ debug_build_centos:
     script:
         - source scl_source enable devtoolset-8 || echo ignoring exit code so CI does not bomb when it should not > /dev/null
         - mkdir -p build;cd build
-        - cmake3 ..
+        - cmake3 .. -DTEBIS_FORMAT=ON
         - make all
     needs: []
 

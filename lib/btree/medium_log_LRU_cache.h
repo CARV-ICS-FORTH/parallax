@@ -16,39 +16,24 @@
 #define MEDIUM_LOG_CACHE_H
 #include "btree.h"
 #include <stdint.h>
-#include <uthash.h>
-struct chunk_list {
-	struct chunk_listnode *head;
-	struct chunk_listnode *tail;
-	uint32_t size;
+struct medium_log_LRU_cache;
+
+struct mlog_cache_max_segment_info {
+	uint64_t max_segment_id;
+	uint64_t max_segment_offt;
 };
 
-struct chunk_listnode {
-	struct chunk_listnode *next;
-	char *chunk_buf;
-	uint64_t chunk_offt;
-};
+struct medium_log_LRU_cache *mlog_cache_init_LRU(db_handle *handle);
+void mlog_cache_add_to_LRU(struct medium_log_LRU_cache *chunk_cache, uint64_t chunk_offt, char *chunk_buf);
+int mlog_cache_chunk_exists_in_LRU(struct medium_log_LRU_cache *chunk_cache, uint64_t chunk_offt);
+char *mlog_cache_get_chunk_from_LRU(struct medium_log_LRU_cache *chunk_cache, uint64_t chunk_offt);
+void mlog_cache_destroy_LRU(struct medium_log_LRU_cache *chunk_cache);
+char *mlog_cache_fetch_kv_from_LRU(struct medium_log_LRU_cache *chunk_cache, uint64_t kv_dev_offt);
 
-struct chunk_hash_entry {
-	uint64_t chunk_offt; /* key */
-	struct chunk_listnode *chunk_ptr; /* pointer to list node */
-	UT_hash_handle hh;
-};
-
-//LRU consists of a hashtable and a list. The hash table has pointers to the assosiated list nodes
-//the chunk informations are stored in the list nodes
-//chunk offsets serve as keys in the hash function
-struct chunk_LRU_cache {
-	struct chunk_hash_entry **chunks_hash_table;
-	struct chunk_list *chunks_list;
-	uint64_t hash_table_count;
-	uint64_t hash_table_capacity;
-};
-
-struct chunk_LRU_cache *init_LRU(db_handle *handle);
-void add_to_LRU(struct chunk_LRU_cache *chunk_cache, uint64_t chunk_offt, char *chunk_buf);
-int chunk_exists_in_LRU(struct chunk_LRU_cache *chunk_cache, uint64_t chunk_offt);
-char *get_chunk_from_LRU(struct chunk_LRU_cache *chunk_cache, uint64_t chunk_offt);
-void destroy_LRU(struct chunk_LRU_cache *chunk_cache);
+/**
+ * @brief Returns the max segment id and its corresponding offset that this cache has touched.
+ * @param chunk_cache pointer to the cache object
+ */
+struct mlog_cache_max_segment_info mlog_cache_find_max_segment_info(struct medium_log_LRU_cache *chunk_cache);
 
 #endif

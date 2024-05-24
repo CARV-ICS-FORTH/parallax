@@ -15,27 +15,22 @@
 #define MIN_MAX_HEAP_H
 
 #include "../btree/kv_pairs.h"
-#include "parallax/structures.h"
 #include <stdbool.h>
 #include <stdint.h>
 enum sh_heap_type { MIN_HEAP, MAX_HEAP };
 #define HEAP_SIZE 32
-
+struct db_descriptor;
 struct sh_heap_node {
-	char *KV;
-	struct db_descriptor *db_desc;
+	struct kv_splice_base splice;
 	uint64_t epoch;
-	uint32_t kv_size;
 	uint8_t level_id;
 	uint8_t active_tree;
-	uint8_t duplicate;
-	uint8_t tombstone : 1;
-	enum KV_type type;
-	enum kv_category cat;
+	uint8_t duplicate : 1;
 };
 
 struct sh_heap {
 	struct sh_heap_node elem[HEAP_SIZE];
+	struct db_descriptor *db_desc;
 	struct dups_list *dups;
 	int heap_size;
 	int active_tree;
@@ -43,7 +38,7 @@ struct sh_heap {
 };
 
 struct sh_heap *sh_alloc_heap(void);
-void sh_init_heap(struct sh_heap *heap, int active_tree, enum sh_heap_type heap_type);
+void sh_init_heap(struct sh_heap *heap, int active_tree, enum sh_heap_type heap_type, struct db_descriptor *db_desc);
 void sh_destroy_heap(struct sh_heap *heap);
 void sh_insert_heap_node(struct sh_heap *heap, struct sh_heap_node *node);
 bool sh_remove_top(struct sh_heap *heap, struct sh_heap_node *node);

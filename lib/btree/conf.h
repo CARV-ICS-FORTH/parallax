@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-/*macros staff*/
-#pragma once
+#ifndef CONF_H
+#define CONF_H
 #define SPINLOCK_INIT(L, attr) pthread_spin_init(L, attr)
 #define SPIN_LOCK(L) pthread_spin_lock(L)
 #define SPIN_UNLOCK(L) pthread_spin_unlock(L)
@@ -37,21 +37,32 @@
 #define NUM_TREES_PER_LEVEL (4)
 #define TOTAL_TREES (MAX_LEVELS * NUM_TREES_PER_LEVEL)
 #define DEVICE_BLOCK_SIZE (4096)
-#define MAX_KEY_SIZE (int32_t)(255 + sizeof(struct kv_splice)) //it safe to cast the uint32_t to int32_t here
 #define MAX_KV_IN_PLACE_SIZE (1024)
+#define TEBIS_MAX_BACKUPS 4
+#define WCURSOR_ALIGNMNENT (4096UL)
+#define WCURSOR_STATUS_OK (100)
 
 #define WORD_SIZE (64)
 #define BREAKPOINT asm volatile("int3;");
 #define LEAF_NODE_SIZE (8192)
+#define INDEX_NODE_SIZE (8192)
 /*Buffering related tunables*/
 
 #define GB(x) ((x)*1024LU * 1024LU * 1024LU)
 #define MB(x) ((x)*1024LU * 1024LU)
 #define KB(x) ((x)*1024LU)
-#define SEGMENT_SIZE (2 * 1024 * 1024)
-#define ALIGNMENT SEGMENT_SIZE
-#define LOG_CHUNK_SIZE (256 * 1024)
+#ifndef ALIGNMENT_SIZE
+#define ALIGNMENT_SIZE (512UL)
+#endif
+#ifndef SEGMENT_SIZE
+#define SEGMENT_SIZE (2097152UL)
+#endif
+#define SST_SIZE SEGMENT_SIZE
+#define LOG_CHUNK_SIZE (256 * 1024UL)
 #define LOG_TAIL_NUM_BUFS (4)
-#define ALIGNMENT_SIZE (512)
 #define MAX_ALLOCATION_TRIES (2)
-#define ENABLE_BLOOM_FILTERS (0)
+#define MAX_HEIGHT 9
+#define KV_MAX_SIZE 16384 //(4096 + 8)
+#define LEVEL_ENTRY_POINTS 16
+#define COMPACTION_STATS 0
+#endif

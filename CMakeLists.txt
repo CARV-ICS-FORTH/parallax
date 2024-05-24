@@ -9,33 +9,69 @@ project(
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
+if(NOT DEFINED ALIGNMENT_SIZE)
+  set(ALIGNMENT_SIZE "512UL") # Set without UL suffix if not defined
+else()
+  # Append UL suffix if not already present
+  string(REGEX MATCH "[0-9]+UL" HAS_UL_SUFFIX "${ALIGNMENT_SIZE}")
+  if(NOT HAS_UL_SUFFIX)
+    set(ALIGNMENT_SIZE "${ALIGNMENT_SIZE}UL")
+  endif()
+endif()
+add_definitions(-DALIGNMENT_SIZE=${ALIGNMENT_SIZE})
+
+if(NOT DEFINED SEGMENT_SIZE)
+  set(SEGMENT_SIZE "2097152UL") # Set without UL suffix if not defined
+else()
+  # Append UL suffix if not already present
+  string(REGEX MATCH "[0-9]+UL" HAS_UL_SUFFIX "${SEGMENT_SIZE}")
+  if(NOT HAS_UL_SUFFIX)
+    set(SEGMENT_SIZE "${SEGMENT_SIZE}UL")
+  endif()
+endif()
+add_definitions(-DSEGMENT_SIZE=${SEGMENT_SIZE})
+
 option(BUILD_SHARED_LIBS
        "Build shared libraries (.dll/.so) instead of static ones (.lib/.a)" OFF)
 option(DISABLE_LOGGING
        "Disable all logging from parallax excluding kv_format.parallax output."
        OFF)
-option(
-  ENABLE_FLTO
-  "Enable FLTO compilation for Parallax and its dependencies. At the moment this only supports GCC."
-  OFF)
+option(TEBIS_FORMAT "BUild Parallax using Tebis-format" OFF)
+option(PARALLAX_BUILD_TESTING "" ON)
 
-# Parallax is a dependency
+# Include directories for the library's header files (assuming they are in the
+# default /usr/local/include)
+include_directories(${CMAKE_INSTALL_PREFIX}/include)
+
 if(NOT (${CMAKE_SOURCE_DIR} STREQUAL ${CMAKE_CURRENT_SOURCE_DIR}))
-  option(BUILD_TESTING "" OFF)
+  set(PARALLAX_BUILD_TESTING OFF)
 endif()
 
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
-  message(STATUS "Setting build type to Debug as none was specified.")
+  message(STATUS "Setting build type to Release as none was specified.")
   set(CMAKE_BUILD_TYPE
-      "Debug"
+      "Release"
       CACHE STRING "Choose the type of build." FORCE)
   # Set the possible values of build type for cmake-gui
   set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "Debug" "Release"
                                                "MinSizeRel" "RelWithDebInfo")
 endif()
+if(NOT (${CMAKE_SOURCE_DIR} STREQUAL ${CMAKE_CURRENT_SOURCE_DIR}))
+  set(CMAKE_BUILD_TYPE Release)
+  add_definitions(-DDISABLE_LOGGING)
+endif()
+
+message(
+  STATUS
+    "build type is '${default_build_type}' and cmake build type is '${CMAKE_BUILD_TYPE}'."
+)
 
 if(DISABLE_LOGGING)
   add_definitions(-DDISABLE_LOGGING)
+endif()
+
+if(TEBIS_FORMAT)
+  add_definitions(-DTEBIS_FORMAT)
 endif()
 
 include(FetchContent)
@@ -82,19 +118,39 @@ FetchContent_Declare(
 
 FetchContent_Declare(
   libbloom
-  GIT_REPOSITORY https://github.com/innerout/libbloom
+  GIT_REPOSITORY https://github.com/gesalous/libbloom
   GIT_TAG cmake)
 
+# add Minos for memory guards
+FetchContent_Declare(
+  minos # Recommendation: Stick close to the original name.
+  GIT_REPOSITORY https://github.com/gesalous/minos
+  GIT_TAG parallax_fixes)
+
+FetchContent_GetProperties(minos)
 FetchContent_GetProperties(log)
 FetchContent_GetProperties(yaml)
 FetchContent_GetProperties(uthash)
 FetchContent_GetProperties(cmake-scripts)
 FetchContent_GetProperties(libbloom)
 
+if(NOT cmake-scripts_POPULATED)
+  FetchContent_Populate(cmake-scripts)
+  FetchContent_MakeAvailable(cmake-scripts)
+  include(${cmake-scripts_SOURCE_DIR}/sanitizers.cmake)
+endif()
+
 if(NOT log_POPULATED)
   FetchContent_Populate(log)
   add_subdirectory(${log_SOURCE_DIR} ${log_BINARY_DIR})
   FetchContent_MakeAvailable(log)
+endif()
+
+if(NOT minos_POPULATED)
+  FetchContent_Populate(minos)
+  add_subdirectory(${minos_SOURCE_DIR} ${minos_BINARY_DIR})
+  include_directories(${minos_SOURCE_DIR}/include)
+  FetchContent_MakeAvailable(minos)
 endif()
 
 if(NOT yaml_POPULATED)
@@ -111,12 +167,6 @@ if(NOT uthash_POPULATED)
   FetchContent_MakeAvailable(uthash)
 endif()
 
-if(NOT cmake-scripts_POPULATED)
-  FetchContent_Populate(cmake-scripts)
-  FetchContent_MakeAvailable(cmake-scripts)
-  include(${cmake-scripts_SOURCE_DIR}/sanitizers.cmake)
-endif()
-
 if(NOT libbloom_POPULATED)
   FetchContent_Populate(libbloom)
   add_subdirectory(${libbloom_SOURCE_DIR} ${libbloom_BINARY_DIR})
@@ -124,10 +174,33 @@ if(NOT libbloom_POPULATED)
   FetchContent_MakeAvailable(libbloom)
 endif()
 
-set(DEPENDENCIES log yaml libbloom)
+set(DEPENDENCIES log yaml libbloom minos)
+
+# Find pthread library
+find_package(Threads REQUIRED)
+list(APPEND DEPENDENCIES "${CMAKE_THREAD_LIBS_INIT}")
+
+find_library(LIBRT rt REQUIRED)
+list(APPEND DEPENDENCIES "${LIBRT}")
+
+find_library(LIBM m REQUIRED)
+list(APPEND DEPENDENCIES "${LIBM}")
+
+find_library(LIBNUMA numa REQUIRED)
+list(APPEND DEPENDENCIES "${LIBNUMA}")
+
+find_library(LIBUTIL util REQUIRED)
+list(APPEND DEPENDENCIES "${LIBUTIL}")
+
+if(CMAKE_BUILD_TYPE STREQUAL "Release")
+  add_definitions(-DLOG_LEVEL_RELEASE)
+endif()
 
 include_directories(${CMAKE_BINARY_DIR})
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/utilities)
+
+add_compile_definitions(
+  DB_CONFIG_FILE="${CMAKE_CURRENT_SOURCE_DIR}/options.yml")
 
 if(TREAT_WARNINGS_AS_ERRORS)
   string(APPEND CMAKE_C_FLAGS " -Werror")
@@ -158,11 +231,11 @@ if(ENABLE_FLTO)
 endif()
 
 string(APPEND CMAKE_C_FLAGS_DEBUG " -ggdb3 -Og -gz")
-string(APPEND CMAKE_C_FLAGS_RELEASE
-       " -funit-at-a-time -O2 -finline-functions -DNDEBUG")
+string(APPEND CMAKE_C_FLAGS_RELEASE " -O2 -finline-functions -DNDEBUG")
 string(APPEND CMAKE_CXX_FLAGS_RELEASE " -std=gnu++11 -Wall")
-string(APPEND CMAKE_EXE_LINKER_FLAGS
-       " -Wl,--no-as-needed -lrt -lm -pthread -lnuma -lutil")
+# string(APPEND CMAKE_EXE_LINKER_FLAGS " -Wl,--no-as-needed -lrt -lm -pthread
+# -lnuma -lutil")
+string(APPEND CMAKE_EXE_LINKER_FLAGS " -Wl,--no-as-needed")
 
 add_subdirectory(lib)
 add_subdirectory(YCSB-CXX)
@@ -199,8 +272,9 @@ if(NOT TARGET uninstall)
     "${CMAKE_CURRENT_BINARY_DIR}/cmake_uninstall.cmake" IMMEDIATE @ONLY)
 
   add_custom_target(
-    uninstall COMMAND ${CMAKE_COMMAND} -P
-                      ${CMAKE_CURRENT_BINARY_DIR}/cmake_uninstall.cmake)
+    parallax-uninstall
+    COMMAND ${CMAKE_COMMAND} -P
+            ${CMAKE_CURRENT_BINARY_DIR}/cmake_uninstall.cmake)
 endif()
 
 # This should be left at the end of the CMakeLists otherwise the generation of

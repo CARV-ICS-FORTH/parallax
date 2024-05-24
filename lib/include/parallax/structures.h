@@ -1,6 +1,8 @@
 #ifndef PARALLAX_STRUCTURES_H_
 #define PARALLAX_STRUCTURES_H_
-
+#ifdef __cplusplus
+extern "C" {
+#endif
 #include <stdint.h>
 typedef void *par_handle;
 typedef void *par_scanner;
@@ -16,6 +18,7 @@ enum kv_category {
 	BIG_INLOG,
 };
 
+enum log_category { L0_RECOVERY = 0, MEDIUM, BIG };
 /**
  *	In case more operations are tracked in the log in the future such as transactions
  *	you will need to change the request_type enumerator and the log_operation struct.
@@ -29,7 +32,19 @@ typedef enum {
 	GC_INTERVAL,
 	GROWTH_FACTOR,
 	MEDIUM_LOG_LRU_CACHE_SIZE,
-	LEVEL_MEDIUM_INPLACE
+	LEVEL_MEDIUM_INPLACE,
+	PRIMARY_MODE,
+	REPLICA_MODE,
+	ENABLE_BLOOM_FILTERS,
+	ENABLE_COMPACTION_DOUBLE_BUFFERING,
+	NUMBER_OF_REPLICAS,
+	WCURSOR_SPIN_FOR_FLUSH_REPLIES, // Always initialized to 0,
+	// this fields enables Parallax to spin for replies from backups when using double buffering.
+	// This must be set only when Parallax is used in a distributed enviroment with double buffering on
+	// and following the *Tebis* logic
+	REPLICA_BUILD_INDEX,
+	REPLICA_SEND_INDEX,
+	NUM_OF_CONFIGURATION_OPTIONS
 } par_options;
 
 struct par_options_desc {
@@ -76,6 +91,13 @@ struct par_key_value {
 struct par_put_metadata {
 	uint64_t lsn; // Log sequence number of KV when it was appended in the log.
 	uint64_t offset_in_log; // Offset in the L0 Recovery or Large Log.
+	uint8_t flush_segment_event;
+	uint64_t flush_segment_offt;
+	enum log_category log_type;
 	enum kv_category key_value_category;
 };
+
+#ifdef __cplusplus
+}
+#endif
 #endif // PARALLAX_STRUCTURES_H_

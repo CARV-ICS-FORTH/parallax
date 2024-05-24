@@ -3,7 +3,7 @@ release_build_gcc:
     stage: release_build
     script:
         - mkdir -p build;cd build
-        - cmake .. -DCMAKE_BUILD_TYPE=Release -DTREAT_WARNINGS_AS_ERRORS=True
+        - cmake .. -DCMAKE_BUILD_TYPE=Release -DTREAT_WARNINGS_AS_ERRORS=True -DDISABLE_LOGGING=ON -DENABLE_FLTO=ON -DTEBIS_FORMAT=ON
         - make all
     needs: []
 
@@ -11,6 +11,7 @@ release_build_clang:
     stage: release_build
     script:
         - mkdir -p build;cd build
-        - cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DTREAT_WARNINGS_AS_ERRORS=True
+        - cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DTREAT_WARNINGS_AS_ERRORS=True -DDISABLE_LOGGING=ON -DTEBIS_FORMAT=ON
+          -DENABLE_FLTO=ON
         - make all
     needs: []

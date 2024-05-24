@@ -23,25 +23,39 @@ option(
 
 set(LIB_C_SOURCE_FILES
     allocator/allocator.c
+    allocator/log_structures.c
     allocator/kv_format.c
-    allocator/redo_undo_log.c
+    allocator/region_log.c
     allocator/persistent_operations.c
     allocator/djb2.c
     api/parallax.c
     btree/btree.c
     btree/index_node.c
     btree/compaction_daemon.c
+    btree/compaction_worker.c
+    # btree/level_read_cursor.c btree/level_write_cursor.c
+    btree/level_write_appender.c
+    btree/bloom_filter.c
     btree/dynamic_leaf.c
+    btree/device_level.c
+    btree/dev_leaf.c
+    btree/fractal_leaf.c
+    btree/fractal_index.c
+    btree/dev_index.c
+    btree/sst.c
     btree/gc.c
     btree/medium_log_LRU_cache.c
     btree/segment_allocator.c
     btree/set_options.c
     btree/kv_pairs.c
+    btree/key_splice.c
     btree/lsn.c
     common/common.c
     scanner/min_max_heap.c
     scanner/scanner.c
-    scanner/stack.c)
+    scanner/L0_scanner.c
+    scanner/stack.c
+    parallax_callbacks/parallax_callbacks.c)
 
 list(APPEND LIB_C_SOURCE_FILES
      "$CACHE{parallax_SOURCE_DIR}/utilities/spin_loop.c")
@@ -77,6 +91,10 @@ install(
   LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
   RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
   PUBLIC_HEADER DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}")
+
+install(FILES include/parallax/parallax.h include/parallax/structures.h
+        DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}")
+
 set_target_properties(${LIB} PROPERTIES OUTPUT_NAME ${LIB})
 
 if(RUN_IWYU STREQUAL "ON")

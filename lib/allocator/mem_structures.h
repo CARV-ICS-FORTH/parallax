@@ -18,7 +18,7 @@
 #include <pthread.h>
 #include <stdint.h>
 
-#define MEM_WORD_SIZE_IN_BITS (64)
+#define MEM_WORD_SIZE_IN_BITS (64UL)
 
 struct mem_bitmap_word {
 	uint64_t *word_addr;

@@ -46,8 +46,10 @@ void serially_insert_keys(par_handle hd)
 		value *v = (value *)((uint64_t)k + sizeof(key) + k->key_size);
 		v->value_size = KV_SIZE - ((2 * sizeof(key)) + k->key_size);
 		memset(v->value_buf, 0xDD, v->value_size);
-		if (i % 10000 == 0)
+		if (i % 10000 == 0) {
 			log_info("%s", k->key_buf);
+		}
+
 		key_value.k.size = k->key_size;
 		key_value.k.data = k->key_buf;
 		key_value.v.val_buffer = v->value_buf;
@@ -78,8 +80,10 @@ void get_all_keys(par_handle hd)
 		k->key_size = strlen(&k->key_buf[4]) + 1;
 		*(uint32_t *)k->key_buf = k->key_size;
 		/* log_info("size %u, %u , string %*s", *(uint32_t*) k->key_buf,k->key_size,k->key_size,&k->key_buf[4]); */
-		if (i % 10000 == 0)
+		if (i % 10000 == 0) {
 			log_info("%s", &k->key_buf[4]);
+		}
+
 		par_key.data = &k->key_buf[4];
 		par_key.size = k->key_size;
 
@@ -106,8 +110,9 @@ void delete_half_keys(par_handle hd)
 		par_key.data = k->key_buf;
 		par_key.size = k->key_size;
 
-		if (i % 10000 == 0)
+		if (i % 10000 == 0) {
 			log_info("%s", k->key_buf);
+		}
 
 		const char *error_message = NULL;
 		par_delete(hd, &par_key, &error_message);
@@ -133,8 +138,9 @@ void get_all_valid_keys(par_handle hd)
 		k->key_size = strlen(&k->key_buf[4]) + 1;
 		*(uint32_t *)k->key_buf = k->key_size;
 		/* log_info("size %u, %u , string %*s", *(uint32_t*) k->key_buf,k->key_size,k->key_size,&k->key_buf[4]); */
-		if (i % 10000 == 0)
+		if (i % 10000 == 0) {
 			log_info("%s", &k->key_buf[4]);
+		}
 
 		par_key.data = &k->key_buf[4];
 		par_key.size = k->key_size;
@@ -154,8 +160,9 @@ void get_all_valid_keys(par_handle hd)
 		k->key_size = strlen(&k->key_buf[4]) + 1;
 		*(uint32_t *)k->key_buf = k->key_size;
 		/* log_info("size %u, %u , string %*s", *(uint32_t*) k->key_buf,k->key_size,k->key_size,&k->key_buf[4]); */
-		if (i % 10000 == 0)
+		if (i % 10000 == 0) {
 			log_info("%s", &k->key_buf[4]);
+		}
 
 		par_key.data = &k->key_buf[4];
 		par_key.size = k->key_size;
@@ -192,8 +199,10 @@ void scan_all_valid_keys(par_handle hd)
 		k->key_size = strlen(&k->key_buf[4]) + 1;
 		*(uint32_t *)k->key_buf = k->key_size;
 		/* log_info("size %u, %u , string %*s", *(uint32_t*) k->key_buf,k->key_size,k->key_size,&k->key_buf[4]); */
-		if (i % 10000 == 0)
+		if (i % 10000 == 0) {
 			log_info("%s", &k->key_buf[4]);
+		}
+
 		if (!my_scanner) {
 			par_key.size = k->key_size;
 			par_key.data = &k->key_buf[4];

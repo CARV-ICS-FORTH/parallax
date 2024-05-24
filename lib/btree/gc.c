@@ -20,6 +20,7 @@
 #include "../common/common.h"
 #include "btree.h"
 #include "conf.h"
+#include "key_splice.h"
 #include "lsn.h"
 #include "parallax/structures.h"
 #include <assert.h>
@@ -58,31 +59,31 @@ void push_stack(stack *marks, void *addr)
 	marks->valid_pairs[marks->size++] = addr;
 	assert(marks->size != STACK_SIZE);
 }
+
 void move_kv_pairs_to_new_segment(struct db_handle handle, stack *marks)
 {
-	bt_insert_req ins_req;
-	char *kv_address;
-	int i;
+	bt_insert_req ins_req = { 0 };
 
-	for (i = 0; i < marks->size; ++i, ++handle.db_desc->gc_keys_transferred) {
-		kv_address = marks->valid_pairs[i];
+	for (int i = 0; i < marks->size; ++i, ++handle.db_desc->gc_keys_transferred) {
+		char *kv_address = marks->valid_pairs[i];
 		// struct splice *key = (struct splice *)kv_address;
 		// struct splice *value = (struct splice *)(kv_address +
 		// VALUE_SIZE_OFFSET(key->size));
 		ins_req.metadata.handle = &handle;
-		ins_req.key_value_buf = kv_address;
+		struct kv_splice_base splice_base = { .kv_cat = BIG_INLOG,
+						      .kv_type = KV_FORMAT,
+						      .kv_splice = (struct kv_splice *)kv_address };
+		ins_req.splice_base = &splice_base;
 		ins_req.metadata.append_to_log = 1;
 		ins_req.metadata.gc_request = 1;
-		ins_req.metadata.recovery_request = 0;
 		ins_req.metadata.level_id = 0;
-		ins_req.metadata.special_split = 0;
 		ins_req.metadata.tombstone = 0;
 		ins_req.metadata.key_format = KV_FORMAT;
 		ins_req.metadata.cat = BIG_INLOG;
 		const char *error_message = btree_insert_key_value(&ins_req);
 
 		if (error_message) {
-			log_fatal("Insert failed %s", error_message);
+			log_fatal("Insert failed! %s", error_message);
 			BUG_ON();
 		}
 	}
@@ -92,46 +93,49 @@ int8_t find_deleted_kv_pairs_in_segment(struct db_handle handle, struct gc_segme
 {
 	struct gc_segment_descriptor iter_log_segment = *log_seg;
 	char *log_segment_in_device = REAL_ADDRESS(log_seg->segment_dev_offt);
-	char buf[MAX_KEY_SIZE];
-	struct kv_splice *kv = NULL;
-	int64_t checked_segment_chunk = get_lsn_size();
+	char buf[MAX_KEY_SPLICE_SIZE];
+	struct kv_splice *kv_pair = NULL;
+	int64_t bytes_checked_in_segment = get_lsn_size();
 	int64_t segment_data = LOG_DATA_OFFSET;
 
 	iter_log_segment.log_segment_in_memory += get_lsn_size();
 	log_segment_in_device += get_lsn_size();
 
-	int32_t key_value_size = get_kv_metadata_size();
+	int32_t key_value_size = kv_splice_get_metadata_size();
 	marks->size = 0;
 
-	while (checked_segment_chunk < segment_data) {
-		kv = (struct kv_splice *)iter_log_segment.log_segment_in_memory;
+	while (bytes_checked_in_segment < segment_data) {
+		kv_pair = (struct kv_splice *)iter_log_segment.log_segment_in_memory;
 
-		if (!kv->key_size || checked_segment_chunk - segment_data < get_min_possible_kv_size())
+		if (segment_data - bytes_checked_in_segment < kv_splice_get_min_possible_kv_size())
+			break;
+		if (!kv_pair->key_size)
 			break;
 
-		serialize_kv_splice_to_key_splice(buf, kv);
+		kv_splice_serialize_to_key_splice(buf, kv_pair);
 		struct lookup_operation get_op = { .db_desc = handle.db_desc,
 						   .found = 0,
 						   .size = 0,
 						   .buffer_to_pack_kv = NULL,
 						   .buffer_overflow = 0,
-						   .key_buf = buf,
+						   .key_splice = (struct key_splice *)buf,
 						   .retrieve = 0 };
 		find_key(&get_op);
 
 		if (get_op.found && log_segment_in_device == get_op.key_device_address)
 			push_stack(marks, iter_log_segment.log_segment_in_memory);
 
-		if (kv->key_size) {
-			int32_t bytes_to_move = kv->key_size + kv->value_size + key_value_size + get_lsn_size();
+		if (kv_pair->key_size) {
+			int32_t bytes_to_move =
+				kv_pair->key_size + kv_pair->value_size + key_value_size + get_lsn_size();
 			iter_log_segment.log_segment_in_memory += bytes_to_move;
 			log_segment_in_device += bytes_to_move;
-			checked_segment_chunk += kv->key_size + kv->value_size + key_value_size + get_lsn_size();
+			bytes_checked_in_segment += (kv_splice_get_kv_size(kv_pair) + get_lsn_size());
 		} else
 			break;
 	}
 
-	assert(marks->size < STACK_SIZE);
+	assert(marks->size < (int)STACK_SIZE);
 
 	move_kv_pairs_to_new_segment(handle, marks);
 	gc_executed = 1;
@@ -142,7 +146,7 @@ int8_t find_deleted_kv_pairs_in_segment(struct db_handle handle, struct gc_segme
 static void fetch_segment(struct log_segment *segment_buf, uint64_t segment_offt)
 {
 	off_t dev_offt = segment_offt;
-	ssize_t bytes_to_read = 0;
+	size_t bytes_to_read = 0;
 
 	assert(segment_offt % SEGMENT_SIZE == 0);
 

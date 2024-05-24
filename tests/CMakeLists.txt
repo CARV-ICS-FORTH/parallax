@@ -1,11 +1,13 @@
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 include_directories(${CMAKE_SOURCE_DIR}/lib)
 
-if(BUILD_TESTING)
+if(PARALLAX_BUILD_TESTING)
   set(LIB_TEST_FILES
       tiresias.c
+      manto.c
       test_recovery.c
       test_index_node.c
+      test_leaf_node.c
       test_scans.c
       test_dirty_scans.c
       test_options.c
@@ -16,12 +18,17 @@ if(BUILD_TESTING)
       test_leaf_root_delete_get_scan.c
       test_region_allocations.c
       test_par_format.c
-      test_par_put_serialized.c)
+      test_par_put_serialized.c
+      test_wcursors_append_segment.c
+      test_wcursors_segment_buffers_cursor.c)
 
   set_source_files_properties(${LIB_TEST_FILES} COMPILE_FLAGS "-O3")
 
   add_executable(test_index_node test_index_node.c arg_parser.c)
   target_link_libraries(test_index_node "${PROJECT_NAME}")
+
+  add_executable(test_leaf_node test_leaf_node.c arg_parser.c)
+  target_link_libraries(test_leaf_node "${PROJECT_NAME}")
 
   add_executable(test_scans test_scans.c)
   target_link_libraries(test_scans "${PROJECT_NAME}")
@@ -29,10 +36,14 @@ if(BUILD_TESTING)
   add_executable(test_dirty_scans test_dirty_scans.c arg_parser.c)
   target_link_libraries(test_dirty_scans "${PROJECT_NAME}")
 
+  add_executable(test_fractal_layout test_fractal_layout.c
+                                     ../lib/btree/fractal_leaf.c)
+  target_link_libraries(test_fractal_layout "${PROJECT_NAME}")
+
   find_library(BDB_LIBRARY NAMES libdb.so)
 
   if(BDB_LIBRARY AND NOT ${BDB_PATH} STREQUAL "")
-    message("Tiresias will be built.")
+    message("Tiresias and Manto tests will be built.")
     add_executable(tiresias tiresias.c arg_parser.c)
     target_link_libraries(tiresias "${PROJECT_NAME}" ${BDB_LIBRARY})
     add_parallax_test(
@@ -43,9 +54,14 @@ if(BUILD_TESTING)
       tiresias
       --num_of_kvs=1000000
       --BDB_file=${BDB_PATH})
+    add_executable(manto manto.c)
+    target_link_libraries(manto "${PROJECT_NAME}" ${BDB_LIBRARY} ${ART_LIB})
   endif()
 
   add_parallax_test(NAME test_index_node COMMAND run_test.sh test_index_node)
+  add_parallax_test(NAME test_leaf_node COMMAND run_test.sh test_leaf_node)
+  add_parallax_test(NAME test_fractal_layout COMMAND run_test.sh
+                    test_fractal_layout)
 
   add_parallax_test(
     NAME
@@ -157,6 +173,34 @@ if(BUILD_TESTING)
   add_parallax_test(NAME test_gc COMMAND run_test.sh test_gc
                     --num_of_kvs=1000000)
 
+  if(TEBIS_FORMAT)
+    if(BDB_LIBRARY AND NOT ${BDB_PATH} STREQUAL "")
+
+      add_test(
+        NAME test_wcursors_append_segment
+        COMMAND $<TARGET_FILE:test_wcursors_append_segment> --file=${FILEPATH}
+                --num_of_kvs=1000000 --BDB_file=${BDB_PATH})
+      add_executable(test_wcursors_append_segment test_wcursors_append_segment.c
+                                                  arg_parser.c)
+      target_link_libraries(test_wcursors_append_segment "${PROJECT_NAME}"
+                            ${DEPENDENCIES} ${BDB_LIBRARY})
+    endif()
+
+    add_test(NAME test_wcursors_segment_buffers_cursor
+             COMMAND $<TARGET_FILE:test_wcursors_segment_buffers_cursor>
+                     --file=${FILEPATH})
+    add_executable(test_wcursors_segment_buffers_cursor
+                   test_wcursors_segment_buffers_cursor.c arg_parser.c)
+    target_link_libraries(test_wcursors_segment_buffers_cursor
+                          "${PROJECT_NAME}" ${DEPENDENCIES})
+
+    add_test(NAME test_wcursors_api COMMAND $<TARGET_FILE:test_wcursors_api>
+                                            --file=${FILEPATH})
+    add_executable(test_wcursors_api test_wcursors_api.c arg_parser.c)
+    target_link_libraries(test_wcursors_api "${PROJECT_NAME}" ${DEPENDENCIES})
+
+  endif()
+
   add_executable(test_mixes test_mixes.c arg_parser.c)
   target_link_libraries(test_mixes "${PROJECT_NAME}")
 
@@ -209,22 +253,28 @@ if(BUILD_TESTING)
   add_executable(
     test_region_allocations
     test_region_allocations.c ../lib/allocator/allocator.c
-    ../lib/allocator/djb2.c ../lib/allocator/redo_undo_log.c)
+    ../lib/allocator/djb2.c ../lib/allocator/region_log.c)
   target_link_libraries(test_region_allocations "${PROJECT_NAME}")
-  add_parallax_test(NAME test_region_allocations COMMAND
-                    $<TARGET_FILE:test_region_allocations>)
+  add_parallax_test(NAME test_region_allocations COMMAND run_test.sh
+                    test_region_allocations /tmp/nvme/kv_store.dat)
 
   add_executable(
-    test_redo_undo_log
-    test_redo_undo_log.c ../lib/allocator/allocator.c ../lib/allocator/djb2.c
-    ../lib/allocator/redo_undo_log.c arg_parser.c)
-  target_link_libraries(test_redo_undo_log "${PROJECT_NAME}")
-  add_parallax_test(NAME test_redo_undo_log COMMAND run_test.sh
-                    test_redo_undo_log --num_threads=4)
+    test_region_log
+    test_region_log.c ../lib/allocator/allocator.c ../lib/allocator/djb2.c
+    ../lib/allocator/region_log.c arg_parser.c)
+  target_link_libraries(test_region_log "${PROJECT_NAME}")
+  add_parallax_test(NAME test_region_log COMMAND run_test.sh test_region_log
+                    --num_threads=4)
 
   add_executable(test_optional_logging test_optional_logging.c)
   add_parallax_test(NAME test_optional_logging COMMAND run_test.sh
                     test_optional_logging)
+
+  add_executable(test_wal test_wal.c)
+  target_link_libraries(test_wal "${PROJECT_NAME}")
+
+  add_executable(test_level_protocol test_level_protocol.c)
+  target_link_libraries(test_level_protocol "${PROJECT_NAME}")
 
   add_executable(test_par_format test_par_format.c arg_parser.c)
   target_link_libraries(test_par_format "${PROJECT_NAME}")

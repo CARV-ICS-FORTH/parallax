@@ -10,8 +10,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 #include "../btree/conf.h"
-#include "../btree/kv_pairs.h"
+#include "../btree/key_splice.h"
 #include "arg_parser.h"
+#include "btree/key_splice.h"
+#include "parallax/structures.h"
 #include <assert.h>
 #include <btree/gc.h>
 #include <db.h>
@@ -22,8 +24,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#define MAX_KV_PAIR_SIZE 4096
-#define MY_MAX_KEY_SIZE 255
+#include <sys/time.h>
+#define TIRESIAS_KV_SIZE (KV_MAX_SIZE - (MAX_KEY_SIZE + 8))
+#define TIRESIAS_KEY_SIZE MAX_KEY_SIZE
 
 /**
  * This test uses a BerkeleyDB key value store as the source of truth. We use
@@ -47,8 +50,10 @@ struct workload_config_t {
 
 static void generate_random_key(unsigned char *key_buffer, uint32_t key_size)
 {
-	for (uint32_t i = 0; i < key_size; i++)
-		key_buffer[i] = rand() % 256;
+	for (uint32_t i = 0; i < key_size; i++) {
+		// key_buffer[i] = (rand() % 255) + 1;
+		key_buffer[i] = 96 + (rand() % 25) + 1;
+	}
 }
 
 static void generate_random_value(char *value_buffer, uint32_t value_size, uint32_t id)
@@ -60,6 +65,8 @@ static void generate_random_value(char *value_buffer, uint32_t value_size, uint3
 
 static void populate_from_BDB(struct workload_config_t *workload_config)
 {
+	log_fatal("populate_from_BDB");
+	_exit(EXIT_FAILURE);
 	DBC *cursorp = NULL;
 	DBT BDB_key = { 0 };
 	DBT BDB_value = { 0 };
@@ -78,6 +85,10 @@ static void populate_from_BDB(struct workload_config_t *workload_config)
 		kv_pair.v.val_buffer = BDB_value.data;
 		const char *error_message = NULL;
 		par_put(workload_config->handle, &kv_pair, &error_message);
+		if (error_message) {
+			log_fatal("Test failed with message: %s", error_message);
+			_exit(EXIT_FAILURE);
+		}
 
 		if (!(num_keys % workload_config->progress_report))
 			log_info("Progress in population %d keys", num_keys);
@@ -90,13 +101,13 @@ static void populate_randomly(struct workload_config_t *workload_config)
 {
 	log_info("Starting population for %lu keys...", workload_config->total_keys);
 	const char *error_message = NULL;
-	unsigned char key_buffer[MY_MAX_KEY_SIZE] = { 0 };
-	unsigned char value_buffer[MAX_KV_PAIR_SIZE] = { 0 };
+	unsigned char key_buffer[TIRESIAS_KEY_SIZE] = { 0 };
+	unsigned char value_buffer[TIRESIAS_KV_SIZE] = { 0 };
 	uint64_t unique_keys = 0;
 	for (uint64_t i = 0; i < workload_config->total_keys; i++) {
 		struct par_key_value kv_pair = { 0 };
 
-		kv_pair.k.size = rand() % (MY_MAX_KEY_SIZE + 1);
+		kv_pair.k.size = rand() % (TIRESIAS_KEY_SIZE + 1);
 
 		// if (kv_pair.k.size <= 12) {
 		// 	kv_pair.k.size = 14;
@@ -104,7 +115,7 @@ static void populate_randomly(struct workload_config_t *workload_config)
 
 		if (!kv_pair.k.size)
 			kv_pair.k.size++;
-		kv_pair.v.val_size = rand() % (MAX_KV_PAIR_SIZE - (kv_pair.k.size + sizeof(uint32_t)));
+		kv_pair.v.val_size = rand() % (TIRESIAS_KV_SIZE - (kv_pair.k.size + sizeof(uint32_t)));
 		if (kv_pair.v.val_size < 4)
 			kv_pair.v.val_size = 4;
 
@@ -128,9 +139,13 @@ static void populate_randomly(struct workload_config_t *workload_config)
 			continue;
 		}
 		++unique_keys;
-		//log_debug("Inserting in store key size %u value size %u unique keys %lu", kv_pair.k.size,
-		//	  kv_pair.v.val_size, unique_keys);
+		// log_debug("Inserting in store key size %u key: %s value size %u unique keys %lu", kv_pair.k.size,
+		// 	  kv_pair.k.data, kv_pair.v.val_size, unique_keys);
 		par_put(workload_config->handle, &kv_pair, &error_message);
+		if (error_message) {
+			log_fatal("Test failed with message: %s", error_message);
+			_exit(EXIT_FAILURE);
+		}
 		if (!(i % workload_config->progress_report))
 			log_info("Progress in population %lu keys", i);
 	}
@@ -145,15 +160,12 @@ static void locate_key(par_handle handle, DBT lookup_key)
 	while (par_is_valid(scanner)) {
 		struct par_key fetched_key = par_get_key(scanner);
 
-		if (fetched_key.size == lookup_key.size && memcmp(fetched_key.data, lookup_key.data, 12) == 0)
-			log_info("Fetched key %u %.*s", fetched_key.size, fetched_key.size, fetched_key.data);
-		if (fetched_key.size != lookup_key.size ||
-		    memcmp(fetched_key.data, lookup_key.data, lookup_key.size) != 0) {
-			par_get_next(scanner);
-			continue;
+		if (fetched_key.size == lookup_key.size &&
+		    memcmp(fetched_key.data, lookup_key.data, fetched_key.size) == 0) {
+			log_info("Found key %u %.*s", lookup_key.size, lookup_key.size, (char *)lookup_key.data);
+			return;
 		}
-		log_info("Found key %u %.*s", lookup_key.size, lookup_key.size, (char *)lookup_key.data);
-		return;
+		par_get_next(scanner);
 	}
 	log_info("Not Found key %u %.*s", lookup_key.size, lookup_key.size, (char *)lookup_key.data);
 }
@@ -162,11 +174,11 @@ static void *get_workload(void *config)
 {
 	struct workload_config_t *workload_config = config;
 	log_info("Testing GETS now");
+
 	const char *error_message = NULL;
 	DBC *cursorp = NULL;
 	DBT key = { 0 };
 	DBT data = { 0 };
-	char buf[4096];
 	/* Database open omitted for clarity */
 	/* Get a cursor */
 	workload_config->truth->cursor(workload_config->truth, NULL, &cursorp, 0);
@@ -178,20 +190,22 @@ static void *get_workload(void *config)
 		struct par_key par_key = { .size = key.size, .data = key.data };
 		struct par_value value = { 0 };
 		bool malloced = 1;
+		char get_buf[TIRESIAS_KV_SIZE];
 		if (unique_keys < workload_config->total_keys / 2)
 			par_get(workload_config->handle, &par_key, &value, &error_message);
 		else {
 			malloced = 0;
 			struct key_splice *key_serialized =
-				(struct key_splice *)calloc(1, key.size + sizeof(struct key_splice));
-			set_key_size_of_key_splice(key_serialized, key.size);
-			set_key_splice_key_offset(key_serialized, (char *)key.data);
-			value.val_buffer_size = 4096;
-			value.val_buffer = buf;
+				(struct key_splice *)calloc(1UL, key.size + key_splice_get_metadata_size());
+			key_splice_set_key_size(key_serialized, key.size);
+			key_splice_set_key_offset(key_serialized, (char *)key.data);
+			value.val_buffer_size = TIRESIAS_KV_SIZE;
+			value.val_buffer = get_buf;
 			par_get_serialized(workload_config->handle, (char *)key_serialized, &value, &error_message);
 		}
 
 		if (error_message) {
+			log_fatal("Parallax returned the following error: %s", error_message);
 			uint64_t insert_order = *(uint64_t *)data.data;
 			log_debug(
 				"Key is size: %u data: %.*s not found! keys found so far %lu error_message is %s insert order was %lu",
@@ -362,6 +376,7 @@ int main(int argc, char **argv)
 	db_options.db_name = "TIRESIAS";
 	db_options.create_flag = PAR_CREATE_DB;
 	db_options.options = par_get_default_options();
+	db_options.options[ENABLE_BLOOM_FILTERS].value = 1;
 	par_handle parallax_db = par_open(&db_options, &error_message);
 
 	struct workload_config_t workload_config = {
@@ -370,15 +385,20 @@ int main(int argc, char **argv)
 
 	if (truth_db_exists)
 		populate_from_BDB(&workload_config);
-	else
+	else {
+		struct timeval time;
+		gettimeofday(&time, NULL);
+		srand((time.tv_sec * 1000) + (time.tv_usec / 1000));
 		populate_randomly(&workload_config);
+	}
 
 	pthread_t get_thread;
 	pthread_t scan_thread;
 
 	pthread_create(&get_thread, NULL, get_workload, &workload_config);
-	pthread_create(&scan_thread, NULL, scan_workload, &workload_config);
 	pthread_join(get_thread, NULL);
+
+	pthread_create(&scan_thread, NULL, scan_workload, &workload_config);
 	pthread_join(scan_thread, NULL);
 
 	delete_workload(&workload_config);

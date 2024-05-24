@@ -55,12 +55,13 @@ void execute_put_request(par_handle handle, char *line)
 
 	/*prepare the request*/
 	struct kv_splice *kv_buf = (struct kv_splice *)key_buf;
-	set_key_size(kv_buf, key_size);
-	set_value_size(kv_buf, key_size);
-	set_key(kv_buf, key, key_size);
-	set_value(kv_buf, value, value_size);
+	kv_splice_set_key_size(kv_buf, key_size);
+	kv_splice_set_value_size(kv_buf, key_size);
+	kv_splice_set_key(kv_buf, key, key_size);
+	kv_splice_set_value(kv_buf, value, value_size);
 	const char *error_message = NULL;
-	par_put_serialized(handle, key_buf, &error_message);
+	struct kv_splice_base splice_base = { .kv_type = KV_FORMAT, .kv_splice = kv_buf };
+	par_put_serialized(handle, (char *)&splice_base, &error_message, true, false);
 }
 
 enum Op get_op(char *line)

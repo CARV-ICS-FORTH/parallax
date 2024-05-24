@@ -2,7 +2,7 @@
 .debug_build_commands: &debug_build_commands
     before_script:
         - mkdir -p build;cd build
-        - cmake .. -DBDB_PATH=/BDB/TIRESIAS
+        - cmake .. -DBDB_PATH=/BDB/TIRESIAS -DTEBIS_FORMAT=ON
 
 test_options:
     image: carvicsforth/ubuntu_carv:latest
@@ -286,15 +286,15 @@ debug_leaf_root_delete_get_scan:
         - ctest -R ^test_leaf_root_delete_get_scan$
     needs: [debug_build_gcc, debug_build_clang]
 
-debug_test_redo_undo_log:
+debug_test_region_log:
     image: carvicsforth/arch_carv:latest
     stage: debug_test
     <<: *debug_build_commands
     tags:
         - kubernetes
     script:
-        - make test_redo_undo_log;make kv_format.parallax;cd tests;
-        - ctest -R ^test_redo_undo_log$
+        - make test_region_log;make kv_format.parallax;cd tests;
+        - ctest -R ^test_region_log$
     needs: [debug_build_gcc, debug_build_clang]
 
 debug_test_par_format:
@@ -383,4 +383,15 @@ debug_test_par_put_metadata:
     script:
         - make test_par_put_metadata;cd tests;
         - ctest -R ^test_par_put_metadata$
+    needs: [debug_build_gcc, debug_build_clang]
+
+debug_test_level_write_cursors:
+    image: carvicsforth/arch_carv:latest
+    stage: debug_test
+    <<: *debug_build_commands
+    tags:
+        - kubernetes
+    script:
+        - make test_wcursors_append_segment;cd tests;
+        - ctest -R ^test_wcursors_append_segment$
     needs: [debug_build_gcc, debug_build_clang]

@@ -98,9 +98,10 @@ int main(int argc, char **argv)
 			}
 			int last = 0;
 
-			if (++num_allocations % 10000 == 0)
+			if (++num_allocations % 10000 == 0) {
 				log_info("Have allocated %lu bytes so far out of device capacity %lu", bytes_allocated,
 					 device_capacity);
+			}
 
 			if (device_capacity - bytes_allocated == 0) {
 				log_info("Whole device allocated ! :-)");

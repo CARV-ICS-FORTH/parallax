@@ -20,6 +20,7 @@
 **/
 
 #include "arg_parser.h"
+#include "btree/key_splice.h"
 #include <assert.h>
 #include <btree/btree.h>
 #include <btree/index_node.h>
@@ -38,42 +39,64 @@
 
 enum pivot_generation_style { ASCENDING = 1, DESCENDING, RANDOM };
 
-static void create_pivot(struct pivot_key *pivot, uint32_t pivot_num, const unsigned char *alphabet,
-			 uint32_t alphabet_size)
+static struct key_splice *create_pivot(char *pivot_buf, int pivot_buf_size, const unsigned char *alphabet,
+				       uint32_t pivot_num, uint32_t alphabet_size)
 {
-	sprintf(pivot->data, "%u", pivot_num);
-	int32_t prefix_size = strlen(pivot->data);
-	pivot->size = (rand() % MAX_PIVOT_KEY_SIZE);
-
-	if (pivot->size <= prefix_size)
-		pivot->size = prefix_size + 1;
-
-	for (int32_t i = prefix_size; i < pivot->size; ++i) {
-		pivot->data[i] = alphabet[rand() % alphabet_size];
+	char pivot_data[256] = { 0 };
+	if (snprintf(pivot_data, sizeof(pivot_data), "%u", pivot_num) < 0) {
+		log_fatal("Failed to create pivot");
+		_exit(EXIT_FAILURE);
 	}
+	bool malloced = false;
+
+	int32_t prefix_size = strlen(pivot_data);
+	int pivot_size = (rand() % MAX_PIVOT_KEY_SIZE);
+
+	if (pivot_size <= prefix_size)
+		pivot_size = prefix_size + 1;
+
+	for (int32_t i = prefix_size; i < pivot_size; ++i) {
+		pivot_data[i] = alphabet[rand() % alphabet_size];
+	}
+	struct key_splice *new_key_splice =
+		key_splice_create(pivot_data, pivot_size, pivot_buf, pivot_buf_size, &malloced);
+	if (malloced) {
+		log_fatal("Buffer is not large enough");
+		_exit(EXIT_FAILURE);
+	}
+	// log_debug("Created key with size %d and data %.*s", key_splice_get_key_size(new_key_splice),
+	// 	  key_splice_get_key_size(new_key_splice), key_splice_get_key_offset(new_key_splice));
+	return new_key_splice;
 }
 
-static void verify_pivots(struct index_node *node, struct pivot_key **pivot, uint32_t num_node_keys, uint32_t base)
+static void verify_pivots(struct index_node *node, struct key_splice **pivot_splice, uint32_t num_node_keys,
+			  uint32_t base)
 {
 	/*
    * Verify that you can find all keys and their respective children are
    * correct
   */
-	struct pivot_key *guard = calloc(1, sizeof(struct pivot_key) + MAX_PIVOT_KEY_SIZE);
-	guard->size = 1;
-	guard->data[0] = 0x00;
+	char guard_buf[256] = { 0 };
+	bool malloced = false;
+	struct key_splice *guard_splice = key_splice_create_smallest(guard_buf, sizeof guard_buf, &malloced);
+	if (malloced) {
+		log_fatal("Buffer not large enough");
+		_exit(EXIT_FAILURE);
+	}
 
-	uint64_t child_offt = index_binary_search(node, guard, INDEX_KEY_TYPE);
+	uint64_t child_offt = index_binary_search(node, key_splice_get_key_offset(guard_splice),
+						  key_splice_get_key_size(guard_splice));
 	uint64_t expected_value = base;
 	if (child_offt != expected_value) {
-		log_fatal("i = %u Child offt corrupted shoud be %lu but its value is %lu", 0, expected_value,
+		log_fatal("i = %u Child offt corrupted should be %lu but its value is %lu", 0, expected_value,
 			  child_offt);
 		_exit(EXIT_FAILURE);
 	}
 
 	for (uint32_t i = 0; i < num_node_keys; ++i) {
 		//log_debug("Look up key is %.*s", pivot[i]->size, pivot[i]->data);
-		child_offt = index_binary_search(node, pivot[i], INDEX_KEY_TYPE);
+		child_offt = index_binary_search(node, key_splice_get_key_offset(pivot_splice[i]),
+						 key_splice_get_key_size(pivot_splice[i]));
 		expected_value = base + i + 1;
 		//log_debug("i = %u expected %lu got %lu lookup key %.*s", i, expected_value, child_offt, pivot[i]->size,
 		//	  pivot[i]->data);
@@ -83,19 +106,19 @@ static void verify_pivots(struct index_node *node, struct pivot_key **pivot, uin
 			_exit(EXIT_FAILURE);
 		}
 	}
-	free(guard);
 }
 
 static uint32_t insert_and_verify_pivots(db_handle *handle, unsigned char *alphabet, uint32_t size)
 {
-	struct pivot_key **pivot = calloc(MAX_NODE_KEYS_NUM, sizeof(struct pivot_key *));
+	struct key_splice **pivot = calloc(MAX_NODE_KEYS_NUM, sizeof(struct key_splice *));
 
 	/*Create pivots counter as prefix random size and body*/
 	for (uint32_t i = 0; i < MAX_NODE_KEYS_NUM; ++i) {
-		pivot[i] = calloc(1, sizeof(struct pivot_key) + MAX_PIVOT_KEY_SIZE);
+		pivot[i] = calloc(1UL, 512);
+		pivot[i] = create_pivot((char *)pivot[i], 512, alphabet, PIVOT_BASE + i, size);
 
-		create_pivot(pivot[i], PIVOT_BASE + i, alphabet, size);
-		//log_debug("Created pivot key size %u %.*s", pivot[i]->size, pivot[i]->size, pivot[i]->data);
+		// log_debug("Created pivot key size %u %.*s", key_splice_get_key_size(pivot[i]),
+		// 	  key_splice_get_key_size(pivot[i]), key_splice_get_key_offset(pivot[i]));
 	}
 
 	/*insert in ascending order*/
@@ -110,15 +133,21 @@ static uint32_t insert_and_verify_pivots(db_handle *handle, unsigned char *alpha
 
 		struct insert_pivot_req ins_pivot_req = { .node = node,
 							  .left_child = &left_child,
-							  .key = pivot[num_node_keys],
+							  .key_splice = pivot[num_node_keys],
 							  .right_child = &right_child };
+		log_debug("Inserting pivot key size %u %.*s", key_splice_get_key_size(pivot[num_node_keys]),
+			  key_splice_get_key_size(pivot[num_node_keys]),
+			  key_splice_get_key_offset(pivot[num_node_keys]));
 		if (!index_insert_pivot(&ins_pivot_req)) {
 			log_warn(
 				"Failed to insert pivot %.*s after %u pivots because node is full don't worry proceeding to the next step",
-				pivot[num_node_keys]->size, pivot[num_node_keys]->data, num_node_keys);
+				key_splice_get_key_size((struct key_splice *)pivot[num_node_keys]),
+				key_splice_get_key_offset((struct key_splice *)pivot[num_node_keys]), num_node_keys);
 			break;
 		}
-		//log_debug("Success inserting %.*s", pivot[num_node_keys]->size, pivot[num_node_keys]->data);
+		log_debug("Success inserting key size %u %.*s", key_splice_get_key_size(pivot[num_node_keys]),
+			  key_splice_get_key_size(pivot[num_node_keys]),
+			  key_splice_get_key_offset(pivot[num_node_keys]));
 	}
 
 	verify_pivots(node, pivot, num_node_keys, PIVOT_BASE);
@@ -132,10 +161,10 @@ static uint32_t insert_and_verify_pivots(db_handle *handle, unsigned char *alpha
 		struct pivot_pointer right_child = { .child_offt = (uint64_t)PIVOT_BASE + i + 1 };
 
 		//log_debug("Descending order %u pivot %.*s", i, pivot[i]->size, pivot[i]->data);
-		assert(pivot[i]->size < 250);
+		assert(key_splice_get_key_size(pivot[i]) < 250);
 
 		struct insert_pivot_req ins_pivot_req = {
-			.node = node, .left_child = &left_child, .key = pivot[i], .right_child = &right_child
+			.node = node, .left_child = &left_child, .key_splice = pivot[i], .right_child = &right_child
 		};
 		if (!index_insert_pivot(&ins_pivot_req)) {
 			log_fatal("Capacity is known from the previous step this should not happen");
@@ -146,6 +175,22 @@ static uint32_t insert_and_verify_pivots(db_handle *handle, unsigned char *alpha
 	verify_pivots(node, pivot, num_node_keys, PIVOT_BASE);
 	log_info("Success insert pivots with descending order test!");
 
+	log_info("Now testing iterators");
+	struct index_node_iterator *index_iterator =
+		(struct index_node_iterator *)calloc(1, sizeof(struct index_node_iterator));
+	index_iterator_init(node, index_iterator);
+	uint32_t num_of_pivots_found_with_iter = 0; //1 for the starting position
+	while (index_iterator_next(index_iterator))
+		++num_of_pivots_found_with_iter;
+
+	if (num_of_pivots_found_with_iter != num_node_keys) {
+		log_fatal("Index iterator found %u pivots out of %u", num_of_pivots_found_with_iter, num_node_keys);
+		assert(0);
+		_exit(EXIT_FAILURE);
+	}
+
+	log_info("Success finding all pivots with and index iterator");
+
 	log_info("Now testing splits ...");
 
 	struct bt_rebalance_result split_res = {
@@ -155,7 +200,8 @@ static uint32_t insert_and_verify_pivots(db_handle *handle, unsigned char *alpha
 	struct index_node_split_request request = { .node = node,
 						    .left_child = (struct index_node *)split_res.left_child,
 						    .right_child = (struct index_node *)split_res.right_child };
-	struct index_node_split_reply reply = { .pivot_buf = split_res.middle_key, .pivot_buf_size = MAX_KEY_SIZE };
+	struct index_node_split_reply reply = { .pivot_buf = split_res.middle_key,
+						.pivot_buf_size = MAX_KEY_SPLICE_SIZE };
 
 	index_split_node(&request, &reply);
 

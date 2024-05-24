@@ -11,17 +11,9 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 
-/*
- *          File: stack.h
- *        Author: Robert I. Pitts <rip@cs.bu.edu>
- * Last Modified: March 7, 2000
- *         Topic: Stack - Array Implementation
- * ----------------------------------------------------------------
- *
- * This is the interface for a stack of characters.
- */
-#pragma once
-#include "../btree/btree_node.h"
+#ifndef STACK_H
+#define STACK_H
+
 #include "../btree/index_node.h"
 #include <stdint.h>
 #define MAX_SIZE 64
@@ -36,7 +28,7 @@
 
 typedef struct stackElementT {
 	struct index_node_iterator iterator;
-	node_header *node;
+	struct node_header *node;
 	int32_t idx;
 	uint8_t guard;
 } stackElementT;
@@ -106,3 +98,4 @@ void stack_reset(stackT *stackP);
 
 int stack_is_empty(stackT *stackP);
 int stack_is_full(stackT *stackP);
+#endif

@@ -14,8 +14,11 @@
 
 #ifndef PARALLAX_H
 #define PARALLAX_H
-
+#ifdef __cplusplus
+extern "C" {
+#endif
 #include "structures.h"
+#include <stdbool.h>
 #include <stdint.h>
 
 /**
@@ -35,6 +38,14 @@ char *par_format(char *device_name, uint32_t max_regions_num) __attribute__((war
  * @retval NULL The function failed check @p error_message to find the reason it failed. NON-NULL The function ran successfully.
  */
 par_handle par_open(par_db_options *db_options, const char **error_message);
+
+/**
+ * @brief Return the name of the parallax db
+ * @param handle the db handle
+ * @param error_message In case of an error it contains the failure reason
+ * @return A pointer to a C string containing the db name otherwise NULL
+ */
+char *par_get_db_name(par_handle handle, const char **error_message);
 
 /**
  * Closes the DB referenced by handle. Syncs data to the file or device before exiting.
@@ -71,10 +82,18 @@ struct par_put_metadata par_put(par_handle handle, struct par_key_value *key_val
 
 /**
  * Inserts a serialized key value pair by using the buffer provided by the user.
- * @param serialized_key_value is a buffer containing the serialized key value pair. The format of the key value pair is | key_size | key | value_size | value |
- * where {key,value}_size is uint32_t.
+ * @param serialized_key_value is a buffer containing the serialized key value
+ * pair. The format of the key value pair is | key_size | key | value_size |
+ * value | where {key,value}_size is uint32_t.
+ * @param append_to_log. True to append to log and False not to append. In case
+ * the key-value belongs to the big category it will always be appended to the
+ * log.
+ * @param abort_on_compaction. If set to true the calling thread aborts the
+ * operation if it cannot be served due to a pending L0->L1 compaction. If set
+ * to false it blocks until L0 is available.
  */
-struct par_put_metadata par_put_serialized(par_handle handle, char *serialized_key_value, const char **error_message);
+struct par_put_metadata par_put_serialized(par_handle handle, char *serialized_key_value, const char **error_message,
+					   bool append_to_log, bool abort_on_compaction);
 
 /**
  * Takes as input a key and searches for it. If the key exists in the DB, then
@@ -104,6 +123,36 @@ void par_get_serialized(par_handle handle, char *key_serialized, struct par_valu
  * Searches for a key and returns if the key exists in the DB.
  */
 par_ret_code par_exists(par_handle handle, struct par_key *key);
+
+/**
+ * Only for Tebis-Parallax use
+ * Takes an in-memory buffer and flushes it to the appropriate log
+ * The buffer size must be equal to Parallax's segment size. Also, the buffer must be padded with 0 indicating
+ * the "not used" space at the end of a buffer.
+ * The DB must be opend in replica mode
+ * @param handle: DB handle provided by par_open
+ * @param buf: the in-memory buffer to be flushed
+ * @param buf_size: the in-memory buffer size
+ * @param IO_size: the size of the IO which is the closest ALIGNMENT_SIZE multiple of buf_size
+ * @param log_cat: the category of the log to flush into
+ * @param error_message: Contains error message of call fails
+ */
+uint64_t par_flush_segment_in_log(par_handle handle, char *buf, int32_t buf_size, uint32_t IO_size,
+				  enum log_category log_cat);
+/**
+ * Flushes Parallax superblock
+ * in order for buffer to be persisted, the buffers must be flushed (par_flush_segment_in_log)
+ * @param hande: DB handle proviced by par_open
+ */
+void par_flush_superblock(par_handle handle);
+/**
+ * Only for Tebis-Parallax use
+ * Every compaction is associated with a transaction ID in Parallax
+ * The function initializes a new transaction ID for the upcoming transaction, for the specified level_id & tree_id
+ * @param handle: DB handle provided by par_open
+ * @param level_id: The destination level_id
+ * @param tree_id: the destination tree_id for the specified level_id */
+uint64_t par_init_compaction_id(par_handle handle);
 
 /**
  * Deletes an existing key in the DB.
@@ -151,5 +200,7 @@ par_ret_code par_sync(par_handle handle);
  * @retval Array with NUM_OF_OPTIONS sizeo of struct options_desc
  */
 struct par_options_desc *par_get_default_options(void);
-
+#ifdef __cplusplus
+}
+#endif
 #endif // PARALLAX_H

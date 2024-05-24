@@ -13,28 +13,22 @@
 // limitations under the License.
 #ifndef INDEX_NODE_H
 #define INDEX_NODE_H
-#include "../common/common.h"
 #include "btree_node.h"
-#include "kv_pairs.h"
+#include "key_splice.h"
 #include <stdbool.h>
 #include <stdint.h>
+struct index_node;
+struct key_splice;
 
 #define SMALLEST_POSSIBLE_PIVOT_SIZE 16
-
-struct index_node;
-
-struct pivot_key {
-	int32_t size;
-	char data[];
-} __attribute__((packed));
-
+#define MAX_PIVOT_SIZE (MAX_KEY_SPLICE_SIZE + sizeof(struct pivot_pointer))
 struct pivot_pointer {
 	uint64_t child_offt;
 };
 
 struct index_node_iterator {
 	struct index_node *node;
-	struct pivot_key *key;
+	struct key_splice *key_splice;
 	int32_t position;
 	int32_t num_entries;
 };
@@ -42,7 +36,7 @@ struct index_node_iterator {
 struct insert_pivot_req {
 	struct index_node *node;
 	struct pivot_pointer *left_child;
-	struct pivot_key *key;
+	struct key_splice *key_splice;
 	struct pivot_pointer *right_child;
 };
 
@@ -63,6 +57,7 @@ struct index_slot_array_entry {
 
 enum add_guard_option { INVALID_GUARD_STATE = 0, ADD_GUARD, DO_NOT_ADD_GUARD };
 
+struct pivot_pointer *index_get_pivot_pointer(struct key_splice *key_splice);
 /**
  * Initializes a freshly allocated index node. It initializes all of its fields
  * and inserts the guard zero key with node device offset set to UINT64_MAX.
@@ -97,7 +92,7 @@ bool index_set_type(struct index_node *node, nodeType_t node_type);
   * @return true if the index node DOES NOT contain any entries even a guard.
   * Otherwise returns false.
   */
-bool index_is_empty(const struct index_node *node);
+bool index_is_empty(struct index_node *node);
 
 /**
   * Inserts a guard pivot (aka the smallest possible pivot key <size: 1, data:
@@ -147,7 +142,7 @@ bool index_is_split_needed(struct index_node *node, uint32_t max_pivot_size);
   * int32_t pivot_size and data and the device offset to the node which should be visitted next. Doing the operation
   * pivot_key + PIVOT_KEY_SIZE we get the pivot pointer.
   */
-struct pivot_pointer *index_search_get_pivot(struct index_node *node, void *lookup_key, enum KV_type lookup_key_format);
+struct pivot_pointer *index_search_get_pivot(struct index_node *node, char *lookup_key, int32_t lookup_key_size);
 
 /**
   * Removes last  pivot_key followd by the pivot pointer from node. The
@@ -155,13 +150,13 @@ struct pivot_pointer *index_search_get_pivot(struct index_node *node, void *look
   * @param node: The node for which we return the last pivot_key
   * @return: The malloced buffer or NULL in case the node is empty
   */
-struct pivot_key *index_remove_last_pivot_key(struct index_node *node);
+struct key_splice *index_remove_last_pivot_key(struct index_node *node);
 
 /**
  * Performs binary search in an index node and returns the device offt of the
  * children node that we need to follow
  */
-uint64_t index_binary_search(struct index_node *node, void *lookup_key, enum KV_type lookup_key_format);
+uint64_t index_binary_search(struct index_node *node, char *lookup_key, int32_t lookup_key_size);
 
 /**
  * Splits an index node into two child index nodes.
@@ -182,14 +177,15 @@ void index_iterator_init(struct index_node *node, struct index_node_iterator *it
   * @param iterator: pointer to the iterator to be initialized
   * @param key: Key to position itself
   */
-void index_iterator_init_with_key(struct index_node *node, struct index_node_iterator *iterator, struct pivot_key *key);
+void index_iterator_init_with_key(struct index_node *node, struct index_node_iterator *iterator,
+				  struct key_splice *key_splice);
 
 /**
   * initializes the smallest pivot key which has some = INDEX_GUARD_SIZE and payload 0x00
   * @param buffer: smallest pivot to be constructed
   * @param size: size of the buffer
   */
-void fill_smallest_possible_pivot(char *buffer, int size);
+struct key_splice *fill_smallest_possible_pivot(char *buffer, int size);
 
 /**
   * checks if the position of an index iterator is less that the number of entries inside the index node
@@ -198,10 +194,16 @@ void fill_smallest_possible_pivot(char *buffer, int size);
 uint8_t index_iterator_is_valid(struct index_node_iterator *iterator);
 
 /**
+ * proceed index iterator to the next position in the index node
+ * @param iterator: an iteration pointing to an index node
+ */
+bool index_iterator_next(struct index_node_iterator *iterator);
+
+/**
   * returns the pivot key of where the index iterator is pointing;
   * @param iterator: an iteration pointing to an index node
   */
-struct pivot_key *index_iterator_get_pivot_key(struct index_node_iterator *iterator);
+struct key_splice *index_iterator_get_pivot_key(struct index_node_iterator *iterator);
 
 /**
   * returns the pivot pointer a.k.a. the child of this pivot
@@ -210,37 +212,12 @@ struct pivot_key *index_iterator_get_pivot_key(struct index_node_iterator *itera
 struct pivot_pointer *index_iterator_get_pivot_pointer(struct index_node_iterator *iterator);
 
 /**
-  * Compares a look up key following the lookup key format with an index key (pivot key)
-  * @param index_key: the index key to be compared
-  * @param lookup_key: the key being searched against the index node
-  * @param lookup_key_format: the format the lookup_key follows
-  */
-int index_key_cmp(struct pivot_key *index_key, char *lookup_key, enum KV_type lookup_key_format);
-
-/**
-  * returns the key_size of a given pivot_key
-  * @param pivot: the given pivot_key
-  */
-int32_t get_pivot_key_size(struct pivot_key *pivot);
-
-/**
-  * sets the key_size of a given pivot_key
-  * @param pivot: the given pivot_key
-  * @param key_size: the key size to be set
-  */
-void set_pivot_key_size(struct pivot_key *pivot, int32_t key_size);
-/**
-  * returns the offset where the pivot_key starts
-  * @param pivot: the given pivot_key
-  */
-char *get_offset_of_pivot_key(struct pivot_key *pivot);
-/**
   * sets the key of a given pivot_key
   * @param pivot: the given pivot_key
   * @param key: the key to be set
   * @param key_size: the key_size of the key to be set
   */
-void set_pivot_key(struct pivot_key *pivot, void *key, int32_t key_size);
+void set_pivot_key(struct key_splice *pivot_splice, void *key, int32_t key_size);
 
 /**
   * returns a pointer to the node's node->header memory location
@@ -252,7 +229,5 @@ struct node_header *index_node_get_header(struct index_node *node);
   */
 uint64_t index_node_get_size(void);
 
-#define PIVOT_KEY_SIZE(X) ((X) ? (X)->size + sizeof(*X) : BUG_ON_UINT32T())
-#define PIVOT_SIZE(X) (PIVOT_KEY_SIZE(X) + sizeof(struct pivot_pointer))
-#define INDEX_PIVOT_ADDRESS(X, Y) ((uint64_t)(X) + (Y))
+void index_node_print(struct index_node *node);
 #endif
