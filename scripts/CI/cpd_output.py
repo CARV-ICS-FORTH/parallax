@@ -90,12 +90,6 @@ def check_for_duplicate_code(args):
 
         files_param += "--dir " + file + " "
 
-        # exclude archive dir if there is the lib dir in files
-        if file == "./lib" or file == "lib":
-            files_param += "--exclude " + file + "/archive "
-            # Temporary excluding scanner, will be fixed soon
-            files_param += "--exclude ./lib/scanner/scanner.c --exclude ./lib/scanner/max_min_heap.c "
-
     language_param = args.language
 
     cpd_command = f"{cpd_bin} --minimum-tokens {minimum_tokens_param} {files_param} --language {language_param}"
