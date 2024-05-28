@@ -3,7 +3,6 @@
 #include "btree.h"
 #include "btree_node.h"
 #include "index_node.h"
-#include "key_splice.h"
 #include "kv_pairs.h"
 #include <stdbool.h>
 #include <stdint.h>

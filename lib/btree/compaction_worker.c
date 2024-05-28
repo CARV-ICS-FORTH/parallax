@@ -43,8 +43,6 @@
 #include <stdlib.h>
 #include <string.h>
 struct medium_log_LRU_cache;
-struct device_level;
-struct node_header;
 #if COMPACTION_STATS
 #include <sys/time.h>
 #endif

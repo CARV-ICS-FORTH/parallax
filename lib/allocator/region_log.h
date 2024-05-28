@@ -14,7 +14,6 @@
 
 #ifndef REGION_LOG_H
 #define REGION_LOG_H
-#include "../btree/conf.h"
 #include <aio.h>
 #include <pthread.h>
 #include <stdbool.h>

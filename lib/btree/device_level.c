@@ -24,7 +24,6 @@
 #include <string.h>
 #include <unistd.h>
 struct key_splice;
-struct pbf_desc;
 #define DEVICE_LEVEL_CACHE_LINE_SIZE 64
 
 struct level_counter {

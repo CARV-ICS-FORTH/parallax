@@ -2,7 +2,6 @@
 #include "../allocator/volume_manager.h"
 #include "../common/common.h"
 #include "btree.h"
-#include "conf.h"
 #include <assert.h>
 #include <log.h>
 #include <stdint.h>

@@ -17,7 +17,6 @@
 #include <string.h>
 #include <unistd.h>
 struct key_splice;
-struct device_level;
 #define SST_METADATA_SIZE 4096UL
 
 struct sst_meta {

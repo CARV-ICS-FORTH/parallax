@@ -28,7 +28,6 @@
 #include "volume_manager.h"
 #include <assert.h>
 #include <log.h>
-#include <pthread.h>
 #include <spin_loop.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -36,7 +35,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-struct device_level;
+// struct device_level;
 // IWYU pragma: no_forward_declare node_header
 // IWYU pragma: no_forward_declare pbf_desc
 
