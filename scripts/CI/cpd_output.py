@@ -88,7 +88,7 @@ def check_for_duplicate_code(args):
 
     for file in args.files:
 
-        files_param += "--files " + file + " "
+        files_param += "--dir " + file + " "
 
         # exclude archive dir if there is the lib dir in files
         if file == "./lib" or file == "lib":

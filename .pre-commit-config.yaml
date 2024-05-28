@@ -41,15 +41,10 @@ repos:
       hooks:
           - id: black
 
-    - repo: local
+    - repo: https://github.com/RobertCraigie/pyright-python
+      rev: v1.1.364
       hooks:
           - id: pyright
-            name: pyright
-            entry: pyright
-            language: node
-            pass_filenames: false
-            types: [python]
-            additional_dependencies: [pyright@1.1.208]
 
     - repo: https://github.com/jorisroovers/gitlint
       rev: v0.19.1
