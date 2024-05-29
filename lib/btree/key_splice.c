@@ -23,7 +23,7 @@ struct key_splice {
 	char data[];
 } __attribute__((packed));
 
-extern struct key_splice *key_splice_create(char *key, int32_t key_size, char *buffer, int32_t buffer_size,
+extern struct key_splice *key_splice_create(const char *key, int32_t key_size, char *buffer, int32_t buffer_size,
 					    bool *malloced)
 {
 	*malloced = false;
@@ -50,7 +50,7 @@ extern struct key_splice *key_splice_create(char *key, int32_t key_size, char *b
 }
 struct key_splice *key_splice_create_smallest(char *buffer, int32_t buffer_size, bool *malloced)
 {
-	char key[8] = { 0 };
+	const char key[8] = { 0 };
 	int32_t key_size = 1;
 	return key_splice_create(key, key_size, buffer, buffer_size, malloced);
 }
@@ -72,7 +72,7 @@ inline void key_splice_set_key_size(struct key_splice *key, int32_t key_size)
 	key->key_size = key_size;
 }
 
-inline void key_splice_set_key_offset(struct key_splice *key, char *key_buf)
+inline void key_splice_set_key_offset(struct key_splice *key, const char *key_buf)
 {
 	memcpy(key_splice_get_key_offset(key), key_buf, key_splice_get_key_size(key));
 }

@@ -283,7 +283,7 @@ typedef struct metadata_tologop {
 	int32_t kv_size;
 } metadata_tologop;
 
-struct par_put_metadata insert_key_value(db_handle *handle, void *key, void *value, int32_t key_size,
+struct par_put_metadata insert_key_value(db_handle *handle, const void *key, const void *value, int32_t key_size,
 					 int32_t value_size, request_type op_type, const char **error_message);
 
 /**

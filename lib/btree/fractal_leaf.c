@@ -84,7 +84,7 @@ void frac_init_leaf(struct leaf_node *leaf, uint32_t leaf_size)
 	leaf->counters[FRAC_NUM_PIVOTS] = 0;
 }
 
-int frac_comparator(void *key1, void *key2, int32_t key1_size, int32_t key2_size)
+int frac_comparator(const void *key1, const void *key2, int32_t key1_size, int32_t key2_size)
 {
 	int ret = memcmp(key1, key2, key1_size <= key2_size ? key1_size : key2_size);
 	return ret ? ret : key1_size - key2_size;
@@ -93,7 +93,7 @@ int frac_comparator(void *key1, void *key2, int32_t key1_size, int32_t key2_size
 static inline bool frac_get_splice(struct leaf_node *leaf, struct kv_splice_base *splice, uint16_t offt)
 {
 	char *leaf_buf = (char *)leaf;
-	struct kv_splice_meta *meta = (struct kv_splice_meta *)&leaf_buf[offt];
+	const struct kv_splice_meta *meta = (struct kv_splice_meta *)&leaf_buf[offt];
 	splice->kv_cat = kv_meta_get_cat(meta);
 	splice->is_tombstone = kv_meta_is_tombstone(meta);
 	splice->kv_type = kv_meta_is_kv_format(meta) ? KV_FORMAT : KV_PREFIX;
@@ -115,7 +115,7 @@ static inline bool frac_get_splice(struct leaf_node *leaf, struct kv_splice_base
  * @param exact match indicates if we have an exact match or not
  * @param splice pointer to the splice object to be filled
  */
-static uint16_t frac_leaf_seek(struct leaf_node *leaf, char *key, int32_t key_size, bool *exact_match,
+static uint16_t frac_leaf_seek(struct leaf_node *leaf, const char *key, int32_t key_size, bool *exact_match,
 			       struct kv_splice_base *splice)
 {
 	char *leaf_buf = (char *)leaf;
@@ -177,7 +177,7 @@ static uint16_t frac_leaf_seek(struct leaf_node *leaf, char *key, int32_t key_si
 	return ret < 0 ? 0 : splice_idx_a;
 }
 
-struct kv_splice_base frac_find_kv_leaf(struct leaf_node *leaf, char *key, int32_t key_size, const char **error)
+struct kv_splice_base frac_find_kv_leaf(struct leaf_node *leaf, const char *key, int32_t key_size, const char **error)
 {
 	struct kv_splice_base splice = { 0 };
 	bool exact_match = false;
@@ -271,7 +271,7 @@ static bool frac_add_pivot(struct leaf_node *leaf, struct kv_splice_base *new_sp
 	return true;
 }
 
-inline static enum KV_type frac_calc_category(struct kv_splice_base *general_splice)
+inline static enum KV_type frac_calc_category(const struct kv_splice_base *general_splice)
 {
 	switch (general_splice->kv_cat) {
 	case MEDIUM_INLOG:
@@ -367,7 +367,7 @@ static bool frac_set_next_leaf_offt(struct leaf_node *leaf, uint64_t leaf_offt)
 	return true;
 }
 
-static uint64_t frac_get_next_leaf_offt(struct leaf_node *leaf)
+static uint64_t frac_get_next_leaf_offt(const struct leaf_node *leaf)
 {
 	return leaf->next_leaf_offt;
 }
@@ -395,7 +395,7 @@ bool frac_leaf_iter_first(struct leaf_node *leaf, struct leaf_iterator *iter)
 	return true;
 }
 
-bool frac_leaf_seek_iter(struct leaf_node *leaf, struct leaf_iterator *iter, char *key, int32_t key_size)
+bool frac_leaf_seek_iter(struct leaf_node *leaf, struct leaf_iterator *iter, const char *key, int32_t key_size)
 {
 	bool exact_match = false;
 	iter->leaf = leaf;
@@ -417,7 +417,7 @@ bool frac_leaf_is_iter_valid(struct leaf_iterator *iter)
 
 bool frac_leaf_iter_next(struct leaf_iterator *iter)
 {
-	struct kv_splice_meta *meta = &iter->curr_splice.kv_splice->meta;
+	const struct kv_splice_meta *meta = &iter->curr_splice.kv_splice->meta;
 
 	uint16_t prev_kv_size = kv_meta_get_prev_kv_size(meta);
 	// log_debug("Iter_next: Prev kv size is = %u for leaf: %p",prev_kv_size,(void *)iter->leaf);
@@ -438,7 +438,7 @@ bool frac_leaf_iter_next(struct leaf_iterator *iter)
 	return true;
 }
 
-struct kv_splice_base frac_leaf_iter_curr(struct leaf_iterator *iter)
+struct kv_splice_base frac_leaf_iter_curr(const struct leaf_iterator *iter)
 {
 	return iter->curr_splice;
 }
@@ -448,7 +448,7 @@ bool frac_leaf_register(struct level_leaf_api *leaf_api)
 {
 	leaf_api->leaf_append = frac_append_splice_in_leaf;
 
-	leaf_api->leaf_find = frac_find_kv_leaf;
+	leaf_api->leaf_find = (level_leaf_find)frac_find_kv_leaf;
 
 	leaf_api->leaf_init = frac_init_leaf;
 
@@ -466,15 +466,15 @@ bool frac_leaf_register(struct level_leaf_api *leaf_api)
 
 	leaf_api->leaf_set_next_offt = frac_set_next_leaf_offt;
 
-	leaf_api->leaf_get_next_offt = frac_get_next_leaf_offt;
+	leaf_api->leaf_get_next_offt = (level_leaf_get_next_leaf_offt)frac_get_next_leaf_offt;
 	/*iterator staff*/
 	leaf_api->leaf_create_empty_iter = frac_leaf_create_empty_iter;
 	leaf_api->leaf_destroy_iter = frac_leaf_destroy_iter;
 	leaf_api->leaf_seek_first = frac_leaf_iter_first;
-	leaf_api->leaf_seek_iter = frac_leaf_seek_iter;
+	leaf_api->leaf_seek_iter = (level_leaf_iter_seek)frac_leaf_seek_iter;
 	leaf_api->leaf_is_iter_valid = frac_leaf_is_iter_valid;
 	leaf_api->leaf_iter_next = frac_leaf_iter_next;
-	leaf_api->leaf_iter_curr = frac_leaf_iter_curr;
+	leaf_api->leaf_iter_curr = (level_leaf_iter_curr)frac_leaf_iter_curr;
 
 	return true;
 }

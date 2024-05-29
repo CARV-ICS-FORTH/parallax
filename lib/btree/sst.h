@@ -48,7 +48,7 @@ bool sst_close(struct sst *sst);
   * @param SST object
   * @return returns a referece to the SST metadata or NULL on failure
 */
-struct sst_meta *sst_get_meta(struct sst *sst);
+struct sst_meta *sst_get_meta(const struct sst *sst);
 
 /**
   * @brief Returns the device offset where the first leaf (or data block)
@@ -56,7 +56,7 @@ struct sst_meta *sst_get_meta(struct sst *sst);
   * @param sst pointer to the SST object
   * @return a device offset or 0 on failure
 */
-uint64_t sst_meta_get_first_leaf_offt(struct sst_meta *sst);
+uint64_t sst_meta_get_first_leaf_offt(const struct sst_meta *sst);
 
 /**
   * @brief Return a pointer to the first guard.
@@ -78,28 +78,28 @@ struct key_splice *sst_meta_get_last_guard(struct sst_meta *sst);
   * @param sst pointer to the sst_meta object
   * @return device offset or 0 on failure.
 */
-uint64_t sst_meta_get_dev_offt(struct sst_meta *sst);
+uint64_t sst_meta_get_dev_offt(const struct sst_meta *sst);
 
 /**
  *@brief Return the size in memory of the sst_meta object.
  *@param sst pointer to the sst_meta object
  *@return the size in B of the sst_meta
 */
-size_t sst_meta_get_size(struct sst_meta *sst);
+size_t sst_meta_get_size(const struct sst_meta *sst);
 
 /**
   * @brief Returns the id of the level this SST belongs to.
   * @param sst pointer to the sst_meta object
   * @return the id of the level
 */
-uint32_t sst_meta_get_level_id(struct sst_meta *sst);
+uint32_t sst_meta_get_level_id(const struct sst_meta *sst);
 
 /**
  *@brief Returns the offset of the root index block of this SST.
  *@param sst pointer to the sst_meta object
  *@return the device offset on success or 0 on failure.
 */
-uint64_t sst_meta_get_root_offt(struct sst_meta *sst);
+uint64_t sst_meta_get_root_offt(const struct sst_meta *sst);
 
 /**
  *@brief Returns the relative offset with the SST where its first

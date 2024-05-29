@@ -134,7 +134,7 @@ static inline struct key_splice *dev_idx_get_key_splice(struct index_node *node,
  * Returns the position in the node header children offt array which we need to follow based on the lookup_key.
  * The actual offset is at node->children_offt[position]
  */
-static int32_t dev_idx_search_get_pos(struct index_node *node, char *lookup_key, int32_t lookup_key_size,
+static int32_t dev_idx_search_get_pos(struct index_node *node, const char *lookup_key, int32_t lookup_key_size,
 				      bool *exact_match)
 {
 	assert(lookup_key_size >= 0);
@@ -249,38 +249,7 @@ static bool dev_idx_append_pivot(struct insert_pivot_req *ins_pivot_req)
 	return dev_idx_internal_insert_pivot(ins_pivot_req, 1);
 }
 
-// static void dev_idx_internal_iterator_init(struct index_node *node, struct index_node_iterator *iterator,
-// 					   struct key_splice *key_splice)
-// {
-// 	iterator->node = node;
-
-// 	iterator->num_entries = node->header.num_entries;
-
-// 	if (node->header.num_entries <= 0) {
-// 		iterator->key_splice = NULL;
-// 		return;
-// 	}
-
-// 	iterator->key_splice = NULL;
-
-// 	iterator->position = 0;
-// 	if (!key_splice)
-// 		return;
-
-// 	bool unused_match = false;
-// 	// TODO: (@geostyl) @gesalous you should definetly review this
-// 	// We take a pivot_key as key so we should compare it like an index_key_type (?)
-// 	iterator->position = dev_idx_search_get_pos(node, key_splice_get_key_offset(key_splice),
-// 						    key_splice_get_key_size(key_splice), &unused_match);
-// }
-
-// static void dev_idx_iterator_init_with_key(struct index_node *node, struct index_node_iterator *iterator,
-// 					   struct key_splice *key_splice)
-// {
-// 	dev_idx_internal_iterator_init(node, iterator, key_splice);
-// }
-
-static struct key_splice *dev_idx_search_get_full_pivot(struct index_node *node, char *lookup_key,
+static struct key_splice *dev_idx_search_get_full_pivot(struct index_node *node, const char *lookup_key,
 							int32_t lookup_key_size)
 {
 	assert(lookup_key_size > 0);
@@ -294,16 +263,16 @@ static struct key_splice *dev_idx_search_get_full_pivot(struct index_node *node,
 	return pivot_splice;
 }
 
-uint64_t dev_idx_binary_search(struct index_node *node, char *lookup_key, int32_t lookup_key_size)
+uint64_t dev_idx_binary_search(struct index_node *node, const char *lookup_key, int32_t lookup_key_size)
 {
 	assert(lookup_key_size > 0);
 	assert(lookup_key_size <= MAX_KEY_SIZE);
 	struct key_splice *index_key_splice = dev_idx_search_get_full_pivot(node, lookup_key, lookup_key_size);
-	struct pivot_pointer *piv_pointer = index_get_pivot_pointer(index_key_splice);
+	const struct pivot_pointer *piv_pointer = index_get_pivot_pointer(index_key_splice);
 	return piv_pointer->child_offt;
 }
 // cppcheck-suppress unusedFunction
-void dev_idx_node_print(struct index_node *node)
+void dev_idx_node_print(const struct index_node *node)
 {
 	(void)node;
 	log_info("Node num entries %u fragmentation: %d height: %d", node->header.num_entries,
@@ -328,7 +297,7 @@ bool dev_idx_register(struct level_index_api *index_api)
 
 	index_api->index_remove_last_key = dev_idx_remove_last_pivot_key;
 
-	index_api->index_search = dev_idx_binary_search;
+	index_api->index_search = (level_index_search)dev_idx_binary_search;
 
 	// index_api->index_init_iter_key = dev_idx_iterator_init_with_key;
 

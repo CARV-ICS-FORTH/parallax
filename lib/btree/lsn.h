@@ -33,12 +33,12 @@ size_t get_lsn_size(void);
  * @param left: a ptr to struct lsn
  * @param right: a ptr to struct lsn
  * */
-int64_t compare_lsns(struct lsn *left, struct lsn *right);
+int64_t compare_lsns(const struct lsn *left, const struct lsn *right);
 /**
  * returns the ticket(id) of the lsn
  * @param lsn: a ptr to a struct lsn
  * */
-int64_t get_lsn_id(struct lsn *lsn);
+int64_t get_lsn_id(const struct lsn *lsn);
 /** set the lsn id to be equal to ticket
  * @param lsn: a ptr to a struct lsn
  * */
@@ -67,7 +67,7 @@ struct lsn increase_lsn(struct lsn_factory *lsn_factory);
  * returns the current ticket(id) value of the lsn_factory
  * @param lsn_factory: a ptr to the lsn_factory from which we are retrieving its current value
  * */
-int64_t lsn_factory_get_ticket(struct lsn_factory *lsn_factory);
+int64_t lsn_factory_get_ticket(const struct lsn_factory *lsn_factory);
 /**
   * returns an lsn object containing the biggest lsn possible
   * */

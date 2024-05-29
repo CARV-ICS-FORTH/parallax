@@ -19,12 +19,12 @@ inline size_t get_lsn_size(void)
 	return sizeof(struct lsn);
 }
 
-inline int64_t compare_lsns(struct lsn *left, struct lsn *right)
+inline int64_t compare_lsns(const struct lsn *left, const struct lsn *right)
 {
 	return left->id - right->id;
 }
 
-inline int64_t get_lsn_id(struct lsn *lsn)
+inline int64_t get_lsn_id(const struct lsn *lsn)
 {
 	return lsn->id;
 }
@@ -62,7 +62,7 @@ inline struct lsn increase_lsn(struct lsn_factory *lsn_factory)
 	return new_lsn;
 }
 
-inline int64_t lsn_factory_get_ticket(struct lsn_factory *lsn_factory)
+inline int64_t lsn_factory_get_ticket(const struct lsn_factory *lsn_factory)
 {
 	return lsn_factory->ticket_id;
 }

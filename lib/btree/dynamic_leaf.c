@@ -84,7 +84,7 @@ static void dl_fill_key_from_general_splice(struct kv_splice_base *general_splic
 	}
 }
 
-int32_t dl_search_get_pos(struct leaf_node *leaf, char *key, int32_t key_size, bool *exact_match)
+int32_t dl_search_get_pos(struct leaf_node *leaf, const char *key, int32_t key_size, bool *exact_match)
 {
 	*exact_match = false;
 	if (NULL == leaf || leaf->header.num_entries == 0)
@@ -134,7 +134,7 @@ int32_t dl_search_get_pos(struct leaf_node *leaf, char *key, int32_t key_size, b
 	return cmp_return_value > 0 ? middle - 1 : middle;
 }
 
-struct kv_splice_base dl_find_kv_in_dynamic_leaf(struct leaf_node *leaf, char *key, int32_t key_size,
+struct kv_splice_base dl_find_kv_in_dynamic_leaf(struct leaf_node *leaf, const char *key, int32_t key_size,
 						 const char **error)
 {
 	struct kv_splice_base kv_not_found = { 0 };
@@ -149,13 +149,13 @@ struct kv_splice_base dl_find_kv_in_dynamic_leaf(struct leaf_node *leaf, char *k
 
 bool dl_is_leaf_full(struct leaf_node *leaf, uint32_t kv_size)
 {
-	uint8_t *left_border = (uint8_t *)leaf + sizeof(struct node_header) +
-			       ((leaf->header.num_entries + 1) * sizeof(struct dl_slot_array));
+	const uint8_t *left_border = (uint8_t *)leaf + sizeof(struct node_header) +
+				     ((leaf->header.num_entries + 1) * sizeof(struct dl_slot_array));
 
-	uint8_t *right_border = (uint8_t *)leaf + leaf->header.log_size;
+	const uint8_t *right_border = (uint8_t *)leaf + leaf->header.log_size;
 	right_border -= kv_size;
-	// log_debug("kv_size %d right_border %lu left border %lu", kv_size, right_border, left_border);
-	return right_border > left_border ? false : true;
+
+	return !(right_border > left_border);
 }
 
 static uint16_t dl_append_data_splice_in_dynamic_leaf(struct leaf_node *leaf, struct kv_splice_base *general_splice)
@@ -249,7 +249,7 @@ bool dl_insert_in_dynamic_leaf(struct leaf_node *leaf, struct kv_splice_base *sp
 	return true;
 }
 
-void dl_init_leaf_iterator(struct leaf_node *leaf, struct leaf_iterator *iter, char *key, int32_t key_size)
+void dl_init_leaf_iterator(struct leaf_node *leaf, struct leaf_iterator *iter, const char *key, int32_t key_size)
 {
 	iter->leaf = leaf;
 	if (iter->leaf->header.num_entries <= 0) {

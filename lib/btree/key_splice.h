@@ -36,7 +36,8 @@ struct key_splice;
  * allocated a buffer because the provided buffer was not large enough to host
  * the key_splice.
  */
-struct key_splice *key_splice_create(char *key, int32_t key_size, char *buffer, int32_t buffer_size, bool *malloced);
+struct key_splice *key_splice_create(const char *key, int32_t key_size, char *buffer, int32_t buffer_size,
+				     bool *malloced);
 
 /**
  * @brief Creates the smallest possible key_splice. If the provided is large
@@ -81,6 +82,6 @@ char *key_splice_get_key_offset(struct key_splice *key);
  */
 void key_splice_set_key_size(struct key_splice *key, int32_t key_size);
 
-void key_splice_set_key_offset(struct key_splice *key, char *key_buf);
+void key_splice_set_key_offset(struct key_splice *key, const char *key_buf);
 uint32_t key_splice_get_max_size(void);
 #endif

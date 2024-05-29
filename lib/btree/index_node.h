@@ -142,7 +142,7 @@ bool index_is_split_needed(struct index_node *node, uint32_t max_pivot_size);
   * int32_t pivot_size and data and the device offset to the node which should be visitted next. Doing the operation
   * pivot_key + PIVOT_KEY_SIZE we get the pivot pointer.
   */
-struct pivot_pointer *index_search_get_pivot(struct index_node *node, char *lookup_key, int32_t lookup_key_size);
+struct pivot_pointer *index_search_get_pivot(struct index_node *node, const char *lookup_key, int32_t lookup_key_size);
 
 /**
   * Removes last  pivot_key followd by the pivot pointer from node. The
@@ -156,7 +156,7 @@ struct key_splice *index_remove_last_pivot_key(struct index_node *node);
  * Performs binary search in an index node and returns the device offt of the
  * children node that we need to follow
  */
-uint64_t index_binary_search(struct index_node *node, char *lookup_key, int32_t lookup_key_size);
+uint64_t index_binary_search(struct index_node *node, const char *lookup_key, int32_t lookup_key_size);
 
 /**
  * Splits an index node into two child index nodes.
@@ -191,7 +191,7 @@ struct key_splice *fill_smallest_possible_pivot(char *buffer, int size);
   * checks if the position of an index iterator is less that the number of entries inside the index node
   * @param iterator: an iteration pointing to an index node
   */
-uint8_t index_iterator_is_valid(struct index_node_iterator *iterator);
+uint8_t index_iterator_is_valid(const struct index_node_iterator *iterator);
 
 /**
  * proceed index iterator to the next position in the index node

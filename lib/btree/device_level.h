@@ -88,12 +88,6 @@ typedef struct node_header *(*level_index_get_header)(struct index_node *node);
 
 typedef uint64_t (*level_index_get_node_size)(void);
 
-// //iterator staff
-// typedef void (*level_index_init_iter)(struct index_node *node, struct index_node_iterator *iterator);
-
-// typedef void (*level_index_init_iter_key)(struct index_node *node, struct index_node_iterator *iterator,
-// 					  struct key_splice *key_splice);
-
 struct level_leaf_api {
 	level_leaf_append leaf_append;
 
@@ -150,10 +144,6 @@ struct level_index_api {
 	level_index_remove_last_pivot_key index_remove_last_key;
 
 	level_index_search index_search;
-
-	// level_index_init_iter index_init_iter;
-
-	// level_index_init_iter_key index_init_iter_key;
 
 	level_fill_smallest_possible_pivot index_fill_pivot;
 
@@ -340,7 +330,7 @@ bool level_set_compaction_done(struct device_level *level);
  * @param level pointer to the level object
  * @return true if it is compacting otherwise false
  */
-bool level_is_compacting(struct device_level *level);
+bool level_is_compacting(const struct device_level *level);
 
 /**
  * @brief Releases only the memory of the level object
