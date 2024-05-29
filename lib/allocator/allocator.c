@@ -613,6 +613,7 @@ void mem_free_segment(struct volume_descriptor *volume_desc, uint64_t dev_offt)
 void read_dev_offt_into_buffer(char *buffer, const uint32_t start, const uint32_t size, const off_t dev_offt,
 			       const int fd, const char *error_message)
 {
+	(void)error_message;
 	ssize_t bytes_read = start;
 
 	while (bytes_read < size) {
