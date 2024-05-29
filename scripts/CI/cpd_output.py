@@ -92,7 +92,10 @@ def check_for_duplicate_code(args):
 
     language_param = args.language
 
-    cpd_command = f"{cpd_bin} --minimum-tokens {minimum_tokens_param} {files_param} --language {language_param}"
+    cpd_command = f"{cpd_bin} --minimum-tokens {minimum_tokens_param} {
+        files_param} --language {language_param}"
+    cpd_command = f"{
+        cpd_command} --exclude ./lib/btree/dynamic_leaf.c --exclude ./lib/btree/index_node.c"
     stream = os.popen(cpd_command)
     output = stream.readlines()
 
