@@ -123,5 +123,5 @@ struct pr_db_superblock *get_db_superblock(struct volume_descriptor *volume_desc
 /**
   * Reads size bytes from the device/file dev_offt into the in memory buffer.
 **/
-int read_dev_offt_into_buffer(char *buffer, const uint32_t start, const uint32_t size, const off_t dev_offt,
-			      const int fd);
+void read_dev_offt_into_buffer(char *buffer, const uint32_t start, const uint32_t size, const off_t dev_offt,
+			       const int fd, const char *error_message);

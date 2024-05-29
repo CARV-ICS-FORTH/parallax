@@ -265,7 +265,7 @@ void regl_log_destroy(struct db_descriptor *db_desc)
 	free(db_desc->allocation_log);
 }
 
-static void rul_add_first_entry(struct db_descriptor *db_desc, struct regl_log_entry *log_entry)
+static void rul_add_first_entry(struct db_descriptor *db_desc, const struct regl_log_entry *log_entry)
 {
 	char *log_chunk;
 
@@ -391,7 +391,7 @@ uint64_t regl_start_txn(struct db_descriptor *db_desc)
 	return txn_id;
 }
 
-void regl_add_entry_in_txn_buf(struct db_descriptor *db_desc, struct regl_log_entry *entry)
+void regl_add_entry_in_txn_buf(struct db_descriptor *db_desc, const struct regl_log_entry *entry)
 {
 	struct regl_log_descriptor *log_desc = db_desc->allocation_log;
 	uint64_t txn_id = entry->txn_id;

@@ -179,7 +179,7 @@ void pr_flush_L0(struct db_descriptor *db_desc, uint8_t tree_id)
 	regl_apply_txn_buf_freeops_and_destroy(db_desc, txn_id);
 }
 
-static void pr_flush_L0_to_L1(struct db_descriptor *db_desc, struct par_db_options *db_options, uint8_t level_id,
+static void pr_flush_L0_to_L1(struct db_descriptor *db_desc, const struct par_db_options *db_options, uint8_t level_id,
 			      uint8_t tree_id, uint64_t txn_id)
 {
 	struct log_info medium_log;
@@ -269,7 +269,7 @@ static void pr_flush_Lmax_to_Ln(struct db_descriptor *db_desc, uint8_t level_id,
 	regl_apply_txn_buf_freeops_and_destroy(db_desc, txn_id);
 }
 
-void pr_flush_compaction(struct db_descriptor *db_desc, struct par_db_options *db_options, uint8_t level_id,
+void pr_flush_compaction(struct db_descriptor *db_desc, const struct par_db_options *db_options, uint8_t level_id,
 			 uint8_t tree_id, uint64_t txn_id)
 {
 	if (level_id == 1) {
@@ -632,7 +632,7 @@ static void prepare_cursor_op(struct log_cursor *cursor)
 {
 	cursor->entry.lsn = *(struct lsn *)get_position_in_segment(cursor);
 	cursor->offt_in_segment += get_lsn_size();
-	struct kv_splice *kv_pair = (struct kv_splice *)get_position_in_segment(cursor);
+	const struct kv_splice *kv_pair = (struct kv_splice *)get_position_in_segment(cursor);
 
 	cursor->entry.par_kv = (struct kv_splice *)get_position_in_segment(cursor);
 	cursor->tombstone = kv_splice_is_tombstone_kv_pair(kv_pair);
@@ -646,39 +646,32 @@ static void init_pos_log_cursor_in_segment(struct db_descriptor *db_desc, struct
 		return;
 	}
 	cursor->valid = 1;
-
-	//cursor->curr_segment = REAL_ADDRESS(cursor->log_segments->segments[cursor->log_segments->entry_id]);
-	if (!read_dev_offt_into_buffer((char *)cursor->segment_in_mem_buffer, 0, cursor->segment_in_mem_size,
-				       cursor->log_segments->segments[cursor->log_segments->entry_id],
-				       db_desc->db_volume->vol_fd)) {
-		log_fatal("Failed to read dev offt: %lu",
-			  cursor->log_segments->segments[cursor->log_segments->entry_id]);
-		_exit(EXIT_FAILURE);
-	}
+	char error_message[256];
+	snprintf(error_message, 256, "Failed to read dev offt: %lu",
+		 cursor->log_segments->segments[cursor->log_segments->entry_id]);
+	read_dev_offt_into_buffer(cursor->segment_in_mem_buffer, 0, cursor->segment_in_mem_size,
+				  cursor->log_segments->segments[cursor->log_segments->entry_id],
+				  db_desc->db_volume->vol_fd, error_message);
 
 	/*Cornercases*/
 	switch (cursor->type) {
 	case SMALL_LOG:
 		cursor->offt_in_segment = db_desc->small_log_start_offt_in_segment;
-		if (cursor->log_segments->segments[cursor->log_segments->entry_id] == cursor->log_tail_dev_offt) {
-			if (cursor->log_size % (uint64_t)SEGMENT_SIZE == sizeof(struct segment_header)) {
-				/*Nothing to parse*/
-				log_debug("Nothing to parse in the small log");
-				cursor->valid = 0;
-				return;
-			}
+		if (cursor->log_segments->segments[cursor->log_segments->entry_id] == cursor->log_tail_dev_offt &&
+		    cursor->log_size % SEGMENT_SIZE == sizeof(struct segment_header)) {
+			log_debug("Nothing to parse in the small log");
+			cursor->valid = 0;
+			return;
 		}
 		break;
 	case BIG_LOG:
 		cursor->offt_in_segment = db_desc->big_log_start_offt_in_segment;
 		log_debug("First offset of big log is: %lu", cursor->offt_in_segment);
-		if (cursor->log_segments->segments[cursor->log_segments->entry_id] == cursor->log_tail_dev_offt) {
-			if (cursor->log_size % SEGMENT_SIZE == cursor->offt_in_segment) {
-				/*Nothing to parse*/
-				log_debug("Nothing to parse in the big log");
-				cursor->valid = 0;
-				return;
-			}
+		if (cursor->log_segments->segments[cursor->log_segments->entry_id] == cursor->log_tail_dev_offt &&
+		    cursor->log_size % SEGMENT_SIZE == cursor->offt_in_segment) {
+			log_debug("Nothing to parse in the big log");
+			cursor->valid = 0;
+			return;
 		}
 		break;
 	default:
@@ -753,13 +746,13 @@ static void get_next_log_segment(struct log_cursor *cursor)
 			cursor->valid = 0;
 			return;
 		}
+		char error_message[256];
+		snprintf(error_message, 256, "Failed to read dev offt: %lu",
+			 cursor->log_segments->segments[cursor->log_segments->entry_id]);
+		read_dev_offt_into_buffer(cursor->segment_in_mem_buffer, 0, cursor->segment_in_mem_size,
+					  cursor->log_segments->segments[cursor->log_segments->entry_id],
+					  cursor->db_desc->db_volume->vol_fd, error_message);
 
-		if (!read_dev_offt_into_buffer((char *)cursor->segment_in_mem_buffer, 0, cursor->segment_in_mem_size,
-					       cursor->log_segments->segments[cursor->log_segments->entry_id],
-					       cursor->db_desc->db_volume->vol_fd)) {
-			log_fatal("Failed to read dev offt: %lu",
-				  cursor->log_segments->segments[cursor->log_segments->entry_id]);
-		}
 		cursor->offt_in_segment = 0;
 		break;
 	case SMALL_LOG:
@@ -768,13 +761,12 @@ static void get_next_log_segment(struct log_cursor *cursor)
 			cursor->valid = 0;
 			return;
 		}
+		snprintf(error_message, 256, "Failed to read dev offt: %lu",
+			 cursor->log_segments->segments[cursor->log_segments->entry_id]);
+		read_dev_offt_into_buffer(cursor->segment_in_mem_buffer, 0, cursor->segment_in_mem_size,
+					  cursor->log_segments->segments[cursor->log_segments->entry_id],
+					  cursor->db_desc->db_volume->vol_fd, error_message);
 
-		if (!read_dev_offt_into_buffer((char *)cursor->segment_in_mem_buffer, 0, cursor->segment_in_mem_size,
-					       cursor->log_segments->segments[cursor->log_segments->entry_id],
-					       cursor->db_desc->db_volume->vol_fd)) {
-			log_fatal("Failed to read dev offt: %lu",
-				  cursor->log_segments->segments[cursor->log_segments->entry_id]);
-		}
 		cursor->offt_in_segment = sizeof(struct segment_header);
 		break;
 	default:
@@ -809,7 +801,7 @@ start:
 		goto start;
 	}
 
-	struct kv_splice *kv_pair = (struct kv_splice *)&get_position_in_segment(cursor)[get_lsn_size()];
+	const struct kv_splice *kv_pair = (struct kv_splice *)&get_position_in_segment(cursor)[get_lsn_size()];
 	// log_debug("kv splice key size: %u",kv_splice_get_key_size(kv_pair));
 
 	if (0 == kv_splice_get_key_size(kv_pair)) {
@@ -852,7 +844,6 @@ void pr_recover_L0(struct db_descriptor *db_desc)
 
 		const char *error_message = NULL;
 
-		//cppcheck-suppress variableScope
 		char kv_sep2_buf[KV_SEP2_MAX_SIZE];
 		struct kv_splice_base splice_base = { .kv_cat = SMALL_INPLACE,
 						      .kv_type = KV_FORMAT,
@@ -908,7 +899,7 @@ uint64_t pr_add_and_flush_segment_in_log(db_handle *dbhandle, char *buf, int32_t
 		BUG_ON();
 	}
 
-	struct segment_header *curr_tail_seg = REAL_ADDRESS(log_desc.tail_dev_offt);
+	const struct segment_header *curr_tail_seg = REAL_ADDRESS(log_desc.tail_dev_offt);
 	struct segment_header *in_mem_segment_buf = (struct segment_header *)buf;
 	in_mem_segment_buf->segment_id = curr_tail_seg->segment_id + 1;
 	in_mem_segment_buf->next_segment = NULL;

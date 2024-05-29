@@ -301,7 +301,7 @@ exit:
 	return db;
 }
 
-static struct mem_bitmap_word mem_bitmap_get_curr_word(struct volume_descriptor *volume_desc)
+static struct mem_bitmap_word mem_bitmap_get_curr_word(const struct volume_descriptor *volume_desc)
 {
 	return volume_desc->curr_word;
 }
@@ -449,7 +449,8 @@ static void mem_bitmap_mark_reserved(struct mem_bitmap_word *b_word)
 	return;
 }
 
-static uint64_t mem_bitmap_translate_word_to_offt(struct volume_descriptor *volume_desc, struct mem_bitmap_word *b)
+static uint64_t mem_bitmap_translate_word_to_offt(struct volume_descriptor *volume_desc,
+						  const struct mem_bitmap_word *b)
 {
 	(void)volume_desc;
 
@@ -609,23 +610,21 @@ void mem_free_segment(struct volume_descriptor *volume_desc, uint64_t dev_offt)
 	MUTEX_UNLOCK(&volume_desc->bitmap_lock);
 }
 
-int read_dev_offt_into_buffer(char *buffer, const uint32_t start, const uint32_t size, const off_t dev_offt,
-			      const int fd)
+void read_dev_offt_into_buffer(char *buffer, const uint32_t start, const uint32_t size, const off_t dev_offt,
+			       const int fd, const char *error_message)
 {
 	ssize_t bytes_read = start;
 
 	while (bytes_read < size) {
 		ssize_t bytes = pread(fd, &buffer[bytes_read], size - bytes_read, dev_offt + bytes_read);
 		if (bytes == -1) {
-			log_fatal("Failed to read, error code");
+			log_fatal("Failed to read, %s ,error code", error_message);
 			perror("Error");
 			assert(0);
 			BUG_ON();
 		}
 		bytes_read += bytes;
 	}
-
-	return 1;
 }
 
 /**
@@ -660,10 +659,9 @@ void mem_init_superblock_array(struct volume_descriptor *volume_desc)
 	volume_desc->pr_regions->size = volume_desc->vol_superblock.max_regions_num;
 	off64_t dev_offt = sizeof(struct superblock);
 	uint32_t size = volume_desc->vol_superblock.max_regions_num * sizeof(struct pr_db_superblock);
-	if (!read_dev_offt_into_buffer((char *)volume_desc->pr_regions->db, 0, size, dev_offt, volume_desc->vol_fd)) {
-		log_fatal("Failed to read volume's region superblocks!");
-		BUG_ON();
-	}
+	read_dev_offt_into_buffer((char *)volume_desc->pr_regions->db, 0, size, dev_offt, volume_desc->vol_fd,
+				  "Failed to read volume's region superblocks");
+
 	log_debug("Restored %s region superblocks in memory", volume_desc->volume_name);
 }
 
@@ -694,11 +692,11 @@ static volume_descriptor *mem_init_volume(char *volume_name)
 		BUG_ON();
 	}
 	// read volume superblock (accouning info into memory)
-	if (!read_dev_offt_into_buffer((char *)&volume_desc->vol_superblock, 0, sizeof(struct superblock), 0,
-				       volume_desc->vol_fd)) {
-		log_fatal("Failed to read volume's %s superblock", volume_name);
-		BUG_ON();
-	}
+	char error_message[256];
+	snprintf(error_message, 256, "Failed to read volume's %s superblock", volume_name);
+	read_dev_offt_into_buffer((char *)&volume_desc->vol_superblock, 0, sizeof(struct superblock), 0,
+				  volume_desc->vol_fd, error_message);
+
 	off64_t device_size = lseek64(volume_desc->vol_fd, 0, SEEK_END);
 	if (device_size == -1) {
 		log_fatal("failed to determine volume size exiting...");

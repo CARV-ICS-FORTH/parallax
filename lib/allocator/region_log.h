@@ -101,7 +101,7 @@ typedef bool (*process_entry)(struct regl_log_entry *entry, void *cnxt);
 void regl_log_init(struct db_descriptor *db_desc);
 void regl_log_destroy(struct db_descriptor *db_desc);
 uint64_t regl_start_txn(struct db_descriptor *db_desc);
-void regl_add_entry_in_txn_buf(struct db_descriptor *db_desc, struct regl_log_entry *entry);
+void regl_add_entry_in_txn_buf(struct db_descriptor *db_desc, const struct regl_log_entry *entry);
 struct regl_log_info regl_flush_txn(struct db_descriptor *db_desc, uint64_t txn_id);
 void regl_apply_txn_buf_freeops_and_destroy(struct db_descriptor *db_desc, uint64_t txn_id);
 bool regl_replay_mem_guards(struct volume_descriptor *volume_desc, struct pr_db_superblock *db_superblock,
