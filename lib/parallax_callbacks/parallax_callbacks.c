@@ -64,20 +64,18 @@ void parallax_init_callbacks(par_handle dbhandle, struct parallax_callback_funcs
 
 struct parallax_callback_funcs parallax_get_callbacks(parallax_callbacks_t parallax_cb)
 {
-	struct parallax_callbacks *parallax_obj = (struct parallax_callbacks *)parallax_cb;
+	const struct parallax_callbacks *parallax_obj = (struct parallax_callbacks *)parallax_cb;
 	return parallax_obj->parallax_callback_functions;
 }
 
 void *parallax_get_context(parallax_callbacks_t parallax_cb)
 {
-	struct parallax_callbacks *parallax_obj = (struct parallax_callbacks *)parallax_cb;
+	const struct parallax_callbacks *parallax_obj = (struct parallax_callbacks *)parallax_cb;
 	return parallax_obj->context;
 }
 
 int8_t are_parallax_callbacks_set(parallax_callbacks_t parallax_cb)
 {
-	struct parallax_callbacks *parallax_obj = (struct parallax_callbacks *)parallax_cb;
-	if (parallax_obj)
-		return 1;
-	return 0;
+	const struct parallax_callbacks *parallax_obj = (struct parallax_callbacks *)parallax_cb;
+	return parallax_obj != NULL;
 }
