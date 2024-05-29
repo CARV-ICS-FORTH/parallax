@@ -108,7 +108,7 @@ int klist_remove_element(struct klist *list, const void *data)
 	return ret;
 }
 
-void *klist_find_element_with_key(struct klist *list, char *data_key)
+void *klist_find_element_with_key(struct klist *list, const char *data_key)
 {
 	void *data = NULL;
 	MUTEX_LOCK(&list->list_lock);

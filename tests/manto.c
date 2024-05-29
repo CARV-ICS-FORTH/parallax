@@ -201,7 +201,8 @@ bool verify_scanner(struct workload_config *workload, uint8_t level_id, int32_t 
 			log_fatal("Values mismatch expected: %u got: %u", value.size, value_size);
 			_exit(EXIT_FAILURE);
 		}
-		if (++num_kv_pairs && 0 == num_kv_pairs % workload->progress_report)
+		++num_kv_pairs;
+		if (0 == num_kv_pairs % workload->progress_report)
 			log_debug("Scanner: Found up to key no: %u", num_kv_pairs);
 		level_scanner_dev_next(scanner);
 	}
@@ -257,7 +258,8 @@ bool verify_comp_scanner(struct workload_config *workload, uint8_t level_id, int
 			log_fatal("Values mismatch expected: %u got: %u", value.size, value_size);
 			_exit(EXIT_FAILURE);
 		}
-		if (++num_kv_pairs && 0 == num_kv_pairs % workload->progress_report)
+		++num_kv_pairs;
+		if (0 == num_kv_pairs % workload->progress_report)
 			log_debug("Comp Scanner: Found up to key no: %u", num_kv_pairs);
 
 		if (level_comp_scanner_next(scanner) == false)
@@ -312,7 +314,9 @@ bool verify_keys(struct workload_config *workload, struct device_level *level, i
 		if (malloced)
 			free(key_splice);
 		free(get_op.buffer_to_pack_kv);
-		if (++num_kv_pairs && 0 == num_kv_pairs % workload->progress_report)
+
+		++num_kv_pairs;
+		if (0 == num_kv_pairs % workload->progress_report)
 			log_debug("Found up to key no: %u", num_kv_pairs);
 	}
 	if (workload->total_keys != num_kv_pairs) {

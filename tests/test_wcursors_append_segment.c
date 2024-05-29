@@ -247,12 +247,12 @@ static void test_wcursors_validate_segments(par_handle handle)
 	// memcmp all segments
 	struct db_handle *dbhandle = (struct db_handle *)handle;
 	struct segment_header *curr_segment_level_2 = dbhandle->db_desc->levels[2].first_segment[1];
-	struct segment_header *last_segment_level_2 = dbhandle->db_desc->levels[2].last_segment[1];
+	cosnt struct segment_header *last_segment_level_2 = dbhandle->db_desc->levels[2].last_segment[1];
 	struct segment_header *curr_segment_level_4 = dbhandle->db_desc->levels[4].first_segment[1];
-	struct segment_header *last_segment_level_4 = dbhandle->db_desc->levels[4].last_segment[1];
+	const struct segment_header *last_segment_level_4 = dbhandle->db_desc->levels[4].last_segment[1];
 	while (curr_segment_level_2 != last_segment_level_2) {
-		char *segment_payload_level_2 = (char *)curr_segment_level_2 + sizeof(struct segment_header);
-		char *segment_payload_level_4 = (char *)curr_segment_level_4 + sizeof(struct segment_header);
+		const char *segment_payload_level_2 = (char *)curr_segment_level_2 + sizeof(struct segment_header);
+		const char *segment_payload_level_4 = (char *)curr_segment_level_4 + sizeof(struct segment_header);
 		int ret = memcmp(segment_payload_level_2, segment_payload_level_4,
 				 SEGMENT_SIZE - sizeof(struct segment_header));
 		if (0 != ret) {

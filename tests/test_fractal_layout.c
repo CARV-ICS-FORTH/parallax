@@ -61,7 +61,7 @@ int main(void)
 	srand(time(0)); // Seed the random number generator with current time
 
 	char keys[NUM_KEYS][MAX_KEY_SIZE] = { 0 };
-	char value_buf[MAX_VALUE_SIZE] = { 0 };
+	const char value_buf[MAX_VALUE_SIZE] = { 0 };
 
 	for (int i = 0; i < NUM_KEYS; i++) {
 		generate_random_key(keys[i], MAX_KEY_SIZE);
