@@ -96,6 +96,6 @@ stackElementT stack_pop(stackT *stackP);
  */
 void stack_reset(stackT *stackP);
 
-int stack_is_empty(stackT *stackP);
-int stack_is_full(stackT *stackP);
+int stack_is_empty(const stackT *stackP);
+int stack_is_full(const stackT *stackP);
 #endif

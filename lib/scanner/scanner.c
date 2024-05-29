@@ -51,7 +51,7 @@ void scanner_seek(struct scanner *scanner, db_handle *database, void *start_key,
 	sh_init_heap(&scanner->heap, database->db_desc->L0.active_tree, MIN_HEAP, database->db_desc);
 
 	for (int tree_id = 0; tree_id < NUM_TREES_PER_LEVEL; ++tree_id) {
-		struct node_header *root = database->db_desc->L0.root[tree_id];
+		const struct node_header *root = database->db_desc->L0.root[tree_id];
 		if (!root)
 			continue;
 		L0_scanner_init(&scanner->L0_scanner[tree_id], database, 0, tree_id);

@@ -55,12 +55,12 @@ stackElementT stack_pop(stackT *stackP)
 	return stackP->contents[stackP->top--];
 }
 
-int stack_is_empty(stackT *stackP)
+int stack_is_empty(const stackT *stackP)
 {
 	return stackP->top < 0;
 }
 
-int stack_is_full(stackT *stackP)
+int stack_is_full(const stackT *stackP)
 {
 	return stackP->top >= stackP->maxSize - 1;
 }
