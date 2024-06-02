@@ -631,7 +631,7 @@ static void prepare_cursor_op(struct log_cursor *cursor)
 	cursor->offt_in_segment += kv_splice_get_kv_size(cursor->entry.par_kv);
 }
 
-static void init_pos_log_cursor_in_segment(struct db_descriptor *db_desc, struct log_cursor *cursor)
+static void init_pos_log_cursor_in_segment(const struct db_descriptor *db_desc, struct log_cursor *cursor)
 {
 	if (0 == cursor->log_segments->n_entries) {
 		cursor->valid = 0;

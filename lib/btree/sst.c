@@ -273,7 +273,7 @@ static struct key_splice *sst_create_pivot(struct kv_splice_base *last_splice, s
 	return pivot;
 }
 
-static uint32_t sst_calc_offt(struct sst *sst, char *addr)
+static uint32_t sst_calc_offt(const struct sst *sst, char *addr)
 {
 	uint64_t start = (uint64_t)sst->IO_buffer;
 	uint64_t end = (uint64_t)addr;

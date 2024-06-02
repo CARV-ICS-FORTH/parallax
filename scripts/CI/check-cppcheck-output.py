@@ -18,6 +18,8 @@ def main():
     with open("log.txt", "r") as cppcheck_out:
         for line in cppcheck_out.readlines():
             for check in cppcheck_checks:
+                if "information: Active checkers:" in line:
+                    continue
                 if check in line:
                     count_problems += 1
 

@@ -614,7 +614,8 @@ bool level_scanner_dev_seek(struct level_scanner_dev *dev_level_scanner, struct 
 
 static uint64_t level_scanner_dev_find_next_leaf(struct level_scanner_dev *dev_level_scanner)
 {
-	struct sst_meta *meta = NULL;
+	//cppcheck-suppress constVariablePointer
+	struct sst_meta *meta;
 	minos_iter_get_next(&dev_level_scanner->sst_iter);
 	if (!minos_iter_is_valid(&dev_level_scanner->sst_iter)) {
 		// log_debug("Done! with SSTs of level: %u",dev_level_scanner->level->level_id);

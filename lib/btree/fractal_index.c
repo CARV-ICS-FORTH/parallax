@@ -358,7 +358,7 @@ static uint16_t frac_idx_seek(struct index_node *node, const char *key, int32_t 
 	uint16_t guard_offt_a = sizeof(struct index_node);
 	uint16_t guard_offt_b = 0;
 
-	struct index_guard *guard = (struct index_guard *)&node_buf[guard_offt_a];
+	const struct index_guard *guard = (struct index_guard *)&node_buf[guard_offt_a];
 
 	for (uint32_t i = 0; i < node->counters[FRAC_IDX_NUM_GUARDS]; i++) {
 		int ret = frac_idx_comparator(guard->key, key, guard->size, key_size);

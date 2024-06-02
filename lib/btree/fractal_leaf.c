@@ -124,7 +124,7 @@ static uint16_t frac_leaf_seek(struct leaf_node *leaf, const char *key, int32_t 
 	uint16_t pivot_offt_b = 0;
 
 	// uint64_t num_cmp_piv = 0;
-	struct leaf_pivot *pivot = (struct leaf_pivot *)&leaf_buf[pivot_offt_a];
+	const struct leaf_pivot *pivot = (struct leaf_pivot *)&leaf_buf[pivot_offt_a];
 	int ret = 0;
 	for (uint32_t i = 0; i < leaf->counters[FRAC_NUM_PIVOTS]; i++) {
 		ret = frac_comparator(pivot->key, key, pivot->size, key_size);

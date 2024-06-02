@@ -27,7 +27,7 @@
 #define RCHILD(x) ((2 * x) + 2)
 #define PARENT(x) ((x - 1) / 2)
 
-static void push_back_duplicate_kv(struct sh_heap *heap, struct sh_heap_node *hp_node)
+static void push_back_duplicate_kv(struct sh_heap *heap, const struct sh_heap_node *hp_node)
 {
 	if (hp_node->splice.kv_cat != BIG_INLOG)
 		return;
