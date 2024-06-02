@@ -14,7 +14,6 @@
 
 #ifndef GC_H
 #define GC_H
-#include "conf.h"
 #include <stdint.h>
 #include <uthash.h>
 

@@ -73,7 +73,7 @@ struct mlog_cache_max_segment_info mlog_cache_find_max_segment_info(struct mediu
 		assert(current_entry);
 		uint64_t segment_id = current_entry->id;
 		if (UINT64_MAX == segment_id) {
-			struct segment_header *segment = REAL_ADDRESS(current_entry->dev_offt);
+			const struct segment_header *segment = REAL_ADDRESS(current_entry->dev_offt);
 			segment_id = segment->segment_id;
 		}
 
@@ -142,7 +142,7 @@ static void mlog_cache_fetch_chunk(struct medium_log_LRU_cache *chunk_cache, uin
 	entry->id = UINT64_MAX;
 
 	if (0 == log_chunk_dev_offt % SEGMENT_SIZE) {
-		struct segment_header *segment = (struct segment_header *)segment_buf;
+		const struct segment_header *segment = (struct segment_header *)segment_buf;
 		entry->id = segment->segment_id;
 	}
 

@@ -17,7 +17,6 @@
 #include <string.h>
 #include <unistd.h>
 struct key_splice;
-struct device_level;
 #define SST_METADATA_SIZE 4096UL
 
 struct sst_meta {
@@ -43,7 +42,7 @@ struct sst {
 	uint32_t tree_id;
 };
 
-inline uint32_t sst_meta_get_level_id(struct sst_meta *sst)
+inline uint32_t sst_meta_get_level_id(const struct sst_meta *sst)
 {
 	return sst->level_id;
 }
@@ -67,21 +66,21 @@ static uint64_t sst_allocate_space(struct sst *sst)
 bool sst_meta_get_next_relative_leaf_offt(uint32_t *offt, char *sst_buffer)
 {
 	*offt += LEAF_NODE_SIZE;
-	struct node_header *node = (struct node_header *)&sst_buffer[*offt];
+	const struct node_header *node = (struct node_header *)&sst_buffer[*offt];
 	return node->type == leafNode || node->type == leafRootNode ? true : false;
 }
 
-inline uint64_t sst_meta_get_dev_offt(struct sst_meta *sst)
+inline uint64_t sst_meta_get_dev_offt(const struct sst_meta *sst)
 {
 	return sst->sst_dev_offt;
 }
 
-uint64_t sst_meta_get_root_offt(struct sst_meta *sst)
+uint64_t sst_meta_get_root_offt(const struct sst_meta *sst)
 {
 	return sst->root_offt;
 }
 
-inline uint64_t sst_meta_get_first_leaf_offt(struct sst_meta *sst)
+inline uint64_t sst_meta_get_first_leaf_offt(const struct sst_meta *sst)
 {
 	return sst->sst_dev_offt + SST_METADATA_SIZE;
 }
@@ -108,7 +107,7 @@ struct key_splice *sst_meta_get_last_guard(struct sst_meta *sst)
 						  key_splice_get_key_size(first_splice)];
 }
 
-size_t sst_meta_get_size(struct sst_meta *sst)
+size_t sst_meta_get_size(const struct sst_meta *sst)
 {
 	return sizeof(struct sst_meta) + sst->first_guard_size + sst->last_guard_size;
 }
@@ -170,7 +169,7 @@ static bool sst_set_last_guard(struct sst *sst, struct kv_splice_base *kv_pair)
 	return true;
 }
 
-static inline uint32_t sst_get_remaining_space(struct sst *sst)
+static inline uint32_t sst_get_remaining_space(const struct sst *sst)
 {
 	return sst->last_index_offt - sst->last_leaf_offt;
 }
@@ -495,7 +494,7 @@ struct leaf_node *level_get_leaf(struct sst *sst, struct key_splice *key_splice)
 	return (struct leaf_node *)curr_node;
 }
 
-struct sst_meta *sst_get_meta(struct sst *sst)
+struct sst_meta *sst_get_meta(const struct sst *sst)
 {
 	return sst->meta;
 }

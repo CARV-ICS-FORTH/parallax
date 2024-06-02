@@ -24,7 +24,6 @@
 #include <string.h>
 #include <unistd.h>
 struct key_splice;
-struct pbf_desc;
 #define DEVICE_LEVEL_CACHE_LINE_SIZE 64
 
 struct level_counter {
@@ -130,12 +129,10 @@ inline uint64_t level_get_size(struct device_level *level, uint32_t tree_id)
 	return level_is_empty(level, tree_id) ? 0 : level->level_size[tree_id];
 }
 
-static inline bool level_is_medium_log_trimmable(struct device_level *level, uint64_t medium_log_head_offt)
+static inline bool level_is_medium_log_trimmable(const struct device_level *level, uint64_t medium_log_head_offt)
 {
-	return (0 == level->medium_in_place_segment_dev_offt ||
-		level->medium_in_place_segment_dev_offt == medium_log_head_offt) ?
-		       false :
-		       true;
+	return !(0 == level->medium_in_place_segment_dev_offt ||
+		 level->medium_in_place_segment_dev_offt == medium_log_head_offt);
 }
 
 uint64_t level_trim_medium_log(struct device_level *level, struct db_descriptor *db_desc, uint64_t txn_id)
@@ -145,7 +142,7 @@ uint64_t level_trim_medium_log(struct device_level *level, struct db_descriptor 
 		return new_medium_log_head_offt;
 
 	struct segment_header *trim_end_segment = REAL_ADDRESS(level->medium_in_place_segment_dev_offt);
-	struct segment_header *head = REAL_ADDRESS(db_desc->medium_log.head_dev_offt);
+	const struct segment_header *head = REAL_ADDRESS(db_desc->medium_log.head_dev_offt);
 	uint64_t bytes_freed = 0;
 	(void)bytes_freed;
 
@@ -227,7 +224,7 @@ void level_set_comp_in_progress(struct device_level *level)
 	level->compaction_in_progress = true;
 }
 
-inline bool level_is_compacting(struct device_level *level)
+inline bool level_is_compacting(const struct device_level *level)
 {
 	return level->compaction_in_progress;
 }
@@ -380,7 +377,7 @@ struct level_free_sst_cb_args {
 };
 static bool level_free_sst(void *value, void *cnxt)
 {
-	struct sst_meta *meta = (struct sst_meta *)value;
+	const struct sst_meta *meta = (struct sst_meta *)value;
 	struct level_free_sst_cb_args *args = cnxt;
 	struct regl_log_entry log_entry = { .dev_offt = sst_meta_get_dev_offt(meta),
 					    .txn_id = args->txn_id,
@@ -450,7 +447,7 @@ static struct sst_meta *level_find_sst(struct device_level *level, struct minos_
   * @param level pointer to the device level object
   * @param key_splice pointer to the key splice object
 */
-static struct leaf_node *level_get_leaf(struct device_level *level, struct sst_meta *meta,
+static struct leaf_node *level_get_leaf(struct device_level *level, const struct sst_meta *meta,
 					struct key_splice *key_splice)
 {
 	assert(key_splice_get_key_offset(key_splice));
@@ -486,7 +483,7 @@ bool level_lookup(struct device_level *level, struct lookup_operation *get_op, i
 	if (!level_does_key_exist(level, get_op->key_splice))
 		goto done;
 	struct minos_iterator iter;
-	struct sst_meta *meta = level_find_sst(level, &iter, get_op->key_splice, tree_id);
+	const struct sst_meta *meta = level_find_sst(level, &iter, get_op->key_splice, tree_id);
 	if (NULL == meta)
 		goto done;
 
@@ -569,7 +566,7 @@ struct level_scanner_dev *level_scanner_dev_init(db_handle *database, uint8_t le
 	return level_scanner;
 }
 
-static int level_cmp_keys(char *key1, int key1_size, char *key2, int key2_size)
+static int level_cmp_keys(const char *key1, int key1_size, const char *key2, int key2_size)
 {
 	int ret = memcmp(key1, key2, key1_size < key2_size ? key1_size : key2_size);
 	return ret ? ret : key1_size - key2_size;

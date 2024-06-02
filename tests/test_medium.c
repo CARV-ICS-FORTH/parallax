@@ -101,7 +101,7 @@ static void populate_db(db_handle *hd, uint64_t from, uint64_t num_keys, enum kv
 {
 	uint64_t i;
 	key *k;
-	char *key_prefix;
+	char *key_prefix = NULL;
 	uint64_t kv_size = 0;
 
 	if (type == SMALL) {
@@ -147,7 +147,7 @@ static void populate_db(db_handle *hd, uint64_t from, uint64_t num_keys, enum kv
 static void validate_serially(db_handle *hd, uint64_t from, uint64_t num_keys, enum kv_type type)
 {
 	uint64_t i;
-	char *key_prefix;
+	char *key_prefix = NULL;
 	uint64_t kv_size = 0;
 
 	init_kv[type](&kv_size, &key_prefix, STATIC);
@@ -234,7 +234,7 @@ static int check_correctness_of_size(void *kv_buf, enum kv_type key_type, enum k
 static void validate_random_size_of_kvs(db_handle *hd, uint64_t from, uint64_t to, enum kv_type key_type,
 					enum kv_size_type size_type)
 {
-	char *key_prefix;
+	char *key_prefix = NULL;
 	uint64_t kv_size;
 	scannerHandle *sc = (scannerHandle *)calloc(1, sizeof(scannerHandle));
 
@@ -275,7 +275,7 @@ static void validate_random_size_of_kvs(db_handle *hd, uint64_t from, uint64_t t
 static void validate_static_size_of_kvs(db_handle *hd, uint64_t from, uint64_t to, enum kv_type key_type,
 					enum kv_size_type size_type)
 {
-	char *key_prefix;
+	char *key_prefix = NULL;
 	uint64_t kv_size;
 	scannerHandle *sc = (scannerHandle *)calloc(1, sizeof(scannerHandle));
 
@@ -410,7 +410,7 @@ static void insert_keys(db_handle *hd, uint64_t num_keys, uint64_t small_kv_perc
  * percentage of medium kvs | percentage of big kvs*/
 int main(int argc, char *argv[])
 {
-	struct parallax_options *opts = arg_parser(argc, argv);
+	const struct parallax_options *opts = arg_parser(argc, argv);
 	char *path = strdup(opts->file);
 	uint64_t num_keys = opts->num_of_kvs;
 	uint64_t small_kv_percentage = opts->small_kvs_percentage;

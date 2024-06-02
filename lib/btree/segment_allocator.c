@@ -154,7 +154,7 @@ void seg_free_index_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_
 
 struct leaf_node *seg_get_leaf_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
 {
-	struct L0_descriptor *level0 = &db_desc->L0;
+	const struct L0_descriptor *level0 = &db_desc->L0;
 
 	struct leaf_node *leaf = (struct leaf_node *)get_space(db_desc, level_id, tree_id, level0->leaf_size);
 	return leaf;
@@ -162,7 +162,7 @@ struct leaf_node *seg_get_leaf_node(struct db_descriptor *db_desc, uint8_t level
 
 struct leaf_node *seg_get_dynamic_leaf_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
 {
-	struct L0_descriptor *level0 = &db_desc->L0;
+	const struct L0_descriptor *level0 = &db_desc->L0;
 	return get_space(db_desc, level_id, tree_id, level0->leaf_size);
 }
 

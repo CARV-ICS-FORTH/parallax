@@ -102,6 +102,7 @@ struct par_put_metadata par_put_serialized(par_handle handle, char *serialized_k
 					   append_to_log, insertOp, abort_on_compaction, error_message);
 }
 
+// cppcheck-suppress constParameterPointer
 void par_get(par_handle handle, struct par_key *key, struct par_value *value, const char **error_message)
 {
 	if (value == NULL) {
@@ -114,7 +115,7 @@ void par_get(par_handle handle, struct par_key *key, struct par_value *value, co
 	bool malloced = false;
 	struct key_splice *key_splice = key_splice_create((char *)key->data, key->size, buf, sizeof(buf), &malloced);
 
-	struct db_handle *hd = (struct db_handle *)handle;
+	const struct db_handle *hd = (struct db_handle *)handle;
 
 	/*Prepare lookup reply*/
 	struct lookup_operation get_op = { .db_desc = hd->db_desc,
@@ -150,7 +151,7 @@ void par_get_serialized(par_handle handle, char *key_serialized, struct par_valu
 		return;
 	}
 
-	struct db_handle *hd = (struct db_handle *)handle;
+	const struct db_handle *hd = (struct db_handle *)handle;
 
 	/*Prepare lookup reply*/
 	struct lookup_operation get_op = { .db_desc = hd->db_desc,
@@ -177,6 +178,7 @@ void par_get_serialized(par_handle handle, char *key_serialized, struct par_valu
 	value->val_size = get_op.size;
 }
 
+// cppcheck-suppress constParameterPointer
 par_ret_code par_exists(par_handle handle, struct par_key *key)
 {
 	/*Serialize user key in KV_FORMAT*/
@@ -185,7 +187,7 @@ par_ret_code par_exists(par_handle handle, struct par_key *key)
 	struct key_splice *key_splice =
 		key_splice_create((char *)key->data, key->size, buf, PAR_MAX_PREALLOCATED_SIZE, &malloced);
 
-	struct db_handle *hd = (struct db_handle *)handle;
+	const struct db_handle *hd = (struct db_handle *)handle;
 	/*Prepare lookup reply*/
 	struct lookup_operation get_op = { .db_desc = hd->db_desc,
 					   .key_splice = key_splice,
@@ -230,6 +232,7 @@ uint64_t par_init_compaction_id(par_handle handle)
 	return regl_start_txn(dbhandle->db_desc);
 }
 
+// cppcheck-suppress constParameterPointer
 void par_delete(par_handle handle, struct par_key *key, const char **error_message)
 {
 	struct db_handle *hd = (struct db_handle *)handle;
@@ -247,6 +250,7 @@ struct par_scanner {
 	char *kv_buf;
 };
 
+// cppcheck-suppress constParameterPointer
 par_scanner par_init_scanner(par_handle handle, struct par_key *key, par_seek_mode mode, const char **error_message)
 {
 	if (key && key->size + sizeof(key->size) > PAR_MAX_PREALLOCATED_SIZE) {

@@ -89,7 +89,7 @@ void move_kv_pairs_to_new_segment(struct db_handle handle, stack *marks)
 	}
 }
 
-int8_t find_deleted_kv_pairs_in_segment(struct db_handle handle, struct gc_segment_descriptor *log_seg, stack *marks)
+void find_deleted_kv_pairs_in_segment(struct db_handle handle, struct gc_segment_descriptor *log_seg, stack *marks)
 {
 	struct gc_segment_descriptor iter_log_segment = *log_seg;
 	char *log_segment_in_device = REAL_ADDRESS(log_seg->segment_dev_offt);
@@ -139,7 +139,6 @@ int8_t find_deleted_kv_pairs_in_segment(struct db_handle handle, struct gc_segme
 
 	move_kv_pairs_to_new_segment(handle, marks);
 	gc_executed = 1;
-	return 1;
 }
 
 // read a segment and store it into segment_buf
@@ -179,7 +178,7 @@ void scan_db(db_descriptor *db_desc, volume_descriptor *volume_desc, stack *mark
 		BUG_ON();
 	}
 
-	log_segment *last_segment = (log_segment *)REAL_ADDRESS(db_desc->big_log.tail_dev_offt);
+	const log_segment *last_segment = (log_segment *)REAL_ADDRESS(db_desc->big_log.tail_dev_offt);
 	struct large_log_segment_gc_entry *current_segment = NULL, *tmp, *segment_ht = db_desc->segment_ht;
 
 	MUTEX_LOCK(&db_desc->segment_ht_lock);
@@ -214,10 +213,9 @@ void scan_db(db_descriptor *db_desc, volume_descriptor *volume_desc, stack *mark
 
 		struct gc_segment_descriptor gc_segment = { .log_segment_in_memory = segment->data,
 							    .segment_dev_offt = segment_dev_offt };
-		int ret = find_deleted_kv_pairs_in_segment(temp_handle, &gc_segment, marks);
+		find_deleted_kv_pairs_in_segment(temp_handle, &gc_segment, marks);
 
-		if (ret)
-			*segments_toreclaim[i].segment_moved = 1;
+		*segments_toreclaim[i].segment_moved = 1;
 	}
 
 	free(segment);

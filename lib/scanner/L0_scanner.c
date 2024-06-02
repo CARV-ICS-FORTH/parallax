@@ -55,7 +55,6 @@ bool L0_scanner_init(struct L0_scanner *L0_scanner, db_handle *database, uint8_t
 bool L0_scanner_seek(struct L0_scanner *L0_scanner, struct key_splice *start_key_splice,
 		     enum seek_scanner_mode seek_mode)
 {
-	// cppcheck-suppress variableScope
 	char smallest_possible_pivot[SMALLEST_POSSIBLE_PIVOT_SIZE];
 	if (!start_key_splice) {
 		bool malloced = false;

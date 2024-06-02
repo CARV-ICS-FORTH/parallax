@@ -56,7 +56,7 @@ bool dl_append_splice_in_dynamic_leaf(struct leaf_node *leaf, struct kv_splice_b
  * sets *error to NULL. If the key is not found inside the leaf or in case of
  * other error it sets *error to the appropriate message.
  */
-struct kv_splice_base dl_find_kv_in_dynamic_leaf(struct leaf_node *leaf, char *key, int32_t key_size,
+struct kv_splice_base dl_find_kv_in_dynamic_leaf(struct leaf_node *leaf, const char *key, int32_t key_size,
 						 const char **error);
 
 /**
@@ -118,7 +118,7 @@ bool dl_is_leaf_full(struct leaf_node *leaf, uint32_t kv_size);
  * @param exact_match pointer to a boolean flag. If there is an exact match it
  * sets it to true otherwise it sets it to false.
  */
-int32_t dl_search_get_pos(struct leaf_node *leaf, char *key, int32_t key_size, bool *exact_match);
+int32_t dl_search_get_pos(struct leaf_node *leaf, const char *key, int32_t key_size, bool *exact_match);
 
 /**
  * @brief Returns the splice store at the specified position.
@@ -154,7 +154,7 @@ int32_t dl_get_leaf_num_entries(struct leaf_node *leaf);
  * @param key: key from which the iterator will begin its traversal
  * @param key_size: the size of the key
  */
-void dl_init_leaf_iterator(struct leaf_node *leaf, struct leaf_iterator *iter, char *key, int32_t key_size);
+void dl_init_leaf_iterator(struct leaf_node *leaf, struct leaf_iterator *iter, const char *key, int32_t key_size);
 
 /**
  * @brief function returning if the iterator is within bounds

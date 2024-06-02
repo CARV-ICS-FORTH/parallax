@@ -49,9 +49,9 @@ void execute_put_request(par_handle handle, char *line)
 	/*thats the operation, we dont need it*/
 	strtok_r(line, " ", &line);
 	uint32_t key_size = atoi(strtok_r(line, " ", &line));
-	char *key = strtok_r(line, " ", &line);
+	const char *key = strtok_r(line, " ", &line);
 	uint32_t value_size = atoi(strtok_r(line, " ", &line));
-	char *value = strtok_r(line, " ", &line);
+	const char *value = strtok_r(line, " ", &line);
 
 	/*prepare the request*/
 	struct kv_splice *kv_buf = (struct kv_splice *)key_buf;
@@ -64,11 +64,11 @@ void execute_put_request(par_handle handle, char *line)
 	par_put_serialized(handle, (char *)&splice_base, &error_message, true, false);
 }
 
-enum Op get_op(char *line)
+enum Op get_op(const char *line)
 {
 	char *tmp_line = strdup(line);
 	/*thats the Operation*/
-	char *token = strtok_r(tmp_line, " ", &tmp_line);
+	const char *token = strtok_r(tmp_line, " ", &tmp_line);
 	if (!strcmp(token, "PUT"))
 		return PUT;
 

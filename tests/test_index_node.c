@@ -108,7 +108,7 @@ static void verify_pivots(struct index_node *node, struct key_splice **pivot_spl
 	}
 }
 
-static uint32_t insert_and_verify_pivots(db_handle *handle, unsigned char *alphabet, uint32_t size)
+static uint32_t insert_and_verify_pivots(db_handle *handle, const unsigned char *alphabet, uint32_t size)
 {
 	struct key_splice **pivot = calloc(MAX_NODE_KEYS_NUM, sizeof(struct key_splice *));
 

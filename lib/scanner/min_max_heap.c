@@ -37,7 +37,7 @@ static void push_back_duplicate_kv(struct sh_heap *heap, struct sh_heap_node *hp
 	uint64_t segment_offset = kv_offt - (kv_offt % SEGMENT_SIZE);
 	struct dups_node *node = find_element(heap->dups, (uint64_t)REAL_ADDRESS(segment_offset));
 
-	struct kv_splice *splice = REAL_ADDRESS(kv_offt);
+	const struct kv_splice *splice = REAL_ADDRESS(kv_offt);
 	if (node) {
 		// log_debug("Duplicate found size of splice = %u", kv_splice_get_kv_size(splice));
 		assert(kv_splice_get_kv_size(splice) <= KV_MAX_SIZE);

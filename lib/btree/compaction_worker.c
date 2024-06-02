@@ -43,8 +43,6 @@
 #include <stdlib.h>
 #include <string.h>
 struct medium_log_LRU_cache;
-struct device_level;
-struct node_header;
 #if COMPACTION_STATS
 #include <sys/time.h>
 #endif
@@ -154,7 +152,7 @@ static void print_heap_node_key(struct sh_heap_node *h_node)
 }
 #endif
 
-static void mark_segment_space(db_handle *handle, struct dups_list *list, uint64_t txn_id)
+static void mark_segment_space(db_handle *handle, const struct dups_list *list, uint64_t txn_id)
 {
 	struct dups_node *list_iter;
 	struct dups_list *calculate_diffs;

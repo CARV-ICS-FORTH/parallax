@@ -1,6 +1,6 @@
 #!/bin/bash
 set -e
-pip install gitlint
+python -m venv venv && source venv/bin/activate && pip install gitlint
 
 FILES=$(git diff-tree --no-commit-id --name-only -r "$CI_COMMIT_SHA" | awk '$1=$1' ORS=' ')
 echo "$FILES"

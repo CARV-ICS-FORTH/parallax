@@ -43,7 +43,7 @@ struct pbf_desc {
 	bool is_valid;
 };
 
-static char *pbf_create_bloom_filter_folder(char *volume_name)
+static char *pbf_create_bloom_filter_folder(const char *volume_name)
 {
 	uint32_t volume_name_size = strlen(volume_name);
 	char *bloom_filter_folder = calloc(1UL, volume_name_size);
@@ -86,7 +86,7 @@ struct pbf_desc *pbf_create(db_handle *database_desc, uint8_t level_id, int64_t 
  * @param level_id where this bloom filter belongs
  * @param db_name the name of the db
  */
-static uint64_t pbf_create_bloom_filter_file_hash(uint8_t level_id, char *db_name)
+static uint64_t pbf_create_bloom_filter_file_hash(uint8_t level_id, const char *db_name)
 {
 	size_t str_len = strlen(db_name);
 	unsigned long timestamp = 0;

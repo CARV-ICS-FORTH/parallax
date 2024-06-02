@@ -135,7 +135,7 @@ void init_kv(struct init_key_values *init_info)
 }
 
 /** Function allocating enough space for a kv*/
-static uint64_t space_needed_for_the_kv(uint64_t kv_size, char *key_prefix, uint64_t i)
+static uint64_t space_needed_for_the_kv(uint64_t kv_size, const char *key_prefix, uint64_t i)
 {
 	char *buf = (char *)calloc(1, LARGE_KV_SIZE);
 	memcpy(buf, key_prefix, strlen(key_prefix));
@@ -152,7 +152,7 @@ static uint64_t space_needed_for_the_kv(uint64_t kv_size, char *key_prefix, uint
 /** Main insert logic for populating the db with a kv category*/
 static void *populate_db(void *task)
 {
-	struct task *task_info = task;
+	const struct task *task_info = task;
 	par_handle hd = task_info->hd;
 	for (uint64_t i = task_info->from; i < task_info->to; ++i) {
 		struct init_key_values init_info = { .kv_size = 0,
@@ -259,17 +259,17 @@ static int scanner_kv_size(par_scanner sc, enum kv_size_type size_type, uint32_t
 		return 1;
 
 	log_fatal("size of kv found by scanner is %d cat size is %d", scanner_kv_size, kv_category_size);
-	BUG_ON();
+	return 0;
 }
 
 /** Function returning if the size of a kv corresponds to its kv_category*/
 static int check_correctness_of_size(par_scanner sc, enum kv_type key_type, enum kv_size_type size_type)
 {
-	int kv_sizes[3] = { SMALL_KV_SIZE, MEDIUM_KV_SIZE, LARGE_KV_SIZE };
+	const int kv_sizes[3] = { SMALL_KV_SIZE, MEDIUM_KV_SIZE, LARGE_KV_SIZE };
 	return scanner_kv_size(sc, size_type, kv_sizes[key_type]);
 }
 
-static bool does_category_prefix_match(struct par_key *par_key, struct init_key_values *init_info)
+static bool does_category_prefix_match(const struct par_key *par_key, const struct init_key_values *init_info)
 {
 	if (par_key->size < strlen(init_info->key_prefix))
 		return false;

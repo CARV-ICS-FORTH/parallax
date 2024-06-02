@@ -221,7 +221,7 @@ static void init_fresh_logs(struct db_descriptor *db_desc)
 	db_desc->lsn_factory = lsn_factory_init(0);
 }
 
-static void init_fresh_db(struct db_descriptor *db_desc, struct par_db_options *options)
+static void init_fresh_db(struct db_descriptor *db_desc, const struct par_db_options *options)
 {
 	struct pr_db_superblock *superblock = db_desc->db_superblock;
 
@@ -326,7 +326,7 @@ static bool recover_mem_guards(struct db_descriptor *db_desc)
 	return true;
 }
 
-static void restore_db(struct db_descriptor *db_desc, uint32_t region_idx, struct par_db_options *options)
+static void restore_db(struct db_descriptor *db_desc, uint32_t region_idx, const struct par_db_options *options)
 {
 	/*First, calculate superblock offt and read it in memory*/
 	db_desc->db_superblock_idx = region_idx;
@@ -352,7 +352,7 @@ static void restore_db(struct db_descriptor *db_desc, uint32_t region_idx, struc
 	recover_logs(db_desc);
 }
 
-static db_descriptor *get_db_from_volume(char *volume_name, char *db_name, struct par_db_options *options)
+static db_descriptor *get_db_from_volume(char *volume_name, char *db_name, const struct par_db_options *options)
 {
 	struct db_descriptor *db_desc = NULL;
 	struct volume_descriptor *volume_desc = mem_get_volume_desc(volume_name);
@@ -773,7 +773,7 @@ static const char *insert_error_handling(db_handle *handle, uint32_t key_size, u
 	return NULL;
 }
 
-struct par_put_metadata insert_key_value(db_handle *handle, void *key, void *value, int32_t key_size,
+struct par_put_metadata insert_key_value(db_handle *handle, const void *key, const void *value, int32_t key_size,
 					 int32_t value_size, request_type op_type, const char **error_message)
 {
 	*error_message = insert_error_handling(handle, key_size, value_size);
@@ -1056,7 +1056,7 @@ static void bt_add_segment_to_log(struct db_descriptor *db_desc, struct log_desc
 		BUG_ON();
 	}
 
-	struct segment_header *curr_tail_seg =
+	const struct segment_header *curr_tail_seg =
 		(struct segment_header *)log_desc->tail[curr_tail_id % LOG_TAIL_NUM_BUFS]->buf;
 
 	//parse_log_segment(curr_tail_seg);
@@ -1359,7 +1359,7 @@ static inline void lookup_in_tree(struct lookup_operation *get_op, int level_id,
 	// }
 
 	int32_t key_size = key_splice_get_key_size(search_key_buf);
-	void *key = key_splice_get_key_offset(search_key_buf);
+	const void *key = key_splice_get_key_offset(search_key_buf);
 	const char *error = NULL;
 	struct kv_splice_base splice = dl_find_kv_in_dynamic_leaf((struct leaf_node *)curr_node, key, key_size, &error);
 	if (error != NULL) {
@@ -1490,7 +1490,6 @@ int insert_KV_at_leaf(bt_insert_req *ins_req, struct node_header *leaf)
 		log_address = append_key_value_to_log(&append_op);
 	}
 
-	//cppcheck-suppress variableScope
 	char kv_sep2_buf[KV_SEP2_MAX_SIZE];
 
 	if (ins_req->splice_base->kv_cat == BIG_INLOG && ins_req->splice_base->kv_type == KV_FORMAT &&
@@ -1586,9 +1585,9 @@ static void bt_split_leaf(struct leaf_node *leaf, bt_insert_req *req, struct bt_
 		dl_split_dynamic_leaf(leaf, split_result->left_leaf_child, split_result->right_leaf_child);
 
 	bool malloced = false;
-	struct key_splice *pivot_splice = key_splice_create(kv_splice_base_get_key_buf(&splice),
-							    kv_splice_base_get_key_size(&splice),
-							    split_result->middle_key, MAX_PIVOT_SIZE, &malloced);
+	const struct key_splice *pivot_splice = key_splice_create(kv_splice_base_get_key_buf(&splice),
+								  kv_splice_base_get_key_size(&splice),
+								  split_result->middle_key, MAX_PIVOT_SIZE, &malloced);
 
 	if (NULL == pivot_splice) {
 		log_fatal("Probably corrupted kv category");
@@ -1603,7 +1602,7 @@ static void bt_split_leaf(struct leaf_node *leaf, bt_insert_req *req, struct bt_
 int is_split_needed(void *node, bt_insert_req *ins_req)
 {
 	assert(node);
-	struct node_header *header = (struct node_header *)node;
+	const struct node_header *header = (struct node_header *)node;
 	uint32_t height = header->height;
 	if (ins_req->metadata.level_id > 0) {
 		log_fatal("Valid only of L0!");

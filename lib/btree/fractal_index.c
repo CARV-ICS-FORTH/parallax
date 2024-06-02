@@ -54,7 +54,7 @@ struct index_pivot {
 	uint16_t prev_size;
 } __attribute__((packed));
 
-static int frac_idx_comparator(void *key1, void *key2, int32_t key1_size, int32_t key2_size)
+static int frac_idx_comparator(const void *key1, const void *key2, int32_t key1_size, int32_t key2_size)
 {
 	int ret = memcmp(key1, key2, key1_size <= key2_size ? key1_size : key2_size);
 	return ret ? ret : key1_size - key2_size;
@@ -192,13 +192,14 @@ struct key_splice *frac_idx_remove_last_pivot_key(struct index_node *node)
 		return (struct key_splice *)pivot1_copy;
 	uint16_t last_offt = 0;
 	for (uint16_t offt = sizeof(struct index_node); offt < node->counters[FRAC_IDX_PIVOT_TAIL_OFFT];) {
-		struct index_guard *guard = (struct index_guard *)&node_buf[offt];
+		const struct index_guard *guard = (struct index_guard *)&node_buf[offt];
 		offt += sizeof(struct index_guard) + guard->size;
 		if (offt < node->counters[FRAC_IDX_PIVOT_TAIL_OFFT])
 			break;
 		last_offt = offt;
 	}
-	struct index_guard *guard = (struct index_guard *)&node_buf[last_offt];
+
+	const struct index_guard *guard = (struct index_guard *)&node_buf[last_offt];
 	if (guard->pivot_idx == last_pivot_idx)
 		--node->counters[FRAC_IDX_NUM_GUARDS];
 	return (struct key_splice *)pivot1_copy;
@@ -350,20 +351,17 @@ static void frac_idx_add_pivot_guard(struct index_node *node, uint64_t child_nod
 	}
 }
 
-static uint16_t frac_idx_seek(struct index_node *node, char *key, int32_t key_size, bool *exact_match)
+static uint16_t frac_idx_seek(struct index_node *node, const char *key, int32_t key_size, bool *exact_match)
 {
-	// log_debug("<SEEK>");
 	char *node_buf = (char *)node;
 
 	uint16_t guard_offt_a = sizeof(struct index_node);
 	uint16_t guard_offt_b = 0;
 
 	struct index_guard *guard = (struct index_guard *)&node_buf[guard_offt_a];
-	// log_debug("Searching node: %p num guards are: %u", (void *)node, node->counters[FRAC_IDX_NUM_GUARDS]);
+
 	for (uint32_t i = 0; i < node->counters[FRAC_IDX_NUM_GUARDS]; i++) {
 		int ret = frac_idx_comparator(guard->key, key, guard->size, key_size);
-		// log_debug("guard key: %.*s guard_key_size: %u key_size: %u ret = %d", guard->size, guard->key,
-		// 	  guard->size, key_size, ret);
 
 		if (ret > 0)
 			break;
@@ -417,7 +415,7 @@ static uint16_t frac_idx_seek(struct index_node *node, char *key, int32_t key_si
 	return pivot_idx;
 }
 
-uint64_t frac_idx_search(struct index_node *node, char *lookup_key, int32_t lookup_key_size)
+uint64_t frac_idx_search(struct index_node *node, const char *lookup_key, int32_t lookup_key_size)
 {
 	assert(lookup_key_size > 0);
 	assert(lookup_key_size <= MAX_KEY_SIZE);
@@ -461,6 +459,6 @@ bool frac_idx_register(struct level_index_api *index_api)
 
 	index_api->index_get_node_size = index_node_get_size;
 
-	index_api->index_search = frac_idx_search;
+	index_api->index_search = (level_index_search)frac_idx_search;
 	return true;
 }

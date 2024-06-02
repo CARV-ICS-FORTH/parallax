@@ -10,13 +10,13 @@ int64_t get_counter(const volatile int64_t *counter)
 	return *counter;
 }
 
-void spin_loop(volatile int64_t *counter, int64_t threashold)
+void spin_loop(const volatile int64_t *counter, int64_t threashold)
 {
 	while (get_counter(counter) > threashold)
 		;
 }
 
-void wait_for_value(volatile uint32_t *value_addr, uint32_t value)
+void wait_for_value(const volatile uint32_t *value_addr, uint32_t value)
 {
 	while (read_value(value_addr) != value)
 		;

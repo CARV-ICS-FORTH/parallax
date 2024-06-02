@@ -1,3 +1,4 @@
+plot ARG2 using 2:xtic(1) title "RocksDB" lc rgb '#9400d3'0
 build/
 compile_commands.json
 .clangd/
@@ -12,3 +13,4 @@ docs/html
 docs/xml
 docs/latex
 *.tmp
+venv/

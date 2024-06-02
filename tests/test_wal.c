@@ -182,7 +182,7 @@ int main(int argc, char *argv[])
 
 	// Generating a timestamp compatible with Python datetime
 	time_t timestamp = time(NULL);
-	struct tm *local_time = localtime(&timestamp);
+	const struct tm *local_time = localtime(&timestamp);
 	char datetime[20];
 	strftime(datetime, sizeof(datetime), "%Y-%m-%d %H:%M:%S", local_time);
 
