@@ -682,8 +682,9 @@ finish:
  *  When all trees on level 0 are full and compactions cannot keep up with clients
  *  this functions blocks clients from writing in any of the level 0 roots.
  *  Assumes that the caller has acquired rwlock of level 0.
+ *  @param db_desc The descriptor of the DB.
  *  @param level_id The level in the LSM tree.
- *  @param block if set to true the context of the thread blocks on the semaphore.
+ *  @param abort_on_compaction block if set to true the context of the thread blocks on the semaphore.
  *  If set to false it does not block and returns PAR_FAILURE
  *  @param rwlock If 1 locks the guard of level 0 as a read lock. If 0 locks the guard of level 0 as a write lock.
  *  */
@@ -746,7 +747,7 @@ enum kv_category calculate_KV_category(uint32_t key_size, uint32_t value_size, r
 	return category;
 }
 
-static const char *insert_error_handling(db_handle *handle, uint32_t key_size, uint32_t value_size)
+static const char *insert_error_handling(const db_handle *handle, uint32_t key_size, uint32_t value_size)
 {
 	const char *error_message = NULL;
 	if (DB_IS_CLOSING == handle->db_desc->db_state) {
@@ -857,7 +858,7 @@ struct par_put_metadata serialized_insert_key_value(db_handle *handle, struct kv
 	return ins_req.metadata.put_op_metadata;
 }
 
-void extract_keyvalue_size(struct log_operation *req, metadata_tologop *data_size)
+void extract_keyvalue_size(const struct log_operation *req, metadata_tologop *data_size)
 {
 	if (req->ins_req->splice_base->kv_type != KV_FORMAT) {
 		log_fatal("Cannot handle this type of format");
@@ -1136,7 +1137,6 @@ static void *bt_append_to_log_direct_IO(struct log_operation *req, struct log_de
 	else if (log_desc->size % SEGMENT_SIZE != 0)
 		available_space_in_log = SEGMENT_SIZE - (log_desc->size % SEGMENT_SIZE);
 
-	uint32_t num_chunks = SEGMENT_SIZE / LOG_CHUNK_SIZE;
 	int segment_change = 0;
 
 	if (available_space_in_log < reserve_needed_space) {
@@ -1172,8 +1172,10 @@ static void *bt_append_to_log_direct_IO(struct log_operation *req, struct log_de
 		uint32_t next_tail_id = ++curr_tail_id;
 		struct log_tail *next_tail = log_desc->tail[next_tail_id % LOG_TAIL_NUM_BUFS];
 
-		if (!next_tail->free)
+		if (!next_tail->free) {
+			uint32_t num_chunks = SEGMENT_SIZE / LOG_CHUNK_SIZE;
 			wait_for_value(&next_tail->IOs_completed_in_tail, num_chunks);
+		}
 		RWLOCK_WRLOCK(&log_desc->log_tail_buf_lock);
 		wait_for_value(&next_tail->pending_readers, 0);
 

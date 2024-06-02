@@ -445,6 +445,7 @@ static struct sst_meta *level_find_sst(struct device_level *level, struct minos_
 /**
   * @brief Fetches the leaf which is responsible to host the key splice
   * @param level pointer to the device level object
+  * @param meta pointer to the sst meta object
   * @param key_splice pointer to the key splice object
 */
 static struct leaf_node *level_get_leaf(struct device_level *level, const struct sst_meta *meta,
@@ -613,7 +614,8 @@ bool level_scanner_dev_seek(struct level_scanner_dev *dev_level_scanner, struct 
 
 static uint64_t level_scanner_dev_find_next_leaf(struct level_scanner_dev *dev_level_scanner)
 {
-	struct sst_meta *meta = NULL;
+	//cppcheck-suppress constVariablePointer
+	struct sst_meta *meta;
 	minos_iter_get_next(&dev_level_scanner->sst_iter);
 	if (!minos_iter_is_valid(&dev_level_scanner->sst_iter)) {
 		// log_debug("Done! with SSTs of level: %u",dev_level_scanner->level->level_id);

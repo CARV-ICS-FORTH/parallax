@@ -27,7 +27,7 @@
 #define RCHILD(x) ((2 * x) + 2)
 #define PARENT(x) ((x - 1) / 2)
 
-static void push_back_duplicate_kv(struct sh_heap *heap, struct sh_heap_node *hp_node)
+static void push_back_duplicate_kv(struct sh_heap *heap, const struct sh_heap_node *hp_node)
 {
 	if (hp_node->splice.kv_cat != BIG_INLOG)
 		return;
@@ -53,10 +53,10 @@ static void push_back_duplicate_kv(struct sh_heap *heap, struct sh_heap_node *hp
  * Solves cases when we have duplicated keys across adjacent levels. It takes
  * into account the level id of each key to solve the tie. The rule is that the
  * key with the largest level id is duplicate and is ignored.
- * @returns negative int if nd_1 < nd_2, possitive if nd_1>nd_2, and 0 if equal
- * @param heap, pointer to min max heap
+ * @param heap pointer to min max heap
  * @param nd_1 heap node containing the actual key, its corresponding level_id
  * @param nd_2 heap node containing the key and its corresponding level_id
+ * @return negative int if nd_1 < nd_2, possitive if nd_1>nd_2, and 0 if equal
  */
 static int sh_solve_tie(struct sh_heap *heap, struct sh_heap_node *nd_1, struct sh_heap_node *nd_2)
 {
@@ -179,7 +179,7 @@ void sh_insert_heap_node(struct sh_heap *heap, struct sh_heap_node *node)
 /**
  * Removes the top element of the min max heap and writes to the variable
  * pointed to by heap node pointer.
- * @returns true if it founds and element or false if the heap is
+ * @return returns true if it founds and element or false if the heap is
  * empty.
  */
 bool sh_remove_top(struct sh_heap *heap, struct sh_heap_node *node)

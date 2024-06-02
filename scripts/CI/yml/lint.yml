@@ -20,8 +20,8 @@ build_clang-tidy:
 build_cppcheck:
     stage: lint
     script:
-        - cppcheck --language=c . --enable=all --inconclusive --max-ctu-depth=1024 -iYCSB-CXX -ibuild --inline-suppr --suppress=missingInclude --suppress=missingIncludeSystem
-          &> log.txt
+        - cppcheck --language=c . --enable=all --check-level=exhaustive --checkers-report=testreport.txt --max-ctu-depth=1024 -iYCSB-CXX -ibuild --inline-suppr
+          --suppress=missingInclude --suppress=missingIncludeSystem &> log.txt
         - cat log.txt
         - python scripts/CI/check-cppcheck-output.py
     needs: []

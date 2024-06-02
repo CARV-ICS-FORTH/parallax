@@ -290,12 +290,13 @@ struct par_put_metadata insert_key_value(db_handle *handle, const void *key, con
  * Inserts a serialized key value pair by using the buffer provided by the user.
  * The format of the key value pair is | key_size | value_size | key |  value |, where {key,value}_sizes are uint32_t.
  * @param handle
- * @param serialized_key_value is a buffer containing the serialized key value pair.
+ * @param splice_base is a buffer containing the serialized key value pair.
  * @param append_to_log True to append the entry to the log, False not to. In case the kv belongs to the big category it is always appended.
  * @param op_type Defines the operation delete or put.
  * @param abort_on_compaction If set to true the operation is aborted in case
  * it cannot be fullfilled due to a pending L0->L1 compaction. be completed due
  * to a pending L0 compaction
+ * @param error_message Contains error message if call fails.
  * @return Returns the error message if any otherwise NULL on success.
  * */
 struct par_put_metadata serialized_insert_key_value(db_handle *handle, struct kv_splice_base *splice_base,

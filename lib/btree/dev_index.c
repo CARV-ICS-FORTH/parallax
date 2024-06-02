@@ -146,7 +146,7 @@ static int32_t dev_idx_search_get_pos(struct index_node *node, const char *looku
 	int32_t end = node->header.num_entries - 1;
 
 	int32_t middle = 0;
-	struct dev_idx_slot_array_entry *slot_array = dev_idx_get_slot_array(node);
+	const struct dev_idx_slot_array_entry *slot_array = dev_idx_get_slot_array(node);
 
 	while (start <= end) {
 		middle = (start + end) / 2;
@@ -204,7 +204,7 @@ struct key_splice *dev_idx_remove_last_pivot_key(struct index_node *node)
 	if (0 == node->header.num_entries)
 		return NULL;
 	int32_t position = node->header.num_entries - 1;
-	struct dev_idx_slot_array_entry *slot_array = dev_idx_get_slot_array(node);
+	const struct dev_idx_slot_array_entry *slot_array = dev_idx_get_slot_array(node);
 	struct key_splice *index_splice = dev_idx_get_key_splice(node, slot_array[position].pivot);
 	size_t pivot_size = dev_idx_get_pivot_size(index_splice);
 	struct key_splice *pivot_copy = calloc(1UL, pivot_size);
@@ -257,7 +257,7 @@ static struct key_splice *dev_idx_search_get_full_pivot(struct index_node *node,
 	bool unused = false; // Created here to call the function
 	int32_t position = dev_idx_search_get_pos(node, lookup_key, lookup_key_size, &unused);
 
-	struct dev_idx_slot_array_entry *slot_array = dev_idx_get_slot_array(node);
+	const struct dev_idx_slot_array_entry *slot_array = dev_idx_get_slot_array(node);
 	struct key_splice *pivot_splice = dev_idx_get_key_splice(node, slot_array[position].pivot);
 
 	return pivot_splice;

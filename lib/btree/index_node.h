@@ -62,11 +62,10 @@ struct pivot_pointer *index_get_pivot_pointer(struct key_splice *key_splice);
  * Initializes a freshly allocated index node. It initializes all of its fields
  * and inserts the guard zero key with node device offset set to UINT64_MAX.
  *
- * @param add_zero_guard: if set to a value greater than 0 inserts the zero
+ * @param option: if set to a value greater than 0 inserts the zero
  * guard as pivot. The zero guard is the smallest possible key (aka pivot key
  * <size: 1, data: 0x00), with an initial device children offset set to
  * UINT64_MAX.
- *
  * @param node:  The node to be intialized.
  *
  * @param type: The node type, valid values are rootNode or internalNode.
@@ -133,6 +132,7 @@ bool index_append_pivot(struct insert_pivot_req *ins_pivot_req);
   * Worst case analysis here. If the remaining space is smaller than the
   * maximum possible pivot key we report that this node needs to be split
   * @param node: The index node that the function checks
+  * @param max_pivot_size: The maximum size of a pivot key
   * @return: true if the nodes does not need splitting false otherwise
   */
 bool index_is_split_needed(struct index_node *node, uint32_t max_pivot_size);
@@ -175,7 +175,7 @@ void index_iterator_init(struct index_node *node, struct index_node_iterator *it
   * equal to the pivot key.
   * @param node: the index node to search
   * @param iterator: pointer to the iterator to be initialized
-  * @param key: Key to position itself
+  * @param key_splice: Key to position itself
   */
 void index_iterator_init_with_key(struct index_node *node, struct index_node_iterator *iterator,
 				  struct key_splice *key_splice);
@@ -213,7 +213,7 @@ struct pivot_pointer *index_iterator_get_pivot_pointer(struct index_node_iterato
 
 /**
   * sets the key of a given pivot_key
-  * @param pivot: the given pivot_key
+  * @param pivot_splice: the given pivot_key
   * @param key: the key to be set
   * @param key_size: the key_size of the key to be set
   */

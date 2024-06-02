@@ -81,7 +81,7 @@ enum kv_category get_kv_category(int32_t key_size, int32_t value_size, request_t
 
 	return calculate_KV_category(key_size, value_size, operation);
 }
-
+//cppcheck-suppress constParameterPointer
 struct par_put_metadata par_put(par_handle handle, struct par_key_value *key_value, const char **error_message)
 {
 	db_handle *dbhandle = (db_handle *)handle;

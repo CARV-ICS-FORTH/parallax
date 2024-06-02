@@ -20,7 +20,7 @@ struct sst *sst_create(uint32_t size, uint64_t txn_id, db_handle *handle, uint32
 
 /**
  *@brief Appends a kv pair in an SST (assumes that splices arrive in sorted order)
- *@param  pointer to the sst object
+ *@param sst pointer to the sst object
  *@param splice pointer to the splice object
  *@return true on success or false if the SST is out of space (time for a new SST)
 */
@@ -45,7 +45,7 @@ bool sst_close(struct sst *sst);
   * is that it creates an SST object, appends splices, flushes it, gets then a reference
   * to the sst_meta object. This contain all information needed for all future read
   * operations.
-  * @param SST object
+  * @param sst SST object
   * @return returns a referece to the SST metadata or NULL on failure
 */
 struct sst_meta *sst_get_meta(const struct sst *sst);
@@ -60,14 +60,14 @@ uint64_t sst_meta_get_first_leaf_offt(const struct sst_meta *sst);
 
 /**
   * @brief Return a pointer to the first guard.
-  * @param pointer to the sst_meta object
+  * @param sst pointer to the sst_meta object
   * @return a pointer to the first guard or NULL on failure
 */
 struct key_splice *sst_meta_get_first_guard(struct sst_meta *sst);
 
 /**
   * @brief Return a pointer to the last guard.
-  * @param pointer to the sst_meta object
+  * @param sst pointer to the sst_meta object
   * @return a pointer to the first guard or NULL on failure
 */
 struct key_splice *sst_meta_get_last_guard(struct sst_meta *sst);

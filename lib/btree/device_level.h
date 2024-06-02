@@ -168,6 +168,7 @@ struct device_level *level_create_fresh(uint32_t level_id, uint32_t l0_size, uin
  * @param level_id the id of the level
  * @param superblock pointer to the superblock object
  * @param num_trees number of trees described in the superblock
+ * @param database pointer to the db object
  * @param l0_size the size of the l0
  * @param growth_factor the growth factor of the LSM together they are used to calculate max level_size
  * XXXTODOXXX This function could instead be a deserialize function from a buffer
@@ -193,70 +194,21 @@ void level_save_bf_info_to_superblock(struct device_level *level, struct pr_db_s
 /**
   * @brief Returns the root of tree_id in the level.
   * Each level can have up to NUM_TREES_PER_LEVEL TREES.
-  *@param device_level pointer to the level object
-  *@param tree_id id of tree
-  *@return the root of the tree or NULL if it is empty
+  * @param level pointer to the level object
+  * @param tree_id id of tree
+  * @return the root of the tree or NULL if it is empty
 */
-//Old school
-// struct node_header *level_get_root(struct device_level *level, uint32_t tree_id);
 
 bool level_is_empty(struct device_level *level, uint32_t tree_id);
 
 /**
   * @brief Returns the device offset of the root of tree_id in the level.
   * Each level can have up to NUM_TREES_PER_LEVEL TREES.
-  * @param device_level pointer to the level object
+  * @param level pointer to the level object
   * @param tree_id id of tree
   * @return the offset in the device of the root of the tree or NULL if it is empty
 */
 uint64_t level_get_root_dev_offt(struct device_level *level, uint32_t tree_id);
-
-/**
-  * @brief Returns pointer to the first segment of the index.
-  * @param level pointer to the level object
-  * @param tree_id id of the tree
-  * @return pointer to the segment or NULL if empty
-  */
-//Old school
-// struct segment_header *level_get_index_first_seg(struct device_level *level, uint32_t tree_id);
-
-/**
-  * @brief Returns the offset in the device where the first segment of the index resides.
-  * @param level pointer to the level object
-  * @param tree_id id of the tree
-  * @return pointer to the segment or NULL if empty
-  */
-//Old school
-// uint64_t level_get_index_first_seg_offt(struct device_level *level, uint32_t tree_id);
-
-/**
-  * @brief Returns pointer to the last segment of the index.
-  * @param level pointer to the level object
-  * @param tree_id id of the tree
-  * @return pointer to the segment or NULL if empty
-  */
-//Old school
-// struct segment_header *level_get_index_last_seg(struct device_level *level, uint32_t tree_id);
-
-//Old school
-// bool level_set_index_last_seg(struct device_level *level, struct segment_header *segment, uint32_t tree_id);
-
-/**
-  * @brief Returns the offset in the device where the last segment of the index resides.
-  * @param level pointer to the level object
-  * @param tree_id id of the tree
-  * @return pointer to the segment or NULL if empty
-  */
-//Old school
-// uint64_t level_get_index_last_seg_offt(struct device_level *level, uint32_t tree_id);
-
-/**
-* @brief Return the offset? of the level.
-  * @param level pointer to the level object
-  * @param tree_id id of the tree
-  */
-//Old school
-// uint64_t level_get_offset(struct device_level *level, uint32_t tree_id);
 
 /**
 * @brief Returns the size of the level in terms of B of key-value pairs
@@ -286,7 +238,7 @@ uint64_t level_trim_medium_log(struct device_level *level, struct db_descriptor 
 /**
  * @brief function to ensure exclusive access in a level
  * @param level pointer to the level object
- * @param Returns UINT8_MAX on success
+ * @return UINT8_MAX on success
  */
 uint8_t level_enter_as_writer(struct device_level *level);
 
@@ -319,7 +271,7 @@ void level_set_comp_in_progress(struct device_level *level);
 
 /**
  * @brief Sets the state of this level as not compacting
- * @level pointer to the level object
+ * @param level pointer to the level object
  * @return true on SUCCESS false on FAILURE
  */
 bool level_set_compaction_done(struct device_level *level);
@@ -342,7 +294,7 @@ void level_destroy(struct device_level *level);
 /**
  * @brief Checks the bloom filter of the level if the key is present
  * @param level pointer to the level object
- *
+ * @param key_splice pointer to the key splice
  */
 bool level_does_key_exist(struct device_level *level, struct key_splice *key_splice);
 
@@ -367,7 +319,7 @@ bool level_set_medium_in_place_seg_offt(struct device_level *level, uint64_t seg
 
 /**
  * @brief Zero out an entire level
- * @param pointer to the level object
+ * @param level pointer to the level object
  * @param tree_id id of the tree (out of the NUM_TREES_PER_LEVEL)
  * @return TRUE on success
 */
@@ -376,8 +328,8 @@ bool level_zero(struct device_level *level, uint32_t tree_id);
 /**
  * @brief Sets the root of the level
  * @param level pointer to the level object
- * @tree_id id of tree out of the NUM_TREES_PER_LEVEL
- * @node pointer to the new root of the level
+ * @param tree_id id of tree out of the NUM_TREES_PER_LEVEL
+ * @param node pointer to the new root of the level
  */
 bool level_set_root(struct device_level *level, uint32_t tree_id, struct node_header *node);
 
@@ -405,6 +357,7 @@ int64_t level_inc_num_keys(struct device_level *level, uint32_t tree_id, uint32_
   * @param level pointer to the level object
   * @param tree_id out of the NUM_TREES_PER_LEVEL
   * @param db_desc pointer to the db the level belongs
+  * @param txn_id transaction id of the operation
   */
 uint64_t level_free_space(struct device_level *level, uint32_t tree_id, struct db_descriptor *db_desc, uint64_t txn_id);
 
@@ -433,6 +386,7 @@ struct level_scanner_dev *level_scanner_dev_init(db_handle *database, uint8_t le
   * @brief Seeks to a key greater or equal to the start_key_splice.
   * @param dev_level_scanner pointer to the dev_level_scanner object
   * @param start_key_splice pointer to the splice to seek for
+  * @param is_greater if true seeks to the first key greater than the start_key_splice
   * @return true on success or false in no keey greater or equal to the start_key_splice
   * is found
 */
@@ -468,6 +422,8 @@ bool level_scanner_dev_close(struct level_scanner_dev *dev_level_scanner);
   * used by the compaction worker to compact a level with full compaction.
   * @param level pointer to the level object
   * @param tree_id id of the tree of the level that it will iterate
+  * @param sst_size size of the sst files
+  * @param file_desc file descriptor of the level
   * @return pointer to the level_compaction scanner or NULL on failure
  */
 struct level_compaction_scanner *level_comp_scanner_init(struct device_level *level, uint8_t tree_id, uint32_t sst_size,
@@ -483,6 +439,7 @@ bool level_comp_scanner_next(struct level_compaction_scanner *comp_scanner);
 /**
  * @brief Returns a reference to the current splice
  * @param comp_scanner pointer to the compaction scanner object
+ * @param splice pointer to the splice to be filled
  * @return pointer to the kv_splice_base object or NULL if the scanner is invalid
  */
 bool level_comp_scanner_get_curr(struct level_compaction_scanner *comp_scanner, struct kv_splice_base *splice);

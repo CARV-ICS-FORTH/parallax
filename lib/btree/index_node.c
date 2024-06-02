@@ -159,7 +159,7 @@ static int32_t index_search_get_pos(struct index_node *node, const char *lookup_
 	int32_t end = node->header.num_entries - 1;
 
 	int32_t middle = 0;
-	struct index_slot_array_entry *slot_array = index_get_slot_array(node);
+	const struct index_slot_array_entry *slot_array = index_get_slot_array(node);
 
 	while (start <= end) {
 		middle = (start + end) / 2;
@@ -219,7 +219,7 @@ struct key_splice *index_remove_last_pivot_key(struct index_node *node)
 	if (0 == node->header.num_entries)
 		return NULL;
 	int32_t position = node->header.num_entries - 1;
-	struct index_slot_array_entry *slot_array = index_get_slot_array(node);
+	const struct index_slot_array_entry *slot_array = index_get_slot_array(node);
 	struct key_splice *index_splice = index_get_key_splice(node, slot_array[position].pivot);
 	size_t pivot_size = index_get_pivot_size(index_splice);
 	struct key_splice *pivot_copy = calloc(1UL, pivot_size);
@@ -236,7 +236,7 @@ static struct key_splice *index_search_get_full_pivot(struct index_node *node, c
 	bool unused = false; // Created here to call the function
 	int32_t position = index_search_get_pos(node, lookup_key, lookup_key_size, &unused);
 
-	struct index_slot_array_entry *slot_array = index_get_slot_array(node);
+	const struct index_slot_array_entry *slot_array = index_get_slot_array(node);
 	struct key_splice *pivot_splice = index_get_key_splice(node, slot_array[position].pivot);
 
 	return pivot_splice;
@@ -383,7 +383,7 @@ struct key_splice *index_iterator_get_pivot_key(struct index_node_iterator *iter
 	if (!index_iterator_is_valid(iterator))
 		return NULL;
 
-	struct index_slot_array_entry *slot_array = index_get_slot_array(iterator->node);
+	const struct index_slot_array_entry *slot_array = index_get_slot_array(iterator->node);
 	iterator->key_splice = index_get_key_splice(iterator->node, slot_array[iterator->position].pivot);
 	++iterator->position;
 
@@ -422,7 +422,7 @@ void index_split_node(struct index_node_split_request *request, struct index_nod
 		piv_key_splice = index_iterator_get_pivot_key(&iterator);
 	}
 
-	struct index_slot_array_entry *slot_array = index_get_slot_array(request->node);
+	const struct index_slot_array_entry *slot_array = index_get_slot_array(request->node);
 	struct key_splice *middle_key_splice = index_get_key_splice(request->node, slot_array[curr_entry].pivot);
 	// memcpy(&middle_key, middle_key, PIVOT_KEY_SIZE(middle_key));
 	if (reply->pivot_buf_size < index_get_pivot_size(middle_key_splice)) {

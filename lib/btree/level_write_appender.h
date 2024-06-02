@@ -5,10 +5,9 @@ struct db_handle;
 typedef struct level_write_appender *level_write_appender_t;
 
 /**
- *@brief Initialize and return a new level_write_cursor object
- *@param handle: the handle of an initialized db
- *@param tree_id: the tree_id for which the allocations will take place
- *@level_id level_id: the level of the level write appender (the destination level of a "compaction")
+ * @brief Initialize and return a new level_write_cursor object
+ * @param handle: the handle of an initialized db
+ * @param level_id level_id: the level of the level write appender (the destination level of a "compaction")
 */
 level_write_appender_t wappender_init(struct db_handle *handle, uint8_t level_id);
 
@@ -21,10 +20,11 @@ struct wappender_append_index_segment_params {
 
 /**
  *@brief Given a buffer, the function appends the buffer in the compaction index approprietly.
- *@oaram appender: An initialized level_write_appender object
+ *@param appender: An initialized level_write_appender object
  *@param params: an initialized struct wappender_appender_index_segment params with metadata for the buffer to be inserted in the compaction index
  */
-void wappender_append_index_segment(level_write_appender_t appender, struct wappender_append_index_segment_params);
+void wappender_append_index_segment(level_write_appender_t appender,
+				    struct wappender_append_index_segment_params params);
 
 /**
  *@brief Closes and frees the space if an initialized level_write_appender object

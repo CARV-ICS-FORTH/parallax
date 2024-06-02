@@ -41,6 +41,7 @@ int64_t compare_lsns(const struct lsn *left, const struct lsn *right);
 int64_t get_lsn_id(const struct lsn *lsn);
 /** set the lsn id to be equal to ticket
  * @param lsn: a ptr to a struct lsn
+ * @param ticket: the value that the lsn ticket(id) will be set to
  * */
 void set_lsn_id(struct lsn *lsn, int64_t ticket);
 /**
@@ -60,7 +61,7 @@ void reset_lsn_factory(struct lsn_factory *lsn_factory);
 struct lsn_factory lsn_factory_init(int64_t starting_ticket);
 /**
  * atomically increase the lsn ticket(id) by one and returns an lsn object which has the previous id as a ticket
- * @param lsn: a ptr to a struct lsn
+ * @param lsn_factory a ptr to a struct lsn
  * */
 struct lsn increase_lsn(struct lsn_factory *lsn_factory);
 /**

@@ -63,8 +63,6 @@ static void flush_segment_in_log(int file_desc, uint64_t file_offset, char *buff
 	}
 }
 
-/**
- *<new_persistent_design>*/
 static void pr_flush_allocation_log_and_level_info(struct db_descriptor *db_desc, uint8_t src_level_id,
 						   uint8_t dst_level_id, uint8_t tree_id, uint64_t txn_id)
 {
@@ -93,13 +91,7 @@ static void pr_update_bloom_info(db_descriptor *db_desc)
 	for (uint8_t level_id = 1; level_id < MAX_LEVELS; level_id++)
 		level_save_bf_info_to_superblock(db_desc->dev_levels[level_id], db_desc->db_superblock);
 }
-/**
- * Persists L0 key value pairs in storage making it recoverable.
- * @param db_desc is the descriptor of the db
- * @param tree_id The id of the tree in L0. Parallax performs double buffering
- * in L0 during a compaction operation from L0 to L1. As a result, valid tree_id
- * values are from 0 to NUM_TREES_PER_LEVEL-1.
-*/
+
 void pr_flush_L0(struct db_descriptor *db_desc, uint8_t tree_id)
 {
 	if (!db_desc->dirty) {
@@ -639,7 +631,7 @@ static void prepare_cursor_op(struct log_cursor *cursor)
 	cursor->offt_in_segment += kv_splice_get_kv_size(cursor->entry.par_kv);
 }
 
-static void init_pos_log_cursor_in_segment(struct db_descriptor *db_desc, struct log_cursor *cursor)
+static void init_pos_log_cursor_in_segment(const struct db_descriptor *db_desc, struct log_cursor *cursor)
 {
 	if (0 == cursor->log_segments->n_entries) {
 		cursor->valid = 0;
