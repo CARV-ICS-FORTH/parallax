@@ -77,7 +77,7 @@ bool pbf_check(struct pbf_desc *bloom_filter, char *key, int32_t size);
 /**
  * @brief Reads the contents of a bloom filter from a file and creates its
  * in-memory representation.
- * @param db_desc the descriptor of the database that this bloom filter belongs
+ * @param database_desc the descriptor of the database that this bloom filter belongs
  * to
  * @param level_id the id of the level thats this bloom filter belongs to
  * @param tree_id the id of the tree within the level that this bloom_filter

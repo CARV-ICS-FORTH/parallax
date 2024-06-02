@@ -28,8 +28,9 @@ struct leaf_iterator {
 /**
  * @brief Inserts (in sorted orderd) a kv_splice_base in the leaf node.
  * @param leaf pointer to the actual leaf node
- * @param general_splice pointer to the splice object
+ * @param splice pointer to the splice object
  * @param is_tombstone indicates if the splice is a tombstone
+ * @param exact_match pointer to a boolean flag. If there is an exact match it
  * @returns true on success false on failure. The operation may fail
  * if the leaf node does not have adequate space to store the splice
  */
@@ -95,7 +96,7 @@ void dl_reorganize_dynamic_leaf(struct leaf_node *leaf, struct leaf_node *target
 /**
  * @brief Initializes the contents of the leaf node. If the leaf node has data
  * they will be erased.
- * @param node pointer to the leaf
+ * @param leaf node pointer to the leaf
  * @param leaf_size the size of the leaf node
  */
 void dl_init_leaf_node(struct leaf_node *leaf, uint32_t leaf_size);
@@ -136,13 +137,12 @@ void dl_set_leaf_node_type(struct leaf_node *leaf, nodeType_t node_type);
 /**
  * @brief Returns the type of the node
  * @param leaf pointer to the leaf node
- * @param node_type the type of the node
  */
 nodeType_t dl_get_leaf_node_type(struct leaf_node *leaf);
 
 /**
  * @brief Returns the number of the entries in the leaf
- * @param pointer to the leaf node
+ * @param leaf pointer to the leaf node
  */
 int32_t dl_get_leaf_num_entries(struct leaf_node *leaf);
 

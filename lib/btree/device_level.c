@@ -445,6 +445,7 @@ static struct sst_meta *level_find_sst(struct device_level *level, struct minos_
 /**
   * @brief Fetches the leaf which is responsible to host the key splice
   * @param level pointer to the device level object
+  * @param meta pointer to the sst meta object
   * @param key_splice pointer to the key splice object
 */
 static struct leaf_node *level_get_leaf(struct device_level *level, const struct sst_meta *meta,

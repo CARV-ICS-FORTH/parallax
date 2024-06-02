@@ -66,7 +66,8 @@ typedef enum par_ret_code {
  * Returns the category of the KV based on its key-value size and the operation to perform.
  * @param key_size
  * @param value_size
- * @param op_type Operation to execute valid operation insertOp, deleteOp.
+ * @param operation Operation to execute valid operation insertOp, deleteOp.
+ * @param error_message Contains error message if call fails.
  * @return On success return the KV category.
  */
 enum kv_category get_kv_category(int32_t key_size, int32_t value_size, request_type operation,
@@ -82,13 +83,15 @@ struct par_put_metadata par_put(par_handle handle, struct par_key_value *key_val
 
 /**
  * Inserts a serialized key value pair by using the buffer provided by the user.
+ * @param handle DB handle provided by par_open.
  * @param serialized_key_value is a buffer containing the serialized key value
  * pair. The format of the key value pair is | key_size | key | value_size |
  * value | where {key,value}_size is uint32_t.
- * @param append_to_log. True to append to log and False not to append. In case
+ * @param append_to_log True to append to log and False not to append. In case
  * the key-value belongs to the big category it will always be appended to the
  * log.
- * @param abort_on_compaction. If set to true the calling thread aborts the
+ * @param error_message Contains error message if call fails.
+ * @param abort_on_compaction If set to true the calling thread aborts the
  * operation if it cannot be served due to a pending L0->L1 compaction. If set
  * to false it blocks until L0 is available.
  */
@@ -113,7 +116,7 @@ void par_get(par_handle handle, struct par_key *key, struct par_value *value, co
  * the memory. Otherwise it copies the data to the existing data buffer provided
  * by the value pointer.
  * @param handle DB handle provided by par_open.
- * @param serialized key to be searched.
+ * @param key_serialized key to be searched.
  * @param value buffer to be filled uppon get success.
  * @param error_message Contains error message if call fails.
  */
@@ -135,23 +138,21 @@ par_ret_code par_exists(par_handle handle, struct par_key *key);
  * @param buf_size: the in-memory buffer size
  * @param IO_size: the size of the IO which is the closest ALIGNMENT_SIZE multiple of buf_size
  * @param log_cat: the category of the log to flush into
- * @param error_message: Contains error message of call fails
  */
 uint64_t par_flush_segment_in_log(par_handle handle, char *buf, int32_t buf_size, uint32_t IO_size,
 				  enum log_category log_cat);
 /**
  * Flushes Parallax superblock
  * in order for buffer to be persisted, the buffers must be flushed (par_flush_segment_in_log)
- * @param hande: DB handle proviced by par_open
+ * @param handle: DB handle proviced by par_open
  */
 void par_flush_superblock(par_handle handle);
+
 /**
  * Only for Tebis-Parallax use
  * Every compaction is associated with a transaction ID in Parallax
  * The function initializes a new transaction ID for the upcoming transaction, for the specified level_id & tree_id
- * @param handle: DB handle provided by par_open
- * @param level_id: The destination level_id
- * @param tree_id: the destination tree_id for the specified level_id */
+ * @param handle: DB handle provided by par_open */
 uint64_t par_init_compaction_id(par_handle handle);
 
 /**

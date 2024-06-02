@@ -21,16 +21,17 @@ struct L0_scanner {
 
 /**
  * @brief Initializes a level_scanner object
- * @param level_scanner pointer to the memory location of the scanner object.
- * @param db_handle pointer to the db object this scanner is used for
+ * @param L0_scanner pointer to the memory location of the scanner object.
+ * @param database pointer to the db object this scanner is used for
  * @param level_id the level of the LSM-tree.
+ * @param tree_id
  * @returns true on success false on failure
  */
 bool L0_scanner_init(struct L0_scanner *L0_scanner, db_handle *database, uint8_t level_id, uint8_t tree_id);
 
 /**
  * @brief Posistions a previously initialized level scanner to the corresponding key value pair.
- * @param level_scanner pointer to the level_scanner object
+ * @param L0_scanner pointer to the level_scanner object
  * @param start_key_splice the key splice where we want to position the
  * scanner. Key splice may not be an actual kv pair stored in the database.
  * @param seek_mode GREATER positions the scanner in a kv pair greater than key
@@ -45,7 +46,7 @@ bool L0_scanner_seek(struct L0_scanner *L0_scanner, struct key_splice *start_key
 
 /**
  * @brief Retrieves the next kv pair.
- * @param level_scanner pointer to the level_scanner object
+ * @param L0_scanner pointer to the level_scanner object
  * @returns true on success or false if end of database has been reached
  */
 bool L0_scanner_get_next(struct L0_scanner *L0_scanner);

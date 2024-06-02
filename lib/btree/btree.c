@@ -682,8 +682,9 @@ finish:
  *  When all trees on level 0 are full and compactions cannot keep up with clients
  *  this functions blocks clients from writing in any of the level 0 roots.
  *  Assumes that the caller has acquired rwlock of level 0.
+ *  @param db_desc The descriptor of the DB.
  *  @param level_id The level in the LSM tree.
- *  @param block if set to true the context of the thread blocks on the semaphore.
+ *  @param abort_on_compaction block if set to true the context of the thread blocks on the semaphore.
  *  If set to false it does not block and returns PAR_FAILURE
  *  @param rwlock If 1 locks the guard of level 0 as a read lock. If 0 locks the guard of level 0 as a write lock.
  *  */

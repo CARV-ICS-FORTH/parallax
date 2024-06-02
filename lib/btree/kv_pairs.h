@@ -155,18 +155,18 @@ struct kv_splice *kv_splice_create(int32_t key_size, const char *key, int32_t va
 
 /**
  * Calculates key_size given a splice formated key
- * @param key: a KV_FORMATED key
+ * @param kv_pair key a KV_FORMATED key
  * @return key size
  */
 int32_t kv_splice_get_key_size(const struct kv_splice *kv_pair);
 /**
  * Returns the value_size given a splice formated key
- * @param value: a spliced (KV_FORMATED) kv ptr
+ * @param kv_pair a spliced (KV_FORMATED) kv ptr
  */
 int32_t kv_splice_get_value_size(const struct kv_splice *kv_pair);
 /**
  * Calculates the value_size  + metadata given a splice formated key
- * @param value: a spliced (KV_FORMATED) kv ptr
+ * @param kv_pair a spliced (KV_FORMATED) kv ptr
  */
 int32_t kv_splice_get_value_size_with_metadata(const struct kv_splice *kv_pair);
 /**
@@ -175,7 +175,7 @@ int32_t kv_splice_get_value_size_with_metadata(const struct kv_splice *kv_pair);
 int32_t kv_splice_get_metadata_size(void);
 /**
  * Calculates the key value pair size (with its metadata) for KV_FORMAT
- * @param kv: a spliced (KV_FORMATED) kv ptr
+ * @param kv_pair a spliced (KV_FORMATED) kv ptr
  */
 int32_t kv_splice_get_kv_size(const struct kv_splice *kv_pair);
 /**
@@ -184,31 +184,31 @@ int32_t kv_splice_get_kv_size(const struct kv_splice *kv_pair);
 int32_t kv_splice_get_tail_size(void);
 /**
  * Sets the key size given a splice formated kv
- * @param kv: a spliced (KV_FORMATED) kv ptr, where key_size will be set
- * @param key_size: the new size to be set
+ * @param kv_pair a spliced (KV_FORMATED) kv ptr, where key_size will be set
+ * @param key_size the new size to be set
  */
 void kv_splice_set_key_size(struct kv_splice *kv_pair, int32_t key_size);
 
 /**
   * Copies the key buffer to the kv pair
   * @param kv_pair: a KV_FORMAT kv_pair
+  * @param key: pointer to the key buffer
   * @param key_size: size of the key buffer
-  * @parama key: pointer to the key buffer
   */
 void kv_splice_set_key(struct kv_splice *kv_pair, const char *key, int32_t key_size);
 
 /**
  * Sets the value size given a splice formated kv
- * @param kv: a spliced (KV_FORMATED) kv ptr, where value_size will be set
- * @param value_size: the new size to be set
+ * @param kv_pair a spliced (KV_FORMATED) kv ptr, where value_size will be set
+ * @param value_size the new size to be set
  */
 void kv_splice_set_value_size(struct kv_splice *kv_pair, int32_t value_size);
 
 /**
   * Copies the value buffer to the kv pair
-  * @param kv_pair: a KV_FORMAT kv_pair
-  * @param key_size: size of the key buffer
-  * @parama key: pointer to the key buffer
+  * @param kv_pair a KV_FORMAT kv_pair
+  * @param value pointer to the value buffer
+  * @param value_size size of the value buffer
   */
 void kv_splice_set_value(struct kv_splice *kv_pair, const char *value, int32_t value_size);
 
@@ -217,12 +217,12 @@ void set_payload_tail(struct kv_splice *kv_pair, uint8_t tail);
 
 /**
  * Calculates the starting offset of the key part of a given splice kv
- * @param kv: a spliced (KV_FORMATED) kv ptr, from which the key is retrieved
+ * @param kv_pair a spliced (KV_FORMATED) kv ptr, from which the key is retrieved
  */
 char *kv_splice_get_key_offset_in_kv(struct kv_splice *kv_pair);
 /**
  * Calculates the starting offset of the value part of a given splice kv
- * @param kv: a spliced (KV_FORMATED) kv ptr, from which the key is retrieved
+ * @param kv_pair a spliced (KV_FORMATED) kv ptr, from which the key is retrieved
  * @param key_size: the key size of this kv
  */
 char *kv_splice_get_value_offset_in_kv(struct kv_splice *kv_pair, int32_t key_size);
@@ -246,7 +246,8 @@ void kv_splice_set_non_tombstone(struct kv_splice *kv_pair);
 
 /**
  * @brief serializes the key part of a kv_splice to a key_splice
- * @param buf
+ * @param buf pointer to the buffer where the key_splice will be stored
+ * @param kv_pair pointer to the kv_splice object
  */
 void kv_splice_serialize_to_key_splice(const char *buf, struct kv_splice *kv_pair);
 
@@ -268,8 +269,8 @@ uint32_t kv_splice_calculate_size(int32_t key_size, int32_t value_size);
 int kv_splice_base_compare(struct kv_splice_base *sp1, struct kv_splice_base *sp2);
 
 /**
- * @bries Returns the size of the kv splice
- * @param pointer to the splice object
+ * @brief Returns the size of the kv splice
+ * @param splice pointer to the splice object
  * @returns the size of the splice in bytes
  */
 int32_t kv_splice_base_get_size(struct kv_splice_base *splice);

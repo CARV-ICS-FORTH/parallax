@@ -243,7 +243,7 @@ static void insert_keys(par_handle handle, struct test_info info)
  * This function asserts that the kv_size of a static size category is correct to its accordingly category size
  * @param sc is an initialized par_scanner
  * @param size_type indicates if the size category is either RANDOM or STATIC
- * @param kv_cateogry_size indicates if the kv category is SMALL|MEDIUM|BIG
+ * @param kv_category_size indicates if the kv category is SMALL|MEDIUM|BIG
  * */
 static int scanner_kv_size(par_scanner sc, enum kv_size_type size_type, uint32_t kv_category_size)
 {
