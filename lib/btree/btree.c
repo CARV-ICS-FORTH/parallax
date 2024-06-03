@@ -21,9 +21,9 @@
 #include "../include/parallax/parallax.h"
 #include "../include/parallax/structures.h"
 #include "btree_node.h"
-#include "compaction_daemon.h"
+#include "compaction/compaction_daemon.h"
+#include "compaction/device_level.h"
 #include "conf.h"
-#include "device_level.h"
 #include "dynamic_leaf.h"
 #include "gc.h"
 #include "index_node.h"
@@ -34,7 +34,7 @@
 
 #include "../allocator/persistent_operations.h"
 #include "../parallax_callbacks/parallax_callbacks.h"
-#include "sst.h"
+#include "compaction/sst.h"
 #include <assert.h>
 #include <list.h>
 #include <log.h>

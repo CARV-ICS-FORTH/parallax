@@ -1,4 +1,4 @@
-#include "../lib/btree/device_level.h"
+#include "../lib/btree/compaction/device_level.h"
 #include "../lib/include/parallax/parallax.h"
 #include "btree/btree.h"
 #include <getopt.h>

@@ -12,11 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "../../common/common.h"
+#include "../../include/parallax/structures.h"
 #include "../btree/kv_pairs.h"
-#include "../common/common.h"
-#include "btree_node.h"
+#include "../btree_node.h"
 #include "device_level.h"
-#include "parallax/structures.h"
 #include <assert.h>
 #include <log.h>
 #include <stdbool.h>

@@ -37,7 +37,7 @@ if(PARALLAX_BUILD_TESTING)
   target_link_libraries(test_dirty_scans "${PROJECT_NAME}")
 
   add_executable(test_fractal_layout test_fractal_layout.c
-                                     ../lib/btree/fractal_leaf.c)
+                                     ../lib/btree/compaction/fractal_leaf.c)
   target_link_libraries(test_fractal_layout "${PROJECT_NAME}")
 
   find_library(BDB_LIBRARY NAMES libdb.so)

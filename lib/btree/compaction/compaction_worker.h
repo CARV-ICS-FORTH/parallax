@@ -1,6 +1,6 @@
 #ifndef COMPACTION_WORKER_H
 #define COMPACTION_WORKER_H
-#include "btree.h"
+#include "../btree.h"
 #include <stdint.h>
 struct compaction_request;
 struct par_db_options;

@@ -31,18 +31,17 @@ set(LIB_C_SOURCE_FILES
     api/parallax.c
     btree/btree.c
     btree/index_node.c
-    btree/compaction_daemon.c
-    btree/compaction_worker.c
-    # btree/level_read_cursor.c btree/level_write_cursor.c
+    btree/compaction/compaction_daemon.c
+    btree/compaction/compaction_worker.c
     btree/level_write_appender.c
-    btree/bloom_filter.c
+    btree/compaction/bloom_filter.c
     btree/dynamic_leaf.c
-    btree/device_level.c
-    btree/dev_leaf.c
-    btree/fractal_leaf.c
-    btree/fractal_index.c
-    btree/dev_index.c
-    btree/sst.c
+    btree/compaction/device_level.c
+    btree/compaction/dev_leaf.c
+    btree/compaction/fractal_leaf.c
+    btree/compaction/fractal_index.c
+    btree/compaction/dev_index.c
+    btree/compaction/sst.c
     btree/gc.c
     btree/medium_log_LRU_cache.c
     btree/segment_allocator.c

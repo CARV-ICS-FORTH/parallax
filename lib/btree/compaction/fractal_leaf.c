@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 #include "../btree/kv_pairs.h"
-#include "btree_node.h"
-#include "conf.h"
+#include "../btree_node.h"
+#include "../conf.h"
 #include "device_level.h"
 #include "parallax/structures.h"
 #include <assert.h>

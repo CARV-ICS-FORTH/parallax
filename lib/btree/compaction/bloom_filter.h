@@ -14,7 +14,7 @@
 #ifndef BLOOM_FILTER_H
 #define BLOOM_FILTER_H
 
-#include "btree.h"
+#include "../btree.h"
 #include <stdbool.h>
 #include <stdint.h>
 struct pbf_desc;

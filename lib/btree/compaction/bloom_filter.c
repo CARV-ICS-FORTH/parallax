@@ -16,8 +16,8 @@
 #include "../allocator/device_structures.h"
 #include "../allocator/djb2.h"
 #include "../allocator/volume_manager.h"
+#include "../btree.h"
 #include "../include/parallax/structures.h"
-#include "btree.h"
 #include <assert.h>
 #include <bloom.h>
 #include <fcntl.h>
