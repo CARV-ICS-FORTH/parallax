@@ -210,7 +210,7 @@ endif()
 string(
   APPEND
   CMAKE_C_FLAGS
-  " -Wstrict-prototypes -Wall -Wextra -fno-omit-frame-pointer -Wunused -Wuninitialized"
+  " -Wstrict-prototypes -Wall -Wextra -fno-omit-frame-pointer -Wunused -Wuninitialized -pg"
 )
 string(
   APPEND

@@ -2,7 +2,6 @@
 #define THREADPOOL_H
 #define BG_THREAD_NUM 4
 #define BG_TASK_NUM (BG_THREAD_NUM * 16)
-#include "sst.h"
 #include <pthread.h>
 #include <stdbool.h>
 
@@ -14,7 +13,7 @@ struct compaction {
 	unsigned dest_ssts_num;
 };
 
-enum bg_task_type { BG_TASK_NONE = 0, BG_TASK_COMPACTION };
+enum bg_task_type { BG_TASK_NONE = 0, BG_TASK_RESERVED, BG_TASK_COMPACTION };
 
 struct bg_task {
 	union {
@@ -48,13 +47,14 @@ struct threadpool *threadpool_init(void);
  */
 void set_compaction_task(struct bg_task *task, struct sst *src_sst, unsigned src_level, struct sst *dest_ssts[],
 			 unsigned dest_level, unsigned dest_ssts_num);
+
 /**
- * @brief Adds a task to the thread pool.
+ * @brief Get an empty task object
  *
- * @param thread_pool An inititalized thread pool.
- * @param task a filled task
+ * @param thread_pool
+ * @return struct bg_task*
  */
-void threadpool_add_task(struct threadpool *thread_pool, const struct bg_task *task);
+struct bg_task *get_empty_task(struct threadpool *thread_pool);
 
 /**
  * @brief Releases the thread pool resources.

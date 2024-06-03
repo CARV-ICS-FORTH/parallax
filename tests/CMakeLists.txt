@@ -290,4 +290,10 @@ if(PARALLAX_BUILD_TESTING)
   add_parallax_test(NAME test_par_put_metadata COMMAND run_test.sh
                     test_par_put_metadata --num_of_kvs=400000)
 
+  add_executable(test_par_threadpool test_threadpool.c
+                                     ../lib/btree/compaction/threadpool.c)
+  target_link_libraries(test_par_threadpool "${PROJECT_NAME}")
+  add_parallax_test(NAME test_par_threadpool COMMAND run_test.sh
+                    test_par_threadpool)
+
 endif()
