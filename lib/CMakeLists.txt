@@ -42,6 +42,7 @@ set(LIB_C_SOURCE_FILES
     btree/compaction/fractal_index.c
     btree/compaction/dev_index.c
     btree/compaction/sst.c
+    btree/compaction/threadpool.c
     btree/gc.c
     btree/medium_log_LRU_cache.c
     btree/segment_allocator.c
