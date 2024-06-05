@@ -39,10 +39,6 @@ option(DISABLE_LOGGING
 option(TEBIS_FORMAT "BUild Parallax using Tebis-format" OFF)
 option(PARALLAX_BUILD_TESTING "" ON)
 
-# Include directories for the library's header files (assuming they are in the
-# default /usr/local/include)
-include_directories(${CMAKE_INSTALL_PREFIX}/include)
-
 if(NOT (${CMAKE_SOURCE_DIR} STREQUAL ${CMAKE_CURRENT_SOURCE_DIR}))
   set(PARALLAX_BUILD_TESTING OFF)
 endif()
@@ -56,6 +52,7 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "Debug" "Release"
                                                "MinSizeRel" "RelWithDebInfo")
 endif()
+
 if(NOT (${CMAKE_SOURCE_DIR} STREQUAL ${CMAKE_CURRENT_SOURCE_DIR}))
   set(CMAKE_BUILD_TYPE Release)
   add_definitions(-DDISABLE_LOGGING)
