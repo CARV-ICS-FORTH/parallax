@@ -20,9 +20,14 @@ if(PARALLAX_BUILD_TESTING)
       test_par_format.c
       test_par_put_serialized.c
       test_wcursors_append_segment.c
-      test_wcursors_segment_buffers_cursor.c)
+      test_wcursors_segment_buffers_cursor.c
+      test_par_threadpool.c)
 
-  set_source_files_properties(${LIB_TEST_FILES} COMPILE_FLAGS "-O3")
+  if(${CMAKE_BUILD_TYPE} STREQUAL "Debug")
+    set_source_files_properties(${LIB_TEST_FILES} COMPILE_FLAGS "-O0 -g")
+  else()
+    set_source_files_properties(${LIB_TEST_FILES} COMPILE_FLAGS "-O3")
+  endif()
 
   add_executable(test_index_node test_index_node.c arg_parser.c)
   target_link_libraries(test_index_node "${PROJECT_NAME}")

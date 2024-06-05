@@ -551,7 +551,6 @@ exit:
 db_handle *db_open(par_db_options *db_options, const char **error_message)
 {
 	MUTEX_LOCK(&init_lock);
-	backtrace_on_sigsegv();
 	struct volume_descriptor *volume_desc = mem_get_volume_desc(db_options->volume_name);
 	if (!volume_desc) {
 		*error_message = "Failed to open volume %s";
@@ -569,7 +568,7 @@ const char *db_close(db_handle *handle)
 {
 	const char *error_message = NULL;
 	if (!handle)
-		return "NULL db_handle are you serious?";
+		return "NULL db_handle!";
 	MUTEX_LOCK(&init_lock);
 	/*verify that this is a valid db*/
 	int not_valid_db = klist_find_element_with_key(handle->volume_desc->open_databases,

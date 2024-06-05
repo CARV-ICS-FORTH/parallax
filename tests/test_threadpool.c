@@ -8,6 +8,7 @@ struct sst;
 int main(void)
 {
 	struct threadpool *thread_pool = threadpool_init();
+
 	struct bg_task *task;
 	struct sst *src_sst = NULL;
 	struct sst *dest_ssts[32] = { NULL };
@@ -17,6 +18,11 @@ int main(void)
 	unsigned dest_ssts_num = 0;
 
 	task = get_empty_task(thread_pool);
+	if (NULL == task) {
+		log_fatal("Failed to get an empty task");
+		return 1;
+	}
+
 	set_compaction_task(task, src_sst, src_level, dest_ssts, dest_level, dest_ssts_num);
 
 	// check if the task was dequeued by the worker thread
@@ -32,7 +38,7 @@ int main(void)
 			log_info("Task was not dequeued by the worker thread");
 		}
 
-		if (count == 0 || success)
+		if (0 == count || success)
 			break;
 
 		success = true;

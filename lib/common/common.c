@@ -1,40 +1,11 @@
+// cppcheck-suppress-file [unreachableCode]
 #define _GNU_SOURCE
 #include "common.h"
-#include <assert.h>
-#include <execinfo.h>
-#include <log.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/wait.h>
-#define TRACE_SIZE 32
-
-/** Prints the stack trace for the last \ref TRACE_SIZE functions on the call_stack.  */
-void stack_trace(void)
-{
-	void *trace[TRACE_SIZE];
-	char **messages = (char **)NULL;
-
-	int trace_size = backtrace(trace, TRACE_SIZE);
-	messages = backtrace_symbols(trace, trace_size);
-	assert(0);
-	log_fatal("<<<<<<<<<[stack trace starts here]>>>>>>>>>");
-
-	//Start index from 2 to ignore stack_trace() and BUG_ON() calls.
-	for (int i = 2; i < trace_size; i++)
-		log_fatal("%s", messages[i]);
-
-	log_fatal("<<<<<<<<<[stack trace ends here]>>>>>>>>>");
-
-	free(messages);
-}
-
-__attribute__((noreturn)) void print_stack_trace(void)
-{
-	stack_trace();
-	_Exit(EXIT_FAILURE);
-}
-
+#include <unistd.h>
 /**
  * @brief It prints the stack trace of the process using gdb. Compared to print_stack_trace, this function is more portable and produces
  * human readable output consistently. https://neugierig.org/software/blog/2012/06/backtraces.html
@@ -72,7 +43,7 @@ void print_stack_trace_with_gdb(int signal)
 		perror("fork() while collecting backtrace:");
 	} else if (child_pid == 0) {
 		char command[1024];
-		snprintf(command, sizeof(command), "gdb -p %d -batch -x /tmp/gdb_commands.txt", dying_pid);
+		snprintf(command, sizeof(command), "gdb -p %d -batch -x gdb_commands.txt", dying_pid);
 		const char *argv[] = { "sh", "-c", command, NULL };
 		execve("/bin/sh", (char **)argv, NULL);
 		_exit(1);
@@ -96,6 +67,7 @@ void backtrace_on_sigsegv(void)
  */
 __attribute__((noreturn)) void *BUG_ON(void)
 {
+	backtrace_on_sigsegv();
 	raise(SIGSEGV);
-	_exit(EXIT_FAILURE);
+	_exit(1);
 }
