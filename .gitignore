@@ -14,3 +14,4 @@ docs/xml
 docs/latex
 *.tmp
 venv/
+CMakeUserPresets.json
