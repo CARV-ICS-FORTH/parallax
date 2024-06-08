@@ -395,3 +395,14 @@ debug_test_level_write_cursors:
         - make test_wcursors_append_segment;cd tests;
         - ctest -R ^test_wcursors_append_segment$
     needs: [debug_build_gcc, debug_build_clang]
+
+debug_test_par_threadpool:
+    image: carvicsforth/arch_carv:latest
+    stage: debug_test
+    <<: *debug_build_commands
+    tags:
+        - kubernetes
+    script:
+        - make test_par_threadpool;cd tests;
+        - ctest -R ^test_par_threadpool$
+    needs: [debug_build_gcc, debug_build_clang]
