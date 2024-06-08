@@ -8,6 +8,35 @@
 #include <stdbool.h>
 #include <stdlib.h>
 
+/*
+                 Steps to insert a task in the task queue
+
+                                           3)Initialize the task for a bg thread to pick
+                                                         ^
+ Thread Pool Queue                                       |
++-----+-----+-----+           +-----+-----+-----+     +--+--+-----+-----+
+|Empty|Empty|Empty+---------->|Rese |Empty|Empty+---->|Compa|Empty|Empty|
+|     |     |     |           |rve  |     |     |     |ction|     |     |
++--+--+-----+-----+           +--+--+-----+-----+     +-----+-----+-----+
+   |                             |
+   v                             v
+   1)Search for an empty cell    2)Reserve it so nobody else can overwrite it
+
+            Steps to pick a task from the task queue
+
+                                           3)When the operation completes reset to empty
+                                                         ^
+ Thread Pool Queue                                       |
++-----+-----+-----+           +-----+-----+-----+     +--+--+-----+-----+
+|Compa|Empty|Empty+---------->|Rese |Empty|Empty+---->|Empty|Empty|Empty|
+|ction|     |     |           |rve  |     |     |     |     |     |     |
++--+--+-----+-----+           +--+--+-----+-----+     +-----+-----+-----+
+   |                             |
+   v                             v
+   1)Find a non                 2)Reserve it so others
+     empty/reserved task          don't do the same job
+ */
+
 void *threadpool_worker(void *arg);
 
 struct threadpool *threadpool_init(void)
