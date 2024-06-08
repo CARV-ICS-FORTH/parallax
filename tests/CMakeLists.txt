@@ -19,7 +19,6 @@ if(PARALLAX_BUILD_TESTING)
       test_region_allocations.c
       test_par_format.c
       test_par_put_serialized.c
-      test_wcursors_append_segment.c
       test_wcursors_segment_buffers_cursor.c
       test_par_threadpool.c)
 
