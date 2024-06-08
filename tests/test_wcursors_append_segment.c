@@ -7,17 +7,15 @@
  *      4. Parse the above segments and use wcursor_append_segment to create a new identical index-leaf segments
  *      5. validate using memcmp that all segments are 1-1 with each other
 */
-#include "allocator/persistent_operations.h"
 #include "arg_parser.h"
-// #include "btree/level_cursor.h"
-#include "btree/level_write_appender.h"
-#include "btree/level_write_cursor.h"
-#include "parallax/structures.h"
+#include <allocator/persistent_operations.h>
 #include <assert.h>
 #include <btree/kv_pairs.h>
+#include <btree/level_write_appender.h>
 #include <db.h>
 #include <log.h>
 #include <parallax/parallax.h>
+#include <parallax/structures.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>

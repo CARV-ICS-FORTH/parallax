@@ -65,8 +65,7 @@ static void generate_random_value(char *value_buffer, uint32_t value_size, uint3
 
 static void populate_from_BDB(struct workload_config_t *workload_config)
 {
-	log_fatal("populate_from_BDB");
-	_exit(EXIT_FAILURE);
+	log_info("populate_from_BDB");
 	DBC *cursorp = NULL;
 	DBT BDB_key = { 0 };
 	DBT BDB_value = { 0 };
