@@ -13,7 +13,7 @@
 // limitations under the License.
 #ifndef COMPACTION_DAEMON_H
 #define COMPACTION_DAEMON_H
-#include "btree.h"
+#include "../btree.h"
 #include <pthread.h>
 #include <stdbool.h>
 struct compaction_daemon;

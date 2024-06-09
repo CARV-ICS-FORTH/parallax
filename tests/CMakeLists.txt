@@ -19,10 +19,14 @@ if(PARALLAX_BUILD_TESTING)
       test_region_allocations.c
       test_par_format.c
       test_par_put_serialized.c
-      test_wcursors_append_segment.c
-      test_wcursors_segment_buffers_cursor.c)
+      test_wcursors_segment_buffers_cursor.c
+      test_par_threadpool.c)
 
-  set_source_files_properties(${LIB_TEST_FILES} COMPILE_FLAGS "-O3")
+  if(${CMAKE_BUILD_TYPE} STREQUAL "Debug")
+    set_source_files_properties(${LIB_TEST_FILES} COMPILE_FLAGS "-O0 -g")
+  else()
+    set_source_files_properties(${LIB_TEST_FILES} COMPILE_FLAGS "-O3")
+  endif()
 
   add_executable(test_index_node test_index_node.c arg_parser.c)
   target_link_libraries(test_index_node "${PROJECT_NAME}")
@@ -37,7 +41,7 @@ if(PARALLAX_BUILD_TESTING)
   target_link_libraries(test_dirty_scans "${PROJECT_NAME}")
 
   add_executable(test_fractal_layout test_fractal_layout.c
-                                     ../lib/btree/fractal_leaf.c)
+                                     ../lib/btree/compaction/fractal_leaf.c)
   target_link_libraries(test_fractal_layout "${PROJECT_NAME}")
 
   find_library(BDB_LIBRARY NAMES libdb.so)
@@ -289,5 +293,11 @@ if(PARALLAX_BUILD_TESTING)
   target_link_libraries(test_par_put_metadata "${PROJECT_NAME}")
   add_parallax_test(NAME test_par_put_metadata COMMAND run_test.sh
                     test_par_put_metadata --num_of_kvs=400000)
+
+  add_executable(test_par_threadpool test_threadpool.c
+                                     ../lib/btree/compaction/threadpool.c)
+  target_link_libraries(test_par_threadpool "${PROJECT_NAME}")
+  add_parallax_test(NAME test_par_threadpool COMMAND run_test.sh
+                    test_par_threadpool)
 
 endif()

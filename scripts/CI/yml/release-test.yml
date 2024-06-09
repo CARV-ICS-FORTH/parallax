@@ -4,7 +4,7 @@
         - mkdir -p build;cd build
         - cmake .. -DCMAKE_BUILD_TYPE="Release" -DBDB_PATH=/BDB/TIRESIAS -DENABLE_FLTO=ON -DTEBIS_FORMAT=ON
 
-release_test_ycsb_larged:
+ycsb_larged:
     image: carvicsforth/arch_carv:latest
     stage: release_test
     <<: *release_build_commands
@@ -15,7 +15,7 @@ release_test_ycsb_larged:
         - ctest -R ^test_larged$
     needs: [release_build_gcc, release_build_clang]
 
-release_test_ycsb_large:
+ycsb_large:
     image: carvicsforth/arch_carv:latest
     stage: release_test
     <<: *release_build_commands
@@ -26,7 +26,7 @@ release_test_ycsb_large:
         - ctest -R ^test_large$
     needs: [release_build_gcc, release_build_clang]
 
-release_test_ycsb_mediumd:
+ycsb_mediumd:
     image: carvicsforth/arch_carv:latest
     stage: release_test
     <<: *release_build_commands
@@ -37,7 +37,7 @@ release_test_ycsb_mediumd:
         - ctest -R ^test_mediumd$
     needs: [release_build_gcc, release_build_clang]
 
-release_test_ycsb_medium:
+ycsb_medium:
     image: carvicsforth/arch_carv:latest
     stage: release_test
     <<: *release_build_commands
@@ -48,7 +48,7 @@ release_test_ycsb_medium:
         - ctest -R ^test_medium$
     needs: [release_build_gcc, release_build_clang]
 
-release_test_ycsb_smalld:
+ycsb_smalld:
     image: carvicsforth/arch_carv:latest
     stage: release_test
     <<: *release_build_commands
@@ -59,7 +59,7 @@ release_test_ycsb_smalld:
         - ctest -R ^test_smalld$
     needs: [release_build_gcc, release_build_clang]
 
-release_test_ycsb_small:
+ycsb_small:
     image: carvicsforth/arch_carv:latest
     stage: release_test
     <<: *release_build_commands
@@ -70,7 +70,7 @@ release_test_ycsb_small:
         - ctest -R ^test_small$
     needs: [release_build_gcc, release_build_clang]
 
-release_test_gc:
+gc:
     image: carvicsforth/arch_carv:latest
     stage: release_test
     <<: *release_build_commands
@@ -81,7 +81,7 @@ release_test_gc:
         - ctest -R ^test_gc$
     needs: [release_build_gcc, release_build_clang]
 
-release_test_dirty_scans_small:
+dirty_scans_small:
     image: carvicsforth/arch_carv:latest
     stage: release_test
     <<: *release_build_commands
@@ -92,7 +92,7 @@ release_test_dirty_scans_small:
         - ctest -R ^test_dirty_scans_small$
     needs: [release_build_gcc, release_build_clang]
 
-release_test_dirty_scans_medium:
+dirty_scans_medium:
     image: carvicsforth/arch_carv:latest
     stage: release_test
     <<: *release_build_commands
@@ -103,7 +103,7 @@ release_test_dirty_scans_medium:
         - ctest -R ^test_dirty_scans_medium$
     needs: [release_build_gcc, release_build_clang]
 
-release_test_dirty_scans_large:
+dirty_scans_large:
     image: carvicsforth/arch_carv:latest
     stage: release_test
     <<: *release_build_commands
@@ -114,7 +114,7 @@ release_test_dirty_scans_large:
         - ctest -R ^test_dirty_scans_large$
     needs: [release_build_gcc, release_build_clang]
 
-release_test_dirty_scans_smalld:
+dirty_scans_smalld:
     image: carvicsforth/arch_carv:latest
     stage: release_test
     <<: *release_build_commands
@@ -125,7 +125,7 @@ release_test_dirty_scans_smalld:
         - ctest -R ^test_dirty_scans_smalld$
     needs: [release_build_gcc, release_build_clang]
 
-release_test_dirty_scans_smalld_greater:
+dirty_scans_smalld_greater:
     image: carvicsforth/arch_carv:latest
     stage: release_test
     <<: *release_build_commands
@@ -136,7 +136,7 @@ release_test_dirty_scans_smalld_greater:
         - ctest -R ^test_dirty_scans_sd_greater$
     needs: [release_build_gcc, release_build_clang]
 
-release_test_dirty_scans_mediumd:
+dirty_scans_mediumd:
     image: carvicsforth/arch_carv:latest
     stage: release_test
     <<: *release_build_commands
@@ -147,7 +147,7 @@ release_test_dirty_scans_mediumd:
         - ctest -R ^test_dirty_scans_mediumd$
     needs: [release_build_gcc, release_build_clang]
 
-release_test_dirty_scans_larged:
+dirty_scans_larged:
     image: carvicsforth/arch_carv:latest
     stage: release_test
     <<: *release_build_commands
@@ -158,7 +158,7 @@ release_test_dirty_scans_larged:
         - ctest -R ^test_dirty_scans_larged$
     needs: [release_build_gcc, release_build_clang]
 
-release_test_dirty_scans_smallp:
+dirty_scans_smallp:
     image: carvicsforth/arch_carv:latest
     stage: release_test
     <<: *release_build_commands
@@ -169,7 +169,7 @@ release_test_dirty_scans_smallp:
         - ctest -R ^test_dirty_scans_smallp$
     needs: [release_build_gcc, release_build_clang]
 
-release_test_dirty_scans_mediump:
+dirty_scans_mediump:
     image: carvicsforth/arch_carv:latest
     stage: release_test
     <<: *release_build_commands
@@ -180,7 +180,7 @@ release_test_dirty_scans_mediump:
         - ctest -R ^test_dirty_scans_mediump$
     needs: [release_build_gcc, release_build_clang]
 
-release_test_dirty_scans_largep:
+dirty_scans_largep:
     image: carvicsforth/arch_carv:latest
     stage: release_test
     <<: *release_build_commands
@@ -191,7 +191,7 @@ release_test_dirty_scans_largep:
         - ctest -R ^test_dirty_scans_largep$
     needs: [release_build_gcc, release_build_clang]
 
-release_test_dirty_scans_smalldp:
+dirty_scans_smalldp:
     image: carvicsforth/arch_carv:latest
     stage: release_test
     <<: *release_build_commands
@@ -202,7 +202,7 @@ release_test_dirty_scans_smalldp:
         - ctest -R ^test_dirty_scans_smalldp$
     needs: [release_build_gcc, release_build_clang]
 
-release_test_dirty_scans_mediumdp:
+dirty_scans_mediumdp:
     image: carvicsforth/arch_carv:latest
     stage: release_test
     <<: *release_build_commands
@@ -213,7 +213,7 @@ release_test_dirty_scans_mediumdp:
         - ctest -R ^test_dirty_scans_mediumdp$
     needs: [release_build_gcc, release_build_clang]
 
-release_test_dirty_scans_largedp:
+dirty_scans_largedp:
     image: carvicsforth/arch_carv:latest
     stage: release_test
     <<: *release_build_commands
@@ -246,7 +246,7 @@ release_leaf_root_delete_get_scan:
         - ctest -R ^test_leaf_root_delete_get_scan$
     needs: [release_build_gcc, release_build_clang]
 
-release_test_region_log:
+region_log:
     image: carvicsforth/arch_carv:latest
     stage: release_test
     <<: *release_build_commands
@@ -257,7 +257,7 @@ release_test_region_log:
         - ctest -R ^test_region_log$
     needs: [release_build_gcc, release_build_clang]
 
-release_test_par_format:
+par_format:
     image: carvicsforth/arch_carv:latest
     stage: release_test
     <<: *release_build_commands
@@ -268,7 +268,7 @@ release_test_par_format:
         - ctest -R ^test_par_format$
     needs: [release_build_gcc, release_build_clang]
 
-release_test_par_put_serialized:
+par_put_serialized:
     image: carvicsforth/arch_carv:latest
     stage: release_test
     <<: *release_build_commands
@@ -279,7 +279,7 @@ release_test_par_put_serialized:
         - ctest -R ^test_par_put_serialized$
     needs: [release_build_gcc, release_build_clang]
 
-release_test_medium:
+medium:
     image: carvicsforth/arch_carv:latest
     stage: release_test
     <<: *release_build_commands
@@ -290,7 +290,7 @@ release_test_medium:
         - ctest -R ^test_medium$
     needs: [release_build_gcc, release_build_clang]
 
-release_test_mixes_99_small_1_medium:
+mixes_99_small_1_medium:
     image: carvicsforth/arch_carv:latest
     stage: release_test
     <<: *release_build_commands
@@ -301,7 +301,7 @@ release_test_mixes_99_small_1_medium:
         - ctest -R ^test_mixes_99_small_1_medium$
     needs: [release_build_gcc, release_build_clang]
 
-release_test_mixes_45_small_50_medium_5_big:
+mixes_45_small_50_medium_5_big:
     image: carvicsforth/arch_carv:latest
     stage: release_test
     <<: *release_build_commands
@@ -334,7 +334,7 @@ release_tiresias:
         - ctest -R ^tiresias$
     needs: [release_build_gcc, release_build_clang]
 
-release_test_par_put_metadata:
+par_put_metadata:
     image: carvicsforth/arch_carv:latest
     stage: release_test
     <<: *release_build_commands
@@ -345,13 +345,13 @@ release_test_par_put_metadata:
         - ctest -R ^test_par_put_metadata$
     needs: [release_build_gcc, release_build_clang]
 
-release_test_level_write_cursors:
+par_threadpool:
     image: carvicsforth/arch_carv:latest
     stage: release_test
     <<: *release_build_commands
     tags:
         - kubernetes
     script:
-        - make test_wcursors_append_segment;cd tests;
-        - ctest -R ^test_wcursors_append_segment$
+        - make test_par_threadpool;cd tests;
+        - ctest -R ^test_par_threadpool$
     needs: [release_build_gcc, release_build_clang]

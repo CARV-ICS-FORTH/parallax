@@ -14,15 +14,15 @@
 
 #define _GNU_SOURCE
 #include "compaction_daemon.h"
-#include "../allocator/device_structures.h"
-#include "../allocator/log_structures.h"
-#include "../allocator/persistent_operations.h"
-#include "../allocator/region_log.h"
-#include "../common/common.h"
-#include "../lib/parallax_callbacks/parallax_callbacks.h"
-#include "btree.h"
+#include "../../allocator/device_structures.h"
+#include "../../allocator/log_structures.h"
+#include "../../allocator/persistent_operations.h"
+#include "../../allocator/region_log.h"
+#include "../../common/common.h"
+#include "../../parallax_callbacks/parallax_callbacks.h"
+#include "../btree.h"
+#include "../conf.h"
 #include "compaction_worker.h"
-#include "conf.h"
 #include "device_level.h"
 #include "parallax/structures.h"
 #include <assert.h>

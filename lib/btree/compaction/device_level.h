@@ -1,9 +1,9 @@
 #ifndef DEVICE_LEVEL_H
 #define DEVICE_LEVEL_H
-#include "btree.h"
-#include "btree_node.h"
-#include "index_node.h"
-#include "kv_pairs.h"
+#include "../btree.h"
+#include "../btree_node.h"
+#include "../index_node.h"
+#include "../kv_pairs.h"
 #include <stdbool.h>
 #include <stdint.h>
 struct level_compaction_scanner;

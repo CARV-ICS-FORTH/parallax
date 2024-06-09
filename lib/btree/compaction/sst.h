@@ -1,6 +1,6 @@
 #ifndef SST_H
 #define SST_H
-#include "btree.h"
+#include "../btree.h"
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>

@@ -12,8 +12,8 @@
 // limitations under the License.
 #include "persistent_operations.h"
 #include "../btree/btree.h"
+#include "../btree/compaction/device_level.h"
 #include "../btree/conf.h"
-#include "../btree/device_level.h"
 #include "../btree/gc.h"
 #include "../btree/key_splice.h"
 #include "../btree/kv_pairs.h"
