@@ -11,7 +11,13 @@ release_build_clang:
     stage: release_build
     script:
         - mkdir -p build;cd build
-        - cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DTREAT_WARNINGS_AS_ERRORS=True -DDISABLE_LOGGING=ON -DTEBIS_FORMAT=ON
-          -DENABLE_FLTO=ON
+        - cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DTREAT_WARNINGS_AS_ERRORS=True -DDISABLE_LOGGING=ON
+          -DTEBIS_FORMAT=ON -DENABLE_FLTO=ON
         - make all
     needs: []
+
+# build_docker:
+#     stage: release_build
+#     script:
+#         - docker build .
+#     needs: [debug_build_gcc, debug_build_clang, release_build_gcc, release_build_clang]
