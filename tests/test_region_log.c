@@ -26,7 +26,7 @@
 #include <pthread.h>
 #include <stdlib.h>
 #include <unistd.h>
-#define REGL_TRANSACTION_SIZE (3457)
+#define REGL_TRANSACTION_SIZE (2048)
 #define REGL_TRANSACTION_NUM (512)
 #define GARBAGE_BYTES 128
 
@@ -51,10 +51,11 @@ static void *rul_worker(void *args)
 			log_entry.txn_id = txn_id;
 			if (0 == j % 3) {
 				dev_offt = mem_allocate(db_desc->db_volume, SEGMENT_SIZE);
-        if(0 == dev_offt){
-          log_fatal("Ok device is out space no worries increase the size to pass the test");
-          _exit(EXIT_FAILURE);
-        }
+				if (0 == dev_offt) {
+					log_fatal(
+						"Ok device is out space no worries increase the size to pass the test");
+					_exit(EXIT_FAILURE);
+				}
 				log_entry.dev_offt = dev_offt;
 				log_entry.op_type = REGL_LARGE_LOG_ALLOCATE;
 			} else if (1 == j % 3) {
