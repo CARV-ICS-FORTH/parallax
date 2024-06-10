@@ -15,9 +15,3 @@ release_build_clang:
           -DTEBIS_FORMAT=ON -DENABLE_FLTO=ON
         - make all
     needs: []
-
-# build_docker:
-#     stage: release_build
-#     script:
-#         - docker build .
-#     needs: [debug_build_gcc, debug_build_clang, release_build_gcc, release_build_clang]
