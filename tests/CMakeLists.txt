@@ -58,8 +58,19 @@ if(PARALLAX_BUILD_TESTING)
       tiresias
       --num_of_kvs=1000000
       --BDB_file=${BDB_PATH})
+
     add_executable(manto manto.c)
     target_link_libraries(manto "${PROJECT_NAME}" ${BDB_LIBRARY} ${ART_LIB})
+    add_parallax_test(
+      NAME
+      manto
+      COMMAND
+      run_test.sh
+      manto
+      --num_of_kvs=16354
+      --BDB_file=${BDB_PATH}
+      --num_of_ssts=12)
+
   endif()
 
   add_parallax_test(NAME test_index_node COMMAND run_test.sh test_index_node)
