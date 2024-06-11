@@ -25,6 +25,19 @@ debug_build_centos:
         - make all
     needs: []
 
+debug_build_docker:
+    stage: debug_build
+    image: docker
+    variables:
+        DOCKER_HOST: tcp://docker:2375
+        DOCKER_TLS_CERTDIR: ''
+    services:
+        - docker:dind
+    tags:
+        - dind
+    script:
+        - docker build .
+
 pre-merge:
     stage: debug_build
     script:

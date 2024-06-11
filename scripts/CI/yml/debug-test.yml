@@ -4,7 +4,7 @@
         - mkdir -p build;cd build
         - cmake .. -DCMAKE_BUILD_TYPE="Debug" -DBDB_PATH=/BDB/TIRESIAS -DTEBIS_FORMAT=ON
 
-test_options:
+debug_test_options:
     image: carvicsforth/ubuntu_carv:latest
     stage: debug_test
     <<: *debug_build_commands
@@ -13,7 +13,7 @@ test_options:
         - ./test_options
     needs: [debug_build_gcc, debug_build_clang]
 
-test_categories:
+debug_test_categories:
     image: carvicsforth/ubuntu_carv:latest
     stage: debug_test
     <<: *debug_build_commands
@@ -22,7 +22,7 @@ test_categories:
         - ./test_categories
     needs: [debug_build_gcc, debug_build_clang]
 
-test_sanitizers:
+debug_test_sanitizers:
     image: carvicsforth/ubuntu_carv:latest
     stage: debug_test
     script:
@@ -32,7 +32,7 @@ test_sanitizers:
         - ./test_sanitizers.sh
     needs: [debug_build_gcc, debug_build_clang]
 
-test_optional_logging:
+debug_test_optional_logging:
     image: carvicsforth/arch_carv:latest
     stage: debug_test
     script:
@@ -44,7 +44,7 @@ test_optional_logging:
         - cat output | wc -l | grep 0
     needs: [debug_build_gcc, debug_build_clang]
 
-ycsb_larged:
+debug_ycsb_larged:
     image: carvicsforth/arch_carv:latest
     stage: debug_test
     <<: *debug_build_commands
@@ -55,7 +55,7 @@ ycsb_larged:
         - ctest -R ^test_larged$
     needs: [debug_build_gcc, debug_build_clang]
 
-ycsb_large:
+debug_ycsb_large:
     image: carvicsforth/arch_carv:latest
     stage: debug_test
     <<: *debug_build_commands
@@ -66,7 +66,7 @@ ycsb_large:
         - ctest -R ^test_large$
     needs: [debug_build_gcc, debug_build_clang]
 
-ycsb_mediumd:
+debug_ycsb_mediumd:
     image: carvicsforth/arch_carv:latest
     stage: debug_test
     <<: *debug_build_commands
@@ -77,7 +77,7 @@ ycsb_mediumd:
         - ctest -R ^test_mediumd$
     needs: [debug_build_gcc, debug_build_clang]
 
-ycsb_medium:
+debug_ycsb_medium:
     image: carvicsforth/arch_carv:latest
     stage: debug_test
     <<: *debug_build_commands
@@ -88,7 +88,7 @@ ycsb_medium:
         - ctest -R ^test_medium$
     needs: [debug_build_gcc, debug_build_clang]
 
-ycsb_smalld:
+debug_ycsb_smalld:
     image: carvicsforth/arch_carv:latest
     stage: debug_test
     <<: *debug_build_commands
@@ -99,7 +99,7 @@ ycsb_smalld:
         - ctest -R ^test_smalld$
     needs: [debug_build_gcc, debug_build_clang]
 
-ycsb_small:
+debug_ycsb_small:
     image: carvicsforth/arch_carv:latest
     stage: debug_test
     <<: *debug_build_commands
@@ -110,7 +110,7 @@ ycsb_small:
         - ctest -R ^test_small$
     needs: [debug_build_gcc, debug_build_clang]
 
-gc:
+debug_gc:
     image: carvicsforth/arch_carv:latest
     stage: debug_test
     <<: *debug_build_commands
@@ -121,7 +121,7 @@ gc:
         - ctest -R ^test_gc$
     needs: [debug_build_gcc, debug_build_clang]
 
-dirty_scans_small:
+debug_dirty_scans_small:
     image: carvicsforth/arch_carv:latest
     stage: debug_test
     <<: *debug_build_commands
@@ -132,7 +132,7 @@ dirty_scans_small:
         - ctest -R ^test_dirty_scans_small$
     needs: [debug_build_gcc, debug_build_clang]
 
-dirty_scans_medium:
+debug_dirty_scans_medium:
     image: carvicsforth/arch_carv:latest
     stage: debug_test
     <<: *debug_build_commands
@@ -143,7 +143,7 @@ dirty_scans_medium:
         - ctest -R ^test_dirty_scans_medium$
     needs: [debug_build_gcc, debug_build_clang]
 
-dirty_scans_large:
+debug_dirty_scans_large:
     image: carvicsforth/arch_carv:latest
     stage: debug_test
     <<: *debug_build_commands
@@ -154,7 +154,7 @@ dirty_scans_large:
         - ctest -R ^test_dirty_scans_large$
     needs: [debug_build_gcc, debug_build_clang]
 
-dirty_scans_smalld:
+debug_dirty_scans_smalld:
     image: carvicsforth/arch_carv:latest
     stage: debug_test
     <<: *debug_build_commands
@@ -165,7 +165,7 @@ dirty_scans_smalld:
         - ctest -R ^test_dirty_scans_smalld$
     needs: [debug_build_gcc, debug_build_clang]
 
-dirty_scans_smalld_greater:
+debug_dirty_scans_smalld_greater:
     image: carvicsforth/arch_carv:latest
     stage: debug_test
     <<: *debug_build_commands
@@ -176,7 +176,7 @@ dirty_scans_smalld_greater:
         - ctest -R ^test_dirty_scans_sd_greater$
     needs: [debug_build_gcc, debug_build_clang]
 
-dirty_scans_mediumd:
+debug_dirty_scans_mediumd:
     image: carvicsforth/arch_carv:latest
     stage: debug_test
     <<: *debug_build_commands
@@ -187,7 +187,7 @@ dirty_scans_mediumd:
         - ctest -R ^test_dirty_scans_mediumd$
     needs: [debug_build_gcc, debug_build_clang]
 
-dirty_scans_larged:
+debug_dirty_scans_larged:
     image: carvicsforth/arch_carv:latest
     stage: debug_test
     <<: *debug_build_commands
@@ -198,7 +198,7 @@ dirty_scans_larged:
         - ctest -R ^test_dirty_scans_larged$
     needs: [debug_build_gcc, debug_build_clang]
 
-dirty_scans_smallp:
+debug_dirty_scans_smallp:
     image: carvicsforth/arch_carv:latest
     stage: debug_test
     <<: *debug_build_commands
@@ -209,7 +209,7 @@ dirty_scans_smallp:
         - ctest -R ^test_dirty_scans_smallp$
     needs: [debug_build_gcc, debug_build_clang]
 
-dirty_scans_mediump:
+debug_dirty_scans_mediump:
     image: carvicsforth/arch_carv:latest
     stage: debug_test
     <<: *debug_build_commands
@@ -220,7 +220,7 @@ dirty_scans_mediump:
         - ctest -R ^test_dirty_scans_mediump$
     needs: [debug_build_gcc, debug_build_clang]
 
-dirty_scans_largep:
+debug_dirty_scans_largep:
     image: carvicsforth/arch_carv:latest
     stage: debug_test
     <<: *debug_build_commands
@@ -231,7 +231,7 @@ dirty_scans_largep:
         - ctest -R ^test_dirty_scans_largep$
     needs: [debug_build_gcc, debug_build_clang]
 
-dirty_scans_smalldp:
+debug_dirty_scans_smalldp:
     image: carvicsforth/arch_carv:latest
     stage: debug_test
     <<: *debug_build_commands
@@ -242,7 +242,7 @@ dirty_scans_smalldp:
         - ctest -R ^test_dirty_scans_smalldp$
     needs: [debug_build_gcc, debug_build_clang]
 
-dirty_scans_mediumdp:
+debug_dirty_scans_mediumdp:
     image: carvicsforth/arch_carv:latest
     stage: debug_test
     <<: *debug_build_commands
@@ -253,7 +253,7 @@ dirty_scans_mediumdp:
         - ctest -R ^test_dirty_scans_mediumdp$
     needs: [debug_build_gcc, debug_build_clang]
 
-dirty_scans_largedp:
+debug_dirty_scans_largedp:
     image: carvicsforth/arch_carv:latest
     stage: debug_test
     <<: *debug_build_commands
@@ -264,7 +264,7 @@ dirty_scans_largedp:
         - ctest -R ^test_dirty_scans_largedp$
     needs: [debug_build_gcc, debug_build_clang]
 
-debug_simple_test_delete:
+debug_debug_simple_test_delete:
     image: carvicsforth/arch_carv:latest
     stage: debug_test
     <<: *debug_build_commands
@@ -286,7 +286,7 @@ debug_leaf_root_delete_get_scan:
         - ctest -R ^test_leaf_root_delete_get_scan$
     needs: [debug_build_gcc, debug_build_clang]
 
-region_log:
+debug_region_log:
     image: carvicsforth/arch_carv:latest
     stage: debug_test
     <<: *debug_build_commands
@@ -297,7 +297,7 @@ region_log:
         - ctest -R ^test_region_log$
     needs: [debug_build_gcc, debug_build_clang]
 
-par_format:
+debug_par_format:
     image: carvicsforth/arch_carv:latest
     stage: debug_test
     <<: *debug_build_commands
@@ -308,7 +308,7 @@ par_format:
         - ctest -R ^test_par_format$
     needs: [debug_build_gcc, debug_build_clang]
 
-par_put_serialized:
+debug_par_put_serialized:
     image: carvicsforth/arch_carv:latest
     stage: debug_test
     <<: *debug_build_commands
@@ -319,7 +319,7 @@ par_put_serialized:
         - ctest -R ^test_par_put_serialized$
     needs: [debug_build_gcc, debug_build_clang]
 
-medium:
+debug_medium:
     image: carvicsforth/arch_carv:latest
     stage: debug_test
     <<: *debug_build_commands
@@ -330,7 +330,7 @@ medium:
         - ctest -R ^test_medium$
     needs: [debug_build_gcc, debug_build_clang]
 
-mixes_99_small_1_medium:
+debug_mixes_99_small_1_medium:
     image: carvicsforth/arch_carv:latest
     stage: debug_test
     <<: *debug_build_commands
@@ -341,7 +341,7 @@ mixes_99_small_1_medium:
         - ctest -R ^test_mixes_99_small_1_medium$
     needs: [debug_build_gcc, debug_build_clang]
 
-mixes_45_small_50_medium_5_big:
+debug_mixes_45_small_50_medium_5_big:
     image: carvicsforth/arch_carv:latest
     stage: debug_test
     <<: *debug_build_commands
@@ -374,7 +374,7 @@ debug_tiresias:
         - ctest -R ^tiresias$
     needs: [debug_build_gcc, debug_build_clang]
 
-par_put_metadata:
+debug_par_put_metadata:
     image: carvicsforth/arch_carv:latest
     stage: debug_test
     <<: *debug_build_commands
@@ -385,7 +385,7 @@ par_put_metadata:
         - ctest -R ^test_par_put_metadata$
     needs: [debug_build_gcc, debug_build_clang]
 
-par_threadpool:
+debug_par_threadpool:
     image: carvicsforth/arch_carv:latest
     stage: debug_test
     <<: *debug_build_commands
