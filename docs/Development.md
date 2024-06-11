@@ -2,22 +2,9 @@
 
 ## Development in your local machine
 
-The easiest way to setup an OS agnostic environment for Parallax is to use a conda/mamba environment.
-This approach lifts the limitations such as having `sudo` on the machine you want to run Parallax.
-
-First you need to install `micromamba`:
-
-	wget -qO- https://micro.mamba.pm/api/micromamba/linux-64/latest | tar -xvj bin/micromamba
-
-Then we need to initialize our environment:
-	
-	~/bin/micromamba shell init
-	source ~/.bashrc or ~/.zshrc based on your shell
-
-
-Finally, we will use `micromamba` to install our dependencies:
-
-	micromamba install --file condaenv
+If you are developing in your local machine you need to install the dependencies in Build.md. If the OS you are using is old e.g. Centos you
+can either use the scripts in the `scripts/devel-tools` directory or use/modify the Dockerfile we provide to build a container with the
+necessary tools you need.
 
 ## Development in cluster
 
