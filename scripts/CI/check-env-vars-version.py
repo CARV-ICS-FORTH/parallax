@@ -5,7 +5,7 @@ with open("scripts/devel-tools/env-vars.sh", "r") as env_vars:
     env_vars_lines = env_vars.readlines()[-6:]
 
 with open("scripts/devel-tools/build-gcc.sh", "r") as build_gcc:
-    gcc_version = build_gcc.readlines()[2].split("=")[1].strip()
+    gcc_version = build_gcc.readlines()[3].split("=")[1].strip()
 
 for line in env_vars_lines:
     if gcc_version not in line:
