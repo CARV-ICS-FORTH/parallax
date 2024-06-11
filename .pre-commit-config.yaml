@@ -42,7 +42,7 @@ repos:
           - id: black
 
     - repo: https://github.com/RobertCraigie/pyright-python
-      rev: v1.1.365
+      rev: v1.1.366
       hooks:
           - id: pyright
 

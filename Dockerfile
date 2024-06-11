@@ -3,9 +3,11 @@ FROM archlinux:latest AS temp
 ARG NVME0=/tmp
 ARG CI_JOB_ID=test
 USER root
-RUN yes | pacman -Sy archlinux-keyring openssl openssl-1.1 --noconfirm
-RUN yes | pacman -S reflector --noconfirm
-RUN reflector --sort rate --country Greece,Italy,Uk,Fr -l 8 -f 8 > /etc/pacman.d/mirrorlist
+RUN rm /etc/pacman.d/mirrorlist
+RUN echo 'Server = https://mirror.osbeck.com/archlinux/$repo/os/$arch' >> /etc/pacman.d/mirrorlist
+RUN echo 'Server = http://mirror.sunred.org/archlinux/$repo/os/$arch' >> /etc/pacman.d/mirrorlist
+RUN echo 'Server = http://md.mirrors.hacktegic.com/archlinux/$repo/os/$arch' >> /etc/pacman.d/mirrorlist
+RUN yes | pacman -Syyu archlinux-keyring openssl openssl-1.1 --noconfirm
 RUN pacman-key --init
 RUN pacman-key --populate archlinux
 RUN yes | pacman -Su --noconfirm
