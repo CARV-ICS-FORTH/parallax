@@ -33,7 +33,6 @@ set(LIB_C_SOURCE_FILES
     btree/index_node.c
     btree/compaction/compaction_daemon.c
     btree/compaction/compaction_worker.c
-    btree/level_write_appender.c
     btree/compaction/bloom_filter.c
     btree/dynamic_leaf.c
     btree/compaction/device_level.c

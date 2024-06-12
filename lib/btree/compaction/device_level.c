@@ -91,7 +91,7 @@ struct device_level *level_create_fresh(uint32_t level_id, uint32_t l0_size, uin
 	// frac_leaf_register(&level->level_leaf_api);
 	// frac_idx_register(&level->level_index_api);
 	for (int i = 0; i < NUM_TREES_PER_LEVEL; i++)
-		level->guard_table[i] = minos_init();
+		level->guard_table[i] = minos_init(false);
 
 	return level;
 }
@@ -670,7 +670,7 @@ bool level_add_ssts(struct device_level *level, int num_ssts, struct sst_meta *s
 	level_enter_as_writer(level);
 
 	if (level->guard_table[tree_id] == NULL)
-		level->guard_table[tree_id] = minos_init();
+		level->guard_table[tree_id] = minos_init(false);
 
 	for (int i = 0; i < num_ssts; i++) {
 		struct key_splice *first = sst_meta_get_first_guard(ssts[i]);

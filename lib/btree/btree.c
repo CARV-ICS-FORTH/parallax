@@ -320,7 +320,7 @@ static bool add_sst_callback(void *value, void *cnxt)
 
 static bool recover_mem_guards(struct db_descriptor *db_desc)
 {
-	struct minos *root = minos_init();
+	struct minos *root = minos_init(false);
 	regl_replay_mem_guards(db_desc->db_volume, db_desc->db_superblock, process_mem_guard, root);
 	minos_free(root, add_sst_callback, db_desc);
 	return true;

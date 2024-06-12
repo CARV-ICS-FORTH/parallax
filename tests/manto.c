@@ -173,7 +173,11 @@ bool verify_scanner(struct workload_config *workload, uint8_t level_id, int32_t 
 		_exit(EXIT_FAILURE);
 	}
 	struct level_scanner_dev *scanner = level_scanner_dev_init(workload->handle, level_id, tree_id);
-	level_scanner_dev_seek(scanner, NULL, false);
+	char buffer[512] = { 0 };
+	bool malloced = false;
+	struct key_splice *pivot = key_splice_create_smallest(buffer, sizeof(buffer), &malloced);
+
+	level_scanner_dev_seek(scanner, pivot, false);
 	// Iterate over the keys
 	uint32_t num_kv_pairs = 0;
 	while (cursor->c_get(cursor, &key, &value, DB_NEXT) == 0 && num_kv_pairs < workload->total_keys) {
@@ -301,7 +305,7 @@ bool verify_keys(struct workload_config *workload, struct device_level *level, i
 			_exit(EXIT_FAILURE);
 		}
 		//Now check the value
-		if (value.size != get_op.size) {
+		if (value.size != (uint32_t)get_op.size) {
 			log_fatal("Values mismatch expected: %u got: %u", value.size, get_op.size);
 			_exit(EXIT_FAILURE);
 		}
@@ -328,36 +332,72 @@ bool verify_keys(struct workload_config *workload, struct device_level *level, i
 	return true;
 }
 
+void print_usage(const char *prog_name)
+{
+	log_fatal(
+		"Usage: %s --num_of_kvs=<number> --BDB_file=<path_to_file> --num_of_ssts=<number> --file=<path_to_some_file>\n",
+		prog_name);
+	_exit(EXIT_FAILURE);
+}
+
 int main(int argc, char *argv[])
 {
-	log_info("Args are: %d", argc);
-	if (argc != 9 || strcmp(argv[1], "--volume_name") != 0 || strcmp(argv[3], "--num_ssts") != 0 ||
-	    strcmp(argv[5], "--num_of_kvs") != 0 || strcmp(argv[7], "--bdb_path") != 0) {
-		log_warn("Usage: %s --volume_name <name> --num_ssts <number> --num_of_kvs <number> --bdb_path <path>\n",
-			 argv[0]);
-		return 1; // Exit with an error code
+	if (argc != 5) {
+		print_usage(argv[0]);
+		_exit(EXIT_FAILURE);
 	}
 
+	if (strncmp(argv[1], "--num_of_kvs=", strlen("--num_of_kvs=")) != 0)
+		print_usage(argv[0]);
+
+	if (strncmp(argv[2], "--BDB_file=", strlen("--BDB_file=")) != 0)
+		print_usage(argv[0]);
+
+	if (strncmp(argv[3], "--num_of_ssts=", strlen("--num_of_ssts=")) != 0)
+		print_usage(argv[0]);
+
+	if (strncmp(argv[4], "--file=", strlen("--file=")) != 0)
+		print_usage(argv[0]);
+
+	char *num_of_kvs_str = argv[1] + strlen("--num_of_kvs=");
+	char *bdb_path = argv[2] + strlen("--BDB_file=");
+	char *num_of_ssts_str = argv[3] + strlen("--num_of_ssts=");
+	char *file_path = argv[4] + strlen("--file=");
+
+	int num_of_kvs = atoi(num_of_kvs_str);
+	if (num_of_kvs <= 0) {
+		log_fatal("Error: --num_of_kvs must be a positive integer");
+		_exit(EXIT_FAILURE);
+	}
+
+	int num_of_ssts = atoi(num_of_ssts_str);
+	if (num_of_ssts <= 0) {
+		log_fatal("Error: --num_of_kvs must be a positive integer");
+		_exit(EXIT_FAILURE);
+	}
+
+	log_info("Number of KVs: %d\n", num_of_kvs);
+	log_info("BDB Path: %s\n", bdb_path);
+	log_info("Number of SSTs: %d\n", num_of_ssts);
+	log_info("File Path: %s\n", file_path);
+
 	// Copy values from command-line arguments
-	char volume_name[MAX_VOLUME_NAME] = { 0 };
+	char parallax_volume[MAX_VOLUME_NAME] = { 0 };
 	char truth_db[MAX_VOLUME_NAME] = { 0 };
 
-	strncpy(volume_name, argv[2], sizeof(volume_name) - 1);
-	// Convert num_ssts from string to int
-	int num_of_ssts = strtol(argv[4], NULL, 10);
-	// Convert num_of_kvs from string to long
-	long num_of_kvs = strtol(argv[6], NULL, 10);
+	memcpy(parallax_volume, file_path, sizeof(parallax_volume) - 1);
 	// Copy bdb_path
-	strncpy(truth_db, argv[8], sizeof(truth_db) - 1);
-	strncpy(volume_name, argv[2], sizeof(truth_db) - 1);
+	memcpy(truth_db, bdb_path, strlen(bdb_path));
+	memcpy(&truth_db[strlen(bdb_path)], "/", 1);
+	memcpy(&truth_db[strlen(bdb_path) + 1], "truth.db", strlen("truth.db"));
 
 	log_info("BerkeleyDB path is %s", truth_db);
 	/*First open source of truth BerkeleyDB database*/
 	DB *truthDB = { 0 };
 	int ret = db_create(&truthDB, NULL, 0);
 	if (ret) {
-		truthDB->err(truthDB, ret, "Database open failed: %s", "truth.db");
-		_Exit(EXIT_FAILURE);
+		truthDB->err(truthDB, ret, "Database create failed reason %s", db_strerror(ret));
+		_exit(EXIT_FAILURE);
 	}
 
 	bool truth_db_exists = false;
@@ -377,7 +417,7 @@ int main(int argc, char *argv[])
 	}
 	//open ParallaxDB
 	par_db_options db_options = { 0 };
-	db_options.volume_name = volume_name;
+	db_options.volume_name = parallax_volume;
 	const char *error_message = par_format(db_options.volume_name, 16);
 	if (error_message) {
 		log_fatal("Error message from par_format: %s", error_message);
@@ -403,12 +443,26 @@ int main(int argc, char *argv[])
 	log_debug("num_of_ssts = %u", num_of_ssts);
 
 	struct sst_meta *ssts[MAX_SSTS] = { 0 };
+	log_info("Creating ssts...");
 	create_ssts(&workload, num_of_ssts, ssts);
-	populate_mem_guards(internal_db->db_desc->dev_levels[1], MAX_SSTS, ssts);
+	log_info("Creating ssts...DONE");
 
+	log_info("Populating memory guards...");
+	populate_mem_guards(internal_db->db_desc->dev_levels[1], MAX_SSTS, ssts);
+	log_info("Populating memory guards...DONE");
+
+	log_info("Verifying keys...");
 	verify_keys(&workload, internal_db->db_desc->dev_levels[1], 1);
+	log_info("Verifying keys...DONE");
+
+	log_info("Verifying scanner...");
 	verify_scanner(&workload, 1, 1);
+	log_info("Verifying scanner...DONE");
+
+	log_info("Verifying compaction scanner...");
 	verify_comp_scanner(&workload, 1, 1);
+	log_info("Verifying compaction scanner...DONE");
+
 	level_free_space(internal_db->db_desc->dev_levels[1], 1, internal_db->db_desc, workload.txn_id);
 	regl_flush_txn(internal_db->db_desc, workload.txn_id);
 	regl_apply_txn_buf_freeops_and_destroy(internal_db->db_desc, workload.txn_id);
