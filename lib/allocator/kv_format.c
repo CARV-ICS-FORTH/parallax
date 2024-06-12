@@ -28,6 +28,7 @@
 #include <string.h>
 #include <unistd.h>
 
+#define KVF_FULL_NAME_SIZE (256)
 /* TODO: check if there is a point to have this function. */
 static void *kvf_posix_calloc(size_t size)
 {
@@ -159,7 +160,6 @@ static void kvf_delete_bloom_filter_files(char *device_name)
 	struct dirent *pDirent = NULL;
 
 	size_t dir_name_size = strlen(dir_name);
-#define KVF_FULL_NAME_SIZE (256)
 
 	while ((pDirent = readdir(directory)) != NULL) {
 		// printf("[%s]\n", pDirent->d_name);

@@ -638,8 +638,8 @@ static void init_pos_log_cursor_in_segment(const struct db_descriptor *db_desc, 
 		return;
 	}
 	cursor->valid = 1;
-	char error_message[256];
-	snprintf(error_message, 256, "Failed to read dev offt: %lu",
+	char error_message[MAX_ERROR_MESSAGE_SIZE];
+	snprintf(error_message, MAX_ERROR_MESSAGE_SIZE, "Failed to read dev offt: %lu",
 		 cursor->log_segments->segments[cursor->log_segments->entry_id]);
 	read_dev_offt_into_buffer(cursor->segment_in_mem_buffer, 0, cursor->segment_in_mem_size,
 				  cursor->log_segments->segments[cursor->log_segments->entry_id],
@@ -738,8 +738,8 @@ static void get_next_log_segment(struct log_cursor *cursor)
 			cursor->valid = 0;
 			return;
 		}
-		char error_message[256];
-		snprintf(error_message, 256, "Failed to read dev offt: %lu",
+		char error_message[MAX_ERROR_MESSAGE_SIZE];
+		snprintf(error_message, MAX_ERROR_MESSAGE_SIZE, "Failed to read dev offt: %lu",
 			 cursor->log_segments->segments[cursor->log_segments->entry_id]);
 		read_dev_offt_into_buffer(cursor->segment_in_mem_buffer, 0, cursor->segment_in_mem_size,
 					  cursor->log_segments->segments[cursor->log_segments->entry_id],
@@ -753,7 +753,7 @@ static void get_next_log_segment(struct log_cursor *cursor)
 			cursor->valid = 0;
 			return;
 		}
-		snprintf(error_message, 256, "Failed to read dev offt: %lu",
+		snprintf(error_message, MAX_ERROR_MESSAGE_SIZE, "Failed to read dev offt: %lu",
 			 cursor->log_segments->segments[cursor->log_segments->entry_id]);
 		read_dev_offt_into_buffer(cursor->segment_in_mem_buffer, 0, cursor->segment_in_mem_size,
 					  cursor->log_segments->segments[cursor->log_segments->entry_id],

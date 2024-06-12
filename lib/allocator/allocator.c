@@ -693,8 +693,8 @@ static volume_descriptor *mem_init_volume(char *volume_name)
 		BUG_ON();
 	}
 	// read volume superblock (accouning info into memory)
-	char error_message[256];
-	snprintf(error_message, 256, "Failed to read volume's %s superblock", volume_name);
+	char error_message[MAX_ERROR_MESSAGE_SIZE];
+	snprintf(error_message, MAX_ERROR_MESSAGE_SIZE, "Failed to read volume's %s superblock", volume_name);
 	read_dev_offt_into_buffer((char *)&volume_desc->vol_superblock, 0, sizeof(struct superblock), 0,
 				  volume_desc->vol_fd, error_message);
 

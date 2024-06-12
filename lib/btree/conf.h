@@ -48,9 +48,9 @@
 #define INDEX_NODE_SIZE (8192)
 /*Buffering related tunables*/
 
-#define GB(x) ((x)*1024LU * 1024LU * 1024LU)
-#define MB(x) ((x)*1024LU * 1024LU)
-#define KB(x) ((x)*1024LU)
+#define GB(x) ((x) * 1024LU * 1024LU * 1024LU)
+#define MB(x) ((x) * 1024LU * 1024LU)
+#define KB(x) ((x) * 1024LU)
 #ifndef ALIGNMENT_SIZE
 #define ALIGNMENT_SIZE (512UL)
 #endif
@@ -65,4 +65,5 @@
 #define KV_MAX_SIZE 16384 //(4096 + 8)
 #define LEVEL_ENTRY_POINTS 16
 #define COMPACTION_STATS 0
-#endif
+#define MAX_ERROR_MESSAGE_SIZE 2048
+#endif // CONF_H
