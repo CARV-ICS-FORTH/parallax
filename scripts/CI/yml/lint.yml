@@ -45,17 +45,20 @@ check-pre-commit-hooks:
         - diff .pre-commit-config.yaml previous.yaml > out
         - if [ $(wc -l < out) -ne 0 ]; then exit 1 ;fi
     allow_failure: true
+    needs: []
 
 check-env-vars:
     stage: lint
     script:
         - python3 ./scripts/CI/check-env-vars-version.py
     allow_failure: true
+    needs: []
 
 check-curr-branch-docs:
     stage: lint
     script:
         - bash ./scripts/CI/generate-doc-metrics.sh
+    needs: []
 
 pre-commit:
     stage: lint
