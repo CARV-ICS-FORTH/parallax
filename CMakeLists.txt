@@ -121,7 +121,7 @@ FetchContent_Declare(
 # add Minos for memory guards
 FetchContent_Declare(
   minos # Recommendation: Stick close to the original name.
-  GIT_REPOSITORY https://github.com/gesalous/minos
+  GIT_REPOSITORY https://github.com/CARV-ICS-FORTH/minos
   GIT_TAG parallax_fixes)
 
 FetchContent_GetProperties(minos)
