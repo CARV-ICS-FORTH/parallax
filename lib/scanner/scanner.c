@@ -75,11 +75,6 @@ void scanner_seek(struct scanner *scanner, db_handle *database, void *start_key,
 	//Fill from the device levels
 	scanner->dev_scanner[0] = NULL;
 	for (uint8_t level_id = 1; level_id < MAX_LEVELS; level_id++) {
-		//Old school
-		// if (NULL == level_get_root(database->db_desc->dev_levels[level_id], 0)) {
-		// 	scanner->dev_scanner[level_id] = NULL;
-		// 	continue;
-		// }
 		if (level_is_empty(database->db_desc->dev_levels[level_id], 0)) {
 			scanner->dev_scanner[level_id] = NULL;
 			continue;
