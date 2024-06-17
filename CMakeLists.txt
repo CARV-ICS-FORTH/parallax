@@ -116,7 +116,7 @@ FetchContent_Declare(
 FetchContent_Declare(
   libbloom
   GIT_REPOSITORY https://github.com/gesalous/libbloom
-  GIT_TAG cmake)
+  GIT_TAG additions_in_public_api)
 
 # add Minos for memory guards
 FetchContent_Declare(
