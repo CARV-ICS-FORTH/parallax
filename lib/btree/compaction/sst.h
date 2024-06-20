@@ -16,7 +16,7 @@ struct kv_splice_base;
  *@param level_id id of the level that this SST belongs to
   *@return a pointer to the SST object
 */
-struct sst *sst_create(uint32_t size, uint64_t txn_id, db_handle *handle, uint32_t level_id);
+struct sst *sst_create(uint32_t size, uint64_t txn_id, db_handle *handle, uint32_t level_id, bool enable_bfs);
 
 /**
  *@brief Appends a kv pair in an SST (assumes that splices arrive in sorted order)
@@ -40,6 +40,15 @@ bool sst_flush(struct sst *sst);
 */
 bool sst_close(struct sst *sst);
 //sst meta staff follow
+
+/**
+ * @brief Restores the metadata of an sst into memory.
+ * @param handle descriptor of the database
+ * @param dev_offt offset on the file/device where the SST is
+ * @return a pointer to the sst_meta on success NULL on failure
+ */
+struct sst_meta *sst_meta_restore_from_dev_offt(struct db_handle *handle, uint64_t dev_offt);
+
 /**
   * @brief sst_meta contains all metadata information of an SST. The idea in Parallax
   * is that it creates an SST object, appends splices, flushes it, gets then a reference
@@ -81,13 +90,6 @@ struct key_splice *sst_meta_get_last_guard(struct sst_meta *sst);
 uint64_t sst_meta_get_dev_offt(const struct sst_meta *sst);
 
 /**
- *@brief Return the size in memory of the sst_meta object.
- *@param sst pointer to the sst_meta object
- *@return the size in B of the sst_meta
-*/
-size_t sst_meta_get_size(const struct sst_meta *sst);
-
-/**
   * @brief Returns the id of the level this SST belongs to.
   * @param sst pointer to the sst_meta object
   * @return the id of the level
@@ -107,7 +109,7 @@ uint64_t sst_meta_get_root_offt(const struct sst_meta *sst);
  *@param sst pointer to the sst_meta object
  *@return the relative offset or 0 on failure
 */
-uint32_t sst_meta_get_first_leaf_relative_offt(struct sst_meta *sst);
+uint32_t sst_meta_get_first_leaf_relative_offt(const struct sst_meta *sst);
 
 /**
  *@brief Calculates the relative offset of the next leaf (or data block) in the SST.
@@ -118,4 +120,13 @@ uint32_t sst_meta_get_first_leaf_relative_offt(struct sst_meta *sst);
  * Otherwise it returns false (no more data blocks in the SST)
 */
 bool sst_meta_get_next_relative_leaf_offt(uint32_t *offt, char *sst_buffer);
+
+bool sst_key_exists(const struct sst_meta *sst, struct key_splice *key_splice);
+
+struct sst_meta *sst_meta_recover(uint64_t dev_offt);
+
+bool sst_meta_destroy(struct sst_meta *meta);
+
+uint32_t sst_meta_get_size(void);
+
 #endif

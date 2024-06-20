@@ -10,6 +10,7 @@
 #include "../kv_pairs.h"
 #include "device_level.h"
 #include <assert.h>
+#include <bloom.h>
 #include <log.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -17,16 +18,64 @@
 #include <string.h>
 #include <unistd.h>
 struct key_splice;
-#define SST_METADATA_SIZE 4096UL
+//This error ratio maps to 11 bits per KV pair
+#define SST_BF_11_BITS_PER_ELEMENT_FRAC 0.0043484747805937
+#define SST_BF_AVERAGE_KV_PAIR_SIZE 48
+#define SST_ALIGNMENT 512UL
+#define SST_BLOCK_SIZE 4096UL
 
-struct sst_meta {
-	uint64_t root_offt;
-	uint64_t sst_dev_offt;
-	uint32_t sst_size;
+#define SST_CHECK_HEADER(X)                                                              \
+	do {                                                                             \
+		if (NULL == (X)->header) {                                               \
+			log_debug("SST header is NULL, what are you trying to read?\n"); \
+			BUG_ON();                                                        \
+		}                                                                        \
+	} while (0);
+
+/**
+ * struct sst_header
+ * ___________________________________________________________________________________________________________________________________________________________________________________
+ * |root_offt | sst_dev_offt | sst_size | bf_offt_in_sst | bf_size | level_id | first_guard_size | last_guard_size | <first guard variable size key> | <last guard variable size key>|
+ * -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ */
+struct sst_header {
+	uint64_t root_offt; //The root index block
+	uint64_t sst_dev_offt; //Device offset that the SST starts
+	uint32_t sst_size; //SST size
+	uint32_t bf_offt_in_sst; //Offset within the SST that the serialized version of the bloom filter starts
+	uint32_t bloom_filter_size; //Size of the bloom filter
+	uint32_t level_id;
 	uint16_t first_guard_size;
 	uint16_t last_guard_size;
-	uint8_t level_id;
 } __attribute__((packed));
+
+/**
+ * SST physical layout on the device.
+ * Each SST on-disk starts with this header. So, the layout on-disk of an SST is as follows:
+ * _________________________________________________________________________________________________________________________________________________________________________
+ * | struct sst_header | space for two MAX_KEY_SIZES | padding for SST_ALIGNMENT | struct bloom | bloom filter payload | padding for SST_BLOCK_SIZE | leaf and index nodes|
+ * -------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ *  Bloom filter space is always reserved in the SST regardless if the SSTs are enable or not. In later versions,
+ *  we may enable/disable their representation on disk for space amplification purposes.
+ */
+
+/**
+ * sst_meta is the in-memory state of the sst that we keep in
+ * the guard table.
+ */
+struct sst_meta {
+	/**
+   * bloom_filter is the in-memory bloom_filter object. If NULL,
+   * bloom_filter are disabled for this SST
+   */
+	struct bloom *bf;
+	/**
+   * header contains the in-memory represantation of the SST header.
+   * It contains also at the first and last guard payloads. It keeps
+   * the first and the last.
+   */
+	struct sst_header *header;
+};
 
 struct sst {
 	struct node_header *last_node[MAX_HEIGHT];
@@ -44,13 +93,48 @@ struct sst {
 
 inline uint32_t sst_meta_get_level_id(const struct sst_meta *sst)
 {
-	return sst->level_id;
+	return sst->header->level_id;
 }
 
-uint32_t sst_meta_get_first_leaf_relative_offt(struct sst_meta *sst)
+/**
+ * @brief Given an sst_size it calculates an appoximation of the KV pairs
+ * that it will have.
+ * @param sst_size the size of the sst.
+ * @return the number of KV pairs that the given sst_size is expected to host.
+ */
+static inline uint32_t sst_calc_entries_in_bf(uint32_t sst_size)
 {
-	(void)sst;
-	return SST_METADATA_SIZE;
+	return sst_size / SST_BF_AVERAGE_KV_PAIR_SIZE;
+}
+
+static uint32_t sst_header_get_size(const struct sst_meta *sst)
+{
+	return sizeof(struct sst_header) + sst->header->first_guard_size + sst->header->last_guard_size;
+}
+
+/**
+ * @brief Calculates the sst_header size for both on-disk and in-memory representaion.
+ * We take specc
+ */
+static inline uint32_t sst_calc_on_disk_header_size(uint32_t max_key_size)
+{
+	uint32_t size = sizeof(struct sst_header) + (2UL * max_key_size);
+	size = (size + (SST_ALIGNMENT - 1)) & ~(SST_ALIGNMENT - 1);
+	assert(size % SST_ALIGNMENT == 0);
+	return size;
+}
+
+uint32_t sst_meta_get_first_leaf_relative_offt(const struct sst_meta *sst)
+{
+	//header + padding
+	uint64_t header_on_disk_size = sst_calc_on_disk_header_size(MAX_KEY_SIZE);
+	uint64_t bf_size = bloom_get_size(sst->bf);
+	uint32_t size = header_on_disk_size + bf_size;
+	// Round up to the nearest multiple of SST_BLOCK_SIZE
+	size = (size + (SST_BLOCK_SIZE - 1)) & ~(SST_BLOCK_SIZE - 1);
+	assert(size % SST_BLOCK_SIZE == 0);
+	log_debug("First leaf offset inside the SST is at: %u", size);
+	return size;
 }
 
 static uint64_t sst_allocate_space(struct sst *sst)
@@ -72,99 +156,102 @@ bool sst_meta_get_next_relative_leaf_offt(uint32_t *offt, char *sst_buffer)
 
 inline uint64_t sst_meta_get_dev_offt(const struct sst_meta *sst)
 {
-	return sst->sst_dev_offt;
+	return sst->header->sst_dev_offt;
 }
 
 uint64_t sst_meta_get_root_offt(const struct sst_meta *sst)
 {
-	return sst->root_offt;
+	return sst->header->root_offt;
 }
 
-inline uint64_t sst_meta_get_first_leaf_offt(const struct sst_meta *sst)
+uint64_t sst_meta_get_first_leaf_offt(const struct sst_meta *sst)
 {
-	return sst->sst_dev_offt + SST_METADATA_SIZE;
+	return sst->header->sst_dev_offt + sst_meta_get_first_leaf_relative_offt(sst);
 }
 
 struct key_splice *sst_meta_get_first_guard(struct sst_meta *sst)
 {
-	if (0 == sst->first_guard_size) {
+	SST_CHECK_HEADER(sst)
+
+	if (0 == sst->header->first_guard_size) {
 		log_debug("First guard has not been set, what are you trying to read?");
 		BUG_ON();
 	}
-	char *sst_meta_buf = (char *)sst;
-	struct key_splice *first_splice = (struct key_splice *)&sst_meta_buf[sizeof(struct sst_meta)];
+
+	char *sst_meta_buf = (char *)sst->header;
+	struct key_splice *first_splice = (struct key_splice *)&sst_meta_buf[sizeof(struct sst_header)];
 	return first_splice;
 }
 
 // cppcheck-suppress unusedFunction
 struct key_splice *sst_meta_get_last_guard(struct sst_meta *sst)
 {
-	if (!sst->last_guard_size)
-		return NULL;
-	char *sst_meta_buf = (char *)sst;
-	struct key_splice *first_splice = sst_meta_get_first_guard(sst);
-	return (struct key_splice *)&sst_meta_buf[sizeof(struct sst_meta) + key_splice_get_metadata_size() +
-						  key_splice_get_key_size(first_splice)];
-}
+	SST_CHECK_HEADER(sst)
 
-size_t sst_meta_get_size(const struct sst_meta *sst)
-{
-	return sizeof(struct sst_meta) + sst->first_guard_size + sst->last_guard_size;
+	if (0 == sst->header->last_guard_size) {
+		return NULL;
+	}
+
+	char *sst_meta_buf = (char *)sst->header;
+	return (struct key_splice *)&sst_meta_buf[sizeof(struct sst_header) + sst->header->first_guard_size];
 }
 
 static bool sst_set_first_guard(struct sst *sst, struct kv_splice_base *kv_pair)
 {
-	if (sst->meta->first_guard_size) {
+	SST_CHECK_HEADER(sst->meta)
+
+	if (sst->meta->header->first_guard_size) {
 		log_debug("First guard has been set, what are you doing?");
 		return false;
 	}
-	sst->meta->first_guard_size = key_splice_get_metadata_size() + kv_splice_base_get_key_size(kv_pair);
+	sst->meta->header->first_guard_size = key_splice_get_metadata_size() + kv_splice_base_get_key_size(kv_pair);
 	// Extend the structure using realloc
-	uint32_t new_size = sizeof(struct sst_meta) + sst->meta->first_guard_size;
-	struct sst_meta *extended_meta = (struct sst_meta *)realloc(sst->meta, new_size);
+	uint32_t new_size = sizeof(struct sst_header) + sst->meta->header->first_guard_size;
+	struct sst_header *extended_header = (struct sst_header *)realloc(sst->meta->header, new_size);
 
-	if (extended_meta == NULL) {
+	if (extended_header == NULL) {
 		log_fatal("Memory reallocation failed");
-		free(extended_meta);
+		free(extended_header);
 		_exit(EXIT_FAILURE);
 	}
-	sst->meta = extended_meta;
-	char *meta_buf = (char *)sst->meta;
+	sst->meta->header = extended_header;
+	char *meta_buf = (char *)sst->meta->header;
 	bool malloced = false;
 	key_splice_create(kv_splice_base_get_key_buf(kv_pair), kv_splice_base_get_key_size(kv_pair),
-			  &meta_buf[sizeof(struct sst_meta)], sst->meta->first_guard_size, &malloced);
+			  &meta_buf[sizeof(struct sst_header)], sst->meta->header->first_guard_size, &malloced);
 	assert(malloced == false);
 	return true;
 }
 
 static bool sst_set_last_guard(struct sst *sst, struct kv_splice_base *kv_pair)
 {
-	if (!sst->meta->first_guard_size) {
-		log_debug("First guard has not been set, what are you doing?");
-		return false;
-	}
-
-	if (sst->meta->last_guard_size) {
-		log_debug("Last guard has been set, what are you doing?");
-		return false;
-	}
-
-	sst->meta->last_guard_size = key_splice_get_metadata_size() + kv_splice_base_get_key_size(kv_pair);
-	// Extend the structure using realloc
-	uint32_t new_size = sizeof(struct sst_meta) + sst->meta->first_guard_size + sst->meta->last_guard_size;
-	struct sst_meta *extended_meta = (struct sst_meta *)realloc(sst->meta, new_size);
-
-	if (extended_meta == NULL) {
-		log_fatal("Memory reallocation failed");
-		free(extended_meta);
+	SST_CHECK_HEADER(sst->meta)
+	if (!sst->meta->header->first_guard_size) {
+		log_fatal("First guard has not been set, what are you doing?");
 		_exit(EXIT_FAILURE);
 	}
-	sst->meta = extended_meta;
-	char *meta_buf = (char *)sst->meta;
+
+	if (sst->meta->header->last_guard_size) {
+		log_fatal("Last guard has been set, what are you doing?");
+		_exit(EXIT_FAILURE);
+	}
+
+	sst->meta->header->last_guard_size = key_splice_get_metadata_size() + kv_splice_base_get_key_size(kv_pair);
+	// Extend the structure using realloc
+	uint32_t new_size =
+		sizeof(struct sst_header) + sst->meta->header->first_guard_size + sst->meta->header->last_guard_size;
+	struct sst_header *extended_header = (struct sst_header *)realloc(sst->meta->header, new_size);
+
+	if (extended_header == NULL) {
+		log_fatal("Memory reallocation failed");
+		_exit(EXIT_FAILURE);
+	}
+	sst->meta->header = extended_header;
+	char *meta_buf = (char *)sst->meta->header;
 	bool malloced = false;
 	key_splice_create(kv_splice_base_get_key_buf(kv_pair), kv_splice_base_get_key_size(kv_pair),
-			  &meta_buf[sizeof(struct sst_meta) + sst->meta->first_guard_size], sst->meta->last_guard_size,
-			  &malloced);
+			  &meta_buf[sizeof(struct sst_header) + sst->meta->header->first_guard_size],
+			  sst->meta->header->last_guard_size, &malloced);
 	assert(malloced == false);
 	return true;
 }
@@ -172,6 +259,7 @@ static bool sst_set_last_guard(struct sst *sst, struct kv_splice_base *kv_pair)
 static inline uint32_t sst_get_remaining_space(const struct sst *sst)
 {
 	return sst->last_index_offt - sst->last_leaf_offt;
+	sst->meta->header->bloom_filter_size = bloom_get_size(sst->meta->bf);
 }
 
 static char *sst_get_space(struct sst *sst, size_t size, bool is_leaf)
@@ -186,37 +274,57 @@ static char *sst_get_space(struct sst *sst, size_t size, bool is_leaf)
 	if (is_leaf) {
 		// log_debug("Returing leaf offt: %u",sst->meta->last_leaf_offt);
 		char *node = &sst->IO_buffer[sst->last_leaf_offt];
-		memset(node, 0x00, size);
+		// memset(node, 0x00, size);
 		sst->last_leaf_offt += size;
 		return node;
 	}
 
 	sst->last_index_offt -= size;
+	char *node = &sst->IO_buffer[sst->last_index_offt];
+	// memset(node,0x00,size);
 	// log_debug("Allocating an index node at offt: %u of size: %lu", sst->meta->last_index_offt, size);
-	return &sst->IO_buffer[sst->last_index_offt];
+	return node;
 }
 
-struct sst *sst_create(uint32_t size, uint64_t txn_id, db_handle *handle, uint32_t level_id)
+struct sst *sst_create(uint32_t size, uint64_t txn_id, db_handle *handle, uint32_t level_id, bool enable_bfs)
 {
-	struct sst *sst = calloc(1UL, sizeof(struct sst));
-	sst->meta = calloc(1UL, sizeof(struct sst_meta));
+	log_debug("Are BLOOM_FILTER enabled? %s for DB: %s", enable_bfs ? "YES" : "NO",
+		  handle->db_desc->db_superblock->db_name);
+	struct sst_meta *sst_meta = calloc(1UL, sizeof(struct sst_meta));
+	if (enable_bfs) {
+		sst_meta->bf = bloom_init2(sst_calc_entries_in_bf(size), SST_BF_11_BITS_PER_ELEMENT_FRAC);
+		if (NULL == sst_meta->bf) {
+			log_fatal("Bloom Filter initialization failed");
+			_exit(EXIT_FAILURE);
+		}
+	}
 
+	sst_meta->header = calloc(1UL, sizeof(struct sst_header));
+	sst_meta->header->level_id = level_id;
+	sst_meta->header->sst_size = size;
+	sst_meta->header->bf_offt_in_sst = sst_calc_on_disk_header_size(MAX_KEY_SIZE);
+	sst_meta->header->bloom_filter_size = bloom_get_size(sst_meta->bf);
+	log_debug("Bloom filter size in bytes is: %u for SST size: %u in bytes", sst_meta->header->bloom_filter_size,
+		  size);
+
+	//Transient object that holds metadata and the location of SST IO buffer
+	//that serializes all SST staff to the device.
+	//Starts its life here, ends its life on sst_close()
+	struct sst *sst = calloc(1UL, sizeof(struct sst));
+	sst->meta = sst_meta;
 	// log_debug("Allocating an I/O sst buffer of size: %u",sst_size);
 	if (posix_memalign((void **)&sst->IO_buffer, ALIGNMENT_SIZE, size) != 0) {
 		log_fatal("Posix memalign failed");
 		perror("Reason: ");
 		_exit(EXIT_FAILURE);
 	}
-	memset(sst->IO_buffer, 0x00, size);
+	// memset(sst->IO_buffer, 0x00, size);//?? A lot of CPU cycles
 	sst->db_handle = handle;
 	sst->txn_id = txn_id;
-
-	sst->meta->level_id = level_id;
 	sst->last_index_offt = size;
-	sst->last_leaf_offt = SST_METADATA_SIZE;
-	sst->meta->level_id = level_id;
-	sst->meta->sst_dev_offt = sst_allocate_space(sst);
-	sst->meta->sst_size = size;
+	sst->last_leaf_offt = sst_meta_get_first_leaf_relative_offt(sst_meta);
+
+	sst->meta->header->sst_dev_offt = sst_allocate_space(sst);
 
 	sst->leaf_api = level_get_leaf_api(handle->db_desc->dev_levels[level_id]);
 	sst->index_api = level_get_index_api(handle->db_desc->dev_levels[level_id]);
@@ -230,7 +338,6 @@ struct sst *sst_create(uint32_t size, uint64_t txn_id, db_handle *handle, uint32
 			(*sst->index_api->index_init_node)(DO_NOT_ADD_GUARD, (struct index_node *)sst->last_node[i],
 							   internalNode);
 	}
-
 	return sst;
 }
 
@@ -310,7 +417,7 @@ static bool sst_append_pivot_to_index(int32_t height, struct sst *sst, uint64_t 
 		}
 
 		uint32_t offt_l = sst_calc_offt(sst, (char *)sst->last_node[height]);
-		uint64_t left_index_offt = sst->meta->sst_dev_offt + offt_l;
+		uint64_t left_index_offt = sst->meta->header->sst_dev_offt + offt_l;
 
 		struct key_splice *pivot_copy_splice = sst->index_api->index_remove_last_key(node);
 		struct pivot_pointer *piv_pointer = sst->index_api->index_get_pivot(pivot_copy_splice);
@@ -325,7 +432,7 @@ static bool sst_append_pivot_to_index(int32_t height, struct sst *sst, uint64_t 
 
 		/*last node updated*/
 		uint32_t offt_r = sst_calc_offt(sst, (char *)sst->last_node[height]);
-		uint64_t right_index_offt = sst->meta->sst_dev_offt + offt_r;
+		uint64_t right_index_offt = sst->meta->header->sst_dev_offt + offt_r;
 		if (false ==
 		    sst_append_pivot_to_index(height + 1, sst, left_index_offt, pivot_copy_splice, right_index_offt)) {
 			log_debug("Append pivot in higher tree level failed, rolling back");
@@ -386,11 +493,11 @@ bool sst_append_splice(struct sst *sst, struct kv_splice_base *splice)
 		pivot = sst_create_pivot(&last, splice);
 
 		uint32_t offt_l = sst_calc_offt(sst, (char *)sst->last_node[0]);
-		left_leaf_offt = sst->meta->sst_dev_offt + offt_l;
+		left_leaf_offt = sst->meta->header->sst_dev_offt + offt_l;
 
 		//1. keep the offt of the previous leaf
 		// struct leaf_node *semilast_leaf = (struct leaf_node *)sst->last_node[0];
-		uint64_t next_leaf_offt = sst->meta->sst_dev_offt + sst_calc_offt(sst, (char *)new_node);
+		uint64_t next_leaf_offt = sst->meta->header->sst_dev_offt + sst_calc_offt(sst, (char *)new_node);
 
 		(*sst->leaf_api->leaf_set_next_offt)((struct leaf_node *)sst->last_node[0], next_leaf_offt);
 		// log_debug("Set next leaf offt to: %lu",next_leaf_offt);
@@ -398,7 +505,7 @@ bool sst_append_splice(struct sst *sst, struct kv_splice_base *splice)
 		last_node_backup = sst->last_node[0];
 		sst->last_node[0] = new_node;
 		uint32_t offt_r = sst_calc_offt(sst, (char *)sst->last_node[0]);
-		right_leaf_offt = sst->meta->sst_dev_offt + offt_r;
+		right_leaf_offt = sst->meta->header->sst_dev_offt + offt_r;
 		//2. done set the next leaf offt, so now we have a B-link tree!
 		(*sst->leaf_api->leaf_init)((struct leaf_node *)sst->last_node[0], LEAF_NODE_SIZE);
 		(*sst->leaf_api->leaf_set_next_offt)((struct leaf_node *)sst->last_node[0], 0);
@@ -410,18 +517,23 @@ bool sst_append_splice(struct sst *sst, struct kv_splice_base *splice)
 		_exit(EXIT_FAILURE);
 	}
 
-	if (0 == sst->meta->first_guard_size)
+	if (0 == sst->meta->header->first_guard_size)
 		sst_set_first_guard(sst, splice);
 
+	bool ret = true;
 	if (!new_leaf)
-		return true;
-	bool ret = sst_append_pivot_to_index(1, sst, left_leaf_offt, pivot, right_leaf_offt);
+		goto update_bloom_filter;
+
+	ret = sst_append_pivot_to_index(1, sst, left_leaf_offt, pivot, right_leaf_offt);
 	if (false == ret) { //rollback logic
 		sst->last_node[0] = last_node_backup;
 		log_debug("Ooops failed to append in pivot no more space in SST");
 	}
 	free(pivot);
 
+update_bloom_filter:
+	if (sst->meta->bf)
+		bloom_add(sst->meta->bf, kv_splice_base_get_key_buf(splice), kv_splice_base_get_key_size(splice));
 	return ret;
 }
 
@@ -436,6 +548,23 @@ bool sst_flush(struct sst *sst)
 	struct kv_splice_base last_splice = (*sst->leaf_api->leaf_get_last)(last_leaf);
 	sst_set_last_guard(sst, &last_splice);
 
+	struct key_splice *first = sst_meta_get_first_guard(sst->meta);
+	struct key_splice *last = sst_meta_get_last_guard(sst->meta);
+
+	assert(sst->meta->header->first_guard_size);
+	assert(sst->meta->header->last_guard_size);
+
+	log_debug("First guard: %.*s size: %d", key_splice_get_key_size(first), key_splice_get_key_offset(first),
+		  key_splice_get_key_size(first));
+	log_debug("Last  guard: %.*s size: %d", key_splice_get_key_size(last), key_splice_get_key_offset(last),
+		  key_splice_get_key_size(last));
+	int32_t size = key_splice_get_key_size(first);
+	if (size > key_splice_get_key_size(last)) {
+		size = key_splice_get_key_size(last);
+	}
+	int ret = memcmp(key_splice_get_key_offset(first), key_splice_get_key_offset(last), size);
+	assert(ret < 0);
+
 	sst->last_leaf_offt -= LEAF_NODE_SIZE;
 	int height = MAX_HEIGHT - 1;
 	for (; height >= 0; height--) {
@@ -446,16 +575,24 @@ bool sst_flush(struct sst *sst)
 		break;
 	}
 
-	sst->meta->root_offt = sst->meta->sst_dev_offt + sst_calc_offt(sst, (char *)sst->last_node[height]);
+	sst->meta->header->root_offt =
+		sst->meta->header->sst_dev_offt + sst_calc_offt(sst, (char *)sst->last_node[height]);
 	sst->last_node[height]->type = height == 0 ? leafRootNode : rootNode;
-	memcpy(sst->IO_buffer, sst->meta, sst_meta_get_size(sst->meta));
+	//Serialize and write a)SST header and bloom filter in the on-disk representation of SST
+	memcpy(sst->IO_buffer, sst->meta->header, sst_header_get_size(sst->meta));
+
+	//Serialize bloom filter
+	if (sst->meta->bf) {
+		memcpy(&sst->IO_buffer[sst->meta->header->bf_offt_in_sst], sst->meta->bf,
+		       bloom_get_size(sst->meta->bf));
+	}
 
 	ssize_t total_bytes_written = 0;
-	while (total_bytes_written < sst->meta->sst_size) {
+	while (total_bytes_written < sst->meta->header->sst_size) {
 		ssize_t bytes_written = pwrite(sst->db_handle->db_desc->db_volume->vol_fd,
 					       &sst->IO_buffer[total_bytes_written],
-					       sst->meta->sst_size - total_bytes_written,
-					       sst->meta->sst_dev_offt + total_bytes_written);
+					       sst->meta->header->sst_size - total_bytes_written,
+					       sst->meta->header->sst_dev_offt + total_bytes_written);
 		if (bytes_written == -1) {
 			log_fatal("Failed to writed segment for leaf nodes reason follows");
 			perror("Reason");
@@ -476,7 +613,7 @@ bool sst_close(struct sst *sst)
 struct leaf_node *level_get_leaf(struct sst *sst, struct key_splice *key_splice)
 {
 	struct node_header *son_node = NULL;
-	struct node_header *curr_node = REAL_ADDRESS(sst->meta->root_offt);
+	struct node_header *curr_node = REAL_ADDRESS(sst->meta->header->root_offt);
 
 	if (NULL == curr_node) //empty level
 		return NULL;
@@ -497,4 +634,59 @@ struct leaf_node *level_get_leaf(struct sst *sst, struct key_splice *key_splice)
 struct sst_meta *sst_get_meta(const struct sst *sst)
 {
 	return sst->meta;
+}
+
+bool sst_key_exists(const struct sst_meta *sst, struct key_splice *key_splice)
+{
+	return NULL == sst->bf ? true :
+				 bloom_check(sst->bf, key_splice_get_key_offset(key_splice),
+					     key_splice_get_key_size(key_splice)) == 1;
+}
+
+static void sst_header_print(struct sst_header *sst)
+{
+	log_info("SST dev_offt = %lu", sst->sst_dev_offt);
+	log_info("SST level_id = %u", sst->level_id);
+	log_info("SST size = %u", sst->sst_size);
+	log_info("SST root_offt = %lu", sst->root_offt);
+
+	log_info("SST bloom_filter size = %u", sst->bloom_filter_size);
+	log_info("SST first_guard_size = %u", sst->first_guard_size);
+	log_info("SST last_guard_size = %u", sst->last_guard_size);
+}
+
+struct sst_meta *sst_meta_recover(uint64_t dev_offt)
+{
+	struct sst_header *on_disk = REAL_ADDRESS(dev_offt);
+	sst_header_print(on_disk);
+	struct sst_meta *sst_meta = calloc(1UL, sizeof(struct sst_meta));
+	sst_meta->header =
+		calloc(1UL, sizeof(struct sst_header) + on_disk->first_guard_size + on_disk->last_guard_size);
+
+	memcpy(sst_meta->header, on_disk,
+	       sizeof(struct sst_header) + on_disk->first_guard_size + on_disk->last_guard_size);
+	log_debug("Are Bloom filters populated for the SST? %s", sst_meta->header->bloom_filter_size ? "YES" : "NO");
+	if (0 == sst_meta->header->bloom_filter_size)
+		return sst_meta;
+
+	char *address = (char *)REAL_ADDRESS(dev_offt) + sst_calc_on_disk_header_size(MAX_KEY_SIZE);
+	struct bloom *on_disk_bloom = (struct bloom *)address;
+	sst_meta->bf = bloom_copy(on_disk_bloom);
+	return sst_meta;
+}
+
+bool sst_meta_destroy(struct sst_meta *meta)
+{
+	SST_CHECK_HEADER(meta);
+	free(meta->header);
+	if (meta->bf) {
+		free(meta->bf);
+	}
+	free(meta);
+	return true;
+}
+
+uint32_t sst_meta_get_size(void)
+{
+	return sizeof(struct sst_meta);
 }

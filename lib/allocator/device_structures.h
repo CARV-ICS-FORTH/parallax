@@ -84,8 +84,6 @@ struct pr_db_superblock {
 
 	uint64_t level_size[MAX_LEVELS][NUM_TREES_PER_LEVEL];
 	uint64_t num_level_keys[MAX_LEVELS][NUM_TREES_PER_LEVEL];
-	uint64_t bloom_filter_hash[MAX_LEVELS][NUM_TREES_PER_LEVEL];
-
 	uint64_t big_log_head_offt;
 	uint64_t big_log_tail_offt;
 	uint64_t big_log_size;
@@ -100,7 +98,6 @@ struct pr_db_superblock {
 	uint64_t big_log_start_segment_dev_offt;
 	uint64_t big_log_offt_in_start_segment;
 	struct lsn last_lsn;
-	uint8_t bloom_filter_valid[MAX_LEVELS][NUM_TREES_PER_LEVEL];
 	uint32_t db_name_size;
 	uint32_t id; //in the array
 	uint32_t valid;

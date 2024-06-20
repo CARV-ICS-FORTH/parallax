@@ -86,12 +86,6 @@ static void pr_flush_allocation_log_and_level_info(struct db_descriptor *db_desc
 	pr_flush_db_superblock(db_desc);
 }
 
-static void pr_update_bloom_info(db_descriptor *db_desc)
-{
-	for (uint8_t level_id = 1; level_id < MAX_LEVELS; level_id++)
-		level_save_bf_info_to_superblock(db_desc->dev_levels[level_id], db_desc->db_superblock);
-}
-
 void pr_flush_L0(struct db_descriptor *db_desc, uint8_t tree_id)
 {
 	if (!db_desc->dirty) {
@@ -294,7 +288,6 @@ void pr_unlock_db_superblock(struct db_descriptor *db_desc)
 
 void pr_flush_db_superblock(struct db_descriptor *db_desc)
 {
-	pr_update_bloom_info(db_desc);
 	int64_t last_lsn_id = lsn_factory_get_ticket(&db_desc->lsn_factory);
 	set_lsn_id(&db_desc->db_superblock->last_lsn, last_lsn_id);
 	uint64_t superblock_offt =

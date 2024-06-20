@@ -10,7 +10,8 @@
 #include "../conf.h"
 #include "../key_splice.h"
 #include "../kv_pairs.h"
-#include "bloom_filter.h"
+//old school
+// #include "bloom_filter.h"
 #include "dev_index.h"
 #include "dev_leaf.h"
 #include "sst.h"
@@ -39,7 +40,6 @@ struct level_lock {
 };
 
 struct device_level {
-	struct pbf_desc *bloom_desc[NUM_TREES_PER_LEVEL];
 	uint64_t level_size[NUM_TREES_PER_LEVEL];
 	int64_t num_level_keys[NUM_TREES_PER_LEVEL];
 	pthread_t compaction_thread;
@@ -97,8 +97,7 @@ struct device_level *level_create_fresh(uint32_t level_id, uint32_t l0_size, uin
 }
 
 struct device_level *level_restore_from_device(uint32_t level_id, struct pr_db_superblock *superblock,
-					       uint32_t num_trees, db_handle *database, uint64_t l0_size,
-					       uint32_t growth_factor)
+					       uint32_t num_trees, uint64_t l0_size, uint32_t growth_factor)
 {
 	/*restore now persistent state of all levels*/
 	struct device_level *level = level_create_fresh(level_id, l0_size, growth_factor);
@@ -108,12 +107,6 @@ struct device_level *level_restore_from_device(uint32_t level_id, struct pr_db_s
 		level->level_size[tree_id] = superblock->level_size[level_id][tree_id];
 		/*level keys*/
 		level->num_level_keys[tree_id] = superblock->num_level_keys[level_id][tree_id];
-		if (0 == superblock->bloom_filter_valid[level_id][tree_id]) {
-			level->bloom_desc[tree_id] = NULL;
-			continue;
-		}
-		level->bloom_desc[tree_id] = pbf_recover_bloom_filter(database, (uint8_t)level_id, (uint8_t)tree_id,
-								      superblock->bloom_filter_hash[level_id][tree_id]);
 	}
 
 	return level;
@@ -241,30 +234,9 @@ void level_save_to_superblock(struct device_level *level, struct pr_db_superbloc
 	db_superblock->num_level_keys[dst_level_id][0] = level->num_level_keys[tree_id];
 }
 
-void level_save_bf_info_to_superblock(struct device_level *level, struct pr_db_superblock *db_superblock)
-{
-	uint32_t dst_level_id = level->level_id;
-	for (uint8_t tree_id = 0; tree_id < NUM_TREES_PER_LEVEL; tree_id++) {
-		if (NULL == level->bloom_desc[tree_id]) {
-			db_superblock->bloom_filter_hash[dst_level_id][tree_id] = UINT64_MAX;
-			db_superblock->bloom_filter_valid[dst_level_id][tree_id] = 0;
-			continue;
-		}
-		db_superblock->bloom_filter_hash[dst_level_id][tree_id] =
-			pbf_get_bf_file_hash(level->bloom_desc[tree_id]);
-		db_superblock->bloom_filter_valid[dst_level_id][tree_id] = 1;
-	}
-}
-
 inline bool level_set_compaction_done(struct device_level *level)
 {
 	return !(level->compaction_in_progress = false);
-}
-
-bool level_does_key_exist(struct device_level *level, struct key_splice *key_splice)
-{
-	return pbf_check(level->bloom_desc[0], key_splice_get_key_offset(key_splice),
-			 key_splice_get_key_size(key_splice));
 }
 
 bool level_has_overflow(struct device_level *level, uint32_t tree_id)
@@ -317,19 +289,8 @@ bool level_swap(struct device_level *level_dst, uint32_t tree_dst, struct device
 	level_dst->num_level_keys[tree_dst] = level_src->num_level_keys[tree_src];
 	level_src->num_level_keys[tree_src] = 0;
 
-	level_dst->bloom_desc[tree_dst] = level_src->bloom_desc[tree_src];
-	level_src->bloom_desc[tree_src] = NULL;
 	level_dst->guard_table[tree_dst] = level_src->guard_table[tree_src];
 	level_src->guard_table[tree_src] = NULL;
-	return true;
-}
-
-bool level_destroy_bf(struct device_level *level, uint32_t tree_id)
-{
-	if (!level->bloom_desc[tree_id])
-		return true;
-	pbf_destroy_bloom_filter(level->bloom_desc[tree_id]);
-	level->bloom_desc[tree_id] = NULL;
 	return true;
 }
 
@@ -339,30 +300,9 @@ int64_t level_get_num_KV_pairs(struct device_level *level, uint32_t tree_id)
 	return level->num_level_keys[tree_id];
 }
 
-bool level_create_bf(struct device_level *level, uint32_t tree_id, int64_t num_kv_pairs, struct db_handle *handle)
-{
-	level->bloom_desc[tree_id] = pbf_create(handle, level->level_id, num_kv_pairs, tree_id);
-	return true;
-}
-
-bool level_persist_bf(struct device_level *level, uint32_t tree_id)
-{
-	if (!pbf_persist_bloom_filter(level->bloom_desc[tree_id])) {
-		log_fatal("Failed to write bloom filter");
-		_exit(EXIT_FAILURE);
-	}
-	return true;
-}
-
 bool level_increase_size(struct device_level *level, uint32_t size, uint32_t tree_id)
 {
 	level->level_size[tree_id] += size;
-	return true;
-}
-
-bool level_add_key_to_bf(struct device_level *level, uint32_t tree_id, char *key, uint32_t key_size)
-{
-	pbf_bloom_add(level->bloom_desc[tree_id], key, key_size);
 	return true;
 }
 
@@ -377,13 +317,15 @@ struct level_free_sst_cb_args {
 };
 static bool level_free_sst(void *value, void *cnxt)
 {
-	const struct sst_meta *meta = (struct sst_meta *)value;
+	struct sst_meta *meta = *(struct sst_meta **)value;
 	struct level_free_sst_cb_args *args = cnxt;
 	struct regl_log_entry log_entry = { .dev_offt = sst_meta_get_dev_offt(meta),
 					    .txn_id = args->txn_id,
 					    .op_type = REGL_FREE_SST,
-					    .size = sst_meta_get_size(meta) };
+					    .size = sst_meta_get_size() };
 	regl_add_entry_in_txn_buf(args->db_desc, &log_entry);
+	//Release the memory guard
+	sst_meta_destroy(meta);
 	return true;
 }
 
@@ -408,7 +350,7 @@ struct level_index_api *level_get_index_api(struct device_level *level)
 static struct sst_meta *level_get_first_sst(struct device_level *level, struct minos_iterator *iter, uint8_t tree_id)
 {
 	minos_iter_seek_first(iter, level->guard_table[tree_id]);
-	struct sst_meta *meta = iter->iter_node->kv->value;
+	struct sst_meta *meta = *(struct sst_meta **)iter->iter_node->kv->value;
 	return meta;
 }
 
@@ -430,7 +372,7 @@ static struct sst_meta *level_find_sst(struct device_level *level, struct minos_
 						       key_splice_get_key_size(key_splice),
 						       key_splice_get_key_offset(key_splice), &exact_match);
 
-	meta = valid ? iter->iter_node->kv->value : NULL;
+	meta = valid ? *(struct sst_meta **)iter->iter_node->kv->value : NULL;
 
 	if (NULL == meta) {
 		// struct minos_iterator iter2;
@@ -481,11 +423,9 @@ bool level_lookup(struct device_level *level, struct lookup_operation *get_op, i
 	if (level_is_empty(level, tree_id))
 		goto done;
 
-	if (!level_does_key_exist(level, get_op->key_splice))
-		goto done;
 	struct minos_iterator iter;
 	const struct sst_meta *meta = level_find_sst(level, &iter, get_op->key_splice, tree_id);
-	if (NULL == meta)
+	if (NULL == meta || false == sst_key_exists(meta, get_op->key_splice))
 		goto done;
 
 	struct leaf_node *curr_node = level_get_leaf(level, meta, get_op->key_splice);
@@ -614,14 +554,12 @@ bool level_scanner_dev_seek(struct level_scanner_dev *dev_level_scanner, struct 
 
 static uint64_t level_scanner_dev_find_next_leaf(struct level_scanner_dev *dev_level_scanner)
 {
-	//cppcheck-suppress constVariablePointer
-	struct sst_meta *meta;
 	minos_iter_get_next(&dev_level_scanner->sst_iter);
 	if (!minos_iter_is_valid(&dev_level_scanner->sst_iter)) {
 		// log_debug("Done! with SSTs of level: %u",dev_level_scanner->level->level_id);
 		return 0;
 	}
-	meta = dev_level_scanner->sst_iter.iter_node->kv->value;
+	struct sst_meta *meta = *(struct sst_meta **)dev_level_scanner->sst_iter.iter_node->kv->value;
 	return sst_meta_get_first_leaf_offt(meta);
 }
 
@@ -671,7 +609,6 @@ bool level_add_ssts(struct device_level *level, int num_ssts, struct sst_meta *s
 
 	if (level->guard_table[tree_id] == NULL)
 		level->guard_table[tree_id] = minos_init(false);
-
 	for (int i = 0; i < num_ssts; i++) {
 		struct key_splice *first = sst_meta_get_first_guard(ssts[i]);
 		log_debug("Adding in guard table key: %.*s size: %d of level: %u and tree_id: %u",
@@ -679,8 +616,8 @@ bool level_add_ssts(struct device_level *level, int num_ssts, struct sst_meta *s
 			  key_splice_get_key_size(first), level->level_id, tree_id);
 		struct minos_insert_request req = { .key = key_splice_get_key_offset(first),
 						    .key_size = key_splice_get_key_size(first),
-						    .value = ssts[i],
-						    .value_size = sst_meta_get_size(ssts[i]) };
+						    .value = &ssts[i],
+						    .value_size = sizeof(struct sst *) };
 		minos_insert(level->guard_table[tree_id], &req);
 	}
 
@@ -741,7 +678,8 @@ struct level_compaction_scanner *level_comp_scanner_init(struct device_level *le
 	comp_scanner->sst_size = sst_size;
 	comp_scanner->fd = file_desc;
 	minos_iter_seek_first(&comp_scanner->iter, level->guard_table[tree_id]);
-	comp_scanner->meta = comp_scanner->iter.iter_node->kv->value;
+	comp_scanner->meta = *(struct sst_meta **)comp_scanner->iter.iter_node->kv->value;
+	log_debug("--------------> Header dev offt = %u", sst_meta_get_first_leaf_relative_offt(comp_scanner->meta));
 	level_comp_scanner_read_sst(comp_scanner);
 	comp_scanner->relative_leaf_offt = sst_meta_get_first_leaf_relative_offt(comp_scanner->meta);
 	comp_scanner->leaf_api = &level->level_leaf_api;
@@ -766,7 +704,8 @@ bool level_comp_scanner_next(struct level_compaction_scanner *comp_scanner)
 	minos_iter_get_next(&comp_scanner->iter);
 	if (false == minos_iter_is_valid(&comp_scanner->iter))
 		return false;
-	comp_scanner->meta = comp_scanner->iter.iter_node->kv->value;
+	comp_scanner->meta = *(struct sst_meta **)comp_scanner->iter.iter_node->kv->value;
+	log_debug("--------------> Header dev offt = %u", sst_meta_get_first_leaf_relative_offt(comp_scanner->meta));
 	level_comp_scanner_read_sst(comp_scanner);
 	comp_scanner->relative_leaf_offt = sst_meta_get_first_leaf_relative_offt(comp_scanner->meta);
 	comp_scanner->curr_leaf = (struct leaf_node *)&comp_scanner->IO_buffer[comp_scanner->relative_leaf_offt];

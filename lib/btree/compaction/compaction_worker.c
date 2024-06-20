@@ -303,24 +303,6 @@ static void comp_fill_dst_heap_node(struct compaction_request *comp_req, struct 
 	level_comp_scanner_get_curr(comp_req->dst_scanner, &heap_node->splice);
 }
 
-#define COMP_MAGIC_SMALL_KV_SIZE (33)
-static int64_t comp_calculate_level_keys(struct db_descriptor *db_desc, uint8_t level_id)
-{
-	assert(level_id > 0);
-	uint8_t tree_id = 0; /*Always caclulate the immutable aka 0 tree of the level*/
-	int64_t total_keys = level_get_num_KV_pairs(db_desc->dev_levels[level_id], tree_id);
-
-	if (0 == total_keys && 1 == level_id) {
-		total_keys = db_desc->L0.max_level_size / COMP_MAGIC_SMALL_KV_SIZE;
-	}
-
-	if (level_id > 1) {
-		total_keys += level_get_num_KV_pairs(db_desc->dev_levels[level_id - 1], tree_id);
-	}
-	assert(total_keys);
-	return total_keys;
-}
-
 static struct kv_splice_base comp_append_medium_L1(db_handle *handle, struct kv_splice_base *splice_base,
 						   char *kv_sep_buf, uint32_t kv_sep_buf_size, uint64_t txn_id)
 
@@ -366,6 +348,7 @@ static struct kv_splice_base comp_append_medium_L1(db_handle *handle, struct kv_
 
 static void compact_level_direct_IO(struct db_handle *handle, struct compaction_request *comp_req)
 {
+	bool enable_bfs = handle->db_options.options[ENABLE_BLOOM_FILTERS].value ? true : false;
 	bool is_src_L0 = comp_req->src_level == 0;
 	if (is_src_L0) {
 		RWLOCK_WRLOCK(&handle->db_desc->L0.guard_of_level.rx_lock);
@@ -404,8 +387,6 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 
 	//initialize LRU cache for storing chunks of segments when medium log goes in place
 
-	level_create_bf(handle->db_desc->dev_levels[comp_req->dst_level], comp_req->dst_tree,
-			comp_calculate_level_keys(handle->db_desc, comp_req->dst_level), handle);
 	struct medium_log_LRU_cache *mlog_cache =
 		comp_req->dst_level == handle->db_desc->level_medium_inplace ? mlog_cache_init_LRU(handle) : NULL;
 
@@ -439,7 +420,7 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 		sh_insert_heap_node(m_heap, &dst_heap_node);
 	}
 
-	comp_req->curr_sst = sst_create(SST_SIZE, comp_req->txn_id, handle, comp_req->dst_level);
+	comp_req->curr_sst = sst_create(SST_SIZE, comp_req->txn_id, handle, comp_req->dst_level, enable_bfs);
 	char kv_sep_buf[KV_SEP2_MAX_SIZE];
 
 	while (sh_remove_top(m_heap, &min_heap_node)) {
@@ -480,11 +461,11 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 			struct sst_meta *meta = sst_get_meta(comp_req->curr_sst);
 			level_add_ssts(handle->db_desc->dev_levels[comp_req->dst_level], 1, &meta, comp_req->dst_tree);
 			sst_close(comp_req->curr_sst);
-			comp_req->curr_sst = sst_create(SST_SIZE, comp_req->txn_id, handle, comp_req->dst_level);
+			comp_req->curr_sst =
+				sst_create(SST_SIZE, comp_req->txn_id, handle, comp_req->dst_level, enable_bfs);
 		}
-		//BFs and level keys accounting
-		level_add_key_to_bf(handle->db_desc->dev_levels[comp_req->dst_level], comp_req->dst_tree,
-				    kv_splice_base_get_key_buf(&splice), kv_splice_base_get_key_size(&splice));
+
+		//Level keys accounting
 		level_increase_size(handle->db_desc->dev_levels[comp_req->dst_level], kv_splice_base_get_size(&splice),
 				    1);
 		level_inc_num_keys(handle->db_desc->dev_levels[comp_req->dst_level], comp_req->dst_tree, 1);
@@ -510,8 +491,6 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 	sst_close(comp_req->curr_sst);
 	comp_req->curr_sst = NULL;
 	handle->db_desc->dirty = 0x01;
-
-	level_persist_bf(handle->db_desc->dev_levels[comp_req->dst_level], comp_req->dst_tree);
 
 	if (comp_req->src_level == 0)
 		L0_scanner_close(comp_req->L0_scanner);
@@ -667,11 +646,6 @@ void compaction_close(struct compaction_request *comp_req)
 	/*Finally persist compaction */
 	pr_flush_compaction(comp_req->db_desc, comp_req->db_options, comp_req->dst_level, comp_req->dst_tree,
 			    comp_req->txn_id);
-
-	if (comp_req->src_level > 0)
-		level_destroy_bf(comp_req->db_desc->dev_levels[comp_req->src_level], 0);
-
-	level_destroy_bf(comp_req->db_desc->dev_levels[comp_req->dst_level], 0);
 
 	level_swap(dest_level, 0, dest_level, 1);
 

@@ -28,7 +28,6 @@
 #include <string.h>
 #include <unistd.h>
 
-#define KVF_FULL_NAME_SIZE (256)
 /* TODO: check if there is a point to have this function. */
 static void *kvf_posix_calloc(size_t size)
 {
@@ -120,70 +119,6 @@ static void kvf_write_buffer(int fd, char *buffer, ssize_t start, ssize_t size, 
 		}
 		total_bytes_written += bytes_written;
 	}
-}
-
-/**
- * @brief Deletes all bloom files in the folder where file name of Parallax
- * file name is. If it recognizes that Parallax is atop of raw volume it does
- * not do anything.
- * @param device_name path to the file or raw device. If it is a path to file
- * the bloom filter files should be located in the same directory ending with
- * the suffix .bloom. It finds all the .bloom files and deletes them.
- */
-static void kvf_delete_bloom_filter_files(char *device_name)
-{
-	if (strstr(device_name, "/dev/")) {
-		log_warn("Cannot delete possible bloom filters volume: %s is a raw volume", device_name);
-		return;
-	}
-
-	char *dir_name = calloc(1UL, strlen(device_name) + 3); //to capture all cases
-	uint32_t start_idx = 0;
-	if (device_name[0] != '/') {
-		start_idx = 2;
-		dir_name[0] = '.';
-		dir_name[1] = '/';
-	}
-	memcpy(&dir_name[start_idx], device_name, strlen(device_name));
-
-	size_t idx = strlen(dir_name);
-	while (idx != 0) {
-		if (dir_name[idx] == '/') {
-			dir_name[idx] = 0;
-			break;
-		}
-		dir_name[idx--] = 0;
-	}
-	log_info("Deleting all possible .bloom files in directory %s", dir_name);
-
-	DIR *directory = opendir(dir_name);
-	struct dirent *pDirent = NULL;
-
-	size_t dir_name_size = strlen(dir_name);
-
-	while ((pDirent = readdir(directory)) != NULL) {
-		// printf("[%s]\n", pDirent->d_name);
-		if (!strstr(pDirent->d_name, ".bloom"))
-			continue;
-		size_t entry_size = strlen(pDirent->d_name);
-		if (dir_name_size + 1 + entry_size >= KVF_FULL_NAME_SIZE) {
-			log_fatal("Buffer overflow");
-			_exit(EXIT_FAILURE);
-		}
-		char full_file_name[KVF_FULL_NAME_SIZE] = { 0 };
-		memcpy(full_file_name, dir_name, dir_name_size);
-		memcpy(&full_file_name[dir_name_size], "/", 1);
-		memcpy(&full_file_name[dir_name_size + 1], pDirent->d_name, entry_size);
-
-		if (remove(full_file_name) < 0) {
-			log_fatal("Failed to delete file: %s", full_file_name);
-			perror("Reason:");
-		}
-		log_debug("Deleted bloom file: %s", full_file_name);
-	}
-
-	closedir(directory);
-	free(dir_name);
 }
 
 const char *kvf_init_parallax(char *device_name, uint32_t max_regions_num)
@@ -324,7 +259,6 @@ const char *kvf_init_parallax(char *device_name, uint32_t max_regions_num)
 		device_name, S->volume_metadata_size, S->volume_metadata_size / MB(1), S->paddedSpace);
 
 	SAFE_FREE_PTR(S);
-	kvf_delete_bloom_filter_files(device_name);
 
 	if (fsync(fd)) {
 		error_message = "Failed to sync volume";

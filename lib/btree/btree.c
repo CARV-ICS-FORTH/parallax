@@ -229,14 +229,10 @@ static void init_fresh_db(struct db_descriptor *db_desc, const struct par_db_opt
 		db_desc->L0.level_size[tree_id] = 0;
 		/*segments info per level*/
 		db_desc->L0.first_segment[tree_id] = 0;
-		//Old school
-		// superblock->first_segment[0][tree_id] = 0;
 
 		db_desc->L0.last_segment[tree_id] = 0;
-		// superblock->last_segment[0][tree_id] = 0;
 
 		db_desc->L0.offset[tree_id] = 0;
-		// superblock->offset[0][tree_id] = 0;
 
 		/*total keys*/
 		db_desc->L0.level_size[tree_id] = 0;
@@ -306,15 +302,16 @@ static bool add_sst_callback(void *value, void *cnxt)
 {
 	uint64_t dev_offt = *(uint64_t *)value;
 	struct db_descriptor *db_desc = cnxt;
-	struct sst_meta *meta = REAL_ADDRESS(dev_offt);
+	struct sst_meta *meta = sst_meta_recover(dev_offt);
 	uint32_t level_id = sst_meta_get_level_id(meta);
 	assert(level_id > 0);
 	assert(level_id < MAX_LEVELS);
 	level_add_ssts(db_desc->dev_levels[level_id], 1, &meta, 0);
-	// struct key_splice *first = sst_meta_get_first_guard(meta);
-	// struct key_splice *last = sst_meta_get_last_guard(meta);
-	// log_debug("Added SST first: %.*s last: %.*s in level: %u", key_splice_get_key_size(first),
-	//    key_splice_get_key_offset(first), key_splice_get_key_size(last), key_splice_get_key_offset(last), level_id);
+	struct key_splice *first = sst_meta_get_first_guard(meta);
+	struct key_splice *last = sst_meta_get_last_guard(meta);
+	log_debug("Added SST first: %.*s last: %.*s in level: %u", key_splice_get_key_size(first),
+		  key_splice_get_key_offset(first), key_splice_get_key_size(last), key_splice_get_key_offset(last),
+		  level_id);
 	return true;
 }
 
@@ -340,12 +337,8 @@ static void restore_db(struct db_descriptor *db_desc, uint32_t region_idx, const
 
 	/*restore now persistent state of all levels*/
 	memset(&db_desc->L0, 0x0, sizeof(db_desc->L0));
-	struct db_handle parallax_db = { .db_desc = db_desc,
-					 .volume_desc = db_desc->db_volume,
-					 .db_options = *options };
 	for (uint8_t level_id = 1; level_id < MAX_LEVELS; level_id++)
 		db_desc->dev_levels[level_id] = level_restore_from_device(level_id, superblock, NUM_TREES_PER_LEVEL,
-									  &parallax_db,
 									  options->options[LEVEL0_SIZE].value,
 									  options->options[GROWTH_FACTOR].value);
 
