@@ -203,7 +203,8 @@ static void devl_init_leaf_node(struct leaf_node *leaf, uint32_t leaf_size)
 {
 	_Static_assert(sizeof(struct devl_slot_array) == 2,
 		       "Dynamic slot array is not 2 bytes, are you sure you want to continue?");
-	memset(leaf, 0x00, leaf_size);
+	// memset(leaf, 0x00, leaf_size);
+	memset(leaf, 0x00, sizeof(struct leaf_node));
 	devl_set_leaf_node_type(leaf, leafNode);
 	leaf->header.log_size = leaf_size;
 	leaf->header.node_size = leaf_size;
@@ -233,8 +234,9 @@ static inline int32_t devl_get_leaf_num_entries(struct leaf_node *leaf)
 static struct kv_splice_base devl_get_last_splice(struct leaf_node *leaf)
 {
 	struct kv_splice_base splice = { 0 };
-	if (0 == leaf->header.num_entries)
+	if (0 == leaf->header.num_entries) {
 		return splice;
+	}
 
 	splice = devl_get_general_splice(leaf, leaf->header.num_entries - 1);
 	return splice;

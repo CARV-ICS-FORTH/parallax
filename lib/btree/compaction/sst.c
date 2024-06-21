@@ -34,17 +34,17 @@ struct key_splice;
 
 /**
  * struct sst_header
- * ___________________________________________________________________________________________________________________________________________________________________________________
- * |root_offt | sst_dev_offt | sst_size | bf_offt_in_sst | bf_size | level_id | first_guard_size | last_guard_size | <first guard variable size key> | <last guard variable size key>|
- * -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ * _________________________________________________________________________________________________________________________________________________________________________________________________________________________
+ * |root_offt | sst_dev_offt | sst_size | bf_offt_in_sst | bf_size | level_id | first_guard_size | last_guard_size | <first guard variable size key> | <last guard variable size key>| leaf1,...leaf N| | index1, ...index N|
+ * -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  */
 struct sst_header {
 	uint64_t root_offt; //The root index block
 	uint64_t sst_dev_offt; //Device offset that the SST starts
 	uint32_t sst_size; //SST size
-	uint32_t bf_offt_in_sst; //Offset within the SST that the serialized version of the bloom filter starts
 	uint32_t bloom_filter_size; //Size of the bloom filter
 	uint32_t level_id;
+	uint32_t last_leaf_offt;
 	uint16_t first_guard_size;
 	uint16_t last_guard_size;
 } __attribute__((packed));
@@ -133,7 +133,7 @@ uint32_t sst_meta_get_first_leaf_relative_offt(const struct sst_meta *sst)
 	// Round up to the nearest multiple of SST_BLOCK_SIZE
 	size = (size + (SST_BLOCK_SIZE - 1)) & ~(SST_BLOCK_SIZE - 1);
 	assert(size % SST_BLOCK_SIZE == 0);
-	log_debug("First leaf offset inside the SST is at: %u", size);
+	// log_debug("First leaf offset inside the SST is at: %u", size);
 	return size;
 }
 
@@ -147,11 +147,10 @@ static uint64_t sst_allocate_space(struct sst *sst)
 	return log_entry.dev_offt;
 }
 
-bool sst_meta_get_next_relative_leaf_offt(uint32_t *offt, char *sst_buffer)
+bool sst_meta_get_next_relative_leaf_offt(struct sst_meta *sst_meta, uint32_t *offt)
 {
 	*offt += LEAF_NODE_SIZE;
-	const struct node_header *node = (struct node_header *)&sst_buffer[*offt];
-	return node->type == leafNode || node->type == leafRootNode ? true : false;
+	return (*offt >= sst_meta->header->last_leaf_offt) ? false : true;
 }
 
 inline uint64_t sst_meta_get_dev_offt(const struct sst_meta *sst)
@@ -211,7 +210,6 @@ static bool sst_set_first_guard(struct sst *sst, struct kv_splice_base *kv_pair)
 
 	if (extended_header == NULL) {
 		log_fatal("Memory reallocation failed");
-		free(extended_header);
 		_exit(EXIT_FAILURE);
 	}
 	sst->meta->header = extended_header;
@@ -302,7 +300,7 @@ struct sst *sst_create(uint32_t size, uint64_t txn_id, db_handle *handle, uint32
 	sst_meta->header = calloc(1UL, sizeof(struct sst_header));
 	sst_meta->header->level_id = level_id;
 	sst_meta->header->sst_size = size;
-	sst_meta->header->bf_offt_in_sst = sst_calc_on_disk_header_size(MAX_KEY_SIZE);
+	// sst_meta->header->bf_offt_in_sst = sst_calc_on_disk_header_size(MAX_KEY_SIZE);
 	sst_meta->header->bloom_filter_size = bloom_get_size(sst_meta->bf);
 	log_debug("Bloom filter size in bytes is: %u for SST size: %u in bytes", sst_meta->header->bloom_filter_size,
 		  size);
@@ -318,7 +316,7 @@ struct sst *sst_create(uint32_t size, uint64_t txn_id, db_handle *handle, uint32
 		perror("Reason: ");
 		_exit(EXIT_FAILURE);
 	}
-	// memset(sst->IO_buffer, 0x00, size);//?? A lot of CPU cycles
+	// memset(sst->IO_buffer, 0x02, size);//?? A lot of CPU cycles
 	sst->db_handle = handle;
 	sst->txn_id = txn_id;
 	sst->last_index_offt = size;
@@ -454,6 +452,8 @@ bool sst_append_splice(struct sst *sst, struct kv_splice_base *splice)
 {
 	uint64_t left_leaf_offt = 0;
 	uint64_t right_leaf_offt = 0;
+	// log_debug("Appending splice in SST size: %u payload: %.*s level: %u", kv_splice_base_get_key_size(splice),
+	// 	  kv_splice_base_get_key_size(splice), kv_splice_base_get_key_buf(splice), sst->meta->header->level_id);
 
 	// struct kv_splice_base new_splice = *splice;
 	// bool append_to_medium = false;
@@ -554,16 +554,17 @@ bool sst_flush(struct sst *sst)
 	assert(sst->meta->header->first_guard_size);
 	assert(sst->meta->header->last_guard_size);
 
-	log_debug("First guard: %.*s size: %d", key_splice_get_key_size(first), key_splice_get_key_offset(first),
-		  key_splice_get_key_size(first));
-	log_debug("Last  guard: %.*s size: %d", key_splice_get_key_size(last), key_splice_get_key_offset(last),
-		  key_splice_get_key_size(last));
-	int32_t size = key_splice_get_key_size(first);
-	if (size > key_splice_get_key_size(last)) {
-		size = key_splice_get_key_size(last);
-	}
-	int ret = memcmp(key_splice_get_key_offset(first), key_splice_get_key_offset(last), size);
-	assert(ret < 0);
+	log_debug("(SST_FLUSH) First guard: %.*s size: %d level: %u", key_splice_get_key_size(first),
+		  key_splice_get_key_offset(first), key_splice_get_key_size(first), sst->meta->header->level_id);
+	log_debug("(SST_FLUSH) Last  guard: %.*s size: %d level: %u", key_splice_get_key_size(last),
+		  key_splice_get_key_offset(last), key_splice_get_key_size(last), sst->meta->header->level_id);
+
+	//  int32_t size = key_splice_get_key_size(first);
+	// if (size > key_splice_get_key_size(last)) {
+	// 	size = key_splice_get_key_size(last);
+	// }
+	// int ret = memcmp(key_splice_get_key_offset(first), key_splice_get_key_offset(last), size);
+	// assert(ret < 0);
 
 	sst->last_leaf_offt -= LEAF_NODE_SIZE;
 	int height = MAX_HEIGHT - 1;
@@ -578,12 +579,15 @@ bool sst_flush(struct sst *sst)
 	sst->meta->header->root_offt =
 		sst->meta->header->sst_dev_offt + sst_calc_offt(sst, (char *)sst->last_node[height]);
 	sst->last_node[height]->type = height == 0 ? leafRootNode : rootNode;
+	assert(height < 9);
+	//Bounds accounting
+	sst->meta->header->last_leaf_offt = sst->last_leaf_offt + LEAF_NODE_SIZE;
 	//Serialize and write a)SST header and bloom filter in the on-disk representation of SST
 	memcpy(sst->IO_buffer, sst->meta->header, sst_header_get_size(sst->meta));
 
 	//Serialize bloom filter
 	if (sst->meta->bf) {
-		memcpy(&sst->IO_buffer[sst->meta->header->bf_offt_in_sst], sst->meta->bf,
+		memcpy(&sst->IO_buffer[sst_calc_on_disk_header_size(MAX_KEY_SIZE)], sst->meta->bf,
 		       bloom_get_size(sst->meta->bf));
 	}
 

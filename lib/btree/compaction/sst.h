@@ -119,7 +119,7 @@ uint32_t sst_meta_get_first_leaf_relative_offt(const struct sst_meta *sst);
  *@return on success it returns true and off is set with the corresponding offset.
  * Otherwise it returns false (no more data blocks in the SST)
 */
-bool sst_meta_get_next_relative_leaf_offt(uint32_t *offt, char *sst_buffer);
+bool sst_meta_get_next_relative_leaf_offt(struct sst_meta *sst_meta, uint32_t *offt);
 
 bool sst_key_exists(const struct sst_meta *sst, struct key_splice *key_splice);
 

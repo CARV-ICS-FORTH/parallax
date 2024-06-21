@@ -611,7 +611,7 @@ bool level_add_ssts(struct device_level *level, int num_ssts, struct sst_meta *s
 		level->guard_table[tree_id] = minos_init(false);
 	for (int i = 0; i < num_ssts; i++) {
 		struct key_splice *first = sst_meta_get_first_guard(ssts[i]);
-		log_debug("Adding in guard table key: %.*s size: %d of level: %u and tree_id: %u",
+		log_debug("(SST_FLUSH) Adding in guard table key: %.*s size: %d of level: %u and tree_id: %u",
 			  key_splice_get_key_size(first), key_splice_get_key_offset(first),
 			  key_splice_get_key_size(first), level->level_id, tree_id);
 		struct minos_insert_request req = { .key = key_splice_get_key_offset(first),
@@ -679,7 +679,6 @@ struct level_compaction_scanner *level_comp_scanner_init(struct device_level *le
 	comp_scanner->fd = file_desc;
 	minos_iter_seek_first(&comp_scanner->iter, level->guard_table[tree_id]);
 	comp_scanner->meta = *(struct sst_meta **)comp_scanner->iter.iter_node->kv->value;
-	log_debug("--------------> Header dev offt = %u", sst_meta_get_first_leaf_relative_offt(comp_scanner->meta));
 	level_comp_scanner_read_sst(comp_scanner);
 	comp_scanner->relative_leaf_offt = sst_meta_get_first_leaf_relative_offt(comp_scanner->meta);
 	comp_scanner->leaf_api = &level->level_leaf_api;
@@ -695,7 +694,7 @@ bool level_comp_scanner_next(struct level_compaction_scanner *comp_scanner)
 	if (val)
 		return true;
 
-	if (sst_meta_get_next_relative_leaf_offt(&comp_scanner->relative_leaf_offt, comp_scanner->IO_buffer)) {
+	if (sst_meta_get_next_relative_leaf_offt(comp_scanner->meta, &comp_scanner->relative_leaf_offt)) {
 		comp_scanner->curr_leaf =
 			(struct leaf_node *)&comp_scanner->IO_buffer[comp_scanner->relative_leaf_offt];
 		(*comp_scanner->leaf_api->leaf_seek_first)(comp_scanner->curr_leaf, comp_scanner->leaf_iter);
@@ -705,7 +704,6 @@ bool level_comp_scanner_next(struct level_compaction_scanner *comp_scanner)
 	if (false == minos_iter_is_valid(&comp_scanner->iter))
 		return false;
 	comp_scanner->meta = *(struct sst_meta **)comp_scanner->iter.iter_node->kv->value;
-	log_debug("--------------> Header dev offt = %u", sst_meta_get_first_leaf_relative_offt(comp_scanner->meta));
 	level_comp_scanner_read_sst(comp_scanner);
 	comp_scanner->relative_leaf_offt = sst_meta_get_first_leaf_relative_offt(comp_scanner->meta);
 	comp_scanner->curr_leaf = (struct leaf_node *)&comp_scanner->IO_buffer[comp_scanner->relative_leaf_offt];
