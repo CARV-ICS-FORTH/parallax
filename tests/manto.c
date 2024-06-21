@@ -8,12 +8,11 @@
  */
 #include "../btree/key_splice.h"
 #include "../lib/allocator/region_log.h"
+#include "../lib/btree/compaction/device_level.h"
+#include "../lib/btree/compaction/sst.h"
 #include "../lib/btree/conf.h"
-#include "../lib/btree/device_level.h"
-#include "../lib/btree/sst.h"
 #include "btree/btree.h"
 #include "btree/kv_pairs.h"
-#include "btree/sst.h"
 #include "parallax/structures.h"
 #include "scanner/scanner.h"
 #include <assert.h>
@@ -114,7 +113,7 @@ static bool create_ssts(struct workload_config *workload, int num_ssts, struct s
 
 	int sst_id = 0;
 
-	struct sst *curr_sst = sst_create(SST_SIZE, workload->txn_id, workload->handle, 1);
+	struct sst *curr_sst = sst_create(SST_SIZE, workload->txn_id, workload->handle, 1, true);
 	// Iterate over the keys
 	uint32_t num_kv_pairs = 0;
 	while (cursor->c_get(cursor, &key, &value, DB_NEXT) == 0) {
@@ -134,7 +133,7 @@ static bool create_ssts(struct workload_config *workload, int num_ssts, struct s
 				_exit(EXIT_FAILURE);
 			}
 			//ok get first and last splice to update the guards
-			curr_sst = sst_create(SST_SIZE, workload->txn_id, workload->handle, 1);
+			curr_sst = sst_create(SST_SIZE, workload->txn_id, workload->handle, 1, true);
 		}
 		++num_kv_pairs;
 		free(splice);
