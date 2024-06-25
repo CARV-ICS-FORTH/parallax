@@ -28,7 +28,6 @@ set(LIB_C_SOURCE_FILES
     allocator/region_log.c
     allocator/persistent_operations.c
     allocator/djb2.c
-    api/parallax.c
     btree/btree.c
     btree/index_node.c
     btree/compaction/compaction_daemon.c
@@ -55,6 +54,18 @@ set(LIB_C_SOURCE_FILES
     scanner/L0_scanner.c
     scanner/stack.c
     parallax_callbacks/parallax_callbacks.c)
+
+option(
+  BUILD_CLIENT
+  "Build using parallax_client.c api"
+  OFF)
+
+if(BUILD_CLIENT)
+  list(APPEND LIB_C_SOURCE_FILES api/parallax_client.c)
+else()
+  list(APPEND LIB_C_SOURCE_FILES api/parallax.c)
+endif()
+
 
 list(APPEND LIB_C_SOURCE_FILES
      "$CACHE{parallax_SOURCE_DIR}/utilities/spin_loop.c")
