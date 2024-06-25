@@ -201,6 +201,12 @@ par_ret_code par_sync(par_handle handle);
  * @retval Array with NUM_OF_OPTIONS sizeo of struct options_desc
  */
 struct par_options_desc *par_get_default_options(void);
+
+/**
+* @brief Returns the maximum KV pair size that Parallax is configured to store
+* @return number of bytes of the maximum KV pair size
+*/
+uint32_t par_get_max_kv_pair_size(void);
 #ifdef __cplusplus
 }
 #endif

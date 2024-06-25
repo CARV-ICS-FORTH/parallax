@@ -477,3 +477,8 @@ void par_flush_superblock(par_handle handle)
 	struct db_handle *dbhandle = (struct db_handle *)handle;
 	pr_flush_db_superblock(dbhandle->db_desc);
 }
+
+uint32_t par_get_max_kv_pair_size(void)
+{
+	return KV_MAX_SIZE - kv_splice_get_metadata_size();
+}
