@@ -760,7 +760,7 @@ static const char *insert_error_handling(const db_handle *handle, uint32_t key_s
 
 	uint32_t kv_size = key_size + value_size + kv_splice_get_metadata_size();
 	if (kv_size > KV_MAX_SIZE) {
-		error_message = "KV size > 4KB buffer overflow!";
+		error_message = "KV size > KV_MAX_SIZE buffer overflow!";
 		return error_message;
 	}
 
