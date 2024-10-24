@@ -56,9 +56,6 @@ if(PARALLAX_BUILD_TESTING)
                                      ../lib/btree/compaction/fractal_leaf.c)
   target_link_libraries(test_fractal_layout "${PROJECT_NAME}")
 
-  add_executable(test_server_simple test_server_simple.c)
-  link_target(test_server_simple)
-
   # Find the BDB library
   find_library(BDB_LIBRARY NAMES db libdb)
 
