@@ -2,6 +2,8 @@ include(CheckCXXCompilerFlag)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 include_directories(${CMAKE_SOURCE_DIR}/lib)
 
+set(NET_LIBRARY "")
+
 if(PARALLAX_BUILD_TESTING)
   include_directories(BEFORE core db ${CMAKE_SOURCE_DIR}/lib/include)
   find_package(Boost REQUIRED)
@@ -13,10 +15,15 @@ if(PARALLAX_BUILD_TESTING)
 
   add_executable(ycsb-tcp db/db_factory_parallax_tcp.cc core/core_workload.cc
                           driver/ycsbc.cc ../utilities/list.c)
+  
+  if(NET STREQUAL "portals")
+    set(NET_LIBRARY "${PROJECT_NAME}_portals_lib")
+  endif()
+  
   target_link_libraries(
     ycsb-tcp PRIVATE "${PROJECT_NAME}_net_lib" ${Boost_LIBRARIES} log
-                     Threads::Threads)
-
+                     Threads::Threads "${NET_LIBRARY}")
+  
   check_cxx_compiler_flag("-Wno-deprecated-array-compare"
                           DEPRECATED_ARRAY_COMPARE)
   if(DEPRECATED_ARRAY_COMPARE)

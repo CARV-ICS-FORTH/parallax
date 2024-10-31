@@ -3,11 +3,13 @@ cmake_minimum_required(VERSION 3.0)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 include_directories(${CMAKE_SOURCE_DIR}/lib)
 
-option(TCP "Enable TCP server" OFF)
+option(NET "Link with Network library (Portals or TCP)" OFF)
 
 function(link_target target_name)
-  if(TCP)
+  if(NET STREQUAL "tcp")
     target_link_libraries(${target_name} "${PROJECT_NAME}_net_lib")
+  elseif(NET STREQUAL "portals")
+    target_link_libraries(${target_name} "${PROJECT_NAME}_portals_lib")
   else()
     target_link_libraries(${target_name} "${PROJECT_NAME}")
   endif()
@@ -26,7 +28,7 @@ if(PARALLAX_BUILD_TESTING)
       test_categories.c
       test_sanitizers.c
       simple_test_delete.c
-      test_gc.c
+      test_gc.c 
       test_leaf_root_delete_get_scan.c
       test_region_allocations.c
       test_par_format.c
@@ -58,8 +60,11 @@ if(PARALLAX_BUILD_TESTING)
 
   add_executable(test_server_simple test_server_simple.c)
   link_target(test_server_simple)
+  
+  add_executable(test_portals_server_simple test_portals_server_simple.c)
+  link_target(test_portals_server_simple)
 
-  # Find the BDB library
+  # Find the BDB library 
   find_library(BDB_LIBRARY NAMES db libdb)
 
   # Find the BDB header path

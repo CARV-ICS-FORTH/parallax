@@ -13,7 +13,8 @@
             "generator": "Unix Makefiles",
             "binaryDir": "${sourceDir}/build/debug",
             "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Debug"
+                "CMAKE_BUILD_TYPE": "Debug",
+                "NET": "portals"
             }
         },
         {
@@ -25,7 +26,8 @@
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Release",
                 "DISABLE_LOGGING": "ON",
-                "ENABLE_FLTO": "ON"
+                "ENABLE_FLTO": "ON",
+                "NET": "portals"
             }
         }
     ],

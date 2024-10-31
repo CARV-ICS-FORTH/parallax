@@ -112,6 +112,66 @@ install(FILES include/parallax/parallax.h include/parallax/structures.h
 set_target_properties(${LIB} PROPERTIES OUTPUT_NAME ${LIB})
 set_target_properties(server.${LIB} PROPERTIES OUTPUT_NAME ${LIB}_server)
 
+########## PORTALS SERVER !!! ###########
+
+option(PORTALS_LIB_DIR "Path to the Portals library" "")
+
+# Check if the user provided a path via -DPORTALS_LIB_DIR, or use the environment variable
+if(NOT PORTALS_LIB_DIR)
+    # If the CMake option is not set, use the environment variable
+    set(PORTALS_LIB_DIR $ENV{PORTALS_LIB_DIR})
+endif()
+
+find_library(PORTALS_LIB NAMES portals
+    PATHS ${PORTALS_LIB_DIR}
+)
+
+if(PORTALS_LIB)
+  add_definitions(-DPARALLAX_PORTALS) 
+
+  message(STATUS "Portals library found at : ${PORTALS_LIB} installing portals server")
+  
+  get_filename_component(PORTALS_LIB_DIR_INCLUDE ${PORTALS_LIB} DIRECTORY)
+  set(PORTALS_INCLUDE_DIR "${PORTALS_LIB_DIR_INCLUDE}/../../portals/include")
+
+  set(PORT_LIB "portals_${PROJECT_NAME}_server")
+
+  add_executable(${PORT_LIB}
+    ../net_interface/portals_server/portals_server.c
+    ../net_interface/portals_server/portals_server_handle.c
+    ../net_interface/par_net/par_net_open.c
+    ../net_interface/par_net/par_net_put.c
+    ../net_interface/par_net/par_net_delete.c
+    ../net_interface/par_net/par_net_get.c
+    ../net_interface/par_net/par_net_close.c
+    ../net_interface/par_net/par_net_scan.c
+    ../net_interface/par_net/par_net_sync.c
+  )
+  
+  set_target_properties(
+   ${PORT_LIB}
+   PROPERTIES PUBLIC_HEADER
+            "${CMAKE_CURRENT_SOURCE_DIR}/include/parallax/parallax.h")
+
+  target_include_directories(${PORT_LIB} PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/../net_interface/par_net") 
+  target_include_directories(${PORT_LIB} PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include/")
+  target_include_directories(${PORT_LIB} PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/")
+  target_include_directories(${PORT_LIB} PUBLIC "${PORTALS_INCLUDE_DIR}")
+
+  target_link_libraries(${PORT_LIB} log yaml ${PORTALS_LIB} ${LIB})
+  #target_link_libraries(${PORT_LIB} PRIVATE )
+  install(
+    TARGETS ${PORT_LIB}
+    ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+    LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+    RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
+    PUBLIC_HEADER DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}") 
+elseif()
+  message(WARNING "Portals library not found, stoping installation for portals server")
+endif()
+
+########## END OF PORTALS SERVER !!! ###########
+
 if(RUN_IWYU STREQUAL "ON")
   find_program(iwyu_path NAMES include-what-you-use iwyu iwyu-tool)
   if(iwyu_path)

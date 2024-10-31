@@ -1,0 +1,8 @@
+#ifdef PARALLAX_PORTALS
+#ifndef PORTALS_H
+#define PORTALS
+
+#define SERVER_PID 2060
+#define CLIENT_PID 2080
+#endif //PORTALS_H
+#endif //PARALLAX_PORTALS
