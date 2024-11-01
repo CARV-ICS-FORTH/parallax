@@ -25,6 +25,7 @@ char msg[PTL_EV_STR_SIZE];
 
 #define MATCH 1
 #define IGNORE 0xffffffff
+#define METADATA_SIZE 4096
 
 #define USAGE_STRING                             \
 	"portals-server: no options specified\n" \
@@ -71,7 +72,6 @@ struct server_handle {
 
 	ptl_handle_ni_t nih;
 	ptl_handle_eq_t eqh;
-	ptl_handle_eq_t eqhsent;
 	ptl_pt_index_t ptindex;
 	ptl_me_t me[MATCH_ENTRY_NUM];
 	ptl_handle_me_t meh[MATCH_ENTRY_NUM];
@@ -551,7 +551,7 @@ static int put_and_reply(struct server_handle *server_handle, int i)
 	server_handle->md.start = reply_header;
 	server_handle->md.length = reply_header->total_bytes;
 	server_handle->md.options = 0;
-	server_handle->md.eq_handle = server_handle->eqhsent;
+	server_handle->md.eq_handle = server_handle->eqh;
 	server_handle->md.ct_handle = PTL_CT_NONE;
 
 	ret = PtlMDBind(server_handle->nih, &server_handle->md, &server_handle->mdh);
@@ -568,8 +568,8 @@ static int put_and_reply(struct server_handle *server_handle, int i)
 	}
 	log_info("i have this : ");
 	print_buffer_hex((char *)server_handle->md.start, server_handle->md.length);
-	/*send message event*/
-	ret = PtlEQWait(server_handle->eqhsent, &server_handle->event);
+	/*send message event
+	ret = PtlEQWait(server_handle->eqh, &server_handle->event);
 	if (ret != PTL_OK) {
 		log_fatal("PtlEQWait failed\n");
 		_exit(EXIT_FAILURE);
@@ -577,18 +577,18 @@ static int put_and_reply(struct server_handle *server_handle, int i)
 		PtlEvToStr(0, &server_handle->event, msg);
 		log_info("Event server interface 1 : %s", msg);
 	}
-	/*wait for ack*/
-	ret = PtlEQWait(server_handle->eqhsent, &server_handle->event);
+	//wait for ack
+	ret = PtlEQWait(server_handle->eqh, &server_handle->event);
 	if (ret != PTL_OK) {
 		log_fatal("PtlEQWait failed\n");
 		_exit(EXIT_FAILURE);
 	} else {
 		PtlEvToStr(0, &server_handle->event, msg);
 		log_info("Event server interface 1 : %s", msg);
-	}
+	}*/
 	return EXIT_SUCCESS;
 }
-static int handle_req(struct server_handle *server_handle)
+static int handle_event(struct server_handle *server_handle)
 {
 	int i, found;
 	void *aligned_buffer_start;
@@ -613,12 +613,12 @@ static int handle_req(struct server_handle *server_handle)
 		}
 
 		if (found == 0) {
-			log_info("maximum number of clients reached server ignoring new client\n");
+			log_info("maximum number of clients reached, server ignoring new client\n");
 			return -(EXIT_FAILURE);
 		}
 
 		if (put_and_reply(server_handle, i) < 0) {
-			log_fatal("handle_req failed\n");
+			log_fatal("handle_event failed\n");
 			return -(EXIT_FAILURE);
 		}
 		break;
@@ -634,6 +634,10 @@ static int handle_req(struct server_handle *server_handle)
 			log_debug("buffer is consumed clear data...");
 			append_me_for_unlink_event(server_handle, aligned_buffer_start);
 		}
+		break;
+	case PTL_EVENT_SEND:
+	case PTL_EVENT_ACK:
+		log_info("Event server interface 1 : %s", PtlToStr(server_handle->event.type, PTL_STR_EVENT));
 		break;
 	default:
 		log_info("UNKNOWN Event server interface 1 : %s", PtlToStr(server_handle->event.type, PTL_STR_EVENT));
@@ -657,8 +661,8 @@ static int loop(struct server_handle *server_handle)
 		PtlEvToStr(0, &server_handle->event, msg);
 		log_info("Event server interface 1 : %s", msg);
 
-		if (handle_req(server_handle) < 0) {
-			log_fatal("handle_req failed\n");
+		if (handle_event(server_handle) < 0) {
+			log_fatal("handle_event failed\n");
 			return -(EXIT_FAILURE);
 		}
 	}
@@ -701,7 +705,7 @@ struct server_handle *portals_server_handle_init(struct server_options *server_o
 		_exit(EXIT_FAILURE);
 	}
 
-	ret = PtlEQAlloc(handle->nih, 2048, &handle->eqhsent);
+	ret = PtlEQAlloc(handle->nih, 2048, &handle->eqh);
 	if (ret != PTL_OK) {
 		log_fatal("PtlEQAlloc failed");
 		_exit(EXIT_FAILURE);
@@ -715,7 +719,7 @@ struct server_handle *portals_server_handle_init(struct server_options *server_o
 
 	for (int i = 0; i < MATCH_ENTRY_NUM; i++) {
 		void *raw_memory;
-		ret = posix_memalign(&raw_memory, 4096, KV_MAX_SIZE + sizeof(uint32_t));
+		ret = posix_memalign(&raw_memory, 4096, KV_MAX_SIZE + METADATA_SIZE);
 
 		if (ret != 0) {
 			perror("posix_memalign failed");
@@ -723,7 +727,7 @@ struct server_handle *portals_server_handle_init(struct server_options *server_o
 		}
 
 		// Set the pointer to the start of the aligned receive buffer
-		handle->recv_buffer[i] = (char *)raw_memory + sizeof(uint32_t);
+		handle->recv_buffer[i] = (char *)raw_memory + METADATA_SIZE;
 
 		// Initialize the counter at the start of the metadata section
 		uint32_t *counter = (uint32_t *)raw_memory;
