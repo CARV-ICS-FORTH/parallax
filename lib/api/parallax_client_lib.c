@@ -142,7 +142,6 @@ static par_handle par_net_init(const char *parallax_host)
 		log_fatal("PtlInit failed");
 		_exit(EXIT_FAILURE);
 	}
-	//ret = PtlNIInit(2, PTL_NI_NO_MATCHING | PTL_NI_PHYSICAL, 2020, NULL, NULL, &handle->nih);
 	ret = PtlNIInit(PTL_IFACE_DEFAULT, PTL_NI_MATCHING | PTL_NI_PHYSICAL, PTL_PID_ANY, NULL, NULL, &handle->nih);
 	if (ret != PTL_OK) {
 		log_fatal("PtlNIInit failed : %s \n", PtlToStr(ret, PTL_STR_ERROR));

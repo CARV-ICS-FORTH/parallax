@@ -106,14 +106,17 @@ void print_buffer_hex(const char *buffer, size_t length)
 	printf("\n");
 }
 
-void print_counters(struct server_handle *handle)
+void print_counters(struct server_handle *server_handle)
 {
 	for (int i = 0; i < MATCH_ENTRY_NUM; i++) {
-		// Retrieve the counter at the beginning of each buffer
-		uint32_t *counter = (uint32_t *)handle->recv_buffer[i];
+		// Start of the metadata section for each buffer
+		void *aligned_buffer_start = (char *)server_handle->recv_buffer[i] - METADATA_SIZE;
 
-		// Print the counter value for this buffer
-		printf("Buffer %d counter: %u\n", i, *counter);
+		// Access the counter and buffer ID in the metadata
+		uint32_t *counter = (uint32_t *)(aligned_buffer_start);
+		uint32_t *buffer_id = (uint32_t *)aligned_buffer_start + sizeof(uint32_t);
+
+		printf("Buffer ID: %u, Counter: %u\n", *buffer_id, *counter);
 	}
 }
 
@@ -155,7 +158,7 @@ int server_print_config(struct server_handle *server_handle)
 	ptl_process_t id;
 	int ret = PtlGetId(server_handle->nih, &id);
 	if (ret != PTL_OK) {
-		log_fatal("PtlGetId failed : %s \n", PtlToStr(ret, PTL_STR_ERROR));
+		log_fatal("PtlGetId failed : %s", PtlToStr(ret, PTL_STR_ERROR));
 		_exit(EXIT_FAILURE);
 	}
 
@@ -170,10 +173,10 @@ static long server_parse_number(const char *str, const char *opt)
 	if (0 == errno)
 		return num;
 	if (errno == EINVAL) {
-		log_fatal("portals-server: invalid number in option '%s'\n", opt);
+		log_fatal("portals-server: invalid number in option '%s'", opt);
 		_exit(EXIT_FAILURE);
 	}
-	log_fatal("portals-server: number out-of-range in option '%s'\n", opt);
+	log_fatal("portals-server: number out-of-range in option '%s'", opt);
 	_exit(EXIT_FAILURE);
 }
 
@@ -483,32 +486,28 @@ const par_portals_call par_net_call[OPCODE_MAX] = { NULL,
 
 void append_me_for_unlink_event(struct server_handle *server_handle, void *aligned_buffer_start)
 {
-	for (int i = 0; i < MATCH_ENTRY_NUM; i++) {
-		if (server_handle->me[i].start == aligned_buffer_start) {
-			// Found the correct `i`, now reinitialize and reappend `me[i]`
-			server_handle->me[i].ignore_bits = IGNORE;
-			server_handle->me[i].match_bits = MATCH;
-			server_handle->me[i].match_id.phys.nid = PTL_NID_ANY;
-			server_handle->me[i].match_id.phys.pid = PTL_PID_ANY;
-			server_handle->me[i].min_free = 4096;
-			server_handle->me[i].start = aligned_buffer_start;
-			server_handle->me[i].length = server_handle->recv_buffer_size;
-			server_handle->me[i].ct_handle = PTL_CT_NONE;
-			server_handle->me[i].uid = PTL_UID_ANY;
-			server_handle->me[i].options = SRV_ME_OPTS;
+	uint32_t *buffer_id = (uint32_t *)((uintptr_t)aligned_buffer_start - METADATA_SIZE + sizeof(uint32_t));
+	uint32_t i = *buffer_id;
 
-			int ret = PtlMEAppend(server_handle->nih, server_handle->ptindex, &server_handle->me[i],
-					      PTL_PRIORITY_LIST, NULL, &server_handle->meh[i]);
-			if (ret != PTL_OK) {
-				log_fatal("Error reappending ME at index %d\n", i);
-				_exit(EXIT_FAILURE);
-			}
+	log_info("reappending ME at index %d", i);
+	server_handle->me[i].ignore_bits = IGNORE;
+	server_handle->me[i].match_bits = MATCH;
+	server_handle->me[i].match_id.phys.nid = PTL_NID_ANY;
+	server_handle->me[i].match_id.phys.pid = PTL_PID_ANY;
+	server_handle->me[i].min_free = 4096;
+	server_handle->me[i].start = aligned_buffer_start;
+	server_handle->me[i].length = server_handle->recv_buffer_size;
+	server_handle->me[i].ct_handle = PTL_CT_NONE;
+	server_handle->me[i].uid = PTL_UID_ANY;
+	server_handle->me[i].options = SRV_ME_OPTS;
 
-			log_debug("Successfully reappended ME at index %d\n", i);
-			return; // Exit after reappending the found entry
-		}
+	int ret = PtlMEAppend(server_handle->nih, server_handle->ptindex, &server_handle->me[i], PTL_PRIORITY_LIST,
+			      server_handle->me[i].start, &server_handle->meh[i]);
+	if (ret != PTL_OK) {
+		log_fatal("Error reappending ME at index %d", i);
+		_exit(EXIT_FAILURE);
 	}
-
+	return;
 	log_error("No matching ME found for reappending.");
 }
 static int put_and_reply(struct server_handle *server_handle, int i)
@@ -521,8 +520,8 @@ static int put_and_reply(struct server_handle *server_handle, int i)
 		       server_handle->client_ids[j].phys.nid);
 	}
 
-	printf("server received message from client %d:%d \n", server_handle->client_ids[i].phys.nid,
-	       server_handle->client_ids[i].phys.pid);
+	log_info("server received message from client %d:%d", server_handle->client_ids[i].phys.nid,
+		 server_handle->client_ids[i].phys.pid);
 	print_buffer_hex(server_handle->event.start, server_handle->event.mlength);
 	size_t total_bytes = par_net_get_total_bytes(server_handle->event.start);
 	if (total_bytes > server_handle->recv_buffer_size) {
@@ -538,9 +537,8 @@ static int put_and_reply(struct server_handle *server_handle, int i)
 		return -(EXIT_FAILURE);
 	}
 
-	aligned_buffer_start =
-		(void *)((uintptr_t)server_handle->event.start - ((uintptr_t)server_handle->event.start % 4096));
-	counter = (uint32_t *)aligned_buffer_start;
+	aligned_buffer_start = (void *)((uintptr_t)server_handle->event.user_ptr);
+	counter = (uint32_t *)((uintptr_t)aligned_buffer_start - METADATA_SIZE);
 
 	// Increase the correct counter
 	(*counter)++;
@@ -556,36 +554,18 @@ static int put_and_reply(struct server_handle *server_handle, int i)
 
 	ret = PtlMDBind(server_handle->nih, &server_handle->md, &server_handle->mdh);
 	if (ret != PTL_OK) {
-		log_fatal("PtlMDBind failed\n");
+		log_fatal("PtlMDBind failed");
 		_exit(EXIT_FAILURE);
 	}
 
 	ret = PtlPut(server_handle->mdh, 0, reply_header->total_bytes, PTL_ACK_REQ, server_handle->client_ids[i], 0, 0,
 		     0, NULL, 0);
 	if (ret != PTL_OK) {
-		log_fatal("PtlPut failed\n");
+		log_fatal("PtlPut failed");
 		_exit(EXIT_FAILURE);
 	}
 	log_info("i have this : ");
 	print_buffer_hex((char *)server_handle->md.start, server_handle->md.length);
-	/*send message event
-	ret = PtlEQWait(server_handle->eqh, &server_handle->event);
-	if (ret != PTL_OK) {
-		log_fatal("PtlEQWait failed\n");
-		_exit(EXIT_FAILURE);
-	} else {
-		PtlEvToStr(0, &server_handle->event, msg);
-		log_info("Event server interface 1 : %s", msg);
-	}
-	//wait for ack
-	ret = PtlEQWait(server_handle->eqh, &server_handle->event);
-	if (ret != PTL_OK) {
-		log_fatal("PtlEQWait failed\n");
-		_exit(EXIT_FAILURE);
-	} else {
-		PtlEvToStr(0, &server_handle->event, msg);
-		log_info("Event server interface 1 : %s", msg);
-	}*/
 	return EXIT_SUCCESS;
 }
 static int handle_event(struct server_handle *server_handle)
@@ -596,7 +576,7 @@ static int handle_event(struct server_handle *server_handle)
 
 	switch (server_handle->event.type) {
 	case PTL_EVENT_PUT:
-		log_info("Received PTL_EVENT_PUT event\n");
+		log_info("Received PTL_EVENT_PUT event");
 		//search for this client identifiers
 		for (i = 0; i < 20; i++) {
 			if (server_handle->event.initiator.phys.pid == server_handle->client_ids[i].phys.pid &&
@@ -613,22 +593,23 @@ static int handle_event(struct server_handle *server_handle)
 		}
 
 		if (found == 0) {
-			log_info("maximum number of clients reached, server ignoring new client\n");
+			log_info("maximum number of clients reached, server ignoring new client");
 			return -(EXIT_FAILURE);
 		}
 
 		if (put_and_reply(server_handle, i) < 0) {
-			log_fatal("handle_event failed\n");
+			log_fatal("handle_event failed");
 			return -(EXIT_FAILURE);
 		}
 		break;
 	case PTL_EVENT_AUTO_UNLINK:
-		log_info("buff full: %d\n", server_handle->event.type);
-		aligned_buffer_start = (void *)((uintptr_t)server_handle->event.start -
-						((uintptr_t)server_handle->event.start % 4096));
-		counter = (uint32_t *)aligned_buffer_start;
+		log_info("Received PTL_EVENT_AUTO_UNLINK event");
+		aligned_buffer_start = (void *)((uintptr_t)server_handle->event.user_ptr);
+
+		counter = (uint32_t *)((uintptr_t)aligned_buffer_start - METADATA_SIZE);
+
 		print_counters(server_handle);
-		if (counter != 0) {
+		if (*counter != 0) {
 			log_debug("buffer busy...wait for data to be cosumed");
 		} else {
 			log_debug("buffer is consumed clear data...");
@@ -648,21 +629,15 @@ static int handle_event(struct server_handle *server_handle)
 
 static int loop(struct server_handle *server_handle)
 {
-	int ret;
-
 	while (1) {
-		//checks
-		ret = PtlEQPoll(&server_handle->eqh, 1, PTL_TIME_FOREVER, &server_handle->event, 0);
+		int ret = PtlEQPoll(&server_handle->eqh, 1, PTL_TIME_FOREVER, &server_handle->event, 0);
 
 		if (ret != PTL_OK) {
 			log_fatal("PtlEQWait failed: %s", PtlToStr(ret, PTL_STR_ERROR));
 			_exit(EXIT_FAILURE);
 		}
-		PtlEvToStr(0, &server_handle->event, msg);
-		log_info("Event server interface 1 : %s", msg);
-
 		if (handle_event(server_handle) < 0) {
-			log_fatal("handle_event failed\n");
+			log_fatal("handle_event failed");
 			return -(EXIT_FAILURE);
 		}
 	}
@@ -732,15 +707,18 @@ struct server_handle *portals_server_handle_init(struct server_options *server_o
 		// Initialize the counter at the start of the metadata section
 		uint32_t *counter = (uint32_t *)raw_memory;
 		*counter = 0;
+		// Initialize the buffer_id next to the counter of the metadata section
+		uint32_t *buffer_id = (uint32_t *)raw_memory + sizeof(uint32_t);
+		*buffer_id = i;
 	}
 
 	if (ret != 0) {
-		log_fatal("posix_memalign failed\n");
+		log_fatal("posix_memalign failed");
 		_exit(EXIT_FAILURE);
 	}
 	ret = posix_memalign((void **)&handle->send_buffer, 4096, KV_MAX_SIZE);
 	if (ret != 0) {
-		log_fatal("posix_memalign failed\n");
+		log_fatal("posix_memalign failed");
 		_exit(EXIT_FAILURE);
 	}
 	handle->recv_buffer_size = KV_MAX_SIZE;
@@ -771,7 +749,7 @@ int server_start(struct server_handle *server_handle)
 	}
 
 	if (!server_handle->me) {
-		log_fatal("Memory allocation failed\n");
+		log_fatal("Memory allocation failed");
 		_exit(EXIT_FAILURE);
 	}
 
@@ -789,14 +767,14 @@ int server_start(struct server_handle *server_handle)
 
 		// Append each ME
 		int ret = PtlMEAppend(server_handle->nih, server_handle->ptindex, &server_handle->me[i],
-				      PTL_PRIORITY_LIST, NULL, &server_handle->meh[i]);
+				      PTL_PRIORITY_LIST, server_handle->me[i].start, &server_handle->meh[i]);
 		if (ret != PTL_OK) {
-			log_fatal("Error appending ME at index %d\n", i);
+			log_fatal("Error appending ME at index %d", i);
 			_exit(EXIT_FAILURE);
 		}
 	}
 
-	log_info("Server is ready\n");
+	log_info("Server is ready");
 
 	/*
    * ok now we can start polling loop and complete each rpc. 
@@ -804,7 +782,7 @@ int server_start(struct server_handle *server_handle)
    * 
    */
 	if (loop(server_handle) < 0) {
-		log_fatal("loop failed\n");
+		log_fatal("loop failed");
 		_exit(EXIT_FAILURE);
 	}
 
