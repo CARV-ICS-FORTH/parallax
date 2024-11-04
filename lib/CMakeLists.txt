@@ -116,12 +116,6 @@ set_target_properties(server.${LIB} PROPERTIES OUTPUT_NAME ${LIB}_server)
 
 option(PORTALS_LIB_DIR "Path to the Portals library" "")
 
-# Check if the user provided a path via -DPORTALS_LIB_DIR, or use the environment variable
-if(NOT PORTALS_LIB_DIR)
-    # If the CMake option is not set, use the environment variable
-    set(PORTALS_LIB_DIR $ENV{PORTALS_LIB_DIR})
-endif()
-
 find_library(PORTALS_LIB NAMES portals
     PATHS ${PORTALS_LIB_DIR}
 )

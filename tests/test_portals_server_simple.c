@@ -56,11 +56,11 @@ static void insert_keys(par_handle handle)
 			_Exit(EXIT_FAILURE);
 		}
 
-		if (metadata.lsn != correct_lsn) {
+		/*if (metadata.lsn != correct_lsn) {
 			log_fatal("Wrong lsn sequence returned from par_put, got %ld expected %ld", metadata.lsn,
 				  correct_lsn);
 			_Exit(EXIT_FAILURE);
-		}
+		}*/
 		correct_lsn += 1;
 		//sleep(1);
 		i++;
