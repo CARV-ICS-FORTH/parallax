@@ -16,7 +16,7 @@ int main(int argc, char **argv)
 	struct server_handle *server_handle = prsv_portals_server_handle_init(server_options);
 
 	if (NULL == server_handle) {
-		log_fatal("Failed to initialize portals server");
+		log_debug("Failed to initialize portals server");
 		_exit(EXIT_FAILURE);
 	}
 

@@ -117,7 +117,7 @@ void prsv_print_counters(struct server_handle *server_handle)
 		uint32_t *counter = (uint32_t *)(aligned_buffer_start);
 		uint32_t *buffer_id = (uint32_t *)aligned_buffer_start + sizeof(uint32_t);
 
-		printf("Buffer ID: %u, Counter: %u\n", *buffer_id, *counter);
+		log_debug("Buffer ID: %u, Counter: %u", *buffer_id, *counter);
 	}
 }
 
@@ -145,7 +145,7 @@ static void server_check_arg(int argc, int option_id)
 {
 	if (option_id < argc)
 		return;
-	log_fatal("portals-server: option requires an argument");
+	log_debug("portals-server: option requires an argument");
 	_exit(EXIT_FAILURE);
 }
 
@@ -159,7 +159,7 @@ int prsv_server_print_config(struct server_handle *server_handle)
 	ptl_process_t id;
 	int ret = PtlGetId(server_handle->nih, &id);
 	if (ret != PTL_OK) {
-		log_fatal("PtlGetId failed : %s", PtlToStr(ret, PTL_STR_ERROR));
+		log_debug("PtlGetId failed : %s", PtlToStr(ret, PTL_STR_ERROR));
 		_exit(EXIT_FAILURE);
 	}
 
@@ -174,23 +174,23 @@ static long prsv_server_parse_number(const char *str, const char *opt)
 	if (0 == errno)
 		return num;
 	if (errno == EINVAL) {
-		log_fatal("portals-server: invalid number in option '%s'", opt);
+		log_debug("portals-server: invalid number in option '%s'", opt);
 		_exit(EXIT_FAILURE);
 	}
-	log_fatal("portals-server: number out-of-range in option '%s'", opt);
+	log_debug("portals-server: number out-of-range in option '%s'", opt);
 	_exit(EXIT_FAILURE);
 }
 
 struct server_options *prsv_server_parse_argv_opts(int argc, char *restrict *restrict argv)
 {
 	if (argc <= 1) {
-		log_fatal("%s", USAGE_STRING);
+		log_debug("%s", USAGE_STRING);
 		_exit(EXIT_FAILURE);
 	}
 
 	struct server_options *server_options = calloc(1UL, sizeof(*server_options));
 	if (!server_options) {
-		log_fatal("portals-server: memory allocation failed");
+		log_debug("portals-server: memory allocation failed");
 		_exit(EXIT_FAILURE);
 	}
 
@@ -198,14 +198,14 @@ struct server_options *prsv_server_parse_argv_opts(int argc, char *restrict *res
 
 	for (int i = 1; i < argc; ++i) {
 		if (argv[i][0] != '-') {
-			log_fatal("portals-server: unknown option '%s'\n", argv[i]);
+			log_debug("portals-server: unknown option '%s'\n", argv[i]);
 		}
 
 		if (!strcmp(argv[i], "-t") || !strcmp(argv[i], "--threads")) {
 			server_check_arg(argc, ++i);
 			long thrnum = prsv_server_parse_number(argv[i], "-t/--threads");
 			if (thrnum < 0) {
-				log_fatal("portals-server: invalid thread number '%ld'\n", thrnum);
+				log_debug("portals-server: invalid thread number '%ld'\n", thrnum);
 			}
 			server_options->threadno = (unsigned int)thrnum;
 			++opt_num;
@@ -218,10 +218,10 @@ struct server_options *prsv_server_parse_argv_opts(int argc, char *restrict *res
 			server_options->growth_factor = strtoul(argv[i], NULL, 10);
 			++opt_num;
 		} else if (!strcmp(argv[i], "-h") || !strcmp(argv[i], "--help")) {
-			log_fatal("%s\n", HELP_STRING);
+			log_debug("%s\n", HELP_STRING);
 			opt_num = NECESSARY_OPTIONS;
 		} else if (!strcmp(argv[i], "-v") || !strcmp(argv[i], "--version")) {
-			log_fatal("%s\n", VERSION_STRING);
+			log_debug("%s\n", VERSION_STRING);
 			opt_num = NECESSARY_OPTIONS;
 		} else if (!strcmp(argv[i], "-f") || !strcmp(argv[i], "--file")) {
 			server_check_arg(argc, ++i);
@@ -230,12 +230,12 @@ struct server_options *prsv_server_parse_argv_opts(int argc, char *restrict *res
 		} else if (!strcmp(argv[i], "-pf") || !strcmp(argv[i], "--par_format")) {
 			server_options->format = 1;
 		} else {
-			log_fatal("portals-server: unknown option '%s'\n", argv[i]);
+			log_debug("portals-server: unknown option '%s'\n", argv[i]);
 		}
 	}
 
 	if (opt_num != NECESSARY_OPTIONS) {
-		log_fatal("%s\n", USAGE_STRING);
+		log_debug("%s\n", USAGE_STRING);
 		_exit(EXIT_FAILURE);
 	}
 	return server_options;
@@ -331,7 +331,7 @@ static struct par_net_header *prsv_par_net_call_del(struct server_handle *server
 		error_message != NULL, (char *)server_handle->event.start + par_net_del_rep_calc_size(), buffer_len);
 
 	if (NULL == reply) {
-		log_fatal("Failed to create reply for delete operation");
+		log_debug("Failed to create reply for delete operation");
 		_exit(EXIT_FAILURE);
 	}
 	struct par_net_header *reply_header = (struct par_net_header *)server_handle->recv_buffer;
@@ -397,7 +397,7 @@ static struct par_net_header *prsv_par_net_call_sync(struct server_handle *serve
 		par_net_sync_rep_create(ret, region_id, &server_handle->send_buffer[prsv_par_net_header_calc_size()],
 					server_handle->send_buffer_size - prsv_par_net_header_calc_size());
 	if (NULL == sync_reply) {
-		log_fatal("Failed to create sync reply");
+		log_debug("Failed to create sync reply");
 		_exit(EXIT_FAILURE);
 	}
 	struct par_net_header *reply = (struct par_net_header *)server_handle->send_buffer;
@@ -428,7 +428,7 @@ static struct par_net_header *prsv_par_net_call_scan(struct server_handle *serve
 	par_scanner dev_scanner =
 		par_init_scanner((par_handle)region_id, &key, par_net_scan_req_get_seek_mode(request), &error_message);
 	if (error_message) {
-		log_fatal("Error: %s", error_message);
+		log_debug("Error: %s", error_message);
 		_exit(EXIT_FAILURE);
 	}
 
@@ -491,7 +491,7 @@ void prsv_append_me_for_unlink_event(struct server_handle *server_handle, void *
 	uint32_t *buffer_id = (uint32_t *)((uintptr_t)aligned_buffer_start - METADATA_SIZE + sizeof(uint32_t));
 	uint32_t i = *buffer_id;
 
-	log_info("reappending ME at index %d", i);
+	log_debug("reappending ME at index %d", i);
 	server_handle->me[i].ignore_bits = IGNORE;
 	server_handle->me[i].match_bits = MATCH;
 	server_handle->me[i].match_id.phys.nid = PTL_NID_ANY;
@@ -506,7 +506,7 @@ void prsv_append_me_for_unlink_event(struct server_handle *server_handle, void *
 	int ret = PtlMEAppend(server_handle->nih, server_handle->ptindex, &server_handle->me[i], PTL_PRIORITY_LIST,
 			      server_handle->me[i].start, &server_handle->meh[i]);
 	if (ret != PTL_OK) {
-		log_fatal("Error reappending ME at index %d", i);
+		log_debug("Error reappending ME at index %d", i);
 		_exit(EXIT_FAILURE);
 	}
 	return;
@@ -518,8 +518,8 @@ static int prsv_put_and_reply(struct server_handle *server_handle, struct prsv_c
 	void *aligned_buffer_start;
 	uint32_t *counter;
 
-	log_info("server received message from client %d:%d", prsv_client->client_id.phys.nid,
-		 prsv_client->client_id.phys.pid);
+	log_debug("server received message from client %d:%d", prsv_client->client_id.phys.nid,
+		  prsv_client->client_id.phys.pid);
 	//prsv_print_buffer_hex(server_handle->event.start, server_handle->event.mlength);
 	size_t total_bytes = prsv_par_net_get_total_bytes(server_handle->event.start);
 	if (total_bytes > server_handle->recv_buffer_size) {
@@ -531,7 +531,7 @@ static int prsv_put_and_reply(struct server_handle *server_handle, struct prsv_c
 	uint32_t opcode = par_net_header_get_opcode(server_handle->event.start);
 
 	if (opcode == 0) {
-		log_fatal("invalid opcode");
+		log_debug("invalid opcode");
 		return -(EXIT_FAILURE);
 	}
 
@@ -552,17 +552,17 @@ static int prsv_put_and_reply(struct server_handle *server_handle, struct prsv_c
 
 	ret = PtlMDBind(server_handle->nih, &server_handle->md, &server_handle->mdh);
 	if (ret != PTL_OK) {
-		log_fatal("PtlMDBind failed");
+		log_debug("PtlMDBind failed");
 		_exit(EXIT_FAILURE);
 	}
 
 	ret = PtlPut(server_handle->mdh, 0, reply_header->total_bytes, PTL_ACK_REQ, prsv_client->client_id, 0, 0, 0,
 		     NULL, 0);
 	if (ret != PTL_OK) {
-		log_fatal("PtlPut failed");
+		log_debug("PtlPut failed");
 		_exit(EXIT_FAILURE);
 	}
-	log_info("i have this : ");
+	log_debug("i have this : ");
 	//prsv_print_buffer_hex((char *)server_handle->md.start, server_handle->md.length);
 	return EXIT_SUCCESS;
 }
@@ -592,16 +592,16 @@ static int prsv_handle_event(struct server_handle *server_handle)
 
 	switch (server_handle->event.type) {
 	case PTL_EVENT_PUT:
-		log_info("Event server interface 1 : %s", PtlToStr(server_handle->event.type, PTL_STR_EVENT));
+		log_debug("Event server interface 1 : %s", PtlToStr(server_handle->event.type, PTL_STR_EVENT));
 		key = server_handle->event.initiator.phys.pid + server_handle->event.initiator.phys.nid;
 		struct prsv_clients *client = prsv_find_add_user(server_handle, key);
 		if (prsv_put_and_reply(server_handle, client) < 0) {
-			log_fatal("prsv_handle_event failed");
+			log_debug("prsv_handle_event failed");
 			return -(EXIT_FAILURE);
 		}
 		break;
 	case PTL_EVENT_AUTO_UNLINK:
-		log_info("Received PTL_EVENT_AUTO_UNLINK event");
+		log_debug("Received PTL_EVENT_AUTO_UNLINK event");
 		aligned_buffer_start = (void *)((uintptr_t)server_handle->event.user_ptr);
 
 		counter = (uint32_t *)((uintptr_t)aligned_buffer_start - METADATA_SIZE);
@@ -616,10 +616,10 @@ static int prsv_handle_event(struct server_handle *server_handle)
 		break;
 	case PTL_EVENT_SEND:
 	case PTL_EVENT_ACK:
-		log_info("Event server interface 1 : %s", PtlToStr(server_handle->event.type, PTL_STR_EVENT));
+		log_debug("Event server interface 1 : %s", PtlToStr(server_handle->event.type, PTL_STR_EVENT));
 		break;
 	default:
-		log_info("UNKNOWN Event server interface 1 : %s", PtlToStr(server_handle->event.type, PTL_STR_EVENT));
+		log_debug("UNKNOWN Event server interface 1 : %s", PtlToStr(server_handle->event.type, PTL_STR_EVENT));
 		break;
 	}
 	return EXIT_SUCCESS;
@@ -631,11 +631,11 @@ static int prsv_loop(struct server_handle *server_handle)
 		int ret = PtlEQPoll(&server_handle->eqh, 1, PTL_TIME_FOREVER, &server_handle->event, 0);
 
 		if (ret != PTL_OK) {
-			log_fatal("PtlEQWait failed: %s", PtlToStr(ret, PTL_STR_ERROR));
+			log_debug("PtlEQWait failed: %s", PtlToStr(ret, PTL_STR_ERROR));
 			_exit(EXIT_FAILURE);
 		}
 		if (prsv_handle_event(server_handle) < 0) {
-			log_fatal("prsv_handle_event failed");
+			log_debug("prsv_handle_event failed");
 			return -(EXIT_FAILURE);
 		}
 	}
@@ -645,7 +645,7 @@ static int prsv_loop(struct server_handle *server_handle)
 struct server_handle *prsv_portals_server_handle_init(struct server_options *server_options)
 {
 	if (!server_options) {
-		log_fatal("server options is NULL");
+		log_debug("server options is NULL");
 		_exit(EXIT_FAILURE);
 	}
 
@@ -659,31 +659,31 @@ struct server_handle *prsv_portals_server_handle_init(struct server_options *ser
 	handle->opts = server_options;
 	int ret = PtlInit();
 	if (ret != PTL_OK) {
-		log_fatal("PtlInit failed");
+		log_debug("PtlInit failed");
 		_exit(EXIT_FAILURE);
 	}
 
 	ret = PtlNIInit(PTL_IFACE_DEFAULT, PTL_NI_MATCHING | PTL_NI_PHYSICAL, SERVER_PID, NULL, NULL, &handle->nih);
 	if (ret != PTL_OK) {
-		log_fatal("PtlNIInit failed");
+		log_debug("PtlNIInit failed");
 		_exit(EXIT_FAILURE);
 	}
 
 	ret = PtlEQAlloc(handle->nih, 2048, &handle->eqh);
 	if (ret != PTL_OK) {
-		log_fatal("PtlEQAlloc failed");
+		log_debug("PtlEQAlloc failed");
 		_exit(EXIT_FAILURE);
 	}
 
 	ret = PtlEQAlloc(handle->nih, 2048, &handle->eqh);
 	if (ret != PTL_OK) {
-		log_fatal("PtlEQAlloc failed");
+		log_debug("PtlEQAlloc failed");
 		_exit(EXIT_FAILURE);
 	}
 
 	ret = PtlPTAlloc(handle->nih, 0, handle->eqh, PTL_PT_ANY, &handle->ptindex);
 	if (ret != PTL_OK) {
-		log_fatal("PtlPTAlloc failed");
+		log_debug("PtlPTAlloc failed");
 		_exit(EXIT_FAILURE);
 	}
 
@@ -708,12 +708,12 @@ struct server_handle *prsv_portals_server_handle_init(struct server_options *ser
 	}
 
 	if (ret != 0) {
-		log_fatal("posix_memalign failed");
+		log_debug("posix_memalign failed");
 		_exit(EXIT_FAILURE);
 	}
 	ret = posix_memalign((void **)&handle->send_buffer, 4096, KV_MAX_SIZE);
 	if (ret != 0) {
-		log_fatal("posix_memalign failed");
+		log_debug("posix_memalign failed");
 		_exit(EXIT_FAILURE);
 	}
 	handle->recv_buffer_size = KV_MAX_SIZE;
@@ -726,12 +726,12 @@ struct server_handle *prsv_portals_server_handle_init(struct server_options *ser
 		error_message = par_format((char *)(server_options->parallax_vol_name), MAX_REGIONS);
 
 		if (error_message) {
-			log_fatal("%s", error_message);
+			log_debug("%s", error_message);
 			_exit(EXIT_FAILURE);
 		}
 
 	} else {
-		log_info("Format option not enabled");
+		log_debug("Format option not enabled");
 	}
 	return handle;
 }
@@ -744,7 +744,7 @@ int prsv_server_start(struct server_handle *server_handle)
 	}
 
 	if (!server_handle->me) {
-		log_fatal("Memory allocation failed");
+		log_debug("Memory allocation failed");
 		_exit(EXIT_FAILURE);
 	}
 
@@ -764,12 +764,12 @@ int prsv_server_start(struct server_handle *server_handle)
 		int ret = PtlMEAppend(server_handle->nih, server_handle->ptindex, &server_handle->me[i],
 				      PTL_PRIORITY_LIST, server_handle->me[i].start, &server_handle->meh[i]);
 		if (ret != PTL_OK) {
-			log_fatal("Error appending ME at index %d", i);
+			log_debug("Error appending ME at index %d", i);
 			_exit(EXIT_FAILURE);
 		}
 	}
 
-	log_info("Server is ready");
+	log_debug("Server is ready");
 
 	/*
    * ok now we can start polling prsv_loop and complete each rpc. 
@@ -777,7 +777,7 @@ int prsv_server_start(struct server_handle *server_handle)
    * 
    */
 	if (prsv_loop(server_handle) < 0) {
-		log_fatal("prsv_loop failed");
+		log_debug("prsv_loop failed");
 		_exit(EXIT_FAILURE);
 	}
 

@@ -139,35 +139,35 @@ static par_handle par_net_init(const char *parallax_host)
 
 	int ret = PtlInit();
 	if (ret != PTL_OK) {
-		log_fatal("PtlInit failed");
+		log_debug("PtlInit failed");
 		_exit(EXIT_FAILURE);
 	}
 	ret = PtlNIInit(PTL_IFACE_DEFAULT, PTL_NI_MATCHING | PTL_NI_PHYSICAL, PTL_PID_ANY, NULL, NULL, &handle->nih);
 	if (ret != PTL_OK) {
-		log_fatal("PtlNIInit failed : %s \n", PtlToStr(ret, PTL_STR_ERROR));
+		log_debug("PtlNIInit failed : %s \n", PtlToStr(ret, PTL_STR_ERROR));
 		_exit(EXIT_FAILURE);
 	}
 
 	ret = PtlEQAlloc(handle->nih, 10, &handle->eqh);
 	if (ret != PTL_OK) {
-		log_fatal("PtlEQAlloc failed");
+		log_debug("PtlEQAlloc failed");
 		_exit(EXIT_FAILURE);
 	}
 
 	ret = PtlPTAlloc(handle->nih, 0, handle->eqh, PTL_PT_ANY, &handle->ptindex);
 	if (ret != PTL_OK) {
-		log_fatal("PtlPTAlloc failed");
+		log_debug("PtlPTAlloc failed");
 		_exit(EXIT_FAILURE);
 	}
 
 	ret = posix_memalign((void **)&handle->recv_buffer, 4096, KV_MAX_SIZE);
 	if (ret != 0) {
-		log_fatal("posix_memalign failed\n");
+		log_debug("posix_memalign failed\n");
 		_exit(EXIT_FAILURE);
 	}
 	ret = posix_memalign((void **)&handle->send_buffer, 4096, KV_MAX_SIZE);
 	if (ret != 0) {
-		log_fatal("posix_memalign failed\n");
+		log_debug("posix_memalign failed\n");
 		_exit(EXIT_FAILURE);
 	}
 	handle->recv_buffer_size = KV_MAX_SIZE;
@@ -182,7 +182,7 @@ static par_handle par_net_init(const char *parallax_host)
 
 	ret = PtlMDBind(handle->nih, &handle->md, &handle->mdh);
 	if (ret != PTL_OK) {
-		log_fatal("PtlMDBind failed");
+		log_debug("PtlMDBind failed");
 		_exit(EXIT_FAILURE);
 	}
 	//send it
@@ -207,7 +207,7 @@ static par_handle par_net_init(const char *parallax_host)
   int ret = PtlMEAppend(server_handle->nih, server_handle->ptindex, &server_handle->me, 
                         PTL_PRIORITY_LIST, NULL, &server_handle->meh);
   if (ret != PTL_OK) {
-      log_fatal("Error appending ME at index %d\n", i);
+      log_debug("Error appending ME at index %d\n", i);
       _exit(EXIT_FAILURE);
     }
     */
@@ -221,7 +221,7 @@ static par_handle par_net_init(const char *parallax_host)
 
 	ret = PtlLEAppend(handle->nih, handle->ptindex, &handle->le, PTL_PRIORITY_LIST, NULL, &handle->leh);
 	if (ret != PTL_OK) {
-		log_fatal("PtlLEAppend failed");
+		log_debug("PtlLEAppend failed");
 		_exit(EXIT_FAILURE);
 	}
 
@@ -229,7 +229,7 @@ static par_handle par_net_init(const char *parallax_host)
 
 	ret = PtlEQWait(handle->eqh, &event);
 	if (ret != PTL_OK) {
-		log_fatal("PtlEQWait failed");
+		log_debug("PtlEQWait failed");
 		_exit(EXIT_FAILURE);
 	} else {
 		PtlEvToStr(0, &event, msg);
@@ -375,14 +375,14 @@ static ssize_t par_portals_RPC(par_handle handle, char *send_buffer, size_t send
 		     0);
 
 	if (ret != PTL_OK) {
-		log_fatal("PtlPut failed : %s \n", PtlToStr(ret, PTL_STR_ERROR));
+		log_debug("PtlPut failed : %s \n", PtlToStr(ret, PTL_STR_ERROR));
 		_exit(EXIT_FAILURE);
 	}
 
 	/*send message event*/
 	ret = PtlEQWait(parallax_handle->eqh, &event);
 	if (ret != PTL_OK) {
-		log_fatal("PtlEQWait failed\n");
+		log_debug("PtlEQWait failed\n");
 		_exit(EXIT_FAILURE);
 	} else {
 		PtlEvToStr(0, &event, msg);
@@ -393,17 +393,17 @@ static ssize_t par_portals_RPC(par_handle handle, char *send_buffer, size_t send
 	/*wait for ack*/
 	ret = PtlEQWait(parallax_handle->eqh, &event);
 	if (ret != PTL_OK) {
-		log_fatal("PtlEQWait failed\n");
+		log_debug("PtlEQWait failed\n");
 		_exit(EXIT_FAILURE);
 	} else {
 		PtlEvToStr(0, &event, msg);
-		log_info("Event client interface 1 : %s \n", msg);
+		log_debug("Event client interface 1 : %s", msg);
 	}
 
 	/*wait for reply*/
 	ret = PtlEQWait(parallax_handle->eqh, &event);
 	if (ret != PTL_OK) {
-		log_fatal("PtlEQPoll failed\n");
+		log_debug("PtlEQPoll failed\n");
 		_exit(EXIT_FAILURE);
 	} else {
 		PtlEvToStr(0, &event, msg);
@@ -413,7 +413,7 @@ static ssize_t par_portals_RPC(par_handle handle, char *send_buffer, size_t send
 	if (event.type == PTL_EVENT_PUT) {
 		log_debug("client received reply from server: \n");
 	}
-	log_info("i have this : ");
+	log_debug("i have this : ");
 	print_buffer_hex((char *)event.start, event.mlength);
 	//struct par_net_header *reply_header = (struct par_net_header *)*recv_buffer;
 
@@ -503,7 +503,6 @@ char *par_format(char *device_name, uint32_t max_regions_num)
 #ifdef PORTALS
 par_handle par_open(par_db_options *db_options, const char **error_message)
 {
-	log_info("opening\n");
 	log_info("OPEN DB with name: %s", db_options->db_name);
 	struct par_options_desc *configuration = par_get_default_options();
 	struct par_handle *parallax_handle =
@@ -721,7 +720,6 @@ enum kv_category get_kv_category(int32_t key_size, int32_t value_size, request_t
 #ifdef PORTALS
 struct par_put_metadata par_put(par_handle handle, struct par_key_value *key_value, const char **error_message)
 {
-	log_info("put\n");
 	struct par_handle *parallax_handle = (struct par_handle *)handle;
 
 	size_t msg_len =
@@ -1047,7 +1045,6 @@ uint64_t par_init_compaction_id(par_handle handle)
 #ifdef PORTALS
 void par_delete(par_handle handle, struct par_key *key, const char **error_message)
 {
-	log_info("delete\n");
 	struct par_handle *parallax_handle = (struct par_handle *)handle;
 	size_t msg_len = par_net_del_req_calc_size(key->size) + par_net_header_calc_size();
 	if (msg_len > parallax_handle->send_buffer_size) {
