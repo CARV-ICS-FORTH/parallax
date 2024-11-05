@@ -66,9 +66,9 @@ struct server_options {
 #define MATCH_ENTRY_NUM 5
 
 struct prsv_clients {
-	int32_t key;
-	ptl_process_t client_id;
 	UT_hash_handle hh;
+	ptl_process_t client_id;
+	int64_t key;
 };
 
 struct server_handle {
@@ -567,18 +567,19 @@ static int prsv_put_and_reply(struct server_handle *server_handle, struct prsv_c
 	return EXIT_SUCCESS;
 }
 
-struct prsv_clients *prsv_find_add_user(struct server_handle *server_handle, int32_t key)
+struct prsv_clients *prsv_find_add_user(struct prsv_clients *conn_ht, ptl_process_t client)
 {
+	uint64_t key = ((uint64_t)client.phys.nid << 32) | client.phys.pid;
 	struct prsv_clients *prsv_clients;
-	HASH_FIND_INT(server_handle->conn_ht, &key, prsv_clients);
+	HASH_FIND_INT(conn_ht, &key, prsv_clients);
 	if (prsv_clients == NULL) {
 		prsv_clients = malloc(sizeof(struct prsv_clients));
 		if (prsv_clients == NULL)
 			exit(EXIT_FAILURE);
-		prsv_clients->key = server_handle->event.initiator.phys.pid + server_handle->event.initiator.phys.nid;
-		prsv_clients->client_id.phys.pid = server_handle->event.initiator.phys.pid;
-		prsv_clients->client_id.phys.nid = server_handle->event.initiator.phys.nid;
-		HASH_ADD_INT(server_handle->conn_ht, key, prsv_clients);
+		prsv_clients->key = key;
+		prsv_clients->client_id.phys.pid = client.phys.pid;
+		prsv_clients->client_id.phys.nid = client.phys.nid;
+		HASH_ADD_INT(conn_ht, key, prsv_clients);
 	}
 
 	return prsv_clients;
@@ -588,13 +589,12 @@ static int prsv_handle_event(struct server_handle *server_handle)
 {
 	void *aligned_buffer_start;
 	uint32_t *counter;
-	uint32_t key;
 
 	switch (server_handle->event.type) {
 	case PTL_EVENT_PUT:
 		log_debug("Event server interface 1 : %s", PtlToStr(server_handle->event.type, PTL_STR_EVENT));
-		key = server_handle->event.initiator.phys.pid + server_handle->event.initiator.phys.nid;
-		struct prsv_clients *client = prsv_find_add_user(server_handle, key);
+		struct prsv_clients *client =
+			prsv_find_add_user(server_handle->conn_ht, server_handle->event.initiator);
 		if (prsv_put_and_reply(server_handle, client) < 0) {
 			log_debug("prsv_handle_event failed");
 			return -(EXIT_FAILURE);
@@ -772,9 +772,9 @@ int prsv_server_start(struct server_handle *server_handle)
 	log_debug("Server is ready");
 
 	/*
-   * ok now we can start polling prsv_loop and complete each rpc. 
+   * ok now we can start polling prsv_loop and complete each rpc.
    * Server will add new clients and add their nid,pid to his table.
-   * 
+   *
    */
 	if (prsv_loop(server_handle) < 0) {
 		log_debug("prsv_loop failed");
