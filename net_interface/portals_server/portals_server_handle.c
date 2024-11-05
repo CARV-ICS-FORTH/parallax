@@ -68,7 +68,7 @@ struct server_options {
 struct prsv_clients {
 	UT_hash_handle hh;
 	ptl_process_t client_id;
-	int64_t key;
+	uint64_t key;
 };
 
 struct server_handle {
