@@ -279,7 +279,7 @@ static struct par_net_header *prsv_par_net_call_open(struct server_handle *serve
 static struct par_net_header *prsv_par_net_call_put(struct server_handle *server_handle, void *args)
 {
 	(void)args;
-
+	log_debug("im in regular put");
 	struct par_net_put_req *request =
 		(struct par_net_put_req *)((char *)server_handle->event.start + prsv_par_net_header_calc_size());
 
@@ -581,7 +581,6 @@ struct prsv_clients *prsv_find_add_user(struct prsv_clients *conn_ht, ptl_proces
 		prsv_clients->client_id.phys.nid = client.phys.nid;
 		HASH_ADD_INT(conn_ht, key, prsv_clients);
 	}
-
 	return prsv_clients;
 }
 
@@ -589,23 +588,20 @@ static int prsv_handle_event(struct server_handle *server_handle)
 {
 	void *aligned_buffer_start;
 	uint32_t *counter;
+	struct prsv_clients *client;
+	log_debug("Event server interface 1 : %s", PtlToStr(server_handle->event.type, PTL_STR_EVENT));
 
 	switch (server_handle->event.type) {
 	case PTL_EVENT_PUT:
-		log_debug("Event server interface 1 : %s", PtlToStr(server_handle->event.type, PTL_STR_EVENT));
-		struct prsv_clients *client =
-			prsv_find_add_user(server_handle->conn_ht, server_handle->event.initiator);
+		client = prsv_find_add_user(server_handle->conn_ht, server_handle->event.initiator);
 		if (prsv_put_and_reply(server_handle, client) < 0) {
 			log_debug("prsv_handle_event failed");
 			return -(EXIT_FAILURE);
 		}
 		break;
 	case PTL_EVENT_AUTO_UNLINK:
-		log_debug("Received PTL_EVENT_AUTO_UNLINK event");
 		aligned_buffer_start = (void *)((uintptr_t)server_handle->event.user_ptr);
-
 		counter = (uint32_t *)((uintptr_t)aligned_buffer_start - METADATA_SIZE);
-
 		prsv_print_counters(server_handle);
 		if (*counter != 0) {
 			log_debug("buffer busy...wait for data to be cosumed");
@@ -616,7 +612,6 @@ static int prsv_handle_event(struct server_handle *server_handle)
 		break;
 	case PTL_EVENT_SEND:
 	case PTL_EVENT_ACK:
-		log_debug("Event server interface 1 : %s", PtlToStr(server_handle->event.type, PTL_STR_EVENT));
 		break;
 	default:
 		log_debug("UNKNOWN Event server interface 1 : %s", PtlToStr(server_handle->event.type, PTL_STR_EVENT));

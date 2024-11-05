@@ -16,11 +16,11 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
 set(LIB "${PROJECT_NAME}")
 
+option(MOCKUP "Enable mockup implementation for Parallax" OFF)
 option(
   RUN_IWYU
   "Run include-what-you-use on the source files of the key-value store library."
   OFF)
-
 set(LIB_C_SOURCE_FILES
     allocator/allocator.c
     allocator/log_structures.c
@@ -28,7 +28,6 @@ set(LIB_C_SOURCE_FILES
     allocator/region_log.c
     allocator/persistent_operations.c
     allocator/djb2.c
-    api/parallax.c
     btree/btree.c
     btree/index_node.c
     btree/compaction/compaction_daemon.c
@@ -54,6 +53,13 @@ set(LIB_C_SOURCE_FILES
     scanner/L0_scanner.c
     scanner/stack.c
     parallax_callbacks/parallax_callbacks.c)
+
+if(MOCKUP)
+  list(APPEND LIB_C_SOURCE_FILES
+       ../net_interface/portals_server/parallax_mockup.c)
+else()
+  list(APPEND LIB_C_SOURCE_FILES api/parallax.c)
+endif()
 
 list(APPEND LIB_C_SOURCE_FILES
      "$CACHE{parallax_SOURCE_DIR}/utilities/spin_loop.c")
@@ -112,25 +118,29 @@ install(FILES include/parallax/parallax.h include/parallax/structures.h
 set_target_properties(${LIB} PROPERTIES OUTPUT_NAME ${LIB})
 set_target_properties(server.${LIB} PROPERTIES OUTPUT_NAME ${LIB}_server)
 
-########## PORTALS SERVER !!! ###########
+# ######### PORTALS SERVER !!! ###########
 
 option(PORTALS_LIB_DIR "Path to the Portals library" "")
 
-find_library(PORTALS_LIB NAMES portals
-    PATHS ${PORTALS_LIB_DIR}
-)
+find_library(
+  PORTALS_LIB
+  NAMES portals
+  PATHS ${PORTALS_LIB_DIR})
 
 if(PORTALS_LIB)
-  add_definitions(-DPARALLAX_PORTALS) 
+  add_definitions(-DPARALLAX_PORTALS)
 
-  message(STATUS "Portals library found at : ${PORTALS_LIB} installing portals server")
-  
+  message(
+    STATUS "Portals library found at : ${PORTALS_LIB} installing portals server"
+  )
+
   get_filename_component(PORTALS_LIB_DIR_INCLUDE ${PORTALS_LIB} DIRECTORY)
   set(PORTALS_INCLUDE_DIR "${PORTALS_LIB_DIR_INCLUDE}/../../portals/include")
 
   set(PORT_LIB "portals_${PROJECT_NAME}_server")
 
-  add_executable(${PORT_LIB}
+  add_executable(
+    ${PORT_LIB}
     ../net_interface/portals_server/portals_server.c
     ../net_interface/portals_server/portals_server_handle.c
     ../net_interface/par_net/par_net_open.c
@@ -139,32 +149,35 @@ if(PORTALS_LIB)
     ../net_interface/par_net/par_net_get.c
     ../net_interface/par_net/par_net_close.c
     ../net_interface/par_net/par_net_scan.c
-    ../net_interface/par_net/par_net_sync.c
-  )
-  
-  set_target_properties(
-   ${PORT_LIB}
-   PROPERTIES PUBLIC_HEADER
-            "${CMAKE_CURRENT_SOURCE_DIR}/include/parallax/parallax.h")
+    ../net_interface/par_net/par_net_sync.c)
 
-  target_include_directories(${PORT_LIB} PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/../net_interface/par_net") 
-  target_include_directories(${PORT_LIB} PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include/")
+  set_target_properties(
+    ${PORT_LIB}
+    PROPERTIES PUBLIC_HEADER
+               "${CMAKE_CURRENT_SOURCE_DIR}/include/parallax/parallax.h")
+
+  target_include_directories(
+    ${PORT_LIB} PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/../net_interface/par_net")
+  target_include_directories(${PORT_LIB}
+                             PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include/")
   target_include_directories(${PORT_LIB} PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/")
   target_include_directories(${PORT_LIB} PUBLIC "${PORTALS_INCLUDE_DIR}")
 
   target_link_libraries(${PORT_LIB} log yaml ${PORTALS_LIB} ${LIB})
-  #target_link_libraries(${PORT_LIB} PRIVATE )
+  # target_link_libraries(${PORT_LIB} PRIVATE )
   install(
     TARGETS ${PORT_LIB}
     ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
     LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
     RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
-    PUBLIC_HEADER DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}") 
+    PUBLIC_HEADER DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}")
 elseif()
-  message(WARNING "Portals library not found, stoping installation for portals server")
+  message(
+    WARNING "Portals library not found, stoping installation for portals server"
+  )
 endif()
 
-########## END OF PORTALS SERVER !!! ###########
+# ######### END OF PORTALS SERVER !!! ###########
 
 if(RUN_IWYU STREQUAL "ON")
   find_program(iwyu_path NAMES include-what-you-use iwyu iwyu-tool)
