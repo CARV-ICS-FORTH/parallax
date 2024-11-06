@@ -30,7 +30,6 @@
 #include "portals4.h"
 #include "portals4_ext.h"
 char msg[PTL_EV_STR_SIZE];
-#define CLIE_ME_OPTS PTL_ME_OP_PUT | PTL_ME_EVENT_LINK_DISABLE | PTL_ME_MAY_ALIGN | PTL_ME_IS_ACCESSIBLE
 #else
 #include <arpa/inet.h>
 #include <netdb.h>
@@ -133,6 +132,7 @@ struct par_handle {
 
 static par_handle par_net_init(const char *parallax_host)
 {
+	(void)parallax_host;
 	struct par_handle *handle = calloc(1UL, sizeof(struct par_handle));
 	handle->id_server.phys.pid = SERVER_PID;
 	handle->id_server.phys.nid = 1;
@@ -188,7 +188,7 @@ static par_handle par_net_init(const char *parallax_host)
 	//send it
 	log_debug("server nid: %d pid : %d", handle->id_server.phys.nid, handle->id_server.phys.pid);
 	/*
-  
+
   ptl_match_bits_t match = 1;
   ptl_match_bits_t ign   = 0xffffffff;
 
@@ -204,7 +204,7 @@ static par_handle par_net_init(const char *parallax_host)
   server_handle->me.options = CLIE_ME_OPTS;
 
   // Append each ME
-  int ret = PtlMEAppend(server_handle->nih, server_handle->ptindex, &server_handle->me, 
+  int ret = PtlMEAppend(server_handle->nih, server_handle->ptindex, &server_handle->me,
                         PTL_PRIORITY_LIST, NULL, &server_handle->meh);
   if (ret != PTL_OK) {
       log_debug("Error appending ME at index %d\n", i);
@@ -361,8 +361,7 @@ void par_net_handle_destroy(par_handle handle)
 #endif
 
 #ifdef PORTALS
-static ssize_t par_portals_RPC(par_handle handle, char *send_buffer, size_t send_buffer_len, char **recv_buffer,
-			       size_t recv_buffer_len)
+static ssize_t par_portals_RPC(par_handle handle, char *send_buffer, size_t send_buffer_len, char **recv_buffer)
 {
 	ptl_event_t event;
 	int ret;
@@ -529,8 +528,8 @@ par_handle par_open(par_db_options *db_options, const char **error_message)
 		_exit(EXIT_FAILURE);
 	}
 
-	ssize_t bytes_received = par_portals_RPC(parallax_handle, parallax_handle->send_buffer, msg_len,
-						 &parallax_handle->recv_buffer, parallax_handle->recv_buffer_size);
+	ssize_t bytes_received =
+		par_portals_RPC(parallax_handle, parallax_handle->send_buffer, msg_len, &parallax_handle->recv_buffer);
 
 	if (0 == bytes_received) {
 		*error_message = "Communication with server failed";
@@ -632,8 +631,8 @@ const char *par_close(par_handle handle)
 		_exit(EXIT_FAILURE);
 	}
 
-	ssize_t bytes_received = par_portals_RPC(parallax_handle, parallax_handle->send_buffer, msg_len,
-						 &parallax_handle->recv_buffer, parallax_handle->recv_buffer_size);
+	ssize_t bytes_received =
+		par_portals_RPC(parallax_handle, parallax_handle->send_buffer, msg_len, &parallax_handle->recv_buffer);
 
 	if (0 == bytes_received) {
 		return "Error with sending buffer";
@@ -744,8 +743,8 @@ struct par_put_metadata par_put(par_handle handle, struct par_key_value *key_val
 		_exit(EXIT_FAILURE);
 	}
 
-	ssize_t bytes_received = par_portals_RPC(parallax_handle, parallax_handle->send_buffer, msg_len,
-						 &parallax_handle->recv_buffer, parallax_handle->recv_buffer_size);
+	ssize_t bytes_received =
+		par_portals_RPC(parallax_handle, parallax_handle->send_buffer, msg_len, &parallax_handle->recv_buffer);
 
 	if (0 == bytes_received) {
 		*error_message = "Communication with server failed";
@@ -857,8 +856,8 @@ void par_get(par_handle handle, struct par_key *key, struct par_value *value, co
 		_exit(EXIT_FAILURE);
 	}
 
-	ssize_t bytes_received = par_portals_RPC(parallax_handle, parallax_handle->send_buffer, msg_len,
-						 &parallax_handle->recv_buffer, parallax_handle->recv_buffer_size);
+	ssize_t bytes_received =
+		par_portals_RPC(parallax_handle, parallax_handle->send_buffer, msg_len, &parallax_handle->recv_buffer);
 	if (0 == bytes_received) {
 		*error_message = "Communication with server failed";
 		return;
@@ -972,8 +971,8 @@ par_ret_code par_exists(par_handle handle, struct par_key *key)
 		_exit(EXIT_FAILURE);
 	}
 
-	ssize_t bytes_received = par_portals_RPC(parallax_handle, parallax_handle->send_buffer, msg_len,
-						 &parallax_handle->recv_buffer, parallax_handle->recv_buffer_size);
+	ssize_t bytes_received =
+		par_portals_RPC(parallax_handle, parallax_handle->send_buffer, msg_len, &parallax_handle->recv_buffer);
 	if (0 == bytes_received) {
 		log_warn("Communication with server failed");
 		return false;
@@ -1065,8 +1064,8 @@ void par_delete(par_handle handle, struct par_key *key, const char **error_messa
 		_exit(EXIT_FAILURE);
 	}
 
-	ssize_t bytes_received = par_portals_RPC(parallax_handle, parallax_handle->send_buffer, msg_len,
-						 &parallax_handle->recv_buffer, parallax_handle->recv_buffer_size);
+	ssize_t bytes_received =
+		par_portals_RPC(parallax_handle, parallax_handle->send_buffer, msg_len, &parallax_handle->recv_buffer);
 
 	if (0 == bytes_received) {
 		*error_message = "Communication with server failed";
@@ -1155,7 +1154,7 @@ static struct par_net_scan_rep *par_scan_get_next_batch(par_scanner scanner, par
 	header->opcode = OPCODE_SCAN;
 	header->total_bytes = par_net_scan_req_calc_size(key ? key->size : 1) + sizeof(struct par_net_header);
 	par_portals_RPC(parallax_scanner->parallax_handle, parallax_scanner->send_buffer, header->total_bytes,
-			&parallax_scanner->recv_buffer, parallax_scanner->recv_buffer_size);
+			&parallax_scanner->recv_buffer);
 
 	// log_debug("Sending SCAN request to fetch next batch ... D O N E");
 	//-- reply part
@@ -1334,7 +1333,7 @@ par_ret_code par_sync(par_handle handle)
 	request->total_bytes = par_net_header_calc_size() + par_net_sync_req_calc_size();
 
 	ssize_t bytes_received = par_portals_RPC(parallax_handle, parallax_handle->send_buffer, request->total_bytes,
-						 &parallax_handle->recv_buffer, parallax_handle->recv_buffer_size);
+						 &parallax_handle->recv_buffer);
 	struct par_net_header *reply = (struct par_net_header *)parallax_handle->recv_buffer;
 	assert(reply->total_bytes == bytes_received);
 	struct par_net_sync_rep *sync_reply =

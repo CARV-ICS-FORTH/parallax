@@ -61,6 +61,7 @@ static void insert_keys(par_handle handle)
 				  correct_lsn);
 			_Exit(EXIT_FAILURE);
 		}*/
+		(void)metadata;
 		correct_lsn += 1;
 		//sleep(1);
 		i++;
