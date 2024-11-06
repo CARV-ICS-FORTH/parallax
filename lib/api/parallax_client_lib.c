@@ -59,11 +59,19 @@ size_t par_net_header_calc_size(void)
 	return sizeof(struct par_net_header);
 }
 
-void print_buffer_hex(const char *buffer, size_t length)
+void print_buffer_hex(const char *buffer, size_t length, char *type)
 {
-	printf("Send buffer content (hex):\n");
+	if (buffer == NULL) {
+		printf("%s buffer is null:\n", type);
+		return;
+	}
+	printf("%s buffer content (hex):\n", type);
 	for (size_t i = 0; i < length; i++) {
-		printf("%02x ", (unsigned char)buffer[i]);
+		if (buffer + i == NULL) {
+			printf("%s buffer is null in index = %lu", type, i);
+		} else {
+			printf("%02x ", (unsigned char)buffer[i]);
+		}
 		if ((i + 1) % 16 == 0) {
 			printf("\n");
 		}
@@ -74,7 +82,7 @@ void print_buffer_hex(const char *buffer, size_t length)
 #ifndef PORTALS
 static bool par_split_hostname_port(const char *input, char **hostname, int *port)
 {
-	start char *colon_pos = strchr(input, ':');
+	char *colon_pos = strchr(input, ':');
 	if (colon_pos == NULL) {
 		// No colon found in the input string
 		return -1;
@@ -144,7 +152,7 @@ static par_handle par_net_init(const char *parallax_host)
 	}
 	ret = PtlNIInit(PTL_IFACE_DEFAULT, PTL_NI_MATCHING | PTL_NI_PHYSICAL, PTL_PID_ANY, NULL, NULL, &handle->nih);
 	if (ret != PTL_OK) {
-		log_debug("PtlNIInit failed : %s \n", PtlToStr(ret, PTL_STR_ERROR));
+		log_debug("PtlNIInit failed : %s", PtlToStr(ret, PTL_STR_ERROR));
 		_exit(EXIT_FAILURE);
 	}
 
@@ -162,12 +170,12 @@ static par_handle par_net_init(const char *parallax_host)
 
 	ret = posix_memalign((void **)&handle->recv_buffer, 4096, KV_MAX_SIZE);
 	if (ret != 0) {
-		log_debug("posix_memalign failed\n");
+		log_debug("posix_memalign failed");
 		_exit(EXIT_FAILURE);
 	}
 	ret = posix_memalign((void **)&handle->send_buffer, 4096, KV_MAX_SIZE);
 	if (ret != 0) {
-		log_debug("posix_memalign failed\n");
+		log_debug("posix_memalign failed");
 		_exit(EXIT_FAILURE);
 	}
 	handle->recv_buffer_size = KV_MAX_SIZE;
@@ -207,7 +215,7 @@ static par_handle par_net_init(const char *parallax_host)
   int ret = PtlMEAppend(server_handle->nih, server_handle->ptindex, &server_handle->me,
                         PTL_PRIORITY_LIST, NULL, &server_handle->meh);
   if (ret != PTL_OK) {
-      log_debug("Error appending ME at index %d\n", i);
+      log_debug("Error appending ME at index %d", i);
       _exit(EXIT_FAILURE);
     }
     */
@@ -374,25 +382,25 @@ static ssize_t par_portals_RPC(par_handle handle, char *send_buffer, size_t send
 		     0);
 
 	if (ret != PTL_OK) {
-		log_debug("PtlPut failed : %s \n", PtlToStr(ret, PTL_STR_ERROR));
+		log_debug("PtlPut failed : %s", PtlToStr(ret, PTL_STR_ERROR));
 		_exit(EXIT_FAILURE);
 	}
 
 	/*send message event*/
 	ret = PtlEQWait(parallax_handle->eqh, &event);
 	if (ret != PTL_OK) {
-		log_debug("PtlEQWait failed\n");
+		log_debug("PtlEQWait failed");
 		_exit(EXIT_FAILURE);
 	} else {
 		PtlEvToStr(0, &event, msg);
-		log_debug("Event client interface 1 : %s \n", msg);
-		print_buffer_hex(parallax_handle->send_buffer, send_buffer_len);
+		log_debug("Event client interface 1 : %s", msg);
+		print_buffer_hex(parallax_handle->send_buffer, send_buffer_len, "Send");
 	}
 
 	/*wait for ack*/
 	ret = PtlEQWait(parallax_handle->eqh, &event);
 	if (ret != PTL_OK) {
-		log_debug("PtlEQWait failed\n");
+		log_debug("PtlEQWait failed");
 		_exit(EXIT_FAILURE);
 	} else {
 		PtlEvToStr(0, &event, msg);
@@ -402,18 +410,17 @@ static ssize_t par_portals_RPC(par_handle handle, char *send_buffer, size_t send
 	/*wait for reply*/
 	ret = PtlEQWait(parallax_handle->eqh, &event);
 	if (ret != PTL_OK) {
-		log_debug("PtlEQPoll failed\n");
+		log_debug("PtlEQPoll failed");
 		_exit(EXIT_FAILURE);
 	} else {
 		PtlEvToStr(0, &event, msg);
-		log_debug("Event client interface 1 : %s \n", msg);
+		log_debug("Event client interface 1 : %s", msg);
 	}
 
 	if (event.type == PTL_EVENT_PUT) {
-		log_debug("client received reply from server: \n");
+		log_debug("client received reply from server:");
 	}
-	log_debug("i have this : ");
-	print_buffer_hex((char *)event.start, event.mlength);
+	print_buffer_hex((char *)event.start, event.mlength, "Reveive");
 	//struct par_net_header *reply_header = (struct par_net_header *)*recv_buffer;
 
 	*recv_buffer = event.start;

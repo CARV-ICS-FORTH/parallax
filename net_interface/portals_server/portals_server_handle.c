@@ -95,11 +95,19 @@ struct par_net_header {
 	uint32_t opcode;
 };
 
-void prsv_print_buffer_hex(const char *buffer, size_t length)
+void prsv_print_buffer_hex(const char *buffer, size_t length, char *type)
 {
-	printf("Receive buffer content (hex):\n");
+	if (buffer == NULL) {
+		printf("%s buffer is null:\n", type);
+		return;
+	}
+	printf("%s buffer content (hex):\n", type);
 	for (size_t i = 0; i < length; i++) {
-		printf("%02x ", (unsigned char)buffer[i]);
+		if (buffer + i == NULL) {
+			printf("%s buffer is null in index = %lu", type, i);
+		} else {
+			printf("%02x ", (unsigned char)buffer[i]);
+		}
 		if ((i + 1) % 16 == 0) {
 			printf("\n");
 		}
@@ -279,7 +287,6 @@ static struct par_net_header *prsv_par_net_call_open(struct server_handle *serve
 static struct par_net_header *prsv_par_net_call_put(struct server_handle *server_handle, void *args)
 {
 	(void)args;
-	log_debug("im in regular put");
 	struct par_net_put_req *request =
 		(struct par_net_put_req *)((char *)server_handle->event.start + prsv_par_net_header_calc_size());
 
@@ -520,7 +527,7 @@ static int prsv_put_and_reply(struct server_handle *server_handle, struct prsv_c
 
 	log_debug("server received message from client %d:%d", prsv_client->client_id.phys.nid,
 		  prsv_client->client_id.phys.pid);
-	//prsv_print_buffer_hex(server_handle->event.start, server_handle->event.mlength);
+	//prsv_print_buffer_hex(server_handle->event.start, server_handle->event.mlength, "Receive");
 	size_t total_bytes = prsv_par_net_get_total_bytes(server_handle->event.start);
 	if (total_bytes > server_handle->recv_buffer_size) {
 		log_debug("Error Larger message recv buffer size is: %u B total_bytes are: %lu B",
@@ -562,8 +569,8 @@ static int prsv_put_and_reply(struct server_handle *server_handle, struct prsv_c
 		log_debug("PtlPut failed");
 		_exit(EXIT_FAILURE);
 	}
-	log_debug("i have this : ");
-	//prsv_print_buffer_hex((char *)server_handle->md.start, server_handle->md.length);
+
+	//prsv_print_buffer_hex((char *)server_handle->md.start, server_handle->md.length, "Send");
 	return EXIT_SUCCESS;
 }
 

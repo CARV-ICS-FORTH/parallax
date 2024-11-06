@@ -28,7 +28,7 @@ if(PARALLAX_BUILD_TESTING)
       test_categories.c
       test_sanitizers.c
       simple_test_delete.c
-      test_gc.c 
+      test_gc.c
       test_leaf_root_delete_get_scan.c
       test_region_allocations.c
       test_par_format.c
@@ -56,15 +56,15 @@ if(PARALLAX_BUILD_TESTING)
 
   add_executable(test_fractal_layout test_fractal_layout.c
                                      ../lib/btree/compaction/fractal_leaf.c)
-  target_link_libraries(test_fractal_layout "${PROJECT_NAME}")
+  link_target(test_fractal_layout)
 
   add_executable(test_server_simple test_server_simple.c)
   link_target(test_server_simple)
-  
+
   add_executable(test_portals_server_simple test_portals_server_simple.c)
   link_target(test_portals_server_simple)
 
-  # Find the BDB library 
+  # Find the BDB library
   find_library(BDB_LIBRARY NAMES db libdb)
 
   # Find the BDB header path
@@ -207,7 +207,7 @@ if(PARALLAX_BUILD_TESTING)
   link_target(test_recovery)
 
   add_executable(test_options test_options.c)
-  target_link_libraries(test_options "${PROJECT_NAME}")
+  link_target(test_options)
   add_parallax_test(NAME test_options COMMAND run_test.sh test_options)
 
   add_executable(test_categories test_categories.c)
@@ -239,7 +239,7 @@ if(PARALLAX_BUILD_TESTING)
   endif()
 
   add_executable(test_mixes test_mixes.c arg_parser.c)
-  target_link_libraries(test_mixes "${PROJECT_NAME}")
+  link_target(test_mixes)
 
   add_parallax_test(
     NAME
@@ -275,7 +275,7 @@ if(PARALLAX_BUILD_TESTING)
     --big_kv_percentage=5)
 
   add_executable(simple_test_delete simple_test_delete.c arg_parser.c)
-  target_link_libraries(simple_test_delete "${PROJECT_NAME}")
+  link_target(simple_test_delete)
   add_parallax_test(NAME simple_test_delete COMMAND run_test.sh
                     simple_test_delete --num_of_kvs=1000000)
 
@@ -317,7 +317,7 @@ if(PARALLAX_BUILD_TESTING)
   add_parallax_test(NAME test_par_format COMMAND run_test.sh test_par_format)
 
   add_executable(test_par_put_serialized test_par_put_serialized.c arg_parser.c)
-  target_link_libraries(test_par_put_serialized "${PROJECT_NAME}")
+  link_target(test_par_put_serialized)
   add_parallax_test(NAME test_par_put_serialized COMMAND run_test.sh
                     test_par_put_serialized)
 
@@ -328,7 +328,7 @@ if(PARALLAX_BUILD_TESTING)
 
   add_executable(test_par_threadpool test_threadpool.c
                                      ../lib/btree/compaction/threadpool.c)
-  target_link_libraries(test_par_threadpool "${PROJECT_NAME}")
+  link_target(test_par_threadpool)
   add_parallax_test(NAME test_par_threadpool COMMAND run_test.sh
                     test_par_threadpool)
 
