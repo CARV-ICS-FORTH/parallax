@@ -39,35 +39,35 @@ install(
 
 option(PORTALS_LIB_DIR "Path to the Portals library" "")
 
-find_library(PORTALS_LIB NAMES portals
-    PATHS ${PORTALS_LIB_DIR}
-)
+find_library(
+  PORTALS_LIB
+  NAMES portals
+  PATHS ${PORTALS_LIB_DIR})
 
 if(PORTALS_LIB)
   message(STATUS "Portals library found at: ${PORTALS_LIB}")
 
   set(PORT_LIB "${PROJECT_NAME}_portals_lib")
-  
-  # Check if the include directory exists and is valid
-  if(EXISTS "${PORTALS_INCLUDE_DIR}/portals4.h")
-      message(STATUS "Found portals4.h at: ${PORTALS_INCLUDE_DIR}")
-  else()
-      message(FATAL_ERROR "Could not find portals4.h in ${PORTALS_INCLUDE_DIR}")
-  endif()
 
   option(PORTALS_INCLUDE_DIR "Path to the Portals include directory" "")
+  # Check if the include directory exists and is valid
+  if(EXISTS "${PORTALS_INCLUDE_DIR}/portals4.h")
+    message(STATUS "Found portals4.h at: ${PORTALS_INCLUDE_DIR}")
+  else()
+    message(FATAL_ERROR "Could not find portals4.h in ${PORTALS_INCLUDE_DIR}")
+  endif()
 
   # Use the provided option or infer from PORTALS_LIB_DIR
   if(NOT PORTALS_INCLUDE_DIR)
-      # Try to infer the include directory based on PORTALS_LIB_DIR
-      get_filename_component(PORTALS_LIB_DIR_INCLUDE ${PORTALS_LIB} DIRECTORY)
-      set(PORTALS_INCLUDE_DIR "${PORTALS_LIB_DIR_INCLUDE}/../../portals/include")
+    # Try to infer the include directory based on PORTALS_LIB_DIR
+    get_filename_component(PORTALS_LIB_DIR_INCLUDE ${PORTALS_LIB} DIRECTORY)
+    set(PORTALS_INCLUDE_DIR "${PORTALS_LIB_DIR_INCLUDE}/../../portals/include")
   endif()
 
   message(STATUS "Portals include directory: ${PORTALS_INCLUDE_DIR}")
-  
-  add_definitions(-DPARALLAX_PORTALS) 
-  
+
+  add_definitions(-DPARALLAX_PORTALS)
+
   set(PORT_LIB_SOURCE_FILES
       par_net/par_net_put.c
       par_net/par_net_open.c
@@ -87,11 +87,13 @@ if(PORTALS_LIB)
   set_target_properties(
     ${PORT_LIB}
     PROPERTIES PUBLIC_HEADER
-             "${CMAKE_CURRENT_SOURCE_DIR}/../lib/include/parallax/parallax.h")
+               "${CMAKE_CURRENT_SOURCE_DIR}/../lib/include/parallax/parallax.h")
 
-  target_include_directories(${PORT_LIB}
-                           PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/../lib/include"
-                           PUBLIC "${PORTALS_INCLUDE_DIR}")
+  target_include_directories(
+    ${PORT_LIB}
+    PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/../lib/include"
+    PUBLIC "${PORTALS_INCLUDE_DIR}")
+  include_directories("${PORTALS_INCLUDE_DIR}")
 
   target_link_libraries(${PORT_LIB} log yaml ${PORTALS_LIB})
 
@@ -102,5 +104,6 @@ if(PORTALS_LIB)
     RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
     PUBLIC_HEADER DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}")
 else()
-  message(WARNING "Portals library not found, stoping compilation with portalslib")
+  message(
+    WARNING "Portals library not found, stoping compilation with portalslib")
 endif()

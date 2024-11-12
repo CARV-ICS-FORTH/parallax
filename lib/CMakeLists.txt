@@ -134,8 +134,8 @@ if(PORTALS_LIB)
     STATUS "Portals library found at : ${PORTALS_LIB} installing portals server"
   )
 
-  get_filename_component(PORTALS_LIB_DIR_INCLUDE ${PORTALS_LIB} DIRECTORY)
-  set(PORTALS_INCLUDE_DIR "${PORTALS_LIB_DIR_INCLUDE}/../../portals/include")
+  # get_filename_component(PORTALS_LIB_DIR_INCLUDE ${PORTALS_LIB} DIRECTORY)
+  # set(PORTALS_INCLUDE_DIR "${PORTALS_LIB_DIR_INCLUDE}/../../portals/include")
 
   set(PORT_LIB "portals_${PROJECT_NAME}_server")
 
