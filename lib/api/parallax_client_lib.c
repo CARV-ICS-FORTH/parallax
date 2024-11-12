@@ -1123,6 +1123,20 @@ void par_delete(par_handle handle, struct par_key *key, const char **error_messa
 }
 #endif
 
+#ifdef PORTALS
+/*scanner staff*/
+#define PAR_SCAN_MAX_KV_ENTRIES 50
+struct parallax_scanner {
+	char *send_buffer;
+	char *recv_buffer;
+	struct par_handle *parallax_handle;
+	uint32_t max_KV_pairs;
+	uint32_t send_buffer_size;
+	uint32_t recv_buffer_size;
+	struct par_net_scan_rep *reply;
+	bool is_valid;
+};
+#else
 /*scanner staff*/
 #define PAR_SCAN_MAX_KV_ENTRIES 50
 #define PAR_SCAN_SEND_BUFFER_SIZE (2 * MAX_KEY_SIZE)
@@ -1137,6 +1151,7 @@ struct parallax_scanner {
 	struct par_net_scan_rep *reply;
 	bool is_valid;
 };
+#endif
 
 #ifdef PORTALS
 static struct par_net_scan_rep *par_scan_get_next_batch(par_scanner scanner, par_seek_mode mode, struct par_key *key)
@@ -1153,9 +1168,9 @@ static struct par_net_scan_rep *par_scan_get_next_batch(par_scanner scanner, par
 		_exit(EXIT_FAILURE);
 	}
 
-	// log_debug("Sending SCAN request to fetch next batch... %s mode with key: %.*s",
-	// 	  mode == PAR_GREATER_OR_EQUAL ? "PAR_GREATER_OR_EQUAL" : "PAR_GREATER", key ? key->size : 4,
-	// 	  key ? key->data : "NULL");
+	log_debug("Sending SCAN request to fetch next batch... %s mode with key: %.*s",
+		  mode == PAR_GREATER_OR_EQUAL ? "PAR_GREATER_OR_EQUAL" : "PAR_GREATER", key ? key->size : 4,
+		  key ? key->data : "NULL");
 
 	struct par_net_header *header = (struct par_net_header *)parallax_scanner->send_buffer;
 	header->opcode = OPCODE_SCAN;
@@ -1163,7 +1178,7 @@ static struct par_net_scan_rep *par_scan_get_next_batch(par_scanner scanner, par
 	par_portals_RPC(parallax_scanner->parallax_handle, parallax_scanner->send_buffer, header->total_bytes,
 			&parallax_scanner->recv_buffer);
 
-	// log_debug("Sending SCAN request to fetch next batch ... D O N E");
+	log_debug("Sending SCAN request to fetch next batch ... D O N E");
 	//-- reply part
 	struct par_net_header *reply_header = (struct par_net_header *)parallax_scanner->recv_buffer;
 	assert(reply_header->opcode == OPCODE_SCAN);
@@ -1223,16 +1238,16 @@ static struct par_net_scan_rep *par_scan_get_next_batch(par_scanner scanner, par
 #ifdef PORTALS
 par_scanner par_init_scanner(par_handle handle, struct par_key *key, par_seek_mode mode, const char **error_message)
 {
+	struct par_handle *parallax_handle = (struct par_handle *)handle;
 	struct parallax_scanner *scanner = calloc(1UL, sizeof(struct parallax_scanner));
-	scanner->send_buffer_size = PAR_SCAN_SEND_BUFFER_SIZE;
-	scanner->recv_buffer_size = PAR_SCAN_RECV_BUFFER_SIZE;
-	scanner->send_buffer = calloc(1UL, scanner->send_buffer_size);
-	scanner->recv_buffer = calloc(1UL, scanner->recv_buffer_size);
-	scanner->parallax_handle = handle;
+	scanner->send_buffer_size = parallax_handle->send_buffer_size;
+	scanner->recv_buffer_size = parallax_handle->recv_buffer_size;
+	scanner->send_buffer = parallax_handle->send_buffer;
+	scanner->recv_buffer = parallax_handle->recv_buffer;
 	scanner->max_KV_pairs = PAR_SCAN_MAX_KV_ENTRIES;
 	scanner->parallax_handle = handle;
-	// log_debug("Requesting from server for the 1st batch of KV pairs... key is: %.*s", key == NULL ? 4 : key->size,
-	// 	  key == NULL ? "NULL" : key->data);
+	log_debug("Requesting from server for the 1st batch of KV pairs... key is: %.*s", key == NULL ? 4 : key->size,
+		  key == NULL ? "NULL" : key->data);
 	scanner->reply = par_scan_get_next_batch(scanner, mode, key);
 	if (NULL == scanner->reply) {
 		log_fatal("Failed to fetch 1st batch of KV pairs from the server");
@@ -1272,8 +1287,8 @@ par_scanner par_init_scanner(par_handle handle, struct par_key *key, par_seek_mo
 void par_close_scanner(par_scanner sc)
 {
 	struct parallax_scanner *parallax_scanner = (struct parallax_scanner *)sc;
-	free(parallax_scanner->send_buffer);
-	free(parallax_scanner->recv_buffer);
+	//free(parallax_scanner->send_buffer);
+	//free(parallax_scanner->recv_buffer);
 	free(parallax_scanner);
 }
 

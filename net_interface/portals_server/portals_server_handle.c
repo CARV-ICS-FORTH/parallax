@@ -74,12 +74,14 @@ struct prsv_clients {
 struct server_handle {
 	ptl_me_t me[MATCH_ENTRY_NUM];
 	ptl_event_t event;
+	ptl_event_t event2;
 	ptl_handle_me_t meh[MATCH_ENTRY_NUM];
 	ptl_md_t md;
 	char *recv_buffer[MATCH_ENTRY_NUM];
 	par_handle par_handle;
 	ptl_handle_ni_t nih;
 	ptl_handle_eq_t eqh;
+	ptl_handle_eq_t send_eqh;
 	ptl_handle_md_t mdh;
 	char *send_buffer;
 	struct server_options *opts;
@@ -298,8 +300,8 @@ static struct par_net_header *prsv_par_net_call_put(struct server_handle *server
 	kv_pair.v.val_buffer = par_net_put_get_value(request);
 	kv_pair.v.val_buffer_size = par_net_put_get_value_size(request);
 
-	// log_debug("Key size =  %lu", (unsigned long)kv_pair.k.size);
-	// log_debug("Value size = %lu", (unsigned long)kv_pair.v.val_buffer_size);
+	log_debug("Key size =  %lu", (unsigned long)kv_pair.k.size);
+	log_debug("Value size = %lu", (unsigned long)kv_pair.v.val_buffer_size);
 
 	const char *error_message = NULL;
 	struct par_put_metadata metadata = par_put((par_handle)region_id, &kv_pair, &error_message);
@@ -320,9 +322,8 @@ static struct par_net_header *prsv_par_net_call_put(struct server_handle *server
 static struct par_net_header *prsv_par_net_call_del(struct server_handle *server_handle, void *args)
 {
 	(void)args;
-
 	struct par_net_del_req *request =
-		(struct par_net_del_req *)(&server_handle->event.start + prsv_par_net_header_calc_size());
+		(struct par_net_del_req *)((char *)server_handle->event.start + prsv_par_net_header_calc_size());
 
 	struct par_key key = { 0 };
 	uint64_t region_id = par_net_del_get_region_id(request);
@@ -332,16 +333,16 @@ static struct par_net_header *prsv_par_net_call_del(struct server_handle *server
 	const char *error_message = NULL;
 	par_delete((par_handle)region_id, &key, &error_message);
 
-	size_t buffer_len = server_handle->recv_buffer_size - prsv_par_net_header_calc_size();
+	size_t buffer_len = server_handle->send_buffer_size - prsv_par_net_header_calc_size();
 
 	struct par_net_del_rep *reply = par_net_del_rep_create(
-		error_message != NULL, (char *)server_handle->event.start + par_net_del_rep_calc_size(), buffer_len);
+		error_message != NULL, &server_handle->send_buffer[prsv_par_net_header_calc_size()], buffer_len);
 
 	if (NULL == reply) {
 		log_debug("Failed to create reply for delete operation");
 		_exit(EXIT_FAILURE);
 	}
-	struct par_net_header *reply_header = (struct par_net_header *)server_handle->recv_buffer;
+	struct par_net_header *reply_header = (struct par_net_header *)server_handle->send_buffer;
 	reply_header->opcode = OPCODE_DEL;
 	reply_header->total_bytes = prsv_par_net_header_calc_size() + par_net_del_rep_calc_size();
 	return reply_header;
@@ -350,26 +351,27 @@ static struct par_net_header *prsv_par_net_call_get(struct server_handle *server
 {
 	(void)args;
 	struct par_net_get_req *request =
-		(struct par_net_get_req *)&server_handle->recv_buffer[prsv_par_net_header_calc_size()];
+		(struct par_net_get_req *)((char *)server_handle->event.start + prsv_par_net_header_calc_size());
 
 	uint64_t region_id = par_net_get_get_region_id(request);
 	struct par_key par_key;
 	par_key.size = par_net_get_get_key_size(request);
 	par_key.data = par_net_get_get_key(request);
-
 	struct par_value par_value = { 0 };
 
-	// log_debug("key size == %lu", (unsigned long)par_key.size);
+	log_debug("key size == %lu", (unsigned long)par_key.size);
+	//prsv_print_buffer_hex(par_key.data, par_key.size, "par_key");
+
 	const char *error_message = NULL;
 
 	bool found = false;
 	if (par_net_get_req_fetch_value(request)) {
-		// log_debug("Region id: %lu Calling par_get for key: %.*s", region_id, par_key.size, par_key.data);
+		log_debug("Region id: %lu Calling par_get for key: %.*s", region_id, par_key.size, par_key.data);
 		par_value.val_buffer =
 			&server_handle->send_buffer[prsv_par_net_header_calc_size() + par_net_get_rep_header_size()];
 		par_value.val_buffer_size = server_handle->send_buffer_size -
 					    (prsv_par_net_header_calc_size() + par_net_get_rep_header_size());
-		// log_debug("Available buffer for gets is %u", par_value.val_buffer_size);
+		log_debug("Available buffer for gets is %u", par_value.val_buffer_size);
 		par_get((par_handle)region_id, &par_key, &par_value, &error_message);
 		found = error_message == NULL;
 	} else {
@@ -397,7 +399,7 @@ static struct par_net_header *prsv_par_net_call_sync(struct server_handle *serve
 {
 	(void)args;
 	struct par_net_sync_req *sync_request =
-		(struct par_net_sync_req *)&server_handle->recv_buffer[prsv_par_net_header_calc_size()];
+		(struct par_net_sync_req *)((char *)server_handle->event.start + prsv_par_net_header_calc_size());
 	uint64_t region_id = par_net_sync_req_get_region_id(sync_request);
 	par_ret_code ret = par_sync((par_handle)region_id);
 	struct par_net_sync_rep *sync_reply =
@@ -416,22 +418,23 @@ static struct par_net_header *prsv_par_net_call_scan(struct server_handle *serve
 {
 	(void)args;
 	struct par_net_scan_req *request =
-		(struct par_net_scan_req *)&server_handle->recv_buffer[prsv_par_net_header_calc_size()];
-	uint64_t region_id = par_net_scan_req_get_region_id(request);
+		(struct par_net_scan_req *)((char *)server_handle->event.start + prsv_par_net_header_calc_size());
 
+	uint64_t region_id = par_net_scan_req_get_region_id(request);
+	prsv_print_buffer_hex((char *)server_handle->event.start, server_handle->event.mlength, "scan");
 	const char *error_message = NULL;
 	struct par_key key = { .size = par_net_scan_req_get_key_size(request),
 			       .data = par_net_scan_req_get_key(request) };
-
-	// log_debug("Scan for DB: %s seek key size:%u payload: %.*s mode is: %s",
-	// 	  par_get_db_name((par_handle)region_id, &error), key.size, key.size, key.data,
-	// 	  par_net_scan_req_get_seek_mode(request) == PAR_GREATER_OR_EQUAL ? "PAR_GREATER_OR_EQUAL" :
-	// 									    "PAR_GREATER");
+	const char *error = NULL;
+	log_debug("Scan for DB: %s seek key size:%u payload: %.*s mode is: %s",
+		  par_get_db_name((par_handle)region_id, &error), key.size, key.size, key.data,
+		  par_net_scan_req_get_seek_mode(request) == PAR_GREATER_OR_EQUAL ? "PAR_GREATER_OR_EQUAL" :
+										    "PAR_GREATER");
 
 	struct par_net_scan_rep *reply = par_net_scan_rep_create(
 		par_net_scan_req_get_max_entries(request), &server_handle->send_buffer[prsv_par_net_header_calc_size()],
 		server_handle->send_buffer_size - prsv_par_net_header_calc_size());
-
+	printf("buffer size %u, header %lu\n", server_handle->send_buffer_size, prsv_par_net_header_calc_size());
 	par_scanner dev_scanner =
 		par_init_scanner((par_handle)region_id, &key, par_net_scan_req_get_seek_mode(request), &error_message);
 	if (error_message) {
@@ -451,6 +454,9 @@ static struct par_net_header *prsv_par_net_call_scan(struct server_handle *serve
 	par_close_scanner(dev_scanner);
 
 	struct par_net_header *header = (struct par_net_header *)server_handle->send_buffer;
+	log_debug("send_buffer: %p, buffer size: %u, header size: %zu", server_handle->send_buffer,
+		  server_handle->send_buffer_size, sizeof(struct par_net_header));
+
 	header->opcode = OPCODE_SCAN;
 	header->total_bytes = prsv_par_net_header_calc_size() + par_net_scan_rep_get_size(reply);
 	// log_debug("Scan DONE entries retrieved = %u total reply size: %u max send buffer size: %lu",
@@ -462,7 +468,7 @@ static struct par_net_header *prsv_par_net_call_close(struct server_handle *serv
 {
 	(void)args;
 	struct par_net_close_req *request =
-		(struct par_net_close_req *)&server_handle->recv_buffer[prsv_par_net_header_calc_size()];
+		(struct par_net_close_req *)((char *)server_handle->event.start + prsv_par_net_header_calc_size());
 
 	uint64_t region_id = par_net_close_get_region_id(request);
 
@@ -517,7 +523,6 @@ void prsv_append_me_for_unlink_event(struct server_handle *server_handle, void *
 		_exit(EXIT_FAILURE);
 	}
 	return;
-	log_error("No matching ME found for reappending.");
 }
 static int prsv_put_and_reply(struct server_handle *server_handle, struct prsv_clients *prsv_client)
 {
@@ -527,7 +532,7 @@ static int prsv_put_and_reply(struct server_handle *server_handle, struct prsv_c
 
 	log_debug("server received message from client %d:%d", prsv_client->client_id.phys.nid,
 		  prsv_client->client_id.phys.pid);
-	//prsv_print_buffer_hex(server_handle->event.start, server_handle->event.mlength, "Receive");
+	prsv_print_buffer_hex(server_handle->event.start, server_handle->event.mlength, "Receive");
 	size_t total_bytes = prsv_par_net_get_total_bytes(server_handle->event.start);
 	if (total_bytes > server_handle->recv_buffer_size) {
 		log_debug("Error Larger message recv buffer size is: %u B total_bytes are: %lu B",
@@ -536,7 +541,7 @@ static int prsv_put_and_reply(struct server_handle *server_handle, struct prsv_c
 	}
 
 	uint32_t opcode = par_net_header_get_opcode(server_handle->event.start);
-
+	log_debug("message opcode : %u", opcode);
 	if (opcode == 0) {
 		log_debug("invalid opcode");
 		return -(EXIT_FAILURE);
@@ -554,7 +559,7 @@ static int prsv_put_and_reply(struct server_handle *server_handle, struct prsv_c
 	server_handle->md.start = reply_header;
 	server_handle->md.length = reply_header->total_bytes;
 	server_handle->md.options = 0;
-	server_handle->md.eq_handle = server_handle->eqh;
+	server_handle->md.eq_handle = server_handle->send_eqh;
 	server_handle->md.ct_handle = PTL_CT_NONE;
 
 	ret = PtlMDBind(server_handle->nih, &server_handle->md, &server_handle->mdh);
@@ -570,6 +575,19 @@ static int prsv_put_and_reply(struct server_handle *server_handle, struct prsv_c
 		_exit(EXIT_FAILURE);
 	}
 
+	while (1) {
+		ret = PtlEQPoll(&server_handle->send_eqh, 1, PTL_TIME_FOREVER, &server_handle->event2, 0);
+		if (ret != PTL_OK) {
+			log_debug("PtlEQWait failed: %s", PtlToStr(ret, PTL_STR_ERROR));
+			_exit(EXIT_FAILURE);
+		}
+		if (server_handle->event2.type == PTL_EVENT_SEND) {
+			log_debug("PTL_EVENT_SEND received. Data successfully sent.");
+			break;
+		} else {
+			log_debug("Event server interface 1 : %s", PtlToStr(server_handle->event2.type, PTL_STR_EVENT));
+		}
+	}
 	//prsv_print_buffer_hex((char *)server_handle->md.start, server_handle->md.length, "Send");
 	return EXIT_SUCCESS;
 }
@@ -677,7 +695,7 @@ struct server_handle *prsv_portals_server_handle_init(struct server_options *ser
 		_exit(EXIT_FAILURE);
 	}
 
-	ret = PtlEQAlloc(handle->nih, 2048, &handle->eqh);
+	ret = PtlEQAlloc(handle->nih, 2048, &handle->send_eqh);
 	if (ret != PTL_OK) {
 		log_debug("PtlEQAlloc failed");
 		_exit(EXIT_FAILURE);

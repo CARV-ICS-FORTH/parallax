@@ -128,8 +128,8 @@ bool par_net_scan_rep_append_splice(struct par_net_scan_rep *reply, int32_t key_
 	if (NULL == kv_splice)
 		return false;
 
-	// log_debug("Scan reply appending kv_splice of size: %u key is %.*s", kv_splice_get_size(kv_splice),
-	// 	  kv_splice_get_key_size(kv_splice), kv_splice_get_key_offset_in_kv(kv_splice));
+	log_debug("Scan reply appending kv_splice of size: %u key is %.*s", kv_splice_get_size(kv_splice),
+		  kv_splice_get_key_size(kv_splice), kv_splice_get_key_offset_in_kv(kv_splice));
 	reply->last_splice_offt = reply->size;
 	reply->size += kv_splice_get_size(kv_splice);
 	++reply->num_kv_pairs;
