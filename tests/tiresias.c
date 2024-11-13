@@ -13,6 +13,7 @@
 #include "../btree/key_splice.h"
 #include "arg_parser.h"
 #include "btree/key_splice.h"
+//#include "djb2.h"
 #include "parallax/structures.h"
 #include <assert.h>
 #include <btree/gc.h>
@@ -27,7 +28,7 @@
 #include <sys/time.h>
 #define TIRESIAS_KV_SIZE (KV_MAX_SIZE - (MAX_KEY_SIZE + 8))
 #define TIRESIAS_KEY_SIZE MAX_KEY_SIZE
-
+//#define THREAD
 /**
  * This test uses a BerkeleyDB key value store as the source of truth. We use
  * BerkeleyDB because a) it is robust and b) it is available in the majority of
@@ -168,7 +169,25 @@ static void locate_key(par_handle handle, DBT lookup_key)
 	}
 	log_info("Not Found key %u %.*s", lookup_key.size, lookup_key.size, (char *)lookup_key.data);
 }
-
+void prsv_print_buffer_hex(const char *buffer, size_t length, char *type)
+{
+	if (buffer == NULL) {
+		printf("%s buffer is null:\n", type);
+		return;
+	}
+	printf("%s buffer content (hex):\n", type);
+	for (size_t i = 0; i < length; i++) {
+		if (buffer + i == NULL) {
+			printf("%s buffer is null in index = %lu", type, i);
+		} else {
+			printf("%02x ", (unsigned char)buffer[i]);
+		}
+		if ((i + 1) % 16 == 0) {
+			printf("\n");
+		}
+	}
+	printf("(END)\n");
+}
 static void *get_workload(void *config)
 {
 	struct workload_config_t *workload_config = config;
@@ -202,6 +221,7 @@ static void *get_workload(void *config)
 			value.val_buffer = get_buf;
 			par_get_serialized(workload_config->handle, (char *)key_serialized, &value, &error_message);
 		}
+		prsv_print_buffer_hex((char *)data.data, data.size, "BDB BUF");
 
 		if (error_message) {
 			log_fatal("Parallax returned the following error: %s", error_message);
@@ -218,6 +238,11 @@ static void *get_workload(void *config)
 		}
 		if (memcmp(value.val_buffer, data.data, data.size) != 0) {
 			log_fatal("Value data do not match");
+			/*unsigned int bdbhash = djb2_hash((const unsigned char *)data.data, data.size);
+			unsigned int parhash = djb2_hash((const unsigned char *)value.val_buffer, value.val_size);
+			log_fatal("got hash from BDB = %u", bdbhash);
+			log_fatal("got hash from parallax = %u", parhash);*/
+			//sleep(2);
 			_Exit(EXIT_FAILURE);
 		}
 
@@ -234,7 +259,9 @@ static void *get_workload(void *config)
 
 	cursorp->close(cursorp);
 	log_info("Testing GETS DONE!");
+#ifdef THREAD
 	pthread_exit(NULL);
+#endif
 }
 
 static void *scan_workload(void *config)
@@ -253,7 +280,9 @@ static void *scan_workload(void *config)
 		_Exit(EXIT_FAILURE);
 	}
 	log_info("Testing SCANS Successful");
+#ifdef THREAD
 	pthread_exit(NULL);
+#endif
 }
 
 static void delete_workload(struct workload_config_t *workload_config)
@@ -300,9 +329,13 @@ static void delete_workload(struct workload_config_t *workload_config)
 		_Exit(EXIT_FAILURE);
 	}
 	workload_config->total_keys = 0;
+#ifdef THREAD
 	pthread_t scan_thread;
 	pthread_create(&scan_thread, NULL, scan_workload, workload_config);
 	pthread_join(scan_thread, NULL);
+#else
+	scan_workload(workload_config);
+#endif
 	log_info("Test Deletes Successful");
 }
 
@@ -391,6 +424,7 @@ int main(int argc, char **argv)
 		populate_randomly(&workload_config);
 	}
 
+#ifdef THREAD
 	pthread_t get_thread;
 	pthread_t scan_thread;
 
@@ -399,6 +433,10 @@ int main(int argc, char **argv)
 
 	pthread_create(&scan_thread, NULL, scan_workload, &workload_config);
 	pthread_join(scan_thread, NULL);
+#else
+	get_workload(&workload_config);
+	scan_workload(&workload_config);
+#endif
 
 	delete_workload(&workload_config);
 

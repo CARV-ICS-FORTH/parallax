@@ -25,7 +25,6 @@
 #include <stdio.h>
 
 //#define PORTALS
-
 #ifdef PORTALS
 #include "portals4.h"
 #include "portals4_ext.h"
@@ -76,7 +75,7 @@ void print_buffer_hex(const char *buffer, size_t length, char *type)
 			printf("\n");
 		}
 	}
-	printf("\n");
+	printf("(END)\n");
 }
 
 #ifndef PORTALS
@@ -168,18 +167,18 @@ static par_handle par_net_init(const char *parallax_host)
 		_exit(EXIT_FAILURE);
 	}
 
-	ret = posix_memalign((void **)&handle->recv_buffer, 4096, KV_MAX_SIZE);
+	ret = posix_memalign((void **)&handle->recv_buffer, 4096, PRSV_COM_BUF_SIZE);
 	if (ret != 0) {
 		log_debug("posix_memalign failed");
 		_exit(EXIT_FAILURE);
 	}
-	ret = posix_memalign((void **)&handle->send_buffer, 4096, KV_MAX_SIZE);
+	ret = posix_memalign((void **)&handle->send_buffer, 4096, PRSV_COM_BUF_SIZE);
 	if (ret != 0) {
 		log_debug("posix_memalign failed");
 		_exit(EXIT_FAILURE);
 	}
-	handle->recv_buffer_size = KV_MAX_SIZE;
-	handle->send_buffer_size = KV_MAX_SIZE;
+	handle->recv_buffer_size = PRSV_COM_BUF_SIZE;
+	handle->send_buffer_size = PRSV_COM_BUF_SIZE;
 
 	//ok...init send buffer memmory
 	handle->md.start = handle->send_buffer;
@@ -420,7 +419,7 @@ static ssize_t par_portals_RPC(par_handle handle, char *send_buffer, size_t send
 	if (event.type == PTL_EVENT_PUT) {
 		log_debug("client received reply from server:");
 	}
-	print_buffer_hex((char *)event.start, event.mlength, "Reveive");
+	//print_buffer_hex((char *)event.start, event.mlength, "Reveive");
 	//struct par_net_header *reply_header = (struct par_net_header *)*recv_buffer;
 
 	*recv_buffer = event.start;

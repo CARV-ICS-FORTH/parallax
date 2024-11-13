@@ -4,6 +4,7 @@
 #include "../par_net/par_net_scan.h"
 #include "../par_net/par_net_sync.h"
 #include "../par_net/portals.h"
+//#include "djb2.h"
 #include "parallax/parallax.h"
 #include "portals4.h"
 #include "portals4_ext.h"
@@ -20,13 +21,6 @@
 char msg[PTL_EV_STR_SIZE];
 
 #define MAX_REGIONS 128
-
-#define SRV_ME_OPTS \
-	PTL_ME_OP_PUT | PTL_ME_EVENT_LINK_DISABLE | PTL_ME_MAY_ALIGN | PTL_ME_IS_ACCESSIBLE | PTL_ME_MANAGE_LOCAL
-
-#define MATCH 1
-#define IGNORE 0xffffffff
-#define METADATA_SIZE 4096
 
 #define USAGE_STRING                             \
 	"portals-server: no options specified\n" \
@@ -62,8 +56,6 @@ struct server_options {
 	uint32_t growth_factor;
 	uint8_t format;
 };
-
-#define MATCH_ENTRY_NUM 5
 
 struct prsv_clients {
 	UT_hash_handle hh;
@@ -114,7 +106,7 @@ void prsv_print_buffer_hex(const char *buffer, size_t length, char *type)
 			printf("\n");
 		}
 	}
-	printf("\n");
+	printf("(END)\n");
 }
 
 void prsv_print_counters(struct server_handle *server_handle)
@@ -381,7 +373,8 @@ static struct par_net_header *prsv_par_net_call_get(struct server_handle *server
 		par_value.val_size = 0;
 	}
 	// log_debug("Key: %.*s --> %s", par_key.size, par_key.data, found ? "FOUND" : "NOT FOUND");
-
+	//unsigned int hash = djb2_hash((const unsigned char *)par_value.val_buffer, par_value.val_size);
+	//log_debug("got hash from get = %u", hash);
 	size_t buffer_len = server_handle->send_buffer_size - prsv_par_net_header_calc_size();
 	struct par_net_get_rep *reply = par_net_get_rep_set_header(
 		found, &par_value, &server_handle->send_buffer[prsv_par_net_header_calc_size()], buffer_len);
@@ -509,7 +502,7 @@ void prsv_append_me_for_unlink_event(struct server_handle *server_handle, void *
 	server_handle->me[i].match_bits = MATCH;
 	server_handle->me[i].match_id.phys.nid = PTL_NID_ANY;
 	server_handle->me[i].match_id.phys.pid = PTL_PID_ANY;
-	server_handle->me[i].min_free = 4096;
+	server_handle->me[i].min_free = PRSV_COM_BUF_MIN_FREE;
 	server_handle->me[i].start = aligned_buffer_start;
 	server_handle->me[i].length = server_handle->recv_buffer_size;
 	server_handle->me[i].ct_handle = PTL_CT_NONE;
@@ -528,7 +521,7 @@ static int prsv_put_and_reply(struct server_handle *server_handle, struct prsv_c
 {
 	int ret;
 	void *aligned_buffer_start;
-	uint32_t *counter;
+	uint32_t volatile *counter;
 
 	log_debug("server received message from client %d:%d", prsv_client->client_id.phys.nid,
 		  prsv_client->client_id.phys.pid);
@@ -588,7 +581,7 @@ static int prsv_put_and_reply(struct server_handle *server_handle, struct prsv_c
 			log_debug("Event server interface 1 : %s", PtlToStr(server_handle->event2.type, PTL_STR_EVENT));
 		}
 	}
-	//prsv_print_buffer_hex((char *)server_handle->md.start, server_handle->md.length, "Send");
+	prsv_print_buffer_hex((char *)server_handle->md.start, server_handle->md.length, "Send");
 	return EXIT_SUCCESS;
 }
 
@@ -612,7 +605,7 @@ struct prsv_clients *prsv_find_add_user(struct prsv_clients *conn_ht, ptl_proces
 static int prsv_handle_event(struct server_handle *server_handle)
 {
 	void *aligned_buffer_start;
-	uint32_t *counter;
+	uint32_t volatile *counter;
 	struct prsv_clients *client;
 	log_debug("Event server interface 1 : %s", PtlToStr(server_handle->event.type, PTL_STR_EVENT));
 
@@ -709,7 +702,7 @@ struct server_handle *prsv_portals_server_handle_init(struct server_options *ser
 
 	for (int i = 0; i < MATCH_ENTRY_NUM; i++) {
 		void *raw_memory;
-		ret = posix_memalign(&raw_memory, 4096, KV_MAX_SIZE + METADATA_SIZE);
+		ret = posix_memalign(&raw_memory, 4096, PRSV_COM_BUF_SIZE + METADATA_SIZE);
 
 		if (ret != 0) {
 			perror("posix_memalign failed");
@@ -731,13 +724,13 @@ struct server_handle *prsv_portals_server_handle_init(struct server_options *ser
 		log_debug("posix_memalign failed");
 		_exit(EXIT_FAILURE);
 	}
-	ret = posix_memalign((void **)&handle->send_buffer, 4096, KV_MAX_SIZE);
+	ret = posix_memalign((void **)&handle->send_buffer, 4096, PRSV_COM_BUF_SIZE);
 	if (ret != 0) {
 		log_debug("posix_memalign failed");
 		_exit(EXIT_FAILURE);
 	}
-	handle->recv_buffer_size = KV_MAX_SIZE;
-	handle->send_buffer_size = KV_MAX_SIZE;
+	handle->recv_buffer_size = PRSV_COM_BUF_SIZE;
+	handle->send_buffer_size = PRSV_COM_BUF_SIZE;
 
 	const char *error_message = NULL;
 	/** initialize parallax **/
@@ -773,7 +766,7 @@ int prsv_server_start(struct server_handle *server_handle)
 		server_handle->me[i].match_bits = MATCH;
 		server_handle->me[i].match_id.phys.nid = PTL_NID_ANY;
 		server_handle->me[i].match_id.phys.pid = PTL_PID_ANY;
-		server_handle->me[i].min_free = 4096;
+		server_handle->me[i].min_free = PRSV_COM_BUF_MIN_FREE;
 		server_handle->me[i].start = server_handle->recv_buffer[i];
 		server_handle->me[i].length = server_handle->recv_buffer_size;
 		server_handle->me[i].ct_handle = PTL_CT_NONE;
