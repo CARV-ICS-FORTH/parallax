@@ -151,6 +151,14 @@ if(PORTALS_LIB)
     ../net_interface/par_net/par_net_scan.c
     ../net_interface/par_net/par_net_sync.c)
 
+  if("${CMAKE_BUILD_TYPE}" STREQUAL "Debug")
+    set_target_properties(${PORT_LIB} PROPERTIES COMPILE_FLAGS
+                                                 "${CMAKE_C_FLAGS}")
+  else()
+    set_target_properties(${PORT_LIB} PROPERTIES COMPILE_FLAGS
+                                                 "${CMAKE_C_FLAGS_RELEASE}")
+  endif()
+
   set_target_properties(
     ${PORT_LIB}
     PROPERTIES PUBLIC_HEADER

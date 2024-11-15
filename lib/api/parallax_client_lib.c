@@ -393,7 +393,7 @@ static ssize_t par_portals_RPC(par_handle handle, char *send_buffer, size_t send
 	} else {
 		PtlEvToStr(0, &event, msg);
 		log_debug("Event client interface 1 : %s", msg);
-		print_buffer_hex(parallax_handle->send_buffer, send_buffer_len, "Send");
+		//print_buffer_hex(parallax_handle->send_buffer, send_buffer_len, "Send");
 	}
 
 	/*wait for ack*/

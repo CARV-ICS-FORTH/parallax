@@ -82,7 +82,23 @@ if(PORTALS_LIB)
       ../lib/btree/kv_pairs.c
       ../lib/common/common.c)
 
+  if("${CMAKE_BUILD_TYPE}" STREQUAL "Debug")
+    set_source_files_properties(PORT_LIB_SOURCE_FILES
+                                PROPERTIES COMPILE_FLAGS "${CMAKE_C_FLAGS}")
+  else()
+    set_source_files_properties(
+      PORT_LIB_SOURCE_FILES PROPERTIES COMPILE_FLAGS "${CMAKE_C_FLAGS_RELEASE}")
+  endif()
+
   add_library(${PORT_LIB} SHARED ${PORT_LIB_SOURCE_FILES})
+
+  if("${CMAKE_BUILD_TYPE}" STREQUAL "Debug")
+    set_target_properties(${PORT_LIB} PROPERTIES COMPILE_FLAGS
+                                                 "${CMAKE_C_FLAGS}")
+  else()
+    set_target_properties(${PORT_LIB} PROPERTIES COMPILE_FLAGS
+                                                 "${CMAKE_C_FLAGS_RELEASE}")
+  endif()
 
   set_target_properties(
     ${PORT_LIB}

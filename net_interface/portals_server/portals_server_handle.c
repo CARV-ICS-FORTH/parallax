@@ -414,7 +414,7 @@ static struct par_net_header *prsv_par_net_call_scan(struct server_handle *serve
 		(struct par_net_scan_req *)((char *)server_handle->event.start + prsv_par_net_header_calc_size());
 
 	uint64_t region_id = par_net_scan_req_get_region_id(request);
-	prsv_print_buffer_hex((char *)server_handle->event.start, server_handle->event.mlength, "scan");
+	//prsv_print_buffer_hex((char *)server_handle->event.start, server_handle->event.mlength, "scan");
 	const char *error_message = NULL;
 	struct par_key key = { .size = par_net_scan_req_get_key_size(request),
 			       .data = par_net_scan_req_get_key(request) };
@@ -525,7 +525,7 @@ static int prsv_put_and_reply(struct server_handle *server_handle, struct prsv_c
 
 	log_debug("server received message from client %d:%d", prsv_client->client_id.phys.nid,
 		  prsv_client->client_id.phys.pid);
-	prsv_print_buffer_hex(server_handle->event.start, server_handle->event.mlength, "Receive");
+	//prsv_print_buffer_hex(server_handle->event.start, server_handle->event.mlength, "Receive");
 	size_t total_bytes = prsv_par_net_get_total_bytes(server_handle->event.start);
 	if (total_bytes > server_handle->recv_buffer_size) {
 		log_debug("Error Larger message recv buffer size is: %u B total_bytes are: %lu B",
@@ -581,7 +581,7 @@ static int prsv_put_and_reply(struct server_handle *server_handle, struct prsv_c
 			log_debug("Event server interface 1 : %s", PtlToStr(server_handle->event2.type, PTL_STR_EVENT));
 		}
 	}
-	prsv_print_buffer_hex((char *)server_handle->md.start, server_handle->md.length, "Send");
+	//prsv_print_buffer_hex((char *)server_handle->md.start, server_handle->md.length, "Send");
 	return EXIT_SUCCESS;
 }
 

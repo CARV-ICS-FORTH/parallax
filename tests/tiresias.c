@@ -169,25 +169,7 @@ static void locate_key(par_handle handle, DBT lookup_key)
 	}
 	log_info("Not Found key %u %.*s", lookup_key.size, lookup_key.size, (char *)lookup_key.data);
 }
-void prsv_print_buffer_hex(const char *buffer, size_t length, char *type)
-{
-	if (buffer == NULL) {
-		printf("%s buffer is null:\n", type);
-		return;
-	}
-	printf("%s buffer content (hex):\n", type);
-	for (size_t i = 0; i < length; i++) {
-		if (buffer + i == NULL) {
-			printf("%s buffer is null in index = %lu", type, i);
-		} else {
-			printf("%02x ", (unsigned char)buffer[i]);
-		}
-		if ((i + 1) % 16 == 0) {
-			printf("\n");
-		}
-	}
-	printf("(END)\n");
-}
+
 static void *get_workload(void *config)
 {
 	struct workload_config_t *workload_config = config;
@@ -221,7 +203,6 @@ static void *get_workload(void *config)
 			value.val_buffer = get_buf;
 			par_get_serialized(workload_config->handle, (char *)key_serialized, &value, &error_message);
 		}
-		prsv_print_buffer_hex((char *)data.data, data.size, "BDB BUF");
 
 		if (error_message) {
 			log_fatal("Parallax returned the following error: %s", error_message);
@@ -261,6 +242,8 @@ static void *get_workload(void *config)
 	log_info("Testing GETS DONE!");
 #ifdef THREAD
 	pthread_exit(NULL);
+#else
+	return NULL;
 #endif
 }
 
@@ -282,6 +265,8 @@ static void *scan_workload(void *config)
 	log_info("Testing SCANS Successful");
 #ifdef THREAD
 	pthread_exit(NULL);
+#else
+	return NULL;
 #endif
 }
 
