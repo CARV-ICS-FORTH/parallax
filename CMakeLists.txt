@@ -51,6 +51,8 @@ else()
 endif()
 add_definitions(-DSEGMENT_SIZE=${SEGMENT_SIZE})
 
+option(NET "Link with Network library (Portals or TCP)" OFF)
+
 option(BUILD_SHARED_LIBS
        "Build shared libraries (.dll/.so) instead of static ones (.lib/.a)" OFF)
 option(DISABLE_LOGGING

@@ -13,17 +13,20 @@ if(PARALLAX_BUILD_TESTING)
   target_link_libraries(ycsb-edb PRIVATE "${PROJECT_NAME}" ${Boost_LIBRARIES}
                                          log Threads::Threads)
 
-  add_executable(ycsb-tcp db/db_factory_parallax_tcp.cc core/core_workload.cc
+  add_executable(ycsb-net db/db_factory_parallax_tcp.cc core/core_workload.cc
                           driver/ycsbc.cc ../utilities/list.c)
-  
+
   if(NET STREQUAL "portals")
     set(NET_LIBRARY "${PROJECT_NAME}_portals_lib")
+    target_link_libraries(
+      ycsb-net PRIVATE "${NET_LIBRARY}" ${Boost_LIBRARIES} log Threads::Threads
+                       "${NET_LIBRARY}")
+  else()
+    target_link_libraries(
+      ycsb-net PRIVATE "${PROJECT_NAME}_net_lib" ${Boost_LIBRARIES} log
+                       Threads::Threads "${NET_LIBRARY}")
   endif()
-  
-  target_link_libraries(
-    ycsb-tcp PRIVATE "${PROJECT_NAME}_net_lib" ${Boost_LIBRARIES} log
-                     Threads::Threads "${NET_LIBRARY}")
-  
+
   check_cxx_compiler_flag("-Wno-deprecated-array-compare"
                           DEPRECATED_ARRAY_COMPARE)
   if(DEPRECATED_ARRAY_COMPARE)

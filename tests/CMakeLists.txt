@@ -3,8 +3,6 @@ cmake_minimum_required(VERSION 3.0)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 include_directories(${CMAKE_SOURCE_DIR}/lib)
 
-option(NET "Link with Network library (Portals or TCP)" OFF)
-
 function(link_target target_name)
   if(NET STREQUAL "tcp")
     target_link_libraries(${target_name} "${PROJECT_NAME}_net_lib")
