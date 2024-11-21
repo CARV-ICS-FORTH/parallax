@@ -121,21 +121,28 @@ set_target_properties(server.${LIB} PROPERTIES OUTPUT_NAME ${LIB}_server)
 # ######### PORTALS SERVER !!! ###########
 
 option(PORTALS_LIB_DIR "Path to the Portals library" "")
+option(QUEUE_LIB "Path to the sim-universal-construction library" "")
+option(QUEUE_INCLUDE_DIR
+       "Path to the sim-universal-construction include directory" "")
+
+find_library(
+  QUEUE_LIB_FOUND
+  NAMES concurrent
+  PATHS ${QUEUE_LIB})
 
 find_library(
   PORTALS_LIB
   NAMES portals
   PATHS ${PORTALS_LIB_DIR})
 
-if(PORTALS_LIB)
+if(PORTALS_LIB AND QUEUE_LIB_FOUND)
   add_definitions(-DPARALLAX_PORTALS)
 
+  message(STATUS "Portals library for server found at : ${PORTALS_LIB}")
   message(
-    STATUS "Portals library found at : ${PORTALS_LIB} installing portals server"
+    STATUS
+      "sim-universal-construction library for server found at: ${QUEUE_LIB_FOUND}"
   )
-
-  # get_filename_component(PORTALS_LIB_DIR_INCLUDE ${PORTALS_LIB} DIRECTORY)
-  # set(PORTALS_INCLUDE_DIR "${PORTALS_LIB_DIR_INCLUDE}/../../portals/include")
 
   set(PORT_LIB "portals_${PROJECT_NAME}_server")
 
@@ -143,6 +150,7 @@ if(PORTALS_LIB)
     ${PORT_LIB}
     ../net_interface/portals_server/portals_server.c
     ../net_interface/portals_server/portals_server_handle.c
+    ../net_interface/portals_server/portals_worker.c
     ../net_interface/par_net/par_net_open.c
     ../net_interface/par_net/par_net_put.c
     ../net_interface/par_net/par_net_delete.c
@@ -171,8 +179,26 @@ if(PORTALS_LIB)
   target_include_directories(${PORT_LIB} PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/")
   target_include_directories(${PORT_LIB} PUBLIC "${PORTALS_INCLUDE_DIR}")
 
-  target_link_libraries(${PORT_LIB} log yaml ${PORTALS_LIB} ${LIB})
-  # target_link_libraries(${PORT_LIB} PRIVATE )
+  if(NOT QUEUE_INCLUDE_DIR)
+    get_filename_component(QUEUE_LIB_DIR ${QUEUE_LIB_FOUND} DIRECTORY)
+    set(QUEUE_INCLUDE_DIR "${QUEUE_LIB_DIR}/../../includes")
+  endif()
+
+  if(EXISTS "${QUEUE_INCLUDE_DIR}")
+    message(
+      STATUS
+        "Found include directory for sim-universal-construction at: ${QUEUE_INCLUDE_DIR}"
+    )
+  else()
+    message(
+      FATAL_ERROR
+        "Could not find the sim-universal-construction include directory")
+  endif()
+
+  target_include_directories(${PORT_LIB} PUBLIC "${QUEUE_INCLUDE_DIR}")
+  target_link_libraries(${PORT_LIB} log yaml ${PORTALS_LIB} ${LIB}
+                        ${QUEUE_LIB_FOUND})
+
   install(
     TARGETS ${PORT_LIB}
     ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
@@ -181,7 +207,8 @@ if(PORTALS_LIB)
     PUBLIC_HEADER DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}")
 elseif()
   message(
-    WARNING "Portals library not found, stoping installation for portals server"
+    WARNING
+      "Portals library or sim-universal-construction not found, stoping installation for portals server"
   )
 endif()
 
