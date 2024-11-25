@@ -35,7 +35,6 @@ size_t portals_worker_size(void)
 int portals_worker_poll(struct portals_worker *worker, ptl_event_t *event)
 {
 	ptl_event_t *ev;
-	CCQueueThreadStateInit(worker->queue_object, worker->th_state, worker->tid);
 	RetVal rawval = CCQueueApplyDequeue(worker->queue_object, worker->th_state, worker->tid);
 	ev = (ptl_event_t *)rawval;
 	if (ev) {
@@ -61,6 +60,8 @@ struct portals_worker *portals_worker_create(struct server_handle *server_handle
 	worker->queue_object = synchGetAlignedMemory(S_CACHE_LINE_SIZE, sizeof(CCQueueStruct));
 	CCQueueStructInit(worker->queue_object, PORTALS_TNUM);
 	worker->th_state = synchGetAlignedMemory(CACHE_LINE_SIZE, sizeof(CCQueueThreadState));
+
+	CCQueueThreadStateInit(worker->queue_object, worker->th_state, worker->tid);
 
 	ret = PtlEQAlloc(nih, 2048, &worker->send_eqh);
 	if (ret != PTL_OK) {
