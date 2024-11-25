@@ -78,6 +78,7 @@ struct server_handle {
 	ptl_pt_index_t ptindex;
 	uint32_t recv_buffer_size;
 	uint32_t thread_to_queue;
+	pthread_mutex_t lock;
 	struct portals_worker **portals_workers;
 };
 
@@ -523,75 +524,49 @@ void prsv_append_me_for_unlink_event(struct server_handle *server_handle, void *
 static void *prsv_put_and_reply(void *arg)
 {
 	struct portals_worker *portals_worker = arg;
-	ptl_event_t ev;
-	/*int ret;
+	ptl_event_t *event = NULL;
 	void *aligned_buffer_start;
-	uint32_t volatile *counter;*/
+	uint32_t volatile *counter;
+	struct server_handle *server_handle = portals_worker_get_server_handle(portals_worker);
 
-	while (portals_worker_poll(portals_worker, &ev)) {
-		log_debug("THREAD %d IS POLLING QUEUE", (int)portals_worker_get_core(portals_worker));
-	}
-
-	log_debug("THREAD assigned event message from client %d:%d", ev.initiator.phys.nid, ev.initiator.phys.pid);
-
-	//prsv_print_buffer_hex(server_handle->event.start, server_handle->event.mlength, "Receive");
-	/*size_t total_bytes = prsv_par_net_get_total_bytes(server_handle->event.start);
-	if (total_bytes > server_handle->recv_buffer_size) {
-		log_debug("Error Larger message recv buffer size is: %u B total_bytes are: %lu B",
-			  server_handle->recv_buffer_size, tota:w
-        l_bytes);
-		return -(EXIT_FAILURE);
-	}
-
-	uint32_t opcode = par_net_header_get_opcode(server_handle->event.start);
-	log_debug("message opcode : %u", opcode);
-	if (opcode == 0) {
-		log_debug("invalid opcode");
-		return -(EXIT_FAILURE);
-	}
-
-	aligned_buffer_start = (void *)((uintptr_t)server_handle->event.user_ptr);
-	counter = (uint32_t *)((uintptr_t)aligned_buffer_start - METADATA_SIZE);
-
-	// Increase the correct counter
-	(*counter)++;
-	struct par_net_header *reply_header = par_net_call[opcode](portals_worker, &ev);
-	(*counter)--;
-
-	server_handle->send_buffer = (char *)reply_header;
-	server_handle->md.start = reply_header;
-	server_handle->md.length = reply_header->total_bytes;
-	server_handle->md.options = 0;
-	server_handle->md.eq_handle = server_handle->send_eqh;
-	server_handle->md.ct_handle = PTL_CT_NONE;
-
-	ret = PtlMDBind(server_handle->nih, &server_handle->md, &server_handle->mdh);
-	if (ret != PTL_OK) {
-		log_debug("PtlMDBind failed");
-		_exit(EXIT_FAILURE);
-	}
-
-	ret = PtlPut(server_handle->mdh, 0, reply_header->total_bytes, PTL_ACK_REQ, prsv_client->client_id, 0, 0, 0,
-		     NULL, 0);
-	if (ret != PTL_OK) {
-		log_debug("PtlPut failed");
-		_exit(EXIT_FAILURE);
-	}
-
-	while (1) {
-		ret = PtlEQPoll(&server_handle->send_eqh, 1, PTL_TIME_FOREVER, &server_handle->event2, 0);
-		if (ret != PTL_OK) {
-			log_debug("PtlEQWait failed: %s", PtlToStr(ret, PTL_STR_ERROR));
-			_exit(EXIT_FAILURE);
+	while (portals_worker_poll(portals_worker, event)) {
+		if (!event) {
+			continue;
 		}
-		if (server_handle->event2.type == PTL_EVENT_SEND) {
-			log_debug("PTL_EVENT_SEND received. Data successfully sent.");
+		log_debug("THREAD assigned event message from client %d:%d", event->initiator.phys.nid,
+			  event->initiator.phys.pid);
+
+		//prsv_print_buffer_hex(server_handle->event.start, server_handle->event.mlength, "Receive");
+		size_t total_bytes = prsv_par_net_get_total_bytes(event->start);
+		if (total_bytes > server_handle->recv_buffer_size) {
+			log_debug("Error Larger message recv buffer size is: %u B total_bytes are: %lu B",
+				  server_handle->recv_buffer_size, total_bytes);
 			break;
-		} else {
-			log_debug("Event server interface 1 : %s", PtlToStr(server_handle->event2.type, PTL_STR_EVENT));
 		}
+
+		uint32_t opcode = par_net_header_get_opcode(event->start);
+		log_debug("message opcode : %u", opcode);
+		if (opcode == 0) {
+			log_debug("invalid opcode");
+			break;
+		}
+
+		aligned_buffer_start = (void *)((uintptr_t)event->user_ptr);
+		counter = (uint32_t *)((uintptr_t)aligned_buffer_start - METADATA_SIZE);
+
+		// Increase the correct counter
+		pthread_mutex_lock(&server_handle->lock);
+		(*counter)++;
+		pthread_mutex_unlock(&server_handle->lock);
+		struct par_net_header *reply_header = par_net_call[opcode](portals_worker, event);
+		pthread_mutex_lock(&server_handle->lock);
+		(*counter)--;
+		pthread_mutex_unlock(&server_handle->lock);
+		portals_worker_send_reply_buff(portals_worker, reply_header, reply_header->total_bytes,
+					       server_handle->nih, event->initiator);
 	}
-	//prsv_print_buffer_hex((char *)server_handle->md.start, server_handle->md.length, "Send");*/
+	log_debug("FINISHED");
+	//prsv_print_buffer_hex((char *)server_handle->md.start, server_handle->md.length, "Send");
 	return EXIT_SUCCESS;
 }
 
@@ -616,7 +591,7 @@ static int prsv_handle_event(struct server_handle *server_handle)
 {
 	void *aligned_buffer_start;
 	uint32_t volatile *counter;
-	struct prsv_clients *client;
+	//struct prsv_clients *client;
 	log_debug("Event server interface 1 : %s", PtlToStr(server_handle->event.type, PTL_STR_EVENT));
 
 	switch (server_handle->event.type) {
@@ -679,6 +654,9 @@ struct server_handle *prsv_portals_server_handle_init(struct server_options *ser
 		_exit(EXIT_FAILURE);
 
 	handle->opts = server_options;
+
+	if (pthread_mutex_init(&handle->lock, NULL))
+		_exit(EXIT_FAILURE);
 
 	handle->portals_workers = calloc(handle->opts->threadno, sizeof(struct portals_worker *));
 	if (handle->portals_workers == NULL)
@@ -772,7 +750,8 @@ int prsv_server_start(struct server_handle *server_handle)
 	uint32_t index;
 
 	for (index = 0U; index < threads; index++) {
-		server_handle->portals_workers[index] = portals_worker_create(server_handle, server_handle->nih, index);
+		server_handle->portals_workers[index] =
+			portals_worker_create(server_handle, server_handle->nih, index, server_handle->opts->threadno);
 
 		if (pthread_create(portals_worker_get_tid(server_handle->portals_workers[index]), NULL,
 				   prsv_put_and_reply,

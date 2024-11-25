@@ -10,8 +10,7 @@
 #include <pthread.h>
 #include <stdint.h>
 #include <stdlib.h>
-
-#define PORTALS_TNUM 5
+#include <unistd.h>
 
 struct portals_worker {
 	struct server_handle *server_handle;
@@ -38,19 +37,20 @@ int portals_worker_poll(struct portals_worker *worker, ptl_event_t *event)
 	RetVal rawval = CCQueueApplyDequeue(worker->queue_object, worker->th_state, worker->tid);
 	ev = (ptl_event_t *)rawval;
 	if (ev) {
+		log_debug("got event in thread : %d", worker->core);
 		event = ev;
-		return 1;
 	}
-	return 0;
+
+	return 1;
 }
 
 void portals_worker_put(struct portals_worker *worker, ptl_event_t *event)
 {
-	CCQueueThreadStateInit(worker->queue_object, worker->th_state, worker->tid);
 	CCQueueApplyEnqueue(worker->queue_object, worker->th_state, (ArgVal)event, worker->tid);
 }
 
-struct portals_worker *portals_worker_create(struct server_handle *server_handle, ptl_handle_ni_t nih, uint32_t index)
+struct portals_worker *portals_worker_create(struct server_handle *server_handle, ptl_handle_ni_t nih, uint32_t index,
+					     uint32_t threadno)
 {
 	int ret;
 	struct portals_worker *worker = calloc(1, sizeof(struct portals_worker));
@@ -58,7 +58,7 @@ struct portals_worker *portals_worker_create(struct server_handle *server_handle
 	worker->server_handle = server_handle;
 
 	worker->queue_object = synchGetAlignedMemory(S_CACHE_LINE_SIZE, sizeof(CCQueueStruct));
-	CCQueueStructInit(worker->queue_object, PORTALS_TNUM);
+	CCQueueStructInit(worker->queue_object, threadno);
 	worker->th_state = synchGetAlignedMemory(CACHE_LINE_SIZE, sizeof(CCQueueThreadState));
 
 	CCQueueThreadStateInit(worker->queue_object, worker->th_state, worker->tid);
@@ -100,4 +100,39 @@ uint64_t portals_worker_get_core(struct portals_worker *worker)
 pthread_t *portals_worker_get_tid(struct portals_worker *worker)
 {
 	return (pthread_t *)&worker->tid;
+}
+
+void portals_worker_send_reply_buff(struct portals_worker *worker, struct par_net_header *reply_header,
+				    uint32_t total_bytes, ptl_handle_ni_t nih, ptl_process_t client)
+{
+	worker->send_buffer = (char *)reply_header;
+	worker->md.start = reply_header;
+	worker->md.length = total_bytes;
+	worker->md.options = 0;
+	worker->md.eq_handle = worker->send_eqh;
+	worker->md.ct_handle = PTL_CT_NONE;
+	int ret = PtlMDBind(nih, &worker->md, &worker->mdh);
+	if (ret != PTL_OK) {
+		log_debug("PtlMDBind failed");
+		_exit(EXIT_FAILURE);
+	}
+	ret = PtlPut(worker->mdh, 0, total_bytes, PTL_ACK_REQ, client, 0, 0, 0, NULL, 0);
+	if (ret != PTL_OK) {
+		log_debug("PtlPut failed");
+		_exit(EXIT_FAILURE);
+	}
+
+	while (1) {
+		ret = PtlEQPoll(&worker->send_eqh, 1, PTL_TIME_FOREVER, &worker->event2, 0);
+		if (ret != PTL_OK) {
+			log_debug("PtlEQWait failed: %s", PtlToStr(ret, PTL_STR_ERROR));
+			_exit(EXIT_FAILURE);
+		}
+		if (worker->event2.type == PTL_EVENT_SEND) {
+			log_debug("PTL_EVENT_SEND received. Data successfully sent.");
+			break;
+		} else {
+			log_debug("Event server interface 1 : %s", PtlToStr(worker->event2.type, PTL_STR_EVENT));
+		}
+	}
 }
