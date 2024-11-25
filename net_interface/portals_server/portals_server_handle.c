@@ -4,13 +4,13 @@
 #include "../par_net/par_net_scan.h"
 #include "../par_net/par_net_sync.h"
 #include "../par_net/portals.h"
-//#include "djb2.h"
 #include "parallax/parallax.h"
 #include "portals4.h"
 #include "portals4_ext.h"
-
+#include "portals_worker.h"
 #include <errno.h>
 #include <log.h>
+#include <pthread.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -66,22 +66,19 @@ struct prsv_clients {
 struct server_handle {
 	ptl_me_t me[MATCH_ENTRY_NUM];
 	ptl_event_t event;
-	ptl_event_t event2;
 	ptl_handle_me_t meh[MATCH_ENTRY_NUM];
-	ptl_md_t md;
+
 	char *recv_buffer[MATCH_ENTRY_NUM];
 	par_handle par_handle;
 	ptl_handle_ni_t nih;
 	ptl_handle_eq_t eqh;
-	ptl_handle_eq_t send_eqh;
-	ptl_handle_md_t mdh;
-	char *send_buffer;
+
 	struct server_options *opts;
 	struct prsv_clients *conn_ht;
 	ptl_pt_index_t ptindex;
 	uint32_t recv_buffer_size;
-	uint32_t send_buffer_size;
-	//struct worker *workers;
+	uint32_t thread_to_queue;
+	struct portals_worker **portals_workers;
 };
 
 struct par_net_header {
@@ -243,46 +240,47 @@ struct server_options *prsv_server_parse_argv_opts(int argc, char *restrict *res
 	return server_options;
 }
 
-static struct par_net_header *prsv_par_net_call_open(struct server_handle *server_handle, void *args)
+static struct par_net_header *prsv_par_net_call_open(struct portals_worker *portals_worker, void *args)
 {
-	(void)args;
+	ptl_event_t event = *(ptl_event_t *)args;
 	struct par_net_open_req *request =
-		(struct par_net_open_req *)((char *)server_handle->event.start + prsv_par_net_header_calc_size());
+		(struct par_net_open_req *)((char *)event.start + prsv_par_net_header_calc_size());
 
 	par_db_options db_options = { 0 };
 	db_options.options = par_get_default_options();
 	db_options.db_name = par_net_open_get_dbname(request);
 	db_options.create_flag = par_net_open_get_flag(request);
 
-	db_options.volume_name = (char *)server_handle->opts->parallax_vol_name;
-	log_debug("Setting L0 size to %u B", server_handle->opts->l0_size);
-	db_options.options[LEVEL0_SIZE].value = server_handle->opts->l0_size;
-	log_debug("Setting growth factor to %u", server_handle->opts->growth_factor);
-	db_options.options[GROWTH_FACTOR].value = server_handle->opts->growth_factor;
+	db_options.volume_name = (char *)portals_worker_get_server_handle(portals_worker)->opts->parallax_vol_name;
+	log_debug("Setting L0 size to %u B", portals_worker_get_server_handle(portals_worker)->opts->l0_size);
+	db_options.options[LEVEL0_SIZE].value = portals_worker_get_server_handle(portals_worker)->opts->l0_size;
+	log_debug("Setting growth factor to %u", portals_worker_get_server_handle(portals_worker)->opts->growth_factor);
+	db_options.options[GROWTH_FACTOR].value = portals_worker_get_server_handle(portals_worker)->opts->growth_factor;
 
 	const char *error_message = NULL;
 	log_debug("Opening db with name == %s", db_options.db_name);
 	par_handle handle = par_open(&db_options, &error_message);
 
 	struct par_net_open_rep *reply = par_net_open_rep_create(
-		error_message != NULL, handle, &server_handle->send_buffer[prsv_par_net_header_calc_size()],
-		server_handle->send_buffer_size - prsv_par_net_header_calc_size());
+		error_message != NULL, handle,
+		&portals_worker_get_buffer(portals_worker)[prsv_par_net_header_calc_size()],
+		portals_worker_get_buffer_size(portals_worker) - prsv_par_net_header_calc_size());
 	if (NULL == reply) {
 		log_warn("Failed to create reply");
 		return NULL;
 	}
-	struct par_net_header *reply_header = (struct par_net_header *)server_handle->send_buffer;
+	struct par_net_header *reply_header = (struct par_net_header *)portals_worker_get_buffer(portals_worker);
 	reply_header->opcode = OPCODE_OPEN;
 	reply_header->total_bytes = par_net_open_rep_calc_size() + prsv_par_net_header_calc_size();
 	log_debug("Ok with open reply");
 	return reply_header;
 }
 
-static struct par_net_header *prsv_par_net_call_put(struct server_handle *server_handle, void *args)
+static struct par_net_header *prsv_par_net_call_put(struct portals_worker *portals_worker, void *args)
 {
-	(void)args;
+	ptl_event_t event = *(ptl_event_t *)args;
 	struct par_net_put_req *request =
-		(struct par_net_put_req *)((char *)server_handle->event.start + prsv_par_net_header_calc_size());
+		(struct par_net_put_req *)((char *)event.start + prsv_par_net_header_calc_size());
 
 	struct par_key_value kv_pair = { 0 };
 	uint64_t region_id = par_net_put_get_region_id(request);
@@ -298,24 +296,24 @@ static struct par_net_header *prsv_par_net_call_put(struct server_handle *server
 	const char *error_message = NULL;
 	struct par_put_metadata metadata = par_put((par_handle)region_id, &kv_pair, &error_message);
 	log_debug("LSN is %lu", metadata.lsn);
-	size_t buffer_len = server_handle->send_buffer_size - prsv_par_net_header_calc_size();
-	struct par_net_put_rep *reply =
-		par_net_put_rep_create(error_message == NULL, metadata,
-				       &server_handle->send_buffer[prsv_par_net_header_calc_size()], buffer_len);
+	size_t buffer_len = portals_worker_get_buffer_size(portals_worker) - prsv_par_net_header_calc_size();
+	struct par_net_put_rep *reply = par_net_put_rep_create(
+		error_message == NULL, metadata,
+		&portals_worker_get_buffer(portals_worker)[prsv_par_net_header_calc_size()], buffer_len);
 	if (NULL == reply) {
 		log_warn("Failed to create put reply");
 		return NULL;
 	}
-	struct par_net_header *reply_header = (struct par_net_header *)server_handle->send_buffer;
+	struct par_net_header *reply_header = (struct par_net_header *)portals_worker_get_buffer(portals_worker);
 	reply_header->opcode = OPCODE_PUT;
 	reply_header->total_bytes = prsv_par_net_header_calc_size() + par_net_put_rep_calc_size();
 	return reply_header;
 }
-static struct par_net_header *prsv_par_net_call_del(struct server_handle *server_handle, void *args)
+static struct par_net_header *prsv_par_net_call_del(struct portals_worker *portals_worker, void *args)
 {
-	(void)args;
+	ptl_event_t event = *(ptl_event_t *)args;
 	struct par_net_del_req *request =
-		(struct par_net_del_req *)((char *)server_handle->event.start + prsv_par_net_header_calc_size());
+		(struct par_net_del_req *)((char *)event.start + prsv_par_net_header_calc_size());
 
 	struct par_key key = { 0 };
 	uint64_t region_id = par_net_del_get_region_id(request);
@@ -325,25 +323,26 @@ static struct par_net_header *prsv_par_net_call_del(struct server_handle *server
 	const char *error_message = NULL;
 	par_delete((par_handle)region_id, &key, &error_message);
 
-	size_t buffer_len = server_handle->send_buffer_size - prsv_par_net_header_calc_size();
+	size_t buffer_len = portals_worker_get_buffer_size(portals_worker) - prsv_par_net_header_calc_size();
 
 	struct par_net_del_rep *reply = par_net_del_rep_create(
-		error_message != NULL, &server_handle->send_buffer[prsv_par_net_header_calc_size()], buffer_len);
+		error_message != NULL, &portals_worker_get_buffer(portals_worker)[prsv_par_net_header_calc_size()],
+		buffer_len);
 
 	if (NULL == reply) {
 		log_debug("Failed to create reply for delete operation");
 		_exit(EXIT_FAILURE);
 	}
-	struct par_net_header *reply_header = (struct par_net_header *)server_handle->send_buffer;
+	struct par_net_header *reply_header = (struct par_net_header *)portals_worker_get_buffer(portals_worker);
 	reply_header->opcode = OPCODE_DEL;
 	reply_header->total_bytes = prsv_par_net_header_calc_size() + par_net_del_rep_calc_size();
 	return reply_header;
 }
-static struct par_net_header *prsv_par_net_call_get(struct server_handle *server_handle, void *args)
+static struct par_net_header *prsv_par_net_call_get(struct portals_worker *portals_worker, void *args)
 {
-	(void)args;
+	ptl_event_t event = *(ptl_event_t *)args;
 	struct par_net_get_req *request =
-		(struct par_net_get_req *)((char *)server_handle->event.start + prsv_par_net_header_calc_size());
+		(struct par_net_get_req *)((char *)event.start + prsv_par_net_header_calc_size());
 
 	uint64_t region_id = par_net_get_get_region_id(request);
 	struct par_key par_key;
@@ -359,9 +358,9 @@ static struct par_net_header *prsv_par_net_call_get(struct server_handle *server
 	bool found = false;
 	if (par_net_get_req_fetch_value(request)) {
 		log_debug("Region id: %lu Calling par_get for key: %.*s", region_id, par_key.size, par_key.data);
-		par_value.val_buffer =
-			&server_handle->send_buffer[prsv_par_net_header_calc_size() + par_net_get_rep_header_size()];
-		par_value.val_buffer_size = server_handle->send_buffer_size -
+		par_value.val_buffer = &portals_worker_get_buffer(
+			portals_worker)[prsv_par_net_header_calc_size() + par_net_get_rep_header_size()];
+		par_value.val_buffer_size = portals_worker_get_buffer_size(portals_worker) -
 					    (prsv_par_net_header_calc_size() + par_net_get_rep_header_size());
 		log_debug("Available buffer for gets is %u", par_value.val_buffer_size);
 		par_get((par_handle)region_id, &par_key, &par_value, &error_message);
@@ -375,46 +374,47 @@ static struct par_net_header *prsv_par_net_call_get(struct server_handle *server
 	// log_debug("Key: %.*s --> %s", par_key.size, par_key.data, found ? "FOUND" : "NOT FOUND");
 	//unsigned int hash = djb2_hash((const unsigned char *)par_value.val_buffer, par_value.val_size);
 	//log_debug("got hash from get = %u", hash);
-	size_t buffer_len = server_handle->send_buffer_size - prsv_par_net_header_calc_size();
+	size_t buffer_len = portals_worker_get_buffer_size(portals_worker) - prsv_par_net_header_calc_size();
 	struct par_net_get_rep *reply = par_net_get_rep_set_header(
-		found, &par_value, &server_handle->send_buffer[prsv_par_net_header_calc_size()], buffer_len);
+		found, &par_value, &portals_worker_get_buffer(portals_worker)[prsv_par_net_header_calc_size()],
+		buffer_len);
 	if (reply == NULL) {
 		log_warn("Failed to create reply");
 		return NULL;
 	}
-	struct par_net_header *reply_header = (struct par_net_header *)server_handle->send_buffer;
+	struct par_net_header *reply_header = (struct par_net_header *)portals_worker_get_buffer(portals_worker);
 	reply_header->opcode = OPCODE_GET;
 	reply_header->total_bytes = prsv_par_net_header_calc_size() +
 				    par_net_get_rep_calc_size(error_message == NULL ? par_value.val_size : 0);
 	return reply_header;
 }
-static struct par_net_header *prsv_par_net_call_sync(struct server_handle *server_handle, void *args)
+static struct par_net_header *prsv_par_net_call_sync(struct portals_worker *portals_worker, void *args)
 {
-	(void)args;
+	ptl_event_t event = *(ptl_event_t *)args;
 	struct par_net_sync_req *sync_request =
-		(struct par_net_sync_req *)((char *)server_handle->event.start + prsv_par_net_header_calc_size());
+		(struct par_net_sync_req *)((char *)event.start + prsv_par_net_header_calc_size());
 	uint64_t region_id = par_net_sync_req_get_region_id(sync_request);
 	par_ret_code ret = par_sync((par_handle)region_id);
-	struct par_net_sync_rep *sync_reply =
-		par_net_sync_rep_create(ret, region_id, &server_handle->send_buffer[prsv_par_net_header_calc_size()],
-					server_handle->send_buffer_size - prsv_par_net_header_calc_size());
+	struct par_net_sync_rep *sync_reply = par_net_sync_rep_create(
+		ret, region_id, &portals_worker_get_buffer(portals_worker)[prsv_par_net_header_calc_size()],
+		portals_worker_get_buffer_size(portals_worker) - prsv_par_net_header_calc_size());
 	if (NULL == sync_reply) {
 		log_debug("Failed to create sync reply");
 		_exit(EXIT_FAILURE);
 	}
-	struct par_net_header *reply = (struct par_net_header *)server_handle->send_buffer;
+	struct par_net_header *reply = (struct par_net_header *)portals_worker_get_buffer(portals_worker);
 	reply->opcode = OPCODE_SYNC;
 	reply->total_bytes = prsv_par_net_header_calc_size() + par_net_sync_rep_calc_size();
 	return reply;
 }
-static struct par_net_header *prsv_par_net_call_scan(struct server_handle *server_handle, void *args)
+static struct par_net_header *prsv_par_net_call_scan(struct portals_worker *portals_worker, void *args)
 {
-	(void)args;
+	ptl_event_t event = *(ptl_event_t *)args;
 	struct par_net_scan_req *request =
-		(struct par_net_scan_req *)((char *)server_handle->event.start + prsv_par_net_header_calc_size());
+		(struct par_net_scan_req *)((char *)event.start + prsv_par_net_header_calc_size());
 
 	uint64_t region_id = par_net_scan_req_get_region_id(request);
-	//prsv_print_buffer_hex((char *)server_handle->event.start, server_handle->event.mlength, "scan");
+	//prsv_print_buffer_hex((char *)event.event.start, portals_worker->event.mlength, "scan");
 	const char *error_message = NULL;
 	struct par_key key = { .size = par_net_scan_req_get_key_size(request),
 			       .data = par_net_scan_req_get_key(request) };
@@ -425,9 +425,11 @@ static struct par_net_header *prsv_par_net_call_scan(struct server_handle *serve
 										    "PAR_GREATER");
 
 	struct par_net_scan_rep *reply = par_net_scan_rep_create(
-		par_net_scan_req_get_max_entries(request), &server_handle->send_buffer[prsv_par_net_header_calc_size()],
-		server_handle->send_buffer_size - prsv_par_net_header_calc_size());
-	printf("buffer size %u, header %lu\n", server_handle->send_buffer_size, prsv_par_net_header_calc_size());
+		par_net_scan_req_get_max_entries(request),
+		&portals_worker_get_buffer(portals_worker)[prsv_par_net_header_calc_size()],
+		portals_worker_get_buffer_size(portals_worker) - prsv_par_net_header_calc_size());
+	printf("buffer size %u, header %lu\n", portals_worker_get_buffer_size(portals_worker),
+	       prsv_par_net_header_calc_size());
 	par_scanner dev_scanner =
 		par_init_scanner((par_handle)region_id, &key, par_net_scan_req_get_seek_mode(request), &error_message);
 	if (error_message) {
@@ -446,9 +448,10 @@ static struct par_net_header *prsv_par_net_call_scan(struct server_handle *serve
 	par_net_scan_rep_set_valid(reply, par_is_valid(dev_scanner));
 	par_close_scanner(dev_scanner);
 
-	struct par_net_header *header = (struct par_net_header *)server_handle->send_buffer;
-	log_debug("send_buffer: %p, buffer size: %u, header size: %zu", server_handle->send_buffer,
-		  server_handle->send_buffer_size, sizeof(struct par_net_header));
+	struct par_net_header *header = (struct par_net_header *)portals_worker_get_buffer(portals_worker);
+	log_debug("send_buffer: %p, buffer size: %u, header size: %zu",
+		  (void *)portals_worker_get_buffer(portals_worker), portals_worker_get_buffer_size(portals_worker),
+		  sizeof(struct par_net_header));
 
 	header->opcode = OPCODE_SCAN;
 	header->total_bytes = prsv_par_net_header_calc_size() + par_net_scan_rep_get_size(reply);
@@ -457,11 +460,11 @@ static struct par_net_header *prsv_par_net_call_scan(struct server_handle *serve
 	return header;
 }
 
-static struct par_net_header *prsv_par_net_call_close(struct server_handle *server_handle, void *args)
+static struct par_net_header *prsv_par_net_call_close(struct portals_worker *portals_worker, void *args)
 {
-	(void)args;
+	ptl_event_t event = *(ptl_event_t *)args;
 	struct par_net_close_req *request =
-		(struct par_net_close_req *)((char *)server_handle->event.start + prsv_par_net_header_calc_size());
+		(struct par_net_close_req *)((char *)event.start + prsv_par_net_header_calc_size());
 
 	uint64_t region_id = par_net_close_get_region_id(request);
 
@@ -470,14 +473,14 @@ static struct par_net_header *prsv_par_net_call_close(struct server_handle *serv
 	const char *error_mesage = par_close(handle);
 	log_debug("Close DB message is %s ", error_mesage ? error_mesage : " OK !");
 	uint32_t error_message_size = error_mesage ? strlen(error_mesage) + 1 : 0;
-	size_t buffer_len = server_handle->send_buffer_size - prsv_par_net_header_calc_size();
+	size_t buffer_len = portals_worker_get_buffer_size(portals_worker) - prsv_par_net_header_calc_size();
 	struct par_net_close_rep *reply = par_net_close_rep_create(
-		error_mesage, &server_handle->send_buffer[prsv_par_net_header_calc_size()], buffer_len);
+		error_mesage, &portals_worker_get_buffer(portals_worker)[prsv_par_net_header_calc_size()], buffer_len);
 	if (NULL == reply) {
 		log_warn("Failed to create get reply");
 		return NULL;
 	}
-	struct par_net_header *reply_header = (struct par_net_header *)server_handle->send_buffer;
+	struct par_net_header *reply_header = (struct par_net_header *)portals_worker_get_buffer(portals_worker);
 	reply_header->opcode = OPCODE_CLOSE;
 	reply_header->total_bytes = prsv_par_net_header_calc_size() + par_net_close_rep_calc_size(error_message_size);
 	return reply_header;
@@ -517,19 +520,26 @@ void prsv_append_me_for_unlink_event(struct server_handle *server_handle, void *
 	}
 	return;
 }
-static int prsv_put_and_reply(struct server_handle *server_handle, struct prsv_clients *prsv_client)
+static void *prsv_put_and_reply(void *arg)
 {
-	int ret;
+	struct portals_worker *portals_worker = arg;
+	ptl_event_t ev;
+	/*int ret;
 	void *aligned_buffer_start;
-	uint32_t volatile *counter;
+	uint32_t volatile *counter;*/
 
-	log_debug("server received message from client %d:%d", prsv_client->client_id.phys.nid,
-		  prsv_client->client_id.phys.pid);
+	while (portals_worker_poll(portals_worker, &ev)) {
+		log_debug("THREAD %d IS POLLING QUEUE", (int)portals_worker_get_core(portals_worker));
+	}
+
+	log_debug("THREAD assigned event message from client %d:%d", ev.initiator.phys.nid, ev.initiator.phys.pid);
+
 	//prsv_print_buffer_hex(server_handle->event.start, server_handle->event.mlength, "Receive");
-	size_t total_bytes = prsv_par_net_get_total_bytes(server_handle->event.start);
+	/*size_t total_bytes = prsv_par_net_get_total_bytes(server_handle->event.start);
 	if (total_bytes > server_handle->recv_buffer_size) {
 		log_debug("Error Larger message recv buffer size is: %u B total_bytes are: %lu B",
-			  server_handle->recv_buffer_size, total_bytes);
+			  server_handle->recv_buffer_size, tota:w
+        l_bytes);
 		return -(EXIT_FAILURE);
 	}
 
@@ -545,7 +555,7 @@ static int prsv_put_and_reply(struct server_handle *server_handle, struct prsv_c
 
 	// Increase the correct counter
 	(*counter)++;
-	struct par_net_header *reply_header = par_net_call[opcode](server_handle, NULL);
+	struct par_net_header *reply_header = par_net_call[opcode](portals_worker, &ev);
 	(*counter)--;
 
 	server_handle->send_buffer = (char *)reply_header;
@@ -581,11 +591,11 @@ static int prsv_put_and_reply(struct server_handle *server_handle, struct prsv_c
 			log_debug("Event server interface 1 : %s", PtlToStr(server_handle->event2.type, PTL_STR_EVENT));
 		}
 	}
-	//prsv_print_buffer_hex((char *)server_handle->md.start, server_handle->md.length, "Send");
+	//prsv_print_buffer_hex((char *)server_handle->md.start, server_handle->md.length, "Send");*/
 	return EXIT_SUCCESS;
 }
 
-struct prsv_clients *prsv_find_add_user(struct prsv_clients *conn_ht, ptl_process_t client)
+/*struct prsv_clients *prsv_find_add_user(struct prsv_clients *conn_ht, ptl_process_t client)
 {
 	uint64_t key = ((uint64_t)client.phys.nid << 32) | client.phys.pid;
 	struct prsv_clients *prsv_clients;
@@ -600,7 +610,7 @@ struct prsv_clients *prsv_find_add_user(struct prsv_clients *conn_ht, ptl_proces
 		HASH_ADD_INT(conn_ht, key, prsv_clients);
 	}
 	return prsv_clients;
-}
+}*/
 
 static int prsv_handle_event(struct server_handle *server_handle)
 {
@@ -611,11 +621,13 @@ static int prsv_handle_event(struct server_handle *server_handle)
 
 	switch (server_handle->event.type) {
 	case PTL_EVENT_PUT:
-		client = prsv_find_add_user(server_handle->conn_ht, server_handle->event.initiator);
-		if (prsv_put_and_reply(server_handle, client) < 0) {
-			log_debug("prsv_handle_event failed");
-			return -(EXIT_FAILURE);
+		//client = prsv_find_add_user(server_handle->conn_ht, server_handle->event.initiator);
+		if (server_handle->thread_to_queue == server_handle->opts->threadno - 1) {
+			server_handle->thread_to_queue = 0;
 		}
+		portals_worker_put(server_handle->portals_workers[server_handle->thread_to_queue],
+				   &server_handle->event);
+		server_handle->thread_to_queue++;
 		break;
 	case PTL_EVENT_AUTO_UNLINK:
 		aligned_buffer_start = (void *)((uintptr_t)server_handle->event.user_ptr);
@@ -663,13 +675,23 @@ struct server_handle *prsv_portals_server_handle_init(struct server_options *ser
 	}
 
 	struct server_handle *handle = calloc(1UL, sizeof(struct server_handle));
-
 	if (handle == NULL)
 		_exit(EXIT_FAILURE);
 
+	handle->opts = server_options;
+
+	handle->portals_workers = calloc(handle->opts->threadno, sizeof(struct portals_worker *));
+	if (handle->portals_workers == NULL)
+		_exit(EXIT_FAILURE);
+
+	for (uint32_t i = 0; i < handle->opts->threadno; i++) {
+		handle->portals_workers[i] = calloc(1UL, portals_worker_size());
+		if (handle->portals_workers[i] == NULL)
+			_exit(EXIT_FAILURE);
+	}
+
 	handle->conn_ht = NULL;
 
-	handle->opts = server_options;
 	int ret = PtlInit();
 	if (ret != PTL_OK) {
 		log_debug("PtlInit failed");
@@ -683,12 +705,6 @@ struct server_handle *prsv_portals_server_handle_init(struct server_options *ser
 	}
 
 	ret = PtlEQAlloc(handle->nih, 2048, &handle->eqh);
-	if (ret != PTL_OK) {
-		log_debug("PtlEQAlloc failed");
-		_exit(EXIT_FAILURE);
-	}
-
-	ret = PtlEQAlloc(handle->nih, 2048, &handle->send_eqh);
 	if (ret != PTL_OK) {
 		log_debug("PtlEQAlloc failed");
 		_exit(EXIT_FAILURE);
@@ -724,13 +740,8 @@ struct server_handle *prsv_portals_server_handle_init(struct server_options *ser
 		log_debug("posix_memalign failed");
 		_exit(EXIT_FAILURE);
 	}
-	ret = posix_memalign((void **)&handle->send_buffer, 4096, PRSV_COM_BUF_SIZE);
-	if (ret != 0) {
-		log_debug("posix_memalign failed");
-		_exit(EXIT_FAILURE);
-	}
+
 	handle->recv_buffer_size = PRSV_COM_BUF_SIZE;
-	handle->send_buffer_size = PRSV_COM_BUF_SIZE;
 
 	const char *error_message = NULL;
 	/** initialize parallax **/
@@ -755,6 +766,28 @@ int prsv_server_start(struct server_handle *server_handle)
 		errno = EINVAL;
 		return -(EXIT_FAILURE);
 	}
+	uint32_t threads = server_handle->opts->threadno;
+	server_handle->thread_to_queue = 0;
+	int ret;
+	uint32_t index;
+
+	for (index = 0U; index < threads; index++) {
+		server_handle->portals_workers[index] = portals_worker_create(server_handle, server_handle->nih, index);
+
+		if (pthread_create(portals_worker_get_tid(server_handle->portals_workers[index]), NULL,
+				   prsv_put_and_reply,
+				   server_handle->portals_workers[index])) { // one of the server threads failed!
+			uint32_t tmp;
+
+			/* kill all threads that have been created by now */
+			for (tmp = 0; tmp < index; ++tmp)
+				pthread_cancel(*portals_worker_get_tid(server_handle->portals_workers[index]));
+
+			for (tmp = 0; tmp < index; ++tmp)
+				pthread_join(*portals_worker_get_tid(server_handle->portals_workers[index]), NULL);
+			return -(EXIT_FAILURE);
+		}
+	}
 
 	if (!server_handle->me) {
 		log_debug("Memory allocation failed");
@@ -774,8 +807,8 @@ int prsv_server_start(struct server_handle *server_handle)
 		server_handle->me[i].options = SRV_ME_OPTS;
 
 		// Append each ME
-		int ret = PtlMEAppend(server_handle->nih, server_handle->ptindex, &server_handle->me[i],
-				      PTL_PRIORITY_LIST, server_handle->me[i].start, &server_handle->meh[i]);
+		ret = PtlMEAppend(server_handle->nih, server_handle->ptindex, &server_handle->me[i], PTL_PRIORITY_LIST,
+				  server_handle->me[i].start, &server_handle->meh[i]);
 		if (ret != PTL_OK) {
 			log_debug("Error appending ME at index %d", i);
 			_exit(EXIT_FAILURE);
@@ -786,7 +819,6 @@ int prsv_server_start(struct server_handle *server_handle)
 
 	/*
    * ok now we can start polling prsv_loop and complete each rpc.
-   * Server will add new clients and add their nid,pid to his table.
    *
    */
 	if (prsv_loop(server_handle) < 0) {

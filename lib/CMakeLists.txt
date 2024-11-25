@@ -181,7 +181,7 @@ if(PORTALS_LIB AND QUEUE_LIB_FOUND)
 
   if(NOT QUEUE_INCLUDE_DIR)
     get_filename_component(QUEUE_LIB_DIR ${QUEUE_LIB_FOUND} DIRECTORY)
-    set(QUEUE_INCLUDE_DIR "${QUEUE_LIB_DIR}/../../includes")
+    set(QUEUE_INCLUDE_DIR "${QUEUE_LIB_DIR}/../includes")
   endif()
 
   if(EXISTS "${QUEUE_INCLUDE_DIR}")
@@ -194,6 +194,9 @@ if(PORTALS_LIB AND QUEUE_LIB_FOUND)
       FATAL_ERROR
         "Could not find the sim-universal-construction include directory")
   endif()
+
+  get_filename_component(QUEUE_LIB_DIR ${QUEUE_LIB_FOUND} DIRECTORY)
+  set(QUEUE_LIBCONC_DIR "${QUEUE_LIB_DIR}/../includes")
 
   target_include_directories(${PORT_LIB} PUBLIC "${QUEUE_INCLUDE_DIR}")
   target_link_libraries(${PORT_LIB} log yaml ${PORTALS_LIB} ${LIB}
