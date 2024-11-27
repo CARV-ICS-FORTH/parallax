@@ -151,6 +151,7 @@ if(PORTALS_LIB AND QUEUE_LIB_FOUND)
     ../net_interface/portals_server/portals_server.c
     ../net_interface/portals_server/portals_server_handle.c
     ../net_interface/portals_server/portals_worker.c
+    ../net_interface/portals_server/worker_request.c
     ../net_interface/par_net/par_net_open.c
     ../net_interface/par_net/par_net_put.c
     ../net_interface/par_net/par_net_delete.c

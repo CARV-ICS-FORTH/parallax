@@ -8,6 +8,7 @@
 #include "portals4.h"
 #include "portals4_ext.h"
 #include "portals_worker.h"
+#include "worker_request.h"
 #include <errno.h>
 #include <log.h>
 #include <pthread.h>
@@ -78,8 +79,6 @@ struct server_handle {
 	ptl_pt_index_t ptindex;
 	uint32_t recv_buffer_size;
 	uint32_t thread_to_queue;
-	pthread_mutex_t lock;
-	pthread_cond_t cond;
 	struct portals_worker **portals_workers;
 };
 
@@ -244,9 +243,8 @@ struct server_options *prsv_server_parse_argv_opts(int argc, char *restrict *res
 
 static struct par_net_header *prsv_par_net_call_open(struct portals_worker *portals_worker, void *args)
 {
-	ptl_event_t event = *(ptl_event_t *)args;
-	struct par_net_open_req *request =
-		(struct par_net_open_req *)((char *)event.start + prsv_par_net_header_calc_size());
+	void *start = (void *)args;
+	struct par_net_open_req *request = (struct par_net_open_req *)((char *)start + prsv_par_net_header_calc_size());
 
 	par_db_options db_options = { 0 };
 	db_options.options = par_get_default_options();
@@ -280,9 +278,8 @@ static struct par_net_header *prsv_par_net_call_open(struct portals_worker *port
 
 static struct par_net_header *prsv_par_net_call_put(struct portals_worker *portals_worker, void *args)
 {
-	ptl_event_t event = *(ptl_event_t *)args;
-	struct par_net_put_req *request =
-		(struct par_net_put_req *)((char *)event.start + prsv_par_net_header_calc_size());
+	void *start = (void *)args;
+	struct par_net_put_req *request = (struct par_net_put_req *)((char *)start + prsv_par_net_header_calc_size());
 
 	struct par_key_value kv_pair = { 0 };
 	uint64_t region_id = par_net_put_get_region_id(request);
@@ -313,9 +310,8 @@ static struct par_net_header *prsv_par_net_call_put(struct portals_worker *porta
 }
 static struct par_net_header *prsv_par_net_call_del(struct portals_worker *portals_worker, void *args)
 {
-	ptl_event_t event = *(ptl_event_t *)args;
-	struct par_net_del_req *request =
-		(struct par_net_del_req *)((char *)event.start + prsv_par_net_header_calc_size());
+	void *start = (void *)args;
+	struct par_net_del_req *request = (struct par_net_del_req *)((char *)start + prsv_par_net_header_calc_size());
 
 	struct par_key key = { 0 };
 	uint64_t region_id = par_net_del_get_region_id(request);
@@ -342,9 +338,8 @@ static struct par_net_header *prsv_par_net_call_del(struct portals_worker *porta
 }
 static struct par_net_header *prsv_par_net_call_get(struct portals_worker *portals_worker, void *args)
 {
-	ptl_event_t event = *(ptl_event_t *)args;
-	struct par_net_get_req *request =
-		(struct par_net_get_req *)((char *)event.start + prsv_par_net_header_calc_size());
+	void *start = (void *)args;
+	struct par_net_get_req *request = (struct par_net_get_req *)((char *)start + prsv_par_net_header_calc_size());
 
 	uint64_t region_id = par_net_get_get_region_id(request);
 	struct par_key par_key;
@@ -392,9 +387,9 @@ static struct par_net_header *prsv_par_net_call_get(struct portals_worker *porta
 }
 static struct par_net_header *prsv_par_net_call_sync(struct portals_worker *portals_worker, void *args)
 {
-	ptl_event_t event = *(ptl_event_t *)args;
+	void *start = (void *)args;
 	struct par_net_sync_req *sync_request =
-		(struct par_net_sync_req *)((char *)event.start + prsv_par_net_header_calc_size());
+		(struct par_net_sync_req *)((char *)start + prsv_par_net_header_calc_size());
 	uint64_t region_id = par_net_sync_req_get_region_id(sync_request);
 	par_ret_code ret = par_sync((par_handle)region_id);
 	struct par_net_sync_rep *sync_reply = par_net_sync_rep_create(
@@ -411,12 +406,10 @@ static struct par_net_header *prsv_par_net_call_sync(struct portals_worker *port
 }
 static struct par_net_header *prsv_par_net_call_scan(struct portals_worker *portals_worker, void *args)
 {
-	ptl_event_t event = *(ptl_event_t *)args;
-	struct par_net_scan_req *request =
-		(struct par_net_scan_req *)((char *)event.start + prsv_par_net_header_calc_size());
+	void *start = (void *)args;
+	struct par_net_scan_req *request = (struct par_net_scan_req *)((char *)start + prsv_par_net_header_calc_size());
 
 	uint64_t region_id = par_net_scan_req_get_region_id(request);
-	//prsv_print_buffer_hex((char *)event.event.start, portals_worker->event.mlength, "scan");
 	const char *error_message = NULL;
 	struct par_key key = { .size = par_net_scan_req_get_key_size(request),
 			       .data = par_net_scan_req_get_key(request) };
@@ -464,9 +457,9 @@ static struct par_net_header *prsv_par_net_call_scan(struct portals_worker *port
 
 static struct par_net_header *prsv_par_net_call_close(struct portals_worker *portals_worker, void *args)
 {
-	ptl_event_t event = *(ptl_event_t *)args;
+	void *start = (void *)args;
 	struct par_net_close_req *request =
-		(struct par_net_close_req *)((char *)event.start + prsv_par_net_header_calc_size());
+		(struct par_net_close_req *)((char *)start + prsv_par_net_header_calc_size());
 
 	uint64_t region_id = par_net_close_get_region_id(request);
 
@@ -525,45 +518,42 @@ void prsv_append_me_for_unlink_event(struct server_handle *server_handle, void *
 static void *prsv_put_and_reply(void *arg)
 {
 	struct portals_worker *portals_worker = arg;
-	ptl_event_t *event = NULL;
 	void *aligned_buffer_start;
 	uint32_t volatile *counter;
 	struct server_handle *server_handle = portals_worker_get_server_handle(portals_worker);
+	struct portals_worker_request *req = NULL;
 
-	while (portals_worker_poll(portals_worker, &event)) {
-		if (!event) {
+	while (1) {
+		req = portals_worker_poll(portals_worker);
+		if (req == NULL) {
 			continue;
 		}
-		aligned_buffer_start = (void *)((uintptr_t)event->user_ptr);
+		aligned_buffer_start = (void *)((uintptr_t)portals_worker_get_user_ptr(req));
 		counter = (uint32_t *)((uintptr_t)aligned_buffer_start - METADATA_SIZE);
-		pthread_mutex_lock(&server_handle->lock);
 		(*counter)++;
-		log_debug("THREAD assigned event message from client %d:%d", event->initiator.phys.nid,
-			  event->initiator.phys.pid);
+		log_debug("THREAD assigned event message from client %d:%d", portals_worker_get_initiator(req).phys.nid,
+			  portals_worker_get_initiator(req).phys.pid);
 
-		//prsv_print_buffer_hex(server_handle->event.start, server_handle->event.mlength, "Receive");
-		size_t total_bytes = prsv_par_net_get_total_bytes(event->start);
+		//prsv_print_buffer_hex(portals_worker_get_start(req), prsv_par_net_header_calc_size(), "Receive");
+		size_t total_bytes = prsv_par_net_get_total_bytes(portals_worker_get_start(req));
 		if (total_bytes > server_handle->recv_buffer_size) {
 			log_debug("Error Larger message recv buffer size is: %u B total_bytes are: %lu B",
 				  server_handle->recv_buffer_size, total_bytes);
 			break;
 		}
 
-		uint32_t opcode = par_net_header_get_opcode(event->start);
+		uint32_t opcode = par_net_header_get_opcode(portals_worker_get_start(req));
 		log_debug("message opcode : %u", opcode);
 		if (opcode == 0) {
 			log_debug("invalid opcode");
 			break;
 		}
 
-		// Increase the correct counter
-
-		struct par_net_header *reply_header = par_net_call[opcode](portals_worker, event);
+		struct par_net_header *reply_header =
+			par_net_call[opcode](portals_worker, portals_worker_get_start(req));
 		(*counter)--;
-		pthread_mutex_unlock(&server_handle->lock);
-		pthread_cond_signal(&server_handle->cond);
 		portals_worker_send_reply_buff(portals_worker, reply_header, reply_header->total_bytes,
-					       server_handle->nih, event->initiator);
+					       server_handle->nih, portals_worker_get_initiator(req));
 	}
 	log_debug("FINISHED");
 	//prsv_print_buffer_hex((char *)server_handle->md.start, server_handle->md.length, "Send");
@@ -586,15 +576,18 @@ static void *prsv_put_and_reply(void *arg)
 	}
 	return prsv_clients;
 }*/
-void call_worker_put(struct server_handle *server_handle)
+
+void worker_scheduler(struct server_handle *server_handle)
 {
 	if (server_handle->thread_to_queue == server_handle->opts->threadno)
 		server_handle->thread_to_queue = 0;
 
-	portals_worker_put(server_handle->portals_workers[server_handle->thread_to_queue], &server_handle->event);
+	portals_worker_put(server_handle->portals_workers[server_handle->thread_to_queue],
+			   portals_worker_create_req(server_handle->event));
 	server_handle->thread_to_queue++;
 	return;
 }
+
 static int prsv_handle_event(struct server_handle *server_handle)
 {
 	void *aligned_buffer_start;
@@ -603,7 +596,7 @@ static int prsv_handle_event(struct server_handle *server_handle)
 
 	switch (server_handle->event.type) {
 	case PTL_EVENT_PUT:
-		call_worker_put(server_handle);
+		worker_scheduler(server_handle);
 		break;
 	case PTL_EVENT_AUTO_UNLINK:
 		aligned_buffer_start = (void *)((uintptr_t)server_handle->event.user_ptr);
@@ -611,7 +604,6 @@ static int prsv_handle_event(struct server_handle *server_handle)
 		prsv_print_counters(server_handle);
 		while (*counter != 0) {
 			log_debug("buffer busy... waiting for data to be consumed");
-			pthread_cond_wait(&server_handle->cond, &server_handle->lock);
 		}
 		log_debug("buffer is consumed clear data...");
 		prsv_append_me_for_unlink_event(server_handle, aligned_buffer_start);
@@ -630,7 +622,6 @@ static int prsv_loop(struct server_handle *server_handle)
 {
 	while (1) {
 		int ret = PtlEQPoll(&server_handle->eqh, 1, PTL_TIME_FOREVER, &server_handle->event, 0);
-
 		if (ret != PTL_OK) {
 			log_debug("PtlEQWait failed: %s", PtlToStr(ret, PTL_STR_ERROR));
 			_exit(EXIT_FAILURE);
@@ -656,13 +647,6 @@ struct server_handle *prsv_portals_server_handle_init(struct server_options *ser
 
 	handle->opts = server_options;
 
-	if (pthread_mutex_init(&handle->lock, NULL))
-		_exit(EXIT_FAILURE);
-
-	if (pthread_cond_init(&handle->cond, NULL) != 0) {
-		pthread_mutex_destroy(&handle->lock);
-		exit(EXIT_FAILURE);
-	}
 	handle->portals_workers = calloc(handle->opts->threadno, sizeof(struct portals_worker *));
 	if (handle->portals_workers == NULL)
 		_exit(EXIT_FAILURE);
@@ -712,7 +696,7 @@ struct server_handle *prsv_portals_server_handle_init(struct server_options *ser
 		handle->recv_buffer[i] = (char *)raw_memory + METADATA_SIZE;
 
 		// Initialize the counter at the start of the metadata section
-		uint32_t *counter = (uint32_t *)raw_memory;
+		uint32_t volatile *counter = (uint32_t volatile *)raw_memory;
 		*counter = 0;
 		// Initialize the buffer_id next to the counter of the metadata section
 		uint32_t *buffer_id = (uint32_t *)raw_memory + sizeof(uint32_t);

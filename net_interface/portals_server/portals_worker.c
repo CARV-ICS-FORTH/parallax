@@ -6,6 +6,7 @@
 #include "portals4_ext.h"
 #include "primitives.h"
 #include "queue-stack.h"
+#include "worker_request.h"
 #include <bits/pthreadtypes.h>
 #include <log.h>
 #include <pthread.h>
@@ -29,24 +30,23 @@ struct portals_worker {
 
 size_t portals_worker_size(void)
 {
-	return (size_t)sizeof(struct portals_worker);
+	return sizeof(struct portals_worker);
 }
 
-int portals_worker_poll(struct portals_worker *worker, ptl_event_t **event)
+struct portals_worker_request *portals_worker_poll(struct portals_worker *worker)
 {
 	RetVal rawval = CCQueueApplyDequeue(worker->queue_object, worker->th_state, worker->tid);
-	if (rawval != EMPTY_QUEUE) {
-		*event = (ptl_event_t *)rawval;
-		log_debug("got event in thread : %lu", worker->core);
-		return 1;
+	if (EMPTY_QUEUE == rawval) {
+		return NULL;
 	}
-	*event = NULL;
-	return 1;
+	struct portals_worker_request *req = (struct portals_worker_request *)rawval;
+	log_debug("got event in thread : %lu", worker->core);
+	return req;
 }
 
-void portals_worker_put(struct portals_worker *worker, ptl_event_t *event)
+void portals_worker_put(struct portals_worker *worker, struct portals_worker_request *request)
 {
-	CCQueueApplyEnqueue(worker->queue_object, worker->th_state, (ArgVal)event, worker->tid);
+	CCQueueApplyEnqueue(worker->queue_object, worker->th_state, (ArgVal)request, worker->tid);
 }
 
 struct portals_worker *portals_worker_create(struct server_handle *server_handle, ptl_handle_ni_t nih, uint32_t index,
