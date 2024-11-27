@@ -5,6 +5,7 @@
 #include "portals4.h"
 #include "portals4_ext.h"
 #include "primitives.h"
+#include "queue-stack.h"
 #include <bits/pthreadtypes.h>
 #include <log.h>
 #include <pthread.h>
@@ -31,16 +32,15 @@ size_t portals_worker_size(void)
 	return (size_t)sizeof(struct portals_worker);
 }
 
-int portals_worker_poll(struct portals_worker *worker, ptl_event_t *event)
+int portals_worker_poll(struct portals_worker *worker, ptl_event_t **event)
 {
-	ptl_event_t *ev;
 	RetVal rawval = CCQueueApplyDequeue(worker->queue_object, worker->th_state, worker->tid);
-	ev = (ptl_event_t *)rawval;
-	if (ev) {
-		log_debug("got event in thread : %d", worker->core);
-		event = ev;
+	if (rawval != EMPTY_QUEUE) {
+		*event = (ptl_event_t *)rawval;
+		log_debug("got event in thread : %lu", worker->core);
+		return 1;
 	}
-
+	*event = NULL;
 	return 1;
 }
 

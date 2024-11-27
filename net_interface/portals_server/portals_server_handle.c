@@ -79,6 +79,7 @@ struct server_handle {
 	uint32_t recv_buffer_size;
 	uint32_t thread_to_queue;
 	pthread_mutex_t lock;
+	pthread_cond_t cond;
 	struct portals_worker **portals_workers;
 };
 
@@ -529,10 +530,14 @@ static void *prsv_put_and_reply(void *arg)
 	uint32_t volatile *counter;
 	struct server_handle *server_handle = portals_worker_get_server_handle(portals_worker);
 
-	while (portals_worker_poll(portals_worker, event)) {
+	while (portals_worker_poll(portals_worker, &event)) {
 		if (!event) {
 			continue;
 		}
+		aligned_buffer_start = (void *)((uintptr_t)event->user_ptr);
+		counter = (uint32_t *)((uintptr_t)aligned_buffer_start - METADATA_SIZE);
+		pthread_mutex_lock(&server_handle->lock);
+		(*counter)++;
 		log_debug("THREAD assigned event message from client %d:%d", event->initiator.phys.nid,
 			  event->initiator.phys.pid);
 
@@ -551,17 +556,12 @@ static void *prsv_put_and_reply(void *arg)
 			break;
 		}
 
-		aligned_buffer_start = (void *)((uintptr_t)event->user_ptr);
-		counter = (uint32_t *)((uintptr_t)aligned_buffer_start - METADATA_SIZE);
-
 		// Increase the correct counter
-		pthread_mutex_lock(&server_handle->lock);
-		(*counter)++;
-		pthread_mutex_unlock(&server_handle->lock);
+
 		struct par_net_header *reply_header = par_net_call[opcode](portals_worker, event);
-		pthread_mutex_lock(&server_handle->lock);
 		(*counter)--;
 		pthread_mutex_unlock(&server_handle->lock);
+		pthread_cond_signal(&server_handle->cond);
 		portals_worker_send_reply_buff(portals_worker, reply_header, reply_header->total_bytes,
 					       server_handle->nih, event->initiator);
 	}
@@ -586,34 +586,35 @@ static void *prsv_put_and_reply(void *arg)
 	}
 	return prsv_clients;
 }*/
+void call_worker_put(struct server_handle *server_handle)
+{
+	if (server_handle->thread_to_queue == server_handle->opts->threadno)
+		server_handle->thread_to_queue = 0;
 
+	portals_worker_put(server_handle->portals_workers[server_handle->thread_to_queue], &server_handle->event);
+	server_handle->thread_to_queue++;
+	return;
+}
 static int prsv_handle_event(struct server_handle *server_handle)
 {
 	void *aligned_buffer_start;
 	uint32_t volatile *counter;
-	//struct prsv_clients *client;
 	log_debug("Event server interface 1 : %s", PtlToStr(server_handle->event.type, PTL_STR_EVENT));
 
 	switch (server_handle->event.type) {
 	case PTL_EVENT_PUT:
-		//client = prsv_find_add_user(server_handle->conn_ht, server_handle->event.initiator);
-		if (server_handle->thread_to_queue == server_handle->opts->threadno - 1) {
-			server_handle->thread_to_queue = 0;
-		}
-		portals_worker_put(server_handle->portals_workers[server_handle->thread_to_queue],
-				   &server_handle->event);
-		server_handle->thread_to_queue++;
+		call_worker_put(server_handle);
 		break;
 	case PTL_EVENT_AUTO_UNLINK:
 		aligned_buffer_start = (void *)((uintptr_t)server_handle->event.user_ptr);
 		counter = (uint32_t *)((uintptr_t)aligned_buffer_start - METADATA_SIZE);
 		prsv_print_counters(server_handle);
-		if (*counter != 0) {
-			log_debug("buffer busy...wait for data to be cosumed");
-		} else {
-			log_debug("buffer is consumed clear data...");
-			prsv_append_me_for_unlink_event(server_handle, aligned_buffer_start);
+		while (*counter != 0) {
+			log_debug("buffer busy... waiting for data to be consumed");
+			pthread_cond_wait(&server_handle->cond, &server_handle->lock);
 		}
+		log_debug("buffer is consumed clear data...");
+		prsv_append_me_for_unlink_event(server_handle, aligned_buffer_start);
 		break;
 	case PTL_EVENT_SEND:
 	case PTL_EVENT_ACK:
@@ -658,6 +659,10 @@ struct server_handle *prsv_portals_server_handle_init(struct server_options *ser
 	if (pthread_mutex_init(&handle->lock, NULL))
 		_exit(EXIT_FAILURE);
 
+	if (pthread_cond_init(&handle->cond, NULL) != 0) {
+		pthread_mutex_destroy(&handle->lock);
+		exit(EXIT_FAILURE);
+	}
 	handle->portals_workers = calloc(handle->opts->threadno, sizeof(struct portals_worker *));
 	if (handle->portals_workers == NULL)
 		_exit(EXIT_FAILURE);

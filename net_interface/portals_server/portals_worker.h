@@ -13,7 +13,7 @@ size_t portals_worker_size(void);
 struct portals_worker *portals_worker_create(struct server_handle *server_handle, ptl_handle_ni_t nih, uint32_t index,
 					     uint32_t threadno);
 
-int portals_worker_poll(struct portals_worker *worker, ptl_event_t *event);
+int portals_worker_poll(struct portals_worker *worker, ptl_event_t **event);
 
 void portals_worker_put(struct portals_worker *worker, ptl_event_t *event);
 
