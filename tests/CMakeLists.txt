@@ -237,7 +237,7 @@ if(PARALLAX_BUILD_TESTING)
   endif()
 
   add_executable(test_mixes test_mixes.c arg_parser.c)
-  link_target(test_mixes)
+  target_link_libraries(test_mixes "${PROJECT_NAME}")
 
   add_parallax_test(
     NAME
@@ -326,7 +326,7 @@ if(PARALLAX_BUILD_TESTING)
 
   add_executable(test_par_threadpool test_threadpool.c
                                      ../lib/btree/compaction/threadpool.c)
-  link_target(test_par_threadpool)
+  target_link_libraries(test_par_threadpool "${PROJECT_NAME}")
   add_parallax_test(NAME test_par_threadpool COMMAND run_test.sh
                     test_par_threadpool)
 
