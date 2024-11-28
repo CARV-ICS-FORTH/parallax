@@ -1,12 +1,7 @@
-#include "../../lib/include/parallax/parallax.h"
-#include "../../lib/include/parallax/structures.h"
-#include <stdio.h>
-
 #include "portals_server_handle.h"
 #include <errno.h>
 #include <log.h>
 #include <stdlib.h>
-#include <string.h>
 #include <unistd.h>
 
 int main(int argc, char **argv)

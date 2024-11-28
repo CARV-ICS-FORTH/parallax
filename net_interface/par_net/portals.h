@@ -1,5 +1,6 @@
 #ifdef PARALLAX_PORTALS
 #ifndef PORTALS_H
+#define PORTALS_H
 #define PORTALS
 
 #define SRV_ME_OPTS                                                                                                 \

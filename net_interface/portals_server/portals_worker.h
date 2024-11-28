@@ -3,8 +3,6 @@
 #include "../par_net/par_net.h"
 #include "portals4.h"
 #include "portals_server_handle.h"
-#include <pthread.h>
-#include <stdint.h>
 struct portals_worker;
 
 /* Header for portals_worker api*/

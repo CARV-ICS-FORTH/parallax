@@ -7,12 +7,6 @@
 #include "primitives.h"
 #include "queue-stack.h"
 #include "worker_request.h"
-#include <bits/pthreadtypes.h>
-#include <log.h>
-#include <pthread.h>
-#include <stdint.h>
-#include <stdlib.h>
-#include <unistd.h>
 
 struct portals_worker {
 	struct server_handle *server_handle;

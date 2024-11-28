@@ -1,10 +1,6 @@
-#include "../../lib/include/parallax/structures.h"
-//#include "../../lib/include/parallax/parallax.h"
-#include "../par_net/par_net.h"
 #include "../par_net/par_net_scan.h"
 #include "../par_net/par_net_sync.h"
 #include "../par_net/portals.h"
-#include "parallax/parallax.h"
 #include "portals4.h"
 #include "portals4_ext.h"
 #include "portals_worker.h"
@@ -12,16 +8,11 @@
 #include <errno.h>
 #include <log.h>
 #include <pthread.h>
-#include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
 #include <uthash.h>
 
-char msg[PTL_EV_STR_SIZE];
-
 #define MAX_REGIONS 128
+#define NECESSARY_OPTIONS 4
+#define DECIMAL_BASE 10
 
 #define USAGE_STRING                             \
 	"portals-server: no options specified\n" \
@@ -40,14 +31,10 @@ char msg[PTL_EV_STR_SIZE];
 
 #define VERSION_STRING "portals-server 0.1\n"
 
-#define NECESSARY_OPTIONS 4
-
 #define CONFIG_STRING         \
 	"[ Server Config ]\n" \
 	"  - file = %s\n"     \
 	"  - flags = not yet supported\n"
-
-#define DECIMAL_BASE 10
 
 struct server_options {
 	uint32_t magic_init_num;
@@ -56,12 +43,6 @@ struct server_options {
 	uint32_t l0_size;
 	uint32_t growth_factor;
 	uint8_t format;
-};
-
-struct prsv_clients {
-	UT_hash_handle hh;
-	ptl_process_t client_id;
-	uint64_t key;
 };
 
 struct server_handle {
@@ -75,7 +56,6 @@ struct server_handle {
 	ptl_handle_eq_t eqh;
 
 	struct server_options *opts;
-	struct prsv_clients *conn_ht;
 	ptl_pt_index_t ptindex;
 	uint32_t recv_buffer_size;
 	uint32_t thread_to_queue;
@@ -87,6 +67,7 @@ struct par_net_header {
 	uint32_t opcode;
 };
 
+#ifndef RELEASE_BUILD
 void prsv_print_buffer_hex(const char *buffer, size_t length, char *type)
 {
 	if (buffer == NULL) {
@@ -120,6 +101,25 @@ void prsv_print_counters(struct server_handle *server_handle)
 		log_debug("Buffer ID: %u, Counter: %u", *buffer_id, *counter);
 	}
 }
+#endif
+
+int prsv_server_print_config(struct server_handle *server_handle)
+{
+	if (!server_handle) {
+		errno = EINVAL;
+		return -(EXIT_FAILURE);
+	}
+
+	ptl_process_t id;
+	int ret = PtlGetId(server_handle->nih, &id);
+	if (ret != PTL_OK) {
+		log_debug("PtlGetId failed : %s", PtlToStr(ret, PTL_STR_ERROR));
+		_exit(EXIT_FAILURE);
+	}
+
+	printf(CONFIG_STRING, server_handle->opts->parallax_vol_name);
+	return EXIT_SUCCESS;
+}
 
 inline size_t prsv_par_net_header_calc_size(void)
 {
@@ -141,30 +141,13 @@ static size_t prsv_par_net_get_total_bytes(char *buffer)
 	struct par_net_header *header = (struct par_net_header *)buffer;
 	return header->total_bytes;
 }
+
 static void server_check_arg(int argc, int option_id)
 {
 	if (option_id < argc)
 		return;
 	log_debug("portals-server: option requires an argument");
 	_exit(EXIT_FAILURE);
-}
-
-int prsv_server_print_config(struct server_handle *server_handle)
-{
-	if (!server_handle) {
-		errno = EINVAL;
-		return -(EXIT_FAILURE);
-	}
-
-	ptl_process_t id;
-	int ret = PtlGetId(server_handle->nih, &id);
-	if (ret != PTL_OK) {
-		log_debug("PtlGetId failed : %s", PtlToStr(ret, PTL_STR_ERROR));
-		_exit(EXIT_FAILURE);
-	}
-
-	printf(CONFIG_STRING, server_handle->opts->parallax_vol_name);
-	return EXIT_SUCCESS;
 }
 
 static long prsv_server_parse_number(const char *str, const char *opt)
@@ -348,7 +331,6 @@ static struct par_net_header *prsv_par_net_call_get(struct portals_worker *porta
 	struct par_value par_value = { 0 };
 
 	log_debug("key size == %lu", (unsigned long)par_key.size);
-	//prsv_print_buffer_hex(par_key.data, par_key.size, "par_key");
 
 	const char *error_message = NULL;
 
@@ -450,8 +432,6 @@ static struct par_net_header *prsv_par_net_call_scan(struct portals_worker *port
 
 	header->opcode = OPCODE_SCAN;
 	header->total_bytes = prsv_par_net_header_calc_size() + par_net_scan_rep_get_size(reply);
-	// log_debug("Scan DONE entries retrieved = %u total reply size: %u max send buffer size: %lu",
-	// 	  par_net_scan_rep_get_num_entries(reply), header->total_bytes, server_handle->send_buffer_size);
 	return header;
 }
 
@@ -515,6 +495,7 @@ void prsv_append_me_for_unlink_event(struct server_handle *server_handle, void *
 	}
 	return;
 }
+
 static void *prsv_put_and_reply(void *arg)
 {
 	struct portals_worker *portals_worker = arg;
@@ -528,13 +509,14 @@ static void *prsv_put_and_reply(void *arg)
 		if (req == NULL) {
 			continue;
 		}
+
 		aligned_buffer_start = (void *)((uintptr_t)portals_worker_get_user_ptr(req));
 		counter = (uint32_t *)((uintptr_t)aligned_buffer_start - METADATA_SIZE);
 		(*counter)++;
+
 		log_debug("THREAD assigned event message from client %d:%d", portals_worker_get_initiator(req).phys.nid,
 			  portals_worker_get_initiator(req).phys.pid);
 
-		//prsv_print_buffer_hex(portals_worker_get_start(req), prsv_par_net_header_calc_size(), "Receive");
 		size_t total_bytes = prsv_par_net_get_total_bytes(portals_worker_get_start(req));
 		if (total_bytes > server_handle->recv_buffer_size) {
 			log_debug("Error Larger message recv buffer size is: %u B total_bytes are: %lu B",
@@ -556,26 +538,8 @@ static void *prsv_put_and_reply(void *arg)
 					       server_handle->nih, portals_worker_get_initiator(req));
 	}
 	log_debug("FINISHED");
-	//prsv_print_buffer_hex((char *)server_handle->md.start, server_handle->md.length, "Send");
 	return EXIT_SUCCESS;
 }
-
-/*struct prsv_clients *prsv_find_add_user(struct prsv_clients *conn_ht, ptl_process_t client)
-{
-	uint64_t key = ((uint64_t)client.phys.nid << 32) | client.phys.pid;
-	struct prsv_clients *prsv_clients;
-	HASH_FIND_INT(conn_ht, &key, prsv_clients);
-	if (prsv_clients == NULL) {
-		prsv_clients = malloc(sizeof(struct prsv_clients));
-		if (prsv_clients == NULL)
-			exit(EXIT_FAILURE);
-		prsv_clients->key = key;
-		prsv_clients->client_id.phys.pid = client.phys.pid;
-		prsv_clients->client_id.phys.nid = client.phys.nid;
-		HASH_ADD_INT(conn_ht, key, prsv_clients);
-	}
-	return prsv_clients;
-}*/
 
 void worker_scheduler(struct server_handle *server_handle)
 {
@@ -601,15 +565,11 @@ static int prsv_handle_event(struct server_handle *server_handle)
 	case PTL_EVENT_AUTO_UNLINK:
 		aligned_buffer_start = (void *)((uintptr_t)server_handle->event.user_ptr);
 		counter = (uint32_t *)((uintptr_t)aligned_buffer_start - METADATA_SIZE);
-		prsv_print_counters(server_handle);
 		while (*counter != 0) {
 			log_debug("buffer busy... waiting for data to be consumed");
 		}
 		log_debug("buffer is consumed clear data...");
 		prsv_append_me_for_unlink_event(server_handle, aligned_buffer_start);
-		break;
-	case PTL_EVENT_SEND:
-	case PTL_EVENT_ACK:
 		break;
 	default:
 		log_debug("UNKNOWN Event server interface 1 : %s", PtlToStr(server_handle->event.type, PTL_STR_EVENT));
@@ -657,8 +617,6 @@ struct server_handle *prsv_portals_server_handle_init(struct server_options *ser
 			_exit(EXIT_FAILURE);
 	}
 
-	handle->conn_ht = NULL;
-
 	int ret = PtlInit();
 	if (ret != PTL_OK) {
 		log_debug("PtlInit failed");
@@ -694,7 +652,6 @@ struct server_handle *prsv_portals_server_handle_init(struct server_options *ser
 
 		// Set the pointer to the start of the aligned receive buffer
 		handle->recv_buffer[i] = (char *)raw_memory + METADATA_SIZE;
-
 		// Initialize the counter at the start of the metadata section
 		uint32_t volatile *counter = (uint32_t volatile *)raw_memory;
 		*counter = 0;
@@ -757,11 +714,6 @@ int prsv_server_start(struct server_handle *server_handle)
 		}
 	}
 
-	if (!server_handle->me) {
-		log_debug("Memory allocation failed");
-		_exit(EXIT_FAILURE);
-	}
-
 	for (int i = 0; i < MATCH_ENTRY_NUM; i++) {
 		server_handle->me[i].ignore_bits = IGNORE;
 		server_handle->me[i].match_bits = MATCH;
@@ -774,7 +726,6 @@ int prsv_server_start(struct server_handle *server_handle)
 		server_handle->me[i].uid = PTL_UID_ANY;
 		server_handle->me[i].options = SRV_ME_OPTS;
 
-		// Append each ME
 		ret = PtlMEAppend(server_handle->nih, server_handle->ptindex, &server_handle->me[i], PTL_PRIORITY_LIST,
 				  server_handle->me[i].start, &server_handle->meh[i]);
 		if (ret != PTL_OK) {
@@ -785,10 +736,6 @@ int prsv_server_start(struct server_handle *server_handle)
 
 	log_debug("Server is ready");
 
-	/*
-   * ok now we can start polling prsv_loop and complete each rpc.
-   *
-   */
 	if (prsv_loop(server_handle) < 0) {
 		log_debug("prsv_loop failed");
 		_exit(EXIT_FAILURE);
