@@ -1,0 +1,66 @@
+# Base image
+FROM ubuntu:20.04
+
+# Set non-interactive mode to avoid prompts during apt-get
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install necessary packages and dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    python3 \
+    git \
+    libtool \
+    python3-pip \
+    libev-dev \
+    autoconf \
+    meson \
+    ninja-build \
+    neovim \
+    clang-format \
+    wget \
+    libatomic-ops-dev \
+    libnuma-dev \
+    libpapi-dev \
+    libdb-dev \
+    openssh-client \
+    tzdata \
+    software-properties-common \
+    libboost-all-dev
+
+RUN apt-get update \
+  && apt-get -y install build-essential \
+  && apt-get install -y wget \
+  && rm -rf /var/lib/apt/lists/* \
+  && wget https://github.com/Kitware/CMake/releases/download/v3.24.1/cmake-3.24.1-Linux-x86_64.sh \
+      -q -O /tmp/cmake-install.sh \
+      && chmod u+x /tmp/cmake-install.sh \
+      && mkdir /opt/cmake-3.24.1 \
+      && /tmp/cmake-install.sh --skip-license --prefix=/opt/cmake-3.24.1 \
+      && rm /tmp/cmake-install.sh \
+      && ln -s /opt/cmake-3.24.1/bin/* /usr/local/bin
+
+WORKDIR /app
+RUN echo "cmake -DBDB_PATH=/lib/x86_64-linux-gnu -DNET=portals -DPORTALS_LIB_DIR=/app/portails4/build/portals -DPORTALS_INCLUDE_DIR=/app/portails4/portals/include -DQUEUE_LIB=/app/queuelib/Synch/lib -DCMAKE_BUILD_TYPE=Release -DENABLE_FLTO=ON ../" > /app/useful_commands && \
+    echo "./portals_parallax_server -t 1 -f /app/par.dat -L0 4 -GF 4 -pf" >> /app/useful_commands
+# Clone build the portals4 repository , set environment variable
+RUN git clone https://github.com/BullSequana/portails4.git
+WORKDIR /app/portails4
+ENV LDFLAGS="-lpthread"
+RUN meson setup build && \
+    cd build && \
+    ninja && \
+    meson test
+
+WORKDIR /app
+
+# Set up and build sim-universal-construction
+RUN git clone https://github.com/Thodorhs/sim-universal-construction.git
+WORKDIR /app/sim-universal-construction
+RUN mkdir /app/queuelib
+RUN make x86_64 install DIR=/app/queuelib
+
+#return to app
+WORKDIR /app
+
+# Keep the container running with a shell so you can connect to it
+CMD ["/bin/bash"]
