@@ -405,8 +405,6 @@ static struct par_net_header *prsv_par_net_call_scan(struct portals_worker *port
 		par_net_scan_req_get_max_entries(request),
 		&portals_worker_get_buffer(portals_worker)[prsv_par_net_header_calc_size()],
 		portals_worker_get_buffer_size(portals_worker) - prsv_par_net_header_calc_size());
-	printf("buffer size %u, header %lu\n", portals_worker_get_buffer_size(portals_worker),
-	       prsv_par_net_header_calc_size());
 	par_scanner dev_scanner =
 		par_init_scanner((par_handle)region_id, &key, par_net_scan_req_get_seek_mode(request), &error_message);
 	if (error_message) {
