@@ -8,6 +8,9 @@
 #include <errno.h>
 #include <log.h>
 #include <pthread.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <unistd.h>
 #include <uthash.h>
 
 #define MAX_REGIONS 128
@@ -95,10 +98,13 @@ void prsv_print_counters(struct server_handle *server_handle)
 		void *aligned_buffer_start = (char *)server_handle->recv_buffer[i] - METADATA_SIZE;
 
 		// Access the counter and buffer ID in the metadata
-		uint32_t *counter = (uint32_t *)(aligned_buffer_start);
-		uint32_t *buffer_id = (uint32_t *)aligned_buffer_start + sizeof(uint32_t);
+		uint32_t *pollercounter = (uint32_t *)((uintptr_t)aligned_buffer_start);
+		uint32_t *workercounter = (uint32_t *)((uintptr_t)aligned_buffer_start + sizeof(uint32_t));
+		uint16_t *buffer_id = (uint16_t *)((uintptr_t)aligned_buffer_start + 2 * sizeof(uint32_t));
 
-		log_debug("Buffer ID: %u, Counter: %u", *buffer_id, *counter);
+		log_debug("Buffer ID: %u, PollerCounter: %u, WorkerCounter: %u", *buffer_id,
+			  __atomic_load_n(pollercounter, __ATOMIC_RELAXED),
+			  __atomic_load_n(workercounter, __ATOMIC_RELAXED));
 	}
 }
 #endif
@@ -330,7 +336,7 @@ static struct par_net_header *prsv_par_net_call_get(struct portals_worker *porta
 	par_key.data = par_net_get_get_key(request);
 	struct par_value par_value = { 0 };
 
-	log_debug("key size == %lu", (unsigned long)par_key.size);
+	//log_debug("key size == %lu", (unsigned long)par_key.size);
 
 	const char *error_message = NULL;
 
@@ -470,10 +476,10 @@ const par_portals_call par_net_call[OPCODE_MAX] = { NULL,
 
 void prsv_append_me_for_unlink_event(struct server_handle *server_handle, void *aligned_buffer_start)
 {
-	uint32_t *buffer_id = (uint32_t *)((uintptr_t)aligned_buffer_start - METADATA_SIZE + sizeof(uint32_t));
-	uint32_t i = *buffer_id;
+	uint16_t *buffer_id = (uint16_t *)((uintptr_t)aligned_buffer_start - METADATA_SIZE + 2 * sizeof(uint32_t));
+	uint16_t i = *buffer_id;
 
-	log_debug("reappending ME at index %d", i);
+	log_debug("reappending ME at index %u", i);
 	server_handle->me[i].ignore_bits = IGNORE;
 	server_handle->me[i].match_bits = MATCH;
 	server_handle->me[i].match_id.phys.nid = PTL_NID_ANY;
@@ -491,6 +497,7 @@ void prsv_append_me_for_unlink_event(struct server_handle *server_handle, void *
 		log_debug("Error reappending ME at index %d", i);
 		_exit(EXIT_FAILURE);
 	}
+	log_debug("Finished reappending ME at index %d", i);
 	return;
 }
 
@@ -498,7 +505,7 @@ static void *prsv_put_and_reply(void *arg)
 {
 	struct portals_worker *portals_worker = arg;
 	void *aligned_buffer_start;
-	uint32_t volatile *counter;
+	uint32_t *workercounter;
 	struct server_handle *server_handle = portals_worker_get_server_handle(portals_worker);
 	struct portals_worker_request *req = NULL;
 
@@ -509,8 +516,6 @@ static void *prsv_put_and_reply(void *arg)
 		}
 
 		aligned_buffer_start = (void *)((uintptr_t)portals_worker_get_user_ptr(req));
-		counter = (uint32_t *)((uintptr_t)aligned_buffer_start - METADATA_SIZE);
-		(*counter)++;
 
 		log_debug("THREAD assigned event message from client %d:%d", portals_worker_get_initiator(req).phys.nid,
 			  portals_worker_get_initiator(req).phys.pid);
@@ -531,7 +536,9 @@ static void *prsv_put_and_reply(void *arg)
 
 		struct par_net_header *reply_header =
 			par_net_call[opcode](portals_worker, portals_worker_get_start(req));
-		(*counter)--;
+		workercounter = (uint32_t *)((uintptr_t)aligned_buffer_start - METADATA_SIZE + sizeof(uint32_t));
+		__atomic_fetch_add(workercounter, 1, __ATOMIC_RELAXED);
+
 		portals_worker_send_reply_buff(portals_worker, reply_header, reply_header->total_bytes,
 					       server_handle->nih, portals_worker_get_initiator(req));
 	}
@@ -553,21 +560,31 @@ void worker_scheduler(struct server_handle *server_handle)
 static int prsv_handle_event(struct server_handle *server_handle)
 {
 	void *aligned_buffer_start;
-	uint32_t volatile *counter;
+	uint32_t *pollercounter;
+	uint32_t *workercounter;
 	log_debug("Event server interface 1 : %s", PtlToStr(server_handle->event.type, PTL_STR_EVENT));
 
 	switch (server_handle->event.type) {
 	case PTL_EVENT_PUT:
+		aligned_buffer_start = (void *)((uintptr_t)server_handle->event.user_ptr);
+		pollercounter = (uint32_t *)((uintptr_t)aligned_buffer_start - METADATA_SIZE);
 		worker_scheduler(server_handle);
+		__atomic_fetch_add(pollercounter, 1, __ATOMIC_RELAXED);
+
 		break;
 	case PTL_EVENT_AUTO_UNLINK:
 		aligned_buffer_start = (void *)((uintptr_t)server_handle->event.user_ptr);
-		counter = (uint32_t *)((uintptr_t)aligned_buffer_start - METADATA_SIZE);
-		while (*counter != 0) {
+		pollercounter = (uint32_t *)((uintptr_t)aligned_buffer_start - METADATA_SIZE);
+		workercounter = (uint32_t *)((uintptr_t)aligned_buffer_start - METADATA_SIZE + sizeof(uint32_t));
+		while (__atomic_load_n(pollercounter, __ATOMIC_RELAXED) -
+		       __atomic_load_n(workercounter, __ATOMIC_RELAXED)) {
 			log_debug("buffer busy... waiting for data to be consumed");
+			prsv_print_counters(server_handle);
 		}
 		log_debug("buffer is consumed clear data...");
 		prsv_append_me_for_unlink_event(server_handle, aligned_buffer_start);
+		__atomic_store_n(pollercounter, 0, __ATOMIC_RELAXED);
+		__atomic_store_n(workercounter, 0, __ATOMIC_RELAXED);
 		break;
 	default:
 		log_debug("UNKNOWN Event server interface 1 : %s", PtlToStr(server_handle->event.type, PTL_STR_EVENT));
@@ -650,14 +667,18 @@ struct server_handle *prsv_portals_server_handle_init(struct server_options *ser
 
 		// Set the pointer to the start of the aligned receive buffer
 		handle->recv_buffer[i] = (char *)raw_memory + METADATA_SIZE;
-		// Initialize the counter at the start of the metadata section
-		uint32_t volatile *counter = (uint32_t volatile *)raw_memory;
-		*counter = 0;
-		// Initialize the buffer_id next to the counter of the metadata section
-		uint32_t *buffer_id = (uint32_t *)raw_memory + sizeof(uint32_t);
+
+		// Initialize the pollercounters at the start of the metadata section
+		uint32_t *pollercounter = (uint32_t *)((uintptr_t)raw_memory);
+		__atomic_store_n(pollercounter, 0, __ATOMIC_RELAXED);
+
+		// Initialize the workercounter next to the pollercounter
+		uint32_t *workercounter = (uint32_t *)((uintptr_t)raw_memory + sizeof(uint32_t));
+		__atomic_store_n(workercounter, 0, __ATOMIC_RELAXED);
+
+		uint16_t *buffer_id = (uint16_t *)((uintptr_t)raw_memory + 2 * sizeof(uint32_t));
 		*buffer_id = i;
 	}
-
 	if (ret != 0) {
 		log_debug("posix_memalign failed");
 		_exit(EXIT_FAILURE);

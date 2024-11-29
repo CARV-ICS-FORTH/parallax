@@ -239,6 +239,28 @@ void scan_all_valid_keys(par_handle hd)
 	assert(count == NUM_KEYS / 2);
 }
 
+#define DB_NAME_LENGTH 8
+
+char *generate_random_db_name(void)
+{
+	static const char alphanum[] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+	char *random_str = (char *)malloc(DB_NAME_LENGTH + 1);
+	if (random_str == NULL) {
+		perror("Failed to allocate memory for random DB name");
+		exit(EXIT_FAILURE);
+	}
+
+	unsigned int seed = time(NULL) ^ (unsigned int)getpid();
+	srand(seed);
+
+	for (int i = 0; i < DB_NAME_LENGTH; i++) {
+		random_str[i] = alphanum[random() % (sizeof(alphanum) - 1)];
+	}
+	random_str[DB_NAME_LENGTH] = '\0';
+
+	return random_str;
+}
+
 int main(int argc, char *argv[])
 {
 	int help_flag = 0;
@@ -263,11 +285,11 @@ int main(int argc, char *argv[])
 
 	par_db_options db_options = { .volume_name = get_option(options, 1),
 				      .create_flag = PAR_CREATE_DB,
-				      .db_name = "test.db",
+				      .db_name = generate_random_db_name(),
 				      .options = par_get_default_options() };
 	const char *error_message = NULL;
 	par_handle handle = par_open(&db_options, &error_message);
-
+	sleep(2);
 	if (error_message) {
 		log_fatal("%s", error_message);
 		return EXIT_FAILURE;
