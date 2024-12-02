@@ -129,4 +129,5 @@ void portals_worker_send_reply_buff(struct portals_worker *worker, struct par_ne
 			log_debug("Event server interface 1 : %s", PtlToStr(worker->event2.type, PTL_STR_EVENT));
 		}
 	}
+	PtlMDRelease(worker->mdh);
 }
