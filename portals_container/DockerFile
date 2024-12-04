@@ -25,7 +25,10 @@ RUN apt-get update && apt-get install -y \
     openssh-client \
     tzdata \
     software-properties-common \
-    libboost-all-dev
+    libboost-all-dev \
+    net-tools \
+    infiniband-diags \
+    rdma-core
 
 RUN apt-get update \
   && apt-get -y install build-essential \
@@ -42,8 +45,9 @@ RUN apt-get update \
 WORKDIR /app
 RUN echo "cmake -DBDB_PATH=/lib/x86_64-linux-gnu -DNET=portals -DPORTALS_LIB_DIR=/app/portails4/build/portals -DPORTALS_INCLUDE_DIR=/app/portails4/portals/include -DQUEUE_LIB=/app/queuelib/Synch/lib -DCMAKE_BUILD_TYPE=Release -DENABLE_FLTO=ON ../" > /app/useful_commands && \
     echo "./portals_parallax_server -t 1 -f /app/par.dat -L0 4 -GF 4 -pf" >> /app/useful_commands
+
 # Clone build the portals4 repository , set environment variable
-RUN git clone https://github.com/BullSequana/portails4.git
+RUN git clone https://github.com/CARV-ICS-FORTH/portails4.git
 WORKDIR /app/portails4
 ENV LDFLAGS="-lpthread"
 RUN meson setup build && \
