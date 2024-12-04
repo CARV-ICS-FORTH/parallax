@@ -142,7 +142,13 @@ static par_handle par_net_init(const char *parallax_host)
 	(void)parallax_host;
 	struct par_handle *handle = calloc(1UL, sizeof(struct par_handle));
 	handle->id_server.phys.pid = SERVER_PID;
-	handle->id_server.phys.nid = 1;
+	const char *env_nid = getenv("SERVER_NID");
+	if (env_nid) {
+		handle->id_server.phys.nid = (unsigned int)atoi(env_nid);
+	} else {
+		log_warn("SERVER_NID not set. Using default nid PTL_IFACE_DEFAULT=0!");
+		handle->id_server.phys.nid = PTL_IFACE_DEFAULT;
+	}
 
 	int ret = PtlInit();
 	if (ret != PTL_OK) {

@@ -1,7 +1,5 @@
 # Parallax Server Overview
 
-**For portals server change from portails4/portals/portals.c in function PtlInit <transport_opts.ip> and chose your interface ip**
-
 Multiple clients can access Parallax through the Parallax server. The current
 implementation uses TCP/IP sockets with a custom wire protocol. Parallax server
 starts with the following command:
@@ -20,6 +18,17 @@ starts with the following command:
 To use this feature, applications must use the public API of Parallax, with the
 key difference being that they should link against parallax_client_lib
 instead of parallax.
+
+## Configuring the Server NID
+
+You can set the NID of the Server by exporting the `SERVER_NID` environment variable.
+If `SERVER_NID` is not set, the default NID `PTL_IFACE_DEFAULT=0` will be used.
+
+To specify the `SERVER_NID`, use the following command in your terminal e.g:
+
+```bash
+export SERVER_NID=9
+```
 
 ## Folder stucture
 
