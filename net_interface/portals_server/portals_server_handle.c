@@ -638,7 +638,16 @@ struct server_handle *prsv_portals_server_handle_init(struct server_options *ser
 		_exit(EXIT_FAILURE);
 	}
 
-	ret = PtlNIInit(PTL_IFACE_DEFAULT, PTL_NI_MATCHING | PTL_NI_PHYSICAL, SERVER_PID, NULL, NULL, &handle->nih);
+	const char *srv_nid = getenv("SERVER_NID");
+	if (srv_nid) {
+		ret = PtlNIInit((int)atoi(srv_nid), PTL_NI_MATCHING | PTL_NI_PHYSICAL, SERVER_PID, NULL, NULL,
+				&handle->nih);
+	} else {
+		log_warn("SERVER_NID not set. Using default nid PTL_IFACE_DEFAULT=0!");
+		ret = PtlNIInit(PTL_IFACE_DEFAULT, PTL_NI_MATCHING | PTL_NI_PHYSICAL, SERVER_PID, NULL, NULL,
+				&handle->nih);
+	}
+
 	if (ret != PTL_OK) {
 		log_debug("PtlNIInit failed");
 		_exit(EXIT_FAILURE);
