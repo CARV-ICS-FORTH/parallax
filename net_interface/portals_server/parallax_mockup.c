@@ -1,3 +1,5 @@
+#include "../../lib/include/parallax/structures.h"
+
 #include "../allocator/kv_format.h"
 #include "../btree/btree.h"
 #include "../btree/set_options.h"
@@ -8,6 +10,16 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#define PAR_MAX_PREALLOCATED_SIZE 512UL
+
+struct par_scanner {
+	char buf[PAR_MAX_PREALLOCATED_SIZE];
+	struct scanner *sc;
+	uint32_t buf_size;
+	uint16_t allocated;
+	uint16_t valid;
+	char *kv_buf;
+};
 
 // Dump implementation of the functions
 char *par_format(char *device_name, uint32_t max_regions_num)
@@ -93,7 +105,7 @@ void par_get_serialized(par_handle handle, char *key_serialized, struct par_valu
 par_ret_code par_exists(par_handle handle, struct par_key *key)
 {
 	log_debug("Called par_exists with handle: %p, key_size: %d", handle, key->size);
-	return PAR_KEY_NOT_FOUND; // Simulate that the key does not exist
+	return PAR_SUCCESS; // Simulate that the key does not exist
 }
 
 uint64_t par_flush_segment_in_log(par_handle handle, char *buf, int32_t buf_size, uint32_t IO_size,
@@ -117,7 +129,8 @@ par_scanner par_init_scanner(par_handle handle, struct par_key *key, par_seek_mo
 	(void)key; // Suppress unused parameter warning
 	(void)error_message; // Suppress unused parameter warning
 	log_debug("Called par_init_scanner with handle: %p, mode: %d", handle, mode);
-	return NULL; // Simulate scanner initialization
+	struct par_scanner *p_scanner = (struct par_scanner *)calloc(1, sizeof(struct par_scanner));
+	return p_scanner; // Simulate scanner initialization
 }
 
 void par_close_scanner(par_scanner sc)
@@ -128,13 +141,13 @@ void par_close_scanner(par_scanner sc)
 int par_get_next(par_scanner sc)
 {
 	log_debug("Called par_get_next with scanner: %p", sc);
-	return 0; // Simulate no next item
+	return 1; // Simulate no next item
 }
 
 int par_is_valid(par_scanner sc)
 {
 	log_debug("Called par_is_valid with scanner: %p", sc);
-	return 0; // Simulate invalid scanner
+	return 1; // Simulate invalid scanner
 }
 
 struct par_key par_get_key(par_scanner sc)
@@ -220,4 +233,9 @@ struct par_options_desc *par_get_default_options(void)
 	default_db_options[WCURSOR_SPIN_FOR_FLUSH_REPLIES].value = 0;
 
 	return default_db_options;
+}
+
+void par_flush_superblock(par_handle handle)
+{
+	return;
 }

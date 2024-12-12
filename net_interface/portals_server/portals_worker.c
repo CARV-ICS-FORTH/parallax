@@ -1,30 +1,52 @@
 #include "portals_worker.h"
+#include "buddy_allocator.h"
 #include "ccqueue.h"
 #include "config.h"
+#include "log.h"
+#include "par_net.h"
 #include "portals.h"
 #include "portals4.h"
 #include "portals4_ext.h"
 #include "primitives.h"
 #include "queue-stack.h"
 #include "worker_request.h"
+#include <pthread.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <sys/types.h>
+#define BUDDY_ALLOC_IMPLEMENTATION
+#include "buddy_alloc.h"
+#undef BUDDY_ALLOC_IMPLEMENTATION
 
 struct portals_worker {
 	struct server_handle *server_handle;
 	pthread_t tid;
 	uint64_t core;
 	ptl_md_t md;
+	pthread_mutex_t *mutex;
 	CCQueueStruct *queue_object CACHE_ALIGN;
+	buddy_allocator_t *buddy_alloc_obj;
 	CCQueueThreadState *th_state;
 	ptl_handle_md_t mdh;
+	struct buddy *buddy;
+	ptl_handle_eq_t eqh;
 	char *send_buffer;
-	ptl_handle_eq_t send_eqh;
 	uint32_t send_buffer_size;
-	ptl_event_t event2;
 };
 
 size_t portals_worker_size(void)
 {
 	return sizeof(struct portals_worker);
+}
+
+void portals_worker_lock(struct portals_worker *worker)
+{
+	pthread_mutex_lock(worker->mutex);
+}
+
+void portals_worker_unlock(struct portals_worker *worker)
+{
+	pthread_mutex_unlock(worker->mutex);
 }
 
 struct portals_worker_request *portals_worker_poll(struct portals_worker *worker)
@@ -43,11 +65,12 @@ void portals_worker_put(struct portals_worker *worker, struct portals_worker_req
 	CCQueueApplyEnqueue(worker->queue_object, worker->th_state, (ArgVal)request, worker->tid);
 }
 
-struct portals_worker *portals_worker_create(struct server_handle *server_handle, ptl_handle_ni_t nih, uint32_t index,
-					     uint32_t threadno)
+struct portals_worker *portals_worker_create(struct server_handle *server_handle, uint32_t index, uint32_t threadno,
+					     ptl_handle_eq_t eqh, pthread_mutex_t *mutex)
 {
 	int ret;
 	struct portals_worker *worker = calloc(1, sizeof(struct portals_worker));
+	worker->mutex = mutex;
 	worker->core = index;
 	worker->server_handle = server_handle;
 
@@ -57,23 +80,37 @@ struct portals_worker *portals_worker_create(struct server_handle *server_handle
 
 	CCQueueThreadStateInit(worker->queue_object, worker->th_state, worker->tid);
 
-	ret = PtlEQAlloc(nih, 2048, &worker->send_eqh);
-	if (ret != PTL_OK) {
-		log_debug("PtlEQAlloc failed");
-		return NULL;
+	void *raw_memory; // x*a +4096 = y where y is power of 2 and multiple of sizeof(void*) == 8
+	if ((PRSV_WORKER_BUF_SIZE + METADATA_SIZE) % 4096 != 0) {
+		log_fatal("PRSV_WORKER_BUF_SIZE + METADATA_SIZE is not a multiple of 4KB!");
+		exit(EXIT_FAILURE);
 	}
-	ret = posix_memalign((void **)&worker->send_buffer, 4096, PRSV_COM_BUF_SIZE);
+
+	ret = posix_memalign(&raw_memory, PRSV_WORKER_BUF_SIZE + METADATA_SIZE, PRSV_WORKER_BUF_SIZE + METADATA_SIZE);
+	worker->send_buffer = (char *)raw_memory + METADATA_SIZE; //0x7ffff6fb3000
+	uint32_t *worker_index = (uint32_t *)((uintptr_t)raw_memory);
+	*worker_index = index;
 	if (ret != 0) {
 		log_debug("posix_memalign failed");
 		return NULL;
 	}
-	worker->send_buffer_size = PRSV_COM_BUF_SIZE;
+	worker->send_buffer_size = PRSV_WORKER_BUF_SIZE;
+	worker->buddy = buddy_embed((void *)worker->send_buffer, PRSV_WORKER_BUF_SIZE);
+	//worker->buddy_alloc_obj = buddy_create((void *)worker->send_buffer, PRSV_WORKER_BUF_SIZE);
+	worker->eqh = eqh;
+
 	return worker;
 }
 
-char *portals_worker_get_buffer(struct portals_worker *worker)
+char *portals_worker_get_buffer(struct portals_worker *worker, uint32_t total_bytes)
 {
-	return (char *)worker->send_buffer;
+	void *buff = buddy_malloc(worker->buddy, total_bytes);
+	//void *buff = buddy_allocator_alloc(worker->buddy_alloc_obj, total_bytes);
+	if (buff == NULL) {
+		log_fatal("buddy_allocator returned NULL buffer");
+		exit(EXIT_FAILURE);
+	}
+	return buff;
 }
 
 struct server_handle *portals_worker_get_server_handle(struct portals_worker *worker)
@@ -99,35 +136,28 @@ pthread_t *portals_worker_get_tid(struct portals_worker *worker)
 void portals_worker_send_reply_buff(struct portals_worker *worker, struct par_net_header *reply_header,
 				    uint32_t total_bytes, ptl_handle_ni_t nih, ptl_process_t client)
 {
-	worker->send_buffer = (char *)reply_header;
 	worker->md.start = reply_header;
 	worker->md.length = total_bytes;
 	worker->md.options = 0;
-	worker->md.eq_handle = worker->send_eqh;
+	worker->md.eq_handle = worker->eqh;
 	worker->md.ct_handle = PTL_CT_NONE;
+
 	int ret = PtlMDBind(nih, &worker->md, &worker->mdh);
 	if (ret != PTL_OK) {
 		log_debug("PtlMDBind failed");
 		_exit(EXIT_FAILURE);
 	}
-	ret = PtlPut(worker->mdh, 0, total_bytes, PTL_ACK_REQ, client, 0, 0, 0, NULL, 0);
+	ret = PtlPut(worker->mdh, 0, total_bytes, PTL_ACK_REQ, client, 0, 0, 0, worker->md.start, 0);
 	if (ret != PTL_OK) {
 		log_debug("PtlPut failed");
 		_exit(EXIT_FAILURE);
 	}
 
-	while (1) {
-		ret = PtlEQPoll(&worker->send_eqh, 1, PTL_TIME_FOREVER, &worker->event2, 0);
-		if (ret != PTL_OK) {
-			log_debug("PtlEQWait failed: %s", PtlToStr(ret, PTL_STR_ERROR));
-			_exit(EXIT_FAILURE);
-		}
-		if (worker->event2.type == PTL_EVENT_SEND) {
-			log_debug("PTL_EVENT_SEND received. Data successfully sent.");
-			break;
-		} else {
-			log_debug("Event server interface 1 : %s", PtlToStr(worker->event2.type, PTL_STR_EVENT));
-		}
-	}
 	PtlMDRelease(worker->mdh);
+}
+
+void portals_worker_free_buf(struct portals_worker *worker, void *buf_start)
+{
+	buddy_free(worker->buddy, buf_start);
+	//buddy_allocator_free(worker->buddy_alloc_obj, buf_start);
 }

@@ -1,3 +1,4 @@
+#include "portals_server_handle.h"
 #include "../par_net/par_net_scan.h"
 #include "../par_net/par_net_sync.h"
 #include "../par_net/portals.h"
@@ -5,6 +6,7 @@
 #include "portals4_ext.h"
 #include "portals_worker.h"
 #include "worker_request.h"
+#include <bits/pthreadtypes.h>
 #include <errno.h>
 #include <log.h>
 #include <pthread.h>
@@ -16,6 +18,7 @@
 #define MAX_REGIONS 128
 #define NECESSARY_OPTIONS 4
 #define DECIMAL_BASE 10
+#define CLOSE_OP_BUF_SIZE 100
 
 #define USAGE_STRING                             \
 	"portals-server: no options specified\n" \
@@ -57,7 +60,7 @@ struct server_handle {
 	par_handle par_handle;
 	ptl_handle_ni_t nih;
 	ptl_handle_eq_t eqh;
-
+	pthread_mutex_t *mutex;
 	struct server_options *opts;
 	ptl_pt_index_t ptindex;
 	uint32_t recv_buffer_size;
@@ -249,18 +252,20 @@ static struct par_net_header *prsv_par_net_call_open(struct portals_worker *port
 	const char *error_message = NULL;
 	log_debug("Opening db with name == %s", db_options.db_name);
 	par_handle handle = par_open(&db_options, &error_message);
-
-	struct par_net_open_rep *reply = par_net_open_rep_create(
-		error_message != NULL, handle,
-		&portals_worker_get_buffer(portals_worker)[prsv_par_net_header_calc_size()],
-		portals_worker_get_buffer_size(portals_worker) - prsv_par_net_header_calc_size());
+	uint32_t total_bytes = par_net_open_rep_calc_size() + prsv_par_net_header_calc_size();
+	portals_worker_lock(portals_worker);
+	char *buffer = (char *)portals_worker_get_buffer(portals_worker, total_bytes);
+	portals_worker_unlock(portals_worker);
+	struct par_net_open_rep *reply = par_net_open_rep_create(error_message != NULL, handle,
+								 &buffer[prsv_par_net_header_calc_size()],
+								 total_bytes - prsv_par_net_header_calc_size());
 	if (NULL == reply) {
 		log_warn("Failed to create reply");
 		return NULL;
 	}
-	struct par_net_header *reply_header = (struct par_net_header *)portals_worker_get_buffer(portals_worker);
+	struct par_net_header *reply_header = (struct par_net_header *)buffer;
 	reply_header->opcode = OPCODE_OPEN;
-	reply_header->total_bytes = par_net_open_rep_calc_size() + prsv_par_net_header_calc_size();
+	reply_header->total_bytes = total_bytes;
 	log_debug("Ok with open reply");
 	return reply_header;
 }
@@ -284,17 +289,19 @@ static struct par_net_header *prsv_par_net_call_put(struct portals_worker *porta
 	const char *error_message = NULL;
 	struct par_put_metadata metadata = par_put((par_handle)region_id, &kv_pair, &error_message);
 	log_debug("LSN is %lu", metadata.lsn);
-	size_t buffer_len = portals_worker_get_buffer_size(portals_worker) - prsv_par_net_header_calc_size();
-	struct par_net_put_rep *reply = par_net_put_rep_create(
-		error_message == NULL, metadata,
-		&portals_worker_get_buffer(portals_worker)[prsv_par_net_header_calc_size()], buffer_len);
+	uint32_t total_bytes = prsv_par_net_header_calc_size() + par_net_put_rep_calc_size();
+	portals_worker_lock(portals_worker);
+	char *buffer = (char *)portals_worker_get_buffer(portals_worker, total_bytes);
+	portals_worker_unlock(portals_worker);
+	struct par_net_put_rep *reply = par_net_put_rep_create(error_message == NULL, metadata,
+							       &buffer[prsv_par_net_header_calc_size()], total_bytes);
 	if (NULL == reply) {
 		log_warn("Failed to create put reply");
 		return NULL;
 	}
-	struct par_net_header *reply_header = (struct par_net_header *)portals_worker_get_buffer(portals_worker);
+	struct par_net_header *reply_header = (struct par_net_header *)buffer;
 	reply_header->opcode = OPCODE_PUT;
-	reply_header->total_bytes = prsv_par_net_header_calc_size() + par_net_put_rep_calc_size();
+	reply_header->total_bytes = total_bytes;
 	return reply_header;
 }
 static struct par_net_header *prsv_par_net_call_del(struct portals_worker *portals_worker, void *args)
@@ -310,19 +317,20 @@ static struct par_net_header *prsv_par_net_call_del(struct portals_worker *porta
 	const char *error_message = NULL;
 	par_delete((par_handle)region_id, &key, &error_message);
 
-	size_t buffer_len = portals_worker_get_buffer_size(portals_worker) - prsv_par_net_header_calc_size();
-
-	struct par_net_del_rep *reply = par_net_del_rep_create(
-		error_message != NULL, &portals_worker_get_buffer(portals_worker)[prsv_par_net_header_calc_size()],
-		buffer_len);
+	uint32_t total_bytes = prsv_par_net_header_calc_size() + par_net_del_rep_calc_size();
+	portals_worker_lock(portals_worker);
+	char *buffer = (char *)portals_worker_get_buffer(portals_worker, total_bytes);
+	portals_worker_unlock(portals_worker);
+	struct par_net_del_rep *reply =
+		par_net_del_rep_create(error_message != NULL, &buffer[prsv_par_net_header_calc_size()], total_bytes);
 
 	if (NULL == reply) {
 		log_debug("Failed to create reply for delete operation");
 		_exit(EXIT_FAILURE);
 	}
-	struct par_net_header *reply_header = (struct par_net_header *)portals_worker_get_buffer(portals_worker);
+	struct par_net_header *reply_header = (struct par_net_header *)buffer;
 	reply_header->opcode = OPCODE_DEL;
-	reply_header->total_bytes = prsv_par_net_header_calc_size() + par_net_del_rep_calc_size();
+	reply_header->total_bytes = total_bytes;
 	return reply_header;
 }
 static struct par_net_header *prsv_par_net_call_get(struct portals_worker *portals_worker, void *args)
@@ -339,14 +347,16 @@ static struct par_net_header *prsv_par_net_call_get(struct portals_worker *porta
 	//log_debug("key size == %lu", (unsigned long)par_key.size);
 
 	const char *error_message = NULL;
-
+	uint32_t total_bytes = KV_MAX_SIZE + prsv_par_net_header_calc_size() + par_net_get_rep_header_size();
+	portals_worker_lock(portals_worker);
+	char *buffer = (char *)portals_worker_get_buffer(portals_worker, total_bytes);
+	portals_worker_unlock(portals_worker);
 	bool found = false;
 	if (par_net_get_req_fetch_value(request)) {
 		log_debug("Region id: %lu Calling par_get for key: %.*s", region_id, par_key.size, par_key.data);
-		par_value.val_buffer = &portals_worker_get_buffer(
-			portals_worker)[prsv_par_net_header_calc_size() + par_net_get_rep_header_size()];
-		par_value.val_buffer_size = portals_worker_get_buffer_size(portals_worker) -
-					    (prsv_par_net_header_calc_size() + par_net_get_rep_header_size());
+		par_value.val_buffer = &buffer[prsv_par_net_header_calc_size() + par_net_get_rep_header_size()];
+		par_value.val_buffer_size =
+			total_bytes - (prsv_par_net_header_calc_size() + par_net_get_rep_header_size());
 		log_debug("Available buffer for gets is %u", par_value.val_buffer_size);
 		par_get((par_handle)region_id, &par_key, &par_value, &error_message);
 		found = error_message == NULL;
@@ -359,15 +369,14 @@ static struct par_net_header *prsv_par_net_call_get(struct portals_worker *porta
 	// log_debug("Key: %.*s --> %s", par_key.size, par_key.data, found ? "FOUND" : "NOT FOUND");
 	//unsigned int hash = djb2_hash((const unsigned char *)par_value.val_buffer, par_value.val_size);
 	//log_debug("got hash from get = %u", hash);
-	size_t buffer_len = portals_worker_get_buffer_size(portals_worker) - prsv_par_net_header_calc_size();
-	struct par_net_get_rep *reply = par_net_get_rep_set_header(
-		found, &par_value, &portals_worker_get_buffer(portals_worker)[prsv_par_net_header_calc_size()],
-		buffer_len);
+	size_t buffer_len = total_bytes - prsv_par_net_header_calc_size();
+	struct par_net_get_rep *reply =
+		par_net_get_rep_set_header(found, &par_value, &buffer[prsv_par_net_header_calc_size()], buffer_len);
 	if (reply == NULL) {
 		log_warn("Failed to create reply");
 		return NULL;
 	}
-	struct par_net_header *reply_header = (struct par_net_header *)portals_worker_get_buffer(portals_worker);
+	struct par_net_header *reply_header = (struct par_net_header *)buffer;
 	reply_header->opcode = OPCODE_GET;
 	reply_header->total_bytes = prsv_par_net_header_calc_size() +
 				    par_net_get_rep_calc_size(error_message == NULL ? par_value.val_size : 0);
@@ -380,16 +389,20 @@ static struct par_net_header *prsv_par_net_call_sync(struct portals_worker *port
 		(struct par_net_sync_req *)((char *)start + prsv_par_net_header_calc_size());
 	uint64_t region_id = par_net_sync_req_get_region_id(sync_request);
 	par_ret_code ret = par_sync((par_handle)region_id);
-	struct par_net_sync_rep *sync_reply = par_net_sync_rep_create(
-		ret, region_id, &portals_worker_get_buffer(portals_worker)[prsv_par_net_header_calc_size()],
-		portals_worker_get_buffer_size(portals_worker) - prsv_par_net_header_calc_size());
+	uint32_t total_bytes = prsv_par_net_header_calc_size() + par_net_sync_rep_calc_size();
+	portals_worker_lock(portals_worker);
+	char *buffer = (char *)portals_worker_get_buffer(portals_worker, total_bytes);
+	portals_worker_unlock(portals_worker);
+	struct par_net_sync_rep *sync_reply = par_net_sync_rep_create(ret, region_id,
+								      &buffer[prsv_par_net_header_calc_size()],
+								      total_bytes - prsv_par_net_header_calc_size());
 	if (NULL == sync_reply) {
 		log_debug("Failed to create sync reply");
 		_exit(EXIT_FAILURE);
 	}
-	struct par_net_header *reply = (struct par_net_header *)portals_worker_get_buffer(portals_worker);
+	struct par_net_header *reply = (struct par_net_header *)buffer;
 	reply->opcode = OPCODE_SYNC;
-	reply->total_bytes = prsv_par_net_header_calc_size() + par_net_sync_rep_calc_size();
+	reply->total_bytes = total_bytes;
 	return reply;
 }
 static struct par_net_header *prsv_par_net_call_scan(struct portals_worker *portals_worker, void *args)
@@ -406,11 +419,13 @@ static struct par_net_header *prsv_par_net_call_scan(struct portals_worker *port
 		  par_get_db_name((par_handle)region_id, &error), key.size, key.size, key.data,
 		  par_net_scan_req_get_seek_mode(request) == PAR_GREATER_OR_EQUAL ? "PAR_GREATER_OR_EQUAL" :
 										    "PAR_GREATER");
-
-	struct par_net_scan_rep *reply = par_net_scan_rep_create(
-		par_net_scan_req_get_max_entries(request),
-		&portals_worker_get_buffer(portals_worker)[prsv_par_net_header_calc_size()],
-		portals_worker_get_buffer_size(portals_worker) - prsv_par_net_header_calc_size());
+	uint32_t total_bytes = 2U * KV_MAX_SIZE;
+	portals_worker_lock(portals_worker);
+	char *buffer = (char *)portals_worker_get_buffer(portals_worker, total_bytes);
+	portals_worker_unlock(portals_worker);
+	struct par_net_scan_rep *reply = par_net_scan_rep_create(par_net_scan_req_get_max_entries(request),
+								 &buffer[prsv_par_net_header_calc_size()],
+								 total_bytes - prsv_par_net_header_calc_size());
 	par_scanner dev_scanner =
 		par_init_scanner((par_handle)region_id, &key, par_net_scan_req_get_seek_mode(request), &error_message);
 	if (error_message) {
@@ -429,13 +444,14 @@ static struct par_net_header *prsv_par_net_call_scan(struct portals_worker *port
 	par_net_scan_rep_set_valid(reply, par_is_valid(dev_scanner));
 	par_close_scanner(dev_scanner);
 
-	struct par_net_header *header = (struct par_net_header *)portals_worker_get_buffer(portals_worker);
-	log_debug("send_buffer: %p, buffer size: %u, header size: %zu",
+	struct par_net_header *header = (struct par_net_header *)buffer;
+
+	/*log_debug("send_buffer: %p, buffer size: %u, header size: %zu",
 		  (void *)portals_worker_get_buffer(portals_worker), portals_worker_get_buffer_size(portals_worker),
-		  sizeof(struct par_net_header));
+		  sizeof(struct par_net_header));*/
 
 	header->opcode = OPCODE_SCAN;
-	header->total_bytes = prsv_par_net_header_calc_size() + par_net_scan_rep_get_size(reply);
+	header->total_bytes = total_bytes;
 	return header;
 }
 
@@ -451,17 +467,23 @@ static struct par_net_header *prsv_par_net_call_close(struct portals_worker *por
 
 	const char *error_mesage = par_close(handle);
 	log_debug("Close DB message is %s ", error_mesage ? error_mesage : " OK !");
-	uint32_t error_message_size = error_mesage ? strlen(error_mesage) + 1 : 0;
-	size_t buffer_len = portals_worker_get_buffer_size(portals_worker) - prsv_par_net_header_calc_size();
-	struct par_net_close_rep *reply = par_net_close_rep_create(
-		error_mesage, &portals_worker_get_buffer(portals_worker)[prsv_par_net_header_calc_size()], buffer_len);
+	uint32_t error_message_size =
+		prsv_par_net_header_calc_size() + (error_mesage ? strlen(error_mesage) + 1 : 0) + CLOSE_OP_BUF_SIZE;
+	size_t buffer_len = error_message_size - prsv_par_net_header_calc_size() + CLOSE_OP_BUF_SIZE;
+	portals_worker_lock(portals_worker);
+	char *buffer = (char *)portals_worker_get_buffer(portals_worker, error_message_size);
+	portals_worker_unlock(portals_worker);
+
+	struct par_net_close_rep *reply =
+		par_net_close_rep_create(error_mesage, &buffer[prsv_par_net_header_calc_size()], buffer_len);
+
 	if (NULL == reply) {
 		log_warn("Failed to create get reply");
 		return NULL;
 	}
-	struct par_net_header *reply_header = (struct par_net_header *)portals_worker_get_buffer(portals_worker);
+	struct par_net_header *reply_header = (struct par_net_header *)buffer;
 	reply_header->opcode = OPCODE_CLOSE;
-	reply_header->total_bytes = prsv_par_net_header_calc_size() + par_net_close_rep_calc_size(error_message_size);
+	reply_header->total_bytes = error_message_size;
 	return reply_header;
 }
 
@@ -560,6 +582,7 @@ void worker_scheduler(struct server_handle *server_handle)
 static int prsv_handle_event(struct server_handle *server_handle)
 {
 	void *aligned_buffer_start;
+	void *user_ptr;
 	uint32_t *pollercounter;
 	uint32_t *workercounter;
 	log_debug("Event server interface 1 : %s", PtlToStr(server_handle->event.type, PTL_STR_EVENT));
@@ -585,6 +608,20 @@ static int prsv_handle_event(struct server_handle *server_handle)
 		prsv_append_me_for_unlink_event(server_handle, aligned_buffer_start);
 		__atomic_store_n(pollercounter, 0, __ATOMIC_RELAXED);
 		__atomic_store_n(workercounter, 0, __ATOMIC_RELAXED);
+		break;
+	case PTL_EVENT_SEND:
+		log_debug("PTL_EVENT_SEND received. Data successfully sent.");
+		user_ptr = server_handle->event.user_ptr;
+		uintptr_t index_start =
+			(uintptr_t)user_ptr - ((uintptr_t)user_ptr % (PRSV_WORKER_BUF_SIZE + METADATA_SIZE));
+		uint32_t *worker_index = (uint32_t *)(index_start);
+		log_debug("user_ptr: %p, worker_index: %p *worker_index: %u", (void *)server_handle->event.user_ptr,
+			  (void *)worker_index, *worker_index);
+
+		pthread_mutex_lock(&server_handle->mutex[*worker_index]);
+		portals_worker_free_buf(server_handle->portals_workers[*worker_index], server_handle->event.user_ptr);
+		pthread_mutex_unlock(&server_handle->mutex[*worker_index]);
+
 		break;
 	default:
 		log_debug("UNKNOWN Event server interface 1 : %s", PtlToStr(server_handle->event.type, PTL_STR_EVENT));
@@ -626,10 +663,15 @@ struct server_handle *prsv_portals_server_handle_init(struct server_options *ser
 	if (handle->portals_workers == NULL)
 		_exit(EXIT_FAILURE);
 
+	handle->mutex = calloc(handle->opts->threadno, sizeof(pthread_mutex_t));
+	if (handle->mutex == NULL)
+		_exit(EXIT_FAILURE);
+
 	for (uint32_t i = 0; i < handle->opts->threadno; i++) {
 		handle->portals_workers[i] = calloc(1UL, portals_worker_size());
 		if (handle->portals_workers[i] == NULL)
 			_exit(EXIT_FAILURE);
+		pthread_mutex_init(&handle->mutex[i], NULL);
 	}
 
 	int ret = PtlInit();
@@ -725,7 +767,8 @@ int prsv_server_start(struct server_handle *server_handle)
 
 	for (index = 0U; index < threads; index++) {
 		server_handle->portals_workers[index] =
-			portals_worker_create(server_handle, server_handle->nih, index, server_handle->opts->threadno);
+			portals_worker_create(server_handle, index, server_handle->opts->threadno, server_handle->eqh,
+					      &server_handle->mutex[index]);
 
 		if (pthread_create(portals_worker_get_tid(server_handle->portals_workers[index]), NULL,
 				   prsv_put_and_reply,

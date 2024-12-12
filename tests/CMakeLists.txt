@@ -32,7 +32,8 @@ if(PARALLAX_BUILD_TESTING)
       test_par_format.c
       test_par_put_serialized.c
       test_wcursors_segment_buffers_cursor.c
-      test_par_threadpool.c)
+      test_par_threadpool.c
+      test_buddy_alloc.c)
 
   if(${CMAKE_BUILD_TYPE} STREQUAL "Debug")
     set_source_files_properties(${LIB_TEST_FILES} COMPILE_FLAGS "-O0 -g")
@@ -329,5 +330,11 @@ if(PARALLAX_BUILD_TESTING)
   target_link_libraries(test_par_threadpool "${PROJECT_NAME}")
   add_parallax_test(NAME test_par_threadpool COMMAND run_test.sh
                     test_par_threadpool)
+
+  add_executable(test_buddy_alloc test_buddy_alloc.c)
+  target_include_directories(test_buddy_alloc
+                             PRIVATE ../net_interface/portals_server)
+  target_sources(test_buddy_alloc
+                 PRIVATE ../net_interface/portals_server/buddy_allocator.c)
 
 endif()
