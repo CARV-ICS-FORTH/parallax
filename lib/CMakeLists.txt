@@ -210,6 +210,19 @@ if(PORTALS_LIB AND QUEUE_LIB_FOUND)
     LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
     RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
     PUBLIC_HEADER DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}")
+
+  set(FLAMEGRAPH_SCRIPT
+      "${CMAKE_CURRENT_SOURCE_DIR}/../net_interface/portals_server/profile_flamegraph.sh"
+  )
+  set(FLAMEGRAPH_DESTINATION "${CMAKE_BINARY_DIR}/lib/")
+
+  add_custom_command(
+    TARGET ${PORT_LIB}
+    POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy ${FLAMEGRAPH_SCRIPT}
+            ${FLAMEGRAPH_DESTINATION}
+    COMMENT "Copying profile_flamegraph.sh to ${FLAMEGRAPH_DESTINATION}")
+  message(STATUS "Added custom command to copy profile_flamegraph.sh")
 elseif()
   message(
     WARNING
