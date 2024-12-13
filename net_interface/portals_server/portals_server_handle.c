@@ -19,6 +19,7 @@
 #define NECESSARY_OPTIONS 4
 #define DECIMAL_BASE 10
 #define CLOSE_OP_BUF_SIZE 100
+#define QUEUE_DEPTH 128
 
 #define USAGE_STRING                             \
 	"portals-server: no options specified\n" \
@@ -573,8 +574,22 @@ void worker_scheduler(struct server_handle *server_handle)
 	if (server_handle->thread_to_queue == server_handle->opts->threadno)
 		server_handle->thread_to_queue = 0;
 
-	portals_worker_put(server_handle->portals_workers[server_handle->thread_to_queue],
-			   portals_worker_create_req(server_handle->event));
+	while (portals_worker_get_reqs(server_handle->portals_workers[server_handle->thread_to_queue]) >= QUEUE_DEPTH) {
+		log_debug("Thread %d: REACHED MAX QUEUE_DEPTH Current", server_handle->thread_to_queue);
+		server_handle->thread_to_queue++;
+		if (server_handle->thread_to_queue == server_handle->opts->threadno)
+			server_handle->thread_to_queue = 0;
+	}
+	struct portals_worker *worker = server_handle->portals_workers[server_handle->thread_to_queue];
+	portals_worker_put(worker, portals_worker_create_req(server_handle->event));
+
+	if (0 == portals_worker_get_sem_val(worker)) {
+		portals_worker_sem_post(worker);
+		log_debug("Waking up Thread %d", server_handle->thread_to_queue);
+	} else {
+		log_debug("Thread %d: Semaphore Already posted", server_handle->thread_to_queue);
+	}
+
 	server_handle->thread_to_queue++;
 	return;
 }
@@ -610,7 +625,6 @@ static int prsv_handle_event(struct server_handle *server_handle)
 		__atomic_store_n(workercounter, 0, __ATOMIC_RELAXED);
 		break;
 	case PTL_EVENT_SEND:
-		log_debug("PTL_EVENT_SEND received. Data successfully sent.");
 		user_ptr = server_handle->event.user_ptr;
 		uintptr_t index_start =
 			(uintptr_t)user_ptr - ((uintptr_t)user_ptr % (PRSV_WORKER_BUF_SIZE + METADATA_SIZE));
@@ -624,7 +638,6 @@ static int prsv_handle_event(struct server_handle *server_handle)
 
 		break;
 	default:
-		log_debug("UNKNOWN Event server interface 1 : %s", PtlToStr(server_handle->event.type, PTL_STR_EVENT));
 		break;
 	}
 	return EXIT_SUCCESS;

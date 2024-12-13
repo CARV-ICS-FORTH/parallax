@@ -12,6 +12,12 @@ void portals_worker_lock(struct portals_worker *worker);
 
 void portals_worker_unlock(struct portals_worker *worker);
 
+int portals_worker_get_sem_val(struct portals_worker *worker);
+
+void portals_worker_sem_post(struct portals_worker *worker);
+
+uint32_t portals_worker_get_reqs(struct portals_worker *worker);
+
 struct portals_worker *portals_worker_create(struct server_handle *server_handle, uint32_t index, uint32_t threadno,
 					     ptl_handle_eq_t eqh, pthread_mutex_t *mutex);
 

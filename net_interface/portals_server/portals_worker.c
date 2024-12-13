@@ -11,12 +11,17 @@
 #include "queue-stack.h"
 #include "worker_request.h"
 #include <pthread.h>
+#include <semaphore.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <sys/time.h>
 #include <sys/types.h>
+
 #define BUDDY_ALLOC_IMPLEMENTATION
 #include "buddy_alloc.h"
 #undef BUDDY_ALLOC_IMPLEMENTATION
+
+#define EMPTY_WAIT 10
 
 struct portals_worker {
 	struct server_handle *server_handle;
@@ -31,7 +36,11 @@ struct portals_worker {
 	struct buddy *buddy;
 	ptl_handle_eq_t eqh;
 	char *send_buffer;
+	uint32_t reqs_in_queue;
 	uint32_t send_buffer_size;
+	sem_t empty;
+	struct timeval start;
+	struct timeval end;
 };
 
 size_t portals_worker_size(void)
@@ -49,12 +58,48 @@ void portals_worker_unlock(struct portals_worker *worker)
 	pthread_mutex_unlock(worker->mutex);
 }
 
+int portals_worker_get_sem_val(struct portals_worker *worker)
+{
+	int ret;
+	sem_getvalue(&worker->empty, &ret);
+	return ret;
+}
+
+void portals_worker_sem_post(struct portals_worker *worker)
+{
+	sem_post(&worker->empty);
+}
+
+uint32_t portals_worker_get_reqs(struct portals_worker *worker)
+{
+	return worker->reqs_in_queue;
+}
+
 struct portals_worker_request *portals_worker_poll(struct portals_worker *worker)
 {
+	long elapsed_time =
+		(worker->end.tv_sec - worker->start.tv_sec) * 1000000L + (worker->end.tv_usec - worker->start.tv_usec);
+	log_debug("Thread %lu: Elapsed time since last event: %ld microseconds", worker->core, elapsed_time);
+
+	if (elapsed_time >= EMPTY_WAIT) {
+		log_debug("Thread %lu: No events in the queue for %ld microseconds, waiting on semaphore", worker->core,
+			  elapsed_time);
+		sem_wait(&worker->empty);
+		gettimeofday(&worker->start, NULL);
+		gettimeofday(&worker->end, NULL);
+	}
+
 	RetVal rawval = CCQueueApplyDequeue(worker->queue_object, worker->th_state, worker->tid);
 	if (EMPTY_QUEUE == rawval) {
+		log_debug("Thread %lu: Queue is empty, nothing to dequeue", worker->core);
+		gettimeofday(&worker->end, NULL);
 		return NULL;
 	}
+	worker->reqs_in_queue--;
+	gettimeofday(&worker->start, NULL);
+	gettimeofday(&worker->end, NULL);
+	log_debug("Thread %lu: Successfully dequeued a request. Requests left in queue: %d", worker->core,
+		  worker->reqs_in_queue);
 	struct portals_worker_request *req = (struct portals_worker_request *)rawval;
 	log_debug("got event in thread : %lu", worker->core);
 	return req;
@@ -63,6 +108,7 @@ struct portals_worker_request *portals_worker_poll(struct portals_worker *worker
 void portals_worker_put(struct portals_worker *worker, struct portals_worker_request *request)
 {
 	CCQueueApplyEnqueue(worker->queue_object, worker->th_state, (ArgVal)request, worker->tid);
+	worker->reqs_in_queue++;
 }
 
 struct portals_worker *portals_worker_create(struct server_handle *server_handle, uint32_t index, uint32_t threadno,
@@ -73,7 +119,10 @@ struct portals_worker *portals_worker_create(struct server_handle *server_handle
 	worker->mutex = mutex;
 	worker->core = index;
 	worker->server_handle = server_handle;
-
+	worker->reqs_in_queue = 0;
+	sem_init(&worker->empty, 0, 0);
+	gettimeofday(&worker->start, NULL);
+	gettimeofday(&worker->end, NULL);
 	worker->queue_object = synchGetAlignedMemory(S_CACHE_LINE_SIZE, sizeof(CCQueueStruct));
 	CCQueueStructInit(worker->queue_object, threadno);
 	worker->th_state = synchGetAlignedMemory(CACHE_LINE_SIZE, sizeof(CCQueueThreadState));
