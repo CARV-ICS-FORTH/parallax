@@ -536,11 +536,12 @@ static void *prsv_put_and_reply(void *arg)
 		req = portals_worker_poll(portals_worker);
 		if (req == NULL) {
 			continue;
+			log_fatal("NOTHING IN THREAD QUEUE");
 		}
 
 		aligned_buffer_start = (void *)((uintptr_t)portals_worker_get_user_ptr(req));
 
-		log_debug("THREAD assigned event message from client %d:%d", portals_worker_get_initiator(req).phys.nid,
+		log_debug("thread assigned event message from client %d:%d", portals_worker_get_initiator(req).phys.nid,
 			  portals_worker_get_initiator(req).phys.pid);
 
 		size_t total_bytes = prsv_par_net_get_total_bytes(portals_worker_get_start(req));
@@ -559,6 +560,7 @@ static void *prsv_put_and_reply(void *arg)
 
 		struct par_net_header *reply_header =
 			par_net_call[opcode](portals_worker, portals_worker_get_start(req));
+		aligned_buffer_start = (void *)((uintptr_t)portals_worker_get_user_ptr(req));
 		workercounter = (uint32_t *)((uintptr_t)aligned_buffer_start - METADATA_SIZE + sizeof(uint32_t));
 		__atomic_fetch_add(workercounter, 1, __ATOMIC_RELAXED);
 

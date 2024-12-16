@@ -21,26 +21,32 @@
 #include "buddy_alloc.h"
 #undef BUDDY_ALLOC_IMPLEMENTATION
 
-#define EMPTY_WAIT 10
+#define EMPTY_WAIT 50
+
+struct counter {
+	uint32_t counter;
+	uint8_t padding[60];
+};
 
 struct portals_worker {
-	struct server_handle *server_handle;
+	struct counter queuecounter;
+	struct counter queuecompletedcounter;
+	ptl_md_t md;
+	sem_t empty;
+	struct timeval start;
+	struct timeval end;
 	pthread_t tid;
 	uint64_t core;
-	ptl_md_t md;
+	ptl_handle_eq_t eqh;
+	uint32_t send_buffer_size;
+	ptl_handle_md_t mdh;
+	struct server_handle *server_handle;
 	pthread_mutex_t *mutex;
 	CCQueueStruct *queue_object CACHE_ALIGN;
 	buddy_allocator_t *buddy_alloc_obj;
 	CCQueueThreadState *th_state;
-	ptl_handle_md_t mdh;
 	struct buddy *buddy;
-	ptl_handle_eq_t eqh;
 	char *send_buffer;
-	uint32_t reqs_in_queue;
-	uint32_t send_buffer_size;
-	sem_t empty;
-	struct timeval start;
-	struct timeval end;
 };
 
 size_t portals_worker_size(void)
@@ -72,18 +78,20 @@ void portals_worker_sem_post(struct portals_worker *worker)
 
 uint32_t portals_worker_get_reqs(struct portals_worker *worker)
 {
-	return worker->reqs_in_queue;
+	__atomic_load_n(&worker->queuecounter.counter, __ATOMIC_RELAXED);
+	__atomic_load_n(&worker->queuecompletedcounter.counter, __ATOMIC_RELAXED);
+	return worker->queuecounter.counter - worker->queuecompletedcounter.counter;
 }
 
 struct portals_worker_request *portals_worker_poll(struct portals_worker *worker)
 {
 	long elapsed_time =
 		(worker->end.tv_sec - worker->start.tv_sec) * 1000000L + (worker->end.tv_usec - worker->start.tv_usec);
-	log_debug("Thread %lu: Elapsed time since last event: %ld microseconds", worker->core, elapsed_time);
+	//log_debug("Thread %lu: Elapsed time since last event: %ld microseconds", worker->core, elapsed_time);
 
 	if (elapsed_time >= EMPTY_WAIT) {
-		log_debug("Thread %lu: No events in the queue for %ld microseconds, waiting on semaphore", worker->core,
-			  elapsed_time);
+		//log_debug("Thread %lu: No events in the queue for %ld microseconds, waiting on semaphore", worker->core,
+		//	  elapsed_time);
 		sem_wait(&worker->empty);
 		gettimeofday(&worker->start, NULL);
 		gettimeofday(&worker->end, NULL);
@@ -91,15 +99,15 @@ struct portals_worker_request *portals_worker_poll(struct portals_worker *worker
 
 	RetVal rawval = CCQueueApplyDequeue(worker->queue_object, worker->th_state, worker->tid);
 	if (EMPTY_QUEUE == rawval) {
-		log_debug("Thread %lu: Queue is empty, nothing to dequeue", worker->core);
+		//log_debug("Thread %lu: Queue is empty, nothing to dequeue", worker->core);
 		gettimeofday(&worker->end, NULL);
 		return NULL;
 	}
-	worker->reqs_in_queue--;
+	__atomic_fetch_add(&worker->queuecompletedcounter.counter, 1, __ATOMIC_RELAXED);
 	gettimeofday(&worker->start, NULL);
 	gettimeofday(&worker->end, NULL);
-	log_debug("Thread %lu: Successfully dequeued a request. Requests left in queue: %d", worker->core,
-		  worker->reqs_in_queue);
+	log_debug("Thread %lu: Successfully dequeued a request. Requests left in queue: %u", worker->core,
+		  portals_worker_get_reqs(worker));
 	struct portals_worker_request *req = (struct portals_worker_request *)rawval;
 	log_debug("got event in thread : %lu", worker->core);
 	return req;
@@ -108,7 +116,7 @@ struct portals_worker_request *portals_worker_poll(struct portals_worker *worker
 void portals_worker_put(struct portals_worker *worker, struct portals_worker_request *request)
 {
 	CCQueueApplyEnqueue(worker->queue_object, worker->th_state, (ArgVal)request, worker->tid);
-	worker->reqs_in_queue++;
+	__atomic_fetch_add(&worker->queuecounter.counter, 1, __ATOMIC_RELAXED);
 }
 
 struct portals_worker *portals_worker_create(struct server_handle *server_handle, uint32_t index, uint32_t threadno,
@@ -119,7 +127,6 @@ struct portals_worker *portals_worker_create(struct server_handle *server_handle
 	worker->mutex = mutex;
 	worker->core = index;
 	worker->server_handle = server_handle;
-	worker->reqs_in_queue = 0;
 	sem_init(&worker->empty, 0, 0);
 	gettimeofday(&worker->start, NULL);
 	gettimeofday(&worker->end, NULL);
@@ -139,6 +146,10 @@ struct portals_worker *portals_worker_create(struct server_handle *server_handle
 	worker->send_buffer = (char *)raw_memory + METADATA_SIZE; //0x7ffff6fb3000
 	uint32_t *worker_index = (uint32_t *)((uintptr_t)raw_memory);
 	*worker_index = index;
+
+	__atomic_store_n(&worker->queuecounter.counter, 0, __ATOMIC_RELAXED);
+	__atomic_store_n(&worker->queuecompletedcounter.counter, 0, __ATOMIC_RELAXED);
+
 	if (ret != 0) {
 		log_debug("posix_memalign failed");
 		return NULL;
@@ -147,7 +158,6 @@ struct portals_worker *portals_worker_create(struct server_handle *server_handle
 	worker->buddy = buddy_embed((void *)worker->send_buffer, PRSV_WORKER_BUF_SIZE);
 	//worker->buddy_alloc_obj = buddy_create((void *)worker->send_buffer, PRSV_WORKER_BUF_SIZE);
 	worker->eqh = eqh;
-
 	return worker;
 }
 

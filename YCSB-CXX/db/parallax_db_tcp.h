@@ -76,6 +76,8 @@ class ParallaxDBTCP : public YCSBDB {
 				db_options.db_name = (char *)db_name.c_str();
 				const char *error_message = nullptr;
 				par_handle hd = par_open(&db_options, &error_message);
+				std::cout << "Opened new db with name : " << db_options.db_name
+					  << "for thread: " << thread_id << std::endl;
 
 				if (error_message != nullptr) {
 					std::cerr << error_message << std::endl;
