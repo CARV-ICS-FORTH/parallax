@@ -130,7 +130,7 @@ struct par_handle {
 	int getfl;
 	pthread_mutex_t lock;
 	uint64_t region_id;
-
+	uint64_t start, end, total_cycles, total_time;
 	char *recv_buffer;
 	char *send_buffer;
 
@@ -351,7 +351,7 @@ void par_net_handle_destroy(par_handle handle)
 	log_debug("Destroying handle");
 
 	struct par_handle *parallax_handle = (struct par_handle *)handle;
-	/*PtlMDRelease(parallax_handle->mdh);
+	PtlMDRelease(parallax_handle->mdh);
 	PtlEQFree(parallax_handle->eqh);
 	PtlPTFree(parallax_handle->nih, parallax_handle->ptindex);
 	PtlNIFini(parallax_handle->nih);
@@ -361,7 +361,7 @@ void par_net_handle_destroy(par_handle handle)
 	if (parallax_handle->configuration[PARALLAX_SERVER].value)
 		free((void *)parallax_handle->configuration[PARALLAX_SERVER].value);
 	free(parallax_handle->configuration);
-	free(parallax_handle);*/
+	free(parallax_handle);
 	log_debug("Destroyed handle Bye Bye not null");
 }
 #else
@@ -531,7 +531,7 @@ par_handle par_open(par_db_options *db_options, const char **error_message)
 	struct par_handle *parallax_handle =
 		(struct par_handle *)par_net_init((const char *)configuration[PARALLAX_SERVER].value);
 	parallax_handle->configuration = configuration;
-
+	parallax_handle->total_cycles = 0;
 	size_t msg_len = par_net_open_req_calc_size(par_net_get_size(db_options->db_name)) + par_net_header_calc_size();
 	if (msg_len > parallax_handle->send_buffer_size) {
 		log_fatal("Send buffer too small has: %u B needs %lu B", parallax_handle->send_buffer_size, msg_len);
@@ -753,6 +753,13 @@ enum kv_category get_kv_category(int32_t key_size, int32_t value_size, request_t
 	(void)error_message;
 	return 0;
 }
+static inline uint64_t rdtsc(void)
+{
+	unsigned int lo, hi;
+	__asm__ __volatile__("rdtsc" : "=a"(lo), "=d"(hi));
+	return ((uint64_t)hi << 32) | lo;
+}
+#define ITERATIONS 100
 
 #ifdef PORTALS
 struct par_put_metadata par_put(par_handle handle, struct par_key_value *key_value, const char **error_message)
@@ -784,15 +791,29 @@ struct par_put_metadata par_put(par_handle handle, struct par_key_value *key_val
 
 	struct timeval start, end;
 	gettimeofday(&start, NULL);
+	parallax_handle->start = rdtsc();
 	ssize_t bytes_received =
 		par_portals_RPC(parallax_handle, parallax_handle->send_buffer, msg_len, &parallax_handle->recv_buffer);
+	parallax_handle->end = rdtsc();
 	gettimeofday(&end, NULL);
-	if (parallax_handle->putfl <= 4) {
+	if (parallax_handle->putfl < ITERATIONS) {
+		parallax_handle->total_time +=
+			((end.tv_sec * 1000000 + end.tv_usec) - (start.tv_sec * 1000000 + start.tv_usec));
 		printf("PAR_PUT takes %ld usec\n",
 		       ((end.tv_sec * 1000000 + end.tv_usec) - (start.tv_sec * 1000000 + start.tv_usec)));
 		printf("msg_len = %lu, bytes_received = %lu\n\n", msg_len, bytes_received);
+		parallax_handle->total_cycles += (parallax_handle->end - parallax_handle->start);
+		parallax_handle->putfl++;
+
+	} else if (parallax_handle->putfl != ITERATIONS + 100) {
+		printf("avrg PAR_PUT cycles after %d iterations = %lu\n", ITERATIONS,
+		       parallax_handle->total_cycles / ITERATIONS);
+		printf("avrg PAR_PUT time after %d iterations = %lu usec\n", ITERATIONS,
+		       parallax_handle->total_time / ITERATIONS);
+		parallax_handle->total_cycles = 0;
+		parallax_handle->total_time = 0;
+		parallax_handle->putfl = ITERATIONS + 100;
 	}
-	parallax_handle->putfl++;
 	if (0 == bytes_received) {
 		*error_message = "Communication with server failed";
 		struct par_put_metadata sample_return_value = { 0 };
@@ -905,18 +926,32 @@ void par_get(par_handle handle, struct par_key *key, struct par_value *value, co
 		log_fatal("Failed to create get request");
 		_exit(EXIT_FAILURE);
 	}
+
 	struct timeval start, end;
 	gettimeofday(&start, NULL);
+	parallax_handle->start = rdtsc();
 	ssize_t bytes_received =
 		par_portals_RPC(parallax_handle, parallax_handle->send_buffer, msg_len, &parallax_handle->recv_buffer);
+	parallax_handle->end = rdtsc();
 	gettimeofday(&end, NULL);
-	if (parallax_handle->getfl <= 4) {
+	if (parallax_handle->getfl < ITERATIONS) {
+		parallax_handle->total_time +=
+			((end.tv_sec * 1000000 + end.tv_usec) - (start.tv_sec * 1000000 + start.tv_usec));
 		printf("PAR_GET takes %ld usec\n",
 		       ((end.tv_sec * 1000000 + end.tv_usec) - (start.tv_sec * 1000000 + start.tv_usec)));
 		printf("msg_len = %lu, bytes_received = %lu\n\n", msg_len, bytes_received);
-	}
-	parallax_handle->getfl++;
+		parallax_handle->total_cycles += (parallax_handle->end - parallax_handle->start);
+		parallax_handle->getfl++;
 
+	} else if (parallax_handle->getfl != ITERATIONS + 100) {
+		printf("avrg PAR_GET cycles after %d iterations = %lu\n", ITERATIONS,
+		       parallax_handle->total_cycles / ITERATIONS);
+		printf("avrg PAR_GET time after %d iterations = %lu usec\n", ITERATIONS,
+		       parallax_handle->total_time / ITERATIONS);
+		parallax_handle->total_cycles = 0;
+		parallax_handle->total_time = 0;
+		parallax_handle->getfl = ITERATIONS + 100;
+	}
 	if (0 == bytes_received) {
 		*error_message = "Communication with server failed";
 		return;
