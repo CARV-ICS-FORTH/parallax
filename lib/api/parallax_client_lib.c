@@ -51,7 +51,7 @@ char msg[PTL_EV_STR_SIZE];
 #include <string.h>
 #include <unistd.h>
 
-#define ENABLE_METRICS
+//#define ENABLE_METRICS
 
 struct par_net_header {
 	uint32_t total_bytes;

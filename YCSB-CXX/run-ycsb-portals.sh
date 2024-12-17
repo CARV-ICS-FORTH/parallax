@@ -11,7 +11,7 @@ rm -rf RESULTS/*
 for i in {1..32}; do
 	echo "Starting iteration $i..."
 
-	./ycsb-net -p /app/par.dat -insertStart 0 -clientProcesses 1 -stats on -o "./RESULTS/RESULTS$i" &
+	./ycsb-net -p /app/par.dat -insertStart 0 -clientProcesses 1 -stats on -o "./RESULTS/RESULTS$i/" &
 	PROCESS_PID=$!
 
 	if ! kill -0 "$PROCESS_PID" 2>/dev/null; then
