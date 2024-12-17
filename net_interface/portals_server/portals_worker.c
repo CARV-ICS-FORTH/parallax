@@ -21,7 +21,7 @@
 #include "buddy_alloc.h"
 #undef BUDDY_ALLOC_IMPLEMENTATION
 
-#define EMPTY_WAIT 50
+#define EMPTY_WAIT 100
 
 struct counter {
 	uint32_t counter;
@@ -33,9 +33,9 @@ struct portals_worker {
 	struct counter queuecompletedcounter;
 	ptl_md_t md;
 	sem_t empty;
-	struct timeval start;
-	struct timeval end;
 	pthread_t tid;
+	uint64_t start;
+	uint64_t end;
 	uint64_t core;
 	ptl_handle_eq_t eqh;
 	uint32_t send_buffer_size;
@@ -83,29 +83,35 @@ uint32_t portals_worker_get_reqs(struct portals_worker *worker)
 	return worker->queuecounter.counter - worker->queuecompletedcounter.counter;
 }
 
+static inline uint64_t rdtsc(void)
+{
+	unsigned int lo, hi;
+	__asm__ __volatile__("rdtsc" : "=a"(lo), "=d"(hi));
+	return ((uint64_t)hi << 32) | lo;
+}
+#define CPU_FREQ_HZ 2300000000UL
+
 struct portals_worker_request *portals_worker_poll(struct portals_worker *worker)
 {
-	long elapsed_time =
-		(worker->end.tv_sec - worker->start.tv_sec) * 1000000L + (worker->end.tv_usec - worker->start.tv_usec);
-	//log_debug("Thread %lu: Elapsed time since last event: %ld microseconds", worker->core, elapsed_time);
+	long elapsed_time = (worker->end - worker->start) / CPU_FREQ_HZ;
+	//log_debug("Thread %lu: Elapsed time since last event: %ld usec", worker->core, elapsed_time);
 
 	if (elapsed_time >= EMPTY_WAIT) {
-		//log_debug("Thread %lu: No events in the queue for %ld microseconds, waiting on semaphore", worker->core,
-		//	  elapsed_time);
+		//log_debug("Thread %lu: empty queue for %ld usec, waiting on semaphore", worker->core, elapsed_time);
 		sem_wait(&worker->empty);
-		gettimeofday(&worker->start, NULL);
-		gettimeofday(&worker->end, NULL);
+		worker->start = rdtsc();
+		worker->end = worker->start;
 	}
 
 	RetVal rawval = CCQueueApplyDequeue(worker->queue_object, worker->th_state, worker->tid);
 	if (EMPTY_QUEUE == rawval) {
 		//log_debug("Thread %lu: Queue is empty, nothing to dequeue", worker->core);
-		gettimeofday(&worker->end, NULL);
+		worker->end = rdtsc();
 		return NULL;
 	}
 	__atomic_fetch_add(&worker->queuecompletedcounter.counter, 1, __ATOMIC_RELAXED);
-	gettimeofday(&worker->start, NULL);
-	gettimeofday(&worker->end, NULL);
+	worker->start = rdtsc();
+	worker->end = worker->start;
 	log_debug("Thread %lu: Successfully dequeued a request. Requests left in queue: %u", worker->core,
 		  portals_worker_get_reqs(worker));
 	struct portals_worker_request *req = (struct portals_worker_request *)rawval;
@@ -128,8 +134,8 @@ struct portals_worker *portals_worker_create(struct server_handle *server_handle
 	worker->core = index;
 	worker->server_handle = server_handle;
 	sem_init(&worker->empty, 0, 0);
-	gettimeofday(&worker->start, NULL);
-	gettimeofday(&worker->end, NULL);
+	worker->start = rdtsc();
+	worker->end = worker->start;
 	worker->queue_object = synchGetAlignedMemory(S_CACHE_LINE_SIZE, sizeof(CCQueueStruct));
 	CCQueueStructInit(worker->queue_object, threadno);
 	worker->th_state = synchGetAlignedMemory(CACHE_LINE_SIZE, sizeof(CCQueueThreadState));
