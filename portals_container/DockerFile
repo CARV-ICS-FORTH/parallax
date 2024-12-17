@@ -47,14 +47,14 @@ RUN apt-get update \
       && ln -s /opt/cmake-3.24.1/bin/* /usr/local/bin
 
 WORKDIR /app
-RUN echo "cmake -DBDB_PATH=/lib/x86_64-linux-gnu -DNET=portals -DPORTALS_LIB_DIR=/app/portails4/build/portals -DPORTALS_INCLUDE_DIR=/app/portails4/portals/include -DQUEUE_LIB=/app/queuelib/Synch/lib -DCMAKE_BUILD_TYPE=Release -DDISABLE_LOGGING=ON -DMOCKUP=ON -DENABLE_FLTO=ON ../" > /app/useful_commands && \
-    echo "cmake -DBDB_PATH=/lib/x86_64-linux-gnu -DNET=portals -DPORTALS_LIB_DIR=/app/portails4/build/portals -DPORTALS_INCLUDE_DIR=/app/portails4/portals/include -DQUEUE_LIB=/app/queuelib/Synch/lib -DCMAKE_BUILD_TYPE=Debug -DMOCKUP=ON -DENABLE_FLTO=ON ../" > /app/useful_commands && \
-    echo "docker cp 4bed50ef18c1:/app/parallax/build/lib/profile_results/flamegraph.svg ./" >> /app/useful_commands && \
-    echo "./portals_parallax_server -t 1 -f /app/par.dat -L0 4 -GF 4 -pf" >> /app/useful_commands && \
-    echo "export SERVER_NID=120 CLIENT_NID=121 NET_IP=192.168.4.121" >> /app/useful_commands && \
-    echo "./ycsb-net -p /app/par.dat -insertStart 0 -clientProcesses 4 -stats on" >> /app/useful_commands && \
-    echo "./tiresias --file=/app/par.dat --num_of_kvs=10000 --BDB_file=here.txt" >> /app/useful_commands && \
-    echo "./simple_test_delete --file=/app/par.dat --num_of_kvs=1000" >> /app/useful_commands
+RUN echo "\ncmake -DBDB_PATH=/lib/x86_64-linux-gnu -DNET=portals -DPORTALS_LIB_DIR=/app/portails4/build/portals -DPORTALS_INCLUDE_DIR=/app/portails4/portals/include -DQUEUE_LIB=/app/queuelib/Synch/lib -DCMAKE_BUILD_TYPE=Release -DDISABLE_LOGGING=ON -DMOCKUP=ON -DENABLE_FLTO=ON ../" > /app/useful_commands && \
+    echo "\ncmake -DBDB_PATH=/lib/x86_64-linux-gnu -DNET=portals -DPORTALS_LIB_DIR=/app/portails4/build/portals -DPORTALS_INCLUDE_DIR=/app/portails4/portals/include -DQUEUE_LIB=/app/queuelib/Synch/lib -DCMAKE_BUILD_TYPE=Debug -DMOCKUP=ON -DENABLE_FLTO=ON ../" >> /app/useful_commands && \
+    echo "\ndocker cp 4bed50ef18c1:/app/parallax/build/lib/profile_results/flamegraph.svg ./" >> /app/useful_commands && \
+    echo "\n./portals_parallax_server -t 1 -f /app/par.dat -L0 4 -GF 4 -pf" >> /app/useful_commands && \
+    echo "\nexport SERVER_NID=120 CLIENT_NID=121 NET_IP=192.168.4.121" >> /app/useful_commands && \
+    echo "\n./ycsb-net -p /app/par.dat -insertStart 0 -clientProcesses 4 -stats on" >> /app/useful_commands && \
+    echo "\n./tiresias --file=/app/par.dat --num_of_kvs=10000 --BDB_file=here.txt" >> /app/useful_commands && \
+    echo "\n./simple_test_delete --file=/app/par.dat --num_of_kvs=1000" >> /app/useful_commands
 
 # Clone build the portals4 repository , set environment variable
 RUN git clone https://github.com/CARV-ICS-FORTH/portails4.git
