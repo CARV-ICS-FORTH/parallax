@@ -16,12 +16,13 @@
 #include <stdlib.h>
 #include <sys/time.h>
 #include <sys/types.h>
+#include <x86intrin.h>
 
 #define BUDDY_ALLOC_IMPLEMENTATION
 #include "buddy_alloc.h"
 #undef BUDDY_ALLOC_IMPLEMENTATION
 
-#define EMPTY_WAIT 100
+#define EMPTY_WAIT 1000
 
 struct counter {
 	uint32_t counter;
@@ -83,13 +84,7 @@ uint32_t portals_worker_get_reqs(struct portals_worker *worker)
 	return worker->queuecounter.counter - worker->queuecompletedcounter.counter;
 }
 
-static inline uint64_t rdtsc(void)
-{
-	unsigned int lo, hi;
-	__asm__ __volatile__("rdtsc" : "=a"(lo), "=d"(hi));
-	return ((uint64_t)hi << 32) | lo;
-}
-#define CPU_FREQ_HZ 2300000000UL
+#define CPU_FREQ_HZ 2300
 
 struct portals_worker_request *portals_worker_poll(struct portals_worker *worker)
 {
@@ -97,20 +92,21 @@ struct portals_worker_request *portals_worker_poll(struct portals_worker *worker
 	//log_debug("Thread %lu: Elapsed time since last event: %ld usec", worker->core, elapsed_time);
 
 	if (elapsed_time >= EMPTY_WAIT) {
-		//log_debug("Thread %lu: empty queue for %ld usec, waiting on semaphore", worker->core, elapsed_time);
+		log_debug("Thread %lu: empty queue for %ld usec, waiting on semaphore", worker->core, elapsed_time);
 		sem_wait(&worker->empty);
-		worker->start = rdtsc();
+		worker->start = __rdtsc();
+		;
 		worker->end = worker->start;
 	}
 
 	RetVal rawval = CCQueueApplyDequeue(worker->queue_object, worker->th_state, worker->tid);
 	if (EMPTY_QUEUE == rawval) {
 		//log_debug("Thread %lu: Queue is empty, nothing to dequeue", worker->core);
-		worker->end = rdtsc();
+		worker->end = __rdtsc();
 		return NULL;
 	}
 	__atomic_fetch_add(&worker->queuecompletedcounter.counter, 1, __ATOMIC_RELAXED);
-	worker->start = rdtsc();
+	worker->start = __rdtsc();
 	worker->end = worker->start;
 	log_debug("Thread %lu: Successfully dequeued a request. Requests left in queue: %u", worker->core,
 		  portals_worker_get_reqs(worker));
@@ -134,7 +130,7 @@ struct portals_worker *portals_worker_create(struct server_handle *server_handle
 	worker->core = index;
 	worker->server_handle = server_handle;
 	sem_init(&worker->empty, 0, 0);
-	worker->start = rdtsc();
+	worker->start = __rdtsc();
 	worker->end = worker->start;
 	worker->queue_object = synchGetAlignedMemory(S_CACHE_LINE_SIZE, sizeof(CCQueueStruct));
 	CCQueueStructInit(worker->queue_object, threadno);

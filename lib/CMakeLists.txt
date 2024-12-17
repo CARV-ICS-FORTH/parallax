@@ -214,6 +214,10 @@ if(PORTALS_LIB AND QUEUE_LIB_FOUND)
   set(FLAMEGRAPH_SCRIPT
       "${CMAKE_CURRENT_SOURCE_DIR}/../net_interface/portals_server/profile_flamegraph.sh"
   )
+  set(SRV_RUN
+      "${CMAKE_CURRENT_SOURCE_DIR}/../net_interface/portals_server/run_portals_srv.sh"
+  )
+
   set(FLAMEGRAPH_DESTINATION "${CMAKE_BINARY_DIR}/lib/")
 
   add_custom_command(
@@ -223,6 +227,13 @@ if(PORTALS_LIB AND QUEUE_LIB_FOUND)
             ${FLAMEGRAPH_DESTINATION}
     COMMENT "Copying profile_flamegraph.sh to ${FLAMEGRAPH_DESTINATION}")
   message(STATUS "Added custom command to copy profile_flamegraph.sh")
+
+  add_custom_command(
+    TARGET ${PORT_LIB}
+    POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy ${SRV_RUN} ${FLAMEGRAPH_DESTINATION}
+    COMMENT "Copying run_portals_srv.sh to ${FLAMEGRAPH_DESTINATION}")
+  message(STATUS "Added custom command to copy run_portals_srv.sh")
 elseif()
   message(
     WARNING

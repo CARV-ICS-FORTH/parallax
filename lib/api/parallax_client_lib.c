@@ -25,6 +25,7 @@
 #include <pthread.h>
 #include <stdio.h>
 #include <sys/time.h>
+#include <x86intrin.h>
 
 //#define PORTALS
 #ifdef PORTALS
@@ -742,14 +743,9 @@ enum kv_category get_kv_category(int32_t key_size, int32_t value_size, request_t
 	return 0;
 }
 #ifdef ENABLE_METRICS
-static inline uint64_t rdtsc(void)
-{
-	unsigned int lo, hi;
-	__asm__ __volatile__("rdtsc" : "=a"(lo), "=d"(hi));
-	return ((uint64_t)hi << 32) | lo;
-}
+
 #define ITERATIONS 100
-#define CPU_FREQ_HZ 2300000000UL
+#define CPU_FREQ_HZ 2300
 #endif
 
 #ifdef PORTALS
@@ -779,10 +775,10 @@ struct par_put_metadata par_put(par_handle handle, struct par_key_value *key_val
 		_exit(EXIT_FAILURE);
 	}
 #ifdef ENABLE_METRICS
-	parallax_handle->start = rdtsc();
+	parallax_handle->start = __rdtsc();
 	ssize_t bytes_received =
 		par_portals_RPC(parallax_handle, parallax_handle->send_buffer, msg_len, &parallax_handle->recv_buffer);
-	parallax_handle->end = rdtsc();
+	parallax_handle->end = __rdtsc();
 
 	if (parallax_handle->putfl < ITERATIONS) {
 		parallax_handle->total_time += (parallax_handle->end - parallax_handle->start) / CPU_FREQ_HZ;
@@ -916,10 +912,10 @@ void par_get(par_handle handle, struct par_key *key, struct par_value *value, co
 	}
 #ifdef ENABLE_METRICS
 
-	parallax_handle->start = rdtsc();
+	parallax_handle->start = __rdtsc();
 	ssize_t bytes_received =
 		par_portals_RPC(parallax_handle, parallax_handle->send_buffer, msg_len, &parallax_handle->recv_buffer);
-	parallax_handle->end = rdtsc();
+	parallax_handle->end = __rdtsc();
 
 	if (parallax_handle->getfl < ITERATIONS) {
 		parallax_handle->total_time += (parallax_handle->end - parallax_handle->start) / CPU_FREQ_HZ;
