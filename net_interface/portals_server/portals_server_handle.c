@@ -584,13 +584,7 @@ void worker_scheduler(struct server_handle *server_handle)
 	}
 	struct portals_worker *worker = server_handle->portals_workers[server_handle->thread_to_queue];
 	portals_worker_put(worker, portals_worker_create_req(server_handle->event));
-
-	if (0 == portals_worker_get_sem_val(worker)) {
-		portals_worker_sem_post(worker);
-		log_debug("Waking up Thread %d", server_handle->thread_to_queue);
-	} else {
-		log_debug("Thread %d: Semaphore Already posted", server_handle->thread_to_queue);
-	}
+	portals_worker_notify(worker);
 
 	server_handle->thread_to_queue++;
 	return;

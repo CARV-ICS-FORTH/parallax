@@ -34,6 +34,7 @@ struct portals_worker {
 	struct counter queuecompletedcounter;
 	ptl_md_t md;
 	sem_t empty;
+	atomic_int notified;
 	pthread_t tid;
 	uint64_t start;
 	uint64_t end;
@@ -65,16 +66,15 @@ void portals_worker_unlock(struct portals_worker *worker)
 	pthread_mutex_unlock(worker->mutex);
 }
 
-int portals_worker_get_sem_val(struct portals_worker *worker)
+void portals_worker_notify(struct portals_worker *worker)
 {
-	int ret;
-	sem_getvalue(&worker->empty, &ret);
-	return ret;
-}
-
-void portals_worker_sem_post(struct portals_worker *worker)
-{
-	sem_post(&worker->empty);
+	int expected = 0;
+	if (atomic_compare_exchange_strong(&worker->notified, &expected, 1)) {
+		sem_post(&worker->empty);
+		log_debug("Thread %lu: Notified (Posting semaphore)", worker->core);
+	} else {
+		log_debug("Thread %lu: Already notified (skipping sem_post)", worker->core);
+	}
 }
 
 uint32_t portals_worker_get_reqs(struct portals_worker *worker)
@@ -94,8 +94,8 @@ struct portals_worker_request *portals_worker_poll(struct portals_worker *worker
 	if (elapsed_time >= EMPTY_WAIT) {
 		log_debug("Thread %lu: empty queue for %ld usec, waiting on semaphore", worker->core, elapsed_time);
 		sem_wait(&worker->empty);
+		atomic_store(&worker->notified, 0);
 		worker->start = __rdtsc();
-		;
 		worker->end = worker->start;
 	}
 

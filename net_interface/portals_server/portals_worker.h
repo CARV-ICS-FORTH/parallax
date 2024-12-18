@@ -12,9 +12,7 @@ void portals_worker_lock(struct portals_worker *worker);
 
 void portals_worker_unlock(struct portals_worker *worker);
 
-int portals_worker_get_sem_val(struct portals_worker *worker);
-
-void portals_worker_sem_post(struct portals_worker *worker);
+void portals_worker_notify(struct portals_worker *worker);
 
 uint32_t portals_worker_get_reqs(struct portals_worker *worker);
 
