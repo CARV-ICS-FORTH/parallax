@@ -91,8 +91,10 @@ trap cleanup SIGINT
 
 start_stats
 
+rm -rf out.txt
+
 echo "Starting server..."
-./portals_parallax_server -t $NUM_THREAD -f /app/par.dat -L0 4 -GF 4 -pf &
+./portals_parallax_server -t $NUM_THREAD -f /app/par.dat -L0 4 -GF 4 -pf >out.txt 2>&1 &
 SERVER_PID=$!
 
 echo "Server running... Press Ctrl+C to stop."

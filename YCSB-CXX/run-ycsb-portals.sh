@@ -102,7 +102,9 @@ PIDS=()
 for i in $(seq 1 $NUM_PROCESSES); do
 	echo "Starting iteration $i..."
 
-	./ycsb-net -p /app/par.dat -insertStart 0 -clientProcesses 1 -stats on -o "./RESULTS/RESULTS$i/" &
+	rm -rf out.txt
+
+	./ycsb-net -p /app/par.dat -insertStart 0 -clientProcesses 1 -stats on -o "./RESULTS/RESULTS$i/" >out.txt 2>&1 &
 	PROCESS_PID=$!
 
 	PIDS+=("$PROCESS_PID")
