@@ -581,6 +581,8 @@ void worker_scheduler(struct server_handle *server_handle)
 		server_handle->thread_to_queue++;
 		if (server_handle->thread_to_queue == server_handle->opts->threadno)
 			server_handle->thread_to_queue = 0;
+		//TODO: At this point if all threads are full instead of iterating over and over again,
+		// we can just choose one random thread or choose the one with the least requests.
 	}
 	struct portals_worker *worker = server_handle->portals_workers[server_handle->thread_to_queue];
 	portals_worker_put(worker, portals_worker_create_req(server_handle->event));
@@ -613,7 +615,7 @@ static int prsv_handle_event(struct server_handle *server_handle)
 		while (__atomic_load_n(pollercounter, __ATOMIC_RELAXED) -
 		       __atomic_load_n(workercounter, __ATOMIC_RELAXED)) {
 			log_debug("buffer busy... waiting for data to be consumed");
-			prsv_print_counters(server_handle);
+			//prsv_print_counters(server_handle);
 		}
 		log_debug("buffer is consumed clear data...");
 		prsv_append_me_for_unlink_event(server_handle, aligned_buffer_start);
