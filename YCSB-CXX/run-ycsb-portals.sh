@@ -86,6 +86,9 @@ cleanup() {
 	exit
 }
 
+rm -rf out.txt
+rm -rf RESULTS/*
+
 start_stats
 
 trap 'echo "Interrupt signal received. Killing all processes..."; kill 0; exit 1' SIGINT
@@ -96,13 +99,10 @@ cleanup_2() {
 	exit 1
 }
 
-rm -rf RESULTS/*
 PIDS=()
 
 for i in $(seq 1 $NUM_PROCESSES); do
 	echo "Starting iteration $i..."
-
-	rm -rf out.txt
 
 	./ycsb-net -p /app/par.dat -insertStart 0 -clientProcesses 1 -stats on -o "./RESULTS/RESULTS$i/" >out.txt 2>&1 &
 	PROCESS_PID=$!
