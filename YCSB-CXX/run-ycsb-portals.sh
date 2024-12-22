@@ -104,16 +104,18 @@ PIDS=()
 for i in $(seq 1 $NUM_PROCESSES); do
 	echo "Starting iteration $i..."
 
-	./ycsb-net -p /app/par.dat -insertStart 0 -clientProcesses 1 -stats on -o "./RESULTS/RESULTS$i/" >out.txt 2>&1 &
+	LOG_FILE="./RESULTS/RESULTS$i/sanitizer_log.txt"
+	mkdir -p "./RESULTS/RESULTS$i/"
+	./ycsb-net -p /app/par.dat -insertStart 0 -clientProcesses 1 -stats on -o "./RESULTS/RESULTS$i/" >"$LOG_FILE" 2>&1 &
 	PROCESS_PID=$!
 
 	PIDS+=("$PROCESS_PID")
 
 	if ! kill -0 "$PROCESS_PID" 2>/dev/null; then
+		echo "Process $i (PID: $PROCESS_PID) failed to start."
 		cleanup_2
 	fi
 done
-
 for PID in "${PIDS[@]}"; do
 	if ! wait "$PID"; then
 		echo "Process $PID failed. Exiting."

@@ -5,7 +5,7 @@ IMAGE_NAME="bull_portals"
 DOCKERFILE="DockerFile"
 HOST_DIR="/tmp/par.dat"
 CONTAINER_DIR="/app/par.dat"
-PARALLAX_DIR="/spare/thodp/parallax"
+PARALLAX_DIR="../../parallax"
 
 echo "Creating and allocating file: $HOST_FILE"
 fallocate -l 10G $"$HOST_DIR"
