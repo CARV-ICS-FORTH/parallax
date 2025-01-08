@@ -101,7 +101,7 @@ parallax_server: <server_hostname>:<server_port>, where Parallax server runs.
 
 You can consult the [Parallax_Portals](docs/parallax_portals.md) file, which explains how the Portals server is structured.
 
-# Parallax Server Overview
+# Parallax TCP/IP Server Overview
 
 Multiple clients can access Parallax through the Parallax server. The current
 implementation uses TCP/IP sockets with a custom wire protocol. Parallax server

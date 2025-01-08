@@ -78,10 +78,10 @@ length - local offset falls below this value, the match
 list entry automatically unlinks.
 
 ## Matching flow
-![matchflow](https://drive.google.com/file/d/19eAiEvNK1bc_OB2afQ29K81P-HRudtlm/view?usp=drive_link)
+![matchflow](https://github.com/Thodorhs/pictures/blob/main/matchflow.jpg?raw=true)
 
 ## The whole picture
-![wholepic](https://drive.google.com/file/d/13oWIMZSKghnxjEg8925eQ2cgPP1l-nLF/view?usp=drive_link)
+![wholepic](https://github.com/Thodorhs/pictures/blob/main/wholepic.jpg?raw=true)
 
 # Portals Parallax Server
 
@@ -153,6 +153,6 @@ Each request holds information about:
 
 ## The whole Parallax Portals Server picture.
 
-![wholeserverpic](https://drive.google.com/file/d/1RhUW6IY8iBjMSuef10mERjOMz0SGCzAG/view?usp=drive_link)
+![wholeserverpic](https://github.com/Thodorhs/pictures/blob/main/server_pic.jpg?raw=true)
 
 *CARV ICS-FORTH, Theodoros Pontzouktzidis*
