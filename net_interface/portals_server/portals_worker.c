@@ -1,5 +1,4 @@
 #include "portals_worker.h"
-#include "buddy_allocator.h"
 #include "ccqueue.h"
 #include "config.h"
 #include "log.h"
@@ -45,7 +44,6 @@ struct portals_worker {
 	struct server_handle *server_handle;
 	pthread_mutex_t *mutex;
 	CCQueueStruct *queue_object CACHE_ALIGN;
-	buddy_allocator_t *buddy_alloc_obj;
 	CCQueueThreadState *th_state;
 	struct buddy *buddy;
 	char *send_buffer;
@@ -158,7 +156,6 @@ struct portals_worker *portals_worker_create(struct server_handle *server_handle
 	}
 	worker->send_buffer_size = PRSV_WORKER_BUF_SIZE;
 	worker->buddy = buddy_embed((void *)worker->send_buffer, PRSV_WORKER_BUF_SIZE);
-	//worker->buddy_alloc_obj = buddy_create((void *)worker->send_buffer, PRSV_WORKER_BUF_SIZE);
 	worker->eqh = eqh;
 	return worker;
 }
@@ -166,7 +163,6 @@ struct portals_worker *portals_worker_create(struct server_handle *server_handle
 char *portals_worker_get_buffer(struct portals_worker *worker, uint32_t total_bytes)
 {
 	void *buff = buddy_malloc(worker->buddy, total_bytes);
-	//void *buff = buddy_allocator_alloc(worker->buddy_alloc_obj, total_bytes);
 	if (buff == NULL) {
 		log_fatal("buddy_allocator returned NULL buffer");
 		exit(EXIT_FAILURE);
@@ -220,5 +216,4 @@ void portals_worker_send_reply_buff(struct portals_worker *worker, struct par_ne
 void portals_worker_free_buf(struct portals_worker *worker, void *buf_start)
 {
 	buddy_free(worker->buddy, buf_start);
-	//buddy_allocator_free(worker->buddy_alloc_obj, buf_start);
 }
