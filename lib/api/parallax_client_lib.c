@@ -563,9 +563,6 @@ par_handle par_open(par_db_options *db_options, const char **error_message)
 	}
 	struct par_net_header *reply_header = (struct par_net_header *)parallax_handle->recv_buffer;
 	assert(reply_header->opcode == OPCODE_OPEN);
-	printf("AAAAAAAAAAAAAAAAAAAAAAAAAA\n");
-	printf("%d\n", parallax_handle->recv_buffer[par_net_header_calc_size()]);
-	printf("OOOOOOOOOOOOOOOOOOOOOOOOO\n");
 	par_handle ret_handle =
 		par_net_open_rep_handle_reply(&parallax_handle->recv_buffer[par_net_header_calc_size()]);
 

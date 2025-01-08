@@ -24,7 +24,7 @@ class YCSBDB {
 	/// Initializes any state for accessing this DB.
 	/// Called once per DB client (thread); there is a single DB instance globally.
 	///
-	virtual void Init(std::string name)
+	virtual void Init()
 	{
 	}
 	///

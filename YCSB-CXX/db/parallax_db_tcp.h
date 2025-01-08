@@ -31,7 +31,6 @@ extern "C" {
 }
 #define MAX_THREADS_NUM 128U
 #define GET_BUFFER_SIZE 262144U
-#define DB_NAME_LENGTH 8
 
 using std::cout;
 using std::endl;
@@ -47,7 +46,6 @@ class ParallaxDBTCP : public YCSBDB {
 	std::mutex db_mutex;
 
     public:
-	std::string name;
 	ParallaxDBTCP(int num, utils::Properties &props)
 		: db_num(num)
 		, field_count(std::stoi(
@@ -58,25 +56,6 @@ class ParallaxDBTCP : public YCSBDB {
 
 	virtual ~ParallaxDBTCP()
 	{
-	}
-	char *generate_random_db_name(void)
-	{
-		static const char alphanum[] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-		char *random_str = (char *)malloc(DB_NAME_LENGTH + 1);
-		if (random_str == NULL) {
-			perror("Failed to allocate memory for random DB name");
-			exit(EXIT_FAILURE);
-		}
-
-		unsigned int seed = time(NULL) ^ (unsigned int)getpid();
-		srand(seed);
-
-		for (int i = 0; i < DB_NAME_LENGTH; i++) {
-			random_str[i] = alphanum[random() % (sizeof(alphanum) - 1)];
-		}
-		random_str[DB_NAME_LENGTH] = '\0';
-
-		return random_str;
 	}
 
     private:
@@ -93,7 +72,7 @@ class ParallaxDBTCP : public YCSBDB {
 			db_options.create_flag = PAR_CREATE_DB;
 			db_options.options = par_get_default_options();
 			for (int i = 0; i < db_num; ++i) {
-				std::string db_name = this->name;
+				std::string db_name = "data" + std::to_string(i) + ".dat";
 				db_options.db_name = (char *)db_name.c_str();
 				const char *error_message = nullptr;
 				par_handle hd = par_open(&db_options, &error_message);
@@ -112,9 +91,8 @@ class ParallaxDBTCP : public YCSBDB {
 	}
 
     public:
-	void Init(std::string name)
+	void Init()
 	{
-		this->name = name;
 		std::lock_guard<std::mutex> lock(db_mutex);
 		for (unsigned int i = 0; i < MAX_THREADS_NUM; ++i) {
 			// Pre-populate the map with empty vectors, keys being thread ids

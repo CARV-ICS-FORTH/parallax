@@ -158,7 +158,6 @@ void execute_load(utils::Properties &props, ycsbc::YCSBDB *db)
 	wl.Init(props);
 
 	const int num_threads = stoi(props.GetProperty("threadcount", "1"));
-	std::string name = props.GetProperty("dbname", "1");
 	std::atomic_bool cancellation_token(false);
 	std::vector<uint64_t> ops_data;
 
@@ -175,7 +174,7 @@ void execute_load(utils::Properties &props, ycsbc::YCSBDB *db)
 	uint64_t total_ops = std::stoull(props[ycsbc::CoreWorkload::RECORD_COUNT_PROPERTY]);
 	total_ops /= std::stoull(props.GetProperty("clientProcesses", "1"));
 	gettimeofday(&start, NULL);
-	db->Init(name);
+	db->Init();
 	gettimeofday(&end, NULL);
 	printf("Init DB takes %ld usec\n",
 	       ((end.tv_sec * 1000000 + end.tv_usec) - (start.tv_sec * 1000000 + start.tv_usec)));
@@ -231,7 +230,6 @@ void execute_run(utils::Properties &props, ycsbc::YCSBDB *db)
 	wl.Init(props);
 
 	const int num_threads = stoi(props.GetProperty("threadcount", "1"));
-	std::string name = props.GetProperty("dbname", "1");
 	std::atomic_bool cancellation_token(false);
 	std::vector<uint64_t> ops_data;
 	std::vector<uint64_t> finished;
@@ -246,7 +244,7 @@ void execute_run(utils::Properties &props, ycsbc::YCSBDB *db)
 	uint64_t total_ops = std::stoull(props[ycsbc::CoreWorkload::OPERATION_COUNT_PROPERTY]);
 
 	gettimeofday(&start, NULL);
-	db->Init(name);
+	db->Init();
 	gettimeofday(&end, NULL);
 	printf("Init DB takes %ld usec\n",
 	       ((end.tv_sec * 1000000 + end.tv_usec) - (start.tv_sec * 1000000 + start.tv_usec)));
@@ -410,14 +408,6 @@ void ParseCommandLine(int argc, const char *argv[], utils::Properties &props)
 				_Exit(-1);
 			}
 			db_num = std::atoi(argv[argindex]);
-			argindex++;
-		} else if (strcmp(argv[argindex], "-dbname") == 0) { // New dbname property
-			argindex++;
-			if (argindex >= argc) {
-				UsageMessage(argv[0]);
-				_Exit(-1);
-			}
-			props.SetProperty("dbname", argv[argindex]); // Set the dbname property
 			argindex++;
 		} else if (strcmp(argv[argindex], "-e") == 0) {
 			argindex++;

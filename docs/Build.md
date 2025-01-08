@@ -15,6 +15,33 @@ EPEL repository and can be installed with:
 
 	sudo yum install cmake3 kernel-devel gcc-c++ numactl-devel boost-devel
 
+### Installing Dependencies for Parallax Portals server
+To build Parallax with Portals, the following steps and dependencies are required:
+
+---
+
+#### 1. Build the `portals4` Library
+
+Portals4 provides the high-performance communication layer needed for Parallax.
+
+  1. Clone the repository from:  
+     `https://github.com/CARV-ICS-FORTH/portails4.git`.
+  2. Build using `meson` and `ninja`.
+  3. Set `LDFLAGS="-lpthread"` to ensure multithreading support.
+
+---
+
+#### 2. Build `sim-universal-construction`
+
+Provides concurrent queques used by Parallax server.
+
+  1. Clone the repository from:  
+     `https://github.com/Thodorhs/sim-universal-construction.git`.
+  2. Create the `/app/queuelib` directory.
+  3. Compile and install to `/app/queuelib` using `make`.
+
+---
+
 ## Build Configuration
 
 Compilation is done using the gcc/clang compilers, provided by the gcc/clang packages in
@@ -30,6 +57,28 @@ The "Release" build disables warnings and enables optimizations.
 On Centos/RHEL 7, replace the `cmake` command with the `cmake3` command supplied
 from the EPEL package of the same name.
 
+## Build Configuration for Parallax Portals
+To configure Parallax's build systems and build it with Portals create the run the commands:
+
+```
+mkdir build
+cd build
+```
+
+For release:
+
+```
+cmake -DBDB_PATH=<berkeley db path> -DNET=portals -DPORTALS_LIB_DIR=<portals lib path> -DPORTALS_INCLUDE_DIR=<portals include path> -DQUEUE_LIB=<sim-universal-construction lib path> -DCMAKE_BUILD_TYPE=Release -DDISABLE_LOGGING=ON -DENABLE_FLTO=ON ../
+```
+
+For debug:
+
+```
+cmake -DBDB_PATH=<berkeley db path> -DNET=portals -DPORTALS_LIB_DIR=<portals lib path> -DPORTALS_INCLUDE_DIR=<portals include path> -DQUEUE_LIB=<sim-universal-construction lib path> -DCMAKE_BUILD_TYPE=Debug -DENABLE_FLTO=ON ../
+```
+**-DMOCKUP=ON can be used to configure server with null db.**
+
+**-DNET=portals/tcp can be used to configure Parallax over Portals or TCP/IP.**
 
 ## Build Targets
 

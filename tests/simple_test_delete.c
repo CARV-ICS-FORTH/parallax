@@ -30,6 +30,45 @@ typedef struct value {
 	uint32_t value_size;
 	char value_buf[];
 } value;
+void serially_get_keys(par_handle hd)
+{
+	uint64_t i;
+	key *k = (key *)malloc(KV_SIZE);
+	struct par_key par_key;
+	struct par_value par_value;
+	value *v = (value *)malloc(KV_SIZE);
+
+	log_info("Starting get operations for %lu keys...", NUM_KEYS);
+
+	for (i = TOTAL_KEYS; i < (TOTAL_KEYS + NUM_KEYS); i++) {
+		// Prepare key
+		memcpy(k->key_buf, KEY_PREFIX, strlen(KEY_PREFIX));
+		sprintf(k->key_buf + strlen(KEY_PREFIX), "%llu", (long long unsigned)i);
+		k->key_size = strlen(k->key_buf) + 1;
+
+		if (i % 10000 == 0) {
+			log_info("Getting key: %s", k->key_buf);
+		}
+
+		// Set up par_key and par_value structures for get
+		par_key.size = k->key_size;
+		par_key.data = k->key_buf;
+		par_value.val_buffer = v->value_buf;
+		par_value.val_size = KV_SIZE - sizeof(value);
+
+		// Perform get operation
+		const char *error_message = NULL;
+		par_get(hd, &par_key, &par_value, &error_message);
+		if (error_message) {
+			log_fatal("Get failed for key %s: %s", k->key_buf, error_message);
+			BUG_ON();
+		}
+	}
+
+	free(k);
+	free(v);
+	log_info("Get operations completed");
+}
 
 void serially_insert_keys(par_handle hd)
 {
@@ -296,6 +335,7 @@ int main(int argc, char *argv[])
 	}
 
 	serially_insert_keys(handle);
+	serially_get_keys(handle);
 	get_all_keys(handle);
 	delete_half_keys(handle);
 	get_all_valid_keys(handle);
