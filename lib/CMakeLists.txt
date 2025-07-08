@@ -255,6 +255,7 @@ if(INFINIBAND_ENABLED)
   add_executable(
     ${IB_LIB}
     ../net_interface/ib_server/ib_server.c
+    ../net_interface/ib_server/ib_server_handle.c
     ../net_interface/par_net/par_net_open.c
     ../net_interface/par_net/par_net_put.c
     ../net_interface/par_net/par_net_delete.c
