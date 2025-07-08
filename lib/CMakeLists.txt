@@ -242,6 +242,63 @@ endif()
 
 # ######### END OF PORTALS SERVER !!! ###########
 
+# INFINIBAND SERVER
+option(INFINIBAND_ENABLED "Build with InfiniBand support" ON)
+
+if(INFINIBAND_ENABLED)
+  add_definitions(-DPARALLAX_INFINIBAND)
+  
+  message(STATUS "Building InfiniBand server")
+
+  set(IB_LIB "infiniband_${PROJECT_NAME}_server")
+
+  add_executable(
+    ${IB_LIB}
+    ../net_interface/ib_server/ib_server.c
+    ../net_interface/par_net/par_net_open.c
+    ../net_interface/par_net/par_net_put.c
+    ../net_interface/par_net/par_net_delete.c
+    ../net_interface/par_net/par_net_get.c
+    ../net_interface/par_net/par_net_close.c
+    ../net_interface/par_net/par_net_scan.c
+    ../net_interface/par_net/par_net_sync.c)
+
+  if("${CMAKE_BUILD_TYPE}" STREQUAL "Debug")
+    set_target_properties(${IB_LIB} PROPERTIES COMPILE_FLAGS
+                                             "${CMAKE_C_FLAGS}")
+  else()
+    set_target_properties(${IB_LIB} PROPERTIES COMPILE_FLAGS
+                                             "${CMAKE_C_FLAGS_RELEASE}")
+  endif()
+
+  set_target_properties(
+    ${IB_LIB}
+    PROPERTIES PUBLIC_HEADER
+               "${CMAKE_CURRENT_SOURCE_DIR}/include/parallax/parallax.h")
+
+  target_include_directories(
+    ${IB_LIB} PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/../net_interface/par_net")
+  target_include_directories(${IB_LIB}
+                           PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include/")
+  target_include_directories(${IB_LIB} PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/")
+
+  target_link_libraries(${IB_LIB} log yaml ${LIB})
+
+  install(
+    TARGETS ${IB_LIB}
+    ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+    LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+    RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
+    PUBLIC_HEADER DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}")
+
+  set(IB_DESTINATION "${CMAKE_BINARY_DIR}/lib/")
+
+else()
+  message(WARNING "InfiniBand server build disabled")
+endif()
+
+# END OF INFINIBAND SERVER
+
 if(RUN_IWYU STREQUAL "ON")
   find_program(iwyu_path NAMES include-what-you-use iwyu iwyu-tool)
   if(iwyu_path)
