@@ -1,6 +1,9 @@
+#include "../../lib/include/parallax/parallax.h"
+#include "../../lib/include/parallax/structures.h"
 #include <arpa/inet.h>
 #include <errno.h>
 #include <log.h>
+#include <rdma/rdma_cma.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -17,12 +20,25 @@ struct server_options {
 	struct sockaddr_storage inaddr;
 };
 
-#define USAGE_STRING                           \
-	"Infinband Server: no options specified\n" \
+struct server_handle {
+	struct server_options *opts;
+
+	pthread_mutex_t *mutex;
+	// struct rdma_worker **rdma_workers; // worker state per thread
+
+	struct rdma_event_channel *ec;
+	struct rdma_cm_id *listen_id;
+
+	par_handle par_handle;
+	uint32_t thread_to_queue;
+};
+
+#define USAGE_STRING                                \
+	"InfiniBand Server: no options specified\n" \
 	"try './infiniband_parallax_server --help' for more information\n"
 
 #define HELP_STRING                                                                                         \
-	"Usage:\n  Infinband Server <-bptf>\nOptions:\n"                                                        \
+	"Usage:\n  InfiniBand Server <-bptf>\nOptions:\n"                                                       \
 	" -t, --threads <thread-num>  specify number of server threads.\n"                                      \
 	" -b, --bind <if-address>     specify the interface that the server will "                              \
 	"bind to.\n"                                                                                            \
@@ -37,6 +53,7 @@ struct server_options {
 
 #define DECIMAL_BASE 10
 #define PORT_MAX 65536
+#define MAX_REGIONS 128
 
 struct server_options *ib_server_parse_argv_opts(int argc, char **argv);
 
@@ -47,3 +64,5 @@ void ib_server_check_arg(int argc, int option_id);
 void ib_server_set_address(struct server_options *opts, const char *arg);
 
 void ib_server_set_port(struct server_options *opts, const char *arg);
+
+struct server_handle *ib_server_handle_init(struct server_options *opts);
