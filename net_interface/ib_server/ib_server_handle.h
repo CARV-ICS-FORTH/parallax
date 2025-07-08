@@ -51,6 +51,11 @@ struct server_handle {
 	" -h, --help     display this help and exit\n"                                                          \
 	" -pf, --par_format           (Optional) specify whether database should be formatted\n"
 
+#define CONFIG_STRING         \
+	"[ Server Config ]\n"     \
+	"  - file = %s\n"         \
+	"  - flags = not yet supported\n"
+
 #define DECIMAL_BASE 10
 #define PORT_MAX 65536
 #define MAX_REGIONS 128
@@ -66,3 +71,5 @@ void ib_server_set_address(struct server_options *opts, const char *arg);
 void ib_server_set_port(struct server_options *opts, const char *arg);
 
 struct server_handle *ib_server_handle_init(struct server_options *opts);
+
+int ib_server_print_config(struct server_handle *server_handle);

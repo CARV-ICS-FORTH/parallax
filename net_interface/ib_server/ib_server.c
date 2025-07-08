@@ -13,4 +13,7 @@ int main(int argc, char **argv)
 		_exit(EXIT_FAILURE);
 	}
 
+	if (ib_server_print_config(server_handle) < 0) {
+		_exit(errno);
+	}
 }

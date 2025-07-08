@@ -151,12 +151,6 @@ struct server_handle *ib_server_handle_init(struct server_options *opts)
 
 	log_info("InfiniBand server listening on %s:%ld", inet_ntoa(inaddr->sin_addr), opts->port);
 
-	struct rdma_cm_event *test_event;
-	if (rdma_get_cm_event(handle->ec, &test_event) == 0) {
-		log_info("Received early RDMA event: %s (%d)", rdma_event_str(test_event->event), test_event->event);
-		rdma_ack_cm_event(test_event);
-	}
-
 	// const char *err = NULL;
 	// if (opts->format) {
 	// 	log_info("Format option enabled");
@@ -170,4 +164,25 @@ struct server_handle *ib_server_handle_init(struct server_options *opts)
 	// }
 
 	return handle;
+}
+
+int ib_server_print_config(struct server_handle *server_handle)
+{
+	if (!server_handle || !server_handle->opts) {
+		errno = EINVAL;
+		return -(EXIT_FAILURE);
+	}
+
+	struct sockaddr_in *addr = (struct sockaddr_in *)&server_handle->opts->inaddr;
+
+	char ip_str[INET_ADDRSTRLEN];
+	if (!inet_ntop(AF_INET, &addr->sin_addr, ip_str, sizeof(ip_str))) {
+		perror("inet_ntop failed");
+		return -(EXIT_FAILURE);
+	}
+
+	printf(CONFIG_STRING, server_handle->opts->parallax_vol_name);
+	printf("InfiniBand Server is bound to %s:%ld\n", ip_str, server_handle->opts->port);
+
+	return EXIT_SUCCESS;
 }
