@@ -250,6 +250,25 @@ if(INFINIBAND_ENABLED)
   
   message(STATUS "Building InfiniBand server")
 
+  find_library(RDMA_LIB
+    NAMES rdmacm rdma_cm
+    PATHS /usr/lib /usr/lib64 /usr/local/lib /usr/lib/x86_64-linux-gnu
+    REQUIRED
+    NO_DEFAULT_PATH)
+
+  find_library(IBVERBS_LIB
+    NAMES ibverbs
+    PATHS /usr/lib /usr/lib64 /usr/local/lib /usr/lib/x86_64-linux-gnu
+    REQUIRED
+    NO_DEFAULT_PATH)
+
+  if(EXISTS "/usr/include/rdma/rdma_cma.h" AND EXISTS "/usr/include/infiniband/verbs.h")
+    message(STATUS "Found RDMA headers")
+    include_directories(/usr/include /usr/include/infiniband)
+  else()
+    message(FATAL_ERROR "RDMA headers not found")
+  endif()
+
   set(IB_LIB "infiniband_${PROJECT_NAME}_server")
 
   add_executable(
@@ -283,7 +302,7 @@ if(INFINIBAND_ENABLED)
                            PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include/")
   target_include_directories(${IB_LIB} PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/")
 
-  target_link_libraries(${IB_LIB} log yaml ${LIB})
+  target_link_libraries(${IB_LIB} log yaml ${LIB} ${RDMA_LIB} ${IBVERBS_LIB})
 
   install(
     TARGETS ${IB_LIB}
