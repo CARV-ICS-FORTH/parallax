@@ -3,9 +3,15 @@
 #include "config.h"
 #include "log.h"
 #include "par_net.h"
+#ifdef USE_PORTALS
 #include "portals.h"
 #include "portals4.h"
 #include "portals4_ext.h"
+#endif
+#ifdef USE_INFINIBAND
+#include <infiniband/verbs.h>
+#include <rdma/rdma_cma.h>
+#endif
 #include "primitives.h"
 #include "queue-stack.h"
 #include "worker_request.h"
@@ -16,12 +22,18 @@
 #include <sys/time.h>
 #include <sys/types.h>
 #include <x86intrin.h>
+#include <stdatomic.h>
 
 #define BUDDY_ALLOC_IMPLEMENTATION
 #include "buddy_alloc.h"
 #undef BUDDY_ALLOC_IMPLEMENTATION
 
 #define EMPTY_WAIT 1000
+
+#ifdef USE_INFINIBAND
+#define PRSV_WORKER_BUF_SIZE (63U * 4096)
+#define METADATA_SIZE 4096
+#endif
 
 struct counter {
 	uint32_t counter;
@@ -31,22 +43,29 @@ struct counter {
 struct portals_worker {
 	struct counter queuecounter;
 	struct counter queuecompletedcounter;
-	ptl_md_t md;
 	sem_t empty;
 	atomic_int notified;
 	pthread_t tid;
 	uint64_t start;
 	uint64_t end;
 	uint64_t core;
-	ptl_handle_eq_t eqh;
 	uint32_t send_buffer_size;
-	ptl_handle_md_t mdh;
 	struct server_handle *server_handle;
 	pthread_mutex_t *mutex;
 	CCQueueStruct *queue_object CACHE_ALIGN;
 	CCQueueThreadState *th_state;
 	struct buddy *buddy;
 	char *send_buffer;
+#ifdef USE_PORTALS
+	ptl_md_t md;
+	ptl_handle_eq_t eqh;
+	ptl_handle_md_t mdh;
+#endif
+#ifdef USE_INFINIBAND
+	struct ibv_mr *mr;
+    struct rdma_cm_id *id;
+    struct ibv_qp *qp;
+#endif
 };
 
 size_t portals_worker_size(void)
@@ -119,8 +138,13 @@ void portals_worker_put(struct portals_worker *worker, struct portals_worker_req
 	__atomic_fetch_add(&worker->queuecounter.counter, 1, __ATOMIC_RELAXED);
 }
 
-struct portals_worker *portals_worker_create(struct server_handle *server_handle, uint32_t index, uint32_t threadno,
-					     ptl_handle_eq_t eqh, pthread_mutex_t *mutex)
+#ifdef USE_PORTALS
+struct portals_worker *worker_create(struct server_handle *server_handle, uint32_t index, uint32_t threadno,
+                             ptl_handle_eq_t eqh, pthread_mutex_t *mutex)
+#else
+struct portals_worker *worker_create(struct server_handle *server_handle, uint32_t index, uint32_t threadno,
+                             pthread_mutex_t *mutex)
+#endif
 {
 	int ret;
 	struct portals_worker *worker = calloc(1, sizeof(struct portals_worker));
@@ -156,7 +180,9 @@ struct portals_worker *portals_worker_create(struct server_handle *server_handle
 	}
 	worker->send_buffer_size = PRSV_WORKER_BUF_SIZE;
 	worker->buddy = buddy_embed((void *)worker->send_buffer, PRSV_WORKER_BUF_SIZE);
-	worker->eqh = eqh;
+#ifdef USE_PORTALS
+    worker->eqh = eqh;
+#endif
 	return worker;
 }
 
@@ -190,9 +216,15 @@ pthread_t *portals_worker_get_tid(struct portals_worker *worker)
 	return (pthread_t *)&worker->tid;
 }
 
+#ifdef USE_PORTALS
 void portals_worker_send_reply_buff(struct portals_worker *worker, struct par_net_header *reply_header,
 				    uint32_t total_bytes, ptl_handle_ni_t nih, ptl_process_t client)
+#else
+void portals_worker_send_reply_buff(struct portals_worker *worker, struct par_net_header *reply_header,
+				    uint32_t total_bytes)
+#endif
 {
+	#ifdef USE_PORTALS
 	worker->md.start = reply_header;
 	worker->md.length = total_bytes;
 	worker->md.options = 0;
@@ -211,6 +243,13 @@ void portals_worker_send_reply_buff(struct portals_worker *worker, struct par_ne
 	}
 
 	PtlMDRelease(worker->mdh);
+	#endif
+
+	#ifdef USE_INFINIBAND
+
+	// TODO: Implement InfiniBand logic here
+
+	#endif
 }
 
 void portals_worker_free_buf(struct portals_worker *worker, void *buf_start)
