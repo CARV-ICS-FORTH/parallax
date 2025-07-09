@@ -110,20 +110,20 @@ struct server_handle *ib_server_handle_init(struct server_options *opts)
 
 	handle->opts = opts;
 
-	// handle->rdma_workers = calloc(opts->threadno, sizeof(struct rdma_worker *));
-	// if (!handle->rdma_workers)
-	// 	_exit(EXIT_FAILURE);
+	handle->portals_workers = calloc(opts->threadno, sizeof(struct portals_worker *));
+	if (!handle->portals_workers)
+		_exit(EXIT_FAILURE);
 
 	handle->mutex = calloc(opts->threadno, sizeof(pthread_mutex_t));
 	if (!handle->mutex)
 		_exit(EXIT_FAILURE);
 
-	// for (uint32_t i = 0; i < opts->threadno; ++i) {
-	// 	handle->rdma_workers[i] = calloc(1UL, rdma_worker_size()); // implement or define this
-	// 	if (!handle->rdma_workers[i])
-	// 		_exit(EXIT_FAILURE);
-	// 	pthread_mutex_init(&handle->mutex[i], NULL);
-	// }
+	for (uint32_t i = 0; i < opts->threadno; ++i) {
+		handle->portals_workers[i] = calloc(1UL, portals_worker_size());
+		if (!handle->portals_workers[i])
+			_exit(EXIT_FAILURE);
+		pthread_mutex_init(&handle->mutex[i], NULL);
+	}
 
 	handle->ec = rdma_create_event_channel();
 	if (!handle->ec) {

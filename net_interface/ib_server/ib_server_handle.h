@@ -1,5 +1,9 @@
+#ifndef INFINIBAND_SERVER_HANDLE_H
+#define INFINIBAND_SERVER_HANDLE_H
+
 #include "../../lib/include/parallax/parallax.h"
 #include "../../lib/include/parallax/structures.h"
+#include "../portals_server/portals_worker.h"
 #include <arpa/inet.h>
 #include <errno.h>
 #include <log.h>
@@ -24,7 +28,7 @@ struct server_handle {
 	struct server_options *opts;
 
 	pthread_mutex_t *mutex;
-	// struct rdma_worker **rdma_workers; // worker state per thread
+	struct portals_worker **portals_workers; // worker state per thread
 
 	struct rdma_event_channel *ec;
 	struct rdma_cm_id *listen_id;
@@ -34,7 +38,7 @@ struct server_handle {
 };
 
 #define USAGE_STRING                                \
-	"InfiniBand Server: no options specified\n" \
+	"InfiniBand Server: no options specified\n"     \
 	"try './infiniband_parallax_server --help' for more information\n"
 
 #define HELP_STRING                                                                                         \
@@ -73,3 +77,5 @@ void ib_server_set_port(struct server_options *opts, const char *arg);
 struct server_handle *ib_server_handle_init(struct server_options *opts);
 
 int ib_server_print_config(struct server_handle *server_handle);
+
+#endif
