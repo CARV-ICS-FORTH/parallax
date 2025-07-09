@@ -118,67 +118,174 @@ install(FILES include/parallax/parallax.h include/parallax/structures.h
 set_target_properties(${LIB} PROPERTIES OUTPUT_NAME ${LIB})
 set_target_properties(server.${LIB} PROPERTIES OUTPUT_NAME ${LIB}_server)
 
+option(USE_INFINIBAND "Build with InfiniBand (RDMA) backend instead of Portals4")
+
+if(USE_INFINIBAND)
+    add_definitions(-DUSE_INFINIBAND -DPARALLAX_INFINIBAND)
+    message(STATUS "Compiling with InfiniBand backend")
+else()
+    add_definitions(-DUSE_PORTALS -DPARALLAX_PORTALS)
+    message(STATUS "Compiling with Portals4 backend")
+endif()
+
 # ######### PORTALS SERVER !!! ###########
 
-option(PORTALS_LIB_DIR "Path to the Portals library" "")
-option(QUEUE_LIB "Path to the sim-universal-construction library" "")
-option(QUEUE_INCLUDE_DIR
-       "Path to the sim-universal-construction include directory" "")
+if(NOT USE_INFINIBAND)
+  option(PORTALS_LIB_DIR "Path to the Portals library" "")
+  option(QUEUE_LIB "Path to the sim-universal-construction library" "")
+  option(QUEUE_INCLUDE_DIR
+        "Path to the sim-universal-construction include directory" "")
 
-find_library(
-  QUEUE_LIB_FOUND
-  NAMES concurrent
-  PATHS ${QUEUE_LIB})
+  find_library(
+    QUEUE_LIB_FOUND
+    NAMES concurrent
+    PATHS ${QUEUE_LIB})
 
-find_library(
-  PORTALS_LIB
-  NAMES portals
-  PATHS ${PORTALS_LIB_DIR})
+  find_library(
+    PORTALS_LIB
+    NAMES portals
+    PATHS ${PORTALS_LIB_DIR})
 
-if(PORTALS_LIB AND QUEUE_LIB_FOUND)
-  add_definitions(-DPARALLAX_PORTALS)
+  if(PORTALS_LIB AND QUEUE_LIB_FOUND)
+    add_definitions(-DPARALLAX_PORTALS)
 
-  message(STATUS "Portals library for server found at : ${PORTALS_LIB}")
-  message(
-    STATUS
-      "sim-universal-construction library for server found at: ${QUEUE_LIB_FOUND}"
-  )
+    message(STATUS "Portals library for server found at : ${PORTALS_LIB}")
+    message(
+      STATUS
+        "sim-universal-construction library for server found at: ${QUEUE_LIB_FOUND}"
+    )
 
-  set(PORT_LIB "portals_${PROJECT_NAME}_server")
+    set(PORT_LIB "portals_${PROJECT_NAME}_server")
 
-  add_executable(
-    ${PORT_LIB}
-    ../net_interface/portals_server/portals_server.c
-    ../net_interface/portals_server/portals_server_handle.c
-    ../net_interface/portals_server/portals_worker.c
-    ../net_interface/portals_server/worker_request.c
-    ../net_interface/par_net/par_net_open.c
-    ../net_interface/par_net/par_net_put.c
-    ../net_interface/par_net/par_net_delete.c
-    ../net_interface/par_net/par_net_get.c
-    ../net_interface/par_net/par_net_close.c
-    ../net_interface/par_net/par_net_scan.c
-    ../net_interface/par_net/par_net_sync.c)
+    add_executable(
+      ${PORT_LIB}
+      ../net_interface/portals_server/portals_server.c
+      ../net_interface/portals_server/portals_server_handle.c
+      ../net_interface/portals_server/portals_worker.c
+      ../net_interface/portals_server/worker_request.c
+      ../net_interface/par_net/par_net_open.c
+      ../net_interface/par_net/par_net_put.c
+      ../net_interface/par_net/par_net_delete.c
+      ../net_interface/par_net/par_net_get.c
+      ../net_interface/par_net/par_net_close.c
+      ../net_interface/par_net/par_net_scan.c
+      ../net_interface/par_net/par_net_sync.c)
 
-  if("${CMAKE_BUILD_TYPE}" STREQUAL "Debug")
-    set_target_properties(${PORT_LIB} PROPERTIES COMPILE_FLAGS
-                                                 "${CMAKE_C_FLAGS}")
-  else()
-    set_target_properties(${PORT_LIB} PROPERTIES COMPILE_FLAGS
-                                                 "${CMAKE_C_FLAGS_RELEASE}")
+    if("${CMAKE_BUILD_TYPE}" STREQUAL "Debug")
+      set_target_properties(${PORT_LIB} PROPERTIES COMPILE_FLAGS
+                                                  "${CMAKE_C_FLAGS}")
+    else()
+      set_target_properties(${PORT_LIB} PROPERTIES COMPILE_FLAGS
+                                                  "${CMAKE_C_FLAGS_RELEASE}")
+    endif()
+
+    set_target_properties(
+      ${PORT_LIB}
+      PROPERTIES PUBLIC_HEADER
+                "${CMAKE_CURRENT_SOURCE_DIR}/include/parallax/parallax.h")
+
+    target_include_directories(
+      ${PORT_LIB} PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/../net_interface/par_net")
+    target_include_directories(${PORT_LIB}
+                              PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include/")
+    target_include_directories(${PORT_LIB} PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/")
+    target_include_directories(${PORT_LIB} PUBLIC "${PORTALS_INCLUDE_DIR}")
+
+    if(NOT QUEUE_INCLUDE_DIR)
+      get_filename_component(QUEUE_LIB_DIR ${QUEUE_LIB_FOUND} DIRECTORY)
+      set(QUEUE_INCLUDE_DIR "${QUEUE_LIB_DIR}/../includes")
+    endif()
+
+    if(EXISTS "${QUEUE_INCLUDE_DIR}")
+      message(
+        STATUS
+          "Found include directory for sim-universal-construction at: ${QUEUE_INCLUDE_DIR}"
+      )
+    else()
+      message(
+        FATAL_ERROR
+          "Could not find the sim-universal-construction include directory")
+    endif()
+
+    get_filename_component(QUEUE_LIB_DIR ${QUEUE_LIB_FOUND} DIRECTORY)
+    set(QUEUE_LIBCONC_DIR "${QUEUE_LIB_DIR}/../includes")
+
+    target_include_directories(${PORT_LIB} PUBLIC "${QUEUE_INCLUDE_DIR}")
+    target_link_libraries(${PORT_LIB} log yaml ${PORTALS_LIB} ${LIB}
+                          ${QUEUE_LIB_FOUND})
+
+    install(
+      TARGETS ${PORT_LIB}
+      ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+      LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+      RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
+      PUBLIC_HEADER DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}")
+
+    set(FLAMEGRAPH_SCRIPT
+        "${CMAKE_CURRENT_SOURCE_DIR}/../net_interface/portals_server/profile_flamegraph.sh"
+    )
+    set(SRV_RUN
+        "${CMAKE_CURRENT_SOURCE_DIR}/../net_interface/portals_server/run_portals_srv.sh"
+    )
+
+    set(FLAMEGRAPH_DESTINATION "${CMAKE_BINARY_DIR}/lib/")
+
+    add_custom_command(
+      TARGET ${PORT_LIB}
+      POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy ${FLAMEGRAPH_SCRIPT}
+              ${FLAMEGRAPH_DESTINATION}
+      COMMENT "Copying profile_flamegraph.sh to ${FLAMEGRAPH_DESTINATION}")
+    message(STATUS "Added custom command to copy profile_flamegraph.sh")
+
+    add_custom_command(
+      TARGET ${PORT_LIB}
+      POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy ${SRV_RUN} ${FLAMEGRAPH_DESTINATION}
+      COMMENT "Copying run_portals_srv.sh to ${FLAMEGRAPH_DESTINATION}")
+    message(STATUS "Added custom command to copy run_portals_srv.sh")
+  elseif()
+    message(
+      WARNING
+        "Portals library or sim-universal-construction not found, stoping installation for portals server"
+    )
   endif()
+endif()
 
-  set_target_properties(
-    ${PORT_LIB}
-    PROPERTIES PUBLIC_HEADER
-               "${CMAKE_CURRENT_SOURCE_DIR}/include/parallax/parallax.h")
+# ######### END OF PORTALS SERVER !!! ###########
 
-  target_include_directories(
-    ${PORT_LIB} PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/../net_interface/par_net")
-  target_include_directories(${PORT_LIB}
-                             PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include/")
-  target_include_directories(${PORT_LIB} PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/")
-  target_include_directories(${PORT_LIB} PUBLIC "${PORTALS_INCLUDE_DIR}")
+# INFINIBAND SERVER
+if(USE_INFINIBAND)
+  add_definitions(-DPARALLAX_INFINIBAND)
+  option(QUEUE_LIB "Path to the sim-universal-construction library" "/home1/public/nikosl/queuelib/Synch/lib")
+  option(QUEUE_INCLUDE_DIR
+        "Path to the sim-universal-construction include directory" "/home1/public/nikosl/queuelib/Synch/includes")
+
+  message(STATUS "Building InfiniBand server")
+
+  find_library(
+    QUEUE_LIB_FOUND
+    NAMES concurrent
+    PATHS ${QUEUE_LIB})
+
+  find_library(RDMA_LIB
+    NAMES rdmacm rdma_cm
+    PATHS /usr/lib /usr/lib64 /usr/local/lib /usr/lib/x86_64-linux-gnu
+    REQUIRED
+    NO_DEFAULT_PATH)
+
+  find_library(IBVERBS_LIB
+    NAMES ibverbs
+    PATHS /usr/lib /usr/lib64 /usr/local/lib /usr/lib/x86_64-linux-gnu
+    REQUIRED
+    NO_DEFAULT_PATH)
+
+  if(EXISTS "/usr/include/rdma/rdma_cma.h" AND EXISTS "/usr/include/infiniband/verbs.h" AND QUEUE_LIB_FOUND)
+    message(STATUS "Found RDMA headers")
+    include_directories(/usr/include /usr/include/infiniband)
+  else()
+    message(FATAL_ERROR "RDMA headers not found")
+  endif()
 
   if(NOT QUEUE_INCLUDE_DIR)
     get_filename_component(QUEUE_LIB_DIR ${QUEUE_LIB_FOUND} DIRECTORY)
@@ -196,85 +303,13 @@ if(PORTALS_LIB AND QUEUE_LIB_FOUND)
         "Could not find the sim-universal-construction include directory")
   endif()
 
-  get_filename_component(QUEUE_LIB_DIR ${QUEUE_LIB_FOUND} DIRECTORY)
-  set(QUEUE_LIBCONC_DIR "${QUEUE_LIB_DIR}/../includes")
-
-  target_include_directories(${PORT_LIB} PUBLIC "${QUEUE_INCLUDE_DIR}")
-  target_link_libraries(${PORT_LIB} log yaml ${PORTALS_LIB} ${LIB}
-                        ${QUEUE_LIB_FOUND})
-
-  install(
-    TARGETS ${PORT_LIB}
-    ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
-    LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
-    RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
-    PUBLIC_HEADER DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}")
-
-  set(FLAMEGRAPH_SCRIPT
-      "${CMAKE_CURRENT_SOURCE_DIR}/../net_interface/portals_server/profile_flamegraph.sh"
-  )
-  set(SRV_RUN
-      "${CMAKE_CURRENT_SOURCE_DIR}/../net_interface/portals_server/run_portals_srv.sh"
-  )
-
-  set(FLAMEGRAPH_DESTINATION "${CMAKE_BINARY_DIR}/lib/")
-
-  add_custom_command(
-    TARGET ${PORT_LIB}
-    POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy ${FLAMEGRAPH_SCRIPT}
-            ${FLAMEGRAPH_DESTINATION}
-    COMMENT "Copying profile_flamegraph.sh to ${FLAMEGRAPH_DESTINATION}")
-  message(STATUS "Added custom command to copy profile_flamegraph.sh")
-
-  add_custom_command(
-    TARGET ${PORT_LIB}
-    POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy ${SRV_RUN} ${FLAMEGRAPH_DESTINATION}
-    COMMENT "Copying run_portals_srv.sh to ${FLAMEGRAPH_DESTINATION}")
-  message(STATUS "Added custom command to copy run_portals_srv.sh")
-elseif()
-  message(
-    WARNING
-      "Portals library or sim-universal-construction not found, stoping installation for portals server"
-  )
-endif()
-
-# ######### END OF PORTALS SERVER !!! ###########
-
-# INFINIBAND SERVER
-option(INFINIBAND_ENABLED "Build with InfiniBand support" ON)
-
-if(INFINIBAND_ENABLED)
-  add_definitions(-DPARALLAX_INFINIBAND)
-  
-  message(STATUS "Building InfiniBand server")
-
-  find_library(RDMA_LIB
-    NAMES rdmacm rdma_cm
-    PATHS /usr/lib /usr/lib64 /usr/local/lib /usr/lib/x86_64-linux-gnu
-    REQUIRED
-    NO_DEFAULT_PATH)
-
-  find_library(IBVERBS_LIB
-    NAMES ibverbs
-    PATHS /usr/lib /usr/lib64 /usr/local/lib /usr/lib/x86_64-linux-gnu
-    REQUIRED
-    NO_DEFAULT_PATH)
-
-  if(EXISTS "/usr/include/rdma/rdma_cma.h" AND EXISTS "/usr/include/infiniband/verbs.h")
-    message(STATUS "Found RDMA headers")
-    include_directories(/usr/include /usr/include/infiniband)
-  else()
-    message(FATAL_ERROR "RDMA headers not found")
-  endif()
-
   set(IB_LIB "infiniband_${PROJECT_NAME}_server")
 
   add_executable(
     ${IB_LIB}
     ../net_interface/ib_server/ib_server.c
     ../net_interface/ib_server/ib_server_handle.c
+    ../net_interface/portals_server/portals_worker.c
     ../net_interface/par_net/par_net_open.c
     ../net_interface/par_net/par_net_put.c
     ../net_interface/par_net/par_net_delete.c
@@ -301,8 +336,9 @@ if(INFINIBAND_ENABLED)
   target_include_directories(${IB_LIB}
                            PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include/")
   target_include_directories(${IB_LIB} PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/")
+  target_include_directories(${IB_LIB} PUBLIC "${QUEUE_INCLUDE_DIR}")
 
-  target_link_libraries(${IB_LIB} log yaml ${LIB} ${RDMA_LIB} ${IBVERBS_LIB})
+  target_link_libraries(${IB_LIB} log yaml ${LIB} ${RDMA_LIB} ${IBVERBS_LIB} ${QUEUE_LIB_FOUND})
 
   install(
     TARGETS ${IB_LIB}
