@@ -5,6 +5,7 @@
 #include "portals4.h"
 #endif
 #include "portals_server_handle.h"
+#include "../ib_server/ib_worker_request.h"
 struct portals_worker;
 
 /* Header for portals_worker api*/
@@ -46,7 +47,11 @@ struct portals_worker_request *portals_worker_poll(struct portals_worker *worker
 /**
  * Enqueues a request into the worker's queue.
  */
+#ifdef USE_PORTALS
 void portals_worker_put(struct portals_worker *worker, struct portals_worker_request *request);
+#else
+void portals_worker_put(struct portals_worker *worker, struct ib_worker_request *request);
+#endif
 
 /**
  * Creates and initializes a new worker instance.
@@ -57,10 +62,10 @@ void portals_worker_put(struct portals_worker *worker, struct portals_worker_req
  * @param mutex Shared mutex for thread coordination.
  */
 #ifdef USE_PORTALS
-struct portals_worker *worker_create(struct server_handle *server_handle, uint32_t index, uint32_t threadno,
+struct portals_worker *portals_worker_create(struct server_handle *server_handle, uint32_t index, uint32_t threadno,
                              ptl_handle_eq_t eqh, pthread_mutex_t *mutex);
 #else
-struct portals_worker *worker_create(struct server_handle *server_handle, uint32_t index, uint32_t threadno,
+struct portals_worker *portals_worker_create(struct server_handle *server_handle, uint32_t index, uint32_t threadno,
                              pthread_mutex_t *mutex);
 #endif
 

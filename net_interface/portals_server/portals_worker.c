@@ -132,17 +132,21 @@ struct portals_worker_request *portals_worker_poll(struct portals_worker *worker
 	return req;
 }
 
+#ifdef USE_PORTALS
 void portals_worker_put(struct portals_worker *worker, struct portals_worker_request *request)
+#else
+void portals_worker_put(struct portals_worker *worker, struct ib_worker_request *request)
+#endif
 {
 	CCQueueApplyEnqueue(worker->queue_object, worker->th_state, (ArgVal)request, worker->tid);
 	__atomic_fetch_add(&worker->queuecounter.counter, 1, __ATOMIC_RELAXED);
 }
 
 #ifdef USE_PORTALS
-struct portals_worker *worker_create(struct server_handle *server_handle, uint32_t index, uint32_t threadno,
+struct portals_worker *portals_worker_create(struct server_handle *server_handle, uint32_t index, uint32_t threadno,
                              ptl_handle_eq_t eqh, pthread_mutex_t *mutex)
 #else
-struct portals_worker *worker_create(struct server_handle *server_handle, uint32_t index, uint32_t threadno,
+struct portals_worker *portals_worker_create(struct server_handle *server_handle, uint32_t index, uint32_t threadno,
                              pthread_mutex_t *mutex)
 #endif
 {
