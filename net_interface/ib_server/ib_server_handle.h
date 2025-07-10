@@ -3,6 +3,7 @@
 
 #include "../../lib/include/parallax/parallax.h"
 #include "../../lib/include/parallax/structures.h"
+#include "../portals_server/portals_server_handle.h"
 #include "../portals_server/portals_worker.h"
 #include <arpa/inet.h>
 #include <errno.h>
@@ -13,6 +14,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+
+#define MATCH_ENTRY_NUM 5
 
 struct server_options {
 	uint32_t threadno;
@@ -32,9 +35,13 @@ struct server_handle {
 
 	struct rdma_event_channel *ec;
 	struct rdma_cm_id *listen_id;
+	struct ibv_wc *wc;
 
 	par_handle par_handle;
 	uint32_t thread_to_queue;
+
+	char *recv_buffer[MATCH_ENTRY_NUM];
+	uint32_t recv_buffer_size;
 };
 
 #define USAGE_STRING                                \
@@ -63,6 +70,10 @@ struct server_handle {
 #define DECIMAL_BASE 10
 #define PORT_MAX 65536
 #define MAX_REGIONS 128
+#define PRSV_COM_BUF_SIZE (32U * KV_MAX_SIZE)
+#define METADATA_SIZE 4096
+#define PRSV_WORKER_BUF_SIZE (63U * 4096) // x*a +4096 = y where y is power of 2 and multiple of sizeof(void*) == 8
+#define QUEUE_DEPTH 128
 
 struct server_options *ib_server_parse_argv_opts(int argc, char **argv);
 
@@ -77,5 +88,15 @@ void ib_server_set_port(struct server_options *opts, const char *arg);
 struct server_handle *ib_server_handle_init(struct server_options *opts);
 
 int ib_server_print_config(struct server_handle *server_handle);
+
+int ib_handle_cm_event(struct server_handle *server_handle, struct rdma_cm_event *event);
+
+int ib_loop(struct server_handle *server_handle);
+
+void worker_scheduler(struct server_handle *server_handle);
+
+int ib_handle_event(struct ibv_wc *wc, struct server_handle *handle);
+
+int ib_server_start(struct server_handle *server_handle);
 
 #endif

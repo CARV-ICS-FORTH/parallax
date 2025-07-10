@@ -103,10 +103,8 @@ struct server_handle *ib_server_handle_init(struct server_options *opts)
 	}
 
 	struct server_handle *handle = calloc(1UL, sizeof(struct server_handle));
-	if (handle == NULL) {
-		log_debug("InfiniBand Server: handle allocation failed");
+	if (handle == NULL)
 		_exit(EXIT_FAILURE);
-	}
 
 	handle->opts = opts;
 
@@ -149,19 +147,51 @@ struct server_handle *ib_server_handle_init(struct server_options *opts)
 		_exit(EXIT_FAILURE);
 	}
 
+	int ret;
+
+	for (int i = 0; i < MATCH_ENTRY_NUM; i++) {
+		void *raw_memory;
+		ret = posix_memalign(&raw_memory, 4096, PRSV_COM_BUF_SIZE + METADATA_SIZE);
+
+		if (ret != 0) {
+			perror("posix_memalign failed");
+			_exit(EXIT_FAILURE);
+		}
+
+		handle->recv_buffer[i] = (char *)raw_memory + METADATA_SIZE;
+
+		uint32_t *pollercounter = (uint32_t *)((uintptr_t)raw_memory);
+		__atomic_store_n(pollercounter, 0, __ATOMIC_RELAXED);
+
+		uint32_t *workercounter = (uint32_t *)((uintptr_t)raw_memory + sizeof(uint32_t));
+		__atomic_store_n(workercounter, 0, __ATOMIC_RELAXED);
+
+		uint16_t *buffer_id = (uint16_t *)((uintptr_t)raw_memory + 2 * sizeof(uint32_t));
+		*buffer_id = i;
+	}
+	if (ret != 0) {
+		log_debug("posix_memalign failed");
+		_exit(EXIT_FAILURE);
+	}
+
+	handle->recv_buffer_size = PRSV_COM_BUF_SIZE;
+
 	log_info("InfiniBand server listening on %s:%ld", inet_ntoa(inaddr->sin_addr), opts->port);
 
-	// const char *err = NULL;
-	// if (opts->format) {
-	// 	log_info("Format option enabled");
-	// 	err = par_format((char *)opts->parallax_vol_name, MAX_REGIONS);
-	// 	if (err) {
-	// 		log_debug("par_format failed: %s", err);
-	// 		_exit(EXIT_FAILURE);
-	// 	}
-	// } else {
-	// 	log_debug("Format option not enabled");
-	// }
+	const char *error_message = NULL;
+	/** initialize parallax **/
+	if (opts->format) {
+		log_info("Format option enabled");
+		error_message = par_format((char *)(opts->parallax_vol_name), MAX_REGIONS);
+
+		if (error_message) {
+			log_fatal("%s", error_message);
+			_exit(EXIT_FAILURE);
+		}
+
+	} else {
+		log_info("Format option not enabled");
+	}
 
 	return handle;
 }
@@ -183,6 +213,154 @@ int ib_server_print_config(struct server_handle *server_handle)
 
 	printf(CONFIG_STRING, server_handle->opts->parallax_vol_name);
 	printf("InfiniBand Server is bound to %s:%ld\n", ip_str, server_handle->opts->port);
+
+	return EXIT_SUCCESS;
+}
+
+int ib_handle_cm_event(struct server_handle *server_handle, struct rdma_cm_event *event)
+{
+	switch (event->event) {
+	case RDMA_CM_EVENT_ADDR_RESOLVED:
+		log_debug("RDMA_CM_EVENT_ADDR_RESOLVED");
+		if (rdma_resolve_route(server_handle->listen_id, 2000)) {
+			perror("rdma_resolve_route");
+			return -(EXIT_FAILURE);
+		}
+		break;
+	case RDMA_CM_EVENT_ROUTE_RESOLVED:
+		log_debug("RDMA_CM_EVENT_ROUTE_RESOLVED");
+		if (rdma_accept(server_handle->listen_id, NULL)) {
+			perror("rdma_accept");
+			return -(EXIT_FAILURE);
+		}
+		break;
+	case RDMA_CM_EVENT_ESTABLISHED:
+		log_debug("RDMA_CM_EVENT_ESTABLISHED");
+		break;
+	case RDMA_CM_EVENT_DISCONNECTED:
+		log_debug("RDMA_CM_EVENT_DISCONNECTED");
+		break;
+	default:
+		log_debug("Unhandled event: %s", rdma_event_str(event->event));
+		return -(EXIT_FAILURE);
+	}
+	return EXIT_SUCCESS;
+}
+
+int ib_loop(struct server_handle *server_handle)
+{
+	while (1) {
+		struct rdma_cm_event *event;
+		if (rdma_get_cm_event(server_handle->ec, &event)) {
+			perror("rdma_get_cm_event");
+			return -(EXIT_FAILURE);
+		}
+
+		struct rdma_cm_event event_copy;
+		memcpy(&event_copy, event, sizeof(*event));
+		rdma_ack_cm_event(event);
+
+		if (ib_handle_cm_event(server_handle, &event_copy) < 0) {
+			log_debug("ib_handle_cm_event failed");
+			return -(EXIT_FAILURE);
+		}
+	}
+	return EXIT_SUCCESS;
+}
+
+void *ib_put_and_reply(void *arg)
+{
+}
+
+void worker_scheduler(struct server_handle *server_handle)
+{
+	if (server_handle->thread_to_queue == server_handle->opts->threadno)
+		server_handle->thread_to_queue = 0;
+
+	while (portals_worker_get_reqs(server_handle->portals_workers[server_handle->thread_to_queue]) >= QUEUE_DEPTH) {
+		log_debug("Thread %d: REACHED MAX QUEUE_DEPTH Current", server_handle->thread_to_queue);
+		server_handle->thread_to_queue++;
+		if (server_handle->thread_to_queue == server_handle->opts->threadno)
+			server_handle->thread_to_queue = 0;
+		//TODO: At this point if all threads are full instead of iterating over and over again,
+		// we can just choose one random thread or choose the one with the least requests.
+	}
+	struct portals_worker *worker = server_handle->portals_workers[server_handle->thread_to_queue];
+	portals_worker_put(worker, ib_worker_create_req(server_handle->wc));
+	portals_worker_notify(worker);
+
+	server_handle->thread_to_queue++;
+	return;
+}
+
+int ib_handle_event(struct ibv_wc *wc, struct server_handle *handle)
+{
+	if (wc->status != IBV_WC_SUCCESS) {
+		log_debug("RDMA Work Completion error: %s", ibv_wc_status_str(wc->status));
+		return -1;
+	}
+
+	switch (wc->opcode) {
+	case IBV_WC_RECV: {
+		void *buf = (void *)(uintptr_t)wc->wr_id;
+		uint32_t *pollercounter = (uint32_t *)((uintptr_t)buf - METADATA_SIZE);
+
+		worker_scheduler(handle);
+		__atomic_fetch_add(pollercounter, 1, __ATOMIC_RELAXED);
+
+		break;
+	}
+
+	case IBV_WC_SEND: {
+		void *user_ptr = (void *)(uintptr_t)wc->wr_id;
+		uintptr_t index_start =
+			(uintptr_t)user_ptr - ((uintptr_t)user_ptr % (PRSV_WORKER_BUF_SIZE + METADATA_SIZE));
+		uint32_t *worker_index = (uint32_t *)(index_start);
+
+		pthread_mutex_lock(&handle->mutex[*worker_index]);
+		portals_worker_free_buf(handle->portals_workers[*worker_index], user_ptr);
+		pthread_mutex_unlock(&handle->mutex[*worker_index]);
+
+		break;
+	}
+
+	default:
+		log_debug("Unhandled RDMA opcode: %d", wc->opcode);
+		break;
+	}
+
+	return 0;
+}
+
+int ib_server_start(struct server_handle *server_handle)
+{
+	if (!server_handle) {
+		errno = EINVAL;
+		return -(EXIT_FAILURE);
+	}
+	uint32_t threads = server_handle->opts->threadno;
+	server_handle->thread_to_queue = 0;
+
+	for (uint32_t i = 0; i < threads; i++) {
+		server_handle->portals_workers[i] =
+			portals_worker_create(server_handle, i, threads, &server_handle->mutex[i]);
+
+		if (pthread_create(portals_worker_get_tid(server_handle->portals_workers[i]), NULL, ib_put_and_reply,
+				   server_handle->portals_workers[i])) {
+			for (uint32_t tmp = 0; tmp < i; ++tmp)
+				pthread_cancel(*portals_worker_get_tid(server_handle->portals_workers[tmp]));
+			for (uint32_t tmp = 0; tmp < i; ++tmp)
+				pthread_join(*portals_worker_get_tid(server_handle->portals_workers[tmp]), NULL);
+			return -(EXIT_FAILURE);
+		}
+	}
+
+	log_debug("InfiniBand server is ready");
+
+	if (ib_loop(server_handle) < 0) {
+		log_debug("ib_loop failed");
+		_exit(EXIT_FAILURE);
+	}
 
 	return EXIT_SUCCESS;
 }
