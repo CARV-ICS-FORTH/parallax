@@ -31,11 +31,12 @@ struct server_handle {
 	struct server_options *opts;
 
 	pthread_mutex_t *mutex;
-	struct portals_worker **portals_workers; // worker state per thread
+	struct portals_worker **portals_workers;
 
 	struct rdma_event_channel *ec;
 	struct rdma_cm_id *listen_id;
 	struct ibv_wc *wc;
+	struct ibv_comp_channel *comp_channel;
 
 	par_handle par_handle;
 	uint32_t thread_to_queue;
@@ -96,6 +97,8 @@ int ib_loop(struct server_handle *server_handle);
 void worker_scheduler(struct server_handle *server_handle);
 
 int ib_handle_event(struct ibv_wc *wc, struct server_handle *handle);
+
+void *cq_poll_loop(void *arg);
 
 int ib_server_start(struct server_handle *server_handle);
 
