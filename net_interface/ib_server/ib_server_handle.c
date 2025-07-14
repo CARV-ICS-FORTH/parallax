@@ -303,8 +303,8 @@ int ib_handle_cm_event(struct server_handle *server_handle, struct rdma_cm_event
 		ctx->id = client_id;
 		ctx->pd = pd;
 		ctx->cq = cq;
-		ctx->comp_channel = comp_channel;
 		ctx->mr = mr;
+		ctx->comp_channel = comp_channel;
 		ctx->buf = aligned_buf;
 		ctx->server_handle = server_handle;
 		client_id->context = ctx;
@@ -387,6 +387,13 @@ void worker_scheduler(struct server_handle *server_handle)
 	return;
 }
 
+static inline const char *ib_opcode_to_string(ib_opcode op)
+{
+	static const char *names[] = { [IB_OP_OPEN] = "OPEN", [IB_OP_CLOSE] = "CLOSE", [IB_OP_WRITE] = "WRITE",
+				       [IB_OP_READ] = "READ", [IB_OP_DEL] = "DEL",     [IB_OP_SCAN] = "SCAN" };
+	return (op >= 0 && op < sizeof(names) / sizeof(names[0])) ? names[op] : "?";
+}
+
 int ib_handle_event(struct ibv_wc *wc, struct server_handle *handle)
 {
 	// printf("Handling RDMA Work Completion event: opcode=%d, status=%d, wr_id=%lu\n",
@@ -395,14 +402,53 @@ int ib_handle_event(struct ibv_wc *wc, struct server_handle *handle)
 		log_debug("RDMA Work Completion error: %s", ibv_wc_status_str(wc->status));
 		return -1;
 	}
+
 	switch (wc->opcode) {
 	case IBV_WC_RECV: {
 		void *buf = (void *)(uintptr_t)wc->wr_id;
+		ib_header *hdr = (ib_header *)buf;
+		if (hdr->inline_flag == 1) {
+			log_debug("REQ: op=%d(%s) db=%u inline=1 va=0x%016lx data='%.*s'", hdr->op,
+				  ib_opcode_to_string(hdr->op), hdr->db_id, hdr->virtual_address,
+				  (int)sizeof(hdr->buffer), hdr->buffer);
+			// TODO: Actually process inline data here
+		} else {
+			log_debug("REQ: op=%d(%s) db=%u inline=0 va=0x%016lx [RDMA read needed]", hdr->op,
+				  ib_opcode_to_string(hdr->op), hdr->db_id, hdr->virtual_address);
+			// TODO: Implement RDMA read here
+		}
+		switch (hdr->op) {
+		case IB_OP_OPEN: {
+			log_info("Handling OPEN request");
+			break;
+		}
+		case IB_OP_CLOSE: {
+			log_info("Handling CLOSE request");
+			break;
+		}
+		case IB_OP_WRITE: {
+			log_info("Handling WRITE request");
+			break;
+		}
+		case IB_OP_READ: {
+			log_info("Handling READ request");
+			break;
+		}
+		case IB_OP_DEL: {
+			log_info("Handling DELETE request");
+			break;
+		}
+		case IB_OP_SCAN: {
+			log_info("Handling SCAN request");
+			break;
+		}
+		default:
+			log_debug("Unknown ib_opcode: %d", hdr->op);
+			break;
+		}
 		uint32_t *pollercounter = (uint32_t *)((uintptr_t)buf - METADATA_SIZE);
-
 		// worker_scheduler(handle); //SEG FAULT
 		__atomic_fetch_add(pollercounter, 1, __ATOMIC_RELAXED);
-
 		break;
 	}
 	case IBV_WC_SEND: {
@@ -415,15 +461,12 @@ int ib_handle_event(struct ibv_wc *wc, struct server_handle *handle)
 		pthread_mutex_lock(&handle->mutex[*worker_index]);
 		portals_worker_free_buf(handle->portals_workers[*worker_index], user_ptr);
 		pthread_mutex_unlock(&handle->mutex[*worker_index]);
-
 		break;
 	}
-
 	default:
 		log_debug("Unhandled RDMA opcode: %d", wc->opcode);
 		break;
 	}
-
 	return 0;
 }
 
@@ -431,7 +474,6 @@ void *cq_poll_loop(void *arg)
 {
 	ib_client_ctx *ctx = (ib_client_ctx *)arg;
 	struct ibv_wc wc;
-
 	while (1) {
 		struct ibv_cq *cq;
 		void *cq_ctx;
@@ -444,13 +486,11 @@ void *cq_poll_loop(void *arg)
 			perror("ibv_req_notify_cq");
 			continue;
 		}
-
 		while (ibv_poll_cq(cq, 1, &wc) > 0) {
 			if (ctx->server_handle == NULL) {
 				fprintf(stderr, "ctx->server_handle is NULL!\n");
 				continue;
 			}
-			printf("Received: %s", (char *)ctx->buf);
 			ctx->server_handle->wc = &wc;
 			if (ib_handle_event(ctx->server_handle->wc, ctx->server_handle) < 0) {
 				log_debug("ib_handle_event failed");
