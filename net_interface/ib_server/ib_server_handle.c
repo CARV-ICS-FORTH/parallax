@@ -268,7 +268,17 @@ int ib_handle_cm_event(struct server_handle *server_handle, struct rdma_cm_event
 			perror("rdma_create_qp");
 			return -1;
 		}
-		if (rdma_accept(client_id, NULL)) {
+		struct my_conn_metadata server_caps = {
+			.max_value_size = 1024 * 512,
+		};
+		struct rdma_conn_param conn_param = {
+			.private_data = &server_caps,
+			.private_data_len = sizeof(server_caps),
+			.responder_resources = 8,
+			.initiator_depth = 8,
+			.retry_count = 7,
+		};
+		if (rdma_accept(client_id, &conn_param)) {
 			perror("rdma_accept");
 			return -1;
 		}
@@ -320,34 +330,32 @@ int ib_handle_cm_event(struct server_handle *server_handle, struct rdma_cm_event
 		}
 		break;
 	}
-	case RDMA_CM_EVENT_ESTABLISHED:
-		// log_debug("RDMA_CM_EVENT_ESTABLISHED");
+	case RDMA_CM_EVENT_ESTABLISHED: {
+		log_debug("RDMA_CM_EVENT_ESTABLISHED");
 		break;
-	case RDMA_CM_EVENT_DISCONNECTED:
-		// log_debug("RDMA_CM_EVENT_DISCONNECTED");
+	}
+	case RDMA_CM_EVENT_DISCONNECTED: {
+		log_debug("RDMA_CM_EVENT_DISCONNECTED");
 		break;
+	}
 	default:
 		log_debug("Unhandled event: %s", rdma_event_str(event->event));
 		return -1;
 	}
-
 	return 0;
 }
 
 int ib_loop(struct server_handle *server_handle)
 {
 	struct rdma_cm_event *event;
-
 	while (1) {
 		if (rdma_get_cm_event(server_handle->ec, &event)) {
 			perror("rdma_get_cm_event");
 			return -(EXIT_FAILURE);
 		}
-
 		struct rdma_cm_event event_copy;
 		memcpy(&event_copy, event, sizeof(*event));
 		rdma_ack_cm_event(event);
-
 		if (ib_handle_cm_event(server_handle, &event_copy) < 0) {
 			log_debug("ib_handle_cm_event failed");
 			return -(EXIT_FAILURE);
@@ -387,7 +395,6 @@ int ib_handle_event(struct ibv_wc *wc, struct server_handle *handle)
 		log_debug("RDMA Work Completion error: %s", ibv_wc_status_str(wc->status));
 		return -1;
 	}
-
 	switch (wc->opcode) {
 	case IBV_WC_RECV: {
 		void *buf = (void *)(uintptr_t)wc->wr_id;
@@ -398,7 +405,6 @@ int ib_handle_event(struct ibv_wc *wc, struct server_handle *handle)
 
 		break;
 	}
-
 	case IBV_WC_SEND: {
 		void *user_ptr = (void *)(uintptr_t)wc->wr_id;
 		uintptr_t index_start =
@@ -429,14 +435,11 @@ void *cq_poll_loop(void *arg)
 	while (1) {
 		struct ibv_cq *cq;
 		void *cq_ctx;
-
 		if (ibv_get_cq_event(ctx->comp_channel, &cq, &cq_ctx)) {
 			perror("ibv_get_cq_event");
 			continue;
 		}
-
 		ibv_ack_cq_events(cq, 1);
-
 		if (ibv_req_notify_cq(cq, 0)) {
 			perror("ibv_req_notify_cq");
 			continue;
@@ -447,7 +450,7 @@ void *cq_poll_loop(void *arg)
 				fprintf(stderr, "ctx->server_handle is NULL!\n");
 				continue;
 			}
-			// printf("Received: %s\n", (char *)ctx->buf);
+			printf("Received: %s", (char *)ctx->buf);
 			ctx->server_handle->wc = &wc;
 			if (ib_handle_event(ctx->server_handle->wc, ctx->server_handle) < 0) {
 				log_debug("ib_handle_event failed");
@@ -461,7 +464,6 @@ void *cq_poll_loop(void *arg)
 			}
 		}
 	}
-
 	return NULL;
 }
 

@@ -5,6 +5,7 @@
 #include "../../lib/include/parallax/structures.h"
 #include "../portals_server/portals_server_handle.h"
 #include "../portals_server/portals_worker.h"
+#include "ib_protocol.h"
 #include <arpa/inet.h>
 #include <errno.h>
 #include <log.h>
@@ -45,8 +46,12 @@ struct server_handle {
 	uint32_t recv_buffer_size;
 };
 
-#define USAGE_STRING                                \
-	"InfiniBand Server: no options specified\n"     \
+struct my_conn_metadata {
+	uint32_t max_value_size;
+};
+
+#define USAGE_STRING                            \
+	"InfiniBand Server: no options specified\n" \
 	"try './infiniband_parallax_server --help' for more information\n"
 
 #define HELP_STRING                                                                                         \
@@ -63,9 +68,9 @@ struct server_handle {
 	" -h, --help     display this help and exit\n"                                                          \
 	" -pf, --par_format           (Optional) specify whether database should be formatted\n"
 
-#define CONFIG_STRING         \
-	"[ Server Config ]\n"     \
-	"  - file = %s\n"         \
+#define CONFIG_STRING     \
+	"[ Server Config ]\n" \
+	"  - file = %s\n"     \
 	"  - flags = not yet supported\n"
 
 #define DECIMAL_BASE 10
