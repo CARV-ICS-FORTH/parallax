@@ -17,6 +17,24 @@ struct my_conn_metadata {
 	uint32_t max_value_size;
 };
 
+void generate_random_header(struct protocol_header *hdr)
+{
+	const enum op_code valid_ops[] = { OP_OPEN, OP_CLOSE, OP_WRITE, OP_READ, OP_DEL, OP_SCAN };
+	if (hdr->inline_flag == 1) {
+		hdr->virtual_address = 0;
+	} else {
+		hdr->virtual_address = ((uint64_t)(rand() % 1024) * 4096);
+	}
+	hdr->op = valid_ops[rand() % (sizeof(valid_ops) / sizeof(valid_ops[0]))];
+	hdr->db_id = rand() % 16;
+	hdr->inline_flag = rand() % 2;
+	const char charset[] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+	for (int i = 0; i < sizeof(hdr->future_use) - 1; i++) {
+		hdr->future_use[i] = charset[rand() % (sizeof(charset) - 1)];
+	}
+	hdr->future_use[sizeof(hdr->future_use) - 1] = '\0';
+}
+
 int main()
 {
 	struct addrinfo *addr;
@@ -29,7 +47,7 @@ int main()
 	void *cq_context;
 	struct ibv_mr *mr;
 	struct ibv_qp_init_attr qp_attr;
-	ib_header *hdr;
+	struct protocol_header *hdr;
 	struct ibv_send_wr wr, *bad_wr = NULL;
 	struct ibv_sge sge;
 	struct ibv_wc wc;
@@ -75,13 +93,13 @@ int main()
 	printf("Server max value size: %u\n", meta->max_value_size);
 	rdma_ack_cm_event(event);
 
-	hdr = malloc(sizeof(ib_header));
+	hdr = malloc(sizeof(struct protocol_header));
 
-	mr = ibv_reg_mr(pd, hdr, sizeof(ib_header), IBV_ACCESS_LOCAL_WRITE);
+	mr = ibv_reg_mr(pd, hdr, sizeof(struct protocol_header), IBV_ACCESS_LOCAL_WRITE);
 
 	memset(&sge, 0, sizeof(sge));
 	sge.addr = (uintptr_t)hdr;
-	sge.length = sizeof(ib_header);
+	sge.length = sizeof(struct protocol_header);
 	sge.lkey = mr->lkey;
 
 	memset(&wr, 0, sizeof(wr));
@@ -92,22 +110,7 @@ int main()
 	wr.send_flags = IBV_SEND_SIGNALED;
 
 	for (int i = 0; i < NUM_TEST_ITERATIONS; i++) {
-		const ib_opcode valid_ops[] = {
-			IB_OP_OPEN, IB_OP_CLOSE, IB_OP_WRITE, IB_OP_READ, IB_OP_DEL, IB_OP_SCAN
-		};
-		hdr->op = valid_ops[rand() % (sizeof(valid_ops) / sizeof(valid_ops[0]))];
-		hdr->db_id = rand() % 16;
-		hdr->inline_flag = rand() % 2;
-		if (hdr->inline_flag == 1) {
-			hdr->virtual_address = 0;
-		} else {
-			hdr->virtual_address = ((uint64_t)(rand() % 1024) * 4096);
-		}
-		const char charset[] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-		for (int i = 0; i < sizeof(hdr->buffer) - 1; i++) {
-			hdr->buffer[i] = charset[rand() % (sizeof(charset) - 1)];
-		}
-		hdr->buffer[sizeof(hdr->buffer) - 1] = '\0';
+		generate_random_header(hdr);
 
 		memset(&wr, 0, sizeof(wr));
 		wr.wr_id = (uintptr_t)hdr;
@@ -130,7 +133,7 @@ int main()
 		} else {
 			printf("[%d/%d] Sent header: op=%d, db_id=%d, inline=%d, va=0x%lx, buf='%.*s'\n", i + 1,
 			       NUM_TEST_ITERATIONS, hdr->op, hdr->db_id, hdr->inline_flag, hdr->virtual_address,
-			       (int)sizeof(hdr->buffer), hdr->buffer);
+			       (int)sizeof(hdr->future_use), hdr->future_use);
 		}
 		usleep(3000);
 	}

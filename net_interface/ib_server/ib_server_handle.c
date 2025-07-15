@@ -2,7 +2,7 @@
 
 #define MSG_SIZE 1024
 
-typedef struct {
+struct ib_client_ctx {
 	struct rdma_cm_id *id;
 	struct ibv_pd *pd;
 	struct ibv_cq *cq;
@@ -10,7 +10,7 @@ typedef struct {
 	struct ibv_comp_channel *comp_channel;
 	void *buf;
 	struct server_handle *server_handle;
-} ib_client_ctx;
+};
 
 long ib_server_parse_number(const char *str, const char *opt)
 {
@@ -295,7 +295,7 @@ int ib_handle_cm_event(struct server_handle *server_handle, struct rdma_cm_event
 			return -1;
 		}
 
-		ib_client_ctx *ctx = calloc(1, sizeof(*ctx));
+		struct ib_client_ctx *ctx = calloc(1, sizeof(*ctx));
 		if (!ctx) {
 			perror("calloc");
 			return -1;
@@ -366,6 +366,9 @@ int ib_loop(struct server_handle *server_handle)
 
 void *ib_put_and_reply(void *arg)
 {
+	(void)arg;
+
+	return NULL;
 }
 
 void worker_scheduler(struct server_handle *server_handle)
@@ -387,10 +390,10 @@ void worker_scheduler(struct server_handle *server_handle)
 	return;
 }
 
-static inline const char *ib_opcode_to_string(ib_opcode op)
+static inline const char *ib_opcode_to_string(enum op_code op)
 {
-	static const char *names[] = { [IB_OP_OPEN] = "OPEN", [IB_OP_CLOSE] = "CLOSE", [IB_OP_WRITE] = "WRITE",
-				       [IB_OP_READ] = "READ", [IB_OP_DEL] = "DEL",     [IB_OP_SCAN] = "SCAN" };
+	static const char *names[] = { [OP_OPEN] = "OPEN", [OP_CLOSE] = "CLOSE", [OP_WRITE] = "WRITE",
+				       [OP_READ] = "READ", [OP_DEL] = "DEL",	 [OP_SCAN] = "SCAN" };
 	return (op >= 0 && op < sizeof(names) / sizeof(names[0])) ? names[op] : "?";
 }
 
@@ -406,11 +409,11 @@ int ib_handle_event(struct ibv_wc *wc, struct server_handle *handle)
 	switch (wc->opcode) {
 	case IBV_WC_RECV: {
 		void *buf = (void *)(uintptr_t)wc->wr_id;
-		ib_header *hdr = (ib_header *)buf;
+		struct protocol_header *hdr = (struct protocol_header *)buf;
 		if (hdr->inline_flag == 1) {
 			log_debug("REQ: op=%d(%s) db=%u inline=1 va=0x%016lx data='%.*s'", hdr->op,
 				  ib_opcode_to_string(hdr->op), hdr->db_id, hdr->virtual_address,
-				  (int)sizeof(hdr->buffer), hdr->buffer);
+				  (int)sizeof(hdr->future_use), hdr->future_use);
 			// TODO: Actually process inline data here
 		} else {
 			log_debug("REQ: op=%d(%s) db=%u inline=0 va=0x%016lx [RDMA read needed]", hdr->op,
@@ -418,27 +421,27 @@ int ib_handle_event(struct ibv_wc *wc, struct server_handle *handle)
 			// TODO: Implement RDMA read here
 		}
 		switch (hdr->op) {
-		case IB_OP_OPEN: {
+		case OP_OPEN: {
 			log_info("Handling OPEN request");
 			break;
 		}
-		case IB_OP_CLOSE: {
+		case OP_CLOSE: {
 			log_info("Handling CLOSE request");
 			break;
 		}
-		case IB_OP_WRITE: {
+		case OP_WRITE: {
 			log_info("Handling WRITE request");
 			break;
 		}
-		case IB_OP_READ: {
+		case OP_READ: {
 			log_info("Handling READ request");
 			break;
 		}
-		case IB_OP_DEL: {
+		case OP_DEL: {
 			log_info("Handling DELETE request");
 			break;
 		}
-		case IB_OP_SCAN: {
+		case OP_SCAN: {
 			log_info("Handling SCAN request");
 			break;
 		}
@@ -472,7 +475,7 @@ int ib_handle_event(struct ibv_wc *wc, struct server_handle *handle)
 
 void *cq_poll_loop(void *arg)
 {
-	ib_client_ctx *ctx = (ib_client_ctx *)arg;
+	struct ib_client_ctx *ctx = (struct ib_client_ctx *)arg;
 	struct ibv_wc wc;
 	while (1) {
 		struct ibv_cq *cq;
