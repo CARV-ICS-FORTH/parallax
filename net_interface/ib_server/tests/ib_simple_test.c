@@ -11,23 +11,24 @@
 #define PORT "7741"
 #define TIMEOUT_MS 500
 #define MSG_SIZE 17
-#define NUM_TEST_ITERATIONS 10
+
+#define NUM_TEST_ITERATIONS 6
 
 struct my_conn_metadata {
 	uint32_t max_value_size;
 };
 
-void generate_random_header(struct protocol_header *hdr)
+void generate_random_header(struct protocol_header *hdr, int i)
 {
 	const enum op_code valid_ops[] = { OP_OPEN, OP_CLOSE, OP_WRITE, OP_READ, OP_DEL, OP_SCAN };
+	hdr->inline_flag = rand() % 2;
 	if (hdr->inline_flag == 1) {
 		hdr->virtual_address = 0;
 	} else {
 		hdr->virtual_address = ((uint64_t)(rand() % 1024) * 4096);
 	}
-	hdr->op = valid_ops[rand() % (sizeof(valid_ops) / sizeof(valid_ops[0]))];
+	hdr->op = valid_ops[i];
 	hdr->db_id = rand() % 16;
-	hdr->inline_flag = rand() % 2;
 	const char charset[] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 	for (int i = 0; i < sizeof(hdr->future_use) - 1; i++) {
 		hdr->future_use[i] = charset[rand() % (sizeof(charset) - 1)];
@@ -110,7 +111,7 @@ int main()
 	wr.send_flags = IBV_SEND_SIGNALED;
 
 	for (int i = 0; i < NUM_TEST_ITERATIONS; i++) {
-		generate_random_header(hdr);
+		generate_random_header(hdr, i);
 
 		memset(&wr, 0, sizeof(wr));
 		wr.wr_id = (uintptr_t)hdr;
