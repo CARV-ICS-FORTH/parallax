@@ -35,6 +35,7 @@ enum par_net_op {
 
 typedef struct par_net_header *(*par_call)(struct worker *worker, void *args);
 typedef struct par_net_header *(*par_portals_call)(struct portals_worker *portals_worker, void *args);
+typedef struct par_net_header *(*par_ib_call)(struct portals_worker *portals_worker, void *args);
 
 /**
   *  @brief Takes the first byte of the serialized stream and translates it to

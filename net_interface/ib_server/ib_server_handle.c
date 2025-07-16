@@ -397,6 +397,75 @@ static inline const char *ib_opcode_to_string(enum op_code op)
 	return (op >= 0 && op < sizeof(names) / sizeof(names[0])) ? names[op] : "?";
 }
 
+static struct par_net_header *ib_par_net_call_open(struct portals_worker *portals_worker, void *args)
+{
+	(void)portals_worker;
+	(void)args;
+	// par_db_options db_options;
+	// const char *error_message = NULL;
+	// par_open(&db_options, &error_message);
+	return NULL;
+}
+
+static struct par_net_header *ib_par_net_call_close(struct portals_worker *portals_worker, void *args)
+{
+	(void)portals_worker;
+	(void)args;
+	// par_handle handle;
+	// const char* ret = par_close(handle);
+	// log_info("CLOSE %s\n", ret);
+	return NULL;
+}
+
+static struct par_net_header *ib_par_net_call_write(struct portals_worker *portals_worker, void *args)
+{
+	(void)portals_worker;
+	(void)args;
+	// par_handle handle;
+	// struct par_key_value *key_value;
+	// const char *error_message = NULL;
+	// par_put(handle, key_value, &error_message);
+	return NULL;
+}
+
+static struct par_net_header *ib_par_net_call_read(struct portals_worker *portals_worker, void *args)
+{
+	(void)portals_worker;
+	(void)args;
+	// par_handle handle;
+	// struct par_key *key;
+	// struct par_value *value;
+	// const char *error_message = NULL;
+	// par_get(handle, key, value, &error_message);
+	return NULL;
+}
+
+static struct par_net_header *ib_par_net_call_del(struct portals_worker *portals_worker, void *args)
+{
+	(void)portals_worker;
+	(void)args;
+	// par_handle handle;
+	// struct par_key *key;
+	// const char *error_message = NULL;
+	// par_delete(handle, key, &error_message);
+	return NULL;
+}
+
+static struct par_net_header *ib_par_net_call_scan(struct portals_worker *portals_worker, void *args)
+{
+	(void)portals_worker;
+	(void)args;
+	// par_handle handle;
+	// struct par_key *key;
+	// par_seek_mode mode;
+	// const char *error_message = NULL;
+	// par_init_scanner(handle, key, mode, &error_message);
+	return NULL;
+}
+
+const par_ib_call par_net_call[OPCODE_MAX] = { ib_par_net_call_open, ib_par_net_call_close, ib_par_net_call_write,
+					       ib_par_net_call_read, ib_par_net_call_del,   ib_par_net_call_scan };
+
 int ib_handle_event(struct ibv_wc *wc, struct server_handle *handle)
 {
 	// printf("Handling RDMA Work Completion event: opcode=%d, status=%d, wr_id=%lu\n",
@@ -420,34 +489,10 @@ int ib_handle_event(struct ibv_wc *wc, struct server_handle *handle)
 				  ib_opcode_to_string(hdr->op), hdr->db_id, hdr->virtual_address);
 			// TODO: Implement RDMA read here
 		}
-		switch (hdr->op) {
-		case OP_OPEN: {
-			log_info("Handling OPEN request");
-			break;
-		}
-		case OP_CLOSE: {
-			log_info("Handling CLOSE request");
-			break;
-		}
-		case OP_WRITE: {
-			log_info("Handling WRITE request");
-			break;
-		}
-		case OP_READ: {
-			log_info("Handling READ request");
-			break;
-		}
-		case OP_DEL: {
-			log_info("Handling DELETE request");
-			break;
-		}
-		case OP_SCAN: {
-			log_info("Handling SCAN request");
-			break;
-		}
-		default:
-			log_debug("Unknown ib_opcode: %d", hdr->op);
-			break;
+		if (hdr->op <= OP_SCAN && par_net_call[hdr->op]) {
+			par_net_call[hdr->op](handle->portals_workers[0], buf);
+		} else {
+			log_debug("Unknown opcode: %d", hdr->op);
 		}
 		uint32_t *pollercounter = (uint32_t *)((uintptr_t)buf - METADATA_SIZE);
 		// worker_scheduler(handle); //SEG FAULT

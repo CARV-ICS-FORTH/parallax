@@ -81,6 +81,8 @@ struct my_conn_metadata {
 #define PRSV_WORKER_BUF_SIZE (63U * 4096) // x*a +4096 = y where y is power of 2 and multiple of sizeof(void*) == 8
 #define QUEUE_DEPTH 128
 
+#define OPCODE_MAX 6
+
 struct server_options *ib_server_parse_argv_opts(int argc, char **argv);
 
 long ib_server_parse_number(const char *str, const char *opt);
