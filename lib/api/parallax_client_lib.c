@@ -343,7 +343,6 @@ static par_handle par_net_init(const char *parallax_host)
 }
 #endif
 
-#ifdef PORTALS
 void par_net_handle_destroy(par_handle handle)
 {
 	if (NULL == handle) {
@@ -353,32 +352,18 @@ void par_net_handle_destroy(par_handle handle)
 	log_debug("Destroying handle");
 
 	struct par_handle *parallax_handle = (struct par_handle *)handle;
+#ifdef PORTALS
 	PtlMDRelease(parallax_handle->mdh);
 	PtlEQFree(parallax_handle->eqh);
 	PtlPTFree(parallax_handle->nih, parallax_handle->ptindex);
 	PtlNIFini(parallax_handle->nih);
 	PtlFini();
-	free(parallax_handle->recv_buffer);
-	free(parallax_handle->send_buffer);
-	if (parallax_handle->configuration[PARALLAX_SERVER].value)
-		free((void *)parallax_handle->configuration[PARALLAX_SERVER].value);
-	free(parallax_handle->configuration);
-	free(parallax_handle);
-	log_debug("Destroyed handle Bye Bye not null");
-}
 #else
-void par_net_handle_destroy(par_handle handle)
-{
-	if (NULL == handle) {
-		log_debug("NULL handle to destroy?");
-		return;
-	}
-	log_debug("Destroying handle Bye Bye not null");
-	struct par_handle *parallax_handle = (struct par_handle *)handle;
 	if (close(parallax_handle->sockfd) < 0) {
 		log_fatal("Failed to close the socket");
 		_exit(EXIT_FAILURE);
 	}
+#endif
 	free(parallax_handle->recv_buffer);
 	free(parallax_handle->send_buffer);
 	if (parallax_handle->configuration[PARALLAX_SERVER].value)
@@ -386,7 +371,6 @@ void par_net_handle_destroy(par_handle handle)
 	free(parallax_handle->configuration);
 	free(parallax_handle);
 }
-#endif
 
 #ifdef PORTALS
 static ssize_t par_portals_RPC(par_handle handle, char *send_buffer, size_t send_buffer_len, char **recv_buffer)
@@ -525,7 +509,6 @@ char *par_format(char *device_name, uint32_t max_regions_num)
 	return NULL;
 }
 
-#ifdef PORTALS
 par_handle par_open(par_db_options *db_options, const char **error_message)
 {
 	log_info("OPEN DB with name: %s", db_options->db_name);
@@ -533,7 +516,9 @@ par_handle par_open(par_db_options *db_options, const char **error_message)
 	struct par_handle *parallax_handle =
 		(struct par_handle *)par_net_init((const char *)configuration[PARALLAX_SERVER].value);
 	parallax_handle->configuration = configuration;
+#ifdef PORTALS
 	parallax_handle->total_cycles = 0;
+#endif
 	size_t msg_len = par_net_open_req_calc_size(par_net_get_size(db_options->db_name)) + par_net_header_calc_size();
 	if (msg_len > parallax_handle->send_buffer_size) {
 		log_fatal("Send buffer too small has: %u B needs %lu B", parallax_handle->send_buffer_size, msg_len);
@@ -554,87 +539,35 @@ par_handle par_open(par_db_options *db_options, const char **error_message)
 		_exit(EXIT_FAILURE);
 	}
 
+#ifdef PORTALS
 	ssize_t bytes_received =
 		par_portals_RPC(parallax_handle, parallax_handle->send_buffer, msg_len, &parallax_handle->recv_buffer);
-
-	if (0 == bytes_received) {
-		*error_message = "Communication with server failed";
-		return NULL;
-	}
-	struct par_net_header *reply_header = (struct par_net_header *)parallax_handle->recv_buffer;
-	assert(reply_header->opcode == OPCODE_OPEN);
-	par_handle ret_handle =
-		par_net_open_rep_handle_reply(&parallax_handle->recv_buffer[par_net_header_calc_size()]);
-
-	if (0 == ret_handle) {
-		*error_message = "Operation (open) failed";
-		par_net_handle_destroy(parallax_handle);
-		return NULL;
-	}
-
-	parallax_handle->region_id = (uint64_t)ret_handle;
-	parallax_handle->configuration = configuration;
-
-	log_info("OPEN DB with name: %s ... DONE", db_options->db_name);
-	return (par_handle)parallax_handle;
-}
 #else
-par_handle par_open(par_db_options *db_options, const char **error_message)
-{
-	log_info("OPEN DB with name: %s", db_options->db_name);
-	struct par_options_desc *configuration = par_get_default_options();
-	struct par_handle *parallax_handle =
-		(struct par_handle *)par_net_init((const char *)configuration[PARALLAX_SERVER].value);
-	parallax_handle->configuration = configuration;
-
-	size_t msg_len = par_net_open_req_calc_size(par_net_get_size(db_options->db_name)) + par_net_header_calc_size();
-
-	if (msg_len > parallax_handle->send_buffer_size) {
-		log_fatal("Send buffer too small has: %u B needs %lu B", parallax_handle->send_buffer_size, msg_len);
-		_exit(EXIT_FAILURE);
-	}
-
-	struct par_net_header *request_header = (struct par_net_header *)(parallax_handle->send_buffer);
-	request_header->total_bytes = msg_len;
-	request_header->opcode = OPCODE_OPEN;
-
-	size_t buffer_len = parallax_handle->send_buffer_size - par_net_header_calc_size();
-	struct par_net_open_req *request =
-		par_net_open_req_create(db_options->create_flag, db_options->db_name,
-					&parallax_handle->send_buffer[par_net_header_calc_size()], &buffer_len);
-
-	if (NULL == request) {
-		log_fatal("Failed to create open request");
-		_exit(EXIT_FAILURE);
-	}
-
 	ssize_t bytes_received = par_net_RPC(parallax_handle->sockfd, parallax_handle->send_buffer, msg_len,
 					     &parallax_handle->recv_buffer, parallax_handle->recv_buffer_size);
-
+#endif
 	if (0 == bytes_received) {
 		*error_message = "Communication with server failed";
 		return NULL;
 	}
-
 	struct par_net_header *reply_header = (struct par_net_header *)parallax_handle->recv_buffer;
 	assert(reply_header->opcode == OPCODE_OPEN);
-
 	par_handle ret_handle =
 		par_net_open_rep_handle_reply(&parallax_handle->recv_buffer[par_net_header_calc_size()]);
+
 	if (0 == ret_handle) {
 		*error_message = "Operation (open) failed";
 		par_net_handle_destroy(parallax_handle);
 		return NULL;
 	}
+
 	parallax_handle->region_id = (uint64_t)ret_handle;
 	parallax_handle->configuration = configuration;
 
 	log_info("OPEN DB with name: %s ... DONE", db_options->db_name);
 	return (par_handle)parallax_handle;
 }
-#endif
 
-#ifdef PORTALS
 const char *par_close(par_handle handle)
 {
 	log_info("CLOSE operation ...");
@@ -657,8 +590,13 @@ const char *par_close(par_handle handle)
 		_exit(EXIT_FAILURE);
 	}
 
+#ifdef PORTALS
 	ssize_t bytes_received =
 		par_portals_RPC(parallax_handle, parallax_handle->send_buffer, msg_len, &parallax_handle->recv_buffer);
+#else
+	ssize_t bytes_received = par_net_RPC(parallax_handle->sockfd, parallax_handle->send_buffer, msg_len,
+					     &parallax_handle->recv_buffer, parallax_handle->recv_buffer_size);
+#endif
 	if (0 == bytes_received) {
 		return "Error with sending buffer";
 	}
@@ -677,50 +615,6 @@ const char *par_close(par_handle handle)
 	log_info("CLOSE operation ... DONE");
 	return NULL;
 }
-#else
-const char *par_close(par_handle handle)
-{
-	log_info("CLOSE operation ...");
-	struct par_handle *parallax_handle = (struct par_handle *)handle;
-	size_t msg_len = par_net_close_req_calc_size() + par_net_header_calc_size();
-	if (msg_len > parallax_handle->send_buffer_size) {
-		log_fatal("Send buffer too small has: %u B needs %lu B", parallax_handle->send_buffer_size, msg_len);
-		_exit(EXIT_FAILURE);
-	}
-
-	struct par_net_header *header = (struct par_net_header *)(parallax_handle->send_buffer);
-	header->total_bytes = msg_len;
-	header->opcode = OPCODE_CLOSE;
-
-	size_t buffer_len = parallax_handle->send_buffer_size - par_net_header_calc_size();
-	struct par_net_close_req *request = par_net_close_req_create(
-		parallax_handle->region_id, &parallax_handle->send_buffer[par_net_header_calc_size()], &buffer_len);
-	if (NULL == request) {
-		log_fatal("Failed to create close request");
-		_exit(EXIT_FAILURE);
-	}
-
-	ssize_t bytes_received = par_net_RPC(parallax_handle->sockfd, parallax_handle->send_buffer, msg_len,
-					     &parallax_handle->recv_buffer, parallax_handle->recv_buffer_size);
-
-	if (0 == bytes_received) {
-		return "Error with sending buffer";
-	}
-	struct par_net_header *reply_header = (struct par_net_header *)parallax_handle->recv_buffer;
-	assert(reply_header->opcode == OPCODE_CLOSE);
-	struct par_net_close_rep *reply =
-		(struct par_net_close_rep *)&parallax_handle->recv_buffer[par_net_header_calc_size()];
-	const char *error_message = par_net_close_rep_handle_reply(reply);
-
-	if (error_message) {
-		return error_message;
-	}
-
-	par_net_handle_destroy(parallax_handle);
-	log_info("CLOSE operation ... DONE");
-	return NULL;
-}
-#endif
 
 // cppcheck-suppress unusedFunction
 char *par_get_db_name(par_handle handle, const char **error_message)
@@ -747,7 +641,6 @@ enum kv_category get_kv_category(int32_t key_size, int32_t value_size, request_t
 #define CPU_FREQ_HZ 2300
 #endif
 
-#ifdef PORTALS
 struct par_put_metadata par_put(par_handle handle, struct par_key_value *key_value, const char **error_message)
 {
 	struct par_handle *parallax_handle = (struct par_handle *)handle;
@@ -773,6 +666,7 @@ struct par_put_metadata par_put(par_handle handle, struct par_key_value *key_val
 		log_fatal("Failed to create put request");
 		_exit(EXIT_FAILURE);
 	}
+#ifdef PORTALS
 #ifdef ENABLE_METRICS
 	parallax_handle->start = __rdtsc();
 	ssize_t bytes_received =
@@ -799,52 +693,11 @@ struct par_put_metadata par_put(par_handle handle, struct par_key_value *key_val
 	ssize_t bytes_received =
 		par_portals_RPC(parallax_handle, parallax_handle->send_buffer, msg_len, &parallax_handle->recv_buffer);
 #endif
-	if (0 == bytes_received) {
-		*error_message = "Communication with server failed";
-		struct par_put_metadata sample_return_value = { 0 };
-		return sample_return_value;
-	}
-	struct par_net_header *reply_header = (struct par_net_header *)parallax_handle->recv_buffer;
-	assert(OPCODE_PUT == reply_header->opcode);
-	struct par_net_put_rep *reply =
-		(struct par_net_put_rep *)&parallax_handle->recv_buffer[par_net_header_calc_size()];
-
-	struct par_put_metadata metadata = par_net_put_rep_handle_reply(reply);
-	log_debug("Client lsn got from put is %lu", metadata.lsn);
-
-	return metadata;
-}
 #else
-//cppcheck-suppress constParameterPointer
-struct par_put_metadata par_put(par_handle handle, struct par_key_value *key_value, const char **error_message)
-{
-	struct par_handle *parallax_handle = (struct par_handle *)handle;
-
-	size_t msg_len =
-		par_net_put_req_calc_size(key_value->k.size, key_value->v.val_size) + par_net_header_calc_size();
-
-	if (msg_len > parallax_handle->send_buffer_size) {
-		log_fatal("Send buffer too small has: %u B needs %lu B", parallax_handle->send_buffer_size, msg_len);
-		_exit(EXIT_FAILURE);
-	}
-
-	struct par_net_header *header = (struct par_net_header *)(parallax_handle->send_buffer);
-
-	header->total_bytes = msg_len;
-	header->opcode = OPCODE_PUT;
-
-	size_t buffer_len = parallax_handle->send_buffer_size - par_net_header_calc_size();
-	struct par_net_put_req *request = par_net_put_req_create(
-		parallax_handle->region_id, key_value->k.size, key_value->k.data, key_value->v.val_size,
-		key_value->v.val_buffer, &parallax_handle->send_buffer[par_net_header_calc_size()], &buffer_len);
-	if (NULL == request) {
-		log_fatal("Failed to create put request");
-		_exit(EXIT_FAILURE);
-	}
-
 	ssize_t bytes_received = par_net_RPC(parallax_handle->sockfd, parallax_handle->send_buffer, msg_len,
-					     &parallax_handle->recv_buffer, parallax_handle->recv_buffer_size);
 
+					     &parallax_handle->recv_buffer, parallax_handle->recv_buffer_size);
+#endif
 	if (0 == bytes_received) {
 		*error_message = "Communication with server failed";
 		struct par_put_metadata sample_return_value = { 0 };
@@ -860,7 +713,6 @@ struct par_put_metadata par_put(par_handle handle, struct par_key_value *key_val
 
 	return metadata;
 }
-#endif
 
 struct par_put_metadata par_put_serialized(par_handle handle, char *serialized_key_value, const char **error_message,
 					   bool append_to_log, bool abort_on_compaction)
@@ -876,7 +728,6 @@ struct par_put_metadata par_put_serialized(par_handle handle, char *serialized_k
 	return sample_return_value;
 }
 
-#ifdef PORTALS
 void par_get(par_handle handle, struct par_key *key, struct par_value *value, const char **error_message)
 {
 	if (value == NULL) {
@@ -909,6 +760,7 @@ void par_get(par_handle handle, struct par_key *key, struct par_value *value, co
 		log_fatal("Failed to create get request");
 		_exit(EXIT_FAILURE);
 	}
+#ifdef PORTALS
 #ifdef ENABLE_METRICS
 
 	parallax_handle->start = __rdtsc();
@@ -936,55 +788,10 @@ void par_get(par_handle handle, struct par_key *key, struct par_value *value, co
 	ssize_t bytes_received =
 		par_portals_RPC(parallax_handle, parallax_handle->send_buffer, msg_len, &parallax_handle->recv_buffer);
 #endif
-	if (0 == bytes_received) {
-		*error_message = "Communication with server failed";
-		return;
-	}
-
-	struct par_net_get_rep *reply =
-		(struct par_net_get_rep *)&parallax_handle->recv_buffer[par_net_header_calc_size()];
-
-	if (false == par_net_get_rep_handle_reply(reply, value)) {
-		log_debug("Key %.*s NOT found", key->size, key->data);
-		*error_message = "Key Not found";
-	}
-}
 #else
-// cppcheck-suppress constParameterPointer
-void par_get(par_handle handle, struct par_key *key, struct par_value *value, const char **error_message)
-{
-	if (value == NULL) {
-		log_fatal("Value should not be null");
-		_exit(EXIT_FAILURE);
-	}
-
-	if (value->val_buffer == NULL) {
-		log_fatal("In Parallax client lib value buffer should not be null");
-		_exit(EXIT_FAILURE);
-	}
-
-	struct par_handle *parallax_handle = (struct par_handle *)handle;
-	size_t msg_len = par_net_get_req_calc_size(key->size) + par_net_header_calc_size();
-	if (msg_len > parallax_handle->send_buffer_size) {
-		log_fatal("Send buffer too small has: %u B needs %lu B", parallax_handle->send_buffer_size, msg_len);
-		_exit(EXIT_FAILURE);
-	}
-
-	struct par_net_header *header = (struct par_net_header *)(parallax_handle->send_buffer);
-	header->total_bytes = msg_len;
-	header->opcode = OPCODE_GET;
-
-	size_t buffer_len = parallax_handle->send_buffer_size - par_net_header_calc_size();
-	struct par_net_get_req *request =
-		par_net_get_req_create(parallax_handle->region_id, key->size, key->data, true,
-				       &parallax_handle->send_buffer[par_net_header_calc_size()], &buffer_len);
-	if (NULL == request) {
-		log_fatal("Failed to create get request");
-		_exit(EXIT_FAILURE);
-	}
-
 	ssize_t bytes_received = par_net_RPC(parallax_handle->sockfd, parallax_handle->send_buffer, msg_len,
 					     &parallax_handle->recv_buffer, parallax_handle->recv_buffer_size);
+#endif
 	if (0 == bytes_received) {
 		*error_message = "Communication with server failed";
 		return;
@@ -998,9 +805,7 @@ void par_get(par_handle handle, struct par_key *key, struct par_value *value, co
 		*error_message = "Key Not found";
 	}
 }
-#endif
 
-#ifdef PORTALS
 void par_get_serialized(par_handle handle, char *key_serialized, struct par_value *value, const char **error_message)
 {
 	struct key_splice *key = (struct key_splice *)key_serialized;
@@ -1012,21 +817,7 @@ void par_get_serialized(par_handle handle, char *key_serialized, struct par_valu
 		_exit(EXIT_FAILURE);
 	}
 }
-#else
-void par_get_serialized(par_handle handle, char *key_serialized, struct par_value *value, const char **error_message)
-{
-	struct key_splice *key = (struct key_splice *)key_serialized;
-	struct par_key par_key = { .size = key_splice_get_key_size(key), .data = key_splice_get_key_offset(key) };
-	par_get(handle, &par_key, value, error_message);
 
-	if (*error_message) {
-		log_fatal("%s", *error_message);
-		_exit(EXIT_FAILURE);
-	}
-}
-#endif
-
-#ifdef PORTALS
 par_ret_code par_exists(par_handle handle, struct par_key *key)
 {
 	struct par_handle *parallax_handle = (struct par_handle *)handle;
@@ -1049,44 +840,13 @@ par_ret_code par_exists(par_handle handle, struct par_key *key)
 		_exit(EXIT_FAILURE);
 	}
 
+#ifdef PORTALS
 	ssize_t bytes_received =
 		par_portals_RPC(parallax_handle, parallax_handle->send_buffer, msg_len, &parallax_handle->recv_buffer);
-	if (0 == bytes_received) {
-		log_warn("Communication with server failed");
-		return false;
-	}
-
-	struct par_net_get_rep *reply =
-		(struct par_net_get_rep *)&parallax_handle->recv_buffer[par_net_header_calc_size()];
-
-	return par_net_get_rep_is_found(reply) ? PAR_SUCCESS : PAR_KEY_NOT_FOUND;
-}
 #else
-// cppcheck-suppress constParameterPointer
-par_ret_code par_exists(par_handle handle, struct par_key *key)
-{
-	struct par_handle *parallax_handle = (struct par_handle *)handle;
-	size_t msg_len = par_net_get_req_calc_size(key->size) + par_net_header_calc_size();
-	if (msg_len > parallax_handle->send_buffer_size) {
-		log_fatal("Send buffer too small has: %u B needs %lu B", parallax_handle->send_buffer_size, msg_len);
-		_exit(EXIT_FAILURE);
-	}
-
-	struct par_net_header *header = (struct par_net_header *)(parallax_handle->send_buffer);
-	header->total_bytes = msg_len;
-	header->opcode = OPCODE_GET;
-
-	size_t buffer_len = parallax_handle->send_buffer_size - par_net_header_calc_size();
-	struct par_net_get_req *request =
-		par_net_get_req_create(parallax_handle->region_id, key->size, key->data, false,
-				       &parallax_handle->send_buffer[par_net_header_calc_size()], &buffer_len);
-	if (NULL == request) {
-		log_fatal("Failed to create get request");
-		_exit(EXIT_FAILURE);
-	}
-
 	ssize_t bytes_received = par_net_RPC(parallax_handle->sockfd, parallax_handle->send_buffer, msg_len,
 					     &parallax_handle->recv_buffer, parallax_handle->recv_buffer_size);
+#endif
 	if (0 == bytes_received) {
 		log_warn("Communication with server failed");
 		return false;
@@ -1097,7 +857,6 @@ par_ret_code par_exists(par_handle handle, struct par_key *key)
 
 	return par_net_get_rep_is_found(reply) ? PAR_SUCCESS : PAR_KEY_NOT_FOUND;
 }
-#endif
 
 // cppcheck-suppress unusedFunction
 uint64_t par_flush_segment_in_log(par_handle handle, char *buf, int32_t buf_size, uint32_t IO_size,
@@ -1119,7 +878,6 @@ uint64_t par_init_compaction_id(par_handle handle)
 	return 0;
 }
 
-#ifdef PORTALS
 void par_delete(par_handle handle, struct par_key *key, const char **error_message)
 {
 	struct par_handle *parallax_handle = (struct par_handle *)handle;
@@ -1142,46 +900,13 @@ void par_delete(par_handle handle, struct par_key *key, const char **error_messa
 		_exit(EXIT_FAILURE);
 	}
 
+#ifdef PORTALS
 	ssize_t bytes_received =
 		par_portals_RPC(parallax_handle, parallax_handle->send_buffer, msg_len, &parallax_handle->recv_buffer);
-
-	if (0 == bytes_received) {
-		*error_message = "Communication with server failed";
-		return;
-	}
-	struct par_net_header *reply_header = (struct par_net_header *)parallax_handle->recv_buffer;
-	assert(OPCODE_DEL == reply_header->opcode);
-	struct par_net_del_rep *delete_reply =
-		(struct par_net_del_rep *)&parallax_handle->recv_buffer[par_net_header_calc_size()];
-	par_net_del_rep_handle_reply(delete_reply);
-}
 #else
-// cppcheck-suppress constParameterPointer
-void par_delete(par_handle handle, struct par_key *key, const char **error_message)
-{
-	struct par_handle *parallax_handle = (struct par_handle *)handle;
-	size_t msg_len = par_net_del_req_calc_size(key->size) + par_net_header_calc_size();
-	if (msg_len > parallax_handle->send_buffer_size) {
-		log_fatal("Send buffer too small has: %u B needs %lu B", parallax_handle->send_buffer_size, msg_len);
-		_exit(EXIT_FAILURE);
-	}
-
-	struct par_net_header *header = (struct par_net_header *)(parallax_handle->send_buffer);
-	header->total_bytes = msg_len;
-	header->opcode = OPCODE_DEL;
-
-	size_t buffer_len = parallax_handle->recv_buffer_size - par_net_header_calc_size();
-	struct par_net_del_req *request =
-		par_net_del_req_create(parallax_handle->region_id, key->size, key->data,
-				       &parallax_handle->send_buffer[par_net_header_calc_size()], &buffer_len);
-	if (NULL == request) {
-		log_fatal("Failed to create delete request");
-		_exit(EXIT_FAILURE);
-	}
-
 	ssize_t bytes_received = par_net_RPC(parallax_handle->sockfd, parallax_handle->send_buffer, msg_len,
 					     &parallax_handle->recv_buffer, parallax_handle->recv_buffer_size);
-
+#endif
 	if (0 == bytes_received) {
 		*error_message = "Communication with server failed";
 		return;
@@ -1192,7 +917,6 @@ void par_delete(par_handle handle, struct par_key *key, const char **error_messa
 		(struct par_net_del_rep *)&parallax_handle->recv_buffer[par_net_header_calc_size()];
 	par_net_del_rep_handle_reply(delete_reply);
 }
-#endif
 
 #ifdef PORTALS
 /*scanner staff*/
@@ -1224,7 +948,6 @@ struct parallax_scanner {
 };
 #endif
 
-#ifdef PORTALS
 static struct par_net_scan_rep *par_scan_get_next_batch(par_scanner scanner, par_seek_mode mode, struct par_key *key)
 {
 	struct parallax_scanner *parallax_scanner = scanner;
@@ -1246,9 +969,13 @@ static struct par_net_scan_rep *par_scan_get_next_batch(par_scanner scanner, par
 	struct par_net_header *header = (struct par_net_header *)parallax_scanner->send_buffer;
 	header->opcode = OPCODE_SCAN;
 	header->total_bytes = par_net_scan_req_calc_size(key ? key->size : 1) + sizeof(struct par_net_header);
+#ifdef PORTALS
 	par_portals_RPC(parallax_scanner->parallax_handle, parallax_scanner->send_buffer, header->total_bytes,
 			&parallax_scanner->recv_buffer);
-
+#else
+	par_net_RPC(parallax_scanner->parallax_handle->sockfd, parallax_scanner->send_buffer, header->total_bytes,
+		    &parallax_scanner->recv_buffer, parallax_scanner->recv_buffer_size);
+#endif
 	log_debug("Sending SCAN request to fetch next batch ... D O N E");
 	//-- reply part
 	struct par_net_header *reply_header = (struct par_net_header *)parallax_scanner->recv_buffer;
@@ -1264,51 +991,10 @@ static struct par_net_scan_rep *par_scan_get_next_batch(par_scanner scanner, par
 
 	return reply;
 }
-#else
-static struct par_net_scan_rep *par_scan_get_next_batch(par_scanner scanner, par_seek_mode mode, struct par_key *key)
-{
-	struct parallax_scanner *parallax_scanner = scanner;
-	size_t buffer_len = parallax_scanner->send_buffer_size - par_net_header_calc_size();
 
-	struct par_net_scan_req *scan_req =
-		par_net_scan_req_create(parallax_scanner->parallax_handle->region_id, key, PAR_SCAN_MAX_KV_ENTRIES,
-					mode, &parallax_scanner->send_buffer[par_net_header_calc_size()], buffer_len);
-
-	if (NULL == scan_req) {
-		log_fatal("Failed to create scan request");
-		_exit(EXIT_FAILURE);
-	}
-
-	// log_debug("Sending SCAN request to fetch next batch... %s mode with key: %.*s",
-	// 	  mode == PAR_GREATER_OR_EQUAL ? "PAR_GREATER_OR_EQUAL" : "PAR_GREATER", key ? key->size : 4,
-	// 	  key ? key->data : "NULL");
-
-	struct par_net_header *header = (struct par_net_header *)parallax_scanner->send_buffer;
-	header->opcode = OPCODE_SCAN;
-	header->total_bytes = par_net_scan_req_calc_size(key ? key->size : 1) + sizeof(struct par_net_header);
-	par_net_RPC(parallax_scanner->parallax_handle->sockfd, parallax_scanner->send_buffer, header->total_bytes,
-		    &parallax_scanner->recv_buffer, parallax_scanner->recv_buffer_size);
-
-	// log_debug("Sending SCAN request to fetch next batch ... D O N E");
-	//-- reply part
-	struct par_net_header *reply_header = (struct par_net_header *)parallax_scanner->recv_buffer;
-	assert(reply_header->opcode == OPCODE_SCAN);
-	struct par_net_scan_rep *reply =
-		(struct par_net_scan_rep *)(&parallax_scanner->recv_buffer[par_net_header_calc_size()]);
-
-	if (NULL == reply) {
-		log_fatal("Got null scan reply?");
-		_exit(EXIT_FAILURE);
-	}
-	parallax_scanner->is_valid = par_net_scan_rep_is_valid(reply);
-
-	return reply;
-}
-#endif
-
-#ifdef PORTALS
 par_scanner par_init_scanner(par_handle handle, struct par_key *key, par_seek_mode mode, const char **error_message)
 {
+#ifdef PORTALS
 	struct par_handle *parallax_handle = (struct par_handle *)handle;
 	struct parallax_scanner *scanner = calloc(1UL, sizeof(struct parallax_scanner));
 	scanner->send_buffer_size = parallax_handle->send_buffer_size;
@@ -1317,6 +1003,16 @@ par_scanner par_init_scanner(par_handle handle, struct par_key *key, par_seek_mo
 	scanner->recv_buffer = parallax_handle->recv_buffer;
 	scanner->max_KV_pairs = PAR_SCAN_MAX_KV_ENTRIES;
 	scanner->parallax_handle = handle;
+#else
+	struct parallax_scanner *scanner = calloc(1UL, sizeof(struct parallax_scanner));
+	scanner->send_buffer_size = PAR_SCAN_SEND_BUFFER_SIZE;
+	scanner->recv_buffer_size = PAR_SCAN_RECV_BUFFER_SIZE;
+	scanner->send_buffer = calloc(1UL, scanner->send_buffer_size);
+	scanner->recv_buffer = calloc(1UL, scanner->recv_buffer_size);
+	scanner->parallax_handle = handle;
+	scanner->max_KV_pairs = PAR_SCAN_MAX_KV_ENTRIES;
+	scanner->parallax_handle = handle;
+#endif
 	log_debug("Requesting from server for the 1st batch of KV pairs... key is: %.*s", key == NULL ? 4 : key->size,
 		  key == NULL ? "NULL" : key->data);
 	scanner->reply = par_scan_get_next_batch(scanner, mode, key);
@@ -1329,31 +1025,6 @@ par_scanner par_init_scanner(par_handle handle, struct par_key *key, par_seek_mo
 	par_net_scan_rep_seek2_to_first(scanner->reply);
 	return scanner;
 }
-#else
-// cppcheck-suppress constParameterPointer
-par_scanner par_init_scanner(par_handle handle, struct par_key *key, par_seek_mode mode, const char **error_message)
-{
-	struct parallax_scanner *scanner = calloc(1UL, sizeof(struct parallax_scanner));
-	scanner->send_buffer_size = PAR_SCAN_SEND_BUFFER_SIZE;
-	scanner->recv_buffer_size = PAR_SCAN_RECV_BUFFER_SIZE;
-	scanner->send_buffer = calloc(1UL, scanner->send_buffer_size);
-	scanner->recv_buffer = calloc(1UL, scanner->recv_buffer_size);
-	scanner->parallax_handle = handle;
-	scanner->max_KV_pairs = PAR_SCAN_MAX_KV_ENTRIES;
-	scanner->parallax_handle = handle;
-	// log_debug("Requesting from server for the 1st batch of KV pairs... key is: %.*s", key == NULL ? 4 : key->size,
-	// 	  key == NULL ? "NULL" : key->data);
-	scanner->reply = par_scan_get_next_batch(scanner, mode, key);
-	if (NULL == scanner->reply) {
-		log_fatal("Failed to fetch 1st batch of KV pairs from the server");
-		*error_message = "Failed to fetch 1st batch of KV pairs from the server";
-		free(scanner);
-		return NULL;
-	}
-	par_net_scan_rep_seek2_to_first(scanner->reply);
-	return scanner;
-}
-#endif
 
 void par_close_scanner(par_scanner sc)
 {
@@ -1409,7 +1080,6 @@ struct par_value par_get_value(par_scanner sc)
 	return value;
 }
 
-#ifdef PORTALS
 // cppcheck-suppress unusedFunction
 par_ret_code par_sync(par_handle handle)
 {
@@ -1426,39 +1096,14 @@ par_ret_code par_sync(par_handle handle)
 	request->opcode = OPCODE_SYNC;
 	request->total_bytes = par_net_header_calc_size() + par_net_sync_req_calc_size();
 
+#ifdef PORTALS
 	ssize_t bytes_received = par_portals_RPC(parallax_handle, parallax_handle->send_buffer, request->total_bytes,
 						 &parallax_handle->recv_buffer);
-	struct par_net_header *reply = (struct par_net_header *)parallax_handle->recv_buffer;
-	assert(reply->total_bytes == bytes_received);
-	struct par_net_sync_rep *sync_reply =
-		(struct par_net_sync_rep *)&parallax_handle->recv_buffer[par_net_header_calc_size()];
-	par_ret_code ret_val = PAR_SUCCESS;
-	if (par_net_sync_rep_get_status(sync_reply)) {
-		log_warn("Sync failed");
-		ret_val = PAR_FAILURE;
-	}
-
-	return ret_val;
-}
 #else
-// cppcheck-suppress unusedFunction
-par_ret_code par_sync(par_handle handle)
-{
-	struct par_handle *parallax_handle = (struct par_handle *)handle;
-	struct par_net_sync_req *sync_request = par_net_sync_req_create(
-		parallax_handle->region_id, &parallax_handle->send_buffer[par_net_header_calc_size()],
-		parallax_handle->send_buffer_size - par_net_header_calc_size());
-	if (NULL == sync_request) {
-		log_fatal("Failed to create par_net_sync_req request");
-		_exit(EXIT_FAILURE);
-	}
-	struct par_net_header *request = (struct par_net_header *)parallax_handle->send_buffer;
-	request->opcode = OPCODE_SYNC;
-	request->total_bytes = par_net_header_calc_size() + par_net_sync_req_calc_size();
-
 	ssize_t bytes_received = par_net_RPC(parallax_handle->sockfd, parallax_handle->send_buffer,
 					     request->total_bytes, &parallax_handle->recv_buffer,
 					     parallax_handle->recv_buffer_size);
+#endif
 	struct par_net_header *reply = (struct par_net_header *)parallax_handle->recv_buffer;
 	assert(reply->total_bytes == bytes_received);
 	struct par_net_sync_rep *sync_reply =
@@ -1470,7 +1115,6 @@ par_ret_code par_sync(par_handle handle)
 	}
 	return ret_val;
 }
-#endif
 
 struct par_options_desc *par_get_default_options(void)
 {
