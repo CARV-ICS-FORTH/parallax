@@ -14,26 +14,74 @@
 
 #define NUM_TEST_ITERATIONS 6
 
+struct ib_client_ctx {
+	struct rdma_cm_id *id;
+	struct ibv_pd *pd;
+	struct ibv_cq *cq;
+	struct ibv_mr *mr;
+	struct ibv_comp_channel *comp_channel;
+	void *buf;
+	struct server_handle *server_handle;
+};
+
 struct my_conn_metadata {
 	uint32_t max_value_size;
 };
 
-void generate_random_header(struct protocol_header *hdr, int i)
+int send_protocol_header(struct ib_client_ctx *ctx, enum op_code op, uint64_t virtual_address, uint8_t db_id,
+			 uint8_t inline_flag)
 {
-	const enum op_code valid_ops[] = { OP_OPEN, OP_CLOSE, OP_WRITE, OP_READ, OP_DEL, OP_SCAN };
-	hdr->inline_flag = rand() % 2;
-	if (hdr->inline_flag == 1) {
-		hdr->virtual_address = 0;
-	} else {
-		hdr->virtual_address = ((uint64_t)(rand() % 1024) * 4096);
+	struct protocol_header *hdr = (struct protocol_header *)ctx->buf;
+	hdr->op = op;
+	hdr->virtual_address = virtual_address;
+	hdr->db_id = db_id;
+	hdr->inline_flag = inline_flag;
+
+	memset(hdr->future_use, 0, sizeof(hdr->future_use));
+	snprintf((char *)hdr->future_use, sizeof(hdr->future_use), "TEST%02d", rand() % 100);
+
+	struct ibv_sge sge = {
+		.addr = (uintptr_t)ctx->buf,
+		.length = sizeof(struct protocol_header),
+		.lkey = ctx->mr->lkey,
+	};
+
+	struct ibv_send_wr wr = {
+		.wr_id = (uintptr_t)ctx->buf,
+		.opcode = IBV_WR_SEND,
+		.sg_list = &sge,
+		.num_sge = 1,
+		.send_flags = IBV_SEND_SIGNALED,
+	}, *bad_wr = NULL;
+
+	if (ibv_post_send(ctx->id->qp, &wr, &bad_wr)) {
+		perror("ibv_post_send");
+		return -1;
 	}
-	hdr->op = valid_ops[i];
-	hdr->db_id = rand() % 16;
-	const char charset[] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-	for (int i = 0; i < sizeof(hdr->future_use) - 1; i++) {
-		hdr->future_use[i] = charset[rand() % (sizeof(charset) - 1)];
+
+	struct ibv_wc wc;
+	struct ibv_cq *ev_cq;
+	void *cq_context;
+
+	if (ibv_get_cq_event(ctx->comp_channel, &ev_cq, &cq_context)) {
+		perror("ibv_get_cq_event");
+		return -1;
 	}
-	hdr->future_use[sizeof(hdr->future_use) - 1] = '\0';
+	ibv_ack_cq_events(ev_cq, 1);
+	ibv_req_notify_cq(ev_cq, 0);
+
+	while (ibv_poll_cq(ctx->cq, 1, &wc) == 0)
+		;
+
+	if (wc.status != IBV_WC_SUCCESS) {
+		fprintf(stderr, "Send failed: %s\n", ibv_wc_status_str(wc.status));
+		return -1;
+	}
+
+	printf("Sent op=%d db_id=%d inline=%d va=0x%lx data=%s\n", op, db_id, inline_flag, virtual_address,
+	       hdr->future_use);
+
+	return 0;
 }
 
 int main()
@@ -45,13 +93,17 @@ int main()
 	struct ibv_pd *pd;
 	struct ibv_comp_channel *comp_chan;
 	struct ibv_cq *cq;
-	void *cq_context;
 	struct ibv_mr *mr;
 	struct ibv_qp_init_attr qp_attr;
 	struct protocol_header *hdr;
-	struct ibv_send_wr wr, *bad_wr = NULL;
+	struct ibv_send_wr wr;
 	struct ibv_sge sge;
-	struct ibv_wc wc;
+
+	struct ib_client_ctx *client_ctx = malloc(sizeof(struct ib_client_ctx));
+	if (!client_ctx) {
+		perror("malloc");
+		return -1;
+	}
 
 	srand(time(NULL));
 
@@ -110,32 +162,22 @@ int main()
 	wr.num_sge = 1;
 	wr.send_flags = IBV_SEND_SIGNALED;
 
+	client_ctx->id = cm_id;
+	client_ctx->pd = pd;
+	client_ctx->cq = cq;
+	client_ctx->comp_channel = comp_chan;
+	client_ctx->mr = mr;
+	client_ctx->buf = hdr;
+
 	for (int i = 0; i < NUM_TEST_ITERATIONS; i++) {
-		generate_random_header(hdr, i);
-
-		memset(&wr, 0, sizeof(wr));
-		wr.wr_id = (uintptr_t)hdr;
-		wr.opcode = IBV_WR_SEND;
-		wr.sg_list = &sge;
-		wr.num_sge = 1;
-		wr.send_flags = IBV_SEND_SIGNALED;
-
-		ibv_post_send(cm_id->qp, &wr, &bad_wr);
-
-		ibv_get_cq_event(comp_chan, &cq, &cq_context);
-		ibv_ack_cq_events(cq, 1);
-		ibv_req_notify_cq(cq, 0);
-
-		while (ibv_poll_cq(cq, 1, &wc) == 0)
-			;
-		if (wc.status != IBV_WC_SUCCESS) {
-			fprintf(stderr, "Send failed: %s\n", ibv_wc_status_str(wc.status));
-			break;
-		} else {
-			printf("[%d/%d] Sent header: op=%d, db_id=%d, inline=%d, va=0x%lx, buf='%.*s'\n", i + 1,
-			       NUM_TEST_ITERATIONS, hdr->op, hdr->db_id, hdr->inline_flag, hdr->virtual_address,
-			       (int)sizeof(hdr->future_use), hdr->future_use);
+		enum op_code op = i % 6;
+		uint8_t db_id = rand() % 16;
+		uint8_t inline_flag = rand() % 2;
+		uint64_t va = 0;
+		if (inline_flag == 0) {
+			va = ((uint64_t)(rand() % 1024) * 4096);
 		}
+		send_protocol_header(client_ctx, op, va, db_id, inline_flag);
 		usleep(3000);
 	}
 
