@@ -73,6 +73,9 @@ struct my_conn_metadata {
 	"  - file = %s\n"     \
 	"  - flags = not yet supported\n"
 
+#define DEFAULT_PORT 7741
+#define DEFAULT_ADDRESS "192.168.5.120"
+
 #define DECIMAL_BASE 10
 #define PORT_MAX 65536
 #define MAX_REGIONS 128
@@ -83,8 +86,6 @@ struct my_conn_metadata {
 
 #define OPCODE_MAX 6
 
-struct server_options *ib_server_parse_argv_opts(int argc, char **argv);
-
 long ib_server_parse_number(const char *str, const char *opt);
 
 void ib_server_check_arg(int argc, int option_id);
@@ -93,6 +94,8 @@ void ib_server_set_address(struct server_options *opts, const char *arg);
 
 void ib_server_set_port(struct server_options *opts, const char *arg);
 
+struct server_options *ib_server_parse_argv_opts(int argc, char **argv);
+
 struct server_handle *ib_server_handle_init(struct server_options *opts);
 
 int ib_server_print_config(struct server_handle *server_handle);
@@ -100,6 +103,8 @@ int ib_server_print_config(struct server_handle *server_handle);
 int ib_handle_cm_event(struct server_handle *server_handle, struct rdma_cm_event *event);
 
 int ib_loop(struct server_handle *server_handle);
+
+void *ib_put_and_reply(void *arg);
 
 void worker_scheduler(struct server_handle *server_handle);
 

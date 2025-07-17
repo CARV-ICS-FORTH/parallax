@@ -68,6 +68,9 @@ struct server_options *ib_server_parse_argv_opts(int argc, char **argv)
 		_exit(EXIT_FAILURE);
 	}
 
+	int port_set = 0;
+	int address_set = 0;
+
 	for (int i = 1; i < argc; ++i) {
 		if (argv[i][0] != '-') {
 			log_fatal("InfiniBand Server: Unknown Option '%s'\n", argv[i]);
@@ -83,9 +86,11 @@ struct server_options *ib_server_parse_argv_opts(int argc, char **argv)
 		} else if (!strcmp(argv[i], "-p") || !strcmp(argv[i], "--port")) {
 			ib_server_check_arg(argc, ++i);
 			ib_server_set_port(server_options, argv[i]);
+			port_set = 1;
 		} else if (!strcmp(argv[i], "-b") || !strcmp(argv[i], "--bind")) {
 			ib_server_check_arg(argc, ++i);
 			ib_server_set_address(server_options, argv[i]);
+			address_set = 1;
 		} else if (!strcmp(argv[i], "-L0") || !strcmp(argv[i], "--L0_size")) {
 			ib_server_check_arg(argc, ++i);
 			server_options->l0_size = strtoul(argv[i], NULL, 10) * (1 << 20);
@@ -102,6 +107,13 @@ struct server_options *ib_server_parse_argv_opts(int argc, char **argv)
 		} else {
 			log_fatal("InfiniBand Server: unknown option '%s'\n", argv[i]);
 		}
+	}
+
+	if (port_set == 0) {
+		server_options->port = DEFAULT_PORT;
+	}
+	if (address_set == 0) {
+		ib_server_set_address(server_options, DEFAULT_ADDRESS);
 	}
 
 	return server_options;
@@ -495,7 +507,7 @@ int ib_handle_event(struct ibv_wc *wc, struct server_handle *handle)
 			log_debug("Unknown opcode: %d", hdr->op);
 		}
 		uint32_t *pollercounter = (uint32_t *)((uintptr_t)buf - METADATA_SIZE);
-		// worker_scheduler(handle); //SEG FAULT
+		// worker_scheduler(handle);
 		__atomic_fetch_add(pollercounter, 1, __ATOMIC_RELAXED);
 		break;
 	}
