@@ -1,3 +1,4 @@
+#include "../ib_client_ctx.h"
 #include "../ib_protocol.h"
 #include <infiniband/verbs.h>
 #include <netdb.h>
@@ -10,35 +11,24 @@
 #define IP "192.168.5.120"
 #define PORT "7741"
 #define TIMEOUT_MS 500
-#define MSG_SIZE 17
 
 #define NUM_TEST_ITERATIONS 6
-
-struct ib_client_ctx {
-	struct rdma_cm_id *id;
-	struct ibv_pd *pd;
-	struct ibv_cq *cq;
-	struct ibv_mr *mr;
-	struct ibv_comp_channel *comp_channel;
-	void *buf;
-	struct server_handle *server_handle;
-};
 
 struct my_conn_metadata {
 	uint32_t max_value_size;
 };
 
-int send_protocol_header(struct ib_client_ctx *ctx, enum op_code op, uint64_t virtual_address, uint8_t db_id,
-			 uint8_t inline_flag)
+int send_protocol_header(struct ib_client_ctx *ctx, enum op_code op, uint64_t va, uint64_t size, uint32_t rkey,
+			 uint64_t db_id, uint8_t inline_flag)
 {
 	struct protocol_header *hdr = (struct protocol_header *)ctx->buf;
+	hdr->virtual_address = va;
+	hdr->size = size;
 	hdr->op = op;
-	hdr->virtual_address = virtual_address;
+	hdr->rkey = rkey;
 	hdr->db_id = db_id;
 	hdr->inline_flag = inline_flag;
-
 	memset(hdr->future_use, 0, sizeof(hdr->future_use));
-	snprintf((char *)hdr->future_use, sizeof(hdr->future_use), "TEST%02d", rand() % 100);
 
 	struct ibv_sge sge = {
 		.addr = (uintptr_t)ctx->buf,
@@ -52,7 +42,8 @@ int send_protocol_header(struct ib_client_ctx *ctx, enum op_code op, uint64_t vi
 		.sg_list = &sge,
 		.num_sge = 1,
 		.send_flags = IBV_SEND_SIGNALED,
-	}, *bad_wr = NULL;
+	};
+	struct ibv_send_wr *bad_wr = NULL;
 
 	if (ibv_post_send(ctx->id->qp, &wr, &bad_wr)) {
 		perror("ibv_post_send");
@@ -78,8 +69,7 @@ int send_protocol_header(struct ib_client_ctx *ctx, enum op_code op, uint64_t vi
 		return -1;
 	}
 
-	printf("Sent op=%d db_id=%d inline=%d va=0x%lx data=%s\n", op, db_id, inline_flag, virtual_address,
-	       hdr->future_use);
+	printf("Sent op=%d db_id=%lu inline=%d va=0x%lx size=%lu\n", op, db_id, inline_flag, va, size);
 
 	return 0;
 }
@@ -171,13 +161,24 @@ int main()
 
 	for (int i = 0; i < NUM_TEST_ITERATIONS; i++) {
 		enum op_code op = i % 6;
-		uint8_t db_id = rand() % 16;
-		uint8_t inline_flag = rand() % 2;
-		uint64_t va = 0;
-		if (inline_flag == 0) {
-			va = ((uint64_t)(rand() % 1024) * 4096);
+		uint64_t db_id = rand() % 64;
+		uint8_t inline_flag = 0; // 0 for now, later will use this flag for optimization
+
+		uint64_t size = (rand() % 10 + 1) * 64;
+		void *dummy_buf = malloc(size);
+		memset(dummy_buf, 'A' + (i % 26), size);
+
+		struct ibv_mr *mr =
+			ibv_reg_mr(client_ctx->pd, dummy_buf, size, IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ);
+		if (!mr) {
+			perror("ibv_reg_mr");
+			continue;
 		}
-		send_protocol_header(client_ctx, op, va, db_id, inline_flag);
+
+		uint64_t va = (uint64_t)(uintptr_t)dummy_buf;
+		uint32_t rkey = mr->rkey;
+
+		send_protocol_header(client_ctx, op, va, size, rkey, db_id, inline_flag);
 		usleep(3000);
 	}
 
