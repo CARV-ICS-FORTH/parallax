@@ -108,7 +108,7 @@ void *ib_put_and_reply(void *arg);
 
 void worker_scheduler(struct server_handle *server_handle);
 
-int ib_handle_event(struct ibv_wc *wc, struct server_handle *handle);
+int ib_handle_event(struct ibv_wc *wc, struct server_handle *handle, struct ibv_qp *qp, struct ibv_pd *pd);
 
 void *cq_poll_loop(void *arg);
 
