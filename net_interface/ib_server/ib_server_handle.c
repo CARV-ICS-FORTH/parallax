@@ -1,17 +1,26 @@
+#include "../par_net/par_net_open.h"
 #include "ib_client_ctx.h"
 #include "ib_server_handle.h"
 
 #define MSG_SIZE 1024
 
-/*tmp solution*/
-par_handle tmp_handle;
-struct ib_client_ctx *tmp_ctx;
+// TODO: Move to a header file
+struct par_net_header {
+	uint32_t total_bytes;
+	uint32_t opcode;
+#ifdef USE_INFINIBAND
+	uint64_t virtual_address;
+	uint64_t size;
+	uint32_t rkey;
+	uint8_t inline_flag;
+#endif
+} __attribute__((packed));
 
 struct rdma_read_ctx {
 	void *buf;
 	size_t size;
 	struct ibv_mr *mr;
-	struct protocol_header hdr;
+	struct par_net_header hdr;
 };
 
 long ib_server_parse_number(const char *str, const char *opt)
@@ -243,11 +252,6 @@ int ib_server_print_config(struct server_handle *server_handle)
 	return EXIT_SUCCESS;
 }
 
-struct ib_client_ctx *get_default_client_ctx()
-{
-	return tmp_ctx;
-}
-
 int ib_handle_cm_event(struct server_handle *server_handle, struct rdma_cm_event *event)
 {
 	switch (event->event) {
@@ -328,19 +332,6 @@ int ib_handle_cm_event(struct server_handle *server_handle, struct rdma_cm_event
 		ctx->qp = client_id->qp;
 		ctx->server_handle = server_handle;
 		client_id->context = ctx;
-
-		tmp_ctx = calloc(1, sizeof(*tmp_ctx));
-		if (!tmp_ctx) {
-			perror("calloc");
-			return -1;
-		}
-
-		tmp_ctx->id = client_id;
-		tmp_ctx->pd = pd;
-		tmp_ctx->cq = cq;
-		tmp_ctx->mr = mr;
-		tmp_ctx->comp_channel = comp_channel;
-		tmp_ctx->qp = client_id->qp;
 
 		pthread_t tid;
 		pthread_create(&tid, NULL, cq_poll_loop, ctx);
@@ -423,31 +414,10 @@ void worker_scheduler(struct server_handle *server_handle)
 	return;
 }
 
-static inline const char *ib_opcode_to_string(enum op_code op)
-{
-	static const char *names[] = { [OP_OPEN] = "OPEN", [OP_CLOSE] = "CLOSE", [OP_WRITE] = "WRITE",
-				       [OP_READ] = "READ", [OP_DEL] = "DEL",	 [OP_SCAN] = "SCAN" };
-	return (op >= 0 && op < sizeof(names) / sizeof(names[0])) ? names[op] : "?";
-}
-
 static struct par_net_header *ib_par_net_call_open(struct portals_worker *portals_worker, void *args)
 {
 	(void)portals_worker;
 	(void)args;
-	par_db_options db_options = { .volume_name = "/tmp/par",
-				      .db_name = "tmpParallax",
-				      .create_flag = PAR_CREATE_DB,
-				      .options = par_get_default_options() };
-	db_options.options[LEVEL0_SIZE].value = 8;
-	db_options.options[GROWTH_FACTOR].value = 8;
-	db_options.options[PRIMARY_MODE].value = 1;
-	db_options.options[ENABLE_BLOOM_FILTERS].value = 1;
-
-	const char *error_message = NULL;
-
-	tmp_handle = par_open(&db_options, &error_message);
-	if (error_message)
-		log_info("Parallax says: %s", error_message);
 	return NULL;
 }
 
@@ -501,8 +471,6 @@ static struct par_net_header *ib_par_net_call_close(struct portals_worker *porta
 {
 	(void)portals_worker;
 	(void)args;
-	const char *error_message = par_close(tmp_handle);
-	log_debug("Close DB message is %s", error_message ? error_message : "OK!");
 	return NULL;
 }
 
@@ -521,83 +489,59 @@ int ib_handle_event(struct ibv_wc *wc, struct server_handle *handle, struct ibv_
 	switch (wc->opcode) {
 	case IBV_WC_RECV: {
 		void *buf = (void *)(uintptr_t)wc->wr_id;
-		struct protocol_header *hdr = (struct protocol_header *)buf;
-		if (hdr->inline_flag == 1) {
-			log_debug("REQ: op=%d(%s) db_id=%lu inline=1 data='%.*s'", hdr->op,
-				  ib_opcode_to_string(hdr->op), hdr->db_id, (int)sizeof(hdr->future_use),
-				  hdr->future_use);
+		struct par_net_header *request_header = (struct par_net_header *)buf;
+		if (request_header->inline_flag == 1) {
+			log_debug("[INLINE] Processing request inline");
+			char *response = strdup("OK inline response");
 
-			if (hdr->op <= OP_CLOSE && par_net_call[hdr->op]) {
-				par_net_call[hdr->op](handle->portals_workers[0], buf);
-			} else {
-				log_debug("Unknown opcode: %d", hdr->op);
-			}
+			struct ibv_mr *response_mr =
+				ibv_reg_mr(pd, response, strlen(response) + 1, IBV_ACCESS_LOCAL_WRITE);
+
+			struct ibv_sge sge = {
+				.addr = (uintptr_t)response,
+				.length = strlen(response) + 1,
+				.lkey = response_mr->lkey,
+			};
+
+			struct ibv_send_wr wr = { 0 }, *bad_wr = NULL;
+			wr.opcode = IBV_WR_RDMA_WRITE;
+			wr.send_flags = IBV_SEND_SIGNALED;
+			wr.sg_list = &sge;
+			wr.num_sge = 1;
+			wr.wr.rdma.remote_addr = request_header->virtual_address;
+			wr.wr.rdma.rkey = request_header->rkey;
+
+			ibv_post_send(qp, &wr, &bad_wr);
+
+			// if (hdr->op <= OP_CLOSE && par_net_call[hdr->op]) {
+			// 	par_net_call[hdr->op](handle->portals_workers[0], buf);
+			// } else {
+			// 	log_debug("Unknown opcode: %d", hdr->op);
+			// }
+			
 			uint32_t *pollercounter = (uint32_t *)((uintptr_t)buf - METADATA_SIZE);
 			// worker_scheduler(handle);
 			__atomic_fetch_add(pollercounter, 1, __ATOMIC_RELAXED);
-			// TODO: Actually process inline data here
 		} else {
 			log_debug("[RDMA read needed]");
-
-			struct rdma_read_ctx *ctx = malloc(sizeof(*ctx));
-			ctx->buf = malloc(hdr->size);
-			ctx->size = hdr->size;
-			ctx->mr = ibv_reg_mr(pd, ctx->buf, hdr->size,
-					     IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_REMOTE_READ);
-			ctx->hdr = *hdr;
-
-			struct ibv_sge sge = { .addr = (uintptr_t)ctx->buf,
-					       .length = ctx->size,
-					       .lkey = ctx->mr->lkey };
-
-			struct ibv_send_wr rdma_wr = {
-				.wr_id = (uintptr_t)ctx,
-				.opcode = IBV_WR_RDMA_READ,
-				.sg_list = &sge,
-				.num_sge = 1,
-				.send_flags = IBV_SEND_SIGNALED,
-				.wr.rdma.remote_addr = hdr->virtual_address,
-				.wr.rdma.rkey = hdr->rkey,
-			};
-			struct ibv_send_wr *bad_wr = NULL;
-
-			if (ibv_post_send(qp, &rdma_wr, &bad_wr)) {
-				perror("ibv_post_send RDMA_READ");
-			}
 		}
 		break;
 	}
-	case IBV_WC_SEND: {
-		void *user_ptr = (void *)(uintptr_t)wc->wr_id;
-		uintptr_t index_start =
-			(uintptr_t)user_ptr - ((uintptr_t)user_ptr % (PRSV_WORKER_BUF_SIZE + METADATA_SIZE));
-		uint32_t *worker_index = (uint32_t *)(index_start);
-		// log_debug("SEND completed. user_ptr=%p, worker_index=%u", user_ptr, *worker_index);
-
-		pthread_mutex_lock(&handle->mutex[*worker_index]);
-		portals_worker_free_buf(handle->portals_workers[*worker_index], user_ptr);
-		pthread_mutex_unlock(&handle->mutex[*worker_index]);
+	case IBV_WC_RDMA_WRITE: {
 		break;
 	}
-	case IBV_WC_RDMA_READ: {
-		struct rdma_read_ctx *ctx = (struct rdma_read_ctx *)wc->wr_id;
-		log_debug("RDMA_READ completed: op=%d(%s) db_id=%lu size=%zu\n", ctx->hdr.op,
-			  ib_opcode_to_string(ctx->hdr.op), ctx->hdr.db_id, ctx->size);
+	// case IBV_WC_SEND: {
+	// 	void *user_ptr = (void *)(uintptr_t)wc->wr_id;
+	// 	uintptr_t index_start =
+	// 		(uintptr_t)user_ptr - ((uintptr_t)user_ptr % (PRSV_WORKER_BUF_SIZE + METADATA_SIZE));
+	// 	uint32_t *worker_index = (uint32_t *)(index_start);
+	// 	// log_debug("SEND completed. user_ptr=%p, worker_index=%u", user_ptr, *worker_index);
 
-		if (ctx->hdr.op <= OP_CLOSE && par_net_call[ctx->hdr.op]) {
-			par_net_call[ctx->hdr.op](handle->portals_workers[0], ctx);
-		} else {
-			log_debug("Unknown opcode: %d", ctx->hdr.op);
-		}
-		// uint32_t *pollercounter = (uint32_t *)((uintptr_t)ctx - METADATA_SIZE);
-		// worker_scheduler(handle);
-		// __atomic_fetch_add(pollercounter, 1, __ATOMIC_RELAXED);
-
-		ibv_dereg_mr(ctx->mr);
-		free(ctx->buf);
-		free(ctx);
-		break;
-	}
+	// 	pthread_mutex_lock(&handle->mutex[*worker_index]);
+	// 	portals_worker_free_buf(handle->portals_workers[*worker_index], user_ptr);
+	// 	pthread_mutex_unlock(&handle->mutex[*worker_index]);
+	// 	break;
+	// }
 	default:
 		log_debug("Unhandled RDMA opcode: %d", wc->opcode);
 		break;
@@ -629,6 +573,7 @@ void *cq_poll_loop(void *arg)
 			ctx->server_handle->wc = &wc;
 			if (ib_handle_event(ctx->server_handle->wc, ctx->server_handle, ctx->qp, ctx->pd) < 0) {
 				log_debug("ib_handle_event failed");
+				exit(1);
 			}
 			struct ibv_sge sge = { .addr = (uintptr_t)ctx->buf, .length = MSG_SIZE, .lkey = ctx->mr->lkey };
 			struct ibv_recv_wr wr = { .wr_id = (uintptr_t)ctx->buf, .sg_list = &sge, .num_sge = 1 };

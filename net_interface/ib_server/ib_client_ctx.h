@@ -11,5 +11,3 @@ struct ib_client_ctx {
 	void *buf;
 	struct server_handle *server_handle;
 };
-
-struct ib_client_ctx *get_default_client_ctx(void);
