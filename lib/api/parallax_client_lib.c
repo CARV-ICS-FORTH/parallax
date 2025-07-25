@@ -38,6 +38,12 @@ char msg[PTL_EV_STR_SIZE];
 #include <infiniband/verbs.h>
 #include <netdb.h>
 #include <rdma/rdma_cma.h>
+#define IP "192.168.5.120"
+#define PORT "7741"
+#define TIMEOUT_MS 500
+struct my_conn_metadata {
+	uint32_t max_value_size;
+};
 #else
 #include <arpa/inet.h>
 #include <netdb.h>
@@ -59,10 +65,17 @@ char msg[PTL_EV_STR_SIZE];
 
 //#define ENABLE_METRICS
 
+// TODO: Move to a header file
 struct par_net_header {
 	uint32_t total_bytes;
 	uint32_t opcode;
-};
+#ifdef USE_INFINIBAND
+	uint64_t virtual_address;
+	uint64_t size;
+	uint32_t rkey;
+	uint8_t inline_flag;
+#endif
+} __attribute__((packed));
 
 size_t par_net_header_calc_size(void)
 {
@@ -283,7 +296,8 @@ struct par_handle {
 	struct ibv_comp_channel *comp_channel;
 	struct ibv_cq *cq;
 	struct ibv_qp *qp;
-	struct ibv_mr *mr;
+	struct ibv_mr *send_mr;
+	struct ibv_mr *recv_mr;
 
 	char *recv_buffer;
 	char *send_buffer;
@@ -302,10 +316,59 @@ struct par_handle *par_net_init(const char *parallax_host)
 
 	struct par_handle *handle = calloc(1, sizeof(*handle));
 
-	posix_memalign((void **)&handle->recv_buffer, 4096, PAR_IB_BUFFER_SIZE);
-	posix_memalign((void **)&handle->send_buffer, 4096, PAR_IB_BUFFER_SIZE);
-	handle->recv_buffer_size = PAR_IB_BUFFER_SIZE;
-	handle->send_buffer_size = PAR_IB_BUFFER_SIZE;
+	struct addrinfo *addr;
+	getaddrinfo(IP, PORT, NULL, &addr);
+	handle->ec = rdma_create_event_channel();
+	rdma_create_id(handle->ec, &handle->cm_id, NULL, RDMA_PS_TCP);
+	rdma_resolve_addr(handle->cm_id, NULL, addr->ai_addr, TIMEOUT_MS);
+	freeaddrinfo(addr);
+
+	struct rdma_cm_event *event;
+	rdma_get_cm_event(handle->ec, &event);
+	rdma_ack_cm_event(event);
+
+	rdma_resolve_route(handle->cm_id, TIMEOUT_MS);
+	rdma_get_cm_event(handle->ec, &event);
+	rdma_ack_cm_event(event);
+
+	handle->pd = ibv_alloc_pd(handle->cm_id->verbs);
+	handle->comp_channel = ibv_create_comp_channel(handle->cm_id->verbs);
+	handle->cq = ibv_create_cq(handle->cm_id->verbs, 10, NULL, handle->comp_channel, 0);
+	ibv_req_notify_cq(handle->cq, 0);
+
+	struct ibv_qp_init_attr qp_attr;
+	memset(&qp_attr, 0, sizeof(qp_attr));
+	qp_attr.send_cq = handle->cq;
+	qp_attr.recv_cq = handle->cq;
+	qp_attr.qp_type = IBV_QPT_RC;
+	qp_attr.cap.max_send_wr = 10;
+	qp_attr.cap.max_recv_wr = 10;
+	qp_attr.cap.max_send_sge = 1;
+	qp_attr.cap.max_recv_sge = 1;
+
+	rdma_create_qp(handle->cm_id, handle->pd, &qp_attr);
+
+	handle->recv_buffer = calloc(1UL, KV_MAX_SIZE);
+	handle->send_buffer = calloc(1UL, KV_MAX_SIZE);
+	handle->recv_buffer_size = KV_MAX_SIZE;
+	handle->send_buffer_size = KV_MAX_SIZE;
+
+	handle->send_mr = ibv_reg_mr(handle->pd, handle->send_buffer, PAR_IB_BUFFER_SIZE,
+				     IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE);
+	handle->recv_mr = ibv_reg_mr(handle->pd, handle->recv_buffer, PAR_IB_BUFFER_SIZE,
+				     IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE);
+
+	struct rdma_conn_param conn_param = { 0 };
+	conn_param.initiator_depth = 1;
+	conn_param.responder_resources = 1;
+	conn_param.retry_count = 7;
+
+	rdma_connect(handle->cm_id, &conn_param);
+	rdma_get_cm_event(handle->ec, &event);
+	struct my_conn_metadata *meta = (struct my_conn_metadata *)event->param.conn.private_data;
+	printf("Server max value size: %u\n", meta->max_value_size);
+	rdma_ack_cm_event(event);
+
 	return handle;
 }
 #else
@@ -403,7 +466,8 @@ void par_net_handle_destroy(par_handle handle)
 #elif USE_INFINIBAND
 	// rdma_disconnect(parallax_handle->cm_id);
 	// rdma_destroy_qp(parallax_handle->cm_id);
-	ibv_dereg_mr(parallax_handle->mr);
+	ibv_dereg_mr(parallax_handle->send_mr);
+	ibv_dereg_mr(parallax_handle->recv_mr);
 	ibv_destroy_cq(parallax_handle->cq);
 	ibv_destroy_comp_channel(parallax_handle->comp_channel);
 	ibv_dealloc_pd(parallax_handle->pd);
@@ -491,10 +555,80 @@ static ssize_t par_portals_RPC(par_handle handle, char *send_buffer, size_t send
 #elif USE_INFINIBAND
 static ssize_t par_ib_RPC(par_handle handle, char *send_buffer, size_t send_buffer_len, char **recv_buffer)
 {
-	(void)handle;
-	(void)send_buffer;
-	(void)send_buffer_len;
-	(void)recv_buffer;
+	struct par_handle *h = (struct par_handle *)handle;
+
+	char *recv_buf = malloc(128);
+	struct ibv_mr *recv_mr = ibv_reg_mr(h->pd, recv_buf, 128, IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE);
+	if (!recv_mr) {
+		perror("ibv_reg_mr for recv_buffer");
+		ibv_dereg_mr(recv_mr);
+		free(recv_buf);
+		return -1;
+	}
+
+	struct par_net_header *request_header = (struct par_net_header *)send_buffer;
+	request_header->virtual_address = (uintptr_t)recv_buf;
+	request_header->rkey = recv_mr->rkey;
+	request_header->size = 128;
+	request_header->inline_flag = 1;
+
+	struct ibv_mr *send_mr = ibv_reg_mr(h->pd, send_buffer, send_buffer_len, IBV_ACCESS_LOCAL_WRITE);
+	if (!send_mr) {
+		perror("ibv_reg_mr for send_buffer");
+		ibv_dereg_mr(send_mr);
+		free(recv_buf);
+		return -1;
+	}
+
+	struct ibv_sge sge;
+	memset(&sge, 0, sizeof(sge));
+	sge.addr = (uintptr_t)send_buffer;
+	sge.length = send_buffer_len;
+	sge.lkey = send_mr->lkey;
+
+	struct ibv_send_wr wr, *bad_wr = NULL;
+	memset(&wr, 0, sizeof(wr));
+	wr.wr_id = (uintptr_t)send_buffer;
+	wr.opcode = IBV_WR_SEND;
+	wr.sg_list = &sge;
+	wr.num_sge = 1;
+	wr.send_flags = IBV_SEND_SIGNALED;
+
+	int ret = ibv_post_send(h->cm_id->qp, &wr, &bad_wr);
+	if (ret) {
+		fprintf(stderr, "ibv_post_send failed: %s\n", strerror(ret));
+		ibv_dereg_mr(send_mr);
+		ibv_dereg_mr(recv_mr);
+		free(recv_buf);
+		return -1;
+	}
+
+	struct ibv_wc wc;
+	int ne;
+
+	do {
+		ne = ibv_poll_cq(h->cq, 1, &wc);
+		if (ne < 0) {
+			fprintf(stderr, "ibv_poll_cq failed\n");
+			ibv_dereg_mr(send_mr);
+			ibv_dereg_mr(recv_mr);
+		}
+		if (ne == 0)
+			usleep(100);
+	} while (ne == 0);
+
+	if (wc.status != IBV_WC_SUCCESS) {
+		fprintf(stderr, "Completion with error: %s\n", ibv_wc_status_str(wc.status));
+		ibv_dereg_mr(send_mr);
+		ibv_dereg_mr(recv_mr);
+	}
+
+	*recv_buffer = recv_buf;
+
+	ibv_dereg_mr(send_mr);
+	ibv_dereg_mr(recv_mr);
+
+	return strlen(recv_buf);
 }
 #else
 static ssize_t par_net_RPC(int sockfd, char *send_buffer, size_t send_buffer_len, char **recv_buffer,
@@ -568,69 +702,6 @@ char *par_format(char *device_name, uint32_t max_regions_num)
 	return NULL;
 }
 
-#ifdef USE_INFINIBAND
-par_handle par_open_with_ctx(par_db_options *db_options, const char **error_message, struct ib_client_ctx *ctx)
-{
-	log_info("OPEN DB with name: %s", db_options->db_name);
-	struct par_options_desc *configuration = par_get_default_options();
-	struct par_handle *parallax_handle =
-		(struct par_handle *)par_net_init((const char *)configuration[PARALLAX_SERVER].value);
-	parallax_handle->configuration = configuration;
-	parallax_handle->cm_id = ctx->id;
-	parallax_handle->pd = ctx->pd;
-	parallax_handle->cq = ctx->cq;
-	parallax_handle->mr = ctx->mr;
-	parallax_handle->qp = ctx->qp;
-	parallax_handle->comp_channel = ctx->comp_channel;
-	size_t msg_len = par_net_open_req_calc_size(par_net_get_size(db_options->db_name)) + par_net_header_calc_size();
-	if (msg_len > parallax_handle->send_buffer_size) {
-		log_fatal("Send buffer too small has: %u B needs %lu B", parallax_handle->send_buffer_size, msg_len);
-		_exit(EXIT_FAILURE);
-	}
-
-	struct par_net_header *request_header = (struct par_net_header *)(parallax_handle->send_buffer);
-	request_header->total_bytes = msg_len;
-	request_header->opcode = OPCODE_OPEN;
-
-	size_t buffer_len = parallax_handle->send_buffer_size - par_net_header_calc_size();
-	struct par_net_open_req *request =
-		par_net_open_req_create(db_options->create_flag, db_options->db_name,
-					&parallax_handle->send_buffer[par_net_header_calc_size()], &buffer_len);
-
-	if (NULL == request) {
-		log_fatal("Failed to create open request");
-		_exit(EXIT_FAILURE);
-	}
-
-	ssize_t bytes_received =
-		par_ib_RPC(parallax_handle, parallax_handle->send_buffer, msg_len, &parallax_handle->recv_buffer);
-	// if (0 == bytes_received) {
-	// 	*error_message = "Communication with server failed";
-	// 	return NULL;
-	// }
-	// struct par_net_header *reply_header = (struct par_net_header *)parallax_handle->recv_buffer;
-	// assert(reply_header->opcode == OPCODE_OPEN);
-	// par_handle ret_handle =
-	// 	par_net_open_rep_handle_reply(&parallax_handle->recv_buffer[par_net_header_calc_size()]);
-
-	// if (0 == ret_handle) {
-	// 	*error_message = "Operation (open) failed";
-	// 	par_net_handle_destroy(parallax_handle);
-	// 	return NULL;
-	// }
-
-	// parallax_handle->region_id = (uint64_t)ret_handle;
-	parallax_handle->configuration = configuration;
-
-	log_info("OPEN DB with name: %s ... DONE", db_options->db_name);
-	return (par_handle)parallax_handle;
-}
-
-par_handle par_open(par_db_options *db_options, const char **error_message)
-{
-	return par_open_with_ctx(db_options, error_message, get_default_client_ctx());
-}
-#else
 par_handle par_open(par_db_options *db_options, const char **error_message)
 {
 	log_info("OPEN DB with name: %s", db_options->db_name);
@@ -650,6 +721,12 @@ par_handle par_open(par_db_options *db_options, const char **error_message)
 	struct par_net_header *request_header = (struct par_net_header *)(parallax_handle->send_buffer);
 	request_header->total_bytes = msg_len;
 	request_header->opcode = OPCODE_OPEN;
+#ifdef USE_INFINIBAND
+	request_header->virtual_address = 0;
+	request_header->rkey = 0;
+	request_header->inline_flag = 1;
+	request_header->size = 0;
+#endif
 
 	size_t buffer_len = parallax_handle->send_buffer_size - par_net_header_calc_size();
 	struct par_net_open_req *request =
@@ -664,6 +741,9 @@ par_handle par_open(par_db_options *db_options, const char **error_message)
 #ifdef PORTALS
 	ssize_t bytes_received =
 		par_portals_RPC(parallax_handle, parallax_handle->send_buffer, msg_len, &parallax_handle->recv_buffer);
+#elif USE_INFINIBAND
+	ssize_t bytes_received =
+		par_ib_RPC(parallax_handle, parallax_handle->send_buffer, msg_len, &parallax_handle->recv_buffer);
 #else
 	ssize_t bytes_received = par_net_RPC(parallax_handle->sockfd, parallax_handle->send_buffer, msg_len,
 					     &parallax_handle->recv_buffer, parallax_handle->recv_buffer_size);
@@ -677,11 +757,11 @@ par_handle par_open(par_db_options *db_options, const char **error_message)
 	par_handle ret_handle =
 		par_net_open_rep_handle_reply(&parallax_handle->recv_buffer[par_net_header_calc_size()]);
 
-	if (0 == ret_handle) {
-		*error_message = "Operation (open) failed";
-		par_net_handle_destroy(parallax_handle);
-		return NULL;
-	}
+	// if (0 == ret_handle) {
+	// 	*error_message = "Operation (open) failed";
+	// 	par_net_handle_destroy(parallax_handle);
+	// 	return NULL;
+	// }
 
 	parallax_handle->region_id = (uint64_t)ret_handle;
 	parallax_handle->configuration = configuration;
@@ -689,7 +769,6 @@ par_handle par_open(par_db_options *db_options, const char **error_message)
 	log_info("OPEN DB with name: %s ... DONE", db_options->db_name);
 	return (par_handle)parallax_handle;
 }
-#endif
 
 const char *par_close(par_handle handle)
 {
