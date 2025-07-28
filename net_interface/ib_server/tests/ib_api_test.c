@@ -16,18 +16,15 @@ int main(void)
 
 	const char *error_message = NULL;
 	par_handle handle = par_open(&db_options, &error_message);
-
 	if (error_message) {
 		printf("Parallax says: %s\n", error_message);
 	}
-
 	if (handle == NULL && error_message) {
 		printf("Error upon opening the DB, error %s\n", error_message);
 	}
 
 	const char *keyStr = "test";
 	const char *valueStr = "data";
-
 	struct par_value value = {
 		.val_buffer_size = strlen(valueStr) + 1,
 		.val_size = strlen(valueStr) + 1,
@@ -47,6 +44,12 @@ int main(void)
 	};
 	const char *error_msg = NULL;
 	par_put(handle, &kv, &error_msg);
+	if (error_msg != NULL) {
+		printf("Error during put operation: %s\n", error_msg);
+		free(value.val_buffer);
+		par_close(handle);
+		return 1;
+	}
 
 	struct par_key key = {
 		.size = strlen(keyStr) + 1,
@@ -55,8 +58,21 @@ int main(void)
 	struct par_value getValue;
 	par_get(handle, &key, &getValue, &error_msg);
 
-	free(value.val_buffer);
+	if (error_msg != NULL) {
+		printf("Error during get operation: %s\n", error_msg);
+		free(value.val_buffer);
+		par_close(handle);
+		return 1;
+	}
+	par_get(handle, &key, &getValue, &error_msg);
+	if (error_msg != NULL) {
+		printf("Error during get operation: %s\n", error_msg);
+		free(value.val_buffer);
+		par_close(handle);
+		return 1;
+	}
 
+	free(value.val_buffer);
 	par_close(handle);
 
 	return 0;
