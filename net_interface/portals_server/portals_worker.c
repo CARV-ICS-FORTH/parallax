@@ -1,8 +1,8 @@
-#include "portals_worker.h"
 #include "ccqueue.h"
 #include "config.h"
 #include "log.h"
 #include "par_net.h"
+#include "portals_worker.h"
 #ifdef USE_PORTALS
 #include "portals.h"
 #include "portals4.h"
@@ -17,12 +17,12 @@
 #include "worker_request.h"
 #include <pthread.h>
 #include <semaphore.h>
+#include <stdatomic.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <sys/time.h>
 #include <sys/types.h>
 #include <x86intrin.h>
-#include <stdatomic.h>
 
 #define BUDDY_ALLOC_IMPLEMENTATION
 #include "buddy_alloc.h"
@@ -49,7 +49,7 @@ struct portals_worker {
 	uint64_t start;
 	uint64_t end;
 	uint64_t core;
-	uint32_t send_buffer_size;
+	uint64_t send_buffer_size;
 	struct server_handle *server_handle;
 	pthread_mutex_t *mutex;
 	CCQueueStruct *queue_object CACHE_ALIGN;
@@ -63,8 +63,8 @@ struct portals_worker {
 #endif
 #ifdef USE_INFINIBAND
 	struct ibv_mr *mr;
-    struct rdma_cm_id *id;
-    struct ibv_qp *qp;
+	struct rdma_cm_id *id;
+	struct ibv_qp *qp;
 #endif
 };
 
@@ -144,10 +144,10 @@ void portals_worker_put(struct portals_worker *worker, struct ib_worker_request 
 
 #ifdef USE_PORTALS
 struct portals_worker *portals_worker_create(struct server_handle *server_handle, uint32_t index, uint32_t threadno,
-                             ptl_handle_eq_t eqh, pthread_mutex_t *mutex)
+					     ptl_handle_eq_t eqh, pthread_mutex_t *mutex)
 #else
 struct portals_worker *portals_worker_create(struct server_handle *server_handle, uint32_t index, uint32_t threadno,
-                             pthread_mutex_t *mutex)
+					     pthread_mutex_t *mutex)
 #endif
 {
 	int ret;
@@ -185,7 +185,7 @@ struct portals_worker *portals_worker_create(struct server_handle *server_handle
 	worker->send_buffer_size = PRSV_WORKER_BUF_SIZE;
 	worker->buddy = buddy_embed((void *)worker->send_buffer, PRSV_WORKER_BUF_SIZE);
 #ifdef USE_PORTALS
-    worker->eqh = eqh;
+	worker->eqh = eqh;
 #endif
 	return worker;
 }
@@ -210,6 +210,11 @@ uint32_t portals_worker_get_buffer_size(struct portals_worker *worker)
 	return (uint32_t)worker->send_buffer_size;
 }
 
+void portals_worker_set_buffer_size(struct portals_worker *worker, uint64_t size)
+{
+	worker->send_buffer_size = size;
+}
+
 uint64_t portals_worker_get_core(struct portals_worker *worker)
 {
 	return (uint64_t)worker->core;
@@ -220,6 +225,20 @@ pthread_t *portals_worker_get_tid(struct portals_worker *worker)
 	return (pthread_t *)&worker->tid;
 }
 
+void portals_worker_set_send_buffer(struct portals_worker *worker, char *send_buffer)
+{
+	if (send_buffer == NULL) {
+		log_fatal("Attempting to set send buffer to NULL");
+		exit(EXIT_FAILURE);
+	}
+	worker->send_buffer = send_buffer;
+}
+
+char *portals_worker_get_send_buffer(struct portals_worker *worker)
+{
+	return worker->send_buffer;
+}
+
 #ifdef USE_PORTALS
 void portals_worker_send_reply_buff(struct portals_worker *worker, struct par_net_header *reply_header,
 				    uint32_t total_bytes, ptl_handle_ni_t nih, ptl_process_t client)
@@ -228,7 +247,7 @@ void portals_worker_send_reply_buff(struct portals_worker *worker, struct par_ne
 				    uint32_t total_bytes)
 #endif
 {
-	#ifdef USE_PORTALS
+#ifdef USE_PORTALS
 	worker->md.start = reply_header;
 	worker->md.length = total_bytes;
 	worker->md.options = 0;
@@ -247,13 +266,10 @@ void portals_worker_send_reply_buff(struct portals_worker *worker, struct par_ne
 	}
 
 	PtlMDRelease(worker->mdh);
-	#endif
-
-	#ifdef USE_INFINIBAND
-
+#elif USE_INFINIBAND
 	// TODO: Implement InfiniBand logic here
-
-	#endif
+	printf("Send reply buffer using InfiniBand is not implemented yet.\n");
+#endif
 }
 
 void portals_worker_free_buf(struct portals_worker *worker, void *buf_start)

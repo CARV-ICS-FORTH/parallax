@@ -4,8 +4,8 @@
 #ifdef USE_PORTALS
 #include "portals4.h"
 #endif
-#include "portals_server_handle.h"
 #include "../ib_server/ib_worker_request.h"
+#include "portals_server_handle.h"
 struct portals_worker;
 
 /* Header for portals_worker api*/
@@ -63,21 +63,26 @@ void portals_worker_put(struct portals_worker *worker, struct ib_worker_request 
  */
 #ifdef USE_PORTALS
 struct portals_worker *portals_worker_create(struct server_handle *server_handle, uint32_t index, uint32_t threadno,
-                             ptl_handle_eq_t eqh, pthread_mutex_t *mutex);
+					     ptl_handle_eq_t eqh, pthread_mutex_t *mutex);
 #else
 struct portals_worker *portals_worker_create(struct server_handle *server_handle, uint32_t index, uint32_t threadno,
-                             pthread_mutex_t *mutex);
+					     pthread_mutex_t *mutex);
 #endif
 
 /**
  * Allocates memory from the worker's buddy allocator.
- */	 
+ */
 char *portals_worker_get_buffer(struct portals_worker *worker, uint32_t total_bytes);
 
 /**
  * Returns the server_handle associated with the worker.
  */
 struct server_handle *portals_worker_get_server_handle(struct portals_worker *worker);
+
+/** 
+ * Sets the size of the worker's send buffer.
+ */
+void portals_worker_set_buffer_size(struct portals_worker *worker, uint64_t size);
 
 /**
  * Returns the size of the worker's send buffer.
@@ -93,6 +98,17 @@ uint64_t portals_worker_get_core(struct portals_worker *worker);
  * Returns a pointer to the worker's pthread_t.
  */
 pthread_t *portals_worker_get_tid(struct portals_worker *worker);
+
+/**
+ * Sets the worker's send buffer.
+ * Ensures the buffer is not NULL.
+ */
+void portals_worker_set_send_buffer(struct portals_worker *worker, char *send_buffer);
+
+/**
+ * Returns a pointer to the worker's send buffer.
+ */
+char *portals_worker_get_send_buffer(struct portals_worker *worker);
 
 /**
  * Sends a reply buffer to a client using Portals 4.
