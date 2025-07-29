@@ -70,9 +70,13 @@ struct par_net_header {
 	uint32_t total_bytes;
 	uint32_t opcode;
 #ifdef USE_INFINIBAND
-	uint64_t virtual_address;
-	uint64_t size;
-	uint32_t rkey;
+	uint64_t payload_buf_vaddr;
+	uint64_t payload_size;
+	uint64_t recv_buf_vaddr;
+	uint64_t recv_buf_size;
+	uint64_t request_id;
+	uint32_t payload_rkey;
+	uint32_t recv_buf_rkey;
 	uint8_t inline_flag;
 #endif
 } __attribute__((packed));
@@ -557,26 +561,42 @@ static ssize_t par_ib_RPC(par_handle handle, char *send_buffer, size_t send_buff
 {
 	struct par_handle *h = (struct par_handle *)handle;
 
-	char *recv_buf = malloc(128);
-	struct ibv_mr *recv_mr = ibv_reg_mr(h->pd, recv_buf, 128, IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE);
+	char *recv_buf = NULL;
+	size_t recv_buf_size;
+	struct par_net_header *header = (struct par_net_header *)send_buffer;
+	/* TEMPORARY: Debugging aid */
+	if (header->opcode == OPCODE_GET) {
+		recv_buf_size = 1;
+	} else {
+		recv_buf_size = 128;
+	}
+	struct ibv_mr *recv_mr = NULL;
+	struct ibv_mr *send_mr = NULL;
+
+retry:
+	recv_buf = malloc(recv_buf_size);
+	if (!recv_buf) {
+		perror("malloc for recv_buf");
+		return -1;
+	}
+
+	recv_mr = ibv_reg_mr(h->pd, recv_buf, par_net_header_calc_size() + par_net_get_rep_calc_size(recv_buf_size),
+			     IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE);
 	if (!recv_mr) {
 		perror("ibv_reg_mr for recv_buffer");
-		ibv_dereg_mr(recv_mr);
-		free(recv_buf);
 		return -1;
 	}
 
 	struct par_net_header *request_header = (struct par_net_header *)send_buffer;
-	request_header->virtual_address = (uintptr_t)recv_buf;
-	request_header->rkey = recv_mr->rkey;
-	request_header->size = 128;
+	request_header->recv_buf_vaddr = (uintptr_t)recv_buf;
+	request_header->recv_buf_rkey = recv_mr->rkey;
+	request_header->recv_buf_size = recv_buf_size;
 	request_header->inline_flag = 1;
 
-	struct ibv_mr *send_mr = ibv_reg_mr(h->pd, send_buffer, send_buffer_len, IBV_ACCESS_LOCAL_WRITE);
+	send_mr = ibv_reg_mr(h->pd, send_buffer, send_buffer_len, IBV_ACCESS_LOCAL_WRITE);
 	if (!send_mr) {
 		perror("ibv_reg_mr for send_buffer");
-		ibv_dereg_mr(send_mr);
-		free(recv_buf);
+		ibv_dereg_mr(recv_mr);
 		return -1;
 	}
 
@@ -597,21 +617,17 @@ static ssize_t par_ib_RPC(par_handle handle, char *send_buffer, size_t send_buff
 	int ret = ibv_post_send(h->cm_id->qp, &wr, &bad_wr);
 	if (ret) {
 		fprintf(stderr, "ibv_post_send failed: %s\n", strerror(ret));
-		ibv_dereg_mr(send_mr);
-		ibv_dereg_mr(recv_mr);
-		free(recv_buf);
-		return -1;
+		goto cleanup;
 	}
 
 	struct ibv_wc wc;
 	int ne;
-
 	do {
+		// Must replace polling with a wait-based approach
 		ne = ibv_poll_cq(h->cq, 1, &wc);
 		if (ne < 0) {
 			fprintf(stderr, "ibv_poll_cq failed\n");
-			ibv_dereg_mr(send_mr);
-			ibv_dereg_mr(recv_mr);
+			goto cleanup;
 		}
 		if (ne == 0)
 			usleep(100);
@@ -619,16 +635,33 @@ static ssize_t par_ib_RPC(par_handle handle, char *send_buffer, size_t send_buff
 
 	if (wc.status != IBV_WC_SUCCESS) {
 		fprintf(stderr, "Completion with error: %s\n", ibv_wc_status_str(wc.status));
-		ibv_dereg_mr(send_mr);
-		ibv_dereg_mr(recv_mr);
+		goto cleanup;
+	}
+
+	struct par_net_header *hdr = (struct par_net_header *)recv_buf;
+	if (hdr->opcode == OPCODE_GET) {
+		struct par_net_get_rep *rep = (struct par_net_get_rep *)(recv_buf + par_net_header_calc_size());
+		if (par_net_get_rep_error_code(rep) == 1) {
+			ibv_dereg_mr(recv_mr);
+			ibv_dereg_mr(send_mr);
+			free(recv_buf);
+
+			recv_buf_size *= 2;
+			goto retry;
+		}
 	}
 
 	*recv_buffer = recv_buf;
-
 	ibv_dereg_mr(send_mr);
 	ibv_dereg_mr(recv_mr);
+	return recv_buf_size;
 
-	return strlen(recv_buf);
+cleanup:
+	if (send_mr)
+		ibv_dereg_mr(send_mr);
+	if (recv_mr)
+		ibv_dereg_mr(recv_mr);
+	return -1;
 }
 #else
 static ssize_t par_net_RPC(int sockfd, char *send_buffer, size_t send_buffer_len, char **recv_buffer,
@@ -722,10 +755,10 @@ par_handle par_open(par_db_options *db_options, const char **error_message)
 	request_header->total_bytes = msg_len;
 	request_header->opcode = OPCODE_OPEN;
 #ifdef USE_INFINIBAND
-	request_header->virtual_address = 0;
-	request_header->rkey = 0;
+	request_header->payload_buf_vaddr = 0;
+	request_header->payload_rkey = 0;
 	request_header->inline_flag = 1;
-	request_header->size = 0;
+	request_header->payload_size = 0;
 #endif
 
 	size_t buffer_len = parallax_handle->send_buffer_size - par_net_header_calc_size();
@@ -757,6 +790,7 @@ par_handle par_open(par_db_options *db_options, const char **error_message)
 	par_handle ret_handle =
 		par_net_open_rep_handle_reply(&parallax_handle->recv_buffer[par_net_header_calc_size()]);
 
+	/* This code should not be commented out */
 	// if (0 == ret_handle) {
 	// 	*error_message = "Operation (open) failed";
 	// 	par_net_handle_destroy(parallax_handle);
@@ -1190,8 +1224,8 @@ static struct par_net_scan_rep *par_scan_get_next_batch(par_scanner scanner, par
 	par_portals_RPC(parallax_scanner->parallax_handle, parallax_scanner->send_buffer, header->total_bytes,
 			&parallax_scanner->recv_buffer);
 #elif USE_INFINIBAND
-	ssize_t bytes_received = par_ib_RPC(parallax_scanner->parallax_handle, parallax_scanner->send_buffer,
-					    header->total_bytes, &parallax_scanner->recv_buffer);
+	par_ib_RPC(parallax_scanner->parallax_handle, parallax_scanner->send_buffer, header->total_bytes,
+		   &parallax_scanner->recv_buffer);
 #else
 	par_net_RPC(parallax_scanner->parallax_handle->sockfd, parallax_scanner->send_buffer, header->total_bytes,
 		    &parallax_scanner->recv_buffer, parallax_scanner->recv_buffer_size);
