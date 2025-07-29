@@ -88,6 +88,8 @@ bool par_net_get_rep_handle_reply(struct par_net_get_rep *reply, struct par_valu
 
 bool par_net_get_rep_is_found(struct par_net_get_rep *request);
 
+uint32_t par_net_get_rep_error_code(struct par_net_get_rep *request);
+
 size_t par_net_get_rep_header_size(void);
 
 #endif

@@ -1,5 +1,5 @@
-#include "par_net_get.h"
 #include "par_net.h"
+#include "par_net_get.h"
 
 struct par_net_get_req {
 	uint64_t region_id;
@@ -7,9 +7,12 @@ struct par_net_get_req {
 	bool fetch_value;
 } __attribute__((packed));
 
+enum par_net_get_error_code { PAR_NET_GET_OK = 0, PAR_NET_GET_ERR_BUFFER_TOO_SMALL = 1 };
+
 struct par_net_get_rep {
 	uint32_t is_found;
 	uint32_t value_size;
+	uint32_t error_code;
 } __attribute__((packed));
 
 bool par_net_get_req_fetch_value(struct par_net_get_req *request)
@@ -65,11 +68,15 @@ char *par_net_get_get_key(struct par_net_get_req *request)
 struct par_net_get_rep *par_net_get_rep_set_header(bool is_found, struct par_value *value, char *buffer,
 						   size_t buffer_len)
 {
-	if (buffer_len < par_net_get_rep_header_size()) {
-		log_warn("Sorry buffer too small to fit KV pair");
-		return NULL;
-	}
 	struct par_net_get_rep *reply = (struct par_net_get_rep *)buffer;
+	log_info("buffer_len = %lu, par_net_get_rep_header_size=%lu", buffer_len, par_net_get_rep_header_size());
+	if (buffer_len < par_net_get_rep_header_size()) {
+		reply->error_code = PAR_NET_GET_ERR_BUFFER_TOO_SMALL;
+		log_warn("Sorry buffer too small to fit KV pair");
+		return reply;
+	} else {
+		reply->error_code = PAR_NET_GET_OK;
+	}
 
 	reply->is_found = is_found;
 	if (false == is_found)
@@ -101,4 +108,9 @@ bool par_net_get_rep_handle_reply(struct par_net_get_rep *reply, struct par_valu
 bool par_net_get_rep_is_found(struct par_net_get_rep *request)
 {
 	return request->is_found;
+}
+
+uint32_t par_net_get_rep_error_code(struct par_net_get_rep *request)
+{
+	return request->error_code;
 }
