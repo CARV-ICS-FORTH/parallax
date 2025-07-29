@@ -9,9 +9,13 @@ struct par_net_header {
 	uint32_t total_bytes;
 	uint32_t opcode;
 #ifdef USE_INFINIBAND
-	uint64_t virtual_address;
-	uint64_t size;
-	uint32_t rkey;
+	uint64_t payload_buf_vaddr;
+	uint64_t payload_size;
+	uint64_t recv_buf_vaddr;
+	uint64_t recv_buf_size;
+	uint64_t request_id;
+	uint32_t payload_rkey;
+	uint32_t recv_buf_rkey;
 	uint8_t inline_flag;
 #endif
 } __attribute__((packed));
@@ -391,7 +395,6 @@ int ib_loop(struct server_handle *server_handle)
 void *ib_put_and_reply(void *arg)
 {
 	(void)arg;
-
 	return NULL;
 }
 
@@ -414,33 +417,24 @@ void worker_scheduler(struct server_handle *server_handle)
 	return;
 }
 
+inline size_t par_net_header_size(void)
+{
+	return sizeof(struct par_net_header);
+}
+
 static struct par_net_header *ib_par_net_call_open(struct portals_worker *portals_worker, void *args)
 {
 	(void)portals_worker;
 	(void)args;
+	log_info("ib_par_net_call_open called");
 	return NULL;
 }
 
-static struct par_net_header *ib_par_net_call_write(struct portals_worker *portals_worker, void *args)
+static struct par_net_header *ib_par_net_call_put(struct portals_worker *portals_worker, void *args)
 {
 	(void)portals_worker;
 	(void)args;
-	// par_handle handle;
-	// struct par_key_value *key_value;
-	// const char *error_message = NULL;
-	// par_put(handle, key_value, &error_message);
-	return NULL;
-}
-
-static struct par_net_header *ib_par_net_call_read(struct portals_worker *portals_worker, void *args)
-{
-	(void)portals_worker;
-	(void)args;
-	// par_handle handle;
-	// struct par_key *key;
-	// struct par_value *value;
-	// const char *error_message = NULL;
-	// par_get(handle, key, value, &error_message);
+	log_info("ib_par_net_call_put called");
 	return NULL;
 }
 
@@ -448,10 +442,44 @@ static struct par_net_header *ib_par_net_call_del(struct portals_worker *portals
 {
 	(void)portals_worker;
 	(void)args;
-	// par_handle handle;
-	// struct par_key *key;
-	// const char *error_message = NULL;
-	// par_delete(handle, key, &error_message);
+	log_warn("DELETE NOT IMPLEMENTED");
+	return NULL;
+}
+
+static struct par_net_header *ib_par_net_call_get(struct portals_worker *portals_worker, void *args)
+{
+	(void)portals_worker;
+
+	struct par_net_header *request_header = (struct par_net_header *)args;
+	size_t buffer_len = request_header->recv_buf_size;
+
+	const char *valueStr = "data";
+	struct par_value value = {
+		.val_buffer_size = strlen(valueStr) + 1,
+		.val_size = strlen(valueStr) + 1,
+		.val_buffer = malloc(strlen(valueStr) + 1),
+	};
+	const char *error_message = NULL;
+
+	struct par_net_get_rep *reply;
+	char *send_buffer = portals_worker_get_send_buffer(portals_worker);
+	reply = par_net_get_rep_set_header(1, &value, &send_buffer[par_net_header_size()], buffer_len);
+	if (reply == NULL) {
+		log_warn("Failed to create reply");
+		return NULL;
+	}
+	struct par_net_header *reply_header = (struct par_net_header *)portals_worker_get_send_buffer(portals_worker);
+	reply_header->opcode = OPCODE_GET;
+	reply_header->total_bytes =
+		par_net_header_size() + par_net_get_rep_calc_size(error_message == NULL ? value.val_size : 0);
+	return reply_header;
+}
+
+static struct par_net_header *ib_par_net_call_close(struct portals_worker *portals_worker, void *args)
+{
+	(void)portals_worker;
+	(void)args;
+	log_info("ib_par_net_call_close called");
 	return NULL;
 }
 
@@ -459,23 +487,17 @@ static struct par_net_header *ib_par_net_call_scan(struct portals_worker *portal
 {
 	(void)portals_worker;
 	(void)args;
-	// par_handle handle;
-	// struct par_key *key;
-	// par_seek_mode mode;
-	// const char *error_message = NULL;
-	// par_init_scanner(handle, key, mode, &error_message);
+	log_warn("SCAN NOT IMPLEMENTED");
 	return NULL;
 }
 
-static struct par_net_header *ib_par_net_call_close(struct portals_worker *portals_worker, void *args)
-{
-	(void)portals_worker;
-	(void)args;
-	return NULL;
-}
-
-const par_ib_call par_net_call[OPCODE_MAX] = { ib_par_net_call_open, ib_par_net_call_write, ib_par_net_call_read,
-					       ib_par_net_call_del,  ib_par_net_call_scan,  ib_par_net_call_close };
+const par_ib_call par_net_call[OPCODE_MAX] = { NULL,
+					       ib_par_net_call_open,
+					       ib_par_net_call_put,
+					       ib_par_net_call_del,
+					       ib_par_net_call_get,
+					       ib_par_net_call_close,
+					       ib_par_net_call_scan };
 
 int ib_handle_event(struct ibv_wc *wc, struct server_handle *handle, struct ibv_qp *qp, struct ibv_pd *pd)
 {
@@ -491,34 +513,48 @@ int ib_handle_event(struct ibv_wc *wc, struct server_handle *handle, struct ibv_
 		void *buf = (void *)(uintptr_t)wc->wr_id;
 		struct par_net_header *request_header = (struct par_net_header *)buf;
 		if (request_header->inline_flag == 1) {
-			log_debug("[INLINE] Processing request inline");
-			char *response = strdup("OK inline response");
-
-			struct ibv_mr *response_mr =
-				ibv_reg_mr(pd, response, strlen(response) + 1, IBV_ACCESS_LOCAL_WRITE);
-
-			struct ibv_sge sge = {
-				.addr = (uintptr_t)response,
-				.length = strlen(response) + 1,
-				.lkey = response_mr->lkey,
-			};
+			struct par_net_header *reply_header;
+			if (request_header->opcode <= OPCODE_MAX && par_net_call[request_header->opcode]) {
+				portals_worker_set_send_buffer(handle->portals_workers[0], buf);
+				portals_worker_set_buffer_size(handle->portals_workers[0],
+							       request_header->recv_buf_size);
+				reply_header = par_net_call[request_header->opcode](handle->portals_workers[0], buf);
+			} else {
+				log_debug("Unknown opcode: %d", request_header->opcode);
+			}
+			struct ibv_mr *response_mr;
+			struct ibv_sge sge;
+			if (request_header->opcode == OPCODE_GET) {
+				response_mr = ibv_reg_mr(pd, reply_header,
+							 par_net_header_size() + par_net_get_rep_calc_size(
+											 request_header->recv_buf_size),
+							 IBV_ACCESS_LOCAL_WRITE);
+				sge = (struct ibv_sge){
+					.addr = (uintptr_t)reply_header,
+					.length = par_net_header_size() +
+						  par_net_get_rep_calc_size(request_header->recv_buf_size),
+					.lkey = response_mr->lkey,
+				};
+			} else {
+				char *response = strdup("OK inline response");
+				response_mr = ibv_reg_mr(pd, response, strlen(response) + 1, IBV_ACCESS_LOCAL_WRITE);
+				sge = (struct ibv_sge){
+					.addr = (uintptr_t)response,
+					.length = strlen(response) + 1,
+					.lkey = response_mr->lkey,
+				};
+			}
 
 			struct ibv_send_wr wr = { 0 }, *bad_wr = NULL;
 			wr.opcode = IBV_WR_RDMA_WRITE;
 			wr.send_flags = IBV_SEND_SIGNALED;
 			wr.sg_list = &sge;
 			wr.num_sge = 1;
-			wr.wr.rdma.remote_addr = request_header->virtual_address;
-			wr.wr.rdma.rkey = request_header->rkey;
+			wr.wr.rdma.remote_addr = request_header->recv_buf_vaddr;
+			wr.wr.rdma.rkey = request_header->recv_buf_rkey;
 
 			ibv_post_send(qp, &wr, &bad_wr);
 
-			// if (hdr->op <= OP_CLOSE && par_net_call[hdr->op]) {
-			// 	par_net_call[hdr->op](handle->portals_workers[0], buf);
-			// } else {
-			// 	log_debug("Unknown opcode: %d", hdr->op);
-			// }
-			
 			uint32_t *pollercounter = (uint32_t *)((uintptr_t)buf - METADATA_SIZE);
 			// worker_scheduler(handle);
 			__atomic_fetch_add(pollercounter, 1, __ATOMIC_RELAXED);

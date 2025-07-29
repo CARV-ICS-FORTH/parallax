@@ -83,7 +83,7 @@ struct my_conn_metadata {
 #define PRSV_WORKER_BUF_SIZE (63U * 4096) // x*a +4096 = y where y is power of 2 and multiple of sizeof(void*) == 8
 #define QUEUE_DEPTH 128
 
-#define OPCODE_MAX 6
+#define OPCODE_MAX 7
 
 long ib_server_parse_number(const char *str, const char *opt);
 
@@ -106,6 +106,8 @@ int ib_loop(struct server_handle *server_handle);
 void *ib_put_and_reply(void *arg);
 
 void worker_scheduler(struct server_handle *server_handle);
+
+size_t par_net_header_size(void);
 
 int ib_handle_event(struct ibv_wc *wc, struct server_handle *handle, struct ibv_qp *qp, struct ibv_pd *pd);
 
