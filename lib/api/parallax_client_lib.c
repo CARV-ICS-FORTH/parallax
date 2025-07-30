@@ -43,7 +43,10 @@ char msg[PTL_EV_STR_SIZE];
 #define TIMEOUT_MS 500
 struct my_conn_metadata {
 	uint32_t max_value_size;
+	uint32_t client_id;
 };
+uint32_t client_id = 0;
+uint32_t counter = 0;
 #else
 #include <arpa/inet.h>
 #include <netdb.h>
@@ -371,6 +374,7 @@ struct par_handle *par_net_init(const char *parallax_host)
 	rdma_get_cm_event(handle->ec, &event);
 	struct my_conn_metadata *meta = (struct my_conn_metadata *)event->param.conn.private_data;
 	printf("Server max value size: %u\n", meta->max_value_size);
+	client_id = meta->client_id;
 	rdma_ack_cm_event(event);
 
 	return handle;
@@ -484,7 +488,11 @@ void par_net_handle_destroy(par_handle handle)
 	}
 #endif
 	free(parallax_handle->recv_buffer);
+#ifdef USE_INFINIBAND
+	// free(parallax_handle->send_buffer);
+#else
 	free(parallax_handle->send_buffer);
+#endif
 	if (parallax_handle->configuration[PARALLAX_SERVER].value)
 		free((void *)parallax_handle->configuration[PARALLAX_SERVER].value);
 	free(parallax_handle->configuration);
@@ -592,6 +600,7 @@ retry:
 	request_header->recv_buf_rkey = recv_mr->rkey;
 	request_header->recv_buf_size = recv_buf_size;
 	request_header->inline_flag = 1;
+	request_header->request_id = ((uint64_t)client_id << 32) | counter++;
 
 	send_mr = ibv_reg_mr(h->pd, send_buffer, send_buffer_len, IBV_ACCESS_LOCAL_WRITE);
 	if (!send_mr) {
@@ -639,7 +648,13 @@ retry:
 	}
 
 	struct par_net_header *hdr = (struct par_net_header *)recv_buf;
+
 	if (hdr->opcode == OPCODE_GET) {
+		if (hdr->request_id != request_header->request_id) {
+			log_fatal("Received response with mismatched request_id: expected %lu, got %lu",
+				  request_header->request_id, hdr->request_id);
+			goto cleanup;
+		}
 		struct par_net_get_rep *rep = (struct par_net_get_rep *)(recv_buf + par_net_header_calc_size());
 		if (par_net_get_rep_error_code(rep) == 1) {
 			ibv_dereg_mr(recv_mr);
@@ -647,6 +662,10 @@ retry:
 			free(recv_buf);
 
 			recv_buf_size *= 2;
+			if (recv_buf_size > KV_MAX_SIZE) {
+				log_error("Exceeded KV_MAX_SIZE");
+				goto cleanup;
+			}
 			goto retry;
 		}
 	}
