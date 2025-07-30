@@ -47,6 +47,7 @@ struct server_handle {
 
 struct my_conn_metadata {
 	uint32_t max_value_size;
+	uint32_t client_id;
 };
 
 #define USAGE_STRING                                \

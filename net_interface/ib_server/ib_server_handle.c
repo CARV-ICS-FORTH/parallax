@@ -4,6 +4,8 @@
 
 #define MSG_SIZE 1024
 
+static uint32_t client_id_counter = 1;
+
 // TODO: Move to a header file
 struct par_net_header {
 	uint32_t total_bytes;
@@ -297,6 +299,7 @@ int ib_handle_cm_event(struct server_handle *server_handle, struct rdma_cm_event
 		}
 		struct my_conn_metadata server_caps = {
 			.max_value_size = 1024 * 512,
+			.client_id = __sync_fetch_and_add(&client_id_counter, 1),
 		};
 		struct rdma_conn_param conn_param = {
 			.private_data = &server_caps,
@@ -472,6 +475,7 @@ static struct par_net_header *ib_par_net_call_get(struct portals_worker *portals
 	reply_header->opcode = OPCODE_GET;
 	reply_header->total_bytes =
 		par_net_header_size() + par_net_get_rep_calc_size(error_message == NULL ? value.val_size : 0);
+	reply_header->request_id = request_header->request_id;
 	return reply_header;
 }
 
