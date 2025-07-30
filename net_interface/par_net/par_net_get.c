@@ -69,8 +69,7 @@ struct par_net_get_rep *par_net_get_rep_set_header(bool is_found, struct par_val
 						   size_t buffer_len)
 {
 	struct par_net_get_rep *reply = (struct par_net_get_rep *)buffer;
-	log_info("buffer_len = %lu, par_net_get_rep_header_size=%lu", buffer_len, par_net_get_rep_header_size());
-	if (buffer_len < par_net_get_rep_header_size()) {
+	if (buffer_len < par_net_get_rep_calc_size(value->val_buffer_size)) {
 		reply->error_code = PAR_NET_GET_ERR_BUFFER_TOO_SMALL;
 		log_warn("Sorry buffer too small to fit KV pair");
 		return reply;
