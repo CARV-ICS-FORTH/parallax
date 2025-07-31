@@ -5,6 +5,7 @@
 #define MSG_SIZE 1024
 
 static uint32_t client_id_counter = 1;
+struct ib_client_ctx *clients[MAX_CLIENTS];
 
 // TODO: Move to a header file
 struct par_net_header {
@@ -15,7 +16,7 @@ struct par_net_header {
 	uint64_t payload_size;
 	uint64_t recv_buf_vaddr;
 	uint64_t recv_buf_size;
-	uint64_t request_id;
+	uint32_t request_id;
 	uint32_t payload_rkey;
 	uint32_t recv_buf_rkey;
 	uint8_t inline_flag;
@@ -188,6 +189,21 @@ struct server_handle *ib_server_handle_init(struct server_options *opts)
 		_exit(EXIT_FAILURE);
 	}
 
+	handle->comp_channel = ibv_create_comp_channel(handle->listen_id->verbs);
+	if (!handle->comp_channel) {
+		perror("ibv_create_comp_channel");
+		_exit(EXIT_FAILURE);
+	}
+	handle->cq = ibv_create_cq(handle->listen_id->verbs, 10, NULL, handle->comp_channel, 0);
+	if (!handle->cq) {
+		perror("ibv_create_cq");
+		_exit(EXIT_FAILURE);
+	}
+	if (ibv_req_notify_cq(handle->cq, 0)) {
+		perror("ibv_req_notify_cq");
+		_exit(EXIT_FAILURE);
+	}
+
 	int ret;
 
 	for (int i = 0; i < MATCH_ENTRY_NUM; i++) {
@@ -268,23 +284,9 @@ int ib_handle_cm_event(struct server_handle *server_handle, struct rdma_cm_event
 			perror("ibv_alloc_pd");
 			return -1;
 		}
-		struct ibv_comp_channel *comp_channel = ibv_create_comp_channel(client_id->verbs);
-		if (!comp_channel) {
-			perror("ibv_create_comp_channel");
-			return -1;
-		}
-		struct ibv_cq *cq = ibv_create_cq(client_id->verbs, 10, NULL, comp_channel, 0);
-		if (!cq) {
-			perror("ibv_create_cq");
-			return -1;
-		}
-		if (ibv_req_notify_cq(cq, 0)) {
-			perror("ibv_req_notify_cq");
-			return -1;
-		}
 		struct ibv_qp_init_attr qp_attr = {
-            .send_cq = cq,
-            .recv_cq = cq,
+            .send_cq = server_handle->cq,
+            .recv_cq = server_handle->cq,
             .qp_type = IBV_QPT_RC,
             .cap = {
                 .max_send_wr = 10,
@@ -332,17 +334,15 @@ int ib_handle_cm_event(struct server_handle *server_handle, struct rdma_cm_event
 		}
 		ctx->id = client_id;
 		ctx->pd = pd;
-		ctx->cq = cq;
+		ctx->cq = server_handle->cq;
 		ctx->mr = mr;
-		ctx->comp_channel = comp_channel;
+		ctx->comp_channel = server_handle->comp_channel;
 		ctx->buf = aligned_buf;
 		ctx->qp = client_id->qp;
 		ctx->server_handle = server_handle;
 		client_id->context = ctx;
 
-		pthread_t tid;
-		pthread_create(&tid, NULL, cq_poll_loop, ctx);
-		pthread_detach(tid);
+		clients[server_caps.client_id - 1] = ctx;
 
 		struct ibv_sge sge = {
 			.addr = (uintptr_t)aligned_buf,
@@ -378,18 +378,30 @@ int ib_handle_cm_event(struct server_handle *server_handle, struct rdma_cm_event
 
 int ib_loop(struct server_handle *server_handle)
 {
-	struct rdma_cm_event *event;
+	struct ibv_cq *cq;
+	void *cq_ctx;
+	struct ibv_wc wc;
+
 	while (1) {
-		if (rdma_get_cm_event(server_handle->ec, &event)) {
-			perror("rdma_get_cm_event");
-			return -(EXIT_FAILURE);
+		if (ibv_get_cq_event(server_handle->comp_channel, &cq, &cq_ctx)) {
+			perror("ibv_get_cq_event");
+			continue;
 		}
-		struct rdma_cm_event event_copy;
-		memcpy(&event_copy, event, sizeof(*event));
-		rdma_ack_cm_event(event);
-		if (ib_handle_cm_event(server_handle, &event_copy) < 0) {
-			log_debug("ib_handle_cm_event failed");
-			return -(EXIT_FAILURE);
+		ibv_ack_cq_events(cq, 1);
+		if (ibv_req_notify_cq(cq, 0)) {
+			perror("ibv_req_notify_cq");
+			continue;
+		}
+		while (ibv_poll_cq(cq, 1, &wc) > 0) {
+			if (wc.status != IBV_WC_SUCCESS) {
+				fprintf(stderr, "Work completion error: %s\n", ibv_wc_status_str(wc.status));
+				continue;
+			}
+
+			if (ib_handle_event(&wc) < 0) {
+				log_debug("ib_handle_event failed");
+				_exit(EXIT_FAILURE);
+			}
 		}
 	}
 	return EXIT_SUCCESS;
@@ -503,10 +515,15 @@ const par_ib_call par_net_call[OPCODE_MAX] = { NULL,
 					       ib_par_net_call_close,
 					       ib_par_net_call_scan };
 
-int ib_handle_event(struct ibv_wc *wc, struct server_handle *handle, struct ibv_qp *qp, struct ibv_pd *pd)
+int ib_handle_event(struct ibv_wc *wc)
 {
 	// printf("Handling RDMA Work Completion event: opcode=%d, status=%d, wr_id=%lu\n",
 	//        wc->opcode, wc->status, (unsigned long)wc->wr_id);
+	struct server_handle *handle;
+	struct ibv_qp *qp;
+	struct ibv_pd *pd;
+	struct ib_client_ctx *ctx;
+
 	if (wc->status != IBV_WC_SUCCESS) {
 		log_debug("RDMA Work Completion error: %s", ibv_wc_status_str(wc->status));
 		return -1;
@@ -516,6 +533,15 @@ int ib_handle_event(struct ibv_wc *wc, struct server_handle *handle, struct ibv_
 	case IBV_WC_RECV: {
 		void *buf = (void *)(uintptr_t)wc->wr_id;
 		struct par_net_header *request_header = (struct par_net_header *)buf;
+		ctx = clients[request_header->request_id - 1];
+		if (!ctx || !ctx->server_handle) {
+			fprintf(stderr, "Invalid client context!\n");
+			return -1;
+		}
+		ctx->server_handle->wc = wc;
+		handle = ctx->server_handle;
+		qp = ctx->qp;
+		pd = ctx->pd;
 		if (request_header->inline_flag == 1) {
 			struct par_net_header *reply_header;
 			if (request_header->opcode <= OPCODE_MAX && par_net_call[request_header->opcode]) {
@@ -586,42 +612,41 @@ int ib_handle_event(struct ibv_wc *wc, struct server_handle *handle, struct ibv_
 		log_debug("Unhandled RDMA opcode: %d", wc->opcode);
 		break;
 	}
+	struct ibv_sge sge = {
+		.addr = (uintptr_t)ctx->buf,
+		.length = MSG_SIZE,
+		.lkey = ctx->mr->lkey,
+	};
+	struct ibv_recv_wr wr = {
+		.wr_id = (uintptr_t)ctx->buf,
+		.sg_list = &sge,
+		.num_sge = 1,
+	};
+	struct ibv_recv_wr *bad_wr;
+	if (ibv_post_recv(ctx->qp, &wr, &bad_wr)) {
+		perror("ibv_post_recv");
+		exit(EXIT_FAILURE);
+	}
 	return 0;
 }
 
-void *cq_poll_loop(void *arg)
+void *connection_manager_thread(void *arg)
 {
-	struct ib_client_ctx *ctx = (struct ib_client_ctx *)arg;
-	struct ibv_wc wc;
+	struct server_handle *server_handle = arg;
+	struct rdma_cm_event *event;
+
 	while (1) {
-		struct ibv_cq *cq;
-		void *cq_ctx;
-		if (ibv_get_cq_event(ctx->comp_channel, &cq, &cq_ctx)) {
-			perror("ibv_get_cq_event");
-			continue;
+		if (rdma_get_cm_event(server_handle->ec, &event)) {
+			perror("rdma_get_cm_event");
+			_exit(EXIT_FAILURE);
 		}
-		ibv_ack_cq_events(cq, 1);
-		if (ibv_req_notify_cq(cq, 0)) {
-			perror("ibv_req_notify_cq");
-			continue;
-		}
-		while (ibv_poll_cq(cq, 1, &wc) > 0) {
-			if (ctx->server_handle == NULL) {
-				fprintf(stderr, "ctx->server_handle is NULL!\n");
-				continue;
-			}
-			ctx->server_handle->wc = &wc;
-			if (ib_handle_event(ctx->server_handle->wc, ctx->server_handle, ctx->qp, ctx->pd) < 0) {
-				log_debug("ib_handle_event failed");
-				exit(1);
-			}
-			struct ibv_sge sge = { .addr = (uintptr_t)ctx->buf, .length = MSG_SIZE, .lkey = ctx->mr->lkey };
-			struct ibv_recv_wr wr = { .wr_id = (uintptr_t)ctx->buf, .sg_list = &sge, .num_sge = 1 };
-			struct ibv_recv_wr *bad_wr;
-			if (ibv_post_recv(ctx->id->qp, &wr, &bad_wr)) {
-				perror("ibv_post_recv");
-				exit(EXIT_FAILURE);
-			}
+		struct rdma_cm_event event_copy;
+		memcpy(&event_copy, event, sizeof(*event));
+		rdma_ack_cm_event(event);
+
+		if (ib_handle_cm_event(server_handle, &event_copy) < 0) {
+			log_debug("ib_handle_cm_event failed");
+			_exit(EXIT_FAILURE);
 		}
 	}
 	return NULL;
@@ -649,6 +674,9 @@ int ib_server_start(struct server_handle *server_handle)
 			return -(EXIT_FAILURE);
 		}
 	}
+
+	pthread_t cm_thread;
+	pthread_create(&cm_thread, NULL, connection_manager_thread, server_handle);
 
 	log_debug("InfiniBand server is ready");
 

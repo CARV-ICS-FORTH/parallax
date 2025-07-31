@@ -37,6 +37,7 @@ struct server_handle {
 	struct rdma_cm_id *listen_id;
 	struct ibv_wc *wc;
 	struct ibv_comp_channel *comp_channel;
+	struct ibv_cq *cq;
 
 	par_handle par_handle;
 	uint32_t thread_to_queue;
@@ -85,6 +86,7 @@ struct my_conn_metadata {
 #define QUEUE_DEPTH 128
 
 #define OPCODE_MAX 7
+#define MAX_CLIENTS 16
 
 long ib_server_parse_number(const char *str, const char *opt);
 
@@ -110,9 +112,9 @@ void worker_scheduler(struct server_handle *server_handle);
 
 size_t par_net_header_size(void);
 
-int ib_handle_event(struct ibv_wc *wc, struct server_handle *handle, struct ibv_qp *qp, struct ibv_pd *pd);
+int ib_handle_event(struct ibv_wc *wc);
 
-void *cq_poll_loop(void *arg);
+void *connection_manager_thread(void *arg);
 
 int ib_server_start(struct server_handle *server_handle);
 
