@@ -13,7 +13,6 @@ int main(void)
 	db_options.options[GROWTH_FACTOR].value = 8;
 	db_options.options[PRIMARY_MODE].value = 1;
 	db_options.options[ENABLE_BLOOM_FILTERS].value = 1;
-
 	const char *error_message = NULL;
 	par_handle handle = par_open(&db_options, &error_message);
 	if (error_message) {
@@ -55,16 +54,22 @@ int main(void)
 		.size = strlen(keyStr) + 1,
 		.data = keyStr,
 	};
-	struct par_value getValue;
+	struct par_value getValue = { 0 };
 	par_get(handle, &key, &getValue, &error_msg);
-
 	if (error_msg != NULL) {
 		printf("Error during get operation: %s\n", error_msg);
 		free(value.val_buffer);
 		par_close(handle);
 		return 1;
 	}
-	par_get(handle, &key, &getValue, &error_msg);
+
+	const char *nfKeyStr = "nfKey";
+	struct par_key nfKey = {
+		.size = strlen(nfKeyStr) + 1,
+		.data = nfKeyStr,
+	};
+	struct par_value nfGetValue = { 0 };
+	par_get(handle, &nfKey, &nfGetValue, &error_msg);
 	if (error_msg != NULL) {
 		printf("Error during get operation: %s\n", error_msg);
 		free(value.val_buffer);
@@ -73,6 +78,7 @@ int main(void)
 	}
 
 	free(value.val_buffer);
+
 	par_close(handle);
 
 	return 0;
