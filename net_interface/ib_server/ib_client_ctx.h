@@ -1,3 +1,6 @@
+#ifndef IB_CLIENT_CTX_H
+#define IB_CLIENT_CTX_H
+
 #include <rdma/rdma_cma.h>
 
 struct ib_client_ctx {
@@ -11,3 +14,5 @@ struct ib_client_ctx {
 	void *buf;
 	struct server_handle *server_handle;
 };
+
+#endif
