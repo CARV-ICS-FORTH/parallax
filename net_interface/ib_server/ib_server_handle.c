@@ -1,8 +1,75 @@
-#include "../par_net/par_net_open.h"
-#include "ib_client_ctx.h"
 #include "ib_server_handle.h"
 
+#define USAGE_STRING                                \
+	"InfiniBand Server: no options specified\n" \
+	"try './infiniband_parallax_server --help' for more information\n"
+
+#define HELP_STRING                                                                                             \
+	"Usage:\n  InfiniBand Server <-bptf>\nOptions:\n"                                                       \
+	" -t, --threads <thread-num>  specify number of server threads.\n"                                      \
+	" -b, --bind <if-address>     specify the interface that the server will "                              \
+	"bind to.\n"                                                                                            \
+	" -p, --port <port>           specify the port that the server will be "                                \
+	"listening\n"                                                                                           \
+	" -f, --file <path>           specify the target (file of db) where "                                   \
+	"parallax will run\n\n"                                                                                 \
+	" -L0, --L0_size <size in MB>           sets the L0 size in MB of each region in Parallax\n\n"          \
+	" -GF, --GF <growth factor>           specify the growth factor of levels in each Parallax region\n\n " \
+	" -h, --help     display this help and exit\n"                                                          \
+	" -pf, --par_format           (Optional) specify whether database should be formatted\n"
+
+#define CONFIG_STRING         \
+	"[ Server Config ]\n" \
+	"  - file = %s\n"     \
+	"  - flags = not yet supported\n"
+
+#define DEFAULT_PORT 7741
+#define DEFAULT_ADDRESS "192.168.5.120"
+
+#define DECIMAL_BASE 10
+#define PORT_MAX 65536
+#define MAX_REGIONS 128
+#define PRSV_COM_BUF_SIZE (32U * KV_MAX_SIZE)
+#define METADATA_SIZE 4096
+#define QUEUE_DEPTH 128
+#define CLOSE_OP_BUF_SIZE 100
+#define MATCH_ENTRY_NUM 5
+#define MAX_CLIENTS 16
 #define MSG_SIZE 1024
+
+struct server_options {
+	uint32_t threadno;
+	const char *parallax_vol_name;
+	uint32_t l0_size;
+	uint32_t growth_factor;
+	uint8_t format;
+	long port;
+	struct sockaddr_storage inaddr;
+};
+
+struct server_handle {
+	struct server_options *opts;
+
+	pthread_mutex_t *mutex;
+	struct portals_worker **portals_workers;
+
+	struct rdma_event_channel *ec;
+	struct rdma_cm_id *listen_id;
+	struct ibv_wc *wc;
+	struct ibv_comp_channel *comp_channel;
+	struct ibv_cq *cq;
+
+	par_handle par_handle;
+	uint32_t thread_to_queue;
+
+	char *recv_buffer[MATCH_ENTRY_NUM];
+	uint32_t recv_buffer_size;
+};
+
+struct my_conn_metadata {
+	uint32_t max_value_size;
+	uint32_t client_id;
+};
 
 static uint32_t client_id_counter = 1;
 struct ib_client_ctx *clients[MAX_CLIENTS];
@@ -22,13 +89,6 @@ struct par_net_header {
 	uint8_t inline_flag;
 #endif
 } __attribute__((packed));
-
-struct rdma_read_ctx {
-	void *buf;
-	size_t size;
-	struct ibv_mr *mr;
-	struct par_net_header hdr;
-};
 
 long ib_server_parse_number(const char *str, const char *opt)
 {
@@ -269,7 +329,6 @@ int ib_server_print_config(struct server_handle *server_handle)
 	}
 
 	printf(CONFIG_STRING, server_handle->opts->parallax_vol_name);
-	printf("InfiniBand Server is bound to %s:%ld\n", ip_str, server_handle->opts->port);
 
 	return EXIT_SUCCESS;
 }
@@ -395,10 +454,9 @@ int ib_loop(struct server_handle *server_handle)
 		while (ibv_poll_cq(cq, 1, &wc) > 0) {
 			if (wc.status != IBV_WC_SUCCESS) {
 				fprintf(stderr, "Work completion error: %s\n", ibv_wc_status_str(wc.status));
-				continue;
+				_exit(EXIT_FAILURE);
 			}
-
-			if (ib_handle_event(&wc) < 0) {
+			if (ib_handle_event(&wc, server_handle) < 0) {
 				log_debug("ib_handle_event failed");
 				_exit(EXIT_FAILURE);
 			}
@@ -407,13 +465,7 @@ int ib_loop(struct server_handle *server_handle)
 	return EXIT_SUCCESS;
 }
 
-void *ib_put_and_reply(void *arg)
-{
-	(void)arg;
-	return NULL;
-}
-
-void worker_scheduler(struct server_handle *server_handle)
+void worker_scheduler(struct server_handle *server_handle, void *buf)
 {
 	if (server_handle->thread_to_queue == server_handle->opts->threadno)
 		server_handle->thread_to_queue = 0;
@@ -425,7 +477,7 @@ void worker_scheduler(struct server_handle *server_handle)
 			server_handle->thread_to_queue = 0;
 	}
 	struct portals_worker *worker = server_handle->portals_workers[server_handle->thread_to_queue];
-	portals_worker_put(worker, ib_worker_create_req(server_handle->wc));
+	portals_worker_put(worker, portals_worker_create_req(buf));
 	portals_worker_notify(worker);
 
 	server_handle->thread_to_queue++;
@@ -439,18 +491,77 @@ inline size_t par_net_header_size(void)
 
 static struct par_net_header *ib_par_net_call_open(struct portals_worker *portals_worker, void *args)
 {
-	(void)portals_worker;
-	(void)args;
-	log_info("ib_par_net_call_open called");
-	return NULL;
+	void *start = (void *)args;
+	struct par_net_header *hdr = (struct par_net_header *)start;
+	struct par_net_open_req *request = (struct par_net_open_req *)((char *)start + par_net_header_size());
+
+	par_db_options db_options = { 0 };
+	db_options.options = par_get_default_options();
+	db_options.db_name = par_net_open_get_dbname(request);
+	db_options.create_flag = par_net_open_get_flag(request);
+
+	db_options.volume_name = (char *)portals_worker_get_server_handle(portals_worker)->opts->parallax_vol_name;
+	log_debug("Setting L0 size to %u B", portals_worker_get_server_handle(portals_worker)->opts->l0_size);
+	db_options.options[LEVEL0_SIZE].value = portals_worker_get_server_handle(portals_worker)->opts->l0_size;
+	log_debug("Setting growth factor to %u", portals_worker_get_server_handle(portals_worker)->opts->growth_factor);
+	db_options.options[GROWTH_FACTOR].value = portals_worker_get_server_handle(portals_worker)->opts->growth_factor;
+
+	const char *error_message = NULL;
+	log_debug("Opening db with name == %s", db_options.db_name);
+	par_handle handle = par_open(&db_options, &error_message);
+	uint32_t total_bytes = par_net_open_rep_calc_size() + par_net_header_size();
+	portals_worker_lock(portals_worker);
+	char *buffer = (char *)portals_worker_get_buffer(portals_worker, total_bytes);
+	portals_worker_unlock(portals_worker);
+	struct par_net_open_rep *reply = par_net_open_rep_create(
+		error_message != NULL, handle, &buffer[par_net_header_size()], total_bytes - par_net_header_size());
+	if (NULL == reply) {
+		log_warn("Failed to create reply");
+		return NULL;
+	}
+	struct par_net_header *reply_header = (struct par_net_header *)buffer;
+	reply_header->opcode = OPCODE_OPEN;
+	reply_header->total_bytes = total_bytes;
+	reply_header->request_id = hdr->request_id;
+	log_debug("Ok with open reply");
+	return reply_header;
 }
 
 static struct par_net_header *ib_par_net_call_put(struct portals_worker *portals_worker, void *args)
 {
-	(void)portals_worker;
-	(void)args;
-	log_info("ib_par_net_call_put called");
-	return NULL;
+	void *start = (void *)args;
+	struct par_net_header *hdr = (struct par_net_header *)start;
+	struct par_net_put_req *request = (struct par_net_put_req *)((char *)start + par_net_header_size());
+
+	struct par_key_value kv_pair = { 0 };
+	uint64_t region_id = par_net_put_get_region_id(request);
+	kv_pair.k.size = par_net_put_get_key_size(request);
+	kv_pair.v.val_size = par_net_put_get_value_size(request);
+	kv_pair.k.data = par_net_put_get_key(request);
+	kv_pair.v.val_buffer = par_net_put_get_value(request);
+	kv_pair.v.val_buffer_size = par_net_put_get_value_size(request);
+
+	log_debug("Key size =  %lu", (unsigned long)kv_pair.k.size);
+	log_debug("Value size = %lu", (unsigned long)kv_pair.v.val_buffer_size);
+
+	const char *error_message = NULL;
+	struct par_put_metadata metadata = par_put((par_handle)region_id, &kv_pair, &error_message);
+	log_debug("LSN is %lu", metadata.lsn);
+	uint32_t total_bytes = par_net_header_size() + par_net_put_rep_calc_size();
+	portals_worker_lock(portals_worker);
+	char *buffer = (char *)portals_worker_get_buffer(portals_worker, total_bytes);
+	portals_worker_unlock(portals_worker);
+	struct par_net_put_rep *reply =
+		par_net_put_rep_create(error_message == NULL, metadata, &buffer[par_net_header_size()], total_bytes);
+	if (NULL == reply) {
+		log_warn("Failed to create put reply");
+		return NULL;
+	}
+	struct par_net_header *reply_header = (struct par_net_header *)buffer;
+	reply_header->opcode = OPCODE_PUT;
+	reply_header->total_bytes = total_bytes;
+	reply_header->request_id = hdr->request_id;
+	return reply_header;
 }
 
 static struct par_net_header *ib_par_net_call_del(struct portals_worker *portals_worker, void *args)
@@ -463,40 +574,86 @@ static struct par_net_header *ib_par_net_call_del(struct portals_worker *portals
 
 static struct par_net_header *ib_par_net_call_get(struct portals_worker *portals_worker, void *args)
 {
-	(void)portals_worker;
+	void *start = (void *)args;
+	struct par_net_header *hdr = (struct par_net_header *)start;
+	struct par_net_get_req *request = (struct par_net_get_req *)((char *)start + par_net_header_size());
 
-	struct par_net_header *request_header = (struct par_net_header *)args;
-	size_t buffer_len = request_header->recv_buf_size;
+	uint64_t region_id = par_net_get_get_region_id(request);
+	struct par_key par_key;
+	par_key.size = par_net_get_get_key_size(request);
+	par_key.data = par_net_get_get_key(request);
+	struct par_value par_value = { 0 };
 
-	const char *valueStr = "data";
-	struct par_value value = {
-		.val_buffer_size = strlen(valueStr) + 1,
-		.val_size = strlen(valueStr) + 1,
-		.val_buffer = malloc(strlen(valueStr) + 1),
-	};
+	//log_debug("key size == %lu", (unsigned long)par_key.size);
+
 	const char *error_message = NULL;
-
-	struct par_net_get_rep *reply;
-	char *send_buffer = portals_worker_get_send_buffer(portals_worker);
-	reply = par_net_get_rep_set_header(1, &value, &send_buffer[par_net_header_size()], buffer_len);
+	uint32_t total_bytes = KV_MAX_SIZE + par_net_header_size() + par_net_get_rep_header_size();
+	portals_worker_lock(portals_worker);
+	char *buffer = (char *)portals_worker_get_buffer(portals_worker, total_bytes);
+	portals_worker_unlock(portals_worker);
+	bool found = false;
+	if (par_net_get_req_fetch_value(request)) {
+		log_debug("Region id: %lu Calling par_get for key: %.*s", region_id, par_key.size, par_key.data);
+		par_value.val_buffer = &buffer[par_net_header_size() + par_net_get_rep_header_size()];
+		par_value.val_buffer_size = total_bytes - (par_net_header_size() + par_net_get_rep_header_size());
+		log_debug("Available buffer for gets is %u", par_value.val_buffer_size);
+		par_get((par_handle)region_id, &par_key, &par_value, &error_message);
+		found = error_message == NULL;
+	} else {
+		log_debug("Region id: %lu Calling par_exists for key: %.*s", region_id, par_key.size, par_key.data);
+		par_ret_code ret_code = par_exists((par_handle)region_id, &par_key);
+		found = ret_code == PAR_SUCCESS;
+		par_value.val_size = 0;
+	}
+	// log_debug("Key: %.*s --> %s", par_key.size, par_key.data, found ? "FOUND" : "NOT FOUND");
+	//unsigned int hash = djb2_hash((const unsigned char *)par_value.val_buffer, par_value.val_size);
+	//log_debug("got hash from get = %u", hash);
+	size_t buffer_len = total_bytes - par_net_header_size();
+	struct par_net_get_rep *reply =
+		par_net_get_rep_set_header(found, &par_value, &buffer[par_net_header_size()], buffer_len);
 	if (reply == NULL) {
 		log_warn("Failed to create reply");
 		return NULL;
 	}
-	struct par_net_header *reply_header = (struct par_net_header *)portals_worker_get_send_buffer(portals_worker);
+	struct par_net_header *reply_header = (struct par_net_header *)buffer;
 	reply_header->opcode = OPCODE_GET;
 	reply_header->total_bytes =
-		par_net_header_size() + par_net_get_rep_calc_size(error_message == NULL ? value.val_size : 0);
-	reply_header->request_id = request_header->request_id;
+		par_net_header_size() + par_net_get_rep_calc_size(error_message == NULL ? par_value.val_size : 0);
+	reply_header->request_id = hdr->request_id;
 	return reply_header;
 }
 
 static struct par_net_header *ib_par_net_call_close(struct portals_worker *portals_worker, void *args)
 {
-	(void)portals_worker;
-	(void)args;
-	log_info("ib_par_net_call_close called");
-	return NULL;
+	void *start = (void *)args;
+	struct par_net_header *hdr = (struct par_net_header *)start;
+	struct par_net_close_req *request = (struct par_net_close_req *)((char *)start + par_net_header_size());
+
+	uint64_t region_id = par_net_close_get_region_id(request);
+
+	par_handle handle = (par_handle)region_id;
+
+	const char *error_message = par_close(handle);
+	log_debug("Close DB message is %s ", error_message ? error_message : " OK !");
+	uint32_t error_message_size =
+		par_net_header_size() + (error_message ? strlen(error_message) + 1 : 0) + CLOSE_OP_BUF_SIZE;
+	size_t buffer_len = error_message_size - par_net_header_size() + CLOSE_OP_BUF_SIZE;
+	portals_worker_lock(portals_worker);
+	char *buffer = (char *)portals_worker_get_buffer(portals_worker, error_message_size);
+	portals_worker_unlock(portals_worker);
+
+	struct par_net_close_rep *reply =
+		par_net_close_rep_create(error_message, &buffer[par_net_header_size()], buffer_len);
+
+	if (NULL == reply) {
+		log_warn("Failed to create get reply");
+		return NULL;
+	}
+	struct par_net_header *reply_header = (struct par_net_header *)buffer;
+	reply_header->opcode = OPCODE_CLOSE;
+	reply_header->total_bytes = error_message_size;
+	reply_header->request_id = hdr->request_id;
+	return reply_header;
 }
 
 static struct par_net_header *ib_par_net_call_scan(struct portals_worker *portals_worker, void *args)
@@ -507,23 +664,102 @@ static struct par_net_header *ib_par_net_call_scan(struct portals_worker *portal
 	return NULL;
 }
 
+static struct par_net_header *ib_par_net_call_sync(struct portals_worker *portals_worker, void *args)
+{
+	(void)portals_worker;
+	(void)args;
+	log_warn("SYNC NOT IMPLEMENTED");
+	return NULL;
+}
+
 const par_ib_call par_net_call[OPCODE_MAX] = { NULL,
 					       ib_par_net_call_open,
 					       ib_par_net_call_put,
 					       ib_par_net_call_del,
 					       ib_par_net_call_get,
 					       ib_par_net_call_close,
-					       ib_par_net_call_scan };
+					       ib_par_net_call_scan,
+					       ib_par_net_call_sync };
 
-int ib_handle_event(struct ibv_wc *wc)
+size_t ib_par_net_get_total_bytes(char *buffer)
 {
-	// printf("Handling RDMA Work Completion event: opcode=%d, status=%d, wr_id=%lu\n",
-	//        wc->opcode, wc->status, (unsigned long)wc->wr_id);
-	struct server_handle *handle;
-	struct ibv_qp *qp;
-	struct ibv_pd *pd;
-	struct ib_client_ctx *ctx;
+	struct par_net_header *header = (struct par_net_header *)buffer;
+	return header->total_bytes;
+}
 
+uint32_t par_net_header_get_opcode(char *buffer)
+{
+	struct par_net_header *header = (struct par_net_header *)buffer;
+
+	if (header->opcode >= OPCODE_MAX)
+		return 0;
+
+	return header->opcode;
+}
+
+void *ib_put_and_reply(void *arg)
+{
+	struct portals_worker *portals_worker = arg;
+	void *aligned_buffer_start;
+	uint32_t *workercounter;
+	struct server_handle *server_handle = portals_worker_get_server_handle(portals_worker);
+	struct portals_worker_request *req = NULL;
+
+	while (1) {
+		req = portals_worker_poll(portals_worker);
+		if (req == NULL) {
+			continue;
+			log_fatal("NOTHING IN THREAD QUEUE");
+		}
+		struct par_net_header *hdr = (struct par_net_header *)portals_worker_get_start(req);
+		struct ib_client_ctx *ctx = clients[hdr->request_id - 1];
+
+		size_t total_bytes = ib_par_net_get_total_bytes(portals_worker_get_start(req));
+		if (total_bytes > server_handle->recv_buffer_size) {
+			log_debug("Error Larger message recv buffer size is: %u B total_bytes are: %lu B",
+				  server_handle->recv_buffer_size, total_bytes);
+			break;
+		}
+
+		uint32_t opcode = par_net_header_get_opcode(portals_worker_get_start(req));
+		log_debug("message opcode : %u", opcode);
+		if (opcode == 0) {
+			log_debug("invalid opcode");
+			break;
+		}
+
+		struct par_net_header *reply_header =
+			par_net_call[opcode](portals_worker, portals_worker_get_start(req));
+
+		aligned_buffer_start = (void *)((uintptr_t)portals_worker_get_user_ptr(req));
+		workercounter = (uint32_t *)((uintptr_t)aligned_buffer_start - METADATA_SIZE + sizeof(uint32_t));
+		__atomic_fetch_add(workercounter, 1, __ATOMIC_RELAXED);
+
+		portals_worker_send_reply_buff(reply_header, reply_header->total_bytes, hdr->recv_buf_vaddr,
+					       hdr->recv_buf_rkey, ctx);
+
+		struct ibv_sge sge = {
+			.addr = (uintptr_t)aligned_buffer_start,
+			.length = MSG_SIZE,
+			.lkey = ctx->mr->lkey,
+		};
+		struct ibv_recv_wr wr = {
+			.wr_id = (uintptr_t)aligned_buffer_start,
+			.sg_list = &sge,
+			.num_sge = 1,
+		};
+		struct ibv_recv_wr *bad_wr;
+		if (ibv_post_recv(ctx->qp, &wr, &bad_wr)) {
+			perror("ibv_post_recv");
+			exit(EXIT_FAILURE);
+		}
+	}
+	log_debug("FINISHED");
+	return EXIT_SUCCESS;
+}
+
+int ib_handle_event(struct ibv_wc *wc, struct server_handle *server_handle)
+{
 	if (wc->status != IBV_WC_SUCCESS) {
 		log_debug("RDMA Work Completion error: %s", ibv_wc_status_str(wc->status));
 		return -1;
@@ -532,100 +768,17 @@ int ib_handle_event(struct ibv_wc *wc)
 	switch (wc->opcode) {
 	case IBV_WC_RECV: {
 		void *buf = (void *)(uintptr_t)wc->wr_id;
-		struct par_net_header *request_header = (struct par_net_header *)buf;
-		ctx = clients[request_header->request_id - 1];
-		if (!ctx || !ctx->server_handle) {
-			fprintf(stderr, "Invalid client context!\n");
-			return -1;
-		}
-		ctx->server_handle->wc = wc;
-		handle = ctx->server_handle;
-		qp = ctx->qp;
-		pd = ctx->pd;
-		if (request_header->inline_flag == 1) {
-			struct par_net_header *reply_header;
-			if (request_header->opcode <= OPCODE_MAX && par_net_call[request_header->opcode]) {
-				portals_worker_set_send_buffer(handle->portals_workers[0], buf);
-				portals_worker_set_buffer_size(handle->portals_workers[0],
-							       request_header->recv_buf_size);
-				reply_header = par_net_call[request_header->opcode](handle->portals_workers[0], buf);
-			} else {
-				log_debug("Unknown opcode: %d", request_header->opcode);
-			}
-			struct ibv_mr *response_mr;
-			struct ibv_sge sge;
-			if (request_header->opcode == OPCODE_GET) {
-				response_mr = ibv_reg_mr(pd, reply_header,
-							 par_net_header_size() + par_net_get_rep_calc_size(
-											 request_header->recv_buf_size),
-							 IBV_ACCESS_LOCAL_WRITE);
-				sge = (struct ibv_sge){
-					.addr = (uintptr_t)reply_header,
-					.length = par_net_header_size() +
-						  par_net_get_rep_calc_size(request_header->recv_buf_size),
-					.lkey = response_mr->lkey,
-				};
-			} else {
-				char *response = strdup("OK inline response");
-				response_mr = ibv_reg_mr(pd, response, strlen(response) + 1, IBV_ACCESS_LOCAL_WRITE);
-				sge = (struct ibv_sge){
-					.addr = (uintptr_t)response,
-					.length = strlen(response) + 1,
-					.lkey = response_mr->lkey,
-				};
-			}
-
-			struct ibv_send_wr wr = { 0 }, *bad_wr = NULL;
-			wr.opcode = IBV_WR_RDMA_WRITE;
-			wr.send_flags = IBV_SEND_SIGNALED;
-			wr.sg_list = &sge;
-			wr.num_sge = 1;
-			wr.wr.rdma.remote_addr = request_header->recv_buf_vaddr;
-			wr.wr.rdma.rkey = request_header->recv_buf_rkey;
-
-			ibv_post_send(qp, &wr, &bad_wr);
-
-			uint32_t *pollercounter = (uint32_t *)((uintptr_t)buf - METADATA_SIZE);
-			// worker_scheduler(handle);
-			__atomic_fetch_add(pollercounter, 1, __ATOMIC_RELAXED);
-		} else {
-			log_debug("[RDMA read needed]");
-		}
+		uint32_t *pollercounter = (uint32_t *)((uintptr_t)buf - METADATA_SIZE);
+		worker_scheduler(server_handle, buf);
+		__atomic_fetch_add(pollercounter, 1, __ATOMIC_RELAXED);
 		break;
 	}
 	case IBV_WC_RDMA_WRITE: {
 		break;
 	}
-	// case IBV_WC_SEND: {
-	// 	void *user_ptr = (void *)(uintptr_t)wc->wr_id;
-	// 	uintptr_t index_start =
-	// 		(uintptr_t)user_ptr - ((uintptr_t)user_ptr % (PRSV_WORKER_BUF_SIZE + METADATA_SIZE));
-	// 	uint32_t *worker_index = (uint32_t *)(index_start);
-	// 	// log_debug("SEND completed. user_ptr=%p, worker_index=%u", user_ptr, *worker_index);
-
-	// 	pthread_mutex_lock(&handle->mutex[*worker_index]);
-	// 	portals_worker_free_buf(handle->portals_workers[*worker_index], user_ptr);
-	// 	pthread_mutex_unlock(&handle->mutex[*worker_index]);
-	// 	break;
-	// }
 	default:
 		log_debug("Unhandled RDMA opcode: %d", wc->opcode);
 		break;
-	}
-	struct ibv_sge sge = {
-		.addr = (uintptr_t)ctx->buf,
-		.length = MSG_SIZE,
-		.lkey = ctx->mr->lkey,
-	};
-	struct ibv_recv_wr wr = {
-		.wr_id = (uintptr_t)ctx->buf,
-		.sg_list = &sge,
-		.num_sge = 1,
-	};
-	struct ibv_recv_wr *bad_wr;
-	if (ibv_post_recv(ctx->qp, &wr, &bad_wr)) {
-		perror("ibv_post_recv");
-		exit(EXIT_FAILURE);
 	}
 	return 0;
 }
