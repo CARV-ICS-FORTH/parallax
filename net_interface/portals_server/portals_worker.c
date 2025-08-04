@@ -8,10 +8,6 @@
 #include "portals4.h"
 #include "portals4_ext.h"
 #endif
-#ifdef USE_INFINIBAND
-#include <infiniband/verbs.h>
-#include <rdma/rdma_cma.h>
-#endif
 #include "primitives.h"
 #include "queue-stack.h"
 #include "worker_request.h"
@@ -60,11 +56,6 @@ struct portals_worker {
 	ptl_md_t md;
 	ptl_handle_eq_t eqh;
 	ptl_handle_md_t mdh;
-#endif
-#ifdef USE_INFINIBAND
-	struct ibv_mr *mr;
-	struct rdma_cm_id *id;
-	struct ibv_qp *qp;
 #endif
 };
 
@@ -132,11 +123,7 @@ struct portals_worker_request *portals_worker_poll(struct portals_worker *worker
 	return req;
 }
 
-#ifdef USE_PORTALS
 void portals_worker_put(struct portals_worker *worker, struct portals_worker_request *request)
-#else
-void portals_worker_put(struct portals_worker *worker, struct ib_worker_request *request)
-#endif
 {
 	CCQueueApplyEnqueue(worker->queue_object, worker->th_state, (ArgVal)request, worker->tid);
 	__atomic_fetch_add(&worker->queuecounter.counter, 1, __ATOMIC_RELAXED);
@@ -242,12 +229,7 @@ char *portals_worker_get_send_buffer(struct portals_worker *worker)
 #ifdef USE_PORTALS
 void portals_worker_send_reply_buff(struct portals_worker *worker, struct par_net_header *reply_header,
 				    uint32_t total_bytes, ptl_handle_ni_t nih, ptl_process_t client)
-#else
-void portals_worker_send_reply_buff(struct portals_worker *worker, struct par_net_header *reply_header,
-				    uint32_t total_bytes)
-#endif
 {
-#ifdef USE_PORTALS
 	worker->md.start = reply_header;
 	worker->md.length = total_bytes;
 	worker->md.options = 0;
@@ -266,11 +248,40 @@ void portals_worker_send_reply_buff(struct portals_worker *worker, struct par_ne
 	}
 
 	PtlMDRelease(worker->mdh);
-#elif USE_INFINIBAND
-	// TODO: Implement InfiniBand logic here
-	printf("Send reply buffer using InfiniBand is not implemented yet.\n");
-#endif
 }
+#elif USE_INFINIBAND
+void portals_worker_send_reply_buff(struct par_net_header *reply_header, uint32_t total_bytes, uint64_t recv_buf_vaddr,
+				    uint32_t recv_buf_rkey, struct ib_client_ctx *ctx)
+{
+	struct ibv_qp *qp = ctx->qp;
+	struct ibv_pd *pd = ctx->pd;
+
+	struct ibv_mr *response_mr = ibv_reg_mr(pd, reply_header, total_bytes, IBV_ACCESS_LOCAL_WRITE);
+	if (!response_mr) {
+		perror("ibv_reg_mr for reply");
+		exit(EXIT_FAILURE);
+	}
+
+	struct ibv_sge sge = {
+		.addr = (uintptr_t)reply_header,
+		.length = total_bytes,
+		.lkey = response_mr->lkey,
+	};
+
+	struct ibv_send_wr wr = { 0 }, *bad_wr = NULL;
+	wr.opcode = IBV_WR_RDMA_WRITE_WITH_IMM;
+	wr.send_flags = IBV_SEND_SIGNALED;
+	wr.sg_list = &sge;
+	wr.num_sge = 1;
+	wr.wr.rdma.remote_addr = recv_buf_vaddr;
+	wr.wr.rdma.rkey = recv_buf_rkey;
+
+	if (ibv_post_send(qp, &wr, &bad_wr)) {
+		perror("ibv_post_send");
+		exit(EXIT_FAILURE);
+	}
+}
+#endif
 
 void portals_worker_free_buf(struct portals_worker *worker, void *buf_start)
 {

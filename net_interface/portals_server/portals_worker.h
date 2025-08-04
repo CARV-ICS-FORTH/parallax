@@ -1,10 +1,10 @@
 #ifndef PORTALS_WORKER_H
 #define PORTALS_WORKER_H
+#include "../ib_server/ib_client_ctx.h"
 #include "../par_net/par_net.h"
 #ifdef USE_PORTALS
 #include "portals4.h"
 #endif
-#include "../ib_server/ib_worker_request.h"
 #include "portals_server_handle.h"
 struct portals_worker;
 
@@ -47,11 +47,7 @@ struct portals_worker_request *portals_worker_poll(struct portals_worker *worker
 /**
  * Enqueues a request into the worker's queue.
  */
-#ifdef USE_PORTALS
 void portals_worker_put(struct portals_worker *worker, struct portals_worker_request *request);
-#else
-void portals_worker_put(struct portals_worker *worker, struct ib_worker_request *request);
-#endif
 
 /**
  * Creates and initializes a new worker instance.
@@ -111,21 +107,18 @@ void portals_worker_set_send_buffer(struct portals_worker *worker, char *send_bu
 char *portals_worker_get_send_buffer(struct portals_worker *worker);
 
 /**
- * Sends a reply buffer to a client using Portals 4.
- * Uses PtlMDBind and PtlPut to send the response.
+ * Sends a reply buffer to a client.
  *
  * @param worker Pointer to the portals_worker instance.
  * @param reply_header Pointer to the response header.
  * @param total_bytes Total number of bytes to send.
- * @param nih Portals network interface handle.
- * @param client Target client process.
  */
 #ifdef USE_PORTALS
 void portals_worker_send_reply_buff(struct portals_worker *worker, struct par_net_header *reply_header,
 				    uint32_t total_bytes, ptl_handle_ni_t nih, ptl_process_t client);
 #else
-void portals_worker_send_reply_buff(struct portals_worker *worker, struct par_net_header *reply_header,
-				    uint32_t total_bytes);
+void portals_worker_send_reply_buff(struct par_net_header *reply_header, uint32_t total_bytes, uint64_t recv_buf_vaddr,
+				    uint32_t recv_buf_rkey, struct ib_client_ctx *ctx);
 #endif
 
 /**
