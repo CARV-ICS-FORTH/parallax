@@ -121,8 +121,8 @@ char *portals_worker_get_send_buffer(struct portals_worker *worker);
 void portals_worker_send_reply_buff(struct portals_worker *worker, struct par_net_header *reply_header,
 				    uint32_t total_bytes, ptl_handle_ni_t nih, ptl_process_t client);
 #elif USE_INFINIBAND
-void portals_worker_send_reply_buff(struct par_net_header *reply_header, uint32_t total_bytes, uint64_t recv_buf_vaddr,
-				    uint32_t recv_buf_rkey, struct ib_client_ctx *ctx);
+void portals_worker_send_reply_buff(struct par_net_header *reply_header, uint32_t total_bytes,
+				    struct ib_client_ctx *ctx);
 #endif
 
 /**

@@ -262,8 +262,8 @@ void portals_worker_send_reply_buff(struct portals_worker *worker, struct par_ne
 	PtlMDRelease(worker->mdh);
 }
 #elif USE_INFINIBAND
-void portals_worker_send_reply_buff(struct par_net_header *reply_header, uint32_t total_bytes, uint64_t recv_buf_vaddr,
-				    uint32_t recv_buf_rkey, struct ib_client_ctx *ctx)
+void portals_worker_send_reply_buff(struct par_net_header *reply_header, uint32_t total_bytes,
+				    struct ib_client_ctx *ctx)
 {
 	struct ibv_qp *qp = ctx->qp;
 	struct ibv_pd *pd = ctx->pd;
