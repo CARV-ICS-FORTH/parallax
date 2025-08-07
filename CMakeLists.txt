@@ -16,7 +16,8 @@ option(KV_MAX_SIZE_64K "Set KV_MAX_SIZE to 64K" OFF)
 option(KV_MAX_SIZE_128K "Set KV_MAX_SIZE to 128K" OFF)
 
 # Set default value for KV_MAX_SIZE
-set(KV_MAX_SIZE 16384)
+# set(KV_MAX_SIZE 16384)
+set(KV_MAX_SIZE 4194304) # 4MB in bytes
 
 # Update KV_MAX_SIZE based on options
 if(KV_MAX_SIZE_32K)
