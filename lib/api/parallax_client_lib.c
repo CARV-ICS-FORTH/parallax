@@ -584,10 +584,11 @@ static ssize_t par_ib_RPC(par_handle handle, char *send_buffer, size_t send_buff
 	struct par_handle *h = (struct par_handle *)handle;
 
 	char *recv_buf = NULL;
-	size_t recv_buf_size = 128;
+	size_t recv_buf_size = KV_MAX_SIZE + par_net_header_calc_size();
 	struct par_net_header *header = (struct par_net_header *)send_buffer;
 	struct ibv_mr *recv_mr = NULL;
 	struct ibv_mr *send_mr = NULL;
+	struct ibv_mr *payload_mr = NULL;
 
 retry:
 	recv_buf = malloc(recv_buf_size);
@@ -605,7 +606,6 @@ retry:
 	header->recv_buf_vaddr = (uintptr_t)recv_buf;
 	header->recv_buf_rkey = recv_mr->rkey;
 	header->recv_buf_size = recv_buf_size;
-	header->inline_flag = 1;
 	header->request_id = client_id;
 
 	struct ibv_sge recv_sge = {
@@ -617,7 +617,6 @@ retry:
 		.wr_id = 42,
 		.sg_list = &recv_sge,
 		.num_sge = 1,
-		.next = NULL,
 	};
 	struct ibv_recv_wr *recv_bad_wr;
 	if (ibv_post_recv(h->cm_id->qp, &recv_wr, &recv_bad_wr)) {
@@ -625,35 +624,82 @@ retry:
 		goto cleanup;
 	}
 
-	send_mr = ibv_reg_mr(h->pd, send_buffer, send_buffer_len, IBV_ACCESS_LOCAL_WRITE);
-	if (!send_mr) {
-		perror("ibv_reg_mr for send_buffer");
-		ibv_dereg_mr(recv_mr);
-		return -1;
-	}
-	struct ibv_sge sge = {
-		.addr = (uintptr_t)send_buffer,
-		.length = send_buffer_len,
-		.lkey = send_mr->lkey,
-	};
-	struct ibv_send_wr wr = {
-		.wr_id = (uintptr_t)send_buffer,
-		.opcode = IBV_WR_SEND,
-		.send_flags = IBV_SEND_SIGNALED,
-		.sg_list = &sge,
-		.num_sge = 1,
-	};
-	struct ibv_send_wr *bad_wr = NULL;
-	int ret = ibv_post_send(h->cm_id->qp, &wr, &bad_wr);
-	if (ret) {
-		fprintf(stderr, "ibv_post_send failed: %s\n", strerror(ret));
-		goto cleanup;
+	if (send_buffer_len > 256) {
+		size_t header_size = par_net_header_calc_size();
+		size_t request_payload_size = send_buffer_len - header_size;
+		void *request_payload = &send_buffer[header_size];
+		payload_mr = ibv_reg_mr(h->pd, request_payload, request_payload_size,
+					IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_REMOTE_READ);
+		if (!payload_mr) {
+			perror("ibv_reg_mr for request_payload");
+			goto cleanup;
+		}
+
+		header->inline_flag = 0;
+		header->payload_buf_vaddr = (uintptr_t)request_payload;
+		header->payload_rkey = payload_mr->rkey;
+		header->payload_size = request_payload_size;
+
+		send_mr = ibv_reg_mr(h->pd, send_buffer, header_size, IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE);
+		if (!send_mr) {
+			perror("ibv_reg_mr for header");
+			goto cleanup;
+		}
+
+		struct ibv_sge sge = {
+			.addr = (uintptr_t)send_buffer,
+			.length = header_size,
+			.lkey = send_mr->lkey,
+		};
+		struct ibv_send_wr wr = {
+			.wr_id = (uintptr_t)send_buffer,
+			.opcode = IBV_WR_SEND,
+			.send_flags = IBV_SEND_SIGNALED,
+			.sg_list = &sge,
+			.num_sge = 1,
+		};
+		struct ibv_send_wr *bad_wr = NULL;
+		int ret = ibv_post_send(h->cm_id->qp, &wr, &bad_wr);
+		if (ret) {
+			fprintf(stderr, "ibv_post_send failed: %s\n", strerror(ret));
+			goto cleanup;
+		}
+	} else {
+		send_mr = ibv_reg_mr(h->pd, send_buffer, send_buffer_len,
+				     IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE);
+		if (!send_mr) {
+			perror("ibv_reg_mr for send_buffer");
+			goto cleanup;
+		}
+
+		struct ibv_sge sge = {
+			.addr = (uintptr_t)send_buffer,
+			.length = send_buffer_len,
+			.lkey = send_mr->lkey,
+		};
+		struct ibv_send_wr wr = {
+			.wr_id = (uintptr_t)send_buffer,
+			.opcode = IBV_WR_SEND,
+			.send_flags = IBV_SEND_SIGNALED,
+			.sg_list = &sge,
+			.num_sge = 1,
+		};
+		struct ibv_send_wr *bad_wr = NULL;
+		int ret = ibv_post_send(h->cm_id->qp, &wr, &bad_wr);
+		if (ret) {
+			fprintf(stderr, "ibv_post_send failed: %s\n", strerror(ret));
+			goto cleanup;
+		}
 	}
 
 	struct ibv_wc wc;
 	while (1) {
+		void *cq_context;
+		ibv_get_cq_event(h->comp_channel, &h->cq, &cq_context);
+		ibv_ack_cq_events(h->cq, 1);
+		ibv_req_notify_cq(h->cq, 0);
 		int ne = ibv_poll_cq(h->cq, 1, &wc);
-		if (ne > 0 && wc.opcode == IBV_WC_RECV_RDMA_WITH_IMM) {
+		if (ne > 0 && wc.opcode == IBV_WC_RECV) {
 			break;
 		}
 	}
@@ -689,6 +735,8 @@ retry:
 
 	ibv_dereg_mr(send_mr);
 	ibv_dereg_mr(recv_mr);
+	if (payload_mr)
+		ibv_dereg_mr(payload_mr);
 	return recv_buf_size;
 
 cleanup:
@@ -696,6 +744,8 @@ cleanup:
 		ibv_dereg_mr(send_mr);
 	if (recv_mr)
 		ibv_dereg_mr(recv_mr);
+	if (payload_mr)
+		ibv_dereg_mr(payload_mr);
 	return -1;
 }
 #else
