@@ -60,7 +60,7 @@ void portals_worker_put(struct portals_worker *worker, struct portals_worker_req
 #ifdef USE_PORTALS
 struct portals_worker *portals_worker_create(struct server_handle *server_handle, uint32_t index, uint32_t threadno,
 					     ptl_handle_eq_t eqh, pthread_mutex_t *mutex);
-#else
+#elif USE_INFINIBAND
 struct portals_worker *portals_worker_create(struct server_handle *server_handle, uint32_t index, uint32_t threadno,
 					     pthread_mutex_t *mutex);
 #endif
@@ -68,7 +68,11 @@ struct portals_worker *portals_worker_create(struct server_handle *server_handle
 /**
  * Allocates memory from the worker's buddy allocator.
  */
+#ifdef USE_PORTALS
 char *portals_worker_get_buffer(struct portals_worker *worker, uint32_t total_bytes);
+#elif USE_INFINIBAND
+char *portals_worker_get_buffer(uint32_t total_bytes);
+#endif
 
 /**
  * Returns the server_handle associated with the worker.
@@ -116,7 +120,7 @@ char *portals_worker_get_send_buffer(struct portals_worker *worker);
 #ifdef USE_PORTALS
 void portals_worker_send_reply_buff(struct portals_worker *worker, struct par_net_header *reply_header,
 				    uint32_t total_bytes, ptl_handle_ni_t nih, ptl_process_t client);
-#else
+#elif USE_INFINIBAND
 void portals_worker_send_reply_buff(struct par_net_header *reply_header, uint32_t total_bytes, uint64_t recv_buf_vaddr,
 				    uint32_t recv_buf_rkey, struct ib_client_ctx *ctx);
 #endif

@@ -132,7 +132,7 @@ void portals_worker_put(struct portals_worker *worker, struct portals_worker_req
 #ifdef USE_PORTALS
 struct portals_worker *portals_worker_create(struct server_handle *server_handle, uint32_t index, uint32_t threadno,
 					     ptl_handle_eq_t eqh, pthread_mutex_t *mutex)
-#else
+#elif USE_INFINIBAND
 struct portals_worker *portals_worker_create(struct server_handle *server_handle, uint32_t index, uint32_t threadno,
 					     pthread_mutex_t *mutex)
 #endif
@@ -177,6 +177,7 @@ struct portals_worker *portals_worker_create(struct server_handle *server_handle
 	return worker;
 }
 
+#ifdef USE_PORTALS
 char *portals_worker_get_buffer(struct portals_worker *worker, uint32_t total_bytes)
 {
 	void *buff = buddy_malloc(worker->buddy, total_bytes);
@@ -185,6 +186,17 @@ char *portals_worker_get_buffer(struct portals_worker *worker, uint32_t total_by
 		exit(EXIT_FAILURE);
 	}
 	return buff;
+}
+#elif USE_INFINIBAND
+char *portals_worker_get_buffer(uint32_t total_bytes)
+{
+	void *buff = malloc(total_bytes);
+	if (buff == NULL) {
+		log_fatal("malloc returned NULL buffer");
+		exit(EXIT_FAILURE);
+	}
+	return buff;
+#endif
 }
 
 struct server_handle *portals_worker_get_server_handle(struct portals_worker *worker)
@@ -269,12 +281,10 @@ void portals_worker_send_reply_buff(struct par_net_header *reply_header, uint32_
 	};
 
 	struct ibv_send_wr wr = { 0 }, *bad_wr = NULL;
-	wr.opcode = IBV_WR_RDMA_WRITE_WITH_IMM;
+	wr.opcode = IBV_WR_SEND;
 	wr.send_flags = IBV_SEND_SIGNALED;
 	wr.sg_list = &sge;
 	wr.num_sge = 1;
-	wr.wr.rdma.remote_addr = recv_buf_vaddr;
-	wr.wr.rdma.rkey = recv_buf_rkey;
 
 	if (ibv_post_send(qp, &wr, &bad_wr)) {
 		perror("ibv_post_send");
