@@ -53,7 +53,6 @@ struct server_handle {
 
 	struct rdma_event_channel *ec;
 	struct rdma_cm_id *listen_id;
-	struct ibv_wc *wc;
 	struct ibv_comp_channel *comp_channel;
 	struct ibv_cq *cq;
 
@@ -357,15 +356,10 @@ int ib_handle_cm_event(struct server_handle *server_handle, struct rdma_cm_event
 			perror("calloc");
 			return -1;
 		}
-		ctx->id = client_id;
 		ctx->pd = pd;
-		ctx->cq = server_handle->cq;
 		ctx->mr = mr;
-		ctx->comp_channel = server_handle->comp_channel;
 		ctx->buf = buf;
 		ctx->qp = client_id->qp;
-		ctx->server_handle = server_handle;
-		client_id->context = ctx;
 
 		clients[server_caps.client_id - 1] = ctx;
 

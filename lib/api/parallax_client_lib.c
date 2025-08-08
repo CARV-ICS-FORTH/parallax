@@ -72,11 +72,8 @@ struct par_net_header {
 #ifdef USE_INFINIBAND
 	uint64_t payload_buf_vaddr;
 	uint64_t payload_size;
-	uint64_t recv_buf_vaddr;
-	uint64_t recv_buf_size;
 	uint32_t request_id;
 	uint32_t payload_rkey;
-	uint32_t recv_buf_rkey;
 	uint8_t inline_flag;
 #endif
 } __attribute__((packed));
@@ -603,9 +600,6 @@ retry:
 		return -1;
 	}
 
-	header->recv_buf_vaddr = (uintptr_t)recv_buf;
-	header->recv_buf_rkey = recv_mr->rkey;
-	header->recv_buf_size = recv_buf_size;
 	header->request_id = client_id;
 
 	struct ibv_sge recv_sge = {
