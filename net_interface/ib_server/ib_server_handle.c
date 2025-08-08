@@ -29,11 +29,9 @@
 #define DECIMAL_BASE 10
 #define PORT_MAX 65536
 #define MAX_REGIONS 128
-#define PRSV_COM_BUF_SIZE (32U * KV_MAX_SIZE)
 #define METADATA_SIZE 4096
 #define QUEUE_DEPTH 128
 #define CLOSE_OP_BUF_SIZE 100
-#define MATCH_ENTRY_NUM 5
 #define MAX_CLIENTS 16
 #define MSG_SIZE 1024
 
@@ -61,9 +59,6 @@ struct server_handle {
 
 	par_handle par_handle;
 	uint32_t thread_to_queue;
-
-	char *recv_buffer[MATCH_ENTRY_NUM];
-	uint32_t recv_buffer_size;
 };
 
 struct my_conn_metadata {
@@ -81,11 +76,8 @@ struct par_net_header {
 #ifdef USE_INFINIBAND
 	uint64_t payload_buf_vaddr;
 	uint64_t payload_size;
-	uint64_t recv_buf_vaddr;
-	uint64_t recv_buf_size;
 	uint32_t request_id;
 	uint32_t payload_rkey;
-	uint32_t recv_buf_rkey;
 	uint8_t inline_flag;
 #endif
 } __attribute__((packed));
@@ -271,35 +263,6 @@ struct server_handle *ib_server_handle_init(struct server_options *opts)
 		_exit(EXIT_FAILURE);
 	}
 
-	int ret;
-
-	for (int i = 0; i < MATCH_ENTRY_NUM; i++) {
-		void *raw_memory;
-		ret = posix_memalign(&raw_memory, 4096, PRSV_COM_BUF_SIZE + METADATA_SIZE);
-
-		if (ret != 0) {
-			perror("posix_memalign failed");
-			_exit(EXIT_FAILURE);
-		}
-
-		handle->recv_buffer[i] = (char *)raw_memory + METADATA_SIZE;
-
-		uint32_t *pollercounter = (uint32_t *)((uintptr_t)raw_memory);
-		__atomic_store_n(pollercounter, 0, __ATOMIC_RELAXED);
-
-		uint32_t *workercounter = (uint32_t *)((uintptr_t)raw_memory + sizeof(uint32_t));
-		__atomic_store_n(workercounter, 0, __ATOMIC_RELAXED);
-
-		uint16_t *buffer_id = (uint16_t *)((uintptr_t)raw_memory + 2 * sizeof(uint32_t));
-		*buffer_id = i;
-	}
-	if (ret != 0) {
-		log_debug("posix_memalign failed");
-		_exit(EXIT_FAILURE);
-	}
-
-	handle->recv_buffer_size = PRSV_COM_BUF_SIZE;
-
 	log_info("InfiniBand server listening on %s:%ld", inet_ntoa(inaddr->sin_addr), opts->port);
 
 	const char *error_message = NULL;
@@ -343,7 +306,7 @@ int ib_server_print_config(struct server_handle *server_handle)
 int ib_handle_cm_event(struct server_handle *server_handle, struct rdma_cm_event *event)
 {
 	switch (event->event) {
-	case RDMA_CM_EVENT_CONNECT_REQUEST: {
+	case RDMA_CM_EVENT_CONNECT_REQUEST:;
 		struct rdma_cm_id *client_id = event->id;
 		struct ibv_pd *pd = ibv_alloc_pd(client_id->verbs);
 		if (!pd) {
@@ -422,15 +385,12 @@ int ib_handle_cm_event(struct server_handle *server_handle, struct rdma_cm_event
 			return -1;
 		}
 		break;
-	}
-	case RDMA_CM_EVENT_ESTABLISHED: {
+	case RDMA_CM_EVENT_ESTABLISHED:;
 		log_debug("RDMA_CM_EVENT_ESTABLISHED");
 		break;
-	}
-	case RDMA_CM_EVENT_DISCONNECTED: {
+	case RDMA_CM_EVENT_DISCONNECTED:;
 		log_debug("RDMA_CM_EVENT_DISCONNECTED");
 		break;
-	}
 	default:
 		log_debug("Unhandled event: %s", rdma_event_str(event->event));
 		return -1;
@@ -440,21 +400,9 @@ int ib_handle_cm_event(struct server_handle *server_handle, struct rdma_cm_event
 
 int ib_loop(struct server_handle *server_handle)
 {
-	struct ibv_cq *cq;
-	void *cq_ctx;
 	struct ibv_wc wc;
-
 	while (1) {
-		if (ibv_get_cq_event(server_handle->comp_channel, &cq, &cq_ctx)) {
-			perror("ibv_get_cq_event");
-			continue;
-		}
-		ibv_ack_cq_events(cq, 1);
-		if (ibv_req_notify_cq(cq, 0)) {
-			perror("ibv_req_notify_cq");
-			continue;
-		}
-		while (ibv_poll_cq(cq, 1, &wc) > 0) {
+		while (ibv_poll_cq(server_handle->cq, 1, &wc) > 0) { // 16
 			if (ib_handle_event(&wc, server_handle) < 0) {
 				log_debug("ib_handle_event failed");
 				_exit(EXIT_FAILURE);
@@ -699,9 +647,6 @@ uint32_t par_net_header_get_opcode(char *buffer)
 void *ib_put_and_reply(void *arg)
 {
 	struct portals_worker *portals_worker = arg;
-	void *aligned_buffer_start;
-	uint32_t *workercounter;
-	struct server_handle *server_handle = portals_worker_get_server_handle(portals_worker);
 	struct portals_worker_request *req = NULL;
 
 	while (1) {
@@ -714,9 +659,9 @@ void *ib_put_and_reply(void *arg)
 		struct ib_client_ctx *ctx = clients[hdr->request_id - 1];
 
 		size_t total_bytes = ib_par_net_get_total_bytes(portals_worker_get_start(req));
-		if (total_bytes > server_handle->recv_buffer_size) {
-			log_debug("Error Larger message recv buffer size is: %u B total_bytes are: %lu B",
-				  server_handle->recv_buffer_size, total_bytes);
+		if (total_bytes > KV_MAX_SIZE + par_net_header_size()) {
+			log_debug("Error Larger message recv buffer size is: %lu B total_bytes are: %lu B",
+				  KV_MAX_SIZE + par_net_header_size(), total_bytes);
 			break;
 		}
 
@@ -729,10 +674,6 @@ void *ib_put_and_reply(void *arg)
 
 		struct par_net_header *reply_header =
 			par_net_call[opcode](portals_worker, portals_worker_get_start(req));
-
-		aligned_buffer_start = (void *)((uintptr_t)portals_worker_get_user_ptr(req));
-		workercounter = (uint32_t *)((uintptr_t)aligned_buffer_start - METADATA_SIZE + sizeof(uint32_t));
-		__atomic_fetch_add(workercounter, 1, __ATOMIC_RELAXED);
 
 		portals_worker_send_reply_buff(reply_header, reply_header->total_bytes, ctx);
 
@@ -763,10 +704,12 @@ int ib_handle_event(struct ibv_wc *wc, struct server_handle *server_handle)
 		return -1;
 	}
 
+	struct par_net_header *hdr;
+
 	switch (wc->opcode) {
-	case IBV_WC_RECV: {
+	case IBV_WC_RECV:;
 		void *buf = (void *)(uintptr_t)wc->wr_id;
-		struct par_net_header *hdr = (struct par_net_header *)buf;
+		hdr = (struct par_net_header *)buf;
 		if (hdr->inline_flag == 0) {
 			struct ib_client_ctx *client_ctx = clients[hdr->request_id - 1];
 			struct rdma_read_ctx *ctx = malloc(sizeof(*ctx));
@@ -800,17 +743,13 @@ int ib_handle_event(struct ibv_wc *wc, struct server_handle *server_handle)
 			}
 			break;
 		}
-		uint32_t *pollercounter = (uint32_t *)((uintptr_t)buf - METADATA_SIZE);
 		worker_scheduler(server_handle, buf);
-		__atomic_fetch_add(pollercounter, 1, __ATOMIC_RELAXED);
 		break;
-	}
-	case IBV_WC_SEND: {
+	case IBV_WC_SEND:;
 		break;
-	}
-	case IBV_WC_RDMA_READ: {
+	case IBV_WC_RDMA_READ:;
 		struct rdma_read_ctx *ctx = (struct rdma_read_ctx *)(uintptr_t)wc->wr_id;
-		struct par_net_header *hdr = &ctx->hdr;
+		hdr = &ctx->hdr;
 		char *combined = NULL;
 		if (hdr->opcode == OPCODE_PUT) {
 			struct par_net_put_req *req = (struct par_net_put_req *)ctx->buf;
@@ -826,12 +765,8 @@ int ib_handle_event(struct ibv_wc *wc, struct server_handle *server_handle)
 		} else {
 			log_fatal("Unhandled RDMA READ opcode %d", hdr->opcode);
 		}
-
-		uint32_t *pollercounter = (uint32_t *)((uintptr_t)hdr - METADATA_SIZE);
 		worker_scheduler(server_handle, combined);
-		__atomic_fetch_add(pollercounter, 1, __ATOMIC_RELAXED);
 		break;
-	}
 	default:
 		log_debug("Unhandled RDMA opcode: %d", wc->opcode);
 		break;
