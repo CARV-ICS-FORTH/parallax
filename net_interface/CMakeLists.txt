@@ -28,7 +28,20 @@ set_target_properties(
 target_include_directories(${NET_LIB}
                            PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/../lib/include")
 
-target_link_libraries(${NET_LIB} log yaml)
+if(USE_INFINIBAND)
+  find_library(RDMA_LIB NAMES rdmacm PATHS /usr/lib /usr/lib64 /usr/local/lib /usr/lib/x86_64-linux-gnu)
+  find_library(IBVERBS_LIB NAMES ibverbs PATHS /usr/lib /usr/lib64 /usr/local/lib /usr/lib/x86_64-linux-gnu)
+
+  if(RDMA_LIB AND IBVERBS_LIB)
+    message(STATUS "InfiniBand libraries found: ${RDMA_LIB}, ${IBVERBS_LIB}")
+    target_link_libraries(${NET_LIB} log yaml ${RDMA_LIB} ${IBVERBS_LIB})
+    target_compile_definitions(${NET_LIB} PUBLIC USE_INFINIBAND)
+  else()
+    message(FATAL_ERROR "InfiniBand libraries (rdmacm, ibverbs) not found")
+  endif()
+else()
+  target_link_libraries(${NET_LIB} log yaml)
+endif()
 
 install(
   TARGETS ${NET_LIB}
