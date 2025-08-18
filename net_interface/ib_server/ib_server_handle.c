@@ -34,6 +34,7 @@
 #define CLOSE_OP_BUF_SIZE 100
 #define MAX_CLIENTS 16
 #define MSG_SIZE 1024
+#define NUM_ENTRIES 16
 
 struct server_options {
 	uint32_t threadno;
@@ -394,12 +395,15 @@ int ib_handle_cm_event(struct server_handle *server_handle, struct rdma_cm_event
 
 int ib_loop(struct server_handle *server_handle)
 {
-	struct ibv_wc wc;
 	while (1) {
-		while (ibv_poll_cq(server_handle->cq, 1, &wc) > 0) { // 16
-			if (ib_handle_event(&wc, server_handle) < 0) {
-				log_debug("ib_handle_event failed");
-				_exit(EXIT_FAILURE);
+		struct ibv_wc wc[NUM_ENTRIES];
+		int n;
+		while ((n = ibv_poll_cq(server_handle->cq, NUM_ENTRIES, wc)) > 0) {
+			for (int i = 0; i < n; i++) {
+				if (ib_handle_event(&wc[i], server_handle) < 0) {
+					log_debug("ib_handle_event failed");
+					_exit(EXIT_FAILURE);
+				}
 			}
 		}
 	}
