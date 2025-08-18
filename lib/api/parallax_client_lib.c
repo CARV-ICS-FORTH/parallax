@@ -28,7 +28,7 @@
 #include <x86intrin.h>
 
 //#define PORTALS
-#ifdef USE_PORTALS
+#ifdef PORTALS
 #include "portals4.h"
 #include "portals4_ext.h"
 char msg[PTL_EV_STR_SIZE];
@@ -138,7 +138,7 @@ static bool par_split_hostname_port(const char *input, char **hostname, int *por
 }
 #endif
 
-#ifdef USE_PORTALS
+#ifdef PORTALS
 struct par_handle {
 	ptl_handle_ni_t nih;
 	ptl_handle_eq_t eqh;
@@ -459,7 +459,7 @@ void par_net_handle_destroy(par_handle handle)
 	log_debug("Destroying handle");
 
 	struct par_handle *parallax_handle = (struct par_handle *)handle;
-#ifdef USE_PORTALS
+#ifdef PORTALS
 	PtlMDRelease(parallax_handle->mdh);
 	PtlEQFree(parallax_handle->eqh);
 	PtlPTFree(parallax_handle->nih, parallax_handle->ptindex);
@@ -493,7 +493,7 @@ void par_net_handle_destroy(par_handle handle)
 	free(parallax_handle);
 }
 
-#ifdef USE_PORTALS
+#ifdef PORTALS
 static ssize_t par_portals_RPC(par_handle handle, char *send_buffer, size_t send_buffer_len, char **recv_buffer)
 {
 	ptl_event_t event;
@@ -821,7 +821,7 @@ par_handle par_open(par_db_options *db_options, const char **error_message)
 	struct par_handle *parallax_handle =
 		(struct par_handle *)par_net_init((const char *)configuration[PARALLAX_SERVER].value);
 	parallax_handle->configuration = configuration;
-#ifdef USE_PORTALS
+#ifdef PORTALS
 	parallax_handle->total_cycles = 0;
 #endif
 	size_t msg_len = par_net_open_req_calc_size(par_net_get_size(db_options->db_name)) + par_net_header_calc_size();
@@ -850,7 +850,7 @@ par_handle par_open(par_db_options *db_options, const char **error_message)
 		_exit(EXIT_FAILURE);
 	}
 
-#ifdef USE_PORTALS
+#ifdef PORTALS
 	ssize_t bytes_received =
 		par_portals_RPC(parallax_handle, parallax_handle->send_buffer, msg_len, &parallax_handle->recv_buffer);
 #elif USE_INFINIBAND
@@ -910,7 +910,7 @@ const char *par_close(par_handle handle)
 		_exit(EXIT_FAILURE);
 	}
 
-#ifdef USE_PORTALS
+#ifdef PORTALS
 	ssize_t bytes_received =
 		par_portals_RPC(parallax_handle, parallax_handle->send_buffer, msg_len, &parallax_handle->recv_buffer);
 #elif USE_INFINIBAND
@@ -995,7 +995,7 @@ struct par_put_metadata par_put(par_handle handle, struct par_key_value *key_val
 		log_fatal("Failed to create put request");
 		_exit(EXIT_FAILURE);
 	}
-#ifdef USE_PORTALS
+#ifdef PORTALS
 #ifdef ENABLE_METRICS
 	parallax_handle->start = __rdtsc();
 	ssize_t bytes_received =
@@ -1098,7 +1098,7 @@ void par_get(par_handle handle, struct par_key *key, struct par_value *value, co
 		log_fatal("Failed to create get request");
 		_exit(EXIT_FAILURE);
 	}
-#ifdef USE_PORTALS
+#ifdef PORTALS
 #ifdef ENABLE_METRICS
 
 	parallax_handle->start = __rdtsc();
@@ -1181,7 +1181,7 @@ par_ret_code par_exists(par_handle handle, struct par_key *key)
 		_exit(EXIT_FAILURE);
 	}
 
-#ifdef USE_PORTALS
+#ifdef PORTALS
 	ssize_t bytes_received =
 		par_portals_RPC(parallax_handle, parallax_handle->send_buffer, msg_len, &parallax_handle->recv_buffer);
 #elif USE_INFINIBAND
@@ -1244,7 +1244,7 @@ void par_delete(par_handle handle, struct par_key *key, const char **error_messa
 		_exit(EXIT_FAILURE);
 	}
 
-#ifdef USE_PORTALS
+#ifdef PORTALS
 	ssize_t bytes_received =
 		par_portals_RPC(parallax_handle, parallax_handle->send_buffer, msg_len, &parallax_handle->recv_buffer);
 #elif USE_INFINIBAND
@@ -1265,7 +1265,7 @@ void par_delete(par_handle handle, struct par_key *key, const char **error_messa
 	par_net_del_rep_handle_reply(delete_reply);
 }
 
-#ifdef USE_PORTALS
+#ifdef PORTALS
 /*scanner staff*/
 #define PAR_SCAN_MAX_KV_ENTRIES 50
 struct parallax_scanner {
@@ -1316,7 +1316,7 @@ static struct par_net_scan_rep *par_scan_get_next_batch(par_scanner scanner, par
 	struct par_net_header *header = (struct par_net_header *)parallax_scanner->send_buffer;
 	header->opcode = OPCODE_SCAN;
 	header->total_bytes = par_net_scan_req_calc_size(key ? key->size : 1) + sizeof(struct par_net_header);
-#ifdef USE_PORTALS
+#ifdef PORTALS
 	par_portals_RPC(parallax_scanner->parallax_handle, parallax_scanner->send_buffer, header->total_bytes,
 			&parallax_scanner->recv_buffer);
 #elif USE_INFINIBAND
@@ -1344,7 +1344,7 @@ static struct par_net_scan_rep *par_scan_get_next_batch(par_scanner scanner, par
 
 par_scanner par_init_scanner(par_handle handle, struct par_key *key, par_seek_mode mode, const char **error_message)
 {
-#ifdef USE_PORTALS
+#ifdef PORTALS
 	struct par_handle *parallax_handle = (struct par_handle *)handle;
 	struct parallax_scanner *scanner = calloc(1UL, sizeof(struct parallax_scanner));
 	scanner->send_buffer_size = parallax_handle->send_buffer_size;
@@ -1446,7 +1446,7 @@ par_ret_code par_sync(par_handle handle)
 	request->opcode = OPCODE_SYNC;
 	request->total_bytes = par_net_header_calc_size() + par_net_sync_req_calc_size();
 
-#ifdef USE_PORTALS
+#ifdef PORTALS
 	ssize_t bytes_received = par_portals_RPC(parallax_handle, parallax_handle->send_buffer, request->total_bytes,
 						 &parallax_handle->recv_buffer);
 #elif USE_INFINIBAND
@@ -1533,7 +1533,7 @@ struct par_options_desc *par_get_default_options(void)
 	default_db_options[REPLICA_SEND_INDEX].value = replica_send_index;
 	default_db_options[WCURSOR_SPIN_FOR_FLUSH_REPLIES].value = 0;
 	default_db_options[PARALLAX_SERVER].value = (uint64_t)parallax_server;
-#ifdef USE_PORTALS
+#ifdef PORTALS
 	log_debug("PARALLAX_SERVER_HOSTNAME is: %s", parallax_server);
 #endif
 	destroy_options(db_options);
