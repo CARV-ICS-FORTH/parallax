@@ -1,8 +1,8 @@
 #ifndef INFINIBAND_SERVER_HANDLE_H
 #define INFINIBAND_SERVER_HANDLE_H
 
-#include "../portals_server/portals_worker.h"
-#include "../portals_server/worker_request.h"
+#include "../par_net_worker/par_net_worker.h"
+#include "../par_net_worker/par_net_worker_request.h"
 #include <arpa/inet.h>
 
 long ib_server_parse_number(const char *str, const char *opt);

@@ -20,7 +20,7 @@
 #include "par_net_open.h"
 #include "par_net_put.h"
 struct worker;
-struct portals_worker;
+struct par_net_worker;
 
 enum par_net_op {
 	OPCODE_OPEN = 1,
@@ -34,8 +34,8 @@ enum par_net_op {
 };
 
 typedef struct par_net_header *(*par_call)(struct worker *worker, void *args);
-typedef struct par_net_header *(*par_portals_call)(struct portals_worker *portals_worker, void *args);
-typedef struct par_net_header *(*par_ib_call)(struct portals_worker *portals_worker, void *args);
+typedef struct par_net_header *(*par_portals_call)(struct par_net_worker *par_net_worker, void *args);
+typedef struct par_net_header *(*par_ib_call)(struct par_net_worker *par_net_worker, void *args);
 
 /**
   *  @brief Takes the first byte of the serialized stream and translates it to

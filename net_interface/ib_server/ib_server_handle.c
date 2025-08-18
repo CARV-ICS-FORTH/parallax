@@ -49,7 +49,7 @@ struct server_handle {
 	struct server_options *opts;
 
 	pthread_mutex_t *mutex;
-	struct portals_worker **portals_workers;
+	struct par_net_worker **par_net_workers;
 
 	struct rdma_event_channel *ec;
 	struct rdma_cm_id *listen_id;
@@ -208,8 +208,8 @@ struct server_handle *ib_server_handle_init(struct server_options *opts)
 
 	handle->opts = opts;
 
-	handle->portals_workers = calloc(opts->threadno, sizeof(struct portals_worker *));
-	if (!handle->portals_workers)
+	handle->par_net_workers = calloc(opts->threadno, sizeof(struct par_net_worker *));
+	if (!handle->par_net_workers)
 		_exit(EXIT_FAILURE);
 
 	handle->mutex = calloc(opts->threadno, sizeof(pthread_mutex_t));
@@ -217,8 +217,8 @@ struct server_handle *ib_server_handle_init(struct server_options *opts)
 		_exit(EXIT_FAILURE);
 
 	for (uint32_t i = 0; i < opts->threadno; ++i) {
-		handle->portals_workers[i] = calloc(1UL, portals_worker_size());
-		if (!handle->portals_workers[i])
+		handle->par_net_workers[i] = calloc(1UL, par_net_worker_size());
+		if (!handle->par_net_workers[i])
 			_exit(EXIT_FAILURE);
 		pthread_mutex_init(&handle->mutex[i], NULL);
 	}
@@ -411,15 +411,15 @@ void worker_scheduler(struct server_handle *server_handle, void *buf)
 	if (server_handle->thread_to_queue == server_handle->opts->threadno)
 		server_handle->thread_to_queue = 0;
 
-	while (portals_worker_get_reqs(server_handle->portals_workers[server_handle->thread_to_queue]) >= QUEUE_DEPTH) {
+	while (par_net_worker_get_reqs(server_handle->par_net_workers[server_handle->thread_to_queue]) >= QUEUE_DEPTH) {
 		log_debug("Thread %d: REACHED MAX QUEUE_DEPTH Current", server_handle->thread_to_queue);
 		server_handle->thread_to_queue++;
 		if (server_handle->thread_to_queue == server_handle->opts->threadno)
 			server_handle->thread_to_queue = 0;
 	}
-	struct portals_worker *worker = server_handle->portals_workers[server_handle->thread_to_queue];
-	portals_worker_put(worker, portals_worker_create_req(buf));
-	portals_worker_notify(worker);
+	struct par_net_worker *worker = server_handle->par_net_workers[server_handle->thread_to_queue];
+	par_net_worker_put(worker, par_net_worker_create_req(buf));
+	par_net_worker_notify(worker);
 
 	server_handle->thread_to_queue++;
 	return;
@@ -430,7 +430,7 @@ inline size_t par_net_header_size(void)
 	return sizeof(struct par_net_header);
 }
 
-static struct par_net_header *ib_par_net_call_open(struct portals_worker *portals_worker, void *args)
+static struct par_net_header *ib_par_net_call_open(struct par_net_worker *par_net_worker, void *args)
 {
 	void *start = (void *)args;
 	struct par_net_header *hdr = (struct par_net_header *)start;
@@ -441,19 +441,19 @@ static struct par_net_header *ib_par_net_call_open(struct portals_worker *portal
 	db_options.db_name = par_net_open_get_dbname(request);
 	db_options.create_flag = par_net_open_get_flag(request);
 
-	db_options.volume_name = (char *)portals_worker_get_server_handle(portals_worker)->opts->parallax_vol_name;
-	log_debug("Setting L0 size to %u B", portals_worker_get_server_handle(portals_worker)->opts->l0_size);
-	db_options.options[LEVEL0_SIZE].value = portals_worker_get_server_handle(portals_worker)->opts->l0_size;
-	log_debug("Setting growth factor to %u", portals_worker_get_server_handle(portals_worker)->opts->growth_factor);
-	db_options.options[GROWTH_FACTOR].value = portals_worker_get_server_handle(portals_worker)->opts->growth_factor;
+	db_options.volume_name = (char *)par_net_worker_get_server_handle(par_net_worker)->opts->parallax_vol_name;
+	log_debug("Setting L0 size to %u B", par_net_worker_get_server_handle(par_net_worker)->opts->l0_size);
+	db_options.options[LEVEL0_SIZE].value = par_net_worker_get_server_handle(par_net_worker)->opts->l0_size;
+	log_debug("Setting growth factor to %u", par_net_worker_get_server_handle(par_net_worker)->opts->growth_factor);
+	db_options.options[GROWTH_FACTOR].value = par_net_worker_get_server_handle(par_net_worker)->opts->growth_factor;
 
 	const char *error_message = NULL;
 	log_debug("Opening db with name == %s", db_options.db_name);
 	par_handle handle = par_open(&db_options, &error_message);
 	uint32_t total_bytes = par_net_open_rep_calc_size() + par_net_header_size();
-	portals_worker_lock(portals_worker);
-	char *buffer = (char *)portals_worker_get_buffer(total_bytes);
-	portals_worker_unlock(portals_worker);
+	par_net_worker_lock(par_net_worker);
+	char *buffer = (char *)par_net_worker_get_buffer(total_bytes);
+	par_net_worker_unlock(par_net_worker);
 	struct par_net_open_rep *reply = par_net_open_rep_create(
 		error_message != NULL, handle, &buffer[par_net_header_size()], total_bytes - par_net_header_size());
 	if (NULL == reply) {
@@ -468,7 +468,7 @@ static struct par_net_header *ib_par_net_call_open(struct portals_worker *portal
 	return reply_header;
 }
 
-static struct par_net_header *ib_par_net_call_put(struct portals_worker *portals_worker, void *args)
+static struct par_net_header *ib_par_net_call_put(struct par_net_worker *par_net_worker, void *args)
 {
 	void *start = (void *)args;
 	struct par_net_header *hdr = (struct par_net_header *)start;
@@ -489,9 +489,9 @@ static struct par_net_header *ib_par_net_call_put(struct portals_worker *portals
 	struct par_put_metadata metadata = par_put((par_handle)region_id, &kv_pair, &error_message);
 	log_debug("LSN is %lu", metadata.lsn);
 	uint32_t total_bytes = par_net_header_size() + par_net_put_rep_calc_size();
-	portals_worker_lock(portals_worker);
-	char *buffer = (char *)portals_worker_get_buffer(total_bytes);
-	portals_worker_unlock(portals_worker);
+	par_net_worker_lock(par_net_worker);
+	char *buffer = (char *)par_net_worker_get_buffer(total_bytes);
+	par_net_worker_unlock(par_net_worker);
 	struct par_net_put_rep *reply =
 		par_net_put_rep_create(error_message == NULL, metadata, &buffer[par_net_header_size()], total_bytes);
 	if (NULL == reply) {
@@ -505,15 +505,15 @@ static struct par_net_header *ib_par_net_call_put(struct portals_worker *portals
 	return reply_header;
 }
 
-static struct par_net_header *ib_par_net_call_del(struct portals_worker *portals_worker, void *args)
+static struct par_net_header *ib_par_net_call_del(struct par_net_worker *par_net_worker, void *args)
 {
-	(void)portals_worker;
+	(void)par_net_worker;
 	(void)args;
 	log_warn("DELETE NOT IMPLEMENTED");
 	return NULL;
 }
 
-static struct par_net_header *ib_par_net_call_get(struct portals_worker *portals_worker, void *args)
+static struct par_net_header *ib_par_net_call_get(struct par_net_worker *par_net_worker, void *args)
 {
 	void *start = (void *)args;
 	struct par_net_header *hdr = (struct par_net_header *)start;
@@ -529,9 +529,9 @@ static struct par_net_header *ib_par_net_call_get(struct portals_worker *portals
 
 	const char *error_message = NULL;
 	uint32_t total_bytes = KV_MAX_SIZE + par_net_header_size() + par_net_get_rep_header_size();
-	portals_worker_lock(portals_worker);
-	char *buffer = (char *)portals_worker_get_buffer(total_bytes);
-	portals_worker_unlock(portals_worker);
+	par_net_worker_lock(par_net_worker);
+	char *buffer = (char *)par_net_worker_get_buffer(total_bytes);
+	par_net_worker_unlock(par_net_worker);
 	bool found = false;
 	if (par_net_get_req_fetch_value(request)) {
 		log_debug("Region id: %lu Calling par_get for key: %.*s", region_id, par_key.size, par_key.data);
@@ -564,7 +564,7 @@ static struct par_net_header *ib_par_net_call_get(struct portals_worker *portals
 	return reply_header;
 }
 
-static struct par_net_header *ib_par_net_call_close(struct portals_worker *portals_worker, void *args)
+static struct par_net_header *ib_par_net_call_close(struct par_net_worker *par_net_worker, void *args)
 {
 	void *start = (void *)args;
 	struct par_net_header *hdr = (struct par_net_header *)start;
@@ -579,9 +579,9 @@ static struct par_net_header *ib_par_net_call_close(struct portals_worker *porta
 	uint32_t error_message_size =
 		par_net_header_size() + (error_message ? strlen(error_message) + 1 : 0) + CLOSE_OP_BUF_SIZE;
 	size_t buffer_len = error_message_size - par_net_header_size() + CLOSE_OP_BUF_SIZE;
-	portals_worker_lock(portals_worker);
-	char *buffer = (char *)portals_worker_get_buffer(error_message_size);
-	portals_worker_unlock(portals_worker);
+	par_net_worker_lock(par_net_worker);
+	char *buffer = (char *)par_net_worker_get_buffer(error_message_size);
+	par_net_worker_unlock(par_net_worker);
 
 	struct par_net_close_rep *reply =
 		par_net_close_rep_create(error_message, &buffer[par_net_header_size()], buffer_len);
@@ -597,17 +597,17 @@ static struct par_net_header *ib_par_net_call_close(struct portals_worker *porta
 	return reply_header;
 }
 
-static struct par_net_header *ib_par_net_call_scan(struct portals_worker *portals_worker, void *args)
+static struct par_net_header *ib_par_net_call_scan(struct par_net_worker *par_net_worker, void *args)
 {
-	(void)portals_worker;
+	(void)par_net_worker;
 	(void)args;
 	log_warn("SCAN NOT IMPLEMENTED");
 	return NULL;
 }
 
-static struct par_net_header *ib_par_net_call_sync(struct portals_worker *portals_worker, void *args)
+static struct par_net_header *ib_par_net_call_sync(struct par_net_worker *par_net_worker, void *args)
 {
-	(void)portals_worker;
+	(void)par_net_worker;
 	(void)args;
 	log_warn("SYNC NOT IMPLEMENTED");
 	return NULL;
@@ -640,26 +640,26 @@ uint32_t par_net_header_get_opcode(char *buffer)
 
 void *ib_put_and_reply(void *arg)
 {
-	struct portals_worker *portals_worker = arg;
-	struct portals_worker_request *req = NULL;
+	struct par_net_worker *par_net_worker = arg;
+	struct par_net_worker_request *req = NULL;
 
 	while (1) {
-		req = portals_worker_poll(portals_worker);
+		req = par_net_worker_poll(par_net_worker);
 		if (req == NULL) {
 			continue;
 			log_fatal("NOTHING IN THREAD QUEUE");
 		}
-		struct par_net_header *hdr = (struct par_net_header *)portals_worker_get_start(req);
+		struct par_net_header *hdr = (struct par_net_header *)par_net_worker_get_start(req);
 		struct ib_client_ctx *ctx = clients[hdr->request_id - 1];
 
-		size_t total_bytes = ib_par_net_get_total_bytes(portals_worker_get_start(req));
+		size_t total_bytes = ib_par_net_get_total_bytes(par_net_worker_get_start(req));
 		if (total_bytes > KV_MAX_SIZE + par_net_header_size()) {
 			log_debug("Error Larger message recv buffer size is: %lu B total_bytes are: %lu B",
 				  KV_MAX_SIZE + par_net_header_size(), total_bytes);
 			break;
 		}
 
-		uint32_t opcode = par_net_header_get_opcode(portals_worker_get_start(req));
+		uint32_t opcode = par_net_header_get_opcode(par_net_worker_get_start(req));
 		log_debug("message opcode : %u", opcode);
 		if (opcode == 0) {
 			log_debug("invalid opcode");
@@ -667,9 +667,9 @@ void *ib_put_and_reply(void *arg)
 		}
 
 		struct par_net_header *reply_header =
-			par_net_call[opcode](portals_worker, portals_worker_get_start(req));
+			par_net_call[opcode](par_net_worker, par_net_worker_get_start(req));
 
-		portals_worker_send_reply_buff(reply_header, reply_header->total_bytes, ctx);
+		par_net_worker_send_reply_buff(reply_header, reply_header->total_bytes, ctx);
 
 		struct ibv_sge sge = {
 			.addr = (uintptr_t)ctx->buf,
@@ -800,15 +800,15 @@ int ib_server_start(struct server_handle *server_handle)
 	server_handle->thread_to_queue = 0;
 
 	for (uint32_t i = 0; i < threads; i++) {
-		server_handle->portals_workers[i] =
-			portals_worker_create(server_handle, i, threads, &server_handle->mutex[i]);
+		server_handle->par_net_workers[i] =
+			par_net_worker_create(server_handle, i, threads, &server_handle->mutex[i]);
 
-		if (pthread_create(portals_worker_get_tid(server_handle->portals_workers[i]), NULL, ib_put_and_reply,
-				   server_handle->portals_workers[i])) {
+		if (pthread_create(par_net_worker_get_tid(server_handle->par_net_workers[i]), NULL, ib_put_and_reply,
+				   server_handle->par_net_workers[i])) {
 			for (uint32_t tmp = 0; tmp < i; ++tmp)
-				pthread_cancel(*portals_worker_get_tid(server_handle->portals_workers[tmp]));
+				pthread_cancel(*par_net_worker_get_tid(server_handle->par_net_workers[tmp]));
 			for (uint32_t tmp = 0; tmp < i; ++tmp)
-				pthread_join(*portals_worker_get_tid(server_handle->portals_workers[tmp]), NULL);
+				pthread_join(*par_net_worker_get_tid(server_handle->par_net_workers[tmp]), NULL);
 			return -(EXIT_FAILURE);
 		}
 	}

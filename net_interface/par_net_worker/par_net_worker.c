@@ -2,15 +2,15 @@
 #include "config.h"
 #include "log.h"
 #include "par_net.h"
-#include "portals_worker.h"
+#include "par_net_worker.h"
 #ifdef USE_PORTALS
 #include "portals.h"
 #include "portals4.h"
 #include "portals4_ext.h"
 #endif
+#include "par_net_worker_request.h"
 #include "primitives.h"
 #include "queue-stack.h"
-#include "worker_request.h"
 #include <pthread.h>
 #include <semaphore.h>
 #include <stdatomic.h>
@@ -21,7 +21,7 @@
 #include <x86intrin.h>
 
 #define BUDDY_ALLOC_IMPLEMENTATION
-#include "buddy_alloc.h"
+#include "../portals_server/buddy_alloc.h"
 #undef BUDDY_ALLOC_IMPLEMENTATION
 
 #define EMPTY_WAIT 1000
@@ -36,7 +36,7 @@ struct counter {
 	uint8_t padding[60];
 };
 
-struct portals_worker {
+struct par_net_worker {
 	struct counter queuecounter;
 	struct counter queuecompletedcounter;
 	sem_t empty;
@@ -59,22 +59,22 @@ struct portals_worker {
 #endif
 };
 
-size_t portals_worker_size(void)
+size_t par_net_worker_size(void)
 {
-	return sizeof(struct portals_worker);
+	return sizeof(struct par_net_worker);
 }
 
-void portals_worker_lock(struct portals_worker *worker)
+void par_net_worker_lock(struct par_net_worker *worker)
 {
 	pthread_mutex_lock(worker->mutex);
 }
 
-void portals_worker_unlock(struct portals_worker *worker)
+void par_net_worker_unlock(struct par_net_worker *worker)
 {
 	pthread_mutex_unlock(worker->mutex);
 }
 
-void portals_worker_notify(struct portals_worker *worker)
+void par_net_worker_notify(struct par_net_worker *worker)
 {
 	int expected = 0;
 	if (atomic_compare_exchange_strong(&worker->notified, &expected, 1)) {
@@ -85,7 +85,7 @@ void portals_worker_notify(struct portals_worker *worker)
 	}
 }
 
-uint32_t portals_worker_get_reqs(struct portals_worker *worker)
+uint32_t par_net_worker_get_reqs(struct par_net_worker *worker)
 {
 	__atomic_load_n(&worker->queuecounter.counter, __ATOMIC_RELAXED);
 	__atomic_load_n(&worker->queuecompletedcounter.counter, __ATOMIC_RELAXED);
@@ -94,7 +94,7 @@ uint32_t portals_worker_get_reqs(struct portals_worker *worker)
 
 #define CPU_FREQ_HZ 2300
 
-struct portals_worker_request *portals_worker_poll(struct portals_worker *worker)
+struct par_net_worker_request *par_net_worker_poll(struct par_net_worker *worker)
 {
 	long elapsed_time = (worker->end - worker->start) / CPU_FREQ_HZ;
 	//log_debug("Thread %lu: Elapsed time since last event: %ld usec", worker->core, elapsed_time);
@@ -117,28 +117,24 @@ struct portals_worker_request *portals_worker_poll(struct portals_worker *worker
 	worker->start = __rdtsc();
 	worker->end = worker->start;
 	log_debug("Thread %lu: Successfully dequeued a request. Requests left in queue: %u", worker->core,
-		  portals_worker_get_reqs(worker));
-	struct portals_worker_request *req = (struct portals_worker_request *)rawval;
+		  par_net_worker_get_reqs(worker));
+	struct par_net_worker_request *req = (struct par_net_worker_request *)rawval;
 	log_debug("got event in thread : %lu", worker->core);
 	return req;
 }
 
-void portals_worker_put(struct portals_worker *worker, struct portals_worker_request *request)
+void par_net_worker_put(struct par_net_worker *worker, struct par_net_worker_request *request)
 {
 	CCQueueApplyEnqueue(worker->queue_object, worker->th_state, (ArgVal)request, worker->tid);
 	__atomic_fetch_add(&worker->queuecounter.counter, 1, __ATOMIC_RELAXED);
 }
 
 #ifdef USE_PORTALS
-struct portals_worker *portals_worker_create(struct server_handle *server_handle, uint32_t index, uint32_t threadno,
+struct par_net_worker *par_net_worker_create(struct server_handle *server_handle, uint32_t index, uint32_t threadno,
 					     ptl_handle_eq_t eqh, pthread_mutex_t *mutex)
-#elif USE_INFINIBAND
-struct portals_worker *portals_worker_create(struct server_handle *server_handle, uint32_t index, uint32_t threadno,
-					     pthread_mutex_t *mutex)
-#endif
 {
 	int ret;
-	struct portals_worker *worker = calloc(1, sizeof(struct portals_worker));
+	struct par_net_worker *worker = calloc(1, sizeof(struct par_net_worker));
 	worker->mutex = mutex;
 	worker->core = index;
 	worker->server_handle = server_handle;
@@ -171,14 +167,53 @@ struct portals_worker *portals_worker_create(struct server_handle *server_handle
 	}
 	worker->send_buffer_size = PRSV_WORKER_BUF_SIZE;
 	worker->buddy = buddy_embed((void *)worker->send_buffer, PRSV_WORKER_BUF_SIZE);
-#ifdef USE_PORTALS
 	worker->eqh = eqh;
-#endif
 	return worker;
 }
+#elif USE_INFINIBAND
+struct par_net_worker *par_net_worker_create(struct server_handle *server_handle, uint32_t index, uint32_t threadno,
+					     pthread_mutex_t *mutex)
+{
+	int ret;
+	struct par_net_worker *worker = calloc(1, sizeof(struct par_net_worker));
+	worker->mutex = mutex;
+	worker->core = index;
+	worker->server_handle = server_handle;
+	sem_init(&worker->empty, 0, 0);
+	worker->start = __rdtsc();
+	worker->end = worker->start;
+	worker->queue_object = synchGetAlignedMemory(S_CACHE_LINE_SIZE, sizeof(CCQueueStruct));
+	CCQueueStructInit(worker->queue_object, threadno);
+	worker->th_state = synchGetAlignedMemory(CACHE_LINE_SIZE, sizeof(CCQueueThreadState));
+
+	CCQueueThreadStateInit(worker->queue_object, worker->th_state, worker->tid);
+
+	void *raw_memory; // x*a +4096 = y where y is power of 2 and multiple of sizeof(void*) == 8
+	if ((PRSV_WORKER_BUF_SIZE + METADATA_SIZE) % 4096 != 0) {
+		log_fatal("PRSV_WORKER_BUF_SIZE + METADATA_SIZE is not a multiple of 4KB!");
+		exit(EXIT_FAILURE);
+	}
+
+	ret = posix_memalign(&raw_memory, PRSV_WORKER_BUF_SIZE + METADATA_SIZE, PRSV_WORKER_BUF_SIZE + METADATA_SIZE);
+	worker->send_buffer = (char *)raw_memory + METADATA_SIZE; //0x7ffff6fb3000
+	uint32_t *worker_index = (uint32_t *)((uintptr_t)raw_memory);
+	*worker_index = index;
+
+	__atomic_store_n(&worker->queuecounter.counter, 0, __ATOMIC_RELAXED);
+	__atomic_store_n(&worker->queuecompletedcounter.counter, 0, __ATOMIC_RELAXED);
+
+	if (ret != 0) {
+		log_debug("posix_memalign failed");
+		return NULL;
+	}
+	worker->send_buffer_size = PRSV_WORKER_BUF_SIZE;
+	worker->buddy = buddy_embed((void *)worker->send_buffer, PRSV_WORKER_BUF_SIZE);
+	return worker;
+}
+#endif
 
 #ifdef USE_PORTALS
-char *portals_worker_get_buffer(struct portals_worker *worker, uint32_t total_bytes)
+char *par_net_worker_get_buffer(struct par_net_worker *worker, uint32_t total_bytes)
 {
 	void *buff = buddy_malloc(worker->buddy, total_bytes);
 	if (buff == NULL) {
@@ -188,7 +223,7 @@ char *portals_worker_get_buffer(struct portals_worker *worker, uint32_t total_by
 	return buff;
 }
 #elif USE_INFINIBAND
-char *portals_worker_get_buffer(uint32_t total_bytes)
+char *par_net_worker_get_buffer(uint32_t total_bytes)
 {
 	void *buff = malloc(total_bytes);
 	if (buff == NULL) {
@@ -196,35 +231,35 @@ char *portals_worker_get_buffer(uint32_t total_bytes)
 		exit(EXIT_FAILURE);
 	}
 	return buff;
-#endif
 }
+#endif
 
-struct server_handle *portals_worker_get_server_handle(struct portals_worker *worker)
+struct server_handle *par_net_worker_get_server_handle(struct par_net_worker *worker)
 {
 	return (struct server_handle *)worker->server_handle;
 }
 
-uint32_t portals_worker_get_buffer_size(struct portals_worker *worker)
+uint32_t par_net_worker_get_buffer_size(struct par_net_worker *worker)
 {
 	return (uint32_t)worker->send_buffer_size;
 }
 
-void portals_worker_set_buffer_size(struct portals_worker *worker, uint64_t size)
+void par_net_worker_set_buffer_size(struct par_net_worker *worker, uint64_t size)
 {
 	worker->send_buffer_size = size;
 }
 
-uint64_t portals_worker_get_core(struct portals_worker *worker)
+uint64_t par_net_worker_get_core(struct par_net_worker *worker)
 {
 	return (uint64_t)worker->core;
 }
 
-pthread_t *portals_worker_get_tid(struct portals_worker *worker)
+pthread_t *par_net_worker_get_tid(struct par_net_worker *worker)
 {
 	return (pthread_t *)&worker->tid;
 }
 
-void portals_worker_set_send_buffer(struct portals_worker *worker, char *send_buffer)
+void par_net_worker_set_send_buffer(struct par_net_worker *worker, char *send_buffer)
 {
 	if (send_buffer == NULL) {
 		log_fatal("Attempting to set send buffer to NULL");
@@ -233,13 +268,13 @@ void portals_worker_set_send_buffer(struct portals_worker *worker, char *send_bu
 	worker->send_buffer = send_buffer;
 }
 
-char *portals_worker_get_send_buffer(struct portals_worker *worker)
+char *par_net_worker_get_send_buffer(struct par_net_worker *worker)
 {
 	return worker->send_buffer;
 }
 
 #ifdef USE_PORTALS
-void portals_worker_send_reply_buff(struct portals_worker *worker, struct par_net_header *reply_header,
+void par_net_worker_send_reply_buff(struct par_net_worker *worker, struct par_net_header *reply_header,
 				    uint32_t total_bytes, ptl_handle_ni_t nih, ptl_process_t client)
 {
 	worker->md.start = reply_header;
@@ -262,7 +297,7 @@ void portals_worker_send_reply_buff(struct portals_worker *worker, struct par_ne
 	PtlMDRelease(worker->mdh);
 }
 #elif USE_INFINIBAND
-void portals_worker_send_reply_buff(struct par_net_header *reply_header, uint32_t total_bytes,
+void par_net_worker_send_reply_buff(struct par_net_header *reply_header, uint32_t total_bytes,
 				    struct ib_client_ctx *ctx)
 {
 	struct ibv_qp *qp = ctx->qp;
@@ -293,7 +328,7 @@ void portals_worker_send_reply_buff(struct par_net_header *reply_header, uint32_
 }
 #endif
 
-void portals_worker_free_buf(struct portals_worker *worker, void *buf_start)
+void par_net_worker_free_buf(struct par_net_worker *worker, void *buf_start)
 {
 	buddy_free(worker->buddy, buf_start);
 }
