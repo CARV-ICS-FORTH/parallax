@@ -69,19 +69,6 @@ struct my_conn_metadata {
 static uint32_t client_id_counter = 1;
 struct ib_client_ctx *clients[MAX_CLIENTS];
 
-// TODO: Move to a header file
-struct par_net_header {
-	uint32_t total_bytes;
-	uint32_t opcode;
-#ifdef USE_INFINIBAND
-	uint64_t payload_buf_vaddr;
-	uint64_t payload_size;
-	uint32_t request_id;
-	uint32_t payload_rkey;
-	uint8_t inline_flag;
-#endif
-} __attribute__((packed));
-
 struct rdma_read_ctx {
 	void *buf;
 	size_t size;
@@ -253,7 +240,7 @@ struct server_handle *ib_server_handle_init(struct server_options *opts)
 		perror("ibv_create_comp_channel");
 		_exit(EXIT_FAILURE);
 	}
-	handle->cq = ibv_create_cq(handle->listen_id->verbs, 10, NULL, handle->comp_channel, 0);
+	handle->cq = ibv_create_cq(handle->listen_id->verbs, 256, NULL, handle->comp_channel, 0);
 	if (!handle->cq) {
 		perror("ibv_create_cq");
 		_exit(EXIT_FAILURE);

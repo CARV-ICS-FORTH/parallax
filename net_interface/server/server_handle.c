@@ -91,11 +91,6 @@
 	"  - file = %s\n"       \
 	"  - flags = not yet supported\n"
 
-struct par_net_header {
-	uint32_t total_bytes;
-	uint32_t opcode;
-};
-
 #define INITIAL_NET_BUF_SIZE (KV_MAX_SIZE * 4UL)
 
 /** server argv[] options **/

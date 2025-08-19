@@ -65,19 +65,6 @@ uint32_t counter = 0;
 
 //#define ENABLE_METRICS
 
-// TODO: Move to a header file
-struct par_net_header {
-	uint32_t total_bytes;
-	uint32_t opcode;
-#ifdef USE_INFINIBAND
-	uint64_t payload_buf_vaddr;
-	uint64_t payload_size;
-	uint32_t request_id;
-	uint32_t payload_rkey;
-	uint8_t inline_flag;
-#endif
-} __attribute__((packed));
-
 size_t par_net_header_calc_size(void)
 {
 	return sizeof(struct par_net_header);

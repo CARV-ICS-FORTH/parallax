@@ -69,11 +69,6 @@ struct server_handle {
 	struct par_net_worker **par_net_workers;
 };
 
-struct par_net_header {
-	uint32_t total_bytes;
-	uint32_t opcode;
-};
-
 #ifndef RELEASE_BUILD
 void prsv_print_buffer_hex(const char *buffer, size_t length, char *type)
 {

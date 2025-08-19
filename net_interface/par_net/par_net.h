@@ -33,6 +33,18 @@ enum par_net_op {
 	OPCODE_MAX
 };
 
+struct par_net_header {
+	uint32_t total_bytes;
+	uint32_t opcode;
+#ifdef USE_INFINIBAND
+	uint64_t payload_buf_vaddr;
+	uint64_t payload_size;
+	uint32_t request_id;
+	uint32_t payload_rkey;
+	uint8_t inline_flag;
+#endif
+} __attribute__((packed));
+
 typedef struct par_net_header *(*par_call)(struct worker *worker, void *args);
 typedef struct par_net_header *(*par_portals_call)(struct par_net_worker *par_net_worker, void *args);
 typedef struct par_net_header *(*par_ib_call)(struct par_net_worker *par_net_worker, void *args);
