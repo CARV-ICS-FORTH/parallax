@@ -53,7 +53,6 @@ struct server_handle {
 	struct par_net_worker **par_net_workers;
 
 	struct rdma_event_channel *ec;
-	struct rdma_cm_id *listen_id;
 	struct ibv_comp_channel *comp_channel;
 	struct ibv_cq *cq;
 
@@ -217,7 +216,9 @@ struct server_handle *ib_server_handle_init(struct server_options *opts)
 		_exit(EXIT_FAILURE);
 	}
 
-	if (rdma_create_id(handle->ec, &handle->listen_id, NULL, RDMA_PS_TCP)) {
+	struct rdma_cm_id *listen_id;
+
+	if (rdma_create_id(handle->ec, &listen_id, NULL, RDMA_PS_TCP)) {
 		perror("rdma_create_id");
 		_exit(EXIT_FAILURE);
 	}
@@ -225,22 +226,22 @@ struct server_handle *ib_server_handle_init(struct server_options *opts)
 	struct sockaddr_in *inaddr = (struct sockaddr_in *)&opts->inaddr;
 	inaddr->sin_port = htons(opts->port);
 
-	if (rdma_bind_addr(handle->listen_id, (struct sockaddr *)inaddr)) {
+	if (rdma_bind_addr(listen_id, (struct sockaddr *)inaddr)) {
 		perror("rdma_bind_addr");
 		_exit(EXIT_FAILURE);
 	}
 
-	if (rdma_listen(handle->listen_id, 10)) {
+	if (rdma_listen(listen_id, 10)) {
 		perror("rdma_listen");
 		_exit(EXIT_FAILURE);
 	}
 
-	handle->comp_channel = ibv_create_comp_channel(handle->listen_id->verbs);
+	handle->comp_channel = ibv_create_comp_channel(listen_id->verbs);
 	if (!handle->comp_channel) {
 		perror("ibv_create_comp_channel");
 		_exit(EXIT_FAILURE);
 	}
-	handle->cq = ibv_create_cq(handle->listen_id->verbs, 256, NULL, handle->comp_channel, 0);
+	handle->cq = ibv_create_cq(listen_id->verbs, 256, NULL, handle->comp_channel, 0);
 	if (!handle->cq) {
 		perror("ibv_create_cq");
 		_exit(EXIT_FAILURE);

@@ -275,8 +275,6 @@ static par_handle par_net_init(const char *parallax_host)
 }
 #elif USE_INFINIBAND
 
-#define PAR_IB_BUFFER_SIZE 4096
-
 struct par_handle {
 	struct rdma_event_channel *ec;
 	struct rdma_cm_id *cm_id;
@@ -284,18 +282,13 @@ struct par_handle {
 	struct ibv_comp_channel *comp_channel;
 	struct ibv_cq *cq;
 	struct ibv_qp *qp;
-	struct ibv_mr *send_mr;
-	struct ibv_mr *recv_mr;
 
 	char *recv_buffer;
 	char *send_buffer;
-	pthread_mutex_t lock;
 	uint64_t region_id;
 	uint32_t recv_buffer_size;
 	uint32_t send_buffer_size;
 	struct par_options_desc *configuration;
-
-	int sockfd; // tmp
 };
 
 struct par_handle *par_net_init(const char *parallax_host)
@@ -341,11 +334,6 @@ struct par_handle *par_net_init(const char *parallax_host)
 	handle->recv_buffer_size = KV_MAX_SIZE;
 	handle->send_buffer_size = KV_MAX_SIZE;
 
-	handle->send_mr = ibv_reg_mr(handle->pd, handle->send_buffer, PAR_IB_BUFFER_SIZE,
-				     IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE);
-	handle->recv_mr = ibv_reg_mr(handle->pd, handle->recv_buffer, PAR_IB_BUFFER_SIZE,
-				     IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE);
-
 	struct rdma_conn_param conn_param = { 0 };
 	conn_param.initiator_depth = 1;
 	conn_param.responder_resources = 1;
@@ -354,7 +342,6 @@ struct par_handle *par_net_init(const char *parallax_host)
 	rdma_connect(handle->cm_id, &conn_param);
 	rdma_get_cm_event(handle->ec, &event);
 	struct my_conn_metadata *meta = (struct my_conn_metadata *)event->param.conn.private_data;
-	printf("Server max value size: %u\n", meta->max_value_size);
 	client_id = meta->client_id;
 	rdma_ack_cm_event(event);
 
@@ -453,15 +440,13 @@ void par_net_handle_destroy(par_handle handle)
 	PtlNIFini(parallax_handle->nih);
 	PtlFini();
 #elif USE_INFINIBAND
-	// rdma_disconnect(parallax_handle->cm_id);
-	// rdma_destroy_qp(parallax_handle->cm_id);
-	ibv_dereg_mr(parallax_handle->send_mr);
-	ibv_dereg_mr(parallax_handle->recv_mr);
+	rdma_disconnect(parallax_handle->cm_id);
+	rdma_destroy_qp(parallax_handle->cm_id);
 	ibv_destroy_cq(parallax_handle->cq);
 	ibv_destroy_comp_channel(parallax_handle->comp_channel);
 	ibv_dealloc_pd(parallax_handle->pd);
 	rdma_destroy_id(parallax_handle->cm_id);
-	// rdma_destroy_event_channel(parallax_handle->ec);
+	rdma_destroy_event_channel(parallax_handle->ec);
 #else
 	if (close(parallax_handle->sockfd) < 0) {
 		log_fatal("Failed to close the socket");
@@ -469,11 +454,7 @@ void par_net_handle_destroy(par_handle handle)
 	}
 #endif
 	free(parallax_handle->recv_buffer);
-#ifdef USE_INFINIBAND
-	// free(parallax_handle->send_buffer);
-#else
 	free(parallax_handle->send_buffer);
-#endif
 	if (parallax_handle->configuration[PARALLAX_SERVER].value)
 		free((void *)parallax_handle->configuration[PARALLAX_SERVER].value);
 	free(parallax_handle->configuration);
