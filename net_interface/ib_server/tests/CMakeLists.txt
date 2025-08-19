@@ -34,8 +34,6 @@ target_compile_options(ib_api_test PRIVATE
     $<$<CONFIG:Debug>:-g3 -O0 -ggdb>
 )
 
-target_link_libraries(ib_api_test
-    ${PARALLAX_NET_LIBRARY}
-)
+target_link_libraries(ib_api_test ${PARALLAX_NET_LIBRARY} log)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
