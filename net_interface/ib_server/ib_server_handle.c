@@ -56,7 +56,6 @@ struct server_handle {
 	struct ibv_comp_channel *comp_channel;
 	struct ibv_cq *cq;
 
-	par_handle par_handle;
 	uint32_t thread_to_queue;
 };
 

@@ -297,54 +297,63 @@ struct par_handle *par_net_init(const char *parallax_host)
 
 	struct par_handle *handle = calloc(1, sizeof(*handle));
 
-	struct addrinfo *addr;
-	getaddrinfo(IP, PORT, NULL, &addr);
-	handle->ec = rdma_create_event_channel();
-	rdma_create_id(handle->ec, &handle->cm_id, NULL, RDMA_PS_TCP);
-	rdma_resolve_addr(handle->cm_id, NULL, addr->ai_addr, TIMEOUT_MS);
-	freeaddrinfo(addr);
+	static bool initialized = false;
+	static struct par_handle template_handle;
 
-	struct rdma_cm_event *event;
-	rdma_get_cm_event(handle->ec, &event);
-	rdma_ack_cm_event(event);
+	if (!initialized) {
+		struct addrinfo *addr;
+		getaddrinfo(IP, PORT, NULL, &addr);
+		handle->ec = rdma_create_event_channel();
+		rdma_create_id(handle->ec, &handle->cm_id, NULL, RDMA_PS_TCP);
+		rdma_resolve_addr(handle->cm_id, NULL, addr->ai_addr, TIMEOUT_MS);
+		freeaddrinfo(addr);
 
-	rdma_resolve_route(handle->cm_id, TIMEOUT_MS);
-	rdma_get_cm_event(handle->ec, &event);
-	rdma_ack_cm_event(event);
+		struct rdma_cm_event *event;
+		rdma_get_cm_event(handle->ec, &event);
+		rdma_ack_cm_event(event);
 
-	handle->pd = ibv_alloc_pd(handle->cm_id->verbs);
-	handle->comp_channel = ibv_create_comp_channel(handle->cm_id->verbs);
-	handle->cq = ibv_create_cq(handle->cm_id->verbs, 10, NULL, handle->comp_channel, 0);
-	ibv_req_notify_cq(handle->cq, 0);
+		rdma_resolve_route(handle->cm_id, TIMEOUT_MS);
+		rdma_get_cm_event(handle->ec, &event);
+		rdma_ack_cm_event(event);
 
-	struct ibv_qp_init_attr qp_attr;
-	memset(&qp_attr, 0, sizeof(qp_attr));
-	qp_attr.send_cq = handle->cq;
-	qp_attr.recv_cq = handle->cq;
-	qp_attr.qp_type = IBV_QPT_RC;
-	qp_attr.cap.max_send_wr = 10;
-	qp_attr.cap.max_recv_wr = 10;
-	qp_attr.cap.max_send_sge = 1;
-	qp_attr.cap.max_recv_sge = 1;
+		handle->pd = ibv_alloc_pd(handle->cm_id->verbs);
+		handle->comp_channel = ibv_create_comp_channel(handle->cm_id->verbs);
+		handle->cq = ibv_create_cq(handle->cm_id->verbs, 256, NULL, handle->comp_channel, 0);
+		ibv_req_notify_cq(handle->cq, 0);
 
-	rdma_create_qp(handle->cm_id, handle->pd, &qp_attr);
+		struct ibv_qp_init_attr qp_attr;
+		memset(&qp_attr, 0, sizeof(qp_attr));
+		qp_attr.send_cq = handle->cq;
+		qp_attr.recv_cq = handle->cq;
+		qp_attr.qp_type = IBV_QPT_RC;
+		qp_attr.cap.max_send_wr = 10;
+		qp_attr.cap.max_recv_wr = 10;
+		qp_attr.cap.max_send_sge = 1;
+		qp_attr.cap.max_recv_sge = 1;
 
-	handle->recv_buffer = calloc(1UL, KV_MAX_SIZE);
-	handle->send_buffer = calloc(1UL, KV_MAX_SIZE);
-	handle->recv_buffer_size = KV_MAX_SIZE;
-	handle->send_buffer_size = KV_MAX_SIZE;
+		rdma_create_qp(handle->cm_id, handle->pd, &qp_attr);
 
-	struct rdma_conn_param conn_param = { 0 };
-	conn_param.initiator_depth = 1;
-	conn_param.responder_resources = 1;
-	conn_param.retry_count = 7;
+		handle->recv_buffer = calloc(1UL, KV_MAX_SIZE);
+		handle->send_buffer = calloc(1UL, KV_MAX_SIZE);
+		handle->recv_buffer_size = KV_MAX_SIZE;
+		handle->send_buffer_size = KV_MAX_SIZE;
 
-	rdma_connect(handle->cm_id, &conn_param);
-	rdma_get_cm_event(handle->ec, &event);
-	struct my_conn_metadata *meta = (struct my_conn_metadata *)event->param.conn.private_data;
-	client_id = meta->client_id;
-	rdma_ack_cm_event(event);
+		struct rdma_conn_param conn_param = { 0 };
+		conn_param.initiator_depth = 1;
+		conn_param.responder_resources = 1;
+		conn_param.retry_count = 7;
 
+		rdma_connect(handle->cm_id, &conn_param);
+		rdma_get_cm_event(handle->ec, &event);
+		struct my_conn_metadata *meta = (struct my_conn_metadata *)event->param.conn.private_data;
+		client_id = meta->client_id;
+		rdma_ack_cm_event(event);
+
+		template_handle = *handle;
+		initialized = true;
+	} else {
+		*handle = template_handle;
+	}
 	return handle;
 }
 #else
