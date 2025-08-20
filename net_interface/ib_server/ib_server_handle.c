@@ -69,10 +69,10 @@ static uint32_t client_id_counter = 1;
 struct ib_client_ctx *clients[MAX_CLIENTS];
 
 struct rdma_read_ctx {
-	void *buf;
 	size_t size;
-	struct ibv_mr *mr;
 	struct par_net_header hdr;
+	struct ib_client_ctx *client;
+	struct rdma_read_slot *slot;
 };
 
 long ib_server_parse_number(const char *str, const char *opt)
@@ -349,6 +349,8 @@ int ib_handle_cm_event(struct server_handle *server_handle, struct rdma_cm_event
 		ctx->mr = mr;
 		ctx->buf = buf;
 		ctx->qp = client_id->qp;
+		pthread_mutex_init(&ctx->init_lock, NULL);
+		ctx->rdma_read_pool_initialized = 0;
 
 		clients[server_caps.client_id - 1] = ctx;
 
@@ -630,6 +632,47 @@ uint32_t par_net_header_get_opcode(char *buffer)
 	return header->opcode;
 }
 
+void rdma_read_pool_init(struct ib_client_ctx *ctx)
+{
+	for (int i = 0; i < RDMA_READ_POOL_SIZE; i++) {
+		void *buf = NULL;
+		int ret = posix_memalign(&buf, 4096, RDMA_READ_BUF_SIZE);
+		if (ret) {
+			perror("posix_memalign");
+			_exit(EXIT_FAILURE);
+		}
+
+		struct ibv_mr *mr = ibv_reg_mr(ctx->pd, buf, RDMA_READ_BUF_SIZE, IBV_ACCESS_LOCAL_WRITE);
+		if (!mr) {
+			free(buf);
+			_exit(EXIT_FAILURE);
+		}
+
+		ctx->read_pool[i].buf = buf;
+		ctx->read_pool[i].mr = mr;
+		ctx->read_pool[i].size = RDMA_READ_BUF_SIZE;
+		atomic_store(&ctx->read_pool[i].in_use, false);
+	}
+}
+
+static inline struct rdma_read_slot *rdma_read_acquire(struct ib_client_ctx *c)
+{
+	while (1) {
+		for (int i = 0; i < RDMA_READ_POOL_SIZE; i++) {
+			bool expected = false;
+			if (atomic_compare_exchange_strong(&c->read_pool[i].in_use, &expected, true)) {
+				return &c->read_pool[i];
+			}
+		}
+		sched_yield();
+	}
+}
+
+static inline void rdma_read_release(struct rdma_read_slot *slot)
+{
+	atomic_store(&slot->in_use, false);
+}
+
 void *ib_put_and_reply(void *arg)
 {
 	struct par_net_worker *par_net_worker = arg;
@@ -643,6 +686,12 @@ void *ib_put_and_reply(void *arg)
 		}
 		struct par_net_header *hdr = (struct par_net_header *)par_net_worker_get_start(req);
 		struct ib_client_ctx *ctx = clients[hdr->request_id - 1];
+		pthread_mutex_lock(&ctx->init_lock);
+		if (!ctx->rdma_read_pool_initialized) {
+			rdma_read_pool_init(ctx);
+			ctx->rdma_read_pool_initialized = 1;
+		}
+		pthread_mutex_unlock(&ctx->init_lock);
 
 		size_t total_bytes = ib_par_net_get_total_bytes(par_net_worker_get_start(req));
 		if (total_bytes > KV_MAX_SIZE + par_net_header_size()) {
@@ -676,7 +725,7 @@ void *ib_put_and_reply(void *arg)
 		struct ibv_recv_wr *bad_wr;
 		if (ibv_post_recv(ctx->qp, &wr, &bad_wr)) {
 			perror("ibv_post_recv");
-			exit(EXIT_FAILURE);
+			_exit(EXIT_FAILURE);
 		}
 	}
 	log_debug("FINISHED");
@@ -698,22 +747,20 @@ int ib_handle_event(struct ibv_wc *wc, struct server_handle *server_handle)
 		hdr = (struct par_net_header *)buf;
 		if (hdr->inline_flag == 0) {
 			struct ib_client_ctx *client_ctx = clients[hdr->request_id - 1];
-			struct rdma_read_ctx *ctx = malloc(sizeof(*ctx));
-			ctx->buf = malloc(hdr->payload_size);
-			ctx->size = hdr->payload_size;
-			ctx->mr = ibv_reg_mr(client_ctx->pd, ctx->buf, hdr->payload_size,
-					     IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_REMOTE_READ);
-			if (!ctx->mr) {
-				perror("ibv_reg_mr");
-				free(ctx->buf);
-				free(ctx);
-				break;
+			struct rdma_read_slot *slot = rdma_read_acquire(client_ctx);
+			if (!slot) {
+				fprintf(stderr, "No RDMA READ slots available\n");
+				_exit(EXIT_FAILURE);
 			}
+			struct rdma_read_ctx *ctx = malloc(sizeof(*ctx));
+			ctx->client = client_ctx;
+			ctx->size = hdr->payload_size;
+			ctx->slot = slot;
 			ctx->hdr = *hdr;
 
-			struct ibv_sge sge = { .addr = (uintptr_t)ctx->buf,
+			struct ibv_sge sge = { .addr = (uintptr_t)slot->buf,
 					       .length = ctx->size,
-					       .lkey = ctx->mr->lkey };
+					       .lkey = slot->mr->lkey };
 			struct ibv_send_wr rdma_wr = {
 				.wr_id = (uintptr_t)ctx,
 				.opcode = IBV_WR_RDMA_READ,
@@ -726,6 +773,8 @@ int ib_handle_event(struct ibv_wc *wc, struct server_handle *server_handle)
 			struct ibv_send_wr *bad_wr = NULL;
 			if (ibv_post_send(client_ctx->qp, &rdma_wr, &bad_wr)) {
 				perror("ibv_post_send RDMA_READ");
+				rdma_read_release(slot);
+				free(ctx);
 			}
 			break;
 		}
@@ -738,7 +787,7 @@ int ib_handle_event(struct ibv_wc *wc, struct server_handle *server_handle)
 		hdr = &ctx->hdr;
 		char *combined = NULL;
 		if (hdr->opcode == OPCODE_PUT) {
-			struct par_net_put_req *req = (struct par_net_put_req *)ctx->buf;
+			struct par_net_put_req *req = (struct par_net_put_req *)ctx->slot->buf;
 			size_t total_size = sizeof(struct par_net_header) +
 					    par_net_put_req_calc_size(par_net_put_get_key_size(req),
 								      par_net_put_get_value_size(req));
@@ -749,8 +798,14 @@ int ib_handle_event(struct ibv_wc *wc, struct server_handle *server_handle)
 			       par_net_put_req_calc_size(par_net_put_get_key_size(req),
 							 par_net_put_get_value_size(req)));
 		} else {
+			rdma_read_release(ctx->slot);
+			free(ctx);
 			log_fatal("Unhandled RDMA READ opcode %d", hdr->opcode);
 		}
+
+		rdma_read_release(ctx->slot);
+		free(ctx);
+
 		worker_scheduler(server_handle, combined);
 		break;
 	default:

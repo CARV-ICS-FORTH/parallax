@@ -4,6 +4,9 @@
 #include "../par_net_worker/par_net_worker.h"
 #include "../par_net_worker/par_net_worker_request.h"
 #include <arpa/inet.h>
+#include <pthread.h>
+#include <stdatomic.h>
+#include <stdbool.h>
 
 long ib_server_parse_number(const char *str, const char *opt);
 
@@ -30,6 +33,8 @@ size_t par_net_header_size(void);
 size_t ib_par_net_get_total_bytes(char *buffer);
 
 uint32_t par_net_header_get_opcode(char *buffer);
+
+void rdma_read_pool_init(struct ib_client_ctx *ctx);
 
 void *ib_put_and_reply(void *arg);
 
