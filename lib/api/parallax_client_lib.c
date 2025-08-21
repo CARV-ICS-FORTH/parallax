@@ -536,23 +536,6 @@ static ssize_t par_portals_RPC(par_handle handle, char *send_buffer, size_t send
 	return mbytes;
 }
 #elif USE_INFINIBAND
-size_t find_rep_size(struct par_net_header *header, uint64_t recv_buf_size)
-{
-	switch (header->opcode) {
-	case OPCODE_GET:
-		return par_net_get_rep_calc_size(recv_buf_size);
-	case OPCODE_PUT:
-		return par_net_put_rep_calc_size();
-	case OPCODE_OPEN:
-		return par_net_open_rep_calc_size();
-	case OPCODE_CLOSE:
-		return par_net_close_rep_calc_size(recv_buf_size);
-	default:
-		log_fatal("Unknown opcode: %u", header->opcode);
-		return 0;
-	}
-}
-
 static ssize_t par_ib_RPC(par_handle handle, char *send_buffer, size_t send_buffer_len, char **recv_buffer)
 {
 	struct par_handle *h = (struct par_handle *)handle;
@@ -570,8 +553,7 @@ retry:
 		perror("malloc for recv_buf");
 		return -1;
 	}
-	recv_mr = ibv_reg_mr(h->pd, recv_buf, par_net_header_calc_size() + find_rep_size(header, recv_buf_size),
-			     IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE);
+	recv_mr = ibv_reg_mr(h->pd, recv_buf, recv_buf_size, IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE);
 	if (!recv_mr) {
 		perror("ibv_reg_mr for recv_buffer");
 		return -1;
