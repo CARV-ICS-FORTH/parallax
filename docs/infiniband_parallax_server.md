@@ -17,6 +17,8 @@ Worker threads are spawned during server startup. Each worker:
 - Sends a reply header to the client.
 
 (Note: workers are reused from the Portals implementation. For more details, see [parallax_portals.md](https://carvgit.ics.forth.gr/storage/parallax/-/blob/parallax_infiniband/docs/parallax_portals.md?ref_type=heads#worker-thread))
+<br />
+<br /> 
 
 **IMPORTANT**: Sync, Delete, and Scan operations are NOT implemented.
 
@@ -24,7 +26,7 @@ Worker threads are spawned during server startup. Each worker:
 
 The client interacts with the server through the Parallax API. The RDMA details are abstracted away, so the client only calls the familiar operations (open, close, put, get).
 Before issuing requests, the client library (parallax_client_lib.c) sets up the InfiniBand connection during the open call. For each request, it prepares a network header (par_net_header) containing:
-- Virtual address of the data (if not inline / large KV).
+- Virtual address of the data (if not inline / large send buffer).
 - Size of the data.
 - Remote key (rkey) for RDMA access.
 - Request ID (to match responses).
@@ -36,15 +38,15 @@ This header gives the server all necessary information to execute the request.
 
 - A receive buffer is allocated and registered with ibv_reg_mr so the client can receive responses.
 - A send buffer is allocated and registered with ibv_reg_mr so the server can access it.
-- Depending on the KV size:
-    1. Small KV: Data is sent inline; no virtual address, size, or rkey is needed.
-    2. Large KV: The client provides flags, the data’s virtual address, size, and rkey. The memory region containing the data (e.g., for put) is also registered, so the server can later perform an RDMA read.
+- Depending on the send buffer size:
+    1. Small send buffer: Data is sent inline; no virtual address, size, or rkey is needed.
+    2. Large send buffer: The client provides flags, the data’s virtual address, size, and rkey. The memory region containing the data (e.g., for put) is also registered, so the server can later perform an RDMA read.
 
 ## Server-Side Request Execution
 
 When the server receives a request:
-- Small KV: The client indicates the data is inline. The server reads the data directly from the request.
-- Large KV: The client indicates the data is not inline and provides the virtual address and rkey. The server then performs an RDMA read to fetch the data directly from the client’s memory.
+- Small send buffer: The client indicates the data is inline. The server reads the data directly from the request.
+- Large send buffer: The client indicates the data is not inline and provides the virtual address and rkey. The server then performs an RDMA read to fetch the data directly from the client’s memory.
 
 For large put operations, the server uses a pool of pre-registered RDMA buffers to avoid repeatedly registering memory regions (which is expensive). A mechanism ensures buffers are reused efficiently, and if all buffers are occupied, workers will wait until one becomes available.
 
