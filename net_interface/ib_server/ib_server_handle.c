@@ -23,7 +23,7 @@
 	"  - file = %s\n"     \
 	"  - flags = not yet supported\n"
 
-#define DEFAULT_PORT 7741
+#define DEFAULT_PORT 7471
 #define DEFAULT_ADDRESS "192.168.5.120"
 
 #define DECIMAL_BASE 10
@@ -370,13 +370,13 @@ int ib_handle_cm_event(struct server_handle *server_handle, struct rdma_cm_event
 		}
 		break;
 	case RDMA_CM_EVENT_ESTABLISHED:;
-		log_debug("RDMA_CM_EVENT_ESTABLISHED");
+		log_info("RDMA_CM_EVENT_ESTABLISHED");
 		break;
 	case RDMA_CM_EVENT_DISCONNECTED:;
-		log_debug("RDMA_CM_EVENT_DISCONNECTED");
+		log_info("RDMA_CM_EVENT_DISCONNECTED");
 		break;
 	default:
-		log_debug("Unhandled event: %s", rdma_event_str(event->event));
+		log_info("Unhandled event: %s", rdma_event_str(event->event));
 		return -1;
 	}
 	return 0;
