@@ -8,9 +8,9 @@
 struct par_net_worker_request {
 #ifdef USE_PORTALS
 	ptl_process_t initiator;
+	void *user_ptr;
 #endif
 	void *start;
-	void *user_ptr;
 };
 
 #ifdef USE_PORTALS
@@ -18,16 +18,16 @@ ptl_process_t par_net_worker_get_initiator(const struct par_net_worker_request *
 {
 	return req->initiator;
 }
+
+void *par_net_worker_get_user_ptr(const struct par_net_worker_request *req)
+{
+	return req->user_ptr;
+}
 #endif
 
 void *par_net_worker_get_start(const struct par_net_worker_request *req)
 {
 	return req->start;
-}
-
-void *par_net_worker_get_user_ptr(const struct par_net_worker_request *req)
-{
-	return req->user_ptr;
 }
 
 #ifdef USE_PORTALS
@@ -44,7 +44,6 @@ struct par_net_worker_request *par_net_worker_create_req(void *buf)
 {
 	struct par_net_worker_request *req = calloc(1U, sizeof(struct par_net_worker_request));
 	req->start = buf;
-	req->user_ptr = buf;
 	return req;
 }
 #endif

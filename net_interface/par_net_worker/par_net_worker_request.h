@@ -15,6 +15,8 @@ struct par_net_worker_request *par_net_worker_create_req(ptl_event_t event);
 
 ptl_process_t par_net_worker_get_initiator(const struct par_net_worker_request *req);
 
+void *par_net_worker_get_user_ptr(const struct par_net_worker_request *req);
+
 #elif USE_INFINIBAND
 
 struct par_net_worker_request *par_net_worker_create_req(void *buf);
@@ -22,7 +24,5 @@ struct par_net_worker_request *par_net_worker_create_req(void *buf);
 #endif
 
 void *par_net_worker_get_start(const struct par_net_worker_request *req);
-
-void *par_net_worker_get_user_ptr(const struct par_net_worker_request *req);
 
 #endif
