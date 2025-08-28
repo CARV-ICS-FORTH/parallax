@@ -69,7 +69,7 @@ struct ib_client_ctx *clients[MAX_CLIENTS];
 
 struct rdma_read_ctx {
 	size_t size;
-	struct par_net_header hdr;
+	struct par_net_header *hdr;
 	struct ib_client_ctx *client;
 	struct rdma_read_slot *slot;
 };
@@ -694,7 +694,7 @@ void *ib_put_and_reply(void *arg)
 
 		size_t total_bytes = ib_par_net_get_total_bytes(par_net_worker_get_start(req));
 		if (total_bytes > KV_MAX_SIZE + par_net_header_size()) {
-			log_debug("Error Larger message recv buffer size is: %lu B total_bytes are: %lu B",
+			log_fatal("Error Larger message recv buffer size is: %lu B total_bytes are: %lu B",
 				  KV_MAX_SIZE + par_net_header_size(), total_bytes);
 			break;
 		}
@@ -738,12 +738,10 @@ int ib_handle_event(struct ibv_wc *wc, struct server_handle *server_handle)
 		return -1;
 	}
 
-	struct par_net_header *hdr;
-
 	switch (wc->opcode) {
 	case IBV_WC_RECV:;
 		void *buf = (void *)(uintptr_t)wc->wr_id;
-		hdr = (struct par_net_header *)buf;
+		struct par_net_header *hdr = (struct par_net_header *)buf;
 		if (hdr->inline_flag == 0) {
 			struct ib_client_ctx *client_ctx = clients[hdr->request_id - 1];
 			struct rdma_read_slot *slot = rdma_read_acquire(client_ctx);
@@ -755,7 +753,7 @@ int ib_handle_event(struct ibv_wc *wc, struct server_handle *server_handle)
 			ctx->client = client_ctx;
 			ctx->size = hdr->payload_size;
 			ctx->slot = slot;
-			ctx->hdr = *hdr;
+			ctx->hdr = hdr;
 
 			struct ibv_sge sge = { .addr = (uintptr_t)slot->buf,
 					       .length = ctx->size,
@@ -783,29 +781,16 @@ int ib_handle_event(struct ibv_wc *wc, struct server_handle *server_handle)
 		break;
 	case IBV_WC_RDMA_READ:;
 		struct rdma_read_ctx *ctx = (struct rdma_read_ctx *)(uintptr_t)wc->wr_id;
-		hdr = &ctx->hdr;
-		char *combined = NULL;
-		if (hdr->opcode == OPCODE_PUT) {
-			struct par_net_put_req *req = (struct par_net_put_req *)ctx->slot->buf;
-			size_t total_size = sizeof(struct par_net_header) +
-					    par_net_put_req_calc_size(par_net_put_get_key_size(req),
-								      par_net_put_get_value_size(req));
-			combined = malloc(total_size);
-
-			memcpy(combined, &ctx->hdr, sizeof(struct par_net_header));
-			memcpy(combined + sizeof(struct par_net_header), req,
-			       par_net_put_req_calc_size(par_net_put_get_key_size(req),
-							 par_net_put_get_value_size(req)));
-		} else {
+		if (ctx->hdr->opcode != OPCODE_PUT) {
 			rdma_read_release(ctx->slot);
 			free(ctx);
-			log_fatal("Unhandled RDMA READ opcode %d", hdr->opcode);
+			log_fatal("Unhandled RDMA READ opcode %d", ctx->hdr->opcode);
 		}
 
 		rdma_read_release(ctx->slot);
 		free(ctx);
 
-		worker_scheduler(server_handle, combined);
+		worker_scheduler(server_handle, ctx->slot->buf);
 		break;
 	default:
 		log_debug("Unhandled RDMA opcode: %d", wc->opcode);
