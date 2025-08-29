@@ -656,10 +656,12 @@ retry:
 
 	struct ibv_wc wc;
 	while (1) {
+#ifdef USE_IBV_CQ_EVENT
 		void *cq_context;
 		ibv_get_cq_event(h->comp_channel, &h->cq, &cq_context);
 		ibv_ack_cq_events(h->cq, 1);
 		ibv_req_notify_cq(h->cq, 0);
+#endif
 		int ne = ibv_poll_cq(h->cq, 1, &wc);
 		if (ne > 0 && wc.opcode == IBV_WC_RECV) {
 			break;
