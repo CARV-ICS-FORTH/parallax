@@ -339,9 +339,10 @@ struct par_handle *par_net_init(const char *parallax_host)
 		rdma_create_qp(handle->cm_id, handle->pd, &qp_attr);
 
 		handle->recv_buffer_size = KV_MAX_SIZE + par_net_header_calc_size();
-		handle->recv_buffer = malloc(handle->recv_buffer_size);
-		if (!handle->recv_buffer) {
-			perror("malloc recv_buffer");
+		int ret =
+			posix_memalign((void **)&handle->recv_buffer, sysconf(_SC_PAGESIZE), handle->recv_buffer_size);
+		if (ret != 0) {
+			perror("posix_memalign recv_buffer");
 			_exit(EXIT_FAILURE);
 		}
 		handle->recv_mr = ibv_reg_mr(handle->pd, handle->recv_buffer, handle->recv_buffer_size,
@@ -368,9 +369,10 @@ struct par_handle *par_net_init(const char *parallax_host)
 
 		handle->send_buffer_size = KV_MAX_SIZE;
 		for (int i = 0; i < N_SEND_BUFFERS; i++) {
-			handle->send_buffer[i] = malloc(handle->send_buffer_size);
-			if (!handle->send_buffer[i]) {
-				perror("malloc send_buffer");
+			ret = posix_memalign((void **)&handle->send_buffer[i], sysconf(_SC_PAGESIZE),
+					     handle->send_buffer_size);
+			if (ret != 0) {
+				perror("posix_memalign send_buffer");
 				_exit(EXIT_FAILURE);
 			}
 			handle->send_mr[i] =
