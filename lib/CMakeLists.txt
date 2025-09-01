@@ -118,9 +118,7 @@ install(FILES include/parallax/parallax.h include/parallax/structures.h
 set_target_properties(${LIB} PROPERTIES OUTPUT_NAME ${LIB})
 set_target_properties(server.${LIB} PROPERTIES OUTPUT_NAME ${LIB}_server)
 
-option(USE_INFINIBAND "Build with InfiniBand (RDMA) backend instead of Portals4")
-
-if(USE_INFINIBAND)
+if(NET STREQUAL "INFINIBAND")
     add_definitions(-DUSE_INFINIBAND -DPARALLAX_INFINIBAND)
     message(STATUS "Compiling with InfiniBand backend")
 else()
@@ -130,7 +128,7 @@ endif()
 
 # ######### PORTALS SERVER !!! ###########
 
-if(NOT USE_INFINIBAND)
+if(NET STREQUAL "PORTALS")
   option(PORTALS_LIB_DIR "Path to the Portals library" "")
   option(QUEUE_LIB "Path to the sim-universal-construction library" "")
   option(QUEUE_INCLUDE_DIR
@@ -255,7 +253,7 @@ endif()
 # ######### END OF PORTALS SERVER !!! ###########
 
 # INFINIBAND SERVER
-if(USE_INFINIBAND)
+if(NET STREQUAL "INFINIBAND")
   add_definitions(-DPARALLAX_INFINIBAND)
   option(QUEUE_LIB "Path to the sim-universal-construction library" "/home1/public/nikosl/queuelib/Synch/lib")
   option(QUEUE_INCLUDE_DIR

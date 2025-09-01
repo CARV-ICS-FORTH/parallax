@@ -28,7 +28,7 @@ set_target_properties(
 target_include_directories(${NET_LIB}
                            PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/../lib/include")
 
-if(USE_INFINIBAND)
+if(NET STREQUAL "INFINIBAND")
   find_library(RDMA_LIB NAMES rdmacm PATHS /usr/lib /usr/lib64 /usr/local/lib /usr/lib/x86_64-linux-gnu)
   find_library(IBVERBS_LIB NAMES ibverbs PATHS /usr/lib /usr/lib64 /usr/local/lib /usr/lib/x86_64-linux-gnu)
 
@@ -63,7 +63,7 @@ find_library(
   NAMES portals
   PATHS ${PORTALS_LIB_DIR})
 
-if(PORTALS_LIB)
+if(NET STREQUAL "PORTALS")
   message(STATUS "Portals library for client found at: ${PORTALS_LIB}")
 
   set(PORT_LIB "${PROJECT_NAME}_portals_lib")
