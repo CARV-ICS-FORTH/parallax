@@ -55,6 +55,7 @@ struct server_handle {
 	struct rdma_event_channel *ec;
 	struct ibv_comp_channel *comp_channel;
 	struct ibv_cq *cq;
+	struct ibv_pd *pd;
 
 	uint32_t thread_to_queue;
 };
@@ -250,6 +251,12 @@ struct server_handle *ib_server_handle_init(struct server_options *opts)
 		_exit(EXIT_FAILURE);
 	}
 
+	handle->pd = ibv_alloc_pd(listen_id->verbs);
+	if (!handle->pd) {
+		perror("ibv_alloc_pd");
+		_exit(EXIT_FAILURE);
+	}
+
 	log_info("InfiniBand server listening on %s:%ld", inet_ntoa(inaddr->sin_addr), opts->port);
 
 	const char *error_message = NULL;
@@ -290,16 +297,21 @@ int ib_server_print_config(struct server_handle *server_handle)
 	return EXIT_SUCCESS;
 }
 
+uint32_t ib_server_get_threadno(struct server_handle *handle)
+{
+	return handle->opts->threadno;
+}
+
+struct ibv_pd *ib_server_get_ibv_pd(struct server_handle *handle)
+{
+	return handle->pd;
+}
+
 int ib_handle_cm_event(struct server_handle *server_handle, struct rdma_cm_event *event)
 {
 	switch (event->event) {
 	case RDMA_CM_EVENT_CONNECT_REQUEST:;
 		struct rdma_cm_id *client_id = event->id;
-		struct ibv_pd *pd = ibv_alloc_pd(client_id->verbs);
-		if (!pd) {
-			perror("ibv_alloc_pd");
-			return -1;
-		}
 		struct ibv_qp_init_attr qp_attr = {
             .send_cq = server_handle->cq,
             .recv_cq = server_handle->cq,
@@ -311,7 +323,7 @@ int ib_handle_cm_event(struct server_handle *server_handle, struct rdma_cm_event
                 .max_recv_sge = 1,
             },
         };
-		if (rdma_create_qp(client_id, pd, &qp_attr)) {
+		if (rdma_create_qp(client_id, server_handle->pd, &qp_attr)) {
 			perror("rdma_create_qp");
 			return -1;
 		}
@@ -337,14 +349,15 @@ int ib_handle_cm_event(struct server_handle *server_handle, struct rdma_cm_event
 			perror("posix_memalign");
 			return -1;
 		}
-		struct ibv_mr *mr = ibv_reg_mr(pd, buf, total_size, IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE);
+		struct ibv_mr *mr = ibv_reg_mr(server_handle->pd, buf, total_size,
+					       IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE);
 
 		struct ib_client_ctx *ctx = calloc(1, sizeof(*ctx));
 		if (!ctx) {
 			perror("calloc");
 			return -1;
 		}
-		ctx->pd = pd;
+		ctx->pd = server_handle->pd;
 		ctx->mr = mr;
 		ctx->buf = buf;
 		ctx->qp = client_id->qp;
@@ -423,7 +436,7 @@ inline size_t par_net_header_size(void)
 	return sizeof(struct par_net_header);
 }
 
-static struct par_net_header *ib_par_net_call_open(struct par_net_worker *par_net_worker, void *args)
+void ib_par_net_call_open(struct par_net_worker *par_net_worker, void *args, struct par_net_header *reply_header)
 {
 	void *start = (void *)args;
 	struct par_net_header *hdr = (struct par_net_header *)start;
@@ -444,25 +457,21 @@ static struct par_net_header *ib_par_net_call_open(struct par_net_worker *par_ne
 	log_debug("Opening db with name == %s", db_options.db_name);
 	par_handle handle = par_open(&db_options, &error_message);
 	uint32_t total_bytes = par_net_open_rep_calc_size() + par_net_header_size();
-	par_net_worker_lock(par_net_worker);
-	char *buffer = (char *)par_net_worker_get_buffer(total_bytes);
-	par_net_worker_unlock(par_net_worker);
-	struct par_net_open_rep *reply = par_net_open_rep_create(
-		error_message != NULL, handle, &buffer[par_net_header_size()], total_bytes - par_net_header_size());
+	struct par_net_open_rep *reply = par_net_open_rep_create(error_message != NULL, handle,
+								 (char *)reply_header + par_net_header_size(),
+								 total_bytes - par_net_header_size());
 	if (NULL == reply) {
 		log_warn("Failed to create reply");
-		return NULL;
 	}
-	struct par_net_header *reply_header = (struct par_net_header *)buffer;
 	reply_header->opcode = OPCODE_OPEN;
 	reply_header->total_bytes = total_bytes;
 	reply_header->request_id = hdr->request_id;
 	log_debug("Ok with open reply");
-	return reply_header;
 }
 
-static struct par_net_header *ib_par_net_call_put(struct par_net_worker *par_net_worker, void *args)
+void ib_par_net_call_put(struct par_net_worker *par_net_worker, void *args, struct par_net_header *reply_header)
 {
+	(void)par_net_worker;
 	void *start = (void *)args;
 	struct par_net_header *hdr = (struct par_net_header *)start;
 	struct par_net_put_req *request = (struct par_net_put_req *)((char *)start + par_net_header_size());
@@ -479,35 +488,32 @@ static struct par_net_header *ib_par_net_call_put(struct par_net_worker *par_net
 	log_debug("Value size = %lu", (unsigned long)kv_pair.v.val_buffer_size);
 
 	const char *error_message = NULL;
-	struct par_put_metadata metadata = par_put((par_handle)region_id, &kv_pair, &error_message);
+
+	struct par_put_metadata metadata;
+	metadata = par_put((par_handle)region_id, &kv_pair, &error_message);
 	log_debug("LSN is %lu", metadata.lsn);
 	uint32_t total_bytes = par_net_header_size() + par_net_put_rep_calc_size();
-	par_net_worker_lock(par_net_worker);
-	char *buffer = (char *)par_net_worker_get_buffer(total_bytes);
-	par_net_worker_unlock(par_net_worker);
-	struct par_net_put_rep *reply =
-		par_net_put_rep_create(error_message == NULL, metadata, &buffer[par_net_header_size()], total_bytes);
+	struct par_net_put_rep *reply = par_net_put_rep_create(
+		error_message == NULL, metadata, (char *)reply_header + par_net_header_size(), total_bytes);
 	if (NULL == reply) {
 		log_warn("Failed to create put reply");
-		return NULL;
 	}
-	struct par_net_header *reply_header = (struct par_net_header *)buffer;
 	reply_header->opcode = OPCODE_PUT;
 	reply_header->total_bytes = total_bytes;
 	reply_header->request_id = hdr->request_id;
-	return reply_header;
 }
 
-static struct par_net_header *ib_par_net_call_del(struct par_net_worker *par_net_worker, void *args)
+void ib_par_net_call_del(struct par_net_worker *par_net_worker, void *args, struct par_net_header *reply_header)
 {
 	(void)par_net_worker;
 	(void)args;
+	(void)reply_header;
 	log_warn("DELETE NOT IMPLEMENTED");
-	return NULL;
 }
 
-static struct par_net_header *ib_par_net_call_get(struct par_net_worker *par_net_worker, void *args)
+void ib_par_net_call_get(struct par_net_worker *par_net_worker, void *args, struct par_net_header *reply_header)
 {
+	(void)par_net_worker;
 	void *start = (void *)args;
 	struct par_net_header *hdr = (struct par_net_header *)start;
 	struct par_net_get_req *request = (struct par_net_get_req *)((char *)start + par_net_header_size());
@@ -522,13 +528,10 @@ static struct par_net_header *ib_par_net_call_get(struct par_net_worker *par_net
 
 	const char *error_message = NULL;
 	uint32_t total_bytes = KV_MAX_SIZE + par_net_header_size() + par_net_get_rep_header_size();
-	par_net_worker_lock(par_net_worker);
-	char *buffer = (char *)par_net_worker_get_buffer(total_bytes);
-	par_net_worker_unlock(par_net_worker);
 	bool found = false;
 	if (par_net_get_req_fetch_value(request)) {
 		log_debug("Region id: %lu Calling par_get for key: %.*s", region_id, par_key.size, par_key.data);
-		par_value.val_buffer = &buffer[par_net_header_size() + par_net_get_rep_header_size()];
+		par_value.val_buffer = (char *)reply_header + par_net_header_size() + par_net_get_rep_header_size();
 		par_value.val_buffer_size = total_bytes - (par_net_header_size() + par_net_get_rep_header_size());
 		log_debug("Available buffer for gets is %u", par_value.val_buffer_size);
 		par_get((par_handle)region_id, &par_key, &par_value, &error_message);
@@ -544,21 +547,19 @@ static struct par_net_header *ib_par_net_call_get(struct par_net_worker *par_net
 	//log_debug("got hash from get = %u", hash);
 	size_t buffer_len = total_bytes - par_net_header_size();
 	struct par_net_get_rep *reply =
-		par_net_get_rep_set_header(found, &par_value, &buffer[par_net_header_size()], buffer_len);
+		par_net_get_rep_set_header(found, &par_value, (char *)reply_header + par_net_header_size(), buffer_len);
 	if (reply == NULL) {
 		log_warn("Failed to create reply");
-		return NULL;
 	}
-	struct par_net_header *reply_header = (struct par_net_header *)buffer;
 	reply_header->opcode = OPCODE_GET;
 	reply_header->total_bytes =
 		par_net_header_size() + par_net_get_rep_calc_size(error_message == NULL ? par_value.val_size : 0);
 	reply_header->request_id = hdr->request_id;
-	return reply_header;
 }
 
-static struct par_net_header *ib_par_net_call_close(struct par_net_worker *par_net_worker, void *args)
+void ib_par_net_call_close(struct par_net_worker *par_net_worker, void *args, struct par_net_header *reply_header)
 {
+	(void)par_net_worker;
 	void *start = (void *)args;
 	struct par_net_header *hdr = (struct par_net_header *)start;
 	struct par_net_close_req *request = (struct par_net_close_req *)((char *)start + par_net_header_size());
@@ -572,38 +573,32 @@ static struct par_net_header *ib_par_net_call_close(struct par_net_worker *par_n
 	uint32_t error_message_size =
 		par_net_header_size() + (error_message ? strlen(error_message) + 1 : 0) + CLOSE_OP_BUF_SIZE;
 	size_t buffer_len = error_message_size - par_net_header_size() + CLOSE_OP_BUF_SIZE;
-	par_net_worker_lock(par_net_worker);
-	char *buffer = (char *)par_net_worker_get_buffer(error_message_size);
-	par_net_worker_unlock(par_net_worker);
 
 	struct par_net_close_rep *reply =
-		par_net_close_rep_create(error_message, &buffer[par_net_header_size()], buffer_len);
+		par_net_close_rep_create(error_message, (char *)reply_header + par_net_header_size(), buffer_len);
 
 	if (NULL == reply) {
 		log_warn("Failed to create get reply");
-		return NULL;
 	}
-	struct par_net_header *reply_header = (struct par_net_header *)buffer;
 	reply_header->opcode = OPCODE_CLOSE;
 	reply_header->total_bytes = error_message_size;
 	reply_header->request_id = hdr->request_id;
-	return reply_header;
 }
 
-static struct par_net_header *ib_par_net_call_scan(struct par_net_worker *par_net_worker, void *args)
+void ib_par_net_call_scan(struct par_net_worker *par_net_worker, void *args, struct par_net_header *reply_header)
 {
 	(void)par_net_worker;
 	(void)args;
+	(void)reply_header;
 	log_warn("SCAN NOT IMPLEMENTED");
-	return NULL;
 }
 
-static struct par_net_header *ib_par_net_call_sync(struct par_net_worker *par_net_worker, void *args)
+void ib_par_net_call_sync(struct par_net_worker *par_net_worker, void *args, struct par_net_header *reply_header)
 {
 	(void)par_net_worker;
 	(void)args;
+	(void)reply_header;
 	log_warn("SYNC NOT IMPLEMENTED");
-	return NULL;
 }
 
 const par_ib_call par_net_call[OPCODE_MAX] = { NULL,
@@ -635,7 +630,7 @@ void rdma_read_pool_init(struct ib_client_ctx *ctx)
 {
 	for (int i = 0; i < RDMA_READ_POOL_SIZE; i++) {
 		void *buf = NULL;
-		int ret = posix_memalign(&buf, 4096, RDMA_READ_BUF_SIZE);
+		int ret = posix_memalign(&buf, sysconf(_SC_PAGESIZE), RDMA_READ_BUF_SIZE);
 		if (ret) {
 			perror("posix_memalign");
 			_exit(EXIT_FAILURE);
@@ -685,7 +680,7 @@ void *ib_put_and_reply(void *arg)
 		}
 		struct par_net_header *hdr = (struct par_net_header *)par_net_worker_get_start(req);
 		struct ib_client_ctx *ctx = clients[hdr->request_id - 1];
-		pthread_mutex_lock(&ctx->init_lock);
+		pthread_mutex_lock(&ctx->init_lock); // TODO: Remove lock/unlock calls
 		if (!ctx->rdma_read_pool_initialized) {
 			rdma_read_pool_init(ctx);
 			ctx->rdma_read_pool_initialized = 1;
@@ -706,10 +701,14 @@ void *ib_put_and_reply(void *arg)
 			break;
 		}
 
+		int slot;
+		while ((slot = response_slot_acquire(par_net_worker)) < 0) {
+			sched_yield();
+		}
 		struct par_net_header *reply_header =
-			par_net_call[opcode](par_net_worker, par_net_worker_get_start(req));
-
-		par_net_worker_send_reply_buff(reply_header, reply_header->total_bytes, ctx);
+			(struct par_net_header *)par_net_worker_get_response_buffer(par_net_worker, slot);
+		par_net_call[opcode](par_net_worker, hdr, reply_header);
+		par_net_worker_send_reply_buff(par_net_worker, reply_header->total_bytes, ctx->qp, slot);
 
 		struct ibv_sge sge = {
 			.addr = (uintptr_t)ctx->buf,
@@ -778,6 +777,14 @@ int ib_handle_event(struct ibv_wc *wc, struct server_handle *server_handle)
 		worker_scheduler(server_handle, buf);
 		break;
 	case IBV_WC_SEND:;
+		uint16_t type, worker_id;
+		uint32_t slot;
+		parse_wr_id(wc->wr_id, &type, &worker_id, &slot);
+		if (type == 1) {
+			struct par_net_worker *worker = server_handle->par_net_workers[worker_id];
+			par_net_worker_put_response_slot(worker, slot);
+			return 0;
+		}
 		break;
 	case IBV_WC_RDMA_READ:;
 		struct rdma_read_ctx *ctx = (struct rdma_read_ctx *)(uintptr_t)wc->wr_id;

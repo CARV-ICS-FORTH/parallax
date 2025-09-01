@@ -3,10 +3,13 @@
 
 #include "../par_net_worker/par_net_worker.h"
 #include "../par_net_worker/par_net_worker_request.h"
+#include "ccqueue.h"
 #include <arpa/inet.h>
 #include <pthread.h>
 #include <stdatomic.h>
 #include <stdbool.h>
+
+struct server_options;
 
 long ib_server_parse_number(const char *str, const char *opt);
 
@@ -21,6 +24,10 @@ struct server_options *ib_server_parse_argv_opts(int argc, char **argv);
 struct server_handle *ib_server_handle_init(struct server_options *opts);
 
 int ib_server_print_config(struct server_handle *server_handle);
+
+uint32_t ib_server_get_threadno(struct server_handle *handle);
+
+struct ibv_pd *ib_server_get_ibv_pd(struct server_handle *handle);
 
 int ib_handle_cm_event(struct server_handle *server_handle, struct rdma_cm_event *event);
 
