@@ -361,7 +361,6 @@ int ib_handle_cm_event(struct server_handle *server_handle, struct rdma_cm_event
 		ctx->mr = mr;
 		ctx->buf = buf;
 		ctx->qp = client_id->qp;
-		pthread_mutex_init(&ctx->init_lock, NULL);
 		ctx->rdma_read_pool_initialized = 0;
 
 		clients[server_caps.client_id - 1] = ctx;
@@ -680,12 +679,6 @@ void *ib_put_and_reply(void *arg)
 		}
 		struct par_net_header *hdr = (struct par_net_header *)par_net_worker_get_start(req);
 		struct ib_client_ctx *ctx = clients[hdr->request_id - 1];
-		pthread_mutex_lock(&ctx->init_lock); // TODO: Remove lock/unlock calls
-		if (!ctx->rdma_read_pool_initialized) {
-			rdma_read_pool_init(ctx);
-			ctx->rdma_read_pool_initialized = 1;
-		}
-		pthread_mutex_unlock(&ctx->init_lock);
 
 		size_t total_bytes = ib_par_net_get_total_bytes(par_net_worker_get_start(req));
 		if (total_bytes > KV_MAX_SIZE + par_net_header_size()) {
@@ -743,6 +736,10 @@ int ib_handle_event(struct ibv_wc *wc, struct server_handle *server_handle)
 		struct par_net_header *hdr = (struct par_net_header *)buf;
 		if (hdr->inline_flag == 0) {
 			struct ib_client_ctx *client_ctx = clients[hdr->request_id - 1];
+			if (!client_ctx->rdma_read_pool_initialized) {
+				rdma_read_pool_init(client_ctx);
+				client_ctx->rdma_read_pool_initialized = 1;
+			}
 			struct rdma_read_slot *slot = rdma_read_acquire(client_ctx);
 			if (!slot) {
 				fprintf(stderr, "No RDMA READ slots available\n");
