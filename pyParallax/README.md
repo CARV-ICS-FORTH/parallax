@@ -15,7 +15,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 
 # Install pyParallax
-cd pyParallax
+cd build
 pip install .
 
 ```
