@@ -711,7 +711,7 @@ retry:
 		return -1;
 	}
 
-	return recv_buf_size;
+	return wc.byte_len;
 }
 #else
 static ssize_t par_net_RPC(int sockfd, char *send_buffer, size_t send_buffer_len, char **recv_buffer,
