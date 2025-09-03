@@ -263,6 +263,7 @@ add_subdirectory(YCSB-CXX)
 add_subdirectory(utilities)
 add_subdirectory(tests)
 add_subdirectory(tracer)
+add_subdirectory(pyParallax)
 
 set(CPACK_PACKAGE_NAME ${PROJECT_NAME})
 set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
