@@ -54,9 +54,6 @@ struct server_handle {
 	struct ibv_comp_channel *comp_channel;
 	struct ibv_cq *cq;
 	struct ibv_pd *pd;
-	struct ibv_mr *mr;
-	void *buf;
-	size_t buf_size;
 	uint32_t thread_to_queue;
 };
 
@@ -257,20 +254,6 @@ struct server_handle *ib_server_handle_init(struct server_options *opts)
 		_exit(EXIT_FAILURE);
 	}
 
-	handle->buf_size = METADATA_SIZE + MSG_SIZE;
-	int ret = posix_memalign(&handle->buf, sysconf(_SC_PAGESIZE), handle->buf_size);
-	if (ret) {
-		perror("posix_memalign");
-		_exit(EXIT_FAILURE);
-	}
-
-	handle->mr =
-		ibv_reg_mr(handle->pd, handle->buf, handle->buf_size, IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE);
-	if (!handle->mr) {
-		perror("ibv_reg_mr");
-		_exit(EXIT_FAILURE);
-	}
-
 	log_info("InfiniBand server listening on %s:%ld", inet_ntoa(inaddr->sin_addr), opts->port);
 
 	const char *error_message = NULL;
@@ -357,6 +340,16 @@ int ib_handle_cm_event(struct server_handle *server_handle, struct rdma_cm_event
 			return -1;
 		}
 
+		size_t total_size = METADATA_SIZE + MSG_SIZE;
+		void *buf;
+		int ret = posix_memalign(&buf, sysconf(_SC_PAGESIZE), total_size);
+		if (ret) {
+			perror("posix_memalign");
+			return -1;
+		}
+		struct ibv_mr *mr = ibv_reg_mr(server_handle->pd, buf, total_size,
+					       IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE);
+
 		struct ib_client_ctx *ctx = calloc(1, sizeof(*ctx));
 		if (!ctx) {
 			perror("calloc");
@@ -364,17 +357,19 @@ int ib_handle_cm_event(struct server_handle *server_handle, struct rdma_cm_event
 		}
 		ctx->pd = server_handle->pd;
 		ctx->qp = client_id->qp;
+		ctx->mr = mr;
+		ctx->buf = buf;
 		ctx->rdma_read_pool_initialized = 0;
 
 		clients[server_caps.client_id - 1] = ctx;
 
 		struct ibv_sge sge = {
-			.addr = (uintptr_t)server_handle->buf,
-			.length = server_handle->buf_size,
-			.lkey = server_handle->mr->lkey,
+			.addr = (uintptr_t)ctx->buf,
+			.length = total_size,
+			.lkey = ctx->mr->lkey,
 		};
 		struct ibv_recv_wr wr = {
-			.wr_id = (uintptr_t)server_handle->buf,
+			.wr_id = (uintptr_t)ctx->buf,
 			.sg_list = &sge,
 			.num_sge = 1,
 		};
@@ -701,15 +696,13 @@ void *ib_put_and_reply(void *arg)
 		par_net_call[opcode](par_net_worker, hdr, reply_header);
 		par_net_worker_send_reply_buff(par_net_worker, reply_header->total_bytes, ctx->qp, slot);
 
-		struct server_handle *handle = par_net_worker_get_server_handle(par_net_worker);
-
 		struct ibv_sge sge = {
-			.addr = (uintptr_t)handle->buf,
+			.addr = (uintptr_t)ctx->buf,
 			.length = MSG_SIZE,
-			.lkey = handle->mr->lkey,
+			.lkey = ctx->mr->lkey,
 		};
 		struct ibv_recv_wr wr = {
-			.wr_id = (uintptr_t)handle->buf,
+			.wr_id = (uintptr_t)ctx->buf,
 			.sg_list = &sge,
 			.num_sge = 1,
 		};
