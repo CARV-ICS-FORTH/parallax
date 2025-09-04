@@ -17,9 +17,7 @@ struct rdma_read_slot {
 
 struct ib_client_ctx {
 	struct ibv_pd *pd;
-	struct ibv_mr *mr;
 	struct ibv_qp *qp;
-	void *buf;
 	struct rdma_read_slot read_pool[RDMA_READ_POOL_SIZE];
 	bool rdma_read_pool_initialized;
 };
