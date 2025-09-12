@@ -30,6 +30,7 @@
 #define PRSV_WORKER_BUF_SIZE (63U * 4096)
 #define METADATA_SIZE 4096
 #define N_RESPONSE_BUFFERS 4
+#define SECTOR_SIZE 512
 #endif
 
 struct counter {
@@ -297,7 +298,7 @@ void par_net_worker_init_response_buffers(struct par_net_worker *worker, struct 
 	CCQueueThreadState init_ts;
 	CCQueueThreadStateInit(&worker->free_slot_q, &init_ts, 0);
 	for (int i = 0; i < N_RESPONSE_BUFFERS; ++i) {
-		if (posix_memalign((void **)&worker->slots[i].buf, sysconf(_SC_PAGESIZE), buf_size) != 0) {
+		if (posix_memalign((void **)&worker->slots[i].buf, SECTOR_SIZE, buf_size) != 0) {
 			perror("posix_memalign response_buffer");
 			_exit(EXIT_FAILURE);
 		}

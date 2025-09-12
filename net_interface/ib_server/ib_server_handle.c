@@ -35,6 +35,7 @@
 #define MAX_CLIENTS 16
 #define MSG_SIZE 1024
 #define NUM_ENTRIES 16
+#define SECTOR_SIZE 512
 
 struct server_options {
 	uint32_t threadno;
@@ -342,7 +343,7 @@ int ib_handle_cm_event(struct server_handle *server_handle, struct rdma_cm_event
 
 		size_t total_size = METADATA_SIZE + MSG_SIZE;
 		void *buf;
-		int ret = posix_memalign(&buf, sysconf(_SC_PAGESIZE), total_size);
+		int ret = posix_memalign(&buf, SECTOR_SIZE, total_size);
 		if (ret) {
 			perror("posix_memalign");
 			return -1;
@@ -622,7 +623,7 @@ void rdma_read_pool_init(struct ib_client_ctx *ctx)
 {
 	for (int i = 0; i < RDMA_READ_POOL_SIZE; i++) {
 		void *buf = NULL;
-		int ret = posix_memalign(&buf, sysconf(_SC_PAGESIZE), RDMA_READ_BUF_SIZE);
+		int ret = posix_memalign(&buf, SECTOR_SIZE, RDMA_READ_BUF_SIZE);
 		if (ret) {
 			perror("posix_memalign");
 			_exit(EXIT_FAILURE);
@@ -782,11 +783,10 @@ int ib_handle_event(struct ibv_wc *wc, struct server_handle *server_handle)
 		if (ctx->hdr->opcode != OPCODE_PUT) {
 			rdma_read_release(ctx->slot);
 			free(ctx);
-			log_fatal("Unhandled RDMA READ opcode %d", ctx->hdr->opcode);
+			log_fatal("Unhandled RDMA READ opcode");
 		}
 
 		rdma_read_release(ctx->slot);
-		free(ctx);
 
 		worker_scheduler(server_handle, ctx->slot->buf);
 		break;
