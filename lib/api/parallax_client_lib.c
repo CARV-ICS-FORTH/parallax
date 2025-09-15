@@ -39,6 +39,7 @@ char msg[PTL_EV_STR_SIZE];
 #define TIMEOUT_MS 500
 #define SECTOR_SIZE 512
 #define MAX_SERVERS 16
+#define PARALLAX_DB_COUNT 2
 struct my_conn_metadata {
 	uint32_t max_value_size;
 	uint32_t client_id;
@@ -279,6 +280,7 @@ static par_handle par_net_init(const char *parallax_host)
 #define N_SEND_BUFFERS 4
 
 struct par_handle {
+	int db_id;
 	struct rdma_event_channel *ec;
 	struct rdma_cm_id *cm_ids[MAX_SERVERS];
 	int num_servers;
@@ -865,7 +867,8 @@ par_handle par_open(par_db_options *db_options, const char **error_message)
 	}
 
 #ifdef USE_INFINIBAND
-	int hash = 0;
+	parallax_handle->db_id = atoi(db_options->db_name + 6) / PARALLAX_DB_COUNT;
+	int hash = parallax_handle->db_id % parallax_handle->num_servers;
 	struct par_net_header *request_header =
 		(struct par_net_header *)(parallax_handle->send_buffer[hash][parallax_handle->send_idx[hash]]);
 #elif
@@ -948,7 +951,7 @@ const char *par_close(par_handle handle)
 	}
 
 #ifdef USE_INFINIBAND
-	int hash = 0;
+	int hash = parallax_handle->db_id % parallax_handle->num_servers;
 	struct par_net_header *header =
 		(struct par_net_header *)(parallax_handle->send_buffer[hash][parallax_handle->send_idx[hash]]);
 #elif
@@ -1053,7 +1056,7 @@ struct par_put_metadata par_put(par_handle handle, struct par_key_value *key_val
 	}
 
 #ifdef USE_INFINIBAND
-	int hash = 0;
+	int hash = parallax_handle->db_id % parallax_handle->num_servers;
 	struct par_net_header *header =
 		(struct par_net_header *)(parallax_handle->send_buffer[hash][parallax_handle->send_idx[hash]]);
 #elif
@@ -1179,7 +1182,7 @@ void par_get(par_handle handle, struct par_key *key, struct par_value *value, co
 	}
 
 #ifdef USE_INFINIBAND
-	int hash = 0;
+	int hash = parallax_handle->db_id % parallax_handle->num_servers;
 	struct par_net_header *header =
 		(struct par_net_header *)(parallax_handle->send_buffer[hash][parallax_handle->send_idx[hash]]);
 #elif
@@ -1286,7 +1289,7 @@ par_ret_code par_exists(par_handle handle, struct par_key *key)
 	}
 
 #ifdef USE_INFINIBAND
-	int hash = 0;
+	int hash = parallax_handle->db_id % parallax_handle->num_servers;
 	struct par_net_header *header =
 		(struct par_net_header *)(parallax_handle->send_buffer[hash][parallax_handle->send_idx[hash]]);
 #elif
@@ -1368,7 +1371,7 @@ void par_delete(par_handle handle, struct par_key *key, const char **error_messa
 	}
 
 #ifdef USE_INFINIBAND
-	int hash = 0;
+	int hash = parallax_handle->db_id % parallax_handle->num_servers;
 	struct par_net_header *header =
 		(struct par_net_header *)(parallax_handle->send_buffer[hash][parallax_handle->send_idx[hash]]);
 #elif
@@ -1593,7 +1596,7 @@ par_ret_code par_sync(par_handle handle)
 	struct par_handle *parallax_handle = (struct par_handle *)handle;
 
 #ifdef USE_INFINIBAND
-	int hash = 0;
+	int hash = parallax_handle->db_id % parallax_handle->num_servers;
 	struct par_net_sync_req *sync_request = par_net_sync_req_create(
 		parallax_handle->region_id,
 		&parallax_handle->send_buffer[hash][parallax_handle->send_idx[hash]][par_net_header_calc_size()],
@@ -1716,4 +1719,18 @@ void par_flush_superblock(par_handle handle)
 	log_fatal("Unimplemented");
 	_exit(EXIT_FAILURE);
 	(void)handle;
+}
+
+int par_get_num_of_servers(void)
+{
+	int count = 0;
+	char *token = strtok((char *)par_get_default_options()[PARALLAX_SERVER].value, " ,");
+
+	while (token != NULL && count < MAX_SERVERS) {
+		if (strchr(token, ':') != NULL) {
+			count++;
+		}
+		token = strtok(NULL, " ,");
+	}
+	return count;
 }
