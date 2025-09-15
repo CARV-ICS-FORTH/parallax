@@ -22,7 +22,7 @@ Worker threads are spawned during server startup. Each worker:
 <br />
 <br />
 
-**IMPORTANT**: Sync, Delete, and Scan operations are NOT implemented.
+**IMPORTANT**: SCAN operations, par_sync, par_delete and par_exists are NOT implemented.
 
 ## Client Side
 
@@ -103,5 +103,18 @@ Start the server with:
   -L0 <size-in-MB> \
   -GF <growth-factor>
 ```
+
+### Multiple Servers
+
+The project supports running multiple servers in parallel.
+You can specify one or more address:port entries in the options.yml configuration file:
+
+- Single server
+  `parallax_server: 192.168.5.120:7471`
+
+- Multiple servers
+  `parallax_server: 192.168.5.120:7471 192.168.5.120:7472 192.168.5.120:7473 ...`
+
+The client library will automatically establish connections to all listed servers and distribute requests accordingly.
 
 **Note**: if-address and port depend on each machine’s configuration. Adjust accordingly before running.
