@@ -207,6 +207,12 @@ struct par_options_desc *par_get_default_options(void);
 * @return number of bytes of the maximum KV pair size
 */
 uint32_t par_get_max_kv_pair_size(void);
+
+/**
+ * Returns the number of servers that are currently available
+ * @return number of servers (0 if none configured)
+ */
+int par_get_num_of_servers(void);
 #ifdef __cplusplus
 }
 #endif
