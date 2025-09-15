@@ -118,3 +118,24 @@ You can specify one or more address:port entries in the options.yml configuratio
 The client library will automatically establish connections to all listed servers and distribute requests accordingly.
 
 **Note**: if-address and port depend on each machine’s configuration. Adjust accordingly before running.
+
+### Client Initialization
+
+(For fdb-hammer)
+<br />
+On startup, a helper tool is provided in net_interface/ib_server/ib_tools that pre-initializes the databases required by the FDB client (fdb-hammer).
+<br />
+This tool also includes a simple test program that demonstrates basic API calls against the InfiniBand Parallax server.
+
+#### Build Instructions
+
+```
+mkdir build
+cd build
+cmake -DCMAKE_INSTALL_PREFIX=~/local ..   # Ensure Parallax libraries can be found
+make
+```
+
+#### Run Client Initialization
+
+`LD_LIBRARY_PATH=~/local/lib:$LD_LIBRARY_PATH ./ib_client_init`
