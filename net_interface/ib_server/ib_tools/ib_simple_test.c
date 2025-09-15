@@ -4,8 +4,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define TEST_DB_PATH "/tmp/root/parallax/default"
-#define TEST_DB_NAME "test_db"
+#define TEST_DB_PATH "/tmp/root/parallax/default0"
+#define TEST_DB_NAME "par_db0"
 #define TEST_KEY "key"
 #define TEST_VALUE "value"
 #define LARGE_VALUE_SIZE 16990
