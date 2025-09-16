@@ -39,9 +39,9 @@ char msg[PTL_EV_STR_SIZE];
 #define TIMEOUT_MS 500
 #define SECTOR_SIZE 512
 #define MAX_SERVERS 16
-#define PARALLAX_DB_COUNT 2
+#define PARALLAX_DB_COUNT 8
 struct my_conn_metadata {
-	uint32_t max_value_size;
+	uint32_t max_buffer_size;
 	uint32_t client_id;
 };
 uint32_t client_id = 0;
@@ -296,6 +296,7 @@ struct par_handle {
 	uint64_t region_id;
 	struct par_options_desc *configuration;
 	int send_idx[MAX_SERVERS];
+	uint32_t max_buffer_size;
 };
 
 struct address_info {
@@ -452,6 +453,7 @@ struct par_handle *par_net_init(const char *parallax_host)
 				struct my_conn_metadata *meta =
 					(struct my_conn_metadata *)event->param.conn.private_data;
 				client_id = meta->client_id;
+				handle->max_buffer_size = meta->max_buffer_size;
 			}
 			rdma_ack_cm_event(event);
 		}

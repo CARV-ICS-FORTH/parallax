@@ -59,7 +59,7 @@ struct server_handle {
 };
 
 struct my_conn_metadata {
-	uint32_t max_value_size;
+	uint32_t max_buffer_size;
 	uint32_t client_id;
 };
 
@@ -326,7 +326,7 @@ int ib_handle_cm_event(struct server_handle *server_handle, struct rdma_cm_event
 			return -1;
 		}
 		struct my_conn_metadata server_caps = {
-			.max_value_size = 1024 * 512,
+			.max_buffer_size = KV_MAX_SIZE,
 			.client_id = __sync_fetch_and_add(&client_id_counter, 1),
 		};
 		struct rdma_conn_param conn_param = {
