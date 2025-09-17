@@ -39,7 +39,6 @@ char msg[PTL_EV_STR_SIZE];
 #define TIMEOUT_MS 500
 #define SECTOR_SIZE 512
 #define MAX_SERVERS 16
-#define PARALLAX_DB_COUNT 8
 struct my_conn_metadata {
 	uint32_t max_buffer_size;
 	uint32_t client_id;
@@ -280,7 +279,7 @@ static par_handle par_net_init(const char *parallax_host)
 #define N_SEND_BUFFERS 4
 
 struct par_handle {
-	int db_id;
+	char *db_name;
 	struct rdma_event_channel *ec;
 	struct rdma_cm_id *cm_ids[MAX_SERVERS];
 	int num_servers;
@@ -567,6 +566,7 @@ void par_net_handle_destroy(par_handle handle)
 	ibv_destroy_comp_channel(parallax_handle->comp_channel);
 	ibv_dealloc_pd(parallax_handle->pd);
 	rdma_destroy_event_channel(parallax_handle->ec);
+	free(parallax_handle->db_name);
 #else
 	if (close(parallax_handle->sockfd) < 0) {
 		log_fatal("Failed to close the socket");
@@ -843,6 +843,15 @@ static ssize_t par_net_RPC(int sockfd, char *send_buffer, size_t send_buffer_len
 }
 #endif
 
+unsigned long djb2_hash(const char *str)
+{
+	unsigned long hash = 5381;
+	int c;
+	while ((c = *str++))
+		hash = ((hash << 5) + hash) + c;
+	return hash;
+}
+
 char *par_format(char *device_name, uint32_t max_regions_num)
 {
 	(void)device_name;
@@ -869,8 +878,8 @@ par_handle par_open(par_db_options *db_options, const char **error_message)
 	}
 
 #ifdef USE_INFINIBAND
-	parallax_handle->db_id = atoi(db_options->db_name + 6) / PARALLAX_DB_COUNT;
-	int hash = parallax_handle->db_id % parallax_handle->num_servers;
+	parallax_handle->db_name = strdup(db_options->db_name);
+	int hash = djb2_hash(parallax_handle->db_name) % parallax_handle->num_servers;
 	struct par_net_header *request_header =
 		(struct par_net_header *)(parallax_handle->send_buffer[hash][parallax_handle->send_idx[hash]]);
 #elif
@@ -953,7 +962,7 @@ const char *par_close(par_handle handle)
 	}
 
 #ifdef USE_INFINIBAND
-	int hash = parallax_handle->db_id % parallax_handle->num_servers;
+	int hash = djb2_hash(parallax_handle->db_name) % parallax_handle->num_servers;
 	struct par_net_header *header =
 		(struct par_net_header *)(parallax_handle->send_buffer[hash][parallax_handle->send_idx[hash]]);
 #elif
@@ -1058,7 +1067,7 @@ struct par_put_metadata par_put(par_handle handle, struct par_key_value *key_val
 	}
 
 #ifdef USE_INFINIBAND
-	int hash = parallax_handle->db_id % parallax_handle->num_servers;
+	int hash = djb2_hash(parallax_handle->db_name) % parallax_handle->num_servers;
 	struct par_net_header *header =
 		(struct par_net_header *)(parallax_handle->send_buffer[hash][parallax_handle->send_idx[hash]]);
 #elif
@@ -1184,7 +1193,7 @@ void par_get(par_handle handle, struct par_key *key, struct par_value *value, co
 	}
 
 #ifdef USE_INFINIBAND
-	int hash = parallax_handle->db_id % parallax_handle->num_servers;
+	int hash = djb2_hash(parallax_handle->db_name) % parallax_handle->num_servers;
 	struct par_net_header *header =
 		(struct par_net_header *)(parallax_handle->send_buffer[hash][parallax_handle->send_idx[hash]]);
 #elif
@@ -1291,7 +1300,7 @@ par_ret_code par_exists(par_handle handle, struct par_key *key)
 	}
 
 #ifdef USE_INFINIBAND
-	int hash = parallax_handle->db_id % parallax_handle->num_servers;
+	int hash = djb2_hash(parallax_handle->db_name) % parallax_handle->num_servers;
 	struct par_net_header *header =
 		(struct par_net_header *)(parallax_handle->send_buffer[hash][parallax_handle->send_idx[hash]]);
 #elif
@@ -1373,7 +1382,7 @@ void par_delete(par_handle handle, struct par_key *key, const char **error_messa
 	}
 
 #ifdef USE_INFINIBAND
-	int hash = parallax_handle->db_id % parallax_handle->num_servers;
+	int hash = djb2_hash(parallax_handle->db_name) % parallax_handle->num_servers;
 	struct par_net_header *header =
 		(struct par_net_header *)(parallax_handle->send_buffer[hash][parallax_handle->send_idx[hash]]);
 #elif
@@ -1598,7 +1607,7 @@ par_ret_code par_sync(par_handle handle)
 	struct par_handle *parallax_handle = (struct par_handle *)handle;
 
 #ifdef USE_INFINIBAND
-	int hash = parallax_handle->db_id % parallax_handle->num_servers;
+	int hash = djb2_hash(parallax_handle->db_name) % parallax_handle->num_servers;
 	struct par_net_sync_req *sync_request = par_net_sync_req_create(
 		parallax_handle->region_id,
 		&parallax_handle->send_buffer[hash][parallax_handle->send_idx[hash]][par_net_header_calc_size()],
