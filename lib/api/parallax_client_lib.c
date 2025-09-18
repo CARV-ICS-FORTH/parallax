@@ -38,7 +38,7 @@ char msg[PTL_EV_STR_SIZE];
 #define KV_SIZE_THRESHOLD 256
 #define TIMEOUT_MS 500
 #define SECTOR_SIZE 512
-#define MAX_SERVERS 16
+#define MAX_SERVERS 50
 struct my_conn_metadata {
 	uint32_t max_buffer_size;
 	uint32_t client_id;
