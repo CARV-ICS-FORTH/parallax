@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include "../lib/include/parallax/parallax.h"
 #include "../lib/include/parallax/structures.h"
+#include "../net_interface/par_net/par_net.h"
 
 static PyObject *py_par_format(PyObject *self, PyObject *args){
 	(void)self;
@@ -172,12 +173,40 @@ static PyObject *py_par_close(PyObject *self, PyObject *args){
 	Py_RETURN_NONE;
 }
 
+static PyObject *py_par_metrics(PyObject* self, PyObject* args){
+  (void)self;
+
+#ifdef USE_PAR_NET_METRICS
+
+  PyObject *capsule;
+  Py_ssize_t flags;
+
+  if(!PyArg_ParseTuple(args, "O#", &capsule, &flags)){
+    return NULL;
+  }
+
+  if(!PyCapsule_IsValid(capsule, "par_handle")) {
+    PyErr_SetString(PyExc_TypeError, "Invalid handle capsule");
+    return NULL;
+  }
+
+  par_handle handle = (par_handle)PyCapsule_GetPointer(capsule, "par_handle");
+
+  par_metrics(handle, flags);
+
+#endif /* ifdef USE_PAR_NET_METRICS */
+  
+  Py_RETURN_NONE;
+
+}
+
 static PyMethodDef PyParallaxMethods[] = {
 	{"format", py_par_format, METH_VARARGS, "Format a Parallax device"},
 	{"open", py_par_open, METH_VARARGS, "Open Parallax DB"},
 	{"get", py_par_get, METH_VARARGS, "Get Value"},
 	{"put", py_par_put, METH_VARARGS, "Put Value"},
 	{"close", py_par_close, METH_VARARGS, "Close parallax DB"},
+  {"metrics", py_par_metrics, METH_VARARGS, "Gather metrics from server"},
 	{NULL, NULL, 0, NULL}
 };
 

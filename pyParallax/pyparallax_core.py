@@ -23,3 +23,6 @@ def close(handle) -> None:
     print("[pyParallax] Calling par_close") 
     return pyparallax_shim.close(handle)
 
+def metrics(handle, flags: int) -> None:
+    print("[pyParallax] Calling par_metrics")
+    return pyparallax_shim.metrics(handle, flags)

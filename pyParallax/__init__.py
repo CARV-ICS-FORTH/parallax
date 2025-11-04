@@ -5,6 +5,7 @@ open = _core.open
 put = _core.put
 get = _core.get
 close = _core.close
+metrics = _core.metrics
 
 class _Opts:
     PAR_CREATE_DB = _core.PAR_CREATE_DB
@@ -18,6 +19,7 @@ __all__ = [
         "put",
         "get",
         "close",
+        "metrics",
         "opts"
 ]
 
