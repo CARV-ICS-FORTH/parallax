@@ -46,6 +46,7 @@ struct my_conn_metadata {
 uint32_t client_id = 0;
 uint32_t counter = 0;
 #else
+#define MAX_SERVERS 0
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <netinet/in.h>
@@ -581,7 +582,7 @@ void par_net_handle_destroy(par_handle handle)
 			ibv_dereg_mr(parallax_handle->send_mr[i][j]);
 		}
 	}
-#elif
+#elif USE_TCP
 	free(parallax_handle->send_buffer);
 	free(parallax_handle->recv_buffer);
 #endif
@@ -835,7 +836,9 @@ static ssize_t par_net_RPC(int sockfd, char *send_buffer, size_t send_buffer_len
 
 		ssize_t extra_bytes_received = recvmsg(sockfd, &msg_reply, 0);
 		assert(extra_bytes_received + bytes_received == reply_header->total_bytes);
-	}
+	
+    (void)extra_bytes_received;
+  }
 
 	// log_debug("Total Reply size == %ld", bytes_received);
 
@@ -882,10 +885,11 @@ par_handle par_open(par_db_options *db_options, const char **error_message)
 	int hash = djb2_hash(parallax_handle->db_name) % parallax_handle->num_servers;
 	struct par_net_header *request_header =
 		(struct par_net_header *)(parallax_handle->send_buffer[hash][parallax_handle->send_idx[hash]]);
-#elif
-	struct par_net_header *request =
-		(struct par_net_header *)parallax_handle->send_buffer[parallax_handle->send_idx[hash]];
+#elif USE_TCP
+	struct par_net_header *request_header = (struct par_net_header *)(parallax_handle->send_buffer);
 #endif
+
+
 	request_header->total_bytes = msg_len;
 	request_header->opcode = OPCODE_OPEN;
 #ifdef USE_INFINIBAND
@@ -901,7 +905,7 @@ par_handle par_open(par_db_options *db_options, const char **error_message)
 		db_options->create_flag, db_options->db_name,
 		&parallax_handle->send_buffer[hash][parallax_handle->send_idx[hash]][par_net_header_calc_size()],
 		&buffer_len);
-#elif
+#elif USE_TCP
 	struct par_net_open_req *request =
 		par_net_open_req_create(db_options->create_flag, db_options->db_name,
 					&parallax_handle->send_buffer[par_net_header_calc_size()], &buffer_len);
@@ -931,11 +935,12 @@ par_handle par_open(par_db_options *db_options, const char **error_message)
 	assert(reply_header->opcode == OPCODE_OPEN);
 	par_handle ret_handle =
 		par_net_open_rep_handle_reply(&parallax_handle->recv_buffer[hash][par_net_header_calc_size()]);
-#elif
+#elif USE_TCP
 	struct par_net_header *reply_header = (struct par_net_header *)parallax_handle->recv_buffer;
 	assert(reply_header->opcode == OPCODE_OPEN);
 	par_handle ret_handle =
 		par_net_open_rep_handle_reply(&parallax_handle->recv_buffer[par_net_header_calc_size()]);
+  (void)reply_header;
 #endif
 
 	if (0 == ret_handle) {
@@ -965,7 +970,7 @@ const char *par_close(par_handle handle)
 	int hash = djb2_hash(parallax_handle->db_name) % parallax_handle->num_servers;
 	struct par_net_header *header =
 		(struct par_net_header *)(parallax_handle->send_buffer[hash][parallax_handle->send_idx[hash]]);
-#elif
+#elif USE_TCP
 	struct par_net_header *header = (struct par_net_header *)(parallax_handle->send_buffer);
 #endif
 	header->total_bytes = msg_len;
@@ -983,7 +988,7 @@ const char *par_close(par_handle handle)
 		parallax_handle->region_id,
 		&parallax_handle->send_buffer[hash][parallax_handle->send_idx[hash]][par_net_header_calc_size()],
 		&buffer_len);
-#elif
+#elif USE_TCP
 	struct par_net_close_req *request = par_net_close_req_create(
 		parallax_handle->region_id, &parallax_handle->send_buffer[par_net_header_calc_size()], &buffer_len);
 #endif
@@ -1011,11 +1016,12 @@ const char *par_close(par_handle handle)
 	assert(reply_header->opcode == OPCODE_CLOSE);
 	struct par_net_close_rep *reply =
 		(struct par_net_close_rep *)&parallax_handle->recv_buffer[hash][par_net_header_calc_size()];
-#elif
+#elif USE_TCP
 	struct par_net_header *reply_header = (struct par_net_header *)parallax_handle->recv_buffer;
 	assert(reply_header->opcode == OPCODE_CLOSE);
 	struct par_net_close_rep *reply =
 		(struct par_net_close_rep *)&parallax_handle->recv_buffer[par_net_header_calc_size()];
+  (void)reply_header;
 #endif
 	const char *error_message = par_net_close_rep_handle_reply(reply);
 
@@ -1070,9 +1076,8 @@ struct par_put_metadata par_put(par_handle handle, struct par_key_value *key_val
 	int hash = djb2_hash(parallax_handle->db_name) % parallax_handle->num_servers;
 	struct par_net_header *header =
 		(struct par_net_header *)(parallax_handle->send_buffer[hash][parallax_handle->send_idx[hash]]);
-#elif
-	struct par_net_header *header =
-		(struct par_net_header *)parallax_handle->send_buffer[parallax_handle->send_idx[hash]];
+#elif USE_TCP
+	struct par_net_header *header = (struct par_net_header *)(parallax_handle->send_buffer);
 #endif
 	header->total_bytes = msg_len;
 	header->opcode = OPCODE_PUT;
@@ -1090,7 +1095,7 @@ struct par_put_metadata par_put(par_handle handle, struct par_key_value *key_val
 		key_value->v.val_buffer,
 		&parallax_handle->send_buffer[hash][parallax_handle->send_idx[hash]][par_net_header_calc_size()],
 		&buffer_len);
-#elif
+#elif USE_TCP
 	struct par_net_put_req *request = par_net_put_req_create(
 		parallax_handle->region_id, key_value->k.size, key_value->k.data, key_value->v.val_size,
 		key_value->v.val_buffer, &parallax_handle->send_buffer[par_net_header_calc_size()], &buffer_len);
@@ -1145,11 +1150,12 @@ struct par_put_metadata par_put(par_handle handle, struct par_key_value *key_val
 	assert(OPCODE_PUT == reply_header->opcode);
 	struct par_net_put_rep *reply =
 		(struct par_net_put_rep *)&parallax_handle->recv_buffer[hash][par_net_header_calc_size()];
-#elif
+#elif USE_TCP
 	struct par_net_header *reply_header = (struct par_net_header *)parallax_handle->recv_buffer;
 	assert(OPCODE_PUT == reply_header->opcode);
 	struct par_net_put_rep *reply =
 		(struct par_net_put_rep *)&parallax_handle->recv_buffer[par_net_header_calc_size()];
+  (void)reply_header;
 #endif
 
 	struct par_put_metadata metadata = par_net_put_rep_handle_reply(reply);
@@ -1196,7 +1202,7 @@ void par_get(par_handle handle, struct par_key *key, struct par_value *value, co
 	int hash = djb2_hash(parallax_handle->db_name) % parallax_handle->num_servers;
 	struct par_net_header *header =
 		(struct par_net_header *)(parallax_handle->send_buffer[hash][parallax_handle->send_idx[hash]]);
-#elif
+#elif USE_TCP
 	struct par_net_header *header = (struct par_net_header *)(parallax_handle->send_buffer);
 #endif
 	header->total_bytes = msg_len;
@@ -1214,7 +1220,7 @@ void par_get(par_handle handle, struct par_key *key, struct par_value *value, co
 		parallax_handle->region_id, key->size, key->data, true,
 		&parallax_handle->send_buffer[hash][parallax_handle->send_idx[hash]][par_net_header_calc_size()],
 		&buffer_len);
-#elif
+#elif USE_TCP
 	struct par_net_get_req *request =
 		par_net_get_req_create(parallax_handle->region_id, key->size, key->data, true,
 				       &parallax_handle->send_buffer[par_net_header_calc_size()], &buffer_len);
@@ -1267,7 +1273,7 @@ void par_get(par_handle handle, struct par_key *key, struct par_value *value, co
 #ifdef USE_INFINIBAND
 	struct par_net_get_rep *reply =
 		(struct par_net_get_rep *)&parallax_handle->recv_buffer[hash][par_net_header_calc_size()];
-#elif
+#elif USE_TCP
 	struct par_net_get_rep *reply =
 		(struct par_net_get_rep *)&parallax_handle->recv_buffer[par_net_header_calc_size()];
 #endif
@@ -1303,7 +1309,7 @@ par_ret_code par_exists(par_handle handle, struct par_key *key)
 	int hash = djb2_hash(parallax_handle->db_name) % parallax_handle->num_servers;
 	struct par_net_header *header =
 		(struct par_net_header *)(parallax_handle->send_buffer[hash][parallax_handle->send_idx[hash]]);
-#elif
+#elif USE_TCP
 	struct par_net_header *header = (struct par_net_header *)(parallax_handle->send_buffer);
 #endif
 	header->total_bytes = msg_len;
@@ -1315,7 +1321,7 @@ par_ret_code par_exists(par_handle handle, struct par_key *key)
 		parallax_handle->region_id, key->size, key->data, false,
 		&parallax_handle->send_buffer[hash][parallax_handle->send_idx[hash]][par_net_header_calc_size()],
 		&buffer_len);
-#elif
+#elif USE_TCP
 	struct par_net_get_req *request =
 		par_net_get_req_create(parallax_handle->region_id, key->size, key->data, false,
 				       &parallax_handle->send_buffer[par_net_header_calc_size()], &buffer_len);
@@ -1344,7 +1350,7 @@ par_ret_code par_exists(par_handle handle, struct par_key *key)
 #ifdef USE_INFINIBAND
 	struct par_net_get_rep *reply =
 		(struct par_net_get_rep *)&parallax_handle->recv_buffer[hash][par_net_header_calc_size()];
-#elif
+#elif USE_TCP
 	struct par_net_get_rep *reply =
 		(struct par_net_get_rep *)&parallax_handle->recv_buffer[par_net_header_calc_size()];
 #endif
@@ -1385,7 +1391,7 @@ void par_delete(par_handle handle, struct par_key *key, const char **error_messa
 	int hash = djb2_hash(parallax_handle->db_name) % parallax_handle->num_servers;
 	struct par_net_header *header =
 		(struct par_net_header *)(parallax_handle->send_buffer[hash][parallax_handle->send_idx[hash]]);
-#elif
+#elif USE_TCP
 	struct par_net_header *header = (struct par_net_header *)(parallax_handle->send_buffer);
 #endif
 	header->total_bytes = msg_len;
@@ -1397,7 +1403,7 @@ void par_delete(par_handle handle, struct par_key *key, const char **error_messa
 		parallax_handle->region_id, key->size, key->data,
 		&parallax_handle->send_buffer[hash][parallax_handle->send_idx[hash]][par_net_header_calc_size()],
 		&buffer_len);
-#elif
+#elif USE_TCP
 	struct par_net_del_req *request =
 		par_net_del_req_create(parallax_handle->region_id, key->size, key->data,
 				       &parallax_handle->send_buffer[par_net_header_calc_size()], &buffer_len);
@@ -1427,11 +1433,12 @@ void par_delete(par_handle handle, struct par_key *key, const char **error_messa
 	assert(OPCODE_DEL == reply_header->opcode);
 	struct par_net_del_rep *delete_reply =
 		(struct par_net_del_rep *)&parallax_handle->recv_buffer[hash][par_net_header_calc_size()];
-#elif
+#elif USE_TCP
 	struct par_net_header *reply_header = (struct par_net_header *)parallax_handle->recv_buffer;
 	assert(OPCODE_DEL == reply_header->opcode);
 	struct par_net_del_rep *delete_reply =
 		(struct par_net_del_rep *)&parallax_handle->recv_buffer[par_net_header_calc_size()];
+  (void)reply_header;
 #endif
 	par_net_del_rep_handle_reply(delete_reply);
 }
@@ -1612,7 +1619,7 @@ par_ret_code par_sync(par_handle handle)
 		parallax_handle->region_id,
 		&parallax_handle->send_buffer[hash][parallax_handle->send_idx[hash]][par_net_header_calc_size()],
 		parallax_handle->send_buffer_size - par_net_header_calc_size());
-#elif
+#elif USE_TCP
 	struct par_net_sync_req *sync_request = par_net_sync_req_create(
 		parallax_handle->region_id, &parallax_handle->send_buffer[par_net_header_calc_size()],
 		parallax_handle->send_buffer_size - par_net_header_calc_size());
@@ -1624,7 +1631,7 @@ par_ret_code par_sync(par_handle handle)
 #ifdef USE_INFINIBAND
 	struct par_net_header *request =
 		(struct par_net_header *)parallax_handle->send_buffer[parallax_handle->send_idx[hash]];
-#elif
+#elif USE_TCP
 	struct par_net_header *request = (struct par_net_header *)(parallax_handle->send_buffer);
 #endif
 	request->opcode = OPCODE_SYNC;
