@@ -102,6 +102,12 @@ add_executable(
   ../net_interface/par_net/par_net_close.c
   ../net_interface/par_net/par_net_scan.c
   ../net_interface/par_net/par_net_sync.c)
+
+if(PAR_NET_METRICS)
+  target_sources(server.${LIB} PRIVATE ../net_interface/par_net/par_net_metrics.c)
+  target_compile_definitions(server.${LIB} PRIVATE USE_PAR_NET_METRICS)
+endif()
+
 target_compile_definitions(server.${LIB} PUBLIC -DSTANDALONE_FORMAT)
 target_link_libraries(server.${LIB} PRIVATE ${LIB} ${DEPENDENCIES})
 

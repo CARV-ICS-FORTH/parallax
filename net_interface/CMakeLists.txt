@@ -18,6 +18,10 @@ set(NET_LIB_SOURCE_FILES
     ../lib/btree/kv_pairs.c
     ../lib/common/common.c)
 
+if(PAR_NET_METRICS)
+ list(APPEND NET_LIB_SOURCE_FILES par_net/par_net_metrics.c)
+endif()
+
 add_library(${NET_LIB} SHARED ${NET_LIB_SOURCE_FILES})
 
 set_target_properties(

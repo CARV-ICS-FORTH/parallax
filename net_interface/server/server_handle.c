@@ -124,6 +124,13 @@ struct worker {
 	size_t recv_buffer_size;
 	char *send_buffer;
 	size_t send_buffer_size;
+
+#ifdef USE_PAR_NET_METRICS
+  uint32_t op_count[OPCODE_MAX];
+  uint32_t avg_io_count;
+  uint32_t total_ops_count;
+#endif 
+
 };
 
 #ifdef SSL
@@ -1146,6 +1153,46 @@ static struct par_net_header *par_net_call_close(struct worker *worker, void *ar
 	return reply_header;
 }
 
+static struct par_net_header *par_net_call_metrics(struct worker *worker, void *args){
+	(void)args;
+
+  struct par_net_metrics_req *request =
+		(struct par_net_metrics_req *)&worker->recv_buffer[par_net_header_calc_size()];
+
+  uint8_t flags = par_net_metrics_req_get_flags(request);
+
+	uint32_t num_workers = worker->server_handle->opts->threadno;
+
+  uint32_t get_ops = 0;
+  uint32_t put_ops = 0; 
+  uint32_t avg_io = 0;
+  uint32_t total_ops = 0;
+
+  for (uint32_t i = 0; i < num_workers; i++) {
+    struct worker *w = &worker[i];
+    get_ops += w->op_count[OPCODE_GET];
+    put_ops += w->op_count[OPCODE_PUT];
+    avg_io  += w->avg_io_count;     
+    total_ops += w->total_ops_count;
+  }
+
+  avg_io = (total_ops > 0) ? (uint32_t)(avg_io / total_ops) : 0;
+
+  size_t buffer_len = worker->send_buffer_size - par_net_header_calc_size();
+	struct par_net_metrics_rep *reply =
+		par_net_metrics_rep_create(get_ops, put_ops, avg_io, total_ops, &worker->send_buffer[par_net_header_calc_size()], buffer_len);
+	if (NULL == reply) {
+		log_warn("Failed to create get reply");
+		return NULL;
+	}
+
+  struct par_net_header *reply_header = (struct par_net_header *)worker->send_buffer;
+	reply_header->opcode = OPCODE_METRICS;
+  reply_header->total_bytes = par_net_header_calc_size() + par_net_metrics_rep_calc_size();
+  return reply_header;
+
+}
+
 const par_call par_net_call[OPCODE_MAX] = { NULL,
 					    par_net_call_open,
 					    par_net_call_put,
@@ -1153,7 +1200,8 @@ const par_call par_net_call[OPCODE_MAX] = { NULL,
 					    par_net_call_get,
 					    par_net_call_close,
 					    par_net_call_scan,
-					    par_net_call_sync };
+					    par_net_call_sync,
+              par_net_call_metrics};
 
 static int __par_handle_req(struct worker *restrict worker, int client_sock, struct tcp_req *restrict req)
 {
@@ -1207,6 +1255,12 @@ static int __par_handle_req(struct worker *restrict worker, int client_sock, str
 		log_fatal("invalid opcode");
 		return EXIT_FAILURE;
 	}
+
+#ifdef USE_PAR_NET_METRICS
+  worker->op_count[opcode]++;
+  worker->total_ops_count++;
+  worker->avg_io_count += bytes_received;
+#endif
 
 	struct par_net_header *reply_header = par_net_call[opcode](worker, NULL);
 

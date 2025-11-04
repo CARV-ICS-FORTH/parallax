@@ -19,6 +19,9 @@
 #include "par_net_get.h"
 #include "par_net_open.h"
 #include "par_net_put.h"
+#ifdef USE_PAR_NET_METRICS
+#include "par_net_metrics.h"
+#endif
 struct worker;
 struct par_net_worker;
 
@@ -30,7 +33,8 @@ enum par_net_op {
 	OPCODE_CLOSE,
 	OPCODE_SCAN,
 	OPCODE_SYNC,
-	OPCODE_MAX
+  OPCODE_METRICS,
+	OPCODE_MAX,
 };
 
 struct par_net_header {
@@ -69,5 +73,7 @@ uint32_t par_net_header_get_opcode(char *buffer);
   *  @return reply buffer on success and NULL on failure
   */
 char *par_net_send(char *buffer, size_t *buffer_len);
+
+void par_metrics(par_handle handle, uint8_t flags);
 
 #endif
