@@ -1,6 +1,5 @@
 #define PY_SSIZE_T_CLEAN
 #include <Python.h>
-#include <stdio.h>
 #include "../lib/include/parallax/parallax.h"
 #include "../lib/include/parallax/structures.h"
 #include "../net_interface/par_net/par_net.h"
@@ -176,8 +175,6 @@ static PyObject *py_par_close(PyObject *self, PyObject *args){
 static PyObject *py_par_metrics(PyObject* self, PyObject* args){
   (void)self;
 
-#ifdef USE_PAR_NET_METRICS
-
   PyObject *capsule;
   Py_ssize_t flags;
 
@@ -193,9 +190,7 @@ static PyObject *py_par_metrics(PyObject* self, PyObject* args){
   par_handle handle = (par_handle)PyCapsule_GetPointer(capsule, "par_handle");
 
   par_metrics(handle, flags);
-
-#endif /* ifdef USE_PAR_NET_METRICS */
-  
+ 
   Py_RETURN_NONE;
 
 }

@@ -74,6 +74,5 @@ uint32_t par_net_header_get_opcode(char *buffer);
   */
 char *par_net_send(char *buffer, size_t *buffer_len);
 
-void par_metrics(par_handle handle, uint8_t flags);
 
 #endif

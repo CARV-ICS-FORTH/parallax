@@ -21,6 +21,9 @@
 #include "../net_interface/par_net/par_net_put.h"
 #include "../net_interface/par_net/par_net_scan.h"
 #include "../net_interface/par_net/par_net_sync.h"
+#ifdef USE_PAR_NET_METRICS
+#include "../net_interface/par_net/par_net_metrics.h"
+#endif
 #include "../scanner/scanner.h"
 #include <pthread.h>
 #include <stdio.h>
@@ -1660,6 +1663,52 @@ par_ret_code par_sync(par_handle handle)
 	}
 	return ret_val;
 }
+
+
+void par_metrics(par_handle handle, uint8_t flags){
+
+	struct par_handle *parallax_handle = (struct par_handle *)handle;
+  size_t msg_len = par_net_metrics_req_calc_size(); 
+
+  if(msg_len > parallax_handle->send_buffer_size){
+    log_fatal("Send buffer too small has: %u B needs %lu B", parallax_handle->send_buffer_size, msg_len);
+		_exit(EXIT_FAILURE);
+  }
+
+	struct par_net_header *header = (struct par_net_header *)(parallax_handle->send_buffer);
+	header->total_bytes = msg_len;
+	header->opcode = OPCODE_METRICS;
+
+	size_t buffer_len = parallax_handle->recv_buffer_size - par_net_header_calc_size();
+  struct par_net_metrics_req *request = par_net_metrics_req_create(flags, 
+                                        &parallax_handle->send_buffer[par_net_header_calc_size()], &buffer_len);
+
+  if(NULL == request){
+    log_fatal("Failed to create Metrics request");
+    _exit(EXIT_FAILURE);
+  }
+
+  ssize_t bytes_received = par_net_RPC(parallax_handle->sockfd, parallax_handle->send_buffer, msg_len, 
+                    &parallax_handle->recv_buffer, parallax_handle->recv_buffer_size);
+
+  
+  if(0 == bytes_received){
+    return;
+  }
+
+  struct par_net_header *reply_header = (struct par_net_header *)parallax_handle->recv_buffer;
+	assert(OPCODE_METRICS == reply_header->opcode);
+	struct par_net_metrics_rep *metrics_reply =
+		(struct par_net_metrics_rep *)&parallax_handle->recv_buffer[par_net_header_calc_size()];
+
+
+  (void)reply_header;
+  par_net_metrics_rep_handle_reply(metrics_reply);
+
+}
+
+
+
 
 struct par_options_desc *par_get_default_options(void)
 {

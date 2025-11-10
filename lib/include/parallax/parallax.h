@@ -213,6 +213,9 @@ uint32_t par_get_max_kv_pair_size(void);
  * @return number of servers (0 if none configured)
  */
 int par_get_num_of_servers(void);
+
+
+void par_metrics(par_handle handle, uint8_t flags);
 #ifdef __cplusplus
 }
 #endif

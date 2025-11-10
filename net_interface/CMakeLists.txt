@@ -19,15 +19,21 @@ set(NET_LIB_SOURCE_FILES
     ../lib/common/common.c)
 
 if(PAR_NET_METRICS)
- list(APPEND NET_LIB_SOURCE_FILES par_net/par_net_metrics.c)
+  list(APPEND NET_LIB_SOURCE_FILES par_net/par_net_metrics.c)
 endif()
 
 add_library(${NET_LIB} SHARED ${NET_LIB_SOURCE_FILES})
 
+target_link_libraries(${NET_LIB} ${DEPENDENCIES})
 set_target_properties(
   ${NET_LIB}
   PROPERTIES PUBLIC_HEADER
              "${CMAKE_CURRENT_SOURCE_DIR}/../lib/include/parallax/parallax.h")
+
+
+if(PAR_NET_METRICS)
+  target_compile_definitions(${NET_LIB} PRIVATE USE_PAR_NET_METRICS)
+endif()
 
 target_include_directories(${NET_LIB}
                            PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/../lib/include")
