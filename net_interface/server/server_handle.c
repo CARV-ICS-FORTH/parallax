@@ -127,7 +127,10 @@ struct worker {
 
 #ifdef USE_PAR_NET_METRICS
   uint32_t op_count[OPCODE_MAX];
-  uint32_t avg_io_count;
+  uint32_t get_avg_key_size;
+  uint32_t get_avg_value_size;
+  uint32_t put_avg_key_size;
+  uint32_t put_avg_value_size;
   uint32_t total_ops_count;
 #endif 
 
@@ -809,6 +812,16 @@ static void *__handle_events(void *arg)
 	worker->send_buffer = calloc(1UL, INITIAL_NET_BUF_SIZE);
 	worker->send_buffer_size = INITIAL_NET_BUF_SIZE;
 
+#ifdef USE_PAR_NET_METRICS
+  memset(worker->op_count, 0, sizeof(worker->op_count));
+  worker->get_avg_key_size = 0;
+  worker->get_avg_value_size = 0;
+  worker->put_avg_key_size = 0;
+  worker->put_avg_value_size = 0;
+  worker->total_ops_count = 0;
+#endif
+
+
 	infinite_loop_start();
 
 	events = epoll_wait(worker->epfd, epoll_events, EPOLL_MAX_EVENTS, -1);
@@ -928,7 +941,7 @@ static struct par_net_header *par_net_call_open(struct worker *worker, void *arg
 	struct par_net_open_req *request = (struct par_net_open_req *)&worker->recv_buffer[par_net_header_calc_size()];
 
 	par_db_options db_options = { 0 };
-	db_options.options = par_get_default_options();
+	db_options.options = par_get_default_options(); 
 	db_options.db_name = par_net_open_get_dbname(request);
 	db_options.create_flag = par_net_open_get_flag(request);
 
@@ -959,7 +972,6 @@ static struct par_net_header *par_net_call_open(struct worker *worker, void *arg
 static struct par_net_header *par_net_call_put(struct worker *worker, void *args)
 {
 	(void)args;
-
 	struct par_net_put_req *request = (struct par_net_put_req *)&worker->recv_buffer[par_net_header_calc_size()];
 
 	struct par_key_value kv_pair = { 0 };
@@ -972,6 +984,12 @@ static struct par_net_header *par_net_call_put(struct worker *worker, void *args
 
 	// log_debug("Key size =  %lu", (unsigned long)kv_pair.k.size);
 	// log_debug("Value size = %lu", (unsigned long)kv_pair.v.val_buffer_size);
+
+#ifdef USE_PAR_NET_METRICS
+  worker->put_avg_key_size += kv_pair.k.size;
+  worker->put_avg_value_size += kv_pair.v.val_size;
+#endif
+
 
 	const char *error_message = NULL;
 	struct par_put_metadata metadata = par_put((par_handle)region_id, &kv_pair, &error_message);
@@ -1047,6 +1065,13 @@ static struct par_net_header *par_net_call_get(struct worker *worker, void *args
 		par_value.val_size = 0;
 	}
 	// log_debug("Key: %.*s --> %s", par_key.size, par_key.data, found ? "FOUND" : "NOT FOUND");
+  
+#ifdef USE_PAR_NET_METRICS
+  worker->get_avg_key_size += par_key.size;
+
+  if(found)
+    worker->get_avg_value_size += par_value.val_size;
+#endif
 
 	size_t buffer_len = worker->send_buffer_size - par_net_header_calc_size();
 	struct par_net_get_rep *reply = par_net_get_rep_set_header(
@@ -1154,33 +1179,44 @@ static struct par_net_header *par_net_call_close(struct worker *worker, void *ar
 }
 
 static struct par_net_header *par_net_call_metrics(struct worker *worker, void *args){
-	(void)args;
+  (void)args;
 
   struct par_net_metrics_req *request =
 		(struct par_net_metrics_req *)&worker->recv_buffer[par_net_header_calc_size()];
 
   uint8_t flags = par_net_metrics_req_get_flags(request);
+  (void)flags; // Will implement RESET
 
 	uint32_t num_workers = worker->server_handle->opts->threadno;
-
+  
   uint32_t get_ops = 0;
   uint32_t put_ops = 0; 
-  uint32_t avg_io = 0;
+  uint32_t get_avg_key_size = 0;
+  uint32_t get_avg_value_size = 0;
+  uint32_t put_avg_key_size = 0;
+  uint32_t put_avg_value_size = 0;
   uint32_t total_ops = 0;
 
   for (uint32_t i = 0; i < num_workers; i++) {
-    struct worker *w = &worker[i];
+    struct worker *w = &worker->server_handle->workers[i];
     get_ops += w->op_count[OPCODE_GET];
     put_ops += w->op_count[OPCODE_PUT];
-    avg_io  += w->avg_io_count;     
+    get_avg_key_size  += w->get_avg_key_size; 
+    get_avg_value_size += w->get_avg_value_size;
+    put_avg_key_size += w->put_avg_key_size;
+    put_avg_value_size += w->put_avg_value_size;
     total_ops += w->total_ops_count;
   }
+  
+  get_avg_key_size = (get_ops > 0) ? (uint32_t)(get_avg_key_size / get_ops) : 0;
+  get_avg_value_size = (get_ops > 0) ? (uint32_t)(get_avg_value_size / get_ops) : 0;
 
-  avg_io = (total_ops > 0) ? (uint32_t)(avg_io / total_ops) : 0;
+  put_avg_key_size = (put_ops > 0) ? (uint32_t)(put_avg_key_size / put_ops) : 0;
+  put_avg_value_size = (put_ops > 0) ? (uint32_t)(put_avg_value_size / put_ops) : 0;
 
   size_t buffer_len = worker->send_buffer_size - par_net_header_calc_size();
 	struct par_net_metrics_rep *reply =
-		par_net_metrics_rep_create(get_ops, put_ops, avg_io, total_ops, &worker->send_buffer[par_net_header_calc_size()], buffer_len);
+		par_net_metrics_rep_create(get_ops, put_ops, get_avg_key_size, get_avg_value_size, put_avg_key_size, put_avg_value_size,total_ops, &worker->send_buffer[par_net_header_calc_size()], buffer_len);
 	if (NULL == reply) {
 		log_warn("Failed to create get reply");
 		return NULL;
@@ -1259,10 +1295,9 @@ static int __par_handle_req(struct worker *restrict worker, int client_sock, str
 #ifdef USE_PAR_NET_METRICS
   worker->op_count[opcode]++;
   worker->total_ops_count++;
-  worker->avg_io_count += bytes_received;
-#endif
+#endif /* ifdef USE_PAR_NET_METRICS */
 
-	struct par_net_header *reply_header = par_net_call[opcode](worker, NULL);
+  struct par_net_header *reply_header = par_net_call[opcode](worker, NULL);
 
 	struct iovec iov_reply[1];
 	struct msghdr msg_reply = { 0 };

@@ -20,7 +20,7 @@ size_t par_net_metrics_rep_calc_size(void);
 
 struct par_net_metrics_req *par_net_metrics_req_create(uint8_t flags, char *buffer, size_t *buffer_len);
 
-struct par_net_metrics_rep *par_net_metrics_rep_create(uint32_t,uint32_t,uint32_t,uint32_t,char *buffer, size_t buffer_len);
+struct par_net_metrics_rep *par_net_metrics_rep_create(uint32_t,uint32_t,uint32_t,uint32_t, uint32_t, uint32_t, uint32_t,char *buffer, size_t buffer_len);
 
 uint8_t par_net_metrics_req_get_flags(struct par_net_metrics_req *request);
 

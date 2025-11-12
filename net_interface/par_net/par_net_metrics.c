@@ -8,7 +8,10 @@ struct par_net_metrics_req {
 struct par_net_metrics_rep {
   uint32_t get_count;
   uint32_t put_count;
-  uint32_t avg_io_count;
+  uint32_t GET_avg_key_size;
+  uint32_t GET_avg_val_size;
+  uint32_t PUT_avg_key_size;
+  uint32_t PUT_avg_val_size;
   uint32_t ops_count;
 } __attribute__((packed));
 
@@ -31,7 +34,7 @@ struct par_net_metrics_req *par_net_metrics_req_create(uint8_t flags, char *buff
   return request;
 }
 
-struct par_net_metrics_rep *par_net_metrics_rep_create(uint32_t get_count, uint32_t put_count, uint32_t avg_io_count ,uint32_t ops_count ,char *buffer, size_t buffer_len){
+struct par_net_metrics_rep *par_net_metrics_rep_create(uint32_t get_count, uint32_t put_count, uint32_t get_avg_key_size, uint32_t get_avg_val_size , uint32_t put_avg_key_size, uint32_t put_avg_val_size, uint32_t ops_count ,char *buffer, size_t buffer_len){
 	if (buffer_len < par_net_metrics_rep_calc_size()) {
 		return NULL;
 	}
@@ -39,7 +42,13 @@ struct par_net_metrics_rep *par_net_metrics_rep_create(uint32_t get_count, uint3
 
 	reply->get_count = get_count;
 	reply->put_count = put_count;
-  reply->avg_io_count = avg_io_count;
+  
+  reply->GET_avg_key_size = get_avg_key_size;
+  reply->GET_avg_val_size = get_avg_val_size;
+  
+  reply->PUT_avg_key_size = put_avg_key_size;  
+  reply->PUT_avg_val_size = put_avg_val_size;
+  
   reply->ops_count  = ops_count;
   return reply;
 
@@ -47,11 +56,14 @@ struct par_net_metrics_rep *par_net_metrics_rep_create(uint32_t get_count, uint3
 
 bool par_net_metrics_rep_handle_reply(struct par_net_metrics_rep *reply){
  
-  FILE *fp = fopen("par_metrics.log", "wa");
+  FILE *fp = fopen("par_metrics.log", "a");
   if(!fp) return false;
 
-  fprintf(fp, "\nGet ops: %d\nPut ops: %d\n Avg IO: %d\n, Total ops: %d\n\n", 
-              reply->get_count, reply->put_count, reply->avg_io_count, reply->ops_count);
+  fprintf(fp,"============ Parallax Metrics ============\n");
+  fprintf(fp, "\n Get ops: %d\n Put ops: %d\n Avg Key size (GET): %d\n Avg Value Size (GET): %d\n Avg Key Size (PUT): %d\n Avg Value Size (PUT): %d\n Total ops: %d\n\n", 
+              reply->get_count, reply->put_count, reply->GET_avg_key_size, reply->GET_avg_val_size, reply->PUT_avg_key_size, reply->PUT_avg_val_size,reply->ops_count);
+  fprintf(fp,"==========================================\n\n");
+
   fclose(fp);
 
   return true;

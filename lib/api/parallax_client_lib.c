@@ -1668,7 +1668,7 @@ par_ret_code par_sync(par_handle handle)
 void par_metrics(par_handle handle, uint8_t flags){
 
 	struct par_handle *parallax_handle = (struct par_handle *)handle;
-  size_t msg_len = par_net_metrics_req_calc_size(); 
+  size_t msg_len = par_net_metrics_req_calc_size() + par_net_header_calc_size(); 
 
   if(msg_len > parallax_handle->send_buffer_size){
     log_fatal("Send buffer too small has: %u B needs %lu B", parallax_handle->send_buffer_size, msg_len);

@@ -178,7 +178,7 @@ static PyObject *py_par_metrics(PyObject* self, PyObject* args){
   PyObject *capsule;
   Py_ssize_t flags;
 
-  if(!PyArg_ParseTuple(args, "O#", &capsule, &flags)){
+  if(!PyArg_ParseTuple(args, "Oi", &capsule, &flags)){
     return NULL;
   }
 
@@ -189,7 +189,7 @@ static PyObject *py_par_metrics(PyObject* self, PyObject* args){
 
   par_handle handle = (par_handle)PyCapsule_GetPointer(capsule, "par_handle");
 
-  par_metrics(handle, flags);
+  par_metrics(handle, 0);
  
   Py_RETURN_NONE;
 
