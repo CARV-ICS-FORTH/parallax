@@ -1667,6 +1667,7 @@ par_ret_code par_sync(par_handle handle)
 
 void par_metrics(par_handle handle, uint8_t flags){
 
+#ifdef USE_PAR_NET_METRICS
 	struct par_handle *parallax_handle = (struct par_handle *)handle;
   size_t msg_len = par_net_metrics_req_calc_size() + par_net_header_calc_size(); 
 
@@ -1704,6 +1705,8 @@ void par_metrics(par_handle handle, uint8_t flags){
 
   (void)reply_header;
   par_net_metrics_rep_handle_reply(metrics_reply);
+
+#endif
 
 }
 

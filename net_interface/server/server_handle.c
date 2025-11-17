@@ -1181,6 +1181,8 @@ static struct par_net_header *par_net_call_close(struct worker *worker, void *ar
 static struct par_net_header *par_net_call_metrics(struct worker *worker, void *args){
   (void)args;
 
+#ifdef USE_PAR_NET_METRICS
+
   struct par_net_metrics_req *request =
 		(struct par_net_metrics_req *)&worker->recv_buffer[par_net_header_calc_size()];
 
@@ -1227,6 +1229,9 @@ static struct par_net_header *par_net_call_metrics(struct worker *worker, void *
   reply_header->total_bytes = par_net_header_calc_size() + par_net_metrics_rep_calc_size();
   return reply_header;
 
+#endif
+
+  return NULL;
 }
 
 const par_call par_net_call[OPCODE_MAX] = { NULL,
