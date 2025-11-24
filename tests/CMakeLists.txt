@@ -4,7 +4,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 include_directories(${CMAKE_SOURCE_DIR}/lib)
 
 function(link_target target_name)
-  if(NET STREQUAL "tcp")
+  if(NET STREQUAL "TCP")
     target_link_libraries(${target_name} "${PROJECT_NAME}_net_lib")
   elseif(NET STREQUAL "portals")
     target_link_libraries(${target_name} "${PROJECT_NAME}_portals_lib")

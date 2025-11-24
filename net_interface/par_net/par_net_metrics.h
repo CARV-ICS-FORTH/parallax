@@ -20,7 +20,15 @@ size_t par_net_metrics_rep_calc_size(void);
 
 struct par_net_metrics_req *par_net_metrics_req_create(uint8_t flags, char *buffer, size_t *buffer_len);
 
-struct par_net_metrics_rep *par_net_metrics_rep_create(uint32_t,uint32_t,uint32_t,uint32_t, uint32_t, uint32_t, uint32_t,char *buffer, size_t buffer_len);
+struct par_net_metrics_rep *par_net_metrics_rep_create(uint32_t get_count, uint32_t put_count, 
+                                                       uint32_t get_avg_key_size, uint32_t get_avg_val_size , 
+                                                       uint32_t put_avg_key_size,uint32_t put_avg_val_size  , 
+                                                       uint32_t get_max_key_size, uint32_t get_max_val_size ,  
+                                                       uint32_t get_min_key_size, uint32_t get_min_val_size ,
+                                                       uint32_t put_max_key_size, uint32_t put_max_val_size , 
+                                                       uint32_t put_min_key_size, uint32_t put_min_val_size ,
+                                                       uint32_t ops_count ,char *buffer, size_t buffer_len);
+
 
 uint8_t par_net_metrics_req_get_flags(struct par_net_metrics_req *request);
 
