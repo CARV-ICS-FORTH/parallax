@@ -27,6 +27,13 @@ if(PARALLAX_BUILD_TESTING)
                        Threads::Threads "${NET_LIBRARY}")
   endif()
 
+  add_executable(ycsb-net-ib db/db_factory_parallax_ib.cc core/core_workload.cc
+                          driver/ycsbc.cc ../utilities/list.c)
+
+  target_link_libraries(
+      ycsb-net-ib PRIVATE "${PROJECT_NAME}_net_lib" ${Boost_LIBRARIES} log
+                       Threads::Threads "${NET_LIBRARY}")
+
   check_cxx_compiler_flag("-Wno-deprecated-array-compare"
                           DEPRECATED_ARRAY_COMPARE)
   if(DEPRECATED_ARRAY_COMPARE)

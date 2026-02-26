@@ -399,6 +399,15 @@ void ParseCommandLine(int argc, const char *argv[], utils::Properties &props)
 				UsageMessage(argv[0]);
 				_Exit(-1);
 			}
+			int threads_requested = std::stoi(argv[argindex]);
+#ifdef USE_INFINIBAND
+			if (threads_requested > 1) {
+				std::cerr
+					<< "ERROR: The Infiniband Parallax server does not support multiple threads. Exiting."
+					<< std::endl;
+				_Exit(EXIT_FAILURE);
+			}
+#endif
 			props.SetProperty("threadcount", argv[argindex]);
 			argindex++;
 		} else if (strcmp(argv[argindex], "-dbnum") == 0) {
