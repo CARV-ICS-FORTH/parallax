@@ -33,7 +33,7 @@
 #define PAR_IB_METADATA_SIZE 4096
 #define PAR_IB_QUEUE_DEPTH 128
 #define PAR_IB_CLOSE_OP_BUF_SIZE 100
-#define PAR_IB_MAX_CLIENTS 16
+#define PAR_IB_MAX_CLIENTS 256
 #define PAR_IB_MSG_SIZE 1024
 #define PAR_IB_NUM_ENTRIES 16
 #define PAR_IB_SECTOR_SIZE 512
@@ -339,12 +339,18 @@ int par_ib_handle_cm_event(struct server_handle *server_handle, struct rdma_cm_e
 			.max_buffer_size = KV_MAX_SIZE,
 			.client_id = __sync_fetch_and_add(&client_id_counter, 1),
 		};
+		if (server_caps.client_id > PAR_IB_MAX_CLIENTS) {
+			log_fatal("Server capacity reached! Rejecting client %u", server_caps.client_id);
+			rdma_reject(client_id, NULL, 0);
+			return 0;
+		}
 		struct rdma_conn_param conn_param = {
 			.private_data = &server_caps,
 			.private_data_len = sizeof(server_caps),
 			.responder_resources = 8,
 			.initiator_depth = 8,
 			.retry_count = 7,
+			.rnr_retry_count = 7,
 		};
 		if (rdma_accept(client_id, &conn_param)) {
 			perror("rdma_accept");
@@ -704,6 +710,11 @@ void *par_ib_put_and_reply(void *arg)
 		log_debug("message opcode : %u", opcode);
 		if (opcode == 0) {
 			log_debug("invalid opcode");
+			break;
+		}
+
+		if (hdr->request_id == 0 || hdr->request_id > PAR_IB_MAX_CLIENTS) {
+			log_fatal("Received message with invalid request_id: %u", hdr->request_id);
 			break;
 		}
 
