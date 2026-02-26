@@ -222,8 +222,8 @@ struct par_net_worker *par_net_worker_create(struct server_handle *server_handle
 	worker->send_buffer_size = PRSV_WORKER_BUF_SIZE;
 	worker->buddy = buddy_embed((void *)worker->send_buffer, PRSV_WORKER_BUF_SIZE);
 
-	par_net_worker_init_response_buffers(worker, ib_server_get_ibv_pd(server_handle),
-					     ib_server_get_threadno(server_handle));
+	par_net_worker_init_response_buffers(worker, par_ib_server_get_ibv_pd(server_handle),
+					     par_ib_server_get_threadno(server_handle));
 	worker->free_q_th_state = synchGetAlignedMemory(CACHE_LINE_SIZE, sizeof(CCQueueThreadState));
 	CCQueueThreadStateInit(&worker->free_slot_q, worker->free_q_th_state, worker->tid);
 	return worker;

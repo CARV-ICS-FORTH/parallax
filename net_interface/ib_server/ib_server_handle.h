@@ -11,44 +11,44 @@
 
 struct server_options;
 
-long ib_server_parse_number(const char *str, const char *opt);
+long par_ib_server_parse_number(const char *str, const char *opt);
 
-void ib_server_check_arg(int argc, int option_id);
+void par_ib_server_check_arg(int argc, int option_id);
 
-void ib_server_set_address(struct server_options *opts, const char *arg);
+void par_ib_server_set_address(struct server_options *opts, const char *arg);
 
-void ib_server_set_port(struct server_options *opts, const char *arg);
+void par_ib_server_set_port(struct server_options *opts, const char *arg);
 
-struct server_options *ib_server_parse_argv_opts(int argc, char **argv);
+struct server_options *par_ib_server_parse_argv_opts(int argc, char **argv);
 
-struct server_handle *ib_server_handle_init(struct server_options *opts);
+struct server_handle *par_ib_server_handle_init(struct server_options *opts);
 
-int ib_server_print_config(struct server_handle *server_handle);
+int par_ib_server_print_config(struct server_handle *server_handle);
 
-uint32_t ib_server_get_threadno(struct server_handle *handle);
+uint32_t par_ib_server_get_threadno(struct server_handle *handle);
 
-struct ibv_pd *ib_server_get_ibv_pd(struct server_handle *handle);
+struct ibv_pd *par_ib_server_get_ibv_pd(struct server_handle *handle);
 
-int ib_handle_cm_event(struct server_handle *server_handle, struct rdma_cm_event *event);
+int par_ib_handle_cm_event(struct server_handle *server_handle, struct rdma_cm_event *event);
 
-int ib_loop(struct server_handle *server_handle);
+int par_ib_loop(struct server_handle *server_handle);
 
 void worker_scheduler(struct server_handle *server_handle, void *buf);
 
 size_t par_net_header_size(void);
 
-size_t ib_par_net_get_total_bytes(char *buffer);
+size_t par_ib_par_net_get_total_bytes(char *buffer);
 
 uint32_t par_net_header_get_opcode(char *buffer);
 
-void rdma_read_pool_init(struct ib_client_ctx *ctx);
+void rdma_read_pool_init(struct par_ib_client_ctx *ctx);
 
-void *ib_put_and_reply(void *arg);
+void *par_ib_put_and_reply(void *arg);
 
-int ib_handle_event(struct ibv_wc *wc, struct server_handle *server_handle);
+int par_ib_handle_event(struct ibv_wc *wc, struct server_handle *server_handle);
 
 void *connection_manager_thread(void *arg);
 
-int ib_server_start(struct server_handle *server_handle);
+int par_ib_server_start(struct server_handle *server_handle);
 
 #endif
