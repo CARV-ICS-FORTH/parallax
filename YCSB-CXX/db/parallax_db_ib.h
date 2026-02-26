@@ -138,7 +138,7 @@ class ParallaxDBIB : public YCSBDB {
 		std::vector<par_handle> dbs = getDBVector(id);
 		char get_buffer[GET_BUFFER_SIZE];
 		std::hash<std::string> hash_fn;
-		uint32_t db_id = hash_fn(key) % db_num;
+		uint32_t db_id = hash_fn(key) % dbs.size();
 		std::map<std::string, std::string> vmap;
 		struct par_key lookup_key = { .size = (uint32_t)key.length(), .data = (const char *)key.c_str() };
 		struct par_value lookup_value = {
@@ -249,7 +249,7 @@ class ParallaxDBIB : public YCSBDB {
 		char get_buffer[GET_BUFFER_SIZE];
 		if (field_count > 1) { // this results in read-modify-write. Maybe we should use merge operator here
 			std::hash<std::string> hash_fn;
-			uint32_t db_id = hash_fn(key) % db_num;
+			uint32_t db_id = hash_fn(key) % dbs.size();
 			std::map<std::string, std::string> vmap;
 			struct par_key lookup_key = { .size = (uint32_t)key.length(),
 						      .data = (const char *)key.c_str() };
@@ -325,7 +325,7 @@ class ParallaxDBIB : public YCSBDB {
 		std::vector<par_handle> dbs = getDBVector(id);
 
 		std::hash<std::string> hash_fn;
-		uint32_t db_id = hash_fn(key) % db_num;
+		uint32_t db_id = hash_fn(key) % dbs.size();
 
 		static std::string value3(2000, 'a');
 		static std::string value2(100, 'a');
