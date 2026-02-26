@@ -132,32 +132,56 @@ else()
     message(STATUS "Compiling with Portals4 backend")
 endif()
 
+include(ExternalProject)
+
+FetchContent_Declare(
+  sim_universal_construction
+  GIT_REPOSITORY https://github.com/gesalous/sim-universal-construction.git
+  GIT_TAG main
+  GIT_PROGRESS TRUE)
+
+FetchContent_GetProperties(sim_universal_construction)
+
+if(NOT sim_universal_construction_POPULATED)
+  FetchContent_Populate(sim_universal_construction)
+endif()
+
+
+set(QUEUE_INCLUDE_DIR 
+    "${sim_universal_construction_SOURCE_DIR}/libconcurrent/includes"
+    "${sim_universal_construction_SOURCE_DIR}/libconcurrent"
+)
+
+set(QUEUE_LIB_PATH "${sim_universal_construction_SOURCE_DIR}/build/lib/libconcurrent.a") 
+
+ExternalProject_Add(
+  build_sim_universal_construction
+  SOURCE_DIR ${sim_universal_construction_SOURCE_DIR}
+  CONFIGURE_COMMAND "" 
+  BUILD_COMMAND $(MAKE) -C ${sim_universal_construction_SOURCE_DIR}
+  BUILD_IN_SOURCE 1
+  INSTALL_COMMAND "" 
+  BUILD_BYPRODUCTS ${QUEUE_LIB_PATH}
+)
+
+add_library(concurrent STATIC IMPORTED)
+set_property(TARGET concurrent PROPERTY IMPORTED_LOCATION ${QUEUE_LIB_PATH})
+add_dependencies(concurrent build_sim_universal_construction)
+
 # ######### PORTALS SERVER !!! ###########
 
 if(NET STREQUAL "PORTALS")
   option(PORTALS_LIB_DIR "Path to the Portals library" "")
-  option(QUEUE_LIB "Path to the sim-universal-construction library" "")
-  option(QUEUE_INCLUDE_DIR
-        "Path to the sim-universal-construction include directory" "")
-
-  find_library(
-    QUEUE_LIB_FOUND
-    NAMES concurrent
-    PATHS ${QUEUE_LIB})
 
   find_library(
     PORTALS_LIB
     NAMES portals
     PATHS ${PORTALS_LIB_DIR})
 
-  if(PORTALS_LIB AND QUEUE_LIB_FOUND)
+  if(PORTALS_LIB)
     add_definitions(-DPARALLAX_PORTALS)
 
     message(STATUS "Portals library for server found at : ${PORTALS_LIB}")
-    message(
-      STATUS
-        "sim-universal-construction library for server found at: ${QUEUE_LIB_FOUND}"
-    )
 
     set(PORT_LIB "portals_${PROJECT_NAME}_server")
 
@@ -194,29 +218,9 @@ if(NET STREQUAL "PORTALS")
                               PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include/")
     target_include_directories(${PORT_LIB} PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/")
     target_include_directories(${PORT_LIB} PUBLIC "${PORTALS_INCLUDE_DIR}")
-
-    if(NOT QUEUE_INCLUDE_DIR)
-      get_filename_component(QUEUE_LIB_DIR ${QUEUE_LIB_FOUND} DIRECTORY)
-      set(QUEUE_INCLUDE_DIR "${QUEUE_LIB_DIR}/../includes")
-    endif()
-
-    if(EXISTS "${QUEUE_INCLUDE_DIR}")
-      message(
-        STATUS
-          "Found include directory for sim-universal-construction at: ${QUEUE_INCLUDE_DIR}"
-      )
-    else()
-      message(
-        FATAL_ERROR
-          "Could not find the sim-universal-construction include directory")
-    endif()
-
-    get_filename_component(QUEUE_LIB_DIR ${QUEUE_LIB_FOUND} DIRECTORY)
-    set(QUEUE_LIBCONC_DIR "${QUEUE_LIB_DIR}/../includes")
-
     target_include_directories(${PORT_LIB} PUBLIC "${QUEUE_INCLUDE_DIR}")
-    target_link_libraries(${PORT_LIB} log yaml ${PORTALS_LIB} ${LIB}
-                          ${QUEUE_LIB_FOUND})
+
+    target_link_libraries(${PORT_LIB} log yaml ${PORTALS_LIB} ${LIB} concurrent)
 
     install(
       TARGETS ${PORT_LIB}
@@ -240,7 +244,6 @@ if(NET STREQUAL "PORTALS")
       COMMAND ${CMAKE_COMMAND} -E copy ${FLAMEGRAPH_SCRIPT}
               ${FLAMEGRAPH_DESTINATION}
       COMMENT "Copying profile_flamegraph.sh to ${FLAMEGRAPH_DESTINATION}")
-    message(STATUS "Added custom command to copy profile_flamegraph.sh")
 
     add_custom_command(
       TARGET ${PORT_LIB}
@@ -248,11 +251,6 @@ if(NET STREQUAL "PORTALS")
       COMMAND ${CMAKE_COMMAND} -E copy ${SRV_RUN} ${FLAMEGRAPH_DESTINATION}
       COMMENT "Copying run_portals_srv.sh to ${FLAMEGRAPH_DESTINATION}")
     message(STATUS "Added custom command to copy run_portals_srv.sh")
-  elseif()
-    message(
-      WARNING
-        "Portals library or sim-universal-construction not found, stoping installation for portals server"
-    )
   endif()
 endif()
 
@@ -261,16 +259,8 @@ endif()
 # INFINIBAND SERVER
 if(NET STREQUAL "INFINIBAND")
   add_definitions(-DPARALLAX_INFINIBAND)
-  option(QUEUE_LIB "Path to the sim-universal-construction library" "/home1/public/nikosl/queuelib/Synch/lib")
-  option(QUEUE_INCLUDE_DIR
-        "Path to the sim-universal-construction include directory" "/home1/public/nikosl/queuelib/Synch/includes")
 
   message(STATUS "Building InfiniBand server")
-
-  find_library(
-    QUEUE_LIB_FOUND
-    NAMES concurrent
-    PATHS ${QUEUE_LIB})
 
   find_library(RDMA_LIB
     NAMES rdmacm rdma_cm
@@ -284,27 +274,11 @@ if(NET STREQUAL "INFINIBAND")
     REQUIRED
     NO_DEFAULT_PATH)
 
-  if(EXISTS "/usr/include/rdma/rdma_cma.h" AND EXISTS "/usr/include/infiniband/verbs.h" AND QUEUE_LIB_FOUND)
+  if(EXISTS "/usr/include/rdma/rdma_cma.h" AND EXISTS "/usr/include/infiniband/verbs.h")
     message(STATUS "Found RDMA headers")
     include_directories(/usr/include /usr/include/infiniband)
   else()
     message(FATAL_ERROR "RDMA headers not found")
-  endif()
-
-  if(NOT QUEUE_INCLUDE_DIR)
-    get_filename_component(QUEUE_LIB_DIR ${QUEUE_LIB_FOUND} DIRECTORY)
-    set(QUEUE_INCLUDE_DIR "${QUEUE_LIB_DIR}/../includes")
-  endif()
-
-  if(EXISTS "${QUEUE_INCLUDE_DIR}")
-    message(
-      STATUS
-        "Found include directory for sim-universal-construction at: ${QUEUE_INCLUDE_DIR}"
-    )
-  else()
-    message(
-      FATAL_ERROR
-        "Could not find the sim-universal-construction include directory")
   endif()
 
   set(IB_LIB "infiniband_${PROJECT_NAME}_server")
@@ -341,9 +315,10 @@ if(NET STREQUAL "INFINIBAND")
   target_include_directories(${IB_LIB}
                            PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include/")
   target_include_directories(${IB_LIB} PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/")
+  
   target_include_directories(${IB_LIB} PUBLIC "${QUEUE_INCLUDE_DIR}")
 
-  target_link_libraries(${IB_LIB} log yaml ${LIB} ${RDMA_LIB} ${IBVERBS_LIB} ${QUEUE_LIB_FOUND})
+  target_link_libraries(${IB_LIB} log yaml ${LIB} ${RDMA_LIB} ${IBVERBS_LIB} concurrent)
 
   install(
     TARGETS ${IB_LIB}

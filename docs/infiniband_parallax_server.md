@@ -7,7 +7,7 @@ This project provides an InfiniBand-based network server implementation for Para
 At startup, the server initializes all required InfiniBand RDMA resources (protection domain, completion queues, queue pairs, memory regions, etc.).
 Unlike TCP/IP or Portals (existing Parallax server implementations), InfiniBand requires an explicit connection establishment (handshake) between server and client before any messages can be exchanged. To handle this, the server introduces a dedicated Communication Manager thread responsible for accepting and establishing client connections (this thread runs separately from the workers).
 
-Once connections are established, the server relies on a pool of network worker threads (adapted from the Portals implementation). These workers continuously poll for incoming client requests, dequeue them from a [custom queue](https://github.com/Thodorhs/sim-universal-construction), and execute them. Requests are inserted into this queue by the server after receiving and parsing the client’s request.
+Once connections are established, the server relies on a pool of network worker threads (adapted from the Portals implementation). These workers continuously poll for incoming client requests, dequeue them from a [custom queue](https://github.com/gesalous/sim-universal-construction), and execute them. Requests are inserted into this queue by the server after receiving and parsing the client’s request.
 
 ### Worker Threads
 
@@ -66,14 +66,6 @@ After executing a request, the server must send back a reply header. To do this,
 
 To enable the InfiniBand server, set:
 `-DNET=INFINIBAND`
-
-The server also requires the custom queue (build instructions [here](https://carvgit.ics.forth.gr/storage/parallax/-/blob/parallax_infiniband/docs/Build.md?ref_type=heads#2-build-sim-universal-construction)) to be pre-built.
-Pass the following flags to CMake:
-
-```
--DQUEUE_LIB=/path/to/lib
--DQUEUE_INCLUDE_DIR=/path/to/includes
-```
 
 Enable shared libraries with `-DBUILD_SHARED_LIBS=ON`
 so that the client program can use the library installed via make install.
