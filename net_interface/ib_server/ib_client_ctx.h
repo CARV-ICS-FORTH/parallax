@@ -7,6 +7,7 @@
 
 #define RDMA_READ_POOL_SIZE 16
 #define RDMA_READ_BUF_SIZE (4 * 1024 * 1024) // 4MB
+#define PAR_IB_RECV_BUFFER_NUMBER 8
 
 struct rdma_read_slot {
 	void *buf;
@@ -15,11 +16,16 @@ struct rdma_read_slot {
 	bool in_use;
 };
 
-struct ib_client_ctx {
+struct par_ib_recv_slot {
+	void *buf;
+	struct ibv_mr *mr;
+	int buf_idx;
+};
+
+struct par_ib_client_ctx {
 	struct ibv_pd *pd;
 	struct ibv_qp *qp;
-	struct ibv_mr *mr;
-	void *buf;
+	struct par_ib_recv_slot recv_slots[PAR_IB_RECV_BUFFER_NUMBER];
 	struct rdma_read_slot read_pool[RDMA_READ_POOL_SIZE];
 	bool rdma_read_pool_initialized;
 };
