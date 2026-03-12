@@ -374,31 +374,53 @@ static struct par_handle *par_net_init(const char *parallax_host, const char *db
 	handle->ec = rdma_create_event_channel();
 	struct addrinfo *addr;
 
+	log_debug("Connecting to Parallax server at %s:%s", addresses[target].ip, addresses[target].port);
+
 	if (getaddrinfo(addresses[target].ip, addresses[target].port, NULL, &addr)) {
 		perror("getaddrinfo");
 		_exit(EXIT_FAILURE);
+	} else {
+		log_debug("Resolved server address: %s:%s", addresses[target].ip, addresses[target].port);
 	}
 
 	if (rdma_create_id(handle->ec, &handle->cm_id, NULL, RDMA_PS_TCP)) {
 		perror("rdma_create_id");
 		_exit(EXIT_FAILURE);
+	} else {
+		log_debug("RDMA CM ID created successfully");
 	}
 
 	if (rdma_resolve_addr(handle->cm_id, NULL, addr->ai_addr, TIMEOUT_MS)) {
 		perror("rdma_resolve_addr");
 		_exit(EXIT_FAILURE);
+	} else {
+		log_debug("RDMA address resolution initiated successfully");
 	}
 	freeaddrinfo(addr);
 
 	struct rdma_cm_event *event;
 	rdma_get_cm_event(handle->ec, &event);
+	if (event->event != RDMA_CM_EVENT_ADDR_RESOLVED) {
+		log_fatal("Client RDMA Address Resolution Failed: %s", rdma_event_str(event->event));
+		_exit(EXIT_FAILURE);
+	} else {
+		log_debug("RDMA address resolved successfully");
+	}
 	rdma_ack_cm_event(event);
 
 	if (rdma_resolve_route(handle->cm_id, TIMEOUT_MS)) {
 		perror("rdma_resolve_route");
 		_exit(EXIT_FAILURE);
+	} else {
+		log_debug("RDMA route resolution initiated successfully");
 	}
 	rdma_get_cm_event(handle->ec, &event);
+	if (event->event != RDMA_CM_EVENT_ROUTE_RESOLVED) {
+		log_fatal("Client RDMA Route Resolution Failed: %s", rdma_event_str(event->event));
+		_exit(EXIT_FAILURE);
+	} else {
+		log_debug("RDMA route resolved successfully");
+	}
 	rdma_ack_cm_event(event);
 
 	pthread_mutex_lock(&init_lock);
@@ -411,6 +433,7 @@ static struct par_handle *par_net_init(const char *parallax_host, const char *db
 	handle->pd = global_pd;
 	handle->comp_channel = ibv_create_comp_channel(handle->cm_id->verbs);
 	handle->cq = ibv_create_cq(handle->cm_id->verbs, 256, NULL, handle->comp_channel, 0);
+	log_debug("Initialized RDMA resources successfully");
 
 	struct ibv_qp_init_attr qp_attr;
 	memset(&qp_attr, 0, sizeof(qp_attr));
@@ -425,6 +448,8 @@ static struct par_handle *par_net_init(const char *parallax_host, const char *db
 	if (rdma_create_qp(handle->cm_id, handle->pd, &qp_attr)) {
 		perror("rdma_create_qp");
 		_exit(EXIT_FAILURE);
+	} else {
+		log_debug("RDMA Queue Pair created successfully");
 	}
 
 	handle->recv_buffer_size = KV_MAX_SIZE + par_net_header_calc_size();
@@ -445,6 +470,7 @@ static struct par_handle *par_net_init(const char *parallax_host, const char *db
 		if (ibv_post_recv(handle->cm_id->qp, &recv_wr, &recv_bad_wr))
 			_exit(EXIT_FAILURE);
 	}
+	log_debug("Registered receive buffers and posted initial receives successfully");
 
 	handle->send_buffer_size = KV_MAX_SIZE;
 	for (int j = 0; j < N_SEND_BUFFERS; j++) {
@@ -457,6 +483,7 @@ static struct par_handle *par_net_init(const char *parallax_host, const char *db
 				   IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_REMOTE_READ);
 	}
 	handle->send_idx = 0;
+	log_debug("Registered send buffers successfully");
 
 	struct rdma_conn_param conn_param = { 0 };
 	conn_param.initiator_depth = 8;
@@ -464,18 +491,27 @@ static struct par_handle *par_net_init(const char *parallax_host, const char *db
 	conn_param.retry_count = 7;
 	conn_param.rnr_retry_count = 7;
 
-	if (rdma_connect(handle->cm_id, &conn_param))
+	if (rdma_connect(handle->cm_id, &conn_param)) {
+		perror("rdma_connect");
 		_exit(EXIT_FAILURE);
+	} else {
+		log_debug("RDMA connection initiated successfully");
+	}
 
 	rdma_get_cm_event(handle->ec, &event);
-	if (event->event != RDMA_CM_EVENT_ESTABLISHED)
+	if (event->event != RDMA_CM_EVENT_ESTABLISHED) {
+		log_fatal("Client RDMA Connection Failed: %s", rdma_event_str(event->event));
 		_exit(EXIT_FAILURE);
+	} else {
+		log_debug("RDMA connection established successfully");
+	}
 
 	struct my_conn_metadata *meta = (struct my_conn_metadata *)event->param.conn.private_data;
 	handle->client_id = meta->client_id;
 	handle->max_buffer_size = meta->max_buffer_size;
 
 	rdma_ack_cm_event(event);
+	log_debug("par_net_init completed successfully with client_id: %u", handle->client_id);
 	return handle;
 }
 #else
