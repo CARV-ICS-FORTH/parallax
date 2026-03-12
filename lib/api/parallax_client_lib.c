@@ -426,14 +426,31 @@ static struct par_handle *par_net_init(const char *parallax_host, const char *db
 	pthread_mutex_lock(&init_lock);
 	if (global_pd == NULL) {
 		global_pd = ibv_alloc_pd(handle->cm_id->verbs);
+		if (!global_pd) {
+			perror("ibv_alloc_pd");
+			_exit(EXIT_FAILURE);
+		} else {
+			log_debug("RDMA Protection Domain allocated successfully");
+		}
 	}
 	active_par_ib_handles++;
 	pthread_mutex_unlock(&init_lock);
 
 	handle->pd = global_pd;
 	handle->comp_channel = ibv_create_comp_channel(handle->cm_id->verbs);
+	if (!handle->comp_channel) {
+		perror("ibv_create_comp_channel");
+		_exit(EXIT_FAILURE);
+	} else {
+		log_debug("RDMA completion channel created successfully");
+	}
 	handle->cq = ibv_create_cq(handle->cm_id->verbs, 256, NULL, handle->comp_channel, 0);
-	log_debug("Initialized RDMA resources successfully");
+	if (!handle->cq) {
+		perror("ibv_create_cq");
+		_exit(EXIT_FAILURE);
+	} else {
+		log_debug("RDMA completion queue created successfully");
+	}
 
 	struct ibv_qp_init_attr qp_attr;
 	memset(&qp_attr, 0, sizeof(qp_attr));
@@ -461,14 +478,20 @@ static struct par_handle *par_net_init(const char *parallax_host, const char *db
 
 		handle->recv_mr[j] = ibv_reg_mr(handle->pd, handle->recv_buffer[j], handle->recv_buffer_size,
 						IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE);
+		if (!handle->recv_mr[j]) {
+			perror("ibv_reg_mr");
+			_exit(EXIT_FAILURE);
+		}
 
 		struct ibv_sge recv_sge = { .addr = (uintptr_t)handle->recv_buffer[j],
 					    .length = handle->recv_buffer_size,
 					    .lkey = handle->recv_mr[j]->lkey };
 		struct ibv_recv_wr recv_wr = { .wr_id = j, .sg_list = &recv_sge, .num_sge = 1 };
 		struct ibv_recv_wr *recv_bad_wr;
-		if (ibv_post_recv(handle->cm_id->qp, &recv_wr, &recv_bad_wr))
+		if (ibv_post_recv(handle->cm_id->qp, &recv_wr, &recv_bad_wr)) {
+			perror("ibv_post_recv");
 			_exit(EXIT_FAILURE);
+		}
 	}
 	log_debug("Registered receive buffers and posted initial receives successfully");
 
@@ -481,6 +504,10 @@ static struct par_handle *par_net_init(const char *parallax_host, const char *db
 		handle->send_mr[j] =
 			ibv_reg_mr(handle->pd, handle->send_buffer[j], handle->send_buffer_size,
 				   IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_REMOTE_READ);
+		if (!handle->send_mr[j]) {
+			perror("ibv_reg_mr");
+			_exit(EXIT_FAILURE);
+		}
 	}
 	handle->send_idx = 0;
 	log_debug("Registered send buffers successfully");
@@ -613,36 +640,70 @@ void par_net_handle_destroy(par_handle handle)
 	}
 #endif
 #ifdef USE_INFINIBAND
+	int ret;
 	if (parallax_handle->db_name)
 		free(parallax_handle->db_name);
 
 	for (int j = 0; j < N_RECV_BUFFERS; j++) {
-		if (parallax_handle->recv_mr[j])
-			ibv_dereg_mr(parallax_handle->recv_mr[j]);
+		if (parallax_handle->recv_mr[j]) {
+			ret = ibv_dereg_mr(parallax_handle->recv_mr[j]);
+			if (ret) {
+				log_fatal("Failed to deregister receive MR");
+				_exit(EXIT_FAILURE);
+			}
+		}
 		if (parallax_handle->recv_buffer[j])
 			free(parallax_handle->recv_buffer[j]);
 	}
 	for (int j = 0; j < N_SEND_BUFFERS; j++) {
-		if (parallax_handle->send_mr[j])
-			ibv_dereg_mr(parallax_handle->send_mr[j]);
+		if (parallax_handle->send_mr[j]) {
+			ret = ibv_dereg_mr(parallax_handle->send_mr[j]);
+			if (ret) {
+				log_fatal("Failed to deregister send MR");
+				_exit(EXIT_FAILURE);
+			}
+		}
 		if (parallax_handle->send_buffer[j])
 			free(parallax_handle->send_buffer[j]);
 	}
-	rdma_disconnect(parallax_handle->cm_id);
+	ret = rdma_disconnect(parallax_handle->cm_id);
+	if (ret) {
+		log_fatal("Failed to disconnect RDMA connection");
+		_exit(EXIT_FAILURE);
+	}
 	rdma_destroy_qp(parallax_handle->cm_id);
-	rdma_destroy_id(parallax_handle->cm_id);
 
-	if (parallax_handle->cq)
-		ibv_destroy_cq(parallax_handle->cq);
-	if (parallax_handle->comp_channel)
-		ibv_destroy_comp_channel(parallax_handle->comp_channel);
+	ret = rdma_destroy_id(parallax_handle->cm_id);
+	if (ret) {
+		log_fatal("Failed to destroy RDMA ID");
+		_exit(EXIT_FAILURE);
+	}
+
+	if (parallax_handle->cq) {
+		ret = ibv_destroy_cq(parallax_handle->cq);
+		if (ret) {
+			log_fatal("Failed to destroy RDMA CQ");
+			_exit(EXIT_FAILURE);
+		}
+	}
+	if (parallax_handle->comp_channel) {
+		ret = ibv_destroy_comp_channel(parallax_handle->comp_channel);
+		if (ret) {
+			log_fatal("Failed to destroy RDMA completion channel");
+			_exit(EXIT_FAILURE);
+		}
+	}
 	rdma_destroy_event_channel(parallax_handle->ec);
 
 	pthread_mutex_lock(&init_lock);
 	active_par_ib_handles--;
 
 	if (active_par_ib_handles <= 0 && global_pd != NULL) {
-		ibv_dealloc_pd(global_pd);
+		ret = ibv_dealloc_pd(global_pd);
+		if (ret) {
+			log_fatal("Failed to deallocate RDMA PD");
+			_exit(EXIT_FAILURE);
+		}
 		global_pd = NULL;
 		active_par_ib_handles = 0;
 	}
