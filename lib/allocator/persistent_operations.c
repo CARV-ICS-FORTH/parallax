@@ -364,7 +364,7 @@ void pr_flush_log_tail(struct db_descriptor *db_desc, struct log_descriptor *log
 	uint64_t bytes_to_write = (log_desc->size % LOG_CHUNK_SIZE) ? (log_desc->size % LOG_CHUNK_SIZE) :
 								      LOG_CHUNK_SIZE;
 
-	bytes_to_write = ALIGN_UP(bytes_to_write, 512);
+	bytes_to_write = ALIGN_UP(bytes_to_write, ALIGNMENT_SIZE);
 
 	uint64_t end_offt = start_offt + bytes_to_write;
 
