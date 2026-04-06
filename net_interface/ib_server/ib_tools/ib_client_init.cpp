@@ -1,6 +1,5 @@
 #include "parallax.h"
 #include <iostream>
-#include <ostream>
 #include <unistd.h>
 #include <unordered_map>
 
@@ -9,12 +8,12 @@
 #define PARALLAX_GLOBAL_DB "par_db"
 #define PARALLAX_DB_COUNT 8
 
-#define LSM_DEBUG(...)                                                               \
-	do {                                                                         \
-		char buffer[1024];                                                   \
-		snprintf(buffer, sizeof(buffer), __VA_ARGS__);                       \
-		::std::cout << __FILE__ << ":" << __func__ << ":" << __LINE__ << " " \
-			    << " DEBUG: " << buffer << ::std::endl;                  \
+#define LSM_DEBUG(...)                                                                                       \
+	do {                                                                                                 \
+		char buffer[1024];                                                                           \
+		snprintf(buffer, sizeof(buffer), __VA_ARGS__);                                               \
+		::std::cout << __FILE__ << ":" << __func__ << ":" << __LINE__ << " " << " DEBUG: " << buffer \
+			    << ::std::endl;                                                                  \
 	} while (0);
 
 #define LSM_FATAL(...)                                                                                                \
@@ -27,8 +26,6 @@
 
 std::unordered_map<std::string, par_handle> par_handles;
 
-int current_index = 0;
-
 par_handle par_get_db(const std::string &db_name)
 {
 	// Check if the database is already opened
@@ -37,9 +34,19 @@ par_handle par_get_db(const std::string &db_name)
 		return it->second; // Return the existing handle
 	}
 
-	// Database is not opened yet, proceed to open it
+	int db_index = 0;
+	std::string prefix = PARALLAX_GLOBAL_DB;
+	if (db_name.find(prefix) == 0) {
+		db_index = std::stoi(db_name.substr(prefix.length()));
+	}
 
-	std::string volume_path = "/tmp/root/parallax/default" + std::to_string(current_index);
+	int num_of_servers = par_get_num_of_servers();
+	int server_index = 0;
+	if (num_of_servers > 0) {
+		server_index = db_index % num_of_servers;
+	}
+
+	std::string volume_path = "/tmp/root/parallax/default" + std::to_string(server_index);
 	const char *volume_name = volume_path.c_str();
 
 	par_db_options db_options = { .volume_name = (char *)volume_name,
@@ -70,13 +77,9 @@ par_handle par_get_db(const std::string &db_name)
 
 void par_init_db_handles()
 {
-	int num_of_servers = par_get_num_of_servers();
 	for (int i = 0; i < PARALLAX_DB_COUNT; ++i) {
-		current_index = i;
-		for (int j = 0; j < num_of_servers; j++) {
-			std::string db_name = PARALLAX_GLOBAL_DB + std::to_string(i * num_of_servers + j);
-			par_get_db(db_name);
-		}
+		std::string db_name = std::string(PARALLAX_GLOBAL_DB) + std::to_string(i);
+		par_get_db(db_name);
 	}
 }
 
