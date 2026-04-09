@@ -3,6 +3,9 @@
 
 int main(int argc, char **argv)
 {
+#ifdef LOG_LEVEL_RELEASE
+	log_set_level(2);
+#endif
 	log_info("Starting InfiniBand server...");
 	struct server_options *server_options = par_ib_server_parse_argv_opts(argc, argv);
 

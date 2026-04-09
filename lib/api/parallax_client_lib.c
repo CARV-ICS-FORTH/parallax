@@ -993,6 +993,9 @@ char *par_format(char *device_name, uint32_t max_regions_num)
 
 par_handle par_open(par_db_options *db_options, const char **error_message)
 {
+#ifdef LOG_LEVEL_RELEASE
+	log_set_level(2);
+#endif
 	log_info("OPEN DB with name: %s", db_options->db_name);
 	struct par_options_desc *configuration = par_get_default_options();
 #ifdef USE_INFINIBAND
