@@ -62,33 +62,29 @@ class ParallaxDBIB : public YCSBDB {
 	// Retrieve the dbs vector for the current thread, initialize if empty
 	std::vector<par_handle> &getDBVector(int thread_id)
 	{
-		if (false == thread_dbs[thread_id].empty())
+		if (!thread_dbs[thread_id].empty()) 
 			return thread_dbs[thread_id];
 
 		std::cerr << "Initializing dbs for thread " << thread_id << std::endl;
-
-		int num_of_servers = par_get_num_of_servers();
 
 		par_db_options db_options;
 		db_options.volume_name = (char *)"TRELAKIAS";
 		db_options.create_flag = PAR_CREATE_DB;
 		db_options.options = par_get_default_options();
 		for (int i = 0; i < db_num; ++i) {
-			for (int j = 0; j < num_of_servers; ++j) {
-				std::string db_name = std::string("par_db") + std::to_string(i * num_of_servers + j);
-				db_options.db_name = (char *)db_name.c_str();
-				const char *error_message = nullptr;
-				par_handle hd = par_open(&db_options, &error_message);
-				std::cout << "Opened new db with name : " << db_options.db_name
-					  << " for thread: " << thread_id << std::endl;
+			std::string db_name = std::string("par_db") + std::to_string(i);
+			db_options.db_name = (char *)db_name.c_str();
+			const char *error_message = nullptr;
+			par_handle hd = par_open(&db_options, &error_message);
+			std::cout << "Opened new db with name : " << db_options.db_name
+				<< " for thread: " << thread_id << std::endl;
 
-				if (error_message != nullptr) {
-					std::cerr << "Error opening DB: " << error_message << std::endl;
-					_Exit(EXIT_FAILURE);
-				}
-
-				thread_dbs[thread_id].push_back(hd);
+			if (error_message != nullptr) {
+				std::cerr << "Error opening DB: " << error_message << std::endl;
+				_Exit(EXIT_FAILURE);
 			}
+
+			thread_dbs[thread_id].push_back(hd);
 		}
 		return thread_dbs[thread_id];
 	}
