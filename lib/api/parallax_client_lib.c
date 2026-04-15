@@ -311,6 +311,7 @@ struct par_net_context {
 	int send_idx;
 	uint32_t client_id;
 	uint32_t max_buffer_size;
+	int refcount;
 };
 
 struct par_handle {
@@ -366,6 +367,7 @@ static int active_par_ib_handles = 0;
 static struct par_net_context *par_net_init(const char *parallax_host, int target)
 {
 	if (cached_connections[target] != NULL) {
+		cached_connections[target]->refcount++;
 		return cached_connections[target];
 	}
 
@@ -518,6 +520,7 @@ static struct par_net_context *par_net_init(const char *parallax_host, int targe
 
 	rdma_ack_cm_event(event);
 
+	net->refcount = 1;
 	cached_connections[target] = net;
 	log_debug("par_net_init completed successfully with client_id: %u", net->client_id);
 	return net;
@@ -625,70 +628,81 @@ void par_net_handle_destroy(par_handle handle)
 	if (parallax_handle->db_name)
 		free(parallax_handle->db_name);
 
-	for (int j = 0; j < N_RECV_BUFFERS; j++) {
-		if (parallax_handle->net->recv_mr[j]) {
-			ret = ibv_dereg_mr(parallax_handle->net->recv_mr[j]);
+	parallax_handle->net->refcount--;
+
+	if (parallax_handle->net->refcount == 0) {
+		for (int i = 0; i < MAX_SERVERS; i++) {
+			if (cached_connections[i] == parallax_handle->net) {
+				cached_connections[i] = NULL;
+			}
+		}
+		for (int j = 0; j < N_RECV_BUFFERS; j++) {
+			if (parallax_handle->net->recv_mr[j]) {
+				ret = ibv_dereg_mr(parallax_handle->net->recv_mr[j]);
+				if (ret) {
+					log_fatal("Failed to deregister receive MR");
+					_exit(EXIT_FAILURE);
+				}
+			}
+			if (parallax_handle->net->recv_buffer[j])
+				free(parallax_handle->net->recv_buffer[j]);
+		}
+		for (int j = 0; j < N_SEND_BUFFERS; j++) {
+			if (parallax_handle->net->send_mr[j]) {
+				ret = ibv_dereg_mr(parallax_handle->net->send_mr[j]);
+				if (ret) {
+					log_fatal("Failed to deregister send MR");
+					_exit(EXIT_FAILURE);
+				}
+			}
+			if (parallax_handle->net->send_buffer[j])
+				free(parallax_handle->net->send_buffer[j]);
+		}
+		ret = rdma_disconnect(parallax_handle->net->cm_id);
+		if (ret) {
+			log_fatal("Failed to disconnect RDMA connection");
+			_exit(EXIT_FAILURE);
+		}
+		rdma_destroy_qp(parallax_handle->net->cm_id);
+
+		ret = rdma_destroy_id(parallax_handle->net->cm_id);
+		if (ret) {
+			log_fatal("Failed to destroy RDMA ID");
+			_exit(EXIT_FAILURE);
+		}
+
+		if (parallax_handle->net->cq) {
+			ret = ibv_destroy_cq(parallax_handle->net->cq);
 			if (ret) {
-				log_fatal("Failed to deregister receive MR");
+				log_fatal("Failed to destroy RDMA CQ");
 				_exit(EXIT_FAILURE);
 			}
 		}
-		if (parallax_handle->net->recv_buffer[j])
-			free(parallax_handle->net->recv_buffer[j]);
-	}
-	for (int j = 0; j < N_SEND_BUFFERS; j++) {
-		if (parallax_handle->net->send_mr[j]) {
-			ret = ibv_dereg_mr(parallax_handle->net->send_mr[j]);
+		if (parallax_handle->net->comp_channel) {
+			ret = ibv_destroy_comp_channel(parallax_handle->net->comp_channel);
 			if (ret) {
-				log_fatal("Failed to deregister send MR");
+				log_fatal("Failed to destroy RDMA completion channel");
 				_exit(EXIT_FAILURE);
 			}
 		}
-		if (parallax_handle->net->send_buffer[j])
-			free(parallax_handle->net->send_buffer[j]);
-	}
-	ret = rdma_disconnect(parallax_handle->net->cm_id);
-	if (ret) {
-		log_fatal("Failed to disconnect RDMA connection");
-		_exit(EXIT_FAILURE);
-	}
-	rdma_destroy_qp(parallax_handle->net->cm_id);
+		rdma_destroy_event_channel(parallax_handle->net->ec);
 
-	ret = rdma_destroy_id(parallax_handle->net->cm_id);
-	if (ret) {
-		log_fatal("Failed to destroy RDMA ID");
-		_exit(EXIT_FAILURE);
-	}
+		pthread_mutex_lock(&pd_lock);
+		active_par_ib_handles--;
 
-	if (parallax_handle->net->cq) {
-		ret = ibv_destroy_cq(parallax_handle->net->cq);
-		if (ret) {
-			log_fatal("Failed to destroy RDMA CQ");
-			_exit(EXIT_FAILURE);
+		if (active_par_ib_handles <= 0 && global_pd != NULL) {
+			ret = ibv_dealloc_pd(global_pd);
+			if (ret) {
+				log_fatal("Failed to deallocate RDMA PD");
+				_exit(EXIT_FAILURE);
+			}
+			global_pd = NULL;
+			active_par_ib_handles = 0;
 		}
-	}
-	if (parallax_handle->net->comp_channel) {
-		ret = ibv_destroy_comp_channel(parallax_handle->net->comp_channel);
-		if (ret) {
-			log_fatal("Failed to destroy RDMA completion channel");
-			_exit(EXIT_FAILURE);
-		}
-	}
-	rdma_destroy_event_channel(parallax_handle->net->ec);
+		pthread_mutex_unlock(&pd_lock);
 
-	pthread_mutex_lock(&pd_lock);
-	active_par_ib_handles--;
-
-	if (active_par_ib_handles <= 0 && global_pd != NULL) {
-		ret = ibv_dealloc_pd(global_pd);
-		if (ret) {
-			log_fatal("Failed to deallocate RDMA PD");
-			_exit(EXIT_FAILURE);
-		}
-		global_pd = NULL;
-		active_par_ib_handles = 0;
+		free(parallax_handle->net);
 	}
-	pthread_mutex_unlock(&pd_lock);
 #elif USE_TCP
 	free(parallax_handle->send_buffer);
 	free(parallax_handle->recv_buffer);
@@ -989,8 +1003,7 @@ par_handle par_open(par_db_options *db_options, const char **error_message)
 	free(hosts_copy);
 
 	int target = djb2_hash(db_options->db_name) % server_count;
-	struct par_net_context *net =
-		par_net_init((const char *)configuration[PARALLAX_SERVER].value, target);
+	struct par_net_context *net = par_net_init((const char *)configuration[PARALLAX_SERVER].value, target);
 
 	struct par_handle *parallax_handle = calloc(1, sizeof(*parallax_handle));
 	parallax_handle->net = net;
