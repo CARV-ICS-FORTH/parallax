@@ -725,6 +725,8 @@ enum kv_category calculate_KV_category(uint32_t key_size, uint32_t value_size, r
 	}
 
 	assert(key_size && value_size);
+	//hack
+	// return BIG_INLOG;
 	/*We always use as nominator the smallest value of the pair <key size, value size>*/
 	double kv_ratio = ((double)key_size) / value_size;
 	if (value_size < key_size)
@@ -771,6 +773,12 @@ static const char *insert_error_handling(const db_handle *handle, uint32_t key_s
 struct par_put_metadata insert_key_value(db_handle *handle, const void *key, const void *value, int32_t key_size,
 					 int32_t value_size, request_type op_type, const char **error_message)
 {
+#if KV_MAX_SIZE > 16384
+	char *kv_pair_buf = malloc(KV_MAX_SIZE);
+#else
+	char kv_pair_buf[KV_MAX_SIZE];
+#endif
+
 	*error_message = insert_error_handling(handle, key_size, value_size);
 	if (*error_message) {
 		// construct an invalid par_put_metadata
@@ -789,7 +797,6 @@ struct par_put_metadata insert_key_value(db_handle *handle, const void *key, con
 				  .metadata.append_to_log = 1,
 				  .metadata.gc_request = 0 };
 
-	char kv_pair_buf[KV_MAX_SIZE];
 	struct kv_splice *kv_pair = (struct kv_splice *)kv_pair_buf;
 	kv_splice_set_key((struct kv_splice *)kv_pair, key, key_size);
 
@@ -810,6 +817,9 @@ struct par_put_metadata insert_key_value(db_handle *handle, const void *key, con
 	// is the active_tree after acquiring the guard lock of the region.
 
 	*error_message = btree_insert_key_value(&ins_req);
+#if KV_MAX_SIZE > 16384
+	free(kv_pair_buf);
+#endif
 	return ins_req.metadata.put_op_metadata;
 }
 
