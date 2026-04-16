@@ -89,13 +89,7 @@ void par_net_worker_unlock(struct par_net_worker *worker)
 
 void par_net_worker_notify(struct par_net_worker *worker)
 {
-	int expected = 0;
-	if (atomic_compare_exchange_strong(&worker->notified, &expected, 1)) {
-		sem_post(&worker->empty);
-		log_debug("Thread %lu: Notified (Posting semaphore)", worker->core);
-	} else {
-		log_debug("Thread %lu: Already notified (skipping sem_post)", worker->core);
-	}
+	sem_post(&worker->empty);
 }
 
 uint32_t par_net_worker_get_reqs(struct par_net_worker *worker)
@@ -112,13 +106,7 @@ struct par_net_worker_request *par_net_worker_poll(struct par_net_worker *worker
 	long elapsed_time = (worker->end - worker->start) / CPU_FREQ_HZ;
 	//log_debug("Thread %lu: Elapsed time since last event: %ld usec", worker->core, elapsed_time);
 
-	if (elapsed_time >= EMPTY_WAIT) {
-		log_debug("Thread %lu: empty queue for %ld usec, waiting on semaphore", worker->core, elapsed_time);
-		sem_wait(&worker->empty);
-		atomic_store(&worker->notified, 0);
-		worker->start = __rdtsc();
-		worker->end = worker->start;
-	}
+	sem_wait(&worker->empty);
 
 	RetVal rawval = CCQueueApplyDequeue(worker->queue_object, worker->th_state, worker->tid);
 	if (EMPTY_QUEUE == rawval) {

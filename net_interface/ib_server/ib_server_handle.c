@@ -31,7 +31,7 @@
 #define PAR_IB_PORT_MAX 65536
 #define PAR_IB_MAX_REGIONS 128
 #define PAR_IB_METADATA_SIZE 4096
-#define PAR_IB_QUEUE_DEPTH 128
+#define PAR_IB_QUEUE_DEPTH 4
 #define PAR_IB_CLOSE_OP_BUF_SIZE 100
 #define PAR_IB_MAX_CLIENTS 256
 #define PAR_IB_MSG_SIZE 1024
@@ -432,23 +432,23 @@ int par_ib_loop(struct server_handle *server_handle)
 	return EXIT_SUCCESS;
 }
 
+#define PAR_IB_GET_WORKER_ID(X) (X->thread_to_queue % X->opts->threadno)
+
 void worker_scheduler(struct server_handle *server_handle, void *buf)
 {
-	if (server_handle->thread_to_queue == server_handle->opts->threadno)
-		server_handle->thread_to_queue = 0;
-
-	while (par_net_worker_get_reqs(server_handle->par_net_workers[server_handle->thread_to_queue]) >=
-	       PAR_IB_QUEUE_DEPTH) {
+	uint32_t worker_id = PAR_IB_GET_WORKER_ID(server_handle);
+	while (par_net_worker_get_reqs(server_handle->par_net_workers[PAR_IB_GET_WORKER_ID(server_handle)]) >=
+	PAR_IB_QUEUE_DEPTH) {
 		log_debug("Thread %d: REACHED MAX PAR_IB_QUEUE_DEPTH Current", server_handle->thread_to_queue);
+		if (worker_id == PAR_IB_GET_WORKER_ID(server_handle)) {
+			break; // full circle
+		}
 		server_handle->thread_to_queue++;
-		if (server_handle->thread_to_queue == server_handle->opts->threadno)
-			server_handle->thread_to_queue = 0;
 	}
-	struct par_net_worker *worker = server_handle->par_net_workers[server_handle->thread_to_queue];
+	struct par_net_worker *worker = server_handle->par_net_workers[PAR_IB_GET_WORKER_ID(server_handle)];
 	par_net_worker_put(worker, par_net_worker_create_req(buf));
 	par_net_worker_notify(worker);
 
-	server_handle->thread_to_queue++;
 	return;
 }
 
@@ -693,7 +693,6 @@ void *par_ib_put_and_reply(void *arg)
 		req = par_net_worker_poll(par_net_worker);
 		if (req == NULL) {
 			continue;
-			log_fatal("NOTHING IN THREAD QUEUE");
 		}
 		struct par_ib_recv_slot *recv_slot = (struct par_ib_recv_slot *)par_net_worker_get_start(req);
 		struct par_net_header *hdr = recv_slot->buf;
