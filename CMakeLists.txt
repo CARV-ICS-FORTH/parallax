@@ -16,8 +16,8 @@ option(KV_MAX_SIZE_64K "Set KV_MAX_SIZE to 64K" OFF)
 option(KV_MAX_SIZE_128K "Set KV_MAX_SIZE to 128K" OFF)
 
 # Set default value for KV_MAX_SIZE
-# set(KV_MAX_SIZE 16384)
-set(KV_MAX_SIZE 4194304) # 4MB in bytes
+set(KV_MAX_SIZE 16384)
+# set(KV_MAX_SIZE 4194304) # 4MB in bytes
 
 # Update KV_MAX_SIZE based on options
 if(KV_MAX_SIZE_32K)
@@ -63,6 +63,8 @@ option(TEBIS_FORMAT "BUild Parallax using Tebis-format" OFF)
 option(PARALLAX_BUILD_TESTING "" ON)
 
 option(PAR_NET_METRICS "Enable Metrics in the server" OFF)
+option(FLAMEGRAPH_SUPPORT
+       "Adds -pg and -fno-omit-frame-pointer for flamegraph profiling" OFF)
 
 if(NOT (${CMAKE_SOURCE_DIR} STREQUAL ${CMAKE_CURRENT_SOURCE_DIR}))
   set(PARALLAX_BUILD_TESTING OFF)
@@ -229,11 +231,8 @@ if(TREAT_WARNINGS_AS_ERRORS)
   string(APPEND CMAKE_CXX_FLAGS " -Werror")
 endif()
 
-string(
-  APPEND
-  CMAKE_C_FLAGS
-  " -Wstrict-prototypes -Wall -Wextra -fno-omit-frame-pointer -Wunused -Wuninitialized -pg"
-)
+string(APPEND CMAKE_C_FLAGS
+       " -Wstrict-prototypes -Wall -Wextra -Wunused -Wuninitialized")
 string(
   APPEND
   CMAKE_C_FLAGS
@@ -255,6 +254,14 @@ endif()
 string(APPEND CMAKE_C_FLAGS_DEBUG " -ggdb3 -Og -gz")
 string(APPEND CMAKE_C_FLAGS_RELEASE " -O2 -finline-functions -DNDEBUG")
 string(APPEND CMAKE_CXX_FLAGS_RELEASE " -std=gnu++11 -Wall")
+
+if(FLAMEGRAPH_SUPPORT)
+  message(
+    STATUS "Flamegraph support enabled: adding -pg -fno-omit-frame-pointer")
+  string(APPEND CMAKE_C_FLAGS " -pg -fno-omit-frame-pointer")
+  string(APPEND CMAKE_CXX_FLAGS " -pg -fno-omit-frame-pointer")
+endif()
+
 # string(APPEND CMAKE_EXE_LINKER_FLAGS " -Wl,--no-as-needed -lrt -lm -pthread
 # -lnuma -lutil")
 string(APPEND CMAKE_EXE_LINKER_FLAGS " -Wl,--no-as-needed")
