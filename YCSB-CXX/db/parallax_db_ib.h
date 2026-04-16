@@ -62,30 +62,6 @@ class ParallaxDBIB : public YCSBDB {
 	// Retrieve the dbs vector for the current thread, initialize if empty
 	std::vector<par_handle> &getDBVector(int thread_id)
 	{
-		if (!thread_dbs[thread_id].empty()) 
-			return thread_dbs[thread_id];
-
-		std::cerr << "Initializing dbs for thread " << thread_id << std::endl;
-
-		par_db_options db_options;
-		db_options.volume_name = (char *)"TRELAKIAS";
-		db_options.create_flag = PAR_CREATE_DB;
-		db_options.options = par_get_default_options();
-		for (int i = 0; i < db_num; ++i) {
-			std::string db_name = std::string("par_db") + std::to_string(i);
-			db_options.db_name = (char *)db_name.c_str();
-			const char *error_message = nullptr;
-			par_handle hd = par_open(&db_options, &error_message);
-			std::cout << "Opened new db with name : " << db_options.db_name
-				<< " for thread: " << thread_id << std::endl;
-
-			if (error_message != nullptr) {
-				std::cerr << "Error opening DB: " << error_message << std::endl;
-				_Exit(EXIT_FAILURE);
-			}
-
-			thread_dbs[thread_id].push_back(hd);
-		}
 		return thread_dbs[thread_id];
 	}
 
@@ -93,10 +69,37 @@ class ParallaxDBIB : public YCSBDB {
 	void Init()
 	{
 		std::lock_guard<std::mutex> lock(db_mutex);
-		for (unsigned int i = 0; i < MAX_THREADS_NUM; ++i) {
-			// Pre-populate the map with empty vectors, keys being thread ids
-			// (Using dummy thread ids or actual ones if threads are available)
-			thread_dbs[0] = std::vector<par_handle>(); // Empty vector for each thread
+
+		if (!thread_dbs.empty()) {
+			return;
+		}
+
+		par_db_options db_options;
+		db_options.volume_name = (char *)"TRELAKIAS";
+		db_options.create_flag = PAR_CREATE_DB;
+		db_options.options = par_get_default_options();
+
+		for (unsigned int tid = 0; tid < db_num; ++tid) {
+			std::vector<par_handle> handles;
+			handles.reserve(db_num);
+
+			for (int i = 0; i < db_num; ++i) {
+				std::string db_name = std::string("par_db") + std::to_string(i);
+				db_options.db_name = (char *)db_name.c_str();
+				const char *error_message = nullptr;
+
+				par_handle hd = par_open(&db_options, &error_message);
+
+				if (error_message != nullptr) {
+					std::cerr << "Error opening DB " << db_name << " for thread " << tid << ": "
+						  << error_message << std::endl;
+					_Exit(EXIT_FAILURE);
+				}
+
+				handles.push_back(hd);
+			}
+
+			thread_dbs[tid] = std::move(handles);
 		}
 	}
 
