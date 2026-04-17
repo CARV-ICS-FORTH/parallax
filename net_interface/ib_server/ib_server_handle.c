@@ -438,18 +438,18 @@ void worker_scheduler(struct server_handle *server_handle, void *buf)
 {
 	uint32_t worker_id = PAR_IB_GET_WORKER_ID(server_handle);
 	while (par_net_worker_get_reqs(server_handle->par_net_workers[PAR_IB_GET_WORKER_ID(server_handle)]) >=
-	PAR_IB_QUEUE_DEPTH) {
-		log_debug("Thread %d: REACHED MAX PAR_IB_QUEUE_DEPTH Current", server_handle->thread_to_queue);
+	       PAR_IB_QUEUE_DEPTH) {
+		log_debug("Thread %d: REACHED MAX PAR_IB_QUEUE_DEPTH", PAR_IB_GET_WORKER_ID(server_handle));
+		server_handle->thread_to_queue++;
 		if (worker_id == PAR_IB_GET_WORKER_ID(server_handle)) {
 			break; // full circle
 		}
-		server_handle->thread_to_queue++;
 	}
 	struct par_net_worker *worker = server_handle->par_net_workers[PAR_IB_GET_WORKER_ID(server_handle)];
 	par_net_worker_put(worker, par_net_worker_create_req(buf));
 	par_net_worker_notify(worker);
 
-	return;
+	server_handle->thread_to_queue++;
 }
 
 inline size_t par_net_header_size(void)
