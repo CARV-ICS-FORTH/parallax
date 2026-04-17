@@ -70,36 +70,26 @@ class ParallaxDBIB : public YCSBDB {
 	{
 		std::lock_guard<std::mutex> lock(db_mutex);
 
-		if (!thread_dbs.empty()) {
+		if (!thread_dbs[0].empty())
 			return;
-		}
 
 		par_db_options db_options;
 		db_options.volume_name = (char *)"TRELAKIAS";
 		db_options.create_flag = PAR_CREATE_DB;
 		db_options.options = par_get_default_options();
+		for (int i = 0; i < db_num; ++i) {
+			std::string db_name = std::string("par_db") + std::to_string(i);
+			db_options.db_name = (char *)db_name.c_str();
+			const char *error_message = nullptr;
+			par_handle hd = par_open(&db_options, &error_message);
+			std::cout << "Opened new db with name : " << db_options.db_name << std::endl;
 
-		for (unsigned int tid = 0; tid < db_num; ++tid) {
-			std::vector<par_handle> handles;
-			handles.reserve(db_num);
-
-			for (int i = 0; i < db_num; ++i) {
-				std::string db_name = std::string("par_db") + std::to_string(i);
-				db_options.db_name = (char *)db_name.c_str();
-				const char *error_message = nullptr;
-
-				par_handle hd = par_open(&db_options, &error_message);
-
-				if (error_message != nullptr) {
-					std::cerr << "Error opening DB " << db_name << " for thread " << tid << ": "
-						  << error_message << std::endl;
-					_Exit(EXIT_FAILURE);
-				}
-
-				handles.push_back(hd);
+			if (error_message != nullptr) {
+				std::cerr << "Error opening DB: " << error_message << std::endl;
+				_Exit(EXIT_FAILURE);
 			}
 
-			thread_dbs[tid] = std::move(handles);
+			thread_dbs[0].push_back(hd);
 		}
 	}
 
