@@ -359,10 +359,7 @@ unsigned long djb2_hash(const char *str)
 	return hash;
 }
 
-static struct ibv_pd *global_pd = NULL;
 static __thread struct par_net_context *cached_connections[MAX_SERVERS] = { NULL };
-static pthread_mutex_t pd_lock = PTHREAD_MUTEX_INITIALIZER;
-static int active_par_ib_handles = 0;
 
 static struct par_net_context *par_net_init(const char *parallax_host, int target)
 {
@@ -419,18 +416,12 @@ static struct par_net_context *par_net_init(const char *parallax_host, int targe
 	}
 	rdma_ack_cm_event(event);
 
-	pthread_mutex_lock(&pd_lock);
-	if (global_pd == NULL) {
-		global_pd = ibv_alloc_pd(net->cm_id->verbs);
-		if (!global_pd) {
-			perror("ibv_alloc_pd");
-			_exit(EXIT_FAILURE);
-		}
+	net->pd = ibv_alloc_pd(net->cm_id->verbs);
+	if (!net->pd) {
+		perror("ibv_alloc_pd");
+		_exit(EXIT_FAILURE);
 	}
-	active_par_ib_handles++;
-	pthread_mutex_unlock(&pd_lock);
 
-	net->pd = global_pd;
 	net->comp_channel = ibv_create_comp_channel(net->cm_id->verbs);
 	if (!net->comp_channel) {
 		perror("ibv_create_comp_channel");
@@ -687,19 +678,13 @@ void par_net_handle_destroy(par_handle handle)
 		}
 		rdma_destroy_event_channel(parallax_handle->net->ec);
 
-		pthread_mutex_lock(&pd_lock);
-		active_par_ib_handles--;
-
-		if (active_par_ib_handles <= 0 && global_pd != NULL) {
-			ret = ibv_dealloc_pd(global_pd);
+		if (parallax_handle->net->pd) {
+			ret = ibv_dealloc_pd(parallax_handle->net->pd);
 			if (ret) {
 				log_fatal("Failed to deallocate RDMA PD");
 				_exit(EXIT_FAILURE);
 			}
-			global_pd = NULL;
-			active_par_ib_handles = 0;
 		}
-		pthread_mutex_unlock(&pd_lock);
 
 		free(parallax_handle->net);
 	}
