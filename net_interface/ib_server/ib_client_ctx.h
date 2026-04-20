@@ -20,14 +20,12 @@ struct par_ib_recv_slot {
 	void *buf;
 	struct ibv_mr *mr;
 	int buf_idx;
+	void *read_slot_ptr;
 };
 
 struct par_ib_client_ctx {
 	struct ibv_pd *pd;
 	struct ibv_qp *qp;
-	struct par_ib_recv_slot recv_slots[PAR_IB_RECV_BUFFER_NUMBER];
-	struct rdma_read_slot read_pool[RDMA_READ_POOL_SIZE];
-	bool rdma_read_pool_initialized;
 };
 
 #endif

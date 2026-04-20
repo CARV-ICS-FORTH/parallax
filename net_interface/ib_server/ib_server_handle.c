@@ -36,7 +36,8 @@
 #define PAR_IB_MAX_CLIENTS 256
 #define PAR_IB_MSG_SIZE 1024
 #define PAR_IB_NUM_ENTRIES 16
-#define PAR_IB_SECTOR_SIZE 512
+#define PAR_IB_SECTOR_SIZE 4096
+#define PAR_IB_MAX_SRQ_BUFFERS 128
 
 struct server_options {
 	uint32_t threadno;
@@ -56,6 +57,9 @@ struct server_handle {
 	struct ibv_comp_channel *comp_channel;
 	struct ibv_cq *cq;
 	struct ibv_pd *pd;
+	struct ibv_srq *srq;
+	struct par_ib_recv_slot *global_recv_slots;
+	struct rdma_read_slot *global_read_pool;
 	uint32_t thread_to_queue;
 };
 
@@ -265,6 +269,88 @@ struct server_handle *par_ib_server_handle_init(struct server_options *opts)
 		_exit(EXIT_FAILURE);
 	}
 
+	struct ibv_srq_init_attr srq_attr = { .attr = { .max_wr = PAR_IB_MAX_SRQ_BUFFERS, .max_sge = 1 } };
+	handle->srq = ibv_create_srq(handle->pd, &srq_attr);
+	if (!handle->srq) {
+		perror("ibv_create_srq");
+		_exit(EXIT_FAILURE);
+	}
+
+	size_t single_buf_size = PAR_IB_METADATA_SIZE + PAR_IB_MSG_SIZE;
+	size_t total_chunk_size = single_buf_size * PAR_IB_MAX_SRQ_BUFFERS;
+
+	handle->global_recv_slots = calloc(PAR_IB_MAX_SRQ_BUFFERS, sizeof(struct par_ib_recv_slot));
+	if (!handle->global_recv_slots) {
+		log_debug("InfiniBand Server: calloc global_recv_slots failed");
+		_exit(EXIT_FAILURE);
+	}
+
+	void *srq_memory_chunk = NULL;
+	int ret = posix_memalign(&srq_memory_chunk, PAR_IB_SECTOR_SIZE, total_chunk_size);
+	if (ret) {
+		perror("posix_memalign chunk");
+		_exit(EXIT_FAILURE);
+	}
+
+	struct ibv_mr *srq_mr = ibv_reg_mr(handle->pd, srq_memory_chunk, total_chunk_size,
+					   IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE);
+	if (!srq_mr) {
+		free(srq_memory_chunk);
+		perror("ibv_reg_mr chunk");
+		_exit(EXIT_FAILURE);
+	}
+
+	for (int i = 0; i < PAR_IB_MAX_SRQ_BUFFERS; i++) {
+		handle->global_recv_slots[i].buf = (char *)srq_memory_chunk + (i * single_buf_size);
+		handle->global_recv_slots[i].mr = srq_mr;
+		handle->global_recv_slots[i].buf_idx = i;
+
+		struct ibv_sge sge = {
+			.addr = (uintptr_t)handle->global_recv_slots[i].buf,
+			.length = single_buf_size,
+			.lkey = handle->global_recv_slots[i].mr->lkey,
+		};
+		struct ibv_recv_wr wr = {
+			.wr_id = (uintptr_t)&handle->global_recv_slots[i],
+			.sg_list = &sge,
+			.num_sge = 1,
+		};
+		struct ibv_recv_wr *bad_wr;
+		if (ibv_post_srq_recv(handle->srq, &wr, &bad_wr)) {
+			perror("ibv_post_srq_recv init");
+			_exit(EXIT_FAILURE);
+		}
+	}
+
+	handle->global_read_pool = calloc(RDMA_READ_POOL_SIZE, sizeof(struct rdma_read_slot));
+	if (!handle->global_read_pool) {
+		log_debug("InfiniBand Server: calloc global_read_pool failed");
+		_exit(EXIT_FAILURE);
+	}
+
+	size_t total_read_chunk_size = (size_t)RDMA_READ_BUF_SIZE * RDMA_READ_POOL_SIZE;
+	void *read_memory_chunk = NULL;
+	ret = posix_memalign(&read_memory_chunk, PAR_IB_SECTOR_SIZE, total_read_chunk_size);
+	if (ret) {
+		perror("posix_memalign read chunk");
+		_exit(EXIT_FAILURE);
+	}
+
+	struct ibv_mr *read_mr =
+		ibv_reg_mr(handle->pd, read_memory_chunk, total_read_chunk_size, IBV_ACCESS_LOCAL_WRITE);
+	if (!read_mr) {
+		free(read_memory_chunk);
+		perror("ibv_reg_mr read chunk");
+		_exit(EXIT_FAILURE);
+	}
+
+	for (int i = 0; i < RDMA_READ_POOL_SIZE; i++) {
+		handle->global_read_pool[i].buf = (char *)read_memory_chunk + (i * RDMA_READ_BUF_SIZE);
+		handle->global_read_pool[i].mr = read_mr;
+		handle->global_read_pool[i].size = RDMA_READ_BUF_SIZE;
+		atomic_store(&handle->global_read_pool[i].in_use, false);
+	}
+
 	log_info("InfiniBand server listening on %s:%ld", inet_ntoa(inaddr->sin_addr), opts->port);
 
 	const char *error_message = NULL;
@@ -323,6 +409,7 @@ int par_ib_handle_cm_event(struct server_handle *server_handle, struct rdma_cm_e
 		struct ibv_qp_init_attr qp_attr = {
             .send_cq = server_handle->cq,
             .recv_cq = server_handle->cq,
+			.srq     = server_handle->srq,
             .qp_type = IBV_QPT_RC,
             .cap = {
                 .max_send_wr = 128,
@@ -364,43 +451,7 @@ int par_ib_handle_cm_event(struct server_handle *server_handle, struct rdma_cm_e
 		}
 		ctx->pd = server_handle->pd;
 		ctx->qp = client_id->qp;
-		ctx->rdma_read_pool_initialized = 0;
-
 		clients[server_caps.client_id - 1] = ctx;
-
-		size_t total_size = PAR_IB_METADATA_SIZE + PAR_IB_MSG_SIZE;
-
-		for (int i = 0; i < PAR_IB_RECV_BUFFER_NUMBER; i++) {
-			int ret = posix_memalign((void **)&ctx->recv_slots[i].buf, PAR_IB_SECTOR_SIZE, total_size);
-			if (ret != 0) {
-				perror("posix_memalign");
-				return -1;
-			}
-			ctx->recv_slots[i].mr = ibv_reg_mr(ctx->pd, ctx->recv_slots[i].buf, total_size,
-							   IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE);
-			if (!ctx->recv_slots[i].mr) {
-				perror("ibv_reg_mr");
-				return -1;
-			}
-			ctx->recv_slots[i].buf_idx = i;
-		}
-		for (int i = 0; i < PAR_IB_RECV_BUFFER_NUMBER; i++) {
-			struct ibv_sge sge = {
-				.addr = (uintptr_t)ctx->recv_slots[i].buf,
-				.length = total_size,
-				.lkey = ctx->recv_slots[i].mr->lkey,
-			};
-			struct ibv_recv_wr wr = {
-				.wr_id = (uintptr_t)&ctx->recv_slots[i],
-				.sg_list = &sge,
-				.num_sge = 1,
-			};
-			struct ibv_recv_wr *bad_wr;
-			if (ibv_post_recv(client_id->qp, &wr, &bad_wr)) {
-				perror("ibv_post_recv");
-				return -1;
-			}
-		}
 		break;
 	case RDMA_CM_EVENT_ESTABLISHED:;
 		log_info("RDMA_CM_EVENT_ESTABLISHED");
@@ -642,37 +693,13 @@ uint32_t par_net_header_get_opcode(char *buffer)
 	return header->opcode;
 }
 
-void rdma_read_pool_init(struct par_ib_client_ctx *ctx)
-{
-	for (int i = 0; i < RDMA_READ_POOL_SIZE; i++) {
-		void *buf = NULL;
-		int ret = posix_memalign(&buf, PAR_IB_SECTOR_SIZE, RDMA_READ_BUF_SIZE);
-		if (ret) {
-			perror("posix_memalign");
-			_exit(EXIT_FAILURE);
-		}
-
-		struct ibv_mr *mr = ibv_reg_mr(ctx->pd, buf, RDMA_READ_BUF_SIZE, IBV_ACCESS_LOCAL_WRITE);
-		if (!mr) {
-			free(buf);
-			perror("ibv_reg_mr");
-			_exit(EXIT_FAILURE);
-		}
-
-		ctx->read_pool[i].buf = buf;
-		ctx->read_pool[i].mr = mr;
-		ctx->read_pool[i].size = RDMA_READ_BUF_SIZE;
-		atomic_store(&ctx->read_pool[i].in_use, false);
-	}
-}
-
-static inline struct rdma_read_slot *rdma_read_acquire(struct par_ib_client_ctx *c)
+static inline struct rdma_read_slot *rdma_read_acquire(struct server_handle *handle)
 {
 	while (1) {
 		for (int i = 0; i < RDMA_READ_POOL_SIZE; i++) {
 			bool expected = false;
-			if (atomic_compare_exchange_strong(&c->read_pool[i].in_use, &expected, true)) {
-				return &c->read_pool[i];
+			if (atomic_compare_exchange_strong(&handle->global_read_pool[i].in_use, &expected, true)) {
+				return &handle->global_read_pool[i];
 			}
 		}
 		sched_yield();
@@ -726,20 +753,27 @@ void *par_ib_put_and_reply(void *arg)
 		par_net_call[opcode](par_net_worker, hdr, reply_header);
 		par_net_worker_send_reply_buff(par_net_worker, reply_header->total_bytes, ctx->qp, slot);
 
+		struct server_handle *srv = par_net_worker_get_server_handle(par_net_worker);
+
 		struct ibv_sge sge = {
-			.addr = (uintptr_t)ctx->recv_slots[recv_slot->buf_idx].buf,
+			.addr = (uintptr_t)srv->global_recv_slots[recv_slot->buf_idx].buf,
 			.length = PAR_IB_MSG_SIZE,
-			.lkey = ctx->recv_slots[recv_slot->buf_idx].mr->lkey,
+			.lkey = srv->global_recv_slots[recv_slot->buf_idx].mr->lkey,
 		};
 		struct ibv_recv_wr wr = {
-			.wr_id = (uintptr_t)&ctx->recv_slots[recv_slot->buf_idx],
+			.wr_id = (uintptr_t)&srv->global_recv_slots[recv_slot->buf_idx],
 			.sg_list = &sge,
 			.num_sge = 1,
 		};
 		struct ibv_recv_wr *bad_wr;
-		if (ibv_post_recv(ctx->qp, &wr, &bad_wr)) {
-			perror("ibv_post_recv");
+		if (ibv_post_srq_recv(srv->srq, &wr, &bad_wr)) {
+			perror("ibv_post_srq_recv");
 			_exit(EXIT_FAILURE);
+		}
+
+		if (hdr->inline_flag == 0) {
+			rdma_read_release((struct rdma_read_slot *)recv_slot->read_slot_ptr);
+			free(recv_slot);
 		}
 	}
 	log_debug("FINISHED");
@@ -760,11 +794,7 @@ int par_ib_handle_event(struct ibv_wc *wc, struct server_handle *server_handle)
 		struct par_net_header *hdr = recv_slot->buf;
 		if (hdr->inline_flag == 0) {
 			struct par_ib_client_ctx *client_ctx = clients[hdr->request_id - 1];
-			if (!client_ctx->rdma_read_pool_initialized) {
-				rdma_read_pool_init(client_ctx);
-				client_ctx->rdma_read_pool_initialized = 1;
-			}
-			struct rdma_read_slot *slot = rdma_read_acquire(client_ctx);
+			struct rdma_read_slot *slot = rdma_read_acquire(server_handle);
 			if (!slot) {
 				log_fatal("No RDMA READ slots available");
 				_exit(EXIT_FAILURE);
@@ -815,13 +845,14 @@ int par_ib_handle_event(struct ibv_wc *wc, struct server_handle *server_handle)
 		recv_slot->buf = ctx->slot->buf;
 		recv_slot->mr = ctx->slot->mr;
 		recv_slot->buf_idx = ctx->recv_slot->buf_idx;
+		recv_slot->read_slot_ptr = ctx->slot;
+
 		if (ctx->hdr->opcode != OPCODE_PUT) {
 			rdma_read_release(ctx->slot);
-			free(ctx);
 			log_fatal("Unhandled RDMA READ opcode");
 		}
 
-		rdma_read_release(ctx->slot);
+		free(ctx);
 
 		worker_scheduler(server_handle, recv_slot);
 		break;
