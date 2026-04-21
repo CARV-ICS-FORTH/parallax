@@ -504,6 +504,17 @@ int par_ib_loop(struct server_handle *server_handle)
 	while (1) {
 		struct ibv_wc wc[PAR_IB_NUM_ENTRIES];
 		int num_events;
+		struct ibv_cq *ev_cq;
+		void *ev_ctx;
+		if (ibv_get_cq_event(server_handle->comp_channel, &ev_cq, &ev_ctx) != 0) {
+			log_debug("ibv_get_cq_event failed");
+			_exit(EXIT_FAILURE);
+		}
+		ibv_ack_cq_events(ev_cq, 1);
+		if (ibv_req_notify_cq(ev_cq, 0) != 0) {
+			log_debug("ibv_req_notify_cq failed");
+			_exit(EXIT_FAILURE);
+		}
 		while ((num_events = ibv_poll_cq(server_handle->cq, PAR_IB_NUM_ENTRIES, wc)) > 0) {
 			for (int i = 0; i < num_events; i++) {
 				if (par_ib_handle_event(&wc[i], server_handle) < 0) {
@@ -511,6 +522,10 @@ int par_ib_loop(struct server_handle *server_handle)
 					_exit(EXIT_FAILURE);
 				}
 			}
+		}
+		if (num_events < 0) {
+			log_debug("ibv_poll_cq failed");
+			_exit(EXIT_FAILURE);
 		}
 	}
 	return EXIT_SUCCESS;
