@@ -48,20 +48,26 @@ struct server_options {
 	struct sockaddr_storage inaddr;
 };
 
-struct server_handle {
+struct root_server_handle {
 	struct server_options *opts;
-	pthread_mutex_t *mutex;
-	struct par_net_worker **par_net_workers;
 	struct rdma_event_channel *ec;
-	struct ibv_comp_channel *comp_channel;
-	struct ibv_cq *cq;
 	struct ibv_pd *pd;
 	struct ibv_srq *srq;
 	struct par_ib_send_buf *global_send_slots;
 	struct par_ib_recv_slot *global_recv_slots;
 	struct rdma_read_slot *global_read_pool;
+	struct server_handle *workers;
+	uint32_t num_workers;
 	pthread_t cm_thread;
-	uint32_t thread_to_queue;
+	uint32_t rr_counter;
+};
+
+struct server_handle {
+	uint32_t worker_id;
+	struct ibv_comp_channel *comp_channel;
+	struct ibv_cq *cq;
+	pthread_t thread;
+	struct root_server_handle *global;
 };
 
 struct my_conn_metadata {
@@ -187,41 +193,22 @@ struct server_options *par_ib_server_parse_argv_opts(int argc, char **argv)
 	return server_options;
 }
 
-struct server_handle *par_ib_server_handle_init(struct server_options *opts)
+struct root_server_handle *par_ib_server_handle_init(struct server_options *opts)
 {
 	if (!opts) {
 		log_debug("InfiniBand Server: options is NULL");
 		_exit(EXIT_FAILURE);
 	}
 
-	struct server_handle *handle = calloc(1UL, sizeof(struct server_handle));
+	struct root_server_handle *handle = calloc(1, sizeof(struct root_server_handle));
 	if (handle == NULL) {
 		log_debug("InfiniBand Server: calloc failed");
 		_exit(EXIT_FAILURE);
 	}
 
 	handle->opts = opts;
-
-	handle->par_net_workers = calloc(opts->threadno, sizeof(struct par_net_worker *));
-	if (!handle->par_net_workers) {
-		log_debug("InfiniBand Server: calloc par_net_workers failed");
-		_exit(EXIT_FAILURE);
-	}
-
-	handle->mutex = calloc(opts->threadno, sizeof(pthread_mutex_t));
-	if (!handle->mutex) {
-		log_debug("InfiniBand Server: calloc mutex failed");
-		_exit(EXIT_FAILURE);
-	}
-
-	for (uint32_t i = 0; i < opts->threadno; ++i) {
-		handle->par_net_workers[i] = calloc(1UL, par_net_worker_size());
-		if (!handle->par_net_workers[i]) {
-			log_debug("InfiniBand Server: calloc par_net_worker failed");
-			_exit(EXIT_FAILURE);
-		}
-		pthread_mutex_init(&handle->mutex[i], NULL);
-	}
+	handle->num_workers = opts->threadno;
+	handle->workers = calloc(handle->num_workers, sizeof(struct server_handle));
 
 	handle->ec = rdma_create_event_channel();
 	if (!handle->ec) {
@@ -246,21 +233,6 @@ struct server_handle *par_ib_server_handle_init(struct server_options *opts)
 
 	if (rdma_listen(listen_id, 10)) {
 		perror("rdma_listen");
-		_exit(EXIT_FAILURE);
-	}
-
-	handle->comp_channel = ibv_create_comp_channel(listen_id->verbs);
-	if (!handle->comp_channel) {
-		perror("ibv_create_comp_channel");
-		_exit(EXIT_FAILURE);
-	}
-	handle->cq = ibv_create_cq(listen_id->verbs, 256, NULL, handle->comp_channel, 0);
-	if (!handle->cq) {
-		perror("ibv_create_cq");
-		_exit(EXIT_FAILURE);
-	}
-	if (ibv_req_notify_cq(handle->cq, 0)) {
-		perror("ibv_req_notify_cq");
 		_exit(EXIT_FAILURE);
 	}
 
@@ -385,6 +357,25 @@ struct server_handle *par_ib_server_handle_init(struct server_options *opts)
 		handle->global_recv_slots[i].read_slot_ptr = &handle->global_read_pool[i];
 	}
 
+	for (uint32_t i = 0; i < handle->num_workers; ++i) {
+		struct server_handle *worker = &handle->workers[i];
+		worker->worker_id = i;
+		worker->global = handle;
+
+		worker->comp_channel = ibv_create_comp_channel(listen_id->verbs);
+		if (!worker->comp_channel) {
+			perror("ibv_create_comp_channel");
+			_exit(EXIT_FAILURE);
+		}
+
+		worker->cq = ibv_create_cq(listen_id->verbs, 256, worker, worker->comp_channel, 0);
+		if (!worker->cq) {
+			perror("ibv_create_cq");
+			_exit(EXIT_FAILURE);
+		}
+		ibv_req_notify_cq(worker->cq, 0);
+	}
+
 	log_info("InfiniBand server listening on %s:%ld", inet_ntoa(inaddr->sin_addr), opts->port);
 
 	const char *error_message = NULL;
@@ -405,7 +396,7 @@ struct server_handle *par_ib_server_handle_init(struct server_options *opts)
 	return handle;
 }
 
-int par_ib_server_print_config(struct server_handle *server_handle)
+int par_ib_server_print_config(struct root_server_handle *server_handle)
 {
 	if (!server_handle || !server_handle->opts) {
 		errno = EINVAL;
@@ -425,25 +416,32 @@ int par_ib_server_print_config(struct server_handle *server_handle)
 	return EXIT_SUCCESS;
 }
 
-uint32_t par_ib_server_get_threadno(struct server_handle *handle)
+uint32_t par_ib_server_get_threadno(struct root_server_handle *handle)
 {
 	return handle->opts->threadno;
 }
 
-struct ibv_pd *par_ib_server_get_ibv_pd(struct server_handle *handle)
+struct ibv_pd *par_ib_server_get_ibv_pd(struct root_server_handle *handle)
 {
 	return handle->pd;
 }
 
-int par_ib_handle_cm_event(struct server_handle *server_handle, struct rdma_cm_event *event)
+uint32_t par_net_get_threadno(struct server_options *server_options)
+{
+	return server_options->threadno;
+}
+
+int par_ib_handle_cm_event(struct root_server_handle *server_handle, struct rdma_cm_event *event)
 {
 	switch (event->event) {
 	case RDMA_CM_EVENT_CONNECT_REQUEST:;
 		struct rdma_cm_id *client_id = event->id;
+		uint32_t worker_idx = __sync_fetch_and_add(&server_handle->rr_counter, 1) % server_handle->num_workers;
+		struct server_handle *assigned_worker = &server_handle->workers[worker_idx];
 		struct ibv_qp_init_attr qp_attr = {
-            .send_cq = server_handle->cq,
-            .recv_cq = server_handle->cq,
-			.srq     = server_handle->srq,
+            .send_cq = assigned_worker->cq,
+            .recv_cq = assigned_worker->cq,
+            .srq = server_handle->srq,
             .qp_type = IBV_QPT_RC,
             .cap = {
                 .max_send_wr = 128,
@@ -500,8 +498,10 @@ int par_ib_handle_cm_event(struct server_handle *server_handle, struct rdma_cm_e
 	return 0;
 }
 
-int par_ib_loop(struct server_handle *server_handle)
+void *par_ib_worker_loop(void *arg)
 {
+	struct server_handle *server_handle = (struct server_handle *)arg;
+
 	while (1) {
 		struct ibv_wc wc[PAR_IB_NUM_ENTRIES];
 		int num_events;
@@ -519,7 +519,7 @@ int par_ib_loop(struct server_handle *server_handle)
 		while ((num_events = ibv_poll_cq(server_handle->cq, PAR_IB_NUM_ENTRIES, wc)) > 0) {
 			for (int i = 0; i < num_events; i++) {
 				if (par_ib_handle_event(&wc[i], server_handle) < 0) {
-					log_debug("par_ib_handle_event failed");
+					log_debug("Worker %u: par_ib_handle_event failed", server_handle->worker_id);
 					_exit(EXIT_FAILURE);
 				}
 			}
@@ -532,17 +532,12 @@ int par_ib_loop(struct server_handle *server_handle)
 	return EXIT_SUCCESS;
 }
 
-void worker_scheduler(struct server_handle *server_handle, struct par_ib_recv_slot *recv_slot)
-{
-	par_ib_put_and_reply(server_handle->par_net_workers[0], recv_slot);
-}
-
 inline size_t par_net_header_size(void)
 {
 	return sizeof(struct par_net_header);
 }
 
-void par_ib_par_net_call_open(struct par_net_worker *par_net_worker, void *args, struct par_net_header *reply_header)
+void par_ib_par_net_call_open(struct server_handle *server_handle, void *args, struct par_net_header *reply_header)
 {
 	void *start = (void *)args;
 	struct par_net_header *hdr = (struct par_net_header *)start;
@@ -553,11 +548,13 @@ void par_ib_par_net_call_open(struct par_net_worker *par_net_worker, void *args,
 	db_options.db_name = par_net_open_get_dbname(request);
 	db_options.create_flag = par_net_open_get_flag(request);
 
-	db_options.volume_name = (char *)par_net_worker_get_server_handle(par_net_worker)->opts->parallax_vol_name;
-	log_debug("Setting L0 size to %u B", par_net_worker_get_server_handle(par_net_worker)->opts->l0_size);
-	db_options.options[LEVEL0_SIZE].value = par_net_worker_get_server_handle(par_net_worker)->opts->l0_size;
-	log_debug("Setting growth factor to %u", par_net_worker_get_server_handle(par_net_worker)->opts->growth_factor);
-	db_options.options[GROWTH_FACTOR].value = par_net_worker_get_server_handle(par_net_worker)->opts->growth_factor;
+	struct server_options *opts = server_handle->global->opts;
+
+	db_options.volume_name = (char *)opts->parallax_vol_name;
+	log_debug("Setting L0 size to %u B", opts->l0_size);
+	db_options.options[LEVEL0_SIZE].value = opts->l0_size;
+	log_debug("Setting growth factor to %u", opts->growth_factor);
+	db_options.options[GROWTH_FACTOR].value = opts->growth_factor;
 
 	const char *error_message = NULL;
 	log_debug("Opening db with name == %s", db_options.db_name);
@@ -575,9 +572,9 @@ void par_ib_par_net_call_open(struct par_net_worker *par_net_worker, void *args,
 	log_debug("Ok with open reply");
 }
 
-void par_ib_par_net_call_put(struct par_net_worker *par_net_worker, void *args, struct par_net_header *reply_header)
+void par_ib_par_net_call_put(struct server_handle *server_handle, void *args, struct par_net_header *reply_header)
 {
-	(void)par_net_worker;
+	(void)server_handle;
 	void *start = (void *)args;
 	struct par_net_header *hdr = (struct par_net_header *)start;
 	struct par_net_put_req *request = (struct par_net_put_req *)((char *)start + par_net_header_size());
@@ -609,17 +606,17 @@ void par_ib_par_net_call_put(struct par_net_worker *par_net_worker, void *args, 
 	reply_header->request_id = hdr->request_id;
 }
 
-void par_ib_par_net_call_del(struct par_net_worker *par_net_worker, void *args, struct par_net_header *reply_header)
+void par_ib_par_net_call_del(struct server_handle *server_handle, void *args, struct par_net_header *reply_header)
 {
-	(void)par_net_worker;
+	(void)server_handle;
 	(void)args;
 	(void)reply_header;
 	log_warn("DELETE NOT IMPLEMENTED");
 }
 
-void par_ib_par_net_call_get(struct par_net_worker *par_net_worker, void *args, struct par_net_header *reply_header)
+void par_ib_par_net_call_get(struct server_handle *server_handle, void *args, struct par_net_header *reply_header)
 {
-	(void)par_net_worker;
+	(void)server_handle;
 	void *start = (void *)args;
 	struct par_net_header *hdr = (struct par_net_header *)start;
 	struct par_net_get_req *request = (struct par_net_get_req *)((char *)start + par_net_header_size());
@@ -658,9 +655,9 @@ void par_ib_par_net_call_get(struct par_net_worker *par_net_worker, void *args, 
 	reply_header->request_id = hdr->request_id;
 }
 
-void par_ib_par_net_call_close(struct par_net_worker *par_net_worker, void *args, struct par_net_header *reply_header)
+void par_ib_par_net_call_close(struct server_handle *server_handle, void *args, struct par_net_header *reply_header)
 {
-	(void)par_net_worker;
+	(void)server_handle;
 	void *start = (void *)args;
 	struct par_net_header *hdr = (struct par_net_header *)start;
 	struct par_net_close_req *request = (struct par_net_close_req *)((char *)start + par_net_header_size());
@@ -686,17 +683,17 @@ void par_ib_par_net_call_close(struct par_net_worker *par_net_worker, void *args
 	reply_header->request_id = hdr->request_id;
 }
 
-void par_ib_par_net_call_scan(struct par_net_worker *par_net_worker, void *args, struct par_net_header *reply_header)
+void par_ib_par_net_call_scan(struct server_handle *server_handle, void *args, struct par_net_header *reply_header)
 {
-	(void)par_net_worker;
+	(void)server_handle;
 	(void)args;
 	(void)reply_header;
 	log_warn("SCAN NOT IMPLEMENTED");
 }
 
-void par_ib_par_net_call_sync(struct par_net_worker *par_net_worker, void *args, struct par_net_header *reply_header)
+void par_ib_par_net_call_sync(struct server_handle *server_handle, void *args, struct par_net_header *reply_header)
 {
-	(void)par_net_worker;
+	(void)server_handle;
 	(void)args;
 	(void)reply_header;
 	log_warn("SYNC NOT IMPLEMENTED");
@@ -727,7 +724,7 @@ uint32_t par_net_header_get_opcode(char *buffer)
 	return header->opcode;
 }
 
-void par_ib_put_and_reply(struct par_net_worker *par_net_worker, struct par_ib_recv_slot *recv_slot)
+void par_ib_put_and_reply(struct server_handle *server_handle, struct par_ib_recv_slot *recv_slot)
 {
 	struct par_net_header *hdr = recv_slot->buf;
 	struct par_ib_client_ctx *ctx = clients[hdr->request_id - 1];
@@ -753,7 +750,7 @@ void par_ib_put_and_reply(struct par_net_worker *par_net_worker, struct par_ib_r
 
 	struct par_ib_send_buf *send_buf = recv_slot->send_buf_ptr;
 	struct par_net_header *reply_header = (struct par_net_header *)send_buf->buf;
-	par_net_call[opcode](par_net_worker, hdr, reply_header);
+	par_net_call[opcode](server_handle, hdr, reply_header);
 
 	struct ibv_sge send_sge = { .addr = (uintptr_t)reply_header,
 				    .length = reply_header->total_bytes,
@@ -812,24 +809,24 @@ int par_ib_handle_event(struct ibv_wc *wc, struct server_handle *server_handle)
 			break;
 		}
 
-		worker_scheduler(server_handle, buf);
+		par_ib_put_and_reply(server_handle, buf);
 		break;
 	case IBV_WC_SEND:;
 		struct par_ib_recv_slot *completed_recv = (struct par_ib_recv_slot *)(uintptr_t)wc->wr_id;
 		struct par_net_header *completed_hdr = completed_recv->buf;
 
 		struct ibv_sge srq_sge = {
-			.addr = (uintptr_t)server_handle->global_recv_slots[completed_recv->buf_idx].buf,
+			.addr = (uintptr_t)server_handle->global->global_recv_slots[completed_recv->buf_idx].buf,
 			.length = PAR_IB_METADATA_SIZE + PAR_IB_MSG_SIZE,
-			.lkey = server_handle->global_recv_slots[completed_recv->buf_idx].mr->lkey,
+			.lkey = server_handle->global->global_recv_slots[completed_recv->buf_idx].mr->lkey,
 		};
 		struct ibv_recv_wr srq_wr = {
-			.wr_id = (uintptr_t)&server_handle->global_recv_slots[completed_recv->buf_idx],
+			.wr_id = (uintptr_t)&server_handle->global->global_recv_slots[completed_recv->buf_idx],
 			.sg_list = &srq_sge,
 			.num_sge = 1,
 		};
 		struct ibv_recv_wr *bad_srq_wr;
-		if (ibv_post_srq_recv(server_handle->srq, &srq_wr, &bad_srq_wr)) {
+		if (ibv_post_srq_recv(server_handle->global->srq, &srq_wr, &bad_srq_wr)) {
 			perror("ibv_post_srq_recv repost");
 			_exit(EXIT_FAILURE);
 		}
@@ -854,7 +851,7 @@ int par_ib_handle_event(struct ibv_wc *wc, struct server_handle *server_handle)
 
 		free(ctx);
 
-		worker_scheduler(server_handle, recv_slot);
+		par_ib_put_and_reply(server_handle, recv_slot);
 		break;
 	default:
 		log_debug("Unhandled RDMA opcode: %d", wc->opcode);
@@ -865,7 +862,7 @@ int par_ib_handle_event(struct ibv_wc *wc, struct server_handle *server_handle)
 
 void *connection_manager_thread(void *arg)
 {
-	struct server_handle *server_handle = arg;
+	struct root_server_handle *server_handle = arg;
 	struct rdma_cm_event *event;
 
 	while (1) {
@@ -885,19 +882,13 @@ void *connection_manager_thread(void *arg)
 	return NULL;
 }
 
-int par_ib_server_start(struct server_handle *server_handle)
+int par_ib_server_start(struct root_server_handle *server_handle)
 {
 	if (!server_handle) {
 		errno = EINVAL;
 		return -(EXIT_FAILURE);
 	}
 	uint32_t threads = server_handle->opts->threadno;
-	server_handle->thread_to_queue = 0;
-
-	for (uint32_t i = 0; i < threads; i++) {
-		server_handle->par_net_workers[i] =
-			par_net_worker_create(server_handle, i, threads, &server_handle->mutex[i]);
-	}
 
 	if (pthread_create(&server_handle->cm_thread, NULL, connection_manager_thread, server_handle)) {
 		perror("pthread_create for cm_thread");
@@ -906,9 +897,16 @@ int par_ib_server_start(struct server_handle *server_handle)
 
 	log_info("InfiniBand server is ready");
 
-	if (par_ib_loop(server_handle) < 0) {
-		log_debug("par_ib_loop failed");
-		_exit(EXIT_FAILURE);
+	for (uint32_t i = 0; i < threads; i++) {
+		if (pthread_create(&server_handle->workers[i].thread, NULL, par_ib_worker_loop,
+				   &server_handle->workers[i])) {
+			perror("pthread_create for worker thread failed");
+			_exit(EXIT_FAILURE);
+		}
+	}
+
+	if (pthread_join(server_handle->cm_thread, NULL) != 0) {
+		perror("pthread_join for cm_thread failed");
 	}
 
 	return EXIT_SUCCESS;

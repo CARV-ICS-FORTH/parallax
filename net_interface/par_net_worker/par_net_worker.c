@@ -26,11 +26,6 @@
 
 #define EMPTY_WAIT 1000
 
-#ifdef USE_INFINIBAND
-#define PRSV_WORKER_BUF_SIZE (63U * 4096)
-#define METADATA_SIZE 4096
-#endif
-
 struct counter {
 	uint32_t counter;
 	uint8_t padding[60];
@@ -162,47 +157,6 @@ struct par_net_worker *par_net_worker_create(struct server_handle *server_handle
 	worker->send_buffer_size = PRSV_WORKER_BUF_SIZE;
 	worker->buddy = buddy_embed((void *)worker->send_buffer, PRSV_WORKER_BUF_SIZE);
 	worker->eqh = eqh;
-	return worker;
-}
-#elif USE_INFINIBAND
-struct par_net_worker *par_net_worker_create(struct server_handle *server_handle, uint32_t index, uint32_t threadno,
-					     pthread_mutex_t *mutex)
-{
-	int ret;
-	struct par_net_worker *worker = calloc(1, sizeof(struct par_net_worker));
-	worker->mutex = mutex;
-	worker->core = index;
-	worker->server_handle = server_handle;
-	sem_init(&worker->empty, 0, 0);
-	worker->start = __rdtsc();
-	worker->end = worker->start;
-	worker->queue_object = synchGetAlignedMemory(S_CACHE_LINE_SIZE, sizeof(CCQueueStruct));
-	CCQueueStructInit(worker->queue_object, threadno);
-	worker->th_state = synchGetAlignedMemory(CACHE_LINE_SIZE, sizeof(CCQueueThreadState));
-
-	CCQueueThreadStateInit(worker->queue_object, worker->th_state, worker->tid);
-
-	void *raw_memory; // x*a +4096 = y where y is power of 2 and multiple of sizeof(void*) == 8
-	if ((PRSV_WORKER_BUF_SIZE + METADATA_SIZE) % 4096 != 0) {
-		log_fatal("PRSV_WORKER_BUF_SIZE + METADATA_SIZE is not a multiple of 4KB!");
-		exit(EXIT_FAILURE);
-	}
-
-	ret = posix_memalign(&raw_memory, PRSV_WORKER_BUF_SIZE + METADATA_SIZE, PRSV_WORKER_BUF_SIZE + METADATA_SIZE);
-	worker->send_buffer = (char *)raw_memory + METADATA_SIZE; //0x7ffff6fb3000
-	uint32_t *worker_index = (uint32_t *)((uintptr_t)raw_memory);
-	*worker_index = index;
-
-	__atomic_store_n(&worker->queuecounter.counter, 0, __ATOMIC_RELAXED);
-	__atomic_store_n(&worker->queuecompletedcounter.counter, 0, __ATOMIC_RELAXED);
-
-	if (ret != 0) {
-		log_debug("posix_memalign failed");
-		return NULL;
-	}
-	worker->send_buffer_size = PRSV_WORKER_BUF_SIZE;
-	worker->buddy = buddy_embed((void *)worker->send_buffer, PRSV_WORKER_BUF_SIZE);
-
 	return worker;
 }
 #endif

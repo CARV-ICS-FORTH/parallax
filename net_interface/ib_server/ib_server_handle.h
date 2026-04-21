@@ -10,6 +10,7 @@
 #include <stdbool.h>
 
 struct server_options;
+struct server_handle;
 
 long par_ib_server_parse_number(const char *str, const char *opt);
 
@@ -21,19 +22,19 @@ void par_ib_server_set_port(struct server_options *opts, const char *arg);
 
 struct server_options *par_ib_server_parse_argv_opts(int argc, char **argv);
 
-struct server_handle *par_ib_server_handle_init(struct server_options *opts);
+struct root_server_handle *par_ib_server_handle_init(struct server_options *opts);
 
-int par_ib_server_print_config(struct server_handle *server_handle);
+int par_ib_server_print_config(struct root_server_handle *server_handle);
 
-uint32_t par_ib_server_get_threadno(struct server_handle *handle);
+uint32_t par_ib_server_get_threadno(struct root_server_handle *handle);
 
-struct ibv_pd *par_ib_server_get_ibv_pd(struct server_handle *handle);
+struct ibv_pd *par_ib_server_get_ibv_pd(struct root_server_handle *handle);
 
-int par_ib_handle_cm_event(struct server_handle *server_handle, struct rdma_cm_event *event);
+uint32_t par_net_get_threadno(struct server_options *server_options);
 
-int par_ib_loop(struct server_handle *server_handle);
+int par_ib_handle_cm_event(struct root_server_handle *server_handle, struct rdma_cm_event *event);
 
-void worker_scheduler(struct server_handle *server_handle, struct par_ib_recv_slot *recv_slot);
+void *par_ib_worker_loop(void *arg);
 
 size_t par_net_header_size(void);
 
@@ -41,12 +42,12 @@ size_t par_ib_par_net_get_total_bytes(char *buffer);
 
 uint32_t par_net_header_get_opcode(char *buffer);
 
-void par_ib_put_and_reply(struct par_net_worker *par_net_worker, struct par_ib_recv_slot *recv_slot);
+void par_ib_put_and_reply(struct server_handle *server_handle, struct par_ib_recv_slot *recv_slot);
 
 int par_ib_handle_event(struct ibv_wc *wc, struct server_handle *server_handle);
 
 void *connection_manager_thread(void *arg);
 
-int par_ib_server_start(struct server_handle *server_handle);
+int par_ib_server_start(struct root_server_handle *server_handle);
 
 #endif

@@ -61,9 +61,6 @@ void par_net_worker_put(struct par_net_worker *worker, struct par_net_worker_req
 #ifdef USE_PORTALS
 struct par_net_worker *par_net_worker_create(struct server_handle *server_handle, uint32_t index, uint32_t threadno,
 					     ptl_handle_eq_t eqh, pthread_mutex_t *mutex);
-#elif USE_INFINIBAND
-struct par_net_worker *par_net_worker_create(struct server_handle *server_handle, uint32_t index, uint32_t threadno,
-					     pthread_mutex_t *mutex);
 #endif
 
 /**

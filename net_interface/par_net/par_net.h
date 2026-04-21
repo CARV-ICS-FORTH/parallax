@@ -24,6 +24,7 @@
 #endif
 struct worker;
 struct par_net_worker;
+struct server_handle;
 
 enum par_net_op {
 	OPCODE_OPEN = 1,
@@ -51,7 +52,7 @@ struct par_net_header {
 
 typedef struct par_net_header *(*par_call)(struct worker *worker, void *args);
 typedef struct par_net_header *(*par_portals_call)(struct par_net_worker *par_net_worker, void *args);
-typedef void (*par_ib_call)(struct par_net_worker *par_net_worker, void *args, struct par_net_header *reply_header);
+typedef void (*par_ib_call)(struct server_handle *server_handle, void *args, struct par_net_header *reply_header);
 
 /**
   *  @brief Takes the first byte of the serialized stream and translates it to
