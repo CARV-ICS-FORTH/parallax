@@ -108,22 +108,6 @@ pthread_t *par_net_worker_get_tid(struct par_net_worker *worker);
 #ifdef USE_PORTALS
 void par_net_worker_send_reply_buff(struct par_net_worker *worker, struct par_net_header *reply_header,
 				    uint32_t total_bytes, ptl_handle_ni_t nih, ptl_process_t client);
-#elif USE_INFINIBAND
-
-void par_net_worker_init_response_buffers(struct par_net_worker *worker, struct ibv_pd *pd, int nthreads);
-
-void par_net_worker_send_reply_buff(struct par_net_worker *worker, uint32_t total_bytes, struct ibv_qp *qp, int slot);
-
-int response_slot_acquire(struct par_net_worker *worker);
-
-char *par_net_worker_get_response_buffer(struct par_net_worker *worker, int slot);
-
-uint64_t make_wr_id(uint16_t type, uint16_t worker_id, uint32_t slot);
-
-void parse_wr_id(uint64_t wr_id, uint16_t *type, uint16_t *worker_id, uint32_t *slot);
-
-void par_net_worker_put_response_slot(struct par_net_worker *worker, uint32_t slot);
-
 #endif
 
 /**

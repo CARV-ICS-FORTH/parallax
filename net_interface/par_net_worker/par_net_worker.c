@@ -29,8 +29,6 @@
 #ifdef USE_INFINIBAND
 #define PRSV_WORKER_BUF_SIZE (63U * 4096)
 #define METADATA_SIZE 4096
-#define N_RESPONSE_BUFFERS 4
-#define SECTOR_SIZE 512
 #endif
 
 struct counter {
@@ -64,11 +62,6 @@ struct par_net_worker {
 	ptl_md_t md;
 	ptl_handle_eq_t eqh;
 	ptl_handle_md_t mdh;
-#endif
-#ifdef USE_INFINIBAND
-	CCQueueStruct free_slot_q;
-	CCQueueThreadState *free_q_th_state;
-	struct response_slot slots[N_RESPONSE_BUFFERS];
 #endif
 };
 
@@ -210,10 +203,6 @@ struct par_net_worker *par_net_worker_create(struct server_handle *server_handle
 	worker->send_buffer_size = PRSV_WORKER_BUF_SIZE;
 	worker->buddy = buddy_embed((void *)worker->send_buffer, PRSV_WORKER_BUF_SIZE);
 
-	par_net_worker_init_response_buffers(worker, par_ib_server_get_ibv_pd(server_handle),
-					     par_ib_server_get_threadno(server_handle));
-	worker->free_q_th_state = synchGetAlignedMemory(CACHE_LINE_SIZE, sizeof(CCQueueThreadState));
-	CCQueueThreadStateInit(&worker->free_slot_q, worker->free_q_th_state, worker->tid);
 	return worker;
 }
 #endif
@@ -278,85 +267,6 @@ void par_net_worker_send_reply_buff(struct par_net_worker *worker, struct par_ne
 
 	PtlMDRelease(worker->mdh);
 }
-#elif USE_INFINIBAND
-void par_net_worker_init_response_buffers(struct par_net_worker *worker, struct ibv_pd *pd, int nthreads)
-{
-	const size_t buf_size = KV_MAX_SIZE;
-	CCQueueStructInit(&worker->free_slot_q, nthreads);
-	CCQueueThreadState init_ts;
-	CCQueueThreadStateInit(&worker->free_slot_q, &init_ts, 0);
-	for (int i = 0; i < N_RESPONSE_BUFFERS; ++i) {
-		if (posix_memalign((void **)&worker->slots[i].buf, SECTOR_SIZE, buf_size) != 0) {
-			perror("posix_memalign response_buffer");
-			_exit(EXIT_FAILURE);
-		}
-		worker->slots[i].buf_size = buf_size;
-		worker->slots[i].mr = ibv_reg_mr(pd, worker->slots[i].buf, buf_size, IBV_ACCESS_LOCAL_WRITE);
-		if (!worker->slots[i].mr) {
-			perror("ibv_reg_mr response_buffer");
-			_exit(EXIT_FAILURE);
-		}
-
-		CCQueueApplyEnqueue(&worker->free_slot_q, &init_ts, (ArgVal)i, 0);
-	}
-}
-
-void par_net_worker_send_reply_buff(struct par_net_worker *worker, uint32_t total_bytes, struct ibv_qp *qp, int slot)
-{
-	char *buf = worker->slots[slot].buf;
-	struct ibv_mr *response_mr = worker->slots[slot].mr;
-
-	struct ibv_sge sge = {
-		.addr = (uintptr_t)buf,
-		.length = total_bytes,
-		.lkey = response_mr->lkey,
-	};
-
-	uint16_t type = 1;
-	uint16_t worker_id = worker->core;
-	struct ibv_send_wr wr = { 0 }, *bad_wr = NULL;
-	wr.wr_id = make_wr_id(type, worker_id, slot);
-	wr.opcode = IBV_WR_SEND;
-	wr.send_flags = IBV_SEND_SIGNALED;
-	wr.sg_list = &sge;
-	wr.num_sge = 1;
-
-	if (ibv_post_send(qp, &wr, &bad_wr)) {
-		perror("ibv_post_send");
-		exit(EXIT_FAILURE);
-	}
-}
-
-int response_slot_acquire(struct par_net_worker *worker)
-{
-	RetVal rv = CCQueueApplyDequeue(&worker->free_slot_q, worker->free_q_th_state, worker->tid);
-	if (rv == EMPTY_QUEUE)
-		return -1;
-	return (int)rv;
-}
-
-char *par_net_worker_get_response_buffer(struct par_net_worker *worker, int slot)
-{
-	return worker->slots[slot].buf;
-}
-
-uint64_t make_wr_id(uint16_t type, uint16_t worker_id, uint32_t slot)
-{
-	return ((uint64_t)type << 48) | ((uint64_t)worker_id << 32) | slot;
-}
-
-void parse_wr_id(uint64_t wr_id, uint16_t *type, uint16_t *worker_id, uint32_t *slot)
-{
-	*type = (wr_id >> 48) & 0xFFFF;
-	*worker_id = (wr_id >> 32) & 0xFFFF;
-	*slot = wr_id & 0xFFFFFFFF;
-}
-
-void par_net_worker_put_response_slot(struct par_net_worker *worker, uint32_t slot)
-{
-	CCQueueApplyEnqueue(&worker->free_slot_q, worker->free_q_th_state, (ArgVal)slot, worker->tid);
-}
-
 #endif
 
 void par_net_worker_free_buf(struct par_net_worker *worker, void *buf_start)

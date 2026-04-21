@@ -25,13 +25,12 @@
 	"  - flags = not yet supported\n"
 
 #define PAR_IB_DEFAULT_PORT 7471
-#define PAR_IB_DEFAULT_ADDRESS "192.168.5.120"
+#define PAR_IB_DEFAULT_ADDRESS "192.168.5.122"
 
 #define PAR_IB_DECIMAL_BASE 10
 #define PAR_IB_PORT_MAX 65536
 #define PAR_IB_MAX_REGIONS 128
 #define PAR_IB_METADATA_SIZE 4096
-#define PAR_IB_QUEUE_DEPTH 4
 #define PAR_IB_CLOSE_OP_BUF_SIZE 100
 #define PAR_IB_MAX_CLIENTS 256
 #define PAR_IB_MSG_SIZE 1024
@@ -58,8 +57,10 @@ struct server_handle {
 	struct ibv_cq *cq;
 	struct ibv_pd *pd;
 	struct ibv_srq *srq;
+	struct par_ib_send_buf *global_send_slots;
 	struct par_ib_recv_slot *global_recv_slots;
 	struct rdma_read_slot *global_read_pool;
+	pthread_t cm_thread;
 	uint32_t thread_to_queue;
 };
 
@@ -322,6 +323,38 @@ struct server_handle *par_ib_server_handle_init(struct server_options *opts)
 		}
 	}
 
+	handle->global_send_slots = calloc(PAR_IB_MAX_SRQ_BUFFERS, sizeof(struct par_ib_send_buf));
+	if (!handle->global_send_slots) {
+		log_debug("InfiniBand Server: calloc global_send_slots failed");
+		_exit(EXIT_FAILURE);
+	}
+
+	size_t single_send_size = KV_MAX_SIZE + PAR_IB_METADATA_SIZE;
+	size_t total_send_chunk = single_send_size * PAR_IB_MAX_SRQ_BUFFERS;
+
+	void *send_memory_chunk = NULL;
+	int ret_send = posix_memalign(&send_memory_chunk, PAR_IB_SECTOR_SIZE, total_send_chunk);
+	if (ret_send) {
+		perror("posix_memalign send chunk");
+		_exit(EXIT_FAILURE);
+	}
+
+	struct ibv_mr *send_mr = ibv_reg_mr(handle->pd, send_memory_chunk, total_send_chunk, IBV_ACCESS_LOCAL_WRITE);
+	if (!send_mr) {
+		free(send_memory_chunk);
+		perror("ibv_reg_mr send chunk");
+		_exit(EXIT_FAILURE);
+	}
+
+	for (int i = 0; i < PAR_IB_MAX_SRQ_BUFFERS; i++) {
+		handle->global_send_slots[i].buf = (char *)send_memory_chunk + (i * single_send_size);
+		handle->global_send_slots[i].mr = send_mr;
+		handle->global_send_slots[i].buf_idx = i;
+
+		handle->global_recv_slots[i].send_buf_ptr = &handle->global_send_slots[i];
+		handle->global_send_slots[i].recv_slot_ptr = &handle->global_recv_slots[i];
+	}
+
 	handle->global_read_pool = calloc(RDMA_READ_POOL_SIZE, sizeof(struct rdma_read_slot));
 	if (!handle->global_read_pool) {
 		log_debug("InfiniBand Server: calloc global_read_pool failed");
@@ -483,24 +516,9 @@ int par_ib_loop(struct server_handle *server_handle)
 	return EXIT_SUCCESS;
 }
 
-#define PAR_IB_GET_WORKER_ID(X) (X->thread_to_queue % X->opts->threadno)
-
-void worker_scheduler(struct server_handle *server_handle, void *buf)
+void worker_scheduler(struct server_handle *server_handle, struct par_ib_recv_slot *recv_slot)
 {
-	uint32_t worker_id = PAR_IB_GET_WORKER_ID(server_handle);
-	while (par_net_worker_get_reqs(server_handle->par_net_workers[PAR_IB_GET_WORKER_ID(server_handle)]) >=
-	       PAR_IB_QUEUE_DEPTH) {
-		log_debug("Thread %d: REACHED MAX PAR_IB_QUEUE_DEPTH", PAR_IB_GET_WORKER_ID(server_handle));
-		server_handle->thread_to_queue++;
-		if (worker_id == PAR_IB_GET_WORKER_ID(server_handle)) {
-			break; // full circle
-		}
-	}
-	struct par_net_worker *worker = server_handle->par_net_workers[PAR_IB_GET_WORKER_ID(server_handle)];
-	par_net_worker_put(worker, par_net_worker_create_req(buf));
-	par_net_worker_notify(worker);
-
-	server_handle->thread_to_queue++;
+	par_ib_put_and_reply(server_handle->par_net_workers[0], recv_slot);
 }
 
 inline size_t par_net_header_size(void)
@@ -696,7 +714,7 @@ uint32_t par_net_header_get_opcode(char *buffer)
 static inline struct rdma_read_slot *rdma_read_acquire(struct server_handle *handle)
 {
 	while (1) {
-		for (int i = 0; i < RDMA_READ_POOL_SIZE; i++) {
+		for (int i = 0; i < RDMA_READ_POOL_SIZE; i++) { // todo: allocate it per recv buffer similar to send
 			bool expected = false;
 			if (atomic_compare_exchange_strong(&handle->global_read_pool[i].in_use, &expected, true)) {
 				return &handle->global_read_pool[i];
@@ -711,73 +729,47 @@ static inline void rdma_read_release(struct rdma_read_slot *slot)
 	atomic_store(&slot->in_use, false);
 }
 
-void *par_ib_put_and_reply(void *arg)
+void par_ib_put_and_reply(struct par_net_worker *par_net_worker, struct par_ib_recv_slot *recv_slot)
 {
-	struct par_net_worker *par_net_worker = arg;
-	struct par_net_worker_request *req = NULL;
+	struct par_net_header *hdr = recv_slot->buf;
+	struct par_ib_client_ctx *ctx = clients[hdr->request_id - 1];
 
-	while (1) {
-		req = par_net_worker_poll(par_net_worker);
-		if (req == NULL) {
-			continue;
-		}
-		struct par_ib_recv_slot *recv_slot = (struct par_ib_recv_slot *)par_net_worker_get_start(req);
-		struct par_net_header *hdr = recv_slot->buf;
-		struct par_ib_client_ctx *ctx = clients[hdr->request_id - 1];
-
-		size_t total_bytes = hdr->total_bytes;
-		if (total_bytes > KV_MAX_SIZE + par_net_header_size()) {
-			log_fatal("Error Larger message recv buffer size is: %lu B total_bytes are: %lu B",
-				  KV_MAX_SIZE + par_net_header_size(), total_bytes);
-			break;
-		}
-
-		uint32_t opcode = hdr->opcode;
-		log_debug("message opcode : %u", opcode);
-		if (opcode == 0) {
-			log_debug("invalid opcode");
-			break;
-		}
-
-		if (hdr->request_id == 0 || hdr->request_id > PAR_IB_MAX_CLIENTS) {
-			log_fatal("Received message with invalid request_id: %u", hdr->request_id);
-			break;
-		}
-
-		int slot;
-		while ((slot = response_slot_acquire(par_net_worker)) < 0) {
-			sched_yield();
-		}
-		struct par_net_header *reply_header =
-			(struct par_net_header *)par_net_worker_get_response_buffer(par_net_worker, slot);
-		par_net_call[opcode](par_net_worker, hdr, reply_header);
-		par_net_worker_send_reply_buff(par_net_worker, reply_header->total_bytes, ctx->qp, slot);
-
-		struct server_handle *srv = par_net_worker_get_server_handle(par_net_worker);
-
-		struct ibv_sge sge = {
-			.addr = (uintptr_t)srv->global_recv_slots[recv_slot->buf_idx].buf,
-			.length = PAR_IB_MSG_SIZE,
-			.lkey = srv->global_recv_slots[recv_slot->buf_idx].mr->lkey,
-		};
-		struct ibv_recv_wr wr = {
-			.wr_id = (uintptr_t)&srv->global_recv_slots[recv_slot->buf_idx],
-			.sg_list = &sge,
-			.num_sge = 1,
-		};
-		struct ibv_recv_wr *bad_wr;
-		if (ibv_post_srq_recv(srv->srq, &wr, &bad_wr)) {
-			perror("ibv_post_srq_recv");
-			_exit(EXIT_FAILURE);
-		}
-
-		if (hdr->inline_flag == 0) {
-			rdma_read_release((struct rdma_read_slot *)recv_slot->read_slot_ptr);
-			free(recv_slot);
-		}
+	size_t total_bytes = hdr->total_bytes;
+	if (total_bytes > KV_MAX_SIZE + par_net_header_size()) {
+		log_fatal("Error Larger message recv buffer size is: %lu B total_bytes are: %lu B",
+			  KV_MAX_SIZE + par_net_header_size(), total_bytes);
+		_exit(EXIT_FAILURE);
 	}
-	log_debug("FINISHED");
-	return EXIT_SUCCESS;
+
+	uint32_t opcode = hdr->opcode;
+	log_debug("message opcode : %u", opcode);
+	if (opcode == 0) {
+		log_fatal("invalid opcode");
+		_exit(EXIT_FAILURE);
+	}
+
+	if (hdr->request_id == 0 || hdr->request_id > PAR_IB_MAX_CLIENTS) {
+		log_fatal("Received message with invalid request_id: %u", hdr->request_id);
+		_exit(EXIT_FAILURE);
+	}
+
+	struct par_ib_send_buf *send_buf = recv_slot->send_buf_ptr;
+	struct par_net_header *reply_header = (struct par_net_header *)send_buf->buf;
+	par_net_call[opcode](par_net_worker, hdr, reply_header);
+
+	struct ibv_sge send_sge = { .addr = (uintptr_t)reply_header,
+				    .length = reply_header->total_bytes,
+				    .lkey = send_buf->mr->lkey };
+	struct ibv_send_wr send_wr = { .wr_id = (uintptr_t)recv_slot,
+				       .sg_list = &send_sge,
+				       .num_sge = 1,
+				       .opcode = IBV_WR_SEND,
+				       .send_flags = IBV_SEND_SIGNALED };
+	struct ibv_send_wr *bad_send_wr;
+	if (ibv_post_send(ctx->qp, &send_wr, &bad_send_wr)) {
+		perror("ibv_post_send reply");
+		_exit(EXIT_FAILURE);
+	}
 }
 
 int par_ib_handle_event(struct ibv_wc *wc, struct server_handle *server_handle)
@@ -830,13 +822,28 @@ int par_ib_handle_event(struct ibv_wc *wc, struct server_handle *server_handle)
 		worker_scheduler(server_handle, buf);
 		break;
 	case IBV_WC_SEND:;
-		uint16_t type, worker_id;
-		uint32_t slot;
-		parse_wr_id(wc->wr_id, &type, &worker_id, &slot);
-		if (type == 1) {
-			struct par_net_worker *worker = server_handle->par_net_workers[worker_id];
-			par_net_worker_put_response_slot(worker, slot);
-			return 0;
+		struct par_ib_recv_slot *completed_recv = (struct par_ib_recv_slot *)(uintptr_t)wc->wr_id;
+		struct par_net_header *completed_hdr = completed_recv->buf;
+
+		struct ibv_sge srq_sge = {
+			.addr = (uintptr_t)server_handle->global_recv_slots[completed_recv->buf_idx].buf,
+			.length = PAR_IB_METADATA_SIZE + PAR_IB_MSG_SIZE,
+			.lkey = server_handle->global_recv_slots[completed_recv->buf_idx].mr->lkey,
+		};
+		struct ibv_recv_wr srq_wr = {
+			.wr_id = (uintptr_t)&server_handle->global_recv_slots[completed_recv->buf_idx],
+			.sg_list = &srq_sge,
+			.num_sge = 1,
+		};
+		struct ibv_recv_wr *bad_srq_wr;
+		if (ibv_post_srq_recv(server_handle->srq, &srq_wr, &bad_srq_wr)) {
+			perror("ibv_post_srq_recv repost");
+			_exit(EXIT_FAILURE);
+		}
+
+		if (completed_hdr->inline_flag == 0) {
+			rdma_read_release((struct rdma_read_slot *)completed_recv->read_slot_ptr);
+			free(completed_recv);
 		}
 		break;
 	case IBV_WC_RDMA_READ:;
@@ -846,6 +853,8 @@ int par_ib_handle_event(struct ibv_wc *wc, struct server_handle *server_handle)
 		recv_slot->mr = ctx->slot->mr;
 		recv_slot->buf_idx = ctx->recv_slot->buf_idx;
 		recv_slot->read_slot_ptr = ctx->slot;
+
+		recv_slot->send_buf_ptr = ctx->recv_slot->send_buf_ptr;
 
 		if (ctx->hdr->opcode != OPCODE_PUT) {
 			rdma_read_release(ctx->slot);
@@ -897,19 +906,12 @@ int par_ib_server_start(struct server_handle *server_handle)
 	for (uint32_t i = 0; i < threads; i++) {
 		server_handle->par_net_workers[i] =
 			par_net_worker_create(server_handle, i, threads, &server_handle->mutex[i]);
-
-		if (pthread_create(par_net_worker_get_tid(server_handle->par_net_workers[i]), NULL,
-				   par_ib_put_and_reply, server_handle->par_net_workers[i])) {
-			for (uint32_t tmp = 0; tmp < i; ++tmp)
-				pthread_cancel(*par_net_worker_get_tid(server_handle->par_net_workers[tmp]));
-			for (uint32_t tmp = 0; tmp < i; ++tmp)
-				pthread_join(*par_net_worker_get_tid(server_handle->par_net_workers[tmp]), NULL);
-			return -(EXIT_FAILURE);
-		}
 	}
 
-	pthread_t cm_thread;
-	pthread_create(&cm_thread, NULL, connection_manager_thread, server_handle);
+	if (pthread_create(&server_handle->cm_thread, NULL, connection_manager_thread, server_handle)) {
+		perror("pthread_create for cm_thread");
+		_exit(EXIT_FAILURE);
+	}
 
 	log_info("InfiniBand server is ready");
 

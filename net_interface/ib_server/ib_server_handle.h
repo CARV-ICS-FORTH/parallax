@@ -33,7 +33,7 @@ int par_ib_handle_cm_event(struct server_handle *server_handle, struct rdma_cm_e
 
 int par_ib_loop(struct server_handle *server_handle);
 
-void worker_scheduler(struct server_handle *server_handle, void *buf);
+void worker_scheduler(struct server_handle *server_handle, struct par_ib_recv_slot *recv_slot);
 
 size_t par_net_header_size(void);
 
@@ -41,7 +41,7 @@ size_t par_ib_par_net_get_total_bytes(char *buffer);
 
 uint32_t par_net_header_get_opcode(char *buffer);
 
-void *par_ib_put_and_reply(void *arg);
+void par_ib_put_and_reply(struct par_net_worker *par_net_worker, struct par_ib_recv_slot *recv_slot);
 
 int par_ib_handle_event(struct ibv_wc *wc, struct server_handle *server_handle);
 
