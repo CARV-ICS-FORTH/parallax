@@ -39,11 +39,4 @@ struct par_net_worker_request *par_net_worker_create_req(ptl_event_t event)
 	req->user_ptr = event.user_ptr;
 	return req;
 }
-#elif USE_INFINIBAND
-struct par_net_worker_request *par_net_worker_create_req(void *buf)
-{
-	struct par_net_worker_request *req = calloc(1U, sizeof(struct par_net_worker_request));
-	req->start = buf;
-	return req;
-}
 #endif

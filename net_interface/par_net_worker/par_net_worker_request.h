@@ -17,10 +17,6 @@ ptl_process_t par_net_worker_get_initiator(const struct par_net_worker_request *
 
 void *par_net_worker_get_user_ptr(const struct par_net_worker_request *req);
 
-#elif USE_INFINIBAND
-
-struct par_net_worker_request *par_net_worker_create_req(void *buf);
-
 #endif
 
 void *par_net_worker_get_start(const struct par_net_worker_request *req);
