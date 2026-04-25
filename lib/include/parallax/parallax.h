@@ -214,6 +214,24 @@ uint32_t par_get_max_kv_pair_size(void);
  */
 int par_get_num_of_servers(void);
 
+/**
+ * Writes a large key-value blob directly to the backend storage, bypassing the standard B-Tree log and index.
+ * This is optimized for exceptionally large payloads.
+ * @param handle DB handle provided by par_open.
+ * @param key_value The key and the large blob payload to insert.
+ * @param error_message Contains error message if call fails.
+ */
+void write_blob(par_handle handle, struct par_key_value *key_value, const char **error_message);
+
+/**
+ * Retrieves a large key-value blob directly from the backend storage.
+ * The caller is responsible for ensuring the value buffer is sufficiently sized to hold the blob payload.
+ * @param handle DB handle provided by par_open.
+ * @param key The key associated with the requested blob.
+ * @param value Buffer to be filled with the blob data upon success.
+ * @param error_message Contains error message if call fails.
+ */
+void read_blob(par_handle handle, struct par_key *key, struct par_value *value, const char **error_message);
 
 void par_metrics(par_handle handle, uint8_t flags);
 #ifdef __cplusplus

@@ -5,6 +5,7 @@
 #include "../par_net_worker/par_net_worker_request.h"
 #include "ccqueue.h"
 #include <arpa/inet.h>
+#include <fcntl.h>
 #include <pthread.h>
 #include <stdatomic.h>
 #include <stdbool.h>

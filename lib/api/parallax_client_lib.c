@@ -1068,8 +1068,8 @@ par_handle par_open(par_db_options *db_options, const char **error_message)
 	assert(reply_header->opcode == OPCODE_OPEN);
 	par_handle ret_handle =
 		par_net_open_rep_handle_reply(&parallax_handle->recv_buffer[par_net_header_calc_size()]);
-	(void)reply_header;
 #endif
+	(void)reply_header;
 
 	if (0 == ret_handle) {
 		*error_message = "Operation (open) failed";
@@ -1149,8 +1149,8 @@ const char *par_close(par_handle handle)
 	assert(reply_header->opcode == OPCODE_CLOSE);
 	struct par_net_close_rep *reply =
 		(struct par_net_close_rep *)&parallax_handle->recv_buffer[par_net_header_calc_size()];
-	(void)reply_header;
 #endif
+	(void)reply_header;
 	const char *error_message = par_net_close_rep_handle_reply(reply);
 
 	if (error_message) {
@@ -1282,8 +1282,8 @@ struct par_put_metadata par_put(par_handle handle, struct par_key_value *key_val
 	assert(OPCODE_PUT == reply_header->opcode);
 	struct par_net_put_rep *reply =
 		(struct par_net_put_rep *)&parallax_handle->recv_buffer[par_net_header_calc_size()];
-	(void)reply_header;
 #endif
+	(void)reply_header;
 
 	struct par_put_metadata metadata = par_net_put_rep_handle_reply(reply);
 	log_debug("Client lsn got from put is %lu", metadata.lsn);
@@ -1562,8 +1562,8 @@ void par_delete(par_handle handle, struct par_key *key, const char **error_messa
 	assert(OPCODE_DEL == reply_header->opcode);
 	struct par_net_del_rep *delete_reply =
 		(struct par_net_del_rep *)&parallax_handle->recv_buffer[par_net_header_calc_size()];
-	(void)reply_header;
 #endif
+	(void)reply_header;
 	par_net_del_rep_handle_reply(delete_reply);
 }
 
@@ -1636,6 +1636,7 @@ static struct par_net_scan_rep *par_scan_get_next_batch(par_scanner scanner, par
 	//-- reply part
 	struct par_net_header *reply_header = (struct par_net_header *)parallax_scanner->recv_buffer;
 	assert(reply_header->opcode == OPCODE_SCAN);
+	(void)reply_header;
 	struct par_net_scan_rep *reply =
 		(struct par_net_scan_rep *)(&parallax_scanner->recv_buffer[par_net_header_calc_size()]);
 
@@ -1779,6 +1780,8 @@ par_ret_code par_sync(par_handle handle)
 #endif
 	struct par_net_header *reply = (struct par_net_header *)parallax_handle->net->recv_buffer;
 	assert(reply->total_bytes == bytes_received);
+	(void)bytes_received;
+	(void)reply;
 	struct par_net_sync_rep *sync_reply = (struct par_net_sync_rep *)&reply_buf[par_net_header_calc_size()];
 	par_ret_code ret_val = PAR_SUCCESS;
 	if (par_net_sync_rep_get_status(sync_reply)) {
@@ -1786,6 +1789,108 @@ par_ret_code par_sync(par_handle handle)
 		ret_val = PAR_FAILURE;
 	}
 	return ret_val;
+}
+
+void write_blob(par_handle handle, struct par_key_value *key_value, const char **error_message)
+{
+	struct par_handle *parallax_handle = (struct par_handle *)handle;
+
+	size_t msg_len =
+		par_net_put_req_calc_size(key_value->k.size, key_value->v.val_size) + par_net_header_calc_size();
+
+	if (msg_len > parallax_handle->send_buffer_size) {
+		log_fatal("Send buffer too small has: %u B needs %lu B", parallax_handle->send_buffer_size, msg_len);
+		_exit(EXIT_FAILURE);
+	}
+
+	struct par_net_header *header =
+		(struct par_net_header *)(parallax_handle->net->send_buffer[parallax_handle->net->send_idx]);
+
+	header->total_bytes = msg_len;
+	header->opcode = OPCODE_PUT_BLOB;
+	header->payload_buf_vaddr = 0;
+	header->payload_rkey = 0;
+	header->inline_flag = 1;
+	header->payload_size = 0;
+
+	size_t buffer_len = parallax_handle->send_buffer_size - par_net_header_calc_size();
+
+	struct par_net_put_req *request = par_net_put_req_create(
+		parallax_handle->region_id, key_value->k.size, key_value->k.data, key_value->v.val_size,
+		key_value->v.val_buffer,
+		&parallax_handle->net->send_buffer[parallax_handle->net->send_idx][par_net_header_calc_size()],
+		&buffer_len);
+
+	if (NULL == request) {
+		log_fatal("Failed to create blob put request");
+		_exit(EXIT_FAILURE);
+	}
+
+	char *reply_buf = NULL;
+	ssize_t bytes_received = par_ib_RPC(parallax_handle,
+					    parallax_handle->net->send_buffer[parallax_handle->net->send_idx], msg_len,
+					    &reply_buf);
+
+	if (0 == bytes_received) {
+		*error_message = "Communication with server failed during blob write";
+	}
+	struct par_net_header *reply_header = (struct par_net_header *)reply_buf;
+	assert(OPCODE_PUT == reply_header->opcode);
+	(void)reply_header;
+}
+
+void read_blob(par_handle handle, struct par_key *key, struct par_value *value, const char **error_message)
+{
+	if (value == NULL) {
+		log_fatal("Value should not be null");
+		_exit(EXIT_FAILURE);
+	}
+
+	struct par_handle *parallax_handle = (struct par_handle *)handle;
+	size_t msg_len = par_net_get_req_calc_size(key->size) + par_net_header_calc_size();
+	if (msg_len > parallax_handle->send_buffer_size) {
+		log_fatal("Send buffer too small has: %u B needs %lu B", parallax_handle->send_buffer_size, msg_len);
+		_exit(EXIT_FAILURE);
+	}
+
+	struct par_net_header *header =
+		(struct par_net_header *)(parallax_handle->net->send_buffer[parallax_handle->net->send_idx]);
+
+	header->total_bytes = msg_len;
+	header->opcode = OPCODE_GET_BLOB;
+	header->payload_buf_vaddr = 0;
+	header->payload_rkey = 0;
+	header->inline_flag = 1;
+	header->payload_size = 0;
+
+	size_t buffer_len = parallax_handle->send_buffer_size - par_net_header_calc_size();
+
+	struct par_net_get_req *request = par_net_get_req_create(
+		parallax_handle->region_id, key->size, key->data, true,
+		&parallax_handle->net->send_buffer[parallax_handle->net->send_idx][par_net_header_calc_size()],
+		&buffer_len);
+
+	if (NULL == request) {
+		log_fatal("Failed to create blob get request");
+		_exit(EXIT_FAILURE);
+	}
+
+	char *reply_buf = NULL;
+	ssize_t bytes_received = par_ib_RPC(parallax_handle,
+					    parallax_handle->net->send_buffer[parallax_handle->net->send_idx], msg_len,
+					    &reply_buf);
+
+	if (0 == bytes_received) {
+		*error_message = "Communication with server failed during blob read";
+		return;
+	}
+
+	struct par_net_get_rep *reply = (struct par_net_get_rep *)&reply_buf[par_net_header_calc_size()];
+
+	if (false == par_net_get_rep_handle_reply(reply, value)) {
+		log_debug("Blob Key %.*s NOT found", key->size, key->data);
+		*error_message = "Blob Key Not found";
+	}
 }
 
 void par_metrics(par_handle handle, uint8_t flags)

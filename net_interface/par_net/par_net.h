@@ -34,7 +34,9 @@ enum par_net_op {
 	OPCODE_CLOSE,
 	OPCODE_SCAN,
 	OPCODE_SYNC,
-  OPCODE_METRICS,
+	OPCODE_PUT_BLOB,
+	OPCODE_GET_BLOB,
+	OPCODE_METRICS,
 	OPCODE_MAX,
 };
 
@@ -74,6 +76,5 @@ uint32_t par_net_header_get_opcode(char *buffer);
   *  @return reply buffer on success and NULL on failure
   */
 char *par_net_send(char *buffer, size_t *buffer_len);
-
 
 #endif

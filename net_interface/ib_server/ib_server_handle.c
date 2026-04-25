@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 #include "ib_client_ctx.h"
 #include "ib_server_handle.h"
 
@@ -16,6 +17,7 @@
 	"parallax will run\n\n"                                                                                 \
 	" -L0, --L0_size <size in MB>           sets the L0 size in MB of each region in Parallax\n\n"          \
 	" -GF, --GF <growth factor>           specify the growth factor of levels in each Parallax region\n\n " \
+	" -bd, --blob_dir <path>      specify the directory to store large KV blobs\n\n"                        \
 	" -h, --help     display this help and exit\n"                                                          \
 	" -pf, --par_format           (Optional) specify whether database should be formatted\n"
 
@@ -37,6 +39,7 @@
 #define PAR_IB_NUM_ENTRIES 16
 #define PAR_IB_SECTOR_SIZE 4096
 #define PAR_IB_MAX_SRQ_BUFFERS 128
+#define PAR_IB_BLOB_DIR "/mnt/ramdisk/parallax_blobs/"
 
 struct server_options {
 	uint32_t threadno;
@@ -46,6 +49,7 @@ struct server_options {
 	uint8_t format;
 	long port;
 	struct sockaddr_storage inaddr;
+	const char *blob_dir;
 };
 
 struct root_server_handle {
@@ -178,7 +182,10 @@ struct server_options *par_ib_server_parse_argv_opts(int argc, char **argv)
 			server_options->parallax_vol_name = strdup(argv[i]);
 		} else if (!strcmp(argv[i], "-pf") || !strcmp(argv[i], "--par_format")) {
 			server_options->format = 1;
-		} else {
+		} else if (!strcmp(argv[i], "-bd") || !strcmp(argv[i], "--blob_dir")) {
+            par_ib_server_check_arg(argc, ++i);
+            server_options->blob_dir = strdup(argv[i]);
+        } else {
 			log_fatal("InfiniBand Server: unknown option '%s'\n", argv[i]);
 		}
 	}
@@ -189,6 +196,9 @@ struct server_options *par_ib_server_parse_argv_opts(int argc, char **argv)
 	if (address_set == 0) {
 		par_ib_server_set_address(server_options, PAR_IB_DEFAULT_ADDRESS);
 	}
+	if (server_options->blob_dir == NULL) {
+        server_options->blob_dir = strdup(PAR_IB_BLOB_DIR);
+    }
 
 	return server_options;
 }
@@ -389,6 +399,13 @@ struct root_server_handle *par_ib_server_handle_init(struct server_options *opts
 			log_fatal("%s", error_message);
 			_exit(EXIT_FAILURE);
 		}
+
+        char cmd[1024];
+        snprintf(cmd, sizeof(cmd), "rm -f %s/*", opts->blob_dir);
+        int ret = system(cmd);
+        if (ret != 0) {
+            log_warn("Failed to clear blob directory, or directory was already empty");
+        }
 
 	} else {
 		log_info("Format option not enabled");
@@ -700,6 +717,101 @@ void par_ib_par_net_call_sync(struct server_handle *server_handle, void *args, s
 	log_warn("SYNC NOT IMPLEMENTED");
 }
 
+void par_ib_par_net_call_put_blob(struct server_handle *server_handle, void *args, struct par_net_header *reply_header)
+{
+	(void)server_handle;
+	void *start = (void *)args;
+	struct par_net_header *hdr = (struct par_net_header *)start;
+	struct par_net_put_req *request = (struct par_net_put_req *)((char *)start + par_net_header_size());
+
+	uint32_t key_size = par_net_put_get_key_size(request);
+	const char *key_data = par_net_put_get_key(request);
+	uint32_t payload_size = par_net_put_get_value_size(request);
+	const char *payload_data = par_net_put_get_value(request);
+
+	const char *error_message = NULL;
+	struct server_options *opts = server_handle->global->opts;
+    const char *blob_dir = opts->blob_dir;
+
+    char filepath[512];
+    
+    snprintf(filepath, sizeof(filepath), "%s/%.*s.grib", blob_dir, key_size, key_data);
+
+	int fd = open(filepath, O_WRONLY | O_CREAT | O_TRUNC | O_DIRECT, 0644);	
+	if (fd < 0) {
+		log_warn("Failed to open file on server for blob write");
+		error_message = "Failed to open file on server";
+	} else {
+		ssize_t written = write(fd, payload_data, payload_size);
+		if (written != payload_size) {
+			log_warn("Failed to write complete payload on server");
+			error_message = "Failed to write complete payload";
+		}
+		close(fd);
+	}
+
+	struct par_put_metadata metadata = { 0 };
+	uint32_t total_bytes = par_net_header_size() + par_net_put_rep_calc_size();
+	struct par_net_put_rep *reply = par_net_put_rep_create(
+		error_message == NULL, metadata, (char *)reply_header + par_net_header_size(), total_bytes);
+
+	reply_header->opcode = OPCODE_PUT_BLOB;
+	reply_header->total_bytes = total_bytes;
+	reply_header->request_id = hdr->request_id;
+	(void)reply;
+}
+
+void par_ib_par_net_call_get_blob(struct server_handle *server_handle, void *args, struct par_net_header *reply_header)
+{
+	(void)server_handle;
+	void *start = (void *)args;
+	struct par_net_header *hdr = (struct par_net_header *)start;
+	struct par_net_get_req *request = (struct par_net_get_req *)((char *)start + par_net_header_size());
+
+	uint32_t key_size = par_net_get_get_key_size(request);
+	const char *key_data = par_net_get_get_key(request);
+
+	bool found = false;
+	struct par_value par_value = { 0 };
+
+	struct server_options *opts = server_handle->global->opts;
+    const char *blob_dir = opts->blob_dir;
+
+    char filepath[512];
+    
+    snprintf(filepath, sizeof(filepath), "%s/%.*s.grib", blob_dir, key_size, key_data);
+
+	int fd = open(filepath, O_RDONLY);
+	if (fd >= 0) {
+		off_t file_size = lseek(fd, 0, SEEK_END);
+		lseek(fd, 0, SEEK_SET);
+
+		par_value.val_buffer = (char *)reply_header + par_net_header_size() + par_net_get_rep_header_size();
+		par_value.val_size = file_size;
+
+		ssize_t bytes_read = read(fd, par_value.val_buffer, file_size);
+		if (bytes_read == file_size) {
+			found = true;
+		} else {
+			log_warn("Failed to read full blob from server disk");
+		}
+		close(fd);
+	} else {
+		log_warn("Blob file not found on server disk");
+	}
+
+	uint32_t total_bytes = par_net_header_size() + par_net_get_rep_header_size() + (found ? par_value.val_size : 0);
+	size_t buffer_len = total_bytes - par_net_header_size();
+
+	struct par_net_get_rep *reply =
+		par_net_get_rep_set_header(found, &par_value, (char *)reply_header + par_net_header_size(), buffer_len);
+
+	reply_header->opcode = OPCODE_GET_BLOB;
+	reply_header->total_bytes = total_bytes;
+	reply_header->request_id = hdr->request_id;
+	(void)reply;
+}
+
 const par_ib_call par_net_call[OPCODE_MAX] = { NULL,
 					       par_ib_par_net_call_open,
 					       par_ib_par_net_call_put,
@@ -707,7 +819,9 @@ const par_ib_call par_net_call[OPCODE_MAX] = { NULL,
 					       par_ib_par_net_call_get,
 					       par_ib_par_net_call_close,
 					       par_ib_par_net_call_scan,
-					       par_ib_par_net_call_sync };
+					       par_ib_par_net_call_sync,
+					       par_ib_par_net_call_put_blob,
+					       par_ib_par_net_call_get_blob };
 
 size_t par_ib_par_net_get_total_bytes(char *buffer)
 {
@@ -846,7 +960,7 @@ int par_ib_handle_event(struct ibv_wc *wc, struct server_handle *server_handle)
 
 		recv_slot->send_buf_ptr = ctx->recv_slot->send_buf_ptr;
 
-		if (ctx->hdr->opcode != OPCODE_PUT) {
+		if (ctx->hdr->opcode != OPCODE_PUT && ctx->hdr->opcode != OPCODE_PUT_BLOB) {
 			log_fatal("Unhandled RDMA READ opcode");
 		}
 
