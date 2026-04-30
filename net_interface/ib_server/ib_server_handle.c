@@ -39,7 +39,7 @@
 #define PAR_IB_NUM_ENTRIES 16
 #define PAR_IB_SECTOR_SIZE 4096
 #define PAR_IB_MAX_SRQ_BUFFERS 128
-#define PAR_IB_BLOB_DIR "/mnt/ramdisk/parallax_blobs/"
+#define PAR_IB_DEFAULT_BLOB_DIR "/tmp"
 
 struct server_options {
 	uint32_t threadno;
@@ -197,7 +197,7 @@ struct server_options *par_ib_server_parse_argv_opts(int argc, char **argv)
 		par_ib_server_set_address(server_options, PAR_IB_DEFAULT_ADDRESS);
 	}
 	if (server_options->blob_dir == NULL) {
-        server_options->blob_dir = strdup(PAR_IB_BLOB_DIR);
+        server_options->blob_dir = strdup(PAR_IB_DEFAULT_BLOB_DIR);
     }
 
 	return server_options;

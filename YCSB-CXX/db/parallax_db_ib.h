@@ -316,7 +316,7 @@ class ParallaxDBIB : public YCSBDB {
 		std::hash<std::string> hash_fn;
 		uint32_t db_id = hash_fn(key) % dbs.size();
 
-		static std::string value3(2000, 'a');
+		static std::string value3(1000, 'a');
 		static std::string value2(100, 'a');
 		static std::string value(5, 'a');
 		int y = x % 10;
