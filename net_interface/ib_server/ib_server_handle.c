@@ -400,12 +400,16 @@ struct root_server_handle *par_ib_server_handle_init(struct server_options *opts
 			_exit(EXIT_FAILURE);
 		}
 
-        char cmd[1024];
-        snprintf(cmd, sizeof(cmd), "rm -f %s/*", opts->blob_dir);
-        int ret = system(cmd);
-        if (ret != 0) {
-            log_warn("Failed to clear blob directory, or directory was already empty");
-        }
+        if (strcmp(opts->blob_dir, PAR_IB_DEFAULT_BLOB_DIR) != 0) {
+			char cmd[1024];
+			snprintf(cmd, sizeof(cmd), "rm -f %s/*", opts->blob_dir);
+			int ret = system(cmd);
+			if (ret != 0) {
+				log_warn("Failed to clear blob directory, or directory was already empty");
+			}
+		} else {
+			log_info("Using default blob directory, not clearing it");
+		}
 
 	} else {
 		log_info("Format option not enabled");
