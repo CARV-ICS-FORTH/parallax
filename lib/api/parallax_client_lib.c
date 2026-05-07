@@ -999,8 +999,8 @@ par_handle par_open(par_db_options *db_options, const char **error_message)
 	parallax_handle->send_buffer_size = KV_MAX_SIZE;
 	parallax_handle->recv_buffer_size = KV_MAX_SIZE + par_net_header_calc_size();
 #else
-	struct par_handle *parallax_handle = (struct par_handle *)par_net_init(
-		(const char *)configuration[PARALLAX_SERVER].value, db_options->db_name);
+	struct par_handle *parallax_handle =
+		(struct par_handle *)par_net_init((const char *)configuration[PARALLAX_SERVER].value);
 #endif
 #ifdef PORTALS
 	parallax_handle->total_cycles = 0;
@@ -1778,11 +1778,20 @@ par_ret_code par_sync(par_handle handle)
 					     request->total_bytes, &parallax_handle->recv_buffer,
 					     parallax_handle->recv_buffer_size);
 #endif
+#ifdef USE_INFINIBAND
 	struct par_net_header *reply = (struct par_net_header *)parallax_handle->net->recv_buffer;
+#else
+	struct par_net_header *reply = (struct par_net_header *)parallax_handle->recv_buffer;
+#endif
 	assert(reply->total_bytes == bytes_received);
 	(void)bytes_received;
 	(void)reply;
+#ifdef USE_INFINIBAND
 	struct par_net_sync_rep *sync_reply = (struct par_net_sync_rep *)&reply_buf[par_net_header_calc_size()];
+#else
+	struct par_net_sync_rep *sync_reply =
+		(struct par_net_sync_rep *)&parallax_handle->recv_buffer[par_net_header_calc_size()];
+#endif
 	par_ret_code ret_val = PAR_SUCCESS;
 	if (par_net_sync_rep_get_status(sync_reply)) {
 		log_warn("Sync failed");
@@ -1791,6 +1800,7 @@ par_ret_code par_sync(par_handle handle)
 	return ret_val;
 }
 
+#ifdef USE_INFINIBAND
 void write_blob(par_handle handle, struct par_key_value *key_value, const char **error_message)
 {
 	struct par_handle *parallax_handle = (struct par_handle *)handle;
@@ -1892,6 +1902,7 @@ void read_blob(par_handle handle, struct par_key *key, struct par_value *value, 
 		*error_message = "Blob Key Not found";
 	}
 }
+#endif
 
 void par_metrics(par_handle handle, uint8_t flags)
 {
