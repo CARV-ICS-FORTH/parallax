@@ -78,7 +78,7 @@ find_library(
   NAMES portals
   PATHS ${PORTALS_LIB_DIR})
 
-if(NET STREQUAL "PORTALS")
+if(NET STREQUAL "portals")
   message(STATUS "Portals library for client found at: ${PORTALS_LIB}")
 
   set(PORT_LIB "${PROJECT_NAME}_portals_lib")

@@ -170,7 +170,7 @@ add_dependencies(concurrent build_sim_universal_construction)
 
 # ######### PORTALS SERVER !!! ###########
 
-if(NET STREQUAL "PORTALS")
+if(NET STREQUAL "portals")
   option(PORTALS_LIB_DIR "Path to the Portals library" "")
 
   find_library(
