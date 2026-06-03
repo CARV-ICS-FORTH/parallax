@@ -1,133 +1,123 @@
 # InfiniBand Parallax Server
 
-This project provides an InfiniBand-based network server implementation for Parallax.
+An InfiniBand-based network server implementation for the Parallax Key-Value Store.
 
-## Server Side
+## Server Side Architecture
 
-At startup, the server initializes all required InfiniBand RDMA resources (protection domain, completion queues, queue pairs, memory regions, etc.).
-Unlike TCP/IP or Portals (existing Parallax server implementations), InfiniBand requires an explicit connection establishment (handshake) between server and client before any messages can be exchanged. To handle this, the server introduces a dedicated Communication Manager thread responsible for accepting and establishing client connections (this thread runs separately from the workers).
+At startup, the server initializes all required InfiniBand RDMA resources, including protection domains (PD), completion queues (CQ), queue pairs (QP), and memory regions (MR).  
+Unlike TCP/IP or Portals (existing Parallax server implementations), InfiniBand requires explicit connection establishment (a handshake) between the server and client before any messages can be exchanged. To handle this, the server utilizes a dedicated Communication Manager thread responsible for listening, accepting, and establishing incoming client connections.  
+Once connections are established, the server maintains a pool of worker threads. Every worker has its own shared receive queue (SRQ) and wakes up via hardware interrupts when receiving a request.
 
-Once connections are established, the server relies on a pool of network worker threads (adapted from the Portals implementation). These workers continuously poll for incoming client requests, dequeue them from a [custom queue](https://github.com/gesalous/sim-universal-construction), and execute them. Requests are inserted into this queue by the server after receiving and parsing the client’s request.
+### Server Handle Worker Threads
 
-### Worker Threads
+Worker threads are spawned during server startup. Each worker is responsible for:
 
-Worker threads are spawned during server startup. Each worker:
+1. Polling its completion queue (CQ) for new network requests.
+2. Executing the requested operation.
+3. Sending a reply header back to the client.
 
-- Polls the completion queue for new requests.
-- Dequeues requests from the custom queue.
-- Executes the requested operation.
-- Sends a reply header to the client.
+**Note:** `SCAN` operations, `par_sync`, `par_delete`, and `par_exists` are **NOT** implemented.
 
-(Note: workers are reused from the Portals implementation. For more details, see [parallax_portals.md](https://carvgit.ics.forth.gr/storage/parallax/-/blob/parallax_infiniband/docs/parallax_portals.md?ref_type=heads#worker-thread))
-<br />
-<br />
+---
 
-**IMPORTANT**: SCAN operations, par_sync, par_delete and par_exists are NOT implemented.
+## Client Side Architecture
 
-## Client Side
+The client interacts with the server exclusively through the standard Parallax API. The RDMA networking details are entirely abstracted away, allowing the client to safely call familiar operations (open, close, put, get, write_blob, read_blob).  
+Before issuing data requests, the client library (`parallax_client_lib.c`) sets up the InfiniBand connection during the open call.
 
-The client interacts with the server through the Parallax API. The RDMA details are abstracted away, so the client only calls the familiar operations (open, close, put, get).
-Before issuing requests, the client library (parallax_client_lib.c) sets up the InfiniBand connection during the open call. For each request, it prepares a network header (par_net_header) containing:
+For each request, the client prepares a network header (par_net_header) containing:
 
-- Virtual address of the data (if not inline / large send buffer).
-- Size of the data.
+- Virtual address of the data (if not sent inline).
+- Size of the payload.
 - Remote key (rkey) for RDMA access.
 - Request ID (to match responses).
 - Opcode of the requested operation.
-- A flag indicating whether the data is inline or not.
-  This header gives the server all necessary information to execute the request.
+- An inline_flag indicating whether the data fits in the message header.
 
 ### Sending Requests
 
-The client maintains a set of pre-registered buffers to avoid the overhead of repeatedly registering memory regions. For each request:
+To avoid the overhead of repeatedly registering memory regions, the client maintains a set of pre-registered buffers:
 
-- A receive buffer is allocated and registered with ibv_reg_mr so the client can receive responses.
-- A send buffer is allocated and registered with ibv_reg_mr so the server can access it.
-- Depending on the send buffer size:
-  1. Small send buffer: Data is sent inline; no virtual address, size, or rkey is needed.
-  2. Large send buffer: The client provides flags, the data’s virtual address, size, and rkey. The memory region containing the data (e.g., for put) is also registered, so the server can later perform an RDMA read.
+- Receive Pool: Allocated and registered via `ibv_reg_mr` to asynchronously catch server responses.
+- Send Pool: Allocated and registered so the server can securely access client data.
 
-## Server-Side Request Execution
+Depending on the size of the payload, the client will route the request via two paths:
 
-When the server receives a request:
+1. Small Payload (Inline): Data is sent directly inline within the request header. No virtual addresses, sizes, or rkeys are needed.
+2. Large Payload (RDMA Read): The client provides the data's virtual address, size, and rkey. The memory region containing the data is registered, allowing the server to asynchronously pull the payload using a zero-copy RDMA Read operation.
 
-- Small send buffer: The client indicates the data is inline. The server reads the data directly from the request.
-- Large send buffer: The client indicates the data is not inline and provides the virtual address and rkey. The server then performs an RDMA read to fetch the data directly from the client’s memory.
+---
 
-For large put operations, the server uses a pool of pre-registered RDMA buffers to avoid repeatedly registering memory regions (which is expensive). A mechanism ensures buffers are reused efficiently, and if all buffers are occupied, workers will wait until one becomes available.
+## Large KV Blob Storage
 
-After executing a request, the server must send back a reply header. To do this, each worker maintains a queue of pre-registered reply buffers:
+To support exceptionally large Key-Value pairs without stalling Parallax's B-Tree compactions, we introduced a native Blob Storage feature.
 
-- When a buffer is needed, it is dequeued from the worker’s queue.
-- The buffer remains “in use” until the client acknowledges receipt of the reply.
-- Once acknowledged, the buffer is re-enqueued, making it available again.
+Large payloads bypass the standard B-Tree index and are routed directly to the server's local file system via two new dedicated APIs: `write_blob` and `read_blob`.
+
+Configuration:
+You can specify the directory where these large blobs are stored on the server using the `-bd` (or `--blob_dir`) CLI flag. If omitted, the server will safely default to writing blobs to `/tmp`. Furthermore, if the format flag (`-pf`) is provided on startup, the server will automatically wipe out old blobs from the configured directory to prevent ghost data from filling the disk.
+
+---
 
 ## Build Instructions
 
-To enable the InfiniBand server, set:
-`-DNET=INFINIBAND`
+To build the project with the InfiniBand server enabled, you must pass specific flags to CMake.
 
-Enable shared libraries with `-DBUILD_SHARED_LIBS=ON`
-so that the client program can use the library installed via make install.
+Required CMake Flags:
 
-Finally, set the segment size flag (required for large KVs):
-`-DSEGMENT_SIZE=134217728`
+- `-DNET=INFINIBAND` (Enables the IB Server/Client)
+- `-DBUILD_SHARED_LIBS=ON` (Builds shared libraries so the client program can use the installed library)
+- `-DKV_MAX_SIZE=ON` and `-DSEGMENT_SIZE=4194304`
+
+```bash
+
+cmake .. \
+  -DCMAKE_BUILD_TYPE="Release" \
+  -DCMAKE_C_FLAGS="-Wno-main" \
+  -DNET=INFINIBAND \
+  -DCMAKE_INSTALL_PREFIX=/usr/local/ \
+  -DBUILD_SHARED_LIBS=ON \
+  -DKV_MAX_SIZE=ON \
+  -DSEGMENT_SIZE=4194304
+
+make -j10
+make install
+
+```
 
 ### Client Polling vs Event Mode
 
-By default, the client polls (spins) while waiting for a reply from the server. This is typically faster.
-There is also an alternative mode that uses completion queue events:
+By default, the client polls (spins) the CPU while waiting for a reply from the server. This yields the lowest possible latency and highest throughput.
 
-`-DUSE_IBV_CQ_EVENT=ON`
+Alternatively, you can compile the client in Event Mode by passing `-DUSE_IBV_CQ_EVENT=ON` to CMake. In this mode, the client thread sleeps and is only woken up via hardware interrupts when a response arrives.
 
-With this flag, the client sleeps and is only woken up when a response arrives. Although polling was tested to be cheaper in practice, this option exists as an alternative.
+---
 
 ## Run Instructions
 
 Start the server with:
 
-```
+```bash
 ./infiniband_parallax_server \
   -t <thread-num> \
   -b <if-address> \
   -p <port> \
-  -f <path> \
+  -f <path-to-db> \
   -L0 <size-in-MB> \
-  -GF <growth-factor>
+  -GF <growth-factor> \
+  -bd <blob-directory-path>
+
 ```
 
 ### Multiple Servers
 
-The project supports running multiple servers in parallel.
-You can specify one or more address:port entries in the options.yml configuration file:
+The project supports running and addressing multiple servers in parallel. You can specify one or more `address:port` entries in your client-side `options.yml` configuration file:
 
-- Single server
+- **Single server:**
   `parallax_server: 192.168.5.120:7471`
+- **Multiple servers:**
+  `parallax_server: 192.168.5.120:7471 192.168.5.120:7472 192.168.5.121:7471`
 
-- Multiple servers
-  `parallax_server: 192.168.5.120:7471 192.168.5.120:7472 192.168.5.120:7473 ...`
+The client library will automatically establish connections to all listed servers and distribute requests seamlessly across the cluster.
 
-The client library will automatically establish connections to all listed servers and distribute requests accordingly.
-
-**Note**: if-address and port depend on each machine’s configuration. Adjust accordingly before running.
-
-### Client Initialization
-
-(For fdb-hammer)
-<br />
-On startup, a helper tool is provided in net_interface/ib_server/ib_tools that pre-initializes the databases required by the FDB client (fdb-hammer).
-<br />
-This tool also includes a simple test program that demonstrates basic API calls against the InfiniBand Parallax server.
-
-#### Build Instructions
-
-```
-mkdir build
-cd build
-cmake -DCMAKE_INSTALL_PREFIX=~/local ..   # Ensure Parallax libraries can be found
-make
-```
-
-#### Run Client Initialization
-
-`LD_LIBRARY_PATH=~/local/lib:$LD_LIBRARY_PATH ./ib_client_init`
+**Note:** Ensure `if-address` and `port` bindings align with your specific cluster's subnet configuration before running.
