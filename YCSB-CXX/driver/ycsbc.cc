@@ -39,7 +39,7 @@ Measurements *tail = nullptr;
 
 std::string outf("ops.txt");
 std::string explan_filename("execution_plan.txt");
-std::string results_directory("RESULTS");
+std::string results_directory("");
 std::string path("/tmp/test");
 std::string custom_workload("sd");
 
@@ -305,6 +305,12 @@ int main(const int argc, const char *argv[])
 
 	ParseCommandLine(argc, argv, props);
 
+	if (results_directory.empty()) {
+		std::cerr << "\nERROR: A results directory must be specified using the -o flag.\n" << std::endl;
+		UsageMessage(argv[0]);
+		_Exit(EXIT_FAILURE);
+	}
+
 	std::cout << "Using execution plan:[" << explan_filename << "]" << std::endl;
 	std::cout << "Using result directory:[" << results_directory << "]" << std::endl;
 
@@ -506,7 +512,7 @@ void UsageMessage(const char *command)
 	cout << "  -p /path/to/     Define the file or device the key-value store will write." << endl;
 	cout << "  -wl workload     Define the workload you want to run (default: sd). Options (s,m,l,sd,md,ld)"
 	     << endl;
-	cout << "  -o file          Define the result directory name (default ./RESULTS)." << endl;
+	cout << "  -o file          Define the result directory name (REQUIRED)." << endl;
 	cout << "  -insertStart     Set counter start value for key generation during load." << endl;
 	cout << "  -clientProcesses Set to the number of client processes (default = 1)." << endl;
 	cout << "  -outFile         Set name of ycsb log file (default = ops.txt)." << endl;
