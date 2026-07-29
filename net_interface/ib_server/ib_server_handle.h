@@ -1,17 +1,14 @@
 #ifndef INFINIBAND_SERVER_HANDLE_H
 #define INFINIBAND_SERVER_HANDLE_H
 
-#include "../par_net_worker/par_net_worker.h"
-#include "../par_net_worker/par_net_worker_request.h"
-#include "ccqueue.h"
+#include "../par_net/par_net.h"
 #include <arpa/inet.h>
 #include <fcntl.h>
-#include <pthread.h>
-#include <stdatomic.h>
-#include <stdbool.h>
+#include <rdma/rdma_cma.h>
 
 struct server_options;
 struct server_handle;
+struct par_ib_recv_slot;
 
 long par_ib_server_parse_number(const char *str, const char *opt);
 

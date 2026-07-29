@@ -311,6 +311,9 @@ struct par_net_context {
 	uint32_t client_id;
 	uint32_t max_buffer_size;
 	int refcount;
+	struct ibv_mr *cached_mr;
+	void *cached_addr;
+	size_t cached_size;
 };
 
 struct par_handle {
@@ -845,8 +848,30 @@ retry:
 			}
 			if (wc.opcode == IBV_WC_SEND)
 				continue;
-			if (wc.opcode == IBV_WC_RECV)
-				break;
+			if (wc.opcode == IBV_WC_RECV) {
+				idx = wc.wr_id;
+				hdr = (struct par_net_header *)h->net->recv_buffer[idx];
+
+				if (hdr->request_id != header->request_id || hdr->opcode != header->opcode) {
+					struct ibv_sge recv_sge = {
+						.addr = (uintptr_t)h->net->recv_buffer[idx],
+						.length = KV_MAX_SIZE + par_net_header_calc_size(),
+						.lkey = h->net->recv_mr[idx]->lkey,
+					};
+					struct ibv_recv_wr recv_wr = {
+						.wr_id = idx,
+						.sg_list = &recv_sge,
+						.num_sge = 1,
+					};
+					struct ibv_recv_wr *recv_bad_wr;
+					if (ibv_post_recv(h->net->cm_id->qp, &recv_wr, &recv_bad_wr)) {
+						log_fatal("ibv_post_recv failed during async cleanup");
+					}
+					continue;
+				} else {
+					break;
+				}
+			}
 		} else if (ne < 0) {
 			log_fatal("ibv_poll_cq failed");
 			_exit(EXIT_FAILURE);
@@ -901,6 +926,91 @@ retry:
 
 	return wc.byte_len;
 }
+
+static int par_ib_async_RPC(par_handle handle, char *send_buffer, size_t send_buffer_len)
+{
+	struct par_handle *h = (struct par_handle *)handle;
+	struct par_net_header *header = (struct par_net_header *)send_buffer;
+
+	int s_idx = h->net->send_idx;
+	char *buf = h->net->send_buffer[s_idx];
+	struct ibv_mr *send_mr = h->net->send_mr[s_idx];
+
+	struct ibv_wc wc;
+	int idx = -1;
+
+	h->net->send_idx = (s_idx + 1) % N_SEND_BUFFERS;
+	buf = send_buffer;
+
+	header->request_id = h->net->client_id;
+
+	if (send_buffer_len > KV_SIZE_THRESHOLD) {
+		size_t header_size = par_net_header_calc_size();
+
+		header->inline_flag = 0;
+		header->payload_buf_vaddr = (uintptr_t)(buf);
+		header->payload_rkey = send_mr->rkey;
+		header->payload_size = send_buffer_len;
+
+		struct ibv_sge sge = { .addr = (uintptr_t)buf, .length = header_size, .lkey = send_mr->lkey };
+		struct ibv_send_wr wr = { .wr_id = (uintptr_t)buf,
+					  .opcode = IBV_WR_SEND,
+					  .send_flags = IBV_SEND_SIGNALED,
+					  .sg_list = &sge,
+					  .num_sge = 1 };
+		struct ibv_send_wr *bad_wr = NULL;
+		int ret = ibv_post_send(h->net->cm_id->qp, &wr, &bad_wr);
+		if (ret) {
+			log_fatal("ibv_post_send failed: %s\n", strerror(ret));
+			return -1;
+		}
+	} else {
+		struct ibv_sge sge = { .addr = (uintptr_t)send_buffer,
+				       .length = send_buffer_len,
+				       .lkey = send_mr->lkey };
+		struct ibv_send_wr wr = { .wr_id = (uintptr_t)send_buffer,
+					  .opcode = IBV_WR_SEND,
+					  .send_flags = IBV_SEND_SIGNALED,
+					  .sg_list = &sge,
+					  .num_sge = 1 };
+		struct ibv_send_wr *bad_wr = NULL;
+		int ret = ibv_post_send(h->net->cm_id->qp, &wr, &bad_wr);
+		if (ret) {
+			log_fatal("ibv_post_send failed: %s\n", strerror(ret));
+			return -1;
+		}
+	}
+
+	int ne;
+	while ((ne = ibv_poll_cq(h->net->cq, 1, &wc)) > 0) {
+		if (wc.status != IBV_WC_SUCCESS) {
+			log_fatal("RDMA Async Error: %s (opcode: %d)", ibv_wc_status_str(wc.status), wc.opcode);
+			continue;
+		}
+
+		if (wc.opcode == IBV_WC_RECV) {
+			idx = wc.wr_id;
+
+			struct ibv_sge recv_sge = {
+				.addr = (uintptr_t)h->net->recv_buffer[idx],
+				.length = KV_MAX_SIZE + par_net_header_calc_size(),
+				.lkey = h->net->recv_mr[idx]->lkey,
+			};
+			struct ibv_recv_wr recv_wr = {
+				.wr_id = idx,
+				.sg_list = &recv_sge,
+				.num_sge = 1,
+			};
+			struct ibv_recv_wr *recv_bad_wr;
+			if (ibv_post_recv(h->net->cm_id->qp, &recv_wr, &recv_bad_wr)) {
+				log_fatal("ibv_post_recv failed in async cleanup");
+			}
+		}
+	}
+
+	return 0;
+}
+
 #else
 static ssize_t par_net_RPC(int sockfd, char *send_buffer, size_t send_buffer_len, char **recv_buffer,
 			   size_t recv_buffer_len)
@@ -1289,6 +1399,50 @@ struct par_put_metadata par_put(par_handle handle, struct par_key_value *key_val
 
 	return metadata;
 }
+
+#ifdef USE_INFINIBAND
+struct par_put_metadata par_async_put(par_handle handle, struct par_key_value *key_value, const char **error_message)
+{
+	struct par_handle *parallax_handle = (struct par_handle *)handle;
+
+	size_t msg_len =
+		par_net_put_req_calc_size(key_value->k.size, key_value->v.val_size) + par_net_header_calc_size();
+
+	if (msg_len > parallax_handle->send_buffer_size) {
+		log_fatal("Send buffer too small has: %u B needs %lu B", parallax_handle->send_buffer_size, msg_len);
+		_exit(EXIT_FAILURE);
+	}
+
+	struct par_net_header *header =
+		(struct par_net_header *)(parallax_handle->net->send_buffer[parallax_handle->net->send_idx]);
+
+	header->total_bytes = msg_len;
+	header->opcode = OPCODE_PUT;
+	header->payload_buf_vaddr = 0;
+	header->payload_rkey = 0;
+	header->inline_flag = 1;
+	header->payload_size = 0;
+
+	size_t buffer_len = parallax_handle->send_buffer_size - par_net_header_calc_size();
+	struct par_net_put_req *request = par_net_put_req_create(
+		parallax_handle->region_id, key_value->k.size, key_value->k.data, key_value->v.val_size,
+		key_value->v.val_buffer,
+		&parallax_handle->net->send_buffer[parallax_handle->net->send_idx][par_net_header_calc_size()],
+		&buffer_len);
+	if (NULL == request) {
+		log_fatal("Failed to create put request");
+		_exit(EXIT_FAILURE);
+	}
+	int ret = par_ib_async_RPC(parallax_handle, parallax_handle->net->send_buffer[parallax_handle->net->send_idx],
+				   msg_len);
+	if (ret != 0) {
+		*error_message = "Failed to post async request to network";
+	}
+
+	struct par_put_metadata dummy_metadata = { .lsn = 0 };
+	return dummy_metadata;
+}
+#endif
 
 struct par_put_metadata par_put_serialized(par_handle handle, char *serialized_key_value, const char **error_message,
 					   bool append_to_log, bool abort_on_compaction)
@@ -1800,12 +1954,68 @@ par_ret_code par_sync(par_handle handle)
 }
 
 #ifdef USE_INFINIBAND
-void write_blob(par_handle handle, struct par_key_value *key_value, const char **error_message)
+struct par_put_metadata par_put_batch(par_handle handle, struct par_key_value *kv_array, int count,
+				      const char **error_message)
 {
 	struct par_handle *parallax_handle = (struct par_handle *)handle;
 
-	size_t msg_len =
-		par_net_put_req_calc_size(key_value->k.size, key_value->v.val_size) + par_net_header_calc_size();
+	size_t msg_len = par_net_put_batch_req_calc_size(kv_array, count) + par_net_header_calc_size();
+
+	if (msg_len > parallax_handle->send_buffer_size) {
+		log_fatal("Send buffer too small has: %u B needs %lu B", parallax_handle->send_buffer_size, msg_len);
+		_exit(EXIT_FAILURE);
+	}
+
+	struct par_net_header *header =
+		(struct par_net_header *)(parallax_handle->net->send_buffer[parallax_handle->net->send_idx]);
+
+	header->total_bytes = msg_len;
+	header->opcode = OPCODE_PUT_BATCH;
+
+	header->payload_buf_vaddr = 0;
+	header->payload_rkey = 0;
+	header->inline_flag = 1;
+	header->payload_size = 0;
+
+	size_t buffer_len = parallax_handle->send_buffer_size - par_net_header_calc_size();
+
+	struct par_net_put_batch_req *request = par_net_put_batch_req_create(
+		parallax_handle->region_id, kv_array, count,
+		&parallax_handle->net->send_buffer[parallax_handle->net->send_idx][par_net_header_calc_size()],
+		&buffer_len);
+
+	if (NULL == request) {
+		log_fatal("Failed to create put batch request");
+		_exit(EXIT_FAILURE);
+	}
+
+	char *reply_buf = NULL;
+	ssize_t bytes_received = par_ib_RPC(parallax_handle,
+					    parallax_handle->net->send_buffer[parallax_handle->net->send_idx], msg_len,
+					    &reply_buf);
+
+	if (0 == bytes_received) {
+		*error_message = "Communication with server failed";
+		struct par_put_metadata sample_return_value = { 0 };
+		return sample_return_value;
+	}
+
+	struct par_net_put_rep *reply = (struct par_net_put_rep *)&reply_buf[par_net_header_calc_size()];
+
+	return par_net_put_rep_handle_reply(reply);
+}
+
+struct par_net_put_req {
+	uint64_t region_id;
+	uint32_t key_size;
+	uint32_t value_size;
+} __attribute__((packed));
+
+void write_blob(par_handle handle, struct par_key_value *key_value, const char **error_message, uint64_t *out_offset)
+{
+	struct par_handle *parallax_handle = (struct par_handle *)handle;
+
+	size_t msg_len = par_net_header_calc_size() + sizeof(struct par_net_put_req) + key_value->k.size;
 
 	if (msg_len > parallax_handle->send_buffer_size) {
 		log_fatal("Send buffer too small has: %u B needs %lu B", parallax_handle->send_buffer_size, msg_len);
@@ -1817,23 +2027,40 @@ void write_blob(par_handle handle, struct par_key_value *key_value, const char *
 
 	header->total_bytes = msg_len;
 	header->opcode = OPCODE_PUT_BLOB;
-	header->payload_buf_vaddr = 0;
-	header->payload_rkey = 0;
-	header->inline_flag = 1;
-	header->payload_size = 0;
+	header->inline_flag = 0;
+	header->payload_size = key_value->v.val_size;
 
-	size_t buffer_len = parallax_handle->send_buffer_size - par_net_header_calc_size();
+	if (parallax_handle->net->cached_addr != key_value->v.val_buffer) {
+		if (parallax_handle->net->cached_mr != NULL) {
+			ibv_dereg_mr(parallax_handle->net->cached_mr);
+		}
 
-	struct par_net_put_req *request = par_net_put_req_create(
-		parallax_handle->region_id, key_value->k.size, key_value->k.data, key_value->v.val_size,
-		key_value->v.val_buffer,
-		&parallax_handle->net->send_buffer[parallax_handle->net->send_idx][par_net_header_calc_size()],
-		&buffer_len);
+		parallax_handle->net->cached_mr = ibv_reg_mr(parallax_handle->net->pd, key_value->v.val_buffer,
+							     key_value->v.val_size,
+							     IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ);
 
-	if (NULL == request) {
-		log_fatal("Failed to create blob put request");
-		_exit(EXIT_FAILURE);
+		if (!parallax_handle->net->cached_mr) {
+			log_fatal("Failed to register MR for zero-copy!");
+			_exit(EXIT_FAILURE);
+		}
+
+		parallax_handle->net->cached_addr = key_value->v.val_buffer;
+		parallax_handle->net->cached_size = key_value->v.val_size;
 	}
+
+	header->payload_buf_vaddr = (uint64_t)key_value->v.val_buffer;
+	header->payload_rkey = parallax_handle->net->cached_mr->rkey;
+
+	char *req_buffer =
+		&parallax_handle->net->send_buffer[parallax_handle->net->send_idx][par_net_header_calc_size()];
+	struct par_net_put_req *request = (struct par_net_put_req *)req_buffer;
+
+	request->region_id = parallax_handle->region_id;
+	request->key_size = key_value->k.size;
+
+	request->value_size = key_value->v.val_size;
+
+	memcpy(req_buffer + sizeof(struct par_net_put_req), key_value->k.data, key_value->k.size);
 
 	char *reply_buf = NULL;
 	ssize_t bytes_received = par_ib_RPC(parallax_handle,
@@ -1844,11 +2071,18 @@ void write_blob(par_handle handle, struct par_key_value *key_value, const char *
 		*error_message = "Communication with server failed during blob write";
 	}
 	struct par_net_header *reply_header = (struct par_net_header *)reply_buf;
-	assert(OPCODE_PUT == reply_header->opcode);
-	(void)reply_header;
+	assert(OPCODE_PUT_BLOB == reply_header->opcode);
+
+	struct par_net_put_rep *reply_payload = (struct par_net_put_rep *)(reply_buf + par_net_header_calc_size());
+	struct par_put_metadata metadata = par_net_put_rep_handle_reply(reply_payload);
+
+	if (out_offset != NULL) {
+		*out_offset = metadata.lsn;
+	}
 }
 
-void read_blob(par_handle handle, struct par_key *key, struct par_value *value, const char **error_message)
+void read_blob(par_handle handle, struct par_key *key, struct par_value *value, struct par_blob_req *req,
+	       const char **error_message)
 {
 	if (value == NULL) {
 		log_fatal("Value should not be null");
@@ -1856,7 +2090,10 @@ void read_blob(par_handle handle, struct par_key *key, struct par_value *value, 
 	}
 
 	struct par_handle *parallax_handle = (struct par_handle *)handle;
-	size_t msg_len = par_net_get_req_calc_size(key->size) + par_net_header_calc_size();
+
+	size_t msg_len =
+		par_net_get_req_calc_size(key->size) + par_net_header_calc_size() + sizeof(struct par_blob_req);
+
 	if (msg_len > parallax_handle->send_buffer_size) {
 		log_fatal("Send buffer too small has: %u B needs %lu B", parallax_handle->send_buffer_size, msg_len);
 		_exit(EXIT_FAILURE);
@@ -1872,12 +2109,21 @@ void read_blob(par_handle handle, struct par_key *key, struct par_value *value, 
 	header->inline_flag = 1;
 	header->payload_size = 0;
 
-	size_t buffer_len = parallax_handle->send_buffer_size - par_net_header_calc_size();
+	struct par_blob_req *blob_req_ptr =
+		(struct par_blob_req *)(&parallax_handle->net->send_buffer[parallax_handle->net->send_idx]
+									  [par_net_header_calc_size()]);
 
-	struct par_net_get_req *request = par_net_get_req_create(
-		parallax_handle->region_id, key->size, key->data, true,
-		&parallax_handle->net->send_buffer[parallax_handle->net->send_idx][par_net_header_calc_size()],
-		&buffer_len);
+	blob_req_ptr->offset = req->offset;
+	blob_req_ptr->size = req->size;
+
+	size_t buffer_len =
+		parallax_handle->send_buffer_size - par_net_header_calc_size() - sizeof(struct par_blob_req);
+
+	char *req_start = &parallax_handle->net->send_buffer[parallax_handle->net->send_idx]
+							    [par_net_header_calc_size() + sizeof(struct par_blob_req)];
+
+	struct par_net_get_req *request =
+		par_net_get_req_create(parallax_handle->region_id, key->size, key->data, true, req_start, &buffer_len);
 
 	if (NULL == request) {
 		log_fatal("Failed to create blob get request");
@@ -1900,6 +2146,82 @@ void read_blob(par_handle handle, struct par_key *key, struct par_value *value, 
 		log_debug("Blob Key %.*s NOT found", key->size, key->data);
 		*error_message = "Blob Key Not found";
 	}
+}
+
+uint32_t par_generate_unique_id(par_handle handle)
+{
+	char key_str[] = "uid";
+	struct par_key uid_key = { .size = (uint32_t)(strlen(key_str) + 1), .data = key_str };
+	struct par_value uid_val = { 0 };
+	const char *error_msg = NULL;
+
+	uid_val.val_buffer_size = 64;
+	uid_val.val_buffer = calloc(1, uid_val.val_buffer_size);
+
+	par_get(handle, &uid_key, &uid_val, &error_msg);
+
+	uint32_t current_id = 0;
+
+	if (error_msg == NULL && uid_val.val_size > 0) {
+		current_id = (uint32_t)atoi(uid_val.val_buffer);
+	}
+
+	uint32_t next_id = current_id + 1;
+
+	char new_val_str[64] = { 0 };
+	snprintf(new_val_str, sizeof(new_val_str), "%u", next_id);
+	log_info("new_val_str: %s", new_val_str);
+
+	free(uid_val.val_buffer);
+
+	struct par_key_value kv;
+	kv.k = uid_key;
+	kv.v.val_size = (uint32_t)(strlen(new_val_str) + 1);
+	kv.v.val_buffer_size = kv.v.val_size;
+	kv.v.val_buffer = new_val_str;
+
+	error_msg = NULL;
+	par_put(handle, &kv, &error_msg);
+
+	if (error_msg) {
+		fprintf(stderr, "Failed to update global counter: %s\n", error_msg);
+	}
+
+	return current_id;
+}
+
+int32_t par_get_unique_id(par_handle handle)
+{
+	static uint32_t cached_global_max = 0;
+	static uint32_t already_read_unique_id_counter = 0;
+
+	if (already_read_unique_id_counter >= cached_global_max) {
+		char key_str[] = "uid";
+		struct par_key uid_key = { .size = (uint32_t)(strlen(key_str) + 1), .data = key_str };
+		struct par_value uid_val = { 0 };
+		const char *error_msg = NULL;
+
+		uid_val.val_buffer_size = 64;
+		uid_val.val_buffer = calloc(1, uid_val.val_buffer_size);
+
+		par_get(handle, &uid_key, &uid_val, &error_msg);
+
+		if (error_msg == NULL && uid_val.val_size > 0) {
+			cached_global_max = (uint32_t)atoi(uid_val.val_buffer);
+		}
+
+		free(uid_val.val_buffer);
+	}
+
+	if (already_read_unique_id_counter >= cached_global_max) {
+		log_info("WARN: No new unique IDs generated since last read\n");
+		return -1;
+	}
+
+	uint32_t id = already_read_unique_id_counter;
+	already_read_unique_id_counter++;
+
+	return (int32_t)id;
 }
 #endif
 

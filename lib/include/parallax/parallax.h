@@ -220,8 +220,9 @@ int par_get_num_of_servers(void);
  * @param handle DB handle provided by par_open.
  * @param key_value The key and the large blob payload to insert.
  * @param error_message Contains error message if call fails.
+ * @param out_offset Pointer to store the offset of the written blob.
  */
-void write_blob(par_handle handle, struct par_key_value *key_value, const char **error_message);
+void write_blob(par_handle handle, struct par_key_value *key_value, const char **error_message, uint64_t *out_offset);
 
 /**
  * Retrieves a large key-value blob directly from the backend storage.
@@ -229,9 +230,44 @@ void write_blob(par_handle handle, struct par_key_value *key_value, const char *
  * @param handle DB handle provided by par_open.
  * @param key The key associated with the requested blob.
  * @param value Buffer to be filled with the blob data upon success.
+ * @param req Structure containing the offset and size of the blob to read.
  * @param error_message Contains error message if call fails.
  */
-void read_blob(par_handle handle, struct par_key *key, struct par_value *value, const char **error_message);
+void read_blob(par_handle handle, struct par_key *key, struct par_value *value, struct par_blob_req *req,
+	       const char **error_message);
+
+/**
+ * @brief Batched Put Operation
+ * @param db_handle The database handle
+ * @param kv_array  A pointer to an array of par_key_value structs
+ * @param count The number of items in the array
+ * @param error Pointer to error message string
+ */
+struct par_put_metadata par_put_batch(par_handle handle, struct par_key_value *kv_array, int count,
+				      const char **error_message);
+
+/**
+ * @brief Generates a unique identifier for the given database instance.
+ * @param handle DB handle provided by par_open.
+ * @return A 32-bit unsigned integer representing the generated unique ID.
+ */
+uint32_t par_generate_unique_id(par_handle handle);
+
+/**
+ * @brief Retrieves a unique identifier associated with the given database instance.
+ * @param handle DB handle provided by par_open.
+ * @return A 32-bit signed integer representing the unique ID.
+ */
+int32_t par_get_unique_id(par_handle handle);
+
+/**
+ * @brief Asynchronously inserts a key-value pair into the DB.
+ * @param handle DB handle provided by par_open.
+ * @param key_value Pointer to the key-value structure to insert.
+ * @param error_message Contains error message if the call fails.
+ * @return A par_put_metadata structure containing metadata regarding the async put operation.
+ */
+struct par_put_metadata par_async_put(par_handle handle, struct par_key_value *key_value, const char **error_message);
 
 void par_metrics(par_handle handle, uint8_t flags);
 #ifdef __cplusplus

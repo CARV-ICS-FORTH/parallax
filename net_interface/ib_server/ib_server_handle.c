@@ -1,5 +1,4 @@
 #define _GNU_SOURCE
-#include "ib_client_ctx.h"
 #include "ib_server_handle.h"
 
 #define PAR_IB_USAGE_STRING                         \
@@ -40,6 +39,7 @@
 #define PAR_IB_SECTOR_SIZE 4096
 #define PAR_IB_MAX_SRQ_BUFFERS 128
 #define PAR_IB_DEFAULT_BLOB_DIR "/tmp"
+#define PAR_IB_RDMA_READ_BUF_SIZE (4 * 1024 * 1024)
 
 struct server_options {
 	uint32_t threadno;
@@ -85,6 +85,38 @@ struct rdma_read_ctx {
 	struct par_ib_client_ctx *client;
 	struct rdma_read_slot *slot;
 	struct par_ib_recv_slot *recv_slot;
+};
+
+struct rdma_read_slot {
+	void *buf;
+	struct ibv_mr *mr;
+	size_t size;
+};
+
+struct par_ib_send_buf;
+
+struct par_ib_recv_slot {
+	void *buf;
+	struct ibv_mr *mr;
+	int buf_idx;
+	struct par_ib_send_buf *send_buf_ptr;
+	struct rdma_read_slot *read_slot_ptr;
+};
+
+struct par_ib_send_buf {
+	void *buf;
+	struct ibv_mr *mr;
+	int buf_idx;
+	struct par_ib_recv_slot *recv_slot_ptr;
+};
+
+struct par_ib_client_ctx {
+	struct ibv_pd *pd;
+	struct ibv_qp *qp;
+
+	int write_fd;
+	int read_fd;
+	char safe_key[256];
 };
 
 struct par_ib_client_ctx *clients[PAR_IB_MAX_CLIENTS];
@@ -183,9 +215,9 @@ struct server_options *par_ib_server_parse_argv_opts(int argc, char **argv)
 		} else if (!strcmp(argv[i], "-pf") || !strcmp(argv[i], "--par_format")) {
 			server_options->format = 1;
 		} else if (!strcmp(argv[i], "-bd") || !strcmp(argv[i], "--blob_dir")) {
-            par_ib_server_check_arg(argc, ++i);
-            server_options->blob_dir = strdup(argv[i]);
-        } else {
+			par_ib_server_check_arg(argc, ++i);
+			server_options->blob_dir = strdup(argv[i]);
+		} else {
 			log_fatal("InfiniBand Server: unknown option '%s'\n", argv[i]);
 		}
 	}
@@ -197,8 +229,8 @@ struct server_options *par_ib_server_parse_argv_opts(int argc, char **argv)
 		par_ib_server_set_address(server_options, PAR_IB_DEFAULT_ADDRESS);
 	}
 	if (server_options->blob_dir == NULL) {
-        server_options->blob_dir = strdup(PAR_IB_DEFAULT_BLOB_DIR);
-    }
+		server_options->blob_dir = strdup(PAR_IB_DEFAULT_BLOB_DIR);
+	}
 
 	return server_options;
 }
@@ -362,7 +394,7 @@ struct root_server_handle *par_ib_server_handle_init(struct server_options *opts
 			_exit(EXIT_FAILURE);
 		}
 
-		size_t total_read_chunk_size = (size_t)RDMA_READ_BUF_SIZE * PAR_IB_MAX_SRQ_BUFFERS;
+		size_t total_read_chunk_size = (size_t)PAR_IB_RDMA_READ_BUF_SIZE * PAR_IB_MAX_SRQ_BUFFERS;
 		void *read_memory_chunk = NULL;
 		ret = posix_memalign(&read_memory_chunk, PAR_IB_SECTOR_SIZE, total_read_chunk_size);
 		if (ret) {
@@ -379,9 +411,9 @@ struct root_server_handle *par_ib_server_handle_init(struct server_options *opts
 		}
 
 		for (int j = 0; j < PAR_IB_MAX_SRQ_BUFFERS; j++) {
-			worker->read_pool[j].buf = (char *)read_memory_chunk + (j * RDMA_READ_BUF_SIZE);
+			worker->read_pool[j].buf = (char *)read_memory_chunk + (j * PAR_IB_RDMA_READ_BUF_SIZE);
 			worker->read_pool[j].mr = read_mr;
-			worker->read_pool[j].size = RDMA_READ_BUF_SIZE;
+			worker->read_pool[j].size = PAR_IB_RDMA_READ_BUF_SIZE;
 
 			worker->recv_slots[j].read_slot_ptr = &worker->read_pool[j];
 		}
@@ -400,7 +432,7 @@ struct root_server_handle *par_ib_server_handle_init(struct server_options *opts
 			_exit(EXIT_FAILURE);
 		}
 
-        if (strcmp(opts->blob_dir, PAR_IB_DEFAULT_BLOB_DIR) != 0) {
+		if (strcmp(opts->blob_dir, PAR_IB_DEFAULT_BLOB_DIR) != 0) {
 			char cmd[1024];
 			snprintf(cmd, sizeof(cmd), "rm -f %s/*", opts->blob_dir);
 			int ret = system(cmd);
@@ -505,13 +537,33 @@ int par_ib_handle_cm_event(struct root_server_handle *server_handle, struct rdma
 		}
 		ctx->pd = server_handle->pd;
 		ctx->qp = client_id->qp;
+		ctx->write_fd = -1;
+		ctx->read_fd = -1;
+		ctx->safe_key[0] = '\0';
+
 		clients[server_caps.client_id - 1] = ctx;
+		client_id->context = (void *)(uintptr_t)server_caps.client_id;
 		break;
 	case RDMA_CM_EVENT_ESTABLISHED:;
 		log_info("RDMA_CM_EVENT_ESTABLISHED");
 		break;
 	case RDMA_CM_EVENT_DISCONNECTED:;
-		log_info("RDMA_CM_EVENT_DISCONNECTED");
+		uint32_t cid = (uint32_t)(uintptr_t)event->id->context;
+		log_info("RDMA_CM_EVENT_DISCONNECTED for client %u", cid);
+
+		if (cid > 0 && cid <= PAR_IB_MAX_CLIENTS) {
+			struct par_ib_client_ctx *disconnect_ctx = clients[cid - 1];
+			if (disconnect_ctx != NULL) {
+				if (disconnect_ctx->write_fd >= 0) {
+					close(disconnect_ctx->write_fd);
+					disconnect_ctx->write_fd = -1;
+				}
+				if (disconnect_ctx->read_fd >= 0) {
+					close(disconnect_ctx->read_fd);
+					disconnect_ctx->read_fd = -1;
+				}
+			}
+		}
 		break;
 	default:
 		log_info("Unhandled event: %s", rdma_event_str(event->event));
@@ -600,6 +652,7 @@ void par_ib_par_net_call_put(struct server_handle *server_handle, void *args, st
 	void *start = (void *)args;
 	struct par_net_header *hdr = (struct par_net_header *)start;
 	struct par_net_put_req *request = (struct par_net_put_req *)((char *)start + par_net_header_size());
+	struct par_ib_client_ctx *ctx = clients[hdr->request_id - 1];
 
 	struct par_key_value kv_pair = { 0 };
 	uint64_t region_id = par_net_put_get_region_id(request);
@@ -617,6 +670,17 @@ void par_ib_par_net_call_put(struct server_handle *server_handle, void *args, st
 	struct par_put_metadata metadata;
 	metadata = par_put((par_handle)region_id, &kv_pair, &error_message);
 	log_debug("LSN is %lu", metadata.lsn);
+	if (ctx->safe_key[0] == '\0') {
+		if (kv_pair.k.size >= 3 && kv_pair.k.data[0] == 'i' && kv_pair.k.data[1] == 'd') {
+			char *underscore = memchr(kv_pair.k.data, '_', kv_pair.k.size);
+			if (underscore != NULL) {
+				size_t len = underscore - (char *)kv_pair.k.data;
+				memcpy(ctx->safe_key, kv_pair.k.data, len);
+				ctx->safe_key[len] = '\0';
+				log_debug("Locked in physical file name prefix: %s", ctx->safe_key);
+			}
+		}
+	}
 	uint32_t total_bytes = par_net_header_size() + par_net_put_rep_calc_size();
 	struct par_net_put_rep *reply = par_net_put_rep_create(
 		error_message == NULL, metadata, (char *)reply_header + par_net_header_size(), total_bytes);
@@ -648,6 +712,7 @@ void par_ib_par_net_call_get(struct server_handle *server_handle, void *args, st
 	par_key.size = par_net_get_get_key_size(request);
 	par_key.data = par_net_get_get_key(request);
 	struct par_value par_value = { 0 };
+	struct par_ib_client_ctx *ctx = clients[hdr->request_id - 1];
 
 	const char *error_message = NULL;
 	uint32_t total_bytes = KV_MAX_SIZE + par_net_header_size() + par_net_get_rep_header_size();
@@ -659,6 +724,16 @@ void par_ib_par_net_call_get(struct server_handle *server_handle, void *args, st
 		log_debug("Available buffer for gets is %u", par_value.val_buffer_size);
 		par_get((par_handle)region_id, &par_key, &par_value, &error_message);
 		found = error_message == NULL;
+		if (ctx->safe_key[0] == '\0') {
+			if (par_key.size >= 3 && par_key.data[0] == 'i' && par_key.data[1] == 'd') {
+				char *underscore = memchr(par_key.data, '_', par_key.size);
+				if (underscore != NULL) {
+					size_t len = underscore - (char *)par_key.data;
+					memcpy(ctx->safe_key, par_key.data, len);
+					ctx->safe_key[len] = '\0';
+				}
+			}
+		}
 	} else {
 		log_debug("Region id: %lu Calling par_exists for key: %.*s", region_id, par_key.size, par_key.data);
 		par_ret_code ret_code = par_exists((par_handle)region_id, &par_key);
@@ -728,33 +803,39 @@ void par_ib_par_net_call_put_blob(struct server_handle *server_handle, void *arg
 	struct par_net_header *hdr = (struct par_net_header *)start;
 	struct par_net_put_req *request = (struct par_net_put_req *)((char *)start + par_net_header_size());
 
-	uint32_t key_size = par_net_put_get_key_size(request);
-	const char *key_data = par_net_put_get_key(request);
 	uint32_t payload_size = par_net_put_get_value_size(request);
-	const char *payload_data = par_net_put_get_value(request);
-
+	const char *payload_data = (hdr->inline_flag == 0) ? (const char *)hdr->payload_buf_vaddr :
+							     par_net_put_get_value(request);
 	const char *error_message = NULL;
-	struct server_options *opts = server_handle->global->opts;
-    const char *blob_dir = opts->blob_dir;
+	uint32_t client_idx = hdr->request_id - 1;
+	struct par_put_metadata metadata = { 0 };
 
-    char filepath[512];
-    
-    snprintf(filepath, sizeof(filepath), "%s/%.*s.grib", blob_dir, key_size, key_data);
-
-	int fd = open(filepath, O_WRONLY | O_CREAT | O_TRUNC | O_DIRECT, 0644);	
-	if (fd < 0) {
-		log_warn("Failed to open file on server for blob write");
-		error_message = "Failed to open file on server";
+	struct par_ib_client_ctx *ctx = clients[client_idx];
+	if (ctx->safe_key[0] == '\0') {
+		log_warn("put_blob called but no dataset mapped for client %u!", hdr->request_id);
+		error_message = "No dataset mapped";
 	} else {
-		ssize_t written = write(fd, payload_data, payload_size);
-		if (written != payload_size) {
-			log_warn("Failed to write complete payload on server");
-			error_message = "Failed to write complete payload";
+		if (ctx->write_fd < 0) {
+			char filepath[512];
+			snprintf(filepath, sizeof(filepath), "%s/dataset_%s.grib",
+				 server_handle->global->opts->blob_dir, ctx->safe_key);
+
+			ctx->write_fd = open(filepath, O_RDWR | O_CREAT | O_APPEND, 0644);
 		}
-		close(fd);
+		if (ctx->write_fd >= 0) {
+			off_t current_offset = lseek(ctx->write_fd, 0, SEEK_END);
+			ssize_t written = write(ctx->write_fd, payload_data, payload_size);
+
+			if (written != payload_size) {
+				error_message = "Failed to write complete payload";
+			} else {
+				metadata.lsn = (uint64_t)current_offset;
+			}
+		} else {
+			error_message = "Failed to open dataset file";
+		}
 	}
 
-	struct par_put_metadata metadata = { 0 };
 	uint32_t total_bytes = par_net_header_size() + par_net_put_rep_calc_size();
 	struct par_net_put_rep *reply = par_net_put_rep_create(
 		error_message == NULL, metadata, (char *)reply_header + par_net_header_size(), total_bytes);
@@ -770,38 +851,39 @@ void par_ib_par_net_call_get_blob(struct server_handle *server_handle, void *arg
 	(void)server_handle;
 	void *start = (void *)args;
 	struct par_net_header *hdr = (struct par_net_header *)start;
-	struct par_net_get_req *request = (struct par_net_get_req *)((char *)start + par_net_header_size());
-
-	uint32_t key_size = par_net_get_get_key_size(request);
-	const char *key_data = par_net_get_get_key(request);
+	struct par_blob_req *blob_req = (struct par_blob_req *)((char *)start + par_net_header_size());
 
 	bool found = false;
 	struct par_value par_value = { 0 };
+	uint32_t client_idx = hdr->request_id - 1;
 
-	struct server_options *opts = server_handle->global->opts;
-    const char *blob_dir = opts->blob_dir;
+	struct par_ib_client_ctx *ctx = clients[client_idx];
 
-    char filepath[512];
-    
-    snprintf(filepath, sizeof(filepath), "%s/%.*s.grib", blob_dir, key_size, key_data);
-
-	int fd = open(filepath, O_RDONLY);
-	if (fd >= 0) {
-		off_t file_size = lseek(fd, 0, SEEK_END);
-		lseek(fd, 0, SEEK_SET);
-
-		par_value.val_buffer = (char *)reply_header + par_net_header_size() + par_net_get_rep_header_size();
-		par_value.val_size = file_size;
-
-		ssize_t bytes_read = read(fd, par_value.val_buffer, file_size);
-		if (bytes_read == file_size) {
-			found = true;
-		} else {
-			log_warn("Failed to read full blob from server disk");
-		}
-		close(fd);
+	if (ctx->safe_key[0] == '\0') {
+		log_warn("get_blob called but no dataset mapped for client %u!", hdr->request_id);
 	} else {
-		log_warn("Blob file not found on server disk");
+		off_t real_offset = (off_t)blob_req->offset;
+
+		if (ctx->read_fd < 0) {
+			char filepath[512];
+			snprintf(filepath, sizeof(filepath), "%s/dataset_%s.grib",
+				 server_handle->global->opts->blob_dir, ctx->safe_key);
+
+			ctx->read_fd = open(filepath, O_RDONLY);
+		}
+
+		if (ctx->read_fd >= 0) {
+			par_value.val_buffer =
+				(char *)reply_header + par_net_header_size() + par_net_get_rep_header_size();
+			ssize_t bytes_read = pread(ctx->read_fd, par_value.val_buffer, blob_req->size, real_offset);
+
+			if (bytes_read > 0) {
+				found = true;
+				par_value.val_size = bytes_read;
+			}
+		} else {
+			log_warn("Failed to open file %s", ctx->safe_key);
+		}
 	}
 
 	uint32_t total_bytes = par_net_header_size() + par_net_get_rep_header_size() + (found ? par_value.val_size : 0);
@@ -816,6 +898,59 @@ void par_ib_par_net_call_get_blob(struct server_handle *server_handle, void *arg
 	(void)reply;
 }
 
+void par_ib_par_net_call_put_batch(struct server_handle *server_handle, void *args, struct par_net_header *reply_header)
+{
+	(void)server_handle;
+	void *start = (void *)args;
+	struct par_net_header *hdr = (struct par_net_header *)start;
+	struct par_net_put_batch_req *request = (struct par_net_put_batch_req *)((char *)start + par_net_header_size());
+
+	uint64_t region_id = par_net_put_batch_get_region_id(request);
+	uint32_t count = par_net_put_batch_get_num_kvs(request);
+	char *ptr = par_net_put_batch_get_data_ptr(request);
+
+	const char *error_message = NULL;
+	struct par_put_metadata metadata = { 0 };
+
+	for (uint32_t i = 0; i < count; i++) {
+		uint32_t k_size = *((uint32_t *)ptr);
+		ptr += sizeof(uint32_t);
+
+		uint32_t v_size = *((uint32_t *)ptr);
+		ptr += sizeof(uint32_t);
+
+		struct par_key_value kv_pair;
+
+		kv_pair.k.size = k_size;
+		kv_pair.k.data = ptr;
+		ptr += k_size;
+
+		kv_pair.v.val_size = v_size;
+		kv_pair.v.val_buffer_size = v_size;
+		kv_pair.v.val_buffer = ptr;
+		ptr += v_size;
+
+		metadata = par_put((par_handle)region_id, &kv_pair, &error_message);
+
+		if (error_message) {
+			log_warn("Batch put failed at index %u: %s", i, error_message);
+			break;
+		}
+	}
+
+	uint32_t total_bytes = par_net_header_size() + par_net_put_rep_calc_size();
+	struct par_net_put_rep *reply = par_net_put_rep_create(
+		error_message == NULL, metadata, (char *)reply_header + par_net_header_size(), total_bytes);
+
+	if (NULL == reply) {
+		log_warn("Failed to create put batch reply");
+	}
+
+	reply_header->opcode = OPCODE_PUT_BATCH;
+	reply_header->total_bytes = total_bytes;
+	reply_header->request_id = hdr->request_id;
+}
+
 const par_ib_call par_net_call[OPCODE_MAX] = { NULL,
 					       par_ib_par_net_call_open,
 					       par_ib_par_net_call_put,
@@ -825,7 +960,8 @@ const par_ib_call par_net_call[OPCODE_MAX] = { NULL,
 					       par_ib_par_net_call_scan,
 					       par_ib_par_net_call_sync,
 					       par_ib_par_net_call_put_blob,
-					       par_ib_par_net_call_get_blob };
+					       par_ib_par_net_call_get_blob,
+					       par_ib_par_net_call_put_batch };
 
 size_t par_ib_par_net_get_total_bytes(char *buffer)
 {
@@ -956,15 +1092,23 @@ int par_ib_handle_event(struct ibv_wc *wc, struct server_handle *server_handle)
 		break;
 	case IBV_WC_RDMA_READ:;
 		struct rdma_read_ctx *ctx = (struct rdma_read_ctx *)(uintptr_t)wc->wr_id;
+		ctx->hdr->payload_buf_vaddr = (uint64_t)ctx->slot->buf;
 		recv_slot = (struct par_ib_recv_slot *)malloc(sizeof(*recv_slot));
-		recv_slot->buf = ctx->slot->buf;
-		recv_slot->mr = ctx->slot->mr;
+		if (ctx->hdr->opcode == OPCODE_PUT_BLOB) {
+			recv_slot->buf = ctx->recv_slot->buf;
+			recv_slot->mr = ctx->recv_slot->mr;
+			ctx->hdr->payload_buf_vaddr = (uint64_t)ctx->slot->buf;
+		} else {
+			recv_slot->buf = ctx->slot->buf;
+			recv_slot->mr = ctx->slot->mr;
+		}
 		recv_slot->buf_idx = ctx->recv_slot->buf_idx;
 		recv_slot->read_slot_ptr = ctx->slot;
 
 		recv_slot->send_buf_ptr = ctx->recv_slot->send_buf_ptr;
 
-		if (ctx->hdr->opcode != OPCODE_PUT && ctx->hdr->opcode != OPCODE_PUT_BLOB) {
+		if (ctx->hdr->opcode != OPCODE_PUT && ctx->hdr->opcode != OPCODE_PUT_BLOB &&
+		    ctx->hdr->opcode != OPCODE_PUT_BATCH) {
 			log_fatal("Unhandled RDMA READ opcode");
 		}
 
