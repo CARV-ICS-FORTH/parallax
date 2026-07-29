@@ -86,6 +86,11 @@ struct par_key_value {
 	struct par_value v;
 };
 
+struct par_blob_req {
+	uint64_t offset;
+	uint64_t size;
+};
+
 /**
  *	For some applications such as Tebis they need some metadata from Parallax.
  */

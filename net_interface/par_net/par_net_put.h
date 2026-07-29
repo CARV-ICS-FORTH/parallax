@@ -14,6 +14,10 @@ struct par_net_put_req;
 
 struct par_net_put_rep;
 
+#ifdef USE_INFINIBAND
+struct par_net_put_batch_req;
+#endif
+
 /**
   * @brief calculates total size of par_net_put_req struct and the sizes
   * of the key and value.
@@ -118,5 +122,20 @@ struct par_net_put_rep *par_net_put_rep_create(int status, struct par_put_metada
  *
 */
 struct par_put_metadata par_net_put_rep_handle_reply(struct par_net_put_rep *reply);
+
+#ifdef USE_INFINIBAND
+
+size_t par_net_put_batch_req_calc_size(struct par_key_value *kv_array, int count);
+
+struct par_net_put_batch_req *par_net_put_batch_req_create(uint64_t region_id, struct par_key_value *kv_array,
+							   int count, char *buffer, size_t *buffer_len);
+
+uint64_t par_net_put_batch_get_region_id(struct par_net_put_batch_req *request);
+
+uint32_t par_net_put_batch_get_num_kvs(struct par_net_put_batch_req *request);
+
+char *par_net_put_batch_get_data_ptr(struct par_net_put_batch_req *request);
+
+#endif
 
 #endif
