@@ -1,12 +1,12 @@
 #ifndef PAR_NET_WORKER_H
 #define PAR_NET_WORKER_H
-#include "../ib_server/ib_client_ctx.h"
 #include "../par_net/par_net.h"
 #ifdef USE_PORTALS
 #include "portals4.h"
 #endif
 #include "../ib_server/ib_server_handle.h"
 #include "../portals_server/portals_server_handle.h"
+
 struct par_net_worker;
 
 /* Header for par_net_worker api*/
