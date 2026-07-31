@@ -2030,26 +2030,34 @@ void write_blob(par_handle handle, struct par_key_value *key_value, const char *
 	header->inline_flag = 0;
 	header->payload_size = key_value->v.val_size;
 
-	if (parallax_handle->net->cached_addr != key_value->v.val_buffer) {
-		if (parallax_handle->net->cached_mr != NULL) {
-			ibv_dereg_mr(parallax_handle->net->cached_mr);
+	if (key_value->v.val_size > 0) {
+		header->inline_flag = 0;
+
+		if (parallax_handle->net->cached_addr != key_value->v.val_buffer) {
+			if (parallax_handle->net->cached_mr != NULL) {
+				ibv_dereg_mr(parallax_handle->net->cached_mr);
+			}
+
+			parallax_handle->net->cached_mr = ibv_reg_mr(parallax_handle->net->pd, key_value->v.val_buffer,
+								     key_value->v.val_size,
+								     IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ);
+
+			if (!parallax_handle->net->cached_mr) {
+				log_fatal("Failed to register MR for zero-copy!");
+				_exit(EXIT_FAILURE);
+			}
+
+			parallax_handle->net->cached_addr = key_value->v.val_buffer;
+			parallax_handle->net->cached_size = key_value->v.val_size;
 		}
 
-		parallax_handle->net->cached_mr = ibv_reg_mr(parallax_handle->net->pd, key_value->v.val_buffer,
-							     key_value->v.val_size,
-							     IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ);
-
-		if (!parallax_handle->net->cached_mr) {
-			log_fatal("Failed to register MR for zero-copy!");
-			_exit(EXIT_FAILURE);
-		}
-
-		parallax_handle->net->cached_addr = key_value->v.val_buffer;
-		parallax_handle->net->cached_size = key_value->v.val_size;
+		header->payload_buf_vaddr = (uint64_t)key_value->v.val_buffer;
+		header->payload_rkey = parallax_handle->net->cached_mr->rkey;
+	} else {
+		header->inline_flag = 1;
+		header->payload_buf_vaddr = 0;
+		header->payload_rkey = 0;
 	}
-
-	header->payload_buf_vaddr = (uint64_t)key_value->v.val_buffer;
-	header->payload_rkey = parallax_handle->net->cached_mr->rkey;
 
 	char *req_buffer =
 		&parallax_handle->net->send_buffer[parallax_handle->net->send_idx][par_net_header_calc_size()];
@@ -2060,7 +2068,9 @@ void write_blob(par_handle handle, struct par_key_value *key_value, const char *
 
 	request->value_size = key_value->v.val_size;
 
-	memcpy(req_buffer + sizeof(struct par_net_put_req), key_value->k.data, key_value->k.size);
+	if (key_value->k.size > 0) {
+		memcpy(req_buffer + sizeof(struct par_net_put_req), key_value->k.data, key_value->k.size);
+	}
 
 	char *reply_buf = NULL;
 	ssize_t bytes_received = par_ib_RPC(parallax_handle,
@@ -2079,6 +2089,8 @@ void write_blob(par_handle handle, struct par_key_value *key_value, const char *
 	if (out_offset != NULL) {
 		*out_offset = metadata.lsn;
 	}
+
+	(void)reply_header;
 }
 
 void read_blob(par_handle handle, struct par_key *key, struct par_value *value, struct par_blob_req *req,
@@ -2148,81 +2160,6 @@ void read_blob(par_handle handle, struct par_key *key, struct par_value *value, 
 	}
 }
 
-uint32_t par_generate_unique_id(par_handle handle)
-{
-	char key_str[] = "uid";
-	struct par_key uid_key = { .size = (uint32_t)(strlen(key_str) + 1), .data = key_str };
-	struct par_value uid_val = { 0 };
-	const char *error_msg = NULL;
-
-	uid_val.val_buffer_size = 64;
-	uid_val.val_buffer = calloc(1, uid_val.val_buffer_size);
-
-	par_get(handle, &uid_key, &uid_val, &error_msg);
-
-	uint32_t current_id = 0;
-
-	if (error_msg == NULL && uid_val.val_size > 0) {
-		current_id = (uint32_t)atoi(uid_val.val_buffer);
-	}
-
-	uint32_t next_id = current_id + 1;
-
-	char new_val_str[64] = { 0 };
-	snprintf(new_val_str, sizeof(new_val_str), "%u", next_id);
-	log_info("new_val_str: %s", new_val_str);
-
-	free(uid_val.val_buffer);
-
-	struct par_key_value kv;
-	kv.k = uid_key;
-	kv.v.val_size = (uint32_t)(strlen(new_val_str) + 1);
-	kv.v.val_buffer_size = kv.v.val_size;
-	kv.v.val_buffer = new_val_str;
-
-	error_msg = NULL;
-	par_put(handle, &kv, &error_msg);
-
-	if (error_msg) {
-		fprintf(stderr, "Failed to update global counter: %s\n", error_msg);
-	}
-
-	return current_id;
-}
-
-int32_t par_get_unique_id(par_handle handle)
-{
-	static uint32_t cached_global_max = 0;
-	static uint32_t already_read_unique_id_counter = 0;
-
-	if (already_read_unique_id_counter >= cached_global_max) {
-		char key_str[] = "uid";
-		struct par_key uid_key = { .size = (uint32_t)(strlen(key_str) + 1), .data = key_str };
-		struct par_value uid_val = { 0 };
-		const char *error_msg = NULL;
-
-		uid_val.val_buffer_size = 64;
-		uid_val.val_buffer = calloc(1, uid_val.val_buffer_size);
-
-		par_get(handle, &uid_key, &uid_val, &error_msg);
-
-		if (error_msg == NULL && uid_val.val_size > 0) {
-			cached_global_max = (uint32_t)atoi(uid_val.val_buffer);
-		}
-
-		free(uid_val.val_buffer);
-	}
-
-	if (already_read_unique_id_counter >= cached_global_max) {
-		log_info("WARN: No new unique IDs generated since last read\n");
-		return -1;
-	}
-
-	uint32_t id = already_read_unique_id_counter;
-	already_read_unique_id_counter++;
-
-	return (int32_t)id;
-}
 #endif
 
 void par_metrics(par_handle handle, uint8_t flags)

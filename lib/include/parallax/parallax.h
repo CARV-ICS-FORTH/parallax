@@ -247,20 +247,6 @@ struct par_put_metadata par_put_batch(par_handle handle, struct par_key_value *k
 				      const char **error_message);
 
 /**
- * @brief Generates a unique identifier for the given database instance.
- * @param handle DB handle provided by par_open.
- * @return A 32-bit unsigned integer representing the generated unique ID.
- */
-uint32_t par_generate_unique_id(par_handle handle);
-
-/**
- * @brief Retrieves a unique identifier associated with the given database instance.
- * @param handle DB handle provided by par_open.
- * @return A 32-bit signed integer representing the unique ID.
- */
-int32_t par_get_unique_id(par_handle handle);
-
-/**
  * @brief Asynchronously inserts a key-value pair into the DB.
  * @param handle DB handle provided by par_open.
  * @param key_value Pointer to the key-value structure to insert.
