@@ -117,7 +117,6 @@ struct par_ib_client_ctx {
 	int write_fd;
 	int read_fd;
 	char safe_key[256];
-	uint16_t current_read_suffix;
 };
 
 struct par_ib_client_ctx *clients[PAR_IB_MAX_CLIENTS];
@@ -812,15 +811,14 @@ void par_ib_par_net_call_put_blob(struct server_handle *server_handle, void *arg
 	struct par_put_metadata metadata = { 0 };
 
 	struct par_ib_client_ctx *ctx = clients[client_idx];
-	uint16_t file_suffix = (uint16_t)client_idx;
 	if (ctx->safe_key[0] == '\0') {
 		log_warn("put_blob called but no dataset mapped for client %u!", hdr->request_id);
 		error_message = "No dataset mapped";
 	} else {
 		if (ctx->write_fd < 0) {
 			char filepath[512];
-			snprintf(filepath, sizeof(filepath), "%s/dataset_%s_%u.grib",
-				 server_handle->global->opts->blob_dir, ctx->safe_key, file_suffix);
+			snprintf(filepath, sizeof(filepath), "%s/dataset_%s.grib",
+				 server_handle->global->opts->blob_dir, ctx->safe_key);
 
 			ctx->write_fd = open(filepath, O_RDWR | O_CREAT | O_APPEND, 0644);
 		}
@@ -836,9 +834,7 @@ void par_ib_par_net_call_put_blob(struct server_handle *server_handle, void *arg
 				if (written != payload_size) {
 					error_message = "Failed to write complete payload";
 				} else {
-					uint64_t real_offset = (uint64_t)current_offset;
-					metadata.lsn = ((uint64_t)file_suffix << 48) |
-						       (real_offset & 0x0000FFFFFFFFFFFFULL);
+					metadata.lsn = (uint64_t)current_offset;
 				}
 			}
 		} else {
@@ -872,21 +868,14 @@ void par_ib_par_net_call_get_blob(struct server_handle *server_handle, void *arg
 	if (ctx->safe_key[0] == '\0') {
 		log_warn("get_blob called but no dataset mapped for client %u!", hdr->request_id);
 	} else {
-		uint64_t encoded_lsn = (uint64_t)blob_req->offset;
-		uint16_t required_suffix = (uint16_t)(encoded_lsn >> 48);
-		off_t real_offset = (off_t)(encoded_lsn & 0x0000FFFFFFFFFFFFULL);
+		off_t real_offset = (off_t)blob_req->offset;
 
-		if (ctx->read_fd < 0 || ctx->current_read_suffix != required_suffix) {
-			if (ctx->read_fd >= 0) {
-				close(ctx->read_fd);
-			}
-
+		if (ctx->read_fd < 0) {
 			char filepath[512];
-			snprintf(filepath, sizeof(filepath), "%s/dataset_%s_%u.grib",
-				 server_handle->global->opts->blob_dir, ctx->safe_key, required_suffix);
+			snprintf(filepath, sizeof(filepath), "%s/dataset_%s.grib",
+				 server_handle->global->opts->blob_dir, ctx->safe_key);
 
 			ctx->read_fd = open(filepath, O_RDONLY);
-			ctx->current_read_suffix = required_suffix;
 		}
 
 		if (ctx->read_fd >= 0) {
@@ -899,7 +888,7 @@ void par_ib_par_net_call_get_blob(struct server_handle *server_handle, void *arg
 				par_value.val_size = bytes_read;
 			}
 		} else {
-			log_warn("Failed to open file %s_%u", ctx->safe_key, required_suffix);
+			log_warn("Failed to open file dataset_%s.grib", ctx->safe_key);
 		}
 	}
 
