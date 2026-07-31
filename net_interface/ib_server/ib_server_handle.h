@@ -2,6 +2,7 @@
 #define INFINIBAND_SERVER_HANDLE_H
 
 #include "../par_net/par_net.h"
+#include "../par_net/par_net_sync.h"
 #include <arpa/inet.h>
 #include <fcntl.h>
 #include <rdma/rdma_cma.h>

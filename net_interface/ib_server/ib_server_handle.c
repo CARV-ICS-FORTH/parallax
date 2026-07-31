@@ -361,7 +361,7 @@ struct root_server_handle *par_ib_server_handle_init(struct server_options *opts
 			_exit(EXIT_FAILURE);
 		}
 
-		size_t single_send_size = KV_MAX_SIZE + PAR_IB_METADATA_SIZE;
+		size_t single_send_size = PAR_IB_RDMA_READ_BUF_SIZE + PAR_IB_METADATA_SIZE;
 		size_t total_send_chunk = single_send_size * PAR_IB_MAX_SRQ_BUFFERS;
 
 		void *send_memory_chunk = NULL;
@@ -509,7 +509,7 @@ int par_ib_handle_cm_event(struct root_server_handle *server_handle, struct rdma
 			return -1;
 		}
 		struct my_conn_metadata server_caps = {
-			.max_buffer_size = KV_MAX_SIZE,
+			.max_buffer_size = PAR_IB_RDMA_READ_BUF_SIZE,
 			.client_id = __sync_fetch_and_add(&client_id_counter, 1),
 		};
 		if (server_caps.client_id > PAR_IB_MAX_CLIENTS) {
@@ -715,7 +715,7 @@ void par_ib_par_net_call_get(struct server_handle *server_handle, void *args, st
 	struct par_ib_client_ctx *ctx = clients[hdr->request_id - 1];
 
 	const char *error_message = NULL;
-	uint32_t total_bytes = KV_MAX_SIZE + par_net_header_size() + par_net_get_rep_header_size();
+	uint32_t total_bytes = PAR_IB_RDMA_READ_BUF_SIZE + par_net_header_size() + par_net_get_rep_header_size();
 	bool found = false;
 	if (par_net_get_req_fetch_value(request)) {
 		log_debug("Region id: %lu Calling par_get for key: %.*s", region_id, par_key.size, par_key.data);
@@ -791,9 +791,26 @@ void par_ib_par_net_call_scan(struct server_handle *server_handle, void *args, s
 void par_ib_par_net_call_sync(struct server_handle *server_handle, void *args, struct par_net_header *reply_header)
 {
 	(void)server_handle;
-	(void)args;
-	(void)reply_header;
-	log_warn("SYNC NOT IMPLEMENTED");
+	void *start = (void *)args;
+
+	struct par_net_header *hdr = (struct par_net_header *)start;
+	struct par_net_sync_req *request = (struct par_net_sync_req *)((char *)start + par_net_header_size());
+
+	uint64_t region_id = par_net_sync_req_get_region_id(request);
+	par_ret_code ret = par_sync((par_handle)region_id);
+
+	uint32_t total_bytes = par_net_header_size() + par_net_sync_rep_calc_size();
+
+	struct par_net_sync_rep *reply =
+		par_net_sync_rep_create(ret, region_id, (char *)reply_header + par_net_header_size(), total_bytes);
+
+	if (NULL == reply) {
+		log_warn("Failed to create sync reply");
+	}
+
+	reply_header->opcode = OPCODE_SYNC;
+	reply_header->total_bytes = total_bytes;
+	reply_header->request_id = hdr->request_id;
 }
 
 void par_ib_par_net_call_put_blob(struct server_handle *server_handle, void *args, struct par_net_header *reply_header)
@@ -991,9 +1008,9 @@ void par_ib_put_and_reply(struct server_handle *server_handle, struct par_ib_rec
 	struct par_ib_client_ctx *ctx = clients[hdr->request_id - 1];
 
 	size_t total_bytes = hdr->total_bytes;
-	if (total_bytes > KV_MAX_SIZE + par_net_header_size()) {
+	if (total_bytes > PAR_IB_RDMA_READ_BUF_SIZE + par_net_header_size()) {
 		log_fatal("Error Larger message recv buffer size is: %lu B total_bytes are: %lu B",
-			  KV_MAX_SIZE + par_net_header_size(), total_bytes);
+			  PAR_IB_RDMA_READ_BUF_SIZE + par_net_header_size(), total_bytes);
 		_exit(EXIT_FAILURE);
 	}
 

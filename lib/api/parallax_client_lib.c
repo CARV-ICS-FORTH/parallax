@@ -41,6 +41,7 @@ char msg[PTL_EV_STR_SIZE];
 #define KV_SIZE_THRESHOLD 256
 #define TIMEOUT_MS 500
 #define SECTOR_SIZE 512
+#define BLOB_SIZE 4194304
 struct my_conn_metadata {
 	uint32_t max_buffer_size;
 	uint32_t client_id;
@@ -450,7 +451,7 @@ static struct par_net_context *par_net_init(const char *parallax_host, int targe
 		_exit(EXIT_FAILURE);
 	}
 
-	uint32_t recv_buf_size = KV_MAX_SIZE + par_net_header_calc_size();
+	uint32_t recv_buf_size = BLOB_SIZE + par_net_header_calc_size();
 	int ret;
 	for (int j = 0; j < N_RECV_BUFFERS; j++) {
 		ret = posix_memalign((void **)&net->recv_buffer[j], SECTOR_SIZE, recv_buf_size);
@@ -475,7 +476,7 @@ static struct par_net_context *par_net_init(const char *parallax_host, int targe
 		}
 	}
 
-	uint32_t send_buf_size = KV_MAX_SIZE;
+	uint32_t send_buf_size = BLOB_SIZE;
 	for (int j = 0; j < N_SEND_BUFFERS; j++) {
 		ret = posix_memalign((void **)&net->send_buffer[j], SECTOR_SIZE, send_buf_size);
 		if (ret != 0)
@@ -855,7 +856,7 @@ retry:
 				if (hdr->request_id != header->request_id || hdr->opcode != header->opcode) {
 					struct ibv_sge recv_sge = {
 						.addr = (uintptr_t)h->net->recv_buffer[idx],
-						.length = KV_MAX_SIZE + par_net_header_calc_size(),
+						.length = BLOB_SIZE + par_net_header_calc_size(),
 						.lkey = h->net->recv_mr[idx]->lkey,
 					};
 					struct ibv_recv_wr recv_wr = {
@@ -886,7 +887,7 @@ retry:
 	hdr = (struct par_net_header *)h->net->recv_buffer[idx];
 
 	char *recv_buf = h->net->recv_buffer[idx];
-	size_t recv_buf_size = KV_MAX_SIZE + par_net_header_calc_size();
+	size_t recv_buf_size = BLOB_SIZE + par_net_header_calc_size();
 	struct ibv_mr *recv_mr = h->net->recv_mr[idx];
 
 	if (hdr->request_id != header->request_id) {
@@ -898,8 +899,8 @@ retry:
 		struct par_net_get_rep *rep = (struct par_net_get_rep *)(recv_buf + par_net_header_calc_size());
 		if (par_net_get_rep_error_code(rep) == 1) {
 			recv_buf_size *= 2;
-			if (recv_buf_size > KV_MAX_SIZE) {
-				log_error("Exceeded KV_MAX_SIZE");
+			if (recv_buf_size > BLOB_SIZE) {
+				log_error("Exceeded BLOB_SIZE");
 				return -1;
 			}
 			goto retry;
@@ -993,7 +994,7 @@ static int par_ib_async_RPC(par_handle handle, char *send_buffer, size_t send_bu
 
 			struct ibv_sge recv_sge = {
 				.addr = (uintptr_t)h->net->recv_buffer[idx],
-				.length = KV_MAX_SIZE + par_net_header_calc_size(),
+				.length = BLOB_SIZE + par_net_header_calc_size(),
 				.lkey = h->net->recv_mr[idx]->lkey,
 			};
 			struct ibv_recv_wr recv_wr = {
@@ -1105,8 +1106,8 @@ par_handle par_open(par_db_options *db_options, const char **error_message)
 	struct par_handle *parallax_handle = calloc(1, sizeof(*parallax_handle));
 	parallax_handle->net = net;
 	parallax_handle->db_name = strdup(db_options->db_name);
-	parallax_handle->send_buffer_size = KV_MAX_SIZE;
-	parallax_handle->recv_buffer_size = KV_MAX_SIZE + par_net_header_calc_size();
+	parallax_handle->send_buffer_size = BLOB_SIZE;
+	parallax_handle->recv_buffer_size = BLOB_SIZE + par_net_header_calc_size();
 #else
 	struct par_handle *parallax_handle =
 		(struct par_handle *)par_net_init((const char *)configuration[PARALLAX_SERVER].value);
@@ -1932,7 +1933,7 @@ par_ret_code par_sync(par_handle handle)
 					     parallax_handle->recv_buffer_size);
 #endif
 #ifdef USE_INFINIBAND
-	struct par_net_header *reply = (struct par_net_header *)parallax_handle->net->recv_buffer;
+	struct par_net_header *reply = (struct par_net_header *)reply_buf;
 #else
 	struct par_net_header *reply = (struct par_net_header *)parallax_handle->recv_buffer;
 #endif
