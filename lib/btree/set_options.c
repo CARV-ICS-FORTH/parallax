@@ -23,7 +23,21 @@
 #include <uthash.h>
 #include <yaml.h>
 
-#define CONFIG_FILE DB_CONFIG_FILE
+/**
+ * Resolve the options file at runtime instead of trusting the absolute path
+ * baked in at compile time: $PARALLAX_OPTIONS_FILE, then ./options.yml,
+ * then the compile-time default DB_CONFIG_FILE.
+ */
+static const char *get_config_file(void)
+{
+	const char *env = getenv("PARALLAX_OPTIONS_FILE");
+	if (env && *env)
+		return env;
+	if (access("options.yml", R_OK) == 0)
+		return "options.yml";
+	return DB_CONFIG_FILE;
+}
+#define CONFIG_FILE get_config_file()
 
 /**
  * @brief Checks if the token is a number or a string and stores it in the
@@ -48,16 +62,17 @@ static void parse_value(yaml_token_t token, struct lib_option *lib_option)
 #define PARSE_MAX_PROPERTIES 128
 int parse_options(struct lib_option **db_options)
 {
-	log_debug("Reading Configuration file: %s", CONFIG_FILE);
+	const char *config_file = get_config_file();
+	log_warn("Parallax reading configuration file: %s", config_file);
 	struct lib_option options[PARSE_MAX_PROPERTIES];
-	FILE *file_handle = fopen(CONFIG_FILE, "r");
+	FILE *file_handle = fopen(config_file, "r");
 	yaml_parser_t parser;
 	yaml_token_t token;
 	int count = 0;
 	int num_options = 0;
 
-	if (access(CONFIG_FILE, F_OK)) {
-		log_fatal("Configuration file: %s does not exist.", CONFIG_FILE);
+	if (access(config_file, F_OK)) {
+		log_fatal("Configuration file: %s does not exist.", config_file);
 		BUG_ON();
 	}
 
