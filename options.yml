@@ -1,4 +1,4 @@
-level0_size: 1
+level0_size: 128
 gc_interval: 10
 growth_factor: 4
 medium_log_LRU_cache_size: 400
