@@ -18,7 +18,18 @@
 #include <stdlib.h>
 #include <sys/time.h>
 #include <sys/types.h>
+#if defined(__x86_64__) || defined(__i386__)
 #include <x86intrin.h>
+#else
+#include <stdint.h>
+/* aarch64 fallback for __rdtsc(): virtual counter (stats only) */
+static inline uint64_t __rdtsc(void)
+{
+	uint64_t v;
+	__asm__ volatile("mrs %0, cntvct_el0" : "=r"(v));
+	return v;
+}
+#endif
 
 #define BUDDY_ALLOC_IMPLEMENTATION
 #include "../portals_server/buddy_alloc.h"
