@@ -214,6 +214,12 @@ uint32_t par_get_max_kv_pair_size(void);
  */
 int par_get_num_of_servers(void);
 
+/** Force every DB handle opened afterwards by this process to connect to server `index` (position in
+ *  the parallax_server list). Pass -1 to restore the default (hash of the DB name). Must be called before the
+ *  first par_open(). Also settable with the PARALLAX_SERVER_INDEX environment variable. */
+void par_set_server_index(int index);
+int par_get_server_index(void);
+
 /**
  * Writes a large key-value blob directly to the backend storage, bypassing the standard B-Tree log and index.
  * This is optimized for exceptionally large payloads.

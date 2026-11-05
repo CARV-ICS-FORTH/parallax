@@ -1112,6 +1112,11 @@ par_handle par_open(par_db_options *db_options, const char **error_message)
 	free(hosts_copy);
 
 	int target = djb2_hash(db_options->db_name) % server_count;
+	int forced = par_get_server_index();
+	if (forced >= 0)
+		target = forced % server_count;
+	log_info("par_open %s -> server %d of %d (%s)", db_options->db_name, target, server_count,
+		 forced >= 0 ? "forced" : "hash");
 	struct par_net_context *net = par_net_init((const char *)configuration[PARALLAX_SERVER].value, target);
 
 	struct par_handle *parallax_handle = calloc(1, sizeof(*parallax_handle));
@@ -2292,6 +2297,24 @@ void par_flush_superblock(par_handle handle)
 	log_fatal("Unimplemented");
 	_exit(EXIT_FAILURE);
 	(void)handle;
+}
+
+/* Process-wide override of the server a DB handle connects to. -1 = default (hash of the DB name).
+ * Initialised from $PARALLAX_SERVER_INDEX; applications may call par_set_server_index() before the first par_open(). */
+static int forced_server_index = -2;
+
+void par_set_server_index(int index)
+{
+	forced_server_index = index;
+}
+
+int par_get_server_index(void)
+{
+	if (forced_server_index == -2) {
+		const char *env = getenv("PARALLAX_SERVER_INDEX");
+		forced_server_index = (env && *env) ? atoi(env) : -1;
+	}
+	return forced_server_index;
 }
 
 int par_get_num_of_servers(void)
